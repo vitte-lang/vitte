@@ -1,0 +1,153 @@
+<<<
+mod.vit
+package vitte/registry
+>>>
+
+space vitte/registry
+
+pick PackageState {
+  Draft
+  Published
+  Deprecated
+  Rejected
+}
+
+form PackageRecord {
+  name: string
+  version: string
+  checksum: string
+  downloads: int
+  state: PackageState
+}
+
+form RegistryIndex {
+  host: string
+  records: [PackageRecord]
+  strict: bool
+}
+
+proc index(host: string) -> RegistryIndex {
+  give RegistryIndex(host, [], false)
+}
+
+proc strict_mode(idx: RegistryIndex, enabled: bool) -> RegistryIndex {
+  give RegistryIndex(idx.host, idx.records, enabled)
+}
+
+proc record(name: string, version: string, checksum: string) -> PackageRecord {
+  give PackageRecord(name, version, checksum, 0, PackageState.Draft)
+}
+
+proc same_package(rec: PackageRecord, name: string, version: string) -> bool {
+  give rec.name == name && rec.version == version
+}
+
+proc publish(idx: RegistryIndex, rec: PackageRecord) -> RegistryIndex {
+  if idx.strict && rec.checksum.len == 0 { give idx }
+
+  let out: [PackageRecord] = []
+  let replaced: bool = false
+  let i: int = 0
+  loop {
+    if i >= idx.records.len { break }
+    let cur = idx.records[i]
+    if same_package(cur, rec.name, rec.version) {
+      out = out.push(PackageRecord(rec.name, rec.version, rec.checksum, cur.downloads, PackageState.Published))
+      replaced = true
+    } else {
+      out = out.push(cur)
+    }
+    i = i + 1
+  }
+
+  if !replaced {
+    out = out.push(PackageRecord(rec.name, rec.version, rec.checksum, rec.downloads, PackageState.Published))
+  }
+
+  give RegistryIndex(idx.host, out, idx.strict)
+}
+
+proc fetch(idx: RegistryIndex, name: string, version: string) -> PackageRecord {
+  let i: int = 0
+  loop {
+    if i >= idx.records.len { break }
+    let rec = idx.records[i]
+    if same_package(rec, name, version) { give rec }
+    i = i + 1
+  }
+  give PackageRecord(name, version, "", 0, PackageState.Rejected)
+}
+
+proc has(idx: RegistryIndex, name: string, version: string) -> bool {
+  let rec = fetch(idx, name, version)
+  give rec.state != PackageState.Rejected
+}
+
+proc download(idx: RegistryIndex, name: string, version: string) -> RegistryIndex {
+  let out: [PackageRecord] = []
+  let i: int = 0
+  loop {
+    if i >= idx.records.len { break }
+    let rec = idx.records[i]
+    if same_package(rec, name, version) {
+      out = out.push(PackageRecord(rec.name, rec.version, rec.checksum, rec.downloads + 1, rec.state))
+    } else {
+      out = out.push(rec)
+    }
+    i = i + 1
+  }
+  give RegistryIndex(idx.host, out, idx.strict)
+}
+
+proc deprecate(idx: RegistryIndex, name: string, version: string) -> RegistryIndex {
+  let out: [PackageRecord] = []
+  let i: int = 0
+  loop {
+    if i >= idx.records.len { break }
+    let rec = idx.records[i]
+    if same_package(rec, name, version) {
+      out = out.push(PackageRecord(rec.name, rec.version, rec.checksum, rec.downloads, PackageState.Deprecated))
+    } else {
+      out = out.push(rec)
+    }
+    i = i + 1
+  }
+  give RegistryIndex(idx.host, out, idx.strict)
+}
+
+proc count(idx: RegistryIndex) -> int {
+  give idx.records.len
+}
+
+proc published_count(idx: RegistryIndex) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= idx.records.len { break }
+    if idx.records[i].state == PackageState.Published {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc contract_diff(old_rec: PackageRecord, new_rec: PackageRecord) -> string {
+  if old_rec.name != new_rec.name { give "incompatible-name" }
+  if old_rec.version == new_rec.version { give "same" }
+  if new_rec.checksum.len == 0 { give "invalid" }
+  give "updated"
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/registry
+role: Publication recuperation et index des packages
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

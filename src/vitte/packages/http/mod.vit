@@ -1,0 +1,89 @@
+<<<
+mod.vit
+package vitte/http
+>>>
+
+space vitte/http
+
+pick Method {
+    Get
+    Post
+    Put
+    Patch
+    Delete
+}
+
+form Request {
+    method: Method
+    path: string
+    body: string
+    token: string
+}
+
+form Response {
+    status: int
+    body: string
+}
+
+proc get(path: string) -> Request {
+    give Request(Method.Get, path, "", "")
+}
+
+proc post(path: string, body: string) -> Request {
+    give Request(Method.Post, path, body, "")
+}
+
+proc with_token(req: Request, token: string) -> Request {
+    give Request(req.method, req.path, req.body, token)
+}
+
+proc ok(body: string) -> Response {
+    give Response(200, body)
+}
+
+proc error(status: int, message: string) -> Response {
+    give Response(status, message)
+}
+
+proc validate(req: Request) -> int {
+    if req.path.len == 0 { give 400 }
+    if req.path.slice(0, 1) != "/" { give 400 }
+    if req.path == "/secure" && req.token.len == 0 { give 401 }
+    give 0
+}
+
+proc route(req: Request) -> string {
+    if req.path == "/health" { give "health" }
+    if req.path == "/echo" { give "echo" }
+    if req.path == "/secure" { give "secure" }
+    give "not_found"
+}
+
+proc handle(req: Request) -> Response {
+    let code = validate(req)
+    if code == 400 { give error(400, "bad request") }
+    if code == 401 { give error(401, "missing token") }
+
+    let target = route(req)
+    if target == "health" { give ok("{\"status\":\"ok\"}") }
+    if target == "echo" { give ok(req.body) }
+    if target == "secure" { give ok("{\"auth\":\"ok\"}") }
+    give error(404, "route not found")
+}
+
+proc is_success(resp: Response) -> bool {
+    give resp.status >= 200 && resp.status < 300
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/http
+role: Composants HTTP serveur, routage et mapping statut
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

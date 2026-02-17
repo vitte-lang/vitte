@@ -1,0 +1,110 @@
+<<<
+mod.vit
+package vitte/auth
+>>>
+
+space vitte/auth
+
+pick AuthRole {
+  Guest
+  User
+  Admin
+  Service
+}
+
+pick AuthError {
+  None
+  MissingToken
+  Expired
+  InvalidCredentials
+  Forbidden
+}
+
+form Principal {
+  id: string
+  role: AuthRole
+  active: bool
+}
+
+form Session {
+  principal: Principal
+  token: string
+  expires_at: int
+}
+
+proc role_rank(role: AuthRole) -> int {
+  when role is AuthRole.Guest { give 0 }
+  when role is AuthRole.User { give 1 }
+  when role is AuthRole.Admin { give 2 }
+  give 3
+}
+
+proc role_name(role: AuthRole) -> string {
+  when role is AuthRole.Guest { give "guest" }
+  when role is AuthRole.User { give "user" }
+  when role is AuthRole.Admin { give "admin" }
+  give "service"
+}
+
+proc principal_guest() -> Principal {
+  give Principal("guest", AuthRole.Guest, true)
+}
+
+proc principal_user(id: string) -> Principal {
+  give Principal(id, AuthRole.User, true)
+}
+
+proc principal_admin(id: string) -> Principal {
+  give Principal(id, AuthRole.Admin, true)
+}
+
+proc authenticate(username: string, password: string) -> Principal {
+  if username.len == 0 || password.len == 0 {
+    give principal_guest()
+  }
+  if username == "admin" {
+    give principal_admin(username)
+  }
+  give principal_user(username)
+}
+
+proc issue_token(principal: Principal, ttl: int) -> Session {
+  if ttl <= 0 {
+    give Session(principal, "", 0)
+  }
+  give Session(principal, "tok:" + principal.id, ttl)
+}
+
+proc validate(session: Session, now: int) -> AuthError {
+  if session.token.len == 0 { give AuthError.MissingToken }
+  if !session.principal.active { give AuthError.InvalidCredentials }
+  if now >= session.expires_at { give AuthError.Expired }
+  give AuthError.None
+}
+
+proc can_access(session: Session, required: AuthRole, now: int) -> bool {
+  if validate(session, now) != AuthError.None { give false }
+  give role_rank(session.principal.role) >= role_rank(required)
+}
+
+proc is_admin(principal: Principal) -> bool {
+  give principal.role == AuthRole.Admin
+}
+
+proc revoke(session: Session) -> Session {
+  let p = Principal(session.principal.id, session.principal.role, false)
+  give Session(p, "", 0)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/auth
+role: Authentification autorisation et gestion des roles
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

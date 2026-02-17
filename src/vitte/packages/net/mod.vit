@@ -1,0 +1,115 @@
+<<<
+mod.vit
+package vitte/net
+>>>
+
+space vitte/net
+
+pick NetProtocol {
+  Tcp
+  Udp
+  Http
+  Ws
+}
+
+pick NetError {
+  None
+  InvalidAddress
+  Timeout
+  Refused
+  Closed
+}
+
+form Endpoint {
+  host: string
+  port: int
+  protocol: NetProtocol
+}
+
+form NetSocket {
+  endpoint: Endpoint
+  connected: bool
+  bytes_in: int
+  bytes_out: int
+  secure: bool
+}
+
+proc endpoint(host: string, port: int, protocol: NetProtocol) -> Endpoint {
+  if port <= 0 { give Endpoint(host, 80, protocol) }
+  if port > 65535 { give Endpoint(host, 65535, protocol) }
+  give Endpoint(host, port, protocol)
+}
+
+proc default_http_endpoint(host: string) -> Endpoint {
+  give Endpoint(host, 80, NetProtocol.Http)
+}
+
+proc address(ep: Endpoint) -> string {
+  give ep.host + ":" + ep.port.to_string()
+}
+
+proc is_valid_endpoint(ep: Endpoint) -> bool {
+  if ep.host.len == 0 { give false }
+  give ep.port > 0 && ep.port <= 65535
+}
+
+proc connect(ep: Endpoint) -> NetSocket {
+  if !is_valid_endpoint(ep) {
+    give NetSocket(ep, false, 0, 0, false)
+  }
+  give NetSocket(ep, true, 0, 0, false)
+}
+
+proc set_secure(sock: NetSocket, enabled: bool) -> NetSocket {
+  give NetSocket(sock.endpoint, sock.connected, sock.bytes_in, sock.bytes_out, enabled)
+}
+
+proc send(sock: NetSocket, payload: string) -> NetSocket {
+  if !sock.connected { give sock }
+  give NetSocket(sock.endpoint, sock.connected, sock.bytes_in, sock.bytes_out + payload.len, sock.secure)
+}
+
+proc recv(sock: NetSocket, payload: string) -> NetSocket {
+  if !sock.connected { give sock }
+  give NetSocket(sock.endpoint, sock.connected, sock.bytes_in + payload.len, sock.bytes_out, sock.secure)
+}
+
+proc close(sock: NetSocket) -> NetSocket {
+  give NetSocket(sock.endpoint, false, sock.bytes_in, sock.bytes_out, false)
+}
+
+proc status(sock: NetSocket) -> string {
+  if !sock.connected { give "closed" }
+  if sock.secure { give "secure" }
+  give "open"
+}
+
+proc latency_budget_ms(protocol: NetProtocol) -> int {
+  when protocol is NetProtocol.Tcp { give 50 }
+  when protocol is NetProtocol.Udp { give 20 }
+  when protocol is NetProtocol.Ws { give 80 }
+  give 120
+}
+
+proc http_get(url: string) -> string {
+  if url.len == 0 { give "GET /" }
+  give "GET " + url
+}
+
+proc http_post(url: string, body: string) -> string {
+  if url.len == 0 { give "POST /" }
+  give "POST " + url + " len=" + body.len.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/net
+role: Abstractions reseau: transport, sockets et flux de communication
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

@@ -1,0 +1,125 @@
+<<<
+mod.vit
+package vitte/plugin
+>>>
+
+space vitte/plugin
+
+pick PluginState {
+  Discovered
+  Loaded
+  Started
+  Stopped
+  Error
+}
+
+form PluginMeta {
+  name: string
+  version: string
+  capabilities: [string]
+  experimental: bool
+}
+
+form PluginRuntime {
+  meta: PluginMeta
+  state: PluginState
+  hooks: int
+  hot_reload: bool
+  last_error: string
+}
+
+proc meta(name: string, version: string, capabilities: [string]) -> PluginMeta {
+  give PluginMeta(name, version, capabilities, false)
+}
+
+proc mark_experimental(m: PluginMeta, enabled: bool) -> PluginMeta {
+  give PluginMeta(m.name, m.version, m.capabilities, enabled)
+}
+
+proc plugin_id(m: PluginMeta) -> string {
+  give m.name + "@" + m.version
+}
+
+proc has_capability(m: PluginMeta, cap: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= m.capabilities.len { break }
+    if m.capabilities[i] == cap { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc validate(m: PluginMeta) -> bool {
+  if m.name.len == 0 { give false }
+  if m.version.len == 0 { give false }
+  give true
+}
+
+proc load(m: PluginMeta) -> PluginRuntime {
+  if !validate(m) {
+    give PluginRuntime(m, PluginState.Error, 0, false, "invalid-meta")
+  }
+  give PluginRuntime(m, PluginState.Loaded, 0, false, "")
+}
+
+proc start(rt: PluginRuntime) -> PluginRuntime {
+  when rt.state is PluginState.Loaded {
+    give PluginRuntime(rt.meta, PluginState.Started, rt.hooks, rt.hot_reload, rt.last_error)
+  }
+  when rt.state is PluginState.Stopped {
+    give PluginRuntime(rt.meta, PluginState.Started, rt.hooks, rt.hot_reload, rt.last_error)
+  }
+  give rt
+}
+
+proc stop(rt: PluginRuntime) -> PluginRuntime {
+  when rt.state is PluginState.Started {
+    give PluginRuntime(rt.meta, PluginState.Stopped, rt.hooks, rt.hot_reload, rt.last_error)
+  }
+  give rt
+}
+
+proc register_hook(rt: PluginRuntime, hook_name: string) -> PluginRuntime {
+  let _ = hook_name
+  when rt.state is PluginState.Loaded {
+    give PluginRuntime(rt.meta, rt.state, rt.hooks + 1, rt.hot_reload, rt.last_error)
+  }
+  when rt.state is PluginState.Started {
+    give PluginRuntime(rt.meta, rt.state, rt.hooks + 1, rt.hot_reload, rt.last_error)
+  }
+  give rt
+}
+
+proc enable_hot_reload(rt: PluginRuntime, enabled: bool) -> PluginRuntime {
+  give PluginRuntime(rt.meta, rt.state, rt.hooks, enabled, rt.last_error)
+}
+
+proc can_execute(rt: PluginRuntime, capability: string) -> bool {
+  if rt.state != PluginState.Started { give false }
+  give has_capability(rt.meta, capability)
+}
+
+proc reload(rt: PluginRuntime) -> PluginRuntime {
+  if !rt.hot_reload {
+    give PluginRuntime(rt.meta, PluginState.Error, rt.hooks, rt.hot_reload, "reload-disabled")
+  }
+  give PluginRuntime(rt.meta, PluginState.Loaded, rt.hooks, rt.hot_reload, "")
+}
+
+proc error_message(rt: PluginRuntime) -> string {
+  give rt.last_error
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/plugin
+role: Chargement de plugins et extension dynamique
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

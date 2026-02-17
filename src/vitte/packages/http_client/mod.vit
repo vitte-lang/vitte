@@ -1,0 +1,93 @@
+<<<
+mod.vit
+package vitte/http_client
+>>>
+
+space vitte/http_client
+
+pick Method {
+  Get
+  Post
+  Put
+  Patch
+  Delete
+}
+
+form Request {
+  method: Method
+  url: string
+  body: string
+  timeout_ms: int
+  auth: string
+}
+
+form Response {
+  status: int
+  body: string
+  elapsed_ms: int
+}
+
+proc get(url: string) -> Request {
+  give Request(Method.Get, url, "", 1500, "")
+}
+
+proc post(url: string, body: string) -> Request {
+  give Request(Method.Post, url, body, 1500, "")
+}
+
+proc with_timeout(req: Request, timeout_ms: int) -> Request {
+  if timeout_ms <= 0 { give req }
+  give Request(req.method, req.url, req.body, timeout_ms, req.auth)
+}
+
+proc with_bearer(req: Request, token: string) -> Request {
+  give Request(req.method, req.url, req.body, req.timeout_ms, "Bearer " + token)
+}
+
+proc is_https(url: string) -> bool {
+  if url.len < 8 { give false }
+  give url.slice(0, 8) == "https://"
+}
+
+proc validate(req: Request) -> int {
+  if req.url.len == 0 { give 400 }
+  if !is_https(req.url) { give 495 }
+  if req.url == "https://api/secure" && req.auth.len == 0 { give 401 }
+  if req.timeout_ms < 10 { give 408 }
+  give 0
+}
+
+proc perform(req: Request) -> Response {
+  let err = validate(req)
+  if err != 0 { give Response(err, "", 1) }
+
+  if req.method == Method.Get {
+    give Response(200, "{\"ok\":true}", 3)
+  }
+  if req.method == Method.Post {
+    if req.body.len == 0 { give Response(400, "{\"error\":\"empty\"}", 2) }
+    give Response(201, req.body, 4)
+  }
+  give Response(204, "", 2)
+}
+
+proc is_ok(resp: Response) -> bool {
+  give resp.status >= 200 && resp.status < 300
+}
+
+proc retryable(resp: Response) -> bool {
+  give resp.status == 429 || resp.status >= 500
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/http_client
+role: Client HTTP avec gestion requete reponse
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

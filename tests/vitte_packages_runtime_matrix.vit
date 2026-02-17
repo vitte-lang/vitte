@@ -1,0 +1,164 @@
+space tests/vitte_packages_runtime_matrix
+
+use vitte/sql as v_sql
+use vitte/db as v_db
+use vitte/cache as v_cache
+use vitte/registry as v_registry
+
+use vitte/net as v_net
+use vitte/http as v_http
+use vitte/http_client as v_http_client
+use vitte/requests as v_requests
+
+use vitte/auth as v_auth
+use vitte/tls as v_tls
+
+use vitte/async as v_async
+use vitte/channel as v_channel
+use vitte/actor as v_actor
+use vitte/process as v_process
+use vitte/plugin as v_plugin
+use vitte/ecs as v_ecs
+
+proc matrix_job() -> int {
+  give 0
+}
+
+proc domain_data() -> bool {
+  let conn0 = v_sql.connect("postgres://matrix")
+  let conn1 = v_sql.begin(conn0)
+  let q_write = v_sql.query_with_params("INSERT metrics VALUES (?)", 1)
+  let q_read = v_sql.query("SELECT 1")
+  let sql_rows = v_sql.execute(conn1, q_write)
+  let sql_row = v_sql.fetch_one(conn1, q_read)
+
+  let db0 = v_db.open("memory://matrix")
+  let db1 = v_db.begin_tx(db0)
+  let db_rows = v_db.exec(db1, "INSERT k")
+  let db_row = v_db.query_one(db1, "SELECT *")
+
+  let c0 = v_cache.cache_new(2)
+  let c1 = v_cache.put(c0, "a", "1", 3)
+  let c2 = v_cache.put(c1, "b", "2", 2)
+  let c3 = v_cache.tick(c2, 1)
+  let c4 = v_cache.put(c3, "c", "3", 2)
+
+  let idx0 = v_registry.strict_mode(v_registry.index("registry.local"), true)
+  let rec_bad = v_registry.record("bad", "1.0.0", "")
+  let rec_ok = v_registry.record("vitte-sql", "1.0.0", "sha256")
+  let idx1 = v_registry.publish(idx0, rec_bad)
+  let idx2 = v_registry.publish(idx1, rec_ok)
+  let idx3 = v_registry.download(idx2, "vitte-sql", "1.0.0")
+  let got = v_registry.fetch(idx3, "vitte-sql", "1.0.0")
+  let diff = v_registry.contract_diff(rec_ok, v_registry.record("vitte-sql", "1.1.0", "sha257"))
+
+  give sql_rows == 2 && sql_row.len > 0 &&
+       db_rows == 1 && db_row.len > 0 &&
+       v_cache.contains(c4, "b") && v_cache.get(c4, "a", "") == "" && v_cache.size(c4) == 2 &&
+       !v_registry.has(idx1, "bad", "1.0.0") &&
+       v_registry.has(idx3, "vitte-sql", "1.0.0") &&
+       got.downloads == 1 && v_registry.published_count(idx3) == 1 &&
+       diff == "updated"
+}
+
+proc domain_web() -> bool {
+  let ep = v_net.endpoint("api.local", 8080, v_net.NetProtocol.Http)
+  let sock0 = v_net.connect(ep)
+  let sock1 = v_net.send(sock0, "ping")
+  let sock2 = v_net.recv(sock1, "pong")
+
+  let req = v_http.post("/echo", "hello")
+  let http_resp = v_http.handle(req)
+
+  let hc_req0 = v_http_client.get("https://api/health")
+  let hc_req1 = v_http_client.with_timeout(hc_req0, 900)
+  let hc_resp = v_http_client.perform(hc_req1)
+
+  let opts0 = v_requests.options("https://api")
+  let opts1 = v_requests.with_token(opts0, "tok")
+  let opts2 = v_requests.with_retries(opts1, 2)
+  let req_result = v_requests.run_with_retry(opts2, "/health")
+
+  give v_net.is_valid_endpoint(ep) &&
+       v_net.status(sock2) == "open" &&
+       sock2.bytes_out > 0 && sock2.bytes_in > 0 &&
+       v_net.http_get("/health").len > 0 &&
+       v_net.http_post("/echo", "body").len > 0 &&
+       v_http.is_success(http_resp) &&
+       v_http_client.is_ok(hc_resp) &&
+       v_requests.result_status(req_result) == 200 &&
+       v_requests.health(opts2)
+}
+
+proc domain_security() -> bool {
+  let principal = v_auth.authenticate("admin", "pw")
+  let session = v_auth.issue_token(principal, 60)
+  let revoked = v_auth.revoke(session)
+
+  let cfg = v_tls.default_config()
+  let tls0 = v_tls.open("secure.local", cfg)
+  let tls1 = v_tls.handshake(tls0, true)
+  let tls2 = v_tls.send(tls1, "secret")
+  let tls3 = v_tls.recv(tls2, "cipher")
+  let tls4 = v_tls.close(tls3)
+
+  let secure_sock = v_net.set_secure(v_net.connect(v_net.default_http_endpoint("secure.local")), true)
+
+  give v_auth.can_access(session, v_auth.AuthRole.Admin, 10) &&
+       v_auth.validate(revoked, 10) == v_auth.AuthError.MissingToken &&
+       v_tls.handshake_error(tls0, true) == v_tls.TlsError.None &&
+       v_tls.is_secure(tls3) && !v_tls.is_secure(tls4) &&
+       v_tls.bytes_in(tls3) > 0 && v_tls.bytes_out(tls3) > 0 &&
+       secure_sock.secure && v_net.status(secure_sock) == "secure"
+}
+
+proc domain_concurrency() -> bool {
+  let state = v_async.run_with_retry(matrix_job, 2)
+  let meta0 = v_async.task_meta("matrix")
+  let meta1 = v_async.task_mark_running(meta0)
+  let meta2 = v_async.task_mark_done(meta1, true)
+
+  let ch0 = v_channel.channel_bounded(2)
+  let ch1 = v_channel.send(ch0, "m1")
+  let ch2 = v_channel.send(ch1, "m2")
+  let ch3 = v_channel.send(ch2, "m3")
+  let ch4 = v_channel.pop(ch3)
+
+  let a0 = v_actor.actor_new(1, "worker")
+  let a1 = v_actor.send(a0, "job")
+  let a2 = v_actor.step(a1)
+
+  let p0 = v_process.spec("worker")
+  let p1 = v_process.with_args(p0, ["--once"])
+  let ph = v_process.run(p1)
+  let ph_dry = v_process.run(v_process.with_dry_run(v_process.spec("noop"), true))
+
+  let pm = v_plugin.meta("observer", "1.0.0", ["events", "metrics"])
+  let pr0 = v_plugin.load(pm)
+  let pr1 = v_plugin.register_hook(pr0, "on_tick")
+  let pr2 = v_plugin.start(pr1)
+  let pr3 = v_plugin.enable_hot_reload(pr2, true)
+  let pr4 = v_plugin.reload(pr3)
+
+  let w0 = v_ecs.world_new()
+  let w1 = v_ecs.spawn(w0)
+  let e0 = v_ecs.last_spawned_id(w1)
+  let w2 = v_ecs.add_position(w1, e0, 3, 4)
+  let w3 = v_ecs.add_velocity(w2, e0, 1, 2)
+  let w4 = v_ecs.step(w3)
+
+  give v_async.is_terminal(state) &&
+       meta2.state == v_async.TaskState.Succeeded &&
+       v_channel.peek(ch3) == "m2" && v_channel.len(ch4) == 1 && v_channel.dropped(ch3) == 1 &&
+       v_actor.processed_count(a2) == 1 && v_actor.is_running(a2) &&
+       v_process.is_success(ph) && v_process.exit_code(ph_dry) == 0 &&
+       v_plugin.can_execute(pr2, "events") && pr4.state == v_plugin.PluginState.Loaded &&
+       v_ecs.position_x(w4, e0) == 4 && v_ecs.position_y(w4, e0) == 6
+}
+
+entry main at tests/packages_runtime_matrix {
+  if domain_data() && domain_web() && domain_security() && domain_concurrency() {
+    return 0
+  }
+  return 1
+}

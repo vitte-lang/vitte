@@ -1,0 +1,107 @@
+<<<
+mod.vit
+package vitte/sql
+>>>
+
+space vitte/sql
+
+pick SqlDialect {
+  SQLite
+  Postgres
+  MySql
+}
+
+form Query {
+  text: string
+  param_count: int
+  readonly: bool
+}
+
+form SqlConn {
+  dsn: string
+  dialect: SqlDialect
+  connected: bool
+  tx_depth: int
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+  if text.len < prefix.len { give false }
+  give text.slice(0, prefix.len) == prefix
+}
+
+proc detect_dialect(dsn: string) -> SqlDialect {
+  if starts_with(dsn, "postgres://") { give SqlDialect.Postgres }
+  if starts_with(dsn, "mysql://") { give SqlDialect.MySql }
+  give SqlDialect.SQLite
+}
+
+proc dialect_name(dialect: SqlDialect) -> string {
+  when dialect is SqlDialect.Postgres { give "postgres" }
+  when dialect is SqlDialect.MySql { give "mysql" }
+  give "sqlite"
+}
+
+proc query(text: string) -> Query {
+  give Query(text, 0, starts_with(text, "SELECT"))
+}
+
+proc query_with_params(text: string, param_count: int) -> Query {
+  give Query(text, param_count, starts_with(text, "SELECT"))
+}
+
+proc connect(dsn: string) -> SqlConn {
+  if dsn.len == 0 {
+    give SqlConn(dsn, detect_dialect(dsn), false, 0)
+  }
+  give SqlConn(dsn, detect_dialect(dsn), true, 0)
+}
+
+proc close(conn: SqlConn) -> SqlConn {
+  give SqlConn(conn.dsn, conn.dialect, false, 0)
+}
+
+proc begin(conn: SqlConn) -> SqlConn {
+  if !conn.connected { give conn }
+  give SqlConn(conn.dsn, conn.dialect, conn.connected, conn.tx_depth + 1)
+}
+
+proc commit(conn: SqlConn) -> SqlConn {
+  if conn.tx_depth <= 0 { give conn }
+  give SqlConn(conn.dsn, conn.dialect, conn.connected, conn.tx_depth - 1)
+}
+
+proc rollback(conn: SqlConn) -> SqlConn {
+  if conn.tx_depth <= 0 { give conn }
+  give SqlConn(conn.dsn, conn.dialect, conn.connected, conn.tx_depth - 1)
+}
+
+proc execute(conn: SqlConn, q: Query) -> int {
+  if !conn.connected { give 0 }
+  if q.text.len == 0 { give 0 }
+  if q.readonly { give 0 }
+  give 1 + q.param_count
+}
+
+proc fetch_one(conn: SqlConn, q: Query) -> string {
+  if !conn.connected { give "" }
+  if !q.readonly { give "" }
+  give "{\"dialect\":\"" + dialect_name(conn.dialect) + "\"}"
+}
+
+proc explain(q: Query) -> string {
+  if q.readonly { give "scan" }
+  give "write"
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/sql
+role: Acces SQL type et execution de requetes
+input_contract: Commandes et schemas de donnees valides cote metier
+output_contract: Resultats de persistence coherents avec le contrat schema
+boundary: Ne contient pas les regles metier de l application
+>>>

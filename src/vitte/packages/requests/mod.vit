@@ -1,0 +1,112 @@
+<<<
+mod.vit
+package vitte/requests
+>>>
+
+space vitte/requests
+
+form RequestsOptions {
+  base_url: string
+  token: string
+  timeout_ms: int
+  retries: int
+}
+
+form RequestResult {
+  status: int
+  body: string
+  attempts: int
+}
+
+proc options(base_url: string) -> RequestsOptions {
+  give RequestsOptions(base_url, "", 1500, 0)
+}
+
+proc with_token(opts: RequestsOptions, token: string) -> RequestsOptions {
+  give RequestsOptions(opts.base_url, token, opts.timeout_ms, opts.retries)
+}
+
+proc with_timeout(opts: RequestsOptions, timeout_ms: int) -> RequestsOptions {
+  if timeout_ms <= 0 { give opts }
+  give RequestsOptions(opts.base_url, opts.token, timeout_ms, opts.retries)
+}
+
+proc with_retries(opts: RequestsOptions, retries: int) -> RequestsOptions {
+  if retries < 0 { give RequestsOptions(opts.base_url, opts.token, opts.timeout_ms, 0) }
+  give RequestsOptions(opts.base_url, opts.token, opts.timeout_ms, retries)
+}
+
+proc join_url(base_url: string, path: string) -> string {
+  if base_url.len == 0 { give path }
+  if path.len == 0 { give base_url }
+  if base_url.slice(base_url.len - 1, base_url.len) == "/" {
+    if path.slice(0, 1) == "/" {
+      give base_url + path.slice(1, path.len)
+    }
+    give base_url + path
+  }
+  if path.slice(0, 1) == "/" { give base_url + path }
+  give base_url + "/" + path
+}
+
+proc simulate_status(path: string, token: string) -> int {
+  if path == "/health" { give 200 }
+  if path == "/secure" && token.len == 0 { give 401 }
+  if path == "/missing" { give 404 }
+  if path == "/busy" { give 429 }
+  give 200
+}
+
+proc fetch_status(opts: RequestsOptions, path: string) -> int {
+  let _ = join_url(opts.base_url, path)
+  give simulate_status(path, opts.token)
+}
+
+proc fetch_text(opts: RequestsOptions, path: string) -> string {
+  let status = fetch_status(opts, path)
+  if status == 200 { give "{\"ok\":true}" }
+  if status == 401 { give "{\"error\":\"unauthorized\"}" }
+  if status == 429 { give "{\"error\":\"too_many_requests\"}" }
+  give "{\"error\":\"not_found\"}"
+}
+
+proc should_retry(status: int) -> bool {
+  give status == 429 || status >= 500
+}
+
+proc run_with_retry(opts: RequestsOptions, path: string) -> RequestResult {
+  let attempts: int = 0
+  let status: int = 0
+  loop {
+    status = fetch_status(opts, path)
+    attempts = attempts + 1
+    if !should_retry(status) { break }
+    if attempts > opts.retries { break }
+  }
+  give RequestResult(status, fetch_text(opts, path), attempts)
+}
+
+proc result_status(result: RequestResult) -> int {
+  give result.status
+}
+
+proc result_attempts(result: RequestResult) -> int {
+  give result.attempts
+}
+
+proc health(opts: RequestsOptions) -> bool {
+  give fetch_status(opts, "/health") == 200
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/requests
+role: API haut niveau pour appels HTTP usuels
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

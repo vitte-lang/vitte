@@ -1,0 +1,165 @@
+space tests/vitte_packages_runtime_smoke
+
+use vitte/collections as v_col
+use vitte/array as v_array
+use vitte/stats as v_stats
+use vitte/ml as v_ml
+use vitte/runtime as v_rt
+use vitte/plot as v_plot
+use vitte/async as v_async
+use vitte/serialize as v_serialize
+use vitte/cli as v_cli
+use vitte/http as v_http
+use vitte/db as v_db
+use vitte/graph as v_graph
+use vitte/ecs as v_ecs
+use vitte/sql as v_sql
+use vitte/cache as v_cache
+use vitte/auth as v_auth
+use vitte/tls as v_tls
+use vitte/http_client as v_http_client
+use vitte/requests as v_requests
+use vitte/channel as v_channel
+use vitte/actor as v_actor
+
+proc main_job() -> int {
+  give 0
+}
+
+entry main at tests/packages_runtime {
+  let xs = [1.0, 2.0, 3.0]
+  let ys = [1.0, 2.0, 3.5]
+
+  let arr = v_array.ndarray_1d(3)
+  let m = v_stats.mean(xs)
+  let var = v_stats.variance(xs)
+  let _ = v_stats.linear_regression(xs, ys)
+  let pred = v_ml.perceptron_predict([0.5, 0.5, 0.5], xs, 0.0)
+  let step = v_ml.logistic_regression_step(0.1, 1.0, 1.0, 0.01)
+
+  let rope = v_col.rope_append(v_col.rope_new(), "ok")
+  let txt = v_col.rope_to_string(rope)
+
+  let svg = v_plot.plot_line("demo")
+  let png = v_plot.export_png(svg)
+
+  let code = v_rt.run(main_job)
+  let task_state = v_async.run_with_retry(main_job, 1)
+
+  let opts = v_serialize.default_options()
+  let encoded = v_serialize.encode(v_serialize.SerializeFormat.Json, "k", "v", opts)
+  let parsed_true = v_serialize.parse_bool("true", false)
+
+  let parsed_cli = v_cli.parse(["vitte", "serve", "--help"])
+  let cli_usage = v_cli.usage(v_cli.spec("vitte", "0.1", "compiler"))
+
+  let req = v_http.get("/health")
+  let resp = v_http.handle(req)
+
+  let s0 = v_db.open("memory://test")
+  let s1 = v_db.begin_tx(s0)
+  let rows = v_db.exec(s1, "INSERT demo")
+
+  let g0 = v_graph.graph_new(3, true)
+  let g1 = v_graph.add_edge(g0, 0, 1, 5)
+  let g2 = v_graph.add_edge(g1, 1, 2, 8)
+  let has_0_1 = v_graph.has_edge(g2, 0, 1)
+  let deg_1 = v_graph.degree_out(g2, 1)
+
+  let w0 = v_ecs.world_new()
+  let w1 = v_ecs.spawn(w0)
+  let e0 = v_ecs.last_spawned_id(w1)
+  let w2 = v_ecs.add_position(w1, e0, 10, 20)
+  let w3 = v_ecs.add_velocity(w2, e0, 2, -1)
+  let w4 = v_ecs.step(w3)
+  let px = v_ecs.position_x(w4, e0)
+  let py = v_ecs.position_y(w4, e0)
+  let alive = v_ecs.is_alive(w4, e0)
+
+  let sql_conn0 = v_sql.connect("postgres://demo")
+  let sql_conn1 = v_sql.begin(sql_conn0)
+  let sql_q_read = v_sql.query("SELECT 1")
+  let sql_q_write = v_sql.query_with_params("INSERT demo VALUES (?)", 1)
+  let sql_rows = v_sql.execute(sql_conn1, sql_q_write)
+  let sql_one = v_sql.fetch_one(sql_conn1, sql_q_read)
+  let sql_plan = v_sql.explain(sql_q_read)
+
+  let c0 = v_cache.cache_new(2)
+  let c1 = v_cache.put(c0, "a", "1", 3)
+  let c2 = v_cache.put(c1, "b", "2", 2)
+  let c3 = v_cache.touch(c2, "a")
+  let c4 = v_cache.tick(c3, 1)
+  let c5 = v_cache.put(c4, "c", "3", 2)
+  let cache_a = v_cache.get(c5, "a", "")
+  let cache_b = v_cache.contains(c5, "b")
+  let cache_size = v_cache.size(c5)
+
+  let principal = v_auth.authenticate("alice", "pw")
+  let auth_session = v_auth.issue_token(principal, 60)
+  let auth_ok = v_auth.validate(auth_session, 10) == v_auth.AuthError.None
+  let auth_user_ok = v_auth.can_access(auth_session, v_auth.AuthRole.User, 10)
+  let auth_admin_ok = v_auth.can_access(auth_session, v_auth.AuthRole.Admin, 10)
+  let auth_revoked = v_auth.revoke(auth_session)
+  let auth_after_revoke = v_auth.validate(auth_revoked, 10) == v_auth.AuthError.MissingToken
+
+  let tls_cfg = v_tls.default_config()
+  let tls0 = v_tls.open("api.local", tls_cfg)
+  let tls1 = v_tls.handshake(tls0, true)
+  let tls2 = v_tls.send(tls1, "hello")
+  let tls3 = v_tls.recv(tls2, "cipher_data")
+  let tls_secure = v_tls.is_secure(tls3)
+  let tls_out = v_tls.bytes_out(tls3)
+  let tls_in = v_tls.bytes_in(tls3)
+
+  let hc_req0 = v_http_client.get("https://api/health")
+  let hc_req1 = v_http_client.with_timeout(hc_req0, 900)
+  let hc_resp = v_http_client.perform(hc_req1)
+  let hc_ok = v_http_client.is_ok(hc_resp)
+
+  let req_opts0 = v_requests.options("https://api")
+  let req_opts1 = v_requests.with_token(req_opts0, "token")
+  let req_status = v_requests.fetch_status(req_opts1, "/health")
+  let req_text = v_requests.fetch_text(req_opts1, "/health")
+  let req_retry = v_requests.run_with_retry(v_requests.with_retries(req_opts1, 1), "/busy")
+  let req_attempts = v_requests.result_attempts(req_retry)
+
+  let ch0 = v_channel.channel_bounded(2)
+  let ch1 = v_channel.send(ch0, "m1")
+  let ch2 = v_channel.send(ch1, "m2")
+  let ch3 = v_channel.send(ch2, "m3")
+  let ch_head = v_channel.peek(ch3)
+  let ch4 = v_channel.pop(ch3)
+  let ch_len = v_channel.len(ch4)
+  let ch_drop = v_channel.dropped(ch3)
+
+  let a0 = v_actor.actor_new(1, "worker")
+  let a1 = v_actor.send(a0, "job1")
+  let a2 = v_actor.send(a1, "job2")
+  let a3 = v_actor.step(a2)
+  let a4 = v_actor.fail(a3)
+  let actor_proc = v_actor.processed_count(a3)
+  let actor_running = v_actor.is_running(a3)
+  let actor_decision = v_actor.supervision_decision(a4, 0)
+
+  if pred && m >= 0.0 && var >= 0.0 && step >= -1.0 &&
+     v_array.len(arr) == 3 && txt == "ok" &&
+     code == 0 &&
+     v_async.is_terminal(task_state) &&
+     encoded.len > 0 && parsed_true &&
+     parsed_cli.has_help && parsed_cli.command == "vitte" && cli_usage.len > 0 &&
+     v_http.is_success(resp) &&
+     v_db.can_write(s1) && rows == 1 &&
+     has_0_1 && deg_1 == 1 &&
+     px == 12 && py == 19 && alive &&
+     sql_rows == 2 && sql_one.len > 0 && sql_plan == "scan" &&
+     cache_a == "" && cache_b && cache_size == 2 &&
+     auth_ok && auth_user_ok && !auth_admin_ok && auth_after_revoke &&
+     tls_secure && tls_out > 0 && tls_in > 0 &&
+     hc_ok &&
+     req_status == 200 && req_text.len > 0 && req_attempts == 2 &&
+     ch_head == "m2" && ch_len == 1 && ch_drop == 1 &&
+     actor_proc == 1 && actor_running && actor_decision == "stop" {
+    return 0
+  }
+  return 1
+}

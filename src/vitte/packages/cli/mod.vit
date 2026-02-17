@@ -1,0 +1,101 @@
+<<<
+mod.vit
+package vitte/cli
+>>>
+
+space vitte/cli
+
+form CliSpec {
+    name: string
+    version: string
+    description: string
+}
+
+form CliParse {
+    command: string
+    positionals: [string]
+    has_help: bool
+    has_version: bool
+}
+
+proc spec(name: string, version: string, description: string) -> CliSpec {
+    give CliSpec(name, version, description)
+}
+
+proc has_flag(args: [string], name: string) -> bool {
+    let i: int = 0
+    loop {
+        if i >= args.len { break }
+        if args[i] == name { give true }
+        if args[i].len > name.len + 1 {
+            let pref = name + "="
+            if args[i].slice(0, pref.len) == pref { give true }
+        }
+        i = i + 1
+    }
+    give false
+}
+
+proc flag_value(args: [string], name: string, fallback: string) -> string {
+    let i: int = 0
+    loop {
+        if i >= args.len { break }
+        if args[i] == name {
+            if i + 1 < args.len { give args[i + 1] }
+            give fallback
+        }
+        if args[i].len > name.len + 1 {
+            let pref = name + "="
+            if args[i].slice(0, pref.len) == pref {
+                give args[i].slice(pref.len, args[i].len)
+            }
+        }
+        i = i + 1
+    }
+    give fallback
+}
+
+proc positional(args: [string]) -> [string] {
+    let out: [string] = []
+    let i: int = 0
+    loop {
+        if i >= args.len { break }
+        if args[i].len > 0 && args[i].slice(0, 1) == "-" {
+            i = i + 1
+            continue
+        }
+        out = out.push(args[i])
+        i = i + 1
+    }
+    give out
+}
+
+proc parse(args: [string]) -> CliParse {
+    let cmd = "app"
+    if args.len > 0 {
+        cmd = args[0]
+    }
+    give CliParse(
+        cmd,
+        positional(args),
+        has_flag(args, "--help") || has_flag(args, "-h"),
+        has_flag(args, "--version") || has_flag(args, "-v")
+    )
+}
+
+proc usage(s: CliSpec) -> string {
+    give s.name + " " + s.version + " - " + s.description
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/cli
+role: Parsing ligne de commande et UX terminal
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

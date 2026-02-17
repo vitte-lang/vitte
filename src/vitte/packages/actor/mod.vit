@@ -1,0 +1,105 @@
+<<<
+mod.vit
+package vitte/actor
+>>>
+
+space vitte/actor
+
+pick ActorState {
+  Idle
+  Busy
+  Stopped
+}
+
+form Actor {
+  id: int
+  name: string
+  state: ActorState
+  mailbox: [string]
+  processed: int
+  failures: int
+}
+
+proc actor_new(id: int, name: string) -> Actor {
+  give Actor(id, name, ActorState.Idle, [], 0, 0)
+}
+
+proc mailbox_len(actor: Actor) -> int {
+  give actor.mailbox.len
+}
+
+proc drop_first(mailbox: [string]) -> [string] {
+  let out: [string] = []
+  let i: int = 1
+  loop {
+    if i >= mailbox.len { break }
+    out = out.push(mailbox[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc send(actor: Actor, message: string) -> Actor {
+  when actor.state is ActorState.Stopped {
+    give actor
+  }
+  let mailbox = actor.mailbox.push(message)
+  give Actor(actor.id, actor.name, ActorState.Busy, mailbox, actor.processed, actor.failures)
+}
+
+proc step(actor: Actor) -> Actor {
+  when actor.state is ActorState.Stopped {
+    give actor
+  }
+  if actor.mailbox.len == 0 {
+    give Actor(actor.id, actor.name, ActorState.Idle, actor.mailbox, actor.processed, actor.failures)
+  }
+  let mailbox = drop_first(actor.mailbox)
+  let next_state = ActorState.Busy
+  if mailbox.len == 0 {
+    give Actor(actor.id, actor.name, ActorState.Idle, mailbox, actor.processed + 1, actor.failures)
+  }
+  give Actor(actor.id, actor.name, next_state, mailbox, actor.processed + 1, actor.failures)
+}
+
+proc fail(actor: Actor) -> Actor {
+  give Actor(actor.id, actor.name, ActorState.Busy, actor.mailbox, actor.processed, actor.failures + 1)
+}
+
+proc stop(actor: Actor) -> Actor {
+  give Actor(actor.id, actor.name, ActorState.Stopped, actor.mailbox, actor.processed, actor.failures)
+}
+
+proc restart(actor: Actor) -> Actor {
+  give Actor(actor.id, actor.name, ActorState.Idle, [], actor.processed, actor.failures)
+}
+
+proc processed_count(actor: Actor) -> int {
+  give actor.processed
+}
+
+proc is_running(actor: Actor) -> bool {
+  when actor.state is ActorState.Stopped {
+    give false
+  }
+  give true
+}
+
+proc supervision_decision(actor: Actor, max_failures: int) -> string {
+  if actor.failures > max_failures { give "stop" }
+  if actor.failures > 0 { give "restart" }
+  give "ok"
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/actor
+role: Modele acteur supervision et isolation des etats
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

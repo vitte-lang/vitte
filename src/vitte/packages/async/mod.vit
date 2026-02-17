@@ -1,0 +1,92 @@
+<<<
+mod.vit
+package vitte/async
+>>>
+
+space vitte/async
+
+pick TaskState {
+    Pending
+    Running
+    Succeeded
+    Failed
+    Cancelled
+}
+
+form TaskMeta {
+    name: string
+    retries: int
+    state: TaskState
+}
+
+type Task = bool
+
+proc spawn_task(job: proc() -> int) -> Task {
+    let code = job()
+    give code == 0
+}
+
+proc poll_task(task: Task) -> bool {
+    give task
+}
+
+proc task_meta(name: string) -> TaskMeta {
+    give TaskMeta(name, 0, TaskState.Pending)
+}
+
+proc task_mark_running(meta: TaskMeta) -> TaskMeta {
+    give TaskMeta(meta.name, meta.retries, TaskState.Running)
+}
+
+proc task_mark_done(meta: TaskMeta, ok: bool) -> TaskMeta {
+    if ok {
+        give TaskMeta(meta.name, meta.retries, TaskState.Succeeded)
+    }
+    give TaskMeta(meta.name, meta.retries + 1, TaskState.Failed)
+}
+
+proc task_cancel(meta: TaskMeta) -> TaskMeta {
+    give TaskMeta(meta.name, meta.retries, TaskState.Cancelled)
+}
+
+proc task_can_retry(meta: TaskMeta, max_retries: int) -> bool {
+    when meta.state is TaskState.Failed {
+        give meta.retries < max_retries
+    }
+    give false
+}
+
+proc run_with_retry(job: proc() -> int, retries: int) -> TaskState {
+    let attempt: int = 0
+    loop {
+        if attempt > retries { break }
+        if job() == 0 { give TaskState.Succeeded }
+        attempt = attempt + 1
+    }
+    give TaskState.Failed
+}
+
+proc backoff_ms(attempt: int) -> int {
+    if attempt < 0 { give 0 }
+    give (attempt + 1) * 25
+}
+
+proc is_terminal(state: TaskState) -> bool {
+    when state is TaskState.Succeeded { give true }
+    when state is TaskState.Failed { give true }
+    when state is TaskState.Cancelled { give true }
+    give false
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/async
+role: Modele async: taches, ordonnancement et polling non bloquant
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

@@ -1,0 +1,104 @@
+<<<
+mod.vit
+package vitte/db
+>>>
+
+space vitte/db
+
+pick DbError {
+    None
+    InvalidDsn
+    NotConnected
+    PermissionDenied
+    NotFound
+    Conflict
+}
+
+form Session {
+    dsn: string
+    connected: bool
+    readonly: bool
+    tx_depth: int
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+    if text.len < prefix.len { give false }
+    give text.slice(0, prefix.len) == prefix
+}
+
+proc open(dsn: string) -> Session {
+    if dsn.len == 0 {
+        give Session(dsn, false, false, 0)
+    }
+    give Session(dsn, true, false, 0)
+}
+
+proc close(s: Session) -> Session {
+    give Session(s.dsn, false, s.readonly, 0)
+}
+
+proc set_readonly(s: Session, value: bool) -> Session {
+    give Session(s.dsn, s.connected, value, s.tx_depth)
+}
+
+proc begin_tx(s: Session) -> Session {
+    if !s.connected { give s }
+    give Session(s.dsn, s.connected, s.readonly, s.tx_depth + 1)
+}
+
+proc commit_tx(s: Session) -> Session {
+    if s.tx_depth <= 0 { give s }
+    give Session(s.dsn, s.connected, s.readonly, s.tx_depth - 1)
+}
+
+proc rollback_tx(s: Session) -> Session {
+    if s.tx_depth <= 0 { give s }
+    give Session(s.dsn, s.connected, s.readonly, s.tx_depth - 1)
+}
+
+proc can_write(s: Session) -> bool {
+    give s.connected && !s.readonly
+}
+
+proc is_mutation(sql: string) -> bool {
+    if starts_with(sql, "INSERT") { give true }
+    if starts_with(sql, "UPDATE") { give true }
+    if starts_with(sql, "DELETE") { give true }
+    if starts_with(sql, "CREATE") { give true }
+    if starts_with(sql, "DROP") { give true }
+    give false
+}
+
+proc exec(s: Session, sql: string) -> int {
+    if !s.connected { give 0 }
+    if s.readonly && is_mutation(sql) { give 0 }
+    if sql.len == 0 { give 0 }
+    give 1
+}
+
+proc query_one(s: Session, sql: string) -> string {
+    if !s.connected { give "" }
+    if !starts_with(sql, "SELECT") { give "" }
+    give "{\"row\":1}"
+}
+
+proc diagnose(s: Session, sql: string) -> DbError {
+    if s.dsn.len == 0 { give DbError.InvalidDsn }
+    if !s.connected { give DbError.NotConnected }
+    if s.readonly && is_mutation(sql) { give DbError.PermissionDenied }
+    if starts_with(sql, "SELECT") && sql.len < 7 { give DbError.NotFound }
+    give DbError.None
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/db
+role: Abstraction base de donnees et sessions
+input_contract: Commandes et schemas de donnees valides cote metier
+output_contract: Resultats de persistence coherents avec le contrat schema
+boundary: Ne contient pas les regles metier de l application
+>>>
