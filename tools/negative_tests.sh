@@ -12,11 +12,18 @@ die() { printf "[negative-tests][error] %s\n" "$*" >&2; exit 1; }
 [ -d "$TEST_DIR" ] || die "missing dir: $TEST_DIR"
 
 shopt -s nullglob
-files=("$TEST_DIR"/*.vit)
+files=()
+while IFS= read -r f; do
+  files+=("$f")
+done < <(find "$TEST_DIR" -type f -name '*.vit' | sort)
 [ "${#files[@]}" -gt 0 ] || die "no .vit files in $TEST_DIR"
 
 for src in "${files[@]}"; do
   name="$(basename "$src" .vit)"
+  src_arg="$src"
+  case "$src" in
+    "$ROOT_DIR"/*) src_arg="${src#"$ROOT_DIR"/}" ;;
+  esac
   expect="$TEST_DIR/$name.expect"
   flags_file="$TEST_DIR/$name.flags"
   cmd_file="$TEST_DIR/$name.cmd"
@@ -34,7 +41,7 @@ for src in "${files[@]}"; do
   if [[ "$flags" != *"--lang"* ]]; then
     flags="--lang=en $flags"
   fi
-  out="$("$BIN" "$cmd" $flags "$src" 2>&1 >/dev/null || true)"
+  out="$("$BIN" "$cmd" $flags "$src_arg" 2>&1 >/dev/null || true)"
 
   if [ -z "$out" ]; then
     die "$name: expected errors, got none"
@@ -42,6 +49,17 @@ for src in "${files[@]}"; do
 
   if ! diff -u "$expect" <(printf "%s\n" "$out"); then
     die "$name: output mismatch"
+  fi
+
+  expect_json="$TEST_DIR/$name.json.expect"
+  if [ -f "$expect_json" ]; then
+    out_json="$("$BIN" "$cmd" --diag-json $flags "$src_arg" 2>&1 >/dev/null || true)"
+    if [ -z "$out_json" ]; then
+      die "$name: expected JSON diagnostics, got none"
+    fi
+    if ! diff -u "$expect_json" <(printf "%s\n" "$out_json"); then
+      die "$name: JSON output mismatch"
+    fi
   fi
 done
 
