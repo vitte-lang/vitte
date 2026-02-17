@@ -117,6 +117,137 @@ proc done_count(queue: JobQueue) -> int {
   give queue.done.len
 }
 
+proc dlq_count(queue: JobQueue) -> int {
+  give queue.dlq.len
+}
+
+proc total_count(queue: JobQueue) -> int {
+  give pending_count(queue) + inflight_count(queue) + done_count(queue) + dlq_count(queue)
+}
+
+proc has_pending(queue: JobQueue) -> bool {
+  give pending_count(queue) > 0
+}
+
+proc has_inflight(queue: JobQueue) -> bool {
+  give inflight_count(queue) > 0
+}
+
+proc has_done(queue: JobQueue) -> bool {
+  give done_count(queue) > 0
+}
+
+proc has_dlq(queue: JobQueue) -> bool {
+  give dlq_count(queue) > 0
+}
+
+proc next_pending_id(queue: JobQueue) -> int {
+  if queue.pending.len == 0 { give -1 }
+  give queue.pending[0].id
+}
+
+proc attempts_of(queue: JobQueue, job_id: int) -> int {
+  let i: int = 0
+  loop {
+    if i >= queue.pending.len { break }
+    if queue.pending[i].id == job_id { give queue.pending[i].attempts }
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= queue.inflight.len { break }
+    if queue.inflight[i].id == job_id { give queue.inflight[i].attempts }
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= queue.done.len { break }
+    if queue.done[i].id == job_id { give queue.done[i].attempts }
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= queue.dlq.len { break }
+    if queue.dlq[i].id == job_id { give queue.dlq[i].attempts }
+    i = i + 1
+  }
+
+  give -1
+}
+
+proc state_of(queue: JobQueue, job_id: int) -> string {
+  let i: int = 0
+  loop {
+    if i >= queue.pending.len { break }
+    if queue.pending[i].id == job_id { give "pending" }
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= queue.inflight.len { break }
+    if queue.inflight[i].id == job_id { give "inflight" }
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= queue.done.len { break }
+    if queue.done[i].id == job_id { give "done" }
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= queue.dlq.len { break }
+    if queue.dlq[i].id == job_id { give "failed" }
+    i = i + 1
+  }
+
+  give "missing"
+}
+
+proc requeue_dead(queue: JobQueue, job_id: int) -> JobQueue {
+  let dlq: [Job] = []
+  let pending = queue.pending
+
+  let i: int = 0
+  loop {
+    if i >= queue.dlq.len { break }
+    let job = queue.dlq[i]
+    if job.id == job_id {
+      if job.attempts < queue.max_attempts {
+        pending = pending.push(Job(job.id, job.payload, job.attempts, JobState.Pending))
+      } else {
+        dlq = dlq.push(job)
+      }
+    } else {
+      dlq = dlq.push(job)
+    }
+    i = i + 1
+  }
+
+  give JobQueue(queue.next_id, queue.max_attempts, pending, queue.inflight, queue.done, dlq)
+}
+
+proc clear_done(queue: JobQueue) -> JobQueue {
+  give JobQueue(queue.next_id, queue.max_attempts, queue.pending, queue.inflight, [], queue.dlq)
+}
+
+proc clear_dlq(queue: JobQueue) -> JobQueue {
+  give JobQueue(queue.next_id, queue.max_attempts, queue.pending, queue.inflight, queue.done, [])
+}
+
+proc stats(queue: JobQueue) -> string {
+  give "pending=" + pending_count(queue).to_string() +
+       ",inflight=" + inflight_count(queue).to_string() +
+       ",done=" + done_count(queue).to_string() +
+       ",dlq=" + dlq_count(queue).to_string()
+}
+
 proc ready() -> bool {
   give true
 }

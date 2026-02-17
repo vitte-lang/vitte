@@ -21,6 +21,45 @@ proc contract_load(name: string, version: string, schema_hash: string, required_
   give Contract(name, version, schema_hash, required_fields)
 }
 
+proc contract_name(contract: Contract) -> string {
+  give contract.name
+}
+
+proc contract_version(contract: Contract) -> string {
+  give contract.version
+}
+
+proc contract_hash(contract: Contract) -> string {
+  give contract.schema_hash
+}
+
+proc field_count(contract: Contract) -> int {
+  give contract.required_fields.len
+}
+
+proc has_required_field(contract: Contract, field_name: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= contract.required_fields.len { break }
+    if contract.required_fields[i] == field_name { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc add_required_field(contract: Contract, field_name: string) -> Contract {
+  if has_required_field(contract, field_name) { give contract }
+  give Contract(contract.name, contract.version, contract.schema_hash, contract.required_fields.push(field_name))
+}
+
+proc with_hash(contract: Contract, schema_hash: string) -> Contract {
+  give Contract(contract.name, contract.version, schema_hash, contract.required_fields)
+}
+
+proc same_identity(left: Contract, right: Contract) -> bool {
+  give left.name == right.name && left.version == right.version
+}
+
 proc contains(text: string, needle: string) -> bool {
   if needle.len == 0 { give true }
   if text.len < needle.len { give false }
@@ -34,6 +73,19 @@ proc contains(text: string, needle: string) -> bool {
   }
 
   give false
+}
+
+proc first_missing_field(contract: Contract, payload: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= contract.required_fields.len { break }
+    let req_field = contract.required_fields[i]
+    if !contains(payload, req_field) {
+      give req_field
+    }
+    i = i + 1
+  }
+  give ""
 }
 
 proc contract_verify(contract: Contract, payload: string) -> ContractCheck {
@@ -54,6 +106,11 @@ proc contract_verify(contract: Contract, payload: string) -> ContractCheck {
   give ContractCheck(true, "ok")
 }
 
+proc verify_payload_non_empty(contract: Contract, payload: string) -> ContractCheck {
+  if payload.len == 0 { give ContractCheck(false, "empty-payload") }
+  give contract_verify(contract, payload)
+}
+
 proc snapshot(contract: Contract) -> string {
   give contract.name + "@" + contract.version + "#" + contract.schema_hash
 }
@@ -64,6 +121,19 @@ proc diff(previous: Contract, current: Contract) -> string {
   if previous.version == current.version { give "breaking:schema" }
   if current.required_fields.len < previous.required_fields.len { give "breaking:fields" }
   give "changed"
+}
+
+proc is_breaking(previous: Contract, current: Contract) -> bool {
+  let d = diff(previous, current)
+  if d == "same" { give false }
+  if d == "changed" { give false }
+  give true
+}
+
+proc contract_summary(contract: Contract) -> string {
+  give contract.name + ":" + contract.version +
+       ",fields=" + field_count(contract).to_string() +
+       ",hash=" + contract.schema_hash
 }
 
 proc ready() -> bool {

@@ -32,11 +32,74 @@ proc add_rule(policyset: PolicySet, subject: string, action: string, resource: s
   give PolicySet(policyset.default_allow, rules)
 }
 
+proc rule_count(policyset: PolicySet) -> int {
+  give policyset.rules.len
+}
+
+proc set_default_allow(policyset: PolicySet, enabled: bool) -> PolicySet {
+  give PolicySet(enabled, policyset.rules)
+}
+
+proc default_mode(policyset: PolicySet) -> string {
+  if policyset.default_allow { give "allow" }
+  give "deny"
+}
+
+proc remove_rule(policyset: PolicySet, index: int) -> PolicySet {
+  if index < 0 || index >= policyset.rules.len { give policyset }
+  let out: [PolicyRule] = []
+  let i: int = 0
+  loop {
+    if i >= policyset.rules.len { break }
+    if i != index {
+      out = out.push(policyset.rules[i])
+    }
+    i = i + 1
+  }
+  give PolicySet(policyset.default_allow, out)
+}
+
 proc matches(rule: PolicyRule, subject: string, action: string, resource: string) -> bool {
   let subject_ok = rule.subject == "*" || rule.subject == subject
   let action_ok = rule.action == "*" || rule.action == action
   let resource_ok = rule.resource == "*" || rule.resource == resource
   give subject_ok && action_ok && resource_ok
+}
+
+proc subject_rule_count(policyset: PolicySet, subject: string) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= policyset.rules.len { break }
+    if policyset.rules[i].subject == subject {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc has_rule(policyset: PolicySet, subject: string, action: string, resource: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= policyset.rules.len { break }
+    if matches(policyset.rules[i], subject, action, resource) { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc first_match(policyset: PolicySet, subject: string, action: string, resource: string) -> PolicyRule {
+  let i: int = 0
+  loop {
+    if i >= policyset.rules.len { break }
+    let rule = policyset.rules[i]
+    if matches(rule, subject, action, resource) {
+      give rule
+    }
+    i = i + 1
+  }
+  give PolicyRule("", "", "", Effect.Deny, "none")
 }
 
 proc allow(policyset: PolicySet, subject: string, action: string, resource: string) -> bool {
@@ -90,6 +153,20 @@ proc explain(policyset: PolicySet, subject: string, action: string, resource: st
     give "allow:default"
   }
   give "deny:default"
+}
+
+proc decision(policyset: PolicySet, subject: string, action: string, resource: string) -> string {
+  if allow(policyset, subject, action, resource) { give "allow" }
+  give "deny"
+}
+
+proc is_default_deny(policyset: PolicySet) -> bool {
+  give !policyset.default_allow
+}
+
+proc stats(policyset: PolicySet) -> string {
+  give "rules=" + rule_count(policyset).to_string() +
+       ",default=" + default_mode(policyset)
 }
 
 proc ready() -> bool {

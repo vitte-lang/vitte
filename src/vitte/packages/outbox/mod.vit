@@ -313,6 +313,124 @@ proc status(outbox: Outbox, event_id: int) -> string {
   give "missing"
 }
 
+proc sent_ids(outbox: Outbox) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if ev.sent {
+      out = out.push(ev.id)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc flushed_ids(outbox: Outbox) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if ev.flushed {
+      out = out.push(ev.id)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc pending_by_topic(outbox: Outbox, topic: string) -> int {
+  let count: int = 0
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if !ev.sent && ev.topic == topic {
+      count = count + 1
+    }
+    i = i + 1
+  }
+  give count
+}
+
+proc oldest_pending_id(outbox: Outbox) -> int {
+  let best: int = -1
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if !ev.sent {
+      if best < 0 || ev.id < best {
+        best = ev.id
+      }
+    }
+    i = i + 1
+  }
+  give best
+}
+
+proc retry_all_pending(outbox: Outbox) -> Outbox {
+  let out: [OutboxEvent] = []
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if !ev.sent {
+      out = out.push(OutboxEvent(ev.id, ev.topic, ev.payload, false, false, ev.attempts + 1))
+    } else {
+      out = out.push(ev)
+    }
+    i = i + 1
+  }
+  give Outbox(outbox.next_id, out)
+}
+
+proc can_flush(outbox: Outbox) -> bool {
+  give oldest_pending_id(outbox) >= 0
+}
+
+proc is_drained(outbox: Outbox) -> bool {
+  give pending_count(outbox) == 0
+}
+
+proc event_summary(outbox: Outbox, event_id: int) -> string {
+  let ev = get_event(outbox, event_id)
+  if ev.id < 0 { give "missing" }
+  give "id=" + ev.id.to_string() +
+       ",topic=" + ev.topic +
+       ",status=" + status(outbox, event_id) +
+       ",attempts=" + ev.attempts.to_string()
+}
+
+proc verify_invariants(outbox: Outbox) -> bool {
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if ev.id < 0 { give false }
+    let j: int = i + 1
+    loop {
+      if j >= outbox.events.len { break }
+      if outbox.events[j].id == ev.id { give false }
+      j = j + 1
+    }
+    i = i + 1
+  }
+
+  let max_id: int = -1
+  i = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if outbox.events[i].id > max_id {
+      max_id = outbox.events[i].id
+    }
+    i = i + 1
+  }
+  give outbox.next_id > max_id
+}
+
 proc stats(outbox: Outbox) -> string {
   give "events=" + event_count(outbox).to_string() +
        ",pending=" + pending_count(outbox).to_string() +

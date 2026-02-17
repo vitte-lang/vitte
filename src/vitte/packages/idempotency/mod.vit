@@ -34,6 +34,36 @@ proc expire_keys(store: IdempotencyStore, now_tick: int) -> IdempotencyStore {
   give IdempotencyStore(out)
 }
 
+proc get_record(store: IdempotencyStore, key: string, now_tick: int) -> IdempotencyRecord {
+  let s = expire_keys(store, now_tick)
+  let i: int = 0
+  loop {
+    if i >= s.records.len { break }
+    let rec = s.records[i]
+    if rec.active && rec.key == key {
+      give rec
+    }
+    i = i + 1
+  }
+  give IdempotencyRecord("", "", now_tick, false)
+}
+
+proc keys(store: IdempotencyStore, now_tick: int) -> [string] {
+  let s = expire_keys(store, now_tick)
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= s.records.len { break }
+    out = out.push(s.records[i].key)
+    i = i + 1
+  }
+  give out
+}
+
+proc has_key(store: IdempotencyStore, key: string, now_tick: int) -> bool {
+  give get_record(store, key, now_tick).active
+}
+
 proc check_key(store: IdempotencyStore, key: string, now_tick: int) -> bool {
   let s = expire_keys(store, now_tick)
   let i: int = 0
@@ -46,6 +76,17 @@ proc check_key(store: IdempotencyStore, key: string, now_tick: int) -> bool {
     i = i + 1
   }
   give true
+}
+
+proc put_if_absent(store: IdempotencyStore, key: string, result: string, ttl_ticks: int, now_tick: int) -> IdempotencyStore {
+  let s = expire_keys(store, now_tick)
+  if !check_key(s, key, now_tick) { give s }
+
+  let expiry = now_tick + ttl_ticks
+  if ttl_ticks <= 0 { expiry = now_tick + 1 }
+
+  let out = s.records.push(IdempotencyRecord(key, result, expiry, true))
+  give IdempotencyStore(out)
 }
 
 proc store_result(store: IdempotencyStore, key: string, result: string, ttl_ticks: int, now_tick: int) -> IdempotencyStore {
@@ -90,8 +131,60 @@ proc replay_result(store: IdempotencyStore, key: string, now_tick: int) -> strin
   give ""
 }
 
+proc ttl_left(store: IdempotencyStore, key: string, now_tick: int) -> int {
+  let rec = get_record(store, key, now_tick)
+  if !rec.active { give -1 }
+  let left = rec.expires_at - now_tick
+  if left < 0 { give 0 }
+  give left
+}
+
+proc remove_key(store: IdempotencyStore, key: string, now_tick: int) -> IdempotencyStore {
+  let s = expire_keys(store, now_tick)
+  let out: [IdempotencyRecord] = []
+  let i: int = 0
+  loop {
+    if i >= s.records.len { break }
+    if s.records[i].key != key {
+      out = out.push(s.records[i])
+    }
+    i = i + 1
+  }
+  give IdempotencyStore(out)
+}
+
+proc touch_key(store: IdempotencyStore, key: string, ttl_ticks: int, now_tick: int) -> IdempotencyStore {
+  let s = expire_keys(store, now_tick)
+  let out: [IdempotencyRecord] = []
+  let ttl = ttl_ticks
+  if ttl <= 0 { ttl = 1 }
+  let expiry = now_tick + ttl
+
+  let i: int = 0
+  loop {
+    if i >= s.records.len { break }
+    let rec = s.records[i]
+    if rec.key == key {
+      out = out.push(IdempotencyRecord(rec.key, rec.result, expiry, true))
+    } else {
+      out = out.push(rec)
+    }
+    i = i + 1
+  }
+  give IdempotencyStore(out)
+}
+
 proc count(store: IdempotencyStore, now_tick: int) -> int {
   give expire_keys(store, now_tick).records.len
+}
+
+proc is_empty(store: IdempotencyStore, now_tick: int) -> bool {
+  give count(store, now_tick) == 0
+}
+
+proc stats(store: IdempotencyStore, now_tick: int) -> string {
+  give "records=" + count(store, now_tick).to_string() +
+       ",keys=" + keys(store, now_tick).len.to_string()
 }
 
 proc ready() -> bool {

@@ -47,6 +47,14 @@ proc trace_start(name: string, now_ms: int) -> TraceSpan {
   give TraceSpan(trace_id, name, trace_id, now_ms, -1, TraceState.Open)
 }
 
+proc trace_start_with_id(name: string, trace_id: string, now_ms: int) -> TraceSpan {
+  let tid = trace_id
+  if tid.len == 0 {
+    tid = "tr-" + now_ms.to_string()
+  }
+  give TraceSpan(tid, name, tid, now_ms, -1, TraceState.Open)
+}
+
 proc with_trace_id(span: TraceSpan, trace_id: string) -> TraceSpan {
   give TraceSpan(span.id, span.name, trace_id, span.start_ms, span.end_ms, span.state)
 }
@@ -64,6 +72,33 @@ proc trace_duration(span: TraceSpan) -> int {
   give span.end_ms - span.start_ms
 }
 
+proc trace_is_open(span: TraceSpan) -> bool {
+  give span.state == TraceState.Open
+}
+
+proc trace_is_closed(span: TraceSpan) -> bool {
+  give span.state == TraceState.Closed
+}
+
+proc trace_name(span: TraceSpan) -> string {
+  give span.name
+}
+
+proc trace_reopen(span: TraceSpan, now_ms: int) -> TraceSpan {
+  let start = span.start_ms
+  if now_ms > start { start = now_ms }
+  give TraceSpan(span.id, span.name, span.trace_id, start, -1, TraceState.Open)
+}
+
+proc trace_summary(span: TraceSpan) -> string {
+  let state_name = "open"
+  if trace_is_closed(span) { state_name = "closed" }
+  give "trace=" + span.trace_id +
+       ",name=" + span.name +
+       ",state=" + state_name +
+       ",duration=" + trace_duration(span).to_string()
+}
+
 proc counter_inc(counter: Counter, delta: int) -> Counter {
   if delta <= 0 { give counter }
   give Counter(counter.name, counter.value + delta, counter.trace_id)
@@ -71,6 +106,24 @@ proc counter_inc(counter: Counter, delta: int) -> Counter {
 
 proc counter_with_trace(counter: Counter, trace_id: string) -> Counter {
   give Counter(counter.name, counter.value, trace_id)
+}
+
+proc counter_value(counter: Counter) -> int {
+  give counter.value
+}
+
+proc counter_reset(counter: Counter) -> Counter {
+  give Counter(counter.name, 0, counter.trace_id)
+}
+
+proc counter_is_zero(counter: Counter) -> bool {
+  give counter.value == 0
+}
+
+proc counter_merge(left: Counter, right: Counter) -> Counter {
+  let trace = left.trace_id
+  if trace.len == 0 { trace = right.trace_id }
+  give Counter(left.name, left.value + right.value, trace)
 }
 
 proc histogram_observe(hist: Histogram, value: int) -> Histogram {
@@ -88,6 +141,50 @@ proc histogram_observe(hist: Histogram, value: int) -> Histogram {
 proc histogram_avg(hist: Histogram) -> int {
   if hist.count <= 0 { give 0 }
   give hist.sum / hist.count
+}
+
+proc histogram_with_trace(hist: Histogram, trace_id: string) -> Histogram {
+  give Histogram(hist.name, hist.count, hist.sum, hist.min, hist.max, trace_id)
+}
+
+proc histogram_min(hist: Histogram) -> int {
+  give hist.min
+}
+
+proc histogram_max(hist: Histogram) -> int {
+  give hist.max
+}
+
+proc histogram_range(hist: Histogram) -> int {
+  if hist.count <= 0 { give 0 }
+  give hist.max - hist.min
+}
+
+proc histogram_empty(hist: Histogram) -> bool {
+  give hist.count == 0
+}
+
+proc histogram_merge(left: Histogram, right: Histogram) -> Histogram {
+  if left.count == 0 { give right }
+  if right.count == 0 { give left }
+
+  let min_v = left.min
+  if right.min < min_v { min_v = right.min }
+
+  let max_v = left.max
+  if right.max > max_v { max_v = right.max }
+
+  let trace = left.trace_id
+  if trace.len == 0 { trace = right.trace_id }
+
+  give Histogram(left.name, left.count + right.count, left.sum + right.sum, min_v, max_v, trace)
+}
+
+proc metrics_summary(counter: Counter, hist: Histogram) -> string {
+  give "counter=" + counter.name +
+       ",value=" + counter.value.to_string() +
+       ",hist_count=" + hist.count.to_string() +
+       ",hist_avg=" + histogram_avg(hist).to_string()
 }
 
 proc ready() -> bool {

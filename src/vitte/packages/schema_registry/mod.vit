@@ -290,6 +290,83 @@ proc total_count(registry: SchemaRegistry) -> int {
   give registry.records.len
 }
 
+proc subject_count(registry: SchemaRegistry) -> int {
+  give subjects(registry).len
+}
+
+proc next_version(registry: SchemaRegistry, subject: string) -> int {
+  let current = latest_version(registry, subject)
+  if current <= 0 { give 1 }
+  give current + 1
+}
+
+proc register_next(registry: SchemaRegistry, subject: string, fingerprint: string, fields: [string]) -> SchemaRegistry {
+  give register(registry, subject, next_version(registry, subject), fingerprint, fields)
+}
+
+proc latest_fingerprint(registry: SchemaRegistry, subject: string) -> string {
+  give latest(registry, subject).fingerprint
+}
+
+proc first_inactive_version(registry: SchemaRegistry, subject: string) -> int {
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject == subject && !rec.active {
+      give rec.version
+    }
+    i = i + 1
+  }
+  give -1
+}
+
+proc is_subject_empty(registry: SchemaRegistry, subject: string) -> bool {
+  give subject_total_count(registry, subject) == 0
+}
+
+proc active_ratio_percent(registry: SchemaRegistry) -> int {
+  if total_count(registry) == 0 { give 100 }
+  give active_count(registry) * 100 / total_count(registry)
+}
+
+proc record_summary(rec: SchemaRecord) -> string {
+  let active = "false"
+  if rec.active { active = "true" }
+  give rec.subject + ":v" + rec.version.to_string() +
+       ":" + rec.fingerprint +
+       ":fields=" + rec.fields.len.to_string() +
+       ":active=" + active
+}
+
+proc subject_stats(registry: SchemaRegistry, subject: string) -> string {
+  give "subject=" + subject +
+       ",active=" + count(registry, subject).to_string() +
+       ",total=" + subject_total_count(registry, subject).to_string() +
+       ",latest=" + latest_version(registry, subject).to_string()
+}
+
+proc verify_invariants(registry: SchemaRegistry) -> bool {
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject.len == 0 { give false }
+    if rec.version <= 0 { give false }
+    let j: int = i + 1
+    loop {
+      if j >= registry.records.len { break }
+      let other = registry.records[j]
+      if rec.subject == other.subject && rec.version == other.version {
+        give false
+      }
+      j = j + 1
+    }
+    i = i + 1
+  }
+  give true
+}
+
 proc stats(registry: SchemaRegistry) -> string {
   give "records=" + total_count(registry).to_string() +
        ",subjects=" + subjects(registry).len.to_string()

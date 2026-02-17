@@ -86,6 +86,66 @@ proc status_text(h: HealthInput) -> string {
   give "degraded"
 }
 
+proc component_ok(h: HealthInput, name: string) -> bool {
+  if name == "db" { give h.db_ok }
+  if name == "cache" { give h.cache_ok }
+  if name == "queue" { give h.queue_ok }
+  if name == "migrations" { give h.migrations_ok }
+  if name == "warmed" { give h.warmed }
+  if name == "started" { give h.started }
+  give false
+}
+
+proc ready_blockers(h: HealthInput) -> [string] {
+  let out: [string] = []
+  if !h.started { out = out.push("started") }
+  if !h.db_ok { out = out.push("db") }
+  if !h.cache_ok { out = out.push("cache") }
+  if !h.queue_ok { out = out.push("queue") }
+  if !h.warmed { out = out.push("warmed") }
+  give out
+}
+
+proc startup_blockers(h: HealthInput) -> [string] {
+  let out: [string] = []
+  if !h.started { out = out.push("started") }
+  if !h.migrations_ok { out = out.push("migrations") }
+  give out
+}
+
+proc status_code_operational(h: HealthInput) -> int {
+  if check_operational(h) { give 200 }
+  give 503
+}
+
+proc is_down(h: HealthInput) -> bool {
+  give !check_live(h)
+}
+
+proc is_degraded(h: HealthInput) -> bool {
+  if !check_live(h) { give false }
+  give !check_operational(h)
+}
+
+proc severity(h: HealthInput) -> string {
+  if is_down(h) { give "critical" }
+  if is_degraded(h) { give "warning" }
+  give "ok"
+}
+
+proc summary(h: HealthInput) -> string {
+  give "status=" + status_text(h) +
+       ",score=" + score_percent(h).to_string() +
+       ",failures=" + failing_count(h).to_string()
+}
+
+proc verify_invariants(h: HealthInput) -> bool {
+  if check_operational(h) && score_percent(h) < 80 { give false }
+  if is_down(h) && status_text(h) != "down" { give false }
+  if check_live(h) && status_code_live(h) != 200 { give false }
+  give true
+}
+
 proc report_json(h: HealthInput) -> string {
   let live = "false"
   if check_live(h) { live = "true" }

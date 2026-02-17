@@ -170,6 +170,88 @@ proc stack_replace_top(stack: [TenantCtx], ctx: TenantCtx) -> [TenantCtx] {
   give out
 }
 
+proc scope_prefix(ctx: TenantCtx) -> string {
+  give ctx.tenant_id + ":"
+}
+
+proc extract_tenant_id(scoped_key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= scoped_key.len { break }
+    if scoped_key.slice(i, i + 1) == ":" {
+      give scoped_key.slice(0, i)
+    }
+    i = i + 1
+  }
+  give ""
+}
+
+proc matches_scope(ctx: TenantCtx, scoped_key: string) -> bool {
+  if !ctx.active { give false }
+  give extract_tenant_id(scoped_key) == ctx.tenant_id
+}
+
+proc is_default_ctx(ctx: TenantCtx) -> bool {
+  if ctx.active { give false }
+  give ctx.tenant_id.len == 0
+}
+
+proc can_promote_to(ctx: TenantCtx, target_plan: string) -> bool {
+  give plan_rank(target_plan) >= plan_rank(ctx.plan)
+}
+
+proc promote(ctx: TenantCtx, target_plan: string) -> TenantCtx {
+  if can_promote_to(ctx, target_plan) {
+    give with_plan(ctx, target_plan)
+  }
+  give ctx
+}
+
+proc demote(ctx: TenantCtx, target_plan: string) -> TenantCtx {
+  if plan_rank(target_plan) <= plan_rank(ctx.plan) {
+    give with_plan(ctx, target_plan)
+  }
+  give ctx
+}
+
+proc masked_tenant_id(ctx: TenantCtx) -> string {
+  if ctx.tenant_id.len == 0 { give "" }
+  if ctx.tenant_id.len <= 2 { give "***" }
+  give ctx.tenant_id.slice(0, 2) + "***"
+}
+
+proc stack_ids(stack: [TenantCtx]) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= stack.len { break }
+    out = out.push(stack[i].tenant_id)
+    i = i + 1
+  }
+  give out
+}
+
+proc verify_stack(stack: [TenantCtx]) -> bool {
+  let i: int = 0
+  loop {
+    if i >= stack.len { break }
+    let item = stack[i]
+    if !item.active || !is_valid(item) { give false }
+    let j: int = i + 1
+    loop {
+      if j >= stack.len { break }
+      if stack[j].tenant_id == item.tenant_id { give false }
+      j = j + 1
+    }
+    i = i + 1
+  }
+  give true
+}
+
+proc summary_key(ctx: TenantCtx, key: string) -> string {
+  give ctx.tenant_id + "|" + ctx.region + "|" + ctx.plan + "|" + key
+}
+
 proc stats(ctx: TenantCtx) -> string {
   let active = "false"
   if ctx.active { active = "true" }
