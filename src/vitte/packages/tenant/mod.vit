@@ -36,8 +36,69 @@ proc deactivate(ctx: TenantCtx) -> TenantCtx {
   give TenantCtx(ctx.tenant_id, ctx.region, ctx.plan, false)
 }
 
+proc activate(ctx: TenantCtx) -> TenantCtx {
+  give TenantCtx(ctx.tenant_id, ctx.region, ctx.plan, true)
+}
+
+proc with_region(ctx: TenantCtx, region: string) -> TenantCtx {
+  give TenantCtx(ctx.tenant_id, region, ctx.plan, ctx.active)
+}
+
+proc with_plan(ctx: TenantCtx, plan: string) -> TenantCtx {
+  give TenantCtx(ctx.tenant_id, ctx.region, plan, ctx.active)
+}
+
+proc is_active(ctx: TenantCtx) -> bool {
+  give ctx.active
+}
+
+proc is_valid(ctx: TenantCtx) -> bool {
+  give ctx.tenant_id.len > 0 && ctx.region.len > 0 && ctx.plan.len > 0
+}
+
+proc region_key(ctx: TenantCtx, key: string) -> string {
+  give ctx.region + ":" + scope_key(ctx, key)
+}
+
+proc plan_rank(plan: string) -> int {
+  if plan == "free" { give 0 }
+  if plan == "pro" { give 1 }
+  if plan == "enterprise" { give 2 }
+  give 0
+}
+
+proc plan_allows(ctx: TenantCtx, required_plan: string) -> bool {
+  give plan_rank(ctx.plan) >= plan_rank(required_plan)
+}
+
+proc same_region(left: TenantCtx, right: TenantCtx) -> bool {
+  give left.region == right.region
+}
+
 proc same_tenant(left: TenantCtx, right: TenantCtx) -> bool {
   give left.tenant_id == right.tenant_id
+}
+
+proc stack_push(stack: [TenantCtx], ctx: TenantCtx) -> [TenantCtx] {
+  give stack.push(ctx)
+}
+
+proc stack_pop(stack: [TenantCtx]) -> [TenantCtx] {
+  if stack.len == 0 { give stack }
+  let out: [TenantCtx] = []
+  let i: int = 0
+  loop {
+    if i + 1 >= stack.len { break }
+    out = out.push(stack[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc stats(ctx: TenantCtx) -> string {
+  let active = "false"
+  if ctx.active { active = "true" }
+  give "tenant=" + ctx.tenant_id + ",region=" + ctx.region + ",plan=" + ctx.plan + ",active=" + active
 }
 
 proc ready() -> bool {

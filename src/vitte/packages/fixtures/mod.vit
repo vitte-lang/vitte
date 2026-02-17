@@ -1,0 +1,123 @@
+<<<
+mod.vit
+package vitte/fixtures
+>>>
+
+space vitte/fixtures
+
+form FixtureSet {
+  name: string
+  base_rows: [string]
+  current_rows: [string]
+  seed_runs: int
+}
+
+proc fixture_load(name: string, rows: [string]) -> FixtureSet {
+  give FixtureSet(name, rows, rows, 0)
+}
+
+proc seed(fixtures: FixtureSet, count: int) -> FixtureSet {
+  let runs = count
+  if runs < 1 { runs = 1 }
+
+  let out = fixtures.current_rows
+  let r: int = 0
+  loop {
+    if r >= runs { break }
+
+    let i: int = 0
+    loop {
+      if i >= fixtures.base_rows.len { break }
+      out = out.push(fixtures.base_rows[i])
+      i = i + 1
+    }
+
+    r = r + 1
+  }
+
+  give FixtureSet(fixtures.name, fixtures.base_rows, out, fixtures.seed_runs + runs)
+}
+
+proc reset(fixtures: FixtureSet) -> FixtureSet {
+  give FixtureSet(fixtures.name, fixtures.base_rows, fixtures.base_rows, 0)
+}
+
+proc append_row(fixtures: FixtureSet, row: string) -> FixtureSet {
+  give FixtureSet(fixtures.name, fixtures.base_rows, fixtures.current_rows.push(row), fixtures.seed_runs)
+}
+
+proc remove_row(fixtures: FixtureSet, row: string) -> FixtureSet {
+  let out: [string] = []
+  let removed: bool = false
+  let i: int = 0
+  loop {
+    if i >= fixtures.current_rows.len { break }
+    let cur = fixtures.current_rows[i]
+    if !removed && cur == row {
+      removed = true
+    } else {
+      out = out.push(cur)
+    }
+    i = i + 1
+  }
+  give FixtureSet(fixtures.name, fixtures.base_rows, out, fixtures.seed_runs)
+}
+
+proc row_count(fixtures: FixtureSet) -> int {
+  give fixtures.current_rows.len
+}
+
+proc base_count(fixtures: FixtureSet) -> int {
+  give fixtures.base_rows.len
+}
+
+proc contains_row(fixtures: FixtureSet, row: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= fixtures.current_rows.len { break }
+    if fixtures.current_rows[i] == row { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc diff_count(fixtures: FixtureSet) -> int {
+  let diff = fixtures.current_rows.len - fixtures.base_rows.len
+  if diff < 0 { give -diff }
+  give diff
+}
+
+proc checksum(fixtures: FixtureSet) -> int {
+  let sum = fixtures.seed_runs + fixtures.current_rows.len * 13
+  let i: int = 0
+  loop {
+    if i >= fixtures.current_rows.len { break }
+    sum = sum + fixtures.current_rows[i].len
+    i = i + 1
+  }
+  give sum
+}
+
+proc snapshot(fixtures: FixtureSet) -> string {
+  give "{\"name\":\"" + fixtures.name + "\",\"rows\":" + fixtures.current_rows.len.to_string() + ",\"seed_runs\":" + fixtures.seed_runs.to_string() + "}"
+}
+
+proc stats(fixtures: FixtureSet) -> string {
+  give "rows=" + row_count(fixtures).to_string() +
+       ",base=" + base_count(fixtures).to_string() +
+       ",diff=" + diff_count(fixtures).to_string() +
+       ",checksum=" + checksum(fixtures).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/fixtures
+role: Jeux de donnees de test reproductibles
+input_contract: Base fixture explicite et seeds controles
+output_contract: Seed reset snapshot deterministes
+boundary: Ne gere pas la persistance externe; manipule seulement un set en memoire
+>>>

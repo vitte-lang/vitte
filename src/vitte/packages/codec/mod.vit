@@ -1,0 +1,173 @@
+<<<
+mod.vit
+package vitte/codec
+>>>
+
+space vitte/codec
+
+pick CodecFormat {
+  Json
+  MsgPack
+  Binary
+}
+
+form CodecPayload {
+  format: CodecFormat
+  data: string
+  valid: bool
+}
+
+form DecodedPair {
+  key: string
+  value: string
+  ok: bool
+}
+
+proc format_name(fmt: CodecFormat) -> string {
+  when fmt is CodecFormat.Json { give "json" }
+  when fmt is CodecFormat.MsgPack { give "msgpack" }
+  give "binary"
+}
+
+proc encode(fmt: CodecFormat, key: string, value: string) -> CodecPayload {
+  when fmt is CodecFormat.Json {
+    give CodecPayload(fmt, "{\"" + key + "\":\"" + value + "\"}", true)
+  }
+  when fmt is CodecFormat.MsgPack {
+    give CodecPayload(fmt, "mp:" + key + "=" + value, true)
+  }
+  give CodecPayload(fmt, key + "\x00" + value, true)
+}
+
+proc detect(data: string) -> CodecFormat {
+  if data.len >= 1 && data.slice(0, 1) == "{" {
+    give CodecFormat.Json
+  }
+  if data.len >= 3 && data.slice(0, 3) == "mp:" {
+    give CodecFormat.MsgPack
+  }
+  give CodecFormat.Binary
+}
+
+proc decode(payload: CodecPayload) -> string {
+  if !payload.valid { give "" }
+  give payload.data
+}
+
+proc decode_pair(payload: CodecPayload) -> DecodedPair {
+  if !payload.valid || payload.data.len == 0 {
+    give DecodedPair("", "", false)
+  }
+
+  when payload.format is CodecFormat.Json {
+    let raw = payload.data
+    if raw.len < 7 { give DecodedPair("", "", false) }
+    if raw.slice(0, 1) != "{" { give DecodedPair("", "", false) }
+
+    let q1: int = -1
+    let q2: int = -1
+    let q3: int = -1
+    let q4: int = -1
+    let i: int = 0
+    loop {
+      if i >= raw.len { break }
+      if raw.slice(i, i + 1) == "\"" {
+        if q1 < 0 {
+          q1 = i
+        } else if q2 < 0 {
+          q2 = i
+        } else if q3 < 0 {
+          q3 = i
+        } else {
+          q4 = i
+          break
+        }
+      }
+      i = i + 1
+    }
+
+    if q1 < 0 || q2 <= q1 || q3 <= q2 || q4 <= q3 {
+      give DecodedPair("", "", false)
+    }
+
+    give DecodedPair(raw.slice(q1 + 1, q2), raw.slice(q3 + 1, q4), true)
+  }
+
+  when payload.format is CodecFormat.MsgPack {
+    let raw = payload.data
+    if raw.len < 5 { give DecodedPair("", "", false) }
+    if raw.slice(0, 3) != "mp:" { give DecodedPair("", "", false) }
+
+    let sep: int = -1
+    let i: int = 3
+    loop {
+      if i >= raw.len { break }
+      if raw.slice(i, i + 1) == "=" {
+        sep = i
+        break
+      }
+      i = i + 1
+    }
+
+    if sep < 4 || sep + 1 >= raw.len { give DecodedPair("", "", false) }
+    give DecodedPair(raw.slice(3, sep), raw.slice(sep + 1, raw.len), true)
+  }
+
+  let raw = payload.data
+  let sep: int = -1
+  let i: int = 0
+  loop {
+    if i >= raw.len { break }
+    if raw.slice(i, i + 1) == "\x00" {
+      sep = i
+      break
+    }
+    i = i + 1
+  }
+  if sep <= 0 || sep + 1 > raw.len { give DecodedPair("", "", false) }
+  give DecodedPair(raw.slice(0, sep), raw.slice(sep + 1, raw.len), true)
+}
+
+proc can_decode(payload: CodecPayload) -> bool {
+  give payload.valid && payload.data.len > 0
+}
+
+proc convert(payload: CodecPayload, target: CodecFormat) -> CodecPayload {
+  let pair = decode_pair(payload)
+  if !pair.ok { give CodecPayload(target, "", false) }
+  give encode(target, pair.key, pair.value)
+}
+
+proc format_extension(fmt: CodecFormat) -> string {
+  when fmt is CodecFormat.Json { give ".json" }
+  when fmt is CodecFormat.MsgPack { give ".mpk" }
+  give ".bin"
+}
+
+proc is_textual(fmt: CodecFormat) -> bool {
+  when fmt is CodecFormat.Binary { give false }
+  give true
+}
+
+proc fingerprint(payload: CodecPayload) -> string {
+  give format_name(payload.format) + ":" + payload.data.len.to_string()
+}
+
+proc roundtrip(fmt: CodecFormat, key: string, value: string) -> bool {
+  let encoded = encode(fmt, key, value)
+  let pair = decode_pair(encoded)
+  give can_decode(encoded) && pair.ok && pair.key == key && pair.value == value
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/codec
+role: Encodage et decodage payload json msgpack binaire
+input_contract: Format cible et paire key value explicites
+output_contract: Payload formatte et decodable de maniere deterministe
+boundary: Ne valide pas les schemas metier; applique seulement le codec
+>>>

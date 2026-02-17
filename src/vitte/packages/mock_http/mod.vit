@@ -1,0 +1,155 @@
+<<<
+mod.vit
+package vitte/mock_http
+>>>
+
+space vitte/mock_http
+
+form MockRoute {
+  method: string
+  path: string
+  status: int
+  body: string
+}
+
+form MockHttp {
+  routes: [MockRoute]
+}
+
+form MockReply {
+  status: int
+  body: string
+  matched: bool
+}
+
+proc canonical_method(method: string) -> string {
+  if method == "get" { give "GET" }
+  if method == "post" { give "POST" }
+  if method == "put" { give "PUT" }
+  if method == "delete" { give "DELETE" }
+  give method
+}
+
+proc mock_new() -> MockHttp {
+  give MockHttp([])
+}
+
+proc mock_add(mock: MockHttp, method: string, path: string, status: int, body: string) -> MockHttp {
+  let meth = canonical_method(method)
+  let http_status = status
+  if http_status < 100 { http_status = 200 }
+
+  let out: [MockRoute] = []
+  let replaced: bool = false
+  let i: int = 0
+  loop {
+    if i >= mock.routes.len { break }
+    let route = mock.routes[i]
+    if route.method == meth && route.path == path {
+      out = out.push(MockRoute(meth, path, http_status, body))
+      replaced = true
+    } else {
+      out = out.push(route)
+    }
+    i = i + 1
+  }
+
+  if !replaced {
+    out = out.push(MockRoute(meth, path, http_status, body))
+  }
+
+  give MockHttp(out)
+}
+
+proc mock_match(mock: MockHttp, method: string, path: string) -> bool {
+  let meth = canonical_method(method)
+  let i: int = 0
+  loop {
+    if i >= mock.routes.len { break }
+    let route = mock.routes[i]
+    if route.method == meth && route.path == path {
+      give true
+    }
+    i = i + 1
+  }
+  give false
+}
+
+proc mock_reply(mock: MockHttp, method: string, path: string) -> MockReply {
+  let meth = canonical_method(method)
+  let i: int = 0
+  loop {
+    if i >= mock.routes.len { break }
+    let route = mock.routes[i]
+    if route.method == meth && route.path == path {
+      give MockReply(route.status, route.body, true)
+    }
+    i = i + 1
+  }
+  give MockReply(404, "mock_not_found", false)
+}
+
+proc mock_clear(mock: MockHttp) -> MockHttp {
+  give MockHttp([])
+}
+
+proc mock_remove(mock: MockHttp, method: string, path: string) -> MockHttp {
+  let meth = canonical_method(method)
+  let out: [MockRoute] = []
+  let i: int = 0
+  loop {
+    if i >= mock.routes.len { break }
+    let route = mock.routes[i]
+    if !(route.method == meth && route.path == path) {
+      out = out.push(route)
+    }
+    i = i + 1
+  }
+  give MockHttp(out)
+}
+
+proc mock_count(mock: MockHttp) -> int {
+  give mock.routes.len
+}
+
+proc mock_list_paths(mock: MockHttp, method: string) -> [string] {
+  let meth = canonical_method(method)
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= mock.routes.len { break }
+    if mock.routes[i].method == meth {
+      out = out.push(mock.routes[i].path)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc mock_status(mock: MockHttp, method: string, path: string) -> int {
+  let reply = mock_reply(mock, method, path)
+  give reply.status
+}
+
+proc mock_verify(mock: MockHttp, method: string, path: string, expected_status: int) -> bool {
+  let reply = mock_reply(mock, method, path)
+  if !reply.matched { give false }
+  give reply.status == expected_status
+}
+
+proc mock_stats(mock: MockHttp) -> string {
+  give "routes=" + mock_count(mock).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/mock_http
+role: Mock d API externes pour tests deterministes
+input_contract: Routes method path status body explicites
+output_contract: Match et reponse stables sans I O reseau
+boundary: Ne fait pas de transport HTTP reel; sert uniquement de simulateur local
+>>>

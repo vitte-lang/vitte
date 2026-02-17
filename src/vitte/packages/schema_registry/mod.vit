@@ -59,6 +59,79 @@ proc latest(registry: SchemaRegistry, subject: string) -> SchemaRecord {
   give best
 }
 
+proc get(registry: SchemaRegistry, subject: string, version: int) -> SchemaRecord {
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject == subject && rec.version == version && rec.active {
+      give rec
+    }
+    i = i + 1
+  }
+  give SchemaRecord(subject, version, "", [], false)
+}
+
+proc has(registry: SchemaRegistry, subject: string, version: int) -> bool {
+  give get(registry, subject, version).active
+}
+
+proc deactivate(registry: SchemaRegistry, subject: string, version: int) -> SchemaRegistry {
+  let out: [SchemaRecord] = []
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject == subject && rec.version == version {
+      out = out.push(SchemaRecord(rec.subject, rec.version, rec.fingerprint, rec.fields, false))
+    } else {
+      out = out.push(rec)
+    }
+    i = i + 1
+  }
+  give SchemaRegistry(out)
+}
+
+proc latest_version(registry: SchemaRegistry, subject: string) -> int {
+  give latest(registry, subject).version
+}
+
+proc field_count(rec: SchemaRecord) -> int {
+  give rec.fields.len
+}
+
+proc list_contains(items: [string], value: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= items.len { break }
+    if items[i] == value { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc subjects(registry: SchemaRegistry) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let name = registry.records[i].subject
+    if !list_contains(out, name) {
+      out = out.push(name)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc compatibility_level(base: SchemaRecord, next: SchemaRecord) -> string {
+  if !base.active || !next.active { give "inactive" }
+  if base.subject != next.subject { give "subject-mismatch" }
+  if base.fingerprint == next.fingerprint { give "identical" }
+  if next.version >= base.version && next.fields.len >= base.fields.len { give "backward-compatible" }
+  give "breaking"
+}
+
 proc compatible(base: SchemaRecord, next: SchemaRecord) -> bool {
   if !base.active || !next.active { give false }
   if base.subject != next.subject { give false }
@@ -84,6 +157,15 @@ proc count(registry: SchemaRegistry, subject: string) -> int {
     i = i + 1
   }
   give n
+}
+
+proc total_count(registry: SchemaRegistry) -> int {
+  give registry.records.len
+}
+
+proc stats(registry: SchemaRegistry) -> string {
+  give "records=" + total_count(registry).to_string() +
+       ",subjects=" + subjects(registry).len.to_string()
 }
 
 proc ready() -> bool {

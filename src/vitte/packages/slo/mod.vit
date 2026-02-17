@@ -1,0 +1,112 @@
+<<<
+mod.vit
+package vitte/slo
+>>>
+
+space vitte/slo
+
+form SloWindow {
+  target_percent: int
+  total: int
+  bad: int
+}
+
+proc slo_new(target_percent: int) -> SloWindow {
+  let target = target_percent
+  if target < 1 { target = 1 }
+  if target > 100 { target = 100 }
+  give SloWindow(target, 0, 0)
+}
+
+proc sli_record(window: SloWindow, ok: bool) -> SloWindow {
+  if ok {
+    give SloWindow(window.target_percent, window.total + 1, window.bad)
+  }
+  give SloWindow(window.target_percent, window.total + 1, window.bad + 1)
+}
+
+proc allowed_bad(window: SloWindow) -> int {
+  if window.total <= 0 { give 0 }
+  give window.total * (100 - window.target_percent) / 100
+}
+
+proc slo_eval(window: SloWindow) -> bool {
+  give window.bad <= allowed_bad(window)
+}
+
+proc budget_left(window: SloWindow) -> int {
+  let left = allowed_bad(window) - window.bad
+  if left < 0 { give 0 }
+  give left
+}
+
+proc success_count(window: SloWindow) -> int {
+  let ok = window.total - window.bad
+  if ok < 0 { give 0 }
+  give ok
+}
+
+proc success_rate(window: SloWindow) -> int {
+  if window.total <= 0 { give 100 }
+  give success_count(window) * 100 / window.total
+}
+
+proc error_rate(window: SloWindow) -> int {
+  if window.total <= 0 { give 0 }
+  give window.bad * 100 / window.total
+}
+
+proc burn_rate(window: SloWindow) -> int {
+  if window.total <= 0 { give 0 }
+
+  let budget_pct = 100 - window.target_percent
+  if budget_pct <= 0 {
+    if window.bad > 0 { give 1000 }
+    give 0
+  }
+
+  let observed_pct = window.bad * 100 / window.total
+  give observed_pct * 100 / budget_pct
+}
+
+proc health(window: SloWindow) -> string {
+  if !slo_eval(window) { give "breached" }
+  if budget_left(window) == 0 { give "exhausted" }
+  give "healthy"
+}
+
+proc reset(window: SloWindow) -> SloWindow {
+  give SloWindow(window.target_percent, 0, 0)
+}
+
+proc record_many(window: SloWindow, ok_count: int, bad_count: int) -> SloWindow {
+  let ok = ok_count
+  if ok < 0 { ok = 0 }
+  let bad_n = bad_count
+  if bad_n < 0 { bad_n = 0 }
+  give SloWindow(window.target_percent, window.total + ok + bad_n, window.bad + bad_n)
+}
+
+proc merge(left: SloWindow, right: SloWindow) -> SloWindow {
+  give SloWindow(left.target_percent, left.total + right.total, left.bad + right.bad)
+}
+
+proc stats(window: SloWindow) -> string {
+  give "total=" + window.total.to_string() +
+       ",bad=" + window.bad.to_string() +
+       ",success_rate=" + success_rate(window).to_string() +
+       ",burn_rate=" + burn_rate(window).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/slo
+role: Suivi SLI SLO et budget d erreur
+input_contract: Cible et evenements de qualite explicites
+output_contract: Slo_eval budget_left burn_rate deterministes
+boundary: Ne collecte pas les metriques externes; calcule uniquement l etat SLO
+>>>

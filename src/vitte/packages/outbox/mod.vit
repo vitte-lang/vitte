@@ -105,6 +105,120 @@ proc replay_payload(outbox: Outbox, event_id: int) -> string {
   give ""
 }
 
+proc event_count(outbox: Outbox) -> int {
+  give outbox.events.len
+}
+
+proc sent_count(outbox: Outbox) -> int {
+  let count: int = 0
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if outbox.events[i].sent {
+      count = count + 1
+    }
+    i = i + 1
+  }
+  give count
+}
+
+proc has_event(outbox: Outbox, event_id: int) -> bool {
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if outbox.events[i].id == event_id { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc attempt_of(outbox: Outbox, event_id: int) -> int {
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if outbox.events[i].id == event_id {
+      give outbox.events[i].attempts
+    }
+    i = i + 1
+  }
+  give -1
+}
+
+proc next_pending(outbox: Outbox) -> OutboxEvent {
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if !ev.sent { give ev }
+    i = i + 1
+  }
+  give OutboxEvent(-1, "", "", false, false, 0)
+}
+
+proc retry_event(outbox: Outbox, event_id: int) -> Outbox {
+  let out: [OutboxEvent] = []
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if ev.id == event_id && !ev.sent {
+      out = out.push(OutboxEvent(ev.id, ev.topic, ev.payload, false, false, ev.attempts + 1))
+    } else {
+      out = out.push(ev)
+    }
+    i = i + 1
+  }
+  give Outbox(outbox.next_id, out)
+}
+
+proc prune_sent(outbox: Outbox) -> Outbox {
+  let out: [OutboxEvent] = []
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if !outbox.events[i].sent {
+      out = out.push(outbox.events[i])
+    }
+    i = i + 1
+  }
+  give Outbox(outbox.next_id, out)
+}
+
+proc topic_count(outbox: Outbox, topic: string) -> int {
+  let count: int = 0
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if outbox.events[i].topic == topic {
+      count = count + 1
+    }
+    i = i + 1
+  }
+  give count
+}
+
+proc status(outbox: Outbox, event_id: int) -> string {
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if ev.id == event_id {
+      if ev.sent { give "sent" }
+      if ev.flushed { give "flushed" }
+      give "pending"
+    }
+    i = i + 1
+  }
+  give "missing"
+}
+
+proc stats(outbox: Outbox) -> string {
+  give "events=" + event_count(outbox).to_string() +
+       ",pending=" + pending_count(outbox).to_string() +
+       ",sent=" + sent_count(outbox).to_string() +
+       ",flushed=" + flushed_count(outbox).to_string()
+}
+
 proc ready() -> bool {
   give true
 }

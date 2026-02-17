@@ -1,0 +1,219 @@
+<<<
+mod.vit
+package vitte/kv
+>>>
+
+space vitte/kv
+
+form KvEntry {
+  key: string
+  value: string
+  expires_at: int
+  active: bool
+}
+
+form KvStore {
+  clock: int
+  entries: [KvEntry]
+}
+
+proc kv_new() -> KvStore {
+  give KvStore(0, [])
+}
+
+proc is_alive(kv_item: KvEntry, clock: int) -> bool {
+  if !kv_item.active { give false }
+  if kv_item.expires_at < 0 { give true }
+  give clock < kv_item.expires_at
+}
+
+proc put(store: KvStore, key: string, value: string, ttl: int) -> KvStore {
+  let expiry = -1
+  if ttl > 0 {
+    expiry = store.clock + ttl
+  }
+
+  let out: [KvEntry] = []
+  let replaced: bool = false
+  let i: int = 0
+  loop {
+    if i >= store.entries.len { break }
+    let kv_item = store.entries[i]
+    if kv_item.key == key {
+      out = out.push(KvEntry(key, value, expiry, true))
+      replaced = true
+    } else {
+      out = out.push(kv_item)
+    }
+    i = i + 1
+  }
+
+  if !replaced {
+    out = out.push(KvEntry(key, value, expiry, true))
+  }
+
+  give KvStore(store.clock, out)
+}
+
+proc tick(store: KvStore, delta: int) -> KvStore {
+  if delta <= 0 { give store }
+  let next_clock = store.clock + delta
+
+  let out: [KvEntry] = []
+  let i: int = 0
+  loop {
+    if i >= store.entries.len { break }
+    let kv_item = store.entries[i]
+    if is_alive(kv_item, next_clock) {
+      out = out.push(kv_item)
+    } else {
+      out = out.push(KvEntry(kv_item.key, kv_item.value, kv_item.expires_at, false))
+    }
+    i = i + 1
+  }
+
+  give KvStore(next_clock, out)
+}
+
+proc get(store: KvStore, key: string, fallback: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= store.entries.len { break }
+    let kv_item = store.entries[i]
+    if kv_item.key == key && is_alive(kv_item, store.clock) {
+      give kv_item.value
+    }
+    i = i + 1
+  }
+  give fallback
+}
+
+proc has(store: KvStore, key: string) -> bool {
+  give get(store, key, "") != ""
+}
+
+proc delete(store: KvStore, key: string) -> KvStore {
+  let out: [KvEntry] = []
+  let i: int = 0
+  loop {
+    if i >= store.entries.len { break }
+    let kv_item = store.entries[i]
+    if kv_item.key == key {
+      out = out.push(KvEntry(kv_item.key, kv_item.value, kv_item.expires_at, false))
+    } else {
+      out = out.push(kv_item)
+    }
+    i = i + 1
+  }
+  give KvStore(store.clock, out)
+}
+
+proc scan(store: KvStore, prefix: string) -> [KvEntry] {
+  let out: [KvEntry] = []
+  let i: int = 0
+  loop {
+    if i >= store.entries.len { break }
+    let kv_item = store.entries[i]
+    if is_alive(kv_item, store.clock) && kv_item.key.len >= prefix.len && kv_item.key.slice(0, prefix.len) == prefix {
+      out = out.push(kv_item)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc size(store: KvStore) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= store.entries.len { break }
+    if is_alive(store.entries[i], store.clock) {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc ttl_left(store: KvStore, key: string) -> int {
+  let i: int = 0
+  loop {
+    if i >= store.entries.len { break }
+    let kv_item = store.entries[i]
+    if kv_item.key == key && is_alive(kv_item, store.clock) {
+      if kv_item.expires_at < 0 { give -1 }
+      let left = kv_item.expires_at - store.clock
+      if left < 0 { give 0 }
+      give left
+    }
+    i = i + 1
+  }
+  give 0
+}
+
+proc touch(store: KvStore, key: string, ttl: int) -> KvStore {
+  let out: [KvEntry] = []
+  let i: int = 0
+  let expiry = -1
+  if ttl > 0 { expiry = store.clock + ttl }
+
+  loop {
+    if i >= store.entries.len { break }
+    let kv_item = store.entries[i]
+    if kv_item.key == key && is_alive(kv_item, store.clock) {
+      if expiry < 0 {
+        out = out.push(KvEntry(kv_item.key, kv_item.value, kv_item.expires_at, kv_item.active))
+      } else {
+        out = out.push(KvEntry(kv_item.key, kv_item.value, expiry, kv_item.active))
+      }
+    } else {
+      out = out.push(kv_item)
+    }
+    i = i + 1
+  }
+
+  give KvStore(store.clock, out)
+}
+
+proc keys(store: KvStore, prefix: string) -> [string] {
+  let out: [string] = []
+  let rows = scan(store, prefix)
+  let i: int = 0
+  loop {
+    if i >= rows.len { break }
+    out = out.push(rows[i].key)
+    i = i + 1
+  }
+  give out
+}
+
+proc expire(store: KvStore) -> KvStore {
+  let out: [KvEntry] = []
+  let i: int = 0
+  loop {
+    if i >= store.entries.len { break }
+    let kv_item = store.entries[i]
+    if is_alive(kv_item, store.clock) {
+      out = out.push(kv_item)
+    }
+    i = i + 1
+  }
+  give KvStore(store.clock, out)
+}
+
+proc stats(store: KvStore) -> string {
+  give "size=" + size(store).to_string() + ",clock=" + store.clock.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/kv
+role: Store local key value avec TTL et scan prefixe
+input_contract: Cle valeur TTL explicites et horloge logique interne
+output_contract: Get has scan deterministes avec expiration previsible
+boundary: Ne replique pas ni ne persiste disque; gere uniquement un store local
+>>>

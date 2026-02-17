@@ -52,6 +52,62 @@ proc open_gate(bh: Bulkhead) -> Bulkhead {
   give Bulkhead(bh.capacity, bh.in_use, bh.queued, bh.rejected, true)
 }
 
+proc is_open(bh: Bulkhead) -> bool {
+  give bh.open
+}
+
+proc queue_depth(bh: Bulkhead) -> int {
+  give bh.queued
+}
+
+proc rejected_count(bh: Bulkhead) -> int {
+  give bh.rejected
+}
+
+proc has_queue(bh: Bulkhead) -> bool {
+  give bh.queued > 0
+}
+
+proc utilization_percent(bh: Bulkhead) -> int {
+  if bh.capacity <= 0 { give 0 }
+  give bh.in_use * 100 / bh.capacity
+}
+
+proc drain_queue(bh: Bulkhead) -> Bulkhead {
+  if !bh.open { give bh }
+  if bh.queued <= 0 { give bh }
+  if bh.in_use >= bh.capacity { give bh }
+  give Bulkhead(bh.capacity, bh.in_use + 1, bh.queued - 1, bh.rejected, bh.open)
+}
+
+proc resize(bh: Bulkhead, new_capacity: int) -> Bulkhead {
+  let cap = new_capacity
+  if cap < 1 { cap = 1 }
+
+  let in_use = bh.in_use
+  let rejected = bh.rejected
+  if in_use > cap {
+    rejected = rejected + (in_use - cap)
+    in_use = cap
+  }
+
+  give Bulkhead(cap, in_use, bh.queued, rejected, bh.open)
+}
+
+proc reset_stats(bh: Bulkhead) -> Bulkhead {
+  give Bulkhead(bh.capacity, bh.in_use, bh.queued, 0, bh.open)
+}
+
+proc stats(bh: Bulkhead) -> string {
+  let gate = "closed"
+  if bh.open { gate = "open" }
+  give "cap=" + bh.capacity.to_string() +
+       ",in_use=" + bh.in_use.to_string() +
+       ",queued=" + bh.queued.to_string() +
+       ",rejected=" + bh.rejected.to_string() +
+       ",gate=" + gate
+}
+
 proc ready() -> bool {
   give true
 }
