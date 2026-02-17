@@ -12,6 +12,11 @@ use vitte/requests as v_requests
 
 use vitte/auth as v_auth
 use vitte/tls as v_tls
+use vitte/secrets as v_secrets
+use vitte/audit as v_audit
+use vitte/health as v_health
+use vitte/feature_flags as v_feature_flags
+use vitte/policy as v_policy
 
 use vitte/async as v_async
 use vitte/channel as v_channel
@@ -19,6 +24,13 @@ use vitte/actor as v_actor
 use vitte/process as v_process
 use vitte/plugin as v_plugin
 use vitte/ecs as v_ecs
+use vitte/retry as v_retry
+use vitte/circuit_breaker as v_circuit_breaker
+use vitte/rate_limit as v_rate_limit
+use vitte/idempotency as v_idempotency
+use vitte/contracts as v_contracts
+use vitte/jobs as v_jobs
+use vitte/observability as v_observability
 
 proc matrix_job() -> int {
   give 0
@@ -52,13 +64,28 @@ proc domain_data() -> bool {
   let got = v_registry.fetch(idx3, "vitte-sql", "1.0.0")
   let diff = v_registry.contract_diff(rec_ok, v_registry.record("vitte-sql", "1.1.0", "sha257"))
 
+  let idem0 = v_idempotency.store_new()
+  let idem1 = v_idempotency.store_result(idem0, "k1", "R1", 10, 1)
+  let idem_first = v_idempotency.check_key(idem1, "k1", 2)
+  let idem_replay = v_idempotency.replay_result(idem1, "k1", 2)
+  let idem2 = v_idempotency.expire_keys(idem1, 20)
+  let idem_after = v_idempotency.check_key(idem2, "k1", 20)
+
+  let c0_def = v_contracts.contract_load("user-api", "1.0.0", "sha-a", ["id", "name"])
+  let c1_def = v_contracts.contract_load("user-api", "1.1.0", "sha-b", ["id", "name"])
+  let c_ok = v_contracts.contract_verify(c0_def, "{\"id\":1,\"name\":\"n\"}")
+  let c_diff = v_contracts.diff(c0_def, c1_def)
+  let c_snap = v_contracts.snapshot(c0_def)
+
   give sql_rows == 2 && sql_row.len > 0 &&
        db_rows == 1 && db_row.len > 0 &&
        v_cache.contains(c4, "b") && v_cache.get(c4, "a", "") == "" && v_cache.size(c4) == 2 &&
        !v_registry.has(idx1, "bad", "1.0.0") &&
        v_registry.has(idx3, "vitte-sql", "1.0.0") &&
        got.downloads == 1 && v_registry.published_count(idx3) == 1 &&
-       diff == "updated"
+       diff == "updated" &&
+       !idem_first && idem_replay == "R1" && idem_after &&
+       c_ok.ok && c_diff == "changed" && c_snap.len > 0
 }
 
 proc domain_web() -> bool {
@@ -79,6 +106,26 @@ proc domain_web() -> bool {
   let opts2 = v_requests.with_retries(opts1, 2)
   let req_result = v_requests.run_with_retry(opts2, "/health")
 
+  let rp0 = v_retry.policy(3, 50, 200)
+  let rp1 = v_retry.with_jitter(rp0, v_retry.RetryJitter.Full)
+  let retry_status = v_retry.run_with_retry([500, 429, 200], rp1)
+  let retry_attempts = v_retry.attempts_used([500, 429, 200], rp1)
+
+  let br0 = v_circuit_breaker.breaker_new(2, 3)
+  let br1 = v_circuit_breaker.record_failure(br0, 1)
+  let br2 = v_circuit_breaker.record_failure(br1, 2)
+  let br_allow_now = v_circuit_breaker.allow(br2, 2)
+  let br3 = v_circuit_breaker.on_tick(br2, 6)
+  let br_allow_late = v_circuit_breaker.allow(br3, 6)
+  let br4 = v_circuit_breaker.record_success(br3)
+
+  let rl0 = v_rate_limit.limiter_new(3, 10)
+  let rl_allow1 = v_rate_limit.allow(rl0, 0, 2)
+  let rl1 = v_rate_limit.consume(rl0, 0, 2)
+  let rl_allow2 = v_rate_limit.allow(rl1, 0, 2)
+  let rl_remaining = v_rate_limit.remaining(rl1, 0)
+  let rl_reset = v_rate_limit.reset_at(rl1, 0)
+
   give v_net.is_valid_endpoint(ep) &&
        v_net.status(sock2) == "open" &&
        sock2.bytes_out > 0 && sock2.bytes_in > 0 &&
@@ -87,7 +134,11 @@ proc domain_web() -> bool {
        v_http.is_success(http_resp) &&
        v_http_client.is_ok(hc_resp) &&
        v_requests.result_status(req_result) == 200 &&
-       v_requests.health(opts2)
+       v_requests.health(opts2) &&
+       retry_status == 200 && retry_attempts == 2 &&
+       !br_allow_now && br_allow_late &&
+       v_circuit_breaker.state(br4) == v_circuit_breaker.BreakerState.Closed &&
+       rl_allow1 && !rl_allow2 && rl_remaining == 1 && rl_reset == 10
 }
 
 proc domain_security() -> bool {
@@ -104,12 +155,48 @@ proc domain_security() -> bool {
 
   let secure_sock = v_net.set_secure(v_net.connect(v_net.default_http_endpoint("secure.local")), true)
 
+  let sec0 = v_secrets.store_new()
+  let sec1 = v_secrets.put_file(sec0, "/etc/secret", "file_secret_123")
+  let sec2 = v_secrets.put_env(sec1, "API_KEY", "env_secret_987")
+  let secret_resolved = v_secrets.resolve(sec2, "API_KEY", "/etc/secret", "fallback")
+  let secret_mask = v_secrets.mask(secret_resolved)
+  let secret_valid = v_secrets.is_valid(secret_resolved)
+
+  let ev0 = v_audit.event(10, "alice", "login", "console", "tr-10")
+  let ev1 = v_audit.sign(ev0, "k")
+  let log0 = v_audit.log_new()
+  let log1 = v_audit.append(log0, ev1)
+  let q_auth = v_audit.query(log1, "alice", "login")
+  let audit_ok = v_audit.verify(q_auth[0], "k")
+
+  let h = v_health.input(true, true, true, true, true, true)
+  let h_json = v_health.report_json(h)
+
+  let ff0 = v_feature_flags.flags_new()
+  let ff1 = v_feature_flags.add_flag(ff0, "new-ui", true, 100)
+  let ff2 = v_feature_flags.override(ff1, "new-ui", "alice", false)
+  let ff_user = v_feature_flags.flag_for_user(ff2, "new-ui", "alice", false)
+  let ff_other = v_feature_flags.flag_for_user(ff2, "new-ui", "bob", false)
+
+  let pol0 = v_policy.policy_load(false)
+  let pol1 = v_policy.add_rule(pol0, "alice", "read", "invoice", v_policy.Effect.Allow, "reader")
+  let pol2 = v_policy.add_rule(pol1, "alice", "delete", "invoice", v_policy.Effect.Deny, "forbidden-delete")
+  let pol_allow = v_policy.allow(pol2, "alice", "read", "invoice")
+  let pol_deny = v_policy.allow(pol2, "alice", "delete", "invoice")
+  let pol_reason = v_policy.deny_reason(pol2, "alice", "delete", "invoice")
+  let pol_explain = v_policy.explain(pol2, "alice", "delete", "invoice")
+
   give v_auth.can_access(session, v_auth.AuthRole.Admin, 10) &&
        v_auth.validate(revoked, 10) == v_auth.AuthError.MissingToken &&
        v_tls.handshake_error(tls0, true) == v_tls.TlsError.None &&
        v_tls.is_secure(tls3) && !v_tls.is_secure(tls4) &&
        v_tls.bytes_in(tls3) > 0 && v_tls.bytes_out(tls3) > 0 &&
-       secure_sock.secure && v_net.status(secure_sock) == "secure"
+       secure_sock.secure && v_net.status(secure_sock) == "secure" &&
+       secret_resolved == "env_secret_987" && secret_mask.len > 0 && secret_valid &&
+       v_audit.count(log1) == 1 && q_auth.len == 1 && audit_ok &&
+       v_health.check_live(h) && v_health.check_ready(h) && v_health.check_startup(h) && h_json.len > 0 &&
+       !ff_user && ff_other &&
+       pol_allow && !pol_deny && pol_reason == "forbidden-delete" && pol_explain.len > 0
 }
 
 proc domain_concurrency() -> bool {
@@ -147,13 +234,37 @@ proc domain_concurrency() -> bool {
   let w3 = v_ecs.add_velocity(w2, e0, 1, 2)
   let w4 = v_ecs.step(w3)
 
+  let jq0 = v_jobs.queue_new(2)
+  let jq1 = v_jobs.enqueue(jq0, "j0")
+  let jq2 = v_jobs.enqueue(jq1, "j1")
+  let jq3 = v_jobs.dequeue(jq2)
+  let jq4 = v_jobs.nack(jq3, 0)
+  let jq5 = v_jobs.dequeue(jq4)
+  let jq6 = v_jobs.ack(jq5, 1)
+  let jq7 = v_jobs.dequeue(jq6)
+  let jq8 = v_jobs.nack(jq7, 0)
+  let dlq = v_jobs.dead_letter(jq8)
+
+  let span0 = v_observability.trace_start("matrix-concurrency", 100)
+  let span1 = v_observability.with_trace_id(span0, "tr-custom")
+  let span2 = v_observability.trace_end(span1, 140)
+  let ctr0 = v_observability.counter_new("jobs.processed")
+  let ctr1 = v_observability.counter_with_trace(ctr0, span2.trace_id)
+  let ctr2 = v_observability.counter_inc(ctr1, 3)
+  let h0 = v_observability.histogram_new("jobs.latency")
+  let h1 = v_observability.histogram_observe(h0, 8)
+  let h2 = v_observability.histogram_observe(h1, 12)
+
   give v_async.is_terminal(state) &&
        meta2.state == v_async.TaskState.Succeeded &&
        v_channel.peek(ch3) == "m2" && v_channel.len(ch4) == 1 && v_channel.dropped(ch3) == 1 &&
        v_actor.processed_count(a2) == 1 && v_actor.is_running(a2) &&
        v_process.is_success(ph) && v_process.exit_code(ph_dry) == 0 &&
        v_plugin.can_execute(pr2, "events") && pr4.state == v_plugin.PluginState.Loaded &&
-       v_ecs.position_x(w4, e0) == 4 && v_ecs.position_y(w4, e0) == 6
+       v_ecs.position_x(w4, e0) == 4 && v_ecs.position_y(w4, e0) == 6 &&
+       v_jobs.done_count(jq8) == 1 && dlq.len == 1 &&
+       v_observability.trace_duration(span2) == 40 &&
+       ctr2.value == 3 && h2.count == 2 && v_observability.histogram_avg(h2) == 10
 }
 
 entry main at tests/packages_runtime_matrix {
