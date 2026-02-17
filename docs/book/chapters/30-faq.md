@@ -217,7 +217,7 @@ Règle éditoriale et technique de ce livre:
 - `i32/i64/i128/u32/u64/u128`: à utiliser dès que la largeur binaire est contractuelle.
 
 Cas où il faut éviter `int`:
-- API binaire, réseau, fichiers, interop C, kernel/freestanding.
+- API binaire, réseau, fichiers, liaison native, kernel/freestanding.
 
 ## 30.13 Playbook debug: erreur -> reproducer -> fix -> rerun
 

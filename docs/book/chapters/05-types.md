@@ -40,7 +40,7 @@ Règle explicite de ce livre:
 ## 5.0.1 Quand éviter `int`
 
 Éviter `int` quand la taille doit rester stable entre machines:
-- API binaire et interop C.
+- API binaire et liaison native.
 - protocole réseau et format de fichier.
 - sérialisation persistée.
 - registres matériels et code kernel/bare-metal.

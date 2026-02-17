@@ -26,6 +26,7 @@
 - [14. Macros](chapters/14-macros.md)
 - [15. Pipeline compilateur](chapters/15-pipeline.md)
 - [16. Interop et ABI](chapters/16-interop.md)
+- [16a. Liaison native avec std/bridge](chapters/16a-liaison-native.md)
 - [17. Bibliothèque standard](chapters/17-stdlib.md)
 - [18. Tests et validation](chapters/18-tests.md)
 - [19. Performance](chapters/19-performance.md)

@@ -66,7 +66,7 @@ Check spelling, or import it from a module with `use` or `pull`.
 
 **Example**
 ```
-use std/io/print.print
+use std/bridge/print.print
 proc main() -> int { print("hi"); return 0 }
 ```
 

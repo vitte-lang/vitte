@@ -38,7 +38,7 @@ Entrée:
 
 ```vit
 proc bad() -> int {
-  use std/io
+  use std/bridge/io
   give 0
 }
 # invalide: `use` est top-level.

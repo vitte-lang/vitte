@@ -11,7 +11,7 @@ Notes:
 - `out` captures stdout and `err` captures stderr.
 
 ```vitte
-use std/process
+use std/bridge/process
 
 entry main at core/app {
   let res = run_shell("echo hello")
@@ -23,12 +23,43 @@ entry main at core/app {
 }
 ```
 
-## std/os
+## std/bridge
+
+Façade de liaison native avec noms Vitte.  
+Sous-modules:
+- `std/bridge/io`
+- `std/bridge/memory`
+- `std/bridge/system`
+- `std/bridge/time`
+- `std/bridge/net`
+
+Modules métier directs:
+- `std/bridge/print`
+- `std/bridge/read`
+- `std/bridge/path`
+- `std/bridge/env`
+- `std/bridge/bytes`
+- `std/bridge/alloc`
+- `std/bridge/process`
+
+```vitte
+use std/bridge/system
+use std/bridge/io
+
+entry main at core/app {
+  let home = get("HOME")   # std/env via bridge/system
+  let p = cwd()            # std/path via bridge/system
+  let _ = print_line("ok") # std/io/print via bridge/io
+  return 0
+}
+```
+
+## std/system (via bridge)
 
 Platform helpers.
 
 ```vitte
-use std/os
+use std/bridge/system
 
 entry main at core/app {
   let p = platform()    // "linux", "macos", "windows", "freebsd", "unknown"
