@@ -15,6 +15,7 @@ api_old="$ROOT_DIR/tests/modules/api_diff/old_case/main.vit"
 api_new="$ROOT_DIR/tests/modules/api_diff/new_case/main.vit"
 exp_src="$ROOT_DIR/tests/modules/experimental/main.vit"
 internal_src="$ROOT_DIR/tests/modules/internal/main.vit"
+reexport_src="$ROOT_DIR/tests/modules/reexport_conflict/main.vit"
 
 log "mod graph"
 out_graph="$("$BIN" mod graph --lang=en "$graph_src" 2>&1)"
@@ -82,6 +83,15 @@ grep -Fq "error[E1016]" <<<"$out_internal_deny" || die "missing internal deny di
 
 out_internal_allow="$("$BIN" check --lang=en --allow-internal "$internal_src" 2>&1)"
 grep -Fq "mir ok" <<<"$out_internal_allow" || die "allow-internal should pass"
+
+log "re-export conflict"
+set +e
+out_reexport="$("$BIN" check --lang=en "$reexport_src" 2>&1)"
+rc_reexport=$?
+set -e
+[ "$rc_reexport" -ne 0 ] || die "re-export conflict fixture should fail"
+grep -Fq "error[E1017]" <<<"$out_reexport" || die "missing re-export conflict code"
+grep -Fq "fix: replace one glob import with explicit symbols" <<<"$out_reexport" || die "missing re-export fix suggestion"
 
 log "clean cache"
 out_clean="$("$BIN" clean-cache 2>&1)"
