@@ -1,0 +1,120 @@
+<<<
+mod.vit
+package vitte/retry
+>>>
+
+space vitte/retry
+
+pick RetryJitter {
+  None
+  Full
+}
+
+form RetryPolicy {
+  max_attempts: int
+  base_delay_ms: int
+  max_delay_ms: int
+  jitter: RetryJitter
+  retry_4xx: bool
+}
+
+proc policy(max_attempts: int, base_delay_ms: int, max_delay_ms: int) -> RetryPolicy {
+  let attempts = max_attempts
+  if attempts < 1 { attempts = 1 }
+
+  let base_delay = base_delay_ms
+  if base_delay < 1 { base_delay = 1 }
+
+  let max_delay = max_delay_ms
+  if max_delay < base_delay { max_delay = base_delay }
+
+  give RetryPolicy(attempts, base_delay, max_delay, RetryJitter.None, false)
+}
+
+proc with_jitter(p: RetryPolicy, jitter: RetryJitter) -> RetryPolicy {
+  give RetryPolicy(p.max_attempts, p.base_delay_ms, p.max_delay_ms, jitter, p.retry_4xx)
+}
+
+proc with_retry_4xx(p: RetryPolicy, enabled: bool) -> RetryPolicy {
+  give RetryPolicy(p.max_attempts, p.base_delay_ms, p.max_delay_ms, p.jitter, enabled)
+}
+
+proc next_delay_ms(p: RetryPolicy, attempt: int) -> int {
+  if attempt <= 0 { give p.base_delay_ms }
+
+  let delay = p.base_delay_ms
+  let i: int = 0
+  loop {
+    if i >= attempt { break }
+    delay = delay * 2
+    if delay > p.max_delay_ms {
+      delay = p.max_delay_ms
+      break
+    }
+    i = i + 1
+  }
+
+  when p.jitter is RetryJitter.Full {
+    if delay <= 1 { give delay }
+    give delay - (attempt % (delay / 2 + 1))
+  }
+
+  give delay
+}
+
+proc should_retry(status: int, attempt: int, p: RetryPolicy) -> bool {
+  if attempt >= p.max_attempts { give false }
+  if status == 429 { give true }
+  if status >= 500 { give true }
+  if p.retry_4xx && status >= 400 { give true }
+  give false
+}
+
+proc run_with_retry(statuses: [int], p: RetryPolicy) -> int {
+  if statuses.len == 0 { give 0 }
+
+  let idx: int = 0
+  let attempt: int = 0
+  let current: int = statuses[0]
+
+  loop {
+    if idx >= statuses.len { break }
+    current = statuses[idx]
+    if !should_retry(current, attempt, p) { break }
+    if idx + 1 >= statuses.len { break }
+    idx = idx + 1
+    attempt = attempt + 1
+  }
+
+  give current
+}
+
+proc attempts_used(statuses: [int], p: RetryPolicy) -> int {
+  if statuses.len == 0 { give 0 }
+
+  let idx: int = 0
+  let attempt: int = 0
+
+  loop {
+    if idx >= statuses.len { break }
+    if !should_retry(statuses[idx], attempt, p) { break }
+    if idx + 1 >= statuses.len { break }
+    idx = idx + 1
+    attempt = attempt + 1
+  }
+
+  give attempt
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/retry
+role: Retries robustes avec backoff et jitter
+input_contract: Codes retour explicites et politique retry deterministe
+output_contract: Decision de retry stable, delai previsible et borne max
+boundary: Ne masque pas les erreurs metier; orchestre uniquement la reprise
+>>>

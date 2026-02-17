@@ -25,7 +25,9 @@ Options parse_options(int argc, char** argv) {
                     next != "help" && next != "init" &&
                     next != "explain" && next != "parse" &&
                     next != "check" && next != "emit" &&
-                    next != "build") {
+                    next != "build" && next != "reduce" &&
+                    next != "profile" && next != "clean-cache" &&
+                    next != "mod") {
                     opts.init_dir = argv[++i];
                 }
             }
@@ -39,7 +41,7 @@ Options parse_options(int argc, char** argv) {
                 opts.explain_code = argv[++i];
             }
         }
-        else if (arg == "parse" || arg == "check" || arg == "emit" || arg == "build") {
+        else if (arg == "parse" || arg == "check" || arg == "emit" || arg == "build" || arg == "reduce" || arg == "profile") {
             if (arg == "parse") {
                 opts.parse_only = true;
                 opts.resolve_only = false;
@@ -48,14 +50,38 @@ Options parse_options(int argc, char** argv) {
                 opts.emit_cpp = false;
             } else if (arg == "check") {
                 opts.parse_only = false;
-                opts.resolve_only = true;
+                opts.resolve_only = false;
                 opts.hir_only = false;
-                opts.mir_only = false;
+                opts.mir_only = true; // parse + resolve + IR, no backend
                 opts.emit_cpp = false;
             } else if (arg == "emit") {
                 opts.emit_cpp = true;
             } else if (arg == "build") {
                 opts.emit_cpp = false;
+            } else if (arg == "reduce") {
+                opts.reduce_reproducer = true;
+            } else if (arg == "profile") {
+                opts.profile_mode = true;
+                opts.emit_cpp = false;
+            }
+        }
+        else if (arg == "clean-cache") {
+            opts.clean_cache = true;
+        }
+        else if (arg == "mod") {
+            if (i + 1 < argc) {
+                std::string mode = argv[++i];
+                if (mode == "graph") {
+                    opts.mod_graph = true;
+                } else if (mode == "doctor") {
+                    opts.mod_doctor = true;
+                } else if (mode == "api-diff" || mode == "contract-diff") {
+                    opts.mod_api_diff = true;
+                } else {
+                    std::cerr << "[driver] warning: unknown mod subcommand '" << mode << "'\n";
+                }
+            } else {
+                std::cerr << "[driver] warning: missing mod subcommand (expected graph|doctor|contract-diff)\n";
             }
         }
         else if (arg == "-o" && i + 1 < argc) {
@@ -143,6 +169,10 @@ Options parse_options(int argc, char** argv) {
         else if (arg == "--dump-ast") {
             opts.dump_ast = true;
         }
+        else if (arg == "--dump-ir") {
+            opts.dump_ir = true;
+            opts.dump_mir = true;
+        }
         else if (arg == "--dump-resolve") {
             opts.dump_resolve = true;
         }
@@ -151,6 +181,101 @@ Options parse_options(int argc, char** argv) {
         }
         else if (arg == "--dump-mir") {
             opts.dump_mir = true;
+        }
+        else if (arg == "--diag-json") {
+            opts.diag_json = true;
+        }
+        else if (arg == "--diag-json-pretty") {
+            opts.diag_json = true;
+            opts.diag_json_pretty = true;
+        }
+        else if (arg == "--diag-code-only") {
+            opts.diag_code_only = true;
+        }
+        else if (arg == "--deterministic") {
+            opts.deterministic = true;
+        }
+        else if (arg == "--cache-report") {
+            opts.cache_report = true;
+        }
+        else if (arg == "--strict-types") {
+            opts.strict_types = true;
+        }
+        else if (arg == "--strict-imports" || arg == "--strict-bridge") {
+            opts.strict_imports = true;
+        }
+        else if (arg == "--dump-stdlib-map") {
+            opts.dump_stdlib_map = true;
+        }
+        else if (arg == "--dump-module-index") {
+            opts.dump_module_index = true;
+        }
+        else if (arg == "--allow-experimental") {
+            opts.allow_experimental = true;
+        }
+        else if (arg == "--warn-experimental") {
+            opts.warn_experimental = true;
+        }
+        else if (arg == "--deny-internal") {
+            opts.deny_internal = true;
+        }
+        else if (arg == "--allow-internal") {
+            opts.deny_internal = false;
+        }
+        else if (arg == "--json") {
+            opts.mod_graph_json = true;
+        }
+        else if (arg == "--from" && i + 1 < argc) {
+            opts.mod_graph_from = argv[++i];
+        }
+        else if (arg.rfind("--from=", 0) == 0) {
+            opts.mod_graph_from = arg.substr(std::string("--from=").size());
+        }
+        else if (arg == "--fix") {
+            opts.mod_doctor_fix = true;
+        }
+        else if (arg == "--max-imports" && i + 1 < argc) {
+            opts.max_imports = std::stoi(argv[++i]);
+        }
+        else if (arg.rfind("--max-imports=", 0) == 0) {
+            opts.max_imports = std::stoi(arg.substr(std::string("--max-imports=").size()));
+        }
+        else if (arg == "--old" && i + 1 < argc) {
+            opts.api_diff_old = argv[++i];
+        }
+        else if (arg.rfind("--old=", 0) == 0) {
+            opts.api_diff_old = arg.substr(std::string("--old=").size());
+        }
+        else if (arg == "--new" && i + 1 < argc) {
+            opts.api_diff_new = argv[++i];
+        }
+        else if (arg.rfind("--new=", 0) == 0) {
+            opts.api_diff_new = arg.substr(std::string("--new=").size());
+        }
+        else if (arg == "--strict-modules") {
+            opts.strict_modules = true;
+            opts.strict_imports = true;
+        }
+        else if ((arg == "--stdlib-profile" || arg == "--runtime-profile") && i + 1 < argc) {
+            opts.stdlib_profile = argv[++i];
+        }
+        else if (arg.rfind("--stdlib-profile=", 0) == 0) {
+            opts.stdlib_profile = arg.substr(std::string("--stdlib-profile=").size());
+        }
+        else if (arg.rfind("--runtime-profile=", 0) == 0) {
+            opts.stdlib_profile = arg.substr(std::string("--runtime-profile=").size());
+        }
+        else if (arg == "--fail-on-warning") {
+            opts.fail_on_warning = true;
+        }
+        else if (arg == "--freestanding") {
+            opts.freestanding = true;
+        }
+        else if (arg == "--stage" && i + 1 < argc) {
+            opts.stage = argv[++i];
+        }
+        else if (arg.rfind("--stage=", 0) == 0) {
+            opts.stage = arg.substr(std::string("--stage=").size());
         }
         else if (arg == "--dump-hir-json") {
             opts.dump_hir_json = true;
@@ -193,6 +318,15 @@ Options parse_options(int argc, char** argv) {
         opts.repro_strict = true;
     }
 
+    // Runtime profile aliases for bridge-native terminology.
+    if (opts.stdlib_profile == "core") {
+        opts.stdlib_profile = "minimal";
+    } else if (opts.stdlib_profile == "system") {
+        opts.stdlib_profile = "kernel";
+    } else if (opts.stdlib_profile == "desktop") {
+        opts.stdlib_profile = "full";
+    }
+
     return opts;
 }
 
@@ -209,9 +343,16 @@ void print_help() {
         "  explain <code>   Explain a diagnostic (e.g. E0001)\n"
         "  doctor           Check toolchain prerequisites\n"
         "  parse            Parse only (no backend)\n"
-        "  check            Parse + resolve only\n"
+        "  check            Parse + resolve + IR (no backend)\n"
         "  emit             Emit C++ only (no native compile)\n"
         "  build            Full build (default)\n"
+        "  profile          Build with stage timing/memory profile report\n"
+        "  reduce           Reduce a failing input to a minimal reproducer\n"
+        "  clean-cache      Remove .vitte-cache artifacts\n"
+        "  mod graph        Show module import graph and cycle report\n"
+        "  mod doctor       Lint module imports/aliases/collisions\n"
+        "  mod contract-diff Compare exported module contract between 2 inputs\n"
+        "  mod api-diff     Legacy alias for mod contract-diff\n"
         "\n"
         "Options:\n"
         "  -h, --help        Show this help message\n"
@@ -232,6 +373,7 @@ void print_help() {
         "  --hir-only        Lower to HIR only\n"
         "  --mir-only        Lower to MIR only\n"
         "  --dump-ast        Dump AST after parsing\n"
+        "  --dump-ir         Dump IR (alias of --dump-mir)\n"
         "  --dump-resolve    Dump symbol table after resolve\n"
         "  --dump-hir        Dump HIR after lowering\n"
         "  --dump-hir-json   Dump HIR as JSON\n"
@@ -239,6 +381,34 @@ void print_help() {
         "  --dump-hir=pretty|compact|json\n"
         "  --dump-mir        Dump MIR after lowering\n"
         "  --emit-cpp        Emit C++ only (no native compile)\n"
+        "  --diag-json       Emit diagnostics as JSON\n"
+        "  --diag-json-pretty Emit diagnostics as pretty JSON\n"
+        "  --diag-code-only Emit compact diagnostics (file:line:col CODE)\n"
+        "  --deterministic  Enable stable deterministic output ordering\n"
+        "  --cache-report   Print parse/resolve/ir cache hit/miss report\n"
+        "  --runtime-profile <name>\n"
+        "                    Select runtime profile: core|system|desktop|arduino\n"
+        "  --stdlib-profile <name>\n"
+        "                    Legacy alias for --runtime-profile (minimal|full|kernel|arduino)\n"
+        "  --dump-stdlib-map Dump stdlib module -> exported symbols map\n"
+        "  --dump-module-index Dump full module index as JSON\n"
+        "  --allow-experimental Allow importing modules under experimental namespace\n"
+        "  --warn-experimental Downgrade experimental import denial to warning\n"
+        "  --deny-internal  Enforce internal module privacy (default)\n"
+        "  --allow-internal Disable internal privacy check\n"
+        "  --json           For mod graph: output JSON\n"
+        "  --from <module>  For mod graph: focus subgraph from module\n"
+        "  --fix            For mod doctor: print concrete rewrite suggestions\n"
+        "  --max-imports N  For mod doctor: warn/error when fan-out exceeds N\n"
+        "  --old <file>     For mod contract-diff: old entry file\n"
+        "  --new <file>     For mod contract-diff: new entry file\n"
+        "  --strict-types    Enforce canonical type names (reject aliases)\n"
+        "  --strict-modules  Forbid glob imports, require alias + canonical path\n"
+        "  --strict-imports  Enforce explicit/canonical imports and reject unused aliases\n"
+        "  --strict-bridge   Alias of --strict-imports for native liaison policy\n"
+        "  --fail-on-warning Fail build/check when warnings are emitted\n"
+        "  --stage <name>    Force stage stop: parse|resolve|ir|backend\n"
+        "  --freestanding    Enable freestanding mode (runtime/flags)\n"
         "  --stdout          Emit C++ to stdout (implies emit)\n"
         "  --emit-obj        Emit a native object file (.o)\n"
         "  --repro           Enable reproducible object output flags\n"

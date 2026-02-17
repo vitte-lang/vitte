@@ -30,6 +30,7 @@ struct CppBackendOptions {
 
     /* Target triple / platform */
     std::string target;
+    bool freestanding = false;
 
     /* Emit a native object file only */
     bool emit_obj = false;

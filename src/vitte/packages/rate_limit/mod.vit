@@ -1,0 +1,68 @@
+<<<
+mod.vit
+package vitte/rate_limit
+>>>
+
+space vitte/rate_limit
+
+form RateLimiter {
+  capacity: int
+  window_ticks: int
+  window_start: int
+  used: int
+}
+
+proc limiter_new(capacity: int, window_ticks: int) -> RateLimiter {
+  let c = capacity
+  if c < 1 { c = 1 }
+
+  let w = window_ticks
+  if w < 1 { w = 1 }
+
+  give RateLimiter(c, w, 0, 0)
+}
+
+proc normalize(limiter: RateLimiter, now_tick: int) -> RateLimiter {
+  if now_tick - limiter.window_start >= limiter.window_ticks {
+    give RateLimiter(limiter.capacity, limiter.window_ticks, now_tick, 0)
+  }
+  give limiter
+}
+
+proc allow(limiter: RateLimiter, now_tick: int, cost: int) -> bool {
+  let l = normalize(limiter, now_tick)
+  if cost <= 0 { give true }
+  give l.used + cost <= l.capacity
+}
+
+proc consume(limiter: RateLimiter, now_tick: int, cost: int) -> RateLimiter {
+  let l = normalize(limiter, now_tick)
+  if cost <= 0 { give l }
+  if l.used + cost > l.capacity { give l }
+  give RateLimiter(l.capacity, l.window_ticks, l.window_start, l.used + cost)
+}
+
+proc remaining(limiter: RateLimiter, now_tick: int) -> int {
+  let l = normalize(limiter, now_tick)
+  let left = l.capacity - l.used
+  if left < 0 { give 0 }
+  give left
+}
+
+proc reset_at(limiter: RateLimiter, now_tick: int) -> int {
+  let l = normalize(limiter, now_tick)
+  give l.window_start + l.window_ticks
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/rate_limit
+role: Protection API via fenetre de limitation deterministe
+input_contract: Capacite cout et temps logique explicites
+output_contract: Decision allow stable avec remaining et reset_at calculables
+boundary: Ne fait pas d auth ni de metier; applique uniquement la politique de debit
+>>>

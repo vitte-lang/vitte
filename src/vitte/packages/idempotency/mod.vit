@@ -1,0 +1,108 @@
+<<<
+mod.vit
+package vitte/idempotency
+>>>
+
+space vitte/idempotency
+
+form IdempotencyRecord {
+  key: string
+  result: string
+  expires_at: int
+  active: bool
+}
+
+form IdempotencyStore {
+  records: [IdempotencyRecord]
+}
+
+proc store_new() -> IdempotencyStore {
+  give IdempotencyStore([])
+}
+
+proc expire_keys(store: IdempotencyStore, now_tick: int) -> IdempotencyStore {
+  let out: [IdempotencyRecord] = []
+  let i: int = 0
+  loop {
+    if i >= store.records.len { break }
+    let rec = store.records[i]
+    if rec.active && now_tick < rec.expires_at {
+      out = out.push(rec)
+    }
+    i = i + 1
+  }
+  give IdempotencyStore(out)
+}
+
+proc check_key(store: IdempotencyStore, key: string, now_tick: int) -> bool {
+  let s = expire_keys(store, now_tick)
+  let i: int = 0
+  loop {
+    if i >= s.records.len { break }
+    let rec = s.records[i]
+    if rec.active && rec.key == key {
+      give false
+    }
+    i = i + 1
+  }
+  give true
+}
+
+proc store_result(store: IdempotencyStore, key: string, result: string, ttl_ticks: int, now_tick: int) -> IdempotencyStore {
+  let s = expire_keys(store, now_tick)
+  let out: [IdempotencyRecord] = []
+  let found: bool = false
+
+  let expiry = now_tick + ttl_ticks
+  if ttl_ticks <= 0 { expiry = now_tick + 1 }
+
+  let i: int = 0
+  loop {
+    if i >= s.records.len { break }
+    let rec = s.records[i]
+    if rec.key == key {
+      out = out.push(IdempotencyRecord(key, result, expiry, true))
+      found = true
+    } else {
+      out = out.push(rec)
+    }
+    i = i + 1
+  }
+
+  if !found {
+    out = out.push(IdempotencyRecord(key, result, expiry, true))
+  }
+
+  give IdempotencyStore(out)
+}
+
+proc replay_result(store: IdempotencyStore, key: string, now_tick: int) -> string {
+  let s = expire_keys(store, now_tick)
+  let i: int = 0
+  loop {
+    if i >= s.records.len { break }
+    let rec = s.records[i]
+    if rec.active && rec.key == key {
+      give rec.result
+    }
+    i = i + 1
+  }
+  give ""
+}
+
+proc count(store: IdempotencyStore, now_tick: int) -> int {
+  give expire_keys(store, now_tick).records.len
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/idempotency
+role: Stabilise les retries metier par cle idempotente
+input_contract: Cle resultat TTL et horloge logique explicites
+output_contract: Relecture deterministe et prevention de double execution
+boundary: Ne contient pas le transport HTTP; gere uniquement la memorisation metier
+>>>

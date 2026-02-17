@@ -1,0 +1,77 @@
+<<<
+mod.vit
+package vitte/audit
+>>>
+
+space vitte/audit
+
+form AuditEvent {
+  ts: int
+  actor: string
+  action: string
+  target: string
+  trace_id: string
+  signature: string
+}
+
+form AuditLog {
+  events: [AuditEvent]
+}
+
+proc log_new() -> AuditLog {
+  give AuditLog([])
+}
+
+proc event(ts: int, actor: string, action: string, target: string, trace_id: string) -> AuditEvent {
+  give AuditEvent(ts, actor, action, target, trace_id, "")
+}
+
+proc append(log: AuditLog, e: AuditEvent) -> AuditLog {
+  let events = log.events.push(e)
+  give AuditLog(events)
+}
+
+proc sign(e: AuditEvent, secret: string) -> AuditEvent {
+  let sig = secret + ":" + e.actor + ":" + e.action + ":" + e.target
+  give AuditEvent(e.ts, e.actor, e.action, e.target, e.trace_id, sig)
+}
+
+proc verify(e: AuditEvent, secret: string) -> bool {
+  let expected = secret + ":" + e.actor + ":" + e.action + ":" + e.target
+  give e.signature == expected
+}
+
+proc query(log: AuditLog, actor: string, action: string) -> [AuditEvent] {
+  let out: [AuditEvent] = []
+  let i: int = 0
+  loop {
+    if i >= log.events.len { break }
+    let e = log.events[i]
+
+    let actor_ok = actor.len == 0 || e.actor == actor
+    let action_ok = action.len == 0 || e.action == action
+
+    if actor_ok && action_ok {
+      out = out.push(e)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc count(log: AuditLog) -> int {
+  give log.events.len
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/audit
+role: Journal d actions immuable orientee conformite
+input_contract: Evenements metier horodates avec trace_id explicite
+output_contract: Historique append-only verifiable et filtrable
+boundary: Ne decide pas l autorisation; conserve et verifie seulement la preuve d action
+>>>

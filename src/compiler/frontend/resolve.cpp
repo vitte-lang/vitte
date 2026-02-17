@@ -55,34 +55,34 @@ static std::string suggest_closest(
 
 static const std::unordered_map<std::string, std::string>& std_ident_suggestions() {
     static const std::unordered_map<std::string, std::string> kMap = {
-        {"print", "use std/io/print.print"},
-        {"println", "use std/io/print.println"},
-        {"eprint", "use std/io/print.eprint"},
-        {"eprintln", "use std/io/print.eprintln"},
-        {"print_or_panic", "use std/io/print.print_or_panic"},
-        {"println_or_panic", "use std/io/print.println_or_panic"},
-        {"read_all", "use std/io/read.read_all"},
-        {"read_fd", "use std/io/read.read_fd"},
-        {"reader_from_fd", "use std/io/read.reader_from_fd"},
-        {"reader_as_reader", "use std/io/read.reader_as_reader"},
-        {"read_exact", "use std/io/read.read_exact"},
-        {"read_to_end", "use std/io/read.read_to_end"},
-        {"read_some", "use std/io/stdin.read_some"},
-        {"read_exact_all", "use std/io/stdin.read_exact_all"},
-        {"read_stdin", "use std/io/stdin.read_stdin"},
-        {"stdin", "use std/io/stdin.stdin"},
-        {"as_reader", "use std/io/stdin.as_reader"},
-        {"write_all", "use std/io/write.write_all"},
-        {"write_fd", "use std/io/write.write_fd"},
-        {"writer_from_fd", "use std/io/write.writer_from_fd"},
-        {"writer_as_writer", "use std/io/write.writer_as_writer"},
-        {"write_string", "use std/io/write.write_string"},
-        {"flush", "use std/io/write.flush"},
-        {"write", "use std/io/stdout.write"},
-        {"writeln", "use std/io/stdout.writeln"},
-        {"write_or_panic", "use std/io/stdout.write_or_panic"},
-        {"writeln_or_panic", "use std/io/stdout.writeln_or_panic"},
-        {"path", "use std/io/path"},
+        {"print", "use std/bridge/print.print"},
+        {"println", "use std/bridge/print.println"},
+        {"eprint", "use std/bridge/print.eprint"},
+        {"eprintln", "use std/bridge/print.eprintln"},
+        {"print_or_panic", "use std/bridge/print.print_or_panic"},
+        {"println_or_panic", "use std/bridge/print.println_or_panic"},
+        {"read_all", "use std/bridge/read.read_all"},
+        {"read_fd", "use std/bridge/read.read_fd"},
+        {"reader_from_fd", "use std/bridge/read.reader_from_fd"},
+        {"reader_as_reader", "use std/bridge/read.reader_as_reader"},
+        {"read_exact", "use std/bridge/read.read_exact"},
+        {"read_to_end", "use std/bridge/read.read_to_end"},
+        {"read_some", "use std/bridge/read.read_some"},
+        {"read_exact_all", "use std/bridge/read.read_exact_all"},
+        {"read_stdin", "use std/bridge/read.read_stdin"},
+        {"stdin", "use std/bridge/read.stdin"},
+        {"as_reader", "use std/bridge/read.as_reader"},
+        {"write_all", "use std/bridge/io.write_all"},
+        {"write_fd", "use std/bridge/io.write_fd"},
+        {"writer_from_fd", "use std/bridge/io.writer_from_fd"},
+        {"writer_as_writer", "use std/bridge/io.writer_as_writer"},
+        {"write_string", "use std/bridge/io.write_string"},
+        {"flush", "use std/bridge/io.flush"},
+        {"write", "use std/bridge/print.write"},
+        {"writeln", "use std/bridge/print.writeln"},
+        {"write_or_panic", "use std/bridge/print.write_or_panic"},
+        {"writeln_or_panic", "use std/bridge/print.writeln_or_panic"},
+        {"path", "use std/bridge/path"},
         {"fs", "use std/io/fs"},
         {"Option", "use std/core/option.Option"},
         {"Result", "use std/core/result.Result"},
@@ -104,16 +104,82 @@ static const std::unordered_map<std::string, std::string>& std_type_suggestions(
     return kMap;
 }
 
-static bool is_known_import_type(std::string_view name) {
-    static const std::unordered_set<std::string_view> kTypes = {
+static const std::unordered_map<std::string, std::string>& common_type_alias_suggestions() {
+    static const std::unordered_map<std::string, std::string> kMap = {
+        {"str", "string"},
+        {"integer", "int"},
+        {"int32", "i32"},
+        {"int64", "i64"},
+        {"uint32", "u32"},
+        {"uint64", "u64"},
+        {"int128", "i128"},
+        {"uint128", "u128"},
+    };
+    return kMap;
+}
+
+const std::vector<std::string>& canonical_builtin_type_names() {
+    static const std::vector<std::string> kNames = {
+        "bool", "string", "int", "i32", "i64", "i128", "u32", "u64", "u128",
+    };
+    return kNames;
+}
+
+const std::vector<std::string>& builtin_type_names() {
+    static const std::vector<std::string> kNames = {
         "bool", "string", "int",
         "i8", "i16", "i32", "i64", "i128",
         "u8", "u16", "u32", "u64", "u128",
         "isize", "usize",
         "f32", "f64",
-        "Unit", "Never",
     };
-    return kTypes.count(name) > 0;
+    return kNames;
+}
+
+static void emit_unknown_type_error(
+    diag::DiagnosticEngine& diag,
+    const std::string& name,
+    ast::SourceSpan span
+) {
+    std::string msg = "unknown type '" + name + "' (did you mean: int, i32, i64, i128, u32, u64, u128, bool, string?)";
+    diag.error_code("E1002", std::move(msg), span);
+}
+
+static void emit_unknown_identifier_error(
+    diag::DiagnosticEngine& diag,
+    const SymbolTable& symbols,
+    const std::string& name,
+    ast::SourceSpan span
+) {
+    diag::error(diag, diag::DiagId::UnknownIdentifier, span);
+
+    auto in_scope = symbols.in_scope_names();
+    if (auto suggestion = suggest_closest(name, in_scope); !suggestion.empty()) {
+        diag.note("did you mean '" + suggestion + "'?", span);
+    }
+
+    auto top = symbols.in_scope_names(3);
+    if (!top.empty()) {
+        std::string list = top.front();
+        for (std::size_t i = 1; i < top.size(); ++i) {
+            list += ", " + top[i];
+        }
+        diag.note("in scope: " + list, span);
+    }
+
+    auto it = std_ident_suggestions().find(name);
+    if (it != std_ident_suggestions().end()) {
+        diag.note("try: " + it->second, span);
+    }
+}
+
+static bool is_known_import_type(std::string_view name) {
+    for (const auto& builtin : builtin_type_names()) {
+        if (builtin == name) {
+            return true;
+        }
+    }
+    return name == "Unit" || name == "Never";
 }
 
 static bool path_mentions_types(const ast::ModulePath& path) {
@@ -180,16 +246,22 @@ std::vector<std::string> SymbolTable::in_scope_names(std::size_t limit) const {
     return out;
 }
 
-Resolver::Resolver(diag::DiagnosticEngine& diagnostics)
-    : diag_(diagnostics) {
+Resolver::Resolver(diag::DiagnosticEngine& diagnostics,
+                   bool strict_types,
+                   bool strict_imports,
+                   bool strict_modules)
+    : diag_(diagnostics),
+      strict_types_(strict_types),
+      strict_imports_(strict_imports),
+      strict_modules_(strict_modules) {
     symbols_.push_scope();
     define_builtin_types();
 }
 
 void Resolver::define_builtin_types() {
-    types_.add_builtin("bool");
-    types_.add_builtin("string");
-    types_.add_builtin("int");
+    for (const auto& builtin : builtin_type_names()) {
+        types_.add_builtin(builtin);
+    }
     types_.add_builtin("builtin.bool");
     types_.add_builtin("builtin.char");
     types_.add_builtin("builtin.i8");
@@ -212,6 +284,12 @@ void Resolver::define_builtin_types() {
     symbols_.define({"bool", SymbolKind::Form, {}});
     symbols_.define({"string", SymbolKind::Form, {}});
     symbols_.define({"int", SymbolKind::Form, {}});
+    symbols_.define({"i32", SymbolKind::Form, {}});
+    symbols_.define({"i64", SymbolKind::Form, {}});
+    symbols_.define({"i128", SymbolKind::Form, {}});
+    symbols_.define({"u32", SymbolKind::Form, {}});
+    symbols_.define({"u64", SymbolKind::Form, {}});
+    symbols_.define({"u128", SymbolKind::Form, {}});
     symbols_.define({"builtin", SymbolKind::Var, {}});
 }
 
@@ -271,6 +349,17 @@ bool Resolver::resolve_module(ast::AstContext& ctx, ast::ModuleId module_id) {
             resolve_decl(ctx, decl_id);
         }
     }
+    if (strict_imports_) {
+        for (const auto& imported : explicit_imports_) {
+            if (used_explicit_imports_.count(imported.first) == 0) {
+                diag_.error_code(
+                    "E1012",
+                    "unused import alias '" + imported.first + "' in strict-imports mode",
+                    imported.second
+                );
+            }
+        }
+    }
     return !diag_.has_errors();
 }
 
@@ -302,9 +391,23 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
         }
         case NodeKind::NamedType: {
             auto& t = static_cast<const NamedType&>(node);
-            auto id = types_.lookup(t.ident.name);
+            if (strict_imports_ && explicit_imports_.count(t.ident.name) != 0) {
+                used_explicit_imports_.insert(t.ident.name);
+            }
+            std::string lookup_name = t.ident.name;
+            if (auto alias = common_type_alias_suggestions().find(t.ident.name);
+                alias != common_type_alias_suggestions().end()) {
+                if (strict_types_) {
+                    std::string msg = "type alias '" + t.ident.name + "' is forbidden in strict mode; use '" + alias->second + "'";
+                    diag_.error_code("E1002", std::move(msg), t.ident.span);
+                } else {
+                    diag_.warning("type alias '" + t.ident.name + "' is accepted for compatibility; prefer '" + alias->second + "'", t.ident.span);
+                }
+                lookup_name = alias->second;
+            }
+            auto id = types_.lookup(lookup_name);
             if (id == static_cast<types::TypeId>(-1)) {
-                diag::error(diag_, diag::DiagId::UnknownType, t.ident.span);
+                emit_unknown_type_error(diag_, t.ident.name, t.ident.span);
                 std::vector<std::string> names;
                 names.reserve(types_.all().size());
                 for (const auto& info : types_.all()) {
@@ -312,6 +415,13 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
                 }
                 if (auto suggestion = suggest_closest(t.ident.name, names); !suggestion.empty()) {
                     diag_.note("did you mean '" + suggestion + "'?", t.ident.span);
+                }
+                auto alias = common_type_alias_suggestions().find(t.ident.name);
+                if (alias != common_type_alias_suggestions().end()) {
+                    diag_.note("did you mean '" + alias->second + "'?", t.ident.span);
+                    if (strict_types_) {
+                        diag_.note("strict-types: aliases are forbidden, use canonical type names", t.ident.span);
+                    }
                 }
                 std::vector<std::string> builtins;
                 for (const auto& info : types_.all()) {
@@ -336,7 +446,21 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
         }
         case NodeKind::GenericType: {
             auto& t = static_cast<const GenericType&>(node);
-            auto id = types_.lookup(t.base_ident.name);
+            if (strict_imports_ && explicit_imports_.count(t.base_ident.name) != 0) {
+                used_explicit_imports_.insert(t.base_ident.name);
+            }
+            std::string lookup_name = t.base_ident.name;
+            if (auto alias = common_type_alias_suggestions().find(t.base_ident.name);
+                alias != common_type_alias_suggestions().end()) {
+                if (strict_types_) {
+                    std::string msg = "type alias '" + t.base_ident.name + "' is forbidden in strict mode; use '" + alias->second + "'";
+                    diag_.error_code("E1002", std::move(msg), t.base_ident.span);
+                } else {
+                    diag_.warning("type alias '" + t.base_ident.name + "' is accepted for compatibility; prefer '" + alias->second + "'", t.base_ident.span);
+                }
+                lookup_name = alias->second;
+            }
+            auto id = types_.lookup(lookup_name);
             if (id == static_cast<types::TypeId>(-1)) {
                 diag::error(diag_, diag::DiagId::UnknownGenericBaseType, t.base_ident.span);
                 std::vector<std::string> names;
@@ -468,6 +592,22 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
         case NodeKind::UseDecl:
         {
             auto& d = static_cast<UseDecl&>(decl);
+            if (strict_modules_ && d.is_glob) {
+                diag_.error_code("E1019", "glob imports are forbidden in strict-modules mode", d.span);
+                diag_.note("replace 'use ...*' with explicit imports", d.span);
+            }
+            if (strict_imports_) {
+                if (d.path.relative_depth > 0) {
+                    diag_.error_code("E1013",
+                                     "non-canonical import path is forbidden in strict-imports mode (remove relative dots)",
+                                     d.path.span);
+                }
+                if (!d.alias.has_value()) {
+                    diag_.error_code("E1011",
+                                     "explicit alias is required for 'use' in strict-imports mode",
+                                     d.span);
+                }
+            }
             std::string name;
             if (d.alias.has_value()) {
                 name = d.alias->name;
@@ -476,8 +616,29 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
             }
             if (!name.empty()) {
                 symbols_.define({name, SymbolKind::Var, d.span});
+                if (strict_imports_ && d.alias.has_value()) {
+                    explicit_imports_[name] = d.alias->span;
+                }
                 if (is_known_import_type(name) || path_mentions_types(d.path)) {
                     types_.add_named(name);
+                }
+            }
+            break;
+        }
+        case NodeKind::PullDecl: {
+            auto& d = static_cast<PullDecl&>(decl);
+            if (strict_imports_) {
+                if (d.path.relative_depth > 0) {
+                    diag_.error_code("E1013",
+                                     "non-canonical import path is forbidden in strict-imports mode (remove relative dots)",
+                                     d.path.span);
+                }
+                if (!d.alias.has_value()) {
+                    diag_.error_code("E1011",
+                                     "explicit alias is required for 'pull' in strict-imports mode",
+                                     d.span);
+                } else {
+                    explicit_imports_[d.alias->name] = d.alias->span;
                 }
             }
             break;
@@ -563,23 +724,7 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
         case NodeKind::SetStmt: {
             auto& s = static_cast<SetStmt&>(stmt);
             if (!symbols_.lookup(s.ident.name)) {
-                diag::error(diag_, diag::DiagId::UnknownIdentifier, s.ident.span);
-                auto in_scope = symbols_.in_scope_names();
-                if (auto suggestion = suggest_closest(s.ident.name, in_scope); !suggestion.empty()) {
-                    diag_.note("did you mean '" + suggestion + "'?", s.ident.span);
-                }
-                auto top = symbols_.in_scope_names(3);
-                if (!top.empty()) {
-                    std::string list = top.front();
-                    for (std::size_t i = 1; i < top.size(); ++i) {
-                        list += ", " + top[i];
-                    }
-                    diag_.note("in scope: " + list, s.ident.span);
-                }
-                auto it = std_ident_suggestions().find(s.ident.name);
-                if (it != std_ident_suggestions().end()) {
-                    diag_.note("try: " + it->second, s.ident.span);
-                }
+                emit_unknown_identifier_error(diag_, symbols_, s.ident.name, s.ident.span);
             }
             resolve_expr(ctx, s.value);
             break;
@@ -701,24 +846,11 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
     switch (expr.kind) {
         case NodeKind::IdentExpr: {
             auto& e = static_cast<IdentExpr&>(expr);
+            if (strict_imports_ && explicit_imports_.count(e.ident.name) != 0) {
+                used_explicit_imports_.insert(e.ident.name);
+            }
             if (!symbols_.lookup(e.ident.name)) {
-                diag::error(diag_, diag::DiagId::UnknownIdentifier, e.ident.span);
-                auto in_scope = symbols_.in_scope_names();
-                if (auto suggestion = suggest_closest(e.ident.name, in_scope); !suggestion.empty()) {
-                    diag_.note("did you mean '" + suggestion + "'?", e.ident.span);
-                }
-                auto top = symbols_.in_scope_names(3);
-                if (!top.empty()) {
-                    std::string list = top.front();
-                    for (std::size_t i = 1; i < top.size(); ++i) {
-                        list += ", " + top[i];
-                    }
-                    diag_.note("in scope: " + list, e.ident.span);
-                }
-                auto it = std_ident_suggestions().find(e.ident.name);
-                if (it != std_ident_suggestions().end()) {
-                    diag_.note("try: " + it->second, e.ident.span);
-                }
+                emit_unknown_identifier_error(diag_, symbols_, e.ident.name, e.ident.span);
             }
             break;
         }
@@ -774,6 +906,43 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
             auto& e = static_cast<AsExpr&>(expr);
             resolve_expr(ctx, e.value);
             resolve_type(ctx, e.type);
+            std::string target_name;
+            if (e.type != kInvalidAstId) {
+                const AstNode& tnode = ctx.node(e.type);
+                if (tnode.kind == NodeKind::BuiltinType) {
+                    target_name = static_cast<const BuiltinType&>(tnode).name;
+                } else if (tnode.kind == NodeKind::NamedType) {
+                    target_name = static_cast<const NamedType&>(tnode).ident.name;
+                }
+            }
+            if (!target_name.empty()) {
+                const bool target_unsigned =
+                    (target_name == "u32" || target_name == "u64" || target_name == "u128");
+                if (target_unsigned && e.value != kInvalidAstId) {
+                    const AstNode& value_node = ctx.node(e.value);
+                    bool negative_literal = false;
+                    if (value_node.kind == NodeKind::LiteralExpr) {
+                        const auto& lit = static_cast<const LiteralExpr&>(value_node);
+                        if (lit.lit_kind == LiteralKind::Int) {
+                            negative_literal = !lit.value.empty() && lit.value[0] == '-';
+                        }
+                    } else if (value_node.kind == NodeKind::UnaryExpr) {
+                        const auto& un = static_cast<const UnaryExpr&>(value_node);
+                        if (un.op == UnaryOp::Neg && un.expr != kInvalidAstId) {
+                            const AstNode& inner = ctx.node(un.expr);
+                            if (inner.kind == NodeKind::LiteralExpr) {
+                                const auto& lit = static_cast<const LiteralExpr&>(inner);
+                                negative_literal = lit.lit_kind == LiteralKind::Int;
+                            }
+                        }
+                    }
+                    if (negative_literal) {
+                        std::string msg = "invalid cast: signed value cannot be cast to unsigned type '" + target_name + "'";
+                        diag_.error_code("E1007", std::move(msg), e.span);
+                        diag_.note("use a non-negative source value or normalize before cast", e.span);
+                    }
+                }
+            }
             break;
         }
         case NodeKind::InvokeExpr: {
@@ -788,24 +957,11 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
         }
         case NodeKind::CallNoParenExpr: {
             auto& e = static_cast<CallNoParenExpr&>(expr);
+            if (strict_imports_ && explicit_imports_.count(e.callee.name) != 0) {
+                used_explicit_imports_.insert(e.callee.name);
+            }
             if (!symbols_.lookup(e.callee.name)) {
-                diag::error(diag_, diag::DiagId::UnknownIdentifier, e.callee.span);
-                auto in_scope = symbols_.in_scope_names();
-                if (auto suggestion = suggest_closest(e.callee.name, in_scope); !suggestion.empty()) {
-                    diag_.note("did you mean '" + suggestion + "'?", e.callee.span);
-                }
-                auto top = symbols_.in_scope_names(3);
-                if (!top.empty()) {
-                    std::string list = top.front();
-                    for (std::size_t i = 1; i < top.size(); ++i) {
-                        list += ", " + top[i];
-                    }
-                    diag_.note("in scope: " + list, e.callee.span);
-                }
-                auto it = std_ident_suggestions().find(e.callee.name);
-                if (it != std_ident_suggestions().end()) {
-                    diag_.note("try: " + it->second, e.callee.span);
-                }
+                emit_unknown_identifier_error(diag_, symbols_, e.callee.name, e.callee.span);
             }
             resolve_expr(ctx, e.arg);
             break;

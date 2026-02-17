@@ -1,0 +1,106 @@
+<<<
+mod.vit
+package vitte/policy
+>>>
+
+space vitte/policy
+
+pick Effect {
+  Allow
+  Deny
+}
+
+form PolicyRule {
+  subject: string
+  action: string
+  resource: string
+  effect: Effect
+  reason: string
+}
+
+form PolicySet {
+  default_allow: bool
+  rules: [PolicyRule]
+}
+
+proc policy_load(default_allow: bool) -> PolicySet {
+  give PolicySet(default_allow, [])
+}
+
+proc add_rule(set: PolicySet, subject: string, action: string, resource: string, effect: Effect, reason: string) -> PolicySet {
+  let rules = set.rules.push(PolicyRule(subject, action, resource, effect, reason))
+  give PolicySet(set.default_allow, rules)
+}
+
+proc matches(rule: PolicyRule, subject: string, action: string, resource: string) -> bool {
+  let subject_ok = rule.subject == "*" || rule.subject == subject
+  let action_ok = rule.action == "*" || rule.action == action
+  let resource_ok = rule.resource == "*" || rule.resource == resource
+  give subject_ok && action_ok && resource_ok
+}
+
+proc allow(set: PolicySet, subject: string, action: string, resource: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= set.rules.len { break }
+    let rule = set.rules[i]
+    if matches(rule, subject, action, resource) {
+      give rule.effect == Effect.Allow
+    }
+    i = i + 1
+  }
+  give set.default_allow
+}
+
+proc deny_reason(set: PolicySet, subject: string, action: string, resource: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= set.rules.len { break }
+    let rule = set.rules[i]
+    if matches(rule, subject, action, resource) {
+      if rule.effect == Effect.Deny {
+        give rule.reason
+      }
+      give ""
+    }
+    i = i + 1
+  }
+
+  if set.default_allow {
+    give ""
+  }
+  give "default-deny"
+}
+
+proc explain(set: PolicySet, subject: string, action: string, resource: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= set.rules.len { break }
+    let rule = set.rules[i]
+    if matches(rule, subject, action, resource) {
+      if rule.effect == Effect.Allow {
+        give "allow:" + rule.reason
+      }
+      give "deny:" + rule.reason
+    }
+    i = i + 1
+  }
+
+  if set.default_allow {
+    give "allow:default"
+  }
+  give "deny:default"
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/policy
+role: RBAC ABAC centralise et explicable
+input_contract: Sujet action resource et regles policy explicites
+output_contract: Decision allow deny stable avec raison lisible
+boundary: Ne fait pas d authentification; applique uniquement les regles d autorisation
+>>>

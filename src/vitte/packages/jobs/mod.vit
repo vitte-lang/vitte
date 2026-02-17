@@ -1,0 +1,131 @@
+<<<
+mod.vit
+package vitte/jobs
+>>>
+
+space vitte/jobs
+
+pick JobState {
+  Pending
+  Inflight
+  Done
+  Failed
+}
+
+form Job {
+  id: int
+  payload: string
+  attempts: int
+  state: JobState
+}
+
+form JobQueue {
+  next_id: int
+  max_attempts: int
+  pending: [Job]
+  inflight: [Job]
+  done: [Job]
+  dlq: [Job]
+}
+
+proc queue_new(max_attempts: int) -> JobQueue {
+  let max = max_attempts
+  if max < 1 { max = 1 }
+  give JobQueue(0, max, [], [], [], [])
+}
+
+proc enqueue(queue: JobQueue, payload: string) -> JobQueue {
+  let job = Job(queue.next_id, payload, 0, JobState.Pending)
+  let pending = queue.pending.push(job)
+  give JobQueue(queue.next_id + 1, queue.max_attempts, pending, queue.inflight, queue.done, queue.dlq)
+}
+
+proc drop_first(jobs: [Job]) -> [Job] {
+  let out: [Job] = []
+  let i: int = 1
+  loop {
+    if i >= jobs.len { break }
+    out = out.push(jobs[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc dequeue(queue: JobQueue) -> JobQueue {
+  if queue.pending.len == 0 { give queue }
+  let first = queue.pending[0]
+  let pending = drop_first(queue.pending)
+  let inflight = queue.inflight.push(Job(first.id, first.payload, first.attempts, JobState.Inflight))
+  give JobQueue(queue.next_id, queue.max_attempts, pending, inflight, queue.done, queue.dlq)
+}
+
+proc ack(queue: JobQueue, job_id: int) -> JobQueue {
+  let inflight: [Job] = []
+  let done = queue.done
+  let i: int = 0
+  loop {
+    if i >= queue.inflight.len { break }
+    let job = queue.inflight[i]
+    if job.id == job_id {
+      done = done.push(Job(job.id, job.payload, job.attempts, JobState.Done))
+    } else {
+      inflight = inflight.push(job)
+    }
+    i = i + 1
+  }
+  give JobQueue(queue.next_id, queue.max_attempts, queue.pending, inflight, done, queue.dlq)
+}
+
+proc nack(queue: JobQueue, job_id: int) -> JobQueue {
+  let inflight: [Job] = []
+  let pending = queue.pending
+  let dlq = queue.dlq
+
+  let i: int = 0
+  loop {
+    if i >= queue.inflight.len { break }
+    let job = queue.inflight[i]
+    if job.id == job_id {
+      let attempts = job.attempts + 1
+      if attempts >= queue.max_attempts {
+        dlq = dlq.push(Job(job.id, job.payload, attempts, JobState.Failed))
+      } else {
+        pending = pending.push(Job(job.id, job.payload, attempts, JobState.Pending))
+      }
+    } else {
+      inflight = inflight.push(job)
+    }
+    i = i + 1
+  }
+
+  give JobQueue(queue.next_id, queue.max_attempts, pending, inflight, queue.done, dlq)
+}
+
+proc dead_letter(queue: JobQueue) -> [Job] {
+  give queue.dlq
+}
+
+proc pending_count(queue: JobQueue) -> int {
+  give queue.pending.len
+}
+
+proc inflight_count(queue: JobQueue) -> int {
+  give queue.inflight.len
+}
+
+proc done_count(queue: JobQueue) -> int {
+  give queue.done.len
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/jobs
+role: File de jobs robuste avec reprise et dead letter
+input_contract: Jobs explicites avec tentative et max_attempts definis
+output_contract: Transitions d etat deterministes pending inflight done dlq
+boundary: Ne remplace pas l orchestrateur externe; gere seulement le cycle de traitement
+>>>

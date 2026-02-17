@@ -151,13 +151,14 @@ static context::CppContext build_context(const CppBackendOptions& options) {
     ctx.set_debug(options.debug);
     ctx.set_optimize(options.optimize);
     ctx.set_repro_strict(options.repro_strict);
+    const bool freestanding = is_kernel_target(options.target) || options.freestanding;
     if (is_arduino_target(options.target)) {
         ctx.set_entry_mode(context::CppContext::EntryMode::Arduino);
     }
-    if (is_kernel_target(options.target)) {
+    if (freestanding) {
         ctx.set_entry_mode(context::CppContext::EntryMode::Freestanding);
     }
-    if (is_kernel_target(options.target)) {
+    if (freestanding) {
         ctx.add_include("\"cstdint\"");
         ctx.add_include("\"cstddef\"");
     } else {
@@ -184,7 +185,7 @@ bool compile_cpp_backend(
     const CppBackendOptions& options
 ) {
     if (options.emit_obj && (is_arduino_target(options.target) || is_kernel_target(options.target))) {
-        std::cerr << "[cpp-backend] emit-obj is not supported for arduino or kernel targets\n";
+        std::cerr << "[cpp-backend] error[E3004]: emit-obj is not supported for arduino or kernel targets\n";
         return false;
     }
 
@@ -199,7 +200,7 @@ bool compile_cpp_backend(
         std::filesystem::path(options.work_dir) / "vitte_out.cpp";
 
     if (!emit::emit_file(cpp_path.string(), tu, ctx)) {
-        std::cerr << "[cpp-backend] failed to emit C++ file\n";
+        std::cerr << "[cpp-backend] error[E3005]: failed to emit C++ file\n";
         return false;
     }
 
@@ -249,7 +250,7 @@ bool compile_cpp_backend(
                 output_exe,
                 arduino_opts
             )) {
-            std::cerr << "[cpp-backend] arduino-cli invocation failed\n";
+            std::cerr << "[cpp-backend] error[E3006]: arduino-cli invocation failed\n";
             return false;
         }
     } else if (options.target == "kernel-x86_64-uefi") {
@@ -266,7 +267,7 @@ bool compile_cpp_backend(
         clang_opts.cxx_flags.push_back("-fno-pie");
         auto lld_path = find_lld();
         if (!lld_path) {
-            std::cerr << "[cpp-backend] lld not found; install llvm (ld.lld) or set LLD_PATH\n";
+            std::cerr << "[cpp-backend] error[E3007]: lld not found; install llvm (ld.lld) or set LLD_PATH\n";
             return false;
         }
         clang_opts.cxx_flags.push_back("-B" + lld_path->parent_path().string());
@@ -289,7 +290,7 @@ bool compile_cpp_backend(
                 output_exe,
                 clang_opts
             )) {
-            std::cerr << "[cpp-backend] kernel (uefi) clang invocation failed\n";
+            std::cerr << "[cpp-backend] error[E3008]: kernel (uefi) clang invocation failed\n";
             return false;
         }
     } else if (options.target == "kernel-x86_64-grub") {
@@ -305,7 +306,7 @@ bool compile_cpp_backend(
         clang_opts.cxx_flags.push_back("-fno-pie");
         auto lld_path = find_lld();
         if (!lld_path) {
-            std::cerr << "[cpp-backend] lld not found; install llvm (ld.lld) or set LLD_PATH\n";
+            std::cerr << "[cpp-backend] error[E3007]: lld not found; install llvm (ld.lld) or set LLD_PATH\n";
             return false;
         }
         clang_opts.cxx_flags.push_back("-B" + lld_path->parent_path().string());
@@ -353,7 +354,7 @@ bool compile_cpp_backend(
                 output_exe,
                 clang_opts
             )) {
-            std::cerr << "[cpp-backend] kernel (grub) clang invocation failed\n";
+            std::cerr << "[cpp-backend] error[E3009]: kernel (grub) clang invocation failed\n";
             return false;
         }
     } else {
@@ -366,6 +367,7 @@ bool compile_cpp_backend(
         clang_opts.opt_level = options.opt_level;
         clang_opts.verbose = options.verbose;
         clang_opts.emit_obj = options.emit_obj;
+        clang_opts.freestanding = options.freestanding;
         // Generated MIR->C++ often contains CFG labels and staging locals that are
         // intentionally not consumed in final code paths.
         clang_opts.cxx_flags.push_back("-Wno-unused-label");
@@ -373,7 +375,7 @@ bool compile_cpp_backend(
         clang_opts.cxx_flags.push_back("-Wno-unused-variable");
         clang_opts.cxx_flags.push_back("-Wno-c++23-extensions");
 
-        if (!options.emit_obj) {
+        if (!options.emit_obj && !options.freestanding) {
 #if defined(__linux__) || defined(__FreeBSD__)
             clang_opts.libraries.push_back("stdc++");
 #endif
@@ -483,7 +485,7 @@ bool compile_cpp_backend(
         }
 
         std::filesystem::path runtime_cpp = repo_root / "src/compiler/backends/runtime/vitte_runtime.cpp";
-        if (!options.emit_obj && std::filesystem::exists(runtime_cpp)) {
+        if (!options.emit_obj && !options.freestanding && std::filesystem::exists(runtime_cpp)) {
             clang_opts.extra_sources.push_back(runtime_cpp.string());
         }
 
@@ -496,7 +498,7 @@ bool compile_cpp_backend(
                 output_exe,
                 clang_opts
             )) {
-            std::cerr << "[cpp-backend] clang invocation failed\n";
+            std::cerr << "[cpp-backend] error[E3010]: clang invocation failed\n";
             return false;
         }
     }

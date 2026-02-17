@@ -13,10 +13,16 @@ namespace vitte::frontend::modules {
 struct ModuleIndex {
     std::unordered_map<std::string, std::string> path_to_prefix;
     std::unordered_map<std::string, std::unordered_set<std::string>> exports;
+    std::unordered_map<std::string, std::unordered_set<std::string>> imports;
+    std::unordered_map<std::string, std::string> module_files;
+    std::unordered_map<std::string, std::size_t> module_loc;
 };
 
 struct LoadOptions {
     std::string stdlib_profile = "full";
+    bool allow_experimental = false;
+    bool warn_experimental = false;
+    bool deny_internal = true;
 };
 
 std::string module_prefix(const ast::ModulePath& path);
@@ -33,8 +39,13 @@ bool load_modules(ast::AstContext& ctx,
 
 void rewrite_member_access(ast::AstContext& ctx,
                            ast::ModuleId root,
-                           const ModuleIndex& index);
+                           const ModuleIndex& index,
+                           diag::DiagnosticEngine* diagnostics = nullptr);
 
 void dump_stdlib_map(std::ostream& os, const ModuleIndex& index);
+void dump_module_index_json(std::ostream& os,
+                            const ModuleIndex& index,
+                            const std::string& profile,
+                            bool allow_experimental);
 
 } // namespace vitte::frontend::modules

@@ -1,0 +1,80 @@
+<<<
+mod.vit
+package vitte/contracts
+>>>
+
+space vitte/contracts
+
+form Contract {
+  name: string
+  version: string
+  schema_hash: string
+  required_fields: [string]
+}
+
+form ContractCheck {
+  ok: bool
+  reason: string
+}
+
+proc contract_load(name: string, version: string, schema_hash: string, required_fields: [string]) -> Contract {
+  give Contract(name, version, schema_hash, required_fields)
+}
+
+proc contains(text: string, needle: string) -> bool {
+  if needle.len == 0 { give true }
+  if text.len < needle.len { give false }
+
+  let limit = text.len - needle.len
+  let i: int = 0
+  loop {
+    if i > limit { break }
+    if text.slice(i, i + needle.len) == needle { give true }
+    i = i + 1
+  }
+
+  give false
+}
+
+proc contract_verify(contract: Contract, payload: string) -> ContractCheck {
+  if contract.schema_hash.len == 0 {
+    give ContractCheck(false, "missing-schema-hash")
+  }
+
+  let i: int = 0
+  loop {
+    if i >= contract.required_fields.len { break }
+    let field = contract.required_fields[i]
+    if !contains(payload, field) {
+      give ContractCheck(false, "missing-field:" + field)
+    }
+    i = i + 1
+  }
+
+  give ContractCheck(true, "ok")
+}
+
+proc snapshot(contract: Contract) -> string {
+  give contract.name + "@" + contract.version + "#" + contract.schema_hash
+}
+
+proc diff(previous: Contract, current: Contract) -> string {
+  if previous.name != current.name { give "breaking:name" }
+  if previous.schema_hash == current.schema_hash { give "same" }
+  if previous.version == current.version { give "breaking:schema" }
+  if current.required_fields.len < previous.required_fields.len { give "breaking:fields" }
+  give "changed"
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/contracts
+role: Validation de contrats API DB modules
+input_contract: Definitions versionnees et payloads explicites
+output_contract: Verdict verifiable, snapshot stable et diff actionnable
+boundary: Ne genere pas les schemas; verifie et compare seulement les contrats fournis
+>>>

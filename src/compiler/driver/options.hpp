@@ -12,6 +12,9 @@ struct Options {
     bool init_project = false;
     std::string init_dir;
     bool explain_diagnostic = false;
+    bool reduce_reproducer = false;
+    bool clean_cache = false;
+    bool profile_mode = false;
     bool run_doctor = false;
     bool emit_stdout = false;
     bool emit_obj = false;
@@ -33,6 +36,7 @@ struct Options {
 
     /* Dump AST after parsing */
     bool dump_ast = false;
+    bool dump_ir = false;
     bool dump_resolve = false;
     bool dump_hir = false;
     bool dump_mir = false;
@@ -42,6 +46,30 @@ struct Options {
 
     /* Emit C++ only (no native compilation) */
     bool emit_cpp = false;
+    bool diag_json = false;
+    bool diag_json_pretty = false;
+    bool strict_types = false;
+    bool fail_on_warning = false;
+    bool diag_code_only = false;
+    bool deterministic = false;
+    bool cache_report = false;
+    bool strict_imports = false;
+    bool strict_modules = false;
+    bool dump_stdlib_map = false;
+    bool dump_module_index = false;
+    bool allow_experimental = false;
+    bool warn_experimental = false;
+    bool deny_internal = true;
+    bool mod_graph = false;
+    bool mod_graph_json = false;
+    std::string mod_graph_from;
+    bool mod_doctor = false;
+    bool mod_doctor_fix = false;
+    int max_imports = 0;
+    bool mod_api_diff = false;
+    std::string api_diff_old;
+    std::string api_diff_new;
+    std::string stdlib_profile = "full";
 
     /* Debug symbols */
     bool debug = false;
@@ -59,6 +87,8 @@ struct Options {
 
     /* Target platform */
     std::string target;
+    bool freestanding = false;
+    std::string stage;
 
     /* Arduino options */
     bool arduino_upload = false;

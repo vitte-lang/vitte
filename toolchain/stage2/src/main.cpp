@@ -129,10 +129,9 @@ static int forward_to_vitte(const std::string& vitte_path, int argc, char** argv
         } else if (arg == "-o" && i + 1 < argc) {
             passthrough.push_back(arg);
             passthrough.push_back(argv[++i]);
-        } else if (arg == "--stage") {
-            if (i + 1 < argc) {
-                ++i;
-            }
+        } else if (arg == "--stage" && i + 1 < argc) {
+            passthrough.push_back(arg);
+            passthrough.push_back(argv[++i]);
         } else if (arg == "--release") {
             // ignore
         } else if (!arg.empty() && arg[0] == '-') {

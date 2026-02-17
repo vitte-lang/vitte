@@ -17,10 +17,78 @@
 
 #include <cerrno>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
+
+#include <openssl/sha.h>
 
 namespace vitte::driver {
+
+static std::string hash_content(const std::string& text) {
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char*>(text.data()), text.size(), digest);
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0');
+    for (unsigned char b : digest) {
+        oss << std::setw(2) << static_cast<unsigned int>(b);
+    }
+    return oss.str();
+}
+
+static std::string file_hash(const std::string& path) {
+    std::ifstream in(path);
+    if (!in.is_open()) {
+        return {};
+    }
+    std::string source(
+        (std::istreambuf_iterator<char>(in)),
+        std::istreambuf_iterator<char>()
+    );
+    return hash_content(source);
+}
+
+static std::filesystem::path stage_cache_file(const Options& opts, const char* stage) {
+    std::filesystem::path cache_dir = ".vitte-cache";
+    std::error_code ec;
+    std::filesystem::create_directories(cache_dir, ec);
+    std::string key = opts.input + "|" + stage;
+    std::string h = hash_content(key).substr(0, 16);
+    std::ostringstream name;
+    name << stage << "_" << h << ".cache";
+    return cache_dir / name.str();
+}
+
+static bool is_stage_cache_valid(const Options& opts, const char* stage) {
+    const auto cache = stage_cache_file(opts, stage);
+    if (!std::filesystem::exists(cache)) {
+        return false;
+    }
+    std::ifstream in(cache);
+    if (!in.is_open()) {
+        return false;
+    }
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind("dep=", 0) != 0) {
+            continue;
+        }
+        const std::string payload = line.substr(4);
+        const auto sep = payload.rfind('|');
+        if (sep == std::string::npos) {
+            continue;
+        }
+        const std::string path = payload.substr(0, sep);
+        const std::string expected = payload.substr(sep + 1);
+        const std::string got = file_hash(path);
+        if (got.empty() || got != expected) {
+            return false;
+        }
+    }
+    return true;
+}
 
 static bool read_file(const std::string& path, std::string& out) {
     std::ifstream in(path);
@@ -47,6 +115,15 @@ PassResult run_passes(const Options& opts) {
 
     frontend::Lexer lexer(source, opts.input);
     frontend::diag::DiagnosticEngine diagnostics(opts.lang);
+    auto emit_diags = [&](std::ostream& os = std::cerr) {
+        if (opts.diag_code_only) {
+            frontend::diag::render_all_code_only(diagnostics, os, opts.deterministic);
+        } else if (opts.diag_json) {
+            frontend::diag::render_all_json(diagnostics, os, opts.diag_json_pretty, opts.deterministic);
+        } else {
+            frontend::diag::render_all(diagnostics, os, opts.deterministic);
+        }
+    };
     frontend::ast::AstContext ast_ctx;
     ast_ctx.sources.push_back(lexer.source_file());
     frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse);
@@ -58,10 +135,22 @@ PassResult run_passes(const Options& opts) {
         }
         if (opts.parse_with_modules) {
             frontend::modules::ModuleIndex module_index;
-            frontend::modules::load_modules(ast_ctx, module, diagnostics, opts.input, module_index);
-            frontend::modules::rewrite_member_access(ast_ctx, module, module_index);
+            frontend::modules::LoadOptions module_opts;
+            module_opts.stdlib_profile = opts.stdlib_profile;
+            module_opts.allow_experimental = opts.allow_experimental;
+            module_opts.warn_experimental = opts.warn_experimental;
+            module_opts.deny_internal = opts.deny_internal;
+            frontend::modules::load_modules(ast_ctx, module, diagnostics, opts.input, module_index, module_opts);
+            frontend::modules::rewrite_member_access(ast_ctx, module, module_index, &diagnostics);
+            if (opts.dump_stdlib_map) {
+                frontend::modules::dump_stdlib_map(std::cout, module_index);
+            }
+            if (opts.dump_module_index) {
+                frontend::modules::dump_module_index_json(
+                    std::cout, module_index, opts.stdlib_profile, opts.allow_experimental);
+            }
             if (diagnostics.has_errors()) {
-                frontend::diag::render_all(diagnostics, std::cerr);
+                emit_diags();
                 result.ok = false;
                 return result;
             }
@@ -75,20 +164,43 @@ PassResult run_passes(const Options& opts) {
         }
         frontend::validate::validate_module(ast_ctx, module, diagnostics);
         if (diagnostics.has_errors()) {
-            frontend::diag::render_all(diagnostics, std::cerr);
+            emit_diags();
             result.ok = false;
             return result;
         }
         std::cout << "[driver] parse ok\n";
+        if (opts.fail_on_warning && diagnostics.warning_count() > 0) {
+            emit_diags();
+            std::cerr << "[driver] error: warnings are treated as errors (--fail-on-warning)\n";
+            result.ok = false;
+            return result;
+        }
         result.ok = true;
         return result;
     }
 
     frontend::modules::ModuleIndex module_index;
-    frontend::modules::load_modules(ast_ctx, module, diagnostics, opts.input, module_index);
-    frontend::modules::rewrite_member_access(ast_ctx, module, module_index);
+    frontend::modules::LoadOptions module_opts;
+    module_opts.stdlib_profile = opts.stdlib_profile;
+    module_opts.allow_experimental = opts.allow_experimental;
+    module_opts.warn_experimental = opts.warn_experimental;
+    module_opts.deny_internal = opts.deny_internal;
+    frontend::modules::load_modules(ast_ctx, module, diagnostics, opts.input, module_index, module_opts);
+    frontend::modules::rewrite_member_access(ast_ctx, module, module_index, &diagnostics);
+    if (opts.cache_report) {
+        std::cout << "[cache] parse=" << (is_stage_cache_valid(opts, "parse") ? "hit" : "miss")
+                  << " resolve=" << (is_stage_cache_valid(opts, "resolve") ? "hit" : "miss")
+                  << " ir=" << (is_stage_cache_valid(opts, "ir") ? "hit" : "miss") << "\n";
+    }
+    if (opts.dump_stdlib_map) {
+        frontend::modules::dump_stdlib_map(std::cout, module_index);
+    }
+    if (opts.dump_module_index) {
+        frontend::modules::dump_module_index_json(
+            std::cout, module_index, opts.stdlib_profile, opts.allow_experimental);
+    }
     if (diagnostics.has_errors()) {
-        frontend::diag::render_all(diagnostics, std::cerr);
+        emit_diags();
         result.ok = false;
         return result;
     }
@@ -103,12 +215,12 @@ PassResult run_passes(const Options& opts) {
     frontend::validate::validate_module(ast_ctx, module, diagnostics);
 
     if (diagnostics.has_errors()) {
-        frontend::diag::render_all(diagnostics, std::cerr);
+        emit_diags();
         result.ok = false;
         return result;
     }
 
-    frontend::resolve::Resolver resolver(diagnostics);
+    frontend::resolve::Resolver resolver(diagnostics, opts.strict_types, opts.strict_imports || opts.strict_modules, opts.strict_modules);
     resolver.resolve_module(ast_ctx, module);
 
     if (opts.dump_resolve) {
@@ -116,14 +228,20 @@ PassResult run_passes(const Options& opts) {
     }
 
     if (diagnostics.has_errors()) {
-        frontend::diag::render_all(diagnostics, std::cerr);
-        std::cerr << "[driver] resolve failed\n";
+        emit_diags();
+        std::cerr << "[driver] error[E1000]: resolve failed\n";
         result.ok = false;
         return result;
     }
 
     if (opts.resolve_only) {
         std::cout << "[driver] resolve ok\n";
+        if (opts.fail_on_warning && diagnostics.warning_count() > 0) {
+            emit_diags();
+            std::cerr << "[driver] error: warnings are treated as errors (--fail-on-warning)\n";
+            result.ok = false;
+            return result;
+        }
         result.ok = true;
         return result;
     }
@@ -163,13 +281,19 @@ PassResult run_passes(const Options& opts) {
         }
         ir::validate::validate_module(hir_ctx, hir, diagnostics);
         if (diagnostics.has_errors()) {
-            frontend::diag::render_all(diagnostics, std::cerr);
-            std::cerr << "[driver] hir lowering failed\n";
+            emit_diags();
+            std::cerr << "[driver] error[E2000]: hir lowering failed\n";
             result.ok = false;
             return result;
         }
         if (opts.hir_only) {
             std::cout << "[driver] hir ok\n";
+            if (opts.fail_on_warning && diagnostics.warning_count() > 0) {
+                emit_diags();
+                std::cerr << "[driver] error: warnings are treated as errors (--fail-on-warning)\n";
+                result.ok = false;
+                return result;
+            }
             result.ok = true;
             return result;
         }
@@ -180,15 +304,15 @@ PassResult run_passes(const Options& opts) {
         auto hir = frontend::lower::lower_to_hir(ast_ctx, module, hir_ctx, diagnostics);
         ir::validate::validate_module(hir_ctx, hir, diagnostics);
         if (diagnostics.has_errors()) {
-            frontend::diag::render_all(diagnostics, std::cerr);
-            std::cerr << "[driver] hir lowering failed\n";
+            emit_diags();
+            std::cerr << "[driver] error[E2000]: hir lowering failed\n";
             result.ok = false;
             return result;
         }
         auto mir = ir::lower::lower_to_mir(hir_ctx, hir, diagnostics);
         if (diagnostics.has_errors()) {
-            frontend::diag::render_all(diagnostics, std::cerr);
-            std::cerr << "[driver] mir lowering failed\n";
+            emit_diags();
+            std::cerr << "[driver] error[E2000]: mir lowering failed\n";
             result.ok = false;
             return result;
         }
@@ -200,15 +324,15 @@ PassResult run_passes(const Options& opts) {
         auto hir = frontend::lower::lower_to_hir(ast_ctx, module, hir_ctx, diagnostics);
         ir::validate::validate_module(hir_ctx, hir, diagnostics);
         if (diagnostics.has_errors()) {
-            frontend::diag::render_all(diagnostics, std::cerr);
-            std::cerr << "[driver] hir lowering failed\n";
+            emit_diags();
+            std::cerr << "[driver] error[E2000]: hir lowering failed\n";
             result.ok = false;
             return result;
         }
         auto mir = ir::lower::lower_to_mir(hir_ctx, hir, diagnostics);
         if (diagnostics.has_errors()) {
-            frontend::diag::render_all(diagnostics, std::cerr);
-            std::cerr << "[driver] mir lowering failed\n";
+            emit_diags();
+            std::cerr << "[driver] error[E2000]: mir lowering failed\n";
             result.ok = false;
             return result;
         }
@@ -216,10 +340,22 @@ PassResult run_passes(const Options& opts) {
             std::cout << ir::dump_to_string(mir);
         }
         std::cout << "[driver] mir ok\n";
+        if (opts.fail_on_warning && diagnostics.warning_count() > 0) {
+            emit_diags();
+            std::cerr << "[driver] error: warnings are treated as errors (--fail-on-warning)\n";
+            result.ok = false;
+            return result;
+        }
         result.ok = true;
         return result;
     }
 
+    if (opts.fail_on_warning && diagnostics.warning_count() > 0) {
+        emit_diags();
+        std::cerr << "[driver] error: warnings are treated as errors (--fail-on-warning)\n";
+        result.ok = false;
+        return result;
+    }
     result.ok = true;
     return result;
 }

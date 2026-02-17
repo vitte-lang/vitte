@@ -107,6 +107,8 @@ private:
 // ------------------------------------------------------------
 
 void render(const Diagnostic& diagnostic, std::ostream& os);
-void render_all(const DiagnosticEngine& engine, std::ostream& os);
+void render_all(const DiagnosticEngine& engine, std::ostream& os, bool deterministic = false);
+void render_all_json(const DiagnosticEngine& engine, std::ostream& os, bool pretty = false, bool deterministic = false);
+void render_all_code_only(const DiagnosticEngine& engine, std::ostream& os, bool deterministic = false);
 
 } // namespace vitte::frontend::diag

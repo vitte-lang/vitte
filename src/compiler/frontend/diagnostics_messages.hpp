@@ -19,27 +19,38 @@ namespace vitte::frontend::diag {
     X(E0005, ExpectedEnd, "expected 'end'") \
     X(E0006, ExpectedProcAfterAttribute, "expected proc after attribute") \
     X(E0007, ExpectedTopLevelDeclaration, "expected top-level declaration") \
-    X(E0008, DuplicatePatternBinding, "duplicate pattern binding") \
-    X(E0009, UnknownType, "unknown type") \
-    X(E0010, UnknownGenericBaseType, "unknown generic base type") \
-    X(E0011, GenericTypeRequiresAtLeastOneArgument, "generic type requires at least one argument") \
-    X(E0012, UnsupportedType, "unsupported type") \
-    X(E0013, UnknownIdentifier, "unknown identifier") \
-    X(E0014, InvokeHasNoCallee, "invoke has no callee") \
-    X(E0015, UnsupportedExpressionInHir, "unsupported expression in HIR") \
-    X(E0016, UnsupportedPatternInHir, "unsupported pattern in HIR") \
-    X(E0017, UnsupportedStatementInHir, "unsupported statement in HIR") \
-    X(E0018, ExternProcCannotHaveBody, "extern proc cannot have a body") \
-    X(E0019, ProcRequiresBodyUnlessExtern, "proc requires a body unless marked #[extern]") \
-    X(E0020, TypeAliasRequiresTargetType, "type alias requires a target type") \
-    X(E0021, GenericTypeRequiresAtLeastOneTypeArgument, "generic type requires at least one type argument") \
-    X(E0022, UnexpectedHirTypeKind, "unexpected HIR type kind") \
-    X(E0023, UnexpectedHirExprKind, "unexpected HIR expr kind") \
-    X(E0024, SelectRequiresAtLeastOneWhenBranch, "select requires at least one when branch") \
-    X(E0025, SelectBranchMustBeWhenStatement, "select branch must be a when statement") \
-    X(E0026, UnexpectedHirStmtKind, "unexpected HIR stmt kind") \
-    X(E0027, UnexpectedHirPatternKind, "unexpected HIR pattern kind") \
-    X(E0028, UnexpectedHirDeclKind, "unexpected HIR decl kind")
+    X(E0008, ExternProcCannotHaveBody, "extern proc cannot have a body") \
+    X(E0009, ProcRequiresBodyUnlessExtern, "proc requires a body unless marked #[extern]") \
+    X(E0010, TypeAliasRequiresTargetType, "type alias requires a target type") \
+    X(E0011, SelectRequiresAtLeastOneWhenBranch, "select requires at least one when branch") \
+    X(E0012, SelectBranchMustBeWhenStatement, "select branch must be a when statement") \
+    X(E1001, DuplicatePatternBinding, "duplicate pattern binding") \
+    X(E1002, UnknownType, "unknown type (did you mean a built-in like int/i32/i64/i128/u32/u64/u128/bool/string?)") \
+    X(E1003, UnknownGenericBaseType, "unknown generic base type") \
+    X(E1004, GenericTypeRequiresAtLeastOneArgument, "generic type requires at least one argument") \
+    X(E1005, UnknownIdentifier, "unknown identifier") \
+    X(E1006, GenericTypeRequiresAtLeastOneTypeArgument, "generic type requires at least one type argument") \
+    X(E1007, InvalidSignedUnsignedCast, "invalid cast between signed and unsigned values") \
+    X(E1010, StdlibProfileImportDenied, "stdlib module denied by active stdlib profile") \
+    X(E1011, StrictImportAliasRequired, "strict-imports requires explicit alias") \
+    X(E1012, StrictImportUnusedAlias, "strict-imports forbids unused import aliases") \
+    X(E1013, StrictImportNonCanonicalPath, "strict-imports forbids non-canonical import paths") \
+    X(E1014, StdlibModuleNotFound, "stdlib module not found") \
+    X(E1015, ExperimentalModuleImportDenied, "experimental module import denied") \
+    X(E1016, InternalModuleImportDenied, "internal module import denied") \
+    X(E1017, ReexportSymbolConflict, "re-export symbol conflict") \
+    X(E1018, AmbiguousImportPath, "ambiguous import path") \
+    X(E1019, StrictModulesGlobForbidden, "strict-modules forbids glob imports") \
+    X(E2001, UnsupportedType, "unsupported type") \
+    X(E2002, InvokeHasNoCallee, "invoke has no callee") \
+    X(E2003, UnsupportedExpressionInHir, "unsupported expression in HIR") \
+    X(E2004, UnsupportedPatternInHir, "unsupported pattern in HIR") \
+    X(E2005, UnsupportedStatementInHir, "unsupported statement in HIR") \
+    X(E2006, UnexpectedHirTypeKind, "unexpected HIR type kind") \
+    X(E2007, UnexpectedHirExprKind, "unexpected HIR expr kind") \
+    X(E2008, UnexpectedHirStmtKind, "unexpected HIR stmt kind") \
+    X(E2009, UnexpectedHirPatternKind, "unexpected HIR pattern kind") \
+    X(E2010, UnexpectedHirDeclKind, "unexpected HIR decl kind")
 
 enum class DiagId {
 #define VITTE_DIAG_ENUM(code, name, msg) name,
@@ -97,7 +108,7 @@ constexpr DiagExplain diag_explain(DiagId id) {
             return {
                 "A referenced name was not found in the current scope.",
                 "Check spelling, or import it from a module with 'use' or 'pull'.",
-                "use std/io/print.print\nproc main() -> int { print(\"hi\"); return 0 }",
+                "use std/bridge/print.print\nproc main() -> int { print(\"hi\"); return 0 }",
             };
         case DiagId::ExternProcCannotHaveBody:
             return {
@@ -156,8 +167,8 @@ constexpr DiagExplain diag_explain(DiagId id) {
         case DiagId::UnknownType:
             return {
                 "A referenced type name was not found.",
-                "Check spelling or import the type with 'use' or 'pull'.",
-                "use std/core/option.Option\nproc f(x: Option[int]) -> int { return 0 }",
+                "Check spelling. Common fixes: str->string, integer->int, uint32->u32.",
+                "proc main() -> int {\n  let a: string = \"ok\" # not str\n  let b: int = 1        # not integer\n  let c: u32 = 2        # not uint32\n  return 0\n}",
             };
         case DiagId::UnknownGenericBaseType:
             return {
@@ -206,6 +217,72 @@ constexpr DiagExplain diag_explain(DiagId id) {
                 "A generic type needs at least one type argument.",
                 "Provide type arguments inside [ ].",
                 "let xs: List[int] = List.empty()",
+            };
+        case DiagId::InvalidSignedUnsignedCast:
+            return {
+                "A cast attempted to move a signed negative value into an unsigned type.",
+                "Use a non-negative source value or normalize the value before casting.",
+                "let x = (-1) as i64\nlet y = 0 as u64",
+            };
+        case DiagId::StdlibProfileImportDenied:
+            return {
+                "A stdlib import is blocked by the active stdlib profile.",
+                "Switch profile (--runtime-profile, or legacy --stdlib-profile) or import a module allowed by that profile.",
+                "vitte check --runtime-profile system src/main.vit",
+            };
+        case DiagId::StrictImportAliasRequired:
+            return {
+                "Strict imports mode requires explicit aliases on use/pull imports.",
+                "Add 'as <name>' to each import in strict mode.",
+                "use std/bridge/print as print_mod",
+            };
+        case DiagId::StrictImportUnusedAlias:
+            return {
+                "An explicit import alias was declared but never used.",
+                "Remove the import or use the alias in code.",
+                "use std/bridge/print as print_mod\n# ... use print_mod ...",
+            };
+        case DiagId::StrictImportNonCanonicalPath:
+            return {
+                "Strict imports mode rejects relative import paths.",
+                "Use canonical absolute module paths without leading dots.",
+                "use std/bridge/print as print_mod",
+            };
+        case DiagId::StdlibModuleNotFound:
+            return {
+                "The requested stdlib module file could not be found.",
+                "Check module path spelling and the selected stdlib profile.",
+                "use std/net/mod as net_mod",
+            };
+        case DiagId::ExperimentalModuleImportDenied:
+            return {
+                "An import references an experimental module while experimental imports are disabled.",
+                "Pass --allow-experimental or switch to a stable public module.",
+                "vitte check --allow-experimental src/main.vit",
+            };
+        case DiagId::InternalModuleImportDenied:
+            return {
+                "An import references an internal/private module from outside its owner namespace.",
+                "Import the public API module instead of internal/*.",
+                "use std/net/mod as net_mod",
+            };
+        case DiagId::ReexportSymbolConflict:
+            return {
+                "A glob/re-export set introduces a symbol name collision.",
+                "Use explicit aliases to disambiguate imported symbols.",
+                "use std/a/mod as a_mod\nuse std/b/mod as b_mod",
+            };
+        case DiagId::AmbiguousImportPath:
+            return {
+                "Multiple module files match the same import path.",
+                "Use a canonical, explicit module path and remove duplicates.",
+                "use std/net/addr as net_addr",
+            };
+        case DiagId::StrictModulesGlobForbidden:
+            return {
+                "Strict modules mode disallows glob imports.",
+                "List imports explicitly and keep aliases explicit.",
+                "use std/net/addr as net_addr",
             };
         case DiagId::UnexpectedHirTypeKind:
             return {

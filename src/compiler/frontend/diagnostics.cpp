@@ -279,6 +279,27 @@ static void render_location(
        << ":" << col;
 }
 
+static std::string location_string(const SourceSpan& span) {
+    if (!span.is_valid()) {
+        return "<unknown>:0:0";
+    }
+    const std::string& text = span.file->content;
+    std::size_t line = 1;
+    std::size_t col = 1;
+    for (std::size_t i = 0; i < span.start && i < text.size(); ++i) {
+        if (text[i] == '\n') {
+            ++line;
+            col = 1;
+        } else {
+            ++col;
+        }
+    }
+    std::filesystem::path path(span.file->path);
+    std::ostringstream oss;
+    oss << path.filename().string() << ":" << line << ":" << col;
+    return oss.str();
+}
+
 static void render_snippet(
     std::ostream& os,
     const SourceSpan& span)
@@ -373,10 +394,149 @@ void render(const Diagnostic& d, std::ostream& os) {
 
 void render_all(
     const DiagnosticEngine& engine,
-    std::ostream& os)
+    std::ostream& os,
+    bool deterministic)
 {
+    std::vector<std::reference_wrapper<const Diagnostic>> ordered;
+    ordered.reserve(engine.all().size());
     for (const auto& d : engine.all()) {
+        ordered.push_back(std::cref(d));
+    }
+    if (deterministic) {
+        std::sort(ordered.begin(), ordered.end(), [](const auto& a, const auto& b) {
+            const auto& da = a.get();
+            const auto& db = b.get();
+            const std::string fa = da.span.is_valid() ? std::filesystem::path(da.span.file->path).filename().string() : "";
+            const std::string fb = db.span.is_valid() ? std::filesystem::path(db.span.file->path).filename().string() : "";
+            if (fa != fb) return fa < fb;
+            if (da.span.start != db.span.start) return da.span.start < db.span.start;
+            if (da.code != db.code) return da.code < db.code;
+            return da.message < db.message;
+        });
+    }
+    for (const auto& dref : ordered) {
+        const auto& d = dref.get();
         render(d, os);
+    }
+}
+
+static std::string json_escape(const std::string& in) {
+    std::string out;
+    out.reserve(in.size() + 8);
+    for (char c : in) {
+        switch (c) {
+            case '\\': out += "\\\\"; break;
+            case '"': out += "\\\""; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default: out.push_back(c); break;
+        }
+    }
+    return out;
+}
+
+void render_all_json(const DiagnosticEngine& engine, std::ostream& os, bool pretty, bool deterministic) {
+    if (pretty) {
+        os << "{\n  \"diag_schema\": 1,\n  \"diagnostics\": [\n";
+    } else {
+        os << "{\"diag_schema\":1,\"diagnostics\":[";
+    }
+    std::vector<std::reference_wrapper<const Diagnostic>> all;
+    all.reserve(engine.all().size());
+    for (const auto& d : engine.all()) {
+        all.push_back(std::cref(d));
+    }
+    if (deterministic) {
+        std::sort(all.begin(), all.end(), [](const auto& a, const auto& b) {
+            const auto& da = a.get();
+            const auto& db = b.get();
+            const std::string fa = da.span.is_valid() ? std::filesystem::path(da.span.file->path).filename().string() : "";
+            const std::string fb = db.span.is_valid() ? std::filesystem::path(db.span.file->path).filename().string() : "";
+            if (fa != fb) return fa < fb;
+            if (da.span.start != db.span.start) return da.span.start < db.span.start;
+            if (da.code != db.code) return da.code < db.code;
+            return da.message < db.message;
+        });
+    }
+    for (std::size_t i = 0; i < all.size(); ++i) {
+        const auto& d = all[i].get();
+        if (pretty) {
+            os << "    {\n";
+            os << "      \"severity\": \"" << json_escape(to_string(d.severity)) << "\",\n";
+            os << "      \"code\": \"" << json_escape(d.code) << "\",\n";
+            os << "      \"message\": \"" << json_escape(d.message) << "\",\n";
+        } else {
+            os << "{\"severity\":\"" << json_escape(to_string(d.severity))
+               << "\",\"code\":\"" << json_escape(d.code)
+               << "\",\"message\":\"" << json_escape(d.message) << "\",";
+        }
+        if (d.span.is_valid()) {
+            const std::string file_name = std::filesystem::path(d.span.file->path).filename().string();
+            if (pretty) {
+                os << "      \"file\": \"" << json_escape(file_name) << "\",\n";
+                os << "      \"start\": " << d.span.start << ",\n";
+                os << "      \"end\": " << d.span.end << "\n";
+            } else {
+                os << "\"file\":\"" << json_escape(file_name) << "\","
+                   << "\"start\":" << d.span.start << ","
+                   << "\"end\":" << d.span.end;
+            }
+        } else {
+            if (pretty) {
+                os << "      \"file\": \"\",\n";
+                os << "      \"start\": 0,\n";
+                os << "      \"end\": 0\n";
+            } else {
+                os << "\"file\":\"\",\"start\":0,\"end\":0";
+            }
+        }
+        if (pretty) {
+            os << "    }";
+        } else {
+            os << "}";
+        }
+        if (i + 1 < all.size()) {
+            os << ",";
+        }
+        if (pretty) {
+            os << "\n";
+        }
+    }
+    if (pretty) {
+        os << "  ]\n}\n";
+    } else {
+        os << "]}\n";
+    }
+}
+
+void render_all_code_only(const DiagnosticEngine& engine, std::ostream& os, bool deterministic) {
+    std::vector<std::reference_wrapper<const Diagnostic>> ordered;
+    ordered.reserve(engine.all().size());
+    for (const auto& d : engine.all()) {
+        ordered.push_back(std::cref(d));
+    }
+    if (deterministic) {
+        std::sort(ordered.begin(), ordered.end(), [](const auto& a, const auto& b) {
+            const auto& da = a.get();
+            const auto& db = b.get();
+            const std::string fa = da.span.is_valid() ? std::filesystem::path(da.span.file->path).filename().string() : "";
+            const std::string fb = db.span.is_valid() ? std::filesystem::path(db.span.file->path).filename().string() : "";
+            if (fa != fb) return fa < fb;
+            if (da.span.start != db.span.start) return da.span.start < db.span.start;
+            if (da.code != db.code) return da.code < db.code;
+            return da.message < db.message;
+        });
+    }
+    for (const auto& dref : ordered) {
+        const auto& d = dref.get();
+        os << location_string(d.span) << " ";
+        if (!d.code.empty()) {
+            os << d.code;
+        } else {
+            os << "E0000";
+        }
+        os << "\n";
     }
 }
 

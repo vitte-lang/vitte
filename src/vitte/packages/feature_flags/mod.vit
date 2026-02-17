@@ -1,0 +1,126 @@
+<<<
+mod.vit
+package vitte/feature_flags
+>>>
+
+space vitte/feature_flags
+
+form FeatureFlag {
+  name: string
+  enabled: bool
+  rollout: int
+  override_user: string
+  override_value: bool
+  has_override: bool
+}
+
+form FeatureFlags {
+  flags: [FeatureFlag]
+}
+
+proc flags_new() -> FeatureFlags {
+  give FeatureFlags([])
+}
+
+proc clamp_rollout(rollout: int) -> int {
+  if rollout < 0 { give 0 }
+  if rollout > 100 { give 100 }
+  give rollout
+}
+
+proc add_flag(set: FeatureFlags, name: string, enabled: bool, rollout: int) -> FeatureFlags {
+  let out: [FeatureFlag] = []
+  let replaced: bool = false
+  let i: int = 0
+
+  loop {
+    if i >= set.flags.len { break }
+    let f = set.flags[i]
+    if f.name == name {
+      out = out.push(FeatureFlag(name, enabled, clamp_rollout(rollout), "", false, false))
+      replaced = true
+    } else {
+      out = out.push(f)
+    }
+    i = i + 1
+  }
+
+  if !replaced {
+    out = out.push(FeatureFlag(name, enabled, clamp_rollout(rollout), "", false, false))
+  }
+
+  give FeatureFlags(out)
+}
+
+proc override(set: FeatureFlags, name: string, user_id: string, value: bool) -> FeatureFlags {
+  let out: [FeatureFlag] = []
+  let found: bool = false
+  let i: int = 0
+
+  loop {
+    if i >= set.flags.len { break }
+    let f = set.flags[i]
+    if f.name == name {
+      out = out.push(FeatureFlag(f.name, f.enabled, f.rollout, user_id, value, true))
+      found = true
+    } else {
+      out = out.push(f)
+    }
+    i = i + 1
+  }
+
+  if !found {
+    out = out.push(FeatureFlag(name, false, 0, user_id, value, true))
+  }
+
+  give FeatureFlags(out)
+}
+
+proc percentage_rollout(user_id: string, rollout: int) -> bool {
+  let pct = clamp_rollout(rollout)
+  if pct <= 0 { give false }
+  if pct >= 100 { give true }
+  let bucket = (user_id.len * 17) % 100
+  give bucket < pct
+}
+
+proc flag_get(set: FeatureFlags, name: string, fallback: bool) -> bool {
+  let i: int = 0
+  loop {
+    if i >= set.flags.len { break }
+    let f = set.flags[i]
+    if f.name == name {
+      give f.enabled
+    }
+    i = i + 1
+  }
+  give fallback
+}
+
+proc flag_for_user(set: FeatureFlags, name: string, user_id: string, fallback: bool) -> bool {
+  let i: int = 0
+  loop {
+    if i >= set.flags.len { break }
+    let f = set.flags[i]
+    if f.name == name {
+      if f.has_override && f.override_user == user_id { give f.override_value }
+      if !f.enabled { give false }
+      give percentage_rollout(user_id, f.rollout)
+    }
+    i = i + 1
+  }
+  give fallback
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/feature_flags
+role: Activation progressive et controlee des fonctionnalites
+input_contract: Regles de flag explicites (enabled rollout override)
+output_contract: Decision par utilisateur deterministe et reproductible
+boundary: Ne stocke pas la configuration distante; evalue seulement les regles locales
+>>>

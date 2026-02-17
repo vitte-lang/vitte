@@ -7,6 +7,7 @@
 #include <string>
 #include <ostream>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace vitte::frontend::resolve {
@@ -46,7 +47,10 @@ private:
 
 class Resolver {
 public:
-    explicit Resolver(diag::DiagnosticEngine& diagnostics);
+    explicit Resolver(diag::DiagnosticEngine& diagnostics,
+                      bool strict_types = false,
+                      bool strict_imports = false,
+                      bool strict_modules = false);
 
     bool resolve_module(ast::AstContext& ctx, ast::ModuleId module);
     const SymbolTable& symbols() const { return symbols_; }
@@ -63,10 +67,17 @@ private:
     SymbolTable symbols_;
     types::TypeTable types_;
     diag::DiagnosticEngine& diag_;
+    bool strict_types_ = false;
+    bool strict_imports_ = false;
+    bool strict_modules_ = false;
     std::unordered_map<ast::TypeId, types::TypeId> resolved_types_;
+    std::unordered_map<std::string, ast::SourceSpan> explicit_imports_;
+    std::unordered_set<std::string> used_explicit_imports_;
 };
 
 const char* to_string(SymbolKind kind);
 void dump_symbols(const SymbolTable& table, std::ostream& os);
+const std::vector<std::string>& builtin_type_names();
+const std::vector<std::string>& canonical_builtin_type_names();
 
 } // namespace vitte::frontend::resolve

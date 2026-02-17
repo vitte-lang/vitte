@@ -36,6 +36,25 @@ static std::string module_path_key(const ModulePath& path) {
     return join_path(path, "/");
 }
 
+static bool is_std_or_core_root(const ModulePath& path) {
+    if (path.parts.empty()) {
+        return false;
+    }
+    const auto& head = path.parts.front().name;
+    return head == "std" || head == "core";
+}
+
+static bool is_vitte_package_root(const ModulePath& path) {
+    if (path.parts.empty()) {
+        return false;
+    }
+    return path.parts.front().name == "vitte";
+}
+
+static std::size_t vitte_package_trim_count(const ModulePath& path) {
+    return is_vitte_package_root(path) ? 1 : 0;
+}
+
 std::string normalized_stdlib_path(const ModulePath& path) {
     if (path.parts.empty()) {
         return {};
@@ -63,6 +82,44 @@ bool is_valid_stdlib_profile(const std::string& profile) {
 
 static bool has_prefix(std::string_view value, std::string_view prefix) {
     return value.substr(0, prefix.size()) == prefix;
+}
+
+static std::size_t count_lines(const std::string& source) {
+    if (source.empty()) {
+        return 0;
+    }
+    std::size_t lines = 1;
+    for (char c : source) {
+        if (c == '\n') {
+            ++lines;
+        }
+    }
+    return lines;
+}
+
+static bool is_experimental_module_key(std::string_view key) {
+    return key == "experimental" ||
+           has_prefix(key, "experimental/") ||
+           key.find("/experimental/") != std::string_view::npos ||
+           has_prefix(key, "std/experimental/") ||
+           has_prefix(key, "core/experimental/");
+}
+
+static bool is_internal_module_key(std::string_view key) {
+    return key == "internal" ||
+           has_prefix(key, "internal/") ||
+           key.find("/internal/") != std::string_view::npos;
+}
+
+static std::string internal_owner_namespace(std::string_view key) {
+    const auto pos = key.find("/internal/");
+    if (pos == std::string_view::npos) {
+        if (has_prefix(key, "internal/")) {
+            return {};
+        }
+        return std::string(key);
+    }
+    return std::string(key.substr(0, pos));
 }
 
 bool is_stdlib_path_allowed(const ModulePath& path, const std::string& profile) {
@@ -93,15 +150,16 @@ static std::filesystem::path resolve_module_file(
     const std::filesystem::path& repo_root
 ) {
     std::string rel_str = join_path(path, "/");
-    if (!path.parts.empty() && (path.parts.front().name == "std" || path.parts.front().name == "core")) {
+    if (is_std_or_core_root(path) || is_vitte_package_root(path)) {
         ModulePath trimmed = path;
-        trimmed.parts.erase(trimmed.parts.begin());
+        const std::size_t trim_count = is_std_or_core_root(path) ? 1 : vitte_package_trim_count(path);
+        trimmed.parts.erase(trimmed.parts.begin(), trimmed.parts.begin() + static_cast<std::ptrdiff_t>(trim_count));
         rel_str = join_path(trimmed, "/");
     }
     std::filesystem::path rel(rel_str);
     std::vector<std::filesystem::path> candidates;
 
-    if (!path.parts.empty() && (path.parts.front().name == "std" || path.parts.front().name == "core")) {
+    if (is_std_or_core_root(path)) {
         std::filesystem::path std_root = repo_root / "src/vitte/std";
         if (path.parts.front().name == "core") {
             std::filesystem::path core_root = std_root / "core";
@@ -110,6 +168,10 @@ static std::filesystem::path resolve_module_file(
         }
         candidates.push_back(std_root / (rel.string() + ".vit"));
         candidates.push_back(std_root / rel / "mod.vit");
+    } else if (is_vitte_package_root(path)) {
+        std::filesystem::path pkg_root = repo_root / "src/vitte/packages";
+        candidates.push_back(pkg_root / (rel.string() + ".vit"));
+        candidates.push_back(pkg_root / rel / "mod.vit");
     } else {
         candidates.push_back(base_dir / (rel.string() + ".vit"));
         candidates.push_back(base_dir / rel / "mod.vit");
@@ -122,6 +184,46 @@ static std::filesystem::path resolve_module_file(
     }
 
     return {};
+}
+
+static bool has_ambiguous_module_file(
+    const ModulePath& path,
+    const std::filesystem::path& base_dir,
+    const std::filesystem::path& repo_root
+) {
+    std::string rel_str = join_path(path, "/");
+    if (is_std_or_core_root(path) || is_vitte_package_root(path)) {
+        ModulePath trimmed = path;
+        const std::size_t trim_count = is_std_or_core_root(path) ? 1 : vitte_package_trim_count(path);
+        trimmed.parts.erase(trimmed.parts.begin(), trimmed.parts.begin() + static_cast<std::ptrdiff_t>(trim_count));
+        rel_str = join_path(trimmed, "/");
+    }
+    std::filesystem::path rel(rel_str);
+    std::vector<std::filesystem::path> candidates;
+    if (is_std_or_core_root(path)) {
+        std::filesystem::path std_root = repo_root / "src/vitte/std";
+        if (path.parts.front().name == "core") {
+            std::filesystem::path core_root = std_root / "core";
+            candidates.push_back(core_root / (rel.string() + ".vit"));
+            candidates.push_back(core_root / rel / "mod.vit");
+        }
+        candidates.push_back(std_root / (rel.string() + ".vit"));
+        candidates.push_back(std_root / rel / "mod.vit");
+    } else if (is_vitte_package_root(path)) {
+        std::filesystem::path pkg_root = repo_root / "src/vitte/packages";
+        candidates.push_back(pkg_root / (rel.string() + ".vit"));
+        candidates.push_back(pkg_root / rel / "mod.vit");
+    } else {
+        candidates.push_back(base_dir / (rel.string() + ".vit"));
+        candidates.push_back(base_dir / rel / "mod.vit");
+    }
+    std::size_t found = 0;
+    for (const auto& c : candidates) {
+        if (std::filesystem::exists(c)) {
+            ++found;
+        }
+    }
+    return found > 1;
 }
 
 static std::filesystem::path detect_repo_root(const std::filesystem::path& start_dir) {
@@ -586,10 +688,13 @@ struct Loader {
     ModuleIndex& index;
     LoadOptions options;
     std::unordered_set<std::string> loaded;
+    std::unordered_map<std::string, std::string> file_to_key;
     std::vector<DeclId> collected;
     std::filesystem::path repo_root;
 
-    bool load_recursive(ModuleId root, const std::filesystem::path& base_dir) {
+    bool load_recursive(ModuleId root,
+                        const std::filesystem::path& base_dir,
+                        const std::string& current_module_key) {
         auto& module = ctx.get<Module>(root);
 
         for (auto decl_id : module.decls) {
@@ -604,7 +709,44 @@ struct Loader {
             if (!path) continue;
 
             ModulePath module_path = *path;
+            const std::string raw_key = module_path_key(module_path);
             const std::string normalized = normalized_stdlib_path(module_path);
+            if (is_experimental_module_key(raw_key) && !options.allow_experimental) {
+                if (options.warn_experimental) {
+                    diagnostics.warning_code(
+                        "E1015",
+                        "experimental module '" + raw_key + "' is imported in warning mode (--warn-experimental)",
+                        (*path).span
+                    );
+                } else {
+                    diagnostics.error_code(
+                        "E1015",
+                        "experimental module '" + raw_key + "' is forbidden (use --allow-experimental)",
+                        (*path).span
+                    );
+                    continue;
+                }
+            }
+            if (!normalized.empty() && is_experimental_module_key(normalized) && !options.allow_experimental) {
+                if (options.warn_experimental) {
+                    diagnostics.warning_code(
+                        "E1015",
+                        "experimental stdlib module '" + normalized + "' is imported in warning mode (--warn-experimental)",
+                        (*path).span
+                    );
+                } else {
+                    diagnostics.error_code(
+                        "E1015",
+                        "experimental stdlib module '" + normalized + "' is forbidden (use --allow-experimental)",
+                        (*path).span
+                    );
+                    continue;
+                }
+            }
+            if (!is_valid_stdlib_profile(options.stdlib_profile)) {
+                diagnostics.error("invalid stdlib profile: " + options.stdlib_profile, (*path).span);
+                continue;
+            }
             if (!normalized.empty() &&
                 !is_stdlib_path_allowed(module_path, options.stdlib_profile)) {
                 diagnostics.error_code(
@@ -613,7 +755,15 @@ struct Loader {
                     (*path).span
                 );
                 diagnostics.note(
-                    "allowed by this profile: minimal=std/core, kernel=std/core+std/kernel, arduino=std/core+std/arduino, full=all",
+                    "allowed by this profile: core=std/core, system=std/core+std/kernel, arduino=std/core+std/arduino, desktop=all",
+                    (*path).span
+                );
+                continue;
+            }
+            if (has_ambiguous_module_file(module_path, base_dir, repo_root)) {
+                diagnostics.error_code(
+                    "E1018",
+                    "ambiguous import path '" + module_path_key(module_path) + "' (both file.vit and mod.vit exist)",
                     (*path).span
                 );
                 continue;
@@ -644,12 +794,34 @@ struct Loader {
             }
 
             std::string key = module_path_key(module_path);
+            std::string file_key = file.string();
+            auto canonical = file_to_key.find(file_key);
+            if (canonical != file_to_key.end()) {
+                key = canonical->second;
+            } else {
+                file_to_key.emplace(file_key, key);
+            }
+            if (options.deny_internal && is_internal_module_key(key)) {
+                std::string owner = internal_owner_namespace(key);
+                if (owner.empty() ||
+                    (!has_prefix(current_module_key, owner + "/") && current_module_key != owner)) {
+                    diagnostics.error_code(
+                        "E1016",
+                        "internal module '" + key + "' cannot be imported from '" + current_module_key + "'",
+                        (*path).span
+                    );
+                    diagnostics.note("internal modules are private to their owning namespace", (*path).span);
+                    continue;
+                }
+            }
+
+            index.imports[current_module_key].insert(key);
             std::string prefix = module_prefix(module_path);
             if (!prefix.empty() && index.path_to_prefix.find(key) == index.path_to_prefix.end()) {
                 index.path_to_prefix.emplace(key, prefix);
             }
+            index.module_files[key] = file.string();
 
-            std::string file_key = file.string();
             if (loaded.count(file_key)) {
                 continue;
             }
@@ -665,6 +837,7 @@ struct Loader {
                 (std::istreambuf_iterator<char>(in)),
                 std::istreambuf_iterator<char>()
             );
+            index.module_loc[key] = count_lines(source);
 
             Lexer lexer(source, file.string());
             ctx.sources.push_back(lexer.source_file());
@@ -672,7 +845,7 @@ struct Loader {
             ModuleId mod_id = parser.parse_module();
 
             std::filesystem::path mod_dir = file.parent_path();
-            load_recursive(mod_id, mod_dir);
+            load_recursive(mod_id, mod_dir, key);
 
             qualify_module(ctx, mod_id, prefix, index);
 
@@ -694,9 +867,18 @@ bool load_modules(AstContext& ctx,
     std::filesystem::path base_dir = entry.has_parent_path()
         ? entry.parent_path()
         : std::filesystem::current_path();
+    index.module_files["__root__"] = entry.string();
+    std::ifstream root_in(entry);
+    if (root_in.is_open()) {
+        std::string src(
+            (std::istreambuf_iterator<char>(root_in)),
+            std::istreambuf_iterator<char>()
+        );
+        index.module_loc["__root__"] = count_lines(src);
+    }
 
-    Loader loader{ctx, diagnostics, index, options, {}, {}, detect_repo_root(base_dir)};
-    bool ok = loader.load_recursive(root, base_dir);
+    Loader loader{ctx, diagnostics, index, options, {}, {}, {}, detect_repo_root(base_dir)};
+    bool ok = loader.load_recursive(root, base_dir, "__root__");
     if (ok && !loader.collected.empty()) {
         auto& module = ctx.get<Module>(root);
         auto insert_it = module.decls.begin();
@@ -745,6 +927,71 @@ void dump_stdlib_map(std::ostream& os, const ModuleIndex& index) {
             os << "    - " << name << "\n";
         }
     }
+}
+
+void dump_module_index_json(std::ostream& os,
+                            const ModuleIndex& index,
+                            const std::string& profile,
+                            bool allow_experimental) {
+    std::vector<std::string> modules;
+    modules.reserve(index.module_files.size());
+    for (const auto& kv : index.module_files) {
+        modules.push_back(kv.first);
+    }
+    std::sort(modules.begin(), modules.end());
+
+    os << "{\n";
+    os << "  \"profile\": \"" << profile << "\",\n";
+    os << "  \"allow_experimental\": " << (allow_experimental ? "true" : "false") << ",\n";
+    os << "  \"modules\": [\n";
+    for (std::size_t i = 0; i < modules.size(); ++i) {
+        const auto& key = modules[i];
+        os << "    {\n";
+        os << "      \"key\": \"" << key << "\",\n";
+        auto file_it = index.module_files.find(key);
+        os << "      \"file\": \"" << (file_it == index.module_files.end() ? "" : file_it->second) << "\",\n";
+        auto loc_it = index.module_loc.find(key);
+        os << "      \"loc\": " << (loc_it == index.module_loc.end() ? 0 : loc_it->second) << ",\n";
+        std::string level = "public";
+        if (is_internal_module_key(key)) {
+            level = "internal";
+        } else if (is_experimental_module_key(key)) {
+            level = "experimental";
+        }
+        os << "      \"level\": \"" << level << "\",\n";
+
+        os << "      \"imports\": [";
+        if (auto imp_it = index.imports.find(key); imp_it != index.imports.end()) {
+            std::vector<std::string> imps(imp_it->second.begin(), imp_it->second.end());
+            std::sort(imps.begin(), imps.end());
+            for (std::size_t j = 0; j < imps.size(); ++j) {
+                if (j) os << ", ";
+                os << "\"" << imps[j] << "\"";
+            }
+        }
+        os << "],\n";
+
+        os << "      \"exports\": [";
+        if (auto p_it = index.path_to_prefix.find(key); p_it != index.path_to_prefix.end()) {
+            if (auto e_it = index.exports.find(p_it->second); e_it != index.exports.end()) {
+                std::vector<std::string> exps(e_it->second.begin(), e_it->second.end());
+                std::sort(exps.begin(), exps.end());
+                for (std::size_t j = 0; j < exps.size(); ++j) {
+                    if (j) os << ", ";
+                    os << "\"" << exps[j] << "\"";
+                }
+            }
+        }
+        os << "],\n";
+        os << "      \"warnings\": []\n";
+        os << "    }";
+        if (i + 1 < modules.size()) {
+            os << ",";
+        }
+        os << "\n";
+    }
+    os << "  ]\n";
+    os << "}\n";
 }
 
 static void rewrite_stmt_for_alias(
@@ -1155,7 +1402,8 @@ static void rewrite_stmt_for_alias(
 
 void rewrite_member_access(ast::AstContext& ctx,
                            ast::ModuleId root,
-                           const ModuleIndex& index) {
+                           const ModuleIndex& index,
+                           diag::DiagnosticEngine* diagnostics) {
     std::unordered_map<std::string, std::string> alias_to_prefix;
     std::unordered_set<std::string> glob_aliases;
     std::unordered_map<std::string, std::string> symbol_imports;
@@ -1190,6 +1438,33 @@ void rewrite_member_access(ast::AstContext& ctx,
             auto pit = index.path_to_prefix.find(parent_key);
             if (pit != index.path_to_prefix.end()) {
                 symbol_imports[alias] = pit->second + last.name;
+            }
+        }
+    }
+
+    if (diagnostics != nullptr) {
+        std::unordered_map<std::string, std::string> seen_symbol_owner;
+        for (const auto& alias : glob_aliases) {
+            auto pfx = alias_to_prefix.find(alias);
+            if (pfx == alias_to_prefix.end()) {
+                continue;
+            }
+            auto exp = index.exports.find(pfx->second);
+            if (exp == index.exports.end()) {
+                continue;
+            }
+            for (const auto& sym : exp->second) {
+                auto it = seen_symbol_owner.find(sym);
+                if (it != seen_symbol_owner.end() && it->second != alias) {
+                    diagnostics->error_code(
+                        "E1017",
+                        "re-export symbol conflict for '" + sym + "' between aliases '" + it->second + "' and '" + alias + "'",
+                        {}
+                    );
+                    diagnostics->note("use explicit aliases or non-glob imports to disambiguate", {});
+                } else {
+                    seen_symbol_owner[sym] = alias;
+                }
             }
         }
     }
