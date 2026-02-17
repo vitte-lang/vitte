@@ -42,6 +42,11 @@ use vitte/alerts as v_alerts
 use vitte/slo as v_slo
 use vitte/fixtures as v_fixtures
 use vitte/mock_http as v_mock_http
+use vitte/observability as v_observability
+use vitte/contracts as v_contracts
+use vitte/jobs as v_jobs
+use vitte/policy as v_policy
+use vitte/idempotency as v_idempotency
 
 proc main_job() -> int {
   give 0
@@ -297,6 +302,117 @@ entry main at tests/packages_runtime {
   let bulkhead_util = v_bulkhead.utilization_percent(bh2)
   let bulkhead_stats = v_bulkhead.stats(bh10)
 
+  let idem0 = v_idempotency.store_new()
+  let idem1 = v_idempotency.store_result(idem0, "k1", "R1", 10, 1)
+  let idem_put_absent = v_idempotency.put_if_absent(idem1, "k1", "R2", 10, 2)
+  let idem2 = v_idempotency.touch_key(idem_put_absent, "k1", 20, 3)
+  let idem_rec = v_idempotency.get_record(idem2, "k1", 4)
+  let idem_has = v_idempotency.has_key(idem2, "k1", 4)
+  let idem_check = v_idempotency.check_key(idem2, "k1", 4)
+  let idem_ttl = v_idempotency.ttl_left(idem2, "k1", 4)
+  let idem_keys = v_idempotency.keys(idem2, 4)
+  let idem_replay = v_idempotency.replay_result(idem2, "k1", 4)
+  let idem_count = v_idempotency.count(idem2, 4)
+  let idem3 = v_idempotency.remove_key(idem2, "k1", 4)
+  let idem_empty = v_idempotency.is_empty(idem3, 4)
+  let idem_stats = v_idempotency.stats(idem2, 4)
+
+  let ct0 = v_contracts.contract_load("user-api", "1.0.0", "sha-a", ["id", "name"])
+  let ct1 = v_contracts.add_required_field(ct0, "email")
+  let ct2 = v_contracts.with_hash(ct1, "sha-b")
+  let ct_name = v_contracts.contract_name(ct2)
+  let ct_version = v_contracts.contract_version(ct2)
+  let ct_hash = v_contracts.contract_hash(ct2)
+  let ct_fields = v_contracts.field_count(ct2)
+  let ct_has_email = v_contracts.has_required_field(ct2, "email")
+  let ct_ok = v_contracts.contract_verify(ct2, "{\"id\":1,\"name\":\"n\",\"email\":\"e\"}")
+  let ct_non_empty = v_contracts.verify_payload_non_empty(ct2, "{\"id\":1,\"name\":\"n\",\"email\":\"e\"}")
+  let ct_missing = v_contracts.first_missing_field(ct2, "{\"id\":1,\"name\":\"n\"}")
+  let ct_same = v_contracts.same_identity(ct0, ct1)
+  let ct_diff = v_contracts.diff(ct0, ct2)
+  let ct_breaking = v_contracts.is_breaking(ct0, ct2)
+  let ct_summary = v_contracts.contract_summary(ct2)
+
+  let jb0 = v_jobs.queue_new(2)
+  let jb1 = v_jobs.enqueue(jb0, "job-a")
+  let jb2 = v_jobs.enqueue(jb1, "job-b")
+  let jb3 = v_jobs.dequeue(jb2)
+  let jb4 = v_jobs.nack(jb3, 0)
+  let jb5 = v_jobs.dequeue(jb4)
+  let jb6 = v_jobs.ack(jb5, 1)
+  let jb7 = v_jobs.dequeue(jb6)
+  let jb8 = v_jobs.nack(jb7, 0)
+  let jb9 = v_jobs.requeue_dead(jb8, 0)
+  let jb10 = v_jobs.clear_done(jb9)
+  let jb11 = v_jobs.clear_dlq(jb10)
+  let jobs_pending = v_jobs.pending_count(jb8)
+  let jobs_inflight = v_jobs.inflight_count(jb8)
+  let jobs_done = v_jobs.done_count(jb8)
+  let jobs_dlq = v_jobs.dlq_count(jb8)
+  let jobs_total = v_jobs.total_count(jb8)
+  let jobs_has_pending = v_jobs.has_pending(jb8)
+  let jobs_has_inflight = v_jobs.has_inflight(jb8)
+  let jobs_has_done = v_jobs.has_done(jb8)
+  let jobs_has_dlq = v_jobs.has_dlq(jb8)
+  let jobs_next_pending = v_jobs.next_pending_id(jb8)
+  let jobs_attempt_0 = v_jobs.attempts_of(jb8, 0)
+  let jobs_state_0 = v_jobs.state_of(jb8, 0)
+  let jobs_state_1 = v_jobs.state_of(jb8, 1)
+  let jobs_state_missing = v_jobs.state_of(jb8, 999)
+  let jobs_stats = v_jobs.stats(jb8)
+
+  let pl0 = v_policy.policy_load(false)
+  let pl1 = v_policy.add_rule(pl0, "alice", "read", "invoice", v_policy.Effect.Allow, "reader")
+  let pl2 = v_policy.add_rule(pl1, "alice", "delete", "invoice", v_policy.Effect.Deny, "forbidden-delete")
+  let pl3 = v_policy.add_rule(pl2, "*", "list", "*", v_policy.Effect.Allow, "browse")
+  let pl_rules = v_policy.rule_count(pl3)
+  let pl_mode = v_policy.default_mode(pl3)
+  let pl_subject_rules = v_policy.subject_rule_count(pl3, "alice")
+  let pl_has = v_policy.has_rule(pl3, "alice", "read", "invoice")
+  let pl_first = v_policy.first_match(pl3, "alice", "delete", "invoice")
+  let pl_allow = v_policy.allow(pl3, "alice", "read", "invoice")
+  let pl_deny = v_policy.allow(pl3, "alice", "delete", "invoice")
+  let pl_decision = v_policy.decision(pl3, "alice", "delete", "invoice")
+  let pl_reason = v_policy.deny_reason(pl3, "alice", "delete", "invoice")
+  let pl_explain = v_policy.explain(pl3, "alice", "delete", "invoice")
+  let pl4 = v_policy.remove_rule(pl3, 1)
+  let pl5 = v_policy.set_default_allow(pl4, true)
+  let pl_default_deny = v_policy.is_default_deny(pl3)
+  let pl_allow_default = v_policy.allow(pl5, "alice", "delete", "invoice")
+  let pl_stats = v_policy.stats(pl3)
+
+  let ov_span0 = v_observability.trace_start("runtime", 100)
+  let ov_span1 = v_observability.with_trace_id(ov_span0, "tr-custom")
+  let ov_span2 = v_observability.trace_end(ov_span1, 140)
+  let ov_span3 = v_observability.trace_reopen(ov_span2, 150)
+  let ov_span4 = v_observability.trace_end(ov_span3, 180)
+  let ov_span5 = v_observability.trace_start_with_id("io", "trace-1", 200)
+  let ov_span_open = v_observability.trace_is_open(ov_span0)
+  let ov_span_closed = v_observability.trace_is_closed(ov_span2)
+  let ov_span_name = v_observability.trace_name(ov_span4)
+  let ov_duration = v_observability.trace_duration(ov_span2)
+  let ov_trace_summary = v_observability.trace_summary(ov_span4)
+  let ov_ctr0 = v_observability.counter_new("jobs")
+  let ov_ctr1 = v_observability.counter_with_trace(ov_ctr0, ov_span2.trace_id)
+  let ov_ctr2 = v_observability.counter_inc(ov_ctr1, 3)
+  let ov_ctr3 = v_observability.counter_inc(ov_ctr2, 2)
+  let ov_ctr_merge = v_observability.counter_merge(ov_ctr2, ov_ctr3)
+  let ov_ctr_reset = v_observability.counter_reset(ov_ctr3)
+  let ov_ctr_value = v_observability.counter_value(ov_ctr3)
+  let ov_ctr_zero = v_observability.counter_is_zero(ov_ctr_reset)
+  let ov_hist0 = v_observability.histogram_new("lat")
+  let ov_hist1 = v_observability.histogram_with_trace(ov_hist0, ov_span2.trace_id)
+  let ov_hist2 = v_observability.histogram_observe(ov_hist1, 8)
+  let ov_hist3 = v_observability.histogram_observe(ov_hist2, 12)
+  let ov_hist4 = v_observability.histogram_observe(ov_hist1, 20)
+  let ov_hist_merge = v_observability.histogram_merge(ov_hist3, ov_hist4)
+  let ov_hist_empty = v_observability.histogram_empty(ov_hist0)
+  let ov_hist_min = v_observability.histogram_min(ov_hist3)
+  let ov_hist_max = v_observability.histogram_max(ov_hist3)
+  let ov_hist_range = v_observability.histogram_range(ov_hist3)
+  let ov_hist_avg = v_observability.histogram_avg(ov_hist3)
+  let ov_metrics = v_observability.metrics_summary(ov_ctr3, ov_hist3)
+
   let ob0 = v_outbox.outbox_new()
   let ob1 = v_outbox.enqueue_event(ob0, "user.created", "{\"id\":1}")
   let ob2 = v_outbox.enqueue_event(ob1, "user.updated", "{\"id\":1,\"name\":\"n\"}")
@@ -326,6 +442,15 @@ entry main at tests/packages_runtime {
   let outbox_status_1 = v_outbox.status(ob5, 1)
   let outbox_events_after_prune = v_outbox.event_count(ob6)
   let outbox_empty_after_clear = v_outbox.is_empty(ob8)
+  let outbox_sent_ids = v_outbox.sent_ids(ob4)
+  let outbox_flushed_ids = v_outbox.flushed_ids(ob3)
+  let outbox_pending_by_topic = v_outbox.pending_by_topic(ob4, "user.updated")
+  let outbox_oldest_pending = v_outbox.oldest_pending_id(ob4)
+  let ob9 = v_outbox.retry_all_pending(ob4)
+  let outbox_can_flush = v_outbox.can_flush(ob4)
+  let outbox_drained = v_outbox.is_drained(ob7)
+  let outbox_summary = v_outbox.event_summary(ob4, 1)
+  let outbox_invariants = v_outbox.verify_invariants(ob9)
   let outbox_stats = v_outbox.stats(ob6)
 
   let sg0 = v_saga.saga_new("payment-1")
@@ -355,6 +480,16 @@ entry main at tests/packages_runtime {
   let saga_pending = v_saga.pending_count(sg3)
   let saga_failed_name = v_saga.failed_step(sg3)
   let saga_step_idx = v_saga.step_index(sg3, "charge_card")
+  let saga_step_done_reserve = v_saga.step_done(sg3, "reserve_stock")
+  let saga_step_comp_charge = v_saga.step_compensated(sg4, "charge_card")
+  let saga_all_done = v_saga.all_done(sg5)
+  let saga_all_compensated = v_saga.all_compensated(sg4)
+  let saga_can_compensate = v_saga.can_compensate(sg3)
+  let saga_can_resume = v_saga.can_resume(sg4)
+  let sg10 = v_saga.rename_step(sg7, "emit", "publish")
+  let sg11 = v_saga.append_step_suffix(sg10, "_v1")
+  let saga_failure_ratio = v_saga.failure_ratio_percent(sg3)
+  let saga_invariants = v_saga.verify_invariants(sg4)
   let saga_terminal = v_saga.is_terminal(sg4)
   let saga_state_name = v_saga.state_name(sg4)
   let saga_stats = v_saga.stats(sg5)
@@ -390,6 +525,16 @@ entry main at tests/packages_runtime {
   let schema_fingerprints = v_schema_registry.fingerprints(sr2, "user")
   let schema_level = v_schema_registry.compatibility_level(sr_base, sr_latest)
   let schema_total = v_schema_registry.total_count(sr2)
+  let sr6 = v_schema_registry.register_next(sr2, "user", "fp3", ["id", "name", "email", "age"])
+  let schema_subject_count = v_schema_registry.subject_count(sr6)
+  let schema_next_version = v_schema_registry.next_version(sr2, "user")
+  let schema_latest_fingerprint = v_schema_registry.latest_fingerprint(sr6, "user")
+  let schema_first_inactive = v_schema_registry.first_inactive_version(sr3, "user")
+  let schema_order_empty = v_schema_registry.is_subject_empty(sr2, "order")
+  let schema_active_ratio = v_schema_registry.active_ratio_percent(sr3)
+  let schema_record_summary = v_schema_registry.record_summary(sr_latest)
+  let schema_subject_stats = v_schema_registry.subject_stats(sr3, "user")
+  let schema_invariants = v_schema_registry.verify_invariants(sr6)
   let schema_stats = v_schema_registry.stats(sr2)
 
   let tenant_ctx = v_tenant.tenant_ctx("t1", "eu", "pro")
@@ -423,6 +568,18 @@ entry main at tests/packages_runtime {
   let tenant_normalized = v_tenant.normalize(v_tenant.tenant_ctx("t2", "", ""), "eu", "free")
   let tenant_region_name = v_tenant.region_of(tenant_planned)
   let tenant_plan_name = v_tenant.plan_of(tenant_planned)
+  let tenant_prefix = v_tenant.scope_prefix(tenant_ctx)
+  let tenant_extracted = v_tenant.extract_tenant_id(tenant_key)
+  let tenant_matches_scope = v_tenant.matches_scope(tenant_ctx, tenant_key)
+  let tenant_is_default = v_tenant.is_default_ctx(tenant_default)
+  let tenant_can_promote = v_tenant.can_promote_to(tenant_ctx, "enterprise")
+  let tenant_promoted = v_tenant.promote(tenant_ctx, "enterprise")
+  let tenant_demoted = v_tenant.demote(tenant_promoted, "pro")
+  let tenant_masked = v_tenant.masked_tenant_id(tenant_ctx)
+  let tenant_stack_ids = v_tenant.stack_ids(tenant_stack2)
+  let tenant_stack_valid = v_tenant.verify_stack(tenant_stack2)
+  let tenant_stack_valid_distinct = v_tenant.verify_stack([tenant_ctx, v_tenant.tenant_ctx("t2", "us", "free")])
+  let tenant_summary_key = v_tenant.summary_key(tenant_planned, "invoice:1")
   let tenant_stats = v_tenant.stats(tenant_planned)
   let tenant_same = v_tenant.same_tenant(tenant_ctx, tenant_current)
 
@@ -438,6 +595,18 @@ entry main at tests/packages_runtime {
   let health_score_bad = v_health.score_percent(h_bad)
   let health_text_bad = v_health.status_text(h_bad)
   let health_text_ok = v_health.status_text(h_ok)
+  let health_db_ok = v_health.component_ok(h_ok, "db")
+  let health_unknown = v_health.component_ok(h_ok, "unknown")
+  let health_ready_blockers = v_health.ready_blockers(h_bad)
+  let health_startup_blockers = v_health.startup_blockers(h_bad)
+  let health_code_operational = v_health.status_code_operational(h_bad)
+  let health_is_down = v_health.is_down(h_bad)
+  let health_is_degraded = v_health.is_degraded(h_bad)
+  let health_severity_bad = v_health.severity(h_bad)
+  let health_summary = v_health.summary(h_bad)
+  let health_invariants = v_health.verify_invariants(h_ok)
+  let h_down = v_health.input(true, true, true, true, true, false)
+  let health_severity_down = v_health.severity(h_down)
   let health_json = v_health.report_json(h_ok)
 
   let pg = v_pagination.page(0, 2, 5)
@@ -672,6 +841,31 @@ entry main at tests/packages_runtime {
      bulkhead_open && bulkhead_qdepth == 1 && bulkhead_rejected == 1 &&
      bulkhead_has_queue && bulkhead_util == 100 && bh8.queued == 0 &&
      bh9.capacity == 1 && bh10.rejected == 0 && bulkhead_stats.len > 0 &&
+     idem_rec.active && idem_has && !idem_check && idem_ttl == 19 &&
+     idem_keys.len == 1 && idem_keys[0] == "k1" && idem_replay == "R1" &&
+     idem_count == 1 && idem_empty && idem_stats.len > 0 &&
+     ct_name == "user-api" && ct_version == "1.0.0" && ct_hash == "sha-b" &&
+     ct_fields == 3 && ct_has_email && ct_ok.ok && ct_non_empty.ok &&
+     ct_missing == "email" && ct_same && ct_diff == "breaking:schema" &&
+     ct_breaking && ct_summary.len > 0 &&
+     jobs_pending == 0 && jobs_inflight == 0 && jobs_done == 1 && jobs_dlq == 1 &&
+     jobs_total == 2 && !jobs_has_pending && !jobs_has_inflight &&
+     jobs_has_done && jobs_has_dlq && jobs_next_pending == -1 &&
+     jobs_attempt_0 == 2 && jobs_state_0 == "failed" &&
+     jobs_state_1 == "done" && jobs_state_missing == "missing" &&
+     v_jobs.total_count(jb9) == 2 && v_jobs.done_count(jb10) == 0 &&
+     v_jobs.dlq_count(jb11) == 0 && jobs_stats.len > 0 &&
+     pl_rules == 3 && pl_mode == "deny" && pl_subject_rules == 2 && pl_has &&
+     pl_first.effect == v_policy.Effect.Deny && pl_allow && !pl_deny &&
+     pl_decision == "deny" && pl_reason == "forbidden-delete" &&
+     pl_explain == "deny:forbidden-delete" && pl_default_deny &&
+     pl_allow_default && pl_stats.len > 0 &&
+     ov_span_open && ov_span_closed && ov_span_name == "runtime" &&
+     ov_duration == 40 && ov_span5.trace_id == "trace-1" &&
+     ov_ctr_value == 5 && ov_ctr_merge.value == 8 && ov_ctr_zero &&
+     ov_hist_empty && ov_hist_min == 8 && ov_hist_max == 12 &&
+     ov_hist_range == 4 && ov_hist_avg == 10 && ov_hist_merge.count == 3 &&
+     ov_trace_summary.len > 0 && ov_metrics.len > 0 &&
      outbox_pending == 1 && outbox_flushed == 1 && outbox_flushed_pending == 1 && outbox_payload.len > 0 &&
      outbox_payload_size > 0 && outbox_events == 2 && outbox_sent == 1 && outbox_has_0 &&
      outbox_event_1.topic == "user.updated" && outbox_ids.len == 2 && outbox_pending_ids.len == 1 &&
@@ -680,7 +874,12 @@ entry main at tests/packages_runtime {
      outbox_next.id == 1 && outbox_topic_created == 1 &&
      outbox_status_0 == "sent" && outbox_status_1 == "pending" &&
      outbox_events_after_prune == 1 && v_outbox.sent_count(ob7) == 2 &&
-     v_outbox.pending_count(ob7) == 0 && outbox_empty_after_clear && outbox_stats.len > 0 &&
+     v_outbox.pending_count(ob7) == 0 && outbox_empty_after_clear &&
+     outbox_sent_ids.len == 1 && outbox_sent_ids[0] == 0 &&
+     outbox_flushed_ids.len == 1 && outbox_flushed_ids[0] == 0 &&
+     outbox_pending_by_topic == 1 && outbox_oldest_pending == 1 &&
+     v_outbox.attempt_of(ob9, 1) == 1 && outbox_can_flush && outbox_drained &&
+     outbox_summary.len > 0 && outbox_invariants && outbox_stats.len > 0 &&
      sg3.state == v_saga.SagaState.Failed && sg3_fail_alias.state == v_saga.SagaState.Failed &&
      sg4.state == v_saga.SagaState.Compensated && saga_step0.done && saga_step_missing.name == "" &&
      saga_has_charge && saga_next_pending == "charge_card" && saga_can_run_failed &&
@@ -688,6 +887,11 @@ entry main at tests/packages_runtime {
      saga_is_failed && saga_is_succeeded && saga_is_compensated &&
      saga_steps == 2 && saga_compensated == 1 && saga_done == 1 && saga_pending == 1 &&
      v_saga.done_count(sg8) == 2 && v_saga.compensated_count(sg9) == 1 &&
+     saga_step_done_reserve && !saga_step_comp_charge &&
+     saga_all_done && saga_all_compensated &&
+     saga_can_compensate && saga_can_resume &&
+     v_saga.has_step(sg10, "publish") && v_saga.step_index(sg11, "publish_v1") == 2 &&
+     saga_failure_ratio == 50 && saga_invariants &&
      saga_failed_name == "charge_card" && saga_step_idx == 1 && saga_terminal &&
      saga_state_name == "compensated" && sg5.state == v_saga.SagaState.Succeeded &&
      sg6.state == v_saga.SagaState.Draft && v_saga.step_count(sg7) == 3 && saga_stats.len > 0 &&
@@ -700,7 +904,12 @@ entry main at tests/packages_runtime {
      schema_latest_version == 2 && schema_fields == 3 && schema_has_email &&
      schema_subjects.len == 1 && schema_versions.len == 2 && schema_fingerprints.len == 2 &&
      schema_level == "backward-compatible" && schema_total == 2 &&
-     v_schema_registry.total_count(sr5) == 1 && schema_stats.len > 0 &&
+     v_schema_registry.total_count(sr5) == 1 &&
+     schema_subject_count == 1 && schema_next_version == 3 &&
+     schema_latest_fingerprint == "fp3" && schema_first_inactive == 2 &&
+     schema_order_empty && schema_active_ratio == 50 &&
+     schema_record_summary.len > 0 && schema_subject_stats.len > 0 &&
+     schema_invariants && schema_stats.len > 0 &&
      tenant_default.plan == "free" && !tenant_default.active && tenant_tid == "t1" &&
      tenant_key.len > 0 && tenant_scope_prefix &&
      tenant_iso_ok && !tenant_iso_bad && tenant_current.active && !tenant_off.active && tenant_same &&
@@ -710,12 +919,23 @@ entry main at tests/packages_runtime {
      tenant_stack_depth == 2 && tenant_stack_empty && tenant_stack_has_t1 &&
      tenant_stack3.len == 1 && v_tenant.current(tenant_stack_replaced).plan == "pro" &&
      v_tenant.is_valid(tenant_normalized) && tenant_region_name == "us" &&
-     tenant_plan_name == "enterprise" && tenant_stats.len > 0 &&
+     tenant_plan_name == "enterprise" &&
+     tenant_prefix == "t1:" && tenant_extracted == "t1" && tenant_matches_scope &&
+     tenant_is_default && tenant_can_promote &&
+     tenant_promoted.plan == "enterprise" && tenant_demoted.plan == "pro" &&
+     tenant_masked == "***" && tenant_stack_ids.len == 2 &&
+     !tenant_stack_valid && tenant_stack_valid_distinct &&
+     tenant_summary_key.len > 0 && tenant_stats.len > 0 &&
      health_deps_ok && health_operational && health_code_live == 200 &&
      health_code_ready == 503 && health_code_startup == 503 &&
      health_failing.len == 3 && health_fail_count == 3 &&
      health_score_bad == 50 && health_text_bad == "degraded" &&
-     health_text_ok == "ok" && health_json.len > 0 &&
+     health_text_ok == "ok" && health_db_ok && !health_unknown &&
+     health_ready_blockers.len == 2 && health_startup_blockers.len == 1 &&
+     health_code_operational == 503 && !health_is_down && health_is_degraded &&
+     health_severity_bad == "warning" && health_summary.len > 0 &&
+     health_invariants && health_severity_down == "critical" &&
+     health_json.len > 0 &&
      pagination_has_next && !pagination_has_prev && pagination_prev == -1 &&
      pagination_next == 2 && pagination_window.size == 2 && pagination_count == 3 &&
      pagination_first.offset == 0 && pagination_last.offset == 3 && pagination_idx_last == 1 &&

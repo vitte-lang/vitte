@@ -85,11 +85,34 @@ proc domain_data() -> bool {
   let idem1 = v_idempotency.store_result(idem0, "k1", "R1", 10, 1)
   let idem_first = v_idempotency.check_key(idem1, "k1", 2)
   let idem_replay = v_idempotency.replay_result(idem1, "k1", 2)
-  let idem2 = v_idempotency.expire_keys(idem1, 20)
-  let idem_after = v_idempotency.check_key(idem2, "k1", 20)
+  let idem_put_absent = v_idempotency.put_if_absent(idem1, "k1", "R2", 10, 2)
+  let idem2 = v_idempotency.touch_key(idem_put_absent, "k1", 20, 3)
+  let idem_rec = v_idempotency.get_record(idem2, "k1", 4)
+  let idem_has = v_idempotency.has_key(idem2, "k1", 4)
+  let idem_ttl = v_idempotency.ttl_left(idem2, "k1", 4)
+  let idem_keys = v_idempotency.keys(idem2, 4)
+  let idem_count = v_idempotency.count(idem2, 4)
+  let idem_stats = v_idempotency.stats(idem2, 4)
+  let idem3 = v_idempotency.remove_key(idem2, "k1", 4)
+  let idem_empty = v_idempotency.is_empty(idem3, 4)
+  let idem4 = v_idempotency.put_if_absent(idem3, "k2", "R2", 5, 5)
+  let idem_has_k2 = v_idempotency.has_key(idem4, "k2", 6)
+  let idem_after = v_idempotency.check_key(v_idempotency.expire_keys(idem1, 20), "k1", 20)
 
   let c0_def = v_contracts.contract_load("user-api", "1.0.0", "sha-a", ["id", "name"])
   let c1_def = v_contracts.contract_load("user-api", "1.1.0", "sha-b", ["id", "name"])
+  let c2_def = v_contracts.add_required_field(c0_def, "email")
+  let c3_def = v_contracts.with_hash(c2_def, "sha-c")
+  let c_name = v_contracts.contract_name(c3_def)
+  let c_version = v_contracts.contract_version(c3_def)
+  let c_hash = v_contracts.contract_hash(c3_def)
+  let c_fields = v_contracts.field_count(c3_def)
+  let c_has_email = v_contracts.has_required_field(c3_def, "email")
+  let c_missing = v_contracts.first_missing_field(c3_def, "{\"id\":1,\"name\":\"n\"}")
+  let c_non_empty = v_contracts.verify_payload_non_empty(c3_def, "{\"id\":1,\"name\":\"n\",\"email\":\"e\"}")
+  let c_same = v_contracts.same_identity(c0_def, c2_def)
+  let c_breaking = v_contracts.is_breaking(c0_def, c3_def)
+  let c_summary = v_contracts.contract_summary(c3_def)
   let c_ok = v_contracts.contract_verify(c0_def, "{\"id\":1,\"name\":\"n\"}")
   let c_diff = v_contracts.diff(c0_def, c1_def)
   let c_snap = v_contracts.snapshot(c0_def)
@@ -123,6 +146,15 @@ proc domain_data() -> bool {
   let ob_status_1 = v_outbox.status(ob5, 1)
   let ob_events_after_prune = v_outbox.event_count(ob6)
   let ob_empty_after_clear = v_outbox.is_empty(ob8)
+  let ob_sent_ids = v_outbox.sent_ids(ob4)
+  let ob_flushed_ids = v_outbox.flushed_ids(ob3)
+  let ob_pending_topic = v_outbox.pending_by_topic(ob4, "user.updated")
+  let ob_oldest_pending = v_outbox.oldest_pending_id(ob4)
+  let ob9 = v_outbox.retry_all_pending(ob4)
+  let ob_can_flush = v_outbox.can_flush(ob4)
+  let ob_drained = v_outbox.is_drained(ob7)
+  let ob_summary = v_outbox.event_summary(ob4, 1)
+  let ob_invariants = v_outbox.verify_invariants(ob9)
   let ob_stats = v_outbox.stats(ob6)
 
   let sg0 = v_saga.saga_new("order-1")
@@ -148,6 +180,16 @@ proc domain_data() -> bool {
   let sg_pending = v_saga.pending_count(sg2)
   let sg_failed_name = v_saga.failed_step(sg2)
   let sg_idx = v_saga.step_index(sg2, "charge")
+  let sg_step_done_reserve = v_saga.step_done(sg2, "reserve_stock")
+  let sg_step_comp_charge = v_saga.step_compensated(sg3, "charge")
+  let sg_all_done = v_saga.all_done(sg4)
+  let sg_all_comp = v_saga.all_compensated(sg3)
+  let sg_can_comp = v_saga.can_compensate(sg2)
+  let sg_can_resume = v_saga.can_resume(sg3)
+  let sg8 = v_saga.rename_step(sg1, "emit", "publish")
+  let sg9 = v_saga.append_step_suffix(sg8, "_v1")
+  let sg_failure_ratio = v_saga.failure_ratio_percent(sg2)
+  let sg_invariants = v_saga.verify_invariants(sg3)
   let sg_term = v_saga.is_terminal(sg3)
   let sg_state = v_saga.state_name(sg3)
   let sg_stats = v_saga.stats(sg4)
@@ -183,6 +225,16 @@ proc domain_data() -> bool {
   let sr_fps = v_schema_registry.fingerprints(sr2, "user")
   let sr_level = v_schema_registry.compatibility_level(sr_base, sr_latest)
   let sr_total = v_schema_registry.total_count(sr2)
+  let sr6 = v_schema_registry.register_next(sr2, "user", "fp3", ["id", "name", "email", "age"])
+  let sr_subject_count = v_schema_registry.subject_count(sr6)
+  let sr_next_version = v_schema_registry.next_version(sr2, "user")
+  let sr_latest_fp = v_schema_registry.latest_fingerprint(sr6, "user")
+  let sr_first_inactive = v_schema_registry.first_inactive_version(sr3, "user")
+  let sr_order_empty = v_schema_registry.is_subject_empty(sr2, "order")
+  let sr_active_ratio = v_schema_registry.active_ratio_percent(sr3)
+  let sr_record_summary = v_schema_registry.record_summary(sr_latest)
+  let sr_subject_stats = v_schema_registry.subject_stats(sr3, "user")
+  let sr_invariants = v_schema_registry.verify_invariants(sr6)
   let sr_stats = v_schema_registry.stats(sr2)
 
   let t_ctx = v_tenant.tenant_ctx("t1", "eu", "pro")
@@ -216,6 +268,18 @@ proc domain_data() -> bool {
   let t_normalized = v_tenant.normalize(v_tenant.tenant_ctx("t2", "", ""), "eu", "free")
   let t_region_name = v_tenant.region_of(t_planned)
   let t_plan_name = v_tenant.plan_of(t_planned)
+  let t_prefix = v_tenant.scope_prefix(t_ctx)
+  let t_extracted = v_tenant.extract_tenant_id(t_key)
+  let t_scope_match = v_tenant.matches_scope(t_ctx, t_key)
+  let t_is_default = v_tenant.is_default_ctx(t_default)
+  let t_can_promote = v_tenant.can_promote_to(t_ctx, "enterprise")
+  let t_promoted = v_tenant.promote(t_ctx, "enterprise")
+  let t_demoted = v_tenant.demote(t_promoted, "pro")
+  let t_masked = v_tenant.masked_tenant_id(t_ctx)
+  let t_stack_ids = v_tenant.stack_ids(t_stack2)
+  let t_stack_valid = v_tenant.verify_stack(t_stack2)
+  let t_stack_valid_distinct = v_tenant.verify_stack([t_ctx, v_tenant.tenant_ctx("t2", "us", "free")])
+  let t_summary_key = v_tenant.summary_key(t_planned, "invoice:1")
   let t_stats = v_tenant.stats(t_planned)
 
   let pg = v_pagination.page(0, 2, 5)
@@ -328,8 +392,13 @@ proc domain_data() -> bool {
        v_registry.has(idx3, "vitte-sql", "1.0.0") &&
        got.downloads == 1 && v_registry.published_count(idx3) == 1 &&
        diff == "updated" &&
-       !idem_first && idem_replay == "R1" && idem_after &&
-       c_ok.ok && c_diff == "changed" && c_snap.len > 0 &&
+       !idem_first && idem_replay == "R1" && idem_rec.active && idem_has &&
+       idem_ttl == 19 && idem_keys.len == 1 && idem_keys[0] == "k1" &&
+       idem_count == 1 && idem_empty && idem_has_k2 && idem_after && idem_stats.len > 0 &&
+       c_ok.ok && c_non_empty.ok && c_diff == "changed" && c_snap.len > 0 &&
+       c_name == "user-api" && c_version == "1.0.0" && c_hash == "sha-c" &&
+       c_fields == 3 && c_has_email && c_missing == "email" && c_same &&
+       c_breaking && c_summary.len > 0 &&
        ob_pending == 1 && ob_flushed == 1 && ob_flushed_pending == 1 && ob_payload.len > 0 &&
        ob_payload_size > 0 && ob_events == 2 && ob_sent == 1 && ob_has_0 &&
        ob_event_1.topic == "user.updated" && ob_ids.len == 2 && ob_pending_ids.len == 1 &&
@@ -338,7 +407,12 @@ proc domain_data() -> bool {
        ob_next.id == 1 && ob_topic_created == 1 &&
        ob_status_0 == "sent" && ob_status_1 == "pending" &&
        ob_events_after_prune == 1 && v_outbox.sent_count(ob7) == 2 &&
-       v_outbox.pending_count(ob7) == 0 && ob_empty_after_clear && ob_stats.len > 0 &&
+       v_outbox.pending_count(ob7) == 0 && ob_empty_after_clear &&
+       ob_sent_ids.len == 1 && ob_sent_ids[0] == 0 &&
+       ob_flushed_ids.len == 1 && ob_flushed_ids[0] == 0 &&
+       ob_pending_topic == 1 && ob_oldest_pending == 1 &&
+       v_outbox.attempt_of(ob9, 1) == 1 && ob_can_flush && ob_drained &&
+       ob_summary.len > 0 && ob_invariants && ob_stats.len > 0 &&
        sg2.state == v_saga.SagaState.Failed && sg2_fail_alias.state == v_saga.SagaState.Failed &&
        sg3.state == v_saga.SagaState.Compensated && sg4.state == v_saga.SagaState.Succeeded &&
        sg5.state == v_saga.SagaState.Draft && sg_step0.done && sg_step_missing.name == "" &&
@@ -347,6 +421,10 @@ proc domain_data() -> bool {
        sg_is_failed && sg_is_succeeded && sg_is_compensated &&
        sg_done == 1 && sg_pending == 2 && v_saga.done_count(sg6) == 1 &&
        v_saga.compensated_count(sg7) == 1 &&
+       sg_step_done_reserve && !sg_step_comp_charge &&
+       sg_all_done && sg_all_comp && sg_can_comp && sg_can_resume &&
+       v_saga.has_step(sg8, "publish") && v_saga.step_index(sg9, "publish_v1") == 2 &&
+       sg_failure_ratio == 66 && sg_invariants &&
        sg_failed_name == "charge" && sg_idx == 1 && sg_term &&
        sg_state == "compensated" && sg_stats.len > 0 &&
        sr_latest.version == 2 && sr_compat && !sr_compat_bidir &&
@@ -358,7 +436,12 @@ proc domain_data() -> bool {
        sr_latest_version == 2 && sr_fields == 3 && sr_has_email &&
        sr_subjects.len == 1 && sr_versions.len == 2 && sr_fps.len == 2 &&
        sr_level == "backward-compatible" && sr_total == 2 &&
-       v_schema_registry.total_count(sr5) == 1 && sr_stats.len > 0 &&
+       v_schema_registry.total_count(sr5) == 1 &&
+       sr_subject_count == 1 && sr_next_version == 3 &&
+       sr_latest_fp == "fp3" && sr_first_inactive == 2 &&
+       sr_order_empty && sr_active_ratio == 50 &&
+       sr_record_summary.len > 0 && sr_subject_stats.len > 0 &&
+       sr_invariants && sr_stats.len > 0 &&
        t_default.plan == "free" && !t_default.active && t_tid == "t1" &&
        t_key.len > 0 && t_scope_prefix &&
        t_iso_ok && !t_iso_bad && t_current.active && !t_deactivated.active &&
@@ -368,7 +451,13 @@ proc domain_data() -> bool {
        t_stack_depth == 2 && t_stack_empty && t_stack_has &&
        t_stack3.len == 1 && v_tenant.current(t_stack_replaced).plan == "pro" &&
        v_tenant.is_valid(t_normalized) && t_region_name == "us" &&
-       t_plan_name == "enterprise" && t_stats.len > 0 &&
+       t_plan_name == "enterprise" &&
+       t_prefix == "t1:" && t_extracted == "t1" && t_scope_match &&
+       t_is_default && t_can_promote &&
+       t_promoted.plan == "enterprise" && t_demoted.plan == "pro" &&
+       t_masked == "***" && t_stack_ids.len == 2 &&
+       !t_stack_valid && t_stack_valid_distinct &&
+       t_summary_key.len > 0 && t_stats.len > 0 &&
        pg_has_next && !pg_has_prev && pg_prev == -1 &&
        pg_next == 2 && pg_window.size == 2 && pg_count == 3 &&
        pg_first.offset == 0 && pg_last.offset == 3 && pg_idx_last == 1 &&
@@ -619,6 +708,18 @@ proc domain_security() -> bool {
   let h_score_bad = v_health.score_percent(h_bad)
   let h_text_bad = v_health.status_text(h_bad)
   let h_text_ok = v_health.status_text(h)
+  let h_db_ok = v_health.component_ok(h, "db")
+  let h_unknown = v_health.component_ok(h, "unknown")
+  let h_ready_blockers = v_health.ready_blockers(h_bad)
+  let h_startup_blockers = v_health.startup_blockers(h_bad)
+  let h_code_operational = v_health.status_code_operational(h_bad)
+  let h_is_down = v_health.is_down(h_bad)
+  let h_is_degraded = v_health.is_degraded(h_bad)
+  let h_severity_bad = v_health.severity(h_bad)
+  let h_summary = v_health.summary(h_bad)
+  let h_invariants = v_health.verify_invariants(h)
+  let h_down = v_health.input(true, true, true, true, true, false)
+  let h_severity_down = v_health.severity(h_down)
   let h_json = v_health.report_json(h)
 
   let ff0 = v_feature_flags.flags_new()
@@ -630,10 +731,22 @@ proc domain_security() -> bool {
   let pol0 = v_policy.policy_load(false)
   let pol1 = v_policy.add_rule(pol0, "alice", "read", "invoice", v_policy.Effect.Allow, "reader")
   let pol2 = v_policy.add_rule(pol1, "alice", "delete", "invoice", v_policy.Effect.Deny, "forbidden-delete")
-  let pol_allow = v_policy.allow(pol2, "alice", "read", "invoice")
-  let pol_deny = v_policy.allow(pol2, "alice", "delete", "invoice")
-  let pol_reason = v_policy.deny_reason(pol2, "alice", "delete", "invoice")
-  let pol_explain = v_policy.explain(pol2, "alice", "delete", "invoice")
+  let pol3 = v_policy.add_rule(pol2, "*", "list", "*", v_policy.Effect.Allow, "browse")
+  let pol_allow = v_policy.allow(pol3, "alice", "read", "invoice")
+  let pol_deny = v_policy.allow(pol3, "alice", "delete", "invoice")
+  let pol_reason = v_policy.deny_reason(pol3, "alice", "delete", "invoice")
+  let pol_explain = v_policy.explain(pol3, "alice", "delete", "invoice")
+  let pol_rules = v_policy.rule_count(pol3)
+  let pol_mode = v_policy.default_mode(pol3)
+  let pol_subject_rules = v_policy.subject_rule_count(pol3, "alice")
+  let pol_has = v_policy.has_rule(pol3, "alice", "read", "invoice")
+  let pol_first = v_policy.first_match(pol3, "alice", "delete", "invoice")
+  let pol_decision = v_policy.decision(pol3, "alice", "delete", "invoice")
+  let pol4 = v_policy.remove_rule(pol3, 1)
+  let pol5 = v_policy.set_default_allow(pol4, true)
+  let pol_default_deny = v_policy.is_default_deny(pol3)
+  let pol_allow_default = v_policy.allow(pol5, "alice", "delete", "invoice")
+  let pol_stats = v_policy.stats(pol3)
 
   let ar0 = v_alerts.rule_new("latency_p95", 100, 60)
   let ar_eval = v_alerts.evaluate(ar0, 120, 10)
@@ -697,9 +810,19 @@ proc domain_security() -> bool {
        h_deps && h_operational &&
        h_code_live == 200 && h_code_ready == 503 && h_code_startup == 503 &&
        h_failing.len == 3 && h_failing_count == 3 &&
-       h_score_bad == 50 && h_text_bad == "degraded" && h_text_ok == "ok" && h_json.len > 0 &&
+       h_score_bad == 50 && h_text_bad == "degraded" && h_text_ok == "ok" &&
+       h_db_ok && !h_unknown &&
+       h_ready_blockers.len == 2 && h_startup_blockers.len == 1 &&
+       h_code_operational == 503 && !h_is_down && h_is_degraded &&
+       h_severity_bad == "warning" && h_summary.len > 0 &&
+       h_invariants && h_severity_down == "critical" &&
+       h_json.len > 0 &&
        !ff_user && ff_other &&
-       pol_allow && !pol_deny && pol_reason == "forbidden-delete" && pol_explain.len > 0 &&
+       pol_rules == 3 && pol_mode == "deny" && pol_subject_rules == 2 && pol_has &&
+       pol_first.effect == v_policy.Effect.Deny &&
+       pol_allow && !pol_deny && pol_decision == "deny" &&
+       pol_reason == "forbidden-delete" && pol_explain == "deny:forbidden-delete" &&
+       pol_default_deny && pol_allow_default && pol_stats.len > 0 &&
        ar_eval && ar1.fired_count == 1 && ar_tuned.threshold == 90 && ar_tuned.window_ticks == 30 &&
        !ar_can && ar_delta == 20 && ar_breach == 120 &&
        ar_page_1 && !ar_page_3 && ar_idle && ar_silenced_state &&
@@ -795,17 +918,56 @@ proc domain_concurrency() -> bool {
   let jq6 = v_jobs.ack(jq5, 1)
   let jq7 = v_jobs.dequeue(jq6)
   let jq8 = v_jobs.nack(jq7, 0)
+  let jq9 = v_jobs.requeue_dead(jq8, 0)
+  let jq10 = v_jobs.clear_done(jq9)
+  let jq11 = v_jobs.clear_dlq(jq10)
+  let jq_pending = v_jobs.pending_count(jq8)
+  let jq_inflight = v_jobs.inflight_count(jq8)
+  let jq_done = v_jobs.done_count(jq8)
+  let jq_dlq = v_jobs.dlq_count(jq8)
+  let jq_total = v_jobs.total_count(jq8)
+  let jq_has_pending = v_jobs.has_pending(jq8)
+  let jq_has_inflight = v_jobs.has_inflight(jq8)
+  let jq_has_done = v_jobs.has_done(jq8)
+  let jq_has_dlq = v_jobs.has_dlq(jq8)
+  let jq_next_pending = v_jobs.next_pending_id(jq8)
+  let jq_attempt_0 = v_jobs.attempts_of(jq8, 0)
+  let jq_state_0 = v_jobs.state_of(jq8, 0)
+  let jq_state_1 = v_jobs.state_of(jq8, 1)
+  let jq_state_missing = v_jobs.state_of(jq8, 999)
+  let jq_stats = v_jobs.stats(jq8)
   let dlq = v_jobs.dead_letter(jq8)
 
   let span0 = v_observability.trace_start("matrix-concurrency", 100)
   let span1 = v_observability.with_trace_id(span0, "tr-custom")
   let span2 = v_observability.trace_end(span1, 140)
+  let span3 = v_observability.trace_reopen(span2, 150)
+  let span4 = v_observability.trace_end(span3, 180)
+  let span5 = v_observability.trace_start_with_id("io", "trace-1", 200)
+  let span_open = v_observability.trace_is_open(span0)
+  let span_closed = v_observability.trace_is_closed(span2)
+  let span_name = v_observability.trace_name(span4)
+  let span_summary = v_observability.trace_summary(span4)
   let ctr0 = v_observability.counter_new("jobs.processed")
   let ctr1 = v_observability.counter_with_trace(ctr0, span2.trace_id)
   let ctr2 = v_observability.counter_inc(ctr1, 3)
+  let ctr3 = v_observability.counter_inc(ctr2, 2)
+  let ctr_merge = v_observability.counter_merge(ctr2, ctr3)
+  let ctr_reset = v_observability.counter_reset(ctr3)
+  let ctr_value = v_observability.counter_value(ctr3)
+  let ctr_zero = v_observability.counter_is_zero(ctr_reset)
   let h0 = v_observability.histogram_new("jobs.latency")
-  let h1 = v_observability.histogram_observe(h0, 8)
-  let h2 = v_observability.histogram_observe(h1, 12)
+  let h1 = v_observability.histogram_with_trace(h0, span2.trace_id)
+  let h_empty = v_observability.histogram_empty(h0)
+  let h2 = v_observability.histogram_observe(h1, 8)
+  let h3 = v_observability.histogram_observe(h2, 12)
+  let h4 = v_observability.histogram_observe(h1, 20)
+  let h_merge = v_observability.histogram_merge(h3, h4)
+  let h_min = v_observability.histogram_min(h3)
+  let h_max = v_observability.histogram_max(h3)
+  let h_range = v_observability.histogram_range(h3)
+  let h_avg = v_observability.histogram_avg(h3)
+  let metrics = v_observability.metrics_summary(ctr3, h3)
 
   give v_async.is_terminal(state) &&
        meta2.state == v_async.TaskState.Succeeded &&
@@ -819,9 +981,19 @@ proc domain_concurrency() -> bool {
        v_process.is_success(ph) && v_process.exit_code(ph_dry) == 0 &&
        v_plugin.can_execute(pr2, "events") && pr4.state == v_plugin.PluginState.Loaded &&
        v_ecs.position_x(w4, e0) == 4 && v_ecs.position_y(w4, e0) == 6 &&
-       v_jobs.done_count(jq8) == 1 && dlq.len == 1 &&
-       v_observability.trace_duration(span2) == 40 &&
-       ctr2.value == 3 && h2.count == 2 && v_observability.histogram_avg(h2) == 10
+       jq_pending == 0 && jq_inflight == 0 && jq_done == 1 && jq_dlq == 1 &&
+       jq_total == 2 && !jq_has_pending && !jq_has_inflight &&
+       jq_has_done && jq_has_dlq && jq_next_pending == -1 &&
+       jq_attempt_0 == 2 && jq_state_0 == "failed" &&
+       jq_state_1 == "done" && jq_state_missing == "missing" &&
+       v_jobs.total_count(jq9) == 2 && v_jobs.done_count(jq10) == 0 &&
+       v_jobs.dlq_count(jq11) == 0 && jq_stats.len > 0 && dlq.len == 1 &&
+       span_open && span_closed && span_name == "matrix-concurrency" &&
+       v_observability.trace_duration(span2) == 40 && span5.trace_id == "trace-1" &&
+       span_summary.len > 0 &&
+       ctr2.value == 3 && ctr_value == 5 && ctr_merge.value == 8 && ctr_zero &&
+       h_empty && h_min == 8 && h_max == 12 && h_range == 4 &&
+       h_avg == 10 && h_merge.count == 3 && metrics.len > 0
 }
 
 entry main at tests/packages_runtime_matrix {
