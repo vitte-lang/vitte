@@ -5,6 +5,29 @@ and adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.1.1] — 2026-02-12
+### Added
+- 📴 **Offline permanent**: force offline mode with `vitte.server.offlinePermanent` (no auto-retry).
+- 🧾 **Offline report**: copy a full offline summary (settings + log tail) via `Vitte: Copy Offline Report`.
+- 🧭 **Offline view**: dedicated **Vitte Offline** view with explain/log/settings actions and “offline since”.
+- 🧯 **Offline banner mute**: `vitte.server.offlineMuteBanner` to silence offline notifications.
+- 📦 **Persistent index cache**: `.vitte/index-cache.json` for faster restarts (`vitte.indexerCacheEnabled`).
+- 🧰 **Request controls**: per-feature timeouts (`vitte.requestTimeouts.*`) and backpressure (`vitte.requestMaxConcurrent`).
+- 🧠 **Feature switches**: `vitte.features.*` to toggle completion/hover/defs/refs/etc.
+- 📉 **Memory guard**: skip indexing when RSS exceeds `vitte.indexerMaxRssMB`.
+- 🧪 **Server utilities**: `Vitte: Ping Server` and `Vitte: Reset Metrics`.
+- 🧩 **Offline lint**: basic client-side lint (tabs/trailing/line length) in offline mode.
+
+### Changed
+- 🛡️ **Fail-fast handlers**: disabled features return empty results with explicit logs.
+- ⚡ **Circuit breaker**: repeated failures pause handlers for 30s.
+- 📈 **Metrics**: p99, error count, lastError, richer metrics view summary/actions.
+- 🧱 **LSP entrypoint**: `lsp.ts` now forwards to `server.ts` to avoid divergence.
+- 🎨 **Syntax highlighting**: full max coverage for Vitte/Vit (comments, raw strings, declarations, builtins, operators).
+- 📦 **Packaging**: tighter `.vscodeignore` → smaller `.vsix` (~1.6MB).
+
+---
+
 ## [1.9.0] — 2025-11-20
 ### Changed
 - 📚 **Official grammar refresh**: TextMate, semantic tokens, and server language facts now mirror the published Vitte `.ebnf` (new module/import path rules, `union` items, `static` bindings, cleaned operator set, CLI tokens). Keywords such as `async/await`, `switch/case`, `try/catch`, `impl/trait`, `with/defer`, and `use/mod` were retired to match the spec (`syntaxes/vitte.tmLanguage.json`, `server/src/languageFacts.ts`, `server/src/semantic.ts`).

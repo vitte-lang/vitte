@@ -1,0 +1,120 @@
+<<<
+mod.vit
+package vitte/search
+>>>
+
+space vitte/search
+
+form SearchDoc {
+  id: string
+  text: string
+  active: bool
+  score_hint: int
+}
+
+form SearchIndex {
+  docs: [SearchDoc]
+}
+
+proc index_new() -> SearchIndex {
+  give SearchIndex([])
+}
+
+proc index_add(index: SearchIndex, id: string, text: string) -> SearchIndex {
+  let out: [SearchDoc] = []
+  let replaced: bool = false
+  let i: int = 0
+
+  loop {
+    if i >= index.docs.len { break }
+    let doc = index.docs[i]
+    if doc.id == id {
+      out = out.push(SearchDoc(id, text, true, 0))
+      replaced = true
+    } else {
+      out = out.push(doc)
+    }
+    i = i + 1
+  }
+
+  if !replaced {
+    out = out.push(SearchDoc(id, text, true, 0))
+  }
+
+  give SearchIndex(out)
+}
+
+proc index_remove(index: SearchIndex, id: string) -> SearchIndex {
+  let out: [SearchDoc] = []
+  let i: int = 0
+  loop {
+    if i >= index.docs.len { break }
+    let doc = index.docs[i]
+    if doc.id == id {
+      out = out.push(SearchDoc(doc.id, doc.text, false, doc.score_hint))
+    } else {
+      out = out.push(doc)
+    }
+    i = i + 1
+  }
+  give SearchIndex(out)
+}
+
+proc contains(text: string, needle: string) -> bool {
+  if needle.len == 0 { give true }
+  if text.len < needle.len { give false }
+
+  let last = text.len - needle.len
+  let i: int = 0
+  loop {
+    if i > last { break }
+    if text.slice(i, i + needle.len) == needle { give true }
+    i = i + 1
+  }
+
+  give false
+}
+
+proc score(doc: SearchDoc, needle: string) -> int {
+  if needle.len == 0 { give 0 }
+  if doc.text.len < needle.len { give 0 }
+
+  let matches: int = 0
+  let last = doc.text.len - needle.len
+  let i: int = 0
+  loop {
+    if i > last { break }
+    if doc.text.slice(i, i + needle.len) == needle {
+      matches = matches + 1
+    }
+    i = i + 1
+  }
+  give matches
+}
+
+proc query(index: SearchIndex, term: string) -> [SearchDoc] {
+  let out: [SearchDoc] = []
+  let i: int = 0
+  loop {
+    if i >= index.docs.len { break }
+    let doc = index.docs[i]
+    if doc.active && contains(doc.text, term) {
+      out = out.push(SearchDoc(doc.id, doc.text, doc.active, score(doc, term)))
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/search
+role: Index texte et requetes simples
+input_contract: Documents id texte explicites et terme de recherche
+output_contract: Query score stables et predictibles
+boundary: Ne remplace pas un moteur full-text externe; fournit une base locale
+>>>

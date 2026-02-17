@@ -1,0 +1,119 @@
+<<<
+mod.vit
+package vitte/outbox
+>>>
+
+space vitte/outbox
+
+form OutboxEvent {
+  id: int
+  topic: string
+  payload: string
+  sent: bool
+  flushed: bool
+  attempts: int
+}
+
+form Outbox {
+  next_id: int
+  events: [OutboxEvent]
+}
+
+proc outbox_new() -> Outbox {
+  give Outbox(0, [])
+}
+
+proc enqueue_event(outbox: Outbox, topic: string, payload: string) -> Outbox {
+  let event = OutboxEvent(outbox.next_id, topic, payload, false, false, 0)
+  let events = outbox.events.push(event)
+  give Outbox(outbox.next_id + 1, events)
+}
+
+proc flush_batch(outbox: Outbox, max_batch: int) -> Outbox {
+  let max = max_batch
+  if max < 1 { max = 1 }
+
+  let out: [OutboxEvent] = []
+  let flushed: int = 0
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if !ev.sent && !ev.flushed && flushed < max {
+      out = out.push(OutboxEvent(ev.id, ev.topic, ev.payload, ev.sent, true, ev.attempts + 1))
+      flushed = flushed + 1
+    } else {
+      out = out.push(ev)
+    }
+    i = i + 1
+  }
+
+  give Outbox(outbox.next_id, out)
+}
+
+proc mark_sent(outbox: Outbox, event_id: int) -> Outbox {
+  let out: [OutboxEvent] = []
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if ev.id == event_id {
+      out = out.push(OutboxEvent(ev.id, ev.topic, ev.payload, true, false, ev.attempts))
+    } else {
+      out = out.push(ev)
+    }
+    i = i + 1
+  }
+  give Outbox(outbox.next_id, out)
+}
+
+proc pending_count(outbox: Outbox) -> int {
+  let count: int = 0
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if !outbox.events[i].sent {
+      count = count + 1
+    }
+    i = i + 1
+  }
+  give count
+}
+
+proc flushed_count(outbox: Outbox) -> int {
+  let count: int = 0
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if outbox.events[i].flushed {
+      count = count + 1
+    }
+    i = i + 1
+  }
+  give count
+}
+
+proc replay_payload(outbox: Outbox, event_id: int) -> string {
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if outbox.events[i].id == event_id {
+      give outbox.events[i].payload
+    }
+    i = i + 1
+  }
+  give ""
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/outbox
+role: Fiabilise le flux DB vers events
+input_contract: Evenements id topic payload avec statut explicite
+output_contract: Flush mark_sent pending_count deterministes
+boundary: Ne publie pas sur le transport reseau; gere uniquement la file outbox
+>>>

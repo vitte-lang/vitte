@@ -1,0 +1,117 @@
+<<<
+mod.vit
+package vitte/saga
+>>>
+
+space vitte/saga
+
+pick SagaState {
+  Draft
+  Running
+  Succeeded
+  Failed
+  Compensated
+}
+
+form SagaStep {
+  name: string
+  done: bool
+  compensated: bool
+}
+
+form Saga {
+  id: string
+  steps: [SagaStep]
+  failed_at: int
+  state: SagaState
+}
+
+proc saga_new(id: string) -> Saga {
+  give Saga(id, [], -1, SagaState.Draft)
+}
+
+proc step_add(saga: Saga, name: string) -> Saga {
+  let steps = saga.steps.push(SagaStep(name, false, false))
+  give Saga(saga.id, steps, saga.failed_at, saga.state)
+}
+
+proc run(saga: Saga, fail_step: int) -> Saga {
+  let out: [SagaStep] = []
+  let failed_at = -1
+
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+
+    if failed_at >= 0 {
+      out = out.push(step)
+      i = i + 1
+      continue
+    }
+
+    if i == fail_step {
+      out = out.push(SagaStep(step.name, false, false))
+      failed_at = i
+    } else {
+      out = out.push(SagaStep(step.name, true, false))
+    }
+
+    i = i + 1
+  }
+
+  if failed_at >= 0 {
+    give Saga(saga.id, out, failed_at, SagaState.Failed)
+  }
+  give Saga(saga.id, out, -1, SagaState.Succeeded)
+}
+
+proc compensate(saga: Saga) -> Saga {
+  let out: [SagaStep] = []
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+    if step.done {
+      out = out.push(SagaStep(step.name, step.done, true))
+    } else {
+      out = out.push(step)
+    }
+    i = i + 1
+  }
+
+  if saga.state == SagaState.Failed {
+    give Saga(saga.id, out, saga.failed_at, SagaState.Compensated)
+  }
+  give Saga(saga.id, out, saga.failed_at, saga.state)
+}
+
+proc step_count(saga: Saga) -> int {
+  give saga.steps.len
+}
+
+proc compensated_count(saga: Saga) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    if saga.steps[i].compensated {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/saga
+role: Orchestration de transactions distribuees
+input_contract: Sequence de steps explicites et point de defaillance controle
+output_contract: Etats run compensate deterministes et inspectables
+boundary: Ne transporte pas les messages externes; orchestre seulement les transitions de saga
+>>>

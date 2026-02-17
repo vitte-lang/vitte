@@ -1,0 +1,66 @@
+<<<
+mod.vit
+package vitte/bulkhead
+>>>
+
+space vitte/bulkhead
+
+form Bulkhead {
+  capacity: int
+  in_use: int
+  queued: int
+  rejected: int
+  open: bool
+}
+
+proc bulkhead_new(capacity: int) -> Bulkhead {
+  let cap = capacity
+  if cap < 1 { cap = 1 }
+  give Bulkhead(cap, 0, 0, 0, true)
+}
+
+proc available(bh: Bulkhead) -> int {
+  let free = bh.capacity - bh.in_use
+  if free < 0 { give 0 }
+  give free
+}
+
+proc can_accept(bh: Bulkhead) -> bool {
+  give bh.open && bh.in_use < bh.capacity
+}
+
+proc acquire(bh: Bulkhead) -> Bulkhead {
+  if !bh.open {
+    give Bulkhead(bh.capacity, bh.in_use, bh.queued, bh.rejected + 1, bh.open)
+  }
+  if bh.in_use < bh.capacity {
+    give Bulkhead(bh.capacity, bh.in_use + 1, bh.queued, bh.rejected, bh.open)
+  }
+  give Bulkhead(bh.capacity, bh.in_use, bh.queued + 1, bh.rejected, bh.open)
+}
+
+proc release(bh: Bulkhead) -> Bulkhead {
+  if bh.in_use <= 0 { give bh }
+  give Bulkhead(bh.capacity, bh.in_use - 1, bh.queued, bh.rejected, bh.open)
+}
+
+proc close_gate(bh: Bulkhead) -> Bulkhead {
+  give Bulkhead(bh.capacity, bh.in_use, bh.queued, bh.rejected, false)
+}
+
+proc open_gate(bh: Bulkhead) -> Bulkhead {
+  give Bulkhead(bh.capacity, bh.in_use, bh.queued, bh.rejected, true)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/bulkhead
+role: Isole les pools de charge pour limiter la cascade
+input_contract: Capacite et etat du pool explicitement modeles
+output_contract: Acquire release available deterministes et observables
+boundary: Ne remplace pas retry timeout; protege seulement la capacite locale
+>>>

@@ -1,0 +1,60 @@
+<<<
+mod.vit
+package vitte/timeout
+>>>
+
+space vitte/timeout
+
+form Timeout {
+  started_ms: int
+  deadline_ms: int
+  budget_ms: int
+  active: bool
+}
+
+proc timeout_new(started_ms: int, budget_ms: int) -> Timeout {
+  let budget = budget_ms
+  if budget < 1 { budget = 1 }
+  give Timeout(started_ms, started_ms + budget, budget, true)
+}
+
+proc with_deadline(timeout: Timeout, deadline_ms: int) -> Timeout {
+  let deadline = deadline_ms
+  if deadline < timeout.started_ms {
+    deadline = timeout.started_ms
+  }
+  give Timeout(timeout.started_ms, deadline, deadline - timeout.started_ms, timeout.active)
+}
+
+proc expired(timeout: Timeout, now_ms: int) -> bool {
+  if !timeout.active { give true }
+  give now_ms >= timeout.deadline_ms
+}
+
+proc remaining_ms(timeout: Timeout, now_ms: int) -> int {
+  if expired(timeout, now_ms) { give 0 }
+  give timeout.deadline_ms - now_ms
+}
+
+proc guard(timeout: Timeout, elapsed_ms: int) -> bool {
+  if !timeout.active { give false }
+  if elapsed_ms < 0 { give false }
+  give elapsed_ms <= timeout.budget_ms
+}
+
+proc stop(timeout: Timeout) -> Timeout {
+  give Timeout(timeout.started_ms, timeout.deadline_ms, timeout.budget_ms, false)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/timeout
+role: Coupe les appels lents avec budget explicite
+input_contract: Temps de depart, budget et deadline explicites
+output_contract: Decision expired guard stable et deterministe
+boundary: Ne relance pas les appels; fournit uniquement la garde temporelle
+>>>

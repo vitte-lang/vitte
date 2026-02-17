@@ -1,215 +1,150 @@
 # Vitte Language Support (Vitte Studio)
+Official VS Code extension for Vitte.
+Vitte Studio gives you a complete daily workflow in VS Code: edit, navigate, diagnose, build, run, test, and debug from one place.
+This README is intentionally practical.
+It focuses on what you can do right now, why each command matters, and how to troubleshoot quickly when something breaks.
+## 1. What the extension gives you
+Vitte Studio supports both `.vitte` and `.vit` files.
+You get syntax highlighting, autocomplete, hover details, diagnostics, symbol navigation, rename, formatting, semantic tokens, debug integration, and project commands.
+In short: less manual setup, faster iteration, and better code feedback while you type.
+## 2. Sidebar experience
+The extension adds a dedicated Vitte sidebar.
+`Vitte Documentation` loads official docs from `https://vitte.netlify.app`.
+`Vitte Summary` gives chapter-based navigation from beginner to professional topics.
+`Vitte Diagnostics` aggregates workspace issues.
+`Vitte Modules` helps you inspect project structure.
+`Vitte Metrics` exposes runtime/server metrics useful for performance checks.
+`Vitte Offline` explains offline mode and gives recovery actions.
+## 3. Installation
+### Marketplace install
+Open Extensions in VS Code, search `Vitte Language Support`, then click Install.
+### VSIX install
+1. Open VS Code.
+2. Run `Extensions: Install from VSIX...`.
+3. Select your `.vsix` file.
+After installation, open a `.vitte` or `.vit` file to verify language features are active.
+## 4. First 5-minute setup
+Step 1: Run `Vitte: Detect Toolchain`.
+This checks that the expected binaries are reachable.
+Step 2: Run `Vitte: Open Docs`.
 
-**Vitte Studio** is the official VS Code extension for the Vitte language. It delivers a complete developer experience: syntax highlighting, rich IntelliSense, hover docs, diagnostics, navigation, formatting, semantic tokens, debugging, tasks, and project tooling for real-world Vitte codebases.
+Keep docs visible while coding to reduce context switching.
 
-## Badges
+Step 3: Run `Vitte: Quick`.
 
-**Marketplace**
+Use it as your daily launcher for build/run/test routines.
 
-[![Version](https://img.shields.io/visual-studio-marketplace/v/VitteStudio.vitte-studio)](https://marketplace.visualstudio.com/items?itemName=VitteStudio.vitte-studio)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/VitteStudio.vitte-studio)](https://marketplace.visualstudio.com/items?itemName=VitteStudio.vitte-studio)
-[![Downloads](https://img.shields.io/visual-studio-marketplace/d/VitteStudio.vitte-studio)](https://marketplace.visualstudio.com/items?itemName=VitteStudio.vitte-studio)
-[![Rating](https://img.shields.io/visual-studio-marketplace/r/VitteStudio.vitte-studio)](https://marketplace.visualstudio.com/items?itemName=VitteStudio.vitte-studio)
-[![Last Updated](https://img.shields.io/visual-studio-marketplace/last-updated/VitteStudio.vitte-studio)](https://marketplace.visualstudio.com/items?itemName=VitteStudio.vitte-studio)
+Step 4: If features feel stale, run `Vitte: Restart Language Server`.
 
-**GitHub**
+## 5. Essential commands (what they really do)
 
-[![CI](https://img.shields.io/github/actions/workflow/status/vitte-lang/VitteLangVsCode/ci.yml?branch=main)](https://github.com/vitte-lang/VitteLangVsCode/actions)
-[![Webpack](https://img.shields.io/github/actions/workflow/status/vitte-lang/VitteLangVsCode/webpack.yml?branch=main)](https://github.com/vitte-lang/VitteLangVsCode/actions)
-[![Release](https://img.shields.io/github/v/release/vitte-lang/VitteLangVsCode)](https://github.com/vitte-lang/VitteLangVsCode/releases)
-[![License](https://img.shields.io/github/license/vitte-lang/VitteLangVsCode)](https://github.com/vitte-lang/VitteLangVsCode/blob/main/LICENSE)
-[![Stars](https://img.shields.io/github/stars/vitte-lang/VitteLangVsCode)](https://github.com/vitte-lang/VitteLangVsCode)
-[![Forks](https://img.shields.io/github/forks/vitte-lang/VitteLangVsCode)](https://github.com/vitte-lang/VitteLangVsCode)
-[![Issues](https://img.shields.io/github/issues/vitte-lang/VitteLangVsCode)](https://github.com/vitte-lang/VitteLangVsCode/issues)
-[![PRs](https://img.shields.io/github/issues-pr/vitte-lang/VitteLangVsCode)](https://github.com/vitte-lang/VitteLangVsCode/pulls)
-[![Contributors](https://img.shields.io/github/contributors/vitte-lang/VitteLangVsCode)](https://github.com/vitte-lang/VitteLangVsCode/graphs/contributors)
-[![Last Commit](https://img.shields.io/github/last-commit/vitte-lang/VitteLangVsCode)](https://github.com/vitte-lang/VitteLangVsCode/commits/main)
-[![Repo Size](https://img.shields.io/github/repo-size/vitte-lang/VitteLangVsCode)](https://github.com/vitte-lang/VitteLangVsCode)
+`Vitte: Detect Toolchain` validates runtime/build/lsp paths and helps avoid hidden config drift.
 
-## Marketplace Descriptions
+`Vitte: Open Docs` opens the official documentation quickly, useful during syntax or API checks.
 
-**Short**
+`Vitte: Open Playground` gives a safe space for quick experiments.
 
-Vitte Studio is the official VS Code extension for the Vitte language — syntax, IntelliSense, LSP, diagnostics, formatting, and tooling.
+`Vitte: Quick` opens a curated action menu that saves time during repetitive workflows.
 
-**Long**
+`Vitte: Build` compiles your project and confirms build health.
 
-Vitte Studio brings first‑class Vitte support to VS Code. You get rich completions, hover docs, diagnostics and linting, go‑to definition and references, formatting, and semantic tokens. The extension includes a built‑in language server, workspace indexing, and project tooling commands for build, run, test, and benchmarks. If you write Vitte, this is the all‑in‑one, modern IDE experience.
+`Vitte: Run` builds and executes your app using current settings.
 
-## Highlights
+`Vitte: Test` runs the test suite for confidence before commit.
 
-- Full language support for `.vitte` and `.vit`
-- Rich completions (keywords, types, fields, methods, modules)
-- Hover documentation (docstrings)
-- Diagnostics and linting
-- Go-to definition, references, rename
-- Workspace-wide indexing and references
-- Formatting
-- Semantic tokens
-- Built-in language server
-- Debugger integration
-- Tasks and quick actions for build/run/test/bench
+`Vitte: Restart Language Server` resets IntelliSense when completion/hover/diagnostics degrade.
 
-## Supported Languages
+`Vitte: Show Server Log` opens technical logs for root-cause analysis.
 
-- `vitte` (`.vitte`)
-- `vit` (`.vit`)
+`Vitte: Show Server Metrics` helps identify slow requests and server pressure.
 
-## Core Features
+## 6. Secondary commands worth knowing
 
-- Syntax highlighting for Vitte and Vit
-- Bracket/indentation rules and language configuration
-- Snippets (including docstring helpers)
-- IntelliSense completions (keywords, types, symbols, imports)
-- Hover with documentation and type info
-- Diagnostics (errors, warnings, style hints)
-- Go-to definition and find references
-- Rename symbols
-- Document formatting
-- Semantic tokens for precise coloring
-- Workspace structure and module explorer
+`Vitte: Refresh Diagnostics` forces diagnostic refresh.
 
-## Language Server
+`Vitte: Open Diagnostic` jumps directly to a selected issue.
 
-Vitte Studio ships with a built-in LSP server. It provides:
+`Vitte: Refresh Structure` reloads structural/module data.
 
-- Workspace indexing for fast navigation
-- Cross-file references and symbol search
-- Intelligent diagnostics and lint rules
-- Completion and hover computed from project context
-- Fast incremental updates on file change
+`Vitte: Run Benchmarks` and `Vitte: Run Benchmarks and Open Report` support performance testing loops.
 
-## Views
+`Vitte: Open Bench Directory` opens report output quickly.
 
-The extension adds a Vitte activity bar with dedicated views.
+`Vitte: Clean` removes build artifacts when you need a fresh state.
 
-- **Vitte Explorer**: project structure and modules
-- **Vitte Metrics**: live diagnostics and performance data
+`Vitte: Test Current File` runs file-focused tests for tighter feedback.
 
-## Commands
+`Vitte: Switch Build Profile` swaps between `dev`, `test`, `release`, and `bench`.
 
-All commands are available from the Command Palette.
+`Vitte: Toggle Incremental Build` controls faster rebuild strategy.
 
-- `Vitte: Show Server Log`
-- `Vitte: Show Server Metrics`
-- `Vitte: Refresh Metrics View`
-- `Vitte: Show Command Menu`
-- `Vitte: Restart Language Server`
-- `Vitte: Run Action`
-- `Vitte: Run Action (Args)`
-- `Vitte Debug: Run File`
-- `Vitte Debug: Attach`
-- `Vitte: Organize Imports`
-- `Vitte: Fix All`
-- `Vitte: Rename Symbol`
-- `Vitte: Apply Sample Edit`
-- `Vitte: Progress Sample`
-- `Vitte: Show Info`
-- `Vitte: Refresh Diagnostics`
-- `Vitte: Open Diagnostic`
-- `Vitte: Refresh Structure`
-- `Vitte: Refresh Explorer`
-- `Vitte: Reveal in Explorer`
-- `Vitte: Open Docs`
-- `Vitte: Open Playground`
-- `Vitte: Detect Toolchain`
-- `Vitte: Run Benchmarks`
-- `Vitte: Run Benchmarks and Open Report`
-- `Vitte: Open Bench Directory`
-- `Vitte: Build`
-- `Vitte: Clean`
-- `Vitte: Run`
-- `Vitte: Test`
-- `Vitte: Test Current File`
-- `Vitte: Switch Build Profile`
-- `Vitte: Toggle Incremental Build`
-- `Vitte: Refresh Tests`
-- `Vitte: Run All Tests`
-- `Vitte: Quick`
-- `Vitte: Quick Export`
-- `Vitte: Toggle Telemetry`
+`Vitte: Toggle Telemetry` and `Vitte: Quick Export` support local observability workflows.
 
-## Debugging
+## 7. Minimal configuration first
 
-Vitte Studio registers a `vitte` debugger with launch configurations for:
+If auto-detection is enough, keep defaults.
 
-- Launch current file
-- Launch project entry
-- Attach to server
+If not, configure these first:
 
-## Configuration
+- `vitte.toolchain.root`
+- `vitte.runtime.path`
+- `vitte.lsp.path`
+- `vitte.build.path`
+- `vitte.fmt.path`
 
-You can configure the extension in VS Code settings.
+Then tune behavior:
 
-- `vitte.trace.server`: `off | messages | verbose`
-- `vitte.serverPath`: custom server binary (empty = bundled)
-- `vitte.debug.program`: path to `vitte-runtime`
-- `vitte.toolchain.root`: toolchain root directory
-- `vitte.toolchainPath`: legacy fallback for toolchain
-- `vitte.runtime.path`: runtime binary path
-- `vitte.lsp.path`: LSP binary path
-- `vitte.build.path`: build binary path
-- `vitte.fmt.path`: formatter binary path
-- `vitte.bench.path`: benchmark binary path
-- `vitte.build.profile`: `dev | test | release | bench`
-- `vitte.build.incremental`: enable incremental build
-- `vitte.build.distributed`: enable distributed build
-- `vitte.bench.reportDir`: benchmark report output
-- `vitte.docs.include`: docs include glob
-- `vitte.docs.exclude`: docs exclude glob
-- `vitte.docs.indexLimit`: max indexed markdown files
-- `vitte.telemetry.enabled`: local telemetry toggle
-- `vitte.telemetry.sampleRate`: sampling rate
-- `vitte.quickActions.sequences`: custom action chains
-- `vitte.quickActions.defaults`: override built-in actions
-- `vitte.commandShortcuts`: status bar shortcuts
+- `vitte.build.profile`
+- `vitte.build.incremental`
+- `vitte.bench.reportDir`
+- `vitte.telemetry.enabled`
+- `vitte.telemetry.sampleRate`
+- `vitte.quickActions.sequences`
+- `vitte.quickActions.defaults`
+- `vitte.commandShortcuts`
 
-## Quick Actions
+## 8. Recommended daily flow
 
-The `Vitte: Quick` command provides curated, multi-step workflows. You can override defaults or add custom sequences using `vitte.quickActions.sequences` and `vitte.quickActions.defaults`.
+Start with `Quick` to run common actions.
 
-## Tasks
+Use `Build` after major edits and `Test` before pushing changes.
 
-Vitte Studio adds a `vitte` task definition for build tooling:
+Use docs and summary views while reviewing unfamiliar syntax.
 
-- `build`
-- `run`
-- `test`
-- `clean`
-- `bench`
+When behavior looks inconsistent, restart the language server before changing settings.
 
-## Getting Started
+## 9. Troubleshooting playbook
 
-1. Install the extension from the Marketplace or via VSIX.
-2. Open a Vitte project (or any `.vitte` / `.vit` file).
-3. Run `Vitte: Detect Toolchain` to auto-detect your binaries.
-4. Use `Vitte: Quick` for common workflows like build/run/test.
-5. Use `Vitte: Restart Language Server` if IntelliSense feels stale.
+If autocomplete disappears:
 
-## Installation (VSIX)
+1. Run `Vitte: Restart Language Server`.
+2. Check `Vitte: Show Server Log`.
 
-1. Open VS Code
-2. Run `Extensions: Install from VSIX...`
-3. Select the VSIX file, for example `vitte-studio-2.0.0.vsix`
+If toolchain detection fails:
 
+1. Run `Vitte: Detect Toolchain` again.
+2. Set explicit paths in settings.
 
-## Changelog Highlights
+If extension enters offline mode:
 
-### 2.0.0
+1. Run `Vitte: Explain Offline`.
+2. Open `Vitte: Open Offline Log`.
+3. Generate `Vitte: Copy Offline Report`.
 
-- Richer completions (keywords, types, methods, modules)
-- Hover documentation (docstrings)
-- Improved diagnostics and linting
-- Go-to definition and workspace references
-- Formatting and semantic tokens
-- Updated VSIX packaging and tooling
+## 10. Debug support
 
-## Troubleshooting
+The extension provides debug type `vitte`.
 
-- If completions or diagnostics are missing, run `Vitte: Restart Language Server`.
-- If toolchain paths are custom, set `vitte.toolchain.root` and related binary paths.
-- If workspace features are slow, reduce `vitte.docs.indexLimit` or refine include/exclude globs.
+Typical scenarios include launching the current file, launching project entry, and attaching to a running session.
 
-## License
+## 11. Activation model
 
-MIT
+The extension keeps one explicit activation event: `onStartupFinished`.
+
+Command, view, and language activation are inferred by VS Code from `contributes` in `package.json`.
+
+## 12. Project links
+
+Version history: `CHANGELOG.md`.
+
+License: MIT.

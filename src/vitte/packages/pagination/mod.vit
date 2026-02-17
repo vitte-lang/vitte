@@ -1,0 +1,71 @@
+<<<
+mod.vit
+package vitte/pagination
+>>>
+
+space vitte/pagination
+
+form Page {
+  offset: int
+  limit: int
+  total: int
+}
+
+form PageWindow {
+  start: int
+  end: int
+  size: int
+}
+
+proc page(offset: int, limit: int, total: int) -> Page {
+  let off = offset
+  if off < 0 { off = 0 }
+
+  let lim = limit
+  if lim < 1 { lim = 1 }
+
+  let tot = total
+  if tot < 0 { tot = 0 }
+
+  give Page(off, lim, tot)
+}
+
+proc has_next(pg: Page) -> bool {
+  give pg.offset + pg.limit < pg.total
+}
+
+proc next_cursor(pg: Page) -> int {
+  if has_next(pg) { give pg.offset + pg.limit }
+  give -1
+}
+
+proc window(pg: Page) -> PageWindow {
+  let start = pg.offset
+  let end = pg.offset + pg.limit
+  if end > pg.total { end = pg.total }
+  let size = end - start
+  if size < 0 { size = 0 }
+  give PageWindow(start, end, size)
+}
+
+proc page_count(total: int, limit: int) -> int {
+  if total <= 0 { give 0 }
+  let lim = limit
+  if lim < 1 { lim = 1 }
+  let count = total / lim
+  if total % lim != 0 { count = count + 1 }
+  give count
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/pagination
+role: Pagination stable API DB
+input_contract: Offset limit total explicites
+output_contract: has_next next_cursor window deterministes
+boundary: Ne fait pas la requete DB; calcule seulement la projection de pagination
+>>>

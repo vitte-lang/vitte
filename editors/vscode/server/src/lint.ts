@@ -14,12 +14,14 @@ export interface LintOptions {
   maxLineLength?: number;                // 120 par défaut
   allowTabs?: boolean;                   // false par défaut
   allowTrailingWhitespace?: boolean;     // false par défaut
+  enableStyleRules?: boolean;            // true par défaut
 }
 
 const DEFAULTS: Required<LintOptions> = {
   maxLineLength: 120,
   allowTabs: false,
   allowTrailingWhitespace: false,
+  enableStyleRules: true,
 };
 
 /* =============================== Regex ==================================== */
@@ -34,12 +36,14 @@ const rxNumber =
   /(?:0x[0-9A-Fa-f](?:[0-9A-Fa-f_])*)|(?:0b[01](?:[01_])*)|(?:\d(?:[\d_])*(?:\.(?:\d(?:[\d_])*))?(?:[eE][+-]?\d(?:[\d_])*)?)/g;
 
 const rxString = /"(?:\\.|[^"\\])*"/g;
+const rxRawString = /"""\s*[\s\S]*?"""/g;
 const rxChar = /'(?:\\.|[^'\\])'/g;
 
 const rxCommentLine = /\/\/[^\n]*/g;
 const rxCommentDoc = /\/\/![^\n]*/g;
 const rxCommentBlock = /\/\*[\s\S]*?\*\//g;
 const rxCommentHash = /#(?!\[)[^\n]*/g;
+const rxCommentZone = /<<<[\s\S]*?>>>/g;
 
 /* ============================ Directives ================================== */
 /**
@@ -144,8 +148,10 @@ export function lintText(
   diags.push(...checkBrackets(stripped, uri, lineDisables, blockDisables));
   diags.push(...checkIdentifiersAndKeywords(stripped, uri, lineDisables, blockDisables));
   diags.push(...checkSemicolonHeuristics(stripped, uri, lineDisables, blockDisables));
-  diags.push(...checkStyleConventions(stripped, uri, lineDisables, blockDisables));
-  diags.push(...checkModulePaths(stripped, uri, lineDisables, blockDisables));
+  if (cfg.enableStyleRules !== false) {
+    diags.push(...checkStyleConventions(stripped, uri, lineDisables, blockDisables));
+    diags.push(...checkModulePaths(stripped, uri, lineDisables, blockDisables));
+  }
 
   return diags;
 }
@@ -167,10 +173,12 @@ function diag(
 
 function stripNonCode(src: string): string {
   return src
+    .replace(rxCommentZone, (m) => " ".repeat(m.length))
     .replace(rxCommentBlock, (m) => " ".repeat(m.length))
     .replace(rxCommentDoc, (m) => " ".repeat(m.length))
     .replace(rxCommentLine, (m) => " ".repeat(m.length))
     .replace(rxCommentHash, (m) => " ".repeat(m.length))
+    .replace(rxRawString, (m) => " ".repeat(m.length))
     .replace(rxString, (m) => " ".repeat(m.length))
     .replace(rxChar, (m) => " ".repeat(m.length));
 }

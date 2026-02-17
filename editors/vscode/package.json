@@ -2,7 +2,7 @@
   "name": "vitte-studio",
   "displayName": "Vitte Language Support",
   "description": "Full tooling for Vitte and Vit: grammar, LSP, debug, tasks, tests, explorer, docs, bench & playground.",
-  "version": "2.0.0",
+  "version": "2.1.2",
   "publisher": "VitteStudio",
   "license": "MIT",
   "repository": {
@@ -39,11 +39,7 @@
     "LICENSE"
   ],
   "activationEvents": [
-    "onView:vitteDiagnostics",
-    "onView:vitteModules",
-    "onView:vitteExplorer",
-    "onDebugInitialConfigurations",
-    "onDebugResolve:vitte"
+    "onStartupFinished"
   ],
   "contributes": {
     "languages": [
@@ -71,12 +67,12 @@
     "grammars": [
       {
         "language": "vitte",
-        "scopeName": "source.vitte",
+        "scopeName": "source.ts.vitte",
         "path": "./syntaxes/vitte.tmLanguage.json"
       },
       {
         "language": "vit",
-        "scopeName": "source.vitte",
+        "scopeName": "source.ts.vitte",
         "path": "./syntaxes/vitte.tmLanguage.json"
       }
     ],
@@ -102,20 +98,57 @@
     "views": {
       "vitte-sidebar": [
         {
-          "id": "vitteView",
-          "name": "Explorateur Vitte"
+          "id": "vitteExplorer",
+          "name": "Vitte Documentation",
+          "icon": "media/icons/vitte-logo.svg",
+          "type": "webview"
+        },
+        {
+          "id": "vitteSuggestions",
+          "name": "Vitte Sommaire",
+          "icon": "media/icons/vitte-logo.svg"
+        },
+        {
+          "id": "vitteDiagnostics",
+          "name": "Vitte Diagnostics",
+          "icon": "media/icons/vitte-logo.svg",
+          "when": "vitte.serverOnline"
+        },
+        {
+          "id": "vitteModules",
+          "name": "Vitte Modules",
+          "icon": "media/icons/vitte-logo.svg",
+          "when": "vitte.serverOnline"
         },
         {
           "id": "vitteMetrics",
-          "name": "Vitte Metrics"
+          "name": "Vitte Metrics",
+          "icon": "media/icons/vitte-logo.svg",
+          "when": "vitte.serverOnline"
+        },
+        {
+          "id": "vitteOffline",
+          "name": "Vitte Offline",
+          "icon": "media/icons/vitte-logo.svg",
+          "when": "vitte.serverOffline"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "vitteView",
-        "contents": "# Welcome to Vitte\n\nNo project detected.\n\n- $(refresh) **Refresh** to rescan the workspace → `vscode:command:vitte.refreshExplorer`\n- $(book) **Docs** → `vscode:command:vitte.openDocs`\n- $(beaker) **Playground** → `vscode:command:vitte.openPlayground`\n",
-        "when": "view == vitteView && !workspaceFolderCount"
+        "view": "vitteExplorer",
+        "contents": "# Vitte Documentation\n\nThis panel loads documentation directly from [vitte.netlify.app](https://vitte.netlify.app).\n\nUpdates published on the website are visible automatically.",
+        "when": "view == vitteExplorer"
+      },
+      {
+        "view": "vitteSuggestions",
+        "contents": "# Vitte Sommaire\n\nBrowse chapters from beginner to professional in this sidebar tree.\n\nClick any chapter to open it on [vitte.netlify.app](https://vitte.netlify.app).",
+        "when": "view == vitteSuggestions"
+      },
+      {
+        "view": "vitteOffline",
+        "contents": "# Vitte Offline\n\nThe language server is offline.\n\n- $(question) **Explain Offline** → `vscode:command:vitte.offline.explain`\n- $(settings-gear) **Settings** → `vscode:command:workbench.action.openSettings?%5B%22vitte.server%22%5D`\n",
+        "when": "view == vitteOffline"
       }
     ],
     "debuggers": [
@@ -255,14 +288,6 @@
         "title": "Vitte: Refresh Structure"
       },
       {
-        "command": "vitte.refreshExplorer",
-        "title": "Vitte: Refresh Explorer"
-      },
-      {
-        "command": "vitte.revealInExplorer",
-        "title": "Vitte: Reveal in Explorer"
-      },
-      {
         "command": "vitte.openDocs",
         "title": "Vitte: Open Docs",
         "category": "Vitte"
@@ -270,6 +295,21 @@
       {
         "command": "vitte.openPlayground",
         "title": "Vitte: Open Playground",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.docs.openChapter",
+        "title": "Vitte: Open Documentation Chapter",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.docs.refreshChapters",
+        "title": "Vitte: Refresh Documentation Chapters",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.debugActivationStatus",
+        "title": "Vitte: Debug Activation Status",
         "category": "Vitte"
       },
       {
@@ -351,40 +391,75 @@
         "command": "vitte.telemetry.toggle",
         "title": "Vitte: Toggle Telemetry",
         "category": "Vitte"
+      },
+      {
+        "command": "vitte.metrics.reset",
+        "title": "Vitte: Reset Metrics",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.pingServer",
+        "title": "Vitte: Ping Server",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.offline.openLog",
+        "title": "Vitte: Open Offline Log",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.offline.refresh",
+        "title": "Vitte: Refresh Offline View",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.offline.copyReport",
+        "title": "Vitte: Copy Offline Report",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.offline.explain",
+        "title": "Vitte: Explain Offline",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.goOffline",
+        "title": "Vitte: Go Offline",
+        "category": "Vitte"
       }
     ],
     "menus": {
       "view/item/context": [
         {
           "command": "vitte.diagnostics.open",
-          "when": "view == vitteDiagnostics && viewItem == vitteDiagnostic",
+          "when": "view == vitteDiagnostics && viewItem == vitteDiagnostic && vitte.serverOnline",
           "group": "navigation"
         }
       ],
       "view/title": [
         {
           "command": "vitte.diagnostics.refresh",
-          "when": "view == vitteDiagnostics",
+          "when": "view == vitteDiagnostics && vitte.serverOnline",
           "group": "navigation@1"
         },
         {
           "command": "vitte.modules.refresh",
-          "when": "view == vitteModules",
-          "group": "navigation@1"
-        },
-        {
-          "command": "vitte.refreshExplorer",
-          "when": "view == vitteExplorer",
-          "group": "navigation@1"
-        },
-        {
-          "command": "vitte.refreshExplorer",
-          "when": "view == vitteView",
+          "when": "view == vitteModules && vitte.serverOnline",
           "group": "navigation@1"
         },
         {
           "command": "vitte.metrics.refresh",
-          "when": "view == vitteMetrics",
+          "when": "view == vitteMetrics && vitte.serverOnline",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vitte.docs.refreshChapters",
+          "when": "view == vitteSuggestions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vitte.offline.refresh",
+          "when": "view == vitteOffline",
           "group": "navigation@1"
         }
       ],
@@ -460,6 +535,24 @@
         {
           "command": "vitte.telemetry.toggle",
           "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.metrics.reset"
+        },
+        {
+          "command": "vitte.pingServer"
+        },
+        {
+          "command": "vitte.offline.explain"
+        },
+        {
+          "command": "vitte.goOffline"
+        },
+        {
+          "command": "vitte.offline.openLog"
+        },
+        {
+          "command": "vitte.offline.copyReport"
         }
       ]
     },
@@ -472,17 +565,29 @@
           {
             "id": "vitte.quickstart.docs",
             "title": "Explore the docs & playground",
-            "description": "Run [Vitte: Quick Actions](command:vitte.quickActions) and pick **Docs + Playground** to browse the bundled documentation."
+            "description": "Run [Vitte: Quick Actions](command:vitte.quickActions) and pick **Docs + Playground** to open the online docs on vitte.netlify.app.",
+            "media": {
+              "image": "media/icons/vitte-logo.svg",
+              "altText": "Vitte"
+            }
           },
           {
             "id": "vitte.quickstart.toolchain",
             "title": "Detect the Vitte toolchain",
-            "description": "Use [Vitte: Detect Toolchain](command:vitte.detectToolchain) to auto-discover the CLI binaries or configure them manually."
+            "description": "Use [Vitte: Detect Toolchain](command:vitte.detectToolchain) to auto-discover the CLI binaries or configure them manually.",
+            "media": {
+              "image": "media/icons/vitte-logo.svg",
+              "altText": "Vitte"
+            }
           },
           {
             "id": "vitte.quickstart.setup",
             "title": "Run the onboarding setup",
-            "description": "Trigger [Vitte: Quick Actions](command:vitte.quickActions) again and choose **Run full setup** to chain docs, toolchain detection, and a build in one go."
+            "description": "Trigger [Vitte: Quick Actions](command:vitte.quickActions) again and choose **Run full setup** to chain docs, toolchain detection, and a build in one go.",
+            "media": {
+              "image": "media/icons/vitte-logo.svg",
+              "altText": "Vitte"
+            }
           }
         ]
       }
@@ -537,6 +642,186 @@
           "type": "string",
           "default": "",
           "description": "Absolute path to a custom Vitte server binary. Empty = use the bundled server."
+        },
+        "vitte.server.offline": {
+          "type": "boolean",
+          "default": false,
+          "description": "Do not start the language server (offline mode)."
+        },
+        "vitte.server.offlinePermanent": {
+          "type": "boolean",
+          "default": false,
+          "description": "Force offline mode permanently (no auto-retry)."
+        },
+        "vitte.server.offlineMuteBanner": {
+          "type": "boolean",
+          "default": false,
+          "description": "Mute the offline banner notification."
+        },
+        "vitte.server.autoRetry": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically retry starting the server when offline."
+        },
+        "vitte.server.autoRetryBaseMs": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 10000,
+          "maximum": 300000,
+          "description": "Base delay (ms) before retrying server start when offline."
+        },
+        "vitte.server.autoRetryMaxMs": {
+          "type": "number",
+          "default": 300000,
+          "minimum": 60000,
+          "maximum": 900000,
+          "description": "Max delay (ms) for retry backoff when offline."
+        },
+        "vitte.requestTimeoutMs": {
+          "type": "number",
+          "default": 800,
+          "minimum": 100,
+          "maximum": 5000,
+          "description": "Timeout (ms) for LSP requests (completion, hover, etc.)."
+        },
+        "vitte.requestMaxConcurrent": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 32,
+          "description": "Max concurrent LSP requests before backpressure."
+        },
+        "vitte.requestTimeouts.completion": {
+          "type": "number",
+          "default": 400,
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Timeout (ms) for completion."
+        },
+        "vitte.requestTimeouts.hover": {
+          "type": "number",
+          "default": 300,
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Timeout (ms) for hover."
+        },
+        "vitte.requestTimeouts.definition": {
+          "type": "number",
+          "default": 600,
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Timeout (ms) for definition."
+        },
+        "vitte.requestTimeouts.references": {
+          "type": "number",
+          "default": 800,
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Timeout (ms) for references."
+        },
+        "vitte.requestTimeouts.rename": {
+          "type": "number",
+          "default": 800,
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Timeout (ms) for rename."
+        },
+        "vitte.requestTimeouts.documentSymbols": {
+          "type": "number",
+          "default": 600,
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Timeout (ms) for document symbols."
+        },
+        "vitte.requestTimeouts.workspaceSymbols": {
+          "type": "number",
+          "default": 800,
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Timeout (ms) for workspace symbols."
+        },
+        "vitte.requestTimeouts.semanticTokens": {
+          "type": "number",
+          "default": 800,
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Timeout (ms) for semantic tokens."
+        },
+        "vitte.requestTimeouts.formatting": {
+          "type": "number",
+          "default": 800,
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Timeout (ms) for formatting."
+        },
+        "vitte.indexerMaxRssMB": {
+          "type": "number",
+          "default": 1024,
+          "minimum": 256,
+          "maximum": 8192,
+          "description": "Max RSS memory (MB) before skipping index updates."
+        },
+        "vitte.indexerCacheEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Persist index cache to speed up restarts."
+        },
+        "vitte.traceSampleRate": {
+          "type": "number",
+          "default": 0.01,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Sampling rate for verbose trace metrics."
+        },
+        "vitte.features.completion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable completion provider."
+        },
+        "vitte.features.hover": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable hover provider."
+        },
+        "vitte.features.definition": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable definition provider."
+        },
+        "vitte.features.references": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable references provider."
+        },
+        "vitte.features.rename": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable rename provider."
+        },
+        "vitte.features.documentSymbols": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable document symbols."
+        },
+        "vitte.features.workspaceSymbols": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable workspace symbols."
+        },
+        "vitte.features.semanticTokens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable semantic tokens."
+        },
+        "vitte.features.formatting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable document formatting."
+        },
+        "vitte.features.lint": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable lint diagnostics."
         },
         "vitte.debug.program": {
           "type": "string",
@@ -604,22 +889,27 @@
           "default": ".vitte/bench",
           "description": "Directory that stores benchmark reports."
         },
-        "vitte.docs.include": {
-          "type": "string",
-          "default": "**/*.md",
-          "description": "Include glob for the local docs index."
-        },
-        "vitte.docs.exclude": {
-          "type": "string",
-          "default": "**/{node_modules,.git,dist,out,target,build}/**",
-          "description": "Exclude glob for the local docs index."
-        },
-        "vitte.docs.indexLimit": {
+        "vitte.lint.maxLineLength": {
           "type": "number",
-          "default": 2000,
-          "minimum": 100,
-          "maximum": 10000,
-          "description": "Maximum number of .md files to index."
+          "default": 120,
+          "minimum": 40,
+          "maximum": 400,
+          "description": "Maximum line length before emitting a lint hint."
+        },
+        "vitte.lint.allowTabs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow tab characters in source files."
+        },
+        "vitte.lint.allowTrailingWhitespace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow trailing whitespace at end of line."
+        },
+        "vitte.lint.enableStyleRules": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable style-related lint rules (naming, module path conventions)."
         },
         "vitte.telemetry.enabled": {
           "type": "boolean",
@@ -809,13 +1099,13 @@
     "build": "npm run build:client && npm run build:server && npm run build:servercopy",
     "build:client": "tsc -p ./",
     "build:server": "tsc -p server",
-    "build:servercopy": "mkdir -p out && (cp server/out/src/server.js out/server.js || true) && (cp server/out/src/server.js server/out/server.js || true)",
+    "build:servercopy": "mkdir -p out server/out && (cp server/out/src/server.js out/server.js || true) && (cp -R server/out/src/* server/out/ || true)",
     "watch": "tsc -w -p ./",
     "compile": "npm run build",
     "lint": "eslint .",
     "package": "vsce package",
     "vsix": "vsce package -o vitte-studio.vsix",
-    "vsix:verify": "vsce verify vitte-studio.vsix",
+    "vsix:verify": "npx @vscode/vsce@3.7.1 ls",
     "publish": "vsce publish",
     "prepack": "npm run build",
     "vscode:prepublish": "npm run build",

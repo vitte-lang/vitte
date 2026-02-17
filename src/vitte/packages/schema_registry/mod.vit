@@ -1,0 +1,100 @@
+<<<
+mod.vit
+package vitte/schema_registry
+>>>
+
+space vitte/schema_registry
+
+form SchemaRecord {
+  subject: string
+  version: int
+  fingerprint: string
+  fields: [string]
+  active: bool
+}
+
+form SchemaRegistry {
+  records: [SchemaRecord]
+}
+
+proc registry_new() -> SchemaRegistry {
+  give SchemaRegistry([])
+}
+
+proc register(registry: SchemaRegistry, subject: string, version: int, fingerprint: string, fields: [string]) -> SchemaRegistry {
+  let out: [SchemaRecord] = []
+  let replaced: bool = false
+  let i: int = 0
+
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject == subject && rec.version == version {
+      out = out.push(SchemaRecord(subject, version, fingerprint, fields, true))
+      replaced = true
+    } else {
+      out = out.push(rec)
+    }
+    i = i + 1
+  }
+
+  if !replaced {
+    out = out.push(SchemaRecord(subject, version, fingerprint, fields, true))
+  }
+
+  give SchemaRegistry(out)
+}
+
+proc latest(registry: SchemaRegistry, subject: string) -> SchemaRecord {
+  let best = SchemaRecord(subject, 0, "", [], false)
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.active && rec.subject == subject && rec.version >= best.version {
+      best = rec
+    }
+    i = i + 1
+  }
+  give best
+}
+
+proc compatible(base: SchemaRecord, next: SchemaRecord) -> bool {
+  if !base.active || !next.active { give false }
+  if base.subject != next.subject { give false }
+  if next.version < base.version { give false }
+  give next.fields.len >= base.fields.len
+}
+
+proc diff(base: SchemaRecord, next: SchemaRecord) -> string {
+  if base.subject != next.subject { give "breaking:subject" }
+  if base.fingerprint == next.fingerprint { give "same" }
+  if compatible(base, next) { give "compatible-change" }
+  give "breaking-change"
+}
+
+proc count(registry: SchemaRegistry, subject: string) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    if registry.records[i].subject == subject && registry.records[i].active {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/schema_registry
+role: Versionne et compare les schemas payload
+input_contract: Subject version fingerprint fields explicites
+output_contract: Latest compatible diff deterministes
+boundary: Ne valide pas le payload runtime; gere uniquement le registre de schemas
+>>>

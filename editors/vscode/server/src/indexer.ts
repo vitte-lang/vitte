@@ -49,6 +49,11 @@ type Uri = string;
 /** Index global: uri -> liste de symboles */
 const INDEX = new Map<Uri, IndexedSymbol[]>();
 
+export interface IndexSnapshot {
+  version: number;
+  entries: { uri: string; symbols: IndexedSymbol[] }[];
+}
+
 interface DeclarationInfo {
   kind: SK;
   expectBody: boolean;
@@ -480,6 +485,28 @@ export function getIndex(): ReadonlyMap<Uri, IndexedSymbol[]> {
 /** Récupère les symboles d’un document. */
 export function getDocumentIndex(uri: string): IndexedSymbol[] {
   return INDEX.get(uri) ?? [];
+}
+
+export function exportIndexSnapshot(): IndexSnapshot {
+  return {
+    version: 1,
+    entries: Array.from(INDEX.entries()).map(([uri, symbols]) => ({
+      uri,
+      symbols,
+    })),
+  };
+}
+
+export function loadIndexSnapshot(snapshot: IndexSnapshot | null | undefined): number {
+  if (!snapshot?.entries || snapshot.version !== 1 || !Array.isArray(snapshot.entries)) return 0;
+  INDEX.clear();
+  let count = 0;
+  for (const entry of snapshot.entries) {
+    if (!entry || typeof entry.uri !== "string" || !Array.isArray(entry.symbols)) continue;
+    INDEX.set(entry.uri, entry.symbols);
+    count += 1;
+  }
+  return count;
 }
 
 /* ============================================================================

@@ -1,0 +1,54 @@
+<<<
+mod.vit
+package vitte/tenant
+>>>
+
+space vitte/tenant
+
+form TenantCtx {
+  tenant_id: string
+  region: string
+  plan: string
+  active: bool
+}
+
+proc tenant_ctx(tenant_id: string, region: string, plan: string) -> TenantCtx {
+  give TenantCtx(tenant_id, region, plan, true)
+}
+
+proc scope_key(ctx: TenantCtx, key: string) -> string {
+  give ctx.tenant_id + ":" + key
+}
+
+proc enforce_isolation(ctx: TenantCtx, resource_tenant: string) -> bool {
+  if !ctx.active { give false }
+  give ctx.tenant_id == resource_tenant
+}
+
+proc current(stack: [TenantCtx]) -> TenantCtx {
+  if stack.len == 0 {
+    give TenantCtx("", "", "", false)
+  }
+  give stack[stack.len - 1]
+}
+
+proc deactivate(ctx: TenantCtx) -> TenantCtx {
+  give TenantCtx(ctx.tenant_id, ctx.region, ctx.plan, false)
+}
+
+proc same_tenant(left: TenantCtx, right: TenantCtx) -> bool {
+  give left.tenant_id == right.tenant_id
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+<<< ROLE-CONTRACT
+package: vitte/tenant
+role: Isolation multi tenant explicite
+input_contract: Contexte tenant et ressource cibles explicites
+output_contract: Cle scope et verifications d isolation deterministes
+boundary: Ne fait pas d auth; applique uniquement le scope tenant
+>>>

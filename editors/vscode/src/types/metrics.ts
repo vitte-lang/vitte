@@ -7,4 +7,7 @@ export interface ServerMetricEntry {
   lastAt: number;
   lastUri: string;
   lastCount: number | null;
+  p99Ms?: number;
+  errorCount?: number;
+  lastError?: string | null;
 }
