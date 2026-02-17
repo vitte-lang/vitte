@@ -101,26 +101,49 @@ proc domain_data() -> bool {
   let ob4 = v_outbox.mark_sent(ob3, 0)
   let ob5 = v_outbox.retry_event(ob4, 1)
   let ob6 = v_outbox.prune_sent(ob5)
+  let ob7 = v_outbox.mark_all_sent(ob5)
+  let ob8 = v_outbox.clear(ob5)
   let ob_pending = v_outbox.pending_count(ob4)
   let ob_flushed = v_outbox.flushed_count(ob3)
+  let ob_flushed_pending = v_outbox.flushed_pending_count(ob3)
   let ob_payload = v_outbox.replay_payload(ob4, 1)
+  let ob_payload_size = v_outbox.payload_size(ob5, 1)
   let ob_events = v_outbox.event_count(ob4)
   let ob_sent = v_outbox.sent_count(ob4)
+  let ob_event_1 = v_outbox.get_event(ob5, 1)
+  let ob_ids = v_outbox.event_ids(ob5)
+  let ob_pending_ids = v_outbox.pending_ids(ob5)
   let ob_has_0 = v_outbox.has_event(ob4, 0)
   let ob_attempt_1 = v_outbox.attempt_of(ob5, 1)
+  let ob_max_attempts = v_outbox.max_attempts(ob5)
+  let ob_first_created = v_outbox.first_by_topic(ob5, "user.created")
   let ob_next = v_outbox.next_pending(ob5)
   let ob_topic_created = v_outbox.topic_count(ob5, "user.created")
   let ob_status_0 = v_outbox.status(ob5, 0)
   let ob_status_1 = v_outbox.status(ob5, 1)
   let ob_events_after_prune = v_outbox.event_count(ob6)
+  let ob_empty_after_clear = v_outbox.is_empty(ob8)
   let ob_stats = v_outbox.stats(ob6)
 
   let sg0 = v_saga.saga_new("order-1")
   let sg1 = v_saga.add_steps(sg0, ["reserve_stock", "charge", "emit"])
   let sg2 = v_saga.run(sg1, 1)
+  let sg2_fail_alias = v_saga.fail(sg1, 1)
   let sg3 = v_saga.compensate(sg2)
   let sg4 = v_saga.resume(sg3)
   let sg5 = v_saga.reset(sg3)
+  let sg6 = v_saga.mark_done(sg1, "charge")
+  let sg7 = v_saga.mark_compensated(sg6, "charge")
+  let sg_step0 = v_saga.get_step(sg2, 0)
+  let sg_step_missing = v_saga.get_step(sg2, 9)
+  let sg_has_charge = v_saga.has_step(sg2, "charge")
+  let sg_next_pending = v_saga.next_pending_step(sg2)
+  let sg_can_run = v_saga.can_run(sg2)
+  let sg_failed_idx = v_saga.failed_index(sg2)
+  let sg_progress = v_saga.progress_percent(sg2)
+  let sg_is_failed = v_saga.is_failed(sg2)
+  let sg_is_succeeded = v_saga.is_succeeded(sg4)
+  let sg_is_compensated = v_saga.is_compensated(sg3)
   let sg_done = v_saga.done_count(sg2)
   let sg_pending = v_saga.pending_count(sg2)
   let sg_failed_name = v_saga.failed_step(sg2)
@@ -133,23 +156,40 @@ proc domain_data() -> bool {
   let sr1 = v_schema_registry.register(sr0, "user", 1, "fp1", ["id", "name"])
   let sr2 = v_schema_registry.register(sr1, "user", 2, "fp2", ["id", "name", "email"])
   let sr3 = v_schema_registry.deactivate(sr2, "user", 2)
+  let sr4 = v_schema_registry.reactivate(sr3, "user", 2)
+  let sr5 = v_schema_registry.remove(sr4, "user", 2)
   let sr_base = v_schema_registry.latest(sr1, "user")
   let sr_latest = v_schema_registry.latest(sr2, "user")
   let sr_compat = v_schema_registry.compatible(sr_base, sr_latest)
+  let sr_compat_bidir = v_schema_registry.compatible_bidirectional(sr_base, sr_latest)
   let sr_diff = v_schema_registry.diff(sr_base, sr_latest)
+  let sr_breaking = v_schema_registry.is_breaking(sr_latest, sr_base)
   let sr_count = v_schema_registry.count(sr2, "user")
+  let sr_subject_total = v_schema_registry.subject_total_count(sr3, "user")
+  let sr_active = v_schema_registry.active_count(sr3)
+  let sr_inactive = v_schema_registry.inactive_count(sr3)
+  let sr_subject_exists_user = v_schema_registry.subject_exists(sr3, "user")
+  let sr_subject_exists_order = v_schema_registry.subject_exists(sr3, "order")
   let sr_v1 = v_schema_registry.get(sr2, "user", 1)
   let sr_has_v2 = v_schema_registry.has(sr2, "user", 2)
   let sr_has_v2_after = v_schema_registry.has(sr3, "user", 2)
+  let sr_has_v2_reactivated = v_schema_registry.has(sr4, "user", 2)
+  let sr_has_v2_removed = v_schema_registry.has(sr5, "user", 2)
   let sr_latest_version = v_schema_registry.latest_version(sr2, "user")
   let sr_fields = v_schema_registry.field_count(sr_latest)
+  let sr_has_email = v_schema_registry.has_field(sr_latest, "email")
   let sr_subjects = v_schema_registry.subjects(sr2)
+  let sr_versions = v_schema_registry.versions(sr2, "user")
+  let sr_fps = v_schema_registry.fingerprints(sr2, "user")
   let sr_level = v_schema_registry.compatibility_level(sr_base, sr_latest)
   let sr_total = v_schema_registry.total_count(sr2)
   let sr_stats = v_schema_registry.stats(sr2)
 
   let t_ctx = v_tenant.tenant_ctx("t1", "eu", "pro")
+  let t_default = v_tenant.default_ctx()
+  let t_tid = v_tenant.tenant_id_of(t_ctx)
   let t_key = v_tenant.scope_key(t_ctx, "invoice:1")
+  let t_scope_prefix = v_tenant.has_scope_prefix(t_ctx, t_key)
   let t_iso_ok = v_tenant.enforce_isolation(t_ctx, "t1")
   let t_iso_bad = v_tenant.enforce_isolation(t_ctx, "t2")
   let t_current = v_tenant.current([t_ctx])
@@ -161,18 +201,38 @@ proc domain_data() -> bool {
   let t_valid = v_tenant.is_valid(t_planned)
   let t_region_key = v_tenant.region_key(t_planned, "invoice:1")
   let t_plan_ok = v_tenant.plan_allows(t_planned, "pro")
+  let t_enterprise = v_tenant.is_enterprise(t_planned)
+  let t_region_allow = v_tenant.can_access_region(t_planned, "us")
+  let t_region_deny = v_tenant.can_access_region(t_deactivated, "us")
   let t_same_region = v_tenant.same_region(t_regioned, t_planned)
   let t_stack1 = v_tenant.stack_push([], t_ctx)
   let t_stack2 = v_tenant.stack_push(t_stack1, t_planned)
+  let t_stack_depth = v_tenant.stack_depth(t_stack2)
+  let t_stack_empty = v_tenant.stack_is_empty([])
+  let t_stack_has = v_tenant.stack_contains(t_stack2, "t1")
   let t_top = v_tenant.current(t_stack2)
+  let t_stack_replaced = v_tenant.stack_replace_top(t_stack2, t_ctx)
   let t_stack3 = v_tenant.stack_pop(t_stack2)
+  let t_normalized = v_tenant.normalize(v_tenant.tenant_ctx("t2", "", ""), "eu", "free")
+  let t_region_name = v_tenant.region_of(t_planned)
+  let t_plan_name = v_tenant.plan_of(t_planned)
   let t_stats = v_tenant.stats(t_planned)
 
   let pg = v_pagination.page(0, 2, 5)
   let pg_has_next = v_pagination.has_next(pg)
+  let pg_has_prev = v_pagination.has_prev(pg)
+  let pg_prev = v_pagination.prev_cursor(pg)
   let pg_next = v_pagination.next_cursor(pg)
   let pg_window = v_pagination.window(pg)
   let pg_count = v_pagination.page_count(5, 2)
+  let pg_first = v_pagination.first_page(2, 5)
+  let pg_last = v_pagination.last_page(2, 5)
+  let pg_idx_last = v_pagination.page_index(pg_last)
+  let pg_remaining = v_pagination.remaining(pg)
+  let pg_shift = v_pagination.shift(pg, 3)
+  let pg_wide = v_pagination.with_limit(pg, 3)
+  let pg_valid = v_pagination.is_valid(pg)
+  let pg_stats = v_pagination.stats(pg)
 
   let si0 = v_search.index_new()
   let si1 = v_search.index_add(si0, "d1", "hello world")
@@ -184,6 +244,17 @@ proc domain_data() -> bool {
   }
   let si3 = v_search.index_remove(si2, "d2")
   let si_hits_after = v_search.query(si3, "vitte")
+  let si4 = v_search.reactivate(si3, "d2")
+  let si_doc_count = v_search.doc_count(si2)
+  let si_active = v_search.active_count(si2)
+  let si_has_d1 = v_search.has_doc(si2, "d1")
+  let si_doc = v_search.get_doc(si2, "d1")
+  let si2_hinted = v_search.set_score_hint(si2, "d1", 5)
+  let si_best = v_search.best_match(si2_hinted, "hello")
+  let si_count_vitte = v_search.query_count(si4, "vitte")
+  let si_ids_vitte = v_search.query_ids(si4, "vitte")
+  let si_stats = v_search.stats(si2)
+  let si_clear = v_search.clear(si4)
 
   let fx0 = v_fixtures.fixture_load("users", ["u1", "u2"])
   let fx1 = v_fixtures.seed(fx0, 1)
@@ -192,10 +263,21 @@ proc domain_data() -> bool {
   let fx_snap_reset = v_fixtures.snapshot(fx2)
   let fx3 = v_fixtures.append_row(fx2, "u3")
   let fx4 = v_fixtures.remove_row(fx3, "u2")
+  let fx1_once = v_fixtures.seed_once(fx0)
+  let fx5 = v_fixtures.append_row(fx4, "u3")
+  let fx6 = v_fixtures.dedupe(fx5)
+  let fx7 = v_fixtures.replace_row(fx6, "u3", "u4")
+  let fx8 = v_fixtures.clear_current(fx7)
   let fx_rows = v_fixtures.row_count(fx4)
   let fx_base = v_fixtures.base_count(fx4)
   let fx_has_u3 = v_fixtures.contains_row(fx4, "u3")
   let fx_diff = v_fixtures.diff_count(fx4)
+  let fx_dups = v_fixtures.duplicate_count(fx5)
+  let fx_first = v_fixtures.first_row(fx7, "x")
+  let fx_last = v_fixtures.last_row(fx7, "x")
+  let fx_row_1 = v_fixtures.row_at(fx7, 1, "x")
+  let fx_row_miss = v_fixtures.row_at(fx7, 9, "x")
+  let fx_empty = v_fixtures.is_empty(fx8)
   let fx_checksum = v_fixtures.checksum(fx4)
   let fx_stats = v_fixtures.stats(fx4)
 
@@ -248,26 +330,59 @@ proc domain_data() -> bool {
        diff == "updated" &&
        !idem_first && idem_replay == "R1" && idem_after &&
        c_ok.ok && c_diff == "changed" && c_snap.len > 0 &&
-       ob_pending == 1 && ob_flushed == 1 && ob_payload.len > 0 &&
-       ob_events == 2 && ob_sent == 1 && ob_has_0 &&
-       ob_attempt_1 == 1 && ob_next.id == 1 && ob_topic_created == 1 &&
+       ob_pending == 1 && ob_flushed == 1 && ob_flushed_pending == 1 && ob_payload.len > 0 &&
+       ob_payload_size > 0 && ob_events == 2 && ob_sent == 1 && ob_has_0 &&
+       ob_event_1.topic == "user.updated" && ob_ids.len == 2 && ob_pending_ids.len == 1 &&
+       ob_ids[0] == 0 && ob_ids[1] == 1 && ob_pending_ids[0] == 1 &&
+       ob_attempt_1 == 1 && ob_max_attempts == 1 && ob_first_created.id == 0 &&
+       ob_next.id == 1 && ob_topic_created == 1 &&
        ob_status_0 == "sent" && ob_status_1 == "pending" &&
-       ob_events_after_prune == 1 && ob_stats.len > 0 &&
-       sg2.state == v_saga.SagaState.Failed && sg3.state == v_saga.SagaState.Compensated &&
-       sg4.state == v_saga.SagaState.Succeeded && sg5.state == v_saga.SagaState.Draft &&
-       sg_done == 1 && sg_pending == 2 && sg_failed_name == "charge" &&
-       sg_idx == 1 && sg_term && sg_state == "compensated" && sg_stats.len > 0 &&
-       sr_latest.version == 2 && sr_compat && sr_diff == "compatible-change" && sr_count == 2 &&
+       ob_events_after_prune == 1 && v_outbox.sent_count(ob7) == 2 &&
+       v_outbox.pending_count(ob7) == 0 && ob_empty_after_clear && ob_stats.len > 0 &&
+       sg2.state == v_saga.SagaState.Failed && sg2_fail_alias.state == v_saga.SagaState.Failed &&
+       sg3.state == v_saga.SagaState.Compensated && sg4.state == v_saga.SagaState.Succeeded &&
+       sg5.state == v_saga.SagaState.Draft && sg_step0.done && sg_step_missing.name == "" &&
+       sg_has_charge && sg_next_pending == "charge" && sg_can_run &&
+       sg_failed_idx == 1 && sg_progress == 33 &&
+       sg_is_failed && sg_is_succeeded && sg_is_compensated &&
+       sg_done == 1 && sg_pending == 2 && v_saga.done_count(sg6) == 1 &&
+       v_saga.compensated_count(sg7) == 1 &&
+       sg_failed_name == "charge" && sg_idx == 1 && sg_term &&
+       sg_state == "compensated" && sg_stats.len > 0 &&
+       sr_latest.version == 2 && sr_compat && !sr_compat_bidir &&
+       sr_diff == "compatible-change" && sr_breaking && sr_count == 2 &&
        sr_v1.active && sr_has_v2 && !sr_has_v2_after &&
-       sr_latest_version == 2 && sr_fields == 3 && sr_subjects.len == 1 &&
-       sr_level == "backward-compatible" && sr_total == 2 && sr_stats.len > 0 &&
-       t_key.len > 0 && t_iso_ok && !t_iso_bad && t_current.active && !t_deactivated.active &&
+       sr_has_v2_reactivated && !sr_has_v2_removed &&
+       sr_subject_total == 2 && sr_active == 1 && sr_inactive == 1 &&
+       sr_subject_exists_user && !sr_subject_exists_order &&
+       sr_latest_version == 2 && sr_fields == 3 && sr_has_email &&
+       sr_subjects.len == 1 && sr_versions.len == 2 && sr_fps.len == 2 &&
+       sr_level == "backward-compatible" && sr_total == 2 &&
+       v_schema_registry.total_count(sr5) == 1 && sr_stats.len > 0 &&
+       t_default.plan == "free" && !t_default.active && t_tid == "t1" &&
+       t_key.len > 0 && t_scope_prefix &&
+       t_iso_ok && !t_iso_bad && t_current.active && !t_deactivated.active &&
        t_active && t_valid && t_region_key.len > 0 && t_plan_ok &&
-       t_same_region && t_top.tenant_id == "t1" && t_stack3.len == 1 && t_stats.len > 0 &&
-       pg_has_next && pg_next == 2 && pg_window.size == 2 && pg_count == 3 &&
+       t_enterprise && t_region_allow && !t_region_deny &&
+       t_same_region && t_top.tenant_id == "t1" &&
+       t_stack_depth == 2 && t_stack_empty && t_stack_has &&
+       t_stack3.len == 1 && v_tenant.current(t_stack_replaced).plan == "pro" &&
+       v_tenant.is_valid(t_normalized) && t_region_name == "us" &&
+       t_plan_name == "enterprise" && t_stats.len > 0 &&
+       pg_has_next && !pg_has_prev && pg_prev == -1 &&
+       pg_next == 2 && pg_window.size == 2 && pg_count == 3 &&
+       pg_first.offset == 0 && pg_last.offset == 3 && pg_idx_last == 1 &&
+       pg_remaining == 3 && pg_shift.offset == 3 && pg_wide.limit == 3 &&
+       pg_valid && pg_stats.len > 0 &&
        si_hits.len == 1 && si_score > 0 && si_hits_after.len == 0 &&
-       fx_snap.len > 0 && fx_snap_reset.len > 0 &&
-       fx_rows == 2 && fx_base == 2 && fx_has_u3 && fx_diff == 0 && fx_checksum > 0 && fx_stats.len > 0 &&
+       si_doc_count == 2 && si_active == 2 && si_has_d1 && si_doc.id == "d1" &&
+       si_best.id == "d1" && si_count_vitte == 1 && si_ids_vitte.len == 1 &&
+       si_ids_vitte[0] == "d2" && si_stats.len > 0 && v_search.doc_count(si_clear) == 0 &&
+       fx_snap.len > 0 && fx_snap_reset.len > 0 && fx1_once.current_rows.len == 4 &&
+       fx_rows == 2 && fx_base == 2 && fx_has_u3 && fx_diff == 0 &&
+       fx_dups == 1 && fx_first == "u1" && fx_last == "u4" &&
+       fx_row_1 == "u4" && fx_row_miss == "x" && fx_empty &&
+       fx_checksum > 0 && fx_stats.len > 0 &&
        cd_json_detect == v_codec.CodecFormat.Json && cd_mp_detect == v_codec.CodecFormat.MsgPack && cd_ok &&
        cd_pair.ok && cd_pair.key == "k" && cd_pair.value == "v" &&
        v_codec.detect(cd_conv.data) == v_codec.CodecFormat.Json && cd_ext == ".bin" && cd_text && cd_fp.len > 0 &&
@@ -296,36 +411,77 @@ proc domain_web() -> bool {
 
   let rp0 = v_retry.policy(3, 50, 200)
   let rp1 = v_retry.with_jitter(rp0, v_retry.RetryJitter.Full)
+  let rp2 = v_retry.with_retry_4xx(rp1, true)
+  let retry_plan = v_retry.delay_plan(rp1, 3)
   let retry_status = v_retry.run_with_retry([500, 429, 200], rp1)
   let retry_attempts = v_retry.attempts_used([500, 429, 200], rp1)
+  let retry_first = v_retry.first_retryable([200, 404, 503], rp1)
+  let retry_default_404 = v_retry.should_retry(404, 0, rp1)
+  let retry_enabled_404 = v_retry.should_retry(404, 0, rp2)
+  let retry_left = v_retry.attempts_left(rp1, retry_attempts)
+  let retry_class = v_retry.classify_status(429)
+  let retry_jitter = v_retry.jitter_name(rp1)
+  let retry_stop = v_retry.should_stop(200, 0, rp1)
+  let retry_stats = v_retry.policy_stats(rp2)
 
   let br0 = v_circuit_breaker.breaker_new(2, 3)
   let br1 = v_circuit_breaker.record_failure(br0, 1)
   let br2 = v_circuit_breaker.record_failure(br1, 2)
   let br_allow_now = v_circuit_breaker.allow(br2, 2)
+  let br_remaining = v_circuit_breaker.cooldown_remaining(br2, 2)
+  let br_opened_for = v_circuit_breaker.opened_for(br2, 4)
+  let br_probe = v_circuit_breaker.can_probe(br2, 5)
   let br3 = v_circuit_breaker.on_tick(br2, 6)
   let br_allow_late = v_circuit_breaker.allow(br3, 6)
   let br4 = v_circuit_breaker.record_success(br3)
+  let br_forced = v_circuit_breaker.force_close(v_circuit_breaker.force_open(br4, 7))
+  let br_ratio = v_circuit_breaker.trip_ratio_percent(br2)
+  let br_stats = v_circuit_breaker.stats(br2, 2)
 
   let rl0 = v_rate_limit.limiter_new(3, 10)
   let rl_allow1 = v_rate_limit.allow(rl0, 0, 2)
   let rl1 = v_rate_limit.consume(rl0, 0, 2)
   let rl_allow2 = v_rate_limit.allow(rl1, 0, 2)
+  let rl2 = v_rate_limit.consume_if_allowed(rl1, 0, 1)
+  let rl3 = v_rate_limit.consume_if_allowed(rl1, 0, 2)
   let rl_remaining = v_rate_limit.remaining(rl1, 0)
   let rl_reset = v_rate_limit.reset_at(rl1, 0)
+  let rl_used = v_rate_limit.used_now(rl1, 0)
+  let rl_cap = v_rate_limit.capacity(rl1)
+  let rl_util = v_rate_limit.utilization_percent(rl1, 0)
+  let rl_elapsed = v_rate_limit.window_elapsed(rl1, 4)
+  let rl_window_left = v_rate_limit.window_remaining(rl1, 4)
+  let rl_exhausted = v_rate_limit.is_exhausted(rl2, 0)
+  let rl_refill = v_rate_limit.refill(rl2, 11)
+  let rl_force = v_rate_limit.force_reset(rl1, 5)
+  let rl_small = v_rate_limit.with_capacity(rl1, 1)
+  let rl_stats = v_rate_limit.stats(rl1, 0)
 
   let to0 = v_timeout.timeout_new(100, 50)
   let to1 = v_timeout.with_deadline(to0, 130)
   let to_ok = !v_timeout.expired(to1, 120)
   let to_expired = v_timeout.expired(to1, 131)
   let to_elapsed = v_timeout.elapsed_ms(to1, 120)
+  let to_started = v_timeout.started_at(to1)
+  let to_deadline = v_timeout.deadline_at(to1)
+  let to_budget = v_timeout.budget(to1)
+  let to_within = v_timeout.within(to1, 120)
+  let to_clamped = v_timeout.clamp_deadline(to1, 110, 125)
+  let to_shifted = v_timeout.shift(to1, 10)
+  let to_can_spend = v_timeout.can_spend(to1, 120, 5)
+  let to_cannot_spend = v_timeout.can_spend(to1, 120, 20)
+  let to_overspent = v_timeout.overspent(to1, 70)
   let to2 = v_timeout.with_budget(to1, 60)
   let to3 = v_timeout.extend(to2, 10)
   let to_overrun = v_timeout.deadline_overrun(to3, 180)
   let to_active = v_timeout.is_active(to1)
   let to_guard_ok = v_timeout.guard(to1, 40)
   let to_guard_bad = v_timeout.guard(to1, 90)
-  let to4 = v_timeout.restart(v_timeout.stop(to1), 200, 20)
+  let to_with_active = v_timeout.with_active(to1, false)
+  let to_stopped = v_timeout.stop(to1)
+  let to_is_stopped = v_timeout.is_stopped(to_stopped)
+  let to_reactivated = v_timeout.ensure_active(to_stopped)
+  let to4 = v_timeout.restart(to_stopped, 200, 20)
   let to_restart_remaining = v_timeout.remaining_ms(to4, 210)
   let to_stats = v_timeout.stats(to4, 210)
 
@@ -353,15 +509,27 @@ proc domain_web() -> bool {
   let mh0 = v_mock_http.mock_new()
   let mh1 = v_mock_http.mock_add(mh0, "GET", "/health", 200, "{\"ok\":true}")
   let mh_match = v_mock_http.mock_match(mh1, "GET", "/health")
+  let mh_exists = v_mock_http.mock_exists(mh1, "GET", "/health")
+  let mh_body = v_mock_http.mock_body(mh1, "GET", "/health", "x")
+  let mh_body_missing = v_mock_http.mock_body(mh1, "POST", "/health", "x")
   let mh_reply = v_mock_http.mock_reply(mh1, "GET", "/health")
   let mh_miss = v_mock_http.mock_reply(mh1, "POST", "/health")
   let mh2 = v_mock_http.mock_clear(mh1)
+  let mh_empty = v_mock_http.mock_is_empty(mh2)
   let mh_match_after = v_mock_http.mock_match(mh2, "GET", "/health")
   let mh3 = v_mock_http.mock_add(mh2, "post", "/echo", 201, "{\"ok\":1}")
+  let mh_methods = v_mock_http.mock_methods(mh3)
+  let mh_method_count = v_mock_http.mock_count_method(mh3, "POST")
+  let mh_route0 = v_mock_http.mock_route_at(mh3, 0)
+  let mh_route_bad = v_mock_http.mock_route_at(mh3, 9)
   let mh_count = v_mock_http.mock_count(mh3)
   let mh_paths = v_mock_http.mock_list_paths(mh3, "POST")
   let mh_status = v_mock_http.mock_status(mh3, "post", "/echo")
   let mh_verify = v_mock_http.mock_verify(mh3, "POST", "/echo", 201)
+  let mh5 = v_mock_http.mock_update_status(mh3, "POST", "/echo", 202)
+  let mh6 = v_mock_http.mock_update_body(mh5, "POST", "/echo", "{\"ok\":2}")
+  let mh_status_updated = v_mock_http.mock_status(mh6, "POST", "/echo")
+  let mh_body_updated = v_mock_http.mock_body(mh6, "POST", "/echo", "")
   let mh4 = v_mock_http.mock_remove(mh3, "POST", "/echo")
   let mh_count_after = v_mock_http.mock_count(mh4)
   let mh_stats = v_mock_http.mock_stats(mh3)
@@ -375,19 +543,40 @@ proc domain_web() -> bool {
        v_http_client.is_ok(hc_resp) &&
        v_requests.result_status(req_result) == 200 &&
        v_requests.health(opts2) &&
-       retry_status == 200 && retry_attempts == 2 &&
+       retry_status == 200 && retry_attempts == 2 && retry_first == 503 &&
+       !retry_default_404 && retry_enabled_404 && retry_left == 1 &&
+       retry_class == "throttle" && retry_jitter == "full" && retry_stop &&
+       retry_plan.len == 3 && retry_plan[0] == 50 && retry_plan[1] == 99 &&
+       retry_plan[2] == 198 && retry_stats.len > 0 &&
        !br_allow_now && br_allow_late &&
+       br_remaining == 3 && br_opened_for == 2 && br_probe &&
+       br_ratio == 100 && v_circuit_breaker.is_closed(br_forced) && br_stats.len > 0 &&
        v_circuit_breaker.state(br4) == v_circuit_breaker.BreakerState.Closed &&
        rl_allow1 && !rl_allow2 && rl_remaining == 1 && rl_reset == 10 &&
-       to_ok && to_expired && to_elapsed == 20 && to_overrun == 10 && to_active &&
-       to_guard_ok && !to_guard_bad && to_restart_remaining == 10 && to_stats.len > 0 &&
+       rl_used == 2 && rl_cap == 3 && rl_util == 66 && rl_elapsed == 4 &&
+       rl_window_left == 6 && rl2.used == 3 && rl3.used == 2 && rl_exhausted &&
+       rl_refill.used == 0 && rl_refill.window_start == 11 &&
+       rl_force.used == 0 && rl_force.window_start == 5 &&
+       rl_small.capacity == 1 && rl_small.used == 1 && rl_stats.len > 0 &&
+       to_ok && to_expired && to_elapsed == 20 &&
+       to_started == 100 && to_deadline == 130 && to_budget == 30 && to_within &&
+       to_clamped.deadline_ms == 125 && to_clamped.budget_ms == 25 &&
+       to_shifted.started_ms == 110 && to_shifted.deadline_ms == 140 &&
+       to_can_spend && !to_cannot_spend && to_overspent == 40 &&
+       to_overrun == 10 && to_active &&
+       to_guard_ok && !to_guard_bad && v_timeout.is_stopped(to_with_active) &&
+       to_is_stopped && to_reactivated.active && to_restart_remaining == 10 && to_stats.len > 0 &&
        bh_avail == 0 && bh_avail_after == 1 && bh3.queued == 1 && bh_accept &&
        bh_open && bh_qdepth == 1 && bh_rejected == 1 && bh_has_queue && bh_util == 100 &&
        bh8.queued == 0 && bh9.capacity == 1 && bh10.rejected == 0 && bh_stats.len > 0 &&
-       mh_match && mh_reply.matched && mh_reply.status == 200 &&
-       !mh_miss.matched && mh_miss.status == 404 && !mh_match_after &&
+       mh_match && mh_exists && mh_body == "{\"ok\":true}" && mh_body_missing == "x" &&
+       mh_reply.matched && mh_reply.status == 200 &&
+       !mh_miss.matched && mh_miss.status == 404 && mh_empty && !mh_match_after &&
+       mh_methods.len == 1 && mh_method_count == 1 &&
+       mh_route0.path == "/echo" && mh_route_bad.status == 404 &&
        mh_count == 1 && mh_paths.len == 1 && mh_status == 201 &&
-       mh_verify && mh_count_after == 0 && mh_stats.len > 0
+       mh_verify && mh_status_updated == 202 && mh_body_updated == "{\"ok\":2}" &&
+       mh_count_after == 0 && mh_stats.len > 0
 }
 
 proc domain_security() -> bool {
@@ -419,6 +608,17 @@ proc domain_security() -> bool {
   let audit_ok = v_audit.verify(q_auth[0], "k")
 
   let h = v_health.input(true, true, true, true, true, true)
+  let h_bad = v_health.input(true, false, true, false, false, true)
+  let h_deps = v_health.deps_ok(h)
+  let h_operational = v_health.check_operational(h)
+  let h_code_live = v_health.status_code_live(h_bad)
+  let h_code_ready = v_health.status_code_ready(h_bad)
+  let h_code_startup = v_health.status_code_startup(h_bad)
+  let h_failing = v_health.failing_components(h_bad)
+  let h_failing_count = v_health.failing_count(h_bad)
+  let h_score_bad = v_health.score_percent(h_bad)
+  let h_text_bad = v_health.status_text(h_bad)
+  let h_text_ok = v_health.status_text(h)
   let h_json = v_health.report_json(h)
 
   let ff0 = v_feature_flags.flags_new()
@@ -442,12 +642,21 @@ proc domain_security() -> bool {
   let ar_silenced_eval = v_alerts.evaluate(ar2, 200, 15)
   let ar3 = v_alerts.trigger(ar2, 50, 15)
   let ar4 = v_alerts.trigger(ar2, 200, 30)
+  let ar_tuned = v_alerts.with_threshold(v_alerts.with_window(ar0, 30), 90)
   let ar_can = v_alerts.can_trigger(ar2, 15)
   let ar_delta = v_alerts.threshold_delta(ar0, 120)
+  let ar_breach = v_alerts.breach_ratio_percent(ar0, 120)
+  let ar_page_1 = v_alerts.should_page(ar0, 120, 10, 1)
+  let ar_page_3 = v_alerts.should_page(ar0, 120, 10, 3)
+  let ar_idle = v_alerts.is_idle(ar0)
+  let ar_silenced_state = v_alerts.is_silenced_state(ar2)
+  let ar7 = v_alerts.silence_for(ar0, 3, 4)
+  let ar8 = v_alerts.unsilence_if_due(ar7, 8)
   let ar_firing = v_alerts.is_firing(ar1)
   let ar_state_name = v_alerts.state_name(ar1)
   let ar5 = v_alerts.unsilence(ar2)
   let ar6 = v_alerts.recover(ar5, 80, 31)
+  let ar_reset = v_alerts.reset(ar4)
   let ar_stats = v_alerts.stats(ar6)
 
   let slo0 = v_slo.slo_new(80)
@@ -456,6 +665,11 @@ proc domain_security() -> bool {
   let slo3 = v_slo.sli_record(slo2, true)
   let slo4 = v_slo.sli_record(slo3, true)
   let slo5 = v_slo.sli_record(slo4, false)
+  let slo_target = v_slo.target(slo5)
+  let slo_budget_pct = v_slo.error_budget_percent(slo5)
+  let slo_total_budget = v_slo.total_budget(slo5)
+  let slo_over_budget = v_slo.bad_over_budget(slo5)
+  let slo_budget_used = v_slo.budget_used_percent(slo5)
   let slo_ok = v_slo.slo_eval(slo5)
   let slo_budget = v_slo.budget_left(slo5)
   let slo_burn = v_slo.burn_rate(slo5)
@@ -463,6 +677,10 @@ proc domain_security() -> bool {
   let slo_success_rate = v_slo.success_rate(slo5)
   let slo_error_rate = v_slo.error_rate(slo5)
   let slo_health = v_slo.health(slo5)
+  let slo_within_79 = v_slo.within_target(slo5, 79)
+  let slo_within_81 = v_slo.within_target(slo5, 81)
+  let slo8 = v_slo.record_failure(v_slo.record_success(v_slo.slo_new(90)))
+  let slo_projected = v_slo.projected_burn(slo5, 5, 3)
   let slo6 = v_slo.record_many(v_slo.reset(slo5), 4, 1)
   let slo7 = v_slo.merge(slo5, slo6)
   let slo_stats = v_slo.stats(slo7)
@@ -475,15 +693,25 @@ proc domain_security() -> bool {
        secure_sock.secure && v_net.status(secure_sock) == "secure" &&
        secret_resolved == "env_secret_987" && secret_mask.len > 0 && secret_valid &&
        v_audit.count(log1) == 1 && q_auth.len == 1 && audit_ok &&
-       v_health.check_live(h) && v_health.check_ready(h) && v_health.check_startup(h) && h_json.len > 0 &&
+       v_health.check_live(h) && v_health.check_ready(h) && v_health.check_startup(h) &&
+       h_deps && h_operational &&
+       h_code_live == 200 && h_code_ready == 503 && h_code_startup == 503 &&
+       h_failing.len == 3 && h_failing_count == 3 &&
+       h_score_bad == 50 && h_text_bad == "degraded" && h_text_ok == "ok" && h_json.len > 0 &&
        !ff_user && ff_other &&
        pol_allow && !pol_deny && pol_reason == "forbidden-delete" && pol_explain.len > 0 &&
-       ar_eval && ar1.fired_count == 1 &&
-       !ar_can && ar_delta == 20 && ar_firing && ar_state_name == "firing" &&
+       ar_eval && ar1.fired_count == 1 && ar_tuned.threshold == 90 && ar_tuned.window_ticks == 30 &&
+       !ar_can && ar_delta == 20 && ar_breach == 120 &&
+       ar_page_1 && !ar_page_3 && ar_idle && ar_silenced_state &&
+       ar_firing && ar_state_name == "firing" &&
        !ar_silenced_eval && ar3.state == v_alerts.AlertState.Silenced &&
-       ar4.state == v_alerts.AlertState.Firing && ar6.state == v_alerts.AlertState.Idle && ar_stats.len > 0 &&
-       slo_ok && slo_budget == 0 && slo_burn >= 100 &&
+       ar4.state == v_alerts.AlertState.Firing && ar6.state == v_alerts.AlertState.Idle &&
+       ar8.state == v_alerts.AlertState.Idle && ar_reset.fired_count == 0 && ar_stats.len > 0 &&
+       slo_target == 80 && slo_budget_pct == 20 && slo_total_budget == 1 &&
+       slo_over_budget == 0 && slo_budget_used == 100 &&
+       slo_ok && slo_budget == 0 && slo_burn >= 100 && slo_projected >= 200 &&
        slo_success == 4 && slo_success_rate == 80 && slo_error_rate == 20 &&
+       slo_within_79 && !slo_within_81 && slo8.total == 2 && slo8.bad == 1 &&
        slo_health == "exhausted" && slo6.total == 5 && slo7.total == 10 && slo_stats.len > 0
 }
 

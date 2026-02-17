@@ -21,6 +21,9 @@ use vitte/http_client as v_http_client
 use vitte/requests as v_requests
 use vitte/channel as v_channel
 use vitte/actor as v_actor
+use vitte/retry as v_retry
+use vitte/circuit_breaker as v_circuit_breaker
+use vitte/rate_limit as v_rate_limit
 use vitte/queue as v_queue
 use vitte/stream as v_stream
 use vitte/codec as v_codec
@@ -32,6 +35,7 @@ use vitte/outbox as v_outbox
 use vitte/saga as v_saga
 use vitte/schema_registry as v_schema_registry
 use vitte/tenant as v_tenant
+use vitte/health as v_health
 use vitte/pagination as v_pagination
 use vitte/search as v_search
 use vitte/alerts as v_alerts
@@ -249,13 +253,25 @@ entry main at tests/packages_runtime {
   let timeout_expired = v_timeout.expired(t1, 130)
   let timeout_remaining = v_timeout.remaining_ms(t1, 120)
   let timeout_elapsed = v_timeout.elapsed_ms(t1, 120)
+  let timeout_started = v_timeout.started_at(t1)
+  let timeout_deadline = v_timeout.deadline_at(t1)
+  let timeout_budget = v_timeout.budget(t1)
+  let timeout_within = v_timeout.within(t1, 120)
+  let t1_clamped = v_timeout.clamp_deadline(t1, 110, 125)
+  let t1_shifted = v_timeout.shift(t1, 10)
+  let timeout_can_spend = v_timeout.can_spend(t1, 120, 5)
+  let timeout_cannot_spend = v_timeout.can_spend(t1, 120, 20)
+  let timeout_overspent = v_timeout.overspent(t1, 70)
   let t1_budget = v_timeout.with_budget(t1, 60)
   let t1_extended = v_timeout.extend(t1_budget, 10)
   let timeout_overrun = v_timeout.deadline_overrun(t1_extended, 180)
   let timeout_active = v_timeout.is_active(t1)
   let timeout_guard = v_timeout.guard(t1, 40)
+  let timeout_with_active = v_timeout.with_active(t1, false)
   let t2 = v_timeout.stop(t1)
   let timeout_stopped_expired = v_timeout.expired(t2, 121)
+  let timeout_stopped = v_timeout.is_stopped(t2)
+  let t2_active = v_timeout.ensure_active(t2)
   let t3 = v_timeout.restart(t2, 200, 20)
   let timeout_restart_remaining = v_timeout.remaining_ms(t3, 210)
   let timeout_stats = v_timeout.stats(t3, 210)
@@ -288,28 +304,51 @@ entry main at tests/packages_runtime {
   let ob4 = v_outbox.mark_sent(ob3, 0)
   let ob5 = v_outbox.retry_event(ob4, 1)
   let ob6 = v_outbox.prune_sent(ob5)
+  let ob7 = v_outbox.mark_all_sent(ob5)
+  let ob8 = v_outbox.clear(ob5)
   let outbox_pending = v_outbox.pending_count(ob4)
   let outbox_flushed = v_outbox.flushed_count(ob3)
+  let outbox_flushed_pending = v_outbox.flushed_pending_count(ob3)
   let outbox_payload = v_outbox.replay_payload(ob4, 1)
+  let outbox_payload_size = v_outbox.payload_size(ob5, 1)
   let outbox_events = v_outbox.event_count(ob4)
   let outbox_sent = v_outbox.sent_count(ob4)
+  let outbox_event_1 = v_outbox.get_event(ob5, 1)
+  let outbox_ids = v_outbox.event_ids(ob5)
+  let outbox_pending_ids = v_outbox.pending_ids(ob5)
   let outbox_has_0 = v_outbox.has_event(ob4, 0)
   let outbox_attempt_1 = v_outbox.attempt_of(ob5, 1)
+  let outbox_max_attempts = v_outbox.max_attempts(ob5)
+  let outbox_first_created = v_outbox.first_by_topic(ob5, "user.created")
   let outbox_next = v_outbox.next_pending(ob5)
   let outbox_topic_created = v_outbox.topic_count(ob5, "user.created")
   let outbox_status_0 = v_outbox.status(ob5, 0)
   let outbox_status_1 = v_outbox.status(ob5, 1)
   let outbox_events_after_prune = v_outbox.event_count(ob6)
+  let outbox_empty_after_clear = v_outbox.is_empty(ob8)
   let outbox_stats = v_outbox.stats(ob6)
 
   let sg0 = v_saga.saga_new("payment-1")
   let sg1 = v_saga.step_add(sg0, "reserve_stock")
   let sg2 = v_saga.step_add(sg1, "charge_card")
   let sg3 = v_saga.run(sg2, 1)
+  let sg3_fail_alias = v_saga.fail(sg2, 1)
   let sg4 = v_saga.compensate(sg3)
   let sg5 = v_saga.resume(sg4)
   let sg6 = v_saga.reset(sg4)
   let sg7 = v_saga.add_steps(v_saga.saga_new("payment-2"), ["reserve", "charge", "emit"])
+  let sg8 = v_saga.mark_done(sg2, "charge_card")
+  let sg9 = v_saga.mark_compensated(sg8, "charge_card")
+  let saga_step0 = v_saga.get_step(sg3, 0)
+  let saga_step_missing = v_saga.get_step(sg3, 9)
+  let saga_has_charge = v_saga.has_step(sg3, "charge_card")
+  let saga_next_pending = v_saga.next_pending_step(sg3)
+  let saga_can_run_failed = v_saga.can_run(sg3)
+  let saga_failed_index = v_saga.failed_index(sg3)
+  let saga_progress = v_saga.progress_percent(sg3)
+  let saga_is_failed = v_saga.is_failed(sg3)
+  let saga_is_succeeded = v_saga.is_succeeded(sg5)
+  let saga_is_compensated = v_saga.is_compensated(sg4)
   let saga_steps = v_saga.step_count(sg4)
   let saga_compensated = v_saga.compensated_count(sg4)
   let saga_done = v_saga.done_count(sg3)
@@ -324,23 +363,40 @@ entry main at tests/packages_runtime {
   let sr1 = v_schema_registry.register(sr0, "user", 1, "fp1", ["id", "name"])
   let sr2 = v_schema_registry.register(sr1, "user", 2, "fp2", ["id", "name", "email"])
   let sr3 = v_schema_registry.deactivate(sr2, "user", 2)
+  let sr4 = v_schema_registry.reactivate(sr3, "user", 2)
+  let sr5 = v_schema_registry.remove(sr4, "user", 2)
   let sr_base = v_schema_registry.latest(sr1, "user")
   let sr_latest = v_schema_registry.latest(sr2, "user")
   let schema_compat = v_schema_registry.compatible(sr_base, sr_latest)
+  let schema_compat_bidir = v_schema_registry.compatible_bidirectional(sr_base, sr_latest)
   let schema_diff = v_schema_registry.diff(sr_base, sr_latest)
+  let schema_breaking = v_schema_registry.is_breaking(sr_latest, sr_base)
   let schema_count = v_schema_registry.count(sr2, "user")
+  let schema_subject_total = v_schema_registry.subject_total_count(sr3, "user")
+  let schema_active_count = v_schema_registry.active_count(sr3)
+  let schema_inactive_count = v_schema_registry.inactive_count(sr3)
+  let schema_subject_exists_user = v_schema_registry.subject_exists(sr3, "user")
+  let schema_subject_exists_order = v_schema_registry.subject_exists(sr3, "order")
   let schema_v1 = v_schema_registry.get(sr2, "user", 1)
   let schema_has_v2 = v_schema_registry.has(sr2, "user", 2)
   let schema_has_v2_after = v_schema_registry.has(sr3, "user", 2)
+  let schema_has_v2_reactivated = v_schema_registry.has(sr4, "user", 2)
+  let schema_has_v2_removed = v_schema_registry.has(sr5, "user", 2)
   let schema_latest_version = v_schema_registry.latest_version(sr2, "user")
   let schema_fields = v_schema_registry.field_count(sr_latest)
+  let schema_has_email = v_schema_registry.has_field(sr_latest, "email")
   let schema_subjects = v_schema_registry.subjects(sr2)
+  let schema_versions = v_schema_registry.versions(sr2, "user")
+  let schema_fingerprints = v_schema_registry.fingerprints(sr2, "user")
   let schema_level = v_schema_registry.compatibility_level(sr_base, sr_latest)
   let schema_total = v_schema_registry.total_count(sr2)
   let schema_stats = v_schema_registry.stats(sr2)
 
   let tenant_ctx = v_tenant.tenant_ctx("t1", "eu", "pro")
+  let tenant_default = v_tenant.default_ctx()
+  let tenant_tid = v_tenant.tenant_id_of(tenant_ctx)
   let tenant_key = v_tenant.scope_key(tenant_ctx, "invoice:1")
+  let tenant_scope_prefix = v_tenant.has_scope_prefix(tenant_ctx, tenant_key)
   let tenant_iso_ok = v_tenant.enforce_isolation(tenant_ctx, "t1")
   let tenant_iso_bad = v_tenant.enforce_isolation(tenant_ctx, "t2")
   let tenant_current = v_tenant.current([tenant_ctx])
@@ -352,19 +408,53 @@ entry main at tests/packages_runtime {
   let tenant_valid = v_tenant.is_valid(tenant_planned)
   let tenant_region_key = v_tenant.region_key(tenant_planned, "invoice:1")
   let tenant_plan_ok = v_tenant.plan_allows(tenant_planned, "pro")
+  let tenant_is_enterprise = v_tenant.is_enterprise(tenant_planned)
+  let tenant_can_access_region = v_tenant.can_access_region(tenant_planned, "us")
+  let tenant_cannot_access_region = v_tenant.can_access_region(tenant_off, "us")
   let tenant_same_region = v_tenant.same_region(tenant_regioned, tenant_planned)
   let tenant_stack1 = v_tenant.stack_push([], tenant_ctx)
   let tenant_stack2 = v_tenant.stack_push(tenant_stack1, tenant_planned)
+  let tenant_stack_depth = v_tenant.stack_depth(tenant_stack2)
+  let tenant_stack_empty = v_tenant.stack_is_empty([])
+  let tenant_stack_has_t1 = v_tenant.stack_contains(tenant_stack2, "t1")
   let tenant_top = v_tenant.current(tenant_stack2)
+  let tenant_stack_replaced = v_tenant.stack_replace_top(tenant_stack2, tenant_ctx)
   let tenant_stack3 = v_tenant.stack_pop(tenant_stack2)
+  let tenant_normalized = v_tenant.normalize(v_tenant.tenant_ctx("t2", "", ""), "eu", "free")
+  let tenant_region_name = v_tenant.region_of(tenant_planned)
+  let tenant_plan_name = v_tenant.plan_of(tenant_planned)
   let tenant_stats = v_tenant.stats(tenant_planned)
   let tenant_same = v_tenant.same_tenant(tenant_ctx, tenant_current)
 
+  let h_ok = v_health.input(true, true, true, true, true, true)
+  let h_bad = v_health.input(true, false, true, false, false, true)
+  let health_deps_ok = v_health.deps_ok(h_ok)
+  let health_operational = v_health.check_operational(h_ok)
+  let health_code_live = v_health.status_code_live(h_bad)
+  let health_code_ready = v_health.status_code_ready(h_bad)
+  let health_code_startup = v_health.status_code_startup(h_bad)
+  let health_failing = v_health.failing_components(h_bad)
+  let health_fail_count = v_health.failing_count(h_bad)
+  let health_score_bad = v_health.score_percent(h_bad)
+  let health_text_bad = v_health.status_text(h_bad)
+  let health_text_ok = v_health.status_text(h_ok)
+  let health_json = v_health.report_json(h_ok)
+
   let pg = v_pagination.page(0, 2, 5)
   let pagination_has_next = v_pagination.has_next(pg)
+  let pagination_has_prev = v_pagination.has_prev(pg)
+  let pagination_prev = v_pagination.prev_cursor(pg)
   let pagination_next = v_pagination.next_cursor(pg)
   let pagination_window = v_pagination.window(pg)
   let pagination_count = v_pagination.page_count(5, 2)
+  let pagination_first = v_pagination.first_page(2, 5)
+  let pagination_last = v_pagination.last_page(2, 5)
+  let pagination_idx_last = v_pagination.page_index(pagination_last)
+  let pagination_remaining = v_pagination.remaining(pg)
+  let pagination_shifted = v_pagination.shift(pg, 3)
+  let pagination_wide = v_pagination.with_limit(pg, 3)
+  let pagination_valid = v_pagination.is_valid(pg)
+  let pagination_stats = v_pagination.stats(pg)
 
   let se0 = v_search.index_new()
   let se1 = v_search.index_add(se0, "d1", "hello world")
@@ -372,8 +462,62 @@ entry main at tests/packages_runtime {
   let search_contains = v_search.contains("hello world", "hello")
   let search_hits = v_search.query(se2, "world")
   let search_score = v_search.score(search_hits[0], "world")
+  let search_docs = v_search.doc_count(se2)
+  let search_active = v_search.active_count(se2)
+  let search_has_d1 = v_search.has_doc(se2, "d1")
+  let search_doc = v_search.get_doc(se2, "d1")
+  let se2_hinted = v_search.set_score_hint(se2, "d1", 5)
+  let search_best = v_search.best_match(se2_hinted, "world")
   let se3 = v_search.index_remove(se2, "d2")
+  let se4 = v_search.reactivate(se3, "d2")
   let search_hits_after = v_search.query(se3, "vitte")
+  let search_count_vitte = v_search.query_count(se4, "vitte")
+  let search_ids_vitte = v_search.query_ids(se4, "vitte")
+  let search_stats = v_search.stats(se2)
+  let search_cleared = v_search.clear(se4)
+
+  let retry_policy0 = v_retry.policy(3, 50, 200)
+  let retry_policy1 = v_retry.with_jitter(retry_policy0, v_retry.RetryJitter.Full)
+  let retry_policy2 = v_retry.with_retry_4xx(retry_policy1, true)
+  let retry_delay_plan = v_retry.delay_plan(retry_policy1, 3)
+  let retry_status = v_retry.run_with_retry([500, 429, 200], retry_policy1)
+  let retry_attempts = v_retry.attempts_used([500, 429, 200], retry_policy1)
+  let retry_first = v_retry.first_retryable([200, 404, 503], retry_policy1)
+  let retry_404_default = v_retry.should_retry(404, 0, retry_policy1)
+  let retry_404_enabled = v_retry.should_retry(404, 0, retry_policy2)
+  let retry_success = v_retry.run_succeeds([500, 200], retry_policy1)
+  let retry_left = v_retry.attempts_left(retry_policy1, retry_attempts)
+  let retry_class = v_retry.classify_status(429)
+  let retry_jitter = v_retry.jitter_name(retry_policy1)
+  let retry_stop = v_retry.should_stop(200, 0, retry_policy1)
+  let retry_stats = v_retry.policy_stats(retry_policy2)
+
+  let breaker0 = v_circuit_breaker.breaker_new(2, 3)
+  let breaker1 = v_circuit_breaker.record_failure(breaker0, 1)
+  let breaker2 = v_circuit_breaker.record_failure(breaker1, 2)
+  let breaker_remaining = v_circuit_breaker.cooldown_remaining(breaker2, 2)
+  let breaker_opened_for = v_circuit_breaker.opened_for(breaker2, 4)
+  let breaker_probe = v_circuit_breaker.can_probe(breaker2, 5)
+  let breaker4 = v_circuit_breaker.on_tick(breaker2, 6)
+  let breaker5 = v_circuit_breaker.record_success(breaker4)
+  let breaker_forced = v_circuit_breaker.force_close(v_circuit_breaker.force_open(breaker5, 7))
+  let breaker_ratio = v_circuit_breaker.trip_ratio_percent(breaker2)
+  let breaker_stats = v_circuit_breaker.stats(breaker2, 2)
+
+  let limiter0 = v_rate_limit.limiter_new(3, 10)
+  let limiter1 = v_rate_limit.consume(limiter0, 0, 2)
+  let limiter2 = v_rate_limit.consume_if_allowed(limiter1, 0, 1)
+  let limiter3 = v_rate_limit.consume_if_allowed(limiter1, 0, 2)
+  let limiter_refill = v_rate_limit.refill(limiter2, 11)
+  let limiter_reset = v_rate_limit.force_reset(limiter1, 5)
+  let limiter_small = v_rate_limit.with_capacity(limiter1, 1)
+  let limiter_used = v_rate_limit.used_now(limiter1, 0)
+  let limiter_cap = v_rate_limit.capacity(limiter1)
+  let limiter_util = v_rate_limit.utilization_percent(limiter1, 0)
+  let limiter_elapsed = v_rate_limit.window_elapsed(limiter1, 4)
+  let limiter_window_left = v_rate_limit.window_remaining(limiter1, 4)
+  let limiter_exhausted = v_rate_limit.is_exhausted(limiter2, 0)
+  let limiter_stats = v_rate_limit.stats(limiter1, 0)
 
   let al0 = v_alerts.rule_new("latency_p95", 100, 60)
   let alert_eval = v_alerts.evaluate(al0, 120, 1)
@@ -383,12 +527,21 @@ entry main at tests/packages_runtime {
   let alert_eval_silenced = v_alerts.evaluate(al2, 150, 5)
   let al3 = v_alerts.trigger(al2, 20, 5)
   let al4 = v_alerts.trigger(al2, 120, 11)
+  let al0_tuned = v_alerts.with_threshold(v_alerts.with_window(al0, 30), 90)
   let alert_can = v_alerts.can_trigger(al2, 5)
   let alert_delta = v_alerts.threshold_delta(al0, 120)
+  let alert_breach = v_alerts.breach_ratio_percent(al0, 120)
+  let alert_should_page_1 = v_alerts.should_page(al0, 120, 1, 1)
+  let alert_should_page_3 = v_alerts.should_page(al0, 120, 1, 3)
+  let alert_idle = v_alerts.is_idle(al0)
+  let alert_silenced_state = v_alerts.is_silenced_state(al2)
+  let al7 = v_alerts.silence_for(al0, 3, 4)
+  let al8 = v_alerts.unsilence_if_due(al7, 8)
   let alert_firing = v_alerts.is_firing(al1)
   let alert_state_name = v_alerts.state_name(al1)
   let al5 = v_alerts.unsilence(al2)
   let al6 = v_alerts.recover(al5, 80, 12)
+  let al_reset = v_alerts.reset(al4)
   let alert_stats = v_alerts.stats(al6)
 
   let slo0 = v_slo.slo_new(80)
@@ -400,11 +553,20 @@ entry main at tests/packages_runtime {
   let slo_allowed = v_slo.allowed_bad(slo5)
   let slo_ok = v_slo.slo_eval(slo5)
   let slo_budget = v_slo.budget_left(slo5)
+  let slo_target = v_slo.target(slo5)
+  let slo_budget_pct = v_slo.error_budget_percent(slo5)
+  let slo_total_budget = v_slo.total_budget(slo5)
+  let slo_over_budget = v_slo.bad_over_budget(slo5)
+  let slo_budget_used = v_slo.budget_used_percent(slo5)
   let slo_burn = v_slo.burn_rate(slo5)
   let slo_success = v_slo.success_count(slo5)
   let slo_success_rate = v_slo.success_rate(slo5)
   let slo_error_rate = v_slo.error_rate(slo5)
   let slo_health = v_slo.health(slo5)
+  let slo_within_79 = v_slo.within_target(slo5, 79)
+  let slo_within_81 = v_slo.within_target(slo5, 81)
+  let slo8 = v_slo.record_failure(v_slo.record_success(v_slo.slo_new(90)))
+  let slo_projected = v_slo.projected_burn(slo5, 5, 3)
   let slo6 = v_slo.record_many(v_slo.reset(slo5), 4, 1)
   let slo7 = v_slo.merge(slo5, slo6)
   let slo_stats = v_slo.stats(slo7)
@@ -416,25 +578,48 @@ entry main at tests/packages_runtime {
   let fixtures_snap_reset = v_fixtures.snapshot(fx2)
   let fx3 = v_fixtures.append_row(fx2, "u3")
   let fx4 = v_fixtures.remove_row(fx3, "u2")
+  let fx1_once = v_fixtures.seed_once(fx0)
+  let fx5 = v_fixtures.append_row(fx4, "u3")
+  let fx6 = v_fixtures.dedupe(fx5)
+  let fx7 = v_fixtures.replace_row(fx6, "u3", "u4")
+  let fx8 = v_fixtures.clear_current(fx7)
   let fixtures_rows = v_fixtures.row_count(fx4)
   let fixtures_base_rows = v_fixtures.base_count(fx4)
   let fixtures_has_u3 = v_fixtures.contains_row(fx4, "u3")
   let fixtures_diff = v_fixtures.diff_count(fx4)
+  let fixtures_dups = v_fixtures.duplicate_count(fx5)
+  let fixtures_first = v_fixtures.first_row(fx7, "x")
+  let fixtures_last = v_fixtures.last_row(fx7, "x")
+  let fixtures_row_1 = v_fixtures.row_at(fx7, 1, "x")
+  let fixtures_row_missing = v_fixtures.row_at(fx7, 3, "x")
+  let fixtures_empty = v_fixtures.is_empty(fx8)
   let fixtures_checksum = v_fixtures.checksum(fx4)
   let fixtures_stats = v_fixtures.stats(fx4)
 
   let mh0 = v_mock_http.mock_new()
   let mh1 = v_mock_http.mock_add(mh0, "GET", "/health", 200, "{\"ok\":true}")
   let mock_match_ok = v_mock_http.mock_match(mh1, "GET", "/health")
+  let mock_exists = v_mock_http.mock_exists(mh1, "GET", "/health")
+  let mock_body = v_mock_http.mock_body(mh1, "GET", "/health", "x")
+  let mock_body_missing = v_mock_http.mock_body(mh1, "POST", "/health", "x")
   let mock_reply = v_mock_http.mock_reply(mh1, "GET", "/health")
   let mock_miss = v_mock_http.mock_reply(mh1, "POST", "/health")
   let mh2 = v_mock_http.mock_clear(mh1)
+  let mock_empty = v_mock_http.mock_is_empty(mh2)
   let mock_after_clear = v_mock_http.mock_match(mh2, "GET", "/health")
   let mh3 = v_mock_http.mock_add(mh2, "post", "/echo", 201, "{\"ok\":1}")
+  let mock_methods = v_mock_http.mock_methods(mh3)
+  let mock_method_count = v_mock_http.mock_count_method(mh3, "POST")
+  let mock_route0 = v_mock_http.mock_route_at(mh3, 0)
+  let mock_route_bad = v_mock_http.mock_route_at(mh3, 5)
   let mock_count = v_mock_http.mock_count(mh3)
   let mock_paths = v_mock_http.mock_list_paths(mh3, "POST")
   let mock_status = v_mock_http.mock_status(mh3, "post", "/echo")
   let mock_verify = v_mock_http.mock_verify(mh3, "POST", "/echo", 201)
+  let mh5 = v_mock_http.mock_update_status(mh3, "POST", "/echo", 202)
+  let mh6 = v_mock_http.mock_update_body(mh5, "POST", "/echo", "{\"ok\":2}")
+  let mock_status_updated = v_mock_http.mock_status(mh6, "POST", "/echo")
+  let mock_body_updated = v_mock_http.mock_body(mh6, "POST", "/echo", "")
   let mh4 = v_mock_http.mock_remove(mh3, "POST", "/echo")
   let mock_count_after = v_mock_http.mock_count(mh4)
   let mock_stats = v_mock_http.mock_stats(mh3)
@@ -476,45 +661,116 @@ entry main at tests/packages_runtime {
      lsp_diag_count == 2 && lsp_error_count == 1 && lsp_has_errors &&
      lsp_fixed_text.len > 0 && lsp_summary.len > 0 &&
      timeout_ok && timeout_expired && timeout_remaining == 10 && timeout_elapsed == 20 &&
-     timeout_overrun == 10 && timeout_active && timeout_guard && timeout_stopped_expired &&
-     timeout_restart_remaining == 10 && timeout_stats.len > 0 &&
+     timeout_started == 100 && timeout_deadline == 130 && timeout_budget == 30 &&
+     timeout_within && t1_clamped.deadline_ms == 125 && t1_clamped.budget_ms == 25 &&
+     t1_shifted.started_ms == 110 && t1_shifted.deadline_ms == 140 &&
+     timeout_can_spend && !timeout_cannot_spend && timeout_overspent == 40 &&
+     timeout_overrun == 10 && timeout_active && timeout_guard &&
+     v_timeout.is_stopped(timeout_with_active) && timeout_stopped_expired && timeout_stopped &&
+     t2_active.active && timeout_restart_remaining == 10 && timeout_stats.len > 0 &&
      bulkhead_avail_full == 0 && bulkhead_avail_after == 1 && bulkhead_can_accept &&
      bulkhead_open && bulkhead_qdepth == 1 && bulkhead_rejected == 1 &&
      bulkhead_has_queue && bulkhead_util == 100 && bh8.queued == 0 &&
      bh9.capacity == 1 && bh10.rejected == 0 && bulkhead_stats.len > 0 &&
-     outbox_pending == 1 && outbox_flushed == 1 && outbox_payload.len > 0 &&
-     outbox_events == 2 && outbox_sent == 1 && outbox_has_0 &&
-     outbox_attempt_1 == 1 && outbox_next.id == 1 && outbox_topic_created == 1 &&
+     outbox_pending == 1 && outbox_flushed == 1 && outbox_flushed_pending == 1 && outbox_payload.len > 0 &&
+     outbox_payload_size > 0 && outbox_events == 2 && outbox_sent == 1 && outbox_has_0 &&
+     outbox_event_1.topic == "user.updated" && outbox_ids.len == 2 && outbox_pending_ids.len == 1 &&
+     outbox_ids[0] == 0 && outbox_ids[1] == 1 && outbox_pending_ids[0] == 1 &&
+     outbox_attempt_1 == 1 && outbox_max_attempts == 1 && outbox_first_created.id == 0 &&
+     outbox_next.id == 1 && outbox_topic_created == 1 &&
      outbox_status_0 == "sent" && outbox_status_1 == "pending" &&
-     outbox_events_after_prune == 1 && outbox_stats.len > 0 &&
-     sg3.state == v_saga.SagaState.Failed && sg4.state == v_saga.SagaState.Compensated &&
+     outbox_events_after_prune == 1 && v_outbox.sent_count(ob7) == 2 &&
+     v_outbox.pending_count(ob7) == 0 && outbox_empty_after_clear && outbox_stats.len > 0 &&
+     sg3.state == v_saga.SagaState.Failed && sg3_fail_alias.state == v_saga.SagaState.Failed &&
+     sg4.state == v_saga.SagaState.Compensated && saga_step0.done && saga_step_missing.name == "" &&
+     saga_has_charge && saga_next_pending == "charge_card" && saga_can_run_failed &&
+     saga_failed_index == 1 && saga_progress == 50 &&
+     saga_is_failed && saga_is_succeeded && saga_is_compensated &&
      saga_steps == 2 && saga_compensated == 1 && saga_done == 1 && saga_pending == 1 &&
+     v_saga.done_count(sg8) == 2 && v_saga.compensated_count(sg9) == 1 &&
      saga_failed_name == "charge_card" && saga_step_idx == 1 && saga_terminal &&
      saga_state_name == "compensated" && sg5.state == v_saga.SagaState.Succeeded &&
      sg6.state == v_saga.SagaState.Draft && v_saga.step_count(sg7) == 3 && saga_stats.len > 0 &&
-     sr_latest.version == 2 && schema_compat && schema_diff == "compatible-change" && schema_count == 2 &&
+     sr_latest.version == 2 && schema_compat && !schema_compat_bidir &&
+     schema_diff == "compatible-change" && schema_breaking && schema_count == 2 &&
      schema_v1.active && schema_has_v2 && !schema_has_v2_after &&
-     schema_latest_version == 2 && schema_fields == 3 && schema_subjects.len == 1 &&
-     schema_level == "backward-compatible" && schema_total == 2 && schema_stats.len > 0 &&
-     tenant_key.len > 0 && tenant_iso_ok && !tenant_iso_bad && tenant_current.active && !tenant_off.active && tenant_same &&
+     schema_has_v2_reactivated && !schema_has_v2_removed &&
+     schema_subject_total == 2 && schema_active_count == 1 && schema_inactive_count == 1 &&
+     schema_subject_exists_user && !schema_subject_exists_order &&
+     schema_latest_version == 2 && schema_fields == 3 && schema_has_email &&
+     schema_subjects.len == 1 && schema_versions.len == 2 && schema_fingerprints.len == 2 &&
+     schema_level == "backward-compatible" && schema_total == 2 &&
+     v_schema_registry.total_count(sr5) == 1 && schema_stats.len > 0 &&
+     tenant_default.plan == "free" && !tenant_default.active && tenant_tid == "t1" &&
+     tenant_key.len > 0 && tenant_scope_prefix &&
+     tenant_iso_ok && !tenant_iso_bad && tenant_current.active && !tenant_off.active && tenant_same &&
      tenant_active && tenant_valid && tenant_region_key.len > 0 && tenant_plan_ok &&
-     tenant_same_region && tenant_top.tenant_id == "t1" && tenant_stack3.len == 1 && tenant_stats.len > 0 &&
-     pagination_has_next && pagination_next == 2 && pagination_window.size == 2 && pagination_count == 3 &&
+     tenant_is_enterprise && tenant_can_access_region && !tenant_cannot_access_region &&
+     tenant_same_region && tenant_top.tenant_id == "t1" &&
+     tenant_stack_depth == 2 && tenant_stack_empty && tenant_stack_has_t1 &&
+     tenant_stack3.len == 1 && v_tenant.current(tenant_stack_replaced).plan == "pro" &&
+     v_tenant.is_valid(tenant_normalized) && tenant_region_name == "us" &&
+     tenant_plan_name == "enterprise" && tenant_stats.len > 0 &&
+     health_deps_ok && health_operational && health_code_live == 200 &&
+     health_code_ready == 503 && health_code_startup == 503 &&
+     health_failing.len == 3 && health_fail_count == 3 &&
+     health_score_bad == 50 && health_text_bad == "degraded" &&
+     health_text_ok == "ok" && health_json.len > 0 &&
+     pagination_has_next && !pagination_has_prev && pagination_prev == -1 &&
+     pagination_next == 2 && pagination_window.size == 2 && pagination_count == 3 &&
+     pagination_first.offset == 0 && pagination_last.offset == 3 && pagination_idx_last == 1 &&
+     pagination_remaining == 3 && pagination_shifted.offset == 3 &&
+     pagination_wide.limit == 3 && pagination_valid && pagination_stats.len > 0 &&
      search_contains && search_hits.len == 2 && search_score > 0 && search_hits_after.len == 0 &&
+     search_docs == 2 && search_active == 2 && search_has_d1 && search_doc.id == "d1" &&
+     search_best.id == "d1" && search_count_vitte == 1 && search_ids_vitte.len == 1 &&
+     search_ids_vitte[0] == "d2" && search_stats.len > 0 && v_search.doc_count(search_cleared) == 0 &&
+     retry_status == 200 && retry_attempts == 2 && retry_first == 503 &&
+     !retry_404_default && retry_404_enabled && retry_success &&
+     retry_left == 1 && retry_class == "throttle" && retry_jitter == "full" &&
+     retry_stop && retry_delay_plan.len == 3 && retry_delay_plan[0] == 50 &&
+     retry_delay_plan[1] == 99 && retry_delay_plan[2] == 198 && retry_stats.len > 0 &&
+     !v_circuit_breaker.allow(breaker2, 2) && v_circuit_breaker.allow(breaker4, 6) &&
+     breaker_remaining == 3 && breaker_probe && breaker_opened_for == 2 &&
+     breaker_ratio == 100 && v_circuit_breaker.is_closed(breaker5) &&
+     v_circuit_breaker.state(breaker5) == v_circuit_breaker.BreakerState.Closed &&
+     v_circuit_breaker.is_closed(breaker_forced) && breaker_stats.len > 0 &&
+     v_rate_limit.allow(limiter0, 0, 2) && !v_rate_limit.allow(limiter1, 0, 2) &&
+     v_rate_limit.remaining(limiter1, 0) == 1 && v_rate_limit.reset_at(limiter1, 0) == 10 &&
+     limiter_used == 2 && limiter_cap == 3 && limiter_util == 66 &&
+     limiter_elapsed == 4 && limiter_window_left == 6 &&
+     limiter2.used == 3 && limiter3.used == 2 && limiter_exhausted &&
+     limiter_refill.used == 0 && limiter_refill.window_start == 11 &&
+     limiter_reset.used == 0 && limiter_reset.window_start == 5 &&
+     limiter_small.capacity == 1 && limiter_small.used == 1 && limiter_stats.len > 0 &&
      alert_eval && al1.state == v_alerts.AlertState.Firing && al1.fired_count == 1 &&
-     !alert_can && alert_delta == 20 && alert_firing && alert_state_name == "firing" &&
+     al0_tuned.threshold == 90 && al0_tuned.window_ticks == 30 &&
+     !alert_can && alert_delta == 20 && alert_breach == 120 &&
+     alert_should_page_1 && !alert_should_page_3 &&
+     alert_idle && alert_silenced_state && alert_firing && alert_state_name == "firing" &&
      alert_silenced && !alert_eval_silenced && al3.state == v_alerts.AlertState.Silenced &&
-     al4.state == v_alerts.AlertState.Firing && al6.state == v_alerts.AlertState.Idle && alert_stats.len > 0 &&
-     slo_allowed == 1 && slo_ok && slo_budget == 0 && slo_burn >= 100 &&
+     al4.state == v_alerts.AlertState.Firing && al6.state == v_alerts.AlertState.Idle &&
+     al8.state == v_alerts.AlertState.Idle && al_reset.fired_count == 0 && alert_stats.len > 0 &&
+     slo_target == 80 && slo_budget_pct == 20 && slo_total_budget == 1 &&
+     slo_allowed == 1 && slo_ok && slo_budget == 0 && slo_over_budget == 0 &&
+     slo_budget_used == 100 && slo_burn >= 100 && slo_projected >= 200 &&
      slo_success == 4 && slo_success_rate == 80 && slo_error_rate == 20 &&
+     slo_within_79 && !slo_within_81 && slo8.total == 2 && slo8.bad == 1 &&
      slo_health == "exhausted" && slo6.total == 5 && slo7.total == 10 && slo_stats.len > 0 &&
-     fx1.current_rows.len == 4 && fx2.current_rows.len == 2 && fixtures_snap.len > 0 && fixtures_snap_reset.len > 0 &&
+     fx1.current_rows.len == 4 && fx1_once.current_rows.len == 4 &&
+     fx2.current_rows.len == 2 && fixtures_snap.len > 0 && fixtures_snap_reset.len > 0 &&
      fixtures_rows == 2 && fixtures_base_rows == 2 && fixtures_has_u3 && fixtures_diff == 0 &&
+     fixtures_dups == 1 && fixtures_first == "u1" && fixtures_last == "u4" &&
+     fixtures_row_1 == "u4" && fixtures_row_missing == "x" && fixtures_empty &&
      fixtures_checksum > 0 && fixtures_stats.len > 0 &&
-     mock_match_ok && mock_reply.matched && mock_reply.status == 200 &&
-     !mock_miss.matched && mock_miss.status == 404 && !mock_after_clear &&
+     mock_match_ok && mock_exists && mock_body == "{\"ok\":true}" && mock_body_missing == "x" &&
+     mock_reply.matched && mock_reply.status == 200 &&
+     !mock_miss.matched && mock_miss.status == 404 && mock_empty && !mock_after_clear &&
+     mock_methods.len == 1 && mock_method_count == 1 &&
+     mock_route0.path == "/echo" && mock_route_bad.status == 404 &&
      mock_count == 1 && mock_paths.len == 1 && mock_status == 201 &&
-     mock_verify && mock_count_after == 0 && mock_stats.len > 0 {
+     mock_verify && mock_status_updated == 202 && mock_body_updated == "{\"ok\":2}" &&
+     mock_count_after == 0 && mock_stats.len > 0 {
     return 0
   }
   return 1
