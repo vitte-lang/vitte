@@ -6,7 +6,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <algorithm>
+#include <string_view>
 #include <unordered_set>
+#include <vector>
 
 namespace vitte::frontend::modules {
 
@@ -31,6 +34,57 @@ std::string module_prefix(const ModulePath& path) {
 
 static std::string module_path_key(const ModulePath& path) {
     return join_path(path, "/");
+}
+
+std::string normalized_stdlib_path(const ModulePath& path) {
+    if (path.parts.empty()) {
+        return {};
+    }
+    if (path.parts.front().name == "std") {
+        return module_path_key(path);
+    }
+    if (path.parts.front().name == "core") {
+        std::string out = "std/core";
+        for (std::size_t i = 1; i < path.parts.size(); ++i) {
+            out += "/";
+            out += path.parts[i].name;
+        }
+        return out;
+    }
+    return {};
+}
+
+bool is_valid_stdlib_profile(const std::string& profile) {
+    return profile == "minimal" ||
+           profile == "full" ||
+           profile == "kernel" ||
+           profile == "arduino";
+}
+
+static bool has_prefix(std::string_view value, std::string_view prefix) {
+    return value.substr(0, prefix.size()) == prefix;
+}
+
+bool is_stdlib_path_allowed(const ModulePath& path, const std::string& profile) {
+    const std::string normalized = normalized_stdlib_path(path);
+    if (normalized.empty()) {
+        return true;
+    }
+    if (profile == "full") {
+        return true;
+    }
+    if (profile == "minimal") {
+        return normalized == "std/core" || has_prefix(normalized, "std/core/");
+    }
+    if (profile == "kernel") {
+        return normalized == "std/core" || has_prefix(normalized, "std/core/") ||
+               normalized == "std/kernel" || has_prefix(normalized, "std/kernel/");
+    }
+    if (profile == "arduino") {
+        return normalized == "std/core" || has_prefix(normalized, "std/core/") ||
+               normalized == "std/arduino" || has_prefix(normalized, "std/arduino/");
+    }
+    return true;
 }
 
 static std::filesystem::path resolve_module_file(
@@ -530,6 +584,7 @@ struct Loader {
     AstContext& ctx;
     diag::DiagnosticEngine& diagnostics;
     ModuleIndex& index;
+    LoadOptions options;
     std::unordered_set<std::string> loaded;
     std::vector<DeclId> collected;
     std::filesystem::path repo_root;
@@ -549,6 +604,20 @@ struct Loader {
             if (!path) continue;
 
             ModulePath module_path = *path;
+            const std::string normalized = normalized_stdlib_path(module_path);
+            if (!normalized.empty() &&
+                !is_stdlib_path_allowed(module_path, options.stdlib_profile)) {
+                diagnostics.error_code(
+                    "E1010",
+                    "stdlib module '" + normalized + "' is not allowed in profile '" + options.stdlib_profile + "'",
+                    (*path).span
+                );
+                diagnostics.note(
+                    "allowed by this profile: minimal=std/core, kernel=std/core+std/kernel, arduino=std/core+std/arduino, full=all",
+                    (*path).span
+                );
+                continue;
+            }
             std::filesystem::path file = resolve_module_file(module_path, base_dir, repo_root);
             if (file.empty() && module_path.parts.size() > 1) {
                 ModulePath parent = module_path;
@@ -560,7 +629,17 @@ struct Loader {
                 }
             }
             if (file.empty()) {
-                diagnostics.error("module not found: " + module_path_key(*path), (*path).span);
+                const std::string key = module_path_key(*path);
+                const std::string missing_normalized = normalized_stdlib_path(*path);
+                if (!missing_normalized.empty()) {
+                    diagnostics.error_code(
+                        "E1014",
+                        "stdlib module not found: " + missing_normalized,
+                        (*path).span
+                    );
+                } else {
+                    diagnostics.error("module not found: " + key, (*path).span);
+                }
                 continue;
             }
 
@@ -609,13 +688,14 @@ bool load_modules(AstContext& ctx,
                   ModuleId root,
                   diag::DiagnosticEngine& diagnostics,
                   const std::string& entry_path,
-                  ModuleIndex& index) {
+                  ModuleIndex& index,
+                  const LoadOptions& options) {
     std::filesystem::path entry = std::filesystem::absolute(std::filesystem::path(entry_path));
     std::filesystem::path base_dir = entry.has_parent_path()
         ? entry.parent_path()
         : std::filesystem::current_path();
 
-    Loader loader{ctx, diagnostics, index, {}, {}, detect_repo_root(base_dir)};
+    Loader loader{ctx, diagnostics, index, options, {}, {}, detect_repo_root(base_dir)};
     bool ok = loader.load_recursive(root, base_dir);
     if (ok && !loader.collected.empty()) {
         auto& module = ctx.get<Module>(root);
@@ -638,6 +718,33 @@ bool load_modules(AstContext& ctx,
                             loader.collected.end());
     }
     return ok;
+}
+
+void dump_stdlib_map(std::ostream& os, const ModuleIndex& index) {
+    std::vector<std::pair<std::string, std::string>> module_to_prefix;
+    module_to_prefix.reserve(index.path_to_prefix.size());
+    for (const auto& kv : index.path_to_prefix) {
+        if (has_prefix(kv.first, "std/") || has_prefix(kv.first, "core/")) {
+            module_to_prefix.push_back(kv);
+        }
+    }
+    std::sort(module_to_prefix.begin(), module_to_prefix.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+
+    os << "stdlib_map:\n";
+    for (const auto& it : module_to_prefix) {
+        os << "  " << it.first << ":\n";
+        auto exp_it = index.exports.find(it.second);
+        if (exp_it == index.exports.end() || exp_it->second.empty()) {
+            os << "    - <no-exports>\n";
+            continue;
+        }
+        std::vector<std::string> names(exp_it->second.begin(), exp_it->second.end());
+        std::sort(names.begin(), names.end());
+        for (const auto& name : names) {
+            os << "    - " << name << "\n";
+        }
+    }
 }
 
 static void rewrite_stmt_for_alias(
