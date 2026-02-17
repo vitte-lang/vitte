@@ -21,6 +21,23 @@ use vitte/http_client as v_http_client
 use vitte/requests as v_requests
 use vitte/channel as v_channel
 use vitte/actor as v_actor
+use vitte/queue as v_queue
+use vitte/stream as v_stream
+use vitte/codec as v_codec
+use vitte/kv as v_kv
+use vitte/lsp as v_lsp
+use vitte/timeout as v_timeout
+use vitte/bulkhead as v_bulkhead
+use vitte/outbox as v_outbox
+use vitte/saga as v_saga
+use vitte/schema_registry as v_schema_registry
+use vitte/tenant as v_tenant
+use vitte/pagination as v_pagination
+use vitte/search as v_search
+use vitte/alerts as v_alerts
+use vitte/slo as v_slo
+use vitte/fixtures as v_fixtures
+use vitte/mock_http as v_mock_http
 
 proc main_job() -> int {
   give 0
@@ -141,6 +158,287 @@ entry main at tests/packages_runtime {
   let actor_running = v_actor.is_running(a3)
   let actor_decision = v_actor.supervision_decision(a4, 0)
 
+  let q0 = v_queue.queue_new(2)
+  let q1 = v_queue.enqueue(q0, "job-a")
+  let q2 = v_queue.enqueue(q1, "job-b")
+  let q3 = v_queue.dequeue(q2)
+  let q4 = v_queue.nack(q3, 0)
+  let q5 = v_queue.dequeue(q4)
+  let q6 = v_queue.ack(q5, 1)
+  let q7 = v_queue.dequeue(q6)
+  let q8 = v_queue.nack(q7, 0)
+  let queue_can_dequeue = v_queue.can_dequeue(q8)
+  let queue_peek = v_queue.peek(q4)
+  let queue_attempt_dead = v_queue.attempts_of(q8, 0)
+  let q9 = v_queue.requeue_dead(q8, 0)
+  let q10 = v_queue.purge_done(q9)
+  let queue_total = v_queue.total_count(q10)
+  let queue_stats = v_queue.stats(q10)
+  let queue_dlq = v_queue.dlq(q8)
+  let queue_pending = v_queue.pending_count(q8)
+  let queue_inflight = v_queue.inflight_count(q8)
+  let queue_done = v_queue.done_count(q8)
+
+  let st0 = v_stream.stream_new(5, 2, 3)
+  let st1 = v_stream.push(st0, "ev1", 1)
+  let st2 = v_stream.push(st1, "ev2", 2)
+  let st3 = v_stream.push(st2, "ev3", 6)
+  let stream_backpressure = v_stream.backpressure(st3)
+  let st4 = v_stream.push(st3, "ev4", 7)
+  let stream_batch = v_stream.batch(st4)
+  let stream_window = v_stream.window(st4, 10)
+  let st5 = v_stream.drain_batch(st4)
+  let stream_available = v_stream.available(st5)
+  let stream_oldest = v_stream.oldest_tick(st4)
+  let stream_newest = v_stream.newest_tick(st4)
+  let stream_lag = v_stream.lag_ticks(st4, 10)
+  let stream_window_count = v_stream.window_count(st4, 10)
+  let stream_overflow = v_stream.overflow_count(st4)
+  let st6 = v_stream.flush(st5)
+  let stream_stats = v_stream.stats(st6)
+
+  let codec_json = v_codec.encode(v_codec.CodecFormat.Json, "k", "v")
+  let codec_mp = v_codec.encode(v_codec.CodecFormat.MsgPack, "k", "v")
+  let codec_bin = v_codec.encode(v_codec.CodecFormat.Binary, "k", "v")
+  let codec_detect_json = v_codec.detect(codec_json.data)
+  let codec_detect_mp = v_codec.detect(codec_mp.data)
+  let codec_detect_bin = v_codec.detect(codec_bin.data)
+  let codec_decode = v_codec.decode(codec_bin)
+  let codec_pair = v_codec.decode_pair(codec_json)
+  let codec_conv = v_codec.convert(codec_mp, v_codec.CodecFormat.Json)
+  let codec_ext = v_codec.format_extension(v_codec.CodecFormat.Binary)
+  let codec_textual = v_codec.is_textual(v_codec.CodecFormat.Json)
+  let codec_fp = v_codec.fingerprint(codec_conv)
+  let codec_can = v_codec.can_decode(codec_mp)
+  let codec_rt = v_codec.roundtrip(v_codec.CodecFormat.Json, "x", "y")
+  let codec_name = v_codec.format_name(v_codec.CodecFormat.MsgPack)
+
+  let kv0 = v_kv.kv_new()
+  let kv1 = v_kv.put(kv0, "cfg:a", "1", 3)
+  let kv2 = v_kv.put(kv1, "cfg:b", "2", 0)
+  let kv3 = v_kv.tick(kv2, 2)
+  let kv_has_a = v_kv.has(kv3, "cfg:a")
+  let kv_scan = v_kv.scan(kv3, "cfg:")
+  let kv_keys = v_kv.keys(kv3, "cfg:")
+  let kv4 = v_kv.tick(kv3, 2)
+  let kv_get_a = v_kv.get(kv4, "cfg:a", "")
+  let kv_get_b = v_kv.get(kv4, "cfg:b", "")
+  let kv_ttl_b = v_kv.ttl_left(kv4, "cfg:b")
+  let kv5 = v_kv.touch(kv4, "cfg:b", 5)
+  let kv6 = v_kv.delete(kv5, "cfg:b")
+  let kv7 = v_kv.expire(kv6)
+  let kv_size = v_kv.size(kv7)
+  let kv_stats = v_kv.stats(kv7)
+
+  let lsp0 = v_lsp.index_new()
+  let lsp1 = v_lsp.index(lsp0, "file:///main.vit", "todo panic", 1)
+  let lsp2 = v_lsp.index(lsp1, "file:///empty.vit", "", 1)
+  let lsp_main_diags = v_lsp.diagnostics(lsp2, "file:///main.vit")
+  let lsp_empty_diags = v_lsp.diagnostics(lsp2, "file:///empty.vit")
+  let lsp_fix = v_lsp.quick_fix(lsp_main_diags[1])
+  let lsp_diag_count = v_lsp.diagnostics_count(lsp2, "file:///main.vit")
+  let lsp_error_count = v_lsp.error_count(lsp2, "file:///main.vit")
+  let lsp_has_errors = v_lsp.has_errors(lsp2, "file:///main.vit")
+  let lsp_fixed_text = v_lsp.apply_quick_fix("todo panic", lsp_main_diags[0].code)
+  let lsp_summary = v_lsp.summary(lsp2, "file:///main.vit")
+  let lsp_docs = v_lsp.doc_count(lsp2)
+
+  let t0 = v_timeout.timeout_new(100, 50)
+  let t1 = v_timeout.with_deadline(t0, 130)
+  let timeout_ok = !v_timeout.expired(t1, 120)
+  let timeout_expired = v_timeout.expired(t1, 130)
+  let timeout_remaining = v_timeout.remaining_ms(t1, 120)
+  let timeout_elapsed = v_timeout.elapsed_ms(t1, 120)
+  let t1_budget = v_timeout.with_budget(t1, 60)
+  let t1_extended = v_timeout.extend(t1_budget, 10)
+  let timeout_overrun = v_timeout.deadline_overrun(t1_extended, 180)
+  let timeout_active = v_timeout.is_active(t1)
+  let timeout_guard = v_timeout.guard(t1, 40)
+  let t2 = v_timeout.stop(t1)
+  let timeout_stopped_expired = v_timeout.expired(t2, 121)
+  let t3 = v_timeout.restart(t2, 200, 20)
+  let timeout_restart_remaining = v_timeout.remaining_ms(t3, 210)
+  let timeout_stats = v_timeout.stats(t3, 210)
+
+  let bh0 = v_bulkhead.bulkhead_new(2)
+  let bh1 = v_bulkhead.acquire(bh0)
+  let bh2 = v_bulkhead.acquire(bh1)
+  let bh3 = v_bulkhead.acquire(bh2)
+  let bh4 = v_bulkhead.release(bh3)
+  let bh5 = v_bulkhead.close_gate(bh4)
+  let bh6 = v_bulkhead.open_gate(bh5)
+  let bh7 = v_bulkhead.acquire(bh5)
+  let bh8 = v_bulkhead.drain_queue(bh4)
+  let bh9 = v_bulkhead.resize(bh8, 1)
+  let bh10 = v_bulkhead.reset_stats(bh9)
+  let bulkhead_avail_full = v_bulkhead.available(bh2)
+  let bulkhead_avail_after = v_bulkhead.available(bh4)
+  let bulkhead_can_accept = v_bulkhead.can_accept(bh6)
+  let bulkhead_open = v_bulkhead.is_open(bh6)
+  let bulkhead_qdepth = v_bulkhead.queue_depth(bh3)
+  let bulkhead_rejected = v_bulkhead.rejected_count(bh7)
+  let bulkhead_has_queue = v_bulkhead.has_queue(bh3)
+  let bulkhead_util = v_bulkhead.utilization_percent(bh2)
+  let bulkhead_stats = v_bulkhead.stats(bh10)
+
+  let ob0 = v_outbox.outbox_new()
+  let ob1 = v_outbox.enqueue_event(ob0, "user.created", "{\"id\":1}")
+  let ob2 = v_outbox.enqueue_event(ob1, "user.updated", "{\"id\":1,\"name\":\"n\"}")
+  let ob3 = v_outbox.flush_batch(ob2, 1)
+  let ob4 = v_outbox.mark_sent(ob3, 0)
+  let ob5 = v_outbox.retry_event(ob4, 1)
+  let ob6 = v_outbox.prune_sent(ob5)
+  let outbox_pending = v_outbox.pending_count(ob4)
+  let outbox_flushed = v_outbox.flushed_count(ob3)
+  let outbox_payload = v_outbox.replay_payload(ob4, 1)
+  let outbox_events = v_outbox.event_count(ob4)
+  let outbox_sent = v_outbox.sent_count(ob4)
+  let outbox_has_0 = v_outbox.has_event(ob4, 0)
+  let outbox_attempt_1 = v_outbox.attempt_of(ob5, 1)
+  let outbox_next = v_outbox.next_pending(ob5)
+  let outbox_topic_created = v_outbox.topic_count(ob5, "user.created")
+  let outbox_status_0 = v_outbox.status(ob5, 0)
+  let outbox_status_1 = v_outbox.status(ob5, 1)
+  let outbox_events_after_prune = v_outbox.event_count(ob6)
+  let outbox_stats = v_outbox.stats(ob6)
+
+  let sg0 = v_saga.saga_new("payment-1")
+  let sg1 = v_saga.step_add(sg0, "reserve_stock")
+  let sg2 = v_saga.step_add(sg1, "charge_card")
+  let sg3 = v_saga.run(sg2, 1)
+  let sg4 = v_saga.compensate(sg3)
+  let sg5 = v_saga.resume(sg4)
+  let sg6 = v_saga.reset(sg4)
+  let sg7 = v_saga.add_steps(v_saga.saga_new("payment-2"), ["reserve", "charge", "emit"])
+  let saga_steps = v_saga.step_count(sg4)
+  let saga_compensated = v_saga.compensated_count(sg4)
+  let saga_done = v_saga.done_count(sg3)
+  let saga_pending = v_saga.pending_count(sg3)
+  let saga_failed_name = v_saga.failed_step(sg3)
+  let saga_step_idx = v_saga.step_index(sg3, "charge_card")
+  let saga_terminal = v_saga.is_terminal(sg4)
+  let saga_state_name = v_saga.state_name(sg4)
+  let saga_stats = v_saga.stats(sg5)
+
+  let sr0 = v_schema_registry.registry_new()
+  let sr1 = v_schema_registry.register(sr0, "user", 1, "fp1", ["id", "name"])
+  let sr2 = v_schema_registry.register(sr1, "user", 2, "fp2", ["id", "name", "email"])
+  let sr3 = v_schema_registry.deactivate(sr2, "user", 2)
+  let sr_base = v_schema_registry.latest(sr1, "user")
+  let sr_latest = v_schema_registry.latest(sr2, "user")
+  let schema_compat = v_schema_registry.compatible(sr_base, sr_latest)
+  let schema_diff = v_schema_registry.diff(sr_base, sr_latest)
+  let schema_count = v_schema_registry.count(sr2, "user")
+  let schema_v1 = v_schema_registry.get(sr2, "user", 1)
+  let schema_has_v2 = v_schema_registry.has(sr2, "user", 2)
+  let schema_has_v2_after = v_schema_registry.has(sr3, "user", 2)
+  let schema_latest_version = v_schema_registry.latest_version(sr2, "user")
+  let schema_fields = v_schema_registry.field_count(sr_latest)
+  let schema_subjects = v_schema_registry.subjects(sr2)
+  let schema_level = v_schema_registry.compatibility_level(sr_base, sr_latest)
+  let schema_total = v_schema_registry.total_count(sr2)
+  let schema_stats = v_schema_registry.stats(sr2)
+
+  let tenant_ctx = v_tenant.tenant_ctx("t1", "eu", "pro")
+  let tenant_key = v_tenant.scope_key(tenant_ctx, "invoice:1")
+  let tenant_iso_ok = v_tenant.enforce_isolation(tenant_ctx, "t1")
+  let tenant_iso_bad = v_tenant.enforce_isolation(tenant_ctx, "t2")
+  let tenant_current = v_tenant.current([tenant_ctx])
+  let tenant_off = v_tenant.deactivate(tenant_ctx)
+  let tenant_on = v_tenant.activate(tenant_off)
+  let tenant_regioned = v_tenant.with_region(tenant_on, "us")
+  let tenant_planned = v_tenant.with_plan(tenant_regioned, "enterprise")
+  let tenant_active = v_tenant.is_active(tenant_planned)
+  let tenant_valid = v_tenant.is_valid(tenant_planned)
+  let tenant_region_key = v_tenant.region_key(tenant_planned, "invoice:1")
+  let tenant_plan_ok = v_tenant.plan_allows(tenant_planned, "pro")
+  let tenant_same_region = v_tenant.same_region(tenant_regioned, tenant_planned)
+  let tenant_stack1 = v_tenant.stack_push([], tenant_ctx)
+  let tenant_stack2 = v_tenant.stack_push(tenant_stack1, tenant_planned)
+  let tenant_top = v_tenant.current(tenant_stack2)
+  let tenant_stack3 = v_tenant.stack_pop(tenant_stack2)
+  let tenant_stats = v_tenant.stats(tenant_planned)
+  let tenant_same = v_tenant.same_tenant(tenant_ctx, tenant_current)
+
+  let pg = v_pagination.page(0, 2, 5)
+  let pagination_has_next = v_pagination.has_next(pg)
+  let pagination_next = v_pagination.next_cursor(pg)
+  let pagination_window = v_pagination.window(pg)
+  let pagination_count = v_pagination.page_count(5, 2)
+
+  let se0 = v_search.index_new()
+  let se1 = v_search.index_add(se0, "d1", "hello world")
+  let se2 = v_search.index_add(se1, "d2", "vitte world")
+  let search_contains = v_search.contains("hello world", "hello")
+  let search_hits = v_search.query(se2, "world")
+  let search_score = v_search.score(search_hits[0], "world")
+  let se3 = v_search.index_remove(se2, "d2")
+  let search_hits_after = v_search.query(se3, "vitte")
+
+  let al0 = v_alerts.rule_new("latency_p95", 100, 60)
+  let alert_eval = v_alerts.evaluate(al0, 120, 1)
+  let al1 = v_alerts.trigger(al0, 120, 1)
+  let al2 = v_alerts.silence(al1, 10)
+  let alert_silenced = v_alerts.silenced(al2, 5)
+  let alert_eval_silenced = v_alerts.evaluate(al2, 150, 5)
+  let al3 = v_alerts.trigger(al2, 20, 5)
+  let al4 = v_alerts.trigger(al2, 120, 11)
+  let alert_can = v_alerts.can_trigger(al2, 5)
+  let alert_delta = v_alerts.threshold_delta(al0, 120)
+  let alert_firing = v_alerts.is_firing(al1)
+  let alert_state_name = v_alerts.state_name(al1)
+  let al5 = v_alerts.unsilence(al2)
+  let al6 = v_alerts.recover(al5, 80, 12)
+  let alert_stats = v_alerts.stats(al6)
+
+  let slo0 = v_slo.slo_new(80)
+  let slo1 = v_slo.sli_record(slo0, true)
+  let slo2 = v_slo.sli_record(slo1, true)
+  let slo3 = v_slo.sli_record(slo2, true)
+  let slo4 = v_slo.sli_record(slo3, true)
+  let slo5 = v_slo.sli_record(slo4, false)
+  let slo_allowed = v_slo.allowed_bad(slo5)
+  let slo_ok = v_slo.slo_eval(slo5)
+  let slo_budget = v_slo.budget_left(slo5)
+  let slo_burn = v_slo.burn_rate(slo5)
+  let slo_success = v_slo.success_count(slo5)
+  let slo_success_rate = v_slo.success_rate(slo5)
+  let slo_error_rate = v_slo.error_rate(slo5)
+  let slo_health = v_slo.health(slo5)
+  let slo6 = v_slo.record_many(v_slo.reset(slo5), 4, 1)
+  let slo7 = v_slo.merge(slo5, slo6)
+  let slo_stats = v_slo.stats(slo7)
+
+  let fx0 = v_fixtures.fixture_load("users", ["u1", "u2"])
+  let fx1 = v_fixtures.seed(fx0, 1)
+  let fixtures_snap = v_fixtures.snapshot(fx1)
+  let fx2 = v_fixtures.reset(fx1)
+  let fixtures_snap_reset = v_fixtures.snapshot(fx2)
+  let fx3 = v_fixtures.append_row(fx2, "u3")
+  let fx4 = v_fixtures.remove_row(fx3, "u2")
+  let fixtures_rows = v_fixtures.row_count(fx4)
+  let fixtures_base_rows = v_fixtures.base_count(fx4)
+  let fixtures_has_u3 = v_fixtures.contains_row(fx4, "u3")
+  let fixtures_diff = v_fixtures.diff_count(fx4)
+  let fixtures_checksum = v_fixtures.checksum(fx4)
+  let fixtures_stats = v_fixtures.stats(fx4)
+
+  let mh0 = v_mock_http.mock_new()
+  let mh1 = v_mock_http.mock_add(mh0, "GET", "/health", 200, "{\"ok\":true}")
+  let mock_match_ok = v_mock_http.mock_match(mh1, "GET", "/health")
+  let mock_reply = v_mock_http.mock_reply(mh1, "GET", "/health")
+  let mock_miss = v_mock_http.mock_reply(mh1, "POST", "/health")
+  let mh2 = v_mock_http.mock_clear(mh1)
+  let mock_after_clear = v_mock_http.mock_match(mh2, "GET", "/health")
+  let mh3 = v_mock_http.mock_add(mh2, "post", "/echo", 201, "{\"ok\":1}")
+  let mock_count = v_mock_http.mock_count(mh3)
+  let mock_paths = v_mock_http.mock_list_paths(mh3, "POST")
+  let mock_status = v_mock_http.mock_status(mh3, "post", "/echo")
+  let mock_verify = v_mock_http.mock_verify(mh3, "POST", "/echo", 201)
+  let mh4 = v_mock_http.mock_remove(mh3, "POST", "/echo")
+  let mock_count_after = v_mock_http.mock_count(mh4)
+  let mock_stats = v_mock_http.mock_stats(mh3)
+
   if pred && m >= 0.0 && var >= 0.0 && step >= -1.0 &&
      v_array.len(arr) == 3 && txt == "ok" &&
      code == 0 &&
@@ -158,7 +456,65 @@ entry main at tests/packages_runtime {
      hc_ok &&
      req_status == 200 && req_text.len > 0 && req_attempts == 2 &&
      ch_head == "m2" && ch_len == 1 && ch_drop == 1 &&
-     actor_proc == 1 && actor_running && actor_decision == "stop" {
+     actor_proc == 1 && actor_running && actor_decision == "stop" &&
+     queue_pending == 0 && queue_inflight == 0 && queue_done == 1 && queue_dlq.len == 1 &&
+     !queue_can_dequeue && queue_peek.id == 0 && queue_attempt_dead == 2 &&
+     queue_total == 1 && queue_stats.len > 0 &&
+     stream_backpressure && st4.dropped == 1 && stream_batch.len == 2 && stream_window.len == 2 && stream_available == 2 &&
+     stream_oldest == 2 && stream_newest == 7 && stream_lag == 8 && stream_window_count == 2 &&
+     stream_overflow == 1 && st6.buffer.len == 0 && stream_stats.len > 0 &&
+     codec_detect_json == v_codec.CodecFormat.Json &&
+     codec_detect_mp == v_codec.CodecFormat.MsgPack &&
+     codec_detect_bin == v_codec.CodecFormat.Binary &&
+     codec_decode.len > 0 && codec_can && codec_rt && codec_name == "msgpack" &&
+     codec_pair.ok && codec_pair.key == "k" && codec_pair.value == "v" &&
+     v_codec.detect(codec_conv.data) == v_codec.CodecFormat.Json &&
+     codec_ext == ".bin" && codec_textual && codec_fp.len > 0 &&
+     kv_has_a && kv_scan.len == 2 && kv_keys.len == 2 &&
+     kv_get_a == "" && kv_get_b == "2" && kv_ttl_b == -1 && kv_size == 0 && kv_stats.len > 0 &&
+     lsp_main_diags.len == 2 && lsp_empty_diags.len == 1 && lsp_fix.len > 0 && lsp_docs == 2 &&
+     lsp_diag_count == 2 && lsp_error_count == 1 && lsp_has_errors &&
+     lsp_fixed_text.len > 0 && lsp_summary.len > 0 &&
+     timeout_ok && timeout_expired && timeout_remaining == 10 && timeout_elapsed == 20 &&
+     timeout_overrun == 10 && timeout_active && timeout_guard && timeout_stopped_expired &&
+     timeout_restart_remaining == 10 && timeout_stats.len > 0 &&
+     bulkhead_avail_full == 0 && bulkhead_avail_after == 1 && bulkhead_can_accept &&
+     bulkhead_open && bulkhead_qdepth == 1 && bulkhead_rejected == 1 &&
+     bulkhead_has_queue && bulkhead_util == 100 && bh8.queued == 0 &&
+     bh9.capacity == 1 && bh10.rejected == 0 && bulkhead_stats.len > 0 &&
+     outbox_pending == 1 && outbox_flushed == 1 && outbox_payload.len > 0 &&
+     outbox_events == 2 && outbox_sent == 1 && outbox_has_0 &&
+     outbox_attempt_1 == 1 && outbox_next.id == 1 && outbox_topic_created == 1 &&
+     outbox_status_0 == "sent" && outbox_status_1 == "pending" &&
+     outbox_events_after_prune == 1 && outbox_stats.len > 0 &&
+     sg3.state == v_saga.SagaState.Failed && sg4.state == v_saga.SagaState.Compensated &&
+     saga_steps == 2 && saga_compensated == 1 && saga_done == 1 && saga_pending == 1 &&
+     saga_failed_name == "charge_card" && saga_step_idx == 1 && saga_terminal &&
+     saga_state_name == "compensated" && sg5.state == v_saga.SagaState.Succeeded &&
+     sg6.state == v_saga.SagaState.Draft && v_saga.step_count(sg7) == 3 && saga_stats.len > 0 &&
+     sr_latest.version == 2 && schema_compat && schema_diff == "compatible-change" && schema_count == 2 &&
+     schema_v1.active && schema_has_v2 && !schema_has_v2_after &&
+     schema_latest_version == 2 && schema_fields == 3 && schema_subjects.len == 1 &&
+     schema_level == "backward-compatible" && schema_total == 2 && schema_stats.len > 0 &&
+     tenant_key.len > 0 && tenant_iso_ok && !tenant_iso_bad && tenant_current.active && !tenant_off.active && tenant_same &&
+     tenant_active && tenant_valid && tenant_region_key.len > 0 && tenant_plan_ok &&
+     tenant_same_region && tenant_top.tenant_id == "t1" && tenant_stack3.len == 1 && tenant_stats.len > 0 &&
+     pagination_has_next && pagination_next == 2 && pagination_window.size == 2 && pagination_count == 3 &&
+     search_contains && search_hits.len == 2 && search_score > 0 && search_hits_after.len == 0 &&
+     alert_eval && al1.state == v_alerts.AlertState.Firing && al1.fired_count == 1 &&
+     !alert_can && alert_delta == 20 && alert_firing && alert_state_name == "firing" &&
+     alert_silenced && !alert_eval_silenced && al3.state == v_alerts.AlertState.Silenced &&
+     al4.state == v_alerts.AlertState.Firing && al6.state == v_alerts.AlertState.Idle && alert_stats.len > 0 &&
+     slo_allowed == 1 && slo_ok && slo_budget == 0 && slo_burn >= 100 &&
+     slo_success == 4 && slo_success_rate == 80 && slo_error_rate == 20 &&
+     slo_health == "exhausted" && slo6.total == 5 && slo7.total == 10 && slo_stats.len > 0 &&
+     fx1.current_rows.len == 4 && fx2.current_rows.len == 2 && fixtures_snap.len > 0 && fixtures_snap_reset.len > 0 &&
+     fixtures_rows == 2 && fixtures_base_rows == 2 && fixtures_has_u3 && fixtures_diff == 0 &&
+     fixtures_checksum > 0 && fixtures_stats.len > 0 &&
+     mock_match_ok && mock_reply.matched && mock_reply.status == 200 &&
+     !mock_miss.matched && mock_miss.status == 404 && !mock_after_clear &&
+     mock_count == 1 && mock_paths.len == 1 && mock_status == 201 &&
+     mock_verify && mock_count_after == 0 && mock_stats.len > 0 {
     return 0
   }
   return 1

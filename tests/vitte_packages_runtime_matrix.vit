@@ -4,11 +4,24 @@ use vitte/sql as v_sql
 use vitte/db as v_db
 use vitte/cache as v_cache
 use vitte/registry as v_registry
+use vitte/outbox as v_outbox
+use vitte/saga as v_saga
+use vitte/schema_registry as v_schema_registry
+use vitte/tenant as v_tenant
+use vitte/pagination as v_pagination
+use vitte/search as v_search
+use vitte/fixtures as v_fixtures
+use vitte/codec as v_codec
+use vitte/kv as v_kv
+use vitte/lsp as v_lsp
 
 use vitte/net as v_net
 use vitte/http as v_http
 use vitte/http_client as v_http_client
 use vitte/requests as v_requests
+use vitte/timeout as v_timeout
+use vitte/bulkhead as v_bulkhead
+use vitte/mock_http as v_mock_http
 
 use vitte/auth as v_auth
 use vitte/tls as v_tls
@@ -17,10 +30,14 @@ use vitte/audit as v_audit
 use vitte/health as v_health
 use vitte/feature_flags as v_feature_flags
 use vitte/policy as v_policy
+use vitte/alerts as v_alerts
+use vitte/slo as v_slo
 
 use vitte/async as v_async
 use vitte/channel as v_channel
 use vitte/actor as v_actor
+use vitte/queue as v_queue
+use vitte/stream as v_stream
 use vitte/process as v_process
 use vitte/plugin as v_plugin
 use vitte/ecs as v_ecs
@@ -77,6 +94,151 @@ proc domain_data() -> bool {
   let c_diff = v_contracts.diff(c0_def, c1_def)
   let c_snap = v_contracts.snapshot(c0_def)
 
+  let ob0 = v_outbox.outbox_new()
+  let ob1 = v_outbox.enqueue_event(ob0, "user.created", "{\"id\":1}")
+  let ob2 = v_outbox.enqueue_event(ob1, "user.updated", "{\"id\":1,\"name\":\"n\"}")
+  let ob3 = v_outbox.flush_batch(ob2, 1)
+  let ob4 = v_outbox.mark_sent(ob3, 0)
+  let ob5 = v_outbox.retry_event(ob4, 1)
+  let ob6 = v_outbox.prune_sent(ob5)
+  let ob_pending = v_outbox.pending_count(ob4)
+  let ob_flushed = v_outbox.flushed_count(ob3)
+  let ob_payload = v_outbox.replay_payload(ob4, 1)
+  let ob_events = v_outbox.event_count(ob4)
+  let ob_sent = v_outbox.sent_count(ob4)
+  let ob_has_0 = v_outbox.has_event(ob4, 0)
+  let ob_attempt_1 = v_outbox.attempt_of(ob5, 1)
+  let ob_next = v_outbox.next_pending(ob5)
+  let ob_topic_created = v_outbox.topic_count(ob5, "user.created")
+  let ob_status_0 = v_outbox.status(ob5, 0)
+  let ob_status_1 = v_outbox.status(ob5, 1)
+  let ob_events_after_prune = v_outbox.event_count(ob6)
+  let ob_stats = v_outbox.stats(ob6)
+
+  let sg0 = v_saga.saga_new("order-1")
+  let sg1 = v_saga.add_steps(sg0, ["reserve_stock", "charge", "emit"])
+  let sg2 = v_saga.run(sg1, 1)
+  let sg3 = v_saga.compensate(sg2)
+  let sg4 = v_saga.resume(sg3)
+  let sg5 = v_saga.reset(sg3)
+  let sg_done = v_saga.done_count(sg2)
+  let sg_pending = v_saga.pending_count(sg2)
+  let sg_failed_name = v_saga.failed_step(sg2)
+  let sg_idx = v_saga.step_index(sg2, "charge")
+  let sg_term = v_saga.is_terminal(sg3)
+  let sg_state = v_saga.state_name(sg3)
+  let sg_stats = v_saga.stats(sg4)
+
+  let sr0 = v_schema_registry.registry_new()
+  let sr1 = v_schema_registry.register(sr0, "user", 1, "fp1", ["id", "name"])
+  let sr2 = v_schema_registry.register(sr1, "user", 2, "fp2", ["id", "name", "email"])
+  let sr3 = v_schema_registry.deactivate(sr2, "user", 2)
+  let sr_base = v_schema_registry.latest(sr1, "user")
+  let sr_latest = v_schema_registry.latest(sr2, "user")
+  let sr_compat = v_schema_registry.compatible(sr_base, sr_latest)
+  let sr_diff = v_schema_registry.diff(sr_base, sr_latest)
+  let sr_count = v_schema_registry.count(sr2, "user")
+  let sr_v1 = v_schema_registry.get(sr2, "user", 1)
+  let sr_has_v2 = v_schema_registry.has(sr2, "user", 2)
+  let sr_has_v2_after = v_schema_registry.has(sr3, "user", 2)
+  let sr_latest_version = v_schema_registry.latest_version(sr2, "user")
+  let sr_fields = v_schema_registry.field_count(sr_latest)
+  let sr_subjects = v_schema_registry.subjects(sr2)
+  let sr_level = v_schema_registry.compatibility_level(sr_base, sr_latest)
+  let sr_total = v_schema_registry.total_count(sr2)
+  let sr_stats = v_schema_registry.stats(sr2)
+
+  let t_ctx = v_tenant.tenant_ctx("t1", "eu", "pro")
+  let t_key = v_tenant.scope_key(t_ctx, "invoice:1")
+  let t_iso_ok = v_tenant.enforce_isolation(t_ctx, "t1")
+  let t_iso_bad = v_tenant.enforce_isolation(t_ctx, "t2")
+  let t_current = v_tenant.current([t_ctx])
+  let t_deactivated = v_tenant.deactivate(t_ctx)
+  let t_activated = v_tenant.activate(t_deactivated)
+  let t_regioned = v_tenant.with_region(t_activated, "us")
+  let t_planned = v_tenant.with_plan(t_regioned, "enterprise")
+  let t_active = v_tenant.is_active(t_planned)
+  let t_valid = v_tenant.is_valid(t_planned)
+  let t_region_key = v_tenant.region_key(t_planned, "invoice:1")
+  let t_plan_ok = v_tenant.plan_allows(t_planned, "pro")
+  let t_same_region = v_tenant.same_region(t_regioned, t_planned)
+  let t_stack1 = v_tenant.stack_push([], t_ctx)
+  let t_stack2 = v_tenant.stack_push(t_stack1, t_planned)
+  let t_top = v_tenant.current(t_stack2)
+  let t_stack3 = v_tenant.stack_pop(t_stack2)
+  let t_stats = v_tenant.stats(t_planned)
+
+  let pg = v_pagination.page(0, 2, 5)
+  let pg_has_next = v_pagination.has_next(pg)
+  let pg_next = v_pagination.next_cursor(pg)
+  let pg_window = v_pagination.window(pg)
+  let pg_count = v_pagination.page_count(5, 2)
+
+  let si0 = v_search.index_new()
+  let si1 = v_search.index_add(si0, "d1", "hello world")
+  let si2 = v_search.index_add(si1, "d2", "vitte language")
+  let si_hits = v_search.query(si2, "hello")
+  let si_score = 0
+  if si_hits.len > 0 {
+    si_score = v_search.score(si_hits[0], "hello")
+  }
+  let si3 = v_search.index_remove(si2, "d2")
+  let si_hits_after = v_search.query(si3, "vitte")
+
+  let fx0 = v_fixtures.fixture_load("users", ["u1", "u2"])
+  let fx1 = v_fixtures.seed(fx0, 1)
+  let fx_snap = v_fixtures.snapshot(fx1)
+  let fx2 = v_fixtures.reset(fx1)
+  let fx_snap_reset = v_fixtures.snapshot(fx2)
+  let fx3 = v_fixtures.append_row(fx2, "u3")
+  let fx4 = v_fixtures.remove_row(fx3, "u2")
+  let fx_rows = v_fixtures.row_count(fx4)
+  let fx_base = v_fixtures.base_count(fx4)
+  let fx_has_u3 = v_fixtures.contains_row(fx4, "u3")
+  let fx_diff = v_fixtures.diff_count(fx4)
+  let fx_checksum = v_fixtures.checksum(fx4)
+  let fx_stats = v_fixtures.stats(fx4)
+
+  let cd_json = v_codec.encode(v_codec.CodecFormat.Json, "k", "v")
+  let cd_mp = v_codec.encode(v_codec.CodecFormat.MsgPack, "k", "v")
+  let cd_json_detect = v_codec.detect(cd_json.data)
+  let cd_mp_detect = v_codec.detect(cd_mp.data)
+  let cd_pair = v_codec.decode_pair(cd_json)
+  let cd_conv = v_codec.convert(cd_mp, v_codec.CodecFormat.Json)
+  let cd_ext = v_codec.format_extension(v_codec.CodecFormat.Binary)
+  let cd_text = v_codec.is_textual(v_codec.CodecFormat.MsgPack)
+  let cd_fp = v_codec.fingerprint(cd_conv)
+  let cd_ok = v_codec.roundtrip(v_codec.CodecFormat.Binary, "a", "b")
+
+  let kv0 = v_kv.kv_new()
+  let kv1 = v_kv.put(kv0, "cfg:a", "1", 3)
+  let kv2 = v_kv.put(kv1, "cfg:b", "2", 0)
+  let kv3 = v_kv.tick(kv2, 2)
+  let kv_scan = v_kv.scan(kv3, "cfg:")
+  let kv4 = v_kv.tick(kv3, 2)
+  let kv_a = v_kv.get(kv4, "cfg:a", "")
+  let kv_b = v_kv.get(kv4, "cfg:b", "")
+  let kv_ttl_b = v_kv.ttl_left(kv4, "cfg:b")
+  let kv5 = v_kv.touch(kv4, "cfg:b", 5)
+  let kv6 = v_kv.delete(kv5, "cfg:b")
+  let kv7 = v_kv.expire(kv6)
+  let kv_keys = v_kv.keys(kv3, "cfg:")
+  let kv_size = v_kv.size(kv7)
+  let kv_stats = v_kv.stats(kv7)
+
+  let lsp0 = v_lsp.index_new()
+  let lsp1 = v_lsp.index(lsp0, "file:///a.vit", "todo panic", 1)
+  let lsp2 = v_lsp.index(lsp1, "file:///b.vit", "", 1)
+  let lsp_a = v_lsp.diagnostics(lsp2, "file:///a.vit")
+  let lsp_b = v_lsp.diagnostics(lsp2, "file:///b.vit")
+  let lsp_fix = v_lsp.quick_fix(lsp_a[1])
+  let lsp_diag_count = v_lsp.diagnostics_count(lsp2, "file:///a.vit")
+  let lsp_error_count = v_lsp.error_count(lsp2, "file:///a.vit")
+  let lsp_has_errors = v_lsp.has_errors(lsp2, "file:///a.vit")
+  let lsp_applied = v_lsp.apply_quick_fix("todo panic", lsp_a[0].code)
+  let lsp_summary = v_lsp.summary(lsp2, "file:///a.vit")
+  let lsp_docs = v_lsp.doc_count(lsp2)
+
   give sql_rows == 2 && sql_row.len > 0 &&
        db_rows == 1 && db_row.len > 0 &&
        v_cache.contains(c4, "b") && v_cache.get(c4, "a", "") == "" && v_cache.size(c4) == 2 &&
@@ -85,7 +247,33 @@ proc domain_data() -> bool {
        got.downloads == 1 && v_registry.published_count(idx3) == 1 &&
        diff == "updated" &&
        !idem_first && idem_replay == "R1" && idem_after &&
-       c_ok.ok && c_diff == "changed" && c_snap.len > 0
+       c_ok.ok && c_diff == "changed" && c_snap.len > 0 &&
+       ob_pending == 1 && ob_flushed == 1 && ob_payload.len > 0 &&
+       ob_events == 2 && ob_sent == 1 && ob_has_0 &&
+       ob_attempt_1 == 1 && ob_next.id == 1 && ob_topic_created == 1 &&
+       ob_status_0 == "sent" && ob_status_1 == "pending" &&
+       ob_events_after_prune == 1 && ob_stats.len > 0 &&
+       sg2.state == v_saga.SagaState.Failed && sg3.state == v_saga.SagaState.Compensated &&
+       sg4.state == v_saga.SagaState.Succeeded && sg5.state == v_saga.SagaState.Draft &&
+       sg_done == 1 && sg_pending == 2 && sg_failed_name == "charge" &&
+       sg_idx == 1 && sg_term && sg_state == "compensated" && sg_stats.len > 0 &&
+       sr_latest.version == 2 && sr_compat && sr_diff == "compatible-change" && sr_count == 2 &&
+       sr_v1.active && sr_has_v2 && !sr_has_v2_after &&
+       sr_latest_version == 2 && sr_fields == 3 && sr_subjects.len == 1 &&
+       sr_level == "backward-compatible" && sr_total == 2 && sr_stats.len > 0 &&
+       t_key.len > 0 && t_iso_ok && !t_iso_bad && t_current.active && !t_deactivated.active &&
+       t_active && t_valid && t_region_key.len > 0 && t_plan_ok &&
+       t_same_region && t_top.tenant_id == "t1" && t_stack3.len == 1 && t_stats.len > 0 &&
+       pg_has_next && pg_next == 2 && pg_window.size == 2 && pg_count == 3 &&
+       si_hits.len == 1 && si_score > 0 && si_hits_after.len == 0 &&
+       fx_snap.len > 0 && fx_snap_reset.len > 0 &&
+       fx_rows == 2 && fx_base == 2 && fx_has_u3 && fx_diff == 0 && fx_checksum > 0 && fx_stats.len > 0 &&
+       cd_json_detect == v_codec.CodecFormat.Json && cd_mp_detect == v_codec.CodecFormat.MsgPack && cd_ok &&
+       cd_pair.ok && cd_pair.key == "k" && cd_pair.value == "v" &&
+       v_codec.detect(cd_conv.data) == v_codec.CodecFormat.Json && cd_ext == ".bin" && cd_text && cd_fp.len > 0 &&
+       kv_scan.len == 2 && kv_keys.len == 2 && kv_a == "" && kv_b == "2" && kv_ttl_b == -1 && kv_size == 0 && kv_stats.len > 0 &&
+       lsp_a.len == 2 && lsp_b.len == 1 && lsp_fix.len > 0 && lsp_docs == 2 &&
+       lsp_diag_count == 2 && lsp_error_count == 1 && lsp_has_errors && lsp_applied.len > 0 && lsp_summary.len > 0
 }
 
 proc domain_web() -> bool {
@@ -126,6 +314,58 @@ proc domain_web() -> bool {
   let rl_remaining = v_rate_limit.remaining(rl1, 0)
   let rl_reset = v_rate_limit.reset_at(rl1, 0)
 
+  let to0 = v_timeout.timeout_new(100, 50)
+  let to1 = v_timeout.with_deadline(to0, 130)
+  let to_ok = !v_timeout.expired(to1, 120)
+  let to_expired = v_timeout.expired(to1, 131)
+  let to_elapsed = v_timeout.elapsed_ms(to1, 120)
+  let to2 = v_timeout.with_budget(to1, 60)
+  let to3 = v_timeout.extend(to2, 10)
+  let to_overrun = v_timeout.deadline_overrun(to3, 180)
+  let to_active = v_timeout.is_active(to1)
+  let to_guard_ok = v_timeout.guard(to1, 40)
+  let to_guard_bad = v_timeout.guard(to1, 90)
+  let to4 = v_timeout.restart(v_timeout.stop(to1), 200, 20)
+  let to_restart_remaining = v_timeout.remaining_ms(to4, 210)
+  let to_stats = v_timeout.stats(to4, 210)
+
+  let bh0 = v_bulkhead.bulkhead_new(2)
+  let bh1 = v_bulkhead.acquire(bh0)
+  let bh2 = v_bulkhead.acquire(bh1)
+  let bh3 = v_bulkhead.acquire(bh2)
+  let bh4 = v_bulkhead.release(bh3)
+  let bh5 = v_bulkhead.close_gate(bh4)
+  let bh6 = v_bulkhead.open_gate(bh5)
+  let bh7 = v_bulkhead.acquire(bh5)
+  let bh8 = v_bulkhead.drain_queue(bh4)
+  let bh9 = v_bulkhead.resize(bh8, 1)
+  let bh10 = v_bulkhead.reset_stats(bh9)
+  let bh_avail = v_bulkhead.available(bh2)
+  let bh_avail_after = v_bulkhead.available(bh4)
+  let bh_accept = v_bulkhead.can_accept(bh6)
+  let bh_open = v_bulkhead.is_open(bh6)
+  let bh_qdepth = v_bulkhead.queue_depth(bh3)
+  let bh_rejected = v_bulkhead.rejected_count(bh7)
+  let bh_has_queue = v_bulkhead.has_queue(bh3)
+  let bh_util = v_bulkhead.utilization_percent(bh2)
+  let bh_stats = v_bulkhead.stats(bh10)
+
+  let mh0 = v_mock_http.mock_new()
+  let mh1 = v_mock_http.mock_add(mh0, "GET", "/health", 200, "{\"ok\":true}")
+  let mh_match = v_mock_http.mock_match(mh1, "GET", "/health")
+  let mh_reply = v_mock_http.mock_reply(mh1, "GET", "/health")
+  let mh_miss = v_mock_http.mock_reply(mh1, "POST", "/health")
+  let mh2 = v_mock_http.mock_clear(mh1)
+  let mh_match_after = v_mock_http.mock_match(mh2, "GET", "/health")
+  let mh3 = v_mock_http.mock_add(mh2, "post", "/echo", 201, "{\"ok\":1}")
+  let mh_count = v_mock_http.mock_count(mh3)
+  let mh_paths = v_mock_http.mock_list_paths(mh3, "POST")
+  let mh_status = v_mock_http.mock_status(mh3, "post", "/echo")
+  let mh_verify = v_mock_http.mock_verify(mh3, "POST", "/echo", 201)
+  let mh4 = v_mock_http.mock_remove(mh3, "POST", "/echo")
+  let mh_count_after = v_mock_http.mock_count(mh4)
+  let mh_stats = v_mock_http.mock_stats(mh3)
+
   give v_net.is_valid_endpoint(ep) &&
        v_net.status(sock2) == "open" &&
        sock2.bytes_out > 0 && sock2.bytes_in > 0 &&
@@ -138,7 +378,16 @@ proc domain_web() -> bool {
        retry_status == 200 && retry_attempts == 2 &&
        !br_allow_now && br_allow_late &&
        v_circuit_breaker.state(br4) == v_circuit_breaker.BreakerState.Closed &&
-       rl_allow1 && !rl_allow2 && rl_remaining == 1 && rl_reset == 10
+       rl_allow1 && !rl_allow2 && rl_remaining == 1 && rl_reset == 10 &&
+       to_ok && to_expired && to_elapsed == 20 && to_overrun == 10 && to_active &&
+       to_guard_ok && !to_guard_bad && to_restart_remaining == 10 && to_stats.len > 0 &&
+       bh_avail == 0 && bh_avail_after == 1 && bh3.queued == 1 && bh_accept &&
+       bh_open && bh_qdepth == 1 && bh_rejected == 1 && bh_has_queue && bh_util == 100 &&
+       bh8.queued == 0 && bh9.capacity == 1 && bh10.rejected == 0 && bh_stats.len > 0 &&
+       mh_match && mh_reply.matched && mh_reply.status == 200 &&
+       !mh_miss.matched && mh_miss.status == 404 && !mh_match_after &&
+       mh_count == 1 && mh_paths.len == 1 && mh_status == 201 &&
+       mh_verify && mh_count_after == 0 && mh_stats.len > 0
 }
 
 proc domain_security() -> bool {
@@ -186,6 +435,38 @@ proc domain_security() -> bool {
   let pol_reason = v_policy.deny_reason(pol2, "alice", "delete", "invoice")
   let pol_explain = v_policy.explain(pol2, "alice", "delete", "invoice")
 
+  let ar0 = v_alerts.rule_new("latency_p95", 100, 60)
+  let ar_eval = v_alerts.evaluate(ar0, 120, 10)
+  let ar1 = v_alerts.trigger(ar0, 120, 10)
+  let ar2 = v_alerts.silence(ar1, 20)
+  let ar_silenced_eval = v_alerts.evaluate(ar2, 200, 15)
+  let ar3 = v_alerts.trigger(ar2, 50, 15)
+  let ar4 = v_alerts.trigger(ar2, 200, 30)
+  let ar_can = v_alerts.can_trigger(ar2, 15)
+  let ar_delta = v_alerts.threshold_delta(ar0, 120)
+  let ar_firing = v_alerts.is_firing(ar1)
+  let ar_state_name = v_alerts.state_name(ar1)
+  let ar5 = v_alerts.unsilence(ar2)
+  let ar6 = v_alerts.recover(ar5, 80, 31)
+  let ar_stats = v_alerts.stats(ar6)
+
+  let slo0 = v_slo.slo_new(80)
+  let slo1 = v_slo.sli_record(slo0, true)
+  let slo2 = v_slo.sli_record(slo1, true)
+  let slo3 = v_slo.sli_record(slo2, true)
+  let slo4 = v_slo.sli_record(slo3, true)
+  let slo5 = v_slo.sli_record(slo4, false)
+  let slo_ok = v_slo.slo_eval(slo5)
+  let slo_budget = v_slo.budget_left(slo5)
+  let slo_burn = v_slo.burn_rate(slo5)
+  let slo_success = v_slo.success_count(slo5)
+  let slo_success_rate = v_slo.success_rate(slo5)
+  let slo_error_rate = v_slo.error_rate(slo5)
+  let slo_health = v_slo.health(slo5)
+  let slo6 = v_slo.record_many(v_slo.reset(slo5), 4, 1)
+  let slo7 = v_slo.merge(slo5, slo6)
+  let slo_stats = v_slo.stats(slo7)
+
   give v_auth.can_access(session, v_auth.AuthRole.Admin, 10) &&
        v_auth.validate(revoked, 10) == v_auth.AuthError.MissingToken &&
        v_tls.handshake_error(tls0, true) == v_tls.TlsError.None &&
@@ -196,7 +477,14 @@ proc domain_security() -> bool {
        v_audit.count(log1) == 1 && q_auth.len == 1 && audit_ok &&
        v_health.check_live(h) && v_health.check_ready(h) && v_health.check_startup(h) && h_json.len > 0 &&
        !ff_user && ff_other &&
-       pol_allow && !pol_deny && pol_reason == "forbidden-delete" && pol_explain.len > 0
+       pol_allow && !pol_deny && pol_reason == "forbidden-delete" && pol_explain.len > 0 &&
+       ar_eval && ar1.fired_count == 1 &&
+       !ar_can && ar_delta == 20 && ar_firing && ar_state_name == "firing" &&
+       !ar_silenced_eval && ar3.state == v_alerts.AlertState.Silenced &&
+       ar4.state == v_alerts.AlertState.Firing && ar6.state == v_alerts.AlertState.Idle && ar_stats.len > 0 &&
+       slo_ok && slo_budget == 0 && slo_burn >= 100 &&
+       slo_success == 4 && slo_success_rate == 80 && slo_error_rate == 20 &&
+       slo_health == "exhausted" && slo6.total == 5 && slo7.total == 10 && slo_stats.len > 0
 }
 
 proc domain_concurrency() -> bool {
@@ -214,6 +502,42 @@ proc domain_concurrency() -> bool {
   let a0 = v_actor.actor_new(1, "worker")
   let a1 = v_actor.send(a0, "job")
   let a2 = v_actor.step(a1)
+
+  let q0 = v_queue.queue_new(2)
+  let q1 = v_queue.enqueue(q0, "qa")
+  let q2 = v_queue.enqueue(q1, "qb")
+  let q3 = v_queue.dequeue(q2)
+  let q4 = v_queue.nack(q3, 0)
+  let q5 = v_queue.dequeue(q4)
+  let q6 = v_queue.ack(q5, 1)
+  let q7 = v_queue.dequeue(q6)
+  let q8 = v_queue.nack(q7, 0)
+  let q_can = v_queue.can_dequeue(q8)
+  let q_peek = v_queue.peek(q4)
+  let q_attempt = v_queue.attempts_of(q8, 0)
+  let q9 = v_queue.requeue_dead(q8, 0)
+  let q10 = v_queue.purge_done(q9)
+  let q_total = v_queue.total_count(q10)
+  let q_stats = v_queue.stats(q10)
+  let q_dead = v_queue.dlq(q8)
+
+  let st0 = v_stream.stream_new(5, 2, 3)
+  let st1 = v_stream.push(st0, "ev1", 1)
+  let st2 = v_stream.push(st1, "ev2", 2)
+  let st3 = v_stream.push(st2, "ev3", 6)
+  let st4 = v_stream.push(st3, "ev4", 7)
+  let st_batch = v_stream.batch(st4)
+  let st_window = v_stream.window(st4, 10)
+  let st5 = v_stream.drain_batch(st4)
+  let st_old = v_stream.oldest_tick(st4)
+  let st_new = v_stream.newest_tick(st4)
+  let st_lag = v_stream.lag_ticks(st4, 10)
+  let st_window_count = v_stream.window_count(st4, 10)
+  let st_overflow = v_stream.overflow_count(st4)
+  let st6 = v_stream.flush(st5)
+  let st_stats = v_stream.stats(st6)
+  let st_available = v_stream.available(st5)
+  let st_pressure = v_stream.backpressure(st3)
 
   let p0 = v_process.spec("worker")
   let p1 = v_process.with_args(p0, ["--once"])
@@ -259,6 +583,11 @@ proc domain_concurrency() -> bool {
        meta2.state == v_async.TaskState.Succeeded &&
        v_channel.peek(ch3) == "m2" && v_channel.len(ch4) == 1 && v_channel.dropped(ch3) == 1 &&
        v_actor.processed_count(a2) == 1 && v_actor.is_running(a2) &&
+       v_queue.pending_count(q8) == 0 && v_queue.inflight_count(q8) == 0 && v_queue.done_count(q8) == 1 && q_dead.len == 1 &&
+       !q_can && q_peek.id == 0 && q_attempt == 2 && q_total == 1 && q_stats.len > 0 &&
+       st4.dropped == 1 && st_batch.len == 2 && st_window.len == 2 && st_available == 2 && st_pressure &&
+       st_old == 2 && st_new == 7 && st_lag == 8 && st_window_count == 2 && st_overflow == 1 &&
+       st6.buffer.len == 0 && st_stats.len > 0 &&
        v_process.is_success(ph) && v_process.exit_code(ph_dry) == 0 &&
        v_plugin.can_execute(pr2, "events") && pr4.state == v_plugin.PluginState.Loaded &&
        v_ecs.position_x(w4, e0) == 4 && v_ecs.position_y(w4, e0) == 6 &&
