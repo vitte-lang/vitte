@@ -184,6 +184,14 @@ negative-tests:
 diag-snapshots:
 	@tools/diag_snapshots.sh
 
+.PHONY: resolve-tests
+resolve-tests:
+	@TEST_DIR=tests/diag_snapshots/resolve tools/diag_snapshots.sh
+
+.PHONY: explain-snapshots
+explain-snapshots:
+	@tools/explain_snapshots.sh
+
 .PHONY: wrapper-stage-test
 wrapper-stage-test:
 	@tools/wrapper_stage_test.sh
@@ -213,6 +221,18 @@ ci-strict: grammar-check book-qa-strict negative-tests diag-snapshots
 
 .PHONY: ci-fast
 ci-fast: grammar-check negative-tests diag-snapshots wrapper-stage-test
+
+.PHONY: runtime-matrix-modules
+runtime-matrix-modules:
+	@$(BIN_DIR)/$(PROJECT) check --lang=en tests/vitte_packages_runtime_matrix.vit
+
+.PHONY: module-shape-policy
+module-shape-policy:
+	@tools/check_module_shape_policy.py
+
+.PHONY: ci-fast-compiler
+ci-fast-compiler:
+	@tools/ci_fast_compiler.sh
 
 .PHONY: repro
 repro:
@@ -343,9 +363,12 @@ help:
 	@echo "  make ci-std-fast std-focused CI (stdlib + snapshots + wrappers)"
 	@echo "  make ci-bridge-compat alias of ci-mod-fast for native liaison compatibility"
 	@echo "  make modules-tests run module graph/doctor fixtures"
+	@echo "  make module-shape-policy enforce single module layout (<name>.vit xor <name>/mod.vit)"
 	@echo "  make modules-snapshots assert mod graph/doctor outputs"
+	@echo "  make explain-snapshots assert vitte explain outputs"
 	@echo "  make same-output-hash verify deterministic emit hash stability"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
+	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
 	@echo "  make platon-editor build and self-test platon editor core"
 	@echo "  make std-check  verify std layout"
 	@echo "  make clean      remove build artifacts"
