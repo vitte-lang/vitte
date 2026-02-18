@@ -5,15 +5,86 @@ package vitte/migrate
 
 space vitte/migrate
 
+
+form Migration {
+  id: string
+  up_sql: string
+  down_sql: string
+}
+
+form Plan {
+  available: [Migration]
+  applied: [string]
+}
+
+proc plan_new() -> Plan {
+  give Plan([], [])
+}
+
+proc add_migration(p: Plan, id: string, up_sql: string, down_sql: string) -> Plan {
+  give Plan(p.available.push(Migration(id, up_sql, down_sql)), p.applied)
+}
+
+proc is_applied(p: Plan, id: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= p.applied.len { break }
+    if p.applied[i] == id { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc apply(p: Plan, id: string) -> Plan {
+  if is_applied(p, id) { give p }
+  give Plan(p.available, p.applied.push(id))
+}
+
+proc rollback(p: Plan, id: string) -> Plan {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= p.applied.len { break }
+    if p.applied[i] != id { out = out.push(p.applied[i]) }
+    i = i + 1
+  }
+  give Plan(p.available, out)
+}
+
+proc pending(p: Plan) -> [Migration] {
+  let out: [Migration] = []
+  let i: int = 0
+  loop {
+    if i >= p.available.len { break }
+    if !is_applied(p, p.available[i].id) { out = out.push(p.available[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc next_up_sql(p: Plan) -> string {
+  let left = pending(p)
+  if left.len == 0 { give "" }
+  give left[0].up_sql
+}
+
+proc health(p: Plan) -> string {
+  if pending(p).len == 0 { give "up-to-date" }
+  give "pending"
+}
+
 proc ready() -> bool {
   give true
 }
 
+proc package_meta() -> string {
+  give "vitte/migrate"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/migrate
-role: Versioning schema et migrations ordonnees
-input_contract: Commandes et schemas de donnees valides cote metier
-output_contract: Resultats de persistence coherents avec le contrat schema
-boundary: Ne contient pas les regles metier de l application
+role: Orchestration des migrations schema/donnees
+input_contract: Migrations explicites, ordonnees et idempotentes
+output_contract: Plan de migration coherent et traçable
+boundary: N execute pas SQL directement; prepare et valide le plan
 >>>

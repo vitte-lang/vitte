@@ -5,6 +5,7 @@ package vitte/stream
 
 space vitte/stream
 
+
 form StreamConfig {
   window_ticks: int
   batch_size: int
@@ -142,10 +143,93 @@ proc stats(stream: Stream) -> string {
        ",available=" + available(stream).to_string()
 }
 
+pick StreamError {
+  None
+  Empty
+  Backpressure
+  InvalidSeq
+}
+
+form StreamResult {
+  stream: Stream
+  error: StreamError
+  event: StreamEvent
+}
+
+proc peek(stream: Stream) -> StreamEvent {
+  if stream.buffer.len == 0 { give StreamEvent(-1, "", 0) }
+  give stream.buffer[0]
+}
+
+proc pop(stream: Stream) -> StreamResult {
+  if stream.buffer.len == 0 {
+    give StreamResult(stream, StreamError.Empty, StreamEvent(-1, "", 0))
+  }
+  let first = stream.buffer[0]
+  give StreamResult(Stream(stream.cfg, stream.next_seq, drop_first(stream.buffer), stream.dropped), StreamError.None, first)
+}
+
+proc push_safe(stream: Stream, value: string, tick: int) -> StreamResult {
+  if backpressure(stream) {
+    let next = push(stream, value, tick)
+    give StreamResult(next, StreamError.Backpressure, StreamEvent(next.next_seq - 1, value, tick))
+  }
+  let next = push(stream, value, tick)
+  give StreamResult(next, StreamError.None, StreamEvent(next.next_seq - 1, value, tick))
+}
+
+proc find_by_seq(stream: Stream, seq: int) -> StreamEvent {
+  let i: int = 0
+  loop {
+    if i >= stream.buffer.len { break }
+    if stream.buffer[i].seq == seq { give stream.buffer[i] }
+    i = i + 1
+  }
+  give StreamEvent(-1, "", 0)
+}
+
+proc replay_from(stream: Stream, seq: int) -> [StreamEvent] {
+  let out: [StreamEvent] = []
+  let i: int = 0
+  loop {
+    if i >= stream.buffer.len { break }
+    if stream.buffer[i].seq >= seq { out = out.push(stream.buffer[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc trim_before_tick(stream: Stream, tick: int) -> Stream {
+  let out: [StreamEvent] = []
+  let i: int = 0
+  loop {
+    if i >= stream.buffer.len { break }
+    if stream.buffer[i].tick >= tick { out = out.push(stream.buffer[i]) }
+    i = i + 1
+  }
+  give Stream(stream.cfg, stream.next_seq, out, stream.dropped)
+}
+
+proc stream_health(stream: Stream) -> string {
+  if stream.dropped > 0 { give "degraded" }
+  if backpressure(stream) { give "warning" }
+  give "ok"
+}
+
+proc throughput_hint(stream: Stream) -> int {
+  if stream.cfg.window_ticks <= 0 { give 0 }
+  give stream.cfg.batch_size * 1000 / stream.cfg.window_ticks
+}
+
 proc ready() -> bool {
   give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/stream"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/stream

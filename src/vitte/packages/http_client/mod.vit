@@ -5,6 +5,7 @@ package vitte/http_client
 
 space vitte/http_client
 
+
 pick Method {
   Get
   Post
@@ -27,6 +28,35 @@ form Response {
   elapsed_ms: int
 }
 
+form Header {
+  key: string
+  value: string
+}
+
+form RetryPolicy {
+  max_retries: int
+  base_delay_ms: int
+  retry_on_429: bool
+  retry_on_5xx: bool
+}
+
+form ClientConfig {
+  connect_timeout_ms: int
+  read_timeout_ms: int
+  user_agent: string
+}
+
+pick ClientError {
+  None
+  InvalidUrl
+  InsecureUrl
+  Timeout
+  Unauthorized
+  BadRequest
+  TooManyRequests
+  ServerError
+}
+
 proc get(url: string) -> Request {
   give Request(Method.Get, url, "", 1500, "")
 }
@@ -44,9 +74,87 @@ proc with_bearer(req: Request, token: string) -> Request {
   give Request(req.method, req.url, req.body, req.timeout_ms, "Bearer " + token)
 }
 
+proc with_body(req: Request, body: string) -> Request {
+  give Request(req.method, req.url, body, req.timeout_ms, req.auth)
+}
+
+proc with_query(req: Request, query: string) -> Request {
+  if query.len == 0 { give req }
+  if req.url.len == 0 { give req }
+  if req.url.slice(req.url.len - 1, req.url.len) == "?" {
+    give Request(req.method, req.url + query, req.body, req.timeout_ms, req.auth)
+  }
+  if req.url.len >= 1 && req.url.slice(req.url.len - 1, req.url.len) == "&" {
+    give Request(req.method, req.url + query, req.body, req.timeout_ms, req.auth)
+  }
+  if req.url.len > 0 {
+    let has_q = false
+    let i: int = 0
+    loop {
+      if i >= req.url.len { break }
+      if req.url.slice(i, i + 1) == "?" {
+        has_q = true
+        break
+      }
+      i = i + 1
+    }
+    if has_q {
+      give Request(req.method, req.url + "&" + query, req.body, req.timeout_ms, req.auth)
+    }
+    give Request(req.method, req.url + "?" + query, req.body, req.timeout_ms, req.auth)
+  }
+  give req
+}
+
+proc contains(text: string, needle: string) -> bool {
+  if needle.len == 0 { give true }
+  if text.len < needle.len { give false }
+  let i: int = 0
+  loop {
+    if i + needle.len > text.len { break }
+    if text.slice(i, i + needle.len) == needle { give true }
+    i = i + 1
+  }
+  give false
+}
+
 proc is_https(url: string) -> bool {
   if url.len < 8 { give false }
   give url.slice(0, 8) == "https://"
+}
+
+proc host(url: string) -> string {
+  if !is_https(url) { give "" }
+  let i: int = 8
+  loop {
+    if i >= url.len { break }
+    if url.slice(i, i + 1) == "/" {
+      give url.slice(8, i)
+    }
+    i = i + 1
+  }
+  give url.slice(8, url.len)
+}
+
+proc path(url: string) -> string {
+  if !is_https(url) { give "/" }
+  let i: int = 8
+  loop {
+    if i >= url.len { break }
+    if url.slice(i, i + 1) == "/" {
+      give url.slice(i, url.len)
+    }
+    i = i + 1
+  }
+  give "/"
+}
+
+proc default_retry_policy() -> RetryPolicy {
+  give RetryPolicy(2, 50, true, true)
+}
+
+proc default_config() -> ClientConfig {
+  give ClientConfig(600, 1500, "vitte-http-client/1.0")
 }
 
 proc validate(req: Request) -> int {
@@ -55,6 +163,15 @@ proc validate(req: Request) -> int {
   if req.url == "https://api/secure" && req.auth.len == 0 { give 401 }
   if req.timeout_ms < 10 { give 408 }
   give 0
+}
+
+proc classify_error(resp: Response) -> ClientError {
+  if resp.status == 0 { give ClientError.Timeout }
+  if resp.status == 400 { give ClientError.BadRequest }
+  if resp.status == 401 { give ClientError.Unauthorized }
+  if resp.status == 429 { give ClientError.TooManyRequests }
+  if resp.status >= 500 { give ClientError.ServerError }
+  give ClientError.None
 }
 
 proc perform(req: Request) -> Response {
@@ -71,6 +188,52 @@ proc perform(req: Request) -> Response {
   give Response(204, "", 2)
 }
 
+proc perform_with_config(req: Request, cfg: ClientConfig) -> Response {
+  if cfg.connect_timeout_ms <= 0 || cfg.read_timeout_ms <= 0 {
+    give Response(408, "", 1)
+  }
+  if cfg.user_agent.len == 0 {
+    give Response(400, "", 1)
+  }
+  let r = with_timeout(req, cfg.read_timeout_ms)
+  give perform(r)
+}
+
+proc should_retry(resp: Response, policy: RetryPolicy) -> bool {
+  if resp.status == 429 && policy.retry_on_429 { give true }
+  if resp.status >= 500 && policy.retry_on_5xx { give true }
+  give false
+}
+
+proc execute_with_retry(req: Request, policy: RetryPolicy) -> Response {
+  let attempt: int = 0
+  let last = perform(req)
+  loop {
+    if attempt >= policy.max_retries { break }
+    if !should_retry(last, policy) { break }
+    attempt = attempt + 1
+    last = Response(last.status, last.body, last.elapsed_ms + policy.base_delay_ms)
+  }
+  give last
+}
+
+proc cache_key(req: Request) -> string {
+  let method = "DELETE"
+  if req.method == Method.Get { method = "GET" }
+  if req.method == Method.Post { method = "POST" }
+  if req.method == Method.Put { method = "PUT" }
+  if req.method == Method.Patch { method = "PATCH" }
+  give method + "|" + req.url + "|" + req.auth
+}
+
+proc method_name(m: Method) -> string {
+  if m == Method.Get { give "GET" }
+  if m == Method.Post { give "POST" }
+  if m == Method.Put { give "PUT" }
+  if m == Method.Patch { give "PATCH" }
+  give "DELETE"
+}
+
 proc is_ok(resp: Response) -> bool {
   give resp.status >= 200 && resp.status < 300
 }
@@ -79,10 +242,25 @@ proc retryable(resp: Response) -> bool {
   give resp.status == 429 || resp.status >= 500
 }
 
+proc is_timeout(resp: Response) -> bool {
+  give resp.status == 408
+}
+
+proc response_summary(resp: Response) -> string {
+  give "status=" + resp.status.to_string() +
+       ",elapsed_ms=" + resp.elapsed_ms.to_string() +
+       ",ok=" + is_ok(resp).to_string()
+}
+
 proc ready() -> bool {
   give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/http_client"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/http_client

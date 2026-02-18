@@ -5,19 +5,59 @@ package vitte/codegen
 
 space vitte/codegen
 
-use vitte/codegen/llvm
-use vitte/codegen/cranelift
-use vitte/codegen/gcc
 
-use vitte/codegen/llvm.*
-use vitte/codegen/cranelift.*
-use vitte/codegen/gcc.*
+pick Backend {
+  Gcc
+  Llvm
+  Cranelift
+}
 
+form CodegenRequest {
+  module_name: string
+  target: string
+  opt_level: int
+  backend: Backend
+  emit_asm: bool
+}
+
+proc request(module_name: string, target: string, opt_level: int, backend: Backend) -> CodegenRequest {
+  give CodegenRequest(module_name, target, opt_level, backend, false)
+}
+
+proc with_emit_asm(r: CodegenRequest, emit_asm: bool) -> CodegenRequest {
+  give CodegenRequest(r.module_name, r.target, r.opt_level, r.backend, emit_asm)
+}
+
+proc backend_name(b: Backend) -> string {
+  if b == Backend.Gcc { give "gcc" }
+  if b == Backend.Llvm { give "llvm" }
+  give "cranelift"
+}
+
+proc output_basename(r: CodegenRequest) -> string {
+  let suffix = "obj"
+  if r.emit_asm { suffix = "asm" }
+  give r.module_name + "-" + r.target + "-O" + r.opt_level.to_string() + "." + suffix
+}
+
+proc validate(r: CodegenRequest) -> bool {
+  if r.module_name.len == 0 || r.target.len == 0 { give false }
+  if r.opt_level < 0 || r.opt_level > 3 { give false }
+  give true
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/codegen"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/codegen
-role: Facade de generation de code cible depuis IR
-input_contract: Structures internes du compilateur deja valides syntaxiquement
-output_contract: Artefacts intermediaires deterministes pour l etape suivante
-boundary: Ne fait ni IO reseau ni decisions metier applicatives
+role: Orchestration generation de code multi-backend
+input_contract: IR/AST valides et contraintes target explicites
+output_contract: Plan codegen deterministe
+boundary: Ne fait pas d optimisation metier implicite
 >>>

@@ -5,10 +5,198 @@ package vitte/yaml
 
 space vitte/yaml
 
+
+pick YamlError {
+  None
+  InvalidLine
+  MissingColon
+  EmptyKey
+  Indentation
+}
+
+form YamlPair {
+  key: string
+  value: string
+}
+
+form YamlDoc {
+  pairs: [YamlPair]
+}
+
+proc pair(key: string, value: string) -> YamlPair {
+  give YamlPair(key, value)
+}
+
+proc doc_new() -> YamlDoc {
+  give YamlDoc([])
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+  if text.len < prefix.len { give false }
+  give text.slice(0, prefix.len) == prefix
+}
+
+proc trim_left(text: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    let c = text.slice(i, i + 1)
+    if c != " " && c != "\t" { break }
+    i = i + 1
+  }
+  give text.slice(i, text.len)
+}
+
+proc trim_right(text: string) -> string {
+  if text.len == 0 { give text }
+  let i = text.len - 1
+  loop {
+    if i < 0 { break }
+    let c = text.slice(i, i + 1)
+    if c != " " && c != "\t" { break }
+    if i == 0 { give "" }
+    i = i - 1
+  }
+  give text.slice(0, i + 1)
+}
+
+proc trim(text: string) -> string {
+  give trim_right(trim_left(text))
+}
+
+proc split_key_value(line: string) -> YamlPair {
+  let i: int = 0
+  loop {
+    if i >= line.len { break }
+    if line.slice(i, i + 1) == ":" {
+      let k = trim(line.slice(0, i))
+      let v = trim(line.slice(i + 1, line.len))
+      give YamlPair(k, v)
+    }
+    i = i + 1
+  }
+  give YamlPair("", "")
+}
+
+proc parse_line(line: string) -> YamlPair {
+  let l = trim(line)
+  if l.len == 0 { give YamlPair("", "") }
+  if starts_with(l, "#") { give YamlPair("", "") }
+  give split_key_value(l)
+}
+
+proc line_error(line: string) -> YamlError {
+  let l = trim_right(line)
+  if l.len == 0 { give YamlError.None }
+  if starts_with(trim_left(l), "#") { give YamlError.None }
+  if starts_with(l, " ") || starts_with(l, "\t") { give YamlError.Indentation }
+  let p = split_key_value(l)
+  if p.key.len == 0 && p.value.len == 0 { give YamlError.MissingColon }
+  if p.key.len == 0 { give YamlError.EmptyKey }
+  give YamlError.None
+}
+
+proc parse_lines(lines: [string]) -> YamlDoc {
+  let out: [YamlPair] = []
+  let i: int = 0
+  loop {
+    if i >= lines.len { break }
+    let err = line_error(lines[i])
+    if err == YamlError.None {
+      let p = parse_line(lines[i])
+      if p.key.len > 0 { out = out.push(p) }
+    }
+    i = i + 1
+  }
+  give YamlDoc(out)
+}
+
+proc add(doc: YamlDoc, key: string, value: string) -> YamlDoc {
+  give YamlDoc(doc.pairs.push(YamlPair(key, value)))
+}
+
+proc get(doc: YamlDoc, key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= doc.pairs.len { break }
+    if doc.pairs[i].key == key { give doc.pairs[i].value }
+    i = i + 1
+  }
+  give ""
+}
+
+proc has(doc: YamlDoc, key: string) -> bool {
+  give get(doc, key).len > 0
+}
+
+proc put(doc: YamlDoc, key: string, value: string) -> YamlDoc {
+  let out: [YamlPair] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= doc.pairs.len { break }
+    if doc.pairs[i].key == key {
+      out = out.push(YamlPair(key, value))
+      found = true
+    } else {
+      out = out.push(doc.pairs[i])
+    }
+    i = i + 1
+  }
+  if !found { out = out.push(YamlPair(key, value)) }
+  give YamlDoc(out)
+}
+
+proc remove(doc: YamlDoc, key: string) -> YamlDoc {
+  let out: [YamlPair] = []
+  let i: int = 0
+  loop {
+    if i >= doc.pairs.len { break }
+    if doc.pairs[i].key != key { out = out.push(doc.pairs[i]) }
+    i = i + 1
+  }
+  give YamlDoc(out)
+}
+
+proc merge(base: YamlDoc, overlay: YamlDoc) -> YamlDoc {
+  let out = base
+  let i: int = 0
+  loop {
+    if i >= overlay.pairs.len { break }
+    out = put(out, overlay.pairs[i].key, overlay.pairs[i].value)
+    i = i + 1
+  }
+  give out
+}
+
+proc encode_line(p: YamlPair) -> string {
+  give p.key + ": " + p.value
+}
+
+proc encode_lines(doc: YamlDoc) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= doc.pairs.len { break }
+    out = out.push(encode_line(doc.pairs[i]))
+    i = i + 1
+  }
+  give out
+}
+
+proc stats(doc: YamlDoc) -> string {
+  give "pairs=" + doc.pairs.len.to_string()
+}
+
 proc ready() -> bool {
   give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/yaml"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/yaml

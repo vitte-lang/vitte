@@ -6,10 +6,56 @@ package vitte/codegen/gcc
 space vitte/codegen/gcc
 
 
+form CompileUnit {
+  source_path: string
+  output_path: string
+  opt_level: int
+  debug: bool
+  pic: bool
+}
+
+proc unit(source_path: string, output_path: string, opt_level: int) -> CompileUnit {
+  give CompileUnit(source_path, output_path, opt_level, false, false)
+}
+
+proc with_debug(u: CompileUnit, debug: bool) -> CompileUnit {
+  give CompileUnit(u.source_path, u.output_path, u.opt_level, debug, u.pic)
+}
+
+proc with_pic(u: CompileUnit, pic: bool) -> CompileUnit {
+  give CompileUnit(u.source_path, u.output_path, u.opt_level, u.debug, pic)
+}
+
+proc command(u: CompileUnit) -> string {
+  let out = "gcc -O" + u.opt_level.to_string()
+  if u.debug { out = out + " -g" }
+  if u.pic { out = out + " -fPIC" }
+  out = out + " " + u.source_path + " -o " + u.output_path
+  give out
+}
+
+proc validate(u: CompileUnit) -> bool {
+  if u.source_path.len == 0 || u.output_path.len == 0 { give false }
+  if u.opt_level < 0 || u.opt_level > 3 { give false }
+  give true
+}
+
+proc profile(u: CompileUnit) -> string {
+  give "backend=gcc,opt=" + u.opt_level.to_string() + ",debug=" + u.debug.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/codegen/gcc"
+}
+
 <<< ROLE-CONTRACT
 package: vitte/codegen/gcc
-role: Backend GCC pour integration toolchain C
-input_contract: Structures internes du compilateur deja valides syntaxiquement
-output_contract: Artefacts intermediaires deterministes pour l etape suivante
-boundary: Ne fait ni IO reseau ni decisions metier applicatives
+role: Construction de commandes GCC
+input_contract: Unites compilees normalisees
+output_contract: Commandes deterministes valides
+boundary: N execute pas le binaire; prepare la commande seulement
 >>>

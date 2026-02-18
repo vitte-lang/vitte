@@ -6,10 +6,59 @@ package vitte/codegen/llvm
 space vitte/codegen/llvm
 
 
+form IrUnit {
+  ir_path: string
+  obj_path: string
+  target: string
+  emit_asm: bool
+}
+
+proc ir_unit(ir_path: string, obj_path: string, target: string) -> IrUnit {
+  give IrUnit(ir_path, obj_path, target, false)
+}
+
+proc with_emit_asm(u: IrUnit, emit_asm: bool) -> IrUnit {
+  give IrUnit(u.ir_path, u.obj_path, u.target, emit_asm)
+}
+
+proc llc_command(u: IrUnit) -> string {
+  let ft = "obj"
+  if u.emit_asm { ft = "asm" }
+  give "llc -filetype=" + ft + " -mtriple=" + u.target + " " + u.ir_path + " -o " + u.obj_path
+}
+
+proc opt_command(ir_path: string, out_path: string, level: int) -> string {
+  give "opt -O" + level.to_string() + " " + ir_path + " -o " + out_path
+}
+
+proc link_command(obj_paths: [string], output_path: string) -> string {
+  let out = "clang"
+  let i: int = 0
+  loop {
+    if i >= obj_paths.len { break }
+    out = out + " " + obj_paths[i]
+    i = i + 1
+  }
+  out = out + " -o " + output_path
+  give out
+}
+
+proc validate(u: IrUnit) -> bool {
+  give u.ir_path.len > 0 && u.obj_path.len > 0 && u.target.len > 0
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/codegen/llvm"
+}
+
 <<< ROLE-CONTRACT
 package: vitte/codegen/llvm
-role: Backend LLVM pour emission optimisee
-input_contract: Structures internes du compilateur deja valides syntaxiquement
-output_contract: Artefacts intermediaires deterministes pour l etape suivante
-boundary: Ne fait ni IO reseau ni decisions metier applicatives
+role: Orchestration commandes LLVM toolchain
+input_contract: IR et metadonnees cibles explicites
+output_contract: Commandes llc/opt stables
+boundary: N invoque pas les outils; prepare seulement
 >>>

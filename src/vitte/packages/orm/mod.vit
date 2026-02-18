@@ -5,10 +5,312 @@ package vitte/orm
 
 space vitte/orm
 
+pick OrmError {
+  None
+  InvalidModel
+  InvalidTable
+  InvalidPrimaryKey
+  InvalidField
+  InvalidSelect
+  InvalidWhere
+  InvalidOrder
+  InvalidLimit
+  InvalidOffset
+}
+
+form OrmField {
+  name: string
+  kind: string
+  nullable: bool
+  indexed: bool
+}
+
+form OrmModel {
+  table: string
+  primary_key: string
+  fields: [OrmField]
+  soft_delete: bool
+}
+
+form Query {
+  table: string
+  select_cols: [string]
+  where_clauses: [string]
+  order_bys: [string]
+  limit: int
+  offset: int
+  include_deleted: bool
+}
+
+proc is_alpha_num_or_underscore(ch: string) -> bool {
+  if ch == "_" { give true }
+  if ch >= "a" && ch <= "z" { give true }
+  if ch >= "A" && ch <= "Z" { give true }
+  if ch >= "0" && ch <= "9" { give true }
+  give false
+}
+
+proc is_identifier(text: string) -> bool {
+  if text.len == 0 { give false }
+  if text.slice(0, 1) >= "0" && text.slice(0, 1) <= "9" { give false }
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    let ch = text.slice(i, i + 1)
+    if !is_alpha_num_or_underscore(ch) { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc contains(text: string, needle: string) -> bool {
+  if needle.len == 0 { give true }
+  if text.len < needle.len { give false }
+  let i: int = 0
+  loop {
+    if i + needle.len > text.len { break }
+    if text.slice(i, i + needle.len) == needle { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc join(parts: [string], sep: string) -> string {
+  if parts.len == 0 { give "" }
+  let out = parts[0]
+  let i: int = 1
+  loop {
+    if i >= parts.len { break }
+    out = out + sep + parts[i]
+    i = i + 1
+  }
+  give out
+}
+
+proc orm_field(name: string, kind: string, nullable: bool, indexed: bool) -> OrmField {
+  give OrmField(name, kind, nullable, indexed)
+}
+
+proc model(table: string, primary_key: string, fields: [OrmField], soft_delete: bool) -> OrmModel {
+  give OrmModel(table, primary_key, fields, soft_delete)
+}
+
+proc default_query(table: string) -> Query {
+  give Query(table, [], [], [], 100, 0, false)
+}
+
+proc with_select(q: Query, col: string) -> Query {
+  let cols = q.select_cols.push(col)
+  give Query(q.table, cols, q.where_clauses, q.order_bys, q.limit, q.offset, q.include_deleted)
+}
+
+proc with_where(q: Query, clause: string) -> Query {
+  let conds = q.where_clauses.push(clause)
+  give Query(q.table, q.select_cols, conds, q.order_bys, q.limit, q.offset, q.include_deleted)
+}
+
+proc with_order(q: Query, order_by: string) -> Query {
+  let orders = q.order_bys.push(order_by)
+  give Query(q.table, q.select_cols, q.where_clauses, orders, q.limit, q.offset, q.include_deleted)
+}
+
+proc with_limit(q: Query, limit: int) -> Query {
+  let lim = limit
+  if lim < 1 { lim = 1 }
+  if lim > 1000 { lim = 1000 }
+  give Query(q.table, q.select_cols, q.where_clauses, q.order_bys, lim, q.offset, q.include_deleted)
+}
+
+proc with_offset(q: Query, offset: int) -> Query {
+  let off = offset
+  if off < 0 { off = 0 }
+  give Query(q.table, q.select_cols, q.where_clauses, q.order_bys, q.limit, off, q.include_deleted)
+}
+
+proc with_include_deleted(q: Query, include_deleted: bool) -> Query {
+  give Query(q.table, q.select_cols, q.where_clauses, q.order_bys, q.limit, q.offset, include_deleted)
+}
+
+proc paginate(q: Query, page: int, page_size: int) -> Query {
+  let p = page
+  if p < 0 { p = 0 }
+  let sz = page_size
+  if sz < 1 { sz = 1 }
+  if sz > 1000 { sz = 1000 }
+  give Query(q.table, q.select_cols, q.where_clauses, q.order_bys, sz, p * sz, q.include_deleted)
+}
+
+proc has_field(m: OrmModel, field_name: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= m.fields.len { break }
+    if m.fields[i].name == field_name { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc field_count(m: OrmModel) -> int {
+  give m.fields.len
+}
+
+proc field_names(m: OrmModel) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= m.fields.len { break }
+    out = out.push(m.fields[i].name)
+    i = i + 1
+  }
+  give out
+}
+
+proc validate_model(m: OrmModel) -> OrmError {
+  if !is_identifier(m.table) { give OrmError.InvalidTable }
+  if !is_identifier(m.primary_key) { give OrmError.InvalidPrimaryKey }
+  if m.fields.len == 0 { give OrmError.InvalidModel }
+  if !has_field(m, m.primary_key) { give OrmError.InvalidPrimaryKey }
+
+  let i: int = 0
+  loop {
+    if i >= m.fields.len { break }
+    let f = m.fields[i]
+    if !is_identifier(f.name) { give OrmError.InvalidField }
+    if f.kind.len == 0 { give OrmError.InvalidField }
+    i = i + 1
+  }
+  give OrmError.None
+}
+
+proc validate_query(q: Query) -> OrmError {
+  if !is_identifier(q.table) { give OrmError.InvalidTable }
+  if q.limit < 1 || q.limit > 1000 { give OrmError.InvalidLimit }
+  if q.offset < 0 { give OrmError.InvalidOffset }
+
+  let i: int = 0
+  loop {
+    if i >= q.select_cols.len { break }
+    if !is_identifier(q.select_cols[i]) { give OrmError.InvalidSelect }
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= q.where_clauses.len { break }
+    if q.where_clauses[i].len == 0 { give OrmError.InvalidWhere }
+    if contains(q.where_clauses[i], ";") { give OrmError.InvalidWhere }
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= q.order_bys.len { break }
+    if q.order_bys[i].len == 0 { give OrmError.InvalidOrder }
+    if contains(q.order_bys[i], ";") { give OrmError.InvalidOrder }
+    i = i + 1
+  }
+
+  give OrmError.None
+}
+
+proc select_fragment(q: Query) -> string {
+  if q.select_cols.len == 0 { give "*" }
+  give join(q.select_cols, ", ")
+}
+
+proc where_fragment(q: Query, m: OrmModel) -> string {
+  let filters = q.where_clauses
+  if m.soft_delete && !q.include_deleted {
+    filters = filters.push("deleted_at IS NULL")
+  }
+  if filters.len == 0 { give "" }
+  give " WHERE " + join(filters, " AND ")
+}
+
+proc order_fragment(q: Query) -> string {
+  if q.order_bys.len == 0 { give "" }
+  give " ORDER BY " + join(q.order_bys, ", ")
+}
+
+proc limit_offset_fragment(q: Query) -> string {
+  give " LIMIT " + q.limit.to_string() + " OFFSET " + q.offset.to_string()
+}
+
+proc build_select_sql(m: OrmModel, q: Query) -> string {
+  if validate_model(m) != OrmError.None { give "" }
+  if validate_query(q) != OrmError.None { give "" }
+  if m.table != q.table { give "" }
+
+  give "SELECT " + select_fragment(q) +
+       " FROM " + q.table +
+       where_fragment(q, m) +
+       order_fragment(q) +
+       limit_offset_fragment(q)
+}
+
+proc build_count_sql(m: OrmModel, q: Query) -> string {
+  if validate_model(m) != OrmError.None { give "" }
+  if validate_query(q) != OrmError.None { give "" }
+  if m.table != q.table { give "" }
+  give "SELECT COUNT(1) FROM " + q.table + where_fragment(q, m)
+}
+
+proc build_insert_sql(m: OrmModel, cols: [string]) -> string {
+  if validate_model(m) != OrmError.None { give "" }
+  if cols.len == 0 { give "" }
+
+  let values: [string] = []
+  let i: int = 0
+  loop {
+    if i >= cols.len { break }
+    if !has_field(m, cols[i]) { give "" }
+    values = values.push("?")
+    i = i + 1
+  }
+
+  give "INSERT INTO " + m.table +
+       " (" + join(cols, ", ") + ")" +
+       " VALUES (" + join(values, ", ") + ")"
+}
+
+proc build_update_sql(m: OrmModel, cols: [string]) -> string {
+  if validate_model(m) != OrmError.None { give "" }
+  if cols.len == 0 { give "" }
+
+  let assignments: [string] = []
+  let i: int = 0
+  loop {
+    if i >= cols.len { break }
+    if cols[i] != m.primary_key {
+      if !has_field(m, cols[i]) { give "" }
+      assignments = assignments.push(cols[i] + " = ?")
+    }
+    i = i + 1
+  }
+
+  if assignments.len == 0 { give "" }
+  give "UPDATE " + m.table +
+       " SET " + join(assignments, ", ") +
+       " WHERE " + m.primary_key + " = ?"
+}
+
+proc build_delete_sql(m: OrmModel, hard_delete: bool) -> string {
+  if validate_model(m) != OrmError.None { give "" }
+  if hard_delete || !m.soft_delete {
+    give "DELETE FROM " + m.table + " WHERE " + m.primary_key + " = ?"
+  }
+  give "UPDATE " + m.table + " SET deleted_at = ? WHERE " + m.primary_key + " = ?"
+}
+
 proc ready() -> bool {
     give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/orm"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/orm

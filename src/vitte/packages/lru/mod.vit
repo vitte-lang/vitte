@@ -5,10 +5,124 @@ package vitte/lru
 
 space vitte/lru
 
+
+form LruItem {
+  key: string
+  value: string
+  tick: int
+}
+
+form Lru {
+  capacity: int
+  now: int
+  items: [LruItem]
+}
+
+proc lru_new(capacity: int) -> Lru {
+  let cap = capacity
+  if cap < 1 { cap = 1 }
+  give Lru(cap, 0, [])
+}
+
+proc find_index(lru: Lru, key: string) -> int {
+  let i: int = 0
+  loop {
+    if i >= lru.items.len { break }
+    if lru.items[i].key == key { give i }
+    i = i + 1
+  }
+  give -1
+}
+
+proc touch(lru: Lru, key: string) -> Lru {
+  let idx = find_index(lru, key)
+  if idx < 0 { give lru }
+  let out: [LruItem] = []
+  let i: int = 0
+  loop {
+    if i >= lru.items.len { break }
+    let it = lru.items[i]
+    if i == idx {
+      out = out.push(LruItem(it.key, it.value, lru.now + 1))
+    } else {
+      out = out.push(it)
+    }
+    i = i + 1
+  }
+  give Lru(lru.capacity, lru.now + 1, out)
+}
+
+proc evict_one(lru: Lru) -> Lru {
+  if lru.items.len <= 0 { give lru }
+  let min_tick = lru.items[0].tick
+  let min_i: int = 0
+  let i: int = 1
+  loop {
+    if i >= lru.items.len { break }
+    if lru.items[i].tick < min_tick {
+      min_tick = lru.items[i].tick
+      min_i = i
+    }
+    i = i + 1
+  }
+  let out: [LruItem] = []
+  i = 0
+  loop {
+    if i >= lru.items.len { break }
+    if i != min_i { out = out.push(lru.items[i]) }
+    i = i + 1
+  }
+  give Lru(lru.capacity, lru.now, out)
+}
+
+proc put(lru: Lru, key: string, value: string) -> Lru {
+  let next = touch(lru, key)
+  let idx = find_index(next, key)
+  if idx >= 0 {
+    let out: [LruItem] = []
+    let i: int = 0
+    loop {
+      if i >= next.items.len { break }
+      let it = next.items[i]
+      if it.key == key { out = out.push(LruItem(key, value, next.now)) }
+      if it.key != key { out = out.push(it) }
+      i = i + 1
+    }
+    give Lru(next.capacity, next.now, out)
+  }
+  let appended = Lru(next.capacity, next.now + 1, next.items.push(LruItem(key, value, next.now + 1)))
+  if appended.items.len > appended.capacity { give evict_one(appended) }
+  give appended
+}
+
+proc get(lru: Lru, key: string) -> string {
+  let idx = find_index(lru, key)
+  if idx < 0 { give "" }
+  give lru.items[idx].value
+}
+
+proc has(lru: Lru, key: string) -> bool {
+  give find_index(lru, key) >= 0
+}
+
+proc len(lru: Lru) -> int {
+  give lru.items.len
+}
+
+proc summary(lru: Lru) -> string {
+  give "capacity=" + lru.capacity.to_string() +
+       ",size=" + len(lru).to_string()
+}
+
 proc ready() -> bool {
     give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/lru"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/lru

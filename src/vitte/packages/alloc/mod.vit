@@ -5,29 +5,77 @@ package vitte/alloc
 
 space vitte/alloc
 
+
 pick AllocatorKind {
-    Global
-    Bump
-    Arena
-    Slab
+  Global
+  Bump
+  Arena
+  Slab
+}
+
+form AllocStats {
+  allocated: int
+  released: int
+}
+
+form AllocState {
+  kind: AllocatorKind
+  capacity: int
+  used: int
+  stats: AllocStats
 }
 
 proc default_allocator_kind() -> AllocatorKind {
-    give AllocatorKind.Global
+  give AllocatorKind.Global
 }
 
 proc no_std_fallback_enabled() -> bool {
-    give true
+  give true
 }
 
 proc init_allocator() -> bool {
-    give true
+  give true
+}
+
+proc state_new(kind: AllocatorKind, capacity: int) -> AllocState {
+  give AllocState(kind, capacity, 0, AllocStats(0, 0))
+}
+
+proc can_alloc(st: AllocState, bytes: int) -> bool {
+  if bytes < 0 { give false }
+  give st.used + bytes <= st.capacity
+}
+
+proc alloc(st: AllocState, bytes: int) -> AllocState {
+  if !can_alloc(st, bytes) { give st }
+  give AllocState(st.kind,
+                  st.capacity,
+                  st.used + bytes,
+                  AllocStats(st.stats.allocated + bytes, st.stats.released))
+}
+
+proc release(st: AllocState, bytes: int) -> AllocState {
+  let freed = bytes
+  if freed < 0 { freed = 0 }
+  if freed > st.used { freed = st.used }
+  give AllocState(st.kind,
+                  st.capacity,
+                  st.used - freed,
+                  AllocStats(st.stats.allocated, st.stats.released + freed))
+}
+
+proc pressure(st: AllocState) -> int {
+  if st.capacity <= 0 { give 0 }
+  give (st.used * 100) / st.capacity
 }
 
 proc ready() -> bool {
-    give true
+  give true
 }
 
+proc package_meta() -> string {
+  give "vitte/alloc"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/alloc

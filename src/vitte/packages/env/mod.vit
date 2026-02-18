@@ -5,10 +5,88 @@ package vitte/env
 
 space vitte/env
 
+
+form EnvVar {
+  key: string
+  value: string
+}
+
+form Env {
+  vars: [EnvVar]
+}
+
+proc env_new() -> Env {
+  give Env([])
+}
+
+proc set_var(env: Env, key: string, value: string) -> Env {
+  let out: [EnvVar] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= env.vars.len { break }
+    if env.vars[i].key == key {
+      out = out.push(EnvVar(key, value))
+      found = true
+    } else {
+      out = out.push(env.vars[i])
+    }
+    i = i + 1
+  }
+  if !found { out = out.push(EnvVar(key, value)) }
+  give Env(out)
+}
+
+proc get_var(env: Env, key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= env.vars.len { break }
+    if env.vars[i].key == key { give env.vars[i].value }
+    i = i + 1
+  }
+  give ""
+}
+
+proc has_var(env: Env, key: string) -> bool {
+  give get_var(env, key).len > 0
+}
+
+proc unset_var(env: Env, key: string) -> Env {
+  let out: [EnvVar] = []
+  let i: int = 0
+  loop {
+    if i >= env.vars.len { break }
+    if env.vars[i].key != key { out = out.push(env.vars[i]) }
+    i = i + 1
+  }
+  give Env(out)
+}
+
+proc list_keys(env: Env) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= env.vars.len { break }
+    out = out.push(env.vars[i].key)
+    i = i + 1
+  }
+  give out
+}
+
+proc env_health(env: Env) -> string {
+  if env.vars.len == 0 { give "empty" }
+  give "ok"
+}
+
 proc ready() -> bool {
   give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/env"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/env

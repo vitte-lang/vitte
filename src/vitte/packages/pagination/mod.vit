@@ -5,6 +5,7 @@ package vitte/pagination
 
 space vitte/pagination
 
+
 form Page {
   offset: int
   limit: int
@@ -17,15 +18,47 @@ form PageWindow {
   size: int
 }
 
+form PageBounds {
+  min_offset: int
+  max_offset: int
+}
+
+form PageCursor {
+  offset: int
+  limit: int
+}
+
+pick PaginateError {
+  None
+  InvalidLimit
+  InvalidOffset
+  InvalidTotal
+  InvalidCursor
+}
+
+proc clamp_int(value: int, min_value: int, max_value: int) -> int {
+  let v = value
+  if v < min_value { v = min_value }
+  if v > max_value { v = max_value }
+  give v
+}
+
+proc normalize_limit(limit: int) -> int {
+  give clamp_int(limit, 1, 1000)
+}
+
+proc normalize_total(total: int) -> int {
+  let t = total
+  if t < 0 { t = 0 }
+  give t
+}
+
 proc page(offset: int, limit: int, total: int) -> Page {
   let off = offset
   if off < 0 { off = 0 }
 
-  let lim = limit
-  if lim < 1 { lim = 1 }
-
-  let tot = total
-  if tot < 0 { tot = 0 }
+  let lim = normalize_limit(limit)
+  let tot = normalize_total(total)
 
   give Page(off, lim, tot)
 }
@@ -49,20 +82,17 @@ proc window(pg: Page) -> PageWindow {
 }
 
 proc page_count(total: int, limit: int) -> int {
-  if total <= 0 { give 0 }
-  let lim = limit
-  if lim < 1 { lim = 1 }
-  let count = total / lim
-  if total % lim != 0 { count = count + 1 }
+  let tot = normalize_total(total)
+  if tot <= 0 { give 0 }
+  let lim = normalize_limit(limit)
+  let count = tot / lim
+  if tot % lim != 0 { count = count + 1 }
   give count
 }
 
 proc normalized(pg: Page) -> Page {
-  let lim = pg.limit
-  if lim < 1 { lim = 1 }
-
-  let tot = pg.total
-  if tot < 0 { tot = 0 }
+  let lim = normalize_limit(pg.limit)
+  let tot = normalize_total(pg.total)
 
   let off = pg.offset
   if off < 0 { off = 0 }
@@ -94,8 +124,7 @@ proc first_page(limit: int, total: int) -> Page {
 }
 
 proc last_page(limit: int, total: int) -> Page {
-  let lim = limit
-  if lim < 1 { lim = 1 }
+  let lim = normalize_limit(limit)
   give normalized(Page(total - lim, lim, total))
 }
 
@@ -119,7 +148,7 @@ proc shift(pg: Page, delta: int) -> Page {
 
 proc with_limit(pg: Page, new_limit: int) -> Page {
   let n = normalized(pg)
-  give normalized(Page(n.offset, new_limit, n.total))
+  give normalized(Page(n.offset, normalize_limit(new_limit), n.total))
 }
 
 proc is_valid(pg: Page) -> bool {
@@ -136,10 +165,116 @@ proc stats(pg: Page) -> string {
        ",size=" + w.size.to_string()
 }
 
+proc error(pg: Page) -> PaginateError {
+  if pg.limit < 1 { give PaginateError.InvalidLimit }
+  if pg.limit > 1000 { give PaginateError.InvalidLimit }
+  if pg.offset < 0 { give PaginateError.InvalidOffset }
+  if pg.total < 0 { give PaginateError.InvalidTotal }
+  give PaginateError.None
+}
+
+proc is_empty(pg: Page) -> bool {
+  give normalized(pg).total == 0
+}
+
+proc is_full(pg: Page) -> bool {
+  let n = normalized(pg)
+  let w = window(n)
+  give w.size >= n.limit
+}
+
+proc bounds(pg: Page) -> PageBounds {
+  let n = normalized(pg)
+  let max_off = n.total - n.limit
+  if max_off < 0 { max_off = 0 }
+  give PageBounds(0, max_off)
+}
+
+proc cursor(pg: Page) -> PageCursor {
+  let n = normalized(pg)
+  give PageCursor(n.offset, n.limit)
+}
+
+proc from_cursor(cur: PageCursor, total: int) -> Page {
+  if cur.limit < 1 { give Page(0, 1, normalize_total(total)) }
+  if cur.offset < 0 { give Page(0, cur.limit, normalize_total(total)) }
+  give normalized(Page(cur.offset, cur.limit, total))
+}
+
+proc page_at(index: int, limit: int, total: int) -> Page {
+  let idx = index
+  if idx < 0 { idx = 0 }
+  let lim = normalize_limit(limit)
+  give normalized(Page(idx * lim, lim, total))
+}
+
+proc next_page(pg: Page) -> Page {
+  let n = normalized(pg)
+  give page_at(page_index(n) + 1, n.limit, n.total)
+}
+
+proc prev_page(pg: Page) -> Page {
+  let n = normalized(pg)
+  let idx = page_index(n) - 1
+  if idx < 0 { idx = 0 }
+  give page_at(idx, n.limit, n.total)
+}
+
+proc with_total(pg: Page, new_total: int) -> Page {
+  let n = normalized(pg)
+  give normalized(Page(n.offset, n.limit, normalize_total(new_total)))
+}
+
+proc includes_offset(pg: Page, offset: int) -> bool {
+  let n = normalized(pg)
+  let w = window(n)
+  if offset < 0 { give false }
+  give offset >= w.start && offset < w.end
+}
+
+proc window_intersects(left: Page, right: Page) -> bool {
+  let lw = window(normalized(left))
+  let rw = window(normalized(right))
+  if lw.size == 0 || rw.size == 0 { give false }
+  give lw.start < rw.end && rw.start < lw.end
+}
+
+proc window_overlap_size(left: Page, right: Page) -> int {
+  if !window_intersects(left, right) { give 0 }
+  let lw = window(normalized(left))
+  let rw = window(normalized(right))
+  let start = lw.start
+  if rw.start > start { start = rw.start }
+  let end = lw.end
+  if rw.end < end { end = rw.end }
+  let size = end - start
+  if size < 0 { size = 0 }
+  give size
+}
+
+proc align_offset(pg: Page) -> Page {
+  let n = normalized(pg)
+  let aligned = (n.offset / n.limit) * n.limit
+  give normalized(Page(aligned, n.limit, n.total))
+}
+
+proc tail(pg: Page, tail_size: int) -> Page {
+  let n = normalized(pg)
+  let sz = normalize_limit(tail_size)
+  let off = n.total - sz
+  if off < 0 { off = 0 }
+  give normalized(Page(off, sz, n.total))
+}
+
 proc ready() -> bool {
   give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/pagination"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/pagination

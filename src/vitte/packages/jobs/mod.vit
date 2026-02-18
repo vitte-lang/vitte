@@ -5,6 +5,7 @@ package vitte/jobs
 
 space vitte/jobs
 
+
 pick JobState {
   Pending
   Inflight
@@ -248,10 +249,89 @@ proc stats(queue: JobQueue) -> string {
        ",dlq=" + dlq_count(queue).to_string()
 }
 
+pick JobError {
+  None
+  Empty
+  NotFound
+  RetryExceeded
+}
+
+form JobResult {
+  queue: JobQueue
+  error: JobError
+  job_id: int
+}
+
+proc pick_next(queue: JobQueue) -> Job {
+  if queue.pending.len == 0 { give Job(-1, "", 0, JobState.Pending) }
+  give queue.pending[0]
+}
+
+proc dequeue_one(queue: JobQueue) -> JobResult {
+  if queue.pending.len == 0 { give JobResult(queue, JobError.Empty, -1) }
+  let next = pick_next(queue)
+  give JobResult(dequeue(queue), JobError.None, next.id)
+}
+
+proc ack_one(queue: JobQueue, job_id: int) -> JobResult {
+  if state_of(queue, job_id) != "inflight" { give JobResult(queue, JobError.NotFound, job_id) }
+  give JobResult(ack(queue, job_id), JobError.None, job_id)
+}
+
+proc fail_one(queue: JobQueue, job_id: int) -> JobResult {
+  let attempts = attempts_of(queue, job_id)
+  if attempts < 0 { give JobResult(queue, JobError.NotFound, job_id) }
+  let next = nack(queue, job_id)
+  if attempts + 1 >= queue.max_attempts {
+    give JobResult(next, JobError.RetryExceeded, job_id)
+  }
+  give JobResult(next, JobError.None, job_id)
+}
+
+proc run_cycle(queue: JobQueue, success: bool) -> JobResult {
+  let d = dequeue_one(queue)
+  if d.error != JobError.None { give d }
+  if success { give ack_one(d.queue, d.job_id) }
+  give fail_one(d.queue, d.job_id)
+}
+
+proc queue_depth(queue: JobQueue) -> int {
+  give pending_count(queue) + inflight_count(queue)
+}
+
+proc completion_percent(queue: JobQueue) -> int {
+  let total = total_count(queue)
+  if total <= 0 { give 0 }
+  give done_count(queue) * 100 / total
+}
+
+proc failure_percent(queue: JobQueue) -> int {
+  let total = total_count(queue)
+  if total <= 0 { give 0 }
+  give dlq_count(queue) * 100 / total
+}
+
+proc is_stuck(queue: JobQueue) -> bool {
+  if has_pending(queue) { give false }
+  if has_inflight(queue) { give true }
+  give false
+}
+
+proc health(queue: JobQueue) -> string {
+  if dlq_count(queue) > 0 { give "degraded" }
+  if is_stuck(queue) { give "warning" }
+  give "ok"
+}
+
 proc ready() -> bool {
   give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/jobs"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/jobs

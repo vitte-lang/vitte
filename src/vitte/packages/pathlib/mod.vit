@@ -5,10 +5,98 @@ package vitte/pathlib
 
 space vitte/pathlib
 
+
+proc is_absolute(path: string) -> bool {
+  if path.len == 0 { give false }
+  if path.slice(0, 1) == "/" { give true }
+  give false
+}
+
+proc join(base: string, child: string) -> string {
+  if base.len == 0 { give child }
+  if child.len == 0 { give base }
+  if base.slice(base.len - 1, base.len) == "/" { give base + child }
+  give base + "/" + child
+}
+
+proc dirname(path: string) -> string {
+  if path.len == 0 { give "" }
+  let i = path.len - 1
+  loop {
+    if i < 0 { break }
+    if path.slice(i, i + 1) == "/" {
+      if i == 0 { give "/" }
+      give path.slice(0, i)
+    }
+    i = i - 1
+  }
+  give ""
+}
+
+proc basename(path: string) -> string {
+  if path.len == 0 { give "" }
+  let i = path.len - 1
+  loop {
+    if i < 0 { break }
+    if path.slice(i, i + 1) == "/" {
+      give path.slice(i + 1, path.len)
+    }
+    i = i - 1
+  }
+  give path
+}
+
+proc ext(path: string) -> string {
+  let name = basename(path)
+  let i = name.len - 1
+  loop {
+    if i < 0 { break }
+    if name.slice(i, i + 1) == "." {
+      if i + 1 >= name.len { give "" }
+      give name.slice(i + 1, name.len)
+    }
+    i = i - 1
+  }
+  give ""
+}
+
+proc stem(path: string) -> string {
+  let name = basename(path)
+  let i = name.len - 1
+  loop {
+    if i < 0 { break }
+    if name.slice(i, i + 1) == "." {
+      give name.slice(0, i)
+    }
+    i = i - 1
+  }
+  give name
+}
+
+proc normalize(path: string) -> string {
+  if path.len == 0 { give "/" }
+  let out = path
+  if out.len > 1 && out.slice(out.len - 1, out.len) == "/" {
+    out = out.slice(0, out.len - 1)
+  }
+  give out
+}
+
+proc summary(path: string) -> string {
+  give "dir=" + dirname(path) +
+       ",base=" + basename(path) +
+       ",ext=" + ext(path)
+}
+
 proc ready() -> bool {
   give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/pathlib"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/pathlib

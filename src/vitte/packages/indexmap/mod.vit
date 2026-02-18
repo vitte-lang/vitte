@@ -5,15 +5,108 @@ package vitte/indexmap
 
 space vitte/indexmap
 
-proc ready() -> bool {
-    give true
+
+form Pair {
+  key: string
+  value: string
 }
 
+form IndexMap {
+  entries: [Pair]
+}
+
+proc map_new() -> IndexMap {
+  give IndexMap([])
+}
+
+proc put(m: IndexMap, key: string, value: string) -> IndexMap {
+  let out: [Pair] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= m.entries.len { break }
+    if m.entries[i].key == key {
+      out = out.push(Pair(key, value))
+      found = true
+    } else {
+      out = out.push(m.entries[i])
+    }
+    i = i + 1
+  }
+  if !found { out = out.push(Pair(key, value)) }
+  give IndexMap(out)
+}
+
+proc get(m: IndexMap, key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= m.entries.len { break }
+    if m.entries[i].key == key { give m.entries[i].value }
+    i = i + 1
+  }
+  give ""
+}
+
+proc has(m: IndexMap, key: string) -> bool {
+  give get(m, key).len > 0
+}
+
+proc remove(m: IndexMap, key: string) -> IndexMap {
+  let out: [Pair] = []
+  let i: int = 0
+  loop {
+    if i >= m.entries.len { break }
+    if m.entries[i].key != key { out = out.push(m.entries[i]) }
+    i = i + 1
+  }
+  give IndexMap(out)
+}
+
+proc keys(m: IndexMap) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= m.entries.len { break }
+    out = out.push(m.entries[i].key)
+    i = i + 1
+  }
+  give out
+}
+
+proc values(m: IndexMap) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= m.entries.len { break }
+    out = out.push(m.entries[i].value)
+    i = i + 1
+  }
+  give out
+}
+
+proc merge(left: IndexMap, right: IndexMap) -> IndexMap {
+  let out = left
+  let i: int = 0
+  loop {
+    if i >= right.entries.len { break }
+    out = put(out, right.entries[i].key, right.entries[i].value)
+    i = i + 1
+  }
+  give out
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/indexmap"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/indexmap
-role: Map ordonnee preservant ordre insertion
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+role: Dictionnaire stable avec ordre d insertion
+input_contract: Paires cle/valeur explicites et deja normalisees
+output_contract: Acces deterministe et iteration stable
+boundary: N implemente pas persistance; structure en memoire seulement
 >>>

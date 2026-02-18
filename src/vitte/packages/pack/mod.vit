@@ -5,15 +5,89 @@ package vitte/pack
 
 space vitte/pack
 
+
+form Dependency {
+  name: string
+  version: string
+}
+
+form Manifest {
+  name: string
+  version: string
+  deps: [Dependency]
+}
+
+proc manifest_new(name: string, version: string) -> Manifest {
+  give Manifest(name, version, [])
+}
+
+proc add_dep(m: Manifest, name: string, version: string) -> Manifest {
+  let out: [Dependency] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= m.deps.len { break }
+    if m.deps[i].name == name {
+      out = out.push(Dependency(name, version))
+      found = true
+    } else {
+      out = out.push(m.deps[i])
+    }
+    i = i + 1
+  }
+  if !found { out = out.push(Dependency(name, version)) }
+  give Manifest(m.name, m.version, out)
+}
+
+proc dep_version(m: Manifest, name: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= m.deps.len { break }
+    if m.deps[i].name == name { give m.deps[i].version }
+    i = i + 1
+  }
+  give ""
+}
+
+proc has_dep(m: Manifest, name: string) -> bool {
+  give dep_version(m, name).len > 0
+}
+
+proc render(m: Manifest) -> string {
+  let out = "name=" + m.name + "\n"
+  out = out + "version=" + m.version + "\n"
+  let i: int = 0
+  loop {
+    if i >= m.deps.len { break }
+    out = out + "dep." + m.deps[i].name + "=" + m.deps[i].version + "\n"
+    i = i + 1
+  }
+  give out
+}
+
+proc validate(m: Manifest) -> bool {
+  if m.name.len == 0 || m.version.len == 0 { give false }
+  let i: int = 0
+  loop {
+    if i >= m.deps.len { break }
+    if m.deps[i].name.len == 0 || m.deps[i].version.len == 0 { give false }
+    i = i + 1
+  }
+  give true
+}
+
 proc ready() -> bool {
   give true
 }
 
+proc package_meta() -> string {
+  give "vitte/pack"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/pack
-role: Packaging artefacts et metadonnees de build
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+role: Manifest package, dependances et versionning
+input_contract: Metadata package explicites et versionnees
+output_contract: Representation stable pour build/install
+boundary: N effectue pas telechargement reseau; gestion metadonnees seulement
 >>>

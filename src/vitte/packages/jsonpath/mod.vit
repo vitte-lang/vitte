@@ -5,15 +5,99 @@ package vitte/jsonpath
 
 space vitte/jsonpath
 
+
+form Field {
+  name: string
+}
+
+form Path {
+  fields: [Field]
+}
+
+proc parse(path: string) -> Path {
+  let out: [Field] = []
+  let part = ""
+  let i: int = 0
+  loop {
+    if i >= path.len { break }
+    let ch = path.slice(i, i + 1)
+    if ch == "." {
+      if part.len > 0 { out = out.push(Field(part)) }
+      part = ""
+    } else {
+      part = part + ch
+    }
+    i = i + 1
+  }
+  if part.len > 0 { out = out.push(Field(part)) }
+  give Path(out)
+}
+
+form Entry {
+  key: string
+  value: string
+}
+
+form Doc {
+  entries: [Entry]
+}
+
+proc doc_new() -> Doc {
+  give Doc([])
+}
+
+proc put(doc: Doc, key: string, value: string) -> Doc {
+  let out = doc.entries.push(Entry(key, value))
+  give Doc(out)
+}
+
+proc get(doc: Doc, key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= doc.entries.len { break }
+    if doc.entries[i].key == key { give doc.entries[i].value }
+    i = i + 1
+  }
+  give ""
+}
+
+proc resolve(doc: Doc, path_text: string) -> string {
+  let p = parse(path_text)
+  if p.fields.len == 0 { give "" }
+  let full = ""
+  let i: int = 0
+  loop {
+    if i >= p.fields.len { break }
+    if i > 0 { full = full + "." }
+    full = full + p.fields[i].name
+    i = i + 1
+  }
+  give get(doc, full)
+}
+
+proc is_valid(path_text: string) -> bool {
+  let p = parse(path_text)
+  let i: int = 0
+  loop {
+    if i >= p.fields.len { break }
+    if p.fields[i].name.len == 0 { give false }
+    i = i + 1
+  }
+  give p.fields.len > 0
+}
+
 proc ready() -> bool {
   give true
 }
 
+proc package_meta() -> string {
+  give "vitte/jsonpath"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/jsonpath
-role: Selection et navigation dans documents JSON
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+role: Navigation de donnees JSON par chemins textuels
+input_contract: Json deja parse et chemins fournis explicitement
+output_contract: Valeurs resolues ou vide selon les regles stables
+boundary: Ne parse pas tout JSON; ne fait que la resolution de chemins
 >>>

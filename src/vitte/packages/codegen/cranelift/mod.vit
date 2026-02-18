@@ -6,10 +6,45 @@ package vitte/codegen/cranelift
 space vitte/codegen/cranelift
 
 
+form ClifUnit {
+  clif_path: string
+  obj_path: string
+  isa: string
+  opt: string
+}
+
+proc clif_unit(clif_path: string, obj_path: string, isa: string) -> ClifUnit {
+  give ClifUnit(clif_path, obj_path, isa, "speed")
+}
+
+proc with_opt(u: ClifUnit, opt: string) -> ClifUnit {
+  give ClifUnit(u.clif_path, u.obj_path, u.isa, opt)
+}
+
+proc compile_command(u: ClifUnit) -> string {
+  give "clif-util compile " + u.clif_path + " --isa " + u.isa + " --opt " + u.opt + " -o " + u.obj_path
+}
+
+proc preopt_command(u: ClifUnit) -> string {
+  give "clif-util optimize " + u.clif_path + " --opt " + u.opt
+}
+
+proc validate(u: ClifUnit) -> bool {
+  give u.clif_path.len > 0 && u.obj_path.len > 0 && u.isa.len > 0
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/codegen/cranelift"
+}
+
 <<< ROLE-CONTRACT
 package: vitte/codegen/cranelift
-role: Backend Cranelift pour compilation rapide
-input_contract: Structures internes du compilateur deja valides syntaxiquement
-output_contract: Artefacts intermediaires deterministes pour l etape suivante
-boundary: Ne fait ni IO reseau ni decisions metier applicatives
+role: Construction de commandes backend Cranelift
+input_contract: CLIF et ISA explicites
+output_contract: Commande compile deterministe
+boundary: Pas d execution backend directe
 >>>

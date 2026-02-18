@@ -5,15 +5,99 @@ package vitte/pickle
 
 space vitte/pickle
 
+
+form Pair {
+  key: string
+  value: string
+}
+
+form PickleDoc {
+  pairs: [Pair]
+}
+
+proc doc_new() -> PickleDoc {
+  give PickleDoc([])
+}
+
+proc put(doc: PickleDoc, key: string, value: string) -> PickleDoc {
+  let out: [Pair] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= doc.pairs.len { break }
+    if doc.pairs[i].key == key {
+      out = out.push(Pair(key, value))
+      found = true
+    } else {
+      out = out.push(doc.pairs[i])
+    }
+    i = i + 1
+  }
+  if !found { out = out.push(Pair(key, value)) }
+  give PickleDoc(out)
+}
+
+proc get(doc: PickleDoc, key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= doc.pairs.len { break }
+    if doc.pairs[i].key == key { give doc.pairs[i].value }
+    i = i + 1
+  }
+  give ""
+}
+
+proc encode(doc: PickleDoc) -> string {
+  let out = ""
+  let i: int = 0
+  loop {
+    if i >= doc.pairs.len { break }
+    if i > 0 { out = out + ";" }
+    out = out + doc.pairs[i].key + "=" + doc.pairs[i].value
+    i = i + 1
+  }
+  give out
+}
+
+proc decode(text: string) -> PickleDoc {
+  let out = doc_new()
+  let key = ""
+  let value = ""
+  let reading_value = false
+  let i: int = 0
+  loop {
+    if i >= text.len {
+      if key.len > 0 { out = put(out, key, value) }
+      break
+    }
+    let ch = text.slice(i, i + 1)
+    if ch == "=" {
+      reading_value = true
+    } else if ch == ";" {
+      if key.len > 0 { out = put(out, key, value) }
+      key = ""
+      value = ""
+      reading_value = false
+    } else {
+      if reading_value { value = value + ch } else { key = key + ch }
+    }
+    i = i + 1
+  }
+  give out
+}
+
 proc ready() -> bool {
   give true
 }
 
+proc package_meta() -> string {
+  give "vitte/pickle"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/pickle
-role: Format binaire Vitte pour persistence rapide
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+role: Encodage/decodage compact de paires cle-valeur
+input_contract: Donnees deja normalisees et serialisables
+output_contract: Format stable reversible avec erreurs explicites
+boundary: Pas de crypto ni compression; serialisation legere uniquement
 >>>

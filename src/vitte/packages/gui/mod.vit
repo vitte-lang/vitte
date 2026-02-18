@@ -6,6 +6,190 @@ package vitte/gui
 space vitte/gui
 
 
+pick WidgetKind {
+  Container
+  Text
+  Button
+  Input
+}
+
+form Widget {
+  id: string
+  kind: WidgetKind
+  text: string
+  visible: bool
+  enabled: bool
+}
+
+form View {
+  title: string
+  widgets: [Widget]
+}
+
+proc view(title: string) -> View {
+  give View(title, [])
+}
+
+proc widget(id: string, kind: WidgetKind, text: string) -> Widget {
+  give Widget(id, kind, text, true, true)
+}
+
+proc add_widget(v: View, w: Widget) -> View {
+  give View(v.title, v.widgets.push(w))
+}
+
+proc show(v: View, id: string, visible: bool) -> View {
+  let out: [Widget] = []
+  let i: int = 0
+  loop {
+    if i >= v.widgets.len { break }
+    let w = v.widgets[i]
+    if w.id == id {
+      out = out.push(Widget(w.id, w.kind, w.text, visible, w.enabled))
+    } else {
+      out = out.push(w)
+    }
+    i = i + 1
+  }
+  give View(v.title, out)
+}
+
+proc enable(v: View, id: string, enabled: bool) -> View {
+  let out: [Widget] = []
+  let i: int = 0
+  loop {
+    if i >= v.widgets.len { break }
+    let w = v.widgets[i]
+    if w.id == id {
+      out = out.push(Widget(w.id, w.kind, w.text, w.visible, enabled))
+    } else {
+      out = out.push(w)
+    }
+    i = i + 1
+  }
+  give View(v.title, out)
+}
+
+proc visible_count(v: View) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= v.widgets.len { break }
+    if v.widgets[i].visible { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc find_widget(v: View, id: string) -> Widget {
+  let i: int = 0
+  loop {
+    if i >= v.widgets.len { break }
+    if v.widgets[i].id == id { give v.widgets[i] }
+    i = i + 1
+  }
+  give Widget("", WidgetKind.Text, "", false, false)
+}
+
+proc render_summary(v: View) -> string {
+  give "title=" + v.title +
+       ",widgets=" + v.widgets.len.to_string() +
+       ",visible=" + visible_count(v).to_string()
+}
+
+proc hide_all(v: View) -> View {
+  let out: [Widget] = []
+  let i: int = 0
+  loop {
+    if i >= v.widgets.len { break }
+    let w = v.widgets[i]
+    out = out.push(Widget(w.id, w.kind, w.text, false, w.enabled))
+    i = i + 1
+  }
+  give View(v.title, out)
+}
+
+proc disable_all(v: View) -> View {
+  let out: [Widget] = []
+  let i: int = 0
+  loop {
+    if i >= v.widgets.len { break }
+    let w = v.widgets[i]
+    out = out.push(Widget(w.id, w.kind, w.text, w.visible, false))
+    i = i + 1
+  }
+  give View(v.title, out)
+}
+
+proc text_of(v: View, id: string) -> string {
+  give find_widget(v, id).text
+}
+
+proc has_widget(v: View, id: string) -> bool {
+  give find_widget(v, id).id.len > 0
+}
+
+proc gui_health(v: View) -> string {
+  if v.title.len == 0 { give "invalid-title" }
+  if v.widgets.len == 0 { give "empty" }
+  give "ok"
+}
+
+proc count_kind(v: View, kind: WidgetKind) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= v.widgets.len { break }
+    if v.widgets[i].kind == kind { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc set_text(v: View, id: string, text: string) -> View {
+  let out: [Widget] = []
+  let i: int = 0
+  loop {
+    if i >= v.widgets.len { break }
+    let w = v.widgets[i]
+    if w.id == id {
+      out = out.push(Widget(w.id, w.kind, text, w.visible, w.enabled))
+    } else {
+      out = out.push(w)
+    }
+    i = i + 1
+  }
+  give View(v.title, out)
+}
+
+proc visible_ids(v: View) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= v.widgets.len { break }
+    if v.widgets[i].visible { out = out.push(v.widgets[i].id) }
+    i = i + 1
+  }
+  give out
+}
+
+proc gui_diagnostics(v: View) -> string {
+  give render_summary(v) +
+       ",buttons=" + count_kind(v, WidgetKind.Button).to_string() +
+       ",inputs=" + count_kind(v, WidgetKind.Input).to_string() +
+       ",health=" + gui_health(v)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/gui"
+}
+
 <<< ROLE-CONTRACT
 package: vitte/gui
 role: Couche interface graphique et projection UI

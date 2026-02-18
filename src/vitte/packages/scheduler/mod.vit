@@ -5,10 +5,235 @@ package vitte/scheduler
 
 space vitte/scheduler
 
+
+pick ScheduleMode {
+  Once
+  Interval
+}
+
+pick TaskState {
+  Idle
+  Running
+  Success
+  Failed
+  Disabled
+}
+
+pick ScheduleError {
+  None
+  InvalidTask
+  InvalidInterval
+  InvalidTimestamp
+}
+
+form Task {
+  id: int
+  name: string
+  mode: ScheduleMode
+  run_at: int
+  interval_ticks: int
+  max_runs: int
+  runs: int
+  last_run: int
+  enabled: bool
+  state: TaskState
+}
+
+form Scheduler {
+  next_id: int
+  now_tick: int
+  tasks: [Task]
+}
+
+proc scheduler_new(now_tick: int) -> Scheduler {
+  give Scheduler(0, now_tick, [])
+}
+
+proc task_once(name: string, run_at: int) -> Task {
+  give Task(-1, name, ScheduleMode.Once, run_at, 0, 1, 0, -1, true, TaskState.Idle)
+}
+
+proc task_interval(name: string, start_at: int, interval_ticks: int, max_runs: int) -> Task {
+  let interval = interval_ticks
+  if interval < 1 { interval = 1 }
+  let max = max_runs
+  if max < 0 { max = 0 }
+  give Task(-1, name, ScheduleMode.Interval, start_at, interval, max, 0, -1, true, TaskState.Idle)
+}
+
+proc validate_task(task: Task) -> ScheduleError {
+  if task.name.len == 0 { give ScheduleError.InvalidTask }
+  if task.run_at < 0 { give ScheduleError.InvalidTimestamp }
+  when task.mode is ScheduleMode.Interval {
+    if task.interval_ticks < 1 { give ScheduleError.InvalidInterval }
+  }
+  give ScheduleError.None
+}
+
+proc register(scheduler: Scheduler, task: Task) -> Scheduler {
+  if validate_task(task) != ScheduleError.None { give scheduler }
+  let with_id = Task(
+    scheduler.next_id,
+    task.name,
+    task.mode,
+    task.run_at,
+    task.interval_ticks,
+    task.max_runs,
+    task.runs,
+    task.last_run,
+    task.enabled,
+    task.state
+  )
+  give Scheduler(scheduler.next_id + 1, scheduler.now_tick, scheduler.tasks.push(with_id))
+}
+
+proc set_now(scheduler: Scheduler, now_tick: int) -> Scheduler {
+  give Scheduler(scheduler.next_id, now_tick, scheduler.tasks)
+}
+
+proc find_task(scheduler: Scheduler, task_id: int) -> Task {
+  let i: int = 0
+  loop {
+    if i >= scheduler.tasks.len { break }
+    if scheduler.tasks[i].id == task_id { give scheduler.tasks[i] }
+    i = i + 1
+  }
+  give Task(-1, "", ScheduleMode.Once, 0, 0, 0, 0, -1, false, TaskState.Disabled)
+}
+
+proc should_run(task: Task, now_tick: int) -> bool {
+  if !task.enabled { give false }
+  when task.mode is ScheduleMode.Once {
+    if task.runs >= 1 { give false }
+    give now_tick >= task.run_at
+  }
+  if task.max_runs > 0 && task.runs >= task.max_runs { give false }
+  if task.runs == 0 { give now_tick >= task.run_at }
+  give now_tick - task.last_run >= task.interval_ticks
+}
+
+proc due_tasks(scheduler: Scheduler) -> [Task] {
+  let out: [Task] = []
+  let i: int = 0
+  loop {
+    if i >= scheduler.tasks.len { break }
+    let task = scheduler.tasks[i]
+    if should_run(task, scheduler.now_tick) { out = out.push(task) }
+    i = i + 1
+  }
+  give out
+}
+
+proc mark_running(scheduler: Scheduler, task_id: int) -> Scheduler {
+  let out: [Task] = []
+  let i: int = 0
+  loop {
+    if i >= scheduler.tasks.len { break }
+    let t = scheduler.tasks[i]
+    if t.id == task_id {
+      out = out.push(Task(t.id, t.name, t.mode, t.run_at, t.interval_ticks, t.max_runs, t.runs, t.last_run, t.enabled, TaskState.Running))
+    } else {
+      out = out.push(t)
+    }
+    i = i + 1
+  }
+  give Scheduler(scheduler.next_id, scheduler.now_tick, out)
+}
+
+proc record_result(scheduler: Scheduler, task_id: int, success: bool) -> Scheduler {
+  let out: [Task] = []
+  let i: int = 0
+  loop {
+    if i >= scheduler.tasks.len { break }
+    let t = scheduler.tasks[i]
+    if t.id == task_id {
+      let st = TaskState.Failed
+      if success { st = TaskState.Success }
+      let runs = t.runs + 1
+      out = out.push(Task(t.id, t.name, t.mode, t.run_at, t.interval_ticks, t.max_runs, runs, scheduler.now_tick, t.enabled, st))
+    } else {
+      out = out.push(t)
+    }
+    i = i + 1
+  }
+  give Scheduler(scheduler.next_id, scheduler.now_tick, out)
+}
+
+proc disable_task(scheduler: Scheduler, task_id: int) -> Scheduler {
+  let out: [Task] = []
+  let i: int = 0
+  loop {
+    if i >= scheduler.tasks.len { break }
+    let t = scheduler.tasks[i]
+    if t.id == task_id {
+      out = out.push(Task(t.id, t.name, t.mode, t.run_at, t.interval_ticks, t.max_runs, t.runs, t.last_run, false, TaskState.Disabled))
+    } else {
+      out = out.push(t)
+    }
+    i = i + 1
+  }
+  give Scheduler(scheduler.next_id, scheduler.now_tick, out)
+}
+
+proc enable_task(scheduler: Scheduler, task_id: int) -> Scheduler {
+  let out: [Task] = []
+  let i: int = 0
+  loop {
+    if i >= scheduler.tasks.len { break }
+    let t = scheduler.tasks[i]
+    if t.id == task_id {
+      out = out.push(Task(t.id, t.name, t.mode, t.run_at, t.interval_ticks, t.max_runs, t.runs, t.last_run, true, TaskState.Idle))
+    } else {
+      out = out.push(t)
+    }
+    i = i + 1
+  }
+  give Scheduler(scheduler.next_id, scheduler.now_tick, out)
+}
+
+proc tick(scheduler: Scheduler, now_tick: int) -> Scheduler {
+  give set_now(scheduler, now_tick)
+}
+
+proc pending_count(scheduler: Scheduler) -> int {
+  give due_tasks(scheduler).len
+}
+
+proc running_count(scheduler: Scheduler) -> int {
+  let count: int = 0
+  let i: int = 0
+  loop {
+    if i >= scheduler.tasks.len { break }
+    if scheduler.tasks[i].state == TaskState.Running { count = count + 1 }
+    i = i + 1
+  }
+  give count
+}
+
+proc task_state_name(state: TaskState) -> string {
+  if state == TaskState.Idle { give "idle" }
+  if state == TaskState.Running { give "running" }
+  if state == TaskState.Success { give "success" }
+  if state == TaskState.Failed { give "failed" }
+  give "disabled"
+}
+
+proc scheduler_stats(scheduler: Scheduler) -> string {
+  give "now=" + scheduler.now_tick.to_string() +
+       ",tasks=" + scheduler.tasks.len.to_string() +
+       ",due=" + pending_count(scheduler).to_string() +
+       ",running=" + running_count(scheduler).to_string()
+}
+
 proc ready() -> bool {
   give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/scheduler"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/scheduler

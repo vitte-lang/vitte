@@ -6,6 +6,155 @@ package vitte/mir
 space vitte/mir
 
 
+pick MirOp {
+  Nop
+  Load
+  Store
+  Call
+  Jump
+  Ret
+}
+
+form MirInstr {
+  id: int
+  op: MirOp
+  arg0: string
+  arg1: string
+}
+
+form MirBlock {
+  name: string
+  instrs: [MirInstr]
+}
+
+form MirModule {
+  name: string
+  blocks: [MirBlock]
+}
+
+proc instr(id: int, op: MirOp, arg0: string, arg1: string) -> MirInstr {
+  give MirInstr(id, op, arg0, arg1)
+}
+
+proc block(name: string) -> MirBlock {
+  give MirBlock(name, [])
+}
+
+proc module_new(name: string) -> MirModule {
+  give MirModule(name, [])
+}
+
+proc add_block(m: MirModule, b: MirBlock) -> MirModule {
+  give MirModule(m.name, m.blocks.push(b))
+}
+
+proc add_instr(b: MirBlock, i: MirInstr) -> MirBlock {
+  give MirBlock(b.name, b.instrs.push(i))
+}
+
+proc instr_count(m: MirModule) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= m.blocks.len { break }
+    total = total + m.blocks[i].instrs.len
+    i = i + 1
+  }
+  give total
+}
+
+proc op_name(op: MirOp) -> string {
+  if op == MirOp.Nop { give "nop" }
+  if op == MirOp.Load { give "load" }
+  if op == MirOp.Store { give "store" }
+  if op == MirOp.Call { give "call" }
+  if op == MirOp.Jump { give "jump" }
+  give "ret"
+}
+
+proc validate(m: MirModule) -> bool {
+  if m.name.len == 0 { give false }
+  let bi: int = 0
+  loop {
+    if bi >= m.blocks.len { break }
+    if m.blocks[bi].name.len == 0 { give false }
+    let ii: int = 0
+    loop {
+      if ii >= m.blocks[bi].instrs.len { break }
+      if m.blocks[bi].instrs[ii].id < 0 { give false }
+      ii = ii + 1
+    }
+    bi = bi + 1
+  }
+  give true
+}
+
+proc summary(m: MirModule) -> string {
+  give "module=" + m.name +
+       ",blocks=" + m.blocks.len.to_string() +
+       ",instrs=" + instr_count(m).to_string()
+}
+
+proc block_count(m: MirModule) -> int {
+  give m.blocks.len
+}
+
+proc find_block(m: MirModule, name: string) -> MirBlock {
+  let i: int = 0
+  loop {
+    if i >= m.blocks.len { break }
+    if m.blocks[i].name == name { give m.blocks[i] }
+    i = i + 1
+  }
+  give MirBlock("", [])
+}
+
+proc count_op(m: MirModule, op: MirOp) -> int {
+  let c: int = 0
+  let bi: int = 0
+  loop {
+    if bi >= m.blocks.len { break }
+    let ii: int = 0
+    loop {
+      if ii >= m.blocks[bi].instrs.len { break }
+      if m.blocks[bi].instrs[ii].op == op { c = c + 1 }
+      ii = ii + 1
+    }
+    bi = bi + 1
+  }
+  give c
+}
+
+proc mir_health(m: MirModule) -> string {
+  if !validate(m) { give "invalid" }
+  if count_op(m, MirOp.Ret) == 0 { give "no-ret" }
+  give "ok"
+}
+
+proc block_instr_count(m: MirModule, name: string) -> int {
+  give find_block(m, name).instrs.len
+}
+
+proc has_op(m: MirModule, op: MirOp) -> bool {
+  give count_op(m, op) > 0
+}
+
+proc mir_diagnostics(m: MirModule) -> string {
+  give summary(m) +
+       ",calls=" + count_op(m, MirOp.Call).to_string() +
+       ",health=" + mir_health(m)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/mir"
+}
+
 <<< ROLE-CONTRACT
 package: vitte/mir
 role: Representation MIR orientee transformations et generation

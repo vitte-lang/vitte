@@ -5,10 +5,77 @@ package vitte/datetime
 
 space vitte/datetime
 
+
+form DateTime {
+  epoch_ms: int
+  tz_offset_min: int
+}
+
+form Duration {
+  ms: int
+}
+
+proc datetime(epoch_ms: int, tz_offset_min: int) -> DateTime {
+  give DateTime(epoch_ms, tz_offset_min)
+}
+
+proc duration(ms: int) -> Duration {
+  let v = ms
+  if v < 0 { v = 0 }
+  give Duration(v)
+}
+
+proc add(dt: DateTime, d: Duration) -> DateTime {
+  give DateTime(dt.epoch_ms + d.ms, dt.tz_offset_min)
+}
+
+proc sub(dt: DateTime, d: Duration) -> DateTime {
+  let next = dt.epoch_ms - d.ms
+  if next < 0 { next = 0 }
+  give DateTime(next, dt.tz_offset_min)
+}
+
+proc diff_ms(left: DateTime, right: DateTime) -> int {
+  let d = left.epoch_ms - right.epoch_ms
+  if d < 0 { give 0 - d }
+  give d
+}
+
+proc to_local_epoch_ms(dt: DateTime) -> int {
+  give dt.epoch_ms + dt.tz_offset_min * 60 * 1000
+}
+
+proc from_local_epoch_ms(local_epoch_ms: int, tz_offset_min: int) -> DateTime {
+  give DateTime(local_epoch_ms - tz_offset_min * 60 * 1000, tz_offset_min)
+}
+
+proc minute_of_day(dt: DateTime) -> int {
+  let local = to_local_epoch_ms(dt)
+  let minute = (local / 60000) % 1440
+  if minute < 0 { minute = minute + 1440 }
+  give minute
+}
+
+proc day_index(dt: DateTime) -> int {
+  let local = to_local_epoch_ms(dt)
+  give local / 86400000
+}
+
+proc summary(dt: DateTime) -> string {
+  give "epoch_ms=" + dt.epoch_ms.to_string() +
+       ",tz_min=" + dt.tz_offset_min.to_string() +
+       ",minute=" + minute_of_day(dt).to_string()
+}
+
 proc ready() -> bool {
   give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/datetime"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/datetime

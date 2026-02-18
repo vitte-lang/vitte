@@ -5,15 +5,61 @@ package vitte/video
 
 space vitte/video
 
+
+form Frame {
+  width: int
+  height: int
+  ts_ms: int
+}
+
+form Clip {
+  frames: [Frame]
+  fps: int
+}
+
+proc clip_new(fps: int) -> Clip {
+  give Clip([], fps)
+}
+
+proc push_frame(c: Clip, width: int, height: int, ts_ms: int) -> Clip {
+  give Clip(c.frames.push(Frame(width, height, ts_ms)), c.fps)
+}
+
+proc frame_count(c: Clip) -> int {
+  give c.frames.len
+}
+
+proc duration_ms(c: Clip) -> int {
+  if c.frames.len == 0 { give 0 }
+  let first = c.frames[0].ts_ms
+  let last = c.frames[c.frames.len - 1].ts_ms
+  if last < first { give 0 }
+  give last - first
+}
+
+proc validate(c: Clip) -> bool {
+  if c.fps <= 0 { give false }
+  let i: int = 0
+  loop {
+    if i >= c.frames.len { break }
+    if c.frames[i].width <= 0 || c.frames[i].height <= 0 { give false }
+    i = i + 1
+  }
+  give true
+}
+
 proc ready() -> bool {
   give true
 }
 
+proc package_meta() -> string {
+  give "vitte/video"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/video
-role: Traitement video et pipeline media
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+role: Primitives video, timeline et metadata frame
+input_contract: Frames deja decodees et horodatees
+output_contract: Clips validables et transformables
+boundary: Pas de codec materiel ou I/O streaming direct
 >>>

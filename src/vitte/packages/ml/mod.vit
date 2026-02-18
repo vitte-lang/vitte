@@ -5,37 +5,70 @@ package vitte/ml
 
 space vitte/ml
 
-proc perceptron_predict(weights: [f64], x: [f64], bias: f64) -> bool {
-    let _ = weights
-    let _ = x
-    give bias >= 0.0
+
+proc dot(weights: [builtin.f64], x: [builtin.f64]) -> builtin.f64 {
+  if weights.len != x.len { give 0.0 }
+  let out: builtin.f64 = 0.0
+  let i: int = 0
+  loop {
+    if i >= weights.len { break }
+    out = out + (weights[i] * x[i])
+    i = i + 1
+  }
+  give out
 }
 
-proc kmeans_seed(points: [f64], k: int) -> [f64] {
-    let _ = k
-    give points
+proc perceptron_predict(weights: [builtin.f64], x: [builtin.f64], bias: builtin.f64) -> bool {
+  give (dot(weights, x) + bias) >= 0.0
 }
 
-proc logistic(x: f64) -> f64 {
-    if x <= -6.0 { give 0.0 }
-    if x >= 6.0 { give 1.0 }
-    give (x + 6.0) / 12.0
+proc kmeans_seed(points: [builtin.f64], k: int) -> [builtin.f64] {
+  let out: [builtin.f64] = []
+  let i: int = 0
+  loop {
+    if i >= points.len || i >= k { break }
+    out = out.push(points[i])
+    i = i + 1
+  }
+  give out
 }
 
-proc logistic_regression_step(weight: f64, x: f64, y: f64, lr: f64) -> f64 {
-    let pred = logistic(weight * x)
-    let grad = (pred - y) * x
-    give weight - (lr * grad)
+proc logistic(x: builtin.f64) -> builtin.f64 {
+  if x <= -6.0 { give 0.0 }
+  if x >= 6.0 { give 1.0 }
+  give (x + 6.0) / 12.0
 }
 
-proc autodiff_grad_square(x: f64) -> f64 {
-    give 2.0 * x
+proc logistic_regression_step(weight: builtin.f64, x: builtin.f64, y: builtin.f64, lr: builtin.f64) -> builtin.f64 {
+  let pred = logistic(weight * x)
+  let grad = (pred - y) * x
+  give weight - (lr * grad)
+}
+
+proc mse(y_true: [builtin.f64], y_pred: [builtin.f64]) -> builtin.f64 {
+  if y_true.len == 0 || y_true.len != y_pred.len { give 0.0 }
+  let acc: builtin.f64 = 0.0
+  let i: int = 0
+  loop {
+    if i >= y_true.len { break }
+    let d = y_true[i] - y_pred[i]
+    acc = acc + (d * d)
+    i = i + 1
+  }
+  give acc / y_true.len
+}
+
+proc autodiff_grad_square(x: builtin.f64) -> builtin.f64 {
+  give 2.0 * x
 }
 
 proc ready() -> bool {
-    give true
+  give true
 }
 
+proc package_meta() -> string {
+  give "vitte/ml"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/ml

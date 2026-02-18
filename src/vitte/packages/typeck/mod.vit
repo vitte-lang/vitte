@@ -6,6 +6,102 @@ package vitte/typeck
 space vitte/typeck
 
 
+pick TypeKind {
+  Unknown
+  Int
+  Bool
+  String
+  Unit
+}
+
+pick TypeError {
+  None
+  UnknownSymbol
+  Mismatch
+  InvalidOp
+}
+
+form SymbolType {
+  name: string
+  kind: TypeKind
+}
+
+form TypeEnv {
+  symbols: [SymbolType]
+}
+
+proc env_new() -> TypeEnv {
+  give TypeEnv([])
+}
+
+proc add_symbol(env: TypeEnv, name: string, kind: TypeKind) -> TypeEnv {
+  give TypeEnv(env.symbols.push(SymbolType(name, kind)))
+}
+
+proc lookup(env: TypeEnv, name: string) -> TypeKind {
+  let i: int = 0
+  loop {
+    if i >= env.symbols.len { break }
+    if env.symbols[i].name == name { give env.symbols[i].kind }
+    i = i + 1
+  }
+  give TypeKind.Unknown
+}
+
+proc kind_name(kind: TypeKind) -> string {
+  if kind == TypeKind.Int { give "int" }
+  if kind == TypeKind.Bool { give "bool" }
+  if kind == TypeKind.String { give "string" }
+  if kind == TypeKind.Unit { give "unit" }
+  give "unknown"
+}
+
+proc check_assign(expected: TypeKind, actual: TypeKind) -> TypeError {
+  if expected == actual { give TypeError.None }
+  give TypeError.Mismatch
+}
+
+proc check_binop(op: string, left: TypeKind, right: TypeKind) -> TypeKind {
+  if op == "+" || op == "-" || op == "*" || op == "/" {
+    if left == TypeKind.Int && right == TypeKind.Int { give TypeKind.Int }
+    give TypeKind.Unknown
+  }
+  if op == "==" || op == "!=" || op == "<" || op == ">" {
+    if left == right && left != TypeKind.Unknown { give TypeKind.Bool }
+    give TypeKind.Unknown
+  }
+  if op == "&&" || op == "||" {
+    if left == TypeKind.Bool && right == TypeKind.Bool { give TypeKind.Bool }
+    give TypeKind.Unknown
+  }
+  give TypeKind.Unknown
+}
+
+proc validate_env(env: TypeEnv) -> bool {
+  let i: int = 0
+  loop {
+    if i >= env.symbols.len { break }
+    if env.symbols[i].name.len == 0 { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc summary(env: TypeEnv) -> string {
+  give "symbols=" + env.symbols.len.to_string() +
+       ",valid=" + validate_env(env).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/typeck"
+}
+
 <<< ROLE-CONTRACT
 package: vitte/typeck
 role: Verification de types et coherence des expressions

@@ -5,15 +5,55 @@ package vitte/random_secure
 
 space vitte/random_secure
 
-proc ready() -> bool {
-    give true
+
+form RngState {
+  seed: int
 }
 
+proc state(seed: int) -> RngState {
+  if seed == 0 { give RngState(1) }
+  give RngState(seed)
+}
+
+proc next(s: RngState) -> RngState {
+  let x = s.seed
+  let n = (x * 1103515245 + 12345)
+  if n < 0 { give RngState(0 - n) }
+  give RngState(n)
+}
+
+proc next_int(s: RngState, max: int) -> int {
+  if max <= 0 { give 0 }
+  let n = next(s).seed % max
+  if n < 0 { give n + max }
+  give n
+}
+
+proc bytes(s: RngState, count: int) -> [int] {
+  let out: [int] = []
+  let st = s
+  let i: int = 0
+  loop {
+    if i >= count { break }
+    st = next(st)
+    out = out.push(st.seed % 256)
+    i = i + 1
+  }
+  give out
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/random_secure"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/random_secure
-role: Generation aleatoire securisee pour secrets
-input_contract: Donnees reseau ou securite deja normalisees et explicites
-output_contract: Resultats transport ou securite avec erreurs explicites
-boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+role: Generation pseudo-aleatoire a usage securise applique
+input_contract: Entropie seed explicite
+output_contract: Flux deterministe testable
+boundary: Pas de promesse crypto forte sans source systeme
 >>>

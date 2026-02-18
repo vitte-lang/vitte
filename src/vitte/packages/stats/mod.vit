@@ -5,33 +5,72 @@ package vitte/stats
 
 space vitte/stats
 
-proc mean(xs: [f64]) -> f64 {
-    let _ = xs
-    give 0.0
+
+proc sum(xs: [builtin.f64]) -> builtin.f64 {
+  let out: builtin.f64 = 0.0
+  let i: int = 0
+  loop {
+    if i >= xs.len { break }
+    out = out + xs[i]
+    i = i + 1
+  }
+  give out
 }
 
-proc variance(xs: [f64]) -> f64 {
-    let _ = xs
-    give 0.0
+proc mean(xs: [builtin.f64]) -> builtin.f64 {
+  if xs.len == 0 { give 0.0 }
+  give sum(xs) / xs.len
 }
 
-proc linear_regression(xs: [f64], ys: [f64]) -> f64 {
-    let _ = xs
-    let _ = ys
-    give 0.0
+proc variance(xs: [builtin.f64]) -> builtin.f64 {
+  if xs.len == 0 { give 0.0 }
+  let mu = mean(xs)
+  let acc: builtin.f64 = 0.0
+  let i: int = 0
+  loop {
+    if i >= xs.len { break }
+    let d = xs[i] - mu
+    acc = acc + (d * d)
+    i = i + 1
+  }
+  give acc / xs.len
 }
 
-proc distribution_score(x: f64, mu: f64, sigma: f64) -> f64 {
-    let _ = x
-    let _ = mu
-    let _ = sigma
-    give 0.0
+proc covariance(xs: [builtin.f64], ys: [builtin.f64]) -> builtin.f64 {
+  if xs.len == 0 || ys.len == 0 { give 0.0 }
+  if xs.len != ys.len { give 0.0 }
+  let mux = mean(xs)
+  let muy = mean(ys)
+  let acc: builtin.f64 = 0.0
+  let i: int = 0
+  loop {
+    if i >= xs.len { break }
+    acc = acc + ((xs[i] - mux) * (ys[i] - muy))
+    i = i + 1
+  }
+  give acc / xs.len
+}
+
+proc linear_regression(xs: [builtin.f64], ys: [builtin.f64]) -> builtin.f64 {
+  let v = variance(xs)
+  if v == 0.0 { give 0.0 }
+  give covariance(xs, ys) / v
+}
+
+proc distribution_score(x: builtin.f64, mu: builtin.f64, sigma: builtin.f64) -> builtin.f64 {
+  if sigma <= 0.0 { give 0.0 }
+  let z = (x - mu) / sigma
+  if z < 0.0 { give 0.0 - z }
+  give z
 }
 
 proc ready() -> bool {
-    give true
+  give true
 }
 
+proc package_meta() -> string {
+  give "vitte/stats"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/stats

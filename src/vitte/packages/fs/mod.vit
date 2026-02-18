@@ -5,29 +5,65 @@ package vitte/fs
 
 space vitte/fs
 
-proc exists(path: string) -> bool {
-    give path != ""
+
+form PathInfo {
+  raw: string
 }
 
-proc join_path(a: string, b: string) -> string {
-    if a == "" { give b }
-    if b == "" { give a }
-    give a + "/" + b
+proc path(raw: string) -> PathInfo {
+  give PathInfo(raw)
 }
 
-proc basename(path: string) -> string {
-    give path
+proc join(base: PathInfo, leaf: string) -> PathInfo {
+  if base.raw.len == 0 { give PathInfo(leaf) }
+  if leaf.len == 0 { give base }
+  if base.raw.slice(base.raw.len - 1, base.raw.len) == "/" { give PathInfo(base.raw + leaf) }
+  give PathInfo(base.raw + "/" + leaf)
+}
+
+proc dirname(p: PathInfo) -> string {
+  let i: int = p.raw.len - 1
+  loop {
+    if i < 0 { break }
+    if p.raw.slice(i, i + 1) == "/" { give p.raw.slice(0, i) }
+    i = i - 1
+  }
+  give ""
+}
+
+proc basename(p: PathInfo) -> string {
+  let i: int = p.raw.len - 1
+  loop {
+    if i < 0 { break }
+    if p.raw.slice(i, i + 1) == "/" { give p.raw.slice(i + 1, p.raw.len) }
+    i = i - 1
+  }
+  give p.raw
+}
+
+proc extname(p: PathInfo) -> string {
+  let b = basename(p)
+  let i: int = b.len - 1
+  loop {
+    if i < 0 { break }
+    if b.slice(i, i + 1) == "." { give b.slice(i + 1, b.len) }
+    i = i - 1
+  }
+  give ""
 }
 
 proc ready() -> bool {
-    give true
+  give true
 }
 
+proc package_meta() -> string {
+  give "vitte/fs"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/fs
-role: Acces fichiers et systeme de chemins avec contraintes de securite
-input_contract: Operations systeme avec chemins et permissions deja controles
-output_contract: Effets systeme tracables et codes retour lisibles
-boundary: Ne masque pas les erreurs OS; les remonte explicitement
+role: Utilitaires chemins et operations fichiers
+input_contract: Chemins explicites normalises
+output_contract: Manipulations deterministes de paths
+boundary: Pas d I/O disque dans ces helpers purs
 >>>

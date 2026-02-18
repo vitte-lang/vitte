@@ -6,6 +6,146 @@ package vitte/bench
 space vitte/bench
 
 
+form BenchCase {
+  name: string
+  iterations: int
+}
+
+form BenchRun {
+  case_name: string
+  started_ms: int
+  ended_ms: int
+  iterations: int
+}
+
+form BenchSummary {
+  case_name: string
+  elapsed_ms: int
+  iter_per_sec: int
+}
+
+proc bench_case(name: string, iterations: int) -> BenchCase {
+  let it = iterations
+  if it < 1 { it = 1 }
+  give BenchCase(name, it)
+}
+
+proc run_start(c: BenchCase, now_ms: int) -> BenchRun {
+  give BenchRun(c.name, now_ms, now_ms, c.iterations)
+}
+
+proc run_stop(r: BenchRun, now_ms: int) -> BenchRun {
+  let end = now_ms
+  if end < r.started_ms { end = r.started_ms }
+  give BenchRun(r.case_name, r.started_ms, end, r.iterations)
+}
+
+proc elapsed_ms(r: BenchRun) -> int {
+  let e = r.ended_ms - r.started_ms
+  if e < 0 { give 0 }
+  give e
+}
+
+proc iter_per_sec(r: BenchRun) -> int {
+  let e = elapsed_ms(r)
+  if e <= 0 { give r.iterations }
+  give r.iterations * 1000 / e
+}
+
+proc summarize(r: BenchRun) -> BenchSummary {
+  give BenchSummary(r.case_name, elapsed_ms(r), iter_per_sec(r))
+}
+
+proc compare(a: BenchRun, b: BenchRun) -> int {
+  let ia = iter_per_sec(a)
+  let ib = iter_per_sec(b)
+  give ia - ib
+}
+
+proc faster(a: BenchRun, b: BenchRun) -> string {
+  if compare(a, b) >= 0 { give a.case_name }
+  give b.case_name
+}
+
+proc summary_text(s: BenchSummary) -> string {
+  give "case=" + s.case_name +
+       ",elapsed_ms=" + s.elapsed_ms.to_string() +
+       ",iter_per_sec=" + s.iter_per_sec.to_string()
+}
+
+proc percentile50(values: [int]) -> int {
+  if values.len == 0 { give 0 }
+  give values[values.len / 2]
+}
+
+proc average(values: [int]) -> int {
+  if values.len == 0 { give 0 }
+  let sum: int = 0
+  let i: int = 0
+  loop {
+    if i >= values.len { break }
+    sum = sum + values[i]
+    i = i + 1
+  }
+  give sum / values.len
+}
+
+proc stability_score(samples: [int]) -> int {
+  if samples.len == 0 { give 0 }
+  let avg = average(samples)
+  if avg <= 0 { give 0 }
+  let min = samples[0]
+  let max = samples[0]
+  let i: int = 1
+  loop {
+    if i >= samples.len { break }
+    if samples[i] < min { min = samples[i] }
+    if samples[i] > max { max = samples[i] }
+    i = i + 1
+  }
+  let delta = max - min
+  let score = 100 - (delta * 100 / avg)
+  if score < 0 { give 0 }
+  if score > 100 { give 100 }
+  give score
+}
+
+proc bench_health(r: BenchRun) -> string {
+  if elapsed_ms(r) <= 0 { give "no-time" }
+  if iter_per_sec(r) <= 0 { give "no-throughput" }
+  give "ok"
+}
+
+proc normalize_run(r: BenchRun) -> BenchRun {
+  let end = r.ended_ms
+  if end < r.started_ms { end = r.started_ms }
+  let it = r.iterations
+  if it < 1 { it = 1 }
+  give BenchRun(r.case_name, r.started_ms, end, it)
+}
+
+proc compare_percent(a: BenchRun, b: BenchRun) -> int {
+  let ia = iter_per_sec(normalize_run(a))
+  let ib = iter_per_sec(normalize_run(b))
+  if ib == 0 { give 0 }
+  give (ia - ib) * 100 / ib
+}
+
+proc run_diagnostics(r: BenchRun) -> string {
+  let s = summarize(normalize_run(r))
+  give summary_text(s) + ",health=" + bench_health(r)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/bench"
+}
+
 <<< ROLE-CONTRACT
 package: vitte/bench
 role: Mesure performance et bench reproductibles

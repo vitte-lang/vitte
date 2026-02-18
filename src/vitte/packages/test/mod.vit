@@ -5,27 +5,58 @@ package vitte/test
 
 space vitte/test
 
-proc assert_true(cond: bool) {
-    if !cond {
-        builtin.trap("assert_true failed")
-    }
+
+pick TestStatus {
+  Passed
+  Failed
 }
 
-proc assert_eq_int(a: int, b: int) {
-    if a != b {
-        builtin.trap("assert_eq_int failed")
-    }
+form TestCase {
+  name: string
+  status: TestStatus
+  message: string
+}
+
+form TestSuite {
+  name: string
+  cases: [TestCase]
+}
+
+proc suite(name: string) -> TestSuite {
+  give TestSuite(name, [])
+}
+
+proc add_case(s: TestSuite, name: string, status: TestStatus, message: string) -> TestSuite {
+  give TestSuite(s.name, s.cases.push(TestCase(name, status, message)))
+}
+
+proc failed_count(s: TestSuite) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= s.cases.len { break }
+    if s.cases[i].status == TestStatus.Failed { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc ok(s: TestSuite) -> bool {
+  give failed_count(s) == 0
 }
 
 proc ready() -> bool {
-    give true
+  give true
 }
 
+proc package_meta() -> string {
+  give "vitte/test"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/test
-role: Outillage tests: assertions runner et snapshots
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+role: Modeles et helpers de tests automatises
+input_contract: Cas de tests explicites
+output_contract: Resultats agreges clairs
+boundary: N execute pas le runner externe
 >>>

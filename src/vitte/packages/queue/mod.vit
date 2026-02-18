@@ -5,6 +5,7 @@ package vitte/queue
 
 space vitte/queue
 
+
 pick QueueState {
   Pending
   Inflight
@@ -188,10 +189,113 @@ proc stats(queue: Queue) -> string {
        ",dead=" + queue.dead.len.to_string()
 }
 
+pick QueueError {
+  None
+  EmptyQueue
+  NotFound
+  MaxAttempts
+}
+
+form QueueProcessResult {
+  queue: Queue
+  error: QueueError
+  item_id: int
+}
+
+proc find_pending(queue: Queue, item_id: int) -> QueueItem {
+  let i: int = 0
+  loop {
+    if i >= queue.pending.len { break }
+    if queue.pending[i].id == item_id { give queue.pending[i] }
+    i = i + 1
+  }
+  give QueueItem(-1, "", 0, QueueState.Pending)
+}
+
+proc find_inflight(queue: Queue, item_id: int) -> QueueItem {
+  let i: int = 0
+  loop {
+    if i >= queue.inflight.len { break }
+    if queue.inflight[i].id == item_id { give queue.inflight[i] }
+    i = i + 1
+  }
+  give QueueItem(-1, "", 0, QueueState.Inflight)
+}
+
+proc exists(queue: Queue, item_id: int) -> bool {
+  if attempts_of(queue, item_id) >= 0 { give true }
+  give false
+}
+
+proc dequeue_one(queue: Queue) -> QueueProcessResult {
+  if !can_dequeue(queue) {
+    give QueueProcessResult(queue, QueueError.EmptyQueue, -1)
+  }
+  let first = peek(queue)
+  give QueueProcessResult(dequeue(queue), QueueError.None, first.id)
+}
+
+proc ack_safe(queue: Queue, item_id: int) -> QueueProcessResult {
+  if find_inflight(queue, item_id).id < 0 {
+    give QueueProcessResult(queue, QueueError.NotFound, item_id)
+  }
+  give QueueProcessResult(ack(queue, item_id), QueueError.None, item_id)
+}
+
+proc nack_safe(queue: Queue, item_id: int) -> QueueProcessResult {
+  let item = find_inflight(queue, item_id)
+  if item.id < 0 {
+    give QueueProcessResult(queue, QueueError.NotFound, item_id)
+  }
+  if item.attempts + 1 >= queue.max_attempts {
+    give QueueProcessResult(nack(queue, item_id), QueueError.MaxAttempts, item_id)
+  }
+  give QueueProcessResult(nack(queue, item_id), QueueError.None, item_id)
+}
+
+proc retryable(queue: Queue, item_id: int) -> bool {
+  let attempts = attempts_of(queue, item_id)
+  if attempts < 0 { give false }
+  give attempts + 1 < queue.max_attempts
+}
+
+proc done_ratio_percent(queue: Queue) -> int {
+  let total = total_count(queue)
+  if total <= 0 { give 0 }
+  give done_count(queue) * 100 / total
+}
+
+proc dead_ratio_percent(queue: Queue) -> int {
+  let total = total_count(queue)
+  if total <= 0 { give 0 }
+  give queue.dead.len * 100 / total
+}
+
+proc pop_dead(queue: Queue) -> QueueProcessResult {
+  if queue.dead.len == 0 {
+    give QueueProcessResult(queue, QueueError.EmptyQueue, -1)
+  }
+  let item = queue.dead[0]
+  let dead = drop_first(queue.dead)
+  let next = Queue(queue.next_id, queue.max_attempts, queue.pending, queue.inflight, queue.done, dead)
+  give QueueProcessResult(next, QueueError.None, item.id)
+}
+
+proc queue_health(queue: Queue) -> string {
+  if queue.dead.len > 0 { give "degraded" }
+  if queue.inflight.len > queue.pending.len + 10 { give "warning" }
+  give "ok"
+}
+
 proc ready() -> bool {
   give true
 }
 
+
+
+proc package_meta() -> string {
+    give "vitte/queue"
+}
 
 <<< ROLE-CONTRACT
 package: vitte/queue
