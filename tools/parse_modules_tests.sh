@@ -27,11 +27,11 @@ if [[ "${PARSE_MODULES_STD:-0}" = "1" ]]; then
       files+=("$item")
     done < <(printf "%s\n" $PARSE_MODULES_STD_LIST)
   else
-    # Minimal std subset; expand when std syntax stabilizes.
+    # Minimal package subset; expand when package syntax stabilizes.
     files+=(
-      "$ROOT_DIR/src/vitte/std/core/types.vit"
-      "$ROOT_DIR/src/vitte/std/core/option.vit"
-      "$ROOT_DIR/src/vitte/std/core/result.vit"
+      "$ROOT_DIR/src/vitte/packages/core/mod.vit"
+      "$ROOT_DIR/src/vitte/packages/io/mod.vit"
+      "$ROOT_DIR/src/vitte/packages/math/mod.vit"
     )
   fi
 fi
