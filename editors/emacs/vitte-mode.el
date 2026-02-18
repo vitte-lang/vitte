@@ -4,6 +4,24 @@
 
 (defvar vitte-mode-hook nil)
 
+(defgroup vitte nil
+  "Vitte language support."
+  :group 'languages)
+
+(defcustom vitte-binary
+  (or (executable-find "vitte") "vitte")
+  "Path to the Vitte binary used by helper commands."
+  :type 'string
+  :group 'vitte)
+
+(defvar vitte-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-c") #'vitte-check-buffer)
+    (define-key map (kbd "C-c C-b") #'vitte-build-buffer)
+    (define-key map (kbd "C-c C-p") #'vitte-parse-buffer)
+    map)
+  "Keymap for `vitte-mode'.")
+
 (defvar vitte-mode-syntax-table
   (let ((st (make-syntax-table)))
     (modify-syntax-entry ?_ "w" st)
@@ -34,9 +52,41 @@
     ("#\\[[^]]+\\]" . font-lock-preprocessor-face)
     ("\\<use\\>\\s-+\\([A-Za-z0-9_./]+\\)" 1 font-lock-constant-face)))
 
+(defun vitte--file-or-error ()
+  "Return current buffer file path or raise an error."
+  (or (buffer-file-name)
+      (user-error "Buffer is not visiting a file")))
+
+(defun vitte--run (subcommand file)
+  "Run Vitte SUBCOMMAND on FILE using `compile'."
+  (let ((cmd (format "%s %s %s"
+                     (shell-quote-argument vitte-binary)
+                     subcommand
+                     (shell-quote-argument file))))
+    (compile cmd)))
+
+;;;###autoload
+(defun vitte-check-buffer ()
+  "Run `vitte check` on current buffer file."
+  (interactive)
+  (vitte--run "check" (vitte--file-or-error)))
+
+;;;###autoload
+(defun vitte-build-buffer ()
+  "Run `vitte build` on current buffer file."
+  (interactive)
+  (vitte--run "build" (vitte--file-or-error)))
+
+;;;###autoload
+(defun vitte-parse-buffer ()
+  "Run `vitte parse` on current buffer file."
+  (interactive)
+  (vitte--run "parse" (vitte--file-or-error)))
+
 ;;;###autoload
 (define-derived-mode vitte-mode prog-mode "Vitte"
   "Major mode for editing Vitte source files."
+  :keymap vitte-mode-map
   :syntax-table vitte-mode-syntax-table
   (setq font-lock-defaults '(vitte-font-lock-keywords))
   (setq-local comment-start "// ")
