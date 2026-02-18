@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STD_ROOT = ROOT / "src" / "vitte" / "std"
+STD_ROOT = ROOT / "src" / "vitte" / "packages"
 HOST_RUNTIME_HDR = ROOT / "src" / "compiler" / "backends" / "runtime" / "vitte_runtime.hpp"
 ARDUINO_RUNTIME_HDR = ROOT / "target" / "arduino" / "include" / "vitte_runtime.hpp"
 KERNEL_GRUB_RUNTIME_HDR = ROOT / "target" / "kernel" / "x86_64" / "grub" / "include" / "vitte_runtime.hpp"
@@ -45,11 +45,11 @@ def profile_allows(profile: str, rel: Path) -> bool:
     if profile == "all":
         return True
     if profile == "host":
-        return not rel_posix.startswith("src/vitte/std/arduino/") and not rel_posix.startswith("src/vitte/std/kernel/")
+        return not rel_posix.startswith("src/vitte/packages/arduino/") and not rel_posix.startswith("src/vitte/packages/kernel/")
     if profile == "arduino":
-        return rel_posix.startswith("src/vitte/std/arduino/")
+        return rel_posix.startswith("src/vitte/packages/arduino/")
     if profile == "kernel":
-        return rel_posix.startswith("src/vitte/std/kernel/")
+        return rel_posix.startswith("src/vitte/packages/kernel/")
     return True
 
 
