@@ -110,6 +110,26 @@ Notes:
 
 ---
 
+## Completion Maintenance
+
+When updating CLI completion behavior:
+
+1. Edit `tools/completions/spec.json`.
+2. Regenerate completion files:
+   ```sh
+   make completions-gen
+   ```
+3. Validate and compare snapshots:
+   ```sh
+   make completions-snapshots
+   ```
+
+Useful extras:
+- `make completions-snapshots-update` to refresh golden snapshots.
+- `make ci-completions` to run check + lint + snapshots + fallback-mode test.
+
+---
+
 ## Detailed Installation
 
 Use this section if you want a clean, repeatable setup.
