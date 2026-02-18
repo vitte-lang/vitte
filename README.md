@@ -614,7 +614,7 @@ This keeps reviews fast and helps others understand your changes.
 The repository is split into clear areas. This helps beginners navigate:
 
 - `src/` : the compiler implementation.
-- `src/vitte/std/` : the standard library.
+- `src/vitte/packages/` : the standard library packages.
 - `examples/` : example `.vit` programs.
 - `tests/` : language and regression tests.
 - `tools/` : scripts and utilities.
