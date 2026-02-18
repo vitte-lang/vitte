@@ -38,7 +38,7 @@ static std::filesystem::path detect_repo_root(const std::filesystem::path& start
 
     while (true) {
         const auto runtime = cur / "src/compiler/backends/runtime/vitte_runtime.hpp";
-        const auto stdlib = cur / "src/vitte/std";
+        const auto stdlib = cur / "src/vitte/packages";
         if (std::filesystem::exists(runtime) || std::filesystem::exists(stdlib)) {
             return cur;
         }
