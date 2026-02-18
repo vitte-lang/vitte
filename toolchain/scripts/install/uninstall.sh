@@ -17,6 +17,7 @@ DRY_RUN="${DRY_RUN:-0}"               # 0 | 1
 
 # Known binaries
 BINS=(
+  "vitte"
   "vittec"
   "vitte-linker"
 )
@@ -88,6 +89,10 @@ BINDIR="$PREFIX/bin"
 LIBDIR="$PREFIX/lib/vitte"
 INCLUDEDIR="$PREFIX/include/vitte"
 SHAREDIR="$PREFIX/share/vitte"
+MANDIR="$PREFIX/share/man/man1"
+BASHCOMPDIR="$PREFIX/etc/bash_completion.d"
+ZSHCOMPDIR="$PREFIX/share/zsh/site-functions"
+FISHCOMPDIR="$PREFIX/share/fish/vendor_completions.d"
 
 log "uninstalling from prefix=$PREFIX (mode=$MODE dry-run=$DRY_RUN)"
 
@@ -101,5 +106,11 @@ done
 rm_if_exists "$LIBDIR"
 rm_if_exists "$INCLUDEDIR"
 rm_if_exists "$SHAREDIR"
+rm_if_exists "$MANDIR/vitte.1"
+rm_if_exists "$MANDIR/vittec.1"
+rm_if_exists "$MANDIR/vitte-linker.1"
+rm_if_exists "$BASHCOMPDIR/vitte"
+rm_if_exists "$ZSHCOMPDIR/_vitte"
+rm_if_exists "$FISHCOMPDIR/vitte.fish"
 
 log "uninstall complete"
