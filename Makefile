@@ -262,7 +262,10 @@ update-diagnostics-ftl:
 ci-strict: grammar-check book-qa-strict negative-tests diag-snapshots
 
 .PHONY: ci-fast
-ci-fast: grammar-check negative-tests diag-snapshots wrapper-stage-test
+ci-fast: grammar-check negative-tests diag-snapshots completions-snapshots wrapper-stage-test
+
+.PHONY: ci-completions
+ci-completions: completions-check completions-lint completions-snapshots completions-fallback
 
 .PHONY: runtime-matrix-modules
 runtime-matrix-modules:
@@ -345,18 +348,61 @@ modules-tests:
 modules-snapshots:
 	@tools/modules_snapshots.sh
 
+.PHONY: completions-gen
+completions-gen:
+	@python3 tools/generate_completions.py
+
+.PHONY: completions-check
+completions-check:
+	@python3 tools/generate_completions.py --check
+
+.PHONY: completions-snapshots
+completions-snapshots:
+	@tools/completions_snapshots.sh
+
+.PHONY: completions-snapshots-update
+completions-snapshots-update:
+	@tools/completions_snapshots.sh --update
+
+.PHONY: completions-lint
+completions-lint:
+	@bash -n completions/bash/vitte
+	@zsh -n completions/zsh/_vitte
+	@if command -v fish >/dev/null 2>&1; then \
+		fish -n completions/fish/vitte.fish; \
+	else \
+		echo "fish not installed, syntax check skipped"; \
+	fi
+
+.PHONY: completions-fallback
+completions-fallback:
+	@tools/completions_fallback_test.sh
+
 .PHONY: same-output-hash
 same-output-hash:
 	@tools/same_output_hash_test.sh
 
 .PHONY: ci-std-fast
-ci-std-fast: std-check extern-abi-host stdlib-api-lint stdlib-profile-snapshots diag-snapshots wrapper-stage-test
+ci-std-fast: std-check extern-abi-host stdlib-api-lint stdlib-profile-snapshots diag-snapshots completions-snapshots wrapper-stage-test
 
 .PHONY: ci-mod-fast
-ci-mod-fast: grammar-check diag-snapshots stdlib-profile-snapshots stdlib-abi-compat modules-tests modules-snapshots same-output-hash
+ci-mod-fast: grammar-check diag-snapshots completions-snapshots stdlib-profile-snapshots stdlib-abi-compat modules-tests modules-snapshots same-output-hash
 
 .PHONY: ci-bridge-compat
 ci-bridge-compat: ci-mod-fast
+
+PKG_VERSION ?= 2.1.1
+
+.PHONY: pkg-macos
+pkg-macos:
+	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-pkg.sh
+
+.PHONY: pkg-macos-uninstall
+pkg-macos-uninstall:
+	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
+
+.PHONY: release-check
+release-check: build ci-fast ci-completions pkg-macos
 
 .PHONY: platon-editor
 platon-editor:
@@ -412,6 +458,15 @@ help:
 	@echo "  make modules-snapshots assert mod graph/doctor outputs"
 	@echo "  make explain-snapshots assert vitte explain outputs"
 	@echo "  make same-output-hash verify deterministic emit hash stability"
+	@echo "  make completions-gen regenerate bash/zsh/fish completions from unified spec"
+	@echo "  make completions-check verify generated completions are up to date"
+	@echo "  make completions-snapshots run completion snapshot assertions"
+	@echo "  make completions-snapshots-update update completion golden snapshots"
+	@echo "  make completions-lint syntax-check bash/zsh/fish completion files"
+	@echo "  make ci-completions run completion check + lint + snapshots + fallback"
+	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
+	@echo "  make pkg-macos-uninstall build macOS uninstall pkg (PKG_VERSION=$(PKG_VERSION))"
+	@echo "  make release-check run build + ci-fast + ci-completions + pkg build"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
 	@echo "  make platon-editor build and self-test platon editor core"
