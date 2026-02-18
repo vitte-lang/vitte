@@ -1,5 +1,6 @@
 {
   "proc": {
+    "scope": "vitte",
     "prefix": "proc",
     "body": [
       "proc ${1:name}(${2:args})${3: -> ${4:type}} {",
@@ -9,6 +10,7 @@
     "description": "proc definition"
   },
   "form": {
+    "scope": "vitte",
     "prefix": "form",
     "body": [
       "form ${1:Name} {",
@@ -18,6 +20,7 @@
     "description": "form definition"
   },
   "trait": {
+    "scope": "vitte",
     "prefix": "trait",
     "body": [
       "trait ${1:Name} {",
@@ -27,6 +30,7 @@
     "description": "trait definition"
   },
   "pick": {
+    "scope": "vitte",
     "prefix": "pick",
     "body": [
       "pick ${1:Name} {",
@@ -38,6 +42,7 @@
     "description": "pick definition"
   },
   "match": {
+    "scope": "vitte",
     "prefix": "match",
     "body": [
       "match ${1:expr} {",
@@ -51,6 +56,7 @@
     "description": "match expression"
   },
   "select": {
+    "scope": "vitte",
     "prefix": "select",
     "body": [
       "select ${1:expr}",
@@ -63,6 +69,7 @@
     "description": "select/when"
   },
   "when_is": {
+    "scope": "vitte",
     "prefix": "when is",
     "body": [
       "when ${1:expr} is ${2:pattern} {",
@@ -72,6 +79,7 @@
     "description": "when is pattern"
   },
   "entry": {
+    "scope": "vitte",
     "prefix": "entry",
     "body": [
       "entry ${1:main} at ${2:core/app} {",
@@ -81,6 +89,7 @@
     "description": "entry block"
   },
   "use": {
+    "scope": "vitte",
     "prefix": "use",
     "body": [
       "use ${1:std/core/types}.{${2:i32}}"
@@ -88,6 +97,7 @@
     "description": "use import"
   },
   "space": {
+    "scope": "vitte",
     "prefix": "space",
     "body": [
       "space ${1:my_project}/${2:module}"
@@ -95,6 +105,7 @@
     "description": "module namespace declaration"
   },
   "pull": {
+    "scope": "vitte",
     "prefix": "pull",
     "body": [
       "pull ${1:my_project}/${2:module} as ${3:mod}"
@@ -102,6 +113,7 @@
     "description": "import module with alias"
   },
   "share": {
+    "scope": "vitte",
     "prefix": "share",
     "body": [
       "share ${1:symbol_name}"
@@ -109,6 +121,7 @@
     "description": "re-export module symbol"
   },
   "module_template": {
+    "scope": "vitte",
     "prefix": "module",
     "body": [
       "space ${1:my_project}/${2:module}",
@@ -123,7 +136,210 @@
     ],
     "description": "vitte module skeleton"
   },
+  "usepkg": {
+    "scope": "vitte",
+    "prefix": "usepkg",
+    "body": [
+      "use vitte/${1:package} as ${2:v_pkg}"
+    ],
+    "description": "import a vitte package with alias"
+  },
+  "pkgmod": {
+    "scope": "vitte",
+    "prefix": "pkgmod",
+    "body": [
+      "<<<",
+      "mod.vit",
+      "package vitte/${1:package}",
+      ">>>",
+      "",
+      "space vitte/${1:package}",
+      "",
+      "proc ready() -> bool {",
+      "  give true",
+      "}",
+      "",
+      "",
+      "<<< ROLE-CONTRACT",
+      "package: vitte/${1:package}",
+      "role: ${2:Responsabilite technique du package}",
+      "input_contract: ${3:Donnees deja normalisees et explicites}",
+      "output_contract: ${4:Sorties stables et compatibles inter-package}",
+      "boundary: ${5:Ne choisit pas la politique metier}",
+      ">>>"
+    ],
+    "description": "vitte package mod.vit template with ROLE-CONTRACT"
+  },
+  "when_ok": {
+    "scope": "vitte",
+    "prefix": "whenok",
+    "body": [
+      "when ${1:res} is Result.Ok {",
+      "  let ${2:value} = ${1:res}.value",
+      "  $0",
+      "}"
+    ],
+    "description": "handle Result.Ok branch explicitly"
+  },
+  "when_err": {
+    "scope": "vitte",
+    "prefix": "whenerr",
+    "body": [
+      "when ${1:res} is Result.Err {",
+      "  let ${2:err} = ${1:res}.error",
+      "  $0",
+      "}"
+    ],
+    "description": "handle Result.Err branch explicitly"
+  },
+  "result_guard": {
+    "scope": "vitte",
+    "prefix": "resguard",
+    "body": [
+      "when ${1:res} is Result.Err {",
+      "  let ${2:err} = ${1:res}.error",
+      "  give ${3:Result.Err(${2:err})}",
+      "}",
+      "let ${4:value} = ${1:res}.value",
+      "$0"
+    ],
+    "description": "guard Result early then continue with value"
+  },
+  "module_hygiene": {
+    "scope": "vitte",
+    "prefix": "modhyg",
+    "body": [
+      "# module hygiene",
+      "# - space path canonical and stable",
+      "# - explicit aliases on use/pull",
+      "# - keep share list minimal and explicit"
+    ],
+    "description": "module hygiene checklist comment"
+  },
+  "json_value": {
+    "scope": "vitte",
+    "prefix": "json_value",
+    "body": [
+      "pick JsonValue {",
+      "  Null",
+      "  Bool(value: bool)",
+      "  Num(value: string)",
+      "  Str(value: string)",
+      "  Arr(value: [JsonValue])",
+      "  Obj(value: [string])",
+      "}"
+    ],
+    "description": "json value enum skeleton"
+  },
+  "json_encode_result": {
+    "scope": "vitte",
+    "prefix": "json_encode_result",
+    "body": [
+      "proc ${1:encode_json}(${2:value}: ${3:JsonValue}) -> Result[string, string] {",
+      "  ${0:give Result.Ok(\"{}\")}",
+      "}"
+    ],
+    "description": "json encode result signature"
+  },
+  "json_parse_result": {
+    "scope": "vitte",
+    "prefix": "json_parse_result",
+    "body": [
+      "proc ${1:parse_json}(${2:src}: string) -> Result[${3:JsonValue}, string] {",
+      "  ${0:give Result.Err(\"todo\")}",
+      "}"
+    ],
+    "description": "json parse result signature"
+  },
+  "whenokjson": {
+    "scope": "vitte",
+    "prefix": "whenokjson",
+    "body": [
+      "when ${1:res} is Result.Ok {",
+      "  let ${2:json} = ${1:res}.value",
+      "  $0",
+      "}"
+    ],
+    "description": "handle successful json Result"
+  },
+  "whenerrjson": {
+    "scope": "vitte",
+    "prefix": "whenerrjson",
+    "body": [
+      "when ${1:res} is Result.Err {",
+      "  let ${2:err} = ${1:res}.error",
+      "  $0",
+      "}"
+    ],
+    "description": "handle json parse/encode error Result"
+  },
+  "json_obj_fields": {
+    "scope": "vitte",
+    "prefix": "json_obj_fields",
+    "body": [
+      "proc ${1:read_${2:field}}(${3:src}: string) -> Result[string, string] {",
+      "  let parsed = ${4:parse_json}(${3:src})",
+      "  when parsed is Result.Err {",
+      "    let err = parsed.error",
+      "    give Result.Err(err)",
+      "  }",
+      "  let root = parsed.value",
+      "  ${0:give Result.Ok(\"\")}",
+      "}"
+    ],
+    "description": "json object field extraction skeleton with immediate Result.Err branch"
+  },
+  "json_match": {
+    "scope": "vitte",
+    "prefix": "json_match",
+    "body": [
+      "match ${1:value} {",
+      "  case JsonValue.Null {",
+      "    ${2:}",
+      "  }",
+      "  case JsonValue.Bool {",
+      "    ${3:}",
+      "  }",
+      "  case JsonValue.Num {",
+      "    ${4:}",
+      "  }",
+      "  case JsonValue.Str {",
+      "    ${5:}",
+      "  }",
+      "  case JsonValue.Arr {",
+      "    ${6:}",
+      "  }",
+      "  case JsonValue.Obj {",
+      "    ${7:}",
+      "  }",
+      "  otherwise {",
+      "    ${8:}",
+      "  }",
+      "}"
+    ],
+    "description": "match over JsonValue variants"
+  },
+  "usejson": {
+    "scope": "vitte",
+    "prefix": "usejson",
+    "body": [
+      "use std/json/mod as json_mod",
+      "use std/json/parse as json_parse",
+      "use std/json/encode as json_encode",
+      "use std/json/value as json_value"
+    ],
+    "description": "import std/json modules with aliases"
+  },
+  "diag_hint": {
+    "scope": "vitte",
+    "prefix": "diag",
+    "body": [
+      "# diag: ${1:E1010} ${2:note}"
+    ],
+    "description": "annotate a diagnostic code reminder"
+  },
   "const": {
+    "scope": "vitte",
     "prefix": "const",
     "body": [
       "const ${1:NAME}: ${2:int} = ${3:0}"
@@ -131,6 +347,7 @@
     "description": "const declaration"
   },
   "let": {
+    "scope": "vitte",
     "prefix": "let",
     "body": [
       "let ${1:name}: ${2:int} = ${3:0}"
@@ -138,6 +355,7 @@
     "description": "let declaration"
   },
   "make": {
+    "scope": "vitte",
     "prefix": "make",
     "body": [
       "make ${1:name} as ${2:int} = ${3:0}"
@@ -145,6 +363,7 @@
     "description": "make declaration"
   },
   "asm": {
+    "scope": "vitte",
     "prefix": "asm",
     "body": [
       "asm(\"${1:nop}\")"
@@ -152,6 +371,7 @@
     "description": "asm statement"
   },
   "unsafe": {
+    "scope": "vitte",
     "prefix": "unsafe",
     "body": [
       "unsafe {",
