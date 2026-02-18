@@ -69,10 +69,12 @@ Utilities for local development and debugging.
 Scripts to install or uninstall the Vitte toolchain.
 
 - `install-local.sh`  
-  Installs into the repository-local `target/` tree.
+  Installs into a user prefix (`$HOME/.local` by default).  
+  Installs `vitte` (required) and legacy binaries when available, plus editor files under `share/vitte/editors/`.
 
 - `install-prefix.sh`  
-  Installs into a given prefix (e.g. `/usr/local`).
+  Installs into a given prefix (e.g. `/usr/local`).  
+  Used by macOS/pkg-style installs. Installs `vitte` (required), optional legacy binaries, headers/libs/share, editor files, man pages, shell completions, and `share/vitte/env.sh`.
 
 - `permissions.sh`  
   Fixes executable permissions where required.
@@ -98,10 +100,21 @@ Used to produce distributable artifacts.
 - `bundle-stdlib.sh`  
   Packages the Vitte standard library.
 
+- `make-macos-pkg.sh`  
+  Builds a unified macOS `.pkg` installer (binary + packages + runtime + editors + man + completions + env helper + postinstall checks).
+
+- `make-macos-uninstall-pkg.sh`  
+  Builds a macOS `.pkg` uninstaller (`--nopayload`) with optional user editor cleanup (`REMOVE_USER_EDITOR_CONFIG=1`).
+
 - `checksum.sh`  
   Generates and verifies checksums (sha256 / sha512).
 
 All outputs are written under `target/packages/`.
+
+Completion generation and checks are centralized in:
+- `tools/generate_completions.py` (single source -> bash/zsh/fish)
+- `tools/completions/spec.json` (commands/options/value domains)
+- `tools/completions_snapshots.sh` (`--check` + snapshot assertions)
 
 ---
 
