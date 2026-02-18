@@ -11,7 +11,7 @@ PROJECT      := vitte
 BUILD_DIR    := build
 BIN_DIR      := bin
 SRC_DIR      := src
-STD_DIR      := src/vitte/std
+STD_DIR      := src/vitte/packages
 TOOLS_DIR    := tools
 
 CC           := clang
