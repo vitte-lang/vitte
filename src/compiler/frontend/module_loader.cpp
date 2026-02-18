@@ -161,7 +161,7 @@ static std::filesystem::path resolve_module_file(
         std::vector<std::filesystem::path> candidates;
 
         if (is_std_or_core_root(target_path)) {
-            std::filesystem::path std_root = repo_root / "src/vitte/std";
+            std::filesystem::path std_root = repo_root / "src/vitte/packages";
             if (target_path.parts.front().name == "core") {
                 std::filesystem::path core_root = std_root / "core";
                 candidates.push_back(core_root / (rel.string() + ".vit"));
@@ -204,7 +204,7 @@ static std::vector<std::filesystem::path> existing_module_files(
     std::filesystem::path rel(rel_str);
     std::vector<std::filesystem::path> candidates;
     if (is_std_or_core_root(path)) {
-        std::filesystem::path std_root = repo_root / "src/vitte/std";
+        std::filesystem::path std_root = repo_root / "src/vitte/packages";
         if (path.parts.front().name == "core") {
             std::filesystem::path core_root = std_root / "core";
             candidates.push_back(core_root / (rel.string() + ".vit"));
@@ -247,7 +247,7 @@ static std::filesystem::path detect_repo_root(const std::filesystem::path& start
     }
 
     while (true) {
-        const auto candidate = cur / "src/vitte/std";
+        const auto candidate = cur / "src/vitte/packages";
         if (std::filesystem::exists(candidate)) {
             return cur;
         }
