@@ -130,12 +130,24 @@ OPENSSL_DIR=/opt/homebrew/opt/openssl@3 make build
 
 If you get OpenSSL errors, make sure `OPENSSL_DIR` points to your Homebrew install.
 
+Install binary + editor syntax (Vim/Emacs/Nano):
+
+```sh
+OPENSSL_DIR=/opt/homebrew/opt/openssl@3 make install
+```
+
 ### Linux (Ubuntu/Debian)
 
 ```sh
 sudo apt-get update
 sudo apt-get install -y clang libssl-dev libcurl4-openssl-dev
 make build
+```
+
+Install binary + editor syntax (Vim/Emacs/Nano):
+
+```sh
+make install
 ```
 
 ### Windows
