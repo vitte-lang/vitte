@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <cstdlib>
 #include <algorithm>
 #include <string_view>
 #include <unordered_set>
@@ -238,6 +239,14 @@ static bool has_ambiguous_module_file(
 }
 
 static std::filesystem::path detect_repo_root(const std::filesystem::path& start_dir) {
+    const char* env_root = std::getenv("VITTE_ROOT");
+    if (env_root && *env_root) {
+        std::filesystem::path p(env_root);
+        if (std::filesystem::exists(p / "src/vitte/packages")) {
+            return p;
+        }
+    }
+
     std::filesystem::path cur = start_dir;
     if (cur.empty()) {
         cur = std::filesystem::current_path();
