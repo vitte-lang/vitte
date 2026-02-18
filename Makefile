@@ -19,6 +19,16 @@ CXX          := clang++
 AR           := ar
 RM           := rm -rf
 MKDIR        := mkdir -p
+INSTALL      := install
+CP           := cp -f
+
+PREFIX       ?= /usr/local
+DESTDIR      ?=
+BINDIR       ?= $(DESTDIR)$(PREFIX)/bin
+USER_HOME    ?= $(HOME)
+VIM_DIR      ?= $(USER_HOME)/.vim
+EMACS_DIR    ?= $(USER_HOME)/.emacs.d
+NANO_DIR     ?= $(USER_HOME)/.config/nano
 
 CFLAGS       := -std=c17 -Wall -Wextra -Werror -O2 -g
 CXXFLAGS     := -std=c++20 -Wall -Wextra -Werror -O2 -g
@@ -56,6 +66,38 @@ OBJECTS     := \
 
 .PHONY: all
 all: build
+
+# ------------------------------------------------------------
+# Install
+# ------------------------------------------------------------
+
+.PHONY: install install-bin install-editors
+install: build install-bin install-editors
+
+install-bin:
+	@$(MKDIR) "$(BINDIR)"
+	@$(INSTALL) -m 755 "$(BIN_DIR)/$(PROJECT)" "$(BINDIR)/$(PROJECT)"
+	@echo "Installed binary: $(BINDIR)/$(PROJECT)"
+
+install-editors:
+	@$(MKDIR) "$(VIM_DIR)/syntax" "$(VIM_DIR)/indent" "$(VIM_DIR)/ftdetect" "$(VIM_DIR)/ftplugin" "$(VIM_DIR)/compiler"
+	@$(CP) editors/vim/vitte.vim "$(VIM_DIR)/syntax/vitte.vim"
+	@$(CP) editors/vim/indent/vitte.vim "$(VIM_DIR)/indent/vitte.vim"
+	@$(CP) editors/vim/ftdetect/vitte.vim "$(VIM_DIR)/ftdetect/vitte.vim"
+	@$(CP) editors/vim/ftplugin/vitte.vim "$(VIM_DIR)/ftplugin/vitte.vim"
+	@$(CP) editors/vim/compiler/vitte.vim "$(VIM_DIR)/compiler/vitte.vim"
+	@echo "Installed Vim syntax: $(VIM_DIR)"
+	@$(MKDIR) "$(EMACS_DIR)/lisp"
+	@$(CP) editors/emacs/vitte-mode.el "$(EMACS_DIR)/lisp/vitte-mode.el"
+	@$(CP) editors/emacs/vitte-indent.el "$(EMACS_DIR)/lisp/vitte-indent.el"
+	@echo "Installed Emacs mode: $(EMACS_DIR)/lisp"
+	@$(MKDIR) "$(NANO_DIR)"
+	@$(CP) editors/nano/vitte.nanorc "$(NANO_DIR)/vitte.nanorc"
+	@touch "$(USER_HOME)/.nanorc"
+	@if ! grep -q 'include "$(NANO_DIR)/vitte.nanorc"' "$(USER_HOME)/.nanorc"; then \
+		printf '\ninclude "$(NANO_DIR)/vitte.nanorc"\n' >> "$(USER_HOME)/.nanorc"; \
+	fi
+	@echo "Installed Nano syntax: $(NANO_DIR)/vitte.nanorc"
 
 # ------------------------------------------------------------
 # Build
@@ -347,6 +389,9 @@ help:
 	@echo "Vitte Makefile targets:"
 	@echo ""
 	@echo "  make            build everything"
+	@echo "  make install    build + install binary + Vim/Emacs/Nano syntax files"
+	@echo "  make install-bin install only the vitte binary (PREFIX=$(PREFIX))"
+	@echo "  make install-editors install syntax configs for Vim/Emacs/Nano in HOME"
 	@echo "  make format     run clang-format"
 	@echo "  make tidy       run clang-tidy"
 	@echo "  make test       run tests (std/test)"
