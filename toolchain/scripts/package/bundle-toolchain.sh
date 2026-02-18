@@ -30,8 +30,8 @@ VERBOSE="${VERBOSE:-0}"
 # Source stdlib (adapter si besoin)
 if [ -n "${STDLIB_SRC:-}" ]; then
   STDLIB_SRC="$STDLIB_SRC"
-elif [ -d "$ROOT_DIR/src/vitte/std" ]; then
-  STDLIB_SRC="$ROOT_DIR/src/vitte/std"
+elif [ -d "$ROOT_DIR/src/vitte/packages" ]; then
+  STDLIB_SRC="$ROOT_DIR/src/vitte/packages"
 else
   STDLIB_SRC="$ROOT_DIR/runtime/std"
 fi
