@@ -43,6 +43,7 @@
 - [29. Style d'architecture](chapters/29-style.md)
 - [30. FAQ](chapters/30-faq.md)
 - [31. Erreurs de build](chapters/31-erreurs-build.md)
+- [32. Catalogue des modules Vitte](chapters/32-catalogue-modules.md)
 - [Éléments logiques de Vitte](logique/README.md)
 - [Logique - Conditions](logique/conditions.md)
 - [Logique - Boucles](logique/boucles.md)
