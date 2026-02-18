@@ -10,7 +10,7 @@ Terminology used in docs/CLI:
 
 - ABI surface file (versioned): `docs/stdlib_abi_surface_v1.txt`
 - ABI next version: `docs/stdlib_abi_surface_v2.txt`
-- Stdlib source root: `src/vitte/std`
+- Stdlib source root: `src/vitte/packages/std`
 - Runtime ABI header: `src/compiler/backends/runtime/vitte_runtime.hpp`
 
 ## 2. Stable Stdlib Profiles

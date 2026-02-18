@@ -64,6 +64,11 @@ This repo includes a minimal VS Code language definition under `editors/vscode/`
 - snippets: `editors/vscode/snippets/vitte.json`
 - extension manifest: `editors/vscode/package.json`
 
+For module-centric Vitte work in this repository, use:
+
+- module snippets (`space`, `pull`, `share`, `module`) from `editors/vscode/snippets/vitte.json`
+- workspace module tasks from `.vscode/tasks.json` (graph/doctor/strict-modules/modules-tests)
+
 To use it locally, copy the files into a VS Code extension folder or embed them in your workspace.
 
 ## Sources in this repo

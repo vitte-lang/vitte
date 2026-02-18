@@ -80,6 +80,24 @@ Step 4: If features feel stale, run `Vitte: Restart Language Server`.
 
 `Vitte: Toggle Telemetry` and `Vitte: Quick Export` support local observability workflows.
 
+### Module workflow (repo vitte)
+
+For module-focused work in this repository, use workspace tasks from `.vscode/tasks.json`:
+
+- `vitte: parse modules (current file)`
+- `vitte: strict modules (current file)`
+- `vitte: module graph (current file)`
+- `vitte: module graph json (current file)`
+- `vitte: module doctor (current file)`
+- `vitte: dump module index (current file)`
+- `vitte: modules tests`
+- `vitte: modules snapshots`
+- `vitte: module shape policy`
+- `vitte: runtime matrix modules`
+- `vitte: ci mod fast`
+
+These map directly to Vitte module tooling (`mod graph`, `mod doctor`, strict module checks, and module CI targets).
+
 ## 7. Minimal configuration first
 
 If auto-detection is enough, keep defaults.
