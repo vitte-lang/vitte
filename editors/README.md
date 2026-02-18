@@ -119,6 +119,11 @@ vitte --version
 
 Then open a `.vit` file in Vim, Emacs, and Nano and confirm syntax highlighting is active.
 
+Completion notes:
+- Vim: `C-x C-o` (uses `omnifunc=syntaxcomplete#Complete` in `ftplugin`).
+- Emacs: `M-TAB` / `completion-at-point` (keywords/types/builtins).
+- Nano: no native semantic autocompletion; syntax highlighting only.
+
 ## Uninstall (manual)
 
 ```sh
