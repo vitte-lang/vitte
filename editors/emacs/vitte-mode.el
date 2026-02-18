@@ -52,6 +52,15 @@
     ("#\\[[^]]+\\]" . font-lock-preprocessor-face)
     ("\\<use\\>\\s-+\\([A-Za-z0-9_./]+\\)" 1 font-lock-constant-face)))
 
+(defun vitte--completion-at-point ()
+  "Provide basic keyword/type/builtin completion at point."
+  (let ((bounds (bounds-of-thing-at-point 'symbol)))
+    (when bounds
+      (list (car bounds)
+            (cdr bounds)
+            (append vitte-keywords vitte-types vitte-builtins)
+            :exclusive 'no))))
+
 (defun vitte--file-or-error ()
   "Return current buffer file path or raise an error."
   (or (buffer-file-name)
@@ -93,6 +102,7 @@
   (setq-local comment-end "")
   (setq-local comment-start-skip "//+\\s-*")
   (setq-local comment-use-syntax t)
+  (add-hook 'completion-at-point-functions #'vitte--completion-at-point nil t)
   (when (require 'vitte-indent nil t)
     (setq-local indent-line-function #'vitte-indent-line)))
 
