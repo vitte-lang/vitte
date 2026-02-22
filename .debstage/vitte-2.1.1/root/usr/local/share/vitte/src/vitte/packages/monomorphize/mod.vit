@@ -1,0 +1,172 @@
+<<<
+mod.vit
+package vitte/monomorphize
+>>>
+
+space vitte/monomorphize
+
+
+form GenericFunc {
+  name: string
+  params: [string]
+}
+
+form MonoInstance {
+  key: string
+  base: string
+  args: [string]
+}
+
+form MonoTable {
+  instances: [MonoInstance]
+}
+
+proc generic(name: string, params: [string]) -> GenericFunc {
+  give GenericFunc(name, params)
+}
+
+proc table_new() -> MonoTable {
+  give MonoTable([])
+}
+
+proc join(parts: [string], sep: string) -> string {
+  if parts.len == 0 { give "" }
+  let out = parts[0]
+  let i: int = 1
+  loop {
+    if i >= parts.len { break }
+    out = out + sep + parts[i]
+    i = i + 1
+  }
+  give out
+}
+
+proc instance_key(name: string, args: [string]) -> string {
+  if args.len == 0 { give name }
+  give name + "<" + join(args, ",") + ">"
+}
+
+proc instantiate(g: GenericFunc, args: [string]) -> MonoInstance {
+  give MonoInstance(instance_key(g.name, args), g.name, args)
+}
+
+proc has_instance(tab: MonoTable, key: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= tab.instances.len { break }
+    if tab.instances[i].key == key { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc add_instance(tab: MonoTable, inst: MonoInstance) -> MonoTable {
+  if has_instance(tab, inst.key) { give tab }
+  give MonoTable(tab.instances.push(inst))
+}
+
+proc count(tab: MonoTable) -> int {
+  give tab.instances.len
+}
+
+proc by_base(tab: MonoTable, base: string) -> [MonoInstance] {
+  let out: [MonoInstance] = []
+  let i: int = 0
+  loop {
+    if i >= tab.instances.len { break }
+    if tab.instances[i].base == base { out = out.push(tab.instances[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc summary(tab: MonoTable) -> string {
+  give "instances=" + tab.instances.len.to_string()
+}
+
+proc args_count(inst: MonoInstance) -> int {
+  give inst.args.len
+}
+
+proc remove_instance(tab: MonoTable, key: string) -> MonoTable {
+  let out: [MonoInstance] = []
+  let i: int = 0
+  loop {
+    if i >= tab.instances.len { break }
+    if tab.instances[i].key != key { out = out.push(tab.instances[i]) }
+    i = i + 1
+  }
+  give MonoTable(out)
+}
+
+proc all_keys(tab: MonoTable) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= tab.instances.len { break }
+    out = out.push(tab.instances[i].key)
+    i = i + 1
+  }
+  give out
+}
+
+proc monomorphize_health(tab: MonoTable) -> string {
+  if tab.instances.len == 0 { give "empty" }
+  give "ok"
+}
+
+proc ensure_instance(tab: MonoTable, g: GenericFunc, args: [string]) -> MonoTable {
+  let inst = instantiate(g, args)
+  give add_instance(tab, inst)
+}
+
+proc instantiate_many(tab: MonoTable, g: GenericFunc, arg_sets: [[string]]) -> MonoTable {
+  let out = tab
+  let i: int = 0
+  loop {
+    if i >= arg_sets.len { break }
+    out = ensure_instance(out, g, arg_sets[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc duplicate_key_count(tab: MonoTable) -> int {
+  let d: int = 0
+  let i: int = 0
+  loop {
+    if i >= tab.instances.len { break }
+    let j: int = i + 1
+    loop {
+      if j >= tab.instances.len { break }
+      if tab.instances[i].key == tab.instances[j].key { d = d + 1 }
+      j = j + 1
+    }
+    i = i + 1
+  }
+  give d
+}
+
+proc table_diagnostics(tab: MonoTable) -> string {
+  give summary(tab) +
+       ",dup=" + duplicate_key_count(tab).to_string() +
+       ",health=" + monomorphize_health(tab)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/monomorphize"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/monomorphize
+role: Specialisation generiques vers representations concretes
+input_contract: Structures internes du compilateur deja valides syntaxiquement
+output_contract: Artefacts intermediaires deterministes pour l etape suivante
+boundary: Ne fait ni IO reseau ni decisions metier applicatives
+>>>

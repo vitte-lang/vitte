@@ -1,0 +1,306 @@
+<<<
+mod.vit
+package vitte/queue
+>>>
+
+space vitte/queue
+
+
+pick QueueState {
+  Pending
+  Inflight
+  Done
+  DeadLetter
+}
+
+form QueueItem {
+  id: int
+  payload: string
+  attempts: int
+  state: QueueState
+}
+
+form Queue {
+  next_id: int
+  max_attempts: int
+  pending: [QueueItem]
+  inflight: [QueueItem]
+  done: [QueueItem]
+  dead: [QueueItem]
+}
+
+proc queue_new(max_attempts: int) -> Queue {
+  let max = max_attempts
+  if max < 1 { max = 1 }
+  give Queue(0, max, [], [], [], [])
+}
+
+proc enqueue(queue: Queue, payload: string) -> Queue {
+  let item = QueueItem(queue.next_id, payload, 0, QueueState.Pending)
+  give Queue(queue.next_id + 1, queue.max_attempts, queue.pending.push(item), queue.inflight, queue.done, queue.dead)
+}
+
+proc drop_first(items: [QueueItem]) -> [QueueItem] {
+  let out: [QueueItem] = []
+  let i: int = 1
+  loop {
+    if i >= items.len { break }
+    out = out.push(items[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc dequeue(queue: Queue) -> Queue {
+  if queue.pending.len == 0 { give queue }
+  let head = queue.pending[0]
+  let inflight_item = QueueItem(head.id, head.payload, head.attempts, QueueState.Inflight)
+  give Queue(queue.next_id, queue.max_attempts, drop_first(queue.pending), queue.inflight.push(inflight_item), queue.done, queue.dead)
+}
+
+proc ack(queue: Queue, item_id: int) -> Queue {
+  let inflight: [QueueItem] = []
+  let done = queue.done
+  let i: int = 0
+  loop {
+    if i >= queue.inflight.len { break }
+    let item = queue.inflight[i]
+    if item.id == item_id {
+      done = done.push(QueueItem(item.id, item.payload, item.attempts, QueueState.Done))
+    } else {
+      inflight = inflight.push(item)
+    }
+    i = i + 1
+  }
+  give Queue(queue.next_id, queue.max_attempts, queue.pending, inflight, done, queue.dead)
+}
+
+proc nack(queue: Queue, item_id: int) -> Queue {
+  let inflight: [QueueItem] = []
+  let pending = queue.pending
+  let dead = queue.dead
+  let i: int = 0
+  loop {
+    if i >= queue.inflight.len { break }
+    let item = queue.inflight[i]
+    if item.id == item_id {
+      let attempts = item.attempts + 1
+      if attempts >= queue.max_attempts {
+        dead = dead.push(QueueItem(item.id, item.payload, attempts, QueueState.DeadLetter))
+      } else {
+        pending = pending.push(QueueItem(item.id, item.payload, attempts, QueueState.Pending))
+      }
+    } else {
+      inflight = inflight.push(item)
+    }
+    i = i + 1
+  }
+  give Queue(queue.next_id, queue.max_attempts, pending, inflight, queue.done, dead)
+}
+
+proc dlq(queue: Queue) -> [QueueItem] {
+  give queue.dead
+}
+
+proc can_dequeue(queue: Queue) -> bool {
+  give queue.pending.len > 0
+}
+
+proc peek(queue: Queue) -> QueueItem {
+  if queue.pending.len == 0 {
+    give QueueItem(-1, "", 0, QueueState.Pending)
+  }
+  give queue.pending[0]
+}
+
+proc attempts_of(queue: Queue, item_id: int) -> int {
+  let i: int = 0
+  loop {
+    if i >= queue.pending.len { break }
+    if queue.pending[i].id == item_id { give queue.pending[i].attempts }
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= queue.inflight.len { break }
+    if queue.inflight[i].id == item_id { give queue.inflight[i].attempts }
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= queue.done.len { break }
+    if queue.done[i].id == item_id { give queue.done[i].attempts }
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= queue.dead.len { break }
+    if queue.dead[i].id == item_id { give queue.dead[i].attempts }
+    i = i + 1
+  }
+
+  give -1
+}
+
+proc requeue_dead(queue: Queue, item_id: int) -> Queue {
+  let dead: [QueueItem] = []
+  let pending = queue.pending
+  let i: int = 0
+  loop {
+    if i >= queue.dead.len { break }
+    let item = queue.dead[i]
+    if item.id == item_id {
+      pending = pending.push(QueueItem(item.id, item.payload, 0, QueueState.Pending))
+    } else {
+      dead = dead.push(item)
+    }
+    i = i + 1
+  }
+  give Queue(queue.next_id, queue.max_attempts, pending, queue.inflight, queue.done, dead)
+}
+
+proc purge_done(queue: Queue) -> Queue {
+  give Queue(queue.next_id, queue.max_attempts, queue.pending, queue.inflight, [], queue.dead)
+}
+
+proc pending_count(queue: Queue) -> int {
+  give queue.pending.len
+}
+
+proc inflight_count(queue: Queue) -> int {
+  give queue.inflight.len
+}
+
+proc done_count(queue: Queue) -> int {
+  give queue.done.len
+}
+
+proc total_count(queue: Queue) -> int {
+  give queue.pending.len + queue.inflight.len + queue.done.len + queue.dead.len
+}
+
+proc stats(queue: Queue) -> string {
+  give "pending=" + pending_count(queue).to_string() +
+       ",inflight=" + inflight_count(queue).to_string() +
+       ",done=" + done_count(queue).to_string() +
+       ",dead=" + queue.dead.len.to_string()
+}
+
+pick QueueError {
+  None
+  EmptyQueue
+  NotFound
+  MaxAttempts
+}
+
+form QueueProcessResult {
+  queue: Queue
+  error: QueueError
+  item_id: int
+}
+
+proc find_pending(queue: Queue, item_id: int) -> QueueItem {
+  let i: int = 0
+  loop {
+    if i >= queue.pending.len { break }
+    if queue.pending[i].id == item_id { give queue.pending[i] }
+    i = i + 1
+  }
+  give QueueItem(-1, "", 0, QueueState.Pending)
+}
+
+proc find_inflight(queue: Queue, item_id: int) -> QueueItem {
+  let i: int = 0
+  loop {
+    if i >= queue.inflight.len { break }
+    if queue.inflight[i].id == item_id { give queue.inflight[i] }
+    i = i + 1
+  }
+  give QueueItem(-1, "", 0, QueueState.Inflight)
+}
+
+proc exists(queue: Queue, item_id: int) -> bool {
+  if attempts_of(queue, item_id) >= 0 { give true }
+  give false
+}
+
+proc dequeue_one(queue: Queue) -> QueueProcessResult {
+  if !can_dequeue(queue) {
+    give QueueProcessResult(queue, QueueError.EmptyQueue, -1)
+  }
+  let first = peek(queue)
+  give QueueProcessResult(dequeue(queue), QueueError.None, first.id)
+}
+
+proc ack_safe(queue: Queue, item_id: int) -> QueueProcessResult {
+  if find_inflight(queue, item_id).id < 0 {
+    give QueueProcessResult(queue, QueueError.NotFound, item_id)
+  }
+  give QueueProcessResult(ack(queue, item_id), QueueError.None, item_id)
+}
+
+proc nack_safe(queue: Queue, item_id: int) -> QueueProcessResult {
+  let item = find_inflight(queue, item_id)
+  if item.id < 0 {
+    give QueueProcessResult(queue, QueueError.NotFound, item_id)
+  }
+  if item.attempts + 1 >= queue.max_attempts {
+    give QueueProcessResult(nack(queue, item_id), QueueError.MaxAttempts, item_id)
+  }
+  give QueueProcessResult(nack(queue, item_id), QueueError.None, item_id)
+}
+
+proc retryable(queue: Queue, item_id: int) -> bool {
+  let attempts = attempts_of(queue, item_id)
+  if attempts < 0 { give false }
+  give attempts + 1 < queue.max_attempts
+}
+
+proc done_ratio_percent(queue: Queue) -> int {
+  let total = total_count(queue)
+  if total <= 0 { give 0 }
+  give done_count(queue) * 100 / total
+}
+
+proc dead_ratio_percent(queue: Queue) -> int {
+  let total = total_count(queue)
+  if total <= 0 { give 0 }
+  give queue.dead.len * 100 / total
+}
+
+proc pop_dead(queue: Queue) -> QueueProcessResult {
+  if queue.dead.len == 0 {
+    give QueueProcessResult(queue, QueueError.EmptyQueue, -1)
+  }
+  let item = queue.dead[0]
+  let dead = drop_first(queue.dead)
+  let next = Queue(queue.next_id, queue.max_attempts, queue.pending, queue.inflight, queue.done, dead)
+  give QueueProcessResult(next, QueueError.None, item.id)
+}
+
+proc queue_health(queue: Queue) -> string {
+  if queue.dead.len > 0 { give "degraded" }
+  if queue.inflight.len > queue.pending.len + 10 { give "warning" }
+  give "ok"
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/queue"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/queue
+role: File de traitement avec ack nack et dead letter
+input_contract: Message brut transforme en item explicite id payload attempts
+output_contract: Transitions d etat deterministes pending inflight done dead
+boundary: Ne fait pas de transport externe; orchestre uniquement le cycle local de queue
+>>>

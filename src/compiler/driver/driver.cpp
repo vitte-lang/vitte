@@ -1107,6 +1107,22 @@ int run(int argc, char** argv) {
         return 1;
     }
 
+    if (opts.target == "kernel") {
+        opts.target = "kernel-x86_64-grub";
+    }
+    if (opts.target.rfind("kernel-", 0) == 0) {
+        opts.freestanding = true;
+        if (opts.stdlib_profile != "kernel") {
+            std::cerr << "[driver] note: forcing --runtime-profile kernel for kernel target\n";
+            opts.stdlib_profile = "kernel";
+        }
+        if (opts.target != "kernel-x86_64-grub" && opts.target != "kernel-x86_64-uefi") {
+            std::cerr << "[driver] error: unsupported kernel target '" << opts.target
+                      << "' (expected kernel, kernel-x86_64-grub, kernel-x86_64-uefi)\n";
+            return 1;
+        }
+    }
+
     if (!frontend::modules::is_valid_stdlib_profile(opts.stdlib_profile)) {
         std::cerr << "[driver] error: invalid --runtime-profile/--stdlib-profile '" << opts.stdlib_profile
                   << "' (expected minimal|full|kernel|arduino)\n";

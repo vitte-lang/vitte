@@ -1,0 +1,183 @@
+<<<
+mod.vit
+package vitte/const_eval
+>>>
+
+space vitte/const_eval
+
+
+pick ConstError {
+  None
+  DivisionByZero
+  Overflow
+  InvalidOp
+}
+
+form ConstExpr {
+  op: string
+  left: int
+  right: int
+}
+
+form ConstResult {
+  value: int
+  error: ConstError
+}
+
+proc expr(op: string, left: int, right: int) -> ConstExpr {
+  give ConstExpr(op, left, right)
+}
+
+proc ok(value: int) -> ConstResult {
+  give ConstResult(value, ConstError.None)
+}
+
+proc err(e: ConstError) -> ConstResult {
+  give ConstResult(0, e)
+}
+
+proc eval(e: ConstExpr) -> ConstResult {
+  if e.op == "add" { give ok(e.left + e.right) }
+  if e.op == "sub" { give ok(e.left - e.right) }
+  if e.op == "mul" { give ok(e.left * e.right) }
+  if e.op == "div" {
+    if e.right == 0 { give err(ConstError.DivisionByZero) }
+    give ok(e.left / e.right)
+  }
+  if e.op == "mod" {
+    if e.right == 0 { give err(ConstError.DivisionByZero) }
+    give ok(e.left % e.right)
+  }
+  give err(ConstError.InvalidOp)
+}
+
+proc fold_chain(values: [int], op: string) -> ConstResult {
+  if values.len == 0 { give ok(0) }
+  let acc = values[0]
+  let i: int = 1
+  loop {
+    if i >= values.len { break }
+    let r = eval(ConstExpr(op, acc, values[i]))
+    if r.error != ConstError.None { give r }
+    acc = r.value
+    i = i + 1
+  }
+  give ok(acc)
+}
+
+proc compare(left: int, right: int, op: string) -> bool {
+  if op == "eq" { give left == right }
+  if op == "ne" { give left != right }
+  if op == "lt" { give left < right }
+  if op == "le" { give left <= right }
+  if op == "gt" { give left > right }
+  if op == "ge" { give left >= right }
+  give false
+}
+
+proc result_text(r: ConstResult) -> string {
+  if r.error == ConstError.None { give "ok:" + r.value.to_string() }
+  if r.error == ConstError.DivisionByZero { give "err:div0" }
+  if r.error == ConstError.Overflow { give "err:overflow" }
+  give "err:invalid"
+}
+
+proc eval_unary(op: string, value: int) -> ConstResult {
+  if op == "neg" { give ok(0 - value) }
+  if op == "abs" {
+    if value < 0 { give ok(0 - value) }
+    give ok(value)
+  }
+  give err(ConstError.InvalidOp)
+}
+
+proc clamp(value: int, min_value: int, max_value: int) -> int {
+  let v = value
+  if v < min_value { v = min_value }
+  if v > max_value { v = max_value }
+  give v
+}
+
+proc eval_min_max(left: int, right: int, op: string) -> ConstResult {
+  if op == "min" {
+    if left <= right { give ok(left) }
+    give ok(right)
+  }
+  if op == "max" {
+    if left >= right { give ok(left) }
+    give ok(right)
+  }
+  give err(ConstError.InvalidOp)
+}
+
+proc const_health(exprs: [ConstExpr]) -> string {
+  let i: int = 0
+  loop {
+    if i >= exprs.len { break }
+    let r = eval(exprs[i])
+    if r.error != ConstError.None { give "invalid" }
+    i = i + 1
+  }
+  give "ok"
+}
+
+proc is_ok(r: ConstResult) -> bool {
+  give r.error == ConstError.None
+}
+
+proc value_or(r: ConstResult, fallback: int) -> int {
+  if is_ok(r) { give r.value }
+  give fallback
+}
+
+proc eval_pow(base: int, exp: int) -> ConstResult {
+  if exp < 0 { give err(ConstError.InvalidOp) }
+  let out: int = 1
+  let i: int = 0
+  loop {
+    if i >= exp { break }
+    out = out * base
+    i = i + 1
+  }
+  give ok(out)
+}
+
+proc eval_many(exprs: [ConstExpr]) -> [ConstResult] {
+  let out: [ConstResult] = []
+  let i: int = 0
+  loop {
+    if i >= exprs.len { break }
+    out = out.push(eval(exprs[i]))
+    i = i + 1
+  }
+  give out
+}
+
+proc error_count(results: [ConstResult]) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= results.len { break }
+    if results[i].error != ConstError.None { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/const_eval"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/const_eval
+role: Evaluation compile time des expressions constantes
+input_contract: Structures internes du compilateur deja valides syntaxiquement
+output_contract: Artefacts intermediaires deterministes pour l etape suivante
+boundary: Ne fait ni IO reseau ni decisions metier applicatives
+>>>

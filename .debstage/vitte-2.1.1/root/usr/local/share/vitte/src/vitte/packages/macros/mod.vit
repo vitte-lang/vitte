@@ -1,0 +1,242 @@
+<<<
+mod.vit
+package vitte/macros
+>>>
+
+space vitte/macros
+
+
+form MacroDef {
+  name: string
+  body: string
+}
+
+form MacroSet {
+  defs: [MacroDef]
+}
+
+proc macros_new() -> MacroSet {
+  give MacroSet([])
+}
+
+proc define(macros: MacroSet, name: string, body: string) -> MacroSet {
+  let out: [MacroDef] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= macros.defs.len { break }
+    if macros.defs[i].name == name {
+      out = out.push(MacroDef(name, body))
+      found = true
+    } else {
+      out = out.push(macros.defs[i])
+    }
+    i = i + 1
+  }
+  if !found { out = out.push(MacroDef(name, body)) }
+  give MacroSet(out)
+}
+
+proc undefine(macros: MacroSet, name: string) -> MacroSet {
+  let out: [MacroDef] = []
+  let i: int = 0
+  loop {
+    if i >= macros.defs.len { break }
+    if macros.defs[i].name != name { out = out.push(macros.defs[i]) }
+    i = i + 1
+  }
+  give MacroSet(out)
+}
+
+proc lookup(macros: MacroSet, name: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= macros.defs.len { break }
+    if macros.defs[i].name == name { give macros.defs[i].body }
+    i = i + 1
+  }
+  give ""
+}
+
+proc has_macro(macros: MacroSet, name: string) -> bool {
+  give lookup(macros, name).len > 0
+}
+
+proc count(macros: MacroSet) -> int {
+  give macros.defs.len
+}
+
+proc clear(macros: MacroSet) -> MacroSet {
+  let _ = macros
+  give MacroSet([])
+}
+
+proc clone(macros: MacroSet) -> MacroSet {
+  let out: [MacroDef] = []
+  let i: int = 0
+  loop {
+    if i >= macros.defs.len { break }
+    out = out.push(macros.defs[i])
+    i = i + 1
+  }
+  give MacroSet(out)
+}
+
+proc expand_token(macros: MacroSet, token: string) -> string {
+  if token.len < 4 { give token }
+  if token.slice(0, 2) != "${" { give token }
+  if token.slice(token.len - 1, token.len) != "}" { give token }
+  let name = token.slice(2, token.len - 1)
+  let value = lookup(macros, name)
+  if value.len == 0 { give token }
+  give value
+}
+
+proc expand_once(macros: MacroSet, text: string) -> string {
+  let parts: [string] = []
+  let current = ""
+  let i: int = 0
+  loop {
+    if i >= text.len {
+      parts = parts.push(current)
+      break
+    }
+    let ch = text.slice(i, i + 1)
+    if ch == " " {
+      parts = parts.push(current)
+      current = ""
+    } else {
+      current = current + ch
+    }
+    i = i + 1
+  }
+
+  let out = ""
+  let j: int = 0
+  loop {
+    if j >= parts.len { break }
+    if j > 0 { out = out + " " }
+    out = out + expand_token(macros, parts[j])
+    j = j + 1
+  }
+  give out
+}
+
+proc expand_times(macros: MacroSet, text: string, rounds: int) -> string {
+  let out = text
+  let i: int = 0
+  loop {
+    if i >= rounds { break }
+    let next = expand_once(macros, out)
+    if next == out { break }
+    out = next
+    i = i + 1
+  }
+  give out
+}
+
+proc merge(left: MacroSet, right: MacroSet) -> MacroSet {
+  let out = left
+  let i: int = 0
+  loop {
+    if i >= right.defs.len { break }
+    out = define(out, right.defs[i].name, right.defs[i].body)
+    i = i + 1
+  }
+  give out
+}
+
+proc import_pairs(lines: [string]) -> MacroSet {
+  let out = macros_new()
+  let i: int = 0
+  loop {
+    if i >= lines.len { break }
+    let line = lines[i]
+    let j: int = 0
+    let key = ""
+    let value = ""
+    let seen_eq = false
+    loop {
+      if j >= line.len { break }
+      let ch = line.slice(j, j + 1)
+      if ch == "=" && !seen_eq {
+        seen_eq = true
+      } else {
+        if seen_eq { value = value + ch } else { key = key + ch }
+      }
+      j = j + 1
+    }
+    if key.len > 0 {
+      out = define(out, key, value)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc render_pairs(macros: MacroSet) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= macros.defs.len { break }
+    out = out.push(macros.defs[i].name + "=" + macros.defs[i].body)
+    i = i + 1
+  }
+  give out
+}
+
+proc prefixed_names(macros: MacroSet, prefix: string) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= macros.defs.len { break }
+    let n = macros.defs[i].name
+    if prefix.len <= n.len && n.slice(0, prefix.len) == prefix {
+      out = out.push(n)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc validate(macros: MacroSet) -> bool {
+  let i: int = 0
+  loop {
+    if i >= macros.defs.len { break }
+    if macros.defs[i].name.len == 0 { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc names(macros: MacroSet) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= macros.defs.len { break }
+    out = out.push(macros.defs[i].name)
+    i = i + 1
+  }
+  give out
+}
+
+proc summary(macros: MacroSet) -> string {
+  give "macros=" + macros.defs.len.to_string() +
+       ",valid=" + validate(macros).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/macros"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/macros
+role: Expansion et gestion de macros textuelles
+input_contract: Definitions de macros valides et contexte explicite
+output_contract: Texte expanse deterministe
+boundary: N interprete pas le langage complet; expansion ciblee seulement
+>>>

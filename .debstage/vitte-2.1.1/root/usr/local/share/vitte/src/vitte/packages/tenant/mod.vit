@@ -1,0 +1,438 @@
+<<<
+mod.vit
+package vitte/tenant
+>>>
+
+space vitte/tenant
+
+
+form TenantCtx {
+  tenant_id: string
+  region: string
+  plan: string
+  active: bool
+}
+
+pick TenantError {
+  None
+  InvalidTenantId
+  InvalidRegion
+  InvalidPlan
+  InactiveCtx
+  IsolationViolation
+  DuplicateTenant
+  StackCorruption
+}
+
+form TenantPolicy {
+  require_active: bool
+  allow_cross_region: bool
+  min_plan: string
+}
+
+form TenantDecision {
+  allowed: bool
+  reason: string
+}
+
+proc tenant_ctx(tenant_id: string, region: string, plan: string) -> TenantCtx {
+  give TenantCtx(tenant_id, region, plan, true)
+}
+
+proc default_policy() -> TenantPolicy {
+  give TenantPolicy(true, false, "free")
+}
+
+proc default_ctx() -> TenantCtx {
+  give TenantCtx("", "", "free", false)
+}
+
+proc tenant_id_of(ctx: TenantCtx) -> string {
+  give ctx.tenant_id
+}
+
+proc region_of(ctx: TenantCtx) -> string {
+  give ctx.region
+}
+
+proc plan_of(ctx: TenantCtx) -> string {
+  give ctx.plan
+}
+
+proc scope_key(ctx: TenantCtx, key: string) -> string {
+  give ctx.tenant_id + ":" + key
+}
+
+proc has_scope_prefix(ctx: TenantCtx, scoped_key: string) -> bool {
+  let prefix = ctx.tenant_id + ":"
+  if scoped_key.len < prefix.len { give false }
+  give scoped_key.slice(0, prefix.len) == prefix
+}
+
+proc enforce_isolation(ctx: TenantCtx, resource_tenant: string) -> bool {
+  if !ctx.active { give false }
+  give ctx.tenant_id == resource_tenant
+}
+
+proc current(stack: [TenantCtx]) -> TenantCtx {
+  if stack.len == 0 {
+    give TenantCtx("", "", "", false)
+  }
+  give stack[stack.len - 1]
+}
+
+proc stack_depth(stack: [TenantCtx]) -> int {
+  give stack.len
+}
+
+proc stack_is_empty(stack: [TenantCtx]) -> bool {
+  give stack.len == 0
+}
+
+proc stack_contains(stack: [TenantCtx], tenant_id: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= stack.len { break }
+    if stack[i].tenant_id == tenant_id { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc deactivate(ctx: TenantCtx) -> TenantCtx {
+  give TenantCtx(ctx.tenant_id, ctx.region, ctx.plan, false)
+}
+
+proc activate(ctx: TenantCtx) -> TenantCtx {
+  give TenantCtx(ctx.tenant_id, ctx.region, ctx.plan, true)
+}
+
+proc with_region(ctx: TenantCtx, region: string) -> TenantCtx {
+  give TenantCtx(ctx.tenant_id, region, ctx.plan, ctx.active)
+}
+
+proc with_plan(ctx: TenantCtx, plan: string) -> TenantCtx {
+  give TenantCtx(ctx.tenant_id, ctx.region, plan, ctx.active)
+}
+
+proc normalize(ctx: TenantCtx, default_region: string, default_plan: string) -> TenantCtx {
+  let region = ctx.region
+  if region.len == 0 { region = default_region }
+
+  let plan = ctx.plan
+  if plan.len == 0 { plan = default_plan }
+
+  give TenantCtx(ctx.tenant_id, region, plan, ctx.active)
+}
+
+proc is_active(ctx: TenantCtx) -> bool {
+  give ctx.active
+}
+
+proc is_valid(ctx: TenantCtx) -> bool {
+  give ctx.tenant_id.len > 0 && ctx.region.len > 0 && ctx.plan.len > 0
+}
+
+proc region_key(ctx: TenantCtx, key: string) -> string {
+  give ctx.region + ":" + scope_key(ctx, key)
+}
+
+proc plan_rank(plan: string) -> int {
+  if plan == "free" { give 0 }
+  if plan == "pro" { give 1 }
+  if plan == "enterprise" { give 2 }
+  give 0
+}
+
+proc plan_known(plan: string) -> bool {
+  give plan == "free" || plan == "pro" || plan == "enterprise"
+}
+
+proc plan_allows(ctx: TenantCtx, required_plan: string) -> bool {
+  give plan_rank(ctx.plan) >= plan_rank(required_plan)
+}
+
+proc is_enterprise(ctx: TenantCtx) -> bool {
+  give ctx.plan == "enterprise"
+}
+
+proc can_access_region(ctx: TenantCtx, region: string) -> bool {
+  if !ctx.active { give false }
+  give ctx.region == region
+}
+
+proc same_region(left: TenantCtx, right: TenantCtx) -> bool {
+  give left.region == right.region
+}
+
+proc same_tenant(left: TenantCtx, right: TenantCtx) -> bool {
+  give left.tenant_id == right.tenant_id
+}
+
+proc stack_push(stack: [TenantCtx], ctx: TenantCtx) -> [TenantCtx] {
+  give stack.push(ctx)
+}
+
+proc stack_pop(stack: [TenantCtx]) -> [TenantCtx] {
+  if stack.len == 0 { give stack }
+  let out: [TenantCtx] = []
+  let i: int = 0
+  loop {
+    if i + 1 >= stack.len { break }
+    out = out.push(stack[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc stack_replace_top(stack: [TenantCtx], ctx: TenantCtx) -> [TenantCtx] {
+  if stack.len == 0 { give [ctx] }
+  let out: [TenantCtx] = []
+  let i: int = 0
+  loop {
+    if i >= stack.len { break }
+    if i + 1 == stack.len {
+      out = out.push(ctx)
+    } else {
+      out = out.push(stack[i])
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc scope_prefix(ctx: TenantCtx) -> string {
+  give ctx.tenant_id + ":"
+}
+
+proc extract_tenant_id(scoped_key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= scoped_key.len { break }
+    if scoped_key.slice(i, i + 1) == ":" {
+      give scoped_key.slice(0, i)
+    }
+    i = i + 1
+  }
+  give ""
+}
+
+proc matches_scope(ctx: TenantCtx, scoped_key: string) -> bool {
+  if !ctx.active { give false }
+  give extract_tenant_id(scoped_key) == ctx.tenant_id
+}
+
+proc is_default_ctx(ctx: TenantCtx) -> bool {
+  if ctx.active { give false }
+  give ctx.tenant_id.len == 0
+}
+
+proc can_promote_to(ctx: TenantCtx, target_plan: string) -> bool {
+  give plan_rank(target_plan) >= plan_rank(ctx.plan)
+}
+
+proc promote(ctx: TenantCtx, target_plan: string) -> TenantCtx {
+  if can_promote_to(ctx, target_plan) {
+    give with_plan(ctx, target_plan)
+  }
+  give ctx
+}
+
+proc demote(ctx: TenantCtx, target_plan: string) -> TenantCtx {
+  if plan_rank(target_plan) <= plan_rank(ctx.plan) {
+    give with_plan(ctx, target_plan)
+  }
+  give ctx
+}
+
+proc masked_tenant_id(ctx: TenantCtx) -> string {
+  if ctx.tenant_id.len == 0 { give "" }
+  if ctx.tenant_id.len <= 2 { give "***" }
+  give ctx.tenant_id.slice(0, 2) + "***"
+}
+
+proc stack_ids(stack: [TenantCtx]) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= stack.len { break }
+    out = out.push(stack[i].tenant_id)
+    i = i + 1
+  }
+  give out
+}
+
+proc verify_stack(stack: [TenantCtx]) -> bool {
+  let i: int = 0
+  loop {
+    if i >= stack.len { break }
+    let item = stack[i]
+    if !item.active || !is_valid(item) { give false }
+    let j: int = i + 1
+    loop {
+      if j >= stack.len { break }
+      if stack[j].tenant_id == item.tenant_id { give false }
+      j = j + 1
+    }
+    i = i + 1
+  }
+  give true
+}
+
+proc validate_ctx(ctx: TenantCtx) -> TenantError {
+  if ctx.tenant_id.len == 0 { give TenantError.InvalidTenantId }
+  if ctx.region.len == 0 { give TenantError.InvalidRegion }
+  if !plan_known(ctx.plan) { give TenantError.InvalidPlan }
+  if !ctx.active { give TenantError.InactiveCtx }
+  give TenantError.None
+}
+
+proc validate_stack(stack: [TenantCtx]) -> TenantError {
+  if !verify_stack(stack) { give TenantError.StackCorruption }
+  let i: int = 0
+  loop {
+    if i >= stack.len { break }
+    let err = validate_ctx(stack[i])
+    if err != TenantError.None { give err }
+    i = i + 1
+  }
+  give TenantError.None
+}
+
+proc merge_ctx(base: TenantCtx, overlay: TenantCtx) -> TenantCtx {
+  let tenant_id = base.tenant_id
+  if overlay.tenant_id.len > 0 { tenant_id = overlay.tenant_id }
+
+  let region = base.region
+  if overlay.region.len > 0 { region = overlay.region }
+
+  let plan = base.plan
+  if overlay.plan.len > 0 { plan = overlay.plan }
+
+  let active = base.active
+  if overlay.active { active = true }
+
+  give TenantCtx(tenant_id, region, plan, active)
+}
+
+proc decide_access(
+  ctx: TenantCtx,
+  resource_tenant: string,
+  resource_region: string,
+  required_plan: string,
+  policy: TenantPolicy
+) -> TenantDecision {
+  if policy.require_active && !ctx.active {
+    give TenantDecision(false, "inactive-ctx")
+  }
+  if ctx.tenant_id != resource_tenant {
+    give TenantDecision(false, "tenant-mismatch")
+  }
+  if !policy.allow_cross_region && ctx.region != resource_region {
+    give TenantDecision(false, "region-mismatch")
+  }
+  if !plan_allows(ctx, required_plan) {
+    give TenantDecision(false, "plan-too-low")
+  }
+  if !plan_allows(ctx, policy.min_plan) {
+    give TenantDecision(false, "policy-min-plan")
+  }
+  give TenantDecision(true, "ok")
+}
+
+proc access_error(decision: TenantDecision) -> TenantError {
+  if decision.allowed { give TenantError.None }
+  if decision.reason == "inactive-ctx" { give TenantError.InactiveCtx }
+  if decision.reason == "tenant-mismatch" { give TenantError.IsolationViolation }
+  if decision.reason == "region-mismatch" { give TenantError.IsolationViolation }
+  if decision.reason == "plan-too-low" { give TenantError.InvalidPlan }
+  if decision.reason == "policy-min-plan" { give TenantError.InvalidPlan }
+  give TenantError.IsolationViolation
+}
+
+proc strip_scope(scoped_key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= scoped_key.len { break }
+    if scoped_key.slice(i, i + 1) == ":" {
+      give scoped_key.slice(i + 1, scoped_key.len)
+    }
+    i = i + 1
+  }
+  give scoped_key
+}
+
+proc tenant_key(ctx: TenantCtx) -> string {
+  give ctx.tenant_id + "@" + ctx.region
+}
+
+proc stack_tenant_keys(stack: [TenantCtx]) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= stack.len { break }
+    out = out.push(tenant_key(stack[i]))
+    i = i + 1
+  }
+  give out
+}
+
+proc stack_has_active_only(stack: [TenantCtx]) -> bool {
+  let i: int = 0
+  loop {
+    if i >= stack.len { break }
+    if !stack[i].active { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc rotate_stack(stack: [TenantCtx]) -> [TenantCtx] {
+  if stack.len <= 1 { give stack }
+  let out: [TenantCtx] = []
+  let i: int = 1
+  loop {
+    if i >= stack.len { break }
+    out = out.push(stack[i])
+    i = i + 1
+  }
+  out = out.push(stack[0])
+  give out
+}
+
+proc stack_head(stack: [TenantCtx]) -> TenantCtx {
+  if stack.len == 0 { give default_ctx() }
+  give stack[0]
+}
+
+proc stack_last(stack: [TenantCtx]) -> TenantCtx {
+  give current(stack)
+}
+
+proc summary_key(ctx: TenantCtx, key: string) -> string {
+  give ctx.tenant_id + "|" + ctx.region + "|" + ctx.plan + "|" + key
+}
+
+proc stats(ctx: TenantCtx) -> string {
+  let active = "false"
+  if ctx.active { active = "true" }
+  give "tenant=" + ctx.tenant_id + ",region=" + ctx.region + ",plan=" + ctx.plan + ",active=" + active
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/tenant"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/tenant
+role: Isolation multi tenant explicite
+input_contract: Contexte tenant et ressource cibles explicites
+output_contract: Cle scope et verifications d isolation deterministes
+boundary: Ne fait pas d auth; applique uniquement le scope tenant
+>>>

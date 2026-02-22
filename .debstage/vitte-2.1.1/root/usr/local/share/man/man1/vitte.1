@@ -1,0 +1,266 @@
+.TH VITTE 1 "February 2026" "vitte 2.1.1" "User Commands"
+.SH NAME
+vitte \- compiler, checker, and tooling CLI for the Vitte language
+.SH SYNOPSIS
+.B vitte
+[\fIcommand\fR] [\fIoptions\fR] \fI<input>\fR
+.SH DESCRIPTION
+.B vitte
+parses, checks, lowers, emits, and builds Vitte source files.
+It also provides module graph/doctor tooling, diagnostics explainers,
+and project bootstrap helpers.
+.SH COMMANDS
+.TP
+.B help
+Show help and common tasks.
+.TP
+.B init [dir]
+Create a minimal project scaffold.
+.TP
+.B explain <code>
+Explain a diagnostic code (for example \fBE0001\fR).
+.TP
+.B doctor
+Check toolchain prerequisites.
+.TP
+.B parse
+Parse only (no backend).
+.TP
+.B check
+Parse + resolve + IR (no backend).
+.TP
+.B emit
+Emit C++ only (no native compile).
+.TP
+.B build
+Full build (default command path).
+.TP
+.B profile
+Build with stage timing/memory profile report.
+.TP
+.B reduce
+Reduce a failing input to a minimal reproducer.
+.TP
+.B clean-cache
+Remove \fB.vitte-cache\fR artifacts.
+.TP
+.B mod graph
+Show module import graph and cycle report.
+.TP
+.B mod doctor
+Lint module imports, aliases, and collisions.
+.TP
+.B mod contract-diff
+Compare exported module contract between two inputs.
+.TP
+.B mod api-diff
+Legacy alias for \fBmod contract-diff\fR.
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Show help.
+.TP
+.BI \-o " <file>"
+Output executable name.
+.TP
+.BI \-\-lang " <code>"
+Language for diagnostics (for example \fBen\fR, \fBfr\fR).
+.TP
+.BI \-\-explain " <code>"
+Explain one diagnostic code.
+.TP
+.BI \-\-runtime-include " <path>"
+Add include directory for \fBvitte_runtime.hpp\fR.
+.TP
+.BI \-\-target " <name>"
+Select target (for example \fBnative\fR, \fBarduino-uno\fR).
+.TP
+.B \-\-upload
+Upload to Arduino after build (requires \fB\-\-port\fR).
+.TP
+.BI \-\-port " <path>"
+Serial port for Arduino upload.
+.TP
+.BI \-\-fqbn " <name>"
+Arduino fully qualified board name.
+.TP
+.B \-\-parse-only
+Parse only (legacy flag).
+.TP
+.B \-\-parse-modules
+Parse + load modules, no resolve/lowering.
+.TP
+.B \-\-parse-silent
+Suppress parse-only informational logs.
+.TP
+.B \-\-strict-parse
+Disallow keywords as identifiers.
+.TP
+.B \-\-resolve-only
+Resolve only (no lowering).
+.TP
+.B \-\-hir-only
+Lower to HIR only.
+.TP
+.B \-\-mir-only
+Lower to MIR only.
+.TP
+.B \-\-dump-ast
+Dump AST after parsing.
+.TP
+.B \-\-dump-ir
+Dump IR (alias of \fB\-\-dump-mir\fR).
+.TP
+.B \-\-dump-resolve
+Dump symbol table after resolve.
+.TP
+.B \-\-dump-hir
+Dump HIR after lowering.
+.TP
+.B \-\-dump-hir-json
+Dump HIR as JSON.
+.TP
+.B \-\-dump-hir-compact
+Dump HIR as compact text.
+.TP
+.BI \-\-dump-hir= " pretty|compact|json"
+Select HIR dump format.
+.TP
+.B \-\-dump-mir
+Dump MIR after lowering.
+.TP
+.B \-\-emit-cpp
+Emit C++ only (legacy alias path).
+.TP
+.B \-\-diag-json
+Emit diagnostics as JSON.
+.TP
+.B \-\-diag-json-pretty
+Emit diagnostics as pretty JSON.
+.TP
+.BI \-\-diag-filter " <codes>"
+Emit only selected diagnostic codes (comma-separated).
+.TP
+.B \-\-diag-code-only
+Emit compact diagnostics (\fBfile:line:col CODE\fR).
+.TP
+.B \-\-deterministic
+Enable deterministic output ordering.
+.TP
+.B \-\-cache-report
+Print parse/resolve/ir cache report.
+.TP
+.BI \-\-runtime-profile " <name>"
+Select runtime profile: \fBcore\fR, \fBsystem\fR, \fBdesktop\fR, \fBarduino\fR.
+.TP
+.BI \-\-stdlib-profile " <name>"
+Legacy alias of \fB\-\-runtime-profile\fR.
+.TP
+.B \-\-dump-stdlib-map
+Dump stdlib module -> exported symbols map.
+.TP
+.B \-\-dump-module-index
+Dump full module index as JSON.
+.TP
+.B \-\-allow-experimental
+Allow imports under experimental namespace.
+.TP
+.B \-\-warn-experimental
+Downgrade experimental import denial to warning.
+.TP
+.B \-\-deny-internal
+Enforce internal module privacy (default).
+.TP
+.B \-\-allow-internal
+Disable internal module privacy checks.
+.TP
+.B \-\-json
+For \fBmod graph\fR: output JSON.
+.TP
+.BI \-\-from " <module>"
+For \fBmod graph\fR: focus subgraph from module.
+.TP
+.B \-\-fix
+For \fBmod doctor\fR: print rewrite suggestions.
+.TP
+.BI \-\-max-imports " N"
+For \fBmod doctor\fR: threshold for module fan-out.
+.TP
+.BI \-\-old " <file>"
+For \fBmod contract-diff\fR: old entry file.
+.TP
+.BI \-\-new " <file>"
+For \fBmod contract-diff\fR: new entry file.
+.TP
+.B \-\-strict-types
+Enforce canonical type names.
+.TP
+.B \-\-strict-modules
+Forbid glob imports, enforce alias + canonical path.
+.TP
+.B \-\-strict-imports
+Enforce explicit imports and reject unused aliases.
+.TP
+.B \-\-strict-bridge
+Alias of \fB\-\-strict-imports\fR.
+.TP
+.B \-\-fail-on-warning
+Treat warnings as errors.
+.TP
+.BI \-\-stage " <name>"
+Stop at stage: \fBparse\fR, \fBresolve\fR, \fBir\fR, \fBbackend\fR.
+.TP
+.B \-\-freestanding
+Enable freestanding mode.
+.TP
+.B \-\-stdout
+Emit C++ to stdout (implies emit).
+.TP
+.B \-\-emit-obj
+Emit a native object file (\fB.o\fR).
+.TP
+.B \-\-repro
+Enable reproducible object output flags.
+.TP
+.B \-\-repro-strict
+Enforce strict deterministic IR lowering order.
+.TP
+.B \-\-debug
+Enable debug symbols.
+.TP
+.B \-O0 .. \-O3
+Set optimization level.
+.SH FILES
+.TP
+.B .vitte-cache/
+Local cache for parse/resolve/ir artifacts.
+.TP
+.B src/vitte/packages/
+Stdlib/package source tree in repository layout.
+.SH ENVIRONMENT
+.TP
+.B VITTE_ROOT
+Override repository/toolchain root used to resolve stdlib/runtime paths.
+.TP
+.B OPENSSL_DIR
+OpenSSL prefix for native compile/link.
+.TP
+.B CURL_DIR
+libcurl prefix for native compile/link.
+.TP
+.B LLD_PATH
+Path to \fBld.lld\fR for kernel/target flows requiring lld.
+.SH EXAMPLES
+.nf
+vitte help
+vitte init app
+vitte check src/main.vit
+vitte emit --stdout src/main.vit
+vitte mod graph --json --from __root__ src/main.vit
+vitte explain E0001
+.fi
+.SH EXIT STATUS
+Returns 0 on success, non-zero on parse/resolve/backend/toolchain failure.
+.SH SEE ALSO
+.BR clang++ (1),
+.BR ld (1)

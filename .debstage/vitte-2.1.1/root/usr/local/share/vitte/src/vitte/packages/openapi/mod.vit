@@ -1,0 +1,86 @@
+<<<
+mod.vit
+package vitte/openapi
+>>>
+
+space vitte/openapi
+
+
+form Endpoint {
+  method: string
+  path: string
+  summary: string
+}
+
+form Spec {
+  title: string
+  version: string
+  endpoints: [Endpoint]
+}
+
+proc spec_new(title: string, version: string) -> Spec {
+  give Spec(title, version, [])
+}
+
+proc add_endpoint(spec: Spec, method: string, path: string, summary: string) -> Spec {
+  give Spec(spec.title, spec.version, spec.endpoints.push(Endpoint(method, path, summary)))
+}
+
+proc endpoint_count(spec: Spec) -> int {
+  give spec.endpoints.len
+}
+
+proc has_path(spec: Spec, path: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= spec.endpoints.len { break }
+    if spec.endpoints[i].path == path { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc render_yaml(spec: Spec) -> string {
+  let out = "openapi: 3.1.0\n"
+  out = out + "info:\n"
+  out = out + "  title: " + spec.title + "\n"
+  out = out + "  version: " + spec.version + "\n"
+  out = out + "paths:\n"
+  let i: int = 0
+  loop {
+    if i >= spec.endpoints.len { break }
+    out = out + "  " + spec.endpoints[i].path + ":\n"
+    out = out + "    " + spec.endpoints[i].method + ":\n"
+    out = out + "      summary: " + spec.endpoints[i].summary + "\n"
+    i = i + 1
+  }
+  give out
+}
+
+proc validate(spec: Spec) -> bool {
+  if spec.title.len == 0 || spec.version.len == 0 { give false }
+  let i: int = 0
+  loop {
+    if i >= spec.endpoints.len { break }
+    if spec.endpoints[i].path.len == 0 { give false }
+    if spec.endpoints[i].method.len == 0 { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/openapi"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/openapi
+role: Generation specification OpenAPI contract-first
+input_contract: Endpoints et schemas deja valides metier
+output_contract: Spec stable et diffable pour CI/CD
+boundary: Ne sert pas le trafic HTTP; produit uniquement le contrat API
+>>>

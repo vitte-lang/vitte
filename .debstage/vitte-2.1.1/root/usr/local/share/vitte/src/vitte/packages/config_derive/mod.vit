@@ -1,0 +1,90 @@
+<<<
+mod.vit
+package vitte/config_derive
+>>>
+
+space vitte/config_derive
+
+
+form FieldSpec {
+  name: string
+  default_value: string
+  required: bool
+}
+
+form Schema {
+  name: string
+  fields: [FieldSpec]
+}
+
+form DeriveResult {
+  keys: [string]
+  defaults: [string]
+}
+
+proc schema(name: string) -> Schema {
+  give Schema(name, [])
+}
+
+proc add_field(s: Schema, name: string, default_value: string, required: bool) -> Schema {
+  give Schema(s.name, s.fields.push(FieldSpec(name, default_value, required)))
+}
+
+proc derive(s: Schema) -> DeriveResult {
+  let keys: [string] = []
+  let defaults: [string] = []
+  let i: int = 0
+  loop {
+    if i >= s.fields.len { break }
+    keys = keys.push(s.fields[i].name)
+    defaults = defaults.push(s.fields[i].default_value)
+    i = i + 1
+  }
+  give DeriveResult(keys, defaults)
+}
+
+proc required_keys(s: Schema) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= s.fields.len { break }
+    if s.fields[i].required { out = out.push(s.fields[i].name) }
+    i = i + 1
+  }
+  give out
+}
+
+proc validate_schema(s: Schema) -> bool {
+  if s.name.len == 0 { give false }
+  let i: int = 0
+  loop {
+    if i >= s.fields.len { break }
+    if s.fields[i].name.len == 0 { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc summary(s: Schema) -> string {
+  give "schema=" + s.name +
+       ",fields=" + s.fields.len.to_string() +
+       ",valid=" + validate_schema(s).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/config_derive"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/config_derive
+role: Generation automatique de configuration typee
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

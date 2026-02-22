@@ -1,0 +1,240 @@
+<<<
+mod.vit
+package vitte/stream
+>>>
+
+space vitte/stream
+
+
+form StreamConfig {
+  window_ticks: int
+  batch_size: int
+  max_buffer: int
+}
+
+form StreamEvent {
+  seq: int
+  value: string
+  tick: int
+}
+
+form Stream {
+  cfg: StreamConfig
+  next_seq: int
+  buffer: [StreamEvent]
+  dropped: int
+}
+
+proc stream_new(window_ticks: int, batch_size: int, max_buffer: int) -> Stream {
+  let win = window_ticks
+  if win < 1 { win = 1 }
+
+  let size = batch_size
+  if size < 1 { size = 1 }
+
+  let cap = max_buffer
+  if cap < 1 { cap = 1 }
+
+  give Stream(StreamConfig(win, size, cap), 0, [], 0)
+}
+
+proc drop_first(events: [StreamEvent]) -> [StreamEvent] {
+  let out: [StreamEvent] = []
+  let i: int = 1
+  loop {
+    if i >= events.len { break }
+    out = out.push(events[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc push(stream: Stream, value: string, tick: int) -> Stream {
+  let buffer = stream.buffer
+  let dropped = stream.dropped
+  if buffer.len >= stream.cfg.max_buffer {
+    buffer = drop_first(buffer)
+    dropped = dropped + 1
+  }
+  let event = StreamEvent(stream.next_seq, value, tick)
+  give Stream(stream.cfg, stream.next_seq + 1, buffer.push(event), dropped)
+}
+
+proc backpressure(stream: Stream) -> bool {
+  give stream.buffer.len >= stream.cfg.max_buffer
+}
+
+proc batch(stream: Stream) -> [StreamEvent] {
+  let out: [StreamEvent] = []
+  let i: int = 0
+  loop {
+    if i >= stream.buffer.len { break }
+    if i >= stream.cfg.batch_size { break }
+    out = out.push(stream.buffer[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc drain_batch(stream: Stream) -> Stream {
+  let out: [StreamEvent] = []
+  let i: int = stream.cfg.batch_size
+  loop {
+    if i >= stream.buffer.len { break }
+    out = out.push(stream.buffer[i])
+    i = i + 1
+  }
+  give Stream(stream.cfg, stream.next_seq, out, stream.dropped)
+}
+
+proc window(stream: Stream, now_tick: int) -> [StreamEvent] {
+  let out: [StreamEvent] = []
+  let i: int = 0
+  loop {
+    if i >= stream.buffer.len { break }
+    let event = stream.buffer[i]
+    if now_tick - event.tick <= stream.cfg.window_ticks {
+      out = out.push(event)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc available(stream: Stream) -> int {
+  let left = stream.cfg.max_buffer - stream.buffer.len
+  if left < 0 { give 0 }
+  give left
+}
+
+proc oldest_tick(stream: Stream) -> int {
+  if stream.buffer.len == 0 { give -1 }
+  give stream.buffer[0].tick
+}
+
+proc newest_tick(stream: Stream) -> int {
+  if stream.buffer.len == 0 { give -1 }
+  give stream.buffer[stream.buffer.len - 1].tick
+}
+
+proc lag_ticks(stream: Stream, now_tick: int) -> int {
+  let oldest = oldest_tick(stream)
+  if oldest < 0 { give 0 }
+  let lag = now_tick - oldest
+  if lag < 0 { give 0 }
+  give lag
+}
+
+proc window_count(stream: Stream, now_tick: int) -> int {
+  give window(stream, now_tick).len
+}
+
+proc overflow_count(stream: Stream) -> int {
+  give stream.dropped
+}
+
+proc flush(stream: Stream) -> Stream {
+  give Stream(stream.cfg, stream.next_seq, [], stream.dropped)
+}
+
+proc stats(stream: Stream) -> string {
+  give "buffer=" + stream.buffer.len.to_string() +
+       ",dropped=" + stream.dropped.to_string() +
+       ",available=" + available(stream).to_string()
+}
+
+pick StreamError {
+  None
+  Empty
+  Backpressure
+  InvalidSeq
+}
+
+form StreamResult {
+  stream: Stream
+  error: StreamError
+  event: StreamEvent
+}
+
+proc peek(stream: Stream) -> StreamEvent {
+  if stream.buffer.len == 0 { give StreamEvent(-1, "", 0) }
+  give stream.buffer[0]
+}
+
+proc pop(stream: Stream) -> StreamResult {
+  if stream.buffer.len == 0 {
+    give StreamResult(stream, StreamError.Empty, StreamEvent(-1, "", 0))
+  }
+  let first = stream.buffer[0]
+  give StreamResult(Stream(stream.cfg, stream.next_seq, drop_first(stream.buffer), stream.dropped), StreamError.None, first)
+}
+
+proc push_safe(stream: Stream, value: string, tick: int) -> StreamResult {
+  if backpressure(stream) {
+    let next = push(stream, value, tick)
+    give StreamResult(next, StreamError.Backpressure, StreamEvent(next.next_seq - 1, value, tick))
+  }
+  let next = push(stream, value, tick)
+  give StreamResult(next, StreamError.None, StreamEvent(next.next_seq - 1, value, tick))
+}
+
+proc find_by_seq(stream: Stream, seq: int) -> StreamEvent {
+  let i: int = 0
+  loop {
+    if i >= stream.buffer.len { break }
+    if stream.buffer[i].seq == seq { give stream.buffer[i] }
+    i = i + 1
+  }
+  give StreamEvent(-1, "", 0)
+}
+
+proc replay_from(stream: Stream, seq: int) -> [StreamEvent] {
+  let out: [StreamEvent] = []
+  let i: int = 0
+  loop {
+    if i >= stream.buffer.len { break }
+    if stream.buffer[i].seq >= seq { out = out.push(stream.buffer[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc trim_before_tick(stream: Stream, tick: int) -> Stream {
+  let out: [StreamEvent] = []
+  let i: int = 0
+  loop {
+    if i >= stream.buffer.len { break }
+    if stream.buffer[i].tick >= tick { out = out.push(stream.buffer[i]) }
+    i = i + 1
+  }
+  give Stream(stream.cfg, stream.next_seq, out, stream.dropped)
+}
+
+proc stream_health(stream: Stream) -> string {
+  if stream.dropped > 0 { give "degraded" }
+  if backpressure(stream) { give "warning" }
+  give "ok"
+}
+
+proc throughput_hint(stream: Stream) -> int {
+  if stream.cfg.window_ticks <= 0 { give 0 }
+  give stream.cfg.batch_size * 1000 / stream.cfg.window_ticks
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/stream"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/stream
+role: Flux avec batch fenetre temporelle et backpressure
+input_contract: Evenement ordonne seq value tick et bornes buffer explicites
+output_contract: Batch window backpressure deterministes
+boundary: Ne transporte pas les flux reseau; gere seulement le buffer local
+>>>

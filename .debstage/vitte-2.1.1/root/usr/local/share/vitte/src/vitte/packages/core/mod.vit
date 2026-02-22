@@ -1,0 +1,99 @@
+<<<
+mod.vit
+package vitte/core
+>>>
+
+space vitte/core
+
+
+pick Option[T] {
+  Some(value: T)
+  None
+}
+
+pick Result[T, E] {
+  Ok(value: T)
+  Err(error: E)
+}
+
+form Eq[T] {
+  eq: proc(a: T, b: T) -> bool
+}
+
+form Ord[T] {
+  cmp: proc(a: T, b: T) -> int
+}
+
+proc some[T](value: T) -> Option[T] {
+  give Option.Some(value)
+}
+
+proc none[T]() -> Option[T] {
+  give Option.None
+}
+
+proc ok[T, E](value: T) -> Result[T, E] {
+  give Result.Ok(value)
+}
+
+proc err[T, E](error: E) -> Result[T, E] {
+  give Result.Err(error)
+}
+
+proc is_some[T](opt: Option[T]) -> bool {
+  when opt is Option.Some {
+    give true
+  }
+  give false
+}
+
+proc is_none[T](opt: Option[T]) -> bool {
+  when opt is Option.None {
+    give true
+  }
+  give false
+}
+
+proc is_ok[T, E](r: Result[T, E]) -> bool {
+  when r is Result.Ok {
+    give true
+  }
+  give false
+}
+
+proc is_err[T, E](r: Result[T, E]) -> bool {
+  when r is Result.Err {
+    give true
+  }
+  give false
+}
+
+proc unwrap_or[T](opt: Option[T], fallback: T) -> T {
+  when opt is Option.Some {
+    give opt.value
+  }
+  give fallback
+}
+
+proc result_unwrap_or[T, E](r: Result[T, E], fallback: T) -> T {
+  when r is Result.Ok {
+    give r.value
+  }
+  give fallback
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/core"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/core
+role: Noyau des types primitifs, Option Result et conventions du langage
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

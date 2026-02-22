@@ -1,0 +1,188 @@
+<<<
+mod.vit
+package vitte/ast
+>>>
+
+space vitte/ast
+
+
+pick AstKind {
+  Module
+  Proc
+  Type
+  Let
+  Call
+  Literal
+}
+
+form AstNode {
+  id: int
+  kind: AstKind
+  name: string
+  value: string
+}
+
+form AstModule {
+  name: string
+  nodes: [AstNode]
+}
+
+proc ast_node(id: int, kind: AstKind, name: string, value: string) -> AstNode {
+  give AstNode(id, kind, name, value)
+}
+
+proc ast_module(name: string) -> AstModule {
+  give AstModule(name, [])
+}
+
+proc add_node(m: AstModule, node: AstNode) -> AstModule {
+  give AstModule(m.name, m.nodes.push(node))
+}
+
+proc node_count(m: AstModule) -> int {
+  give m.nodes.len
+}
+
+proc find_by_id(m: AstModule, id: int) -> AstNode {
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].id == id { give m.nodes[i] }
+    i = i + 1
+  }
+  give AstNode(-1, AstKind.Literal, "", "")
+}
+
+proc find_by_name(m: AstModule, name: string) -> AstNode {
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].name == name { give m.nodes[i] }
+    i = i + 1
+  }
+  give AstNode(-1, AstKind.Literal, "", "")
+}
+
+proc kind_name(kind: AstKind) -> string {
+  if kind == AstKind.Module { give "module" }
+  if kind == AstKind.Proc { give "proc" }
+  if kind == AstKind.Type { give "type" }
+  if kind == AstKind.Let { give "let" }
+  if kind == AstKind.Call { give "call" }
+  give "literal"
+}
+
+proc validate(m: AstModule) -> bool {
+  if m.name.len == 0 { give false }
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    let n = m.nodes[i]
+    if n.id < 0 { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc summary(m: AstModule) -> string {
+  give "module=" + m.name + ",nodes=" + m.nodes.len.to_string()
+}
+
+proc nodes_of_kind(m: AstModule, kind: AstKind) -> [AstNode] {
+  let out: [AstNode] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].kind == kind { out = out.push(m.nodes[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc rename_node(m: AstModule, id: int, new_name: string) -> AstModule {
+  let out: [AstNode] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    let n = m.nodes[i]
+    if n.id == id {
+      out = out.push(AstNode(n.id, n.kind, new_name, n.value))
+    } else {
+      out = out.push(n)
+    }
+    i = i + 1
+  }
+  give AstModule(m.name, out)
+}
+
+proc dedup_ids(m: AstModule) -> bool {
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    let j: int = i + 1
+    loop {
+      if j >= m.nodes.len { break }
+      if m.nodes[i].id == m.nodes[j].id { give false }
+      j = j + 1
+    }
+    i = i + 1
+  }
+  give true
+}
+
+proc module_health(m: AstModule) -> string {
+  if !validate(m) { give "invalid" }
+  if !dedup_ids(m) { give "duplicate-id" }
+  give "ok"
+}
+
+proc remove_by_id(m: AstModule, id: int) -> AstModule {
+  let out: [AstNode] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].id != id { out = out.push(m.nodes[i]) }
+    i = i + 1
+  }
+  give AstModule(m.name, out)
+}
+
+proc next_id(m: AstModule) -> int {
+  let max: int = -1
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].id > max { max = m.nodes[i].id }
+    i = i + 1
+  }
+  give max + 1
+}
+
+proc add_named_literal(m: AstModule, name: string, value: string) -> AstModule {
+  let n = AstNode(next_id(m), AstKind.Literal, name, value)
+  give add_node(m, n)
+}
+
+proc ast_diagnostics(m: AstModule) -> string {
+  give summary(m) +
+       ",calls=" + nodes_of_kind(m, AstKind.Call).len.to_string() +
+       ",health=" + module_health(m)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/ast"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/ast
+role: Representation syntaxique source avant resolution semantique
+input_contract: Structures internes du compilateur deja valides syntaxiquement
+output_contract: Artefacts intermediaires deterministes pour l etape suivante
+boundary: Ne fait ni IO reseau ni decisions metier applicatives
+>>>

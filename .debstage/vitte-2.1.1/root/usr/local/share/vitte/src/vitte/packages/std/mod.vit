@@ -1,0 +1,66 @@
+<<<
+mod.vit
+package vitte/std
+>>>
+
+space vitte/std
+
+
+form StdEntry {
+  name: string
+  group: string
+  path: string
+}
+
+form StdIndex {
+  entries: [StdEntry]
+}
+
+proc std_index() -> StdIndex {
+  give StdIndex([])
+}
+
+proc register(i: StdIndex, name: string, group: string, path: string) -> StdIndex {
+  give StdIndex(i.entries.push(StdEntry(name, group, path)))
+}
+
+proc find_group(i: StdIndex, group: string) -> [string] {
+  let out: [string] = []
+  let k: int = 0
+  loop {
+    if k >= i.entries.len { break }
+    if i.entries[k].group == group { out = out.push(i.entries[k].name) }
+    k = k + 1
+  }
+  give out
+}
+
+proc resolve_path(i: StdIndex, name: string) -> string {
+  let k: int = 0
+  loop {
+    if k >= i.entries.len { break }
+    if i.entries[k].name == name { give i.entries[k].path }
+    k = k + 1
+  }
+  give ""
+}
+
+proc size(i: StdIndex) -> int {
+  give i.entries.len
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/std"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/std
+role: Index des modules standards disponibles
+input_contract: Enregistrements modules explicites
+output_contract: Catalogue stable pour discovery
+boundary: Ne charge pas dynamiquement les modules
+>>>

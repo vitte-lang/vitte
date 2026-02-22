@@ -1,0 +1,63 @@
+<<<
+mod.vit
+package vitte/subprocess
+>>>
+
+space vitte/subprocess
+
+
+form ProcSpec {
+  program: string
+  args: [string]
+  cwd: string
+  timeout_ms: int
+}
+
+proc spec(program: string, cwd: string) -> ProcSpec {
+  give ProcSpec(program, [], cwd, 0)
+}
+
+proc arg(p: ProcSpec, value: string) -> ProcSpec {
+  give ProcSpec(p.program, p.args.push(value), p.cwd, p.timeout_ms)
+}
+
+proc with_timeout(p: ProcSpec, timeout_ms: int) -> ProcSpec {
+  give ProcSpec(p.program, p.args, p.cwd, timeout_ms)
+}
+
+proc command_line(p: ProcSpec) -> string {
+  let out = p.program
+  let i: int = 0
+  loop {
+    if i >= p.args.len { break }
+    out = out + " " + p.args[i]
+    i = i + 1
+  }
+  give out
+}
+
+proc validate(p: ProcSpec) -> bool {
+  if p.program.len == 0 { give false }
+  if p.timeout_ms < 0 { give false }
+  give true
+}
+
+proc profile(p: ProcSpec) -> string {
+  give "proc=" + p.program + ",args=" + p.args.len.to_string() + ",timeout=" + p.timeout_ms.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/subprocess"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/subprocess
+role: Specification de processus externes
+input_contract: Commande/cwd explicites et valides
+output_contract: Specs executables et auditables
+boundary: N orchestre pas scheduling global
+>>>

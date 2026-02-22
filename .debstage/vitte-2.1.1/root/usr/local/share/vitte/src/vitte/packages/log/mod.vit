@@ -1,0 +1,100 @@
+<<<
+mod.vit
+package vitte/log
+>>>
+
+space vitte/log
+
+
+pick LogLevel {
+  Debug
+  Info
+  Warning
+  Error
+}
+
+form LogEntry {
+  level: LogLevel
+  topic: string
+  message: string
+}
+
+form Logger {
+  min_level: LogLevel
+  entries: [LogEntry]
+}
+
+proc logger_new(min_level: LogLevel) -> Logger {
+  give Logger(min_level, [])
+}
+
+proc level_rank(level: LogLevel) -> int {
+  if level == LogLevel.Debug { give 10 }
+  if level == LogLevel.Info { give 20 }
+  if level == LogLevel.Warning { give 30 }
+  give 40
+}
+
+proc level_name(level: LogLevel) -> string {
+  if level == LogLevel.Debug { give "debug" }
+  if level == LogLevel.Info { give "info" }
+  if level == LogLevel.Warning { give "warning" }
+  give "error"
+}
+
+proc enabled(l: Logger, level: LogLevel) -> bool {
+  give level_rank(level) >= level_rank(l.min_level)
+}
+
+proc push(l: Logger, level: LogLevel, topic: string, message: string) -> Logger {
+  if !enabled(l, level) { give l }
+  give Logger(l.min_level, l.entries.push(LogEntry(level, topic, message)))
+}
+
+proc count_level(l: Logger, level: LogLevel) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= l.entries.len { break }
+    if l.entries[i].level == level { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc by_topic(l: Logger, topic: string) -> [LogEntry] {
+  let out: [LogEntry] = []
+  let i: int = 0
+  loop {
+    if i >= l.entries.len { break }
+    if l.entries[i].topic == topic { out = out.push(l.entries[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc format_entry(e: LogEntry) -> string {
+  give "[" + level_name(e.level) + "] " + e.topic + ": " + e.message
+}
+
+proc summary(l: Logger) -> string {
+  give "total=" + l.entries.len.to_string() +
+       ",warn=" + count_level(l, LogLevel.Warning).to_string() +
+       ",err=" + count_level(l, LogLevel.Error).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/log"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/log
+role: Journalisation structuree et niveaux severite
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

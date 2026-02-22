@@ -128,6 +128,34 @@ Useful extras:
 - `make completions-snapshots-update` to refresh golden snapshots.
 - `make ci-completions` to run check + lint + snapshots + fallback-mode test.
 
+## HTTP Runtime Dependency Mode
+
+`libcurl` headers are optional at build time. If `pkg-config libcurl` is unavailable, `bin/vitte` still builds, but HTTP runtime calls are disabled.
+
+- Build behavior without `libcurl` dev headers: compile/link succeeds.
+- Runtime behavior: `http_request` returns an explicit degraded-mode error.
+- Full HTTP runtime support: install `libcurl` development package and ensure `pkg-config` can resolve `libcurl`.
+
+## VitteOS Multi-Language Scripts (Vitte-first)
+
+`vitteos/scripts/` stays Vitte-orchestrator only, and external tooling scripts are isolated in `vitteos/tooling/`:
+
+- `vitteos/scripts/vitteos_tooling.vit` (main Vitte entry script)
+- `vitteos/tooling/bootstrap.sh` (shell bootstrap)
+- `vitteos/tooling/check_vit.py` (Python checker wrapper)
+- `vitteos/tooling/run_check.js` (Node checker wrapper)
+
+Quick usage:
+
+```sh
+./vitteos/tooling/bootstrap.sh
+python3 vitteos/tooling/check_vit.py
+node vitteos/tooling/run_check.js
+make vitteos-quick
+make vitteos-doctor
+make vitteos-status
+```
+
 ---
 
 ## Detailed Installation
@@ -162,6 +190,24 @@ OPENSSL_DIR=/opt/homebrew/opt/openssl@3 make install
 sudo apt-get update
 sudo apt-get install -y clang libssl-dev libcurl4-openssl-dev
 make build
+```
+
+One-shot Debian installer profile (`vitte 2.1.1`, installs dependencies + builds + installs):
+
+```sh
+make install-debian-2.1.1
+```
+
+Build a complete Debian package (`.deb`) with payload parity to macOS pkg:
+
+```sh
+make pkg-debian
+```
+
+Install generated package locally:
+
+```sh
+make pkg-debian-install
 ```
 
 Install binary + editor syntax (Vim/Emacs/Nano):

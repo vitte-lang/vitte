@@ -76,6 +76,9 @@ Scripts to install or uninstall the Vitte toolchain.
   Installs into a given prefix (e.g. `/usr/local`).  
   Used by macOS/pkg-style installs. Installs `vitte` (required), optional legacy binaries, headers/libs/share, editor files, man pages, shell completions, and `share/vitte/env.sh`.
 
+- `install-debian-vitte-2.1.1.sh`  
+  Debian/Ubuntu one-shot installer profile for `vitte 2.1.1`: installs apt dependencies, builds, and installs via prefix/local mode.
+
 - `permissions.sh`  
   Fixes executable permissions where required.
 
@@ -99,6 +102,9 @@ Used to produce distributable artifacts.
 
 - `bundle-stdlib.sh`  
   Packages the Vitte standard library.
+
+- `make-debian-deb.sh`  
+  Builds a complete Debian `.deb` (binary + packages + runtime + editors + man + completions + env helper + postinst checks).
 
 - `make-macos-pkg.sh`  
   Builds a unified macOS `.pkg` installer (binary + packages + runtime + editors + man + completions + env helper + postinstall checks).

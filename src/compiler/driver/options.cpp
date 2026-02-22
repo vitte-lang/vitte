@@ -394,7 +394,7 @@ void print_help() {
         "  --explain <code>  Explain a diagnostic (e.g. E0001)\n"
         "  --runtime-include <path>\n"
         "                    Add include dir for vitte_runtime.hpp\n"
-        "  --target <name>   Select target (e.g. native, arduino-uno)\n"
+        "  --target <name>   Select target (e.g. native, arduino-uno, kernel)\n"
         "  --upload          Upload to Arduino after build (requires --port)\n"
         "  --port <path>     Serial port for Arduino upload\n"
         "  --fqbn <name>     Arduino fully qualified board name\n"

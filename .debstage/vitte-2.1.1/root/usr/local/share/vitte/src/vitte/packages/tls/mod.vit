@@ -1,0 +1,149 @@
+<<<
+mod.vit
+package vitte/tls
+>>>
+
+space vitte/tls
+
+
+pick TlsVersion {
+  V1_2
+  V1_3
+}
+
+pick CipherSuite {
+  Aes128Gcm
+  Chacha20
+}
+
+pick TlsError {
+  None
+  HandshakeFailed
+  CertInvalid
+  Closed
+}
+
+form TlsConfig {
+  version: TlsVersion
+  cipher: CipherSuite
+  verify_peer: bool
+  alpn: string
+}
+
+form TlsSession {
+  peer: string
+  secure: bool
+  handshake_done: bool
+  version: TlsVersion
+  cipher: CipherSuite
+  bytes_in: int
+  bytes_out: int
+}
+
+proc default_config() -> TlsConfig {
+  give TlsConfig(TlsVersion.V1_3, CipherSuite.Aes128Gcm, true, "h2")
+}
+
+proc insecure_config() -> TlsConfig {
+  give TlsConfig(TlsVersion.V1_2, CipherSuite.Chacha20, false, "http/1.1")
+}
+
+proc cipher_name(cipher: CipherSuite) -> string {
+  when cipher is CipherSuite.Aes128Gcm { give "aes128gcm" }
+  give "chacha20"
+}
+
+proc open(peer: string, config: TlsConfig) -> TlsSession {
+  give TlsSession(peer, false, false, config.version, config.cipher, 0, 0)
+}
+
+proc handshake_error(session: TlsSession, cert_ok: bool) -> TlsError {
+  if session.peer.len == 0 { give TlsError.HandshakeFailed }
+  if !cert_ok { give TlsError.CertInvalid }
+  give TlsError.None
+}
+
+proc handshake(session: TlsSession, cert_ok: bool) -> TlsSession {
+  if handshake_error(session, cert_ok) != TlsError.None {
+    give TlsSession(session.peer, false, false, session.version, session.cipher, session.bytes_in, session.bytes_out)
+  }
+  give TlsSession(session.peer, true, true, session.version, session.cipher, session.bytes_in, session.bytes_out)
+}
+
+proc encrypt_size(plain_bytes: int) -> int {
+  if plain_bytes <= 0 { give 0 }
+  give plain_bytes + 21
+}
+
+proc decrypt_size(cipher_bytes: int) -> int {
+  if cipher_bytes <= 21 { give 0 }
+  give cipher_bytes - 21
+}
+
+proc send(session: TlsSession, payload: string) -> TlsSession {
+  if !session.handshake_done { give session }
+  give TlsSession(
+    session.peer,
+    session.secure,
+    session.handshake_done,
+    session.version,
+    session.cipher,
+    session.bytes_in,
+    session.bytes_out + encrypt_size(payload.len)
+  )
+}
+
+proc recv(session: TlsSession, payload: string) -> TlsSession {
+  if !session.handshake_done { give session }
+  give TlsSession(
+    session.peer,
+    session.secure,
+    session.handshake_done,
+    session.version,
+    session.cipher,
+    session.bytes_in + payload.len,
+    session.bytes_out
+  )
+}
+
+proc close(session: TlsSession) -> TlsSession {
+  give TlsSession(
+    session.peer,
+    false,
+    false,
+    session.version,
+    session.cipher,
+    session.bytes_in,
+    session.bytes_out
+  )
+}
+
+proc bytes_in(session: TlsSession) -> int {
+  give session.bytes_in
+}
+
+proc bytes_out(session: TlsSession) -> int {
+  give session.bytes_out
+}
+
+proc is_secure(session: TlsSession) -> bool {
+  give session.secure && session.handshake_done
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/tls"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/tls
+role: Session TLS, negotiation et securisation flux
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

@@ -1,0 +1,62 @@
+<<<
+mod.vit
+package vitte/test
+>>>
+
+space vitte/test
+
+
+pick TestStatus {
+  Passed
+  Failed
+}
+
+form TestCase {
+  name: string
+  status: TestStatus
+  message: string
+}
+
+form TestSuite {
+  name: string
+  cases: [TestCase]
+}
+
+proc suite(name: string) -> TestSuite {
+  give TestSuite(name, [])
+}
+
+proc add_case(s: TestSuite, name: string, status: TestStatus, message: string) -> TestSuite {
+  give TestSuite(s.name, s.cases.push(TestCase(name, status, message)))
+}
+
+proc failed_count(s: TestSuite) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= s.cases.len { break }
+    if s.cases[i].status == TestStatus.Failed { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc ok(s: TestSuite) -> bool {
+  give failed_count(s) == 0
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/test"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/test
+role: Modeles et helpers de tests automatises
+input_contract: Cas de tests explicites
+output_contract: Resultats agreges clairs
+boundary: N execute pas le runner externe
+>>>

@@ -1,0 +1,161 @@
+<<<
+mod.vit
+package vitte/lint
+>>>
+
+space vitte/lint
+
+
+pick LintLevel {
+  Info
+  Warning
+  Error
+}
+
+form LintIssue {
+  code: string
+  level: LintLevel
+  line: int
+  message: string
+}
+
+form LintReport {
+  issues: [LintIssue]
+}
+
+proc issue(code: string, level: LintLevel, line: int, message: string) -> LintIssue {
+  give LintIssue(code, level, line, message)
+}
+
+proc report_new() -> LintReport {
+  give LintReport([])
+}
+
+proc add_issue(r: LintReport, it: LintIssue) -> LintReport {
+  give LintReport(r.issues.push(it))
+}
+
+proc level_name(level: LintLevel) -> string {
+  if level == LintLevel.Info { give "info" }
+  if level == LintLevel.Warning { give "warning" }
+  give "error"
+}
+
+proc run_lines(lines: [string]) -> LintReport {
+  let out = report_new()
+  let i: int = 0
+  loop {
+    if i >= lines.len { break }
+    let line = lines[i]
+    if line.len > 120 {
+      out = add_issue(out, issue("L001", LintLevel.Warning, i + 1, "line too long"))
+    }
+    if line.len > 0 && line.slice(0, 1) == "\t" {
+      out = add_issue(out, issue("L002", LintLevel.Info, i + 1, "tab indentation"))
+    }
+    if line.len > 0 && line.slice(line.len - 1, line.len) == " " {
+      out = add_issue(out, issue("L003", LintLevel.Warning, i + 1, "trailing space"))
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc count_level(r: LintReport, level: LintLevel) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= r.issues.len { break }
+    if r.issues[i].level == level { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc has_error(r: LintReport) -> bool {
+  give count_level(r, LintLevel.Error) > 0
+}
+
+proc summary(r: LintReport) -> string {
+  give "issues=" + r.issues.len.to_string() +
+       ",warn=" + count_level(r, LintLevel.Warning).to_string() +
+       ",err=" + count_level(r, LintLevel.Error).to_string()
+}
+
+proc filter_level(r: LintReport, level: LintLevel) -> [LintIssue] {
+  let out: [LintIssue] = []
+  let i: int = 0
+  loop {
+    if i >= r.issues.len { break }
+    if r.issues[i].level == level { out = out.push(r.issues[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc max_line(r: LintReport) -> int {
+  let m: int = 0
+  let i: int = 0
+  loop {
+    if i >= r.issues.len { break }
+    if r.issues[i].line > m { m = r.issues[i].line }
+    i = i + 1
+  }
+  give m
+}
+
+proc has_code(r: LintReport, code: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= r.issues.len { break }
+    if r.issues[i].code == code { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc lint_health(r: LintReport) -> string {
+  if has_error(r) { give "error" }
+  if count_level(r, LintLevel.Warning) > 0 { give "warning" }
+  give "ok"
+}
+
+proc first_issue(r: LintReport) -> LintIssue {
+  if r.issues.len == 0 { give LintIssue("", LintLevel.Info, 0, "") }
+  give r.issues[0]
+}
+
+proc report_codes(r: LintReport) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= r.issues.len { break }
+    out = out.push(r.issues[i].code)
+    i = i + 1
+  }
+  give out
+}
+
+proc lint_diagnostics(r: LintReport) -> string {
+  give summary(r) +
+       ",max_line=" + max_line(r).to_string() +
+       ",health=" + lint_health(r)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/lint"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/lint
+role: Regles qualite style et diagnostics de code
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

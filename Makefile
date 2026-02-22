@@ -45,7 +45,14 @@ ifdef CURL_DIR
 endif
 
 # Runtime deps
-LDFLAGS += -lssl -lcrypto -lcurl
+LDFLAGS += -lssl -lcrypto
+CURL_CFLAGS  := $(shell pkg-config --cflags libcurl 2>/dev/null)
+CURL_LDFLAGS := $(shell pkg-config --libs libcurl 2>/dev/null)
+ifneq ($(strip $(CURL_LDFLAGS)),)
+  CXXFLAGS += $(CURL_CFLAGS)
+  LDFLAGS  += $(CURL_LDFLAGS)
+endif
+KERNEL_LDFLAGS := $(filter-out -lcurl,$(LDFLAGS))
 
 CLANG_TIDY   := clang-tidy
 FORMAT       := clang-format
@@ -60,6 +67,10 @@ OBJECTS     := \
 	$(C_SOURCES:%.c=$(BUILD_DIR)/%.o) \
 	$(CPP_SOURCES:%.cpp=$(BUILD_DIR)/%.o)
 
+KERNEL_CPP_SOURCES := $(filter-out src/compiler/backends/runtime/vitte_runtime.cpp,$(CPP_SOURCES))
+KERNEL_OBJECTS := $(KERNEL_CPP_SOURCES:%.cpp=$(BUILD_DIR)/kernel/%.o)
+KERNEL_TOOLS_DIR := target/kernel-tools
+
 # ------------------------------------------------------------
 # Default target
 # ------------------------------------------------------------
@@ -71,7 +82,7 @@ all: build
 # Install
 # ------------------------------------------------------------
 
-.PHONY: install install-bin install-editors
+.PHONY: install install-bin install-editors install-debian-2.1.1
 install: build install-bin install-editors
 
 install-bin:
@@ -99,6 +110,9 @@ install-editors:
 	fi
 	@echo "Installed Nano syntax: $(NANO_DIR)/vitte.nanorc"
 
+install-debian-2.1.1:
+	@toolchain/scripts/install/install-debian-vitte-2.1.1.sh
+
 # ------------------------------------------------------------
 # Build
 # ------------------------------------------------------------
@@ -109,11 +123,24 @@ build: dirs $(BIN_DIR)/$(PROJECT)
 $(BIN_DIR)/$(PROJECT): $(OBJECTS)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 
+.PHONY: vittec-kernel kernel-tools
+vittec-kernel: dirs $(KERNEL_TOOLS_DIR)/vittec-kernel
+
+kernel-tools: vittec-kernel
+
+$(KERNEL_TOOLS_DIR)/vittec-kernel: $(KERNEL_OBJECTS)
+	@$(MKDIR) $(KERNEL_TOOLS_DIR)
+	$(CXX) $^ -o $@ $(KERNEL_LDFLAGS)
+
 $(BUILD_DIR)/%.o: %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.o: %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/kernel/%.o: %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
@@ -391,7 +418,160 @@ ci-mod-fast: grammar-check diag-snapshots completions-snapshots stdlib-profile-s
 .PHONY: ci-bridge-compat
 ci-bridge-compat: ci-mod-fast
 
+.PHONY: vitteos-bin-quality
+vitteos-bin-quality:
+	@tools/vitteos_bin_ci_quality.sh
+
+.PHONY: vitteos-bin-runnable-check
+vitteos-bin-runnable-check:
+	@tools/vitteos_bin_runnable_check.sh
+
+.PHONY: vitteos-bin-runtime
+vitteos-bin-runtime:
+	@tools/vitteos_bin_runtime_check.sh --apply
+
+.PHONY: vitteos-bin-matrix
+vitteos-bin-matrix:
+	@tools/vitteos_bin_matrix_report.sh
+
+.PHONY: vitteos-bin-gate
+vitteos-bin-gate:
+	@tools/vitteos_bin_uniformity_check.sh
+	@tools/vitteos_bin_vit_check.sh
+	@tools/vitteos_bin_lint.sh
+	@tools/vitteos_bin_posix_compat.sh
+	@tools/vitteos_bin_matrix_report.sh
+	@tools/vitteos_bin_runtime_check.sh
+
+.PHONY: vitteos-scripts-bootstrap
+vitteos-scripts-bootstrap:
+	@./vitteos/tooling/bootstrap.sh
+
+.PHONY: vitteos-scripts-check
+vitteos-scripts-check:
+	@bash -n vitteos/tooling/bootstrap.sh
+	@python3 -m py_compile vitteos/tooling/check_vit.py
+	@if command -v node >/dev/null 2>&1; then \
+		node --check vitteos/tooling/run_check.js; \
+	else \
+		echo "node not installed, JS syntax check skipped"; \
+	fi
+	@if [ -x "$(BIN_DIR)/$(PROJECT)" ]; then \
+		if "$(BIN_DIR)/$(PROJECT)" --help >/dev/null 2>&1; then \
+			"$(BIN_DIR)/$(PROJECT)" check vitteos/scripts/vitteos_tooling.vit; \
+		else \
+			echo "bin/vitte exists but is not runnable on this host (possible arch mismatch)"; \
+			exit 2; \
+		fi; \
+	else \
+		echo "bin/vitte not found, run: make build"; \
+		exit 2; \
+	fi
+
+.PHONY: vitteos-scripts-check-soft
+vitteos-scripts-check-soft:
+	@bash -n vitteos/tooling/bootstrap.sh
+	@python3 -m py_compile vitteos/tooling/check_vit.py
+	@if command -v node >/dev/null 2>&1; then \
+		node --check vitteos/tooling/run_check.js; \
+	else \
+		echo "node not installed, JS syntax check skipped"; \
+	fi
+	@if [ -x "$(BIN_DIR)/$(PROJECT)" ] && "$(BIN_DIR)/$(PROJECT)" --help >/dev/null 2>&1; then \
+		"$(BIN_DIR)/$(PROJECT)" check vitteos/scripts/vitteos_tooling.vit; \
+	else \
+		echo "vitteos-scripts-check-soft: bin/vitte unavailable or mismatched, vit check skipped"; \
+	fi
+
+.PHONY: vitteos-domain-contract
+vitteos-domain-contract:
+	@tools/vitteos_domain_contract_check.sh
+
+.PHONY: vitteos-issues-check
+vitteos-issues-check:
+	@tools/vitteos_issues_check.sh
+
+.PHONY: vitteos-no-orphan-check
+vitteos-no-orphan-check:
+	@tools/vitteos_no_orphan_module_check.sh
+
+.PHONY: vitteos-space-naming-lint
+vitteos-space-naming-lint:
+	@tools/vitteos_space_naming_lint.sh
+
+.PHONY: vitteos-arch-contract-lint
+vitteos-arch-contract-lint:
+	@tools/vitteos_arch_contract_lint.sh
+
+.PHONY: vitteos-vit-targeted-check
+vitteos-vit-targeted-check:
+	@tools/vitteos_vit_targeted_check.sh
+
+.PHONY: vitteos-vit-targeted-check-update
+vitteos-vit-targeted-check-update:
+	@tools/vitteos_vit_targeted_check.sh --update
+
+.PHONY: vitteos-vit-header-lint
+vitteos-vit-header-lint:
+	@tools/vitteos_vit_header_lint.sh
+
+.PHONY: vitteos-kernel-smoke
+vitteos-kernel-smoke:
+	@tools/vitteos_kernel_smoke.sh
+	@tools/vitteos_kernel_smoke_runtime.sh
+
+.PHONY: vitteos-kernel-smoke-runtime
+vitteos-kernel-smoke-runtime:
+	@tools/vitteos_kernel_smoke_runtime.sh
+
+.PHONY: vitteos-kernel-smoke-runtime-update
+vitteos-kernel-smoke-runtime-update:
+	@tools/vitteos_kernel_smoke_runtime.sh --update
+
+.PHONY: vitteos-adr-policy-check
+vitteos-adr-policy-check:
+	@tools/vitteos_adr_policy_check.sh
+
+.PHONY: vitteos-doctor
+vitteos-doctor:
+	@tools/vitteos_doctor.sh
+
+.PHONY: vitteos-status
+vitteos-status:
+	@tools/generate_vitteos_status.sh
+
+.PHONY: vitteos-new-module
+vitteos-new-module:
+	@if [ -z "$(MODULE)" ]; then \
+		echo "usage: make vitteos-new-module MODULE=vitteos/<path>"; \
+		exit 2; \
+	fi
+	@tools/vitteos_new_module.sh "$(MODULE)"
+
+.PHONY: vitteos-quick
+vitteos-quick: vitteos-issues-check vitteos-domain-contract vitteos-no-orphan-check vitteos-space-naming-lint vitteos-arch-contract-lint vitteos-vit-header-lint vitteos-vit-targeted-check vitteos-kernel-smoke
+
+.PHONY: vitteos-ci
+vitteos-ci: vitteos-bin-runnable-check vitteos-scripts-check-soft vitteos-bin-gate vitteos-issues-check vitteos-domain-contract vitteos-no-orphan-check vitteos-space-naming-lint vitteos-arch-contract-lint vitteos-vit-header-lint vitteos-vit-targeted-check vitteos-kernel-smoke vitteos-adr-policy-check
+
+.PHONY: vitteos-ci-strict
+vitteos-ci-strict: vitteos-bin-runnable-check vitteos-scripts-check vitteos-bin-gate vitteos-issues-check vitteos-domain-contract vitteos-no-orphan-check vitteos-space-naming-lint vitteos-arch-contract-lint vitteos-vit-header-lint vitteos-vit-targeted-check vitteos-kernel-smoke vitteos-adr-policy-check
+
+.PHONY: vitteos-ci-local
+vitteos-ci-local: vitteos-bin-runnable-check vitteos-scripts-check-soft vitteos-issues-check vitteos-domain-contract vitteos-no-orphan-check vitteos-space-naming-lint vitteos-arch-contract-lint vitteos-vit-header-lint vitteos-vit-targeted-check vitteos-kernel-smoke vitteos-adr-policy-check
+
+.PHONY: vitteos-ci-min
+vitteos-ci-min: vitteos-scripts-check-soft vitteos-issues-check vitteos-domain-contract vitteos-no-orphan-check vitteos-space-naming-lint vitteos-vit-header-lint vitteos-vit-targeted-check
+
 PKG_VERSION ?= 2.1.1
+
+.PHONY: pkg-debian
+pkg-debian:
+	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-debian-deb.sh
+
+.PHONY: pkg-debian-install
+pkg-debian-install: pkg-debian
+	@sudo dpkg -i pkgout/vitte_$(PKG_VERSION)_$$(dpkg --print-architecture).deb
 
 .PHONY: pkg-macos
 pkg-macos:
@@ -436,6 +616,7 @@ help:
 	@echo ""
 	@echo "  make            build everything"
 	@echo "  make install    build + install binary + Vim/Emacs/Nano syntax files"
+	@echo "  make install-debian-2.1.1 install vitte on Debian/Ubuntu (deps + build + install via installer profile 2.1.1)"
 	@echo "  make install-bin install only the vitte binary (PREFIX=$(PREFIX))"
 	@echo "  make install-editors install syntax configs for Vim/Emacs/Nano in HOME"
 	@echo "  make format     run clang-format"
@@ -464,11 +645,42 @@ help:
 	@echo "  make completions-snapshots-update update completion golden snapshots"
 	@echo "  make completions-lint syntax-check bash/zsh/fish completion files"
 	@echo "  make ci-completions run completion check + lint + snapshots + fallback"
+	@echo "  make pkg-debian build Debian .deb installer (PKG_VERSION=$(PKG_VERSION))"
+	@echo "  make pkg-debian-install build and install Debian .deb locally via dpkg"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make pkg-macos-uninstall build macOS uninstall pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make release-check run build + ci-fast + ci-completions + pkg build"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
+	@echo "  make vittec-kernel build target/kernel-tools/vittec-kernel (no curl runtime)"
+	@echo "  make vitteos-bin-quality run /bin quality checks + matrix report"
+	@echo "  make vitteos-bin-runnable-check assert bin/vitte is host-runnable (non-regression arch/format guard)"
+	@echo "  make vitteos-bin-runtime run runtime-smoke probes and update runtime column"
+	@echo "  make vitteos-bin-matrix generate migration matrix report under target/reports"
+	@echo "  make vitteos-bin-gate run full /bin gate (uniformity + vit_check + lint + posix + matrix + runtime)"
+	@echo "  make vitteos-scripts-bootstrap run VitteOS multi-language bootstrap script"
+	@echo "  make vitteos-scripts-check strict validation for VitteOS tooling scripts + main .vit"
+	@echo "  make vitteos-scripts-check-soft non-blocking script check for CI/doc structure hosts"
+	@echo "  make vitteos-issues-check validate M1/M2/M3 milestone mapping to tickets"
+	@echo "  make vitteos-domain-contract verify stable domain layout, required .vit files, and owner coverage"
+	@echo "  make vitteos-no-orphan-check block .vit roots/modules outside declared domains"
+	@echo "  make vitteos-space-naming-lint enforce canonical 'space <domain>/<module>' naming"
+	@echo "  make vitteos-arch-contract-lint enforce inter-domain contract and layering rules"
+	@echo "  make vitteos-vit-header-lint enforce <<< >>> header block on critical VitteOS .vit files"
+	@echo "  make vitteos-vit-targeted-check run targeted checks for critical VitteOS .vit files"
+	@echo "  make vitteos-vit-targeted-check-update refresh targeted-check snapshot"
+	@echo "  make vitteos-kernel-smoke run 2-level smoke (structure + runtime probe when available)"
+	@echo "  make vitteos-kernel-smoke-runtime run only runtime smoke probe (qemu/bochs best effort)"
+	@echo "  make vitteos-kernel-smoke-runtime-update refresh runtime smoke snapshot"
+	@echo "  make vitteos-adr-policy-check enforce ADR id in commit message for boot/mm/sched changes"
+	@echo "  make vitteos-doctor print VitteOS environment diagnostics"
+	@echo "  make vitteos-status regenerate vitteos-status.md from checks/snapshots"
+	@echo "  make vitteos-new-module MODULE=vitteos/<path> generate module template files"
+	@echo "  make vitteos-quick run quick local loop (issues + domain + orphan + space + arch-contract + header + targeted + smoke)"
+	@echo "  make vitteos-ci run VitteOS CI chain (soft scripts + bin gate + issues + domain + orphan + space + arch-contract + header + targeted + smoke + adr)"
+	@echo "  make vitteos-ci-strict run strict VitteOS CI chain (strict scripts + bin gate + issues + domain + orphan + space + arch-contract + header + targeted + smoke + adr)"
+	@echo "  make vitteos-ci-local run local VitteOS CI chain without external /bin migration dataset"
+	@echo "  make vitteos-ci-min run minimal fast checks for pre-commit local loop"
 	@echo "  make platon-editor build and self-test platon editor core"
 	@echo "  make std-check  verify std layout"
 	@echo "  make clean      remove build artifacts"

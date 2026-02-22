@@ -1,0 +1,220 @@
+<<<
+mod.vit
+package vitte/abi
+>>>
+
+space vitte/abi
+
+
+pick CallingConvention {
+    C
+    SysV
+    Win64
+    Aapcs
+    Vitte
+}
+
+pick AbiError {
+    None
+    UnknownType
+    UnsupportedConvention
+    InvalidSignature
+    InvalidAlignment
+}
+
+form AbiTypeInfo {
+    name: string
+    size_bits: int
+    align_bits: int
+    signed: bool
+    floating: bool
+    pointer: bool
+}
+
+form AbiSignature {
+    name: string
+    calling: CallingConvention
+    args: [string]
+    ret: string
+    variadic: bool
+}
+
+proc default_calling_convention() -> CallingConvention {
+    give CallingConvention.C
+}
+
+proc pointer_bits() -> int {
+    give 64
+}
+
+proc pointer_bytes() -> int {
+    give pointer_bits() / 8
+}
+
+proc endianness() -> string {
+    give "little"
+}
+
+proc is_integer_type(name: string) -> bool {
+    if name == "int" { give true }
+    if name == "builtin.i8" || name == "builtin.i16" || name == "builtin.i32" || name == "builtin.i64" || name == "builtin.i128" { give true }
+    if name == "builtin.u8" || name == "builtin.u16" || name == "builtin.u32" || name == "builtin.u64" || name == "builtin.u128" { give true }
+    if name == "builtin.isize" || name == "builtin.usize" { give true }
+    give false
+}
+
+proc is_float_type(name: string) -> bool {
+    give name == "builtin.f32" || name == "builtin.f64"
+}
+
+proc is_pointer_type(name: string) -> bool {
+    give name == "string" || name == "builtin.string" || name == "builtin.slice" || name == "builtin.mut_slice"
+}
+
+proc type_size_bits(name: string) -> int {
+    if name == "bool" || name == "builtin.bool" { give 8 }
+    if name == "builtin.char" { give 32 }
+    if name == "builtin.i8" || name == "builtin.u8" { give 8 }
+    if name == "builtin.i16" || name == "builtin.u16" { give 16 }
+    if name == "int" || name == "builtin.i32" || name == "builtin.u32" { give 32 }
+    if name == "builtin.i64" || name == "builtin.u64" { give 64 }
+    if name == "builtin.i128" || name == "builtin.u128" { give 128 }
+    if name == "builtin.isize" || name == "builtin.usize" { give pointer_bits() }
+    if name == "builtin.f32" { give 32 }
+    if name == "builtin.f64" { give 64 }
+    if is_pointer_type(name) { give pointer_bits() }
+    give 0
+}
+
+proc type_align_bits(name: string) -> int {
+    let size = type_size_bits(name)
+    if size == 0 { give 0 }
+    if size > pointer_bits() { give pointer_bits() }
+    give size
+}
+
+proc type_info(name: string) -> AbiTypeInfo {
+    let size = type_size_bits(name)
+    let align = type_align_bits(name)
+    let signed = name == "int" ||
+                 name == "builtin.i8" || name == "builtin.i16" || name == "builtin.i32" ||
+                 name == "builtin.i64" || name == "builtin.i128" || name == "builtin.isize"
+    give AbiTypeInfo(name, size, align, signed, is_float_type(name), is_pointer_type(name))
+}
+
+proc type_error(name: string) -> AbiError {
+    if type_size_bits(name) == 0 { give AbiError.UnknownType }
+    if type_align_bits(name) == 0 { give AbiError.InvalidAlignment }
+    give AbiError.None
+}
+
+proc is_supported_calling(c: CallingConvention) -> bool {
+    if c == CallingConvention.C { give true }
+    if c == CallingConvention.SysV { give true }
+    if c == CallingConvention.Win64 { give true }
+    if c == CallingConvention.Aapcs { give true }
+    if c == CallingConvention.Vitte { give true }
+    give false
+}
+
+proc calling_tag(c: CallingConvention) -> string {
+    if c == CallingConvention.C { give "c" }
+    if c == CallingConvention.SysV { give "sysv" }
+    if c == CallingConvention.Win64 { give "win64" }
+    if c == CallingConvention.Aapcs { give "aapcs" }
+    give "vitte"
+}
+
+proc signature(name: string, calling: CallingConvention, args: [string], ret: string, variadic: bool) -> AbiSignature {
+    give AbiSignature(name, calling, args, ret, variadic)
+}
+
+proc validate_signature(sig: AbiSignature) -> AbiError {
+    if sig.name.len == 0 { give AbiError.InvalidSignature }
+    if !is_supported_calling(sig.calling) { give AbiError.UnsupportedConvention }
+    if type_error(sig.ret) != AbiError.None { give type_error(sig.ret) }
+
+    let i: int = 0
+    loop {
+        if i >= sig.args.len { break }
+        let err = type_error(sig.args[i])
+        if err != AbiError.None { give err }
+        i = i + 1
+    }
+    give AbiError.None
+}
+
+proc stack_arg_bytes(sig: AbiSignature) -> int {
+    let total_bits: int = 0
+    let i: int = 0
+    loop {
+        if i >= sig.args.len { break }
+        let align = type_align_bits(sig.args[i])
+        let size = type_size_bits(sig.args[i])
+        let rem = total_bits % align
+        if rem != 0 {
+            total_bits = total_bits + (align - rem)
+        }
+        total_bits = total_bits + size
+        i = i + 1
+    }
+    let bytes = total_bits / 8
+    if total_bits % 8 != 0 { give bytes + 1 }
+    give bytes
+}
+
+proc return_in_register(ret: string) -> bool {
+    let sz = type_size_bits(ret)
+    if sz == 0 { give false }
+    give sz <= pointer_bits()
+}
+
+proc signature_abi_summary(sig: AbiSignature) -> string {
+    let err = validate_signature(sig)
+    if err != AbiError.None { give "invalid-signature" }
+    let variadic = "no"
+    if sig.variadic { variadic = "yes" }
+    give "cc=" + calling_tag(sig.calling) +
+         ",args=" + sig.args.len.to_string() +
+         ",stack_bytes=" + stack_arg_bytes(sig).to_string() +
+         ",ret_reg=" + return_in_register(sig.ret).to_string() +
+         ",variadic=" + variadic
+}
+
+proc mangle(sig: AbiSignature) -> string {
+    if validate_signature(sig) != AbiError.None { give "" }
+    give "_V_" + calling_tag(sig.calling) +
+         "_" + sig.name +
+         "_A" + sig.args.len.to_string() +
+         "_R" + sig.ret
+}
+
+proc align_up(value: int, align: int) -> int {
+    if align <= 1 { give value }
+    let rem = value % align
+    if rem == 0 { give value }
+    give value + (align - rem)
+}
+
+proc frame_size(locals_bytes: int, spill_bytes: int, align_bytes: int) -> int {
+    let base = locals_bytes + spill_bytes
+    give align_up(base, align_bytes)
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/abi"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/abi
+role: Contrat ABI: conventions d appel et frontiere binaire
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

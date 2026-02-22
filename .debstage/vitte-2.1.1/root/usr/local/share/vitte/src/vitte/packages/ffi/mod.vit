@@ -1,0 +1,70 @@
+<<<
+mod.vit
+package vitte/ffi
+>>>
+
+space vitte/ffi
+
+
+form ForeignSymbol {
+  lib: string
+  name: string
+  signature: string
+}
+
+form FfiRegistry {
+  symbols: [ForeignSymbol]
+}
+
+proc registry_new() -> FfiRegistry {
+  give FfiRegistry([])
+}
+
+proc bind(reg: FfiRegistry, lib: string, name: string, signature: string) -> FfiRegistry {
+  give FfiRegistry(reg.symbols.push(ForeignSymbol(lib, name, signature)))
+}
+
+proc lookup(reg: FfiRegistry, lib: string, name: string) -> ForeignSymbol {
+  let i: int = 0
+  loop {
+    if i >= reg.symbols.len { break }
+    if reg.symbols[i].lib == lib && reg.symbols[i].name == name { give reg.symbols[i] }
+    i = i + 1
+  }
+  give ForeignSymbol("", "", "")
+}
+
+proc has_symbol(reg: FfiRegistry, lib: string, name: string) -> bool {
+  give lookup(reg, lib, name).name.len > 0
+}
+
+proc list_libs(reg: FfiRegistry) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= reg.symbols.len { break }
+    out = out.push(reg.symbols[i].lib)
+    i = i + 1
+  }
+  give out
+}
+
+proc validate_symbol(s: ForeignSymbol) -> bool {
+  give s.lib.len > 0 && s.name.len > 0 && s.signature.len > 0
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/ffi"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/ffi
+role: Pont fonctions natives et signatures
+input_contract: Definitions ABI explicites
+output_contract: Symboles FFI validables
+boundary: N execute pas de code natif directement
+>>>

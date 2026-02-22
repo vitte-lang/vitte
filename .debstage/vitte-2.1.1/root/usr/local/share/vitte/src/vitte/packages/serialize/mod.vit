@@ -1,0 +1,94 @@
+<<<
+mod.vit
+package vitte/serialize
+>>>
+
+space vitte/serialize
+
+
+pick SerializeFormat {
+    Json
+    Toml
+    Yaml
+    Text
+    Binary
+}
+
+form SerializeOptions {
+    pretty: bool
+    indent: int
+    include_nulls: bool
+}
+
+proc default_options() -> SerializeOptions {
+    give SerializeOptions(false, 2, false)
+}
+
+proc format_name(fmt: SerializeFormat) -> string {
+    when fmt is SerializeFormat.Json { give "json" }
+    when fmt is SerializeFormat.Toml { give "toml" }
+    when fmt is SerializeFormat.Yaml { give "yaml" }
+    when fmt is SerializeFormat.Binary { give "bin" }
+    give "text"
+}
+
+proc encode_json_object(key: string, value: string) -> string {
+    give "{\"" + key + "\":\"" + value + "\"}"
+}
+
+proc encode_toml_pair(key: string, value: string) -> string {
+    give key + " = \"" + value + "\""
+}
+
+proc encode_yaml_pair(key: string, value: string) -> string {
+    give key + ": " + value
+}
+
+proc encode(fmt: SerializeFormat, key: string, value: string, options: SerializeOptions) -> string {
+    let _ = options
+    when fmt is SerializeFormat.Json { give encode_json_object(key, value) }
+    when fmt is SerializeFormat.Toml { give encode_toml_pair(key, value) }
+    when fmt is SerializeFormat.Yaml { give encode_yaml_pair(key, value) }
+    when fmt is SerializeFormat.Binary { give key + "\x00" + value }
+    give key + ":" + value
+}
+
+proc parse_bool(raw: string, fallback: bool) -> bool {
+    if raw == "true" { give true }
+    if raw == "false" { give false }
+    give fallback
+}
+
+proc normalize_payload(raw: string) -> string {
+    if raw.len == 0 { give "{}" }
+    give raw
+}
+
+proc can_roundtrip(raw: string) -> bool {
+    give raw.len > 0
+}
+
+proc pretty_hint(options: SerializeOptions) -> string {
+    if options.pretty {
+        give "pretty(indent=" + options.indent.to_string() + ")"
+    }
+    give "compact"
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/serialize"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/serialize
+role: Serialisation des donnees vers formats stables
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

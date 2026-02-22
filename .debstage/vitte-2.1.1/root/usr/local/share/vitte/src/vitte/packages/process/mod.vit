@@ -1,0 +1,122 @@
+<<<
+mod.vit
+package vitte/process
+>>>
+
+space vitte/process
+
+
+pick ProcState {
+  Created
+  Running
+  Exited
+  Failed
+  Killed
+}
+
+form ProcSpec {
+  path: string
+  args: [string]
+  env_count: int
+  timeout_ms: int
+  dry_run: bool
+}
+
+form ProcHandle {
+  pid: int
+  state: ProcState
+  exit_code: int
+  stdout: string
+  stderr: string
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+  if text.len < prefix.len { give false }
+  give text.slice(0, prefix.len) == prefix
+}
+
+proc spec(path: string) -> ProcSpec {
+  give ProcSpec(path, [], 0, 30000, false)
+}
+
+proc with_args(s: ProcSpec, args: [string]) -> ProcSpec {
+  give ProcSpec(s.path, args, s.env_count, s.timeout_ms, s.dry_run)
+}
+
+proc with_env_count(s: ProcSpec, env_count: int) -> ProcSpec {
+  if env_count < 0 { give ProcSpec(s.path, s.args, 0, s.timeout_ms, s.dry_run) }
+  give ProcSpec(s.path, s.args, env_count, s.timeout_ms, s.dry_run)
+}
+
+proc with_timeout(s: ProcSpec, timeout_ms: int) -> ProcSpec {
+  if timeout_ms <= 0 { give ProcSpec(s.path, s.args, s.env_count, 1000, s.dry_run) }
+  give ProcSpec(s.path, s.args, s.env_count, timeout_ms, s.dry_run)
+}
+
+proc with_dry_run(s: ProcSpec, enabled: bool) -> ProcSpec {
+  give ProcSpec(s.path, s.args, s.env_count, s.timeout_ms, enabled)
+}
+
+proc spawn(s: ProcSpec) -> ProcHandle {
+  if s.path.len == 0 {
+    give ProcHandle(0, ProcState.Failed, 127, "", "missing-path")
+  }
+  if s.dry_run {
+    give ProcHandle(1, ProcState.Exited, 0, "dry-run", "")
+  }
+  if s.timeout_ms < 10 {
+    give ProcHandle(2, ProcState.Failed, 124, "", "timeout")
+  }
+  give ProcHandle(42, ProcState.Running, -1, "", "")
+}
+
+proc wait(h: ProcHandle) -> ProcHandle {
+  when h.state is ProcState.Running {
+    give ProcHandle(h.pid, ProcState.Exited, 0, "ok", "")
+  }
+  give h
+}
+
+proc fail(h: ProcHandle, message: string) -> ProcHandle {
+  give ProcHandle(h.pid, ProcState.Failed, 1, h.stdout, message)
+}
+
+proc kill(h: ProcHandle) -> ProcHandle {
+  give ProcHandle(h.pid, ProcState.Killed, 137, h.stdout, "killed")
+}
+
+proc run(s: ProcSpec) -> ProcHandle {
+  give wait(spawn(s))
+}
+
+proc is_success(h: ProcHandle) -> bool {
+  give h.state == ProcState.Exited && h.exit_code == 0
+}
+
+proc exit_code(h: ProcHandle) -> int {
+  give h.exit_code
+}
+
+proc run_shell(cmdline: string) -> int {
+  if cmdline.len == 0 { give 127 }
+  if starts_with(cmdline, "fail") { give 1 }
+  give 0
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/process"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/process
+role: Gestion processus: lancement, supervision et fin de cycle
+input_contract: Operations systeme avec chemins et permissions deja controles
+output_contract: Effets systeme tracables et codes retour lisibles
+boundary: Ne masque pas les erreurs OS; les remonte explicitement
+>>>

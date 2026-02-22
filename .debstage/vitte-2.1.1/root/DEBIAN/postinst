@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+install_user_editor_support() {
+  local user_name="$1"
+  [ -n "$user_name" ] || return 0
+  [ "$user_name" != "root" ] || return 0
+  local home_dir
+  home_dir="$(getent passwd "$user_name" | cut -d: -f6 || true)"
+  [ -n "$home_dir" ] || return 0
+  [ -d "$home_dir" ] || return 0
+
+  local editor_root="/usr/local/share/vitte/editors"
+  [ -d "$editor_root" ] || return 0
+
+  mkdir -p "$home_dir/.vim/syntax" "$home_dir/.vim/indent" "$home_dir/.vim/ftdetect" "$home_dir/.vim/ftplugin" "$home_dir/.vim/compiler"
+  install -m 0644 "$editor_root/vim/vitte.vim" "$home_dir/.vim/syntax/vitte.vim"
+  install -m 0644 "$editor_root/vim/indent/vitte.vim" "$home_dir/.vim/indent/vitte.vim"
+  install -m 0644 "$editor_root/vim/ftdetect/vitte.vim" "$home_dir/.vim/ftdetect/vitte.vim"
+  install -m 0644 "$editor_root/vim/ftplugin/vitte.vim" "$home_dir/.vim/ftplugin/vitte.vim"
+  install -m 0644 "$editor_root/vim/compiler/vitte.vim" "$home_dir/.vim/compiler/vitte.vim"
+
+  mkdir -p "$home_dir/.emacs.d/lisp"
+  install -m 0644 "$editor_root/emacs/vitte-mode.el" "$home_dir/.emacs.d/lisp/vitte-mode.el"
+  install -m 0644 "$editor_root/emacs/vitte-indent.el" "$home_dir/.emacs.d/lisp/vitte-indent.el"
+  local emacs_init="$home_dir/.emacs.d/init.el"
+  if [ ! -f "$emacs_init" ]; then
+    emacs_init="$home_dir/.emacs"
+    touch "$emacs_init"
+  fi
+  if ! grep -q 'vitte-mode setup' "$emacs_init" 2>/dev/null; then
+    cat >> "$emacs_init" <<'EINIT'
+;; vitte-mode setup (managed by vitte deb)
+(add-to-list 'load-path "~/.emacs.d/lisp")
+(autoload 'vitte-mode "vitte-mode" nil t)
+(add-to-list 'auto-mode-alist '("\\.vit\\'" . vitte-mode))
+EINIT
+  fi
+
+  mkdir -p "$home_dir/.config/nano"
+  install -m 0644 "$editor_root/nano/vitte.nanorc" "$home_dir/.config/nano/vitte.nanorc"
+  touch "$home_dir/.nanorc"
+  if ! grep -q 'include "~/.config/nano/vitte.nanorc"' "$home_dir/.nanorc"; then
+    printf '\ninclude "~/.config/nano/vitte.nanorc"\n' >> "$home_dir/.nanorc"
+  fi
+
+  chown -R "$user_name" "$home_dir/.vim" "$home_dir/.emacs.d" "$home_dir/.config/nano" "$home_dir/.nanorc" >/dev/null 2>&1 || true
+}
+
+if [ "${1:-}" = "configure" ]; then
+  if ! /usr/local/bin/vitte --help >/dev/null 2>&1; then
+    echo "[vitte deb] postinst check failed: vitte --help" >&2
+    exit 1
+  fi
+
+  TMP="/tmp/vitte_deb_verify_$$.vit"
+  cat > "$TMP" <<'VEOF'
+use vitte/core as core_pkg
+
+entry main at core/app {
+  give 0
+}
+VEOF
+  if ! /usr/local/bin/vitte check "$TMP" >/dev/null 2>&1; then
+    echo "[vitte deb] postinst check failed: package import test" >&2
+    rm -f "$TMP"
+    exit 1
+  fi
+  rm -f "$TMP"
+
+  for p in \
+    /usr/local/etc/bash_completion.d/vitte \
+    /usr/local/share/zsh/site-functions/_vitte \
+    /usr/local/share/fish/vendor_completions.d/vitte.fish
+  do
+    if [ ! -f "$p" ]; then
+      echo "[vitte deb] postinst check failed: missing completion $p" >&2
+      exit 1
+    fi
+  done
+
+  if [ -n "${VITTE_SETUP_USER:-}" ]; then
+    install_user_editor_support "$VITTE_SETUP_USER"
+  elif [ -n "${SUDO_USER:-}" ]; then
+    install_user_editor_support "$SUDO_USER"
+  fi
+
+  cat <<MSG
+[vitte deb] install complete
+[vitte deb] binary: /usr/local/bin/vitte
+[vitte deb] root:   /usr/local/share/vitte
+[vitte deb] man:    /usr/local/share/man/man1/vitte.1
+[vitte deb] env:    source /usr/local/share/vitte/env.sh
+MSG
+fi
+
+exit 0

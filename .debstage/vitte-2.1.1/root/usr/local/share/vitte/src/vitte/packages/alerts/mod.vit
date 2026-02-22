@@ -1,0 +1,166 @@
+<<<
+mod.vit
+package vitte/alerts
+>>>
+
+space vitte/alerts
+
+
+pick AlertState {
+  Idle
+  Firing
+  Silenced
+}
+
+form AlertRule {
+  name: string
+  threshold: int
+  window_ticks: int
+  state: AlertState
+  silenced_until: int
+  last_value: int
+  fired_count: int
+}
+
+proc rule_new(name: string, threshold: int, window_ticks: int) -> AlertRule {
+  let th = threshold
+  if th < 1 { th = 1 }
+
+  let win = window_ticks
+  if win < 1 { win = 1 }
+
+  give AlertRule(name, th, win, AlertState.Idle, -1, 0, 0)
+}
+
+proc silenced(rule: AlertRule, now_tick: int) -> bool {
+  if rule.state != AlertState.Silenced { give false }
+  give now_tick <= rule.silenced_until
+}
+
+proc evaluate(rule: AlertRule, observed_value: int, now_tick: int) -> bool {
+  if silenced(rule, now_tick) { give false }
+  give observed_value >= rule.threshold
+}
+
+proc trigger(rule: AlertRule, observed_value: int, now_tick: int) -> AlertRule {
+  if evaluate(rule, observed_value, now_tick) {
+    give AlertRule(rule.name, rule.threshold, rule.window_ticks, AlertState.Firing, rule.silenced_until, observed_value, rule.fired_count + 1)
+  }
+
+  if silenced(rule, now_tick) {
+    give AlertRule(rule.name, rule.threshold, rule.window_ticks, AlertState.Silenced, rule.silenced_until, observed_value, rule.fired_count)
+  }
+
+  give AlertRule(rule.name, rule.threshold, rule.window_ticks, AlertState.Idle, rule.silenced_until, observed_value, rule.fired_count)
+}
+
+proc silence(rule: AlertRule, until_tick: int) -> AlertRule {
+  let until = until_tick
+  if until < 0 { until = 0 }
+  give AlertRule(rule.name, rule.threshold, rule.window_ticks, AlertState.Silenced, until, rule.last_value, rule.fired_count)
+}
+
+proc unsilence(rule: AlertRule) -> AlertRule {
+  give AlertRule(rule.name, rule.threshold, rule.window_ticks, AlertState.Idle, -1, rule.last_value, rule.fired_count)
+}
+
+proc is_idle(rule: AlertRule) -> bool {
+  give rule.state == AlertState.Idle
+}
+
+proc is_silenced_state(rule: AlertRule) -> bool {
+  give rule.state == AlertState.Silenced
+}
+
+proc with_threshold(rule: AlertRule, threshold_value: int) -> AlertRule {
+  let th = threshold_value
+  if th < 1 { th = 1 }
+  give AlertRule(rule.name, th, rule.window_ticks, rule.state, rule.silenced_until, rule.last_value, rule.fired_count)
+}
+
+proc with_window(rule: AlertRule, window_value: int) -> AlertRule {
+  let win = window_value
+  if win < 1 { win = 1 }
+  give AlertRule(rule.name, rule.threshold, win, rule.state, rule.silenced_until, rule.last_value, rule.fired_count)
+}
+
+proc silence_for(rule: AlertRule, now_tick: int, duration_ticks: int) -> AlertRule {
+  let duration = duration_ticks
+  if duration < 0 { duration = 0 }
+  give silence(rule, now_tick + duration)
+}
+
+proc unsilence_if_due(rule: AlertRule, now_tick: int) -> AlertRule {
+  if rule.state != AlertState.Silenced { give rule }
+  if now_tick <= rule.silenced_until { give rule }
+  give unsilence(rule)
+}
+
+proc can_trigger(rule: AlertRule, now_tick: int) -> bool {
+  give !silenced(rule, now_tick)
+}
+
+proc threshold_delta(rule: AlertRule, observed_value: int) -> int {
+  give observed_value - rule.threshold
+}
+
+proc breach_ratio_percent(rule: AlertRule, observed_value: int) -> int {
+  if rule.threshold <= 0 { give 0 }
+  give observed_value * 100 / rule.threshold
+}
+
+proc is_firing(rule: AlertRule) -> bool {
+  give rule.state == AlertState.Firing
+}
+
+proc state_name(rule: AlertRule) -> string {
+  when rule.state is AlertState.Firing { give "firing" }
+  when rule.state is AlertState.Silenced { give "silenced" }
+  give "idle"
+}
+
+proc recover(rule: AlertRule, observed_value: int, now_tick: int) -> AlertRule {
+  if silenced(rule, now_tick) {
+    give AlertRule(rule.name, rule.threshold, rule.window_ticks, AlertState.Silenced, rule.silenced_until, observed_value, rule.fired_count)
+  }
+  if observed_value < rule.threshold {
+    give AlertRule(rule.name, rule.threshold, rule.window_ticks, AlertState.Idle, rule.silenced_until, observed_value, rule.fired_count)
+  }
+  give trigger(rule, observed_value, now_tick)
+}
+
+proc should_page(rule: AlertRule, observed_value: int, now_tick: int, page_after: int) -> bool {
+  if !evaluate(rule, observed_value, now_tick) { give false }
+  let threshold_count = page_after
+  if threshold_count < 1 { threshold_count = 1 }
+  give rule.fired_count + 1 >= threshold_count
+}
+
+proc reset(rule: AlertRule) -> AlertRule {
+  give AlertRule(rule.name, rule.threshold, rule.window_ticks, AlertState.Idle, -1, 0, 0)
+}
+
+proc stats(rule: AlertRule) -> string {
+  give "state=" + state_name(rule) +
+       ",threshold=" + rule.threshold.to_string() +
+       ",last=" + rule.last_value.to_string() +
+       ",fired=" + rule.fired_count.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/alerts"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/alerts
+role: Alerting operationnel par regles explicites
+input_contract: Regle valeur observee et temps logique explicites
+output_contract: Evaluate trigger silence deterministes et testables
+boundary: Ne notifie pas les canaux externes; expose seulement la decision d alerte
+>>>

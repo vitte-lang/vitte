@@ -1,0 +1,104 @@
+<<<
+mod.vit
+package vitte/channel
+>>>
+
+space vitte/channel
+
+
+pick ChannelMode {
+  Bounded
+  Unbounded
+  Broadcast
+}
+
+form Channel {
+  mode: ChannelMode
+  capacity: int
+  queue: [string]
+  dropped: int
+  closed: bool
+}
+
+proc channel_bounded(capacity: int) -> Channel {
+  if capacity <= 0 { give Channel(ChannelMode.Bounded, 1, [], 0, false) }
+  give Channel(ChannelMode.Bounded, capacity, [], 0, false)
+}
+
+proc channel_unbounded() -> Channel {
+  give Channel(ChannelMode.Unbounded, 0, [], 0, false)
+}
+
+proc channel_broadcast() -> Channel {
+  give Channel(ChannelMode.Broadcast, 0, [], 0, false)
+}
+
+proc drop_first(queue: [string]) -> [string] {
+  let out: [string] = []
+  let i: int = 1
+  loop {
+    if i >= queue.len { break }
+    out = out.push(queue[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc len(ch: Channel) -> int {
+  give ch.queue.len
+}
+
+proc can_send(ch: Channel) -> bool {
+  give !ch.closed
+}
+
+proc send(ch: Channel, message: string) -> Channel {
+  if ch.closed { give ch }
+
+  let queue = ch.queue
+  let dropped_count = ch.dropped
+  when ch.mode is ChannelMode.Bounded {
+    if ch.capacity > 0 && queue.len >= ch.capacity {
+      queue = drop_first(queue)
+      dropped_count = dropped_count + 1
+    }
+  }
+  queue = queue.push(message)
+  give Channel(ch.mode, ch.capacity, queue, dropped_count, ch.closed)
+}
+
+proc peek(ch: Channel) -> string {
+  if ch.queue.len == 0 { give "" }
+  give ch.queue[0]
+}
+
+proc pop(ch: Channel) -> Channel {
+  if ch.queue.len == 0 { give ch }
+  give Channel(ch.mode, ch.capacity, drop_first(ch.queue), ch.dropped, ch.closed)
+}
+
+proc close(ch: Channel) -> Channel {
+  give Channel(ch.mode, ch.capacity, ch.queue, ch.dropped, true)
+}
+
+proc dropped(ch: Channel) -> int {
+  give ch.dropped
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/channel"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/channel
+role: Communication concurrente via canaux et files
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

@@ -1,0 +1,111 @@
+<<<
+mod.vit
+package vitte/array
+>>>
+
+space vitte/array
+
+
+pick BlasBackend {
+  None
+  Native
+}
+
+form NdArray {
+  values: [builtin.f64]
+}
+
+proc ndarray_1d(size: int) -> NdArray {
+  let out: [builtin.f64] = []
+  let i: int = 0
+  loop {
+    if i >= size { break }
+    out = out.push(0.0)
+    i = i + 1
+  }
+  give NdArray(out)
+}
+
+proc from_values(values: [builtin.f64]) -> NdArray {
+  give NdArray(values)
+}
+
+proc rank(a: NdArray) -> int {
+  let _ = a
+  give 1
+}
+
+proc len(a: NdArray) -> int {
+  give a.values.len
+}
+
+proc at_1d(a: NdArray, i: int) -> builtin.f64 {
+  if i < 0 || i >= a.values.len { give 0.0 }
+  give a.values[i]
+}
+
+proc set_1d(a: NdArray, i: int, v: builtin.f64) -> NdArray {
+  if i < 0 || i >= a.values.len { give a }
+  let out: [builtin.f64] = []
+  let k: int = 0
+  loop {
+    if k >= a.values.len { break }
+    if k == i { out = out.push(v) } else { out = out.push(a.values[k]) }
+    k = k + 1
+  }
+  give NdArray(out)
+}
+
+proc slice_1d(a: NdArray, start: int, stop: int) -> NdArray {
+  let out: [builtin.f64] = []
+  let i = start
+  loop {
+    if i >= stop || i >= a.values.len { break }
+    if i >= 0 { out = out.push(a.values[i]) }
+    i = i + 1
+  }
+  give NdArray(out)
+}
+
+proc broadcast_scalar(value: builtin.f64, n: int) -> NdArray {
+  let out: [builtin.f64] = []
+  let i: int = 0
+  loop {
+    if i >= n { break }
+    out = out.push(value)
+    i = i + 1
+  }
+  give NdArray(out)
+}
+
+proc add(a: NdArray, b: NdArray) -> NdArray {
+  if a.values.len != b.values.len { give a }
+  let out: [builtin.f64] = []
+  let i: int = 0
+  loop {
+    if i >= a.values.len { break }
+    out = out.push(a.values[i] + b.values[i])
+    i = i + 1
+  }
+  give NdArray(out)
+}
+
+proc blas_backend() -> BlasBackend {
+  give BlasBackend.None
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/array"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/array
+role: Tableaux N dimensions, slicing et operations vectorielles
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

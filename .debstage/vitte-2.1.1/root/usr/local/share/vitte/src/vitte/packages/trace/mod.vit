@@ -1,0 +1,253 @@
+<<<
+mod.vit
+package vitte/trace
+>>>
+
+space vitte/trace
+
+
+pick SpanStatus {
+  Open
+  Closed
+  Error
+}
+
+form Span {
+  id: string
+  parent_id: string
+  name: string
+  start_ms: int
+  end_ms: int
+  status: SpanStatus
+  attrs: [string]
+}
+
+form Trace {
+  spans: [Span]
+}
+
+proc trace_new() -> Trace {
+  give Trace([])
+}
+
+proc contains_span(t: Trace, id: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    if t.spans[i].id == id { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc get_span(t: Trace, id: string) -> Span {
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    if t.spans[i].id == id { give t.spans[i] }
+    i = i + 1
+  }
+  give Span("", "", "", 0, 0, SpanStatus.Closed, [])
+}
+
+proc start_span(t: Trace, id: string, parent_id: string, name: string, start_ms: int) -> Trace {
+  if contains_span(t, id) { give t }
+  give Trace(t.spans.push(Span(id, parent_id, name, start_ms, 0, SpanStatus.Open, [])))
+}
+
+proc end_span(t: Trace, id: string, end_ms: int) -> Trace {
+  let out: [Span] = []
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    let s = t.spans[i]
+    if s.id == id {
+      out = out.push(Span(s.id, s.parent_id, s.name, s.start_ms, end_ms, SpanStatus.Closed, s.attrs))
+    } else {
+      out = out.push(s)
+    }
+    i = i + 1
+  }
+  give Trace(out)
+}
+
+proc mark_error(t: Trace, id: string) -> Trace {
+  let out: [Span] = []
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    let s = t.spans[i]
+    if s.id == id {
+      out = out.push(Span(s.id, s.parent_id, s.name, s.start_ms, s.end_ms, SpanStatus.Error, s.attrs))
+    } else {
+      out = out.push(s)
+    }
+    i = i + 1
+  }
+  give Trace(out)
+}
+
+proc close_all_open(t: Trace, end_ms: int) -> Trace {
+  let out: [Span] = []
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    let s = t.spans[i]
+    if s.status == SpanStatus.Open {
+      out = out.push(Span(s.id, s.parent_id, s.name, s.start_ms, end_ms, SpanStatus.Closed, s.attrs))
+    } else {
+      out = out.push(s)
+    }
+    i = i + 1
+  }
+  give Trace(out)
+}
+
+proc add_attr(t: Trace, id: string, attr: string) -> Trace {
+  let out: [Span] = []
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    let s = t.spans[i]
+    if s.id == id {
+      out = out.push(Span(s.id, s.parent_id, s.name, s.start_ms, s.end_ms, s.status, s.attrs.push(attr)))
+    } else {
+      out = out.push(s)
+    }
+    i = i + 1
+  }
+  give Trace(out)
+}
+
+proc duration(s: Span) -> int {
+  if s.end_ms <= s.start_ms { give 0 }
+  give s.end_ms - s.start_ms
+}
+
+proc average_duration(t: Trace) -> int {
+  if t.spans.len == 0 { give 0 }
+  let d: int = 0
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    d = d + duration(t.spans[i])
+    i = i + 1
+  }
+  give d / t.spans.len
+}
+
+proc total_duration(t: Trace) -> int {
+  let d: int = 0
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    d = d + duration(t.spans[i])
+    i = i + 1
+  }
+  give d
+}
+
+proc open_count(t: Trace) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    if t.spans[i].status == SpanStatus.Open { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc error_count(t: Trace) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    if t.spans[i].status == SpanStatus.Error { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc children_of(t: Trace, parent_id: string) -> [Span] {
+  let out: [Span] = []
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    if t.spans[i].parent_id == parent_id { out = out.push(t.spans[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc root_spans(t: Trace) -> [Span] {
+  let out: [Span] = []
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    if t.spans[i].parent_id.len == 0 { out = out.push(t.spans[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc slow_spans(t: Trace, threshold_ms: int) -> [Span] {
+  let out: [Span] = []
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    if duration(t.spans[i]) >= threshold_ms { out = out.push(t.spans[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc max_duration_span(t: Trace) -> Span {
+  if t.spans.len == 0 { give Span("", "", "", 0, 0, SpanStatus.Closed, []) }
+  let best = t.spans[0]
+  let i: int = 1
+  loop {
+    if i >= t.spans.len { break }
+    if duration(t.spans[i]) > duration(best) { best = t.spans[i] }
+    i = i + 1
+  }
+  give best
+}
+
+proc status_counts(t: Trace) -> string {
+  let open_n: int = 0
+  let err_n: int = 0
+  let i: int = 0
+  loop {
+    if i >= t.spans.len { break }
+    if t.spans[i].status == SpanStatus.Open { open_n = open_n + 1 }
+    if t.spans[i].status == SpanStatus.Error { err_n = err_n + 1 }
+    i = i + 1
+  }
+  give "open=" + open_n.to_string() +
+       ",errors=" + err_n.to_string() +
+       ",closed=" + (t.spans.len - open_n - err_n).to_string()
+}
+
+proc summary(t: Trace) -> string {
+  give "spans=" + t.spans.len.to_string() +
+       ",open=" + open_count(t).to_string() +
+       ",errors=" + error_count(t).to_string() +
+       ",duration=" + total_duration(t).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/trace"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/trace
+role: Tracing distribue et correlation d appels
+input_contract: Evenements de span ordonnes
+output_contract: Traces coherentes et auditables
+boundary: N exporte pas vers backend externe directement
+>>>

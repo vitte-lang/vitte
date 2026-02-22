@@ -1,0 +1,88 @@
+<<<
+mod.vit
+package vitte/eval
+>>>
+
+space vitte/eval
+
+
+pick EvalError {
+  None
+  InvalidOp
+  DivisionByZero
+}
+
+form EvalResult {
+  value: int
+  error: EvalError
+}
+
+proc ok(value: int) -> EvalResult {
+  give EvalResult(value, EvalError.None)
+}
+
+proc err(e: EvalError) -> EvalResult {
+  give EvalResult(0, e)
+}
+
+proc eval_binary(op: string, left: int, right: int) -> EvalResult {
+  if op == "+" { give ok(left + right) }
+  if op == "-" { give ok(left - right) }
+  if op == "*" { give ok(left * right) }
+  if op == "/" {
+    if right == 0 { give err(EvalError.DivisionByZero) }
+    give ok(left / right)
+  }
+  if op == "%" {
+    if right == 0 { give err(EvalError.DivisionByZero) }
+    give ok(left % right)
+  }
+  give err(EvalError.InvalidOp)
+}
+
+proc eval_chain(values: [int], op: string) -> EvalResult {
+  if values.len == 0 { give ok(0) }
+  let acc = values[0]
+  let i: int = 1
+  loop {
+    if i >= values.len { break }
+    let r = eval_binary(op, acc, values[i])
+    if r.error != EvalError.None { give r }
+    acc = r.value
+    i = i + 1
+  }
+  give ok(acc)
+}
+
+proc is_ok(r: EvalResult) -> bool {
+  give r.error == EvalError.None
+}
+
+proc value_or(r: EvalResult, fallback: int) -> int {
+  if is_ok(r) { give r.value }
+  give fallback
+}
+
+proc result_text(r: EvalResult) -> string {
+  if r.error == EvalError.None { give "ok:" + r.value.to_string() }
+  if r.error == EvalError.DivisionByZero { give "err:div0" }
+  give "err:invalid"
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/eval"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/eval
+role: Evaluation dynamique controlee et execution sandbox
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

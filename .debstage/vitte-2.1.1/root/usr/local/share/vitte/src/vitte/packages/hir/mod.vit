@@ -1,0 +1,162 @@
+<<<
+mod.vit
+package vitte/hir
+>>>
+
+space vitte/hir
+
+
+pick HirKind {
+  Block
+  Let
+  Call
+  Return
+  Branch
+}
+
+form HirNode {
+  id: int
+  kind: HirKind
+  symbol: string
+  ty: string
+}
+
+form HirModule {
+  name: string
+  nodes: [HirNode]
+}
+
+proc hir_module(name: string) -> HirModule {
+  give HirModule(name, [])
+}
+
+proc hir_node(id: int, kind: HirKind, symbol: string, ty: string) -> HirNode {
+  give HirNode(id, kind, symbol, ty)
+}
+
+proc add(m: HirModule, n: HirNode) -> HirModule {
+  give HirModule(m.name, m.nodes.push(n))
+}
+
+proc type_count(m: HirModule, ty: string) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].ty == ty { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc validate(m: HirModule) -> bool {
+  if m.name.len == 0 { give false }
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].id < 0 { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc kind_name(k: HirKind) -> string {
+  if k == HirKind.Block { give "block" }
+  if k == HirKind.Let { give "let" }
+  if k == HirKind.Call { give "call" }
+  if k == HirKind.Return { give "return" }
+  give "branch"
+}
+
+proc summary(m: HirModule) -> string {
+  give "module=" + m.name + ",nodes=" + m.nodes.len.to_string()
+}
+
+proc symbols(m: HirModule) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    out = out.push(m.nodes[i].symbol)
+    i = i + 1
+  }
+  give out
+}
+
+proc rename_symbol(m: HirModule, old_name: string, new_name: string) -> HirModule {
+  let out: [HirNode] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    let n = m.nodes[i]
+    if n.symbol == old_name {
+      out = out.push(HirNode(n.id, n.kind, new_name, n.ty))
+    } else {
+      out = out.push(n)
+    }
+    i = i + 1
+  }
+  give HirModule(m.name, out)
+}
+
+proc count_kind(m: HirModule, kind: HirKind) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].kind == kind { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc hir_health(m: HirModule) -> string {
+  if !validate(m) { give "invalid" }
+  if count_kind(m, HirKind.Return) == 0 { give "no-return" }
+  give "ok"
+}
+
+proc find_symbol(m: HirModule, symbol: string) -> HirNode {
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].symbol == symbol { give m.nodes[i] }
+    i = i + 1
+  }
+  give HirNode(-1, HirKind.Let, "", "")
+}
+
+proc type_names(m: HirModule) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    out = out.push(m.nodes[i].ty)
+    i = i + 1
+  }
+  give out
+}
+
+proc hir_diagnostics(m: HirModule) -> string {
+  give summary(m) +
+       ",calls=" + count_kind(m, HirKind.Call).to_string() +
+       ",health=" + hir_health(m)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/hir"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/hir
+role: Representation HIR semantique pour analyses statiques
+input_contract: Structures internes du compilateur deja valides syntaxiquement
+output_contract: Artefacts intermediaires deterministes pour l etape suivante
+boundary: Ne fait ni IO reseau ni decisions metier applicatives
+>>>

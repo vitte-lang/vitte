@@ -1,0 +1,107 @@
+<<<
+mod.vit
+package vitte/doc
+>>>
+
+space vitte/doc
+
+
+form DocSection {
+  title: string
+  body: string
+}
+
+form DocPage {
+  id: string
+  title: string
+  sections: [DocSection]
+}
+
+proc page_new(id: string, title: string) -> DocPage {
+  give DocPage(id, title, [])
+}
+
+proc add_section(p: DocPage, title: string, body: string) -> DocPage {
+  give DocPage(p.id, p.title, p.sections.push(DocSection(title, body)))
+}
+
+proc section_count(p: DocPage) -> int {
+  give p.sections.len
+}
+
+proc find_section(p: DocPage, title: string) -> DocSection {
+  let i: int = 0
+  loop {
+    if i >= p.sections.len { break }
+    if p.sections[i].title == title { give p.sections[i] }
+    i = i + 1
+  }
+  give DocSection("", "")
+}
+
+proc has_section(p: DocPage, title: string) -> bool {
+  give find_section(p, title).title.len > 0
+}
+
+proc render_markdown(p: DocPage) -> string {
+  let out = "# " + p.title + "\n\n"
+  let i: int = 0
+  loop {
+    if i >= p.sections.len { break }
+    out = out + "## " + p.sections[i].title + "\n"
+    out = out + p.sections[i].body + "\n\n"
+    i = i + 1
+  }
+  give out
+}
+
+proc word_count(text: string) -> int {
+  if text.len == 0 { give 0 }
+  let c: int = 1
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    if text.slice(i, i + 1) == " " { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc total_words(p: DocPage) -> int {
+  let c = word_count(p.title)
+  let i: int = 0
+  loop {
+    if i >= p.sections.len { break }
+    c = c + word_count(p.sections[i].title)
+    c = c + word_count(p.sections[i].body)
+    i = i + 1
+  }
+  give c
+}
+
+proc validate_page(p: DocPage) -> bool {
+  if p.id.len == 0 || p.title.len == 0 { give false }
+  let i: int = 0
+  loop {
+    if i >= p.sections.len { break }
+    if p.sections[i].title.len == 0 { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/doc"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/doc
+role: Generation documentation et index de recherche
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

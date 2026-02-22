@@ -1,0 +1,213 @@
+<<<
+mod.vit
+package vitte/reflect
+>>>
+
+space vitte/reflect
+
+
+form FieldInfo {
+  name: string
+  kind: string
+  required: bool
+}
+
+form TypeInfo {
+  name: string
+  fields: [FieldInfo]
+}
+
+proc type_info(name: string) -> TypeInfo {
+  give TypeInfo(name, [])
+}
+
+proc add_field(t: TypeInfo, name: string, kind: string) -> TypeInfo {
+  give TypeInfo(t.name, t.fields.push(FieldInfo(name, kind, true)))
+}
+
+proc add_optional_field(t: TypeInfo, name: string, kind: string) -> TypeInfo {
+  give TypeInfo(t.name, t.fields.push(FieldInfo(name, kind, false)))
+}
+
+proc field_count(t: TypeInfo) -> int {
+  give t.fields.len
+}
+
+proc required_count(t: TypeInfo) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= t.fields.len { break }
+    if t.fields[i].required { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc optional_count(t: TypeInfo) -> int {
+  give t.fields.len - required_count(t)
+}
+
+proc has_field(t: TypeInfo, name: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= t.fields.len { break }
+    if t.fields[i].name == name { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc field_kind(t: TypeInfo, name: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= t.fields.len { break }
+    if t.fields[i].name == name { give t.fields[i].kind }
+    i = i + 1
+  }
+  give ""
+}
+
+proc is_required(t: TypeInfo, name: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= t.fields.len { break }
+    if t.fields[i].name == name { give t.fields[i].required }
+    i = i + 1
+  }
+  give false
+}
+
+proc rename_field(t: TypeInfo, old_name: string, new_name: string) -> TypeInfo {
+  let out: [FieldInfo] = []
+  let i: int = 0
+  loop {
+    if i >= t.fields.len { break }
+    let f = t.fields[i]
+    if f.name == old_name {
+      out = out.push(FieldInfo(new_name, f.kind, f.required))
+    } else {
+      out = out.push(f)
+    }
+    i = i + 1
+  }
+  give TypeInfo(t.name, out)
+}
+
+proc remove_field(t: TypeInfo, name: string) -> TypeInfo {
+  let out: [FieldInfo] = []
+  let i: int = 0
+  loop {
+    if i >= t.fields.len { break }
+    if t.fields[i].name != name { out = out.push(t.fields[i]) }
+    i = i + 1
+  }
+  give TypeInfo(t.name, out)
+}
+
+proc merge(left: TypeInfo, right: TypeInfo) -> TypeInfo {
+  let out = left
+  let i: int = 0
+  loop {
+    if i >= right.fields.len { break }
+    let f = right.fields[i]
+    if !has_field(out, f.name) {
+      out = TypeInfo(out.name, out.fields.push(f))
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc required_fields(t: TypeInfo) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= t.fields.len { break }
+    if t.fields[i].required { out = out.push(t.fields[i].name) }
+    i = i + 1
+  }
+  give out
+}
+
+proc optional_fields(t: TypeInfo) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= t.fields.len { break }
+    if !t.fields[i].required { out = out.push(t.fields[i].name) }
+    i = i + 1
+  }
+  give out
+}
+
+proc select_kind(t: TypeInfo, kind: string) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= t.fields.len { break }
+    if t.fields[i].kind == kind { out = out.push(t.fields[i].name) }
+    i = i + 1
+  }
+  give out
+}
+
+proc is_compatible(base: TypeInfo, incoming: TypeInfo) -> bool {
+  let req = required_fields(base)
+  let i: int = 0
+  loop {
+    if i >= req.len { break }
+    if !has_field(incoming, req[i]) { give false }
+    if field_kind(incoming, req[i]) != field_kind(base, req[i]) { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc signature(t: TypeInfo) -> string {
+  let out = t.name + "("
+  let i: int = 0
+  loop {
+    if i >= t.fields.len { break }
+    if i > 0 { out = out + "," }
+    out = out + t.fields[i].name + ":" + t.fields[i].kind
+    if !t.fields[i].required { out = out + "?" }
+    i = i + 1
+  }
+  out = out + ")"
+  give out
+}
+
+proc validate(t: TypeInfo) -> bool {
+  if t.name.len == 0 { give false }
+  let i: int = 0
+  loop {
+    if i >= t.fields.len { break }
+    if t.fields[i].name.len == 0 || t.fields[i].kind.len == 0 { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc describe(t: TypeInfo) -> string {
+  give "type=" + t.name +
+       ",fields=" + t.fields.len.to_string() +
+       ",required=" + required_count(t).to_string() +
+       ",optional=" + optional_count(t).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/reflect"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/reflect
+role: Introspection metadonnees de types
+input_contract: Definitions type explicites
+output_contract: Informations de schema stables
+boundary: Ne modifie pas les types runtime
+>>>

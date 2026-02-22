@@ -1,0 +1,296 @@
+<<<
+mod.vit
+package vitte/http
+>>>
+
+space vitte/http
+
+
+pick Method {
+    Get
+    Post
+    Put
+    Patch
+    Delete
+}
+
+form Request {
+    method: Method
+    path: string
+    body: string
+    token: string
+}
+
+form Response {
+    status: int
+    body: string
+}
+
+form Header {
+    key: string
+    value: string
+}
+
+form RouteDef {
+    method: Method
+    path: string
+    target: string
+    secure: bool
+}
+
+form Router {
+    routes: [RouteDef]
+}
+
+pick HttpError {
+    None
+    BadRequest
+    Unauthorized
+    Forbidden
+    NotFound
+    MethodNotAllowed
+    InvalidPath
+}
+
+proc get(path: string) -> Request {
+    give Request(Method.Get, path, "", "")
+}
+
+proc post(path: string, body: string) -> Request {
+    give Request(Method.Post, path, body, "")
+}
+
+proc with_token(req: Request, token: string) -> Request {
+    give Request(req.method, req.path, req.body, token)
+}
+
+proc ok(body: string) -> Response {
+    give Response(200, body)
+}
+
+proc error(status: int, message: string) -> Response {
+    give Response(status, message)
+}
+
+proc contains(text: string, needle: string) -> bool {
+    if needle.len == 0 { give true }
+    if text.len < needle.len { give false }
+    let i: int = 0
+    loop {
+        if i + needle.len > text.len { break }
+        if text.slice(i, i + needle.len) == needle { give true }
+        i = i + 1
+    }
+    give false
+}
+
+proc path_only(path: string) -> string {
+    let i: int = 0
+    loop {
+        if i >= path.len { break }
+        if path.slice(i, i + 1) == "?" {
+            give path.slice(0, i)
+        }
+        i = i + 1
+    }
+    give path
+}
+
+proc method_name(m: Method) -> string {
+    if m == Method.Get { give "GET" }
+    if m == Method.Post { give "POST" }
+    if m == Method.Put { give "PUT" }
+    if m == Method.Patch { give "PATCH" }
+    give "DELETE"
+}
+
+proc status_text(status: int) -> string {
+    if status == 200 { give "OK" }
+    if status == 201 { give "Created" }
+    if status == 204 { give "No Content" }
+    if status == 400 { give "Bad Request" }
+    if status == 401 { give "Unauthorized" }
+    if status == 403 { give "Forbidden" }
+    if status == 404 { give "Not Found" }
+    if status == 405 { give "Method Not Allowed" }
+    if status >= 500 { give "Server Error" }
+    give "Unknown"
+}
+
+proc is_secure_path(path: string) -> bool {
+    let p = path_only(path)
+    if p == "/secure" { give true }
+    if p.len < 6 { give false }
+    give p.slice(0, 6) == "/admin"
+}
+
+proc normalize_path(path: string) -> string {
+    if path.len == 0 { give "/" }
+    let p = path
+    if p.slice(0, 1) != "/" { p = "/" + p }
+    if p.len > 1 && p.slice(p.len - 1, p.len) == "/" {
+        p = p.slice(0, p.len - 1)
+    }
+    give p
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+    if text.len < prefix.len { give false }
+    give text.slice(0, prefix.len) == prefix
+}
+
+proc validate(req: Request) -> int {
+    let path = normalize_path(path_only(req.path))
+    if path.len == 0 { give 400 }
+    if path.slice(0, 1) != "/" { give 400 }
+    if contains(path, "..") { give 400 }
+    if is_secure_path(path) && req.token.len == 0 { give 401 }
+    give 0
+}
+
+proc route(req: Request) -> string {
+    let path = normalize_path(path_only(req.path))
+    if path == "/health" { give "health" }
+    if path == "/echo" { give "echo" }
+    if path == "/secure" { give "secure" }
+    give "not_found"
+}
+
+proc handle(req: Request) -> Response {
+    let code = validate(req)
+    if code == 400 { give error(400, "bad request") }
+    if code == 401 { give error(401, "missing token") }
+
+    let target = route(req)
+    if target == "health" { give ok("{\"status\":\"ok\"}") }
+    if target == "echo" { give ok(req.body) }
+    if target == "secure" { give ok("{\"auth\":\"ok\"}") }
+    give error(404, "route not found")
+}
+
+proc is_success(resp: Response) -> bool {
+    give resp.status >= 200 && resp.status < 300
+}
+
+proc is_client_error(resp: Response) -> bool {
+    give resp.status >= 400 && resp.status < 500
+}
+
+proc is_server_error(resp: Response) -> bool {
+    give resp.status >= 500
+}
+
+proc response_line(resp: Response) -> string {
+    give resp.status.to_string() + " " + status_text(resp.status)
+}
+
+proc with_json(resp: Response) -> Response {
+    give Response(resp.status, resp.body)
+}
+
+proc default_router() -> Router {
+    let routes: [RouteDef] = [
+        RouteDef(Method.Get, "/health", "health", false),
+        RouteDef(Method.Post, "/echo", "echo", false),
+        RouteDef(Method.Get, "/secure", "secure", true)
+    ]
+    give Router(routes)
+}
+
+proc route_match(router: Router, req: Request) -> RouteDef {
+    let path = normalize_path(path_only(req.path))
+    let i: int = 0
+    loop {
+        if i >= router.routes.len { break }
+        let r = router.routes[i]
+        if r.path == path && r.method == req.method { give r }
+        i = i + 1
+    }
+    give RouteDef(Method.Get, "", "not_found", false)
+}
+
+proc route_error(router: Router, req: Request) -> HttpError {
+    let path = normalize_path(path_only(req.path))
+    let has_path = false
+    let i: int = 0
+    loop {
+        if i >= router.routes.len { break }
+        let r = router.routes[i]
+        if r.path == path {
+            has_path = true
+            if r.method == req.method {
+                if r.secure && req.token.len == 0 { give HttpError.Unauthorized }
+                give HttpError.None
+            }
+        }
+        i = i + 1
+    }
+    if has_path { give HttpError.MethodNotAllowed }
+    give HttpError.NotFound
+}
+
+proc query_param(path: string, key: string) -> string {
+    if key.len == 0 { give "" }
+    let marker = key + "="
+    let i: int = 0
+    loop {
+        if i + marker.len > path.len { break }
+        if path.slice(i, i + marker.len) == marker {
+            let start = i + marker.len
+            let j = start
+            loop {
+                if j >= path.len { break }
+                if path.slice(j, j + 1) == "&" { break }
+                j = j + 1
+            }
+            give path.slice(start, j)
+        }
+        i = i + 1
+    }
+    give ""
+}
+
+proc handle_with_router(router: Router, req: Request) -> Response {
+    let code = validate(req)
+    if code == 400 { give error(400, "bad request") }
+    if code == 401 { give error(401, "missing token") }
+
+    let e = route_error(router, req)
+    if e == HttpError.MethodNotAllowed { give error(405, "method not allowed") }
+    if e == HttpError.NotFound { give error(404, "route not found") }
+    if e == HttpError.Unauthorized { give error(401, "missing token") }
+
+    let matched = route_match(router, req)
+    if matched.target == "health" { give ok("{\"status\":\"ok\"}") }
+    if matched.target == "echo" { give ok(req.body) }
+    if matched.target == "secure" { give ok("{\"auth\":\"ok\"}") }
+    give error(404, "route not found")
+}
+
+proc diagnose(req: Request) -> HttpError {
+    let code = validate(req)
+    if code == 400 { give HttpError.BadRequest }
+    if code == 401 { give HttpError.Unauthorized }
+    let path = normalize_path(path_only(req.path))
+    if path.len == 0 { give HttpError.InvalidPath }
+    if path == "/health" || path == "/echo" || path == "/secure" { give HttpError.None }
+    give HttpError.NotFound
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/http"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/http
+role: Composants HTTP serveur, routage et mapping statut
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

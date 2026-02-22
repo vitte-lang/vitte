@@ -1,0 +1,54 @@
+space api
+
+<<<
+api.vit
+vitteos root stable public boundary
+>>>
+
+pick ApiStatus {
+  Ok
+  Failed
+}
+
+form ApiVersion {
+  major: int
+  minor: int
+  patch: int
+  channel: string
+}
+
+form ApiConfig {
+  profile: string
+  strict_mode: bool
+  trace_boot: bool
+}
+
+form ApiResult {
+  status: ApiStatus
+  message: string
+}
+
+proc api_default_version() -> ApiVersion {
+  give ApiVersion(0, 1, 0, "voyager")
+}
+
+proc api_default_config() -> ApiConfig {
+  give ApiConfig("dev", false, false)
+}
+
+proc api_bootstrap(cfg: ApiConfig) -> ApiResult {
+  if cfg.profile != "dev" && cfg.profile != "ci" && cfg.profile != "prod" {
+    give ApiResult(ApiStatus.Failed, "invalid-config:profile")
+  }
+  if cfg.strict_mode && cfg.profile == "dev" {
+    give ApiResult(ApiStatus.Ok, "ready:strict-dev")
+  }
+  give ApiResult(ApiStatus.Ok, "ready")
+}
+
+proc api_health(cfg: ApiConfig) -> ApiResult {
+  if cfg.strict_mode && cfg.trace_boot { give ApiResult(ApiStatus.Ok, "health:strict+trace") }
+  if cfg.strict_mode { give ApiResult(ApiStatus.Ok, "health:strict") }
+  if cfg.trace_boot { give ApiResult(ApiStatus.Ok, "health:trace") }
+  give ApiResult(ApiStatus.Ok, "health:ok")
+}

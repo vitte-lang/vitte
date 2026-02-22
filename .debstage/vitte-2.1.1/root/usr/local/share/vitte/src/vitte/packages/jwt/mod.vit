@@ -1,0 +1,169 @@
+<<<
+mod.vit
+package vitte/jwt
+>>>
+
+space vitte/jwt
+
+form Claims {
+  sub: string
+  iss: string
+  aud: string
+  iat: int
+  exp: int
+  scope: string
+}
+
+pick JwtError {
+  None
+  MissingToken
+  InvalidFormat
+  InvalidSignature
+  Expired
+  NotYetValid
+  InvalidIssuer
+  InvalidAudience
+}
+
+proc claims(sub: string, iss: string, aud: string, iat: int, exp: int, scope: string) -> Claims {
+  give Claims(sub, iss, aud, iat, exp, scope)
+}
+
+proc default_claims(sub: string, now: int, ttl: int) -> Claims {
+  let exp = now + ttl
+  if ttl <= 0 { exp = now }
+  give Claims(sub, "vitte", "vitte-api", now, exp, "user")
+}
+
+proc has_three_parts(token: string) -> bool {
+  let dots: int = 0
+  let i: int = 0
+  loop {
+    if i >= token.len { break }
+    if token.slice(i, i + 1) == "." { dots = dots + 1 }
+    i = i + 1
+  }
+  give dots == 2
+}
+
+proc encode(cl: Claims, secret: string) -> string {
+  if secret.len == 0 { give "" }
+  let header = "h"
+  let payload = cl.sub + "|" + cl.iss + "|" + cl.aud + "|" + cl.iat.to_string() + "|" + cl.exp.to_string() + "|" + cl.scope
+  let sig = "s" + secret.len.to_string()
+  give header + "." + payload + "." + sig
+}
+
+proc split_part(token: string, index: int) -> string {
+  let part: int = 0
+  let start: int = 0
+  let i: int = 0
+  loop {
+    if i > token.len { break }
+    if i == token.len || token.slice(i, i + 1) == "." {
+      if part == index { give token.slice(start, i) }
+      part = part + 1
+      start = i + 1
+    }
+    i = i + 1
+  }
+  give ""
+}
+
+proc decode_payload(token: string) -> string {
+  if !has_three_parts(token) { give "" }
+  give split_part(token, 1)
+}
+
+proc verify_signature(token: string, secret: string) -> bool {
+  if secret.len == 0 { give false }
+  if !has_three_parts(token) { give false }
+  let sig = split_part(token, 2)
+  give sig == "s" + secret.len.to_string()
+}
+
+proc parse_claims(token: string) -> Claims {
+  let payload = decode_payload(token)
+  if payload.len == 0 { give Claims("", "", "", 0, 0, "") }
+  let parts: [string] = []
+  let start: int = 0
+  let i: int = 0
+  loop {
+    if i > payload.len { break }
+    if i == payload.len || payload.slice(i, i + 1) == "|" {
+      parts = parts.push(payload.slice(start, i))
+      start = i + 1
+    }
+    i = i + 1
+  }
+  if parts.len < 6 { give Claims("", "", "", 0, 0, "") }
+  give Claims(parts[0], parts[1], parts[2], parts[3].to_int(), parts[4].to_int(), parts[5])
+}
+
+proc validate_time(cl: Claims, now: int) -> JwtError {
+  if now < cl.iat { give JwtError.NotYetValid }
+  if now >= cl.exp { give JwtError.Expired }
+  give JwtError.None
+}
+
+proc validate(token: string, secret: string, now: int) -> JwtError {
+  if token.len == 0 { give JwtError.MissingToken }
+  if !has_three_parts(token) { give JwtError.InvalidFormat }
+  if !verify_signature(token, secret) { give JwtError.InvalidSignature }
+  let cl = parse_claims(token)
+  if cl.sub.len == 0 { give JwtError.InvalidFormat }
+  give validate_time(cl, now)
+}
+
+proc validate_for(token: string, secret: string, issuer: string, audience: string, now: int) -> JwtError {
+  let err = validate(token, secret, now)
+  if err != JwtError.None { give err }
+  let cl = parse_claims(token)
+  if cl.iss != issuer { give JwtError.InvalidIssuer }
+  if cl.aud != audience { give JwtError.InvalidAudience }
+  give JwtError.None
+}
+
+proc can(cl: Claims, needed_scope: string) -> bool {
+  if needed_scope.len == 0 { give true }
+  if cl.scope == needed_scope { give true }
+  if cl.scope == "admin" { give true }
+  give false
+}
+
+proc refresh(token: string, secret: string, now: int, ttl: int) -> string {
+  let err = validate(token, secret, now)
+  if err != JwtError.None { give "" }
+  let cl = parse_claims(token)
+  let next = Claims(cl.sub, cl.iss, cl.aud, now, now + ttl, cl.scope)
+  give encode(next, secret)
+}
+
+proc summary(token: string, secret: string, now: int) -> string {
+  let err = validate(token, secret, now)
+  if err == JwtError.MissingToken { give "missing-token" }
+  if err == JwtError.InvalidFormat { give "invalid-format" }
+  if err == JwtError.InvalidSignature { give "invalid-signature" }
+  if err == JwtError.Expired { give "expired" }
+  if err == JwtError.NotYetValid { give "not-yet-valid" }
+  let cl = parse_claims(token)
+  give "sub=" + cl.sub + ",iss=" + cl.iss + ",aud=" + cl.aud + ",scope=" + cl.scope
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/jwt"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/jwt
+role: Tokens JWT: emission, verification et claims
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

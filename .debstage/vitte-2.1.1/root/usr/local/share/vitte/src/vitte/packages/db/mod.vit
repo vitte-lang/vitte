@@ -1,0 +1,252 @@
+<<<
+mod.vit
+package vitte/db
+>>>
+
+space vitte/db
+
+
+pick DbError {
+    None
+    InvalidDsn
+    NotConnected
+    PermissionDenied
+    NotFound
+    Conflict
+}
+
+form Session {
+    dsn: string
+    connected: bool
+    readonly: bool
+    tx_depth: int
+}
+
+form Query {
+    sql: string
+    args: [string]
+    limit: int
+    offset: int
+}
+
+form QueryResult {
+    rows_affected: int
+    rows: [string]
+    error: DbError
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+    if text.len < prefix.len { give false }
+    give text.slice(0, prefix.len) == prefix
+}
+
+proc contains(text: string, needle: string) -> bool {
+    if needle.len == 0 { give true }
+    if text.len < needle.len { give false }
+    let i: int = 0
+    loop {
+        if i + needle.len > text.len { break }
+        if text.slice(i, i + needle.len) == needle { give true }
+        i = i + 1
+    }
+    give false
+}
+
+proc normalize_dsn(dsn: string) -> string {
+    if starts_with(dsn, "db://") { give dsn }
+    if dsn.len == 0 { give "" }
+    give "db://" + dsn
+}
+
+proc open(dsn: string) -> Session {
+    let norm = normalize_dsn(dsn)
+    if norm.len == 0 {
+        give Session(norm, false, false, 0)
+    }
+    give Session(norm, true, false, 0)
+}
+
+proc close(s: Session) -> Session {
+    give Session(s.dsn, false, s.readonly, 0)
+}
+
+proc set_readonly(s: Session, value: bool) -> Session {
+    give Session(s.dsn, s.connected, value, s.tx_depth)
+}
+
+proc begin_tx(s: Session) -> Session {
+    if !s.connected { give s }
+    give Session(s.dsn, s.connected, s.readonly, s.tx_depth + 1)
+}
+
+proc commit_tx(s: Session) -> Session {
+    if s.tx_depth <= 0 { give s }
+    give Session(s.dsn, s.connected, s.readonly, s.tx_depth - 1)
+}
+
+proc rollback_tx(s: Session) -> Session {
+    if s.tx_depth <= 0 { give s }
+    give Session(s.dsn, s.connected, s.readonly, s.tx_depth - 1)
+}
+
+proc can_write(s: Session) -> bool {
+    give s.connected && !s.readonly
+}
+
+proc in_tx(s: Session) -> bool {
+    give s.tx_depth > 0
+}
+
+proc is_mutation(sql: string) -> bool {
+    if starts_with(sql, "INSERT") { give true }
+    if starts_with(sql, "UPDATE") { give true }
+    if starts_with(sql, "DELETE") { give true }
+    if starts_with(sql, "CREATE") { give true }
+    if starts_with(sql, "DROP") { give true }
+    give false
+}
+
+proc is_select(sql: string) -> bool {
+    give starts_with(sql, "SELECT")
+}
+
+proc sanitize_sql(sql: string) -> string {
+    if contains(sql, ";") { give "" }
+    if contains(sql, "--") { give "" }
+    give sql
+}
+
+proc query(sql: string) -> Query {
+    give Query(sql, [], 100, 0)
+}
+
+proc with_arg(q: Query, arg: string) -> Query {
+    let args = q.args.push(arg)
+    give Query(q.sql, args, q.limit, q.offset)
+}
+
+proc with_limit(q: Query, limit: int) -> Query {
+    let lim = limit
+    if lim < 1 { lim = 1 }
+    if lim > 1000 { lim = 1000 }
+    give Query(q.sql, q.args, lim, q.offset)
+}
+
+proc with_offset(q: Query, offset: int) -> Query {
+    let off = offset
+    if off < 0 { off = 0 }
+    give Query(q.sql, q.args, q.limit, off)
+}
+
+proc render_query(q: Query) -> string {
+    let sql = sanitize_sql(q.sql)
+    if sql.len == 0 { give "" }
+    give sql + " LIMIT " + q.limit.to_string() + " OFFSET " + q.offset.to_string()
+}
+
+proc exec(s: Session, sql: string) -> int {
+    let clean = sanitize_sql(sql)
+    if clean.len == 0 { give 0 }
+    if !s.connected { give 0 }
+    if s.readonly && is_mutation(clean) { give 0 }
+    if clean.len == 0 { give 0 }
+    give 1
+}
+
+proc query_one(s: Session, sql: string) -> string {
+    let clean = sanitize_sql(sql)
+    if clean.len == 0 { give "" }
+    if !s.connected { give "" }
+    if !is_select(clean) { give "" }
+    give "{\"row\":1}"
+}
+
+proc run_query(s: Session, q: Query) -> QueryResult {
+    if !s.connected { give QueryResult(0, [], DbError.NotConnected) }
+    let sql = render_query(q)
+    if sql.len == 0 { give QueryResult(0, [], DbError.Conflict) }
+
+    if is_mutation(sql) {
+        if !can_write(s) { give QueryResult(0, [], DbError.PermissionDenied) }
+        give QueryResult(1, [], DbError.None)
+    }
+
+    if is_select(sql) {
+        let rows: [string] = ["{\"id\":1}", "{\"id\":2}"]
+        give QueryResult(rows.len, rows, DbError.None)
+    }
+    give QueryResult(0, [], DbError.NotFound)
+}
+
+proc run_batch(s: Session, queries: [Query]) -> QueryResult {
+    if !s.connected { give QueryResult(0, [], DbError.NotConnected) }
+    let total: int = 0
+    let all_rows: [string] = []
+    let i: int = 0
+    loop {
+        if i >= queries.len { break }
+        let res = run_query(s, queries[i])
+        if res.error != DbError.None { give QueryResult(total, all_rows, res.error) }
+        total = total + res.rows_affected
+
+        let j: int = 0
+        loop {
+            if j >= res.rows.len { break }
+            all_rows = all_rows.push(res.rows[j])
+            j = j + 1
+        }
+        i = i + 1
+    }
+    give QueryResult(total, all_rows, DbError.None)
+}
+
+proc tx_state(s: Session) -> string {
+    if !s.connected { give "disconnected" }
+    if s.tx_depth <= 0 { give "idle" }
+    if s.tx_depth == 1 { give "in_tx" }
+    give "nested_tx"
+}
+
+proc ensure_connected(s: Session) -> DbError {
+    if !s.connected { give DbError.NotConnected }
+    if s.dsn.len == 0 { give DbError.InvalidDsn }
+    give DbError.None
+}
+
+proc upsert(s: Session, table: string, key: string, value: string) -> QueryResult {
+    if ensure_connected(s) != DbError.None { give QueryResult(0, [], ensure_connected(s)) }
+    if table.len == 0 || key.len == 0 { give QueryResult(0, [], DbError.Conflict) }
+    if !can_write(s) { give QueryResult(0, [], DbError.PermissionDenied) }
+    let q = query("UPSERT " + table + " key=? value=?")
+    let q1 = with_arg(q, key)
+    let q2 = with_arg(q1, value)
+    give run_query(s, q2)
+}
+
+proc diagnose(s: Session, sql: string) -> DbError {
+    if s.dsn.len == 0 { give DbError.InvalidDsn }
+    if !s.connected { give DbError.NotConnected }
+    let clean = sanitize_sql(sql)
+    if clean.len == 0 { give DbError.Conflict }
+    if s.readonly && is_mutation(clean) { give DbError.PermissionDenied }
+    if is_select(clean) && clean.len < 7 { give DbError.NotFound }
+    give DbError.None
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/db"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/db
+role: Abstraction base de donnees et sessions
+input_contract: Commandes et schemas de donnees valides cote metier
+output_contract: Resultats de persistence coherents avec le contrat schema
+boundary: Ne contient pas les regles metier de l application
+>>>
