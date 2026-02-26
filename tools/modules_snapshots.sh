@@ -169,6 +169,7 @@ stable_needles() {
     [ -z "$line" ] && continue
     case "$line" in
       "[modules-cache-perf] cold_ms="*) continue ;;
+      "[modules-cache-perf] skip ratio check ("*) continue ;;
       "[modules-cache-perf] hot_cold_ratio="*) continue ;;
       *"top10 slowest:"*) continue ;;
       "  "*": "*' ms') continue ;;
