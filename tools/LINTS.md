@@ -144,6 +144,18 @@ BASE_REF=origin/main tools/lint_new_public_packages_have_snapshots.py
 Checks:
 - each newly added `src/vitte/packages/**/mod.vit` (vs `BASE_REF`) must have snapshot coverage
 
+## 12) No std imports lint
+
+Command:
+
+```bash
+tools/lint_no_std_imports.py --roots src/vitte/packages
+```
+
+Checks:
+- forbids `use/pull std/...` in modern packages (`src/vitte/packages`)
+- supports temporary exceptions via `tools/std_import_legacy_allowlist.txt`
+
 ## CI usage
 
 ```bash
@@ -159,6 +171,7 @@ make experimental-modules-lint
 make public-modules-snapshots-lint
 make modules-perf-cache
 make packages-governance-lint
+make no-std-lint
 make critical-runtime-matrix-lint
 make new-public-packages-snapshots-lint
 make packages-report
