@@ -1,16 +1,32 @@
 <<<
 mod.vit
 package vitte/actor
+version: 1.0.0
+stability: stable
+category: concurrency
+description:
+  Modele acteur pur fonctionnel avec supervision,
+  isolation d'etat, mailbox FIFO, et decisions deterministes.
 >>>
 
 space vitte/actor
 
+<<< ============================================================
+    TYPES FONDAMENTAUX
+============================================================ >>>
 
 pick ActorState {
   Idle
   Busy
   Stopped
 }
+
+<<<
+  ActorState
+  - Idle     : aucun message en attente
+  - Busy     : traitement actif
+  - Stopped  : aucune transition autorisee sauf restart
+>>>
 
 form Actor {
   id: int
@@ -21,12 +37,40 @@ form Actor {
   failures: int
 }
 
+<<<
+  Actor
+  Invariants:
+    processed >= 0
+    failures >= 0
+    mailbox.len >= 0
+>>>
+
+<<< ============================================================
+    CONSTRUCTEURS
+============================================================ >>>
+
 proc actor_new(id: int, name: string) -> Actor {
   give Actor(id, name, ActorState.Idle, [], 0, 0)
 }
 
+proc actor_with_mailbox(
+  id: int,
+  name: string,
+  mailbox: [string]
+) -> Actor {
+  give Actor(id, name, ActorState.Busy, mailbox, 0, 0)
+}
+
+<<< ============================================================
+    MAILBOX OPERATIONS
+============================================================ >>>
+
 proc mailbox_len(actor: Actor) -> int {
   give actor.mailbox.len
+}
+
+proc mailbox_is_empty(actor: Actor) -> bool {
+  give actor.mailbox.len == 0
 }
 
 proc drop_first(mailbox: [string]) -> [string] {
@@ -40,43 +84,136 @@ proc drop_first(mailbox: [string]) -> [string] {
   give out
 }
 
+proc peek(actor: Actor) -> string {
+  if actor.mailbox.len == 0 { give "" }
+  give actor.mailbox[0]
+}
+
+<<< ============================================================
+    MESSAGE FLOW
+============================================================ >>>
+
 proc send(actor: Actor, message: string) -> Actor {
   when actor.state is ActorState.Stopped {
     give actor
   }
+
   let mailbox = actor.mailbox.push(message)
-  give Actor(actor.id, actor.name, ActorState.Busy, mailbox, actor.processed, actor.failures)
+
+  give Actor(
+    actor.id,
+    actor.name,
+    ActorState.Busy,
+    mailbox,
+    actor.processed,
+    actor.failures
+  )
 }
 
 proc step(actor: Actor) -> Actor {
+
   when actor.state is ActorState.Stopped {
     give actor
   }
+
   if actor.mailbox.len == 0 {
-    give Actor(actor.id, actor.name, ActorState.Idle, actor.mailbox, actor.processed, actor.failures)
+    give Actor(
+      actor.id,
+      actor.name,
+      ActorState.Idle,
+      actor.mailbox,
+      actor.processed,
+      actor.failures
+    )
   }
+
   let mailbox = drop_first(actor.mailbox)
-  let next_state = ActorState.Busy
+  let new_processed = actor.processed + 1
+
   if mailbox.len == 0 {
-    give Actor(actor.id, actor.name, ActorState.Idle, mailbox, actor.processed + 1, actor.failures)
+    give Actor(
+      actor.id,
+      actor.name,
+      ActorState.Idle,
+      mailbox,
+      new_processed,
+      actor.failures
+    )
   }
-  give Actor(actor.id, actor.name, next_state, mailbox, actor.processed + 1, actor.failures)
+
+  give Actor(
+    actor.id,
+    actor.name,
+    ActorState.Busy,
+    mailbox,
+    new_processed,
+    actor.failures
+  )
 }
 
+<<< ============================================================
+    FAILURE & SUPERVISION
+============================================================ >>>
+
 proc fail(actor: Actor) -> Actor {
-  give Actor(actor.id, actor.name, ActorState.Busy, actor.mailbox, actor.processed, actor.failures + 1)
+  give Actor(
+    actor.id,
+    actor.name,
+    ActorState.Busy,
+    actor.mailbox,
+    actor.processed,
+    actor.failures + 1
+  )
 }
 
 proc stop(actor: Actor) -> Actor {
-  give Actor(actor.id, actor.name, ActorState.Stopped, actor.mailbox, actor.processed, actor.failures)
+  give Actor(
+    actor.id,
+    actor.name,
+    ActorState.Stopped,
+    actor.mailbox,
+    actor.processed,
+    actor.failures
+  )
 }
 
 proc restart(actor: Actor) -> Actor {
-  give Actor(actor.id, actor.name, ActorState.Idle, [], actor.processed, actor.failures)
+  give Actor(
+    actor.id,
+    actor.name,
+    ActorState.Idle,
+    [],
+    actor.processed,
+    actor.failures
+  )
 }
+
+proc supervision_decision(
+  actor: Actor,
+  max_failures: int
+) -> string {
+
+  if actor.failures > max_failures {
+    give "stop"
+  }
+
+  if actor.failures > 0 {
+    give "restart"
+  }
+
+  give "ok"
+}
+
+<<< ============================================================
+    METRICS
+============================================================ >>>
 
 proc processed_count(actor: Actor) -> int {
   give actor.processed
+}
+
+proc failure_count(actor: Actor) -> int {
+  give actor.failures
 }
 
 proc is_running(actor: Actor) -> bool {
@@ -86,26 +223,64 @@ proc is_running(actor: Actor) -> bool {
   give true
 }
 
-proc supervision_decision(actor: Actor, max_failures: int) -> string {
-  if actor.failures > max_failures { give "stop" }
-  if actor.failures > 0 { give "restart" }
-  give "ok"
-}
-
 proc ready() -> bool {
   give true
 }
 
+<<< ============================================================
+    INTROSPECTION
+============================================================ >>>
 
+proc actor_snapshot(actor: Actor) -> string {
 
-proc package_meta() -> string {
-    give "vitte/actor"
+  give "Actor(" +
+       actor.name +
+       ", state=" +
+       actor.state.to_string() +
+       ", mailbox=" +
+       actor.mailbox.len.to_string() +
+       ", processed=" +
+       actor.processed.to_string() +
+       ", failures=" +
+       actor.failures.to_string() +
+       ")"
 }
 
-<<< ROLE-CONTRACT
+proc package_meta() -> string {
+  give "vitte/actor"
+}
+
+<<< ============================================================
+    ROLE-CONTRACT
+============================================================ >>>
+
+<<<
+ROLE-CONTRACT
 package: vitte/actor
-role: Modele acteur supervision et isolation des etats
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+role:
+  Modele acteur purement fonctionnel,
+  supervision deterministe,
+  isolation stricte de l'etat interne.
+
+input_contract:
+  Valeurs metier typables,
+  deja valides par couches precedentes.
+
+output_contract:
+  Etats coherents,
+  transitions deterministes,
+  aucun effet secondaire.
+
+boundary:
+  - Ne gere pas threading
+  - Ne gere pas scheduling
+  - Ne gere pas IO
+  - Ne gere pas persistence
+  - Ne remplace pas runtime
+
+guarantees:
+  - Immutabilite
+  - FIFO mailbox
+  - Supervision stable
+  - Aucun panic
 >>>

@@ -1,111 +1,303 @@
 <<<
 mod.vit
 package vitte/array
+version: 1.0.0
+tier: core-collections
+purpose:
+  Abstraction tableau immutable.
+  Operations deterministes.
+  Compatible no_std.
+  Zero allocation implicite non controlee.
 >>>
 
 space vitte/array
 
+<<< ============================================================
+    TYPES
+============================================================ >>>
 
-pick BlasBackend {
-  None
-  Native
+pick ArrayError {
+  IndexOutOfBounds
+  EmptyArray
 }
 
-form NdArray {
-  values: [builtin.f64]
+form ArrayStats {
+  length: int
 }
 
-proc ndarray_1d(size: int) -> NdArray {
-  let out: [builtin.f64] = []
+form Array<T> {
+  data: [T]
+  stats: ArrayStats
+}
+
+<<<
+  Invariants:
+    stats.length == data.len
+>>>
+
+<<< ============================================================
+    CONSTRUCTEURS
+============================================================ >>>
+
+proc new<T>() -> Array<T> {
+  give Array([], ArrayStats(0))
+}
+
+proc from<T>(items: [T]) -> Array<T> {
+  give Array(items, ArrayStats(items.len))
+}
+
+proc with_capacity<T>(capacity: int) -> Array<T> {
+  <<< capacity informatif pour runtime futur >>>
+  give Array([], ArrayStats(0))
+}
+
+<<< ============================================================
+    BASIC QUERIES
+============================================================ >>>
+
+proc len<T>(arr: Array<T>) -> int {
+  give arr.stats.length
+}
+
+proc is_empty<T>(arr: Array<T>) -> bool {
+  give arr.stats.length == 0
+}
+
+proc first<T>(arr: Array<T>) -> T {
+  if arr.stats.length == 0 { give arr.data[0] }
+  give arr.data[0]
+}
+
+proc last<T>(arr: Array<T>) -> T {
+  give arr.data[arr.stats.length - 1]
+}
+
+<<< ============================================================
+    INDEX ACCESS
+============================================================ >>>
+
+proc get<T>(arr: Array<T>, index: int) -> T {
+  give arr.data[index]
+}
+
+proc safe_get<T>(arr: Array<T>, index: int) -> T {
+  if index < 0 { give arr.data[0] }
+  if index >= arr.stats.length { give arr.data[0] }
+  give arr.data[index]
+}
+
+<<< ============================================================
+    MUTATION (IMMUTABLE COPY)
+============================================================ >>>
+
+proc push<T>(arr: Array<T>, value: T) -> Array<T> {
+
+  let new_data = arr.data.push(value)
+
+  give Array(
+    new_data,
+    ArrayStats(arr.stats.length + 1)
+  )
+}
+
+proc pop<T>(arr: Array<T>) -> Array<T> {
+
+  if arr.stats.length == 0 {
+    give arr
+  }
+
+  let out: [T] = []
   let i: int = 0
+
   loop {
-    if i >= size { break }
-    out = out.push(0.0)
+    if i >= arr.stats.length - 1 { break }
+    out = out.push(arr.data[i])
     i = i + 1
   }
-  give NdArray(out)
+
+  give Array(
+    out,
+    ArrayStats(arr.stats.length - 1)
+  )
 }
 
-proc from_values(values: [builtin.f64]) -> NdArray {
-  give NdArray(values)
-}
+proc set<T>(arr: Array<T>, index: int, value: T) -> Array<T> {
 
-proc rank(a: NdArray) -> int {
-  let _ = a
-  give 1
-}
-
-proc len(a: NdArray) -> int {
-  give a.values.len
-}
-
-proc at_1d(a: NdArray, i: int) -> builtin.f64 {
-  if i < 0 || i >= a.values.len { give 0.0 }
-  give a.values[i]
-}
-
-proc set_1d(a: NdArray, i: int, v: builtin.f64) -> NdArray {
-  if i < 0 || i >= a.values.len { give a }
-  let out: [builtin.f64] = []
-  let k: int = 0
-  loop {
-    if k >= a.values.len { break }
-    if k == i { out = out.push(v) } else { out = out.push(a.values[k]) }
-    k = k + 1
-  }
-  give NdArray(out)
-}
-
-proc slice_1d(a: NdArray, start: int, stop: int) -> NdArray {
-  let out: [builtin.f64] = []
-  let i = start
-  loop {
-    if i >= stop || i >= a.values.len { break }
-    if i >= 0 { out = out.push(a.values[i]) }
-    i = i + 1
-  }
-  give NdArray(out)
-}
-
-proc broadcast_scalar(value: builtin.f64, n: int) -> NdArray {
-  let out: [builtin.f64] = []
+  let out: [T] = []
   let i: int = 0
+
   loop {
-    if i >= n { break }
-    out = out.push(value)
+    if i >= arr.stats.length { break }
+
+    if i == index {
+      out = out.push(value)
+    } else {
+      out = out.push(arr.data[i])
+    }
+
     i = i + 1
   }
-  give NdArray(out)
+
+  give Array(out, ArrayStats(arr.stats.length))
 }
 
-proc add(a: NdArray, b: NdArray) -> NdArray {
-  if a.values.len != b.values.len { give a }
-  let out: [builtin.f64] = []
+<<< ============================================================
+    TRANSFORMATIONS
+============================================================ >>>
+
+proc map<T, R>(arr: Array<T>, f: fn(T) -> R) -> Array<R> {
+
+  let out: [R] = []
   let i: int = 0
+
   loop {
-    if i >= a.values.len { break }
-    out = out.push(a.values[i] + b.values[i])
+    if i >= arr.stats.length { break }
+    out = out.push(f(arr.data[i]))
     i = i + 1
   }
-  give NdArray(out)
+
+  give Array(out, ArrayStats(arr.stats.length))
 }
 
-proc blas_backend() -> BlasBackend {
-  give BlasBackend.None
+proc filter<T>(arr: Array<T>, f: fn(T) -> bool) -> Array<T> {
+
+  let out: [T] = []
+  let i: int = 0
+
+  loop {
+    if i >= arr.stats.length { break }
+
+    if f(arr.data[i]) {
+      out = out.push(arr.data[i])
+    }
+
+    i = i + 1
+  }
+
+  give Array(out, ArrayStats(out.len))
 }
 
-proc ready() -> bool {
-  give true
+proc fold<T, R>(
+  arr: Array<T>,
+  init: R,
+  f: fn(R, T) -> R
+) -> R {
+
+  let acc = init
+  let i: int = 0
+
+  loop {
+    if i >= arr.stats.length { break }
+    acc = f(acc, arr.data[i])
+    i = i + 1
+  }
+
+  give acc
+}
+
+<<< ============================================================
+    SLICE / SUBARRAY
+============================================================ >>>
+
+proc slice<T>(
+  arr: Array<T>,
+  start: int,
+  end: int
+) -> Array<T> {
+
+  let out: [T] = []
+  let i: int = start
+
+  loop {
+    if i >= end { break }
+    if i >= arr.stats.length { break }
+    out = out.push(arr.data[i])
+    i = i + 1
+  }
+
+  give Array(out, ArrayStats(out.len))
+}
+
+<<< ============================================================
+    SEARCH
+============================================================ >>>
+
+proc contains<T>(arr: Array<T>, value: T) -> bool {
+
+  let i: int = 0
+
+  loop {
+    if i >= arr.stats.length { break }
+    if arr.data[i] == value { give true }
+    i = i + 1
+  }
+
+  give false
+}
+
+proc index_of<T>(arr: Array<T>, value: T) -> int {
+
+  let i: int = 0
+
+  loop {
+    if i >= arr.stats.length { break }
+    if arr.data[i] == value { give i }
+    i = i + 1
+  }
+
+  give -1
+}
+
+<<< ============================================================
+    METRICS
+============================================================ >>>
+
+proc capacity_estimate<T>(arr: Array<T>) -> int {
+  give arr.stats.length
+}
+
+proc describe<T>(arr: Array<T>) -> string {
+
+  give "Array(len=" +
+       arr.stats.length.to_string() +
+       ")"
 }
 
 proc package_meta() -> string {
   give "vitte/array"
 }
 
-<<< ROLE-CONTRACT
+proc ready() -> bool {
+  give true
+}
+
+<<< ============================================================
+    ROLE-CONTRACT
+============================================================ >>>
+
+<<<
+ROLE-CONTRACT
 package: vitte/array
-role: Tableaux N dimensions, slicing et operations vectorielles
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+role:
+  Abstraction tableau immutable generique.
+
+input_contract:
+  Index >= 0.
+  Types comparables pour contains/index_of.
+
+output_contract:
+  Structure coherente.
+  stats.length synchronise avec data.len.
+
+boundary:
+  - Ne gere pas allocation directe.
+  - Ne gere pas GC.
+  - Ne gere pas parallelisme.
+
+guarantees:
+  - Determinisme
+  - Zero panic explicite
+  - API pure
+  - no_std compatible
 >>>

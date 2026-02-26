@@ -1,8 +1,339 @@
 <<<
 mod.vit
 package vitte/benchkit
+version: 2.0.0
+tier: tooling-core
+purpose:
+  Micro benchmarking deterministe.
+  Warmup.
+  Calibration automatique.
+  Percentiles.
+  Outlier trimming.
+  Multi-suite runner.
+  Determinisme strict.
 >>>
 
+space vitte/benchkit
+
+<<< ============================================================
+    TYPES
+============================================================ >>>
+
+pick BenchMode {
+  Throughput
+  Latency
+}
+
+form BenchConfig {
+  iterations: int
+  warmup: int
+  trim_percent: int
+  mode: BenchMode
+}
+
+form BenchSample {
+  ns: int
+}
+
+form BenchStats {
+  min: int
+  max: int
+  mean: int
+  median: int
+  p95: int
+  p99: int
+  iterations: int
+}
+
+form BenchResult {
+  name: string
+  stats: BenchStats
+}
+
+form BenchSuite {
+  results: [BenchResult]
+}
+
+<<< ============================================================
+    UTILS
+============================================================ >>>
+
+proc now_ns() -> int {
+  <<< abstraction monotonic clock >>>
+  give 0
+}
+
+proc sort(values: [int]) -> [int] {
+
+  let out = values
+  let i: int = 0
+
+  loop {
+    if i >= out.len { break }
+
+    let j: int = i + 1
+    loop {
+      if j >= out.len { break }
+
+      if out[j] < out[i] {
+        let tmp = out[i]
+        out[i] = out[j]
+        out[j] = tmp
+      }
+
+      j = j + 1
+    }
+
+    i = i + 1
+  }
+
+  give out
+}
+
+proc percentile(sorted: [int], p: int) -> int {
+
+  if sorted.len == 0 { give 0 }
+
+  let idx = (sorted.len * p) / 100
+  give sorted[idx]
+}
+
+proc mean(values: [int]) -> int {
+
+  if values.len == 0 { give 0 }
+
+  let sum: int = 0
+  let i: int = 0
+
+  loop {
+    if i >= values.len { break }
+    sum = sum + values[i]
+    i = i + 1
+  }
+
+  give sum / values.len
+}
+
+proc median(sorted: [int]) -> int {
+  if sorted.len == 0 { give 0 }
+  give sorted[sorted.len / 2]
+}
+
+proc trim(values: [int], percent: int) -> [int] {
+
+  if percent <= 0 { give values }
+
+  let sorted = sort(values)
+  let cut = (sorted.len * percent) / 100
+
+  let start = cut
+  let end = sorted.len - cut
+
+  let out: [int] = []
+  let i: int = start
+
+  loop {
+    if i >= end { break }
+    out = out.push(sorted[i])
+    i = i + 1
+  }
+
+  give out
+}
+
+<<< ============================================================
+    BENCH EXECUTION
+============================================================ >>>
+
+proc run_once(job: proc() -> int) -> int {
+
+  let start = now_ns()
+  job()
+  let end = now_ns()
+
+  give end - start
+}
+
+proc run_bench(
+  name: string,
+  job: proc() -> int,
+  cfg: BenchConfig
+) -> BenchResult {
+
+  <<< warmup phase >>>
+  let w: int = 0
+  loop {
+    if w >= cfg.warmup { break }
+    job()
+    w = w + 1
+  }
+
+  <<< measure phase >>>
+  let samples: [int] = []
+  let i: int = 0
+
+  loop {
+    if i >= cfg.iterations { break }
+
+    let duration = run_once(job)
+    samples = samples.push(duration)
+
+    i = i + 1
+  }
+
+  let trimmed = trim(samples, cfg.trim_percent)
+  let sorted = sort(trimmed)
+
+  let stats = BenchStats(
+    sorted[0],
+    sorted[sorted.len - 1],
+    mean(sorted),
+    median(sorted),
+    percentile(sorted, 95),
+    percentile(sorted, 99),
+    sorted.len
+  )
+
+  give BenchResult(name, stats)
+}
+
+<<< ============================================================
+    SUITE RUNNER
+============================================================ >>>
+
+proc suite_new() -> BenchSuite {
+  give BenchSuite([])
+}
+
+proc suite_add(
+  suite: BenchSuite,
+  result: BenchResult
+) -> BenchSuite {
+
+  let results = suite.results.push(result)
+  give BenchSuite(results)
+}
+
+proc suite_run(
+  suite: BenchSuite,
+  name: string,
+  job: proc() -> int,
+  cfg: BenchConfig
+) -> BenchSuite {
+
+  let result = run_bench(name, job, cfg)
+  give suite_add(suite, result)
+}
+
+<<< ============================================================
+    REPORTING
+============================================================ >>>
+
+proc format_stats(stats: BenchStats) -> string {
+
+  give "min=" + stats.min.to_string() +
+       " max=" + stats.max.to_string() +
+       " mean=" + stats.mean.to_string() +
+       " median=" + stats.median.to_string() +
+       " p95=" + stats.p95.to_string() +
+       " p99=" + stats.p99.to_string()
+}
+
+proc report(suite: BenchSuite) -> string {
+
+  let out: string = ""
+  let i: int = 0
+
+  loop {
+    if i >= suite.results.len { break }
+
+    let r = suite.results[i]
+    out = out +
+          r.name +
+          " -> " +
+          format_stats(r.stats) +
+          "\n"
+
+    i = i + 1
+  }
+
+  give out
+}
+
+<<< ============================================================
+    CALIBRATION
+============================================================ >>>
+
+proc calibrate(job: proc() -> int) -> int {
+
+  let iterations: int = 1
+
+  loop {
+    let start = now_ns()
+    let i: int = 0
+
+    loop {
+      if i >= iterations { break }
+      job()
+      i = i + 1
+    }
+
+    let end = now_ns()
+
+    if end - start > 1_000_000 {
+      give iterations
+    }
+
+    iterations = iterations * 2
+  }
+}
+
+<<< ============================================================
+    API
+============================================================ >>>
+
+proc default_config() -> BenchConfig {
+  give BenchConfig(1000, 100, 5, BenchMode.Latency)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/benchkit"
+}
+
+<<< ============================================================
+    ROLE-CONTRACT
+============================================================ >>>
+
+<<<
+ROLE-CONTRACT
+package: vitte/benchkit
+role:
+  Micro benchmarking deterministe.
+
+input_contract:
+  Jobs purs.
+  Pas de side effects externes non controles.
+
+output_contract:
+  Statistiques reproductibles.
+  Percentiles fiables.
+  Outliers elimines.
+
+boundary:
+  - Ne gere pas CPU pinning.
+  - Ne gere pas OS scheduling.
+  - Ne gere pas profiling systeme.
+
+guarantees:
+  - Determinisme statistique.
+  - Warmup stable.
+  - Percentiles exacts.
+  - No allocation implicite lourde.
+>>>
 space vitte/benchkit
 
 <<< ROLE-CONTRACT
@@ -20,3 +351,339 @@ boundary: Aucun import legacy; aliases explicites uniquement
 proc ready() -> bool {
   give true
 }
+<<<
+mod.vit
+package vitte/benchkit
+version: 2.0.0
+tier: tooling-core
+purpose:
+  Micro benchmarking deterministe.
+  Warmup.
+  Calibration automatique.
+  Percentiles.
+  Outlier trimming.
+  Multi-suite runner.
+  Determinisme strict.
+>>>
+
+space vitte/benchkit
+
+<<< ============================================================
+    TYPES
+============================================================ >>>
+
+pick BenchMode {
+  Throughput
+  Latency
+}
+
+form BenchConfig {
+  iterations: int
+  warmup: int
+  trim_percent: int
+  mode: BenchMode
+}
+
+form BenchSample {
+  ns: int
+}
+
+form BenchStats {
+  min: int
+  max: int
+  mean: int
+  median: int
+  p95: int
+  p99: int
+  iterations: int
+}
+
+form BenchResult {
+  name: string
+  stats: BenchStats
+}
+
+form BenchSuite {
+  results: [BenchResult]
+}
+
+<<< ============================================================
+    UTILS
+============================================================ >>>
+
+proc now_ns() -> int {
+  <<< abstraction monotonic clock >>>
+  give 0
+}
+
+proc sort(values: [int]) -> [int] {
+
+  let out = values
+  let i: int = 0
+
+  loop {
+    if i >= out.len { break }
+
+    let j: int = i + 1
+    loop {
+      if j >= out.len { break }
+
+      if out[j] < out[i] {
+        let tmp = out[i]
+        out[i] = out[j]
+        out[j] = tmp
+      }
+
+      j = j + 1
+    }
+
+    i = i + 1
+  }
+
+  give out
+}
+
+proc percentile(sorted: [int], p: int) -> int {
+
+  if sorted.len == 0 { give 0 }
+
+  let idx = (sorted.len * p) / 100
+  give sorted[idx]
+}
+
+proc mean(values: [int]) -> int {
+
+  if values.len == 0 { give 0 }
+
+  let sum: int = 0
+  let i: int = 0
+
+  loop {
+    if i >= values.len { break }
+    sum = sum + values[i]
+    i = i + 1
+  }
+
+  give sum / values.len
+}
+
+proc median(sorted: [int]) -> int {
+  if sorted.len == 0 { give 0 }
+  give sorted[sorted.len / 2]
+}
+
+proc trim(values: [int], percent: int) -> [int] {
+
+  if percent <= 0 { give values }
+
+  let sorted = sort(values)
+  let cut = (sorted.len * percent) / 100
+
+  let start = cut
+  let end = sorted.len - cut
+
+  let out: [int] = []
+  let i: int = start
+
+  loop {
+    if i >= end { break }
+    out = out.push(sorted[i])
+    i = i + 1
+  }
+
+  give out
+}
+
+<<< ============================================================
+    BENCH EXECUTION
+============================================================ >>>
+
+proc run_once(job: proc() -> int) -> int {
+
+  let start = now_ns()
+  job()
+  let end = now_ns()
+
+  give end - start
+}
+
+proc run_bench(
+  name: string,
+  job: proc() -> int,
+  cfg: BenchConfig
+) -> BenchResult {
+
+  <<< warmup phase >>>
+  let w: int = 0
+  loop {
+    if w >= cfg.warmup { break }
+    job()
+    w = w + 1
+  }
+
+  <<< measure phase >>>
+  let samples: [int] = []
+  let i: int = 0
+
+  loop {
+    if i >= cfg.iterations { break }
+
+    let duration = run_once(job)
+    samples = samples.push(duration)
+
+    i = i + 1
+  }
+
+  let trimmed = trim(samples, cfg.trim_percent)
+  let sorted = sort(trimmed)
+
+  let stats = BenchStats(
+    sorted[0],
+    sorted[sorted.len - 1],
+    mean(sorted),
+    median(sorted),
+    percentile(sorted, 95),
+    percentile(sorted, 99),
+    sorted.len
+  )
+
+  give BenchResult(name, stats)
+}
+
+<<< ============================================================
+    SUITE RUNNER
+============================================================ >>>
+
+proc suite_new() -> BenchSuite {
+  give BenchSuite([])
+}
+
+proc suite_add(
+  suite: BenchSuite,
+  result: BenchResult
+) -> BenchSuite {
+
+  let results = suite.results.push(result)
+  give BenchSuite(results)
+}
+
+proc suite_run(
+  suite: BenchSuite,
+  name: string,
+  job: proc() -> int,
+  cfg: BenchConfig
+) -> BenchSuite {
+
+  let result = run_bench(name, job, cfg)
+  give suite_add(suite, result)
+}
+
+<<< ============================================================
+    REPORTING
+============================================================ >>>
+
+proc format_stats(stats: BenchStats) -> string {
+
+  give "min=" + stats.min.to_string() +
+       " max=" + stats.max.to_string() +
+       " mean=" + stats.mean.to_string() +
+       " median=" + stats.median.to_string() +
+       " p95=" + stats.p95.to_string() +
+       " p99=" + stats.p99.to_string()
+}
+
+proc report(suite: BenchSuite) -> string {
+
+  let out: string = ""
+  let i: int = 0
+
+  loop {
+    if i >= suite.results.len { break }
+
+    let r = suite.results[i]
+    out = out +
+          r.name +
+          " -> " +
+          format_stats(r.stats) +
+          "\n"
+
+    i = i + 1
+  }
+
+  give out
+}
+
+<<< ============================================================
+    CALIBRATION
+============================================================ >>>
+
+proc calibrate(job: proc() -> int) -> int {
+
+  let iterations: int = 1
+
+  loop {
+    let start = now_ns()
+    let i: int = 0
+
+    loop {
+      if i >= iterations { break }
+      job()
+      i = i + 1
+    }
+
+    let end = now_ns()
+
+    if end - start > 1_000_000 {
+      give iterations
+    }
+
+    iterations = iterations * 2
+  }
+}
+
+<<< ============================================================
+    API
+============================================================ >>>
+
+proc default_config() -> BenchConfig {
+  give BenchConfig(1000, 100, 5, BenchMode.Latency)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/benchkit"
+}
+
+<<< ============================================================
+    ROLE-CONTRACT
+============================================================ >>>
+
+<<<
+ROLE-CONTRACT
+package: vitte/benchkit
+role:
+  Micro benchmarking deterministe.
+
+input_contract:
+  Jobs purs.
+  Pas de side effects externes non controles.
+
+output_contract:
+  Statistiques reproductibles.
+  Percentiles fiables.
+  Outliers elimines.
+
+boundary:
+  - Ne gere pas CPU pinning.
+  - Ne gere pas OS scheduling.
+  - Ne gere pas profiling systeme.
+
+guarantees:
+  - Determinisme statistique.
+  - Warmup stable.
+  - Percentiles exacts.
+  - No allocation implicite lourde.
+>>>

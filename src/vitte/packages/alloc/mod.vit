@@ -84,3 +84,306 @@ input_contract: Valeurs metier explicites, deja parsees et typables
 output_contract: Sorties stables, observables et compatibles avec les autres packages
 boundary: Ne remplace pas les autres couches; respecte la separation de roles
 >>>
+<<<
+mod.vit
+package vitte/alloc
+version: 1.1.0
+tier: core-runtime
+purpose:
+  Sous-systeme d'allocation memoire generique.
+  Concu pour:
+    - runtime
+    - compilateur
+    - kernel mode
+    - no_std
+    - embedded
+  Deterministe.
+  Sans effet secondaire global implicite.
+>>>
+
+space vitte/alloc
+
+<<< ============================================================
+    ENUMERATIONS
+============================================================ >>>
+
+pick AllocatorKind {
+  Global
+  Bump
+  Arena
+  Slab
+}
+
+pick AllocError {
+  OutOfMemory
+  InvalidFree
+  InvalidCapacity
+}
+
+<<< ============================================================
+    STRUCTURES
+============================================================ >>>
+
+form AllocStats {
+  allocated: int
+  released: int
+  alloc_calls: int
+  free_calls: int
+}
+
+form AllocState {
+  kind: AllocatorKind
+  capacity: int
+  used: int
+  high_watermark: int
+  stats: AllocStats
+}
+
+<<<
+  Invariants:
+    capacity >= 0
+    used >= 0
+    high_watermark >= used
+    stats.allocated >= 0
+    stats.released >= 0
+>>>
+
+<<< ============================================================
+    INITIALISATION
+============================================================ >>>
+
+proc default_allocator_kind() -> AllocatorKind {
+  give AllocatorKind.Global
+}
+
+proc no_std_fallback_enabled() -> bool {
+  give true
+}
+
+proc init_allocator() -> bool {
+  give true
+}
+
+proc state_new(kind: AllocatorKind, capacity: int) -> AllocState {
+  give AllocState(
+    kind,
+    capacity,
+    0,
+    0,
+    AllocStats(0, 0, 0, 0)
+  )
+}
+
+<<< ============================================================
+    VALIDATION
+============================================================ >>>
+
+proc is_valid(st: AllocState) -> bool {
+  if st.capacity < 0 { give false }
+  if st.used < 0 { give false }
+  if st.high_watermark < st.used { give false }
+  give true
+}
+
+proc can_alloc(st: AllocState, bytes: int) -> bool {
+  if bytes <= 0 { give false }
+  give st.used + bytes <= st.capacity
+}
+
+<<< ============================================================
+    CORE ALLOCATION
+============================================================ >>>
+
+proc alloc(st: AllocState, bytes: int) -> AllocState {
+
+  if !can_alloc(st, bytes) {
+    give st
+  }
+
+  let new_used = st.used + bytes
+  let new_high =
+    if new_used > st.high_watermark
+    { new_used }
+    else
+    { st.high_watermark }
+
+  give AllocState(
+    st.kind,
+    st.capacity,
+    new_used,
+    new_high,
+    AllocStats(
+      st.stats.allocated + bytes,
+      st.stats.released,
+      st.stats.alloc_calls + 1,
+      st.stats.free_calls
+    )
+  )
+}
+
+proc release(st: AllocState, bytes: int) -> AllocState {
+
+  if bytes <= 0 { give st }
+
+  let freed =
+    if bytes > st.used { st.used }
+    else { bytes }
+
+  give AllocState(
+    st.kind,
+    st.capacity,
+    st.used - freed,
+    st.high_watermark,
+    AllocStats(
+      st.stats.allocated,
+      st.stats.released + freed,
+      st.stats.alloc_calls,
+      st.stats.free_calls + 1
+    )
+  )
+}
+
+<<< ============================================================
+    RESET POLICIES
+============================================================ >>>
+
+proc reset_bump(st: AllocState) -> AllocState {
+
+  if st.kind != AllocatorKind.Bump {
+    give st
+  }
+
+  give AllocState(
+    st.kind,
+    st.capacity,
+    0,
+    st.high_watermark,
+    st.stats
+  )
+}
+
+proc reset_arena(st: AllocState) -> AllocState {
+
+  if st.kind != AllocatorKind.Arena {
+    give st
+  }
+
+  give AllocState(
+    st.kind,
+    st.capacity,
+    0,
+    st.high_watermark,
+    st.stats
+  )
+}
+
+<<< ============================================================
+    SLAB SIMULATION
+============================================================ >>>
+
+proc slab_block_size(capacity: int) -> int {
+  if capacity <= 0 { give 0 }
+  give capacity / 64
+}
+
+proc slab_alloc(st: AllocState, blocks: int) -> AllocState {
+
+  if st.kind != AllocatorKind.Slab {
+    give st
+  }
+
+  let block_size = slab_block_size(st.capacity)
+  give alloc(st, block_size * blocks)
+}
+
+<<< ============================================================
+    METRICS
+============================================================ >>>
+
+proc pressure_percent(st: AllocState) -> int {
+
+  if st.capacity <= 0 { give 0 }
+
+  give (st.used * 100) / st.capacity
+}
+
+proc fragmentation_estimate(st: AllocState) -> int {
+
+  if st.stats.allocated == 0 { give 0 }
+
+  give (st.stats.released * 100) / st.stats.allocated
+}
+
+proc high_watermark(st: AllocState) -> int {
+  give st.high_watermark
+}
+
+<<< ============================================================
+    GLOBAL POLICY
+============================================================ >>>
+
+proc global_alloc_policy(
+  st: AllocState,
+  bytes: int
+) -> AllocState {
+
+  if st.kind == AllocatorKind.Global {
+    give alloc(st, bytes)
+  }
+
+  give st
+}
+
+<<< ============================================================
+    DEBUG / INTROSPECTION
+============================================================ >>>
+
+proc describe(st: AllocState) -> string {
+
+  give "Allocator(" +
+       "kind=" + st.kind.to_string() +
+       ", used=" + st.used.to_string() +
+       ", capacity=" + st.capacity.to_string() +
+       ", pressure=" + pressure_percent(st).to_string() +
+       "%)"
+}
+
+proc package_meta() -> string {
+  give "vitte/alloc"
+}
+
+proc ready() -> bool {
+  give true
+}
+
+<<< ============================================================
+    ROLE-CONTRACT
+============================================================ >>>
+
+<<<
+ROLE-CONTRACT
+package: vitte/alloc
+role:
+  Gestion memoire generique et deterministe.
+
+input_contract:
+  Etats coherents.
+  Capacite explicite.
+  Bytes >= 0.
+
+output_contract:
+  Etat purement fonctionnel.
+  Aucun effet global implicite.
+
+boundary:
+  - Ne gere pas mmap.
+  - Ne gere pas system calls.
+  - Ne gere pas GC.
+  - Ne remplace pas le runtime.
+
+guarantees:
+  - Determinisme
+  - Pas de panic
+  - No hidden global
+  - no_std compatible
+>>>
