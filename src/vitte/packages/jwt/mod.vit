@@ -5,6 +5,8 @@ package vitte/jwt
 
 space vitte/jwt
 
+use vitte/crypto as crypto
+
 form Claims {
   sub: string
   iss: string
@@ -23,6 +25,8 @@ pick JwtError {
   NotYetValid
   InvalidIssuer
   InvalidAudience
+  InvalidClaims
+  WeakSecret
 }
 
 proc claims(sub: string, iss: string, aud: string, iat: int, exp: int, scope: string) -> Claims {
@@ -31,7 +35,7 @@ proc claims(sub: string, iss: string, aud: string, iat: int, exp: int, scope: st
 
 proc default_claims(sub: string, now: int, ttl: int) -> Claims {
   let exp = now + ttl
-  if ttl <= 0 { exp = now }
+  if ttl <= 0 { exp = now + 1 }
   give Claims(sub, "vitte", "vitte-api", now, exp, "user")
 }
 
@@ -46,12 +50,296 @@ proc has_three_parts(token: string) -> bool {
   give dots == 2
 }
 
+form PackedRead {
+  ok: bool
+  value: string
+  next: int
+}
+
+form ClaimsParse {
+  ok: bool
+  value: Claims
+}
+
+form HeaderParse {
+  ok: bool
+}
+
+proc is_digit(ch: string) -> bool {
+  if ch == "0" { give true }
+  if ch == "1" { give true }
+  if ch == "2" { give true }
+  if ch == "3" { give true }
+  if ch == "4" { give true }
+  if ch == "5" { give true }
+  if ch == "6" { give true }
+  if ch == "7" { give true }
+  if ch == "8" { give true }
+  if ch == "9" { give true }
+  give false
+}
+
+proc is_uint(text: string) -> bool {
+  if text.len == 0 { give false }
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    if !is_digit(text.slice(i, i + 1)) { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc upper_letters() -> string {
+  give "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+}
+
+proc lower_letters() -> string {
+  give "abcdefghijklmnopqrstuvwxyz"
+}
+
+proc digits() -> string {
+  give "0123456789"
+}
+
+proc b64url_alphabet() -> string {
+  give "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+}
+
+proc b64url_char(index: int) -> string {
+  let alpha = b64url_alphabet()
+  if index < 0 || index >= alpha.len { give "" }
+  give alpha.slice(index, index + 1)
+}
+
+proc b64url_value(ch: string) -> int {
+  if ch.len == 0 { give -1 }
+  let u = upper_letters()
+  let l = lower_letters()
+  let d = digits()
+  let i: int = 0
+  loop {
+    if i >= 26 { break }
+    if ch == u.slice(i, i + 1) { give i }
+    i = i + 1
+  }
+  i = 0
+  loop {
+    if i >= 26 { break }
+    if ch == l.slice(i, i + 1) { give 26 + i }
+    i = i + 1
+  }
+  i = 0
+  loop {
+    if i >= 10 { break }
+    if ch == d.slice(i, i + 1) { give 52 + i }
+    i = i + 1
+  }
+  if ch == "-" { give 62 }
+  if ch == "_" { give 63 }
+  give -1
+}
+
+proc ascii_from_byte(byte: int) -> string {
+  let u = upper_letters()
+  let l = lower_letters()
+  let d = digits()
+  if byte >= 65 && byte <= 90 { give u.slice(byte - 65, byte - 64) }
+  if byte >= 97 && byte <= 122 { give l.slice(byte - 97, byte - 96) }
+  if byte >= 48 && byte <= 57 { give d.slice(byte - 48, byte - 47) }
+  if byte == 32 { give " " }
+  if byte == 34 { give "\"" }
+  if byte == 44 { give "," }
+  if byte == 45 { give "-" }
+  if byte == 46 { give "." }
+  if byte == 47 { give "/" }
+  if byte == 58 { give ":" }
+  if byte == 64 { give "@" }
+  if byte == 95 { give "_" }
+  if byte == 123 { give "{" }
+  if byte == 125 { give "}" }
+  if byte == 42 { give "*" }
+  give ""
+}
+
+proc base64url_encode(text: string) -> string {
+  if text.len == 0 { give "" }
+  let out = ""
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    let rem = text.len - i
+    let b0 = text.slice(i, i + 1).to_int() & 255
+    let b1: int = 0
+    let b2: int = 0
+    if rem > 1 { b1 = text.slice(i + 1, i + 2).to_int() & 255 }
+    if rem > 2 { b2 = text.slice(i + 2, i + 3).to_int() & 255 }
+    let n = (b0 << 16) + (b1 << 8) + b2
+    let c0 = (n >> 18) & 63
+    let c1 = (n >> 12) & 63
+    let c2 = (n >> 6) & 63
+    let c3 = n & 63
+    out = out + b64url_char(c0) + b64url_char(c1)
+    if rem > 1 { out = out + b64url_char(c2) }
+    if rem > 2 { out = out + b64url_char(c3) }
+    i = i + 3
+  }
+  give out
+}
+
+proc base64url_decode(text: string) -> string {
+  if text.len == 0 { give "" }
+  let out = ""
+  let bits: int = 0
+  let bit_len: int = 0
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    let v = b64url_value(text.slice(i, i + 1))
+    if v < 0 { give "" }
+    bits = (bits << 6) + v
+    bit_len = bit_len + 6
+    loop {
+      if bit_len < 8 { break }
+      let b = (bits >> (bit_len - 8)) & 255
+      let ch = ascii_from_byte(b)
+      if ch.len == 0 { give "" }
+      out = out + ch
+      bit_len = bit_len - 8
+    }
+    i = i + 1
+  }
+  if bit_len >= 6 { give "" }
+  give out
+}
+
+proc is_safe_claim_char(ch: string) -> bool {
+  if is_digit(ch) { give true }
+  let u = upper_letters()
+  let l = lower_letters()
+  let i: int = 0
+  loop {
+    if i >= 26 { break }
+    if ch == u.slice(i, i + 1) { give true }
+    if ch == l.slice(i, i + 1) { give true }
+    i = i + 1
+  }
+  if ch == "-" { give true }
+  if ch == "_" { give true }
+  if ch == "." { give true }
+  if ch == "/" { give true }
+  if ch == "@" { give true }
+  if ch == "*" { give true }
+  give false
+}
+
+proc is_safe_claim_text(text: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    if !is_safe_claim_char(text.slice(i, i + 1)) { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc default_header_json() -> string {
+  give "{\"alg\":\"HS256\",\"typ\":\"JWT\"}"
+}
+
+proc canonical_signing_input(header_b64: string, payload_b64: string) -> string {
+  give header_b64 + "." + payload_b64
+}
+
+proc encode_claims_json(cl: Claims) -> string {
+  if !is_safe_claim_text(cl.sub) { give "" }
+  if !is_safe_claim_text(cl.iss) { give "" }
+  if !is_safe_claim_text(cl.aud) { give "" }
+  if !is_safe_claim_text(cl.scope) { give "" }
+  give "{\"sub\":\"" + cl.sub +
+       "\",\"iss\":\"" + cl.iss +
+       "\",\"aud\":\"" + cl.aud +
+       "\",\"iat\":" + cl.iat.to_string() +
+       ",\"exp\":" + cl.exp.to_string() +
+       ",\"scope\":\"" + cl.scope + "\"}"
+}
+
+proc find_from(text: string, pattern: string, start: int) -> int {
+  if pattern.len == 0 { give -1 }
+  if start < 0 { give -1 }
+  let i = start
+  loop {
+    if i + pattern.len > text.len { break }
+    if text.slice(i, i + pattern.len) == pattern { give i }
+    i = i + 1
+  }
+  give -1
+}
+
+proc parse_json_string_field(json: string, key: string) -> string {
+  let pat = "\"" + key + "\":\""
+  let start = find_from(json, pat, 0)
+  if start < 0 { give "" }
+  let i = start + pat.len
+  let out = ""
+  loop {
+    if i >= json.len { give "" }
+    let ch = json.slice(i, i + 1)
+    if ch == "\"" { give out }
+    if !is_safe_claim_char(ch) { give "" }
+    out = out + ch
+    i = i + 1
+  }
+  give ""
+}
+
+proc parse_json_int_field(json: string, key: string) -> int {
+  let pat = "\"" + key + "\":"
+  let start = find_from(json, pat, 0)
+  if start < 0 { give -1 }
+  let i = start + pat.len
+  let out = ""
+  loop {
+    if i >= json.len { break }
+    let ch = json.slice(i, i + 1)
+    if !is_digit(ch) { break }
+    out = out + ch
+    i = i + 1
+  }
+  if out.len == 0 { give -1 }
+  give out.to_int()
+}
+
+proc parse_header_json(json: string) -> HeaderParse {
+  if json.len == 0 { give HeaderParse(false) }
+  if parse_json_string_field(json, "alg") != "HS256" { give HeaderParse(false) }
+  if parse_json_string_field(json, "typ") != "JWT" { give HeaderParse(false) }
+  give HeaderParse(true)
+}
+
+proc weak_secret(secret: string) -> bool {
+  if secret.len < 8 { give true }
+  if crypto.crypto_health(secret) != "ok" { give true }
+  give false
+}
+
 proc encode(cl: Claims, secret: string) -> string {
   if secret.len == 0 { give "" }
-  let header = "h"
-  let payload = cl.sub + "|" + cl.iss + "|" + cl.aud + "|" + cl.iat.to_string() + "|" + cl.exp.to_string() + "|" + cl.scope
-  let sig = "s" + secret.len.to_string()
-  give header + "." + payload + "." + sig
+  if weak_secret(secret) { give "" }
+  if cl.sub.len == 0 { give "" }
+  if cl.iss.len == 0 { give "" }
+  if cl.aud.len == 0 { give "" }
+  if cl.scope.len == 0 { give "" }
+  if cl.exp <= cl.iat { give "" }
+  let header_json = default_header_json()
+  let payload_json = encode_claims_json(cl)
+  if payload_json.len == 0 { give "" }
+  let header_b64 = base64url_encode(header_json)
+  let payload_b64 = base64url_encode(payload_json)
+  let sig_raw = crypto.sign(secret, canonical_signing_input(header_b64, payload_b64))
+  if sig_raw.len == 0 { give "" }
+  let sig_b64 = base64url_encode(sig_raw)
+  give header_b64 + "." + payload_b64 + "." + sig_b64
 }
 
 proc split_part(token: string, index: int) -> string {
@@ -77,30 +365,46 @@ proc decode_payload(token: string) -> string {
 
 proc verify_signature(token: string, secret: string) -> bool {
   if secret.len == 0 { give false }
+  if weak_secret(secret) { give false }
   if !has_three_parts(token) { give false }
+  let header = split_part(token, 0)
+  let payload = split_part(token, 1)
   let sig = split_part(token, 2)
-  give sig == "s" + secret.len.to_string()
+  let header_json = base64url_decode(header)
+  if !parse_header_json(header_json).ok { give false }
+  let expected = base64url_encode(crypto.sign(secret, canonical_signing_input(header, payload)))
+  give sig == expected
+}
+
+proc parse_claims_payload(payload: string) -> ClaimsParse {
+  let empty = Claims("", "", "", 0, 0, "")
+  let json = base64url_decode(payload)
+  if json.len == 0 { give ClaimsParse(false, empty) }
+  let sub = parse_json_string_field(json, "sub")
+  let iss = parse_json_string_field(json, "iss")
+  let aud = parse_json_string_field(json, "aud")
+  let scope = parse_json_string_field(json, "scope")
+  let iat = parse_json_int_field(json, "iat")
+  let exp = parse_json_int_field(json, "exp")
+  if sub.len == 0 { give ClaimsParse(false, empty) }
+  if iss.len == 0 { give ClaimsParse(false, empty) }
+  if aud.len == 0 { give ClaimsParse(false, empty) }
+  if scope.len == 0 { give ClaimsParse(false, empty) }
+  if iat < 0 { give ClaimsParse(false, empty) }
+  if exp <= 0 { give ClaimsParse(false, empty) }
+  let cl = Claims(sub, iss, aud, iat, exp, scope)
+  give ClaimsParse(true, cl)
 }
 
 proc parse_claims(token: string) -> Claims {
   let payload = decode_payload(token)
-  if payload.len == 0 { give Claims("", "", "", 0, 0, "") }
-  let parts: [string] = []
-  let start: int = 0
-  let i: int = 0
-  loop {
-    if i > payload.len { break }
-    if i == payload.len || payload.slice(i, i + 1) == "|" {
-      parts = parts.push(payload.slice(start, i))
-      start = i + 1
-    }
-    i = i + 1
-  }
-  if parts.len < 6 { give Claims("", "", "", 0, 0, "") }
-  give Claims(parts[0], parts[1], parts[2], parts[3].to_int(), parts[4].to_int(), parts[5])
+  let parsed = parse_claims_payload(payload)
+  if !parsed.ok { give Claims("", "", "", 0, 0, "") }
+  give parsed.value
 }
 
 proc validate_time(cl: Claims, now: int) -> JwtError {
+  if cl.exp <= cl.iat { give JwtError.InvalidClaims }
   if now < cl.iat { give JwtError.NotYetValid }
   if now >= cl.exp { give JwtError.Expired }
   give JwtError.None
@@ -108,10 +412,18 @@ proc validate_time(cl: Claims, now: int) -> JwtError {
 
 proc validate(token: string, secret: string, now: int) -> JwtError {
   if token.len == 0 { give JwtError.MissingToken }
+  if secret.len == 0 { give JwtError.WeakSecret }
+  if weak_secret(secret) { give JwtError.WeakSecret }
   if !has_three_parts(token) { give JwtError.InvalidFormat }
+  if !parse_header_json(base64url_decode(split_part(token, 0))).ok { give JwtError.InvalidFormat }
   if !verify_signature(token, secret) { give JwtError.InvalidSignature }
-  let cl = parse_claims(token)
-  if cl.sub.len == 0 { give JwtError.InvalidFormat }
+  let parsed = parse_claims_payload(split_part(token, 1))
+  if !parsed.ok { give JwtError.InvalidClaims }
+  let cl = parsed.value
+  if cl.sub.len == 0 { give JwtError.InvalidClaims }
+  if cl.iss.len == 0 { give JwtError.InvalidClaims }
+  if cl.aud.len == 0 { give JwtError.InvalidClaims }
+  if cl.scope.len == 0 { give JwtError.InvalidClaims }
   give validate_time(cl, now)
 }
 
@@ -128,13 +440,24 @@ proc can(cl: Claims, needed_scope: string) -> bool {
   if needed_scope.len == 0 { give true }
   if cl.scope == needed_scope { give true }
   if cl.scope == "admin" { give true }
+  if cl.scope == "*" { give true }
+  if cl.scope.len > 2 && cl.scope.slice(cl.scope.len - 2, cl.scope.len) == "/*" {
+    let prefix = cl.scope.slice(0, cl.scope.len - 1)
+    if needed_scope.len >= prefix.len && needed_scope.slice(0, prefix.len) == prefix { give true }
+  }
+  if needed_scope.len > 2 && needed_scope.slice(needed_scope.len - 2, needed_scope.len) == "/*" {
+    let prefix = needed_scope.slice(0, needed_scope.len - 1)
+    if cl.scope.len >= prefix.len && cl.scope.slice(0, prefix.len) == prefix { give true }
+  }
   give false
 }
 
 proc refresh(token: string, secret: string, now: int, ttl: int) -> string {
+  if ttl <= 0 { give "" }
   let err = validate(token, secret, now)
   if err != JwtError.None { give "" }
   let cl = parse_claims(token)
+  if cl.sub.len == 0 { give "" }
   let next = Claims(cl.sub, cl.iss, cl.aud, now, now + ttl, cl.scope)
   give encode(next, secret)
 }
@@ -146,6 +469,8 @@ proc summary(token: string, secret: string, now: int) -> string {
   if err == JwtError.InvalidSignature { give "invalid-signature" }
   if err == JwtError.Expired { give "expired" }
   if err == JwtError.NotYetValid { give "not-yet-valid" }
+  if err == JwtError.InvalidClaims { give "invalid-claims" }
+  if err == JwtError.WeakSecret { give "weak-secret" }
   let cl = parse_claims(token)
   give "sub=" + cl.sub + ",iss=" + cl.iss + ",aud=" + cl.aud + ",scope=" + cl.scope
 }
@@ -163,6 +488,10 @@ proc package_meta() -> string {
 <<< ROLE-CONTRACT
 package: vitte/jwt
 role: Tokens JWT: emission, verification et claims
+owner: @vitte/jwt
+stability: stable
+since: 3.0.0
+deprecated_in: -
 input_contract: Donnees reseau ou securite deja normalisees et explicites
 output_contract: Resultats transport ou securite avec erreurs explicites
 boundary: Ne choisit pas la politique metier; expose seulement la surface technique

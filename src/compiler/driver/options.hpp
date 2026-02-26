@@ -67,11 +67,19 @@ struct Options {
     std::string mod_graph_from;
     bool mod_doctor = false;
     bool mod_doctor_fix = false;
+    bool mod_doctor_write = false;
+    bool mod_doctor_check = false;
+    bool mod_migrate_imports = false;
+    bool mod_migrate_write = false;
+    bool no_backup = false;
+    std::vector<std::string> mod_roots;
     int max_imports = 0;
     bool mod_api_diff = false;
     std::string api_diff_old;
     std::string api_diff_new;
     std::string stdlib_profile = "full";
+    bool allow_legacy_self_leaf = true;
+    bool legacy_self_leaf_warn_only = false;
 
     /* Debug symbols */
     bool debug = false;

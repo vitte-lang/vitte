@@ -102,13 +102,15 @@ Options parse_options(int argc, char** argv) {
                     opts.mod_graph = true;
                 } else if (mode == "doctor") {
                     opts.mod_doctor = true;
+                } else if (mode == "migrate-imports") {
+                    opts.mod_migrate_imports = true;
                 } else if (mode == "api-diff" || mode == "contract-diff") {
                     opts.mod_api_diff = true;
                 } else {
                     std::cerr << "[driver] warning: unknown mod subcommand '" << mode << "'\n";
                 }
             } else {
-                std::cerr << "[driver] warning: missing mod subcommand (expected graph|doctor|contract-diff)\n";
+                std::cerr << "[driver] warning: missing mod subcommand (expected graph|doctor|migrate-imports|contract-diff)\n";
             }
         }
         else if (arg == "-o" && i + 1 < argc) {
@@ -249,6 +251,16 @@ Options parse_options(int argc, char** argv) {
         else if (arg == "--warn-experimental") {
             opts.warn_experimental = true;
         }
+        else if (arg == "--allow-legacy-self-leaf") {
+            opts.allow_legacy_self_leaf = true;
+        }
+        else if (arg == "--deny-legacy-self-leaf") {
+            opts.allow_legacy_self_leaf = false;
+        }
+        else if (arg == "--legacy-self-leaf-warn-only") {
+            opts.allow_legacy_self_leaf = true;
+            opts.legacy_self_leaf_warn_only = true;
+        }
         else if (arg == "--deny-internal") {
             opts.deny_internal = true;
         }
@@ -266,6 +278,50 @@ Options parse_options(int argc, char** argv) {
         }
         else if (arg == "--fix") {
             opts.mod_doctor_fix = true;
+        }
+        else if (arg == "--write") {
+            opts.mod_doctor_fix = true;
+            opts.mod_doctor_write = true;
+            opts.mod_migrate_write = true;
+        }
+        else if (arg == "--check") {
+            opts.mod_doctor_fix = true;
+            opts.mod_doctor_check = true;
+        }
+        else if (arg == "--roots" && i + 1 < argc) {
+            std::string roots = argv[++i];
+            std::size_t start = 0;
+            while (start <= roots.size()) {
+                std::size_t end = roots.find(',', start);
+                if (end == std::string::npos) {
+                    end = roots.size();
+                }
+                std::string item = roots.substr(start, end - start);
+                if (!item.empty()) {
+                    opts.mod_roots.push_back(item);
+                }
+                if (end == roots.size()) break;
+                start = end + 1;
+            }
+        }
+        else if (arg.rfind("--roots=", 0) == 0) {
+            std::string roots = arg.substr(std::string("--roots=").size());
+            std::size_t start = 0;
+            while (start <= roots.size()) {
+                std::size_t end = roots.find(',', start);
+                if (end == std::string::npos) {
+                    end = roots.size();
+                }
+                std::string item = roots.substr(start, end - start);
+                if (!item.empty()) {
+                    opts.mod_roots.push_back(item);
+                }
+                if (end == roots.size()) break;
+                start = end + 1;
+            }
+        }
+        else if (arg == "--no-backup") {
+            opts.no_backup = true;
         }
         else if (arg == "--max-imports" && i + 1 < argc) {
             opts.max_imports = std::stoi(argv[++i]);
@@ -384,6 +440,7 @@ void print_help() {
         "  clean-cache      Remove .vitte-cache artifacts\n"
         "  mod graph        Show module import graph and cycle report\n"
         "  mod doctor       Lint module imports/aliases/collisions\n"
+        "  mod migrate-imports Rewrite legacy imports across roots\n"
         "  mod contract-diff Compare exported module contract between 2 inputs\n"
         "  mod api-diff     Legacy alias for mod contract-diff\n"
         "\n"
@@ -429,11 +486,18 @@ void print_help() {
         "  --dump-module-index Dump full module index as JSON\n"
         "  --allow-experimental Allow importing modules under experimental namespace\n"
         "  --warn-experimental Downgrade experimental import denial to warning\n"
+        "  --allow-legacy-self-leaf Allow legacy self-leaf imports (temporary compat)\n"
+        "  --deny-legacy-self-leaf  Disable legacy self-leaf import compatibility\n"
+        "  --legacy-self-leaf-warn-only Keep legacy self-leaf imports as warnings during rollout\n"
         "  --deny-internal  Enforce internal module privacy (default)\n"
         "  --allow-internal Disable internal privacy check\n"
         "  --json           For mod graph: output JSON\n"
         "  --from <module>  For mod graph: focus subgraph from module\n"
         "  --fix            For mod doctor: print concrete rewrite suggestions\n"
+        "  --write          For mod doctor --fix / mod migrate-imports: apply safe rewrites in-place\n"
+        "  --check          For mod doctor --fix: dry-run, fail when safe rewrites are available\n"
+        "  --roots <dirs>   For mod doctor --fix or mod migrate-imports: comma-separated roots (e.g. tests,examples)\n"
+        "  --no-backup      For mod migrate-imports --write: skip .bak creation\n"
         "  --max-imports N  For mod doctor: warn/error when fan-out exceeds N\n"
         "  --old <file>     For mod contract-diff: old entry file\n"
         "  --new <file>     For mod contract-diff: new entry file\n"

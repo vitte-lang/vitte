@@ -1,0 +1,54 @@
+name: modules-report-pr
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/modules/**'
+      - 'tools/modules_report.sh'
+      - 'tools/modules_contract_snapshots.sh'
+      - 'Makefile'
+
+jobs:
+  modules-report:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang g++ make pkg-config libssl-dev libcurl4-openssl-dev
+
+      - name: Build
+        run: make build
+
+      - name: Generate modules report
+        run: make modules-report
+
+      - name: Comment PR with modules report summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'target/reports/modules_report.txt';
+            if (!fs.existsSync(path)) {
+              core.setFailed('modules report file missing');
+              return;
+            }
+            const body = fs.readFileSync(path, 'utf8').split('\n').slice(0, 40).join('\n');
+            const marker = '<!-- modules-report-summary -->';
+            const commentBody = `${marker}\n### Modules Report Summary\n\n\`\`\`text\n${body}\n\`\`\``;
+            const {owner, repo} = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {owner, repo, issue_number});
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({owner, repo, comment_id: existing.id, body: commentBody});
+            } else {
+              await github.rest.issues.createComment({owner, repo, issue_number, body: commentBody});
+            }

@@ -41,6 +41,7 @@ namespace vitte::frontend::diag {
     X(E1017, ReexportSymbolConflict, "re-export symbol conflict") \
     X(E1018, AmbiguousImportPath, "ambiguous import path") \
     X(E1019, StrictModulesGlobForbidden, "strict-modules forbids glob imports") \
+    X(E1020, LegacyImportPathDeprecated, "legacy import path is deprecated") \
     X(E2001, UnsupportedType, "unsupported type") \
     X(E2002, InvokeHasNoCallee, "invoke has no callee") \
     X(E2003, UnsupportedExpressionInHir, "unsupported expression in HIR") \
@@ -283,6 +284,12 @@ constexpr DiagExplain diag_explain(DiagId id) {
                 "Strict modules mode disallows glob imports.",
                 "List imports explicitly and keep aliases explicit.",
                 "use std/net/addr as net_addr",
+            };
+        case DiagId::LegacyImportPathDeprecated:
+            return {
+                "A legacy import path was accepted for compatibility but is deprecated.",
+                "Replace the import with the canonical package path suggested by the diagnostic.",
+                "use vitte/abi as abi_mod",
             };
         case DiagId::UnexpectedHirTypeKind:
             return {

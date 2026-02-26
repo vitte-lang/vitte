@@ -223,6 +223,7 @@ bool run_pipeline(const Options& opts) {
     module_opts.allow_experimental = opts.allow_experimental;
     module_opts.warn_experimental = opts.warn_experimental;
     module_opts.deny_internal = opts.deny_internal;
+    module_opts.allow_legacy_self_leaf = opts.allow_legacy_self_leaf;
     frontend::modules::load_modules(ast_ctx, ast, diagnostics, opts.input, module_index, module_opts);
     frontend::modules::rewrite_member_access(ast_ctx, ast, module_index, &diagnostics);
     if (opts.dump_stdlib_map) {

@@ -15,12 +15,30 @@ STD_DIR      := src/vitte/packages
 TOOLS_DIR    := tools
 
 CC           := clang
-CXX          := clang++
+CXX          ?= clang++
+CXX_FALLBACK ?= g++
+AUTO_CXX_FALLBACK ?= 1
 AR           := ar
 RM           := rm -rf
 MKDIR        := mkdir -p
 INSTALL      := install
 CP           := cp -f
+
+# Auto-fallback to g++ when clang++ cannot locate C++ standard headers.
+# This keeps local builds working on hosts with partial clang toolchains.
+ifeq ($(AUTO_CXX_FALLBACK),1)
+ifneq ($(origin CXX),command line)
+  CXX_STDLIB_OK := $(shell printf '#include <cstddef>\nint main(){return 0;}\n' | $(CXX) -std=c++20 -x c++ -fsyntax-only - >/dev/null 2>&1; echo $$?)
+  ifneq ($(CXX_STDLIB_OK),0)
+    ifneq ($(shell command -v $(CXX_FALLBACK) 2>/dev/null),)
+      $(warning [make] CXX='$(CXX)' missing C++ std headers; falling back to '$(CXX_FALLBACK)')
+      CXX := $(CXX_FALLBACK)
+    else
+      $(warning [make] CXX='$(CXX)' missing C++ std headers and fallback '$(CXX_FALLBACK)' not found)
+    endif
+  endif
+endif
+endif
 
 PREFIX       ?= /usr/local
 DESTDIR      ?=
@@ -29,6 +47,7 @@ USER_HOME    ?= $(HOME)
 VIM_DIR      ?= $(USER_HOME)/.vim
 EMACS_DIR    ?= $(USER_HOME)/.emacs.d
 NANO_DIR     ?= $(USER_HOME)/.config/nano
+LEGACY_ALLOWLIST_BUDGET ?= 5
 
 CFLAGS       := -std=c17 -Wall -Wextra -Werror -O2 -g
 CXXFLAGS     := -std=c++20 -Wall -Wextra -Werror -O2 -g
@@ -286,10 +305,10 @@ update-diagnostics-ftl:
 	@tools/update_diagnostics_ftl.py
 
 .PHONY: ci-strict
-ci-strict: grammar-check book-qa-strict negative-tests diag-snapshots
+ci-strict: grammar-check book-qa-strict package-layout-lint legacy-import-path-lint negative-tests diag-snapshots
 
 .PHONY: ci-fast
-ci-fast: grammar-check negative-tests diag-snapshots completions-snapshots wrapper-stage-test
+ci-fast: grammar-check package-layout-lint legacy-import-path-lint negative-tests diag-snapshots completions-snapshots wrapper-stage-test
 
 .PHONY: ci-completions
 ci-completions: completions-check completions-lint completions-snapshots completions-fallback
@@ -301,6 +320,42 @@ runtime-matrix-modules:
 .PHONY: module-shape-policy
 module-shape-policy:
 	@tools/check_module_shape_policy.py
+
+.PHONY: package-layout-lint
+package-layout-lint:
+	@tools/lint_package_layout.py
+
+.PHONY: package-layout-lint-strict
+package-layout-lint-strict:
+	@tools/lint_package_layout.py --strict --enforce-mod-only
+
+.PHONY: module-leaf-file-lint
+module-leaf-file-lint:
+	@tools/lint_package_layout.py --enforce-mod-only
+
+.PHONY: legacy-import-path-lint
+legacy-import-path-lint:
+	@tools/lint_legacy_import_paths.py --max-entries=$(LEGACY_ALLOWLIST_BUDGET)
+
+.PHONY: experimental-modules-lint
+experimental-modules-lint:
+	@tools/lint_experimental_modules.py
+
+.PHONY: public-modules-snapshots-lint
+public-modules-snapshots-lint:
+	@tools/lint_public_modules_have_snapshots.py
+
+.PHONY: critical-module-contract-lint
+critical-module-contract-lint:
+	@tools/lint_critical_module_contracts.py
+
+.PHONY: legacy-import-allowlist-empty
+legacy-import-allowlist-empty:
+	@if grep -E -v '^[[:space:]]*(#|$$)' tools/legacy_import_path_allowlist.txt >/dev/null; then \
+		echo "[legacy-import-allowlist-empty][error] tools/legacy_import_path_allowlist.txt must be empty for release"; \
+		echo "[legacy-import-allowlist-empty][error] remove temporary exceptions before release"; \
+		exit 1; \
+	fi
 
 .PHONY: ci-fast-compiler
 ci-fast-compiler:
@@ -374,6 +429,77 @@ modules-tests:
 .PHONY: modules-snapshots
 modules-snapshots:
 	@tools/modules_snapshots.sh
+
+.PHONY: modules-snapshots-update
+modules-snapshots-update:
+	@tools/modules_snapshots.sh --update
+
+.PHONY: modules-snapshots-bless
+modules-snapshots-bless:
+	@tools/modules_snapshots.sh --bless
+
+.PHONY: modules-contract-snapshots
+modules-contract-snapshots:
+	@tools/modules_contract_snapshots.sh
+
+.PHONY: modules-contract-snapshots-update
+modules-contract-snapshots-update:
+	@tools/modules_contract_snapshots.sh --update
+
+.PHONY: module-tree-lint
+module-tree-lint:
+	@tools/lint_module_tree.py
+
+.PHONY: module-naming-lint
+module-naming-lint:
+	@tools/lint_module_naming.py
+
+.PHONY: packages-governance-lint
+packages-governance-lint:
+	@tools/lint_packages_governance.py
+
+.PHONY: critical-runtime-matrix-lint
+critical-runtime-matrix-lint:
+	@tools/lint_critical_runtime_matrix.py
+
+.PHONY: new-public-packages-snapshots-lint
+new-public-packages-snapshots-lint:
+	@tools/lint_new_public_packages_have_snapshots.py
+
+.PHONY: no-std-lint
+no-std-lint:
+	@tools/lint_no_std_imports.py --roots src/vitte/packages
+
+.PHONY: modules-report
+modules-report:
+	@tools/modules_report.sh
+
+.PHONY: packages-report
+packages-report:
+	@SEARCH_ROOT=src/vitte/packages ENTRY_GLOB=mod.vit OUT_FILE=target/reports/packages_modules_report.txt OUT_JSON=target/reports/packages_modules_report.json tools/modules_report.sh
+
+.PHONY: modules-perf-cache
+modules-perf-cache:
+	@tools/modules_cache_perf.sh tests/modules/mod_graph/main.vit
+
+.PHONY: packages-contract-snapshots
+packages-contract-snapshots:
+	@tools/packages_contract_snapshots.sh
+
+.PHONY: packages-contract-snapshots-update
+packages-contract-snapshots-update:
+	@tools/packages_contract_snapshots.sh --update
+
+.PHONY: packages-gate
+packages-gate: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint legacy-import-path-lint critical-runtime-matrix-lint new-public-packages-snapshots-lint modules-perf-cache packages-report packages-contract-snapshots
+
+.PHONY: modules-ci-strict
+modules-ci-strict: modules-tests modules-snapshots modules-contract-snapshots module-tree-lint module-naming-lint critical-module-contract-lint experimental-modules-lint public-modules-snapshots-lint modules-perf-cache legacy-import-path-lint migration-check modules-report
+	@$(BIN_DIR)/$(PROJECT) mod contract-diff --lang=en --old tests/modules/api_diff/old_case/main.vit --new tests/modules/api_diff/new_case/main.vit >/tmp/vitte-modules-ci-contract-diff.out 2>&1 || true
+	@grep -Fq "[contract-diff] BREAKING" /tmp/vitte-modules-ci-contract-diff.out
+	@$(BIN_DIR)/$(PROJECT) mod contract-diff --lang=en --old tests/modules/api_diff/old_case/main.vit --new tests/modules/api_diff/old_case/main.vit >/tmp/vitte-modules-ci-contract-diff-ok.out 2>&1
+	@grep -Fq "[contract-diff] OK" /tmp/vitte-modules-ci-contract-diff-ok.out
+	@rm -f /tmp/vitte-modules-ci-contract-diff.out /tmp/vitte-modules-ci-contract-diff-ok.out
 
 .PHONY: completions-gen
 completions-gen:
@@ -582,7 +708,53 @@ pkg-macos-uninstall:
 	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
 
 .PHONY: release-check
-release-check: build ci-fast ci-completions pkg-macos
+release-check: build ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos
+
+.PHONY: migration-check
+migration-check: diag-snapshots package-layout-lint-strict legacy-import-path-lint
+
+.PHONY: migration-fix-preview
+migration-fix-preview:
+	@tools/migration_fix_preview.sh
+
+.PHONY: migration-fix-preview-json
+migration-fix-preview-json:
+	@tools/migration_fix_preview.sh --json
+
+.PHONY: migration-map
+migration-map:
+	@tools/generate_legacy_migration_doc.py
+
+.PHONY: module-starter
+module-starter:
+	@if [ -z "$(MODULE)" ] || [ -z "$(OWNER)" ]; then \
+		echo "usage: make module-starter MODULE=<name|domain/name> OWNER=@team/name [SINCE=3.0.0] [STABILITY=stable]"; \
+		exit 2; \
+	fi
+	@tools/new_module_starter.sh --module "$(MODULE)" --owner "$(OWNER)" --since "$(if $(SINCE),$(SINCE),3.0.0)" --stability "$(if $(STABILITY),$(STABILITY),stable)"
+
+.PHONY: modules-fix-all
+modules-fix-all:
+	@tools/modules_fix_all.sh --roots tests examples
+
+.PHONY: modules-fix-all-check
+modules-fix-all-check:
+	@tools/modules_fix_all.sh --roots tests examples --check
+
+.PHONY: mod-migrate-imports
+mod-migrate-imports:
+	@tools/mod_migrate_imports.sh --roots tests examples
+
+.PHONY: modules-weekly-deny-legacy
+modules-weekly-deny-legacy:
+	@DENY_LEGACY_SELF_LEAF=1 tools/modules_tests.sh
+
+.PHONY: modules-weekly-legacy-warn-only
+modules-weekly-legacy-warn-only:
+	@LEGACY_SELF_LEAF_WARN_ONLY=1 tools/modules_tests.sh
+
+.PHONY: release-modules-gate
+release-modules-gate: modules-ci-strict modules-contract-snapshots modules-report legacy-import-allowlist-empty
 
 .PHONY: platon-editor
 platon-editor:
@@ -637,6 +809,8 @@ help:
 	@echo "  make modules-tests run module graph/doctor fixtures"
 	@echo "  make module-shape-policy enforce single module layout (<name>.vit xor <name>/mod.vit)"
 	@echo "  make modules-snapshots assert mod graph/doctor outputs"
+	@echo "  make modules-snapshots-update regenerate modules snapshot files (.must/.diagjson/.codes/.fr)"
+	@echo "  make modules-snapshots-bless regenerate modules snapshots and print diffs"
 	@echo "  make explain-snapshots assert vitte explain outputs"
 	@echo "  make same-output-hash verify deterministic emit hash stability"
 	@echo "  make completions-gen regenerate bash/zsh/fish completions from unified spec"

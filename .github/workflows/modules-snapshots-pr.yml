@@ -1,0 +1,67 @@
+name: modules-snapshots-pr
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/modules/**'
+      - 'tools/modules_snapshots.sh'
+      - 'Makefile'
+
+jobs:
+  modules-snapshots:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang g++ make pkg-config libssl-dev libcurl4-openssl-dev
+
+      - name: Build
+        run: make build
+
+      - name: Run modules snapshots
+        run: make modules-snapshots
+
+      - name: Comment PR with modules snapshots summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'target/reports/modules_snapshots.json';
+            if (!fs.existsSync(path)) {
+              core.setFailed('modules snapshots report missing');
+              return;
+            }
+            const obj = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const marker = '<!-- modules-snapshots-summary -->';
+            const sum = obj.summary || {};
+            const slow = (obj.slowest || []).slice(0, 5);
+            let body = `${marker}\n### Modules Snapshots Summary\n\n`;
+            body += `- pass: ${sum.pass ?? 0}\n`;
+            body += `- fail: ${sum.fail ?? 0}\n`;
+            body += `- skipped: ${sum.skipped ?? 0}\n`;
+            body += `- updated: ${sum.updated ?? 0}\n\n`;
+            body += `Top slowest:\n`;
+            if (slow.length === 0) {
+              body += `- none\n`;
+            } else {
+              for (const s of slow) {
+                body += `- ${s.snapshot}: ${s.ms_total} ms\n`;
+              }
+            }
+            const {owner, repo} = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {owner, repo, issue_number});
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({owner, repo, comment_id: existing.id, body});
+            } else {
+              await github.rest.issues.createComment({owner, repo, issue_number, body});
+            }

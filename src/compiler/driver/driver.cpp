@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iostream>
 #include <functional>
+#include <regex>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -510,6 +511,7 @@ static bool build_module_index_for_tooling(const Options& opts,
     load_opts.allow_experimental = opts.allow_experimental;
     load_opts.warn_experimental = opts.warn_experimental;
     load_opts.deny_internal = opts.deny_internal;
+    load_opts.allow_legacy_self_leaf = opts.allow_legacy_self_leaf;
     frontend::modules::load_modules(ast_ctx, root, diagnostics, opts.input, index, load_opts);
     frontend::modules::rewrite_member_access(ast_ctx, root, index, &diagnostics);
     return !diagnostics.has_errors();
@@ -529,6 +531,33 @@ static std::string json_escape(const std::string& s) {
         }
     }
     return out;
+}
+
+static bool rewrite_legacy_import_path(const std::string& import_path, std::string& canonical_out, std::string& fallback_alias) {
+    std::vector<std::string> parts;
+    std::string cur;
+    for (char c : import_path) {
+        if (c == '/') {
+            if (!cur.empty()) parts.push_back(cur);
+            cur.clear();
+        } else {
+            cur.push_back(c);
+        }
+    }
+    if (!cur.empty()) parts.push_back(cur);
+    if (parts.size() < 3) return false;
+    if (parts[0] != "vitte") return false;
+    const bool self_leaf = parts[parts.size() - 1] == parts[parts.size() - 2];
+    const bool mod_leaf = parts[parts.size() - 1] == "mod";
+    if (!self_leaf && !mod_leaf) return false;
+
+    canonical_out.clear();
+    for (std::size_t i = 0; i + 1 < parts.size(); ++i) {
+        if (i) canonical_out += "/";
+        canonical_out += parts[i];
+    }
+    fallback_alias = parts[parts.size() - 2];
+    return true;
 }
 
 static std::unordered_set<std::string> reachable_from(
@@ -601,6 +630,8 @@ static std::vector<std::vector<std::string>> detect_cycles(
     }
     return cycles;
 }
+
+static int run_mod_migrate_imports(const Options& opts);
 
 static int run_mod_graph(const Options& opts) {
     frontend::ast::AstContext ast_ctx;
@@ -744,6 +775,14 @@ static int run_mod_graph(const Options& opts) {
 }
 
 static int run_mod_doctor(const Options& opts) {
+    if (opts.input.empty() && !opts.mod_roots.empty()) {
+        if (!opts.mod_doctor_fix) {
+            std::cerr << "[doctor] error: --roots requires --fix in mod doctor mode\n";
+            return 1;
+        }
+        return run_mod_migrate_imports(opts);
+    }
+
     frontend::ast::AstContext ast_ctx;
     frontend::diag::DiagnosticEngine diagnostics(opts.lang);
     frontend::modules::ModuleIndex index;
@@ -755,25 +794,76 @@ static int run_mod_doctor(const Options& opts) {
 
     std::size_t issues = 0;
     auto& root = ast_ctx.get<frontend::ast::Module>(root_id);
+    const std::string input_file_abs = std::filesystem::weakly_canonical(std::filesystem::path(opts.input)).string();
+    auto is_input_decl = [&](const frontend::ast::Decl& decl) -> bool {
+        if (decl.span.file == nullptr) {
+            return false;
+        }
+        std::error_code ec;
+        auto decl_path = std::filesystem::weakly_canonical(std::filesystem::path(decl.span.file->path), ec);
+        if (ec) {
+            return decl.span.file->path == opts.input;
+        }
+        return decl_path.string() == input_file_abs;
+    };
     std::unordered_map<std::string, frontend::ast::SourceSpan> alias_span;
     std::unordered_set<std::string> aliases_used;
+    auto slash_path = [](const frontend::ast::ModulePath& path) -> std::string {
+        std::string out;
+        for (std::size_t i = 0; i < path.parts.size(); ++i) {
+            if (i) out += "/";
+            out += path.parts[i].name;
+        }
+        return out;
+    };
+    {
+        std::ifstream in(opts.input);
+        if (in.is_open()) {
+            const std::regex legacy_re(R"(^\s*(use|pull)\s+([A-Za-z0-9_./]+)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?)");
+            std::string line;
+            while (std::getline(in, line)) {
+                std::smatch m;
+                if (!std::regex_search(line, m, legacy_re)) {
+                    continue;
+                }
+                const std::string kind = m[1].str();
+                const std::string path = m[2].str();
+                const std::string alias = (m.size() >= 4) ? m[3].str() : std::string();
+                std::string canonical;
+                std::string fallback_alias;
+                if (!rewrite_legacy_import_path(path, canonical, fallback_alias)) continue;
+                const std::string fix_alias = !alias.empty() ? alias : fallback_alias;
+                ++issues;
+                std::cout << "[doctor] legacy import path in " << kind << "\n";
+                if (opts.mod_doctor_fix) {
+                    std::cout << "  fix: " << kind << " " << canonical << " as " << fix_alias << "\n";
+                }
+            }
+        }
+    }
 
     for (auto decl_id : root.decls) {
         if (decl_id == frontend::ast::kInvalidAstId) {
             continue;
         }
         const auto& decl = ast_ctx.get<frontend::ast::Decl>(decl_id);
+        if (!is_input_decl(decl)) {
+            continue;
+        }
         if (decl.kind == frontend::ast::NodeKind::UseDecl) {
             const auto& u = static_cast<const frontend::ast::UseDecl&>(decl);
+            const bool is_local_mod_wrapper =
+                u.path.relative_depth > 0 &&
+                u.path.parts.size() == 1 &&
+                u.path.parts[0].name == "mod";
+            if (is_local_mod_wrapper) {
+                continue;
+            }
             if (u.path.relative_depth > 0) {
                 ++issues;
                 std::cout << "[doctor] non-canonical import path in use\n";
                 if (opts.mod_doctor_fix) {
-                    std::string canonical;
-                    for (std::size_t i = 0; i < u.path.parts.size(); ++i) {
-                        if (i) canonical += "/";
-                        canonical += u.path.parts[i].name;
-                    }
+                    std::string canonical = slash_path(u.path);
                     std::cout << "  fix: use " << canonical
                               << (u.alias ? " as " + u.alias->name : " as " + u.path.parts.back().name) << "\n";
                 }
@@ -782,22 +872,14 @@ static int run_mod_doctor(const Options& opts) {
                 ++issues;
                 std::cout << "[doctor] missing alias in use\n";
                 if (opts.mod_doctor_fix && !u.path.parts.empty()) {
-                    std::string canonical;
-                    for (std::size_t i = 0; i < u.path.parts.size(); ++i) {
-                        if (i) canonical += "/";
-                        canonical += u.path.parts[i].name;
-                    }
+                    std::string canonical = slash_path(u.path);
                     std::cout << "  fix: use " << canonical << " as " << u.path.parts.back().name << "\n";
                 }
             } else {
                 alias_span[u.alias->name] = u.alias->span;
             }
             if (u.is_glob && opts.mod_doctor_fix) {
-                std::string key;
-                for (std::size_t i = 0; i < u.path.parts.size(); ++i) {
-                    if (i) key += "/";
-                    key += u.path.parts[i].name;
-                }
+                std::string key = slash_path(u.path);
                 if (auto pfx = index.path_to_prefix.find(key); pfx != index.path_to_prefix.end()) {
                     if (auto ex = index.exports.find(pfx->second); ex != index.exports.end()) {
                         std::vector<std::string> names(ex->second.begin(), ex->second.end());
@@ -811,6 +893,13 @@ static int run_mod_doctor(const Options& opts) {
             }
         } else if (decl.kind == frontend::ast::NodeKind::PullDecl) {
             const auto& p = static_cast<const frontend::ast::PullDecl&>(decl);
+            const bool is_local_mod_wrapper =
+                p.path.relative_depth > 0 &&
+                p.path.parts.size() == 1 &&
+                p.path.parts[0].name == "mod";
+            if (is_local_mod_wrapper) {
+                continue;
+            }
             if (p.path.relative_depth > 0) {
                 ++issues;
                 std::cout << "[doctor] non-canonical import path in pull\n";
@@ -819,11 +908,7 @@ static int run_mod_doctor(const Options& opts) {
                 ++issues;
                 std::cout << "[doctor] missing alias in pull\n";
                 if (opts.mod_doctor_fix && !p.path.parts.empty()) {
-                    std::string canonical;
-                    for (std::size_t i = 0; i < p.path.parts.size(); ++i) {
-                        if (i) canonical += "/";
-                        canonical += p.path.parts[i].name;
-                    }
+                    std::string canonical = slash_path(p.path);
                     std::cout << "  fix: pull " << canonical << " as " << p.path.parts.back().name << "\n";
                 }
             } else {
@@ -891,6 +976,7 @@ static int run_mod_doctor(const Options& opts) {
     for (auto decl_id : root.decls) {
         if (decl_id == frontend::ast::kInvalidAstId) continue;
         const auto& decl = ast_ctx.get<frontend::ast::Decl>(decl_id);
+        if (!is_input_decl(decl)) continue;
         if (decl.kind == frontend::ast::NodeKind::ProcDecl) {
             const auto& p = static_cast<const frontend::ast::ProcDecl&>(decl);
             walk_stmt(p.body, walk_stmt);
@@ -933,12 +1019,144 @@ static int run_mod_doctor(const Options& opts) {
         }
     }
 
+    std::size_t rewrite_count = 0;
+    if (opts.mod_doctor_fix && (opts.mod_doctor_write || opts.mod_doctor_check)) {
+        std::ifstream in(opts.input);
+        if (!in.is_open()) {
+            std::cerr << "[doctor] error: cannot open input for --write: " << opts.input << "\n";
+            return 1;
+        }
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(in, line)) {
+            lines.push_back(line);
+        }
+        const std::regex rw_re(R"(^(\s*)(use|pull)(\s+)([A-Za-z0-9_./]+)(.*)$)");
+        for (auto& ln : lines) {
+            std::smatch m;
+            if (!std::regex_match(ln, m, rw_re)) {
+                continue;
+            }
+            const std::string import_path = m[4].str();
+            std::string canonical;
+            std::string fallback_alias;
+            if (!rewrite_legacy_import_path(import_path, canonical, fallback_alias)) continue;
+            const std::string rewritten = m[1].str() + m[2].str() + m[3].str() + canonical + m[5].str();
+            if (rewritten != ln) {
+                ln = rewritten;
+                ++rewrite_count;
+            }
+        }
+        if (rewrite_count > 0 && opts.mod_doctor_write && !opts.mod_doctor_check) {
+            std::ofstream out(opts.input, std::ios::trunc);
+            if (!out.is_open()) {
+                std::cerr << "[doctor] error: cannot write input for --write: " << opts.input << "\n";
+                return 1;
+            }
+            for (std::size_t i = 0; i < lines.size(); ++i) {
+                out << lines[i];
+                out << "\n";
+            }
+        }
+        if (opts.mod_doctor_check) {
+            std::cout << "[doctor] check: rewritable imports=" << rewrite_count << " in " << opts.input << "\n";
+        } else {
+            std::cout << "[doctor] write: rewrote " << rewrite_count << " import(s) in " << opts.input << "\n";
+        }
+    }
+
+    if (opts.mod_doctor_check && rewrite_count > 0) {
+        return 1;
+    }
+
     if (issues == 0) {
         std::cout << "[doctor] OK\n";
         return 0;
     }
     std::cout << "[doctor] issues: " << issues << "\n";
     return 1;
+}
+
+static int run_mod_migrate_imports(const Options& opts) {
+    namespace fs = std::filesystem;
+    std::vector<std::string> roots = opts.mod_roots;
+    if (roots.empty()) {
+        roots = {"tests", "examples"};
+    }
+
+    std::size_t scanned = 0;
+    std::size_t candidates = 0;
+    std::size_t rewritten_files = 0;
+    std::size_t rewritten_imports = 0;
+    const std::regex rw_re(R"(^(\s*)(use|pull)(\s+)([A-Za-z0-9_./]+)(.*)$)");
+
+    for (const auto& root : roots) {
+        fs::path root_path(root);
+        if (!fs::exists(root_path)) {
+            continue;
+        }
+        for (auto it = fs::recursive_directory_iterator(root_path); it != fs::recursive_directory_iterator(); ++it) {
+            if (!it->is_regular_file()) continue;
+            if (it->path().extension() != ".vit") continue;
+            ++scanned;
+
+            std::ifstream in(it->path());
+            if (!in.is_open()) {
+                continue;
+            }
+            std::vector<std::string> lines;
+            std::string line;
+            while (std::getline(in, line)) lines.push_back(line);
+
+            std::size_t local_rewrites = 0;
+            for (auto& ln : lines) {
+                std::smatch m;
+                if (!std::regex_match(ln, m, rw_re)) continue;
+                std::string canonical;
+                std::string fallback_alias;
+                if (!rewrite_legacy_import_path(m[4].str(), canonical, fallback_alias)) continue;
+                const std::string rewritten = m[1].str() + m[2].str() + m[3].str() + canonical + m[5].str();
+                if (rewritten != ln) {
+                    ln = rewritten;
+                    ++local_rewrites;
+                }
+            }
+
+            if (local_rewrites == 0) continue;
+            ++candidates;
+            rewritten_imports += local_rewrites;
+            std::cout << "[migrate-imports] candidate: " << it->path().string()
+                      << " rewrites=" << local_rewrites << "\n";
+
+            if (!opts.mod_migrate_write) continue;
+
+            if (!opts.no_backup) {
+                std::ofstream backup(it->path().string() + ".bak", std::ios::trunc);
+                std::ifstream original(it->path());
+                backup << original.rdbuf();
+            }
+
+            std::ofstream out(it->path(), std::ios::trunc);
+            if (!out.is_open()) {
+                std::cerr << "[migrate-imports] error: cannot write " << it->path().string() << "\n";
+                return 1;
+            }
+            for (const auto& ln : lines) {
+                out << ln << "\n";
+            }
+            ++rewritten_files;
+        }
+    }
+
+    std::cout << "[migrate-imports] scanned=" << scanned
+              << " candidates=" << candidates
+              << " rewritten_files=" << rewritten_files
+              << " rewritten_imports=" << rewritten_imports << "\n";
+
+    if (!opts.mod_migrate_write && candidates > 0) {
+        return 1;
+    }
+    return 0;
 }
 
 static int run_mod_api_diff(const Options& opts) {
@@ -1091,7 +1309,9 @@ int run(int argc, char** argv) {
 
     const bool api_diff_without_input =
         opts.mod_api_diff && !opts.api_diff_old.empty() && !opts.api_diff_new.empty();
-    if (opts.input.empty() && !api_diff_without_input) {
+    const bool migrate_without_input = opts.mod_migrate_imports;
+    const bool doctor_without_input = opts.mod_doctor && !opts.mod_roots.empty();
+    if (opts.input.empty() && !api_diff_without_input && !migrate_without_input && !doctor_without_input) {
         if (argc == 1) {
             print_onboarding_summary();
             return 0;
@@ -1138,6 +1358,9 @@ int run(int argc, char** argv) {
     }
     if (opts.mod_doctor) {
         return run_mod_doctor(opts);
+    }
+    if (opts.mod_migrate_imports) {
+        return run_mod_migrate_imports(opts);
     }
     if (opts.mod_api_diff) {
         return run_mod_api_diff(opts);

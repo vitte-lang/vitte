@@ -37,6 +37,15 @@ static std::string module_path_key(const ModulePath& path) {
     return join_path(path, "/");
 }
 
+static bool is_legacy_self_leaf_path(const ModulePath& path) {
+    if (path.parts.size() < 2) {
+        return false;
+    }
+    const std::string& a = path.parts[path.parts.size() - 1].name;
+    const std::string& b = path.parts[path.parts.size() - 2].name;
+    return a == b;
+}
+
 static bool is_std_or_core_root(const ModulePath& path) {
     if (path.parts.empty()) {
         return false;
@@ -719,12 +728,12 @@ struct Loader {
 
         for (auto decl_id : module.decls) {
             if (decl_id == kInvalidAstId) continue;
-            const auto& decl = ctx.get<Decl>(decl_id);
-            const ModulePath* path = nullptr;
+            auto& decl = ctx.get<Decl>(decl_id);
+            ModulePath* path = nullptr;
             if (decl.kind == NodeKind::UseDecl) {
-                path = &static_cast<const UseDecl&>(decl).path;
+                path = &static_cast<UseDecl&>(decl).path;
             } else if (decl.kind == NodeKind::PullDecl) {
-                path = &static_cast<const PullDecl&>(decl).path;
+                path = &static_cast<PullDecl&>(decl).path;
             }
             if (!path) continue;
 
@@ -807,12 +816,35 @@ struct Loader {
                 diagnostics.emit(std::move(ambiguous));
                 continue;
             }
+            if (options.allow_legacy_self_leaf && is_legacy_self_leaf_path(module_path)) {
+                ModulePath parent = module_path;
+                parent.parts.pop_back();
+                std::filesystem::path parent_file = resolve_module_file(parent, base_dir, repo_root);
+                if (!parent_file.empty()) {
+                    diagnostics.warning_code(
+                        "E1020",
+                        "legacy import path '" + module_path_key(module_path) +
+                            "' is deprecated; use '" + module_path_key(parent) + "'",
+                        (*path).span
+                    );
+                    module_path = std::move(parent);
+                    *path = module_path;
+                }
+            }
             std::filesystem::path file = resolve_module_file(module_path, base_dir, repo_root);
             if (file.empty() && module_path.parts.size() > 1) {
                 ModulePath parent = module_path;
                 parent.parts.pop_back();
                 std::filesystem::path parent_file = resolve_module_file(parent, base_dir, repo_root);
                 if (!parent_file.empty()) {
+                    if (options.allow_legacy_self_leaf && is_legacy_self_leaf_path(module_path)) {
+                        diagnostics.warning_code(
+                            "E1020",
+                            "legacy import path '" + module_path_key(module_path) +
+                                "' is deprecated; use '" + module_path_key(parent) + "'",
+                            (*path).span
+                        );
+                    }
                     module_path = std::move(parent);
                     file = std::move(parent_file);
                 }
@@ -1462,6 +1494,18 @@ void rewrite_member_access(ast::AstContext& ctx,
             continue;
         }
         std::string key = module_path_key(u.path);
+        if (u.path.parts.size() > 1) {
+            const auto& last = u.path.parts[u.path.parts.size() - 1].name;
+            const auto& prev = u.path.parts[u.path.parts.size() - 2].name;
+            if (last == prev) {
+                ModulePath canonical = u.path;
+                canonical.parts.pop_back();
+                std::string canonical_key = module_path_key(canonical);
+                if (index.path_to_prefix.find(canonical_key) != index.path_to_prefix.end()) {
+                    key = canonical_key;
+                }
+            }
+        }
         auto it = index.path_to_prefix.find(key);
         if (it != index.path_to_prefix.end()) {
             alias_to_prefix[alias] = it->second;
