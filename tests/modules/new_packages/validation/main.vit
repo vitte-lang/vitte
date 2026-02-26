@@ -1,0 +1,23 @@
+space tests/modules/new_packages/validation
+
+use vitte/validation as v_validation
+
+entry main at tests/new_packages_validation {
+  let schema0 = v_validation.schema_new("user")
+  let schema1 = v_validation.required(schema0, "email")
+  let schema2 = v_validation.contains(schema1, "email", "@")
+  let schema3 = v_validation.min_len(schema2, "password", 8)
+  let values = [
+    v_validation.FieldValue("email", "ops@vitte.dev"),
+    v_validation.FieldValue("password", "supersecret")
+  ]
+  let errors = v_validation.validate(schema3, values)
+  let good = v_validation.is_valid(errors)
+  let first = v_validation.first_error(errors)
+  let status = v_validation.stats(schema3, errors)
+  let ok = v_validation.ready()
+  let _ = good
+  let _ = first
+  let _ = status
+  let _ = ok
+}

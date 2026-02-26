@@ -1,0 +1,24 @@
+space tests/modules/new_packages/lock
+
+use vitte/lock as v_lock
+
+entry main at tests/new_packages_lock {
+  let tab0 = v_lock.lock_table_new()
+  let acq1 = v_lock.acquire(tab0, "job:42", "worker-a", 5)
+  let tab1 = acq1.table
+  let held = v_lock.is_locked_by(tab1, "job:42", "worker-a")
+  let fence = v_lock.fencing_token(tab1, "job:42")
+  let tab2 = v_lock.renew(tab1, "job:42", "worker-a", 8)
+  let tab3 = v_lock.tick(tab2, 3)
+  let holder = v_lock.holder(tab3, "job:42")
+  let tab4 = v_lock.release(tab3, "job:42", "worker-a")
+  let active = v_lock.active_count(tab4)
+  let status = v_lock.stats(tab4)
+  let ok = v_lock.ready()
+  let _ = held
+  let _ = fence
+  let _ = holder
+  let _ = active
+  let _ = status
+  let _ = ok
+}

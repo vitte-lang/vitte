@@ -1,0 +1,20 @@
+space tests/modules/new_packages/event_bus
+
+use vitte/event_bus as v_event_bus
+
+entry main at tests/new_packages_event_bus {
+  let bus0 = v_event_bus.bus_new()
+  let bus1 = v_event_bus.subscribe(bus0, "worker-a", "orders")
+  let bus2 = v_event_bus.publish(bus1, "orders", "created")
+  let bus3 = v_event_bus.publish(bus2, "orders", "validated")
+  let pending = v_event_bus.pending_for(bus3, "worker-a")
+  let next_evt = v_event_bus.pull_next(bus3, "worker-a")
+  let batch = v_event_bus.pull_batch(next_evt.bus, "worker-a", 4)
+  let backlog = v_event_bus.topic_backlog(batch.bus, "orders")
+  let status = v_event_bus.stats(batch.bus)
+  let ok = v_event_bus.ready()
+  let _ = pending
+  let _ = backlog
+  let _ = status
+  let _ = ok
+}

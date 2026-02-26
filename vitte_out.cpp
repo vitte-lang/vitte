@@ -7,23 +7,236 @@
 #include "vitte_runtime.hpp"
 #include <cstddef>
 
-int32_t vitte__b__b();
-int32_t vitte__graph__a__a();
+struct std__core__Eq {
+    bool (*eq)(void*, void*);
+};
+
+struct std__core__Ord {
+    int32_t (*cmp)(void*, void*);
+};
+
+struct std__core__Option {
+    uint8_t __tag;
+    void* value;
+};
+
+struct std__core__Result {
+    uint8_t __tag;
+    void* value;
+    void* error;
+};
+
+std__core__Option vitte__std__core__Option__Some(void* value);
+std__core__Option vitte__std__core__Option__None();
+std__core__Result vitte__std__core__Result__Ok(void* value);
+std__core__Result vitte__std__core__Result__Err(void* error);
+std__core__Option vitte__std__core__some(void* value);
+std__core__Option vitte__std__core__none();
+std__core__Result vitte__std__core__ok(void* value);
+std__core__Result vitte__std__core__err(void* error);
+bool vitte__std__core__is_some(std__core__Option opt);
+bool vitte__std__core__is_none(std__core__Option opt);
+bool vitte__std__core__is_ok(std__core__Result r);
+bool vitte__std__core__is_err(std__core__Result r);
+void* vitte__std__core__unwrap_or(std__core__Option opt, void* fallback);
+void* vitte__std__core__result_unwrap_or(std__core__Result r, void* fallback);
+bool vitte__std__core__ready();
+VitteString vitte__std__core__package_meta();
 extern "C" int32_t vitte__main();
 int32_t main(int32_t argc, const char** argv);
 
-int32_t vitte__b__b() {
-    bb_0_0:
-    return 2;
+const std__core__Option std__core__Option__None__value = vitte__std__core__Option__None();
+std__core__Option vitte__std__core__Option__Some(void* value) {
+    std__core__Option _v;
+    _v.__tag = 0;
+    _v.value = value;
+    return _v;
 }
 
-int32_t vitte__graph__a__a() {
+std__core__Option vitte__std__core__Option__None() {
+    std__core__Option _v;
+    _v.__tag = 1;
+    return _v;
+}
+
+std__core__Result vitte__std__core__Result__Ok(void* value) {
+    std__core__Result _v;
+    _v.__tag = 0;
+    _v.value = value;
+    return _v;
+}
+
+std__core__Result vitte__std__core__Result__Err(void* error) {
+    std__core__Result _v;
+    _v.__tag = 1;
+    _v.error = error;
+    return _v;
+}
+
+std__core__Option vitte__std__core__some(void* value) {
+    std__core__Option _t0;
+    bb_0_0:
+    _t0 = vitte__std__core__Option__Some(value);
+    return _t0;
+}
+
+std__core__Option vitte__std__core__none() {
     bb_1_0:
-    return 1;
+    return std__core__Option__None__value;
+}
+
+std__core__Result vitte__std__core__ok(void* value) {
+    std__core__Result _t0;
+    bb_2_0:
+    _t0 = vitte__std__core__Result__Ok(value);
+    return _t0;
+}
+
+std__core__Result vitte__std__core__err(void* error) {
+    std__core__Result _t0;
+    bb_3_0:
+    _t0 = vitte__std__core__Result__Err(error);
+    return _t0;
+}
+
+bool vitte__std__core__is_some(std__core__Option opt) {
+    std__core__Option _t0;
+    bool _t1;
+    bb_4_0:
+    _t0 = opt;
+    goto bb_4_2;
+    bb_4_1:
+    return false;
+    bb_4_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_4_3;
+    } else {
+        goto bb_4_4;
+    }
+    bb_4_3:
+    return true;
+    bb_4_4:
+    goto bb_4_1;
+}
+
+bool vitte__std__core__is_none(std__core__Option opt) {
+    std__core__Option _t0;
+    bool _t1;
+    bb_5_0:
+    _t0 = opt;
+    goto bb_5_2;
+    bb_5_1:
+    return false;
+    bb_5_2:
+    _t1 = (_t0.__tag == 1);
+    if (_t1) {
+        goto bb_5_3;
+    } else {
+        goto bb_5_4;
+    }
+    bb_5_3:
+    return true;
+    bb_5_4:
+    goto bb_5_1;
+}
+
+bool vitte__std__core__is_ok(std__core__Result r) {
+    std__core__Result _t0;
+    bool _t1;
+    bb_6_0:
+    _t0 = r;
+    goto bb_6_2;
+    bb_6_1:
+    return false;
+    bb_6_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_6_3;
+    } else {
+        goto bb_6_4;
+    }
+    bb_6_3:
+    return true;
+    bb_6_4:
+    goto bb_6_1;
+}
+
+bool vitte__std__core__is_err(std__core__Result r) {
+    std__core__Result _t0;
+    bool _t1;
+    bb_7_0:
+    _t0 = r;
+    goto bb_7_2;
+    bb_7_1:
+    return false;
+    bb_7_2:
+    _t1 = (_t0.__tag == 1);
+    if (_t1) {
+        goto bb_7_3;
+    } else {
+        goto bb_7_4;
+    }
+    bb_7_3:
+    return true;
+    bb_7_4:
+    goto bb_7_1;
+}
+
+void* vitte__std__core__unwrap_or(std__core__Option opt, void* fallback) {
+    std__core__Option _t0;
+    bool _t1;
+    bb_8_0:
+    _t0 = opt;
+    goto bb_8_2;
+    bb_8_1:
+    return fallback;
+    bb_8_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_8_3;
+    } else {
+        goto bb_8_4;
+    }
+    bb_8_3:
+    return opt.value;
+    bb_8_4:
+    goto bb_8_1;
+}
+
+void* vitte__std__core__result_unwrap_or(std__core__Result r, void* fallback) {
+    std__core__Result _t0;
+    bool _t1;
+    bb_9_0:
+    _t0 = r;
+    goto bb_9_2;
+    bb_9_1:
+    return fallback;
+    bb_9_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_9_3;
+    } else {
+        goto bb_9_4;
+    }
+    bb_9_3:
+    return r.value;
+    bb_9_4:
+    goto bb_9_1;
+}
+
+bool vitte__std__core__ready() {
+    bb_10_0:
+    return true;
+}
+
+VitteString vitte__std__core__package_meta() {
+    bb_11_0:
+    return VitteString{"vitte/core", 10};
 }
 
 extern "C" int32_t vitte__main() {
-    bb_2_0:
+    bb_12_0:
     return 0;
 }
 

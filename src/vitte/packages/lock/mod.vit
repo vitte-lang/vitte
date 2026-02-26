@@ -1,0 +1,216 @@
+<<<
+mod.vit
+package vitte/lock
+>>>
+
+space vitte/lock
+
+form Lease {
+  key: string
+  owner: string
+  fencing: int
+  lease_until: int
+  active: bool
+}
+
+form LockTable {
+  now_tick: int
+  next_fencing: int
+  leases: [Lease]
+}
+
+form AcquireResult {
+  table: LockTable
+  acquired: bool
+  lease: Lease
+}
+
+proc lock_table_new() -> LockTable {
+  give LockTable(0, 1, [])
+}
+
+proc tick(table: LockTable, delta: int) -> LockTable {
+  let d = delta
+  if d < 0 { d = 0 }
+  give LockTable(table.now_tick + d, table.next_fencing, table.leases)
+}
+
+proc is_expired(table: LockTable, lease: Lease) -> bool {
+  if !lease.active { give true }
+  give table.now_tick >= lease.lease_until
+}
+
+proc find_lease_index(table: LockTable, key: string) -> int {
+  let i: int = 0
+  loop {
+    if i >= table.leases.len { break }
+    if table.leases[i].key == key { give i }
+    i = i + 1
+  }
+  give -1
+}
+
+proc current_lease(table: LockTable, key: string) -> Lease {
+  let idx = find_lease_index(table, key)
+  if idx < 0 { give Lease(key, "", 0, 0, false) }
+  give table.leases[idx]
+}
+
+proc can_acquire(table: LockTable, key: string) -> bool {
+  let idx = find_lease_index(table, key)
+  if idx < 0 { give true }
+  give is_expired(table, table.leases[idx])
+}
+
+proc acquire(table: LockTable, key: string, owner: string, ttl: int) -> AcquireResult {
+  let lease_ttl = ttl
+  if lease_ttl < 1 { lease_ttl = 1 }
+
+  if !can_acquire(table, key) {
+    give AcquireResult(table, false, current_lease(table, key))
+  }
+
+  let fresh = Lease(key, owner, table.next_fencing, table.now_tick + lease_ttl, true)
+  let idx = find_lease_index(table, key)
+  let out: [Lease] = []
+
+  if idx < 0 {
+    out = table.leases.push(fresh)
+  } else {
+    let i: int = 0
+    loop {
+      if i >= table.leases.len { break }
+      if i == idx {
+        out = out.push(fresh)
+      } else {
+        out = out.push(table.leases[i])
+      }
+      i = i + 1
+    }
+  }
+
+  let next = LockTable(table.now_tick, table.next_fencing + 1, out)
+  give AcquireResult(next, true, fresh)
+}
+
+proc renew(table: LockTable, key: string, owner: string, ttl: int) -> LockTable {
+  let lease_ttl = ttl
+  if lease_ttl < 1 { lease_ttl = 1 }
+
+  let idx = find_lease_index(table, key)
+  if idx < 0 { give table }
+
+  let cur = table.leases[idx]
+  if is_expired(table, cur) { give table }
+  if cur.owner != owner { give table }
+
+  let out: [Lease] = []
+  let i: int = 0
+  loop {
+    if i >= table.leases.len { break }
+    if i == idx {
+      out = out.push(Lease(cur.key, cur.owner, cur.fencing, table.now_tick + lease_ttl, true))
+    } else {
+      out = out.push(table.leases[i])
+    }
+    i = i + 1
+  }
+
+  give LockTable(table.now_tick, table.next_fencing, out)
+}
+
+proc release(table: LockTable, key: string, owner: string) -> LockTable {
+  let idx = find_lease_index(table, key)
+  if idx < 0 { give table }
+
+  let cur = table.leases[idx]
+  if cur.owner != owner { give table }
+
+  let out: [Lease] = []
+  let i: int = 0
+  loop {
+    if i >= table.leases.len { break }
+    if i == idx {
+      out = out.push(Lease(cur.key, cur.owner, cur.fencing, cur.lease_until, false))
+    } else {
+      out = out.push(table.leases[i])
+    }
+    i = i + 1
+  }
+
+  give LockTable(table.now_tick, table.next_fencing, out)
+}
+
+proc purge_expired(table: LockTable) -> LockTable {
+  let out: [Lease] = []
+  let i: int = 0
+  loop {
+    if i >= table.leases.len { break }
+    let l = table.leases[i]
+    if !is_expired(table, l) {
+      out = out.push(l)
+    }
+    i = i + 1
+  }
+  give LockTable(table.now_tick, table.next_fencing, out)
+}
+
+proc is_locked_by(table: LockTable, key: string, owner: string) -> bool {
+  let idx = find_lease_index(table, key)
+  if idx < 0 { give false }
+  let l = table.leases[idx]
+  if is_expired(table, l) { give false }
+  give l.owner == owner
+}
+
+proc holder(table: LockTable, key: string) -> string {
+  let idx = find_lease_index(table, key)
+  if idx < 0 { give "" }
+  let l = table.leases[idx]
+  if is_expired(table, l) { give "" }
+  give l.owner
+}
+
+proc fencing_token(table: LockTable, key: string) -> int {
+  let idx = find_lease_index(table, key)
+  if idx < 0 { give 0 }
+  let l = table.leases[idx]
+  if is_expired(table, l) { give 0 }
+  give l.fencing
+}
+
+proc active_count(table: LockTable) -> int {
+  let out = 0
+  let i: int = 0
+  loop {
+    if i >= table.leases.len { break }
+    if !is_expired(table, table.leases[i]) {
+      out = out + 1
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc stats(table: LockTable) -> string {
+  give "now=" + table.now_tick.to_string() +
+       ",active=" + active_count(table).to_string() +
+       ",known=" + table.leases.len.to_string() +
+       ",next_fencing=" + table.next_fencing.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+<<< ROLE-CONTRACT
+package: vitte/lock
+owner: @vitte/platform
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: Verrous logiques avec lease et fencing token
+input_contract: key owner ttl explicites
+output_contract: Acquisition deterministe et jeton de fencing monotone
+boundary: Aucun backend distribue; table locale in-memory
+>>>

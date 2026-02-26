@@ -1,0 +1,250 @@
+<<<
+mod.vit
+package vitte/validation
+>>>
+
+space vitte/validation
+
+pick RuleKind {
+  Required
+  MinLen
+  MaxLen
+  Equals
+  OneOfCsv
+  Prefix
+  Suffix
+  Contains
+}
+
+form Rule {
+  key: string
+  kind: RuleKind
+  text_arg: string
+  int_arg: int
+}
+
+form FieldValue {
+  key: string
+  value: string
+}
+
+form ValidationError {
+  key: string
+  code: string
+  message: string
+}
+
+form Schema {
+  name: string
+  rules: [Rule]
+}
+
+proc schema_new(name: string) -> Schema {
+  give Schema(name, [])
+}
+
+proc add_rule(schema: Schema, key: string, kind: RuleKind, text_arg: string, int_arg: int) -> Schema {
+  give Schema(schema.name, schema.rules.push(Rule(key, kind, text_arg, int_arg)))
+}
+
+proc required(schema: Schema, key: string) -> Schema {
+  give add_rule(schema, key, RuleKind.Required, "", 0)
+}
+
+proc min_len(schema: Schema, key: string, n: int) -> Schema {
+  give add_rule(schema, key, RuleKind.MinLen, "", n)
+}
+
+proc max_len(schema: Schema, key: string, n: int) -> Schema {
+  give add_rule(schema, key, RuleKind.MaxLen, "", n)
+}
+
+proc equals(schema: Schema, key: string, expected: string) -> Schema {
+  give add_rule(schema, key, RuleKind.Equals, expected, 0)
+}
+
+proc one_of_csv(schema: Schema, key: string, csv: string) -> Schema {
+  give add_rule(schema, key, RuleKind.OneOfCsv, csv, 0)
+}
+
+proc prefix(schema: Schema, key: string, p: string) -> Schema {
+  give add_rule(schema, key, RuleKind.Prefix, p, 0)
+}
+
+proc suffix(schema: Schema, key: string, s: string) -> Schema {
+  give add_rule(schema, key, RuleKind.Suffix, s, 0)
+}
+
+proc contains(schema: Schema, key: string, needle: string) -> Schema {
+  give add_rule(schema, key, RuleKind.Contains, needle, 0)
+}
+
+proc get_value(values: [FieldValue], key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= values.len { break }
+    if values[i].key == key { give values[i].value }
+    i = i + 1
+  }
+  give ""
+}
+
+proc starts_with(text: string, pref: string) -> bool {
+  if text.len < pref.len { give false }
+  give text.slice(0, pref.len) == pref
+}
+
+proc ends_with(text: string, suf: string) -> bool {
+  if text.len < suf.len { give false }
+  give text.slice(text.len - suf.len, text.len) == suf
+}
+
+proc string_contains(text: string, needle: string) -> bool {
+  if needle.len == 0 { give true }
+  if text.len < needle.len { give false }
+
+  let i: int = 0
+  loop {
+    if i + needle.len > text.len { break }
+    if text.slice(i, i + needle.len) == needle { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc csv_contains(csv: string, value: string) -> bool {
+  let start: int = 0
+  let i: int = 0
+  loop {
+    if i > csv.len { break }
+    if i == csv.len || csv.slice(i, i + 1) == "," {
+      let token = csv.slice(start, i)
+      if token == value { give true }
+      start = i + 1
+    }
+    i = i + 1
+  }
+  give false
+}
+
+proc push_error(errors: [ValidationError], key: string, code: string, message: string) -> [ValidationError] {
+  give errors.push(ValidationError(key, code, message))
+}
+
+proc validate_rule(rule: Rule, value: string) -> [ValidationError] {
+  let errors: [ValidationError] = []
+
+  if rule.kind == RuleKind.Required {
+    if value.len == 0 {
+      errors = push_error(errors, rule.key, "required", "field is required")
+    }
+    give errors
+  }
+
+  if value.len == 0 {
+    give errors
+  }
+
+  if rule.kind == RuleKind.MinLen {
+    if value.len < rule.int_arg {
+      errors = push_error(errors, rule.key, "min_len", "value shorter than minimum")
+    }
+    give errors
+  }
+
+  if rule.kind == RuleKind.MaxLen {
+    if value.len > rule.int_arg {
+      errors = push_error(errors, rule.key, "max_len", "value longer than maximum")
+    }
+    give errors
+  }
+
+  if rule.kind == RuleKind.Equals {
+    if value != rule.text_arg {
+      errors = push_error(errors, rule.key, "equals", "value mismatch")
+    }
+    give errors
+  }
+
+  if rule.kind == RuleKind.OneOfCsv {
+    if !csv_contains(rule.text_arg, value) {
+      errors = push_error(errors, rule.key, "one_of", "value not in allowed list")
+    }
+    give errors
+  }
+
+  if rule.kind == RuleKind.Prefix {
+    if !starts_with(value, rule.text_arg) {
+      errors = push_error(errors, rule.key, "prefix", "value does not match required prefix")
+    }
+    give errors
+  }
+
+  if rule.kind == RuleKind.Suffix {
+    if !ends_with(value, rule.text_arg) {
+      errors = push_error(errors, rule.key, "suffix", "value does not match required suffix")
+    }
+    give errors
+  }
+
+  if rule.kind == RuleKind.Contains {
+    if !string_contains(value, rule.text_arg) {
+      errors = push_error(errors, rule.key, "contains", "value does not contain required token")
+    }
+    give errors
+  }
+
+  give errors
+}
+
+proc validate(schema: Schema, values: [FieldValue]) -> [ValidationError] {
+  let errors: [ValidationError] = []
+  let i: int = 0
+  loop {
+    if i >= schema.rules.len { break }
+    let rule = schema.rules[i]
+    let value = get_value(values, rule.key)
+    let local = validate_rule(rule, value)
+
+    let j: int = 0
+    loop {
+      if j >= local.len { break }
+      errors = errors.push(local[j])
+      j = j + 1
+    }
+
+    i = i + 1
+  }
+  give errors
+}
+
+proc is_valid(errors: [ValidationError]) -> bool {
+  give errors.len == 0
+}
+
+proc first_error(errors: [ValidationError]) -> ValidationError {
+  if errors.len == 0 { give ValidationError("", "", "") }
+  give errors[0]
+}
+
+proc stats(schema: Schema, errors: [ValidationError]) -> string {
+  give "schema=" + schema.name +
+       ",rules=" + schema.rules.len.to_string() +
+       ",errors=" + errors.len.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+<<< ROLE-CONTRACT
+package: vitte/validation
+owner: @vitte/data
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: Validation declarative de champs et regles
+input_contract: Schema et FieldValue explicites
+output_contract: Liste d erreurs deterministe par regle
+boundary: Pas de reflection runtime; evaluation pure en memoire
+>>>
