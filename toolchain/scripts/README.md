@@ -1,168 +1,88 @@
 # Vitte Toolchain Scripts
 
-This directory contains **all auxiliary scripts** used to build, test, package, and run the Vitte toolchain.  
-They are designed to be **deterministic**, **CI-friendly**, and **composable**, with minimal assumptions about the host system.
+This folder contains helper scripts used to build, test, package, and install Vitte.
 
-All scripts follow the same principles:
-- strict shell mode (`set -euo pipefail`)
-- explicit configuration via environment variables
-- no hidden side effects outside `target/`, `.cache/`, or `.store/`
-- reusable across local development and CI
+Goal: keep local and CI workflows predictable.
 
----
+## Principles
 
-# Vitte Toolchain Scripts
+- non-interactive by default
+- explicit inputs through env vars/arguments
+- reproducible outputs under `build/` or `target/`
 
-This directory contains **all auxiliary scripts** used to build, test, package, and run the Vitte toolchain.  
-They are designed to be **deterministic**, **CI-friendly**, and **composable**, with minimal assumptions about the host system.
+## Layout
 
-All scripts follow the same principles:
-- strict shell mode (`set -euo pipefail`)
-- explicit configuration via environment variables
-- no hidden side effects outside `target/`, `.cache/`, or `.store/`
-- reusable across local development and CI
+- `build/` configure/build helpers
+- `test/` test entry scripts
+- `ci/` CI wrappers
+- `package/` artifact/package builders
+- `install/` install/uninstall scripts
+- `dev/` local debug helpers
+- `steel/` wrappers for Steel bakes
+- `targets/` host/arch target definitions
+- `utils/` shared shell helpers
+- `bootstrap/` bootstrap/stage scripts
 
----
+## Common Usage
 
----
+From repo root:
 
-## CI Scripts (`ci/`)
+```sh
+# configure/build helpers
+./toolchain/scripts/build/configure.sh
+./toolchain/scripts/build/build-debug.sh
+./toolchain/scripts/build/build-release.sh
 
-Scripts used by continuous integration pipelines.
+# tests
+./toolchain/scripts/test/run.sh
 
-- `lint.sh`  
-  Runs static checks (shell, formatting, invariants).
+# CI wrappers (local dry-run style)
+./toolchain/scripts/ci/lint.sh
+./toolchain/scripts/ci/format.sh
 
-- `format.sh`  
-  Applies formatting rules where applicable.
+# packaging
+./toolchain/scripts/package/make-debian-deb.sh
+./toolchain/scripts/package/make-macos-pkg.sh
 
-- `artifacts.sh`  
-  Collects and prepares build artifacts.
+# local install/uninstall
+./toolchain/scripts/install/install-local.sh
+./toolchain/scripts/install/uninstall.sh
+```
 
-- `github-actions.sh`  
-  Entry-point wrapper for GitHub Actions.
+## Steel Wrappers
 
-All CI scripts are **non-interactive** and safe to run locally.
+Use these when driving builds through `steelconf`:
 
----
+```sh
+./toolchain/scripts/steel/steel-env.sh
+./toolchain/scripts/steel/steel-build.sh
+./toolchain/scripts/steel/steel-test.sh
+./toolchain/scripts/steel/steel-run.sh
+```
 
-## Developer Scripts (`dev/`)
+## Targets
 
-Utilities for local development and debugging.
+Target scripts define platform defaults (compiler/linker/triple):
 
-- `debug-env.sh`  
-  Prints or configures a debug-friendly environment.
+- `targets/linux-x86_64.sh`
+- `targets/linux-aarch64.sh`
+- `targets/macos-x86_64.sh`
+- `targets/macos-arm64.sh`
+- `targets/freebsd-x86_64.sh`
+- `targets/windows-x86_64.ps1`
 
-- `repl.sh`  
-  Launches a Vitte REPL (when available).
+## Packaging Notes
 
-- `run-vittec.sh`  
-  Direct invocation of the Vitte compiler.
+Most package outputs are written under `target/packages/`.
 
-- `run-linker.sh`  
-  Manual linker invocation for debugging.
+Completions are generated/checked by tools in `tools/`:
 
----
+- `tools/generate_completions.py`
+- `tools/completions/spec.json`
+- `tools/completions_snapshots.sh`
 
-## Installation Scripts (`install/`)
+## Troubleshooting
 
-Scripts to install or uninstall the Vitte toolchain.
-
-- `install-local.sh`  
-  Installs into a user prefix (`$HOME/.local` by default).  
-  Installs `vitte` (required) and legacy binaries when available, plus editor files under `share/vitte/editors/`.
-
-- `install-prefix.sh`  
-  Installs into a given prefix (e.g. `/usr/local`).  
-  Used by macOS/pkg-style installs. Installs `vitte` (required), optional legacy binaries, headers/libs/share, editor files, man pages, shell completions, and `share/vitte/env.sh`.
-
-- `install-debian-vitte-2.1.1.sh`  
-  Debian/Ubuntu one-shot installer profile for `vitte 2.1.1`: installs apt dependencies, builds, and installs via prefix/local mode.
-
-- `permissions.sh`  
-  Fixes executable permissions where required.
-
-- `uninstall.sh`  
-  Removes installed files.
-
----
-
-## Packaging Scripts (`package/`)
-
-Used to produce distributable artifacts.
-
-- `make-archive.sh`  
-  Generic archive creator (tar/zip).
-
-- `make-tarball.sh`  
-  Deterministic tarball builder.
-
-- `bundle-runtime.sh`  
-  Packages the Vitte runtime.
-
-- `bundle-stdlib.sh`  
-  Packages the Vitte standard library.
-
-- `make-debian-deb.sh`  
-  Builds a complete Debian `.deb` (binary + packages + runtime + editors + man + completions + env helper + postinst checks).
-
-- `make-macos-pkg.sh`  
-  Builds a unified macOS `.pkg` installer (binary + packages + runtime + editors + man + completions + env helper + postinstall checks).
-
-- `make-macos-uninstall-pkg.sh`  
-  Builds a macOS `.pkg` uninstaller (`--nopayload`) with optional user editor cleanup (`REMOVE_USER_EDITOR_CONFIG=1`).
-
-- `checksum.sh`  
-  Generates and verifies checksums (sha256 / sha512).
-
-All outputs are written under `target/packages/`.
-
-Completion generation and checks are centralized in:
-- `tools/generate_completions.py` (single source -> bash/zsh/fish)
-- `tools/completions/spec.json` (commands/options/value domains)
-- `tools/completions_snapshots.sh` (`--check` + snapshot assertions)
-
----
-
-## Steel Scripts (`steel/`)
-
-Wrappers around the **Steel** build system.
-
-- `steel-env.sh`  
-  Initializes the Steel + Vitte environment.
-
-- `steel-build.sh`  
-  Runs a build bake.
-
-- `steel-run.sh`  
-  Runs an executable bake.
-
-- `steel-test.sh`  
-  Runs test bakes.
-
-These scripts load optional **target definitions** and respect
-`vitte_target_pre_build` / `vitte_target_post_build` hooks.
-
----
-
-## Target Definitions (`targets/`)
-
-Platform and architecture configuration scripts.
-
-Available targets include:
-- `linux-x86_64.sh`
-- `linux-aarch64.sh`
-- `macos-x86_64.sh`
-- `macos-arm64.sh`
-- `freebsd-x86_64.sh`
-- `windows-x86_64.ps1`
-
-Each target defines:
-- target triple
-- compiler and linker defaults
-- sysroot / SDK handling
-- ABI and architecture metadata
-
-Targets are loaded via:
-```bash
-source toolchain/scripts/targets/linux-x86_64.sh 
+- run scripts from repo root unless script docs say otherwise
+- verify executable bits if a script fails with permission errors
+- check `SUPPORT.md` for report format when opening issues

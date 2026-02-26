@@ -1,19 +1,25 @@
 # Contributing to Vitte
 
-Thanks for your interest in contributing.
+Thanks for contributing.
+This guide is the shortest safe path from first change to merged PR.
 
-## Prerequisites
+## 1) Before You Start
 
-- `clang` / `clang++`
-- `openssl` + `curl`
+You need:
 
-## Quick Build
+- C/C++ toolchain (`clang`/`clang++` or compatible)
+- `make`
+- `openssl` and `curl` development libraries
+
+If you are unsure your environment is ready, run:
 
 ```sh
 make build
 ```
 
-## Tests
+## 2) Local Dev Loop
+
+Recommended baseline checks:
 
 ```sh
 make parse
@@ -22,37 +28,88 @@ make negative-tests
 make test
 ```
 
-## Code Style
+If you touched modules/packages policy or lint behavior, also run:
 
-- C/C++: follow `.clang-format`
-- Vitte: 2‑space indentation
+```sh
+make modules-tests
+make modules-snapshots
+make modules-contract-snapshots
+```
 
-## Recommended Workflow
+## 3) Coding Style
 
-1. Create a branch `codex/...`
-2. Open a PR with a clear description
-3. Add tests if you change syntax or compiler behavior
+- C/C++ formatting: follow `.clang-format`
+- Vitte files: keep style consistent with existing package/module patterns
+- Prefer small, focused changes over broad refactors
 
-## Good Contribution Areas
+## 4) PR Workflow
 
-- Bug fixes
-- Compiler improvements
-- Documentation and examples
-- Tooling / editor integrations
+1. Create a branch (`feature/...` or `fix/...`).
+2. Keep commits scoped and readable.
+3. Add tests for behavior changes.
+4. Update docs for user-visible changes.
+5. Open PR with clear motivation + impact.
 
-## Communication
+A good PR description includes:
 
-If you’re unsure, open an issue with:
-- context
-- a minimal example
-- expected behavior
+- problem statement
+- what changed
+- why this approach
+- tests run locally
+- known limitations
 
----
+## 5) Commit Quality
 
-## FAQ
+Good commit messages are short and precise:
 
-**Do I need tests for docs changes?**  
-Not required, but add examples when possible.
+```text
+area: what changed
+```
 
-**Can I refactor large modules?**  
-Yes, but please explain the rationale in the PR.
+Examples:
+
+- `frontend: tighten module loader validation`
+- `docs: simplify beginner onboarding in README`
+- `modules: add package governance lint checks`
+
+## 6) Tests and Snapshots
+
+When snapshots fail:
+
+- investigate first
+- update snapshots only when behavior change is intentional
+
+Useful commands:
+
+```sh
+make diag-snapshots
+make modules-snapshots
+make modules-snapshots-update
+```
+
+## 7) Modules / Packages Rules (Important)
+
+Current direction in this repo:
+
+- `mod.vit` is the canonical package entrypoint
+- `info.vit` metadata is required in governed areas
+- `OWNERS` is required where policy enforces ownership
+- legacy paths/imports are being phased out progressively
+
+If your PR touches these rules, include migration notes in the PR.
+
+## 8) Where to Ask Questions
+
+- General help: `SUPPORT.md`
+- Security issues: `SECURITY.md`
+
+If unsure, open an issue with a minimal reproducible example.
+
+## 9) Good First Contributions
+
+- fix diagnostics clarity
+- improve docs/examples
+- add focused regression tests
+- improve tooling scripts and CI ergonomics
+
+Thanks again for helping Vitte improve.

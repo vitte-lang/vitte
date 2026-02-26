@@ -1,65 +1,99 @@
 # Security Policy
 
-Thanks for reporting vulnerabilities responsibly. This document describes scope, contact, and expectations.
+Thanks for reporting vulnerabilities responsibly.
+
+Vitte is experimental, but security issues are treated seriously.
+This document explains scope, reporting path, and expected response.
 
 ## Supported Versions
 
-Vitte is experimental. We prioritize issues affecting the `main` branch and the latest published release.
+Security triage priority:
 
-## Responsible Disclosure
+1. `main` branch
+2. latest published release
 
-Please avoid public disclosure before a fix is available. A useful report includes:
+Older revisions may be reviewed best-effort only.
 
-- Clear description of the issue
-- Steps to reproduce
-- Minimal PoC
-- Estimated impact (RCE, data leak, DoS, etc.)
-- Affected version/commit
-- Environment details (OS, toolchain, flags)
+## How to Report
 
-## Contact
+### Preferred
 
-- Open a private issue if possible
-- Otherwise open a public issue **without sensitive details**, and request a private channel
+- Open a **private** security report (if platform settings allow).
 
-## Response Timeline
+### Fallback
 
-- Acknowledgement: within 72h
-- Initial triage: within 7 days
-- Fix or plan: as soon as possible based on severity
+- Open a public issue with minimal details and request a private channel.
+- Do not include exploit payloads or sensitive data in public.
+
+## What to Include
+
+Please include:
+
+- vulnerability summary
+- impact (RCE, privilege escalation, data leak, DoS, etc.)
+- exact reproduction steps
+- minimal PoC
+- affected commit/version
+- environment (OS, compiler/toolchain, flags)
+- any known workaround
+
+A concise report gets fixed faster.
 
 ## Scope
 
 In scope:
-- Vitte compiler
-- Vitte runtime
-- Standard library
-- Official tooling (scripts in `tools/`, editor integrations)
+
+- compiler (`src/compiler/**`)
+- language/runtime behavior shipped in this repo
+- package modules under `src/vitte/packages/**`
+- official tooling in `tools/` and maintained editor integrations
 
 Out of scope:
-- Third‑party dependencies (OpenSSL, libcurl, etc.)
-- Local modifications or unofficial forks
 
-## Safe Disclosure Rules
+- vulnerabilities only present in third-party dependencies
+- local environment misconfiguration
+- unofficial forks with unrelated changes
 
-- Do not exploit in production
-- Do not exfiltrate real data
-- Keep PoC minimal
+## Response Targets
 
-## Rewards
+Target timelines (best effort):
 
-No bug bounty at the moment. Security contributors can be credited in release notes on request.
+- acknowledgement: within 72h
+- first triage: within 7 days
+- remediation plan: as soon as severity is confirmed
+
+Severe issues are prioritized immediately.
+
+## Severity Guidance
+
+Rough priority model:
+
+- `Critical`: remote code execution, full compromise
+- `High`: privilege escalation, major memory corruption, major data exposure
+- `Medium`: controlled DoS, limited data leaks, sandbox escape preconditions
+- `Low`: hard-to-exploit edge cases with low practical impact
+
+Final severity is assigned by maintainers after triage.
+
+## Disclosure Rules
+
+- no public full disclosure before fix availability
+- no exploitation against production systems
+- no data exfiltration beyond minimal proof
+- coordinate publication timing with maintainers
+
+After a fix is available and users had time to update, coordinated public disclosure is welcome.
+
+## Credit
+
+No bug bounty is offered currently.
+Contributors can be credited in release notes on request.
 
 ## Encryption
 
-If you need encrypted contact, propose a public key and we will respond with ours.
+If encrypted communication is required, request key exchange in the initial contact.
 
----
+## Related Docs
 
-## FAQ
-
-**Can I publish after a fix ships?**  
-Yes, after coordinated disclosure.
-
-**What if I’m unsure it’s a vulnerability?**  
-Send it anyway; we’ll triage.
+- `SUPPORT.md` for non-security issues
+- `CONTRIBUTING.md` for normal contribution workflow

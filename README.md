@@ -234,6 +234,7 @@ Tip for beginners: small PRs get reviewed faster than large rewrites.
 - `examples/` sample `.vit` programs
 - `tests/` regression and language tests
 - `tools/` scripts/utilities
+- `toolchain/scripts/` build/test/package/install script entrypoints
 - `target/` runtime/target assets
 
 ## Docs
@@ -241,6 +242,7 @@ Tip for beginners: small PRs get reviewed faster than large rewrites.
 - `docs/cli.md`
 - `docs/errors.md`
 - `docs/stdlib.md`
+- `toolchain/scripts/README.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`
 - `SUPPORT.md`
