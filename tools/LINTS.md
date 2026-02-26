@@ -122,6 +122,28 @@ Checks on `src/vitte/packages/**/mod.vit`:
 - forbids `<pkg>.vit` leaf file when `mod.vit` exists (unless allowlisted)
 - forbids glob imports in `packages/public/*`
 
+## 10) Critical runtime matrix lint
+
+Command:
+
+```bash
+tools/lint_critical_runtime_matrix.py
+```
+
+Checks:
+- snapshot matrix exists for critical modules (`abi/core/db/http`) across runtime profiles (`core/system/desktop/arduino`)
+
+## 11) New public packages snapshot lint
+
+Command:
+
+```bash
+BASE_REF=origin/main tools/lint_new_public_packages_have_snapshots.py
+```
+
+Checks:
+- each newly added `src/vitte/packages/**/mod.vit` (vs `BASE_REF`) must have snapshot coverage
+
 ## CI usage
 
 ```bash
@@ -137,6 +159,8 @@ make experimental-modules-lint
 make public-modules-snapshots-lint
 make modules-perf-cache
 make packages-governance-lint
+make critical-runtime-matrix-lint
+make new-public-packages-snapshots-lint
 make packages-report
 make packages-contract-snapshots
 make packages-gate
