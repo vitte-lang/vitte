@@ -5,6 +5,7 @@ package vitte/channel
 
 space vitte/channel
 
+share all
 
 pick ChannelMode {
   Bounded
@@ -17,23 +18,27 @@ form Channel {
   capacity: int
   queue: [string]
   dropped: int
+  subscribers: int
   closed: bool
 }
 
 proc channel_bounded(capacity: int) -> Channel {
-  if capacity <= 0 { give Channel(ChannelMode.Bounded, 1, [], 0, false) }
-  give Channel(ChannelMode.Bounded, capacity, [], 0, false)
+  let cap = capacity
+  if cap <= 0 { cap = 1 }
+  give Channel(ChannelMode.Bounded, cap, [], 0, 1, false)
 }
 
 proc channel_unbounded() -> Channel {
-  give Channel(ChannelMode.Unbounded, 0, [], 0, false)
+  give Channel(ChannelMode.Unbounded, 0, [], 0, 1, false)
 }
 
 proc channel_broadcast() -> Channel {
-  give Channel(ChannelMode.Broadcast, 0, [], 0, false)
+  give Channel(ChannelMode.Broadcast, 0, [], 0, 0, false)
 }
 
 proc drop_first(queue: [string]) -> [string] {
+  if queue.len <= 1 { give [] }
+
   let out: [string] = []
   let i: int = 1
   loop {
@@ -44,61 +49,109 @@ proc drop_first(queue: [string]) -> [string] {
   give out
 }
 
-proc len(ch: Channel) -> int {
-  give ch.queue.len
+proc is_empty(c: Channel) -> bool {
+  give c.queue.len == 0
 }
 
-proc can_send(ch: Channel) -> bool {
-  give !ch.closed
+proc is_closed(c: Channel) -> bool {
+  give c.closed
 }
 
-proc send(ch: Channel, message: string) -> Channel {
-  if ch.closed { give ch }
+proc len(c: Channel) -> int {
+  give c.queue.len
+}
 
-  let queue = ch.queue
-  let dropped_count = ch.dropped
-  when ch.mode is ChannelMode.Bounded {
-    if ch.capacity > 0 && queue.len >= ch.capacity {
+proc dropped(c: Channel) -> int {
+  give c.dropped
+}
+
+proc dropped_count(c: Channel) -> int {
+  give c.dropped
+}
+
+proc subscribers(c: Channel) -> int {
+  give c.subscribers
+}
+
+proc subscribe(c: Channel) -> Channel {
+  when c.mode is ChannelMode.Broadcast {
+    give Channel(c.mode, c.capacity, c.queue, c.dropped, c.subscribers + 1, c.closed)
+  }
+  give c
+}
+
+proc unsubscribe(c: Channel) -> Channel {
+  when c.mode is ChannelMode.Broadcast {
+    let s = c.subscribers - 1
+    if s < 0 { s = 0 }
+    give Channel(c.mode, c.capacity, c.queue, c.dropped, s, c.closed)
+  }
+  give c
+}
+
+proc can_send(c: Channel) -> bool {
+  give !c.closed
+}
+
+proc send(c: Channel, message: string) -> Channel {
+  if c.closed { give c }
+
+  let queue = c.queue
+  let dropped = c.dropped
+
+  when c.mode is ChannelMode.Bounded {
+    if c.capacity > 0 && queue.len >= c.capacity {
       queue = drop_first(queue)
-      dropped_count = dropped_count + 1
+      dropped = dropped + 1
     }
   }
+
+  when c.mode is ChannelMode.Broadcast {
+    if c.subscribers == 0 { give c }
+  }
+
   queue = queue.push(message)
-  give Channel(ch.mode, ch.capacity, queue, dropped_count, ch.closed)
+  give Channel(c.mode, c.capacity, queue, dropped, c.subscribers, c.closed)
 }
 
-proc peek(ch: Channel) -> string {
-  if ch.queue.len == 0 { give "" }
-  give ch.queue[0]
+proc peek(c: Channel) -> string {
+  if c.queue.len == 0 { give "" }
+  give c.queue[0]
 }
 
-proc pop(ch: Channel) -> Channel {
-  if ch.queue.len == 0 { give ch }
-  give Channel(ch.mode, ch.capacity, drop_first(ch.queue), ch.dropped, ch.closed)
+proc pop(c: Channel) -> Channel {
+  if c.queue.len == 0 { give c }
+  give Channel(c.mode, c.capacity, drop_first(c.queue), c.dropped, c.subscribers, c.closed)
 }
 
-proc close(ch: Channel) -> Channel {
-  give Channel(ch.mode, ch.capacity, ch.queue, ch.dropped, true)
-}
-
-proc dropped(ch: Channel) -> int {
-  give ch.dropped
+proc close(c: Channel) -> Channel {
+  give Channel(c.mode, c.capacity, c.queue, c.dropped, c.subscribers, true)
 }
 
 proc ready() -> bool {
   give true
 }
 
-
+proc stats(c: Channel) -> string {
+  give "mode=" + c.mode.to_string() +
+       ";len=" + c.queue.len.to_string() +
+       ";dropped=" + c.dropped.to_string() +
+       ";subs=" + c.subscribers.to_string() +
+       ";closed=" + c.closed.to_string()
+}
 
 proc package_meta() -> string {
-    give "vitte/channel"
+  give "vitte/channel"
 }
 
 <<< ROLE-CONTRACT
 package: vitte/channel
-role: Communication concurrente via canaux et files
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+owner: @vitte/channel
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: Communication concurrente via canaux et files immuables
+input_contract: Messages texte et etats Channel explicites
+output_contract: Etats deterministes, observables et interop compatibles
+boundary: Abstraction pure sans scheduling/threading system
 >>>

@@ -5,17 +5,37 @@ package vitte/collections
 
 space vitte/collections
 
+share all
+
+# ============================================================
+# Option
+# ============================================================
 
 pick Option[T] {
     Some(value: T)
     None
 }
 
+proc option_is_some[T](o: Option[T]) -> bool {
+    when o is Option.Some { give true }
+    give false
+}
+
+proc option_is_none[T](o: Option[T]) -> bool {
+    when o is Option.None { give true }
+    give false
+}
+
+# ============================================================
+# Vec
+# ============================================================
+
 type Vec[T] = [T]
-type Set[T] = [T]
-type Map[K, V] = [V]
-type RingBuffer[T] = [T]
-type Rope = string
+
+form VecPopResult[T] {
+    values: Vec[T]
+    item: Option[T]
+}
 
 proc vec_new[T]() -> Vec[T] {
     give []
@@ -26,62 +46,206 @@ proc vec_push[T](xs: Vec[T], x: T) -> Vec[T] {
 }
 
 proc vec_len[T](xs: Vec[T]) -> int {
-    let _ = xs
-    give 0
+    give xs.len
 }
+
+proc vec_get[T](xs: Vec[T], index: int) -> Option[T] {
+    if index < 0 || index >= xs.len {
+        give Option.None
+    }
+    give Option.Some(xs[index])
+}
+
+proc vec_pop[T](xs: Vec[T]) -> VecPopResult[T] {
+    if xs.len == 0 {
+        give VecPopResult(xs, Option.None)
+    }
+
+    let last = xs[xs.len - 1]
+
+    let out: [T] = []
+    let i: int = 0
+    loop {
+        if i >= xs.len - 1 { break }
+        out = out.push(xs[i])
+        i = i + 1
+    }
+
+    give VecPopResult(out, Option.Some(last))
+}
+
+# ============================================================
+# Map
+# ============================================================
+
+form Pair[K, V] {
+    key: K
+    value: V
+}
+
+type Map[K, V] = [Pair[K, V]]
 
 proc map_new[K, V]() -> Map[K, V] {
     give []
 }
 
-proc map_put[K, V](m: Map[K, V], k: K, v: V) -> Map[K, V] {
-    let _ = k
-    give m.push(v)
+proc map_put[K, V](m: Map[K, V], k: K, v: V, eq: proc(K, K) -> bool) -> Map[K, V] {
+
+    let out: Map[K, V] = []
+    let replaced: bool = false
+
+    let i: int = 0
+    loop {
+        if i >= m.len { break }
+
+        let p = m[i]
+
+        if eq(p.key, k) {
+            out = out.push(Pair(k, v))
+            replaced = true
+        } else {
+            out = out.push(p)
+        }
+
+        i = i + 1
+    }
+
+    if !replaced {
+        out = out.push(Pair(k, v))
+    }
+
+    give out
 }
 
-proc map_get[K, V](m: Map[K, V], index: int) -> Option[V] {
-    let _ = m
-    let _ = index
+proc map_get[K, V](m: Map[K, V], k: K, eq: proc(K, K) -> bool) -> Option[V] {
+
+    let i: int = 0
+    loop {
+        if i >= m.len { break }
+
+        let p = m[i]
+        if eq(p.key, k) {
+            give Option.Some(p.value)
+        }
+
+        i = i + 1
+    }
+
     give Option.None
 }
+
+proc map_len[K, V](m: Map[K, V]) -> int {
+    give m.len
+}
+
+# ============================================================
+# Set
+# ============================================================
+
+type Set[T] = [T]
 
 proc set_new[T]() -> Set[T] {
     give []
 }
 
 proc set_contains[T](s: Set[T], x: T, eq: proc(T, T) -> bool) -> bool {
-    let _ = s
-    let _ = x
-    let _ = eq
+
+    let i: int = 0
+    loop {
+        if i >= s.len { break }
+
+        if eq(s[i], x) {
+            give true
+        }
+
+        i = i + 1
+    }
+
     give false
 }
 
-proc ring_new[T]() -> RingBuffer[T] {
-    give []
+proc set_insert[T](s: Set[T], x: T, eq: proc(T, T) -> bool) -> Set[T] {
+
+    if set_contains(s, x, eq) {
+        give s
+    }
+
+    give s.push(x)
+}
+
+proc set_len[T](s: Set[T]) -> int {
+    give s.len
+}
+
+# ============================================================
+# RingBuffer (borné)
+# ============================================================
+
+form RingBuffer[T] {
+    capacity: int
+    data: [T]
+}
+
+proc ring_new[T](capacity: int) -> RingBuffer[T] {
+    let cap = capacity
+    if cap <= 0 { cap = 1 }
+    give RingBuffer(cap, [])
 }
 
 proc ring_push[T](rb: RingBuffer[T], x: T) -> RingBuffer[T] {
-    give rb.push(x)
+
+    let data = rb.data
+
+    if data.len >= rb.capacity {
+        let trimmed: [T] = []
+        let i: int = 1
+        loop {
+            if i >= data.len { break }
+            trimmed = trimmed.push(data[i])
+            i = i + 1
+        }
+        data = trimmed
+    }
+
+    data = data.push(x)
+
+    give RingBuffer(rb.capacity, data)
 }
+
+proc ring_len[T](rb: RingBuffer[T]) -> int {
+    give rb.data.len
+}
+
+# ============================================================
+# Rope
+# ============================================================
+
+type Rope = string
 
 proc rope_new() -> Rope {
     give ""
 }
 
 proc rope_append(r: Rope, chunk: string) -> Rope {
-    let _ = r
-    give chunk
+    let base: string = r
+    give base + chunk
+}
+
+proc rope_len(r: Rope) -> int {
+    give r.len
 }
 
 proc rope_to_string(r: Rope) -> string {
     give r
 }
 
+# ============================================================
+# Introspection
+# ============================================================
+
 proc ready() -> bool {
     give true
 }
-
-
 
 proc package_meta() -> string {
     give "vitte/collections"
@@ -89,8 +253,12 @@ proc package_meta() -> string {
 
 <<< ROLE-CONTRACT
 package: vitte/collections
-role: Collections generalistes pour sequences, tables, ensembles et file circulaire
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+owner: @vitte/collections
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: Collections generiques immuables (Vec, Map, Set, RingBuffer, Rope)
+input_contract: Donnees typables et deja valides
+output_contract: Etats purs, deterministes et interoperables
+boundary: Structure simple compatible no_std, sans memoire custom ni thread safety
 >>>

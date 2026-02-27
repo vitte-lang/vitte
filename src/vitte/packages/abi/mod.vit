@@ -1,323 +1,215 @@
-vitte 1.0
-
-space vitte/packages/abi
-
 <<<
-  ABI — Application Binary Interface Layer
-
-  Objectifs :
-  - Décrire layout mémoire des types
-  - Définir conventions d’appel
-  - Gérer alignement / padding
-  - Fournir introspection layout
-  - Support multi-architecture (x86_64, aarch64, riscv64, i386)
-
-  Utilisé par :
-  - backend codegen
-  - linker
-  - runtime FFI
-  - JIT
+mod.vit
+package vitte/abi
 >>>
 
-pull core/mem as mem
-pull core/math as math
-pull core/result as result
-pull core/text as text
+space vitte/abi
 
 share all
 
-<<< ============================================================
-    ARCHITECTURES
-============================================================ >>>
-
-pick Arch {
-  case X86_64
-  case AARCH64
-  case RISCV64
-  case I386
+pick CallingConvention {
+  SystemV
+  Win64
+  CDecl
+  FastCall
+  StdCall
 }
-
-<<< ============================================================
-    CALLING CONVENTIONS
-============================================================ >>>
-
-pick CallingConv {
-  case SystemV
-  case Win64
-  case CDecl
-  case FastCall
-  case StdCall
-}
-
-<<< ============================================================
-    TYPE CLASSIFICATION (ABI LOWERING)
-============================================================ >>>
-
-pick AbiKind {
-  case Integer
-  case Float
-  case Vector
-  case Pointer
-  case Aggregate
-  case Void
-}
-
-<<< ============================================================
-    TYPE LAYOUT DESCRIPTION
-============================================================ >>>
-
-form FieldLayout {
-  name    as Text
-  offset  as U64
-  size    as U64
-  align   as U64
-}
-
-form TypeLayout {
-  size        as U64
-  align       as U64
-  abi_kind    as AbiKind
-  fields      as List<FieldLayout>
-}
-
-<<< ============================================================
-    ABI ERROR
-============================================================ >>>
 
 pick AbiError {
-  case InvalidType
-  case UnsupportedArch
-  case UnsupportedConvention
+  None
+  InvalidType
+  UnsupportedConvention
+  InvalidSignature
 }
 
-<<< ============================================================
-    ALIGNMENT HELPERS
-============================================================ >>>
-
-proc align_to(value as U64, alignment as U64) gives U64 {
-  give ((value + alignment - 1) / alignment) * alignment
+form AbiTypeInfo {
+  kind: string
+  bits: int
+  err: AbiError
 }
 
-proc max_align(a as U64, b as U64) gives U64 {
-  if a > b { give a }
-  give b
+form AbiSignature {
+  calling: CallingConvention
+  ret: AbiTypeInfo
+  params: [AbiTypeInfo]
 }
 
-<<< ============================================================
-    PRIMITIVE LAYOUT
-============================================================ >>>
-
-proc primitive_layout(size as U64,
-                      align as U64,
-                      kind as AbiKind)
-  gives TypeLayout {
-
-  give TypeLayout(
-    size = size,
-    align = align,
-    abi_kind = kind,
-    fields = []
-  )
-}
-
-proc integer_layout(bits as U64) gives TypeLayout {
-  give primitive_layout(bits / 8, bits / 8, AbiKind.Integer)
-}
-
-proc float_layout(bits as U64) gives TypeLayout {
-  give primitive_layout(bits / 8, bits / 8, AbiKind.Float)
-}
-
-proc pointer_layout() gives TypeLayout {
-  give primitive_layout(8, 8, AbiKind.Pointer)
-}
-
-<<< ============================================================
-    STRUCT LAYOUT COMPUTATION
-============================================================ >>>
-
-proc struct_layout(fields as List<TypeLayout>)
-  gives TypeLayout {
-
-  make offset as U64 = 0
-  make max_alignment as U64 = 1
-  make layouts as List<FieldLayout> = []
-
-  make index as U64 = 0
-
-  each field in fields {
-
-    make aligned_offset as U64 =
-      align_to(offset, field.align)
-
-    layouts.push(
-      FieldLayout(
-        name = text.join("field_", index.to_text()),
-        offset = aligned_offset,
-        size = field.size,
-        align = field.align
-      )
-    )
-
-    offset = aligned_offset + field.size
-    max_alignment = max_align(max_alignment, field.align)
-    index = index + 1
+proc align_up(value: int, alignment: int) -> int {
+  if alignment <= 0 { give value }
+  let rem = value % alignment
+  if rem == 0 { give value }
+  if value >= 0 {
+    give value + (alignment - rem)
   }
-
-  make final_size as U64 =
-    align_to(offset, max_alignment)
-
-  give TypeLayout(
-    size = final_size,
-    align = max_alignment,
-    abi_kind = AbiKind.Aggregate,
-    fields = layouts
-  )
+  give value - rem
 }
 
-<<< ============================================================
-    FUNCTION SIGNATURE ABI
-============================================================ >>>
-
-form FunctionAbi {
-  arch        as Arch
-  convention  as CallingConv
-  return_type as TypeLayout
-  params      as List<TypeLayout>
+proc pointer_bits() -> int {
+  give 64
 }
 
-form ParamLocation {
-  in_register as Bool
-  register_id as U64
-  stack_offset as U64
+proc pointer_bytes() -> int {
+  give pointer_bits() / 8
 }
 
-form LoweredSignature {
-  return_via_memory as Bool
-  param_locations as List<ParamLocation>
-  stack_size as U64
+proc endianness() -> string {
+  give "little"
 }
 
-<<< ============================================================
-    LOWERING — SYSTEM V x86_64 (simplified)
-============================================================ >>>
-
-proc lower_sysv_x86_64(sig as FunctionAbi)
-  gives LoweredSignature {
-
-  <<< Simplification :
-      - 6 registres entiers : RDI, RSI, RDX, RCX, R8, R9
-      - Au-delà → stack
-  >>>
-
-  make reg_count as U64 = 6
-  make used_regs as U64 = 0
-  make stack_offset as U64 = 0
-  make locations as List<ParamLocation> = []
-
-  each param in sig.params {
-
-    if param.abi_kind == AbiKind.Integer
-       and used_regs < reg_count {
-
-      locations.push(
-        ParamLocation(
-          in_register = true,
-          register_id = used_regs,
-          stack_offset = 0
-        )
-      )
-
-      used_regs = used_regs + 1
-    }
-    otherwise {
-
-      stack_offset =
-        align_to(stack_offset, param.align)
-
-      locations.push(
-        ParamLocation(
-          in_register = false,
-          register_id = 0,
-          stack_offset = stack_offset
-        )
-      )
-
-      stack_offset =
-        stack_offset + param.size
-    }
-  }
-
-  make return_mem as Bool =
-    sig.return_type.size > 16
-
-  give LoweredSignature(
-    return_via_memory = return_mem,
-    param_locations = locations,
-    stack_size = stack_offset
-  )
+proc default_calling_convention() -> CallingConvention {
+  give CallingConvention.SystemV
 }
 
-<<< ============================================================
-    GENERIC LOWERING ENTRY
-============================================================ >>>
-
-proc lower(sig as FunctionAbi)
-  gives result.Result<LoweredSignature, AbiError> {
-
-  select sig.arch {
-
-    case Arch.X86_64 {
-
-      if sig.convention == CallingConv.SystemV {
-        give result.Ok(lower_sysv_x86_64(sig))
-      }
-
-      give result.Err(AbiError.UnsupportedConvention)
-    }
-
-    otherwise {
-      give result.Err(AbiError.UnsupportedArch)
-    }
-  }
-}
-
-<<< ============================================================
-    FFI BRIDGE HELPERS
-============================================================ >>>
-
-proc can_pass_in_register(layout as TypeLayout) gives Bool {
-  if layout.abi_kind == AbiKind.Integer { give true }
-  if layout.abi_kind == AbiKind.Pointer { give true }
+proc is_supported_calling(calling: CallingConvention) -> bool {
+  when calling is CallingConvention.SystemV { give true }
+  when calling is CallingConvention.Win64 { give true }
+  when calling is CallingConvention.CDecl { give true }
   give false
 }
 
-proc is_aggregate(layout as TypeLayout) gives Bool {
-  give layout.abi_kind == AbiKind.Aggregate
+proc calling_tag(calling: CallingConvention) -> string {
+  when calling is CallingConvention.SystemV { give "sysv" }
+  when calling is CallingConvention.Win64 { give "win64" }
+  when calling is CallingConvention.CDecl { give "cdecl" }
+  when calling is CallingConvention.FastCall { give "fastcall" }
+  give "stdcall"
 }
 
-<<< ============================================================
-    DEBUG / INTROSPECTION
-============================================================ >>>
+proc validate_type(kind: string, bits: int) -> AbiError {
+  if kind == "pointer" {
+    if bits == 0 || bits == pointer_bits() {
+      give AbiError.None
+    }
+    give AbiError.InvalidType
+  }
 
-proc describe_layout(layout as TypeLayout) gives Text {
-
-  make s as Text =
-    text.join("size=", layout.size.to_text())
-
-  s = text.join(s,
-        text.join(" align=", layout.align.to_text()))
-
-  give s
+  if bits <= 0 { give AbiError.InvalidType }
+  if kind == "int" || kind == "integer" { give AbiError.None }
+  if kind == "float" { give AbiError.None }
+  give AbiError.InvalidType
 }
+
+proc type_info(kind: string, bits: int) -> AbiTypeInfo {
+  let err = validate_type(kind, bits)
+  if err != AbiError.None { give AbiTypeInfo(kind, 0, err) }
+
+  if kind == "int" || kind == "integer" {
+    give AbiTypeInfo("integer", bits, AbiError.None)
+  }
+  if kind == "float" {
+    give AbiTypeInfo("float", bits, AbiError.None)
+  }
+  if kind == "pointer" {
+    give AbiTypeInfo("pointer", pointer_bits(), AbiError.None)
+  }
+
+  give AbiTypeInfo(kind, bits, AbiError.InvalidType)
+}
+
+proc type_error(info: AbiTypeInfo) -> AbiError {
+  give info.err
+}
+
+proc is_integer_type(info: AbiTypeInfo) -> bool {
+  give info.err == AbiError.None && info.kind == "integer"
+}
+
+proc is_float_type(info: AbiTypeInfo) -> bool {
+  give info.err == AbiError.None && info.kind == "float"
+}
+
+proc is_pointer_type(info: AbiTypeInfo) -> bool {
+  give info.err == AbiError.None && info.kind == "pointer"
+}
+
+proc type_size_bits(info: AbiTypeInfo) -> int {
+  if info.err != AbiError.None { give 0 }
+  give info.bits
+}
+
+proc type_align_bits(info: AbiTypeInfo) -> int {
+  if info.err != AbiError.None { give 0 }
+  if info.bits <= 8 { give 8 }
+  if info.bits <= 16 { give 16 }
+  if info.bits <= 32 { give 32 }
+  if info.bits <= 64 { give 64 }
+  give pointer_bits()
+}
+
+proc signature(calling: CallingConvention, ret: AbiTypeInfo, params: [AbiTypeInfo]) -> AbiSignature {
+  give AbiSignature(calling, ret, params)
+}
+
+proc validate_signature(sig: AbiSignature) -> bool {
+  if !is_supported_calling(sig.calling) { give false }
+  if type_error(sig.ret) != AbiError.None { give false }
+
+  let i: int = 0
+  loop {
+    if i >= sig.params.len { break }
+    if type_error(sig.params[i]) != AbiError.None { give false }
+    i = i + 1
+  }
+
+  give true
+}
+
+proc stack_arg_bytes(sig: AbiSignature) -> int {
+  let reg_limit: int = 6
+  let stack_bits: int = 0
+
+  let i: int = 0
+  loop {
+    if i >= sig.params.len { break }
+    if i >= reg_limit {
+      let aligned = align_up(type_size_bits(sig.params[i]), type_align_bits(sig.params[i]))
+      stack_bits = stack_bits + aligned
+    }
+    i = i + 1
+  }
+
+  give stack_bits / 8
+}
+
+proc return_in_register(sig: AbiSignature) -> bool {
+  if type_error(sig.ret) != AbiError.None { give false }
+  if is_float_type(sig.ret) { give sig.ret.bits <= 64 }
+  give sig.ret.bits <= 128
+}
+
+proc frame_size(sig: AbiSignature) -> int {
+  let base_bytes: int = 16
+  give align_up(base_bytes + stack_arg_bytes(sig), 16)
+}
+
+proc signature_abi_summary(sig: AbiSignature) -> string {
+  let out = "cc=" + calling_tag(sig.calling)
+  out = out + ",params=" + sig.params.len.to_string()
+  out = out + ",ret_bits=" + type_size_bits(sig.ret).to_string()
+  out = out + ",stack=" + stack_arg_bytes(sig).to_string()
+  give out
+}
+
+proc mangle(name: string, sig: AbiSignature) -> string {
+  give "_V" + calling_tag(sig.calling) + "_" + name + "_p" + sig.params.len.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/abi"
+}
+
 <<< ROLE-CONTRACT
 package: vitte/abi
 owner: @vitte/abi
 stability: stable
-since: 2.0.0
+since: 3.0.0
 deprecated_in: -
-role: Contrat ABI: conventions d appel et frontiere binaire
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+role: Contrat ABI de surface pour signatures, tailles et conventions d appel
+input_contract: Descriptions de types ABI explicites (kind/bits) et signature normalisee
+output_contract: Resultats deterministes pour validation, layout de pile et etiquetage ABI
+boundary: Ne depend pas du backend; fournit une couche pure de calcul ABI
 >>>

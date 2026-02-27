@@ -1,0 +1,23 @@
+use vitte/collections as col
+use vitte/abi as abi
+use vitte/channel as ch
+
+proc main() -> i32 {
+  if !col.ready() { return 1 }
+  if !abi.ready() { return 2 }
+  if !ch.ready() { return 3 }
+
+  let xs = col.vec_new[int]()
+  let xs2 = col.vec_push(xs, 42)
+  if col.vec_len(xs2) != 1 { return 4 }
+
+  let t = abi.type_info("int", 32)
+  let sig = abi.signature(abi.default_calling_convention(), t, [t])
+  if !abi.validate_signature(sig) { return 5 }
+
+  let c0 = ch.channel_bounded(1)
+  let c1 = ch.send(c0, "hello")
+  if ch.len(c1) != 1 { return 6 }
+
+  return 0
+}

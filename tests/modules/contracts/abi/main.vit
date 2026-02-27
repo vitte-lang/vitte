@@ -1,8 +1,45 @@
 use vitte/abi as abi
 
 proc main() -> i32 {
-  if abi.ready() {
-    return 0
-  }
-  return 1
+  if !abi.ready() { return 1 }
+
+  if abi.align_up(13, 0) != 13 { return 2 }
+  if abi.align_up(13, 8) != 16 { return 3 }
+  if abi.pointer_bits() != 64 { return 4 }
+  if abi.pointer_bytes() != 8 { return 5 }
+
+  let t_int = abi.type_info("int", 32)
+  let t_ptr = abi.type_info("pointer", 0)
+  let t_ret = abi.type_info("int", 64)
+  let t_bad = abi.type_info("x", 0)
+
+  if !abi.is_integer_type(t_int) { return 6 }
+  if !abi.is_pointer_type(t_ptr) { return 7 }
+  if abi.type_size_bits(t_ptr) != 64 { return 8 }
+  if abi.type_align_bits(t_int) != 32 { return 9 }
+  if abi.type_error(t_int) != abi.AbiError.None { return 10 }
+  if abi.type_error(t_bad) != abi.AbiError.InvalidType { return 20 }
+  if abi.validate_type("x", 0) != abi.AbiError.InvalidType { return 21 }
+  if abi.validate_type("pointer", 0) != abi.AbiError.None { return 22 }
+
+  let params = [t_int, t_ptr, t_int, t_int, t_int, t_int, t_int]
+  let sig = abi.signature(abi.default_calling_convention(), t_ret, params)
+
+  if !abi.validate_signature(sig) { return 11 }
+  if !abi.is_supported_calling(sig.calling) { return 12 }
+  if !abi.return_in_register(sig) { return 13 }
+  if abi.stack_arg_bytes(sig) <= 0 { return 14 }
+  if abi.frame_size(sig) < 16 { return 15 }
+
+  let sig_bad_call = abi.signature(abi.CallingConvention.FastCall, t_ret, params)
+  if abi.is_supported_calling(sig_bad_call.calling) { return 23 }
+  if abi.validate_signature(sig_bad_call) { return 24 }
+
+  let summary = abi.signature_abi_summary(sig)
+  if summary.len == 0 { return 16 }
+  if abi.mangle("main", sig).len == 0 { return 17 }
+  if abi.calling_tag(sig.calling).len == 0 { return 18 }
+  if abi.endianness().len == 0 { return 19 }
+
+  return 0
 }

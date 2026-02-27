@@ -18,6 +18,7 @@ api_new="$ROOT_DIR/tests/modules/api_diff/new_case/main.vit"
 exp_src="$ROOT_DIR/tests/modules/experimental/main.vit"
 internal_src="$ROOT_DIR/tests/modules/internal/main.vit"
 reexport_src="$ROOT_DIR/tests/modules/reexport_conflict/main.vit"
+cross_pkg_src="$ROOT_DIR/tests/modules/contracts/cross_package/main.vit"
 legacy_runtime_src="$ROOT_DIR/tests/modules/mod_doctor_legacy/main.vit"
 legacy_write_expected="$ROOT_DIR/tests/modules/snapshots/mod_doctor_fix_write.rewritten.must"
 doctor_write_cases_dir="$ROOT_DIR/tests/modules/mod_doctor_write_cases"
@@ -219,6 +220,10 @@ grep -Fq "\"profile\"" <<<"$out_idx" || die "missing profile JSON key"
 log "cache report"
 out_cache="$("$BIN" check --lang=en --cache-report "$graph_src" 2>&1)"
 grep -Fq "[cache] parse=" <<<"$out_cache" || die "missing cache report output"
+
+log "cross-package (collections + abi + channel)"
+out_cross="$("$BIN" check --lang=en "$cross_pkg_src" 2>&1)"
+grep -Fq "[driver] mir ok" <<<"$out_cross" || die "cross-package fixture should reach mir ok"
 
 log "mod contract-diff"
 set +e
