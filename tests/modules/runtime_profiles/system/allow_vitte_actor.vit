@@ -1,0 +1,12 @@
+use vitte/actor as actor
+
+proc main() -> i32 {
+  let r0 = actor.router_new("system", 1, 4, 1, 0, actor.DeliverySemantics.AtMostOnce, 1)
+  let r1 = actor.router_with_tenant_limit(r0, "tenant", 2, 10, "sys/tenant")
+  let r2 = actor.router_with_auth_rule(r1, "svc/a", "sys/tenant/jobs", true)
+  let r3 = actor.router_dispatch_secure(r2, "tenant", "job-1", "svc/a", "sys/tenant/jobs", actor.make_message("evt", "p", "trace-sys"))
+  if actor.tenant_sent_count(r3, "tenant") <= 0 { return 1 }
+  let admins = actor.admin_list_actors(r3)
+  if admins.len == 0 { return 2 }
+  return 0
+}

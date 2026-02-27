@@ -1,0 +1,144 @@
+use vitte/actor as actor
+
+proc main() -> i32 {
+  if !actor.ready() { return 1 }
+
+  let a0 = actor.spawn(1, "worker")
+  let a1 = actor.configure_mailbox(a0, 8, actor.MailboxPolicy.Reject)
+  let a2 = actor.configure_supervision(a1, actor.SupervisionStrategy.Restart, 2)
+  let a3 = actor.configure_backoff(a2, 2, 16, 0)
+  let a4 = actor.configure_circuit_breaker(a3, 2, 3)
+  let a5 = actor.configure_idempotence(a4, 8)
+  let a6 = actor.register_hook(a5, actor.LifecycleHook.OnError)
+  let a7 = actor.register_hook(a6, actor.LifecycleHook.OnRestart)
+
+  let m0 = actor.make_message_with_id("dup-1", "job", "payload", "trace-1")
+  let a8 = actor.send(a7, m0)
+  let a9 = actor.send(a8, m0)
+  if actor.mailbox_len(a9) != 1 { return 2 }
+
+  let b0 = actor.spawn(2, "prio")
+  let b1 = actor.send(b0, actor.make_message_with_priority("evt", "low", "t", actor.MessagePriority.Low))
+  let b2 = actor.send(b1, actor.make_message_with_priority("evt", "normal", "t", actor.MessagePriority.Normal))
+  let b3 = actor.send(b2, actor.make_message_with_priority("evt", "high", "t", actor.MessagePriority.High))
+  let b4 = actor.step(b3)
+  let b5 = actor.step(b4)
+  let b6 = actor.step(b5)
+  if actor.processed_count(b6) != 3 { return 3 }
+  if actor.scheduler_lane(b6) != 0 { return 4 }
+  if !actor.mailbox_is_empty(b6) { return 5 }
+
+  let c0 = actor.fail(a9)
+  let c1 = actor.fail(c0)
+  if !actor.circuit_is_open(c1) { return 6 }
+  let dead0 = actor.dead_letter_count(c1)
+  let c2 = actor.send(c1, actor.make_message("job", "blocked", "trace-2"))
+  if actor.dead_letter_count(c2) <= dead0 { return 7 }
+  let hooks0 = actor.hook_run_count(c2)
+
+  let r0 = actor.restart(c2)
+  if actor.restart_backoff(r0) < 2 { return 8 }
+  if actor.is_running(r0) { return 9 }
+  if actor.hook_run_count(r0) <= hooks0 { return 10 }
+
+  let d = actor.supervision_decision(r0, 0)
+  if d.len == 0 { return 11 }
+  if actor.stats(r0).len == 0 { return 12 }
+  if actor.api_version().len == 0 { return 13 }
+  if actor.package_meta() != "vitte/actor" { return 14 }
+
+  let t0 = actor.spawn(3, "asker")
+  let t1 = actor.ask(t0, "req-1", actor.make_message("ask", "payload", "trace-ask"), 1)
+  if actor.ask_state(t1, "req-1") != "pending" { return 15 }
+  let t2 = actor.step(t1)
+  if actor.ask_state(t2, "req-1") != "completed" { return 16 }
+
+  let u0 = actor.ask(t0, "req-2", actor.make_message("ask", "payload", "trace-timeout"), 1)
+  let u1 = actor.cancel_ask(u0, "req-2")
+  if actor.ask_state(u1, "req-2") != "canceled" { return 17 }
+
+  let o0 = actor.spawn(4, "obs")
+  let o1 = actor.send(o0, actor.make_message_with_priority("evt", "p1", "trace-o", actor.MessagePriority.High))
+  if actor.queue_depth(o1) != 1 { return 18 }
+  if actor.max_message_age(o1) != 0 { return 19 }
+  let o2 = actor.step(o1)
+  if actor.processing_latency_last(o2) < 0 { return 20 }
+  if actor.throughput(o2) <= 0 { return 21 }
+  if actor.trace_state(o2).len == 0 { return 22 }
+
+  let s0 = actor.configure_snapshot(actor.spawn(5, "snap"), 1)
+  let s1 = actor.send(s0, actor.make_message("evt", "one", "trace-s"))
+  let s2 = actor.step(s1)
+  if actor.snapshot_count(s2) <= 0 { return 23 }
+  if actor.event_count(s2) <= 0 { return 24 }
+
+  let rr = actor.replay_events(actor.spawn(6, "replay"), ["send:hello", "step"])
+  if actor.processed_count(rr) <= 0 { return 25 }
+
+  let fam0 = actor.family_new(
+    actor.spawn(20, "parent"),
+    [actor.spawn(21, "c1"), actor.spawn(22, "c2"), actor.spawn(23, "c3")]
+  )
+  let fam1 = actor.family_fail_child_isolated(fam0, 1)
+  if !actor.family_sibling_unchanged(fam0, fam1, 1) { return 26 }
+  if fam1.children[1].failures <= fam0.children[1].failures { return 27 }
+
+  let rt0 = actor.router_new("router", 1, 3, 1, 0, actor.DeliverySemantics.AtMostOnce, 2)
+  let rt1 = actor.router_dispatch(rt0, "tenant-a", "entity-1", actor.make_message("evt", "1", "trace-r"))
+  let shard0 = actor.router_shard_for(rt1, "tenant-a", "entity-1")
+  let rt2 = actor.router_dispatch(rt1, "tenant-a", "entity-1", actor.make_message("evt", "2", "trace-r"))
+  let shard1 = actor.router_shard_for(rt2, "tenant-a", "entity-1")
+  if shard0 != shard1 { return 28 }
+  if actor.router_worker_count(rt2) < 1 { return 29 }
+
+  let dl0 = actor.dead_letter_count(actor.spawn(30, "dl"))
+  let nack_actor = actor.send_with_delivery(
+    actor.spawn(31, "nack"),
+    actor.make_message("nack-op", "p", "trace-n"),
+    actor.DeliverySemantics.AtLeastOnce,
+    1
+  )
+  if actor.dead_letter_count(nack_actor) <= dl0 { return 30 }
+  let nack_actor2 = actor.delivery_attempt(
+    actor.spawn(32, "nack2"),
+    actor.make_message("job", "p", "trace-n2"),
+    actor.AckNack.Nack,
+    2,
+    2
+  )
+  if actor.dead_letter_count(nack_actor2) <= 0 { return 31 }
+
+  let prop = actor.property_invariants(7, 24)
+  if !prop.ok { return 32 }
+  if prop.checks <= 0 { return 33 }
+
+  let sec0 = actor.router_new("sec", 1, 2, 2, 0, actor.DeliverySemantics.AtMostOnce, 1)
+  let sec1 = actor.router_with_tenant_limit(sec0, "t1", 1, 10, "tenant/t1")
+  let sec2 = actor.router_with_auth_rule(sec1, "ns/api", "tenant/t1/orders", true)
+  let sec3 = actor.router_dispatch_secure(
+    sec2, "t1", "e1", "ns/api", "tenant/t1/orders",
+    actor.make_message("evt", "ok", "trace-sec")
+  )
+  if actor.tenant_sent_count(sec3, "t1") <= 0 { return 34 }
+  let sec4 = actor.router_dispatch_secure(
+    sec3, "t1", "e2", "ns/evil", "tenant/t1/orders",
+    actor.make_message("evt", "blocked", "trace-sec")
+  )
+  if actor.tenant_denied_count(sec4, "t1") <= 0 { return 35 }
+
+  let admins = actor.admin_list_actors(sec4)
+  if admins.len <= 0 { return 36 }
+  if actor.admin_mailbox_depth(sec4, admins[0].name) < 0 { return 37 }
+  if actor.admin_last_error(sec4, admins[0].name).len < 0 { return 38 }
+
+  let fuzz = actor.fuzz_runtime(11, 40)
+  if !fuzz.ok { return 39 }
+  if fuzz.steps != 40 { return 40 }
+
+  let bench = actor.benchmark_suite(5, 30)
+  if bench.p95 < bench.p50 { return 41 }
+  if bench.p99 < bench.p95 { return 42 }
+  if bench.throughput < 0 { return 43 }
+
+  return 0
+}

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 BIN="${BIN:-$ROOT_DIR/bin/vitte}"
 BASE_DIR="$ROOT_DIR/tests/modules/contracts"
-CRITICAL_MODULES=(abi http db core)
+CRITICAL_MODULES=(abi http db core actor)
 UPDATE=0
 ALLOW_BREAKING=0
 CURRENT_VERSION="${CURRENT_VERSION:-}"
