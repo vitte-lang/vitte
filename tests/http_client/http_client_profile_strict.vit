@@ -1,0 +1,18 @@
+<<<
+http_client_profile_strict.vit
+strict profile smoke for vitte/http_client
+>>>
+
+use vitte/http_client as http_client_pkg
+
+entry main at core/app {
+  let cfg: http_client_pkg.ClientConfig = http_client_pkg.default_config()
+  let strict_cfg: http_client_pkg.ClientConfig = http_client_pkg.ClientConfig(cfg.connect_timeout_ms, cfg.read_timeout_ms, cfg.write_timeout_ms, cfg.header_timeout_ms, cfg.body_timeout_ms, cfg.cancel_token, true, false, true, 5, "core")
+  let st: http_client_pkg.ClientState = http_client_pkg.ClientState(strict_cfg, http_client_pkg.default_retry(), http_client_pkg.CircuitState(false, 0, 5, 1000), http_client_pkg.ClientPool(8, 0, 10000, 60000), 0, 0, 0)
+  let req: http_client_pkg.ClientRequest = http_client_pkg.request(http_client_pkg.ClientMethod.Get, "https://example.test/x", "")
+  let out: http_client_pkg.ClientResult[http_client_pkg.ClientResponse] = http_client_pkg.perform(st, req)
+  when out is http_client_pkg.ClientResult.Ok {
+    give 1
+  }
+  give 0
+}

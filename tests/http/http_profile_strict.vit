@@ -1,0 +1,20 @@
+<<<
+http_profile_strict.vit
+strict profile smoke for vitte/http
+>>>
+
+use vitte/http as http_pkg
+
+entry main at core/app {
+  let st: http_pkg.HttpServerState = http_pkg.default_server_state()
+  let st2: http_pkg.HttpServerState = http_pkg.with_csrf(st, true)
+  let add: http_pkg.HttpResult[http_pkg.HttpServerState] = http_pkg.add_route(st2, http_pkg.route(http_pkg.HttpMethod.Post, "/submit", "submit", 100, true, 512))
+  when add is http_pkg.HttpResult.Err { give 1 }
+
+  let req: http_pkg.HttpRequest = http_pkg.request(http_pkg.HttpMethod.Post, "/submit", "a")
+  let out: http_pkg.HttpResult[http_pkg.HttpResponse] = http_pkg.handle(add.value, req)
+  when out is http_pkg.HttpResult.Ok {
+    give 2
+  }
+  give 0
+}

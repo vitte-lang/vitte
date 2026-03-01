@@ -1,0 +1,31 @@
+space tests/cross_package_http_process_log_fs_smoke
+
+use vitte/http as http_pkg
+use vitte/process as process_pkg
+use vitte/log as log_pkg
+use vitte/fs as fs_pkg
+
+entry main at tests/cross/package {
+  let st: http_pkg.HttpServerState = http_pkg.default_server_state()
+  let add: http_pkg.HttpResult[http_pkg.HttpServerState] = http_pkg.add_route(st, http_pkg.route(http_pkg.HttpMethod.Get, "/x", "x", 10, false, 128))
+  when add is http_pkg.HttpResult.Err { give 1 }
+
+  let req: http_pkg.HttpRequest = http_pkg.request(http_pkg.HttpMethod.Get, "/x", "")
+  let out: http_pkg.HttpResult[http_pkg.HttpResponse] = http_pkg.handle(add.value, req)
+  when out is http_pkg.HttpResult.Err { give 2 }
+
+  let cfg: process_pkg.ProcessConfig = process_pkg.default_config("vitte")
+  let pr: process_pkg.ProcessResult[process_pkg.ProcessOutput] = process_pkg.run(process_pkg.with_cwd(cfg, "/workspace/repo"))
+  when pr is process_pkg.ProcessResult.Err { give 3 }
+
+  let lg: log_pkg.Logger = log_pkg.logger_new(log_pkg.LogLevel.Info)
+  let lg2: log_pkg.Logger = log_pkg.info(lg, 1, "cross-smoke", "tests/cross", [])
+  let lg_sum: string = log_pkg.summary(lg2)
+  if lg_sum.len == 0 { give 4 }
+
+  let rt: fs_pkg.FsRuntime = fs_pkg.default_runtime()
+  let wt: fs_pkg.FsResult[fs_pkg.FsRuntime] = fs_pkg.write_text(rt, fs_pkg.path("/workspace/repo/file.txt"), "ok")
+  when wt is fs_pkg.FsResult.Err { give 5 }
+
+  give 0
+}

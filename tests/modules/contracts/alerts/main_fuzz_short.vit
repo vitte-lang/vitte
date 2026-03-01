@@ -1,0 +1,19 @@
+use vitte/alerts as alerts
+
+proc assert_seed(seed: int, steps: int) -> bool {
+  let fz = alerts.fuzz_events(seed, steps)
+  if !fz.ok { return false }
+  if fz.steps != steps { return false }
+  if fz.emitted < 0 { return false }
+  if fz.suppressed < 0 { return false }
+  return true
+}
+
+proc main() -> i32 {
+  let steps = 40
+  if !assert_seed(3, steps) { return 1 }
+  if !assert_seed(7, steps) { return 2 }
+  if !assert_seed(11, steps) { return 3 }
+  if !assert_seed(17, steps) { return 4 }
+  return 0
+}

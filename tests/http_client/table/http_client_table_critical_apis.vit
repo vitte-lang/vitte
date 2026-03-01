@@ -1,0 +1,20 @@
+<<<
+http_client_table_critical_apis.vit
+table-driven client checks retries/circuit/pool/redirects/auth
+>>>
+
+use vitte/http_client as http_client_pkg
+
+entry main at core/app {
+  let st: http_client_pkg.ClientState = http_client_pkg.default_state()
+  let req: http_client_pkg.ClientRequest = http_client_pkg.request(http_client_pkg.ClientMethod.Get, "https://example.test/data", "")
+  let out: http_client_pkg.ClientResult[http_client_pkg.ClientResponse] = http_client_pkg.perform(st, req)
+  when out is http_client_pkg.ClientResult.Err { give 1 }
+
+  let redir_ok: bool = http_client_pkg.security_redirect_allowed(st, "https://example.test/a", "https://example.test/b")
+  if redir_ok == false { give 2 }
+
+  let st2: http_client_pkg.ClientState = http_client_pkg.observe(st, 9, false)
+  if st2.latency_p95_ms < 0 { give 3 }
+  give 0
+}

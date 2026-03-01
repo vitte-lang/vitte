@@ -1,10 +1,15 @@
 <<<
 mod.vit
 package vitte/ast
+version: 2.0.0
+tier: compiler-core
+purpose:
+  Representation et transformation d arbres AST.
+  API stable explicite pour gouvernance ABI.
+  Surface experimentale isolee pour evolutions.
 >>>
 
 space vitte/ast
-
 
 pick AstKind {
   Module
@@ -15,42 +20,190 @@ pick AstKind {
   Literal
 }
 
+pick AstError {
+  None
+  EmptyModule
+  InvalidId
+  DuplicateId
+  InvalidParent
+  InvalidChild
+  InvalidSpan
+  CycleDetected
+  BudgetExceeded
+  UnknownNode
+}
+
+form AstSpan {
+  start: int
+  end: int
+}
+
 form AstNode {
   id: int
   kind: AstKind
   name: string
   value: string
+  parent_id: int
+  children: [int]
+  span: AstSpan
 }
 
 form AstModule {
   name: string
   nodes: [AstNode]
+  transform_ops: int
+  max_visits: int
+  max_depth_guard: int
+}
+
+form AstValidation {
+  ok: bool
+  error: AstError
+  node_id: int
+}
+
+form AstNodeResult {
+  ok: bool
+  node: AstNode
+  error: AstError
+}
+
+form AstMetrics {
+  node_count: int
+  leaf_count: int
+  depth: int
+  transform_ops: int
+  alloc_estimate: int
+}
+
+form PropertyReport {
+  ok: bool
+  checks: int
+}
+
+form FuzzReport {
+  ok: bool
+  steps: int
+  visits: int
+  rewrites: int
+}
+
+form BenchReport {
+  p50: int
+  p95: int
+  p99: int
+  throughput: int
+}
+
+proc default_span() -> AstSpan {
+  give AstSpan(0, 0)
+}
+
+proc default_node() -> AstNode {
+  give AstNode(-1, AstKind.Literal, "", "", -1, [], default_span())
+}
+
+proc ast_span(start: int, end: int) -> AstSpan {
+  let s = start
+  let e = end
+  if s < 0 { s = 0 }
+  if e < s { e = s }
+  give AstSpan(s, e)
 }
 
 proc ast_node(id: int, kind: AstKind, name: string, value: string) -> AstNode {
-  give AstNode(id, kind, name, value)
+  give AstNode(id, kind, name, value, -1, [], default_span())
+}
+
+proc ast_node_with_links(id: int,
+                         kind: AstKind,
+                         name: string,
+                         value: string,
+                         parent_id: int,
+                         children: [int],
+                         span: AstSpan) -> AstNode {
+  give AstNode(id, kind, name, value, parent_id, children, span)
 }
 
 proc ast_module(name: string) -> AstModule {
-  give AstModule(name, [])
+  give AstModule(name, [], 0, 10000, 256)
 }
 
-proc add_node(m: AstModule, node: AstNode) -> AstModule {
-  give AstModule(m.name, m.nodes.push(node))
+proc stable_new(name: string) -> AstModule {
+  give ast_module(name)
 }
 
-proc node_count(m: AstModule) -> int {
-  give m.nodes.len
+proc reset(m: AstModule) -> AstModule {
+  give AstModule(m.name, [], 0, m.max_visits, m.max_depth_guard)
 }
 
-proc find_by_id(m: AstModule, id: int) -> AstNode {
+proc set_budget(m: AstModule, max_visits: int, max_depth_guard: int) -> AstModule {
+  let visits = max_visits
+  let depth_guard = max_depth_guard
+  if visits < 1 { visits = 1 }
+  if depth_guard < 1 { depth_guard = 1 }
+  give AstModule(m.name, m.nodes, m.transform_ops, visits, depth_guard)
+}
+
+proc stable_set_budget(m: AstModule, max_visits: int, max_depth_guard: int) -> AstModule {
+  give set_budget(m, max_visits, max_depth_guard)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "stable_new,stable_add_node,stable_validate_tree,stable_metrics,stable_walk_preorder,stable_walk_postorder,stable_walk_bfs,stable_map_nodes,stable_filter_nodes,stable_rewrite,stable_normalize,stable_set_budget,api_version,package_meta,ready"
+}
+
+proc ast_error_name(err: AstError) -> string {
+  when err is AstError.None { give "none" }
+  when err is AstError.EmptyModule { give "empty_module" }
+  when err is AstError.InvalidId { give "invalid_id" }
+  when err is AstError.DuplicateId { give "duplicate_id" }
+  when err is AstError.InvalidParent { give "invalid_parent" }
+  when err is AstError.InvalidChild { give "invalid_child" }
+  when err is AstError.InvalidSpan { give "invalid_span" }
+  when err is AstError.CycleDetected { give "cycle_detected" }
+  when err is AstError.BudgetExceeded { give "budget_exceeded" }
+  give "unknown_node"
+}
+
+proc contains_id(ids: [int], id: int) -> bool {
+  let i: int = 0
+  loop {
+    if i >= ids.len { break }
+    if ids[i] == id { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc find_index_by_id(m: AstModule, id: int) -> int {
   let i: int = 0
   loop {
     if i >= m.nodes.len { break }
-    if m.nodes[i].id == id { give m.nodes[i] }
+    if m.nodes[i].id == id { give i }
     i = i + 1
   }
-  give AstNode(-1, AstKind.Literal, "", "")
+  give -1
+}
+
+proc find_by_id(m: AstModule, id: int) -> AstNode {
+  let idx = find_index_by_id(m, id)
+  if idx < 0 { give default_node() }
+  give m.nodes[idx]
+}
+
+proc try_find_by_id(m: AstModule, id: int) -> AstNodeResult {
+  let idx = find_index_by_id(m, id)
+  if idx < 0 { give AstNodeResult(false, default_node(), AstError.UnknownNode) }
+  give AstNodeResult(true, m.nodes[idx], AstError.None)
 }
 
 proc find_by_name(m: AstModule, name: string) -> AstNode {
@@ -60,7 +213,621 @@ proc find_by_name(m: AstModule, name: string) -> AstNode {
     if m.nodes[i].name == name { give m.nodes[i] }
     i = i + 1
   }
-  give AstNode(-1, AstKind.Literal, "", "")
+  give default_node()
+}
+
+proc try_find_by_name(m: AstModule, name: string) -> AstNodeResult {
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].name == name { give AstNodeResult(true, m.nodes[i], AstError.None) }
+    i = i + 1
+  }
+  give AstNodeResult(false, default_node(), AstError.UnknownNode)
+}
+
+proc sanitize_span(span: AstSpan) -> AstSpan {
+  let s = span.start
+  let e = span.end
+  if s < 0 { s = 0 }
+  if e < s { e = s }
+  give AstSpan(s, e)
+}
+
+proc normalize_nodes(nodes: [AstNode]) -> [AstNode] {
+  let ids: [int] = []
+  let uniq: [AstNode] = []
+
+  let i: int = 0
+  loop {
+    if i >= nodes.len { break }
+    let n0 = nodes[i]
+    if n0.id >= 0 && !contains_id(ids, n0.id) {
+      ids = ids.push(n0.id)
+      uniq = uniq.push(AstNode(n0.id,
+                               n0.kind,
+                               n0.name,
+                               n0.value,
+                               n0.parent_id,
+                               [],
+                               sanitize_span(n0.span)))
+    }
+    i = i + 1
+  }
+
+  let pfix: [AstNode] = []
+  i = 0
+  loop {
+    if i >= uniq.len { break }
+    let n1 = uniq[i]
+    let p = n1.parent_id
+    if p == n1.id { p = -1 }
+    if p >= 0 && !contains_id(ids, p) { p = -1 }
+    pfix = pfix.push(AstNode(n1.id, n1.kind, n1.name, n1.value, p, [], n1.span))
+    i = i + 1
+  }
+
+  let out: [AstNode] = []
+  i = 0
+  loop {
+    if i >= pfix.len { break }
+    let parent = pfix[i]
+    let children: [int] = []
+    let j: int = 0
+    loop {
+      if j >= pfix.len { break }
+      let cand = pfix[j]
+      if cand.parent_id == parent.id {
+        children = children.push(cand.id)
+      }
+      j = j + 1
+    }
+    out = out.push(AstNode(parent.id,
+                           parent.kind,
+                           parent.name,
+                           parent.value,
+                           parent.parent_id,
+                           children,
+                           parent.span))
+    i = i + 1
+  }
+
+  give out
+}
+
+proc normalize_with_ops(m: AstModule, add_ops: int) -> AstModule {
+  let ops = m.transform_ops + add_ops
+  if ops < 0 { ops = 0 }
+  give AstModule(m.name, normalize_nodes(m.nodes), ops, m.max_visits, m.max_depth_guard)
+}
+
+proc add_node(m: AstModule, node: AstNode) -> AstModule {
+  let next = AstModule(m.name, m.nodes.push(node), m.transform_ops, m.max_visits, m.max_depth_guard)
+  give normalize_with_ops(next, 0)
+}
+
+proc stable_add_node(m: AstModule, node: AstNode) -> AstModule {
+  give add_node(m, node)
+}
+
+proc experimental_add_node_unchecked(m: AstModule, node: AstNode) -> AstModule {
+  give AstModule(m.name, m.nodes.push(node), m.transform_ops, m.max_visits, m.max_depth_guard)
+}
+
+proc remove_by_id(m: AstModule, id: int) -> AstModule {
+  let out: [AstNode] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].id != id {
+      out = out.push(m.nodes[i])
+    }
+    i = i + 1
+  }
+  give normalize_with_ops(AstModule(m.name, out, m.transform_ops + 1, m.max_visits, m.max_depth_guard), 0)
+}
+
+proc rename_node(m: AstModule, id: int, new_name: string) -> AstModule {
+  let out: [AstNode] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    let n = m.nodes[i]
+    if n.id == id {
+      out = out.push(AstNode(n.id, n.kind, new_name, n.value, n.parent_id, n.children, n.span))
+    } else {
+      out = out.push(n)
+    }
+    i = i + 1
+  }
+  give normalize_with_ops(AstModule(m.name, out, m.transform_ops + 1, m.max_visits, m.max_depth_guard), 0)
+}
+
+proc node_count(m: AstModule) -> int {
+  give m.nodes.len
+}
+
+proc leaf_count(m: AstModule) -> int {
+  let leaves: int = 0
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].children.len == 0 { leaves = leaves + 1 }
+    i = i + 1
+  }
+  give leaves
+}
+
+proc node_depth_by_index(m: AstModule, idx: int) -> int {
+  let d: int = 1
+  let cur = m.nodes[idx].parent_id
+  let guard: int = 0
+
+  loop {
+    if cur < 0 { break }
+    if guard > m.nodes.len { break }
+    let pidx = find_index_by_id(m, cur)
+    if pidx < 0 { break }
+    d = d + 1
+    cur = m.nodes[pidx].parent_id
+    guard = guard + 1
+  }
+
+  give d
+}
+
+proc depth(m: AstModule) -> int {
+  if m.nodes.len == 0 { give 0 }
+
+  let d: int = 0
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    let nd = node_depth_by_index(m, i)
+    if nd > d { d = nd }
+    i = i + 1
+  }
+  give d
+}
+
+proc transform_ops(m: AstModule) -> int {
+  give m.transform_ops
+}
+
+proc alloc_estimate(m: AstModule) -> int {
+  let bytes: int = 0
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    let n = m.nodes[i]
+    bytes = bytes + 64
+    bytes = bytes + n.name.len
+    bytes = bytes + n.value.len
+    bytes = bytes + (n.children.len * 8)
+    i = i + 1
+  }
+  give bytes
+}
+
+proc ast_metrics(m: AstModule) -> AstMetrics {
+  give AstMetrics(node_count(m),
+                  leaf_count(m),
+                  depth(m),
+                  m.transform_ops,
+                  alloc_estimate(m))
+}
+
+proc stable_metrics(m: AstModule) -> AstMetrics {
+  give ast_metrics(m)
+}
+
+proc max_depth(m: AstModule) -> int {
+  give depth(m)
+}
+
+proc max_children(m: AstModule) -> int {
+  let mx: int = 0
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].children.len > mx { mx = m.nodes[i].children.len }
+    i = i + 1
+  }
+  give mx
+}
+
+proc max_nodes(m: AstModule) -> int {
+  if m.max_visits > 0 && m.max_visits < m.nodes.len { give m.max_visits }
+  give m.nodes.len
+}
+
+proc suggest_fold_limit(m: AstModule, requested: int) -> int {
+  let base = node_count(m)
+  let out = requested
+  if out <= 0 { out = base * 2 }
+  if out < base { out = base }
+  if m.max_visits > 0 && out > m.max_visits { out = m.max_visits }
+  if out < 1 { out = 1 }
+  give out
+}
+
+proc suggest_traversal_budget(m: AstModule, requested: int) -> int {
+  let base = node_count(m)
+  let out = requested
+  if out <= 0 { out = base * 3 }
+  if out < base { out = base }
+  if m.max_visits > 0 && out > m.max_visits { out = m.max_visits }
+  if out < 1 { out = 1 }
+  give out
+}
+
+proc suggest_prune_depth(m: AstModule, requested: int) -> int {
+  let d = max_depth(m)
+  let out = requested
+  if out <= 0 { out = d }
+  if out > d { out = d }
+  if m.max_depth_guard > 0 && out > m.max_depth_guard { out = m.max_depth_guard }
+  if out < 1 { out = 1 }
+  give out
+}
+
+proc validate_tree(m: AstModule) -> AstValidation {
+  if m.name.len == 0 { give AstValidation(false, AstError.EmptyModule, -1) }
+
+  if m.max_visits > 0 && m.nodes.len > m.max_visits {
+    give AstValidation(false, AstError.BudgetExceeded, -1)
+  }
+
+  let ids: [int] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    let n = m.nodes[i]
+
+    if n.id < 0 { give AstValidation(false, AstError.InvalidId, n.id) }
+    if contains_id(ids, n.id) { give AstValidation(false, AstError.DuplicateId, n.id) }
+    ids = ids.push(n.id)
+
+    if n.span.start < 0 || n.span.end < n.span.start {
+      give AstValidation(false, AstError.InvalidSpan, n.id)
+    }
+
+    if n.parent_id == n.id {
+      give AstValidation(false, AstError.InvalidParent, n.id)
+    }
+    if n.parent_id >= 0 && !contains_id(ids, n.parent_id) {
+      let parent_idx = find_index_by_id(m, n.parent_id)
+      if parent_idx < 0 {
+        give AstValidation(false, AstError.InvalidParent, n.id)
+      }
+    }
+
+    i = i + 1
+  }
+
+  i = 0
+  loop {
+    if i >= m.nodes.len { break }
+    let n = m.nodes[i]
+
+    let j: int = 0
+    loop {
+      if j >= n.children.len { break }
+      let child_id = n.children[j]
+      if child_id == n.id { give AstValidation(false, AstError.InvalidChild, n.id) }
+      let cidx = find_index_by_id(m, child_id)
+      if cidx < 0 { give AstValidation(false, AstError.InvalidChild, n.id) }
+      if m.nodes[cidx].parent_id != n.id {
+        give AstValidation(false, AstError.InvalidChild, n.id)
+      }
+      j = j + 1
+    }
+
+    let cur = n.parent_id
+    let guard: int = 0
+    loop {
+      if cur < 0 { break }
+      if guard > m.nodes.len {
+        give AstValidation(false, AstError.CycleDetected, n.id)
+      }
+      if cur == n.id {
+        give AstValidation(false, AstError.CycleDetected, n.id)
+      }
+      let pidx = find_index_by_id(m, cur)
+      if pidx < 0 { break }
+      cur = m.nodes[pidx].parent_id
+      guard = guard + 1
+    }
+
+    i = i + 1
+  }
+
+  if m.max_depth_guard > 0 && depth(m) > m.max_depth_guard {
+    give AstValidation(false, AstError.BudgetExceeded, -1)
+  }
+
+  give AstValidation(true, AstError.None, -1)
+}
+
+proc stable_validate_tree(m: AstModule) -> AstValidation {
+  give validate_tree(m)
+}
+
+proc validate(m: AstModule) -> bool {
+  give validate_tree(m).ok
+}
+
+proc dedup_ids(m: AstModule) -> bool {
+  let v = validate_tree(m)
+  if !v.ok && v.error == AstError.DuplicateId { give false }
+  if !v.ok { give true }
+  give true
+}
+
+proc module_health(m: AstModule) -> string {
+  let v = validate_tree(m)
+  if !v.ok { give ast_error_name(v.error) }
+  give "ok"
+}
+
+proc root_ids(m: AstModule) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].parent_id < 0 {
+      out = out.push(m.nodes[i].id)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc walk_preorder(m: AstModule) -> [int] {
+  let budget = suggest_traversal_budget(m, m.max_visits)
+  let roots = root_ids(m)
+
+  let stack: [int] = []
+  let stack_len: int = 0
+
+  let r: int = roots.len - 1
+  loop {
+    if r < 0 { break }
+    stack = stack.push(roots[r])
+    stack_len = stack_len + 1
+    r = r - 1
+  }
+
+  let out: [int] = []
+  let visits: int = 0
+
+  loop {
+    if stack_len <= 0 { break }
+    if visits >= budget { break }
+
+    let id = stack[stack_len - 1]
+    stack_len = stack_len - 1
+    out = out.push(id)
+
+    let idx = find_index_by_id(m, id)
+    if idx >= 0 {
+      let children = m.nodes[idx].children
+      let c: int = children.len - 1
+      loop {
+        if c < 0 { break }
+        stack = stack.push(children[c])
+        stack_len = stack_len + 1
+        c = c - 1
+      }
+    }
+
+    visits = visits + 1
+  }
+
+  give out
+}
+
+proc walk_postorder(m: AstModule) -> [int] {
+  let budget = suggest_traversal_budget(m, m.max_visits)
+  let roots = root_ids(m)
+
+  let s1: [int] = []
+  let s1_len: int = 0
+  let s2: [int] = []
+  let s2_len: int = 0
+
+  let r: int = roots.len - 1
+  loop {
+    if r < 0 { break }
+    s1 = s1.push(roots[r])
+    s1_len = s1_len + 1
+    r = r - 1
+  }
+
+  let visits: int = 0
+  loop {
+    if s1_len <= 0 { break }
+    if visits >= budget { break }
+
+    let id = s1[s1_len - 1]
+    s1_len = s1_len - 1
+
+    s2 = s2.push(id)
+    s2_len = s2_len + 1
+
+    let idx = find_index_by_id(m, id)
+    if idx >= 0 {
+      let children = m.nodes[idx].children
+      let c: int = 0
+      loop {
+        if c >= children.len { break }
+        s1 = s1.push(children[c])
+        s1_len = s1_len + 1
+        c = c + 1
+      }
+    }
+
+    visits = visits + 1
+  }
+
+  let out: [int] = []
+  let i: int = s2_len - 1
+  loop {
+    if i < 0 { break }
+    out = out.push(s2[i])
+    i = i - 1
+  }
+
+  give out
+}
+
+proc walk_bfs(m: AstModule) -> [int] {
+  let budget = suggest_traversal_budget(m, m.max_visits)
+  let roots = root_ids(m)
+
+  let q: [int] = roots
+  let head: int = 0
+  let out: [int] = []
+  let visits: int = 0
+
+  loop {
+    if head >= q.len { break }
+    if visits >= budget { break }
+
+    let id = q[head]
+    head = head + 1
+    out = out.push(id)
+
+    let idx = find_index_by_id(m, id)
+    if idx >= 0 {
+      let children = m.nodes[idx].children
+      let c: int = 0
+      loop {
+        if c >= children.len { break }
+        q = q.push(children[c])
+        c = c + 1
+      }
+    }
+
+    visits = visits + 1
+  }
+
+  give out
+}
+
+proc stable_walk_preorder(m: AstModule) -> [int] {
+  give walk_preorder(m)
+}
+
+proc stable_walk_postorder(m: AstModule) -> [int] {
+  give walk_postorder(m)
+}
+
+proc stable_walk_bfs(m: AstModule) -> [int] {
+  give walk_bfs(m)
+}
+
+proc map_nodes(m: AstModule) -> AstModule {
+  let pre = validate_tree(m)
+  if !pre.ok { give m }
+
+  let out: [AstNode] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    let n = m.nodes[i]
+    out = out.push(AstNode(n.id, n.kind, n.name, n.value, n.parent_id, n.children, n.span))
+    i = i + 1
+  }
+
+  let next = normalize_with_ops(AstModule(m.name, out, m.transform_ops + 1, m.max_visits, m.max_depth_guard), 0)
+  let post = validate_tree(next)
+  if !post.ok { give m }
+  give next
+}
+
+proc filter_nodes(m: AstModule, drop_kind: AstKind) -> AstModule {
+  let pre = validate_tree(m)
+  if !pre.ok { give m }
+
+  let out: [AstNode] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].kind != drop_kind {
+      out = out.push(m.nodes[i])
+    }
+    i = i + 1
+  }
+
+  let next = normalize_with_ops(AstModule(m.name, out, m.transform_ops + 1, m.max_visits, m.max_depth_guard), 0)
+  let post = validate_tree(next)
+  if !post.ok { give m }
+  give next
+}
+
+proc rewrite(m: AstModule, from_value: string, to_value: string) -> AstModule {
+  let pre = validate_tree(m)
+  if !pre.ok { give m }
+
+  let out: [AstNode] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    let n = m.nodes[i]
+    if n.value == from_value {
+      out = out.push(AstNode(n.id, n.kind, n.name, to_value, n.parent_id, n.children, n.span))
+    } else {
+      out = out.push(n)
+    }
+    i = i + 1
+  }
+
+  let next = normalize_with_ops(AstModule(m.name, out, m.transform_ops + 1, m.max_visits, m.max_depth_guard), 0)
+  let post = validate_tree(next)
+  if !post.ok { give m }
+  give next
+}
+
+proc normalize(m: AstModule) -> AstModule {
+  let pre = validate_tree(m)
+  if !pre.ok {
+    give normalize_with_ops(m, 1)
+  }
+
+  let next = normalize_with_ops(m, 1)
+  let post = validate_tree(next)
+  if !post.ok { give m }
+  give next
+}
+
+proc stable_map_nodes(m: AstModule) -> AstModule {
+  give map_nodes(m)
+}
+
+proc stable_filter_nodes(m: AstModule, drop_kind: AstKind) -> AstModule {
+  give filter_nodes(m, drop_kind)
+}
+
+proc stable_rewrite(m: AstModule, from_value: string, to_value: string) -> AstModule {
+  give rewrite(m, from_value, to_value)
+}
+
+proc stable_normalize(m: AstModule) -> AstModule {
+  give normalize(m)
+}
+
+proc nodes_of_kind(m: AstModule, kind: AstKind) -> [AstNode] {
+  let out: [AstNode] = []
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].kind == kind {
+      out = out.push(m.nodes[i])
+    }
+    i = i + 1
+  }
+  give out
 }
 
 proc kind_name(kind: AstKind) -> string {
@@ -72,117 +839,222 @@ proc kind_name(kind: AstKind) -> string {
   give "literal"
 }
 
-proc validate(m: AstModule) -> bool {
-  if m.name.len == 0 { give false }
-  let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
-    let n = m.nodes[i]
-    if n.id < 0 { give false }
-    i = i + 1
-  }
-  give true
-}
-
-proc summary(m: AstModule) -> string {
-  give "module=" + m.name + ",nodes=" + m.nodes.len.to_string()
-}
-
-proc nodes_of_kind(m: AstModule, kind: AstKind) -> [AstNode] {
-  let out: [AstNode] = []
-  let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
-    if m.nodes[i].kind == kind { out = out.push(m.nodes[i]) }
-    i = i + 1
-  }
-  give out
-}
-
-proc rename_node(m: AstModule, id: int, new_name: string) -> AstModule {
-  let out: [AstNode] = []
-  let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
-    let n = m.nodes[i]
-    if n.id == id {
-      out = out.push(AstNode(n.id, n.kind, new_name, n.value))
-    } else {
-      out = out.push(n)
-    }
-    i = i + 1
-  }
-  give AstModule(m.name, out)
-}
-
-proc dedup_ids(m: AstModule) -> bool {
-  let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
-    let j: int = i + 1
-    loop {
-      if j >= m.nodes.len { break }
-      if m.nodes[i].id == m.nodes[j].id { give false }
-      j = j + 1
-    }
-    i = i + 1
-  }
-  give true
-}
-
-proc module_health(m: AstModule) -> string {
-  if !validate(m) { give "invalid" }
-  if !dedup_ids(m) { give "duplicate-id" }
-  give "ok"
-}
-
-proc remove_by_id(m: AstModule, id: int) -> AstModule {
-  let out: [AstNode] = []
-  let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
-    if m.nodes[i].id != id { out = out.push(m.nodes[i]) }
-    i = i + 1
-  }
-  give AstModule(m.name, out)
-}
-
 proc next_id(m: AstModule) -> int {
-  let max: int = -1
+  let mx: int = -1
   let i: int = 0
   loop {
     if i >= m.nodes.len { break }
-    if m.nodes[i].id > max { max = m.nodes[i].id }
+    if m.nodes[i].id > mx { mx = m.nodes[i].id }
     i = i + 1
   }
-  give max + 1
+  give mx + 1
 }
 
 proc add_named_literal(m: AstModule, name: string, value: string) -> AstModule {
-  let n = AstNode(next_id(m), AstKind.Literal, name, value)
+  let n = ast_node(next_id(m), AstKind.Literal, name, value)
   give add_node(m, n)
 }
 
-proc ast_diagnostics(m: AstModule) -> string {
-  give summary(m) +
-       ",calls=" + nodes_of_kind(m, AstKind.Call).len.to_string() +
-       ",health=" + module_health(m)
+proc summary(m: AstModule) -> string {
+  let ms = ast_metrics(m)
+  give "module=" + m.name +
+       ",nodes=" + ms.node_count.to_string() +
+       ",leaves=" + ms.leaf_count.to_string() +
+       ",depth=" + ms.depth.to_string() +
+       ",ops=" + ms.transform_ops.to_string()
 }
 
-proc ready() -> bool {
+proc ast_diagnostics(m: AstModule) -> string {
+  let v = validate_tree(m)
+  give summary(m) +
+       ",calls=" + nodes_of_kind(m, AstKind.Call).len.to_string() +
+       ",health=" + ast_error_name(v.error)
+}
+
+proc property_tree_integrity(rounds: int, width: int) -> PropertyReport {
+  let checks: int = 0
+  let ok = true
+
+  let r: int = 0
+  loop {
+    if r >= rounds { break }
+
+    let m0 = set_budget(ast_module("prop"), width * 16 + 1, width + 8)
+    let m1 = add_node(m0, ast_node(0, AstKind.Module, "root", ""))
+    let m2 = add_node(m1, ast_node_with_links(1, AstKind.Let, "x", "1", 0, [], ast_span(1, 2)))
+    let m3 = add_node(m2, ast_node_with_links(2, AstKind.Call, "f", "", 0, [], ast_span(3, 4)))
+
+    let v1 = validate_tree(m3)
+    if !v1.ok { ok = false }
+    checks = checks + 1
+
+    let ms = ast_metrics(m3)
+    if ms.node_count < 1 || ms.leaf_count < 1 || ms.depth < 1 { ok = false }
+    checks = checks + 1
+
+    r = r + 1
+  }
+
+  give PropertyReport(ok, checks)
+}
+
+proc property_normalize_stability(rounds: int, width: int) -> PropertyReport {
+  let checks: int = 0
+  let ok = true
+
+  let r: int = 0
+  loop {
+    if r >= rounds { break }
+
+    let m0 = set_budget(ast_module("norm"), width * 8 + 1, width + 8)
+    let m1 = experimental_add_node_unchecked(m0, ast_node_with_links(0, AstKind.Module, "root", "", -1, [1, 2], ast_span(0, 2)))
+    let m2 = experimental_add_node_unchecked(m1, ast_node_with_links(1, AstKind.Let, "a", "", 0, [], ast_span(5, 4)))
+    let m3 = experimental_add_node_unchecked(m2, ast_node_with_links(2, AstKind.Call, "b", "", 99, [], ast_span(3, 3)))
+
+    let n1 = normalize(m3)
+    let n2 = normalize(n1)
+
+    if summary(n1) != summary(n2) { ok = false }
+    checks = checks + 1
+
+    let v = validate_tree(n2)
+    if !v.ok { ok = false }
+    checks = checks + 1
+
+    r = r + 1
+  }
+
+  give PropertyReport(ok, checks)
+}
+
+proc fuzz_tree_matrix(seed: int, steps: int) -> FuzzReport {
+  let s = seed
+  let m = set_budget(ast_module("fuzz"), steps * 2 + 1, 64)
+  let visits: int = 0
+  let rewrites: int = 0
+
+  let i: int = 0
+  loop {
+    if i >= steps { break }
+
+    let choice = (s + i) % 4
+    let id = next_id(m)
+
+    if choice == 0 {
+      m = add_node(m, ast_node_with_links(id, AstKind.Module, "n" + id.to_string(), "", -1, [], ast_span(i, i + 1)))
+    }
+    if choice == 1 {
+      let parent = id - 1
+      m = add_node(m, ast_node_with_links(id, AstKind.Let, "v" + id.to_string(), "", parent, [], ast_span(i, i + 1)))
+    }
+    if choice == 2 {
+      m = remove_by_id(m, id - 2)
+    }
+    if choice == 3 {
+      m = rename_node(m, id - 1, "r" + i.to_string())
+      rewrites = rewrites + 1
+    }
+
+    let walk = walk_bfs(m)
+    visits = visits + walk.len
+
+    let v = validate_tree(m)
+    if !v.ok {
+      m = normalize(m)
+    }
+
+    s = (s * 1664525 + 1013904223) % 2147483647
+    i = i + 1
+  }
+
+  let final_ok = validate_tree(m).ok
+  give FuzzReport(final_ok, steps, visits, rewrites)
+}
+
+proc bench_traversal(iterations: int, width: int) -> BenchReport {
+  let iters = iterations
+  if iters < 1 { iters = 1 }
+
+  let w = width
+  if w < 1 { w = 1 }
+
+  let m = set_budget(ast_module("bench"), iters * w * 8 + 8, w + 32)
+  m = add_node(m, ast_node(0, AstKind.Module, "root", ""))
+
+  let i: int = 1
+  loop {
+    if i > w { break }
+    let pid = 0
+    m = add_node(m, ast_node_with_links(i, AstKind.Let, "n" + i.to_string(), "", pid, [], ast_span(i, i + 1)))
+    i = i + 1
+  }
+
+  let sample: [int] = []
+  let k: int = 0
+  loop {
+    if k >= iters { break }
+    let p = walk_preorder(m).len
+    let o = walk_postorder(m).len
+    let b = walk_bfs(m).len
+    let cost = p + o + b
+    sample = sample.push(cost)
+    k = k + 1
+  }
+
+  let p50 = sample[0]
+  let p95 = sample[0]
+  let p99 = sample[0]
+  let t: int = 0
+  loop {
+    if t >= sample.len { break }
+    if sample[t] > p50 { p50 = sample[t] }
+    if sample[t] > p95 { p95 = sample[t] }
+    if sample[t] > p99 { p99 = sample[t] }
+    t = t + 1
+  }
+
+  let throughput = (iters * w)
+  give BenchReport(p50, p95, p99, throughput)
+}
+
+proc stable_ready() -> bool {
   give true
 }
 
+proc ready() -> bool {
+  give stable_ready()
+}
 
+proc stable_package_meta() -> string {
+  give "vitte/ast"
+}
 
 proc package_meta() -> string {
-    give "vitte/ast"
+  give stable_package_meta()
+}
+
+proc experimental_property_tree_integrity(rounds: int, width: int) -> PropertyReport {
+  give property_tree_integrity(rounds, width)
+}
+
+proc experimental_property_normalize_stability(rounds: int, width: int) -> PropertyReport {
+  give property_normalize_stability(rounds, width)
+}
+
+proc experimental_fuzz_tree_matrix(seed: int, steps: int) -> FuzzReport {
+  give fuzz_tree_matrix(seed, steps)
+}
+
+proc experimental_bench_traversal(iterations: int, width: int) -> BenchReport {
+  give bench_traversal(iterations, width)
 }
 
 <<< ROLE-CONTRACT
 package: vitte/ast
-role: Representation syntaxique source avant resolution semantique
-input_contract: Structures internes du compilateur deja valides syntaxiquement
-output_contract: Artefacts intermediaires deterministes pour l etape suivante
-boundary: Ne fait ni IO reseau ni decisions metier applicatives
+role: Representation et transformation d arbres syntaxiques abstraits
+input_contract: Arbres AST internes issus du parser ou de transformations controlees
+output_contract: Arbres valides, deterministes et exploitables par typeck/codegen
+boundary: Ne fait ni IO reseau, ni IO disque, ni orchestration runtime metier
+versioning: SemVer strict; suppression export stable reservee aux major bumps
+api_surface_stable: stable_* + api_version + package_meta + ready
 >>>

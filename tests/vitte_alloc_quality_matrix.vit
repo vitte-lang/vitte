@@ -1,0 +1,19 @@
+space tests/vitte_alloc_quality_matrix
+
+use vitte/alloc as v_alloc
+
+entry main at tests/alloc_quality {
+  let prop_short = v_alloc.property_invariants(7, 32)
+  let fuzz_short = v_alloc.fuzz_matrix(13, 64)
+  let bench_short = v_alloc.benchmark_suite(17, 64)
+
+  let prop_long = v_alloc.property_invariants(19, 256)
+  let fuzz_long = v_alloc.fuzz_matrix(23, 512)
+  let bench_long = v_alloc.benchmark_suite(29, 512)
+
+  if prop_short.ok && fuzz_short.ok && bench_short.throughput > 0 &&
+     prop_long.ok && fuzz_long.ok && bench_long.throughput > 0 {
+    return 0
+  }
+  return 1
+}

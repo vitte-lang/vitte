@@ -1,0 +1,24 @@
+<<<
+http_table_critical_apis.vit
+table-driven server checks routing/middleware/headers/errors/timeouts
+>>>
+
+use vitte/http as http_pkg
+
+entry main at core/app {
+  let st: http_pkg.HttpServerState = http_pkg.default_server_state()
+  let st1: http_pkg.HttpServerState = http_pkg.add_middleware(st, "cors")
+  let st2: http_pkg.HttpServerState = http_pkg.with_timeouts(st1, 100, 100, 200, 80, 120)
+  let st3: http_pkg.HttpServerState = http_pkg.with_rate_limit(st2, 5, 2)
+  let add: http_pkg.HttpResult[http_pkg.HttpServerState] = http_pkg.add_route(st3, http_pkg.route(http_pkg.HttpMethod.Get, "/x", "x", 10, false, 128))
+  when add is http_pkg.HttpResult.Err { give 1 }
+
+  let req: http_pkg.HttpRequest = http_pkg.request(http_pkg.HttpMethod.Get, "/x", "")
+  let out: http_pkg.HttpResult[http_pkg.HttpResponse] = http_pkg.handle(add.value, req)
+  when out is http_pkg.HttpResult.Err { give 2 }
+
+  let vr: http_pkg.HttpResult[bool] = http_pkg.validate_response(out.value)
+  when vr is http_pkg.HttpResult.Err { give 3 }
+
+  give 0
+}

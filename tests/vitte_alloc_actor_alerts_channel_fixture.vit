@@ -1,0 +1,36 @@
+space tests/vitte_alloc_actor_alerts_channel_fixture
+
+use vitte/alloc as v_alloc
+use vitte/actor as v_actor
+use vitte/alerts as v_alerts
+use vitte/channel as v_channel
+
+entry main at tests/alloc_integration {
+  let rt0 = v_alloc.stable_runtime_new(v_alloc.AllocatorKind.Global, 1024)
+  let rt1 = v_alloc.with_canaries(v_alloc.with_oom_policy(rt0, v_alloc.OomPolicy.ReturnError), true)
+
+  let a0 = v_alloc.stable_alloc(rt1, v_alloc.bytes(128), v_alloc.alignment(8), v_alloc.pool_id("tenant:t1"))
+  if !a0.ok { return 1 }
+
+  let r0 = v_alloc.stable_realloc(a0.runtime, a0.handle, v_alloc.bytes(192), v_alloc.alignment(8))
+  if !r0.ok { return 1 }
+
+  let f0 = v_alloc.stable_free(r0.runtime, a0.handle)
+  if !f0.ok { return 1 }
+
+  let ch0 = v_channel.channel_bounded(2)
+  let ch1 = v_channel.send(ch0, "evt")
+
+  let act0 = v_actor.actor_new(1, "alloc-fixture")
+  let act1 = v_actor.send(act0, v_actor.make_message("alloc", "ok", "trace-a"))
+  let act2 = v_actor.step(act1)
+
+  let rule = v_alerts.rule_new("alloc-pressure", 70, 2)
+  let triggered = v_alerts.evaluate(rule, 75, 1)
+
+  let stats = v_alloc.stable_stats(f0.runtime)
+  if ch1.messages.len == 1 && act2.processed >= 1 && triggered && stats.free_total >= 1 {
+    return 0
+  }
+  return 1
+}

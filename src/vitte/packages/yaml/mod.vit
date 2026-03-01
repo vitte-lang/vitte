@@ -2,200 +2,222 @@
 mod.vit
 package vitte/yaml
 >>>
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/yaml; additive API only.
+# - No import-time side effects.
+# - Internal implementation in vitte/yaml/internal/*.
+# - Diagnostics namespace: VITTE-Y0001..VITTE-Y0099.
 
 space vitte/yaml
 
+use vitte/yaml/internal/runtime as yaml_runtime_pkg
 
 pick YamlError {
-  None
-  InvalidLine
-  MissingColon
-  EmptyKey
-  Indentation
+  Failure(code: string, message: string, context: string)
 }
 
-form YamlPair {
+pick YamlResult[T] {
+  Ok(value: T)
+  Err(error: YamlError)
+}
+
+form Number {
+  as_int: int
+  raw: string
+}
+
+form Value {
+  kind: string
+  text: string
+  number: Number
+  flag: bool
+}
+
+form ObjectEntry {
   key: string
-  value: string
+  value: Value
 }
 
-form YamlDoc {
-  pairs: [YamlPair]
+form Object {
+  entries: [ObjectEntry]
 }
 
-proc pair(key: string, value: string) -> YamlPair {
-  give YamlPair(key, value)
+form Array {
+  values: [Value]
 }
 
-proc doc_new() -> YamlDoc {
-  give YamlDoc([])
+form Schema {
+  mode: string
+  required_keys: [string]
+  allow_extra: bool
 }
 
-proc starts_with(text: string, prefix: string) -> bool {
-  if text.len < prefix.len { give false }
-  give text.slice(0, prefix.len) == prefix
+form ParseOptions {
+  max_bytes: int
+  max_depth: int
+  max_nodes: int
+  safe_load: bool
+  allow_tags: [string]
+  preserve_comments: bool
+  profile: string
 }
 
-proc trim_left(text: string) -> string {
-  let i: int = 0
-  loop {
-    if i >= text.len { break }
-    let c = text.slice(i, i + 1)
-    if c != " " && c != "\t" { break }
-    i = i + 1
+form FormatOptions {
+  pretty: bool
+  indent: int
+  canonical: bool
+  preserve_comments: bool
+  sort_keys: bool
+}
+
+form StreamState {
+  offset: int
+  truncated: bool
+  backpressure: bool
+  last_error: string
+}
+
+proc ok[T](value: T) -> YamlResult[T] {
+  give YamlResult.Ok(value)
+}
+
+proc err[T](code: string, message: string, context: string) -> YamlResult[T] {
+  give YamlResult.Err(YamlError.Failure(code, message, context))
+}
+
+proc diagnostics_message(code: string) -> string {
+  give yaml_runtime_pkg.diag_message(code)
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  give yaml_runtime_pkg.quickfix_for(code)
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc default_parse_options() -> ParseOptions {
+  give ParseOptions(1048576, 64, 100000, true, [], false, "desktop")
+}
+
+proc default_format_options() -> FormatOptions {
+  give FormatOptions(true, 2, true, false, true)
+}
+
+proc parse_text(text: string, options: ParseOptions) -> YamlResult[Value] {
+  let vr: YamlResult[bool] = yaml_runtime_pkg.validate_parse_input(text, options.max_bytes, options.max_depth, options.max_nodes, options.safe_load, options.allow_tags)
+  when vr is YamlResult.Err { give err[Value](vr.error.code, vr.error.message, vr.error.context) }
+  give ok[Value](yaml_runtime_pkg.parse_minimal(text, options.preserve_comments))
+}
+
+proc parse_bytes(bytes: [int], options: ParseOptions) -> YamlResult[Value] {
+  if bytes.len > options.max_bytes {
+    give err[Value]("VITTE-Y0004", diagnostics_message("VITTE-Y0004"), "bytes")
   }
-  give text.slice(i, text.len)
+  let text: string = yaml_runtime_pkg.bytes_to_text(bytes)
+  give parse_text(text, options)
 }
 
-proc trim_right(text: string) -> string {
-  if text.len == 0 { give text }
-  let i = text.len - 1
-  loop {
-    if i < 0 { break }
-    let c = text.slice(i, i + 1)
-    if c != " " && c != "\t" { break }
-    if i == 0 { give "" }
-    i = i - 1
+proc stringify(value: Value, options: FormatOptions) -> YamlResult[string] {
+  give ok[string](yaml_runtime_pkg.stringify_value(value, options.pretty, options.indent, options.canonical, options.preserve_comments, options.sort_keys))
+}
+
+proc validate(value: Value, schema: Schema) -> YamlResult[bool] {
+  let vr: YamlResult[bool] = yaml_runtime_pkg.validate_schema(value, schema.mode, schema.required_keys, schema.allow_extra)
+  when vr is YamlResult.Err { give err[bool](vr.error.code, vr.error.message, vr.error.context) }
+  give ok[bool](true)
+}
+
+proc format_pretty(text: string, options: FormatOptions) -> YamlResult[string] {
+  let value_r: YamlResult[Value] = parse_text(text, default_parse_options())
+  when value_r is YamlResult.Err {
+    give err[string](value_r.error.code, value_r.error.message, value_r.error.context)
   }
-  give text.slice(0, i + 1)
+  let o: FormatOptions = FormatOptions(true, options.indent, options.canonical, options.preserve_comments, options.sort_keys)
+  give stringify(value_r.value, o)
 }
 
-proc trim(text: string) -> string {
-  give trim_right(trim_left(text))
-}
-
-proc split_key_value(line: string) -> YamlPair {
-  let i: int = 0
-  loop {
-    if i >= line.len { break }
-    if line.slice(i, i + 1) == ":" {
-      let k = trim(line.slice(0, i))
-      let v = trim(line.slice(i + 1, line.len))
-      give YamlPair(k, v)
-    }
-    i = i + 1
+proc format_compact(text: string, options: FormatOptions) -> YamlResult[string] {
+  let value_r: YamlResult[Value] = parse_text(text, default_parse_options())
+  when value_r is YamlResult.Err {
+    give err[string](value_r.error.code, value_r.error.message, value_r.error.context)
   }
-  give YamlPair("", "")
+  let o: FormatOptions = FormatOptions(false, options.indent, options.canonical, options.preserve_comments, options.sort_keys)
+  give stringify(value_r.value, o)
 }
 
-proc parse_line(line: string) -> YamlPair {
-  let l = trim(line)
-  if l.len == 0 { give YamlPair("", "") }
-  if starts_with(l, "#") { give YamlPair("", "") }
-  give split_key_value(l)
+proc query_path(value: Value, path: string) -> YamlResult[Value] {
+  let q: YamlResult[Value] = yaml_runtime_pkg.query_path_value(value, path)
+  when q is YamlResult.Err { give err[Value](q.error.code, q.error.message, q.error.context) }
+  give q
 }
 
-proc line_error(line: string) -> YamlError {
-  let l = trim_right(line)
-  if l.len == 0 { give YamlError.None }
-  if starts_with(trim_left(l), "#") { give YamlError.None }
-  if starts_with(l, " ") || starts_with(l, "\t") { give YamlError.Indentation }
-  let p = split_key_value(l)
-  if p.key.len == 0 && p.value.len == 0 { give YamlError.MissingColon }
-  if p.key.len == 0 { give YamlError.EmptyKey }
-  give YamlError.None
+proc patch(base: Value, patch_value: Value) -> YamlResult[Value] {
+  give ok[Value](yaml_runtime_pkg.patch_value(base, patch_value))
 }
 
-proc parse_lines(lines: [string]) -> YamlDoc {
-  let out: [YamlPair] = []
-  let i: int = 0
-  loop {
-    if i >= lines.len { break }
-    let err = line_error(lines[i])
-    if err == YamlError.None {
-      let p = parse_line(lines[i])
-      if p.key.len > 0 { out = out.push(p) }
-    }
-    i = i + 1
+proc merge(base: Value, overlay: Value) -> YamlResult[Value] {
+  give ok[Value](yaml_runtime_pkg.merge_value(base, overlay))
+}
+
+proc diff(before: Value, after: Value) -> YamlResult[Array] {
+  give ok[Array](yaml_runtime_pkg.diff_values(before, after))
+}
+
+proc from_record(entries: [ObjectEntry]) -> YamlResult[Value] {
+  give ok[Value](yaml_runtime_pkg.value_from_object(Object(entries)))
+}
+
+proc to_record(value: Value) -> YamlResult[[ObjectEntry]] {
+  let rr: YamlResult[[ObjectEntry]] = yaml_runtime_pkg.value_to_object_entries(value)
+  when rr is YamlResult.Err { give err[[ObjectEntry]](rr.error.code, rr.error.message, rr.error.context) }
+  give rr
+}
+
+proc parse_stream(chunk: string, state: StreamState, options: ParseOptions) -> YamlResult[StreamState] {
+  let next: StreamState = yaml_runtime_pkg.stream_ingest(chunk, state, options.max_bytes)
+  if next.backpressure {
+    give err[StreamState]("VITTE-Y0011", diagnostics_message("VITTE-Y0011"), "backpressure")
   }
-  give YamlDoc(out)
+  give ok[StreamState](next)
 }
 
-proc add(doc: YamlDoc, key: string, value: string) -> YamlDoc {
-  give YamlDoc(doc.pairs.push(YamlPair(key, value)))
-}
-
-proc get(doc: YamlDoc, key: string) -> string {
-  let i: int = 0
-  loop {
-    if i >= doc.pairs.len { break }
-    if doc.pairs[i].key == key { give doc.pairs[i].value }
-    i = i + 1
+proc write_stream(value: Value, state: StreamState, options: FormatOptions) -> YamlResult[string] {
+  if state.backpressure {
+    give err[string]("VITTE-Y0011", diagnostics_message("VITTE-Y0011"), "write_stream")
   }
-  give ""
+  give stringify(value, options)
 }
 
-proc has(doc: YamlDoc, key: string) -> bool {
-  give get(doc, key).len > 0
+proc api_version() -> string {
+  give "v1"
 }
 
-proc put(doc: YamlDoc, key: string, value: string) -> YamlDoc {
-  let out: [YamlPair] = []
-  let found = false
-  let i: int = 0
-  loop {
-    if i >= doc.pairs.len { break }
-    if doc.pairs[i].key == key {
-      out = out.push(YamlPair(key, value))
-      found = true
-    } else {
-      out = out.push(doc.pairs[i])
-    }
-    i = i + 1
+proc doctor_status() -> string {
+  give "vitte/yaml doctor:ready api=" + api_version()
+}
+
+proc quickfix_preview(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix: no-op"
   }
-  if !found { out = out.push(YamlPair(key, value)) }
-  give YamlDoc(out)
+  give diagnostics_quickfix(payload)
 }
 
-proc remove(doc: YamlDoc, key: string) -> YamlDoc {
-  let out: [YamlPair] = []
-  let i: int = 0
-  loop {
-    if i >= doc.pairs.len { break }
-    if doc.pairs[i].key != key { out = out.push(doc.pairs[i]) }
-    i = i + 1
+proc quickfix_apply(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix apply: no-op"
   }
-  give YamlDoc(out)
-}
-
-proc merge(base: YamlDoc, overlay: YamlDoc) -> YamlDoc {
-  let out = base
-  let i: int = 0
-  loop {
-    if i >= overlay.pairs.len { break }
-    out = put(out, overlay.pairs[i].key, overlay.pairs[i].value)
-    i = i + 1
-  }
-  give out
-}
-
-proc encode_line(p: YamlPair) -> string {
-  give p.key + ": " + p.value
-}
-
-proc encode_lines(doc: YamlDoc) -> [string] {
-  let out: [string] = []
-  let i: int = 0
-  loop {
-    if i >= doc.pairs.len { break }
-    out = out.push(encode_line(doc.pairs[i]))
-    i = i + 1
-  }
-  give out
-}
-
-proc stats(doc: YamlDoc) -> string {
-  give "pairs=" + doc.pairs.len.to_string()
+  give "quickfix apply: " + payload
 }
 
 proc ready() -> bool {
   give true
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/yaml"
+  give "vitte/yaml"
 }
 
 <<< ROLE-CONTRACT
@@ -204,8 +226,16 @@ owner: @vitte/data
 stability: stable
 since: 3.0.0
 deprecated_in: -
-role: Lecture ecriture YAML avec validation simple
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+role: facade publique YAML stable et additive
+input_contract: texte ou bytes YAML et options explicites profile-aware
+output_contract: Value/YamlResult stables avec diagnostics VITTE-Y****
+boundary: parsing, security, validation et perf dans vitte/yaml/internal/*
+versioning: additive-only, no breaking removals in stable
+api_surface_stable: true
+diagnostics: VITTE-Y0001..VITTE-Y0099
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: v1
+compat_layer: none
+removal_policy: major-only
 >>>

@@ -1,0 +1,8 @@
+use vitte/alloc as alloc
+
+entry main at profile/desktop_alloc {
+  let rt = alloc.with_canaries(alloc.stable_runtime_new(alloc.AllocatorKind.Global, 512), true)
+  let a = alloc.stable_alloc(rt, alloc.bytes(64), alloc.alignment(16), alloc.pool_id("desktop"))
+  if a.ok { return 0 }
+  return 1
+}

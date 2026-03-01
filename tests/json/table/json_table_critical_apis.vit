@@ -1,0 +1,25 @@
+<<<
+json_table_critical_apis.vit
+table-driven checks for vitte/json public APIs
+>>>
+
+use vitte/json as json_pkg
+
+entry main at core/app {
+  let opts: json_pkg.ParseOptions = json_pkg.default_parse_options()
+  let parsed: json_pkg.JsonResult[json_pkg.Value] = json_pkg.parse_text("[]", opts)
+  when parsed is json_pkg.JsonResult.Err { give 1 }
+
+  let schema: json_pkg.Schema = json_pkg.Schema("strict", [], true)
+  let valid: json_pkg.JsonResult[bool] = json_pkg.validate(parsed.value, schema)
+  when valid is json_pkg.JsonResult.Err { give 2 }
+
+  let q: json_pkg.JsonResult[json_pkg.Value] = json_pkg.query_path(parsed.value, "$")
+  when q is json_pkg.JsonResult.Err { give 3 }
+
+  let stream: json_pkg.StreamState = json_pkg.StreamState(0, false, false, "")
+  let step: json_pkg.JsonResult[json_pkg.StreamState] = json_pkg.parse_stream("{}", stream, opts)
+  when step is json_pkg.JsonResult.Err { give 4 }
+
+  give 0
+}

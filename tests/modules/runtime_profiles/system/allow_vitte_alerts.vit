@@ -1,0 +1,13 @@
+use vitte/alerts as alerts
+
+proc main() -> i32 {
+  let e0 = alerts.AlertEvent("k0", "src", "cpu", 95, 100, ["tenant:t1", "env:prod"], alerts.trace_id("tr"))
+  let e1 = alerts.AlertEvent("k1", "src", "cpu", 96, 101, ["tenant:t1", "env:prod"], alerts.trace_id("tr"))
+  let g = alerts.correlate_incidents([e0, e1])
+  if g.len == 0 { return 1 }
+  let q0 = alerts.quota_check([alerts.TenantQuota(alerts.tenant_id("tenant:t1"), 1, 0)], [], e0)
+  let q1 = alerts.quota_check([alerts.TenantQuota(alerts.tenant_id("tenant:t1"), 1, 0)], q0.states, e1)
+  if !q0.allowed { return 2 }
+  if q1.allowed { return 3 }
+  return 0
+}

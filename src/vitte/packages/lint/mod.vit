@@ -2,160 +2,184 @@
 mod.vit
 package vitte/lint
 >>>
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/lint; additive API only.
+# - No import-time side effects.
+# - Internal implementation in vitte/lint/internal/*.
+# - Diagnostics namespace: VITTE-I0001..VITTE-I0099.
 
 space vitte/lint
 
+use vitte/lint/internal/rules as lint_rules_pkg
+use vitte/lint/internal/engine as lint_engine_pkg
+use vitte/lint/internal/report as lint_report_pkg
+use vitte/lint/internal/policy as lint_policy_pkg
+use vitte/lint/internal/fix as lint_fix_pkg
 
-pick LintLevel {
+pick LintSeverity {
   Info
   Warning
   Error
 }
 
+pick LintError {
+  Failure(code: string, message: string, context: string)
+}
+
+pick LintResult[T] {
+  Ok(value: T)
+  Err(error: LintError)
+}
+
+form LintRule {
+  id: string
+  owner: string
+  pack: string
+  enabled: bool
+  doc_url: string
+  quickfix: string
+}
+
 form LintIssue {
   code: string
-  level: LintLevel
+  severity: LintSeverity
+  file: string
   line: int
   message: string
+  rule_id: string
+  quickfix: string
+}
+
+form QuickFix {
+  file: string
+  line: int
+  before: string
+  after: string
+  description: string
+}
+
+form LintConfig {
+  mode: string
+  explain: bool
+  max_latency_ms: int
+  baseline_file: string
+  allow_warnings: bool
+  cache_enabled: bool
 }
 
 form LintReport {
   issues: [LintIssue]
+  total: int
+  errors: int
+  warnings: int
+  infos: int
+  p95_ms: int
 }
 
-proc issue(code: string, level: LintLevel, line: int, message: string) -> LintIssue {
-  give LintIssue(code, level, line, message)
+proc ok[T](value: T) -> LintResult[T] {
+  give LintResult.Ok(value)
 }
 
-proc report_new() -> LintReport {
-  give LintReport([])
+proc err[T](code: string, message: string, context: string) -> LintResult[T] {
+  give LintResult.Err(LintError.Failure(code, message, context))
 }
 
-proc add_issue(r: LintReport, it: LintIssue) -> LintReport {
-  give LintReport(r.issues.push(it))
+proc diagnostics_message(code: string) -> string {
+  give lint_engine_pkg.diag_message(code)
 }
 
-proc level_name(level: LintLevel) -> string {
-  if level == LintLevel.Info { give "info" }
-  if level == LintLevel.Warning { give "warning" }
-  give "error"
+proc diagnostics_quickfix(code: string) -> string {
+  give lint_engine_pkg.quickfix_for(code)
 }
 
-proc run_lines(lines: [string]) -> LintReport {
-  let out = report_new()
-  let i: int = 0
-  loop {
-    if i >= lines.len { break }
-    let line = lines[i]
-    if line.len > 120 {
-      out = add_issue(out, issue("L001", LintLevel.Warning, i + 1, "line too long"))
-    }
-    if line.len > 0 && line.slice(0, 1) == "\t" {
-      out = add_issue(out, issue("L002", LintLevel.Info, i + 1, "tab indentation"))
-    }
-    if line.len > 0 && line.slice(line.len - 1, line.len) == " " {
-      out = add_issue(out, issue("L003", LintLevel.Warning, i + 1, "trailing space"))
-    }
-    i = i + 1
-  }
-  give out
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
 }
 
-proc count_level(r: LintReport, level: LintLevel) -> int {
-  let c: int = 0
-  let i: int = 0
-  loop {
-    if i >= r.issues.len { break }
-    if r.issues[i].level == level { c = c + 1 }
-    i = i + 1
-  }
-  give c
+proc default_config() -> LintConfig {
+  give LintConfig("fast", false, 50, "lint.baseline.json", true, true)
 }
 
-proc has_error(r: LintReport) -> bool {
-  give count_level(r, LintLevel.Error) > 0
+proc list_rules() -> [LintRule] {
+  give lint_rules_pkg.default_rules()
 }
 
-proc summary(r: LintReport) -> string {
-  give "issues=" + r.issues.len.to_string() +
-       ",warn=" + count_level(r, LintLevel.Warning).to_string() +
-       ",err=" + count_level(r, LintLevel.Error).to_string()
+proc enable_rule(rules: [LintRule], id: string) -> [LintRule] {
+  give lint_rules_pkg.enable_rule(rules, id)
 }
 
-proc filter_level(r: LintReport, level: LintLevel) -> [LintIssue] {
-  let out: [LintIssue] = []
-  let i: int = 0
-  loop {
-    if i >= r.issues.len { break }
-    if r.issues[i].level == level { out = out.push(r.issues[i]) }
-    i = i + 1
-  }
-  give out
+proc disable_rule(rules: [LintRule], id: string) -> [LintRule] {
+  give lint_rules_pkg.disable_rule(rules, id)
 }
 
-proc max_line(r: LintReport) -> int {
-  let m: int = 0
-  let i: int = 0
-  loop {
-    if i >= r.issues.len { break }
-    if r.issues[i].line > m { m = r.issues[i].line }
-    i = i + 1
-  }
-  give m
+proc lint_file(path: string, text: string, cfg: LintConfig) -> LintResult[LintReport] {
+  give lint_engine_pkg.lint_file(path, text, list_rules(), cfg)
 }
 
-proc has_code(r: LintReport, code: string) -> bool {
-  let i: int = 0
-  loop {
-    if i >= r.issues.len { break }
-    if r.issues[i].code == code { give true }
-    i = i + 1
-  }
-  give false
+proc lint_package(pkg: string, files: [string], cfg: LintConfig) -> LintResult[LintReport] {
+  give lint_engine_pkg.lint_package(pkg, files, list_rules(), cfg)
 }
 
-proc lint_health(r: LintReport) -> string {
-  if has_error(r) { give "error" }
-  if count_level(r, LintLevel.Warning) > 0 { give "warning" }
-  give "ok"
+proc lint_workspace(files: [string], cfg: LintConfig) -> LintResult[LintReport] {
+  give lint_engine_pkg.lint_workspace(files, list_rules(), cfg)
 }
 
-proc first_issue(r: LintReport) -> LintIssue {
-  if r.issues.len == 0 { give LintIssue("", LintLevel.Info, 0, "") }
-  give r.issues[0]
+proc report_json(report: LintReport) -> string {
+  give lint_report_pkg.report_json(report)
 }
 
-proc report_codes(r: LintReport) -> [string] {
-  let out: [string] = []
-  let i: int = 0
-  loop {
-    if i >= r.issues.len { break }
-    out = out.push(r.issues[i].code)
-    i = i + 1
-  }
-  give out
+proc report_sarif(report: LintReport) -> string {
+  give lint_report_pkg.report_sarif(report)
 }
 
-proc lint_diagnostics(r: LintReport) -> string {
-  give summary(r) +
-       ",max_line=" + max_line(r).to_string() +
-       ",health=" + lint_health(r)
+proc report_md(report: LintReport) -> string {
+  give lint_report_pkg.report_md(report)
+}
+
+proc quickfix_preview(path: string, text: string, cfg: LintConfig) -> LintResult[string] {
+  give lint_fix_pkg.quickfix_preview(path, text, cfg)
+}
+
+proc quickfix_apply(path: string, text: string, cfg: LintConfig) -> LintResult[string] {
+  give lint_fix_pkg.quickfix_apply(path, text, cfg)
+}
+
+proc policy_allows_ci_block(report: LintReport, cfg: LintConfig) -> bool {
+  give lint_policy_pkg.policy_allows_ci_block(report, cfg)
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc doctor_status() -> string {
+  give "vitte/lint doctor:ready api=" + api_version()
 }
 
 proc ready() -> bool {
   give true
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/lint"
+  give "vitte/lint"
 }
 
 <<< ROLE-CONTRACT
 package: vitte/lint
-role: Regles qualite style et diagnostics de code
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+owner: @vitte/qa
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: facade publique lint stable et additive
+input_contract: fichiers/rules/config explicites
+output_contract: LintResult/LintReport stables avec diagnostics VITTE-I****
+boundary: rules/engine/report/policy/fix dans vitte/lint/internal/*
+versioning: additive-only, no breaking removals in stable
+api_surface_stable: true
+diagnostics: VITTE-I0001..VITTE-I0099
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: v1
+compat_layer: none
+removal_policy: major-only
 >>>

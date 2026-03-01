@@ -1,0 +1,25 @@
+<<<
+test_table_critical_apis.vit
+table-driven checks for vitte/test public APIs
+>>>
+
+use vitte/test as test_pkg
+
+entry main at core/app {
+  let a: test_pkg.TestResult[test_pkg.TestCase] = test_pkg.assert_true("truth", true, "must be true")
+  when a is test_pkg.TestResult.Err { give 1 }
+
+  let s1: test_pkg.TestResult[bool] = test_pkg.snapshot_expect("snap", "x", "x", test_pkg.default_snapshot_config())
+  when s1 is test_pkg.TestResult.Err { give 2 }
+
+  let b: test_pkg.TestResult[string] = test_pkg.run_bench(test_pkg.default_bench_config())
+  when b is test_pkg.TestResult.Err { give 3 }
+
+  let f: test_pkg.TestResult[string] = test_pkg.run_fuzz(test_pkg.default_fuzz_config())
+  when f is test_pkg.TestResult.Err { give 4 }
+
+  let diff: string = test_pkg.snapshot_diff("a", "b")
+  if diff.len == 0 { give 5 }
+
+  give 0
+}

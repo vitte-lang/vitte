@@ -2,255 +2,405 @@
 mod.vit
 package vitte/db
 >>>
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/db; additive API only.
+# - No import-time side effects.
+# - Internal implementation in vitte/db/internal/*.
+# - Diagnostics namespace: VITTE-D0001..VITTE-D0099.
 
 space vitte/db
 
+use vitte/db/internal/runtime as db_runtime_pkg
 
 pick DbError {
-    None
-    InvalidDsn
-    NotConnected
-    PermissionDenied
-    NotFound
-    Conflict
+  Failure(code: string, message: string)
 }
 
-form Session {
-    dsn: string
-    connected: bool
-    readonly: bool
-    tx_depth: int
+pick DbResult[T] {
+  Ok(value: T)
+  Err(error: DbError)
 }
 
-form Query {
-    sql: string
-    args: [string]
-    limit: int
-    offset: int
+pick DbBindValue {
+  Null
+  Int(value: int)
+  Str(value: string)
+  Bool(value: bool)
+  Time(value: int)
+  Bytes(value: [int])
 }
 
-form QueryResult {
-    rows_affected: int
-    rows: [string]
-    error: DbError
+form DbConfig {
+  dsn: string
+  profile: string
+  timeout_ms: int
+  cancel_token: string
+  retry_backoff_ms: int
+  retry_budget: int
+  pool_min: int
+  pool_max: int
+  pool_idle_timeout_ms: int
+  pool_health_interval_ms: int
+  circuit_error_threshold: int
+  circuit_open_ms: int
 }
 
-proc starts_with(text: string, prefix: string) -> bool {
-    if text.len < prefix.len { give false }
-    give text.slice(0, prefix.len) == prefix
+form DbConn {
+  config: DbConfig
+  connected: bool
+  readonly: bool
+  pool_in_use: int
+  circuit_open: bool
+  queue_depth: int
+  latency_p50_ms: int
+  latency_p95_ms: int
+  error_count: int
+  retry_count: int
 }
 
-proc contains(text: string, needle: string) -> bool {
-    if needle.len == 0 { give true }
-    if text.len < needle.len { give false }
-    let i: int = 0
-    loop {
-        if i + needle.len > text.len { break }
-        if text.slice(i, i + needle.len) == needle { give true }
-        i = i + 1
-    }
-    give false
+form DbTx {
+  conn: DbConn
+  active: bool
+  committed: bool
+  rolled_back: bool
 }
 
-proc normalize_dsn(dsn: string) -> string {
-    if starts_with(dsn, "db://") { give dsn }
-    if dsn.len == 0 { give "" }
-    give "db://" + dsn
+form DbQuery {
+  sql: string
+  timeout_ms: int
+  cancel_token: string
 }
 
-proc open(dsn: string) -> Session {
-    let norm = normalize_dsn(dsn)
-    if norm.len == 0 {
-        give Session(norm, false, false, 0)
-    }
-    give Session(norm, true, false, 0)
+form DbStmt {
+  sql: string
+  prepared: bool
+  binds: [DbBindValue]
 }
 
-proc close(s: Session) -> Session {
-    give Session(s.dsn, false, s.readonly, 0)
+form DbRow {
+  columns: [string]
+  values: [DbBindValue]
 }
 
-proc set_readonly(s: Session, value: bool) -> Session {
-    give Session(s.dsn, s.connected, value, s.tx_depth)
+form DbRows {
+  rows: [DbRow]
+  rows_affected: int
 }
 
-proc begin_tx(s: Session) -> Session {
-    if !s.connected { give s }
-    give Session(s.dsn, s.connected, s.readonly, s.tx_depth + 1)
+form MigrationState {
+  current_version: int
+  lock_held: bool
+  checksums: [string]
 }
 
-proc commit_tx(s: Session) -> Session {
-    if s.tx_depth <= 0 { give s }
-    give Session(s.dsn, s.connected, s.readonly, s.tx_depth - 1)
+proc ok[T](value: T) -> DbResult[T] {
+  give DbResult.Ok(value)
 }
 
-proc rollback_tx(s: Session) -> Session {
-    if s.tx_depth <= 0 { give s }
-    give Session(s.dsn, s.connected, s.readonly, s.tx_depth - 1)
+proc err[T](code: string, message: string) -> DbResult[T] {
+  give DbResult.Err(DbError.Failure(code, message))
 }
 
-proc can_write(s: Session) -> bool {
-    give s.connected && !s.readonly
+proc assert_or_err(condition: bool, code: string, message: string) -> DbResult[bool] {
+  if condition { give DbResult.Ok(true) }
+  give DbResult.Err(DbError.Failure(code, message))
 }
 
-proc in_tx(s: Session) -> bool {
-    give s.tx_depth > 0
+proc panic_guard[T](r: DbResult[T], fallback: T) -> T {
+  when r is DbResult.Ok { give r.value }
+  give fallback
 }
 
-proc is_mutation(sql: string) -> bool {
-    if starts_with(sql, "INSERT") { give true }
-    if starts_with(sql, "UPDATE") { give true }
-    if starts_with(sql, "DELETE") { give true }
-    if starts_with(sql, "CREATE") { give true }
-    if starts_with(sql, "DROP") { give true }
-    give false
+proc diagnostics_message(code: string) -> string {
+  give db_runtime_pkg.diag_message(code)
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  give db_runtime_pkg.quickfix_for(code)
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc default_config() -> DbConfig {
+  give DbConfig("", "desktop", 2000, "", 50, 3, 1, 8, 10000, 5000, 5, 1000)
+}
+
+proc connect(config: DbConfig) -> DbResult[DbConn] {
+  let dsn: string = db_runtime_pkg.normalize_dsn(config.dsn)
+  if dsn.len == 0 {
+    give DbResult.Err(DbError.Failure("VITTE-D0001", diagnostics_message("VITTE-D0001")))
+  }
+  if db_runtime_pkg.profile_allows(config.profile) == false {
+    give DbResult.Err(DbError.Failure("VITTE-D0009", diagnostics_message("VITTE-D0009")))
+  }
+  if config.pool_min > config.pool_max {
+    give DbResult.Err(DbError.Failure("VITTE-D0007", diagnostics_message("VITTE-D0007")))
+  }
+  let cfg: DbConfig = DbConfig(
+    dsn,
+    config.profile,
+    config.timeout_ms,
+    config.cancel_token,
+    config.retry_backoff_ms,
+    config.retry_budget,
+    config.pool_min,
+    config.pool_max,
+    config.pool_idle_timeout_ms,
+    config.pool_health_interval_ms,
+    config.circuit_error_threshold,
+    config.circuit_open_ms
+  )
+  give DbResult.Ok(DbConn(cfg, true, false, 0, false, 0, 1, 2, 0, 0))
+}
+
+proc ping(conn: DbConn) -> DbResult[bool] {
+  if conn.connected == false {
+    give DbResult.Err(DbError.Failure("VITTE-D0002", diagnostics_message("VITTE-D0002")))
+  }
+  if conn.circuit_open {
+    give DbResult.Err(DbError.Failure("VITTE-D0006", diagnostics_message("VITTE-D0006")))
+  }
+  give DbResult.Ok(true)
+}
+
+proc close(conn: DbConn) -> DbConn {
+  give DbConn(conn.config, false, conn.readonly, 0, conn.circuit_open, conn.queue_depth, conn.latency_p50_ms, conn.latency_p95_ms, conn.error_count, conn.retry_count)
+}
+
+proc query(sql: string) -> DbQuery {
+  give DbQuery(sql, 2000, "")
+}
+
+proc query_with_timeout(q: DbQuery, timeout_ms: int) -> DbQuery {
+  give DbQuery(q.sql, timeout_ms, q.cancel_token)
+}
+
+proc query_with_cancel(q: DbQuery, token: string) -> DbQuery {
+  give DbQuery(q.sql, q.timeout_ms, token)
+}
+
+proc prepare(sql: string) -> DbStmt {
+  give DbStmt(sql, true, [])
+}
+
+proc bind_int(stmt: DbStmt, value: int) -> DbStmt {
+  give DbStmt(stmt.sql, stmt.prepared, stmt.binds.push(DbBindValue.Int(value)))
+}
+
+proc bind_string(stmt: DbStmt, value: string) -> DbStmt {
+  give DbStmt(stmt.sql, stmt.prepared, stmt.binds.push(DbBindValue.Str(value)))
+}
+
+proc bind_bool(stmt: DbStmt, value: bool) -> DbStmt {
+  give DbStmt(stmt.sql, stmt.prepared, stmt.binds.push(DbBindValue.Bool(value)))
+}
+
+proc bind_time(stmt: DbStmt, value: int) -> DbStmt {
+  give DbStmt(stmt.sql, stmt.prepared, stmt.binds.push(DbBindValue.Time(value)))
+}
+
+proc bind_bytes(stmt: DbStmt, value: [int]) -> DbStmt {
+  give DbStmt(stmt.sql, stmt.prepared, stmt.binds.push(DbBindValue.Bytes(value)))
+}
+
+proc bind_null(stmt: DbStmt) -> DbStmt {
+  give DbStmt(stmt.sql, stmt.prepared, stmt.binds.push(DbBindValue.Null))
 }
 
 proc is_select(sql: string) -> bool {
-    give starts_with(sql, "SELECT")
+  give db_runtime_pkg.is_select_sql(sql)
 }
 
-proc sanitize_sql(sql: string) -> string {
-    if contains(sql, ";") { give "" }
-    if contains(sql, "--") { give "" }
-    give sql
+proc is_mutation(sql: string) -> bool {
+  give db_runtime_pkg.is_mutation_sql(sql)
 }
 
-proc query(sql: string) -> Query {
-    give Query(sql, [], 100, 0)
+proc execute_prepared(conn: DbConn, stmt: DbStmt, timeout_ms: int, cancel_token: string) -> DbResult[DbRows] {
+  let code: string = db_runtime_pkg.execute_prepared_error_code(
+    conn.connected,
+    stmt.prepared,
+    db_runtime_pkg.is_safe_sql(stmt.sql),
+    timeout_ms,
+    cancel_token,
+    conn.pool_in_use,
+    conn.config.pool_max
+  )
+  if code.len > 0 {
+    give DbResult.Err(DbError.Failure(code, diagnostics_message(code)))
+  }
+
+  if db_runtime_pkg.is_select_sql(stmt.sql) {
+    let row: DbRow = DbRow(["id", "name", "nullable_note"], [DbBindValue.Int(1), DbBindValue.Str("ok"), DbBindValue.Null])
+    give DbResult.Ok(DbRows([row], 1))
+  }
+  if db_runtime_pkg.is_mutation_sql(stmt.sql) {
+    give DbResult.Ok(DbRows([], 1))
+  }
+  give DbResult.Ok(DbRows([], 0))
 }
 
-proc with_arg(q: Query, arg: string) -> Query {
-    let args = q.args.push(arg)
-    give Query(q.sql, args, q.limit, q.offset)
+proc query_one(conn: DbConn, stmt: DbStmt, timeout_ms: int, cancel_token: string) -> DbResult[DbRow] {
+  let rows: DbResult[DbRows] = execute_prepared(conn, stmt, timeout_ms, cancel_token)
+  when rows is DbResult.Err { give DbResult.Err(rows.error) }
+  if rows.value.rows.len <= 0 {
+    give DbResult.Err(DbError.Failure("VITTE-D0002", "no row"))
+  }
+  give DbResult.Ok(rows.value.rows[0])
 }
 
-proc with_limit(q: Query, limit: int) -> Query {
-    let lim = limit
-    if lim < 1 { lim = 1 }
-    if lim > 1000 { lim = 1000 }
-    give Query(q.sql, q.args, lim, q.offset)
+proc query_many(conn: DbConn, stmt: DbStmt, timeout_ms: int, cancel_token: string) -> DbResult[DbRows] {
+  give execute_prepared(conn, stmt, timeout_ms, cancel_token)
 }
 
-proc with_offset(q: Query, offset: int) -> Query {
-    let off = offset
-    if off < 0 { off = 0 }
-    give Query(q.sql, q.args, q.limit, off)
+proc exec(conn: DbConn, stmt: DbStmt, timeout_ms: int, cancel_token: string) -> DbResult[int] {
+  let rows: DbResult[DbRows] = execute_prepared(conn, stmt, timeout_ms, cancel_token)
+  when rows is DbResult.Err { give DbResult.Err(rows.error) }
+  give DbResult.Ok(rows.value.rows_affected)
 }
 
-proc render_query(q: Query) -> string {
-    let sql = sanitize_sql(q.sql)
-    if sql.len == 0 { give "" }
-    give sql + " LIMIT " + q.limit.to_string() + " OFFSET " + q.offset.to_string()
+proc begin(conn: DbConn) -> DbResult[DbTx] {
+  let code: string = db_runtime_pkg.tx_begin_error_code(conn.connected)
+  if code.len > 0 {
+    give DbResult.Err(DbError.Failure(code, diagnostics_message(code)))
+  }
+  give DbResult.Ok(DbTx(conn, true, false, false))
 }
 
-proc exec(s: Session, sql: string) -> int {
-    let clean = sanitize_sql(sql)
-    if clean.len == 0 { give 0 }
-    if !s.connected { give 0 }
-    if s.readonly && is_mutation(clean) { give 0 }
-    if clean.len == 0 { give 0 }
-    give 1
+proc commit(tx: DbTx) -> DbResult[DbTx] {
+  let code: string = db_runtime_pkg.tx_transition_error_code(tx.active, tx.committed, tx.rolled_back)
+  if code.len > 0 {
+    give DbResult.Err(DbError.Failure(code, diagnostics_message(code)))
+  }
+  give DbResult.Ok(DbTx(tx.conn, false, true, false))
 }
 
-proc query_one(s: Session, sql: string) -> string {
-    let clean = sanitize_sql(sql)
-    if clean.len == 0 { give "" }
-    if !s.connected { give "" }
-    if !is_select(clean) { give "" }
-    give "{\"row\":1}"
+proc rollback(tx: DbTx) -> DbResult[DbTx] {
+  let code: string = db_runtime_pkg.tx_transition_error_code(tx.active, tx.committed, tx.rolled_back)
+  if code.len > 0 {
+    give DbResult.Err(DbError.Failure(code, diagnostics_message(code)))
+  }
+  give DbResult.Ok(DbTx(tx.conn, false, false, true))
 }
 
-proc run_query(s: Session, q: Query) -> QueryResult {
-    if !s.connected { give QueryResult(0, [], DbError.NotConnected) }
-    let sql = render_query(q)
-    if sql.len == 0 { give QueryResult(0, [], DbError.Conflict) }
-
-    if is_mutation(sql) {
-        if !can_write(s) { give QueryResult(0, [], DbError.PermissionDenied) }
-        give QueryResult(1, [], DbError.None)
-    }
-
-    if is_select(sql) {
-        let rows: [string] = ["{\"id\":1}", "{\"id\":2}"]
-        give QueryResult(rows.len, rows, DbError.None)
-    }
-    give QueryResult(0, [], DbError.NotFound)
+proc map_row_nullable(row: DbRow, index: int) -> DbResult[DbBindValue] {
+  if index < 0 || index >= row.values.len {
+    give DbResult.Err(DbError.Failure("VITTE-D0002", "column out of range"))
+  }
+  give DbResult.Ok(row.values[index])
 }
 
-proc run_batch(s: Session, queries: [Query]) -> QueryResult {
-    if !s.connected { give QueryResult(0, [], DbError.NotConnected) }
-    let total: int = 0
-    let all_rows: [string] = []
-    let i: int = 0
-    loop {
-        if i >= queries.len { break }
-        let res = run_query(s, queries[i])
-        if res.error != DbError.None { give QueryResult(total, all_rows, res.error) }
-        total = total + res.rows_affected
-
-        let j: int = 0
-        loop {
-            if j >= res.rows.len { break }
-            all_rows = all_rows.push(res.rows[j])
-            j = j + 1
-        }
-        i = i + 1
-    }
-    give QueryResult(total, all_rows, DbError.None)
+proc migration_lock(state: MigrationState) -> DbResult[MigrationState] {
+  if state.lock_held {
+    give DbResult.Err(DbError.Failure("VITTE-D0008", diagnostics_message("VITTE-D0008")))
+  }
+  give DbResult.Ok(MigrationState(state.current_version, true, state.checksums))
 }
 
-proc tx_state(s: Session) -> string {
-    if !s.connected { give "disconnected" }
-    if s.tx_depth <= 0 { give "idle" }
-    if s.tx_depth == 1 { give "in_tx" }
-    give "nested_tx"
+proc migration_unlock(state: MigrationState) -> MigrationState {
+  give MigrationState(state.current_version, false, state.checksums)
 }
 
-proc ensure_connected(s: Session) -> DbError {
-    if !s.connected { give DbError.NotConnected }
-    if s.dsn.len == 0 { give DbError.InvalidDsn }
-    give DbError.None
+proc migration_apply(state: MigrationState, next_version: int, checksum: string) -> DbResult[MigrationState] {
+  if state.lock_held == false {
+    give DbResult.Err(DbError.Failure("VITTE-D0008", diagnostics_message("VITTE-D0008")))
+  }
+  if next_version <= state.current_version {
+    give DbResult.Err(DbError.Failure("VITTE-D0008", diagnostics_message("VITTE-D0008")))
+  }
+  let checksums: [string] = state.checksums.push(checksum)
+  give DbResult.Ok(MigrationState(next_version, true, checksums))
 }
 
-proc upsert(s: Session, table: string, key: string, value: string) -> QueryResult {
-    if ensure_connected(s) != DbError.None { give QueryResult(0, [], ensure_connected(s)) }
-    if table.len == 0 || key.len == 0 { give QueryResult(0, [], DbError.Conflict) }
-    if !can_write(s) { give QueryResult(0, [], DbError.PermissionDenied) }
-    let q = query("UPSERT " + table + " key=? value=?")
-    let q1 = with_arg(q, key)
-    let q2 = with_arg(q1, value)
-    give run_query(s, q2)
+proc migration_compat_check(old_state: MigrationState, new_state: MigrationState) -> DbResult[bool] {
+  if new_state.current_version < old_state.current_version {
+    give DbResult.Err(DbError.Failure("VITTE-D0008", diagnostics_message("VITTE-D0008")))
+  }
+  give DbResult.Ok(true)
 }
 
-proc diagnose(s: Session, sql: string) -> DbError {
-    if s.dsn.len == 0 { give DbError.InvalidDsn }
-    if !s.connected { give DbError.NotConnected }
-    let clean = sanitize_sql(sql)
-    if clean.len == 0 { give DbError.Conflict }
-    if s.readonly && is_mutation(clean) { give DbError.PermissionDenied }
-    if is_select(clean) && clean.len < 7 { give DbError.NotFound }
-    give DbError.None
+proc structured_query_log(sql: string, binds: [DbBindValue], latency_ms: int, ok: bool) -> string {
+  let binds_count: int = binds.len
+  let safe_sql: string = sql
+  if db_runtime_pkg.contains(sql, "password") || db_runtime_pkg.contains(sql, "token") {
+    safe_sql = db_runtime_pkg.redact_secret(sql)
+  }
+  let ok_text: string = "false"
+  if ok { ok_text = "true" }
+  give "{\"sql\":\"" + safe_sql + "\",\"binds\":" + binds_count.to_string() + ",\"latency_ms\":" + latency_ms.to_string() + ",\"ok\":" + ok_text + "}"
+}
+
+proc observe(conn: DbConn, latency_ms: int, error_happened: bool, retry_happened: bool) -> DbConn {
+  let p50: int = conn.latency_p50_ms
+  let p95: int = conn.latency_p95_ms
+  if p50 == 0 || latency_ms < p50 { p50 = latency_ms }
+  if latency_ms > p95 { p95 = latency_ms }
+  let ec: int = conn.error_count
+  let rc: int = conn.retry_count
+  if error_happened { ec = ec + 1 }
+  if retry_happened { rc = rc + 1 }
+  let circuit: bool = ec >= conn.config.circuit_error_threshold
+  give DbConn(conn.config, conn.connected, conn.readonly, conn.pool_in_use, circuit, conn.queue_depth, p50, p95, ec, rc)
+}
+
+proc pool_checkout(conn: DbConn) -> DbResult[DbConn] {
+  if conn.pool_in_use >= conn.config.pool_max {
+    give DbResult.Err(DbError.Failure("VITTE-D0007", diagnostics_message("VITTE-D0007")))
+  }
+  give DbResult.Ok(DbConn(conn.config, conn.connected, conn.readonly, conn.pool_in_use + 1, conn.circuit_open, conn.queue_depth, conn.latency_p50_ms, conn.latency_p95_ms, conn.error_count, conn.retry_count))
+}
+
+proc pool_release(conn: DbConn) -> DbConn {
+  let in_use: int = conn.pool_in_use
+  if in_use > 0 { in_use = in_use - 1 }
+  give DbConn(conn.config, conn.connected, conn.readonly, in_use, conn.circuit_open, conn.queue_depth, conn.latency_p50_ms, conn.latency_p95_ms, conn.error_count, conn.retry_count)
+}
+
+proc analyze_report_json_stub() -> string {
+  give "{\"package\":\"vitte/db\",\"diag_namespace\":\"VITTE-D****\",\"status\":\"ok\"}"
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc doctor_status() -> string {
+  give "vitte/db doctor:ready api=" + api_version()
+}
+
+proc quickfix_preview(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix: no-op"
+  }
+  give diagnostics_quickfix(payload)
+}
+
+proc quickfix_apply(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix apply: no-op"
+  }
+  give "quickfix apply: " + payload
 }
 
 proc ready() -> bool {
-    give true
+  give true
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/db"
+  give "vitte/db"
 }
 
 <<< ROLE-CONTRACT
 package: vitte/db
-owner: @vitte/db
-stability: stable
-since: 2.0.0
-deprecated_in: -
-role: Abstraction base de donnees et sessions
-input_contract: Commandes et schemas de donnees valides cote metier
-output_contract: Resultats de persistence coherents avec le contrat schema
-boundary: Ne contient pas les regles metier de l application
+role: Façade DB stable (connect/query/tx/pool/migrations/observability)
+input_contract: DSN/config/query prepared + binds typés
+output_contract: Resultats DbResult codifiés + diagnostics stables VITTE-D****
+boundary: implementation privée sous vitte/db/internal/*
+versioning: API facade stable, additive only
+api_surface_stable: true
+diagnostics: VITTE-D0001..VITTE-D0099
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: v1
 >>>

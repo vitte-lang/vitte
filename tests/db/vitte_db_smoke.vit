@@ -1,0 +1,19 @@
+<<<
+vitte_db_smoke.vit
+smoke for vitte/db facade
+>>>
+
+use vitte/db as db_pkg
+
+entry main at core/app {
+  let cfg: db_pkg.DbConfig = db_pkg.default_config()
+  let conn: db_pkg.DbResult[db_pkg.DbConn] = db_pkg.connect(cfg)
+  when conn is db_pkg.DbResult.Err {
+    give 1
+  }
+  let p: db_pkg.DbResult[bool] = db_pkg.ping(conn.value)
+  when p is db_pkg.DbResult.Err {
+    give 2
+  }
+  give 0
+}

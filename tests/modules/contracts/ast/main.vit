@@ -1,0 +1,59 @@
+use vitte/ast as ast
+
+proc main() -> i32 {
+  if !ast.ready() || !ast.stable_ready() { return 1 }
+  if ast.package_meta() != "vitte/ast" || ast.stable_package_meta() != "vitte/ast" { return 2 }
+  if ast.api_version().len == 0 || ast.stable_api_surface().len == 0 { return 3 }
+
+  let m0 = ast.stable_set_budget(ast.stable_new("m"), 256, 32)
+  let m1 = ast.stable_add_node(m0, ast.ast_node_with_links(0, ast.AstKind.Module, "root", "", -1, [1, 2], ast.ast_span(0, 1)))
+  let m2 = ast.stable_add_node(m1, ast.ast_node_with_links(1, ast.AstKind.Let, "x", "1", 0, [], ast.ast_span(2, 3)))
+  let m3 = ast.stable_add_node(m2, ast.ast_node_with_links(2, ast.AstKind.Call, "f", "", 0, [], ast.ast_span(4, 5)))
+
+  let v0 = ast.stable_validate_tree(m3)
+  if !v0.ok || v0.error != ast.AstError.None { return 4 }
+
+  let mxd = ast.max_depth(m3)
+  let mxc = ast.max_children(m3)
+  let mxn = ast.max_nodes(m3)
+  if mxd < 2 || mxc < 2 || mxn < 3 { return 5 }
+
+  let sf = ast.suggest_fold_limit(m3, 0)
+  let st = ast.suggest_traversal_budget(m3, 0)
+  let sp = ast.suggest_prune_depth(m3, 99)
+  if sf < 3 || st < 3 || sp < 1 { return 6 }
+
+  let pre = ast.stable_walk_preorder(m3)
+  let post = ast.stable_walk_postorder(m3)
+  let bfs = ast.stable_walk_bfs(m3)
+  if pre.len == 0 || post.len == 0 || bfs.len == 0 { return 7 }
+
+  let m4 = ast.stable_rewrite(m3, "1", "rewritten")
+  let m5 = ast.stable_filter_nodes(m4, ast.AstKind.Call)
+  let m5b = ast.stable_map_nodes(m5)
+  let m6 = ast.stable_normalize(m5b)
+
+  let ms = ast.stable_metrics(m6)
+  if ms.node_count <= 0 || ms.leaf_count <= 0 || ms.depth <= 0 || ms.alloc_estimate <= 0 { return 8 }
+  if ms.transform_ops <= 0 { return 9 }
+
+  let lit = ast.find_by_name(m6, "x")
+  if lit.id < 0 { return 10 }
+
+  let n1 = ast.try_find_by_id(m6, 999)
+  if n1.ok || n1.error != ast.AstError.UnknownNode { return 11 }
+
+  let p1 = ast.experimental_property_tree_integrity(4, 8)
+  let p2 = ast.experimental_property_normalize_stability(4, 8)
+  if !p1.ok || !p2.ok { return 12 }
+
+  let fz = ast.experimental_fuzz_tree_matrix(11, 48)
+  if !fz.ok { return 13 }
+
+  let bn = ast.experimental_bench_traversal(3, 16)
+  if bn.p95 < bn.p50 || bn.p99 < bn.p95 || bn.throughput <= 0 { return 14 }
+
+  if ast.ast_error_name(ast.AstError.DuplicateId).len == 0 { return 15 }
+
+  return 0
+}

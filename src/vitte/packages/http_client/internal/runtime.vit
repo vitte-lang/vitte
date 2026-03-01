@@ -1,0 +1,139 @@
+<<<
+runtime.vit
+package vitte/http_client/internal/runtime
+>>>
+# Internal runtime helpers for vitte/http_client.
+
+space vitte/http_client/internal/runtime
+
+proc starts_with(s: string, p: string) -> bool {
+  if s.len < p.len { give false }
+  give s.slice(0, p.len) == p
+}
+
+proc contains(text: string, needle: string) -> bool {
+  if needle.len == 0 { give true }
+  if text.len < needle.len { give false }
+  let i: int = 0
+  loop {
+    if i + needle.len > text.len { break }
+    if text.slice(i, i + needle.len) == needle { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc is_https(url: string) -> bool {
+  if url.len < 8 { give false }
+  give url.slice(0, 8) == "https://"
+}
+
+proc host(url: string) -> string {
+  if !is_https(url) { give "" }
+  let i: int = 8
+  loop {
+    if i >= url.len { break }
+    if url.slice(i, i + 1) == "/" {
+      give url.slice(8, i)
+    }
+    i = i + 1
+  }
+  give url.slice(8, url.len)
+}
+
+proc is_private_host(host: string) -> bool {
+  if host == "localhost" { give true }
+  if starts_with(host, "127.") { give true }
+  if starts_with(host, "10.") { give true }
+  if starts_with(host, "192.168.") { give true }
+  if starts_with(host, "172.16.") { give true }
+  give false
+}
+
+proc redact_sensitive(value: string) -> string {
+  if value.len == 0 { give "" }
+  give "***"
+}
+
+proc diag_message(code: string) -> string {
+  if code == "VITTE-C0001" { give "invalid URL" }
+  if code == "VITTE-C0002" { give "insecure transport/TLS policy" }
+  if code == "VITTE-C0003" { give "SSRF private host denied" }
+  if code == "VITTE-C0004" { give "timeout/cancelled" }
+  if code == "VITTE-C0005" { give "retry budget exhausted" }
+  if code == "VITTE-C0006" { give "circuit breaker open" }
+  if code == "VITTE-C0007" { give "connection pool exhausted" }
+  if code == "VITTE-C0008" { give "unsafe redirect blocked" }
+  if code == "VITTE-C0009" { give "header injection blocked" }
+  give "unknown diagnostic"
+}
+
+proc quickfix_for(code: string) -> string {
+  if code == "VITTE-C0001" { give "ensure https:// URL and valid host" }
+  if code == "VITTE-C0002" { give "enable strict TLS, disable insecure mode" }
+  if code == "VITTE-C0003" { give "add explicit allowlist host" }
+  if code == "VITTE-C0004" { give "increase timeout or clear cancel token" }
+  if code == "VITTE-C0005" { give "increase retry budget/backoff" }
+  if code == "VITTE-C0006" { give "wait circuit half-open window" }
+  if code == "VITTE-C0007" { give "increase pool max_per_host" }
+  if code == "VITTE-C0008" { give "limit redirects to same-origin/https" }
+  if code == "VITTE-C0009" { give "sanitize header values" }
+  give "no quick-fix"
+}
+
+proc validate_request_code(url: string, strict_tls: bool, allow_private_hosts: bool, cancel_token: string, profile: string) -> string {
+  if is_https(url) == false { give "VITTE-C0001" }
+  if strict_tls == false { give "VITTE-C0002" }
+  let h: string = host(url)
+  if is_private_host(h) && allow_private_hosts == false { give "VITTE-C0003" }
+  if contains(url, "\n") || contains(url, "\r") { give "VITTE-C0009" }
+  if cancel_token == "cancelled" { give "VITTE-C0004" }
+  if profile == "core" { give "VITTE-C0002" }
+  give ""
+}
+
+proc pool_checkout_next(in_use: int, max_per_host: int) -> int {
+  if in_use >= max_per_host { give -1 }
+  give in_use + 1
+}
+
+proc pool_release_next(in_use: int) -> int {
+  if in_use <= 0 { give 0 }
+  give in_use - 1
+}
+
+proc circuit_check_code(open: bool) -> string {
+  if open { give "VITTE-C0006" }
+  give ""
+}
+
+proc retry_decision(attempt: int, max_retries: int, idempotent_only: bool, request_is_idempotent: bool, status: int) -> bool {
+  if attempt >= max_retries { give false }
+  if idempotent_only && request_is_idempotent == false { give false }
+  if status == 429 { give true }
+  if status >= 500 { give true }
+  give false
+}
+
+proc next_retry_elapsed(elapsed_ms: int, base_delay_ms: int, jitter_ms: int) -> int {
+  give elapsed_ms + base_delay_ms + jitter_ms
+}
+
+proc observe_p50(prev: int, elapsed_ms: int) -> int {
+  if prev == 0 || elapsed_ms < prev { give elapsed_ms }
+  give prev
+}
+
+proc observe_p95(prev: int, elapsed_ms: int) -> int {
+  if elapsed_ms > prev { give elapsed_ms }
+  give prev
+}
+
+proc observe_errors(prev: int, error_happened: bool) -> int {
+  if error_happened { give prev + 1 }
+  give prev
+}
+
+proc circuit_open_from_errors(errors: int, threshold: int) -> bool {
+  give errors >= threshold
+}

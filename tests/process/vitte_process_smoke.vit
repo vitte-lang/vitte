@@ -1,0 +1,13 @@
+space tests/process/vitte_process_smoke
+
+use vitte/process as process_pkg
+
+entry main at tests/process/smoke {
+  let cfg0: process_pkg.ProcessConfig = process_pkg.default_config("vitte")
+  let cfg1: process_pkg.ProcessConfig = process_pkg.with_cwd(cfg0, "/workspace/project")
+  let out: process_pkg.ProcessResult[process_pkg.ProcessOutput] = process_pkg.run(cfg1)
+  when out is process_pkg.ProcessResult.Ok {
+    if out.value.exit_code == 0 { give 0 }
+  }
+  give 1
+}

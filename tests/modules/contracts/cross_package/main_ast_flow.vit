@@ -1,0 +1,30 @@
+use vitte/ast as ast
+use vitte/typeck as typeck
+use vitte/codegen as codegen
+
+proc main() -> i32 {
+  if !ast.ready() || !typeck.ready() || !codegen.ready() { return 1 }
+
+  let m0 = ast.stable_new("cross")
+  let m1 = ast.stable_add_node(m0, ast.ast_node_with_links(0, ast.AstKind.Module, "root", "", -1, [1], ast.ast_span(0, 1)))
+  let m2 = ast.stable_add_node(m1, ast.ast_node_with_links(1, ast.AstKind.Let, "x", "1", 0, [], ast.ast_span(2, 3)))
+  let mv = ast.stable_validate_tree(m2)
+  if !mv.ok { return 2 }
+
+  let env0 = typeck.env_new()
+  let env1 = typeck.add_symbol(env0, "x", typeck.TypeKind.Int)
+  if !typeck.validate_env(env1) { return 3 }
+
+  let xk = typeck.lookup(env1, "x")
+  if xk != typeck.TypeKind.Int { return 4 }
+
+  let req0 = codegen.request("cross", "native", 2, codegen.Backend.Llvm)
+  let req1 = codegen.with_emit_asm(req0, true)
+  if !codegen.validate(req1) { return 5 }
+  if codegen.output_basename(req1).len == 0 { return 6 }
+
+  let budget = ast.suggest_traversal_budget(m2, 0)
+  if budget < 2 { return 7 }
+
+  return 0
+}

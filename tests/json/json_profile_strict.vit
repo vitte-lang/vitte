@@ -1,0 +1,23 @@
+<<<
+json_profile_strict.vit
+profile aware json checks
+>>>
+
+use vitte/json as json_pkg
+
+entry main at core/app {
+  let opts: json_pkg.ParseOptions = json_pkg.default_parse_options()
+  let strict_opts: json_pkg.ParseOptions = json_pkg.ParseOptions(
+    opts.max_bytes,
+    opts.max_depth,
+    opts.max_nodes,
+    true,
+    true,
+    "core"
+  )
+  let out: json_pkg.JsonResult[json_pkg.Value] = json_pkg.parse_text("true", strict_opts)
+  when out is json_pkg.JsonResult.Err {
+    give 1
+  }
+  give 0
+}

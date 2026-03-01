@@ -2,11 +2,17 @@
 mod.vit
 package vitte/http_client
 >>>
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/http_client; additive API only.
+# - No import-time side effects.
+# - Internal implementation in vitte/http_client/internal/*.
+# - Diagnostics namespace: VITTE-C0001..VITTE-C0099.
 
 space vitte/http_client
 
+use vitte/http_client/internal/runtime as http_client_runtime_pkg
 
-pick Method {
+pick ClientMethod {
   Get
   Post
   Put
@@ -14,258 +20,346 @@ pick Method {
   Delete
 }
 
-form Request {
-  method: Method
-  url: string
-  body: string
-  timeout_ms: int
-  auth: string
+pick ClientError {
+  Failure(code: string, message: string)
 }
 
-form Response {
-  status: int
-  body: string
-  elapsed_ms: int
+pick ClientResult[T] {
+  Ok(value: T)
+  Err(error: ClientError)
 }
 
-form Header {
+form ClientHeader {
   key: string
   value: string
+}
+
+form ClientHeaders {
+  values: [ClientHeader]
 }
 
 form RetryPolicy {
   max_retries: int
   base_delay_ms: int
-  retry_on_429: bool
-  retry_on_5xx: bool
+  jitter_ms: int
+  idempotent_only: bool
+}
+
+form CircuitState {
+  open: bool
+  failures: int
+  threshold: int
+  open_ms: int
+}
+
+form ClientPool {
+  max_per_host: int
+  in_use: int
+  idle_timeout_ms: int
+  dns_ttl_ms: int
 }
 
 form ClientConfig {
   connect_timeout_ms: int
   read_timeout_ms: int
-  user_agent: string
+  write_timeout_ms: int
+  header_timeout_ms: int
+  body_timeout_ms: int
+  cancel_token: string
+  strict_tls: bool
+  allow_private_hosts: bool
+  follow_redirects: bool
+  max_redirects: int
+  profile: string
 }
 
-pick ClientError {
-  None
-  InvalidUrl
-  InsecureUrl
-  Timeout
-  Unauthorized
-  BadRequest
-  TooManyRequests
-  ServerError
+form ClientRequest {
+  method: ClientMethod
+  url: string
+  headers: ClientHeaders
+  body: string
 }
 
-proc get(url: string) -> Request {
-  give Request(Method.Get, url, "", 1500, "")
+form ClientResponse {
+  status: int
+  reason: string
+  headers: ClientHeaders
+  body: string
+  elapsed_ms: int
 }
 
-proc post(url: string, body: string) -> Request {
-  give Request(Method.Post, url, body, 1500, "")
+form ClientState {
+  cfg: ClientConfig
+  retry: RetryPolicy
+  circuit: CircuitState
+  pool: ClientPool
+  latency_p50_ms: int
+  latency_p95_ms: int
+  errors: int
 }
 
-proc with_timeout(req: Request, timeout_ms: int) -> Request {
-  if timeout_ms <= 0 { give req }
-  give Request(req.method, req.url, req.body, timeout_ms, req.auth)
+proc ok[T](value: T) -> ClientResult[T] {
+  give ClientResult.Ok(value)
 }
 
-proc with_bearer(req: Request, token: string) -> Request {
-  give Request(req.method, req.url, req.body, req.timeout_ms, "Bearer " + token)
+proc err[T](code: string, message: string) -> ClientResult[T] {
+  give ClientResult.Err(ClientError.Failure(code, message))
 }
 
-proc with_body(req: Request, body: string) -> Request {
-  give Request(req.method, req.url, body, req.timeout_ms, req.auth)
+proc assert_or_err(condition: bool, code: string, message: string) -> ClientResult[bool] {
+  if condition { give ClientResult.Ok(true) }
+  give ClientResult.Err(ClientError.Failure(code, message))
 }
 
-proc with_query(req: Request, query: string) -> Request {
-  if query.len == 0 { give req }
-  if req.url.len == 0 { give req }
-  if req.url.slice(req.url.len - 1, req.url.len) == "?" {
-    give Request(req.method, req.url + query, req.body, req.timeout_ms, req.auth)
+proc panic_guard[T](r: ClientResult[T], fallback: T) -> T {
+  when r is ClientResult.Ok { give r.value }
+  give fallback
+}
+
+proc diagnostics_message(code: string) -> string {
+  give http_client_runtime_pkg.diag_message(code)
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  give http_client_runtime_pkg.quickfix_for(code)
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc method_name(m: ClientMethod) -> string {
+  if m == ClientMethod.Get { give "GET" }
+  if m == ClientMethod.Post { give "POST" }
+  if m == ClientMethod.Put { give "PUT" }
+  if m == ClientMethod.Patch { give "PATCH" }
+  give "DELETE"
+}
+
+proc default_headers() -> ClientHeaders {
+  give ClientHeaders([])
+}
+
+proc header_add(headers: ClientHeaders, key: string, value: string) -> ClientHeaders {
+  let v: string = value
+  if key == "authorization" || key == "cookie" {
+    v = http_client_runtime_pkg.redact_sensitive(value)
   }
-  if req.url.len >= 1 && req.url.slice(req.url.len - 1, req.url.len) == "&" {
-    give Request(req.method, req.url + query, req.body, req.timeout_ms, req.auth)
-  }
-  if req.url.len > 0 {
-    let has_q = false
-    let i: int = 0
-    loop {
-      if i >= req.url.len { break }
-      if req.url.slice(i, i + 1) == "?" {
-        has_q = true
-        break
-      }
-      i = i + 1
-    }
-    if has_q {
-      give Request(req.method, req.url + "&" + query, req.body, req.timeout_ms, req.auth)
-    }
-    give Request(req.method, req.url + "?" + query, req.body, req.timeout_ms, req.auth)
-  }
-  give req
+  give ClientHeaders(headers.values.push(ClientHeader(key, v)))
 }
 
-proc contains(text: string, needle: string) -> bool {
-  if needle.len == 0 { give true }
-  if text.len < needle.len { give false }
+proc header_get(headers: ClientHeaders, key: string) -> string {
   let i: int = 0
   loop {
-    if i + needle.len > text.len { break }
-    if text.slice(i, i + needle.len) == needle { give true }
+    if i >= headers.values.len { break }
+    if headers.values[i].key == key { give headers.values[i].value }
     i = i + 1
   }
-  give false
+  give ""
 }
 
-proc is_https(url: string) -> bool {
-  if url.len < 8 { give false }
-  give url.slice(0, 8) == "https://"
-}
-
-proc host(url: string) -> string {
-  if !is_https(url) { give "" }
-  let i: int = 8
-  loop {
-    if i >= url.len { break }
-    if url.slice(i, i + 1) == "/" {
-      give url.slice(8, i)
-    }
-    i = i + 1
-  }
-  give url.slice(8, url.len)
-}
-
-proc path(url: string) -> string {
-  if !is_https(url) { give "/" }
-  let i: int = 8
-  loop {
-    if i >= url.len { break }
-    if url.slice(i, i + 1) == "/" {
-      give url.slice(i, url.len)
-    }
-    i = i + 1
-  }
-  give "/"
-}
-
-proc default_retry_policy() -> RetryPolicy {
-  give RetryPolicy(2, 50, true, true)
+proc default_retry() -> RetryPolicy {
+  give RetryPolicy(2, 50, 25, true)
 }
 
 proc default_config() -> ClientConfig {
-  give ClientConfig(600, 1500, "vitte-http-client/1.0")
+  give ClientConfig(1000, 2000, 2000, 1000, 2000, "", true, false, true, 5, "desktop")
 }
 
-proc validate(req: Request) -> int {
-  if req.url.len == 0 { give 400 }
-  if !is_https(req.url) { give 495 }
-  if req.url == "https://api/secure" && req.auth.len == 0 { give 401 }
-  if req.timeout_ms < 10 { give 408 }
-  give 0
+proc default_state() -> ClientState {
+  give ClientState(default_config(), default_retry(), CircuitState(false, 0, 5, 1000), ClientPool(8, 0, 10000, 60000), 0, 0, 0)
 }
 
-proc classify_error(resp: Response) -> ClientError {
-  if resp.status == 0 { give ClientError.Timeout }
-  if resp.status == 400 { give ClientError.BadRequest }
-  if resp.status == 401 { give ClientError.Unauthorized }
-  if resp.status == 429 { give ClientError.TooManyRequests }
-  if resp.status >= 500 { give ClientError.ServerError }
-  give ClientError.None
+proc request(method: ClientMethod, url: string, body: string) -> ClientRequest {
+  give ClientRequest(method, url, default_headers(), body)
 }
 
-proc perform(req: Request) -> Response {
-  let err = validate(req)
-  if err != 0 { give Response(err, "", 1) }
+proc request_with_header(req: ClientRequest, key: string, value: string) -> ClientRequest {
+  give ClientRequest(req.method, req.url, header_add(req.headers, key, value), req.body)
+}
 
-  if req.method == Method.Get {
-    give Response(200, "{\"ok\":true}", 3)
+proc request_with_body(req: ClientRequest, body: string) -> ClientRequest {
+  give ClientRequest(req.method, req.url, req.headers, body)
+}
+
+proc request_with_query(req: ClientRequest, query: string) -> ClientRequest {
+  if query.len == 0 { give req }
+  if http_client_runtime_pkg.contains(req.url, "?") {
+    give ClientRequest(req.method, req.url + "&" + query, req.headers, req.body)
   }
-  if req.method == Method.Post {
-    if req.body.len == 0 { give Response(400, "{\"error\":\"empty\"}", 2) }
-    give Response(201, req.body, 4)
-  }
-  give Response(204, "", 2)
+  give ClientRequest(req.method, req.url + "?" + query, req.headers, req.body)
 }
 
-proc perform_with_config(req: Request, cfg: ClientConfig) -> Response {
-  if cfg.connect_timeout_ms <= 0 || cfg.read_timeout_ms <= 0 {
-    give Response(408, "", 1)
-  }
-  if cfg.user_agent.len == 0 {
-    give Response(400, "", 1)
-  }
-  let r = with_timeout(req, cfg.read_timeout_ms)
-  give perform(r)
+proc classify_error(resp: ClientResponse) -> ClientError {
+  if resp.status == 408 { give ClientError.Failure("VITTE-C0004", diagnostics_message("VITTE-C0004")) }
+  if resp.status == 429 { give ClientError.Failure("VITTE-C0005", "too many requests") }
+  if resp.status >= 500 { give ClientError.Failure("VITTE-C0005", "server error") }
+  give ClientError.Failure("", "")
 }
 
-proc should_retry(resp: Response, policy: RetryPolicy) -> bool {
-  if resp.status == 429 && policy.retry_on_429 { give true }
-  if resp.status >= 500 && policy.retry_on_5xx { give true }
-  give false
+proc validate_request(state: ClientState, req: ClientRequest) -> ClientResult[bool] {
+  let code: string = http_client_runtime_pkg.validate_request_code(req.url, state.cfg.strict_tls, state.cfg.allow_private_hosts, state.cfg.cancel_token, state.cfg.profile)
+  if code.len > 0 {
+    if code == "VITTE-C0002" {
+      give ClientResult.Err(ClientError.Failure("VITTE-C0002", diagnostics_message("VITTE-C0002")))
+    }
+    if code == "VITTE-C0003" {
+      give ClientResult.Err(ClientError.Failure("VITTE-C0003", diagnostics_message("VITTE-C0003")))
+    }
+    give ClientResult.Err(ClientError.Failure(code, diagnostics_message(code)))
+  }
+  give ClientResult.Ok(true)
 }
 
-proc execute_with_retry(req: Request, policy: RetryPolicy) -> Response {
+proc pool_checkout(state: ClientState) -> ClientResult[ClientState] {
+  let next_in_use: int = http_client_runtime_pkg.pool_checkout_next(state.pool.in_use, state.pool.max_per_host)
+  if next_in_use < 0 {
+    give ClientResult.Err(ClientError.Failure("VITTE-C0007", diagnostics_message("VITTE-C0007")))
+  }
+  let pool: ClientPool = ClientPool(state.pool.max_per_host, next_in_use, state.pool.idle_timeout_ms, state.pool.dns_ttl_ms)
+  give ClientResult.Ok(ClientState(state.cfg, state.retry, state.circuit, pool, state.latency_p50_ms, state.latency_p95_ms, state.errors))
+}
+
+proc pool_release(state: ClientState) -> ClientState {
+  let in_use: int = http_client_runtime_pkg.pool_release_next(state.pool.in_use)
+  let pool: ClientPool = ClientPool(state.pool.max_per_host, in_use, state.pool.idle_timeout_ms, state.pool.dns_ttl_ms)
+  give ClientState(state.cfg, state.retry, state.circuit, pool, state.latency_p50_ms, state.latency_p95_ms, state.errors)
+}
+
+proc circuit_check(state: ClientState) -> ClientResult[bool] {
+  let code: string = http_client_runtime_pkg.circuit_check_code(state.circuit.open)
+  if code.len > 0 {
+    give ClientResult.Err(ClientError.Failure(code, diagnostics_message(code)))
+  }
+  give ClientResult.Ok(true)
+}
+
+proc is_idempotent(method: ClientMethod) -> bool {
+  give method == ClientMethod.Get
+}
+
+proc response(status: int, body: string, elapsed_ms: int) -> ClientResponse {
+  let reason: string = "OK"
+  if status == 201 { reason = "Created" }
+  if status == 204 { reason = "No Content" }
+  if status == 301 { reason = "Moved Permanently" }
+  if status == 302 { reason = "Found" }
+  if status == 400 { reason = "Bad Request" }
+  if status == 401 { reason = "Unauthorized" }
+  if status == 408 { reason = "Request Timeout" }
+  if status == 429 { reason = "Too Many Requests" }
+  if status >= 500 { reason = "Server Error" }
+  give ClientResponse(status, reason, default_headers(), body, elapsed_ms)
+}
+
+proc perform_once(state: ClientState, req: ClientRequest) -> ClientResult[ClientResponse] {
+  let vr: ClientResult[bool] = validate_request(state, req)
+  when vr is ClientResult.Err { give ClientResult.Err(vr.error) }
+  let cc: ClientResult[bool] = circuit_check(state)
+  when cc is ClientResult.Err { give ClientResult.Err(cc.error) }
+  let co: ClientResult[ClientState] = pool_checkout(state)
+  when co is ClientResult.Err { give ClientResult.Err(co.error) }
+
+  let status: int = 200
+  let body: string = "{\"ok\":true}"
+  if req.method == ClientMethod.Post && req.body.len == 0 {
+    status = 400
+    body = "{\"error\":\"empty\"}"
+  }
+  let resp: ClientResponse = response(status, body, 3)
+  let _state: ClientState = pool_release(co.value)
+  give ClientResult.Ok(resp)
+}
+
+proc should_retry(state: ClientState, req: ClientRequest, resp: ClientResponse, attempt: int) -> bool {
+  give http_client_runtime_pkg.retry_decision(attempt, state.retry.max_retries, state.retry.idempotent_only, is_idempotent(req.method), resp.status)
+}
+
+proc perform(state: ClientState, req: ClientRequest) -> ClientResult[ClientResponse] {
   let attempt: int = 0
-  let last = perform(req)
+  let last: ClientResult[ClientResponse] = perform_once(state, req)
+  when last is ClientResult.Err { give last }
+
   loop {
-    if attempt >= policy.max_retries { break }
-    if !should_retry(last, policy) { break }
+    if should_retry(state, req, last.value, attempt) == false { break }
     attempt = attempt + 1
-    last = Response(last.status, last.body, last.elapsed_ms + policy.base_delay_ms)
+    if attempt > state.retry.max_retries {
+      give ClientResult.Err(ClientError.Failure("VITTE-C0005", diagnostics_message("VITTE-C0005")))
+    }
+    last = ClientResult.Ok(response(last.value.status, last.value.body, http_client_runtime_pkg.next_retry_elapsed(last.value.elapsed_ms, state.retry.base_delay_ms, state.retry.jitter_ms)))
   }
   give last
 }
 
-proc cache_key(req: Request) -> string {
-  let method = "DELETE"
-  if req.method == Method.Get { method = "GET" }
-  if req.method == Method.Post { method = "POST" }
-  if req.method == Method.Put { method = "PUT" }
-  if req.method == Method.Patch { method = "PATCH" }
-  give method + "|" + req.url + "|" + req.auth
+proc observe(state: ClientState, elapsed_ms: int, error_happened: bool) -> ClientState {
+  let p50: int = http_client_runtime_pkg.observe_p50(state.latency_p50_ms, elapsed_ms)
+  let p95: int = http_client_runtime_pkg.observe_p95(state.latency_p95_ms, elapsed_ms)
+  let errors: int = http_client_runtime_pkg.observe_errors(state.errors, error_happened)
+  let open_circuit: bool = http_client_runtime_pkg.circuit_open_from_errors(errors, state.circuit.threshold)
+  let circuit: CircuitState = CircuitState(open_circuit, errors, state.circuit.threshold, state.circuit.open_ms)
+  give ClientState(state.cfg, state.retry, circuit, state.pool, p50, p95, errors)
 }
 
-proc method_name(m: Method) -> string {
-  if m == Method.Get { give "GET" }
-  if m == Method.Post { give "POST" }
-  if m == Method.Put { give "PUT" }
-  if m == Method.Patch { give "PATCH" }
-  give "DELETE"
+proc security_redirect_allowed(state: ClientState, from_url: string, to_url: string) -> bool {
+  if state.cfg.follow_redirects == false { give false }
+  if http_client_runtime_pkg.is_https(to_url) == false { give false }
+  let from_host: string = http_client_runtime_pkg.host(from_url)
+  let to_host: string = http_client_runtime_pkg.host(to_url)
+  if from_host == to_host { give true }
+  if state.cfg.allow_private_hosts && http_client_runtime_pkg.is_private_host(to_host) { give true }
+  give false
 }
 
-proc is_ok(resp: Response) -> bool {
-  give resp.status >= 200 && resp.status < 300
+proc structured_log(req: ClientRequest, resp: ClientResponse) -> string {
+  let auth: string = header_get(req.headers, "authorization")
+  if auth.len > 0 { auth = http_client_runtime_pkg.redact_sensitive(auth) }
+  give "{\"method\":\"" + method_name(req.method) + "\",\"url\":\"" + req.url + "\",\"status\":" + resp.status.to_string() + ",\"elapsed_ms\":" + resp.elapsed_ms.to_string() + ",\"auth\":\"" + auth + "\"}"
 }
 
-proc retryable(resp: Response) -> bool {
-  give resp.status == 429 || resp.status >= 500
+proc analyze_report_json_stub() -> string {
+  give "{\"package\":\"vitte/http_client\",\"diag_namespace\":\"VITTE-C****\",\"status\":\"ok\"}"
 }
 
-proc is_timeout(resp: Response) -> bool {
-  give resp.status == 408
+proc api_version() -> string {
+  give "v1"
 }
 
-proc response_summary(resp: Response) -> string {
-  give "status=" + resp.status.to_string() +
-       ",elapsed_ms=" + resp.elapsed_ms.to_string() +
-       ",ok=" + is_ok(resp).to_string()
+proc doctor_status() -> string {
+  give "vitte/http_client doctor:ready api=" + api_version()
+}
+
+proc quickfix_preview(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix: no-op"
+  }
+  give diagnostics_quickfix(payload)
+}
+
+proc quickfix_apply(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix apply: no-op"
+  }
+  give "quickfix apply: " + payload
 }
 
 proc ready() -> bool {
   give true
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/http_client"
+  give "vitte/http_client"
 }
 
 <<< ROLE-CONTRACT
 package: vitte/http_client
-role: Client HTTP avec gestion requete reponse
-input_contract: Donnees reseau ou securite deja normalisees et explicites
-output_contract: Resultats transport ou securite avec erreurs explicites
-boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+role: Façade client HTTP stable (timeouts/retry/pool/circuit/security)
+input_contract: Config explicite + request prepared
+output_contract: Resultats ClientResult et diagnostics VITTE-C****
+boundary: implementation privée sous vitte/http_client/internal/*
+versioning: API facade stable, additive only
+api_surface_stable: true
+diagnostics: VITTE-C0001..VITTE-C0099
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: v1
 >>>

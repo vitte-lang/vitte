@@ -1,0 +1,16 @@
+<<<
+lint_profile_strict.vit
+strict lint policy checks
+>>>
+
+use vitte/lint as lint_pkg
+
+entry main at core/app {
+  let cfg: lint_pkg.LintConfig = lint_pkg.LintConfig("strict", false, 50, "lint.baseline.json", false, true)
+  let r: lint_pkg.LintResult[lint_pkg.LintReport] = lint_pkg.lint_file("a.vit", "entry main at core/app {}", cfg)
+  when r is lint_pkg.LintResult.Err { give 1 }
+  if lint_pkg.policy_allows_ci_block(r.value, cfg) {
+    give 2
+  }
+  give 0
+}
