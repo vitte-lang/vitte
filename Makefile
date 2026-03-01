@@ -756,6 +756,16 @@ modules-weekly-legacy-warn-only:
 .PHONY: release-modules-gate
 release-modules-gate: modules-ci-strict modules-contract-snapshots modules-report legacy-import-allowlist-empty
 
+.PHONY: packages-changed-ci
+packages-changed-ci:
+	@tools/changed_packages_ci.sh
+
+.PHONY: packages-impacted-strict
+packages-impacted-strict:
+	@targets="$$(python3 tools/packages_impacted_strict.py --base-ref=$${BASE_REF:-HEAD~1})"; \
+	echo "[packages-impacted-strict] targets: $$targets"; \
+	make -s $$targets
+
 .PHONY: platon-editor
 platon-editor:
 	@./bin/vitte build platon-editor/editor_core.vit -o platon-editor/editor_core
@@ -824,6 +834,8 @@ help:
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make pkg-macos-uninstall build macOS uninstall pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make release-check run build + ci-fast + ci-completions + pkg build"
+	@echo "  make packages-changed-ci run package CI only for changed packages (BASE_REF=HEAD~1 by default)"
+	@echo "  make packages-impacted-strict run strict CI on changed packages + reverse dependency closure"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
 	@echo "  make vittec-kernel build target/kernel-tools/vittec-kernel (no curl runtime)"
