@@ -1,0 +1,185 @@
+<<<
+mod.vit
+package vitte/lint
+>>>
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/lint; additive API only.
+# - No import-time side effects.
+# - Internal implementation in vitte/lint/internal/*.
+# - Diagnostics namespace: VITTE-I0001..VITTE-I0099.
+
+space vitte/lint
+
+use vitte/lint/internal/rules as lint_rules_pkg
+use vitte/lint/internal/engine as lint_engine_pkg
+use vitte/lint/internal/report as lint_report_pkg
+use vitte/lint/internal/policy as lint_policy_pkg
+use vitte/lint/internal/fix as lint_fix_pkg
+
+pick LintSeverity {
+  Info
+  Warning
+  Error
+}
+
+pick LintError {
+  Failure(code: string, message: string, context: string)
+}
+
+pick LintResult[T] {
+  Ok(value: T)
+  Err(error: LintError)
+}
+
+form LintRule {
+  id: string
+  owner: string
+  pack: string
+  enabled: bool
+  doc_url: string
+  quickfix: string
+}
+
+form LintIssue {
+  code: string
+  severity: LintSeverity
+  file: string
+  line: int
+  message: string
+  rule_id: string
+  quickfix: string
+}
+
+form QuickFix {
+  file: string
+  line: int
+  before: string
+  after: string
+  description: string
+}
+
+form LintConfig {
+  mode: string
+  explain: bool
+  max_latency_ms: int
+  baseline_file: string
+  allow_warnings: bool
+  cache_enabled: bool
+}
+
+form LintReport {
+  issues: [LintIssue]
+  total: int
+  errors: int
+  warnings: int
+  infos: int
+  p95_ms: int
+}
+
+proc ok[T](value: T) -> LintResult[T] {
+  give LintResult.Ok(value)
+}
+
+proc err[T](code: string, message: string, context: string) -> LintResult[T] {
+  give LintResult.Err(LintError.Failure(code, message, context))
+}
+
+proc diagnostics_message(code: string) -> string {
+  give lint_engine_pkg.diag_message(code)
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  give lint_engine_pkg.quickfix_for(code)
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc default_config() -> LintConfig {
+  give LintConfig("fast", false, 50, "lint.baseline.json", true, true)
+}
+
+proc list_rules() -> [LintRule] {
+  give lint_rules_pkg.default_rules()
+}
+
+proc enable_rule(rules: [LintRule], id: string) -> [LintRule] {
+  give lint_rules_pkg.enable_rule(rules, id)
+}
+
+proc disable_rule(rules: [LintRule], id: string) -> [LintRule] {
+  give lint_rules_pkg.disable_rule(rules, id)
+}
+
+proc lint_file(path: string, text: string, cfg: LintConfig) -> LintResult[LintReport] {
+  give lint_engine_pkg.lint_file(path, text, list_rules(), cfg)
+}
+
+proc lint_package(pkg: string, files: [string], cfg: LintConfig) -> LintResult[LintReport] {
+  give lint_engine_pkg.lint_package(pkg, files, list_rules(), cfg)
+}
+
+proc lint_workspace(files: [string], cfg: LintConfig) -> LintResult[LintReport] {
+  give lint_engine_pkg.lint_workspace(files, list_rules(), cfg)
+}
+
+proc report_json(report: LintReport) -> string {
+  give lint_report_pkg.report_json(report)
+}
+
+proc report_sarif(report: LintReport) -> string {
+  give lint_report_pkg.report_sarif(report)
+}
+
+proc report_md(report: LintReport) -> string {
+  give lint_report_pkg.report_md(report)
+}
+
+proc quickfix_preview(path: string, text: string, cfg: LintConfig) -> LintResult[string] {
+  give lint_fix_pkg.quickfix_preview(path, text, cfg)
+}
+
+proc quickfix_apply(path: string, text: string, cfg: LintConfig) -> LintResult[string] {
+  give lint_fix_pkg.quickfix_apply(path, text, cfg)
+}
+
+proc policy_allows_ci_block(report: LintReport, cfg: LintConfig) -> bool {
+  give lint_policy_pkg.policy_allows_ci_block(report, cfg)
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc doctor_status() -> string {
+  give "vitte/lint doctor:ready api=" + api_version()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/lint"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/lint
+owner: @vitte/qa
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: facade publique lint stable et additive
+input_contract: fichiers/rules/config explicites
+output_contract: LintResult/LintReport stables avec diagnostics VITTE-I****
+boundary: rules/engine/report/policy/fix dans vitte/lint/internal/*
+versioning: additive-only, no breaking removals in stable
+api_surface_stable: true
+diagnostics: VITTE-I0001..VITTE-I0099
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: v1
+compat_layer: none
+removal_policy: major-only
+>>>

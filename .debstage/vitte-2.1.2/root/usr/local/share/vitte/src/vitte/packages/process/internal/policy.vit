@@ -1,0 +1,48 @@
+<<<
+policy.vit
+package vitte/process/internal/policy
+>>>
+
+space vitte/process/internal/policy
+
+proc command_allowlisted(program: string, allowlist: [string]) -> bool {
+  if allowlist.len > 0 {
+    let i: int = 0
+    loop {
+      if i >= allowlist.len { break }
+      if allowlist[i] == program { give true }
+      i = i + 1
+    }
+    give false
+  }
+  if program == "vitte" { give true }
+  if program == "make" { give true }
+  if program == "ctest" { give true }
+  give false
+}
+
+proc command_denylisted(program: string) -> bool {
+  if program == "sudo" { give true }
+  if program == "dd" { give true }
+  if program == "rm" { give true }
+  give false
+}
+
+proc shell_injection_pattern(args: [string]) -> bool {
+  let i: int = 0
+  loop {
+    if i >= args.len { break }
+    let a: string = args[i]
+    if a == "-c" || a == "--command" { give true }
+    if a == "&&" || a == "||" { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc shell_exec_pattern(program: string, args: [string]) -> bool {
+  if (program == "sh" || program == "bash" || program == "zsh") && args.len > 0 && args[0] == "-c" {
+    give true
+  }
+  give shell_injection_pattern(args)
+}

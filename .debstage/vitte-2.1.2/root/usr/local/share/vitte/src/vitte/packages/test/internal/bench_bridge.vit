@@ -1,0 +1,39 @@
+<<<
+bench_bridge.vit
+package vitte/test/internal/bench_bridge
+>>>
+
+space vitte/test/internal/bench_bridge
+
+pick TestError {
+  Failure(code: string, message: string, context: string, retryable: bool, doc_url: string)
+}
+
+pick TestResult[T] {
+  Ok(value: T)
+  Err(error: TestError)
+}
+
+form BenchConfig {
+  iterations: int
+  warmup: int
+  profile: string
+}
+
+proc ok[T](value: T) -> TestResult[T] {
+  give TestResult.Ok(value)
+}
+
+proc err[T](code: string, message: string, context: string, retryable: bool) -> TestResult[T] {
+  give TestResult.Err(TestError.Failure(code, message, context, retryable, "docs/diagnostics/test.md#" + code))
+}
+
+proc run_bench(cfg: BenchConfig) -> TestResult[string] {
+  if cfg.iterations <= 0 {
+    give err[string]("VITTE-T0012", "invalid bench iterations", "iterations", false)
+  }
+  if cfg.warmup < 0 {
+    give err[string]("VITTE-T0013", "invalid bench warmup", "warmup", false)
+  }
+  give ok[string]("bench:iter=" + cfg.iterations.to_string() + ",profile=" + cfg.profile)
+}

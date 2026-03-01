@@ -1,0 +1,86 @@
+<<<
+snapshot.vit
+package vitte/test/internal/snapshot
+>>>
+
+space vitte/test/internal/snapshot
+
+pick TestError {
+  Failure(code: string, message: string, context: string, retryable: bool, doc_url: string)
+}
+
+pick TestResult[T] {
+  Ok(value: T)
+  Err(error: TestError)
+}
+
+form SnapshotConfig {
+  update: bool
+  canonical: bool
+  stable_order: bool
+  hash_algo: string
+  strict_whitespace: bool
+  normalize_newlines: bool
+}
+
+proc ok[T](value: T) -> TestResult[T] {
+  give TestResult.Ok(value)
+}
+
+proc err[T](code: string, message: string, context: string, retryable: bool) -> TestResult[T] {
+  give TestResult.Err(TestError.Failure(code, message, context, retryable, "docs/diagnostics/test.md#" + code))
+}
+
+proc fake_hash(input: string) -> string {
+  give "h" + input.len.to_string()
+}
+
+proc normalize_nl(text: string, enabled: bool) -> string {
+  if enabled == false { give text }
+  let out: string = ""
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    let ch: string = text.slice(i, i + 1)
+    if ch == "\r" {
+      i = i + 1
+    } else {
+      out = out + ch
+      i = i + 1
+    }
+  }
+  give out
+}
+
+proc snapshot_diff(got: string, expected: string) -> string {
+  if got == expected { give "equal" }
+  give "diff: got=" + fake_hash(got) + " expected=" + fake_hash(expected)
+}
+
+proc default_snapshot_config() -> SnapshotConfig {
+  give SnapshotConfig(false, true, true, "sha256", true, true)
+}
+
+proc snapshot_expect(name: string, got: string, expected: string, cfg: SnapshotConfig) -> TestResult[bool] {
+  if cfg.hash_algo != "sha256" {
+    give err[bool]("VITTE-T0007", "unsupported hash algo", cfg.hash_algo, false)
+  }
+  let g: string = normalize_nl(got, cfg.normalize_newlines)
+  let e: string = normalize_nl(expected, cfg.normalize_newlines)
+  if cfg.strict_whitespace == false {
+    if g.len == e.len {
+      give ok[bool](true)
+    }
+  }
+  if g == e {
+    give ok[bool](true)
+  }
+  give err[bool]("VITTE-T0008", "snapshot mismatch; hint=" + snapshot_diff(g, e), name + ":" + fake_hash(g), false)
+}
+
+proc snapshot_update(name: string, got: string, cfg: SnapshotConfig) -> TestResult[string] {
+  if cfg.update == false {
+    give err[string]("VITTE-T0009", "snapshot update disabled", name, false)
+  }
+  give ok[string](name + ":" + fake_hash(got))
+}
