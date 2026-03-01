@@ -555,6 +555,9 @@ all-tests-group:
 .PHONY: vitteos-bin-quality
 vitteos-bin-quality:
 	@tools/vitteos_bin_ci_quality.sh
+.PHONY: vitteos-bin-quality
+vitteos-bin-quality:
+	@tools/vitteos_bin_ci_quality.sh
 
 .PHONY: vitteos-bin-runnable-check
 vitteos-bin-runnable-check:
@@ -830,9 +833,13 @@ help:
 	@echo "  make completions-snapshots run completion snapshot assertions"
 	@echo "  make completions-snapshots-update update completion golden snapshots"
 	@echo "  make completions-lint syntax-check bash/zsh/fish completion files"
-	@echo "  make ci-completions run completion check + lint + snapshots + fallback"
-	@echo "  make all-tests run full test matrix and write logs in target/reports/all-tests"
-	@echo "  make all-tests-group GROUP=<name> run grouped matrix slice (core|ci|abi|modules|packages|package-ci-fast|package-ci-strict)"
+ 	@echo "  make ci-completions run completion check + lint + snapshots + fallback"
+  @echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
+	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
+	@echo "  make vittec-kernel build target/kernel-tools/vittec-kernel (no curl runtime)"
+	@echo "  make vitteos-bin-quality run /bin quality checks + matrix report"
+	@echo "  make vitteos-bin-runnable-check assert bin/vitte is host-runnable (non-regression arch/format guard)"
+	@echo "  make vitteos-bin-runtime run runtime-smoke probes and update runtime column"
 	@echo "  make pkg-debian build Debian .deb installer (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make pkg-debian-install build and install Debian .deb locally via dpkg"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
