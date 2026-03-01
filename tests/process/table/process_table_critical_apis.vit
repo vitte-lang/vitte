@@ -1,0 +1,32 @@
+space tests/process/table/process_table_critical_apis
+
+use vitte/process as process_pkg
+
+entry main at tests/process/table/apis {
+  let cfg0: process_pkg.ProcessConfig = process_pkg.default_config("vitte")
+  let cfg1: process_pkg.ProcessConfig = process_pkg.with_timeout(cfg0, 500, 100)
+  let cfg2: process_pkg.ProcessConfig = process_pkg.with_cwd(cfg1, "/workspace/repo")
+  let cfg3: process_pkg.ProcessConfig = process_pkg.with_env(cfg2, ["A=1", "B=2"])
+  let vr: process_pkg.ProcessResult[bool] = process_pkg.validate_config(cfg3)
+  when vr is process_pkg.ProcessResult.Err { give 1 }
+
+  let sp: process_pkg.ProcessResult[process_pkg.ProcessHandle] = process_pkg.spawn(cfg3)
+  when sp is process_pkg.ProcessResult.Err { give 2 }
+
+  let wr: process_pkg.ProcessResult[process_pkg.ProcessOutput] = process_pkg.wait(sp.value, 1000)
+  when wr is process_pkg.ProcessResult.Err { give 3 }
+
+  let tr: process_pkg.ProcessResult[bool] = process_pkg.terminate(sp.value)
+  when tr is process_pkg.ProcessResult.Err { give 4 }
+
+  let kr: process_pkg.ProcessResult[bool] = process_pkg.kill(sp.value)
+  when kr is process_pkg.ProcessResult.Err { give 5 }
+
+  let fallback_cfg: process_pkg.ProcessConfig = process_pkg.ProcessConfig("vitte", [], "/workspace/repo", [], process_pkg.ProcessStdio.Null, process_pkg.ProcessStdio.Pipe, process_pkg.ProcessStdio.Pipe, 5, 1, "desktop", process_pkg.ProcessPolicy(false, false, false, false, []), 4096)
+  let fallback_run: process_pkg.ProcessResult[process_pkg.ProcessOutput] = process_pkg.run(fallback_cfg)
+  when fallback_run is process_pkg.ProcessResult.Err { give 6 }
+  if fallback_run.value.killed == false { give 7 }
+  if fallback_run.value.exit_code != 137 { give 8 }
+
+  give 0
+}

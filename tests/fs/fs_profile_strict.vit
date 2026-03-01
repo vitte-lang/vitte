@@ -1,0 +1,16 @@
+<<<
+fs_profile_strict.vit
+strict profile smoke for vitte/fs
+>>>
+
+use vitte/fs as fs_pkg
+
+entry main at core/app {
+  let rt: fs_pkg.FsRuntime = fs_pkg.default_runtime()
+  let pol: fs_pkg.FsPolicy = fs_pkg.FsPolicy(fs_pkg.SymlinkPolicy.Deny, ["/etc"], ["."], fs_pkg.FsProfile.Core)
+  let rt2: fs_pkg.FsRuntime = fs_pkg.with_policy(rt, pol)
+  if fs_pkg.op_allowed_for_profile(rt2, "remove_tree") {
+    give 1
+  }
+  give 0
+}

@@ -1,0 +1,34 @@
+use vitte/alerts as alerts
+
+proc within_tolerance(actual: int, expected: int, tolerance: int) -> bool {
+  let low = expected - tolerance
+  let high = expected + tolerance
+  if actual < low { return false }
+  if actual > high { return false }
+  return true
+}
+
+proc main() -> i32 {
+  let seed = 42
+  let rounds = 200
+
+  let b0 = alerts.benchmark_eval(seed, rounds)
+  let b1 = alerts.benchmark_eval(seed, rounds)
+
+  if b0.p50 != b1.p50 { return 1 }
+  if b0.p95 != b1.p95 { return 2 }
+  if b0.p99 != b1.p99 { return 3 }
+  if b0.throughput != b1.throughput { return 4 }
+
+  if b0.p95 < b0.p50 { return 5 }
+  if b0.p99 < b0.p95 { return 6 }
+
+  # snapshot (seed=42, rounds=200)
+  # expected: p50=0 p95=9 p99=9 throughput=995
+  if !within_tolerance(b0.p50, 0, 1) { return 7 }
+  if !within_tolerance(b0.p95, 9, 1) { return 8 }
+  if !within_tolerance(b0.p99, 9, 1) { return 9 }
+  if !within_tolerance(b0.throughput, 995, 5) { return 10 }
+
+  return 0
+}

@@ -1,0 +1,20 @@
+<<<
+vitte_http_smoke.vit
+smoke for vitte/http facade
+>>>
+
+use vitte/http as http_pkg
+
+entry main at core/app {
+  let st: http_pkg.HttpServerState = http_pkg.default_server_state()
+  let add: http_pkg.HttpResult[http_pkg.HttpServerState] = http_pkg.add_route(st, http_pkg.route(http_pkg.HttpMethod.Get, "/health", "health", 100, false, 1024))
+  when add is http_pkg.HttpResult.Err {
+    give 1
+  }
+  let req: http_pkg.HttpRequest = http_pkg.request(http_pkg.HttpMethod.Get, "/health", "")
+  let out: http_pkg.HttpResult[http_pkg.HttpResponse] = http_pkg.handle(add.value, req)
+  when out is http_pkg.HttpResult.Err {
+    give 2
+  }
+  give 0
+}

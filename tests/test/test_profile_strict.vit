@@ -1,0 +1,18 @@
+<<<
+test_profile_strict.vit
+profile aware test checks
+>>>
+
+use vitte/test as test_pkg
+
+entry main at core/app {
+  let base: test_pkg.TestContext = test_pkg.default_context()
+  let ctx1: test_pkg.TestContext = test_pkg.context_with_profile(base, "core")
+  let ctx: test_pkg.TestContext = test_pkg.context_with_mode(ctx1, test_pkg.TestMode.Strict)
+  let c1: test_pkg.TestCase = test_pkg.case_new("ok", true, "", 1, 0, 1, false, false, "", [])
+  let s0: test_pkg.TestSuite = test_pkg.suite("suite", test_pkg.TestMode.Strict, "core", 1000, 1)
+  let s: test_pkg.TestSuite = test_pkg.suite_add_case(s0, c1)
+  let r: test_pkg.TestResult[test_pkg.TestReport] = test_pkg.run_suite(ctx, s)
+  when r is test_pkg.TestResult.Err { give 1 }
+  give 0
+}

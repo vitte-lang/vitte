@@ -1,0 +1,51 @@
+use vitte/alloc as alloc
+
+proc main() -> i32 {
+  if !alloc.ready() { return 1 }
+  if !alloc.stable_ready() { return 2 }
+  if alloc.stable_package_meta() != "vitte/alloc" { return 3 }
+  if alloc.stable_api_version().len == 0 || alloc.api_version().len == 0 { return 4 }
+  if alloc.stable_api_surface().len == 0 { return 5 }
+
+  let rt0 = alloc.with_seed(alloc.stable_runtime_new(alloc.AllocatorKind.Global, 512), 7)
+  let rt1 = alloc.with_canaries(alloc.with_poison_bytes(rt0, 170, 221), true)
+
+  let a0 = alloc.stable_alloc(rt1, alloc.bytes(64), alloc.alignment(8), alloc.pool_id("tenant:t1"))
+  if !a0.ok { return 6 }
+
+  let r0 = alloc.stable_realloc(a0.runtime, a0.handle, alloc.bytes(96), alloc.alignment(8))
+  if !r0.ok { return 7 }
+
+  let f0 = alloc.stable_free(r0.runtime, a0.handle)
+  if !f0.ok { return 8 }
+
+  let leak0 = alloc.leak_report(f0.runtime)
+  if leak0.active_allocations != 0 { return 9 }
+
+  let panic_rt0 = alloc.with_oom_policy(alloc.stable_runtime_new(alloc.AllocatorKind.Global, 32), alloc.OomPolicy.Panic)
+  let panic_a = alloc.stable_alloc(panic_rt0, alloc.bytes(1024), alloc.alignment(8), alloc.pool_id("tenant:p"))
+  if panic_a.ok { return 10 }
+  if !alloc.panic_runtime(panic_a.runtime) { return 11 }
+
+  let panic_b = alloc.stable_alloc(panic_a.runtime, alloc.bytes(8), alloc.alignment(8), alloc.pool_id("tenant:p"))
+  if panic_b.ok { return 12 }
+
+  let panic_cleared = alloc.clear_panic(panic_a.runtime)
+  let panic_ok = alloc.stable_alloc(panic_cleared, alloc.bytes(8), alloc.alignment(8), alloc.pool_id("tenant:p"))
+  if !panic_ok.ok { return 13 }
+
+  let c0 = alloc.stable_alloc(rt1, alloc.bytes(32), alloc.alignment(8), alloc.pool_id("tenant:c"))
+  if !c0.ok { return 14 }
+  let bad_rt = alloc.experimental_corrupt_canary(c0.runtime, c0.handle)
+  let bad_free = alloc.stable_free(bad_rt, c0.handle)
+  if bad_free.ok { return 15 }
+
+  let stats = alloc.stable_stats(f0.runtime)
+  if stats.alloc_total <= 0 || stats.free_total <= 0 { return 16 }
+  if alloc.alloc_error_name(alloc.AllocError.OutOfMemory).len == 0 { return 17 }
+
+  let prop = alloc.property_invariants(5, 24)
+  if !prop.ok { return 18 }
+
+  return 0
+}

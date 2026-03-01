@@ -1,0 +1,15 @@
+space tests/process/process_profile_strict
+
+use vitte/process as process_pkg
+
+entry main at tests/process/profile_strict {
+  let cfg0: process_pkg.ProcessConfig = process_pkg.default_config("vitte")
+  let policy: process_pkg.ProcessPolicy = process_pkg.ProcessPolicy(false, false, false, false)
+  let cfg1: process_pkg.ProcessConfig = process_pkg.with_policy(cfg0, policy)
+  let cfg2: process_pkg.ProcessConfig = process_pkg.ProcessConfig(cfg1.program, cfg1.args, cfg1.cwd, cfg1.env, cfg1.stdin, cfg1.stdout, cfg1.stderr, cfg1.timeout_ms, cfg1.grace_ms, "core", cfg1.policy, cfg1.capture_limit)
+  let rr: process_pkg.ProcessResult[process_pkg.ProcessHandle] = process_pkg.spawn(cfg2)
+  when rr is process_pkg.ProcessResult.Err {
+    if rr.error.code == "VITTE-P0012" { give 0 }
+  }
+  give 1
+}

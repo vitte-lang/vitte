@@ -1,0 +1,8 @@
+use vitte/alloc as alloc
+
+entry main at profile/system_alloc {
+  let rt = alloc.with_oom_policy(alloc.stable_runtime_new(alloc.AllocatorKind.Global, 256), alloc.OomPolicy.ReturnError)
+  let c = alloc.stable_calloc(rt, 4, alloc.bytes(8), alloc.alignment(8), alloc.pool_id("system"))
+  if c.ok { return 0 }
+  return 1
+}

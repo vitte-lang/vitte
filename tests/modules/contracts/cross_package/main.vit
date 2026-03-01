@@ -1,23 +1,44 @@
 use vitte/collections as col
 use vitte/abi as abi
+use vitte/alloc as alloc
 use vitte/channel as ch
+use vitte/alerts as alerts
+use vitte/actor as actor
 
 proc main() -> i32 {
   if !col.ready() { return 1 }
   if !abi.ready() { return 2 }
-  if !ch.ready() { return 3 }
+  if !alloc.ready() { return 3 }
+  if !ch.ready() { return 4 }
+  if !alerts.ready() { return 5 }
+  if !actor.ready() { return 6 }
 
   let xs = col.vec_new[int]()
   let xs2 = col.vec_push(xs, 42)
-  if col.vec_len(xs2) != 1 { return 4 }
+  if col.vec_len(xs2) != 1 { return 7 }
 
   let t = abi.type_info("int", 32)
   let sig = abi.signature(abi.default_calling_convention(), t, [t])
-  if !abi.validate_signature(sig) { return 5 }
+  if !abi.validate_signature(sig) { return 8 }
+
+  let rt0 = alloc.with_canaries(alloc.stable_runtime_new(alloc.AllocatorKind.Global, 256), true)
+  let ar0 = alloc.stable_alloc(rt0, alloc.bytes(32), alloc.alignment(8), alloc.pool_id("cross"))
+  if !ar0.ok { return 9 }
+  let fr0 = alloc.stable_free(ar0.runtime, ar0.handle)
+  if !fr0.ok { return 10 }
 
   let c0 = ch.channel_bounded(1)
   let c1 = ch.send(c0, "hello")
-  if ch.len(c1) != 1 { return 6 }
+  if ch.len(c1) != 1 { return 11 }
+
+  let ar = alerts.rule_new("cpu_high", 80, 2)
+  let ae = alerts.AlertEvent("k1", "node-a", "cpu", 95, 100, ["tenant:t1"], alerts.trace_id("tr"))
+  if alerts.notify(ar, ae).len == 0 { return 12 }
+
+  let ac0 = actor.spawn(1, "cross")
+  let ac1 = actor.send(ac0, actor.make_message("evt", "p", "tr"))
+  let ac2 = actor.step(ac1)
+  if actor.processed_count(ac2) < 0 { return 13 }
 
   return 0
 }

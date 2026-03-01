@@ -1,0 +1,20 @@
+<<<
+lint_table_critical_apis.vit
+table-driven checks for vitte/lint public APIs
+>>>
+
+use vitte/lint as lint_pkg
+
+entry main at core/app {
+  let cfg: lint_pkg.LintConfig = lint_pkg.default_config()
+  let r: lint_pkg.LintResult[lint_pkg.LintReport] = lint_pkg.lint_workspace(["entry main at core/app {}"], cfg)
+  when r is lint_pkg.LintResult.Err { give 1 }
+
+  let p: lint_pkg.LintResult[string] = lint_pkg.quickfix_preview("a.vit", "entry main at core/app {}", cfg)
+  when p is lint_pkg.LintResult.Err { give 2 }
+
+  let a: lint_pkg.LintResult[string] = lint_pkg.quickfix_apply("a.vit", "entry main at core/app {}", cfg)
+  when a is lint_pkg.LintResult.Err { give 3 }
+
+  give 0
+}

@@ -1,0 +1,113 @@
+<<<
+runtime.vit
+package vitte/log/internal/runtime
+>>>
+# Internal helpers only. Keep out of public facade exports.
+
+space vitte/log/internal/runtime
+
+proc redact_field_value(key: string, value: string) -> string {
+  if key == "email" { give "***" }
+  if key == "token" { give "***" }
+  if key == "secret" { give "***" }
+  if key == "password" { give "***" }
+  give value
+}
+
+proc safe_message(message: string) -> string {
+  if message == "" {
+    give "(empty)"
+  }
+  give message
+}
+
+proc sink_allowed_for_profile(profile: string, sink_name: string) -> bool {
+  if profile == "core" {
+    if sink_name == "file" || sink_name == "syslog" || sink_name == "journald" { give false }
+    give true
+  }
+  if profile == "desktop" {
+    if sink_name == "journald" { give false }
+    give true
+  }
+  if profile == "system" {
+    give true
+  }
+  give false
+}
+
+proc fallback_sink_name() -> string {
+  give "stderr"
+}
+
+proc level_name_from_rank(rank: int) -> string {
+  if rank <= 5 { give "trace" }
+  if rank <= 10 { give "debug" }
+  if rank <= 20 { give "info" }
+  if rank <= 30 { give "warn" }
+  if rank <= 40 { give "error" }
+  give "fatal"
+}
+
+proc diag_message(code: string) -> string {
+  if code == "VITTE-L0001" { give "invalid sink configuration" }
+  if code == "VITTE-L0002" { give "write failed, fallback sink used" }
+  if code == "VITTE-L0003" { give "rotation failed" }
+  if code == "VITTE-L0004" { give "buffer overflow, event dropped" }
+  if code == "VITTE-L0005" { give "unsafe config value" }
+  if code == "VITTE-L0006" { give "hot-reload rejected" }
+  if code == "VITTE-L0007" { give "profile disallows sink" }
+  if code == "VITTE-L0008" { give "sampling gate rejected event" }
+  if code == "VITTE-L0009" { give "dedup merged repeated event" }
+  give "unknown diagnostic"
+}
+
+proc quickfix_for(code: string) -> string {
+  if code == "VITTE-L0001" { give "set sink=stderr and format=text" }
+  if code == "VITTE-L0002" { give "switch primary sink to stderr or memory_ring" }
+  if code == "VITTE-L0003" { give "disable rotation or reduce retention" }
+  if code == "VITTE-L0004" { give "increase buffer_capacity or enable perf mode" }
+  if code == "VITTE-L0005" { give "normalize config keys/values" }
+  if code == "VITTE-L0006" { give "increment hot_reload_epoch and retry" }
+  if code == "VITTE-L0007" { give "use allowed sink for active profile" }
+  if code == "VITTE-L0008" { give "increase sample_rate_percent/sample_burst" }
+  if code == "VITTE-L0009" { give "reduce dedup_window or include unique key" }
+  give "no quick-fix"
+}
+
+proc emit_enabled(
+  level_rank: int,
+  min_level_rank: int,
+  module: string,
+  module_filter: string,
+  is_trace_or_debug: bool,
+  sample_count: int,
+  sample_burst: int,
+  sample_rate_percent: int,
+  window_count: int,
+  rate_limit_per_window: int
+) -> bool {
+  if level_rank < min_level_rank { give false }
+  if module_filter != "*" && module != module_filter { give false }
+  if is_trace_or_debug {
+    if sample_count >= sample_burst { give false }
+    if sample_rate_percent <= 0 { give false }
+  }
+  if window_count >= rate_limit_per_window { give false }
+  give true
+}
+
+proc route_module_name(explicit_module: string, context_module: string) -> string {
+  if explicit_module.len > 0 { give explicit_module }
+  give context_module
+}
+
+proc dedup_key(level_name: string, module: string, message: string) -> string {
+  give level_name + "|" + module + "|" + message
+}
+
+proc dedup_hit(key: string, last_key: string, last_repeat: int, dedup_window: int) -> bool {
+  if key != last_key { give false }
+  if last_repeat >= dedup_window { give false }
+  give true
+}

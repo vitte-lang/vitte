@@ -2,9 +2,16 @@
 mod.vit
 package vitte/std
 >>>
+# PREAMBLE (API stable facade)
+# - Keep this facade minimal and stable.
+# - No import-time side effects.
+# - Layering:
+#   vitte/std/base, vitte/std/io, vitte/std/net, vitte/std/data, vitte/std/async
+# - Diagnostic namespace: VITTE-S0001..VITTE-S0099
 
 space vitte/std
 
+use vitte/std/base as std_base_pkg
 
 form StdEntry {
   name: string
@@ -16,37 +23,109 @@ form StdIndex {
   entries: [StdEntry]
 }
 
+pick StdError {
+  Message(code: string, message: string)
+}
+
+pick StdResult[T] {
+  Ok(value: T)
+  Err(error: StdError)
+}
+
+proc ok[T](value: T) -> StdResult[T] {
+  give StdResult.Ok(value)
+}
+
+proc err[T](code: string, message: string) -> StdResult[T] {
+  give StdResult.Err(StdError.Message(code, message))
+}
+
+proc assert_or_err(condition: bool, code: string, message: string) -> StdResult[bool] {
+  if condition {
+    give StdResult.Ok(true)
+  }
+  give StdResult.Err(StdError.Message(code, message))
+}
+
+proc panic_guard[T](r: StdResult[T], fallback: T) -> T {
+  when r is StdResult.Ok {
+    give r.value
+  }
+  give fallback
+}
+
+proc checked_cast_int(value: int) -> StdResult[int] {
+  give StdResult.Ok(value)
+}
+
 proc std_index() -> StdIndex {
-  give StdIndex([])
+  give std_base_pkg.std_index()
 }
 
 proc register(i: StdIndex, name: string, group: string, path: string) -> StdIndex {
-  give StdIndex(i.entries.push(StdEntry(name, group, path)))
+  give std_base_pkg.register(i, name, group, path)
 }
 
 proc find_group(i: StdIndex, group: string) -> [string] {
-  let out: [string] = []
-  let k: int = 0
-  loop {
-    if k >= i.entries.len { break }
-    if i.entries[k].group == group { out = out.push(i.entries[k].name) }
-    k = k + 1
-  }
-  give out
+  give std_base_pkg.find_group(i, group)
 }
 
 proc resolve_path(i: StdIndex, name: string) -> string {
-  let k: int = 0
-  loop {
-    if k >= i.entries.len { break }
-    if i.entries[k].name == name { give i.entries[k].path }
-    k = k + 1
-  }
-  give ""
+  give std_base_pkg.resolve_path(i, name)
 }
 
 proc size(i: StdIndex) -> int {
-  give i.entries.len
+  give std_base_pkg.size(i)
+}
+
+proc std_debug_enabled() -> bool {
+  give std_base_pkg.std_debug_enabled()
+}
+
+proc std_strict_enabled() -> bool {
+  give std_base_pkg.std_strict_enabled()
+}
+
+proc std_compat_enabled() -> bool {
+  give std_base_pkg.std_compat_enabled()
+}
+
+proc export_allowed(profile: string, module: string) -> bool {
+  give std_base_pkg.export_allowed(profile, module)
+}
+
+proc diagnostics_message(code: string) -> string {
+  give "std diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  give "check std module contract for " + code
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc doctor_status() -> string {
+  give "vitte/std doctor:ready api=" + api_version()
+}
+
+proc quickfix_preview(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix: no-op"
+  }
+  give diagnostics_quickfix(payload)
+}
+
+proc quickfix_apply(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix apply: no-op"
+  }
+  give "quickfix apply: " + payload
 }
 
 proc ready() -> bool {
@@ -63,4 +142,10 @@ role: Index des modules standards disponibles
 input_contract: Enregistrements modules explicites
 output_contract: Catalogue stable pour discovery
 boundary: Ne charge pas dynamiquement les modules
+versioning: API facade stable, additive only
+api_surface_stable: true
+diagnostics: VITTE-S0001..VITTE-S0099
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: v1
 >>>

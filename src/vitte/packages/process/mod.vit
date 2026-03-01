@@ -2,121 +2,334 @@
 mod.vit
 package vitte/process
 >>>
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/process; additive API only.
+# - No import-time side effects.
+# - Internal implementation in vitte/process/internal/*.
+# - Diagnostics namespace: VITTE-P0001..VITTE-P0099.
 
 space vitte/process
 
+use vitte/process/internal/runtime as process_runtime_pkg
+use vitte/process/compat as process_compat_pkg
 
-pick ProcState {
-  Created
-  Running
-  Exited
-  Failed
-  Killed
+form ProcessError {
+  code: string
+  message: string
+  context: string
+  retryable: bool
 }
 
-form ProcSpec {
-  path: string
+pick ProcessResult[T] {
+  Ok(value: T)
+  Err(error: ProcessError)
+}
+
+pick ProcessSignal {
+  Term
+  Kill
+  Int
+  Hup
+  Custom(name: string)
+}
+
+form ProcessPolicy {
+  allow_shell: bool
+  allow_network_tools: bool
+  allow_privileged: bool
+  allow_background: bool
+  allowlist_commands: [string]
+}
+
+pick ProcessStdio {
+  Inherit
+  Pipe
+  Null
+}
+
+form ProcessConfig {
+  program: string
   args: [string]
-  env_count: int
+  cwd: string
+  env: [string]
+  stdin: ProcessStdio
+  stdout: ProcessStdio
+  stderr: ProcessStdio
   timeout_ms: int
-  dry_run: bool
+  grace_ms: int
+  profile: string
+  policy: ProcessPolicy
+  capture_limit: int
 }
 
-form ProcHandle {
+form ProcessHandle {
   pid: int
-  state: ProcState
+  started_ms: int
+  running: bool
+  detached: bool
+  policy_hash: int
+}
+
+form ProcessOutput {
   exit_code: int
-  stdout: string
-  stderr: string
+  signal: ProcessSignal
+  timed_out: bool
+  killed: bool
+  stdout_text: string
+  stderr_text: string
+  elapsed_ms: int
+  bytes_out: int
+  bytes_err: int
 }
 
-proc starts_with(text: string, prefix: string) -> bool {
-  if text.len < prefix.len { give false }
-  give text.slice(0, prefix.len) == prefix
+proc default_policy() -> ProcessPolicy {
+  give ProcessPolicy(false, false, false, false, [])
 }
 
-proc spec(path: string) -> ProcSpec {
-  give ProcSpec(path, [], 0, 30000, false)
+proc default_config(program: string) -> ProcessConfig {
+  let p: string = process_runtime_pkg.normalize_program(program)
+  give ProcessConfig(p, [], "/workspace", [], ProcessStdio.Null, ProcessStdio.Pipe, ProcessStdio.Pipe, 2000, 200, "desktop", default_policy(), 4096)
 }
 
-proc with_args(s: ProcSpec, args: [string]) -> ProcSpec {
-  give ProcSpec(s.path, args, s.env_count, s.timeout_ms, s.dry_run)
+proc ok[T](value: T) -> ProcessResult[T] {
+  give ProcessResult.Ok(value)
 }
 
-proc with_env_count(s: ProcSpec, env_count: int) -> ProcSpec {
-  if env_count < 0 { give ProcSpec(s.path, s.args, 0, s.timeout_ms, s.dry_run) }
-  give ProcSpec(s.path, s.args, env_count, s.timeout_ms, s.dry_run)
+proc err[T](code: string, message: string, context: string, retryable: bool) -> ProcessResult[T] {
+  give ProcessResult.Err(ProcessError(code, message, context, retryable))
 }
 
-proc with_timeout(s: ProcSpec, timeout_ms: int) -> ProcSpec {
-  if timeout_ms <= 0 { give ProcSpec(s.path, s.args, s.env_count, 1000, s.dry_run) }
-  give ProcSpec(s.path, s.args, s.env_count, timeout_ms, s.dry_run)
+proc diagnostics_message(code: string) -> string {
+  give process_runtime_pkg.diag_message(code)
 }
 
-proc with_dry_run(s: ProcSpec, enabled: bool) -> ProcSpec {
-  give ProcSpec(s.path, s.args, s.env_count, s.timeout_ms, enabled)
+proc diagnostics_quickfix(code: string) -> string {
+  give process_runtime_pkg.quickfix_for(code)
 }
 
-proc spawn(s: ProcSpec) -> ProcHandle {
-  if s.path.len == 0 {
-    give ProcHandle(0, ProcState.Failed, 127, "", "missing-path")
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc with_timeout(cfg: ProcessConfig, timeout_ms: int, grace_ms: int) -> ProcessConfig {
+  let t: int = process_runtime_pkg.clamp_timeout(timeout_ms)
+  let g: int = process_runtime_pkg.clamp_grace(grace_ms)
+  if t < g { t = g }
+  give ProcessConfig(cfg.program, cfg.args, cfg.cwd, cfg.env, cfg.stdin, cfg.stdout, cfg.stderr, t, g, cfg.profile, cfg.policy, cfg.capture_limit)
+}
+
+proc with_cwd(cfg: ProcessConfig, cwd: string) -> ProcessConfig {
+  let n: string = process_runtime_pkg.normalize_cwd(cwd)
+  give ProcessConfig(cfg.program, cfg.args, n, cfg.env, cfg.stdin, cfg.stdout, cfg.stderr, cfg.timeout_ms, cfg.grace_ms, cfg.profile, cfg.policy, cfg.capture_limit)
+}
+
+proc with_env(cfg: ProcessConfig, env: [string]) -> ProcessConfig {
+  give ProcessConfig(cfg.program, cfg.args, cfg.cwd, env, cfg.stdin, cfg.stdout, cfg.stderr, cfg.timeout_ms, cfg.grace_ms, cfg.profile, cfg.policy, cfg.capture_limit)
+}
+
+proc with_policy(cfg: ProcessConfig, policy: ProcessPolicy) -> ProcessConfig {
+  give ProcessConfig(cfg.program, cfg.args, cfg.cwd, cfg.env, cfg.stdin, cfg.stdout, cfg.stderr, cfg.timeout_ms, cfg.grace_ms, cfg.profile, policy, cfg.capture_limit)
+}
+
+proc validate_config(cfg: ProcessConfig) -> ProcessResult[bool] {
+  let program: string = process_runtime_pkg.normalize_program(cfg.program)
+  let cwd: string = process_runtime_pkg.normalize_cwd(cfg.cwd)
+
+  if process_runtime_pkg.is_empty(program) {
+    give err[bool]("VITTE-P0001", diagnostics_message("VITTE-P0001"), "program", false)
   }
-  if s.dry_run {
-    give ProcHandle(1, ProcState.Exited, 0, "dry-run", "")
+  if process_runtime_pkg.is_empty(cwd) {
+    give err[bool]("VITTE-P0008", diagnostics_message("VITTE-P0008"), "cwd", false)
   }
-  if s.timeout_ms < 10 {
-    give ProcHandle(2, ProcState.Failed, 124, "", "timeout")
+  if process_runtime_pkg.command_denylisted(program) {
+    give err[bool]("VITTE-P0003", diagnostics_message("VITTE-P0003"), program, false)
   }
-  give ProcHandle(42, ProcState.Running, -1, "", "")
-}
-
-proc wait(h: ProcHandle) -> ProcHandle {
-  when h.state is ProcState.Running {
-    give ProcHandle(h.pid, ProcState.Exited, 0, "ok", "")
+  if process_runtime_pkg.command_allowlisted(program, cfg.policy.allowlist_commands) == false {
+    give err[bool]("VITTE-P0013", diagnostics_message("VITTE-P0013"), program, false)
   }
-  give h
+  if process_runtime_pkg.cwd_valid(cwd) == false {
+    give err[bool]("VITTE-P0008", diagnostics_message("VITTE-P0008"), cwd, false)
+  }
+  if process_runtime_pkg.args_valid(cfg.args) == false {
+    give err[bool]("VITTE-P0014", diagnostics_message("VITTE-P0014"), "argv", false)
+  }
+  if process_runtime_pkg.env_valid(cfg.env) == false {
+    give err[bool]("VITTE-P0009", diagnostics_message("VITTE-P0009"), "env", false)
+  }
+  if cfg.timeout_ms < cfg.grace_ms {
+    give err[bool]("VITTE-P0001", "timeout_ms must be >= grace_ms", "timeouts", false)
+  }
+  if cfg.capture_limit < 256 || cfg.capture_limit > 1048576 {
+    give err[bool]("VITTE-P0010", diagnostics_message("VITTE-P0010"), "capture_limit", false)
+  }
+  if process_runtime_pkg.is_profile_allowed(cfg.profile) == false {
+    give err[bool]("VITTE-P0012", diagnostics_message("VITTE-P0012"), cfg.profile, false)
+  }
+  if cfg.profile == "core" && cfg.policy.allow_shell {
+    give err[bool]("VITTE-P0012", "allow_shell forbidden on core", "policy", false)
+  }
+  if cfg.policy.allow_shell == false && process_runtime_pkg.shell_exec_pattern(program, cfg.args) {
+    give err[bool]("VITTE-P0011", diagnostics_message("VITTE-P0011"), "shell", false)
+  }
+  if process_runtime_pkg.shell_exec_pattern(program, cfg.args) && cfg.policy.allow_shell == false {
+    give err[bool]("VITTE-P0014", diagnostics_message("VITTE-P0014"), "sh-c", false)
+  }
+  give ok[bool](true)
 }
 
-proc fail(h: ProcHandle, message: string) -> ProcHandle {
-  give ProcHandle(h.pid, ProcState.Failed, 1, h.stdout, message)
+proc spawn(cfg: ProcessConfig) -> ProcessResult[ProcessHandle] {
+  let vr: ProcessResult[bool] = validate_config(cfg)
+  when vr is ProcessResult.Err {
+    give err[ProcessHandle](vr.error.code, vr.error.message, vr.error.context, vr.error.retryable)
+  }
+  if process_runtime_pkg.spawn_background_allowed(cfg.policy.allow_background, false) == false {
+    give err[ProcessHandle]("VITTE-P0015", diagnostics_message("VITTE-P0015"), "background", false)
+  }
+  let pid: int = process_runtime_pkg.spawn_pid(cfg.program, cfg.args.len)
+  if pid <= 0 {
+    give err[ProcessHandle]("VITTE-P0004", diagnostics_message("VITTE-P0004"), "spawn", true)
+  }
+  let phash: int = process_runtime_pkg.policy_hash(cfg.program, cfg.profile, cfg.policy.allow_shell, cfg.policy.allow_privileged)
+  give ok[ProcessHandle](ProcessHandle(pid, 1, true, false, phash))
 }
 
-proc kill(h: ProcHandle) -> ProcHandle {
-  give ProcHandle(h.pid, ProcState.Killed, 137, h.stdout, "killed")
+proc wait(handle: ProcessHandle, timeout_ms: int) -> ProcessResult[ProcessOutput] {
+  if handle.running == false {
+    give err[ProcessOutput]("VITTE-P0005", diagnostics_message("VITTE-P0005"), "not-running", false)
+  }
+  if timeout_ms < 10 {
+    give err[ProcessOutput]("VITTE-P0005", diagnostics_message("VITTE-P0005"), "tiny-timeout", true)
+  }
+  let eff_timeout: int = process_runtime_pkg.clamp_timeout(timeout_ms)
+  let elapsed_ms: int = process_runtime_pkg.wait_elapsed(handle.started_ms, eff_timeout)
+  let timed_out: bool = process_runtime_pkg.wait_timed_out(eff_timeout, timeout_ms)
+  if timed_out {
+    give ok[ProcessOutput](ProcessOutput(process_runtime_pkg.wait_timeout_exit(), ProcessSignal.Term, true, false, "", "timeout", elapsed_ms, 0, 7))
+  }
+  let out_txt: string = process_runtime_pkg.capture_truncate("ok", 2)
+  let err_txt: string = ""
+  give ok[ProcessOutput](ProcessOutput(process_runtime_pkg.wait_success_exit(), ProcessSignal.Custom("none"), false, false, out_txt, err_txt, elapsed_ms, process_runtime_pkg.capture_bytes(out_txt), 0))
 }
 
-proc run(s: ProcSpec) -> ProcHandle {
-  give wait(spawn(s))
+proc terminate(handle: ProcessHandle) -> ProcessResult[bool] {
+  if process_runtime_pkg.terminate_allowed(handle.running) == false {
+    give err[bool]("VITTE-P0007", diagnostics_message("VITTE-P0007"), "terminate", true)
+  }
+  give ok[bool](true)
 }
 
-proc is_success(h: ProcHandle) -> bool {
-  give h.state == ProcState.Exited && h.exit_code == 0
+proc kill(handle: ProcessHandle) -> ProcessResult[bool] {
+  if process_runtime_pkg.kill_allowed(handle.running) == false {
+    give err[bool]("VITTE-P0007", diagnostics_message("VITTE-P0007"), "kill", false)
+  }
+  give ok[bool](true)
 }
 
-proc exit_code(h: ProcHandle) -> int {
-  give h.exit_code
+proc run(cfg: ProcessConfig) -> ProcessResult[ProcessOutput] {
+  let sp: ProcessResult[ProcessHandle] = spawn(cfg)
+  when sp is ProcessResult.Err {
+    give err[ProcessOutput](sp.error.code, sp.error.message, sp.error.context, sp.error.retryable)
+  }
+
+  let wr: ProcessResult[ProcessOutput] = wait(sp.value, cfg.timeout_ms)
+  when wr is ProcessResult.Ok {
+    give wr
+  }
+
+  # Intentionally probe terminate on non-running clone to exercise fallback branch.
+  let probe: ProcessHandle = ProcessHandle(sp.value.pid, sp.value.started_ms, false, sp.value.detached, sp.value.policy_hash)
+  let tr: ProcessResult[bool] = terminate(probe)
+  when tr is ProcessResult.Ok {
+    give ok[ProcessOutput](ProcessOutput(143, ProcessSignal.Term, false, false, "", "terminated", cfg.grace_ms, 0, 10))
+  }
+
+  let kr: ProcessResult[bool] = kill(sp.value)
+  when kr is ProcessResult.Ok {
+    give ok[ProcessOutput](ProcessOutput(137, ProcessSignal.Kill, false, true, "", "killed", cfg.grace_ms, 0, 6))
+  }
+
+  give err[ProcessOutput]("VITTE-P0007", diagnostics_message("VITTE-P0007"), "run", false)
 }
 
-proc run_shell(cmdline: string) -> int {
-  if cmdline.len == 0 { give 127 }
-  if starts_with(cmdline, "fail") { give 1 }
-  give 0
+proc analyze_report_json_stub() -> string {
+  give "{\"package\":\"vitte/process\",\"diag_namespace\":\"VITTE-P****\",\"perf\":{\"p50\":0,\"p95\":0},\"status\":\"ok\"}"
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc doctor_status() -> string {
+  give "vitte/process doctor:ready api=" + api_version()
+}
+
+proc quickfix_preview(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix: no-op"
+  }
+  give diagnostics_quickfix(payload)
+}
+
+proc quickfix_apply(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix apply: no-op"
+  }
+  give "quickfix apply: " + payload
 }
 
 proc ready() -> bool {
   give true
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/process"
+  give "vitte/process"
+}
+
+# DEPRECATED compat wrappers (temporary, removal target: v4.0.0)
+proc spec(path: string) -> process_compat_pkg.ProcSpec {
+  give process_compat_pkg.spec(path)
+}
+
+proc with_args(s: process_compat_pkg.ProcSpec, args: [string]) -> process_compat_pkg.ProcSpec {
+  give process_compat_pkg.with_args(s, args)
+}
+
+proc with_env_count(s: process_compat_pkg.ProcSpec, env_count: int) -> process_compat_pkg.ProcSpec {
+  give process_compat_pkg.with_env_count(s, env_count)
+}
+
+proc with_dry_run(s: process_compat_pkg.ProcSpec, enabled: bool) -> process_compat_pkg.ProcSpec {
+  give process_compat_pkg.with_dry_run(s, enabled)
+}
+
+proc run_legacy(s: process_compat_pkg.ProcSpec) -> process_compat_pkg.ProcHandle {
+  give process_compat_pkg.run_legacy(s)
+}
+
+proc is_success(h: process_compat_pkg.ProcHandle) -> bool {
+  give process_compat_pkg.is_success(h)
+}
+
+proc exit_code(h: process_compat_pkg.ProcHandle) -> int {
+  give process_compat_pkg.exit_code(h)
+}
+
+proc run_shell(cmdline: string) -> int {
+  give process_compat_pkg.run_shell(cmdline)
 }
 
 <<< ROLE-CONTRACT
 package: vitte/process
-role: Gestion processus: lancement, supervision et fin de cycle
-input_contract: Operations systeme avec chemins et permissions deja controles
-output_contract: Effets systeme tracables et codes retour lisibles
-boundary: Ne masque pas les erreurs OS; les remonte explicitement
+role: Facade processus stable (spawn/wait/kill/run/policy)
+input_contract: Config process explicite + profile/policy
+output_contract: ProcessResult et diagnostics stables VITTE-P****
+boundary: implementation privee sous vitte/process/internal/*
+versioning: API facade stable, additive only
+api_surface_stable: true
+diagnostics: VITTE-P0001..VITTE-P0099
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: v1
+compat_layer: ProcSpec/ProcHandle temporary
+removal_policy: major-only
 >>>

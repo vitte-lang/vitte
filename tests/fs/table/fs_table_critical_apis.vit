@@ -1,0 +1,24 @@
+<<<
+fs_table_critical_apis.vit
+table-driven checks path normalize/relative/symlink/atomic write
+>>>
+
+use vitte/fs as fs_pkg
+
+entry main at core/app {
+  let rt: fs_pkg.FsRuntime = fs_pkg.default_runtime()
+  let a: fs_pkg.PathInfo = fs_pkg.path("/root/work")
+  let b: fs_pkg.PathInfo = fs_pkg.path("/root/work/src/main.vit")
+  if fs_pkg.is_subpath(a, b) == false {
+    give 1
+  }
+  let rel: fs_pkg.PathInfo = fs_pkg.relative(a, b)
+  if rel.raw == "" {
+    give 2
+  }
+  let w: fs_pkg.FsResult[fs_pkg.FsRuntime] = fs_pkg.write_atomic(rt, fs_pkg.path("./x.txt"), "x")
+  when w is fs_pkg.FsResult.Err {
+    give 3
+  }
+  give 0
+}

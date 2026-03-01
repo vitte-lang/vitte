@@ -1,0 +1,108 @@
+<<<
+vitte_editor_engine.vit
+VitteEditor suggestion and diagnostic model engine
+>>>
+
+space apps/vitte_editor/engine
+
+pick Severity {
+  Info
+  Warning
+  Error
+}
+
+form DiagnosticItem {
+  file: string
+  line: int
+  col: int
+  code: string
+  message: string
+  severity: Severity
+}
+
+form SuggestionItem {
+  label: string
+  detail: string
+  score: int
+}
+
+proc vitte_keywords() -> [string] {
+  give [
+    "use", "space", "pick", "form", "proc", "entry", "if", "else", "loop",
+    "break", "continue", "return", "let", "set", "match", "when", "case",
+    "true", "false", "unsafe", "macro", "trait", "emit", "pull", "share"
+  ]
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+  if prefix.len == 0 { give true }
+  if text.len < prefix.len { give false }
+  let i = 0
+  loop {
+    if i >= prefix.len { break }
+    if text[i] != prefix[i] { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc contains(haystack: [string], needle: string) -> bool {
+  let i = 0
+  loop {
+    if i >= haystack.len { break }
+    if haystack[i] == needle { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc unique_push(items: [string], value: string) -> [string] {
+  if contains(items, value) { give items }
+  give items.push(value)
+}
+
+proc suggest(prefix: string, symbols: [string]) -> [SuggestionItem] {
+  let out: [SuggestionItem] = []
+  let kws = vitte_keywords()
+
+  let i = 0
+  loop {
+    if i >= kws.len { break }
+    let kw = kws[i]
+    if starts_with(kw, prefix) {
+      out = out.push(SuggestionItem(kw, "keyword", 100 - kw.len))
+    }
+    i = i + 1
+  }
+
+  let j = 0
+  loop {
+    if j >= symbols.len { break }
+    let sym = symbols[j]
+    if starts_with(sym, prefix) {
+      out = out.push(SuggestionItem(sym, "symbol", 80 - sym.len))
+    }
+    j = j + 1
+  }
+
+  give out
+}
+
+proc diagnostics_summary(diags: [DiagnosticItem]) -> string {
+  let info = 0
+  let warn = 0
+  let err = 0
+  let i = 0
+  loop {
+    if i >= diags.len { break }
+    if diags[i].severity == Severity.Info { info = info + 1 }
+    if diags[i].severity == Severity.Warning { warn = warn + 1 }
+    if diags[i].severity == Severity.Error { err = err + 1 }
+    i = i + 1
+  }
+  give "errors=" + err.to_string() + ",warnings=" + warn.to_string() + ",info=" + info.to_string()
+}
+
+proc ready() -> bool { give true }
+
+proc package_meta() -> string { give "apps/vitte_editor/engine" }

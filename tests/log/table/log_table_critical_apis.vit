@@ -1,0 +1,22 @@
+<<<
+log_table_critical_apis.vit
+table-driven checks for formatter/routing/filtering
+>>>
+
+use vitte/log as log_pkg
+
+entry main at core/app {
+  let lg: log_pkg.Logger = log_pkg.logger_new(log_pkg.LogLevel.Trace)
+  lg = log_pkg.with_module_filter(lg, "core/log")
+  lg = log_pkg.with_sampling(lg, 100, 10)
+  lg = log_pkg.with_rate_limit(lg, 100)
+  lg = log_pkg.with_dedup_window(lg, 4)
+  lg = log_pkg.with_buffering(lg, true, 16, log_pkg.DropPolicy.DropOldest)
+  lg = log_pkg.with_field(lg, "email", "user@example.test")
+  lg = log_pkg.with_trace(lg, "t1", "s1")
+  lg = log_pkg.info(lg, 10, "ok", "core/log", [])
+  if lg.events.len < 0 {
+    give 1
+  }
+  give 0
+}

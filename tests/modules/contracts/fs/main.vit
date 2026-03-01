@@ -1,0 +1,23 @@
+<<<
+main.vit
+contracts smoke for vitte/fs
+>>>
+
+use vitte/fs as fs_pkg
+
+entry main at core/app {
+  let rt: fs_pkg.FsRuntime = fs_pkg.default_runtime()
+  let p: fs_pkg.PathInfo = fs_pkg.path("./tmp/a.txt")
+  let w: fs_pkg.FsResult[fs_pkg.FsRuntime] = fs_pkg.write_text(rt, p, "hello")
+  when w is fs_pkg.FsResult.Err {
+    give 1
+  }
+  let r: fs_pkg.FsResult[string] = fs_pkg.read_text(w.value, p)
+  when r is fs_pkg.FsResult.Err {
+    give 2
+  }
+  if r.value != "hello" {
+    give 3
+  }
+  give 0
+}

@@ -1,0 +1,24 @@
+<<<
+yaml_profile_strict.vit
+profile aware yaml checks
+>>>
+
+use vitte/yaml as yaml_pkg
+
+entry main at core/app {
+  let opts: yaml_pkg.ParseOptions = yaml_pkg.default_parse_options()
+  let strict_opts: yaml_pkg.ParseOptions = yaml_pkg.ParseOptions(
+    opts.max_bytes,
+    opts.max_depth,
+    opts.max_nodes,
+    true,
+    [],
+    false,
+    "core"
+  )
+  let out: yaml_pkg.YamlResult[yaml_pkg.Value] = yaml_pkg.parse_text("x: y", strict_opts)
+  when out is yaml_pkg.YamlResult.Err {
+    give 1
+  }
+  give 0
+}

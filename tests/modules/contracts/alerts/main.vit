@@ -1,0 +1,95 @@
+use vitte/alerts as alerts
+
+proc main() -> i32 {
+  if !alerts.ready() { return 1 }
+
+  let r0 = alerts.rule_new("cpu_high", 80, 3)
+  let r1 = alerts.AlertRule(r0.name, "cpu", alerts.AlertLevel.Critical, r0.threshold, r0.window_ticks, r0.state, r0.silenced_until, r0.last_value, r0.fired_count)
+  let e0 = alerts.AlertEvent("k1", "node-a", "cpu", 95, 100, ["tenant:t1", "env:prod"], alerts.trace_id("tr-1"))
+
+  if alerts.severity(r1) != "critical" { return 2 }
+  if alerts.dedupe_key(e0).len == 0 { return 3 }
+
+  let pol = alerts.policy_new(2, 5, 3)
+  let rt0 = alerts.runtime_new()
+  let rt1 = alerts.rule_eval_timed(r1, e0, pol, rt0)
+  let e1 = alerts.AlertEvent("k2", "node-a", "cpu", 97, 101, ["tenant:t1", "env:prod"], alerts.trace_id("tr-1"))
+  let rt2 = alerts.rule_eval_timed(r1, e1, pol, rt1)
+  if !rt2.firing { return 4 }
+
+  let ded0 = alerts.dedupe_new(30)
+  let n0 = alerts.notify_with_dedupe(r1, e0, ded0)
+  if n0.decision.len == 0 { return 5 }
+
+  let corr = alerts.correlate_incidents([e0, e1])
+  if corr.len == 0 { return 6 }
+
+  let q0 = alerts.quota_check([alerts.TenantQuota(alerts.tenant_id("tenant:t1"), 1, 0)], [], e0)
+  let q1 = alerts.quota_check([alerts.TenantQuota(alerts.tenant_id("tenant:t1"), 1, 0)], q0.states, e1)
+  if !q0.allowed { return 7 }
+  if q1.allowed { return 8 }
+
+  let policies = [alerts.AuthzPolicy("alice", true, true), alerts.AuthzPolicy("bob", false, false)]
+  let r2 = alerts.rule_new_authorized(policies, "alice", "mem_high", 75, 2)
+  let r3 = alerts.silence_authorized(policies, "alice", r2, 120)
+  if !alerts.silenced(r3, 100) { return 9 }
+
+  let windows = [alerts.PlannedSilence(90, 130, ["env:prod"], "maintenance")]
+  let rs = alerts.apply_planned_silence(r1, e0, windows, 100)
+  if !alerts.silenced(rs, 100) { return 10 }
+
+  let routes = [alerts.RoutePolicy(alerts.tenant_id("tenant:t1"), alerts.AlertLevel.Critical, alerts.NotificationChannel.Pager, "pager:primary")]
+  let tpl = alerts.template_new("v1", "CPU high", "Context", "https://runbook")
+  let circ = alerts.provider_circuit_new(2, 10)
+  let nr = alerts.notify_runtime_new()
+  let out = alerts.notify_routed(r1, e0, routes, tpl, circ, nr, 1)
+  if out.decision.len == 0 { return 11 }
+  if alerts.validate_template(tpl, alerts.AlertLevel.Critical) != "ok" { return 12 }
+
+  if alerts.validate_rule_inputs(0, 2) != "invalid_threshold" { return 13 }
+  if alerts.validate_rule_inputs(1, -1) != "invalid_window" { return 14 }
+  let r_bad = alerts.AlertRule("bad", "cpu", alerts.AlertLevel.Warn, 0, -1, alerts.AlertState.Idle, -1, 0, 0)
+  if alerts.validate_rule(r_bad).len == 0 { return 15 }
+
+  let prop = alerts.property_invariants(7, 24)
+  if !prop.ok { return 16 }
+  if prop.checks <= 0 { return 17 }
+
+  let fz = alerts.fuzz_events(11, 50)
+  if !fz.ok { return 18 }
+  if fz.steps != 50 { return 19 }
+
+  let br = alerts.benchmark_eval(3, 40)
+  if br.p95 < br.p50 { return 20 }
+  if br.p99 < br.p95 { return 21 }
+  if br.throughput < 0 { return 22 }
+
+  let qstats = alerts.tenant_quota_stats([alerts.TenantQuota(alerts.tenant_id("tenant:t1"), 1, 0)], q1.states, alerts.tenant_id("tenant:t1"))
+  if qstats.limit <= 0 { return 23 }
+  if alerts.route_explain(e0).len == 0 { return 24 }
+  if alerts.route_explain_with_level(routes, e0, alerts.AlertLevel.Critical).len == 0 { return 25 }
+  if alerts.dedupe_ttl_remaining(n0.dedupe, alerts.dedupe_hash(e0), e0.ts) <= 0 { return 26 }
+  if alerts.silence_conflicts([alerts.PlannedSilence(100, 90, ["env:prod"], "bad")]) <= 0 { return 27 }
+  if alerts.authz_explain(policies, "alice", "create_rule") != "allow" { return 28 }
+  if alerts.authz_explain(policies, "bob", "silence_rule") != "deny" { return 29 }
+
+  if alerts.alerts_emitted(n0.dedupe) < 0 { return 30 }
+  if alerts.dedupe_hits(n0.dedupe) < 0 { return 31 }
+  if alerts.alerts_suppressed(out.runtime) < 0 { return 32 }
+  if alerts.notify_failures(out.runtime) < 0 { return 33 }
+  if alerts.notify_attempts_total(out.runtime) < 0 { return 34 }
+  if alerts.notify_dead_letters_total(out.runtime) < 0 { return 35 }
+  if alerts.experimental_validate_template(tpl, alerts.AlertLevel.Critical) != "ok" { return 36 }
+  if alerts.experimental_tenant_quota_stats([alerts.TenantQuota(alerts.tenant_id("tenant:t1"), 1, 0)], q1.states, alerts.tenant_id("tenant:t1")).used < 0 { return 37 }
+  if alerts.experimental_route_explain_with_level(routes, e0, alerts.AlertLevel.Critical).len == 0 { return 38 }
+  if alerts.experimental_notify_attempts_total(out.runtime) < 0 { return 39 }
+  if alerts.experimental_notify_dead_letters_total(out.runtime) < 0 { return 40 }
+  if alerts.experimental_dedupe_ttl_remaining(n0.dedupe, alerts.dedupe_hash(e0), e0.ts) < 0 { return 41 }
+  if alerts.experimental_silence_conflicts([alerts.PlannedSilence(100, 90, ["env:prod"], "bad")]) <= 0 { return 42 }
+  if alerts.experimental_authz_explain(policies, "alice", "create_rule").len == 0 { return 43 }
+  if alerts.stable_api_surface().len == 0 { return 44 }
+  if alerts.api_version().len == 0 { return 45 }
+
+  if alerts.package_meta() != "vitte/alerts" { return 46 }
+  return 0
+}

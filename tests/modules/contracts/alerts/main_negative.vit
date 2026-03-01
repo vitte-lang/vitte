@@ -1,0 +1,41 @@
+use vitte/alerts as alerts
+
+proc main() -> i32 {
+  let event = alerts.AlertEvent("neg-1", "node-a", "cpu", 95, 100, ["tenant:t1", "env:prod"], alerts.trace_id("tr-neg"))
+  let routes = [alerts.RoutePolicy(alerts.tenant_id("tenant:t1"), alerts.AlertLevel.Critical, alerts.NotificationChannel.Pager, "pager:primary")]
+  let template_missing = alerts.template_new("v1", "CPU high", "Context", "")
+
+  if alerts.validate_template(template_missing, alerts.AlertLevel.Critical) != "missing_runbook" { return 1 }
+  if alerts.validate_template(template_missing, alerts.AlertLevel.Page) != "missing_runbook" { return 2 }
+  if alerts.template_valid_for_level(template_missing, alerts.AlertLevel.Critical) { return 3 }
+  if alerts.template_valid_for_level(template_missing, alerts.AlertLevel.Page) { return 4 }
+
+  let critical_rule = alerts.AlertRule("crit", "cpu", alerts.AlertLevel.Critical, 80, 1, alerts.AlertState.Idle, -1, 0, 0)
+  let critical_out = alerts.notify_routed(
+    critical_rule,
+    event,
+    routes,
+    template_missing,
+    alerts.provider_circuit_new(2, 10),
+    alerts.notify_runtime_new(),
+    1
+  )
+  if critical_out.decision != "dead:template" { return 5 }
+  if alerts.notify_dead_letters_total(critical_out.runtime) != 1 { return 6 }
+  if alerts.dead_letter_reason_name(critical_out.runtime.dead_letters[0].reason) != "invalid_template_or_runbook" { return 7 }
+
+  let page_rule = alerts.AlertRule("page", "cpu", alerts.AlertLevel.Page, 80, 1, alerts.AlertState.Idle, -1, 0, 0)
+  let page_out = alerts.notify_routed(
+    page_rule,
+    event,
+    routes,
+    template_missing,
+    alerts.provider_circuit_new(2, 10),
+    alerts.notify_runtime_new(),
+    1
+  )
+  if page_out.decision != "dead:template" { return 8 }
+  if alerts.notify_dead_letters_total(page_out.runtime) != 1 { return 9 }
+
+  return 0
+}

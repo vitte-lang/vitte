@@ -1,0 +1,25 @@
+<<<
+yaml_table_critical_apis.vit
+table-driven checks for vitte/yaml public APIs
+>>>
+
+use vitte/yaml as yaml_pkg
+
+entry main at core/app {
+  let opts: yaml_pkg.ParseOptions = yaml_pkg.default_parse_options()
+  let parsed: yaml_pkg.YamlResult[yaml_pkg.Value] = yaml_pkg.parse_text("k: v", opts)
+  when parsed is yaml_pkg.YamlResult.Err { give 1 }
+
+  let schema: yaml_pkg.Schema = yaml_pkg.Schema("strict", [], true)
+  let valid: yaml_pkg.YamlResult[bool] = yaml_pkg.validate(parsed.value, schema)
+  when valid is yaml_pkg.YamlResult.Err { give 2 }
+
+  let q: yaml_pkg.YamlResult[yaml_pkg.Value] = yaml_pkg.query_path(parsed.value, "$")
+  when q is yaml_pkg.YamlResult.Err { give 3 }
+
+  let stream: yaml_pkg.StreamState = yaml_pkg.StreamState(0, false, false, "")
+  let step: yaml_pkg.YamlResult[yaml_pkg.StreamState] = yaml_pkg.parse_stream("a: b", stream, opts)
+  when step is yaml_pkg.YamlResult.Err { give 4 }
+
+  give 0
+}
