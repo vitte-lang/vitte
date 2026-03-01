@@ -544,6 +544,10 @@ ci-mod-fast: grammar-check diag-snapshots completions-snapshots stdlib-profile-s
 .PHONY: ci-bridge-compat
 ci-bridge-compat: ci-mod-fast
 
+.PHONY: all-tests
+all-tests:
+	@tools/run_all_tests.sh
+
 .PHONY: vitteos-bin-quality
 vitteos-bin-quality:
 	@tools/vitteos_bin_ci_quality.sh
@@ -819,6 +823,7 @@ help:
 	@echo "  make completions-snapshots-update update completion golden snapshots"
 	@echo "  make completions-lint syntax-check bash/zsh/fish completion files"
 	@echo "  make ci-completions run completion check + lint + snapshots + fallback"
+	@echo "  make all-tests run the complete tests/CI matrix and emit per-target logs in target/reports/all-tests"
 	@echo "  make pkg-debian build Debian .deb installer (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make pkg-debian-install build and install Debian .deb locally via dpkg"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
