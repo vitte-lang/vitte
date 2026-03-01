@@ -5,8 +5,10 @@ import argparse
 import re
 from pathlib import Path
 
-CRITICAL = ("abi", "http", "db", "core")
+CRITICAL = ("abi", "http", "db", "core", "actor", "alerts")
 REQUIRED_FIELDS = ("owner", "stability", "since", "deprecated_in")
+STRICT_ROLE_FIELDS = ("input_contract", "output_contract", "boundary", "versioning", "api_surface_stable")
+STRICT_ROLE_MODULES = {"actor", "alerts"}
 OWNER_RE = re.compile(r"^@[a-z0-9_.-]+/[a-z0-9_.-]+$")
 
 
@@ -74,6 +76,11 @@ def main() -> int:
                 errors.append(f"{info}: missing field '{field}:'")
             if field not in role_kv or not role_kv[field]:
                 errors.append(f"{mod_vit}: ROLE-CONTRACT missing field '{field}:'")
+
+        if mod in STRICT_ROLE_MODULES:
+            for field in STRICT_ROLE_FIELDS:
+                if field not in role_kv or not role_kv[field]:
+                    errors.append(f"{mod_vit}: ROLE-CONTRACT strict missing field '{field}:'")
 
         if "<<< ROLE-CONTRACT" not in read_text(mod_vit):
             errors.append(f"{mod_vit}: missing ROLE-CONTRACT header")

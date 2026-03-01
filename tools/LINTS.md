@@ -52,11 +52,12 @@ Command:
 tools/lint_critical_module_contracts.py
 ```
 
-Checks (`abi/http/db/core`):
+Checks (`abi/http/db/core/actor/alerts`):
 - requires `info.vit` metadata keys: `owner`, `stability`, `since`, `deprecated_in`
 - requires `OWNERS` non-empty with `@team/name` format
 - enforces owner coherence between `info.vit` and `OWNERS`
 - requires `ROLE-CONTRACT` header metadata in `mod.vit`
+- strict ROLE-CONTRACT keys for `actor/alerts`: `input_contract`, `output_contract`, `boundary`, `versioning`, `api_surface_stable`
 
 ## 5) Module naming lint
 
@@ -131,9 +132,21 @@ tools/lint_critical_runtime_matrix.py
 ```
 
 Checks:
-- snapshot matrix exists for critical modules (`abi/core/db/http`) across runtime profiles (`core/system/desktop/arduino`)
+- snapshot matrix exists for critical modules (`abi/core/db/http/alerts`) across runtime profiles (`core/system/desktop/arduino`)
 
-## 11) New public packages snapshot lint
+## 11) Export policy lint
+
+Command:
+
+```bash
+tools/lint_export_policy.py --module alerts --scope public --current-version 2.0.0 --baseline-version 2.0.0 --removed-file /tmp/removed.txt
+```
+
+Checks:
+- forbids stable export removals without major version bump
+- allows explicit override with `--allow-breaking`
+
+## 12) New public packages snapshot lint
 
 Command:
 
@@ -144,7 +157,7 @@ BASE_REF=origin/main tools/lint_new_public_packages_have_snapshots.py
 Checks:
 - each newly added `src/vitte/packages/**/mod.vit` (vs `BASE_REF`) must have snapshot coverage
 
-## 12) No std imports lint
+## 13) No std imports lint
 
 Command:
 

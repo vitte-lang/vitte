@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 PROFILES = ("core", "system", "desktop", "arduino")
-CRITICAL = ("abi", "core", "db", "http")
+CRITICAL = ("abi", "core", "db", "http", "alerts")
 
 
 def main() -> int:

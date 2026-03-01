@@ -10,6 +10,9 @@ die() { printf "[modules-tests][error] %s\n" "$*" >&2; exit 1; }
 [ -x "$BIN" ] || die "missing binary: $BIN"
 DENY_LEGACY_SELF_LEAF="${DENY_LEGACY_SELF_LEAF:-0}"
 LEGACY_SELF_LEAF_WARN_ONLY="${LEGACY_SELF_LEAF_WARN_ONLY:-0}"
+ALERTS_FUZZ_NIGHTLY="${ALERTS_FUZZ_NIGHTLY:-0}"
+ALLOC_FUZZ_NIGHTLY="${ALLOC_FUZZ_NIGHTLY:-0}"
+AST_FUZZ_NIGHTLY="${AST_FUZZ_NIGHTLY:-0}"
 
 graph_src="$ROOT_DIR/tests/modules/mod_graph/main.vit"
 doctor_src="$ROOT_DIR/tests/modules/mod_doctor/main.vit"
@@ -19,6 +22,19 @@ exp_src="$ROOT_DIR/tests/modules/experimental/main.vit"
 internal_src="$ROOT_DIR/tests/modules/internal/main.vit"
 reexport_src="$ROOT_DIR/tests/modules/reexport_conflict/main.vit"
 cross_pkg_src="$ROOT_DIR/tests/modules/contracts/cross_package/main.vit"
+alerts_negative_src="$ROOT_DIR/tests/modules/contracts/alerts/main_negative.vit"
+alerts_bench_src="$ROOT_DIR/tests/modules/contracts/alerts/main_bench.vit"
+alerts_fuzz_short_src="$ROOT_DIR/tests/modules/contracts/alerts/main_fuzz_short.vit"
+alerts_fuzz_nightly_src="$ROOT_DIR/tests/modules/contracts/alerts/main_fuzz_nightly.vit"
+alloc_contract_src="$ROOT_DIR/tests/modules/contracts/alloc/main.vit"
+alloc_bench_src="$ROOT_DIR/tests/modules/contracts/alloc/main_bench.vit"
+alloc_fuzz_short_src="$ROOT_DIR/tests/modules/contracts/alloc/main_fuzz_short.vit"
+alloc_fuzz_nightly_src="$ROOT_DIR/tests/modules/contracts/alloc/main_fuzz_nightly.vit"
+ast_contract_src="$ROOT_DIR/tests/modules/contracts/ast/main.vit"
+ast_bench_src="$ROOT_DIR/tests/modules/contracts/ast/main_bench.vit"
+ast_fuzz_short_src="$ROOT_DIR/tests/modules/contracts/ast/main_fuzz_short.vit"
+ast_fuzz_nightly_src="$ROOT_DIR/tests/modules/contracts/ast/main_fuzz_nightly.vit"
+cross_pkg_ast_src="$ROOT_DIR/tests/modules/contracts/cross_package/main_ast_flow.vit"
 legacy_runtime_src="$ROOT_DIR/tests/modules/mod_doctor_legacy/main.vit"
 legacy_write_expected="$ROOT_DIR/tests/modules/snapshots/mod_doctor_fix_write.rewritten.must"
 doctor_write_cases_dir="$ROOT_DIR/tests/modules/mod_doctor_write_cases"
@@ -224,6 +240,64 @@ grep -Fq "[cache] parse=" <<<"$out_cache" || die "missing cache report output"
 log "cross-package (collections + abi + channel)"
 out_cross="$("$BIN" check --lang=en "$cross_pkg_src" 2>&1)"
 grep -Fq "[driver] mir ok" <<<"$out_cross" || die "cross-package fixture should reach mir ok"
+
+log "cross-package (ast -> typeck -> codegen)"
+out_cross_ast="$("$BIN" check --lang=en "$cross_pkg_ast_src" 2>&1)"
+grep -Fq "[driver] mir ok" <<<"$out_cross_ast" || die "cross-package ast fixture should reach mir ok"
+
+log "alerts contract negatives"
+out_alerts_negative="$("$BIN" check --lang=en "$alerts_negative_src" 2>&1)"
+grep -Fq "[driver] mir ok" <<<"$out_alerts_negative" || die "alerts negative fixture should reach mir ok"
+
+log "alerts benchmark snapshot"
+out_alerts_bench="$("$BIN" check --lang=en "$alerts_bench_src" 2>&1)"
+grep -Fq "[driver] mir ok" <<<"$out_alerts_bench" || die "alerts benchmark fixture should reach mir ok"
+
+log "alerts fuzz seed matrix (short)"
+out_alerts_fuzz_short="$("$BIN" check --lang=en "$alerts_fuzz_short_src" 2>&1)"
+grep -Fq "[driver] mir ok" <<<"$out_alerts_fuzz_short" || die "alerts fuzz short fixture should reach mir ok"
+
+if [ "$ALERTS_FUZZ_NIGHTLY" = "1" ]; then
+  log "alerts fuzz seed matrix (nightly long)"
+  out_alerts_fuzz_nightly="$("$BIN" check --lang=en "$alerts_fuzz_nightly_src" 2>&1)"
+  grep -Fq "[driver] mir ok" <<<"$out_alerts_fuzz_nightly" || die "alerts fuzz nightly fixture should reach mir ok"
+fi
+
+log "alloc stable contract"
+out_alloc_contract="$("$BIN" check --lang=en "$alloc_contract_src" 2>&1)"
+grep -Fq "[driver] mir ok" <<<"$out_alloc_contract" || die "alloc contract fixture should reach mir ok"
+
+log "alloc benchmark snapshot"
+out_alloc_bench="$("$BIN" check --lang=en "$alloc_bench_src" 2>&1)"
+grep -Fq "[driver] mir ok" <<<"$out_alloc_bench" || die "alloc benchmark fixture should reach mir ok"
+
+log "alloc fuzz seed matrix (short)"
+out_alloc_fuzz_short="$("$BIN" check --lang=en "$alloc_fuzz_short_src" 2>&1)"
+grep -Fq "[driver] mir ok" <<<"$out_alloc_fuzz_short" || die "alloc fuzz short fixture should reach mir ok"
+
+if [ "$ALLOC_FUZZ_NIGHTLY" = "1" ]; then
+  log "alloc fuzz seed matrix (nightly long)"
+  out_alloc_fuzz_nightly="$("$BIN" check --lang=en "$alloc_fuzz_nightly_src" 2>&1)"
+  grep -Fq "[driver] mir ok" <<<"$out_alloc_fuzz_nightly" || die "alloc fuzz nightly fixture should reach mir ok"
+fi
+
+log "ast stable contract"
+out_ast_contract="$("$BIN" check --lang=en "$ast_contract_src" 2>&1)"
+grep -Fq "[driver] mir ok" <<<"$out_ast_contract" || die "ast contract fixture should reach mir ok"
+
+log "ast benchmark snapshot"
+out_ast_bench="$("$BIN" check --lang=en "$ast_bench_src" 2>&1)"
+grep -Fq "[driver] mir ok" <<<"$out_ast_bench" || die "ast benchmark fixture should reach mir ok"
+
+log "ast fuzz seed matrix (short)"
+out_ast_fuzz_short="$("$BIN" check --lang=en "$ast_fuzz_short_src" 2>&1)"
+grep -Fq "[driver] mir ok" <<<"$out_ast_fuzz_short" || die "ast fuzz short fixture should reach mir ok"
+
+if [ "$AST_FUZZ_NIGHTLY" = "1" ]; then
+  log "ast fuzz seed matrix (nightly long)"
+  out_ast_fuzz_nightly="$("$BIN" check --lang=en "$ast_fuzz_nightly_src" 2>&1)"
+  grep -Fq "[driver] mir ok" <<<"$out_ast_fuzz_nightly" || die "ast fuzz nightly fixture should reach mir ok"
+fi
 
 log "mod contract-diff"
 set +e
