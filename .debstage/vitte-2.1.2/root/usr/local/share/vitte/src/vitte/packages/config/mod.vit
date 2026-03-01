@@ -1,0 +1,107 @@
+<<<
+mod.vit
+package vitte/config
+>>>
+
+space vitte/config
+
+
+form ConfigEntry {
+  key: string
+  value: string
+}
+
+form Config {
+  entries: [ConfigEntry]
+}
+
+proc config_new() -> Config {
+  give Config([])
+}
+
+proc set_entry(cfg: Config, key: string, value: string) -> Config {
+  let out: [ConfigEntry] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= cfg.entries.len { break }
+    let e = cfg.entries[i]
+    if e.key == key {
+      out = out.push(ConfigEntry(key, value))
+      found = true
+    } else {
+      out = out.push(e)
+    }
+    i = i + 1
+  }
+  if !found { out = out.push(ConfigEntry(key, value)) }
+  give Config(out)
+}
+
+proc get_entry(cfg: Config, key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= cfg.entries.len { break }
+    if cfg.entries[i].key == key { give cfg.entries[i].value }
+    i = i + 1
+  }
+  give ""
+}
+
+proc has_entry(cfg: Config, key: string) -> bool {
+  give get_entry(cfg, key).len > 0
+}
+
+proc remove_entry(cfg: Config, key: string) -> Config {
+  let out: [ConfigEntry] = []
+  let i: int = 0
+  loop {
+    if i >= cfg.entries.len { break }
+    if cfg.entries[i].key != key { out = out.push(cfg.entries[i]) }
+    i = i + 1
+  }
+  give Config(out)
+}
+
+proc merge(base: Config, overlay: Config) -> Config {
+  let out = base
+  let i: int = 0
+  loop {
+    if i >= overlay.entries.len { break }
+    out = set_entry(out, overlay.entries[i].key, overlay.entries[i].value)
+    i = i + 1
+  }
+  give out
+}
+
+proc required(cfg: Config, keys: [string]) -> bool {
+  let i: int = 0
+  loop {
+    if i >= keys.len { break }
+    if !has_entry(cfg, keys[i]) { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc summary(cfg: Config) -> string {
+  give "entries=" + cfg.entries.len.to_string()
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/config"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/config
+role: Chargement fusion et validation configuration
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

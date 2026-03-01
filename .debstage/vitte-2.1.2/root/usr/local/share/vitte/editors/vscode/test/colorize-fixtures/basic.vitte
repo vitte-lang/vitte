@@ -1,0 +1,69 @@
+/*! basic.vitte — fixture de colorisation pour Vitte
+   Couvre : commentaires, mots-clés, littéraux, types, unions, match, boucles.
+*/
+
+/// Doc du module officiel
+module demo::basic;
+
+// Imports
+import std::io;
+import std::math::{sin, cos};
+
+// Constantes & globaux
+pub const PI: f64 = 3.141_592_653_589;
+pub static VERSION: str = "0.2.0";
+
+type Coord = i32;
+struct Point { x: Coord, y: Coord }
+enum Color { Red, Green, Blue(u8) }
+union Payload { bits: u32, bytes: [u8; 4] }
+
+fn distance(p: &Point, q: &Point) -> f64 {
+  let dx = (p.x - q.x) as f64;
+  let dy = (p.y - q.y) as f64;
+  return (dx*dx + dy*dy).sqrt();
+}
+
+fn main() -> i32 {
+  let mut sum: i64 = 0xFF + 0b1010 + 1_000_000;
+  let f: f64 = 42.0 / 3.5;
+  let truth: bool = true && !false;
+  let ch = 'a';
+  let s = "hello \"world\"\t\u{1F600}";
+  let _payload = Payload { bits: 0xCAFE_BABE };
+
+  if sum > 42 {
+    io::println("big {sum}");
+  } else if sum == 0 {
+    // rien
+  } else {
+    for i in 0..10 {
+      while i < 5 && truth || false {
+        sum += i as i64;
+        match i {
+          0 => io::println("zero"),
+          1 | 2 => io::println("one or two"),
+          n if n > 5 => io::println("big"),
+          _ => {}
+        }
+      }
+    }
+  }
+
+  let p = Point { x: 1, y: -2 };
+  match Color::Blue(128) {
+    Color::Red => {},
+    Color::Blue(b) => assert(b >= 0),
+    _ => {}
+  }
+
+  let mut n = 0;
+  loop {
+    n += 1;
+    if n % 2 == 0 { continue }
+    if n > 7 { break }
+  }
+
+  // Ligne avec espaces de fin pour tester le trailing whitespace…    
+  return 0;
+}

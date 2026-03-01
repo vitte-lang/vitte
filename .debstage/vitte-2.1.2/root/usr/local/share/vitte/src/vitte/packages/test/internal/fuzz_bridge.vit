@@ -1,0 +1,39 @@
+<<<
+fuzz_bridge.vit
+package vitte/test/internal/fuzz_bridge
+>>>
+
+space vitte/test/internal/fuzz_bridge
+
+pick TestError {
+  Failure(code: string, message: string, context: string, retryable: bool, doc_url: string)
+}
+
+pick TestResult[T] {
+  Ok(value: T)
+  Err(error: TestError)
+}
+
+form FuzzConfig {
+  seeds_dir: string
+  budget_secs: int
+  max_cases: int
+}
+
+proc ok[T](value: T) -> TestResult[T] {
+  give TestResult.Ok(value)
+}
+
+proc err[T](code: string, message: string, context: string, retryable: bool) -> TestResult[T] {
+  give TestResult.Err(TestError.Failure(code, message, context, retryable, "docs/diagnostics/test.md#" + code))
+}
+
+proc run_fuzz(cfg: FuzzConfig) -> TestResult[string] {
+  if cfg.max_cases <= 0 {
+    give err[string]("VITTE-T0010", "invalid fuzz max_cases", "max_cases", false)
+  }
+  if cfg.budget_secs < 0 {
+    give err[string]("VITTE-T0011", "invalid fuzz budget", "budget_secs", false)
+  }
+  give ok[string]("fuzz:seeds=" + cfg.seeds_dir + ",budget=" + cfg.budget_secs.to_string())
+}

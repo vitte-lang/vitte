@@ -1,0 +1,211 @@
+<<<
+mod.vit
+package vitte/lsp
+>>>
+
+space vitte/lsp
+
+
+pick LspSeverity {
+  Info
+  Warning
+  Error
+}
+
+form LspDocument {
+  uri: string
+  text: string
+  version: int
+}
+
+form LspDiagnostic {
+  uri: string
+  line: int
+  code: string
+  message: string
+  severity: LspSeverity
+}
+
+form LspIndex {
+  docs: [LspDocument]
+  diagnostics: [LspDiagnostic]
+}
+
+proc index_new() -> LspIndex {
+  give LspIndex([], [])
+}
+
+proc contains(text: string, needle: string) -> bool {
+  if needle.len == 0 { give true }
+  if text.len < needle.len { give false }
+
+  let last = text.len - needle.len
+  let i: int = 0
+  loop {
+    if i > last { break }
+    if text.slice(i, i + needle.len) == needle { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc clear_uri_diags(diags: [LspDiagnostic], uri: string) -> [LspDiagnostic] {
+  let out: [LspDiagnostic] = []
+  let i: int = 0
+  loop {
+    if i >= diags.len { break }
+    let d = diags[i]
+    if d.uri != uri {
+      out = out.push(d)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc doc_diagnostics(doc: LspDocument) -> [LspDiagnostic] {
+  let out: [LspDiagnostic] = []
+
+  if doc.text.len == 0 {
+    out = out.push(LspDiagnostic(doc.uri, 1, "E-LSP-EMPTY", "empty document", LspSeverity.Warning))
+  }
+  if contains(doc.text, "todo") {
+    out = out.push(LspDiagnostic(doc.uri, 1, "W-LSP-TODO", "todo marker found", LspSeverity.Info))
+  }
+  if contains(doc.text, "panic") {
+    out = out.push(LspDiagnostic(doc.uri, 1, "E-LSP-PANIC", "panic token detected", LspSeverity.Error))
+  }
+
+  give out
+}
+
+proc index(state: LspIndex, uri: string, text: string, version: int) -> LspIndex {
+  let docs: [LspDocument] = []
+  let replaced: bool = false
+  let i: int = 0
+  loop {
+    if i >= state.docs.len { break }
+    let d = state.docs[i]
+    if d.uri == uri {
+      docs = docs.push(LspDocument(uri, text, version))
+      replaced = true
+    } else {
+      docs = docs.push(d)
+    }
+    i = i + 1
+  }
+  if !replaced {
+    docs = docs.push(LspDocument(uri, text, version))
+  }
+
+  let diags = clear_uri_diags(state.diagnostics, uri)
+  let generated = doc_diagnostics(LspDocument(uri, text, version))
+  i = 0
+  loop {
+    if i >= generated.len { break }
+    diags = diags.push(generated[i])
+    i = i + 1
+  }
+
+  give LspIndex(docs, diags)
+}
+
+proc diagnostics(state: LspIndex, uri: string) -> [LspDiagnostic] {
+  let out: [LspDiagnostic] = []
+  let i: int = 0
+  loop {
+    if i >= state.diagnostics.len { break }
+    let d = state.diagnostics[i]
+    if d.uri == uri {
+      out = out.push(d)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc quick_fix(diag: LspDiagnostic) -> string {
+  if diag.code == "E-LSP-EMPTY" { give "add an initial declaration or comment" }
+  if diag.code == "W-LSP-TODO" { give "replace todo with concrete implementation" }
+  if diag.code == "E-LSP-PANIC" { give "remove panic token or guard failure path" }
+  give "no quick-fix available"
+}
+
+proc diagnostics_count(state: LspIndex, uri: string) -> int {
+  give diagnostics(state, uri).len
+}
+
+proc error_count(state: LspIndex, uri: string) -> int {
+  let n: int = 0
+  let rows = diagnostics(state, uri)
+  let i: int = 0
+  loop {
+    if i >= rows.len { break }
+    if rows[i].severity == LspSeverity.Error {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc has_errors(state: LspIndex, uri: string) -> bool {
+  give error_count(state, uri) > 0
+}
+
+proc replace_once(text: string, needle: string, replacement: string) -> string {
+  if needle.len == 0 { give text }
+  if text.len < needle.len { give text }
+
+  let last = text.len - needle.len
+  let i: int = 0
+  loop {
+    if i > last { break }
+    if text.slice(i, i + needle.len) == needle {
+      give text.slice(0, i) + replacement + text.slice(i + needle.len, text.len)
+    }
+    i = i + 1
+  }
+  give text
+}
+
+proc apply_quick_fix(text: string, diag_code: string) -> string {
+  if diag_code == "W-LSP-TODO" {
+    give replace_once(text, "todo", "implemented")
+  }
+  if diag_code == "E-LSP-PANIC" {
+    give replace_once(text, "panic", "guarded_error")
+  }
+  if diag_code == "E-LSP-EMPTY" {
+    if text.len == 0 { give "# initialized" }
+  }
+  give text
+}
+
+proc summary(state: LspIndex, uri: string) -> string {
+  give "docs=" + state.docs.len.to_string() +
+       ",diags=" + diagnostics_count(state, uri).to_string() +
+       ",errors=" + error_count(state, uri).to_string()
+}
+
+proc doc_count(state: LspIndex) -> int {
+  give state.docs.len
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/lsp"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/lsp
+role: Indexation source diagnostics et quick-fix editor
+input_contract: Uri texte version explicites
+output_contract: Diagnostics reproductibles et quick-fix stables
+boundary: Ne compile pas le programme; fournit seulement signaux IDE
+>>>

@@ -1,0 +1,384 @@
+<<<
+mod.vit
+package vitte/saga
+>>>
+
+space vitte/saga
+
+
+pick SagaState {
+  Draft
+  Running
+  Succeeded
+  Failed
+  Compensated
+}
+
+form SagaStep {
+  name: string
+  done: bool
+  compensated: bool
+}
+
+form Saga {
+  id: string
+  steps: [SagaStep]
+  failed_at: int
+  state: SagaState
+}
+
+proc saga_new(id: string) -> Saga {
+  give Saga(id, [], -1, SagaState.Draft)
+}
+
+proc step_add(saga: Saga, name: string) -> Saga {
+  let steps = saga.steps.push(SagaStep(name, false, false))
+  give Saga(saga.id, steps, saga.failed_at, saga.state)
+}
+
+proc run(saga: Saga, fail_step: int) -> Saga {
+  let out: [SagaStep] = []
+  let failed_at = -1
+
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+
+    if failed_at >= 0 {
+      out = out.push(step)
+      i = i + 1
+      continue
+    }
+
+    if i == fail_step {
+      out = out.push(SagaStep(step.name, false, false))
+      failed_at = i
+    } else {
+      out = out.push(SagaStep(step.name, true, false))
+    }
+
+    i = i + 1
+  }
+
+  if failed_at >= 0 {
+    give Saga(saga.id, out, failed_at, SagaState.Failed)
+  }
+  give Saga(saga.id, out, -1, SagaState.Succeeded)
+}
+
+proc compensate(saga: Saga) -> Saga {
+  let out: [SagaStep] = []
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+    if step.done {
+      out = out.push(SagaStep(step.name, step.done, true))
+    } else {
+      out = out.push(step)
+    }
+    i = i + 1
+  }
+
+  if saga.state == SagaState.Failed {
+    give Saga(saga.id, out, saga.failed_at, SagaState.Compensated)
+  }
+  give Saga(saga.id, out, saga.failed_at, saga.state)
+}
+
+proc add_steps(saga: Saga, names: [string]) -> Saga {
+  let out = saga
+  let i: int = 0
+  loop {
+    if i >= names.len { break }
+    out = step_add(out, names[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc get_step(saga: Saga, index: int) -> SagaStep {
+  if index < 0 { give SagaStep("", false, false) }
+  if index >= saga.steps.len { give SagaStep("", false, false) }
+  give saga.steps[index]
+}
+
+proc has_step(saga: Saga, name: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    if saga.steps[i].name == name { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc next_pending_step(saga: Saga) -> string {
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    if !saga.steps[i].done { give saga.steps[i].name }
+    i = i + 1
+  }
+  give ""
+}
+
+proc can_run(saga: Saga) -> bool {
+  if saga.state == SagaState.Draft { give true }
+  if saga.state == SagaState.Failed { give true }
+  if saga.state == SagaState.Compensated { give true }
+  give false
+}
+
+proc fail(saga: Saga, fail_idx: int) -> Saga {
+  give run(saga, fail_idx)
+}
+
+proc mark_done(saga: Saga, name: string) -> Saga {
+  let out: [SagaStep] = []
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+    if step.name == name {
+      out = out.push(SagaStep(step.name, true, step.compensated))
+    } else {
+      out = out.push(step)
+    }
+    i = i + 1
+  }
+  give Saga(saga.id, out, saga.failed_at, saga.state)
+}
+
+proc mark_compensated(saga: Saga, name: string) -> Saga {
+  let out: [SagaStep] = []
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+    if step.name == name {
+      out = out.push(SagaStep(step.name, step.done, true))
+    } else {
+      out = out.push(step)
+    }
+    i = i + 1
+  }
+  give Saga(saga.id, out, saga.failed_at, saga.state)
+}
+
+proc resume(saga: Saga) -> Saga {
+  if saga.state == SagaState.Failed || saga.state == SagaState.Compensated {
+    give run(saga, -1)
+  }
+  give saga
+}
+
+proc failed_index(saga: Saga) -> int {
+  give saga.failed_at
+}
+
+proc reset(saga: Saga) -> Saga {
+  let out: [SagaStep] = []
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+    out = out.push(SagaStep(step.name, false, false))
+    i = i + 1
+  }
+  give Saga(saga.id, out, -1, SagaState.Draft)
+}
+
+proc step_count(saga: Saga) -> int {
+  give saga.steps.len
+}
+
+proc done_count(saga: Saga) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    if saga.steps[i].done {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc progress_percent(saga: Saga) -> int {
+  if step_count(saga) == 0 { give 100 }
+  give done_count(saga) * 100 / step_count(saga)
+}
+
+proc pending_count(saga: Saga) -> int {
+  let remain = step_count(saga) - done_count(saga)
+  if remain < 0 { give 0 }
+  give remain
+}
+
+proc compensated_count(saga: Saga) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    if saga.steps[i].compensated {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc failed_step(saga: Saga) -> string {
+  if saga.failed_at < 0 || saga.failed_at >= saga.steps.len { give "" }
+  give saga.steps[saga.failed_at].name
+}
+
+proc step_index(saga: Saga, name: string) -> int {
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    if saga.steps[i].name == name { give i }
+    i = i + 1
+  }
+  give -1
+}
+
+proc step_done(saga: Saga, name: string) -> bool {
+  let idx = step_index(saga, name)
+  if idx < 0 { give false }
+  give saga.steps[idx].done
+}
+
+proc step_compensated(saga: Saga, name: string) -> bool {
+  let idx = step_index(saga, name)
+  if idx < 0 { give false }
+  give saga.steps[idx].compensated
+}
+
+proc all_done(saga: Saga) -> bool {
+  give done_count(saga) == step_count(saga)
+}
+
+proc all_compensated(saga: Saga) -> bool {
+  if done_count(saga) == 0 { give false }
+  give compensated_count(saga) == done_count(saga)
+}
+
+proc can_compensate(saga: Saga) -> bool {
+  if saga.state != SagaState.Failed { give false }
+  give done_count(saga) > 0
+}
+
+proc can_resume(saga: Saga) -> bool {
+  give saga.state == SagaState.Failed || saga.state == SagaState.Compensated
+}
+
+proc rename_step(saga: Saga, old_name: string, new_name: string) -> Saga {
+  let out: [SagaStep] = []
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+    if step.name == old_name {
+      out = out.push(SagaStep(new_name, step.done, step.compensated))
+    } else {
+      out = out.push(step)
+    }
+    i = i + 1
+  }
+  give Saga(saga.id, out, saga.failed_at, saga.state)
+}
+
+proc append_step_suffix(saga: Saga, suffix: string) -> Saga {
+  let out: [SagaStep] = []
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+    out = out.push(SagaStep(step.name + suffix, step.done, step.compensated))
+    i = i + 1
+  }
+  give Saga(saga.id, out, saga.failed_at, saga.state)
+}
+
+proc failure_ratio_percent(saga: Saga) -> int {
+  if step_count(saga) == 0 { give 0 }
+  give pending_count(saga) * 100 / step_count(saga)
+}
+
+proc verify_invariants(saga: Saga) -> bool {
+  if saga.failed_at < -1 { give false }
+  if saga.failed_at >= step_count(saga) { give false }
+  if saga.state == SagaState.Failed && saga.failed_at < 0 { give false }
+  if saga.state == SagaState.Compensated && saga.failed_at < 0 { give false }
+  if saga.state == SagaState.Succeeded && pending_count(saga) != 0 { give false }
+
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+    if step.name.len == 0 { give false }
+    let j: int = i + 1
+    loop {
+      if j >= saga.steps.len { break }
+      if saga.steps[j].name == step.name { give false }
+      j = j + 1
+    }
+    i = i + 1
+  }
+  give true
+}
+
+proc is_terminal(saga: Saga) -> bool {
+  if saga.state == SagaState.Succeeded { give true }
+  if saga.state == SagaState.Compensated { give true }
+  give false
+}
+
+proc is_failed(saga: Saga) -> bool {
+  give saga.state == SagaState.Failed
+}
+
+proc is_succeeded(saga: Saga) -> bool {
+  give saga.state == SagaState.Succeeded
+}
+
+proc is_compensated(saga: Saga) -> bool {
+  give saga.state == SagaState.Compensated
+}
+
+proc state_name(saga: Saga) -> string {
+  when saga.state is SagaState.Draft { give "draft" }
+  when saga.state is SagaState.Running { give "running" }
+  when saga.state is SagaState.Succeeded { give "succeeded" }
+  when saga.state is SagaState.Failed { give "failed" }
+  give "compensated"
+}
+
+proc stats(saga: Saga) -> string {
+  give "state=" + state_name(saga) +
+       ",steps=" + step_count(saga).to_string() +
+       ",done=" + done_count(saga).to_string() +
+       ",compensated=" + compensated_count(saga).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/saga"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/saga
+role: Orchestration de transactions distribuees
+input_contract: Sequence de steps explicites et point de defaillance controle
+output_contract: Etats run compensate deterministes et inspectables
+boundary: Ne transporte pas les messages externes; orchestre seulement les transitions de saga
+>>>

@@ -1,0 +1,179 @@
+<<<
+mod.vit
+package vitte/cache
+>>>
+
+space vitte/cache
+
+
+form CacheEntry {
+  key: string
+  value: string
+  ttl: int
+  hits: int
+  active: bool
+}
+
+form Cache {
+  capacity: int
+  entries: [CacheEntry]
+  clock: int
+  dropped: int
+}
+
+proc cache_new(capacity: int) -> Cache {
+  if capacity < 0 { give Cache(0, [], 0, 0) }
+  give Cache(capacity, [], 0, 0)
+}
+
+proc make_entry(key: string, value: string, ttl: int) -> CacheEntry {
+  if ttl < 0 { give CacheEntry(key, value, 0, 0, false) }
+  give CacheEntry(key, value, ttl, 0, ttl > 0)
+}
+
+proc drop_first(entries: [CacheEntry]) -> [CacheEntry] {
+  let out: [CacheEntry] = []
+  let i: int = 1
+  loop {
+    if i >= entries.len { break }
+    out = out.push(entries[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc contains(cache: Cache, key: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    let e = cache.entries[i]
+    if e.active && e.key == key { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc get(cache: Cache, key: string, fallback: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    let e = cache.entries[i]
+    if e.active && e.key == key { give e.value }
+    i = i + 1
+  }
+  give fallback
+}
+
+proc put(cache: Cache, key: string, value: string, ttl: int) -> Cache {
+  if cache.capacity <= 0 { give cache }
+
+  let updated: [CacheEntry] = []
+  let found: bool = false
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    let e = cache.entries[i]
+    if e.key == key {
+      updated = updated.push(CacheEntry(key, value, ttl, e.hits, ttl > 0))
+      found = true
+    } else {
+      updated = updated.push(e)
+    }
+    i = i + 1
+  }
+
+  if found {
+    give Cache(cache.capacity, updated, cache.clock, cache.dropped)
+  }
+
+  let dropped = cache.dropped
+  if updated.len >= cache.capacity {
+    updated = drop_first(updated)
+    dropped = dropped + 1
+  }
+  updated = updated.push(make_entry(key, value, ttl))
+  give Cache(cache.capacity, updated, cache.clock, dropped)
+}
+
+proc touch(cache: Cache, key: string) -> Cache {
+  let updated: [CacheEntry] = []
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    let e = cache.entries[i]
+    if e.key == key {
+      updated = updated.push(CacheEntry(e.key, e.value, e.ttl, e.hits + 1, e.active))
+    } else {
+      updated = updated.push(e)
+    }
+    i = i + 1
+  }
+  give Cache(cache.capacity, updated, cache.clock, cache.dropped)
+}
+
+proc tick(cache: Cache, delta: int) -> Cache {
+  if delta <= 0 { give cache }
+  let updated: [CacheEntry] = []
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    let e = cache.entries[i]
+    let next_ttl = e.ttl - delta
+    if next_ttl <= 0 {
+      updated = updated.push(CacheEntry(e.key, e.value, 0, e.hits, false))
+    } else {
+      updated = updated.push(CacheEntry(e.key, e.value, next_ttl, e.hits, true))
+    }
+    i = i + 1
+  }
+  give Cache(cache.capacity, updated, cache.clock + delta, cache.dropped)
+}
+
+proc expire(cache: Cache) -> Cache {
+  let kept: [CacheEntry] = []
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    let e = cache.entries[i]
+    if e.active && e.ttl > 0 {
+      kept = kept.push(e)
+    }
+    i = i + 1
+  }
+  give Cache(cache.capacity, kept, cache.clock, cache.dropped)
+}
+
+proc size(cache: Cache) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    if cache.entries[i].active {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc stats(cache: Cache) -> string {
+  give "size=" + size(cache).to_string() + ",dropped=" + cache.dropped.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/cache"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/cache
+role: Cache memoire avec politique eviction et TTL
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

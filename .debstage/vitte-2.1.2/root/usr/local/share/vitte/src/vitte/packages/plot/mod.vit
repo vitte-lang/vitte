@@ -1,0 +1,65 @@
+<<<
+mod.vit
+package vitte/plot
+>>>
+
+space vitte/plot
+
+
+form Point {
+  x: int
+  y: int
+}
+
+form Series {
+  name: string
+  points: [Point]
+}
+
+proc series(name: string) -> Series {
+  give Series(name, [])
+}
+
+proc add_point(s: Series, x: int, y: int) -> Series {
+  give Series(s.name, s.points.push(Point(x, y)))
+}
+
+proc min_y(s: Series) -> int {
+  if s.points.len == 0 { give 0 }
+  let m = s.points[0].y
+  let i: int = 1
+  loop {
+    if i >= s.points.len { break }
+    if s.points[i].y < m { m = s.points[i].y }
+    i = i + 1
+  }
+  give m
+}
+
+proc max_y(s: Series) -> int {
+  if s.points.len == 0 { give 0 }
+  let m = s.points[0].y
+  let i: int = 1
+  loop {
+    if i >= s.points.len { break }
+    if s.points[i].y > m { m = s.points[i].y }
+    i = i + 1
+  }
+  give m
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/plot"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/plot
+role: Primitives de visualisation de series numeriques
+input_contract: Points numeriques deja valides
+output_contract: Structures plottables deterministes
+boundary: Ne rend pas UI directe
+>>>

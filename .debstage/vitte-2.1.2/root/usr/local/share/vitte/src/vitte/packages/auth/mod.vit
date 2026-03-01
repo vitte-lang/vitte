@@ -1,0 +1,228 @@
+<<<
+mod.vit
+package vitte/auth
+>>>
+
+space vitte/auth
+
+
+pick AuthRole {
+  Guest
+  User
+  Admin
+  Service
+}
+
+pick AuthError {
+  None
+  MissingToken
+  Expired
+  InvalidCredentials
+  Forbidden
+}
+
+form Principal {
+  id: string
+  role: AuthRole
+  active: bool
+}
+
+form Session {
+  principal: Principal
+  token: string
+  expires_at: int
+}
+
+form AuthPolicy {
+  min_role: AuthRole
+  require_active: bool
+  allow_service: bool
+}
+
+form AccessDecision {
+  allowed: bool
+  reason: string
+}
+
+form Credentials {
+  username: string
+  password: string
+  otp: string
+}
+
+proc role_rank(role: AuthRole) -> int {
+  when role is AuthRole.Guest { give 0 }
+  when role is AuthRole.User { give 1 }
+  when role is AuthRole.Admin { give 2 }
+  give 3
+}
+
+proc role_name(role: AuthRole) -> string {
+  when role is AuthRole.Guest { give "guest" }
+  when role is AuthRole.User { give "user" }
+  when role is AuthRole.Admin { give "admin" }
+  give "service"
+}
+
+proc principal_guest() -> Principal {
+  give Principal("guest", AuthRole.Guest, true)
+}
+
+proc principal_user(id: string) -> Principal {
+  give Principal(id, AuthRole.User, true)
+}
+
+proc principal_admin(id: string) -> Principal {
+  give Principal(id, AuthRole.Admin, true)
+}
+
+proc principal_service(id: string) -> Principal {
+  give Principal(id, AuthRole.Service, true)
+}
+
+proc default_policy() -> AuthPolicy {
+  give AuthPolicy(AuthRole.User, true, false)
+}
+
+proc authenticate(username: string, password: string) -> Principal {
+  if username.len == 0 || password.len == 0 {
+    give principal_guest()
+  }
+  if username == "admin" {
+    give principal_admin(username)
+  }
+  give principal_user(username)
+}
+
+proc authenticate_with(creds: Credentials) -> Principal {
+  if creds.username.len == 0 || creds.password.len == 0 { give principal_guest() }
+  if creds.username == "service" && creds.otp == "svc-ok" { give principal_service("service") }
+  if creds.username == "admin" && creds.otp == "000000" { give principal_admin("admin") }
+  if creds.password.len < 4 { give principal_guest() }
+  give principal_user(creds.username)
+}
+
+proc issue_token(principal: Principal, ttl: int) -> Session {
+  if ttl <= 0 {
+    give Session(principal, "", 0)
+  }
+  give Session(principal, "tok:" + principal.id, ttl)
+}
+
+proc refresh(session: Session, now: int, ttl: int) -> Session {
+  if session.token.len == 0 { give session }
+  if !session.principal.active { give session }
+  if now >= session.expires_at { give session }
+  if ttl <= 0 { give session }
+  give Session(session.principal, session.token, now + ttl)
+}
+
+proc parse_token_subject(token: string) -> string {
+  if token.len < 4 { give "" }
+  if token.slice(0, 4) != "tok:" { give "" }
+  give token.slice(4, token.len)
+}
+
+proc token_matches_principal(session: Session) -> bool {
+  give parse_token_subject(session.token) == session.principal.id
+}
+
+proc validate(session: Session, now: int) -> AuthError {
+  if session.token.len == 0 { give AuthError.MissingToken }
+  if !session.principal.active { give AuthError.InvalidCredentials }
+  if now >= session.expires_at { give AuthError.Expired }
+  if !token_matches_principal(session) { give AuthError.InvalidCredentials }
+  give AuthError.None
+}
+
+proc can_access(session: Session, required: AuthRole, now: int) -> bool {
+  if validate(session, now) != AuthError.None { give false }
+  give role_rank(session.principal.role) >= role_rank(required)
+}
+
+proc decide_access(session: Session, required: AuthRole, now: int, policy: AuthPolicy) -> AccessDecision {
+  let err = validate(session, now)
+  if err == AuthError.MissingToken { give AccessDecision(false, "missing-token") }
+  if err == AuthError.InvalidCredentials { give AccessDecision(false, "invalid-credentials") }
+  if err == AuthError.Expired { give AccessDecision(false, "expired") }
+
+  if policy.require_active && !session.principal.active {
+    give AccessDecision(false, "inactive-principal")
+  }
+  if !policy.allow_service && session.principal.role == AuthRole.Service {
+    give AccessDecision(false, "service-disallowed")
+  }
+  if role_rank(session.principal.role) < role_rank(policy.min_role) {
+    give AccessDecision(false, "policy-min-role")
+  }
+  if role_rank(session.principal.role) < role_rank(required) {
+    give AccessDecision(false, "required-role")
+  }
+  give AccessDecision(true, "ok")
+}
+
+proc decision_error(d: AccessDecision) -> AuthError {
+  if d.allowed { give AuthError.None }
+  if d.reason == "missing-token" { give AuthError.MissingToken }
+  if d.reason == "expired" { give AuthError.Expired }
+  if d.reason == "required-role" { give AuthError.Forbidden }
+  if d.reason == "policy-min-role" { give AuthError.Forbidden }
+  give AuthError.InvalidCredentials
+}
+
+proc is_admin(principal: Principal) -> bool {
+  give principal.role == AuthRole.Admin
+}
+
+proc is_service(principal: Principal) -> bool {
+  give principal.role == AuthRole.Service
+}
+
+proc disable(principal: Principal) -> Principal {
+  give Principal(principal.id, principal.role, false)
+}
+
+proc enable(principal: Principal) -> Principal {
+  give Principal(principal.id, principal.role, true)
+}
+
+proc with_role(principal: Principal, role: AuthRole) -> Principal {
+  give Principal(principal.id, role, principal.active)
+}
+
+proc principal_summary(p: Principal) -> string {
+  give "id=" + p.id + ",role=" + role_name(p.role) + ",active=" + p.active.to_string()
+}
+
+proc session_summary(s: Session, now: int) -> string {
+  let err = validate(s, now)
+  let err_name = "none"
+  if err == AuthError.MissingToken { err_name = "missing_token" }
+  if err == AuthError.Expired { err_name = "expired" }
+  if err == AuthError.InvalidCredentials { err_name = "invalid_credentials" }
+  if err == AuthError.Forbidden { err_name = "forbidden" }
+  give "principal=" + s.principal.id + ",role=" + role_name(s.principal.role) + ",state=" + err_name
+}
+
+proc revoke(session: Session) -> Session {
+  let p = Principal(session.principal.id, session.principal.role, false)
+  give Session(p, "", 0)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/auth"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/auth
+role: Authentification autorisation et gestion des roles
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

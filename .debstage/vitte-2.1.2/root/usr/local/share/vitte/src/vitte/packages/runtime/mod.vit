@@ -1,0 +1,64 @@
+<<<
+mod.vit
+package vitte/runtime
+>>>
+
+space vitte/runtime
+
+
+pick RuntimeMode {
+  Dev
+  Prod
+  Test
+}
+
+form RuntimeConfig {
+  mode: RuntimeMode
+  max_tasks: int
+  timeout_ms: int
+  max_memory_mb: int
+}
+
+proc config(mode: RuntimeMode, max_tasks: int, timeout_ms: int) -> RuntimeConfig {
+  give RuntimeConfig(mode, max_tasks, timeout_ms, 256)
+}
+
+proc with_memory(c: RuntimeConfig, max_memory_mb: int) -> RuntimeConfig {
+  give RuntimeConfig(c.mode, c.max_tasks, c.timeout_ms, max_memory_mb)
+}
+
+proc mode_name(mode: RuntimeMode) -> string {
+  if mode == RuntimeMode.Dev { give "dev" }
+  if mode == RuntimeMode.Prod { give "prod" }
+  give "test"
+}
+
+proc validate(c: RuntimeConfig) -> bool {
+  if c.max_tasks <= 0 { give false }
+  if c.timeout_ms <= 0 { give false }
+  if c.max_memory_mb <= 0 { give false }
+  give true
+}
+
+proc summary(c: RuntimeConfig) -> string {
+  give "mode=" + mode_name(c.mode) +
+       ",tasks=" + c.max_tasks.to_string() +
+       ",timeout=" + c.timeout_ms.to_string() +
+       ",mem=" + c.max_memory_mb.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/runtime"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/runtime
+role: Configuration execution et cycles runtime
+input_contract: Parametres runtime explicites
+output_contract: Etat runtime validable et observable
+boundary: Ne remplace pas scheduler/IO bas niveau
+>>>

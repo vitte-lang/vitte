@@ -1,0 +1,215 @@
+<<<
+mod.vit
+package vitte/abi
+>>>
+
+space vitte/abi
+
+share all
+
+pick CallingConvention {
+  SystemV
+  Win64
+  CDecl
+  FastCall
+  StdCall
+}
+
+pick AbiError {
+  None
+  InvalidType
+  UnsupportedConvention
+  InvalidSignature
+}
+
+form AbiTypeInfo {
+  kind: string
+  bits: int
+  err: AbiError
+}
+
+form AbiSignature {
+  calling: CallingConvention
+  ret: AbiTypeInfo
+  params: [AbiTypeInfo]
+}
+
+proc align_up(value: int, alignment: int) -> int {
+  if alignment <= 0 { give value }
+  let rem = value % alignment
+  if rem == 0 { give value }
+  if value >= 0 {
+    give value + (alignment - rem)
+  }
+  give value - rem
+}
+
+proc pointer_bits() -> int {
+  give 64
+}
+
+proc pointer_bytes() -> int {
+  give pointer_bits() / 8
+}
+
+proc endianness() -> string {
+  give "little"
+}
+
+proc default_calling_convention() -> CallingConvention {
+  give CallingConvention.SystemV
+}
+
+proc is_supported_calling(calling: CallingConvention) -> bool {
+  when calling is CallingConvention.SystemV { give true }
+  when calling is CallingConvention.Win64 { give true }
+  when calling is CallingConvention.CDecl { give true }
+  give false
+}
+
+proc calling_tag(calling: CallingConvention) -> string {
+  when calling is CallingConvention.SystemV { give "sysv" }
+  when calling is CallingConvention.Win64 { give "win64" }
+  when calling is CallingConvention.CDecl { give "cdecl" }
+  when calling is CallingConvention.FastCall { give "fastcall" }
+  give "stdcall"
+}
+
+proc validate_type(kind: string, bits: int) -> AbiError {
+  if kind == "pointer" {
+    if bits == 0 || bits == pointer_bits() {
+      give AbiError.None
+    }
+    give AbiError.InvalidType
+  }
+
+  if bits <= 0 { give AbiError.InvalidType }
+  if kind == "int" || kind == "integer" { give AbiError.None }
+  if kind == "float" { give AbiError.None }
+  give AbiError.InvalidType
+}
+
+proc type_info(kind: string, bits: int) -> AbiTypeInfo {
+  let err = validate_type(kind, bits)
+  if err != AbiError.None { give AbiTypeInfo(kind, 0, err) }
+
+  if kind == "int" || kind == "integer" {
+    give AbiTypeInfo("integer", bits, AbiError.None)
+  }
+  if kind == "float" {
+    give AbiTypeInfo("float", bits, AbiError.None)
+  }
+  if kind == "pointer" {
+    give AbiTypeInfo("pointer", pointer_bits(), AbiError.None)
+  }
+
+  give AbiTypeInfo(kind, bits, AbiError.InvalidType)
+}
+
+proc type_error(info: AbiTypeInfo) -> AbiError {
+  give info.err
+}
+
+proc is_integer_type(info: AbiTypeInfo) -> bool {
+  give info.err == AbiError.None && info.kind == "integer"
+}
+
+proc is_float_type(info: AbiTypeInfo) -> bool {
+  give info.err == AbiError.None && info.kind == "float"
+}
+
+proc is_pointer_type(info: AbiTypeInfo) -> bool {
+  give info.err == AbiError.None && info.kind == "pointer"
+}
+
+proc type_size_bits(info: AbiTypeInfo) -> int {
+  if info.err != AbiError.None { give 0 }
+  give info.bits
+}
+
+proc type_align_bits(info: AbiTypeInfo) -> int {
+  if info.err != AbiError.None { give 0 }
+  if info.bits <= 8 { give 8 }
+  if info.bits <= 16 { give 16 }
+  if info.bits <= 32 { give 32 }
+  if info.bits <= 64 { give 64 }
+  give pointer_bits()
+}
+
+proc signature(calling: CallingConvention, ret: AbiTypeInfo, params: [AbiTypeInfo]) -> AbiSignature {
+  give AbiSignature(calling, ret, params)
+}
+
+proc validate_signature(sig: AbiSignature) -> bool {
+  if !is_supported_calling(sig.calling) { give false }
+  if type_error(sig.ret) != AbiError.None { give false }
+
+  let i: int = 0
+  loop {
+    if i >= sig.params.len { break }
+    if type_error(sig.params[i]) != AbiError.None { give false }
+    i = i + 1
+  }
+
+  give true
+}
+
+proc stack_arg_bytes(sig: AbiSignature) -> int {
+  let reg_limit: int = 6
+  let stack_bits: int = 0
+
+  let i: int = 0
+  loop {
+    if i >= sig.params.len { break }
+    if i >= reg_limit {
+      let aligned = align_up(type_size_bits(sig.params[i]), type_align_bits(sig.params[i]))
+      stack_bits = stack_bits + aligned
+    }
+    i = i + 1
+  }
+
+  give stack_bits / 8
+}
+
+proc return_in_register(sig: AbiSignature) -> bool {
+  if type_error(sig.ret) != AbiError.None { give false }
+  if is_float_type(sig.ret) { give sig.ret.bits <= 64 }
+  give sig.ret.bits <= 128
+}
+
+proc frame_size(sig: AbiSignature) -> int {
+  let base_bytes: int = 16
+  give align_up(base_bytes + stack_arg_bytes(sig), 16)
+}
+
+proc signature_abi_summary(sig: AbiSignature) -> string {
+  let out = "cc=" + calling_tag(sig.calling)
+  out = out + ",params=" + sig.params.len.to_string()
+  out = out + ",ret_bits=" + type_size_bits(sig.ret).to_string()
+  out = out + ",stack=" + stack_arg_bytes(sig).to_string()
+  give out
+}
+
+proc mangle(name: string, sig: AbiSignature) -> string {
+  give "_V" + calling_tag(sig.calling) + "_" + name + "_p" + sig.params.len.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/abi"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/abi
+owner: @vitte/abi
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: Contrat ABI de surface pour signatures, tailles et conventions d appel
+input_contract: Descriptions de types ABI explicites (kind/bits) et signature normalisee
+output_contract: Resultats deterministes pour validation, layout de pile et etiquetage ABI
+boundary: Ne depend pas du backend; fournit une couche pure de calcul ABI
+>>>

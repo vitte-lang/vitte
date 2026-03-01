@@ -1,0 +1,346 @@
+<<<
+runner.vit
+package vitte/test/internal/runner
+>>>
+
+space vitte/test/internal/runner
+
+pick TestMode {
+  Fast
+  Strict
+  Ci
+}
+
+pick TestError {
+  Failure(code: string, message: string, context: string, retryable: bool, doc_url: string)
+}
+
+pick TestResult[T] {
+  Ok(value: T)
+  Err(error: TestError)
+}
+
+form TestCase {
+  name: string
+  passed: bool
+  message: string
+  duration_ms: int
+  retries: int
+  attempts: int
+  flaky: bool
+  timed_out: bool
+  last_failure_code: string
+  tags: [string]
+}
+
+form TestSuite {
+  name: string
+  mode: TestMode
+  profile: string
+  timeout_ms: int
+  max_retries: int
+  cases: [TestCase]
+}
+
+form TestContext {
+  workspace: string
+  profile: string
+  mode: TestMode
+  timeout_ms: int
+  suite_timeout_ms: int
+  retry_budget: int
+}
+
+form TestReport {
+  schema_version: string
+  suite_name: string
+  total: int
+  passed: int
+  failed: int
+  flaky: int
+  timed_out: int
+  duration_ms: int
+  mode: TestMode
+  profile: string
+  flaky_budget_exceeded: bool
+}
+
+proc ok[T](value: T) -> TestResult[T] {
+  give TestResult.Ok(value)
+}
+
+proc err[T](code: string, message: string, context: string, retryable: bool) -> TestResult[T] {
+  give TestResult.Err(TestError.Failure(code, message, context, retryable, "docs/diagnostics/test.md#" + code))
+}
+
+proc default_context() -> TestContext {
+  give TestContext("/workspace", "desktop", TestMode.Fast, 1000, 10000, 1)
+}
+
+proc context_with_mode(ctx: TestContext, mode: TestMode) -> TestContext {
+  give TestContext(ctx.workspace, ctx.profile, mode, ctx.timeout_ms, ctx.suite_timeout_ms, ctx.retry_budget)
+}
+
+proc context_with_profile(ctx: TestContext, profile: string) -> TestContext {
+  give TestContext(ctx.workspace, profile, ctx.mode, ctx.timeout_ms, ctx.suite_timeout_ms, ctx.retry_budget)
+}
+
+proc context_with_timeout(ctx: TestContext, timeout_ms: int, suite_timeout_ms: int) -> TestContext {
+  give TestContext(ctx.workspace, ctx.profile, ctx.mode, timeout_ms, suite_timeout_ms, ctx.retry_budget)
+}
+
+proc is_profile_supported(profile: string) -> bool {
+  if profile == "core" { give true }
+  if profile == "desktop" { give true }
+  if profile == "system" { give true }
+  give false
+}
+
+proc validate_context(ctx: TestContext) -> TestResult[bool] {
+  if ctx.timeout_ms <= 0 {
+    give err[bool]("VITTE-T0015", "timeout_ms must be > 0", "timeout_ms", false)
+  }
+  if ctx.suite_timeout_ms < ctx.timeout_ms {
+    give err[bool]("VITTE-T0015", "suite_timeout_ms must be >= timeout_ms", "suite_timeout_ms", false)
+  }
+  if ctx.retry_budget < 0 {
+    give err[bool]("VITTE-T0017", "retry_budget must be >= 0", "retry_budget", false)
+  }
+  if is_profile_supported(ctx.profile) == false {
+    give err[bool]("VITTE-T0014", "profile denied", ctx.profile, false)
+  }
+  give ok[bool](true)
+}
+
+proc suite(name: string, mode: TestMode, profile: string, timeout_ms: int, max_retries: int) -> TestSuite {
+  give TestSuite(name, mode, profile, timeout_ms, max_retries, [])
+}
+
+proc case_new(name: string, passed: bool, message: string, duration_ms: int, retries: int, attempts: int, flaky: bool, timed_out: bool, last_failure_code: string, tags: [string]) -> TestCase {
+  give TestCase(name, passed, message, duration_ms, retries, attempts, flaky, timed_out, last_failure_code, tags)
+}
+
+proc suite_add_case(s: TestSuite, c: TestCase) -> TestSuite {
+  give TestSuite(s.name, s.mode, s.profile, s.timeout_ms, s.max_retries, s.cases.push(c))
+}
+
+proc contains(text: string, needle: string) -> bool {
+  if needle.len == 0 { give true }
+  if text.len < needle.len { give false }
+  let i: int = 0
+  loop {
+    if i + needle.len > text.len { break }
+    if text.slice(i, i + needle.len) == needle { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc has_tag(c: TestCase, tags: [string]) -> bool {
+  let i: int = 0
+  loop {
+    if i >= c.tags.len { break }
+    let j: int = 0
+    loop {
+      if j >= tags.len { break }
+      if c.tags[i] == tags[j] { give true }
+      j = j + 1
+    }
+    i = i + 1
+  }
+  give false
+}
+
+proc report_for_suite(ctx: TestContext, s: TestSuite, chosen: [bool]) -> TestResult[TestReport] {
+  let total: int = s.cases.len
+  let passed: int = 0
+  let failed: int = 0
+  let flaky: int = 0
+  let timed_out: int = 0
+  let duration: int = 0
+  let retry_used: int = 0
+  let i: int = 0
+  loop {
+    if i >= s.cases.len { break }
+    if chosen[i] {
+      if s.cases[i].passed { passed = passed + 1 } else { failed = failed + 1 }
+      if s.cases[i].flaky { flaky = flaky + 1 }
+      if s.cases[i].timed_out { timed_out = timed_out + 1 }
+      duration = duration + s.cases[i].duration_ms
+      retry_used = retry_used + s.cases[i].retries
+    }
+    i = i + 1
+  }
+  if duration > ctx.suite_timeout_ms {
+    give err[TestReport]("VITTE-T0016", "suite timeout exceeded", s.name, false)
+  }
+  let exceeded: bool = retry_used > ctx.retry_budget
+  if exceeded {
+    give err[TestReport]("VITTE-T0017", "retry budget exceeded", s.name, false)
+  }
+  give ok[TestReport](TestReport("1", s.name, total, passed, failed, flaky, timed_out, duration, s.mode, s.profile, exceeded))
+}
+
+proc run_suite(ctx: TestContext, s: TestSuite) -> TestResult[TestReport] {
+  let vr: TestResult[bool] = validate_context(ctx)
+  when vr is TestResult.Err {
+    give err[TestReport](vr.error.code, vr.error.message, vr.error.context, vr.error.retryable)
+  }
+  if is_profile_supported(s.profile) == false {
+    give err[TestReport]("VITTE-T0014", "profile denied", s.profile, false)
+  }
+  if s.timeout_ms <= 0 {
+    give err[TestReport]("VITTE-T0015", "invalid suite timeout", s.name, false)
+  }
+  let chosen: [bool] = []
+  let i: int = 0
+  let ch: [bool] = chosen
+  loop {
+    if i >= s.cases.len { break }
+    ch = ch.push(true)
+    i = i + 1
+  }
+  give report_for_suite(ctx, s, ch)
+}
+
+proc run_selected(ctx: TestContext, s: TestSuite, names: [string]) -> TestResult[TestReport] {
+  let chosen: [bool] = []
+  let out: [bool] = chosen
+  let i: int = 0
+  loop {
+    if i >= s.cases.len { break }
+    let keep: bool = false
+    let j: int = 0
+    loop {
+      if j >= names.len { break }
+      if s.cases[i].name == names[j] { keep = true }
+      j = j + 1
+    }
+    out = out.push(keep)
+    i = i + 1
+  }
+  give report_for_suite(ctx, s, out)
+}
+
+proc run_tagged(ctx: TestContext, s: TestSuite, tags: [string]) -> TestResult[TestReport] {
+  let chosen: [bool] = []
+  let out: [bool] = chosen
+  let i: int = 0
+  loop {
+    if i >= s.cases.len { break }
+    out = out.push(has_tag(s.cases[i], tags))
+    i = i + 1
+  }
+  give report_for_suite(ctx, s, out)
+}
+
+proc run_all(ctx: TestContext, suites: [TestSuite]) -> TestResult[[TestReport]] {
+  let out: [TestReport] = []
+  let i: int = 0
+  loop {
+    if i >= suites.len { break }
+    let r: TestResult[TestReport] = run_suite(ctx, suites[i])
+    when r is TestResult.Err {
+      give err[[TestReport]](r.error.code, r.error.message, r.error.context, r.error.retryable)
+    }
+    out = out.push(r.value)
+    i = i + 1
+  }
+  give ok[[TestReport]](out)
+}
+
+proc merge_reports(reports: [TestReport]) -> TestReport {
+  let total: int = 0
+  let passed: int = 0
+  let failed: int = 0
+  let flaky: int = 0
+  let timed_out: int = 0
+  let duration: int = 0
+  let exceeded: bool = false
+  let i: int = 0
+  loop {
+    if i >= reports.len { break }
+    total = total + reports[i].total
+    passed = passed + reports[i].passed
+    failed = failed + reports[i].failed
+    flaky = flaky + reports[i].flaky
+    timed_out = timed_out + reports[i].timed_out
+    duration = duration + reports[i].duration_ms
+    if reports[i].flaky_budget_exceeded { exceeded = true }
+    i = i + 1
+  }
+  give TestReport("1", "merged", total, passed, failed, flaky, timed_out, duration, TestMode.Ci, "workspace", exceeded)
+}
+
+proc profile_matrix_check(s: TestSuite) -> TestResult[bool] {
+  if is_profile_supported(s.profile) == false {
+    give err[bool]("VITTE-T0014", "profile denied", s.profile, false)
+  }
+  give ok[bool](true)
+}
+
+proc mode_name(mode: TestMode) -> string {
+  if mode == TestMode.Fast { give "fast" }
+  if mode == TestMode.Strict { give "strict" }
+  give "ci"
+}
+
+proc report_json(r: TestReport) -> string {
+  give "{\"schema_version\":\"" + r.schema_version + "\",\"suite\":\"" + r.suite_name + "\",\"total\":" + r.total.to_string() + ",\"passed\":" + r.passed.to_string() + ",\"failed\":" + r.failed.to_string() + ",\"flaky\":" + r.flaky.to_string() + ",\"timed_out\":" + r.timed_out.to_string() + ",\"duration_ms\":" + r.duration_ms.to_string() + ",\"mode\":\"" + mode_name(r.mode) + "\",\"profile\":\"" + r.profile + "\",\"flaky_budget_exceeded\":" + r.flaky_budget_exceeded.to_string() + "}"
+}
+
+proc report_md(r: TestReport) -> string {
+  give "# Test Report\n\n- schema_version: " + r.schema_version + "\n- suite: " + r.suite_name + "\n- total: " + r.total.to_string() + "\n- passed: " + r.passed.to_string() + "\n- failed: " + r.failed.to_string() + "\n- flaky: " + r.flaky.to_string() + "\n- timed_out: " + r.timed_out.to_string() + "\n- duration_ms: " + r.duration_ms.to_string() + "\n- mode: " + mode_name(r.mode) + "\n- profile: " + r.profile + "\n- flaky_budget_exceeded: " + r.flaky_budget_exceeded.to_string() + "\n"
+}
+
+proc report_compact(r: TestReport) -> string {
+  give r.suite_name + " total=" + r.total.to_string() + " passed=" + r.passed.to_string() + " failed=" + r.failed.to_string() + " flaky=" + r.flaky.to_string() + " timeout=" + r.timed_out.to_string()
+}
+
+proc quickfix_preview(payload: string) -> string {
+  if contains(payload, "timeout_ms=0") { give "set timeout_ms to > 0" }
+  if contains(payload, "retry_budget=-") { give "set retry_budget to >= 0" }
+  give "no quick-fix"
+}
+
+proc quickfix_apply(payload: string) -> string {
+  if quickfix_preview(payload) == "no quick-fix" { give "nothing" }
+  give "applied"
+}
+
+proc doc_url_for(code: string) -> string {
+  give "docs/diagnostics/test.md#" + code
+}
+
+proc diag_message(code: string) -> string {
+  if code == "VITTE-T0001" { give "assert_true failed" }
+  if code == "VITTE-T0002" { give "assert_eq failed" }
+  if code == "VITTE-T0003" { give "assert_ne failed" }
+  if code == "VITTE-T0004" { give "assert_match failed" }
+  if code == "VITTE-T0005" { give "fixture invalid" }
+  if code == "VITTE-T0006" { give "fixture isolation failed" }
+  if code == "VITTE-T0007" { give "snapshot hash invalid" }
+  if code == "VITTE-T0008" { give "snapshot mismatch" }
+  if code == "VITTE-T0009" { give "snapshot update disabled" }
+  if code == "VITTE-T0010" { give "fuzz max_cases invalid" }
+  if code == "VITTE-T0011" { give "fuzz budget invalid" }
+  if code == "VITTE-T0012" { give "bench iterations invalid" }
+  if code == "VITTE-T0013" { give "bench warmup invalid" }
+  if code == "VITTE-T0014" { give "profile denied" }
+  if code == "VITTE-T0015" { give "invalid timeout" }
+  if code == "VITTE-T0016" { give "suite timeout exceeded" }
+  if code == "VITTE-T0017" { give "retry budget exceeded" }
+  if code == "VITTE-T0018" { give "tag selection empty" }
+  if code == "VITTE-T0019" { give "selected cases not found" }
+  give "unknown test diagnostic"
+}
+
+proc quickfix_for(code: string) -> string {
+  if code == "VITTE-T0001" { give "fix boolean precondition in test case" }
+  if code == "VITTE-T0008" { give "update snapshot or fix output ordering" }
+  if code == "VITTE-T0014" { give "switch profile to core/desktop/system" }
+  if code == "VITTE-T0015" { give "increase timeout settings" }
+  if code == "VITTE-T0016" { give "reduce suite work or increase suite timeout" }
+  if code == "VITTE-T0017" { give "increase retry budget or remove flaky test" }
+  give "no quick-fix"
+}

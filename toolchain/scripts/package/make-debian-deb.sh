@@ -8,17 +8,22 @@
 set -euo pipefail
 
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+DEPS_FILE="${DEPS_FILE:-$ROOT_DIR/toolchain/scripts/install/debian-deps.sh}"
 
 VERSION="${VERSION:-2.1.1}"
 PACKAGE_NAME="${PACKAGE_NAME:-vitte}"
 MAINTAINER="${MAINTAINER:-Vitte Team <maintainers@vitte.dev>}"
 DESCRIPTION="${DESCRIPTION:-Vitte systems language toolchain}"
 HOMEPAGE="${HOMEPAGE:-https://vitte.netlify.app/}"
+VCS_URL="${VCS_URL:-https://github.com/vitte/vitte}"
+BUGS_URL="${BUGS_URL:-https://github.com/vitte/vitte/issues}"
 SECTION="${SECTION:-devel}"
 PRIORITY="${PRIORITY:-optional}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/pkgout}"
 ARCH="${ARCH:-$(dpkg --print-architecture 2>/dev/null || echo amd64)}"
-DEPENDS="${DEPENDS:-bash, libc6, libstdc++6, libssl3 | libssl1.1, libcurl4}"
+DEPENDS="${DEPENDS:-}"
+PROJECT_INFO_TITLE="${PROJECT_INFO_TITLE:-Vitte systems language toolchain}"
+RELEASE_READINESS_GATE="${RELEASE_READINESS_GATE:-1}"
 
 STAGE_BASE="$ROOT_DIR/.debstage/${PACKAGE_NAME}-${VERSION}"
 STAGE_ROOT="$STAGE_BASE/root"
@@ -30,6 +35,15 @@ die() { printf "[make-debian-deb][error] %s\n" "$*" >&2; exit 1; }
 
 has() { command -v "$1" >/dev/null 2>&1; }
 
+if [ ! -f "$DEPS_FILE" ]; then
+  die "missing deps file: $DEPS_FILE"
+fi
+# shellcheck disable=SC1090
+source "$DEPS_FILE"
+if [ -z "$DEPENDS" ]; then
+  DEPENDS="$DEBIAN_RUNTIME_DEPENDS"
+fi
+
 resolve_bin() {
   local name="$1"
   local a="$ROOT_DIR/bin/$name"
@@ -39,19 +53,52 @@ resolve_bin() {
   return 1
 }
 
+ensure_bin() {
+  local name="$1"
+  local make_target="$2"
+  local src
+  src="$(resolve_bin "$name" || true)"
+  if [ -n "$src" ]; then
+    printf "%s\n" "$src"
+    return 0
+  fi
+  if has make; then
+    log "building missing binary '$name' via: make $make_target"
+    make -C "$ROOT_DIR" "$make_target"
+    src="$(resolve_bin "$name" || true)"
+  fi
+  [ -n "$src" ] || die "$name binary not found (expected bin/$name or target/bin/$name)"
+  printf "%s\n" "$src"
+}
+
 require_tools() {
   has dpkg-deb || die "dpkg-deb is required"
   has rsync || die "rsync is required"
   has python3 || die "python3 is required"
 }
 
+run_release_readiness_gate() {
+  [ "$RELEASE_READINESS_GATE" = "1" ] || {
+    log "release-readiness gate disabled (RELEASE_READINESS_GATE=$RELEASE_READINESS_GATE)"
+    return 0
+  }
+  has make || die "make is required for release-readiness gate"
+  log "running release-readiness gate before Debian packaging"
+  make -C "$ROOT_DIR" -s release-readiness
+}
+
 stage_payload() {
   local vitte_bin
-  vitte_bin="$(resolve_bin vitte || true)"
-  [ -n "$vitte_bin" ] || die "vitte binary not found (expected bin/vitte or target/bin/vitte)"
+  local vitte_ide_bin
+  local vitte_ide_gtk_bin
+  vitte_bin="$(ensure_bin vitte build)"
+  vitte_ide_bin="$(ensure_bin vitte-ide vitte-ide)"
+  vitte_ide_gtk_bin="$(ensure_bin vitte-ide-gtk vitte-ide-gtk)"
 
   mkdir -p "$STAGE_ROOT/usr/local/libexec/vitte" "$STAGE_ROOT/usr/local/bin"
   install -m 0755 "$vitte_bin" "$STAGE_ROOT/usr/local/libexec/vitte/vitte"
+  install -m 0755 "$vitte_ide_bin" "$STAGE_ROOT/usr/local/libexec/vitte/vitte-ide"
+  install -m 0755 "$vitte_ide_gtk_bin" "$STAGE_ROOT/usr/local/libexec/vitte/vitte-ide-gtk"
 
   cat > "$STAGE_ROOT/usr/local/bin/vitte" <<'EOF'
 #!/usr/bin/env bash
@@ -63,16 +110,41 @@ exec /usr/local/libexec/vitte/vitte "$@"
 EOF
   chmod 0755 "$STAGE_ROOT/usr/local/bin/vitte"
 
-  for legacy in vittec vitte-linker; do
-    local src
-    src="$(resolve_bin "$legacy" || true)"
-    if [ -n "$src" ]; then
-      install -m 0755 "$src" "$STAGE_ROOT/usr/local/libexec/vitte/$legacy"
-      ln -sfn "../libexec/vitte/$legacy" "$STAGE_ROOT/usr/local/bin/$legacy"
-    else
-      ln -sfn "vitte" "$STAGE_ROOT/usr/local/bin/$legacy"
-    fi
-  done
+  cat > "$STAGE_ROOT/usr/local/bin/vitte-ide" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -z "${VITTE_ROOT:-}" ]; then
+  export VITTE_ROOT="/usr/local/share/vitte"
+fi
+if [ -n "${DISPLAY:-}" ] && [ -x /usr/local/libexec/vitte/vitte-ide-gtk ]; then
+  exec /usr/local/libexec/vitte/vitte-ide-gtk "$@"
+fi
+exec /usr/local/libexec/vitte/vitte-ide "$@"
+EOF
+  chmod 0755 "$STAGE_ROOT/usr/local/bin/vitte-ide"
+
+  cat > "$STAGE_ROOT/usr/local/bin/vitte-ide-gtk" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -z "${VITTE_ROOT:-}" ]; then
+  export VITTE_ROOT="/usr/local/share/vitte"
+fi
+exec /usr/local/libexec/vitte/vitte-ide-gtk "$@"
+EOF
+  chmod 0755 "$STAGE_ROOT/usr/local/bin/vitte-ide-gtk"
+
+  cat > "$STAGE_ROOT/usr/local/bin/vitte-editor" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -z "${VITTE_ROOT:-}" ]; then
+  export VITTE_ROOT="/usr/local/share/vitte"
+fi
+if [ -n "${DISPLAY:-}" ] && [ -x /usr/local/libexec/vitte/vitte-ide-gtk ]; then
+  exec /usr/local/libexec/vitte/vitte-ide-gtk "$@"
+fi
+exec /usr/local/libexec/vitte/vitte-ide "$@"
+EOF
+  chmod 0755 "$STAGE_ROOT/usr/local/bin/vitte-editor"
 
   mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte"
   mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends"
@@ -81,19 +153,23 @@ EOF
 
   rsync -a "$ROOT_DIR/src/vitte/packages/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/packages/"
   rsync -a "$ROOT_DIR/src/compiler/backends/runtime/" "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends/runtime/"
+  if [ -f "$ROOT_DIR/version" ]; then
+    install -m 0644 "$ROOT_DIR/version" "$STAGE_ROOT/usr/local/share/vitte/version"
+  fi
 
-  mkdir -p "$STAGE_ROOT/usr/local/share/vitte/editors/vim" \
-           "$STAGE_ROOT/usr/local/share/vitte/editors/emacs" \
-           "$STAGE_ROOT/usr/local/share/vitte/editors/nano"
-  rsync -a "$ROOT_DIR/editors/vim/" "$STAGE_ROOT/usr/local/share/vitte/editors/vim/"
-  rsync -a "$ROOT_DIR/editors/emacs/" "$STAGE_ROOT/usr/local/share/vitte/editors/emacs/"
-  rsync -a "$ROOT_DIR/editors/nano/" "$STAGE_ROOT/usr/local/share/vitte/editors/nano/"
+  mkdir -p "$STAGE_ROOT/usr/local/share/vitte/editors"
+  if [ -d "$ROOT_DIR/editors" ]; then
+    rsync -a \
+      --exclude 'vscode/node_modules/' \
+      --exclude 'vscode/.vscode/' \
+      "$ROOT_DIR/editors/" "$STAGE_ROOT/usr/local/share/vitte/editors/"
+  fi
   [ -f "$ROOT_DIR/editors/README.md" ] && install -m 0644 "$ROOT_DIR/editors/README.md" "$STAGE_ROOT/usr/local/share/vitte/editors/README.md"
 
   install -m 0644 "$ROOT_DIR/toolchain/scripts/install/templates/env.sh" "$STAGE_ROOT/usr/local/share/vitte/env.sh"
 
   mkdir -p "$STAGE_ROOT/usr/local/share/man/man1"
-  for m in vitte.1 vittec.1 vitte-linker.1; do
+  for m in vitte.1 vitte-editor.1; do
     [ -f "$ROOT_DIR/man/$m" ] && install -m 0644 "$ROOT_DIR/man/$m" "$STAGE_ROOT/usr/local/share/man/man1/$m"
   done
 
@@ -110,10 +186,139 @@ EOF
   install -m 0644 "$ROOT_DIR/completions/bash/vitte" "$STAGE_ROOT/usr/local/share/vitte/completions/bash/vitte"
   install -m 0644 "$ROOT_DIR/completions/zsh/_vitte" "$STAGE_ROOT/usr/local/share/vitte/completions/zsh/_vitte"
   install -m 0644 "$ROOT_DIR/completions/fish/vitte.fish" "$STAGE_ROOT/usr/local/share/vitte/completions/fish/vitte.fish"
+
+  mkdir -p "$STAGE_ROOT/usr/share/doc/$PACKAGE_NAME"
+  [ -f "$ROOT_DIR/LICENSE" ] && install -m 0644 "$ROOT_DIR/LICENSE" "$STAGE_ROOT/usr/share/doc/$PACKAGE_NAME/LICENSE"
+  [ -f "$ROOT_DIR/README.md" ] && install -m 0644 "$ROOT_DIR/README.md" "$STAGE_ROOT/usr/share/doc/$PACKAGE_NAME/README.md"
+  [ -f "$ROOT_DIR/CHANGELOG.md" ] && install -m 0644 "$ROOT_DIR/CHANGELOG.md" "$STAGE_ROOT/usr/share/doc/$PACKAGE_NAME/CHANGELOG.md"
+  [ -f "$ROOT_DIR/CONTRIBUTING.md" ] && install -m 0644 "$ROOT_DIR/CONTRIBUTING.md" "$STAGE_ROOT/usr/share/doc/$PACKAGE_NAME/CONTRIBUTING.md"
+  [ -f "$ROOT_DIR/CODE_OF_CONDUCT.md" ] && install -m 0644 "$ROOT_DIR/CODE_OF_CONDUCT.md" "$STAGE_ROOT/usr/share/doc/$PACKAGE_NAME/CODE_OF_CONDUCT.md"
+  [ -f "$ROOT_DIR/SECURITY.md" ] && install -m 0644 "$ROOT_DIR/SECURITY.md" "$STAGE_ROOT/usr/share/doc/$PACKAGE_NAME/SECURITY.md"
+  [ -f "$ROOT_DIR/SUPPORT.md" ] && install -m 0644 "$ROOT_DIR/SUPPORT.md" "$STAGE_ROOT/usr/share/doc/$PACKAGE_NAME/SUPPORT.md"
+
+  local git_commit
+  git_commit="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+  cat > "$STAGE_ROOT/usr/share/doc/$PACKAGE_NAME/PROJECT_INFO" <<EOF
+Name: ${PACKAGE_NAME}
+Title: ${PROJECT_INFO_TITLE}
+Version: ${VERSION}
+Architecture: ${ARCH}
+Homepage: ${HOMEPAGE}
+VCS: ${VCS_URL}
+Issues: ${BUGS_URL}
+Maintainer: ${MAINTAINER}
+Build-Date-UTC: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+Git-Commit: ${git_commit:-unknown}
+Binary: /usr/local/bin/vitte
+IDE-Binary: /usr/local/bin/vitte-ide
+IDE-GTK-Binary: /usr/local/bin/vitte-ide-gtk
+Editor-Binary: /usr/local/bin/vitte-editor
+Root: /usr/local/share/vitte
+License-File: /usr/share/doc/${PACKAGE_NAME}/LICENSE
+EOF
+
+  mkdir -p "$STAGE_ROOT/usr/share/icons/hicolor/scalable/apps"
+  mkdir -p "$STAGE_ROOT/usr/share/pixmaps"
+  install -m 0644 "$ROOT_DIR/toolchain/assets/vitte-logo-circle-blue.svg" "$STAGE_ROOT/usr/share/icons/hicolor/scalable/apps/vitte.svg"
+  install -m 0644 "$ROOT_DIR/toolchain/assets/vitte-logo-circle-blue.svg" "$STAGE_ROOT/usr/share/pixmaps/vitte.svg"
+  cat > "$STAGE_ROOT/usr/share/doc/$PACKAGE_NAME/copyright" <<'EOF'
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: vitte
+Upstream-Contact: Vitte Team <maintainers@vitte.dev>
+Source: https://github.com/vitte/vitte
+
+Files: *
+Copyright: 2021-2026 Vitte contributors
+License: GPL-3.0-only
+ This package is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; version 3.
+ .
+ This package is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ .
+ On Debian systems, the full text of the GNU General Public License
+ version 3 can be found in /usr/share/common-licenses/GPL-3.
+EOF
+
+  mkdir -p "$STAGE_ROOT/usr/share/applications"
+  cat > "$STAGE_ROOT/usr/share/applications/vitte.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=VITTE
+GenericName=Systems Language Toolchain
+Comment=Vitte IDE and toolchain
+Exec=vitte-ide-gtk
+Icon=vitte
+Terminal=false
+Categories=Development;IDE;
+Keywords=compiler;language;toolchain;vitte;ide;editor;
+NoDisplay=false
+Actions=OpenGtk;OpenTui;OpenTerminal;
+
+[Desktop Action OpenGtk]
+Name=Open VITTE GTK IDE
+Exec=vitte-ide-gtk
+
+[Desktop Action OpenTui]
+Name=Open VITTE Terminal IDE
+Exec=vitte-ide
+Terminal=true
+
+[Desktop Action OpenTerminal]
+Name=Open VITTE Shell
+Exec=x-terminal-emulator -e bash -lc "vitte --help; exec bash"
+Terminal=false
+EOF
+
+  mkdir -p "$STAGE_ROOT/usr/share/metainfo"
+  cat > "$STAGE_ROOT/usr/share/metainfo/vitte.metainfo.xml" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>vitte.desktop</id>
+  <name>Vitte</name>
+  <summary>Vitte systems language toolchain</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <icon type="cached">vitte</icon>
+  <developer id="dev.vitte">
+    <name>Vitte Team</name>
+  </developer>
+  <description>
+    <p>Unified Vitte toolchain including compiler, runtime sources, standard packages, editor support and shell completions.</p>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <caption>VITTE GTK IDE main workspace</caption>
+      <image type="source">https://raw.githubusercontent.com/vitte/vitte/main/toolchain/assets/vitte-logo-circle-blue.svg</image>
+    </screenshot>
+    <screenshot>
+      <caption>VITTE project navigation and diagnostics</caption>
+      <image type="source">https://raw.githubusercontent.com/vitte/vitte/main/toolchain/assets/vitte-logo-circle-blue.svg</image>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">${HOMEPAGE}</url>
+  <url type="bugtracker">${BUGS_URL}</url>
+  <url type="vcs-browser">${VCS_URL}</url>
+  <provides>
+    <binary>vitte</binary>
+    <binary>vitte-ide</binary>
+    <binary>vitte-ide-gtk</binary>
+    <binary>vitte-editor</binary>
+  </provides>
+  <releases>
+    <release version="${VERSION}" date="$(date -u +"%Y-%m-%d")"/>
+  </releases>
+  <launchable type="desktop-id">vitte.desktop</launchable>
+</component>
+EOF
 }
 
 write_control_files() {
   mkdir -p "$DEBIAN_DIR"
+  local installed_size
+  installed_size="$(du -sk "$STAGE_ROOT" | awk '{print $1}')"
 
   cat > "$DEBIAN_DIR/control" <<EOF
 Package: ${PACKAGE_NAME}
@@ -124,6 +329,10 @@ Architecture: ${ARCH}
 Maintainer: ${MAINTAINER}
 Depends: ${DEPENDS}
 Homepage: ${HOMEPAGE}
+Installed-Size: ${installed_size}
+Vcs-Browser: ${VCS_URL}
+Vcs-Git: ${VCS_URL}.git
+Bugs: ${BUGS_URL}
 Description: ${DESCRIPTION}
  Unified Vitte toolchain package including binary, runtime sources,
  standard packages, editors support, manpages and shell completions.
@@ -184,6 +393,18 @@ if [ "${1:-}" = "configure" ]; then
     echo "[vitte deb] postinst check failed: vitte --help" >&2
     exit 1
   fi
+  if [ ! -x /usr/local/bin/vitte-ide ]; then
+    echo "[vitte deb] postinst check failed: missing /usr/local/bin/vitte-ide" >&2
+    exit 1
+  fi
+  if [ ! -x /usr/local/bin/vitte-ide-gtk ]; then
+    echo "[vitte deb] postinst check failed: missing /usr/local/bin/vitte-ide-gtk" >&2
+    exit 1
+  fi
+  if [ ! -x /usr/local/bin/vitte-editor ]; then
+    echo "[vitte deb] postinst check failed: missing /usr/local/bin/vitte-editor" >&2
+    exit 1
+  fi
 
   TMP="/tmp/vitte_deb_verify_$$.vit"
   cat > "$TMP" <<'VEOF'
@@ -220,8 +441,13 @@ VEOF
   cat <<MSG
 [vitte deb] install complete
 [vitte deb] binary: /usr/local/bin/vitte
+[vitte deb] ide:    /usr/local/bin/vitte-ide
+[vitte deb] ide-gui:/usr/local/bin/vitte-ide-gtk
+[vitte deb] editor: /usr/local/bin/vitte-editor
 [vitte deb] root:   /usr/local/share/vitte
 [vitte deb] man:    /usr/local/share/man/man1/vitte.1
+[vitte deb] docs:   /usr/share/doc/vitte
+[vitte deb] logo:   /usr/share/icons/hicolor/scalable/apps/vitte.svg
 [vitte deb] env:    source /usr/local/share/vitte/env.sh
 MSG
 fi
@@ -248,6 +474,7 @@ EOF
 main() {
   require_tools
   cd "$ROOT_DIR"
+  run_release_readiness_gate
   mkdir -p "$OUT_DIR"
   rm -rf "$STAGE_BASE"
   mkdir -p "$STAGE_ROOT"

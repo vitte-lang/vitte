@@ -1,0 +1,67 @@
+<<<
+mod.vit
+package vitte/shell
+>>>
+
+space vitte/shell
+
+
+form Command {
+  bin: string
+  args: [string]
+  env: [string]
+}
+
+proc cmd(bin: string) -> Command {
+  give Command(bin, [], [])
+}
+
+proc with_arg(c: Command, arg: string) -> Command {
+  give Command(c.bin, c.args.push(arg), c.env)
+}
+
+proc with_env(c: Command, pair: string) -> Command {
+  give Command(c.bin, c.args, c.env.push(pair))
+}
+
+proc render(c: Command) -> string {
+  let out = c.bin
+  let i: int = 0
+  loop {
+    if i >= c.args.len { break }
+    out = out + " " + c.args[i]
+    i = i + 1
+  }
+  give out
+}
+
+proc render_with_env(c: Command) -> string {
+  let out = ""
+  let i: int = 0
+  loop {
+    if i >= c.env.len { break }
+    out = out + c.env[i] + " "
+    i = i + 1
+  }
+  give out + render(c)
+}
+
+proc validate(c: Command) -> bool {
+  give c.bin.len > 0
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/shell"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/shell
+role: Construction de commandes shell securisees
+input_contract: Binaire/arguments explicites
+output_contract: Commandes rendues de facon deterministe
+boundary: Ne lance pas les process directement
+>>>

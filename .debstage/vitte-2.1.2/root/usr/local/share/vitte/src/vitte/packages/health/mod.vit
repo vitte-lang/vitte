@@ -1,0 +1,179 @@
+<<<
+mod.vit
+package vitte/health
+>>>
+
+space vitte/health
+
+
+form HealthInput {
+  db_ok: bool
+  cache_ok: bool
+  queue_ok: bool
+  migrations_ok: bool
+  warmed: bool
+  started: bool
+}
+
+proc input(db_ok: bool, cache_ok: bool, queue_ok: bool, migrations_ok: bool, warmed: bool, started: bool) -> HealthInput {
+  give HealthInput(db_ok, cache_ok, queue_ok, migrations_ok, warmed, started)
+}
+
+proc check_live(h: HealthInput) -> bool {
+  give h.started
+}
+
+proc deps_ok(h: HealthInput) -> bool {
+  give h.db_ok && h.cache_ok && h.queue_ok
+}
+
+proc check_ready(h: HealthInput) -> bool {
+  give h.started && deps_ok(h) && h.warmed
+}
+
+proc check_startup(h: HealthInput) -> bool {
+  give h.started && h.migrations_ok
+}
+
+proc check_operational(h: HealthInput) -> bool {
+  give check_ready(h) && check_startup(h)
+}
+
+proc status_code_live(h: HealthInput) -> int {
+  if check_live(h) { give 200 }
+  give 503
+}
+
+proc status_code_ready(h: HealthInput) -> int {
+  if check_ready(h) { give 200 }
+  give 503
+}
+
+proc status_code_startup(h: HealthInput) -> int {
+  if check_startup(h) { give 200 }
+  give 503
+}
+
+proc failing_components(h: HealthInput) -> [string] {
+  let out: [string] = []
+  if !h.db_ok { out = out.push("db") }
+  if !h.cache_ok { out = out.push("cache") }
+  if !h.queue_ok { out = out.push("queue") }
+  if !h.migrations_ok { out = out.push("migrations") }
+  if !h.warmed { out = out.push("warmed") }
+  if !h.started { out = out.push("started") }
+  give out
+}
+
+proc failing_count(h: HealthInput) -> int {
+  give failing_components(h).len
+}
+
+proc score_percent(h: HealthInput) -> int {
+  let ok: int = 0
+  if h.db_ok { ok = ok + 1 }
+  if h.cache_ok { ok = ok + 1 }
+  if h.queue_ok { ok = ok + 1 }
+  if h.migrations_ok { ok = ok + 1 }
+  if h.warmed { ok = ok + 1 }
+  if h.started { ok = ok + 1 }
+  give ok * 100 / 6
+}
+
+proc status_text(h: HealthInput) -> string {
+  if !check_live(h) { give "down" }
+  if check_operational(h) { give "ok" }
+  if check_ready(h) { give "starting" }
+  give "degraded"
+}
+
+proc component_ok(h: HealthInput, name: string) -> bool {
+  if name == "db" { give h.db_ok }
+  if name == "cache" { give h.cache_ok }
+  if name == "queue" { give h.queue_ok }
+  if name == "migrations" { give h.migrations_ok }
+  if name == "warmed" { give h.warmed }
+  if name == "started" { give h.started }
+  give false
+}
+
+proc ready_blockers(h: HealthInput) -> [string] {
+  let out: [string] = []
+  if !h.started { out = out.push("started") }
+  if !h.db_ok { out = out.push("db") }
+  if !h.cache_ok { out = out.push("cache") }
+  if !h.queue_ok { out = out.push("queue") }
+  if !h.warmed { out = out.push("warmed") }
+  give out
+}
+
+proc startup_blockers(h: HealthInput) -> [string] {
+  let out: [string] = []
+  if !h.started { out = out.push("started") }
+  if !h.migrations_ok { out = out.push("migrations") }
+  give out
+}
+
+proc status_code_operational(h: HealthInput) -> int {
+  if check_operational(h) { give 200 }
+  give 503
+}
+
+proc is_down(h: HealthInput) -> bool {
+  give !check_live(h)
+}
+
+proc is_degraded(h: HealthInput) -> bool {
+  if !check_live(h) { give false }
+  give !check_operational(h)
+}
+
+proc severity(h: HealthInput) -> string {
+  if is_down(h) { give "critical" }
+  if is_degraded(h) { give "warning" }
+  give "ok"
+}
+
+proc summary(h: HealthInput) -> string {
+  give "status=" + status_text(h) +
+       ",score=" + score_percent(h).to_string() +
+       ",failures=" + failing_count(h).to_string()
+}
+
+proc verify_invariants(h: HealthInput) -> bool {
+  if check_operational(h) && score_percent(h) < 80 { give false }
+  if is_down(h) && status_text(h) != "down" { give false }
+  if check_live(h) && status_code_live(h) != 200 { give false }
+  give true
+}
+
+proc report_json(h: HealthInput) -> string {
+  let live = "false"
+  if check_live(h) { live = "true" }
+
+  let ready_state = "false"
+  if check_ready(h) { ready_state = "true" }
+
+  let startup = "false"
+  if check_startup(h) { startup = "true" }
+
+  give "{\"live\":" + live + ",\"ready\":" + ready_state + ",\"startup\":" + startup + "}"
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/health"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/health
+role: Endpoints live ready startup pour orchestration production
+input_contract: Etat infra explicite (db cache queue migrations warmed started)
+output_contract: Signaux sante deterministes et projection JSON stable
+boundary: Ne repare pas les dependances; expose uniquement leur etat agrege
+>>>

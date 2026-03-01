@@ -1,0 +1,504 @@
+<<<
+mod.vit
+package vitte/http
+>>>
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/http; additive API only.
+# - No import-time side effects.
+# - Internal implementation in vitte/http/internal/*.
+# - Diagnostics namespace: VITTE-H0001..VITTE-H0099 (extended: H001x/H002x/H003x).
+
+space vitte/http
+
+use vitte/http/internal/runtime as http_runtime_pkg
+
+pick HttpMethod {
+  Get
+  Post
+  Put
+  Patch
+  Delete
+}
+
+form HttpError {
+  code: string
+  message: string
+  context: string
+}
+
+pick HttpResult[T] {
+  Ok(value: T)
+  Err(error: HttpError)
+}
+
+form HttpHeader {
+  key: string
+  value: string
+}
+
+form HttpHeaders {
+  values: [HttpHeader]
+}
+
+form HttpRequest {
+  method: HttpMethod
+  path: string
+  query: string
+  headers: HttpHeaders
+  body: string
+  chunked: bool
+  keep_alive: bool
+  cancel_token: string
+}
+
+form HttpResponse {
+  status: int
+  reason: string
+  headers: HttpHeaders
+  body: string
+  content_length: int
+  keep_alive: bool
+}
+
+form HttpRoute {
+  method: HttpMethod
+  pattern: string
+  target: string
+  priority: int
+  secure: bool
+  body_limit: int
+}
+
+form HttpMiddleware {
+  name: string
+  enabled: bool
+}
+
+form HttpServerConfig {
+  read_timeout_ms: int
+  write_timeout_ms: int
+  idle_timeout_ms: int
+  header_timeout_ms: int
+  body_timeout_ms: int
+  body_limit_global: int
+  cors_allow_origin: string
+  cors_preflight_cache_s: int
+  csrf_required: bool
+  rate_limit_per_window: int
+  rate_limit_burst: int
+  profile: string
+}
+
+form HttpServerState {
+  routes: [HttpRoute]
+  middlewares: [HttpMiddleware]
+  cfg: HttpServerConfig
+  rate_used: int
+}
+
+proc error(code: string, message: string, context: string) -> HttpError {
+  give HttpError(code, message, context)
+}
+
+proc ok[T](value: T) -> HttpResult[T] {
+  give HttpResult.Ok(value)
+}
+
+proc err[T](code: string, message: string) -> HttpResult[T] {
+  give HttpResult.Err(error(code, message, ""))
+}
+
+proc err_ctx[T](code: string, message: string, context: string) -> HttpResult[T] {
+  give HttpResult.Err(error(code, message, context))
+}
+
+proc assert_or_err(condition: bool, code: string, message: string) -> HttpResult[bool] {
+  if condition {
+    give HttpResult.Ok(true)
+  }
+  give HttpResult.Err(error(code, message, "assertion"))
+}
+
+proc panic_guard[T](r: HttpResult[T], fallback: T) -> T {
+  when r is HttpResult.Ok {
+    give r.value
+  }
+  give fallback
+}
+
+proc diagnostics_message(code: string) -> string {
+  give http_runtime_pkg.diag_message(code)
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  give http_runtime_pkg.quickfix_for(code)
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc method_name(m: HttpMethod) -> string {
+  if m == HttpMethod.Get { give "GET" }
+  if m == HttpMethod.Post { give "POST" }
+  if m == HttpMethod.Put { give "PUT" }
+  if m == HttpMethod.Patch { give "PATCH" }
+  give "DELETE"
+}
+
+proc method_from_name(name: string) -> HttpResult[HttpMethod] {
+  if name == "GET" { give HttpResult.Ok(HttpMethod.Get) }
+  if name == "POST" { give HttpResult.Ok(HttpMethod.Post) }
+  if name == "PUT" { give HttpResult.Ok(HttpMethod.Put) }
+  if name == "PATCH" { give HttpResult.Ok(HttpMethod.Patch) }
+  if name == "DELETE" { give HttpResult.Ok(HttpMethod.Delete) }
+  give err[HttpMethod]("VITTE-H0001", diagnostics_message("VITTE-H0001"))
+}
+
+proc default_headers() -> HttpHeaders {
+  give HttpHeaders([])
+}
+
+proc header_add(headers: HttpHeaders, key: string, value: string) -> HttpHeaders {
+  let v: string = value
+  if key == "authorization" || key == "cookie" {
+    v = http_runtime_pkg.redact_sensitive(value)
+  }
+  give HttpHeaders(headers.values.push(HttpHeader(key, v)))
+}
+
+proc header_get(headers: HttpHeaders, key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= headers.values.len { break }
+    if headers.values[i].key == key { give headers.values[i].value }
+    i = i + 1
+  }
+  give ""
+}
+
+proc request(method: HttpMethod, path: string, body: string) -> HttpRequest {
+  give HttpRequest(method, http_runtime_pkg.normalize_path(path), http_runtime_pkg.parse_query(path), default_headers(), body, false, true, "")
+}
+
+proc request_with_query(req: HttpRequest, query: string) -> HttpRequest {
+  give HttpRequest(req.method, req.path, query, req.headers, req.body, req.chunked, req.keep_alive, req.cancel_token)
+}
+
+proc request_with_header(req: HttpRequest, key: string, value: string) -> HttpRequest {
+  give HttpRequest(req.method, req.path, req.query, header_add(req.headers, key, value), req.body, req.chunked, req.keep_alive, req.cancel_token)
+}
+
+proc request_with_chunked(req: HttpRequest, enabled: bool) -> HttpRequest {
+  give HttpRequest(req.method, req.path, req.query, req.headers, req.body, enabled, req.keep_alive, req.cancel_token)
+}
+
+proc request_with_cancel(req: HttpRequest, token: string) -> HttpRequest {
+  give HttpRequest(req.method, req.path, req.query, req.headers, req.body, req.chunked, req.keep_alive, token)
+}
+
+proc response(status: int, headers: HttpHeaders, body: string, keep_alive: bool) -> HttpResponse {
+  give HttpResponse(status, http_runtime_pkg.reason_phrase(status), headers, body, body.len, keep_alive)
+}
+
+proc parse_request_line(line: string) -> HttpResult[HttpRequest] {
+  let method_s: string = http_runtime_pkg.parse_method_token(line)
+  let path_s: string = http_runtime_pkg.parse_path_token(line)
+  let version_s: string = http_runtime_pkg.parse_version_token(line)
+  if method_s.len == 0 || path_s.len == 0 || version_s.len == 0 {
+    give err_ctx[HttpRequest]("VITTE-H0001", diagnostics_message("VITTE-H0001"), "request-line")
+  }
+  if http_runtime_pkg.method_known(method_s) == false {
+    give err_ctx[HttpRequest]("VITTE-H0001", diagnostics_message("VITTE-H0001"), "method=" + method_s)
+  }
+  let m: HttpResult[HttpMethod] = method_from_name(method_s)
+  when m is HttpResult.Err {
+    give HttpResult.Err(m.error)
+  }
+  give HttpResult.Ok(request(m.value, path_s, ""))
+}
+
+proc validate_request(state: HttpServerState, req: HttpRequest) -> HttpResult[bool] {
+  if http_runtime_pkg.timeout_config_valid(state.cfg.read_timeout_ms, state.cfg.write_timeout_ms, state.cfg.idle_timeout_ms, state.cfg.header_timeout_ms, state.cfg.body_timeout_ms) == false {
+    give err_ctx[bool]("VITTE-H0020", diagnostics_message("VITTE-H0020"), "timeouts")
+  }
+  if http_runtime_pkg.profile_allows_network(state.cfg.profile) == false {
+    give err_ctx[bool]("VITTE-H0012", diagnostics_message("VITTE-H0012"), "profile=" + state.cfg.profile)
+  }
+  if http_runtime_pkg.has_crlf(req.path) || http_runtime_pkg.has_crlf(req.query) {
+    give err_ctx[bool]("VITTE-H0002", diagnostics_message("VITTE-H0002"), "path/query")
+  }
+  let host_h: string = header_get(req.headers, "host")
+  if http_runtime_pkg.has_crlf(host_h) {
+    give err_ctx[bool]("VITTE-H0011", diagnostics_message("VITTE-H0011"), "host")
+  }
+  let origin_h: string = header_get(req.headers, "origin")
+  if origin_h.len > 0 && http_runtime_pkg.cors_origin_allowed(state.cfg.cors_allow_origin, origin_h) == false {
+    give err_ctx[bool]("VITTE-H0008", diagnostics_message("VITTE-H0008"), "origin")
+  }
+  if http_runtime_pkg.starts_with(req.path, "http://") || http_runtime_pkg.starts_with(req.path, "https://") {
+    if http_runtime_pkg.is_private_host_from_url(req.path) {
+      give err_ctx[bool]("VITTE-H0010", diagnostics_message("VITTE-H0010"), "ssrf")
+    }
+  }
+  if http_runtime_pkg.is_timeout_or_cancelled(req.cancel_token) {
+    give err_ctx[bool]("VITTE-H0022", diagnostics_message("VITTE-H0022"), "cancel")
+  }
+  give HttpResult.Ok(true)
+}
+
+proc validate_response(resp: HttpResponse) -> HttpResult[bool] {
+  if http_runtime_pkg.status_is_valid(resp.status) == false {
+    give err_ctx[bool]("VITTE-H0001", "invalid status", "status")
+  }
+  if resp.reason != http_runtime_pkg.reason_phrase(resp.status) {
+    give err_ctx[bool]("VITTE-H0001", "reason phrase mismatch", "reason")
+  }
+  if http_runtime_pkg.content_length_matches(resp.body, resp.content_length) == false {
+    give err_ctx[bool]("VITTE-H0031", diagnostics_message("VITTE-H0031"), "content-length")
+  }
+  give HttpResult.Ok(true)
+}
+
+proc route(method: HttpMethod, pattern: string, target: string, priority: int, secure: bool, body_limit: int) -> HttpRoute {
+  give HttpRoute(method, http_runtime_pkg.normalize_path(pattern), target, priority, secure, body_limit)
+}
+
+proc route_conflict(routes: [HttpRoute], candidate: HttpRoute) -> bool {
+  let i: int = 0
+  loop {
+    if i >= routes.len { break }
+    let r: HttpRoute = routes[i]
+    if r.method == candidate.method && http_runtime_pkg.normalize_path(r.pattern) == http_runtime_pkg.normalize_path(candidate.pattern) {
+      give true
+    }
+    i = i + 1
+  }
+  give false
+}
+
+proc default_server_config() -> HttpServerConfig {
+  give HttpServerConfig(2000, 2000, 5000, 1000, 2000, 1048576, "*", 300, false, 1000, 100, "desktop")
+}
+
+proc default_server_state() -> HttpServerState {
+  give HttpServerState([], [], default_server_config(), 0)
+}
+
+proc add_route(state: HttpServerState, r: HttpRoute) -> HttpResult[HttpServerState] {
+  if route_conflict(state.routes, r) {
+    give err_ctx[HttpServerState]("VITTE-H0004", diagnostics_message("VITTE-H0004"), "route")
+  }
+  give HttpResult.Ok(HttpServerState(state.routes.push(r), state.middlewares, state.cfg, state.rate_used))
+}
+
+proc add_middleware(state: HttpServerState, name: string) -> HttpServerState {
+  give HttpServerState(state.routes, state.middlewares.push(HttpMiddleware(name, true)), state.cfg, state.rate_used)
+}
+
+proc apply_middleware(state: HttpServerState, req: HttpRequest) -> HttpResult[HttpRequest] {
+  let out: HttpRequest = req
+  let i: int = 0
+  loop {
+    if i >= state.middlewares.len { break }
+    let m: HttpMiddleware = state.middlewares[i]
+    if m.enabled {
+      if m.name == "normalize-path" {
+        out = HttpRequest(out.method, http_runtime_pkg.normalize_path(out.path), out.query, out.headers, out.body, out.chunked, out.keep_alive, out.cancel_token)
+      }
+      if m.name == "strip-query" {
+        out = HttpRequest(out.method, out.path, "", out.headers, out.body, out.chunked, out.keep_alive, out.cancel_token)
+      }
+      if m.name == "enforce-cors" {
+        let origin_h: string = header_get(out.headers, "origin")
+        if origin_h.len > 0 && http_runtime_pkg.cors_origin_allowed(state.cfg.cors_allow_origin, origin_h) == false {
+          give err_ctx[HttpRequest]("VITTE-H0008", diagnostics_message("VITTE-H0008"), "middleware:cors")
+        }
+      }
+    }
+    i = i + 1
+  }
+  give HttpResult.Ok(out)
+}
+
+proc with_timeouts(state: HttpServerState, read_ms: int, write_ms: int, idle_ms: int, header_ms: int, body_ms: int) -> HttpServerState {
+  let cfg: HttpServerConfig = HttpServerConfig(read_ms, write_ms, idle_ms, header_ms, body_ms, state.cfg.body_limit_global, state.cfg.cors_allow_origin, state.cfg.cors_preflight_cache_s, state.cfg.csrf_required, state.cfg.rate_limit_per_window, state.cfg.rate_limit_burst, state.cfg.profile)
+  give HttpServerState(state.routes, state.middlewares, cfg, state.rate_used)
+}
+
+proc with_rate_limit(state: HttpServerState, per_window: int, burst: int) -> HttpServerState {
+  let cfg: HttpServerConfig = HttpServerConfig(state.cfg.read_timeout_ms, state.cfg.write_timeout_ms, state.cfg.idle_timeout_ms, state.cfg.header_timeout_ms, state.cfg.body_timeout_ms, state.cfg.body_limit_global, state.cfg.cors_allow_origin, state.cfg.cors_preflight_cache_s, state.cfg.csrf_required, per_window, burst, state.cfg.profile)
+  give HttpServerState(state.routes, state.middlewares, cfg, state.rate_used)
+}
+
+proc with_cors(state: HttpServerState, allow_origin: string, preflight_s: int) -> HttpServerState {
+  let cfg: HttpServerConfig = HttpServerConfig(state.cfg.read_timeout_ms, state.cfg.write_timeout_ms, state.cfg.idle_timeout_ms, state.cfg.header_timeout_ms, state.cfg.body_timeout_ms, state.cfg.body_limit_global, allow_origin, preflight_s, state.cfg.csrf_required, state.cfg.rate_limit_per_window, state.cfg.rate_limit_burst, state.cfg.profile)
+  give HttpServerState(state.routes, state.middlewares, cfg, state.rate_used)
+}
+
+proc with_csrf(state: HttpServerState, enabled: bool) -> HttpServerState {
+  let cfg: HttpServerConfig = HttpServerConfig(state.cfg.read_timeout_ms, state.cfg.write_timeout_ms, state.cfg.idle_timeout_ms, state.cfg.header_timeout_ms, state.cfg.body_timeout_ms, state.cfg.body_limit_global, state.cfg.cors_allow_origin, state.cfg.cors_preflight_cache_s, enabled, state.cfg.rate_limit_per_window, state.cfg.rate_limit_burst, state.cfg.profile)
+  give HttpServerState(state.routes, state.middlewares, cfg, state.rate_used)
+}
+
+proc find_route(routes: [HttpRoute], req: HttpRequest) -> HttpResult[HttpRoute] {
+  let best_idx: int = -1
+  let best_rank: int = -1000000
+  let i: int = 0
+  loop {
+    if i >= routes.len { break }
+    let r: HttpRoute = routes[i]
+    if r.method == req.method && http_runtime_pkg.route_matches(r.pattern, req.path) {
+      let rank: int = http_runtime_pkg.route_rank(r.priority, r.pattern)
+      if rank > best_rank {
+        best_idx = i
+        best_rank = rank
+      }
+    }
+    i = i + 1
+  }
+  if best_idx < 0 {
+    give err_ctx[HttpRoute]("VITTE-H0004", "route not found", "router")
+  }
+  give HttpResult.Ok(routes[best_idx])
+}
+
+proc apply_security_gates(state: HttpServerState, req: HttpRequest, matched: HttpRoute) -> HttpResult[bool] {
+  if http_runtime_pkg.is_timeout_or_cancelled(req.cancel_token) {
+    give err_ctx[bool]("VITTE-H0022", diagnostics_message("VITTE-H0022"), "cancel")
+  }
+  if http_runtime_pkg.body_limit_exceeded(req.body.len, matched.body_limit, state.cfg.body_limit_global) {
+    give err_ctx[bool]("VITTE-H0030", diagnostics_message("VITTE-H0030"), "body-limit")
+  }
+  if http_runtime_pkg.has_crlf(req.path) {
+    give err_ctx[bool]("VITTE-H0002", diagnostics_message("VITTE-H0002"), "path")
+  }
+  let host_h: string = header_get(req.headers, "host")
+  if http_runtime_pkg.has_crlf(host_h) {
+    give err_ctx[bool]("VITTE-H0011", diagnostics_message("VITTE-H0011"), "host")
+  }
+  if matched.secure {
+    let auth: string = header_get(req.headers, "authorization")
+    if auth.len == 0 {
+      give err_ctx[bool]("VITTE-H0009", diagnostics_message("VITTE-H0009"), "auth")
+    }
+  }
+  if state.cfg.csrf_required {
+    if req.method == HttpMethod.Post || req.method == HttpMethod.Put || req.method == HttpMethod.Patch || req.method == HttpMethod.Delete {
+      let token: string = header_get(req.headers, "x-csrf-token")
+      if token.len == 0 {
+        give err_ctx[bool]("VITTE-H0008", diagnostics_message("VITTE-H0008"), "csrf")
+      }
+    }
+  }
+  give HttpResult.Ok(true)
+}
+
+proc apply_rate_limit(state: HttpServerState) -> HttpResult[HttpServerState] {
+  if state.rate_used >= state.cfg.rate_limit_per_window + state.cfg.rate_limit_burst {
+    give err_ctx[HttpServerState]("VITTE-H0006", diagnostics_message("VITTE-H0006"), "rate-limit")
+  }
+  give HttpResult.Ok(HttpServerState(state.routes, state.middlewares, state.cfg, state.rate_used + 1))
+}
+
+proc handle(state: HttpServerState, req: HttpRequest) -> HttpResult[HttpResponse] {
+  let req_ok: HttpResult[bool] = validate_request(state, req)
+  when req_ok is HttpResult.Err {
+    give HttpResult.Err(req_ok.error)
+  }
+
+  let rl: HttpResult[HttpServerState] = apply_rate_limit(state)
+  when rl is HttpResult.Err {
+    give HttpResult.Err(rl.error)
+  }
+
+  let mreq: HttpResult[HttpRequest] = apply_middleware(rl.value, req)
+  when mreq is HttpResult.Err {
+    give HttpResult.Err(mreq.error)
+  }
+
+  let route_r: HttpResult[HttpRoute] = find_route(rl.value.routes, mreq.value)
+  when route_r is HttpResult.Err {
+    give HttpResult.Err(route_r.error)
+  }
+
+  let sec: HttpResult[bool] = apply_security_gates(rl.value, mreq.value, route_r.value)
+  when sec is HttpResult.Err {
+    give HttpResult.Err(sec.error)
+  }
+
+  let res_headers: HttpHeaders = default_headers()
+  let h1: HttpHeaders = header_add(res_headers, "content-type", "application/json")
+  let h2: HttpHeaders = header_add(h1, "access-control-allow-origin", rl.value.cfg.cors_allow_origin)
+  let body: string = "{\"target\":\"" + route_r.value.target + "\"}"
+  let resp: HttpResponse = response(200, h2, body, mreq.value.keep_alive)
+  give HttpResult.Ok(resp)
+}
+
+proc openapi_contract_snapshot(routes: [HttpRoute]) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= routes.len { break }
+    let r: HttpRoute = routes[i]
+    out = out.push(method_name(r.method) + " " + r.pattern + " -> " + r.target)
+    i = i + 1
+  }
+  give out
+}
+
+proc openapi_contract_diff(old_snapshot: [string], new_snapshot: [string]) -> HttpResult[bool] {
+  let missing: string = http_runtime_pkg.openapi_contract_diff_missing(old_snapshot, new_snapshot)
+  if missing.len > 0 {
+    give err_ctx[bool]("VITTE-H0004", "breaking route removal", missing)
+  }
+  give HttpResult.Ok(true)
+}
+
+proc analyze_report_json_stub() -> string {
+  give "{\"package\":\"vitte/http\",\"diag_namespace\":\"VITTE-H****\",\"perf\":{\"p50\":0,\"p95\":0,\"p99\":0},\"status\":\"ok\"}"
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc doctor_status() -> string {
+  give "vitte/http doctor:ready api=" + api_version()
+}
+
+proc quickfix_preview(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix: no-op"
+  }
+  give diagnostics_quickfix(payload)
+}
+
+proc quickfix_apply(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix apply: no-op"
+  }
+  give "quickfix apply: " + payload
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/http"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/http
+role: Façade HTTP serveur stable (parse/router/middleware/security/timeouts)
+input_contract: Requetes explicites, routes et policy config
+output_contract: Reponses/diagnostics stables VITTE-H****
+boundary: implementation privée sous vitte/http/internal/*
+versioning: API facade stable, additive only
+api_surface_stable: true
+diagnostics: VITTE-H0001..VITTE-H0099, VITTE-H001x, VITTE-H002x, VITTE-H003x
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: v1
+>>>

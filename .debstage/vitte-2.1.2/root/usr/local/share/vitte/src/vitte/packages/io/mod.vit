@@ -1,0 +1,242 @@
+<<<
+mod.vit
+package vitte/io
+>>>
+
+space vitte/io
+
+
+form Buffer {
+  lines: [string]
+}
+
+proc buffer_new() -> Buffer {
+  give Buffer([])
+}
+
+proc print_line(text: string) {
+  emit text
+}
+
+proc print_text(text: string) {
+  emit text
+}
+
+proc write_line(buf: Buffer, line: string) -> Buffer {
+  give Buffer(buf.lines.push(line))
+}
+
+proc append_text(buf: Buffer, text: string) -> Buffer {
+  let out = buf
+  let current = ""
+  let i: int = 0
+  loop {
+    if i >= text.len {
+      out = write_line(out, current)
+      break
+    }
+    let ch = text.slice(i, i + 1)
+    if ch == "\n" {
+      out = write_line(out, current)
+      current = ""
+    } else {
+      current = current + ch
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc clear(buf: Buffer) -> Buffer {
+  let _ = buf
+  give Buffer([])
+}
+
+proc line_count(buf: Buffer) -> int {
+  give buf.lines.len
+}
+
+proc is_empty(buf: Buffer) -> bool {
+  give buf.lines.len == 0
+}
+
+proc read_line(buf: Buffer, index: int) -> string {
+  if index < 0 || index >= buf.lines.len { give "" }
+  give buf.lines[index]
+}
+
+proc first_line(buf: Buffer) -> string {
+  if buf.lines.len == 0 { give "" }
+  give buf.lines[0]
+}
+
+proc last_line(buf: Buffer) -> string {
+  if buf.lines.len == 0 { give "" }
+  give buf.lines[buf.lines.len - 1]
+}
+
+proc pop_line(buf: Buffer) -> Buffer {
+  if buf.lines.len == 0 { give buf }
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= buf.lines.len - 1 { break }
+    out = out.push(buf.lines[i])
+    i = i + 1
+  }
+  give Buffer(out)
+}
+
+proc replace_line(buf: Buffer, index: int, line: string) -> Buffer {
+  if index < 0 || index >= buf.lines.len { give buf }
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= buf.lines.len { break }
+    if i == index { out = out.push(line) } else { out = out.push(buf.lines[i]) }
+    i = i + 1
+  }
+  give Buffer(out)
+}
+
+proc remove_line(buf: Buffer, index: int) -> Buffer {
+  if index < 0 || index >= buf.lines.len { give buf }
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= buf.lines.len { break }
+    if i != index { out = out.push(buf.lines[i]) }
+    i = i + 1
+  }
+  give Buffer(out)
+}
+
+proc insert_line(buf: Buffer, index: int, line: string) -> Buffer {
+  let idx = index
+  if idx < 0 { idx = 0 }
+  if idx > buf.lines.len { idx = buf.lines.len }
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= buf.lines.len {
+      if i == idx { out = out.push(line) }
+      break
+    }
+    if i == idx { out = out.push(line) }
+    out = out.push(buf.lines[i])
+    i = i + 1
+  }
+  if buf.lines.len == 0 && idx == 0 { out = out.push(line) }
+  give Buffer(out)
+}
+
+proc to_text(buf: Buffer) -> string {
+  let out = ""
+  let i: int = 0
+  loop {
+    if i >= buf.lines.len { break }
+    if i > 0 { out = out + "\n" }
+    out = out + buf.lines[i]
+    i = i + 1
+  }
+  give out
+}
+
+proc join_path(a: string, b: string) -> string {
+  if a == "" { give b }
+  if b == "" { give a }
+  if a.slice(a.len - 1, a.len) == "/" { give a + b }
+  give a + "/" + b
+}
+
+proc dirname(p: string) -> string {
+  let i: int = p.len - 1
+  loop {
+    if i < 0 { break }
+    if p.slice(i, i + 1) == "/" { give p.slice(0, i) }
+    i = i - 1
+  }
+  give ""
+}
+
+proc basename(p: string) -> string {
+  let i: int = p.len - 1
+  loop {
+    if i < 0 { break }
+    if p.slice(i, i + 1) == "/" { give p.slice(i + 1, p.len) }
+    i = i - 1
+  }
+  give p
+}
+
+proc extname(p: string) -> string {
+  let b = basename(p)
+  let i: int = b.len - 1
+  loop {
+    if i < 0 { break }
+    if b.slice(i, i + 1) == "." { give b.slice(i + 1, b.len) }
+    i = i - 1
+  }
+  give ""
+}
+
+proc has_ext(p: string, ext: string) -> bool {
+  give extname(p) == ext
+}
+
+proc normalize_path(p: string) -> string {
+  let out = ""
+  let prev_slash = false
+  let i: int = 0
+  loop {
+    if i >= p.len { break }
+    let ch = p.slice(i, i + 1)
+    if ch == "/" {
+      if !prev_slash { out = out + ch }
+      prev_slash = true
+    } else {
+      out = out + ch
+      prev_slash = false
+    }
+    i = i + 1
+  }
+  if out.len == 0 { give "/" }
+  give out
+}
+
+proc split_lines(text: string) -> [string] {
+  let out: [string] = []
+  let current = ""
+  let i: int = 0
+  loop {
+    if i >= text.len {
+      out = out.push(current)
+      break
+    }
+    let ch = text.slice(i, i + 1)
+    if ch == "\n" {
+      out = out.push(current)
+      current = ""
+    } else {
+      current = current + ch
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/io"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/io
+role: Entrees sorties texte et binaire avec buffers
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

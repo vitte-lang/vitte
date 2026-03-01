@@ -1,0 +1,76 @@
+<<<
+mod.vit
+package vitte/template
+>>>
+
+space vitte/template
+
+
+form Var {
+  key: string
+  value: string
+}
+
+form Context {
+  vars: [Var]
+}
+
+proc context_new() -> Context {
+  give Context([])
+}
+
+proc put(ctx: Context, key: string, value: string) -> Context {
+  let out: [Var] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= ctx.vars.len { break }
+    if ctx.vars[i].key == key {
+      out = out.push(Var(key, value))
+      found = true
+    } else {
+      out = out.push(ctx.vars[i])
+    }
+    i = i + 1
+  }
+  if !found { out = out.push(Var(key, value)) }
+  give Context(out)
+}
+
+proc get(ctx: Context, key: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= ctx.vars.len { break }
+    if ctx.vars[i].key == key { give ctx.vars[i].value }
+    i = i + 1
+  }
+  give ""
+}
+
+proc render_simple(text: string, ctx: Context) -> string {
+  let out = text
+  let i: int = 0
+  loop {
+    if i >= ctx.vars.len { break }
+    let token = "${" + ctx.vars[i].key + "}"
+    if out == token { out = ctx.vars[i].value }
+    i = i + 1
+  }
+  give out
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/template"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/template
+role: Rendu de templates textuels
+input_contract: Template et contexte explicites
+output_contract: Texte rendu deterministe
+boundary: Pas de logique metier cachee dans le moteur
+>>>

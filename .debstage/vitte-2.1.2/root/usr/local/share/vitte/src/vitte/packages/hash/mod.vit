@@ -1,0 +1,75 @@
+<<<
+mod.vit
+package vitte/hash
+>>>
+
+space vitte/hash
+
+
+proc djb2(text: string) -> int {
+  let h: int = 5381
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    let c = text.slice(i, i + 1).to_int()
+    h = ((h * 33) + c)
+    i = i + 1
+  }
+  if h < 0 { give 0 - h }
+  give h
+}
+
+proc fnv1a(text: string) -> int {
+  let h: int = 2166136261
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    let c = text.slice(i, i + 1).to_int()
+    h = h ^ c
+    h = h * 16777619
+    i = i + 1
+  }
+  if h < 0 { give 0 - h }
+  give h
+}
+
+proc combine(a: int, b: int) -> int {
+  let h = a
+  h = h ^ (b + 2654435761 + (h << 6) + (h >> 2))
+  if h < 0 { give 0 - h }
+  give h
+}
+
+proc hash_pair(left: string, right: string) -> int {
+  give combine(fnv1a(left), fnv1a(right))
+}
+
+proc bucket(hash_value: int, buckets: int) -> int {
+  if buckets <= 0 { give 0 }
+  let b = hash_value % buckets
+  if b < 0 { give b + buckets }
+  give b
+}
+
+proc summary(text: string) -> string {
+  give "djb2=" + djb2(text).to_string() +
+       ",fnv1a=" + fnv1a(text).to_string()
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/hash"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/hash
+role: Fonctions de hachage non cryptographiques et utilitaires
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

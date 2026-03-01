@@ -1,0 +1,392 @@
+<<<
+mod.vit
+package vitte/schema_registry
+>>>
+
+space vitte/schema_registry
+
+
+form SchemaRecord {
+  subject: string
+  version: int
+  fingerprint: string
+  fields: [string]
+  active: bool
+}
+
+form SchemaRegistry {
+  records: [SchemaRecord]
+}
+
+proc registry_new() -> SchemaRegistry {
+  give SchemaRegistry([])
+}
+
+proc register(registry: SchemaRegistry, subject: string, version: int, fingerprint: string, fields: [string]) -> SchemaRegistry {
+  let out: [SchemaRecord] = []
+  let replaced: bool = false
+  let i: int = 0
+
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject == subject && rec.version == version {
+      out = out.push(SchemaRecord(subject, version, fingerprint, fields, true))
+      replaced = true
+    } else {
+      out = out.push(rec)
+    }
+    i = i + 1
+  }
+
+  if !replaced {
+    out = out.push(SchemaRecord(subject, version, fingerprint, fields, true))
+  }
+
+  give SchemaRegistry(out)
+}
+
+proc latest(registry: SchemaRegistry, subject: string) -> SchemaRecord {
+  let best = SchemaRecord(subject, 0, "", [], false)
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.active && rec.subject == subject && rec.version >= best.version {
+      best = rec
+    }
+    i = i + 1
+  }
+  give best
+}
+
+proc get(registry: SchemaRegistry, subject: string, version: int) -> SchemaRecord {
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject == subject && rec.version == version && rec.active {
+      give rec
+    }
+    i = i + 1
+  }
+  give SchemaRecord(subject, version, "", [], false)
+}
+
+proc has(registry: SchemaRegistry, subject: string, version: int) -> bool {
+  give get(registry, subject, version).active
+}
+
+proc subject_exists(registry: SchemaRegistry, subject: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    if registry.records[i].subject == subject {
+      give true
+    }
+    i = i + 1
+  }
+  give false
+}
+
+proc deactivate(registry: SchemaRegistry, subject: string, version: int) -> SchemaRegistry {
+  let out: [SchemaRecord] = []
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject == subject && rec.version == version {
+      out = out.push(SchemaRecord(rec.subject, rec.version, rec.fingerprint, rec.fields, false))
+    } else {
+      out = out.push(rec)
+    }
+    i = i + 1
+  }
+  give SchemaRegistry(out)
+}
+
+proc reactivate(registry: SchemaRegistry, subject: string, version: int) -> SchemaRegistry {
+  let out: [SchemaRecord] = []
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject == subject && rec.version == version {
+      out = out.push(SchemaRecord(rec.subject, rec.version, rec.fingerprint, rec.fields, true))
+    } else {
+      out = out.push(rec)
+    }
+    i = i + 1
+  }
+  give SchemaRegistry(out)
+}
+
+proc remove(registry: SchemaRegistry, subject: string, version: int) -> SchemaRegistry {
+  let out: [SchemaRecord] = []
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if !(rec.subject == subject && rec.version == version) {
+      out = out.push(rec)
+    }
+    i = i + 1
+  }
+  give SchemaRegistry(out)
+}
+
+proc latest_version(registry: SchemaRegistry, subject: string) -> int {
+  give latest(registry, subject).version
+}
+
+proc field_count(rec: SchemaRecord) -> int {
+  give rec.fields.len
+}
+
+proc has_field(rec: SchemaRecord, field_name: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= rec.fields.len { break }
+    if rec.fields[i] == field_name { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc list_contains(items: [string], value: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= items.len { break }
+    if items[i] == value { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc subjects(registry: SchemaRegistry) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let name = registry.records[i].subject
+    if !list_contains(out, name) {
+      out = out.push(name)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc versions(registry: SchemaRegistry, subject: string) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject == subject && rec.active {
+      out = out.push(rec.version)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc fingerprints(registry: SchemaRegistry, subject: string) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject == subject && rec.active {
+      out = out.push(rec.fingerprint)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc compatibility_level(base: SchemaRecord, next: SchemaRecord) -> string {
+  if !base.active || !next.active { give "inactive" }
+  if base.subject != next.subject { give "subject-mismatch" }
+  if base.fingerprint == next.fingerprint { give "identical" }
+  if next.version >= base.version && next.fields.len >= base.fields.len { give "backward-compatible" }
+  give "breaking"
+}
+
+proc compatible(base: SchemaRecord, next: SchemaRecord) -> bool {
+  if !base.active || !next.active { give false }
+  if base.subject != next.subject { give false }
+  if next.version < base.version { give false }
+  give next.fields.len >= base.fields.len
+}
+
+proc compatible_bidirectional(left: SchemaRecord, right: SchemaRecord) -> bool {
+  give compatible(left, right) && compatible(right, left)
+}
+
+proc is_breaking(base: SchemaRecord, next: SchemaRecord) -> bool {
+  give !compatible(base, next)
+}
+
+proc diff(base: SchemaRecord, next: SchemaRecord) -> string {
+  if base.subject != next.subject { give "breaking:subject" }
+  if base.fingerprint == next.fingerprint { give "same" }
+  if compatible(base, next) { give "compatible-change" }
+  give "breaking-change"
+}
+
+proc count(registry: SchemaRegistry, subject: string) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    if registry.records[i].subject == subject && registry.records[i].active {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc active_count(registry: SchemaRegistry) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    if registry.records[i].active {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc inactive_count(registry: SchemaRegistry) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    if !registry.records[i].active {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc subject_total_count(registry: SchemaRegistry, subject: string) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    if registry.records[i].subject == subject {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc total_count(registry: SchemaRegistry) -> int {
+  give registry.records.len
+}
+
+proc subject_count(registry: SchemaRegistry) -> int {
+  give subjects(registry).len
+}
+
+proc next_version(registry: SchemaRegistry, subject: string) -> int {
+  let current = latest_version(registry, subject)
+  if current <= 0 { give 1 }
+  give current + 1
+}
+
+proc register_next(registry: SchemaRegistry, subject: string, fingerprint: string, fields: [string]) -> SchemaRegistry {
+  give register(registry, subject, next_version(registry, subject), fingerprint, fields)
+}
+
+proc latest_fingerprint(registry: SchemaRegistry, subject: string) -> string {
+  give latest(registry, subject).fingerprint
+}
+
+proc first_inactive_version(registry: SchemaRegistry, subject: string) -> int {
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject == subject && !rec.active {
+      give rec.version
+    }
+    i = i + 1
+  }
+  give -1
+}
+
+proc is_subject_empty(registry: SchemaRegistry, subject: string) -> bool {
+  give subject_total_count(registry, subject) == 0
+}
+
+proc active_ratio_percent(registry: SchemaRegistry) -> int {
+  if total_count(registry) == 0 { give 100 }
+  give active_count(registry) * 100 / total_count(registry)
+}
+
+proc record_summary(rec: SchemaRecord) -> string {
+  let active = "false"
+  if rec.active { active = "true" }
+  give rec.subject + ":v" + rec.version.to_string() +
+       ":" + rec.fingerprint +
+       ":fields=" + rec.fields.len.to_string() +
+       ":active=" + active
+}
+
+proc subject_stats(registry: SchemaRegistry, subject: string) -> string {
+  give "subject=" + subject +
+       ",active=" + count(registry, subject).to_string() +
+       ",total=" + subject_total_count(registry, subject).to_string() +
+       ",latest=" + latest_version(registry, subject).to_string()
+}
+
+proc verify_invariants(registry: SchemaRegistry) -> bool {
+  let i: int = 0
+  loop {
+    if i >= registry.records.len { break }
+    let rec = registry.records[i]
+    if rec.subject.len == 0 { give false }
+    if rec.version <= 0 { give false }
+    let j: int = i + 1
+    loop {
+      if j >= registry.records.len { break }
+      let other = registry.records[j]
+      if rec.subject == other.subject && rec.version == other.version {
+        give false
+      }
+      j = j + 1
+    }
+    i = i + 1
+  }
+  give true
+}
+
+proc stats(registry: SchemaRegistry) -> string {
+  give "records=" + total_count(registry).to_string() +
+       ",subjects=" + subjects(registry).len.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/schema_registry"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/schema_registry
+role: Versionne et compare les schemas payload
+input_contract: Subject version fingerprint fields explicites
+output_contract: Latest compatible diff deterministes
+boundary: Ne valide pas le payload runtime; gere uniquement le registre de schemas
+>>>

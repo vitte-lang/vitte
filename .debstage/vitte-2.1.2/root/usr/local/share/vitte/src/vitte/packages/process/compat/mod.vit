@@ -1,0 +1,87 @@
+<<<
+mod.vit
+package vitte/process/compat
+>>>
+# Legacy compatibility surface for vitte/process.
+# This module is temporary and will be removed in next major.
+
+space vitte/process/compat
+
+use vitte/process/internal/runtime as process_runtime_pkg
+
+pick ProcState {
+  Created
+  Running
+  Exited
+  Failed
+  Killed
+}
+
+form ProcSpec {
+  path: string
+  args: [string]
+  env_count: int
+  timeout_ms: int
+  dry_run: bool
+}
+
+form ProcHandle {
+  pid: int
+  state: ProcState
+  exit_code: int
+  stdout: string
+  stderr: string
+}
+
+proc spec(path: string) -> ProcSpec {
+  give ProcSpec(path, [], 0, 30000, false)
+}
+
+proc with_args(s: ProcSpec, args: [string]) -> ProcSpec {
+  give ProcSpec(s.path, args, s.env_count, s.timeout_ms, s.dry_run)
+}
+
+proc with_env_count(s: ProcSpec, env_count: int) -> ProcSpec {
+  let e: int = env_count
+  if e < 0 { e = 0 }
+  give ProcSpec(s.path, s.args, e, s.timeout_ms, s.dry_run)
+}
+
+proc with_dry_run(s: ProcSpec, enabled: bool) -> ProcSpec {
+  give ProcSpec(s.path, s.args, s.env_count, s.timeout_ms, enabled)
+}
+
+proc run_legacy(s: ProcSpec) -> ProcHandle {
+  let program: string = process_runtime_pkg.normalize_program(s.path)
+  if program.len == 0 {
+    give ProcHandle(0, ProcState.Failed, 127, "", "VITTE-P0001")
+  }
+  if s.dry_run {
+    give ProcHandle(1, ProcState.Exited, 0, "dry-run", "")
+  }
+  if process_runtime_pkg.command_denylisted(program) {
+    give ProcHandle(2, ProcState.Failed, 1, "", "VITTE-P0003")
+  }
+  if process_runtime_pkg.command_allowlisted(program, []) == false {
+    give ProcHandle(3, ProcState.Failed, 1, "", "VITTE-P0013")
+  }
+  let pid: int = process_runtime_pkg.spawn_pid(program, s.args.len)
+  if s.timeout_ms <= 0 {
+    give ProcHandle(pid, ProcState.Failed, 124, "", "VITTE-P0006")
+  }
+  give ProcHandle(pid, ProcState.Exited, 0, "ok", "")
+}
+
+proc is_success(h: ProcHandle) -> bool {
+  give h.state == ProcState.Exited && h.exit_code == 0
+}
+
+proc exit_code(h: ProcHandle) -> int {
+  give h.exit_code
+}
+
+proc run_shell(cmdline: string) -> int {
+  if cmdline.len == 0 { give 127 }
+  if process_runtime_pkg.starts_with(cmdline, "fail") { give 1 }
+  give 0
+}

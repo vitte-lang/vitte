@@ -1,0 +1,205 @@
+<<<
+mod.vit
+package vitte/ws
+>>>
+
+space vitte/ws
+
+
+pick WsState {
+  Connecting
+  Open
+  Closing
+  Closed
+}
+
+pick WsOpcode {
+  Text
+  Binary
+  Ping
+  Pong
+  Close
+}
+
+pick WsError {
+  None
+  InvalidUrl
+  NotOpen
+  FrameTooLarge
+  Protocol
+}
+
+form WsFrame {
+  opcode: WsOpcode
+  payload: string
+  masked: bool
+}
+
+form WsConfig {
+  max_frame_size: int
+  heartbeat_ticks: int
+  compression: bool
+}
+
+form WsConn {
+  url: string
+  state: WsState
+  config: WsConfig
+  sent: [WsFrame]
+  recv: [WsFrame]
+  last_tick: int
+}
+
+proc default_config() -> WsConfig {
+  give WsConfig(65536, 30, false)
+}
+
+proc frame(opcode: WsOpcode, payload: string) -> WsFrame {
+  give WsFrame(opcode, payload, false)
+}
+
+proc text(payload: string) -> WsFrame {
+  give frame(WsOpcode.Text, payload)
+}
+
+proc binary(payload: string) -> WsFrame {
+  give frame(WsOpcode.Binary, payload)
+}
+
+proc ping(payload: string) -> WsFrame {
+  give frame(WsOpcode.Ping, payload)
+}
+
+proc pong(payload: string) -> WsFrame {
+  give frame(WsOpcode.Pong, payload)
+}
+
+proc close_frame(reason: string) -> WsFrame {
+  give frame(WsOpcode.Close, reason)
+}
+
+proc is_ws_url(url: string) -> bool {
+  if url.len >= 5 && url.slice(0, 5) == "ws://" { give true }
+  if url.len >= 6 && url.slice(0, 6) == "wss://" { give true }
+  give false
+}
+
+proc connect(url: string) -> WsConn {
+  if !is_ws_url(url) {
+    give WsConn(url, WsState.Closed, default_config(), [], [], 0)
+  }
+  give WsConn(url, WsState.Connecting, default_config(), [], [], 0)
+}
+
+proc with_config(conn: WsConn, cfg: WsConfig) -> WsConn {
+  let max_frame = cfg.max_frame_size
+  if max_frame < 1 { max_frame = 1 }
+  let hb = cfg.heartbeat_ticks
+  if hb < 1 { hb = 1 }
+  give WsConn(conn.url, conn.state, WsConfig(max_frame, hb, cfg.compression), conn.sent, conn.recv, conn.last_tick)
+}
+
+proc open(conn: WsConn) -> WsConn {
+  if conn.state == WsState.Closed { give conn }
+  give WsConn(conn.url, WsState.Open, conn.config, conn.sent, conn.recv, conn.last_tick)
+}
+
+proc start_close(conn: WsConn) -> WsConn {
+  if conn.state == WsState.Closed { give conn }
+  give WsConn(conn.url, WsState.Closing, conn.config, conn.sent, conn.recv, conn.last_tick)
+}
+
+proc close(conn: WsConn) -> WsConn {
+  give WsConn(conn.url, WsState.Closed, conn.config, conn.sent, conn.recv, conn.last_tick)
+}
+
+proc can_send(conn: WsConn) -> bool {
+  give conn.state == WsState.Open
+}
+
+proc validate_frame(conn: WsConn, frm: WsFrame) -> WsError {
+  if frm.payload.len > conn.config.max_frame_size { give WsError.FrameTooLarge }
+  if frm.opcode == WsOpcode.Close && frm.payload.len > 123 { give WsError.Protocol }
+  give WsError.None
+}
+
+proc send(conn: WsConn, frm: WsFrame) -> WsConn {
+  if !can_send(conn) { give conn }
+  if validate_frame(conn, frm) != WsError.None { give conn }
+  give WsConn(conn.url, conn.state, conn.config, conn.sent.push(frm), conn.recv, conn.last_tick)
+}
+
+proc receive(conn: WsConn, frm: WsFrame) -> WsConn {
+  if conn.state == WsState.Closed { give conn }
+  if validate_frame(conn, frm) != WsError.None { give conn }
+  give WsConn(conn.url, conn.state, conn.config, conn.sent, conn.recv.push(frm), conn.last_tick)
+}
+
+proc pop_first(frames: [WsFrame]) -> [WsFrame] {
+  let out: [WsFrame] = []
+  let i: int = 1
+  loop {
+    if i >= frames.len { break }
+    out = out.push(frames[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc next_incoming(conn: WsConn) -> WsFrame {
+  if conn.recv.len == 0 { give frame(WsOpcode.Close, "") }
+  give conn.recv[0]
+}
+
+proc consume_incoming(conn: WsConn) -> WsConn {
+  if conn.recv.len == 0 { give conn }
+  give WsConn(conn.url, conn.state, conn.config, conn.sent, pop_first(conn.recv), conn.last_tick)
+}
+
+proc heartbeat(conn: WsConn, now_tick: int) -> WsConn {
+  if conn.state != WsState.Open { give WsConn(conn.url, conn.state, conn.config, conn.sent, conn.recv, now_tick) }
+  if now_tick - conn.last_tick < conn.config.heartbeat_ticks {
+    give WsConn(conn.url, conn.state, conn.config, conn.sent, conn.recv, now_tick)
+  }
+  let with_ping = send(conn, ping("hb"))
+  give WsConn(with_ping.url, with_ping.state, with_ping.config, with_ping.sent, with_ping.recv, now_tick)
+}
+
+proc sent_count(conn: WsConn) -> int {
+  give conn.sent.len
+}
+
+proc recv_count(conn: WsConn) -> int {
+  give conn.recv.len
+}
+
+proc state_name(conn: WsConn) -> string {
+  if conn.state == WsState.Connecting { give "connecting" }
+  if conn.state == WsState.Open { give "open" }
+  if conn.state == WsState.Closing { give "closing" }
+  give "closed"
+}
+
+proc stats(conn: WsConn) -> string {
+  give "state=" + state_name(conn) +
+       ",sent=" + sent_count(conn).to_string() +
+       ",recv=" + recv_count(conn).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/ws"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/ws
+role: Canal WebSocket client serveur et evenements
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

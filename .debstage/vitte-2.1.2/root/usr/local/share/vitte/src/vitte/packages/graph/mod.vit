@@ -1,0 +1,120 @@
+<<<
+mod.vit
+package vitte/graph
+>>>
+
+space vitte/graph
+
+
+form Edge {
+    src: int
+    dst: int
+    weight: int
+}
+
+form Graph {
+    nodes: int
+    directed: bool
+    edges: [Edge]
+    edge_count: int
+}
+
+proc graph_new(nodes: int, directed: bool) -> Graph {
+    give Graph(nodes, directed, [], 0)
+}
+
+proc edge(src: int, dst: int, weight: int) -> Edge {
+    give Edge(src, dst, weight)
+}
+
+proc is_valid_node(g: Graph, node: int) -> bool {
+    give node >= 0 && node < g.nodes
+}
+
+proc add_edge(g: Graph, src: int, dst: int, weight: int) -> Graph {
+    if !is_valid_node(g, src) || !is_valid_node(g, dst) {
+        give g
+    }
+    let out_edges = g.edges.push(edge(src, dst, weight))
+    give Graph(g.nodes, g.directed, out_edges, g.edge_count + 1)
+}
+
+proc has_edge(g: Graph, src: int, dst: int) -> bool {
+    let i: int = 0
+    loop {
+        if i >= g.edges.len { break }
+        let e = g.edges[i]
+        if e.src == src && e.dst == dst { give true }
+        if !g.directed && e.src == dst && e.dst == src { give true }
+        i = i + 1
+    }
+    give false
+}
+
+proc degree_out(g: Graph, src: int) -> int {
+    let d: int = 0
+    let i: int = 0
+    loop {
+        if i >= g.edges.len { break }
+        let e = g.edges[i]
+        if e.src == src {
+            d = d + 1
+        }
+        if !g.directed && e.dst == src {
+            d = d + 1
+        }
+        i = i + 1
+    }
+    give d
+}
+
+proc edge_weight_or(g: Graph, src: int, dst: int, fallback: int) -> int {
+    let i: int = 0
+    loop {
+        if i >= g.edges.len { break }
+        let e = g.edges[i]
+        if e.src == src && e.dst == dst { give e.weight }
+        if !g.directed && e.src == dst && e.dst == src { give e.weight }
+        i = i + 1
+    }
+    give fallback
+}
+
+proc reverse(g: Graph) -> Graph {
+    let out = graph_new(g.nodes, g.directed)
+    let i: int = 0
+    loop {
+        if i >= g.edges.len { break }
+        let e = g.edges[i]
+        out = add_edge(out, e.dst, e.src, e.weight)
+        i = i + 1
+    }
+    give out
+}
+
+proc density_percent(g: Graph) -> int {
+    if g.nodes <= 1 { give 0 }
+    let max_edges = g.nodes * (g.nodes - 1)
+    if !g.directed {
+        give (g.edge_count * 200) / max_edges
+    }
+    give (g.edge_count * 100) / max_edges
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/graph"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/graph
+role: Structures graphes et algorithmes de parcours
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

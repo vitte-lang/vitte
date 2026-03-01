@@ -1,0 +1,203 @@
+<<<
+mod.vit
+package vitte/audio
+>>>
+
+space vitte/audio
+
+
+form AudioBuffer {
+  sample_rate: int
+  channels: int
+  samples: [int]
+}
+
+proc buffer_new(sample_rate: int, channels: int) -> AudioBuffer {
+  let sr = sample_rate
+  if sr < 8000 { sr = 8000 }
+  let ch = channels
+  if ch < 1 { ch = 1 }
+  give AudioBuffer(sr, ch, [])
+}
+
+proc clamp_sample(v: int) -> int {
+  let out = v
+  if out > 32767 { out = 32767 }
+  if out < -32768 { out = -32768 }
+  give out
+}
+
+proc push_sample(buf: AudioBuffer, sample: int) -> AudioBuffer {
+  give AudioBuffer(buf.sample_rate, buf.channels, buf.samples.push(clamp_sample(sample)))
+}
+
+proc gain(buf: AudioBuffer, percent: int) -> AudioBuffer {
+  let p = percent
+  if p < 0 { p = 0 }
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= buf.samples.len { break }
+    let scaled = buf.samples[i] * p / 100
+    out = out.push(clamp_sample(scaled))
+    i = i + 1
+  }
+  give AudioBuffer(buf.sample_rate, buf.channels, out)
+}
+
+proc mix(a: AudioBuffer, b: AudioBuffer) -> AudioBuffer {
+  let n = a.samples.len
+  if b.samples.len < n { n = b.samples.len }
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= n { break }
+    out = out.push(clamp_sample((a.samples[i] + b.samples[i]) / 2))
+    i = i + 1
+  }
+  give AudioBuffer(a.sample_rate, a.channels, out)
+}
+
+proc peak(buf: AudioBuffer) -> int {
+  let max: int = 0
+  let i: int = 0
+  loop {
+    if i >= buf.samples.len { break }
+    let s = buf.samples[i]
+    let abs = s
+    if abs < 0 { abs = 0 - abs }
+    if abs > max { max = abs }
+    i = i + 1
+  }
+  give max
+}
+
+proc duration_ms(buf: AudioBuffer) -> int {
+  if buf.sample_rate <= 0 || buf.channels <= 0 { give 0 }
+  let frames = buf.samples.len / buf.channels
+  give frames * 1000 / buf.sample_rate
+}
+
+proc summary(buf: AudioBuffer) -> string {
+  give "sr=" + buf.sample_rate.to_string() +
+       ",ch=" + buf.channels.to_string() +
+       ",samples=" + buf.samples.len.to_string() +
+       ",peak=" + peak(buf).to_string()
+}
+
+proc rms(buf: AudioBuffer) -> int {
+  if buf.samples.len == 0 { give 0 }
+  let sum_sq: int = 0
+  let i: int = 0
+  loop {
+    if i >= buf.samples.len { break }
+    let s = buf.samples[i]
+    sum_sq = sum_sq + (s * s)
+    i = i + 1
+  }
+  give sum_sq / buf.samples.len
+}
+
+proc normalize_peak(buf: AudioBuffer, target_peak: int) -> AudioBuffer {
+  let p = peak(buf)
+  if p <= 0 { give buf }
+  let gain_percent = target_peak * 100 / p
+  give gain(buf, gain_percent)
+}
+
+proc silence(buf: AudioBuffer) -> AudioBuffer {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= buf.samples.len { break }
+    out = out.push(0)
+    i = i + 1
+  }
+  give AudioBuffer(buf.sample_rate, buf.channels, out)
+}
+
+proc audio_health(buf: AudioBuffer) -> string {
+  if buf.sample_rate < 8000 { give "invalid-sr" }
+  if buf.channels < 1 { give "invalid-ch" }
+  if peak(buf) > 32000 { give "clipping-risk" }
+  give "ok"
+}
+
+proc sample_at(buf: AudioBuffer, index: int) -> int {
+  if index < 0 { give 0 }
+  if index >= buf.samples.len { give 0 }
+  give buf.samples[index]
+}
+
+proc trim_samples(buf: AudioBuffer, max_samples: int) -> AudioBuffer {
+  let cap = max_samples
+  if cap < 0 { cap = 0 }
+  if buf.samples.len <= cap { give buf }
+  let out: [int] = []
+  let start = buf.samples.len - cap
+  let i = start
+  loop {
+    if i >= buf.samples.len { break }
+    out = out.push(buf.samples[i])
+    i = i + 1
+  }
+  give AudioBuffer(buf.sample_rate, buf.channels, out)
+}
+
+proc append_buffer(left: AudioBuffer, right: AudioBuffer) -> AudioBuffer {
+  let out = left.samples
+  let i: int = 0
+  loop {
+    if i >= right.samples.len { break }
+    out = out.push(right.samples[i])
+    i = i + 1
+  }
+  give AudioBuffer(left.sample_rate, left.channels, out)
+}
+
+proc downmix_mono(buf: AudioBuffer) -> AudioBuffer {
+  if buf.channels <= 1 { give buf }
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= buf.samples.len { break }
+    let acc: int = 0
+    let c: int = 0
+    loop {
+      if c >= buf.channels { break }
+      if i + c >= buf.samples.len { break }
+      acc = acc + buf.samples[i + c]
+      c = c + 1
+    }
+    if c > 0 {
+      out = out.push(clamp_sample(acc / c))
+    }
+    i = i + buf.channels
+  }
+  give AudioBuffer(buf.sample_rate, 1, out)
+}
+
+proc audio_diagnostics(buf: AudioBuffer) -> string {
+  give summary(buf) +
+       ",rms=" + rms(buf).to_string() +
+       ",duration_ms=" + duration_ms(buf).to_string() +
+       ",health=" + audio_health(buf)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/audio"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/audio
+role: Traitement audio basique, flux et transformations
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

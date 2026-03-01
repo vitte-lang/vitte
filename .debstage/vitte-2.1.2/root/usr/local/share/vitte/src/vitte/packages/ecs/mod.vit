@@ -1,0 +1,197 @@
+<<<
+mod.vit
+package vitte/ecs
+>>>
+
+space vitte/ecs
+
+
+form Entity {
+    id: int
+    alive: bool
+    generation: int
+}
+
+form Position {
+    entity: int
+    x: int
+    y: int
+}
+
+form Velocity {
+    entity: int
+    dx: int
+    dy: int
+}
+
+form World {
+    next_id: int
+    tick: int
+    entities: [Entity]
+    positions: [Position]
+    velocities: [Velocity]
+}
+
+proc world_new() -> World {
+    give World(0, 0, [], [], [])
+}
+
+proc spawn(world: World) -> World {
+    let e = Entity(world.next_id, true, 0)
+    let entities = world.entities.push(e)
+    give World(
+        world.next_id + 1,
+        world.tick,
+        entities,
+        world.positions,
+        world.velocities
+    )
+}
+
+proc last_spawned_id(world: World) -> int {
+    if world.next_id <= 0 { give -1 }
+    give world.next_id - 1
+}
+
+proc entity_count(world: World) -> int {
+    give world.entities.len
+}
+
+proc add_position(world: World, entity: int, x: int, y: int) -> World {
+    let p = Position(entity, x, y)
+    let positions = world.positions.push(p)
+    give World(
+        world.next_id,
+        world.tick,
+        world.entities,
+        positions,
+        world.velocities
+    )
+}
+
+proc add_velocity(world: World, entity: int, dx: int, dy: int) -> World {
+    let v = Velocity(entity, dx, dy)
+    let velocities = world.velocities.push(v)
+    give World(
+        world.next_id,
+        world.tick,
+        world.entities,
+        world.positions,
+        velocities
+    )
+}
+
+proc velocity_dx(world: World, entity: int) -> int {
+    let i: int = 0
+    loop {
+        if i >= world.velocities.len { break }
+        let v = world.velocities[i]
+        if v.entity == entity { give v.dx }
+        i = i + 1
+    }
+    give 0
+}
+
+proc velocity_dy(world: World, entity: int) -> int {
+    let i: int = 0
+    loop {
+        if i >= world.velocities.len { break }
+        let v = world.velocities[i]
+        if v.entity == entity { give v.dy }
+        i = i + 1
+    }
+    give 0
+}
+
+proc step(world: World) -> World {
+    let updated: [Position] = []
+    let i: int = 0
+    loop {
+        if i >= world.positions.len { break }
+        let p = world.positions[i]
+        let dx = velocity_dx(world, p.entity)
+        let dy = velocity_dy(world, p.entity)
+        updated = updated.push(Position(p.entity, p.x + dx, p.y + dy))
+        i = i + 1
+    }
+    give World(
+        world.next_id,
+        world.tick + 1,
+        world.entities,
+        updated,
+        world.velocities
+    )
+}
+
+proc position_x(world: World, entity: int) -> int {
+    let i: int = 0
+    loop {
+        if i >= world.positions.len { break }
+        let p = world.positions[i]
+        if p.entity == entity { give p.x }
+        i = i + 1
+    }
+    give 0
+}
+
+proc position_y(world: World, entity: int) -> int {
+    let i: int = 0
+    loop {
+        if i >= world.positions.len { break }
+        let p = world.positions[i]
+        if p.entity == entity { give p.y }
+        i = i + 1
+    }
+    give 0
+}
+
+proc is_alive(world: World, entity: int) -> bool {
+    let i: int = 0
+    loop {
+        if i >= world.entities.len { break }
+        let e = world.entities[i]
+        if e.id == entity { give e.alive }
+        i = i + 1
+    }
+    give false
+}
+
+proc kill(world: World, entity: int) -> World {
+    let updated: [Entity] = []
+    let i: int = 0
+    loop {
+        if i >= world.entities.len { break }
+        let e = world.entities[i]
+        if e.id == entity {
+            updated = updated.push(Entity(e.id, false, e.generation + 1))
+        } else {
+            updated = updated.push(e)
+        }
+        i = i + 1
+    }
+    give World(
+        world.next_id,
+        world.tick,
+        updated,
+        world.positions,
+        world.velocities
+    )
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/ecs"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/ecs
+role: Entity Component System pour simulation et jeux
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>

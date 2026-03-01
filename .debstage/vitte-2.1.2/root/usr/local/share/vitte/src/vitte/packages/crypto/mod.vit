@@ -1,0 +1,88 @@
+<<<
+mod.vit
+package vitte/crypto
+>>>
+
+space vitte/crypto
+
+
+pick CryptoError {
+  None
+  InvalidKey
+  InvalidInput
+}
+
+proc sum_bytes(text: string) -> int {
+  let sum: int = 0
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    sum = sum + text.slice(i, i + 1).to_int()
+    i = i + 1
+  }
+  give sum
+}
+
+proc hash32(text: string) -> int {
+  let h: int = 2166136261
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    let b = text.slice(i, i + 1).to_int()
+    h = h ^ b
+    h = h * 16777619
+    i = i + 1
+  }
+  if h < 0 { give 0 - h }
+  give h
+}
+
+proc hmac_like(key: string, message: string) -> int {
+  if key.len == 0 { give 0 }
+  give hash32(key + ":" + message)
+}
+
+proc sign(key: string, message: string) -> string {
+  if key.len == 0 { give "" }
+  let sig = hmac_like(key, message)
+  give "sig:" + sig.to_string()
+}
+
+proc verify(key: string, message: string, signature: string) -> bool {
+  give sign(key, message) == signature
+}
+
+proc xor_mask(text: string, key: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    let b = text.slice(i, i + 1).to_int()
+    out = out.push(b ^ key)
+    i = i + 1
+  }
+  give out
+}
+
+proc crypto_health(key: string) -> string {
+  if key.len < 8 { give "weak-key" }
+  give "ok"
+}
+
+proc ready() -> bool {
+    give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/crypto"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/crypto
+role: Primitives cryptographiques hash et signatures
+input_contract: Donnees reseau ou securite deja normalisees et explicites
+output_contract: Resultats transport ou securite avec erreurs explicites
+boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+>>>

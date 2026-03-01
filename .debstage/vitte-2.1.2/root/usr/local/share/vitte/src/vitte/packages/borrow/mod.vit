@@ -1,0 +1,215 @@
+<<<
+mod.vit
+package vitte/borrow
+>>>
+
+space vitte/borrow
+
+
+pick BorrowMode {
+  Shared
+  Mutable
+}
+
+pick BorrowError {
+  None
+  Conflict
+  NotFound
+}
+
+form BorrowRef {
+  symbol: string
+  owner: string
+  mode: BorrowMode
+  active: bool
+}
+
+form BorrowTable {
+  refs: [BorrowRef]
+}
+
+proc table_new() -> BorrowTable {
+  give BorrowTable([])
+}
+
+proc borrow_ref(symbol: string, owner: string, mode: BorrowMode) -> BorrowRef {
+  give BorrowRef(symbol, owner, mode, true)
+}
+
+proc conflicts(existing: BorrowRef, incoming: BorrowRef) -> bool {
+  if !existing.active || !incoming.active { give false }
+  if existing.symbol != incoming.symbol { give false }
+  if existing.mode == BorrowMode.Mutable { give true }
+  if incoming.mode == BorrowMode.Mutable { give true }
+  give false
+}
+
+proc can_borrow(tab: BorrowTable, incoming: BorrowRef) -> bool {
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    if conflicts(tab.refs[i], incoming) { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc acquire(tab: BorrowTable, incoming: BorrowRef) -> BorrowTable {
+  if !can_borrow(tab, incoming) { give tab }
+  give BorrowTable(tab.refs.push(incoming))
+}
+
+proc release(tab: BorrowTable, symbol: string, owner: string) -> BorrowTable {
+  let out: [BorrowRef] = []
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    let r = tab.refs[i]
+    if r.symbol == symbol && r.owner == owner {
+      out = out.push(BorrowRef(r.symbol, r.owner, r.mode, false))
+    } else {
+      out = out.push(r)
+    }
+    i = i + 1
+  }
+  give BorrowTable(out)
+}
+
+proc active_count(tab: BorrowTable, symbol: string) -> int {
+  let count: int = 0
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    if tab.refs[i].symbol == symbol && tab.refs[i].active { count = count + 1 }
+    i = i + 1
+  }
+  give count
+}
+
+proc has_mutable(tab: BorrowTable, symbol: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    let r = tab.refs[i]
+    if r.symbol == symbol && r.active && r.mode == BorrowMode.Mutable { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc summary(tab: BorrowTable, symbol: string) -> string {
+  give "symbol=" + symbol +
+       ",active=" + active_count(tab, symbol).to_string() +
+       ",has_mut=" + has_mutable(tab, symbol).to_string()
+}
+
+proc owner_count(tab: BorrowTable, owner: string) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    if tab.refs[i].owner == owner && tab.refs[i].active { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc release_all_owner(tab: BorrowTable, owner: string) -> BorrowTable {
+  let out: [BorrowRef] = []
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    let r = tab.refs[i]
+    if r.owner == owner {
+      out = out.push(BorrowRef(r.symbol, r.owner, r.mode, false))
+    } else {
+      out = out.push(r)
+    }
+    i = i + 1
+  }
+  give BorrowTable(out)
+}
+
+proc active_refs(tab: BorrowTable) -> [BorrowRef] {
+  let out: [BorrowRef] = []
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    if tab.refs[i].active { out = out.push(tab.refs[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc borrow_health(tab: BorrowTable, symbol: string) -> string {
+  if has_mutable(tab, symbol) && active_count(tab, symbol) > 1 { give "conflict" }
+  give "ok"
+}
+
+proc mode_name(mode: BorrowMode) -> string {
+  if mode == BorrowMode.Shared { give "shared" }
+  give "mutable"
+}
+
+proc active_for_symbol(tab: BorrowTable, symbol: string) -> [BorrowRef] {
+  let out: [BorrowRef] = []
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    let r = tab.refs[i]
+    if r.active && r.symbol == symbol { out = out.push(r) }
+    i = i + 1
+  }
+  give out
+}
+
+proc conflict_count(tab: BorrowTable, incoming: BorrowRef) -> int {
+  let c: int = 0
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    if conflicts(tab.refs[i], incoming) { c = c + 1 }
+    i = i + 1
+  }
+  give c
+}
+
+proc revoke_symbol(tab: BorrowTable, symbol: string) -> BorrowTable {
+  let out: [BorrowRef] = []
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    let r = tab.refs[i]
+    if r.symbol == symbol {
+      out = out.push(BorrowRef(r.symbol, r.owner, r.mode, false))
+    } else {
+      out = out.push(r)
+    }
+    i = i + 1
+  }
+  give BorrowTable(out)
+}
+
+proc table_diagnostics(tab: BorrowTable, symbol: string) -> string {
+  give summary(tab, symbol) +
+       ",owners=" + owner_count(tab, symbol).to_string() +
+       ",state=" + borrow_health(tab, symbol)
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/borrow"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/borrow
+role: Regles ownership emprunt et securite des references
+input_contract: Structures internes du compilateur deja valides syntaxiquement
+output_contract: Artefacts intermediaires deterministes pour l etape suivante
+boundary: Ne fait ni IO reseau ni decisions metier applicatives
+>>>

@@ -1,0 +1,106 @@
+<<<
+mod.vit
+package vitte/image
+>>>
+
+space vitte/image
+
+
+form Pixel {
+  r: int
+  g: int
+  b: int
+  a: int
+}
+
+form Image {
+  width: int
+  height: int
+  pixels: [Pixel]
+}
+
+proc rgba(r: int, g: int, b: int, a: int) -> Pixel {
+  give Pixel(r, g, b, a)
+}
+
+proc image_new(width: int, height: int, fill: Pixel) -> Image {
+  let out: [Pixel] = []
+  let total = width * height
+  let i: int = 0
+  loop {
+    if i >= total { break }
+    out = out.push(fill)
+    i = i + 1
+  }
+  give Image(width, height, out)
+}
+
+proc in_bounds(img: Image, x: int, y: int) -> bool {
+  give x >= 0 && y >= 0 && x < img.width && y < img.height
+}
+
+proc index_of(img: Image, x: int, y: int) -> int {
+  give y * img.width + x
+}
+
+proc get_pixel(img: Image, x: int, y: int) -> Pixel {
+  if !in_bounds(img, x, y) { give rgba(0, 0, 0, 0) }
+  give img.pixels[index_of(img, x, y)]
+}
+
+proc set_pixel(img: Image, x: int, y: int, p: Pixel) -> Image {
+  if !in_bounds(img, x, y) { give img }
+  let target = index_of(img, x, y)
+  let out: [Pixel] = []
+  let i: int = 0
+  loop {
+    if i >= img.pixels.len { break }
+    if i == target { out = out.push(p) } else { out = out.push(img.pixels[i]) }
+    i = i + 1
+  }
+  give Image(img.width, img.height, out)
+}
+
+proc fill_rect(img: Image, x: int, y: int, w: int, h: int, p: Pixel) -> Image {
+  let out = img
+  let yy: int = y
+  loop {
+    if yy >= y + h { break }
+    let xx: int = x
+    loop {
+      if xx >= x + w { break }
+      out = set_pixel(out, xx, yy, p)
+      xx = xx + 1
+    }
+    yy = yy + 1
+  }
+  give out
+}
+
+proc alpha_average(img: Image) -> int {
+  if img.pixels.len == 0 { give 0 }
+  let s: int = 0
+  let i: int = 0
+  loop {
+    if i >= img.pixels.len { break }
+    s = s + img.pixels[i].a
+    i = i + 1
+  }
+  give s / img.pixels.len
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/image"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/image
+role: Representation image, transformation et export simple
+input_contract: Donnees binaires ou metadonnees deja decodees
+output_contract: Structures image coherentes, pretes pour rendu/serialisation
+boundary: Ne gere pas I/O reseau directement; opere sur donnees deja chargees
+>>>

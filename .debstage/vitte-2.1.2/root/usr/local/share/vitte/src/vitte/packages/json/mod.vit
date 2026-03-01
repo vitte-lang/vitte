@@ -1,0 +1,240 @@
+<<<
+mod.vit
+package vitte/json
+>>>
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/json; additive API only.
+# - No import-time side effects.
+# - Internal implementation in vitte/json/internal/*.
+# - Diagnostics namespace: VITTE-J0001..VITTE-J0099.
+
+space vitte/json
+
+use vitte/json/internal/runtime as json_runtime_pkg
+
+pick JsonError {
+  Failure(code: string, message: string, context: string)
+}
+
+pick JsonResult[T] {
+  Ok(value: T)
+  Err(error: JsonError)
+}
+
+form Number {
+  as_int: int
+  raw: string
+}
+
+form Value {
+  kind: string
+  text: string
+  number: Number
+  flag: bool
+}
+
+form ObjectEntry {
+  key: string
+  value: Value
+}
+
+form Object {
+  entries: [ObjectEntry]
+}
+
+form Array {
+  values: [Value]
+}
+
+form Schema {
+  mode: string
+  required_keys: [string]
+  allow_extra: bool
+}
+
+form ParseOptions {
+  max_bytes: int
+  max_depth: int
+  max_nodes: int
+  strict_utf8: bool
+  strict_escapes: bool
+  profile: string
+}
+
+form FormatOptions {
+  pretty: bool
+  indent: int
+  canonical: bool
+  preserve_order: bool
+  sort_keys: bool
+}
+
+form StreamState {
+  offset: int
+  truncated: bool
+  backpressure: bool
+  last_error: string
+}
+
+proc ok[T](value: T) -> JsonResult[T] {
+  give JsonResult.Ok(value)
+}
+
+proc err[T](code: string, message: string, context: string) -> JsonResult[T] {
+  give JsonResult.Err(JsonError.Failure(code, message, context))
+}
+
+proc diagnostics_message(code: string) -> string {
+  give json_runtime_pkg.diag_message(code)
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  give json_runtime_pkg.quickfix_for(code)
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc default_parse_options() -> ParseOptions {
+  give ParseOptions(1048576, 64, 100000, true, true, "desktop")
+}
+
+proc default_format_options() -> FormatOptions {
+  give FormatOptions(false, 2, true, true, true)
+}
+
+proc parse_text(text: string, options: ParseOptions) -> JsonResult[Value] {
+  let vr: JsonResult[bool] = json_runtime_pkg.validate_parse_input(text, options.max_bytes, options.max_depth, options.max_nodes, options.strict_utf8, options.strict_escapes)
+  when vr is JsonResult.Err { give err[Value](vr.error.code, vr.error.message, vr.error.context) }
+  give ok[Value](json_runtime_pkg.parse_minimal(text))
+}
+
+proc parse_bytes(bytes: [int], options: ParseOptions) -> JsonResult[Value] {
+  if bytes.len > options.max_bytes {
+    give err[Value]("VITTE-J0004", diagnostics_message("VITTE-J0004"), "bytes")
+  }
+  let text: string = json_runtime_pkg.bytes_to_text(bytes)
+  give parse_text(text, options)
+}
+
+proc stringify(value: Value, options: FormatOptions) -> JsonResult[string] {
+  give ok[string](json_runtime_pkg.stringify_value(value, options.pretty, options.indent, options.canonical, options.sort_keys))
+}
+
+proc validate(value: Value, schema: Schema) -> JsonResult[bool] {
+  let vr: JsonResult[bool] = json_runtime_pkg.validate_schema(value, schema.mode, schema.required_keys, schema.allow_extra)
+  when vr is JsonResult.Err { give err[bool](vr.error.code, vr.error.message, vr.error.context) }
+  give ok[bool](true)
+}
+
+proc format_pretty(text: string, options: FormatOptions) -> JsonResult[string] {
+  let value_r: JsonResult[Value] = parse_text(text, default_parse_options())
+  when value_r is JsonResult.Err {
+    give err[string](value_r.error.code, value_r.error.message, value_r.error.context)
+  }
+  let o: FormatOptions = FormatOptions(true, options.indent, options.canonical, options.preserve_order, options.sort_keys)
+  give stringify(value_r.value, o)
+}
+
+proc format_compact(text: string, options: FormatOptions) -> JsonResult[string] {
+  let value_r: JsonResult[Value] = parse_text(text, default_parse_options())
+  when value_r is JsonResult.Err {
+    give err[string](value_r.error.code, value_r.error.message, value_r.error.context)
+  }
+  let o: FormatOptions = FormatOptions(false, options.indent, options.canonical, options.preserve_order, options.sort_keys)
+  give stringify(value_r.value, o)
+}
+
+proc query_path(value: Value, path: string) -> JsonResult[Value] {
+  let q: JsonResult[Value] = json_runtime_pkg.query_path_value(value, path)
+  when q is JsonResult.Err { give err[Value](q.error.code, q.error.message, q.error.context) }
+  give q
+}
+
+proc patch(base: Value, patch_value: Value) -> JsonResult[Value] {
+  give ok[Value](json_runtime_pkg.patch_value(base, patch_value))
+}
+
+proc merge(base: Value, overlay: Value) -> JsonResult[Value] {
+  give ok[Value](json_runtime_pkg.merge_value(base, overlay))
+}
+
+proc diff(before: Value, after: Value) -> JsonResult[Array] {
+  give ok[Array](json_runtime_pkg.diff_values(before, after))
+}
+
+proc from_record(entries: [ObjectEntry]) -> JsonResult[Value] {
+  give ok[Value](json_runtime_pkg.value_from_object(Object(entries)))
+}
+
+proc to_record(value: Value) -> JsonResult[[ObjectEntry]] {
+  let rr: JsonResult[[ObjectEntry]] = json_runtime_pkg.value_to_object_entries(value)
+  when rr is JsonResult.Err { give err[[ObjectEntry]](rr.error.code, rr.error.message, rr.error.context) }
+  give rr
+}
+
+proc parse_stream(chunk: string, state: StreamState, options: ParseOptions) -> JsonResult[StreamState] {
+  let next: StreamState = json_runtime_pkg.stream_ingest(chunk, state, options.max_bytes)
+  if next.backpressure {
+    give err[StreamState]("VITTE-J0011", diagnostics_message("VITTE-J0011"), "backpressure")
+  }
+  give ok[StreamState](next)
+}
+
+proc write_stream(value: Value, state: StreamState, options: FormatOptions) -> JsonResult[string] {
+  if state.backpressure {
+    give err[string]("VITTE-J0011", diagnostics_message("VITTE-J0011"), "write_stream")
+  }
+  give stringify(value, options)
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc doctor_status() -> string {
+  give "vitte/json doctor:ready api=" + api_version()
+}
+
+proc quickfix_preview(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix: no-op"
+  }
+  give diagnostics_quickfix(payload)
+}
+
+proc quickfix_apply(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix apply: no-op"
+  }
+  give "quickfix apply: " + payload
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/json"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/json
+owner: @vitte/data
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: facade publique JSON stable et additive
+input_contract: texte ou bytes JSON et options explicites profile-aware
+output_contract: Value/JsonResult stables avec diagnostics VITTE-J****
+boundary: parsing, security, validation et perf dans vitte/json/internal/*
+versioning: additive-only, no breaking removals in stable
+api_surface_stable: true
+diagnostics: VITTE-J0001..VITTE-J0099
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: v1
+compat_layer: none
+removal_policy: major-only
+>>>

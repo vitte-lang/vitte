@@ -1,0 +1,168 @@
+<<<
+mod.vit
+package vitte/circuit_breaker
+>>>
+
+space vitte/circuit_breaker
+
+
+pick BreakerState {
+  Closed
+  Open
+  HalfOpen
+}
+
+form CircuitBreaker {
+  threshold: int
+  failures: int
+  successes: int
+  cooldown_ticks: int
+  opened_at: int
+  state: BreakerState
+}
+
+proc breaker_new(threshold: int, cooldown_ticks: int) -> CircuitBreaker {
+  let t = threshold
+  if t < 1 { t = 1 }
+
+  let c = cooldown_ticks
+  if c < 1 { c = 1 }
+
+  give CircuitBreaker(t, 0, 0, c, 0, BreakerState.Closed)
+}
+
+proc state(br: CircuitBreaker) -> BreakerState {
+  give br.state
+}
+
+proc allow(br: CircuitBreaker, now_tick: int) -> bool {
+  when br.state is BreakerState.Closed {
+    give true
+  }
+
+  when br.state is BreakerState.HalfOpen {
+    give true
+  }
+
+  if now_tick - br.opened_at >= br.cooldown_ticks {
+    give true
+  }
+  give false
+}
+
+proc record_success(br: CircuitBreaker) -> CircuitBreaker {
+  when br.state is BreakerState.Open {
+    give CircuitBreaker(br.threshold, 0, br.successes + 1, br.cooldown_ticks, br.opened_at, BreakerState.HalfOpen)
+  }
+
+  when br.state is BreakerState.HalfOpen {
+    give CircuitBreaker(br.threshold, 0, br.successes + 1, br.cooldown_ticks, br.opened_at, BreakerState.Closed)
+  }
+
+  give CircuitBreaker(br.threshold, 0, br.successes + 1, br.cooldown_ticks, br.opened_at, BreakerState.Closed)
+}
+
+proc record_failure(br: CircuitBreaker, now_tick: int) -> CircuitBreaker {
+  when br.state is BreakerState.HalfOpen {
+    give CircuitBreaker(br.threshold, br.failures + 1, br.successes, br.cooldown_ticks, now_tick, BreakerState.Open)
+  }
+
+  when br.state is BreakerState.Open {
+    give CircuitBreaker(br.threshold, br.failures + 1, br.successes, br.cooldown_ticks, now_tick, BreakerState.Open)
+  }
+
+  let failures = br.failures + 1
+  if failures >= br.threshold {
+    give CircuitBreaker(br.threshold, failures, br.successes, br.cooldown_ticks, now_tick, BreakerState.Open)
+  }
+  give CircuitBreaker(br.threshold, failures, br.successes, br.cooldown_ticks, br.opened_at, BreakerState.Closed)
+}
+
+proc on_tick(br: CircuitBreaker, now_tick: int) -> CircuitBreaker {
+  when br.state is BreakerState.Open {
+    if now_tick - br.opened_at >= br.cooldown_ticks {
+      give CircuitBreaker(br.threshold, br.failures, br.successes, br.cooldown_ticks, br.opened_at, BreakerState.HalfOpen)
+    }
+  }
+  give br
+}
+
+proc is_open(br: CircuitBreaker) -> bool {
+  give br.state == BreakerState.Open
+}
+
+proc is_closed(br: CircuitBreaker) -> bool {
+  give br.state == BreakerState.Closed
+}
+
+proc is_half_open(br: CircuitBreaker) -> bool {
+  give br.state == BreakerState.HalfOpen
+}
+
+proc failure_count(br: CircuitBreaker) -> int {
+  give br.failures
+}
+
+proc success_count(br: CircuitBreaker) -> int {
+  give br.successes
+}
+
+proc opened_for(br: CircuitBreaker, now_tick: int) -> int {
+  if !is_open(br) { give 0 }
+  let age = now_tick - br.opened_at
+  if age < 0 { give 0 }
+  give age
+}
+
+proc cooldown_remaining(br: CircuitBreaker, now_tick: int) -> int {
+  if !is_open(br) { give 0 }
+  let left = br.cooldown_ticks - opened_for(br, now_tick)
+  if left < 0 { give 0 }
+  give left
+}
+
+proc can_probe(br: CircuitBreaker, now_tick: int) -> bool {
+  if !is_open(br) { give false }
+  give opened_for(br, now_tick) >= br.cooldown_ticks
+}
+
+proc force_open(br: CircuitBreaker, now_tick: int) -> CircuitBreaker {
+  give CircuitBreaker(br.threshold, br.failures + 1, br.successes, br.cooldown_ticks, now_tick, BreakerState.Open)
+}
+
+proc force_close(br: CircuitBreaker) -> CircuitBreaker {
+  give CircuitBreaker(br.threshold, 0, br.successes, br.cooldown_ticks, br.opened_at, BreakerState.Closed)
+}
+
+proc trip_ratio_percent(br: CircuitBreaker) -> int {
+  if br.threshold <= 0 { give 0 }
+  give br.failures * 100 / br.threshold
+}
+
+proc stats(br: CircuitBreaker, now_tick: int) -> string {
+  let state_name = "half-open"
+  if is_open(br) { state_name = "open" }
+  if is_closed(br) { state_name = "closed" }
+  give "state=" + state_name +
+       ",failures=" + br.failures.to_string() +
+       ",successes=" + br.successes.to_string() +
+       ",cooldown_left=" + cooldown_remaining(br, now_tick).to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+
+
+proc package_meta() -> string {
+    give "vitte/circuit_breaker"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/circuit_breaker
+role: Protection anti cascade en cas de pannes repetees
+input_contract: Historique d echec et horloge de cooldown explicite
+output_contract: Etat de coupure deterministe et decision allow traçable
+boundary: Ne remplace pas retry ni timeout; controle uniquement l ouverture du circuit
+>>>

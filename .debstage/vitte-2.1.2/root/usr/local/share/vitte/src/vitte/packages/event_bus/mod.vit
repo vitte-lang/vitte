@@ -1,0 +1,227 @@
+<<<
+mod.vit
+package vitte/event_bus
+>>>
+
+space vitte/event_bus
+
+form Event {
+  id: int
+  topic: string
+  payload: string
+  tick: int
+}
+
+form Subscription {
+  name: string
+  topic: string
+  cursor: int
+  active: bool
+}
+
+form Bus {
+  next_id: int
+  now_tick: int
+  events: [Event]
+  subs: [Subscription]
+}
+
+form PullResult {
+  bus: Bus
+  found: bool
+  event: Event
+}
+
+form PullBatchResult {
+  bus: Bus
+  events: [Event]
+}
+
+proc bus_new() -> Bus {
+  give Bus(1, 0, [], [])
+}
+
+proc tick(bus: Bus, delta: int) -> Bus {
+  let d = delta
+  if d < 0 { d = 0 }
+  give Bus(bus.next_id, bus.now_tick + d, bus.events, bus.subs)
+}
+
+proc find_sub_index(bus: Bus, name: string) -> int {
+  let i: int = 0
+  loop {
+    if i >= bus.subs.len { break }
+    if bus.subs[i].name == name { give i }
+    i = i + 1
+  }
+  give -1
+}
+
+proc subscribe(bus: Bus, name: string, topic: string) -> Bus {
+  let idx = find_sub_index(bus, name)
+  if idx < 0 {
+    give Bus(bus.next_id, bus.now_tick, bus.events, bus.subs.push(Subscription(name, topic, 0, true)))
+  }
+
+  let out: [Subscription] = []
+  let i: int = 0
+  loop {
+    if i >= bus.subs.len { break }
+    let s = bus.subs[i]
+    if i == idx {
+      out = out.push(Subscription(name, topic, s.cursor, true))
+    } else {
+      out = out.push(s)
+    }
+    i = i + 1
+  }
+  give Bus(bus.next_id, bus.now_tick, bus.events, out)
+}
+
+proc unsubscribe(bus: Bus, name: string) -> Bus {
+  let out: [Subscription] = []
+  let i: int = 0
+  loop {
+    if i >= bus.subs.len { break }
+    let s = bus.subs[i]
+    if s.name != name {
+      out = out.push(s)
+    }
+    i = i + 1
+  }
+  give Bus(bus.next_id, bus.now_tick, bus.events, out)
+}
+
+proc publish(bus: Bus, topic: string, payload: string) -> Bus {
+  let ev = Event(bus.next_id, topic, payload, bus.now_tick)
+  give Bus(bus.next_id + 1, bus.now_tick, bus.events.push(ev), bus.subs)
+}
+
+proc event_count(bus: Bus) -> int {
+  give bus.events.len
+}
+
+proc subscriber_count(bus: Bus) -> int {
+  give bus.subs.len
+}
+
+proc pending_for(bus: Bus, name: string) -> int {
+  let idx = find_sub_index(bus, name)
+  if idx < 0 { give 0 }
+  let s = bus.subs[idx]
+  if !s.active { give 0 }
+
+  let out = 0
+  let i: int = s.cursor
+  loop {
+    if i >= bus.events.len { break }
+    if bus.events[i].topic == s.topic {
+      out = out + 1
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc pull_next(bus: Bus, name: string) -> PullResult {
+  let idx = find_sub_index(bus, name)
+  if idx < 0 {
+    give PullResult(bus, false, Event(-1, "", "", bus.now_tick))
+  }
+
+  let s = bus.subs[idx]
+  if !s.active {
+    give PullResult(bus, false, Event(-1, "", "", bus.now_tick))
+  }
+
+  let i: int = s.cursor
+  loop {
+    if i >= bus.events.len { break }
+    let ev = bus.events[i]
+    if ev.topic == s.topic {
+      let out_subs: [Subscription] = []
+      let j: int = 0
+      loop {
+        if j >= bus.subs.len { break }
+        if j == idx {
+          out_subs = out_subs.push(Subscription(s.name, s.topic, i + 1, s.active))
+        } else {
+          out_subs = out_subs.push(bus.subs[j])
+        }
+        j = j + 1
+      }
+      let next = Bus(bus.next_id, bus.now_tick, bus.events, out_subs)
+      give PullResult(next, true, ev)
+    }
+    i = i + 1
+  }
+
+  give PullResult(bus, false, Event(-1, "", "", bus.now_tick))
+}
+
+proc pull_batch(bus: Bus, name: string, max_items: int) -> PullBatchResult {
+  let limit = max_items
+  if limit < 0 { limit = 0 }
+
+  let out_bus = bus
+  let out_events: [Event] = []
+  let i: int = 0
+  loop {
+    if i >= limit { break }
+    let next = pull_next(out_bus, name)
+    if !next.found { break }
+    out_bus = next.bus
+    out_events = out_events.push(next.event)
+    i = i + 1
+  }
+
+  give PullBatchResult(out_bus, out_events)
+}
+
+proc trim_before_id(bus: Bus, min_id: int) -> Bus {
+  let out_events: [Event] = []
+  let i: int = 0
+  loop {
+    if i >= bus.events.len { break }
+    if bus.events[i].id >= min_id {
+      out_events = out_events.push(bus.events[i])
+    }
+    i = i + 1
+  }
+  give Bus(bus.next_id, bus.now_tick, out_events, bus.subs)
+}
+
+proc topic_backlog(bus: Bus, topic: string) -> int {
+  let out = 0
+  let i: int = 0
+  loop {
+    if i >= bus.events.len { break }
+    if bus.events[i].topic == topic {
+      out = out + 1
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc stats(bus: Bus) -> string {
+  give "events=" + bus.events.len.to_string() +
+       ",subs=" + bus.subs.len.to_string() +
+       ",tick=" + bus.now_tick.to_string()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+<<< ROLE-CONTRACT
+package: vitte/event_bus
+owner: @vitte/platform
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: Bus pub-sub in-memory pour orchestration locale
+input_contract: Topic et payload explicites, subscribers nommes
+output_contract: Delivery deterministe par curseur de subscription
+boundary: Aucune persistence externe; in-memory only
+>>>

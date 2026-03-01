@@ -1,0 +1,131 @@
+<<<
+runtime.vit
+package vitte/fs/internal/runtime
+>>>
+# Internal helpers only, keep private behind vitte/fs facade.
+
+space vitte/fs/internal/runtime
+
+proc normalize_separators(path: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  loop {
+    if i >= path.len { break }
+    let c: string = path.slice(i, i + 1)
+    if c == "\\" {
+      out = out + "/"
+    } else {
+      out = out + c
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc collapse_double_slash(path: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  let prev_slash: bool = false
+  loop {
+    if i >= path.len { break }
+    let c: string = path.slice(i, i + 1)
+    if c == "/" {
+      if prev_slash == false {
+        out = out + c
+      }
+      prev_slash = true
+    } else {
+      prev_slash = false
+      out = out + c
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc redact_sensitive_path(path: string) -> string {
+  if path == "" { give "" }
+  if path.slice(0, 5) == "/root" { give "/***" }
+  if path.slice(0, 4) == "/etc" { give "/***" }
+  give path
+}
+
+proc is_sensitive(path: string) -> bool {
+  if path.slice(0, 4) == "/etc" { give true }
+  if path.slice(0, 4) == "/bin" { give true }
+  if path.slice(0, 5) == "/root" { give true }
+  give false
+}
+
+proc sink_allowed_for_profile(profile: string, op_name: string) -> bool {
+  if profile == "core" {
+    if op_name == "watch" || op_name == "remove_tree" { give false }
+    give true
+  }
+  if profile == "desktop" {
+    if op_name == "remove_tree" { give false }
+    give true
+  }
+  if profile == "system" {
+    give true
+  }
+  give false
+}
+
+proc diag_message(code: string) -> string {
+  if code == "VITTE-F0001" { give "path denied by safety policy" }
+  if code == "VITTE-F0002" { give "symlink policy denied operation" }
+  if code == "VITTE-F0003" { give "io limits exceeded" }
+  if code == "VITTE-F0004" { give "atomic write failed" }
+  if code == "VITTE-F0005" { give "rename atomic failed" }
+  if code == "VITTE-F0006" { give "watcher config invalid" }
+  if code == "VITTE-F0007" { give "profile disallows operation" }
+  if code == "VITTE-F0008" { give "metadata cache stale" }
+  if code == "VITTE-F0009" { give "path parse invalid" }
+  give "unknown diagnostic"
+}
+
+proc quickfix_for(code: string) -> string {
+  if code == "VITTE-F0001" { give "add path to allowlist_workspace_roots" }
+  if code == "VITTE-F0002" { give "set symlink_policy=Follow or Allow" }
+  if code == "VITTE-F0003" { give "increase max_file_size/max_open_files" }
+  if code == "VITTE-F0004" { give "fallback to write_text then rename_atomic" }
+  if code == "VITTE-F0005" { give "retry with same-device destination" }
+  if code == "VITTE-F0006" { give "set watch_debounce_ms>=10" }
+  if code == "VITTE-F0007" { give "use desktop/system profile for this operation" }
+  if code == "VITTE-F0008" { give "rebuild metadata cache" }
+  if code == "VITTE-F0009" { give "normalize path before operation" }
+  give "no quick-fix"
+}
+
+proc normalize_path(raw: string) -> string {
+  let s1: string = normalize_separators(raw)
+  let s2: string = collapse_double_slash(s1)
+  if s2.len == 0 { give "." }
+  give s2
+}
+
+proc relative_path(base_raw: string, target_raw: string) -> string {
+  let nb: string = normalize_path(base_raw)
+  let nt: string = normalize_path(target_raw)
+  if nt.slice(0, nb.len) == nb {
+    if nt.len == nb.len { give "." }
+    if nt.slice(nb.len, nb.len + 1) == "/" {
+      give nt.slice(nb.len + 1, nt.len)
+    }
+  }
+  give nt
+}
+
+proc is_subpath_path(parent_raw: string, child_raw: string) -> bool {
+  let p: string = normalize_path(parent_raw)
+  let c: string = normalize_path(child_raw)
+  if c.len < p.len { give false }
+  if c.slice(0, p.len) != p { give false }
+  if c.len == p.len { give true }
+  give c.slice(p.len, p.len + 1) == "/"
+}
+
+proc walk_index_add(index: [string], path_raw: string) -> [string] {
+  give index.push(path_raw)
+}
