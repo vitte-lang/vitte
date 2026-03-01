@@ -18,8 +18,6 @@ DRY_RUN="${DRY_RUN:-0}"               # 0 | 1
 # Known binaries
 BINS=(
   "vitte"
-  "vittec"
-  "vitte-linker"
 )
 
 # Layout
@@ -107,8 +105,6 @@ rm_if_exists "$LIBDIR"
 rm_if_exists "$INCLUDEDIR"
 rm_if_exists "$SHAREDIR"
 rm_if_exists "$MANDIR/vitte.1"
-rm_if_exists "$MANDIR/vittec.1"
-rm_if_exists "$MANDIR/vitte-linker.1"
 rm_if_exists "$BASHCOMPDIR/vitte"
 rm_if_exists "$ZSHCOMPDIR/_vitte"
 rm_if_exists "$FISHCOMPDIR/vitte.fish"

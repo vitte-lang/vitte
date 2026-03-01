@@ -22,13 +22,17 @@ jobs:
       - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang g++ make pkg-config libssl-dev libcurl4-openssl-dev
+          source toolchain/scripts/install/debian-deps.sh
+          sudo apt-get install -y "${DEBIAN_APT_BUILD_DEPS[@]}"
 
       - name: Build
         run: make build
 
       - name: Nightly modules suite (v3 gate)
         run: make modules-weekly-deny-legacy
+
+      - name: Nightly alloc matrix
+        run: make alloc-ci-nightly
 
   modules-pr-legacy-warn-only:
     runs-on: ubuntu-latest
@@ -40,10 +44,14 @@ jobs:
       - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang g++ make pkg-config libssl-dev libcurl4-openssl-dev
+          source toolchain/scripts/install/debian-deps.sh
+          sudo apt-get install -y "${DEBIAN_APT_BUILD_DEPS[@]}"
 
       - name: Build
         run: make build
 
       - name: PR modules suite (v3 rollout)
         run: make modules-weekly-legacy-warn-only
+
+      - name: PR alloc matrix (short)
+        run: make alloc-ci-short

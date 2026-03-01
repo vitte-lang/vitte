@@ -14,19 +14,7 @@ SKIP_DEPS="${SKIP_DEPS:-0}"            # 1 to skip apt dependencies install
 USE_GXX="${USE_GXX:-1}"                # 1 to build with g++, 0 to keep default toolchain
 EXPECTED_PKG_VERSION="${EXPECTED_PKG_VERSION:-2.1.1}"
 VERBOSE="${VERBOSE:-0}"
-
-APT_PACKAGES=(
-  ca-certificates
-  build-essential
-  g++
-  clang
-  make
-  pkg-config
-  rsync
-  git
-  libssl-dev
-  libcurl4-openssl-dev
-)
+DEPS_FILE="${DEPS_FILE:-$ROOT_DIR/toolchain/scripts/install/debian-deps.sh}"
 
 log() { printf "[install-debian-2.1.1] %s\n" "$*"; }
 die() { printf "[install-debian-2.1.1][error] %s\n" "$*" >&2; exit 1; }
@@ -39,6 +27,12 @@ run() {
 }
 
 has() { command -v "$1" >/dev/null 2>&1; }
+
+if [[ ! -f "$DEPS_FILE" ]]; then
+  die "missing deps file: $DEPS_FILE"
+fi
+# shellcheck disable=SC1090
+source "$DEPS_FILE"
 
 sudo_cmd() {
   if [[ "$(id -u)" -eq 0 ]]; then
@@ -67,7 +61,7 @@ check_os() {
 install_deps() {
   log "installing Debian dependencies"
   sudo_cmd apt-get update
-  sudo_cmd apt-get install -y "${APT_PACKAGES[@]}"
+  sudo_cmd apt-get install -y "${DEBIAN_APT_BUILD_DEPS[@]}"
 }
 
 check_version_hint() {

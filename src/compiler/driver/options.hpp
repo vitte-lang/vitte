@@ -21,6 +21,8 @@ struct Options {
     bool emit_obj = false;
     bool repro = false;
     bool repro_strict = false;
+    bool no_auto_reduce = false;
+    std::string crash_dir = ".vitte-crash";
 
     /* Parse only (no backend / codegen) */
     bool parse_only = false;
