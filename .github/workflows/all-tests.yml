@@ -7,9 +7,21 @@ on:
       - main
 
 jobs:
-  all-tests:
+  all-tests-matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - core
+          - ci
+          - abi
+          - modules
+          - packages
+          - package-ci-fast
+          - package-ci-strict
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,12 +35,12 @@ jobs:
       - name: Build
         run: make build
 
-      - name: Run all tests
-        run: make all-tests
+      - name: Run all-tests group
+        run: ALL_TESTS_GROUP=${{ matrix.group }} make all-tests
 
       - name: Upload all-tests reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: all-tests-reports
+          name: all-tests-reports-${{ matrix.group }}
           path: target/reports/all-tests

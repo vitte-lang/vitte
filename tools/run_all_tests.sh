@@ -3,12 +3,13 @@ set -euo pipefail
 
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPORT_DIR="${REPORT_DIR:-$ROOT_DIR/target/reports/all-tests}"
+ALL_TESTS_GROUP="${ALL_TESTS_GROUP:-all}"
 
 mkdir -p "$REPORT_DIR"
 run_id="$(date +%Y%m%d_%H%M%S)"
-summary="$REPORT_DIR/summary_${run_id}.txt"
+summary="$REPORT_DIR/summary_${run_id}_${ALL_TESTS_GROUP}.txt"
 
-targets=(
+all_targets=(
   test parse parse-modules parse-strict hir-validate check-tests stress-alloc core-projects test-examples arduino-projects negative-tests diag-snapshots resolve-tests explain-snapshots wrapper-stage-test
   grammar-check book-qa-strict ci-fast ci-strict ci-completions
   extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all std-core-tests stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
@@ -18,12 +19,48 @@ targets=(
   packages-only-ci packages-strict-ci
 )
 
-printf "# all-tests run %s\n" "$run_id" > "$summary"
+select_targets() {
+  case "$ALL_TESTS_GROUP" in
+    all)
+      printf "%s\n" "${all_targets[@]}"
+      ;;
+    core)
+      printf "%s\n" test parse parse-modules parse-strict hir-validate check-tests stress-alloc core-projects test-examples arduino-projects negative-tests diag-snapshots resolve-tests explain-snapshots wrapper-stage-test
+      ;;
+    ci)
+      printf "%s\n" grammar-check book-qa-strict ci-fast ci-strict ci-completions
+      ;;
+    abi)
+      printf "%s\n" extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all std-core-tests stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
+      ;;
+    modules)
+      printf "%s\n" modules-tests modules-snapshots modules-contract-snapshots modules-ci-strict
+      ;;
+    packages)
+      printf "%s\n" packages-governance-lint critical-runtime-matrix-lint packages-gate
+      ;;
+    package-ci-fast)
+      printf "%s\n" core-only-ci std-only-ci log-only-ci fs-only-ci db-only-ci http-only-ci http-client-only-ci process-only-ci json-only-ci yaml-only-ci test-only-ci lint-only-ci packages-only-ci
+      ;;
+    package-ci-strict)
+      printf "%s\n" core-strict-ci std-strict-ci log-strict-ci fs-strict-ci db-strict-ci http-strict-ci http-client-strict-ci process-strict-ci json-strict-ci yaml-strict-ci test-strict-ci lint-strict-ci packages-strict-ci
+      ;;
+    *)
+      echo "[all-tests][error] unknown ALL_TESTS_GROUP=$ALL_TESTS_GROUP" >&2
+      echo "[all-tests][error] expected: all|core|ci|abi|modules|packages|package-ci-fast|package-ci-strict" >&2
+      exit 2
+      ;;
+  esac
+}
+
+mapfile -t targets < <(select_targets)
+
+printf "# all-tests run %s group=%s\n" "$run_id" "$ALL_TESTS_GROUP" > "$summary"
 pass=0
 fail=0
 
 for t in "${targets[@]}"; do
-  log="$REPORT_DIR/${run_id}_${t}.log"
+  log="$REPORT_DIR/${run_id}_${ALL_TESTS_GROUP}_${t}.log"
   echo "[all-tests] running $t"
   if make -s -C "$ROOT_DIR" "$t" >"$log" 2>&1; then
     echo "PASS $t" | tee -a "$summary"

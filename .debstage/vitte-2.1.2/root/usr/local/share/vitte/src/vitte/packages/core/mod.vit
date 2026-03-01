@@ -1,0 +1,167 @@
+<<<
+mod.vit
+package vitte/core
+>>>
+# PREAMBLE (API stable facade)
+# - This file is the public facade of vitte/core.
+# - Keep exported symbols minimal and backwards compatible.
+# - Avoid side effects at import-time: no entry, no runtime actions.
+# - Internal implementation details must not leak through public exports.
+# - Import aliases must follow *_pkg convention in consumers.
+
+space vitte/core
+
+
+pick Option[T] {
+  Some(value: T)
+  None
+}
+
+pick Result[T, E] {
+  Ok(value: T)
+  Err(error: E)
+}
+
+form Eq[T] {
+  eq: proc(a: T, b: T) -> bool
+}
+
+form Ord[T] {
+  cmp: proc(a: T, b: T) -> int
+}
+
+proc some[T](value: T) -> Option[T] {
+  give Option.Some(value)
+}
+
+proc none[T]() -> Option[T] {
+  give Option.None
+}
+
+proc ok[T, E](value: T) -> Result[T, E] {
+  give Result.Ok(value)
+}
+
+proc err[T, E](error: E) -> Result[T, E] {
+  give Result.Err(error)
+}
+
+proc is_some[T](opt: Option[T]) -> bool {
+  when opt is Option.Some {
+    give true
+  }
+  give false
+}
+
+proc is_none[T](opt: Option[T]) -> bool {
+  when opt is Option.None {
+    give true
+  }
+  give false
+}
+
+proc is_ok[T, E](r: Result[T, E]) -> bool {
+  when r is Result.Ok {
+    give true
+  }
+  give false
+}
+
+proc is_err[T, E](r: Result[T, E]) -> bool {
+  when r is Result.Err {
+    give true
+  }
+  give false
+}
+
+proc unwrap_or[T](opt: Option[T], fallback: T) -> T {
+  when opt is Option.Some {
+    give opt.value
+  }
+  give fallback
+}
+
+proc result_unwrap_or[T, E](r: Result[T, E], fallback: T) -> T {
+  when r is Result.Ok {
+    give r.value
+  }
+  give fallback
+}
+
+proc assert_or_err(condition: bool, code: string, message: string) -> Result[bool, string] {
+  if condition {
+    give Result.Ok(true)
+  }
+  give Result.Err(code + ": " + message)
+}
+
+proc panic_guard[T](r: Result[T, string], fallback: T) -> T {
+  when r is Result.Ok {
+    give r.value
+  }
+  give fallback
+}
+
+proc checked_cast_int(value: int) -> Result[int, string] {
+  give Result.Ok(value)
+}
+
+proc diagnostics_message(code: string) -> string {
+  give "core diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  give "review core API usage for " + code
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc doctor_status() -> string {
+  give "vitte/core doctor:ready api=" + api_version()
+}
+
+proc quickfix_preview(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix: no-op"
+  }
+  give diagnostics_quickfix(payload)
+}
+
+proc quickfix_apply(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix apply: no-op"
+  }
+  give "quickfix apply: " + payload
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/core"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/core
+owner: @vitte/core
+stability: stable
+since: 2.0.0
+deprecated_in: -
+role: Noyau des types primitifs, Option Result et conventions du langage
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+versioning: API surface stable; additive changes only on stable line
+api_surface_stable: true
+diagnostics: VITTE-C0001..VITTE-C0099
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: v1
+>>>

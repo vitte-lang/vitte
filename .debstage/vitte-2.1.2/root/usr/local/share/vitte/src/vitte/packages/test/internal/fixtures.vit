@@ -1,0 +1,38 @@
+<<<
+fixtures.vit
+package vitte/test/internal/fixtures
+>>>
+
+space vitte/test/internal/fixtures
+
+pick TestError {
+  Failure(code: string, message: string, context: string, retryable: bool, doc_url: string)
+}
+
+pick TestResult[T] {
+  Ok(value: T)
+  Err(error: TestError)
+}
+
+proc ok[T](value: T) -> TestResult[T] {
+  give TestResult.Ok(value)
+}
+
+proc err[T](code: string, message: string, context: string, retryable: bool) -> TestResult[T] {
+  give TestResult.Err(TestError.Failure(code, message, context, retryable, "docs/diagnostics/test.md#" + code))
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+  if text.len < prefix.len { give false }
+  give text.slice(0, prefix.len) == prefix
+}
+
+proc load_fixture(path: string) -> TestResult[string] {
+  if path.len == 0 {
+    give err[string]("VITTE-T0005", "fixture path empty", "path", false)
+  }
+  if starts_with(path, "../") {
+    give err[string]("VITTE-T0006", "fixture path escapes workspace", path, false)
+  }
+  give ok[string]("fixture:" + path)
+}

@@ -548,6 +548,13 @@ ci-bridge-compat: ci-mod-fast
 all-tests:
 	@tools/run_all_tests.sh
 
+.PHONY: all-tests-group
+all-tests-group:
+	@ALL_TESTS_GROUP=$${GROUP:-all} tools/run_all_tests.sh
+
+.PHONY: vitteos-bin-quality
+vitteos-bin-quality:
+	@tools/vitteos_bin_ci_quality.sh
 .PHONY: vitteos-bin-quality
 vitteos-bin-quality:
 	@tools/vitteos_bin_ci_quality.sh
@@ -760,6 +767,10 @@ modules-weekly-legacy-warn-only:
 .PHONY: release-modules-gate
 release-modules-gate: modules-ci-strict modules-contract-snapshots modules-report legacy-import-allowlist-empty
 
+.PHONY: reports-index
+reports-index:
+	@python3 tools/reports_index.py
+
 .PHONY: platon-editor
 platon-editor:
 	@./bin/vitte build platon-editor/editor_core.vit -o platon-editor/editor_core
@@ -822,13 +833,19 @@ help:
 	@echo "  make completions-snapshots run completion snapshot assertions"
 	@echo "  make completions-snapshots-update update completion golden snapshots"
 	@echo "  make completions-lint syntax-check bash/zsh/fish completion files"
-	@echo "  make ci-completions run completion check + lint + snapshots + fallback"
-	@echo "  make all-tests run the complete tests/CI matrix and emit per-target logs in target/reports/all-tests"
+ 	@echo "  make ci-completions run completion check + lint + snapshots + fallback"
+  @echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
+	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
+	@echo "  make vittec-kernel build target/kernel-tools/vittec-kernel (no curl runtime)"
+	@echo "  make vitteos-bin-quality run /bin quality checks + matrix report"
+	@echo "  make vitteos-bin-runnable-check assert bin/vitte is host-runnable (non-regression arch/format guard)"
+	@echo "  make vitteos-bin-runtime run runtime-smoke probes and update runtime column"
 	@echo "  make pkg-debian build Debian .deb installer (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make pkg-debian-install build and install Debian .deb locally via dpkg"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make pkg-macos-uninstall build macOS uninstall pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make release-check run build + ci-fast + ci-completions + pkg build"
+	@echo "  make reports-index build target/reports/index.json (unified reports registry)"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
 	@echo "  make vittec-kernel build target/kernel-tools/vittec-kernel (no curl runtime)"
