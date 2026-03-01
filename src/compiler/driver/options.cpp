@@ -173,6 +173,15 @@ Options parse_options(int argc, char** argv) {
         else if (arg == "--repro-strict") {
             opts.repro_strict = true;
         }
+        else if (arg == "--no-auto-reduce") {
+            opts.no_auto_reduce = true;
+        }
+        else if (arg == "--crash-dir" && i + 1 < argc) {
+            opts.crash_dir = argv[++i];
+        }
+        else if (arg.rfind("--crash-dir=", 0) == 0) {
+            opts.crash_dir = arg.substr(std::string("--crash-dir=").size());
+        }
         else if (arg == "--parse-only") {
             opts.parse_only = true;
         }
@@ -512,6 +521,8 @@ void print_help() {
         "  --emit-obj        Emit a native object file (.o)\n"
         "  --repro           Enable reproducible object output flags\n"
         "  --repro-strict    Enforce strict deterministic IR lowering order\n"
+        "  --no-auto-reduce  Disable automatic reduce repro on backend crash\n"
+        "  --crash-dir <dir> Write crash artifacts under this directory\n"
         "  --debug           Enable debug symbols\n"
         "  -O0..-O3          Optimization level\n"
         "\n"

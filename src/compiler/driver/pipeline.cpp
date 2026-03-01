@@ -1,6 +1,7 @@
 #include "pipeline.hpp"
 
 #include "options.hpp"
+#include "driver.hpp"
 
 #include "../frontend/lexer.hpp"
 #include "../frontend/parser.hpp"
@@ -179,6 +180,7 @@ bool run_pipeline(const Options& opts) {
 
     log << "[pipeline] input: " << opts.input << "\n";
     log << "[stage] parse\n";
+    set_crash_stage(CrashStage::Parse);
 
     /* ---------------------------------------------
      * 1. Frontend: read source
@@ -249,6 +251,7 @@ bool run_pipeline(const Options& opts) {
     write_stage_cache(opts, module_index, "parse");
 
     log << "[stage] resolve\n";
+    set_crash_stage(CrashStage::Resolve);
     auto t_resolve_start = Clock::now();
     frontend::resolve::Resolver resolver(diagnostics, opts.strict_types, opts.strict_imports || opts.strict_modules, opts.strict_modules);
     resolver.resolve_module(ast_ctx, ast);
@@ -261,6 +264,7 @@ bool run_pipeline(const Options& opts) {
     write_stage_cache(opts, module_index, "resolve");
 
     log << "[stage] ir\n";
+    set_crash_stage(CrashStage::Ir);
     auto t_ir_start = Clock::now();
     ir::HirContext hir_ctx;
     auto hir = frontend::lower::lower_to_hir(ast_ctx, ast, hir_ctx, diagnostics);
@@ -288,6 +292,7 @@ bool run_pipeline(const Options& opts) {
     }
 
     log << "[stage] backend\n";
+    set_crash_stage(CrashStage::Backend);
     auto t_backend_start = Clock::now();
 
     /* ---------------------------------------------
@@ -377,6 +382,7 @@ bool run_pipeline(const Options& opts) {
         std::cerr << "[pipeline] error: warnings are treated as errors (--fail-on-warning)\n";
         return false;
     }
+    set_crash_stage(CrashStage::Unknown);
     return true;
 }
 

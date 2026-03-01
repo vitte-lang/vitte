@@ -11,18 +11,53 @@
 #include "../frontend/parser.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <functional>
+#include <iomanip>
 #include <regex>
+#include <sstream>
 #include <set>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
 
 namespace vitte::driver {
+
+namespace {
+
+std::atomic<int> g_crash_stage{static_cast<int>(CrashStage::Unknown)};
+
+} // namespace
+
+void set_crash_stage(CrashStage stage) {
+    g_crash_stage.store(static_cast<int>(stage), std::memory_order_relaxed);
+}
+
+CrashStage get_crash_stage() {
+    return static_cast<CrashStage>(g_crash_stage.load(std::memory_order_relaxed));
+}
+
+const char* crash_stage_name(CrashStage stage) {
+    switch (stage) {
+        case CrashStage::Parse: return "parse";
+        case CrashStage::Resolve: return "resolve";
+        case CrashStage::Ir: return "ir";
+        case CrashStage::Backend: return "backend";
+        case CrashStage::Unknown:
+        default:
+            return "unknown";
+    }
+}
 
 static std::string resolve_lang(const std::string& lang) {
     if (!lang.empty()) {
@@ -63,6 +98,9 @@ static bool has_lld(std::string* out_path = nullptr) {
 
     return false;
 }
+
+static bool run_with_options(Options run_opts);
+static int run_doctor_runtime_smoke();
 
 static int run_doctor() {
     bool ok = true;
@@ -105,6 +143,7 @@ static int run_doctor() {
         namespace fs = std::filesystem;
         fs::path tmp_src = fs::temp_directory_path() / "vitte_doctor.cpp";
         fs::path tmp_out = fs::temp_directory_path() / "vitte_doctor.o";
+        fs::path tmp_log = fs::temp_directory_path() / "vitte_doctor_clangpp.log";
         {
             std::ofstream out(tmp_src);
             if (out.is_open()) {
@@ -113,22 +152,46 @@ static int run_doctor() {
                     "int main() { std::vector<int> v; return (int)v.size(); }\n";
             }
         }
-        std::string cmd = "clang++ -std=c++20 -c '" + tmp_src.string() + "' -o '" + tmp_out.string() + "' >/dev/null 2>&1";
+        std::string cmd = "clang++ -std=c++20 -c '" + tmp_src.string() + "' -o '" + tmp_out.string() +
+                          "' >'" + tmp_log.string() + "' 2>&1";
         has_cpp_probe = std::system(cmd.c_str()) == 0;
         std::cout << "[doctor] c++ stdlib: " << (has_cpp_probe ? "ok" : "missing") << "\n";
         if (!has_cpp_probe) {
             std::cout << "[doctor] fix: install C++ standard library headers/toolchain for clang++\n";
+            std::ifstream err_in(tmp_log);
+            if (err_in.is_open()) {
+                std::string line;
+                std::size_t shown = 0;
+                std::cout << "[doctor] clang++ probe stderr:\n";
+                while (shown < 20 && std::getline(err_in, line)) {
+                    if (!line.empty()) {
+                        std::cout << "  " << line << "\n";
+                        ++shown;
+                    }
+                }
+                if (shown == 0) {
+                    std::cout << "  <empty>\n";
+                }
+            } else {
+                std::cout << "[doctor] note: failed to read clang++ probe log: " << tmp_log.string() << "\n";
+            }
             ok = false;
         }
         std::error_code ec;
         fs::remove(tmp_src, ec);
         fs::remove(tmp_out, ec);
+        fs::remove(tmp_log, ec);
     }
 
     const char* lang = std::getenv("LANG");
     const char* lc_all = std::getenv("LC_ALL");
     if ((!lang || !*lang) && (!lc_all || !*lc_all)) {
         std::cout << "[doctor] note: LANG/LC_ALL not set; diagnostics will default to en\n";
+    }
+
+    const int runtime_smoke = run_doctor_runtime_smoke();
+    if (runtime_smoke > 0) {
+        ok = false;
     }
 
     return ok ? 0 : 1;
@@ -342,6 +405,247 @@ static bool apply_stage_override(Options& opts, std::string& error) {
     return false;
 }
 
+static int run_reduce(const Options& opts);
+static std::string json_escape(const std::string& s);
+
+static int parse_int_env(const char* key, int fallback_value) {
+    if (const char* raw = std::getenv(key); raw && *raw) {
+        try {
+            return std::stoi(raw);
+        } catch (...) {
+            return fallback_value;
+        }
+    }
+    return fallback_value;
+}
+
+static std::vector<std::filesystem::path> collect_crash_dirs(const std::filesystem::path& base) {
+    namespace fs = std::filesystem;
+    std::vector<fs::path> out;
+    std::error_code ec;
+    if (!fs::exists(base, ec)) {
+        return out;
+    }
+    for (const auto& entry : fs::directory_iterator(base, ec)) {
+        if (ec) {
+            break;
+        }
+        if (entry.is_directory()) {
+            out.push_back(entry.path());
+        }
+    }
+    std::sort(out.begin(), out.end(), [&](const fs::path& a, const fs::path& b) {
+        std::error_code eca;
+        std::error_code ecb;
+        const auto ta = fs::last_write_time(a, eca);
+        const auto tb = fs::last_write_time(b, ecb);
+        if (eca || ecb) {
+            return a.filename().string() < b.filename().string();
+        }
+        return ta > tb;
+    });
+    return out;
+}
+
+static void prune_crash_dirs(const std::filesystem::path& base) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(base, ec);
+    if (ec) {
+        return;
+    }
+
+    const int max_keep = std::max(1, parse_int_env("VITTE_CRASH_MAX_KEEP", 20));
+    const int max_days = std::max(1, parse_int_env("VITTE_CRASH_MAX_DAYS", 14));
+
+    auto dirs = collect_crash_dirs(base);
+    for (std::size_t i = static_cast<std::size_t>(max_keep); i < dirs.size(); ++i) {
+        fs::remove_all(dirs[i], ec);
+    }
+
+    dirs = collect_crash_dirs(base);
+    using Clock = std::chrono::system_clock;
+    const auto now_sys = Clock::now();
+    for (const auto& dir : dirs) {
+        std::error_code tec;
+        const auto ftime = fs::last_write_time(dir, tec);
+        if (tec) {
+            continue;
+        }
+        const auto ftime_sys = Clock::time_point(
+            std::chrono::duration_cast<Clock::duration>(
+                ftime.time_since_epoch() - fs::file_time_type::clock::now().time_since_epoch() + now_sys.time_since_epoch()
+            )
+        );
+        const auto age_h = std::chrono::duration_cast<std::chrono::hours>(now_sys - ftime_sys).count();
+        if (age_h > static_cast<long long>(max_days) * 24LL) {
+            fs::remove_all(dir, ec);
+        }
+    }
+}
+
+static std::filesystem::path make_crash_dir(const Options& opts) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path base = opts.crash_dir.empty() ? fs::path(".vitte-crash") : fs::path(opts.crash_dir);
+    prune_crash_dirs(base);
+    fs::create_directories(base, ec);
+
+    const auto now = std::time(nullptr);
+    std::tm tmv {};
+#if defined(_WIN32)
+    localtime_s(&tmv, &now);
+#else
+    localtime_r(&now, &tmv);
+#endif
+    std::ostringstream oss;
+    oss << std::put_time(&tmv, "%Y%m%d-%H%M%S");
+#if defined(_WIN32)
+    const unsigned long pid = 0;
+#else
+    const unsigned long pid = static_cast<unsigned long>(::getpid());
+#endif
+    oss << "-" << pid;
+    fs::path out = base / oss.str();
+    fs::create_directories(out, ec);
+    return out;
+}
+
+static void append_env_kv_txt(std::ofstream& out, const char* key) {
+    if (const char* value = std::getenv(key); value && *value) {
+        out << "env." << key << "=" << value << "\n";
+    } else {
+        out << "env." << key << "=<unset>\n";
+    }
+}
+
+static void append_env_kv_json(std::ofstream& out, const char* key, bool with_comma) {
+    const char* value = std::getenv(key);
+    const std::string rendered = (value && *value) ? value : "<unset>";
+    out << "    \"" << json_escape(key) << "\": \"" << json_escape(rendered) << "\"";
+    if (with_comma) {
+        out << ",";
+    }
+    out << "\n";
+}
+
+static void write_crash_metadata(const Options& opts,
+                                 const std::filesystem::path& crash_dir,
+                                 const std::string& reason,
+                                 const std::string& stage_name,
+                                 const std::string& reduce_hint,
+                                 int reduce_rc,
+                                 const std::filesystem::path& reduced_file) {
+    namespace fs = std::filesystem;
+    std::ofstream meta(crash_dir / "metadata.txt");
+    if (!meta.is_open()) {
+        return;
+    }
+
+    std::error_code ec;
+    const auto cwd = fs::current_path(ec);
+
+    meta << "reason=" << reason << "\n";
+    meta << "stage=" << stage_name << "\n";
+    meta << "input=" << opts.input << "\n";
+    meta << "target=" << opts.target << "\n";
+    meta << "runtime_profile=" << opts.stdlib_profile << "\n";
+    meta << "cwd=" << (ec ? std::string("<unknown>") : cwd.string()) << "\n";
+    meta << "reduce_command=" << reduce_hint << "\n";
+    meta << "reduce_exit_code=" << reduce_rc << "\n";
+    meta << "reduced_file=" << (reduced_file.empty() ? std::string("<none>") : reduced_file.string()) << "\n";
+    append_env_kv_txt(meta, "VITTE_ROOT");
+    append_env_kv_txt(meta, "LLD_PATH");
+    append_env_kv_txt(meta, "OPENSSL_DIR");
+    append_env_kv_txt(meta, "CURL_DIR");
+    append_env_kv_txt(meta, "CC");
+    append_env_kv_txt(meta, "CXX");
+    append_env_kv_txt(meta, "CFLAGS");
+    append_env_kv_txt(meta, "CXXFLAGS");
+    append_env_kv_txt(meta, "LDFLAGS");
+    append_env_kv_txt(meta, "LANG");
+    append_env_kv_txt(meta, "LC_ALL");
+
+    std::ofstream meta_json(crash_dir / "metadata.json");
+    if (!meta_json.is_open()) {
+        return;
+    }
+    meta_json << "{\n";
+    meta_json << "  \"reason\": \"" << json_escape(reason) << "\",\n";
+    meta_json << "  \"stage\": \"" << json_escape(stage_name) << "\",\n";
+    meta_json << "  \"input\": \"" << json_escape(opts.input) << "\",\n";
+    meta_json << "  \"target\": \"" << json_escape(opts.target) << "\",\n";
+    meta_json << "  \"runtime_profile\": \"" << json_escape(opts.stdlib_profile) << "\",\n";
+    meta_json << "  \"cwd\": \"" << json_escape(ec ? std::string("<unknown>") : cwd.string()) << "\",\n";
+    meta_json << "  \"reduce_command\": \"" << json_escape(reduce_hint) << "\",\n";
+    meta_json << "  \"reduce_exit_code\": " << reduce_rc << ",\n";
+    meta_json << "  \"reduced_file\": \"" << json_escape(reduced_file.empty() ? std::string("<none>") : reduced_file.string()) << "\",\n";
+    meta_json << "  \"env\": {\n";
+    append_env_kv_json(meta_json, "VITTE_ROOT", true);
+    append_env_kv_json(meta_json, "LLD_PATH", true);
+    append_env_kv_json(meta_json, "OPENSSL_DIR", true);
+    append_env_kv_json(meta_json, "CURL_DIR", true);
+    append_env_kv_json(meta_json, "CC", true);
+    append_env_kv_json(meta_json, "CXX", true);
+    append_env_kv_json(meta_json, "CFLAGS", true);
+    append_env_kv_json(meta_json, "CXXFLAGS", true);
+    append_env_kv_json(meta_json, "LDFLAGS", true);
+    append_env_kv_json(meta_json, "LANG", true);
+    append_env_kv_json(meta_json, "LC_ALL", false);
+    meta_json << "  }\n";
+    meta_json << "}\n";
+}
+
+static void maybe_generate_crash_repro(const Options& opts, const std::string& reason) {
+    namespace fs = std::filesystem;
+    const CrashStage failure_stage = get_crash_stage();
+    if (get_crash_stage() != CrashStage::Backend) {
+        return;
+    }
+    if (opts.input.empty()) {
+        return;
+    }
+
+    Options reduce_opts = opts;
+    reduce_opts.reduce_reproducer = !opts.no_auto_reduce;
+    if (reduce_opts.stage.empty()) {
+        reduce_opts.stage = "backend";
+    }
+
+    const std::string reduce_hint = "vitte reduce --stage " + reduce_opts.stage + " " + opts.input;
+    int reduce_rc = 2;
+    fs::path reduced_path;
+    if (reduce_opts.reduce_reproducer) {
+        reduce_rc = run_reduce(reduce_opts);
+        reduced_path = fs::path(opts.input);
+        reduced_path += ".reduced.vit";
+    }
+
+    fs::path crash_dir = make_crash_dir(opts);
+    fs::path copied_reduced;
+    if (reduce_opts.reduce_reproducer && reduce_rc == 0 && fs::exists(reduced_path)) {
+        copied_reduced = crash_dir / reduced_path.filename();
+        std::error_code ec;
+        fs::copy_file(reduced_path, copied_reduced, fs::copy_options::overwrite_existing, ec);
+    }
+
+    write_crash_metadata(
+        opts,
+        crash_dir,
+        reason,
+        crash_stage_name(failure_stage),
+        reduce_hint,
+        reduce_rc,
+        copied_reduced);
+    set_crash_stage(failure_stage);
+    if (!opts.no_auto_reduce) {
+        std::cerr << "[crash] repro hint: " << reduce_hint << "\n";
+    } else {
+        std::cerr << "[crash] repro hint (auto-reduce disabled): " << reduce_hint << "\n";
+    }
+    std::cerr << "[crash] artifacts: " << crash_dir.string() << "\n";
+}
+
 static bool run_with_options(Options run_opts) {
     run_opts.dump_ast = false;
     run_opts.dump_ir = false;
@@ -358,6 +662,45 @@ static bool run_with_options(Options run_opts) {
         return run_passes(run_opts).ok;
     }
     return run_pipeline(run_opts);
+}
+
+static int run_doctor_runtime_smoke() {
+    namespace fs = std::filesystem;
+    fs::path smoke_input = fs::path("tests") / "strict_ok.vit";
+    if (!fs::exists(smoke_input)) {
+        std::cout << "[doctor] runtime smoke: skipped (tests/strict_ok.vit not found)\n";
+        return 0;
+    }
+
+    Options parse_opts;
+    parse_opts.input = smoke_input.string();
+    parse_opts.no_auto_reduce = true;
+    parse_opts.parse_only = true;
+    const bool parse_ok = run_with_options(parse_opts);
+    std::cout << "[doctor] runtime smoke parse: " << (parse_ok ? "ok" : "failed") << "\n";
+
+    Options resolve_opts = parse_opts;
+    resolve_opts.parse_only = false;
+    resolve_opts.resolve_only = true;
+    const bool resolve_ok = run_with_options(resolve_opts);
+    std::cout << "[doctor] runtime smoke resolve: " << (resolve_ok ? "ok" : "failed") << "\n";
+
+    Options ir_opts = parse_opts;
+    ir_opts.parse_only = false;
+    ir_opts.mir_only = true;
+    const bool ir_ok = run_with_options(ir_opts);
+    std::cout << "[doctor] runtime smoke ir: " << (ir_ok ? "ok" : "failed") << "\n";
+
+    const std::string out_file = (fs::temp_directory_path() / "vitte_doctor_smoke.out").string();
+    Options build_opts = parse_opts;
+    build_opts.parse_only = false;
+    build_opts.output = out_file;
+    const bool build_ok = run_with_options(build_opts);
+    std::cout << "[doctor] runtime smoke backend: " << (build_ok ? "ok" : "failed") << "\n";
+    std::error_code ec;
+    fs::remove(out_file, ec);
+
+    return (parse_ok && resolve_ok && ir_ok && build_ok) ? 0 : 1;
 }
 
 static void emit_driver_diags(const Options& opts, const frontend::diag::DiagnosticEngine& diagnostics, std::ostream& os = std::cerr) {
@@ -1285,6 +1628,7 @@ static int run_mod_api_diff(const Options& opts) {
  * ------------------------------------------------- */
 int run(int argc, char** argv) {
     Options opts = parse_options(argc, argv);
+    set_crash_stage(CrashStage::Unknown);
 
     if (opts.show_help) {
         print_help();
@@ -1384,7 +1728,8 @@ int run(int argc, char** argv) {
     bool ok = run_pipeline(opts);
     if (!ok) {
         std::cerr << "[driver] compilation failed\n";
-        std::_Exit(EXIT_FAILURE);
+        maybe_generate_crash_repro(opts, "pipeline failed");
+        return EXIT_FAILURE;
     }
 
     return 0;

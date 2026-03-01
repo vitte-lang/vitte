@@ -32,11 +32,6 @@ REQUIRED_BINS=(
   "vitte"
 )
 
-OPTIONAL_BINS=(
-  "vittec"
-  "vitte-linker"
-)
-
 # ----------------------------
 # Helpers
 # ----------------------------
@@ -98,7 +93,7 @@ cd "$ROOT_DIR"
 # ----------------------------
 if [ "$MODE" = "check" ]; then
   log "checking prefix installation at $PREFIX"
-  for b in "${REQUIRED_BINS[@]}" "${OPTIONAL_BINS[@]}"; do
+  for b in "${REQUIRED_BINS[@]}"; do
     if command -v "$b" >/dev/null 2>&1; then
       log "found: $(command -v "$b")"
     else
@@ -113,7 +108,7 @@ fi
 # ----------------------------
 if [ "$MODE" = "uninstall" ]; then
   log "uninstalling from $PREFIX"
-  for b in "${REQUIRED_BINS[@]}" "${OPTIONAL_BINS[@]}"; do
+  for b in "${REQUIRED_BINS[@]}"; do
     remove_path "$BINDIR/$b"
   done
   # Remove only vitte-specific trees
@@ -145,25 +140,6 @@ for b in "${REQUIRED_BINS[@]}"; do
   strip_bin "$DST"
   log "installed: $DST"
 done
-
-for b in "${OPTIONAL_BINS[@]}"; do
-  SRC="$(resolve_src_bin "$b" || true)"
-  [ -n "$SRC" ] || { log "optional binary missing: $b (skipped)"; continue; }
-  DST="$BINDIR/$b"
-  install_file "$SRC" "$DST" 0755
-  strip_bin "$DST"
-  log "installed: $DST"
-done
-
-# Compatibility links for expected command names.
-if [ ! -e "$BINDIR/vittec" ]; then
-  run ln -sf "vitte" "$BINDIR/vittec"
-  log "linked: $BINDIR/vittec -> vitte"
-fi
-if [ ! -e "$BINDIR/vitte-linker" ]; then
-  run ln -sf "vitte" "$BINDIR/vitte-linker"
-  log "linked: $BINDIR/vitte-linker -> vitte"
-fi
 
 # Headers
 if [ -d "$TARGET_DIR/include" ]; then
@@ -213,7 +189,7 @@ fi
 # Man pages
 if [ -d "$ROOT_DIR/man" ]; then
   ensure_dir "$MANDIR"
-  for m in vitte.1 vittec.1 vitte-linker.1; do
+  for m in vitte.1; do
     if [ -f "$ROOT_DIR/man/$m" ]; then
       install_file "$ROOT_DIR/man/$m" "$MANDIR/$m" 0644
       log "man installed: $MANDIR/$m"
@@ -226,6 +202,12 @@ if [ -f "$ROOT_DIR/toolchain/scripts/install/templates/env.sh" ]; then
   ensure_dir "$SHAREDIR"
   install_file "$ROOT_DIR/toolchain/scripts/install/templates/env.sh" "$SHAREDIR/env.sh" 0644
   log "env helper installed: $SHAREDIR/env.sh"
+fi
+
+if [ -f "$ROOT_DIR/version" ]; then
+  ensure_dir "$SHAREDIR"
+  install_file "$ROOT_DIR/version" "$SHAREDIR/version" 0644
+  log "version file installed: $SHAREDIR/version"
 fi
 
 log "installation complete"

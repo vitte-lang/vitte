@@ -57,17 +57,6 @@ exec /usr/local/libexec/vitte/vitte "$@"
 EOF
 chmod 0755 "$STAGE_ROOT/usr/local/bin/vitte"
 
-# vittec and vitte-linker compatibility.
-for legacy in vittec vitte-linker; do
-  src="$(resolve_bin "$legacy" || true)"
-  if [ -n "$src" ]; then
-    install -m 0755 "$src" "$STAGE_ROOT/usr/local/libexec/vitte/$legacy"
-    ln -sfn "../libexec/vitte/$legacy" "$STAGE_ROOT/usr/local/bin/$legacy"
-  else
-    ln -sfn "vitte" "$STAGE_ROOT/usr/local/bin/$legacy"
-  fi
-done
-
 # Share tree.
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends"
@@ -91,7 +80,7 @@ install -m 0644 "$ROOT_DIR/toolchain/scripts/install/templates/env.sh" "$STAGE_R
 
 # Man pages.
 mkdir -p "$STAGE_ROOT/usr/local/share/man/man1"
-for m in vitte.1 vittec.1 vitte-linker.1; do
+for m in vitte.1; do
   [ -f "$ROOT_DIR/man/$m" ] && install -m 0644 "$ROOT_DIR/man/$m" "$STAGE_ROOT/usr/local/share/man/man1/$m"
 done
 
