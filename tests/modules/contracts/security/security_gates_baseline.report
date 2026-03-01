@@ -1,0 +1,275 @@
+[core]
+109:proc diagnostics_message(code: string) -> string {
+113:proc diagnostics_quickfix(code: string) -> string {
+133:  give diagnostics_quickfix(payload)
+163:diagnostics: VITTE-C0001..VITTE-C0099
+
+[std]
+10:# - Diagnostic namespace: VITTE-S0001..VITTE-S0099
+93:proc export_allowed(profile: string, module: string) -> bool {
+94:  give std_base_pkg.export_allowed(profile, module)
+97:proc diagnostics_message(code: string) -> string {
+101:proc diagnostics_quickfix(code: string) -> string {
+121:  give diagnostics_quickfix(payload)
+147:diagnostics: VITTE-S0001..VITTE-S0099
+
+[log]
+9:# - Diagnostics namespace: VITTE-L0001..VITTE-L0099.
+69:  profile: string
+271:    l.config.profile,
+306:    l.config.profile,
+341:    l.config.profile,
+376:    l.config.profile,
+411:    l.config.profile,
+446:    l.config.profile,
+481:    l.config.profile,
+516:    l.config.profile,
+550:  if log_runtime_pkg.sink_allowed_for_profile(l.config.profile, sink_name(sink)) == false {
+551:    give LogResult.Err(LogError.Failure("VITTE-L0007", log_runtime_pkg.diag_message("VITTE-L0007")))
+574:    give LogResult.Err(LogError.Failure("VITTE-L0006", log_runtime_pkg.diag_message("VITTE-L0006")))
+576:  if log_runtime_pkg.sink_allowed_for_profile(new_cfg.profile, sink_name(l.sink)) == false {
+577:    give LogResult.Err(LogError.Failure("VITTE-L0007", log_runtime_pkg.diag_message("VITTE-L0007")))
+765:  if log_runtime_pkg.sink_allowed_for_profile(l.config.profile, sink_name(l.sink)) == false {
+767:    give LogResult.Err(LogError.Failure("VITTE-L0007", log_runtime_pkg.diag_message("VITTE-L0007") + ";fallback=" + sink_name(fallback.sink)))
+773:  if l.sink == LogSink.File && l.config.profile == "core" {
+775:    give LogResult.Err(LogError.Failure("VITTE-L0002", log_runtime_pkg.diag_message("VITTE-L0002") + ";fallback=" + sink_name(fallback.sink) + ";line=" + format_event(e, l.format)))
+806:    give LogResult.Err(LogError.Failure("VITTE-L0003", log_runtime_pkg.diag_message("VITTE-L0003")))
+811:proc sink_allowed_for_profile(profile: string, sink: LogSink) -> bool {
+812:  give log_runtime_pkg.sink_allowed_for_profile(profile, sink_name(sink))
+815:proc diagnostics_message(code: string) -> string {
+819:proc diagnostics_quickfix(code: string) -> string {
+851:  give "{\"package\":\"vitte/log\",\"diag_namespace\":\"VITTE-L****\",\"status\":\"ok\"}"
+866:  give diagnostics_quickfix(payload)
+892:diagnostics: VITTE-L0001..VITTE-L0099
+
+[fs]
+9:# - Diagnostics namespace: VITTE-F0001..VITTE-F0099.
+75:  allowlist_workspace_roots: [string]
+76:  profile: FsProfile
+142:proc profile_name(profile: FsProfile) -> string {
+143:  if profile == FsProfile.Core { give "core" }
+144:  if profile == FsProfile.Desktop { give "desktop" }
+154:proc diagnostics_message(code: string) -> string {
+158:proc diagnostics_quickfix(code: string) -> string {
+229:      if i >= rt.policy.allowlist_workspace_roots.len { break }
+230:      let root: PathInfo = normalize(PathInfo(rt.policy.allowlist_workspace_roots[i]))
+239:proc op_allowed_for_profile(rt: FsRuntime, op_name: string) -> bool {
+240:  give fs_runtime_pkg.sink_allowed_for_profile(profile_name(rt.policy.profile), op_name)
+302:  if op_allowed_for_profile(rt, "create_dir_all") == false {
+303:    give FsResult.Err(FsError.Failure("VITTE-F0007", diagnostics_message("VITTE-F0007")))
+306:    give FsResult.Err(FsError.Failure("VITTE-F0001", diagnostics_message("VITTE-F0001")))
+312:  if op_allowed_for_profile(rt, "remove_tree") == false {
+313:    give FsResult.Err(FsError.Failure("VITTE-F0007", diagnostics_message("VITTE-F0007")))
+331:    give FsResult.Err(FsError.Failure("VITTE-F0001", diagnostics_message("VITTE-F0001")))
+342:  give FsResult.Err(FsError.Failure("VITTE-F0009", diagnostics_message("VITTE-F0009")))
+347:    give FsResult.Err(FsError.Failure("VITTE-F0001", diagnostics_message("VITTE-F0001")))
+358:  give FsResult.Err(FsError.Failure("VITTE-F0009", diagnostics_message("VITTE-F0009")))
+363:    give FsResult.Err(FsError.Failure("VITTE-F0003", diagnostics_message("VITTE-F0003")))
+366:    give FsResult.Err(FsError.Failure("VITTE-F0003", diagnostics_message("VITTE-F0003")))
+369:    give FsResult.Err(FsError.Failure("VITTE-F0001", diagnostics_message("VITTE-F0001")))
+376:    give FsResult.Err(FsError.Failure("VITTE-F0003", diagnostics_message("VITTE-F0003")))
+379:    give FsResult.Err(FsError.Failure("VITTE-F0003", diagnostics_message("VITTE-F0003")))
+382:    give FsResult.Err(FsError.Failure("VITTE-F0001", diagnostics_message("VITTE-F0001")))
+394:    give FsResult.Err(FsError.Failure("VITTE-F0001", diagnostics_message("VITTE-F0001")))
+413:    give FsResult.Err(FsError.Failure("VITTE-F0005", diagnostics_message("VITTE-F0005")))
+421:  when w is FsResult.Err { give FsResult.Err(FsError.Failure("VITTE-F0004", diagnostics_message("VITTE-F0004"))) }
+423:  when renamed is FsResult.Err { give FsResult.Err(FsError.Failure("VITTE-F0004", diagnostics_message("VITTE-F0004"))) }
+437:  give FsResult.Err(FsError.Failure("VITTE-F0009", diagnostics_message("VITTE-F0009")))
+457:    give FsResult.Err(FsError.Failure("VITTE-F0009", diagnostics_message("VITTE-F0009")))
+468:    give FsResult.Err(FsError.Failure("VITTE-F0006", diagnostics_message("VITTE-F0006")))
+498:  give "{\"package\":\"vitte/fs\",\"diag_namespace\":\"VITTE-F****\",\"status\":\"ok\"}"
+513:  give diagnostics_quickfix(payload)
+535:output_contract: Resultats FsResult codifies + diagnostics stables VITTE-F****
+539:diagnostics: VITTE-F0001..VITTE-F0099
+
+[db]
+9:# - Diagnostics namespace: VITTE-D0001..VITTE-D0099.
+35:  profile: string
+114:proc diagnostics_message(code: string) -> string {
+118:proc diagnostics_quickfix(code: string) -> string {
+133:    give DbResult.Err(DbError.Failure("VITTE-D0001", diagnostics_message("VITTE-D0001")))
+135:  if db_runtime_pkg.profile_allows(config.profile) == false {
+136:    give DbResult.Err(DbError.Failure("VITTE-D0009", diagnostics_message("VITTE-D0009")))
+139:    give DbResult.Err(DbError.Failure("VITTE-D0007", diagnostics_message("VITTE-D0007")))
+143:    config.profile,
+160:    give DbResult.Err(DbError.Failure("VITTE-D0002", diagnostics_message("VITTE-D0002")))
+163:    give DbResult.Err(DbError.Failure("VITTE-D0006", diagnostics_message("VITTE-D0006")))
+231:    give DbResult.Err(DbError.Failure(code, diagnostics_message(code)))
+248:    give DbResult.Err(DbError.Failure("VITTE-D0002", "no row"))
+266:    give DbResult.Err(DbError.Failure(code, diagnostics_message(code)))
+274:    give DbResult.Err(DbError.Failure(code, diagnostics_message(code)))
+282:    give DbResult.Err(DbError.Failure(code, diagnostics_message(code)))
+289:    give DbResult.Err(DbError.Failure("VITTE-D0002", "column out of range"))
+296:    give DbResult.Err(DbError.Failure("VITTE-D0008", diagnostics_message("VITTE-D0008")))
+307:    give DbResult.Err(DbError.Failure("VITTE-D0008", diagnostics_message("VITTE-D0008")))
+310:    give DbResult.Err(DbError.Failure("VITTE-D0008", diagnostics_message("VITTE-D0008")))
+318:    give DbResult.Err(DbError.Failure("VITTE-D0008", diagnostics_message("VITTE-D0008")))
+349:    give DbResult.Err(DbError.Failure("VITTE-D0007", diagnostics_message("VITTE-D0007")))
+361:  give "{\"package\":\"vitte/db\",\"diag_namespace\":\"VITTE-D****\",\"status\":\"ok\"}"
+376:  give diagnostics_quickfix(payload)
+398:output_contract: Resultats DbResult codifiés + diagnostics stables VITTE-D****
+402:diagnostics: VITTE-D0001..VITTE-D0099
+
+[http]
+9:# - Diagnostics namespace: VITTE-H0001..VITTE-H0099 (extended: H001x/H002x/H003x).
+89:  profile: string
+129:proc diagnostics_message(code: string) -> string {
+133:proc diagnostics_quickfix(code: string) -> string {
+155:  give err[HttpMethod]("VITTE-H0001", diagnostics_message("VITTE-H0001"))
+209:    give err_ctx[HttpRequest]("VITTE-H0001", diagnostics_message("VITTE-H0001"), "request-line")
+212:    give err_ctx[HttpRequest]("VITTE-H0001", diagnostics_message("VITTE-H0001"), "method=" + method_s)
+223:    give err_ctx[bool]("VITTE-H0020", diagnostics_message("VITTE-H0020"), "timeouts")
+225:  if http_runtime_pkg.profile_allows_network(state.cfg.profile) == false {
+226:    give err_ctx[bool]("VITTE-H0012", diagnostics_message("VITTE-H0012"), "profile=" + state.cfg.profile)
+229:    give err_ctx[bool]("VITTE-H0002", diagnostics_message("VITTE-H0002"), "path/query")
+233:    give err_ctx[bool]("VITTE-H0011", diagnostics_message("VITTE-H0011"), "host")
+237:    give err_ctx[bool]("VITTE-H0008", diagnostics_message("VITTE-H0008"), "origin")
+241:      give err_ctx[bool]("VITTE-H0010", diagnostics_message("VITTE-H0010"), "ssrf")
+245:    give err_ctx[bool]("VITTE-H0022", diagnostics_message("VITTE-H0022"), "cancel")
+252:    give err_ctx[bool]("VITTE-H0001", "invalid status", "status")
+255:    give err_ctx[bool]("VITTE-H0001", "reason phrase mismatch", "reason")
+258:    give err_ctx[bool]("VITTE-H0031", diagnostics_message("VITTE-H0031"), "content-length")
+290:    give err_ctx[HttpServerState]("VITTE-H0004", diagnostics_message("VITTE-H0004"), "route")
+315:          give err_ctx[HttpRequest]("VITTE-H0008", diagnostics_message("VITTE-H0008"), "middleware:cors")
+325:  let cfg: HttpServerConfig = HttpServerConfig(read_ms, write_ms, idle_ms, header_ms, body_ms, state.cfg.body_limit_global, state.cfg.cors_allow_origin, state.cfg.cors_preflight_cache_s, state.cfg.csrf_required, state.cfg.rate_limit_per_window, state.cfg.rate_limit_burst, state.cfg.profile)
+330:  let cfg: HttpServerConfig = HttpServerConfig(state.cfg.read_timeout_ms, state.cfg.write_timeout_ms, state.cfg.idle_timeout_ms, state.cfg.header_timeout_ms, state.cfg.body_timeout_ms, state.cfg.body_limit_global, state.cfg.cors_allow_origin, state.cfg.cors_preflight_cache_s, state.cfg.csrf_required, per_window, burst, state.cfg.profile)
+335:  let cfg: HttpServerConfig = HttpServerConfig(state.cfg.read_timeout_ms, state.cfg.write_timeout_ms, state.cfg.idle_timeout_ms, state.cfg.header_timeout_ms, state.cfg.body_timeout_ms, state.cfg.body_limit_global, allow_origin, preflight_s, state.cfg.csrf_required, state.cfg.rate_limit_per_window, state.cfg.rate_limit_burst, state.cfg.profile)
+340:  let cfg: HttpServerConfig = HttpServerConfig(state.cfg.read_timeout_ms, state.cfg.write_timeout_ms, state.cfg.idle_timeout_ms, state.cfg.header_timeout_ms, state.cfg.body_timeout_ms, state.cfg.body_limit_global, state.cfg.cors_allow_origin, state.cfg.cors_preflight_cache_s, enabled, state.cfg.rate_limit_per_window, state.cfg.rate_limit_burst, state.cfg.profile)
+361:    give err_ctx[HttpRoute]("VITTE-H0004", "route not found", "router")
+366:proc apply_security_gates(state: HttpServerState, req: HttpRequest, matched: HttpRoute) -> HttpResult[bool] {
+368:    give err_ctx[bool]("VITTE-H0022", diagnostics_message("VITTE-H0022"), "cancel")
+371:    give err_ctx[bool]("VITTE-H0030", diagnostics_message("VITTE-H0030"), "body-limit")
+374:    give err_ctx[bool]("VITTE-H0002", diagnostics_message("VITTE-H0002"), "path")
+378:    give err_ctx[bool]("VITTE-H0011", diagnostics_message("VITTE-H0011"), "host")
+383:      give err_ctx[bool]("VITTE-H0009", diagnostics_message("VITTE-H0009"), "auth")
+390:        give err_ctx[bool]("VITTE-H0008", diagnostics_message("VITTE-H0008"), "csrf")
+399:    give err_ctx[HttpServerState]("VITTE-H0006", diagnostics_message("VITTE-H0006"), "rate-limit")
+425:  let sec: HttpResult[bool] = apply_security_gates(rl.value, mreq.value, route_r.value)
+453:    give err_ctx[bool]("VITTE-H0004", "breaking route removal", missing)
+459:  give "{\"package\":\"vitte/http\",\"diag_namespace\":\"VITTE-H****\",\"perf\":{\"p50\":0,\"p95\":0,\"p99\":0},\"status\":\"ok\"}"
+474:  give diagnostics_quickfix(payload)
+494:role: Façade HTTP serveur stable (parse/router/middleware/security/timeouts)
+496:output_contract: Reponses/diagnostics stables VITTE-H****
+500:diagnostics: VITTE-H0001..VITTE-H0099, VITTE-H001x, VITTE-H002x, VITTE-H003x
+
+[http_client]
+9:# - Diagnostics namespace: VITTE-C0001..VITTE-C0099.
+73:  profile: string
+119:proc diagnostics_message(code: string) -> string {
+123:proc diagnostics_quickfix(code: string) -> string {
+194:  if resp.status == 408 { give ClientError.Failure("VITTE-C0004", diagnostics_message("VITTE-C0004")) }
+195:  if resp.status == 429 { give ClientError.Failure("VITTE-C0005", "too many requests") }
+196:  if resp.status >= 500 { give ClientError.Failure("VITTE-C0005", "server error") }
+201:  let code: string = http_client_runtime_pkg.validate_request_code(req.url, state.cfg.strict_tls, state.cfg.allow_private_hosts, state.cfg.cancel_token, state.cfg.profile)
+203:    if code == "VITTE-C0002" {
+204:      give ClientResult.Err(ClientError.Failure("VITTE-C0002", diagnostics_message("VITTE-C0002")))
+206:    if code == "VITTE-C0003" {
+207:      give ClientResult.Err(ClientError.Failure("VITTE-C0003", diagnostics_message("VITTE-C0003")))
+209:    give ClientResult.Err(ClientError.Failure(code, diagnostics_message(code)))
+217:    give ClientResult.Err(ClientError.Failure("VITTE-C0007", diagnostics_message("VITTE-C0007")))
+232:    give ClientResult.Err(ClientError.Failure(code, diagnostics_message(code)))
+287:      give ClientResult.Err(ClientError.Failure("VITTE-C0005", diagnostics_message("VITTE-C0005")))
+303:proc security_redirect_allowed(state: ClientState, from_url: string, to_url: string) -> bool {
+320:  give "{\"package\":\"vitte/http_client\",\"diag_namespace\":\"VITTE-C****\",\"status\":\"ok\"}"
+335:  give diagnostics_quickfix(payload)
+355:role: Façade client HTTP stable (timeouts/retry/pool/circuit/security)
+357:output_contract: Resultats ClientResult et diagnostics VITTE-C****
+361:diagnostics: VITTE-C0001..VITTE-C0099
+
+[process]
+9:# - Diagnostics namespace: VITTE-P0001..VITTE-P0099.
+41:  allowlist_commands: [string]
+60:  profile: string
+102:proc diagnostics_message(code: string) -> string {
+106:proc diagnostics_quickfix(code: string) -> string {
+118:  give ProcessConfig(cfg.program, cfg.args, cfg.cwd, cfg.env, cfg.stdin, cfg.stdout, cfg.stderr, t, g, cfg.profile, cfg.policy, cfg.capture_limit)
+123:  give ProcessConfig(cfg.program, cfg.args, n, cfg.env, cfg.stdin, cfg.stdout, cfg.stderr, cfg.timeout_ms, cfg.grace_ms, cfg.profile, cfg.policy, cfg.capture_limit)
+127:  give ProcessConfig(cfg.program, cfg.args, cfg.cwd, env, cfg.stdin, cfg.stdout, cfg.stderr, cfg.timeout_ms, cfg.grace_ms, cfg.profile, cfg.policy, cfg.capture_limit)
+131:  give ProcessConfig(cfg.program, cfg.args, cfg.cwd, cfg.env, cfg.stdin, cfg.stdout, cfg.stderr, cfg.timeout_ms, cfg.grace_ms, cfg.profile, policy, cfg.capture_limit)
+139:    give err[bool]("VITTE-P0001", diagnostics_message("VITTE-P0001"), "program", false)
+142:    give err[bool]("VITTE-P0008", diagnostics_message("VITTE-P0008"), "cwd", false)
+144:  if process_runtime_pkg.command_denylisted(program) {
+145:    give err[bool]("VITTE-P0003", diagnostics_message("VITTE-P0003"), program, false)
+147:  if process_runtime_pkg.command_allowlisted(program, cfg.policy.allowlist_commands) == false {
+148:    give err[bool]("VITTE-P0013", diagnostics_message("VITTE-P0013"), program, false)
+151:    give err[bool]("VITTE-P0008", diagnostics_message("VITTE-P0008"), cwd, false)
+154:    give err[bool]("VITTE-P0014", diagnostics_message("VITTE-P0014"), "argv", false)
+157:    give err[bool]("VITTE-P0009", diagnostics_message("VITTE-P0009"), "env", false)
+160:    give err[bool]("VITTE-P0001", "timeout_ms must be >= grace_ms", "timeouts", false)
+163:    give err[bool]("VITTE-P0010", diagnostics_message("VITTE-P0010"), "capture_limit", false)
+165:  if process_runtime_pkg.is_profile_allowed(cfg.profile) == false {
+166:    give err[bool]("VITTE-P0012", diagnostics_message("VITTE-P0012"), cfg.profile, false)
+168:  if cfg.profile == "core" && cfg.policy.allow_shell {
+169:    give err[bool]("VITTE-P0012", "allow_shell forbidden on core", "policy", false)
+172:    give err[bool]("VITTE-P0011", diagnostics_message("VITTE-P0011"), "shell", false)
+175:    give err[bool]("VITTE-P0014", diagnostics_message("VITTE-P0014"), "sh-c", false)
+186:    give err[ProcessHandle]("VITTE-P0015", diagnostics_message("VITTE-P0015"), "background", false)
+190:    give err[ProcessHandle]("VITTE-P0004", diagnostics_message("VITTE-P0004"), "spawn", true)
+192:  let phash: int = process_runtime_pkg.policy_hash(cfg.program, cfg.profile, cfg.policy.allow_shell, cfg.policy.allow_privileged)
+198:    give err[ProcessOutput]("VITTE-P0005", diagnostics_message("VITTE-P0005"), "not-running", false)
+201:    give err[ProcessOutput]("VITTE-P0005", diagnostics_message("VITTE-P0005"), "tiny-timeout", true)
+216:    give err[bool]("VITTE-P0007", diagnostics_message("VITTE-P0007"), "terminate", true)
+223:    give err[bool]("VITTE-P0007", diagnostics_message("VITTE-P0007"), "kill", false)
+251:  give err[ProcessOutput]("VITTE-P0007", diagnostics_message("VITTE-P0007"), "run", false)
+255:  give "{\"package\":\"vitte/process\",\"diag_namespace\":\"VITTE-P****\",\"perf\":{\"p50\":0,\"p95\":0},\"status\":\"ok\"}"
+270:  give diagnostics_quickfix(payload)
+324:input_contract: Config process explicite + profile/policy
+325:output_contract: ProcessResult et diagnostics stables VITTE-P****
+329:diagnostics: VITTE-P0001..VITTE-P0099
+
+[json]
+9:# - Diagnostics namespace: VITTE-J0001..VITTE-J0099.
+61:  profile: string
+87:proc diagnostics_message(code: string) -> string {
+91:proc diagnostics_quickfix(code: string) -> string {
+115:    give err[Value]("VITTE-J0004", diagnostics_message("VITTE-J0004"), "bytes")
+180:    give err[StreamState]("VITTE-J0011", diagnostics_message("VITTE-J0011"), "backpressure")
+187:    give err[string]("VITTE-J0011", diagnostics_message("VITTE-J0011"), "write_stream")
+204:  give diagnostics_quickfix(payload)
+229:input_contract: texte ou bytes JSON et options explicites profile-aware
+230:output_contract: Value/JsonResult stables avec diagnostics VITTE-J****
+231:boundary: parsing, security, validation et perf dans vitte/json/internal/*
+234:diagnostics: VITTE-J0001..VITTE-J0099
+
+[yaml]
+9:# - Diagnostics namespace: VITTE-Y0001..VITTE-Y0099.
+62:  profile: string
+88:proc diagnostics_message(code: string) -> string {
+92:proc diagnostics_quickfix(code: string) -> string {
+116:    give err[Value]("VITTE-Y0004", diagnostics_message("VITTE-Y0004"), "bytes")
+181:    give err[StreamState]("VITTE-Y0011", diagnostics_message("VITTE-Y0011"), "backpressure")
+188:    give err[string]("VITTE-Y0011", diagnostics_message("VITTE-Y0011"), "write_stream")
+205:  give diagnostics_quickfix(payload)
+230:input_contract: texte ou bytes YAML et options explicites profile-aware
+231:output_contract: Value/YamlResult stables avec diagnostics VITTE-Y****
+232:boundary: parsing, security, validation et perf dans vitte/yaml/internal/*
+235:diagnostics: VITTE-Y0001..VITTE-Y0099
+
+[test]
+9:# - Diagnostics namespace: VITTE-T0001..VITTE-T0099.
+14:# - profile in {core, desktop, system}
+60:  profile: string
+68:  profile: string
+93:  profile: string
+106:  profile: string
+118:proc diagnostics_message(code: string) -> string {
+122:proc diagnostics_quickfix(code: string) -> string {
+146:proc context_with_profile(ctx: TestContext, profile: string) -> TestContext {
+147:  give test_runner_pkg.context_with_profile(ctx, profile)
+186:proc suite(name: string, mode: TestMode, profile: string, timeout_ms: int, max_retries: int) -> TestSuite {
+187:  give test_runner_pkg.suite(name, mode, profile, timeout_ms, max_retries)
+218:proc is_profile_supported(profile: string) -> bool {
+219:  give test_runner_pkg.is_profile_supported(profile)
+222:proc profile_matrix_check(s: TestSuite) -> TestResult[bool] {
+223:  give test_runner_pkg.profile_matrix_check(s)
+285:input_contract: suites/cases/context explicites profile-aware
+286:output_contract: TestResult/TestReport stables avec diagnostics VITTE-T****
+290:diagnostics: VITTE-T0001..VITTE-T0099
+
+[lint]
+9:# - Diagnostics namespace: VITTE-I0001..VITTE-I0099.
+87:proc diagnostics_message(code: string) -> string {
+91:proc diagnostics_quickfix(code: string) -> string {
+175:output_contract: LintResult/LintReport stables avec diagnostics VITTE-I****
+179:diagnostics: VITTE-I0001..VITTE-I0099
+
