@@ -1,0 +1,44 @@
+name: debian-crash-regressions
+
+on:
+  pull_request:
+    paths:
+      - 'src/compiler/driver/**'
+      - 'src/compiler/backends/**'
+      - 'toolchain/scripts/install/install-debian-vitte-2.1.1.sh'
+      - 'toolchain/scripts/install/debian-deps.sh'
+      - 'toolchain/scripts/package/make-debian-deb.sh'
+      - 'tools/ci_debian_crash_regressions.sh'
+      - 'tools/crash_report_snapshots.sh'
+      - '.github/workflows/debian-crash-regressions.yml'
+      - 'tests/**'
+      - 'examples/**'
+      - 'Makefile'
+  push:
+    branches:
+      - main
+
+jobs:
+  crash-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          source toolchain/scripts/install/debian-deps.sh
+          sudo apt-get install -y "${DEBIAN_APT_BUILD_DEPS[@]}"
+
+      - name: Build
+        run: make build
+
+      - name: Release readiness gate
+        run: make -s release-readiness
+
+      - name: Debian crash regressions
+        run: tools/ci_debian_crash_regressions.sh
+
+      - name: Crash report snapshots
+        run: make crash-report-snapshots
