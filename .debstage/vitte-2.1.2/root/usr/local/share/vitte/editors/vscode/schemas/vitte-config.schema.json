@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "vscode://schemas/vitte/vitte-config",
+  "title": "Schéma de configuration Vitte (ultra complet)",
+  "description": "Configuration projet pour l’extension VitteLangVsCode et l’écosystème Vitte.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "envMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Paires clé/valeur d’environnement."
+    },
+    "path": { "type": "string", "description": "Chemin de fichier ou dossier." },
+    "bool": { "type": "boolean" },
+    "semver": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$" },
+    "triple": { "type": "string", "description": "Triple cible (ex: aarch64-apple-darwin)." },
+    "targetObj": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "triple": { "$ref": "#/$defs/triple" },
+        "cpu": { "type": "string", "description": "Micro-arch cible (ex: generic, znver4, apple-m4)." },
+        "features": { "type": "array", "items": { "type": "string" }, "description": "Features CPU." },
+        "abi": { "type": "string", "description": "ABI spécifique si applicable." },
+        "sysroot": { "$ref": "#/$defs/path" },
+        "linker": { "$ref": "#/$defs/path" },
+        "optLevel": { "type": "string", "enum": ["0","1","2","3","s","z"], "default": "2" }
+      },
+      "required": ["triple"]
+    },
+    "threshold": { "type": "number", "minimum": 0, "maximum": 1 }
+  },
+  "properties": {
+    "version": { "$ref": "#/$defs/semver", "description": "Version du format de configuration.", "default": "1.0.0" },
+
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "root": { "$ref": "#/$defs/path", "default": "" },
+        "lsp": { "$ref": "#/$defs/path", "default": "vitte-lsp" },
+        "fmt": { "$ref": "#/$defs/path", "default": "vitte-fmt" },
+        "build": { "$ref": "#/$defs/path", "default": "vitte-build" },
+        "bench": { "$ref": "#/$defs/path", "default": "vitte-bench" },
+        "runtime": { "$ref": "#/$defs/path", "default": "vitte-runtime" },
+        "codegenLlvm": { "$ref": "#/$defs/path", "default": "vitte-codegen-llvm" },
+        "codegenRv": { "$ref": "#/$defs/path", "default": "vitte-codegen-rv64" }
+      }
+    },
+
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rootPatterns": { "type": "array", "items": { "type": "string" }, "default": ["vitte.toml", "vitte.config.json", "Cargo.toml"] },
+        "exclude": { "type": "array", "items": { "$ref": "#/$defs/path" }, "default": ["**/target/**", "**/.vitte/cache/**", "**/.git/**"] },
+        "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "$ref": "#/$defs/bool", "default": false },
+            "sampleRate": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.1 }
+          }
+        }
+      }
+    },
+
+    "targets": {
+      "description": "Cibles supportées.",
+      "oneOf": [
+        { "type": "array", "items": { "$ref": "#/$defs/triple" }, "default": [] },
+        { "type": "array", "items": { "$ref": "#/$defs/targetObj" }, "default": [] }
+      ]
+    },
+
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gpu": { "$ref": "#/$defs/bool", "default": false },
+        "async": { "$ref": "#/$defs/bool", "default": true },
+        "incremental": { "$ref": "#/$defs/bool", "default": true },
+        "distributedBuild": { "$ref": "#/$defs/bool", "default": false },
+        "benchMicro": { "$ref": "#/$defs/bool", "default": true },
+        "irViewer": { "$ref": "#/$defs/bool", "default": true },
+        "astDiff": { "$ref": "#/$defs/bool", "default": false }
+      }
+    },
+
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "type": "string", "enum": ["dev","test","release","bench"], "default": "dev" },
+        "incremental": { "$ref": "#/$defs/bool", "default": true },
+        "distributed": { "$ref": "#/$defs/bool", "default": false },
+        "jobs": { "type": "integer", "minimum": 0, "default": 0, "description": "0 = auto." },
+        "cacheDir": { "$ref": "#/$defs/path", "default": ".vitte/cache" },
+        "outDir": { "$ref": "#/$defs/path", "default": "target/vitte" },
+        "env": { "$ref": "#/$defs/envMap" },
+        "rustInterop": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cargoFeatures": { "type": "array", "items": { "type": "string" }, "default": [] },
+            "rustflags": { "type": "array", "items": { "type": "string" }, "default": [] }
+          }
+        },
+        "distributedCfg": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scheduler": { "type": "string", "enum": ["local","mdns","static"], "default": "local" },
+            "peers": { "type": "array", "items": { "type": "string" }, "default": [] },
+            "cacheEndpoint": { "type": "string", "default": "" }
+          }
+        }
+      }
+    },
+
+    "fmt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lineWidth": { "type": "integer", "minimum": 40, "maximum": 240, "default": 100 },
+        "indent": { "type": "integer", "minimum": 2, "maximum": 8, "default": 4 },
+        "trailingCommas": { "$ref": "#/$defs/bool", "default": true },
+        "groupImports": { "$ref": "#/$defs/bool", "default": true },
+        "reorderItems": { "$ref": "#/$defs/bool", "default": true }
+      }
+    },
+
+    "lint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "levels": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "style": { "type": "string", "enum": ["allow","warn","deny"], "default": "warn" },
+            "perf": { "type": "string", "enum": ["allow","warn","deny"], "default": "warn" },
+            "unsafe": { "type": "string", "enum": ["allow","warn","deny"], "default": "deny" }
+          }
+        },
+        "allow": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "deny": { "type": "array", "items": { "type": "string" }, "default": [] }
+      }
+    },
+
+    "bench": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reportDir": { "$ref": "#/$defs/path", "default": ".vitte/bench" },
+        "regressionThreshold": { "$ref": "#/$defs/threshold", "default": 0.05 },
+        "export": { "type": "array", "items": { "type": "string", "enum": ["html","svg","json","md"] }, "default": ["html","svg"] },
+        "ci": { "$ref": "#/$defs/bool", "default": false },
+        "baselineFile": { "$ref": "#/$defs/path", "default": "" }
+      }
+    },
+
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "patterns": { "type": "array", "items": { "type": "string" }, "default": ["**/*_test.vitte"] },
+        "timeoutMs": { "type": "integer", "minimum": 0, "default": 60000 },
+        "failFast": { "$ref": "#/$defs/bool", "default": false }
+      }
+    },
+
+    "lsp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "telemetryEnabled": { "$ref": "#/$defs/bool", "default": false },
+        "inlayHintsEnabled": { "$ref": "#/$defs/bool", "default": true },
+        "semanticHighlighting": { "$ref": "#/$defs/bool", "default": true },
+        "maxWorkspaceBytes": { "type": "integer", "minimum": 0, "default": 50000000 },
+        "experimental": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "liveDiagnostics": { "$ref": "#/$defs/bool", "default": true },
+            "astDiff": { "$ref": "#/$defs/bool", "default": false },
+            "costHints": { "$ref": "#/$defs/bool", "default": false }
+          }
+        }
+      }
+    },
+
+    "debug": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "program": { "$ref": "#/$defs/path", "default": "vitte-runtime" },
+        "args": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "cwd": { "$ref": "#/$defs/path", "default": "" },
+        "sourceMaps": { "$ref": "#/$defs/bool", "default": true },
+        "trace": { "$ref": "#/$defs/bool", "default": false }
+      }
+    },
+
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "theme": { "type": "string", "enum": ["system","light","dark"], "default": "system" },
+        "panel": { "type": "string", "enum": ["left","right"], "default": "left" },
+        "showStatusBar": { "$ref": "#/$defs/bool", "default": true }
+      }
+    }
+  },
+
+  "examples": [
+    {
+      "version": "1.0.0",
+      "toolchain": { "root": "/opt/vitte", "lsp": "vitte-lsp", "fmt": "vitte-fmt", "build": "vitte-build", "bench": "vitte-bench", "runtime": "vitte-runtime", "codegenLlvm": "vitte-codegen-llvm", "codegenRv": "vitte-codegen-rv64" },
+      "workspace": { "rootPatterns": ["vitte.toml"], "exclude": ["**/target/**"], "telemetry": { "enabled": false, "sampleRate": 0.05 } },
+      "targets": [
+        { "triple": "aarch64-apple-darwin", "cpu": "apple-m4", "features": ["neon"], "optLevel": "3" },
+        "x86_64-unknown-linux-gnu"
+      ],
+      "features": { "gpu": true, "async": true, "incremental": true, "distributedBuild": false, "benchMicro": true, "irViewer": true },
+      "build": { "profile": "dev", "incremental": true, "distributed": false, "jobs": 0, "cacheDir": ".vitte/cache", "outDir": "target/vitte", "env": { "RUST_LOG": "info" }, "rustInterop": { "cargoFeatures": ["simd"], "rustflags": ["-Ctarget-cpu=native"] } },
+      "fmt": { "lineWidth": 100, "indent": 4, "trailingCommas": true, "groupImports": true, "reorderItems": true },
+      "lint": { "levels": { "style": "warn", "perf": "warn", "unsafe": "deny" }, "allow": ["non_snake_case"], "deny": [] },
+      "bench": { "reportDir": ".vitte/bench", "regressionThreshold": 0.05, "export": ["html","svg"], "ci": true, "baselineFile": ".vitte/bench/baseline.json" },
+      "tests": { "patterns": ["**/*_test.vitte"], "timeoutMs": 60000, "failFast": false },
+      "lsp": { "telemetryEnabled": false, "inlayHintsEnabled": true, "semanticHighlighting": true, "maxWorkspaceBytes": 50000000, "experimental": { "liveDiagnostics": true, "astDiff": false, "costHints": false } },
+      "debug": { "program": "vitte-runtime", "args": ["--trace"], "cwd": "${workspaceFolder}", "sourceMaps": true, "trace": false },
+      "ui": { "theme": "system", "panel": "left", "showStatusBar": true }
+    }
+  ]
+}

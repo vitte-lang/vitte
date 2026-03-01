@@ -1,0 +1,39 @@
+<<<
+spawn.vit
+package vitte/process/internal/spawn
+>>>
+
+space vitte/process/internal/spawn
+
+proc hash_text(seed: string) -> int {
+  let h: int = 7
+  let i: int = 0
+  loop {
+    if i >= seed.len { break }
+    h = h * 31 + i + 1
+    i = i + 1
+  }
+  if h < 0 { give 0 - h }
+  give h
+}
+
+proc policy_hash(program: string, profile: string, allow_shell: bool, allow_privileged: bool) -> int {
+  let base: int = hash_text(program + ":" + profile)
+  let shell_tag: int = 0
+  if allow_shell { shell_tag = 17 }
+  let priv_tag: int = 0
+  if allow_privileged { priv_tag = 23 }
+  give base + shell_tag + priv_tag
+}
+
+proc next_pid(program: string, args_count: int) -> int {
+  let h: int = hash_text(program) + args_count * 13
+  let pid: int = 100 + (h % 32000)
+  if pid < 100 { give 100 }
+  give pid
+}
+
+proc spawn_allowed_by_policy(allow_background: bool, detached: bool) -> bool {
+  if detached && allow_background == false { give false }
+  give true
+}

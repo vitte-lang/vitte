@@ -1,0 +1,896 @@
+<<<
+mod.vit
+package vitte/log
+>>>
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/log; additive API only.
+# - No import-time side effects.
+# - Internal implementation lives in vitte/log/internal/*.
+# - Diagnostics namespace: VITTE-L0001..VITTE-L0099.
+
+space vitte/log
+
+use vitte/log/internal/runtime as log_runtime_pkg
+
+pick LogLevel {
+  Trace
+  Debug
+  Info
+  Warn
+  Error
+  Fatal
+}
+
+pick LogSink {
+  Stdout
+  Stderr
+  File
+  Syslog
+  Journald
+  MemoryRing
+}
+
+pick LogFormat {
+  Text
+  JsonLines
+}
+
+pick DropPolicy {
+  DropNewest
+  DropOldest
+  Block
+}
+
+form LogField {
+  key: string
+  value: string
+}
+
+form LogEvent {
+  timestamp: int
+  level: LogLevel
+  message: string
+  module: string
+  fields: [LogField]
+  trace_id: string
+  span_id: string
+}
+
+pick LogError {
+  Failure(code: string, message: string)
+}
+
+pick LogResult[T] {
+  Ok(value: T)
+  Err(error: LogError)
+}
+
+form LogConfig {
+  profile: string
+  sample_rate_percent: int
+  sample_burst: int
+  rate_limit_per_window: int
+  dedup_window: int
+  buffer_capacity: int
+  async_enabled: bool
+  drop_policy: DropPolicy
+  hot_reload_epoch: int
+  perf_mode: bool
+  lossless_debug: bool
+  min_level: LogLevel
+  module_filter: string
+}
+
+form Logger {
+  sink: LogSink
+  fallback_sink: LogSink
+  format: LogFormat
+  config: LogConfig
+  context_module: string
+  context_trace_id: string
+  context_span_id: string
+  context_fields: [LogField]
+  buffer: [LogEvent]
+  events: [LogEvent]
+  dropped: int
+  window_count: int
+  sample_count: int
+  last_key: string
+  last_repeat: int
+}
+
+proc ok[T](value: T) -> LogResult[T] {
+  give LogResult.Ok(value)
+}
+
+proc err[T](code: string, message: string) -> LogResult[T] {
+  give LogResult.Err(LogError.Failure(code, message))
+}
+
+proc assert_or_err(condition: bool, code: string, message: string) -> LogResult[bool] {
+  if condition {
+    give LogResult.Ok(true)
+  }
+  give LogResult.Err(LogError.Failure(code, message))
+}
+
+proc panic_guard[T](r: LogResult[T], fallback: T) -> T {
+  when r is LogResult.Ok {
+    give r.value
+  }
+  give fallback
+}
+
+proc checked_cast_int(value: int) -> LogResult[int] {
+  give LogResult.Ok(value)
+}
+
+proc level_rank(level: LogLevel) -> int {
+  if level == LogLevel.Trace { give 5 }
+  if level == LogLevel.Debug { give 10 }
+  if level == LogLevel.Info { give 20 }
+  if level == LogLevel.Warn { give 30 }
+  if level == LogLevel.Error { give 40 }
+  give 50
+}
+
+proc level_name(level: LogLevel) -> string {
+  if level == LogLevel.Trace { give "trace" }
+  if level == LogLevel.Debug { give "debug" }
+  if level == LogLevel.Info { give "info" }
+  if level == LogLevel.Warn { give "warn" }
+  if level == LogLevel.Error { give "error" }
+  give "fatal"
+}
+
+proc sink_name(sink: LogSink) -> string {
+  if sink == LogSink.Stdout { give "stdout" }
+  if sink == LogSink.Stderr { give "stderr" }
+  if sink == LogSink.File { give "file" }
+  if sink == LogSink.Syslog { give "syslog" }
+  if sink == LogSink.Journald { give "journald" }
+  give "memory_ring"
+}
+
+proc default_config() -> LogConfig {
+  give LogConfig(
+    "desktop",
+    100,
+    100,
+    1000,
+    16,
+    1024,
+    true,
+    DropPolicy.DropOldest,
+    0,
+    false,
+    false,
+    LogLevel.Info,
+    "*"
+  )
+}
+
+proc logger_new(min_level: LogLevel) -> Logger {
+  let cfg: LogConfig = LogConfig(
+    "desktop",
+    100,
+    100,
+    1000,
+    16,
+    1024,
+    true,
+    DropPolicy.DropOldest,
+    0,
+    false,
+    false,
+    min_level,
+    "*"
+  )
+  give Logger(
+    LogSink.Stderr,
+    LogSink.Stderr,
+    LogFormat.Text,
+    cfg,
+    "",
+    "",
+    "",
+    [],
+    [],
+    [],
+    0,
+    0,
+    0,
+    "",
+    0
+  )
+}
+
+proc with_field(l: Logger, key: string, value: string) -> Logger {
+  let redacted: string = log_runtime_pkg.redact_field_value(key, value)
+  give Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    l.config,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields.push(LogField(key, redacted)),
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  )
+}
+
+proc with_module(l: Logger, module: string) -> Logger {
+  give Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    l.config,
+    module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  )
+}
+
+proc with_trace(l: Logger, trace_id: string, span_id: string) -> Logger {
+  give Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    l.config,
+    l.context_module,
+    trace_id,
+    span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  )
+}
+
+proc with_min_level(l: Logger, min_level: LogLevel) -> Logger {
+  let cfg: LogConfig = LogConfig(
+    l.config.profile,
+    l.config.sample_rate_percent,
+    l.config.sample_burst,
+    l.config.rate_limit_per_window,
+    l.config.dedup_window,
+    l.config.buffer_capacity,
+    l.config.async_enabled,
+    l.config.drop_policy,
+    l.config.hot_reload_epoch,
+    l.config.perf_mode,
+    l.config.lossless_debug,
+    min_level,
+    l.config.module_filter
+  )
+  give Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    cfg,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  )
+}
+
+proc with_module_filter(l: Logger, module_filter: string) -> Logger {
+  let cfg: LogConfig = LogConfig(
+    l.config.profile,
+    l.config.sample_rate_percent,
+    l.config.sample_burst,
+    l.config.rate_limit_per_window,
+    l.config.dedup_window,
+    l.config.buffer_capacity,
+    l.config.async_enabled,
+    l.config.drop_policy,
+    l.config.hot_reload_epoch,
+    l.config.perf_mode,
+    l.config.lossless_debug,
+    l.config.min_level,
+    module_filter
+  )
+  give Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    cfg,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  )
+}
+
+proc with_sampling(l: Logger, rate_percent: int, burst: int) -> Logger {
+  let cfg: LogConfig = LogConfig(
+    l.config.profile,
+    rate_percent,
+    burst,
+    l.config.rate_limit_per_window,
+    l.config.dedup_window,
+    l.config.buffer_capacity,
+    l.config.async_enabled,
+    l.config.drop_policy,
+    l.config.hot_reload_epoch,
+    l.config.perf_mode,
+    l.config.lossless_debug,
+    l.config.min_level,
+    l.config.module_filter
+  )
+  give Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    cfg,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  )
+}
+
+proc with_rate_limit(l: Logger, per_window: int) -> Logger {
+  let cfg: LogConfig = LogConfig(
+    l.config.profile,
+    l.config.sample_rate_percent,
+    l.config.sample_burst,
+    per_window,
+    l.config.dedup_window,
+    l.config.buffer_capacity,
+    l.config.async_enabled,
+    l.config.drop_policy,
+    l.config.hot_reload_epoch,
+    l.config.perf_mode,
+    l.config.lossless_debug,
+    l.config.min_level,
+    l.config.module_filter
+  )
+  give Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    cfg,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  )
+}
+
+proc with_dedup_window(l: Logger, window_size: int) -> Logger {
+  let cfg: LogConfig = LogConfig(
+    l.config.profile,
+    l.config.sample_rate_percent,
+    l.config.sample_burst,
+    l.config.rate_limit_per_window,
+    window_size,
+    l.config.buffer_capacity,
+    l.config.async_enabled,
+    l.config.drop_policy,
+    l.config.hot_reload_epoch,
+    l.config.perf_mode,
+    l.config.lossless_debug,
+    l.config.min_level,
+    l.config.module_filter
+  )
+  give Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    cfg,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  )
+}
+
+proc with_buffering(l: Logger, async_enabled: bool, capacity: int, policy: DropPolicy) -> Logger {
+  let cfg: LogConfig = LogConfig(
+    l.config.profile,
+    l.config.sample_rate_percent,
+    l.config.sample_burst,
+    l.config.rate_limit_per_window,
+    l.config.dedup_window,
+    capacity,
+    async_enabled,
+    policy,
+    l.config.hot_reload_epoch,
+    l.config.perf_mode,
+    l.config.lossless_debug,
+    l.config.min_level,
+    l.config.module_filter
+  )
+  give Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    cfg,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  )
+}
+
+proc with_perf_mode(l: Logger, enabled: bool) -> Logger {
+  let cfg: LogConfig = LogConfig(
+    l.config.profile,
+    l.config.sample_rate_percent,
+    l.config.sample_burst,
+    l.config.rate_limit_per_window,
+    l.config.dedup_window,
+    l.config.buffer_capacity,
+    l.config.async_enabled,
+    l.config.drop_policy,
+    l.config.hot_reload_epoch,
+    enabled,
+    l.config.lossless_debug,
+    l.config.min_level,
+    l.config.module_filter
+  )
+  give Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    cfg,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  )
+}
+
+proc with_lossless_debug(l: Logger, enabled: bool) -> Logger {
+  let cfg: LogConfig = LogConfig(
+    l.config.profile,
+    l.config.sample_rate_percent,
+    l.config.sample_burst,
+    l.config.rate_limit_per_window,
+    l.config.dedup_window,
+    l.config.buffer_capacity,
+    l.config.async_enabled,
+    l.config.drop_policy,
+    l.config.hot_reload_epoch,
+    l.config.perf_mode,
+    enabled,
+    l.config.min_level,
+    l.config.module_filter
+  )
+  give Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    cfg,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  )
+}
+
+proc with_sink(l: Logger, sink: LogSink, fallback_sink: LogSink, format: LogFormat) -> LogResult[Logger] {
+  if log_runtime_pkg.sink_allowed_for_profile(l.config.profile, sink_name(sink)) == false {
+    give LogResult.Err(LogError.Failure("VITTE-L0007", log_runtime_pkg.diag_message("VITTE-L0007")))
+  }
+  give LogResult.Ok(Logger(
+    sink,
+    fallback_sink,
+    format,
+    l.config,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  ))
+}
+
+proc hot_reload_config(l: Logger, new_cfg: LogConfig) -> LogResult[Logger] {
+  if new_cfg.hot_reload_epoch < l.config.hot_reload_epoch {
+    give LogResult.Err(LogError.Failure("VITTE-L0006", log_runtime_pkg.diag_message("VITTE-L0006")))
+  }
+  if log_runtime_pkg.sink_allowed_for_profile(new_cfg.profile, sink_name(l.sink)) == false {
+    give LogResult.Err(LogError.Failure("VITTE-L0007", log_runtime_pkg.diag_message("VITTE-L0007")))
+  }
+  give LogResult.Ok(Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    new_cfg,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    l.buffer,
+    l.events,
+    l.dropped,
+    l.window_count,
+    l.sample_count,
+    l.last_key,
+    l.last_repeat
+  ))
+}
+
+proc enabled_for_emit(l: Logger, level: LogLevel, module: string) -> bool {
+  let trace_or_debug: bool = level == LogLevel.Trace || level == LogLevel.Debug
+  give log_runtime_pkg.emit_enabled(
+    level_rank(level),
+    level_rank(l.config.min_level),
+    module,
+    l.config.module_filter,
+    trace_or_debug,
+    l.sample_count,
+    l.config.sample_burst,
+    l.config.sample_rate_percent,
+    l.window_count,
+    l.config.rate_limit_per_window
+  )
+}
+
+proc redacted_fields(fields: [LogField]) -> [LogField] {
+  let out: [LogField] = []
+  let i: int = 0
+  loop {
+    if i >= fields.len { break }
+    out = out.push(LogField(fields[i].key, log_runtime_pkg.redact_field_value(fields[i].key, fields[i].value)))
+    i = i + 1
+  }
+  give out
+}
+
+proc merge_context_fields(base: [LogField], extra: [LogField]) -> [LogField] {
+  let out: [LogField] = base
+  let i: int = 0
+  loop {
+    if i >= extra.len { break }
+    out = out.push(extra[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc event(level: LogLevel, timestamp: int, message: string, module: string, fields: [LogField], trace_id: string, span_id: string) -> LogEvent {
+  give LogEvent(timestamp, level, log_runtime_pkg.safe_message(message), module, redacted_fields(fields), trace_id, span_id)
+}
+
+proc event_key(e: LogEvent) -> string {
+  give log_runtime_pkg.dedup_key(level_name(e.level), e.module, e.message)
+}
+
+proc append_buffer(l: Logger, e: LogEvent) -> Logger {
+  let b: [LogEvent] = l.buffer
+  let dropped: int = l.dropped
+  if b.len >= l.config.buffer_capacity {
+    if l.config.drop_policy == DropPolicy.DropNewest {
+      dropped = dropped + 1
+      give Logger(l.sink, l.fallback_sink, l.format, l.config, l.context_module, l.context_trace_id, l.context_span_id, l.context_fields, b, l.events, dropped, l.window_count, l.sample_count, l.last_key, l.last_repeat)
+    }
+    if l.config.drop_policy == DropPolicy.DropOldest {
+      let out: [LogEvent] = []
+      let i: int = 1
+      loop {
+        if i >= b.len { break }
+        out = out.push(b[i])
+        i = i + 1
+      }
+      b = out
+      dropped = dropped + 1
+    }
+  }
+  b = b.push(e)
+  give Logger(l.sink, l.fallback_sink, l.format, l.config, l.context_module, l.context_trace_id, l.context_span_id, l.context_fields, b, l.events, dropped, l.window_count, l.sample_count, l.last_key, l.last_repeat)
+}
+
+proc emit_event(l: Logger, level: LogLevel, timestamp: int, message: string, module: string, fields: [LogField]) -> Logger {
+  let merged_fields: [LogField] = merge_context_fields(l.context_fields, fields)
+  let module_name: string = log_runtime_pkg.route_module_name(module, l.context_module)
+  let e: LogEvent = event(level, timestamp, message, module_name, merged_fields, l.context_trace_id, l.context_span_id)
+
+  if enabled_for_emit(l, level, module_name) == false {
+    give l
+  }
+
+  let key: string = event_key(e)
+  if log_runtime_pkg.dedup_hit(key, l.last_key, l.last_repeat, l.config.dedup_window) {
+    give Logger(
+      l.sink,
+      l.fallback_sink,
+      l.format,
+      l.config,
+      l.context_module,
+      l.context_trace_id,
+      l.context_span_id,
+      l.context_fields,
+      l.buffer,
+      l.events,
+      l.dropped,
+      l.window_count + 1,
+      l.sample_count + 1,
+      l.last_key,
+      l.last_repeat + 1
+    )
+  }
+
+  let staged: Logger = append_buffer(l, e)
+  let events: [LogEvent] = staged.events.push(e)
+  give Logger(
+    staged.sink,
+    staged.fallback_sink,
+    staged.format,
+    staged.config,
+    staged.context_module,
+    staged.context_trace_id,
+    staged.context_span_id,
+    staged.context_fields,
+    staged.buffer,
+    events,
+    staged.dropped,
+    staged.window_count + 1,
+    staged.sample_count + 1,
+    key,
+    0
+  )
+}
+
+proc trace(l: Logger, timestamp: int, message: string, module: string, fields: [LogField]) -> Logger {
+  give emit_event(l, LogLevel.Trace, timestamp, message, module, fields)
+}
+
+proc debug(l: Logger, timestamp: int, message: string, module: string, fields: [LogField]) -> Logger {
+  give emit_event(l, LogLevel.Debug, timestamp, message, module, fields)
+}
+
+proc info(l: Logger, timestamp: int, message: string, module: string, fields: [LogField]) -> Logger {
+  give emit_event(l, LogLevel.Info, timestamp, message, module, fields)
+}
+
+proc warn(l: Logger, timestamp: int, message: string, module: string, fields: [LogField]) -> Logger {
+  give emit_event(l, LogLevel.Warn, timestamp, message, module, fields)
+}
+
+proc error(l: Logger, timestamp: int, message: string, module: string, fields: [LogField]) -> Logger {
+  give emit_event(l, LogLevel.Error, timestamp, message, module, fields)
+}
+
+proc fatal(l: Logger, timestamp: int, message: string, module: string, fields: [LogField]) -> Logger {
+  give emit_event(l, LogLevel.Fatal, timestamp, message, module, fields)
+}
+
+proc format_text(e: LogEvent) -> string {
+  give "[" + level_name(e.level) + "] " + e.module + " trace=" + e.trace_id + " span=" + e.span_id + " " + e.message
+}
+
+proc format_json_line(e: LogEvent) -> string {
+  let out: string = "{\"timestamp\":" + e.timestamp.to_string() +
+                    ",\"level\":\"" + level_name(e.level) + "\"" +
+                    ",\"module\":\"" + e.module + "\"" +
+                    ",\"message\":\"" + e.message + "\"" +
+                    ",\"trace_id\":\"" + e.trace_id + "\"" +
+                    ",\"span_id\":\"" + e.span_id + "\""
+  give out + "}"
+}
+
+proc format_event(e: LogEvent, format: LogFormat) -> string {
+  if format == LogFormat.JsonLines {
+    give format_json_line(e)
+  }
+  give format_text(e)
+}
+
+proc open_sink(l: Logger) -> LogResult[Logger] {
+  if log_runtime_pkg.sink_allowed_for_profile(l.config.profile, sink_name(l.sink)) == false {
+    let fallback: Logger = Logger(LogSink.Stderr, LogSink.Stderr, l.format, l.config, l.context_module, l.context_trace_id, l.context_span_id, l.context_fields, l.buffer, l.events, l.dropped, l.window_count, l.sample_count, l.last_key, l.last_repeat)
+    give LogResult.Err(LogError.Failure("VITTE-L0007", log_runtime_pkg.diag_message("VITTE-L0007") + ";fallback=" + sink_name(fallback.sink)))
+  }
+  give LogResult.Ok(l)
+}
+
+proc write_sink(l: Logger, e: LogEvent) -> LogResult[Logger] {
+  if l.sink == LogSink.File && l.config.profile == "core" {
+    let fallback: Logger = Logger(LogSink.Stderr, LogSink.Stderr, l.format, l.config, l.context_module, l.context_trace_id, l.context_span_id, l.context_fields, l.buffer, l.events, l.dropped, l.window_count, l.sample_count, l.last_key, l.last_repeat)
+    give LogResult.Err(LogError.Failure("VITTE-L0002", log_runtime_pkg.diag_message("VITTE-L0002") + ";fallback=" + sink_name(fallback.sink) + ";line=" + format_event(e, l.format)))
+  }
+  give LogResult.Ok(l)
+}
+
+proc flush(l: Logger) -> LogResult[Logger] {
+  give LogResult.Ok(Logger(
+    l.sink,
+    l.fallback_sink,
+    l.format,
+    l.config,
+    l.context_module,
+    l.context_trace_id,
+    l.context_span_id,
+    l.context_fields,
+    [],
+    l.events,
+    l.dropped,
+    0,
+    0,
+    l.last_key,
+    l.last_repeat
+  ))
+}
+
+proc flush_on_exit(l: Logger) -> LogResult[Logger] {
+  give flush(l)
+}
+
+proc rotate(l: Logger, _max_size_mb: int, _retention: int, _compress: bool) -> LogResult[Logger] {
+  if l.sink != LogSink.File {
+    give LogResult.Err(LogError.Failure("VITTE-L0003", log_runtime_pkg.diag_message("VITTE-L0003")))
+  }
+  give LogResult.Ok(l)
+}
+
+proc sink_allowed_for_profile(profile: string, sink: LogSink) -> bool {
+  give log_runtime_pkg.sink_allowed_for_profile(profile, sink_name(sink))
+}
+
+proc diagnostics_message(code: string) -> string {
+  give log_runtime_pkg.diag_message(code)
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  give log_runtime_pkg.quickfix_for(code)
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc summary(l: Logger) -> string {
+  give "events=" + l.events.len.to_string() +
+       ",buffer=" + l.buffer.len.to_string() +
+       ",dropped=" + l.dropped.to_string() +
+       ",sink=" + sink_name(l.sink)
+}
+
+proc feature_std_debug() -> bool {
+  give false
+}
+
+proc feature_std_strict() -> bool {
+  give true
+}
+
+proc feature_std_compat() -> bool {
+  give true
+}
+
+proc semantic_search_key(level: LogLevel, module: string, message: string) -> string {
+  give "kind:event level=" + level_name(level) + " module=" + module + " msg=" + message
+}
+
+proc analyze_report_json_stub() -> string {
+  give "{\"package\":\"vitte/log\",\"diag_namespace\":\"VITTE-L****\",\"status\":\"ok\"}"
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc doctor_status() -> string {
+  give "vitte/log doctor:ready api=" + api_version()
+}
+
+proc quickfix_preview(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix: no-op"
+  }
+  give diagnostics_quickfix(payload)
+}
+
+proc quickfix_apply(payload: string) -> string {
+  if payload.len == 0 {
+    give "quickfix apply: no-op"
+  }
+  give "quickfix apply: " + payload
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/log"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/log
+role: Journalisation structuree, routage vers sinks et garde-fous runtime
+input_contract: Evenements explicites (niveau, message, module, context)
+output_contract: Flux stable format text/json lines avec diagnostics codifies
+boundary: Façade publique; implementation detail dans vitte/log/internal/*
+versioning: API facade stable, additive only
+api_surface_stable: true
+diagnostics: VITTE-L0001..VITTE-L0099
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: v1
+>>>
