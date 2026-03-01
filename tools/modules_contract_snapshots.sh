@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 BIN="${BIN:-$ROOT_DIR/bin/vitte}"
 BASE_DIR="$ROOT_DIR/tests/modules/contracts"
-CRITICAL_MODULES=(abi http db core actor)
+CRITICAL_MODULES=(abi http db core actor alerts ast)
 UPDATE=0
 ALLOW_BREAKING=0
 CURRENT_VERSION="${CURRENT_VERSION:-}"
@@ -175,9 +175,20 @@ PY
     fi
     if [ -n "$removed" ]; then
       printf "[modules-contract-snapshots] removed (%s/%s):\n%s\n" "$mod" "$scope" "$removed"
-      if [ "$current_major" = "$baseline_major" ] && [ "$ALLOW_BREAKING" -ne 1 ]; then
-        die "breaking export removal in '$mod' requires major bump (baseline=$BASELINE_VERSION current=$CURRENT_VERSION)"
+      removed_file="$tmp_root/$mod.$scope.removed.txt"
+      printf "%s\n" "$removed" > "$removed_file"
+      export_policy_args=(
+        --module "$mod"
+        --scope "$scope"
+        --current-version "$CURRENT_VERSION"
+        --baseline-version "$BASELINE_VERSION"
+        --removed-file "$removed_file"
+      )
+      if [ "$ALLOW_BREAKING" -eq 1 ]; then
+        export_policy_args+=(--allow-breaking)
       fi
+      python3 "$ROOT_DIR/tools/lint_export_policy.py" "${export_policy_args[@]}" || \
+        die "breaking export removal in '$mod' requires major bump (baseline=$BASELINE_VERSION current=$CURRENT_VERSION)"
     fi
     diff -u "$old" "$new" || true
     die "exports snapshot mismatch for module '$mod' scope '$scope' (run with --update if intended)"
