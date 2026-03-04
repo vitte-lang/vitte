@@ -286,19 +286,46 @@ wrapper-stage-test:
 
 .PHONY: grammar-sync
 grammar-sync:
-	@python3 docs/book/scripts/sync_grammar_surface.py
+	@python3 book/grammar/scripts/sync_grammar.py
 
 .PHONY: grammar-check
 grammar-check:
-	@python3 docs/book/scripts/sync_grammar_surface.py --check
+	@python3 book/grammar/scripts/sync_grammar.py --check
+
+.PHONY: grammar-test
+grammar-test:
+	@python3 book/grammar/scripts/validate_examples.py
+
+.PHONY: grammar-test-update
+grammar-test-update:
+	@python3 book/grammar/scripts/validate_examples.py --update-snapshots
+
+.PHONY: grammar-docs
+grammar-docs:
+	@python3 book/grammar/scripts/build_railroad.py
+
+.PHONY: grammar-docs-check
+grammar-docs-check:
+	@python3 book/grammar/scripts/build_railroad.py --check
+
+.PHONY: grammar-gate
+grammar-gate: grammar-check grammar-test grammar-docs-check
 
 .PHONY: book-qa
 book-qa:
-	@python3 docs/book/scripts/qa_book.py
+	@python3 book/scripts/qa_book.py
 
 .PHONY: book-qa-strict
 book-qa-strict:
-	@python3 docs/book/scripts/qa_book.py --strict
+	@python3 book/scripts/qa_book.py --strict
+
+.PHONY: keywords-normalize
+keywords-normalize:
+	@python3 book/keywords/scripts/normalize_keywords.py
+
+.PHONY: keywords-lint
+keywords-lint:
+	@python3 book/keywords/scripts/lint_keywords.py
 
 .PHONY: update-diagnostics-ftl
 update-diagnostics-ftl:
@@ -806,6 +833,13 @@ help:
 	@echo "  make format     run clang-format"
 	@echo "  make tidy       run clang-tidy"
 	@echo "  make test       run tests (std/test)"
+	@echo "  make grammar-sync regenerate grammar surface artifacts from src/vitte/grammar/vitte.ebnf"
+	@echo "  make grammar-check fail if grammar generated artifacts are out of sync"
+	@echo "  make grammar-test validate grammar corpus + diagnostics snapshots"
+	@echo "  make grammar-docs regenerate railroad SVG diagrams"
+	@echo "  make grammar-gate run grammar-check + grammar-test"
+	@echo "  make keywords-normalize apply strict keyword template on book/keywords/*.md"
+	@echo "  make keywords-lint validate keyword quality sections/diagnostics/links/score"
 	@echo "  make test-examples build/check all examples/*.vit"
 	@echo "  make extern-abi validate #[extern] ABI (host profile)"
 	@echo "  make extern-abi-arduino validate #[extern] ABI (arduino)"
