@@ -5,15 +5,45 @@ Niveau: Avancé
 Prérequis: chapitre précédent `book/chapters/23-projet-sys.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/23-projet-sys.md`, `docs/book/chapters/25-projet-arduino.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Projet guide KV store**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
+
+Vous allez identifier les points clés de **Projet guide KV store**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+
+## Exemple minimal
+
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Projet guide KV store**.
+
+## Explication pas à pas
+
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Projet guide KV store** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Projet guide KV store**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Projet guide KV store**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Projet guide KV store**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
 ## Niveau local
 
@@ -21,13 +51,11 @@ Voir aussi: `book/chapters/23-projet-sys.md`, `docs/book/chapters/25-projet-ardu
 - Niveau local exemples guidés: Intermédiaire.
 - Niveau local exercices de diagnostic: Avancé.
 
-
 Ce chapitre poursuit un objectif clair: construire un KV store Vitte exploitable, avec un protocole d'opérations clair, une validation de clé unique et un flux d'erreurs déterministe. Nous allons passer d'un simple garde-fou de validation à un mini moteur clé-valeur complet (put/get/delete) avec backend mémoire.
 
 L'approche adoptée est volontairement littérale: chaque exemple doit être lisible comme une démonstration courte, avec une intention claire, un chemin d'exécution explicite et une conclusion vérifiable. Ce rythme est celui d'un manuel: comprendre, exécuter, puis retenir l'invariant utile.
 
 La méthode reste constante: poser une intention, l'implémenter dans une forme compacte, puis observer précisément ce que le programme garantit à l'exécution.
-
 
 Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
 
@@ -56,21 +84,19 @@ pick KvValue {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `form Entry {` cette ligne ouvre la structure `Entry` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. Exemple concret: plusieurs fonctions peuvent manipuler `Entry` sans redéfinir ses champs.
-2. `key: string` cette ligne déclare le champ `key` avec le type `string`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `string`.
-3. `value: string` cette ligne déclare le champ `value` avec le type `string`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `string`.
-4. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-5. `pick KvResult {` cette ligne ouvre le type fermé `KvResult` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. Exemple concret: toute valeur hors des `case` déclarés devient impossible à représenter.
-6. `case Ok` cette ligne décrit le cas `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
-7. `case ErrKey` cette ligne décrit le cas `ErrKey` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `ErrKey`, ce bloc devient le chemin actif.
-8. `case ErrState` cette ligne décrit le cas `ErrState` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `ErrState`, ce bloc devient le chemin actif.
-9. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-10. `pick KvValue {` cette ligne ouvre le type fermé `KvValue` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. Exemple concret: toute valeur hors des `case` déclarés devient impossible à représenter.
-11. `case Some(value: string)` cette ligne décrit le cas `Some(value: string)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Some(value: string)`, ce bloc devient le chemin actif.
-12. `case None` cette ligne décrit le cas `None` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `None`, ce bloc devient le chemin actif.
-13. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `form Entry {` -> Comportement: cette ligne ouvre la structure `Entry` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. -> Preuve: plusieurs fonctions peuvent manipuler `Entry` sans redéfinir ses champs.
+2. `key: string` -> Comportement: cette ligne déclare le champ `key` avec le type `string`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `string`.
+3. `value: string` -> Comportement: cette ligne déclare le champ `value` avec le type `string`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `string`.
+4. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+5. `pick KvResult {` -> Comportement: cette ligne ouvre le type fermé `KvResult` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. -> Preuve: toute valeur hors des `case` déclarés devient impossible à représenter.
+6. `case Ok` -> Comportement: ce cas décrit `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
+7. `case ErrKey` -> Comportement: ce cas décrit `ErrKey` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `ErrKey`, ce bloc devient le chemin actif.
+8. `case ErrState` -> Comportement: ce cas décrit `ErrState` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `ErrState`, ce bloc devient le chemin actif.
+9. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+10. `pick KvValue {` -> Comportement: cette ligne ouvre le type fermé `KvValue` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. -> Preuve: toute valeur hors des `case` déclarés devient impossible à représenter.
+11. `case Some(value: string)` -> Comportement: ce cas décrit `Some(value: string)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Some(value: string)`, ce bloc devient le chemin actif.
+12. `case None` -> Comportement: ce cas décrit `None` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `None`, ce bloc devient le chemin actif.
+13. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
@@ -102,12 +128,10 @@ proc key_valid(k: string) -> bool {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc key_valid(k: string) -> bool {` ici, le contrat complet est défini pour `key_valid`: entrées `k: string` et sortie `bool`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `key_valid` retourne toujours une valeur compatible avec `bool`.
-2. `if k == "" { give false }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `k == ""` est vrai, `give false` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `give true` ici, la branche renvoie immédiatement `true` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `true`.
-4. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc key_valid(k: string) -> bool {` -> Comportement: le contrat est défini pour `key_valid`: entrées `k: string` et sortie `bool`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `key_valid` retourne toujours une valeur compatible avec `bool`.
+2. `if k == "" { give false }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `k == ""` est vrai, `give false` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+3. `give true` -> Comportement: la branche renvoie immédiatement `true` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `true`.
+4. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `k == ""` est vrai, la sortie devient `false`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `true`.
@@ -150,20 +174,18 @@ give -1
 ```
 
 Lecture ligne par ligne (débutant):
-1. `form KvMem {` cette ligne ouvre la structure `KvMem` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. Exemple concret: plusieurs fonctions peuvent manipuler `KvMem` sans redéfinir ses champs.
-2. `entries: Entry[]` cette ligne déclare le champ `entries` avec le type `Entry[]`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `Entry[]`.
-3. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-4. `proc find_index(m: KvMem, k: string) -> int {` sur cette ligne, le contrat complet est posé pour `find_index`: entrées `m: KvMem, k: string` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `find_index` retourne toujours une valeur compatible avec `int`.
-5. `let i: int = 0` cette ligne crée la variable locale `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `i` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-6. `loop {` cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`). Exemple concret: à chaque tour, les gardes internes décident de continuer ou de sortir proprement.
-7. `if i >= m.entries.len() { break }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `i >= m.entries.len()` est vrai, `break` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-8. `if m.entries[i].key == k { give i }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `m.entries[i].key == k` est vrai, `give i` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-9. `set i = i + 1` cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux. Exemple concret: après exécution, `i` prend la nouvelle valeur `i + 1` pour les étapes suivantes.
-10. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-11. `give -1` sur cette ligne, la sortie est renvoyée immédiatement `-1` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `-1`.
-12. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `form KvMem {` -> Comportement: cette ligne ouvre la structure `KvMem` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. -> Preuve: plusieurs fonctions peuvent manipuler `KvMem` sans redéfinir ses champs.
+2. `entries: Entry[]` -> Comportement: cette ligne déclare le champ `entries` avec le type `Entry[]`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `Entry[]`.
+3. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+4. `proc find_index(m: KvMem, k: string) -> int {` -> Comportement: le contrat est posé pour `find_index`: entrées `m: KvMem, k: string` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `find_index` retourne toujours une valeur compatible avec `int`.
+5. `let i: int = 0` -> Comportement: cette ligne crée la variable `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `i` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
+6. `loop {` -> Comportement: cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`). -> Preuve: à chaque tour, les gardes internes décident de continuer ou de sortir proprement.
+7. `if i >= m.entries.len() { break }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `i >= m.entries.len()` est vrai, `break` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+8. `if m.entries[i].key == k { give i }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `m.entries[i].key == k` est vrai, `give i` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+9. `set i = i + 1` -> Comportement: cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux. -> Preuve: après exécution, `i` prend la nouvelle valeur `i + 1` pour les étapes suivantes.
+10. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+11. `give -1` -> Comportement: la sortie est renvoyée immédiatement `-1` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `-1`.
+12. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `m.entries[i].key == k` est vrai, la sortie devient `i`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `-1`.
@@ -206,29 +228,27 @@ otherwise { give ErrState }
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc put_guard(entries_len: int, k: string) -> KvResult {` ce passage fixe le contrat complet de `put_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `put_guard` retourne toujours une valeur compatible avec `KvResult`.
-2. `if not key_valid(k) { give ErrKey }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `not key_valid(k)` est vrai, `give ErrKey` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `if entries_len < 0 { give ErrState }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `entries_len < 0` est vrai, `give ErrState` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-4. `give Ok` ce passage retourne immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
-5. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-6. `proc put(m: KvMem, k: string, v: string) -> KvResult {` ici, le contrat complet est défini pour `put`: entrées `m: KvMem, k: string, v: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `put` retourne toujours une valeur compatible avec `KvResult`.
-7. `let g: KvResult = put_guard(m.entries.len(), k)` cette ligne crée la variable locale `g` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `g` reçoit ici le résultat de `put_guard(m.entries.len(), k)` et peut être réutilisé ensuite sans recalcul.
-8. `match g {` cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `g`, la même branche sera toujours exécutée.
-9. `case Ok {` cette ligne décrit le cas `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
-10. `let idx: int = find_index(m, k)` cette ligne crée la variable locale `idx` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `idx` reçoit ici le résultat de `find_index(m, k)` et peut être réutilisé ensuite sans recalcul.
-11. `if idx < 0 {` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-12. `m.entries.push(Entry(k, v))` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-13. `give Ok` ici, la branche renvoie immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
-14. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-15. `m.entries[idx] = Entry(k, v)` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-16. `give Ok` sur cette ligne, la sortie est renvoyée immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
-17. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-18. `case ErrKey { give ErrKey }` cette ligne décrit le cas `ErrKey` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `ErrKey`, ce bloc devient le chemin actif.
-19. `otherwise { give ErrState }` cette ligne définit le chemin de secours pour couvrir les situations non capturées par les cas explicites. Exemple concret: si aucun `case` ne correspond, `give ErrState` est exécuté pour garantir une sortie stable.
-20. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-21. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc put_guard(entries_len: int, k: string) -> KvResult {` -> Comportement: le contrat est fixé pour `put_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `put_guard` retourne toujours une valeur compatible avec `KvResult`.
+2. `if not key_valid(k) { give ErrKey }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `not key_valid(k)` est vrai, `give ErrKey` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+3. `if entries_len < 0 { give ErrState }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `entries_len < 0` est vrai, `give ErrState` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+4. `give Ok` -> Comportement: retourne immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
+5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+6. `proc put(m: KvMem, k: string, v: string) -> KvResult {` -> Comportement: le contrat est défini pour `put`: entrées `m: KvMem, k: string, v: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `put` retourne toujours une valeur compatible avec `KvResult`.
+7. `let g: KvResult = put_guard(m.entries.len(), k)` -> Comportement: cette ligne crée la variable `g` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `g` reçoit ici le résultat de `put_guard(m.entries.len(), k)` et peut être réutilisé ensuite sans recalcul.
+8. `match g {` -> Comportement: cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `g`, la même branche sera toujours exécutée.
+9. `case Ok {` -> Comportement: ce cas décrit `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
+10. `let idx: int = find_index(m, k)` -> Comportement: cette ligne crée la variable `idx` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `idx` reçoit ici le résultat de `find_index(m, k)` et peut être réutilisé ensuite sans recalcul.
+11. `if idx < 0 {` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+12. `m.entries.push(Entry(k, v))` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+13. `give Ok` -> Comportement: la branche renvoie immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
+14. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+15. `m.entries[idx] = Entry(k, v)` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+16. `give Ok` -> Comportement: la sortie est renvoyée immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
+17. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+18. `case ErrKey { give ErrKey }` -> Comportement: ce cas décrit `ErrKey` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `ErrKey`, ce bloc devient le chemin actif.
+19. `otherwise { give ErrState }` -> Comportement: cette ligne définit un chemin de secours explicite. -> Preuve: si aucun `case` ne correspond, `give ErrState` est exécuté pour garantir une sortie stable.
+20. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+21. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `not key_valid(k)` est vrai, la sortie devient `ErrKey`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Ok`.
@@ -293,42 +313,40 @@ proc delete(m: KvMem, k: string) -> KvResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc get_guard(entries_len: int, k: string) -> KvResult {` sur cette ligne, le contrat complet est posé pour `get_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `get_guard` retourne toujours une valeur compatible avec `KvResult`.
-2. `if not key_valid(k) { give ErrKey }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `not key_valid(k)` est vrai, `give ErrKey` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `if entries_len == 0 { give ErrState }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `entries_len == 0` est vrai, `give ErrState` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-4. `give Ok` ce passage retourne immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
-5. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-6. `proc delete_guard(entries_len: int, k: string) -> KvResult {` ce passage fixe le contrat complet de `delete_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `delete_guard` retourne toujours une valeur compatible avec `KvResult`.
-7. `if not key_valid(k) { give ErrKey }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `not key_valid(k)` est vrai, `give ErrKey` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-8. `if entries_len <= 0 { give ErrState }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `entries_len <= 0` est vrai, `give ErrState` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-9. `give Ok` ici, la branche renvoie immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
-10. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-11. `proc get(m: KvMem, k: string) -> KvValue {` ici, le contrat complet est défini pour `get`: entrées `m: KvMem, k: string` et sortie `KvValue`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `get` retourne toujours une valeur compatible avec `KvValue`.
-12. `let g: KvResult = get_guard(m.entries.len(), k)` cette ligne crée la variable locale `g` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `g` reçoit ici le résultat de `get_guard(m.entries.len(), k)` et peut être réutilisé ensuite sans recalcul.
-13. `match g {` cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `g`, la même branche sera toujours exécutée.
-14. `case Ok {` cette ligne décrit le cas `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
-15. `let idx: int = find_index(m, k)` cette ligne crée la variable locale `idx` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `idx` reçoit ici le résultat de `find_index(m, k)` et peut être réutilisé ensuite sans recalcul.
-16. `if idx < 0 { give None }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `idx < 0` est vrai, `give None` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-17. `give Some(m.entries[idx].value)` sur cette ligne, la sortie est renvoyée immédiatement `Some(m.entries[idx].value)` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Some(m.entries[idx].value)`.
-18. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-19. `otherwise { give None }` cette ligne définit le chemin de secours pour couvrir les situations non capturées par les cas explicites. Exemple concret: si aucun `case` ne correspond, `give None` est exécuté pour garantir une sortie stable.
-20. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-21. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-22. `proc delete(m: KvMem, k: string) -> KvResult {` sur cette ligne, le contrat complet est posé pour `delete`: entrées `m: KvMem, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `delete` retourne toujours une valeur compatible avec `KvResult`.
-23. `let g: KvResult = delete_guard(m.entries.len(), k)` cette ligne crée la variable locale `g` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `g` reçoit ici le résultat de `delete_guard(m.entries.len(), k)` et peut être réutilisé ensuite sans recalcul.
-24. `match g {` cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `g`, la même branche sera toujours exécutée.
-25. `case Ok {` cette ligne décrit le cas `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
-26. `let idx: int = find_index(m, k)` cette ligne crée la variable locale `idx` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `idx` reçoit ici le résultat de `find_index(m, k)` et peut être réutilisé ensuite sans recalcul.
-27. `if idx < 0 { give ErrState }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `idx < 0` est vrai, `give ErrState` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-28. `m.entries.remove_at(idx)` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-29. `give Ok` ce passage retourne immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
-30. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-31. `case ErrKey { give ErrKey }` cette ligne décrit le cas `ErrKey` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `ErrKey`, ce bloc devient le chemin actif.
-32. `otherwise { give ErrState }` cette ligne définit le chemin de secours pour couvrir les situations non capturées par les cas explicites. Exemple concret: si aucun `case` ne correspond, `give ErrState` est exécuté pour garantir une sortie stable.
-33. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-34. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc get_guard(entries_len: int, k: string) -> KvResult {` -> Comportement: le contrat est posé pour `get_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `get_guard` retourne toujours une valeur compatible avec `KvResult`.
+2. `if not key_valid(k) { give ErrKey }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `not key_valid(k)` est vrai, `give ErrKey` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+3. `if entries_len == 0 { give ErrState }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `entries_len == 0` est vrai, `give ErrState` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+4. `give Ok` -> Comportement: retourne immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
+5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+6. `proc delete_guard(entries_len: int, k: string) -> KvResult {` -> Comportement: le contrat est fixé pour `delete_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `delete_guard` retourne toujours une valeur compatible avec `KvResult`.
+7. `if not key_valid(k) { give ErrKey }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `not key_valid(k)` est vrai, `give ErrKey` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+8. `if entries_len <= 0 { give ErrState }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `entries_len <= 0` est vrai, `give ErrState` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+9. `give Ok` -> Comportement: la branche renvoie immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
+10. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+11. `proc get(m: KvMem, k: string) -> KvValue {` -> Comportement: le contrat est défini pour `get`: entrées `m: KvMem, k: string` et sortie `KvValue`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `get` retourne toujours une valeur compatible avec `KvValue`.
+12. `let g: KvResult = get_guard(m.entries.len(), k)` -> Comportement: cette ligne crée la variable `g` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `g` reçoit ici le résultat de `get_guard(m.entries.len(), k)` et peut être réutilisé ensuite sans recalcul.
+13. `match g {` -> Comportement: cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `g`, la même branche sera toujours exécutée.
+14. `case Ok {` -> Comportement: ce cas décrit `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
+15. `let idx: int = find_index(m, k)` -> Comportement: cette ligne crée la variable `idx` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `idx` reçoit ici le résultat de `find_index(m, k)` et peut être réutilisé ensuite sans recalcul.
+16. `if idx < 0 { give None }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `idx < 0` est vrai, `give None` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+17. `give Some(m.entries[idx].value)` -> Comportement: la sortie est renvoyée immédiatement `Some(m.entries[idx].value)` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Some(m.entries[idx].value)`.
+18. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+19. `otherwise { give None }` -> Comportement: cette ligne définit un chemin de secours explicite. -> Preuve: si aucun `case` ne correspond, `give None` est exécuté pour garantir une sortie stable.
+20. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+21. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+22. `proc delete(m: KvMem, k: string) -> KvResult {` -> Comportement: le contrat est posé pour `delete`: entrées `m: KvMem, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `delete` retourne toujours une valeur compatible avec `KvResult`.
+23. `let g: KvResult = delete_guard(m.entries.len(), k)` -> Comportement: cette ligne crée la variable `g` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `g` reçoit ici le résultat de `delete_guard(m.entries.len(), k)` et peut être réutilisé ensuite sans recalcul.
+24. `match g {` -> Comportement: cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `g`, la même branche sera toujours exécutée.
+25. `case Ok {` -> Comportement: ce cas décrit `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
+26. `let idx: int = find_index(m, k)` -> Comportement: cette ligne crée la variable `idx` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `idx` reçoit ici le résultat de `find_index(m, k)` et peut être réutilisé ensuite sans recalcul.
+27. `if idx < 0 { give ErrState }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `idx < 0` est vrai, `give ErrState` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+28. `m.entries.remove_at(idx)` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+29. `give Ok` -> Comportement: retourne immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
+30. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+31. `case ErrKey { give ErrKey }` -> Comportement: ce cas décrit `ErrKey` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `ErrKey`, ce bloc devient le chemin actif.
+32. `otherwise { give ErrState }` -> Comportement: cette ligne définit un chemin de secours explicite. -> Preuve: si aucun `case` ne correspond, `give ErrState` est exécuté pour garantir une sortie stable.
+33. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+34. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `not key_valid(k)` est vrai, la sortie devient `ErrKey`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Ok`.
@@ -373,22 +391,20 @@ otherwise { give ErrState }
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc kv_roundtrip(m: KvMem, k: string, v: string) -> KvResult {` ce passage fixe le contrat complet de `kv_roundtrip`: entrées `m: KvMem, k: string, v: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `kv_roundtrip` retourne toujours une valeur compatible avec `KvResult`.
-2. `let p: KvResult = put(m, k, v)` cette ligne crée la variable locale `p` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `p` reçoit ici le résultat de `put(m, k, v)` et peut être réutilisé ensuite sans recalcul.
-3. `match p {` cette ligne démarre un dispatch déterministe sur `p`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `p`, la même branche sera toujours exécutée.
-4. `case Ok {` cette ligne décrit le cas `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
-5. `let g: KvValue = get(m, k)` cette ligne crée la variable locale `g` de type `KvValue` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `g` reçoit ici le résultat de `get(m, k)` et peut être réutilisé ensuite sans recalcul.
-6. `match g {` cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `g`, la même branche sera toujours exécutée.
-7. `case Some(_) { give Ok }` cette ligne décrit le cas `Some(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Some(_)`, ce bloc devient le chemin actif.
-8. `otherwise { give ErrState }` cette ligne définit le chemin de secours pour couvrir les situations non capturées par les cas explicites. Exemple concret: si aucun `case` ne correspond, `give ErrState` est exécuté pour garantir une sortie stable.
-9. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-10. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-11. `case ErrKey { give ErrKey }` cette ligne décrit le cas `ErrKey` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `ErrKey`, ce bloc devient le chemin actif.
-12. `otherwise { give ErrState }` cette ligne définit le chemin de secours pour couvrir les situations non capturées par les cas explicites. Exemple concret: si aucun `case` ne correspond, `give ErrState` est exécuté pour garantir une sortie stable.
-13. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-14. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc kv_roundtrip(m: KvMem, k: string, v: string) -> KvResult {` -> Comportement: le contrat est fixé pour `kv_roundtrip`: entrées `m: KvMem, k: string, v: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `kv_roundtrip` retourne toujours une valeur compatible avec `KvResult`.
+2. `let p: KvResult = put(m, k, v)` -> Comportement: cette ligne crée la variable `p` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `p` reçoit ici le résultat de `put(m, k, v)` et peut être réutilisé ensuite sans recalcul.
+3. `match p {` -> Comportement: cette ligne démarre un dispatch déterministe sur `p`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `p`, la même branche sera toujours exécutée.
+4. `case Ok {` -> Comportement: ce cas décrit `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
+5. `let g: KvValue = get(m, k)` -> Comportement: cette ligne crée la variable `g` de type `KvValue` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `g` reçoit ici le résultat de `get(m, k)` et peut être réutilisé ensuite sans recalcul.
+6. `match g {` -> Comportement: cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `g`, la même branche sera toujours exécutée.
+7. `case Some(_) { give Ok }` -> Comportement: ce cas décrit `Some(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Some(_)`, ce bloc devient le chemin actif.
+8. `otherwise { give ErrState }` -> Comportement: cette ligne définit un chemin de secours explicite. -> Preuve: si aucun `case` ne correspond, `give ErrState` est exécuté pour garantir une sortie stable.
+9. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+10. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+11. `case ErrKey { give ErrKey }` -> Comportement: ce cas décrit `ErrKey` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `ErrKey`, ce bloc devient le chemin actif.
+12. `otherwise { give ErrState }` -> Comportement: cette ligne définit un chemin de secours explicite. -> Preuve: si aucun `case` ne correspond, `give ErrState` est exécuté pour garantir une sortie stable.
+13. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+14. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
@@ -426,16 +442,14 @@ entry main at kv/app {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `entry main at kv/app {` cette ligne fixe le point d'entrée `main` dans `kv/app` et sert de scénario exécutable de bout en bout pour le chapitre. Exemple concret: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
-2. `let m: KvMem = KvMem([])` cette ligne crée la variable locale `m` de type `KvMem` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `m` reçoit ici le résultat de `KvMem([])` et peut être réutilisé ensuite sans recalcul.
-3. `let a: KvResult = put(m, "user:1", "alice")` cette ligne crée la variable locale `a` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `a` reçoit ici le résultat de `put(m, "user:1", "alice")` et peut être réutilisé ensuite sans recalcul.
-4. `let b: KvValue = get(m, "user:1")` cette ligne crée la variable locale `b` de type `KvValue` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `b` reçoit ici le résultat de `get(m, "user:1")` et peut être réutilisé ensuite sans recalcul.
-5. `let c: KvResult = delete(m, "user:1")` cette ligne crée la variable locale `c` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `c` reçoit ici le résultat de `delete(m, "user:1")` et peut être réutilisé ensuite sans recalcul.
-6. `if a == Ok and c == Ok { return 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `a == Ok and c == Ok` est vrai, `return 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-7. `return 70` cette ligne termine l'exécution du bloc courant avec le code `70`, utile pour observer le résultat global du scénario. Exemple concret: un test d'exécution peut vérifier directement que le programme retourne `70`.
-8. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `entry main at kv/app {` -> Comportement: cette ligne fixe le point d'entrée `main` dans `kv/app` et sert de scénario exécutable de bout en bout pour le chapitre. -> Preuve: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
+2. `let m: KvMem = KvMem([])` -> Comportement: cette ligne crée la variable `m` de type `KvMem` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `m` reçoit ici le résultat de `KvMem([])` et peut être réutilisé ensuite sans recalcul.
+3. `let a: KvResult = put(m, "user:1", "alice")` -> Comportement: cette ligne crée la variable `a` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `a` reçoit ici le résultat de `put(m, "user:1", "alice")` et peut être réutilisé ensuite sans recalcul.
+4. `let b: KvValue = get(m, "user:1")` -> Comportement: cette ligne crée la variable `b` de type `KvValue` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `b` reçoit ici le résultat de `get(m, "user:1")` et peut être réutilisé ensuite sans recalcul.
+5. `let c: KvResult = delete(m, "user:1")` -> Comportement: cette ligne crée la variable `c` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `c` reçoit ici le résultat de `delete(m, "user:1")` et peut être réutilisé ensuite sans recalcul.
+6. `if a == Ok and c == Ok { return 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `a == Ok and c == Ok` est vrai, `return 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+7. `return 70` -> Comportement: cette ligne termine l'exécution du bloc courant avec le code `70`, utile pour observer le résultat global du scénario. -> Preuve: un test d'exécution peut vérifier directement que le programme retourne `70`.
+8. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le scénario principal se termine avec `return 70`.
@@ -449,7 +463,6 @@ Ce scénario est le minimum vital d'un KV store:
 - relire.
 - supprimer.
 - vérifier la cohérence du flux.
-
 
 ## Table erreur -> diagnostic -> correction
 
@@ -467,7 +480,6 @@ Critère pratique de qualité pour ce chapitre:
 - vous savez tracer `put/get/delete` en distinguant nominal, absence et erreur.
 - vous savez testér la validité de clé sans dépendre du backend.
 - vous pouvez changer le backend sans changer le contrat public des opérations.
-
 
 ## Test mental
 
@@ -503,7 +515,6 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 - `docs/book/keywords/break.md`.
 - `docs/book/keywords/case.md`.
 
-
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
 
@@ -519,4 +530,3 @@ Mini quiz:
 1. Quelle est l'invariant central de ce chapitre ?
 2. Quelle garde évite l'état invalide le plus fréquent ?
 3. Quel test simple prouve le comportement nominal ?
-

@@ -5,28 +5,46 @@ Niveau: Débutant
 Prérequis: aucun prérequis technique; lire `book/glossaire.md` pour le vocabulaire de base.
 Voir aussi: `docs/book/chapters/01-demarrer.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Préface**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
 
-Rôle d'ouverture: présenter la trajectoire d'apprentissage globale du livre, du niveau débutant jusqu'aux projets complets.
+Vous allez identifier les points clés de **Préface**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
-Ce chapitre poursuit un objectif clair: installer un cadre d'apprentissage progressif pour maîtriser Vitte en profondeur, du programme minimal jusqu'aux projets complets. Au lieu d'empiler des recettes, nous allons construire une lecture fiable du code, avec des choix explicites et des effets vérifiables.
+## Exemple minimal
 
-L'approche adoptée est volontairement littérale: chaque exemple doit être lisible comme une démonstration courte, avec une intention claire, un chemin d'exécution explicite et une conclusion vérifiable. Ce rythme est celui d'un manuel: comprendre, exécuter, puis retenir l'invariant utile.
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Préface**.
 
-La méthode reste constante: poser une intention, l'implémenter dans une forme compacte, puis observer précisément ce que le programme garantit à l'exécution.
+## Explication pas à pas
 
-Rappel éditorial: les bases (`int`, `string`, `bool`, `proc`, `let`, `give`, etc.) sont définies une fois dans `docs/book/chapters/00-avant-propos.md`. Dans cette préface, nous les utilisons sans les redéfinir à chaque bloc.
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Préface** dans l'ensemble du chapitre.
 
+## Pièges fréquents
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Préface**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Préface**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Préface**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
+
 ## 0.1 Comprendre la promesse du langage
 
 ```vit
@@ -36,11 +54,9 @@ proc promise(a: int, b: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc promise(a: int, b: int) -> int {` ici, le contrat complet est défini pour `promise`: entrées `a: int, b: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `promise` retourne toujours une valeur compatible avec `int`.
-2. `give a + b` ici, la branche renvoie immédiatement `a + b` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `a + b`.
-3. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc promise(a: int, b: int) -> int {` -> Comportement: le contrat est défini pour `promise`: entrées `a: int, b: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `promise` retourne toujours une valeur compatible avec `int`.
+2. `give a + b` -> Comportement: la branche renvoie immédiatement `a + b` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `a + b`.
+3. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `a + b`.
@@ -73,13 +89,11 @@ proc bounded(x: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc bounded(x: int) -> int {` sur cette ligne, le contrat complet est posé pour `bounded`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `bounded` retourne toujours une valeur compatible avec `int`.
-2. `if x < 0 { give 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `x < 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `if x > 100 { give 100 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `x > 100` est vrai, `give 100` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-4. `give x` sur cette ligne, la sortie est renvoyée immédiatement `x` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `x`.
-5. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc bounded(x: int) -> int {` -> Comportement: le contrat est posé pour `bounded`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `bounded` retourne toujours une valeur compatible avec `int`.
+2. `if x < 0 { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `x < 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+3. `if x > 100 { give 100 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `x > 100` est vrai, `give 100` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+4. `give x` -> Comportement: la sortie est renvoyée immédiatement `x` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `x`.
+5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `x < 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `x`.
@@ -111,12 +125,10 @@ entry main at core/app {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `entry main at core/app {` cette ligne fixe le point d'entrée `main` dans `core/app` et sert de scénario exécutable de bout en bout pour le chapitre. Exemple concret: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
-2. `let v: int = bounded(140)` cette ligne crée la variable locale `v` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `v` reçoit ici le résultat de `bounded(140)` et peut être réutilisé ensuite sans recalcul.
-3. `return v` cette ligne termine l'exécution du bloc courant avec le code `v`, utile pour observer le résultat global du scénario. Exemple concret: un test d'exécution peut vérifier directement que le programme retourne `v`.
-4. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `entry main at core/app {` -> Comportement: cette ligne fixe le point d'entrée `main` dans `core/app` et sert de scénario exécutable de bout en bout pour le chapitre. -> Preuve: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
+2. `let v: int = bounded(140)` -> Comportement: cette ligne crée la variable `v` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `v` reçoit ici le résultat de `bounded(140)` et peut être réutilisé ensuite sans recalcul.
+3. `return v` -> Comportement: cette ligne termine l'exécution du bloc courant avec le code `v`, utile pour observer le résultat global du scénario. -> Preuve: un test d'exécution peut vérifier directement que le programme retourne `v`.
+4. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le scénario principal se termine avec `return v`.
@@ -141,7 +153,6 @@ Erreurs fréquentes à éviter:
 ## À retenir
 
 Le ton du livre est technique, le cheminement est progressif et chaque chapitre sert la construction d'un vrai code Vitte. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, contrat explicite, et comportement observable du début à la fin. L'objectif final est de rendre chaque décision de code explicable à la première lecture, comme dans un texte de référence.
-
 
 ## Test mental
 
@@ -172,7 +183,6 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `docs/book/keywords/entry.md`.
 - `docs/book/keywords/give.md`.
 
-
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
 
@@ -181,4 +191,3 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-

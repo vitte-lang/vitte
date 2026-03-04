@@ -5,22 +5,51 @@ Niveau: Avancé.
 Prérequis: chapitre précédent `docs/book/chapters/25-projet-arduino.md` et `book/glossaire.md`.
 Voir aussi: `docs/book/chapters/25-projet-arduino.md`, `docs/book/chapters/27-grammaire.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Projet guide Éditeur**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
+
+Vous allez identifier les points clés de **Projet guide Éditeur**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+
+## Exemple minimal
+
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Projet guide Éditeur**.
+
+## Explication pas à pas
+
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Projet guide Éditeur** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Projet guide Éditeur**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Projet guide Éditeur**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Projet guide Éditeur**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
 ## Niveau local
 
 - Niveau local section coeur: Avancé.
 - Niveau local exemples guidés: Intermédiaire.
 - Niveau local exercices de diagnostic: Avancé.
-
 
 Ce chapitre construit un moteur d'éditeur exploitable en contexte réel: commandes enrichies, undo/redo exact, invariants explicites, résultat typé, historique cohérent, observabilité et extension maîtrisée.
 
@@ -539,7 +568,6 @@ Anti-patterns explicites:
 - inversion incomplète de commandes (absence de `deleted` pour `Backspace`).
 - écriture concurrente directe dans `doc/cursor/history` sans file sérialisée.
 
-
 ## Table erreur -> diagnostic -> correction
 
 | Erreur | Diagnostic | Correction |
@@ -602,7 +630,6 @@ Contraintes:
 - `docs/book/keywords/case.md`.
 - `docs/book/keywords/entry.md`.
 
-
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
 
@@ -611,4 +638,3 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-

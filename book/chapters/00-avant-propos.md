@@ -5,22 +5,51 @@ Niveau: Débutant
 Prérequis: aucun prérequis technique; lire `book/glossaire.md` pour le vocabulaire de base.
 Voir aussi: `docs/book/chapters/01-demarrer.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Avant-propos**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
+
+Vous allez identifier les points clés de **Avant-propos**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+
+## Exemple minimal
+
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Avant-propos**.
+
+## Explication pas à pas
+
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Avant-propos** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Avant-propos**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Avant-propos**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Avant-propos**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
 ## Niveau local
 
 - Niveau local section coeur: Avancé.
 - Niveau local exemples guidés: Intermédiaire.
 - Niveau local exercices de diagnostic: Avancé.
-
 
 Rôle d'ouverture: installer la méthode de lecture, la discipline d'explication et les repères de base.
 
@@ -29,7 +58,6 @@ Ce chapitre poursuit un objectif clair: poser la méthode de travail de ce livre
 L'approche adoptée est volontairement littérale: chaque exemple doit être lisible comme une démonstration courte, avec une intention claire, un chemin d'exécution explicite et une conclusion vérifiable. Ce rythme est celui d'un manuel: comprendre, exécuter, puis retenir l'invariant utile.
 
 La méthode reste constante: poser une intention, l'implémenter dans une forme compacte, puis observer précisément ce que le programme garantit à l'exécution.
-
 
 Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
 ## 0.0 Repères de base
@@ -81,11 +109,10 @@ proc contract_demo(x: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc contract_demo(x: int) -> int {` ici, le contrat complet est défini pour `contract_demo`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `contract_demo` retourne toujours une valeur compatible avec `int`.
-2. `if x < 0 { give 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `x < 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `give x` ici, la branche renvoie immédiatement `x` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `x`.
-4. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `proc contract_demo(x: int) -> int {` -> Comportement: le contrat annonce une entrée `x` et une sortie `int`. -> Preuve: tout appel doit produire un entier.
+2. `if x < 0 { give 0 }` -> Comportement: garde immédiate sur le cas invalide. -> Preuve: `x = -3` déclenche la branche et renvoie `0`.
+3. `give x` -> Comportement: chemin nominal sans transformation cachée. -> Preuve: `x = 8` renvoie `8`.
+4. `}` -> Comportement: fin du bloc, aucune instruction implicite. -> Preuve: la sortie est déjà déterminée par les `give` précédents.
 
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `x < 0` est vrai, la sortie devient `0`.
@@ -124,17 +151,12 @@ give acc
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc loop_demo(n: int) -> int {` sur cette ligne, le contrat complet est posé pour `loop_demo`: entrées `n: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `loop_demo` retourne toujours une valeur compatible avec `int`.
-2. `let i: int = 0` cette ligne crée la variable locale `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `i` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-3. `let acc: int = 0` cette ligne crée la variable locale `acc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `acc` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-4. `loop {` cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`). Exemple concret: à chaque tour, les gardes internes décident de continuer ou de sortir proprement.
-5. `if i >= n { break }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `i >= n` est vrai, `break` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-6. `set acc = acc + i` cette ligne réalise une mutation volontaire et visible: l'état `acc` change ici, à cet endroit précis du flux. Exemple concret: après exécution, `acc` prend la nouvelle valeur `acc + i` pour les étapes suivantes.
-7. `set i = i + 1` cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux. Exemple concret: après exécution, `i` prend la nouvelle valeur `i + 1` pour les étapes suivantes.
-8. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-9. `give acc` sur cette ligne, la sortie est renvoyée immédiatement `acc` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `acc`.
-10. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `let i: int = 0` -> Comportement: initialise l’index de boucle. -> Preuve: la première itération part toujours de `i = 0`.
+2. `let acc: int = 0` -> Comportement: initialise l’accumulateur. -> Preuve: la somme démarre à zéro.
+3. `if i >= n { break }` -> Comportement: borne de sortie explicite. -> Preuve: la boucle s’arrête dès que la condition devient vraie.
+4. `set acc = acc + i` -> Comportement: ajoute la valeur courante à la somme. -> Preuve: `acc` augmente de `i` à chaque tour valide.
+5. `set i = i + 1` -> Comportement: progression monotone vers la borne. -> Preuve: `i` finit par atteindre `n`.
+6. `give acc` -> Comportement: renvoie la somme calculée. -> Preuve: pour `n = 4`, la sortie vaut `6` (0+1+2+3).
 
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
@@ -174,18 +196,11 @@ proc to_exit(r: OpResult) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `pick OpResult {` cette ligne ouvre le type fermé `OpResult` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. Exemple concret: toute valeur hors des `case` déclarés devient impossible à représenter.
-2. `case Ok(value: int)` cette ligne décrit le cas `Ok(value: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Ok(value: int)`, ce bloc devient le chemin actif.
-3. `case Err(code: int)` cette ligne décrit le cas `Err(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Err(code: int)`, ce bloc devient le chemin actif.
-4. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-5. `proc to_exit(r: OpResult) -> int {` ce passage fixe le contrat complet de `to_exit`: entrées `r: OpResult` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `to_exit` retourne toujours une valeur compatible avec `int`.
-6. `match r {` cette ligne démarre un dispatch déterministe sur `r`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `r`, la même branche sera toujours exécutée.
-7. `case Ok(_) { give 0 }` cette ligne décrit le cas `Ok(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Ok(_)`, ce bloc devient le chemin actif.
-8. `case Err(c) { give c }` cette ligne décrit le cas `Err(c)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Err(c)`, ce bloc devient le chemin actif.
-9. `otherwise { give 70 }` cette ligne définit le chemin de secours pour couvrir les situations non capturées par les cas explicites. Exemple concret: si aucun `case` ne correspond, `give 70` est exécuté pour garantir une sortie stable.
-10. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-11. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `pick OpResult { ... }` -> Comportement: encode explicitement les états `Ok` et `Err`. -> Preuve: aucun autre état n’est accepté sans modifier le type.
+2. `match r {` -> Comportement: force un choix de branche lisible. -> Preuve: un même `r` prend toujours la même branche.
+3. `case Ok(_) { give 0 }` -> Comportement: projection technique du succès vers le code `0`. -> Preuve: `Ok(42)` renvoie `0`.
+4. `case Err(c) { give c }` -> Comportement: propage le code d’erreur métier. -> Preuve: `Err(64)` renvoie `64`.
+5. `otherwise { give 70 }` -> Comportement: garde de secours explicite. -> Preuve: une forme non prévue renvoie `70` au lieu de casser.
 
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
@@ -211,7 +226,6 @@ Erreurs fréquentes à éviter:
 ## À retenir
 
 Vous lisez ce livre comme un atelier technique, chaque exemple est runnable et chaque chapitre prolonge les invariants du précédent. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, contrat explicite, et comportement observable du début à la fin. L'objectif final est de rendre chaque décision de code explicable à la première lecture, comme dans un texte de référence.
-
 
 ## Test mental
 
@@ -241,7 +255,6 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `docs/book/keywords/break.md`.
 - `docs/book/keywords/case.md`.
 - `docs/book/keywords/continue.md`.
-
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

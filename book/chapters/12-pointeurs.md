@@ -5,24 +5,46 @@ Niveau: Intermédiaire
 Prérequis: chapitre précédent `docs/book/chapters/11-collections.md` et `book/glossaire.md`.
 Voir aussi: `docs/book/chapters/11-collections.md`, `docs/book/chapters/13-generiques.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Pointeurs, références et mémoire**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
 
-Ce chapitre poursuit un objectif clair: encadrer le travail mémoire en Vitte pour que chaque accès sensible soit protégé par des préconditions visibles. Au lieu d'empiler des recettes, nous allons construire une lecture fiable du code, avec des choix explicites et des effets vérifiables.
+Vous allez identifier les points clés de **Pointeurs, références et mémoire**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
-L'approche adoptée est volontairement littérale: chaque exemple doit être lisible comme une démonstration courte, avec une intention claire, un chemin d'exécution explicite et une conclusion vérifiable. Ce rythme est celui d'un manuel: comprendre, exécuter, puis retenir l'invariant utile.
+## Exemple minimal
 
-La méthode reste constante: poser une intention, l'implémenter dans une forme compacte, puis observer précisément ce que le programme garantit à l'exécution.
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Pointeurs, références et mémoire**.
 
+## Explication pas à pas
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Pointeurs, références et mémoire** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Pointeurs, références et mémoire**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Pointeurs, références et mémoire**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Pointeurs, références et mémoire**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
+
 ## 12.1 Confiner une instruction machine dans une frontière courte
 
 ```vit
@@ -34,13 +56,11 @@ proc cpu_pause() {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc cpu_pause() {` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-2. `unsafe {` cette ligne marque une zone sensible qui doit rester courte, justifiée et facile à auditer dans un contexte système. Exemple concret: on y place seulement l'opération technique impossible à exprimer en mode sûr.
-3. `asm("pause")` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-4. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-5. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc cpu_pause() {` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+2. `unsafe {` -> Comportement: cette ligne marque une zone sensible qui doit rester courte, justifiée et facile à auditer dans un contexte système. -> Preuve: on y place seulement l'opération technique impossible à exprimer en mode sûr.
+3. `asm("pause")` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+4. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
@@ -76,16 +96,14 @@ proc read_at(b: Buffer, i: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `form Buffer {` cette ligne ouvre la structure `Buffer` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. Exemple concret: plusieurs fonctions peuvent manipuler `Buffer` sans redéfinir ses champs.
-2. `data: int[]` cette ligne déclare le champ `data` avec le type `int[]`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int[]`.
-3. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-4. `proc read_at(b: Buffer, i: int) -> int {` ici, le contrat complet est défini pour `read_at`: entrées `b: Buffer, i: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `read_at` retourne toujours une valeur compatible avec `int`.
-5. `if i < 0 { give 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `i < 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-6. `if i >= b.data.len() { give 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `i >= b.data.len()` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-7. `give b.data[i]` ici, la branche renvoie immédiatement `b.data[i]` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `b.data[i]`.
-8. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `form Buffer {` -> Comportement: cette ligne ouvre la structure `Buffer` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. -> Preuve: plusieurs fonctions peuvent manipuler `Buffer` sans redéfinir ses champs.
+2. `data: int[]` -> Comportement: cette ligne déclare le champ `data` avec le type `int[]`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int[]`.
+3. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+4. `proc read_at(b: Buffer, i: int) -> int {` -> Comportement: le contrat est défini pour `read_at`: entrées `b: Buffer, i: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `read_at` retourne toujours une valeur compatible avec `int`.
+5. `if i < 0 { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `i < 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+6. `if i >= b.data.len() { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `i >= b.data.len()` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+7. `give b.data[i]` -> Comportement: la branche renvoie immédiatement `b.data[i]` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `b.data[i]`.
+8. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `i < 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `b.data[i]`.
@@ -122,14 +140,12 @@ proc write_at(b: Buffer, i: int, v: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc write_at(b: Buffer, i: int, v: int) -> int {` sur cette ligne, le contrat complet est posé pour `write_at`: entrées `b: Buffer, i: int, v: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `write_at` retourne toujours une valeur compatible avec `int`.
-2. `if i < 0 { give 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `i < 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `if i >= b.data.len() { give 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `i >= b.data.len()` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-4. `b.data[i] = v` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-5. `give 1` sur cette ligne, la sortie est renvoyée immédiatement `1` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `1`.
-6. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc write_at(b: Buffer, i: int, v: int) -> int {` -> Comportement: le contrat est posé pour `write_at`: entrées `b: Buffer, i: int, v: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `write_at` retourne toujours une valeur compatible avec `int`.
+2. `if i < 0 { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `i < 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+3. `if i >= b.data.len() { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `i >= b.data.len()` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+4. `b.data[i] = v` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+5. `give 1` -> Comportement: la sortie est renvoyée immédiatement `1` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `1`.
+6. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `i < 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `1`.
@@ -162,7 +178,6 @@ Critère pratique de qualité pour ce chapitre:
 - vous savez montrer où commence et où finit la zone `unsafe`.
 - vous pouvez prouver qu'un accès hors borne n'écrit jamais en mémoire.
 - vous pouvez expliquer le contrat de retour pour chaque cas invalide.
-
 
 ## Test mental
 
@@ -198,7 +213,6 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 - `docs/book/keywords/form.md`.
 - `docs/book/keywords/give.md`.
 
-
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
 
@@ -214,4 +228,3 @@ Mini quiz:
 1. Quelle est l'invariant central de ce chapitre ?
 2. Quelle garde évite l'état invalide le plus fréquent ?
 3. Quel test simple prouve le comportement nominal ?
-

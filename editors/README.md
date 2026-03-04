@@ -2,7 +2,7 @@
 
 This folder provides syntax highlighting for Vitte (`.vit`).
 
-## Quick install (binary + syntax for 3 editors)
+## Quick install (binary + syntax for 4 editors)
 
 From repository root:
 
@@ -16,6 +16,7 @@ This installs:
 - Vim files: `~/.vim/{syntax,indent,ftdetect,ftplugin,compiler}/`
 - Emacs files: `~/.emacs.d/lisp/`
 - Nano file: `~/.config/nano/vitte.nanorc` and auto-include in `~/.nanorc`
+- Geany file: `~/.config/geany/filedefs/filetypes.vitte.conf`
 
 ## Vim
 
@@ -94,6 +95,43 @@ include "~/.config/nano/vitte.nanorc"
 /path/to/vitte/bin/vitte check path/to/file.vit
 ```
 
+## Geany
+
+1. Install automatically (recommended):
+
+```bash
+./editors/geany/install_geany.sh
+```
+
+2. Or install manually, copy:
+
+   - `~/.config/geany/filedefs/filetypes.vitte.conf`
+   - optional common fragment: `~/.config/geany/filedefs/filetypes.common` (merge from `editors/geany/filetypes.common`)
+   - `~/.config/geany/filetype_extensions.conf` (contains `Vitte=*.vit;`)
+   - `~/.config/geany/snippets.conf` (append section from `editors/geany/snippets.vitte.conf`)
+
+3. Restart Geany.
+
+4. Open a `.vit` file. Mapping is automatic via `filetype_extensions.conf`.
+   If needed:
+
+   - `Document -> Set Filetype -> Programming Languages -> vitte`
+
+5. Use Build menu commands:
+
+- `Check` -> `vitte check <current-file>`
+- `Build` -> `vitte build <current-file>`
+- `Run` -> `vitte run <current-file>`
+- `Test` -> `vitte test <project-dir>`
+- `Format` -> `vitte fmt <current-file>`
+- `Parse` -> `vitte parse <current-file>`
+
+Snippets (Geany autocomplete snippets):
+- `entry_main`
+- `proc`
+- `form`
+- `trait`
+
 ## VS Code
 
 This repo includes a minimal VS Code language definition under `editors/vscode/`:
@@ -117,12 +155,13 @@ which vitte
 vitte --version
 ```
 
-Then open a `.vit` file in Vim, Emacs, and Nano and confirm syntax highlighting is active.
+Then open a `.vit` file in Vim, Emacs, Nano, and Geany and confirm syntax highlighting is active.
 
 Completion notes:
 - Vim: `C-x C-o` (uses `omnifunc=syntaxcomplete#Complete` in `ftplugin`).
 - Emacs: `M-TAB` / `completion-at-point` (keywords/types/builtins).
 - Nano: no native semantic autocompletion; syntax highlighting only.
+- Geany: no native semantic autocompletion here; syntax + build commands only.
 
 ## Uninstall (manual)
 
@@ -131,6 +170,8 @@ rm -f /usr/local/bin/vitte
 rm -f ~/.vim/syntax/vitte.vim ~/.vim/indent/vitte.vim ~/.vim/ftdetect/vitte.vim ~/.vim/ftplugin/vitte.vim ~/.vim/compiler/vitte.vim
 rm -f ~/.emacs.d/lisp/vitte-mode.el ~/.emacs.d/lisp/vitte-indent.el
 rm -f ~/.config/nano/vitte.nanorc
+rm -f ~/.config/geany/filedefs/filetypes.vitte.conf
+sed -i '/^Vitte=\\*\\.vit;$/d' ~/.config/geany/filetype_extensions.conf
 ```
 
 Also remove this line from `~/.nanorc` if present:
@@ -145,10 +186,16 @@ include "~/.config/nano/vitte.nanorc"
 - No highlighting in Vim: run `:set filetype?` and verify it returns `vitte`.
 - Emacs keybindings missing: verify `(require 'vitte-mode)` is loaded and reopen the buffer.
 - Nano include ignored: check `~/.nanorc` contains the include line exactly once.
+- Geany not detected: verify file name is exactly `filetypes.vitte.conf` in `~/.config/geany/filedefs/`, then restart Geany.
 
 ## Sources in this repo
 
 - Vim: `editors/vim/`
 - Emacs: `editors/emacs/`
 - Nano: `editors/nano/`
+- Geany: `editors/geany/`
+  - filetype: `editors/geany/filetypes.vitte.conf`
+  - extension map: `editors/geany/filetype_extensions.conf`
+  - snippets: `editors/geany/snippets.vitte.conf`
+  - installer: `editors/geany/install_geany.sh`
 - VS Code: `editors/vscode/`

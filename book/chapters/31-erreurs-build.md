@@ -5,14 +5,45 @@ Niveau: Avancé.
 Prérequis: chapitre précédent `book/chapters/30-faq.md` et `docs/book/grammar-surface.ebnf`.
 Voir aussi: `book/chapters/30-faq.md`, `docs/book/chapters/16-interop.md`, `book/chapters/23-projet-sys.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Erreurs de build**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
+
+## Ce que vous allez faire
+
+Vous allez identifier les points clés de **Erreurs de build**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+
+## Exemple minimal
+
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Erreurs de build**.
+
+## Explication pas à pas
+
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Erreurs de build** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Erreurs de build**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Erreurs de build**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Erreurs de build**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
 ## Niveau local
 
@@ -57,6 +88,10 @@ emit 1
 # casse: statement top-level.
 ```
 
+Lecture ligne par ligne (débutant):
+1. `emit 1` -> Comportement: statement placé au top-level. -> Preuve: le parseur attend une déclaration top-level et rejette ce fichier.
+2. `# casse: statement top-level.` -> Comportement: commentaire de diagnostic local. -> Preuve: le message explique pourquoi l'erreur vient de la grammaire, pas du linker.
+
 Fix:
 
 ```vit
@@ -66,6 +101,12 @@ entry main at app/repro {
 }
 ```
 
+Lecture ligne par ligne (débutant):
+1. `entry main at app/repro {` -> Comportement: ouvre un bloc exécutable valide au top-level. -> Preuve: la structure respecte la grammaire.
+2. `emit 1` -> Comportement: statement désormais dans un bloc autorisé. -> Preuve: le parseur accepte cette ligne.
+3. `return 0` -> Comportement: termine explicitement le scénario. -> Preuve: la sortie est déterministe pour le test.
+4. `}` -> Comportement: ferme proprement le bloc d'entrée. -> Preuve: le fichier est syntaxiquement complet.
+
 <<< minimal reproducer link >>>
 
 ```vit
@@ -74,6 +115,11 @@ entry main at app/repro {
 }
 # parse OK, link KO: symbole absent.
 ```
+
+Lecture ligne par ligne (débutant):
+1. `entry main at app/repro {` -> Comportement: la forme top-level est valide. -> Preuve: le parse passe.
+2. `return native_missing(1)` -> Comportement: appel d'un symbole externe non fourni. -> Preuve: l'échec survient au link avec `undefined symbol`.
+3. `}` -> Comportement: fin correcte du bloc. -> Preuve: la cause n'est pas syntaxique mais runtime/édition de liens.
 
 Fix: fournir `native_missing` dans le runtime ou remplacer l'appel.
 

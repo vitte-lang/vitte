@@ -5,15 +5,45 @@ Niveau: Avancé
 Prérequis: chapitre précédent `docs/book/chapters/24-projet-kv.md` et `book/glossaire.md`.
 Voir aussi: `docs/book/chapters/24-projet-kv.md`, `docs/book/chapters/26-projet-editor.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Projet guide Arduino**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
+
+Vous allez identifier les points clés de **Projet guide Arduino**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+
+## Exemple minimal
+
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Projet guide Arduino**.
+
+## Explication pas à pas
+
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Projet guide Arduino** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Projet guide Arduino**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Projet guide Arduino**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Projet guide Arduino**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
 ## Niveau local
 
@@ -21,11 +51,9 @@ Voir aussi: `docs/book/chapters/24-projet-kv.md`, `docs/book/chapters/26-projet-
 - Niveau local exemples guidés: Intermédiaire.
 - Niveau local exercices de diagnostic: Avancé.
 
-
 Ce chapitre poursuit un objectif clair: construire une boucle embarquée Vitte utilisable en conditions réelles, avec gestion du bruit capteur, seuils robustes, sécurité actionneur et comportement déterministe. Nous allons passer d'une démonstration simple à un mini contrôleur complet.
 
 L'idée directrice est la suivante: en embarqué, la robustesse vient de la discipline des invariants. Chaque étape doit être explicite, testable et isolable: acquisition, assainissement, filtrage, décision, projection matérielle.
-
 
 Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
 
@@ -56,22 +84,21 @@ form ControllerCfg {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `pick ControlState {` cette ligne ouvre le type fermé `ControlState` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. Exemple concret: toute valeur hors des `case` déclarés devient impossible à représenter.
-2. `case Idle` cette ligne décrit le cas `Idle` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Idle`, ce bloc devient le chemin actif.
-3. `case Armed` cette ligne décrit le cas `Armed` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Armed`, ce bloc devient le chemin actif.
-4. `case Alert` cette ligne décrit le cas `Alert` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Alert`, ce bloc devient le chemin actif.
-5. `case Fault(code: int)` cette ligne décrit le cas `Fault(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Fault(code: int)`, ce bloc devient le chemin actif.
-6. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-7. `form Sample {` cette ligne ouvre la structure `Sample` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. Exemple concret: plusieurs fonctions peuvent manipuler `Sample` sans redéfinir ses champs.
-8. `raw: int` cette ligne déclare le champ `raw` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-9. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-10. `form ControllerCfg {` cette ligne ouvre la structure `ControllerCfg` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. Exemple concret: plusieurs fonctions peuvent manipuler `ControllerCfg` sans redéfinir ses champs.
-11. `min_raw: int` cette ligne déclare le champ `min_raw` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-12. `max_raw: int` cette ligne déclare le champ `max_raw` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-13. `alert_on: int` cette ligne déclare le champ `alert_on` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-14. `alert_off: int` cette ligne déclare le champ `alert_off` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-15. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `pick ControlState {` -> Comportement: cette ligne ouvre le type fermé `ControlState` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. -> Preuve: toute valeur hors des `case` déclarés devient impossible à représenter.
+2. `case Idle` -> Comportement: ce cas décrit `Idle` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Idle`, ce bloc devient le chemin actif.
+3. `case Armed` -> Comportement: ce cas décrit `Armed` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Armed`, ce bloc devient le chemin actif.
+4. `case Alert` -> Comportement: ce cas décrit `Alert` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Alert`, ce bloc devient le chemin actif.
+5. `case Fault(code: int)` -> Comportement: ce cas décrit `Fault(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Fault(code: int)`, ce bloc devient le chemin actif.
+6. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+7. `form Sample {` -> Comportement: cette ligne ouvre la structure `Sample` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. -> Preuve: plusieurs fonctions peuvent manipuler `Sample` sans redéfinir ses champs.
+8. `raw: int` -> Comportement: cette ligne déclare le champ `raw` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+9. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+10. `form ControllerCfg {` -> Comportement: cette ligne ouvre la structure `ControllerCfg` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. -> Preuve: plusieurs fonctions peuvent manipuler `ControllerCfg` sans redéfinir ses champs.
+11. `min_raw: int` -> Comportement: cette ligne déclare le champ `min_raw` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+12. `max_raw: int` -> Comportement: cette ligne déclare le champ `max_raw` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+13. `alert_on: int` -> Comportement: cette ligne déclare le champ `alert_on` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+14. `alert_off: int` -> Comportement: cette ligne déclare le champ `alert_off` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+15. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
@@ -103,15 +130,14 @@ proc clamp_raw(s: Sample, cfg: ControllerCfg) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc read_raw(v: int) -> Sample {` ici, le contrat complet est défini pour `read_raw`: entrées `v: int` et sortie `Sample`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `read_raw` retourne toujours une valeur compatible avec `Sample`.
-2. `give Sample(v)` ici, la branche renvoie immédiatement `Sample(v)` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Sample(v)`.
-3. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-4. `proc clamp_raw(s: Sample, cfg: ControllerCfg) -> int {` sur cette ligne, le contrat complet est posé pour `clamp_raw`: entrées `s: Sample, cfg: ControllerCfg` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `clamp_raw` retourne toujours une valeur compatible avec `int`.
-5. `if s.raw < cfg.min_raw { give cfg.min_raw }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `s.raw < cfg.min_raw` est vrai, `give cfg.min_raw` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-6. `if s.raw > cfg.max_raw { give cfg.max_raw }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `s.raw > cfg.max_raw` est vrai, `give cfg.max_raw` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-7. `give s.raw` sur cette ligne, la sortie est renvoyée immédiatement `s.raw` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `s.raw`.
-8. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `proc read_raw(v: int) -> Sample {` -> Comportement: le contrat est défini pour `read_raw`: entrées `v: int` et sortie `Sample`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `read_raw` retourne toujours une valeur compatible avec `Sample`.
+2. `give Sample(v)` -> Comportement: la branche renvoie immédiatement `Sample(v)` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Sample(v)`.
+3. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+4. `proc clamp_raw(s: Sample, cfg: ControllerCfg) -> int {` -> Comportement: le contrat est posé pour `clamp_raw`: entrées `s: Sample, cfg: ControllerCfg` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `clamp_raw` retourne toujours une valeur compatible avec `int`.
+5. `if s.raw < cfg.min_raw { give cfg.min_raw }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `s.raw < cfg.min_raw` est vrai, `give cfg.min_raw` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+6. `if s.raw > cfg.max_raw { give cfg.max_raw }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `s.raw > cfg.max_raw` est vrai, `give cfg.max_raw` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+7. `give s.raw` -> Comportement: la sortie est renvoyée immédiatement `s.raw` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `s.raw`.
+8. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `s.raw < cfg.min_raw` est vrai, la sortie devient `cfg.min_raw`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Sample(v)`.
@@ -150,18 +176,17 @@ proc filter3_mean(f: Filter3) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `form Filter3 {` cette ligne ouvre la structure `Filter3` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. Exemple concret: plusieurs fonctions peuvent manipuler `Filter3` sans redéfinir ses champs.
-2. `a: int` cette ligne déclare le champ `a` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-3. `b: int` cette ligne déclare le champ `b` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-4. `c: int` cette ligne déclare le champ `c` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-5. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-6. `proc filter3_push(f: Filter3, v: int) -> Filter3 {` ce passage fixe le contrat complet de `filter3_push`: entrées `f: Filter3, v: int` et sortie `Filter3`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `filter3_push` retourne toujours une valeur compatible avec `Filter3`.
-7. `give Filter3(f.b, f.c, v)` ce passage retourne immédiatement `Filter3(f.b, f.c, v)` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Filter3(f.b, f.c, v)`.
-8. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-9. `proc filter3_mean(f: Filter3) -> int {` ici, le contrat complet est défini pour `filter3_mean`: entrées `f: Filter3` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `filter3_mean` retourne toujours une valeur compatible avec `int`.
-10. `give (f.a + f.b + f.c) / 3` ici, la branche renvoie immédiatement `(f.a + f.b + f.c) / 3` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `(f.a + f.b + f.c) / 3`.
-11. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `form Filter3 {` -> Comportement: cette ligne ouvre la structure `Filter3` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. -> Preuve: plusieurs fonctions peuvent manipuler `Filter3` sans redéfinir ses champs.
+2. `a: int` -> Comportement: cette ligne déclare le champ `a` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+3. `b: int` -> Comportement: cette ligne déclare le champ `b` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+4. `c: int` -> Comportement: cette ligne déclare le champ `c` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+5. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+6. `proc filter3_push(f: Filter3, v: int) -> Filter3 {` -> Comportement: le contrat est fixé pour `filter3_push`: entrées `f: Filter3, v: int` et sortie `Filter3`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `filter3_push` retourne toujours une valeur compatible avec `Filter3`.
+7. `give Filter3(f.b, f.c, v)` -> Comportement: retourne immédiatement `Filter3(f.b, f.c, v)` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Filter3(f.b, f.c, v)`.
+8. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+9. `proc filter3_mean(f: Filter3) -> int {` -> Comportement: le contrat est défini pour `filter3_mean`: entrées `f: Filter3` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `filter3_mean` retourne toujours une valeur compatible avec `int`.
+10. `give (f.a + f.b + f.c) / 3` -> Comportement: la branche renvoie immédiatement `(f.a + f.b + f.c) / 3` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `(f.a + f.b + f.c) / 3`.
+11. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Filter3(f.b, f.c, v)`.
@@ -193,12 +218,11 @@ proc to_percent(v: int, cfg: ControllerCfg) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc to_percent(v: int, cfg: ControllerCfg) -> int {` sur cette ligne, le contrat complet est posé pour `to_percent`: entrées `v: int, cfg: ControllerCfg` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `to_percent` retourne toujours une valeur compatible avec `int`.
-2. `let span: int = cfg.max_raw - cfg.min_raw` cette ligne crée la variable locale `span` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `span` reçoit ici le résultat de `cfg.max_raw - cfg.min_raw` et peut être réutilisé ensuite sans recalcul.
-3. `if span <= 0 { give 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `span <= 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-4. `give ((v - cfg.min_raw) * 100) / span` sur cette ligne, la sortie est renvoyée immédiatement `((v - cfg.min_raw) * 100) / span` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `((v - cfg.min_raw) * 100) / span`.
-5. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `proc to_percent(v: int, cfg: ControllerCfg) -> int {` -> Comportement: le contrat est posé pour `to_percent`: entrées `v: int, cfg: ControllerCfg` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `to_percent` retourne toujours une valeur compatible avec `int`.
+2. `let span: int = cfg.max_raw - cfg.min_raw` -> Comportement: cette ligne crée la variable `span` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `span` reçoit ici le résultat de `cfg.max_raw - cfg.min_raw` et peut être réutilisé ensuite sans recalcul.
+3. `if span <= 0 { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `span <= 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+4. `give ((v - cfg.min_raw) * 100) / span` -> Comportement: la sortie est renvoyée immédiatement `((v - cfg.min_raw) * 100) / span` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `((v - cfg.min_raw) * 100) / span`.
+5. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `span <= 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `((v - cfg.min_raw) * 100) / span`.
@@ -242,25 +266,24 @@ otherwise { give Fault(900) }
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc classify_hysteresis(p: int, prev: ControlState, cfg: ControllerCfg) -> ControlState {` ce passage fixe le contrat complet de `classify_hysteresis`: entrées `p: int, prev: ControlState, cfg: ControllerCfg` et sortie `ControlState`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `classify_hysteresis` retourne toujours une valeur compatible avec `ControlState`.
-2. `match prev {` cette ligne démarre un dispatch déterministe sur `prev`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `prev`, la même branche sera toujours exécutée.
-3. `case Alert {` cette ligne décrit le cas `Alert` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Alert`, ce bloc devient le chemin actif.
-4. `if p <= cfg.alert_off { give Armed }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `p <= cfg.alert_off` est vrai, `give Armed` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-5. `give Alert` ce passage retourne immédiatement `Alert` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Alert`.
-6. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-7. `case Armed {` cette ligne décrit le cas `Armed` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Armed`, ce bloc devient le chemin actif.
-8. `if p >= cfg.alert_on { give Alert }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `p >= cfg.alert_on` est vrai, `give Alert` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-9. `give Armed` ici, la branche renvoie immédiatement `Armed` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Armed`.
-10. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-11. `case Idle {` cette ligne décrit le cas `Idle` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Idle`, ce bloc devient le chemin actif.
-12. `if p >= cfg.alert_on { give Alert }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `p >= cfg.alert_on` est vrai, `give Alert` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-13. `give Armed` sur cette ligne, la sortie est renvoyée immédiatement `Armed` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Armed`.
-14. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-15. `case Fault(code) { give Fault(code) }` cette ligne décrit le cas `Fault(code)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Fault(code)`, ce bloc devient le chemin actif.
-16. `otherwise { give Fault(900) }` cette ligne définit le chemin de secours pour couvrir les situations non capturées par les cas explicites. Exemple concret: si aucun `case` ne correspond, `give Fault(900)` est exécuté pour garantir une sortie stable.
-17. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-18. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `proc classify_hysteresis(p: int, prev: ControlState, cfg: ControllerCfg) -> ControlState {` -> Comportement: le contrat est fixé pour `classify_hysteresis`: entrées `p: int, prev: ControlState, cfg: ControllerCfg` et sortie `ControlState`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `classify_hysteresis` retourne toujours une valeur compatible avec `ControlState`.
+2. `match prev {` -> Comportement: cette ligne démarre un dispatch déterministe sur `prev`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `prev`, la même branche sera toujours exécutée.
+3. `case Alert {` -> Comportement: ce cas décrit `Alert` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Alert`, ce bloc devient le chemin actif.
+4. `if p <= cfg.alert_off { give Armed }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `p <= cfg.alert_off` est vrai, `give Armed` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+5. `give Alert` -> Comportement: retourne immédiatement `Alert` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Alert`.
+6. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+7. `case Armed {` -> Comportement: ce cas décrit `Armed` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Armed`, ce bloc devient le chemin actif.
+8. `if p >= cfg.alert_on { give Alert }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `p >= cfg.alert_on` est vrai, `give Alert` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+9. `give Armed` -> Comportement: la branche renvoie immédiatement `Armed` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Armed`.
+10. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+11. `case Idle {` -> Comportement: ce cas décrit `Idle` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Idle`, ce bloc devient le chemin actif.
+12. `if p >= cfg.alert_on { give Alert }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `p >= cfg.alert_on` est vrai, `give Alert` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+13. `give Armed` -> Comportement: la sortie est renvoyée immédiatement `Armed` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Armed`.
+14. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+15. `case Fault(code) { give Fault(code) }` -> Comportement: ce cas décrit `Fault(code)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Fault(code)`, ce bloc devient le chemin actif.
+16. `otherwise { give Fault(900) }` -> Comportement: cette ligne définit un chemin de secours explicite. -> Preuve: si aucun `case` ne correspond, `give Fault(900)` est exécuté pour garantir une sortie stable.
+17. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+18. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `p <= cfg.alert_off` est vrai, la sortie devient `Armed`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Alert`.
@@ -291,12 +314,11 @@ proc detect_fault(raw: int, cfg: ControllerCfg) -> ControlState {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc detect_fault(raw: int, cfg: ControllerCfg) -> ControlState {` ici, le contrat complet est défini pour `detect_fault`: entrées `raw: int, cfg: ControllerCfg` et sortie `ControlState`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `detect_fault` retourne toujours une valeur compatible avec `ControlState`.
-2. `if raw < cfg.min_raw - 100 { give Fault(1001) }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `raw < cfg.min_raw - 100` est vrai, `give Fault(1001)` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `if raw > cfg.max_raw + 100 { give Fault(1002) }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `raw > cfg.max_raw + 100` est vrai, `give Fault(1002)` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-4. `give Armed` ce passage retourne immédiatement `Armed` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Armed`.
-5. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `proc detect_fault(raw: int, cfg: ControllerCfg) -> ControlState {` -> Comportement: le contrat est défini pour `detect_fault`: entrées `raw: int, cfg: ControllerCfg` et sortie `ControlState`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `detect_fault` retourne toujours une valeur compatible avec `ControlState`.
+2. `if raw < cfg.min_raw - 100 { give Fault(1001) }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `raw < cfg.min_raw - 100` est vrai, `give Fault(1001)` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+3. `if raw > cfg.max_raw + 100 { give Fault(1002) }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `raw > cfg.max_raw + 100` est vrai, `give Fault(1002)` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+4. `give Armed` -> Comportement: retourne immédiatement `Armed` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Armed`.
+5. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `raw < cfg.min_raw - 100` est vrai, la sortie devient `Fault(1001)`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Armed`.
@@ -342,29 +364,28 @@ proc step(raw_input: int, st: ControllerState, cfg: ControllerCfg) -> Controller
 ```
 
 Lecture ligne par ligne (débutant):
-1. `form ControllerState {` cette ligne ouvre la structure `ControllerState` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. Exemple concret: plusieurs fonctions peuvent manipuler `ControllerState` sans redéfinir ses champs.
-2. `filter: Filter3` cette ligne déclare le champ `filter` avec le type `Filter3`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `Filter3`.
-3. `control: ControlState` cette ligne déclare le champ `control` avec le type `ControlState`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `ControlState`.
-4. `percent: int` cette ligne déclare le champ `percent` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-5. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-6. `proc step(raw_input: int, st: ControllerState, cfg: ControllerCfg) -> ControllerState {` sur cette ligne, le contrat complet est posé pour `step`: entrées `raw_input: int, st: ControllerState, cfg: ControllerCfg` et sortie `ControllerState`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `step` retourne toujours une valeur compatible avec `ControllerState`.
-7. `let s: Sample = read_raw(raw_input)` cette ligne crée la variable locale `s` de type `Sample` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `s` reçoit ici le résultat de `read_raw(raw_input)` et peut être réutilisé ensuite sans recalcul.
-8. `let f0: ControlState = detect_fault(s.raw, cfg)` cette ligne crée la variable locale `f0` de type `ControlState` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `f0` reçoit ici le résultat de `detect_fault(s.raw, cfg)` et peut être réutilisé ensuite sans recalcul.
-9. `match f0 {` cette ligne démarre un dispatch déterministe sur `f0`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `f0`, la même branche sera toujours exécutée.
-10. `case Fault(code) {` cette ligne décrit le cas `Fault(code)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Fault(code)`, ce bloc devient le chemin actif.
-11. `give ControllerState(st.filter, Fault(code), st.percent)` ici, la branche renvoie immédiatement `ControllerState(st.filter, Fault(code), st.percent)` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `ControllerState(st.filter, Fault(code), st.percent)`.
-12. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-13. `otherwise {` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-14. `let clean: int = clamp_raw(s, cfg)` cette ligne crée la variable locale `clean` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `clean` reçoit ici le résultat de `clamp_raw(s, cfg)` et peut être réutilisé ensuite sans recalcul.
-15. `let f1: Filter3 = filter3_push(st.filter, clean)` cette ligne crée la variable locale `f1` de type `Filter3` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `f1` reçoit ici le résultat de `filter3_push(st.filter, clean)` et peut être réutilisé ensuite sans recalcul.
-16. `let avg: int = filter3_mean(f1)` cette ligne crée la variable locale `avg` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `avg` reçoit ici le résultat de `filter3_mean(f1)` et peut être réutilisé ensuite sans recalcul.
-17. `let p: int = to_percent(avg, cfg)` cette ligne crée la variable locale `p` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `p` reçoit ici le résultat de `to_percent(avg, cfg)` et peut être réutilisé ensuite sans recalcul.
-18. `let next_ctrl: ControlState = classify_hysteresis(p, st.control, cfg)` cette ligne crée la variable locale `next_ctrl` de type `ControlState` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `next_ctrl` reçoit ici le résultat de `classify_hysteresis(p, st.control, cfg)` et peut être réutilisé ensuite sans recalcul.
-19. `give ControllerState(f1, next_ctrl, p)` sur cette ligne, la sortie est renvoyée immédiatement `ControllerState(f1, next_ctrl, p)` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `ControllerState(f1, next_ctrl, p)`.
-20. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-21. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-22. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `form ControllerState {` -> Comportement: cette ligne ouvre la structure `ControllerState` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. -> Preuve: plusieurs fonctions peuvent manipuler `ControllerState` sans redéfinir ses champs.
+2. `filter: Filter3` -> Comportement: cette ligne déclare le champ `filter` avec le type `Filter3`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `Filter3`.
+3. `control: ControlState` -> Comportement: cette ligne déclare le champ `control` avec le type `ControlState`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `ControlState`.
+4. `percent: int` -> Comportement: cette ligne déclare le champ `percent` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+6. `proc step(raw_input: int, st: ControllerState, cfg: ControllerCfg) -> ControllerState {` -> Comportement: le contrat est posé pour `step`: entrées `raw_input: int, st: ControllerState, cfg: ControllerCfg` et sortie `ControllerState`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `step` retourne toujours une valeur compatible avec `ControllerState`.
+7. `let s: Sample = read_raw(raw_input)` -> Comportement: cette ligne crée la variable `s` de type `Sample` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `s` reçoit ici le résultat de `read_raw(raw_input)` et peut être réutilisé ensuite sans recalcul.
+8. `let f0: ControlState = detect_fault(s.raw, cfg)` -> Comportement: cette ligne crée la variable `f0` de type `ControlState` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `f0` reçoit ici le résultat de `detect_fault(s.raw, cfg)` et peut être réutilisé ensuite sans recalcul.
+9. `match f0 {` -> Comportement: cette ligne démarre un dispatch déterministe sur `f0`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `f0`, la même branche sera toujours exécutée.
+10. `case Fault(code) {` -> Comportement: ce cas décrit `Fault(code)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Fault(code)`, ce bloc devient le chemin actif.
+11. `give ControllerState(st.filter, Fault(code), st.percent)` -> Comportement: la branche renvoie immédiatement `ControllerState(st.filter, Fault(code), st.percent)` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `ControllerState(st.filter, Fault(code), st.percent)`.
+12. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+13. `otherwise {` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+14. `let clean: int = clamp_raw(s, cfg)` -> Comportement: cette ligne crée la variable `clean` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `clean` reçoit ici le résultat de `clamp_raw(s, cfg)` et peut être réutilisé ensuite sans recalcul.
+15. `let f1: Filter3 = filter3_push(st.filter, clean)` -> Comportement: cette ligne crée la variable `f1` de type `Filter3` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `f1` reçoit ici le résultat de `filter3_push(st.filter, clean)` et peut être réutilisé ensuite sans recalcul.
+16. `let avg: int = filter3_mean(f1)` -> Comportement: cette ligne crée la variable `avg` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `avg` reçoit ici le résultat de `filter3_mean(f1)` et peut être réutilisé ensuite sans recalcul.
+17. `let p: int = to_percent(avg, cfg)` -> Comportement: cette ligne crée la variable `p` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `p` reçoit ici le résultat de `to_percent(avg, cfg)` et peut être réutilisé ensuite sans recalcul.
+18. `let next_ctrl: ControlState = classify_hysteresis(p, st.control, cfg)` -> Comportement: cette ligne crée la variable `next_ctrl` de type `ControlState` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `next_ctrl` reçoit ici le résultat de `classify_hysteresis(p, st.control, cfg)` et peut être réutilisé ensuite sans recalcul.
+19. `give ControllerState(f1, next_ctrl, p)` -> Comportement: la sortie est renvoyée immédiatement `ControllerState(f1, next_ctrl, p)` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `ControllerState(f1, next_ctrl, p)`.
+20. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+21. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+22. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `ControllerState(st.filter, Fault(code), st.percent)`.
@@ -400,16 +421,15 @@ proc actuator_pwm(c: ControlState, p: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc actuator_pwm(c: ControlState, p: int) -> int {` ce passage fixe le contrat complet de `actuator_pwm`: entrées `c: ControlState, p: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `actuator_pwm` retourne toujours une valeur compatible avec `int`.
-2. `match c {` cette ligne démarre un dispatch déterministe sur `c`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `c`, la même branche sera toujours exécutée.
-3. `case Idle { give 0 }` cette ligne décrit le cas `Idle` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Idle`, ce bloc devient le chemin actif.
-4. `case Armed { give p / 4 }    # pilotage doux` cette ligne décrit le cas `Armed` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Armed`, ce bloc devient le chemin actif.
-5. `case Alert { give 255 }      # pleine puissance / alarme` cette ligne décrit le cas `Alert` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Alert`, ce bloc devient le chemin actif.
-6. `case Fault(_) { give 0 }     # fail-safe` cette ligne décrit le cas `Fault(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Fault(_)`, ce bloc devient le chemin actif.
-7. `otherwise { give 0 }` cette ligne définit le chemin de secours pour couvrir les situations non capturées par les cas explicites. Exemple concret: si aucun `case` ne correspond, `give 0` est exécuté pour garantir une sortie stable.
-8. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-9. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `proc actuator_pwm(c: ControlState, p: int) -> int {` -> Comportement: le contrat est fixé pour `actuator_pwm`: entrées `c: ControlState, p: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `actuator_pwm` retourne toujours une valeur compatible avec `int`.
+2. `match c {` -> Comportement: cette ligne démarre un dispatch déterministe sur `c`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `c`, la même branche sera toujours exécutée.
+3. `case Idle { give 0 }` -> Comportement: ce cas décrit `Idle` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Idle`, ce bloc devient le chemin actif.
+4. `case Armed { give p / 4 }    # pilotage doux` -> Comportement: ce cas décrit `Armed` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Armed`, ce bloc devient le chemin actif.
+5. `case Alert { give 255 }      # pleine puissance / alarme` -> Comportement: ce cas décrit `Alert` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Alert`, ce bloc devient le chemin actif.
+6. `case Fault(_) { give 0 }     # fail-safe` -> Comportement: ce cas décrit `Fault(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Fault(_)`, ce bloc devient le chemin actif.
+7. `otherwise { give 0 }` -> Comportement: cette ligne définit un chemin de secours explicite. -> Preuve: si aucun `case` ne correspond, `give 0` est exécuté pour garantir une sortie stable.
+8. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+9. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
@@ -444,16 +464,15 @@ entry main at arduino/app {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `entry main at arduino/app {` cette ligne fixe le point d'entrée `main` dans `arduino/app` et sert de scénario exécutable de bout en bout pour le chapitre. Exemple concret: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
-2. `let cfg: ControllerCfg = ControllerCfg(0, 1023, 80, 70)` cette ligne crée la variable locale `cfg` de type `ControllerCfg` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `cfg` reçoit ici le résultat de `ControllerCfg(0, 1023, 80, 70)` et peut être réutilisé ensuite sans recalcul.
-3. `let st0: ControllerState = ControllerState(Filter3(0,0,0), Idle, 0)` cette ligne crée la variable locale `st0` de type `ControllerState` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `st0` reçoit ici le résultat de `ControllerState(Filter3(0,0,0), Idle, 0)` et peut être réutilisé ensuite sans recalcul.
-4. `let st1: ControllerState = step(200, st0, cfg)` cette ligne crée la variable locale `st1` de type `ControllerState` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `st1` reçoit ici le résultat de `step(200, st0, cfg)` et peut être réutilisé ensuite sans recalcul.
-5. `let st2: ControllerState = step(920, st1, cfg)` cette ligne crée la variable locale `st2` de type `ControllerState` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `st2` reçoit ici le résultat de `step(920, st1, cfg)` et peut être réutilisé ensuite sans recalcul.
-6. `let out: int = actuator_pwm(st2.control, st2.percent)` cette ligne crée la variable locale `out` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `out` reçoit ici le résultat de `actuator_pwm(st2.control, st2.percent)` et peut être réutilisé ensuite sans recalcul.
-7. `if out >= 0 { return 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `out >= 0` est vrai, `return 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-8. `return 70` cette ligne termine l'exécution du bloc courant avec le code `70`, utile pour observer le résultat global du scénario. Exemple concret: un test d'exécution peut vérifier directement que le programme retourne `70`.
-9. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `entry main at arduino/app {` -> Comportement: cette ligne fixe le point d'entrée `main` dans `arduino/app` et sert de scénario exécutable de bout en bout pour le chapitre. -> Preuve: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
+2. `let cfg: ControllerCfg = ControllerCfg(0, 1023, 80, 70)` -> Comportement: cette ligne crée la variable `cfg` de type `ControllerCfg` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `cfg` reçoit ici le résultat de `ControllerCfg(0, 1023, 80, 70)` et peut être réutilisé ensuite sans recalcul.
+3. `let st0: ControllerState = ControllerState(Filter3(0,0,0), Idle, 0)` -> Comportement: cette ligne crée la variable `st0` de type `ControllerState` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `st0` reçoit ici le résultat de `ControllerState(Filter3(0,0,0), Idle, 0)` et peut être réutilisé ensuite sans recalcul.
+4. `let st1: ControllerState = step(200, st0, cfg)` -> Comportement: cette ligne crée la variable `st1` de type `ControllerState` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `st1` reçoit ici le résultat de `step(200, st0, cfg)` et peut être réutilisé ensuite sans recalcul.
+5. `let st2: ControllerState = step(920, st1, cfg)` -> Comportement: cette ligne crée la variable `st2` de type `ControllerState` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `st2` reçoit ici le résultat de `step(920, st1, cfg)` et peut être réutilisé ensuite sans recalcul.
+6. `let out: int = actuator_pwm(st2.control, st2.percent)` -> Comportement: cette ligne crée la variable `out` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `out` reçoit ici le résultat de `actuator_pwm(st2.control, st2.percent)` et peut être réutilisé ensuite sans recalcul.
+7. `if out >= 0 { return 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `out >= 0` est vrai, `return 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+8. `return 70` -> Comportement: cette ligne termine l'exécution du bloc courant avec le code `70`, utile pour observer le résultat global du scénario. -> Preuve: un test d'exécution peut vérifier directement que le programme retourne `70`.
+9. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le scénario principal se termine avec `return 70`.
@@ -504,7 +523,6 @@ Pour aller jusqu'à un vrai firmware:
 4. Mode simulation offline pour rejouer des captures.
 5. Profil énergétique (fréquence de boucle, sleep).
 
-
 ## Table erreur -> diagnostic -> correction
 
 | Erreur | Diagnostic | Correction |
@@ -521,7 +539,6 @@ Critère pratique de qualité pour ce chapitre:
 - vous savez expliquer le pipeline complet de `raw_input` à `pwm`.
 - vous pouvez prouver que la sortie est sûre en cas de `Fault`.
 - vous pouvez rejouer un scénario capteur et retrouver exactement les mêmes transitions d'état.
-
 
 ## Test mental
 
@@ -552,7 +569,6 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `docs/book/keywords/entry.md`.
 - `docs/book/keywords/form.md`.
 
-
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
 
@@ -561,4 +577,3 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
