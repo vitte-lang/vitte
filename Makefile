@@ -258,7 +258,7 @@ core-projects:
 
 .PHONY: test-examples
 test-examples:
-	@tools/build_examples_matrix.sh
+	@MODE=$${TEST_EXAMPLES_MODE:-check} tools/build_examples_matrix.sh
 
 .PHONY: arduino-projects
 arduino-projects:
