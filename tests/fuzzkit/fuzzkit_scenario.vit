@@ -1,0 +1,21 @@
+use vitte/fuzzkit as fuzzkit_pkg
+
+entry main at core/app {
+  let cfg0 = fuzzkit_pkg.default_config()
+  let cfg1 = fuzzkit_pkg.with_seed(cfg0, 42)
+  let plan0r = fuzzkit_pkg.plan_new(cfg1)
+  when plan0r is fuzzkit_pkg.FuzzkitResult.Err {
+    return 1
+  }
+
+  let plan1r = fuzzkit_pkg.plan_add_case(plan0r.value, "seed-1", "AAAA")
+  when plan1r is fuzzkit_pkg.FuzzkitResult.Err {
+    return 1
+  }
+
+  let stats = fuzzkit_pkg.run_plan(plan1r.value)
+  if fuzzkit_pkg.should_stop(stats, fuzzkit_pkg.default_stop_threshold()) {
+    return 1
+  }
+  return 0
+}

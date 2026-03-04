@@ -1,0 +1,21 @@
+use vitte/env as env_pkg
+
+entry main at core/app {
+  let cfg: env_pkg.EnvConfig = env_pkg.default_config()
+  let hr: env_pkg.EnvResult[bool] = env_pkg.healthcheck(cfg)
+  when hr is env_pkg.EnvResult.Err {
+    return 1
+  }
+
+  let e0 = env_pkg.env_new()
+  let e1 = env_pkg.set_var(e0, "PORT", "1")
+  if env_pkg.get_int(e1, "PORT", 0) != 1 {
+    return 1
+  }
+
+  let req = env_pkg.require_var(e1, "PORT")
+  when req is env_pkg.EnvResult.Err {
+    return 1
+  }
+  return 0
+}

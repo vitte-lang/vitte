@@ -1,0 +1,20 @@
+use vitte/jsonpath as jsonpath_pkg
+
+entry main at core/app {
+  let cfg: jsonpath_pkg.JsonpathConfig = jsonpath_pkg.default_config()
+  let hr: jsonpath_pkg.JsonpathResult[bool] = jsonpath_pkg.healthcheck(cfg)
+  when hr is jsonpath_pkg.JsonpathResult.Err {
+    return 1
+  }
+
+  let d0 = jsonpath_pkg.doc_new()
+  let d1 = jsonpath_pkg.put(d0, "service.name", "vitte")
+  if jsonpath_pkg.resolve(d1, "$.service.name") != "vitte" {
+    return 1
+  }
+
+  if jsonpath_pkg.exists(d1, "service.name") == false {
+    return 1
+  }
+  return 0
+}

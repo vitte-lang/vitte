@@ -264,6 +264,33 @@ test-examples:
 arduino-projects:
 	@tools/build_arduino_projects.sh
 
+.PHONY: quasi-empty-package-tests
+quasi-empty-package-tests:
+	@set -e; \
+	for f in \
+		tests/catalog/*.vit \
+		tests/data/*.vit \
+		tests/kernel/*.vit \
+		tests/module_index/*.vit \
+		tests/platform/*.vit \
+		tests/release_guard/*.vit \
+		tests/docsgen_modules/*.vit \
+		tests/contracts_registry/*.vit \
+		tests/migration_playbook/*.vit \
+		tests/fuzzkit/*.vit \
+		tests/async/*.vit \
+		tests/env/*.vit \
+		tests/jsonpath/*.vit \
+		tests/openapi/*.vit \
+		tests/testkit_modules/*.vit \
+		tests/std/io/*.vit \
+		tests/std/net/*.vit \
+		tests/std/data/*.vit \
+		tests/std/async/*.vit; do \
+		echo "[quasi-empty-package-tests] check $$f"; \
+		$(BIN_DIR)/$(PROJECT) check "$$f"; \
+	done
+
 .PHONY: negative-tests
 negative-tests:
 	@tools/negative_tests.sh
@@ -287,6 +314,11 @@ wrapper-stage-test:
 .PHONY: grammar-sync
 grammar-sync:
 	@python3 book/grammar/scripts/sync_grammar.py
+
+.PHONY: harden-mod-vits
+harden-mod-vits:
+	@test -n "$(PACKAGES)" || (echo "usage: make harden-mod-vits PACKAGES='catalog data std/io'" >&2; exit 2)
+	@python3 tools/harden_existing_mod_vit.py --write $(PACKAGES)
 
 .PHONY: grammar-check
 grammar-check:
@@ -846,6 +878,7 @@ help:
 	@echo "  make extern-abi-kernel validate #[extern] ABI (kernel grub)"
 	@echo "  make extern-abi-kernel-uefi validate #[extern] ABI (kernel uefi)"
 	@echo "  make extern-abi-all validate #[extern] ABI (all std vs host)"
+	@echo "  make quasi-empty-package-tests run checks for newly hardened quasi-empty package modules"
 	@echo "  make std-core-tests run std/core regression tests"
 	@echo "  make stdlib-api-lint check stable stdlib ABI surface entries"
 	@echo "  make stdlib-profile-snapshots check stdlib profile allow/deny matrix"

@@ -1,0 +1,15 @@
+use vitte/openapi as openapi_pkg
+
+entry main at core/app {
+  let s0 = openapi_pkg.spec_new_default("svc")
+  let s1r = openapi_pkg.add_endpoint_checked(s0, "get", "/h", "h", "op_h", false)
+  when s1r is openapi_pkg.OpenapiResult.Err {
+    return 1
+  }
+
+  let s2r = openapi_pkg.add_endpoint_checked(s1r.value, "post", "/h2", "h2", "op_h", false)
+  when s2r is openapi_pkg.OpenapiResult.Err {
+    return 0
+  }
+  return 1
+}

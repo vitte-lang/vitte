@@ -1,0 +1,21 @@
+use vitte/async as async_pkg
+
+entry main at core/app {
+  let s0 = async_pkg.scheduler_new(2)
+  let s1 = async_pkg.scheduler_enqueue(s0, 5)
+  let s2 = async_pkg.scheduler_tick(s1)
+  if async_pkg.scheduler_capacity(s2) != 0 {
+    return 1
+  }
+
+  let s3 = async_pkg.scheduler_complete(s2, 1)
+  if async_pkg.scheduler_capacity(s3) != 1 {
+    return 1
+  }
+
+  let s4 = async_pkg.scheduler_complete(s3, 99)
+  if async_pkg.scheduler_idle(s4) == false {
+    return 1
+  }
+  return 0
+}

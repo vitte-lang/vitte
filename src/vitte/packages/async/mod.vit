@@ -5,88 +5,214 @@ package vitte/async
 
 space vitte/async
 
+use vitte/async/internal/runtime as async_runtime_pkg
+use vitte/async/internal/validate as async_validate_pkg
+use vitte/async/internal/policy as async_policy_pkg
 
 pick TaskState {
-    Pending
-    Running
-    Succeeded
-    Failed
-    Cancelled
+  Pending
+  Running
+  Succeeded
+  Failed
+  Cancelled
 }
 
 form TaskMeta {
-    name: string
-    retries: int
-    state: TaskState
+  name: string
+  retries: int
+  state: TaskState
 }
 
 type Task = bool
 
+form AsyncConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick AsyncError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick AsyncResult[T] {
+  Ok(value: T)
+  Err(error: AsyncError)
+}
+
+form Scheduler {
+  max_parallel: int
+  queue_len: int
+  running: int
+}
+
 proc spawn_task(job: proc() -> int) -> Task {
-    let code = job()
-    give code == 0
+  let code = job()
+  give code == 0
 }
 
 proc poll_task(task: Task) -> bool {
-    give task
+  give task
 }
 
 proc task_meta(name: string) -> TaskMeta {
-    give TaskMeta(name, 0, TaskState.Pending)
+  give TaskMeta(name, 0, TaskState.Pending)
 }
 
 proc task_mark_running(meta: TaskMeta) -> TaskMeta {
-    give TaskMeta(meta.name, meta.retries, TaskState.Running)
+  give TaskMeta(meta.name, meta.retries, TaskState.Running)
 }
 
 proc task_mark_done(meta: TaskMeta, ok: bool) -> TaskMeta {
-    if ok {
-        give TaskMeta(meta.name, meta.retries, TaskState.Succeeded)
-    }
-    give TaskMeta(meta.name, meta.retries + 1, TaskState.Failed)
+  if ok {
+    give TaskMeta(meta.name, meta.retries, TaskState.Succeeded)
+  }
+  give TaskMeta(meta.name, meta.retries + 1, TaskState.Failed)
 }
 
 proc task_cancel(meta: TaskMeta) -> TaskMeta {
-    give TaskMeta(meta.name, meta.retries, TaskState.Cancelled)
+  give TaskMeta(meta.name, meta.retries, TaskState.Cancelled)
 }
 
 proc task_can_retry(meta: TaskMeta, max_retries: int) -> bool {
-    when meta.state is TaskState.Failed {
-        give meta.retries < max_retries
-    }
-    give false
+  when meta.state is TaskState.Failed {
+    give meta.retries < max_retries
+  }
+  give false
 }
 
 proc run_with_retry(job: proc() -> int, retries: int) -> TaskState {
-    let attempt: int = 0
-    loop {
-        if attempt > retries { break }
-        if job() == 0 { give TaskState.Succeeded }
-        attempt = attempt + 1
-    }
-    give TaskState.Failed
+  let attempt: int = 0
+  loop {
+    if attempt > retries { break }
+    if job() == 0 { give TaskState.Succeeded }
+    attempt = attempt + 1
+  }
+  give TaskState.Failed
 }
 
 proc backoff_ms(attempt: int) -> int {
-    if attempt < 0 { give 0 }
-    give (attempt + 1) * 25
+  if attempt < 0 { give 0 }
+  give (attempt + 1) * async_policy_pkg.default_backoff_unit_ms()
 }
 
 proc is_terminal(state: TaskState) -> bool {
-    when state is TaskState.Succeeded { give true }
-    when state is TaskState.Failed { give true }
-    when state is TaskState.Cancelled { give true }
-    give false
+  when state is TaskState.Succeeded { give true }
+  when state is TaskState.Failed { give true }
+  when state is TaskState.Cancelled { give true }
+  give false
+}
+
+proc scheduler_new(max_parallel: int) -> Scheduler {
+  if async_validate_pkg.valid_parallelism(max_parallel) == false {
+    give Scheduler(async_policy_pkg.default_max_parallel(), 0, 0)
+  }
+  give Scheduler(max_parallel, 0, 0)
+}
+
+proc scheduler_enqueue(s: Scheduler, count: int) -> Scheduler {
+  if async_validate_pkg.valid_queue_count(count) == false { give s }
+  give Scheduler(s.max_parallel, s.queue_len + count, s.running)
+}
+
+proc scheduler_tick(s: Scheduler) -> Scheduler {
+  let startable = s.max_parallel - s.running
+  if startable <= 0 || s.queue_len <= 0 { give s }
+  let take = startable
+  if take > s.queue_len { take = s.queue_len }
+  give Scheduler(s.max_parallel, s.queue_len - take, s.running + take)
+}
+
+proc scheduler_complete(s: Scheduler, completed: int) -> Scheduler {
+  if completed <= 0 { give s }
+  let running = s.running - completed
+  if running < 0 { running = 0 }
+  give Scheduler(s.max_parallel, s.queue_len, running)
+}
+
+proc scheduler_idle(s: Scheduler) -> bool {
+  give s.running == 0 && s.queue_len == 0
+}
+
+proc scheduler_capacity(s: Scheduler) -> int {
+  let cap = s.max_parallel - s.running
+  if cap < 0 { give 0 }
+  give cap
+}
+
+proc default_config() -> AsyncConfig {
+  give AsyncConfig(true, async_policy_pkg.default_timeout_ms(), async_policy_pkg.default_retry_budget())
+}
+
+proc with_retry_budget(cfg: AsyncConfig, retry_budget: int) -> AsyncConfig {
+  give AsyncConfig(cfg.strict, cfg.timeout_ms, retry_budget)
+}
+
+proc with_timeout_ms(cfg: AsyncConfig, timeout_ms: int) -> AsyncConfig {
+  give AsyncConfig(cfg.strict, timeout_ms, cfg.retry_budget)
+}
+
+proc validate_config(cfg: AsyncConfig) -> AsyncResult[bool] {
+  if async_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give AsyncResult.Err(AsyncError.InvalidConfig)
+  }
+  if async_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give AsyncResult.Err(AsyncError.InvalidConfig)
+  }
+  give AsyncResult.Ok(true)
+}
+
+proc healthcheck(cfg: AsyncConfig) -> AsyncResult[bool] {
+  let vr: AsyncResult[bool] = validate_config(cfg)
+  when vr is AsyncResult.Err { give AsyncResult.Err(vr.error) }
+  if async_runtime_pkg.runtime_status() == false {
+    give AsyncResult.Err(AsyncError.Internal)
+  }
+  if async_runtime_pkg.timer_granularity_ms() <= 0 {
+    give AsyncResult.Err(AsyncError.Internal)
+  }
+  let probe = scheduler_tick(scheduler_enqueue(scheduler_new(1), 1))
+  if probe.running != 1 {
+    give AsyncResult.Err(AsyncError.Internal)
+  }
+  give AsyncResult.Ok(true)
 }
 
 proc ready() -> bool {
-    give true
+  give true
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/async"
+  give "vitte/async"
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["retry", "backoff", "scheduler", "task-state", async_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-ASYNC0001" { give "invalid async config: timeout or retry budget" }
+  if code == "VITTE-ASYNC0002" { give "task failed after retry budget" }
+  if code == "VITTE-ASYNC0003" { give "invalid scheduler parallelism or queue count" }
+  give "async diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-ASYNC0001" { give "set timeout > 0 and retry budget >= 0" }
+  if code == "VITTE-ASYNC0002" { give "increase retries or reduce transient failures" }
+  if code == "VITTE-ASYNC0003" { give "use scheduler_new with positive max_parallel" }
+  give "review async runtime settings"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
 }
 
 <<< ROLE-CONTRACT
@@ -95,4 +221,11 @@ role: Modele async: taches, ordonnancement et polling non bloquant
 input_contract: Valeurs metier explicites, deja parsees et typables
 output_contract: Sorties stables, observables et compatibles avec les autres packages
 boundary: Ne remplace pas les autres couches; respecte la separation de roles
+
+owner: @vitte/async
+stability: stable
+since: 3.0.0
+deprecated_in: -
+compat_policy: additive-only
+api_version: v1
 >>>
