@@ -16,7 +16,13 @@ import {
   SymbolKind,
 } from "vscode-languageserver/node";
 import type {
+  CallHierarchyIncomingCall,
+  CallHierarchyItem,
+  CallHierarchyOutgoingCall,
   DocumentSymbol,
+  TypeHierarchyItem,
+  TypeHierarchySubtypesParams,
+  TypeHierarchySupertypesParams,
   WorkspaceSymbol,
 } from "vscode-languageserver/node";
 
@@ -135,12 +141,25 @@ function isIdentChar(ch: number): boolean {
          ch === 95; // _
 }
 
+function isPathChar(ch: number): boolean {
+  return isIdentChar(ch) || ch === 0x2f /* / */ || ch === 0x2e /* . */ || ch === 0x3a /* : */ || ch === 0x2d /* - */;
+}
+
 function wordAt(doc: TextDocument, pos: Position): string | null {
   const text = doc.getText();
   const off = doc.offsetAt(pos);
   let s = off, e = off;
   while (s > 0 && isIdentChar(text.charCodeAt(s - 1))) s--;
   while (e < text.length && isIdentChar(text.charCodeAt(e))) e++;
+  return e > s ? text.slice(s, e) : null;
+}
+
+function tokenAt(doc: TextDocument, pos: Position): string | null {
+  const text = doc.getText();
+  const off = doc.offsetAt(pos);
+  let s = off, e = off;
+  while (s > 0 && isPathChar(text.charCodeAt(s - 1))) s--;
+  while (e < text.length && isPathChar(text.charCodeAt(e))) e++;
   return e > s ? text.slice(s, e) : null;
 }
 
@@ -172,6 +191,10 @@ const RULES: { rx: RegExp; kind: SymbolKind; nameGroup: number; containerHint?: 
   { rx: /\bspace\s+([A-Za-z_][\w./:]*)/g,                               kind: SymbolKind.Namespace, nameGroup: 1 },
   { rx: /\bimport\s+([A-Za-z_][\w./:]*(?:::\*)?)/g,                     kind: SymbolKind.Namespace, nameGroup: 1 },
   { rx: /\buse\s+([A-Za-z_][\w./:]*(?:::\*)?)/g,                        kind: SymbolKind.Namespace, nameGroup: 1 },
+  { rx: /\bpull\s+([A-Za-z_][\w./:]*(?:::\*)?)/g,                       kind: SymbolKind.Namespace, nameGroup: 1 },
+  { rx: /\bentry\s+([A-Za-z_]\w*)\s+at\s+[A-Za-z_][\w./:]*/g,           kind: SymbolKind.Function, nameGroup: 1 },
+  { rx: /\bentry\s+[A-Za-z_]\w*\s+at\s+([A-Za-z_][\w./:]*)/g,           kind: SymbolKind.Namespace, nameGroup: 1 },
+  { rx: /\bshare\s+([A-Za-z_]\w*)/g,                                     kind: SymbolKind.Variable, nameGroup: 1 },
   { rx: /\b(?:pub\s+)?(?:fn|proc)\s+([A-Za-z_]\w*)\s*\(/g,              kind: SymbolKind.Function,  nameGroup: 1 },
   { rx: /\b(?:pub\s+)?struct\s+([A-Za-z_]\w*)/g,                        kind: SymbolKind.Struct,    nameGroup: 1 },
   { rx: /\b(?:pub\s+)?form\s+([A-Za-z_]\w*)/g,                          kind: SymbolKind.Struct,    nameGroup: 1 },
@@ -339,10 +362,13 @@ export function symbolOutline(doc: TextDocument): DocumentSymbol[] {
 /* --------------------------- Définitions / refs ---------------------------- */
 
 export function definitionAtPosition(doc: TextDocument, pos: Position, uri: string): Location[] {
-  const word = wordAt(doc, pos);
-  if (!word) return [];
+  const tok = tokenAt(doc, pos) ?? wordAt(doc, pos);
+  if (!tok) return [];
+  const pathLike = /[./:-]/.test(tok);
   const { byName } = indexDocument(doc);
-  const defs = byName.get(word) ?? [];
+  const defs = pathLike
+    ? indexDocument(doc).flat.filter((s) => s.kind === SymbolKind.Namespace && (s.name === tok || s.name.endsWith(`/${tok}`) || s.name.endsWith(`.${tok}`)))
+    : (byName.get(tok) ?? []);
   // Tri par priorité de kind puis proximité
   const baseOff = doc.offsetAt(pos);
   defs.sort((a, b) => kindPriority(a.kind) - kindPriority(b.kind) || Math.abs(doc.offsetAt(a.selectionRange.start) - baseOff) - Math.abs(doc.offsetAt(b.selectionRange.start) - baseOff));
@@ -350,13 +376,16 @@ export function definitionAtPosition(doc: TextDocument, pos: Position, uri: stri
 }
 
 export function referencesAtPosition(doc: TextDocument, pos: Position, uri: string): Location[] {
-  const word = wordAt(doc, pos);
-  if (!word) return [];
+  const tok = tokenAt(doc, pos) ?? wordAt(doc, pos);
+  if (!tok) return [];
+  const pathLike = /[./:-]/.test(tok);
   const text = doc.getText();
   const mask = buildCodeMask(text);
   const out: Location[] = [];
 
-  const re = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(word)}(?![A-Za-z0-9_])`, "g");
+  const re = pathLike
+    ? new RegExp(`(?<![A-Za-z0-9_./:-])${escapeRx(tok)}(?![A-Za-z0-9_./:-])`, "g")
+    : new RegExp(`(?<![A-Za-z0-9_])${escapeRx(tok)}(?![A-Za-z0-9_])`, "g");
   re.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
@@ -384,10 +413,15 @@ export function prepareRename(doc: TextDocument, pos: Position): { range: Range;
 export function renameSymbol(doc: TextDocument, pos: Position, newName: string): { range: Range; newText: string }[] {
   const old = wordAt(doc, pos);
   if (!old || !isValidIdent(newName)) return [];
+  return renameIdentifierByName(doc, old, newName);
+}
+
+export function renameIdentifierByName(doc: TextDocument, oldName: string, newName: string): { range: Range; newText: string }[] {
+  if (!isValidIdent(oldName) || !isValidIdent(newName)) return [];
   const text = doc.getText();
   const mask = buildCodeMask(text);
   const edits: { range: Range; newText: string }[] = [];
-  const re = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(old)}(?![A-Za-z0-9_])`, "g");
+  const re = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(oldName)}(?![A-Za-z0-9_])`, "g");
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
     const idx = m.index ?? 0;
@@ -398,6 +432,194 @@ export function renameSymbol(doc: TextDocument, pos: Position, newName: string):
     if (m[0].length === 0) re.lastIndex++;
   }
   return edits;
+}
+
+export function tokenAtPosition(doc: TextDocument, pos: Position): string | null {
+  return tokenAt(doc, pos) ?? wordAt(doc, pos);
+}
+
+/* --------------------------- Call/Type hierarchy --------------------------- */
+
+function fullRangeForLine(doc: TextDocument, line: number): Range {
+  const start = Position.create(line, 0);
+  const end = Position.create(line, Number.MAX_SAFE_INTEGER);
+  const text = doc.getText(Range.create(start, end));
+  return Range.create(start, Position.create(line, text.length));
+}
+
+export function prepareCallHierarchy(doc: TextDocument, pos: Position, uri: string): CallHierarchyItem[] {
+  const name = wordAt(doc, pos);
+  if (!name) return [];
+  const text = doc.getText();
+  const rx = new RegExp(`\\b(?:fn|proc|entry)\\s+${escapeRx(name)}\\b`, "g");
+  let m: RegExpExecArray | null;
+  const out: CallHierarchyItem[] = [];
+  while ((m = rx.exec(text))) {
+    const off = (m.index ?? 0) + m[0].lastIndexOf(name);
+    const s = doc.positionAt(off);
+    out.push({
+      name,
+      kind: SymbolKind.Function,
+      uri,
+      range: fullRangeForLine(doc, s.line),
+      selectionRange: Range.create(s, Position.create(s.line, s.character + name.length)),
+    });
+    if (m[0].length === 0) rx.lastIndex++;
+  }
+  return dedupeBy(out, (i) => `${i.uri}:${i.selectionRange.start.line}:${i.selectionRange.start.character}:${i.name}`);
+}
+
+function findCallSites(doc: TextDocument, name: string): Range[] {
+  const text = doc.getText();
+  const mask = buildCodeMask(text);
+  const rx = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(name)}\\s*\\(`, "g");
+  const out: Range[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = rx.exec(text))) {
+    const idx = m.index ?? 0;
+    if (!mask[idx]) continue;
+    const s = doc.positionAt(idx);
+    out.push(Range.create(s, Position.create(s.line, s.character + name.length)));
+    if (m[0].length === 0) rx.lastIndex++;
+  }
+  return out;
+}
+
+function nearestOwnerFn(doc: TextDocument, line: number): { name: string; line: number } | null {
+  const lines = doc.getText().split(/\r?\n/);
+  for (let i = line; i >= 0; i--) {
+    const m = /^\s*(?:fn|proc|entry)\s+([A-Za-z_]\w*)\b/.exec(lines[i] ?? "");
+    if (m?.[1]) return { name: m[1], line: i };
+  }
+  return null;
+}
+
+export function callHierarchyIncoming(doc: TextDocument, item: CallHierarchyItem): CallHierarchyIncomingCall[] {
+  const refs = findCallSites(doc, item.name);
+  const byCaller = new Map<string, { caller: CallHierarchyItem; fromRanges: Range[] }>();
+  for (const r of refs) {
+    const owner = nearestOwnerFn(doc, r.start.line);
+    if (!owner) continue;
+    const key = `${owner.name}:${owner.line}`;
+    let entry = byCaller.get(key);
+    if (!entry) {
+      const ownerStart = Position.create(owner.line, 0);
+      entry = {
+        caller: {
+          name: owner.name,
+          kind: SymbolKind.Function,
+          uri: item.uri,
+          range: fullRangeForLine(doc, owner.line),
+          selectionRange: Range.create(ownerStart, Position.create(owner.line, owner.name.length)),
+        },
+        fromRanges: [],
+      };
+      byCaller.set(key, entry);
+    }
+    entry.fromRanges.push(r);
+  }
+  return Array.from(byCaller.values()).map((x) => ({ from: x.caller, fromRanges: x.fromRanges }));
+}
+
+function calledFnsInBody(doc: TextDocument, ownerLine: number): string[] {
+  const lines = doc.getText().split(/\r?\n/);
+  const start = ownerLine;
+  const max = Math.min(lines.length - 1, ownerLine + 80);
+  const out = new Set<string>();
+  const rx = /\b([A-Za-z_]\w*)\s*\(/g;
+  for (let i = start; i <= max; i++) {
+    const line = lines[i] ?? "";
+    if (i > start && /^\s*(?:fn|proc|entry)\b/.test(line)) break;
+    let m: RegExpExecArray | null;
+    while ((m = rx.exec(line))) {
+      const name = m[1];
+      if (!name || name === "if" || name === "for" || name === "while" || name === "match") continue;
+      out.add(name);
+      if (m[0].length === 0) rx.lastIndex++;
+    }
+    rx.lastIndex = 0;
+  }
+  return Array.from(out);
+}
+
+export function callHierarchyOutgoing(doc: TextDocument, item: CallHierarchyItem): CallHierarchyOutgoingCall[] {
+  const owner = nearestOwnerFn(doc, item.selectionRange.start.line);
+  if (!owner) return [];
+  const calls = calledFnsInBody(doc, owner.line);
+  const out: CallHierarchyOutgoingCall[] = [];
+  for (const name of calls) {
+    const targets = prepareCallHierarchy(doc, Position.create(owner.line, 0), item.uri)
+      .filter((i) => i.name === name);
+    if (targets.length === 0) continue;
+    const fromRanges = findCallSites(doc, name).filter((r) => r.start.line >= owner.line);
+    out.push({ to: targets[0], fromRanges });
+  }
+  return out;
+}
+
+export function prepareTypeHierarchy(doc: TextDocument, pos: Position, uri: string): TypeHierarchyItem[] {
+  const name = wordAt(doc, pos);
+  if (!name) return [];
+  const text = doc.getText();
+  const rx = new RegExp(`\\b(?:type|struct|form|trait|enum|union)\\s+${escapeRx(name)}\\b`, "g");
+  let m: RegExpExecArray | null;
+  const out: TypeHierarchyItem[] = [];
+  while ((m = rx.exec(text))) {
+    const off = (m.index ?? 0) + m[0].lastIndexOf(name);
+    const s = doc.positionAt(off);
+    out.push({
+      name,
+      kind: SymbolKind.Class,
+      uri,
+      range: fullRangeForLine(doc, s.line),
+      selectionRange: Range.create(s, Position.create(s.line, s.character + name.length)),
+    });
+    if (m[0].length === 0) rx.lastIndex++;
+  }
+  return out;
+}
+
+export function typeHierarchySupertypes(doc: TextDocument, params: TypeHierarchySupertypesParams): TypeHierarchyItem[] {
+  const item = params.item;
+  const lines = doc.getText().split(/\r?\n/);
+  const line = lines[item.selectionRange.start.line] ?? "";
+  const out: TypeHierarchyItem[] = [];
+  const m1 = /\b(?:type|trait|struct|form)\s+[A-Za-z_]\w*\s+as\s+([A-Za-z_]\w*)/.exec(line);
+  const m2 = /\bwhere\s+([A-Za-z_]\w*)/.exec(line);
+  for (const candidate of [m1?.[1], m2?.[1]]) {
+    if (!candidate) continue;
+    out.push({
+      name: candidate,
+      kind: SymbolKind.Interface,
+      uri: item.uri,
+      range: item.range,
+      selectionRange: item.selectionRange,
+    });
+  }
+  return out;
+}
+
+export function typeHierarchySubtypes(doc: TextDocument, params: TypeHierarchySubtypesParams): TypeHierarchyItem[] {
+  const name = params.item.name;
+  const text = doc.getText();
+  const rx = new RegExp(`\\b(?:type|trait|struct|form)\\s+([A-Za-z_]\\w*)\\s+as\\s+${escapeRx(name)}\\b`, "g");
+  let m: RegExpExecArray | null;
+  const out: TypeHierarchyItem[] = [];
+  while ((m = rx.exec(text))) {
+    const sub = m[1];
+    if (!sub) continue;
+    const off = (m.index ?? 0) + m[0].indexOf(sub);
+    const s = doc.positionAt(off);
+    out.push({
+      name: sub,
+      kind: SymbolKind.Class,
+      uri: params.item.uri,
+      range: fullRangeForLine(doc, s.line),
+      selectionRange: Range.create(s, Position.create(s.line, s.character + sub.length)),
+    });
+    if (m[0].length === 0) rx.lastIndex++;
+  }
+  return out;
 }
 
 /* ----------------------------- Workspace symbols --------------------------- */

@@ -1,4 +1,4 @@
-import { TextEdit } from "vscode-languageserver";
+import { TextEdit, Range } from "vscode-languageserver";
 import type { FormattingOptions } from "vscode-languageserver";
 import type { TextDocument } from "vscode-languageserver-textdocument";
 export interface ExtraFormattingOptions extends FormattingOptions {
@@ -20,3 +20,4 @@ export interface ExtraFormattingOptions extends FormattingOptions {
 }
 export declare function provideFormattingEdits(doc: TextDocument, options?: ExtraFormattingOptions): TextEdit[];
 export declare function formatDocument(doc: TextDocument, options?: ExtraFormattingOptions): TextEdit[];
+export declare function provideRangeFormattingEdits(doc: TextDocument, range: Range, options?: ExtraFormattingOptions): TextEdit[];

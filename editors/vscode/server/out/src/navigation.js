@@ -15,6 +15,14 @@ exports.definitionAtPosition = definitionAtPosition;
 exports.referencesAtPosition = referencesAtPosition;
 exports.prepareRename = prepareRename;
 exports.renameSymbol = renameSymbol;
+exports.renameIdentifierByName = renameIdentifierByName;
+exports.tokenAtPosition = tokenAtPosition;
+exports.prepareCallHierarchy = prepareCallHierarchy;
+exports.callHierarchyIncoming = callHierarchyIncoming;
+exports.callHierarchyOutgoing = callHierarchyOutgoing;
+exports.prepareTypeHierarchy = prepareTypeHierarchy;
+exports.typeHierarchySupertypes = typeHierarchySupertypes;
+exports.typeHierarchySubtypes = typeHierarchySubtypes;
 exports.workspaceSymbols = workspaceSymbols;
 exports.indexDocForTests = indexDocForTests;
 const node_1 = require("vscode-languageserver/node");
@@ -131,6 +139,9 @@ function isIdentChar(ch) {
         (ch >= 97 && ch <= 122) || // a-z
         ch === 95; // _
 }
+function isPathChar(ch) {
+    return isIdentChar(ch) || ch === 0x2f /* / */ || ch === 0x2e /* . */ || ch === 0x3a /* : */ || ch === 0x2d /* - */;
+}
 function wordAt(doc, pos) {
     const text = doc.getText();
     const off = doc.offsetAt(pos);
@@ -138,6 +149,16 @@ function wordAt(doc, pos) {
     while (s > 0 && isIdentChar(text.charCodeAt(s - 1)))
         s--;
     while (e < text.length && isIdentChar(text.charCodeAt(e)))
+        e++;
+    return e > s ? text.slice(s, e) : null;
+}
+function tokenAt(doc, pos) {
+    const text = doc.getText();
+    const off = doc.offsetAt(pos);
+    let s = off, e = off;
+    while (s > 0 && isPathChar(text.charCodeAt(s - 1)))
+        s--;
+    while (e < text.length && isPathChar(text.charCodeAt(e)))
         e++;
     return e > s ? text.slice(s, e) : null;
 }
@@ -165,6 +186,10 @@ const RULES = [
     { rx: /\bspace\s+([A-Za-z_][\w./:]*)/g, kind: node_1.SymbolKind.Namespace, nameGroup: 1 },
     { rx: /\bimport\s+([A-Za-z_][\w./:]*(?:::\*)?)/g, kind: node_1.SymbolKind.Namespace, nameGroup: 1 },
     { rx: /\buse\s+([A-Za-z_][\w./:]*(?:::\*)?)/g, kind: node_1.SymbolKind.Namespace, nameGroup: 1 },
+    { rx: /\bpull\s+([A-Za-z_][\w./:]*(?:::\*)?)/g, kind: node_1.SymbolKind.Namespace, nameGroup: 1 },
+    { rx: /\bentry\s+([A-Za-z_]\w*)\s+at\s+[A-Za-z_][\w./:]*/g, kind: node_1.SymbolKind.Function, nameGroup: 1 },
+    { rx: /\bentry\s+[A-Za-z_]\w*\s+at\s+([A-Za-z_][\w./:]*)/g, kind: node_1.SymbolKind.Namespace, nameGroup: 1 },
+    { rx: /\bshare\s+([A-Za-z_]\w*)/g, kind: node_1.SymbolKind.Variable, nameGroup: 1 },
     { rx: /\b(?:pub\s+)?(?:fn|proc)\s+([A-Za-z_]\w*)\s*\(/g, kind: node_1.SymbolKind.Function, nameGroup: 1 },
     { rx: /\b(?:pub\s+)?struct\s+([A-Za-z_]\w*)/g, kind: node_1.SymbolKind.Struct, nameGroup: 1 },
     { rx: /\b(?:pub\s+)?form\s+([A-Za-z_]\w*)/g, kind: node_1.SymbolKind.Struct, nameGroup: 1 },
@@ -320,24 +345,30 @@ function symbolOutline(doc) {
 }
 /* --------------------------- Définitions / refs ---------------------------- */
 function definitionAtPosition(doc, pos, uri) {
-    const word = wordAt(doc, pos);
-    if (!word)
+    const tok = tokenAt(doc, pos) ?? wordAt(doc, pos);
+    if (!tok)
         return [];
+    const pathLike = /[./:-]/.test(tok);
     const { byName } = indexDocument(doc);
-    const defs = byName.get(word) ?? [];
+    const defs = pathLike
+        ? indexDocument(doc).flat.filter((s) => s.kind === node_1.SymbolKind.Namespace && (s.name === tok || s.name.endsWith(`/${tok}`) || s.name.endsWith(`.${tok}`)))
+        : (byName.get(tok) ?? []);
     // Tri par priorité de kind puis proximité
     const baseOff = doc.offsetAt(pos);
     defs.sort((a, b) => kindPriority(a.kind) - kindPriority(b.kind) || Math.abs(doc.offsetAt(a.selectionRange.start) - baseOff) - Math.abs(doc.offsetAt(b.selectionRange.start) - baseOff));
     return defs.map(d => node_1.Location.create(uri, d.selectionRange));
 }
 function referencesAtPosition(doc, pos, uri) {
-    const word = wordAt(doc, pos);
-    if (!word)
+    const tok = tokenAt(doc, pos) ?? wordAt(doc, pos);
+    if (!tok)
         return [];
+    const pathLike = /[./:-]/.test(tok);
     const text = doc.getText();
     const mask = buildCodeMask(text);
     const out = [];
-    const re = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(word)}(?![A-Za-z0-9_])`, "g");
+    const re = pathLike
+        ? new RegExp(`(?<![A-Za-z0-9_./:-])${escapeRx(tok)}(?![A-Za-z0-9_./:-])`, "g")
+        : new RegExp(`(?<![A-Za-z0-9_])${escapeRx(tok)}(?![A-Za-z0-9_])`, "g");
     re.lastIndex = 0;
     let m;
     while ((m = re.exec(text))) {
@@ -369,10 +400,15 @@ function renameSymbol(doc, pos, newName) {
     const old = wordAt(doc, pos);
     if (!old || !isValidIdent(newName))
         return [];
+    return renameIdentifierByName(doc, old, newName);
+}
+function renameIdentifierByName(doc, oldName, newName) {
+    if (!isValidIdent(oldName) || !isValidIdent(newName))
+        return [];
     const text = doc.getText();
     const mask = buildCodeMask(text);
     const edits = [];
-    const re = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(old)}(?![A-Za-z0-9_])`, "g");
+    const re = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(oldName)}(?![A-Za-z0-9_])`, "g");
     let m;
     while ((m = re.exec(text))) {
         const idx = m.index ?? 0;
@@ -388,6 +424,198 @@ function renameSymbol(doc, pos, newName) {
             re.lastIndex++;
     }
     return edits;
+}
+function tokenAtPosition(doc, pos) {
+    return tokenAt(doc, pos) ?? wordAt(doc, pos);
+}
+/* --------------------------- Call/Type hierarchy --------------------------- */
+function fullRangeForLine(doc, line) {
+    const start = node_1.Position.create(line, 0);
+    const end = node_1.Position.create(line, Number.MAX_SAFE_INTEGER);
+    const text = doc.getText(node_1.Range.create(start, end));
+    return node_1.Range.create(start, node_1.Position.create(line, text.length));
+}
+function prepareCallHierarchy(doc, pos, uri) {
+    const name = wordAt(doc, pos);
+    if (!name)
+        return [];
+    const text = doc.getText();
+    const rx = new RegExp(`\\b(?:fn|proc|entry)\\s+${escapeRx(name)}\\b`, "g");
+    let m;
+    const out = [];
+    while ((m = rx.exec(text))) {
+        const off = (m.index ?? 0) + m[0].lastIndexOf(name);
+        const s = doc.positionAt(off);
+        out.push({
+            name,
+            kind: node_1.SymbolKind.Function,
+            uri,
+            range: fullRangeForLine(doc, s.line),
+            selectionRange: node_1.Range.create(s, node_1.Position.create(s.line, s.character + name.length)),
+        });
+        if (m[0].length === 0)
+            rx.lastIndex++;
+    }
+    return dedupeBy(out, (i) => `${i.uri}:${i.selectionRange.start.line}:${i.selectionRange.start.character}:${i.name}`);
+}
+function findCallSites(doc, name) {
+    const text = doc.getText();
+    const mask = buildCodeMask(text);
+    const rx = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(name)}\\s*\\(`, "g");
+    const out = [];
+    let m;
+    while ((m = rx.exec(text))) {
+        const idx = m.index ?? 0;
+        if (!mask[idx])
+            continue;
+        const s = doc.positionAt(idx);
+        out.push(node_1.Range.create(s, node_1.Position.create(s.line, s.character + name.length)));
+        if (m[0].length === 0)
+            rx.lastIndex++;
+    }
+    return out;
+}
+function nearestOwnerFn(doc, line) {
+    const lines = doc.getText().split(/\r?\n/);
+    for (let i = line; i >= 0; i--) {
+        const m = /^\s*(?:fn|proc|entry)\s+([A-Za-z_]\w*)\b/.exec(lines[i] ?? "");
+        if (m?.[1])
+            return { name: m[1], line: i };
+    }
+    return null;
+}
+function callHierarchyIncoming(doc, item) {
+    const refs = findCallSites(doc, item.name);
+    const byCaller = new Map();
+    for (const r of refs) {
+        const owner = nearestOwnerFn(doc, r.start.line);
+        if (!owner)
+            continue;
+        const key = `${owner.name}:${owner.line}`;
+        let entry = byCaller.get(key);
+        if (!entry) {
+            const ownerStart = node_1.Position.create(owner.line, 0);
+            entry = {
+                caller: {
+                    name: owner.name,
+                    kind: node_1.SymbolKind.Function,
+                    uri: item.uri,
+                    range: fullRangeForLine(doc, owner.line),
+                    selectionRange: node_1.Range.create(ownerStart, node_1.Position.create(owner.line, owner.name.length)),
+                },
+                fromRanges: [],
+            };
+            byCaller.set(key, entry);
+        }
+        entry.fromRanges.push(r);
+    }
+    return Array.from(byCaller.values()).map((x) => ({ from: x.caller, fromRanges: x.fromRanges }));
+}
+function calledFnsInBody(doc, ownerLine) {
+    const lines = doc.getText().split(/\r?\n/);
+    const start = ownerLine;
+    const max = Math.min(lines.length - 1, ownerLine + 80);
+    const out = new Set();
+    const rx = /\b([A-Za-z_]\w*)\s*\(/g;
+    for (let i = start; i <= max; i++) {
+        const line = lines[i] ?? "";
+        if (i > start && /^\s*(?:fn|proc|entry)\b/.test(line))
+            break;
+        let m;
+        while ((m = rx.exec(line))) {
+            const name = m[1];
+            if (!name || name === "if" || name === "for" || name === "while" || name === "match")
+                continue;
+            out.add(name);
+            if (m[0].length === 0)
+                rx.lastIndex++;
+        }
+        rx.lastIndex = 0;
+    }
+    return Array.from(out);
+}
+function callHierarchyOutgoing(doc, item) {
+    const owner = nearestOwnerFn(doc, item.selectionRange.start.line);
+    if (!owner)
+        return [];
+    const calls = calledFnsInBody(doc, owner.line);
+    const out = [];
+    for (const name of calls) {
+        const targets = prepareCallHierarchy(doc, node_1.Position.create(owner.line, 0), item.uri)
+            .filter((i) => i.name === name);
+        if (targets.length === 0)
+            continue;
+        const fromRanges = findCallSites(doc, name).filter((r) => r.start.line >= owner.line);
+        out.push({ to: targets[0], fromRanges });
+    }
+    return out;
+}
+function prepareTypeHierarchy(doc, pos, uri) {
+    const name = wordAt(doc, pos);
+    if (!name)
+        return [];
+    const text = doc.getText();
+    const rx = new RegExp(`\\b(?:type|struct|form|trait|enum|union)\\s+${escapeRx(name)}\\b`, "g");
+    let m;
+    const out = [];
+    while ((m = rx.exec(text))) {
+        const off = (m.index ?? 0) + m[0].lastIndexOf(name);
+        const s = doc.positionAt(off);
+        out.push({
+            name,
+            kind: node_1.SymbolKind.Class,
+            uri,
+            range: fullRangeForLine(doc, s.line),
+            selectionRange: node_1.Range.create(s, node_1.Position.create(s.line, s.character + name.length)),
+        });
+        if (m[0].length === 0)
+            rx.lastIndex++;
+    }
+    return out;
+}
+function typeHierarchySupertypes(doc, params) {
+    const item = params.item;
+    const lines = doc.getText().split(/\r?\n/);
+    const line = lines[item.selectionRange.start.line] ?? "";
+    const out = [];
+    const m1 = /\b(?:type|trait|struct|form)\s+[A-Za-z_]\w*\s+as\s+([A-Za-z_]\w*)/.exec(line);
+    const m2 = /\bwhere\s+([A-Za-z_]\w*)/.exec(line);
+    for (const candidate of [m1?.[1], m2?.[1]]) {
+        if (!candidate)
+            continue;
+        out.push({
+            name: candidate,
+            kind: node_1.SymbolKind.Interface,
+            uri: item.uri,
+            range: item.range,
+            selectionRange: item.selectionRange,
+        });
+    }
+    return out;
+}
+function typeHierarchySubtypes(doc, params) {
+    const name = params.item.name;
+    const text = doc.getText();
+    const rx = new RegExp(`\\b(?:type|trait|struct|form)\\s+([A-Za-z_]\\w*)\\s+as\\s+${escapeRx(name)}\\b`, "g");
+    let m;
+    const out = [];
+    while ((m = rx.exec(text))) {
+        const sub = m[1];
+        if (!sub)
+            continue;
+        const off = (m.index ?? 0) + m[0].indexOf(sub);
+        const s = doc.positionAt(off);
+        out.push({
+            name: sub,
+            kind: node_1.SymbolKind.Class,
+            uri: params.item.uri,
+            range: fullRangeForLine(doc, s.line),
+            selectionRange: node_1.Range.create(s, node_1.Position.create(s.line, s.character + sub.length)),
+        });
+        if (m[0].length === 0)
+            rx.lastIndex++;
+    }
+    return out;
 }
 /* ----------------------------- Workspace symbols --------------------------- */
 function workspaceSymbols(query, openDocs, limit = 200) {

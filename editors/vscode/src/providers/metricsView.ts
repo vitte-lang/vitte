@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/node";
 import type { ServerMetricEntry } from "../types/metrics";
+import { summarizeWorkspaceDiagnostics, summarizeDiagnosticsByDirectory } from "../utils/diagnostics";
 
 type MetricTreeNode = ServerMetricEntry | PlaceholderNode;
 
@@ -153,6 +154,10 @@ class VitteMetricsProvider implements vscode.TreeDataProvider<MetricTreeNode>, v
 
   private getMetricsNodes(): MetricTreeNode[] {
     const nodes: MetricTreeNode[] = [];
+    const cfg = vscode.workspace.getConfiguration("vitte");
+    const budgetLatency = Number(cfg.get<number>("diagnosticsBudget.maxLatencyMs", 900));
+    const budgetMemory = Number(cfg.get<number>("diagnosticsBudget.maxMemoryMb", 1024));
+    const budgetThrottle = Number(cfg.get<number>("diagnosticsBudget.dynamicThrottleFactor", 1.5));
     const totalCalls = this.metrics.reduce((sum, entry) => sum + entry.count, 0);
     const weightedAvg = totalCalls > 0
       ? this.metrics.reduce((sum, entry) => sum + entry.averageMs * entry.count, 0) / totalCalls
@@ -168,6 +173,81 @@ class VitteMetricsProvider implements vscode.TreeDataProvider<MetricTreeNode>, v
       message: "Summary",
       icon: new vscode.ThemeIcon("dashboard"),
       context: "summary.header",
+    });
+    const d = summarizeWorkspaceDiagnostics();
+    const now = Date.now();
+    const lintMetric = this.metrics.find((m) => m.name === "lint");
+    const stale = !!lintMetric && (now - lintMetric.lastAt > 10 * 60 * 1000);
+    const completionP95 = this.metrics.find((m) => m.name === "completion")?.p95Ms
+      ?? this.metrics.find((m) => m.name === "completion")?.averageMs
+      ?? 0;
+    const totalErrors = this.metrics.reduce((acc, m) => acc + (m.errorCount ?? 0), 0);
+    const health = computeHealthScore({
+      errors: d.errors,
+      warnings: d.warnings,
+      p95: completionP95,
+      rssMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+      stale,
+      crashCount: totalErrors,
+    });
+    nodes.push({
+      placeholder: true,
+      message: "Workspace Health Score",
+      description: `${health}/100`,
+      icon: health >= 80 ? new vscode.ThemeIcon("pass-filled") : health >= 60 ? new vscode.ThemeIcon("warning") : new vscode.ThemeIcon("error"),
+      context: "summary.health",
+    });
+    const rssMb = Math.round(process.memoryUsage().rss / (1024 * 1024));
+    const slowAvg = slowestAvg.averageMs;
+    const overLatency = slowAvg > budgetLatency;
+    const overMemory = rssMb > budgetMemory;
+    const throttleSuggest = overLatency || overMemory ? Math.min(4, Math.max(1, (slowAvg / Math.max(1, budgetLatency)) * budgetThrottle)) : 1;
+    nodes.push({
+      placeholder: true,
+      message: "Diagnostics budget",
+      description: overLatency || overMemory ? "over budget" : "within budget",
+      icon: overLatency || overMemory ? new vscode.ThemeIcon("warning") : new vscode.ThemeIcon("pass-filled"),
+      context: "summary.budget",
+    });
+    nodes.push({
+      placeholder: true,
+      message: "Budget latency",
+      description: `${slowAvg.toFixed(1)} / ${budgetLatency} ms`,
+      icon: overLatency ? new vscode.ThemeIcon("warning") : new vscode.ThemeIcon("clock"),
+      context: "summary.budget.latency",
+    });
+    nodes.push({
+      placeholder: true,
+      message: "Budget memory",
+      description: `${rssMb} / ${budgetMemory} MB`,
+      icon: overMemory ? new vscode.ThemeIcon("warning") : new vscode.ThemeIcon("server"),
+      context: "summary.budget.memory",
+    });
+    nodes.push({
+      placeholder: true,
+      message: "Dynamic throttle",
+      description: `${throttleSuggest.toFixed(2)}x`,
+      icon: new vscode.ThemeIcon("pulse"),
+      context: "summary.budget.throttle",
+    });
+    const noisy = summarizeDiagnosticsByDirectory().slice(0, 10);
+    nodes.push({
+      placeholder: true,
+      message: "Top 10 noisy modules",
+      description: noisy.length ? noisy.map((n) => `${n.dir}:${n.errors}/${n.warnings}`).join(" | ").slice(0, 180) : "none",
+      icon: new vscode.ThemeIcon("symbol-namespace"),
+      context: "summary.noisy",
+    });
+    const slowFeatures = [...this.metrics]
+      .sort((a, b) => (b.p95Ms ?? b.averageMs) - (a.p95Ms ?? a.averageMs))
+      .slice(0, 10)
+      .map((m) => `${m.name}:${(m.p95Ms ?? m.averageMs).toFixed(1)}ms`);
+    nodes.push({
+      placeholder: true,
+      message: "Top 10 slow files/features",
+      description: slowFeatures.join(" | ").slice(0, 180) || "none",
+      icon: new vscode.ThemeIcon("symbol-file"),
+      context: "summary.slowfiles",
     });
     nodes.push({
       placeholder: true,
@@ -233,6 +313,24 @@ class VitteMetricsProvider implements vscode.TreeDataProvider<MetricTreeNode>, v
 
 function isPlaceholder(node: MetricTreeNode): node is PlaceholderNode {
   return (node as PlaceholderNode).placeholder === true;
+}
+
+function computeHealthScore(input: {
+  errors: number;
+  warnings: number;
+  p95: number;
+  rssMb: number;
+  stale: boolean;
+  crashCount: number;
+}): number {
+  let score = 100;
+  score -= Math.min(60, input.errors * 8);
+  score -= Math.min(20, input.warnings * 2);
+  score -= Math.min(20, Math.max(0, (input.p95 - 250) / 30));
+  score -= Math.min(15, Math.max(0, (input.rssMb - 600) / 40));
+  if (input.stale) score -= 8;
+  score -= Math.min(15, input.crashCount);
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
 export function registerMetricsView(context: vscode.ExtensionContext, getClient: () => LanguageClient | undefined): void {
