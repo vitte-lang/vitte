@@ -17,6 +17,7 @@ struct Options {
     bool clean_cache = false;
     bool profile_mode = false;
     bool run_doctor = false;
+    bool grammar_check = false;
     bool emit_stdout = false;
     bool emit_obj = false;
     bool repro = false;
