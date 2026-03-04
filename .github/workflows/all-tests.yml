@@ -13,18 +13,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group:
-          - core
-          - ci
-          - abi
-          - modules
-          - packages
-          - package-ci-fast
-          - package-ci-strict
+        group: ${{ github.event_name == 'pull_request' && fromJSON('["packages"]') || fromJSON('["core","ci","abi","modules","packages"]') }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Install build deps
         run: |

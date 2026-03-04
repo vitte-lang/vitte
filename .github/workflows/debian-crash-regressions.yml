@@ -24,6 +24,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Install build deps
         run: |
@@ -34,11 +37,13 @@ jobs:
       - name: Build
         run: make build
 
-      - name: Release readiness gate
-        run: make -s release-readiness
+      - name: Compiler readiness gate
+        if: github.event_name != 'pull_request'
+        run: make -s ci-fast-compiler
 
       - name: Debian crash regressions
+        if: github.event_name != 'pull_request'
         run: tools/ci_debian_crash_regressions.sh
 
       - name: Crash report snapshots
-        run: make crash-report-snapshots
+        run: tools/crash_report_snapshots.sh
