@@ -14,6 +14,7 @@ KEYWORDS = [
 ]
 
 TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_/]*")
+SKIP_DIRS = {".git", "build", "target", ".vitte-cache", "node_modules", ".venv", ".debstage", ".vscode"}
 
 class EditorTab:
     def __init__(self, notebook, path=None):
@@ -155,7 +156,11 @@ class VitteEditorApp:
         self.build_ui()
 
     def build_ui(self):
-        self.root.geometry("1320x860")
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        width = max(960, min(1320, int(screen_w * 0.9)))
+        height = max(640, min(860, int(screen_h * 0.9)))
+        self.root.geometry(f"{width}x{height}")
 
         self.main = ttk.PanedWindow(self.root, orient="horizontal")
         self.main.pack(fill="both", expand=True)
@@ -240,7 +245,8 @@ class VitteEditorApp:
         if not self.project_dir:
             return
         files = []
-        for root, _dirs, names in os.walk(self.project_dir):
+        for root, dirs, names in os.walk(self.project_dir):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
             for n in names:
                 if n.endswith(".vit"):
                     files.append(os.path.relpath(os.path.join(root, n), self.project_dir))
