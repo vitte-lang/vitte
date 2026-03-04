@@ -21,7 +21,6 @@ on:
 jobs:
   crash-regressions:
     runs-on: ubuntu-latest
-    continue-on-error: ${{ github.event_name == 'pull_request' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,9 +38,11 @@ jobs:
         run: make build
 
       - name: Compiler readiness gate
+        if: github.event_name != 'pull_request'
         run: make -s ci-fast-compiler
 
       - name: Debian crash regressions
+        if: github.event_name != 'pull_request'
         run: tools/ci_debian_crash_regressions.sh
 
       - name: Crash report snapshots
