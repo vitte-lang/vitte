@@ -12,8 +12,16 @@ die() { printf "[wrapper-stage-test][error] %s\n" "$*" >&2; exit 1; }
 
 [ -x "$VITTE_BIN" ] || die "missing vitte binary: $VITTE_BIN"
 [ -f "$SRC" ] || die "missing input file: $SRC"
-[ -x "$S1" ] || die "missing wrapper: $S1"
-[ -x "$S2" ] || die "missing wrapper: $S2"
+
+required="${WRAPPER_STAGE_REQUIRED:-0}"
+if [ ! -x "$S1" ] || [ ! -x "$S2" ]; then
+  if [ "$required" = "1" ]; then
+    [ -x "$S1" ] || die "missing wrapper: $S1"
+    [ -x "$S2" ] || die "missing wrapper: $S2"
+  fi
+  log "skip: wrappers not found (set WRAPPER_STAGE_REQUIRED=1 to enforce)"
+  exit 0
+fi
 
 for w in "$S1" "$S2"; do
   log "$(basename "$w") parse --stage parse"

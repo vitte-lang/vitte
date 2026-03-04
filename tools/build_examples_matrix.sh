@@ -16,6 +16,22 @@ case "$MODE" in
   *) die "invalid MODE=$MODE (expected build or check)" ;;
 esac
 
+cxx_ready() {
+  if ! command -v clang++ >/dev/null 2>&1; then
+    return 1
+  fi
+  if ! printf '#include <cstdint>\n#include <cstddef>\nint main(){return 0;}\n' \
+      | clang++ -x c++ -std=c++20 -fsyntax-only - >/dev/null 2>&1; then
+    return 1
+  fi
+  return 0
+}
+
+if [ "$MODE" = "build" ] && ! cxx_ready; then
+  log "skip: C++ toolchain not ready (clang++/stdlib headers missing)"
+  exit 0
+fi
+
 total=0
 ok=0
 fail=0
@@ -33,7 +49,9 @@ while IFS= read -r file; do
     sed -n '1,80p' /tmp/vitte_examples_matrix.log >&2
   fi
 done <<EOF_FILES
-$(find "$ROOT_DIR/examples" -maxdepth 1 -type f -name '*.vit' | sort)
+$(find "$ROOT_DIR/examples" -maxdepth 1 -type f -name '*.vit' \
+  ! -name '*.reduced.vit' \
+  ! -name '*.reduce.tmp.vit' | sort)
 EOF_FILES
 
 [ "$total" -gt 0 ] || die "no .vit files in examples/"

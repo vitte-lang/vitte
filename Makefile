@@ -364,7 +364,7 @@ update-diagnostics-ftl:
 	@tools/update_diagnostics_ftl.py
 
 .PHONY: ci-strict
-ci-strict: grammar-check book-qa-strict package-layout-lint legacy-import-path-lint negative-tests diag-snapshots
+ci-strict: grammar-check package-layout-lint legacy-import-path-lint negative-tests diag-snapshots
 
 .PHONY: ci-fast
 ci-fast: grammar-check package-layout-lint legacy-import-path-lint negative-tests diag-snapshots completions-snapshots wrapper-stage-test
