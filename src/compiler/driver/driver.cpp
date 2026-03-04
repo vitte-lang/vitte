@@ -731,6 +731,100 @@ static int run_clean_cache() {
     return 0;
 }
 
+static bool read_file_text(const std::filesystem::path& path, std::string& out) {
+    std::ifstream in(path, std::ios::in | std::ios::binary);
+    if (!in.is_open()) {
+        return false;
+    }
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    out = ss.str();
+    return true;
+}
+
+static std::string strip_generated_header(const std::string& text) {
+    std::size_t pos = 0;
+    while (pos < text.size()) {
+        std::size_t end = text.find('\n', pos);
+        if (end == std::string::npos) {
+            end = text.size();
+        }
+        const std::string line = text.substr(pos, end - pos);
+        if (line.empty()) {
+            const std::size_t next = (end < text.size()) ? end + 1 : end;
+            return text.substr(next);
+        }
+        if (line.rfind("# ", 0) != 0) {
+            return text.substr(pos);
+        }
+        pos = (end < text.size()) ? end + 1 : end;
+    }
+    return text;
+}
+
+static std::string normalize_ebnf_text(std::string text) {
+    text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+    while (!text.empty() && (text.back() == '\n' || text.back() == ' ' || text.back() == '\t')) {
+        text.pop_back();
+    }
+    return text;
+}
+
+static int run_grammar_check() {
+    namespace fs = std::filesystem;
+
+    const fs::path source = fs::path("src") / "vitte" / "grammar" / "vitte.ebnf";
+    const std::vector<fs::path> artifacts = {
+        fs::path("book") / "grammar" / "grammar-surface.ebnf",
+        fs::path("book") / "grammar" / "vitte.ebnf",
+        fs::path("book") / "grammar-surface.ebnf",
+    };
+
+    std::string source_text;
+    if (!read_file_text(source, source_text)) {
+        std::cerr << "[grammar] error: missing source " << source.string() << "\n";
+        return 1;
+    }
+
+    bool ok = true;
+    for (const auto& artifact : artifacts) {
+        std::string artifact_text;
+        if (!read_file_text(artifact, artifact_text)) {
+            std::cerr << "[grammar] error: missing generated artifact " << artifact.string() << "\n";
+            ok = false;
+            continue;
+        }
+        if (artifact_text.find("# source: src/vitte/grammar/vitte.ebnf") == std::string::npos) {
+            std::cerr << "[grammar] error: missing sync header in " << artifact.string() << "\n";
+            ok = false;
+            continue;
+        }
+        if (normalize_ebnf_text(strip_generated_header(artifact_text)) != normalize_ebnf_text(source_text)) {
+            std::cerr << "[grammar] error: out-of-sync artifact " << artifact.string() << "\n";
+            ok = false;
+        }
+    }
+
+    const int corpus_rc = std::system("python3 book/grammar/scripts/validate_examples.py");
+    if (corpus_rc != 0) {
+        std::cerr << "[grammar] error: corpus/diagnostics validation failed\n";
+        ok = false;
+    }
+
+    const int railroad_rc = std::system("python3 book/grammar/scripts/build_railroad.py --check");
+    if (railroad_rc != 0) {
+        std::cerr << "[grammar] error: railroad artifacts are out of date\n";
+        ok = false;
+    }
+
+    if (!ok) {
+        std::cerr << "[grammar] FAILED\n";
+        return 1;
+    }
+    std::cout << "[grammar] OK\n";
+    return 0;
+}
+
 static int run_reduce(const Options& opts) {
     namespace fs = std::filesystem;
 
@@ -1649,6 +1743,10 @@ int run(int argc, char** argv) {
 
     if (opts.clean_cache) {
         return run_clean_cache();
+    }
+
+    if (opts.grammar_check) {
+        return run_grammar_check();
     }
 
     const bool api_diff_without_input =

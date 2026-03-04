@@ -90,7 +90,7 @@ static std::string infer_input_file(const std::vector<std::string>& args) {
             continue;
         }
         if (a == "parse" || a == "check" || a == "emit" || a == "build" || a == "profile" ||
-            a == "doctor" || a == "help" || a == "mod" || a == "reduce" || a == "clean-cache" ||
+            a == "doctor" || a == "help" || a == "mod" || a == "grammar" || a == "reduce" || a == "clean-cache" ||
             a == "init" || a == "explain") {
             continue;
         }

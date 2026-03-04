@@ -54,9 +54,22 @@ Options parse_options(int argc, char** argv) {
                     next != "check" && next != "emit" &&
                     next != "build" && next != "reduce" &&
                     next != "profile" && next != "clean-cache" &&
+                    next != "grammar" &&
                     next != "mod") {
                     opts.init_dir = argv[++i];
                 }
+            }
+        }
+        else if (arg == "grammar") {
+            if (i + 1 < argc) {
+                std::string mode = argv[++i];
+                if (mode == "check") {
+                    opts.grammar_check = true;
+                } else {
+                    std::cerr << "[driver] warning: unknown grammar subcommand '" << mode << "'\n";
+                }
+            } else {
+                std::cerr << "[driver] warning: missing grammar subcommand (expected check)\n";
             }
         }
         else if (arg == "doctor") {
@@ -440,6 +453,7 @@ void print_help() {
         "  init [dir]       Create a minimal project scaffold\n"
         "  explain <code>   Explain a diagnostic (e.g. E0001)\n"
         "  doctor           Check toolchain prerequisites\n"
+        "  grammar check    Validate grammar sync + corpus diagnostics snapshots\n"
         "  parse            Parse only (no backend)\n"
         "  check            Parse + resolve + IR (no backend)\n"
         "  emit             Emit C++ only (no native compile)\n"
@@ -533,6 +547,7 @@ void print_help() {
         "  vitte check src/main.vit\n"
         "  vitte emit src/main.vit\n"
         "  vitte doctor\n"
+        "  vitte grammar check\n"
         "\n"
         "Examples:\n"
         "  vitte parse --lang=fr src/main.vit\n"
