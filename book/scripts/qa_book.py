@@ -5,7 +5,7 @@ import re
 from collections import Counter
 
 root = Path(__file__).resolve().parents[1]
-repo = root.parents[1]
+repo = root.parents[0]
 chapters = sorted((root / 'chapters').glob('*.md'))
 keywords = sorted((root / 'keywords').glob('*.md'))
 
@@ -18,8 +18,9 @@ required_global_files = [
     root / 'keywords' / 'erreurs-compilateur.md',
 ]
 ebnf_source = repo / 'src/vitte/grammar/vitte.ebnf'
-ebnf_doc = root / 'grammar-surface.ebnf'
-ebnf_docs_grammar = repo / 'docs/grammar/vitte.ebnf'
+ebnf_doc_root = root / 'grammar-surface.ebnf'
+ebnf_doc_surface = root / 'grammar' / 'grammar-surface.ebnf'
+ebnf_doc_legacy = root / 'grammar' / 'vitte.ebnf'
 
 link_re = re.compile(r'\[[^\]]+\]\(([^)]+)\)')
 level_re = re.compile(r'^Niveau:\s*(Débutant|Intermédiaire|Avancé)\.?\s*$', re.MULTILINE)
@@ -144,22 +145,22 @@ for gf in required_global_files:
     if not gf.exists():
         add_issue(f"{gf}: fichier global manquant")
 
-# EBNF source/doc must stay strictly aligned.
-if ebnf_source.exists() and ebnf_doc.exists():
-    src_txt = ebnf_source.read_text(encoding='utf-8')
-    doc_txt = ebnf_doc.read_text(encoding='utf-8')
-    if src_txt != doc_txt:
-        add_issue(f"{ebnf_doc}: diverge de {ebnf_source} (copie documentaire non alignée, exécuter sync_grammar_surface.py)")
+# EBNF source/doc artifacts must stay strictly aligned via sync script.
+if not ebnf_source.exists():
+    add_issue(f"{ebnf_source}: fichier EBNF source manquant")
 else:
-    add_issue(f"{ebnf_source} ou {ebnf_doc}: fichier EBNF manquant")
-
-if ebnf_source.exists() and ebnf_docs_grammar.exists():
     src_txt = ebnf_source.read_text(encoding='utf-8')
-    doc_txt = ebnf_docs_grammar.read_text(encoding='utf-8')
-    if src_txt != doc_txt:
-        add_issue(f"{ebnf_docs_grammar}: diverge de {ebnf_source} (copie docs/grammar non alignée, exécuter sync_grammar_surface.py)")
-else:
-    add_issue(f"{ebnf_source} ou {ebnf_docs_grammar}: fichier EBNF manquant")
+    expected_marker = '# source: src/vitte/grammar/vitte.ebnf'
+    for artifact in (ebnf_doc_root, ebnf_doc_surface, ebnf_doc_legacy):
+        if not artifact.exists():
+            add_issue(f"{artifact}: artefact EBNF généré manquant")
+            continue
+        doc_txt = artifact.read_text(encoding='utf-8')
+        if expected_marker not in doc_txt or src_txt not in doc_txt:
+            add_issue(
+                f"{artifact}: diverge de {ebnf_source} "
+                "(artefact non aligné, exécuter book/grammar/scripts/sync_grammar.py)"
+            )
 
 # Chapters checks.
 for p in chapters:
