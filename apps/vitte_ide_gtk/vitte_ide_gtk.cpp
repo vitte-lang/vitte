@@ -197,6 +197,7 @@ struct AppState {
     std::unordered_map<std::string, BuildPreset> file_presets;
 
     std::string theme_mode = "System";
+    std::string window_start_mode = "auto";
     std::string font_family = "Monospace";
     int font_size = 11;
     GtkCssProvider* css_provider = nullptr;
@@ -235,9 +236,25 @@ struct AppState {
 void apply_appearance(AppState* s);
 std::string read_file_text(const fs::path& p);
 
+void apply_window_start_mode(AppState* s) {
+    if (s == nullptr || s->window == nullptr) {
+        return;
+    }
+    if (s->window_start_mode == "maximized") {
+        gtk_window_maximize(GTK_WINDOW(s->window));
+    } else {
+        gtk_window_unmaximize(GTK_WINDOW(s->window));
+    }
+}
+
 bool is_source(const fs::path& p) {
     const std::string ext = p.extension().string();
     return ext == ".vit" || ext == ".cpp" || ext == ".hpp" || ext == ".h";
+}
+
+bool should_skip_dir_name(const std::string& base) {
+    return base == ".git" || base == "build" || base == "target" || base == ".vitte-cache" || base == "node_modules" ||
+           base == ".venv" || base == ".debstage" || base == ".vscode";
 }
 
 std::string lower_copy(const std::string& s) {
@@ -490,6 +507,8 @@ void apply_runtime_config_file(AppState* s, bool announce) {
         const std::string val = trim_copy(line.substr(eq + 1));
         if (key == "theme_mode") {
             s->theme_mode = (val == "Dark" || val == "Light") ? val : "System";
+        } else if (key == "window_start") {
+            s->window_start_mode = (val == "maximized") ? "maximized" : "auto";
         } else if (key == "font_family") {
             s->font_family = val.empty() ? "Monospace" : val;
         } else if (key == "font_size") {
@@ -626,7 +645,15 @@ void rebuild_search_index_async(AppState* s) {
             if (!fs::exists(root)) {
                 continue;
             }
-            for (const auto& e : fs::recursive_directory_iterator(root)) {
+            for (auto it = fs::recursive_directory_iterator(root); it != fs::recursive_directory_iterator(); ++it) {
+                const auto& e = *it;
+                if (e.is_directory()) {
+                    const std::string base = e.path().filename().string();
+                    if (should_skip_dir_name(base)) {
+                        it.disable_recursion_pending();
+                    }
+                    continue;
+                }
                 if (!e.is_regular_file() || !is_source(e.path())) {
                     continue;
                 }
@@ -1273,7 +1300,7 @@ void add_project_node(AppState* s, GtkTreeIter* parent, const fs::path& p) {
 
     for (const auto& c : children) {
         const std::string base = c.filename().string();
-        if (base == ".git" || base == "build" || base == "target" || base == ".vitte-cache") {
+        if (should_skip_dir_name(base)) {
             continue;
         }
         if (fs::is_directory(c) || is_source(c)) {
@@ -1294,7 +1321,15 @@ void for_each_workspace_source_file(const AppState* s, const std::function<void(
         if (!fs::exists(root)) {
             continue;
         }
-        for (const auto& e : fs::recursive_directory_iterator(root)) {
+        for (auto it = fs::recursive_directory_iterator(root); it != fs::recursive_directory_iterator(); ++it) {
+            const auto& e = *it;
+            if (e.is_directory()) {
+                const std::string base = e.path().filename().string();
+                if (should_skip_dir_name(base)) {
+                    it.disable_recursion_pending();
+                }
+                continue;
+            }
             if (!e.is_regular_file()) {
                 continue;
             }
@@ -2667,6 +2702,7 @@ void save_session(AppState* s) {
     out << "run_args=" << s->run_args << "\n";
     out << "run_env=" << s->run_env << "\n";
     out << "theme_mode=" << s->theme_mode << "\n";
+    out << "window_start_mode=" << s->window_start_mode << "\n";
     out << "font_family=" << s->font_family << "\n";
     out << "font_size=" << s->font_size << "\n";
     out << "high_contrast=" << (s->high_contrast ? 1 : 0) << "\n";
@@ -2741,6 +2777,9 @@ void load_session(AppState* s) {
         } else if (line.rfind("theme_mode=", 0) == 0) {
             const std::string v = line.substr(11);
             s->theme_mode = (v == "Dark" || v == "Light") ? v : "System";
+        } else if (line.rfind("window_start_mode=", 0) == 0) {
+            const std::string v = line.substr(18);
+            s->window_start_mode = (v == "maximized") ? "maximized" : "auto";
         } else if (line.rfind("font_family=", 0) == 0) {
             s->font_family = line.substr(12);
             if (s->font_family.empty()) {
@@ -4003,6 +4042,11 @@ void on_action_ui_settings(GtkWidget*, gpointer user_data) {
     GtkWidget* font_entry = gtk_entry_new();
     gtk_entry_set_placeholder_text(GTK_ENTRY(font_entry), "Font family");
     gtk_entry_set_text(GTK_ENTRY(font_entry), s->font_family.c_str());
+    GtkWidget* start_label = gtk_label_new("Window start");
+    GtkWidget* start_combo = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(start_combo), "auto");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(start_combo), "maximized");
+    gtk_combo_box_set_active(GTK_COMBO_BOX(start_combo), s->window_start_mode == "maximized" ? 1 : 0);
 
     GtkWidget* font_size = gtk_spin_button_new_with_range(8, 30, 1);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(font_size), s->font_size);
@@ -4013,6 +4057,8 @@ void on_action_ui_settings(GtkWidget*, gpointer user_data) {
 
     gtk_box_pack_start(GTK_BOX(box), theme_label, FALSE, FALSE, 4);
     gtk_box_pack_start(GTK_BOX(box), theme_combo, FALSE, FALSE, 4);
+    gtk_box_pack_start(GTK_BOX(box), start_label, FALSE, FALSE, 4);
+    gtk_box_pack_start(GTK_BOX(box), start_combo, FALSE, FALSE, 4);
     gtk_box_pack_start(GTK_BOX(box), font_entry, FALSE, FALSE, 4);
     gtk_box_pack_start(GTK_BOX(box), font_size, FALSE, FALSE, 4);
     gtk_box_pack_start(GTK_BOX(box), contrast, FALSE, FALSE, 4);
@@ -4022,10 +4068,13 @@ void on_action_ui_settings(GtkWidget*, gpointer user_data) {
     if (gtk_dialog_run(GTK_DIALOG(d)) == GTK_RESPONSE_ACCEPT) {
         const gchar* mode = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(theme_combo));
         s->theme_mode = mode != nullptr ? mode : "System";
+        const gchar* start_mode = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(start_combo));
+        s->window_start_mode = (start_mode != nullptr && std::string(start_mode) == "maximized") ? "maximized" : "auto";
         s->font_family = gtk_entry_get_text(GTK_ENTRY(font_entry));
         s->font_size = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(font_size));
         s->high_contrast = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(contrast));
         s->editor_tab_width = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(tab_width));
+        apply_window_start_mode(s);
         apply_appearance(s);
         save_session(s);
         set_status(s, "Appearance updated");
@@ -4945,7 +4994,21 @@ void activate(GtkApplication* app, gpointer user_data) {
     s->app = app;
 
     s->window = gtk_application_window_new(app);
-    gtk_window_set_default_size(GTK_WINDOW(s->window), 1450, 920);
+    int default_w = 1280;
+    int default_h = 800;
+    if (GdkDisplay* display = gdk_display_get_default(); display != nullptr) {
+        GdkMonitor* monitor = gdk_display_get_primary_monitor(display);
+        if (monitor == nullptr) {
+            monitor = gdk_display_get_monitor(display, 0);
+        }
+        if (monitor != nullptr) {
+            GdkRectangle geometry{};
+            gdk_monitor_get_geometry(monitor, &geometry);
+            default_w = std::max(960, std::min(1450, static_cast<int>(geometry.width * 0.9)));
+            default_h = std::max(640, std::min(920, static_cast<int>(geometry.height * 0.9)));
+        }
+    }
+    gtk_window_set_default_size(GTK_WINDOW(s->window), default_w, default_h);
     gtk_window_set_title(GTK_WINDOW(s->window), "VITTE IDE GTK");
     g_object_set_data(G_OBJECT(s->window), "app-state", s);
 
@@ -4956,12 +5019,15 @@ void activate(GtkApplication* app, gpointer user_data) {
     GtkWidget* root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(s->window), root);
 
+    GtkWidget* toolbar_scroll = gtk_scrolled_window_new(nullptr, nullptr);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(toolbar_scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
+    gtk_box_pack_start(GTK_BOX(root), toolbar_scroll, FALSE, TRUE, 0);
     GtkWidget* toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
     gtk_widget_set_margin_start(toolbar, 6);
     gtk_widget_set_margin_end(toolbar, 6);
     gtk_widget_set_margin_top(toolbar, 6);
     gtk_widget_set_margin_bottom(toolbar, 6);
-    gtk_box_pack_start(GTK_BOX(root), toolbar, FALSE, FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(toolbar_scroll), toolbar);
 
     gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("document-open", "Open", G_CALLBACK(on_action_open), s), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("folder-open", "Workspace roots (Ctrl+Shift+W)", G_CALLBACK(on_action_workspace_settings), s), FALSE, FALSE, 0);
@@ -5235,9 +5301,9 @@ void activate(GtkApplication* app, gpointer user_data) {
     gtk_widget_set_margin_bottom(s->status_label, 4);
     gtk_box_pack_start(GTK_BOX(root), s->status_label, FALSE, FALSE, 0);
 
-    build_project_tree(s);
     load_session(s);
     apply_runtime_config_file(s, false);
+    apply_window_start_mode(s);
     build_project_tree(s);
     load_project_tasks(s);
     load_plugins(s);
