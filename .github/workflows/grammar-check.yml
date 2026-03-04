@@ -1,0 +1,40 @@
+name: grammar-check
+
+on:
+  pull_request:
+    paths:
+      - 'src/vitte/grammar/**'
+      - 'book/grammar/**'
+      - 'book/scripts/**'
+      - 'tests/grammar/**'
+      - 'Makefile'
+      - '.github/workflows/grammar-check.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/vitte/grammar/**'
+      - 'book/grammar/**'
+      - 'book/scripts/**'
+      - 'tests/grammar/**'
+      - 'Makefile'
+
+jobs:
+  grammar-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang g++ make pkg-config libssl-dev libcurl4-openssl-dev python3
+
+      - name: Build vitte
+        run: make build
+
+      - name: Run grammar gate
+        run: make grammar-gate
