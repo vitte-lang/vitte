@@ -22,6 +22,9 @@ trap on_interrupt INT
 
 for file in "$ROOT_DIR"/examples/arduino_*.vit; do
   [ -f "$file" ] || continue
+  case "$file" in
+    *.reduced.vit|*.reduce.tmp.vit) continue ;;
+  esac
   total=$((total + 1))
   if [ "$interrupted" -ne 0 ]; then
     break
