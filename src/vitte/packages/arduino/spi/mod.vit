@@ -1,0 +1,79 @@
+<<<
+mod.vit
+package vitte/arduino/spi
+>>>
+
+space vitte/arduino/spi
+
+use vitte/arduino as arduino_pkg
+use vitte/arduino/spi/internal/runtime as spi_runtime_pkg
+use vitte/arduino/spi/internal/validate as spi_validate_pkg
+use vitte/arduino/spi/internal/policy as spi_policy_pkg
+
+form SpiConfig {
+  profile: arduino_pkg.ArduinoProfile
+  mode: arduino_pkg.SpiMode
+  bit_order: arduino_pkg.BitOrder
+  clock_hz: int
+}
+
+form SpiBusState {
+  cfg: SpiConfig
+  opened: bool
+  tx_count: int
+  rx_count: int
+  error_count: int
+}
+
+proc spi_default_config() -> SpiConfig {
+  give SpiConfig(arduino_pkg.default_profile(), arduino_pkg.SpiMode.Mode0, arduino_pkg.BitOrder.MsbFirst, spi_policy_pkg.default_clock_hz())
+}
+
+proc spi_with_clock_hz(cfg: SpiConfig, clock_hz: int) -> SpiConfig {
+  give SpiConfig(cfg.profile, cfg.mode, cfg.bit_order, clock_hz)
+}
+
+proc spi_with_mode(cfg: SpiConfig, mode: arduino_pkg.SpiMode) -> SpiConfig {
+  give SpiConfig(cfg.profile, mode, cfg.bit_order, cfg.clock_hz)
+}
+
+proc spi_open(cfg: SpiConfig) -> arduino_pkg.ArduinoResult[SpiBusState] {
+  if spi_validate_pkg.valid_clock_hz(cfg.clock_hz) == false {
+    give arduino_pkg.err[SpiBusState](arduino_pkg.ArduinoError.Unsupported)
+  }
+  if cfg.clock_hz > arduino_pkg.max_spi_hz(cfg.profile) {
+    give arduino_pkg.err[SpiBusState](arduino_pkg.ArduinoError.Unsupported)
+  }
+  give arduino_pkg.ok[SpiBusState](SpiBusState(cfg, true, 0, 0, 0))
+}
+
+proc spi_close(st: SpiBusState) -> SpiBusState {
+  give SpiBusState(st.cfg, false, st.tx_count, st.rx_count, st.error_count)
+}
+
+proc spi_transfer(st: SpiBusState, value: int) -> arduino_pkg.ArduinoResult[int] {
+  let _ = st
+  give arduino_pkg.ok[int](spi_runtime_pkg.runtime_transfer(value))
+}
+
+# Compatibility wrapper
+proc transfer(byte: int) -> int {
+  give byte
+}
+
+proc package_meta() -> string {
+  give "vitte/arduino/spi"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/arduino/spi
+owner: @vitte/arduino
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: SPI facade typée (mode/ordre/clock)
+input_contract: Configuration SPI explicite et immuable
+output_contract: ArduinoResult avec controle de capabilities profil
+boundary: Les acces runtime restent sous internal/runtime
+compat_policy: additive-only
+>>>

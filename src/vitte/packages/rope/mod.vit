@@ -5,6 +5,10 @@ package vitte/rope
 
 space vitte/rope
 
+use vitte/rope/internal/runtime as rope_runtime_pkg
+use vitte/rope/internal/validate as rope_validate_pkg
+use vitte/rope/internal/policy as rope_policy_pkg
+
 
 form Rope {
   chunks: [string]
@@ -52,10 +56,84 @@ proc package_meta() -> string {
   give "vitte/rope"
 }
 
+form RopeConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick RopeError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick RopeResult[T] {
+  Ok(value: T)
+  Err(error: RopeError)
+}
+
+proc default_config() -> RopeConfig {
+  give RopeConfig(true, rope_policy_pkg.default_timeout_ms(), rope_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: RopeConfig) -> RopeResult[bool] {
+  if rope_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give RopeResult.Err(RopeError.InvalidConfig)
+  }
+  if rope_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give RopeResult.Err(RopeError.InvalidConfig)
+  }
+  give RopeResult.Ok(true)
+}
+
+proc healthcheck(cfg: RopeConfig) -> RopeResult[bool] {
+  let vr: RopeResult[bool] = validate_config(cfg)
+  when vr is RopeResult.Err {
+    give RopeResult.Err(vr.error)
+  }
+  if rope_runtime_pkg.runtime_status() == false {
+    give RopeResult.Err(RopeError.Internal)
+  }
+  give RopeResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-ROPE0001" {
+    give "invalid package configuration"
+  }
+  give "rope diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
 <<< ROLE-CONTRACT
 package: vitte/rope
 role: Manipulation efficace de chaines segmentees
 input_contract: Chunks textuels normalises
 output_contract: Concatenation stable et previsible
 boundary: N effectue pas d I/O, uniquement structures texte
+
+owner: @vitte/rope
+stability: stable
+since: 3.0.0
+deprecated_in: -
+compat_policy: additive-only
+api_version: v1
 >>>

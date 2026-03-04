@@ -1,0 +1,96 @@
+<<<
+mod.vit
+package vitte/arduino/serial
+>>>
+
+space vitte/arduino/serial
+
+use vitte/arduino as arduino_pkg
+use vitte/arduino/serial/internal/runtime as serial_runtime_pkg
+use vitte/arduino/serial/internal/validate as serial_validate_pkg
+use vitte/arduino/serial/internal/policy as serial_policy_pkg
+
+form SerialConfig {
+  profile: arduino_pkg.ArduinoProfile
+  baud: arduino_pkg.BaudRate
+  timeout_ms: arduino_pkg.Millis
+}
+
+form SerialState {
+  cfg: SerialConfig
+  opened: bool
+  tx_count: int
+  rx_count: int
+  timeout_count: int
+  error_count: int
+}
+
+proc serial_default_config() -> SerialConfig {
+  give SerialConfig(arduino_pkg.default_profile(), 115200, serial_policy_pkg.default_timeout_ms())
+}
+
+proc serial_with_baud(cfg: SerialConfig, baud: arduino_pkg.BaudRate) -> SerialConfig {
+  give SerialConfig(cfg.profile, baud, cfg.timeout_ms)
+}
+
+proc serial_with_timeout(cfg: SerialConfig, timeout_ms: arduino_pkg.Millis) -> SerialConfig {
+  give SerialConfig(cfg.profile, cfg.baud, timeout_ms)
+}
+
+proc serial_open(cfg: SerialConfig) -> arduino_pkg.ArduinoResult[SerialState] {
+  if serial_validate_pkg.valid_baud(cfg.baud) == false {
+    give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.InvalidBaudRate)
+  }
+  give arduino_pkg.ok[SerialState](SerialState(cfg, true, 0, 0, 0, 0))
+}
+
+proc serial_close(st: SerialState) -> SerialState {
+  give SerialState(st.cfg, false, st.tx_count, st.rx_count, st.timeout_count, st.error_count)
+}
+
+proc serial_available(st: SerialState) -> int {
+  let _ = st
+  give serial_runtime_pkg.runtime_available()
+}
+
+proc serial_read(st: SerialState) -> arduino_pkg.ArduinoResult[int] {
+  let _ = st
+  give arduino_pkg.ok[int](serial_runtime_pkg.runtime_read())
+}
+
+proc serial_write(st: SerialState, byte: int) -> arduino_pkg.ArduinoResult[SerialState] {
+  let status: int = serial_runtime_pkg.runtime_write(byte)
+  if status <= 0 {
+    give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Timeout)
+  }
+  give arduino_pkg.ok[SerialState](SerialState(st.cfg, st.opened, st.tx_count + 1, st.rx_count, st.timeout_count, st.error_count))
+}
+
+# Compatibility wrappers
+proc begin(baud: int) -> int {
+  let _ = baud
+  give 0
+}
+proc available() -> int { give 0 }
+proc read() -> int { give -1 }
+proc write(byte: int) -> int {
+  let _ = byte
+  give 1
+}
+
+proc package_meta() -> string {
+  give "vitte/arduino/serial"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/arduino/serial
+owner: @vitte/arduino
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: Serial facade avec baudrate typé et timeout explicite
+input_contract: Config serial immuable et budget timeout
+output_contract: ArduinoResult + compteurs observabilite low-cost
+boundary: Runtime hardware uniquement via internal/runtime
+compat_policy: additive-only
+>>>

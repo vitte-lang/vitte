@@ -5,8 +5,79 @@ package vitte/kernel
 
 space vitte/kernel
 
+use vitte/kernel/internal/runtime as kernel_runtime_pkg
+use vitte/kernel/internal/validate as kernel_validate_pkg
+use vitte/kernel/internal/policy as kernel_policy_pkg
+
+form KernelConfig {
+  surface: string
+  profile: string
+  strict: bool
+}
+
+pick KernelError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick KernelResult[T] {
+  Ok(value: T)
+  Err(error: KernelError)
+}
+
+proc default_config() -> KernelConfig {
+  give KernelConfig(kernel_policy_pkg.default_surface(), "core", true)
+}
+
+proc validate_config(cfg: KernelConfig) -> KernelResult[bool] {
+  if kernel_validate_pkg.valid_surface(cfg.surface) == false {
+    give KernelResult.Err(KernelError.InvalidConfig)
+  }
+  if kernel_validate_pkg.valid_profile(cfg.profile) == false {
+    give KernelResult.Err(KernelError.InvalidConfig)
+  }
+  give KernelResult.Ok(true)
+}
+
+proc healthcheck(cfg: KernelConfig) -> KernelResult[bool] {
+  let vr: KernelResult[bool] = validate_config(cfg)
+  when vr is KernelResult.Err { give KernelResult.Err(vr.error) }
+  if kernel_runtime_pkg.runtime_status() == false {
+    give KernelResult.Err(KernelError.Internal)
+  }
+  give KernelResult.Ok(true)
+}
+
 proc runtime_surface() -> string {
-  give "minimal"
+  give kernel_policy_pkg.default_surface()
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["runtime-surface", "abi-bridge", "profile-aware"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-KERN0001" { give "invalid kernel configuration" }
+  give "kernel diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-KERN0001" { give "use surface in {minimal,extended} and valid profile" }
+  give "review kernel configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/kernel"
 }
 
 proc ready() -> bool {
@@ -23,4 +94,6 @@ role: API runtime minimale commune isolee de std
 input_contract: Appels explicites sans dependances haut niveau
 output_contract: Surface stable pour runtime/abi
 boundary: Pas de std, pas de side-effects implicites
+compat_policy: additive-only
+api_version: v1
 >>>

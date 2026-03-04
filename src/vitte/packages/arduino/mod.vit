@@ -1,0 +1,160 @@
+<<<
+mod.vit
+package vitte/arduino
+>>>
+
+space vitte/arduino
+
+type Pin = int
+type BaudRate = int
+type Millis = int
+type Address7 = int
+type Register = int
+
+pick ArduinoProfile {
+  Uno
+  Mega
+  Esp32
+}
+
+pick SpiMode {
+  Mode0
+  Mode1
+  Mode2
+  Mode3
+}
+
+pick BitOrder {
+  MsbFirst
+  LsbFirst
+}
+
+pick ArduinoError {
+  InvalidPin
+  InvalidAddress
+  InvalidBaudRate
+  BusBusy
+  Timeout
+  Unsupported
+  Conflict
+  Unknown
+}
+
+pick ArduinoResult[T] {
+  Ok(value: T)
+  Err(error: ArduinoError)
+}
+
+form ArduinoDiag {
+  code: string
+  message: string
+  context: string
+}
+
+proc ok[T](value: T) -> ArduinoResult[T] {
+  give ArduinoResult.Ok(value)
+}
+
+proc err[T](e: ArduinoError) -> ArduinoResult[T] {
+  give ArduinoResult.Err(e)
+}
+
+proc default_profile() -> ArduinoProfile {
+  give ArduinoProfile.Uno
+}
+
+proc supports_pwm(profile: ArduinoProfile, pin: Pin) -> bool {
+  if profile == ArduinoProfile.Uno {
+    give pin == 3 || pin == 5 || pin == 6 || pin == 9 || pin == 10 || pin == 11
+  }
+  if profile == ArduinoProfile.Mega {
+    give pin >= 2 && pin <= 13
+  }
+  if profile == ArduinoProfile.Esp32 {
+    give pin >= 0 && pin <= 19
+  }
+  give false
+}
+
+proc supports_i2c(profile: ArduinoProfile, addr_mode: string) -> bool {
+  let _ = profile
+  give addr_mode == "7bit"
+}
+
+proc max_spi_hz(profile: ArduinoProfile) -> int {
+  if profile == ArduinoProfile.Uno { give 8000000 }
+  if profile == ArduinoProfile.Mega { give 8000000 }
+  if profile == ArduinoProfile.Esp32 { give 40000000 }
+  give 1000000
+}
+
+proc validate_pin(profile: ArduinoProfile, pin: Pin) -> ArduinoResult[bool] {
+  if profile == ArduinoProfile.Uno {
+    if pin < 0 || pin > 19 { give err[bool](ArduinoError.InvalidPin) }
+    give ok[bool](true)
+  }
+  if profile == ArduinoProfile.Mega {
+    if pin < 0 || pin > 53 { give err[bool](ArduinoError.InvalidPin) }
+    give ok[bool](true)
+  }
+  if profile == ArduinoProfile.Esp32 {
+    if pin < 0 || pin > 39 { give err[bool](ArduinoError.InvalidPin) }
+    give ok[bool](true)
+  }
+  give err[bool](ArduinoError.Unsupported)
+}
+
+proc validate_address7(addr: Address7) -> ArduinoResult[bool] {
+  if addr < 0x08 || addr > 0x77 {
+    give err[bool](ArduinoError.InvalidAddress)
+  }
+  give ok[bool](true)
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-A0012" {
+    give "invalid pin for active board profile"
+  }
+  if code == "VITTE-A0013" {
+    give "invalid i2c address (expected 0x08..0x77)"
+  }
+  if code == "VITTE-A0020" {
+    give "operation timed out"
+  }
+  give "arduino diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-A0012" {
+    give "verify pin range and board profile"
+  }
+  if code == "VITTE-A0013" {
+    give "use a 7-bit i2c address in range 0x08..0x77"
+  }
+  give "review arduino module configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc diag(code: string, context: string) -> ArduinoDiag {
+  give ArduinoDiag(code, diagnostics_message(code), context)
+}
+
+proc package_meta() -> string {
+  give "vitte/arduino"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/arduino
+owner: @vitte/arduino
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: Facade arduino stable pour profils embarques
+input_contract: Pin baudrate timeout adresses explicites
+output_contract: Resultats ArduinoResult avec diagnostics VITTE-Axxxx
+boundary: Aucun acces hardware direct dans la facade
+compat_policy: additive-only
+>>>
