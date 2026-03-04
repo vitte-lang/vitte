@@ -5,24 +5,46 @@ Niveau: Avancé
 Prérequis: chapitre précédent `book/chapters/19-performance.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/19-performance.md`, `docs/book/chapters/21-projet-cli.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Reproductibilité**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
 
-Ce chapitre poursuit un objectif clair: garantir qu'un programme Vitte produit le même résultat à entrée identique, sur chaque exécution. Au lieu d'empiler des recettes, nous allons construire une lecture fiable du code, avec des choix explicites et des effets vérifiables.
+Vous allez identifier les points clés de **Reproductibilité**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
-L'approche adoptée est volontairement littérale: chaque exemple doit être lisible comme une démonstration courte, avec une intention claire, un chemin d'exécution explicite et une conclusion vérifiable. Ce rythme est celui d'un manuel: comprendre, exécuter, puis retenir l'invariant utile.
+## Exemple minimal
 
-La méthode reste constante: poser une intention, l'implémenter dans une forme compacte, puis observer précisément ce que le programme garantit à l'exécution.
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Reproductibilité**.
 
+## Explication pas à pas
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Reproductibilité** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Reproductibilité**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Reproductibilité**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Reproductibilité**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
+
 ## 20.1 Fonction pure de base
 
 ```vit
@@ -32,11 +54,9 @@ proc stable(x: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc stable(x: int) -> int {` ici, le contrat complet est défini pour `stable`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `stable` retourne toujours une valeur compatible avec `int`.
-2. `give x * 2 + 1` ici, la branche renvoie immédiatement `x * 2 + 1` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `x * 2 + 1`.
-3. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc stable(x: int) -> int {` -> Comportement: le contrat est défini pour `stable`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `stable` retourne toujours une valeur compatible avec `int`.
+2. `give x * 2 + 1` -> Comportement: la branche renvoie immédiatement `x * 2 + 1` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `x * 2 + 1`.
+3. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `x * 2 + 1`.
@@ -71,11 +91,9 @@ proc with_seed(seed: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc with_seed(seed: int) -> int {` sur cette ligne, le contrat complet est posé pour `with_seed`: entrées `seed: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `with_seed` retourne toujours une valeur compatible avec `int`.
-2. `give seed` sur cette ligne, la sortie est renvoyée immédiatement `seed` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `seed`.
-3. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc with_seed(seed: int) -> int {` -> Comportement: le contrat est posé pour `with_seed`: entrées `seed: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `with_seed` retourne toujours une valeur compatible avec `int`.
+2. `give seed` -> Comportement: la sortie est renvoyée immédiatement `seed` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `seed`.
+3. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `seed`.
@@ -113,18 +131,16 @@ give acc
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc repro_checksum(seed: int, n: int) -> int {` ce passage fixe le contrat complet de `repro_checksum`: entrées `seed: int, n: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `repro_checksum` retourne toujours une valeur compatible avec `int`.
-2. `let i: int = 0` cette ligne crée la variable locale `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `i` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-3. `let acc: int = seed` cette ligne crée la variable locale `acc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `acc` reçoit ici le résultat de `seed` et peut être réutilisé ensuite sans recalcul.
-4. `loop {` cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`). Exemple concret: à chaque tour, les gardes internes décident de continuer ou de sortir proprement.
-5. `if i >= n { break }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `i >= n` est vrai, `break` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-6. `set acc = (acc * 31 + i) % 104729` cette ligne réalise une mutation volontaire et visible: l'état `acc` change ici, à cet endroit précis du flux. Exemple concret: après exécution, `acc` prend la nouvelle valeur `(acc * 31 + i) % 104729` pour les étapes suivantes.
-7. `set i = i + 1` cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux. Exemple concret: après exécution, `i` prend la nouvelle valeur `i + 1` pour les étapes suivantes.
-8. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-9. `give acc` ce passage retourne immédiatement `acc` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `acc`.
-10. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc repro_checksum(seed: int, n: int) -> int {` -> Comportement: le contrat est fixé pour `repro_checksum`: entrées `seed: int, n: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `repro_checksum` retourne toujours une valeur compatible avec `int`.
+2. `let i: int = 0` -> Comportement: cette ligne crée la variable `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `i` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
+3. `let acc: int = seed` -> Comportement: cette ligne crée la variable `acc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `acc` reçoit ici le résultat de `seed` et peut être réutilisé ensuite sans recalcul.
+4. `loop {` -> Comportement: cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`). -> Preuve: à chaque tour, les gardes internes décident de continuer ou de sortir proprement.
+5. `if i >= n { break }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `i >= n` est vrai, `break` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+6. `set acc = (acc * 31 + i) % 104729` -> Comportement: cette ligne réalise une mutation volontaire et visible: l'état `acc` change ici, à cet endroit précis du flux. -> Preuve: après exécution, `acc` prend la nouvelle valeur `(acc * 31 + i) % 104729` pour les étapes suivantes.
+7. `set i = i + 1` -> Comportement: cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux. -> Preuve: après exécution, `i` prend la nouvelle valeur `i + 1` pour les étapes suivantes.
+8. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+9. `give acc` -> Comportement: retourne immédiatement `acc` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `acc`.
+10. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `acc`.
@@ -138,7 +154,7 @@ L'intention de cette étape est directe: composer une séquence déterministe da
 Lecture recommandée:
 - identifier l'état initial (`acc = seed`).
 - vérifier la borne de boucle (`i < n`).
-- suivre la formule de transition (`acc = ...`).
+- suivre la formule de transition (`acc =...`).
 
 À l'exécution, pour `(seed=5, n=4)`, `acc` évolue ainsi:
 - départ `acc = 5`.
@@ -163,7 +179,6 @@ Critère pratique de qualité pour ce chapitre:
 - vous pouvez rejouer un résultat en conservant les mêmes entrées.
 - vous savez lister toutes les sources possibles de variation.
 - vous savez isoler et supprimer une dépendance implicite.
-
 
 ## Test mental
 
@@ -194,7 +209,6 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `docs/book/keywords/give.md`.
 - `docs/book/keywords/if.md`.
 
-
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
 
@@ -203,4 +217,3 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-

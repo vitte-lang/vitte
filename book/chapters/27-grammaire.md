@@ -5,25 +5,101 @@ Niveau: Avancé
 Prérequis: chapitre précédent `docs/book/chapters/26-projet-editor.md` et `book/glossaire.md`.
 Voir aussi: `docs/book/chapters/26-projet-editor.md`, `docs/book/chapters/28-conventions.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Grammaire du langage**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
 
-Ce chapitre poursuit un objectif clair: lire la grammaire Vitte comme un guide de construction de phrases valides pour accélérer diagnostic et écriture. Au lieu d'empiler des recettes, nous allons construire une lecture fiable du code, avec des choix explicites et des effets vérifiables.
+Vous allez identifier les points clés de **Grammaire du langage**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
-L'approche adoptée est volontairement littérale: chaque exemple doit être lisible comme une démonstration courte, avec une intention claire, un chemin d'exécution explicite et une conclusion vérifiable. Ce rythme est celui d'un manuel: comprendre, exécuter, puis retenir l'invariant utile.
+## Plan recommandé (version finale)
 
-La méthode reste constante: poser une intention, l'implémenter dans une forme compacte, puis observer précisément ce que le programme garantit à l'exécution.
+Ce plan remplace la variante avec `try/catch` et aligne le vocabulaire sur la grammaire réelle (`select/when`, `space/pull/use/share`).
 
+1. Vue d’ensemble du langage
+2. Lexique et tokens (espaces, commentaires, identifiants, mots-clés)
+3. Littéraux (nombres, chaînes, booléens, listes, etc.)
+4. Expressions (priorité, associativité, parenthèses)
+5. Instructions de base (blocs, affectation, expression statements)
+6. Contrôle de flux (`if`, `loop`, `for`, `select/when`, `match`)
+7. Fonctions et portée (`proc`, paramètres, closures)
+8. Types et annotations
+9. Structures de données (formes, picks/cases, listes, slices, pointeurs)
+10. Modules et imports (`space`, `pull`, `use`, `share`)
+11. Diagnostics et gestion des erreurs (lexicales/syntaxiques)
+12. Grammaire formelle en EBNF (règles complètes)
+13. Ambiguïtés et résolution (précédence, conflits LL/LR, `else`)
+14. AST et mapping grammaire -> parser
+15. Exemples complets commentés
+16. Appendices (cheat sheet, conventions, tests de grammaire)
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
-Source normative: `src/vitte/grammar/vitte.ebnf` (grammaire de surface). Copie doc: `docs/book/grammar-surface.ebnf`.
+## Exemple minimal
+
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Grammaire du langage**.
+
+## Explication pas à pas
+
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Grammaire du langage** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Grammaire du langage**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Grammaire du langage**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Grammaire du langage**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
+
+## Guide de lecture EBNF (court)
+
+Utilisez ce chemin de lecture pour aller vite quand un parseur échoue:
+
+1. Commencez par `program` puis `toplevel` pour savoir si la forme du fichier est valide.
+2. Descendez ensuite vers `stmt` ou `expr` selon la ligne qui échoue.
+3. Vérifiez la priorité opératoire dans `book/grammar/precedence.md` si l’arbre attendu diverge.
+4. Reproduisez avec un exemple minimal dans `tests/grammar/valid` ou `tests/grammar/invalid`.
+5. Confirmez le diagnostic attendu dans `book/grammar/diagnostics/expected`.
+
+Voir aussi:
+- `docs/book/chapters/31-erreurs-build.md` pour la table erreur -> correction.
+- `book/grammar/grammar-notes.md` pour les ambiguïtés connues.
+
+## Diagrammes Railroad (SVG)
+
+Les diagrammes sont générés automatiquement depuis la source EBNF synchronisée.
+
+- Index: `book/grammar/railroad/README.md`
+- Règles clés:
+  - `book/grammar/railroad/program.svg`
+  - `book/grammar/railroad/toplevel.svg`
+  - `book/grammar/railroad/stmt.svg`
+  - `book/grammar/railroad/expr.svg`
+  - `book/grammar/railroad/type_expr.svg`
+
+Commandes utiles:
+
+```bash
+make grammar-docs
+make grammar-gate
+bin/vitte grammar check
+```
+
 ## 27.1 Construire une déclaration de procédure valide
 
 ```vit
@@ -33,11 +109,9 @@ proc add(a: int, b: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc add(a: int, b: int) -> int {` ici, le contrat complet est défini pour `add`: entrées `a: int, b: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `add` retourne toujours une valeur compatible avec `int`.
-2. `give a + b` ici, la branche renvoie immédiatement `a + b` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `a + b`.
-3. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc add(a: int, b: int) -> int {` -> Comportement: le contrat est défini pour `add`: entrées `a: int, b: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `add` retourne toujours une valeur compatible avec `int`.
+2. `give a + b` -> Comportement: la branche renvoie immédiatement `a + b` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `a + b`.
+3. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `a + b`.
@@ -71,11 +145,9 @@ entry main at core/app {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `entry main at core/app {` cette ligne fixe le point d'entrée `main` dans `core/app` et sert de scénario exécutable de bout en bout pour le chapitre. Exemple concret: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
-2. `return 0` cette ligne termine l'exécution du bloc courant avec le code `0`, utile pour observer le résultat global du scénario. Exemple concret: un test d'exécution peut vérifier directement que le programme retourne `0`.
-3. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `entry main at core/app {` -> Comportement: cette ligne fixe le point d'entrée `main` dans `core/app` et sert de scénario exécutable de bout en bout pour le chapitre. -> Preuve: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
+2. `return 0` -> Comportement: cette ligne termine l'exécution du bloc courant avec le code `0`, utile pour observer le résultat global du scénario. -> Preuve: un test d'exécution peut vérifier directement que le programme retourne `0`.
+3. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le scénario principal se termine avec `return 0`.
@@ -86,7 +158,7 @@ Réponse attendue: le bloc doit activer une garde explicite ou un chemin de seco
 
 L'intention de cette étape est directe: rendre explicite le point d'entrée du programme.
 
-La forme `entry ... at ...` fixe à la fois le nom logique et le module de rattachement.
+La forme `entry... at...` fixe à la fois le nom logique et le module de rattachement.
 
 À l'exécution, le programme quitte immédiatement avec le code `0`.
 
@@ -115,10 +187,8 @@ Lecture ligne par ligne (débutant):
 3. `match r {` cette ligne démarre le dispatch par pattern.
 4. `case Ok { give 0 }` cette ligne couvre explicitement le pattern `Ok`.
 5. `otherwise { give 1 }` cette ligne couvre le repli.
-5. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-6. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+5. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+6. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
@@ -148,7 +218,6 @@ Critère pratique de qualité pour ce chapitre:
 - vous savez reconnaître immédiatement une forme syntaxique invalide.
 - vous savez distinguer erreur grammaticale et erreur de type.
 - vous pouvez relire une fonction comme une phrase de grammaire complète.
-
 
 ## Test mental
 
@@ -183,7 +252,6 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 - `docs/book/keywords/entry.md`.
 - `docs/book/keywords/give.md`.
 - `docs/book/keywords/int.md`.
-
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

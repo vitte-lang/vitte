@@ -5,24 +5,46 @@ Niveau: Intermédiaire
 Prérequis: chapitre précédent `docs/book/chapters/10-diagnostics.md` et `book/glossaire.md`.
 Voir aussi: `docs/book/chapters/10-diagnostics.md`, `docs/book/chapters/12-pointeurs.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Collections et itération**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
 
-Ce chapitre poursuit un objectif clair: construire un parcours de collection stable en Vitte, en séparant accumulation, filtrage et post-traitement. Au lieu d'empiler des recettes, nous allons construire une lecture fiable du code, avec des choix explicites et des effets vérifiables.
+Vous allez identifier les points clés de **Collections et itération**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
-L'approche adoptée est volontairement littérale: chaque exemple doit être lisible comme une démonstration courte, avec une intention claire, un chemin d'exécution explicite et une conclusion vérifiable. Ce rythme est celui d'un manuel: comprendre, exécuter, puis retenir l'invariant utile.
+## Exemple minimal
 
-La méthode reste constante: poser une intention, l'implémenter dans une forme compacte, puis observer précisément ce que le programme garantit à l'exécution.
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Collections et itération**.
 
+## Explication pas à pas
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Collections et itération** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Collections et itération**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Collections et itération**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Collections et itération**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
+
 ## 11.1 Reduction simple sur un tableau d'entiers
 
 ```vit
@@ -36,15 +58,13 @@ give acc
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc sum(values: int[]) -> int {` ici, le contrat complet est défini pour `sum`: entrées `values: int[]` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `sum` retourne toujours une valeur compatible avec `int`.
-2. `let acc: int = 0` cette ligne crée la variable locale `acc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `acc` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-3. `for x in values {` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-4. `set acc = acc + x` cette ligne réalise une mutation volontaire et visible: l'état `acc` change ici, à cet endroit précis du flux. Exemple concret: après exécution, `acc` prend la nouvelle valeur `acc + x` pour les étapes suivantes.
-5. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-6. `give acc` ici, la branche renvoie immédiatement `acc` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `acc`.
-7. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc sum(values: int[]) -> int {` -> Comportement: le contrat est défini pour `sum`: entrées `values: int[]` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `sum` retourne toujours une valeur compatible avec `int`.
+2. `let acc: int = 0` -> Comportement: cette ligne crée la variable `acc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `acc` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
+3. `for x in values {` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+4. `set acc = acc + x` -> Comportement: cette ligne réalise une mutation volontaire et visible: l'état `acc` change ici, à cet endroit précis du flux. -> Preuve: après exécution, `acc` prend la nouvelle valeur `acc + x` pour les étapes suivantes.
+5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+6. `give acc` -> Comportement: la branche renvoie immédiatement `acc` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `acc`.
+7. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `acc`.
@@ -87,18 +107,16 @@ give total / count
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc mean_floor(values: int[]) -> int {` sur cette ligne, le contrat complet est posé pour `mean_floor`: entrées `values: int[]` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `mean_floor` retourne toujours une valeur compatible avec `int`.
-2. `let total: int = 0` cette ligne crée la variable locale `total` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `total` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-3. `let count: int = 0` cette ligne crée la variable locale `count` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `count` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-4. `for x in values {` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-5. `set total = total + x` cette ligne réalise une mutation volontaire et visible: l'état `total` change ici, à cet endroit précis du flux. Exemple concret: après exécution, `total` prend la nouvelle valeur `total + x` pour les étapes suivantes.
-6. `set count = count + 1` cette ligne réalise une mutation volontaire et visible: l'état `count` change ici, à cet endroit précis du flux. Exemple concret: après exécution, `count` prend la nouvelle valeur `count + 1` pour les étapes suivantes.
-7. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-8. `if count == 0 { give 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `count == 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-9. `give total / count` sur cette ligne, la sortie est renvoyée immédiatement `total / count` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `total / count`.
-10. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc mean_floor(values: int[]) -> int {` -> Comportement: le contrat est posé pour `mean_floor`: entrées `values: int[]` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `mean_floor` retourne toujours une valeur compatible avec `int`.
+2. `let total: int = 0` -> Comportement: cette ligne crée la variable `total` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `total` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
+3. `let count: int = 0` -> Comportement: cette ligne crée la variable `count` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `count` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
+4. `for x in values {` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+5. `set total = total + x` -> Comportement: cette ligne réalise une mutation volontaire et visible: l'état `total` change ici, à cet endroit précis du flux. -> Preuve: après exécution, `total` prend la nouvelle valeur `total + x` pour les étapes suivantes.
+6. `set count = count + 1` -> Comportement: cette ligne réalise une mutation volontaire et visible: l'état `count` change ici, à cet endroit précis du flux. -> Preuve: après exécution, `count` prend la nouvelle valeur `count + 1` pour les étapes suivantes.
+7. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+8. `if count == 0 { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `count == 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+9. `give total / count` -> Comportement: la sortie est renvoyée immédiatement `total / count` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `total / count`.
+10. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `count == 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `total / count`.
@@ -136,16 +154,14 @@ give out
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc positive_only(values: int[]) -> int[] {` ce passage fixe le contrat complet de `positive_only`: entrées `values: int[]` et sortie `int[]`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `positive_only` retourne toujours une valeur compatible avec `int[]`.
-2. `let out: int[] = []` cette ligne crée la variable locale `out` de type `int[]` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `out` reçoit ici le résultat de `[]` et peut être réutilisé ensuite sans recalcul.
-3. `for x in values {` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-4. `if x <= 0 { continue }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `x <= 0` est vrai, `continue` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-5. `out.push(x)` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-6. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-7. `give out` ce passage retourne immédiatement `out` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `out`.
-8. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc positive_only(values: int[]) -> int[] {` -> Comportement: le contrat est fixé pour `positive_only`: entrées `values: int[]` et sortie `int[]`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `positive_only` retourne toujours une valeur compatible avec `int[]`.
+2. `let out: int[] = []` -> Comportement: cette ligne crée la variable `out` de type `int[]` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `out` reçoit ici le résultat de `[]` et peut être réutilisé ensuite sans recalcul.
+3. `for x in values {` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+4. `if x <= 0 { continue }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `x <= 0` est vrai, `continue` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+5. `out.push(x)` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+6. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+7. `give out` -> Comportement: retourne immédiatement `out` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `out`.
+8. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `out`.
@@ -180,7 +196,6 @@ Critère pratique de qualité pour ce chapitre:
 - vous savez justifier la présence d'une garde avant une opération risquée.
 - vous savez isoler clairement filtrage et transformation finale.
 
-
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
@@ -210,7 +225,6 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `docs/book/keywords/form.md`.
 - `docs/book/keywords/give.md`.
 
-
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
 
@@ -219,4 +233,3 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-

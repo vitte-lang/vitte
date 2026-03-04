@@ -5,15 +5,45 @@ Niveau: Avancé
 Prérequis: chapitre précédent `docs/book/chapters/22-projet-http.md` et `book/glossaire.md`.
 Voir aussi: `docs/book/chapters/22-projet-http.md`, `docs/book/chapters/24-projet-kv.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Projet guide Système**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
+
+Vous allez identifier les points clés de **Projet guide Système**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+
+## Exemple minimal
+
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Projet guide Système**.
+
+## Explication pas à pas
+
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Projet guide Système** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Projet guide Système**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Projet guide Système**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Projet guide Système**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
 ## Niveau local
 
@@ -21,11 +51,9 @@ Voir aussi: `docs/book/chapters/22-projet-http.md`, `docs/book/chapters/24-proje
 - Niveau local exemples guidés: Intermédiaire.
 - Niveau local exercices de diagnostic: Avancé.
 
-
 Ce chapitre poursuit un objectif clair: construire un noyau système Vitte qui reste auditable sous contrainte réelle. Nous allons dépasser le simple exemple mémoire pour poser une architecture complète: modèle de région, accès bornés, points `unsafe` minimaux, composition d'opérations et plan de tests.
 
 L'enjeu n'est pas de « faire marcher » une instruction machine, mais de conserver des invariants lisibles dans tout le flux. En code système, la lisibilité n'est pas un luxe: c'est une mesure de sécurité.
-
 
 Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
 
@@ -54,21 +82,19 @@ pick SysResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `form Region {` cette ligne ouvre la structure `Region` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. Exemple concret: plusieurs fonctions peuvent manipuler `Region` sans redéfinir ses champs.
-2. `base: int` cette ligne déclare le champ `base` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-3. `size: int` cette ligne déclare le champ `size` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-4. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-5. `form SysMem {` cette ligne ouvre la structure `SysMem` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. Exemple concret: plusieurs fonctions peuvent manipuler `SysMem` sans redéfinir ses champs.
-6. `region: Region` cette ligne déclare le champ `region` avec le type `Region`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `Region`.
-7. `cells: int[]` cette ligne déclare le champ `cells` avec le type `int[]`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int[]`.
-8. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-9. `pick SysResult {` cette ligne ouvre le type fermé `SysResult` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. Exemple concret: toute valeur hors des `case` déclarés devient impossible à représenter.
-10. `case Ok` cette ligne décrit le cas `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
-11. `case ErrBounds` cette ligne décrit le cas `ErrBounds` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `ErrBounds`, ce bloc devient le chemin actif.
-12. `case ErrState` cette ligne décrit le cas `ErrState` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `ErrState`, ce bloc devient le chemin actif.
-13. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `form Region {` -> Comportement: cette ligne ouvre la structure `Region` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. -> Preuve: plusieurs fonctions peuvent manipuler `Region` sans redéfinir ses champs.
+2. `base: int` -> Comportement: cette ligne déclare le champ `base` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+3. `size: int` -> Comportement: cette ligne déclare le champ `size` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+4. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+5. `form SysMem {` -> Comportement: cette ligne ouvre la structure `SysMem` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. -> Preuve: plusieurs fonctions peuvent manipuler `SysMem` sans redéfinir ses champs.
+6. `region: Region` -> Comportement: cette ligne déclare le champ `region` avec le type `Region`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `Region`.
+7. `cells: int[]` -> Comportement: cette ligne déclare le champ `cells` avec le type `int[]`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int[]`.
+8. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+9. `pick SysResult {` -> Comportement: cette ligne ouvre le type fermé `SysResult` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. -> Preuve: toute valeur hors des `case` déclarés devient impossible à représenter.
+10. `case Ok` -> Comportement: ce cas décrit `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
+11. `case ErrBounds` -> Comportement: ce cas décrit `ErrBounds` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `ErrBounds`, ce bloc devient le chemin actif.
+12. `case ErrState` -> Comportement: ce cas décrit `ErrState` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `ErrState`, ce bloc devient le chemin actif.
+13. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
@@ -102,16 +128,14 @@ proc to_index(r: Region, addr: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc contains(r: Region, addr: int) -> bool {` ici, le contrat complet est défini pour `contains`: entrées `r: Region, addr: int` et sortie `bool`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `contains` retourne toujours une valeur compatible avec `bool`.
-2. `if addr < r.base { give false }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `addr < r.base` est vrai, `give false` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `if addr >= r.base + r.size { give false }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `addr >= r.base + r.size` est vrai, `give false` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-4. `give true` ici, la branche renvoie immédiatement `true` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `true`.
-5. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-6. `proc to_index(r: Region, addr: int) -> int {` sur cette ligne, le contrat complet est posé pour `to_index`: entrées `r: Region, addr: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `to_index` retourne toujours une valeur compatible avec `int`.
-7. `give addr - r.base` sur cette ligne, la sortie est renvoyée immédiatement `addr - r.base` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `addr - r.base`.
-8. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc contains(r: Region, addr: int) -> bool {` -> Comportement: le contrat est défini pour `contains`: entrées `r: Region, addr: int` et sortie `bool`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `contains` retourne toujours une valeur compatible avec `bool`.
+2. `if addr < r.base { give false }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `addr < r.base` est vrai, `give false` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+3. `if addr >= r.base + r.size { give false }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `addr >= r.base + r.size` est vrai, `give false` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+4. `give true` -> Comportement: la branche renvoie immédiatement `true` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `true`.
+5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+6. `proc to_index(r: Region, addr: int) -> int {` -> Comportement: le contrat est posé pour `to_index`: entrées `r: Region, addr: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `to_index` retourne toujours une valeur compatible avec `int`.
+7. `give addr - r.base` -> Comportement: la sortie est renvoyée immédiatement `addr - r.base` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `addr - r.base`.
+8. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `addr < r.base` est vrai, la sortie devient `false`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `true`.
@@ -148,19 +172,17 @@ proc write_cell(m: SysMem, addr: int, v: int) -> SysResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc read_cell(m: SysMem, addr: int) -> int {` ce passage fixe le contrat complet de `read_cell`: entrées `m: SysMem, addr: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `read_cell` retourne toujours une valeur compatible avec `int`.
-2. `if not contains(m.region, addr) { give 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `not contains(m.region, addr)` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `let i: int = to_index(m.region, addr)` cette ligne crée la variable locale `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `i` reçoit ici le résultat de `to_index(m.region, addr)` et peut être réutilisé ensuite sans recalcul.
-4. `give m.cells[i]` ce passage retourne immédiatement `m.cells[i]` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `m.cells[i]`.
-5. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-6. `proc write_cell(m: SysMem, addr: int, v: int) -> SysResult {` ici, le contrat complet est défini pour `write_cell`: entrées `m: SysMem, addr: int, v: int` et sortie `SysResult`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `write_cell` retourne toujours une valeur compatible avec `SysResult`.
-7. `if not contains(m.region, addr) { give ErrBounds }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `not contains(m.region, addr)` est vrai, `give ErrBounds` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-8. `let i: int = to_index(m.region, addr)` cette ligne crée la variable locale `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `i` reçoit ici le résultat de `to_index(m.region, addr)` et peut être réutilisé ensuite sans recalcul.
-9. `m.cells[i] = v` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-10. `give Ok` ici, la branche renvoie immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
-11. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc read_cell(m: SysMem, addr: int) -> int {` -> Comportement: le contrat est fixé pour `read_cell`: entrées `m: SysMem, addr: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `read_cell` retourne toujours une valeur compatible avec `int`.
+2. `if not contains(m.region, addr) { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `not contains(m.region, addr)` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+3. `let i: int = to_index(m.region, addr)` -> Comportement: cette ligne crée la variable `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `i` reçoit ici le résultat de `to_index(m.region, addr)` et peut être réutilisé ensuite sans recalcul.
+4. `give m.cells[i]` -> Comportement: retourne immédiatement `m.cells[i]` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `m.cells[i]`.
+5. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+6. `proc write_cell(m: SysMem, addr: int, v: int) -> SysResult {` -> Comportement: le contrat est défini pour `write_cell`: entrées `m: SysMem, addr: int, v: int` et sortie `SysResult`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `write_cell` retourne toujours une valeur compatible avec `SysResult`.
+7. `if not contains(m.region, addr) { give ErrBounds }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `not contains(m.region, addr)` est vrai, `give ErrBounds` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+8. `let i: int = to_index(m.region, addr)` -> Comportement: cette ligne crée la variable `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `i` reçoit ici le résultat de `to_index(m.region, addr)` et peut être réutilisé ensuite sans recalcul.
+9. `m.cells[i] = v` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+10. `give Ok` -> Comportement: la branche renvoie immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
+11. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `not contains(m.region, addr)` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `m.cells[i]`.
@@ -196,16 +218,14 @@ proc cpu_halt_if(flag: bool) -> SysResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc cpu_pause() {` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-2. `unsafe { asm("pause") }` cette ligne marque une zone sensible qui doit rester courte, justifiée et facile à auditer dans un contexte système. Exemple concret: on y place seulement l'opération technique impossible à exprimer en mode sûr.
-3. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-4. `proc cpu_halt_if(flag: bool) -> SysResult {` sur cette ligne, le contrat complet est posé pour `cpu_halt_if`: entrées `flag: bool` et sortie `SysResult`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `cpu_halt_if` retourne toujours une valeur compatible avec `SysResult`.
-5. `if not flag { give ErrState }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `not flag` est vrai, `give ErrState` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-6. `unsafe { asm("hlt") }` cette ligne marque une zone sensible qui doit rester courte, justifiée et facile à auditer dans un contexte système. Exemple concret: on y place seulement l'opération technique impossible à exprimer en mode sûr.
-7. `give Ok` sur cette ligne, la sortie est renvoyée immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
-8. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc cpu_pause() {` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+2. `unsafe { asm("pause") }` -> Comportement: cette ligne marque une zone sensible qui doit rester courte, justifiée et facile à auditer dans un contexte système. -> Preuve: on y place seulement l'opération technique impossible à exprimer en mode sûr.
+3. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+4. `proc cpu_halt_if(flag: bool) -> SysResult {` -> Comportement: le contrat est posé pour `cpu_halt_if`: entrées `flag: bool` et sortie `SysResult`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `cpu_halt_if` retourne toujours une valeur compatible avec `SysResult`.
+5. `if not flag { give ErrState }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `not flag` est vrai, `give ErrState` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+6. `unsafe { asm("hlt") }` -> Comportement: cette ligne marque une zone sensible qui doit rester courte, justifiée et facile à auditer dans un contexte système. -> Preuve: on y place seulement l'opération technique impossible à exprimer en mode sûr.
+7. `give Ok` -> Comportement: la sortie est renvoyée immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
+8. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `not flag` est vrai, la sortie devient `ErrState`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Ok`.
@@ -242,19 +262,17 @@ proc write_then_pause(m: SysMem, addr: int, v: int) -> SysResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc write_then_pause(m: SysMem, addr: int, v: int) -> SysResult {` ce passage fixe le contrat complet de `write_then_pause`: entrées `m: SysMem, addr: int, v: int` et sortie `SysResult`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `write_then_pause` retourne toujours une valeur compatible avec `SysResult`.
-2. `let w: SysResult = write_cell(m, addr, v)` cette ligne crée la variable locale `w` de type `SysResult` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `w` reçoit ici le résultat de `write_cell(m, addr, v)` et peut être réutilisé ensuite sans recalcul.
-3. `match w {` cette ligne démarre un dispatch déterministe sur `w`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `w`, la même branche sera toujours exécutée.
-4. `case Ok {` cette ligne décrit le cas `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
-5. `cpu_pause()` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-6. `give Ok` ce passage retourne immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
-7. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-8. `case ErrBounds { give ErrBounds }` cette ligne décrit le cas `ErrBounds` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `ErrBounds`, ce bloc devient le chemin actif.
-9. `otherwise { give ErrState }` cette ligne définit le chemin de secours pour couvrir les situations non capturées par les cas explicites. Exemple concret: si aucun `case` ne correspond, `give ErrState` est exécuté pour garantir une sortie stable.
-10. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-11. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc write_then_pause(m: SysMem, addr: int, v: int) -> SysResult {` -> Comportement: le contrat est fixé pour `write_then_pause`: entrées `m: SysMem, addr: int, v: int` et sortie `SysResult`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `write_then_pause` retourne toujours une valeur compatible avec `SysResult`.
+2. `let w: SysResult = write_cell(m, addr, v)` -> Comportement: cette ligne crée la variable `w` de type `SysResult` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `w` reçoit ici le résultat de `write_cell(m, addr, v)` et peut être réutilisé ensuite sans recalcul.
+3. `match w {` -> Comportement: cette ligne démarre un dispatch déterministe sur `w`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `w`, la même branche sera toujours exécutée.
+4. `case Ok {` -> Comportement: ce cas décrit `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok`, ce bloc devient le chemin actif.
+5. `cpu_pause()` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+6. `give Ok` -> Comportement: retourne immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Ok`.
+7. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+8. `case ErrBounds { give ErrBounds }` -> Comportement: ce cas décrit `ErrBounds` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `ErrBounds`, ce bloc devient le chemin actif.
+9. `otherwise { give ErrState }` -> Comportement: cette ligne définit un chemin de secours explicite. -> Preuve: si aucun `case` ne correspond, `give ErrState` est exécuté pour garantir une sortie stable.
+10. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+11. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Ok`.
@@ -293,18 +311,16 @@ give SysMem(Region(base, size), cells)
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc init_mem(base: int, size: int) -> SysMem {` ici, le contrat complet est défini pour `init_mem`: entrées `base: int, size: int` et sortie `SysMem`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `init_mem` retourne toujours une valeur compatible avec `SysMem`.
-2. `let cells: int[] = []` cette ligne crée la variable locale `cells` de type `int[]` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `cells` reçoit ici le résultat de `[]` et peut être réutilisé ensuite sans recalcul.
-3. `let i: int = 0` cette ligne crée la variable locale `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `i` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-4. `loop {` cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`). Exemple concret: à chaque tour, les gardes internes décident de continuer ou de sortir proprement.
-5. `if i >= size { break }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `i >= size` est vrai, `break` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-6. `cells.push(0)` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-7. `set i = i + 1` cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux. Exemple concret: après exécution, `i` prend la nouvelle valeur `i + 1` pour les étapes suivantes.
-8. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-9. `give SysMem(Region(base, size), cells)` ici, la branche renvoie immédiatement `SysMem(Region(base, size), cells)` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `SysMem(Region(base, size), cells)`.
-10. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc init_mem(base: int, size: int) -> SysMem {` -> Comportement: le contrat est défini pour `init_mem`: entrées `base: int, size: int` et sortie `SysMem`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `init_mem` retourne toujours une valeur compatible avec `SysMem`.
+2. `let cells: int[] = []` -> Comportement: cette ligne crée la variable `cells` de type `int[]` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `cells` reçoit ici le résultat de `[]` et peut être réutilisé ensuite sans recalcul.
+3. `let i: int = 0` -> Comportement: cette ligne crée la variable `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `i` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
+4. `loop {` -> Comportement: cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`). -> Preuve: à chaque tour, les gardes internes décident de continuer ou de sortir proprement.
+5. `if i >= size { break }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `i >= size` est vrai, `break` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+6. `cells.push(0)` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
+7. `set i = i + 1` -> Comportement: cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux. -> Preuve: après exécution, `i` prend la nouvelle valeur `i + 1` pour les étapes suivantes.
+8. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+9. `give SysMem(Region(base, size), cells)` -> Comportement: la branche renvoie immédiatement `SysMem(Region(base, size), cells)` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `SysMem(Region(base, size), cells)`.
+10. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `SysMem(Region(base, size), cells)`.
@@ -333,15 +349,13 @@ entry main at sys/core {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `entry main at sys/core {` cette ligne fixe le point d'entrée `main` dans `sys/core` et sert de scénario exécutable de bout en bout pour le chapitre. Exemple concret: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
-2. `let mem: SysMem = init_mem(100, 8)` cette ligne crée la variable locale `mem` de type `SysMem` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `mem` reçoit ici le résultat de `init_mem(100, 8)` et peut être réutilisé ensuite sans recalcul.
-3. `let r1: SysResult = write_then_pause(mem, 103, 42)` cette ligne crée la variable locale `r1` de type `SysResult` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `r1` reçoit ici le résultat de `write_then_pause(mem, 103, 42)` et peut être réutilisé ensuite sans recalcul.
-4. `let v1: int = read_cell(mem, 103)` cette ligne crée la variable locale `v1` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. Exemple concret: `v1` reçoit ici le résultat de `read_cell(mem, 103)` et peut être réutilisé ensuite sans recalcul.
-5. `if v1 == 42 { return 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `v1 == 42` est vrai, `return 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-6. `return 70` cette ligne termine l'exécution du bloc courant avec le code `70`, utile pour observer le résultat global du scénario. Exemple concret: un test d'exécution peut vérifier directement que le programme retourne `70`.
-7. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `entry main at sys/core {` -> Comportement: cette ligne fixe le point d'entrée `main` dans `sys/core` et sert de scénario exécutable de bout en bout pour le chapitre. -> Preuve: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
+2. `let mem: SysMem = init_mem(100, 8)` -> Comportement: cette ligne crée la variable `mem` de type `SysMem` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `mem` reçoit ici le résultat de `init_mem(100, 8)` et peut être réutilisé ensuite sans recalcul.
+3. `let r1: SysResult = write_then_pause(mem, 103, 42)` -> Comportement: cette ligne crée la variable `r1` de type `SysResult` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `r1` reçoit ici le résultat de `write_then_pause(mem, 103, 42)` et peut être réutilisé ensuite sans recalcul.
+4. `let v1: int = read_cell(mem, 103)` -> Comportement: cette ligne crée la variable `v1` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `v1` reçoit ici le résultat de `read_cell(mem, 103)` et peut être réutilisé ensuite sans recalcul.
+5. `if v1 == 42 { return 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `v1 == 42` est vrai, `return 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+6. `return 70` -> Comportement: cette ligne termine l'exécution du bloc courant avec le code `70`, utile pour observer le résultat global du scénario. -> Preuve: un test d'exécution peut vérifier directement que le programme retourne `70`.
+7. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le scénario principal se termine avec `return 70`.
@@ -367,7 +381,7 @@ Jeu minimal à couvrir:
 1. Borne basse: adresse `base - 1` => rejet.
 2. Borne haute: adresse `base + size` => rejet.
 3. Cas nominal: adresse interne => write/read cohérente.
-4. `cpu_halt_if(false)` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
+4. `cpu_halt_if(false)` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
 5. Reproductibilité: même séquence => même état final.
 
 Erreurs fréquentes à éviter:
@@ -500,7 +514,6 @@ Critère pratique de qualité pour ce chapitre:
 - vous pouvez pointer chaque zone `unsafe` en quelques secondes.
 - vous savez rejouer un scénario système complet de façon déterministe.
 
-
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
@@ -537,7 +550,6 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `docs/book/keywords/bool.md`.
 - `docs/book/keywords/break.md`.
 - `docs/book/keywords/case.md`.
-
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

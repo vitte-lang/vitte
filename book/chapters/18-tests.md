@@ -5,24 +5,46 @@ Niveau: Intermédiaire
 Prérequis: chapitre précédent `book/chapters/17-stdlib.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/17-stdlib.md`, `book/chapters/19-performance.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Tests et validation**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
 
-Ce chapitre poursuit un objectif clair: Écrire des tests Vitte qui verrouillent le contrat nominal, les bornes et la non-régression. Au lieu d'empiler des recettes, nous allons construire une lecture fiable du code, avec des choix explicites et des effets vérifiables.
+Vous allez identifier les points clés de **Tests et validation**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
-L'approche adoptée est volontairement littérale: chaque exemple doit être lisible comme une démonstration courte, avec une intention claire, un chemin d'exécution explicite et une conclusion vérifiable. Ce rythme est celui d'un manuel: comprendre, exécuter, puis retenir l'invariant utile.
+## Exemple minimal
 
-La méthode reste constante: poser une intention, l'implémenter dans une forme compacte, puis observer précisément ce que le programme garantit à l'exécution.
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Tests et validation**.
 
+## Explication pas à pas
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Tests et validation** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Tests et validation**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Tests et validation**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Tests et validation**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
+
 ## 18.1 Tester une fonction de saturation
 
 ```vit
@@ -34,13 +56,11 @@ proc clamp(x: int, lo: int, hi: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc clamp(x: int, lo: int, hi: int) -> int {` ici, le contrat complet est défini pour `clamp`: entrées `x: int, lo: int, hi: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `clamp` retourne toujours une valeur compatible avec `int`.
-2. `if x < lo { give lo }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `x < lo` est vrai, `give lo` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `if x > hi { give hi }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `x > hi` est vrai, `give hi` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-4. `give x` ici, la branche renvoie immédiatement `x` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `x`.
-5. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc clamp(x: int, lo: int, hi: int) -> int {` -> Comportement: le contrat est défini pour `clamp`: entrées `x: int, lo: int, hi: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `clamp` retourne toujours une valeur compatible avec `int`.
+2. `if x < lo { give lo }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `x < lo` est vrai, `give lo` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+3. `if x > hi { give hi }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `x > hi` est vrai, `give hi` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+4. `give x` -> Comportement: la branche renvoie immédiatement `x` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `x`.
+5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `x < lo` est vrai, la sortie devient `lo`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `x`.
@@ -76,13 +96,11 @@ proc parse_port(x: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc parse_port(x: int) -> int {` sur cette ligne, le contrat complet est posé pour `parse_port`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `parse_port` retourne toujours une valeur compatible avec `int`.
-2. `if x < 0 { give -1 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `x < 0` est vrai, `give -1` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `if x > 65535 { give -1 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `x > 65535` est vrai, `give -1` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-4. `give x` sur cette ligne, la sortie est renvoyée immédiatement `x` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `x`.
-5. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc parse_port(x: int) -> int {` -> Comportement: le contrat est posé pour `parse_port`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `parse_port` retourne toujours une valeur compatible avec `int`.
+2. `if x < 0 { give -1 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `x < 0` est vrai, `give -1` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+3. `if x > 65535 { give -1 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `x > 65535` est vrai, `give -1` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+4. `give x` -> Comportement: la sortie est renvoyée immédiatement `x` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `x`.
+5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `x < 0` est vrai, la sortie devient `-1`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `x`.
@@ -120,12 +138,10 @@ proc non_reg_demo(x: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc non_reg_demo(x: int) -> int {` ce passage fixe le contrat complet de `non_reg_demo`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `non_reg_demo` retourne toujours une valeur compatible avec `int`.
-2. `if x == 0 { give 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `x == 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `give 10 / x` ce passage retourne immédiatement `10 / x` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `10 / x`.
-4. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc non_reg_demo(x: int) -> int {` -> Comportement: le contrat est fixé pour `non_reg_demo`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `non_reg_demo` retourne toujours une valeur compatible avec `int`.
+2. `if x == 0 { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `x == 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
+3. `give 10 / x` -> Comportement: retourne immédiatement `10 / x` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `10 / x`.
+4. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `x == 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `10 / x`.
@@ -157,7 +173,6 @@ Critère pratique de qualité pour ce chapitre:
 - vous savez justifier chaque cas de test par une règle du contrat.
 - vous savez distinguer test de frontière et test de non-régression.
 - vous pouvez identifier rapidement quel invariant échoue quand un test casse.
-
 
 ## Test mental
 
@@ -193,7 +208,6 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 - `docs/book/keywords/if.md`.
 - `docs/book/keywords/int.md`.
 
-
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
 
@@ -209,4 +223,3 @@ Mini quiz:
 1. Quelle est l'invariant central de ce chapitre ?
 2. Quelle garde évite l'état invalide le plus fréquent ?
 3. Quel test simple prouve le comportement nominal ?
-

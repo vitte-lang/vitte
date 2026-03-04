@@ -5,19 +5,45 @@ Niveau: Débutant
 Prérequis: chapitre précédent `docs/book/chapters/04-syntaxe.md` et `book/glossaire.md`.
 Voir aussi: `docs/book/chapters/04-syntaxe.md`, `docs/book/chapters/06-procedures.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Types et valeurs**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
 
-Dans un code fragile, les règles métier existent souvent "dans la tête" de l'équipe: on sait vaguement ce qu'une valeur représente, on espère qu'elle sera utilisée correctement, et l'on corrige au fil des incidents. Un langage typé permet au contraire d'écrire ces règles dans le programme lui-même. Ce chapitre montre comment passer d'une convention implicite à un contrat explicite, vérifiable dès la lecture et solide à l'exécution.
+Vous allez identifier les points clés de **Types et valeurs**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
-Nous allons avancer en trois temps. D'abord, décrire une donnée composée avec un type structurel. Ensuite, représenter des états alternatifs avec un type somme. Enfin, consommer ce type somme avec un `match` qui suit sa structure. L'enjeu est simple: faire en sorte que le code dise clairement ce qui est autorisé, et ce qui ne l'est pas.
+## Exemple minimal
+
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Types et valeurs**.
+
+## Explication pas à pas
+
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Types et valeurs** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Types et valeurs**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Types et valeurs**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Types et valeurs**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
 ## 5.0 Types primitifs (table canonique)
 
@@ -47,7 +73,6 @@ Règle explicite de ce livre:
 
 Dans ces cas, imposer une largeur explicite (`i32/i64/i128/u32/u64/u128`) et conserver cette largeur de bout en bout.
 
-
 Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
 ## 5.1 Décrire une donnée avec un type structurel
 
@@ -64,15 +89,13 @@ proc manhattan(p: Point) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `form Point {` cette ligne ouvre la structure `Point` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. Exemple concret: plusieurs fonctions peuvent manipuler `Point` sans redéfinir ses champs.
-2. `x: int` cette ligne déclare le champ `x` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-3. `y: int` cette ligne déclare le champ `y` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. Exemple concret: le compilateur refusera une affectation incompatible avec `int`.
-4. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-5. `proc manhattan(p: Point) -> int {` ici, le contrat complet est défini pour `manhattan`: entrées `p: Point` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `manhattan` retourne toujours une valeur compatible avec `int`.
-6. `give p.x + p.y` ici, la branche renvoie immédiatement `p.x + p.y` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `p.x + p.y`.
-7. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `form Point {` -> Comportement: cette ligne ouvre la structure `Point` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable. -> Preuve: plusieurs fonctions peuvent manipuler `Point` sans redéfinir ses champs.
+2. `x: int` -> Comportement: cette ligne déclare le champ `x` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+3. `y: int` -> Comportement: cette ligne déclare le champ `y` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation. -> Preuve: le compilateur refusera une affectation incompatible avec `int`.
+4. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+5. `proc manhattan(p: Point) -> int {` -> Comportement: le contrat est défini pour `manhattan`: entrées `p: Point` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `manhattan` retourne toujours une valeur compatible avec `int`.
+6. `give p.x + p.y` -> Comportement: la branche renvoie immédiatement `p.x + p.y` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `p.x + p.y`.
+7. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `p.x + p.y`.
@@ -108,12 +131,10 @@ pick Result {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `pick Result {` cette ligne ouvre le type fermé `Result` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. Exemple concret: toute valeur hors des `case` déclarés devient impossible à représenter.
-2. `case Ok(value: int)` cette ligne décrit le cas `Ok(value: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Ok(value: int)`, ce bloc devient le chemin actif.
-3. `case Err(code: int)` cette ligne décrit le cas `Err(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Err(code: int)`, ce bloc devient le chemin actif.
-4. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `pick Result {` -> Comportement: cette ligne ouvre le type fermé `Result` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. -> Preuve: toute valeur hors des `case` déclarés devient impossible à représenter.
+2. `case Ok(value: int)` -> Comportement: ce cas décrit `Ok(value: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok(value: int)`, ce bloc devient le chemin actif.
+3. `case Err(code: int)` -> Comportement: ce cas décrit `Err(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Err(code: int)`, ce bloc devient le chemin actif.
+4. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
@@ -151,15 +172,13 @@ proc unwrap_or_zero(r: Result) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc unwrap_or_zero(r: Result) -> int {` sur cette ligne, le contrat complet est posé pour `unwrap_or_zero`: entrées `r: Result` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `unwrap_or_zero` retourne toujours une valeur compatible avec `int`.
-2. `match r {` cette ligne démarre un dispatch déterministe sur `r`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `r`, la même branche sera toujours exécutée.
-3. `case Ok(v) { give v }` cette ligne décrit le cas `Ok(v)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Ok(v)`, ce bloc devient le chemin actif.
-4. `case Err(_) { give 0 }` cette ligne décrit le cas `Err(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Err(_)`, ce bloc devient le chemin actif.
-5. `otherwise { give 0 }` cette ligne définit le chemin de secours pour couvrir les situations non capturées par les cas explicites. Exemple concret: si aucun `case` ne correspond, `give 0` est exécuté pour garantir une sortie stable.
-6. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-7. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
-
+1. `proc unwrap_or_zero(r: Result) -> int {` -> Comportement: le contrat est posé pour `unwrap_or_zero`: entrées `r: Result` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `unwrap_or_zero` retourne toujours une valeur compatible avec `int`.
+2. `match r {` -> Comportement: cette ligne démarre un dispatch déterministe sur `r`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `r`, la même branche sera toujours exécutée.
+3. `case Ok(v) { give v }` -> Comportement: ce cas décrit `Ok(v)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok(v)`, ce bloc devient le chemin actif.
+4. `case Err(_) { give 0 }` -> Comportement: ce cas décrit `Err(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Err(_)`, ce bloc devient le chemin actif.
+5. `otherwise { give 0 }` -> Comportement: cette ligne définit un chemin de secours explicite. -> Preuve: si aucun `case` ne correspond, `give 0` est exécuté pour garantir une sortie stable.
+6. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
+7. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
@@ -191,7 +210,6 @@ Critère pratique de qualité pour ce chapitre:
 - vous savez lister toutes les variantes possibles d'un résultat.
 - vous pouvez relire un `match` et vérifier qu'aucun cas important n'est oublié.
 
-
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
@@ -220,7 +238,6 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `docs/book/keywords/give.md`.
 - `docs/book/keywords/if.md`.
 - `docs/book/keywords/int.md`.
-
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

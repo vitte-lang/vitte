@@ -5,24 +5,46 @@ Niveau: Débutant
 Prérequis: chapitre précédent `docs/book/chapters/01-demarrer.md` et `book/glossaire.md`.
 Voir aussi: `docs/book/chapters/01-demarrer.md`, `docs/book/chapters/03-projet.md`, `book/glossaire.md`.
 
-## Trame du chapitre
+## Pourquoi
 
-- Objectif.
-- Exemple.
-- Pourquoi.
-- Test mental.
-- À faire.
-- Corrigé minimal.
+Ce chapitre vous donne une compréhension claire de **Philosophie du langage**.
+Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
+## Ce que vous allez faire
 
-Ce chapitre poursuit un objectif clair: traduire la philosophie Vitte en décisions de code vérifiables. Au lieu d'empiler des recettes, nous allons construire une lecture fiable du code, avec des choix explicites et des effets vérifiables.
+Vous allez identifier les points clés de **Philosophie du langage**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
-L'approche adoptée est volontairement littérale: chaque exemple doit être lisible comme une démonstration courte, avec une intention claire, un chemin d'exécution explicite et une conclusion vérifiable. Ce rythme est celui d'un manuel: comprendre, exécuter, puis retenir l'invariant utile.
+## Exemple minimal
 
-La méthode reste constante: poser une intention, l'implémenter dans une forme compacte, puis observer précisément ce que le programme garantit à l'exécution.
+Commencez par le premier extrait de code de ce chapitre.
+Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Philosophie du langage**.
 
+## Explication pas à pas
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+1. Repérez l'intention du bloc.
+2. Vérifiez la condition ou la garde principale.
+3. Confirmez la sortie observable.
+4. Notez comment ce bloc sert **Philosophie du langage** dans l'ensemble du chapitre.
+
+## Pièges fréquents
+
+- Lire la syntaxe sans vérifier le comportement.
+- Mélanger règle générale et cas limite dans la même explication.
+- Introduire une optimisation avant d'avoir stabilisé le flux de **Philosophie du langage**.
+
+## Exercice court
+
+Prenez un exemple du chapitre sur **Philosophie du langage**.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+
+## Résumé en 5 points
+
+1. Vous connaissez l'objectif du chapitre sur **Philosophie du langage**.
+2. Vous savez lire un exemple du chapitre de façon structurée.
+3. Vous distinguez cas nominal et cas limite.
+4. Vous évitez les pièges les plus fréquents.
+5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
+
 ## 2.1 Rendre l'erreur explicite
 
 ```vit
@@ -33,11 +55,10 @@ proc safe_div(num: int, den: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc safe_div(num: int, den: int) -> int {` ici, le contrat complet est défini pour `safe_div`: entrées `num: int, den: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `safe_div` retourne toujours une valeur compatible avec `int`.
-2. `if den == 0 { give 0 }` cette garde traite un cas précis le plus tôt possible pour protéger la suite du flux de calcul. Exemple concret: si `den == 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `give num / den` ici, la branche renvoie immédiatement `num / den` pour la branche courante, la sortie de branche est explicite et vérifiable. Exemple concret: dès cette instruction, la fonction quitte la branche avec la valeur `num / den`.
-4. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `proc safe_div(num: int, den: int) -> int {` -> Comportement: contrat clair pour la division. -> Preuve: la sortie attendue est toujours un `int`.
+2. `if den == 0 { give 0 }` -> Comportement: bloque le cas dangereux avant l’opération. -> Preuve: `safe_div(10,0)` renvoie `0` sans division.
+3. `give num / den` -> Comportement: exécute uniquement le chemin nominal. -> Preuve: `safe_div(10,2)` renvoie `5`.
+4. `}` -> Comportement: fin déterministe du bloc. -> Preuve: aucun comportement implicite après les `give`.
 
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: si `den == 0` est vrai, la sortie devient `0`.
@@ -77,18 +98,11 @@ proc can_access(a: Auth) -> bool {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `pick Auth {` cette ligne ouvre le type fermé `Auth` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. Exemple concret: toute valeur hors des `case` déclarés devient impossible à représenter.
-2. `case Granted(user: int)` cette ligne décrit le cas `Granted(user: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Granted(user: int)`, ce bloc devient le chemin actif.
-3. `case Denied(code: int)` cette ligne décrit le cas `Denied(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Denied(code: int)`, ce bloc devient le chemin actif.
-4. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-5. `proc can_access(a: Auth) -> bool {` sur cette ligne, le contrat complet est posé pour `can_access`: entrées `a: Auth` et sortie `bool`, elle clarifie l'intention avant lecture détaillée du corps. Exemple concret: un appel valide à `can_access` retourne toujours une valeur compatible avec `bool`.
-6. `match a {` cette ligne démarre un dispatch déterministe sur `a`: une seule branche sera choisie selon la forme de la valeur analysée. Exemple concret: pour la même valeur de `a`, la même branche sera toujours exécutée.
-7. `case Granted(_) { give true }` cette ligne décrit le cas `Granted(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Granted(_)`, ce bloc devient le chemin actif.
-8. `case Denied(_) { give false }` cette ligne décrit le cas `Denied(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. Exemple concret: si la valeur analysée correspond à `Denied(_)`, ce bloc devient le chemin actif.
-9. `otherwise { give false }` cette ligne définit le chemin de secours pour couvrir les situations non capturées par les cas explicites. Exemple concret: si aucun `case` ne correspond, `give false` est exécuté pour garantir une sortie stable.
-10. `}` ce passage clôt le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-11. `}` ici, l'accolade ferme le bloc logique en cours et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `pick Auth { ... }` -> Comportement: définit un espace d’états fermé (`Granted`/`Denied`). -> Preuve: les cas sont visibles et auditables.
+2. `proc can_access(a: Auth) -> bool {` -> Comportement: convertit un état métier en décision booléenne. -> Preuve: signature simple à tester.
+3. `case Granted(_) { give true }` -> Comportement: autorise explicitement le cas de succès. -> Preuve: `Granted(1)` produit `true`.
+4. `case Denied(_) { give false }` -> Comportement: refuse explicitement le cas d’échec. -> Preuve: `Denied(403)` produit `false`.
+5. `otherwise { give false }` -> Comportement: protège contre un état non géré. -> Preuve: la sortie reste sûre (`false`).
 
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
@@ -121,11 +135,10 @@ entry main at core/app {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc run() -> int { give 0 }` cette instruction participe directement au pipeline du chapitre et doit être lue comme une étape explicite du résultat final. Exemple concret: sa présence influence l'état ou la valeur observée à la fin du scénario.
-2. `entry main at core/app {` cette ligne fixe le point d'entrée `main` dans `core/app` et sert de scénario exécutable de bout en bout pour le chapitre. Exemple concret: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
-3. `return run()` cette ligne termine l'exécution du bloc courant avec le code `run()`, utile pour observer le résultat global du scénario. Exemple concret: un test d'exécution peut vérifier directement que le programme retourne `run()`.
-4. `}` sur cette ligne, le bloc logique est fermé et délimite clairement la portée des instructions précédentes. Exemple concret: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-
+1. `proc run() -> int { give 0 }` -> Comportement: logique métier isolée dans une fonction courte. -> Preuve: test unitaire possible sans `entry`.
+2. `entry main at core/app {` -> Comportement: orchestration uniquement, pas de logique lourde. -> Preuve: le bloc se limite à appeler `run`.
+3. `return run()` -> Comportement: relaie explicitement le résultat métier. -> Preuve: la sortie de `main` suit directement `run`.
+4. `}` -> Comportement: fin nette de l’orchestration. -> Preuve: pas d’effet caché supplémentaire.
 
 Mini tableau Entrée -> Sortie (exemples):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
@@ -151,7 +164,6 @@ Erreurs fréquentes à éviter:
 ## À retenir
 
 Erreurs explicites, états modelises, orchestration séparée. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, contrat explicite, et comportement observable du début à la fin. L'objectif final est de rendre chaque décision de code explicable à la première lecture, comme dans un texte de référence.
-
 
 ## Test mental
 
@@ -182,7 +194,6 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `docs/book/keywords/continue.md`.
 - `docs/book/keywords/entry.md`.
 
-
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
 
@@ -191,4 +202,3 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
