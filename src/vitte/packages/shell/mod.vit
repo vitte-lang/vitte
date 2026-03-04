@@ -5,6 +5,10 @@ package vitte/shell
 
 space vitte/shell
 
+use vitte/shell/internal/runtime as shell_runtime_pkg
+use vitte/shell/internal/validate as shell_validate_pkg
+use vitte/shell/internal/policy as shell_policy_pkg
+
 
 form Command {
   bin: string
@@ -58,10 +62,84 @@ proc package_meta() -> string {
   give "vitte/shell"
 }
 
+form ShellConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick ShellError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick ShellResult[T] {
+  Ok(value: T)
+  Err(error: ShellError)
+}
+
+proc default_config() -> ShellConfig {
+  give ShellConfig(true, shell_policy_pkg.default_timeout_ms(), shell_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: ShellConfig) -> ShellResult[bool] {
+  if shell_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give ShellResult.Err(ShellError.InvalidConfig)
+  }
+  if shell_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give ShellResult.Err(ShellError.InvalidConfig)
+  }
+  give ShellResult.Ok(true)
+}
+
+proc healthcheck(cfg: ShellConfig) -> ShellResult[bool] {
+  let vr: ShellResult[bool] = validate_config(cfg)
+  when vr is ShellResult.Err {
+    give ShellResult.Err(vr.error)
+  }
+  if shell_runtime_pkg.runtime_status() == false {
+    give ShellResult.Err(ShellError.Internal)
+  }
+  give ShellResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-SHELL0001" {
+    give "invalid package configuration"
+  }
+  give "shell diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
 <<< ROLE-CONTRACT
 package: vitte/shell
 role: Construction de commandes shell securisees
 input_contract: Binaire/arguments explicites
 output_contract: Commandes rendues de facon deterministe
 boundary: Ne lance pas les process directement
+
+owner: @vitte/shell
+stability: stable
+since: 3.0.0
+deprecated_in: -
+compat_policy: additive-only
+api_version: v1
 >>>

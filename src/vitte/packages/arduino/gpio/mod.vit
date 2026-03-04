@@ -1,0 +1,120 @@
+<<<
+mod.vit
+package vitte/arduino/gpio
+>>>
+
+space vitte/arduino/gpio
+
+use vitte/arduino as arduino_pkg
+use vitte/arduino/gpio/internal/runtime as gpio_runtime_pkg
+use vitte/arduino/gpio/internal/validate as gpio_validate_pkg
+use vitte/arduino/gpio/internal/policy as gpio_policy_pkg
+
+pick PinMode {
+  Input
+  Output
+}
+
+pick PinState {
+  Low
+  High
+}
+
+pick PullMode {
+  None
+  Up
+}
+
+form GpioConfig {
+  profile: arduino_pkg.ArduinoProfile
+  default_mode: PinMode
+  pull_mode: PullMode
+  retry_budget: int
+}
+
+form GpioState {
+  cfg: GpioConfig
+  opened: bool
+  tx_count: int
+  rx_count: int
+  error_count: int
+}
+
+proc gpio_default_config() -> GpioConfig {
+  give GpioConfig(arduino_pkg.default_profile(), PinMode.Input, PullMode.None, gpio_policy_pkg.max_retry_budget())
+}
+
+proc gpio_with_profile(cfg: GpioConfig, profile: arduino_pkg.ArduinoProfile) -> GpioConfig {
+  give GpioConfig(profile, cfg.default_mode, cfg.pull_mode, cfg.retry_budget)
+}
+
+proc gpio_with_pullup(cfg: GpioConfig, enabled: bool) -> GpioConfig {
+  let pull_mode: PullMode = PullMode.None
+  if enabled { pull_mode = PullMode.Up }
+  give GpioConfig(cfg.profile, cfg.default_mode, pull_mode, cfg.retry_budget)
+}
+
+proc gpio_with_retry_budget(cfg: GpioConfig, retry_budget: int) -> GpioConfig {
+  give GpioConfig(cfg.profile, cfg.default_mode, cfg.pull_mode, retry_budget)
+}
+
+proc gpio_open(cfg: GpioConfig) -> GpioState {
+  give GpioState(cfg, true, 0, 0, 0)
+}
+
+proc gpio_close(st: GpioState) -> GpioState {
+  give GpioState(st.cfg, false, st.tx_count, st.rx_count, st.error_count)
+}
+
+proc gpio_write(st: GpioState, pin: arduino_pkg.Pin, state: PinState) -> arduino_pkg.ArduinoResult[GpioState] {
+  if gpio_validate_pkg.valid_pin(st.cfg.profile, pin) == false {
+    give arduino_pkg.err[GpioState](arduino_pkg.ArduinoError.InvalidPin)
+  }
+  let raw: int = 0
+  if state == PinState.High { raw = 1 }
+  let status: int = gpio_runtime_pkg.runtime_write(pin, raw)
+  if status != 0 {
+    give arduino_pkg.err[GpioState](arduino_pkg.ArduinoError.Unknown)
+  }
+  give arduino_pkg.ok[GpioState](GpioState(st.cfg, st.opened, st.tx_count + 1, st.rx_count, st.error_count))
+}
+
+proc gpio_read(st: GpioState, pin: arduino_pkg.Pin) -> arduino_pkg.ArduinoResult[PinState] {
+  let _ = st
+  if gpio_validate_pkg.valid_pin(st.cfg.profile, pin) == false {
+    give arduino_pkg.err[PinState](arduino_pkg.ArduinoError.InvalidPin)
+  }
+  let raw: int = gpio_runtime_pkg.runtime_read(pin)
+  if raw == 0 { give arduino_pkg.ok[PinState](PinState.Low) }
+  give arduino_pkg.ok[PinState](PinState.High)
+}
+
+# Compatibility wrappers
+proc pin_mode(pin: int, mode: PinMode) -> int {
+  let _ = pin
+  let _ = mode
+  give 0
+}
+
+proc digital_write(pin: int, state: PinState) -> int {
+  let _ = pin
+  let _ = state
+  give 0
+}
+
+proc package_meta() -> string {
+  give "vitte/arduino/gpio"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/arduino/gpio
+owner: @vitte/arduino
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: GPIO facade avec validation de pin et etats explicites
+input_contract: Pin profile mode state explicites
+output_contract: ArduinoResult typé, sans side effect implicite
+boundary: L acces hardware passe uniquement via internal/runtime
+compat_policy: additive-only
+>>>

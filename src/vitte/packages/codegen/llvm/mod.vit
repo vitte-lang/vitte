@@ -5,6 +5,10 @@ package vitte/codegen/llvm
 
 space vitte/codegen/llvm
 
+use vitte/codegen/llvm/internal/runtime as codegen_llvm_runtime_pkg
+use vitte/codegen/llvm/internal/validate as codegen_llvm_validate_pkg
+use vitte/codegen/llvm/internal/policy as codegen_llvm_policy_pkg
+
 
 form IrUnit {
   ir_path: string
@@ -55,10 +59,84 @@ proc package_meta() -> string {
   give "vitte/codegen/llvm"
 }
 
+form CodegenLlvmConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick CodegenLlvmError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick CodegenLlvmResult[T] {
+  Ok(value: T)
+  Err(error: CodegenLlvmError)
+}
+
+proc default_config() -> CodegenLlvmConfig {
+  give CodegenLlvmConfig(true, codegen_llvm_policy_pkg.default_timeout_ms(), codegen_llvm_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: CodegenLlvmConfig) -> CodegenLlvmResult[bool] {
+  if codegen_llvm_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give CodegenLlvmResult.Err(CodegenLlvmError.InvalidConfig)
+  }
+  if codegen_llvm_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give CodegenLlvmResult.Err(CodegenLlvmError.InvalidConfig)
+  }
+  give CodegenLlvmResult.Ok(true)
+}
+
+proc healthcheck(cfg: CodegenLlvmConfig) -> CodegenLlvmResult[bool] {
+  let vr: CodegenLlvmResult[bool] = validate_config(cfg)
+  when vr is CodegenLlvmResult.Err {
+    give CodegenLlvmResult.Err(vr.error)
+  }
+  if codegen_llvm_runtime_pkg.runtime_status() == false {
+    give CodegenLlvmResult.Err(CodegenLlvmError.Internal)
+  }
+  give CodegenLlvmResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CODEGENL0001" {
+    give "invalid package configuration"
+  }
+  give "codegen/llvm diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
 <<< ROLE-CONTRACT
 package: vitte/codegen/llvm
 role: Orchestration commandes LLVM toolchain
 input_contract: IR et metadonnees cibles explicites
 output_contract: Commandes llc/opt stables
 boundary: N invoque pas les outils; prepare seulement
+
+owner: @vitte/llvm
+stability: stable
+since: 3.0.0
+deprecated_in: -
+compat_policy: additive-only
+api_version: v1
 >>>

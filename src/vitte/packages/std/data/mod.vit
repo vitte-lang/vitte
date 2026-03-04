@@ -2,10 +2,91 @@
 mod.vit
 package vitte/std/data
 >>>
-# DATA layer entrypoints (façade only)
 
 space vitte/std/data
+
+use vitte/std/data/internal/runtime as std_data_runtime_pkg
+use vitte/std/data/internal/validate as std_data_validate_pkg
+use vitte/std/data/internal/policy as std_data_policy_pkg
+
+form StdDataConfig {
+  cache_size: int
+  strict_schema: bool
+  deterministic: bool
+}
+
+pick StdDataError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick StdDataResult[T] {
+  Ok(value: T)
+  Err(error: StdDataError)
+}
+
+proc default_config() -> StdDataConfig {
+  give StdDataConfig(std_data_policy_pkg.default_cache_size(), true, true)
+}
+
+proc validate_config(cfg: StdDataConfig) -> StdDataResult[bool] {
+  if std_data_validate_pkg.valid_cache_size(cfg.cache_size) == false {
+    give StdDataResult.Err(StdDataError.InvalidConfig)
+  }
+  give StdDataResult.Ok(true)
+}
+
+proc healthcheck(cfg: StdDataConfig) -> StdDataResult[bool] {
+  let vr: StdDataResult[bool] = validate_config(cfg)
+  when vr is StdDataResult.Err { give StdDataResult.Err(vr.error) }
+  if std_data_runtime_pkg.runtime_status() == false {
+    give StdDataResult.Err(StdDataError.Internal)
+  }
+  give StdDataResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["schema-strict", "cache", "deterministic"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-STDDATA0001" { give "invalid std/data configuration" }
+  give "std/data diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-STDDATA0001" { give "use cache_size in valid range" }
+  give "review std/data configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
 
 proc package_meta() -> string {
   give "vitte/std/data"
 }
+
+proc ready() -> bool {
+  give true
+}
+
+<<< ROLE-CONTRACT
+package: vitte/std/data
+owner: @vitte/std
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: Facade data standard lisible et stable
+input_contract: Config data explicite
+output_contract: Resultats stables pour usages std
+boundary: Facade pure; details runtime sous internal/*
+compat_policy: additive-only
+api_version: v1
+>>>

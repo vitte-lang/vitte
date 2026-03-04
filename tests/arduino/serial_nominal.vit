@@ -1,0 +1,15 @@
+use vitte/arduino as arduino_pkg
+use vitte/arduino/serial as serial_pkg
+
+entry main at core/app {
+  let cfg: serial_pkg.SerialConfig = serial_pkg.serial_with_baud(serial_pkg.serial_default_config(), 115200)
+  let st: arduino_pkg.ArduinoResult[serial_pkg.SerialState] = serial_pkg.serial_open(cfg)
+  when st is arduino_pkg.ArduinoResult.Err {
+    return 1
+  }
+  let wr: arduino_pkg.ArduinoResult[serial_pkg.SerialState] = serial_pkg.serial_write(st.value, 65)
+  when wr is arduino_pkg.ArduinoResult.Err {
+    return 1
+  }
+  return 0
+}

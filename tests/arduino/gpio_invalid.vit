@@ -1,0 +1,11 @@
+use vitte/arduino as arduino_pkg
+use vitte/arduino/gpio as gpio_pkg
+
+entry main at core/app {
+  let st: gpio_pkg.GpioState = gpio_pkg.gpio_open(gpio_pkg.gpio_default_config())
+  let wr: arduino_pkg.ArduinoResult[gpio_pkg.GpioState] = gpio_pkg.gpio_write(st, 99, gpio_pkg.PinState.High)
+  when wr is arduino_pkg.ArduinoResult.Err {
+    return 0
+  }
+  return 1
+}

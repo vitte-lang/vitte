@@ -1,0 +1,11 @@
+use vitte/arduino as arduino_pkg
+use vitte/arduino/i2c as i2c_pkg
+
+entry main at core/app {
+  let st: i2c_pkg.I2cBusState = i2c_pkg.i2c_open(i2c_pkg.i2c_default_config())
+  let rd: arduino_pkg.ArduinoResult[int] = i2c_pkg.i2c_read_register(st, 0x02, 0x00)
+  when rd is arduino_pkg.ArduinoResult.Err {
+    return 0
+  }
+  return 1
+}

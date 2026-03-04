@@ -5,6 +5,10 @@ package vitte/random_secure
 
 space vitte/random_secure
 
+use vitte/random_secure/internal/runtime as random_secure_runtime_pkg
+use vitte/random_secure/internal/validate as random_secure_validate_pkg
+use vitte/random_secure/internal/policy as random_secure_policy_pkg
+
 
 form RngState {
   seed: int
@@ -50,10 +54,84 @@ proc package_meta() -> string {
   give "vitte/random_secure"
 }
 
+form RandomSecureConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick RandomSecureError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick RandomSecureResult[T] {
+  Ok(value: T)
+  Err(error: RandomSecureError)
+}
+
+proc default_config() -> RandomSecureConfig {
+  give RandomSecureConfig(true, random_secure_policy_pkg.default_timeout_ms(), random_secure_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: RandomSecureConfig) -> RandomSecureResult[bool] {
+  if random_secure_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give RandomSecureResult.Err(RandomSecureError.InvalidConfig)
+  }
+  if random_secure_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give RandomSecureResult.Err(RandomSecureError.InvalidConfig)
+  }
+  give RandomSecureResult.Ok(true)
+}
+
+proc healthcheck(cfg: RandomSecureConfig) -> RandomSecureResult[bool] {
+  let vr: RandomSecureResult[bool] = validate_config(cfg)
+  when vr is RandomSecureResult.Err {
+    give RandomSecureResult.Err(vr.error)
+  }
+  if random_secure_runtime_pkg.runtime_status() == false {
+    give RandomSecureResult.Err(RandomSecureError.Internal)
+  }
+  give RandomSecureResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-RANDOMSE0001" {
+    give "invalid package configuration"
+  }
+  give "random_secure diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
 <<< ROLE-CONTRACT
 package: vitte/random_secure
 role: Generation pseudo-aleatoire a usage securise applique
 input_contract: Entropie seed explicite
 output_contract: Flux deterministe testable
 boundary: Pas de promesse crypto forte sans source systeme
+
+owner: @vitte/random_secure
+stability: stable
+since: 3.0.0
+deprecated_in: -
+compat_policy: additive-only
+api_version: v1
 >>>

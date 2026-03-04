@@ -5,6 +5,10 @@ package vitte/codegen/gcc
 
 space vitte/codegen/gcc
 
+use vitte/codegen/gcc/internal/runtime as codegen_gcc_runtime_pkg
+use vitte/codegen/gcc/internal/validate as codegen_gcc_validate_pkg
+use vitte/codegen/gcc/internal/policy as codegen_gcc_policy_pkg
+
 
 form CompileUnit {
   source_path: string
@@ -52,10 +56,84 @@ proc package_meta() -> string {
   give "vitte/codegen/gcc"
 }
 
+form CodegenGccConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick CodegenGccError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick CodegenGccResult[T] {
+  Ok(value: T)
+  Err(error: CodegenGccError)
+}
+
+proc default_config() -> CodegenGccConfig {
+  give CodegenGccConfig(true, codegen_gcc_policy_pkg.default_timeout_ms(), codegen_gcc_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: CodegenGccConfig) -> CodegenGccResult[bool] {
+  if codegen_gcc_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give CodegenGccResult.Err(CodegenGccError.InvalidConfig)
+  }
+  if codegen_gcc_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give CodegenGccResult.Err(CodegenGccError.InvalidConfig)
+  }
+  give CodegenGccResult.Ok(true)
+}
+
+proc healthcheck(cfg: CodegenGccConfig) -> CodegenGccResult[bool] {
+  let vr: CodegenGccResult[bool] = validate_config(cfg)
+  when vr is CodegenGccResult.Err {
+    give CodegenGccResult.Err(vr.error)
+  }
+  if codegen_gcc_runtime_pkg.runtime_status() == false {
+    give CodegenGccResult.Err(CodegenGccError.Internal)
+  }
+  give CodegenGccResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CODEGENG0001" {
+    give "invalid package configuration"
+  }
+  give "codegen/gcc diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
 <<< ROLE-CONTRACT
 package: vitte/codegen/gcc
 role: Construction de commandes GCC
 input_contract: Unites compilees normalisees
 output_contract: Commandes deterministes valides
 boundary: N execute pas le binaire; prepare la commande seulement
+
+owner: @vitte/gcc
+stability: stable
+since: 3.0.0
+deprecated_in: -
+compat_policy: additive-only
+api_version: v1
 >>>
