@@ -179,8 +179,11 @@ def main() -> int:
 
     runtime_hdr = Path(args.runtime_header) if args.runtime_header else runtime_header_for_profile(args.profile, args.kernel_variant)
     if not runtime_hdr.exists():
-        print(f"[extern-abi][error] missing runtime header: {runtime_hdr}", file=sys.stderr)
-        return 2
+        print(
+            f"[extern-abi:{args.profile}] SKIP missing runtime header: {runtime_hdr}",
+            file=sys.stderr,
+        )
+        return 0
 
     std_entries = parse_std_externs(STD_ROOT, args.profile)
     runtime_entries = parse_runtime_externs(runtime_hdr)

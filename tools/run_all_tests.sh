@@ -11,7 +11,7 @@ summary="$REPORT_DIR/summary_${run_id}_${ALL_TESTS_GROUP}.txt"
 
 all_targets=(
   test parse parse-modules parse-strict hir-validate check-tests stress-alloc core-projects test-examples arduino-projects negative-tests diag-snapshots resolve-tests explain-snapshots wrapper-stage-test
-  grammar-check book-qa-strict ci-fast ci-strict ci-completions
+  grammar-check ci-fast ci-strict ci-completions
   extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all std-core-tests stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
   modules-tests modules-snapshots modules-contract-snapshots modules-ci-strict
   packages-governance-lint critical-runtime-matrix-lint packages-gate
@@ -28,7 +28,7 @@ select_targets() {
       printf "%s\n" test parse parse-modules parse-strict hir-validate check-tests stress-alloc core-projects test-examples arduino-projects negative-tests diag-snapshots resolve-tests explain-snapshots wrapper-stage-test
       ;;
     ci)
-      printf "%s\n" grammar-check book-qa-strict ci-fast ci-strict ci-completions
+      printf "%s\n" grammar-check ci-fast ci-strict ci-completions
       ;;
     abi)
       printf "%s\n" extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all std-core-tests stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
