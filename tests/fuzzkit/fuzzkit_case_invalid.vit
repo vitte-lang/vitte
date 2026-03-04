@@ -1,0 +1,15 @@
+use vitte/fuzzkit as fuzzkit_pkg
+
+entry main at core/app {
+  let cfg = fuzzkit_pkg.default_config()
+  let planr = fuzzkit_pkg.plan_new(cfg)
+  when planr is fuzzkit_pkg.FuzzkitResult.Err {
+    return 1
+  }
+
+  let bad = fuzzkit_pkg.plan_add_case(planr.value, "", "")
+  when bad is fuzzkit_pkg.FuzzkitResult.Err {
+    return 0
+  }
+  return 1
+}

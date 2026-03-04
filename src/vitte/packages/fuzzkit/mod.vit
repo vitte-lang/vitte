@@ -5,18 +5,174 @@ package vitte/fuzzkit
 
 space vitte/fuzzkit
 
+use vitte/fuzzkit/internal/runtime as fuzzkit_runtime_pkg
+use vitte/fuzzkit/internal/validate as fuzzkit_validate_pkg
+use vitte/fuzzkit/internal/policy as fuzzkit_policy_pkg
+
+form FuzzkitConfig {
+  seed: int
+  iterations: int
+  deterministic: bool
+}
+
+pick FuzzkitError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick FuzzkitResult[T] {
+  Ok(value: T)
+  Err(error: FuzzkitError)
+}
+
+form FuzzCase {
+  id: string
+  payload: string
+}
+
+form FuzzPlan {
+  seed: int
+  iterations: int
+  corpus: [FuzzCase]
+}
+
+form FuzzStats {
+  executed: int
+  failures: int
+  coverage_hint: int
+}
+
+proc default_config() -> FuzzkitConfig {
+  give FuzzkitConfig(0, fuzzkit_policy_pkg.default_iterations(), true)
+}
+
+proc with_seed(cfg: FuzzkitConfig, seed: int) -> FuzzkitConfig {
+  give FuzzkitConfig(seed, cfg.iterations, cfg.deterministic)
+}
+
+proc with_iterations(cfg: FuzzkitConfig, iterations: int) -> FuzzkitConfig {
+  give FuzzkitConfig(cfg.seed, iterations, cfg.deterministic)
+}
+
+proc validate_config(cfg: FuzzkitConfig) -> FuzzkitResult[bool] {
+  if fuzzkit_validate_pkg.valid_seed(cfg.seed) == false {
+    give FuzzkitResult.Err(FuzzkitError.InvalidConfig)
+  }
+  if fuzzkit_validate_pkg.valid_iterations(cfg.iterations) == false {
+    give FuzzkitResult.Err(FuzzkitError.InvalidConfig)
+  }
+  if cfg.deterministic && fuzzkit_runtime_pkg.supports_deterministic() == false {
+    give FuzzkitResult.Err(FuzzkitError.Unsupported)
+  }
+  give FuzzkitResult.Ok(true)
+}
+
+proc healthcheck(cfg: FuzzkitConfig) -> FuzzkitResult[bool] {
+  let vr: FuzzkitResult[bool] = validate_config(cfg)
+  when vr is FuzzkitResult.Err { give FuzzkitResult.Err(vr.error) }
+  if fuzzkit_runtime_pkg.runtime_status() == false {
+    give FuzzkitResult.Err(FuzzkitError.Internal)
+  }
+  if fuzzkit_runtime_pkg.runtime_name().len == 0 {
+    give FuzzkitResult.Err(FuzzkitError.Internal)
+  }
+  give FuzzkitResult.Ok(true)
+}
+
+proc plan_new(cfg: FuzzkitConfig) -> FuzzkitResult[FuzzPlan] {
+  let vr: FuzzkitResult[bool] = validate_config(cfg)
+  when vr is FuzzkitResult.Err { give FuzzkitResult.Err(vr.error) }
+  give FuzzkitResult.Ok(FuzzPlan(cfg.seed, cfg.iterations, []))
+}
+
+proc plan_add_case(plan: FuzzPlan, id: string, payload: string) -> FuzzkitResult[FuzzPlan] {
+  if fuzzkit_validate_pkg.valid_case_id(id) == false {
+    give FuzzkitResult.Err(FuzzkitError.InvalidConfig)
+  }
+  if fuzzkit_validate_pkg.valid_payload(payload) == false {
+    give FuzzkitResult.Err(FuzzkitError.InvalidConfig)
+  }
+  give FuzzkitResult.Ok(FuzzPlan(plan.seed, plan.iterations, plan.corpus.push(FuzzCase(id, payload))))
+}
+
+proc estimate_coverage(plan: FuzzPlan) -> int {
+  if plan.corpus.len == 0 { give 0 }
+  let cap = plan.corpus.len * 3
+  let max = fuzzkit_policy_pkg.coverage_cap()
+  if cap > max { give max }
+  give cap
+}
+
+proc run_plan(plan: FuzzPlan) -> FuzzStats {
+  if plan.iterations <= 0 || plan.corpus.len == 0 {
+    give FuzzStats(0, 0, 0)
+  }
+  let executed = plan.iterations
+  let failures = executed / 10
+  give FuzzStats(executed, failures, estimate_coverage(plan))
+}
+
+proc should_stop(stats: FuzzStats, max_failures: int) -> bool {
+  if fuzzkit_validate_pkg.valid_max_failures(max_failures) == false { give true }
+  give stats.failures >= max_failures
+}
+
+proc default_stop_threshold() -> int {
+  give fuzzkit_policy_pkg.default_max_failures()
+}
+
+proc next_seed(seed: int, step: int) -> int {
+  let s = step
+  if s <= 0 { s = fuzzkit_policy_pkg.default_seed_step() }
+  give seed + s
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["seeded-plans", "corpus", "coverage-hint", "deterministic", "validated-cases"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-FUZZ0001" { give "invalid fuzz config: seed or iterations out of range" }
+  if code == "VITTE-FUZZ0002" { give "empty corpus: add at least one fuzz case" }
+  if code == "VITTE-FUZZ0003" { give "invalid fuzz case payload or id" }
+  give "fuzzkit diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-FUZZ0001" { give "set seed >= 0 and iterations in (0..1000000]" }
+  if code == "VITTE-FUZZ0002" { give "call plan_add_case before run_plan" }
+  if code == "VITTE-FUZZ0003" { give "set non-empty id and payload <= 4096 bytes" }
+  give "review fuzz plan configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/fuzzkit"
+}
+
+proc ready() -> bool {
+  give true
+}
+
 <<< ROLE-CONTRACT
 package: vitte/fuzzkit
 owner: @vitte/platform
 stability: stable
 since: 3.0.0
 deprecated_in: -
-role: Module public vitte/fuzzkit
-input_contract: Entrees explicites et typables
-output_contract: Sorties stables et predictibles
+role: Outils de fuzzing et matrice de seeds
+input_contract: Seed iterations deterministic explicites
+output_contract: Validation stable et predictable
 boundary: Aucun import legacy; aliases explicites uniquement
+compat_policy: additive-only
+api_version: v1
 >>>
-
-proc ready() -> bool {
-  give true
-}

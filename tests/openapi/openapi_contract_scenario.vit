@@ -1,0 +1,20 @@
+use vitte/openapi as openapi_pkg
+
+entry main at core/app {
+  let s0 = openapi_pkg.spec_new_default("svc")
+  let s1r = openapi_pkg.add_endpoint_checked(s0, "get", "/health", "health", "get_health", false)
+  when s1r is openapi_pkg.OpenapiResult.Err {
+    return 1
+  }
+
+  let s2r = openapi_pkg.validate_contract(s1r.value)
+  when s2r is openapi_pkg.OpenapiResult.Err {
+    return 1
+  }
+
+  let y = openapi_pkg.render_yaml(s1r.value)
+  if y.len == 0 {
+    return 1
+  }
+  return 0
+}

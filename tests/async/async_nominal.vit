@@ -1,0 +1,26 @@
+use vitte/async as async_pkg
+
+proc ok_job() -> int {
+  return 0
+}
+
+entry main at core/app {
+  let cfg: async_pkg.AsyncConfig = async_pkg.default_config()
+  let hr: async_pkg.AsyncResult[bool] = async_pkg.healthcheck(cfg)
+  when hr is async_pkg.AsyncResult.Err {
+    return 1
+  }
+
+  let sch0 = async_pkg.scheduler_new(2)
+  let sch1 = async_pkg.scheduler_enqueue(sch0, 3)
+  let sch2 = async_pkg.scheduler_tick(sch1)
+  if sch2.running <= 0 {
+    return 1
+  }
+
+  let state = async_pkg.run_with_retry(ok_job, 1)
+  if async_pkg.is_terminal(state) == false {
+    return 1
+  }
+  return 0
+}

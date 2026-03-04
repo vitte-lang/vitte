@@ -1,0 +1,20 @@
+use vitte/jsonpath as jsonpath_pkg
+
+entry main at core/app {
+  let d0 = jsonpath_pkg.doc_new()
+  let d1 = jsonpath_pkg.put(d0, "svc.name", "vitte")
+
+  let ok = jsonpath_pkg.resolve_checked(d1, "$.svc.name")
+  when ok is jsonpath_pkg.JsonpathResult.Err {
+    return 1
+  }
+  if ok.value != "vitte" {
+    return 1
+  }
+
+  let miss = jsonpath_pkg.resolve_or_default(d1, "$.svc.missing")
+  if miss != "" {
+    return 1
+  }
+  return 0
+}
