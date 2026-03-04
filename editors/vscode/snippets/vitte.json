@@ -136,6 +136,213 @@
     ],
     "description": "vitte module skeleton"
   },
+  "app_prod": {
+    "scope": "vitte",
+    "prefix": "app-prod",
+    "body": [
+      "space ${1:my_org}/${2:app}",
+      "",
+      "pull std/io as io_pkg",
+      "pull std/time as time_pkg",
+      "",
+      "entry ${3:main} at ${1:my_org}/${2:app} {",
+      "  let started_at = time_pkg.now()",
+      "  io_pkg.println(\"${4:App boot}\")",
+      "  ${0:give 0}",
+      "}"
+    ],
+    "description": "production app entrypoint skeleton"
+  },
+  "lib_prod": {
+    "scope": "vitte",
+    "prefix": "lib-prod",
+    "body": [
+      "space ${1:my_org}/${2:lib}",
+      "",
+      "use std/core/types.${3:i32}",
+      "",
+      "share ${4:version}",
+      "share ${5:build}",
+      "",
+      "const ${4:version}: string = \"${6:0.1.0}\"",
+      "",
+      "proc ${5:build}(${7:input}: ${3:i32}) -> ${3:i32} {",
+      "  ${0:give ${7:input}}",
+      "}"
+    ],
+    "description": "production library skeleton"
+  },
+  "module_prod": {
+    "scope": "vitte",
+    "prefix": "module-prod",
+    "body": [
+      "space ${1:my_org}/${2:module}",
+      "",
+      "pull ${1:my_org}/shared as shared_pkg",
+      "",
+      "share ${3:run}",
+      "",
+      "proc ${3:run}(${4:ctx}: string) -> Result[string, string] {",
+      "  ${0:give Result.Ok(${4:ctx})}",
+      "}"
+    ],
+    "description": "production module with explicit alias and exports"
+  },
+  "test_prod": {
+    "scope": "vitte",
+    "prefix": "test-prod",
+    "body": [
+      "space ${1:my_org}/${2:module}/${3:tests}",
+      "",
+      "pull ${1:my_org}/${2:module} as module_pkg",
+      "",
+      "proc ${4:test_${5:feature}}() -> bool {",
+      "  let got = module_pkg.${6:run}(${7:\"input\"})",
+      "  ${0:give got is Result.Ok}",
+      "}"
+    ],
+    "description": "production-grade test module skeleton"
+  },
+  "package_prod": {
+    "scope": "vitte",
+    "prefix": "package-prod",
+    "body": [
+      "<<<",
+      "mod.vit",
+      "package ${1:vitte/${2:package_name}}",
+      ">>>",
+      "",
+      "space ${1:vitte/${2:package_name}}",
+      "",
+      "share ${3:ready}",
+      "",
+      "proc ${3:ready}() -> bool {",
+      "  ${0:give true}",
+      "}",
+      "",
+      "<<< ROLE-CONTRACT",
+      "package: ${1:vitte/${2:package_name}}",
+      "role: ${4:Package technical responsibility}",
+      "input_contract: ${5:Explicit normalized inputs}",
+      "output_contract: ${6:Stable explicit outputs}",
+      "boundary: ${7:No business policy decisions}",
+      ">>>"
+    ],
+    "description": "production package template with ROLE-CONTRACT"
+  },
+  "service_enterprise": {
+    "scope": "vitte",
+    "prefix": "service-ent",
+    "body": [
+      "space ${1:org}/${2:service}",
+      "",
+      "pull ${3:org/shared/logger} as logger_pkg",
+      "pull ${4:org/shared/repo} as repo_pkg",
+      "",
+      "share ${5:handle}",
+      "",
+      "proc ${5:handle}(${6:req}: ${7:Request}) -> Result[${8:Response}, string] {",
+      "  logger_pkg.info(\"${2} handle\")",
+      "  ${0:give repo_pkg.exec(${6:req})}",
+      "}"
+    ],
+    "description": "enterprise service template"
+  },
+  "adapter_enterprise": {
+    "scope": "vitte",
+    "prefix": "adapter-ent",
+    "body": [
+      "space ${1:org}/${2:adapter}",
+      "",
+      "trait ${3:Port} {",
+      "  proc ${4:execute}(${5:req}: ${6:Request}) -> Result[${7:Response}, string]",
+      "}",
+      "",
+      "form ${8:Adapter} {",
+      "  ${9:client}: ${10:Client}",
+      "}",
+      "",
+      "proc ${8:Adapter}.${4:execute}(${5:req}: ${6:Request}) -> Result[${7:Response}, string] {",
+      "  ${0:give Result.Err(\"todo\")}",
+      "}"
+    ],
+    "description": "enterprise adapter template"
+  },
+  "repo_enterprise": {
+    "scope": "vitte",
+    "prefix": "repo-ent",
+    "body": [
+      "space ${1:org}/${2:repo}",
+      "",
+      "share ${3:find_by_id}",
+      "",
+      "proc ${3:find_by_id}(${4:id}: string) -> Result[${5:Entity}, string] {",
+      "  ${0:give Result.Err(\"not found\")}",
+      "}"
+    ],
+    "description": "enterprise repository template"
+  },
+  "cli_command_enterprise": {
+    "scope": "vitte",
+    "prefix": "cli-ent",
+    "body": [
+      "space ${1:org}/${2:cli}",
+      "",
+      "entry ${3:main} at ${1:org}/${2:cli} {",
+      "  let args = ${4:read_args}()",
+      "  when args is Result.Err {",
+      "    give 2",
+      "  }",
+      "  ${0:give 0}",
+      "}"
+    ],
+    "description": "enterprise CLI command template"
+  },
+  "http_handler_enterprise": {
+    "scope": "vitte",
+    "prefix": "http-ent",
+    "body": [
+      "space ${1:org}/${2:http}",
+      "",
+      "proc ${3:handle_http}(${4:req}: ${5:HttpRequest}) -> ${6:HttpResponse} {",
+      "  ${0:give ${6:HttpResponse}.ok(\"ok\")}",
+      "}"
+    ],
+    "description": "enterprise HTTP handler template"
+  },
+  "pipeline_stage_enterprise": {
+    "scope": "vitte",
+    "prefix": "stage-ent",
+    "body": [
+      "space ${1:org}/${2:pipeline}",
+      "",
+      "proc ${3:stage_${4:normalize}}(${5:input}: ${6:Input}) -> Result[${7:Output}, string] {",
+      "  ${0:give Result.Ok(${5:input} as ${7:Output})}",
+      "}"
+    ],
+    "description": "enterprise pipeline stage template"
+  },
+  "test_table_enterprise": {
+    "scope": "vitte",
+    "prefix": "test-table-ent",
+    "body": [
+      "space ${1:org}/${2:tests}",
+      "",
+      "form ${3:Case} {",
+      "  name: string,",
+      "  input: ${4:Input},",
+      "  expected: ${5:Output}",
+      "}",
+      "",
+      "proc ${6:test_${7:feature}}() -> bool {",
+      "  let cases = [",
+      "    ${3:Case}(name: \"${8:happy}\", input: ${9:...}, expected: ${10:...})",
+      "  ]",
+      "  ${0:give true}",
+      "}"
+    ],
+    "description": "enterprise table-driven test template"
+  },
   "usepkg": {
     "scope": "vitte",
     "prefix": "usepkg",
