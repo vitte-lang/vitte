@@ -60,6 +60,14 @@ const quickActions_1 = require("./commands/quickActions");
 const metricsView_1 = require("./providers/metricsView");
 const documentationView_1 = require("./providers/documentationView");
 const docsChaptersView_1 = require("./providers/docsChaptersView");
+const packageProblemsView_1 = require("./providers/packageProblemsView");
+const moduleGraphView_1 = require("./providers/moduleGraphView");
+const offlineDocsIndex_1 = require("./providers/offlineDocsIndex");
+const projectAssistant_1 = require("./commands/projectAssistant");
+const advancedCodeActions_1 = require("./providers/advancedCodeActions");
+const vitteCodeLens_1 = require("./providers/vitteCodeLens");
+const enterpriseSuite_1 = require("./commands/enterpriseSuite");
+const commandCenterView_1 = require("./providers/commandCenterView");
 const node_1 = require("vscode-languageclient/node");
 const diagnostics_1 = require("./utils/diagnostics");
 let client;
@@ -85,6 +93,13 @@ let editorLintCollection;
 let offlineSince;
 let documentationViewsRegistered = false;
 let documentationViewsRegistrationError;
+const formatOnSaveInFlight = new Set();
+let healthCheckTimer;
+let healthFailures = 0;
+let healthRestartInFlight = false;
+let reliabilityAttempts = 0;
+let reliabilityNextDelayMs = 30000;
+let activationStartedAt = Date.now();
 function getExtensionVersion(ext) {
     const manifest = ext?.packageJSON;
     if (!manifest || typeof manifest !== "object")
@@ -105,8 +120,17 @@ const DEFAULT_COMMAND_SHORTCUTS = [
     { label: "Test", command: "vitte.test", icon: "$(beaker)", tooltip: "Execute the test suite (vitte.test)", statusBar: true, startup: true },
 ];
 const COMMAND_MENU_ENTRIES = [
+    { label: "Project Assistant", description: "Create project/module/package", command: "vitte.projectAssistant" },
+    { label: "New Project", description: "Scaffold a new Vitte project", command: "vitte.newProject" },
+    { label: "New Module", description: "Scaffold a new module file", command: "vitte.newModule" },
+    { label: "New Package", description: "Scaffold a new package", command: "vitte.newPackage" },
+    { label: "Generate VS Code Config", description: "Create .vscode/tasks.json + launch.json", command: "vitte.generateWorkspaceConfig" },
+    { label: "Doctor", description: "check + lint + fmt + test + perf", command: "vitte.doctor" },
+    { label: "Search Offline Docs", description: "Indexed local markdown docs", command: "vitte.docs.searchLocal" },
     { label: "Clean workspace", description: "Remove build outputs", command: "vitte.clean" },
     { label: "Bench workspace", description: "Run vitte.bench", command: "vitte.bench" },
+    { label: "Bench extension CI", description: "Activation/memory/completion latency snapshot", command: "vitte.benchExtensionCi" },
+    { label: "Export perf session", description: "Export activation/p95/memory session JSON", command: "vitte.exportPerfSession" },
     { label: "Open bench report", description: "Latest bench report", command: "vitte.benchReport" },
     { label: "Diagnostics ▸ Refresh", description: "Re-scan diagnostics", command: "vitte.diagnostics.refresh" },
     { label: "Diagnostics ▸ Next issue", description: "Jump to next diagnostic", command: "editor.action.marker.next" },
@@ -233,6 +257,13 @@ function setStatusOverride(text, tooltip) {
 }
 function isOfflineEnabled() {
     return vscode.workspace.getConfiguration("vitte").get("server.offline", false);
+}
+function shouldFormatOnSave(doc) {
+    if (!LANGUAGE_SET.has(doc.languageId))
+        return false;
+    if (doc.isUntitled)
+        return false;
+    return vscode.workspace.getConfiguration("vitte").get("format.onSave", false);
 }
 function isOfflinePermanent() {
     return vscode.workspace.getConfiguration("vitte").get("server.offlinePermanent", false);
@@ -485,6 +516,7 @@ async function showStartupCommandPrompt(context) {
     }
 }
 async function activate(context) {
+    activationStartedAt = Date.now();
     lastActivationContext = context;
     try {
         output = vscode.window.createOutputChannel("Vitte Language Server", { log: true });
@@ -578,6 +610,14 @@ async function activate(context) {
     (0, buildTasks_1.registerBuildTasks)(context);
     (0, benchTasks_1.registerBenchTasks)(context);
     (0, quickActions_1.registerQuickActions)(context);
+    (0, projectAssistant_1.registerProjectAssistant)(context, output, () => client, () => Date.now() - activationStartedAt);
+    (0, advancedCodeActions_1.registerAdvancedCodeActions)(context);
+    (0, vitteCodeLens_1.registerVitteCodeLens)(context);
+    (0, enterpriseSuite_1.registerEnterpriseSuite)(context, {
+        output,
+        getClient: () => client,
+        getCrashCount: () => recentStops.length,
+    });
     try {
         await (0, telemetry_1.registerTelemetry)(context);
     }
@@ -637,6 +677,36 @@ async function activate(context) {
         catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             void vscode.window.showErrorMessage(`Vitte: unable to reset metrics (${message})`);
+        }
+    }), vscode.commands.registerCommand("vitte.exportPerfSession", async () => {
+        if (!client || client.state !== node_1.State.Running) {
+            void vscode.window.showWarningMessage("Vitte server is not running.");
+            return;
+        }
+        try {
+            const stats = await client.sendRequest("vitte/metrics");
+            const by = new Map(stats.map((s) => [s.name, s]));
+            const mem = process.memoryUsage();
+            const payload = {
+                ts: new Date().toISOString(),
+                activationMs: Date.now() - activationStartedAt,
+                rssMB: Number((mem.rss / (1024 * 1024)).toFixed(2)),
+                completionP95Ms: by.get("completion")?.p95Ms ?? null,
+                hoverP95Ms: by.get("hover")?.p95Ms ?? null,
+                renameP95Ms: by.get("rename")?.p95Ms ?? null,
+                metrics: stats,
+            };
+            const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!folder)
+                return;
+            const dir = path.join(folder, ".vitte-cache", "diagnostics");
+            await fs.promises.mkdir(dir, { recursive: true });
+            const file = path.join(dir, "perf-session.json");
+            await fs.promises.writeFile(file, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+            void vscode.window.showInformationMessage(`Perf session exported: ${file}`);
+        }
+        catch (err) {
+            void vscode.window.showErrorMessage(`Export perf session failed: ${String(err)}`);
         }
     }), vscode.commands.registerCommand("vitte.pingServer", async () => {
         if (isOfflineEffective())
@@ -717,9 +787,62 @@ async function activate(context) {
             return;
         await runBuiltinAction(action.trim());
     }), vscode.commands.registerCommand("vitte.formatDocument", async () => runBuiltinAction("format")), vscode.commands.registerCommand("vitte.organizeImports", async () => runBuiltinAction("organizeImports")), vscode.commands.registerCommand("vitte.fixAll", async () => runBuiltinAction("fixAll")), vscode.commands.registerCommand("vitte.renameSymbol", async () => {
-        if (!vscode.window.activeTextEditor)
+        const editor = vscode.window.activeTextEditor;
+        if (!editor)
             return;
-        await vscode.commands.executeCommand("editor.action.rename");
+        const doc = editor.document;
+        const pos = editor.selection.active;
+        const oldName = doc.getText(doc.getWordRangeAtPosition(pos) ?? new vscode.Range(pos, pos)) || "symbol";
+        const newName = await vscode.window.showInputBox({
+            prompt: `Rename '${oldName}' to`,
+            value: oldName,
+            ignoreFocusOut: true,
+        });
+        if (!newName || newName === oldName)
+            return;
+        const renameEdit = await vscode.commands.executeCommand("vscode.executeDocumentRenameProvider", doc.uri, pos, newName);
+        if (!renameEdit)
+            return;
+        const conflicts = await detectRenameConflicts(renameEdit, newName);
+        if (conflicts.length > 0) {
+            const preview = conflicts.slice(0, 8).join(", ");
+            void vscode.window.showErrorMessage(`Rename blocked: symbol '${newName}' already exists in ${conflicts.length} file(s): ${preview}${conflicts.length > 8 ? "…" : ""}`);
+            return;
+        }
+        const preview = await summarizeWorkspaceEditDetailed(renameEdit);
+        const choice = await vscode.window.showInformationMessage(`Rename preview: ${preview.fileCount} file(s), ${preview.editCount} edit(s). ${preview.details.join(" | ")}`, "Apply", "Cancel");
+        if (choice !== "Apply")
+            return;
+        const snapshots = await captureWorkspaceEditSnapshots(renameEdit);
+        try {
+            const ok = await vscode.workspace.applyEdit(renameEdit);
+            if (!ok)
+                throw new Error("applyEdit returned false");
+        }
+        catch (err) {
+            await rollbackWorkspaceEditSnapshots(snapshots);
+            await writeRenameReport({
+                ts: new Date().toISOString(),
+                oldName,
+                newName,
+                fileCount: preview.fileCount,
+                editCount: preview.editCount,
+                applied: false,
+                error: String(err),
+                files: preview.details,
+            });
+            void vscode.window.showErrorMessage(`Vitte rename rollback: ${String(err)}`);
+            return;
+        }
+        await writeRenameReport({
+            ts: new Date().toISOString(),
+            oldName,
+            newName,
+            fileCount: preview.fileCount,
+            editCount: preview.editCount,
+            applied: true,
+            files: preview.details,
+        });
     }), vscode.commands.registerCommand("vitte.applyEditSample", async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor)
@@ -786,6 +909,10 @@ async function activate(context) {
     (0, diagnosticsView_1.registerDiagnosticsView)(context);
     (0, moduleExplorerView_1.registerModuleExplorerView)(context);
     (0, metricsView_1.registerMetricsView)(context, () => client);
+    (0, packageProblemsView_1.registerPackageProblemsView)(context);
+    (0, moduleGraphView_1.registerModuleGraphView)(context);
+    (0, offlineDocsIndex_1.registerOfflineDocsIndex)(context);
+    (0, commandCenterView_1.registerCommandCenterView)(context, () => client);
     (0, offlineView_1.registerOfflineView)(context, () => offlineReason, () => output, () => formatOfflineSince(), () => {
         const summary = (0, diagnostics_1.summarizeWorkspaceDiagnostics)();
         const total = summary.errors + summary.warnings + summary.info + summary.hints;
@@ -794,12 +921,36 @@ async function activate(context) {
         return `${summary.errors} errors, ${summary.warnings} warnings`;
     });
     context.subscriptions.push(vscode.languages.onDidChangeDiagnostics(() => refreshDiagnosticsStatus()));
+    context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (doc) => {
+        if (!shouldFormatOnSave(doc))
+            return;
+        if (formatOnSaveInFlight.has(doc.uri.toString()))
+            return;
+        const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === doc.uri.toString());
+        if (!editor)
+            return;
+        formatOnSaveInFlight.add(doc.uri.toString());
+        try {
+            await vscode.window.showTextDocument(editor.document, { preview: false, preserveFocus: true });
+            await vscode.commands.executeCommand("editor.action.formatDocument");
+            if (editor.document.isDirty) {
+                await editor.document.save();
+            }
+        }
+        catch (err) {
+            output.appendLine(`[format.onSave] ${String(err)}`);
+        }
+        finally {
+            formatOnSaveInFlight.delete(doc.uri.toString());
+        }
+    }));
     if (isOfflineEnabled()) {
         setOfflineStatus("Offline mode is enabled (vitte.server.offline).");
     }
     if (isOfflinePermanent()) {
         setOfflineStatus("Offline permanent (user-forced).");
     }
+    startHealthChecks(context);
     if (process.env.VSCODE_TESTING === "1") {
         const api = {
             getStatusText: () => statusItem?.text ?? "",
@@ -831,6 +982,14 @@ async function deactivate() {
     }
     catch { /* noop */ }
     client = undefined;
+    if (healthCheckTimer) {
+        clearInterval(healthCheckTimer);
+        healthCheckTimer = undefined;
+    }
+    healthFailures = 0;
+    healthRestartInFlight = false;
+    reliabilityAttempts = 0;
+    reliabilityNextDelayMs = 30000;
     recentStops.length = 0;
     offlineBannerShown = false;
     for (const watcher of fileWatchers) {
@@ -952,6 +1111,87 @@ async function restartClient(context) {
         return false;
     }
     return startClient(context);
+}
+function startHealthChecks(context) {
+    if (healthCheckTimer)
+        clearInterval(healthCheckTimer);
+    let lastBudgetAlert = 0;
+    healthCheckTimer = setInterval(() => {
+        void (async () => {
+            if (isOfflineEffective())
+                return;
+            if (!client || client.state !== node_1.State.Running)
+                return;
+            try {
+                await client.sendRequest("vitte/ping");
+                healthFailures = 0;
+                try {
+                    const metrics = await client.sendRequest("vitte/metrics");
+                    const cfg = vscode.workspace.getConfiguration("vitte");
+                    const budgets = {
+                        completion: cfg.get("semanticBudget.completionP95Ms", 900),
+                        hover: cfg.get("semanticBudget.hoverP95Ms", 600),
+                        rename: cfg.get("semanticBudget.renameP95Ms", 1200),
+                        references: cfg.get("semanticBudget.referencesP95Ms", 1200),
+                    };
+                    const over = [];
+                    for (const key of Object.keys(budgets)) {
+                        const m = metrics.find((x) => x.name === key);
+                        const p95 = m?.p95Ms ?? m?.averageMs ?? 0;
+                        if (p95 > budgets[key])
+                            over.push(`${key} ${p95.toFixed(1)}>${budgets[key]}`);
+                    }
+                    if (over.length > 0 && Date.now() - lastBudgetAlert > 120000) {
+                        lastBudgetAlert = Date.now();
+                        void vscode.window.showWarningMessage(`Vitte semantic budget exceeded: ${over.join(" | ")}`);
+                    }
+                }
+                catch {
+                    // ignore budget telemetry errors
+                }
+            }
+            catch (err) {
+                healthFailures += 1;
+                output.appendLine(`[health] ping failure #${healthFailures}: ${String(err)}`);
+                if (healthFailures < 2)
+                    return;
+                if (healthRestartInFlight)
+                    return;
+                const cfg = vscode.workspace.getConfiguration("vitte");
+                const maxAttempts = Math.max(1, cfg.get("reliability.maxRestartAttempts", 3));
+                const baseRetry = Math.max(1000, cfg.get("reliability.baseRetryMs", 30000));
+                const maxRetry = Math.max(baseRetry, cfg.get("reliability.maxRetryMs", 300000));
+                const cooldownMs = Math.max(10000, cfg.get("reliability.cooldownMs", 120000));
+                if (reliabilityAttempts >= maxAttempts) {
+                    setStatusOverride(undefined, `Reliability guard open-circuit (${reliabilityAttempts}/${maxAttempts})`);
+                    setTimeout(() => {
+                        reliabilityAttempts = 0;
+                        reliabilityNextDelayMs = baseRetry;
+                    }, cooldownMs);
+                    return;
+                }
+                healthRestartInFlight = true;
+                try {
+                    const jitter = Math.floor(Math.random() * Math.max(1, Math.floor(reliabilityNextDelayMs * 0.25)));
+                    await sleep(reliabilityNextDelayMs + jitter);
+                    const ok = await restartClient(context);
+                    if (!ok) {
+                        setOfflineStatus("Health check restart failed.");
+                    }
+                    else {
+                        healthFailures = 0;
+                        reliabilityAttempts = 0;
+                        reliabilityNextDelayMs = baseRetry;
+                    }
+                    reliabilityAttempts += 1;
+                    reliabilityNextDelayMs = Math.min(maxRetry, Math.max(baseRetry, reliabilityNextDelayMs * 2));
+                }
+                finally {
+                    healthRestartInFlight = false;
+                }
+            }
+        })();
+    }, 30000);
 }
 function wireClientState(c) {
     c.onDidChangeState((e) => {
@@ -1205,6 +1445,86 @@ function normalizeForBracketScan(line) {
         result += inSingle || inDouble || inTemplate ? " " : ch;
     }
     return result;
+}
+function summarizeWorkspaceEdit(edit) {
+    const entries = edit.entries();
+    let editCount = 0;
+    for (const [, edits] of entries)
+        editCount += edits.length;
+    return { fileCount: entries.length, editCount };
+}
+async function summarizeWorkspaceEditDetailed(edit) {
+    const base = summarizeWorkspaceEdit(edit);
+    const details = [];
+    for (const [uri, edits] of edit.entries()) {
+        const rel = vscode.workspace.asRelativePath(uri, false);
+        details.push(`${rel}: ${edits.length}`);
+        if (details.length >= 12)
+            break;
+    }
+    return { ...base, details };
+}
+async function detectRenameConflicts(edit, newName) {
+    const conflictFiles = [];
+    const declRx = new RegExp(`\\b(?:proc|fn|entry|let|const|static|type|struct|form|trait|enum|union)\\s+${newName}\\b`);
+    for (const [uri] of edit.entries()) {
+        try {
+            const doc = await vscode.workspace.openTextDocument(uri);
+            if (!["vitte", "vit"].includes(doc.languageId))
+                continue;
+            if (declRx.test(doc.getText())) {
+                conflictFiles.push(vscode.workspace.asRelativePath(uri, false));
+            }
+        }
+        catch {
+            // ignore unreadable file
+        }
+    }
+    return conflictFiles;
+}
+async function writeRenameReport(data) {
+    const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!folder)
+        return;
+    const dir = path.join(folder, ".vitte-cache", "rename");
+    try {
+        await fs.promises.mkdir(dir, { recursive: true });
+        const file = path.join(dir, `rename-${Date.now()}.json`);
+        await fs.promises.writeFile(file, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+    }
+    catch {
+        // ignore report write errors
+    }
+}
+async function captureWorkspaceEditSnapshots(edit) {
+    const snapshots = new Map();
+    for (const [uri] of edit.entries()) {
+        try {
+            const doc = await vscode.workspace.openTextDocument(uri);
+            snapshots.set(uri.toString(), doc.getText());
+        }
+        catch {
+            // ignore unreadable files
+        }
+    }
+    return snapshots;
+}
+async function rollbackWorkspaceEditSnapshots(snapshots) {
+    if (snapshots.size === 0)
+        return;
+    const rollback = new vscode.WorkspaceEdit();
+    for (const [uriText, original] of snapshots) {
+        const uri = vscode.Uri.parse(uriText);
+        try {
+            const doc = await vscode.workspace.openTextDocument(uri);
+            const full = new vscode.Range(0, 0, doc.lineCount, 0);
+            rollback.replace(uri, full, original);
+        }
+        catch {
+            // ignore unavailable files
+        }
+    }
+    await vscode.workspace.applyEdit(rollback);
 }
 function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
 function updateStatusText(editor) {

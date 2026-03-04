@@ -24,6 +24,14 @@ import { registerQuickActions } from "./commands/quickActions";
 import { registerMetricsView } from "./providers/metricsView";
 import { registerDocumentationView } from "./providers/documentationView";
 import { registerDocsChaptersView } from "./providers/docsChaptersView";
+import { registerPackageProblemsView } from "./providers/packageProblemsView";
+import { registerModuleGraphView } from "./providers/moduleGraphView";
+import { registerOfflineDocsIndex } from "./providers/offlineDocsIndex";
+import { registerProjectAssistant } from "./commands/projectAssistant";
+import { registerAdvancedCodeActions } from "./providers/advancedCodeActions";
+import { registerVitteCodeLens } from "./providers/vitteCodeLens";
+import { registerEnterpriseSuite } from "./commands/enterpriseSuite";
+import { registerCommandCenterView } from "./providers/commandCenterView";
 import {
   LanguageClient,
   TransportKind,
@@ -67,6 +75,13 @@ let editorLintCollection: vscode.DiagnosticCollection | undefined;
 let offlineSince: number | undefined;
 let documentationViewsRegistered = false;
 let documentationViewsRegistrationError: string | undefined;
+const formatOnSaveInFlight = new Set<string>();
+let healthCheckTimer: NodeJS.Timeout | undefined;
+let healthFailures = 0;
+let healthRestartInFlight = false;
+let reliabilityAttempts = 0;
+let reliabilityNextDelayMs = 30000;
+let activationStartedAt = Date.now();
 
 interface ExtensionManifest {
   version?: string;
@@ -127,8 +142,17 @@ const DEFAULT_COMMAND_SHORTCUTS: readonly CommandShortcutConfig[] = [
 ] as const;
 
 const COMMAND_MENU_ENTRIES: readonly CommandMenuEntry[] = [
+  { label: "Project Assistant", description: "Create project/module/package", command: "vitte.projectAssistant" },
+  { label: "New Project", description: "Scaffold a new Vitte project", command: "vitte.newProject" },
+  { label: "New Module", description: "Scaffold a new module file", command: "vitte.newModule" },
+  { label: "New Package", description: "Scaffold a new package", command: "vitte.newPackage" },
+  { label: "Generate VS Code Config", description: "Create .vscode/tasks.json + launch.json", command: "vitte.generateWorkspaceConfig" },
+  { label: "Doctor", description: "check + lint + fmt + test + perf", command: "vitte.doctor" },
+  { label: "Search Offline Docs", description: "Indexed local markdown docs", command: "vitte.docs.searchLocal" },
   { label: "Clean workspace", description: "Remove build outputs", command: "vitte.clean" },
   { label: "Bench workspace", description: "Run vitte.bench", command: "vitte.bench" },
+  { label: "Bench extension CI", description: "Activation/memory/completion latency snapshot", command: "vitte.benchExtensionCi" },
+  { label: "Export perf session", description: "Export activation/p95/memory session JSON", command: "vitte.exportPerfSession" },
   { label: "Open bench report", description: "Latest bench report", command: "vitte.benchReport" },
   { label: "Diagnostics ▸ Refresh", description: "Re-scan diagnostics", command: "vitte.diagnostics.refresh" },
   { label: "Diagnostics ▸ Next issue", description: "Jump to next diagnostic", command: "editor.action.marker.next" },
@@ -259,6 +283,12 @@ function setStatusOverride(text?: string, tooltip?: string): void {
 
 function isOfflineEnabled(): boolean {
   return vscode.workspace.getConfiguration("vitte").get<boolean>("server.offline", false);
+}
+
+function shouldFormatOnSave(doc: vscode.TextDocument): boolean {
+  if (!LANGUAGE_SET.has(doc.languageId)) return false;
+  if (doc.isUntitled) return false;
+  return vscode.workspace.getConfiguration("vitte").get<boolean>("format.onSave", false);
 }
 
 function isOfflinePermanent(): boolean {
@@ -503,6 +533,7 @@ async function showStartupCommandPrompt(context: vscode.ExtensionContext): Promi
   }
 }
 export async function activate(context: vscode.ExtensionContext): Promise<ExtensionApi | undefined> {
+  activationStartedAt = Date.now();
   lastActivationContext = context;
   try {
     output = vscode.window.createOutputChannel("Vitte Language Server", { log: true });
@@ -601,6 +632,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   registerBuildTasks(context);
   registerBenchTasks(context);
   registerQuickActions(context);
+  registerProjectAssistant(context, output, () => client, () => Date.now() - activationStartedAt);
+  registerAdvancedCodeActions(context);
+  registerVitteCodeLens(context);
+  registerEnterpriseSuite(context, {
+    output,
+    getClient: () => client,
+    getCrashCount: () => recentStops.length,
+  });
   try {
     await registerTelemetry(context);
   } catch (err) {
@@ -661,6 +700,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         void vscode.window.showErrorMessage(`Vitte: unable to reset metrics (${message})`);
+      }
+    }),
+    vscode.commands.registerCommand("vitte.exportPerfSession", async () => {
+      if (!client || client.state !== ClientState.Running) {
+        void vscode.window.showWarningMessage("Vitte server is not running.");
+        return;
+      }
+      try {
+        const stats = await client.sendRequest<ServerMetricEntry[]>("vitte/metrics");
+        const by = new Map(stats.map((s) => [s.name, s]));
+        const mem = process.memoryUsage();
+        const payload = {
+          ts: new Date().toISOString(),
+          activationMs: Date.now() - activationStartedAt,
+          rssMB: Number((mem.rss / (1024 * 1024)).toFixed(2)),
+          completionP95Ms: by.get("completion")?.p95Ms ?? null,
+          hoverP95Ms: by.get("hover")?.p95Ms ?? null,
+          renameP95Ms: by.get("rename")?.p95Ms ?? null,
+          metrics: stats,
+        };
+        const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!folder) return;
+        const dir = path.join(folder, ".vitte-cache", "diagnostics");
+        await fs.promises.mkdir(dir, { recursive: true });
+        const file = path.join(dir, "perf-session.json");
+        await fs.promises.writeFile(file, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+        void vscode.window.showInformationMessage(`Perf session exported: ${file}`);
+      } catch (err) {
+        void vscode.window.showErrorMessage(`Export perf session failed: ${String(err)}`);
       }
     }),
     vscode.commands.registerCommand("vitte.pingServer", async () => {
@@ -748,8 +816,71 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     vscode.commands.registerCommand("vitte.organizeImports", async () => runBuiltinAction("organizeImports")),
     vscode.commands.registerCommand("vitte.fixAll", async () => runBuiltinAction("fixAll")),
     vscode.commands.registerCommand("vitte.renameSymbol", async () => {
-      if (!vscode.window.activeTextEditor) return;
-      await vscode.commands.executeCommand("editor.action.rename");
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) return;
+      const doc = editor.document;
+      const pos = editor.selection.active;
+      const oldName = doc.getText(doc.getWordRangeAtPosition(pos) ?? new vscode.Range(pos, pos)) || "symbol";
+      const newName = await vscode.window.showInputBox({
+        prompt: `Rename '${oldName}' to`,
+        value: oldName,
+        ignoreFocusOut: true,
+      });
+      if (!newName || newName === oldName) return;
+
+      const renameEdit = await vscode.commands.executeCommand<vscode.WorkspaceEdit>(
+        "vscode.executeDocumentRenameProvider",
+        doc.uri,
+        pos,
+        newName
+      );
+      if (!renameEdit) return;
+
+      const conflicts = await detectRenameConflicts(renameEdit, newName);
+      if (conflicts.length > 0) {
+        const preview = conflicts.slice(0, 8).join(", ");
+        void vscode.window.showErrorMessage(
+          `Rename blocked: symbol '${newName}' already exists in ${conflicts.length} file(s): ${preview}${conflicts.length > 8 ? "…" : ""}`
+        );
+        return;
+      }
+
+      const preview = await summarizeWorkspaceEditDetailed(renameEdit);
+      const choice = await vscode.window.showInformationMessage(
+        `Rename preview: ${preview.fileCount} file(s), ${preview.editCount} edit(s). ${preview.details.join(" | ")}`,
+        "Apply",
+        "Cancel"
+      );
+      if (choice !== "Apply") return;
+
+      const snapshots = await captureWorkspaceEditSnapshots(renameEdit);
+      try {
+        const ok = await vscode.workspace.applyEdit(renameEdit);
+        if (!ok) throw new Error("applyEdit returned false");
+      } catch (err) {
+        await rollbackWorkspaceEditSnapshots(snapshots);
+        await writeRenameReport({
+          ts: new Date().toISOString(),
+          oldName,
+          newName,
+          fileCount: preview.fileCount,
+          editCount: preview.editCount,
+          applied: false,
+          error: String(err),
+          files: preview.details,
+        });
+        void vscode.window.showErrorMessage(`Vitte rename rollback: ${String(err)}`);
+        return;
+      }
+      await writeRenameReport({
+        ts: new Date().toISOString(),
+        oldName,
+        newName,
+        fileCount: preview.fileCount,
+        editCount: preview.editCount,
+        applied: true,
+        files: preview.details,
+      });
     }),
     vscode.commands.registerCommand("vitte.applyEditSample", async () => {
       const editor = vscode.window.activeTextEditor; if (!editor) return;
@@ -819,6 +950,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   registerDiagnosticsView(context);
   registerModuleExplorerView(context);
   registerMetricsView(context, () => client);
+  registerPackageProblemsView(context);
+  registerModuleGraphView(context);
+  registerOfflineDocsIndex(context);
+  registerCommandCenterView(context, () => client);
   registerOfflineView(
     context,
     () => offlineReason,
@@ -832,6 +967,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     }
   );
   context.subscriptions.push(vscode.languages.onDidChangeDiagnostics(() => refreshDiagnosticsStatus()));
+  context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (doc) => {
+    if (!shouldFormatOnSave(doc)) return;
+    if (formatOnSaveInFlight.has(doc.uri.toString())) return;
+    const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === doc.uri.toString());
+    if (!editor) return;
+    formatOnSaveInFlight.add(doc.uri.toString());
+    try {
+      await vscode.window.showTextDocument(editor.document, { preview: false, preserveFocus: true });
+      await vscode.commands.executeCommand("editor.action.formatDocument");
+      if (editor.document.isDirty) {
+        await editor.document.save();
+      }
+    } catch (err) {
+      output.appendLine(`[format.onSave] ${String(err)}`);
+    } finally {
+      formatOnSaveInFlight.delete(doc.uri.toString());
+    }
+  }));
 
   if (isOfflineEnabled()) {
     setOfflineStatus("Offline mode is enabled (vitte.server.offline).");
@@ -839,6 +992,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   if (isOfflinePermanent()) {
     setOfflineStatus("Offline permanent (user-forced).");
   }
+
+  startHealthChecks(context);
 
   if (process.env.VSCODE_TESTING === "1") {
     const api: ExtensionApi = {
@@ -869,6 +1024,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
 export async function deactivate(): Promise<void> {
   try { await client?.stop(); } catch { /* noop */ }
   client = undefined;
+  if (healthCheckTimer) {
+    clearInterval(healthCheckTimer);
+    healthCheckTimer = undefined;
+  }
+  healthFailures = 0;
+  healthRestartInFlight = false;
+  reliabilityAttempts = 0;
+  reliabilityNextDelayMs = 30000;
   recentStops.length = 0;
   offlineBannerShown = false;
   for (const watcher of fileWatchers) {
@@ -995,6 +1158,78 @@ async function restartClient(context: vscode.ExtensionContext | undefined): Prom
     return false;
   }
   return startClient(context);
+}
+
+function startHealthChecks(context: vscode.ExtensionContext): void {
+  if (healthCheckTimer) clearInterval(healthCheckTimer);
+  let lastBudgetAlert = 0;
+  healthCheckTimer = setInterval(() => {
+    void (async () => {
+      if (isOfflineEffective()) return;
+      if (!client || client.state !== ClientState.Running) return;
+      try {
+        await client.sendRequest("vitte/ping");
+        healthFailures = 0;
+        try {
+          const metrics = await client.sendRequest<ServerMetricEntry[]>("vitte/metrics");
+          const cfg = vscode.workspace.getConfiguration("vitte");
+          const budgets = {
+            completion: cfg.get<number>("semanticBudget.completionP95Ms", 900),
+            hover: cfg.get<number>("semanticBudget.hoverP95Ms", 600),
+            rename: cfg.get<number>("semanticBudget.renameP95Ms", 1200),
+            references: cfg.get<number>("semanticBudget.referencesP95Ms", 1200),
+          };
+          const over: string[] = [];
+          for (const key of Object.keys(budgets) as Array<keyof typeof budgets>) {
+            const m = metrics.find((x) => x.name === key);
+            const p95 = m?.p95Ms ?? m?.averageMs ?? 0;
+            if (p95 > budgets[key]) over.push(`${key} ${p95.toFixed(1)}>${budgets[key]}`);
+          }
+          if (over.length > 0 && Date.now() - lastBudgetAlert > 120000) {
+            lastBudgetAlert = Date.now();
+            void vscode.window.showWarningMessage(`Vitte semantic budget exceeded: ${over.join(" | ")}`);
+          }
+        } catch {
+          // ignore budget telemetry errors
+        }
+      } catch (err) {
+        healthFailures += 1;
+        output.appendLine(`[health] ping failure #${healthFailures}: ${String(err)}`);
+        if (healthFailures < 2) return;
+        if (healthRestartInFlight) return;
+        const cfg = vscode.workspace.getConfiguration("vitte");
+        const maxAttempts = Math.max(1, cfg.get<number>("reliability.maxRestartAttempts", 3));
+        const baseRetry = Math.max(1000, cfg.get<number>("reliability.baseRetryMs", 30000));
+        const maxRetry = Math.max(baseRetry, cfg.get<number>("reliability.maxRetryMs", 300000));
+        const cooldownMs = Math.max(10000, cfg.get<number>("reliability.cooldownMs", 120000));
+        if (reliabilityAttempts >= maxAttempts) {
+          setStatusOverride(undefined, `Reliability guard open-circuit (${reliabilityAttempts}/${maxAttempts})`);
+          setTimeout(() => {
+            reliabilityAttempts = 0;
+            reliabilityNextDelayMs = baseRetry;
+          }, cooldownMs);
+          return;
+        }
+        healthRestartInFlight = true;
+        try {
+          const jitter = Math.floor(Math.random() * Math.max(1, Math.floor(reliabilityNextDelayMs * 0.25)));
+          await sleep(reliabilityNextDelayMs + jitter);
+          const ok = await restartClient(context);
+          if (!ok) {
+            setOfflineStatus("Health check restart failed.");
+          } else {
+            healthFailures = 0;
+            reliabilityAttempts = 0;
+            reliabilityNextDelayMs = baseRetry;
+          }
+          reliabilityAttempts += 1;
+          reliabilityNextDelayMs = Math.min(maxRetry, Math.max(baseRetry, reliabilityNextDelayMs * 2));
+        } finally {
+          healthRestartInFlight = false;
+        }
+      }
+    })();
+  }, 30000);
 }
 
 function wireClientState(c: LanguageClient): void {
@@ -1274,6 +1509,92 @@ function normalizeForBracketScan(line: string): string {
   }
 
   return result;
+}
+
+function summarizeWorkspaceEdit(edit: vscode.WorkspaceEdit): { fileCount: number; editCount: number } {
+  const entries = edit.entries();
+  let editCount = 0;
+  for (const [, edits] of entries) editCount += edits.length;
+  return { fileCount: entries.length, editCount };
+}
+
+async function summarizeWorkspaceEditDetailed(edit: vscode.WorkspaceEdit): Promise<{ fileCount: number; editCount: number; details: string[] }> {
+  const base = summarizeWorkspaceEdit(edit);
+  const details: string[] = [];
+  for (const [uri, edits] of edit.entries()) {
+    const rel = vscode.workspace.asRelativePath(uri, false);
+    details.push(`${rel}: ${edits.length}`);
+    if (details.length >= 12) break;
+  }
+  return { ...base, details };
+}
+
+async function detectRenameConflicts(edit: vscode.WorkspaceEdit, newName: string): Promise<string[]> {
+  const conflictFiles: string[] = [];
+  const declRx = new RegExp(`\\b(?:proc|fn|entry|let|const|static|type|struct|form|trait|enum|union)\\s+${newName}\\b`);
+  for (const [uri] of edit.entries()) {
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      if (!["vitte", "vit"].includes(doc.languageId)) continue;
+      if (declRx.test(doc.getText())) {
+        conflictFiles.push(vscode.workspace.asRelativePath(uri, false));
+      }
+    } catch {
+      // ignore unreadable file
+    }
+  }
+  return conflictFiles;
+}
+
+async function writeRenameReport(data: {
+  ts: string;
+  oldName: string;
+  newName: string;
+  fileCount: number;
+  editCount: number;
+  applied: boolean;
+  error?: string;
+  files: string[];
+}): Promise<void> {
+  const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!folder) return;
+  const dir = path.join(folder, ".vitte-cache", "rename");
+  try {
+    await fs.promises.mkdir(dir, { recursive: true });
+    const file = path.join(dir, `rename-${Date.now()}.json`);
+    await fs.promises.writeFile(file, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  } catch {
+    // ignore report write errors
+  }
+}
+
+async function captureWorkspaceEditSnapshots(edit: vscode.WorkspaceEdit): Promise<Map<string, string>> {
+  const snapshots = new Map<string, string>();
+  for (const [uri] of edit.entries()) {
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      snapshots.set(uri.toString(), doc.getText());
+    } catch {
+      // ignore unreadable files
+    }
+  }
+  return snapshots;
+}
+
+async function rollbackWorkspaceEditSnapshots(snapshots: Map<string, string>): Promise<void> {
+  if (snapshots.size === 0) return;
+  const rollback = new vscode.WorkspaceEdit();
+  for (const [uriText, original] of snapshots) {
+    const uri = vscode.Uri.parse(uriText);
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const full = new vscode.Range(0, 0, doc.lineCount, 0);
+      rollback.replace(uri, full, original);
+    } catch {
+      // ignore unavailable files
+    }
+  }
+  await vscode.workspace.applyEdit(rollback);
 }
 
 function sleep(ms: number): Promise<void> { return new Promise(res => setTimeout(res, ms)); }

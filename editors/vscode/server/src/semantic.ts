@@ -30,10 +30,11 @@ const TOKEN_TYPES = [
   "variable",  // 3
   "parameter", // 4
   "property",  // 5
-  "keyword",   // 6
-  "number",    // 7
-  "string",    // 8
-  "comment",   // 9
+  "macro",     // 6  (e.g. diagnostics code VITTE-XXXX)
+  "keyword",   // 7
+  "number",    // 8
+  "string",    // 9
+  "comment",   // 10
 ] as const;
 
 const TOKEN_MODIFIERS: string[] = [];
@@ -45,10 +46,11 @@ const TYPE_INDEX = {
   variable: 3,
   parameter: 4,
   property: 5,
-  keyword: 6,
-  number: 7,
-  string: 8,
-  comment: 9,
+  macro: 6,
+  keyword: 7,
+  number: 8,
+  string: 9,
+  comment: 10,
 } as const;
 
 export function getSemanticTokensLegend(): SemanticTokensLegend {
@@ -143,16 +145,23 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
     insertSpan(spans, m.index, m.index + m[0].length, TYPE_INDEX.number);
   }
 
-  // 3) mots-clés en zones de code
+  // 3) codes diagnostics en zones de code (ex: VITTE-1001)
+  for (const m of matchAll(/\bVITTE-[A-Z0-9][A-Z0-9_-]*\b/g, text)) {
+    if (!lex.mask[m.index]) continue;
+    insertSpan(spans, m.index, m.index + m[0].length, TYPE_INDEX.macro);
+  }
+
+  // 4) mots-clés en zones de code
   for (const m of matchAll(/\b[A-Za-z_]\w*\b/g, text)) {
     if (!lex.mask[m.index]) continue;
     if (!KW.has(m[0])) continue;
     insertSpan(spans, m.index, m.index + m[0].length, TYPE_INDEX.keyword);
   }
 
-  // 4) déclarations: colorer uniquement le nom
-  addDeclSpans(text, lex.mask, /\bmodule\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
-  addDeclSpans(text, lex.mask, /\bspace\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
+  // 5) déclarations: colorer uniquement le nom
+  addPathDeclSpans(text, lex.mask, /\bmodule\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
+  addPathDeclSpans(text, lex.mask, /\bspace\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
+  addPathDeclSpans(text, lex.mask, /\b(?:import|use|pull)\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
   addDeclSpans(text, lex.mask, /\bstruct\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
   addDeclSpans(text, lex.mask, /\bform\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
   addDeclSpans(text, lex.mask, /\benum\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
@@ -161,7 +170,7 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
   addDeclSpans(text, lex.mask, /\b(?:fn|proc)\s+([A-Za-z_]\w*)\s*\(/g, 1, TYPE_INDEX.function, spans);
   addDeclSpans(text, lex.mask, /\b(?:let|const|static)\s+(?:mut\s+)?([A-Za-z_]\w*)/g, 1, TYPE_INDEX.variable, spans);
 
-  // 5) paramètres de fonctions
+  // 6) paramètres de fonctions
   for (const m of matchAll(/\b(?:fn|proc)\s+[A-Za-z_]\w*\s*\(([^)]*)\)/g, text)) {
     if (!lex.mask[m.index]) continue; // début du fn
     const params = (m[1] ?? "").split(",");
@@ -178,7 +187,7 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
     }
   }
 
-  // 6) propriétés de struct
+  // 7) propriétés de struct
   for (const m of matchAll(/\b(?:struct|form)\s+[A-Za-z_]\w*\s*\{([\s\S]*?)\}/g, text)) {
     const body = m[1] ?? "";
     const bodyStart = m.index + m[0].indexOf("{") + 1;
@@ -366,6 +375,31 @@ function addDeclSpans(
   }
 }
 
+function addPathDeclSpans(
+  text: string,
+  mask: Uint8Array,
+  rx: RegExp,
+  group: number,
+  tokenTypeIndex: number,
+  spans: { start: number; end: number; type: number }[]
+) {
+  rx.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = rx.exec(text))) {
+    const raw = m[group];
+    if (!raw) continue;
+    const base = (m.index ?? 0) + m[0].indexOf(raw);
+    const segRx = /[A-Za-z_]\w*/g;
+    let seg: RegExpExecArray | null;
+    while ((seg = segRx.exec(raw))) {
+      const off = base + seg.index;
+      const name = seg[0];
+      if (!mask[off]) continue;
+      insertSpan(spans, off, off + name.length, tokenTypeIndex);
+    }
+  }
+}
+
 function insertSpan(spans: { start: number; end: number; type: number }[], start: number, end: number, type: number) {
   if (end <= start) return;
   // éviter les chevauchements: si recouvrement détecté, on ignore la nouvelle plage
@@ -385,4 +419,3 @@ function* matchAll(rx: RegExp, s: string): Generator<RegExpMatchArray & { index:
     yield arr;
   }
 }
-

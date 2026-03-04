@@ -3,6 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.provideFormattingEdits = provideFormattingEdits;
 exports.formatDocument = formatDocument;
+exports.provideRangeFormattingEdits = provideRangeFormattingEdits;
 const vscode_languageserver_1 = require("vscode-languageserver");
 /* ============================================================================
  * API principale
@@ -47,6 +48,34 @@ function provideFormattingEdits(doc, options = {
 function formatDocument(doc, options) {
     // Ne plus passer {} : on laisse le paramètre non défini pour déclencher les valeurs par défaut
     return provideFormattingEdits(doc, options);
+}
+function provideRangeFormattingEdits(doc, range, options = {
+    tabSize: 2,
+    insertSpaces: true,
+    trimTrailingWhitespace: true,
+    insertFinalNewline: false,
+    trimFinalNewlines: false,
+    normalizeEOL: "lf",
+    maxConsecutiveBlankLines: 2,
+    ensureSpaceAroundOperators: true,
+    spaceAfterComma: true,
+    spaceAroundColon: "right",
+    normalizeQuotes: "preserve",
+    keepIndentInsideStrings: true,
+    alignInlineComments: true,
+    alignEquals: true,
+    braceStyle: "attach",
+    newlineBeforeElse: false,
+    wrapCommentsAt: 100,
+}) {
+    const original = doc.getText(range);
+    const lines = splitLines(original);
+    const outLines = formatLines(lines, options);
+    const text = joinWithEOL(outLines, options.normalizeEOL ?? "lf");
+    const normalizedOrig = joinWithEOL(splitLines(original), options.normalizeEOL ?? "lf");
+    if (normalizedOrig === text)
+        return [];
+    return [vscode_languageserver_1.TextEdit.replace(range, text)];
 }
 /* ============================================================================
  * Formatage par passes
