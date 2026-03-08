@@ -326,5 +326,20 @@ jobs:
       - name: Dynamic completion probe (non-blocking temporary)
         run: |
           set -euo pipefail
-          python3 tools/generate_completions.py --print-mode --mode dynamic
-          python3 tools/generate_completions.py --check --verbose --mode dynamic
+          mkdir -p target/reports/ci-completions-dynamic
+          LOG="target/reports/ci-completions-dynamic/ci-completions-dynamic-${GITHUB_RUN_ID}.log"
+          {
+            python3 tools/generate_completions.py --print-mode --mode dynamic
+            python3 tools/generate_completions.py --check --verbose --mode dynamic
+          } >"$LOG" 2>&1 || {
+            echo "::warning title=ci-completions-dynamic::non-blocking dynamic probe failed (temporary)"
+            tail -n 200 "$LOG" || true
+          }
+
+      - name: Upload ci-completions-dynamic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-completions-dynamic-artifacts
+          path: |
+            target/reports/ci-completions-dynamic
