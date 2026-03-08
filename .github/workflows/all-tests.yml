@@ -76,8 +76,8 @@ jobs:
           set -euo pipefail
           REPORT_DIR="target/reports/all-tests"
           echo "::group::all-tests summaries"
-          ls -1 "${REPORT_DIR}"/summary_* 2>/dev/null || true
-          SUMMARY="$(ls -1t "${REPORT_DIR}"/summary_* 2>/dev/null | head -n1 || true)"
+          find "${REPORT_DIR}" -maxdepth 1 -type f -name 'summary_*' 2>/dev/null | LC_ALL=C.UTF-8 sort || true
+          SUMMARY="$(find "${REPORT_DIR}" -maxdepth 1 -type f -name 'summary_*' 2>/dev/null | LC_ALL=C.UTF-8 sort | tail -n1 || true)"
           if [ -n "${SUMMARY}" ] && [ -f "${SUMMARY}" ]; then
             echo "Using summary: ${SUMMARY}"
             cat "${SUMMARY}"
@@ -87,11 +87,13 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::all-tests group logs"
-          ls -1t "${REPORT_DIR}"/*_"${{ matrix.group }}"_*.log 2>/dev/null || true
-          for f in $(ls -1t "${REPORT_DIR}"/*_"${{ matrix.group }}"_*.log 2>/dev/null | head -n 12); do
+          find "${REPORT_DIR}" -maxdepth 1 -type f -name "*_${{ matrix.group }}_*.log" 2>/dev/null | LC_ALL=C.UTF-8 sort || true
+          while IFS= read -r f; do
             echo "--- ${f} (tail -n 160) ---"
             tail -n 160 "${f}" || true
-          done
+          done < <(
+            find "${REPORT_DIR}" -maxdepth 1 -type f -name "*_${{ matrix.group }}_*.log" 2>/dev/null | LC_ALL=C.UTF-8 sort | tail -n 12
+          )
           echo "::endgroup::"
 
           FIRST_ERR="$(
@@ -109,7 +111,7 @@ jobs:
           DST_DIR="target/reports-normalized"
           mkdir -p "${DST_DIR}"
           [ -d "${SRC_DIR}" ] || exit 0
-          find "${SRC_DIR}" -type f -name "*.log" -print0 | while IFS= read -r -d '' f; do
+          find "${SRC_DIR}" -type f -name "*.log" -print0 | LC_ALL=C.UTF-8 sort -z | while IFS= read -r -d '' f; do
             rel="${f#${SRC_DIR}/}"
             out="${DST_DIR}/${rel}"
             mkdir -p "$(dirname "${out}")"
@@ -133,7 +135,7 @@ jobs:
 
   ci-completions:
     runs-on: ubuntu-latest
-    continue-on-error: ${{ github.event_name == 'push' }}
+    continue-on-error: false
     timeout-minutes: 90
     env:
       TZ: UTC
@@ -170,6 +172,20 @@ jobs:
       - name: Build
         run: make build
 
+      - name: Validate completions binary (strict)
+        run: |
+          set -euo pipefail
+          echo "[ci-completions] VITTE_COMPLETIONS_BIN=${VITTE_COMPLETIONS_BIN}"
+          [ -x "${VITTE_COMPLETIONS_BIN}" ] || {
+            echo "::error title=ci-completions binary missing::${VITTE_COMPLETIONS_BIN} is missing or not executable"
+            exit 1
+          }
+
+      - name: Print completions binary hash
+        run: |
+          set -euo pipefail
+          sha256sum "${VITTE_COMPLETIONS_BIN}"
+
       - name: Print completions spec hash
         run: |
           python3 - <<'PY'
@@ -178,6 +194,9 @@ jobs:
           p = Path("tools/completions/spec.json")
           print("[ci-completions] spec_sha256=", hashlib.sha256(p.read_bytes()).hexdigest(), sep="")
           PY
+
+      - name: Print completion mode
+        run: python3 tools/generate_completions.py --print-mode
 
       - name: Run ci-completions (retry once)
         run: |
@@ -188,6 +207,14 @@ jobs:
             echo "[ci-completions] retry once"
             make ci-completions 2>&1 | tee -a "$LOG"
           fi
+          cp "$LOG" "target/reports/ci-completions/ci-completions-${GITHUB_RUN_ID}.log"
+
+      - name: Ensure snapshots are unchanged
+        run: git diff --exit-code -- tools/completions/snapshots
+
+      - name: Show git status after completions
+        if: always()
+        run: git status --porcelain
 
       - name: Dump ci-completions debug context
         if: failure()
@@ -198,9 +225,9 @@ jobs:
           python3 tools/generate_completions.py --print-mode || true
           python3 tools/generate_completions.py --check --verbose || true
 
-          diff -u tools/completions/snapshots/bash.vitte.golden completions/bash/vitte || true
-          diff -u tools/completions/snapshots/zsh._vitte.golden completions/zsh/_vitte || true
-          diff -u tools/completions/snapshots/fish.vitte.fish.golden completions/fish/vitte.fish || true
+          diff -u tools/completions/snapshots/bash.vitte.golden completions/bash/vitte | head -n 200 || true
+          diff -u tools/completions/snapshots/zsh._vitte.golden completions/zsh/_vitte | head -n 200 || true
+          diff -u tools/completions/snapshots/fish.vitte.fish.golden completions/fish/vitte.fish | head -n 200 || true
 
           FIRST_ERR="$(grep -hoE '\[completions\].*' "$LOG" 2>/dev/null | head -n1 || true)"
           if [ -n "$FIRST_ERR" ]; then
