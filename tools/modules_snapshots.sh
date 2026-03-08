@@ -163,19 +163,33 @@ write_snapshot_file() {
   mv "$tmp" "$target"
 }
 
-stable_needles() {
+normalize_output() {
   local raw="$1"
   printf "%s\n" "$raw" | while IFS= read -r line; do
-    [ -z "$line" ] && continue
     case "$line" in
       "[modules-cache-perf] cold_ms="*) continue ;;
       "[modules-cache-perf] skip ratio check ("*) continue ;;
       "[modules-cache-perf] hot_cold_ratio="*) continue ;;
       *"top10 slowest:"*) continue ;;
       "  "*": "*' ms') continue ;;
+      *"scanned files:"*) continue ;;
+      "# source_commit:"*) continue ;;
+      "# source_date:"*) continue ;;
+      "# generated_at:"*) continue ;;
     esac
+
+    line="$(printf '%s' "$line" | sed -E \
+      -e 's#/home/runner/work/[^ ]*#<GH_WORKSPACE>#g' \
+      -e 's#/tmp/[^ ]*#<TMP_PATH>#g' \
+      -e 's#\b[0-9a-f]{40}\b#<SHA1>#g' \
+      -e 's#[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+#<ISO_TS>#g')"
     printf "%s\n" "$line"
   done
+}
+
+stable_needles() {
+  local raw="$1"
+  normalize_output "$raw" | sed '/^$/d'
 }
 
 extract_codes() {
@@ -262,12 +276,20 @@ PY
 }
 
 assert_needles() {
-  local out="$1"
-  local must_file="$2"
+  local raw_out="$1"
+  local out="$2"
+  local rel="$3"
+  local must_file="$4"
   while IFS= read -r needle; do
     [[ -z "$needle" ]] && continue
     if ! grep -Fq "$needle" <<<"$out"; then
+      printf "%s\n" "$raw_out"
+      printf "\n[modules-snapshots] normalized output for %s\n" "$rel"
       printf "%s\n" "$out"
+      if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+        printf "::error file=%s,title=Modules snapshot mismatch::missing needle '%s' for %s\n" \
+          "${must_file#"$ROOT_DIR"/}" "$needle" "$rel"
+      fi
       die "missing snapshot needle '$needle' for $must_file"
     fi
   done < "$must_file"
@@ -333,6 +355,7 @@ while IFS= read -r cmd_file; do
   rc_txt="$(printf '%s\n' "$run_txt" | sed -n '1p')"
   ms_txt="$(printf '%s\n' "$run_txt" | sed -n '2p')"
   out_txt="$(printf '%s\n' "$run_txt" | sed -n '3,$p')"
+  out_txt_norm="$(normalize_output "$out_txt")"
 
   if [ "$rc_txt" -ne "$expected_exit" ]; then
     printf "%s\n" "$out_txt"
@@ -348,7 +371,7 @@ while IFS= read -r cmd_file; do
       write_snapshot_file "$must" "$(stable_needles "$out_txt")"
       updated=$((updated + 1))
     else
-      assert_needles "$out_txt" "$must"
+      assert_needles "$out_txt" "$out_txt_norm" "$rel" "$must"
     fi
   else
     [ -f "$no_must_reason" ] || die "missing must for $rel (or add $no_must_reason)"
@@ -362,6 +385,7 @@ while IFS= read -r cmd_file; do
   rc_diag="$(printf '%s\n' "$run_diag" | sed -n '1p')"
   ms_diag="$(printf '%s\n' "$run_diag" | sed -n '2p')"
   out_diag="$(printf '%s\n' "$run_diag" | sed -n '3,$p')"
+  out_diag_norm="$(normalize_output "$out_diag")"
 
   if [ "$rc_diag" -ne "$expected_exit" ]; then
     printf "%s\n" "$out_diag"
@@ -377,7 +401,7 @@ while IFS= read -r cmd_file; do
     updated=$((updated + 1))
   else
     [ -f "$must_diagjson" ] || { [ -f "$no_diag_reason" ] || die "missing diagjson snapshot for $rel (or add $no_diag_reason)"; }
-    [ ! -f "$must_diagjson" ] || assert_needles "$out_diag" "$must_diagjson"
+    [ ! -f "$must_diagjson" ] || assert_needles "$out_diag" "$out_diag_norm" "$rel" "$must_diagjson"
   fi
 
   codes="$(extract_codes "$out_txt")"
@@ -407,6 +431,7 @@ while IFS= read -r cmd_file; do
     rc_fr="$(printf '%s\n' "$run_fr" | sed -n '1p')"
     ms_fr="$(printf '%s\n' "$run_fr" | sed -n '2p')"
     out_fr="$(printf '%s\n' "$run_fr" | sed -n '3,$p')"
+    out_fr_norm="$(normalize_output "$out_fr")"
     [ "$rc_fr" -eq "$expected_exit" ] || die "unexpected fr exit ($rc_fr != $expected_exit): $cmd_file"
 
     if [ "$UPDATE" -eq 1 ]; then
@@ -414,7 +439,7 @@ while IFS= read -r cmd_file; do
       updated=$((updated + 1))
     else
       [ -f "$must_fr" ] || { [ -f "$no_fr_reason" ] || die "missing fr snapshot for critical diagnostics: $rel"; }
-      [ ! -f "$must_fr" ] || assert_needles "$out_fr" "$must_fr"
+      [ ! -f "$must_fr" ] || assert_needles "$out_fr" "$out_fr_norm" "$rel" "$must_fr"
     fi
   fi
 

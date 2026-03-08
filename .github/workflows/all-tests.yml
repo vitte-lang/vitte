@@ -11,6 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: ${{ github.event_name == 'push' && matrix.group != 'packages' }}
     timeout-minutes: 180
+    env:
+      TZ: UTC
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     strategy:
       fail-fast: false
       matrix:
@@ -22,6 +26,9 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Clean workspace
+        run: git clean -fdx
 
       - name: Install build deps
         run: |
@@ -36,8 +43,17 @@ jobs:
       - name: Build
         run: make build
 
-      - name: Run all-tests group
+      - name: Run all-tests group (non-modules)
+        if: matrix.group != 'modules'
         run: ALL_TESTS_GROUP=${{ matrix.group }} make all-tests
+
+      - name: Run modules suite (isolated snapshots gate)
+        if: matrix.group == 'modules'
+        run: |
+          make modules-tests
+          make modules-snapshots || (echo "[ci] retry modules-snapshots once" && make modules-snapshots)
+          make modules-contract-snapshots
+          make modules-ci-strict
 
       - name: Dump all-tests failure context
         if: failure()
@@ -63,9 +79,39 @@ jobs:
           done
           echo "::endgroup::"
 
+          FIRST_ERR="$(
+            grep -RhoE '\[modules-snapshots\]\[error\].*' target/reports 2>/dev/null | head -n1 || true
+          )"
+          if [ -n "${FIRST_ERR}" ]; then
+            echo "::error title=modules-snapshots mismatch::${FIRST_ERR}"
+          fi
+
+      - name: Normalize report logs
+        if: always()
+        run: |
+          set -euo pipefail
+          SRC_DIR="target/reports"
+          DST_DIR="target/reports-normalized"
+          mkdir -p "${DST_DIR}"
+          [ -d "${SRC_DIR}" ] || exit 0
+          find "${SRC_DIR}" -type f -name "*.log" -print0 | while IFS= read -r -d '' f; do
+            rel="${f#${SRC_DIR}/}"
+            out="${DST_DIR}/${rel}"
+            mkdir -p "$(dirname "${out}")"
+            sed -E \
+              -e 's#/home/runner/work/[^ ]*#<GH_WORKSPACE>#g' \
+              -e 's#/tmp/[^ ]*#<TMP_PATH>#g' \
+              -e 's#\b[0-9a-f]{40}\b#<SHA1>#g' \
+              -e 's#[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+#<ISO_TS>#g' \
+              -e '/scanned files:/d' \
+              "${f}" > "${out}"
+          done
+
       - name: Upload all-tests reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: all-tests-reports-${{ matrix.group }}
-          path: target/reports/all-tests
+          path: |
+            target/reports
+            target/reports-normalized

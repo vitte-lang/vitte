@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import argparse
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import date
 
@@ -59,6 +60,45 @@ def path_has_self_leaf(import_path: str) -> bool:
     return segments[-1] == segments[-2]
 
 
+def iter_vit_files(repo: Path, roots: list[str], tracked_only: bool) -> list[Path]:
+    norm_roots = [r.strip("/").strip() for r in roots if r.strip()]
+    files: list[Path] = []
+
+    if tracked_only:
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(repo), "ls-files", "--", "*.vit"],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            for rel in proc.stdout.splitlines():
+                rel = rel.strip()
+                if not rel:
+                    continue
+                rel_norm = rel.replace("\\", "/")
+                if not any(
+                    rel_norm == root or rel_norm.startswith(root + "/")
+                    for root in norm_roots
+                ):
+                    continue
+                p = (repo / rel_norm).resolve()
+                if p.exists():
+                    files.append(p)
+        except Exception:
+            tracked_only = False
+
+    if not tracked_only:
+        for root in norm_roots:
+            root_path = (repo / root).resolve()
+            if not root_path.exists():
+                continue
+            files.extend(sorted(root_path.rglob("*.vit")))
+
+    dedup = {f.resolve() for f in files}
+    return sorted(dedup, key=lambda p: p.relative_to(repo).as_posix())
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Forbid legacy self-leaf imports (/<pkg>/<pkg>) in tests/examples"
@@ -89,6 +129,19 @@ def main() -> int:
         "--no-require-expires",
         action="store_true",
         help="do not require expires=YYYY-MM-DD metadata on allowlist lines",
+    )
+    parser.add_argument(
+        "--tracked-only",
+        dest="tracked_only",
+        action="store_true",
+        default=True,
+        help="scan only git-tracked *.vit files (default)",
+    )
+    parser.add_argument(
+        "--include-untracked",
+        dest="tracked_only",
+        action="store_false",
+        help="scan tracked and untracked *.vit files under roots",
     )
     args = parser.parse_args()
 
@@ -129,27 +182,23 @@ def main() -> int:
                         f"{entry.key}: invalid expires date '{entry.expires}' (expected YYYY-MM-DD)"
                     )
 
-    for root in args.roots:
-        root_path = (repo / root).resolve()
-        if not root_path.exists():
-            continue
-        for file in sorted(root_path.rglob("*.vit")):
-            scanned += 1
-            rel = file.relative_to(repo).as_posix()
-            for i, line in enumerate(file.read_text(encoding="utf-8").splitlines(), start=1):
-                m = IMPORT_RE.match(line)
-                if not m:
-                    continue
-                import_path = m.group(2)
-                if not path_has_self_leaf(import_path):
-                    continue
-                key = f"{rel}:{i}"
-                if key in allow:
-                    matched_allowlist.add(key)
-                    continue
-                violations.append(
-                    f"{key}: legacy import path '{import_path}' is forbidden (use canonical parent path)"
-                )
+    for file in iter_vit_files(repo, args.roots, args.tracked_only):
+        scanned += 1
+        rel = file.relative_to(repo).as_posix()
+        for i, line in enumerate(file.read_text(encoding="utf-8").splitlines(), start=1):
+            m = IMPORT_RE.match(line)
+            if not m:
+                continue
+            import_path = m.group(2)
+            if not path_has_self_leaf(import_path):
+                continue
+            key = f"{rel}:{i}"
+            if key in allow:
+                matched_allowlist.add(key)
+                continue
+            violations.append(
+                f"{key}: legacy import path '{import_path}' is forbidden (use canonical parent path)"
+            )
 
     orphan_allow = sorted(allow - matched_allowlist)
     for orphan in orphan_allow:
