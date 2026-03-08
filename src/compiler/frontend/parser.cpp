@@ -19,6 +19,8 @@ using namespace vitte::frontend::ast;
 static int precedence(TokenKind kind);
 static int edit_distance(std::string_view a, std::string_view b);
 static const char* keyword_text(TokenKind kind);
+static const char* closest_toplevel_keyword(std::string_view ident);
+static void emit_toplevel_hint(DiagnosticEngine& diag, const Token& tok);
 
 Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse)
     : lexer_(lexer), diag_(diag), ast_ctx_(ast_ctx), strict_(strict_parse) {
@@ -65,6 +67,61 @@ bool Parser::expect(TokenKind kind, const char* message) {
         }
     }
     return false;
+}
+
+static const char* closest_toplevel_keyword(std::string_view ident) {
+    static constexpr const char* kDeclKeywords[] = {
+        "space", "pull", "use", "share", "const", "let", "make",
+        "type", "macro", "form", "trait", "pick", "proc", "entry",
+    };
+    const char* best = nullptr;
+    int best_dist = 1000;
+    for (const char* kw : kDeclKeywords) {
+        const int d = edit_distance(ident, kw);
+        if (d < best_dist) {
+            best_dist = d;
+            best = kw;
+        }
+    }
+    if (best_dist <= 2) {
+        return best;
+    }
+    return nullptr;
+}
+
+static void emit_toplevel_hint(DiagnosticEngine& diag, const Token& tok) {
+    switch (tok.kind) {
+        case TokenKind::RBrace:
+            diag.note("stray '}' at top level; remove it or close the matching block earlier", tok.span);
+            return;
+        case TokenKind::KwIf:
+        case TokenKind::KwLoop:
+        case TokenKind::KwFor:
+        case TokenKind::KwSet:
+        case TokenKind::KwGive:
+        case TokenKind::KwEmit:
+        case TokenKind::KwSelect:
+        case TokenKind::KwMatch:
+        case TokenKind::KwWhen:
+        case TokenKind::KwReturn:
+        case TokenKind::KwBreak:
+        case TokenKind::KwContinue:
+        case TokenKind::KwUnsafe:
+        case TokenKind::KwAsm:
+            diag.note("this is a statement; place it inside 'proc { ... }' or 'entry { ... }'", tok.span);
+            return;
+        case TokenKind::Ident: {
+            if (const char* kw = closest_toplevel_keyword(tok.text); kw != nullptr) {
+                std::string note = "did you mean top-level keyword '";
+                note += kw;
+                note += "'?";
+                diag.note(std::move(note), tok.span);
+            }
+            return;
+        }
+        default:
+            return;
+    }
 }
 
 // ------------------------------------------------------------
@@ -142,6 +199,7 @@ DeclId Parser::parse_toplevel() {
     }
 
     diag::error(diag_, diag::DiagId::ExpectedTopLevelDeclaration, current_.span);
+    emit_toplevel_hint(diag_, current_);
     return ast::kInvalidAstId;
 }
 

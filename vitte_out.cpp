@@ -7,12 +7,76 @@
 #include "vitte_runtime.hpp"
 #include <cstddef>
 
+bool vitte__std__bridge__alloc__ready();
 extern "C" void vitte__main();
 int32_t main(int32_t argc, const char** argv);
 
-extern "C" void vitte__main() {
+bool vitte__std__bridge__alloc__ready() {
     bb_0_0:
+    return true;
+}
+
+extern "C" void vitte__main() {
+    VitteSlice<VitteString> _t0;
+    VitteSlice<VitteString> lines;
+    int32_t i;
+    bool _t1;
+    VitteString _t2;
+    VitteString _t3;
+    VitteSlice<VitteString> _t4;
+    int32_t _t5;
+    size_t j;
+    int32_t total;
+    bool _t6;
+    int32_t _t7;
+    int32_t _t8;
+    bb_1_0:
+    _t0 = vitte__vitte_empty_slice_string();
+    lines = _t0;
+    i = 0;
+    goto bb_1_1;
+    bb_1_1:
+    _t1 = (i >= 16);
+    if (_t1) {
+        goto bb_1_3;
+    } else {
+        goto bb_1_4;
+    }
+    bb_1_2:
+    j = 0;
+    total = 0;
+    goto bb_1_6;
+    bb_1_3:
+    goto bb_1_2;
+    bb_1_4:
+    goto bb_1_5;
+    bb_1_5:
+    _t2 = vitte__vitte_i32_to_string(i);
+    _t3 = vitte__vitte_string_concat(VitteString{"line-", 5}, _t2);
+    _t4 = vitte__vitte_slice_push_string(lines, _t3);
+    lines = _t4;
+    _t5 = (i + 1);
+    i = _t5;
+    goto bb_1_1;
+    bb_1_6:
+    _t6 = (j >= lines.len);
+    if (_t6) {
+        goto bb_1_8;
+    } else {
+        goto bb_1_9;
+    }
+    bb_1_7:
     return;
+    bb_1_8:
+    goto bb_1_7;
+    bb_1_9:
+    goto bb_1_10;
+    bb_1_10:
+    _t7 = (total + lines.data[j].len);
+    total = _t7;
+    _t8 = (j + 1);
+    j = _t8;
+    goto bb_1_6;
 }
 
 int32_t main(int32_t argc, const char** argv) {

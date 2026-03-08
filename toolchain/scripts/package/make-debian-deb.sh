@@ -133,6 +133,16 @@ exec /usr/local/libexec/vitte/vitte-ide-gtk "$@"
 EOF
   chmod 0755 "$STAGE_ROOT/usr/local/bin/vitte-ide-gtk"
 
+  cat > "$STAGE_ROOT/usr/local/bin/vitte-editor-gtk" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -z "${VITTE_ROOT:-}" ]; then
+  export VITTE_ROOT="/usr/local/share/vitte"
+fi
+exec /usr/local/libexec/vitte/vitte-ide-gtk "$@"
+EOF
+  chmod 0755 "$STAGE_ROOT/usr/local/bin/vitte-editor-gtk"
+
   cat > "$STAGE_ROOT/usr/local/bin/vitte-editor" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -246,28 +256,29 @@ EOF
   cat > "$STAGE_ROOT/usr/share/applications/vitte.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=VITTE
-GenericName=Systems Language Toolchain
-Comment=Vitte IDE and toolchain
-Exec=vitte-ide-gtk
+Name=Vitte
+GenericName=Vitte Editor
+Comment=Vitte Editor
+Exec=vitte-editor-gtk
 Icon=vitte
+StartupWMClass=dev.vitte.ide.gtk
 Terminal=false
 Categories=Development;IDE;
-Keywords=compiler;language;toolchain;vitte;ide;editor;
+Keywords=vitte;editor;ide;compiler;language;toolchain;
 NoDisplay=false
 Actions=OpenGtk;OpenTui;OpenTerminal;
 
 [Desktop Action OpenGtk]
-Name=Open VITTE GTK IDE
-Exec=vitte-ide-gtk
+Name=Open Vitte Editor (GTK)
+Exec=vitte-editor-gtk
 
 [Desktop Action OpenTui]
-Name=Open VITTE Terminal IDE
+Name=Open Vitte Editor (Terminal)
 Exec=vitte-ide
 Terminal=true
 
 [Desktop Action OpenTerminal]
-Name=Open VITTE Shell
+Name=Open Vitte Shell
 Exec=x-terminal-emulator -e bash -lc "vitte --help; exec bash"
 Terminal=false
 EOF
@@ -401,6 +412,10 @@ if [ "${1:-}" = "configure" ]; then
     echo "[vitte deb] postinst check failed: missing /usr/local/bin/vitte-ide-gtk" >&2
     exit 1
   fi
+  if [ ! -x /usr/local/bin/vitte-editor-gtk ]; then
+    echo "[vitte deb] postinst check failed: missing /usr/local/bin/vitte-editor-gtk" >&2
+    exit 1
+  fi
   if [ ! -x /usr/local/bin/vitte-editor ]; then
     echo "[vitte deb] postinst check failed: missing /usr/local/bin/vitte-editor" >&2
     exit 1
@@ -443,6 +458,7 @@ VEOF
 [vitte deb] binary: /usr/local/bin/vitte
 [vitte deb] ide:    /usr/local/bin/vitte-ide
 [vitte deb] ide-gui:/usr/local/bin/vitte-ide-gtk
+[vitte deb] ide-app:/usr/local/bin/vitte-editor-gtk
 [vitte deb] editor: /usr/local/bin/vitte-editor
 [vitte deb] root:   /usr/local/share/vitte
 [vitte deb] man:    /usr/local/share/man/man1/vitte.1

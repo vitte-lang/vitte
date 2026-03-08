@@ -2,11 +2,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <iomanip>
 #include <regex>
 #include <sstream>
@@ -20,9 +23,133 @@
 #include <vector>
 #include <dlfcn.h>
 
+std::string lower_copy(const std::string& s) {
+    std::string out = s;
+    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return out;
+}
+
+bool is_ident_char(char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_';
+}
+
+std::string trim_copy(const std::string& s) {
+    std::size_t b = 0;
+    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])) != 0) {
+        ++b;
+    }
+    std::size_t e = s.size();
+    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])) != 0) {
+        --e;
+    }
+    return s.substr(b, e - b);
+}
+
+std::vector<std::string> split_csv_trimmed(const std::string& csv) {
+    std::vector<std::string> out;
+    std::stringstream ss(csv);
+    std::string tok;
+    while (std::getline(ss, tok, ',')) {
+        tok = trim_copy(tok);
+        if (!tok.empty()) {
+            out.push_back(tok);
+        }
+    }
+    return out;
+}
+
+std::string collapse_spaces(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    bool prev_space = false;
+    for (char c : s) {
+        const bool is_space = std::isspace(static_cast<unsigned char>(c)) != 0;
+        if (is_space) {
+            if (!prev_space) {
+                out.push_back(' ');
+            }
+            prev_space = true;
+            continue;
+        }
+        prev_space = false;
+        out.push_back(c);
+    }
+    return trim_copy(out);
+}
+
+std::string normalize_suggestion_key(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : collapse_spaces(lower_copy(s))) {
+        if (c == ' ') {
+            continue;
+        }
+        if (c == '(' || c == ')' || c == ',' || c == ':' || c == ';' || c == '<' || c == '>' || c == '[' || c == ']') {
+            continue;
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
+std::string infer_completion_type(const std::string& s) {
+    if (s.find('(') != std::string::npos) {
+        return "function";
+    }
+    if (s.find("::") != std::string::npos) {
+        return "module";
+    }
+    return "symbol";
+}
+
+bool fuzzy_match(const std::string& needle_in, const std::string& hay_in) {
+    const std::string needle = lower_copy(needle_in);
+    const std::string hay = lower_copy(hay_in);
+    if (needle.empty()) {
+        return true;
+    }
+
+    std::size_t i = 0;
+    for (char c : hay) {
+        if (i < needle.size() && needle[i] == c) {
+            ++i;
+        }
+    }
+    return i == needle.size();
+}
+
+double fuzzy_prefix_score(const std::string& query, const std::string& candidate) {
+    const std::string q = lower_copy(trim_copy(query));
+    const std::string c = lower_copy(candidate);
+    if (q.empty() || c.empty()) {
+        return 0.0;
+    }
+    if (c.rfind(q, 0) == 0) {
+        return 3.0;
+    }
+    if (c.find(q) != std::string::npos) {
+        return 2.0;
+    }
+    return fuzzy_match(q, c) ? 1.0 : 0.0;
+}
+
+double percentile(std::vector<double> xs, double q) {
+    if (xs.empty()) {
+        return 0.0;
+    }
+    std::sort(xs.begin(), xs.end());
+    const std::size_t i = static_cast<std::size_t>(std::round((xs.size() - 1) * q));
+    return xs[std::min(i, xs.size() - 1)];
+}
+
 namespace fs = std::filesystem;
 
 namespace {
+constexpr std::size_t kDefaultMaxCompletionSuggestions = 300;
+constexpr std::size_t kDefaultMaxPaletteSuggestions = 800;
+constexpr std::size_t kDefaultCompletionPageSize = 100;
+constexpr int kDefaultCompletionCacheTtlMs = 5000;
+constexpr int kDefaultLspCompletionTimeoutMs = 220;
 
 enum ProjectColumns {
     COL_NAME = 0,
@@ -40,10 +167,12 @@ enum ProblemsColumns {
 };
 
 enum OutlineColumns {
-    OUT_KIND = 0,
-    OUT_NAME = 1,
-    OUT_LINE = 2,
-    NUM_OUT_COLS = 3,
+    OUT_ICON = 0,
+    OUT_KIND = 1,
+    OUT_NAME = 2,
+    OUT_LINE = 3,
+    OUT_IS_GROUP = 4,
+    NUM_OUT_COLS = 5,
 };
 
 enum PaletteColumns {
@@ -69,6 +198,14 @@ enum DebugBpColumns {
     DBG_BP_FILE = 0,
     DBG_BP_LINE = 1,
     NUM_DBG_BP_COLS = 2,
+};
+
+enum CompletionColumns {
+    COMP_ICON = 0,
+    COMP_LABEL = 1,
+    COMP_TYPE = 2,
+    COMP_SOURCE = 3,
+    NUM_COMP_COLS = 4,
 };
 
 enum class ProblemFilter {
@@ -101,6 +238,20 @@ struct ProblemItem {
     std::string text;
 };
 
+struct CompletionSuggestion {
+    std::string label;
+    std::string norm_key;
+    std::string source;
+    std::string type;
+    std::string file;
+    double score = 0.0;
+};
+
+struct CompletionCacheEntry {
+    std::chrono::steady_clock::time_point ts{};
+    std::vector<CompletionSuggestion> items;
+};
+
 struct RenameHit {
     std::string file;
     int line = 1;
@@ -127,12 +278,26 @@ struct EditorTab {
     std::time_t last_autosave_at = 0;
 };
 
+struct AppState;
+
 struct PaletteState {
-    struct AppState* app = nullptr;
+    AppState* app = nullptr;
     GtkWidget* dialog = nullptr;
     GtkWidget* entry = nullptr;
     GtkWidget* view = nullptr;
     GtkListStore* store = nullptr;
+};
+
+struct CompletionDialogState {
+    AppState* app = nullptr;
+    GtkWidget* dialog = nullptr;
+    GtkWidget* view = nullptr;
+    GtkListStore* store = nullptr;
+    GtkWidget* info = nullptr;
+    GtkWidget* load_more_btn = nullptr;
+    std::vector<CompletionSuggestion> all;
+    std::size_t shown = 0;
+    std::string query;
 };
 
 struct AppState {
@@ -150,9 +315,12 @@ struct AppState {
     GtkTreeStore* project_store = nullptr;
 
     GtkWidget* outline_view = nullptr;
-    GtkListStore* outline_store = nullptr;
+    GtkTreeStore* outline_store = nullptr;
     std::vector<SymbolDef> current_symbols;
+    GtkWidget* outline_filter_entry = nullptr;
+    GtkWidget* outline_empty_label = nullptr;
     GtkWidget* left_tabs = nullptr;
+    std::unordered_set<std::string> outline_collapsed_groups;
     GtkWidget* docs_view = nullptr;
     GtkTextBuffer* docs_buffer = nullptr;
     GtkWidget* tools_view = nullptr;
@@ -218,6 +386,8 @@ struct AppState {
 
     std::string keymap_mode = "default";
     bool high_contrast = false;
+    bool compact_mode = false;
+    int ui_zoom_percent = 100;
     int editor_tab_width = 4;
 
     bool telemetry_opt_in = false;
@@ -229,12 +399,32 @@ struct AppState {
     std::vector<std::string> plugin_names;
     std::unordered_map<std::string, std::function<std::string(const std::string&)>> plugin_commands;
     std::vector<std::function<std::vector<std::string>(const std::string&, int, int)>> completion_providers;
+    std::unordered_map<std::string, int> completion_usage_freq;
+    std::unordered_map<std::string, CompletionCacheEntry> completion_cache;
+    std::vector<double> completion_latency_samples_ms;
+    guint completion_prefetch_timer = 0;
+    std::string completion_prefetch_key;
+    int completion_max_suggestions = static_cast<int>(kDefaultMaxCompletionSuggestions);
+    int palette_max_suggestions = static_cast<int>(kDefaultMaxPaletteSuggestions);
+    int completion_page_size = static_cast<int>(kDefaultCompletionPageSize);
+    int completion_cache_ttl_ms = kDefaultCompletionCacheTtlMs;
+    int lsp_completion_timeout_ms = kDefaultLspCompletionTimeoutMs;
 
     long long config_last_mtime_ticks = 0;
 };
 
 void apply_appearance(AppState* s);
 std::string read_file_text(const fs::path& p);
+std::string current_symbol_under_cursor(EditorTab* tab);
+void current_cursor_position(EditorTab* tab, int* line, int* col);
+std::string completion_cache_key(const std::string& file, int line, const std::string& prefix);
+std::vector<CompletionSuggestion> collect_completion_suggestions(AppState* s, EditorTab* tab, bool* lsp_timed_out);
+bool run_plugin_command_by_name(AppState* s, const std::string& command, const std::string& payload, std::string* out);
+std::string plugin_cursor_payload(EditorTab* tab);
+void build_project_tree(AppState* s);
+void load_project_tasks(AppState* s);
+void show_tools_output(AppState* s, const std::string& title, const std::string& text);
+void restore_recovery_snapshot(AppState* s);
 
 void apply_window_start_mode(AppState* s) {
     if (s == nullptr || s->window == nullptr) {
@@ -255,28 +445,6 @@ bool is_source(const fs::path& p) {
 bool should_skip_dir_name(const std::string& base) {
     return base == ".git" || base == "build" || base == "target" || base == ".vitte-cache" || base == "node_modules" ||
            base == ".venv" || base == ".debstage" || base == ".vscode";
-}
-
-std::string lower_copy(const std::string& s) {
-    std::string out = s;
-    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return out;
-}
-
-bool is_ident_char(char c) {
-    return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_';
-}
-
-std::string trim_copy(const std::string& s) {
-    std::size_t b = 0;
-    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])) != 0) {
-        ++b;
-    }
-    std::size_t e = s.size();
-    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])) != 0) {
-        --e;
-    }
-    return s.substr(b, e - b);
 }
 
 std::string primary_workspace_root(const AppState* s) {
@@ -406,17 +574,27 @@ void apply_editor_settings_to_tab(AppState* s, EditorTab* tab) {
     pango_tab_array_free(tabs);
 }
 
-std::vector<std::string> split_csv_trimmed(const std::string& csv) {
-    std::vector<std::string> out;
-    std::stringstream ss(csv);
-    std::string tok;
-    while (std::getline(ss, tok, ',')) {
-        tok = trim_copy(tok);
-        if (!tok.empty()) {
-            out.push_back(tok);
-        }
+int effective_editor_font_size(const AppState* s) {
+    if (s == nullptr) {
+        return 11;
     }
-    return out;
+    const int zoom = std::max(70, std::min(200, s->ui_zoom_percent));
+    const double scaled = static_cast<double>(std::max(8, s->font_size)) * static_cast<double>(zoom) / 100.0;
+    return std::max(8, static_cast<int>(std::lround(scaled)));
+}
+
+void push_completion_latency_sample(AppState* s, double ms) {
+    if (s == nullptr) {
+        return;
+    }
+    s->completion_latency_samples_ms.push_back(ms);
+    if (s->completion_latency_samples_ms.size() > 256) {
+        s->completion_latency_samples_ms.erase(s->completion_latency_samples_ms.begin());
+    }
+}
+
+std::string completion_cache_key(const std::string& file, int line, const std::string& prefix) {
+    return file + "|" + std::to_string(line) + "|" + normalize_suggestion_key(prefix);
 }
 
 void unload_plugins(AppState* s) {
@@ -515,6 +693,10 @@ void apply_runtime_config_file(AppState* s, bool announce) {
             s->font_size = std::max(8, std::atoi(val.c_str()));
         } else if (key == "high_contrast") {
             s->high_contrast = (val == "1" || lower_copy(val) == "true");
+        } else if (key == "compact_mode") {
+            s->compact_mode = (val == "1" || lower_copy(val) == "true");
+        } else if (key == "ui_zoom_percent") {
+            s->ui_zoom_percent = std::max(70, std::min(200, std::atoi(val.c_str())));
         } else if (key == "tab_width") {
             s->editor_tab_width = std::max(1, std::atoi(val.c_str()));
         } else if (key == "perf_mode") {
@@ -523,6 +705,16 @@ void apply_runtime_config_file(AppState* s, bool announce) {
             s->keymap_mode = (val == "vim" || val == "emacs") ? val : "default";
         } else if (key == "telemetry_opt_in") {
             s->telemetry_opt_in = (val == "1" || lower_copy(val) == "true");
+        } else if (key == "completion.max_suggestions") {
+            s->completion_max_suggestions = std::max(20, std::atoi(val.c_str()));
+        } else if (key == "palette.max_suggestions") {
+            s->palette_max_suggestions = std::max(50, std::atoi(val.c_str()));
+        } else if (key == "completion.page_size") {
+            s->completion_page_size = std::max(20, std::atoi(val.c_str()));
+        } else if (key == "completion.cache_ttl_ms") {
+            s->completion_cache_ttl_ms = std::max(200, std::atoi(val.c_str()));
+        } else if (key == "completion.lsp_timeout_ms") {
+            s->lsp_completion_timeout_ms = std::max(50, std::atoi(val.c_str()));
         }
     }
     apply_appearance(s);
@@ -797,12 +989,22 @@ void apply_appearance(AppState* s) {
                                                   GTK_STYLE_PROVIDER(s->css_provider),
                                                   GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     }
+    s->ui_zoom_percent = std::max(70, std::min(200, s->ui_zoom_percent));
+    const int font_size_pt = effective_editor_font_size(s);
+    const int pad = s->compact_mode ? 2 : 6;
+    const int spacing = s->compact_mode ? 2 : 6;
+    const int row_min = s->compact_mode ? 20 : 26;
     const std::string fg = s->high_contrast ? "#ffffff" : "#e8e8e8";
     const std::string bg = s->high_contrast ? "#000000" : "#1f1f1f";
     const std::string css = "textview, entry { font-family: '" + s->font_family + "'; font-size: " +
-                            std::to_string(std::max(8, s->font_size)) + "pt; } "
+                            std::to_string(font_size_pt) + "pt; } "
                             "textview text { color: " +
-                            fg + "; background: " + bg + "; }";
+                            fg + "; background: " + bg + "; } "
+                            "treeview, list, listbox row { min-height: " + std::to_string(row_min) + "px; } "
+                            ".toolbar button, button { padding: " + std::to_string(pad) + "px; } "
+                            "paned { -GtkPaned-handle-size: " + std::to_string(s->compact_mode ? 4 : 7) + "; } "
+                            "notebook tab { padding: " + std::to_string(pad) + "px; } "
+                            "box, grid { border-spacing: " + std::to_string(spacing) + "px; }";
     gtk_css_provider_load_from_data(s->css_provider, css.c_str(), -1, nullptr);
 
     for (EditorTab* t : s->tabs_primary) {
@@ -1013,8 +1215,28 @@ std::vector<SymbolDef> extract_symbols_from_text(const std::string& text, const 
     return symbols;
 }
 
+const char* outline_icon_for_kind(const std::string& kind_in) {
+    const std::string kind = lower_copy(kind_in);
+    if (kind == "proc") {
+        return "system-run";
+    }
+    if (kind == "form") {
+        return "x-office-address-book";
+    }
+    if (kind == "entry") {
+        return "media-playback-start";
+    }
+    if (kind == "trait") {
+        return "applications-development";
+    }
+    return "text-x-generic";
+}
+
 void refresh_outline(AppState* s) {
-    gtk_list_store_clear(s->outline_store);
+    if (s == nullptr || s->outline_store == nullptr) {
+        return;
+    }
+    gtk_tree_store_clear(s->outline_store);
     s->current_symbols.clear();
 
     EditorTab* tab = current_tab(s);
@@ -1025,19 +1247,126 @@ void refresh_outline(AppState* s) {
     const std::string txt = get_buffer_text(tab->buffer);
     s->current_symbols = extract_symbols_from_text(txt, tab->path);
 
-    for (const SymbolDef& sym : s->current_symbols) {
-        GtkTreeIter iter;
-        gtk_list_store_append(s->outline_store, &iter);
-        gtk_list_store_set(s->outline_store,
-                           &iter,
-                           OUT_KIND,
-                           sym.kind.c_str(),
-                           OUT_NAME,
-                           sym.name.c_str(),
-                           OUT_LINE,
-                           sym.line,
-                           -1);
+    std::string filter;
+    if (s->outline_filter_entry != nullptr) {
+        filter = trim_copy(lower_copy(gtk_entry_get_text(GTK_ENTRY(s->outline_filter_entry))));
     }
+
+    std::vector<const SymbolDef*> procs;
+    std::vector<const SymbolDef*> forms;
+    std::vector<const SymbolDef*> entries;
+    std::vector<const SymbolDef*> traits;
+    std::vector<const SymbolDef*> others;
+
+    auto matches_filter = [&filter](const SymbolDef& sym) -> bool {
+        if (filter.empty()) {
+            return true;
+        }
+        const std::string name = lower_copy(sym.name);
+        const std::string kind = lower_copy(sym.kind);
+        return name.find(filter) != std::string::npos || kind.find(filter) != std::string::npos || fuzzy_match(filter, name);
+    };
+
+    for (const SymbolDef& sym : s->current_symbols) {
+        if (!matches_filter(sym)) {
+            continue;
+        }
+        const std::string k = lower_copy(sym.kind);
+        if (k == "proc") {
+            procs.push_back(&sym);
+        } else if (k == "form") {
+            forms.push_back(&sym);
+        } else if (k == "entry") {
+            entries.push_back(&sym);
+        } else if (k == "trait") {
+            traits.push_back(&sym);
+        } else {
+            others.push_back(&sym);
+        }
+    }
+
+    auto append_group = [&](const char* title, const char* icon, const std::vector<const SymbolDef*>& items) {
+        if (items.empty()) {
+            return 0;
+        }
+        GtkTreeIter group_iter;
+        gtk_tree_store_append(s->outline_store, &group_iter, nullptr);
+        gtk_tree_store_set(s->outline_store,
+                           &group_iter,
+                           OUT_ICON,
+                           icon,
+                           OUT_KIND,
+                           "",
+                           OUT_NAME,
+                           title,
+                           OUT_LINE,
+                           0,
+                           OUT_IS_GROUP,
+                           TRUE,
+                           -1);
+
+        for (const SymbolDef* sym : items) {
+            GtkTreeIter child;
+            gtk_tree_store_append(s->outline_store, &child, &group_iter);
+            gtk_tree_store_set(s->outline_store,
+                               &child,
+                               OUT_ICON,
+                               outline_icon_for_kind(sym->kind),
+                               OUT_KIND,
+                               sym->kind.c_str(),
+                               OUT_NAME,
+                               sym->name.c_str(),
+                               OUT_LINE,
+                               sym->line,
+                               OUT_IS_GROUP,
+                               FALSE,
+                               -1);
+        }
+
+        if (s->outline_view != nullptr) {
+            GtkTreePath* p = gtk_tree_model_get_path(GTK_TREE_MODEL(s->outline_store), &group_iter);
+            if (p != nullptr) {
+                if (s->outline_collapsed_groups.find(title) != s->outline_collapsed_groups.end()) {
+                    gtk_tree_view_collapse_row(GTK_TREE_VIEW(s->outline_view), p);
+                } else {
+                    gtk_tree_view_expand_row(GTK_TREE_VIEW(s->outline_view), p, FALSE);
+                }
+                gtk_tree_path_free(p);
+            }
+        }
+        return static_cast<int>(items.size());
+    };
+
+    int shown = 0;
+    shown += append_group("proc", "system-run", procs);
+    shown += append_group("form", "x-office-address-book", forms);
+    shown += append_group("entry", "media-playback-start", entries);
+    shown += append_group("trait", "applications-development", traits);
+    shown += append_group("other", "text-x-generic", others);
+
+    if (s->outline_empty_label != nullptr) {
+        if (shown == 0) {
+            const char* msg = filter.empty() ? "Aucun symbole trouvé" : "Aucun symbole pour ce filtre";
+            gtk_label_set_text(GTK_LABEL(s->outline_empty_label), msg);
+            gtk_widget_show(s->outline_empty_label);
+        } else {
+            gtk_widget_hide(s->outline_empty_label);
+        }
+    }
+}
+
+void on_outline_filter_changed(GtkEditable*, gpointer user_data) {
+    auto* s = static_cast<AppState*>(user_data);
+    refresh_outline(s);
+}
+
+void on_outline_filter_clear(GtkWidget*, gpointer user_data) {
+    auto* s = static_cast<AppState*>(user_data);
+    if (s == nullptr || s->outline_filter_entry == nullptr) {
+        return;
+    }
+    gtk_entry_set_text(GTK_ENTRY(s->outline_filter_entry), "");
+    refresh_outline(s);
 }
 
 void refresh_problems_view(AppState* s) {
@@ -1172,6 +1501,47 @@ void on_tab_close_clicked(GtkWidget*, gpointer user_data) {
     close_tab(s, tab);
 }
 
+gboolean on_completion_prefetch_tick(gpointer user_data) {
+    auto* s = static_cast<AppState*>(user_data);
+    if (s == nullptr) {
+        return G_SOURCE_REMOVE;
+    }
+    s->completion_prefetch_timer = 0;
+    EditorTab* tab = current_tab(s);
+    if (tab == nullptr) {
+        return G_SOURCE_REMOVE;
+    }
+    int line = 1;
+    int col = 1;
+    current_cursor_position(tab, &line, &col);
+    const std::string key = completion_cache_key(tab->path, line, current_symbol_under_cursor(tab));
+    if (key == s->completion_prefetch_key) {
+        return G_SOURCE_REMOVE;
+    }
+    s->completion_prefetch_key = key;
+    bool lsp_timed_out = false;
+    (void)collect_completion_suggestions(s, tab, &lsp_timed_out);
+    return G_SOURCE_REMOVE;
+}
+
+gboolean run_deferred_startup(gpointer user_data) {
+    auto* s = static_cast<AppState*>(user_data);
+    if (s == nullptr) {
+        return G_SOURCE_REMOVE;
+    }
+    set_status(s, "Loading workspace...");
+    build_project_tree(s);
+    load_project_tasks(s);
+    load_plugins(s);
+    load_search_index(s);
+    if (!s->search_index_loaded) {
+        rebuild_search_index_async(s);
+    }
+    restore_recovery_snapshot(s);
+    set_status(s, "Ready");
+    return G_SOURCE_REMOVE;
+}
+
 GtkWidget* make_tab_header(EditorTab* tab) {
     GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
     GtkWidget* label = gtk_label_new(fs::path(tab->path).filename().string().c_str());
@@ -1199,21 +1569,26 @@ void on_buffer_changed(GtkTextBuffer* buffer, gpointer user_data) {
     }
     if (!s->perf_mode_enabled) {
         refresh_outline(s);
-        return;
+    } else {
+        if (s->deferred_outline_timer != 0) {
+            g_source_remove(s->deferred_outline_timer);
+            s->deferred_outline_timer = 0;
+        }
+        s->deferred_outline_timer = g_timeout_add(
+            220,
+            [](gpointer data) -> gboolean {
+                auto* st = static_cast<AppState*>(data);
+                st->deferred_outline_timer = 0;
+                refresh_outline(st);
+                return G_SOURCE_REMOVE;
+            },
+            s);
     }
-    if (s->deferred_outline_timer != 0) {
-        g_source_remove(s->deferred_outline_timer);
-        s->deferred_outline_timer = 0;
+    if (s->completion_prefetch_timer != 0) {
+        g_source_remove(s->completion_prefetch_timer);
+        s->completion_prefetch_timer = 0;
     }
-    s->deferred_outline_timer = g_timeout_add(
-        220,
-        [](gpointer data) -> gboolean {
-            auto* st = static_cast<AppState*>(data);
-            st->deferred_outline_timer = 0;
-            refresh_outline(st);
-            return G_SOURCE_REMOVE;
-        },
-        s);
+    s->completion_prefetch_timer = g_timeout_add(180, on_completion_prefetch_tick, s);
 }
 
 EditorTab* open_file_in_notebook(AppState* s, const std::string& path, GtkWidget* notebook, bool focus) {
@@ -1392,8 +1767,27 @@ void on_outline_row_activated(GtkTreeView* tree_view, GtkTreePath* path, GtkTree
         return;
     }
 
+    gboolean is_group = FALSE;
     int line = 1;
-    gtk_tree_model_get(model, &iter, OUT_LINE, &line, -1);
+    gtk_tree_model_get(model, &iter, OUT_IS_GROUP, &is_group, OUT_LINE, &line, -1);
+    if (is_group) {
+        gchar* group_name = nullptr;
+        gtk_tree_model_get(model, &iter, OUT_NAME, &group_name, -1);
+        const std::string name = group_name != nullptr ? group_name : "";
+        g_free(group_name);
+        if (gtk_tree_view_row_expanded(tree_view, path)) {
+            gtk_tree_view_collapse_row(tree_view, path);
+            if (!name.empty()) {
+                s->outline_collapsed_groups.insert(name);
+            }
+        } else {
+            gtk_tree_view_expand_row(tree_view, path, FALSE);
+            if (!name.empty()) {
+                s->outline_collapsed_groups.erase(name);
+            }
+        }
+        return;
+    }
     if (EditorTab* tab = current_tab(s); tab != nullptr) {
         jump_to_line(tab, line, 1);
     }
@@ -1427,7 +1821,7 @@ void on_problem_row_activated(GtkTreeView* tree_view, GtkTreePath* path, GtkTree
     std::smatch m;
     if (std::regex_search(msg, m, std::regex("(VITTE-[A-Z][0-9]{4})"))) {
         const std::string code = m.str(1);
-        const fs::path idx = primary_workspace_root(s) / "target/reports/diagnostics_index.json";
+        const fs::path idx = fs::path(primary_workspace_root(s)) / "target/reports/diagnostics_index.json";
         if (fs::exists(idx)) {
             const std::string idx_text = read_file_text(idx);
             const std::string marker = "\"" + code + "\"";
@@ -2030,6 +2424,282 @@ void show_simple_text_dialog(GtkWindow* parent, const char* title, const std::st
     gtk_dialog_run(GTK_DIALOG(d));
     gtk_widget_destroy(d);
 }
+std::string lsp_bridge_request_with_timeout(AppState* s, EditorTab* tab, const std::string& method, int timeout_ms, bool* timed_out) {
+    if (timed_out != nullptr) {
+        *timed_out = false;
+    }
+    if (method != "completion" || timeout_ms <= 0) {
+        return lsp_bridge_request(s, tab, method);
+    }
+    auto fut = std::async(std::launch::async, [s, tab, method]() { return lsp_bridge_request(s, tab, method); });
+    if (fut.wait_for(std::chrono::milliseconds(timeout_ms)) == std::future_status::ready) {
+        return fut.get();
+    }
+    if (timed_out != nullptr) {
+        *timed_out = true;
+    }
+    return "";
+}
+
+std::vector<std::string> split_lines_trimmed(const std::string& text) {
+    std::vector<std::string> out;
+    std::istringstream in(text);
+    std::string line;
+    while (std::getline(in, line)) {
+        line = trim_copy(line);
+        if (!line.empty()) {
+            out.push_back(line);
+        }
+    }
+    return out;
+}
+
+std::string highlight_match(const std::string& label, const std::string& query) {
+    const std::string q = lower_copy(trim_copy(query));
+    if (q.empty()) {
+        return label;
+    }
+    const std::string l = lower_copy(label);
+    const std::size_t pos = l.find(q);
+    if (pos == std::string::npos) {
+        return label;
+    }
+    return label.substr(0, pos) + "[" + label.substr(pos, q.size()) + "]" + label.substr(pos + q.size());
+}
+
+double completion_score(AppState* s,
+                        const std::string& query,
+                        const std::string& label,
+                        const std::string& source,
+                        const std::string& current_file) {
+    double score = fuzzy_prefix_score(query, label);
+    if (!current_file.empty()) {
+        const std::string stem = fs::path(current_file).stem().string();
+        if (!stem.empty() && lower_copy(label).find(lower_copy(stem)) != std::string::npos) {
+            score += 0.8;
+        }
+    }
+    auto it = s->completion_usage_freq.find(normalize_suggestion_key(label));
+    if (it != s->completion_usage_freq.end()) {
+        score += std::min(3.0, static_cast<double>(it->second) * 0.15);
+    }
+    if (source == "lsp") {
+        score += 0.6;
+    } else if (source == "plugin") {
+        score += 0.4;
+    } else if (source == "local") {
+        score += 0.2;
+    }
+    return score;
+}
+
+void append_completion_candidate(AppState* s,
+                                 std::unordered_map<std::string, CompletionSuggestion>* by_key,
+                                 const std::string& query,
+                                 const std::string& label,
+                                 const std::string& source,
+                                 const std::string& current_file) {
+    if (s == nullptr || by_key == nullptr || label.empty()) {
+        return;
+    }
+    CompletionSuggestion cand;
+    cand.label = label;
+    cand.norm_key = normalize_suggestion_key(label);
+    if (cand.norm_key.empty()) {
+        return;
+    }
+    cand.source = source;
+    cand.type = infer_completion_type(label);
+    cand.file = current_file;
+    cand.score = completion_score(s, query, label, source, current_file);
+    auto it = by_key->find(cand.norm_key);
+    if (it == by_key->end() || cand.score > it->second.score) {
+        (*by_key)[cand.norm_key] = cand;
+    }
+}
+
+std::vector<CompletionSuggestion> collect_completion_suggestions(AppState* s, EditorTab* tab, bool* lsp_timed_out) {
+    std::vector<CompletionSuggestion> out;
+    if (s == nullptr || tab == nullptr) {
+        return out;
+    }
+    if (lsp_timed_out != nullptr) {
+        *lsp_timed_out = false;
+    }
+    int line = 1;
+    int col = 1;
+    current_cursor_position(tab, &line, &col);
+    const std::string query = current_symbol_under_cursor(tab);
+    const std::string cache_key = completion_cache_key(tab->path, line, query);
+    auto cache_it = s->completion_cache.find(cache_key);
+    if (cache_it != s->completion_cache.end()) {
+        const auto age_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - cache_it->second.ts)
+                                .count();
+        if (age_ms <= s->completion_cache_ttl_ms) {
+            return cache_it->second.items;
+        }
+    }
+
+    std::unordered_map<std::string, CompletionSuggestion> by_key;
+
+    bool timed_out = false;
+    const std::string lsp_res = lsp_bridge_request_with_timeout(s, tab, "completion", s->lsp_completion_timeout_ms, &timed_out);
+    if (timed_out && lsp_timed_out != nullptr) {
+        *lsp_timed_out = true;
+    }
+    for (const std::string& item : split_lines_trimmed(lsp_res)) {
+        append_completion_candidate(s, &by_key, query, item, "lsp", tab->path);
+    }
+
+    for (const auto& provider : s->completion_providers) {
+        for (const std::string& item : provider(tab->path, line, col)) {
+            append_completion_candidate(s, &by_key, query, item, "local", tab->path);
+        }
+    }
+
+    std::string plugin_result;
+    if (run_plugin_command_by_name(s, "vitte-analyzer.completion", plugin_cursor_payload(tab), &plugin_result)) {
+        for (const std::string& item : split_csv_trimmed(plugin_result)) {
+            append_completion_candidate(s, &by_key, query, item, "plugin", tab->path);
+        }
+    }
+
+    out.reserve(by_key.size());
+    for (auto& kv : by_key) {
+        out.push_back(std::move(kv.second));
+    }
+    std::sort(out.begin(), out.end(), [](const CompletionSuggestion& a, const CompletionSuggestion& b) {
+        if (a.score != b.score) {
+            return a.score > b.score;
+        }
+        return a.label < b.label;
+    });
+    if (out.size() > static_cast<std::size_t>(s->completion_max_suggestions)) {
+        out.resize(static_cast<std::size_t>(s->completion_max_suggestions));
+    }
+    s->completion_cache[cache_key] = CompletionCacheEntry{std::chrono::steady_clock::now(), out};
+    return out;
+}
+
+void completion_dialog_fill_page(CompletionDialogState* st) {
+    if (st == nullptr || st->store == nullptr || st->app == nullptr) {
+        return;
+    }
+    const std::size_t page = static_cast<std::size_t>(std::max(1, st->app->completion_page_size));
+    const std::size_t end = std::min(st->all.size(), st->shown + page);
+    for (std::size_t i = st->shown; i < end; ++i) {
+        const CompletionSuggestion& s = st->all[i];
+        GtkTreeIter it;
+        gtk_list_store_append(st->store, &it);
+        const char* icon = s.type == "function" ? "system-run" : (s.type == "module" ? "folder-open" : "text-x-generic");
+        const std::string shown_label = highlight_match(s.label, st->query);
+        gtk_list_store_set(st->store,
+                           &it,
+                           COMP_ICON,
+                           icon,
+                           COMP_LABEL,
+                           shown_label.c_str(),
+                           COMP_TYPE,
+                           s.type.c_str(),
+                           COMP_SOURCE,
+                           s.source.c_str(),
+                           -1);
+    }
+    st->shown = end;
+    if (st->info != nullptr) {
+        std::ostringstream info;
+        info << "Showing " << st->shown << " / " << st->all.size();
+        if (!st->query.empty()) {
+            info << " for \"" << st->query << "\"";
+        }
+        gtk_label_set_text(GTK_LABEL(st->info), info.str().c_str());
+    }
+    if (st->load_more_btn != nullptr) {
+        gtk_widget_set_sensitive(st->load_more_btn, st->shown < st->all.size());
+    }
+}
+
+void on_completion_load_more(GtkWidget*, gpointer user_data) {
+    auto* st = static_cast<CompletionDialogState*>(user_data);
+    completion_dialog_fill_page(st);
+}
+
+void on_completion_row_activated(GtkTreeView* view, GtkTreePath* path, GtkTreeViewColumn*, gpointer user_data) {
+    auto* st = static_cast<CompletionDialogState*>(user_data);
+    if (st == nullptr || st->app == nullptr) {
+        return;
+    }
+    GtkTreeModel* model = gtk_tree_view_get_model(view);
+    GtkTreeIter it;
+    if (!gtk_tree_model_get_iter(model, &it, path)) {
+        return;
+    }
+    char* label = nullptr;
+    gtk_tree_model_get(model, &it, COMP_LABEL, &label, -1);
+    if (label != nullptr) {
+        st->app->completion_usage_freq[normalize_suggestion_key(label)] += 1;
+        g_free(label);
+    }
+}
+
+void show_completion_dialog(AppState* s, EditorTab* tab, std::vector<CompletionSuggestion> items, bool lsp_timed_out, double collect_ms) {
+    if (s == nullptr || tab == nullptr) {
+        return;
+    }
+    GtkWidget* d = gtk_dialog_new_with_buttons("Completion", GTK_WINDOW(s->window), GTK_DIALOG_MODAL, "_Close", GTK_RESPONSE_CLOSE, nullptr);
+    GtkWidget* box = gtk_dialog_get_content_area(GTK_DIALOG(d));
+    GtkWidget* info = gtk_label_new("");
+    gtk_box_pack_start(GTK_BOX(box), info, FALSE, FALSE, 6);
+    GtkWidget* scroll = gtk_scrolled_window_new(nullptr, nullptr);
+    gtk_widget_set_size_request(scroll, 760, 420);
+    gtk_box_pack_start(GTK_BOX(box), scroll, TRUE, TRUE, 6);
+
+    GtkListStore* store = gtk_list_store_new(NUM_COMP_COLS, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
+    GtkWidget* view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
+    GtkCellRenderer* icon_r = gtk_cell_renderer_pixbuf_new();
+    GtkCellRenderer* txt_r = gtk_cell_renderer_text_new();
+    GtkCellRenderer* type_r = gtk_cell_renderer_text_new();
+    GtkCellRenderer* src_r = gtk_cell_renderer_text_new();
+    gtk_tree_view_append_column(GTK_TREE_VIEW(view), gtk_tree_view_column_new_with_attributes("", icon_r, "icon-name", COMP_ICON, nullptr));
+    gtk_tree_view_append_column(GTK_TREE_VIEW(view), gtk_tree_view_column_new_with_attributes("Suggestion", txt_r, "text", COMP_LABEL, nullptr));
+    gtk_tree_view_append_column(GTK_TREE_VIEW(view), gtk_tree_view_column_new_with_attributes("Type", type_r, "text", COMP_TYPE, nullptr));
+    gtk_tree_view_append_column(GTK_TREE_VIEW(view), gtk_tree_view_column_new_with_attributes("Source", src_r, "text", COMP_SOURCE, nullptr));
+    gtk_container_add(GTK_CONTAINER(scroll), view);
+
+    GtkWidget* load_more = gtk_button_new_with_label("Load more");
+    gtk_box_pack_start(GTK_BOX(box), load_more, FALSE, FALSE, 6);
+
+    CompletionDialogState st;
+    st.app = s;
+    st.dialog = d;
+    st.view = view;
+    st.store = store;
+    st.info = info;
+    st.load_more_btn = load_more;
+    st.all = std::move(items);
+    st.query = current_symbol_under_cursor(tab);
+    const auto r0 = std::chrono::steady_clock::now();
+    completion_dialog_fill_page(&st);
+    const auto r1 = std::chrono::steady_clock::now();
+    const double render_ms = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(r1 - r0).count());
+    g_signal_connect(load_more, "clicked", G_CALLBACK(on_completion_load_more), &st);
+    g_signal_connect(view, "row-activated", G_CALLBACK(on_completion_row_activated), &st);
+
+    if (lsp_timed_out) {
+        set_status(s, "Completion: LSP timeout, showing local fallback");
+    }
+    record_telemetry(s,
+                     "completion",
+                     "collect_ms=" + std::to_string(static_cast<int>(collect_ms)) + ",count=" + std::to_string(st.all.size()) +
+                         ",render_ms=" + std::to_string(static_cast<int>(render_ms)) +
+                         ",p50=" + std::to_string(static_cast<int>(percentile(s->completion_latency_samples_ms, 0.5))) +
+                         ",p95=" + std::to_string(static_cast<int>(percentile(s->completion_latency_samples_ms, 0.95))));
+
+    gtk_widget_show_all(d);
+    gtk_dialog_run(GTK_DIALOG(d));
+    gtk_widget_destroy(d);
+}
 
 bool run_plugin_command_by_name(AppState* s, const std::string& command, const std::string& payload, std::string* out) {
     if (s == nullptr) {
@@ -2119,38 +2789,20 @@ void on_action_lsp_completion(GtkWidget*, gpointer user_data) {
     if (tab == nullptr) {
         return;
     }
-    std::string result = lsp_bridge_request(s, tab, "completion");
-    if (result.empty() && !s->completion_providers.empty()) {
-        int line = 1;
-        int col = 1;
-        current_cursor_position(tab, &line, &col);
-        std::vector<std::string> items;
-        for (const auto& provider : s->completion_providers) {
-            std::vector<std::string> part = provider(tab->path, line, col);
-            items.insert(items.end(), part.begin(), part.end());
-        }
-        if (!items.empty()) {
-            std::ostringstream os;
-            for (const std::string& it : items) {
-                os << it << "\n";
-            }
-            result = os.str();
-        }
+    const auto t0 = std::chrono::steady_clock::now();
+    bool lsp_timed_out = false;
+    std::vector<CompletionSuggestion> items = collect_completion_suggestions(s, tab, &lsp_timed_out);
+    const auto t1 = std::chrono::steady_clock::now();
+    const double collect_ms = static_cast<double>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count());
+    push_completion_latency_sample(s, collect_ms);
+    if (items.empty()) {
+        show_simple_text_dialog(GTK_WINDOW(s->window),
+                                "Completion",
+                                lsp_timed_out ? "LSP timeout and no fallback result." : "No completion result.");
+        return;
     }
-    if (result.empty()) {
-        std::string plugin_result;
-        if (run_plugin_command_by_name(s, "vitte-analyzer.completion", plugin_cursor_payload(tab), &plugin_result) && !plugin_result.empty()) {
-            std::ostringstream os;
-            for (const std::string& it : split_csv_trimmed(plugin_result)) {
-                os << it << "\n";
-            }
-            result = os.str();
-        }
-    }
-    if (result.empty()) {
-        result = "LSP bridge unavailable or no completion.\n\nFallback:\n" + current_symbol_under_cursor(tab);
-    }
-    show_simple_text_dialog(GTK_WINDOW(s->window), "Completion", result);
+    show_completion_dialog(s, tab, std::move(items), lsp_timed_out, collect_ms);
 }
 
 void on_action_lsp_hover(GtkWidget*, gpointer user_data) {
@@ -2330,24 +2982,10 @@ void on_action_find_references(GtkWidget*, gpointer user_data) {
     set_status(s, "References: " + sym + " => " + std::to_string(hits));
 }
 
-bool fuzzy_match(const std::string& needle_in, const std::string& hay_in) {
-    const std::string needle = lower_copy(needle_in);
-    const std::string hay = lower_copy(hay_in);
-    if (needle.empty()) {
-        return true;
-    }
-
-    std::size_t i = 0;
-    for (char c : hay) {
-        if (i < needle.size() && needle[i] == c) {
-            ++i;
-        }
-    }
-    return i == needle.size();
-}
-
 void palette_fill(PaletteState* p, const std::string& query) {
     gtk_list_store_clear(p->store);
+    std::size_t emitted = 0;
+    const std::size_t max_items = static_cast<std::size_t>(std::max(50, p->app->palette_max_suggestions));
 
     if (!query.empty() && query[0] == ':') {
         if (EditorTab* tab = current_tab(p->app); tab != nullptr) {
@@ -2376,6 +3014,9 @@ void palette_fill(PaletteState* p, const std::string& query) {
         const std::string term = query.substr(1);
         refresh_outline(p->app);
         for (const SymbolDef& sym : p->app->current_symbols) {
+            if (emitted >= max_items) {
+                break;
+            }
             const std::string label = sym.kind + " " + sym.name + " (" + std::to_string(sym.line) + ")";
             if (!fuzzy_match(term, label)) {
                 continue;
@@ -2393,11 +3034,15 @@ void palette_fill(PaletteState* p, const std::string& query) {
                                PAL_COL,
                                sym.col,
                                -1);
+            ++emitted;
         }
         return;
     }
 
     for_each_workspace_source_file(p->app, [&](const fs::path& path) {
+        if (emitted >= max_items) {
+            return;
+        }
         const std::string rel = to_project_relative(p->app, path.string());
         if (!fuzzy_match(query, rel)) {
             return;
@@ -2416,6 +3061,7 @@ void palette_fill(PaletteState* p, const std::string& query) {
                            PAL_COL,
                            1,
                            -1);
+        ++emitted;
     });
 }
 
@@ -2706,6 +3352,8 @@ void save_session(AppState* s) {
     out << "font_family=" << s->font_family << "\n";
     out << "font_size=" << s->font_size << "\n";
     out << "high_contrast=" << (s->high_contrast ? 1 : 0) << "\n";
+    out << "compact_mode=" << (s->compact_mode ? 1 : 0) << "\n";
+    out << "ui_zoom_percent=" << s->ui_zoom_percent << "\n";
     out << "editor_tab_width=" << s->editor_tab_width << "\n";
     out << "bottom_panel_visible=" << (s->bottom_panel_visible ? 1 : 0) << "\n";
     out << "lsp_bridge_enabled=" << (s->lsp_bridge_enabled ? 1 : 0) << "\n";
@@ -2715,6 +3363,11 @@ void save_session(AppState* s) {
     out << "perf_mode_enabled=" << (s->perf_mode_enabled ? 1 : 0) << "\n";
     out << "keymap_mode=" << s->keymap_mode << "\n";
     out << "telemetry_opt_in=" << (s->telemetry_opt_in ? 1 : 0) << "\n";
+    out << "completion_max_suggestions=" << s->completion_max_suggestions << "\n";
+    out << "palette_max_suggestions=" << s->palette_max_suggestions << "\n";
+    out << "completion_page_size=" << s->completion_page_size << "\n";
+    out << "completion_cache_ttl_ms=" << s->completion_cache_ttl_ms << "\n";
+    out << "lsp_completion_timeout_ms=" << s->lsp_completion_timeout_ms << "\n";
     for (const std::string& wr : s->workspace_roots) {
         out << "workspace_root=" << wr << "\n";
     }
@@ -2789,6 +3442,10 @@ void load_session(AppState* s) {
             s->font_size = std::max(8, std::atoi(line.substr(10).c_str()));
         } else if (line.rfind("high_contrast=", 0) == 0) {
             s->high_contrast = (line.substr(14) == "1");
+        } else if (line.rfind("compact_mode=", 0) == 0) {
+            s->compact_mode = (line.substr(13) == "1");
+        } else if (line.rfind("ui_zoom_percent=", 0) == 0) {
+            s->ui_zoom_percent = std::max(70, std::min(200, std::atoi(line.substr(16).c_str())));
         } else if (line.rfind("editor_tab_width=", 0) == 0) {
             s->editor_tab_width = std::max(1, std::atoi(line.substr(17).c_str()));
         } else if (line.rfind("bottom_panel_visible=", 0) == 0) {
@@ -2808,6 +3465,16 @@ void load_session(AppState* s) {
             s->keymap_mode = (m == "vim" || m == "emacs") ? m : "default";
         } else if (line.rfind("telemetry_opt_in=", 0) == 0) {
             s->telemetry_opt_in = (line.substr(17) == "1");
+        } else if (line.rfind("completion_max_suggestions=", 0) == 0) {
+            s->completion_max_suggestions = std::max(20, std::atoi(line.substr(27).c_str()));
+        } else if (line.rfind("palette_max_suggestions=", 0) == 0) {
+            s->palette_max_suggestions = std::max(50, std::atoi(line.substr(24).c_str()));
+        } else if (line.rfind("completion_page_size=", 0) == 0) {
+            s->completion_page_size = std::max(20, std::atoi(line.substr(21).c_str()));
+        } else if (line.rfind("completion_cache_ttl_ms=", 0) == 0) {
+            s->completion_cache_ttl_ms = std::max(200, std::atoi(line.substr(24).c_str()));
+        } else if (line.rfind("lsp_completion_timeout_ms=", 0) == 0) {
+            s->lsp_completion_timeout_ms = std::max(50, std::atoi(line.substr(26).c_str()));
         } else if (line.rfind("workspace_root=", 0) == 0) {
             const std::string wr = line.substr(15);
             if (!wr.empty()) {
@@ -4050,8 +4717,13 @@ void on_action_ui_settings(GtkWidget*, gpointer user_data) {
 
     GtkWidget* font_size = gtk_spin_button_new_with_range(8, 30, 1);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(font_size), s->font_size);
+    GtkWidget* zoom_label = gtk_label_new("UI zoom (%)");
+    GtkWidget* zoom_size = gtk_spin_button_new_with_range(70, 200, 5);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(zoom_size), s->ui_zoom_percent);
     GtkWidget* contrast = gtk_check_button_new_with_label("High contrast");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(contrast), s->high_contrast);
+    GtkWidget* compact = gtk_check_button_new_with_label("Compact mode");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(compact), s->compact_mode);
     GtkWidget* tab_width = gtk_spin_button_new_with_range(1, 12, 1);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(tab_width), s->editor_tab_width);
 
@@ -4061,7 +4733,10 @@ void on_action_ui_settings(GtkWidget*, gpointer user_data) {
     gtk_box_pack_start(GTK_BOX(box), start_combo, FALSE, FALSE, 4);
     gtk_box_pack_start(GTK_BOX(box), font_entry, FALSE, FALSE, 4);
     gtk_box_pack_start(GTK_BOX(box), font_size, FALSE, FALSE, 4);
+    gtk_box_pack_start(GTK_BOX(box), zoom_label, FALSE, FALSE, 4);
+    gtk_box_pack_start(GTK_BOX(box), zoom_size, FALSE, FALSE, 4);
     gtk_box_pack_start(GTK_BOX(box), contrast, FALSE, FALSE, 4);
+    gtk_box_pack_start(GTK_BOX(box), compact, FALSE, FALSE, 4);
     gtk_box_pack_start(GTK_BOX(box), tab_width, FALSE, FALSE, 4);
     gtk_widget_show_all(d);
 
@@ -4072,7 +4747,9 @@ void on_action_ui_settings(GtkWidget*, gpointer user_data) {
         s->window_start_mode = (start_mode != nullptr && std::string(start_mode) == "maximized") ? "maximized" : "auto";
         s->font_family = gtk_entry_get_text(GTK_ENTRY(font_entry));
         s->font_size = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(font_size));
+        s->ui_zoom_percent = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(zoom_size));
         s->high_contrast = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(contrast));
+        s->compact_mode = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(compact));
         s->editor_tab_width = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(tab_width));
         apply_window_start_mode(s);
         apply_appearance(s);
@@ -4660,6 +5337,46 @@ void cycle_tabs(AppState* s, int direction) {
     gtk_notebook_set_current_page(nb, page);
 }
 
+void adjust_ui_zoom(AppState* s, int delta_percent) {
+    if (s == nullptr) {
+        return;
+    }
+    s->ui_zoom_percent = std::max(70, std::min(200, s->ui_zoom_percent + delta_percent));
+    apply_appearance(s);
+    save_session(s);
+    set_status(s, "UI zoom: " + std::to_string(s->ui_zoom_percent) + "%");
+}
+
+void reset_ui_zoom(AppState* s) {
+    if (s == nullptr) {
+        return;
+    }
+    s->ui_zoom_percent = 100;
+    apply_appearance(s);
+    save_session(s);
+    set_status(s, "UI zoom reset: 100%");
+}
+
+void toggle_compact_mode(AppState* s) {
+    if (s == nullptr) {
+        return;
+    }
+    s->compact_mode = !s->compact_mode;
+    apply_appearance(s);
+    save_session(s);
+    set_status(s, s->compact_mode ? "Compact mode enabled" : "Compact mode disabled");
+}
+
+void toggle_high_contrast_mode(AppState* s) {
+    if (s == nullptr) {
+        return;
+    }
+    s->high_contrast = !s->high_contrast;
+    apply_appearance(s);
+    save_session(s);
+    set_status(s, s->high_contrast ? "High contrast enabled" : "High contrast disabled");
+}
+
 gboolean on_window_key_press(GtkWidget*, GdkEventKey* event, gpointer user_data) {
     auto* s = static_cast<AppState*>(user_data);
     EditorTab* tab = current_tab(s);
@@ -4695,6 +5412,26 @@ gboolean on_window_key_press(GtkWidget*, GdkEventKey* event, gpointer user_data)
 
     if (ctrl) {
         const bool alt = (event->state & GDK_MOD1_MASK) != 0;
+        if (!alt && (event->keyval == GDK_KEY_plus || event->keyval == GDK_KEY_equal || event->keyval == GDK_KEY_KP_Add)) {
+            adjust_ui_zoom(s, 10);
+            return TRUE;
+        }
+        if (!alt && (event->keyval == GDK_KEY_minus || event->keyval == GDK_KEY_KP_Subtract)) {
+            adjust_ui_zoom(s, -10);
+            return TRUE;
+        }
+        if (!alt && (event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_KP_0)) {
+            reset_ui_zoom(s);
+            return TRUE;
+        }
+        if (alt && event->keyval == GDK_KEY_c) {
+            toggle_compact_mode(s);
+            return TRUE;
+        }
+        if (alt && event->keyval == GDK_KEY_h) {
+            toggle_high_contrast_mode(s);
+            return TRUE;
+        }
         if (s->keymap_mode == "emacs" && tab != nullptr && tab->buffer != nullptr) {
             GtkTextIter it;
             gtk_text_buffer_get_iter_at_mark(tab->buffer, &it, gtk_text_buffer_get_insert(tab->buffer));
@@ -4984,6 +5721,11 @@ GtkWidget* make_toolbar_button(const char* icon_name, const char* tooltip, GCall
     GtkWidget* btn = gtk_button_new();
     GtkWidget* img = gtk_image_new_from_icon_name(icon_name, GTK_ICON_SIZE_BUTTON);
     gtk_container_add(GTK_CONTAINER(btn), img);
+    gtk_button_set_relief(GTK_BUTTON(btn), GTK_RELIEF_NONE);
+    const int base = s != nullptr && s->compact_mode ? 24 : 28;
+    const int zoom = s != nullptr ? std::max(70, std::min(200, s->ui_zoom_percent)) : 100;
+    const int side = std::max(20, static_cast<int>(std::lround(static_cast<double>(base) * static_cast<double>(zoom) / 100.0)));
+    gtk_widget_set_size_request(btn, side, side);
     gtk_widget_set_tooltip_text(btn, tooltip);
     g_signal_connect(btn, "clicked", cb, s);
     return btn;
@@ -4994,7 +5736,7 @@ void activate(GtkApplication* app, gpointer user_data) {
     s->app = app;
 
     s->window = gtk_application_window_new(app);
-    int default_w = 1280;
+    int default_w = 1180;
     int default_h = 800;
     if (GdkDisplay* display = gdk_display_get_default(); display != nullptr) {
         GdkMonitor* monitor = gdk_display_get_primary_monitor(display);
@@ -5004,16 +5746,21 @@ void activate(GtkApplication* app, gpointer user_data) {
         if (monitor != nullptr) {
             GdkRectangle geometry{};
             gdk_monitor_get_geometry(monitor, &geometry);
-            default_w = std::max(960, std::min(1450, static_cast<int>(geometry.width * 0.9)));
+            // Keep first launch comfortable on large screens; user can still resize manually.
+            default_w = std::max(920, std::min(1260, static_cast<int>(geometry.width * 0.82)));
             default_h = std::max(640, std::min(920, static_cast<int>(geometry.height * 0.9)));
         }
     }
     gtk_window_set_default_size(GTK_WINDOW(s->window), default_w, default_h);
-    gtk_window_set_title(GTK_WINDOW(s->window), "VITTE IDE GTK");
+    gtk_window_set_position(GTK_WINDOW(s->window), GTK_WIN_POS_CENTER);
+    gtk_window_set_title(GTK_WINDOW(s->window), "Vitte Editor");
+    gtk_window_set_icon_name(GTK_WINDOW(s->window), "vitte");
     g_object_set_data(G_OBJECT(s->window), "app-state", s);
 
     if (fs::exists("toolchain/assets/vitte-logo-circle-blue.svg")) {
         gtk_window_set_icon_from_file(GTK_WINDOW(s->window), "toolchain/assets/vitte-logo-circle-blue.svg", nullptr);
+    } else if (fs::exists("/usr/share/icons/hicolor/scalable/apps/vitte.svg")) {
+        gtk_window_set_icon_from_file(GTK_WINDOW(s->window), "/usr/share/icons/hicolor/scalable/apps/vitte.svg", nullptr);
     }
 
     GtkWidget* root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -5027,6 +5774,7 @@ void activate(GtkApplication* app, gpointer user_data) {
     gtk_widget_set_margin_end(toolbar, 6);
     gtk_widget_set_margin_top(toolbar, 6);
     gtk_widget_set_margin_bottom(toolbar, 6);
+    gtk_widget_set_size_request(toolbar, default_w - 24, -1);
     gtk_container_add(GTK_CONTAINER(toolbar_scroll), toolbar);
 
     gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("document-open", "Open", G_CALLBACK(on_action_open), s), FALSE, FALSE, 0);
@@ -5099,7 +5847,7 @@ void activate(GtkApplication* app, gpointer user_data) {
     gtk_box_pack_start(GTK_BOX(root), main_paned, TRUE, TRUE, 0);
 
     GtkWidget* left_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_widget_set_size_request(left_box, 340, -1);
+    gtk_widget_set_size_request(left_box, 300, -1);
     gtk_paned_pack1(GTK_PANED(main_paned), left_box, FALSE, FALSE);
 
     GtkWidget* logo = gtk_image_new_from_file("toolchain/assets/vitte-logo-circle-blue.svg");
@@ -5119,18 +5867,41 @@ void activate(GtkApplication* app, gpointer user_data) {
     gtk_container_add(GTK_CONTAINER(proj_scroll), s->project_view);
     gtk_paned_pack1(GTK_PANED(left_split), proj_scroll, TRUE, FALSE);
 
-    s->outline_store = gtk_list_store_new(NUM_OUT_COLS, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT);
+    s->outline_store = gtk_tree_store_new(NUM_OUT_COLS, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT, G_TYPE_BOOLEAN);
     s->outline_view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(s->outline_store));
+    gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(s->outline_view), FALSE);
+    GtkCellRenderer* out_icon = gtk_cell_renderer_pixbuf_new();
     GtkCellRenderer* out_r1 = gtk_cell_renderer_text_new();
     GtkCellRenderer* out_r2 = gtk_cell_renderer_text_new();
+    gtk_tree_view_append_column(GTK_TREE_VIEW(s->outline_view),
+                                gtk_tree_view_column_new_with_attributes("", out_icon, "icon-name", OUT_ICON, nullptr));
     gtk_tree_view_append_column(GTK_TREE_VIEW(s->outline_view), gtk_tree_view_column_new_with_attributes("Kind", out_r1, "text", OUT_KIND, nullptr));
     gtk_tree_view_append_column(GTK_TREE_VIEW(s->outline_view), gtk_tree_view_column_new_with_attributes("Outline", out_r2, "text", OUT_NAME, nullptr));
 
     GtkWidget* out_tabs = gtk_notebook_new();
     s->left_tabs = out_tabs;
+
+    GtkWidget* out_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    GtkWidget* out_search_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    s->outline_filter_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(s->outline_filter_entry), "Rechercher un symbole...");
+    gtk_entry_set_icon_from_icon_name(GTK_ENTRY(s->outline_filter_entry), GTK_ENTRY_ICON_PRIMARY, "edit-find-symbolic");
+    GtkWidget* out_clear = gtk_button_new_with_label("Effacer");
+    g_signal_connect(out_clear, "clicked", G_CALLBACK(on_outline_filter_clear), s);
+    gtk_box_pack_start(GTK_BOX(out_search_row), s->outline_filter_entry, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(out_search_row), out_clear, FALSE, FALSE, 0);
+
     GtkWidget* out_scroll = gtk_scrolled_window_new(nullptr, nullptr);
     gtk_container_add(GTK_CONTAINER(out_scroll), s->outline_view);
-    gtk_notebook_append_page(GTK_NOTEBOOK(out_tabs), out_scroll, gtk_label_new("Outline"));
+    s->outline_empty_label = gtk_label_new("Aucun symbole trouvé");
+    gtk_widget_set_halign(s->outline_empty_label, GTK_ALIGN_START);
+    gtk_widget_set_margin_start(s->outline_empty_label, 6);
+    gtk_widget_set_margin_bottom(s->outline_empty_label, 4);
+
+    gtk_box_pack_start(GTK_BOX(out_page), out_search_row, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(out_page), out_scroll, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(out_page), s->outline_empty_label, FALSE, FALSE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(out_tabs), out_page, gtk_label_new("Symboles"));
 
     GtkWidget* docs_scroll = gtk_scrolled_window_new(nullptr, nullptr);
     s->docs_view = gtk_text_view_new();
@@ -5173,7 +5944,7 @@ void activate(GtkApplication* app, gpointer user_data) {
     GtkCellRenderer* gr = gtk_cell_renderer_text_new();
     gtk_tree_view_append_column(GTK_TREE_VIEW(s->gutter_view), gtk_tree_view_column_new_with_attributes("Gutter", gr, "text", 0, nullptr));
     GtkWidget* gutter_scroll = gtk_scrolled_window_new(nullptr, nullptr);
-    gtk_widget_set_size_request(gutter_scroll, 120, -1);
+    gtk_widget_set_size_request(gutter_scroll, 90, -1);
     gtk_container_add(GTK_CONTAINER(gutter_scroll), s->gutter_view);
     gtk_box_pack_start(GTK_BOX(editor_and_gutter), gutter_scroll, FALSE, TRUE, 0);
 
@@ -5304,17 +6075,12 @@ void activate(GtkApplication* app, gpointer user_data) {
     load_session(s);
     apply_runtime_config_file(s, false);
     apply_window_start_mode(s);
-    build_project_tree(s);
-    load_project_tasks(s);
-    load_plugins(s);
-    load_search_index(s);
-    if (!s->search_index_loaded) {
-        rebuild_search_index_async(s);
-    }
-    restore_recovery_snapshot(s);
 
     g_signal_connect(s->project_view, "row-activated", G_CALLBACK(on_project_row_activated), s);
     g_signal_connect(s->outline_view, "row-activated", G_CALLBACK(on_outline_row_activated), s);
+    if (s->outline_filter_entry != nullptr) {
+        g_signal_connect(s->outline_filter_entry, "changed", G_CALLBACK(on_outline_filter_changed), s);
+    }
     g_signal_connect(s->problems_view, "row-activated", G_CALLBACK(on_problem_row_activated), s);
     g_signal_connect(s->gutter_view, "row-activated", G_CALLBACK(on_gutter_row_activated), s);
     g_signal_connect(s->problems_filter, "changed", G_CALLBACK(on_problems_filter_changed), s);
@@ -5342,6 +6108,7 @@ void activate(GtkApplication* app, gpointer user_data) {
     if (!s->bottom_panel_visible && s->bottom_panel != nullptr) {
         gtk_widget_hide(s->bottom_panel);
     }
+    g_idle_add(run_deferred_startup, s);
 }
 
 }  // namespace
@@ -5370,6 +6137,10 @@ int main(int argc, char** argv) {
     if (state.autosave_timer != 0) {
         g_source_remove(state.autosave_timer);
         state.autosave_timer = 0;
+    }
+    if (state.completion_prefetch_timer != 0) {
+        g_source_remove(state.completion_prefetch_timer);
+        state.completion_prefetch_timer = 0;
     }
 
     return status;
