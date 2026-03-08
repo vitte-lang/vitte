@@ -39,6 +39,30 @@ jobs:
       - name: Run all-tests group
         run: ALL_TESTS_GROUP=${{ matrix.group }} make all-tests
 
+      - name: Dump all-tests failure context
+        if: failure()
+        run: |
+          set -euo pipefail
+          REPORT_DIR="target/reports/all-tests"
+          echo "::group::all-tests summaries"
+          ls -1 "${REPORT_DIR}"/summary_* 2>/dev/null || true
+          SUMMARY="$(ls -1t "${REPORT_DIR}"/summary_* 2>/dev/null | head -n1 || true)"
+          if [ -n "${SUMMARY}" ] && [ -f "${SUMMARY}" ]; then
+            echo "Using summary: ${SUMMARY}"
+            cat "${SUMMARY}"
+          else
+            echo "No summary file found in ${REPORT_DIR}"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::all-tests group logs"
+          ls -1t "${REPORT_DIR}"/*_"${{ matrix.group }}"_*.log 2>/dev/null || true
+          for f in $(ls -1t "${REPORT_DIR}"/*_"${{ matrix.group }}"_*.log 2>/dev/null | head -n 12); do
+            echo "--- ${f} (tail -n 160) ---"
+            tail -n 160 "${f}" || true
+          done
+          echo "::endgroup::"
+
       - name: Upload all-tests reports
         if: always()
         uses: actions/upload-artifact@v4
