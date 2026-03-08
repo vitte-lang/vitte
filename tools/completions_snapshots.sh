@@ -4,14 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GEN="$ROOT_DIR/tools/generate_completions.py"
 SNAP_DIR="$ROOT_DIR/tools/completions/snapshots"
+MODE="${VITTE_COMPLETIONS_SNAPSHOT_MODE:-static}"
 
 update=0
 if [[ "${1:-}" == "--update" ]]; then
   update=1
 fi
 
-python3 "$GEN"
-python3 "$GEN" --check
+python3 "$GEN" --mode "$MODE"
+python3 "$GEN" --check --mode "$MODE"
 
 mkdir -p "$SNAP_DIR"
 

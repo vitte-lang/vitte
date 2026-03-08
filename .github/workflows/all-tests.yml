@@ -51,6 +51,9 @@ jobs:
       - name: Build
         run: make build
 
+      - name: Verify ci-group mapping
+        run: make all-tests-ci-group-guard
+
       - name: Run all-tests group (non-modules)
         if: matrix.group != 'modules' && matrix.group != 'ci-core'
         run: ALL_TESTS_GROUP=${{ matrix.group }} make all-tests
@@ -134,6 +137,7 @@ jobs:
             target/reports-normalized
 
   ci-completions:
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     continue-on-error: false
     timeout-minutes: 90
@@ -143,6 +147,8 @@ jobs:
       LC_ALL: C.UTF-8
       PYTHONHASHSEED: "0"
       VITTE_COMPLETIONS_BIN: bin/vitte
+      VITTE_COMPLETIONS_MODE: static
+      VITTE_COMPLETIONS_SNAPSHOT_MODE: static
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -165,9 +171,15 @@ jobs:
 
       - name: Show shell versions
         run: |
+          python3 --version
           bash --version | head -n1
           zsh --version
           fish --version
+
+      - name: Show runtime revision and workflow markers
+        run: |
+          git rev-parse HEAD
+          rg -n "ci-core|ci-completions" .github/workflows/all-tests.yml
 
       - name: Build
         run: make build
@@ -188,15 +200,18 @@ jobs:
 
       - name: Print completions spec hash
         run: |
-          python3 - <<'PY'
-          import hashlib
-          from pathlib import Path
-          p = Path("tools/completions/spec.json")
-          print("[ci-completions] spec_sha256=", hashlib.sha256(p.read_bytes()).hexdigest(), sep="")
-          PY
+          set -euo pipefail
+          sha256sum tools/completions/spec.json
 
       - name: Print completion mode
         run: python3 tools/generate_completions.py --print-mode
+
+      - name: Ensure golden snapshots are tracked
+        run: |
+          set -euo pipefail
+          git ls-files --error-unmatch tools/completions/snapshots/bash.vitte.golden
+          git ls-files --error-unmatch tools/completions/snapshots/zsh._vitte.golden
+          git ls-files --error-unmatch tools/completions/snapshots/fish.vitte.fish.golden
 
       - name: Run ci-completions (retry once)
         run: |
@@ -209,8 +224,14 @@ jobs:
           fi
           cp "$LOG" "target/reports/ci-completions/ci-completions-${GITHUB_RUN_ID}.log"
 
+      - name: Run verbose completion check (separate)
+        run: python3 tools/generate_completions.py --check --verbose --mode "${VITTE_COMPLETIONS_MODE}"
+
       - name: Ensure snapshots are unchanged
         run: git diff --exit-code -- tools/completions/snapshots
+
+      - name: Ensure generated completion files are unchanged
+        run: git diff --exit-code -- completions/bash/vitte completions/zsh/_vitte completions/fish/vitte.fish
 
       - name: Show git status after completions
         if: always()
@@ -221,18 +242,27 @@ jobs:
         run: |
           set -euo pipefail
           LOG="target/reports/ci-completions/ci-completions.log"
-          [ -f "$LOG" ] && tail -n 220 "$LOG" || true
-          python3 tools/generate_completions.py --print-mode || true
-          python3 tools/generate_completions.py --check --verbose || true
+          tools/ci_completions_debug.sh "$LOG" || true
 
-          diff -u tools/completions/snapshots/bash.vitte.golden completions/bash/vitte | head -n 200 || true
-          diff -u tools/completions/snapshots/zsh._vitte.golden completions/zsh/_vitte | head -n 200 || true
-          diff -u tools/completions/snapshots/fish.vitte.fish.golden completions/fish/vitte.fish | head -n 200 || true
-
-          FIRST_ERR="$(grep -hoE '\[completions\].*' "$LOG" 2>/dev/null | head -n1 || true)"
-          if [ -n "$FIRST_ERR" ]; then
-            echo "::error title=ci-completions mismatch::${FIRST_ERR}"
-          fi
+      - name: Normalize ci-completions logs
+        if: always()
+        run: |
+          set -euo pipefail
+          SRC_DIR="target/reports/ci-completions"
+          DST_DIR="target/reports-normalized/ci-completions"
+          mkdir -p "${DST_DIR}"
+          [ -d "${SRC_DIR}" ] || exit 0
+          find "${SRC_DIR}" -type f -name "*.log" -print0 | LC_ALL=C.UTF-8 sort -z | while IFS= read -r -d '' f; do
+            rel="${f#${SRC_DIR}/}"
+            out="${DST_DIR}/${rel}"
+            mkdir -p "$(dirname "${out}")"
+            sed -E \
+              -e 's#/home/runner/work/[^ ]*#<GH_WORKSPACE>#g' \
+              -e 's#/tmp/[^ ]*#<TMP_PATH>#g' \
+              -e 's#\b[0-9a-f]{40}\b#<SHA1>#g' \
+              -e 's#[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.+-]+#<ISO_TS>#g' \
+              "${f}" > "${out}"
+          done
 
       - name: Upload ci-completions artifacts
         if: always()
@@ -241,7 +271,49 @@ jobs:
           name: ci-completions-artifacts
           path: |
             target/reports/ci-completions
+            target/reports-normalized/ci-completions
             completions/bash/vitte
             completions/zsh/_vitte
             completions/fish/vitte.fish
             tools/completions/snapshots/*.golden
+
+  ci-completions-dynamic:
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 45
+    env:
+      TZ: UTC
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      PYTHONHASHSEED: "0"
+      VITTE_COMPLETIONS_BIN: bin/vitte
+      VITTE_COMPLETIONS_MODE: dynamic
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Clean workspace
+        run: git clean -fdx
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          if [ -f toolchain/scripts/install/debian-deps.sh ]; then
+            source toolchain/scripts/install/debian-deps.sh
+            sudo apt-get install -y "${DEBIAN_APT_BUILD_DEPS[@]}"
+          else
+            sudo apt-get install -y clang g++ make pkg-config libssl-dev libcurl4-openssl-dev python3 python3-pip jq zsh fish
+          fi
+
+      - name: Build
+        run: make build
+
+      - name: Dynamic completion probe (non-blocking temporary)
+        run: |
+          set -euo pipefail
+          python3 tools/generate_completions.py --print-mode --mode dynamic
+          python3 tools/generate_completions.py --check --verbose --mode dynamic

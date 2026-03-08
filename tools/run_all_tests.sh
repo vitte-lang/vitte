@@ -11,7 +11,7 @@ summary="$REPORT_DIR/summary_${run_id}_${ALL_TESTS_GROUP}.txt"
 
 all_targets=(
   test parse parse-modules parse-strict hir-validate check-tests stress-alloc core-projects test-examples arduino-projects negative-tests diag-snapshots resolve-tests explain-snapshots wrapper-stage-test
-  grammar-check ci-fast ci-strict ci-completions
+  grammar-check ci-fast ci-strict
   extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all std-core-tests stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
   modules-tests modules-snapshots modules-contract-snapshots modules-ci-strict
   packages-governance-lint critical-runtime-matrix-lint packages-gate
@@ -27,8 +27,8 @@ select_targets() {
     core)
       printf "%s\n" test parse parse-modules parse-strict hir-validate check-tests stress-alloc core-projects test-examples arduino-projects negative-tests diag-snapshots resolve-tests explain-snapshots wrapper-stage-test
       ;;
-    ci)
-      printf "%s\n" grammar-check ci-fast ci-strict ci-completions
+    ci|ci-core)
+      printf "%s\n" grammar-check ci-fast ci-strict
       ;;
     abi)
       printf "%s\n" extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all std-core-tests stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
@@ -47,13 +47,25 @@ select_targets() {
       ;;
     *)
       echo "[all-tests][error] unknown ALL_TESTS_GROUP=$ALL_TESTS_GROUP" >&2
-      echo "[all-tests][error] expected: all|core|ci|abi|modules|packages|package-ci-fast|package-ci-strict" >&2
+      echo "[all-tests][error] expected: all|core|ci|ci-core|abi|modules|packages|package-ci-fast|package-ci-strict" >&2
       exit 2
       ;;
   esac
 }
 
 mapfile -t targets < <(select_targets)
+
+if [ "${ALL_TESTS_LIST_ONLY:-0}" = "1" ]; then
+  printf "%s\n" "${targets[@]}"
+  exit 0
+fi
+
+if [ "$ALL_TESTS_GROUP" = "ci" ] || [ "$ALL_TESTS_GROUP" = "ci-core" ]; then
+  if printf "%s\n" "${targets[@]}" | grep -qx "ci-completions"; then
+    echo "[all-tests][error] ci-completions must run in dedicated CI job only" >&2
+    exit 2
+  fi
+fi
 
 printf "# all-tests run %s group=%s\n" "$run_id" "$ALL_TESTS_GROUP" > "$summary"
 pass=0

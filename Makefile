@@ -562,11 +562,11 @@ modules-ci-strict: modules-tests modules-snapshots modules-contract-snapshots mo
 
 .PHONY: completions-gen
 completions-gen:
-	@python3 tools/generate_completions.py
+	@python3 tools/generate_completions.py --mode $${VITTE_COMPLETIONS_MODE:-static}
 
 .PHONY: completions-check
 completions-check:
-	@python3 tools/generate_completions.py --check
+	@python3 tools/generate_completions.py --check --mode $${VITTE_COMPLETIONS_MODE:-static}
 
 .PHONY: completions-snapshots
 completions-snapshots:
@@ -610,6 +610,14 @@ all-tests:
 .PHONY: all-tests-group
 all-tests-group:
 	@ALL_TESTS_GROUP=$${GROUP:-all} tools/run_all_tests.sh
+
+.PHONY: all-tests-ci-group-guard
+all-tests-ci-group-guard:
+	@targets="$$(ALL_TESTS_LIST_ONLY=1 ALL_TESTS_GROUP=ci tools/run_all_tests.sh)"; \
+	if printf "%s\n" "$$targets" | grep -qx "ci-completions"; then \
+		echo "[all-tests][error] ci group must not include ci-completions"; \
+		exit 2; \
+	fi
 
 .PHONY: vitteos-bin-quality
 vitteos-bin-quality:

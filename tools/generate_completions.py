@@ -633,10 +633,31 @@ def main() -> int:
         action="store_true",
         help="print detected help mode (dynamic|static-fallback) and exit",
     )
+    parser.add_argument(
+        "--mode",
+        choices=("auto", "static", "dynamic"),
+        default=os.environ.get("VITTE_COMPLETIONS_MODE", "auto"),
+        help="help discovery mode (default: env VITTE_COMPLETIONS_MODE or auto)",
+    )
     args = parser.parse_args()
 
     spec = load_spec()
-    dyn = parse_help_dynamic(spec, verbose=args.verbose)
+    if args.mode == "static":
+        dyn = {
+            "dynamic_enabled": False,
+            "commands": [],
+            "mod_subcommands": [],
+            "options": [],
+            "command_descriptions": {},
+            "mod_subcommand_descriptions": {},
+            "option_descriptions": {},
+            "command_options": {},
+        }
+    else:
+        dyn = parse_help_dynamic(spec, verbose=args.verbose)
+        if args.mode == "dynamic" and not dyn.get("dynamic_enabled", False):
+            print("[completions][error] dynamic mode requested but dynamic probing is unavailable", file=sys.stderr)
+            return 2
     data = merge(spec, dyn, max_module_suggestions=args.max_module_suggestions)
 
     header = _header(
