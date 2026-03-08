@@ -1,7 +1,7 @@
 {
   "name": "vitte-studio",
   "displayName": "Vitte Language Support",
-  "description": "Full tooling for Vitte and Vit: grammar, LSP, debug, tasks, tests, explorer, docs, bench & playground.",
+  "description": "Full tooling for Vitte and Vit: grammar, LSP, debug, tasks, tests, explorer, bench & playground.",
   "version": "2.1.2",
   "publisher": "VitteStudio",
   "license": "MIT",
@@ -38,9 +38,6 @@
     "CHANGELOG.md",
     "LICENSE"
   ],
-  "activationEvents": [
-    "onStartupFinished"
-  ],
   "contributes": {
     "languages": [
       {
@@ -76,6 +73,16 @@
         "path": "./syntaxes/vitte.tmLanguage.json"
       }
     ],
+    "snippets": [
+      {
+        "language": "vitte",
+        "path": "./snippets/vitte.json"
+      },
+      {
+        "language": "vit",
+        "path": "./snippets/vitte.json"
+      }
+    ],
     "jsonValidation": [
       {
         "fileMatch": "vitte.config.json",
@@ -98,17 +105,6 @@
     "views": {
       "vitte-sidebar": [
         {
-          "id": "vitteExplorer",
-          "name": "Vitte Documentation",
-          "icon": "media/icons/vitte-logo.svg",
-          "type": "webview"
-        },
-        {
-          "id": "vitteSuggestions",
-          "name": "Vitte Sommaire",
-          "icon": "media/icons/vitte-logo.svg"
-        },
-        {
           "id": "vitteDiagnostics",
           "name": "Vitte Diagnostics",
           "icon": "media/icons/vitte-logo.svg",
@@ -119,6 +115,23 @@
           "name": "Vitte Modules",
           "icon": "media/icons/vitte-logo.svg",
           "when": "vitte.serverOnline"
+        },
+        {
+          "id": "vittePackageProblems",
+          "name": "Problems by Package",
+          "icon": "media/icons/vitte-logo.svg"
+        },
+        {
+          "id": "vitteModuleGraph",
+          "name": "Module Graph",
+          "icon": "media/icons/vitte-logo.svg",
+          "type": "webview"
+        },
+        {
+          "id": "vitteCommandCenter",
+          "name": "Command Center",
+          "icon": "media/icons/vitte-logo.svg",
+          "type": "webview"
         },
         {
           "id": "vitteMetrics",
@@ -135,16 +148,6 @@
       ]
     },
     "viewsWelcome": [
-      {
-        "view": "vitteExplorer",
-        "contents": "# Vitte Documentation\n\nThis panel loads documentation directly from [vitte.netlify.app](https://vitte.netlify.app).\n\nUpdates published on the website are visible automatically.",
-        "when": "view == vitteExplorer"
-      },
-      {
-        "view": "vitteSuggestions",
-        "contents": "# Vitte Sommaire\n\nBrowse chapters from beginner to professional in this sidebar tree.\n\nClick any chapter to open it on [vitte.netlify.app](https://vitte.netlify.app).",
-        "when": "view == vitteSuggestions"
-      },
       {
         "view": "vitteOffline",
         "contents": "# Vitte Offline\n\nThe language server is offline.\n\n- $(question) **Explain Offline** → `vscode:command:vitte.offline.explain`\n- $(settings-gear) **Settings** → `vscode:command:workbench.action.openSettings?%5B%22vitte.server%22%5D`\n",
@@ -232,6 +235,26 @@
         "title": "Vitte: Show Command Menu"
       },
       {
+        "command": "vitte.suggestions.loadNextPage",
+        "title": "Vitte: Suggestions Load Next Page",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.suggestions.resetLearning",
+        "title": "Vitte: Suggestions Reset Learning",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.suggestions.exportDiagnostics",
+        "title": "Vitte: Suggestions Export Diagnostics",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.suggestions.openProfiler",
+        "title": "Vitte: Suggestions Open Profiler",
+        "category": "Vitte"
+      },
+      {
         "command": "vitte.restartServer",
         "title": "Vitte: Restart Language Server"
       },
@@ -288,23 +311,8 @@
         "title": "Vitte: Refresh Structure"
       },
       {
-        "command": "vitte.openDocs",
-        "title": "Vitte: Open Docs",
-        "category": "Vitte"
-      },
-      {
         "command": "vitte.openPlayground",
         "title": "Vitte: Open Playground",
-        "category": "Vitte"
-      },
-      {
-        "command": "vitte.docs.openChapter",
-        "title": "Vitte: Open Documentation Chapter",
-        "category": "Vitte"
-      },
-      {
-        "command": "vitte.docs.refreshChapters",
-        "title": "Vitte: Refresh Documentation Chapters",
         "category": "Vitte"
       },
       {
@@ -426,6 +434,161 @@
         "command": "vitte.goOffline",
         "title": "Vitte: Go Offline",
         "category": "Vitte"
+      },
+      {
+        "command": "vitte.projectAssistant",
+        "title": "Vitte: Project Assistant",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.newProject",
+        "title": "Vitte: New Project",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.newModule",
+        "title": "Vitte: New Module",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.newPackage",
+        "title": "Vitte: New Package",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.generateWorkspaceConfig",
+        "title": "Vitte: Generate VS Code Config",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.doctor",
+        "title": "Vitte: Doctor",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.packageProblems.refresh",
+        "title": "Vitte: Refresh Problems by Package",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.packageProblems.open",
+        "title": "Vitte: Open Package Problems",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.moduleGraph.refresh",
+        "title": "Vitte: Refresh Module Graph",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.moduleGraph.openModule",
+        "title": "Vitte: Open Module from Graph",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.benchExtensionCi",
+        "title": "Vitte: Bench Extension CI",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.doctor.runTool",
+        "title": "Vitte: Doctor Run Tool",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.fixCategoryPreview",
+        "title": "Vitte: Fix Category Preview",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.codelens.runProc",
+        "title": "Vitte: CodeLens Run Proc",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.codelens.runTest",
+        "title": "Vitte: CodeLens Run Test",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.codelens.openRefs",
+        "title": "Vitte: CodeLens Open Refs",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.codelens.explainCode",
+        "title": "Vitte: CodeLens Explain Code",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.exportPerfSession",
+        "title": "Vitte: Export Perf Session",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.commandCenter.refresh",
+        "title": "Vitte: Refresh Command Center",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.enterprise.strict.apply",
+        "title": "Vitte: Apply Enterprise Strict Mode",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.enterprise.publishGate",
+        "title": "Vitte: Check Enterprise Publish Gate",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.perf.baseline.update",
+        "title": "Vitte: Perf Baseline Update",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.perf.baseline.check",
+        "title": "Vitte: Perf Baseline Check",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.exportSarif",
+        "title": "Vitte: Export SARIF",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.exportWorkspaceState",
+        "title": "Vitte: Export Workspace State",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.doctor.plugin",
+        "title": "Vitte: Doctor Plugin",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.refactor.recipe",
+        "title": "Vitte: Refactor Recipe",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.teamProfile.apply",
+        "title": "Vitte: Apply Team Profile",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.migration.assistant",
+        "title": "Vitte: Migration Assistant",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.canary.toggle",
+        "title": "Vitte: Toggle Canary Channel",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.crashForensics.bundle",
+        "title": "Vitte: Crash Forensics Bundle",
+        "category": "Vitte"
       }
     ],
     "menus": {
@@ -453,8 +616,18 @@
           "group": "navigation@1"
         },
         {
-          "command": "vitte.docs.refreshChapters",
-          "when": "view == vitteSuggestions",
+          "command": "vitte.packageProblems.refresh",
+          "when": "view == vittePackageProblems",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vitte.moduleGraph.refresh",
+          "when": "view == vitteModuleGraph",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vitte.commandCenter.refresh",
+          "when": "view == vitteCommandCenter",
           "group": "navigation@1"
         },
         {
@@ -465,11 +638,23 @@
       ],
       "commandPalette": [
         {
-          "command": "vitte.openDocs",
+          "command": "vitte.openPlayground",
           "when": "workspaceFolderCount > 0"
         },
         {
-          "command": "vitte.openPlayground",
+          "command": "vitte.suggestions.loadNextPage",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "vitte.suggestions.resetLearning",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.suggestions.exportDiagnostics",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.suggestions.openProfiler",
           "when": "workspaceFolderCount > 0"
         },
         {
@@ -506,6 +691,86 @@
         },
         {
           "command": "vitte.testCurrent",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.projectAssistant",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.newProject",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.newModule",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.newPackage",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.generateWorkspaceConfig",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.doctor",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.benchExtensionCi",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.exportPerfSession",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.enterprise.strict.apply",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.enterprise.publishGate",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.perf.baseline.update",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.perf.baseline.check",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.exportSarif",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.exportWorkspaceState",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.doctor.plugin",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.refactor.recipe",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.teamProfile.apply",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.migration.assistant",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.canary.toggle",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "vitte.crashForensics.bundle",
           "when": "workspaceFolderCount > 0"
         },
         {
@@ -560,17 +825,8 @@
       {
         "id": "vitte.quickstart",
         "title": "Vitte Quickstart",
-        "description": "Learn how to open the docs, detect the toolchain, and run your first build.",
+        "description": "Detect the toolchain and run your first build.",
         "steps": [
-          {
-            "id": "vitte.quickstart.docs",
-            "title": "Explore the docs & playground",
-            "description": "Run [Vitte: Quick Actions](command:vitte.quickActions) and pick **Docs + Playground** to open the online docs on vitte.netlify.app.",
-            "media": {
-              "image": "media/icons/vitte-logo.svg",
-              "altText": "Vitte"
-            }
-          },
           {
             "id": "vitte.quickstart.toolchain",
             "title": "Detect the Vitte toolchain",
@@ -583,7 +839,7 @@
           {
             "id": "vitte.quickstart.setup",
             "title": "Run the onboarding setup",
-            "description": "Trigger [Vitte: Quick Actions](command:vitte.quickActions) again and choose **Run full setup** to chain docs, toolchain detection, and a build in one go.",
+            "description": "Trigger [Vitte: Quick Actions](command:vitte.quickActions) again and choose **Run full setup** to chain toolchain detection and a build in one go.",
             "media": {
               "image": "media/icons/vitte-logo.svg",
               "altText": "Vitte"
@@ -602,6 +858,11 @@
         "command": "vitte.restartServer",
         "key": "ctrl+shift+r",
         "when": "editorLangId == vit"
+      },
+      {
+        "command": "vitte.suggestions.loadNextPage",
+        "key": "ctrl+alt+.",
+        "when": "editorTextFocus && suggestWidgetVisible && (editorLangId == vitte || editorLangId == vit)"
       }
     ],
     "taskDefinitions": [
@@ -773,10 +1034,459 @@
           "maximum": 1,
           "description": "Sampling rate for verbose trace metrics."
         },
+        "vitte.enterprise.strict": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable global enterprise strict mode and quality gates."
+        },
+        "vitte.channel": {
+          "type": "string",
+          "enum": [
+            "stable",
+            "canary"
+          ],
+          "default": "stable",
+          "description": "Release channel for extension behavior."
+        },
+        "vitte.reliability.maxRestartAttempts": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum automatic restart attempts in reliability guard."
+        },
+        "vitte.reliability.cooldownMs": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 10000,
+          "maximum": 1800000,
+          "description": "Cooldown window for restart attempts."
+        },
+        "vitte.reliability.baseRetryMs": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 1000,
+          "maximum": 600000,
+          "description": "Base retry delay for reliability guard."
+        },
+        "vitte.reliability.maxRetryMs": {
+          "type": "number",
+          "default": 300000,
+          "minimum": 5000,
+          "maximum": 3600000,
+          "description": "Maximum retry delay for reliability guard."
+        },
+        "vitte.semanticBudget.completionP95Ms": {
+          "type": "number",
+          "default": 900,
+          "minimum": 10,
+          "maximum": 10000,
+          "description": "Semantic diagnostics budget for completion p95."
+        },
+        "vitte.semanticBudget.hoverP95Ms": {
+          "type": "number",
+          "default": 600,
+          "minimum": 10,
+          "maximum": 10000,
+          "description": "Semantic diagnostics budget for hover p95."
+        },
+        "vitte.semanticBudget.renameP95Ms": {
+          "type": "number",
+          "default": 1200,
+          "minimum": 10,
+          "maximum": 20000,
+          "description": "Semantic diagnostics budget for rename p95."
+        },
+        "vitte.semanticBudget.referencesP95Ms": {
+          "type": "number",
+          "default": 1200,
+          "minimum": 10,
+          "maximum": 20000,
+          "description": "Semantic diagnostics budget for references p95."
+        },
+        "vitte.policy.path": {
+          "type": "string",
+          "default": "vitte.policy.json",
+          "description": "Path to policy-as-code file used by enterprise checks."
+        },
         "vitte.features.completion": {
           "type": "boolean",
           "default": true,
           "description": "Enable completion provider."
+        },
+        "vitte.suggestions.adaptiveRanking": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable adaptive completion ranking based on prefix/context/usage."
+        },
+        "vitte.suggestions.dynamicBudget": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable dynamic top-N completion budget according to latency/load."
+        },
+        "vitte.suggestions.showExplainLabels": {
+          "type": "boolean",
+          "default": true,
+          "description": "Append short why-labels to completion details."
+        },
+        "vitte.suggestions.showMatchHighlights": {
+          "type": "boolean",
+          "default": true,
+          "description": "Append compact match hints (prefix/contains/fuzzy positions) to completion details."
+        },
+        "vitte.suggestions.rankingVariant": {
+          "type": "string",
+          "enum": [
+            "default",
+            "prefix_heavy",
+            "scope_heavy"
+          ],
+          "default": "default",
+          "description": "Primary ranking variant profile."
+        },
+        "vitte.suggestions.shadowRankingEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run a shadow ranking profile in background for A/B comparison metrics (no UX impact)."
+        },
+        "vitte.suggestions.shadowRankingVariant": {
+          "type": "string",
+          "enum": [
+            "default",
+            "prefix_heavy",
+            "scope_heavy"
+          ],
+          "default": "scope_heavy",
+          "description": "Variant used by shadow ranking A/B metrics."
+        },
+        "vitte.suggestions.churnPenaltyEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Penalize suggestions that move too much between consecutive refreshes for the same request."
+        },
+        "vitte.suggestions.churnPenaltyWeight": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "maximum": 4,
+          "description": "Weight applied to churn penalty during ranking."
+        },
+        "vitte.suggestions.typeBudgetEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Apply per-kind budget for completion list (function/variable/snippet)."
+        },
+        "vitte.suggestions.functionBudgetRatio": {
+          "type": "number",
+          "default": 0.45,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Target ratio of function/method suggestions in final completion list."
+        },
+        "vitte.suggestions.variableBudgetRatio": {
+          "type": "number",
+          "default": 0.35,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Target ratio of variable/field/property suggestions in final completion list."
+        },
+        "vitte.suggestions.snippetBudgetRatio": {
+          "type": "number",
+          "default": 0.15,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Target ratio of snippet suggestions in final completion list."
+        },
+        "vitte.suggestions.topN": {
+          "type": "number",
+          "default": 50,
+          "minimum": 5,
+          "maximum": 200,
+          "description": "Target number of completion suggestions when system is healthy."
+        },
+        "vitte.suggestions.minN": {
+          "type": "number",
+          "default": 20,
+          "minimum": 5,
+          "maximum": 200,
+          "description": "Minimum completion suggestion budget under degraded latency/load."
+        },
+        "vitte.suggestions.maxN": {
+          "type": "number",
+          "default": 80,
+          "minimum": 5,
+          "maximum": 300,
+          "description": "Maximum completion suggestion cap."
+        },
+        "vitte.suggestions.slowMs": {
+          "type": "number",
+          "default": 180,
+          "minimum": 20,
+          "maximum": 5000,
+          "description": "Latency threshold (ms) considered slow for dynamic suggestion budgeting."
+        },
+        "vitte.suggestions.rankingDeadlineMs": {
+          "type": "number",
+          "default": 25,
+          "minimum": 3,
+          "maximum": 120,
+          "description": "CPU deadline (ms) for completion ranking pass; beyond this the ranker falls back to neutral ordering."
+        },
+        "vitte.suggestions.streaming": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable streaming completion (local first paint + progressive LSP enrichment)."
+        },
+        "vitte.suggestions.streamingFirstPaintMs": {
+          "type": "number",
+          "default": 75,
+          "minimum": 10,
+          "maximum": 2000,
+          "description": "First paint timeout budget (ms) before returning local streaming suggestions."
+        },
+        "vitte.suggestions.streamingLocalBatchSize": {
+          "type": "number",
+          "default": 40,
+          "minimum": 5,
+          "maximum": 400,
+          "description": "Maximum number of immediate local suggestions in streaming mode."
+        },
+        "vitte.suggestions.streamingCacheTtlMs": {
+          "type": "number",
+          "default": 1500,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "TTL (ms) for progressive completion cache used between suggest refreshes."
+        },
+        "vitte.suggestions.streamingAutoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto refresh suggest widget when background LSP completion arrives."
+        },
+        "vitte.suggestions.autoRefreshDebounceMinMs": {
+          "type": "number",
+          "default": 80,
+          "minimum": 40,
+          "maximum": 500,
+          "description": "Minimum debounce (ms) before triggering auto-refresh of suggest widget."
+        },
+        "vitte.suggestions.autoRefreshDebounceMaxMs": {
+          "type": "number",
+          "default": 260,
+          "minimum": 40,
+          "maximum": 1000,
+          "description": "Maximum adaptive debounce (ms) based on typing speed before auto-refresh."
+        },
+        "vitte.suggestions.lspHardTimeoutMs": {
+          "type": "number",
+          "default": 120,
+          "minimum": 50,
+          "maximum": 1000,
+          "description": "Hard timeout (ms) for LSP completion call before local/cache fallback is kept."
+        },
+        "vitte.suggestions.negativeCacheTimeoutThreshold": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 12,
+          "description": "Number of consecutive LSP completion timeouts before temporary negative cache activation."
+        },
+        "vitte.suggestions.negativeCacheHoldMs": {
+          "type": "number",
+          "default": 2500,
+          "minimum": 300,
+          "maximum": 15000,
+          "description": "Duration (ms) for negative cache hold after repeated LSP completion timeouts."
+        },
+        "vitte.suggestions.highLoadThreshold": {
+          "type": "number",
+          "default": 6,
+          "minimum": 1,
+          "maximum": 16,
+          "description": "System load threshold triggering ultra-fast prefix-only local fallback."
+        },
+        "vitte.suggestions.lintGuard": {
+          "type": "boolean",
+          "default": true,
+          "description": "When the current line has diagnostics errors, filter risky completion entries (snippet/multiline/non-prefix)."
+        },
+        "vitte.suggestions.diagnosticContextFilterEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Filter suggestions using diagnostic message context on the current line."
+        },
+        "vitte.suggestions.diagnosticContextMinTokenLen": {
+          "type": "number",
+          "default": 4,
+          "minimum": 2,
+          "maximum": 12,
+          "description": "Minimum token length extracted from diagnostics for context-based suggestion filtering."
+        },
+        "vitte.suggestions.securityGuardEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable security guard filtering for risky completion patterns."
+        },
+        "vitte.suggestions.securityBlockedPatterns": {
+          "type": "array",
+          "default": [
+            "eval\\s*\\(",
+            "exec\\s*\\(",
+            "rm\\s+-rf",
+            "curl\\s+.+\\|\\s*sh",
+            "password\\s*="
+          ],
+          "description": "Regex patterns (case-insensitive) blocked by the completion security guard.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vitte.suggestions.workspaceWhitelistPatterns": {
+          "type": "array",
+          "default": [],
+          "description": "If non-empty, only suggestions matching at least one regex pattern (case-insensitive) are kept.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vitte.suggestions.workspaceBlacklistPatterns": {
+          "type": "array",
+          "default": [],
+          "description": "Suggestions matching any of these regex patterns (case-insensitive) are removed.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vitte.suggestions.intentMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "code",
+            "test",
+            "refactor",
+            "docs",
+            "terminal"
+          ],
+          "default": "auto",
+          "description": "Suggestion intent mode used to reweight completion ranking."
+        },
+        "vitte.suggestions.stickyTopEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Boost recently accepted suggestions for the current document near the top of the list."
+        },
+        "vitte.suggestions.stickyTopCount": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "maximum": 32,
+          "description": "Number of recently accepted labels (per document) considered for sticky-top boosting."
+        },
+        "vitte.suggestions.cachePrefixTtlMs": {
+          "type": "number",
+          "default": 1500,
+          "minimum": 100,
+          "maximum": 15000,
+          "description": "TTL (ms) for exact prefix-level completion cache."
+        },
+        "vitte.suggestions.cacheContextTtlMs": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 100,
+          "maximum": 30000,
+          "description": "TTL (ms) for line-context completion cache."
+        },
+        "vitte.suggestions.cacheDocumentTtlMs": {
+          "type": "number",
+          "default": 12000,
+          "minimum": 500,
+          "maximum": 120000,
+          "description": "TTL (ms) for document-level completion cache."
+        },
+        "vitte.suggestions.cacheMaxEntries": {
+          "type": "number",
+          "default": 1200,
+          "minimum": 32,
+          "maximum": 5000,
+          "description": "Maximum number of entries per completion cache map (LRU)."
+        },
+        "vitte.suggestions.cacheSoftMemoryMb": {
+          "type": "number",
+          "default": 1536,
+          "minimum": 128,
+          "maximum": 8192,
+          "description": "Soft memory threshold (MB). When exceeded, caches are trimmed progressively."
+        },
+        "vitte.suggestions.idlePrefetch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prefetch completions around the cursor while idle to warm caches."
+        },
+        "vitte.suggestions.prefetchDirectional": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prioritize directional prefetch around cursor instead of symmetric line scan."
+        },
+        "vitte.suggestions.prefetchDirection": {
+          "type": "string",
+          "enum": [
+            "forward",
+            "backward"
+          ],
+          "default": "forward",
+          "description": "Direction preference for directional idle prefetch."
+        },
+        "vitte.suggestions.prefetchLineRadius": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "maximum": 6,
+          "description": "Idle prefetch radius around active line (line +/- N)."
+        },
+        "vitte.suggestions.pagination": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable paged completion budgeting with progressive load on repeated invoke."
+        },
+        "vitte.suggestions.pageSize": {
+          "type": "number",
+          "default": 20,
+          "minimum": 5,
+          "maximum": 200,
+          "description": "Number of completion items returned per page."
+        },
+        "vitte.suggestions.maxPages": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum page escalation for the same completion request key."
+        },
+        "vitte.suggestions.pageResetMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 500,
+          "maximum": 30000,
+          "description": "Reset paging state when repeated invoke happens after this delay (ms)."
+        },
+        "vitte.suggestions.ghostTextTop1Stable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable ghost text preview from top-1 suggestion when it remains stable across refreshes."
+        },
+        "vitte.suggestions.ghostTextStableThreshold": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Number of consecutive stable top-1 observations before ghost text is shown."
+        },
+        "vitte.suggestions.ghostTextMaxAgeMs": {
+          "type": "number",
+          "default": 2500,
+          "minimum": 200,
+          "maximum": 10000,
+          "description": "Maximum age (ms) of a stable top-1 candidate kept for ghost text preview."
         },
         "vitte.features.hover": {
           "type": "boolean",
@@ -822,6 +1532,68 @@
           "type": "boolean",
           "default": true,
           "description": "Enable lint diagnostics."
+        },
+        "vitte.features.inlayHints": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inlay hints (inferred types, parameters, aliases)."
+        },
+        "vitte.requestTimeouts.inlayHints": {
+          "type": "number",
+          "default": 600,
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Timeout (ms) for inlay hints."
+        },
+        "vitte.inlayHints.parameterHints": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Show parameter inlay hints."
+        },
+        "vitte.inlayHints.typeHints": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Show inferred type inlay hints."
+        },
+        "vitte.inlayHints.returnHints": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Show inferred return inlay hints."
+        },
+        "vitte.inlayHints.aliasHints": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Show suggested alias inlay hints for imports."
+        },
+        "vitte.diagnosticsBudget.maxLatencyMs": {
+          "type": "number",
+          "default": 900,
+          "minimum": 50,
+          "maximum": 10000,
+          "description": "Workspace diagnostics latency budget (ms)."
+        },
+        "vitte.diagnosticsBudget.maxMemoryMb": {
+          "type": "number",
+          "default": 1024,
+          "minimum": 128,
+          "maximum": 8192,
+          "description": "Workspace diagnostics memory budget (MB)."
+        },
+        "vitte.diagnosticsBudget.dynamicThrottleFactor": {
+          "type": "number",
+          "default": 1.5,
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Dynamic throttle multiplier when budget is exceeded."
+        },
+        "vitte.format.onSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run Vitte document formatter automatically after saving Vitte/Vit files."
         },
         "vitte.debug.program": {
           "type": "string",
@@ -1109,6 +1881,8 @@
     "publish": "vsce publish",
     "prepack": "npm run build",
     "vscode:prepublish": "npm run build",
+    "test:perf-gate": "npm run build && node ./out/test/runTest.js --grep \"Performance Gate\"",
+    "ci:release-gate": "node ./scripts/release-gate.mjs",
     "clean": "rimraf node_modules package-lock.json dist && npm ci",
     "audit:fix": "npm audit fix",
     "test": "npm run build && node ./out/test/runTest.js"

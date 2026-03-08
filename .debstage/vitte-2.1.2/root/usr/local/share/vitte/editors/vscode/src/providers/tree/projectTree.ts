@@ -25,7 +25,7 @@ function readWorkspaceRoot(): vscode.Uri | undefined {
 
 async function findOne(glob: string): Promise<vscode.Uri | undefined> {
   const list = await vscode.workspace.findFiles(glob, '**/node_modules/**', 1);
-  return list[0];
+  return Array.isArray(list) ? list[0] : undefined;
 }
 
 async function findMany(glob: string, limit = 50): Promise<vscode.Uri[]> {

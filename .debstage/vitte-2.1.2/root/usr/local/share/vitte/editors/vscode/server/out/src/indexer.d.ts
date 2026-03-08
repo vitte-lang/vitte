@@ -31,6 +31,7 @@ export interface IndexSnapshot {
     version: number;
     entries: {
         uri: string;
+        hash: number;
         symbols: IndexedSymbol[];
     }[];
 }

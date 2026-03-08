@@ -5,6 +5,10 @@ package vitte/ffi
 
 space vitte/ffi
 
+use vitte/ffi/internal/runtime as ffi_runtime_pkg
+use vitte/ffi/internal/validate as ffi_validate_pkg
+use vitte/ffi/internal/policy as ffi_policy_pkg
+
 
 form ForeignSymbol {
   lib: string
@@ -61,10 +65,84 @@ proc package_meta() -> string {
   give "vitte/ffi"
 }
 
+form FfiConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick FfiError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick FfiResult[T] {
+  Ok(value: T)
+  Err(error: FfiError)
+}
+
+proc default_config() -> FfiConfig {
+  give FfiConfig(true, ffi_policy_pkg.default_timeout_ms(), ffi_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: FfiConfig) -> FfiResult[bool] {
+  if ffi_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give FfiResult.Err(FfiError.InvalidConfig)
+  }
+  if ffi_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give FfiResult.Err(FfiError.InvalidConfig)
+  }
+  give FfiResult.Ok(true)
+}
+
+proc healthcheck(cfg: FfiConfig) -> FfiResult[bool] {
+  let vr: FfiResult[bool] = validate_config(cfg)
+  when vr is FfiResult.Err {
+    give FfiResult.Err(vr.error)
+  }
+  if ffi_runtime_pkg.runtime_status() == false {
+    give FfiResult.Err(FfiError.Internal)
+  }
+  give FfiResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-FFI0001" {
+    give "invalid package configuration"
+  }
+  give "ffi diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
 <<< ROLE-CONTRACT
 package: vitte/ffi
 role: Pont fonctions natives et signatures
 input_contract: Definitions ABI explicites
 output_contract: Symboles FFI validables
 boundary: N execute pas de code natif directement
+
+owner: @vitte/ffi
+stability: stable
+since: 3.0.0
+deprecated_in: -
+compat_policy: additive-only
+api_version: v1
 >>>

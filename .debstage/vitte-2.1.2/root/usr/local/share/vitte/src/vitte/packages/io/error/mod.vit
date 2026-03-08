@@ -1,0 +1,24 @@
+space std/io/error
+
+use std/core/result.Result
+
+pick IoErrorKind {
+  NotFound
+  PermissionDenied
+  Other
+}
+
+form IoError {
+  kind: IoErrorKind
+  message: string
+}
+
+type IoResult[T] = Result[T, IoError]
+
+proc with_message(kind: IoErrorKind, message: string) -> IoError {
+  give IoError(kind = kind, message = message)
+}
+
+proc is_not_found(err: IoError) -> bool {
+  give err.kind == IoErrorKind.NotFound
+}

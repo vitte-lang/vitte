@@ -136,12 +136,6 @@ const BUILTIN_ACTION_DEFS: QuickActionDefinition[] = [
     command: 'editor.action.marker.next',
   },
   {
-    id: 'docs',
-    label: '📚 Docs',
-    description: 'Open the online docs on vitte.netlify.app',
-    command: 'vitte.openDocs',
-  },
-  {
     id: 'profile',
     label: '🔁 Profile',
     description: 'Cycle dev → test → release → bench (vitte.switchProfile)',
@@ -156,27 +150,15 @@ const BUILTIN_ACTION_DEFS: QuickActionDefinition[] = [
     detail: (ctx) => `Incremental: ${ctx.buildIncremental ? 'ON' : 'OFF'}`,
   },
   {
-    id: 'docs.combo',
-    label: '📘 Docs+Play',
-    description: 'Open docs then launch the playground',
-    command: 'vitte.openDocs',
-    actions: [
-      { command: 'vitte.openDocs' },
-      { command: 'vitte.openPlayground' },
-    ],
-    detail: () => 'Docs & playground chain',
-  },
-  {
     id: 'onboarding.setup',
     label: '🚀 Setup',
-    description: 'Docs → toolchain detection → build for onboarding',
-    command: 'vitte.openDocs',
+    description: 'Toolchain detection → build for onboarding',
+    command: 'vitte.detectToolchain',
     actions: [
-      { command: 'vitte.openDocs' },
       { command: 'vitte.detectToolchain' },
       { command: 'vitte.build' },
     ],
-    detail: () => 'Guided: docs + tooling + build',
+    detail: () => 'Guided: tooling + build',
   },
 ];
 
@@ -681,6 +663,7 @@ function applyQuickActionOverrides(
 
 function getRecentCommands(context: vscode.ExtensionContext): RecentCommandEntry[] {
   const stored = context.globalState.get<RecentCommandEntry[] | string[]>(RECENT_STORAGE_KEY, []);
+  if (!Array.isArray(stored)) return [];
   if (stored.length === 0) return [];
   // Migration: older versions stored plain command strings
   if (typeof stored[0] === 'string') {

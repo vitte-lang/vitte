@@ -100,6 +100,38 @@ export function formatDocument(
   return provideFormattingEdits(doc, options);
 }
 
+export function provideRangeFormattingEdits(
+  doc: TextDocument,
+  range: Range,
+  options: ExtraFormattingOptions = {
+    tabSize: 2,
+    insertSpaces: true,
+    trimTrailingWhitespace: true,
+    insertFinalNewline: false,
+    trimFinalNewlines: false,
+    normalizeEOL: "lf",
+    maxConsecutiveBlankLines: 2,
+    ensureSpaceAroundOperators: true,
+    spaceAfterComma: true,
+    spaceAroundColon: "right",
+    normalizeQuotes: "preserve",
+    keepIndentInsideStrings: true,
+    alignInlineComments: true,
+    alignEquals: true,
+    braceStyle: "attach",
+    newlineBeforeElse: false,
+    wrapCommentsAt: 100,
+  }
+): TextEdit[] {
+  const original = doc.getText(range);
+  const lines = splitLines(original);
+  const outLines = formatLines(lines, options);
+  const text = joinWithEOL(outLines, options.normalizeEOL ?? "lf");
+  const normalizedOrig = joinWithEOL(splitLines(original), options.normalizeEOL ?? "lf");
+  if (normalizedOrig === text) return [];
+  return [TextEdit.replace(range, text)];
+}
+
 /* ============================================================================
  * Formatage par passes
  * ========================================================================== */

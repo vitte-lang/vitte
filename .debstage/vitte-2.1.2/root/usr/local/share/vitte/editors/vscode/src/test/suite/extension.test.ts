@@ -135,7 +135,7 @@ suite("Vitte extension", () => {
 
   test("Quick Actions exécutent la séquence d’onboarding", async () => {
     const runOrder: string[] = [];
-    const tracked = new Set(["vitte.openDocs", "vitte.detectToolchain", "vitte.build"]);
+    const tracked = new Set(["vitte.detectToolchain", "vitte.build"]);
     const commandsAny = vscode.commands as unknown as {
       executeCommand: (command: string, ...rest: unknown[]) => Thenable<unknown>;
     };
@@ -174,7 +174,7 @@ suite("Vitte extension", () => {
 
       assert.deepEqual(
         runOrder,
-        ["vitte.openDocs", "vitte.detectToolchain", "vitte.build"],
+        ["vitte.detectToolchain", "vitte.build"],
         "La séquence Run setup n’a pas déclenché tous les sous-commandes"
       );
     } finally {

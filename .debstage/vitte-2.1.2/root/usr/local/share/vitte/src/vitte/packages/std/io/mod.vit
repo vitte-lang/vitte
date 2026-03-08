@@ -2,10 +2,91 @@
 mod.vit
 package vitte/std/io
 >>>
-# IO layer entrypoints (façade only)
 
 space vitte/std/io
+
+use vitte/std/io/internal/runtime as std_io_runtime_pkg
+use vitte/std/io/internal/validate as std_io_validate_pkg
+use vitte/std/io/internal/policy as std_io_policy_pkg
+
+form StdIoConfig {
+  text_mode: bool
+  buffer_size: int
+  strict: bool
+}
+
+pick StdIoError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick StdIoResult[T] {
+  Ok(value: T)
+  Err(error: StdIoError)
+}
+
+proc default_config() -> StdIoConfig {
+  give StdIoConfig(true, std_io_policy_pkg.default_buffer_size(), true)
+}
+
+proc validate_config(cfg: StdIoConfig) -> StdIoResult[bool] {
+  if std_io_validate_pkg.valid_buffer_size(cfg.buffer_size) == false {
+    give StdIoResult.Err(StdIoError.InvalidConfig)
+  }
+  give StdIoResult.Ok(true)
+}
+
+proc healthcheck(cfg: StdIoConfig) -> StdIoResult[bool] {
+  let vr: StdIoResult[bool] = validate_config(cfg)
+  when vr is StdIoResult.Err { give StdIoResult.Err(vr.error) }
+  if std_io_runtime_pkg.runtime_status() == false {
+    give StdIoResult.Err(StdIoError.Internal)
+  }
+  give StdIoResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["buffered", "text-mode", "strict-io"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-STDIO0001" { give "invalid std/io configuration" }
+  give "std/io diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-STDIO0001" { give "use a positive buffer_size" }
+  give "review std/io configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
 
 proc package_meta() -> string {
   give "vitte/std/io"
 }
+
+proc ready() -> bool {
+  give true
+}
+
+<<< ROLE-CONTRACT
+package: vitte/std/io
+owner: @vitte/std
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: Facade IO standard lisible et stable
+input_contract: Config IO explicite
+output_contract: Resultats stables pour usages std
+boundary: Facade pure; details runtime sous internal/*
+compat_policy: additive-only
+api_version: v1
+>>>

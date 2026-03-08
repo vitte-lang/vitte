@@ -80,7 +80,7 @@ async function benchBin() {
 async function readProjectConfig() {
     try {
         const files = await vscode.workspace.findFiles('vitte.config.json', '**/node_modules/**', 1);
-        const uri = files[0];
+        const uri = Array.isArray(files) ? files[0] : undefined;
         if (!uri)
             return undefined;
         const doc = await vscode.workspace.openTextDocument(uri);
@@ -173,7 +173,7 @@ async function openLatestReport() {
         if (!dir)
             return;
         const files = await vscode.workspace.findFiles(new vscode.RelativePattern(dir, '*.{html,svg}'));
-        if (files.length === 0) {
+        if (!Array.isArray(files) || files.length === 0) {
             void vscode.window.showInformationMessage('Vitte Bench: aucun rapport HTML/SVG trouvé.');
             return;
         }

@@ -1,0 +1,96 @@
+<<<
+mod.vit
+package vitte/arduino/i2c
+>>>
+
+space vitte/arduino/i2c
+
+use vitte/arduino as arduino_pkg
+use vitte/arduino/i2c/internal/runtime as i2c_runtime_pkg
+use vitte/arduino/i2c/internal/validate as i2c_validate_pkg
+use vitte/arduino/i2c/internal/policy as i2c_policy_pkg
+
+form I2cConfig {
+  profile: arduino_pkg.ArduinoProfile
+  timeout_ms: arduino_pkg.Millis
+  retry_budget: int
+}
+
+form I2cBusState {
+  cfg: I2cConfig
+  opened: bool
+  tx_count: int
+  rx_count: int
+  timeout_count: int
+  error_count: int
+}
+
+proc i2c_default_config() -> I2cConfig {
+  give I2cConfig(arduino_pkg.default_profile(), i2c_policy_pkg.default_timeout_ms(), i2c_policy_pkg.default_retry_budget())
+}
+
+proc i2c_with_timeout(cfg: I2cConfig, timeout_ms: arduino_pkg.Millis) -> I2cConfig {
+  give I2cConfig(cfg.profile, timeout_ms, cfg.retry_budget)
+}
+
+proc i2c_with_retry_budget(cfg: I2cConfig, retry_budget: int) -> I2cConfig {
+  give I2cConfig(cfg.profile, cfg.timeout_ms, retry_budget)
+}
+
+proc i2c_open(cfg: I2cConfig) -> I2cBusState {
+  give I2cBusState(cfg, true, 0, 0, 0, 0)
+}
+
+proc i2c_close(st: I2cBusState) -> I2cBusState {
+  give I2cBusState(st.cfg, false, st.tx_count, st.rx_count, st.timeout_count, st.error_count)
+}
+
+proc i2c_write_register(st: I2cBusState, addr: arduino_pkg.Address7, reg: arduino_pkg.Register, value: int) -> arduino_pkg.ArduinoResult[I2cBusState] {
+  if i2c_validate_pkg.valid_address(addr) == false {
+    give arduino_pkg.err[I2cBusState](arduino_pkg.ArduinoError.InvalidAddress)
+  }
+  let status: int = i2c_runtime_pkg.runtime_write(addr, reg, value)
+  if status != 0 {
+    give arduino_pkg.err[I2cBusState](arduino_pkg.ArduinoError.BusBusy)
+  }
+  give arduino_pkg.ok[I2cBusState](I2cBusState(st.cfg, st.opened, st.tx_count + 1, st.rx_count, st.timeout_count, st.error_count))
+}
+
+proc i2c_read_register(st: I2cBusState, addr: arduino_pkg.Address7, reg: arduino_pkg.Register) -> arduino_pkg.ArduinoResult[int] {
+  let _ = st
+  if i2c_validate_pkg.valid_address(addr) == false {
+    give arduino_pkg.err[int](arduino_pkg.ArduinoError.InvalidAddress)
+  }
+  give arduino_pkg.ok[int](i2c_runtime_pkg.runtime_read(addr, reg))
+}
+
+# Compatibility wrappers
+proc begin() -> int { give 0 }
+proc begin_transmission(addr: int) -> int {
+  let _ = addr
+  give 0
+}
+proc end_transmission() -> int { give 0 }
+proc request_from(addr: int, count: int) -> int {
+  let _ = addr
+  let _ = count
+  give 0
+}
+proc read() -> int { give 0 }
+proc write(byte: int) -> int {
+  let _ = byte
+  give 1
+}
+
+<<< ROLE-CONTRACT
+package: vitte/arduino/i2c
+owner: @vitte/arduino
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: I2C facade avec timeouts et validation d adresses
+input_contract: Address7 register timeout explicites
+output_contract: ArduinoResult + erreurs actionnables VITTE-Axxxx
+boundary: Aucun acces direct hardware hors internal/runtime
+compat_policy: additive-only
+>>>

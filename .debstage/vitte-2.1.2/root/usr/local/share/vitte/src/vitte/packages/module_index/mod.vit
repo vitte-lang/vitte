@@ -5,18 +5,90 @@ package vitte/module_index
 
 space vitte/module_index
 
+use vitte/module_index/internal/runtime as module_index_runtime_pkg
+use vitte/module_index/internal/validate as module_index_validate_pkg
+use vitte/module_index/internal/policy as module_index_policy_pkg
+
+form ModuleIndexConfig {
+  root_module: string
+  strict: bool
+  max_nodes: int
+}
+
+pick ModuleIndexError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick ModuleIndexResult[T] {
+  Ok(value: T)
+  Err(error: ModuleIndexError)
+}
+
+proc default_config() -> ModuleIndexConfig {
+  give ModuleIndexConfig("__root__", true, module_index_policy_pkg.default_max_nodes())
+}
+
+proc validate_config(cfg: ModuleIndexConfig) -> ModuleIndexResult[bool] {
+  if module_index_validate_pkg.valid_root_module(cfg.root_module) == false {
+    give ModuleIndexResult.Err(ModuleIndexError.InvalidConfig)
+  }
+  if module_index_validate_pkg.valid_max_nodes(cfg.max_nodes) == false {
+    give ModuleIndexResult.Err(ModuleIndexError.InvalidConfig)
+  }
+  give ModuleIndexResult.Ok(true)
+}
+
+proc healthcheck(cfg: ModuleIndexConfig) -> ModuleIndexResult[bool] {
+  let _ = cfg
+  if module_index_runtime_pkg.runtime_status() == false {
+    give ModuleIndexResult.Err(ModuleIndexError.Internal)
+  }
+  give ModuleIndexResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["graph", "index", "strict-imports"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-MIDX0001" { give "invalid module index configuration" }
+  give "module_index diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-MIDX0001" { give "set root_module and max_nodes to valid values" }
+  give "review module_index configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/module_index"
+}
+
+proc ready() -> bool {
+  give true
+}
+
 <<< ROLE-CONTRACT
 package: vitte/module_index
 owner: @vitte/platform
 stability: stable
 since: 3.0.0
 deprecated_in: -
-role: Module public vitte/module_index
-input_contract: Entrees explicites et typables
-output_contract: Sorties stables et predictibles
+role: Index stable des modules et capabilities associees
+input_contract: Config explicite et typable
+output_contract: Resultats stables et predictibles
 boundary: Aucun import legacy; aliases explicites uniquement
+compat_policy: additive-only
+api_version: v1
 >>>
-
-proc ready() -> bool {
-  give true
-}

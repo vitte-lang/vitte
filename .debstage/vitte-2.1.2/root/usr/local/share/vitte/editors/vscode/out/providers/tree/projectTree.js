@@ -51,7 +51,7 @@ function readWorkspaceRoot() {
 }
 async function findOne(glob) {
     const list = await vscode.workspace.findFiles(glob, '**/node_modules/**', 1);
-    return list[0];
+    return Array.isArray(list) ? list[0] : undefined;
 }
 async function findMany(glob, limit = 50) {
     return vscode.workspace.findFiles(glob, '**/node_modules/**', limit);

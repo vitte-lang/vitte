@@ -2,10 +2,91 @@
 mod.vit
 package vitte/std/async
 >>>
-# ASYNC layer entrypoints (façade only)
 
 space vitte/std/async
+
+use vitte/std/async/internal/runtime as std_async_runtime_pkg
+use vitte/std/async/internal/validate as std_async_validate_pkg
+use vitte/std/async/internal/policy as std_async_policy_pkg
+
+form StdAsyncConfig {
+  queue_depth: int
+  cooperative: bool
+  deterministic: bool
+}
+
+pick StdAsyncError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick StdAsyncResult[T] {
+  Ok(value: T)
+  Err(error: StdAsyncError)
+}
+
+proc default_config() -> StdAsyncConfig {
+  give StdAsyncConfig(std_async_policy_pkg.default_queue_depth(), true, true)
+}
+
+proc validate_config(cfg: StdAsyncConfig) -> StdAsyncResult[bool] {
+  if std_async_validate_pkg.valid_queue_depth(cfg.queue_depth) == false {
+    give StdAsyncResult.Err(StdAsyncError.InvalidConfig)
+  }
+  give StdAsyncResult.Ok(true)
+}
+
+proc healthcheck(cfg: StdAsyncConfig) -> StdAsyncResult[bool] {
+  let vr: StdAsyncResult[bool] = validate_config(cfg)
+  when vr is StdAsyncResult.Err { give StdAsyncResult.Err(vr.error) }
+  if std_async_runtime_pkg.runtime_status() == false {
+    give StdAsyncResult.Err(StdAsyncError.Internal)
+  }
+  give StdAsyncResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["queue-depth", "cooperative", "deterministic"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-STDASYNC0001" { give "invalid std/async configuration" }
+  give "std/async diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-STDASYNC0001" { give "use queue_depth in valid range" }
+  give "review std/async configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
 
 proc package_meta() -> string {
   give "vitte/std/async"
 }
+
+proc ready() -> bool {
+  give true
+}
+
+<<< ROLE-CONTRACT
+package: vitte/std/async
+owner: @vitte/std
+stability: stable
+since: 3.0.0
+deprecated_in: -
+role: Facade async standard lisible et stable
+input_contract: Config async explicite
+output_contract: Resultats stables pour usages std
+boundary: Facade pure; details runtime sous internal/*
+compat_policy: additive-only
+api_version: v1
+>>>

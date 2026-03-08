@@ -5,18 +5,91 @@ package vitte/release_guard
 
 space vitte/release_guard
 
+use vitte/release_guard/internal/runtime as release_guard_runtime_pkg
+use vitte/release_guard/internal/validate as release_guard_validate_pkg
+use vitte/release_guard/internal/policy as release_guard_policy_pkg
+
+form ReleaseGuardConfig {
+  current_version: string
+  previous_version: string
+  breaking_change: bool
+}
+
+pick ReleaseGuardError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick ReleaseGuardResult[T] {
+  Ok(value: T)
+  Err(error: ReleaseGuardError)
+}
+
+proc default_config() -> ReleaseGuardConfig {
+  give ReleaseGuardConfig("0.0.0", "0.0.0", release_guard_policy_pkg.default_breaking_policy())
+}
+
+proc validate_config(cfg: ReleaseGuardConfig) -> ReleaseGuardResult[bool] {
+  if release_guard_validate_pkg.valid_version(cfg.current_version) == false {
+    give ReleaseGuardResult.Err(ReleaseGuardError.InvalidConfig)
+  }
+  if release_guard_validate_pkg.valid_version(cfg.previous_version) == false {
+    give ReleaseGuardResult.Err(ReleaseGuardError.InvalidConfig)
+  }
+  give ReleaseGuardResult.Ok(true)
+}
+
+proc healthcheck(cfg: ReleaseGuardConfig) -> ReleaseGuardResult[bool] {
+  let vr: ReleaseGuardResult[bool] = validate_config(cfg)
+  when vr is ReleaseGuardResult.Err { give ReleaseGuardResult.Err(vr.error) }
+  if release_guard_runtime_pkg.runtime_status() == false {
+    give ReleaseGuardResult.Err(ReleaseGuardError.Internal)
+  }
+  give ReleaseGuardResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["breaking-check", "migration-gate", "semver-guard"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-RGUARD0001" { give "invalid release guard configuration" }
+  give "release_guard diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-RGUARD0001" { give "set non-empty current_version and previous_version" }
+  give "review release guard policy"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/release_guard"
+}
+
+proc ready() -> bool {
+  give true
+}
+
 <<< ROLE-CONTRACT
 package: vitte/release_guard
 owner: @vitte/platform
 stability: stable
 since: 3.0.0
 deprecated_in: -
-role: Module public vitte/release_guard
-input_contract: Entrees explicites et typables
-output_contract: Sorties stables et predictibles
+role: Garde-fous de release et compatibilite de version
+input_contract: Versions explicites et politique de rupture
+output_contract: Decision stable de validation release
 boundary: Aucun import legacy; aliases explicites uniquement
+compat_policy: additive-only
+api_version: v1
 >>>
-
-proc ready() -> bool {
-  give true
-}

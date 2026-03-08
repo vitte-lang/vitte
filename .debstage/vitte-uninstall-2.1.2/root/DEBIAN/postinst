@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() { printf "[vitte-uninstall] %s\n" "$*"; }
+
+remove_path() {
+  local p="$1"
+  if [ -e "$p" ] || [ -L "$p" ]; then
+    rm -rf "$p"
+    log "removed: $p"
+  fi
+}
+
+if command -v dpkg-query >/dev/null 2>&1; then
+  if dpkg-query -W -f='${Status}' vitte 2>/dev/null | grep -q "install ok installed"; then
+    log "purging installed package: vitte"
+    dpkg --remove --force-all vitte >/dev/null 2>&1 || true
+    dpkg --purge --force-all vitte >/dev/null 2>&1 || true
+  fi
+fi
+
+remove_path "/usr/local/bin/vitte"
+remove_path "/usr/local/bin/vittec"
+remove_path "/usr/local/bin/vitte-linker"
+remove_path "/usr/local/bin/vitte-ide"
+remove_path "/usr/local/bin/vitte-ide-gtk"
+remove_path "/usr/local/bin/vitte-editor"
+remove_path "/usr/local/libexec/vitte"
+remove_path "/usr/local/share/vitte"
+remove_path "/usr/local/share/man/man1/vitte.1"
+remove_path "/usr/local/share/man/man1/vittec.1"
+remove_path "/usr/local/share/man/man1/vitte-linker.1"
+remove_path "/usr/local/share/man/man1/vitte-editor.1"
+remove_path "/usr/local/etc/bash_completion.d/vitte"
+remove_path "/usr/local/share/zsh/site-functions/_vitte"
+remove_path "/usr/local/share/fish/vendor_completions.d/vitte.fish"
+remove_path "/usr/share/applications/vitte.desktop"
+remove_path "/usr/share/icons/hicolor/scalable/apps/vitte.svg"
+remove_path "/usr/share/pixmaps/vitte.svg"
+remove_path "/usr/share/doc/vitte"
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q /usr/share/icons/hicolor >/dev/null 2>&1 || true
+fi
+
+log "uninstall complete"
+exit 0

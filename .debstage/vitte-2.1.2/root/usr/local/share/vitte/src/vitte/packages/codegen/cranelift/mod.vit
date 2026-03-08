@@ -5,6 +5,10 @@ package vitte/codegen/cranelift
 
 space vitte/codegen/cranelift
 
+use vitte/codegen/cranelift/internal/runtime as codegen_cranelift_runtime_pkg
+use vitte/codegen/cranelift/internal/validate as codegen_cranelift_validate_pkg
+use vitte/codegen/cranelift/internal/policy as codegen_cranelift_policy_pkg
+
 
 form ClifUnit {
   clif_path: string
@@ -41,10 +45,84 @@ proc package_meta() -> string {
   give "vitte/codegen/cranelift"
 }
 
+form CodegenCraneliftConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick CodegenCraneliftError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick CodegenCraneliftResult[T] {
+  Ok(value: T)
+  Err(error: CodegenCraneliftError)
+}
+
+proc default_config() -> CodegenCraneliftConfig {
+  give CodegenCraneliftConfig(true, codegen_cranelift_policy_pkg.default_timeout_ms(), codegen_cranelift_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: CodegenCraneliftConfig) -> CodegenCraneliftResult[bool] {
+  if codegen_cranelift_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give CodegenCraneliftResult.Err(CodegenCraneliftError.InvalidConfig)
+  }
+  if codegen_cranelift_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give CodegenCraneliftResult.Err(CodegenCraneliftError.InvalidConfig)
+  }
+  give CodegenCraneliftResult.Ok(true)
+}
+
+proc healthcheck(cfg: CodegenCraneliftConfig) -> CodegenCraneliftResult[bool] {
+  let vr: CodegenCraneliftResult[bool] = validate_config(cfg)
+  when vr is CodegenCraneliftResult.Err {
+    give CodegenCraneliftResult.Err(vr.error)
+  }
+  if codegen_cranelift_runtime_pkg.runtime_status() == false {
+    give CodegenCraneliftResult.Err(CodegenCraneliftError.Internal)
+  }
+  give CodegenCraneliftResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CODEGENC0001" {
+    give "invalid package configuration"
+  }
+  give "codegen/cranelift diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
 <<< ROLE-CONTRACT
 package: vitte/codegen/cranelift
 role: Construction de commandes backend Cranelift
 input_contract: CLIF et ISA explicites
 output_contract: Commande compile deterministe
 boundary: Pas d execution backend directe
+
+owner: @vitte/cranelift
+stability: stable
+since: 3.0.0
+deprecated_in: -
+compat_policy: additive-only
+api_version: v1
 >>>

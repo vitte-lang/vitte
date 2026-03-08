@@ -216,7 +216,8 @@ function summarizeDiagnosticsByDirectory() {
             if (uri.fsPath.startsWith(root)) {
                 const p = path.relative(root, uri.fsPath);
                 const d = path.dirname(p);
-                return d === '.' ? '' : (d.split(path.sep)[0] ?? '');
+                const top = d === "." ? "" : (d.split(path.sep)[0] ?? "");
+                return `${f.name}${top ? `/${top}` : ""}`;
             }
         }
         return '';

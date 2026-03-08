@@ -48,10 +48,11 @@ type Uri = string;
 
 /** Index global: uri -> liste de symboles */
 const INDEX = new Map<Uri, IndexedSymbol[]>();
+const DOC_HASH = new Map<Uri, number>();
 
 export interface IndexSnapshot {
   version: number;
-  entries: { uri: string; symbols: IndexedSymbol[] }[];
+  entries: { uri: string; hash: number; symbols: IndexedSymbol[] }[];
 }
 
 interface DeclarationInfo {
@@ -453,28 +454,37 @@ function extract(doc: TextDocument): IndexedSymbol[] {
 
 /** Indexe un document (remplace l’entrée précédente). */
 export function indexDocument(doc: TextDocument): void {
+  const text = doc.getText();
+  const hash = fastHash(text);
+  if (DOC_HASH.get(doc.uri) === hash) return;
   INDEX.set(doc.uri, extract(doc));
+  DOC_HASH.set(doc.uri, hash);
 }
 
 /** Indexe une chaîne pour un uri donné. */
 export function indexText(uri: string, text: string): void {
+  const hash = fastHash(text);
+  if (DOC_HASH.get(uri) === hash) return;
   const doc = TextDocument.create(uri, "vitte", 0, text);
   INDEX.set(uri, extract(doc));
+  DOC_HASH.set(uri, hash);
 }
 
 /** Réindexe un document (alias plus explicite). */
 export function updateDocument(doc: TextDocument): void {
-  INDEX.set(doc.uri, extract(doc));
+  indexDocument(doc);
 }
 
 /** Supprime un document de l’index. */
 export function removeDocument(uri: string): void {
   INDEX.delete(uri);
+  DOC_HASH.delete(uri);
 }
 
 /** Vide l’index. */
 export function clearIndex(): void {
   INDEX.clear();
+  DOC_HASH.clear();
 }
 
 /** Récupère l’index brut (lecture seule). */
@@ -489,21 +499,24 @@ export function getDocumentIndex(uri: string): IndexedSymbol[] {
 
 export function exportIndexSnapshot(): IndexSnapshot {
   return {
-    version: 1,
+    version: 2,
     entries: Array.from(INDEX.entries()).map(([uri, symbols]) => ({
       uri,
+      hash: DOC_HASH.get(uri) ?? 0,
       symbols,
     })),
   };
 }
 
 export function loadIndexSnapshot(snapshot: IndexSnapshot | null | undefined): number {
-  if (!snapshot?.entries || snapshot.version !== 1 || !Array.isArray(snapshot.entries)) return 0;
+  if (!snapshot?.entries || snapshot.version !== 2 || !Array.isArray(snapshot.entries)) return 0;
   INDEX.clear();
+  DOC_HASH.clear();
   let count = 0;
   for (const entry of snapshot.entries) {
     if (!entry || typeof entry.uri !== "string" || !Array.isArray(entry.symbols)) continue;
     INDEX.set(entry.uri, entry.symbols);
+    DOC_HASH.set(entry.uri, Number.isFinite(entry.hash) ? entry.hash : 0);
     count += 1;
   }
   return count;
@@ -803,4 +816,13 @@ function isIdentifierStart(ch: string | undefined): boolean {
 function isIdentifierPart(ch: string | undefined): boolean {
   if (!ch) return false;
   return /[A-Za-z0-9_]/.test(ch);
+}
+
+function fastHash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
 }

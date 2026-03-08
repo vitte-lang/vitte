@@ -35,9 +35,11 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerMetricsView = registerMetricsView;
 const vscode = __importStar(require("vscode"));
+const diagnostics_1 = require("../utils/diagnostics");
 class VitteMetricsProvider {
-    constructor(getClient) {
+    constructor(getClient, getStreamingStats) {
         this.getClient = getClient;
+        this.getStreamingStats = getStreamingStats;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
         this.metrics = [];
@@ -167,6 +169,10 @@ class VitteMetricsProvider {
     }
     getMetricsNodes() {
         const nodes = [];
+        const cfg = vscode.workspace.getConfiguration("vitte");
+        const budgetLatency = Number(cfg.get("diagnosticsBudget.maxLatencyMs", 900));
+        const budgetMemory = Number(cfg.get("diagnosticsBudget.maxMemoryMb", 1024));
+        const budgetThrottle = Number(cfg.get("diagnosticsBudget.dynamicThrottleFactor", 1.5));
         const totalCalls = this.metrics.reduce((sum, entry) => sum + entry.count, 0);
         const weightedAvg = totalCalls > 0
             ? this.metrics.reduce((sum, entry) => sum + entry.averageMs * entry.count, 0) / totalCalls
@@ -182,6 +188,81 @@ class VitteMetricsProvider {
             message: "Summary",
             icon: new vscode.ThemeIcon("dashboard"),
             context: "summary.header",
+        });
+        const d = (0, diagnostics_1.summarizeWorkspaceDiagnostics)();
+        const now = Date.now();
+        const lintMetric = this.metrics.find((m) => m.name === "lint");
+        const stale = !!lintMetric && (now - lintMetric.lastAt > 10 * 60 * 1000);
+        const completionP95 = this.metrics.find((m) => m.name === "completion")?.p95Ms
+            ?? this.metrics.find((m) => m.name === "completion")?.averageMs
+            ?? 0;
+        const totalErrors = this.metrics.reduce((acc, m) => acc + (m.errorCount ?? 0), 0);
+        const health = computeHealthScore({
+            errors: d.errors,
+            warnings: d.warnings,
+            p95: completionP95,
+            rssMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+            stale,
+            crashCount: totalErrors,
+        });
+        nodes.push({
+            placeholder: true,
+            message: "Workspace Health Score",
+            description: `${health}/100`,
+            icon: health >= 80 ? new vscode.ThemeIcon("pass-filled") : health >= 60 ? new vscode.ThemeIcon("warning") : new vscode.ThemeIcon("error"),
+            context: "summary.health",
+        });
+        const rssMb = Math.round(process.memoryUsage().rss / (1024 * 1024));
+        const slowAvg = slowestAvg.averageMs;
+        const overLatency = slowAvg > budgetLatency;
+        const overMemory = rssMb > budgetMemory;
+        const throttleSuggest = overLatency || overMemory ? Math.min(4, Math.max(1, (slowAvg / Math.max(1, budgetLatency)) * budgetThrottle)) : 1;
+        nodes.push({
+            placeholder: true,
+            message: "Diagnostics budget",
+            description: overLatency || overMemory ? "over budget" : "within budget",
+            icon: overLatency || overMemory ? new vscode.ThemeIcon("warning") : new vscode.ThemeIcon("pass-filled"),
+            context: "summary.budget",
+        });
+        nodes.push({
+            placeholder: true,
+            message: "Budget latency",
+            description: `${slowAvg.toFixed(1)} / ${budgetLatency} ms`,
+            icon: overLatency ? new vscode.ThemeIcon("warning") : new vscode.ThemeIcon("clock"),
+            context: "summary.budget.latency",
+        });
+        nodes.push({
+            placeholder: true,
+            message: "Budget memory",
+            description: `${rssMb} / ${budgetMemory} MB`,
+            icon: overMemory ? new vscode.ThemeIcon("warning") : new vscode.ThemeIcon("server"),
+            context: "summary.budget.memory",
+        });
+        nodes.push({
+            placeholder: true,
+            message: "Dynamic throttle",
+            description: `${throttleSuggest.toFixed(2)}x`,
+            icon: new vscode.ThemeIcon("pulse"),
+            context: "summary.budget.throttle",
+        });
+        const noisy = (0, diagnostics_1.summarizeDiagnosticsByDirectory)().slice(0, 10);
+        nodes.push({
+            placeholder: true,
+            message: "Top 10 noisy modules",
+            description: noisy.length ? noisy.map((n) => `${n.dir}:${n.errors}/${n.warnings}`).join(" | ").slice(0, 180) : "none",
+            icon: new vscode.ThemeIcon("symbol-namespace"),
+            context: "summary.noisy",
+        });
+        const slowFeatures = [...this.metrics]
+            .sort((a, b) => (b.p95Ms ?? b.averageMs) - (a.p95Ms ?? a.averageMs))
+            .slice(0, 10)
+            .map((m) => `${m.name}:${(m.p95Ms ?? m.averageMs).toFixed(1)}ms`);
+        nodes.push({
+            placeholder: true,
+            message: "Top 10 slow files/features",
+            description: slowFeatures.join(" | ").slice(0, 180) || "none",
+            icon: new vscode.ThemeIcon("symbol-file"),
+            context: "summary.slowfiles",
         });
         nodes.push({
             placeholder: true,
@@ -239,6 +320,141 @@ class VitteMetricsProvider {
             command: { command: "vitte.metrics.reset", title: "Reset metrics" },
             context: "summary.reset",
         });
+        const streaming = this.getStreamingStats?.();
+        if (streaming) {
+            nodes.push({
+                placeholder: true,
+                message: "Streaming Completion",
+                icon: new vscode.ThemeIcon("radio-tower"),
+                context: "streaming.header",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "First paint p50 / p95",
+                description: `${streaming.firstPaintP50Ms.toFixed(1)} / ${streaming.firstPaintP95Ms.toFixed(1)} ms`,
+                icon: new vscode.ThemeIcon("clock"),
+                context: "streaming.firstpaint",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Enrich p50 / p95",
+                description: `${streaming.enrichP50Ms.toFixed(1)} / ${streaming.enrichP95Ms.toFixed(1)} ms`,
+                icon: new vscode.ThemeIcon("pulse"),
+                context: "streaming.enrich",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "TTFS p50 / p95",
+                description: `${streaming.ttfsP50Ms.toFixed(1)} / ${streaming.ttfsP95Ms.toFixed(1)} ms`,
+                icon: new vscode.ThemeIcon("dashboard"),
+                context: "streaming.ttfs",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Enrich delta p50 / p95",
+                description: `${streaming.enrichDeltaP50Ms.toFixed(1)} / ${streaming.enrichDeltaP95Ms.toFixed(1)} ms`,
+                icon: new vscode.ThemeIcon("pulse"),
+                context: "streaming.delta",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Suggest auto-refresh count",
+                description: `${streaming.refreshCount}`,
+                icon: new vscode.ThemeIcon("refresh"),
+                context: "streaming.refresh",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Refresh causes (manual/incomplete/richer)",
+                description: `${streaming.refreshManualCount} / ${streaming.refreshIncompleteCount} / ${streaming.refreshRicherCount}`,
+                icon: new vscode.ThemeIcon("list-selection"),
+                context: "streaming.refresh.causes",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Streaming timeout count / rate",
+                description: `${streaming.timeoutCount}/${streaming.totalCount} (${(streaming.timeoutRate * 100).toFixed(1)}%)`,
+                icon: new vscode.ThemeIcon(streaming.timeoutRate > 0.25 ? "warning" : "pass-filled"),
+                context: "streaming.timeout",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Acceptance / cancel rate",
+                description: `${(streaming.acceptanceRate * 100).toFixed(1)}% / ${(streaming.cancelRate * 100).toFixed(1)}%`,
+                icon: new vscode.ThemeIcon("checklist"),
+                context: "streaming.accept.cancel",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Acceptance by source",
+                description: streaming.acceptanceBySource.slice(0, 220),
+                icon: new vscode.ThemeIcon("symbol-key"),
+                context: "streaming.accept.source",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Cache hit / prefetch hit",
+                description: `${(streaming.cacheHitRate * 100).toFixed(1)}% / ${(streaming.prefetchHitRate * 100).toFixed(1)}%`,
+                icon: new vscode.ThemeIcon("database"),
+                context: "streaming.cache.hit",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Cold start count (p50/p95)",
+                description: `${streaming.coldStartCount} (${streaming.coldStartP50Ms.toFixed(1)} / ${streaming.coldStartP95Ms.toFixed(1)} ms)`,
+                icon: new vscode.ThemeIcon("rocket"),
+                context: "streaming.coldstart",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Stable list p50 / p95",
+                description: `${streaming.stableListP50Ms.toFixed(1)} / ${streaming.stableListP95Ms.toFixed(1)} ms`,
+                icon: new vscode.ThemeIcon("check"),
+                context: "streaming.stable",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "First usable p50 / p95",
+                description: `${streaming.firstUsableP50Ms.toFixed(1)} / ${streaming.firstUsableP95Ms.toFixed(1)} ms`,
+                icon: new vscode.ThemeIcon("run"),
+                context: "streaming.usable",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "No-refresh strict p50 / p95",
+                description: `${streaming.noRefreshStrictP50Ms.toFixed(1)} / ${streaming.noRefreshStrictP95Ms.toFixed(1)} ms`,
+                icon: new vscode.ThemeIcon("pass"),
+                context: "streaming.stable.strict",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Fallback causes (timeout/neg/offline/cancel)",
+                description: `${streaming.fallbackTimeoutCount} / ${streaming.fallbackNegativeCacheCount} / ${streaming.fallbackOfflineCount} / ${streaming.fallbackCancelCount}`,
+                icon: new vscode.ThemeIcon("graph-line"),
+                context: "streaming.fallback.causes",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Shadow agreement p50 / p95",
+                description: `${(streaming.shadowAgreementP50 * 100).toFixed(1)}% / ${(streaming.shadowAgreementP95 * 100).toFixed(1)}%`,
+                icon: new vscode.ThemeIcon("compare-changes"),
+                context: "streaming.shadow.agreement",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Shadow drift p50 / p95",
+                description: `${streaming.shadowDriftP50.toFixed(2)} / ${streaming.shadowDriftP95.toFixed(2)}`,
+                icon: new vscode.ThemeIcon("list-ordered"),
+                context: "streaming.shadow.drift",
+            });
+            nodes.push({
+                placeholder: true,
+                message: "Cache evictions",
+                description: `${streaming.cacheEvictions}`,
+                icon: new vscode.ThemeIcon("trash"),
+                context: "streaming.cache.evict",
+            });
+        }
         const sorted = [...this.metrics].sort((a, b) => b.averageMs - a.averageMs);
         return [...nodes, ...sorted];
     }
@@ -246,8 +462,19 @@ class VitteMetricsProvider {
 function isPlaceholder(node) {
     return node.placeholder === true;
 }
-function registerMetricsView(context, getClient) {
-    const provider = new VitteMetricsProvider(getClient);
+function computeHealthScore(input) {
+    let score = 100;
+    score -= Math.min(60, input.errors * 8);
+    score -= Math.min(20, input.warnings * 2);
+    score -= Math.min(20, Math.max(0, (input.p95 - 250) / 30));
+    score -= Math.min(15, Math.max(0, (input.rssMb - 600) / 40));
+    if (input.stale)
+        score -= 8;
+    score -= Math.min(15, input.crashCount);
+    return Math.max(0, Math.min(100, Math.round(score)));
+}
+function registerMetricsView(context, getClient, getStreamingStats) {
+    const provider = new VitteMetricsProvider(getClient, getStreamingStats);
     const treeView = vscode.window.createTreeView("vitteMetrics", { treeDataProvider: provider });
     context.subscriptions.push(treeView);
     context.subscriptions.push(provider);

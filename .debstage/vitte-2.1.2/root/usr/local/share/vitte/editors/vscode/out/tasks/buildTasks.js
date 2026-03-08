@@ -76,7 +76,7 @@ function registerBuildTasks(ctx) {
 async function readProjectConfig() {
     try {
         const files = await vscode.workspace.findFiles('vitte.config.json', '**/node_modules/**', 1);
-        const first = files[0];
+        const first = Array.isArray(files) ? files[0] : undefined;
         if (!first)
             return undefined;
         const doc = await vscode.workspace.openTextDocument(first);

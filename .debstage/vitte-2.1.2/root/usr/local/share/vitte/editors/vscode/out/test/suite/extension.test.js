@@ -129,7 +129,7 @@ suite("Vitte extension", () => {
     });
     test("Quick Actions exécutent la séquence d’onboarding", async () => {
         const runOrder = [];
-        const tracked = new Set(["vitte.openDocs", "vitte.detectToolchain", "vitte.build"]);
+        const tracked = new Set(["vitte.detectToolchain", "vitte.build"]);
         const commandsAny = vscode.commands;
         const originalExecuteCommand = commandsAny.executeCommand.bind(vscode.commands);
         commandsAny.executeCommand = (command, ...rest) => {
@@ -155,7 +155,7 @@ suite("Vitte extension", () => {
             quickPick.selectedItems = [target];
             quickPick.fireAccept();
             await commandPromise;
-            assert.deepEqual(runOrder, ["vitte.openDocs", "vitte.detectToolchain", "vitte.build"], "La séquence Run setup n’a pas déclenché tous les sous-commandes");
+            assert.deepEqual(runOrder, ["vitte.detectToolchain", "vitte.build"], "La séquence Run setup n’a pas déclenché tous les sous-commandes");
         }
         finally {
             windowAny.createQuickPick = originalCreateQuickPick;

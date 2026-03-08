@@ -5,6 +5,10 @@ package vitte/plot
 
 space vitte/plot
 
+use vitte/plot/internal/runtime as plot_runtime_pkg
+use vitte/plot/internal/validate as plot_validate_pkg
+use vitte/plot/internal/policy as plot_policy_pkg
+
 
 form Point {
   x: int
@@ -56,10 +60,84 @@ proc package_meta() -> string {
   give "vitte/plot"
 }
 
+form PlotConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick PlotError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick PlotResult[T] {
+  Ok(value: T)
+  Err(error: PlotError)
+}
+
+proc default_config() -> PlotConfig {
+  give PlotConfig(true, plot_policy_pkg.default_timeout_ms(), plot_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: PlotConfig) -> PlotResult[bool] {
+  if plot_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give PlotResult.Err(PlotError.InvalidConfig)
+  }
+  if plot_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give PlotResult.Err(PlotError.InvalidConfig)
+  }
+  give PlotResult.Ok(true)
+}
+
+proc healthcheck(cfg: PlotConfig) -> PlotResult[bool] {
+  let vr: PlotResult[bool] = validate_config(cfg)
+  when vr is PlotResult.Err {
+    give PlotResult.Err(vr.error)
+  }
+  if plot_runtime_pkg.runtime_status() == false {
+    give PlotResult.Err(PlotError.Internal)
+  }
+  give PlotResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-PLOT0001" {
+    give "invalid package configuration"
+  }
+  give "plot diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://docs.vitte.dev/diagnostics/" + code
+}
+
 <<< ROLE-CONTRACT
 package: vitte/plot
 role: Primitives de visualisation de series numeriques
 input_contract: Points numeriques deja valides
 output_contract: Structures plottables deterministes
 boundary: Ne rend pas UI directe
+
+owner: @vitte/plot
+stability: stable
+since: 3.0.0
+deprecated_in: -
+compat_policy: additive-only
+api_version: v1
 >>>

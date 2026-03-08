@@ -12,18 +12,42 @@
     { "open": "{", "close": "}" },
     { "open": "[", "close": "]" },
     { "open": "(", "close": ")" },
+    { "open": "<<<", "close": ">>>" },
     { "open": "\"", "close": "\"", "notIn": ["string", "comment"] }
   ],
   "surroundingPairs": [
     { "open": "{", "close": "}" },
     { "open": "[", "close": "]" },
     { "open": "(", "close": ")" },
+    { "open": "<<<", "close": ">>>" },
     { "open": "\"", "close": "\"" }
   ],
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(?:(?:entry|proc|fn|form|trait|match|select|if|elif|else|loop|for|while)\\b.*\\{\\s*|(?:when|case|otherwise)\\b.*:\\s*|.*<<<\\s*)$",
+    "decreaseIndentPattern": "^\\s*(?:\\}|>>>|case\\b|otherwise\\b)\\b.*$"
+  },
   "wordPattern": "(-?\\d*\\.?\\d+)|(\\w+)",
   "onEnterRules": [
     {
-      "beforeText": "^\\s*(proc|entry|match|select|when|if|else|otherwise|loop|for)\\b.*\\{\\s*$",
+      "beforeText": "^\\s*.*\\{\\s*$",
+      "afterText": "^\\s*\\}.*$",
+      "action": { "indentAction": "IndentOutdent" }
+    },
+    {
+      "beforeText": "^\\s*.*<<<\\s*$",
+      "afterText": "^\\s*>>>.*$",
+      "action": { "indentAction": "IndentOutdent" }
+    },
+    {
+      "beforeText": "^\\s*(when|case|otherwise)\\b.*:\\s*$",
+      "action": { "indentAction": "Indent" }
+    },
+    {
+      "beforeText": "^\\s*(proc|entry|match|select|if|else|loop|for|while|trait|form|fn)\\b.*\\{\\s*$",
+      "action": { "indentAction": "Indent" }
+    },
+    {
+      "beforeText": "^\\s*.*<<<\\s*$",
       "action": { "indentAction": "Indent" }
     }
   ]

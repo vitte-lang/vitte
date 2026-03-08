@@ -51,7 +51,7 @@ async function readVitteProjectConfig() {
     const results = [];
     // 1) vitte.config.json at workspace root
     const rootCfg = await vscode.workspace.findFiles('vitte.config.json', '**/node_modules/**', 1);
-    const rootUri = rootCfg[0];
+    const rootUri = Array.isArray(rootCfg) ? rootCfg[0] : undefined;
     if (rootUri) {
         const j = await readJsonFile(rootUri);
         if (j)
@@ -59,7 +59,7 @@ async function readVitteProjectConfig() {
     }
     // 2) .vitte/config.json fallback
     const hiddenCfg = await vscode.workspace.findFiles('.vitte/config.json', '**/node_modules/**', 1);
-    const hiddenUri = hiddenCfg[0];
+    const hiddenUri = Array.isArray(hiddenCfg) ? hiddenCfg[0] : undefined;
     if (hiddenUri) {
         const j = await readJsonFile(hiddenUri);
         if (j)
@@ -67,7 +67,7 @@ async function readVitteProjectConfig() {
     }
     // 3) package.json { vitte: { debug: {...} } }
     const pkg = await vscode.workspace.findFiles('package.json', '**/node_modules/**', 1);
-    const pkgUri = pkg[0];
+    const pkgUri = Array.isArray(pkg) ? pkg[0] : undefined;
     if (pkgUri) {
         const pjson = await readJsonFile(pkgUri);
         const vitteSection = pjson?.vitte;
