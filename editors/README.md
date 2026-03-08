@@ -18,6 +18,12 @@ This installs:
 - Nano file: `~/.config/nano/vitte.nanorc` and auto-include in `~/.nanorc`
 - Geany file: `~/.config/geany/filedefs/filetypes.vitte.conf`
 
+Install in another home/prefix:
+
+```sh
+make install-editors USER_HOME=/tmp/demo-home PREFIX=/opt/vitte
+```
+
 ## Vim
 
 1. Copy the syntax file to your Vim runtime:
@@ -103,6 +109,23 @@ include "~/.config/nano/vitte.nanorc"
 ./editors/geany/install_geany.sh
 ```
 
+Or via Makefile:
+
+```bash
+make install-geany
+```
+
+Working-directory mode (mono/multi-root):
+
+```bash
+# file dir (%d) [default]
+VITTE_GEANY_WD_MODE=file make install-geany
+# project dir (%p)
+VITTE_GEANY_WD_MODE=project make install-geany
+# current geany process dir (%c)
+VITTE_GEANY_WD_MODE=current make install-geany
+```
+
 2. Or install manually, copy:
 
    - `~/.config/geany/filedefs/filetypes.vitte.conf`
@@ -125,6 +148,12 @@ include "~/.config/nano/vitte.nanorc"
 - `Test` -> `vitte test <project-dir>`
 - `Format` -> `vitte fmt <current-file>`
 - `Parse` -> `vitte parse <current-file>`
+
+Verify local install:
+
+```bash
+make geany-install-check
+```
 
 Snippets (Geany autocomplete snippets):
 - `entry_main`
@@ -187,6 +216,11 @@ include "~/.config/nano/vitte.nanorc"
 - Emacs keybindings missing: verify `(require 'vitte-mode)` is loaded and reopen the buffer.
 - Nano include ignored: check `~/.nanorc` contains the include line exactly once.
 - Geany not detected: verify file name is exactly `filetypes.vitte.conf` in `~/.config/geany/filedefs/`, then restart Geany.
+- Geany on macOS: config path is usually `~/Library/Application Support/geany`.
+- Geany on Windows: config path is usually `%APPDATA%\\geany`.
+- If snippets duplicate, run uninstall then install:
+  - `make uninstall-geany`
+  - `make install-geany`
 
 ## Sources in this repo
 

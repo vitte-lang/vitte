@@ -16,6 +16,7 @@ def load_text(editor: str) -> str:
         "vim": ROOT / "editors/vim/syntax/vitte.vim",
         "emacs": ROOT / "editors/emacs/vitte-mode.el",
         "nano": ROOT / "editors/nano/vitte.nanorc",
+        "geany": ROOT / "editors/geany/filetypes.vitte.conf",
     }
     p = mapping[editor]
     return p.read_text(encoding="utf-8", errors="ignore")
@@ -53,7 +54,7 @@ def build_snapshot(editor: str) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--editor", choices=["vim", "emacs", "nano"], required=True)
+    ap.add_argument("--editor", choices=["vim", "emacs", "nano", "geany"], required=True)
     ap.add_argument("--update", action="store_true")
     args = ap.parse_args()
 
