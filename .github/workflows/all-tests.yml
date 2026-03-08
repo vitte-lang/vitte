@@ -149,6 +149,7 @@ jobs:
       VITTE_COMPLETIONS_BIN: bin/vitte
       VITTE_COMPLETIONS_MODE: static
       VITTE_COMPLETIONS_SNAPSHOT_MODE: static
+      CI_COMPLETIONS_RETRY_REMOVE_BY: "2026-03-22"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -218,6 +219,7 @@ jobs:
           set -euo pipefail
           mkdir -p target/reports/ci-completions
           LOG="target/reports/ci-completions/ci-completions.log"
+          echo "[ci-completions] temporary retry enabled; remove after ${CI_COMPLETIONS_RETRY_REMOVE_BY} if stable"
           if ! make ci-completions 2>&1 | tee "$LOG"; then
             echo "[ci-completions] retry once"
             make ci-completions 2>&1 | tee -a "$LOG"
