@@ -21,6 +21,13 @@ pairs=(
   "completions/fish/vitte.fish|fish.vitte.fish.golden"
 )
 
+normalize_completion() {
+  local src="$1"
+  local dst="$2"
+  # Ignore volatile mode marker (dynamic/static-fallback), keep semantic content stable.
+  sed '/^# completion-help-mode:/d' "$src" > "$dst"
+}
+
 if [[ $update -eq 1 ]]; then
   for pair in "${pairs[@]}"; do
     src="${pair%%|*}"
@@ -39,11 +46,17 @@ for pair in "${pairs[@]}"; do
     echo "[completions] run: tools/completions_snapshots.sh --update" >&2
     exit 1
   fi
-  if ! cmp -s "$ROOT_DIR/$src" "$SNAP_DIR/$snap"; then
+  src_norm="$(mktemp "${TMPDIR:-/tmp}/vitte-comp-src-XXXXXX")"
+  snap_norm="$(mktemp "${TMPDIR:-/tmp}/vitte-comp-snap-XXXXXX")"
+  normalize_completion "$ROOT_DIR/$src" "$src_norm"
+  normalize_completion "$SNAP_DIR/$snap" "$snap_norm"
+  if ! cmp -s "$src_norm" "$snap_norm"; then
     echo "[completions] snapshot mismatch: $src" >&2
-    diff -u "$SNAP_DIR/$snap" "$ROOT_DIR/$src" || true
+    diff -u "$snap_norm" "$src_norm" || true
+    rm -f "$src_norm" "$snap_norm"
     exit 1
   fi
+  rm -f "$src_norm" "$snap_norm"
 done
 
 echo "[completions] snapshots OK"

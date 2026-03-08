@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   all-tests-matrix:
@@ -15,10 +16,11 @@ jobs:
       TZ: UTC
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
+      PYTHONHASHSEED: "0"
     strategy:
       fail-fast: false
       matrix:
-        group: ${{ github.event_name == 'pull_request' && fromJSON('["packages"]') || fromJSON('["core","ci","abi","modules","packages"]') }}
+        group: ${{ github.event_name == 'pull_request' && fromJSON('["packages"]') || fromJSON('["core","ci-core","abi","modules","packages"]') }}
 
     steps:
       - name: Checkout
@@ -40,12 +42,25 @@ jobs:
             sudo apt-get install -y clang g++ make pkg-config libssl-dev libcurl4-openssl-dev python3 python3-pip jq zsh fish
           fi
 
+      - name: Show shell versions
+        run: |
+          bash --version | head -n1
+          zsh --version
+          fish --version
+
       - name: Build
         run: make build
 
       - name: Run all-tests group (non-modules)
-        if: matrix.group != 'modules'
+        if: matrix.group != 'modules' && matrix.group != 'ci-core'
         run: ALL_TESTS_GROUP=${{ matrix.group }} make all-tests
+
+      - name: Run CI core gates (without completions)
+        if: matrix.group == 'ci-core'
+        run: |
+          make grammar-check
+          make ci-fast
+          make ci-strict
 
       - name: Run modules suite (isolated snapshots gate)
         if: matrix.group == 'modules'
@@ -115,3 +130,91 @@ jobs:
           path: |
             target/reports
             target/reports-normalized
+
+  ci-completions:
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name == 'push' }}
+    timeout-minutes: 90
+    env:
+      TZ: UTC
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      PYTHONHASHSEED: "0"
+      VITTE_COMPLETIONS_BIN: bin/vitte
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Clean workspace
+        run: git clean -fdx
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          if [ -f toolchain/scripts/install/debian-deps.sh ]; then
+            source toolchain/scripts/install/debian-deps.sh
+            sudo apt-get install -y "${DEBIAN_APT_BUILD_DEPS[@]}"
+          else
+            sudo apt-get install -y clang g++ make pkg-config libssl-dev libcurl4-openssl-dev python3 python3-pip jq zsh fish
+          fi
+
+      - name: Show shell versions
+        run: |
+          bash --version | head -n1
+          zsh --version
+          fish --version
+
+      - name: Build
+        run: make build
+
+      - name: Print completions spec hash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          p = Path("tools/completions/spec.json")
+          print("[ci-completions] spec_sha256=", hashlib.sha256(p.read_bytes()).hexdigest(), sep="")
+          PY
+
+      - name: Run ci-completions (retry once)
+        run: |
+          set -euo pipefail
+          mkdir -p target/reports/ci-completions
+          LOG="target/reports/ci-completions/ci-completions.log"
+          if ! make ci-completions 2>&1 | tee "$LOG"; then
+            echo "[ci-completions] retry once"
+            make ci-completions 2>&1 | tee -a "$LOG"
+          fi
+
+      - name: Dump ci-completions debug context
+        if: failure()
+        run: |
+          set -euo pipefail
+          LOG="target/reports/ci-completions/ci-completions.log"
+          [ -f "$LOG" ] && tail -n 220 "$LOG" || true
+          python3 tools/generate_completions.py --print-mode || true
+          python3 tools/generate_completions.py --check --verbose || true
+
+          diff -u tools/completions/snapshots/bash.vitte.golden completions/bash/vitte || true
+          diff -u tools/completions/snapshots/zsh._vitte.golden completions/zsh/_vitte || true
+          diff -u tools/completions/snapshots/fish.vitte.fish.golden completions/fish/vitte.fish || true
+
+          FIRST_ERR="$(grep -hoE '\[completions\].*' "$LOG" 2>/dev/null | head -n1 || true)"
+          if [ -n "$FIRST_ERR" ]; then
+            echo "::error title=ci-completions mismatch::${FIRST_ERR}"
+          fi
+
+      - name: Upload ci-completions artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-completions-artifacts
+          path: |
+            target/reports/ci-completions
+            completions/bash/vitte
+            completions/zsh/_vitte
+            completions/fish/vitte.fish
+            tools/completions/snapshots/*.golden

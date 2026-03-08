@@ -124,10 +124,12 @@ def parse_help_text(text: str) -> dict:
     }
 
 
-def parse_help_dynamic(spec: dict) -> dict:
+def parse_help_dynamic(spec: dict, verbose: bool = False) -> dict:
     binary = resolve_vitte_binary()
     if binary is None:
         _warn("vitte binary not found; using static completion spec only")
+        if verbose:
+            print("[completions][debug] dynamic disabled: missing binary", file=sys.stderr)
         return {
             "dynamic_enabled": False,
             "commands": [],
@@ -139,9 +141,14 @@ def parse_help_dynamic(spec: dict) -> dict:
             "command_options": {},
         }
 
+    if verbose:
+        print(f"[completions][debug] probing binary: {binary}", file=sys.stderr)
+
     root_text, root_ok = run_help(binary, ["--help"])
     if not root_ok:
         _warn("could not parse vitte --help; falling back to static completion spec")
+        if verbose:
+            print("[completions][debug] dynamic disabled: root help parse failed", file=sys.stderr)
         return {
             "dynamic_enabled": False,
             "commands": [],
@@ -179,7 +186,7 @@ def parse_help_dynamic(spec: dict) -> dict:
         if opts and set(opts) != global_opt_set:
             dyn_command_options[f"mod {sub}"] = _sorted_unique(opts)
 
-    return {
+    out = {
         "dynamic_enabled": True,
         "commands": root.get("commands", []),
         "mod_subcommands": root.get("mod_subcommands", []),
@@ -189,6 +196,13 @@ def parse_help_dynamic(spec: dict) -> dict:
         "option_descriptions": root.get("option_descriptions", {}),
         "command_options": dyn_command_options,
     }
+    if verbose:
+        print(
+            "[completions][debug] dynamic enabled: "
+            f"commands={len(out['commands'])} mod_subcommands={len(out['mod_subcommands'])} options={len(out['options'])}",
+            file=sys.stderr,
+        )
+    return out
 
 
 def discover_modules(spec: dict, module_cfg: dict | None = None, max_items: int | None = None) -> list[str]:
@@ -603,6 +617,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="verify files are up to date")
     parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="print debug context for completion generation",
+    )
+    parser.add_argument(
         "--max-module-suggestions",
         type=int,
         default=None,
@@ -616,7 +636,7 @@ def main() -> int:
     args = parser.parse_args()
 
     spec = load_spec()
-    dyn = parse_help_dynamic(spec)
+    dyn = parse_help_dynamic(spec, verbose=args.verbose)
     data = merge(spec, dyn, max_module_suggestions=args.max_module_suggestions)
 
     header = _header(
@@ -628,6 +648,13 @@ def main() -> int:
     if args.print_mode:
         print("dynamic" if data.get("dynamic_enabled", False) else "static-fallback")
         return 0
+
+    if args.verbose:
+        print(
+            f"[completions][debug] schema={spec.get('schema_version', 1)} "
+            f"spec_sha256={_stable_hash(spec)} dynamic={data.get('dynamic_enabled', False)}",
+            file=sys.stderr,
+        )
 
     ok = True
     ok &= write_or_check(BASH_OUT, render_bash(data, header), args.check)
