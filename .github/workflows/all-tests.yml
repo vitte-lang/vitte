@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Clean workspace
         run: git clean -fdx
@@ -53,6 +53,12 @@ jobs:
 
       - name: Verify ci-group mapping
         run: make all-tests-ci-group-guard
+
+      - name: Debug all-tests ci target list
+        run: |
+          git rev-parse HEAD
+          rg -n "ci-core|ci-completions" .github/workflows/all-tests.yml
+          ALL_TESTS_LIST_ONLY=1 ALL_TESTS_GROUP=ci tools/run_all_tests.sh
 
       - name: Run all-tests group (non-modules)
         if: matrix.group != 'modules' && matrix.group != 'ci-core'
@@ -155,7 +161,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Clean workspace
         run: git clean -fdx
@@ -296,7 +302,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Clean workspace
         run: git clean -fdx
