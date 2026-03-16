@@ -5,9 +5,9 @@ package vitte/module_index
 
 space vitte/module_index
 
+use vitte/module_index/internal/policy as module_index_policy_pkg
 use vitte/module_index/internal/runtime as module_index_runtime_pkg
 use vitte/module_index/internal/validate as module_index_validate_pkg
-use vitte/module_index/internal/policy as module_index_policy_pkg
 
 form ModuleIndexConfig {
   root_module: string
@@ -27,30 +27,60 @@ pick ModuleIndexResult[T] {
   Err(error: ModuleIndexError)
 }
 
+form ModuleIndexRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> ModuleIndexConfig {
   give ModuleIndexConfig("__root__", true, module_index_policy_pkg.default_max_nodes())
 }
 
+proc strict_config() -> ModuleIndexConfig {
+  let cfg = default_config()
+  give ModuleIndexConfig(cfg.root_module, true, cfg.max_nodes)
+}
+
+proc normalize_config(cfg: ModuleIndexConfig) -> ModuleIndexConfig {
+  let max_nodes = cfg.max_nodes
+  if max_nodes < 1 { max_nodes = 1 }
+  if max_nodes > 100000 { max_nodes = 100000 }
+  give ModuleIndexConfig(cfg.root_module, cfg.strict, max_nodes)
+}
+
 proc validate_config(cfg: ModuleIndexConfig) -> ModuleIndexResult[bool] {
-  if module_index_validate_pkg.valid_root_module(cfg.root_module) == false {
+  let nc = normalize_config(cfg)
+  if module_index_validate_pkg.valid_root_module(nc.root_module) == false {
     give ModuleIndexResult.Err(ModuleIndexError.InvalidConfig)
   }
-  if module_index_validate_pkg.valid_max_nodes(cfg.max_nodes) == false {
+  if module_index_validate_pkg.valid_max_nodes(nc.max_nodes) == false {
     give ModuleIndexResult.Err(ModuleIndexError.InvalidConfig)
   }
   give ModuleIndexResult.Ok(true)
 }
 
 proc healthcheck(cfg: ModuleIndexConfig) -> ModuleIndexResult[bool] {
-  let _ = cfg
+  let vr = validate_config(cfg)
+  when vr is ModuleIndexResult.Err { give ModuleIndexResult.Err(vr.error) }
   if module_index_runtime_pkg.runtime_status() == false {
     give ModuleIndexResult.Err(ModuleIndexError.Internal)
   }
   give ModuleIndexResult.Ok(true)
 }
 
+proc runtime_info() -> ModuleIndexRuntimeInfo {
+  give ModuleIndexRuntimeInfo(module_index_runtime_pkg.runtime_name(),
+                              module_index_runtime_pkg.runtime_version(),
+                              module_index_runtime_pkg.supports_diagnostics())
+}
+
 proc version() -> string {
   give "v1"
+}
+
+proc api_version() -> string {
+  give version()
 }
 
 proc capabilities() -> [string] {
@@ -68,13 +98,35 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc package_meta() -> string {
   give "vitte/module_index"
 }
 
+proc doctor_status() -> string {
+  give "vitte/module_index doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: ModuleIndexConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is ModuleIndexResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> ModuleIndexResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
+}
 proc ready() -> bool {
   give true
 }

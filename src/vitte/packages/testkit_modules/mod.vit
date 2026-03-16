@@ -69,11 +69,56 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc package_meta() -> string {
   give "vitte/testkit_modules"
+}
+
+proc strict_config() -> TestkitModulesConfig {
+  give default_config()
+}
+
+proc normalize_config(cfg: TestkitModulesConfig) -> TestkitModulesConfig {
+  give cfg
+}
+
+form PackageRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
+proc runtime_info() -> PackageRuntimeInfo {
+  give PackageRuntimeInfo(testkit_modules_runtime_pkg.runtime_name(), testkit_modules_runtime_pkg.runtime_version(), testkit_modules_runtime_pkg.supports_diagnostics())
+}
+
+proc api_version() -> string {
+  give version()
+}
+
+proc doctor_status() -> string {
+  give "vitte/testkit_modules doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: TestkitModulesConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is TestkitModulesResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> TestkitModulesResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
 }
 
 proc ready() -> bool {
@@ -93,3 +138,10 @@ boundary: Aucun import legacy; aliases explicites uniquement
 compat_policy: additive-only
 api_version: v1
 >>>
+
+
+
+
+
+
+

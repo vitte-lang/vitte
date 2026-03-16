@@ -5,9 +5,9 @@ package vitte/openapi
 
 space vitte/openapi
 
+use vitte/openapi/internal/policy as openapi_policy_pkg
 use vitte/openapi/internal/runtime as openapi_runtime_pkg
 use vitte/openapi/internal/validate as openapi_validate_pkg
-use vitte/openapi/internal/policy as openapi_policy_pkg
 
 form Endpoint {
   method: string
@@ -39,6 +39,13 @@ pick OpenapiError {
 pick OpenapiResult[T] {
   Ok(value: T)
   Err(error: OpenapiError)
+}
+
+form OpenapiRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_deprecated_flag: bool
 }
 
 proc spec_new(title: string, spec_version: string) -> Spec {
@@ -160,11 +167,27 @@ proc default_config() -> OpenapiConfig {
   give OpenapiConfig(true, openapi_policy_pkg.default_timeout_ms(), openapi_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> OpenapiConfig {
+  let cfg = default_config()
+  give OpenapiConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc normalize_config(cfg: OpenapiConfig) -> OpenapiConfig {
+  let timeout_ms = cfg.timeout_ms
+  let retry_budget = cfg.retry_budget
+  if timeout_ms < 1 { timeout_ms = 1 }
+  if timeout_ms > 60000 { timeout_ms = 60000 }
+  if retry_budget < 0 { retry_budget = 0 }
+  if retry_budget > 32 { retry_budget = 32 }
+  give OpenapiConfig(cfg.strict, timeout_ms, retry_budget)
+}
+
 proc validate_config(cfg: OpenapiConfig) -> OpenapiResult[bool] {
-  if openapi_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if openapi_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give OpenapiResult.Err(OpenapiError.InvalidConfig)
   }
-  if openapi_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if openapi_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give OpenapiResult.Err(OpenapiError.InvalidConfig)
   }
   give OpenapiResult.Ok(true)
@@ -187,6 +210,31 @@ proc healthcheck(cfg: OpenapiConfig) -> OpenapiResult[bool] {
   give OpenapiResult.Ok(true)
 }
 
+proc runtime_info() -> OpenapiRuntimeInfo {
+  give OpenapiRuntimeInfo(openapi_runtime_pkg.runtime_name(),
+                          openapi_runtime_pkg.runtime_version(),
+                          openapi_runtime_pkg.supports_diagnostics(),
+                          openapi_runtime_pkg.supports_deprecated_flag())
+}
+
+proc config_is_valid(cfg: OpenapiConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is OpenapiResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> OpenapiResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=v1"
+}
+
+proc doctor_status_verbose() -> string {
+  give "vitte/openapi doctor:ready api=v1 caps=5"
+}
 proc ready() -> bool {
   give true
 }
@@ -197,6 +245,10 @@ proc package_meta() -> string {
 
 proc version() -> string {
   give "v1"
+}
+
+proc api_version() -> string {
+  give version()
 }
 
 proc capabilities() -> [string] {
@@ -218,7 +270,11 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc doctor_status() -> string {
+  give "vitte/openapi doctor:ready api=" + api_version()
 }
 
 <<< ROLE-CONTRACT

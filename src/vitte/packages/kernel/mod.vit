@@ -5,9 +5,9 @@ package vitte/kernel
 
 space vitte/kernel
 
+use vitte/kernel/internal/policy as kernel_policy_pkg
 use vitte/kernel/internal/runtime as kernel_runtime_pkg
 use vitte/kernel/internal/validate as kernel_validate_pkg
-use vitte/kernel/internal/policy as kernel_policy_pkg
 
 form KernelConfig {
   surface: string
@@ -27,15 +27,31 @@ pick KernelResult[T] {
   Err(error: KernelError)
 }
 
+form KernelRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> KernelConfig {
   give KernelConfig(kernel_policy_pkg.default_surface(), "core", true)
 }
 
+proc strict_config() -> KernelConfig {
+  let cfg = default_config()
+  give KernelConfig(cfg.surface, cfg.profile, true)
+}
+
+proc normalize_config(cfg: KernelConfig) -> KernelConfig {
+  give KernelConfig(cfg.surface, cfg.profile, cfg.strict)
+}
+
 proc validate_config(cfg: KernelConfig) -> KernelResult[bool] {
-  if kernel_validate_pkg.valid_surface(cfg.surface) == false {
+  let nc = normalize_config(cfg)
+  if kernel_validate_pkg.valid_surface(nc.surface) == false {
     give KernelResult.Err(KernelError.InvalidConfig)
   }
-  if kernel_validate_pkg.valid_profile(cfg.profile) == false {
+  if kernel_validate_pkg.valid_profile(nc.profile) == false {
     give KernelResult.Err(KernelError.InvalidConfig)
   }
   give KernelResult.Ok(true)
@@ -52,6 +68,12 @@ proc healthcheck(cfg: KernelConfig) -> KernelResult[bool] {
 
 proc runtime_surface() -> string {
   give kernel_policy_pkg.default_surface()
+}
+
+proc runtime_info() -> KernelRuntimeInfo {
+  give KernelRuntimeInfo(kernel_runtime_pkg.runtime_name(),
+                         kernel_runtime_pkg.runtime_version(),
+                         kernel_runtime_pkg.supports_diagnostics())
 }
 
 proc version() -> string {
@@ -73,7 +95,7 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc package_meta() -> string {
@@ -81,7 +103,7 @@ proc package_meta() -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give kernel_runtime_pkg.runtime_status()
 }
 
 <<< ROLE-CONTRACT

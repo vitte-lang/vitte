@@ -5,9 +5,9 @@ package vitte/random_secure
 
 space vitte/random_secure
 
+use vitte/random_secure/internal/policy as random_secure_policy_pkg
 use vitte/random_secure/internal/runtime as random_secure_runtime_pkg
 use vitte/random_secure/internal/validate as random_secure_validate_pkg
-use vitte/random_secure/internal/policy as random_secure_policy_pkg
 
 
 form RngState {
@@ -72,15 +72,37 @@ pick RandomSecureResult[T] {
   Err(error: RandomSecureError)
 }
 
+form RandomSecureRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> RandomSecureConfig {
   give RandomSecureConfig(true, random_secure_policy_pkg.default_timeout_ms(), random_secure_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> RandomSecureConfig {
+  let cfg = default_config()
+  give RandomSecureConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc normalize_config(cfg: RandomSecureConfig) -> RandomSecureConfig {
+  let timeout_ms = cfg.timeout_ms
+  let retry_budget = cfg.retry_budget
+  if timeout_ms < 1 { timeout_ms = 1 }
+  if timeout_ms > 60000 { timeout_ms = 60000 }
+  if retry_budget < 0 { retry_budget = 0 }
+  if retry_budget > 32 { retry_budget = 32 }
+  give RandomSecureConfig(cfg.strict, timeout_ms, retry_budget)
+}
+
 proc validate_config(cfg: RandomSecureConfig) -> RandomSecureResult[bool] {
-  if random_secure_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if random_secure_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give RandomSecureResult.Err(RandomSecureError.InvalidConfig)
   }
-  if random_secure_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if random_secure_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give RandomSecureResult.Err(RandomSecureError.InvalidConfig)
   }
   give RandomSecureResult.Ok(true)
@@ -97,8 +119,18 @@ proc healthcheck(cfg: RandomSecureConfig) -> RandomSecureResult[bool] {
   give RandomSecureResult.Ok(true)
 }
 
+proc runtime_info() -> RandomSecureRuntimeInfo {
+  give RandomSecureRuntimeInfo(random_secure_runtime_pkg.runtime_name(),
+                               random_secure_runtime_pkg.runtime_version(),
+                               random_secure_runtime_pkg.supports_diagnostics())
+}
+
 proc version() -> string {
   give "v1"
+}
+
+proc api_version() -> string {
+  give version()
 }
 
 proc capabilities() -> [string] {
@@ -118,7 +150,30 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc doctor_status() -> string {
+  give "vitte/random_secure doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: RandomSecureConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is RandomSecureResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> RandomSecureResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
 }
 
 <<< ROLE-CONTRACT

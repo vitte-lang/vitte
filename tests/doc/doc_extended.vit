@@ -1,0 +1,42 @@
+use vitte/doc as doc_pkg
+
+entry main at core/app {
+  let cfg = doc_pkg.strict_config()
+
+  let p0: doc_pkg.DocResult[doc_pkg.DocPage] = doc_pkg.page_new_checked("guide", "Guide", cfg)
+  when p0 is doc_pkg.DocResult.Err {
+    return 1
+  }
+
+  let p1: doc_pkg.DocResult[doc_pkg.DocPage] = doc_pkg.add_section_checked(p0.value, "Intro", "Bienvenue", cfg)
+  when p1 is doc_pkg.DocResult.Err {
+    return 1
+  }
+
+  if doc_pkg.doc_validate(p1.value, cfg) == false {
+    return 1
+  }
+
+  if doc_pkg.doc_validate_code(p1.value, cfg) != "ok" {
+    return 1
+  }
+
+  let md: doc_pkg.DocResult[string] = doc_pkg.render_markdown_checked(p1.value, cfg)
+  when md is doc_pkg.DocResult.Err {
+    return 1
+  }
+  if md.value.len == 0 {
+    return 1
+  }
+
+  let p2 = doc_pkg.doc_normalize(p1.value, cfg)
+  if doc_pkg.section_count(p2) != 1 {
+    return 1
+  }
+
+  if doc_pkg.runtime_capabilities_hash() <= 0 {
+    return 1
+  }
+
+  return 0
+}
