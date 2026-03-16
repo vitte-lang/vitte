@@ -1,0 +1,37 @@
+use vitte/bridge as bridge_pkg
+
+entry main at core/app {
+  let cfg = bridge_pkg.strict_config()
+  let vr: bridge_pkg.BridgeResult[bool] = bridge_pkg.validate_config(cfg)
+  when vr is bridge_pkg.BridgeResult.Err {
+    return 1
+  }
+
+  let rr: bridge_pkg.BridgeResult[bridge_pkg.BridgeRoute] = bridge_pkg.route_new("src", "dst", cfg)
+  when rr is bridge_pkg.BridgeResult.Err {
+    return 1
+  }
+
+  let s0 = bridge_pkg.connect(rr.value)
+  let pr: bridge_pkg.BridgeResult[bridge_pkg.BridgePacket] = bridge_pkg.packet_checked(1, "src", "dst", "payload", 1)
+  when pr is bridge_pkg.BridgeResult.Err {
+    return 1
+  }
+
+  let sr: bridge_pkg.BridgeResult[bridge_pkg.BridgeSession] = bridge_pkg.send_checked(s0, pr.value, cfg)
+  when sr is bridge_pkg.BridgeResult.Err {
+    return 1
+  }
+
+  let s1 = bridge_pkg.ack(sr.value)
+  let h = bridge_pkg.bridge_health(s1)
+  if h.inflight < 0 {
+    return 1
+  }
+
+  if bridge_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

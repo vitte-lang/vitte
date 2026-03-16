@@ -1,0 +1,88 @@
+space vitte/auth/internal/policy
+
+proc min_token_ttl() -> int {
+  give 60
+}
+
+proc max_token_ttl() -> int {
+  give 604800
+}
+
+proc default_token_ttl() -> int {
+  give 3600
+}
+
+proc normalize_token_ttl(ttl: int) -> int {
+  if ttl <= 0 { give default_token_ttl() }
+  if ttl < min_token_ttl() { give min_token_ttl() }
+  if ttl > max_token_ttl() { give max_token_ttl() }
+  give ttl
+}
+
+proc default_require_active() -> bool {
+  give true
+}
+
+proc default_allow_service() -> bool {
+  give false
+}
+
+proc default_require_otp() -> bool {
+  give false
+}
+
+proc max_username_len() -> int {
+  give 64
+}
+
+proc max_password_len() -> int {
+  give 256
+}
+
+proc min_password_len() -> int {
+  give 8
+}
+
+proc max_token_len() -> int {
+  give 512
+}
+
+proc max_subject_len() -> int {
+  give 128
+}
+
+proc max_clock_skew() -> int {
+  give 120
+}
+
+proc warn_ttl_low() -> int {
+  give 300
+}
+
+proc normalize_username_len(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_username_len() { out = max_username_len() }
+  give out
+}
+
+proc normalize_password_len(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_password_len() { out = max_password_len() }
+  give out
+}
+
+proc normalize_token_len(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_token_len() { out = max_token_len() }
+  give out
+}
+
+proc normalize_clock_skew(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_clock_skew() { out = max_clock_skew() }
+  give out
+}

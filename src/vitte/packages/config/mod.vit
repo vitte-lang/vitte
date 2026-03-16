@@ -1,10 +1,19 @@
 <<<
 mod.vit
 package vitte/config
+version: 2.0.0
+tier: config-core
+purpose:
+  Gestion de configuration immuable (set/get/remove/merge).
+  Validation explicite via policy interne et API checked.
+  Surface stable versionnee avec diagnostics runtime.
 >>>
 
 space vitte/config
 
+use vitte/config/internal/runtime as config_runtime_pkg
+use vitte/config/internal/validate as config_validate_pkg
+use vitte/config/internal/policy as config_policy_pkg
 
 form ConfigEntry {
   key: string
@@ -15,8 +24,152 @@ form Config {
   entries: [ConfigEntry]
 }
 
+form ConfigOptions {
+  strict: bool
+  max_entries: int
+  max_key_len: int
+  max_value_len: int
+  allow_empty_values: bool
+}
+
+pick ConfigError {
+  InvalidOptions
+  InvalidKey
+  InvalidValue
+  NotFound
+  TooManyEntries
+  Internal
+}
+
+pick ConfigResult[T] {
+  Ok(value: T)
+  Err(error: ConfigError)
+}
+
+form ConfigRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_merge: bool
+  supports_validation: bool
+  supports_diagnostics: bool
+}
+
+form ConfigStats {
+  entries: int
+  empty_values: int
+  max_key_len_seen: int
+  max_value_len_seen: int
+}
+
+form ConfigHealth {
+  ok: bool
+  code: string
+  pressure_percent: int
+}
+
+proc options_ok(opts: ConfigOptions) -> bool {
+  if config_validate_pkg.valid_limit(opts.max_entries,
+                                     config_policy_pkg.min_entries(),
+                                     config_policy_pkg.max_entries()) == false {
+    give false
+  }
+  if config_validate_pkg.valid_limit(opts.max_key_len,
+                                     1,
+                                     config_policy_pkg.max_key_len()) == false {
+    give false
+  }
+  if config_validate_pkg.valid_limit(opts.max_value_len,
+                                     0,
+                                     config_policy_pkg.max_value_len()) == false {
+    give false
+  }
+  give true
+}
+
+proc default_options() -> ConfigOptions {
+  give ConfigOptions(config_policy_pkg.default_strict(),
+                     config_policy_pkg.max_entries(),
+                     config_policy_pkg.max_key_len(),
+                     config_policy_pkg.max_value_len(),
+                     config_policy_pkg.default_allow_empty_values())
+}
+
+proc strict_options() -> ConfigOptions {
+  let o = default_options()
+  give ConfigOptions(true,
+                     o.max_entries,
+                     o.max_key_len,
+                     o.max_value_len,
+                     false)
+}
+
+proc with_max_entries(opts: ConfigOptions, value: int) -> ConfigOptions {
+  give ConfigOptions(opts.strict,
+                     config_policy_pkg.normalize_entries(value),
+                     opts.max_key_len,
+                     opts.max_value_len,
+                     opts.allow_empty_values)
+}
+
+proc with_max_key_len(opts: ConfigOptions, value: int) -> ConfigOptions {
+  give ConfigOptions(opts.strict,
+                     opts.max_entries,
+                     config_policy_pkg.normalize_key_len(value),
+                     opts.max_value_len,
+                     opts.allow_empty_values)
+}
+
+proc with_max_value_len(opts: ConfigOptions, value: int) -> ConfigOptions {
+  give ConfigOptions(opts.strict,
+                     opts.max_entries,
+                     opts.max_key_len,
+                     config_policy_pkg.normalize_value_len(value),
+                     opts.allow_empty_values)
+}
+
+proc with_allow_empty_values(opts: ConfigOptions, allow_empty_values: bool) -> ConfigOptions {
+  give ConfigOptions(opts.strict,
+                     opts.max_entries,
+                     opts.max_key_len,
+                     opts.max_value_len,
+                     allow_empty_values)
+}
+
+proc validate_options(opts: ConfigOptions) -> ConfigResult[bool] {
+  if options_ok(opts) == false { give ConfigResult.Err(ConfigError.InvalidOptions) }
+  give ConfigResult.Ok(true)
+}
+
+proc validate_options_code(opts: ConfigOptions) -> string {
+  if options_ok(opts) == false { give "invalid-options" }
+  give "ok"
+}
+
+proc normalize_options(opts: ConfigOptions) -> ConfigOptions {
+  give ConfigOptions(opts.strict,
+                     config_policy_pkg.normalize_entries(opts.max_entries),
+                     config_policy_pkg.normalize_key_len(opts.max_key_len),
+                     config_policy_pkg.normalize_value_len(opts.max_value_len),
+                     opts.allow_empty_values)
+}
+
 proc config_new() -> Config {
   give Config([])
+}
+
+proc size(cfg: Config) -> int {
+  give cfg.entries.len
+}
+
+proc contains_key(cfg: Config, key: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= cfg.entries.len { break }
+    if cfg.entries[i].key == key { give true }
+    i = i + 1
+  }
+  give false
 }
 
 proc set_entry(cfg: Config, key: string, value: string) -> Config {
@@ -38,6 +191,26 @@ proc set_entry(cfg: Config, key: string, value: string) -> Config {
   give Config(out)
 }
 
+proc set_entry_checked(cfg: Config, key: string, value: string, opts: ConfigOptions) -> ConfigResult[Config] {
+  let vr = validate_options(opts)
+  when vr is ConfigResult.Err { give ConfigResult.Err(vr.error) }
+
+  if config_validate_pkg.valid_key(key, opts.max_key_len) == false {
+    give ConfigResult.Err(ConfigError.InvalidKey)
+  }
+  if config_validate_pkg.valid_value(value, opts.max_value_len, opts.allow_empty_values) == false {
+    give ConfigResult.Err(ConfigError.InvalidValue)
+  }
+
+  if contains_key(cfg, key) == false {
+    if config_validate_pkg.valid_entry_count(cfg.entries.len + 1, opts.max_entries) == false {
+      give ConfigResult.Err(ConfigError.TooManyEntries)
+    }
+  }
+
+  give ConfigResult.Ok(set_entry(cfg, key, value))
+}
+
 proc get_entry(cfg: Config, key: string) -> string {
   let i: int = 0
   loop {
@@ -48,8 +221,18 @@ proc get_entry(cfg: Config, key: string) -> string {
   give ""
 }
 
+proc get_entry_checked(cfg: Config, key: string) -> ConfigResult[string] {
+  let i: int = 0
+  loop {
+    if i >= cfg.entries.len { break }
+    if cfg.entries[i].key == key { give ConfigResult.Ok(cfg.entries[i].value) }
+    i = i + 1
+  }
+  give ConfigResult.Err(ConfigError.NotFound)
+}
+
 proc has_entry(cfg: Config, key: string) -> bool {
-  give get_entry(cfg, key).len > 0
+  give contains_key(cfg, key)
 }
 
 proc remove_entry(cfg: Config, key: string) -> Config {
@@ -63,6 +246,37 @@ proc remove_entry(cfg: Config, key: string) -> Config {
   give Config(out)
 }
 
+proc remove_entry_checked(cfg: Config, key: string) -> ConfigResult[Config] {
+  if contains_key(cfg, key) == false { give ConfigResult.Err(ConfigError.NotFound) }
+  give ConfigResult.Ok(remove_entry(cfg, key))
+}
+
+proc keys(cfg: Config) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= cfg.entries.len { break }
+    out = out.push(cfg.entries[i].key)
+    i = i + 1
+  }
+  give out
+}
+
+proc values(cfg: Config) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= cfg.entries.len { break }
+    out = out.push(cfg.entries[i].value)
+    i = i + 1
+  }
+  give out
+}
+
+proc clear() -> Config {
+  give config_new()
+}
+
 proc merge(base: Config, overlay: Config) -> Config {
   let out = base
   let i: int = 0
@@ -74,11 +288,27 @@ proc merge(base: Config, overlay: Config) -> Config {
   give out
 }
 
-proc required(cfg: Config, keys: [string]) -> bool {
+proc merge_checked(base: Config, overlay: Config, opts: ConfigOptions) -> ConfigResult[Config] {
+  let vr = validate_options(opts)
+  when vr is ConfigResult.Err { give ConfigResult.Err(vr.error) }
+
+  let out = base
   let i: int = 0
   loop {
-    if i >= keys.len { break }
-    if !has_entry(cfg, keys[i]) { give false }
+    if i >= overlay.entries.len { break }
+    let r = set_entry_checked(out, overlay.entries[i].key, overlay.entries[i].value, opts)
+    when r is ConfigResult.Err { give ConfigResult.Err(r.error) }
+    out = r.value
+    i = i + 1
+  }
+  give ConfigResult.Ok(out)
+}
+
+proc required(cfg: Config, wanted_keys: [string]) -> bool {
+  let i: int = 0
+  loop {
+    if i >= wanted_keys.len { break }
+    if !contains_key(cfg, wanted_keys[i]) { give false }
     i = i + 1
   }
   give true
@@ -88,14 +318,202 @@ proc summary(cfg: Config) -> string {
   give "entries=" + cfg.entries.len.to_string()
 }
 
-proc ready() -> bool {
-    give true
+proc config_stats(cfg: Config) -> ConfigStats {
+  let empty_values: int = 0
+  let max_key_len_seen: int = 0
+  let max_value_len_seen: int = 0
+  let i: int = 0
+  loop {
+    if i >= cfg.entries.len { break }
+
+    if cfg.entries[i].value.len == 0 {
+      empty_values = empty_values + 1
+    }
+    if cfg.entries[i].key.len > max_key_len_seen {
+      max_key_len_seen = cfg.entries[i].key.len
+    }
+    if cfg.entries[i].value.len > max_value_len_seen {
+      max_value_len_seen = cfg.entries[i].value.len
+    }
+
+    i = i + 1
+  }
+  give ConfigStats(cfg.entries.len, empty_values, max_key_len_seen, max_value_len_seen)
 }
 
+proc config_validate_code(cfg: Config, opts: ConfigOptions) -> string {
+  let vr = validate_options(opts)
+  when vr is ConfigResult.Err { give "invalid-options" }
 
+  if config_validate_pkg.valid_entry_count(cfg.entries.len, opts.max_entries) == false {
+    give "too-many-entries"
+  }
+
+  let i: int = 0
+  loop {
+    if i >= cfg.entries.len { break }
+
+    let key = cfg.entries[i].key
+    let value = cfg.entries[i].value
+
+    if config_validate_pkg.valid_key(key, opts.max_key_len) == false {
+      give "invalid-key"
+    }
+    if config_validate_pkg.valid_value(value, opts.max_value_len, opts.allow_empty_values) == false {
+      give "invalid-value"
+    }
+
+    i = i + 1
+  }
+
+  give "ok"
+}
+
+proc config_validate(cfg: Config, opts: ConfigOptions) -> bool {
+  give config_validate_code(cfg, opts) == "ok"
+}
+
+proc config_normalize(cfg: Config, opts: ConfigOptions) -> Config {
+  let nopts = normalize_options(opts)
+
+  let out = config_new()
+  let i: int = 0
+  loop {
+    if i >= cfg.entries.len { break }
+    if out.entries.len >= nopts.max_entries { break }
+
+    let key = cfg.entries[i].key
+    let value = cfg.entries[i].value
+
+    if config_validate_pkg.valid_key(key, nopts.max_key_len) {
+      let v = value
+      if v.len > nopts.max_value_len {
+        v = v.slice(0, nopts.max_value_len)
+      }
+      if config_validate_pkg.valid_value(v, nopts.max_value_len, nopts.allow_empty_values) {
+        out = set_entry(out, key, v)
+      }
+    }
+
+    i = i + 1
+  }
+
+  give out
+}
+
+proc pressure_percent(cfg: Config, opts: ConfigOptions) -> int {
+  if opts.max_entries <= 0 { give 0 }
+  let p = cfg.entries.len * 100 / opts.max_entries
+  if p < 0 { p = 0 }
+  if p > 100 { p = 100 }
+  give p
+}
+
+proc config_health(cfg: Config, opts: ConfigOptions) -> ConfigHealth {
+  let code = config_validate_code(cfg, opts)
+  if code != "ok" {
+    give ConfigHealth(false, code, 100)
+  }
+
+  let p = pressure_percent(cfg, opts)
+  if config_validate_pkg.valid_percent(p) == false {
+    give ConfigHealth(false, "invalid-percent", 100)
+  }
+
+  give ConfigHealth(true, "ok", p)
+}
+
+proc config_runtime_info() -> ConfigRuntimeInfo {
+  give ConfigRuntimeInfo(config_runtime_pkg.runtime_name(),
+                         config_runtime_pkg.runtime_version(),
+                         config_runtime_pkg.supports_no_std(),
+                         config_runtime_pkg.supports_merge(),
+                         config_runtime_pkg.supports_validation(),
+                         config_runtime_pkg.supports_diagnostics())
+}
+
+proc healthcheck(opts: ConfigOptions) -> ConfigResult[bool] {
+  let vr = validate_options(opts)
+  when vr is ConfigResult.Err { give ConfigResult.Err(vr.error) }
+  if config_runtime_pkg.runtime_status() == false {
+    give ConfigResult.Err(ConfigError.Internal)
+  }
+  give ConfigResult.Ok(true)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_options,strict_options,with_max_entries,with_max_key_len,with_max_value_len,with_allow_empty_values,validate_options,validate_options_code,normalize_options,config_new,size,contains_key,set_entry,set_entry_checked,get_entry,get_entry_checked,has_entry,remove_entry,remove_entry_checked,keys,values,clear,merge,merge_checked,required,summary,config_stats,config_validate_code,config_validate,config_normalize,pressure_percent,config_health,config_runtime_info,healthcheck,stable_api_surface_hash,api_version,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["set", "get", "remove", "merge", "validate", "normalize", "diagnostics", config_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CONFIG0001" { give "invalid config options" }
+  if code == "VITTE-CONFIG0002" { give "invalid key or value" }
+  if code == "VITTE-CONFIG0003" { give "entries limit exceeded" }
+  give "config diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-CONFIG0001" { give "normalize options and revalidate" }
+  if code == "VITTE-CONFIG0002" { give "truncate or sanitize key/value before set_entry" }
+  if code == "VITTE-CONFIG0003" { give "increase max_entries or remove obsolete keys" }
+  give "inspect config health and validate code"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if config_runtime_pkg.runtime_status() == false { give false }
+
+  let opts = strict_options()
+  let vr = validate_options(opts)
+  when vr is ConfigResult.Err { give false }
+
+  let c0 = config_new()
+  let s1 = set_entry_checked(c0, "env", "prod", opts)
+  when s1 is ConfigResult.Err { give false }
+
+  let s2 = set_entry_checked(s1.value, "region", "eu", opts)
+  when s2 is ConfigResult.Err { give false }
+
+  if required(s2.value, ["env", "region"]) == false { give false }
+
+  let n = config_normalize(s2.value, opts)
+  if config_validate(n, opts) == false { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
+  give true
+}
+
+proc ready() -> bool {
+  give stable_ready()
+}
 
 proc package_meta() -> string {
-    give "vitte/config"
+  give "vitte/config"
 }
 
 <<< ROLE-CONTRACT
@@ -104,4 +522,5 @@ role: Chargement fusion et validation configuration
 input_contract: Valeurs metier explicites, deja parsees et typables
 output_contract: Sorties stables, observables et compatibles avec les autres packages
 boundary: Ne remplace pas les autres couches; respecte la separation de roles
+versioning_note: stable_api_version=2.0.0
 >>>

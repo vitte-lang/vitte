@@ -1,0 +1,63 @@
+space vitte/audit/internal/validate
+
+proc valid_timestamp(ts: int) -> bool {
+  if ts < 0 { give false }
+  if ts > 4102444800000 { give false }
+  give true
+}
+
+proc valid_event_fields(actor: string, action: string, target: string, trace_id: string) -> bool {
+  if actor.len == 0 { give false }
+  if action.len == 0 { give false }
+  if target.len == 0 { give false }
+  if trace_id.len == 0 { give false }
+  if actor.len > 256 { give false }
+  if action.len > 256 { give false }
+  if target.len > 1024 { give false }
+  if trace_id.len > 128 { give false }
+  give true
+}
+
+proc valid_log_size(size: int, event_len: int) -> bool {
+  if size < 0 || event_len < 0 { give false }
+  give size == event_len
+}
+
+proc valid_hash(hash: string, max_len: int) -> bool {
+  if hash.len == 0 { give false }
+  give hash.len <= max_len
+}
+
+proc valid_signature(signature: string, max_len: int) -> bool {
+  if signature.len == 0 { give false }
+  give signature.len <= max_len
+}
+
+proc valid_prev_hash(prev_hash: string, max_len: int) -> bool {
+  if prev_hash.len == 0 { give false }
+  give prev_hash.len <= max_len
+}
+
+proc valid_monotonic_ts(prev_ts: int, ts: int) -> bool {
+  if prev_ts < 0 { give false }
+  give ts >= prev_ts
+}
+
+proc valid_index(index: int, size: int) -> bool {
+  if index < 0 { give false }
+  give index < size
+}
+
+proc valid_non_negative(value: int) -> bool {
+  give value >= 0
+}
+
+proc valid_query(actor: string, action: string, max_actor: int, max_action: int) -> bool {
+  if actor.len > max_actor { give false }
+  if action.len > max_action { give false }
+  give true
+}
+
+proc valid_chain_link(cur_prev_hash: string, prev_hash: string) -> bool {
+  give cur_prev_hash == prev_hash
+}

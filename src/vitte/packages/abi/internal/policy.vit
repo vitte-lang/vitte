@@ -1,0 +1,123 @@
+space vitte/abi/internal/policy
+
+proc default_pointer_bits() -> int {
+  give 64
+}
+
+proc max_type_bits() -> int {
+  give 128
+}
+
+proc max_params() -> int {
+  give 64
+}
+
+proc max_frame_bytes() -> int {
+  give 8192
+}
+
+proc frame_base_bytes() -> int {
+  give 16
+}
+
+proc reg_limit_for_calling(tag: string) -> int {
+  if tag == "sysv" { give 6 }
+  if tag == "win64" { give 4 }
+  if tag == "fastcall" { give 2 }
+  give 0
+}
+
+proc stack_align_bytes_for_calling(tag: string) -> int {
+  if tag == "stdcall" { give 4 }
+  if tag == "cdecl" { give 16 }
+  if tag == "fastcall" { give 16 }
+  if tag == "win64" { give 16 }
+  give 16
+}
+
+proc shadow_space_bytes_for_calling(tag: string) -> int {
+  if tag == "win64" { give 32 }
+  give 0
+}
+
+proc red_zone_bytes_for_calling(tag: string) -> int {
+  if tag == "sysv" { give 128 }
+  give 0
+}
+
+proc callee_saved_count_for_calling(tag: string) -> int {
+  if tag == "sysv" { give 6 }
+  if tag == "win64" { give 8 }
+  if tag == "cdecl" { give 4 }
+  if tag == "fastcall" { give 3 }
+  if tag == "stdcall" { give 4 }
+  give 0
+}
+
+proc return_bits_limit(kind: string) -> int {
+  if kind == "float" { give 64 }
+  if kind == "pointer" { give default_pointer_bits() }
+  if kind == "void" { give 0 }
+  give 128
+}
+
+proc normalize_pointer_bits(bits: int) -> int {
+  if bits <= 0 { give default_pointer_bits() }
+  give default_pointer_bits()
+}
+
+proc normalize_stack_align_bytes(alignment: int, tag: string) -> int {
+  if alignment == 4 || alignment == 8 || alignment == 16 || alignment == 32 { give alignment }
+  give stack_align_bytes_for_calling(tag)
+}
+
+proc preferred_param_align_bits(kind: string, bits: int, pointer_bits: int) -> int {
+  if kind == "void" { give 8 }
+  if kind == "pointer" { give pointer_bits }
+  if bits <= 8 { give 8 }
+  if bits <= 16 { give 16 }
+  if bits <= 32 { give 32 }
+  if bits <= 64 { give 64 }
+  give 128
+}
+
+proc normalized_scalar_bits(bits: int) -> int {
+  if bits <= 8 { give 8 }
+  if bits <= 16 { give 16 }
+  if bits <= 32 { give 32 }
+  if bits <= 64 { give 64 }
+  give 128
+}
+
+proc c_char_bits() -> int {
+  give 8
+}
+
+proc c_short_bits() -> int {
+  give 16
+}
+
+proc c_int_bits() -> int {
+  give 32
+}
+
+proc c_long_bits(pointer_bits: int) -> int {
+  if pointer_bits >= 64 { give 64 }
+  give 32
+}
+
+proc c_long_long_bits() -> int {
+  give 64
+}
+
+proc c_float_bits() -> int {
+  give 32
+}
+
+proc c_double_bits() -> int {
+  give 64
+}
+
+proc c_long_double_bits() -> int {
+  give 128
+}

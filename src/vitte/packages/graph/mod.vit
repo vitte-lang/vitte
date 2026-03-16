@@ -1,114 +1,252 @@
 <<<
 mod.vit
 package vitte/graph
+version: 3.1.0
+tier: algo-core
+purpose:
+  Structures de graphes et operations deterministes.
+  Validation explicite des noeuds, aretes et poids.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/graph
 
+use vitte/graph/internal/policy as graph_policy_pkg
+use vitte/graph/internal/runtime as graph_runtime_pkg
+use vitte/graph/internal/validate as graph_validate_pkg
+
+form GraphConfig {
+  max_nodes: int
+  allow_self_loop: bool
+}
+
+pick GraphError {
+  InvalidConfig
+  NotFound
+  Internal
+}
+
+pick GraphResult[T] {
+  Ok(value: T)
+  Err(error: GraphError)
+}
+
+form GraphRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_directed: bool
+  supports_diagnostics: bool
+}
+
+form GraphHealth {
+  ok: bool
+  code: string
+  nodes: int
+  edges: int
+}
 
 form Edge {
-    src: int
-    dst: int
-    weight: int
+  src: int
+  dst: int
+  weight: int
 }
 
 form Graph {
-    nodes: int
-    directed: bool
-    edges: [Edge]
-    edge_count: int
+  nodes: int
+  directed: bool
+  edges: [Edge]
+  edge_count: int
+}
+
+proc default_config() -> GraphConfig {
+  give GraphConfig(graph_policy_pkg.max_nodes(), graph_policy_pkg.default_allow_self_loop())
+}
+
+proc strict_config() -> GraphConfig {
+  let cfg = default_config()
+  give GraphConfig(cfg.max_nodes, false)
+}
+
+proc with_max_nodes(cfg: GraphConfig, max_nodes: int) -> GraphConfig {
+  give GraphConfig(graph_policy_pkg.normalize_nodes(max_nodes), cfg.allow_self_loop)
+}
+
+proc with_allow_self_loop(cfg: GraphConfig, allow_self_loop: bool) -> GraphConfig {
+  give GraphConfig(cfg.max_nodes, allow_self_loop)
+}
+
+proc normalize_config(cfg: GraphConfig) -> GraphConfig {
+  give GraphConfig(graph_policy_pkg.normalize_nodes(cfg.max_nodes), cfg.allow_self_loop)
+}
+
+proc validate_config(cfg: GraphConfig) -> GraphResult[bool] {
+  let nc = normalize_config(cfg)
+  if graph_validate_pkg.valid_nodes(nc.max_nodes, graph_policy_pkg.max_nodes()) == false {
+    give GraphResult.Err(GraphError.InvalidConfig)
+  }
+  give GraphResult.Ok(true)
+}
+
+proc runtime_info() -> GraphRuntimeInfo {
+  give GraphRuntimeInfo(graph_runtime_pkg.runtime_name(),
+                        graph_runtime_pkg.runtime_version(),
+                        graph_runtime_pkg.supports_directed(),
+                        graph_runtime_pkg.supports_diagnostics())
+}
+
+proc healthcheck(cfg: GraphConfig, g: Graph) -> GraphResult[GraphHealth] {
+  let vr = validate_config(cfg)
+  when vr is GraphResult.Err { give GraphResult.Err(vr.error) }
+  if graph_runtime_pkg.runtime_status() == false {
+    give GraphResult.Err(GraphError.Internal)
+  }
+  give GraphResult.Ok(GraphHealth(true, "ok", g.nodes, g.edge_count))
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give [
+    "config",
+    "density",
+    "diagnostics",
+    "directed",
+    "healthcheck",
+    "reverse",
+    "weighted-edges"
+  ]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-GRAPH0001" { give "invalid graph configuration" }
+  if code == "VITTE-GRAPH0002" { give "invalid node or edge" }
+  if code == "VITTE-GRAPH0003" { give "graph runtime unavailable" }
+  give "graph diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-GRAPH0001" { give "use max_nodes in valid range" }
+  if code == "VITTE-GRAPH0002" { give "use node indexes within graph bounds" }
+  if code == "VITTE-GRAPH0003" { give "check graph runtime status" }
+  give "review graph configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc graph_new(nodes: int, directed: bool) -> Graph {
-    give Graph(nodes, directed, [], 0)
+  give Graph(nodes, directed, [], 0)
+}
+
+proc graph_new_checked(nodes: int, directed: bool, cfg: GraphConfig) -> GraphResult[Graph] {
+  let vr = validate_config(cfg)
+  when vr is GraphResult.Err { give GraphResult.Err(vr.error) }
+  if graph_validate_pkg.valid_nodes(nodes, cfg.max_nodes) == false {
+    give GraphResult.Err(GraphError.InvalidConfig)
+  }
+  give GraphResult.Ok(graph_new(nodes, directed))
 }
 
 proc edge(src: int, dst: int, weight: int) -> Edge {
-    give Edge(src, dst, weight)
+  give Edge(src, dst, weight)
 }
 
 proc is_valid_node(g: Graph, node: int) -> bool {
-    give node >= 0 && node < g.nodes
+  give graph_validate_pkg.valid_node_index(node, g.nodes)
 }
 
 proc add_edge(g: Graph, src: int, dst: int, weight: int) -> Graph {
-    if !is_valid_node(g, src) || !is_valid_node(g, dst) {
-        give g
-    }
-    let out_edges = g.edges.push(edge(src, dst, weight))
-    give Graph(g.nodes, g.directed, out_edges, g.edge_count + 1)
+  if !is_valid_node(g, src) || !is_valid_node(g, dst) {
+    give g
+  }
+  let out_edges = g.edges.push(edge(src, dst, weight))
+  give Graph(g.nodes, g.directed, out_edges, g.edge_count + 1)
+}
+
+proc add_edge_checked(g: Graph, src: int, dst: int, weight: int, cfg: GraphConfig) -> GraphResult[Graph] {
+  if is_valid_node(g, src) == false || is_valid_node(g, dst) == false {
+    give GraphResult.Err(GraphError.InvalidConfig)
+  }
+  if cfg.allow_self_loop == false && src == dst {
+    give GraphResult.Err(GraphError.InvalidConfig)
+  }
+  if graph_validate_pkg.valid_weight(weight, graph_policy_pkg.min_weight(), graph_policy_pkg.max_weight()) == false {
+    give GraphResult.Err(GraphError.InvalidConfig)
+  }
+  give GraphResult.Ok(add_edge(g, src, dst, graph_policy_pkg.normalize_weight(weight)))
 }
 
 proc has_edge(g: Graph, src: int, dst: int) -> bool {
-    let i: int = 0
-    loop {
-        if i >= g.edges.len { break }
-        let e = g.edges[i]
-        if e.src == src && e.dst == dst { give true }
-        if !g.directed && e.src == dst && e.dst == src { give true }
-        i = i + 1
-    }
-    give false
+  let i: int = 0
+  loop {
+    if i >= g.edges.len { break }
+    let e = g.edges[i]
+    if e.src == src && e.dst == dst { give true }
+    if !g.directed && e.src == dst && e.dst == src { give true }
+    i = i + 1
+  }
+  give false
 }
 
 proc degree_out(g: Graph, src: int) -> int {
-    let d: int = 0
-    let i: int = 0
-    loop {
-        if i >= g.edges.len { break }
-        let e = g.edges[i]
-        if e.src == src {
-            d = d + 1
-        }
-        if !g.directed && e.dst == src {
-            d = d + 1
-        }
-        i = i + 1
+  let d: int = 0
+  let i: int = 0
+  loop {
+    if i >= g.edges.len { break }
+    let e = g.edges[i]
+    if e.src == src {
+      d = d + 1
     }
-    give d
+    if !g.directed && e.dst == src {
+      d = d + 1
+    }
+    i = i + 1
+  }
+  give d
 }
 
 proc edge_weight_or(g: Graph, src: int, dst: int, fallback: int) -> int {
-    let i: int = 0
-    loop {
-        if i >= g.edges.len { break }
-        let e = g.edges[i]
-        if e.src == src && e.dst == dst { give e.weight }
-        if !g.directed && e.src == dst && e.dst == src { give e.weight }
-        i = i + 1
-    }
-    give fallback
+  let i: int = 0
+  loop {
+    if i >= g.edges.len { break }
+    let e = g.edges[i]
+    if e.src == src && e.dst == dst { give e.weight }
+    if !g.directed && e.src == dst && e.dst == src { give e.weight }
+    i = i + 1
+  }
+  give fallback
 }
 
 proc reverse(g: Graph) -> Graph {
-    let out = graph_new(g.nodes, g.directed)
-    let i: int = 0
-    loop {
-        if i >= g.edges.len { break }
-        let e = g.edges[i]
-        out = add_edge(out, e.dst, e.src, e.weight)
-        i = i + 1
-    }
-    give out
+  let out = graph_new(g.nodes, g.directed)
+  let i: int = 0
+  loop {
+    if i >= g.edges.len { break }
+    let e = g.edges[i]
+    out = add_edge(out, e.dst, e.src, e.weight)
+    i = i + 1
+  }
+  give out
 }
 
 proc density_percent(g: Graph) -> int {
-    if g.nodes <= 1 { give 0 }
-    let max_edges = g.nodes * (g.nodes - 1)
-    if !g.directed {
-        give (g.edge_count * 200) / max_edges
-    }
-    give (g.edge_count * 100) / max_edges
+  if g.nodes <= 1 { give 0 }
+  let max_edges = g.nodes * (g.nodes - 1)
+  if !g.directed {
+    give (g.edge_count * 200) / max_edges
+  }
+  give (g.edge_count * 100) / max_edges
 }
 
 proc ready() -> bool {
-    give true
+  give graph_runtime_pkg.runtime_status()
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/graph"
+  give "vitte/graph"
 }
 
 <<< ROLE-CONTRACT

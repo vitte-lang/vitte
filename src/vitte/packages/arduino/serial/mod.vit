@@ -25,23 +25,104 @@ form SerialState {
   error_count: int
 }
 
+form SerialReadResult {
+  state: SerialState
+  byte: int
+}
+
+form SerialHealth {
+  ok: bool
+  message: string
+}
+
+form SerialMetrics {
+  tx_count: int
+  rx_count: int
+  timeout_count: int
+  error_count: int
+  available: int
+}
+
+form SerialFrame {
+  payload: [int]
+  checksum: int
+}
+
+form SerialPortInfo {
+  profile: arduino_pkg.ArduinoProfile
+  max_baud: int
+  runtime: string
+  opened: bool
+}
+
+form SerialLineResult {
+  state: SerialState
+  line: [int]
+}
+
 proc serial_default_config() -> SerialConfig {
-  give SerialConfig(arduino_pkg.default_profile(), 115200, serial_policy_pkg.default_timeout_ms())
+  let p = arduino_pkg.default_profile()
+  give SerialConfig(
+    p,
+    serial_policy_pkg.default_baud_for_profile(p),
+    serial_policy_pkg.normalize_timeout_ms(serial_policy_pkg.default_timeout_ms())
+  )
 }
 
 proc serial_with_baud(cfg: SerialConfig, baud: arduino_pkg.BaudRate) -> SerialConfig {
-  give SerialConfig(cfg.profile, baud, cfg.timeout_ms)
+  give SerialConfig(cfg.profile, serial_policy_pkg.normalize_baud(cfg.profile, baud), cfg.timeout_ms)
 }
 
 proc serial_with_timeout(cfg: SerialConfig, timeout_ms: arduino_pkg.Millis) -> SerialConfig {
-  give SerialConfig(cfg.profile, cfg.baud, timeout_ms)
+  give SerialConfig(cfg.profile, cfg.baud, serial_policy_pkg.normalize_timeout_ms(timeout_ms))
 }
 
 proc serial_open(cfg: SerialConfig) -> arduino_pkg.ArduinoResult[SerialState] {
-  if serial_validate_pkg.valid_baud(cfg.baud) == false {
+  if serial_runtime_pkg.runtime_connected() == false {
+    give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.BusBusy)
+  }
+  if serial_validate_pkg.valid_baud_for_profile(cfg.profile, cfg.baud) == false {
     give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.InvalidBaudRate)
   }
-  give arduino_pkg.ok[SerialState](SerialState(cfg, true, 0, 0, 0, 0))
+  if serial_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Timeout)
+  }
+  let c = SerialConfig(cfg.profile, cfg.baud, serial_policy_pkg.normalize_timeout_ms(cfg.timeout_ms))
+  give arduino_pkg.ok[SerialState](SerialState(c, true, 0, 0, 0, 0))
+}
+
+proc serial_validate_config(cfg: SerialConfig) -> arduino_pkg.ArduinoResult[bool] {
+  if serial_validate_pkg.valid_baud_for_profile(cfg.profile, cfg.baud) == false {
+    give arduino_pkg.err[bool](arduino_pkg.ArduinoError.InvalidBaudRate)
+  }
+  if serial_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give arduino_pkg.err[bool](arduino_pkg.ArduinoError.Timeout)
+  }
+  give arduino_pkg.ok[bool](true)
+}
+
+proc serial_normalize_config(cfg: SerialConfig) -> SerialConfig {
+  give SerialConfig(
+    cfg.profile,
+    serial_policy_pkg.normalize_baud(cfg.profile, cfg.baud),
+    serial_policy_pkg.normalize_timeout_ms(cfg.timeout_ms)
+  )
+}
+
+proc serial_reconfigure(st: SerialState, cfg: SerialConfig) -> arduino_pkg.ArduinoResult[SerialState] {
+  if st.opened == false { give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Conflict) }
+  let nc = serial_normalize_config(cfg)
+  let vr = serial_validate_config(nc)
+  when vr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[SerialState](vr.error) }
+  give arduino_pkg.ok[SerialState](SerialState(nc, true, st.tx_count, st.rx_count, st.timeout_count, st.error_count))
+}
+
+proc serial_profile_default(profile: arduino_pkg.ArduinoProfile) -> SerialConfig {
+  give SerialConfig(
+    profile,
+    serial_policy_pkg.default_baud_for_profile(profile),
+    serial_policy_pkg.normalize_timeout_ms(serial_policy_pkg.default_timeout_ms())
+  )
 }
 
 proc serial_close(st: SerialState) -> SerialState {
@@ -49,21 +130,325 @@ proc serial_close(st: SerialState) -> SerialState {
 }
 
 proc serial_available(st: SerialState) -> int {
-  let _ = st
+  if st.opened == false { give 0 }
   give serial_runtime_pkg.runtime_available()
 }
 
 proc serial_read(st: SerialState) -> arduino_pkg.ArduinoResult[int] {
-  let _ = st
+  if st.opened == false { give arduino_pkg.err[int](arduino_pkg.ArduinoError.Conflict) }
+  if serial_available(st) <= 0 { give arduino_pkg.err[int](arduino_pkg.ArduinoError.Timeout) }
   give arduino_pkg.ok[int](serial_runtime_pkg.runtime_read())
 }
 
+proc serial_read_step(st: SerialState) -> arduino_pkg.ArduinoResult[SerialReadResult] {
+  if st.opened == false { give arduino_pkg.err[SerialReadResult](arduino_pkg.ArduinoError.Conflict) }
+  if serial_available(st) <= 0 {
+    give arduino_pkg.err[SerialReadResult](arduino_pkg.ArduinoError.Timeout)
+  }
+  let v = serial_runtime_pkg.runtime_read()
+  let st2 = SerialState(st.cfg, st.opened, st.tx_count, st.rx_count + 1, st.timeout_count, st.error_count)
+  give arduino_pkg.ok[SerialReadResult](SerialReadResult(st2, v))
+}
+
+proc serial_read_with_state(st: SerialState) -> arduino_pkg.ArduinoResult[SerialReadResult] {
+  if st.opened == false { give arduino_pkg.err[SerialReadResult](arduino_pkg.ArduinoError.Conflict) }
+  if serial_available(st) <= 0 {
+    let st_to = SerialState(st.cfg, st.opened, st.tx_count, st.rx_count, st.timeout_count + 1, st.error_count)
+    let _ = st_to
+    give arduino_pkg.err[SerialReadResult](arduino_pkg.ArduinoError.Timeout)
+  }
+  let v = serial_runtime_pkg.runtime_read()
+  let st2 = SerialState(st.cfg, st.opened, st.tx_count, st.rx_count + 1, st.timeout_count, st.error_count)
+  give arduino_pkg.ok[SerialReadResult](SerialReadResult(st2, v))
+}
+
 proc serial_write(st: SerialState, byte: int) -> arduino_pkg.ArduinoResult[SerialState] {
+  if st.opened == false { give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Conflict) }
+  if serial_validate_pkg.valid_byte(byte) == false {
+    give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Unsupported)
+  }
   let status: int = serial_runtime_pkg.runtime_write(byte)
   if status <= 0 {
     give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Timeout)
   }
   give arduino_pkg.ok[SerialState](SerialState(st.cfg, st.opened, st.tx_count + 1, st.rx_count, st.timeout_count, st.error_count))
+}
+
+proc serial_write_with_state(st: SerialState, byte: int) -> arduino_pkg.ArduinoResult[SerialState] {
+  if st.opened == false { give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Conflict) }
+  if serial_validate_pkg.valid_byte(byte) == false {
+    let se = SerialState(st.cfg, st.opened, st.tx_count, st.rx_count, st.timeout_count, st.error_count + 1)
+    let _ = se
+    give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Unsupported)
+  }
+  let status: int = serial_runtime_pkg.runtime_write(byte)
+  if status <= 0 {
+    let st_to = SerialState(st.cfg, st.opened, st.tx_count, st.rx_count, st.timeout_count + 1, st.error_count + 1)
+    let _ = st_to
+    give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Timeout)
+  }
+  give arduino_pkg.ok[SerialState](SerialState(st.cfg, st.opened, st.tx_count + 1, st.rx_count, st.timeout_count, st.error_count))
+}
+
+proc serial_write_bytes(st: SerialState, bytes: [int]) -> arduino_pkg.ArduinoResult[SerialState] {
+  let out = st
+  let i: int = 0
+  loop {
+    if i >= bytes.len { break }
+    let wr = serial_write(out, bytes[i])
+    when wr is arduino_pkg.ArduinoResult.Err {
+      give arduino_pkg.err[SerialState](wr.error)
+    }
+    out = wr.value
+    i = i + 1
+  }
+  give arduino_pkg.ok[SerialState](out)
+}
+
+proc serial_read_n(st: SerialState, count: int) -> arduino_pkg.ArduinoResult[[int]] {
+  if st.opened == false { give arduino_pkg.err[[int]](arduino_pkg.ArduinoError.Conflict) }
+  let n = serial_policy_pkg.normalize_read_batch(count)
+  if serial_validate_pkg.valid_batch_size(n) == false {
+    give arduino_pkg.err[[int]](arduino_pkg.ArduinoError.Unsupported)
+  }
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= n { break }
+    if serial_available(st) <= 0 { break }
+    out = out.push(serial_runtime_pkg.runtime_read())
+    i = i + 1
+  }
+  give arduino_pkg.ok[[int]](out)
+}
+
+proc serial_read_line(st: SerialState, max_bytes: int) -> arduino_pkg.ArduinoResult[SerialLineResult] {
+  if st.opened == false { give arduino_pkg.err[SerialLineResult](arduino_pkg.ArduinoError.Conflict) }
+  let cap = serial_policy_pkg.normalize_exchange_bytes(max_bytes)
+  if serial_validate_pkg.valid_exchange_bytes(cap) == false { give arduino_pkg.err[SerialLineResult](arduino_pkg.ArduinoError.Unsupported) }
+  let out: [int] = []
+  let cur = st
+  let i: int = 0
+  loop {
+    if i >= cap { break }
+    if serial_available(cur) <= 0 { break }
+    let rr = serial_read_step(cur)
+    when rr is arduino_pkg.ArduinoResult.Err {
+      give arduino_pkg.err[SerialLineResult](rr.error)
+    }
+    cur = rr.value.state
+    if rr.value.byte == 10 { break }
+    if rr.value.byte == 13 {
+      i = i + 1
+      continue
+    }
+    out = out.push(rr.value.byte)
+    i = i + 1
+  }
+  give arduino_pkg.ok[SerialLineResult](SerialLineResult(cur, out))
+}
+
+proc serial_peek(st: SerialState) -> arduino_pkg.ArduinoResult[int] {
+  if st.opened == false { give arduino_pkg.err[int](arduino_pkg.ArduinoError.Conflict) }
+  let p = serial_runtime_pkg.runtime_peek()
+  if p < 0 { give arduino_pkg.err[int](arduino_pkg.ArduinoError.Timeout) }
+  give arduino_pkg.ok[int](p)
+}
+
+proc serial_flush(st: SerialState) -> arduino_pkg.ArduinoResult[SerialState] {
+  if st.opened == false { give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Conflict) }
+  let rc = serial_runtime_pkg.runtime_flush()
+  if rc != 0 { give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Unknown) }
+  give arduino_pkg.ok[SerialState](st)
+}
+
+proc serial_write_line(st: SerialState, line: [int]) -> arduino_pkg.ArduinoResult[SerialState] {
+  let wr = serial_write_bytes(st, line)
+  when wr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[SerialState](wr.error) }
+  give serial_write(wr.value, 10)
+}
+
+proc serial_health(st: SerialState) -> SerialHealth {
+  if st.opened == false { give SerialHealth(false, "closed") }
+  if serial_validate_pkg.valid_baud_for_profile(st.cfg.profile, st.cfg.baud) == false { give SerialHealth(false, "invalid-baud") }
+  if serial_validate_pkg.valid_timeout_ms(st.cfg.timeout_ms) == false { give SerialHealth(false, "invalid-timeout") }
+  if st.error_count > st.tx_count + st.rx_count { give SerialHealth(false, "error-rate-high") }
+  if serial_runtime_pkg.runtime_connected() == false { give SerialHealth(false, "disconnected") }
+  give SerialHealth(true, "ok:" + serial_runtime_pkg.runtime_name())
+}
+
+proc serial_metrics(st: SerialState) -> SerialMetrics {
+  let av = serial_available(st)
+  give SerialMetrics(st.tx_count, st.rx_count, st.timeout_count, st.error_count, av)
+}
+
+proc serial_reset_counters(st: SerialState) -> SerialState {
+  give SerialState(st.cfg, st.opened, 0, 0, 0, 0)
+}
+
+proc serial_error_rate_percent(st: SerialState) -> int {
+  let total = st.tx_count + st.rx_count + st.timeout_count
+  if total <= 0 { give 0 }
+  give (st.error_count * 100) / total
+}
+
+proc serial_port_info(st: SerialState) -> SerialPortInfo {
+  give SerialPortInfo(
+    st.cfg.profile,
+    serial_policy_pkg.max_baud_for_profile(st.cfg.profile),
+    serial_runtime_pkg.runtime_name(),
+    st.opened
+  )
+}
+
+proc serial_checksum(bytes: [int]) -> int {
+  let sum: int = 0
+  let i: int = 0
+  loop {
+    if i >= bytes.len { break }
+    let b = bytes[i]
+    if serial_validate_pkg.valid_byte(b) == false { give -1 }
+    sum = (sum + b) % 256
+    i = i + 1
+  }
+  give sum
+}
+
+proc serial_verify_checksum(payload: [int], checksum: int) -> bool {
+  if serial_validate_pkg.valid_checksum(checksum) == false { give false }
+  let c = serial_checksum(payload)
+  if c < 0 { give false }
+  give c == checksum
+}
+
+proc serial_frame(payload: [int]) -> arduino_pkg.ArduinoResult[SerialFrame] {
+  let n = serial_policy_pkg.normalize_frame_size(payload.len)
+  if serial_validate_pkg.valid_frame_size(n) == false {
+    give arduino_pkg.err[SerialFrame](arduino_pkg.ArduinoError.Unsupported)
+  }
+  if payload.len > serial_policy_pkg.max_frame_size() {
+    give arduino_pkg.err[SerialFrame](arduino_pkg.ArduinoError.Unsupported)
+  }
+  let c = serial_checksum(payload)
+  if serial_validate_pkg.valid_checksum(c) == false {
+    give arduino_pkg.err[SerialFrame](arduino_pkg.ArduinoError.Unsupported)
+  }
+  give arduino_pkg.ok[SerialFrame](SerialFrame(payload, c))
+}
+
+proc serial_write_frame(st: SerialState, frame: SerialFrame) -> arduino_pkg.ArduinoResult[SerialState] {
+  if serial_validate_pkg.valid_checksum(frame.checksum) == false {
+    give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Unsupported)
+  }
+  if serial_verify_checksum(frame.payload, frame.checksum) == false {
+    give arduino_pkg.err[SerialState](arduino_pkg.ArduinoError.Conflict)
+  }
+  let wr = serial_write_bytes(st, frame.payload)
+  when wr is arduino_pkg.ArduinoResult.Err {
+    give arduino_pkg.err[SerialState](wr.error)
+  }
+  give serial_write(wr.value, frame.checksum)
+}
+
+proc serial_frame_from_bytes(bytes: [int]) -> arduino_pkg.ArduinoResult[SerialFrame] {
+  give serial_frame(bytes)
+}
+
+proc serial_frame_is_valid(frame: SerialFrame) -> bool {
+  give serial_verify_checksum(frame.payload, frame.checksum)
+}
+
+proc serial_read_until(st: SerialState, terminator: int, max_bytes: int) -> arduino_pkg.ArduinoResult[[int]] {
+  if st.opened == false { give arduino_pkg.err[[int]](arduino_pkg.ArduinoError.Conflict) }
+  if serial_validate_pkg.valid_byte(terminator) == false { give arduino_pkg.err[[int]](arduino_pkg.ArduinoError.Unsupported) }
+  let cap = serial_policy_pkg.normalize_exchange_bytes(max_bytes)
+  if serial_validate_pkg.valid_exchange_bytes(cap) == false { give arduino_pkg.err[[int]](arduino_pkg.ArduinoError.Unsupported) }
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= cap { break }
+    if serial_available(st) <= 0 { break }
+    let rr = serial_read(st)
+    when rr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[[int]](rr.error) }
+    out = out.push(rr.value)
+    if rr.value == terminator { break }
+    i = i + 1
+  }
+  give arduino_pkg.ok[[int]](out)
+}
+
+proc serial_exchange(st: SerialState, tx: [int], rx_max: int) -> arduino_pkg.ArduinoResult[[int]] {
+  if st.opened == false { give arduino_pkg.err[[int]](arduino_pkg.ArduinoError.Conflict) }
+  let wr = serial_write_bytes(st, tx)
+  when wr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[[int]](wr.error) }
+  let cap = serial_policy_pkg.normalize_exchange_bytes(rx_max)
+  if serial_validate_pkg.valid_exchange_bytes(cap) == false { give arduino_pkg.err[[int]](arduino_pkg.ArduinoError.Unsupported) }
+  give serial_read_n(wr.value, cap)
+}
+
+proc serial_exchange_frame(st: SerialState, tx_payload: [int], rx_max: int) -> arduino_pkg.ArduinoResult[[int]] {
+  let fr = serial_frame(tx_payload)
+  when fr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[[int]](fr.error) }
+  let wr = serial_write_frame(st, fr.value)
+  when wr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[[int]](wr.error) }
+  let cap = serial_policy_pkg.normalize_exchange_bytes(rx_max)
+  if serial_validate_pkg.valid_exchange_bytes(cap) == false { give arduino_pkg.err[[int]](arduino_pkg.ArduinoError.Unsupported) }
+  give serial_read_n(wr.value, cap)
+}
+
+proc serial_runtime_capabilities() -> [string] {
+  give serial_runtime_pkg.runtime_capabilities()
+}
+
+proc serial_bundle_required_libraries() -> [arduino_pkg.ArduinoLibrary] {
+  give [arduino_pkg.ArduinoLibrary.Serial]
+}
+
+proc serial_bundle_validate(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_pkg.ArduinoResult[bool] {
+  let pvr = arduino_pkg.project_validate(bundle.preset)
+  when pvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[bool](pvr.error) }
+
+  let lvr = arduino_pkg.library_set_validate(bundle.preset.profile, bundle.libraries)
+  when lvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[bool](lvr.error) }
+
+  if arduino_pkg.has_library(bundle.libraries, arduino_pkg.ArduinoLibrary.Serial) == false {
+    give arduino_pkg.err[bool](arduino_pkg.ArduinoError.Unsupported)
+  }
+  give arduino_pkg.ok[bool](true)
+}
+
+proc serial_bundle_open(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_pkg.ArduinoResult[SerialState] {
+  let bvr = serial_bundle_validate(bundle)
+  when bvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[SerialState](bvr.error) }
+  let cfg0 = SerialConfig(
+    bundle.preset.profile,
+    bundle.preset.baud,
+    bundle.preset.loop_period_ms
+  )
+  let cfg = serial_normalize_config(cfg0)
+  give serial_open(cfg)
+}
+
+proc serial_bundle_write_bytes(st: SerialState, bytes: [int]) -> arduino_pkg.ArduinoResult[SerialState] {
+  give serial_write_bytes(st, bytes)
+}
+
+proc serial_bundle_read_available(st: SerialState, max_bytes: int) -> arduino_pkg.ArduinoResult[[int]] {
+  give serial_read_n(st, max_bytes)
+}
+
+proc serial_bundle_health(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_pkg.ArduinoResult[SerialHealth] {
+  let op = serial_bundle_open(bundle)
+  when op is arduino_pkg.ArduinoResult.Err {
+    give arduino_pkg.err[SerialHealth](op.error)
+  }
+  give arduino_pkg.ok[SerialHealth](serial_health(op.value))
+}
+
+proc serial_bundle_exchange(bundle: arduino_pkg.ArduinoProjectBundle, tx: [int], rx_max: int) -> arduino_pkg.ArduinoResult[[int]] {
+  let op = serial_bundle_open(bundle)
+  when op is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[[int]](op.error) }
+  give serial_exchange(op.value, tx, rx_max)
 }
 
 # Compatibility wrappers
@@ -90,3 +475,4 @@ output_contract: ArduinoResult + compteurs observabilite low-cost
 boundary: Runtime hardware uniquement via internal/runtime
 compat_policy: additive-only
 >>>
+

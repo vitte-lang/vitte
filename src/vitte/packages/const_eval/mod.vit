@@ -1,16 +1,26 @@
 <<<
 mod.vit
 package vitte/const_eval
+version: 2.0.0
+tier: compiler-const
+purpose:
+  Evaluation deterministe des expressions constantes.
+  Validation des operations et controle overflow optionnel.
+  API stable versionnee avec diagnostics.
 >>>
 
 space vitte/const_eval
 
+use vitte/const_eval/internal/runtime as const_eval_runtime_pkg
+use vitte/const_eval/internal/validate as const_eval_validate_pkg
+use vitte/const_eval/internal/policy as const_eval_policy_pkg
 
 pick ConstError {
   None
   DivisionByZero
   Overflow
   InvalidOp
+  InvalidConfig
 }
 
 form ConstExpr {
@@ -22,6 +32,92 @@ form ConstExpr {
 form ConstResult {
   value: int
   error: ConstError
+}
+
+form ConstEvalConfig {
+  strict: bool
+  detect_overflow: bool
+  max_abs_value: int
+  max_chain_len: int
+}
+
+pick ConstEvalResult[T] {
+  Ok(value: T)
+  Err(error: ConstError)
+}
+
+form ConstEvalRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_chain_fold: bool
+  supports_overflow_detection: bool
+  supports_diagnostics: bool
+}
+
+form ConstEvalStats {
+  expr_count: int
+  error_count: int
+  overflow_count: int
+  div0_count: int
+}
+
+form ConstEvalHealth {
+  ok: bool
+  code: string
+  error_percent: int
+}
+
+proc config_ok(cfg: ConstEvalConfig) -> bool {
+  if const_eval_validate_pkg.valid_abs(cfg.max_abs_value, const_eval_policy_pkg.max_abs_value()) == false { give false }
+  if const_eval_validate_pkg.valid_chain_len(cfg.max_chain_len, const_eval_policy_pkg.max_chain_len()) == false { give false }
+  give true
+}
+
+proc default_config() -> ConstEvalConfig {
+  give ConstEvalConfig(const_eval_policy_pkg.default_strict(),
+                       const_eval_policy_pkg.default_detect_overflow(),
+                       const_eval_policy_pkg.max_abs_value(),
+                       const_eval_policy_pkg.max_chain_len())
+}
+
+proc strict_config() -> ConstEvalConfig {
+  let cfg = default_config()
+  give ConstEvalConfig(true,
+                       true,
+                       cfg.max_abs_value,
+                       cfg.max_chain_len)
+}
+
+proc with_max_abs_value(cfg: ConstEvalConfig, max_abs_value: int) -> ConstEvalConfig {
+  give ConstEvalConfig(cfg.strict,
+                       cfg.detect_overflow,
+                       const_eval_policy_pkg.normalize_abs(max_abs_value),
+                       cfg.max_chain_len)
+}
+
+proc with_max_chain_len(cfg: ConstEvalConfig, max_chain_len: int) -> ConstEvalConfig {
+  give ConstEvalConfig(cfg.strict,
+                       cfg.detect_overflow,
+                       cfg.max_abs_value,
+                       const_eval_policy_pkg.normalize_chain_len(max_chain_len))
+}
+
+proc validate_config(cfg: ConstEvalConfig) -> ConstEvalResult[bool] {
+  if config_ok(cfg) == false { give ConstEvalResult.Err(ConstError.InvalidConfig) }
+  give ConstEvalResult.Ok(true)
+}
+
+proc validate_config_code(cfg: ConstEvalConfig) -> string {
+  if config_ok(cfg) == false { give "invalid-config" }
+  give "ok"
+}
+
+proc normalize_config(cfg: ConstEvalConfig) -> ConstEvalConfig {
+  give ConstEvalConfig(cfg.strict,
+                       cfg.detect_overflow,
+                       const_eval_policy_pkg.normalize_abs(cfg.max_abs_value),
+                       const_eval_policy_pkg.normalize_chain_len(cfg.max_chain_len))
 }
 
 proc expr(op: string, left: int, right: int) -> ConstExpr {
@@ -51,6 +147,35 @@ proc eval(e: ConstExpr) -> ConstResult {
   give err(ConstError.InvalidOp)
 }
 
+proc eval_checked(e: ConstExpr, cfg: ConstEvalConfig) -> ConstEvalResult[ConstResult] {
+  let vr = validate_config(cfg)
+  when vr is ConstEvalResult.Err { give ConstEvalResult.Err(vr.error) }
+
+  if const_eval_validate_pkg.valid_binary_op(e.op) == false {
+    give ConstEvalResult.Err(ConstError.InvalidOp)
+  }
+
+  if const_eval_validate_pkg.valid_abs(e.left, cfg.max_abs_value) == false {
+    give ConstEvalResult.Err(ConstError.Overflow)
+  }
+  if const_eval_validate_pkg.valid_abs(e.right, cfg.max_abs_value) == false {
+    give ConstEvalResult.Err(ConstError.Overflow)
+  }
+
+  let r = eval(e)
+  if r.error != ConstError.None {
+    give ConstEvalResult.Ok(r)
+  }
+
+  if cfg.detect_overflow {
+    if const_eval_validate_pkg.valid_abs(r.value, cfg.max_abs_value) == false {
+      give ConstEvalResult.Ok(err(ConstError.Overflow))
+    }
+  }
+
+  give ConstEvalResult.Ok(r)
+}
+
 proc fold_chain(values: [int], op: string) -> ConstResult {
   if values.len == 0 { give ok(0) }
   let acc = values[0]
@@ -65,6 +190,35 @@ proc fold_chain(values: [int], op: string) -> ConstResult {
   give ok(acc)
 }
 
+proc fold_chain_checked(values: [int], op: string, cfg: ConstEvalConfig) -> ConstEvalResult[ConstResult] {
+  let vr = validate_config(cfg)
+  when vr is ConstEvalResult.Err { give ConstEvalResult.Err(vr.error) }
+
+  if const_eval_validate_pkg.valid_binary_op(op) == false {
+    give ConstEvalResult.Err(ConstError.InvalidOp)
+  }
+  if const_eval_validate_pkg.valid_chain_len(values.len, cfg.max_chain_len) == false {
+    give ConstEvalResult.Err(ConstError.Overflow)
+  }
+
+  if values.len == 0 { give ConstEvalResult.Ok(ok(0)) }
+
+  let acc = values[0]
+  let i: int = 1
+  loop {
+    if i >= values.len { break }
+    let er = eval_checked(ConstExpr(op, acc, values[i]), cfg)
+    when er is ConstEvalResult.Err { give ConstEvalResult.Err(er.error) }
+    if er.value.error != ConstError.None {
+      give ConstEvalResult.Ok(er.value)
+    }
+    acc = er.value.value
+    i = i + 1
+  }
+
+  give ConstEvalResult.Ok(ok(acc))
+}
+
 proc compare(left: int, right: int, op: string) -> bool {
   if op == "eq" { give left == right }
   if op == "ne" { give left != right }
@@ -73,6 +227,13 @@ proc compare(left: int, right: int, op: string) -> bool {
   if op == "gt" { give left > right }
   if op == "ge" { give left >= right }
   give false
+}
+
+proc compare_checked(left: int, right: int, op: string) -> ConstEvalResult[bool] {
+  if const_eval_validate_pkg.valid_compare_op(op) == false {
+    give ConstEvalResult.Err(ConstError.InvalidOp)
+  }
+  give ConstEvalResult.Ok(compare(left, right, op))
 }
 
 proc result_text(r: ConstResult) -> string {
@@ -89,6 +250,26 @@ proc eval_unary(op: string, value: int) -> ConstResult {
     give ok(value)
   }
   give err(ConstError.InvalidOp)
+}
+
+proc eval_unary_checked(op: string, value: int, cfg: ConstEvalConfig) -> ConstEvalResult[ConstResult] {
+  let vr = validate_config(cfg)
+  when vr is ConstEvalResult.Err { give ConstEvalResult.Err(vr.error) }
+
+  if const_eval_validate_pkg.valid_unary_op(op) == false {
+    give ConstEvalResult.Err(ConstError.InvalidOp)
+  }
+  if const_eval_validate_pkg.valid_abs(value, cfg.max_abs_value) == false {
+    give ConstEvalResult.Err(ConstError.Overflow)
+  }
+
+  let r = eval_unary(op, value)
+  if r.error == ConstError.None && cfg.detect_overflow {
+    if const_eval_validate_pkg.valid_abs(r.value, cfg.max_abs_value) == false {
+      give ConstEvalResult.Ok(err(ConstError.Overflow))
+    }
+  }
+  give ConstEvalResult.Ok(r)
 }
 
 proc clamp(value: int, min_value: int, max_value: int) -> int {
@@ -153,6 +334,26 @@ proc eval_many(exprs: [ConstExpr]) -> [ConstResult] {
   give out
 }
 
+proc eval_many_checked(exprs: [ConstExpr], cfg: ConstEvalConfig) -> ConstEvalResult[[ConstResult]] {
+  let vr = validate_config(cfg)
+  when vr is ConstEvalResult.Err { give ConstEvalResult.Err(vr.error) }
+
+  if const_eval_validate_pkg.valid_chain_len(exprs.len, cfg.max_chain_len) == false {
+    give ConstEvalResult.Err(ConstError.Overflow)
+  }
+
+  let out: [ConstResult] = []
+  let i: int = 0
+  loop {
+    if i >= exprs.len { break }
+    let r = eval_checked(exprs[i], cfg)
+    when r is ConstEvalResult.Err { give ConstEvalResult.Err(r.error) }
+    out = out.push(r.value)
+    i = i + 1
+  }
+  give ConstEvalResult.Ok(out)
+}
+
 proc error_count(results: [ConstResult]) -> int {
   let c: int = 0
   let i: int = 0
@@ -164,14 +365,146 @@ proc error_count(results: [ConstResult]) -> int {
   give c
 }
 
-proc ready() -> bool {
+proc const_eval_stats(results: [ConstResult]) -> ConstEvalStats {
+  let errors = 0
+  let overflow_count = 0
+  let div0_count = 0
+  let i: int = 0
+  loop {
+    if i >= results.len { break }
+
+    if results[i].error != ConstError.None {
+      errors = errors + 1
+    }
+    if results[i].error == ConstError.Overflow {
+      overflow_count = overflow_count + 1
+    }
+    if results[i].error == ConstError.DivisionByZero {
+      div0_count = div0_count + 1
+    }
+
+    i = i + 1
+  }
+  give ConstEvalStats(results.len, errors, overflow_count, div0_count)
+}
+
+proc const_eval_validate_code(e: ConstExpr, cfg: ConstEvalConfig) -> string {
+  let vr = validate_config(cfg)
+  when vr is ConstEvalResult.Err { give "invalid-config" }
+  if const_eval_validate_pkg.valid_binary_op(e.op) == false { give "invalid-op" }
+  if const_eval_validate_pkg.valid_abs(e.left, cfg.max_abs_value) == false { give "left-overflow" }
+  if const_eval_validate_pkg.valid_abs(e.right, cfg.max_abs_value) == false { give "right-overflow" }
+  if (e.op == "div" || e.op == "mod") && e.right == 0 { give "division-by-zero" }
+  give "ok"
+}
+
+proc const_eval_validate(e: ConstExpr, cfg: ConstEvalConfig) -> bool {
+  give const_eval_validate_code(e, cfg) == "ok"
+}
+
+proc const_eval_health(results: [ConstResult]) -> ConstEvalHealth {
+  let st = const_eval_stats(results)
+  if st.expr_count == 0 { give ConstEvalHealth(true, "ok", 0) }
+
+  let pct = st.error_count * 100 / st.expr_count
+  if pct < 0 { pct = 0 }
+  if pct > 100 { pct = 100 }
+  if const_eval_validate_pkg.valid_percent(pct) == false {
+    give ConstEvalHealth(false, "invalid-percent", 100)
+  }
+
+  if st.error_count > 0 { give ConstEvalHealth(false, "errors", pct) }
+  give ConstEvalHealth(true, "ok", pct)
+}
+
+proc const_eval_runtime_info() -> ConstEvalRuntimeInfo {
+  give ConstEvalRuntimeInfo(const_eval_runtime_pkg.runtime_name(),
+                            const_eval_runtime_pkg.runtime_version(),
+                            const_eval_runtime_pkg.supports_no_std(),
+                            const_eval_runtime_pkg.supports_chain_fold(),
+                            const_eval_runtime_pkg.supports_overflow_detection(),
+                            const_eval_runtime_pkg.supports_diagnostics())
+}
+
+proc healthcheck(cfg: ConstEvalConfig) -> ConstEvalResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is ConstEvalResult.Err { give ConstEvalResult.Err(vr.error) }
+  if const_eval_runtime_pkg.runtime_status() == false { give ConstEvalResult.Err(ConstError.InvalidConfig) }
+  give ConstEvalResult.Ok(true)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_max_abs_value,with_max_chain_len,validate_config,validate_config_code,normalize_config,expr,ok,err,eval,eval_checked,fold_chain,fold_chain_checked,compare,compare_checked,result_text,eval_unary,eval_unary_checked,clamp,eval_min_max,const_health,is_ok,value_or,eval_pow,eval_many,eval_many_checked,error_count,const_eval_stats,const_eval_validate_code,const_eval_validate,const_eval_health,const_eval_runtime_info,healthcheck,stable_api_surface_hash,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["eval", "fold", "compare", "overflow-check", "diagnostics", const_eval_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CONST-EVAL0001" { give "invalid const-eval configuration" }
+  if code == "VITTE-CONST-EVAL0002" { give "invalid operation or expression" }
+  if code == "VITTE-CONST-EVAL0003" { give "overflow or division by zero" }
+  give "const_eval diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-CONST-EVAL0001" { give "normalize config limits and validate config" }
+  if code == "VITTE-CONST-EVAL0002" { give "use supported ops: add/sub/mul/div/mod" }
+  if code == "VITTE-CONST-EVAL0003" { give "reduce operand range or guard division by zero" }
+  give "inspect validate code and stats"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if const_eval_runtime_pkg.runtime_status() == false { give false }
+
+  let cfg = strict_config()
+  let vr = validate_config(cfg)
+  when vr is ConstEvalResult.Err { give false }
+
+  let er = eval_checked(expr("add", 2, 3), cfg)
+  when er is ConstEvalResult.Err { give false }
+  if er.value.error != ConstError.None { give false }
+
+  let fr = fold_chain_checked([1, 2, 3], "add", cfg)
+  when fr is ConstEvalResult.Err { give false }
+  if fr.value.error != ConstError.None { give false }
+
+  let many = eval_many_checked([expr("mul", 2, 4), expr("div", 6, 2)], cfg)
+  when many is ConstEvalResult.Err { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
   give true
 }
 
-
+proc ready() -> bool {
+  give stable_ready()
+}
 
 proc package_meta() -> string {
-    give "vitte/const_eval"
+  give "vitte/const_eval"
 }
 
 <<< ROLE-CONTRACT
@@ -180,4 +513,5 @@ role: Evaluation compile time des expressions constantes
 input_contract: Structures internes du compilateur deja valides syntaxiquement
 output_contract: Artefacts intermediaires deterministes pour l etape suivante
 boundary: Ne fait ni IO reseau ni decisions metier applicatives
+versioning_note: stable_api_version=2.0.0
 >>>

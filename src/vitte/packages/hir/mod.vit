@@ -1,10 +1,49 @@
 <<<
 mod.vit
 package vitte/hir
+version: 3.1.0
+tier: compiler-core
+purpose:
+  Representation HIR semantique pour analyses statiques.
+  Validation explicite des noeuds/types/symboles.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/hir
 
+use vitte/hir/internal/policy as hir_policy_pkg
+use vitte/hir/internal/runtime as hir_runtime_pkg
+use vitte/hir/internal/validate as hir_validate_pkg
+
+form HirConfig {
+  max_nodes: int
+  require_return: bool
+  allow_empty_symbol: bool
+}
+
+pick HirError {
+  InvalidConfig
+  NotFound
+  Internal
+}
+
+pick HirResult[T] {
+  Ok(value: T)
+  Err(error: HirError)
+}
+
+form HirRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_symbol_rename: bool
+}
+
+form HirHealth {
+  ok: bool
+  code: string
+  nodes: int
+}
 
 pick HirKind {
   Block
@@ -26,16 +65,128 @@ form HirModule {
   nodes: [HirNode]
 }
 
+proc default_config() -> HirConfig {
+  give HirConfig(hir_policy_pkg.max_nodes(), hir_policy_pkg.default_require_return(), hir_policy_pkg.default_allow_empty_symbol())
+}
+
+proc strict_config() -> HirConfig {
+  let cfg = default_config()
+  give HirConfig(cfg.max_nodes, true, false)
+}
+
+proc with_max_nodes(cfg: HirConfig, max_nodes: int) -> HirConfig {
+  give HirConfig(hir_policy_pkg.normalize_max_nodes(max_nodes), cfg.require_return, cfg.allow_empty_symbol)
+}
+
+proc normalize_config(cfg: HirConfig) -> HirConfig {
+  give HirConfig(hir_policy_pkg.normalize_max_nodes(cfg.max_nodes), cfg.require_return, cfg.allow_empty_symbol)
+}
+
+proc validate_config(cfg: HirConfig) -> HirResult[bool] {
+  let nc = normalize_config(cfg)
+  if hir_validate_pkg.valid_nodes_len(0, nc.max_nodes) == false {
+    give HirResult.Err(HirError.InvalidConfig)
+  }
+  give HirResult.Ok(true)
+}
+
+proc runtime_info() -> HirRuntimeInfo {
+  give HirRuntimeInfo(hir_runtime_pkg.runtime_name(),
+                      hir_runtime_pkg.runtime_version(),
+                      hir_runtime_pkg.supports_diagnostics(),
+                      hir_runtime_pkg.supports_symbol_rename())
+}
+
+proc healthcheck(cfg: HirConfig, m: HirModule) -> HirResult[HirHealth] {
+  let vr = validate_config(cfg)
+  when vr is HirResult.Err { give HirResult.Err(vr.error) }
+  if hir_runtime_pkg.runtime_status() == false {
+    give HirResult.Err(HirError.Internal)
+  }
+  if m.name.len == 0 {
+    give HirResult.Err(HirError.InvalidConfig)
+  }
+  let i: int = 0
+  let returns: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if m.nodes[i].id < 0 { give HirResult.Err(HirError.InvalidConfig) }
+    if m.nodes[i].kind == HirKind.Return { returns = returns + 1 }
+    i = i + 1
+  }
+  if cfg.require_return && returns == 0 {
+    give HirResult.Err(HirError.InvalidConfig)
+  }
+  give HirResult.Ok(HirHealth(true, "ok", m.nodes.len))
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["diagnostics", "healthcheck", "hir-module", "rename-symbol", "typed-nodes"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-HIR0001" { give "invalid hir configuration" }
+  if code == "VITTE-HIR0002" { give "invalid hir node/module" }
+  if code == "VITTE-HIR0003" { give "hir runtime unavailable" }
+  give "hir diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-HIR0001" { give "set max_nodes in valid range" }
+  if code == "VITTE-HIR0002" { give "use non-empty module name and valid node ids" }
+  if code == "VITTE-HIR0003" { give "check hir runtime status" }
+  give "review hir configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
 proc hir_module(name: string) -> HirModule {
   give HirModule(name, [])
+}
+
+proc hir_module_checked(name: string, cfg: HirConfig) -> HirResult[HirModule] {
+  let vr = validate_config(cfg)
+  when vr is HirResult.Err { give HirResult.Err(vr.error) }
+  if hir_validate_pkg.valid_module_name(name) == false {
+    give HirResult.Err(HirError.InvalidConfig)
+  }
+  give HirResult.Ok(hir_module(name))
 }
 
 proc hir_node(id: int, kind: HirKind, symbol: string, ty: string) -> HirNode {
   give HirNode(id, kind, symbol, ty)
 }
 
+proc hir_node_checked(id: int, kind: HirKind, symbol: string, ty: string, cfg: HirConfig) -> HirResult[HirNode] {
+  let _ = kind
+  let _ = ty
+  if hir_validate_pkg.valid_node_id(id) == false {
+    give HirResult.Err(HirError.InvalidConfig)
+  }
+  if hir_validate_pkg.valid_symbol(symbol, cfg.allow_empty_symbol) == false {
+    give HirResult.Err(HirError.InvalidConfig)
+  }
+  give HirResult.Ok(hir_node(id, kind, symbol, ty))
+}
+
 proc add(m: HirModule, n: HirNode) -> HirModule {
   give HirModule(m.name, m.nodes.push(n))
+}
+
+proc add_checked(m: HirModule, n: HirNode, cfg: HirConfig) -> HirResult[HirModule] {
+  if hir_validate_pkg.valid_nodes_len(m.nodes.len + 1, cfg.max_nodes) == false {
+    give HirResult.Err(HirError.InvalidConfig)
+  }
+  if hir_validate_pkg.valid_node_id(n.id) == false {
+    give HirResult.Err(HirError.InvalidConfig)
+  }
+  give HirResult.Ok(add(m, n))
 }
 
 proc type_count(m: HirModule, ty: string) -> int {
@@ -144,13 +295,11 @@ proc hir_diagnostics(m: HirModule) -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give hir_runtime_pkg.runtime_status()
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/hir"
+  give "vitte/hir"
 }
 
 <<< ROLE-CONTRACT

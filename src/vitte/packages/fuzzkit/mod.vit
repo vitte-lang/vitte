@@ -5,9 +5,9 @@ package vitte/fuzzkit
 
 space vitte/fuzzkit
 
+use vitte/fuzzkit/internal/policy as fuzzkit_policy_pkg
 use vitte/fuzzkit/internal/runtime as fuzzkit_runtime_pkg
 use vitte/fuzzkit/internal/validate as fuzzkit_validate_pkg
-use vitte/fuzzkit/internal/policy as fuzzkit_policy_pkg
 
 form FuzzkitConfig {
   seed: int
@@ -44,26 +44,48 @@ form FuzzStats {
   coverage_hint: int
 }
 
+form FuzzRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_deterministic: bool
+  supports_diagnostics: bool
+}
+
+form FuzzHealth {
+  ok: bool
+  code: string
+}
+
 proc default_config() -> FuzzkitConfig {
-  give FuzzkitConfig(0, fuzzkit_policy_pkg.default_iterations(), true)
+  give FuzzkitConfig(0, fuzzkit_policy_pkg.default_iterations(), fuzzkit_policy_pkg.default_deterministic())
+}
+
+proc strict_config() -> FuzzkitConfig {
+  let cfg = default_config()
+  give FuzzkitConfig(cfg.seed, cfg.iterations, true)
 }
 
 proc with_seed(cfg: FuzzkitConfig, seed: int) -> FuzzkitConfig {
-  give FuzzkitConfig(seed, cfg.iterations, cfg.deterministic)
+  give FuzzkitConfig(fuzzkit_policy_pkg.normalize_seed(seed), cfg.iterations, cfg.deterministic)
 }
 
 proc with_iterations(cfg: FuzzkitConfig, iterations: int) -> FuzzkitConfig {
-  give FuzzkitConfig(cfg.seed, iterations, cfg.deterministic)
+  give FuzzkitConfig(cfg.seed, fuzzkit_policy_pkg.normalize_iterations(iterations), cfg.deterministic)
+}
+
+proc normalize_config(cfg: FuzzkitConfig) -> FuzzkitConfig {
+  give FuzzkitConfig(fuzzkit_policy_pkg.normalize_seed(cfg.seed), fuzzkit_policy_pkg.normalize_iterations(cfg.iterations), cfg.deterministic)
 }
 
 proc validate_config(cfg: FuzzkitConfig) -> FuzzkitResult[bool] {
-  if fuzzkit_validate_pkg.valid_seed(cfg.seed) == false {
+  let nc = normalize_config(cfg)
+  if fuzzkit_validate_pkg.valid_seed(nc.seed) == false {
     give FuzzkitResult.Err(FuzzkitError.InvalidConfig)
   }
-  if fuzzkit_validate_pkg.valid_iterations(cfg.iterations) == false {
+  if fuzzkit_validate_pkg.valid_iterations(nc.iterations) == false {
     give FuzzkitResult.Err(FuzzkitError.InvalidConfig)
   }
-  if cfg.deterministic && fuzzkit_runtime_pkg.supports_deterministic() == false {
+  if fuzzkit_validate_pkg.valid_deterministic_request(nc.deterministic, fuzzkit_runtime_pkg.supports_deterministic()) == false {
     give FuzzkitResult.Err(FuzzkitError.Unsupported)
   }
   give FuzzkitResult.Ok(true)
@@ -79,6 +101,12 @@ proc healthcheck(cfg: FuzzkitConfig) -> FuzzkitResult[bool] {
     give FuzzkitResult.Err(FuzzkitError.Internal)
   }
   give FuzzkitResult.Ok(true)
+}
+
+proc healthcheck_info(cfg: FuzzkitConfig) -> FuzzkitResult[FuzzHealth] {
+  let hr = healthcheck(cfg)
+  when hr is FuzzkitResult.Err { give FuzzkitResult.Err(hr.error) }
+  give FuzzkitResult.Ok(FuzzHealth(true, "ok"))
 }
 
 proc plan_new(cfg: FuzzkitConfig) -> FuzzkitResult[FuzzPlan] {
@@ -129,12 +157,19 @@ proc next_seed(seed: int, step: int) -> int {
   give seed + s
 }
 
+proc runtime_info() -> FuzzRuntimeInfo {
+  give FuzzRuntimeInfo(fuzzkit_runtime_pkg.runtime_name(),
+                       fuzzkit_runtime_pkg.runtime_version(),
+                       fuzzkit_runtime_pkg.supports_deterministic(),
+                       fuzzkit_runtime_pkg.supports_diagnostics())
+}
+
 proc version() -> string {
   give "v1"
 }
 
 proc capabilities() -> [string] {
-  give ["seeded-plans", "corpus", "coverage-hint", "deterministic", "validated-cases"]
+  give ["corpus", "coverage-hint", "deterministic", "healthcheck", "seeded-plans", "validated-cases"]
 }
 
 proc diagnostics_message(code: string) -> string {
@@ -152,7 +187,7 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc package_meta() -> string {
@@ -160,7 +195,7 @@ proc package_meta() -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give fuzzkit_runtime_pkg.runtime_status()
 }
 
 <<< ROLE-CONTRACT

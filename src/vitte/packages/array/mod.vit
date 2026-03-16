@@ -25,7 +25,7 @@ form ArrayStats {
   length: int
 }
 
-form Array<T> {
+form Array[T] {
   data: [T]
   stats: ArrayStats
 }
@@ -39,15 +39,15 @@ form Array<T> {
     CONSTRUCTEURS
 ============================================================ >>>
 
-proc new<T>() -> Array<T> {
+proc new[T]() -> Array[T] {
   give Array([], ArrayStats(0))
 }
 
-proc from<T>(items: [T]) -> Array<T> {
+proc from[T](items: [T]) -> Array[T] {
   give Array(items, ArrayStats(items.len))
 }
 
-proc with_capacity<T>(capacity: int) -> Array<T> {
+proc with_capacity[T](capacity: int) -> Array[T] {
   <<< capacity informatif pour runtime futur >>>
   give Array([], ArrayStats(0))
 }
@@ -56,20 +56,20 @@ proc with_capacity<T>(capacity: int) -> Array<T> {
     BASIC QUERIES
 ============================================================ >>>
 
-proc len<T>(arr: Array<T>) -> int {
+proc len[T](arr: Array[T]) -> int {
   give arr.stats.length
 }
 
-proc is_empty<T>(arr: Array<T>) -> bool {
+proc is_empty[T](arr: Array[T]) -> bool {
   give arr.stats.length == 0
 }
 
-proc first<T>(arr: Array<T>) -> T {
+proc first[T](arr: Array[T]) -> T {
   if arr.stats.length == 0 { give arr.data[0] }
   give arr.data[0]
 }
 
-proc last<T>(arr: Array<T>) -> T {
+proc last[T](arr: Array[T]) -> T {
   give arr.data[arr.stats.length - 1]
 }
 
@@ -77,11 +77,11 @@ proc last<T>(arr: Array<T>) -> T {
     INDEX ACCESS
 ============================================================ >>>
 
-proc get<T>(arr: Array<T>, index: int) -> T {
+proc get[T](arr: Array[T], index: int) -> T {
   give arr.data[index]
 }
 
-proc safe_get<T>(arr: Array<T>, index: int) -> T {
+proc safe_get[T](arr: Array[T], index: int) -> T {
   if index < 0 { give arr.data[0] }
   if index >= arr.stats.length { give arr.data[0] }
   give arr.data[index]
@@ -91,7 +91,7 @@ proc safe_get<T>(arr: Array<T>, index: int) -> T {
     MUTATION (IMMUTABLE COPY)
 ============================================================ >>>
 
-proc push<T>(arr: Array<T>, value: T) -> Array<T> {
+proc push[T](arr: Array[T], value: T) -> Array[T] {
 
   let new_data = arr.data.push(value)
 
@@ -101,7 +101,7 @@ proc push<T>(arr: Array<T>, value: T) -> Array<T> {
   )
 }
 
-proc pop<T>(arr: Array<T>) -> Array<T> {
+proc pop[T](arr: Array[T]) -> Array[T] {
 
   if arr.stats.length == 0 {
     give arr
@@ -122,7 +122,7 @@ proc pop<T>(arr: Array<T>) -> Array<T> {
   )
 }
 
-proc set<T>(arr: Array<T>, index: int, value: T) -> Array<T> {
+proc set_at[T](arr: Array[T], index: int, value: T) -> Array[T] {
 
   let out: [T] = []
   let i: int = 0
@@ -146,7 +146,7 @@ proc set<T>(arr: Array<T>, index: int, value: T) -> Array<T> {
     TRANSFORMATIONS
 ============================================================ >>>
 
-proc map<T, R>(arr: Array<T>, f: fn(T) -> R) -> Array<R> {
+proc map[T, R](arr: Array[T], f: proc(x: T) -> R) -> Array[R] {
 
   let out: [R] = []
   let i: int = 0
@@ -160,7 +160,7 @@ proc map<T, R>(arr: Array<T>, f: fn(T) -> R) -> Array<R> {
   give Array(out, ArrayStats(arr.stats.length))
 }
 
-proc filter<T>(arr: Array<T>, f: fn(T) -> bool) -> Array<T> {
+proc filter[T](arr: Array[T], f: proc(x: T) -> bool) -> Array[T] {
 
   let out: [T] = []
   let i: int = 0
@@ -178,10 +178,10 @@ proc filter<T>(arr: Array<T>, f: fn(T) -> bool) -> Array<T> {
   give Array(out, ArrayStats(out.len))
 }
 
-proc fold<T, R>(
-  arr: Array<T>,
+proc fold[T, R](
+  arr: Array[T],
   init: R,
-  f: fn(R, T) -> R
+  f: proc(acc: R, x: T) -> R
 ) -> R {
 
   let acc = init
@@ -200,11 +200,11 @@ proc fold<T, R>(
     SLICE / SUBARRAY
 ============================================================ >>>
 
-proc slice<T>(
-  arr: Array<T>,
+proc slice[T](
+  arr: Array[T],
   start: int,
   end: int
-) -> Array<T> {
+) -> Array[T] {
 
   let out: [T] = []
   let i: int = start
@@ -223,7 +223,7 @@ proc slice<T>(
     SEARCH
 ============================================================ >>>
 
-proc contains<T>(arr: Array<T>, value: T) -> bool {
+proc contains[T](arr: Array[T], value: T) -> bool {
 
   let i: int = 0
 
@@ -236,7 +236,7 @@ proc contains<T>(arr: Array<T>, value: T) -> bool {
   give false
 }
 
-proc index_of<T>(arr: Array<T>, value: T) -> int {
+proc index_of[T](arr: Array[T], value: T) -> int {
 
   let i: int = 0
 
@@ -253,11 +253,11 @@ proc index_of<T>(arr: Array<T>, value: T) -> int {
     METRICS
 ============================================================ >>>
 
-proc capacity_estimate<T>(arr: Array<T>) -> int {
+proc capacity_estimate[T](arr: Array[T]) -> int {
   give arr.stats.length
 }
 
-proc describe<T>(arr: Array<T>) -> string {
+proc describe[T](arr: Array[T]) -> string {
 
   give "Array(len=" +
        arr.stats.length.to_string() +

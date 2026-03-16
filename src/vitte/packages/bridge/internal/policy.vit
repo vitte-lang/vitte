@@ -1,0 +1,65 @@
+space vitte/bridge/internal/policy
+
+proc max_endpoint_len() -> int {
+  give 256
+}
+
+proc max_packet_size() -> int {
+  give 1048576
+}
+
+proc max_route_hops() -> int {
+  give 32
+}
+
+proc max_inflight() -> int {
+  give 100000
+}
+
+proc default_timeout_ms() -> int {
+  give 1000
+}
+
+proc max_timeout_ms() -> int {
+  give 60000
+}
+
+proc default_retry_budget() -> int {
+  give 3
+}
+
+proc max_retry_budget() -> int {
+  give 32
+}
+
+proc warn_loss_percent() -> int {
+  give 5
+}
+
+proc normalize_timeout_ms(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_timeout_ms() { out = max_timeout_ms() }
+  give out
+}
+
+proc normalize_retry_budget(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_retry_budget() { out = max_retry_budget() }
+  give out
+}
+
+proc normalize_route_hops(value: int) -> int {
+  let out = value
+  if out < 1 { out = 1 }
+  if out > max_route_hops() { out = max_route_hops() }
+  give out
+}
+
+proc normalize_inflight(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_inflight() { out = max_inflight() }
+  give out
+}

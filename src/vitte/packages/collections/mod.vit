@@ -1,29 +1,111 @@
 <<<
 mod.vit
 package vitte/collections
+version: 3.0.0
+tier: core-collections
+purpose:
+  Collections generiques immuables no_std (Vec Map Set RingBuffer Rope).
+  API stable versionnee avec validation policy runtime et diagnostics.
+  Couche checked additive sans casser les primitives existantes.
 >>>
 
 space vitte/collections
 
+use vitte/collections/internal/runtime as collections_runtime_pkg
+use vitte/collections/internal/validate as collections_validate_pkg
+use vitte/collections/internal/policy as collections_policy_pkg
+
 share all
+
+pick CollectionsError {
+  InvalidConfig
+  InvalidInput
+  IndexOutOfBounds
+  NotFound
+  CapacityExceeded
+  TooLarge
+  Internal
+}
+
+pick CollectionsResult[T] {
+  Ok(value: T)
+  Err(error: CollectionsError)
+}
+
+form CollectionsConfig {
+  strict: bool
+  max_vec_len: int
+  max_map_len: int
+  max_set_len: int
+  max_ring_capacity: int
+  max_rope_len: int
+  warn_vec_len: int
+}
+
+form CollectionsRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_generics: bool
+  supports_vec: bool
+  supports_map: bool
+  supports_set: bool
+  supports_ring: bool
+  supports_rope: bool
+  supports_diagnostics: bool
+}
+
+form CollectionsStats {
+  vec_len: int
+  map_len: int
+  set_len: int
+  ring_len: int
+  rope_len: int
+  total_items: int
+}
+
+form CollectionsSnapshot {
+  vec_len: int
+  map_len: int
+  set_len: int
+  ring_capacity: int
+  ring_len: int
+  rope_len: int
+}
+
+form CollectionsHealth {
+  ok: bool
+  code: string
+  pressure_percent: int
+}
+
+proc config_ok(cfg: CollectionsConfig) -> bool {
+  if collections_validate_pkg.valid_limit(cfg.max_vec_len, 0, collections_policy_pkg.max_vec_len()) == false { give false }
+  if collections_validate_pkg.valid_limit(cfg.max_map_len, 0, collections_policy_pkg.max_map_len()) == false { give false }
+  if collections_validate_pkg.valid_limit(cfg.max_set_len, 0, collections_policy_pkg.max_set_len()) == false { give false }
+  if collections_validate_pkg.valid_limit(cfg.max_ring_capacity, collections_policy_pkg.min_ring_capacity(), collections_policy_pkg.max_ring_capacity()) == false { give false }
+  if collections_validate_pkg.valid_rope_len(cfg.max_rope_len, collections_policy_pkg.max_rope_len()) == false { give false }
+  if collections_validate_pkg.valid_limit(cfg.warn_vec_len, 0, cfg.max_vec_len) == false { give false }
+  give true
+}
 
 # ============================================================
 # Option
 # ============================================================
 
 pick Option[T] {
-    Some(value: T)
-    None
+  Some(value: T)
+  None
 }
 
 proc option_is_some[T](o: Option[T]) -> bool {
-    when o is Option.Some { give true }
-    give false
+  when o is Option.Some { give true }
+  give false
 }
 
 proc option_is_none[T](o: Option[T]) -> bool {
-    when o is Option.None { give true }
-    give false
+  when o is Option.None { give true }
+  give false
 }
 
 # ============================================================
@@ -33,45 +115,59 @@ proc option_is_none[T](o: Option[T]) -> bool {
 type Vec[T] = [T]
 
 form VecPopResult[T] {
-    values: Vec[T]
-    item: Option[T]
+  values: Vec[T]
+  item: Option[T]
 }
 
 proc vec_new[T]() -> Vec[T] {
-    give []
+  give []
 }
 
 proc vec_push[T](xs: Vec[T], x: T) -> Vec[T] {
-    give xs.push(x)
+  give xs.push(x)
 }
 
 proc vec_len[T](xs: Vec[T]) -> int {
-    give xs.len
+  give xs.len
 }
 
 proc vec_get[T](xs: Vec[T], index: int) -> Option[T] {
-    if index < 0 || index >= xs.len {
-        give Option.None
-    }
-    give Option.Some(xs[index])
+  if index < 0 || index >= xs.len {
+    give Option.None
+  }
+  give Option.Some(xs[index])
+}
+
+proc vec_get_checked[T](xs: Vec[T], index: int) -> CollectionsResult[T] {
+  if collections_validate_pkg.valid_index(index, xs.len) == false {
+    give CollectionsResult.Err(CollectionsError.IndexOutOfBounds)
+  }
+  give CollectionsResult.Ok(xs[index])
 }
 
 proc vec_pop[T](xs: Vec[T]) -> VecPopResult[T] {
-    if xs.len == 0 {
-        give VecPopResult(xs, Option.None)
-    }
+  if xs.len == 0 {
+    give VecPopResult(xs, Option.None)
+  }
 
-    let last = xs[xs.len - 1]
+  let last = xs[xs.len - 1]
 
-    let out: [T] = []
-    let i: int = 0
-    loop {
-        if i >= xs.len - 1 { break }
-        out = out.push(xs[i])
-        i = i + 1
-    }
+  let out: [T] = []
+  let i: int = 0
+  loop {
+    if i >= xs.len - 1 { break }
+    out = out.push(xs[i])
+    i = i + 1
+  }
 
-    give VecPopResult(out, Option.Some(last))
+  give VecPopResult(out, Option.Some(last))
+}
+
+proc vec_pop_checked[T](xs: Vec[T]) -> CollectionsResult[VecPopResult[T]] {
+  if xs.len == 0 {
+    give CollectionsResult.Err(CollectionsError.NotFound)
+  }
+  give CollectionsResult.Ok(vec_pop(xs))
 }
 
 # ============================================================
@@ -79,63 +175,69 @@ proc vec_pop[T](xs: Vec[T]) -> VecPopResult[T] {
 # ============================================================
 
 form Pair[K, V] {
-    key: K
-    value: V
+  key: K
+  value: V
 }
 
 type Map[K, V] = [Pair[K, V]]
 
 proc map_new[K, V]() -> Map[K, V] {
-    give []
+  give []
 }
 
 proc map_put[K, V](m: Map[K, V], k: K, v: V, eq: proc(K, K) -> bool) -> Map[K, V] {
 
-    let out: Map[K, V] = []
-    let replaced: bool = false
+  let out: Map[K, V] = []
+  let replaced: bool = false
 
-    let i: int = 0
-    loop {
-        if i >= m.len { break }
+  let i: int = 0
+  loop {
+    if i >= m.len { break }
 
-        let p = m[i]
+    let p = m[i]
 
-        if eq(p.key, k) {
-            out = out.push(Pair(k, v))
-            replaced = true
-        } else {
-            out = out.push(p)
-        }
-
-        i = i + 1
+    if eq(p.key, k) {
+      out = out.push(Pair(k, v))
+      replaced = true
+    } else {
+      out = out.push(p)
     }
 
-    if !replaced {
-        out = out.push(Pair(k, v))
-    }
+    i = i + 1
+  }
 
-    give out
+  if !replaced {
+    out = out.push(Pair(k, v))
+  }
+
+  give out
 }
 
 proc map_get[K, V](m: Map[K, V], k: K, eq: proc(K, K) -> bool) -> Option[V] {
 
-    let i: int = 0
-    loop {
-        if i >= m.len { break }
+  let i: int = 0
+  loop {
+    if i >= m.len { break }
 
-        let p = m[i]
-        if eq(p.key, k) {
-            give Option.Some(p.value)
-        }
-
-        i = i + 1
+    let p = m[i]
+    if eq(p.key, k) {
+      give Option.Some(p.value)
     }
 
-    give Option.None
+    i = i + 1
+  }
+
+  give Option.None
+}
+
+proc map_get_checked[K, V](m: Map[K, V], k: K, eq: proc(K, K) -> bool) -> CollectionsResult[V] {
+  let got = map_get(m, k, eq)
+  when got is Option.Some { give CollectionsResult.Ok(got.value) }
+  give CollectionsResult.Err(CollectionsError.NotFound)
 }
 
 proc map_len[K, V](m: Map[K, V]) -> int {
-    give m.len
+  give m.len
 }
 
 # ============================================================
@@ -145,75 +247,109 @@ proc map_len[K, V](m: Map[K, V]) -> int {
 type Set[T] = [T]
 
 proc set_new[T]() -> Set[T] {
-    give []
+  give []
 }
 
 proc set_contains[T](s: Set[T], x: T, eq: proc(T, T) -> bool) -> bool {
 
-    let i: int = 0
-    loop {
-        if i >= s.len { break }
+  let i: int = 0
+  loop {
+    if i >= s.len { break }
 
-        if eq(s[i], x) {
-            give true
-        }
-
-        i = i + 1
+    if eq(s[i], x) {
+      give true
     }
 
-    give false
+    i = i + 1
+  }
+
+  give false
 }
 
 proc set_insert[T](s: Set[T], x: T, eq: proc(T, T) -> bool) -> Set[T] {
 
-    if set_contains(s, x, eq) {
-        give s
-    }
+  if set_contains(s, x, eq) {
+    give s
+  }
 
-    give s.push(x)
+  give s.push(x)
+}
+
+proc set_insert_checked[T](s: Set[T], x: T, eq: proc(T, T) -> bool, cfg: CollectionsConfig) -> CollectionsResult[Set[T]] {
+  if config_ok(cfg) == false { give CollectionsResult.Err(CollectionsError.InvalidConfig) }
+
+  if set_contains(s, x, eq) {
+    give CollectionsResult.Ok(s)
+  }
+
+  if collections_validate_pkg.valid_set_len(s.len + 1, cfg.max_set_len) == false {
+    give CollectionsResult.Err(CollectionsError.CapacityExceeded)
+  }
+
+  give CollectionsResult.Ok(s.push(x))
 }
 
 proc set_len[T](s: Set[T]) -> int {
-    give s.len
+  give s.len
 }
 
 # ============================================================
-# RingBuffer (borné)
+# RingBuffer (borne)
 # ============================================================
 
 form RingBuffer[T] {
-    capacity: int
-    data: [T]
+  capacity: int
+  data: [T]
 }
 
 proc ring_new[T](capacity: int) -> RingBuffer[T] {
-    let cap = capacity
-    if cap <= 0 { cap = 1 }
-    give RingBuffer(cap, [])
+  let cap = capacity
+  if cap <= 0 { cap = 1 }
+  give RingBuffer(cap, [])
+}
+
+proc ring_new_checked[T](capacity: int, cfg: CollectionsConfig) -> CollectionsResult[RingBuffer[T]] {
+  if config_ok(cfg) == false { give CollectionsResult.Err(CollectionsError.InvalidConfig) }
+
+  if collections_validate_pkg.valid_ring_capacity(capacity, cfg.max_ring_capacity) == false {
+    give CollectionsResult.Err(CollectionsError.InvalidInput)
+  }
+
+  give CollectionsResult.Ok(ring_new(capacity))
 }
 
 proc ring_push[T](rb: RingBuffer[T], x: T) -> RingBuffer[T] {
 
-    let data = rb.data
+  let data = rb.data
 
-    if data.len >= rb.capacity {
-        let trimmed: [T] = []
-        let i: int = 1
-        loop {
-            if i >= data.len { break }
-            trimmed = trimmed.push(data[i])
-            i = i + 1
-        }
-        data = trimmed
+  if data.len >= rb.capacity {
+    let trimmed: [T] = []
+    let i: int = 1
+    loop {
+      if i >= data.len { break }
+      trimmed = trimmed.push(data[i])
+      i = i + 1
     }
+    data = trimmed
+  }
 
-    data = data.push(x)
+  data = data.push(x)
 
-    give RingBuffer(rb.capacity, data)
+  give RingBuffer(rb.capacity, data)
+}
+
+proc ring_push_checked[T](rb: RingBuffer[T], x: T, cfg: CollectionsConfig) -> CollectionsResult[RingBuffer[T]] {
+  if config_ok(cfg) == false { give CollectionsResult.Err(CollectionsError.InvalidConfig) }
+
+  if collections_validate_pkg.valid_ring_capacity(rb.capacity, cfg.max_ring_capacity) == false {
+    give CollectionsResult.Err(CollectionsError.InvalidInput)
+  }
+
+  give CollectionsResult.Ok(ring_push(rb, x))
 }
 
 proc ring_len[T](rb: RingBuffer[T]) -> int {
-    give rb.data.len
+  give rb.data.len
 }
 
 # ============================================================
@@ -223,20 +359,292 @@ proc ring_len[T](rb: RingBuffer[T]) -> int {
 type Rope = string
 
 proc rope_new() -> Rope {
-    give ""
+  give ""
 }
 
 proc rope_append(r: Rope, chunk: string) -> Rope {
-    let base: string = r
-    give base + chunk
+  let base: string = r
+  give base + chunk
+}
+
+proc rope_append_checked(r: Rope, chunk: string, cfg: CollectionsConfig) -> CollectionsResult[Rope] {
+  if config_ok(cfg) == false { give CollectionsResult.Err(CollectionsError.InvalidConfig) }
+
+  if collections_validate_pkg.valid_rope_append(r.len, chunk.len, cfg.max_rope_len) == false {
+    give CollectionsResult.Err(CollectionsError.TooLarge)
+  }
+
+  give CollectionsResult.Ok(rope_append(r, chunk))
 }
 
 proc rope_len(r: Rope) -> int {
-    give r.len
+  give r.len
 }
 
 proc rope_to_string(r: Rope) -> string {
-    give r
+  give r
+}
+
+# ============================================================
+# Config, stats, validation, health
+# ============================================================
+
+proc default_config() -> CollectionsConfig {
+  give CollectionsConfig(collections_policy_pkg.default_strict(),
+                         collections_policy_pkg.max_vec_len(),
+                         collections_policy_pkg.max_map_len(),
+                         collections_policy_pkg.max_set_len(),
+                         collections_policy_pkg.max_ring_capacity(),
+                         collections_policy_pkg.max_rope_len(),
+                         collections_policy_pkg.warn_vec_len())
+}
+
+proc strict_config() -> CollectionsConfig {
+  let cfg = default_config()
+  give CollectionsConfig(true,
+                         cfg.max_vec_len,
+                         cfg.max_map_len,
+                         cfg.max_set_len,
+                         cfg.max_ring_capacity,
+                         cfg.max_rope_len,
+                         cfg.warn_vec_len)
+}
+
+proc with_max_vec_len(cfg: CollectionsConfig, value: int) -> CollectionsConfig {
+  give CollectionsConfig(cfg.strict,
+                         collections_policy_pkg.normalize_vec_len(value),
+                         cfg.max_map_len,
+                         cfg.max_set_len,
+                         cfg.max_ring_capacity,
+                         cfg.max_rope_len,
+                         cfg.warn_vec_len)
+}
+
+proc with_max_map_len(cfg: CollectionsConfig, value: int) -> CollectionsConfig {
+  give CollectionsConfig(cfg.strict,
+                         cfg.max_vec_len,
+                         collections_policy_pkg.normalize_map_len(value),
+                         cfg.max_set_len,
+                         cfg.max_ring_capacity,
+                         cfg.max_rope_len,
+                         cfg.warn_vec_len)
+}
+
+proc with_max_set_len(cfg: CollectionsConfig, value: int) -> CollectionsConfig {
+  give CollectionsConfig(cfg.strict,
+                         cfg.max_vec_len,
+                         cfg.max_map_len,
+                         collections_policy_pkg.normalize_set_len(value),
+                         cfg.max_ring_capacity,
+                         cfg.max_rope_len,
+                         cfg.warn_vec_len)
+}
+
+proc with_max_ring_capacity(cfg: CollectionsConfig, value: int) -> CollectionsConfig {
+  give CollectionsConfig(cfg.strict,
+                         cfg.max_vec_len,
+                         cfg.max_map_len,
+                         cfg.max_set_len,
+                         collections_policy_pkg.normalize_ring_capacity(value),
+                         cfg.max_rope_len,
+                         cfg.warn_vec_len)
+}
+
+proc with_max_rope_len(cfg: CollectionsConfig, value: int) -> CollectionsConfig {
+  give CollectionsConfig(cfg.strict,
+                         cfg.max_vec_len,
+                         cfg.max_map_len,
+                         cfg.max_set_len,
+                         cfg.max_ring_capacity,
+                         collections_policy_pkg.normalize_rope_len(value),
+                         cfg.warn_vec_len)
+}
+
+proc with_warn_vec_len(cfg: CollectionsConfig, value: int) -> CollectionsConfig {
+  give CollectionsConfig(cfg.strict,
+                         cfg.max_vec_len,
+                         cfg.max_map_len,
+                         cfg.max_set_len,
+                         cfg.max_ring_capacity,
+                         cfg.max_rope_len,
+                         collections_policy_pkg.normalize_warn_vec_len(value))
+}
+
+proc validate_config(cfg: CollectionsConfig) -> CollectionsResult[bool] {
+  if config_ok(cfg) == false { give CollectionsResult.Err(CollectionsError.InvalidConfig) }
+  give CollectionsResult.Ok(true)
+}
+
+proc collection_stats[A, K, V, B, C](vec: Vec[A], map: Map[K, V], st: Set[B], rb: RingBuffer[C], rope: Rope) -> CollectionsStats {
+  let total = vec.len + map.len + st.len + rb.data.len
+  give CollectionsStats(vec.len, map.len, st.len, rb.data.len, rope.len, total)
+}
+
+proc snapshot_new[A, K, V, B, C](vec: Vec[A], map: Map[K, V], st: Set[B], rb: RingBuffer[C], rope: Rope) -> CollectionsSnapshot {
+  give CollectionsSnapshot(vec.len, map.len, st.len, rb.capacity, rb.data.len, rope.len)
+}
+
+proc collections_validate_code(s: CollectionsSnapshot, cfg: CollectionsConfig) -> string {
+  let vr = validate_config(cfg)
+  when vr is CollectionsResult.Err { give "invalid-config" }
+
+  if collections_validate_pkg.valid_vec_len(s.vec_len, cfg.max_vec_len) == false { give "invalid-vec-len" }
+  if collections_validate_pkg.valid_map_len(s.map_len, cfg.max_map_len) == false { give "invalid-map-len" }
+  if collections_validate_pkg.valid_set_len(s.set_len, cfg.max_set_len) == false { give "invalid-set-len" }
+  if collections_validate_pkg.valid_ring_capacity(s.ring_capacity, cfg.max_ring_capacity) == false { give "invalid-ring-capacity" }
+  if collections_validate_pkg.valid_vec_len(s.ring_len, s.ring_capacity) == false { give "invalid-ring-len" }
+  if collections_validate_pkg.valid_rope_len(s.rope_len, cfg.max_rope_len) == false { give "invalid-rope-len" }
+
+  give "ok"
+}
+
+proc collections_validate(s: CollectionsSnapshot, cfg: CollectionsConfig) -> bool {
+  give collections_validate_code(s, cfg) == "ok"
+}
+
+proc collections_normalize(s: CollectionsSnapshot, cfg: CollectionsConfig) -> CollectionsSnapshot {
+  let ring_capacity = collections_policy_pkg.normalize_ring_capacity(s.ring_capacity)
+  let ring_len = collections_policy_pkg.normalize_vec_len(s.ring_len)
+  let vec_len = collections_policy_pkg.normalize_vec_len(s.vec_len)
+  let map_len = collections_policy_pkg.normalize_map_len(s.map_len)
+  let set_len = collections_policy_pkg.normalize_set_len(s.set_len)
+  let rope_len = collections_policy_pkg.normalize_rope_len(s.rope_len)
+
+  if ring_len > ring_capacity { ring_len = ring_capacity }
+  if vec_len > cfg.max_vec_len { vec_len = cfg.max_vec_len }
+  if map_len > cfg.max_map_len { map_len = cfg.max_map_len }
+  if set_len > cfg.max_set_len { set_len = cfg.max_set_len }
+  if rope_len > cfg.max_rope_len { rope_len = cfg.max_rope_len }
+
+  give CollectionsSnapshot(vec_len, map_len, set_len, ring_capacity, ring_len, rope_len)
+}
+
+proc to_percent(used: int, limit: int) -> int {
+  if limit <= 0 { give 0 }
+  let pct = used * 100 / limit
+  if pct < 0 { pct = 0 }
+  if pct > 100 { pct = 100 }
+  give pct
+}
+
+proc collections_health(s: CollectionsSnapshot, cfg: CollectionsConfig) -> CollectionsHealth {
+  let n = collections_normalize(s, cfg)
+  let code = collections_validate_code(n, cfg)
+  if code != "ok" {
+    give CollectionsHealth(false, code, 100)
+  }
+
+  let p_vec = to_percent(n.vec_len, cfg.max_vec_len)
+  let p_map = to_percent(n.map_len, cfg.max_map_len)
+  let p_set = to_percent(n.set_len, cfg.max_set_len)
+  let p_ring = to_percent(n.ring_len, n.ring_capacity)
+  let p_rope = to_percent(n.rope_len, cfg.max_rope_len)
+
+  let pressure = p_vec
+  if p_map > pressure { pressure = p_map }
+  if p_set > pressure { pressure = p_set }
+  if p_ring > pressure { pressure = p_ring }
+  if p_rope > pressure { pressure = p_rope }
+
+  give CollectionsHealth(true, "ok", pressure)
+}
+
+proc collections_runtime_info() -> CollectionsRuntimeInfo {
+  give CollectionsRuntimeInfo(collections_runtime_pkg.runtime_name(),
+                              collections_runtime_pkg.runtime_version(),
+                              collections_runtime_pkg.supports_no_std(),
+                              collections_runtime_pkg.supports_generics(),
+                              collections_runtime_pkg.supports_vec(),
+                              collections_runtime_pkg.supports_map(),
+                              collections_runtime_pkg.supports_set(),
+                              collections_runtime_pkg.supports_ring(),
+                              collections_runtime_pkg.supports_rope(),
+                              collections_runtime_pkg.supports_diagnostics())
+}
+
+proc healthcheck(cfg: CollectionsConfig) -> CollectionsResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is CollectionsResult.Err { give CollectionsResult.Err(vr.error) }
+  if collections_runtime_pkg.runtime_status() == false { give CollectionsResult.Err(CollectionsError.Internal) }
+  give CollectionsResult.Ok(true)
+}
+
+# ============================================================
+# Stable API + diagnostics
+# ============================================================
+
+proc stable_api_version() -> string {
+  give "3.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "option_is_some,option_is_none,vec_new,vec_push,vec_len,vec_get,vec_get_checked,vec_pop,vec_pop_checked,map_new,map_put,map_get,map_get_checked,map_len,set_new,set_contains,set_insert,set_insert_checked,set_len,ring_new,ring_new_checked,ring_push,ring_push_checked,ring_len,rope_new,rope_append,rope_append_checked,rope_len,rope_to_string,default_config,strict_config,with_max_vec_len,with_max_map_len,with_max_set_len,with_max_ring_capacity,with_max_rope_len,with_warn_vec_len,validate_config,collection_stats,snapshot_new,collections_validate_code,collections_validate,collections_normalize,collections_health,collections_runtime_info,healthcheck,stable_api_surface_hash,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v3"
+}
+
+proc capabilities() -> [string] {
+  give ["vec", "map", "set", "ring", "rope", "checked", "diagnostics", collections_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-COLLECTIONS0001" { give "invalid collections configuration" }
+  if code == "VITTE-COLLECTIONS0002" { give "index out of bounds" }
+  if code == "VITTE-COLLECTIONS0003" { give "capacity or size limit exceeded" }
+  give "collections diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-COLLECTIONS0001" { give "normalize limits with policy and revalidate config" }
+  if code == "VITTE-COLLECTIONS0002" { give "check vec index against vec_len before access" }
+  if code == "VITTE-COLLECTIONS0003" { give "increase configured limits or trim data before insert" }
+  give "inspect collections snapshot and normalize"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if collections_runtime_pkg.runtime_status() == false { give false }
+
+  let cfg = strict_config()
+  let cv = validate_config(cfg)
+  when cv is CollectionsResult.Err { give false }
+
+  let xs = vec_push(vec_push(vec_new[int](), 1), 2)
+  let g = vec_get_checked(xs, 1)
+  when g is CollectionsResult.Err { give false }
+
+  let rb = ring_new_checked[int](4, cfg)
+  when rb is CollectionsResult.Err { give false }
+
+  let rp = ring_push_checked(rb.value, 7, cfg)
+  when rp is CollectionsResult.Err { give false }
+
+  let rope = rope_append_checked(rope_new(), "abc", cfg)
+  when rope is CollectionsResult.Err { give false }
+
+  let empty_map: Map[string, int] = map_new()
+  let empty_set: Set[string] = set_new()
+  let snap = snapshot_new(xs, empty_map, empty_set, rp.value, rope.value)
+  let norm = collections_normalize(snap, cfg)
+  if collections_validate(norm, cfg) == false { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
+  give true
 }
 
 # ============================================================
@@ -244,11 +652,11 @@ proc rope_to_string(r: Rope) -> string {
 # ============================================================
 
 proc ready() -> bool {
-    give true
+  give stable_ready()
 }
 
 proc package_meta() -> string {
-    give "vitte/collections"
+  give "vitte/collections"
 }
 
 <<< ROLE-CONTRACT
@@ -258,7 +666,8 @@ stability: stable
 since: 3.0.0
 deprecated_in: -
 role: Collections generiques immuables (Vec, Map, Set, RingBuffer, Rope)
-input_contract: Donnees typables et deja valides
-output_contract: Etats purs, deterministes et interoperables
-boundary: Structure simple compatible no_std, sans memoire custom ni thread safety
+input_contract: Donnees deja typables et comparateurs d'egalite explicites
+output_contract: Etats deterministes, validates et normalisables
+boundary: Ne remplace pas le stockage persistant; reste purement in-memory
+versioning_note: stable_api_version=3.0.0
 >>>

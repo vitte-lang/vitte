@@ -7,6 +7,10 @@ space vitte/abi
 
 share all
 
+use vitte/abi/internal/runtime as abi_runtime_pkg
+use vitte/abi/internal/validate as abi_validate_pkg
+use vitte/abi/internal/policy as abi_policy_pkg
+
 pick CallingConvention {
   SystemV
   Win64
@@ -20,6 +24,8 @@ pick AbiError {
   InvalidType
   UnsupportedConvention
   InvalidSignature
+  InvalidAlignment
+  TooManyParams
 }
 
 form AbiTypeInfo {
@@ -34,6 +40,67 @@ form AbiSignature {
   params: [AbiTypeInfo]
 }
 
+form AbiLayoutParam {
+  index: int
+  in_register: bool
+  register_slot: int
+  stack_offset_bytes: int
+  size_bytes: int
+  align_bytes: int
+}
+
+form AbiLayout {
+  stack_arg_bytes: int
+  frame_bytes: int
+  register_args: int
+  stack_align_bytes: int
+  shadow_space_bytes: int
+  red_zone_bytes: int
+  params: [AbiLayoutParam]
+}
+
+form AbiCompatibility {
+  ok: bool
+  reason: string
+}
+
+form AbiPlatformInfo {
+  runtime_name: string
+  abi_version: string
+  target_triple: string
+  arch_tag: string
+  os_tag: string
+  pointer_bits: int
+  pointer_align_bits: int
+  endianness: string
+  default_calling_tag: string
+  stack_grows_down: bool
+  has_red_zone: bool
+}
+
+form CAbiInfo {
+  data_model: string
+  libc_family: string
+  calling_tag: string
+  pointer_bits: int
+  size_t_bits: int
+  long_bits: int
+}
+
+form CStructField {
+  name: string
+  info: AbiTypeInfo
+  offset_bytes: int
+  size_bytes: int
+  align_bytes: int
+}
+
+form CStructLayout {
+  size_bytes: int
+  align_bytes: int
+  fields: [CStructField]
+}
+
 proc align_up(value: int, alignment: int) -> int {
   if alignment <= 0 { give value }
   let rem = value % alignment
@@ -45,7 +112,7 @@ proc align_up(value: int, alignment: int) -> int {
 }
 
 proc pointer_bits() -> int {
-  give 64
+  give abi_runtime_pkg.pointer_bits()
 }
 
 proc pointer_bytes() -> int {
@@ -53,18 +120,25 @@ proc pointer_bytes() -> int {
 }
 
 proc endianness() -> string {
-  give "little"
+  give abi_runtime_pkg.endianness()
 }
 
 proc default_calling_convention() -> CallingConvention {
+  let tag = abi_runtime_pkg.default_calling_tag()
+  if tag == "win64" { give CallingConvention.Win64 }
+  if tag == "cdecl" { give CallingConvention.CDecl }
+  if tag == "fastcall" { give CallingConvention.FastCall }
+  if tag == "stdcall" { give CallingConvention.StdCall }
   give CallingConvention.SystemV
 }
 
 proc is_supported_calling(calling: CallingConvention) -> bool {
-  when calling is CallingConvention.SystemV { give true }
-  when calling is CallingConvention.Win64 { give true }
-  when calling is CallingConvention.CDecl { give true }
-  give false
+  let tag = "stdcall"
+  when calling is CallingConvention.SystemV { tag = "sysv" }
+  when calling is CallingConvention.Win64 { tag = "win64" }
+  when calling is CallingConvention.CDecl { tag = "cdecl" }
+  when calling is CallingConvention.FastCall { tag = "fastcall" }
+  give abi_runtime_pkg.supports_calling_tag(tag)
 }
 
 proc calling_tag(calling: CallingConvention) -> string {
@@ -75,35 +149,49 @@ proc calling_tag(calling: CallingConvention) -> string {
   give "stdcall"
 }
 
-proc validate_type(kind: string, bits: int) -> AbiError {
-  if kind == "pointer" {
-    if bits == 0 || bits == pointer_bits() {
-      give AbiError.None
-    }
-    give AbiError.InvalidType
-  }
+proc calling_from_tag(tag: string) -> CallingConvention {
+  let t = abi_validate_pkg.normalize_calling_tag(tag)
+  if t == "sysv" { give CallingConvention.SystemV }
+  if t == "win64" { give CallingConvention.Win64 }
+  if t == "cdecl" { give CallingConvention.CDecl }
+  if t == "fastcall" { give CallingConvention.FastCall }
+  give CallingConvention.StdCall
+}
 
-  if bits <= 0 { give AbiError.InvalidType }
-  if kind == "int" || kind == "integer" { give AbiError.None }
-  if kind == "float" { give AbiError.None }
+proc normalize_calling(calling: CallingConvention) -> CallingConvention {
+  if is_supported_calling(calling) { give calling }
+  give default_calling_convention()
+}
+
+proc validate_type(kind: string, bits: int) -> AbiError {
+  if abi_validate_pkg.valid_bits_for_kind(kind, bits, pointer_bits(), abi_policy_pkg.max_type_bits()) {
+    give AbiError.None
+  }
   give AbiError.InvalidType
 }
 
+proc normalize_type(kind: string, bits: int) -> AbiTypeInfo {
+  let nk = abi_validate_pkg.normalize_kind(kind)
+  if nk == "unknown" { give AbiTypeInfo("unknown", 0, AbiError.InvalidType) }
+  if nk == "void" { give AbiTypeInfo("void", 0, AbiError.None) }
+  if nk == "pointer" { give AbiTypeInfo("pointer", abi_policy_pkg.normalize_pointer_bits(bits), AbiError.None) }
+  let nb = abi_policy_pkg.normalized_scalar_bits(bits)
+  let err = validate_type(nk, nb)
+  if err != AbiError.None { give AbiTypeInfo(nk, 0, err) }
+  give AbiTypeInfo(nk, nb, AbiError.None)
+}
+
 proc type_info(kind: string, bits: int) -> AbiTypeInfo {
-  let err = validate_type(kind, bits)
-  if err != AbiError.None { give AbiTypeInfo(kind, 0, err) }
-
-  if kind == "int" || kind == "integer" {
-    give AbiTypeInfo("integer", bits, AbiError.None)
+  let nk = abi_validate_pkg.normalize_kind(kind)
+  let err = validate_type(nk, bits)
+  if err != AbiError.None { give AbiTypeInfo(nk, 0, err) }
+  if nk == "pointer" {
+    give AbiTypeInfo("pointer", abi_policy_pkg.normalize_pointer_bits(bits), AbiError.None)
   }
-  if kind == "float" {
-    give AbiTypeInfo("float", bits, AbiError.None)
+  if nk == "void" {
+    give AbiTypeInfo("void", 0, AbiError.None)
   }
-  if kind == "pointer" {
-    give AbiTypeInfo("pointer", pointer_bits(), AbiError.None)
-  }
-
-  give AbiTypeInfo(kind, bits, AbiError.InvalidType)
+  give AbiTypeInfo(nk, bits, AbiError.None)
 }
 
 proc type_error(info: AbiTypeInfo) -> AbiError {
@@ -129,11 +217,231 @@ proc type_size_bits(info: AbiTypeInfo) -> int {
 
 proc type_align_bits(info: AbiTypeInfo) -> int {
   if info.err != AbiError.None { give 0 }
-  if info.bits <= 8 { give 8 }
-  if info.bits <= 16 { give 16 }
-  if info.bits <= 32 { give 32 }
-  if info.bits <= 64 { give 64 }
-  give pointer_bits()
+  give abi_policy_pkg.preferred_param_align_bits(info.kind, info.bits, pointer_bits())
+}
+
+proc sizeof_type(info: AbiTypeInfo) -> int {
+  give align_up(type_size_bits(info), 8) / 8
+}
+
+proc alignof_type(info: AbiTypeInfo) -> int {
+  give align_up(type_align_bits(info), 8) / 8
+}
+
+proc c_calling_convention() -> CallingConvention {
+  let tag = abi_runtime_pkg.default_calling_tag()
+  if tag == "win64" { give CallingConvention.Win64 }
+  if tag == "cdecl" { give CallingConvention.CDecl }
+  if tag == "fastcall" { give CallingConvention.FastCall }
+  if tag == "stdcall" { give CallingConvention.StdCall }
+  give CallingConvention.SystemV
+}
+
+proc c_void() -> AbiTypeInfo {
+  give type_info("void", 0)
+}
+
+proc c_char() -> AbiTypeInfo {
+  give type_info("integer", abi_policy_pkg.c_char_bits())
+}
+
+proc c_short() -> AbiTypeInfo {
+  give type_info("integer", abi_policy_pkg.c_short_bits())
+}
+
+proc c_int() -> AbiTypeInfo {
+  give type_info("integer", abi_policy_pkg.c_int_bits())
+}
+
+proc c_long() -> AbiTypeInfo {
+  give type_info("integer", abi_policy_pkg.c_long_bits(pointer_bits()))
+}
+
+proc c_long_long() -> AbiTypeInfo {
+  give type_info("integer", abi_policy_pkg.c_long_long_bits())
+}
+
+proc c_float() -> AbiTypeInfo {
+  give type_info("float", abi_policy_pkg.c_float_bits())
+}
+
+proc c_double() -> AbiTypeInfo {
+  give type_info("float", abi_policy_pkg.c_double_bits())
+}
+
+proc c_long_double() -> AbiTypeInfo {
+  give type_info("float", abi_policy_pkg.c_long_double_bits())
+}
+
+proc c_bool() -> AbiTypeInfo {
+  give type_info("integer", 8)
+}
+
+proc c_int8_t() -> AbiTypeInfo {
+  give type_info("integer", 8)
+}
+
+proc c_int16_t() -> AbiTypeInfo {
+  give type_info("integer", 16)
+}
+
+proc c_int32_t() -> AbiTypeInfo {
+  give type_info("integer", 32)
+}
+
+proc c_int64_t() -> AbiTypeInfo {
+  give type_info("integer", 64)
+}
+
+proc c_uint8_t() -> AbiTypeInfo {
+  give type_info("integer", 8)
+}
+
+proc c_uint16_t() -> AbiTypeInfo {
+  give type_info("integer", 16)
+}
+
+proc c_uint32_t() -> AbiTypeInfo {
+  give type_info("integer", 32)
+}
+
+proc c_uint64_t() -> AbiTypeInfo {
+  give type_info("integer", 64)
+}
+
+proc c_pointer() -> AbiTypeInfo {
+  give type_info("pointer", pointer_bits())
+}
+
+proc c_size_t() -> AbiTypeInfo {
+  give type_info("integer", pointer_bits())
+}
+
+proc c_ssize_t() -> AbiTypeInfo {
+  give type_info("integer", pointer_bits())
+}
+
+proc c_ptrdiff_t() -> AbiTypeInfo {
+  give type_info("integer", pointer_bits())
+}
+
+proc c_intptr_t() -> AbiTypeInfo {
+  give type_info("integer", pointer_bits())
+}
+
+proc c_uintptr_t() -> AbiTypeInfo {
+  give type_info("integer", pointer_bits())
+}
+
+proc c_wchar_t() -> AbiTypeInfo {
+  give type_info("integer", 32)
+}
+
+proc c_string() -> AbiTypeInfo {
+  give c_pointer()
+}
+
+proc c_pointer_to(base: AbiTypeInfo) -> AbiTypeInfo {
+  if type_error(base) != AbiError.None { give AbiTypeInfo("pointer", 0, AbiError.InvalidType) }
+  give c_pointer()
+}
+
+proc c_array_size(elem: AbiTypeInfo, count: int) -> int {
+  if type_error(elem) != AbiError.None { give 0 }
+  if count <= 0 { give 0 }
+  give sizeof_type(elem) * count
+}
+
+proc c_struct_layout(names: [string], types: [AbiTypeInfo]) -> CStructLayout {
+  if names.len != types.len { give CStructLayout(0, 1, []) }
+  let fields: [CStructField] = []
+  let off: int = 0
+  let max_align: int = 1
+  let i: int = 0
+  loop {
+    if i >= names.len { break }
+    if type_error(types[i]) != AbiError.None { give CStructLayout(0, 1, []) }
+    let align = alignof_type(types[i])
+    if align <= 0 { give CStructLayout(0, 1, []) }
+    if align > max_align { max_align = align }
+    off = align_up(off, align)
+    let sz = sizeof_type(types[i])
+    fields = fields.push(CStructField(names[i], types[i], off, sz, align))
+    off = off + sz
+    i = i + 1
+  }
+  give CStructLayout(align_up(off, max_align), max_align, fields)
+}
+
+proc c_type(name: string) -> AbiTypeInfo {
+  if name == "void" { give c_void() }
+  if name == "char" { give c_char() }
+  if name == "short" { give c_short() }
+  if name == "int" { give c_int() }
+  if name == "long" { give c_long() }
+  if name == "long_long" { give c_long_long() }
+  if name == "float" { give c_float() }
+  if name == "double" { give c_double() }
+  if name == "long_double" { give c_long_double() }
+  if name == "bool" { give c_bool() }
+  if name == "int8_t" { give c_int8_t() }
+  if name == "int16_t" { give c_int16_t() }
+  if name == "int32_t" { give c_int32_t() }
+  if name == "int64_t" { give c_int64_t() }
+  if name == "uint8_t" { give c_uint8_t() }
+  if name == "uint16_t" { give c_uint16_t() }
+  if name == "uint32_t" { give c_uint32_t() }
+  if name == "uint64_t" { give c_uint64_t() }
+  if name == "size_t" { give c_size_t() }
+  if name == "ssize_t" { give c_ssize_t() }
+  if name == "ptrdiff_t" { give c_ptrdiff_t() }
+  if name == "intptr_t" { give c_intptr_t() }
+  if name == "uintptr_t" { give c_uintptr_t() }
+  if name == "wchar_t" { give c_wchar_t() }
+  if name == "string" { give c_string() }
+  if name == "pointer" { give c_pointer() }
+  give AbiTypeInfo("unknown", 0, AbiError.InvalidType)
+}
+
+proc c_type_valid(name: string) -> bool {
+  if abi_validate_pkg.valid_c_type_name(name) == false { give false }
+  give type_error(c_type(name)) == AbiError.None
+}
+
+proc c_type_diagnostics(name: string) -> string {
+  if c_type_valid(name) { give "VITTE-ABI0000" }
+  give "VITTE-ABI0005"
+}
+
+proc c_signature(ret: AbiTypeInfo, params: [AbiTypeInfo]) -> AbiSignature {
+  give AbiSignature(c_calling_convention(), ret, params)
+}
+
+proc c_abi_info() -> CAbiInfo {
+  give CAbiInfo(
+    abi_runtime_pkg.c_data_model(),
+    abi_runtime_pkg.libc_family(),
+    calling_tag(c_calling_convention()),
+    pointer_bits(),
+    type_size_bits(c_size_t()),
+    type_size_bits(c_long())
+  )
+}
+
+proc c_compatible(a: AbiSignature, b: AbiSignature) -> bool {
+  if calling_tag(a.calling) != calling_tag(c_calling_convention()) { give false }
+  if calling_tag(b.calling) != calling_tag(c_calling_convention()) { give false }
+  if type_error(a.ret) != AbiError.None || type_error(b.ret) != AbiError.None { give false }
+  if a.ret.kind != b.ret.kind || a.ret.bits != b.ret.bits { give false }
+  if a.params.len != b.params.len { give false }
+  let i: int = 0
+  loop {
+    if i >= a.params.len { break }
+    if a.params[i].kind != b.params[i].kind { give false }
+    if a.params[i].bits != b.params[i].bits { give false }
+    i = i + 1
+  }
+  give true
 }
 
 proc signature(calling: CallingConvention, ret: AbiTypeInfo, params: [AbiTypeInfo]) -> AbiSignature {
@@ -141,21 +449,54 @@ proc signature(calling: CallingConvention, ret: AbiTypeInfo, params: [AbiTypeInf
 }
 
 proc validate_signature(sig: AbiSignature) -> bool {
+  let tag = calling_tag(sig.calling)
+  if abi_validate_pkg.valid_calling_tag(tag) == false { give false }
   if !is_supported_calling(sig.calling) { give false }
+  if abi_validate_pkg.valid_param_count(sig.params.len, abi_policy_pkg.max_params()) == false { give false }
   if type_error(sig.ret) != AbiError.None { give false }
+  if abi_validate_pkg.valid_alignment_bits(type_align_bits(sig.ret)) == false { give false }
+  if type_size_bits(sig.ret) > abi_policy_pkg.return_bits_limit(sig.ret.kind) { give false }
 
   let i: int = 0
   loop {
     if i >= sig.params.len { break }
     if type_error(sig.params[i]) != AbiError.None { give false }
+    if abi_validate_pkg.valid_alignment_bits(type_align_bits(sig.params[i])) == false { give false }
     i = i + 1
   }
 
   give true
 }
 
+proc validate_signature_error(sig: AbiSignature) -> AbiError {
+  if is_supported_calling(sig.calling) == false { give AbiError.UnsupportedConvention }
+  if abi_validate_pkg.valid_param_count(sig.params.len, abi_policy_pkg.max_params()) == false { give AbiError.TooManyParams }
+  if type_error(sig.ret) != AbiError.None { give AbiError.InvalidType }
+  if abi_validate_pkg.valid_alignment_bits(type_align_bits(sig.ret)) == false { give AbiError.InvalidAlignment }
+  if type_size_bits(sig.ret) > abi_policy_pkg.return_bits_limit(sig.ret.kind) { give AbiError.InvalidSignature }
+
+  let i: int = 0
+  loop {
+    if i >= sig.params.len { break }
+    if type_error(sig.params[i]) != AbiError.None { give AbiError.InvalidType }
+    if abi_validate_pkg.valid_alignment_bits(type_align_bits(sig.params[i])) == false { give AbiError.InvalidAlignment }
+    i = i + 1
+  }
+
+  give AbiError.None
+}
+
+proc register_param_limit(sig: AbiSignature) -> int {
+  give abi_policy_pkg.reg_limit_for_calling(calling_tag(sig.calling))
+}
+
+proc stack_align_bytes(sig: AbiSignature) -> int {
+  let raw = abi_policy_pkg.stack_align_bytes_for_calling(calling_tag(sig.calling))
+  give abi_policy_pkg.normalize_stack_align_bytes(raw, calling_tag(sig.calling))
+}
+
 proc stack_arg_bytes(sig: AbiSignature) -> int {
-  let reg_limit: int = 6
+  let reg_limit = register_param_limit(sig)
   let stack_bits: int = 0
 
   let i: int = 0
@@ -173,28 +514,258 @@ proc stack_arg_bytes(sig: AbiSignature) -> int {
 
 proc return_in_register(sig: AbiSignature) -> bool {
   if type_error(sig.ret) != AbiError.None { give false }
-  if is_float_type(sig.ret) { give sig.ret.bits <= 64 }
-  give sig.ret.bits <= 128
+  if sig.ret.kind == "void" { give true }
+  let max_bits = abi_policy_pkg.return_bits_limit(sig.ret.kind)
+  give sig.ret.bits <= max_bits
+}
+
+proc layout(sig: AbiSignature) -> AbiLayout {
+  let tag = calling_tag(sig.calling)
+  let reg_limit = register_param_limit(sig)
+  let align = stack_align_bytes(sig)
+  let shadow = abi_policy_pkg.shadow_space_bytes_for_calling(tag)
+  let red_zone = abi_policy_pkg.red_zone_bytes_for_calling(tag)
+
+  let params: [AbiLayoutParam] = []
+  let reg_used: int = 0
+  let stack_off: int = 0
+  let i: int = 0
+
+  loop {
+    if i >= sig.params.len { break }
+
+    let bits = type_size_bits(sig.params[i])
+    let align_bits = type_align_bits(sig.params[i])
+    let align_bytes = align_up(align_bits, 8) / 8
+    let size_bytes = align_up(bits, align_bits) / 8
+
+    let in_reg = i < reg_limit
+    let slot: int = -1
+    let offset: int = -1
+
+    if in_reg {
+      slot = reg_used
+      reg_used = reg_used + 1
+    } else {
+      stack_off = align_up(stack_off, align_bytes)
+      offset = stack_off
+      stack_off = stack_off + size_bytes
+    }
+
+    params = params.push(AbiLayoutParam(i, in_reg, slot, offset, size_bytes, align_bytes))
+    i = i + 1
+  }
+
+  let stack_bytes = stack_off
+  let frame0 = align_up(abi_policy_pkg.frame_base_bytes() + shadow + stack_bytes, align)
+  let frame = frame0
+  if frame > abi_policy_pkg.max_frame_bytes() {
+    frame = abi_policy_pkg.max_frame_bytes()
+  }
+  give AbiLayout(stack_bytes, frame, reg_used, align, shadow, red_zone, params)
+}
+
+proc classify_param(sig: AbiSignature, index: int) -> string {
+  let l = layout(sig)
+  if abi_validate_pkg.valid_index(index, l.params.len) == false { give "invalid-index" }
+  if l.params[index].in_register { give "register" }
+  give "stack"
+}
+
+proc register_slot(sig: AbiSignature, index: int) -> int {
+  let l = layout(sig)
+  if abi_validate_pkg.valid_index(index, l.params.len) == false { give -1 }
+  give l.params[index].register_slot
+}
+
+proc stack_offset(sig: AbiSignature, index: int) -> int {
+  let l = layout(sig)
+  if abi_validate_pkg.valid_index(index, l.params.len) == false { give -1 }
+  give l.params[index].stack_offset_bytes
+}
+
+proc call_overhead_bytes(sig: AbiSignature) -> int {
+  let l = layout(sig)
+  give l.shadow_space_bytes + l.stack_arg_bytes
+}
+
+proc required_callee_saved(sig: AbiSignature) -> int {
+  let max_saved = abi_policy_pkg.callee_saved_count_for_calling(calling_tag(sig.calling))
+  let used = layout(sig).register_args
+  if used < max_saved { give used }
+  give max_saved
 }
 
 proc frame_size(sig: AbiSignature) -> int {
-  let base_bytes: int = 16
-  give align_up(base_bytes + stack_arg_bytes(sig), 16)
+  give layout(sig).frame_bytes
 }
 
 proc signature_abi_summary(sig: AbiSignature) -> string {
+  let l = layout(sig)
   let out = "cc=" + calling_tag(sig.calling)
   out = out + ",params=" + sig.params.len.to_string()
   out = out + ",ret_bits=" + type_size_bits(sig.ret).to_string()
-  out = out + ",stack=" + stack_arg_bytes(sig).to_string()
+  out = out + ",reg=" + l.register_args.to_string()
+  out = out + ",stack=" + l.stack_arg_bytes.to_string()
+  out = out + ",shadow=" + l.shadow_space_bytes.to_string()
+  out = out + ",red_zone=" + l.red_zone_bytes.to_string()
+  out = out + ",frame=" + l.frame_bytes.to_string()
+  out = out + ",endian=" + endianness()
   give out
 }
 
+proc signature_hash(sig: AbiSignature) -> int {
+  let h = type_size_bits(sig.ret) * 31 + sig.params.len * 17
+  let i: int = 0
+  loop {
+    if i >= sig.params.len { break }
+    h = h + (type_size_bits(sig.params[i]) * (i + 3))
+    h = h + (type_align_bits(sig.params[i]) * (i + 5))
+    i = i + 1
+  }
+  h = h + register_param_limit(sig) * 7
+  h = h + stack_align_bytes(sig)
+  h = h + call_overhead_bytes(sig)
+  give h
+}
+
 proc mangle(name: string, sig: AbiSignature) -> string {
-  give "_V" + calling_tag(sig.calling) + "_" + name + "_p" + sig.params.len.to_string()
+  let out = "_V" + calling_tag(sig.calling) + "_" + name
+  out = out + "_r" + type_size_bits(sig.ret).to_string()
+  out = out + "_p" + sig.params.len.to_string()
+  out = out + "_h" + signature_hash(sig).to_string()
+  give out
+}
+
+proc diagnostics_code(sig: AbiSignature) -> string {
+  if is_supported_calling(sig.calling) == false { give "VITTE-ABI0001" }
+  if type_error(sig.ret) != AbiError.None { give "VITTE-ABI0002" }
+  if abi_validate_pkg.valid_param_count(sig.params.len, abi_policy_pkg.max_params()) == false {
+    give "VITTE-ABI0004"
+  }
+  if validate_signature(sig) == false { give "VITTE-ABI0003" }
+  give "VITTE-ABI0000"
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-ABI0000" { give "signature is valid" }
+  if code == "VITTE-ABI0001" { give "unsupported calling convention" }
+  if code == "VITTE-ABI0002" { give "invalid abi type encoding" }
+  if code == "VITTE-ABI0003" { give "invalid abi signature" }
+  if code == "VITTE-ABI0004" { give "too many abi parameters" }
+  if code == "VITTE-ABI0005" { give "invalid c type alias" }
+  give "abi diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-ABI0000" { give "no action required" }
+  if code == "VITTE-ABI0001" { give "use systemv/win64/cdecl/fastcall on this runtime" }
+  if code == "VITTE-ABI0002" { give "use valid kinds (integer/float/pointer/void) and bits (8/16/32/64/128)" }
+  if code == "VITTE-ABI0003" { give "rebuild signature with type_info and validate_signature" }
+  if code == "VITTE-ABI0004" { give "reduce parameter count or pass an aggregate pointer" }
+  if code == "VITTE-ABI0005" { give "use one of: void,char,short,int,long,long_long,float,double,long_double,bool,size_t,ssize_t,intptr_t,uintptr_t,pointer" }
+  give "review abi signature and platform constraints"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc compatible(a: AbiSignature, b: AbiSignature) -> AbiCompatibility {
+  if validate_signature(a) == false { give AbiCompatibility(false, "lhs-invalid") }
+  if validate_signature(b) == false { give AbiCompatibility(false, "rhs-invalid") }
+  if calling_tag(a.calling) != calling_tag(b.calling) { give AbiCompatibility(false, "calling-mismatch") }
+  if a.ret.kind != b.ret.kind || a.ret.bits != b.ret.bits { give AbiCompatibility(false, "return-mismatch") }
+  if a.params.len != b.params.len { give AbiCompatibility(false, "arity-mismatch") }
+
+  let i: int = 0
+  loop {
+    if i >= a.params.len { break }
+    if a.params[i].kind != b.params[i].kind { give AbiCompatibility(false, "param-kind-mismatch") }
+    if a.params[i].bits != b.params[i].bits { give AbiCompatibility(false, "param-bits-mismatch") }
+    i = i + 1
+  }
+
+  give AbiCompatibility(true, "compatible")
+}
+
+proc abi_diff(a: AbiSignature, b: AbiSignature) -> string {
+  let out = "compatible=false"
+  let cmp = compatible(a, b)
+  if cmp.ok {
+    give "compatible=true,reason=compatible"
+  }
+  out = out + ",reason=" + cmp.reason
+  out = out + ",lhs_cc=" + calling_tag(a.calling)
+  out = out + ",rhs_cc=" + calling_tag(b.calling)
+  out = out + ",lhs_hash=" + signature_hash(a).to_string()
+  out = out + ",rhs_hash=" + signature_hash(b).to_string()
+  give out
+}
+
+proc can_tailcall(caller: AbiSignature, callee: AbiSignature) -> bool {
+  let cmp = compatible(caller, callee)
+  if cmp.ok == false { give false }
+  let lcaller = layout(caller)
+  let lcallee = layout(callee)
+  if lcallee.stack_arg_bytes > lcaller.stack_arg_bytes { give false }
+  give return_in_register(callee)
+}
+
+proc platform_info() -> AbiPlatformInfo {
+  give AbiPlatformInfo(
+    abi_runtime_pkg.runtime_name(),
+    abi_runtime_pkg.abi_version(),
+    abi_runtime_pkg.target_triple(),
+    abi_runtime_pkg.arch_tag(),
+    abi_runtime_pkg.os_tag(),
+    pointer_bits(),
+    abi_runtime_pkg.pointer_align_bits(),
+    endianness(),
+    abi_runtime_pkg.default_calling_tag(),
+    abi_runtime_pkg.stack_grows_down(),
+    abi_runtime_pkg.has_red_zone()
+  )
+}
+
+proc abi_health(sig: AbiSignature) -> string {
+  let code = diagnostics_code(sig)
+  if code != "VITTE-ABI0000" {
+    if code == "VITTE-ABI0001" { give "unsupported-calling" }
+    if code == "VITTE-ABI0004" { give "too-many-params" }
+    give "invalid-signature"
+  }
+  if return_in_register(sig) == false { give "stack-return" }
+  give "ok"
 }
 
 proc ready() -> bool {
+  if abi_runtime_pkg.runtime_status() == false { give false }
+  if pointer_bits() != abi_policy_pkg.default_pointer_bits() { give false }
+  if abi_validate_pkg.valid_endianness(endianness()) == false { give false }
+  if abi_validate_pkg.valid_target_triple(abi_runtime_pkg.target_triple()) == false { give false }
+  if abi_validate_pkg.valid_non_empty(abi_runtime_pkg.arch_tag()) == false { give false }
+  if abi_validate_pkg.valid_non_empty(abi_runtime_pkg.os_tag()) == false { give false }
+  if is_supported_calling(default_calling_convention()) == false { give false }
+  if abi_validate_pkg.valid_stack_align_bytes(stack_align_bytes(signature(default_calling_convention(), type_info("void", 0), []))) == false {
+    give false
+  }
+  if abi_validate_pkg.valid_register_limit(register_param_limit(signature(default_calling_convention(), type_info("void", 0), []))) == false {
+    give false
+  }
+  if abi_validate_pkg.valid_frame_bytes(frame_size(signature(default_calling_convention(), type_info("void", 0), [])), abi_policy_pkg.max_frame_bytes()) == false {
+    give false
+  }
+  if c_type_valid("int") == false { give false }
+  if c_type_valid("int32_t") == false { give false }
+  if c_type_valid("uint64_t") == false { give false }
+  if c_type_valid("size_t") == false { give false }
+  if c_type_valid("pointer") == false { give false }
+  if sizeof_type(c_size_t()) != pointer_bytes() { give false }
+  if alignof_type(c_long()) < 1 { give false }
+  let cfields = c_struct_layout(["a", "b"], [c_int32_t(), c_pointer()])
+  if cfields.size_bytes < (sizeof_type(c_int32_t()) + sizeof_type(c_pointer())) { give false }
+  if c_type_diagnostics("unknown_c_type") != "VITTE-ABI0005" { give false }
   give true
 }
 

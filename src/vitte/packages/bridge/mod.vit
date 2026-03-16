@@ -1,10 +1,400 @@
 <<<
 mod.vit
 package vitte/bridge
+version: 2.0.0
+tier: runtime-interop
+purpose:
+  Pont deterministic entre endpoints/runtime.
+  Routage explicite et controle d'inflight.
+  API stable avec diagnostics et healthcheck.
 >>>
 
 space vitte/bridge
 
+use vitte/bridge/internal/runtime as bridge_runtime_pkg
+use vitte/bridge/internal/validate as bridge_validate_pkg
+use vitte/bridge/internal/policy as bridge_policy_pkg
+
+pick BridgeMode {
+  Local
+  Remote
+}
+
+pick BridgeState {
+  Closed
+  Open
+  Degraded
+}
+
+pick BridgeError {
+  None
+  InvalidConfig
+  InvalidEndpoint
+  InvalidPacket
+  NotConnected
+  Timeout
+  Saturated
+}
+
+pick BridgeResult[T] {
+  Ok(value: T)
+  Err(error: BridgeError)
+}
+
+form BridgeEndpoint {
+  name: string
+  mode: BridgeMode
+}
+
+form BridgePacket {
+  id: int
+  from: string
+  to: string
+  payload: string
+  size: int
+  hops: int
+}
+
+form BridgeRoute {
+  from: string
+  to: string
+  hops: int
+  timeout_ms: int
+  retry_budget: int
+}
+
+form BridgeConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+  max_inflight: int
+}
+
+form BridgeStats {
+  sent: int
+  received: int
+  dropped: int
+  retries: int
+  inflight: int
+}
+
+form BridgeSession {
+  route: BridgeRoute
+  state: BridgeState
+  stats: BridgeStats
+}
+
+form BridgeRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_routing: bool
+  supports_retry: bool
+  supports_diagnostics: bool
+}
+
+form BridgeHealth {
+  ok: bool
+  code: string
+  loss_percent: int
+  inflight: int
+}
+
+proc default_config() -> BridgeConfig {
+  give BridgeConfig(false,
+                    bridge_policy_pkg.default_timeout_ms(),
+                    bridge_policy_pkg.default_retry_budget(),
+                    bridge_policy_pkg.max_inflight())
+}
+
+proc strict_config() -> BridgeConfig {
+  let cfg = default_config()
+  give BridgeConfig(true,
+                    cfg.timeout_ms,
+                    cfg.retry_budget,
+                    cfg.max_inflight)
+}
+
+proc with_timeout_ms(cfg: BridgeConfig, timeout_ms: int) -> BridgeConfig {
+  give BridgeConfig(cfg.strict,
+                    bridge_policy_pkg.normalize_timeout_ms(timeout_ms),
+                    cfg.retry_budget,
+                    cfg.max_inflight)
+}
+
+proc with_retry_budget(cfg: BridgeConfig, retry_budget: int) -> BridgeConfig {
+  give BridgeConfig(cfg.strict,
+                    cfg.timeout_ms,
+                    bridge_policy_pkg.normalize_retry_budget(retry_budget),
+                    cfg.max_inflight)
+}
+
+proc with_max_inflight(cfg: BridgeConfig, max_inflight: int) -> BridgeConfig {
+  give BridgeConfig(cfg.strict,
+                    cfg.timeout_ms,
+                    cfg.retry_budget,
+                    bridge_policy_pkg.normalize_inflight(max_inflight))
+}
+
+proc validate_config(cfg: BridgeConfig) -> BridgeResult[bool] {
+  if bridge_validate_pkg.valid_timeout_ms(cfg.timeout_ms, bridge_policy_pkg.max_timeout_ms()) == false {
+    give BridgeResult.Err(BridgeError.InvalidConfig)
+  }
+  if bridge_validate_pkg.valid_retry_budget(cfg.retry_budget, bridge_policy_pkg.max_retry_budget()) == false {
+    give BridgeResult.Err(BridgeError.InvalidConfig)
+  }
+  if bridge_validate_pkg.valid_inflight(cfg.max_inflight, bridge_policy_pkg.max_inflight()) == false {
+    give BridgeResult.Err(BridgeError.InvalidConfig)
+  }
+  give BridgeResult.Ok(true)
+}
+
+proc endpoint(name: string, mode: BridgeMode) -> BridgeEndpoint {
+  let n = bridge_runtime_pkg.sanitize(name, bridge_policy_pkg.max_endpoint_len())
+  give BridgeEndpoint(n, mode)
+}
+
+proc endpoint_checked(name: string, mode: BridgeMode) -> BridgeResult[BridgeEndpoint] {
+  let ep = endpoint(name, mode)
+  if bridge_validate_pkg.valid_endpoint(ep.name, bridge_policy_pkg.max_endpoint_len()) == false {
+    give BridgeResult.Err(BridgeError.InvalidEndpoint)
+  }
+  give BridgeResult.Ok(ep)
+}
+
+proc packet(id: int, from: string, to: string, payload: string, hops: int) -> BridgePacket {
+  let f = bridge_runtime_pkg.sanitize(from, bridge_policy_pkg.max_endpoint_len())
+  let t = bridge_runtime_pkg.sanitize(to, bridge_policy_pkg.max_endpoint_len())
+  let size = payload.len
+  let h = bridge_policy_pkg.normalize_route_hops(hops)
+  give BridgePacket(id, f, t, payload, size, h)
+}
+
+proc packet_checked(id: int, from: string, to: string, payload: string, hops: int) -> BridgeResult[BridgePacket] {
+  let p = packet(id, from, to, payload, hops)
+  if bridge_validate_pkg.valid_endpoint(p.from, bridge_policy_pkg.max_endpoint_len()) == false {
+    give BridgeResult.Err(BridgeError.InvalidEndpoint)
+  }
+  if bridge_validate_pkg.valid_endpoint(p.to, bridge_policy_pkg.max_endpoint_len()) == false {
+    give BridgeResult.Err(BridgeError.InvalidEndpoint)
+  }
+  if bridge_validate_pkg.valid_packet_size(p.size, bridge_policy_pkg.max_packet_size()) == false {
+    give BridgeResult.Err(BridgeError.InvalidPacket)
+  }
+  if bridge_validate_pkg.valid_hops(p.hops, bridge_policy_pkg.max_route_hops()) == false {
+    give BridgeResult.Err(BridgeError.InvalidPacket)
+  }
+  give BridgeResult.Ok(p)
+}
+
+proc route_new(from: string, to: string, cfg: BridgeConfig) -> BridgeResult[BridgeRoute] {
+  let vr = validate_config(cfg)
+  when vr is BridgeResult.Err { give BridgeResult.Err(vr.error) }
+
+  if bridge_validate_pkg.valid_endpoint(from, bridge_policy_pkg.max_endpoint_len()) == false {
+    give BridgeResult.Err(BridgeError.InvalidEndpoint)
+  }
+  if bridge_validate_pkg.valid_endpoint(to, bridge_policy_pkg.max_endpoint_len()) == false {
+    give BridgeResult.Err(BridgeError.InvalidEndpoint)
+  }
+
+  give BridgeResult.Ok(BridgeRoute(from,
+                                  to,
+                                  1,
+                                  cfg.timeout_ms,
+                                  cfg.retry_budget))
+}
+
+proc connect(route: BridgeRoute) -> BridgeSession {
+  give BridgeSession(route, BridgeState.Open, BridgeStats(0, 0, 0, 0, 0))
+}
+
+proc disconnect(session: BridgeSession) -> BridgeSession {
+  give BridgeSession(session.route, BridgeState.Closed, session.stats)
+}
+
+proc send_checked(session: BridgeSession, pkt: BridgePacket, cfg: BridgeConfig) -> BridgeResult[BridgeSession] {
+  if session.state != BridgeState.Open { give BridgeResult.Err(BridgeError.NotConnected) }
+
+  let p = packet_checked(pkt.id, pkt.from, pkt.to, pkt.payload, pkt.hops)
+  when p is BridgeResult.Err { give BridgeResult.Err(p.error) }
+
+  if session.stats.inflight >= cfg.max_inflight {
+    give BridgeResult.Err(BridgeError.Saturated)
+  }
+
+  let retries = session.stats.retries
+  if cfg.strict && p.value.hops > 1 {
+    retries = retries + 1
+    if retries > cfg.retry_budget {
+      give BridgeResult.Err(BridgeError.Timeout)
+    }
+  }
+
+  let stats = BridgeStats(session.stats.sent + 1,
+                          session.stats.received,
+                          session.stats.dropped,
+                          retries,
+                          session.stats.inflight + 1)
+  give BridgeResult.Ok(BridgeSession(session.route, session.state, stats))
+}
+
+proc ack(session: BridgeSession) -> BridgeSession {
+  let inflight = session.stats.inflight
+  if inflight > 0 { inflight = inflight - 1 }
+  let stats = BridgeStats(session.stats.sent,
+                          session.stats.received + 1,
+                          session.stats.dropped,
+                          session.stats.retries,
+                          inflight)
+  give BridgeSession(session.route, session.state, stats)
+}
+
+proc drop_packet(session: BridgeSession) -> BridgeSession {
+  let inflight = session.stats.inflight
+  if inflight > 0 { inflight = inflight - 1 }
+  let stats = BridgeStats(session.stats.sent,
+                          session.stats.received,
+                          session.stats.dropped + 1,
+                          session.stats.retries,
+                          inflight)
+  let state = session.state
+  if stats.dropped > 0 && stats.sent > 0 { state = BridgeState.Degraded }
+  give BridgeSession(session.route, state, stats)
+}
+
+proc loss_percent(stats: BridgeStats) -> int {
+  if stats.sent <= 0 { give 0 }
+  let pct = (stats.dropped * 100) / stats.sent
+  if pct < 0 { give 0 }
+  if pct > 100 { give 100 }
+  give pct
+}
+
+proc state_name(state: BridgeState) -> string {
+  when state is BridgeState.Closed { give "closed" }
+  when state is BridgeState.Open { give "open" }
+  give "degraded"
+}
+
+proc bridge_runtime_info() -> BridgeRuntimeInfo {
+  give BridgeRuntimeInfo(bridge_runtime_pkg.runtime_name(),
+                         bridge_runtime_pkg.runtime_version(),
+                         bridge_runtime_pkg.supports_no_std(),
+                         bridge_runtime_pkg.supports_routing(),
+                         bridge_runtime_pkg.supports_retry(),
+                         bridge_runtime_pkg.supports_diagnostics())
+}
+
+proc bridge_health(session: BridgeSession) -> BridgeHealth {
+  let lp = loss_percent(session.stats)
+  if bridge_validate_pkg.valid_percent(lp) == false {
+    give BridgeHealth(false, "invalid-loss", 0, session.stats.inflight)
+  }
+  if lp >= bridge_policy_pkg.warn_loss_percent() {
+    give BridgeHealth(false, "loss-high", lp, session.stats.inflight)
+  }
+  if session.state == BridgeState.Closed {
+    give BridgeHealth(false, "closed", lp, session.stats.inflight)
+  }
+  give BridgeHealth(true, "ok", lp, session.stats.inflight)
+}
+
+proc session_summary(session: BridgeSession) -> string {
+  give "from=" + session.route.from +
+       ",to=" + session.route.to +
+       ",state=" + state_name(session.state) +
+       ",sent=" + session.stats.sent.to_string() +
+       ",recv=" + session.stats.received.to_string() +
+       ",drop=" + session.stats.dropped.to_string() +
+       ",inflight=" + session.stats.inflight.to_string()
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_timeout_ms,with_retry_budget,with_max_inflight,validate_config,endpoint,endpoint_checked,packet,packet_checked,route_new,connect,disconnect,send_checked,ack,drop_packet,loss_percent,bridge_runtime_info,bridge_health,session_summary,stable_api_surface_hash,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["routing", "retry", "health", "diagnostics", bridge_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-BRIDGE0001" { give "invalid bridge config" }
+  if code == "VITTE-BRIDGE0002" { give "bridge endpoint or packet is invalid" }
+  if code == "VITTE-BRIDGE0003" { give "bridge session not connected" }
+  if code == "VITTE-BRIDGE0004" { give "bridge saturated or timed out" }
+  give "bridge diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-BRIDGE0001" { give "normalize timeout/retry/inflight using config helpers" }
+  if code == "VITTE-BRIDGE0002" { give "sanitize endpoint names and reduce packet size" }
+  if code == "VITTE-BRIDGE0003" { give "connect route before send and check session state" }
+  if code == "VITTE-BRIDGE0004" { give "increase max_inflight or retry budget" }
+  give "inspect bridge session stats and route"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if bridge_runtime_pkg.runtime_status() == false { give false }
+  if bridge_runtime_pkg.supports_routing() == false { give false }
+
+  let cfg = strict_config()
+  let vr = validate_config(cfg)
+  when vr is BridgeResult.Err { give false }
+
+  let rr = route_new("a", "b", cfg)
+  when rr is BridgeResult.Err { give false }
+
+  let s0 = connect(rr.value)
+  let p = packet_checked(1, "a", "b", "hello", 1)
+  when p is BridgeResult.Err { give false }
+
+  let sr = send_checked(s0, p.value, cfg)
+  when sr is BridgeResult.Err { give false }
+
+  let s1 = ack(sr.value)
+  let h = bridge_health(s1)
+  if h.loss_percent < 0 { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
+  give true
+}
+
+proc ready() -> bool {
+  give stable_ready()
+}
+
 proc package_meta() -> string {
   give "vitte/bridge"
 }
+
+<<< ROLE-CONTRACT
+package: vitte/bridge
+role: Pont deterministic entre endpoints et runtimes
+input_contract: Endpoints packets routes et config explicites
+output_contract: Sessions et diagnostics stables et observables
+boundary: Ne gere pas reseau systeme bas niveau ni scheduling OS
+versioning_note: stable_api_version=2.0.0
+>>>
