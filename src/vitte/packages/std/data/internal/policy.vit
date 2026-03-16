@@ -3,3 +3,40 @@ space vitte/std/data/internal/policy
 proc default_cache_size() -> int {
   give 1024
 }
+
+proc min_cache_size() -> int {
+  give 0
+}
+
+proc max_cache_size() -> int {
+  give 1000000
+}
+
+proc tiny_cache_size() -> int {
+  give 256
+}
+
+proc large_cache_size() -> int {
+  give 16384
+}
+
+proc cache_size_for_mode(mode: string) -> int {
+  if mode == "tiny" { give tiny_cache_size() }
+  if mode == "large" { give large_cache_size() }
+  give default_cache_size()
+}
+
+proc clamp_cache_size(cache_size: int) -> int {
+  if cache_size < min_cache_size() { give min_cache_size() }
+  if cache_size > max_cache_size() { give max_cache_size() }
+  give cache_size
+}
+
+proc normalize_cache_size(cache_size: int) -> int {
+  if cache_size < 0 { give default_cache_size() }
+  give clamp_cache_size(cache_size)
+}
+
+proc policy_version() -> string {
+  give "v1"
+}

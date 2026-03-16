@@ -8,27 +8,11 @@ package vitte/http
 # - Internal implementation in vitte/http/internal/*.
 # - Diagnostics namespace: VITTE-H0001..VITTE-H0099 (extended: H001x/H002x/H003x).
 
-<<< ROLE-CONTRACT
-package: vitte/http
-owner: @vitte/http
-stability: stable
-since: 2.0.0
-deprecated_in: -
-role: Facade HTTP stable pour requetes, reponses, routage et middleware
-input_contract: Parametres HTTP valides, deja resolus au niveau appelant
-output_contract: Resultats HTTP deterministes et diagnostics normalises
-boundary: Pas de logique metier applicative; orchestration et validation HTTP uniquement
-versioning: API surface stable; additive changes only on stable line
-api_surface_stable: true
-diagnostics: VITTE-H0001..VITTE-H0099
-compat_policy: additive-only
-internal_exports: forbidden
-api_version: v1
->>>
-
 space vitte/http
 
+use vitte/http/internal/policy as http_policy_pkg
 use vitte/http/internal/runtime as http_runtime_pkg
+use vitte/http/internal/validate as http_validate_pkg
 
 pick HttpMethod {
   Get
@@ -114,6 +98,12 @@ form HttpServerState {
   rate_used: int
 }
 
+form HttpConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
 proc error(code: string, message: string, context: string) -> HttpError {
   give HttpError(code, message, context)
 }
@@ -144,6 +134,71 @@ proc panic_guard[T](r: HttpResult[T], fallback: T) -> T {
   give fallback
 }
 
+proc default_config() -> HttpConfig {
+  give HttpConfig(true, http_policy_pkg.default_timeout_ms(), http_policy_pkg.default_retry_budget())
+}
+
+proc normalize_config(cfg: HttpConfig) -> HttpConfig {
+  give HttpConfig(cfg.strict, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc validate_config(cfg: HttpConfig) -> HttpResult[bool] {
+  let nc = normalize_config(cfg)
+  if http_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
+    give err_ctx[bool]("VITTE-H0001", "invalid timeout", "config.timeout_ms")
+  }
+  if http_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
+    give err_ctx[bool]("VITTE-H0001", "invalid retry budget", "config.retry_budget")
+  }
+  give ok(true)
+}
+
+proc healthcheck(cfg: HttpConfig) -> HttpResult[bool] {
+  let vr: HttpResult[bool] = validate_config(cfg)
+  when vr is HttpResult.Err { give HttpResult.Err(vr.error) }
+  if http_runtime_pkg.runtime_status() == false {
+    give err_ctx[bool]("VITTE-H0003", "http runtime unavailable", "runtime")
+  }
+  give ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give [
+    "config",
+    "validate",
+    "healthcheck",
+    "request",
+    "request-with-query",
+    "request-with-header",
+    "request-with-chunked",
+    "request-with-cancel",
+    "response",
+    "parse-request-line",
+    "headers-add-get",
+    "route",
+    "route-conflict-check",
+    "router-find-route",
+    "middleware",
+    "server-state-config",
+    "timeouts",
+    "rate-limit",
+    "cors",
+    "csrf",
+    "security-gates",
+    "handle",
+    "openapi-snapshot",
+    "openapi-diff",
+    "diagnostics",
+    "quickfix",
+    "doctor",
+    "package-meta"
+  ]
+}
+
 proc diagnostics_message(code: string) -> string {
   give http_runtime_pkg.diag_message(code)
 }
@@ -153,7 +208,7 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc method_name(m: HttpMethod) -> string {
@@ -500,7 +555,7 @@ proc quickfix_apply(payload: string) -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give http_runtime_pkg.runtime_status()
 }
 
 proc package_meta() -> string {

@@ -5,6 +5,10 @@ package vitte/io
 
 space vitte/io
 
+use vitte/io/internal/policy as io_policy_pkg
+use vitte/io/internal/runtime as io_runtime_pkg
+use vitte/io/internal/validate as io_validate_pkg
+
 
 form Buffer {
   lines: [string]
@@ -226,11 +230,112 @@ proc split_lines(text: string) -> [string] {
 }
 
 proc ready() -> bool {
-  give true
+  give io_runtime_pkg.runtime_status()
 }
 
 proc package_meta() -> string {
   give "vitte/io"
+}
+
+form IoConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick IoError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick IoResult[T] {
+  Ok(value: T)
+  Err(error: IoError)
+}
+
+proc default_config() -> IoConfig {
+  give IoConfig(io_policy_pkg.default_strict(), io_policy_pkg.default_timeout_ms(), io_policy_pkg.default_retry_budget())
+}
+
+proc strict_config() -> IoConfig {
+  let cfg = default_config()
+  give IoConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc with_timeout_ms(cfg: IoConfig, timeout_ms: int) -> IoConfig {
+  give IoConfig(cfg.strict, io_policy_pkg.normalize_timeout_ms(timeout_ms), cfg.retry_budget)
+}
+
+proc with_retry_budget(cfg: IoConfig, retry_budget: int) -> IoConfig {
+  give IoConfig(cfg.strict, cfg.timeout_ms, io_policy_pkg.normalize_retry_budget(retry_budget))
+}
+
+proc normalize_config(cfg: IoConfig) -> IoConfig {
+  give IoConfig(cfg.strict,
+                io_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
+                io_policy_pkg.normalize_retry_budget(cfg.retry_budget))
+}
+
+proc validate_config(cfg: IoConfig) -> IoResult[bool] {
+  let nc = normalize_config(cfg)
+  if io_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
+    give IoResult.Err(IoError.InvalidConfig)
+  }
+  if io_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
+    give IoResult.Err(IoError.InvalidConfig)
+  }
+  give IoResult.Ok(true)
+}
+
+proc healthcheck(cfg: IoConfig) -> IoResult[bool] {
+  let vr: IoResult[bool] = validate_config(cfg)
+  when vr is IoResult.Err {
+    give IoResult.Err(vr.error)
+  }
+  if io_runtime_pkg.runtime_status() == false {
+    give IoResult.Err(IoError.Internal)
+  }
+  give IoResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["buffer", "config", "diagnostics", "healthcheck", "path", "validate"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-IO0001" {
+    give "invalid package configuration"
+  }
+  give "io diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+form IoRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_buffer: bool
+}
+
+proc runtime_info() -> IoRuntimeInfo {
+  give IoRuntimeInfo(io_runtime_pkg.runtime_name(),
+                     io_runtime_pkg.runtime_version(),
+                     io_runtime_pkg.supports_diagnostics(),
+                     io_runtime_pkg.supports_buffer())
 }
 
 <<< ROLE-CONTRACT
@@ -239,4 +344,16 @@ role: Entrees sorties texte et binaire avec buffers
 input_contract: Valeurs metier explicites, deja parsees et typables
 output_contract: Sorties stables, observables et compatibles avec les autres packages
 boundary: Ne remplace pas les autres couches; respecte la separation de roles
+
+owner: @vitte/io
+stability: stable
+since: 3.0.0
+deprecated_in: -
+compat_policy: additive-only
+api_version: v1
 >>>
+
+
+
+
+

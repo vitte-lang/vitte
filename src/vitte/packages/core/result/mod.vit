@@ -1,6 +1,101 @@
 space std/core/result
 
+use vitte/core/result/internal/runtime as core_result_runtime_pkg
+use vitte/core/result/internal/validate as core_result_validate_pkg
+use vitte/core/result/internal/policy as core_result_policy_pkg
+
 pick Result[T, E] {
   Ok(value: T)
   Err(error: E)
 }
+
+form CoreResultConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick CoreResultError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick CoreResultResult[T] {
+  Ok(value: T)
+  Err(error: CoreResultError)
+}
+
+proc default_config() -> CoreResultConfig {
+  give CoreResultConfig(true, core_result_policy_pkg.default_timeout_ms(), core_result_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: CoreResultConfig) -> CoreResultResult[bool] {
+  if core_result_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give CoreResultResult.Err(CoreResultError.InvalidConfig)
+  }
+  if core_result_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give CoreResultResult.Err(CoreResultError.InvalidConfig)
+  }
+  give CoreResultResult.Ok(true)
+}
+
+proc healthcheck(cfg: CoreResultConfig) -> CoreResultResult[bool] {
+  let vr: CoreResultResult[bool] = validate_config(cfg)
+  when vr is CoreResultResult.Err {
+    give CoreResultResult.Err(vr.error)
+  }
+  if core_result_runtime_pkg.runtime_status() == false {
+    give CoreResultResult.Err(CoreResultError.Internal)
+  }
+  give CoreResultResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CORERESU0001" {
+    give "invalid package configuration"
+  }
+  give "core/result diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/core/result"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/core/result
+owner: @vitte/core
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: Facade publique stable
+input_contract: Config explicite et typable
+output_contract: Resultats stables et predictibles
+boundary: Implementation privee sous vitte/core/result/internal/*
+compat_policy: additive-only
+api_version: v1
+>>>
+
+
+
+
+
+

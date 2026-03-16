@@ -3,3 +3,20 @@ space vitte/std/net/internal/validate
 proc valid_timeout_ms(timeout_ms: int) -> bool {
   give timeout_ms > 0 && timeout_ms <= 60000
 }
+
+proc valid_retries(retries: int) -> bool {
+  give retries >= 0 && retries <= 10
+}
+
+proc validate_code(timeout_ms: int, retries: int) -> string {
+  if valid_timeout_ms(timeout_ms) == false { give "VITTE-STDNET0001" }
+  if valid_retries(retries) == false { give "VITTE-STDNET0002" }
+  give ""
+}
+
+proc valid_config(timeout_ms: int, retries: int, strict: bool) -> bool {
+  if valid_timeout_ms(timeout_ms) == false { give false }
+  if valid_retries(retries) == false { give false }
+  if strict && timeout_ms > 30000 { give false }
+  give true
+}

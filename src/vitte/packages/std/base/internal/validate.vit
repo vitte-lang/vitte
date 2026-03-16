@@ -1,0 +1,30 @@
+space vitte/std/base/internal/validate
+
+proc valid_timeout_ms(timeout_ms: int) -> bool {
+  give timeout_ms > 0 && timeout_ms <= 60000
+}
+
+proc valid_retry_budget(retry_budget: int) -> bool {
+  give retry_budget >= 0 && retry_budget <= 32
+}
+
+proc valid_profile(profile: string) -> bool {
+  if profile == "core" { give true }
+  if profile == "system" { give true }
+  if profile == "desktop" { give true }
+  if profile == "default" { give true }
+  give false
+}
+
+proc validate_code(timeout_ms: int, retry_budget: int) -> string {
+  if valid_timeout_ms(timeout_ms) == false { give "VITTE-STDBASE0001" }
+  if valid_retry_budget(retry_budget) == false { give "VITTE-STDBASE0002" }
+  give ""
+}
+
+proc valid_runtime_contract(timeout_ms: int, retry_budget: int, strict: bool) -> bool {
+  if valid_timeout_ms(timeout_ms) == false { give false }
+  if valid_retry_budget(retry_budget) == false { give false }
+  if strict == false && retry_budget > 16 { give false }
+  give true
+}

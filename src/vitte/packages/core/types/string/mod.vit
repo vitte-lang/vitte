@@ -1,1 +1,96 @@
 space std/core/types/string
+
+use vitte/core/types/string/internal/runtime as core_types_string_runtime_pkg
+use vitte/core/types/string/internal/validate as core_types_string_validate_pkg
+use vitte/core/types/string/internal/policy as core_types_string_policy_pkg
+
+form CoreTypesStringConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick CoreTypesStringError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick CoreTypesStringResult[T] {
+  Ok(value: T)
+  Err(error: CoreTypesStringError)
+}
+
+proc default_config() -> CoreTypesStringConfig {
+  give CoreTypesStringConfig(true, core_types_string_policy_pkg.default_timeout_ms(), core_types_string_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: CoreTypesStringConfig) -> CoreTypesStringResult[bool] {
+  if core_types_string_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give CoreTypesStringResult.Err(CoreTypesStringError.InvalidConfig)
+  }
+  if core_types_string_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give CoreTypesStringResult.Err(CoreTypesStringError.InvalidConfig)
+  }
+  give CoreTypesStringResult.Ok(true)
+}
+
+proc healthcheck(cfg: CoreTypesStringConfig) -> CoreTypesStringResult[bool] {
+  let vr: CoreTypesStringResult[bool] = validate_config(cfg)
+  when vr is CoreTypesStringResult.Err {
+    give CoreTypesStringResult.Err(vr.error)
+  }
+  if core_types_string_runtime_pkg.runtime_status() == false {
+    give CoreTypesStringResult.Err(CoreTypesStringError.Internal)
+  }
+  give CoreTypesStringResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CORETYPE0001" {
+    give "invalid package configuration"
+  }
+  give "core/types/string diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/core/types/string"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/core/types/string
+owner: @vitte/core
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: Facade publique stable
+input_contract: Config explicite et typable
+output_contract: Resultats stables et predictibles
+boundary: Implementation privee sous vitte/core/types/string/internal/*
+compat_policy: additive-only
+api_version: v1
+>>>
+
+
+
+
+
+

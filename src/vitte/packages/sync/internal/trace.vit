@@ -1,0 +1,37 @@
+space vitte/sync/internal/trace
+
+form TraceEvent {
+  seq: int
+  kind: string
+  resource: string
+  actor: string
+  tick: int
+}
+
+form TraceLog {
+  next_seq: int
+  events: [TraceEvent]
+}
+
+proc trace_new() -> TraceLog {
+  give TraceLog(1, [])
+}
+
+proc trace_push(log: TraceLog, kind: string, resource: string, actor: string, tick: int) -> TraceLog {
+  let seq = log.next_seq
+  if seq < 1 { seq = 1 }
+  let ev = TraceEvent(seq, kind, resource, actor, tick)
+  give TraceLog(seq + 1, log.events.push(ev))
+}
+
+proc trace_acquire(log: TraceLog, resource: string, actor: string, tick: int) -> TraceLog {
+  give trace_push(log, "acquire", resource, actor, tick)
+}
+
+proc trace_release(log: TraceLog, resource: string, actor: string, tick: int) -> TraceLog {
+  give trace_push(log, "release", resource, actor, tick)
+}
+
+proc trace_wakeup(log: TraceLog, resource: string, actor: string, tick: int) -> TraceLog {
+  give trace_push(log, "wakeup", resource, actor, tick)
+}
