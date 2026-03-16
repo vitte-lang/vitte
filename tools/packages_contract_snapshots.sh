@@ -47,7 +47,7 @@ for mod in "${CRITICAL[@]}"; do
   snap_hash="$mod_snap_dir/$mod.exports.sha256"
 
   raw_json="$tmp_root/$mod.module-index.json"
-  out="$($BIN check --lang=en --allow-internal --dump-module-index "$src" 2>&1)"
+  out="$($BIN check --lang=en --allow-internal --resolve-only --dump-module-index "$src" 2>&1)"
   printf "%s\n" "$out" > "$raw_json"
 
   gen_all="$tmp_root/$mod.exports"

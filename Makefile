@@ -111,7 +111,7 @@ install-bin:
 
 install-editors:
 	@$(MKDIR) "$(VIM_DIR)/syntax" "$(VIM_DIR)/indent" "$(VIM_DIR)/ftdetect" "$(VIM_DIR)/ftplugin" "$(VIM_DIR)/compiler"
-	@$(CP) editors/vim/vitte.vim "$(VIM_DIR)/syntax/vitte.vim"
+	@$(CP) editors/vim/syntax/vitte.vim "$(VIM_DIR)/syntax/vitte.vim"
 	@$(CP) editors/vim/indent/vitte.vim "$(VIM_DIR)/indent/vitte.vim"
 	@$(CP) editors/vim/ftdetect/vitte.vim "$(VIM_DIR)/ftdetect/vitte.vim"
 	@$(CP) editors/vim/ftplugin/vitte.vim "$(VIM_DIR)/ftplugin/vitte.vim"
@@ -307,6 +307,18 @@ negative-tests:
 diag-snapshots:
 	@tools/diag_snapshots.sh
 
+.PHONY: diagnostics-locales-lint
+diagnostics-locales-lint:
+	@python3 tools/check_diagnostics_locales.py
+
+.PHONY: core-semantic-snapshots
+core-semantic-snapshots:
+	@MANIFEST=tests/diag_snapshots/core_semantic_manifest.txt tools/diag_snapshots.sh
+
+.PHONY: core-semantic-success
+core-semantic-success:
+	@MANIFEST=tests/core_semantic_success_manifest.txt tools/check_manifest.sh
+
 .PHONY: resolve-tests
 resolve-tests:
 	@TEST_DIR=tests/diag_snapshots/resolve tools/diag_snapshots.sh
@@ -336,6 +348,14 @@ grammar-check:
 grammar-test:
 	@python3 book/grammar/scripts/validate_examples.py
 
+.PHONY: core-language-test
+core-language-test:
+	@python3 book/grammar/scripts/validate_examples.py --manifest tests/grammar/core_manifest.txt
+
+.PHONY: core-language-test-update
+core-language-test-update:
+	@python3 book/grammar/scripts/validate_examples.py --manifest tests/grammar/core_manifest.txt --update-snapshots
+
 .PHONY: grammar-test-update
 grammar-test-update:
 	@python3 book/grammar/scripts/validate_examples.py --update-snapshots
@@ -350,6 +370,12 @@ grammar-docs-check:
 
 .PHONY: grammar-gate
 grammar-gate: grammar-check grammar-test grammar-docs-check
+
+.PHONY: core-language-gate
+core-language-gate: grammar-check core-language-test core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+
+.PHONY: core-release-gate
+core-release-gate: core-language-gate diagnostics-ftl-check
 
 .PHONY: book-qa
 book-qa:
@@ -371,11 +397,15 @@ keywords-lint:
 update-diagnostics-ftl:
 	@tools/update_diagnostics_ftl.py
 
+.PHONY: diagnostics-ftl-check
+diagnostics-ftl-check:
+	@tools/update_diagnostics_ftl.py --check
+
 .PHONY: ci-strict
-ci-strict: grammar-check package-layout-lint legacy-import-path-lint negative-tests diag-snapshots geany-lint highlight-snapshots
+ci-strict: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots geany-lint highlight-snapshots
 
 .PHONY: ci-fast
-ci-fast: grammar-check package-layout-lint legacy-import-path-lint negative-tests diag-snapshots completions-snapshots wrapper-stage-test geany-lint
+ci-fast: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots completions-snapshots wrapper-stage-test geany-lint
 
 .PHONY: ci-completions
 ci-completions: completions-check completions-lint completions-snapshots completions-fallback
@@ -578,11 +608,20 @@ modules-report:
 
 .PHONY: packages-report
 packages-report:
-	@SEARCH_ROOT=src/vitte/packages ENTRY_GLOB=mod.vit OUT_FILE=target/reports/packages_modules_report.txt OUT_JSON=target/reports/packages_modules_report.json tools/modules_report.sh
+	@SEARCH_ROOT=src/vitte/packages ENTRY_GLOB=mod.vit OUT_FILE=target/reports/packages_modules_report.txt OUT_JSON=target/reports/packages_modules_report.json DEPENDENCY_OVERLAP_ALLOWLIST=tools/package_dependency_export_overlap_allowlist.txt tools/modules_report.sh
+
+.PHONY: packages-dependency-overlap-lint
+packages-dependency-overlap-lint:
+	@SEARCH_ROOT=src/vitte/packages ENTRY_GLOB=mod.vit OUT_FILE=target/reports/packages_modules_report.txt OUT_JSON=target/reports/packages_modules_report.json DEPENDENCY_OVERLAP_ALLOWLIST=tools/package_dependency_export_overlap_allowlist.txt FAIL_ON_DEPENDENCY_OVERLAP=1 tools/modules_report.sh
+
+.PHONY: package-check
+package-check:
+	@test -n "$(SRC)" || (echo "usage: make package-check SRC=src/vitte/packages/<pkg>/mod.vit" >&2; exit 2)
+	@bin/vitte check --lang=en --allow-internal --resolve-only "$(SRC)"
 
 .PHONY: modules-perf-cache
 modules-perf-cache:
-	@tools/modules_cache_perf.sh tests/modules/mod_graph/main.vit
+	@tools/modules_cache_perf.sh tests/modules/mod_doctor/main.vit
 
 .PHONY: packages-contract-snapshots
 packages-contract-snapshots:
@@ -593,7 +632,7 @@ packages-contract-snapshots-update:
 	@tools/packages_contract_snapshots.sh --update
 
 .PHONY: packages-gate
-packages-gate: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint legacy-import-path-lint critical-runtime-matrix-lint new-public-packages-snapshots-lint modules-perf-cache packages-report packages-contract-snapshots
+packages-gate: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint legacy-import-path-lint critical-runtime-matrix-lint new-public-packages-snapshots-lint modules-perf-cache packages-dependency-overlap-lint packages-contract-snapshots
 
 .PHONY: modules-ci-strict
 modules-ci-strict: modules-tests modules-snapshots modules-contract-snapshots module-tree-lint module-naming-lint critical-module-contract-lint experimental-modules-lint public-modules-snapshots-lint modules-perf-cache legacy-import-path-lint migration-check modules-report
@@ -811,7 +850,15 @@ PKG_VERSION ?= 2.1.1
 
 .PHONY: pkg-debian
 pkg-debian:
-	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-debian-deb.sh
+	@VERSION=$(PKG_VERSION) PACKAGE_PROFILE=full toolchain/scripts/package/make-debian-deb.sh
+
+.PHONY: pkg-debian-min
+pkg-debian-min:
+	@VERSION=$(PKG_VERSION) PACKAGE_PROFILE=minimal toolchain/scripts/package/make-debian-deb.sh
+
+.PHONY: pkg-debian-audit
+pkg-debian-audit: pkg-debian
+	@toolchain/scripts/package/audit-debian-deb.sh pkgout/vitte_$(PKG_VERSION)_$$(dpkg --print-architecture).deb
 
 .PHONY: pkg-debian-install
 pkg-debian-install: pkg-debian
@@ -826,7 +873,7 @@ pkg-macos-uninstall:
 	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
 
 .PHONY: release-check
-release-check: build ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos
+release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos
 
 .PHONY: migration-check
 migration-check: diag-snapshots package-layout-lint-strict legacy-import-path-lint
@@ -921,8 +968,16 @@ help:
 	@echo "  make grammar-sync regenerate grammar surface artifacts from src/vitte/grammar/vitte.ebnf"
 	@echo "  make grammar-check fail if grammar generated artifacts are out of sync"
 	@echo "  make grammar-test validate grammar corpus + diagnostics snapshots"
+	@echo "  make core-language-test validate the focused core language corpus"
+	@echo "  make core-semantic-success validate focused passing core semantic examples"
+	@echo "  make core-semantic-snapshots validate focused core semantic diagnostics"
+	@echo "  make diagnostics-locales-lint validate locale files against centralized diagnostics"
+	@echo "  make update-diagnostics-ftl synchronize diagnostics locales from the central table"
+	@echo "  make diagnostics-ftl-check fail if diagnostics locales are out of sync"
 	@echo "  make grammar-docs regenerate railroad SVG diagrams"
 	@echo "  make grammar-gate run grammar-check + grammar-test"
+	@echo "  make core-language-gate run grammar-check + core-language-test + core semantic gates + diagnostics locales lint"
+	@echo "  make core-release-gate run the protected language contract gate for release-facing work"
 	@echo "  make keywords-normalize apply strict keyword template on book/keywords/*.md"
 	@echo "  make keywords-lint validate keyword quality sections/diagnostics/links/score"
 	@echo "  make test-examples build/check all examples/*.vit"
@@ -957,11 +1012,13 @@ help:
 	@echo "  make vitteos-bin-quality run /bin quality checks + matrix report"
 	@echo "  make vitteos-bin-runnable-check assert bin/vitte is host-runnable (non-regression arch/format guard)"
 	@echo "  make vitteos-bin-runtime run runtime-smoke probes and update runtime column"
-	@echo "  make pkg-debian build Debian .deb installer (PKG_VERSION=$(PKG_VERSION))"
+	@echo "  make pkg-debian build Debian .deb installer (PACKAGE_PROFILE=full, PKG_VERSION=$(PKG_VERSION))"
+	@echo "  make pkg-debian-min build Debian .deb installer (PACKAGE_PROFILE=minimal, PKG_VERSION=$(PKG_VERSION))"
+	@echo "  make pkg-debian-audit audit generated Debian .deb content and largest files"
 	@echo "  make pkg-debian-install build and install Debian .deb locally via dpkg"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make pkg-macos-uninstall build macOS uninstall pkg (PKG_VERSION=$(PKG_VERSION))"
-	@echo "  make release-check run build + ci-fast + ci-completions + pkg build"
+	@echo "  make release-check run build + core-release-gate + ci-fast + ci-completions + pkg build"
 	@echo "  make reports-index build target/reports/index.json (unified reports registry)"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"

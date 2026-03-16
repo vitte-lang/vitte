@@ -22,6 +22,8 @@ make build
 Recommended baseline checks:
 
 ```sh
+make core-language-gate
+make core-release-gate
 make parse
 make hir-validate
 make negative-tests
@@ -34,7 +36,16 @@ If you touched modules/packages policy or lint behavior, also run:
 make modules-tests
 make modules-snapshots
 make modules-contract-snapshots
+make packages-gate
 ```
+
+To check a package facade directly, use:
+
+```sh
+make package-check SRC=src/vitte/packages/std/data/mod.vit
+```
+
+This intentionally enables `--allow-internal` so a package facade can validate against its own `internal/*` implementation modules.
 
 ## 3) Coding Style
 
@@ -82,10 +93,29 @@ When snapshots fail:
 Useful commands:
 
 ```sh
+make core-language-gate
+make core-release-gate
+make update-diagnostics-ftl
 make diag-snapshots
 make modules-snapshots
 make modules-snapshots-update
 ```
+
+If your change touches syntax, diagnostics, imports, or language semantics, `make core-language-gate` is the minimum regression gate.
+If your change affects the documented protected contract, release wording, or stability policy, `make core-release-gate` is the minimum release-facing gate.
+
+Language maturity vocabulary:
+
+- `stable`: protected by an explicit gate or compatibility policy
+- `experimental`: implemented, but outside the protected contract
+- `internal`: not a public contract
+
+Protected language contract references:
+
+- `docs/LANGUAGE_CORE_COMPATIBILITY.md`
+- `docs/LANGUAGE_CORE_GUARANTEES.md`
+- `docs/LANGUAGE_CORE_SURFACE.md`
+- `docs/LANGUAGE_CORE_TEST_PLAN.md`
 
 ## 7) Modules / Packages Rules (Important)
 
