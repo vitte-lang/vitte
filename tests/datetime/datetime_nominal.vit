@@ -1,0 +1,44 @@
+use vitte/datetime as dt_pkg
+
+entry main at core/app {
+  let cfg = dt_pkg.strict_config()
+  let vr: dt_pkg.DateTimeResult[bool] = dt_pkg.validate_config(cfg)
+  when vr is dt_pkg.DateTimeResult.Err {
+    return 1
+  }
+
+  let dr: dt_pkg.DateTimeResult[dt_pkg.DateTime] = dt_pkg.datetime_checked(1700000000000, 60, cfg)
+  when dr is dt_pkg.DateTimeResult.Err {
+    return 1
+  }
+
+  let du: dt_pkg.DateTimeResult[dt_pkg.Duration] = dt_pkg.duration_checked(30000, cfg)
+  when du is dt_pkg.DateTimeResult.Err {
+    return 1
+  }
+
+  let ar: dt_pkg.DateTimeResult[dt_pkg.DateTime] = dt_pkg.add_checked(dr.value, du.value, cfg)
+  when ar is dt_pkg.DateTimeResult.Err {
+    return 1
+  }
+
+  let sr: dt_pkg.DateTimeResult[dt_pkg.DateTime] = dt_pkg.sub_checked(ar.value, du.value, cfg)
+  when sr is dt_pkg.DateTimeResult.Err {
+    return 1
+  }
+
+  if dt_pkg.datetime_validate(sr.value, cfg) == false {
+    return 1
+  }
+
+  let h = dt_pkg.datetime_health(sr.value, cfg)
+  if h.ok == false {
+    return 1
+  }
+
+  if dt_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

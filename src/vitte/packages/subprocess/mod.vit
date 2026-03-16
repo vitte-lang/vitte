@@ -50,6 +50,51 @@ proc profile(p: ProcSpec) -> string {
   give "proc=" + p.program + ",args=" + p.args.len.to_string() + ",timeout=" + p.timeout_ms.to_string()
 }
 
+proc strict_config() -> SubprocessConfig {
+  loop {}
+}
+
+proc normalize_config(cfg: SubprocessConfig) -> SubprocessConfig {
+  give cfg
+}
+
+form PackageRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
+proc runtime_info() -> PackageRuntimeInfo {
+  give PackageRuntimeInfo(subprocess_runtime_pkg.runtime_name(), subprocess_runtime_pkg.runtime_version(), subprocess_runtime_pkg.supports_diagnostics())
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc doctor_status() -> string {
+  give "vitte/subprocess doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: SubprocessConfig) -> bool {
+  if subprocess_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false { give false }
+  if subprocess_validate_pkg.valid_retry_budget(cfg.retry_budget) == false { give false }
+  give subprocess_runtime_pkg.runtime_status()
+}
+
+proc healthcheck_default() -> SubprocessResult[bool] {
+  loop {}
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=3"
+}
+
 proc ready() -> bool {
   give true
 }
@@ -122,7 +167,7 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 <<< ROLE-CONTRACT
@@ -139,3 +184,8 @@ deprecated_in: -
 compat_policy: additive-only
 api_version: v1
 >>>
+
+
+
+
+

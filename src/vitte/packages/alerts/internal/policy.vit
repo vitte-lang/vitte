@@ -1,0 +1,77 @@
+space vitte/alerts/internal/policy
+
+proc max_rule_name_len() -> int {
+  give 128
+}
+
+proc max_template_text_len() -> int {
+  give 4096
+}
+
+proc default_ttl_ticks() -> int {
+  give 60
+}
+
+proc max_ttl_ticks() -> int {
+  give 86400
+}
+
+proc default_quota_per_minute() -> int {
+  give 1000
+}
+
+proc default_quota_burst() -> int {
+  give 100
+}
+
+proc max_quota_value() -> int {
+  give 1000000
+}
+
+proc default_max_retries() -> int {
+  give 3
+}
+
+proc max_retries() -> int {
+  give 32
+}
+
+proc default_silence_duration_ticks() -> int {
+  give 300
+}
+
+proc normalize_threshold(threshold: int) -> int {
+  if threshold < 1 { give 1 }
+  give threshold
+}
+
+proc normalize_window_ticks(window_ticks: int) -> int {
+  if window_ticks < 1 { give 1 }
+  give window_ticks
+}
+
+proc normalize_ttl_ticks(ttl_ticks: int) -> int {
+  let out = ttl_ticks
+  if out < 1 { out = 1 }
+  if out > max_ttl_ticks() { out = max_ttl_ticks() }
+  give out
+}
+
+proc normalize_quota(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_quota_value() { out = max_quota_value() }
+  give out
+}
+
+proc normalize_retries(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_retries() { out = max_retries() }
+  give out
+}
+
+proc normalize_duration_ticks(value: int) -> int {
+  if value < 0 { give 0 }
+  give value
+}

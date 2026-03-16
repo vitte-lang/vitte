@@ -5,6 +5,9 @@ package vitte/lsp
 
 space vitte/lsp
 
+use vitte/lsp/internal/policy as lsp_policy_pkg
+use vitte/lsp/internal/runtime as lsp_runtime_pkg
+use vitte/lsp/internal/validate as lsp_validate_pkg
 
 pick LspSeverity {
   Info
@@ -29,6 +32,33 @@ form LspDiagnostic {
 form LspIndex {
   docs: [LspDocument]
   diagnostics: [LspDiagnostic]
+}
+
+form LspConfig {
+  max_documents: int
+  max_diagnostics: int
+  allow_empty_doc: bool
+}
+
+pick LspConfigError {
+  InvalidConfig
+  Internal
+}
+
+pick LspConfigResult[T] {
+  Ok(value: T)
+  Err(error: LspConfigError)
+}
+
+form LspRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_quickfix: bool
+}
+
+form LspDiagnosticsPayload {
+  items: [LspDiagnostic]
 }
 
 proc index_new() -> LspIndex {
@@ -192,6 +222,85 @@ proc doc_count(state: LspIndex) -> int {
   give state.docs.len
 }
 
+proc default_config() -> LspConfig {
+  give LspConfig(lsp_policy_pkg.default_max_documents(),
+                 lsp_policy_pkg.default_max_diagnostics(),
+                 lsp_policy_pkg.default_allow_empty_doc())
+}
+
+proc strict_config() -> LspConfig {
+  let cfg = default_config()
+  give LspConfig(cfg.max_documents, cfg.max_diagnostics, false)
+}
+
+proc normalize_config(cfg: LspConfig) -> LspConfig {
+  give LspConfig(lsp_policy_pkg.normalize_max_documents(cfg.max_documents),
+                 lsp_policy_pkg.normalize_max_diagnostics(cfg.max_diagnostics),
+                 cfg.allow_empty_doc)
+}
+
+proc validate_config(cfg: LspConfig) -> LspConfigResult[bool] {
+  let nc = normalize_config(cfg)
+  if nc.max_documents <= 0 { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
+  if nc.max_diagnostics <= 0 { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
+  give LspConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: LspConfig, state: LspIndex) -> LspConfigResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is LspConfigResult.Err { give LspConfigResult.Err(vr.error) }
+  if lsp_runtime_pkg.runtime_status() == false { give LspConfigResult.Err(LspConfigError.Internal) }
+  if state.docs.len > cfg.max_documents { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
+  if state.diagnostics.len > cfg.max_diagnostics { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
+  give LspConfigResult.Ok(true)
+}
+
+proc runtime_info() -> LspRuntimeInfo {
+  give LspRuntimeInfo(lsp_runtime_pkg.runtime_name(),
+                      lsp_runtime_pkg.runtime_version(),
+                      lsp_runtime_pkg.supports_diagnostics(),
+                      lsp_runtime_pkg.supports_quickfix())
+}
+
+proc index_checked(state: LspIndex, uri: string, text: string, version: int, cfg: LspConfig) -> LspConfigResult[LspIndex] {
+  let nc = normalize_config(cfg)
+  if lsp_validate_pkg.valid_uri(uri) == false { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
+  if lsp_validate_pkg.valid_version(version) == false { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
+  if text.len == 0 && nc.allow_empty_doc == false { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
+  if state.docs.len > nc.max_documents { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
+  give LspConfigResult.Ok(index(state, uri, text, version))
+}
+
+proc diagnostics_checked(state: LspIndex, uri: string, cfg: LspConfig) -> LspConfigResult[LspDiagnosticsPayload] {
+  let nc = normalize_config(cfg)
+  if lsp_validate_pkg.valid_uri(uri) == false { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
+  let out = diagnostics(state, uri)
+  if out.len > nc.max_diagnostics { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
+  give LspConfigResult.Ok(LspDiagnosticsPayload(out))
+}
+
+proc capabilities() -> [string] {
+  give ["index", "diagnostics", "quickfix", "config", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-LSP0001" { give "invalid lsp configuration or arguments" }
+  give "lsp diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "check uri/version and document limits"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
 proc ready() -> bool {
   give true
 }
@@ -199,7 +308,7 @@ proc ready() -> bool {
 
 
 proc package_meta() -> string {
-    give "vitte/lsp"
+  give "vitte/lsp"
 }
 
 <<< ROLE-CONTRACT

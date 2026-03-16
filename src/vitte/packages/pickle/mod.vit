@@ -5,9 +5,9 @@ package vitte/pickle
 
 space vitte/pickle
 
+use vitte/pickle/internal/policy as pickle_policy_pkg
 use vitte/pickle/internal/runtime as pickle_runtime_pkg
 use vitte/pickle/internal/validate as pickle_validate_pkg
-use vitte/pickle/internal/policy as pickle_policy_pkg
 
 
 form Pair {
@@ -116,15 +116,37 @@ pick PickleResult[T] {
   Err(error: PickleError)
 }
 
+form PickleRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> PickleConfig {
   give PickleConfig(true, pickle_policy_pkg.default_timeout_ms(), pickle_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> PickleConfig {
+  let cfg = default_config()
+  give PickleConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc normalize_config(cfg: PickleConfig) -> PickleConfig {
+  let timeout_ms = cfg.timeout_ms
+  let retry_budget = cfg.retry_budget
+  if timeout_ms < 1 { timeout_ms = 1 }
+  if timeout_ms > 60000 { timeout_ms = 60000 }
+  if retry_budget < 0 { retry_budget = 0 }
+  if retry_budget > 32 { retry_budget = 32 }
+  give PickleConfig(cfg.strict, timeout_ms, retry_budget)
+}
+
 proc validate_config(cfg: PickleConfig) -> PickleResult[bool] {
-  if pickle_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if pickle_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give PickleResult.Err(PickleError.InvalidConfig)
   }
-  if pickle_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if pickle_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give PickleResult.Err(PickleError.InvalidConfig)
   }
   give PickleResult.Ok(true)
@@ -141,8 +163,18 @@ proc healthcheck(cfg: PickleConfig) -> PickleResult[bool] {
   give PickleResult.Ok(true)
 }
 
+proc runtime_info() -> PickleRuntimeInfo {
+  give PickleRuntimeInfo(pickle_runtime_pkg.runtime_name(),
+                         pickle_runtime_pkg.runtime_version(),
+                         pickle_runtime_pkg.supports_diagnostics())
+}
+
 proc version() -> string {
   give "v1"
+}
+
+proc api_version() -> string {
+  give version()
 }
 
 proc capabilities() -> [string] {
@@ -162,7 +194,30 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc doctor_status() -> string {
+  give "vitte/pickle doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: PickleConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is PickleResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> PickleResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
 }
 
 <<< ROLE-CONTRACT

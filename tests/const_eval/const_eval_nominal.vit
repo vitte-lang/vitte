@@ -1,0 +1,42 @@
+use vitte/const_eval as const_pkg
+
+entry main at core/app {
+  let cfg = const_pkg.strict_config()
+  let vr: const_pkg.ConstEvalResult[bool] = const_pkg.validate_config(cfg)
+  when vr is const_pkg.ConstEvalResult.Err {
+    return 1
+  }
+
+  let e = const_pkg.expr("add", 10, 20)
+  let er: const_pkg.ConstEvalResult[const_pkg.ConstResult] = const_pkg.eval_checked(e, cfg)
+  when er is const_pkg.ConstEvalResult.Err {
+    return 1
+  }
+  if er.value.error != const_pkg.ConstError.None || er.value.value != 30 {
+    return 1
+  }
+
+  let fr: const_pkg.ConstEvalResult[const_pkg.ConstResult] = const_pkg.fold_chain_checked([1, 2, 3], "add", cfg)
+  when fr is const_pkg.ConstEvalResult.Err {
+    return 1
+  }
+  if fr.value.error != const_pkg.ConstError.None || fr.value.value != 6 {
+    return 1
+  }
+
+  let mr: const_pkg.ConstEvalResult[[const_pkg.ConstResult]] = const_pkg.eval_many_checked([const_pkg.expr("mul", 2, 4), const_pkg.expr("div", 9, 3)], cfg)
+  when mr is const_pkg.ConstEvalResult.Err {
+    return 1
+  }
+
+  let h = const_pkg.const_eval_health(mr.value)
+  if h.ok == false {
+    return 1
+  }
+
+  if const_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

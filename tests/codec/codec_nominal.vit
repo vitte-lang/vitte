@@ -1,0 +1,54 @@
+use vitte/codec as codec_pkg
+
+entry main at core/app {
+  let cfg = codec_pkg.strict_config()
+  let vr: codec_pkg.CodecResult[bool] = codec_pkg.validate_config(cfg)
+  when vr is codec_pkg.CodecResult.Err {
+    return 1
+  }
+
+  let er: codec_pkg.CodecResult[codec_pkg.CodecPayload] = codec_pkg.encode_checked(codec_pkg.CodecFormat.Json, "k", "v", cfg)
+  when er is codec_pkg.CodecResult.Err {
+    return 1
+  }
+
+  let parsed = codec_pkg.parse_payload(er.value.data)
+  if parsed.valid == false {
+    return 1
+  }
+
+  let dr: codec_pkg.CodecResult[string] = codec_pkg.decode_checked(parsed, cfg)
+  when dr is codec_pkg.CodecResult.Err {
+    return 1
+  }
+
+  if codec_pkg.detect(er.value.data) != codec_pkg.CodecFormat.Json {
+    return 1
+  }
+
+  let pr: codec_pkg.CodecResult[codec_pkg.DecodedPair] = codec_pkg.decode_pair_checked(er.value, cfg)
+  when pr is codec_pkg.CodecResult.Err {
+    return 1
+  }
+
+  let n = codec_pkg.codec_normalize(parsed, cfg)
+  let nv: codec_pkg.CodecResult[bool] = codec_pkg.codec_validate_with_config(n, cfg)
+  when nv is codec_pkg.CodecResult.Err {
+    return 1
+  }
+
+  let st = codec_pkg.codec_stats(n)
+  if st.payload_len <= 0 {
+    return 1
+  }
+
+  if pr.value.key != "k" || pr.value.value != "v" {
+    return 1
+  }
+
+  if codec_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

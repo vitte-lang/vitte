@@ -52,6 +52,51 @@ proc validate(c: Clip) -> bool {
   give true
 }
 
+proc strict_config() -> VideoConfig {
+  give default_config()
+}
+
+proc normalize_config(cfg: VideoConfig) -> VideoConfig {
+  give cfg
+}
+
+form PackageRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
+proc runtime_info() -> PackageRuntimeInfo {
+  give PackageRuntimeInfo(video_runtime_pkg.runtime_name(), video_runtime_pkg.runtime_version(), video_runtime_pkg.supports_diagnostics())
+}
+
+proc api_version() -> string {
+  give version()
+}
+
+proc doctor_status() -> string {
+  give "vitte/video doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: VideoConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is VideoResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> VideoResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
+}
+
 proc ready() -> bool {
   give true
 }
@@ -124,7 +169,7 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 <<< ROLE-CONTRACT
@@ -141,3 +186,10 @@ deprecated_in: -
 compat_policy: additive-only
 api_version: v1
 >>>
+
+
+
+
+
+
+

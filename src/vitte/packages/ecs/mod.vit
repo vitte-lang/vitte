@@ -1,191 +1,596 @@
 <<<
 mod.vit
 package vitte/ecs
+version: 2.1.0
+tier: simulation-core
+purpose:
+  Entity Component System immutable pour simulation.
+  Gestion entities/components deterministe et validable.
+  API stable versionnee avec diagnostics runtime.
 >>>
 
 space vitte/ecs
 
+use vitte/ecs/internal/runtime as ecs_runtime_pkg
+use vitte/ecs/internal/validate as ecs_validate_pkg
+use vitte/ecs/internal/policy as ecs_policy_pkg
 
 form Entity {
-    id: int
-    alive: bool
-    generation: int
+  id: int
+  alive: bool
+  generation: int
 }
 
 form Position {
-    entity: int
-    x: int
-    y: int
+  entity: int
+  x: int
+  y: int
 }
 
 form Velocity {
-    entity: int
-    dx: int
-    dy: int
+  entity: int
+  dx: int
+  dy: int
 }
 
 form World {
-    next_id: int
-    tick: int
-    entities: [Entity]
-    positions: [Position]
-    velocities: [Velocity]
+  next_id: int
+  tick: int
+  entities: [Entity]
+  positions: [Position]
+  velocities: [Velocity]
+}
+
+form EcsConfig {
+  strict: bool
+  max_entities: int
+  max_components_per_type: int
+  max_abs_coord: int
+}
+
+form EcsStats {
+  entities_total: int
+  entities_alive: int
+  positions_total: int
+  velocities_total: int
+  tick: int
+}
+
+pick EcsError {
+  InvalidConfig
+  InvalidEntity
+  InvalidComponent
+  CapacityExceeded
+  NotFound
+  Internal
+}
+
+pick EcsResult[T] {
+  Ok(value: T)
+  Err(error: EcsError)
+}
+
+form EcsRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_positions: bool
+  supports_velocities: bool
+  supports_batch_step: bool
+  supports_diagnostics: bool
+}
+
+form EcsHealth {
+  ok: bool
+  code: string
+  pressure_percent: int
+}
+
+proc config_ok(cfg: EcsConfig) -> bool {
+  if ecs_validate_pkg.valid_limit(cfg.max_entities, ecs_policy_pkg.max_entities()) == false { give false }
+  if ecs_validate_pkg.valid_limit(cfg.max_components_per_type, ecs_policy_pkg.max_components_per_type()) == false { give false }
+  if ecs_validate_pkg.valid_limit(cfg.max_abs_coord, ecs_policy_pkg.max_abs_coord()) == false { give false }
+  give true
+}
+
+proc default_config() -> EcsConfig {
+  give EcsConfig(ecs_policy_pkg.default_strict(),
+                 ecs_policy_pkg.default_max_entities(),
+                 ecs_policy_pkg.default_max_components_per_type(),
+                 ecs_policy_pkg.default_max_abs_coord())
+}
+
+proc strict_config() -> EcsConfig {
+  let cfg = default_config()
+  give EcsConfig(true,
+                 cfg.max_entities,
+                 cfg.max_components_per_type,
+                 cfg.max_abs_coord)
+}
+
+proc with_max_entities(cfg: EcsConfig, max_entities: int) -> EcsConfig {
+  give EcsConfig(cfg.strict,
+                 ecs_policy_pkg.normalize_limit(max_entities, ecs_policy_pkg.max_entities()),
+                 cfg.max_components_per_type,
+                 cfg.max_abs_coord)
+}
+
+proc with_max_components(cfg: EcsConfig, max_components_per_type: int) -> EcsConfig {
+  give EcsConfig(cfg.strict,
+                 cfg.max_entities,
+                 ecs_policy_pkg.normalize_limit(max_components_per_type, ecs_policy_pkg.max_components_per_type()),
+                 cfg.max_abs_coord)
+}
+
+proc validate_config(cfg: EcsConfig) -> EcsResult[bool] {
+  if config_ok(cfg) == false { give EcsResult.Err(EcsError.InvalidConfig) }
+  give EcsResult.Ok(true)
+}
+
+proc validate_config_code(cfg: EcsConfig) -> string {
+  if config_ok(cfg) == false { give "invalid-config" }
+  give "ok"
+}
+
+proc normalize_config(cfg: EcsConfig) -> EcsConfig {
+  give EcsConfig(cfg.strict,
+                 ecs_policy_pkg.normalize_limit(cfg.max_entities, ecs_policy_pkg.max_entities()),
+                 ecs_policy_pkg.normalize_limit(cfg.max_components_per_type, ecs_policy_pkg.max_components_per_type()),
+                 ecs_policy_pkg.normalize_limit(cfg.max_abs_coord, ecs_policy_pkg.max_abs_coord()))
 }
 
 proc world_new() -> World {
-    give World(0, 0, [], [], [])
+  give World(0, 0, [], [], [])
 }
 
 proc spawn(world: World) -> World {
-    let e = Entity(world.next_id, true, 0)
-    let entities = world.entities.push(e)
-    give World(
-        world.next_id + 1,
-        world.tick,
-        entities,
-        world.positions,
-        world.velocities
-    )
+  let e = Entity(world.next_id, true, 0)
+  let entities = world.entities.push(e)
+  give World(world.next_id + 1, world.tick, entities, world.positions, world.velocities)
+}
+
+proc spawn_checked(world: World, cfg: EcsConfig) -> EcsResult[World] {
+  let vr = validate_config(cfg)
+  when vr is EcsResult.Err { give EcsResult.Err(vr.error) }
+
+  if ecs_validate_pkg.valid_limit(world.entities.len + 1, cfg.max_entities) == false {
+    give EcsResult.Err(EcsError.CapacityExceeded)
+  }
+
+  give EcsResult.Ok(spawn(world))
 }
 
 proc last_spawned_id(world: World) -> int {
-    if world.next_id <= 0 { give -1 }
-    give world.next_id - 1
+  if world.next_id <= 0 { give -1 }
+  give world.next_id - 1
 }
 
 proc entity_count(world: World) -> int {
-    give world.entities.len
+  give world.entities.len
+}
+
+proc entity_exists(world: World, entity: int) -> bool {
+  let i: int = 0
+  loop {
+    if i >= world.entities.len { break }
+    if world.entities[i].id == entity { give true }
+    i = i + 1
+  }
+  give false
 }
 
 proc add_position(world: World, entity: int, x: int, y: int) -> World {
-    let p = Position(entity, x, y)
-    let positions = world.positions.push(p)
-    give World(
-        world.next_id,
-        world.tick,
-        world.entities,
-        positions,
-        world.velocities
-    )
+  let p = Position(entity, x, y)
+  let positions = world.positions.push(p)
+  give World(world.next_id, world.tick, world.entities, positions, world.velocities)
+}
+
+proc add_position_checked(world: World, entity: int, x: int, y: int, cfg: EcsConfig) -> EcsResult[World] {
+  let vr = validate_config(cfg)
+  when vr is EcsResult.Err { give EcsResult.Err(vr.error) }
+
+  if ecs_validate_pkg.valid_entity_id(entity) == false { give EcsResult.Err(EcsError.InvalidEntity) }
+  if entity_exists(world, entity) == false { give EcsResult.Err(EcsError.NotFound) }
+  if ecs_validate_pkg.valid_coord(x, cfg.max_abs_coord) == false { give EcsResult.Err(EcsError.InvalidComponent) }
+  if ecs_validate_pkg.valid_coord(y, cfg.max_abs_coord) == false { give EcsResult.Err(EcsError.InvalidComponent) }
+  if ecs_validate_pkg.valid_limit(world.positions.len + 1, cfg.max_components_per_type) == false {
+    give EcsResult.Err(EcsError.CapacityExceeded)
+  }
+
+  give EcsResult.Ok(add_position(world, entity, x, y))
+}
+
+proc remove_position(world: World, entity: int) -> World {
+  let updated: [Position] = []
+  let i: int = 0
+  loop {
+    if i >= world.positions.len { break }
+    if world.positions[i].entity != entity {
+      updated = updated.push(world.positions[i])
+    }
+    i = i + 1
+  }
+  give World(world.next_id, world.tick, world.entities, updated, world.velocities)
+}
+
+proc remove_position_checked(world: World, entity: int) -> EcsResult[World] {
+  if entity_exists(world, entity) == false { give EcsResult.Err(EcsError.NotFound) }
+  give EcsResult.Ok(remove_position(world, entity))
 }
 
 proc add_velocity(world: World, entity: int, dx: int, dy: int) -> World {
-    let v = Velocity(entity, dx, dy)
-    let velocities = world.velocities.push(v)
-    give World(
-        world.next_id,
-        world.tick,
-        world.entities,
-        world.positions,
-        velocities
-    )
+  let v = Velocity(entity, dx, dy)
+  let velocities = world.velocities.push(v)
+  give World(world.next_id, world.tick, world.entities, world.positions, velocities)
+}
+
+proc add_velocity_checked(world: World, entity: int, dx: int, dy: int, cfg: EcsConfig) -> EcsResult[World] {
+  let vr = validate_config(cfg)
+  when vr is EcsResult.Err { give EcsResult.Err(vr.error) }
+
+  if ecs_validate_pkg.valid_entity_id(entity) == false { give EcsResult.Err(EcsError.InvalidEntity) }
+  if entity_exists(world, entity) == false { give EcsResult.Err(EcsError.NotFound) }
+  if ecs_validate_pkg.valid_coord(dx, cfg.max_abs_coord) == false { give EcsResult.Err(EcsError.InvalidComponent) }
+  if ecs_validate_pkg.valid_coord(dy, cfg.max_abs_coord) == false { give EcsResult.Err(EcsError.InvalidComponent) }
+  if ecs_validate_pkg.valid_limit(world.velocities.len + 1, cfg.max_components_per_type) == false {
+    give EcsResult.Err(EcsError.CapacityExceeded)
+  }
+
+  give EcsResult.Ok(add_velocity(world, entity, dx, dy))
+}
+
+proc remove_velocity(world: World, entity: int) -> World {
+  let updated: [Velocity] = []
+  let i: int = 0
+  loop {
+    if i >= world.velocities.len { break }
+    if world.velocities[i].entity != entity {
+      updated = updated.push(world.velocities[i])
+    }
+    i = i + 1
+  }
+  give World(world.next_id, world.tick, world.entities, world.positions, updated)
+}
+
+proc remove_velocity_checked(world: World, entity: int) -> EcsResult[World] {
+  if entity_exists(world, entity) == false { give EcsResult.Err(EcsError.NotFound) }
+  give EcsResult.Ok(remove_velocity(world, entity))
 }
 
 proc velocity_dx(world: World, entity: int) -> int {
-    let i: int = 0
-    loop {
-        if i >= world.velocities.len { break }
-        let v = world.velocities[i]
-        if v.entity == entity { give v.dx }
-        i = i + 1
-    }
-    give 0
+  let i: int = 0
+  loop {
+    if i >= world.velocities.len { break }
+    let v = world.velocities[i]
+    if v.entity == entity { give v.dx }
+    i = i + 1
+  }
+  give 0
 }
 
 proc velocity_dy(world: World, entity: int) -> int {
-    let i: int = 0
-    loop {
-        if i >= world.velocities.len { break }
-        let v = world.velocities[i]
-        if v.entity == entity { give v.dy }
-        i = i + 1
-    }
-    give 0
+  let i: int = 0
+  loop {
+    if i >= world.velocities.len { break }
+    let v = world.velocities[i]
+    if v.entity == entity { give v.dy }
+    i = i + 1
+  }
+  give 0
 }
 
 proc step(world: World) -> World {
-    let updated: [Position] = []
-    let i: int = 0
-    loop {
-        if i >= world.positions.len { break }
-        let p = world.positions[i]
-        let dx = velocity_dx(world, p.entity)
-        let dy = velocity_dy(world, p.entity)
-        updated = updated.push(Position(p.entity, p.x + dx, p.y + dy))
-        i = i + 1
-    }
-    give World(
-        world.next_id,
-        world.tick + 1,
-        world.entities,
-        updated,
-        world.velocities
-    )
+  let updated: [Position] = []
+  let i: int = 0
+  loop {
+    if i >= world.positions.len { break }
+    let p = world.positions[i]
+    let dx = velocity_dx(world, p.entity)
+    let dy = velocity_dy(world, p.entity)
+    updated = updated.push(Position(p.entity, p.x + dx, p.y + dy))
+    i = i + 1
+  }
+
+  let next_tick = ecs_policy_pkg.normalize_tick(world.tick + 1)
+  give World(world.next_id, next_tick, world.entities, updated, world.velocities)
+}
+
+proc step_n(world: World, n: int) -> World {
+  let out = world
+  let i: int = 0
+  let steps = n
+  if steps < 0 { steps = 0 }
+  loop {
+    if i >= steps { break }
+    out = step(out)
+    i = i + 1
+  }
+  give out
 }
 
 proc position_x(world: World, entity: int) -> int {
-    let i: int = 0
-    loop {
-        if i >= world.positions.len { break }
-        let p = world.positions[i]
-        if p.entity == entity { give p.x }
-        i = i + 1
-    }
-    give 0
+  let i: int = 0
+  loop {
+    if i >= world.positions.len { break }
+    let p = world.positions[i]
+    if p.entity == entity { give p.x }
+    i = i + 1
+  }
+  give 0
 }
 
 proc position_y(world: World, entity: int) -> int {
-    let i: int = 0
-    loop {
-        if i >= world.positions.len { break }
-        let p = world.positions[i]
-        if p.entity == entity { give p.y }
-        i = i + 1
-    }
-    give 0
+  let i: int = 0
+  loop {
+    if i >= world.positions.len { break }
+    let p = world.positions[i]
+    if p.entity == entity { give p.y }
+    i = i + 1
+  }
+  give 0
+}
+
+proc has_position(world: World, entity: int) -> bool {
+  let i: int = 0
+  loop {
+    if i >= world.positions.len { break }
+    if world.positions[i].entity == entity { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc has_velocity(world: World, entity: int) -> bool {
+  let i: int = 0
+  loop {
+    if i >= world.velocities.len { break }
+    if world.velocities[i].entity == entity { give true }
+    i = i + 1
+  }
+  give false
 }
 
 proc is_alive(world: World, entity: int) -> bool {
-    let i: int = 0
-    loop {
-        if i >= world.entities.len { break }
-        let e = world.entities[i]
-        if e.id == entity { give e.alive }
-        i = i + 1
-    }
-    give false
+  let i: int = 0
+  loop {
+    if i >= world.entities.len { break }
+    let e = world.entities[i]
+    if e.id == entity { give e.alive }
+    i = i + 1
+  }
+  give false
 }
 
 proc kill(world: World, entity: int) -> World {
-    let updated: [Entity] = []
-    let i: int = 0
-    loop {
-        if i >= world.entities.len { break }
-        let e = world.entities[i]
-        if e.id == entity {
-            updated = updated.push(Entity(e.id, false, e.generation + 1))
-        } else {
-            updated = updated.push(e)
-        }
-        i = i + 1
+  let updated: [Entity] = []
+  let i: int = 0
+  loop {
+    if i >= world.entities.len { break }
+    let e = world.entities[i]
+    if e.id == entity {
+      updated = updated.push(Entity(e.id, false, e.generation + 1))
+    } else {
+      updated = updated.push(e)
     }
-    give World(
-        world.next_id,
-        world.tick,
-        updated,
-        world.positions,
-        world.velocities
-    )
+    i = i + 1
+  }
+  give World(world.next_id, world.tick, updated, world.positions, world.velocities)
+}
+
+proc despawn(world: World, entity: int) -> World {
+  let killed = kill(world, entity)
+  let no_pos = remove_position(killed, entity)
+  give remove_velocity(no_pos, entity)
+}
+
+proc ecs_validate_code(world: World, cfg: EcsConfig) -> string {
+  let vr = validate_config(cfg)
+  when vr is EcsResult.Err { give "invalid-config" }
+
+  if ecs_validate_pkg.valid_non_negative(world.next_id) == false { give "invalid-next-id" }
+  if ecs_validate_pkg.valid_tick(world.tick, ecs_policy_pkg.max_ticks()) == false { give "invalid-tick" }
+  if ecs_validate_pkg.valid_limit(world.entities.len, cfg.max_entities) == false { give "too-many-entities" }
+  if ecs_validate_pkg.valid_limit(world.positions.len, cfg.max_components_per_type) == false { give "too-many-positions" }
+  if ecs_validate_pkg.valid_limit(world.velocities.len, cfg.max_components_per_type) == false { give "too-many-velocities" }
+
+  let i: int = 0
+  loop {
+    if i >= world.entities.len { break }
+    if ecs_validate_pkg.valid_generation(world.entities[i].generation) == false { give "invalid-generation" }
+    i = i + 1
+  }
+
+  give "ok"
+}
+
+proc ecs_validate(world: World, cfg: EcsConfig) -> bool {
+  give ecs_validate_code(world, cfg) == "ok"
+}
+
+proc ecs_normalize(world: World, cfg: EcsConfig) -> World {
+  let c = normalize_config(cfg)
+
+  let entities: [Entity] = []
+  let i: int = 0
+  loop {
+    if i >= world.entities.len { break }
+    if entities.len >= c.max_entities { break }
+    if ecs_validate_pkg.valid_generation(world.entities[i].generation) {
+      entities = entities.push(world.entities[i])
+    }
+    i = i + 1
+  }
+
+  let positions: [Position] = []
+  let j: int = 0
+  loop {
+    if j >= world.positions.len { break }
+    if positions.len >= c.max_components_per_type { break }
+    let x = world.positions[j].x
+    let y = world.positions[j].y
+    if ecs_validate_pkg.valid_coord(x, c.max_abs_coord) && ecs_validate_pkg.valid_coord(y, c.max_abs_coord) {
+      positions = positions.push(world.positions[j])
+    }
+    j = j + 1
+  }
+
+  let velocities: [Velocity] = []
+  let k: int = 0
+  loop {
+    if k >= world.velocities.len { break }
+    if velocities.len >= c.max_components_per_type { break }
+    let dx = world.velocities[k].dx
+    let dy = world.velocities[k].dy
+    if ecs_validate_pkg.valid_coord(dx, c.max_abs_coord) && ecs_validate_pkg.valid_coord(dy, c.max_abs_coord) {
+      velocities = velocities.push(world.velocities[k])
+    }
+    k = k + 1
+  }
+
+  give World(world.next_id, ecs_policy_pkg.normalize_tick(world.tick), entities, positions, velocities)
+}
+
+proc pressure_percent(world: World, cfg: EcsConfig) -> int {
+  let p1 = 0
+  if cfg.max_entities > 0 { p1 = world.entities.len * 100 / cfg.max_entities }
+  let p2 = 0
+  if cfg.max_components_per_type > 0 { p2 = world.positions.len * 100 / cfg.max_components_per_type }
+  let p3 = 0
+  if cfg.max_components_per_type > 0 { p3 = world.velocities.len * 100 / cfg.max_components_per_type }
+
+  let p = p1
+  if p2 > p { p = p2 }
+  if p3 > p { p = p3 }
+  if p < 0 { p = 0 }
+  if p > 100 { p = 100 }
+  give p
+}
+
+proc ecs_stats(world: World) -> EcsStats {
+  let alive = 0
+  let i: int = 0
+  loop {
+    if i >= world.entities.len { break }
+    if world.entities[i].alive { alive = alive + 1 }
+    i = i + 1
+  }
+  give EcsStats(world.entities.len,
+                alive,
+                world.positions.len,
+                world.velocities.len,
+                world.tick)
+}
+
+proc ecs_health(world: World, cfg: EcsConfig) -> EcsHealth {
+  let code = ecs_validate_code(world, cfg)
+  if code != "ok" { give EcsHealth(false, code, 100) }
+
+  let p = pressure_percent(world, cfg)
+  if ecs_validate_pkg.valid_percent(p) == false {
+    give EcsHealth(false, "invalid-percent", 100)
+  }
+
+  give EcsHealth(true, "ok", p)
+}
+
+proc ecs_runtime_info() -> EcsRuntimeInfo {
+  give EcsRuntimeInfo(ecs_runtime_pkg.runtime_name(),
+                      ecs_runtime_pkg.runtime_version(),
+                      ecs_runtime_pkg.supports_no_std(),
+                      ecs_runtime_pkg.supports_positions(),
+                      ecs_runtime_pkg.supports_velocities(),
+                      ecs_runtime_pkg.supports_batch_step(),
+                      ecs_runtime_pkg.supports_diagnostics())
+}
+
+proc healthcheck(cfg: EcsConfig) -> EcsResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is EcsResult.Err { give EcsResult.Err(vr.error) }
+  if ecs_runtime_pkg.runtime_status() == false { give EcsResult.Err(EcsError.Internal) }
+  give EcsResult.Ok(true)
+}
+
+proc stable_api_version() -> string {
+  give "2.1.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_max_entities,with_max_components,validate_config,validate_config_code,normalize_config,world_new,spawn,spawn_checked,last_spawned_id,entity_count,entity_exists,add_position,add_position_checked,remove_position,remove_position_checked,add_velocity,add_velocity_checked,remove_velocity,remove_velocity_checked,velocity_dx,velocity_dy,step,step_n,position_x,position_y,has_position,has_velocity,is_alive,kill,despawn,ecs_validate_code,ecs_validate,ecs_normalize,pressure_percent,ecs_stats,ecs_health,ecs_runtime_info,healthcheck,stable_api_surface_hash,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["spawn", "position", "velocity", "step", "batch-step", "despawn", "health", "diagnostics"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-ECS0001" { give "invalid ecs configuration" }
+  if code == "VITTE-ECS0002" { give "invalid entity/component value" }
+  if code == "VITTE-ECS0003" { give "ecs capacity exceeded" }
+  give "ecs diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-ECS0001" { give "normalize ecs config limits" }
+  if code == "VITTE-ECS0002" { give "check entity id, generation and coord bounds" }
+  if code == "VITTE-ECS0003" { give "increase limits or prune entities/components" }
+  give "review ecs world state"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  let cfg = strict_config()
+  let vr = validate_config(cfg)
+  when vr is EcsResult.Err { give false }
+
+  let w0 = world_new()
+  let s1 = spawn_checked(w0, cfg)
+  when s1 is EcsResult.Err { give false }
+
+  let eid = last_spawned_id(s1.value)
+  let p1 = add_position_checked(s1.value, eid, 1, 2, cfg)
+  when p1 is EcsResult.Err { give false }
+
+  let v1 = add_velocity_checked(p1.value, eid, 3, 4, cfg)
+  when v1 is EcsResult.Err { give false }
+
+  let w1 = step_n(v1.value, 2)
+  if position_x(w1, eid) != 7 { give false }
+  if position_y(w1, eid) != 10 { give false }
+
+  let d = despawn(w1, eid)
+  if has_position(d, eid) { give false }
+  if has_velocity(d, eid) { give false }
+
+  let st = ecs_stats(d)
+  if st.entities_total <= 0 { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
+  give true
 }
 
 proc ready() -> bool {
-    give true
+  give stable_ready()
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/ecs"
+  give "vitte/ecs"
 }
 
 <<< ROLE-CONTRACT
@@ -194,4 +599,5 @@ role: Entity Component System pour simulation et jeux
 input_contract: Valeurs metier explicites, deja parsees et typables
 output_contract: Sorties stables, observables et compatibles avec les autres packages
 boundary: Ne remplace pas les autres couches; respecte la separation de roles
+versioning_note: stable_api_version=2.1.0
 >>>

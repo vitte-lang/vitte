@@ -1,15 +1,43 @@
 <<<
 mod.vit
 package vitte/codec
+version: 2.1.0
+tier: serialization-core
+purpose:
+  Encodage/decodage deterministic json msgpack binaire.
+  Conversions simples key/value et detection format.
+  API stable versionnee avec diagnostics.
 >>>
 
 space vitte/codec
 
+use vitte/codec/internal/runtime as codec_runtime_pkg
+use vitte/codec/internal/validate as codec_validate_pkg
+use vitte/codec/internal/policy as codec_policy_pkg
 
 pick CodecFormat {
   Json
   MsgPack
   Binary
+}
+
+pick CodecError {
+  InvalidConfig
+  InvalidInput
+  InvalidPayload
+  Unsupported
+  Internal
+}
+
+pick CodecResult[T] {
+  Ok(value: T)
+  Err(error: CodecError)
+}
+
+form CodecConfig {
+  strict: bool
+  allow_binary_control: bool
+  max_payload_len: int
 }
 
 form CodecPayload {
@@ -24,6 +52,77 @@ form DecodedPair {
   ok: bool
 }
 
+form CodecRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_json: bool
+  supports_msgpack: bool
+  supports_binary: bool
+  supports_autodetect: bool
+  supports_roundtrip_check: bool
+  supports_diagnostics: bool
+}
+
+form CodecHealth {
+  ok: bool
+  code: string
+  payload_len: int
+}
+
+form CodecStats {
+  payload_len: int
+  key_len: int
+  value_len: int
+  textual: bool
+}
+
+proc config_ok(cfg: CodecConfig) -> bool {
+  give codec_validate_pkg.valid_payload_len_range(cfg.max_payload_len,
+                                                  codec_policy_pkg.min_payload_len(),
+                                                  codec_policy_pkg.max_payload_len())
+}
+
+proc default_config() -> CodecConfig {
+  give CodecConfig(codec_policy_pkg.default_strict(),
+                   codec_policy_pkg.default_allow_binary_control(),
+                   codec_policy_pkg.max_payload_len())
+}
+
+proc strict_config() -> CodecConfig {
+  give CodecConfig(true,
+                   false,
+                   codec_policy_pkg.max_payload_len())
+}
+
+proc with_max_payload_len(cfg: CodecConfig, max_payload_len: int) -> CodecConfig {
+  give CodecConfig(cfg.strict,
+                   cfg.allow_binary_control,
+                   codec_policy_pkg.normalize_payload_len(max_payload_len))
+}
+
+proc with_allow_binary_control(cfg: CodecConfig, allow_binary_control: bool) -> CodecConfig {
+  give CodecConfig(cfg.strict,
+                   allow_binary_control,
+                   cfg.max_payload_len)
+}
+
+proc validate_config(cfg: CodecConfig) -> CodecResult[bool] {
+  if config_ok(cfg) == false { give CodecResult.Err(CodecError.InvalidConfig) }
+  give CodecResult.Ok(true)
+}
+
+proc validate_config_code(cfg: CodecConfig) -> string {
+  if config_ok(cfg) == false { give "invalid-config" }
+  give "ok"
+}
+
+proc normalize_config(cfg: CodecConfig) -> CodecConfig {
+  give CodecConfig(cfg.strict,
+                   cfg.allow_binary_control,
+                   codec_policy_pkg.normalize_payload_len(cfg.max_payload_len))
+}
+
 proc format_name(fmt: CodecFormat) -> string {
   when fmt is CodecFormat.Json { give "json" }
   when fmt is CodecFormat.MsgPack { give "msgpack" }
@@ -31,13 +130,41 @@ proc format_name(fmt: CodecFormat) -> string {
 }
 
 proc encode(fmt: CodecFormat, key: string, value: string) -> CodecPayload {
+  let k = codec_runtime_pkg.sanitize(key, codec_policy_pkg.max_key_len())
+  let v = codec_runtime_pkg.sanitize(value, codec_policy_pkg.max_value_len())
+
   when fmt is CodecFormat.Json {
-    give CodecPayload(fmt, "{\"" + key + "\":\"" + value + "\"}", true)
+    give CodecPayload(fmt, "{\"" + k + "\":\"" + v + "\"}", true)
   }
   when fmt is CodecFormat.MsgPack {
-    give CodecPayload(fmt, "mp:" + key + "=" + value, true)
+    give CodecPayload(fmt, "mp:" + k + "=" + v, true)
   }
-  give CodecPayload(fmt, key + "\x00" + value, true)
+  give CodecPayload(fmt, k + "\x00" + v, true)
+}
+
+proc encode_checked(fmt: CodecFormat, key: string, value: string, cfg: CodecConfig) -> CodecResult[CodecPayload] {
+  let vr = validate_config(cfg)
+  when vr is CodecResult.Err { give CodecResult.Err(vr.error) }
+
+  if codec_validate_pkg.valid_key(key, codec_policy_pkg.max_key_len()) == false {
+    give CodecResult.Err(CodecError.InvalidInput)
+  }
+  if codec_validate_pkg.valid_value(value, codec_policy_pkg.max_value_len()) == false {
+    give CodecResult.Err(CodecError.InvalidInput)
+  }
+
+  if fmt == CodecFormat.Binary && cfg.allow_binary_control == false {
+    if codec_validate_pkg.has_control(key) || codec_validate_pkg.has_control(value) {
+      give CodecResult.Err(CodecError.InvalidInput)
+    }
+  }
+
+  let payload = encode(fmt, key, value)
+  if codec_validate_pkg.valid_payload_len(payload.data.len, cfg.max_payload_len) == false {
+    give CodecResult.Err(CodecError.InvalidPayload)
+  }
+
+  give CodecResult.Ok(payload)
 }
 
 proc detect(data: string) -> CodecFormat {
@@ -50,9 +177,42 @@ proc detect(data: string) -> CodecFormat {
   give CodecFormat.Binary
 }
 
+proc parse_payload(data: string) -> CodecPayload {
+  let fmt = detect(data)
+  if codec_validate_pkg.valid_payload_len(data.len, codec_policy_pkg.max_payload_len()) == false {
+    give CodecPayload(fmt, data, false)
+  }
+  when fmt is CodecFormat.Json {
+    if codec_validate_pkg.valid_json_payload(data) == false {
+      give CodecPayload(fmt, data, false)
+    }
+  }
+  when fmt is CodecFormat.MsgPack {
+    if codec_validate_pkg.valid_msgpack_payload(data) == false {
+      give CodecPayload(fmt, data, false)
+    }
+  }
+  when fmt is CodecFormat.Binary {
+    if codec_validate_pkg.valid_binary_payload(data) == false {
+      give CodecPayload(fmt, data, false)
+    }
+  }
+  give CodecPayload(fmt, data, true)
+}
+
 proc decode(payload: CodecPayload) -> string {
   if !payload.valid { give "" }
   give payload.data
+}
+
+proc decode_checked(payload: CodecPayload, cfg: CodecConfig) -> CodecResult[string] {
+  let vr = validate_config(cfg)
+  when vr is CodecResult.Err { give CodecResult.Err(vr.error) }
+  if payload.valid == false { give CodecResult.Err(CodecError.InvalidPayload) }
+  if codec_validate_pkg.valid_payload_len(payload.data.len, cfg.max_payload_len) == false {
+    give CodecResult.Err(CodecError.InvalidPayload)
+  }
+  give CodecResult.Ok(payload.data)
 }
 
 proc decode_pair(payload: CodecPayload) -> DecodedPair {
@@ -129,6 +289,32 @@ proc decode_pair(payload: CodecPayload) -> DecodedPair {
   give DecodedPair(raw.slice(0, sep), raw.slice(sep + 1, raw.len), true)
 }
 
+proc decode_pair_checked(payload: CodecPayload, cfg: CodecConfig) -> CodecResult[DecodedPair] {
+  let vr = validate_config(cfg)
+  when vr is CodecResult.Err { give CodecResult.Err(vr.error) }
+
+  if payload.valid == false { give CodecResult.Err(CodecError.InvalidPayload) }
+  if codec_validate_pkg.valid_payload_len(payload.data.len, cfg.max_payload_len) == false {
+    give CodecResult.Err(CodecError.InvalidPayload)
+  }
+
+  when payload.format is CodecFormat.Json {
+    if codec_validate_pkg.valid_json_payload(payload.data) == false {
+      give CodecResult.Err(CodecError.InvalidPayload)
+    }
+  }
+
+  when payload.format is CodecFormat.MsgPack {
+    if codec_validate_pkg.valid_msgpack_payload(payload.data) == false {
+      give CodecResult.Err(CodecError.InvalidPayload)
+    }
+  }
+
+  let p = decode_pair(payload)
+  if p.ok == false { give CodecResult.Err(CodecError.InvalidPayload) }
+  give CodecResult.Ok(p)
+}
+
 proc can_decode(payload: CodecPayload) -> bool {
   give payload.valid && payload.data.len > 0
 }
@@ -137,6 +323,12 @@ proc convert(payload: CodecPayload, target: CodecFormat) -> CodecPayload {
   let pair = decode_pair(payload)
   if !pair.ok { give CodecPayload(target, "", false) }
   give encode(target, pair.key, pair.value)
+}
+
+proc convert_checked(payload: CodecPayload, target: CodecFormat, cfg: CodecConfig) -> CodecResult[CodecPayload] {
+  let pr = decode_pair_checked(payload, cfg)
+  when pr is CodecResult.Err { give CodecResult.Err(pr.error) }
+  give encode_checked(target, pr.value.key, pr.value.value, cfg)
 }
 
 proc format_extension(fmt: CodecFormat) -> string {
@@ -160,14 +352,174 @@ proc roundtrip(fmt: CodecFormat, key: string, value: string) -> bool {
   give can_decode(encoded) && pair.ok && pair.key == key && pair.value == value
 }
 
-proc ready() -> bool {
+proc codec_validate_code(payload: CodecPayload) -> string {
+  if payload.valid == false { give "invalid-payload" }
+  if codec_validate_pkg.valid_payload_len(payload.data.len, codec_policy_pkg.max_payload_len()) == false {
+    give "payload-too-large"
+  }
+
+  when payload.format is CodecFormat.Json {
+    if codec_validate_pkg.valid_json_payload(payload.data) == false { give "invalid-json" }
+  }
+  when payload.format is CodecFormat.MsgPack {
+    if codec_validate_pkg.valid_msgpack_payload(payload.data) == false { give "invalid-msgpack" }
+  }
+
+  give "ok"
+}
+
+proc codec_validate(payload: CodecPayload) -> bool {
+  give codec_validate_code(payload) == "ok"
+}
+
+proc codec_validate_code_with_config(payload: CodecPayload, cfg: CodecConfig) -> string {
+  let vr = validate_config(cfg)
+  when vr is CodecResult.Err { give "invalid-config" }
+  if payload.valid == false { give "invalid-payload" }
+  if codec_validate_pkg.valid_payload_len(payload.data.len, cfg.max_payload_len) == false {
+    give "payload-too-large"
+  }
+  when payload.format is CodecFormat.Json {
+    if codec_validate_pkg.valid_json_payload(payload.data) == false { give "invalid-json" }
+  }
+  when payload.format is CodecFormat.MsgPack {
+    if codec_validate_pkg.valid_msgpack_payload(payload.data) == false { give "invalid-msgpack" }
+  }
+  when payload.format is CodecFormat.Binary {
+    if codec_validate_pkg.valid_binary_payload(payload.data) == false { give "invalid-binary" }
+  }
+  give "ok"
+}
+
+proc codec_validate_with_config(payload: CodecPayload, cfg: CodecConfig) -> CodecResult[bool] {
+  let code = codec_validate_code_with_config(payload, cfg)
+  if code != "ok" { give CodecResult.Err(CodecError.InvalidPayload) }
+  give CodecResult.Ok(true)
+}
+
+proc codec_normalize(payload: CodecPayload, cfg: CodecConfig) -> CodecPayload {
+  let c = normalize_config(cfg)
+  let data = codec_runtime_pkg.sanitize(payload.data, c.max_payload_len)
+  let fmt = payload.format
+  if data.len > 0 {
+    fmt = detect(data)
+  }
+  let out = parse_payload(data)
+  give CodecPayload(fmt, out.data, out.valid)
+}
+
+proc codec_stats(payload: CodecPayload) -> CodecStats {
+  let pair = decode_pair(payload)
+  if pair.ok == false {
+    give CodecStats(payload.data.len, 0, 0, is_textual(payload.format))
+  }
+  give CodecStats(payload.data.len, pair.key.len, pair.value.len, is_textual(payload.format))
+}
+
+proc codec_runtime_info() -> CodecRuntimeInfo {
+  give CodecRuntimeInfo(codec_runtime_pkg.runtime_name(),
+                        codec_runtime_pkg.runtime_version(),
+                        codec_runtime_pkg.supports_no_std(),
+                        codec_runtime_pkg.supports_json(),
+                        codec_runtime_pkg.supports_msgpack(),
+                        codec_runtime_pkg.supports_binary(),
+                        codec_runtime_pkg.supports_autodetect(),
+                        codec_runtime_pkg.supports_roundtrip_check(),
+                        codec_runtime_pkg.supports_diagnostics())
+}
+
+proc codec_health(payload: CodecPayload) -> CodecHealth {
+  let code = codec_validate_code(payload)
+  if code != "ok" {
+    give CodecHealth(false, code, payload.data.len)
+  }
+  give CodecHealth(true, "ok", payload.data.len)
+}
+
+proc healthcheck(cfg: CodecConfig) -> CodecResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is CodecResult.Err { give CodecResult.Err(vr.error) }
+  if codec_runtime_pkg.runtime_status() == false { give CodecResult.Err(CodecError.Internal) }
+  give CodecResult.Ok(true)
+}
+
+proc stable_api_version() -> string {
+  give "2.1.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_max_payload_len,with_allow_binary_control,validate_config,validate_config_code,normalize_config,format_name,encode,encode_checked,detect,parse_payload,decode,decode_checked,decode_pair,decode_pair_checked,can_decode,convert,convert_checked,format_extension,is_textual,fingerprint,roundtrip,codec_validate_code,codec_validate,codec_validate_code_with_config,codec_validate_with_config,codec_normalize,codec_stats,codec_runtime_info,codec_health,healthcheck,stable_api_surface_hash,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2.1"
+}
+
+proc capabilities() -> [string] {
+  give ["json", "msgpack", "binary", "convert", "parse", "normalize", "diagnostics", codec_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CODEC0001" { give "invalid codec configuration" }
+  if code == "VITTE-CODEC0002" { give "invalid key/value input" }
+  if code == "VITTE-CODEC0003" { give "invalid or malformed payload" }
+  give "codec diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-CODEC0001" { give "normalize max payload len and validate config" }
+  if code == "VITTE-CODEC0002" { give "sanitize key/value and respect length limits" }
+  if code == "VITTE-CODEC0003" { give "detect payload format and re-encode canonical pair" }
+  give "inspect codec payload and format"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if codec_runtime_pkg.runtime_status() == false { give false }
+
+  let cfg = strict_config()
+  let v = validate_config(cfg)
+  when v is CodecResult.Err { give false }
+
+  let e = encode_checked(CodecFormat.Json, "k", "v", cfg)
+  when e is CodecResult.Err { give false }
+
+  if detect(e.value.data) != CodecFormat.Json { give false }
+  let parsed = parse_payload(e.value.data)
+  if parsed.valid == false { give false }
+
+  let p = decode_pair_checked(e.value, cfg)
+  when p is CodecResult.Err { give false }
+
+  let c = convert_checked(e.value, CodecFormat.Binary, default_config())
+  when c is CodecResult.Err { give false }
+  let n = codec_normalize(c.value, default_config())
+  let nv = codec_validate_with_config(n, default_config())
+  when nv is CodecResult.Err { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
   give true
 }
 
-
+proc ready() -> bool {
+  give stable_ready()
+}
 
 proc package_meta() -> string {
-    give "vitte/codec"
+  give "vitte/codec"
 }
 
 <<< ROLE-CONTRACT
@@ -176,4 +528,5 @@ role: Encodage et decodage payload json msgpack binaire
 input_contract: Format cible et paire key value explicites
 output_contract: Payload formatte et decodable de maniere deterministe
 boundary: Ne valide pas les schemas metier; applique seulement le codec
+versioning_note: stable_api_version=2.1.0
 >>>

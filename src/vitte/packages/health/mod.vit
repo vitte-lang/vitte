@@ -1,10 +1,49 @@
 <<<
 mod.vit
 package vitte/health
+version: 3.1.0
+tier: observability-core
+purpose:
+  Endpoints live/ready/startup pour orchestration production.
+  Validation explicite des etats et des seuils de sante.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/health
 
+use vitte/health/internal/policy as health_policy_pkg
+use vitte/health/internal/runtime as health_runtime_pkg
+use vitte/health/internal/validate as health_validate_pkg
+
+form HealthConfig {
+  require_migrations: bool
+  require_warmed: bool
+  min_score_ok_percent: int
+}
+
+pick HealthError {
+  InvalidConfig
+  NotFound
+  Internal
+}
+
+pick HealthResult[T] {
+  Ok(value: T)
+  Err(error: HealthError)
+}
+
+form HealthRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_json_report: bool
+}
+
+form HealthStatus {
+  ok: bool
+  code: string
+  score_percent: int
+}
 
 form HealthInput {
   db_ok: bool
@@ -13,6 +52,84 @@ form HealthInput {
   migrations_ok: bool
   warmed: bool
   started: bool
+}
+
+proc default_config() -> HealthConfig {
+  give HealthConfig(health_policy_pkg.default_require_migrations(), health_policy_pkg.default_require_warmed(), health_policy_pkg.min_score_ok_percent())
+}
+
+proc strict_config() -> HealthConfig {
+  let cfg = default_config()
+  give HealthConfig(true, true, cfg.min_score_ok_percent)
+}
+
+proc with_min_score_ok_percent(cfg: HealthConfig, min_score_ok_percent: int) -> HealthConfig {
+  give HealthConfig(cfg.require_migrations, cfg.require_warmed, health_policy_pkg.normalize_score_percent(min_score_ok_percent))
+}
+
+proc normalize_config(cfg: HealthConfig) -> HealthConfig {
+  give HealthConfig(cfg.require_migrations, cfg.require_warmed, health_policy_pkg.normalize_score_percent(cfg.min_score_ok_percent))
+}
+
+proc validate_config(cfg: HealthConfig) -> HealthResult[bool] {
+  let nc = normalize_config(cfg)
+  if health_validate_pkg.valid_score_percent(nc.min_score_ok_percent) == false {
+    give HealthResult.Err(HealthError.InvalidConfig)
+  }
+  give HealthResult.Ok(true)
+}
+
+proc runtime_info() -> HealthRuntimeInfo {
+  give HealthRuntimeInfo(health_runtime_pkg.runtime_name(),
+                         health_runtime_pkg.runtime_version(),
+                         health_runtime_pkg.supports_diagnostics(),
+                         health_runtime_pkg.supports_json_report())
+}
+
+proc healthcheck(cfg: HealthConfig, h: HealthInput) -> HealthResult[HealthStatus] {
+  let vr = validate_config(cfg)
+  when vr is HealthResult.Err { give HealthResult.Err(vr.error) }
+  if health_runtime_pkg.runtime_status() == false {
+    give HealthResult.Err(HealthError.Internal)
+  }
+  let score: int = 0
+  if h.db_ok { score = score + 1 }
+  if h.cache_ok { score = score + 1 }
+  if h.queue_ok { score = score + 1 }
+  if h.migrations_ok { score = score + 1 }
+  if h.warmed { score = score + 1 }
+  if h.started { score = score + 1 }
+  score = score * 100 / 6
+  if score < cfg.min_score_ok_percent {
+    give HealthResult.Ok(HealthStatus(false, "below-score-threshold", score))
+  }
+  give HealthResult.Ok(HealthStatus(true, "ok", score))
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["diagnostics", "json-report", "live-ready-startup", "score", "status"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-HEALTH0001" { give "invalid health configuration" }
+  if code == "VITTE-HEALTH0002" { give "invalid health component name" }
+  if code == "VITTE-HEALTH0003" { give "health runtime unavailable" }
+  give "health diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-HEALTH0001" { give "set min_score_ok_percent in range 0..100" }
+  if code == "VITTE-HEALTH0002" { give "use component names: db/cache/queue/migrations/warmed/started" }
+  if code == "VITTE-HEALTH0003" { give "check health runtime status" }
+  give "review health configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc input(db_ok: bool, cache_ok: bool, queue_ok: bool, migrations_ok: bool, warmed: bool, started: bool) -> HealthInput {
@@ -97,6 +214,13 @@ proc component_ok(h: HealthInput, name: string) -> bool {
   give false
 }
 
+proc component_ok_checked(h: HealthInput, name: string) -> HealthResult[bool] {
+  if health_validate_pkg.valid_component_name(name) == false {
+    give HealthResult.Err(HealthError.InvalidConfig)
+  }
+  give HealthResult.Ok(component_ok(h, name))
+}
+
 proc ready_blockers(h: HealthInput) -> [string] {
   let out: [string] = []
   if !h.started { out = out.push("started") }
@@ -141,7 +265,24 @@ proc summary(h: HealthInput) -> string {
 }
 
 proc verify_invariants(h: HealthInput) -> bool {
-  if check_operational(h) && score_percent(h) < 80 { give false }
+  let cfg = default_config()
+  let score: int = 0
+  if h.db_ok { score = score + 1 }
+  if h.cache_ok { score = score + 1 }
+  if h.queue_ok { score = score + 1 }
+  if h.migrations_ok { score = score + 1 }
+  if h.warmed { score = score + 1 }
+  if h.started { score = score + 1 }
+  score = score * 100 / 6
+  if check_operational(h) && score < cfg.min_score_ok_percent { give false }
+  if is_down(h) && status_text(h) != "down" { give false }
+  if check_live(h) && status_code_live(h) != 200 { give false }
+  give true
+}
+
+proc verify_invariants_with_config(h: HealthInput, cfg: HealthConfig) -> bool {
+  let score = score_percent(h)
+  if check_operational(h) && score < cfg.min_score_ok_percent { give false }
   if is_down(h) && status_text(h) != "down" { give false }
   if check_live(h) && status_code_live(h) != 200 { give false }
   give true
@@ -160,14 +301,19 @@ proc report_json(h: HealthInput) -> string {
   give "{\"live\":" + live + ",\"ready\":" + ready_state + ",\"startup\":" + startup + "}"
 }
 
-proc ready() -> bool {
-  give true
+proc report_json_checked(h: HealthInput) -> HealthResult[string] {
+  if health_runtime_pkg.supports_json_report() == false {
+    give HealthResult.Err(HealthError.Internal)
+  }
+  give HealthResult.Ok(report_json(h))
 }
 
-
+proc ready() -> bool {
+  give health_runtime_pkg.runtime_status()
+}
 
 proc package_meta() -> string {
-    give "vitte/health"
+  give "vitte/health"
 }
 
 <<< ROLE-CONTRACT

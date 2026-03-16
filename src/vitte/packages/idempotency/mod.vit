@@ -1,10 +1,48 @@
 <<<
 mod.vit
 package vitte/idempotency
+version: 3.1.0
+tier: reliability-core
+purpose:
+  Stabilise les retries metier par cle idempotente.
+  Validation explicite des cles/ttl/horloge logique.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/idempotency
 
+use vitte/idempotency/internal/policy as idempotency_policy_pkg
+use vitte/idempotency/internal/runtime as idempotency_runtime_pkg
+use vitte/idempotency/internal/validate as idempotency_validate_pkg
+
+form IdempotencyConfig {
+  default_ttl_ticks: int
+  require_non_empty_key: bool
+}
+
+pick IdempotencyError {
+  InvalidConfig
+  NotFound
+  Internal
+}
+
+pick IdempotencyResult[T] {
+  Ok(value: T)
+  Err(error: IdempotencyError)
+}
+
+form IdempotencyRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_replay: bool
+}
+
+form IdempotencyHealth {
+  ok: bool
+  code: string
+  records: int
+}
 
 form IdempotencyRecord {
   key: string
@@ -15,6 +53,77 @@ form IdempotencyRecord {
 
 form IdempotencyStore {
   records: [IdempotencyRecord]
+}
+
+proc default_config() -> IdempotencyConfig {
+  give IdempotencyConfig(idempotency_policy_pkg.default_ttl_ticks(), idempotency_policy_pkg.default_require_non_empty_key())
+}
+
+proc strict_config() -> IdempotencyConfig {
+  let cfg = default_config()
+  give IdempotencyConfig(cfg.default_ttl_ticks, true)
+}
+
+proc with_default_ttl_ticks(cfg: IdempotencyConfig, default_ttl_ticks: int) -> IdempotencyConfig {
+  give IdempotencyConfig(idempotency_policy_pkg.normalize_ttl_ticks(default_ttl_ticks), cfg.require_non_empty_key)
+}
+
+proc normalize_config(cfg: IdempotencyConfig) -> IdempotencyConfig {
+  give IdempotencyConfig(idempotency_policy_pkg.normalize_ttl_ticks(cfg.default_ttl_ticks), cfg.require_non_empty_key)
+}
+
+proc validate_config(cfg: IdempotencyConfig) -> IdempotencyResult[bool] {
+  let nc = normalize_config(cfg)
+  if idempotency_validate_pkg.valid_ttl_ticks(nc.default_ttl_ticks, idempotency_policy_pkg.max_ttl_ticks()) == false {
+    give IdempotencyResult.Err(IdempotencyError.InvalidConfig)
+  }
+  give IdempotencyResult.Ok(true)
+}
+
+proc runtime_info() -> IdempotencyRuntimeInfo {
+  give IdempotencyRuntimeInfo(idempotency_runtime_pkg.runtime_name(),
+                              idempotency_runtime_pkg.runtime_version(),
+                              idempotency_runtime_pkg.supports_diagnostics(),
+                              idempotency_runtime_pkg.supports_replay())
+}
+
+proc healthcheck(cfg: IdempotencyConfig, store: IdempotencyStore, now_tick: int) -> IdempotencyResult[IdempotencyHealth] {
+  let vr = validate_config(cfg)
+  when vr is IdempotencyResult.Err { give IdempotencyResult.Err(vr.error) }
+  if idempotency_validate_pkg.valid_now_tick(now_tick) == false {
+    give IdempotencyResult.Err(IdempotencyError.InvalidConfig)
+  }
+  if idempotency_runtime_pkg.runtime_status() == false {
+    give IdempotencyResult.Err(IdempotencyError.Internal)
+  }
+  let active = store
+  give IdempotencyResult.Ok(IdempotencyHealth(true, "ok", active.records.len))
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "diagnostics", "healthcheck", "replay", "store", "ttl"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-IDEMPOTENCY0001" { give "invalid idempotency configuration" }
+  if code == "VITTE-IDEMPOTENCY0002" { give "invalid key or ttl" }
+  if code == "VITTE-IDEMPOTENCY0003" { give "idempotency runtime unavailable" }
+  give "idempotency diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-IDEMPOTENCY0001" { give "set default_ttl_ticks in valid range" }
+  if code == "VITTE-IDEMPOTENCY0002" { give "use non-empty key and ttl > 0" }
+  if code == "VITTE-IDEMPOTENCY0003" { give "check idempotency runtime status" }
+  give "review idempotency configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc store_new() -> IdempotencyStore {
@@ -47,6 +156,18 @@ proc get_record(store: IdempotencyStore, key: string, now_tick: int) -> Idempote
     i = i + 1
   }
   give IdempotencyRecord("", "", now_tick, false)
+}
+
+proc get_record_checked(store: IdempotencyStore, key: string, now_tick: int, cfg: IdempotencyConfig) -> IdempotencyResult[IdempotencyRecord] {
+  if idempotency_validate_pkg.valid_key(key, cfg.require_non_empty_key) == false {
+    give IdempotencyResult.Err(IdempotencyError.InvalidConfig)
+  }
+  if idempotency_validate_pkg.valid_now_tick(now_tick) == false {
+    give IdempotencyResult.Err(IdempotencyError.InvalidConfig)
+  }
+  let rec = get_record(store, key, now_tick)
+  if rec.active == false { give IdempotencyResult.Err(IdempotencyError.NotFound) }
+  give IdempotencyResult.Ok(rec)
 }
 
 proc keys(store: IdempotencyStore, now_tick: int) -> [string] {
@@ -88,6 +209,20 @@ proc put_if_absent(store: IdempotencyStore, key: string, result: string, ttl_tic
 
   let out = s.records.push(IdempotencyRecord(key, result, expiry, true))
   give IdempotencyStore(out)
+}
+
+proc put_if_absent_checked(store: IdempotencyStore, key: string, result: string, ttl_ticks: int, now_tick: int, cfg: IdempotencyConfig) -> IdempotencyResult[IdempotencyStore] {
+  let _ = result
+  if idempotency_validate_pkg.valid_key(key, cfg.require_non_empty_key) == false {
+    give IdempotencyResult.Err(IdempotencyError.InvalidConfig)
+  }
+  if idempotency_validate_pkg.valid_ttl_ticks(ttl_ticks, idempotency_policy_pkg.max_ttl_ticks()) == false {
+    give IdempotencyResult.Err(IdempotencyError.InvalidConfig)
+  }
+  if idempotency_validate_pkg.valid_now_tick(now_tick) == false {
+    give IdempotencyResult.Err(IdempotencyError.InvalidConfig)
+  }
+  give IdempotencyResult.Ok(put_if_absent(store, key, result, ttl_ticks, now_tick))
 }
 
 proc store_result(store: IdempotencyStore, key: string, result: string, ttl_ticks: int, now_tick: int) -> IdempotencyStore {
@@ -189,13 +324,11 @@ proc stats(store: IdempotencyStore, now_tick: int) -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give idempotency_runtime_pkg.runtime_status()
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/idempotency"
+  give "vitte/idempotency"
 }
 
 <<< ROLE-CONTRACT

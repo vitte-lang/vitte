@@ -1,20 +1,128 @@
 <<<
 mod.vit
 package vitte/eval
+version: 2.1.0
+tier: expression-core
+purpose:
+  Evaluation dynamique controlee d'expressions arithmetiques.
+  Validation des operations et limites de calcul.
+  API stable versionnee avec diagnostics runtime.
 >>>
 
 space vitte/eval
 
+use vitte/eval/internal/runtime as eval_runtime_pkg
+use vitte/eval/internal/validate as eval_validate_pkg
+use vitte/eval/internal/policy as eval_policy_pkg
 
 pick EvalError {
   None
   InvalidOp
   DivisionByZero
+  InvalidConfig
+  Overflow
 }
 
 form EvalResult {
   value: int
   error: EvalError
+}
+
+form EvalStats {
+  samples: int
+  errors: int
+  div_zero: int
+  overflow: int
+  ok: int
+}
+
+form EvalConfig {
+  strict: bool
+  detect_div_zero: bool
+  max_abs_value: int
+  max_chain_len: int
+}
+
+pick EvalApiResult[T] {
+  Ok(value: T)
+  Err(error: EvalError)
+}
+
+form EvalRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_chain_eval: bool
+  supports_unary_eval: bool
+  supports_diagnostics: bool
+  capabilities_hash: int
+}
+
+form EvalHealth {
+  ok: bool
+  code: string
+  error_percent: int
+}
+
+proc config_ok(cfg: EvalConfig) -> bool {
+  if eval_validate_pkg.valid_abs(cfg.max_abs_value, eval_policy_pkg.max_abs_value()) == false { give false }
+  if eval_validate_pkg.valid_chain_len(cfg.max_chain_len, eval_policy_pkg.max_chain_len()) == false { give false }
+  give true
+}
+
+proc default_config() -> EvalConfig {
+  give EvalConfig(eval_policy_pkg.default_strict(),
+                  eval_policy_pkg.default_detect_div_zero(),
+                  eval_policy_pkg.default_max_abs_value(),
+                  eval_policy_pkg.default_max_chain_len())
+}
+
+proc strict_config() -> EvalConfig {
+  let cfg = default_config()
+  give EvalConfig(true,
+                  true,
+                  cfg.max_abs_value,
+                  cfg.max_chain_len)
+}
+
+proc with_max_abs_value(cfg: EvalConfig, max_abs_value: int) -> EvalConfig {
+  give EvalConfig(cfg.strict,
+                  cfg.detect_div_zero,
+                  eval_policy_pkg.normalize_abs(max_abs_value),
+                  cfg.max_chain_len)
+}
+
+proc with_max_chain_len(cfg: EvalConfig, max_chain_len: int) -> EvalConfig {
+  give EvalConfig(cfg.strict,
+                  cfg.detect_div_zero,
+                  cfg.max_abs_value,
+                  eval_policy_pkg.normalize_chain_len(max_chain_len))
+}
+
+proc validate_config(cfg: EvalConfig) -> EvalApiResult[bool] {
+  if config_ok(cfg) == false { give EvalApiResult.Err(EvalError.InvalidConfig) }
+  give EvalApiResult.Ok(true)
+}
+
+proc validate_config_code(cfg: EvalConfig) -> string {
+  if config_ok(cfg) == false { give "invalid-config" }
+  give "ok"
+}
+
+proc normalize_config(cfg: EvalConfig) -> EvalConfig {
+  give EvalConfig(cfg.strict,
+                  cfg.detect_div_zero,
+                  eval_policy_pkg.normalize_abs(cfg.max_abs_value),
+                  eval_policy_pkg.normalize_chain_len(cfg.max_chain_len))
+}
+
+proc eval_validate_code(cfg: EvalConfig) -> string {
+  if validate_config_code(cfg) != "ok" { give "invalid-config" }
+  give "ok"
+}
+
+proc eval_validate(cfg: EvalConfig) -> bool {
+  give eval_validate_code(cfg) == "ok"
 }
 
 proc ok(value: int) -> EvalResult {
@@ -40,6 +148,62 @@ proc eval_binary(op: string, left: int, right: int) -> EvalResult {
   give err(EvalError.InvalidOp)
 }
 
+proc eval_unary(op: string, value: int) -> EvalResult {
+  if op == "neg" { give ok(0 - value) }
+  if op == "abs" {
+    if value < 0 { give ok(0 - value) }
+    give ok(value)
+  }
+  give err(EvalError.InvalidOp)
+}
+
+proc eval_binary_checked(op: string, left: int, right: int, cfg: EvalConfig) -> EvalApiResult[EvalResult] {
+  let vr = validate_config(cfg)
+  when vr is EvalApiResult.Err { give EvalApiResult.Err(vr.error) }
+
+  if eval_validate_pkg.valid_op(op) == false {
+    give EvalApiResult.Err(EvalError.InvalidOp)
+  }
+  if eval_validate_pkg.valid_abs(left, cfg.max_abs_value) == false {
+    give EvalApiResult.Err(EvalError.Overflow)
+  }
+  if eval_validate_pkg.valid_abs(right, cfg.max_abs_value) == false {
+    give EvalApiResult.Err(EvalError.Overflow)
+  }
+
+  let r = eval_binary(op, left, right)
+  if cfg.detect_div_zero && (op == "/" || op == "%") && right == 0 {
+    give EvalApiResult.Ok(err(EvalError.DivisionByZero))
+  }
+
+  if r.error == EvalError.None {
+    if eval_validate_pkg.valid_abs(r.value, cfg.max_abs_value) == false {
+      give EvalApiResult.Ok(err(EvalError.Overflow))
+    }
+  }
+  give EvalApiResult.Ok(r)
+}
+
+proc eval_unary_checked(op: string, value: int, cfg: EvalConfig) -> EvalApiResult[EvalResult] {
+  let vr = validate_config(cfg)
+  when vr is EvalApiResult.Err { give EvalApiResult.Err(vr.error) }
+
+  if eval_validate_pkg.valid_unary_op(op) == false {
+    give EvalApiResult.Err(EvalError.InvalidOp)
+  }
+  if eval_validate_pkg.valid_abs(value, cfg.max_abs_value) == false {
+    give EvalApiResult.Err(EvalError.Overflow)
+  }
+
+  let r = eval_unary(op, value)
+  if r.error == EvalError.None {
+    if eval_validate_pkg.valid_abs(r.value, cfg.max_abs_value) == false {
+      give EvalApiResult.Ok(err(EvalError.Overflow))
+    }
+  }
+  give EvalApiResult.Ok(r)
+}
+
 proc eval_chain(values: [int], op: string) -> EvalResult {
   if values.len == 0 { give ok(0) }
   let acc = values[0]
@@ -54,6 +218,42 @@ proc eval_chain(values: [int], op: string) -> EvalResult {
   give ok(acc)
 }
 
+proc eval_chain_checked(values: [int], op: string, cfg: EvalConfig) -> EvalApiResult[EvalResult] {
+  let vr = validate_config(cfg)
+  when vr is EvalApiResult.Err { give EvalApiResult.Err(vr.error) }
+
+  if eval_validate_pkg.valid_op(op) == false { give EvalApiResult.Err(EvalError.InvalidOp) }
+  if eval_validate_pkg.valid_chain_len(values.len, cfg.max_chain_len) == false {
+    give EvalApiResult.Err(EvalError.Overflow)
+  }
+
+  if values.len == 0 { give EvalApiResult.Ok(ok(0)) }
+
+  let acc = values[0]
+  let i: int = 1
+  loop {
+    if i >= values.len { break }
+    let r = eval_binary_checked(op, acc, values[i], cfg)
+    when r is EvalApiResult.Err { give EvalApiResult.Err(r.error) }
+    if r.value.error != EvalError.None { give EvalApiResult.Ok(r.value) }
+    acc = r.value.value
+    i = i + 1
+  }
+  give EvalApiResult.Ok(ok(acc))
+}
+
+proc eval_sum(values: [int], cfg: EvalConfig) -> EvalApiResult[EvalResult] {
+  give eval_chain_checked(values, "+", cfg)
+}
+
+proc eval_product(values: [int], cfg: EvalConfig) -> EvalApiResult[EvalResult] {
+  give eval_chain_checked(values, "*", cfg)
+}
+
+proc can_eval(op: string) -> bool {
+  give eval_validate_pkg.valid_op(op) || eval_validate_pkg.valid_unary_op(op)
+}
+
 proc is_ok(r: EvalResult) -> bool {
   give r.error == EvalError.None
 }
@@ -63,20 +263,158 @@ proc value_or(r: EvalResult, fallback: int) -> int {
   give fallback
 }
 
+proc eval_normalize(r: EvalResult, cfg: EvalConfig) -> EvalResult {
+  if r.error != EvalError.None { give r }
+  if eval_validate_pkg.valid_abs(r.value, cfg.max_abs_value) == false {
+    give err(EvalError.Overflow)
+  }
+  give r
+}
+
+proc eval_stats(results: [EvalResult]) -> EvalStats {
+  let max_len = eval_policy_pkg.normalize_health_samples(results.len)
+  if eval_validate_pkg.valid_samples_count(max_len, eval_policy_pkg.max_health_samples()) == false {
+    give EvalStats(0, 0, 0, 0, 0)
+  }
+
+  let errors = 0
+  let div_zero = 0
+  let overflow = 0
+  let oks = 0
+  let i: int = 0
+  loop {
+    if i >= max_len { break }
+    if results[i].error == EvalError.None {
+      oks = oks + 1
+    } else {
+      errors = errors + 1
+      if results[i].error == EvalError.DivisionByZero { div_zero = div_zero + 1 }
+      if results[i].error == EvalError.Overflow { overflow = overflow + 1 }
+    }
+    i = i + 1
+  }
+  give EvalStats(max_len, errors, div_zero, overflow, oks)
+}
+
 proc result_text(r: EvalResult) -> string {
   if r.error == EvalError.None { give "ok:" + r.value.to_string() }
   if r.error == EvalError.DivisionByZero { give "err:div0" }
+  if r.error == EvalError.Overflow { give "err:overflow" }
+  if r.error == EvalError.InvalidConfig { give "err:config" }
   give "err:invalid"
 }
 
-proc ready() -> bool {
+proc eval_runtime_info() -> EvalRuntimeInfo {
+  give EvalRuntimeInfo(eval_runtime_pkg.runtime_name(),
+                       eval_runtime_pkg.runtime_version(),
+                       eval_runtime_pkg.supports_no_std(),
+                       eval_runtime_pkg.supports_chain_eval(),
+                       eval_runtime_pkg.supports_unary_eval(),
+                       eval_runtime_pkg.supports_diagnostics(),
+                       eval_runtime_pkg.capabilities_hash())
+}
+
+proc eval_health(results: [EvalResult]) -> EvalHealth {
+  if results.len == 0 { give EvalHealth(true, "ok", 0) }
+  let s = eval_stats(results)
+  if s.samples <= 0 { give EvalHealth(false, "invalid-samples", 100) }
+
+  let pct = s.errors * 100 / s.samples
+  if pct < 0 { pct = 0 }
+  if pct > 100 { pct = 100 }
+  if eval_validate_pkg.valid_percent(pct) == false {
+    give EvalHealth(false, "invalid-percent", 100)
+  }
+  if s.errors > 0 { give EvalHealth(false, "errors", pct) }
+  give EvalHealth(true, "ok", pct)
+}
+
+proc healthcheck(cfg: EvalConfig) -> EvalApiResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is EvalApiResult.Err { give EvalApiResult.Err(vr.error) }
+  if eval_runtime_pkg.runtime_status() == false {
+    give EvalApiResult.Err(EvalError.InvalidConfig)
+  }
+  if eval_runtime_pkg.supports_chain_eval() == false {
+    give EvalApiResult.Err(EvalError.InvalidConfig)
+  }
+  give EvalApiResult.Ok(true)
+}
+
+proc stable_api_version() -> string {
+  give "2.1.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_max_abs_value,with_max_chain_len,validate_config,validate_config_code,normalize_config,eval_validate_code,eval_validate,ok,err,eval_binary,eval_unary,eval_binary_checked,eval_unary_checked,eval_chain,eval_chain_checked,eval_sum,eval_product,can_eval,is_ok,value_or,eval_normalize,eval_stats,result_text,eval_runtime_info,eval_health,healthcheck,stable_api_surface_hash,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["binary-eval", "unary-eval", "chain-eval", "overflow-check", "stats", "diagnostics"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-EVAL0001" { give "invalid eval configuration" }
+  if code == "VITTE-EVAL0002" { give "invalid eval operation" }
+  if code == "VITTE-EVAL0003" { give "division by zero or overflow" }
+  give "eval diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-EVAL0001" { give "normalize eval config limits" }
+  if code == "VITTE-EVAL0002" { give "use supported operations (+,-,*,/,%,neg,abs)" }
+  if code == "VITTE-EVAL0003" { give "guard zero division and reduce operand magnitude" }
+  give "review eval expression"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  let cfg = strict_config()
+  let vr = validate_config(cfg)
+  when vr is EvalApiResult.Err { give false }
+
+  let b = eval_binary_checked("+", 2, 3, cfg)
+  when b is EvalApiResult.Err { give false }
+  if b.value.error != EvalError.None || b.value.value != 5 { give false }
+
+  let u = eval_unary_checked("abs", -8, cfg)
+  when u is EvalApiResult.Err { give false }
+  if u.value.error != EvalError.None || u.value.value != 8 { give false }
+
+  let c = eval_chain_checked([1, 2, 3], "+", cfg)
+  when c is EvalApiResult.Err { give false }
+  if c.value.error != EvalError.None || c.value.value != 6 { give false }
+
+  let st = eval_stats([b.value, u.value, c.value])
+  if st.errors != 0 { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
   give true
 }
 
-
+proc ready() -> bool {
+  give stable_ready()
+}
 
 proc package_meta() -> string {
-    give "vitte/eval"
+  give "vitte/eval"
 }
 
 <<< ROLE-CONTRACT
@@ -85,4 +423,5 @@ role: Evaluation dynamique controlee et execution sandbox
 input_contract: Valeurs metier explicites, deja parsees et typables
 output_contract: Sorties stables, observables et compatibles avec les autres packages
 boundary: Ne remplace pas les autres couches; respecte la separation de roles
+versioning_note: stable_api_version=2.1.0
 >>>

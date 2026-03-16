@@ -1,0 +1,35 @@
+use vitte/benchkit as benchkit_pkg
+
+proc ok_job() -> int {
+  return 0
+}
+
+entry main at core/app {
+  let cfg = benchkit_pkg.default_config()
+  let vr: benchkit_pkg.BenchkitResult[bool] = benchkit_pkg.validate_config(cfg)
+  when vr is benchkit_pkg.BenchkitResult.Err {
+    return 1
+  }
+
+  let rr: benchkit_pkg.BenchkitResult[benchkit_pkg.BenchResult] = benchkit_pkg.run_bench_checked("ok", ok_job, cfg)
+  when rr is benchkit_pkg.BenchkitResult.Err {
+    return 1
+  }
+
+  let h = benchkit_pkg.bench_health(rr.value)
+  if h.samples < 0 {
+    return 1
+  }
+
+  let suite = benchkit_pkg.suite_run(benchkit_pkg.suite_new(), "ok", ok_job, cfg)
+  let text = benchkit_pkg.report(suite)
+  if text.len == 0 {
+    return 1
+  }
+
+  if benchkit_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

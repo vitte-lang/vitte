@@ -5,6 +5,10 @@ package vitte/bench
 
 space vitte/bench
 
+use vitte/bench/internal/runtime as bench_runtime_pkg
+use vitte/bench/internal/validate as bench_validate_pkg
+use vitte/bench/internal/policy as bench_policy_pkg
+
 
 form BenchCase {
   name: string
@@ -25,19 +29,21 @@ form BenchSummary {
 }
 
 proc bench_case(name: string, iterations: int) -> BenchCase {
-  let it = iterations
-  if it < 1 { it = 1 }
+  let it = bench_policy_pkg.normalize_iterations(iterations)
   give BenchCase(name, it)
 }
 
 proc run_start(c: BenchCase, now_ms: int) -> BenchRun {
-  give BenchRun(c.name, now_ms, now_ms, c.iterations)
+  let t0 = now_ms
+  if bench_validate_pkg.valid_timestamp_ms(t0) == false { t0 = 0 }
+  give BenchRun(c.name, t0, t0, bench_policy_pkg.normalize_iterations(c.iterations))
 }
 
 proc run_stop(r: BenchRun, now_ms: int) -> BenchRun {
   let end = now_ms
+  if bench_validate_pkg.valid_timestamp_ms(end) == false { end = r.started_ms }
   if end < r.started_ms { end = r.started_ms }
-  give BenchRun(r.case_name, r.started_ms, end, r.iterations)
+  give BenchRun(r.case_name, r.started_ms, end, bench_policy_pkg.normalize_iterations(r.iterations))
 }
 
 proc elapsed_ms(r: BenchRun) -> int {
@@ -137,6 +143,8 @@ proc run_diagnostics(r: BenchRun) -> string {
 }
 
 proc ready() -> bool {
+  if bench_runtime_pkg.runtime_status() == false { give false }
+  if bench_runtime_pkg.timer_resolution_ms() <= 0 { give false }
   give true
 }
 
@@ -153,3 +161,98 @@ input_contract: Valeurs metier explicites, deja parsees et typables
 output_contract: Sorties stables, observables et compatibles avec les autres packages
 boundary: Ne remplace pas les autres couches; respecte la separation de roles
 >>>
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-BENCH0001" { give "invalid iterations in bench case" }
+  if code == "VITTE-BENCH0002" { give "invalid timestamps in bench run" }
+  if code == "VITTE-BENCH0003" { give "invalid sample set for percentile/statistics" }
+  give "bench diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-BENCH0001" { give "use iterations in range 1..1000000000" }
+  if code == "VITTE-BENCH0002" { give "use monotonic timestamps in milliseconds" }
+  if code == "VITTE-BENCH0003" { give "provide a non-empty numeric sample set" }
+  give "review bench configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc suggestion_contexts() -> [string] {
+  give ["arborescence", "public-api", "types", "diagnostics", "quickfix"]
+}
+
+proc suggestion_arborescence() -> [string] {
+  give [
+    "src/vitte/packages/bench/mod.vit",
+    "src/vitte/packages/bench/info.vit",
+    "src/vitte/packages/bench/internal/policy.vit",
+    "src/vitte/packages/bench/internal/runtime.vit",
+    "src/vitte/packages/bench/internal/validate.vit"
+  ]
+}
+
+proc suggestion_public_api() -> [string] {
+  give [
+    "bench_case",
+    "run_start",
+    "run_stop",
+    "elapsed_ms",
+    "iter_per_sec",
+    "summarize",
+    "compare",
+    "faster",
+    "summary_text",
+    "percentile50",
+    "average",
+    "stability_score",
+    "bench_health",
+    "normalize_run",
+    "compare_percent",
+    "run_diagnostics",
+    "ready",
+    "package_meta",
+    "diagnostics_message",
+    "diagnostics_quickfix",
+    "diagnostics_doc_url",
+    "suggestion_contexts",
+    "suggestion_arborescence",
+    "suggestion_public_api",
+    "suggestion_types",
+    "suggestion_diagnostics_codes",
+    "suggestion_quickfix_codes",
+    "suggestion_catalog_json"
+  ]
+}
+
+proc suggestion_types() -> [string] {
+  give [
+    "form BenchCase",
+    "form BenchRun",
+    "form BenchSummary"
+  ]
+}
+
+proc suggestion_diagnostics_codes() -> [string] {
+  give [
+    "VITTE-BENCH0001",
+    "VITTE-BENCH0002",
+    "VITTE-BENCH0003"
+  ]
+}
+
+proc suggestion_quickfix_codes() -> [string] {
+  give suggestion_diagnostics_codes()
+}
+
+proc suggestion_catalog_json() -> string {
+  give "{\"package\":\"vitte/bench\",\"contexts\":[\"arborescence\",\"public-api\",\"types\",\"diagnostics\",\"quickfix\"],\"counts\":{\"arborescence\":5,\"public_api\":28,\"types\":3,\"diagnostics\":3,\"quickfix\":3}}"
+}
+
+
+
+
+
+

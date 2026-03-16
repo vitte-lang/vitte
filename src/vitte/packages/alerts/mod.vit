@@ -7,6 +7,10 @@ space vitte/alerts
 
 share all
 
+use vitte/alerts/internal/runtime as alerts_runtime_pkg
+use vitte/alerts/internal/validate as alerts_validate_pkg
+use vitte/alerts/internal/policy as alerts_policy_pkg
+
 pick AlertState {
   Idle
   Firing
@@ -199,6 +203,38 @@ form BenchReport {
   throughput: int
 }
 
+form AlertsHealth {
+  ok: bool
+  code: string
+  fired_ratio_pct: int
+  error_ratio_pct: int
+}
+
+form AlertsRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_dedupe: bool
+  supports_quota: bool
+  supports_routing: bool
+  supports_templates: bool
+}
+
+form AlertsDiagnostics {
+  code: string
+  message: string
+  quickfix: string
+}
+
+form AlertsPipelineResult {
+  decision: string
+  rule: AlertRule
+  alert_runtime: AlertRuntime
+  dedupe: DedupeTable
+  quota_states: [TenantQuotaState]
+  circuit: ProviderCircuit
+  notify_runtime: NotifyRuntime
+}
+
 form TenantQuotaStats {
   tenant_id: TenantId
   used: int
@@ -359,7 +395,216 @@ proc stats(rule: AlertRule) -> string {
        ",fired=" + rule.fired_count.to_string()
 }
 
+proc alert_validate_code(rule: AlertRule) -> string {
+  if alerts_validate_pkg.valid_rule_name(rule.name) == false { give "ALERT-RULE-NAME" }
+  if alerts_validate_pkg.valid_threshold(rule.threshold) == false { give "ALERT-THRESHOLD" }
+  if alerts_validate_pkg.valid_window_ticks(rule.window_ticks) == false { give "ALERT-WINDOW" }
+  if alerts_validate_pkg.valid_non_negative(rule.fired_count) == false { give "ALERT-FIRED-COUNT" }
+  if alerts_validate_pkg.valid_non_negative(rule.last_value) == false { give "ALERT-LAST-VALUE" }
+  give "ALERT-OK"
+}
+
+proc alert_validate(rule: AlertRule) -> bool {
+  give alert_validate_code(rule) == "ALERT-OK"
+}
+
+proc alert_normalize(rule: AlertRule) -> AlertRule {
+  let th = alerts_policy_pkg.normalize_threshold(rule.threshold)
+  let win = alerts_policy_pkg.normalize_window_ticks(rule.window_ticks)
+  let fired = rule.fired_count
+  if fired < 0 { fired = 0 }
+  let last = rule.last_value
+  if last < 0 { last = 0 }
+  give AlertRule(rule.name, rule.metric, rule.level, th, win, rule.state, rule.silenced_until, last, fired)
+}
+
+proc dedupe_normalize(table: DedupeTable) -> DedupeTable {
+  let ttl = alerts_policy_pkg.normalize_ttl_ticks(table.ttl_ticks)
+  let hits = table.dedupe_hits
+  let emitted = table.emitted
+  if hits < 0 { hits = 0 }
+  if emitted < 0 { emitted = 0 }
+  give DedupeTable(ttl, table.entries, hits, emitted)
+}
+
+proc quota_normalize(quotas: [TenantQuota]) -> [TenantQuota] {
+  let out: [TenantQuota] = []
+  let i: int = 0
+  loop {
+    if i >= quotas.len { break }
+    let q = quotas[i]
+    out = out.push(TenantQuota(
+      q.tenant_id,
+      alerts_policy_pkg.normalize_quota(q.per_minute),
+      alerts_policy_pkg.normalize_quota(q.burst)
+    ))
+    i = i + 1
+  }
+  give out
+}
+
+proc alerts_health(rule: AlertRule, runtime: AlertRuntime, notify_runtime: NotifyRuntime) -> AlertsHealth {
+  let code = alert_validate_code(rule)
+  if code != "ALERT-OK" { give AlertsHealth(false, code, 0, 0) }
+
+  let total = rule.fired_count + notify_runtime.alerts_suppressed + 1
+  let fired_ratio = (rule.fired_count * 100) / total
+  let errors = notify_runtime.notify_failures + notify_runtime.dead_letters.len
+  let error_ratio = (errors * 100) / (notify_runtime.retries + notify_runtime.notify_failures + 1)
+  if fired_ratio < 0 { fired_ratio = 0 }
+  if fired_ratio > 100 { fired_ratio = 100 }
+  if error_ratio < 0 { error_ratio = 0 }
+  if error_ratio > 100 { error_ratio = 100 }
+  if runtime.firing && error_ratio > 80 { give AlertsHealth(false, "ALERT-NOTIFY-DEGRADED", fired_ratio, error_ratio) }
+  give AlertsHealth(true, "ALERT-OK", fired_ratio, error_ratio)
+}
+
+proc alerts_runtime_info() -> AlertsRuntimeInfo {
+  give AlertsRuntimeInfo(
+    alerts_runtime_pkg.runtime_name(),
+    alerts_runtime_pkg.runtime_version(),
+    alerts_runtime_pkg.supports_dedupe(),
+    alerts_runtime_pkg.supports_quota(),
+    alerts_runtime_pkg.supports_routing(),
+    alerts_runtime_pkg.supports_templates()
+  )
+}
+
+proc route_validate(routes: [RoutePolicy]) -> bool {
+  let i: int = 0
+  loop {
+    if i >= routes.len { break }
+    if alerts_validate_pkg.valid_destination(routes[i].destination) == false { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc incident_backlog(groups: [IncidentGroup]) -> int {
+  let total = 0
+  let i: int = 0
+  loop {
+    if i >= groups.len { break }
+    total = total + groups[i].count
+    i = i + 1
+  }
+  give total
+}
+
+proc incident_max_age(groups: [IncidentGroup], now_ts: int) -> int {
+  let max_age = 0
+  let i: int = 0
+  loop {
+    if i >= groups.len { break }
+    let age = now_ts - groups[i].first_ts
+    if age > max_age { max_age = age }
+    i = i + 1
+  }
+  give max_age
+}
+
+proc incident_slo_ok(groups: [IncidentGroup], now_ts: int, max_open: int, max_age_ticks: int) -> bool {
+  let open_limit = max_open
+  if open_limit < 0 { open_limit = 0 }
+  let age_limit = max_age_ticks
+  if age_limit < 0 { age_limit = 0 }
+  if incident_backlog(groups) > open_limit { give false }
+  if incident_max_age(groups, now_ts) > age_limit { give false }
+  give true
+}
+
+proc alerts_diag_code(rule: AlertRule, template: NotificationTemplate, routes: [RoutePolicy], max_retries: int) -> string {
+  if alert_validate(rule) == false { give "VITTE-ALERTS0001" }
+  if alerts_validate_pkg.valid_template_version(template.version) == false { give "VITTE-ALERTS0002" }
+  if alerts_validate_pkg.valid_text(template.title, alerts_policy_pkg.max_template_text_len()) == false { give "VITTE-ALERTS0002" }
+  if alerts_validate_pkg.valid_text(template.context, alerts_policy_pkg.max_template_text_len()) == false { give "VITTE-ALERTS0002" }
+  if rule.level == AlertLevel.Critical || rule.level == AlertLevel.Page {
+    if alerts_validate_pkg.valid_destination(template.runbook_url) == false { give "VITTE-ALERTS0002" }
+  }
+  if route_validate(routes) == false { give "VITTE-ALERTS0003" }
+  if alerts_validate_pkg.valid_retry_limit(max_retries, alerts_policy_pkg.max_retries()) == false { give "VITTE-ALERTS0004" }
+  give "VITTE-ALERTS0000"
+}
+
+proc alerts_diag_message(code: string) -> string {
+  if code == "VITTE-ALERTS0000" { give "alerts configuration is valid" }
+  if code == "VITTE-ALERTS0001" { give "invalid alert rule configuration" }
+  if code == "VITTE-ALERTS0002" { give "invalid notification template" }
+  if code == "VITTE-ALERTS0003" { give "invalid route destination" }
+  if code == "VITTE-ALERTS0004" { give "invalid retry limit" }
+  give "alerts diagnostic " + code
+}
+
+proc alerts_diag_quickfix(code: string) -> string {
+  if code == "VITTE-ALERTS0000" { give "no action required" }
+  if code == "VITTE-ALERTS0001" { give "normalize threshold/window and validate rule name" }
+  if code == "VITTE-ALERTS0002" { give "set template version/title and runbook for critical/page" }
+  if code == "VITTE-ALERTS0003" { give "set non-empty route destination for every policy" }
+  if code == "VITTE-ALERTS0004" { give "use retry range 0.." + alerts_policy_pkg.max_retries().to_string() }
+  give "review alerting policy and routing configuration"
+}
+
+proc alerts_diagnostics(rule: AlertRule, template: NotificationTemplate, routes: [RoutePolicy], max_retries: int) -> AlertsDiagnostics {
+  let code = alerts_diag_code(rule, template, routes, max_retries)
+  give AlertsDiagnostics(code, alerts_diag_message(code), alerts_diag_quickfix(code))
+}
+
+proc process_event(
+  rule: AlertRule,
+  event: AlertEvent,
+  policy: AlertPolicy,
+  runtime: AlertRuntime,
+  dedupe: DedupeTable,
+  quotas: [TenantQuota],
+  quota_states: [TenantQuotaState],
+  routes: [RoutePolicy],
+  template: NotificationTemplate,
+  circuit: ProviderCircuit,
+  notify_runtime: NotifyRuntime,
+  windows: [PlannedSilence],
+  max_retries: int
+) -> AlertsPipelineResult {
+  let _ = policy
+  let _ = windows
+  let _ = max_retries
+  let _ = routes
+  let _ = template
+  let normalized_rule = alert_normalize(rule)
+  let normalized_dedupe = dedupe_normalize(dedupe)
+  let normalized_quotas = quota_normalize(quotas)
+  let rule2 = normalized_rule
+  let rt2 = runtime
+  if !can_trigger(normalized_rule, event.ts) {
+    give AlertsPipelineResult("suppress:silenced", rule2, rt2, normalized_dedupe, quota_states, circuit, notify_runtime)
+  }
+  let nr = notify_runtime
+  if event.value < rule2.threshold {
+    give AlertsPipelineResult("suppress:below-threshold", rule2, rt2, normalized_dedupe, quota_states, circuit, nr)
+  }
+  give AlertsPipelineResult("emit", rule2, rt2, normalized_dedupe, quota_states, circuit, nr)
+}
+
 proc ready() -> bool {
+  if alerts_runtime_pkg.runtime_status() == false { give false }
+  if alerts_validate_pkg.valid_threshold(alerts_policy_pkg.normalize_threshold(1)) == false { give false }
+  if alerts_validate_pkg.valid_window_ticks(alerts_policy_pkg.normalize_window_ticks(1)) == false { give false }
+  if alerts_validate_pkg.valid_ttl(alerts_policy_pkg.default_ttl_ticks(), alerts_policy_pkg.max_ttl_ticks()) == false { give false }
+  if alerts_validate_pkg.valid_quota(alerts_policy_pkg.default_quota_per_minute(), alerts_policy_pkg.max_quota_value()) == false { give false }
+  if alerts_validate_pkg.valid_quota(alerts_policy_pkg.default_quota_burst(), alerts_policy_pkg.max_quota_value()) == false { give false }
+  if alerts_validate_pkg.valid_retry_limit(alerts_policy_pkg.default_max_retries(), alerts_policy_pkg.max_retries()) == false { give false }
+  if alerts_validate_pkg.valid_duration_ticks(alerts_policy_pkg.default_silence_duration_ticks()) == false { give false }
+
+  let sample_rule = alert_normalize(rule_new("ready", 10, 2))
+  if alert_validate(sample_rule) == false { give false }
+  let sample_tpl = NotificationTemplate("v1", "title", "ctx", "https://runbook")
+  if alerts_validate_pkg.valid_template_version(sample_tpl.version) == false { give false }
+  if alerts_validate_pkg.valid_text(sample_tpl.title, alerts_policy_pkg.max_template_text_len()) == false { give false }
+  if alerts_validate_pkg.valid_destination("email:ops") == false { give false }
+  if route_validate([RoutePolicy(tenant_id("tenant:ready"), AlertLevel.Warn, NotificationChannel.Email, "email:ops")]) == false { give false }
+  if alerts_runtime_pkg.supports_planned_silence() == false { give false }
+  if alerts_runtime_pkg.supports_authz() == false { give false }
+  let dg = alerts_diagnostics(sample_rule, sample_tpl, [RoutePolicy(tenant_id("tenant:ready"), AlertLevel.Warn, NotificationChannel.Email, "email:ops")], alerts_policy_pkg.default_max_retries())
+  if dg.code != "VITTE-ALERTS0000" { give false }
   give true
 }
 
@@ -1205,7 +1450,7 @@ proc experimental_authz_explain(policies: [AuthzPolicy], actor: string, action: 
 }
 
 proc api_version() -> string {
-  give "2.1.0"
+  give "2.3.0"
 }
 
 
@@ -1225,4 +1470,6 @@ output_contract: Decisions deterministes emit suppress dead et etats auditables
 boundary: Aucun IO externe; calcul pur des decisions/routage/quotas/authz
 api_surface_stable: rule_new rule_eval severity silence dedupe_key notify package_meta api_version
 versioning: api_version() doit evoluer a chaque ajout public
+versioning_note: api_version=2.3.0 inclut diagnostics/pipeline/slo
 >>>
+

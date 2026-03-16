@@ -14,12 +14,44 @@ proc timer_delay_ms(ms: arduino_pkg.Millis) -> arduino_pkg.ArduinoResult[bool] {
   if timer_validate_pkg.valid_delay(ms) == false {
     give arduino_pkg.err[bool](arduino_pkg.ArduinoError.Unsupported)
   }
-  if ms > timer_policy_pkg.max_delay_ms() {
-    give arduino_pkg.err[bool](arduino_pkg.ArduinoError.Timeout)
-  }
-  let status: int = timer_runtime_pkg.runtime_delay_ms(ms)
+  let d = timer_policy_pkg.normalize_delay_ms(ms)
+  let status: int = timer_runtime_pkg.runtime_delay_ms(d)
   if status != 0 {
     give arduino_pkg.err[bool](arduino_pkg.ArduinoError.Unknown)
+  }
+  give arduino_pkg.ok[bool](true)
+}
+
+proc timer_bundle_validate(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_pkg.ArduinoResult[bool] {
+  let pvr = arduino_pkg.project_validate(bundle.preset)
+  when pvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[bool](pvr.error) }
+  let lvr = arduino_pkg.library_set_validate(bundle.preset.profile, bundle.libraries)
+  when lvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[bool](lvr.error) }
+  give arduino_pkg.ok[bool](true)
+}
+
+proc timer_bundle_tick_ms(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_pkg.Millis {
+  let d = timer_policy_pkg.normalize_delay_ms(bundle.preset.loop_period_ms)
+  give d
+}
+
+proc timer_bundle_delay(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_pkg.ArduinoResult[bool] {
+  let bvr = timer_bundle_validate(bundle)
+  when bvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[bool](bvr.error) }
+  give timer_delay_ms(timer_bundle_tick_ms(bundle))
+}
+
+proc timer_bundle_run_cycles(bundle: arduino_pkg.ArduinoProjectBundle, cycles: int) -> arduino_pkg.ArduinoResult[bool] {
+  let c = cycles
+  if c < 0 { c = 0 }
+  let i: int = 0
+  loop {
+    if i >= c { break }
+    let dr = timer_bundle_delay(bundle)
+    when dr is arduino_pkg.ArduinoResult.Err {
+      give arduino_pkg.err[bool](dr.error)
+    }
+    i = i + 1
   }
   give arduino_pkg.ok[bool](true)
 }
@@ -42,3 +74,8 @@ output_contract: ArduinoResult avec erreurs actionnables
 boundary: Timer hardware encapsule dans internal/runtime
 compat_policy: additive-only
 >>>
+
+
+
+
+

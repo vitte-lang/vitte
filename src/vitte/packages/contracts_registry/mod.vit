@@ -1,6 +1,12 @@
 <<<
 mod.vit
 package vitte/contracts_registry
+version: 2.0.0
+tier: contracts-governance
+purpose:
+  Registre de contrats publics versionnes.
+  Verification de coherence et capacite du registre.
+  API stable versionnee avec diagnostics runtime.
 >>>
 
 space vitte/contracts_registry
@@ -15,8 +21,43 @@ form ContractsRegistryConfig {
   max_contracts: int
 }
 
+form RegistryContract {
+  name: string
+  version: string
+  schema_hash: string
+}
+
+form ContractsRegistry {
+  config: ContractsRegistryConfig
+  contracts: [RegistryContract]
+  rejected: int
+}
+
+form ContractsRegistryStats {
+  contracts: int
+  unique_names: int
+  rejected: int
+}
+
+form ContractsRegistryRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_registry_store: bool
+  supports_diagnostics: bool
+}
+
+form ContractsRegistryHealth {
+  ok: bool
+  code: string
+  pressure_percent: int
+}
+
 pick ContractsRegistryError {
   InvalidConfig
+  InvalidContract
+  NotFound
+  CapacityExceeded
   Unsupported
   Timeout
   Internal
@@ -27,18 +68,276 @@ pick ContractsRegistryResult[T] {
   Err(error: ContractsRegistryError)
 }
 
+proc config_ok(cfg: ContractsRegistryConfig) -> bool {
+  if contracts_registry_validate_pkg.valid_registry_name_len(cfg.registry_name,
+                                                             contracts_registry_policy_pkg.max_registry_name_len()) == false {
+    give false
+  }
+  if contracts_registry_validate_pkg.valid_max_contracts(cfg.max_contracts) == false {
+    give false
+  }
+  give true
+}
+
 proc default_config() -> ContractsRegistryConfig {
   give ContractsRegistryConfig("default", true, contracts_registry_policy_pkg.default_max_contracts())
 }
 
+proc strict_config() -> ContractsRegistryConfig {
+  let cfg = default_config()
+  give ContractsRegistryConfig(cfg.registry_name, true, cfg.max_contracts)
+}
+
+proc with_max_contracts(cfg: ContractsRegistryConfig, max_contracts: int) -> ContractsRegistryConfig {
+  give ContractsRegistryConfig(cfg.registry_name,
+                               cfg.strict,
+                               contracts_registry_policy_pkg.normalize_max_contracts(max_contracts))
+}
+
+proc with_registry_name(cfg: ContractsRegistryConfig, registry_name: string) -> ContractsRegistryConfig {
+  give ContractsRegistryConfig(registry_name,
+                               cfg.strict,
+                               cfg.max_contracts)
+}
+
 proc validate_config(cfg: ContractsRegistryConfig) -> ContractsRegistryResult[bool] {
-  if contracts_registry_validate_pkg.valid_registry_name(cfg.registry_name) == false {
-    give ContractsRegistryResult.Err(ContractsRegistryError.InvalidConfig)
-  }
-  if contracts_registry_validate_pkg.valid_max_contracts(cfg.max_contracts) == false {
-    give ContractsRegistryResult.Err(ContractsRegistryError.InvalidConfig)
-  }
+  if config_ok(cfg) == false { give ContractsRegistryResult.Err(ContractsRegistryError.InvalidConfig) }
   give ContractsRegistryResult.Ok(true)
+}
+
+proc validate_config_code(cfg: ContractsRegistryConfig) -> string {
+  if config_ok(cfg) == false { give "invalid-config" }
+  give "ok"
+}
+
+proc normalize_config(cfg: ContractsRegistryConfig) -> ContractsRegistryConfig {
+  let name = cfg.registry_name
+  if name.len == 0 { name = "default" }
+  if name.len > contracts_registry_policy_pkg.max_registry_name_len() {
+    name = name.slice(0, contracts_registry_policy_pkg.max_registry_name_len())
+  }
+  give ContractsRegistryConfig(name,
+                               cfg.strict,
+                               contracts_registry_policy_pkg.normalize_max_contracts(cfg.max_contracts))
+}
+
+proc registry_new(cfg: ContractsRegistryConfig) -> ContractsRegistryResult[ContractsRegistry] {
+  let vr = validate_config(cfg)
+  when vr is ContractsRegistryResult.Err { give ContractsRegistryResult.Err(vr.error) }
+  give ContractsRegistryResult.Ok(ContractsRegistry(cfg, [], 0))
+}
+
+proc contract_new(name: string, contract_version_value: string, schema_hash: string) -> ContractsRegistryResult[RegistryContract] {
+  if contracts_registry_validate_pkg.valid_contract_name(name,
+                                                         contracts_registry_policy_pkg.max_contract_name_len()) == false {
+    give ContractsRegistryResult.Err(ContractsRegistryError.InvalidContract)
+  }
+  if contracts_registry_validate_pkg.valid_contract_version(contract_version_value,
+                                                            contracts_registry_policy_pkg.max_contract_version_len()) == false {
+    give ContractsRegistryResult.Err(ContractsRegistryError.InvalidContract)
+  }
+  if schema_hash.len == 0 { give ContractsRegistryResult.Err(ContractsRegistryError.InvalidContract) }
+  give ContractsRegistryResult.Ok(RegistryContract(name, contract_version_value, schema_hash))
+}
+
+proc key_of(c: RegistryContract) -> string {
+  give c.name + "@" + c.version
+}
+
+proc contains(reg: ContractsRegistry, name: string, contract_version_value: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= reg.contracts.len { break }
+    if reg.contracts[i].name == name && reg.contracts[i].version == contract_version_value { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc find(reg: ContractsRegistry, name: string, contract_version_value: string) -> ContractsRegistryResult[RegistryContract] {
+  let i: int = 0
+  loop {
+    if i >= reg.contracts.len { break }
+    if reg.contracts[i].name == name && reg.contracts[i].version == contract_version_value {
+      give ContractsRegistryResult.Ok(reg.contracts[i])
+    }
+    i = i + 1
+  }
+  give ContractsRegistryResult.Err(ContractsRegistryError.NotFound)
+}
+
+proc add(reg: ContractsRegistry, contract: RegistryContract) -> ContractsRegistryResult[ContractsRegistry] {
+  if contains(reg, contract.name, contract.version) {
+    give ContractsRegistryResult.Ok(reg)
+  }
+
+  if reg.contracts.len >= reg.config.max_contracts {
+    give ContractsRegistryResult.Err(ContractsRegistryError.CapacityExceeded)
+  }
+
+  give ContractsRegistryResult.Ok(ContractsRegistry(reg.config,
+                                                    reg.contracts.push(contract),
+                                                    reg.rejected))
+}
+
+proc upsert(reg: ContractsRegistry, contract: RegistryContract) -> ContractsRegistryResult[ContractsRegistry] {
+  let out: [RegistryContract] = []
+  let updated = false
+
+  let i: int = 0
+  loop {
+    if i >= reg.contracts.len { break }
+    if reg.contracts[i].name == contract.name && reg.contracts[i].version == contract.version {
+      out = out.push(contract)
+      updated = true
+    } else {
+      out = out.push(reg.contracts[i])
+    }
+    i = i + 1
+  }
+
+  if updated {
+    give ContractsRegistryResult.Ok(ContractsRegistry(reg.config, out, reg.rejected))
+  }
+
+  if out.len >= reg.config.max_contracts {
+    give ContractsRegistryResult.Err(ContractsRegistryError.CapacityExceeded)
+  }
+
+  give ContractsRegistryResult.Ok(ContractsRegistry(reg.config,
+                                                    out.push(contract),
+                                                    reg.rejected))
+}
+
+proc remove(reg: ContractsRegistry, name: string, contract_version_value: string) -> ContractsRegistryResult[ContractsRegistry] {
+  if contains(reg, name, contract_version_value) == false {
+    give ContractsRegistryResult.Err(ContractsRegistryError.NotFound)
+  }
+
+  let out: [RegistryContract] = []
+  let i: int = 0
+  loop {
+    if i >= reg.contracts.len { break }
+    if reg.contracts[i].name != name || reg.contracts[i].version != contract_version_value {
+      out = out.push(reg.contracts[i])
+    }
+    i = i + 1
+  }
+
+  give ContractsRegistryResult.Ok(ContractsRegistry(reg.config, out, reg.rejected))
+}
+
+proc size(reg: ContractsRegistry) -> int {
+  give reg.contracts.len
+}
+
+proc unique_name_count(reg: ContractsRegistry) -> int {
+  let seen: [string] = []
+  let i: int = 0
+  loop {
+    if i >= reg.contracts.len { break }
+
+    let n = reg.contracts[i].name
+    let has = false
+    let j: int = 0
+    loop {
+      if j >= seen.len { break }
+      if seen[j] == n { has = true }
+      j = j + 1
+    }
+
+    if has == false { seen = seen.push(n) }
+    i = i + 1
+  }
+
+  give seen.len
+}
+
+proc stats(reg: ContractsRegistry) -> ContractsRegistryStats {
+  give ContractsRegistryStats(reg.contracts.len,
+                              unique_name_count(reg),
+                              reg.rejected)
+}
+
+proc registry_validate_code(reg: ContractsRegistry) -> string {
+  if config_ok(reg.config) == false { give "invalid-config" }
+  if contracts_registry_validate_pkg.valid_non_negative(reg.rejected) == false { give "invalid-rejected" }
+  if reg.contracts.len > reg.config.max_contracts { give "too-many-contracts" }
+
+  let i: int = 0
+  loop {
+    if i >= reg.contracts.len { break }
+
+    if contracts_registry_validate_pkg.valid_contract_name(reg.contracts[i].name,
+                                                           contracts_registry_policy_pkg.max_contract_name_len()) == false {
+      give "invalid-contract-name"
+    }
+    if contracts_registry_validate_pkg.valid_contract_version(reg.contracts[i].version,
+                                                              contracts_registry_policy_pkg.max_contract_version_len()) == false {
+      give "invalid-contract-version"
+    }
+    if reg.contracts[i].schema_hash.len == 0 { give "invalid-contract-hash" }
+
+    i = i + 1
+  }
+
+  give "ok"
+}
+
+proc registry_validate(reg: ContractsRegistry) -> bool {
+  give registry_validate_code(reg) == "ok"
+}
+
+proc registry_normalize(reg: ContractsRegistry) -> ContractsRegistry {
+  let cfg = normalize_config(reg.config)
+
+  let out: [RegistryContract] = []
+  let i: int = 0
+  loop {
+    if i >= reg.contracts.len { break }
+    if out.len >= cfg.max_contracts { break }
+
+    let c = reg.contracts[i]
+    if contracts_registry_validate_pkg.valid_contract_name(c.name,
+                                                           contracts_registry_policy_pkg.max_contract_name_len()) &&
+       contracts_registry_validate_pkg.valid_contract_version(c.version,
+                                                              contracts_registry_policy_pkg.max_contract_version_len()) &&
+       c.schema_hash.len > 0 {
+      out = out.push(c)
+    }
+    i = i + 1
+  }
+
+  let rejected = reg.rejected
+  if rejected < 0 { rejected = 0 }
+  give ContractsRegistry(cfg, out, rejected)
+}
+
+proc pressure_percent(reg: ContractsRegistry) -> int {
+  if reg.config.max_contracts <= 0 { give 0 }
+  let pct = reg.contracts.len * 100 / reg.config.max_contracts
+  if pct < 0 { pct = 0 }
+  if pct > 100 { pct = 100 }
+  give pct
+}
+
+proc registry_health(reg: ContractsRegistry) -> ContractsRegistryHealth {
+  let code = registry_validate_code(reg)
+  if code != "ok" { give ContractsRegistryHealth(false, code, 100) }
+
+  let pct = pressure_percent(reg)
+  if contracts_registry_validate_pkg.valid_percent(pct) == false {
+    give ContractsRegistryHealth(false, "invalid-percent", 100)
+  }
+  give ContractsRegistryHealth(true, "ok", pct)
+}
+
+proc runtime_info() -> ContractsRegistryRuntimeInfo {
+  give ContractsRegistryRuntimeInfo(contracts_registry_runtime_pkg.runtime_name(),
+                                    contracts_registry_runtime_pkg.runtime_version(),
+                                    contracts_registry_runtime_pkg.supports_no_std(),
+                                    contracts_registry_runtime_pkg.supports_registry_store(),
+                                    contracts_registry_runtime_pkg.supports_diagnostics())
 }
 
 proc healthcheck(cfg: ContractsRegistryConfig) -> ContractsRegistryResult[bool] {
@@ -50,26 +349,67 @@ proc healthcheck(cfg: ContractsRegistryConfig) -> ContractsRegistryResult[bool] 
   give ContractsRegistryResult.Ok(true)
 }
 
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_max_contracts,with_registry_name,validate_config,validate_config_code,normalize_config,registry_new,contract_new,key_of,contains,find,add,upsert,remove,size,unique_name_count,stats,registry_validate_code,registry_validate,registry_normalize,pressure_percent,registry_health,runtime_info,healthcheck,stable_api_surface_hash,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,api_version,package_meta,ready"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
 proc version() -> string {
-  give "v1"
+  give "v2"
 }
 
 proc capabilities() -> [string] {
-  give ["contract-index", "strict-registry", "compat-check"]
+  give ["contract-index", "strict-registry", "compat-check", "registry-store"]
 }
 
 proc diagnostics_message(code: string) -> string {
   if code == "VITTE-CTRG0001" { give "invalid contracts_registry configuration" }
+  if code == "VITTE-CTRG0002" { give "invalid contract identity in registry" }
+  if code == "VITTE-CTRG0003" { give "registry capacity exceeded" }
   give "contracts_registry diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
   if code == "VITTE-CTRG0001" { give "set non-empty registry_name and valid max_contracts" }
+  if code == "VITTE-CTRG0002" { give "normalize contract name/version/hash before add" }
+  if code == "VITTE-CTRG0003" { give "increase max_contracts or remove stale entries" }
   give "review contracts_registry configuration"
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  let cfg = strict_config()
+  let hr: ContractsRegistryResult[bool] = healthcheck(cfg)
+  when hr is ContractsRegistryResult.Err { give false }
+
+  let rr = registry_new(cfg)
+  when rr is ContractsRegistryResult.Err { give false }
+
+  let c = contract_new("user", "1.0.0", "abc123")
+  when c is ContractsRegistryResult.Err { give false }
+
+  let a = add(rr.value, c.value)
+  when a is ContractsRegistryResult.Err { give false }
+
+  if registry_validate(a.value) == false { give false }
+  if stable_api_surface_hash() <= 0 { give false }
+  give true
 }
 
 proc package_meta() -> string {
@@ -77,7 +417,7 @@ proc package_meta() -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give stable_ready()
 }
 
 <<< ROLE-CONTRACT
@@ -91,5 +431,5 @@ input_contract: Config explicite du registre
 output_contract: Validation stable et predictible
 boundary: Aucun import legacy; aliases explicites uniquement
 compat_policy: additive-only
-api_version: v1
+api_version: v2
 >>>

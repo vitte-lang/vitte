@@ -1,10 +1,19 @@
 <<<
 mod.vit
 package vitte/auth
+version: 2.0.0
+tier: security-core
+purpose:
+  Authentification et autorisation deterministes.
+  Gestion de session/token explicite.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/auth
 
+use vitte/auth/internal/runtime as auth_runtime_pkg
+use vitte/auth/internal/validate as auth_validate_pkg
+use vitte/auth/internal/policy as auth_policy_pkg
 
 pick AuthRole {
   Guest
@@ -19,6 +28,11 @@ pick AuthError {
   Expired
   InvalidCredentials
   Forbidden
+}
+
+pick AuthResult[T] {
+  Ok(value: T)
+  Err(error: AuthError)
 }
 
 form Principal {
@@ -48,6 +62,30 @@ form Credentials {
   username: string
   password: string
   otp: string
+}
+
+form AuthConfig {
+  strict: bool
+  token_ttl: int
+  require_active: bool
+  allow_service: bool
+  require_otp: bool
+  clock_skew: int
+}
+
+form AuthRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_otp: bool
+  supports_diagnostics: bool
+}
+
+form AuthHealth {
+  ok: bool
+  code: string
+  ttl_ok: bool
+  runtime_ok: bool
 }
 
 proc role_rank(role: AuthRole) -> int {
@@ -81,57 +119,144 @@ proc principal_service(id: string) -> Principal {
 }
 
 proc default_policy() -> AuthPolicy {
-  give AuthPolicy(AuthRole.User, true, false)
+  give AuthPolicy(AuthRole.User,
+                  auth_policy_pkg.default_require_active(),
+                  auth_policy_pkg.default_allow_service())
+}
+
+proc default_config() -> AuthConfig {
+  give AuthConfig(false,
+                  auth_policy_pkg.default_token_ttl(),
+                  auth_policy_pkg.default_require_active(),
+                  auth_policy_pkg.default_allow_service(),
+                  auth_policy_pkg.default_require_otp(),
+                  0)
+}
+
+proc strict_config() -> AuthConfig {
+  let cfg = default_config()
+  give AuthConfig(true,
+                  cfg.token_ttl,
+                  true,
+                  false,
+                  true,
+                  auth_policy_pkg.max_clock_skew())
+}
+
+proc with_token_ttl(cfg: AuthConfig, token_ttl: int) -> AuthConfig {
+  give AuthConfig(cfg.strict,
+                  auth_policy_pkg.normalize_token_ttl(token_ttl),
+                  cfg.require_active,
+                  cfg.allow_service,
+                  cfg.require_otp,
+                  cfg.clock_skew)
+}
+
+proc with_clock_skew(cfg: AuthConfig, clock_skew: int) -> AuthConfig {
+  give AuthConfig(cfg.strict,
+                  cfg.token_ttl,
+                  cfg.require_active,
+                  cfg.allow_service,
+                  cfg.require_otp,
+                  auth_policy_pkg.normalize_clock_skew(clock_skew))
+}
+
+proc validate_config(cfg: AuthConfig) -> AuthResult[bool] {
+  if auth_validate_pkg.valid_ttl(cfg.token_ttl, auth_policy_pkg.min_token_ttl(), auth_policy_pkg.max_token_ttl()) == false {
+    give AuthResult.Err(AuthError.InvalidCredentials)
+  }
+  if auth_validate_pkg.valid_clock_skew(cfg.clock_skew, auth_policy_pkg.max_clock_skew()) == false {
+    give AuthResult.Err(AuthError.InvalidCredentials)
+  }
+  give AuthResult.Ok(true)
 }
 
 proc authenticate(username: string, password: string) -> Principal {
-  if username.len == 0 || password.len == 0 {
+  if auth_validate_pkg.valid_username(username) == false || auth_validate_pkg.valid_password(password) == false {
     give principal_guest()
   }
-  if username == "admin" {
+  if username == "admin" && password.len >= 10 {
     give principal_admin(username)
   }
   give principal_user(username)
 }
 
 proc authenticate_with(creds: Credentials) -> Principal {
-  if creds.username.len == 0 || creds.password.len == 0 { give principal_guest() }
+  if auth_validate_pkg.valid_username(creds.username) == false { give principal_guest() }
+  if auth_validate_pkg.valid_password(creds.password) == false { give principal_guest() }
   if creds.username == "service" && creds.otp == "svc-ok" { give principal_service("service") }
   if creds.username == "admin" && creds.otp == "000000" { give principal_admin("admin") }
-  if creds.password.len < 4 { give principal_guest() }
   give principal_user(creds.username)
 }
 
+proc authenticate_with_config(creds: Credentials, cfg: AuthConfig) -> Principal {
+  let vr = validate_config(cfg)
+  when vr is AuthResult.Err { give principal_guest() }
+
+  if cfg.require_otp {
+    if creds.otp.len == 0 { give principal_guest() }
+  }
+
+  let p = authenticate_with(creds)
+  if cfg.allow_service == false && p.role == AuthRole.Service { give principal_guest() }
+  give p
+}
+
 proc issue_token(principal: Principal, ttl: int) -> Session {
-  if ttl <= 0 {
+  if principal.id.len == 0 {
     give Session(principal, "", 0)
   }
-  give Session(principal, "tok:" + principal.id, ttl)
+  let subject = auth_runtime_pkg.sanitize_subject(principal.id, auth_policy_pkg.max_subject_len())
+  if auth_validate_pkg.valid_subject(subject) == false { give Session(principal, "", 0) }
+  if principal.active == false { give Session(principal, "", 0) }
+  let t = auth_policy_pkg.normalize_token_ttl(ttl)
+  let token = auth_runtime_pkg.build_token(subject)
+  if token.len == 0 { give Session(principal, "", 0) }
+  if token.len > auth_policy_pkg.max_token_len() { give Session(principal, "", 0) }
+  give Session(Principal(subject, principal.role, principal.active), token, t)
+}
+
+proc issue_token_with_config(principal: Principal, cfg: AuthConfig) -> Session {
+  give issue_token(principal, cfg.token_ttl)
 }
 
 proc refresh(session: Session, now: int, ttl: int) -> Session {
-  if session.token.len == 0 { give session }
+  if auth_validate_pkg.valid_token(session.token) == false { give session }
   if !session.principal.active { give session }
-  if now >= session.expires_at { give session }
-  if ttl <= 0 { give session }
-  give Session(session.principal, session.token, now + ttl)
+  if auth_validate_pkg.valid_expiry(now, session.expires_at) == false { give session }
+  let t = auth_policy_pkg.normalize_token_ttl(ttl)
+  give Session(session.principal, session.token, now + t)
+}
+
+proc refresh_with_config(session: Session, now: int, cfg: AuthConfig) -> Session {
+  give refresh(session, now, cfg.token_ttl)
 }
 
 proc parse_token_subject(token: string) -> string {
-  if token.len < 4 { give "" }
-  if token.slice(0, 4) != "tok:" { give "" }
-  give token.slice(4, token.len)
+  if auth_validate_pkg.valid_token(token) == false { give "" }
+  let p = auth_runtime_pkg.token_prefix()
+  give token.slice(p.len, token.len)
 }
 
 proc token_matches_principal(session: Session) -> bool {
-  give parse_token_subject(session.token) == session.principal.id
+  let subject = parse_token_subject(session.token)
+  give auth_runtime_pkg.const_time_eq(subject, session.principal.id)
 }
 
 proc validate(session: Session, now: int) -> AuthError {
-  if session.token.len == 0 { give AuthError.MissingToken }
+  if auth_validate_pkg.valid_token(session.token) == false { give AuthError.MissingToken }
+  if auth_validate_pkg.valid_username(session.principal.id) == false { give AuthError.InvalidCredentials }
   if !session.principal.active { give AuthError.InvalidCredentials }
-  if now >= session.expires_at { give AuthError.Expired }
+  if auth_validate_pkg.valid_expiry(now, session.expires_at) == false { give AuthError.Expired }
   if !token_matches_principal(session) { give AuthError.InvalidCredentials }
+  give AuthError.None
+}
+
+proc validate_with_config(session: Session, now: int, cfg: AuthConfig) -> AuthError {
+  let err = validate(session, now)
+  if err != AuthError.None { give err }
+  if cfg.require_active && session.principal.active == false { give AuthError.InvalidCredentials }
+  if cfg.allow_service == false && session.principal.role == AuthRole.Service { give AuthError.Forbidden }
   give AuthError.None
 }
 
@@ -159,6 +284,11 @@ proc decide_access(session: Session, required: AuthRole, now: int, policy: AuthP
     give AccessDecision(false, "required-role")
   }
   give AccessDecision(true, "ok")
+}
+
+proc decide_access_with_config(session: Session, required: AuthRole, now: int, cfg: AuthConfig) -> AccessDecision {
+  let policy = AuthPolicy(required, cfg.require_active, cfg.allow_service)
+  give decide_access(session, required, now, policy)
 }
 
 proc decision_error(d: AccessDecision) -> AuthError {
@@ -209,14 +339,111 @@ proc revoke(session: Session) -> Session {
   give Session(p, "", 0)
 }
 
-proc ready() -> bool {
+proc auth_runtime_info() -> AuthRuntimeInfo {
+  give AuthRuntimeInfo(auth_runtime_pkg.runtime_name(),
+                       auth_runtime_pkg.runtime_version(),
+                       auth_runtime_pkg.supports_no_std(),
+                       auth_runtime_pkg.supports_otp(),
+                       auth_runtime_pkg.supports_diagnostics())
+}
+
+proc auth_health(cfg: AuthConfig) -> AuthHealth {
+  let vr = validate_config(cfg)
+  when vr is AuthResult.Err { give AuthHealth(false, "invalid-config", false, false) }
+
+  if auth_runtime_pkg.runtime_status() == false {
+    give AuthHealth(false, "runtime-down", true, false)
+  }
+
+  if cfg.token_ttl <= auth_policy_pkg.warn_ttl_low() {
+    give AuthHealth(false, "ttl-low", false, true)
+  }
+
+  give AuthHealth(true, "ok", true, true)
+}
+
+proc healthcheck(cfg: AuthConfig) -> AuthResult[bool] {
+  let h = auth_health(cfg)
+  if h.ok == false { give AuthResult.Err(AuthError.InvalidCredentials) }
+  give AuthResult.Ok(true)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_token_ttl,with_clock_skew,validate_config,authenticate,authenticate_with,authenticate_with_config,issue_token,issue_token_with_config,refresh,refresh_with_config,parse_token_subject,token_matches_principal,validate,validate_with_config,can_access,decide_access,decide_access_with_config,decision_error,revoke,auth_runtime_info,auth_health,healthcheck,stable_api_surface_hash,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["authn", "authz", "token", "policy", "diagnostics", auth_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-AUTH0001" { give "invalid credentials or malformed principal" }
+  if code == "VITTE-AUTH0002" { give "token missing or invalid" }
+  if code == "VITTE-AUTH0003" { give "session expired" }
+  if code == "VITTE-AUTH0004" { give "forbidden by role or policy" }
+  give "auth diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-AUTH0001" { give "verify username/password format and account state" }
+  if code == "VITTE-AUTH0002" { give "issue a new token and validate token prefix/subject" }
+  if code == "VITTE-AUTH0003" { give "refresh session or increase token ttl within policy" }
+  if code == "VITTE-AUTH0004" { give "raise principal role or relax policy min_role" }
+  give "inspect auth config and policy"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if auth_runtime_pkg.runtime_status() == false { give false }
+  if auth_runtime_pkg.supports_no_std() == false { give false }
+
+  let cfg = strict_config()
+  let v = validate_config(cfg)
+  when v is AuthResult.Err { give false }
+
+  let p = authenticate_with_config(Credentials("admin", "admin123456", "000000"), cfg)
+  if p.role != AuthRole.Admin { give false }
+
+  let s = issue_token_with_config(p, cfg)
+  if s.token.len == 0 { give false }
+
+  let err = validate_with_config(s, 1, cfg)
+  if err != AuthError.None { give false }
+
+  let d = decide_access_with_config(s, AuthRole.Admin, 1, cfg)
+  if d.allowed == false { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
   give true
 }
 
-
+proc ready() -> bool {
+  give stable_ready()
+}
 
 proc package_meta() -> string {
-    give "vitte/auth"
+  give "vitte/auth"
 }
 
 <<< ROLE-CONTRACT
@@ -225,4 +452,5 @@ role: Authentification autorisation et gestion des roles
 input_contract: Donnees reseau ou securite deja normalisees et explicites
 output_contract: Resultats transport ou securite avec erreurs explicites
 boundary: Ne choisit pas la politique metier; expose seulement la surface technique
+versioning_note: stable_api_version=2.0.0
 >>>

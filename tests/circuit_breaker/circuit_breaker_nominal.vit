@@ -1,0 +1,33 @@
+use vitte/circuit_breaker as cb_pkg
+
+entry main at core/app {
+  let cfg = cb_pkg.strict_config()
+  let vr: cb_pkg.CircuitBreakerResult[bool] = cb_pkg.validate_config(cfg)
+  when vr is cb_pkg.CircuitBreakerResult.Err {
+    return 1
+  }
+
+  let b0 = cb_pkg.breaker_new(cfg.threshold, cfg.cooldown_ticks)
+  let b1 = cb_pkg.record_failure(b0, 1)
+  let b2 = cb_pkg.record_failure(b1, 2)
+
+  if cb_pkg.allow(b2, 2) {
+    return 1
+  }
+
+  let b3 = cb_pkg.on_tick(b2, 100)
+  if cb_pkg.allow(b3, 100) == false {
+    return 1
+  }
+
+  let b4 = cb_pkg.record_success(b3)
+  if cb_pkg.is_closed(b4) == false {
+    return 1
+  }
+
+  if cb_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

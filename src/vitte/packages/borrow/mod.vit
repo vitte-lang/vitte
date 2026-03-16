@@ -1,10 +1,19 @@
 <<<
 mod.vit
 package vitte/borrow
+version: 2.0.0
+tier: compiler-safety
+purpose:
+  Regles ownership et emprunt deterministes.
+  Detection de conflits shared/mutable.
+  API stable avec validation, normalisation et diagnostics.
 >>>
 
 space vitte/borrow
 
+use vitte/borrow/internal/runtime as borrow_runtime_pkg
+use vitte/borrow/internal/validate as borrow_validate_pkg
+use vitte/borrow/internal/policy as borrow_policy_pkg
 
 pick BorrowMode {
   Shared
@@ -15,6 +24,14 @@ pick BorrowError {
   None
   Conflict
   NotFound
+  InvalidSymbol
+  InvalidOwner
+  TableOverflow
+}
+
+pick BorrowResult[T] {
+  Ok(value: T)
+  Err(error: BorrowError)
 }
 
 form BorrowRef {
@@ -28,6 +45,51 @@ form BorrowTable {
   refs: [BorrowRef]
 }
 
+form BorrowConfig {
+  strict: bool
+  allow_reentrant_shared: bool
+  max_active_refs_per_symbol: int
+}
+
+form BorrowRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_normalize: bool
+  supports_diagnostics: bool
+}
+
+form BorrowHealthSummary {
+  ok: bool
+  code: string
+  active_refs: int
+  conflicts: int
+}
+
+proc default_config() -> BorrowConfig {
+  give BorrowConfig(borrow_policy_pkg.default_strict(),
+                    borrow_policy_pkg.default_allow_reentrant_shared(),
+                    borrow_policy_pkg.max_active_refs_per_symbol())
+}
+
+proc strict_config() -> BorrowConfig {
+  give BorrowConfig(true, false, borrow_policy_pkg.max_active_refs_per_symbol())
+}
+
+proc with_limit(cfg: BorrowConfig, max_active_refs_per_symbol: int) -> BorrowConfig {
+  give BorrowConfig(cfg.strict,
+                    cfg.allow_reentrant_shared,
+                    borrow_policy_pkg.normalize_active_refs_per_symbol(max_active_refs_per_symbol))
+}
+
+proc validate_config(cfg: BorrowConfig) -> BorrowResult[bool] {
+  if borrow_validate_pkg.valid_active_count(cfg.max_active_refs_per_symbol,
+                                            borrow_policy_pkg.max_active_refs_per_symbol()) == false {
+    give BorrowResult.Err(BorrowError.TableOverflow)
+  }
+  give BorrowResult.Ok(true)
+}
+
 proc table_new() -> BorrowTable {
   give BorrowTable([])
 }
@@ -36,9 +98,26 @@ proc borrow_ref(symbol: string, owner: string, mode: BorrowMode) -> BorrowRef {
   give BorrowRef(symbol, owner, mode, true)
 }
 
+proc borrow_ref_checked(symbol: string, owner: string, mode: BorrowMode) -> BorrowResult[BorrowRef] {
+  let sym = borrow_runtime_pkg.sanitize_field(symbol, borrow_policy_pkg.max_symbol_len())
+  let own = borrow_runtime_pkg.sanitize_field(owner, borrow_policy_pkg.max_owner_len())
+
+  if borrow_validate_pkg.valid_symbol(sym, borrow_policy_pkg.max_symbol_len()) == false {
+    give BorrowResult.Err(BorrowError.InvalidSymbol)
+  }
+  if borrow_validate_pkg.valid_owner(own, borrow_policy_pkg.max_owner_len()) == false {
+    give BorrowResult.Err(BorrowError.InvalidOwner)
+  }
+
+  give BorrowResult.Ok(BorrowRef(sym, own, mode, true))
+}
+
 proc conflicts(existing: BorrowRef, incoming: BorrowRef) -> bool {
   if !existing.active || !incoming.active { give false }
   if existing.symbol != incoming.symbol { give false }
+  if existing.owner == incoming.owner && existing.mode == BorrowMode.Shared && incoming.mode == BorrowMode.Shared {
+    give false
+  }
   if existing.mode == BorrowMode.Mutable { give true }
   if incoming.mode == BorrowMode.Mutable { give true }
   give false
@@ -54,9 +133,58 @@ proc can_borrow(tab: BorrowTable, incoming: BorrowRef) -> bool {
   give true
 }
 
+proc can_borrow_with_config(tab: BorrowTable, incoming: BorrowRef, cfg: BorrowConfig) -> bool {
+  if can_borrow(tab, incoming) == false { give false }
+
+  if cfg.allow_reentrant_shared == false {
+    let i: int = 0
+    loop {
+      if i >= tab.refs.len { break }
+      let r = tab.refs[i]
+      if r.active && r.symbol == incoming.symbol && r.owner == incoming.owner {
+        give false
+      }
+      i = i + 1
+    }
+  }
+
+  let symbol_active: int = 0
+  let j: int = 0
+  loop {
+    if j >= tab.refs.len { break }
+    let r = tab.refs[j]
+    if r.active && r.symbol == incoming.symbol { symbol_active = symbol_active + 1 }
+    j = j + 1
+  }
+  if symbol_active >= cfg.max_active_refs_per_symbol {
+    give false
+  }
+
+  give true
+}
+
 proc acquire(tab: BorrowTable, incoming: BorrowRef) -> BorrowTable {
   if !can_borrow(tab, incoming) { give tab }
   give BorrowTable(tab.refs.push(incoming))
+}
+
+proc acquire_checked(tab: BorrowTable, incoming: BorrowRef) -> BorrowResult[BorrowTable] {
+  if borrow_validate_pkg.valid_table_size(tab.refs.len, borrow_policy_pkg.max_total_refs()) == false {
+    give BorrowResult.Err(BorrowError.TableOverflow)
+  }
+
+  if can_borrow(tab, incoming) == false { give BorrowResult.Err(BorrowError.Conflict) }
+  give BorrowResult.Ok(BorrowTable(tab.refs.push(incoming)))
+}
+
+proc acquire_with_config(tab: BorrowTable, incoming: BorrowRef, cfg: BorrowConfig) -> BorrowResult[BorrowTable] {
+  let vr = validate_config(cfg)
+  when vr is BorrowResult.Err { give BorrowResult.Err(vr.error) }
+
+  if can_borrow_with_config(tab, incoming, cfg) == false {
+    give BorrowResult.Err(BorrowError.Conflict)
+  }
+  give BorrowResult.Ok(BorrowTable(tab.refs.push(incoming)))
 }
 
 proc release(tab: BorrowTable, symbol: string, owner: string) -> BorrowTable {
@@ -73,6 +201,29 @@ proc release(tab: BorrowTable, symbol: string, owner: string) -> BorrowTable {
     i = i + 1
   }
   give BorrowTable(out)
+}
+
+proc release_checked(tab: BorrowTable, symbol: string, owner: string) -> BorrowResult[BorrowTable] {
+  if borrow_validate_pkg.valid_symbol(symbol, borrow_policy_pkg.max_symbol_len()) == false {
+    give BorrowResult.Err(BorrowError.InvalidSymbol)
+  }
+  if borrow_validate_pkg.valid_owner(owner, borrow_policy_pkg.max_owner_len()) == false {
+    give BorrowResult.Err(BorrowError.InvalidOwner)
+  }
+
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    if tab.refs[i].symbol == symbol && tab.refs[i].owner == owner && tab.refs[i].active {
+      found = true
+      break
+    }
+    i = i + 1
+  }
+  if !found { give BorrowResult.Err(BorrowError.NotFound) }
+
+  give BorrowResult.Ok(release(tab, symbol, owner))
 }
 
 proc active_count(tab: BorrowTable, symbol: string) -> int {
@@ -190,20 +341,163 @@ proc revoke_symbol(tab: BorrowTable, symbol: string) -> BorrowTable {
   give BorrowTable(out)
 }
 
+proc table_validate_code(tab: BorrowTable) -> string {
+  if borrow_validate_pkg.valid_table_size(tab.refs.len, borrow_policy_pkg.max_total_refs()) == false {
+    give "table-overflow"
+  }
+
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+    let r = tab.refs[i]
+
+    if borrow_validate_pkg.valid_symbol(r.symbol, borrow_policy_pkg.max_symbol_len()) == false {
+      give "invalid-symbol"
+    }
+    if borrow_validate_pkg.valid_owner(r.owner, borrow_policy_pkg.max_owner_len()) == false {
+      give "invalid-owner"
+    }
+
+    i = i + 1
+  }
+
+  give "ok"
+}
+
+proc table_validate(tab: BorrowTable) -> bool {
+  give table_validate_code(tab) == "ok"
+}
+
+proc table_normalize(tab: BorrowTable) -> BorrowTable {
+  let out: [BorrowRef] = []
+  let i: int = 0
+  loop {
+    if i >= tab.refs.len { break }
+
+    let r = tab.refs[i]
+    let sym = borrow_runtime_pkg.sanitize_field(r.symbol, borrow_policy_pkg.max_symbol_len())
+    let own = borrow_runtime_pkg.sanitize_field(r.owner, borrow_policy_pkg.max_owner_len())
+
+    if borrow_validate_pkg.valid_symbol(sym, borrow_policy_pkg.max_symbol_len()) &&
+       borrow_validate_pkg.valid_owner(own, borrow_policy_pkg.max_owner_len()) {
+      out = out.push(BorrowRef(sym, own, r.mode, r.active))
+    }
+
+    i = i + 1
+    if out.len >= borrow_policy_pkg.max_total_refs() { break }
+  }
+
+  give BorrowTable(out)
+}
+
 proc table_diagnostics(tab: BorrowTable, symbol: string) -> string {
   give summary(tab, symbol) +
        ",owners=" + owner_count(tab, symbol).to_string() +
        ",state=" + borrow_health(tab, symbol)
 }
 
-proc ready() -> bool {
+proc borrow_runtime_info() -> BorrowRuntimeInfo {
+  give BorrowRuntimeInfo(borrow_runtime_pkg.runtime_name(),
+                         borrow_runtime_pkg.runtime_version(),
+                         borrow_runtime_pkg.supports_no_std(),
+                         borrow_runtime_pkg.supports_normalize(),
+                         borrow_runtime_pkg.supports_diagnostics())
+}
+
+proc borrow_health_summary(tab: BorrowTable, symbol: string) -> BorrowHealthSummary {
+  let active = active_count(tab, symbol)
+  let inc = borrow_ref(symbol, "health", BorrowMode.Mutable)
+  let conflicts_n = conflict_count(tab, inc)
+
+  if conflicts_n > 0 {
+    give BorrowHealthSummary(false, "conflict", active, conflicts_n)
+  }
+  if active > borrow_policy_pkg.warn_active_refs_per_symbol() {
+    give BorrowHealthSummary(false, "high-active", active, conflicts_n)
+  }
+  give BorrowHealthSummary(true, "ok", active, conflicts_n)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_limit,validate_config,table_new,borrow_ref,borrow_ref_checked,conflicts,can_borrow,can_borrow_with_config,acquire,acquire_checked,acquire_with_config,release,release_checked,active_count,has_mutable,summary,owner_count,release_all_owner,active_refs,borrow_health,mode_name,active_for_symbol,conflict_count,revoke_symbol,table_validate_code,table_validate,table_normalize,table_diagnostics,borrow_runtime_info,borrow_health_summary,stable_api_surface_hash,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["shared", "mutable", "conflict-detection", "normalize", "diagnostics", borrow_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-BORROW0001" { give "invalid symbol or owner for borrow reference" }
+  if code == "VITTE-BORROW0002" { give "borrow conflict: mutable/shared exclusivity violated" }
+  if code == "VITTE-BORROW0003" { give "borrow table overflow" }
+  if code == "VITTE-BORROW0004" { give "reference not found on release" }
+  give "borrow diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-BORROW0001" { give "sanitize symbol/owner and remove spaces" }
+  if code == "VITTE-BORROW0002" { give "release mutable borrow before acquiring shared/mutable" }
+  if code == "VITTE-BORROW0003" { give "reduce borrow lifetime and release inactive refs" }
+  if code == "VITTE-BORROW0004" { give "verify symbol/owner pair before release" }
+  give "inspect borrow table and normalize state"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if borrow_runtime_pkg.runtime_status() == false { give false }
+  if borrow_runtime_pkg.supports_normalize() == false { give false }
+
+  let cfg = strict_config()
+  let v = validate_config(cfg)
+  when v is BorrowResult.Err { give false }
+
+  let r1 = borrow_ref_checked("s", "o1", BorrowMode.Mutable)
+  when r1 is BorrowResult.Err { give false }
+
+  let t0 = table_new()
+  let a1 = acquire_checked(t0, r1.value)
+  when a1 is BorrowResult.Err { give false }
+
+  let r2 = borrow_ref_checked("s", "o2", BorrowMode.Shared)
+  when r2 is BorrowResult.Err { give false }
+
+  let a2 = acquire_checked(a1.value, r2.value)
+  when a2 is BorrowResult.Ok { give false }
+
+  let n = table_normalize(a1.value)
+  if table_validate(n) == false { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
   give true
 }
 
-
+proc ready() -> bool {
+  give stable_ready()
+}
 
 proc package_meta() -> string {
-    give "vitte/borrow"
+  give "vitte/borrow"
 }
 
 <<< ROLE-CONTRACT
@@ -212,4 +506,5 @@ role: Regles ownership emprunt et securite des references
 input_contract: Structures internes du compilateur deja valides syntaxiquement
 output_contract: Artefacts intermediaires deterministes pour l etape suivante
 boundary: Ne fait ni IO reseau ni decisions metier applicatives
+versioning_note: stable_api_version=2.0.0
 >>>

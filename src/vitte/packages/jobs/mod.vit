@@ -5,6 +5,99 @@ package vitte/jobs
 
 space vitte/jobs
 
+use vitte/jobs/internal/policy as jobs_policy_pkg
+use vitte/jobs/internal/runtime as jobs_runtime_pkg
+use vitte/jobs/internal/validate as jobs_validate_pkg
+
+form JobsConfig {
+  max_attempts: int
+  require_non_empty_payload: bool
+}
+
+pick JobsError {
+  InvalidConfig
+  NotFound
+  Internal
+}
+
+pick JobsResult[T] {
+  Ok(value: T)
+  Err(error: JobsError)
+}
+
+form JobsRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_dlq: bool
+}
+
+form JobsHealth {
+  ok: bool
+  code: string
+  pending: int
+  inflight: int
+  dlq: int
+}
+
+proc default_config() -> JobsConfig {
+  give JobsConfig(jobs_policy_pkg.default_max_attempts(), jobs_policy_pkg.default_require_non_empty_payload())
+}
+
+proc strict_config() -> JobsConfig {
+  let cfg = default_config()
+  give JobsConfig(cfg.max_attempts, true)
+}
+
+proc with_max_attempts(cfg: JobsConfig, max_attempts: int) -> JobsConfig {
+  give JobsConfig(jobs_policy_pkg.normalize_max_attempts(max_attempts), cfg.require_non_empty_payload)
+}
+
+proc normalize_config(cfg: JobsConfig) -> JobsConfig {
+  give JobsConfig(jobs_policy_pkg.normalize_max_attempts(cfg.max_attempts), cfg.require_non_empty_payload)
+}
+
+proc validate_config(cfg: JobsConfig) -> JobsResult[bool] {
+  let nc = normalize_config(cfg)
+  if jobs_validate_pkg.valid_max_attempts(nc.max_attempts, jobs_policy_pkg.max_max_attempts()) == false {
+    give JobsResult.Err(JobsError.InvalidConfig)
+  }
+  give JobsResult.Ok(true)
+}
+
+proc runtime_info() -> JobsRuntimeInfo {
+  give JobsRuntimeInfo(jobs_runtime_pkg.runtime_name(),
+                       jobs_runtime_pkg.runtime_version(),
+                       jobs_runtime_pkg.supports_diagnostics(),
+                       jobs_runtime_pkg.supports_dlq())
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["ack-nack", "config", "diagnostics", "dlq", "healthcheck", "queue"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-JOBS0001" { give "invalid jobs configuration" }
+  if code == "VITTE-JOBS0002" { give "invalid job payload or id" }
+  if code == "VITTE-JOBS0003" { give "jobs runtime unavailable" }
+  give "jobs diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-JOBS0001" { give "set max_attempts in valid range" }
+  if code == "VITTE-JOBS0002" { give "use valid job id and non-empty payload" }
+  if code == "VITTE-JOBS0003" { give "check jobs runtime status" }
+  give "review jobs configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
 
 pick JobState {
   Pending
@@ -29,16 +122,44 @@ form JobQueue {
   dlq: [Job]
 }
 
+proc healthcheck(cfg: JobsConfig, queue: JobQueue) -> JobsResult[JobsHealth] {
+  let vr = validate_config(cfg)
+  when vr is JobsResult.Err { give JobsResult.Err(vr.error) }
+  if jobs_runtime_pkg.runtime_status() == false {
+    give JobsResult.Err(JobsError.Internal)
+  }
+  if queue.max_attempts > cfg.max_attempts {
+    give JobsResult.Err(JobsError.InvalidConfig)
+  }
+  give JobsResult.Ok(JobsHealth(true, "ok", queue.pending.len, queue.inflight.len, queue.dlq.len))
+}
+
 proc queue_new(max_attempts: int) -> JobQueue {
   let max = max_attempts
   if max < 1 { max = 1 }
   give JobQueue(0, max, [], [], [], [])
 }
 
+proc queue_new_checked(max_attempts: int, cfg: JobsConfig) -> JobsResult[JobQueue] {
+  let vr = validate_config(cfg)
+  when vr is JobsResult.Err { give JobsResult.Err(vr.error) }
+  if jobs_validate_pkg.valid_max_attempts(max_attempts, cfg.max_attempts) == false {
+    give JobsResult.Err(JobsError.InvalidConfig)
+  }
+  give JobsResult.Ok(queue_new(max_attempts))
+}
+
 proc enqueue(queue: JobQueue, payload: string) -> JobQueue {
   let job = Job(queue.next_id, payload, 0, JobState.Pending)
   let pending = queue.pending.push(job)
   give JobQueue(queue.next_id + 1, queue.max_attempts, pending, queue.inflight, queue.done, queue.dlq)
+}
+
+proc enqueue_checked(queue: JobQueue, payload: string, cfg: JobsConfig) -> JobsResult[JobQueue] {
+  if jobs_validate_pkg.valid_payload(payload, cfg.require_non_empty_payload) == false {
+    give JobsResult.Err(JobsError.InvalidConfig)
+  }
+  give JobsResult.Ok(enqueue(queue, payload))
 }
 
 proc drop_first(jobs: [Job]) -> [Job] {
@@ -61,6 +182,7 @@ proc dequeue(queue: JobQueue) -> JobQueue {
 }
 
 proc ack(queue: JobQueue, job_id: int) -> JobQueue {
+  if jobs_validate_pkg.valid_job_id(job_id) == false { give queue }
   let inflight: [Job] = []
   let done = queue.done
   let i: int = 0
@@ -78,6 +200,7 @@ proc ack(queue: JobQueue, job_id: int) -> JobQueue {
 }
 
 proc nack(queue: JobQueue, job_id: int) -> JobQueue {
+  if jobs_validate_pkg.valid_job_id(job_id) == false { give queue }
   let inflight: [Job] = []
   let pending = queue.pending
   let dlq = queue.dlq
@@ -324,7 +447,7 @@ proc health(queue: JobQueue) -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give jobs_runtime_pkg.runtime_status()
 }
 
 
@@ -340,3 +463,8 @@ input_contract: Jobs explicites avec tentative et max_attempts definis
 output_contract: Transitions d etat deterministes pending inflight done dlq
 boundary: Ne remplace pas l orchestrateur externe; gere seulement le cycle de traitement
 >>>
+
+
+
+
+

@@ -1,0 +1,27 @@
+space vitte/lock/internal/policy
+
+proc default_min_ttl() -> int {
+  give 1
+}
+
+proc default_max_ttl() -> int {
+  give 86400
+}
+
+proc default_strict_owner() -> bool {
+  give true
+}
+
+proc normalize_min_ttl(value: int) -> int {
+  let out = value
+  if out < 1 { out = 1 }
+  if out > 3600 { out = 3600 }
+  give out
+}
+
+proc normalize_max_ttl(value: int, min_ttl: int) -> int {
+  let out = value
+  if out < min_ttl { out = min_ttl }
+  if out > 86400 { out = 86400 }
+  give out
+}

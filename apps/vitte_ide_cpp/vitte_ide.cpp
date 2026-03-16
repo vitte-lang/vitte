@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -16,6 +17,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <sys/wait.h>
 #include <vector>
 
@@ -26,7 +28,8 @@ namespace {
 constexpr int kFilePaneWidth = 34;
 constexpr int kBottomPaneHeight = 10;
 constexpr int kMaxDiagLines = 800;
-constexpr int kMaxSuggestions = 32;
+constexpr int kMaxSuggestions = 256;
+constexpr std::size_t kMaxProjectSymbolsScannedPerSuggest = 50000;
 constexpr int kAutosaveMs = 5000;
 
 const std::array<std::string_view, 38> kVitteKeywords = {
@@ -76,11 +79,20 @@ struct BuildTarget {
     std::string name = "default";
     std::string check_cmd = "vitte check {file}";
     std::string build_cmd = "vitte build {file} -o {out}";
-    std::string run_cmd = "{out}";
-    std::string test_cmd = "";
+    std::string run_cmd = "vitte run {file}";
+    std::string test_cmd = "vitte test {project}";
     std::string profile = "debug";
     std::string args;
     std::string env_csv;
+};
+
+struct RunOptions {
+    bool light_mode = false;
+    bool no_autocheck = false;
+    bool no_session = false;
+    bool geany_defaults = false;
+    bool safe_mode = false;
+    bool profile_ui = false;
 };
 
 struct Buffer {
@@ -96,6 +108,21 @@ struct Buffer {
     std::vector<SymbolDef> outline;
     std::set<std::string> imports;
     std::uint64_t access_tick = 0;
+
+    struct UndoNode {
+        std::vector<std::string> lines;
+        std::size_t cursor_line = 0;
+        std::size_t cursor_col = 0;
+        int parent = -1;
+        std::vector<int> children;
+    };
+    std::vector<UndoNode> undo_nodes;
+    int undo_current = -1;
+};
+
+struct ParsedDef {
+    std::string kind;
+    std::string name;
 };
 
 bool has_prefix(std::string_view value, std::string_view prefix) {
@@ -189,6 +216,39 @@ bool is_source_file(const fs::path& p) {
 
 bool is_ident_char(char c) {
     return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '/';
+}
+
+bool is_symbol_char(char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '/';
+}
+
+std::optional<ParsedDef> parse_top_level_def(const std::string& line) {
+    const std::string t = trim_copy(line);
+    if (t.empty()) {
+        return std::nullopt;
+    }
+    const std::array<std::string, 4> kinds = {"proc", "form", "entry", "trait"};
+    for (const auto& k : kinds) {
+        if (!has_prefix(t, k)) {
+            continue;
+        }
+        if (t.size() == k.size() || std::isspace(static_cast<unsigned char>(t[k.size()])) == 0) {
+            continue;
+        }
+        std::size_t i = k.size();
+        while (i < t.size() && std::isspace(static_cast<unsigned char>(t[i])) != 0) {
+            ++i;
+        }
+        const std::size_t start = i;
+        while (i < t.size() && (std::isalnum(static_cast<unsigned char>(t[i])) != 0 || t[i] == '_')) {
+            ++i;
+        }
+        if (i > start) {
+            return ParsedDef{k, t.substr(start, i - start)};
+        }
+        return std::nullopt;
+    }
+    return std::nullopt;
 }
 
 std::vector<std::string> parse_shell_words(const std::string& text) {
@@ -292,17 +352,23 @@ std::string regex_escape(const std::string& s) {
 
 class VitteIdeApp {
   public:
-    explicit VitteIdeApp(fs::path root) : project_root_(fs::absolute(std::move(root))) {}
+    explicit VitteIdeApp(fs::path root, RunOptions opts = {})
+        : project_root_(fs::absolute(std::move(root))), opts_(opts) {}
 
     int run() {
+        if (opts_.light_mode || opts_.no_autocheck || opts_.safe_mode) {
+            auto_check_ = false;
+        }
         load_targets();
         refresh_project_files();
-        load_session();
+        if (!opts_.no_session && !opts_.light_mode) {
+            load_session();
+        }
         if (buffers_.empty() && !files_.empty()) {
             selected_file_index_ = 0;
-            open_selected_file();
+            open_selected_file(false);
         }
-        status_ = "Ready. Ctrl+Tab tabs | Tab pane | i insert | / find | % replace | F12 def";
+        status_ = "Ready. Ctrl+Tab tabs | Ctrl+S save | Ctrl+F find | Ctrl+Space completion";
 
         initscr();
         cbreak();
@@ -313,7 +379,11 @@ class VitteIdeApp {
 
         auto last_tick = std::chrono::steady_clock::now();
         while (!quit_) {
+            const auto draw_start = std::chrono::steady_clock::now();
             draw();
+            const auto draw_end = std::chrono::steady_clock::now();
+            last_draw_ms_ = static_cast<double>(
+                std::chrono::duration_cast<std::chrono::microseconds>(draw_end - draw_start).count()) / 1000.0;
             const int ch = getch();
             if (ch != ERR) {
                 handle_key(ch);
@@ -325,7 +395,9 @@ class VitteIdeApp {
             }
         }
 
-        save_session();
+        if (!opts_.no_session && !opts_.light_mode) {
+            save_session();
+        }
         endwin();
         return 0;
     }
@@ -338,7 +410,11 @@ class VitteIdeApp {
     };
 
     fs::path project_root_;
+    RunOptions opts_;
     std::vector<fs::path> files_;
+    std::vector<fs::path> file_scan_dirs_;
+    bool file_scan_done_ = true;
+    bool files_sorted_ = true;
     std::size_t selected_file_index_ = 0;
 
     std::vector<Buffer> buffers_;
@@ -353,6 +429,9 @@ class VitteIdeApp {
     bool quit_ = false;
     bool insert_mode_ = false;
     bool auto_check_ = true;
+    bool auto_complete_auto_ = true;
+    bool index_started_ = false;
+    bool pending_auto_check_ = false;
     std::string status_;
 
     std::vector<std::string> diag_lines_;
@@ -363,9 +442,16 @@ class VitteIdeApp {
 
     std::vector<SearchHit> search_hits_;
     std::vector<SymbolDef> outline_view_;
+    std::vector<DiagHit> local_find_hits_;
+    std::string local_find_query_;
+    std::size_t local_find_index_ = 0;
 
     std::set<std::string> project_symbols_;
     std::map<std::string, std::vector<DiagHit>> global_symbol_defs_;
+    std::unordered_map<std::string, std::string> global_symbol_signatures_;
+    std::vector<fs::path> index_queue_;
+    std::size_t index_cursor_ = 0;
+    bool index_in_progress_ = false;
     std::uint64_t access_tick_ = 0;
 
     std::vector<JumpLoc> jump_history_;
@@ -377,6 +463,13 @@ class VitteIdeApp {
 
     std::chrono::steady_clock::time_point last_autosave_ = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point last_autocheck_ = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point last_edit_activity_ = std::chrono::steady_clock::now();
+    double last_draw_ms_ = 0.0;
+    std::size_t last_scan_batch_ = 0;
+    std::size_t last_index_batch_ = 0;
+    std::vector<DiagHit> multi_cursor_hits_;
+    std::string multi_cursor_symbol_;
+    bool multi_cursor_active_ = false;
 
     Buffer* active_buffer_ptr() {
         if (buffers_.empty() || active_buffer_ >= buffers_.size()) {
@@ -407,31 +500,94 @@ class VitteIdeApp {
         return &buffers_[active_buffer_];
     }
 
-    void refresh_project_files() {
+    bool should_skip_dir_name(const std::string& n) const {
+        return n == ".git" || n == "build" || n == "target" || n == ".vitte-cache" || n == ".debstage";
+    }
+
+    void reset_file_scan() {
         files_.clear();
+        file_scan_dirs_.clear();
+        file_scan_dirs_.push_back(project_root_);
+        file_scan_done_ = false;
+        files_sorted_ = true;
+        selected_file_index_ = 0;
+    }
+
+    void continue_file_scan(std::size_t budget_entries = 400) {
+        if (file_scan_done_) {
+            last_scan_batch_ = 0;
+            return;
+        }
+        std::size_t processed = 0;
         std::error_code ec;
-        for (fs::recursive_directory_iterator it(project_root_, ec), end; it != end && !ec; it.increment(ec)) {
-            const fs::path p = it->path();
-            if (it->is_directory(ec)) {
-                const std::string n = p.filename().string();
-                if (n == ".git" || n == "build" || n == "target" || n == ".vitte-cache" || n == ".debstage") {
-                    it.disable_recursion_pending();
+        while (!file_scan_dirs_.empty() && processed < budget_entries) {
+            fs::path dir = file_scan_dirs_.back();
+            file_scan_dirs_.pop_back();
+            fs::directory_iterator it(dir, ec);
+            if (ec) {
+                ec.clear();
+                continue;
+            }
+            for (const auto& ent : it) {
+                const fs::path p = ent.path();
+                if (ent.is_directory(ec)) {
+                    const std::string n = p.filename().string();
+                    if (!should_skip_dir_name(n)) {
+                        file_scan_dirs_.push_back(p);
+                    }
+                } else if (ent.is_regular_file(ec) && is_source_file(p)) {
+                    fs::path rel = fs::relative(p, project_root_, ec);
+                    if (!ec) {
+                        files_.push_back(rel);
+                        files_sorted_ = false;
+                        if (index_started_) {
+                            index_queue_.push_back(rel);
+                            index_in_progress_ = true;
+                        }
+                    }
                 }
-                continue;
+                ec.clear();
+                ++processed;
+                if (processed >= budget_entries) {
+                    break;
+                }
             }
-            if (!it->is_regular_file(ec)) {
-                continue;
-            }
-            if (!is_source_file(p)) {
-                continue;
-            }
-            files_.push_back(fs::relative(p, project_root_, ec));
         }
-        std::sort(files_.begin(), files_.end());
-        if (selected_file_index_ >= files_.size()) {
-            selected_file_index_ = files_.empty() ? 0 : files_.size() - 1;
+        if (file_scan_dirs_.empty()) {
+            file_scan_done_ = true;
+            if (!files_sorted_) {
+                std::sort(files_.begin(), files_.end());
+                files_sorted_ = true;
+            }
+            if (selected_file_index_ >= files_.size()) {
+                selected_file_index_ = files_.empty() ? 0 : files_.size() - 1;
+            }
         }
-        rebuild_global_indices();
+        last_scan_batch_ = processed;
+    }
+
+    void finish_file_scan_blocking() {
+        while (!file_scan_done_) {
+            continue_file_scan(2000);
+        }
+    }
+
+    void refresh_project_files() {
+        reset_file_scan();
+        continue_file_scan(opts_.light_mode ? 64 : 256);
+        if (files_.empty() && !file_scan_done_) {
+            continue_file_scan(opts_.light_mode ? 256 : 1024);
+        }
+        if (opts_.light_mode) {
+            index_started_ = false;
+            index_in_progress_ = false;
+            index_queue_.clear();
+            project_symbols_.clear();
+            global_symbol_defs_.clear();
+            global_symbol_signatures_.clear();
+        } else {
+            begin_background_reindex();
+        }
     }
 
     static void parse_outline(Buffer& b) {
@@ -457,34 +613,72 @@ class VitteIdeApp {
         }
     }
 
-    void rebuild_global_indices() {
-        project_symbols_.clear();
-        global_symbol_defs_.clear();
-
-        static const std::regex token_re(R"([A-Za-z_][A-Za-z0-9_/]*)");
-        static const std::regex def_re(R"(^\s*(proc|form|entry|trait)\s+([A-Za-z_][A-Za-z0-9_]*)?)");
-
-        for (const auto& rel : files_) {
-            std::ifstream in(project_root_ / rel);
-            if (!in.is_open()) {
-                continue;
+    void add_tokens_from_line(const std::string& line) {
+        std::size_t i = 0;
+        while (i < line.size()) {
+            while (i < line.size() && !is_symbol_char(line[i])) {
+                ++i;
             }
-            std::string line;
-            std::size_t ln = 0;
-            while (std::getline(in, line)) {
-                for (std::sregex_iterator it(line.begin(), line.end(), token_re), end; it != end; ++it) {
-                    project_symbols_.insert(it->str());
-                }
-                std::smatch m;
-                if (std::regex_search(line, m, def_re) && m.size() >= 3) {
-                    const std::string name = m[2].str();
-                    if (!name.empty()) {
-                        global_symbol_defs_[name].push_back({rel, ln, 0, m[1].str()});
-                    }
-                }
-                ++ln;
+            const std::size_t start = i;
+            while (i < line.size() && is_symbol_char(line[i])) {
+                ++i;
+            }
+            if (i > start) {
+                project_symbols_.insert(line.substr(start, i - start));
             }
         }
+    }
+
+    void index_file(const fs::path& rel) {
+        std::ifstream in(project_root_ / rel);
+        if (!in.is_open()) {
+            return;
+        }
+        std::string line;
+        std::size_t ln = 0;
+        while (std::getline(in, line)) {
+            add_tokens_from_line(line);
+            if (auto d = parse_top_level_def(line); d.has_value() && !d->name.empty()) {
+                global_symbol_defs_[d->name].push_back({rel, ln, 0, d->kind});
+                if (global_symbol_signatures_.find(d->name) == global_symbol_signatures_.end()) {
+                    global_symbol_signatures_[d->name] = trim_copy(line);
+                }
+            }
+            ++ln;
+        }
+    }
+
+    void begin_background_reindex() {
+        project_symbols_.clear();
+        global_symbol_defs_.clear();
+        global_symbol_signatures_.clear();
+        index_queue_ = files_;
+        index_cursor_ = 0;
+        index_in_progress_ = !index_queue_.empty();
+        index_started_ = true;
+    }
+
+    void ensure_index_started() {
+        if (!index_started_) {
+            begin_background_reindex();
+        }
+    }
+
+    void continue_background_reindex(std::size_t budget_files = 8) {
+        if (!index_in_progress_) {
+            last_index_batch_ = 0;
+            return;
+        }
+        std::size_t processed = 0;
+        while (index_cursor_ < index_queue_.size() && processed < budget_files) {
+            index_file(index_queue_[index_cursor_]);
+            ++index_cursor_;
+            ++processed;
+        }
+        if (index_cursor_ >= index_queue_.size()) {
+            index_in_progress_ = false;
+        }
+        last_index_batch_ = processed;
     }
 
     std::optional<std::size_t> find_buffer_index(const fs::path& abs) const {
@@ -518,6 +712,180 @@ class VitteIdeApp {
         return true;
     }
 
+    void undo_reset(Buffer& b) {
+        b.undo_nodes.clear();
+        Buffer::UndoNode root;
+        root.lines = b.lines;
+        root.cursor_line = b.cursor_line;
+        root.cursor_col = b.cursor_col;
+        root.parent = -1;
+        b.undo_nodes.push_back(std::move(root));
+        b.undo_current = 0;
+    }
+
+    void undo_record_snapshot(Buffer& b) {
+        if (b.undo_current < 0 || b.undo_current >= static_cast<int>(b.undo_nodes.size())) {
+            undo_reset(b);
+            return;
+        }
+        const Buffer::UndoNode& cur = b.undo_nodes[static_cast<std::size_t>(b.undo_current)];
+        if (cur.lines == b.lines && cur.cursor_line == b.cursor_line && cur.cursor_col == b.cursor_col) {
+            return;
+        }
+        Buffer::UndoNode n;
+        n.lines = b.lines;
+        n.cursor_line = b.cursor_line;
+        n.cursor_col = b.cursor_col;
+        n.parent = b.undo_current;
+        b.undo_nodes.push_back(std::move(n));
+        const int idx = static_cast<int>(b.undo_nodes.size()) - 1;
+        b.undo_nodes[static_cast<std::size_t>(b.undo_current)].children.push_back(idx);
+        b.undo_current = idx;
+    }
+
+    void undo_apply_node(Buffer& b, int idx) {
+        if (idx < 0 || idx >= static_cast<int>(b.undo_nodes.size())) {
+            return;
+        }
+        const auto& n = b.undo_nodes[static_cast<std::size_t>(idx)];
+        b.lines = n.lines;
+        if (b.lines.empty()) {
+            b.lines.push_back({});
+        }
+        b.cursor_line = std::min(n.cursor_line, b.lines.size() - 1);
+        b.cursor_col = std::min(n.cursor_col, b.lines[b.cursor_line].size());
+        b.undo_current = idx;
+        parse_outline(b);
+    }
+
+    void undo_step(Buffer& b) {
+        if (b.undo_current < 0 || b.undo_current >= static_cast<int>(b.undo_nodes.size())) {
+            return;
+        }
+        const int p = b.undo_nodes[static_cast<std::size_t>(b.undo_current)].parent;
+        if (p < 0) {
+            status_ = "Undo: root";
+            return;
+        }
+        undo_apply_node(b, p);
+        status_ = "Undo";
+    }
+
+    void redo_step(Buffer& b) {
+        if (b.undo_current < 0 || b.undo_current >= static_cast<int>(b.undo_nodes.size())) {
+            return;
+        }
+        const auto& children = b.undo_nodes[static_cast<std::size_t>(b.undo_current)].children;
+        if (children.empty()) {
+            status_ = "Redo: none";
+            return;
+        }
+        undo_apply_node(b, children.back());
+        status_ = "Redo";
+    }
+
+    fs::path undo_state_path_for(const Buffer& b) const {
+        const std::size_t h = std::hash<std::string>{}(b.rel.string());
+        std::ostringstream oss;
+        oss << std::hex << h;
+        return project_root_ / ".vitte-cache" / "vitte-ide" / "undo" / (oss.str() + ".undo");
+    }
+
+    void save_undo_state(const Buffer& b) {
+        if (opts_.no_session || opts_.light_mode) {
+            return;
+        }
+        const fs::path p = undo_state_path_for(b);
+        std::error_code ec;
+        fs::create_directories(p.parent_path(), ec);
+        std::ofstream out(p);
+        if (!out.is_open()) {
+            return;
+        }
+        out << "current=" << b.undo_current << "\n";
+        for (std::size_t i = 0; i < b.undo_nodes.size(); ++i) {
+            const auto& n = b.undo_nodes[i];
+            out << "node=" << i << "|" << n.parent << "|" << n.cursor_line << "|" << n.cursor_col << "\n";
+            out << "children=";
+            for (std::size_t k = 0; k < n.children.size(); ++k) {
+                if (k) out << ",";
+                out << n.children[k];
+            }
+            out << "\n";
+            out << "lines=" << n.lines.size() << "\n";
+            for (const auto& ln : n.lines) {
+                out << "L " << ln << "\n";
+            }
+            out << "endnode\n";
+        }
+    }
+
+    void load_undo_state(Buffer& b) {
+        const fs::path p = undo_state_path_for(b);
+        std::ifstream in(p);
+        if (!in.is_open()) {
+            undo_reset(b);
+            return;
+        }
+        std::vector<Buffer::UndoNode> nodes;
+        int current = 0;
+        std::string line;
+        while (std::getline(in, line)) {
+            if (has_prefix(line, "current=")) {
+                current = std::stoi(line.substr(8));
+                continue;
+            }
+            if (!has_prefix(line, "node=")) {
+                continue;
+            }
+            std::stringstream ss(line.substr(5));
+            std::string tok;
+            std::vector<std::string> parts;
+            while (std::getline(ss, tok, '|')) {
+                parts.push_back(tok);
+            }
+            if (parts.size() < 4) {
+                continue;
+            }
+            Buffer::UndoNode n;
+            n.parent = std::stoi(parts[1]);
+            n.cursor_line = static_cast<std::size_t>(std::stoul(parts[2]));
+            n.cursor_col = static_cast<std::size_t>(std::stoul(parts[3]));
+            if (!std::getline(in, line) || !has_prefix(line, "children=")) {
+                break;
+            }
+            const std::string children = line.substr(9);
+            if (!children.empty()) {
+                std::stringstream cs(children);
+                while (std::getline(cs, tok, ',')) {
+                    tok = trim_copy(tok);
+                    if (!tok.empty()) n.children.push_back(std::stoi(tok));
+                }
+            }
+            if (!std::getline(in, line) || !has_prefix(line, "lines=")) {
+                break;
+            }
+            const std::size_t nlines = static_cast<std::size_t>(std::stoul(line.substr(6)));
+            for (std::size_t i = 0; i < nlines; ++i) {
+                if (!std::getline(in, line) || !has_prefix(line, "L ")) {
+                    break;
+                }
+                n.lines.push_back(line.substr(2));
+            }
+            std::getline(in, line);  // endnode
+            if (n.lines.empty()) {
+                n.lines.push_back({});
+            }
+            nodes.push_back(std::move(n));
+        }
+        if (nodes.empty()) {
+            undo_reset(b);
+            return;
+        }
+        b.undo_nodes = std::move(nodes);
+        b.undo_current = std::max(0, std::min(current, static_cast<int>(b.undo_nodes.size()) - 1));
+    }
+
     std::size_t open_buffer(const fs::path& rel, bool select = true, bool in_secondary = false) {
         const fs::path abs = project_root_ / rel;
         if (auto existing = find_buffer_index(abs); existing.has_value()) {
@@ -536,6 +904,7 @@ class VitteIdeApp {
         b.rel = rel;
         b.access_tick = ++access_tick_;
         load_buffer_contents(b);
+        load_undo_state(b);
         buffers_.push_back(std::move(b));
         const std::size_t idx = buffers_.size() - 1;
         if (select) {
@@ -547,12 +916,14 @@ class VitteIdeApp {
         return idx;
     }
 
-    void open_selected_file() {
+    void open_selected_file(bool with_check = true) {
         if (files_.empty() || selected_file_index_ >= files_.size()) {
             return;
         }
         open_buffer(files_[selected_file_index_], true, false);
-        run_check_current(false);
+        if (with_check) {
+            run_check_current(false);
+        }
     }
 
     bool save_buffer(Buffer& b) {
@@ -574,11 +945,292 @@ class VitteIdeApp {
             return false;
         }
         b.dirty = false;
+        pending_auto_check_ = true;
         b.mtime = safe_mtime(b.path);
         parse_outline(b);
-        rebuild_global_indices();
+        undo_record_snapshot(b);
+        save_undo_state(b);
+        begin_background_reindex();
         status_ = "Saved: " + b.rel.string();
         return true;
+    }
+
+    void mark_buffer_edited(Buffer& b) {
+        b.dirty = true;
+        pending_auto_check_ = true;
+        last_edit_activity_ = std::chrono::steady_clock::now();
+        undo_record_snapshot(b);
+    }
+
+    void save_all_dirty_buffers() {
+        std::size_t saved = 0;
+        for (auto& b : buffers_) {
+            if (b.dirty && save_buffer(b)) {
+                ++saved;
+            }
+        }
+        status_ = "Saved dirty buffers: " + std::to_string(saved);
+    }
+
+    std::pair<std::size_t, std::size_t> token_bounds_at_cursor(const Buffer& b) const {
+        if (b.cursor_line >= b.lines.size()) {
+            return {0, 0};
+        }
+        const std::string& line = b.lines[b.cursor_line];
+        std::size_t col = std::min(b.cursor_col, line.size());
+        std::size_t l = col;
+        while (l > 0 && is_ident_char(line[l - 1])) {
+            --l;
+        }
+        std::size_t r = col;
+        while (r < line.size() && is_ident_char(line[r])) {
+            ++r;
+        }
+        return {l, r};
+    }
+
+    void replace_token_at_cursor(Buffer& b, const std::string& replacement) {
+        auto [l, r] = token_bounds_at_cursor(b);
+        if (b.cursor_line >= b.lines.size()) {
+            return;
+        }
+        std::string& line = b.lines[b.cursor_line];
+        line.replace(l, r - l, replacement);
+        b.cursor_col = l + replacement.size();
+        mark_buffer_edited(b);
+    }
+
+    void goto_line_col_prompt() {
+        Buffer* b = active_buffer_ptr();
+        if (b == nullptr) {
+            return;
+        }
+        const auto in = prompt_input("Goto line[:col]");
+        if (!in.has_value() || in->empty()) {
+            return;
+        }
+        const std::string text = trim_copy(*in);
+        std::size_t line = 0;
+        std::size_t col = 1;
+        const auto sep = text.find(':');
+        try {
+            if (sep == std::string::npos) {
+                line = static_cast<std::size_t>(std::stoul(text));
+            } else {
+                line = static_cast<std::size_t>(std::stoul(text.substr(0, sep)));
+                const std::string c = trim_copy(text.substr(sep + 1));
+                if (!c.empty()) {
+                    col = static_cast<std::size_t>(std::stoul(c));
+                }
+            }
+        } catch (...) {
+            status_ = "Goto: invalid input";
+            return;
+        }
+        if (line == 0) {
+            line = 1;
+        }
+        const std::size_t max_line = b->lines.empty() ? 1 : b->lines.size();
+        b->cursor_line = std::min(line - 1, max_line - 1);
+        const std::size_t max_col = b->lines[b->cursor_line].size() + 1;
+        b->cursor_col = std::min<std::size_t>(std::max<std::size_t>(1, col), max_col) - 1;
+        if (b->cursor_line < b->top_line) {
+            b->top_line = b->cursor_line;
+        }
+        status_ = "Goto " + std::to_string(b->cursor_line + 1) + ":" + std::to_string(b->cursor_col + 1);
+    }
+
+    void move_current_line(int delta) {
+        Buffer* b = pane_buffer_ptr(active_editor_pane_);
+        if (b == nullptr || b->lines.empty()) {
+            return;
+        }
+        const std::size_t from = b->cursor_line;
+        const long to_long = static_cast<long>(from) + static_cast<long>(delta);
+        if (to_long < 0 || to_long >= static_cast<long>(b->lines.size())) {
+            return;
+        }
+        const std::size_t to = static_cast<std::size_t>(to_long);
+        std::swap(b->lines[from], b->lines[to]);
+        b->cursor_line = to;
+        b->cursor_col = std::min(b->cursor_col, b->lines[to].size());
+        b->dirty = true;
+        pending_auto_check_ = true;
+        last_edit_activity_ = std::chrono::steady_clock::now();
+        status_ = "Line moved";
+    }
+
+    void toggle_comment_line(Buffer& b) {
+        if (b.cursor_line >= b.lines.size()) {
+            return;
+        }
+        std::string& line = b.lines[b.cursor_line];
+        std::size_t i = 0;
+        while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i])) != 0) {
+            ++i;
+        }
+        if (i + 1 < line.size() && line[i] == '/' && line[i + 1] == '/') {
+            line.erase(i, 2);
+            if (i < line.size() && line[i] == ' ') {
+                line.erase(i, 1);
+            }
+            status_ = "Uncomment line";
+        } else {
+            line.insert(i, "// ");
+            status_ = "Comment line";
+        }
+        mark_buffer_edited(b);
+    }
+
+    void rename_symbol_local() {
+        Buffer* b = active_buffer_ptr();
+        if (b == nullptr) {
+            return;
+        }
+        std::string old_name = token_under_cursor(*b);
+        const auto old_input = prompt_input("Rename local: old", old_name);
+        if (!old_input.has_value() || old_input->empty()) {
+            return;
+        }
+        old_name = *old_input;
+        const auto new_input = prompt_input("Rename local: new");
+        if (!new_input.has_value() || new_input->empty()) {
+            return;
+        }
+        const std::string new_name = *new_input;
+        if (old_name == new_name) {
+            status_ = "Rename local cancelled: same";
+            return;
+        }
+        const std::regex re("\\b" + regex_escape(old_name) + "\\b");
+        std::size_t repl = 0;
+        for (auto& line : b->lines) {
+            for (std::sregex_iterator it(line.begin(), line.end(), re), end; it != end; ++it) {
+                ++repl;
+            }
+            line = std::regex_replace(line, re, new_name);
+        }
+        b->dirty = repl > 0;
+        if (repl > 0) {
+            pending_auto_check_ = true;
+            last_edit_activity_ = std::chrono::steady_clock::now();
+        }
+        parse_outline(*b);
+        status_ = "Rename local replacements=" + std::to_string(repl);
+    }
+
+    void rebuild_local_find_hits(const Buffer& b) {
+        local_find_hits_.clear();
+        local_find_index_ = 0;
+        if (local_find_query_.empty()) {
+            return;
+        }
+        for (std::size_t ln = 0; ln < b.lines.size(); ++ln) {
+            const std::string& line = b.lines[ln];
+            std::size_t pos = 0;
+            while ((pos = line.find(local_find_query_, pos)) != std::string::npos) {
+                local_find_hits_.push_back({b.rel, ln, pos, "find"});
+                ++pos;
+            }
+        }
+    }
+
+    void find_in_current_buffer() {
+        Buffer* b = active_buffer_ptr();
+        if (b == nullptr) {
+            return;
+        }
+        const auto q = prompt_input("Find in file", local_find_query_);
+        if (!q.has_value()) {
+            return;
+        }
+        local_find_query_ = *q;
+        rebuild_local_find_hits(*b);
+        if (local_find_hits_.empty()) {
+            status_ = "Find: no match";
+            return;
+        }
+        local_find_index_ = 0;
+        b->cursor_line = local_find_hits_[0].line;
+        b->cursor_col = local_find_hits_[0].col;
+        status_ = "Find matches=" + std::to_string(local_find_hits_.size());
+    }
+
+    void jump_local_find(int delta) {
+        Buffer* b = active_buffer_ptr();
+        if (b == nullptr) {
+            return;
+        }
+        rebuild_local_find_hits(*b);
+        if (local_find_hits_.empty()) {
+            status_ = "Find: no active match";
+            return;
+        }
+        const std::size_t n = local_find_hits_.size();
+        if (delta > 0) {
+            local_find_index_ = (local_find_index_ + 1) % n;
+        } else {
+            local_find_index_ = (local_find_index_ == 0) ? (n - 1) : (local_find_index_ - 1);
+        }
+        const DiagHit& h = local_find_hits_[local_find_index_];
+        b->cursor_line = h.line;
+        b->cursor_col = h.col;
+        status_ = "Find " + std::to_string(local_find_index_ + 1) + "/" + std::to_string(n);
+    }
+
+    void multi_cursor_select_symbol() {
+        Buffer* b = active_buffer_ptr();
+        if (b == nullptr) {
+            return;
+        }
+        const std::string tok = token_under_cursor(*b);
+        if (tok.empty()) {
+            status_ = "Multi-cursor: no symbol";
+            return;
+        }
+        multi_cursor_symbol_ = tok;
+        multi_cursor_hits_.clear();
+        const std::regex re("\\b" + regex_escape(tok) + "\\b");
+        for (std::size_t ln = 0; ln < b->lines.size(); ++ln) {
+            const auto& line = b->lines[ln];
+            for (std::sregex_iterator it(line.begin(), line.end(), re), end; it != end; ++it) {
+                multi_cursor_hits_.push_back({b->rel, ln, static_cast<std::size_t>(it->position()), "multi"});
+            }
+        }
+        multi_cursor_active_ = !multi_cursor_hits_.empty();
+        status_ = "Multi-cursor selected: " + std::to_string(multi_cursor_hits_.size());
+    }
+
+    void multi_cursor_apply_replace() {
+        if (!multi_cursor_active_) {
+            status_ = "Multi-cursor inactive";
+            return;
+        }
+        Buffer* b = active_buffer_ptr();
+        if (b == nullptr) {
+            return;
+        }
+        const auto repl = prompt_input("Multi-cursor replace", multi_cursor_symbol_);
+        if (!repl.has_value()) {
+            return;
+        }
+        const std::string to = *repl;
+        const std::regex re("\\b" + regex_escape(multi_cursor_symbol_) + "\\b");
+        std::size_t changed = 0;
+        for (auto& line : b->lines) {
+            std::string replaced = std::regex_replace(line, re, to);
+            if (replaced != line) {
+                ++changed;
+                line = std::move(replaced);
+            }
+        }
+        if (changed > 0) {
+            mark_buffer_edited(*b);
+            parse_outline(*b);
+        }
+        multi_cursor_symbol_ = to;
+        multi_cursor_select_symbol();
+        status_ = "Multi-cursor replace lines=" + std::to_string(changed);
     }
 
     void push_jump_history(const Buffer& b) {
@@ -616,6 +1268,7 @@ class VitteIdeApp {
         cmd = replace_all_copy(cmd, "{file}", shell_quote(b.path.string()));
         cmd = replace_all_copy(cmd, "{rel}", shell_quote(b.rel.string()));
         cmd = replace_all_copy(cmd, "{out}", shell_quote(out.string()));
+        cmd = replace_all_copy(cmd, "{project}", shell_quote(project_root_.string()));
         cmd = replace_all_copy(cmd, "{profile}", target_.profile);
         return cmd;
     }
@@ -701,6 +1354,45 @@ class VitteIdeApp {
         replace_diag_lines(std::move(out));
         selected_diag_ = 0;
         status_ = "Problems panel updated";
+    }
+
+    static std::string json_escape(std::string s) {
+        std::string out;
+        out.reserve(s.size() + 8);
+        for (char c : s) {
+            switch (c) {
+                case '\\': out += "\\\\"; break;
+                case '"': out += "\\\""; break;
+                case '\n': out += "\\n"; break;
+                case '\r': out += "\\r"; break;
+                case '\t': out += "\\t"; break;
+                default: out.push_back(c); break;
+            }
+        }
+        return out;
+    }
+
+    void export_diagnostics_json() {
+        const fs::path out_path = project_root_ / ".vitte-cache" / "vitte-ide" / "diagnostics.json";
+        std::error_code ec;
+        fs::create_directories(out_path.parent_path(), ec);
+        std::ofstream out(out_path);
+        if (!out.is_open()) {
+            status_ = "Export diagnostics failed";
+            return;
+        }
+        out << "{\n  \"diagnostics\": [\n";
+        for (std::size_t i = 0; i < diag_hits_.size(); ++i) {
+            const auto& d = diag_hits_[i];
+            out << "    {\"file\":\"" << json_escape(d.file.string()) << "\",\"line\":" << (d.line + 1)
+                << ",\"col\":" << (d.col + 1) << ",\"message\":\"" << json_escape(d.message) << "\"}";
+            if (i + 1 < diag_hits_.size()) {
+                out << ",";
+            }
+            out << "\n";
+        }
+        out << "  ]\n}\n";
+        status_ = "Diagnostics exported: " + out_path.string();
     }
 
     void run_target_command(const std::string& kind) {
@@ -792,6 +1484,7 @@ class VitteIdeApp {
     }
 
     void run_project_diagnostics() {
+        finish_file_scan_blocking();
         diag_is_problems_ = true;
         std::vector<DiagHit> all_hits;
         std::vector<std::string> lines;
@@ -897,6 +1590,8 @@ class VitteIdeApp {
         if (b == nullptr) {
             return;
         }
+        ensure_index_started();
+        continue_background_reindex(opts_.light_mode ? 6 : 24);
 
         const std::string tok = token_under_cursor(*b);
         if (tok.empty()) {
@@ -925,6 +1620,47 @@ class VitteIdeApp {
         }
 
         status_ = "Definition not found: " + tok;
+    }
+
+    void mini_lsp_hover() {
+        Buffer* b = active_buffer_ptr();
+        if (b == nullptr) {
+            return;
+        }
+        ensure_index_started();
+        continue_background_reindex(opts_.light_mode ? 8 : 28);
+        const std::string tok = token_under_cursor(*b);
+        if (tok.empty()) {
+            status_ = "Hover: no symbol";
+            return;
+        }
+        diag_is_problems_ = false;
+        std::vector<std::string> out;
+        out.push_back("[hover] " + tok);
+
+        bool found = false;
+        for (std::string_view kw : kVitteKeywords) {
+            if (tok == kw) {
+                out.push_back("kind: keyword");
+                found = true;
+                break;
+            }
+        }
+        if (auto it = global_symbol_defs_.find(tok); it != global_symbol_defs_.end() && !it->second.empty()) {
+            const DiagHit& d = it->second.front();
+            out.push_back("kind: " + d.message);
+            out.push_back("defined: " + d.file.string() + ":" + std::to_string(d.line + 1));
+            if (auto sig = global_symbol_signatures_.find(tok); sig != global_symbol_signatures_.end()) {
+                out.push_back("signature: " + sig->second);
+            }
+            found = true;
+        }
+        if (!found) {
+            out.push_back("kind: symbol");
+            out.push_back("info: no local signature");
+        }
+        replace_diag_lines(std::move(out));
+        status_ = "Hover ready";
     }
 
     void follow_symbol_other_split() {
@@ -956,13 +1692,17 @@ class VitteIdeApp {
         status_ = "History forward";
     }
 
-    std::vector<std::string> build_suggestions_for(const Buffer& b) const {
+    std::vector<std::pair<std::string, int>> ranked_suggestions_for(const Buffer& b) {
+        ensure_index_started();
+        continue_background_reindex(opts_.light_mode ? 4 : 20);
+
         std::map<std::string, int> score;
         const std::string prefix = token_under_cursor(b);
         const std::string lower_prefix = to_lower(prefix);
+        const bool prefix_mode = !prefix.empty();
 
         auto add = [&](const std::string& token, int s) {
-            if (!prefix.empty()) {
+            if (prefix_mode) {
                 const std::string lt = to_lower(token);
                 if (!has_prefix(lt, lower_prefix)) {
                     return;
@@ -980,18 +1720,26 @@ class VitteIdeApp {
             add(std::string(kw), 300);
         }
 
-        for (const auto& sym : project_symbols_) {
-            int base = 180;
-            if (sym.find('/') != std::string::npos) {
-                base += 15;
-            }
-            for (const auto& imp : b.imports) {
-                if (sym.find(imp) != std::string::npos) {
-                    base += 40;
+        // Geany-like light behavior: only scan the global symbol index when user typed a prefix.
+        // This keeps startup and suggestion latency low on large workspaces.
+        if (prefix_mode) {
+            std::size_t scanned = 0;
+            for (const auto& sym : project_symbols_) {
+                if (scanned++ >= kMaxProjectSymbolsScannedPerSuggest) {
                     break;
                 }
+                int base = 180;
+                if (sym.find('/') != std::string::npos) {
+                    base += 15;
+                }
+                for (const auto& imp : b.imports) {
+                    if (sym.find(imp) != std::string::npos) {
+                        base += 40;
+                        break;
+                    }
+                }
+                add(sym, base);
             }
-            add(sym, base);
         }
 
         const fs::path rel_dir = b.rel.parent_path();
@@ -1010,9 +1758,14 @@ class VitteIdeApp {
             }
             return a.first < b2.first;
         });
+        return ranked;
+    }
 
+    std::vector<std::string> build_suggestions_for(const Buffer& b) {
+        const std::string prefix = token_under_cursor(b);
+        const auto ranked = ranked_suggestions_for(b);
         std::vector<std::string> out;
-        out.push_back("[suggestions] prefix='" + prefix + "'");
+        out.push_back("[suggestions] prefix='" + prefix + "' max=" + std::to_string(kMaxSuggestions));
         for (const auto& kv : ranked) {
             out.push_back(" - " + kv.first + " [" + std::to_string(kv.second) + "]");
             if (out.size() >= kMaxSuggestions + 1) {
@@ -1036,6 +1789,142 @@ class VitteIdeApp {
         status_ = "Suggestions updated";
     }
 
+    bool active_editor_geometry(int* top, int* left, int* width, int* height) const {
+        if (buffers_.empty()) {
+            return false;
+        }
+        const int bottom_height = std::max(4, std::min(kBottomPaneHeight, LINES / 3));
+        const int code_height = std::max(5, LINES - bottom_height - 2);
+        const int code_top = 1;
+        const int pane_top = code_top + 1;
+        const int pane_height = code_height - 1;
+        const int files_pane_width = std::max(18, std::min(kFilePaneWidth, COLS / 3));
+        const int base_left = files_pane_width + 1;
+        const int base_width = COLS - base_left;
+        if (!split_enabled_) {
+            *top = pane_top;
+            *left = base_left;
+            *width = base_width;
+            *height = pane_height;
+            return true;
+        }
+        if (split_vertical_) {
+            const int w1 = base_width / 2;
+            const int w2 = base_width - w1;
+            if (active_editor_pane_ == 0) {
+                *top = pane_top;
+                *left = base_left;
+                *width = w1;
+                *height = pane_height;
+            } else {
+                *top = pane_top;
+                *left = base_left + w1 + 1;
+                *width = w2 - 1;
+                *height = pane_height;
+            }
+            return true;
+        }
+        const int h1 = pane_height / 2;
+        const int h2 = pane_height - h1;
+        if (active_editor_pane_ == 0) {
+            *top = pane_top;
+            *left = base_left;
+            *width = base_width;
+            *height = h1;
+        } else {
+            *top = pane_top + h1 + 1;
+            *left = base_left;
+            *width = base_width;
+            *height = h2 - 1;
+        }
+        return true;
+    }
+
+    void show_inline_completion_popup() {
+        Buffer* b = pane_buffer_ptr(active_editor_pane_);
+        if (b == nullptr) {
+            return;
+        }
+        auto ranked = ranked_suggestions_for(*b);
+        if (ranked.empty()) {
+            status_ = "Completion: no candidate";
+            return;
+        }
+        std::vector<std::string> items;
+        for (const auto& r : ranked) {
+            items.push_back(r.first);
+            if (items.size() >= 12) {
+                break;
+            }
+        }
+        if (items.empty()) {
+            status_ = "Completion: no candidate";
+            return;
+        }
+
+        std::size_t selected = 0;
+        timeout(-1);
+        while (true) {
+            draw();
+            int pane_top = 0, pane_left = 0, pane_w = 0, pane_h = 0;
+            if (!active_editor_geometry(&pane_top, &pane_left, &pane_w, &pane_h)) {
+                break;
+            }
+            const int cursor_row = std::min(pane_top + pane_h - 1, pane_top + 1 + static_cast<int>(b->cursor_line - std::min(b->cursor_line, b->top_line)));
+            const int cursor_col = std::min(pane_left + pane_w - 2, pane_left + 7 + static_cast<int>(b->cursor_col));
+            int box_w = 2;
+            for (const auto& s : items) {
+                box_w = std::max(box_w, static_cast<int>(s.size()) + 2);
+            }
+            box_w = std::min(box_w, std::max(14, pane_w - 2));
+            const int box_h = static_cast<int>(items.size()) + 2;
+            int box_top = cursor_row + 1;
+            if (box_top + box_h >= LINES - 1) {
+                box_top = std::max(1, cursor_row - box_h);
+            }
+            int box_left = cursor_col;
+            if (box_left + box_w >= COLS - 1) {
+                box_left = std::max(1, COLS - box_w - 2);
+            }
+
+            attron(A_REVERSE);
+            mvhline(box_top, box_left, ' ', box_w);
+            mvaddnstr(box_top, box_left + 1, "completion", box_w - 2);
+            for (int i = 0; i < static_cast<int>(items.size()); ++i) {
+                mvhline(box_top + 1 + i, box_left, ' ', box_w);
+                if (static_cast<std::size_t>(i) == selected) {
+                    attron(A_BOLD);
+                    mvaddnstr(box_top + 1 + i, box_left + 1, items[static_cast<std::size_t>(i)].c_str(), box_w - 2);
+                    attroff(A_BOLD);
+                } else {
+                    mvaddnstr(box_top + 1 + i, box_left + 1, items[static_cast<std::size_t>(i)].c_str(), box_w - 2);
+                }
+            }
+            attroff(A_REVERSE);
+            refresh();
+
+            const int ch = getch();
+            if (ch == 27) {
+                status_ = "Completion cancelled";
+                break;
+            }
+            if (ch == KEY_UP && selected > 0) {
+                --selected;
+                continue;
+            }
+            if (ch == KEY_DOWN && selected + 1 < items.size()) {
+                ++selected;
+                continue;
+            }
+            if (ch == '\n' || ch == KEY_ENTER || ch == '\t') {
+                replace_token_at_cursor(*b, items[selected]);
+                status_ = "Completion inserted";
+                break;
+            }
+        }
+        timeout(120);
+    }
+
     void show_outline_current() {
         Buffer* b = active_buffer_ptr();
         if (b == nullptr) {
@@ -1057,6 +1946,61 @@ class VitteIdeApp {
         replace_diag_lines(std::move(out));
         selected_diag_ = 0;
         status_ = "Outline ready";
+    }
+
+    static std::string simplify_markdown_line(std::string line) {
+        line = trim_copy(line);
+        if (has_prefix(line, "###")) {
+            line = "H3 " + trim_copy(line.substr(3));
+        } else if (has_prefix(line, "##")) {
+            line = "H2 " + trim_copy(line.substr(2));
+        } else if (has_prefix(line, "#")) {
+            line = "H1 " + trim_copy(line.substr(1));
+        } else if (has_prefix(line, "- ") || has_prefix(line, "* ")) {
+            line = " - " + trim_copy(line.substr(2));
+        }
+        line = replace_all_copy(line, "`", "");
+        line = replace_all_copy(line, "**", "");
+        line = replace_all_copy(line, "__", "");
+        return line;
+    }
+
+    void preview_markdown_docs() {
+        fs::path p = project_root_ / "README.md";
+        const auto custom = prompt_input("Docs preview path", p.string());
+        if (custom.has_value() && !custom->empty()) {
+            p = fs::path(*custom);
+            if (p.is_relative()) {
+                p = project_root_ / p;
+            }
+        }
+        std::ifstream in(p);
+        if (!in.is_open()) {
+            status_ = "Docs preview: cannot open " + p.string();
+            return;
+        }
+        diag_is_problems_ = false;
+        diag_hits_.clear();
+        std::vector<std::string> out;
+        out.push_back("[docs] " + p.string());
+        std::string line;
+        std::size_t kept = 0;
+        while (std::getline(in, line)) {
+            const std::string s = simplify_markdown_line(line);
+            if (!s.empty()) {
+                out.push_back(s);
+                ++kept;
+            }
+            if (kept >= 220) {
+                out.push_back("... truncated ...");
+                break;
+            }
+        }
+        if (out.size() == 1) {
+            out.push_back("(empty document)");
+        }
+        replace_diag_lines(std::move(out));
+        status_ = "Docs preview ready";
     }
 
     void search_in_files() {
@@ -1097,6 +2041,7 @@ class VitteIdeApp {
     }
 
     void replace_in_files() {
+        finish_file_scan_blocking();
         diag_is_problems_ = false;
         const auto from = prompt_input("Replace: find text");
         if (!from.has_value() || from->empty()) {
@@ -1195,11 +2140,12 @@ class VitteIdeApp {
             load_buffer_contents(b);
             b.dirty = false;
         }
-        rebuild_global_indices();
+        begin_background_reindex();
         status_ = "Replace done. changed files=" + std::to_string(changed_files);
     }
 
     void find_references() {
+        finish_file_scan_blocking();
         Buffer* b = active_buffer_ptr();
         if (b == nullptr) {
             return;
@@ -1260,6 +2206,7 @@ class VitteIdeApp {
     }
 
     void rename_symbol_project() {
+        finish_file_scan_blocking();
         Buffer* b = active_buffer_ptr();
         if (b == nullptr) {
             return;
@@ -1366,24 +2313,83 @@ class VitteIdeApp {
             load_buffer_contents(buf);
             buf.dirty = false;
         }
-        rebuild_global_indices();
+        begin_background_reindex();
         status_ = "Rename applied. changed files=" + std::to_string(changed);
     }
 
     void open_quick_palette() {
+        finish_file_scan_blocking();
         diag_is_problems_ = false;
         std::string query;
         std::vector<DiagHit> candidates;
+        std::vector<std::pair<std::string, std::string>> actions;
         std::size_t selected = 0;
         int old_timeout = 120;
         timeout(-1);
 
+        auto run_palette_action = [&](const std::string& id) {
+            if (id == "check") run_target_command("check");
+            else if (id == "build") run_target_command("build");
+            else if (id == "run") run_target_command("run");
+            else if (id == "test") run_target_command("test");
+            else if (id == "save") { if (Buffer* b = active_buffer_ptr(); b != nullptr) save_buffer(*b); }
+            else if (id == "save-all") save_all_dirty_buffers();
+            else if (id == "split-toggle") switch_split_layout();
+            else if (id == "split-orient") toggle_split_orientation();
+            else if (id == "outline") show_outline_current();
+            else if (id == "suggest") show_suggestions();
+            else if (id == "rename-local") rename_symbol_local();
+            else if (id == "rename-project") rename_symbol_project();
+            else if (id == "hover") mini_lsp_hover();
+            else if (id == "docs-preview") preview_markdown_docs();
+            else if (id == "undo") { if (Buffer* b = active_buffer_ptr(); b != nullptr) undo_step(*b); }
+            else if (id == "redo") { if (Buffer* b = active_buffer_ptr(); b != nullptr) redo_step(*b); }
+            else if (id == "multi-select") multi_cursor_select_symbol();
+            else if (id == "multi-apply") multi_cursor_apply_replace();
+            else if (id == "problems-cycle") {
+                if (problems_filter_ == ProblemsFilter::All) problems_filter_ = ProblemsFilter::CurrentFile;
+                else if (problems_filter_ == ProblemsFilter::CurrentFile) problems_filter_ = ProblemsFilter::ErrorsOnly;
+                else problems_filter_ = ProblemsFilter::All;
+                show_problems_filtered();
+            } else if (id == "export-diag-json") {
+                export_diagnostics_json();
+            }
+        };
+
         auto rebuild = [&]() {
             candidates.clear();
+            actions.clear();
             std::vector<std::string> out;
             out.push_back("[quick palette] " + query);
 
-            if (!query.empty() && query[0] == ':') {
+            if (has_prefix(query, ">>")) {
+                const std::string q = to_lower(trim_copy(query.substr(2)));
+                const std::vector<std::pair<std::string, std::string>> catalog = {
+                    {"check", "check"}, {"build", "build"}, {"run", "run"}, {"test", "test"},
+                    {"save", "save current"}, {"save-all", "save all dirty"},
+                    {"split-toggle", "split toggle"}, {"split-orient", "split orientation"},
+                    {"outline", "outline current"}, {"suggest", "suggestions"},
+                    {"rename-local", "rename local"}, {"rename-project", "rename project"},
+                    {"hover", "hover mini-lsp"}, {"docs-preview", "docs preview"},
+                    {"undo", "undo"}, {"redo", "redo"},
+                    {"multi-select", "multi-cursor select"}, {"multi-apply", "multi-cursor apply"},
+                    {"problems-cycle", "problems cycle"}, {"export-diag-json", "export diagnostics json"},
+                };
+                for (const auto& it : catalog) {
+                    const std::string label = ">> " + it.second;
+                    if (!q.empty() && to_lower(label).find(q) == std::string::npos) {
+                        continue;
+                    }
+                    actions.push_back(it);
+                    out.push_back(" - " + label);
+                    if (actions.size() >= 120) {
+                        break;
+                    }
+                }
+                if (actions.empty()) {
+                    out.push_back("(no action match)");
+                }
+            } else if (!query.empty() && query[0] == ':') {
                 Buffer* b = active_buffer_ptr();
                 if (b != nullptr) {
                     const std::string num = trim_copy(query.substr(1));
@@ -1479,15 +2485,16 @@ class VitteIdeApp {
                 }
             }
 
-            if (selected >= candidates.size()) {
-                selected = candidates.empty() ? 0 : candidates.size() - 1;
+            const std::size_t total = actions.empty() ? candidates.size() : actions.size();
+            if (selected >= total) {
+                selected = total == 0 ? 0 : total - 1;
             }
             replace_diag_lines(std::move(out));
             diag_hits_ = candidates;
             selected_diag_ = selected;
             focus_ = FocusPane::Diagnostics;
 
-            if (!candidates.empty()) {
+            if (actions.empty() && !candidates.empty()) {
                 if (!split_enabled_) {
                     split_enabled_ = true;
                     split_vertical_ = true;
@@ -1513,7 +2520,10 @@ class VitteIdeApp {
                 break;
             }
             if (ch == '\n' || ch == KEY_ENTER) {
-                if (!candidates.empty()) {
+                if (!actions.empty()) {
+                    run_palette_action(actions[selected].first);
+                    status_ = "Action: " + actions[selected].second;
+                } else if (!candidates.empty()) {
                     goto_location({candidates[selected].file, candidates[selected].line, candidates[selected].col}, false);
                     status_ = "Quick palette open";
                 }
@@ -1527,7 +2537,8 @@ class VitteIdeApp {
                 continue;
             }
             if (ch == KEY_DOWN) {
-                if (selected + 1 < candidates.size()) {
+                const std::size_t total = actions.empty() ? candidates.size() : actions.size();
+                if (selected + 1 < total) {
                     ++selected;
                 }
                 rebuild();
@@ -1595,14 +2606,14 @@ class VitteIdeApp {
             if (b.cursor_col > 0) {
                 b.lines[b.cursor_line].erase(b.cursor_col - 1, 1);
                 --b.cursor_col;
-                b.dirty = true;
+                mark_buffer_edited(b);
             } else if (b.cursor_line > 0) {
                 const std::size_t prev_len = b.lines[b.cursor_line - 1].size();
                 b.lines[b.cursor_line - 1] += b.lines[b.cursor_line];
                 b.lines.erase(b.lines.begin() + static_cast<long>(b.cursor_line));
                 --b.cursor_line;
                 b.cursor_col = prev_len;
-                b.dirty = true;
+                mark_buffer_edited(b);
             }
             ensure_cursor_visible(b, code_height);
             return;
@@ -1610,11 +2621,11 @@ class VitteIdeApp {
         if (ch == KEY_DC) {
             if (b.cursor_col < b.lines[b.cursor_line].size()) {
                 b.lines[b.cursor_line].erase(b.cursor_col, 1);
-                b.dirty = true;
+                mark_buffer_edited(b);
             } else if (b.cursor_line + 1 < b.lines.size()) {
                 b.lines[b.cursor_line] += b.lines[b.cursor_line + 1];
                 b.lines.erase(b.lines.begin() + static_cast<long>(b.cursor_line + 1));
-                b.dirty = true;
+                mark_buffer_edited(b);
             }
             ensure_cursor_visible(b, code_height);
             return;
@@ -1625,22 +2636,28 @@ class VitteIdeApp {
             b.lines.insert(b.lines.begin() + static_cast<long>(b.cursor_line + 1), right);
             ++b.cursor_line;
             b.cursor_col = 0;
-            b.dirty = true;
+            mark_buffer_edited(b);
             ensure_cursor_visible(b, code_height);
             return;
         }
         if (ch == '\t') {
             b.lines[b.cursor_line].insert(b.cursor_col, "  ");
             b.cursor_col += 2;
-            b.dirty = true;
+            mark_buffer_edited(b);
             ensure_cursor_visible(b, code_height);
             return;
         }
         if (ch >= 32 && ch <= 126) {
             b.lines[b.cursor_line].insert(b.cursor_col, 1, static_cast<char>(ch));
             ++b.cursor_col;
-            b.dirty = true;
+            mark_buffer_edited(b);
             ensure_cursor_visible(b, code_height);
+            if (auto_complete_auto_ && is_ident_char(static_cast<char>(ch))) {
+                const std::string tok = token_under_cursor(b);
+                if (tok.size() >= 2) {
+                    show_suggestions();
+                }
+            }
         }
     }
 
@@ -1725,6 +2742,14 @@ class VitteIdeApp {
             prev_tab();
             return true;
         }
+        if (seq == "1;3A" || seq == "A") {
+            move_current_line(-1);
+            return true;
+        }
+        if (seq == "1;3B" || seq == "B") {
+            move_current_line(1);
+            return true;
+        }
         return false;
     }
 
@@ -1803,21 +2828,57 @@ class VitteIdeApp {
             toggle_breakpoint(*b);
             return;
         }
-        if (ch == 'n' && !diag_hits_.empty()) {
-            jump_to_diag((selected_diag_ + 1) % diag_hits_.size());
+        if (ch == 'n') {
+            jump_local_find(1);
             return;
         }
-        if (ch == 'p' && !diag_hits_.empty()) {
-            selected_diag_ = (selected_diag_ == 0) ? (diag_hits_.size() - 1) : (selected_diag_ - 1);
-            jump_to_diag(selected_diag_);
+        if (ch == 'p') {
+            jump_local_find(-1);
             return;
         }
         if (ch == 'f') {
             follow_symbol_other_split();
             return;
         }
+        if (ch == 'K') {
+            mini_lsp_hover();
+            return;
+        }
+        if (ch == 'z') {
+            undo_step(*b);
+            return;
+        }
+        if (ch == 'Y') {
+            redo_step(*b);
+            return;
+        }
+        if (ch == 4) {  // Ctrl+D
+            multi_cursor_select_symbol();
+            return;
+        }
+        if (ch == 5) {  // Ctrl+E
+            multi_cursor_apply_replace();
+            return;
+        }
         if (ch == KEY_F(12)) {
             goto_definition(false);
+            return;
+        }
+        if (ch == KEY_F(2)) {
+            rename_symbol_local();
+            return;
+        }
+        if (ch == KEY_F(4)) {
+            if (!diag_hits_.empty()) {
+                jump_to_diag((selected_diag_ + 1) % diag_hits_.size());
+            }
+            return;
+        }
+        if (ch == KEY_F(16)) {
+            if (!diag_hits_.empty()) {
+                selected_diag_ = (selected_diag_ == 0) ? (diag_hits_.size() - 1) : (selected_diag_ - 1);
+                jump_to_diag(selected_diag_);
+            }
             return;
         }
         if (ch == 18) {  // Ctrl+R
@@ -1855,6 +2916,13 @@ class VitteIdeApp {
     void periodic_tasks() {
         const auto now = std::chrono::steady_clock::now();
 
+        continue_file_scan(opts_.light_mode ? 160 : 800);
+        if (buffers_.empty() && !files_.empty()) {
+            selected_file_index_ = std::min(selected_file_index_, files_.size() - 1);
+            open_selected_file(false);
+        }
+        continue_background_reindex(12);
+
         if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_autosave_).count() >= kAutosaveMs) {
             last_autosave_ = now;
             for (auto& b : buffers_) {
@@ -1865,55 +2933,67 @@ class VitteIdeApp {
         }
 
         // Reload external file changes.
-        for (auto& b : buffers_) {
-            const auto mt = safe_mtime(b.path);
-            if (!mt.has_value() || !b.mtime.has_value()) {
-                continue;
-            }
-            if (*mt != *b.mtime) {
-                if (b.dirty) {
-                    status_ = "External change on dirty buffer: " + b.rel.string() + " (keep local)";
-                    b.mtime = mt;
-                } else {
-                    const auto ans = prompt_input("Reload changed file " + b.rel.string() + " ? yes/no", "yes");
-                    if (ans.has_value() && to_lower(*ans) == "yes") {
-                        load_buffer_contents(b);
-                        status_ = "Reloaded external change: " + b.rel.string();
-                    } else {
+        if (!opts_.safe_mode) {
+            for (auto& b : buffers_) {
+                const auto mt = safe_mtime(b.path);
+                if (!mt.has_value() || !b.mtime.has_value()) {
+                    continue;
+                }
+                if (*mt != *b.mtime) {
+                    if (b.dirty) {
+                        status_ = "External change on dirty buffer: " + b.rel.string() + " (keep local)";
                         b.mtime = mt;
+                    } else {
+                        const auto ans = prompt_input("Reload changed file " + b.rel.string() + " ? yes/no", "yes");
+                        if (ans.has_value() && to_lower(*ans) == "yes") {
+                            load_buffer_contents(b);
+                            status_ = "Reloaded external change: " + b.rel.string();
+                        } else {
+                            b.mtime = mt;
+                        }
                     }
                 }
             }
         }
 
-        if (auto_check_ && std::chrono::duration_cast<std::chrono::milliseconds>(now - last_autocheck_).count() >= 1200) {
+        if (auto_check_ && pending_auto_check_ &&
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_edit_activity_).count() >= 450 &&
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_autocheck_).count() >= 450) {
             last_autocheck_ = now;
             Buffer* b = active_buffer_ptr();
-            if (b != nullptr && !b->dirty) {
+            if (b != nullptr && !b->dirty && !opts_.safe_mode) {
                 const auto mt = safe_mtime(b->path);
                 if (mt.has_value() && b->mtime.has_value() && *mt != *b->mtime) {
                     load_buffer_contents(*b);
-                    run_check_current(true);
                 }
+                run_check_current(true);
+                pending_auto_check_ = false;
             }
         }
+    }
+
+    void write_default_targets_config(const fs::path& cfg) {
+        std::ofstream out(cfg);
+        if (!out.is_open()) {
+            return;
+        }
+        out << "name=default\n";
+        out << "check=vitte check {file}\n";
+        out << "build=vitte build {file} -o {out}\n";
+        out << "run=vitte run {file}\n";
+        out << "test=vitte test {project}\n";
+        out << "profile=debug\n";
+        out << "args=\n";
+        out << "env=\n";
+        out.close();
     }
 
     void load_targets() {
         const fs::path cfg = project_root_ / ".vitte-cache" / "vitte-ide" / "targets.conf";
         std::error_code ec;
         fs::create_directories(cfg.parent_path(), ec);
-        if (!fs::exists(cfg)) {
-            std::ofstream out(cfg);
-            out << "name=default\n";
-            out << "check=vitte check {file}\n";
-            out << "build=vitte build {file} -o {out}\n";
-            out << "run={out}\n";
-            out << "test=\n";
-            out << "profile=debug\n";
-            out << "args=\n";
-            out << "env=\n";
-            out.close();
+        if (opts_.geany_defaults || !fs::exists(cfg)) {
+            write_default_targets_config(cfg);
         }
 
         std::ifstream in(cfg);
@@ -1960,6 +3040,8 @@ class VitteIdeApp {
         out << "split_enabled=" << (split_enabled_ ? 1 : 0) << "\n";
         out << "split_vertical=" << (split_vertical_ ? 1 : 0) << "\n";
         out << "secondary=" << secondary_buffer_ << "\n";
+        out << "active_pane=" << active_editor_pane_ << "\n";
+        out << "focus=" << static_cast<int>(focus_) << "\n";
         for (const auto& b : buffers_) {
             out << "buf=" << b.rel.string() << "|" << b.cursor_line << "|" << b.cursor_col << "|" << b.top_line << "|";
             for (std::size_t i = 0; i < b.breakpoints.size(); ++i) {
@@ -1967,6 +3049,7 @@ class VitteIdeApp {
                 out << b.breakpoints[i];
             }
             out << "\n";
+            save_undo_state(b);
         }
     }
 
@@ -1994,6 +3077,17 @@ class VitteIdeApp {
             }
             if (has_prefix(line, "secondary=")) {
                 secondary_buffer_ = static_cast<std::size_t>(std::stoul(line.substr(10)));
+                continue;
+            }
+            if (has_prefix(line, "active_pane=")) {
+                active_editor_pane_ = std::max(0, std::min(1, std::stoi(line.substr(12))));
+                continue;
+            }
+            if (has_prefix(line, "focus=")) {
+                const int fv = std::stoi(line.substr(6));
+                if (fv >= static_cast<int>(FocusPane::Files) && fv <= static_cast<int>(FocusPane::Diagnostics)) {
+                    focus_ = static_cast<FocusPane>(fv);
+                }
                 continue;
             }
             if (!has_prefix(line, "buf=")) {
@@ -2074,8 +3168,15 @@ class VitteIdeApp {
         if (handle_ctrl_tab_escape(ch)) {
             return;
         }
+#ifdef KEY_SSAVE
+        if (ch == KEY_SSAVE) {
+            save_all_dirty_buffers();
+            return;
+        }
+#endif
 
-        const int code_h = std::max(4, LINES - kBottomPaneHeight - 2);
+        const int bottom_height = std::max(4, std::min(kBottomPaneHeight, LINES / 3));
+        const int code_h = std::max(4, LINES - bottom_height - 2);
 
         if (ch == '\t' && !insert_mode_) {
             cycle_focus();
@@ -2087,6 +3188,28 @@ class VitteIdeApp {
         }
 
         switch (ch) {
+            case 0:   // Ctrl+Space
+                show_inline_completion_popup();
+                return;
+            case 6:   // Ctrl+F
+                find_in_current_buffer();
+                return;
+            case 7:   // Ctrl+G
+                goto_line_col_prompt();
+                return;
+            case 19:  // Ctrl+S
+                if (Buffer* b = active_buffer_ptr(); b != nullptr) {
+                    save_buffer(*b);
+                }
+                return;
+            case 23:  // Ctrl+W fallback quick-save all dirty
+                save_all_dirty_buffers();
+                return;
+            case 31:  // Ctrl+/
+                if (Buffer* b = pane_buffer_ptr(active_editor_pane_); b != nullptr) {
+                    toggle_comment_line(*b);
+                }
+                return;
             case 'q':
                 quit_ = true;
                 return;
@@ -2130,8 +3253,28 @@ class VitteIdeApp {
             case 'U':
                 find_references();
                 return;
+            case 'O':
+                preview_markdown_docs();
+                return;
             case 'N':
+                jump_local_find(-1);
+                return;
+            case 'R':
                 rename_symbol_project();
+                return;
+            case KEY_F(2):
+                rename_symbol_local();
+                return;
+            case KEY_F(4):
+                if (!diag_hits_.empty()) {
+                    jump_to_diag((selected_diag_ + 1) % diag_hits_.size());
+                }
+                return;
+            case KEY_F(16):
+                if (!diag_hits_.empty()) {
+                    selected_diag_ = (selected_diag_ == 0) ? (diag_hits_.size() - 1) : (selected_diag_ - 1);
+                    jump_to_diag(selected_diag_);
+                }
                 return;
             case 'g':
                 goto_definition(false);
@@ -2162,6 +3305,9 @@ class VitteIdeApp {
                 return;
             case 'D':
                 run_project_diagnostics();
+                return;
+            case 'J':
+                export_diagnostics_json();
                 return;
             case 'T':
                 edit_target_config();
@@ -2227,12 +3373,22 @@ class VitteIdeApp {
                            " | target=" + target_.name + "(" + target_.profile + ")" +
                            " | split=" + (split_enabled_ ? (split_vertical_ ? std::string("V") : std::string("H")) : std::string("off")) +
                            " | problems=" + problems_filter_label();
+        if (opts_.profile_ui) {
+            std::ostringstream perf;
+            perf << " | perf draw=" << std::fixed << std::setprecision(2) << last_draw_ms_
+                 << "ms scan=" << last_scan_batch_ << " idx=" << last_index_batch_;
+            head += perf.str();
+        }
         mvaddnstr(0, 0, head.c_str(), COLS - 1);
         attroff(A_REVERSE);
     }
 
     void draw_files_pane(int top, int height, int width) {
-        mvaddnstr(top, 1, "Project Files", width - 2);
+        std::string title = "Project Files";
+        if (!file_scan_done_) {
+            title += " (scan...)";
+        }
+        mvaddnstr(top, 1, title.c_str(), width - 2);
         const int visible = std::max(0, height - 2);
         int start = 0;
         if (static_cast<int>(selected_file_index_) >= visible) {
@@ -2296,11 +3452,29 @@ class VitteIdeApp {
                     break;
                 }
             }
+            bool has_find = false;
+            for (const auto& h : local_find_hits_) {
+                if (h.file == b.rel && h.line == ln) {
+                    has_find = true;
+                    break;
+                }
+            }
+            bool has_multi = false;
+            if (multi_cursor_active_) {
+                for (const auto& h : multi_cursor_hits_) {
+                    if (h.file == b.rel && h.line == ln) {
+                        has_multi = true;
+                        break;
+                    }
+                }
+            }
             const bool has_bp = line_has_breakpoint(b, ln);
             char marker = ' ';
             if (has_bp && has_diag) marker = '*';
             else if (has_bp) marker = 'B';
             else if (has_diag) marker = '!';
+            else if (has_multi) marker = 'M';
+            else if (has_find) marker = 'S';
 
             std::ostringstream oss;
             oss << marker;
@@ -2312,6 +3486,10 @@ class VitteIdeApp {
                 attron((focus_ == FocusPane::Code) ? A_REVERSE : A_BOLD);
                 mvaddnstr(row, left, txt.c_str(), content_w);
                 attroff(A_REVERSE | A_BOLD);
+            } else if (has_find) {
+                attron(A_UNDERLINE);
+                mvaddnstr(row, left, txt.c_str(), content_w);
+                attroff(A_UNDERLINE);
             } else {
                 mvaddnstr(row, left, txt.c_str(), content_w);
             }
@@ -2340,8 +3518,8 @@ class VitteIdeApp {
         }
     }
 
-    void draw_code_area(int top, int height) {
-        const int left = kFilePaneWidth + 1;
+    void draw_code_area(int top, int height, int files_pane_width) {
+        const int left = files_pane_width + 1;
         const int width = COLS - left;
 
         if (buffers_.empty()) {
@@ -2417,20 +3595,22 @@ class VitteIdeApp {
 
     void draw() {
         erase();
-        if (LINES < 20 || COLS < 100) {
-            mvaddstr(0, 0, "Terminal too small. Need >= 100x20.");
-            mvaddstr(1, 0, "Press q to quit.");
+        if (LINES < 8 || COLS < 40) {
+            mvaddstr(0, 0, "Terminal too small. Need >= 40x8.");
+            mvaddstr(1, 0, "Resize window.");
             refresh();
             return;
         }
 
         draw_status_bar();
         const int top = 1;
-        const int code_height = std::max(6, LINES - kBottomPaneHeight - 2);
+        const int files_pane_width = std::max(18, std::min(kFilePaneWidth, COLS / 3));
+        const int bottom_height = std::max(4, std::min(kBottomPaneHeight, LINES / 3));
+        const int code_height = std::max(5, LINES - bottom_height - 2);
         const int bottom_top = top + code_height;
 
-        draw_files_pane(top, code_height, kFilePaneWidth);
-        draw_code_area(top, code_height);
+        draw_files_pane(top, code_height, files_pane_width);
+        draw_code_area(top, code_height, files_pane_width);
         draw_diag_pane(bottom_top, LINES - bottom_top - 1);
         draw_footer();
 
@@ -2440,8 +3620,56 @@ class VitteIdeApp {
 
 int main(int argc, char** argv) {
     fs::path root = fs::current_path();
-    if (argc > 1 && argv[1] != nullptr && std::string(argv[1]) != "") {
-        root = argv[1];
+    RunOptions opts;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i] == nullptr ? "" : std::string(argv[i]);
+        if (arg.empty()) {
+            continue;
+        }
+        if (arg == "--light") {
+            opts.light_mode = true;
+            opts.no_autocheck = true;
+            opts.no_session = true;
+            continue;
+        }
+        if (arg == "--no-autocheck") {
+            opts.no_autocheck = true;
+            continue;
+        }
+        if (arg == "--no-session") {
+            opts.no_session = true;
+            continue;
+        }
+        if (arg == "--geany-defaults") {
+            opts.geany_defaults = true;
+            continue;
+        }
+        if (arg == "--safe-mode") {
+            opts.safe_mode = true;
+            opts.no_autocheck = true;
+            continue;
+        }
+        if (arg == "--profile-ui") {
+            opts.profile_ui = true;
+            continue;
+        }
+        if (arg == "--help" || arg == "-h") {
+            std::cout
+                << "usage: vitte-ide [--light] [--no-autocheck] [--no-session] [--geany-defaults] [--safe-mode] [--profile-ui] [project-path]\n"
+                << "  --light          startup rapide (equiv --no-autocheck --no-session)\n"
+                << "  --no-autocheck   desactive auto-check periodique\n"
+                << "  --no-session     desactive load/save session\n"
+                << "  --geany-defaults ecrase targets.conf avec le profil Geany\n"
+                << "  --safe-mode      desactive auto-check et watchers externes\n"
+                << "  --profile-ui     affiche timings UI/scan/index dans la barre de statut\n";
+            return 0;
+        }
+        if (arg.rfind("-", 0) == 0) {
+            std::cerr << "vitte-ide: unknown option: " << arg << "\n";
+            return 2;
+        }
+        root = arg;
     }
 
     if (!fs::exists(root)) {
@@ -2449,6 +3677,6 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    VitteIdeApp app(root);
+    VitteIdeApp app(root, opts);
     return app.run();
 }
