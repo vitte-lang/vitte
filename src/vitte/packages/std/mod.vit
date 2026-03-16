@@ -12,6 +12,9 @@ package vitte/std
 space vitte/std
 
 use vitte/std/base as std_base_pkg
+use vitte/std/internal/policy as std_policy_pkg
+use vitte/std/internal/runtime as std_runtime_pkg
+use vitte/std/internal/validate as std_validate_pkg
 
 form StdEntry {
   name: string
@@ -30,6 +33,20 @@ pick StdError {
 pick StdResult[T] {
   Ok(value: T)
   Err(error: StdError)
+}
+
+form StdConfig {
+  profile: string
+  timeout_ms: int
+  retry_budget: int
+  strict: bool
+}
+
+form StdRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  backend: string
 }
 
 proc ok[T](value: T) -> StdResult[T] {
@@ -66,6 +83,12 @@ proc register(i: StdIndex, name: string, group: string, path: string) -> StdInde
   give std_base_pkg.register(i, name, group, path)
 }
 
+proc register_checked(i: StdIndex, name: string, group: string, path: string) -> StdResult[StdIndex] {
+  let code = std_validate_pkg.register_error_code(name, group, path)
+  if code.len > 0 { give StdResult.Err(StdError.Message(code, "invalid std registration input")) }
+  give StdResult.Ok(register(i, name, group, path))
+}
+
 proc find_group(i: StdIndex, group: string) -> [string] {
   give std_base_pkg.find_group(i, group)
 }
@@ -76,6 +99,24 @@ proc resolve_path(i: StdIndex, name: string) -> string {
 
 proc size(i: StdIndex) -> int {
   give std_base_pkg.size(i)
+}
+
+proc has_module(i: StdIndex, name: string) -> bool {
+  give resolve_path(i, name).len > 0
+}
+
+proc resolve_path_checked(i: StdIndex, name: string) -> StdResult[string] {
+  let out = resolve_path(i, name)
+  if out.len == 0 { give StdResult.Err(StdError.Message("VITTE-S0007", "module not found")) }
+  give StdResult.Ok(out)
+}
+
+proc group_count(i: StdIndex, group: string) -> int {
+  give find_group(i, group).len
+}
+
+proc index_summary(i: StdIndex) -> string {
+  give "entries=" + size(i).to_string()
 }
 
 proc std_debug_enabled() -> bool {
@@ -95,23 +136,182 @@ proc export_allowed(profile: string, module: string) -> bool {
 }
 
 proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-S0001" { give "invalid timeout in std configuration" }
+  if code == "VITTE-S0002" { give "invalid retry budget in std configuration" }
+  if code == "VITTE-S0003" { give "std runtime unavailable" }
+  if code == "VITTE-S0004" { give "module name is required" }
+  if code == "VITTE-S0005" { give "group is required" }
+  if code == "VITTE-S0006" { give "path is required" }
+  if code == "VITTE-S0007" { give "module not found in std index" }
+  if code == "VITTE-S0008" { give "module export denied by std policy" }
+  if code == "VITTE-S0009" { give "invalid std profile configuration" }
   give "std diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-S0001" { give "set timeout_ms between 1 and 60000" }
+  if code == "VITTE-S0002" { give "set retry_budget between 0 and 32" }
+  if code == "VITTE-S0003" { give "check std runtime backend and policy wiring" }
+  if code == "VITTE-S0004" { give "provide a non-empty module name" }
+  if code == "VITTE-S0005" { give "provide a non-empty module group" }
+  if code == "VITTE-S0006" { give "provide a non-empty module path" }
+  if code == "VITTE-S0007" { give "register module before resolving its path" }
+  if code == "VITTE-S0008" { give "switch profile or module to an allowed export mapping" }
+  if code == "VITTE-S0009" { give "use a valid profile name and normalized timeout/retry values" }
   give "check std module contract for " + code
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc default_config() -> StdConfig {
+  let p = std_policy_pkg.profile_by_name(std_policy_pkg.default_profile_name())
+  give StdConfig(p.name, p.timeout_ms, p.retry_budget, p.strict)
+}
+
+proc strict_config() -> StdConfig {
+  let p = std_policy_pkg.profile_by_name("core")
+  give StdConfig(p.name, p.timeout_ms, p.retry_budget, true)
+}
+
+proc config_for_profile(profile: string) -> StdConfig {
+  let p = std_policy_pkg.profile_by_name(std_policy_pkg.normalize_profile_name(profile))
+  give StdConfig(p.name, p.timeout_ms, p.retry_budget, p.strict)
+}
+
+proc profile_names() -> [string] {
+  give std_policy_pkg.profile_names()
+}
+
+proc config_profile_exists(profile: string) -> bool {
+  give std_policy_pkg.profile_exists(profile)
+}
+
+proc with_profile(cfg: StdConfig, profile: string) -> StdConfig {
+  let p = std_policy_pkg.profile_by_name(profile)
+  give StdConfig(p.name, p.timeout_ms, p.retry_budget, cfg.strict)
+}
+
+proc with_timeout(cfg: StdConfig, timeout_ms: int) -> StdConfig {
+  give StdConfig(cfg.profile, std_policy_pkg.normalize_timeout_ms(timeout_ms), cfg.retry_budget, cfg.strict)
+}
+
+proc with_retry_budget(cfg: StdConfig, retry_budget: int) -> StdConfig {
+  give StdConfig(cfg.profile, cfg.timeout_ms, std_policy_pkg.normalize_retry_budget(retry_budget), cfg.strict)
+}
+
+proc with_strict(cfg: StdConfig, strict: bool) -> StdConfig {
+  give StdConfig(cfg.profile, cfg.timeout_ms, cfg.retry_budget, strict)
+}
+
+proc normalize_config(cfg: StdConfig) -> StdConfig {
+  let profile = std_policy_pkg.normalize_profile_name(cfg.profile)
+  give StdConfig(profile,
+                 std_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
+                 std_policy_pkg.normalize_retry_budget(cfg.retry_budget),
+                 cfg.strict)
+}
+
+proc validate_config(cfg: StdConfig) -> StdResult[bool] {
+  let nc = normalize_config(cfg)
+  let code = std_validate_pkg.config_error_code(nc.timeout_ms, nc.retry_budget)
+  if code.len > 0 {
+    give StdResult.Err(StdError.Message(code, diagnostics_message(code)))
+  }
+  if std_validate_pkg.valid_profile_name(nc.profile) == false {
+    give StdResult.Err(StdError.Message("VITTE-S0001", "invalid std profile"))
+  }
+  if std_validate_pkg.valid_profile_config(nc.profile, nc.timeout_ms, nc.retry_budget, nc.strict) == false {
+    give StdResult.Err(StdError.Message("VITTE-S0009", diagnostics_message("VITTE-S0009")))
+  }
+  if std_validate_pkg.valid_config(nc.timeout_ms, nc.retry_budget, nc.strict) == false {
+    give StdResult.Err(StdError.Message("VITTE-S0001", "invalid std configuration"))
+  }
+  give StdResult.Ok(true)
+}
+
+proc healthcheck(cfg: StdConfig) -> StdResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is StdResult.Err { give vr }
+  if std_runtime_pkg.runtime_status() == false {
+    give StdResult.Err(StdError.Message("VITTE-S0003", "std runtime unavailable"))
+  }
+  give StdResult.Ok(true)
+}
+
+proc validate_config_checked(cfg: StdConfig) -> StdResult[StdConfig] {
+  let nc = normalize_config(cfg)
+  let vr = validate_config(nc)
+  when vr is StdResult.Err { give StdResult.Err(vr.error) }
+  give StdResult.Ok(nc)
+}
+
+proc healthcheck_profile(profile: string) -> StdResult[bool] {
+  give healthcheck(config_for_profile(profile))
+}
+
+proc healthcheck_with_message(cfg: StdConfig) -> StdResult[string] {
+  let hr = healthcheck(cfg)
+  when hr is StdResult.Err { give StdResult.Err(hr.error) }
+  give StdResult.Ok(std_runtime_pkg.runtime_ready_message())
+}
+
+proc runtime_info() -> StdRuntimeInfo {
+  give StdRuntimeInfo(std_runtime_pkg.runtime_name(),
+                      std_runtime_pkg.runtime_version(),
+                      std_runtime_pkg.supports_diagnostics(),
+                      std_runtime_pkg.runtime_backend())
+}
+
+proc capabilities() -> [string] {
+  let base = std_runtime_pkg.runtime_capabilities()
+  let out = base.push("config")
+  out = out.push("diagnostics")
+  out = out.push("index")
+  give out
+}
+
+proc ensure_export_allowed(profile: string, module: string) -> StdResult[bool] {
+  if export_allowed(profile, module) == false {
+    give StdResult.Err(StdError.Message("VITTE-S0008", diagnostics_message("VITTE-S0008")))
+  }
+  give StdResult.Ok(true)
 }
 
 proc api_version() -> string {
   give "v1"
 }
 
+proc version() -> string {
+  give api_version()
+}
+
 proc doctor_status() -> string {
   give "vitte/std doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: StdConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is StdResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> StdResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version +
+       " backend=" + ri.backend +
+       " diag_ns=" + std_runtime_pkg.diagnostics_namespace() +
+       " health=" + std_runtime_pkg.runtime_health_score().to_string() +
+       " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
 }
 
 proc quickfix_preview(payload: string) -> string {

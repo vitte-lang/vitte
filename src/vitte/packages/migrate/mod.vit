@@ -5,6 +5,9 @@ package vitte/migrate
 
 space vitte/migrate
 
+use vitte/migrate/internal/policy as migrate_policy_pkg
+use vitte/migrate/internal/runtime as migrate_runtime_pkg
+use vitte/migrate/internal/validate as migrate_validate_pkg
 
 form Migration {
   id: string
@@ -15,6 +18,28 @@ form Migration {
 form Plan {
   available: [Migration]
   applied: [string]
+}
+
+form MigrateConfig {
+  max_migrations: int
+  require_unique_ids: bool
+}
+
+pick MigrateConfigError {
+  InvalidConfig
+  Internal
+}
+
+pick MigrateConfigResult[T] {
+  Ok(value: T)
+  Err(error: MigrateConfigError)
+}
+
+form MigrateRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_rollback: bool
 }
 
 proc plan_new() -> Plan {
@@ -71,6 +96,81 @@ proc next_up_sql(p: Plan) -> string {
 proc health(p: Plan) -> string {
   if pending(p).len == 0 { give "up-to-date" }
   give "pending"
+}
+
+proc default_config() -> MigrateConfig {
+  give MigrateConfig(migrate_policy_pkg.default_max_migrations(),
+                     migrate_policy_pkg.default_require_unique_ids())
+}
+
+proc strict_config() -> MigrateConfig {
+  let cfg = default_config()
+  give MigrateConfig(cfg.max_migrations, true)
+}
+
+proc normalize_config(cfg: MigrateConfig) -> MigrateConfig {
+  give MigrateConfig(migrate_policy_pkg.normalize_max_migrations(cfg.max_migrations),
+                     cfg.require_unique_ids)
+}
+
+proc validate_config(cfg: MigrateConfig, plan: Plan) -> MigrateConfigResult[bool] {
+  let nc = normalize_config(cfg)
+  if nc.max_migrations <= 0 { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
+  if plan.available.len > nc.max_migrations { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
+  give MigrateConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: MigrateConfig, plan: Plan) -> MigrateConfigResult[bool] {
+  let vr = validate_config(cfg, plan)
+  when vr is MigrateConfigResult.Err { give MigrateConfigResult.Err(vr.error) }
+  if migrate_runtime_pkg.runtime_status() == false { give MigrateConfigResult.Err(MigrateConfigError.Internal) }
+  give MigrateConfigResult.Ok(true)
+}
+
+proc runtime_info() -> MigrateRuntimeInfo {
+  give MigrateRuntimeInfo(migrate_runtime_pkg.runtime_name(),
+                          migrate_runtime_pkg.runtime_version(),
+                          migrate_runtime_pkg.supports_diagnostics(),
+                          migrate_runtime_pkg.supports_rollback())
+}
+
+proc add_migration_checked(p: Plan, id: string, up_sql: string, down_sql: string, cfg: MigrateConfig) -> MigrateConfigResult[Plan] {
+  let nc = normalize_config(cfg)
+  let _ = nc
+  if migrate_validate_pkg.valid_migration_id(id) == false { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
+  if migrate_validate_pkg.valid_sql(up_sql) == false { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
+  if migrate_validate_pkg.valid_sql(down_sql) == false { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
+  if p.available.len >= cfg.max_migrations { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
+  if cfg.require_unique_ids && is_applied(p, id) { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
+  give MigrateConfigResult.Ok(add_migration(p, id, up_sql, down_sql))
+}
+
+proc apply_checked(p: Plan, id: string, cfg: MigrateConfig) -> MigrateConfigResult[Plan] {
+  let _ = cfg
+  if migrate_validate_pkg.valid_migration_id(id) == false { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
+  give MigrateConfigResult.Ok(apply(p, id))
+}
+
+proc capabilities() -> [string] {
+  give ["plan", "apply", "rollback", "config", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-MIG0001" { give "invalid migrate configuration or arguments" }
+  give "migrate diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "check migration ids/sql and plan limits"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc api_version() -> string {
+  give "v1"
 }
 
 proc ready() -> bool {

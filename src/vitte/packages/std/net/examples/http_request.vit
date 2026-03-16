@@ -1,0 +1,14 @@
+<<<
+http_request.vit
+example vitte/std/net request facade
+>>>
+
+use vitte/std/net as std_net_pkg
+
+entry main at core/app {
+  let hs: [std_net_pkg.StdNetHeader] = [std_net_pkg.StdNetHeader("accept", "application/json")]
+  let r = std_net_pkg.get("api.vitte.dev", hs, std_net_pkg.timeout_profile("safe"))
+  when r is std_net_pkg.StdNetResult.Err { give 1 }
+  if std_net_pkg.is_status_2xx(r.value.status) == false { give 2 }
+  give 0
+}

@@ -1,0 +1,35 @@
+use vitte/db as db_pkg
+
+entry main at core/app {
+  let cfg0 = db_pkg.default_config()
+  let cfg1 = db_pkg.with_timeout_ms(cfg0, 1500)
+  let cfg2 = db_pkg.with_retry_budget(cfg1, 4)
+  let cfg = db_pkg.with_pool_bounds(cfg2, 1, 4)
+
+  let vc: db_pkg.DbResult[bool] = db_pkg.validate_config(cfg)
+  when vc is db_pkg.DbResult.Err {
+    give 1
+  }
+
+  let conn: db_pkg.DbResult[db_pkg.DbConn] = db_pkg.connect_checked(db_pkg.DbConfig("local", cfg.profile, cfg.timeout_ms, cfg.cancel_token, cfg.retry_backoff_ms, cfg.retry_budget, cfg.pool_min, cfg.pool_max, cfg.pool_idle_timeout_ms, cfg.pool_health_interval_ms, cfg.circuit_error_threshold, cfg.circuit_open_ms))
+  when conn is db_pkg.DbResult.Err {
+    give 2
+  }
+
+  let stmt = db_pkg.bind_int(db_pkg.prepare("SELECT * FROM t WHERE id=?"), 1)
+  let rows: db_pkg.DbResult[db_pkg.DbRows] = db_pkg.execute_prepared_checked(conn.value, stmt, 1000, "")
+  when rows is db_pkg.DbResult.Err {
+    give 3
+  }
+
+  let h = db_pkg.db_health(conn.value)
+  if h.ok == false {
+    give 4
+  }
+
+  if db_pkg.ready() == false {
+    give 5
+  }
+
+  give 0
+}

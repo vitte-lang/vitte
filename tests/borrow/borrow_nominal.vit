@@ -1,0 +1,40 @@
+use vitte/borrow as borrow_pkg
+
+entry main at core/app {
+  let cfg = borrow_pkg.strict_config()
+  let v: borrow_pkg.BorrowResult[bool] = borrow_pkg.validate_config(cfg)
+  when v is borrow_pkg.BorrowResult.Err {
+    return 1
+  }
+
+  let r1: borrow_pkg.BorrowResult[borrow_pkg.BorrowRef] = borrow_pkg.borrow_ref_checked("sym", "o1", borrow_pkg.BorrowMode.Mutable)
+  when r1 is borrow_pkg.BorrowResult.Err {
+    return 1
+  }
+
+  let t0 = borrow_pkg.table_new()
+  let a1: borrow_pkg.BorrowResult[borrow_pkg.BorrowTable] = borrow_pkg.acquire_checked(t0, r1.value)
+  when a1 is borrow_pkg.BorrowResult.Err {
+    return 1
+  }
+
+  let r2: borrow_pkg.BorrowResult[borrow_pkg.BorrowRef] = borrow_pkg.borrow_ref_checked("sym", "o2", borrow_pkg.BorrowMode.Shared)
+  when r2 is borrow_pkg.BorrowResult.Err {
+    return 1
+  }
+
+  let a2: borrow_pkg.BorrowResult[borrow_pkg.BorrowTable] = borrow_pkg.acquire_checked(a1.value, r2.value)
+  when a2 is borrow_pkg.BorrowResult.Ok {
+    return 1
+  }
+
+  if borrow_pkg.table_validate(a1.value) == false {
+    return 1
+  }
+
+  if borrow_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

@@ -3,3 +3,40 @@ space vitte/std/async/internal/policy
 proc default_queue_depth() -> int {
   give 64
 }
+
+proc min_queue_depth() -> int {
+  give 1
+}
+
+proc max_queue_depth() -> int {
+  give 100000
+}
+
+proc low_latency_queue_depth() -> int {
+  give 32
+}
+
+proc throughput_queue_depth() -> int {
+  give 512
+}
+
+proc queue_depth_for_mode(mode: string) -> int {
+  if mode == "low-latency" { give low_latency_queue_depth() }
+  if mode == "throughput" { give throughput_queue_depth() }
+  give default_queue_depth()
+}
+
+proc clamp_queue_depth(queue_depth: int) -> int {
+  if queue_depth < min_queue_depth() { give min_queue_depth() }
+  if queue_depth > max_queue_depth() { give max_queue_depth() }
+  give queue_depth
+}
+
+proc normalize_queue_depth(queue_depth: int) -> int {
+  if queue_depth <= 0 { give default_queue_depth() }
+  give clamp_queue_depth(queue_depth)
+}
+
+proc policy_version() -> string {
+  give "v1"
+}

@@ -10,8 +10,8 @@ package vitte/process
 
 space vitte/process
 
-use vitte/process/internal/runtime as process_runtime_pkg
 use vitte/process/compat as process_compat_pkg
+use vitte/process/internal/runtime as process_runtime_pkg
 
 form ProcessError {
   code: string
@@ -82,13 +82,61 @@ form ProcessOutput {
   bytes_err: int
 }
 
+form ProcessRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_policy() -> ProcessPolicy {
   give ProcessPolicy(false, false, false, false, [])
+}
+
+proc strict_policy() -> ProcessPolicy {
+  give ProcessPolicy(false, false, false, false, ["vitte"])
 }
 
 proc default_config(program: string) -> ProcessConfig {
   let p: string = process_runtime_pkg.normalize_program(program)
   give ProcessConfig(p, [], "/workspace", [], ProcessStdio.Null, ProcessStdio.Pipe, ProcessStdio.Pipe, 2000, 200, "desktop", default_policy(), 4096)
+}
+
+proc strict_config(program: string) -> ProcessConfig {
+  let cfg = default_config(program)
+  give ProcessConfig(cfg.program,
+                     cfg.args,
+                     cfg.cwd,
+                     cfg.env,
+                     cfg.stdin,
+                     cfg.stdout,
+                     cfg.stderr,
+                     cfg.timeout_ms,
+                     cfg.grace_ms,
+                     cfg.profile,
+                     strict_policy(),
+                     cfg.capture_limit)
+}
+
+proc normalize_config(cfg: ProcessConfig) -> ProcessConfig {
+  let program = process_runtime_pkg.normalize_program(cfg.program)
+  let cwd = process_runtime_pkg.normalize_cwd(cfg.cwd)
+  let timeout_ms = process_runtime_pkg.clamp_timeout(cfg.timeout_ms)
+  let grace_ms = process_runtime_pkg.clamp_grace(cfg.grace_ms)
+  let capture_limit = process_runtime_pkg.clamp_capture(cfg.capture_limit)
+  let timeout_out = timeout_ms
+  if timeout_out < grace_ms { timeout_out = grace_ms }
+  give ProcessConfig(program,
+                     cfg.args,
+                     cwd,
+                     cfg.env,
+                     cfg.stdin,
+                     cfg.stdout,
+                     cfg.stderr,
+                     timeout_out,
+                     grace_ms,
+                     cfg.profile,
+                     cfg.policy,
+                     capture_limit)
 }
 
 proc ok[T](value: T) -> ProcessResult[T] {
@@ -108,7 +156,7 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc with_timeout(cfg: ProcessConfig, timeout_ms: int, grace_ms: int) -> ProcessConfig {
@@ -132,8 +180,9 @@ proc with_policy(cfg: ProcessConfig, policy: ProcessPolicy) -> ProcessConfig {
 }
 
 proc validate_config(cfg: ProcessConfig) -> ProcessResult[bool] {
-  let program: string = process_runtime_pkg.normalize_program(cfg.program)
-  let cwd: string = process_runtime_pkg.normalize_cwd(cfg.cwd)
+  let nc = normalize_config(cfg)
+  let program: string = nc.program
+  let cwd: string = nc.cwd
 
   if process_runtime_pkg.is_empty(program) {
     give err[bool]("VITTE-P0001", diagnostics_message("VITTE-P0001"), "program", false)
@@ -144,37 +193,56 @@ proc validate_config(cfg: ProcessConfig) -> ProcessResult[bool] {
   if process_runtime_pkg.command_denylisted(program) {
     give err[bool]("VITTE-P0003", diagnostics_message("VITTE-P0003"), program, false)
   }
-  if process_runtime_pkg.command_allowlisted(program, cfg.policy.allowlist_commands) == false {
+  if process_runtime_pkg.command_allowlisted(program, nc.policy.allowlist_commands) == false {
     give err[bool]("VITTE-P0013", diagnostics_message("VITTE-P0013"), program, false)
   }
   if process_runtime_pkg.cwd_valid(cwd) == false {
     give err[bool]("VITTE-P0008", diagnostics_message("VITTE-P0008"), cwd, false)
   }
-  if process_runtime_pkg.args_valid(cfg.args) == false {
+  if process_runtime_pkg.args_valid(nc.args) == false {
     give err[bool]("VITTE-P0014", diagnostics_message("VITTE-P0014"), "argv", false)
   }
-  if process_runtime_pkg.env_valid(cfg.env) == false {
+  if process_runtime_pkg.env_valid(nc.env) == false {
     give err[bool]("VITTE-P0009", diagnostics_message("VITTE-P0009"), "env", false)
   }
-  if cfg.timeout_ms < cfg.grace_ms {
+  if nc.timeout_ms < nc.grace_ms {
     give err[bool]("VITTE-P0001", "timeout_ms must be >= grace_ms", "timeouts", false)
   }
-  if cfg.capture_limit < 256 || cfg.capture_limit > 1048576 {
+  if nc.capture_limit < 256 || nc.capture_limit > 1048576 {
     give err[bool]("VITTE-P0010", diagnostics_message("VITTE-P0010"), "capture_limit", false)
   }
-  if process_runtime_pkg.is_profile_allowed(cfg.profile) == false {
-    give err[bool]("VITTE-P0012", diagnostics_message("VITTE-P0012"), cfg.profile, false)
+  if process_runtime_pkg.is_profile_allowed(nc.profile) == false {
+    give err[bool]("VITTE-P0012", diagnostics_message("VITTE-P0012"), nc.profile, false)
   }
-  if cfg.profile == "core" && cfg.policy.allow_shell {
+  if nc.profile == "core" && nc.policy.allow_shell {
     give err[bool]("VITTE-P0012", "allow_shell forbidden on core", "policy", false)
   }
-  if cfg.policy.allow_shell == false && process_runtime_pkg.shell_exec_pattern(program, cfg.args) {
+  if nc.policy.allow_shell == false && process_runtime_pkg.shell_exec_pattern(program, nc.args) {
     give err[bool]("VITTE-P0011", diagnostics_message("VITTE-P0011"), "shell", false)
   }
-  if process_runtime_pkg.shell_exec_pattern(program, cfg.args) && cfg.policy.allow_shell == false {
+  if process_runtime_pkg.shell_exec_pattern(program, nc.args) && nc.policy.allow_shell == false {
     give err[bool]("VITTE-P0014", diagnostics_message("VITTE-P0014"), "sh-c", false)
   }
   give ok[bool](true)
+}
+
+proc healthcheck(cfg: ProcessConfig) -> ProcessResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is ProcessResult.Err { give ProcessResult.Err(vr.error) }
+  if process_runtime_pkg.runtime_status() == false {
+    give err[bool]("VITTE-P0004", "process runtime unavailable", "runtime", true)
+  }
+  give ok[bool](true)
+}
+
+proc runtime_info() -> ProcessRuntimeInfo {
+  give ProcessRuntimeInfo(process_runtime_pkg.runtime_name(),
+                          process_runtime_pkg.runtime_version(),
+                          process_runtime_pkg.supports_diagnostics())
+}
+
+proc capabilities() -> [string] {
+  give ["spawn", "wait", "run", "policy", "healthcheck"]
 }
 
 proc spawn(cfg: ProcessConfig) -> ProcessResult[ProcessHandle] {
@@ -259,6 +327,10 @@ proc api_version() -> string {
   give "v1"
 }
 
+proc version() -> string {
+  give api_version()
+}
+
 proc doctor_status() -> string {
   give "vitte/process doctor:ready api=" + api_version()
 }
@@ -277,6 +349,24 @@ proc quickfix_apply(payload: string) -> string {
   give "quickfix apply: " + payload
 }
 
+proc config_is_valid(cfg: ProcessConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is ProcessResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default(program: string) -> ProcessResult[bool] {
+  give healthcheck(default_config(program))
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
+}
 proc ready() -> bool {
   give true
 }

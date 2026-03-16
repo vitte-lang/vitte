@@ -1,6 +1,12 @@
 <<<
 mod.vit
 package vitte/template
+version: 2.0.0
+tier: core-text
+purpose:
+  Rendu de templates textuels deterministic et no_std.
+  Analyse explicite des placeholders et diagnostics stables.
+  API stable versionnee pour compatibilite ABI.
 >>>
 
 space vitte/template
@@ -8,7 +14,6 @@ space vitte/template
 use vitte/template/internal/runtime as template_runtime_pkg
 use vitte/template/internal/validate as template_validate_pkg
 use vitte/template/internal/policy as template_policy_pkg
-
 
 form Var {
   key: string
@@ -19,11 +24,110 @@ form Context {
   vars: [Var]
 }
 
+form TemplateConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+  open_delim: string
+  close_delim: string
+}
+
+pick TemplateError {
+  InvalidConfig
+  InvalidTemplate
+  InvalidKey
+  InvalidValue
+  TooManyVars
+  MissingPlaceholder
+  OutputTooLarge
+  Timeout
+  Internal
+}
+
+pick TemplateResult[T] {
+  Ok(value: T)
+  Err(error: TemplateError)
+}
+
+form TemplateToken {
+  raw: string
+  key: string
+  is_placeholder: bool
+}
+
+form TemplateAnalysis {
+  tokens: [TemplateToken]
+  placeholder_count: int
+  missing_count: int
+  literal_count: int
+  output_estimate: int
+  missing_keys: [string]
+}
+
+form TemplateHealth {
+  ok: bool
+  code: string
+  missing_percent: int
+  output_pressure_percent: int
+}
+
+form TemplateRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_strict_mode: bool
+  supports_analysis: bool
+}
+
+form TemplateNormalized {
+  ctx: Context
+  cfg: TemplateConfig
+}
+
+proc default_config() -> TemplateConfig {
+  give TemplateConfig(false,
+                      template_policy_pkg.default_timeout_ms(),
+                      template_policy_pkg.default_retry_budget(),
+                      template_policy_pkg.default_open_delim(),
+                      template_policy_pkg.default_close_delim())
+}
+
 proc context_new() -> Context {
   give Context([])
 }
 
-proc put(ctx: Context, key: string, value: string) -> Context {
+proc size(ctx: Context) -> int {
+  give ctx.vars.len
+}
+
+proc contains(ctx: Context, key: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= ctx.vars.len { break }
+    if ctx.vars[i].key == key { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc get(ctx: Context, key: string) -> TemplateResult[string] {
+  let i: int = 0
+  loop {
+    if i >= ctx.vars.len { break }
+    if ctx.vars[i].key == key { give TemplateResult.Ok(ctx.vars[i].value) }
+    i = i + 1
+  }
+  give TemplateResult.Err(TemplateError.MissingPlaceholder)
+}
+
+proc put(ctx: Context, key: string, value: string) -> TemplateResult[Context] {
+  if template_validate_pkg.valid_key(key, template_policy_pkg.max_key_len()) == false {
+    give TemplateResult.Err(TemplateError.InvalidKey)
+  }
+  if template_validate_pkg.valid_value(value, template_policy_pkg.max_value_len()) == false {
+    give TemplateResult.Err(TemplateError.InvalidValue)
+  }
+
   let out: [Var] = []
   let found = false
   let i: int = 0
@@ -37,60 +141,301 @@ proc put(ctx: Context, key: string, value: string) -> Context {
     }
     i = i + 1
   }
-  if !found { out = out.push(Var(key, value)) }
+
+  if !found {
+    if template_validate_pkg.valid_var_count(out.len + 1, template_policy_pkg.max_vars()) == false {
+      give TemplateResult.Err(TemplateError.TooManyVars)
+    }
+    out = out.push(Var(key, value))
+  }
+
+  give TemplateResult.Ok(Context(out))
+}
+
+proc remove(ctx: Context, key: string) -> Context {
+  let out: [Var] = []
+  let i: int = 0
+  loop {
+    if i >= ctx.vars.len { break }
+    if ctx.vars[i].key != key {
+      out = out.push(ctx.vars[i])
+    }
+    i = i + 1
+  }
   give Context(out)
 }
 
-proc get(ctx: Context, key: string) -> string {
+proc replace_once(text: string, needle: string, replacement: string) -> string {
+  if needle.len == 0 { give text }
+  if text.len < needle.len { give text }
+
+  let last = text.len - needle.len
   let i: int = 0
   loop {
-    if i >= ctx.vars.len { break }
-    if ctx.vars[i].key == key { give ctx.vars[i].value }
+    if i > last { break }
+    if text.slice(i, i + needle.len) == needle {
+      give text.slice(0, i) + replacement + text.slice(i + needle.len, text.len)
+    }
     i = i + 1
   }
-  give ""
+  give text
 }
 
-proc render_simple(text: string, ctx: Context) -> string {
-  let out = text
+proc contains_text(text: string, needle: string) -> bool {
+  if needle.len == 0 { give true }
+  if text.len < needle.len { give false }
+
+  let last = text.len - needle.len
   let i: int = 0
   loop {
-    if i >= ctx.vars.len { break }
-    let token = "${" + ctx.vars[i].key + "}"
-    if out == token { out = ctx.vars[i].value }
+    if i > last { break }
+    if text.slice(i, i + needle.len) == needle { give true }
     i = i + 1
+  }
+  give false
+}
+
+proc replace_all(text: string, needle: string, replacement: string) -> string {
+  if needle.len == 0 { give text }
+
+  let out = text
+  let guard: int = 0
+  loop {
+    if contains_text(out, needle) == false { break }
+    out = replace_once(out, needle, replacement)
+    guard = guard + 1
+    if guard > template_policy_pkg.max_template_len() { break }
   }
   give out
 }
 
-proc ready() -> bool {
-  give true
+proc find_substring_from(text: string, needle: string, start: int) -> int {
+  if needle.len == 0 { give start }
+  if text.len < needle.len { give -1 }
+
+  let begin = start
+  if begin < 0 { begin = 0 }
+  let last = text.len - needle.len
+  if begin > last { give -1 }
+
+  let i: int = begin
+  loop {
+    if i > last { break }
+    if text.slice(i, i + needle.len) == needle { give i }
+    i = i + 1
+  }
+  give -1
 }
 
-proc package_meta() -> string {
-  give "vitte/template"
+proc analyze_with_config(text: string, ctx: Context, cfg: TemplateConfig) -> TemplateResult[TemplateAnalysis] {
+  let _ = ctx
+
+  if template_validate_pkg.valid_delimiters(cfg.open_delim, cfg.close_delim) == false {
+    give TemplateResult.Err(TemplateError.InvalidConfig)
+  }
+  if template_validate_pkg.valid_template_len(text.len, template_policy_pkg.max_template_len()) == false {
+    give TemplateResult.Err(TemplateError.InvalidTemplate)
+  }
+
+  let tokens: [TemplateToken] = []
+  let missing_keys: [string] = []
+  let placeholder_count: int = 0
+  let missing_count: int = 0
+  let literal_count: int = 0
+
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+
+    let open_at = find_substring_from(text, cfg.open_delim, i)
+    if open_at < 0 {
+      let tail = text.slice(i, text.len)
+      if tail.len > 0 {
+        tokens = tokens.push(TemplateToken(tail, "", false))
+        literal_count = literal_count + 1
+      }
+      break
+    }
+
+    if open_at > i {
+      let lit = text.slice(i, open_at)
+      tokens = tokens.push(TemplateToken(lit, "", false))
+      literal_count = literal_count + 1
+    }
+
+    let key_start = open_at + cfg.open_delim.len
+    let close_at = find_substring_from(text, cfg.close_delim, key_start)
+    if close_at < 0 {
+      let raw = text.slice(open_at, text.len)
+      tokens = tokens.push(TemplateToken(raw, "", false))
+      literal_count = literal_count + 1
+      break
+    }
+
+    let key = text.slice(key_start, close_at)
+    let raw = text.slice(open_at, close_at + cfg.close_delim.len)
+    tokens = tokens.push(TemplateToken(raw, key, true))
+    placeholder_count = placeholder_count + 1
+
+    if contains(ctx, key) == false {
+      missing_count = missing_count + 1
+      missing_keys = missing_keys.push(key)
+    }
+
+    i = close_at + cfg.close_delim.len
+  }
+
+  give TemplateResult.Ok(TemplateAnalysis(tokens,
+                                         placeholder_count,
+                                         missing_count,
+                                         literal_count,
+                                         text.len,
+                                         missing_keys))
 }
 
-form TemplateConfig {
-  strict: bool
-  timeout_ms: int
-  retry_budget: int
+proc analyze(text: string, ctx: Context) -> TemplateResult[TemplateAnalysis] {
+  give analyze_with_config(text, ctx, default_config())
 }
 
-pick TemplateError {
-  InvalidConfig
-  Unsupported
-  Timeout
-  Internal
+proc render_with_config(text: string, ctx: Context, cfg: TemplateConfig) -> TemplateResult[string] {
+  let ar = analyze_with_config(text, ctx, cfg)
+  when ar is TemplateResult.Err { give TemplateResult.Err(ar.error) }
+
+  if cfg.strict && ar.value.missing_count > 0 {
+    give TemplateResult.Err(TemplateError.MissingPlaceholder)
+  }
+
+  let out = text
+  let i: int = 0
+  loop {
+    if i >= ctx.vars.len { break }
+    let token = cfg.open_delim + ctx.vars[i].key + cfg.close_delim
+    out = replace_all(out, token, ctx.vars[i].value)
+    i = i + 1
+  }
+
+  if template_validate_pkg.valid_template_len(out.len, template_policy_pkg.max_output_len()) == false {
+    give TemplateResult.Err(TemplateError.OutputTooLarge)
+  }
+
+  give TemplateResult.Ok(out)
 }
 
-pick TemplateResult[T] {
-  Ok(value: T)
-  Err(error: TemplateError)
+proc render(text: string, ctx: Context) -> TemplateResult[string] {
+  let cfg = default_config()
+  give render_with_config(text, ctx, cfg)
 }
 
-proc default_config() -> TemplateConfig {
-  give TemplateConfig(true, template_policy_pkg.default_timeout_ms(), template_policy_pkg.default_retry_budget())
+proc render_strict(text: string, ctx: Context) -> TemplateResult[string] {
+  let cfg = default_config()
+  give render_with_config(text, ctx, TemplateConfig(true,
+                                                     cfg.timeout_ms,
+                                                     cfg.retry_budget,
+                                                     cfg.open_delim,
+                                                     cfg.close_delim))
+}
+
+proc template_validate_code(text: string, ctx: Context, cfg: TemplateConfig) -> string {
+  if template_validate_pkg.valid_delimiters(cfg.open_delim, cfg.close_delim) == false { give "invalid-delimiters" }
+  if template_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false { give "invalid-timeout" }
+  if template_validate_pkg.valid_retry_budget(cfg.retry_budget) == false { give "invalid-retry-budget" }
+  if template_validate_pkg.valid_template_len(text.len, template_policy_pkg.max_template_len()) == false { give "template-too-large" }
+  if template_validate_pkg.valid_var_count(ctx.vars.len, template_policy_pkg.max_vars()) == false { give "too-many-vars" }
+
+  let i: int = 0
+  loop {
+    if i >= ctx.vars.len { break }
+    if template_validate_pkg.valid_key(ctx.vars[i].key, template_policy_pkg.max_key_len()) == false { give "invalid-key" }
+    if template_validate_pkg.valid_value(ctx.vars[i].value, template_policy_pkg.max_value_len()) == false { give "invalid-value" }
+    i = i + 1
+  }
+
+  give "ok"
+}
+
+proc template_validate(text: string, ctx: Context, cfg: TemplateConfig) -> bool {
+  give template_validate_code(text, ctx, cfg) == "ok"
+}
+
+proc template_normalize(ctx: Context, cfg: TemplateConfig) -> TemplateNormalized {
+  let vars: [Var] = []
+  let i: int = 0
+  loop {
+    if i >= ctx.vars.len { break }
+    if vars.len >= template_policy_pkg.max_vars() { break }
+
+    let key = ctx.vars[i].key
+    let value = ctx.vars[i].value
+
+    if template_validate_pkg.valid_key(key, template_policy_pkg.max_key_len()) {
+      if template_validate_pkg.valid_value(value, template_policy_pkg.max_value_len()) {
+        vars = vars.push(Var(key, value))
+      }
+    }
+
+    i = i + 1
+  }
+
+  let open_delim = cfg.open_delim
+  let close_delim = cfg.close_delim
+  if template_validate_pkg.valid_delimiters(open_delim, close_delim) == false {
+    open_delim = template_policy_pkg.default_open_delim()
+    close_delim = template_policy_pkg.default_close_delim()
+  }
+
+  let out_cfg = TemplateConfig(cfg.strict,
+                               template_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
+                               template_policy_pkg.normalize_retry_budget(cfg.retry_budget),
+                               open_delim,
+                               close_delim)
+
+  give TemplateNormalized(Context(vars), out_cfg)
+}
+
+proc missing_percent(analysis: TemplateAnalysis) -> int {
+  if analysis.placeholder_count <= 0 { give 0 }
+  let pct = (analysis.missing_count * 100) / analysis.placeholder_count
+  if pct < 0 { give 0 }
+  if pct > 100 { give 100 }
+  give pct
+}
+
+proc output_pressure_percent(output_len: int) -> int {
+  let max = template_policy_pkg.max_output_len()
+  if max <= 0 { give 0 }
+  let pct = (output_len * 100) / max
+  if pct < 0 { give 0 }
+  if pct > 100 { give 100 }
+  give pct
+}
+
+proc template_health(text: string, ctx: Context, cfg: TemplateConfig) -> TemplateHealth {
+  let ar = analyze_with_config(text, ctx, cfg)
+  when ar is TemplateResult.Err { give TemplateHealth(false, "invalid-template", 0, 0) }
+
+  let rp = render_with_config(text, ctx, cfg)
+  when rp is TemplateResult.Err {
+    let mp = missing_percent(ar.value)
+    when rp.error is TemplateError.MissingPlaceholder {
+      give TemplateHealth(false, "missing-placeholders", mp, 0)
+    }
+    give TemplateHealth(false, "render-error", mp, 0)
+  }
+
+  let mp = missing_percent(ar.value)
+  let pp = output_pressure_percent(rp.value.len)
+  if mp >= template_policy_pkg.warn_missing_percent() {
+    give TemplateHealth(false, "missing-high", mp, pp)
+  }
+  give TemplateHealth(true, "ok", mp, pp)
+}
+
+proc template_runtime_info() -> TemplateRuntimeInfo {
+  give TemplateRuntimeInfo(template_runtime_pkg.runtime_name(),
+                           template_runtime_pkg.runtime_version(),
+                           template_runtime_pkg.supports_no_std(),
+                           template_runtime_pkg.supports_strict_mode(),
+                           template_runtime_pkg.supports_analysis())
 }
 
 proc validate_config(cfg: TemplateConfig) -> TemplateResult[bool] {
@@ -98,6 +443,9 @@ proc validate_config(cfg: TemplateConfig) -> TemplateResult[bool] {
     give TemplateResult.Err(TemplateError.InvalidConfig)
   }
   if template_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give TemplateResult.Err(TemplateError.InvalidConfig)
+  }
+  if template_validate_pkg.valid_delimiters(cfg.open_delim, cfg.close_delim) == false {
     give TemplateResult.Err(TemplateError.InvalidConfig)
   }
   give TemplateResult.Ok(true)
@@ -111,44 +459,149 @@ proc healthcheck(cfg: TemplateConfig) -> TemplateResult[bool] {
   if template_runtime_pkg.runtime_status() == false {
     give TemplateResult.Err(TemplateError.Internal)
   }
+  if template_runtime_pkg.supports_analysis() == false {
+    give TemplateResult.Err(TemplateError.Internal)
+  }
   give TemplateResult.Ok(true)
 }
 
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,context_new,size,contains,get,put,remove,analyze,analyze_with_config,render,render_strict,render_with_config,template_validate_code,template_validate,template_normalize,template_health,template_runtime_info,validate_config,healthcheck,stable_api_surface_hash,api_version,package_meta,ready"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc stable_ready() -> bool {
+  if template_runtime_pkg.runtime_status() == false { give false }
+  if template_runtime_pkg.supports_strict_mode() == false { give false }
+
+  let cfg = default_config()
+  let n = template_normalize(context_new(), cfg)
+  let vr = validate_config(n.cfg)
+  when vr is TemplateResult.Err { give false }
+
+  let p0 = put(n.ctx, "name", "vincent")
+  when p0 is TemplateResult.Err { give false }
+
+  let text = "hello ${name}, id=${id}"
+  let ar = analyze(text, p0.value)
+  when ar is TemplateResult.Err { give false }
+  if ar.value.placeholder_count != 2 { give false }
+  if ar.value.missing_count != 1 { give false }
+
+  let r1 = render(text, p0.value)
+  when r1 is TemplateResult.Err { give false }
+  if contains_text(r1.value, "${id}") == false { give false }
+
+  let r2 = render_strict(text, p0.value)
+  when r2 is TemplateResult.Ok { give false }
+
+  let p1 = put(p0.value, "id", "42")
+  when p1 is TemplateResult.Err { give false }
+
+  let r3 = render_strict(text, p1.value)
+  when r3 is TemplateResult.Err { give false }
+  if contains_text(r3.value, "${") { give false }
+
+  let health = template_health(text, p1.value, cfg)
+  if health.ok == false { give false }
+  if stable_api_surface_hash() <= 0 { give false }
+
+  give true
+}
+
+proc strict_config() -> TemplateConfig {
+  give default_config()
+}
+
+proc normalize_config(cfg: TemplateConfig) -> TemplateConfig {
+  give cfg
+}
+
+form PackageRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
+proc runtime_info() -> PackageRuntimeInfo {
+  give PackageRuntimeInfo(template_runtime_pkg.runtime_name(), template_runtime_pkg.runtime_version(), template_runtime_pkg.supports_analysis())
+}
+
+proc doctor_status() -> string {
+  give "vitte/template doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: TemplateConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is TemplateResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> TemplateResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=5"
+}
+
+proc ready() -> bool {
+  give stable_ready()
+}
+
+proc package_meta() -> string {
+  give "vitte/template"
+}
+
 proc version() -> string {
-  give "v1"
+  give "v2"
 }
 
 proc capabilities() -> [string] {
-  give ["config", "validate", "healthcheck"]
+  give ["render", "strict", "analyze", "validate", "normalize", template_runtime_pkg.runtime_name()]
 }
 
 proc diagnostics_message(code: string) -> string {
-  if code == "VITTE-TEMPLATE0001" {
-    give "invalid package configuration"
-  }
+  if code == "VITTE-TEMPLATE0001" { give "invalid template configuration" }
+  if code == "VITTE-TEMPLATE0002" { give "missing placeholders in strict mode" }
+  if code == "VITTE-TEMPLATE0003" { give "output exceeds configured maximum" }
   give "template diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
-  let _ = code
-  give "review package configuration"
+  if code == "VITTE-TEMPLATE0001" { give "use default_config or template_normalize" }
+  if code == "VITTE-TEMPLATE0002" { give "populate missing keys with put or use render" }
+  if code == "VITTE-TEMPLATE0003" { give "reduce variables size or split template" }
+  give "review template inputs"
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 <<< ROLE-CONTRACT
 package: vitte/template
-role: Rendu de templates textuels
-input_contract: Template et contexte explicites
-output_contract: Texte rendu deterministe
+role: Rendu de templates textuels + analyse placeholder + gouvernance API stable
+input_contract: Template/config/context explicites et typables
+output_contract: Sorties deterministes, observables et compatibles inter-packages
 boundary: Pas de logique metier cachee dans le moteur
-
-owner: @vitte/template
-stability: stable
-since: 3.0.0
-deprecated_in: -
-compat_policy: additive-only
-api_version: v1
+versioning_note: stable_api_version=2.0.0
 >>>

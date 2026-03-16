@@ -1,0 +1,27 @@
+<<<
+db_table_critical_apis.vit
+table-driven checks tx/retries/timeout/nullable mapping
+>>>
+
+use vitte/db as db_pkg
+
+entry main at core/app {
+  let cfg: db_pkg.DbConfig = db_pkg.default_config()
+  let conn_r: db_pkg.DbResult[db_pkg.DbConn] = db_pkg.connect(cfg)
+  when conn_r is db_pkg.DbResult.Err { give 1 }
+
+  let tx_r: db_pkg.DbResult[db_pkg.DbTx] = db_pkg.begin(conn_r.value)
+  when tx_r is db_pkg.DbResult.Err { give 2 }
+
+  let c_r: db_pkg.DbResult[db_pkg.DbTx] = db_pkg.commit(tx_r.value)
+  when c_r is db_pkg.DbResult.Err { give 3 }
+
+  let stmt: db_pkg.DbStmt = db_pkg.bind_int(db_pkg.prepare("SELECT * FROM t WHERE id=?"), 1)
+  let row_r: db_pkg.DbResult[db_pkg.DbRow] = db_pkg.query_one(conn_r.value, stmt, 1000, "")
+  when row_r is db_pkg.DbResult.Err { give 4 }
+
+  let nv: db_pkg.DbResult[db_pkg.DbBindValue] = db_pkg.map_row_nullable(row_r.value, 2)
+  when nv is db_pkg.DbResult.Err { give 5 }
+
+  give 0
+}

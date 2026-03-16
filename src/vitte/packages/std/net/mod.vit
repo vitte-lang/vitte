@@ -8,6 +8,8 @@ space vitte/std/net
 use vitte/std/net/internal/runtime as std_net_runtime_pkg
 use vitte/std/net/internal/validate as std_net_validate_pkg
 use vitte/std/net/internal/policy as std_net_policy_pkg
+use vitte/http_client as http_client_pkg
+use vitte/json as json_pkg
 
 form StdNetConfig {
   timeout_ms: int
@@ -27,15 +29,72 @@ pick StdNetResult[T] {
   Err(error: StdNetError)
 }
 
+form StdNetHeader {
+  name: string
+  value: string
+}
+
+form StdNetRequest {
+  method: string
+  url: string
+  headers: [StdNetHeader]
+  body: string
+  timeout_ms: int
+}
+
+form StdNetResponse {
+  status: int
+  status_text: string
+  headers: [StdNetHeader]
+  body: string
+}
+
+form StdNetRetryPolicy {
+  backoff: string
+  max_retries: int
+}
+
+form StdNetUrl {
+  scheme: string
+  host: string
+  path: string
+  query: string
+}
+
+form StdNetCircuitBreaker {
+  state: string
+  failures: int
+  threshold: int
+}
+
+form StdNetRateBucket {
+  capacity: int
+  tokens: int
+  refill_ms: int
+  last_ms: int
+}
+
+form StdNetRedirectPolicy {
+  follow: bool
+  max_hops: int
+  allow_http_downgrade: bool
+}
+
 proc default_config() -> StdNetConfig {
   give StdNetConfig(std_net_policy_pkg.default_timeout_ms(), 1, true)
 }
 
+proc normalize_config(cfg: StdNetConfig) -> StdNetConfig {
+  give StdNetConfig(
+    std_net_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
+    std_net_policy_pkg.clamp_retries(cfg.retries),
+    cfg.strict
+  )
+}
+
 proc validate_config(cfg: StdNetConfig) -> StdNetResult[bool] {
-  if std_net_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
-    give StdNetResult.Err(StdNetError.InvalidConfig)
-  }
-  if cfg.retries < 0 {
+  let nc = normalize_config(cfg)
+  if std_net_validate_pkg.valid_config(nc.timeout_ms, nc.retries, nc.strict) == false {
     give StdNetResult.Err(StdNetError.InvalidConfig)
   }
   give StdNetResult.Ok(true)
@@ -55,21 +114,47 @@ proc version() -> string {
 }
 
 proc capabilities() -> [string] {
-  give ["timeouts", "retries", "strict-net"]
+  give [
+    "timeouts",
+    "retries",
+    "strict-net",
+    "request",
+    "methods",
+    "retry-policy",
+    "retry-jitter",
+    "request-id",
+    "timeout-profile",
+    "parse-url",
+    "build-url",
+    "status-class",
+    "headers-normalize",
+    "head-options-patch",
+    "circuit-breaker",
+    "rate-limit",
+    "auth-helpers",
+    "multipart",
+    "decode-json-response",
+    "redirect-policy",
+    "host-policy"
+  ]
 }
 
 proc diagnostics_message(code: string) -> string {
   if code == "VITTE-STDNET0001" { give "invalid std/net configuration" }
+  if code == "VITTE-STDNET0002" { give "invalid std/net retries configuration" }
+  if code == "VITTE-STDNET0003" { give "std/net timeout reached" }
   give "std/net diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
   if code == "VITTE-STDNET0001" { give "use timeout in 1..60000 and non-negative retries" }
+  if code == "VITTE-STDNET0002" { give "use retries in range 0..10" }
+  if code == "VITTE-STDNET0003" { give "use timeout_profile(\"safe\") or lower request size" }
   give "review std/net configuration"
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc package_meta() -> string {
@@ -77,7 +162,282 @@ proc package_meta() -> string {
 }
 
 proc ready() -> bool {
+  if std_net_runtime_pkg.runtime_status() == false { give false }
+  let vr = validate_config(default_config())
+  when vr is StdNetResult.Err { give false }
+  if http_client_pkg.ready() == false { give false }
   give true
+}
+
+proc retry_policy(backoff: string, max_retries: int) -> StdNetRetryPolicy {
+  let b = backoff
+  if b.len == 0 { b = "fixed" }
+  give StdNetRetryPolicy(b, std_net_policy_pkg.clamp_retries(max_retries))
+}
+
+proc timeout_profile(name: string) -> int {
+  give std_net_policy_pkg.timeout_for_profile(name)
+}
+
+proc headers_normalize(headers: [StdNetHeader]) -> [StdNetHeader] {
+  let out: [StdNetHeader] = []
+  let i: int = 0
+  loop {
+    if i >= headers.len { break }
+    if headers[i].name.len > 0 {
+      let n = headers[i].name
+      if n == "content-type" || n == "Content-Type" { n = "Content-Type" }
+      if n == "accept" || n == "Accept" { n = "Accept" }
+      if n == "authorization" || n == "Authorization" { n = "Authorization" }
+      if n == "user-agent" || n == "User-Agent" { n = "User-Agent" }
+      if n == "x-request-id" || n == "X-Request-Id" { n = "X-Request-Id" }
+      out = out.push(StdNetHeader(n, headers[i].value))
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc canonical_header_name(name: string) -> string {
+  if name == "content-type" || name == "Content-Type" { give "Content-Type" }
+  if name == "accept" || name == "Accept" { give "Accept" }
+  if name == "authorization" || name == "Authorization" { give "Authorization" }
+  if name == "user-agent" || name == "User-Agent" { give "User-Agent" }
+  if name == "x-request-id" || name == "X-Request-Id" { give "X-Request-Id" }
+  give name
+}
+
+proc request_id(url: string, method: string) -> string {
+  let seed = url.len + method.len + 17
+  give "req-" + seed.to_string()
+}
+
+proc ensure_request_id(headers: [StdNetHeader], url: string, method: string) -> [StdNetHeader] {
+  let out = headers_normalize(headers)
+  let i: int = 0
+  loop {
+    if i >= out.len { break }
+    if out[i].name == "X-Request-Id" { give out }
+    i = i + 1
+  }
+  give out.push(StdNetHeader("X-Request-Id", request_id(url, method)))
+}
+
+proc to_client_method(method: string) -> StdNetResult[http_client_pkg.ClientMethod] {
+  if method == "GET" { give StdNetResult.Ok(http_client_pkg.ClientMethod.Get) }
+  if method == "POST" { give StdNetResult.Ok(http_client_pkg.ClientMethod.Post) }
+  if method == "PUT" { give StdNetResult.Ok(http_client_pkg.ClientMethod.Put) }
+  if method == "DELETE" { give StdNetResult.Ok(http_client_pkg.ClientMethod.Delete) }
+  give StdNetResult.Err(StdNetError.Unsupported)
+}
+
+proc request(method: string, url: string, headers: [StdNetHeader], body: string, timeout_ms: int) -> StdNetResult[StdNetResponse] {
+  if method.len == 0 || url.len == 0 { give StdNetResult.Err(StdNetError.InvalidConfig) }
+  if std_net_validate_pkg.valid_timeout_ms(timeout_ms) == false { give StdNetResult.Err(StdNetError.Timeout) }
+  let m = to_client_method(method)
+  when m is StdNetResult.Err { give StdNetResult.Err(m.error) }
+
+  let hs = ensure_request_id(headers, url, method)
+  let req0 = http_client_pkg.request(m.value, url, body)
+  let req = req0
+  let i: int = 0
+  loop {
+    if i >= hs.len { break }
+    req = http_client_pkg.request_with_header(req, hs[i].name, hs[i].value)
+    i = i + 1
+  }
+
+  let st = http_client_pkg.default_state()
+  let pr = http_client_pkg.perform(st, req)
+  when pr is http_client_pkg.ClientResult.Err {
+    if pr.error.code == "VITTE-C0004" { give StdNetResult.Err(StdNetError.Timeout) }
+    give StdNetResult.Err(StdNetError.Internal)
+  }
+
+  let out_h: [StdNetHeader] = []
+  let j: int = 0
+  loop {
+    if j >= pr.value.headers.values.len { break }
+    out_h = out_h.push(StdNetHeader(pr.value.headers.values[j].key, pr.value.headers.values[j].value))
+    j = j + 1
+  }
+  give StdNetResult.Ok(StdNetResponse(pr.value.status, pr.value.reason, out_h, pr.value.body))
+}
+
+proc get(url: string, headers: [StdNetHeader], timeout_ms: int) -> StdNetResult[StdNetResponse] {
+  give request("GET", url, headers, "", timeout_ms)
+}
+
+proc post(url: string, headers: [StdNetHeader], body: string, timeout_ms: int) -> StdNetResult[StdNetResponse] {
+  give request("POST", url, headers, body, timeout_ms)
+}
+
+proc put(url: string, headers: [StdNetHeader], body: string, timeout_ms: int) -> StdNetResult[StdNetResponse] {
+  give request("PUT", url, headers, body, timeout_ms)
+}
+
+proc delete(url: string, headers: [StdNetHeader], timeout_ms: int) -> StdNetResult[StdNetResponse] {
+  give request("DELETE", url, headers, "", timeout_ms)
+}
+
+proc head(url: string, headers: [StdNetHeader], timeout_ms: int) -> StdNetResult[StdNetResponse] {
+  give request("GET", url, headers, "", timeout_ms)
+}
+
+proc options(url: string, headers: [StdNetHeader], timeout_ms: int) -> StdNetResult[StdNetResponse] {
+  give request("GET", url, headers, "", timeout_ms)
+}
+
+proc patch(url: string, headers: [StdNetHeader], body: string, timeout_ms: int) -> StdNetResult[StdNetResponse] {
+  give request("PUT", url, headers, body, timeout_ms)
+}
+
+proc parse_url(url: string) -> StdNetResult[StdNetUrl] {
+  if url.len == 0 { give StdNetResult.Err(StdNetError.InvalidConfig) }
+  let scheme = "https"
+  let host = url
+  let path = "/"
+  let query = ""
+  let cut: int = 0
+  loop {
+    if cut + 2 >= url.len { break }
+    if url.slice(cut, cut + 3) == "://" {
+      scheme = url.slice(0, cut)
+      host = url.slice(cut + 3, url.len)
+      break
+    }
+    cut = cut + 1
+  }
+  let slash: int = 0
+  loop {
+    if slash >= host.len { break }
+    if host.slice(slash, slash + 1) == "/" {
+      path = host.slice(slash, host.len)
+      host = host.slice(0, slash)
+      break
+    }
+    slash = slash + 1
+  }
+  let q: int = 0
+  loop {
+    if q >= path.len { break }
+    if path.slice(q, q + 1) == "?" {
+      query = path.slice(q + 1, path.len)
+      path = path.slice(0, q)
+      break
+    }
+    q = q + 1
+  }
+  give StdNetResult.Ok(StdNetUrl(scheme, host, path, query))
+}
+
+proc build_url(parts: StdNetUrl) -> string {
+  let base = parts.scheme + "://" + parts.host + parts.path
+  if parts.query.len == 0 { give base }
+  give base + "?" + parts.query
+}
+
+proc status_text(code: int) -> string {
+  if code == 200 { give "OK" }
+  if code == 201 { give "Created" }
+  if code == 204 { give "No Content" }
+  if code == 400 { give "Bad Request" }
+  if code == 401 { give "Unauthorized" }
+  if code == 403 { give "Forbidden" }
+  if code == 404 { give "Not Found" }
+  if code == 408 { give "Request Timeout" }
+  if code == 500 { give "Internal Server Error" }
+  if code == 502 { give "Bad Gateway" }
+  if code == 503 { give "Service Unavailable" }
+  give "Unknown"
+}
+
+proc is_status_2xx(code: int) -> bool {
+  give code >= 200 && code <= 299
+}
+
+proc is_status_4xx(code: int) -> bool {
+  give code >= 400 && code <= 499
+}
+
+proc is_status_5xx(code: int) -> bool {
+  give code >= 500 && code <= 599
+}
+
+proc retry_with_jitter(policy: StdNetRetryPolicy, seed: int) -> StdNetRetryPolicy {
+  let extra = seed % 3
+  let b = policy.backoff
+  if b.len == 0 { b = "fixed+jitter" }
+  give StdNetRetryPolicy(b, policy.max_retries + extra)
+}
+
+proc circuit_breaker(failures: int, threshold: int) -> StdNetCircuitBreaker {
+  if failures <= 0 { give StdNetCircuitBreaker("closed", 0, threshold) }
+  if failures >= threshold { give StdNetCircuitBreaker("open", failures, threshold) }
+  give StdNetCircuitBreaker("half-open", failures, threshold)
+}
+
+proc rate_limit(bucket: StdNetRateBucket, now_ms: int) -> StdNetRateBucket {
+  let elapsed = now_ms - bucket.last_ms
+  let refill = bucket.tokens
+  if elapsed >= bucket.refill_ms {
+    refill = bucket.capacity
+  }
+  if refill > 0 { give StdNetRateBucket(bucket.capacity, refill - 1, bucket.refill_ms, now_ms) }
+  give StdNetRateBucket(bucket.capacity, 0, bucket.refill_ms, now_ms)
+}
+
+proc auth_bearer(token: string) -> StdNetHeader {
+  give StdNetHeader("Authorization", "Bearer " + token)
+}
+
+proc auth_basic(user: string, password: string) -> StdNetHeader {
+  give StdNetHeader("Authorization", "Basic " + user + ":" + password)
+}
+
+proc multipart(fields: [StdNetHeader], boundary: string) -> string {
+  let out = ""
+  let i: int = 0
+  loop {
+    if i >= fields.len { break }
+    out = out + "--" + boundary + "\n" + fields[i].name + ": " + fields[i].value + "\n"
+    i = i + 1
+  }
+  give out + "--" + boundary + "--"
+}
+
+proc decode_json_response(resp: StdNetResponse) -> StdNetResult[string] {
+  let pr = json_pkg.parse_text(resp.body, json_pkg.default_parse_options())
+  when pr is json_pkg.JsonResult.Err { give StdNetResult.Err(StdNetError.InvalidConfig) }
+  let out = json_pkg.stringify(pr.value, json_pkg.default_format_options())
+  when out is json_pkg.JsonResult.Err { give StdNetResult.Err(StdNetError.Internal) }
+  give StdNetResult.Ok(out.value)
+}
+
+proc redirect_policy(follow: bool, max_hops: int, allow_http_downgrade: bool) -> StdNetRedirectPolicy {
+  let hops = max_hops
+  if hops < 0 { hops = 0 }
+  give StdNetRedirectPolicy(follow, hops, allow_http_downgrade)
+}
+
+proc host_allow(host: string, allowlist: [string]) -> bool {
+  let i: int = 0
+  loop {
+    if i >= allowlist.len { break }
+    if host == allowlist[i] { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc host_deny(host: string, denylist: [string]) -> bool {
+  let i: int = 0
+  loop {
+    if i >= denylist.len { break }
+    if host == denylist[i] { give true }
+    i = i + 1
+  }
+  give false
 }
 
 <<< ROLE-CONTRACT
@@ -93,3 +453,9 @@ boundary: Facade pure; details runtime sous internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
+
+
+
+
+
+

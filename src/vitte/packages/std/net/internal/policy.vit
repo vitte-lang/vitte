@@ -3,3 +3,54 @@ space vitte/std/net/internal/policy
 proc default_timeout_ms() -> int {
   give 1000
 }
+
+proc min_timeout_ms() -> int {
+  give 1
+}
+
+proc max_timeout_ms() -> int {
+  give 60000
+}
+
+proc low_latency_timeout_ms() -> int {
+  give 250
+}
+
+proc safe_timeout_ms() -> int {
+  give 2000
+}
+
+proc timeout_for_profile(profile: string) -> int {
+  if profile == "low-latency" { give low_latency_timeout_ms() }
+  if profile == "safe" { give safe_timeout_ms() }
+  give default_timeout_ms()
+}
+
+proc clamp_timeout_ms(timeout_ms: int) -> int {
+  if timeout_ms < min_timeout_ms() { give min_timeout_ms() }
+  if timeout_ms > max_timeout_ms() { give max_timeout_ms() }
+  give timeout_ms
+}
+
+proc normalize_timeout_ms(timeout_ms: int) -> int {
+  if timeout_ms <= 0 { give default_timeout_ms() }
+  give clamp_timeout_ms(timeout_ms)
+}
+
+proc default_retries() -> int {
+  give 1
+}
+
+proc max_retries() -> int {
+  give 10
+}
+
+proc clamp_retries(retries: int) -> int {
+  if retries < 0 { give 0 }
+  if retries > max_retries() { give max_retries() }
+  give retries
+}
+
+proc policy_version() -> string {
+  give "v1"
+}

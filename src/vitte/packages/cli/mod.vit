@@ -1,101 +1,345 @@
 <<<
 mod.vit
 package vitte/cli
+version: 2.0.0
+tier: tooling-cli
+purpose:
+  Parsing ligne de commande deterministic.
+  Gestion flags/positionals/options.
+  API stable avec diagnostics et healthcheck.
 >>>
 
 space vitte/cli
 
+use vitte/cli/internal/runtime as cli_runtime_pkg
+use vitte/cli/internal/validate as cli_validate_pkg
+use vitte/cli/internal/policy as cli_policy_pkg
+
+pick CliError {
+  None
+  InvalidSpec
+  InvalidArgs
+  InvalidFlag
+  RuntimeUnavailable
+}
+
+pick CliResult[T] {
+  Ok(value: T)
+  Err(error: CliError)
+}
 
 form CliSpec {
-    name: string
-    version: string
-    description: string
+  name: string
+  version: string
+  description: string
 }
 
 form CliParse {
-    command: string
-    positionals: [string]
-    has_help: bool
-    has_version: bool
+  command: string
+  positionals: [string]
+  has_help: bool
+  has_version: bool
+}
+
+form CliConfig {
+  strict: bool
+  allow_short_bundles: bool
+  allow_equals: bool
+}
+
+form CliOption {
+  name: string
+  value: string
+  found: bool
+}
+
+form CliStats {
+  args_count: int
+  flags_count: int
+  positionals_count: int
+}
+
+form CliRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_equals_flag: bool
+  supports_short_flags: bool
+  supports_diagnostics: bool
+}
+
+form CliHealth {
+  ok: bool
+  code: string
+  args_count: int
+}
+
+proc default_config() -> CliConfig {
+  give CliConfig(false,
+                 cli_policy_pkg.default_allow_short_bundles(),
+                 cli_policy_pkg.default_allow_equals())
+}
+
+proc strict_config() -> CliConfig {
+  give CliConfig(true, false, true)
+}
+
+proc with_short_bundles(cfg: CliConfig, allow_short_bundles: bool) -> CliConfig {
+  give CliConfig(cfg.strict, allow_short_bundles, cfg.allow_equals)
+}
+
+proc with_equals(cfg: CliConfig, allow_equals: bool) -> CliConfig {
+  give CliConfig(cfg.strict, cfg.allow_short_bundles, allow_equals)
 }
 
 proc spec(name: string, version: string, description: string) -> CliSpec {
-    give CliSpec(name, version, description)
+  let n = cli_runtime_pkg.sanitize(name, cli_policy_pkg.max_name_len())
+  let d = cli_runtime_pkg.sanitize(description, cli_policy_pkg.max_desc_len())
+  give CliSpec(n, version, d)
+}
+
+proc validate_spec(s: CliSpec) -> CliResult[bool] {
+  if cli_validate_pkg.valid_name(s.name, cli_policy_pkg.max_name_len()) == false {
+    give CliResult.Err(CliError.InvalidSpec)
+  }
+  if cli_validate_pkg.valid_description(s.description, cli_policy_pkg.max_desc_len()) == false {
+    give CliResult.Err(CliError.InvalidSpec)
+  }
+  give CliResult.Ok(true)
+}
+
+proc validate_args(args: [string]) -> CliResult[bool] {
+  if cli_validate_pkg.valid_arg_count(args.len, cli_policy_pkg.max_arg_count()) == false {
+    give CliResult.Err(CliError.InvalidArgs)
+  }
+
+  let i: int = 0
+  loop {
+    if i >= args.len { break }
+    if cli_validate_pkg.valid_arg(args[i], cli_policy_pkg.max_arg_len()) == false {
+      give CliResult.Err(CliError.InvalidArgs)
+    }
+    i = i + 1
+  }
+
+  give CliResult.Ok(true)
 }
 
 proc has_flag(args: [string], name: string) -> bool {
-    let i: int = 0
-    loop {
-        if i >= args.len { break }
-        if args[i] == name { give true }
-        if args[i].len > name.len + 1 {
-            let pref = name + "="
-            if args[i].slice(0, pref.len) == pref { give true }
-        }
-        i = i + 1
+  if cli_validate_pkg.valid_flag_name(name) == false { give false }
+
+  let i: int = 0
+  loop {
+    if i >= args.len { break }
+    if args[i] == name { give true }
+    if args[i].len > name.len + 1 {
+      let pref = name + "="
+      if args[i].slice(0, pref.len) == pref { give true }
     }
-    give false
+    i = i + 1
+  }
+  give false
 }
 
 proc flag_value(args: [string], name: string, fallback: string) -> string {
-    let i: int = 0
-    loop {
-        if i >= args.len { break }
-        if args[i] == name {
-            if i + 1 < args.len { give args[i + 1] }
-            give fallback
-        }
-        if args[i].len > name.len + 1 {
-            let pref = name + "="
-            if args[i].slice(0, pref.len) == pref {
-                give args[i].slice(pref.len, args[i].len)
-            }
-        }
-        i = i + 1
+  if cli_validate_pkg.valid_flag_name(name) == false { give fallback }
+
+  let i: int = 0
+  loop {
+    if i >= args.len { break }
+    if args[i] == name {
+      if i + 1 < args.len { give args[i + 1] }
+      give fallback
     }
-    give fallback
+    if args[i].len > name.len + 1 {
+      let pref = name + "="
+      if args[i].slice(0, pref.len) == pref {
+        give args[i].slice(pref.len, args[i].len)
+      }
+    }
+    i = i + 1
+  }
+  give fallback
+}
+
+proc option(args: [string], name: string) -> CliOption {
+  let value = flag_value(args, name, "")
+  if value.len == 0 && has_flag(args, name) == false {
+    give CliOption(name, "", false)
+  }
+  give CliOption(name, value, true)
 }
 
 proc positional(args: [string]) -> [string] {
-    let out: [string] = []
-    let i: int = 0
-    loop {
-        if i >= args.len { break }
-        if args[i].len > 0 && args[i].slice(0, 1) == "-" {
-            i = i + 1
-            continue
-        }
-        out = out.push(args[i])
-        i = i + 1
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= args.len { break }
+    if args[i].len > 0 && args[i].slice(0, 1) == "-" {
+      i = i + 1
+      continue
     }
-    give out
+    out = out.push(args[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc command(args: [string]) -> string {
+  if args.len == 0 { give cli_policy_pkg.default_command() }
+  let c = cli_runtime_pkg.sanitize(args[0], cli_policy_pkg.max_command_len())
+  if c.len == 0 { give cli_policy_pkg.default_command() }
+  give c
 }
 
 proc parse(args: [string]) -> CliParse {
-    let cmd = "app"
-    if args.len > 0 {
-        cmd = args[0]
+  let cmd = command(args)
+  give CliParse(cmd,
+                positional(args),
+                has_flag(args, "--help") || has_flag(args, "-h"),
+                has_flag(args, "--version") || has_flag(args, "-v"))
+}
+
+proc parse_checked(args: [string], cfg: CliConfig) -> CliResult[CliParse] {
+  let ar = validate_args(args)
+  when ar is CliResult.Err { give CliResult.Err(ar.error) }
+
+  if cfg.allow_short_bundles == false {
+    let i: int = 0
+    loop {
+      if i >= args.len { break }
+      if args[i].len > 2 && args[i].slice(0, 1) == "-" && args[i].slice(0, 2) != "--" {
+        give CliResult.Err(CliError.InvalidArgs)
+      }
+      i = i + 1
     }
-    give CliParse(
-        cmd,
-        positional(args),
-        has_flag(args, "--help") || has_flag(args, "-h"),
-        has_flag(args, "--version") || has_flag(args, "-v")
-    )
+  }
+
+  if cfg.allow_equals == false {
+    let i: int = 0
+    loop {
+      if i >= args.len { break }
+      let j: int = 0
+      loop {
+        if j >= args[i].len { break }
+        if args[i].slice(j, j + 1) == "=" {
+          give CliResult.Err(CliError.InvalidArgs)
+        }
+        j = j + 1
+      }
+      i = i + 1
+    }
+  }
+
+  give CliResult.Ok(parse(args))
 }
 
 proc usage(s: CliSpec) -> string {
-    give s.name + " " + s.version + " - " + s.description
+  give s.name + " " + s.version + " - " + s.description
+}
+
+proc stats(args: [string]) -> CliStats {
+  let flags: int = 0
+  let i: int = 0
+  loop {
+    if i >= args.len { break }
+    if args[i].len > 0 && args[i].slice(0, 1) == "-" { flags = flags + 1 }
+    i = i + 1
+  }
+
+  let pos = positional(args)
+  give CliStats(args.len, flags, pos.len)
+}
+
+proc cli_runtime_info() -> CliRuntimeInfo {
+  give CliRuntimeInfo(cli_runtime_pkg.runtime_name(),
+                      cli_runtime_pkg.runtime_version(),
+                      cli_runtime_pkg.supports_no_std(),
+                      cli_runtime_pkg.supports_equals_flag(),
+                      cli_runtime_pkg.supports_short_flags(),
+                      cli_runtime_pkg.supports_diagnostics())
+}
+
+proc cli_health(args: [string]) -> CliHealth {
+  let vr = validate_args(args)
+  when vr is CliResult.Err { give CliHealth(false, "invalid-args", args.len) }
+  give CliHealth(true, "ok", args.len)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_short_bundles,with_equals,spec,validate_spec,validate_args,has_flag,flag_value,option,positional,command,parse,parse_checked,usage,stats,cli_runtime_info,cli_health,stable_api_surface_hash,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["parse", "flags", "positionals", "diagnostics", cli_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CLI0001" { give "invalid cli spec" }
+  if code == "VITTE-CLI0002" { give "invalid cli args" }
+  if code == "VITTE-CLI0003" { give "invalid flag name" }
+  give "cli diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-CLI0001" { give "normalize spec name/description length" }
+  if code == "VITTE-CLI0002" { give "reduce arg count/size and validate parse mode" }
+  if code == "VITTE-CLI0003" { give "use flag names starting with '-'" }
+  give "inspect cli config and args"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if cli_runtime_pkg.runtime_status() == false { give false }
+  if cli_runtime_pkg.supports_short_flags() == false { give false }
+
+  let s = spec("app", "1.0.0", "demo")
+  let sv = validate_spec(s)
+  when sv is CliResult.Err { give false }
+
+  let args = ["app", "serve", "--port=8080", "-v"]
+  let cfg = default_config()
+  let pr = parse_checked(args, cfg)
+  when pr is CliResult.Err { give false }
+
+  if pr.value.command != "app" { give false }
+  if has_flag(args, "--port") == false { give false }
+
+  let o = option(args, "--port")
+  if o.found == false { give false }
+  if o.value != "8080" { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
+  give true
 }
 
 proc ready() -> bool {
-    give true
+  give stable_ready()
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/cli"
+  give "vitte/cli"
 }
 
 <<< ROLE-CONTRACT
@@ -104,4 +348,5 @@ role: Parsing ligne de commande et UX terminal
 input_contract: Valeurs metier explicites, deja parsees et typables
 output_contract: Sorties stables, observables et compatibles avec les autres packages
 boundary: Ne remplace pas les autres couches; respecte la separation de roles
+versioning_note: stable_api_version=2.0.0
 >>>

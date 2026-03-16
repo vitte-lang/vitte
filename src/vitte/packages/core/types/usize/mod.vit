@@ -1,1 +1,96 @@
 space std/core/types/usize
+
+use vitte/core/types/usize/internal/runtime as core_types_usize_runtime_pkg
+use vitte/core/types/usize/internal/validate as core_types_usize_validate_pkg
+use vitte/core/types/usize/internal/policy as core_types_usize_policy_pkg
+
+form CoreTypesUsizeConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick CoreTypesUsizeError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick CoreTypesUsizeResult[T] {
+  Ok(value: T)
+  Err(error: CoreTypesUsizeError)
+}
+
+proc default_config() -> CoreTypesUsizeConfig {
+  give CoreTypesUsizeConfig(true, core_types_usize_policy_pkg.default_timeout_ms(), core_types_usize_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: CoreTypesUsizeConfig) -> CoreTypesUsizeResult[bool] {
+  if core_types_usize_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give CoreTypesUsizeResult.Err(CoreTypesUsizeError.InvalidConfig)
+  }
+  if core_types_usize_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give CoreTypesUsizeResult.Err(CoreTypesUsizeError.InvalidConfig)
+  }
+  give CoreTypesUsizeResult.Ok(true)
+}
+
+proc healthcheck(cfg: CoreTypesUsizeConfig) -> CoreTypesUsizeResult[bool] {
+  let vr: CoreTypesUsizeResult[bool] = validate_config(cfg)
+  when vr is CoreTypesUsizeResult.Err {
+    give CoreTypesUsizeResult.Err(vr.error)
+  }
+  if core_types_usize_runtime_pkg.runtime_status() == false {
+    give CoreTypesUsizeResult.Err(CoreTypesUsizeError.Internal)
+  }
+  give CoreTypesUsizeResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CORETYPE0001" {
+    give "invalid package configuration"
+  }
+  give "core/types/usize diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/core/types/usize"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/core/types/usize
+owner: @vitte/core
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: Facade publique stable
+input_contract: Config explicite et typable
+output_contract: Resultats stables et predictibles
+boundary: Implementation privee sous vitte/core/types/usize/internal/*
+compat_policy: additive-only
+api_version: v1
+>>>
+
+
+
+
+
+

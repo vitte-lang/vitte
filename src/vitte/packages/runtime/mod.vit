@@ -5,9 +5,9 @@ package vitte/runtime
 
 space vitte/runtime
 
+use vitte/runtime/internal/policy as runtime_policy_pkg
 use vitte/runtime/internal/runtime as runtime_runtime_pkg
 use vitte/runtime/internal/validate as runtime_validate_pkg
-use vitte/runtime/internal/policy as runtime_policy_pkg
 
 
 pick RuntimeMode {
@@ -20,15 +20,16 @@ form RuntimeConfig {
   mode: RuntimeMode
   max_tasks: int
   timeout_ms: int
+  retry_budget: int
   max_memory_mb: int
 }
 
 proc config(mode: RuntimeMode, max_tasks: int, timeout_ms: int) -> RuntimeConfig {
-  give RuntimeConfig(mode, max_tasks, timeout_ms, 256)
+  give RuntimeConfig(mode, max_tasks, timeout_ms, runtime_policy_pkg.default_retry_budget(), 256)
 }
 
 proc with_memory(c: RuntimeConfig, max_memory_mb: int) -> RuntimeConfig {
-  give RuntimeConfig(c.mode, c.max_tasks, c.timeout_ms, max_memory_mb)
+  give RuntimeConfig(c.mode, c.max_tasks, c.timeout_ms, c.retry_budget, max_memory_mb)
 }
 
 proc mode_name(mode: RuntimeMode) -> string {
@@ -40,6 +41,8 @@ proc mode_name(mode: RuntimeMode) -> string {
 proc validate(c: RuntimeConfig) -> bool {
   if c.max_tasks <= 0 { give false }
   if c.timeout_ms <= 0 { give false }
+  if c.retry_budget < 0 { give false }
+  if c.retry_budget > 32 { give false }
   if c.max_memory_mb <= 0 { give false }
   give true
 }
@@ -48,6 +51,7 @@ proc summary(c: RuntimeConfig) -> string {
   give "mode=" + mode_name(c.mode) +
        ",tasks=" + c.max_tasks.to_string() +
        ",timeout=" + c.timeout_ms.to_string() +
+       ",retry=" + c.retry_budget.to_string() +
        ",mem=" + c.max_memory_mb.to_string()
 }
 
@@ -71,15 +75,50 @@ pick RuntimeResult[T] {
   Err(error: RuntimeError)
 }
 
+form RuntimeRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> RuntimeConfig {
-  give RuntimeConfig(true, runtime_policy_pkg.default_timeout_ms(), runtime_policy_pkg.default_retry_budget())
+  give RuntimeConfig(RuntimeMode.Prod, 128, runtime_policy_pkg.default_timeout_ms(), runtime_policy_pkg.default_retry_budget(), 256)
+}
+
+proc strict_config() -> RuntimeConfig {
+  let cfg = default_config()
+  give RuntimeConfig(RuntimeMode.Prod, 64, cfg.timeout_ms, 0, cfg.max_memory_mb)
+}
+
+proc normalize_config(cfg: RuntimeConfig) -> RuntimeConfig {
+  let max_tasks = cfg.max_tasks
+  let timeout_ms = cfg.timeout_ms
+  let retry_budget = cfg.retry_budget
+  let max_memory_mb = cfg.max_memory_mb
+  if max_tasks < 1 { max_tasks = 1 }
+  if max_tasks > 100000 { max_tasks = 100000 }
+  if timeout_ms < 1 { timeout_ms = 1 }
+  if timeout_ms > 60000 { timeout_ms = 60000 }
+  if retry_budget < 0 { retry_budget = 0 }
+  if retry_budget > 32 { retry_budget = 32 }
+  if max_memory_mb < 1 { max_memory_mb = 1 }
+  if max_memory_mb > 1048576 { max_memory_mb = 1048576 }
+  give RuntimeConfig(cfg.mode,
+                     max_tasks,
+                     timeout_ms,
+                     retry_budget,
+                     max_memory_mb)
 }
 
 proc validate_config(cfg: RuntimeConfig) -> RuntimeResult[bool] {
-  if runtime_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if validate(nc) == false {
     give RuntimeResult.Err(RuntimeError.InvalidConfig)
   }
-  if runtime_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if runtime_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
+    give RuntimeResult.Err(RuntimeError.InvalidConfig)
+  }
+  if runtime_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give RuntimeResult.Err(RuntimeError.InvalidConfig)
   }
   give RuntimeResult.Ok(true)
@@ -96,8 +135,18 @@ proc healthcheck(cfg: RuntimeConfig) -> RuntimeResult[bool] {
   give RuntimeResult.Ok(true)
 }
 
+proc runtime_info() -> RuntimeRuntimeInfo {
+  give RuntimeRuntimeInfo(runtime_runtime_pkg.runtime_name(),
+                          runtime_runtime_pkg.runtime_version(),
+                          runtime_runtime_pkg.supports_diagnostics())
+}
+
 proc version() -> string {
   give "v1"
+}
+
+proc api_version() -> string {
+  give version()
 }
 
 proc capabilities() -> [string] {
@@ -117,7 +166,30 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc doctor_status() -> string {
+  give "vitte/runtime doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: RuntimeConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is RuntimeResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> RuntimeResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
 }
 
 <<< ROLE-CONTRACT

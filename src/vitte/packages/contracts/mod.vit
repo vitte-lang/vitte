@@ -1,10 +1,19 @@
 <<<
 mod.vit
 package vitte/contracts
+version: 2.0.0
+tier: contracts-core
+purpose:
+  Verification et diff de contrats versionnes.
+  Validation explicite des metadonnees de contrat.
+  Surface stable versionnee avec diagnostics.
 >>>
 
 space vitte/contracts
 
+use vitte/contracts/internal/runtime as contracts_runtime_pkg
+use vitte/contracts/internal/validate as contracts_validate_pkg
+use vitte/contracts/internal/policy as contracts_policy_pkg
 
 form Contract {
   name: string
@@ -18,8 +27,128 @@ form ContractCheck {
   reason: string
 }
 
-proc contract_load(name: string, version: string, schema_hash: string, required_fields: [string]) -> Contract {
-  give Contract(name, version, schema_hash, required_fields)
+form ContractsOptions {
+  strict: bool
+  max_name_len: int
+  max_version_len: int
+  max_hash_len: int
+  max_required_fields: int
+  max_field_name_len: int
+}
+
+pick ContractsError {
+  InvalidOptions
+  InvalidContract
+  InvalidField
+  MissingField
+  Internal
+}
+
+pick ContractsResult[T] {
+  Ok(value: T)
+  Err(error: ContractsError)
+}
+
+form ContractsRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_verify: bool
+  supports_diff: bool
+  supports_diagnostics: bool
+}
+
+form ContractsStats {
+  required_fields: int
+  missing_fields: int
+  present_fields: int
+}
+
+form ContractsHealth {
+  ok: bool
+  code: string
+  pressure_percent: int
+}
+
+proc options_ok(opts: ContractsOptions) -> bool {
+  if contracts_validate_pkg.valid_limit(opts.max_name_len, 1, contracts_policy_pkg.max_name_len()) == false { give false }
+  if contracts_validate_pkg.valid_limit(opts.max_version_len, 1, contracts_policy_pkg.max_version_len()) == false { give false }
+  if contracts_validate_pkg.valid_limit(opts.max_hash_len, 1, contracts_policy_pkg.max_hash_len()) == false { give false }
+  if contracts_validate_pkg.valid_limit(opts.max_required_fields, 0, contracts_policy_pkg.max_required_fields()) == false { give false }
+  if contracts_validate_pkg.valid_limit(opts.max_field_name_len, 1, contracts_policy_pkg.max_field_name_len()) == false { give false }
+  give true
+}
+
+proc default_options() -> ContractsOptions {
+  give ContractsOptions(contracts_policy_pkg.default_strict(),
+                        contracts_policy_pkg.max_name_len(),
+                        contracts_policy_pkg.max_version_len(),
+                        contracts_policy_pkg.max_hash_len(),
+                        contracts_policy_pkg.max_required_fields(),
+                        contracts_policy_pkg.max_field_name_len())
+}
+
+proc strict_options() -> ContractsOptions {
+  let opts = default_options()
+  give ContractsOptions(true,
+                        opts.max_name_len,
+                        opts.max_version_len,
+                        opts.max_hash_len,
+                        opts.max_required_fields,
+                        opts.max_field_name_len)
+}
+
+proc with_max_required_fields(opts: ContractsOptions, value: int) -> ContractsOptions {
+  give ContractsOptions(opts.strict,
+                        opts.max_name_len,
+                        opts.max_version_len,
+                        opts.max_hash_len,
+                        contracts_policy_pkg.normalize_required_fields(value),
+                        opts.max_field_name_len)
+}
+
+proc validate_options(opts: ContractsOptions) -> ContractsResult[bool] {
+  if options_ok(opts) == false { give ContractsResult.Err(ContractsError.InvalidOptions) }
+  give ContractsResult.Ok(true)
+}
+
+proc validate_options_code(opts: ContractsOptions) -> string {
+  if options_ok(opts) == false { give "invalid-options" }
+  give "ok"
+}
+
+proc normalize_options(opts: ContractsOptions) -> ContractsOptions {
+  give ContractsOptions(opts.strict,
+                        contracts_policy_pkg.normalize_name_len(opts.max_name_len),
+                        contracts_policy_pkg.normalize_version_len(opts.max_version_len),
+                        contracts_policy_pkg.normalize_hash_len(opts.max_hash_len),
+                        contracts_policy_pkg.normalize_required_fields(opts.max_required_fields),
+                        contracts_policy_pkg.normalize_name_len(opts.max_field_name_len))
+}
+
+proc contract_load(name: string, contract_version_value: string, schema_hash: string, required_fields: [string]) -> Contract {
+  give Contract(name, contract_version_value, schema_hash, required_fields)
+}
+
+proc contract_load_checked(name: string, contract_version_value: string, schema_hash: string, required_fields: [string], opts: ContractsOptions) -> ContractsResult[Contract] {
+  let vr = validate_options(opts)
+  when vr is ContractsResult.Err { give ContractsResult.Err(vr.error) }
+
+  if contracts_validate_pkg.valid_name(name, opts.max_name_len) == false { give ContractsResult.Err(ContractsError.InvalidContract) }
+  if contracts_validate_pkg.valid_version(contract_version_value, opts.max_version_len) == false { give ContractsResult.Err(ContractsError.InvalidContract) }
+  if contracts_validate_pkg.valid_hash(schema_hash, opts.max_hash_len) == false { give ContractsResult.Err(ContractsError.InvalidContract) }
+  if contracts_validate_pkg.valid_required_count(required_fields.len, opts.max_required_fields) == false { give ContractsResult.Err(ContractsError.InvalidContract) }
+
+  let i: int = 0
+  loop {
+    if i >= required_fields.len { break }
+    if contracts_validate_pkg.valid_field_name(required_fields[i], opts.max_field_name_len) == false {
+      give ContractsResult.Err(ContractsError.InvalidField)
+    }
+    i = i + 1
+  }
+
+  give ContractsResult.Ok(contract_load(name, contract_version_value, schema_hash, required_fields))
 }
 
 proc contract_name(contract: Contract) -> string {
@@ -51,6 +180,22 @@ proc has_required_field(contract: Contract, field_name: string) -> bool {
 proc add_required_field(contract: Contract, field_name: string) -> Contract {
   if has_required_field(contract, field_name) { give contract }
   give Contract(contract.name, contract.version, contract.schema_hash, contract.required_fields.push(field_name))
+}
+
+proc add_required_field_checked(contract: Contract, field_name: string, opts: ContractsOptions) -> ContractsResult[Contract] {
+  let vr = validate_options(opts)
+  when vr is ContractsResult.Err { give ContractsResult.Err(vr.error) }
+
+  if contracts_validate_pkg.valid_field_name(field_name, opts.max_field_name_len) == false {
+    give ContractsResult.Err(ContractsError.InvalidField)
+  }
+  if has_required_field(contract, field_name) {
+    give ContractsResult.Ok(contract)
+  }
+  if contracts_validate_pkg.valid_required_count(contract.required_fields.len + 1, opts.max_required_fields) == false {
+    give ContractsResult.Err(ContractsError.InvalidContract)
+  }
+  give ContractsResult.Ok(add_required_field(contract, field_name))
 }
 
 proc with_hash(contract: Contract, schema_hash: string) -> Contract {
@@ -107,6 +252,36 @@ proc contract_verify(contract: Contract, payload: string) -> ContractCheck {
   give ContractCheck(true, "ok")
 }
 
+proc contract_code(contract: Contract, opts: ContractsOptions) -> string {
+  let vr = validate_options(opts)
+  when vr is ContractsResult.Err { give "invalid-options" }
+
+  if contracts_validate_pkg.valid_name(contract.name, opts.max_name_len) == false { give "invalid-name" }
+  if contracts_validate_pkg.valid_version(contract.version, opts.max_version_len) == false { give "invalid-version" }
+  if contracts_validate_pkg.valid_hash(contract.schema_hash, opts.max_hash_len) == false { give "invalid-hash" }
+  if contracts_validate_pkg.valid_required_count(contract.required_fields.len, opts.max_required_fields) == false { give "too-many-required-fields" }
+
+  let i: int = 0
+  loop {
+    if i >= contract.required_fields.len { break }
+    if contracts_validate_pkg.valid_field_name(contract.required_fields[i], opts.max_field_name_len) == false {
+      give "invalid-required-field"
+    }
+    i = i + 1
+  }
+
+  give "ok"
+}
+
+proc contract_verify_checked(contract: Contract, payload: string, opts: ContractsOptions) -> ContractsResult[ContractCheck] {
+  let code = contract_code(contract, opts)
+  if code != "ok" { give ContractsResult.Err(ContractsError.InvalidContract) }
+
+  let r = contract_verify(contract, payload)
+  if r.ok == false { give ContractsResult.Err(ContractsError.MissingField) }
+  give ContractsResult.Ok(r)
+}
+
 proc verify_payload_non_empty(contract: Contract, payload: string) -> ContractCheck {
   if payload.len == 0 { give ContractCheck(false, "empty-payload") }
   give contract_verify(contract, payload)
@@ -137,14 +312,158 @@ proc contract_summary(contract: Contract) -> string {
        ",hash=" + contract.schema_hash
 }
 
-proc ready() -> bool {
+proc contract_validate_code(contract: Contract, opts: ContractsOptions) -> string {
+  give contract_code(contract, opts)
+}
+
+proc contract_validate(contract: Contract, opts: ContractsOptions) -> bool {
+  give contract_validate_code(contract, opts) == "ok"
+}
+
+proc contract_normalize(contract: Contract, opts: ContractsOptions) -> Contract {
+  let o = normalize_options(opts)
+
+  let name = contract.name
+  let ver = contract.version
+  let schema_hash = contract.schema_hash
+
+  if name.len > o.max_name_len { name = name.slice(0, o.max_name_len) }
+  if ver.len > o.max_version_len { ver = ver.slice(0, o.max_version_len) }
+  if schema_hash.len > o.max_hash_len { schema_hash = schema_hash.slice(0, o.max_hash_len) }
+
+  let reqs: [string] = []
+  let i: int = 0
+  loop {
+    if i >= contract.required_fields.len { break }
+    if reqs.len >= o.max_required_fields { break }
+
+    let f = contract.required_fields[i]
+    if f.len <= o.max_field_name_len && has_required_field(Contract(name, ver, schema_hash, reqs), f) == false {
+      reqs = reqs.push(f)
+    }
+
+    i = i + 1
+  }
+
+  give Contract(name, ver, schema_hash, reqs)
+}
+
+proc contracts_stats(contract: Contract, payload: string) -> ContractsStats {
+  let missing = 0
+  let i: int = 0
+  loop {
+    if i >= contract.required_fields.len { break }
+    if contains(payload, contract.required_fields[i]) == false {
+      missing = missing + 1
+    }
+    i = i + 1
+  }
+  let present = contract.required_fields.len - missing
+  give ContractsStats(contract.required_fields.len, missing, present)
+}
+
+proc contract_health(contract: Contract, payload: string, opts: ContractsOptions) -> ContractsHealth {
+  let code = contract_validate_code(contract, opts)
+  if code != "ok" { give ContractsHealth(false, code, 100) }
+
+  let st = contracts_stats(contract, payload)
+  let pct = 0
+  if st.required_fields > 0 {
+    pct = st.missing_fields * 100 / st.required_fields
+  }
+  if pct < 0 { pct = 0 }
+  if pct > 100 { pct = 100 }
+  if contracts_validate_pkg.valid_percent(pct) == false {
+    give ContractsHealth(false, "invalid-percent", 100)
+  }
+  if st.missing_fields > 0 { give ContractsHealth(false, "missing-fields", pct) }
+  give ContractsHealth(true, "ok", pct)
+}
+
+proc contracts_runtime_info() -> ContractsRuntimeInfo {
+  give ContractsRuntimeInfo(contracts_runtime_pkg.runtime_name(),
+                            contracts_runtime_pkg.runtime_version(),
+                            contracts_runtime_pkg.supports_no_std(),
+                            contracts_runtime_pkg.supports_verify(),
+                            contracts_runtime_pkg.supports_diff(),
+                            contracts_runtime_pkg.supports_diagnostics())
+}
+
+proc healthcheck(opts: ContractsOptions) -> ContractsResult[bool] {
+  let vr = validate_options(opts)
+  when vr is ContractsResult.Err { give ContractsResult.Err(vr.error) }
+  if contracts_runtime_pkg.runtime_status() == false { give ContractsResult.Err(ContractsError.Internal) }
+  give ContractsResult.Ok(true)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_options,strict_options,with_max_required_fields,validate_options,validate_options_code,normalize_options,contract_load,contract_load_checked,contract_name,contract_version,contract_hash,field_count,has_required_field,add_required_field,add_required_field_checked,with_hash,same_identity,contains,first_missing_field,contract_verify,contract_verify_checked,verify_payload_non_empty,snapshot,diff,is_breaking,contract_summary,contract_validate_code,contract_validate,contract_normalize,contracts_stats,contract_health,contracts_runtime_info,healthcheck,stable_api_surface_hash,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["verify", "diff", "snapshot", "validate", "diagnostics", contracts_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CONTRACTS0001" { give "invalid contracts options" }
+  if code == "VITTE-CONTRACTS0002" { give "invalid contract metadata" }
+  if code == "VITTE-CONTRACTS0003" { give "missing required fields in payload" }
+  give "contracts diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-CONTRACTS0001" { give "normalize options and validate" }
+  if code == "VITTE-CONTRACTS0002" { give "fix name/version/hash and required fields" }
+  if code == "VITTE-CONTRACTS0003" { give "include required fields in payload before verify" }
+  give "inspect contract health and validation code"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if contracts_runtime_pkg.runtime_status() == false { give false }
+
+  let opts = strict_options()
+  let vr = validate_options(opts)
+  when vr is ContractsResult.Err { give false }
+
+  let cr = contract_load_checked("user", "1.0.0", "abc123", ["id", "name"], opts)
+  when cr is ContractsResult.Err { give false }
+
+  let payload = "{id:1,name:alice}"
+  let vrf = contract_verify_checked(cr.value, payload, opts)
+  when vrf is ContractsResult.Err { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
   give true
 }
 
-
+proc ready() -> bool {
+  give stable_ready()
+}
 
 proc package_meta() -> string {
-    give "vitte/contracts"
+  give "vitte/contracts"
 }
 
 <<< ROLE-CONTRACT
@@ -153,4 +472,5 @@ role: Validation de contrats API DB modules
 input_contract: Definitions versionnees et payloads explicites
 output_contract: Verdict verifiable, snapshot stable et diff actionnable
 boundary: Ne genere pas les schemas; verifie et compare seulement les contrats fournis
+versioning_note: stable_api_version=2.0.0
 >>>

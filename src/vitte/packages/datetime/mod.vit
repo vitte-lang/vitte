@@ -1,10 +1,19 @@
 <<<
 mod.vit
 package vitte/datetime
+version: 2.0.0
+tier: time-core
+purpose:
+  Manipulation date heure duree et fuseaux.
+  Operations deterministes avec bornes de validite explicites.
+  API stable versionnee avec diagnostics runtime.
 >>>
 
 space vitte/datetime
 
+use vitte/datetime/internal/runtime as datetime_runtime_pkg
+use vitte/datetime/internal/validate as datetime_validate_pkg
+use vitte/datetime/internal/policy as datetime_policy_pkg
 
 form DateTime {
   epoch_ms: int
@@ -15,8 +24,124 @@ form Duration {
   ms: int
 }
 
+form DateTimeConfig {
+  strict: bool
+  min_epoch_ms: int
+  max_epoch_ms: int
+  min_tz_offset_min: int
+  max_tz_offset_min: int
+  max_duration_ms: int
+}
+
+pick DateTimeError {
+  InvalidConfig
+  InvalidDateTime
+  InvalidDuration
+  Internal
+}
+
+pick DateTimeResult[T] {
+  Ok(value: T)
+  Err(error: DateTimeError)
+}
+
+form DateTimeRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_timezone_offset: bool
+  supports_duration_math: bool
+  supports_diagnostics: bool
+}
+
+form DateTimeHealth {
+  ok: bool
+  code: string
+  pressure_percent: int
+}
+
+proc config_ok(cfg: DateTimeConfig) -> bool {
+  if cfg.min_epoch_ms < datetime_policy_pkg.min_epoch_ms() { give false }
+  if cfg.max_epoch_ms > datetime_policy_pkg.max_epoch_ms() { give false }
+  if cfg.max_epoch_ms < cfg.min_epoch_ms { give false }
+  if cfg.min_tz_offset_min < datetime_policy_pkg.min_tz_offset_min() { give false }
+  if cfg.max_tz_offset_min > datetime_policy_pkg.max_tz_offset_min() { give false }
+  if cfg.max_tz_offset_min < cfg.min_tz_offset_min { give false }
+  if cfg.max_duration_ms < 0 || cfg.max_duration_ms > datetime_policy_pkg.max_duration_ms() { give false }
+  give true
+}
+
+proc default_config() -> DateTimeConfig {
+  give DateTimeConfig(false,
+                      datetime_policy_pkg.min_epoch_ms(),
+                      datetime_policy_pkg.max_epoch_ms(),
+                      datetime_policy_pkg.min_tz_offset_min(),
+                      datetime_policy_pkg.max_tz_offset_min(),
+                      datetime_policy_pkg.max_duration_ms())
+}
+
+proc strict_config() -> DateTimeConfig {
+  let cfg = default_config()
+  give DateTimeConfig(true,
+                      cfg.min_epoch_ms,
+                      cfg.max_epoch_ms,
+                      cfg.min_tz_offset_min,
+                      cfg.max_tz_offset_min,
+                      cfg.max_duration_ms)
+}
+
+proc with_max_duration_ms(cfg: DateTimeConfig, max_duration_ms: int) -> DateTimeConfig {
+  give DateTimeConfig(cfg.strict,
+                      cfg.min_epoch_ms,
+                      cfg.max_epoch_ms,
+                      cfg.min_tz_offset_min,
+                      cfg.max_tz_offset_min,
+                      datetime_policy_pkg.normalize_duration_ms(max_duration_ms))
+}
+
+proc validate_config(cfg: DateTimeConfig) -> DateTimeResult[bool] {
+  if config_ok(cfg) == false { give DateTimeResult.Err(DateTimeError.InvalidConfig) }
+  give DateTimeResult.Ok(true)
+}
+
+proc validate_config_code(cfg: DateTimeConfig) -> string {
+  if config_ok(cfg) == false { give "invalid-config" }
+  give "ok"
+}
+
+proc normalize_config(cfg: DateTimeConfig) -> DateTimeConfig {
+  let min_epoch_ms = datetime_policy_pkg.normalize_epoch_ms(cfg.min_epoch_ms)
+  let max_epoch_ms = datetime_policy_pkg.normalize_epoch_ms(cfg.max_epoch_ms)
+  if max_epoch_ms < min_epoch_ms { max_epoch_ms = min_epoch_ms }
+
+  let min_tz = datetime_policy_pkg.normalize_tz_offset_min(cfg.min_tz_offset_min)
+  let max_tz = datetime_policy_pkg.normalize_tz_offset_min(cfg.max_tz_offset_min)
+  if max_tz < min_tz { max_tz = min_tz }
+
+  give DateTimeConfig(cfg.strict,
+                      min_epoch_ms,
+                      max_epoch_ms,
+                      min_tz,
+                      max_tz,
+                      datetime_policy_pkg.normalize_duration_ms(cfg.max_duration_ms))
+}
+
 proc datetime(epoch_ms: int, tz_offset_min: int) -> DateTime {
   give DateTime(epoch_ms, tz_offset_min)
+}
+
+proc datetime_checked(epoch_ms: int, tz_offset_min: int, cfg: DateTimeConfig) -> DateTimeResult[DateTime] {
+  let vr = validate_config(cfg)
+  when vr is DateTimeResult.Err { give DateTimeResult.Err(vr.error) }
+
+  if datetime_validate_pkg.valid_epoch_ms(epoch_ms, cfg.min_epoch_ms, cfg.max_epoch_ms) == false {
+    give DateTimeResult.Err(DateTimeError.InvalidDateTime)
+  }
+  if datetime_validate_pkg.valid_tz_offset_min(tz_offset_min, cfg.min_tz_offset_min, cfg.max_tz_offset_min) == false {
+    give DateTimeResult.Err(DateTimeError.InvalidDateTime)
+  }
+
+  give DateTimeResult.Ok(DateTime(epoch_ms, tz_offset_min))
 }
 
 proc duration(ms: int) -> Duration {
@@ -25,14 +150,50 @@ proc duration(ms: int) -> Duration {
   give Duration(v)
 }
 
+proc duration_checked(ms: int, cfg: DateTimeConfig) -> DateTimeResult[Duration] {
+  let vr = validate_config(cfg)
+  when vr is DateTimeResult.Err { give DateTimeResult.Err(vr.error) }
+
+  if datetime_validate_pkg.valid_duration_ms(ms, cfg.max_duration_ms) == false {
+    give DateTimeResult.Err(DateTimeError.InvalidDuration)
+  }
+
+  give DateTimeResult.Ok(duration(ms))
+}
+
 proc add(dt: DateTime, d: Duration) -> DateTime {
   give DateTime(dt.epoch_ms + d.ms, dt.tz_offset_min)
+}
+
+proc add_checked(dt: DateTime, d: Duration, cfg: DateTimeConfig) -> DateTimeResult[DateTime] {
+  let vr = validate_config(cfg)
+  when vr is DateTimeResult.Err { give DateTimeResult.Err(vr.error) }
+
+  let next = dt.epoch_ms + d.ms
+  if datetime_validate_pkg.valid_epoch_ms(next, cfg.min_epoch_ms, cfg.max_epoch_ms) == false {
+    give DateTimeResult.Err(DateTimeError.InvalidDateTime)
+  }
+
+  give DateTimeResult.Ok(DateTime(next, dt.tz_offset_min))
 }
 
 proc sub(dt: DateTime, d: Duration) -> DateTime {
   let next = dt.epoch_ms - d.ms
   if next < 0 { next = 0 }
   give DateTime(next, dt.tz_offset_min)
+}
+
+proc sub_checked(dt: DateTime, d: Duration, cfg: DateTimeConfig) -> DateTimeResult[DateTime] {
+  let vr = validate_config(cfg)
+  when vr is DateTimeResult.Err { give DateTimeResult.Err(vr.error) }
+
+  let next = dt.epoch_ms - d.ms
+  if next < cfg.min_epoch_ms { next = cfg.min_epoch_ms }
+  if datetime_validate_pkg.valid_epoch_ms(next, cfg.min_epoch_ms, cfg.max_epoch_ms) == false {
+    give DateTimeResult.Err(DateTimeError.InvalidDateTime)
+  }
+
+  give DateTimeResult.Ok(DateTime(next, dt.tz_offset_min))
 }
 
 proc diff_ms(left: DateTime, right: DateTime) -> int {
@@ -67,14 +228,141 @@ proc summary(dt: DateTime) -> string {
        ",minute=" + minute_of_day(dt).to_string()
 }
 
-proc ready() -> bool {
+proc datetime_validate_code(dt: DateTime, cfg: DateTimeConfig) -> string {
+  let vr = validate_config(cfg)
+  when vr is DateTimeResult.Err { give "invalid-config" }
+
+  if datetime_validate_pkg.valid_epoch_ms(dt.epoch_ms, cfg.min_epoch_ms, cfg.max_epoch_ms) == false {
+    give "invalid-epoch-ms"
+  }
+  if datetime_validate_pkg.valid_tz_offset_min(dt.tz_offset_min, cfg.min_tz_offset_min, cfg.max_tz_offset_min) == false {
+    give "invalid-tz-offset"
+  }
+  give "ok"
+}
+
+proc datetime_validate(dt: DateTime, cfg: DateTimeConfig) -> bool {
+  give datetime_validate_code(dt, cfg) == "ok"
+}
+
+proc datetime_normalize(dt: DateTime, cfg: DateTimeConfig) -> DateTime {
+  let ncfg = normalize_config(cfg)
+  let epoch_ms = dt.epoch_ms
+  if epoch_ms < ncfg.min_epoch_ms { epoch_ms = ncfg.min_epoch_ms }
+  if epoch_ms > ncfg.max_epoch_ms { epoch_ms = ncfg.max_epoch_ms }
+
+  let tz = dt.tz_offset_min
+  if tz < ncfg.min_tz_offset_min { tz = ncfg.min_tz_offset_min }
+  if tz > ncfg.max_tz_offset_min { tz = ncfg.max_tz_offset_min }
+
+  give DateTime(epoch_ms, tz)
+}
+
+proc datetime_health(dt: DateTime, cfg: DateTimeConfig) -> DateTimeHealth {
+  let code = datetime_validate_code(dt, cfg)
+  if code != "ok" { give DateTimeHealth(false, code, 100) }
+
+  let ncfg = normalize_config(cfg)
+  let pct = 0
+  if ncfg.max_epoch_ms > 0 {
+    pct = dt.epoch_ms * 100 / ncfg.max_epoch_ms
+  }
+  if pct < 0 { pct = 0 }
+  if pct > 100 { pct = 100 }
+  if datetime_validate_pkg.valid_percent(pct) == false {
+    give DateTimeHealth(false, "invalid-percent", 100)
+  }
+
+  give DateTimeHealth(true, "ok", pct)
+}
+
+proc datetime_runtime_info() -> DateTimeRuntimeInfo {
+  give DateTimeRuntimeInfo(datetime_runtime_pkg.runtime_name(),
+                           datetime_runtime_pkg.runtime_version(),
+                           datetime_runtime_pkg.supports_no_std(),
+                           datetime_runtime_pkg.supports_timezone_offset(),
+                           datetime_runtime_pkg.supports_duration_math(),
+                           datetime_runtime_pkg.supports_diagnostics())
+}
+
+proc healthcheck(cfg: DateTimeConfig) -> DateTimeResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is DateTimeResult.Err { give DateTimeResult.Err(vr.error) }
+  if datetime_runtime_pkg.runtime_status() == false {
+    give DateTimeResult.Err(DateTimeError.Internal)
+  }
+  give DateTimeResult.Ok(true)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_max_duration_ms,validate_config,validate_config_code,normalize_config,datetime,datetime_checked,duration,duration_checked,add,add_checked,sub,sub_checked,diff_ms,to_local_epoch_ms,from_local_epoch_ms,minute_of_day,day_index,summary,datetime_validate_code,datetime_validate,datetime_normalize,datetime_health,datetime_runtime_info,healthcheck,stable_api_surface_hash,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,api_version,package_meta,ready"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["datetime", "duration", "timezone", "normalize", "diagnostics"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-DATETIME0001" { give "invalid datetime configuration" }
+  if code == "VITTE-DATETIME0002" { give "invalid datetime value" }
+  if code == "VITTE-DATETIME0003" { give "invalid duration" }
+  give "datetime diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-DATETIME0001" { give "normalize datetime config bounds" }
+  if code == "VITTE-DATETIME0002" { give "clamp epoch_ms and tz_offset_min within limits" }
+  if code == "VITTE-DATETIME0003" { give "use non-negative duration within max_duration_ms" }
+  give "review datetime input and configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  let cfg = strict_config()
+  let vr = validate_config(cfg)
+  when vr is DateTimeResult.Err { give false }
+
+  let dr = datetime_checked(1700000000000, 60, cfg)
+  when dr is DateTimeResult.Err { give false }
+
+  let du = duration_checked(60000, cfg)
+  when du is DateTimeResult.Err { give false }
+
+  let ar = add_checked(dr.value, du.value, cfg)
+  when ar is DateTimeResult.Err { give false }
+
+  if datetime_validate(ar.value, cfg) == false { give false }
+  if stable_api_surface_hash() <= 0 { give false }
   give true
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/datetime"
+  give "vitte/datetime"
+}
+
+proc ready() -> bool {
+  give stable_ready()
 }
 
 <<< ROLE-CONTRACT
@@ -83,4 +371,5 @@ role: Manipulation date heure duree et fuseaux
 input_contract: Valeurs metier explicites, deja parsees et typables
 output_contract: Sorties stables, observables et compatibles avec les autres packages
 boundary: Ne remplace pas les autres couches; respecte la separation de roles
+versioning_note: stable_api_version=2.0.0
 >>>

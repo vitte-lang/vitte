@@ -5,9 +5,9 @@ package vitte/plot
 
 space vitte/plot
 
+use vitte/plot/internal/policy as plot_policy_pkg
 use vitte/plot/internal/runtime as plot_runtime_pkg
 use vitte/plot/internal/validate as plot_validate_pkg
-use vitte/plot/internal/policy as plot_policy_pkg
 
 
 form Point {
@@ -78,15 +78,37 @@ pick PlotResult[T] {
   Err(error: PlotError)
 }
 
+form PlotRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> PlotConfig {
   give PlotConfig(true, plot_policy_pkg.default_timeout_ms(), plot_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> PlotConfig {
+  let cfg = default_config()
+  give PlotConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc normalize_config(cfg: PlotConfig) -> PlotConfig {
+  let timeout_ms = cfg.timeout_ms
+  let retry_budget = cfg.retry_budget
+  if timeout_ms < 1 { timeout_ms = 1 }
+  if timeout_ms > 60000 { timeout_ms = 60000 }
+  if retry_budget < 0 { retry_budget = 0 }
+  if retry_budget > 32 { retry_budget = 32 }
+  give PlotConfig(cfg.strict, timeout_ms, retry_budget)
+}
+
 proc validate_config(cfg: PlotConfig) -> PlotResult[bool] {
-  if plot_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if plot_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give PlotResult.Err(PlotError.InvalidConfig)
   }
-  if plot_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if plot_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give PlotResult.Err(PlotError.InvalidConfig)
   }
   give PlotResult.Ok(true)
@@ -103,8 +125,18 @@ proc healthcheck(cfg: PlotConfig) -> PlotResult[bool] {
   give PlotResult.Ok(true)
 }
 
+proc runtime_info() -> PlotRuntimeInfo {
+  give PlotRuntimeInfo(plot_runtime_pkg.runtime_name(),
+                       plot_runtime_pkg.runtime_version(),
+                       plot_runtime_pkg.supports_diagnostics())
+}
+
 proc version() -> string {
   give "v1"
+}
+
+proc api_version() -> string {
+  give version()
 }
 
 proc capabilities() -> [string] {
@@ -124,7 +156,30 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc doctor_status() -> string {
+  give "vitte/plot doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: PlotConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is PlotResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> PlotResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
 }
 
 <<< ROLE-CONTRACT

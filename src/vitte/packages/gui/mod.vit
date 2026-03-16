@@ -1,10 +1,49 @@
 <<<
 mod.vit
 package vitte/gui
+version: 3.1.0
+tier: ui-core
+purpose:
+  Couche interface graphique et projection UI.
+  Validation explicite des vues/widgets.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/gui
 
+use vitte/gui/internal/policy as gui_policy_pkg
+use vitte/gui/internal/runtime as gui_runtime_pkg
+use vitte/gui/internal/validate as gui_validate_pkg
+
+form GuiConfig {
+  allow_empty_title: bool
+  max_widgets: int
+  max_text_len: int
+}
+
+pick GuiError {
+  InvalidConfig
+  NotFound
+  Internal
+}
+
+pick GuiResult[T] {
+  Ok(value: T)
+  Err(error: GuiError)
+}
+
+form GuiRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_visibility_model: bool
+}
+
+form GuiHealth {
+  ok: bool
+  code: string
+  widgets_count: int
+}
 
 pick WidgetKind {
   Container
@@ -26,16 +65,131 @@ form View {
   widgets: [Widget]
 }
 
+proc default_config() -> GuiConfig {
+  give GuiConfig(gui_policy_pkg.default_allow_empty_title(), gui_policy_pkg.default_max_widgets(), gui_policy_pkg.default_max_text_len())
+}
+
+proc strict_config() -> GuiConfig {
+  let cfg = default_config()
+  give GuiConfig(false, cfg.max_widgets, cfg.max_text_len)
+}
+
+proc with_max_widgets(cfg: GuiConfig, max_widgets: int) -> GuiConfig {
+  give GuiConfig(cfg.allow_empty_title, gui_policy_pkg.normalize_max_widgets(max_widgets), cfg.max_text_len)
+}
+
+proc with_max_text_len(cfg: GuiConfig, max_text_len: int) -> GuiConfig {
+  give GuiConfig(cfg.allow_empty_title, cfg.max_widgets, gui_policy_pkg.normalize_max_text_len(max_text_len))
+}
+
+proc normalize_config(cfg: GuiConfig) -> GuiConfig {
+  give GuiConfig(cfg.allow_empty_title,
+                 gui_policy_pkg.normalize_max_widgets(cfg.max_widgets),
+                 gui_policy_pkg.normalize_max_text_len(cfg.max_text_len))
+}
+
+proc validate_config(cfg: GuiConfig) -> GuiResult[bool] {
+  let nc = normalize_config(cfg)
+  if gui_validate_pkg.valid_widgets_len(0, nc.max_widgets) == false {
+    give GuiResult.Err(GuiError.InvalidConfig)
+  }
+  if nc.max_text_len <= 0 {
+    give GuiResult.Err(GuiError.InvalidConfig)
+  }
+  give GuiResult.Ok(true)
+}
+
+proc runtime_info() -> GuiRuntimeInfo {
+  give GuiRuntimeInfo(gui_runtime_pkg.runtime_name(),
+                      gui_runtime_pkg.runtime_version(),
+                      gui_runtime_pkg.supports_diagnostics(),
+                      gui_runtime_pkg.supports_visibility_model())
+}
+
+proc healthcheck(cfg: GuiConfig, v: View) -> GuiResult[GuiHealth] {
+  let vr = validate_config(cfg)
+  when vr is GuiResult.Err { give GuiResult.Err(vr.error) }
+  if gui_runtime_pkg.runtime_status() == false {
+    give GuiResult.Err(GuiError.Internal)
+  }
+  if gui_validate_pkg.valid_title(v.title, cfg.allow_empty_title) == false {
+    give GuiResult.Err(GuiError.InvalidConfig)
+  }
+  if gui_validate_pkg.valid_widgets_len(v.widgets.len, cfg.max_widgets) == false {
+    give GuiResult.Err(GuiError.InvalidConfig)
+  }
+  give GuiResult.Ok(GuiHealth(true, "ok", v.widgets.len))
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give [
+    "diagnostics",
+    "healthcheck",
+    "visibility",
+    "widget-model",
+    "widget-text"
+  ]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-GUI0001" { give "invalid gui configuration" }
+  if code == "VITTE-GUI0002" { give "invalid widget id or text" }
+  if code == "VITTE-GUI0003" { give "gui runtime unavailable" }
+  give "gui diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-GUI0001" { give "set non-empty title and valid max_widgets" }
+  if code == "VITTE-GUI0002" { give "use non-empty widget ids and bounded text" }
+  if code == "VITTE-GUI0003" { give "check gui runtime status" }
+  give "review gui configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
 proc view(title: string) -> View {
   give View(title, [])
+}
+
+proc view_checked(title: string, cfg: GuiConfig) -> GuiResult[View] {
+  if gui_validate_pkg.valid_title(title, cfg.allow_empty_title) == false {
+    give GuiResult.Err(GuiError.InvalidConfig)
+  }
+  give GuiResult.Ok(view(title))
 }
 
 proc widget(id: string, kind: WidgetKind, text: string) -> Widget {
   give Widget(id, kind, text, true, true)
 }
 
+proc widget_checked(id: string, kind: WidgetKind, text: string, cfg: GuiConfig) -> GuiResult[Widget] {
+  let _ = kind
+  if gui_validate_pkg.valid_widget_id(id) == false { give GuiResult.Err(GuiError.InvalidConfig) }
+  if gui_validate_pkg.valid_text(text, cfg.max_text_len) == false { give GuiResult.Err(GuiError.InvalidConfig) }
+  give GuiResult.Ok(widget(id, kind, text))
+}
+
 proc add_widget(v: View, w: Widget) -> View {
   give View(v.title, v.widgets.push(w))
+}
+
+proc add_widget_checked(v: View, w: Widget, cfg: GuiConfig) -> GuiResult[View] {
+  if gui_validate_pkg.valid_widget_id(w.id) == false {
+    give GuiResult.Err(GuiError.InvalidConfig)
+  }
+  if gui_validate_pkg.valid_text(w.text, cfg.max_text_len) == false {
+    give GuiResult.Err(GuiError.InvalidConfig)
+  }
+  if gui_validate_pkg.valid_widgets_len(v.widgets.len + 1, cfg.max_widgets) == false {
+    give GuiResult.Err(GuiError.InvalidConfig)
+  }
+  give GuiResult.Ok(add_widget(v, w))
 }
 
 proc show(v: View, id: string, visible: bool) -> View {
@@ -162,6 +316,12 @@ proc set_text(v: View, id: string, text: string) -> View {
   give View(v.title, out)
 }
 
+proc set_text_checked(v: View, id: string, text: string, cfg: GuiConfig) -> GuiResult[View] {
+  if gui_validate_pkg.valid_widget_id(id) == false { give GuiResult.Err(GuiError.InvalidConfig) }
+  if gui_validate_pkg.valid_text(text, cfg.max_text_len) == false { give GuiResult.Err(GuiError.InvalidConfig) }
+  give GuiResult.Ok(set_text(v, id, text))
+}
+
 proc visible_ids(v: View) -> [string] {
   let out: [string] = []
   let i: int = 0
@@ -181,13 +341,11 @@ proc gui_diagnostics(v: View) -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give gui_runtime_pkg.runtime_status()
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/gui"
+  give "vitte/gui"
 }
 
 <<< ROLE-CONTRACT

@@ -10,7 +10,9 @@ package vitte/fs
 
 space vitte/fs
 
+use vitte/fs/internal/policy as fs_policy_pkg
 use vitte/fs/internal/runtime as fs_runtime_pkg
+use vitte/fs/internal/validate as fs_validate_pkg
 
 pick SymlinkPolicy {
   Allow
@@ -128,9 +130,9 @@ proc path(raw: string) -> PathInfo {
 proc default_runtime() -> FsRuntime {
   give FsRuntime(
     [],
-    FsWatcherConfig(false, 50, 4),
-    FsCacheConfig(true, 1000, "0"),
-    FsLimits(10485760, 128),
+    FsWatcherConfig(false, fs_policy_pkg.default_watch_debounce_ms(), fs_policy_pkg.default_watch_coalesce_window()),
+    FsCacheConfig(fs_policy_pkg.default_cache_enabled(), fs_policy_pkg.default_cache_ttl_ms(), fs_policy_pkg.default_cache_invalidate_hash()),
+    FsLimits(fs_policy_pkg.default_max_file_size(), fs_policy_pkg.default_max_open_files()),
     FsPolicy(SymlinkPolicy.Deny, ["/etc", "/bin", "/root"], ["."], FsProfile.Desktop),
     0,
     0,
@@ -160,7 +162,7 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc normalize(p: PathInfo) -> PathInfo {
@@ -242,6 +244,26 @@ proc op_allowed_for_profile(rt: FsRuntime, op_name: string) -> bool {
 
 proc open_backpressure_ok(rt: FsRuntime) -> bool {
   give rt.open_files < rt.limits.max_open_files
+}
+
+proc validate_runtime(rt: FsRuntime) -> FsResult[bool] {
+  if fs_validate_pkg.valid_watcher(rt.watcher.enabled, rt.watcher.debounce_ms, rt.watcher.coalesce_window) == false {
+    give FsResult.Err(FsError.Failure("VITTE-F0006", diagnostics_message("VITTE-F0006")))
+  }
+  if fs_validate_pkg.valid_cache(rt.cache.enabled, rt.cache.ttl_ms, rt.cache.invalidate_hash) == false {
+    give FsResult.Err(FsError.Failure("VITTE-F0008", diagnostics_message("VITTE-F0008")))
+  }
+  if fs_validate_pkg.valid_limits(rt.limits.max_file_size, rt.limits.max_open_files) == false {
+    give FsResult.Err(FsError.Failure("VITTE-F0003", diagnostics_message("VITTE-F0003")))
+  }
+  give FsResult.Ok(true)
+}
+
+proc healthcheck(rt: FsRuntime) -> FsResult[bool] {
+  if fs_runtime_pkg.runtime_status() == false {
+    give FsResult.Err(FsError.Failure("VITTE-F0003", "fs runtime unavailable"))
+  }
+  give validate_runtime(rt)
 }
 
 proc upsert_entry(rt: FsRuntime, path_raw: string, text: string, bytes: [int], dir_flag: bool) -> FsRuntime {
@@ -464,18 +486,21 @@ proc with_policy(rt: FsRuntime, policy: FsPolicy) -> FsRuntime {
 }
 
 proc with_watcher(rt: FsRuntime, watcher: FsWatcherConfig) -> FsResult[FsRuntime] {
-  if watcher.enabled && watcher.debounce_ms < 10 {
+  if fs_validate_pkg.valid_watcher(watcher.enabled, watcher.debounce_ms, watcher.coalesce_window) == false {
     give FsResult.Err(FsError.Failure("VITTE-F0006", diagnostics_message("VITTE-F0006")))
   }
-  give FsResult.Ok(FsRuntime(rt.entries, watcher, rt.cache, rt.limits, rt.policy, rt.open_files, rt.backpressure, rt.telemetry, rt.search_index))
+  let normalized = FsWatcherConfig(watcher.enabled, fs_policy_pkg.normalize_watch_debounce_ms(watcher.debounce_ms), watcher.coalesce_window)
+  give FsResult.Ok(FsRuntime(rt.entries, normalized, rt.cache, rt.limits, rt.policy, rt.open_files, rt.backpressure, rt.telemetry, rt.search_index))
 }
 
 proc with_cache(rt: FsRuntime, cache: FsCacheConfig) -> FsRuntime {
-  give FsRuntime(rt.entries, rt.watcher, cache, rt.limits, rt.policy, rt.open_files, rt.backpressure, rt.telemetry, rt.search_index)
+  let normalized = FsCacheConfig(cache.enabled, fs_policy_pkg.normalize_cache_ttl_ms(cache.ttl_ms), cache.invalidate_hash)
+  give FsRuntime(rt.entries, rt.watcher, normalized, rt.limits, rt.policy, rt.open_files, rt.backpressure, rt.telemetry, rt.search_index)
 }
 
 proc with_limits(rt: FsRuntime, limits: FsLimits) -> FsRuntime {
-  give FsRuntime(rt.entries, rt.watcher, rt.cache, limits, rt.policy, rt.open_files, rt.backpressure, rt.telemetry, rt.search_index)
+  let normalized = FsLimits(fs_policy_pkg.normalize_max_file_size(limits.max_file_size), fs_policy_pkg.normalize_max_open_files(limits.max_open_files))
+  give FsRuntime(rt.entries, rt.watcher, rt.cache, normalized, rt.policy, rt.open_files, rt.backpressure, rt.telemetry, rt.search_index)
 }
 
 proc update_telemetry(rt: FsRuntime, stat_p50: int, stat_p95: int, read_p50: int, read_p95: int, write_p50: int, write_p95: int, walk_p50: int, walk_p95: int) -> FsRuntime {
@@ -521,7 +546,7 @@ proc quickfix_apply(payload: string) -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give fs_runtime_pkg.runtime_status()
 }
 
 proc package_meta() -> string {

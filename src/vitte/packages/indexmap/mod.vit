@@ -1,10 +1,48 @@
 <<<
 mod.vit
 package vitte/indexmap
+version: 3.1.0
+tier: collection-core
+purpose:
+  Dictionnaire stable avec ordre d insertion.
+  Validation explicite des cles/tailles.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/indexmap
 
+use vitte/indexmap/internal/policy as indexmap_policy_pkg
+use vitte/indexmap/internal/runtime as indexmap_runtime_pkg
+use vitte/indexmap/internal/validate as indexmap_validate_pkg
+
+form IndexMapConfig {
+  max_entries: int
+  require_non_empty_key: bool
+}
+
+pick IndexMapError {
+  InvalidConfig
+  NotFound
+  Internal
+}
+
+pick IndexMapResult[T] {
+  Ok(value: T)
+  Err(error: IndexMapError)
+}
+
+form IndexMapRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_stable_order: bool
+  supports_diagnostics: bool
+}
+
+form IndexMapHealth {
+  ok: bool
+  code: string
+  entries: int
+}
 
 form Pair {
   key: string
@@ -13,6 +51,76 @@ form Pair {
 
 form IndexMap {
   entries: [Pair]
+}
+
+proc default_config() -> IndexMapConfig {
+  give IndexMapConfig(indexmap_policy_pkg.default_max_entries(), indexmap_policy_pkg.default_require_non_empty_key())
+}
+
+proc strict_config() -> IndexMapConfig {
+  let cfg = default_config()
+  give IndexMapConfig(cfg.max_entries, true)
+}
+
+proc with_max_entries(cfg: IndexMapConfig, max_entries: int) -> IndexMapConfig {
+  give IndexMapConfig(indexmap_policy_pkg.normalize_max_entries(max_entries), cfg.require_non_empty_key)
+}
+
+proc normalize_config(cfg: IndexMapConfig) -> IndexMapConfig {
+  give IndexMapConfig(indexmap_policy_pkg.normalize_max_entries(cfg.max_entries), cfg.require_non_empty_key)
+}
+
+proc validate_config(cfg: IndexMapConfig) -> IndexMapResult[bool] {
+  let nc = normalize_config(cfg)
+  if indexmap_validate_pkg.valid_entries_len(0, nc.max_entries) == false {
+    give IndexMapResult.Err(IndexMapError.InvalidConfig)
+  }
+  give IndexMapResult.Ok(true)
+}
+
+proc runtime_info() -> IndexMapRuntimeInfo {
+  give IndexMapRuntimeInfo(indexmap_runtime_pkg.runtime_name(),
+                           indexmap_runtime_pkg.runtime_version(),
+                           indexmap_runtime_pkg.supports_stable_order(),
+                           indexmap_runtime_pkg.supports_diagnostics())
+}
+
+proc healthcheck(cfg: IndexMapConfig, m: IndexMap) -> IndexMapResult[IndexMapHealth] {
+  let vr = validate_config(cfg)
+  when vr is IndexMapResult.Err { give IndexMapResult.Err(vr.error) }
+  if indexmap_runtime_pkg.runtime_status() == false {
+    give IndexMapResult.Err(IndexMapError.Internal)
+  }
+  if indexmap_validate_pkg.valid_entries_len(m.entries.len, cfg.max_entries) == false {
+    give IndexMapResult.Err(IndexMapError.InvalidConfig)
+  }
+  give IndexMapResult.Ok(IndexMapHealth(true, "ok", m.entries.len))
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["diagnostics", "merge", "ordered-entries", "put-get-remove", "stable-keys"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-INDEXMAP0001" { give "invalid indexmap configuration" }
+  if code == "VITTE-INDEXMAP0002" { give "invalid key/value or map state" }
+  if code == "VITTE-INDEXMAP0003" { give "indexmap runtime unavailable" }
+  give "indexmap diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-INDEXMAP0001" { give "set max_entries to a positive value" }
+  if code == "VITTE-INDEXMAP0002" { give "use valid keys and respect max_entries" }
+  if code == "VITTE-INDEXMAP0003" { give "check indexmap runtime status" }
+  give "review indexmap configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc map_new() -> IndexMap {
@@ -37,6 +145,29 @@ proc put(m: IndexMap, key: string, value: string) -> IndexMap {
   give IndexMap(out)
 }
 
+proc put_checked(m: IndexMap, key: string, value: string, cfg: IndexMapConfig) -> IndexMapResult[IndexMap] {
+  if indexmap_validate_pkg.valid_key(key, cfg.require_non_empty_key) == false {
+    give IndexMapResult.Err(IndexMapError.InvalidConfig)
+  }
+  if indexmap_validate_pkg.valid_value(value) == false {
+    give IndexMapResult.Err(IndexMapError.InvalidConfig)
+  }
+  let exists = false
+  let i: int = 0
+  loop {
+    if i >= m.entries.len { break }
+    if m.entries[i].key == key {
+      exists = true
+      break
+    }
+    i = i + 1
+  }
+  if exists == false && indexmap_validate_pkg.valid_entries_len(m.entries.len + 1, cfg.max_entries) == false {
+    give IndexMapResult.Err(IndexMapError.InvalidConfig)
+  }
+  give IndexMapResult.Ok(put(m, key, value))
+}
+
 proc get(m: IndexMap, key: string) -> string {
   let i: int = 0
   loop {
@@ -45,6 +176,17 @@ proc get(m: IndexMap, key: string) -> string {
     i = i + 1
   }
   give ""
+}
+
+proc get_checked(m: IndexMap, key: string, cfg: IndexMapConfig) -> IndexMapResult[string] {
+  if indexmap_validate_pkg.valid_key(key, cfg.require_non_empty_key) == false {
+    give IndexMapResult.Err(IndexMapError.InvalidConfig)
+  }
+  let value = get(m, key)
+  if value.len == 0 {
+    give IndexMapResult.Err(IndexMapError.NotFound)
+  }
+  give IndexMapResult.Ok(value)
 }
 
 proc has(m: IndexMap, key: string) -> bool {
@@ -96,7 +238,7 @@ proc merge(left: IndexMap, right: IndexMap) -> IndexMap {
 }
 
 proc ready() -> bool {
-  give true
+  give indexmap_runtime_pkg.runtime_status()
 }
 
 proc package_meta() -> string {

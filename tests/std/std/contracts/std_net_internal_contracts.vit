@@ -1,0 +1,11 @@
+use vitte/std/net as std_net_pkg
+
+entry main at core/app {
+  let cfg = std_net_pkg.default_config()
+  let vr = std_net_pkg.validate_config(cfg)
+  when vr is std_net_pkg.StdNetResult.Err { give 1 }
+  let hs: [std_net_pkg.StdNetHeader] = []
+  let r = std_net_pkg.get("api.vitte.dev", hs, std_net_pkg.timeout_profile("default"))
+  when r is std_net_pkg.StdNetResult.Err { give 2 }
+  give 0
+}

@@ -1,0 +1,25 @@
+<<<
+tasks_channels.vit
+example vitte/std/async tasks + channels
+>>>
+
+use vitte/std/async as std_async_pkg
+
+entry main at core/app {
+  let tr = std_async_pkg.spawn("build")
+  when tr is std_async_pkg.StdAsyncResult.Err { give 1 }
+
+  let cr = std_async_pkg.channel(2)
+  when cr is std_async_pkg.StdAsyncResult.Err { give 2 }
+
+  let c2 = std_async_pkg.channel_send(cr.value, "evt")
+  when c2 is std_async_pkg.StdAsyncResult.Err { give 3 }
+
+  let rr = std_async_pkg.channel_recv(c2.value)
+  when rr is std_async_pkg.StdAsyncResult.Err { give 4 }
+  if rr.value.ok == false { give 5 }
+
+  let jr = std_async_pkg.join(tr.value)
+  when jr is std_async_pkg.StdAsyncResult.Err { give 6 }
+  give 0
+}

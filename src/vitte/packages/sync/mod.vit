@@ -1,0 +1,993 @@
+<<<
+mod.vit
+package vitte/sync
+version: 2.1.0
+tier: core-concurrency
+purpose:
+  Primitives de synchronisation deterministes et no_std.
+  API metier stable pour orchestration runtime.
+  Validation, policy, tracing et diagnostics integres.
+abi_contract:
+  preconditions:
+    - owner/thread_id non vide pour operations lock
+    - capacities et compteurs non negatifs
+    - timeout_ticks: 0=non bloquant, >0=attente bornee
+  postconditions:
+    - etats normalises par policy
+    - compteurs bornes (anti-overflow)
+    - erreurs explicites via SyncResult[T]
+>>>
+
+space vitte/sync
+
+use vitte/sync/internal/runtime as sync_runtime_pkg
+use vitte/sync/internal/validate as sync_validate_pkg
+use vitte/sync/internal/policy as sync_policy_pkg
+use vitte/sync/internal/trace as sync_trace_pkg
+
+pick SyncError {
+  None
+  InvalidName
+  InvalidOwner
+  InvalidCapacity
+  AlreadyLocked
+  NotLocked
+  WouldBlock
+  Timeout
+  Broken
+}
+
+pick FairMode {
+  Fair
+  NonFair
+}
+
+pick WriterPriority {
+  PreferReaders
+  PreferWriters
+}
+
+pick SyncResult[T] {
+  Ok(value: T)
+  Err(error: SyncError)
+}
+
+form ThreadId {
+  value: string
+}
+
+form MutexState {
+  name: string
+  locked: bool
+  owner: ThreadId
+  recursion: int
+  waiters: int
+  poisoned: bool
+  epoch: int
+  fair_mode: FairMode
+}
+
+form RwLockState {
+  name: string
+  readers: int
+  writer: ThreadId
+  waiting_readers: int
+  waiting_writers: int
+  poisoned: bool
+  fair_mode: FairMode
+  writer_priority: WriterPriority
+  starvation_score: int
+  epoch: int
+}
+
+form SemaphoreState {
+  name: string
+  permits: int
+  max_permits: int
+  waiters: int
+}
+
+form BarrierState {
+  name: string
+  parties: int
+  waiting: int
+  generation: int
+  broken: bool
+}
+
+form BarrierWaitResult {
+  state: BarrierState
+  leader: bool
+}
+
+form CondvarState {
+  name: string
+  waiters: int
+  notifications: int
+  generation: int
+}
+
+form OnceState {
+  name: string
+  done: bool
+  attempts: int
+}
+
+form EventState {
+  name: string
+  signaled: bool
+  waiters: int
+  generation: int
+}
+
+form SyncStats {
+  acquire_ok: int
+  acquire_fail: int
+  contention: int
+  wakeups: int
+  timeouts: int
+}
+
+form SyncHealthSummary {
+  ok: bool
+  code: string
+  pressure_percent: int
+  contention_percent: int
+}
+
+form SyncRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_fairness: bool
+  supports_timeouts: bool
+  supports_tracing: bool
+  supports_interop: bool
+  supports_profiles: bool
+  supports_diagnostics: bool
+}
+
+form SyncSnapshot {
+  mutex: MutexState
+  rwlock: RwLockState
+  semaphore: SemaphoreState
+  barrier: BarrierState
+  condvar: CondvarState
+  once: OnceState
+  event: EventState
+  stats: SyncStats
+}
+
+form SyncConfig {
+  strict: bool
+  default_timeout_ticks: int
+  mutex_fair_mode: FairMode
+  rwlock_fair_mode: FairMode
+  writer_priority: WriterPriority
+}
+
+proc thread_id(value: string) -> ThreadId {
+  if sync_validate_pkg.valid_thread_id(value) == false { give ThreadId("unknown") }
+  give ThreadId(value)
+}
+
+proc no_owner() -> ThreadId {
+  give ThreadId("none")
+}
+
+proc bounded_add(a: int, b: int) -> int {
+  give sync_policy_pkg.normalize_counter(a + b)
+}
+
+proc timeout_error(timeout_ticks: int) -> SyncError {
+  let t = sync_policy_pkg.normalize_timeout_ticks(timeout_ticks)
+  if t == 0 { give SyncError.WouldBlock }
+  give SyncError.Timeout
+}
+
+proc default_config() -> SyncConfig {
+  give SyncConfig(false,
+                  sync_policy_pkg.default_timeout_ticks(),
+                  FairMode.NonFair,
+                  FairMode.NonFair,
+                  WriterPriority.PreferReaders)
+}
+
+proc strict_config() -> SyncConfig {
+  let cfg = default_config()
+  give SyncConfig(true,
+                  cfg.default_timeout_ticks,
+                  FairMode.Fair,
+                  FairMode.Fair,
+                  WriterPriority.PreferWriters)
+}
+
+proc low_latency_config() -> SyncConfig {
+  let cfg = default_config()
+  give SyncConfig(cfg.strict,
+                  0,
+                  FairMode.NonFair,
+                  FairMode.NonFair,
+                  WriterPriority.PreferReaders)
+}
+
+proc throughput_config() -> SyncConfig {
+  let cfg = default_config()
+  give SyncConfig(cfg.strict,
+                  cfg.default_timeout_ticks,
+                  FairMode.NonFair,
+                  FairMode.NonFair,
+                  WriterPriority.PreferReaders)
+}
+
+proc with_timeout_ticks(cfg: SyncConfig, timeout_ticks: int) -> SyncConfig {
+  give SyncConfig(cfg.strict,
+                  sync_policy_pkg.normalize_timeout_ticks(timeout_ticks),
+                  cfg.mutex_fair_mode,
+                  cfg.rwlock_fair_mode,
+                  cfg.writer_priority)
+}
+
+proc with_fair_mode(cfg: SyncConfig, mutex_mode: FairMode, rwlock_mode: FairMode) -> SyncConfig {
+  give SyncConfig(cfg.strict,
+                  cfg.default_timeout_ticks,
+                  mutex_mode,
+                  rwlock_mode,
+                  cfg.writer_priority)
+}
+
+proc with_writer_priority(cfg: SyncConfig, writer_priority: WriterPriority) -> SyncConfig {
+  give SyncConfig(cfg.strict,
+                  cfg.default_timeout_ticks,
+                  cfg.mutex_fair_mode,
+                  cfg.rwlock_fair_mode,
+                  writer_priority)
+}
+
+proc validate_config(cfg: SyncConfig) -> SyncResult[bool] {
+  if sync_validate_pkg.valid_timeout_ticks(cfg.default_timeout_ticks) == false {
+    give SyncResult.Err(SyncError.InvalidCapacity)
+  }
+  give SyncResult.Ok(true)
+}
+
+proc mutex_new(name: string) -> MutexState {
+  let n = name
+  if sync_validate_pkg.valid_name(n) == false { n = "mutex" }
+  give MutexState(n, false, no_owner(), 0, 0, false, 0, FairMode.NonFair)
+}
+
+proc mutex_new_with_mode(name: string, fair_mode: FairMode) -> MutexState {
+  let n = name
+  if sync_validate_pkg.valid_name(n) == false { n = "mutex" }
+  give MutexState(n, false, no_owner(), 0, 0, false, 0, fair_mode)
+}
+
+proc rwlock_new(name: string) -> RwLockState {
+  let n = name
+  if sync_validate_pkg.valid_name(n) == false { n = "rwlock" }
+  give RwLockState(n, 0, no_owner(), 0, 0, false, FairMode.NonFair, WriterPriority.PreferReaders, 0, 0)
+}
+
+proc rwlock_new_with_policy(name: string, fair_mode: FairMode, writer_priority: WriterPriority) -> RwLockState {
+  let n = name
+  if sync_validate_pkg.valid_name(n) == false { n = "rwlock" }
+  give RwLockState(n, 0, no_owner(), 0, 0, false, fair_mode, writer_priority, 0, 0)
+}
+
+proc semaphore_new(name: string, max_permits: int) -> SemaphoreState {
+  let n = name
+  if sync_validate_pkg.valid_name(n) == false { n = "semaphore" }
+  let cap = sync_policy_pkg.normalize_permits(max_permits)
+  give SemaphoreState(n, cap, cap, 0)
+}
+
+proc barrier_new(name: string, parties: int) -> BarrierState {
+  let n = name
+  if sync_validate_pkg.valid_name(n) == false { n = "barrier" }
+  let p = sync_policy_pkg.normalize_parties(parties)
+  give BarrierState(n, p, 0, 0, false)
+}
+
+proc condvar_new(name: string) -> CondvarState {
+  let n = name
+  if sync_validate_pkg.valid_name(n) == false { n = "condvar" }
+  give CondvarState(n, 0, 0, 0)
+}
+
+proc once_new(name: string) -> OnceState {
+  let n = name
+  if sync_validate_pkg.valid_name(n) == false { n = "once" }
+  give OnceState(n, false, 0)
+}
+
+proc event_new(name: string) -> EventState {
+  let n = name
+  if sync_validate_pkg.valid_name(n) == false { n = "event" }
+  give EventState(n, false, 0, 0)
+}
+
+proc mutex_new_from_config(name: string, cfg: SyncConfig) -> MutexState {
+  give mutex_new_with_mode(name, cfg.mutex_fair_mode)
+}
+
+proc rwlock_new_from_config(name: string, cfg: SyncConfig) -> RwLockState {
+  give rwlock_new_with_policy(name, cfg.rwlock_fair_mode, cfg.writer_priority)
+}
+
+proc mutex_lock(st: MutexState, owner: ThreadId, timeout_ticks: int) -> SyncResult[MutexState] {
+  if sync_validate_pkg.valid_thread_id(owner.value) == false { give SyncResult.Err(SyncError.InvalidOwner) }
+  if st.poisoned { give SyncResult.Err(SyncError.Broken) }
+
+  if st.locked == false {
+    let next_epoch = sync_policy_pkg.normalize_generation(st.epoch + 1)
+    give SyncResult.Ok(MutexState(st.name,
+                                  true,
+                                  owner,
+                                  1,
+                                  st.waiters,
+                                  st.poisoned,
+                                  next_epoch,
+                                  st.fair_mode))
+  }
+
+  if st.owner.value == owner.value {
+    let rec = sync_policy_pkg.normalize_recursion(st.recursion + 1)
+    give SyncResult.Ok(MutexState(st.name,
+                                  true,
+                                  owner,
+                                  rec,
+                                  st.waiters,
+                                  st.poisoned,
+                                  st.epoch,
+                                  st.fair_mode))
+  }
+
+  give SyncResult.Err(timeout_error(timeout_ticks))
+}
+
+proc mutex_try_lock(st: MutexState, owner: ThreadId) -> SyncResult[MutexState] {
+  give mutex_lock(st, owner, 0)
+}
+
+proc mutex_lock_with_config(st: MutexState, owner: ThreadId, cfg: SyncConfig) -> SyncResult[MutexState] {
+  give mutex_lock(st, owner, cfg.default_timeout_ticks)
+}
+
+proc mutex_unlock(st: MutexState, owner: ThreadId) -> SyncResult[MutexState] {
+  if st.locked == false { give SyncResult.Err(SyncError.NotLocked) }
+  if st.owner.value != owner.value { give SyncResult.Err(SyncError.InvalidOwner) }
+
+  let rec = st.recursion - 1
+  if rec > 0 {
+    give SyncResult.Ok(MutexState(st.name,
+                                  true,
+                                  owner,
+                                  rec,
+                                  st.waiters,
+                                  st.poisoned,
+                                  st.epoch,
+                                  st.fair_mode))
+  }
+
+  give SyncResult.Ok(MutexState(st.name,
+                                false,
+                                no_owner(),
+                                0,
+                                st.waiters,
+                                st.poisoned,
+                                st.epoch,
+                                st.fair_mode))
+}
+
+proc mutex_poison(st: MutexState) -> MutexState {
+  give MutexState(st.name,
+                  st.locked,
+                  st.owner,
+                  st.recursion,
+                  st.waiters,
+                  true,
+                  st.epoch,
+                  st.fair_mode)
+}
+
+proc mutex_clear_poison(st: MutexState) -> MutexState {
+  give MutexState(st.name,
+                  st.locked,
+                  st.owner,
+                  st.recursion,
+                  st.waiters,
+                  false,
+                  st.epoch,
+                  st.fair_mode)
+}
+
+proc rwlock_read(st: RwLockState, timeout_ticks: int) -> SyncResult[RwLockState] {
+  if st.poisoned { give SyncResult.Err(SyncError.Broken) }
+  if st.writer.value != "none" { give SyncResult.Err(timeout_error(timeout_ticks)) }
+
+  if st.writer_priority == WriterPriority.PreferWriters {
+    if st.waiting_writers > 0 {
+      give SyncResult.Err(timeout_error(timeout_ticks))
+    }
+  }
+
+  let readers = sync_policy_pkg.normalize_counter(st.readers + 1)
+  give SyncResult.Ok(RwLockState(st.name,
+                                 readers,
+                                 st.writer,
+                                 st.waiting_readers,
+                                 st.waiting_writers,
+                                 st.poisoned,
+                                 st.fair_mode,
+                                 st.writer_priority,
+                                 st.starvation_score,
+                                 st.epoch))
+}
+
+proc rwlock_try_read(st: RwLockState) -> SyncResult[RwLockState] {
+  give rwlock_read(st, 0)
+}
+
+proc rwlock_read_with_config(st: RwLockState, cfg: SyncConfig) -> SyncResult[RwLockState] {
+  give rwlock_read(st, cfg.default_timeout_ticks)
+}
+
+proc rwlock_read_unlock(st: RwLockState) -> SyncResult[RwLockState] {
+  if st.readers <= 0 { give SyncResult.Err(SyncError.NotLocked) }
+  let readers = st.readers - 1
+  give SyncResult.Ok(RwLockState(st.name,
+                                 readers,
+                                 st.writer,
+                                 st.waiting_readers,
+                                 st.waiting_writers,
+                                 st.poisoned,
+                                 st.fair_mode,
+                                 st.writer_priority,
+                                 st.starvation_score,
+                                 st.epoch))
+}
+
+proc rwlock_write(st: RwLockState, owner: ThreadId, timeout_ticks: int) -> SyncResult[RwLockState] {
+  if sync_validate_pkg.valid_thread_id(owner.value) == false { give SyncResult.Err(SyncError.InvalidOwner) }
+  if st.poisoned { give SyncResult.Err(SyncError.Broken) }
+
+  if st.writer.value != "none" { give SyncResult.Err(timeout_error(timeout_ticks)) }
+  if st.readers > 0 { give SyncResult.Err(timeout_error(timeout_ticks)) }
+
+  let next_epoch = sync_policy_pkg.normalize_generation(st.epoch + 1)
+  give SyncResult.Ok(RwLockState(st.name,
+                                 0,
+                                 owner,
+                                 st.waiting_readers,
+                                 st.waiting_writers,
+                                 st.poisoned,
+                                 st.fair_mode,
+                                 st.writer_priority,
+                                 st.starvation_score,
+                                 next_epoch))
+}
+
+proc rwlock_try_write(st: RwLockState, owner: ThreadId) -> SyncResult[RwLockState] {
+  give rwlock_write(st, owner, 0)
+}
+
+proc rwlock_write_with_config(st: RwLockState, owner: ThreadId, cfg: SyncConfig) -> SyncResult[RwLockState] {
+  give rwlock_write(st, owner, cfg.default_timeout_ticks)
+}
+
+proc rwlock_write_unlock(st: RwLockState, owner: ThreadId) -> SyncResult[RwLockState] {
+  if st.writer.value == "none" { give SyncResult.Err(SyncError.NotLocked) }
+  if st.writer.value != owner.value { give SyncResult.Err(SyncError.InvalidOwner) }
+  give SyncResult.Ok(RwLockState(st.name,
+                                 st.readers,
+                                 no_owner(),
+                                 st.waiting_readers,
+                                 st.waiting_writers,
+                                 st.poisoned,
+                                 st.fair_mode,
+                                 st.writer_priority,
+                                 st.starvation_score,
+                                 st.epoch))
+}
+
+proc rwlock_mark_writer_wait(st: RwLockState) -> RwLockState {
+  let ww = sync_policy_pkg.normalize_waiters(st.waiting_writers + 1)
+  let starvation = sync_policy_pkg.normalize_counter(st.starvation_score + 1)
+  give RwLockState(st.name,
+                   st.readers,
+                   st.writer,
+                   st.waiting_readers,
+                   ww,
+                   st.poisoned,
+                   st.fair_mode,
+                   st.writer_priority,
+                   starvation,
+                   st.epoch)
+}
+
+proc semaphore_acquire(st: SemaphoreState, permits: int, timeout_ticks: int) -> SyncResult[SemaphoreState] {
+  let req = sync_policy_pkg.normalize_permits(permits)
+  if req <= 0 { give SyncResult.Err(SyncError.InvalidCapacity) }
+  if st.permits < req { give SyncResult.Err(timeout_error(timeout_ticks)) }
+  give SyncResult.Ok(SemaphoreState(st.name, st.permits - req, st.max_permits, st.waiters))
+}
+
+proc semaphore_try_acquire(st: SemaphoreState, permits: int) -> SyncResult[SemaphoreState] {
+  give semaphore_acquire(st, permits, 0)
+}
+
+proc semaphore_acquire_with_config(st: SemaphoreState, permits: int, cfg: SyncConfig) -> SyncResult[SemaphoreState] {
+  give semaphore_acquire(st, permits, cfg.default_timeout_ticks)
+}
+
+proc semaphore_release(st: SemaphoreState, permits: int) -> SyncResult[SemaphoreState] {
+  let rel = sync_policy_pkg.normalize_permits(permits)
+  if rel <= 0 { give SyncResult.Err(SyncError.InvalidCapacity) }
+  let p = st.permits + rel
+  if p > st.max_permits { p = st.max_permits }
+  give SyncResult.Ok(SemaphoreState(st.name, p, st.max_permits, st.waiters))
+}
+
+proc barrier_arrive(st: BarrierState) -> BarrierState {
+  if st.broken { give st }
+  let waiting = sync_policy_pkg.normalize_waiters(st.waiting + 1)
+  if waiting >= st.parties {
+    let next_gen = sync_policy_pkg.normalize_generation(st.generation + 1)
+    give BarrierState(st.name, st.parties, 0, next_gen, false)
+  }
+  give BarrierState(st.name, st.parties, waiting, st.generation, false)
+}
+
+proc barrier_arrive_and_wait(st: BarrierState) -> SyncResult[BarrierWaitResult] {
+  if st.broken { give SyncResult.Err(SyncError.Broken) }
+  let waiting = sync_policy_pkg.normalize_waiters(st.waiting + 1)
+  if waiting >= st.parties {
+    let next_gen = sync_policy_pkg.normalize_generation(st.generation + 1)
+    let s = BarrierState(st.name, st.parties, 0, next_gen, false)
+    give SyncResult.Ok(BarrierWaitResult(s, true))
+  }
+  let s = BarrierState(st.name, st.parties, waiting, st.generation, false)
+  give SyncResult.Ok(BarrierWaitResult(s, false))
+}
+
+proc barrier_break(st: BarrierState) -> BarrierState {
+  give BarrierState(st.name, st.parties, st.waiting, st.generation, true)
+}
+
+proc condvar_wait(cv: CondvarState) -> CondvarState {
+  give CondvarState(cv.name,
+                    sync_policy_pkg.normalize_waiters(cv.waiters + 1),
+                    cv.notifications,
+                    cv.generation)
+}
+
+proc condvar_notify_one(cv: CondvarState) -> CondvarState {
+  let w = cv.waiters
+  if w > 0 { w = w - 1 }
+  let notif = sync_policy_pkg.normalize_notifications(cv.notifications + 1)
+  let gen = sync_policy_pkg.normalize_generation(cv.generation + 1)
+  give CondvarState(cv.name, w, notif, gen)
+}
+
+proc condvar_notify_all(cv: CondvarState) -> CondvarState {
+  let notif = sync_policy_pkg.normalize_notifications(cv.notifications + cv.waiters)
+  let gen = sync_policy_pkg.normalize_generation(cv.generation + 1)
+  give CondvarState(cv.name, 0, notif, gen)
+}
+
+proc once_call(st: OnceState) -> OnceState {
+  let attempts = sync_policy_pkg.normalize_counter(st.attempts + 1)
+  give OnceState(st.name, true, attempts)
+}
+
+proc event_wait(st: EventState, timeout_ticks: int) -> SyncResult[EventState] {
+  if st.signaled { give SyncResult.Ok(st) }
+  give SyncResult.Err(timeout_error(timeout_ticks))
+}
+
+proc event_try_wait(st: EventState) -> SyncResult[EventState] {
+  give event_wait(st, 0)
+}
+
+proc event_wait_with_config(st: EventState, cfg: SyncConfig) -> SyncResult[EventState] {
+  give event_wait(st, cfg.default_timeout_ticks)
+}
+
+proc event_wait_until_generation(st: EventState, target_generation: int, timeout_ticks: int) -> SyncResult[EventState] {
+  let target = sync_policy_pkg.normalize_generation(target_generation)
+  if st.generation >= target { give SyncResult.Ok(st) }
+  give SyncResult.Err(timeout_error(timeout_ticks))
+}
+
+proc event_set(st: EventState) -> EventState {
+  let gen = sync_policy_pkg.normalize_generation(st.generation + 1)
+  give EventState(st.name, true, 0, gen)
+}
+
+proc event_reset(st: EventState) -> EventState {
+  give EventState(st.name, false, st.waiters, st.generation)
+}
+
+proc pressure_percent(waiters: int, capacity: int) -> int {
+  if capacity <= 0 {
+    if waiters <= 0 { give 0 }
+    give 100
+  }
+  let pct = (waiters * 100) / capacity
+  if pct < 0 { give 0 }
+  if pct > 100 { give 100 }
+  give pct
+}
+
+proc contention_percent(stats: SyncStats) -> int {
+  let total = stats.acquire_ok + stats.acquire_fail
+  if total <= 0 { give 0 }
+  let pct = (stats.contention * 100) / total
+  if pct < 0 { give 0 }
+  if pct > 100 { give 100 }
+  give pct
+}
+
+proc sync_metrics_merge(a: SyncStats, b: SyncStats) -> SyncStats {
+  give SyncStats(bounded_add(a.acquire_ok, b.acquire_ok),
+                 bounded_add(a.acquire_fail, b.acquire_fail),
+                 bounded_add(a.contention, b.contention),
+                 bounded_add(a.wakeups, b.wakeups),
+                 bounded_add(a.timeouts, b.timeouts))
+}
+
+proc sync_stats_reset() -> SyncStats {
+  give SyncStats(0, 0, 0, 0, 0)
+}
+
+proc sync_health(stats: SyncStats, pressure: int) -> SyncHealthSummary {
+  let contention = contention_percent(stats)
+  if sync_validate_pkg.valid_percent(pressure) == false {
+    give SyncHealthSummary(false, "invalid-pressure", 0, contention)
+  }
+  if pressure >= sync_policy_pkg.warn_pressure_percent() {
+    give SyncHealthSummary(false, "pressure-high", pressure, contention)
+  }
+  if contention >= sync_policy_pkg.warn_contention_percent() {
+    give SyncHealthSummary(false, "contention-high", pressure, contention)
+  }
+  give SyncHealthSummary(true, "ok", pressure, contention)
+}
+
+proc sync_runtime_info() -> SyncRuntimeInfo {
+  give SyncRuntimeInfo(sync_runtime_pkg.runtime_name(),
+                       sync_runtime_pkg.runtime_version(),
+                       sync_runtime_pkg.supports_no_std(),
+                       sync_runtime_pkg.supports_fairness(),
+                       sync_runtime_pkg.supports_timeouts(),
+                       sync_runtime_pkg.supports_tracing(),
+                       sync_runtime_pkg.supports_interop(),
+                       sync_runtime_pkg.supports_profiles(),
+                       sync_runtime_pkg.supports_diagnostics())
+}
+
+proc snapshot_new() -> SyncSnapshot {
+  give SyncSnapshot(mutex_new("m"),
+                    rwlock_new("rw"),
+                    semaphore_new("sem", 1),
+                    barrier_new("bar", 2),
+                    condvar_new("cv"),
+                    once_new("once"),
+                    event_new("ev"),
+                    sync_stats_reset())
+}
+
+proc sync_validate_code(s: SyncSnapshot) -> string {
+  if sync_validate_pkg.valid_name(s.mutex.name) == false { give "invalid-mutex-name" }
+  if sync_validate_pkg.valid_owner(s.mutex.owner.value, s.mutex.locked) == false { give "invalid-mutex-owner" }
+  if sync_validate_pkg.valid_recursion(s.mutex.recursion, sync_policy_pkg.max_recursion()) == false { give "invalid-recursion" }
+  if sync_validate_pkg.valid_waiters(s.mutex.waiters, sync_policy_pkg.max_waiters()) == false { give "invalid-mutex-waiters" }
+
+  if sync_validate_pkg.valid_waiters(s.rwlock.waiting_readers, sync_policy_pkg.max_waiters()) == false { give "invalid-rw-waiting-readers" }
+  if sync_validate_pkg.valid_waiters(s.rwlock.waiting_writers, sync_policy_pkg.max_waiters()) == false { give "invalid-rw-waiting-writers" }
+  if sync_validate_pkg.valid_generation(s.rwlock.epoch) == false { give "invalid-rw-epoch" }
+
+  if sync_validate_pkg.valid_permits(s.semaphore.permits, sync_policy_pkg.max_permits()) == false { give "invalid-semaphore-permits" }
+  if sync_validate_pkg.valid_permits(s.semaphore.max_permits, sync_policy_pkg.max_permits()) == false { give "invalid-semaphore-max" }
+  if s.semaphore.permits > s.semaphore.max_permits { give "invalid-semaphore-range" }
+
+  if sync_validate_pkg.valid_parties(s.barrier.parties, sync_policy_pkg.max_barrier_parties()) == false { give "invalid-barrier-parties" }
+  if sync_validate_pkg.valid_waiters(s.barrier.waiting, sync_policy_pkg.max_waiters()) == false { give "invalid-barrier-waiting" }
+  if sync_validate_pkg.valid_generation(s.barrier.generation) == false { give "invalid-barrier-generation" }
+
+  if sync_validate_pkg.valid_waiters(s.condvar.waiters, sync_policy_pkg.max_waiters()) == false { give "invalid-condvar-waiters" }
+  if sync_validate_pkg.valid_counter(s.condvar.notifications, sync_policy_pkg.max_notifications()) == false { give "invalid-condvar-notifications" }
+  if sync_validate_pkg.valid_generation(s.condvar.generation) == false { give "invalid-condvar-generation" }
+
+  if sync_validate_pkg.valid_counter(s.once.attempts, sync_policy_pkg.max_counter()) == false { give "invalid-once-attempts" }
+
+  if sync_validate_pkg.valid_waiters(s.event.waiters, sync_policy_pkg.max_waiters()) == false { give "invalid-event-waiters" }
+  if sync_validate_pkg.valid_generation(s.event.generation) == false { give "invalid-event-generation" }
+
+  if sync_validate_pkg.valid_counter(s.stats.acquire_ok, sync_policy_pkg.max_counter()) == false { give "invalid-stats-ok" }
+  if sync_validate_pkg.valid_counter(s.stats.acquire_fail, sync_policy_pkg.max_counter()) == false { give "invalid-stats-fail" }
+  if sync_validate_pkg.valid_counter(s.stats.contention, sync_policy_pkg.max_counter()) == false { give "invalid-stats-contention" }
+  if sync_validate_pkg.valid_counter(s.stats.wakeups, sync_policy_pkg.max_counter()) == false { give "invalid-stats-wakeups" }
+  if sync_validate_pkg.valid_counter(s.stats.timeouts, sync_policy_pkg.max_counter()) == false { give "invalid-stats-timeouts" }
+
+  give "ok"
+}
+
+proc sync_validate(s: SyncSnapshot) -> bool {
+  give sync_validate_code(s) == "ok"
+}
+
+proc sync_normalize(s: SyncSnapshot) -> SyncSnapshot {
+  let owner = s.mutex.owner
+  if s.mutex.locked && owner.value == "none" { owner = thread_id("unknown") }
+
+  let m = MutexState(s.mutex.name,
+                     s.mutex.locked,
+                     owner,
+                     sync_policy_pkg.normalize_recursion(s.mutex.recursion),
+                     sync_policy_pkg.normalize_waiters(s.mutex.waiters),
+                     s.mutex.poisoned,
+                     sync_policy_pkg.normalize_generation(s.mutex.epoch),
+                     s.mutex.fair_mode)
+
+  let rw = RwLockState(s.rwlock.name,
+                       sync_policy_pkg.normalize_counter(s.rwlock.readers),
+                       s.rwlock.writer,
+                       sync_policy_pkg.normalize_waiters(s.rwlock.waiting_readers),
+                       sync_policy_pkg.normalize_waiters(s.rwlock.waiting_writers),
+                       s.rwlock.poisoned,
+                       s.rwlock.fair_mode,
+                       s.rwlock.writer_priority,
+                       sync_policy_pkg.normalize_counter(s.rwlock.starvation_score),
+                       sync_policy_pkg.normalize_generation(s.rwlock.epoch))
+
+  let sem_max = sync_policy_pkg.normalize_permits(s.semaphore.max_permits)
+  let sem_p = sync_policy_pkg.normalize_permits(s.semaphore.permits)
+  if sem_p > sem_max { sem_p = sem_max }
+  let sem = SemaphoreState(s.semaphore.name,
+                           sem_p,
+                           sem_max,
+                           sync_policy_pkg.normalize_waiters(s.semaphore.waiters))
+
+  let bar = BarrierState(s.barrier.name,
+                         sync_policy_pkg.normalize_parties(s.barrier.parties),
+                         sync_policy_pkg.normalize_waiters(s.barrier.waiting),
+                         sync_policy_pkg.normalize_generation(s.barrier.generation),
+                         s.barrier.broken)
+
+  let cv = CondvarState(s.condvar.name,
+                        sync_policy_pkg.normalize_waiters(s.condvar.waiters),
+                        sync_policy_pkg.normalize_notifications(s.condvar.notifications),
+                        sync_policy_pkg.normalize_generation(s.condvar.generation))
+
+  let once_s = OnceState(s.once.name,
+                         s.once.done,
+                         sync_policy_pkg.normalize_counter(s.once.attempts))
+
+  let ev = EventState(s.event.name,
+                      s.event.signaled,
+                      sync_policy_pkg.normalize_waiters(s.event.waiters),
+                      sync_policy_pkg.normalize_generation(s.event.generation))
+
+  let stats = SyncStats(sync_policy_pkg.normalize_counter(s.stats.acquire_ok),
+                        sync_policy_pkg.normalize_counter(s.stats.acquire_fail),
+                        sync_policy_pkg.normalize_counter(s.stats.contention),
+                        sync_policy_pkg.normalize_counter(s.stats.wakeups),
+                        sync_policy_pkg.normalize_counter(s.stats.timeouts))
+
+  give SyncSnapshot(m, rw, sem, bar, cv, once_s, ev, stats)
+}
+
+proc trace_new() -> sync_trace_pkg.TraceLog {
+  give sync_trace_pkg.trace_new()
+}
+
+proc trace_on_acquire(log: sync_trace_pkg.TraceLog, resource: string, actor: string, tick: int) -> sync_trace_pkg.TraceLog {
+  give sync_trace_pkg.trace_acquire(log, resource, actor, tick)
+}
+
+proc trace_on_release(log: sync_trace_pkg.TraceLog, resource: string, actor: string, tick: int) -> sync_trace_pkg.TraceLog {
+  give sync_trace_pkg.trace_release(log, resource, actor, tick)
+}
+
+proc trace_on_wakeup(log: sync_trace_pkg.TraceLog, resource: string, actor: string, tick: int) -> sync_trace_pkg.TraceLog {
+  give sync_trace_pkg.trace_wakeup(log, resource, actor, tick)
+}
+
+proc actor_mutex_try_lock(st: MutexState, actor_id: string) -> SyncResult[MutexState] {
+  give mutex_try_lock(st, thread_id("actor:" + actor_id))
+}
+
+proc async_mutex_try_lock(st: MutexState, task_id: string) -> SyncResult[MutexState] {
+  give mutex_try_lock(st, thread_id("async:" + task_id))
+}
+
+proc actor_semaphore_try_acquire(st: SemaphoreState, permits: int) -> SyncResult[SemaphoreState] {
+  give semaphore_try_acquire(st, permits)
+}
+
+proc async_semaphore_try_acquire(st: SemaphoreState, permits: int) -> SyncResult[SemaphoreState] {
+  give semaphore_try_acquire(st, permits)
+}
+
+proc snapshot_summary(s: SyncSnapshot) -> string {
+  give "mutex_waiters=" + s.mutex.waiters.to_string() +
+       ",rw_waiting_writers=" + s.rwlock.waiting_writers.to_string() +
+       ",sem_permits=" + s.semaphore.permits.to_string() +
+       ",bar_waiting=" + s.barrier.waiting.to_string() +
+       ",condvar_waiters=" + s.condvar.waiters.to_string() +
+       ",event_gen=" + s.event.generation.to_string()
+}
+
+proc healthcheck(cfg: SyncConfig) -> SyncResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is SyncResult.Err { give SyncResult.Err(vr.error) }
+
+  if sync_runtime_pkg.runtime_status() == false { give SyncResult.Err(SyncError.Broken) }
+  if sync_runtime_pkg.supports_profiles() == false { give SyncResult.Err(SyncError.Broken) }
+  if sync_runtime_pkg.supports_diagnostics() == false { give SyncResult.Err(SyncError.Broken) }
+  give SyncResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v2.1"
+}
+
+proc capabilities() -> [string] {
+  give ["mutex", "rwlock", "semaphore", "barrier", "condvar", "event", "trace", "profiles", "diagnostics", sync_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-SYNC0001" { give "invalid sync configuration" }
+  if code == "VITTE-SYNC0002" { give "lock contention exceeded policy threshold" }
+  if code == "VITTE-SYNC0003" { give "timeout while waiting for synchronization primitive" }
+  if code == "VITTE-SYNC0004" { give "poisoned lock or broken barrier detected" }
+  give "sync diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-SYNC0001" { give "use default_config or normalize timeout values" }
+  if code == "VITTE-SYNC0002" { give "enable fair mode and reduce critical section duration" }
+  if code == "VITTE-SYNC0003" { give "increase timeout or use non-blocking try_* API" }
+  if code == "VITTE-SYNC0004" { give "clear poison/reset primitive and replay safe init sequence" }
+  give "inspect sync snapshot and tracing log"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_api_version() -> string {
+  give "2.1.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,low_latency_config,throughput_config,with_timeout_ticks,with_fair_mode,with_writer_priority,validate_config,thread_id,mutex_new,mutex_new_with_mode,mutex_new_from_config,mutex_lock,mutex_try_lock,mutex_lock_with_config,mutex_unlock,mutex_poison,mutex_clear_poison,rwlock_new,rwlock_new_with_policy,rwlock_new_from_config,rwlock_read,rwlock_try_read,rwlock_read_with_config,rwlock_read_unlock,rwlock_write,rwlock_try_write,rwlock_write_with_config,rwlock_write_unlock,rwlock_mark_writer_wait,semaphore_new,semaphore_acquire,semaphore_try_acquire,semaphore_acquire_with_config,semaphore_release,barrier_new,barrier_arrive,barrier_arrive_and_wait,barrier_break,condvar_new,condvar_wait,condvar_notify_one,condvar_notify_all,once_new,once_call,event_new,event_wait,event_try_wait,event_wait_with_config,event_wait_until_generation,event_set,event_reset,pressure_percent,contention_percent,sync_metrics_merge,sync_stats_reset,sync_health,sync_runtime_info,snapshot_new,snapshot_summary,sync_validate_code,sync_validate,sync_normalize,trace_new,trace_on_acquire,trace_on_release,trace_on_wakeup,actor_mutex_try_lock,async_mutex_try_lock,actor_semaphore_try_acquire,async_semaphore_try_acquire,healthcheck,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,stable_api_surface_hash,api_version,package_meta,ready"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc stable_ready() -> bool {
+  if sync_runtime_pkg.runtime_status() == false { give false }
+  if sync_runtime_pkg.supports_no_std() == false { give false }
+  if sync_runtime_pkg.supports_tracing() == false { give false }
+  if sync_runtime_pkg.supports_profiles() == false { give false }
+  if sync_runtime_pkg.supports_diagnostics() == false { give false }
+
+  let cfg = strict_config()
+  let cvr = validate_config(cfg)
+  when cvr is SyncResult.Err { give false }
+
+  let t1 = thread_id("t1")
+  let t2 = thread_id("t2")
+
+  let m = mutex_new_from_config("m", cfg)
+  let r1 = mutex_lock_with_config(m, t1, cfg)
+  when r1 is SyncResult.Err { give false }
+  let m1 = r1.value
+
+  let r2 = mutex_try_lock(m1, t2)
+  when r2 is SyncResult.Ok { give false }
+
+  let ur = mutex_unlock(m1, t1)
+  when ur is SyncResult.Err { give false }
+
+  let rw = rwlock_new_from_config("rw", cfg)
+  let rw1 = rwlock_mark_writer_wait(rw)
+  let rr = rwlock_try_read(rw1)
+  when rr is SyncResult.Ok { give false }
+
+  let sem = semaphore_new("s", 2)
+  let sem1r = semaphore_try_acquire(sem, 1)
+  when sem1r is SyncResult.Err { give false }
+  let sem1 = sem1r.value
+  let sem2r = semaphore_try_acquire(sem1, 2)
+  when sem2r is SyncResult.Ok { give false }
+
+  let bar = barrier_new("b", 2)
+  let b1r = barrier_arrive_and_wait(bar)
+  when b1r is SyncResult.Err { give false }
+  if b1r.value.leader { give false }
+  let b2r = barrier_arrive_and_wait(b1r.value.state)
+  when b2r is SyncResult.Err { give false }
+  if b2r.value.leader == false { give false }
+
+  let ev = event_new("ev")
+  let evr = event_wait(ev, 1)
+  when evr is SyncResult.Ok { give false }
+
+  let snap = sync_normalize(snapshot_new())
+  if sync_validate(snap) == false { give false }
+  if stable_api_surface_hash() <= 0 { give false }
+
+  let log = trace_on_wakeup(trace_on_release(trace_on_acquire(trace_new(), "m", "t1", 1), "m", "t1", 2), "m", "t2", 3)
+  if log.events.len != 3 { give false }
+
+  let merged = sync_metrics_merge(SyncStats(1, 2, 3, 4, 5), SyncStats(5, 4, 3, 2, 1))
+  if merged.acquire_ok != 6 { give false }
+
+  give true
+}
+
+proc normalize_config(cfg: SyncConfig) -> SyncConfig {
+  give cfg
+}
+
+form PackageRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
+proc runtime_info() -> PackageRuntimeInfo {
+  give PackageRuntimeInfo(sync_runtime_pkg.runtime_name(), sync_runtime_pkg.runtime_version(), sync_runtime_pkg.supports_diagnostics())
+}
+
+proc doctor_status() -> string {
+  give "vitte/sync doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: SyncConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is SyncResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> SyncResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
+}
+
+proc ready() -> bool {
+  give stable_ready()
+}
+
+proc package_meta() -> string {
+  give "vitte/sync"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/sync
+role: Primitives de synchronisation deterministes (mutex, rwlock, semaphore, barrier, condvar, once, event)
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Etats stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas l ordonnanceur/runtime; respecte la separation de roles
+versioning_note: stable_api_version=2.1.0
+>>>

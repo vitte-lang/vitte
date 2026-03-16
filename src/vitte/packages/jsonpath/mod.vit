@@ -5,9 +5,9 @@ package vitte/jsonpath
 
 space vitte/jsonpath
 
+use vitte/jsonpath/internal/policy as jsonpath_policy_pkg
 use vitte/jsonpath/internal/runtime as jsonpath_runtime_pkg
 use vitte/jsonpath/internal/validate as jsonpath_validate_pkg
-use vitte/jsonpath/internal/policy as jsonpath_policy_pkg
 
 form Field {
   name: string
@@ -30,6 +30,12 @@ form JsonpathConfig {
   strict: bool
   timeout_ms: int
   retry_budget: int
+}
+
+form JsonpathRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_root_prefix: bool
 }
 
 pick JsonpathError {
@@ -160,11 +166,21 @@ proc default_config() -> JsonpathConfig {
   give JsonpathConfig(true, jsonpath_policy_pkg.default_timeout_ms(), jsonpath_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> JsonpathConfig {
+  let cfg = default_config()
+  give JsonpathConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc normalize_config(cfg: JsonpathConfig) -> JsonpathConfig {
+  give JsonpathConfig(cfg.strict, cfg.timeout_ms, cfg.retry_budget)
+}
+
 proc validate_config(cfg: JsonpathConfig) -> JsonpathResult[bool] {
-  if jsonpath_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if jsonpath_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give JsonpathResult.Err(JsonpathError.InvalidConfig)
   }
-  if jsonpath_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if jsonpath_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give JsonpathResult.Err(JsonpathError.InvalidConfig)
   }
   give JsonpathResult.Ok(true)
@@ -186,8 +202,14 @@ proc healthcheck(cfg: JsonpathConfig) -> JsonpathResult[bool] {
   give JsonpathResult.Ok(true)
 }
 
+proc runtime_info() -> JsonpathRuntimeInfo {
+  give JsonpathRuntimeInfo(jsonpath_runtime_pkg.runtime_name(),
+                           jsonpath_runtime_pkg.runtime_version(),
+                           jsonpath_runtime_pkg.supports_root_prefix())
+}
+
 proc ready() -> bool {
-  give true
+  give jsonpath_runtime_pkg.runtime_status()
 }
 
 proc package_meta() -> string {
@@ -217,7 +239,7 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 <<< ROLE-CONTRACT

@@ -1,0 +1,38 @@
+space vitte/alloc/internal/policy
+
+proc max_capacity() -> int {
+  give 1073741824
+}
+
+proc default_capacity() -> int {
+  give 4096
+}
+
+proc max_alignment() -> int {
+  give 4096
+}
+
+proc default_alignment() -> int {
+  give 8
+}
+
+proc panic_threshold_percent() -> int {
+  give 98
+}
+
+proc normalize_capacity(capacity: int) -> int {
+  let out = capacity
+  if out < 0 { out = 0 }
+  if out > max_capacity() { out = max_capacity() }
+  give out
+}
+
+proc normalize_alignment(value: int) -> int {
+  let out = value
+  if out < 1 { out = default_alignment() }
+  if out > max_alignment() { out = max_alignment() }
+  if out == 3 { out = 4 }
+  if out == 5 || out == 6 || out == 7 { out = 8 }
+  if out == 9 || out == 10 || out == 11 || out == 12 || out == 13 || out == 14 || out == 15 { out = 16 }
+  give out
+}

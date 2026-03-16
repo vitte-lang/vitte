@@ -5,9 +5,9 @@ package vitte/shell
 
 space vitte/shell
 
+use vitte/shell/internal/policy as shell_policy_pkg
 use vitte/shell/internal/runtime as shell_runtime_pkg
 use vitte/shell/internal/validate as shell_validate_pkg
-use vitte/shell/internal/policy as shell_policy_pkg
 
 
 form Command {
@@ -80,15 +80,37 @@ pick ShellResult[T] {
   Err(error: ShellError)
 }
 
+form ShellRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> ShellConfig {
   give ShellConfig(true, shell_policy_pkg.default_timeout_ms(), shell_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> ShellConfig {
+  let cfg = default_config()
+  give ShellConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc normalize_config(cfg: ShellConfig) -> ShellConfig {
+  let timeout_ms = cfg.timeout_ms
+  if timeout_ms < 1 { timeout_ms = 1 }
+  if timeout_ms > 60000 { timeout_ms = 60000 }
+  let retry_budget = cfg.retry_budget
+  if retry_budget < 0 { retry_budget = 0 }
+  if retry_budget > 32 { retry_budget = 32 }
+  give ShellConfig(cfg.strict, timeout_ms, retry_budget)
+}
+
 proc validate_config(cfg: ShellConfig) -> ShellResult[bool] {
-  if shell_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if shell_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give ShellResult.Err(ShellError.InvalidConfig)
   }
-  if shell_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if shell_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give ShellResult.Err(ShellError.InvalidConfig)
   }
   give ShellResult.Ok(true)
@@ -105,8 +127,18 @@ proc healthcheck(cfg: ShellConfig) -> ShellResult[bool] {
   give ShellResult.Ok(true)
 }
 
+proc runtime_info() -> ShellRuntimeInfo {
+  give ShellRuntimeInfo(shell_runtime_pkg.runtime_name(),
+                        shell_runtime_pkg.runtime_version(),
+                        shell_runtime_pkg.supports_diagnostics())
+}
+
 proc version() -> string {
   give "v1"
+}
+
+proc api_version() -> string {
+  give version()
 }
 
 proc capabilities() -> [string] {
@@ -126,7 +158,30 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc doctor_status() -> string {
+  give "vitte/shell doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: ShellConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is ShellResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> ShellResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
 }
 
 <<< ROLE-CONTRACT

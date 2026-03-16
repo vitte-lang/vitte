@@ -5,9 +5,9 @@ package vitte/release_guard
 
 space vitte/release_guard
 
+use vitte/release_guard/internal/policy as release_guard_policy_pkg
 use vitte/release_guard/internal/runtime as release_guard_runtime_pkg
 use vitte/release_guard/internal/validate as release_guard_validate_pkg
-use vitte/release_guard/internal/policy as release_guard_policy_pkg
 
 form ReleaseGuardConfig {
   current_version: string
@@ -27,15 +27,35 @@ pick ReleaseGuardResult[T] {
   Err(error: ReleaseGuardError)
 }
 
+form ReleaseGuardRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> ReleaseGuardConfig {
   give ReleaseGuardConfig("0.0.0", "0.0.0", release_guard_policy_pkg.default_breaking_policy())
 }
 
+proc strict_config() -> ReleaseGuardConfig {
+  let cfg = default_config()
+  give ReleaseGuardConfig(cfg.current_version, cfg.previous_version, true)
+}
+
+proc normalize_config(cfg: ReleaseGuardConfig) -> ReleaseGuardConfig {
+  let current_version = cfg.current_version
+  let previous_version = cfg.previous_version
+  if current_version.len == 0 { current_version = "0.0.0" }
+  if previous_version.len == 0 { previous_version = "0.0.0" }
+  give ReleaseGuardConfig(current_version, previous_version, cfg.breaking_change)
+}
+
 proc validate_config(cfg: ReleaseGuardConfig) -> ReleaseGuardResult[bool] {
-  if release_guard_validate_pkg.valid_version(cfg.current_version) == false {
+  let nc = normalize_config(cfg)
+  if release_guard_validate_pkg.valid_version(nc.current_version) == false {
     give ReleaseGuardResult.Err(ReleaseGuardError.InvalidConfig)
   }
-  if release_guard_validate_pkg.valid_version(cfg.previous_version) == false {
+  if release_guard_validate_pkg.valid_version(nc.previous_version) == false {
     give ReleaseGuardResult.Err(ReleaseGuardError.InvalidConfig)
   }
   give ReleaseGuardResult.Ok(true)
@@ -50,8 +70,18 @@ proc healthcheck(cfg: ReleaseGuardConfig) -> ReleaseGuardResult[bool] {
   give ReleaseGuardResult.Ok(true)
 }
 
+proc runtime_info() -> ReleaseGuardRuntimeInfo {
+  give ReleaseGuardRuntimeInfo(release_guard_runtime_pkg.runtime_name(),
+                               release_guard_runtime_pkg.runtime_version(),
+                               release_guard_runtime_pkg.supports_diagnostics())
+}
+
 proc version() -> string {
   give "v1"
+}
+
+proc api_version() -> string {
+  give version()
 }
 
 proc capabilities() -> [string] {
@@ -69,11 +99,34 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc package_meta() -> string {
   give "vitte/release_guard"
+}
+
+proc doctor_status() -> string {
+  give "vitte/release_guard doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: ReleaseGuardConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is ReleaseGuardResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> ReleaseGuardResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
 }
 
 proc ready() -> bool {

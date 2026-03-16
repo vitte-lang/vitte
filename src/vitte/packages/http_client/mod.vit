@@ -10,7 +10,9 @@ package vitte/http_client
 
 space vitte/http_client
 
+use vitte/http_client/internal/policy as http_client_policy_pkg
 use vitte/http_client/internal/runtime as http_client_runtime_pkg
+use vitte/http_client/internal/validate as http_client_validate_pkg
 
 pick ClientMethod {
   Get
@@ -116,6 +118,47 @@ proc panic_guard[T](r: ClientResult[T], fallback: T) -> T {
   give fallback
 }
 
+proc validate_config(cfg: ClientConfig) -> ClientResult[bool] {
+  if http_client_validate_pkg.valid_timeout_ms(cfg.connect_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid connect_timeout_ms") }
+  if http_client_validate_pkg.valid_timeout_ms(cfg.read_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid read_timeout_ms") }
+  if http_client_validate_pkg.valid_timeout_ms(cfg.write_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid write_timeout_ms") }
+  if http_client_validate_pkg.valid_timeout_ms(cfg.header_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid header_timeout_ms") }
+  if http_client_validate_pkg.valid_timeout_ms(cfg.body_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid body_timeout_ms") }
+  if http_client_validate_pkg.valid_profile(cfg.profile) == false { give err[bool]("VITTE-C0002", "invalid profile") }
+  if http_client_validate_pkg.valid_max_redirects(cfg.max_redirects) == false { give err[bool]("VITTE-C0008", "invalid max_redirects") }
+  give ok(true)
+}
+
+proc healthcheck(state: ClientState) -> ClientResult[bool] {
+  let vr = validate_config(state.cfg)
+  when vr is ClientResult.Err { give ClientResult.Err(vr.error) }
+  if http_client_validate_pkg.valid_pool(state.pool.max_per_host, state.pool.in_use) == false {
+    give err[bool]("VITTE-C0007", "pool exhausted")
+  }
+  if http_client_runtime_pkg.runtime_status() == false {
+    give err[bool]("VITTE-C0001", "http_client runtime unavailable")
+  }
+  give ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give [
+    "config",
+    "validate",
+    "healthcheck",
+    "request",
+    "retry",
+    "circuit-breaker",
+    "pool",
+    "diagnostics",
+    "quickfix"
+  ]
+}
+
 proc diagnostics_message(code: string) -> string {
   give http_client_runtime_pkg.diag_message(code)
 }
@@ -125,7 +168,7 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc method_name(m: ClientMethod) -> string {
@@ -159,11 +202,24 @@ proc header_get(headers: ClientHeaders, key: string) -> string {
 }
 
 proc default_retry() -> RetryPolicy {
-  give RetryPolicy(2, 50, 25, true)
+  give RetryPolicy(http_client_policy_pkg.default_retry_max_retries(),
+                   http_client_policy_pkg.default_retry_base_delay_ms(),
+                   http_client_policy_pkg.default_retry_jitter_ms(),
+                   http_client_policy_pkg.default_retry_idempotent_only())
 }
 
 proc default_config() -> ClientConfig {
-  give ClientConfig(1000, 2000, 2000, 1000, 2000, "", true, false, true, 5, "desktop")
+  give ClientConfig(http_client_policy_pkg.default_connect_timeout_ms(),
+                    http_client_policy_pkg.default_read_timeout_ms(),
+                    http_client_policy_pkg.default_write_timeout_ms(),
+                    http_client_policy_pkg.default_header_timeout_ms(),
+                    http_client_policy_pkg.default_body_timeout_ms(),
+                    "",
+                    http_client_policy_pkg.default_strict_tls(),
+                    http_client_policy_pkg.default_allow_private_hosts(),
+                    http_client_policy_pkg.default_follow_redirects(),
+                    http_client_policy_pkg.default_max_redirects(),
+                    http_client_policy_pkg.default_profile())
 }
 
 proc default_state() -> ClientState {
@@ -343,7 +399,7 @@ proc quickfix_apply(payload: string) -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give http_client_runtime_pkg.runtime_status()
 }
 
 proc package_meta() -> string {

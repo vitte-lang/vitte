@@ -1,0 +1,14 @@
+<<<
+config_profile.vit
+example vitte/std/base profile + normalize
+>>>
+
+use vitte/std/base as std_base_pkg
+
+entry main at core/app {
+  let cfg = std_base_pkg.profile_apply("core")
+  let norm = std_base_pkg.normalize_config(cfg.timeout_ms, cfg.retry_budget, cfg.strict)
+  let v = std_base_pkg.validate_or_err(norm)
+  when v is std_base_pkg.StdResult.Err { give 1 }
+  give 0
+}

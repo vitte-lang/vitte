@@ -1,0 +1,41 @@
+use vitte/contracts as contracts_pkg
+
+entry main at core/app {
+  let opts = contracts_pkg.strict_options()
+  let vr: contracts_pkg.ContractsResult[bool] = contracts_pkg.validate_options(opts)
+  when vr is contracts_pkg.ContractsResult.Err {
+    return 1
+  }
+
+  let cr: contracts_pkg.ContractsResult[contracts_pkg.Contract] = contracts_pkg.contract_load_checked("user", "1.0.0", "hash1", ["id", "name"], opts)
+  when cr is contracts_pkg.ContractsResult.Err {
+    return 1
+  }
+
+  let added: contracts_pkg.ContractsResult[contracts_pkg.Contract] = contracts_pkg.add_required_field_checked(cr.value, "email", opts)
+  when added is contracts_pkg.ContractsResult.Err {
+    return 1
+  }
+
+  let payload = "{id:1,name:alice,email:a@b.c}"
+  let check: contracts_pkg.ContractsResult[contracts_pkg.ContractCheck] = contracts_pkg.contract_verify_checked(added.value, payload, opts)
+  when check is contracts_pkg.ContractsResult.Err {
+    return 1
+  }
+
+  let normalized = contracts_pkg.contract_normalize(added.value, opts)
+  if contracts_pkg.contract_validate(normalized, opts) == false {
+    return 1
+  }
+
+  let h = contracts_pkg.contract_health(normalized, payload, opts)
+  if h.ok == false {
+    return 1
+  }
+
+  if contracts_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}
