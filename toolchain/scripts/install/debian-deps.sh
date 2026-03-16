@@ -17,8 +17,9 @@ DEBIAN_APT_BUILD_DEPS=(
   libc++abi-dev
 )
 
-DEBIAN_RUNTIME_DEPENDS="${DEBIAN_RUNTIME_DEPENDS:-bash, libc6, libstdc++6, libssl3 | libssl1.1, libcurl4, libncurses6 | libncursesw6, libgtk-3-0, clang, lld, make, g++ | c++-compiler}"
-DEBIAN_RUNTIME_DEPENDS="${DEBIAN_RUNTIME_DEPENDS}, python3, python3-tk"
+DEBIAN_STRICT_RUNTIME_DEPENDS="${DEBIAN_STRICT_RUNTIME_DEPENDS:-bash, libc6, libstdc++6, libssl3 | libssl1.1, libcurl4, libncurses6 | libncursesw6}"
+DEBIAN_RUNTIME_RECOMMENDS="${DEBIAN_RUNTIME_RECOMMENDS:-clang, lld, make, g++ | c++-compiler, python3, python3-tk, libgtk-3-0}"
+DEBIAN_RUNTIME_DEPENDS="${DEBIAN_RUNTIME_DEPENDS:-$DEBIAN_STRICT_RUNTIME_DEPENDS}"
 
 print_debian_apt_build_deps() {
   printf "%s\n" "${DEBIAN_APT_BUILD_DEPS[@]}"
