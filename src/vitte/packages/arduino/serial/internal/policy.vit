@@ -1,5 +1,85 @@
 space vitte/arduino/serial/internal/policy
 
+use vitte/arduino as arduino_pkg
+
 proc default_timeout_ms() -> int {
   give 50
+}
+
+proc min_timeout_ms() -> int {
+  give 1
+}
+
+proc max_timeout_ms() -> int {
+  give 60000
+}
+
+proc normalize_timeout_ms(timeout_ms: int) -> int {
+  if timeout_ms < min_timeout_ms() { give min_timeout_ms() }
+  if timeout_ms > max_timeout_ms() { give max_timeout_ms() }
+  give timeout_ms
+}
+
+proc max_baud_for_profile(profile: arduino_pkg.ArduinoProfile) -> int {
+  if profile == arduino_pkg.ArduinoProfile.Uno { give 500000 }
+  if profile == arduino_pkg.ArduinoProfile.Mega { give 1000000 }
+  if profile == arduino_pkg.ArduinoProfile.Esp32 { give 2000000 }
+  give 115200
+}
+
+proc default_baud_for_profile(profile: arduino_pkg.ArduinoProfile) -> int {
+  if profile == arduino_pkg.ArduinoProfile.Uno { give 115200 }
+  if profile == arduino_pkg.ArduinoProfile.Mega { give 115200 }
+  if profile == arduino_pkg.ArduinoProfile.Esp32 { give 230400 }
+  give 115200
+}
+
+proc normalize_baud(profile: arduino_pkg.ArduinoProfile, baud: int) -> int {
+  let b = baud
+  if b <= 0 { b = default_baud_for_profile(profile) }
+  let mx = max_baud_for_profile(profile)
+  if b > mx { b = mx }
+  give b
+}
+
+proc default_read_batch() -> int {
+  give 16
+}
+
+proc max_read_batch() -> int {
+  give 1024
+}
+
+proc normalize_read_batch(size: int) -> int {
+  if size < 0 { give 0 }
+  if size > max_read_batch() { give max_read_batch() }
+  give size
+}
+
+proc default_frame_size() -> int {
+  give 32
+}
+
+proc max_frame_size() -> int {
+  give 512
+}
+
+proc normalize_frame_size(size: int) -> int {
+  if size < 0 { give 0 }
+  if size > max_frame_size() { give max_frame_size() }
+  give size
+}
+
+proc default_exchange_bytes() -> int {
+  give 64
+}
+
+proc max_exchange_bytes() -> int {
+  give 2048
+}
+
+proc normalize_exchange_bytes(size: int) -> int {
+  if size < 0 { give 0 }
+  if size > max_exchange_bytes() { give max_exchange_bytes() }
+  give size
 }

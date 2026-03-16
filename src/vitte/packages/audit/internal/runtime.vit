@@ -1,0 +1,62 @@
+space vitte/audit/internal/runtime
+
+proc runtime_status() -> bool {
+  give true
+}
+
+proc runtime_name() -> string {
+  give "audit-runtime-v2"
+}
+
+proc runtime_version() -> string {
+  give "2.0"
+}
+
+proc supports_no_std() -> bool {
+  give true
+}
+
+proc supports_signatures() -> bool {
+  give true
+}
+
+proc supports_chain_verify() -> bool {
+  give true
+}
+
+proc supports_sanitize() -> bool {
+  give true
+}
+
+proc signature(secret: string, hash: string) -> string {
+  give secret + "::" + hash
+}
+
+proc sanitize_field(value: string, max_len: int) -> string {
+  if value.len <= max_len { give value }
+  give value.slice(0, max_len)
+}
+
+proc redact(value: string, keep_prefix: int) -> string {
+  let keep = keep_prefix
+  if keep < 0 { keep = 0 }
+  if value.len <= keep { give value }
+  give value.slice(0, keep) + "***"
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+  if text.len < prefix.len { give false }
+  give text.slice(0, prefix.len) == prefix
+}
+
+proc const_time_eq(a: string, b: string) -> bool {
+  if a.len != b.len { give false }
+  let mismatch: int = 0
+  let i: int = 0
+  loop {
+    if i >= a.len { break }
+    if a.slice(i, i + 1) != b.slice(i, i + 1) { mismatch = mismatch + 1 }
+    i = i + 1
+  }
+  give mismatch == 0
+}

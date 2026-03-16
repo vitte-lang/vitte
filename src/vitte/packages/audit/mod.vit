@@ -13,8 +13,12 @@ purpose:
 
 space vitte/audit
 
+use vitte/audit/internal/runtime as audit_runtime_pkg
+use vitte/audit/internal/validate as audit_validate_pkg
+use vitte/audit/internal/policy as audit_policy_pkg
+
 <<< ============================================================
-    TYPES
+TYPES
 ============================================================ >>>
 
 form AuditEvent {
@@ -33,14 +37,37 @@ form AuditLog {
   size: int
 }
 
+form AuditProof {
+  index: int
+  hash: string
+  prev_hash: string
+}
+
+form AuditStats {
+  events: int
+  actors: int
+  actions: int
+}
+
+proc contains_string(values: [string], value: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= values.len { break }
+    if values[i] == value { give true }
+    i = i + 1
+  }
+  give false
+}
+
 <<<
-  Invariants:
-    size == events.len
-    Chaque event.prev_hash == hash(event-1)
+Invariants:
+size == events.len
+event.prev_hash == hash(event-1)
+event.hash == compute_hash(...)
 >>>
 
 <<< ============================================================
-    HASH UTILS
+HASH UTILS
 ============================================================ >>>
 
 proc compute_hash(
@@ -66,7 +93,7 @@ proc compute_hash(
 }
 
 <<< ============================================================
-    LOG INIT
+LOG INIT
 ============================================================ >>>
 
 proc log_new() -> AuditLog {
@@ -74,12 +101,12 @@ proc log_new() -> AuditLog {
 }
 
 proc last_hash(log: AuditLog) -> string {
-  if log.size == 0 { give "GENESIS" }
+  if log.size == 0 { give audit_policy_pkg.genesis_hash() }
   give log.events[log.size - 1].hash
 }
 
 <<< ============================================================
-    EVENT CREATION
+EVENT CREATION
 ============================================================ >>>
 
 proc event(
@@ -90,16 +117,34 @@ proc event(
   target: string,
   trace_id: string
 ) -> AuditEvent {
-
+  let ts_v = ts
+  if audit_validate_pkg.valid_timestamp(ts_v) == false { ts_v = 0 }
+  let actor_v = audit_runtime_pkg.sanitize_field(actor, audit_policy_pkg.max_actor_len())
+  let action_v = audit_runtime_pkg.sanitize_field(action, audit_policy_pkg.max_action_len())
+  let target_v = audit_runtime_pkg.sanitize_field(target, audit_policy_pkg.max_target_len())
+  let trace_v = audit_runtime_pkg.sanitize_field(trace_id, audit_policy_pkg.max_trace_id_len())
+  if actor_v.len == 0 { actor_v = "unknown" }
+  if action_v.len == 0 { action_v = "unknown" }
+  if target_v.len == 0 { target_v = "-" }
+  if trace_v.len == 0 { trace_v = "no-trace" }
   let prev = last_hash(log)
-  let h = compute_hash(ts, actor, action, target, trace_id, prev)
+
+  let h =
+    compute_hash(
+      ts_v,
+      actor_v,
+      action_v,
+      target_v,
+      trace_v,
+      prev
+    )
 
   give AuditEvent(
-    ts,
-    actor,
-    action,
-    target,
-    trace_id,
+    ts_v,
+    actor_v,
+    action_v,
+    target_v,
+    trace_v,
     prev,
     h,
     ""
@@ -107,12 +152,11 @@ proc event(
 }
 
 <<< ============================================================
-    SIGNATURE
+SIGNATURE
 ============================================================ >>>
 
 proc sign(e: AuditEvent, secret: string) -> AuditEvent {
-
-  let sig = secret + "::" + e.hash
+  let sig = audit_runtime_pkg.signature(secret, e.hash)
 
   give AuditEvent(
     e.ts,
@@ -127,15 +171,25 @@ proc sign(e: AuditEvent, secret: string) -> AuditEvent {
 }
 
 proc verify_signature(e: AuditEvent, secret: string) -> bool {
-  let expected = secret + "::" + e.hash
+  let expected = audit_runtime_pkg.signature(secret, e.hash)
+
   give e.signature == expected
 }
 
 <<< ============================================================
-    APPEND
+APPEND
 ============================================================ >>>
 
 proc append(log: AuditLog, e: AuditEvent) -> AuditLog {
+  if audit_validate_pkg.valid_log_size(log.size, log.events.len) == false { give log }
+  if audit_validate_pkg.valid_timestamp(e.ts) == false { give log }
+  if audit_validate_pkg.valid_event_fields(e.actor, e.action, e.target, e.trace_id) == false { give log }
+  if log.size > 0 {
+    if e.ts < log.events[log.size - 1].ts { give log }
+  }
+  if e.prev_hash != last_hash(log) { give log }
+  let expected_hash = compute_hash(e.ts, e.actor, e.action, e.target, e.trace_id, e.prev_hash)
+  if e.hash != expected_hash { give log }
 
   let events = log.events.push(e)
 
@@ -143,36 +197,50 @@ proc append(log: AuditLog, e: AuditEvent) -> AuditLog {
 }
 
 <<< ============================================================
-    INTEGRITY VERIFICATION
+CHAIN VERIFICATION
 ============================================================ >>>
 
 proc verify_chain(log: AuditLog) -> bool {
 
+  if audit_validate_pkg.valid_log_size(log.size, log.events.len) == false { give false }
   if log.size == 0 { give true }
+  let first = log.events[0]
+  if first.prev_hash != audit_policy_pkg.genesis_hash() { give false }
+  if audit_validate_pkg.valid_timestamp(first.ts) == false { give false }
+  if audit_validate_pkg.valid_event_fields(first.actor, first.action, first.target, first.trace_id) == false { give false }
+  let first_hash = compute_hash(first.ts, first.actor, first.action, first.target, first.trace_id, first.prev_hash)
+  if first.hash != first_hash { give false }
 
   let i: int = 1
 
   loop {
+
     if i >= log.size { break }
 
     let prev = log.events[i - 1]
-    let current = log.events[i]
+    let cur = log.events[i]
+    if cur.ts < prev.ts { give false }
+    if audit_validate_pkg.valid_timestamp(cur.ts) == false { give false }
 
-    if current.prev_hash != prev.hash {
+    if audit_validate_pkg.valid_event_fields(cur.actor, cur.action, cur.target, cur.trace_id) == false {
+      give false
+    }
+
+    if cur.prev_hash != prev.hash {
       give false
     }
 
     let recomputed =
       compute_hash(
-        current.ts,
-        current.actor,
-        current.action,
-        current.target,
-        current.trace_id,
-        current.prev_hash
+        cur.ts,
+        cur.actor,
+        cur.action,
+        cur.target,
+        cur.trace_id,
+        cur.prev_hash
       )
 
-    if recomputed != current.hash {
+    if recomputed != cur.hash {
       give false
     }
 
@@ -183,7 +251,36 @@ proc verify_chain(log: AuditLog) -> bool {
 }
 
 <<< ============================================================
-    QUERY
+FULL VERIFICATION
+============================================================ >>>
+
+proc verify_all(
+  log: AuditLog,
+  secret: string
+) -> bool {
+
+  if !verify_chain(log) {
+    give false
+  }
+
+  let i: int = 0
+
+  loop {
+
+    if i >= log.size { break }
+
+    if !verify_signature(log.events[i], secret) {
+      give false
+    }
+
+    i = i + 1
+  }
+
+  give true
+}
+
+<<< ============================================================
+QUERY
 ============================================================ >>>
 
 proc query(
@@ -191,11 +288,13 @@ proc query(
   actor: string,
   action: string
 ) -> [AuditEvent] {
+  if audit_validate_pkg.valid_log_size(log.size, log.events.len) == false { give [] }
 
   let out: [AuditEvent] = []
   let i: int = 0
 
   loop {
+
     if i >= log.size { break }
 
     let e = log.events[i]
@@ -217,18 +316,83 @@ proc query(
 }
 
 <<< ============================================================
-    METRICS
+FORENSIC TOOLS
+============================================================ >>>
+
+proc proof(log: AuditLog, index: int) -> AuditProof {
+
+  if index < 0 { give AuditProof(0,"","") }
+
+  if index >= log.size { give AuditProof(0,"","") }
+
+  let e = log.events[index]
+
+  give AuditProof(
+    index,
+    e.hash,
+    e.prev_hash
+  )
+}
+
+proc export_hashes(log: AuditLog) -> [string] {
+
+  let out: [string] = []
+  let i: int = 0
+
+  loop {
+
+    if i >= log.size { break }
+
+    out = out.push(log.events[i].hash)
+
+    i = i + 1
+  }
+
+  give out
+}
+
+<<< ============================================================
+METRICS
 ============================================================ >>>
 
 proc count(log: AuditLog) -> int {
   give log.size
 }
 
+proc stats(log: AuditLog) -> AuditStats {
+  if audit_validate_pkg.valid_log_size(log.size, log.events.len) == false {
+    give AuditStats(log.events.len, 0, 0)
+  }
+  let actor_keys: [string] = []
+  let action_keys: [string] = []
+  let i: int = 0
+  loop {
+    if i >= log.events.len { break }
+    let actor = log.events[i].actor
+    let action = log.events[i].action
+    if contains_string(actor_keys, actor) == false { actor_keys = actor_keys.push(actor) }
+    if contains_string(action_keys, action) == false { action_keys = action_keys.push(action) }
+    i = i + 1
+  }
+
+  give AuditStats(
+    log.size,
+    actor_keys.len,
+    action_keys.len
+  )
+}
+
 proc describe(log: AuditLog) -> string {
-  give "AuditLog(size=" + log.size.to_string() + ")"
+
+  give "AuditLog(size=" +
+       log.size.to_string() +
+       ")"
 }
 
 proc ready() -> bool {
+  if audit_runtime_pkg.runtime_status() == false { give false }
+  let g = audit_policy_pkg.genesis_hash()
+  if g.len == 0 { give false }
   give true
 }
 
@@ -237,43 +401,37 @@ proc package_meta() -> string {
 }
 
 <<< ============================================================
-    ROLE-CONTRACT
+ROLE-CONTRACT
 ============================================================ >>>
 
 <<<
 ROLE-CONTRACT
 package: vitte/audit
+
 role:
-  Journal append-only immuable.
-  Integrite chainee.
-  Verification cryptographique.
+  Journal append-only immuable
+  Integrite chainee
+  Verification cryptographique
 
 input_contract:
-  Evenements horodates.
-  trace_id unique.
-  secret stable pour signature.
+  Evenements horodates
+  trace_id unique
+  secret stable pour signature
 
 output_contract:
-  Historique append-only.
-  Integrite verifiable.
-  Requete deterministe.
+  Historique append-only
+  Integrite verifiable
+  Requete deterministe
 
 boundary:
-  - Ne decide pas les permissions.
-  - Ne gere pas stockage externe.
-  - Ne chiffre pas les donnees.
+  - Ne decide pas les permissions
+  - Ne gere pas stockage externe
+  - Ne chiffre pas les donnees
 
 guarantees:
-  - Immutabilite logique.
-  - Detection de modification.
-  - Detection de suppression.
-  - Verification complete O(n).
-  - Determinisme.
->>>
-<<< ROLE-CONTRACT
-package: vitte/audio
-role: Traitement audio basique, flux et transformations
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
+  - Immutabilite logique
+  - Detection modification
+  - Detection suppression
+  - Verification O(n)
+  - Determinisme
 >>>

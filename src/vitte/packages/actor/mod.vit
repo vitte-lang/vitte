@@ -7,6 +7,10 @@ space vitte/actor
 
 share all
 
+use vitte/actor/internal/runtime as actor_runtime_pkg
+use vitte/actor/internal/validate as actor_validate_pkg
+use vitte/actor/internal/policy as actor_policy_pkg
+
 pick ActorState {
   Idle
   Busy
@@ -169,6 +173,30 @@ form BenchReport {
   throughput: int
   restart_cost: int
   supervision_cost: int
+}
+
+form ActorHealthSummary {
+  ok: bool
+  code: string
+  mailbox_utilization_pct: int
+  error_rate_pct: int
+}
+
+form RouterHealthSummary {
+  ok: bool
+  code: string
+  workers: int
+  backlog: int
+  balance_delta: int
+}
+
+form ActorRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  scheduler_name: string
+  tracing: bool
+  snapshots: bool
+  monotonic_tick: bool
 }
 
 form Actor {
@@ -1865,7 +1893,147 @@ proc stats(a: Actor) -> string {
        ";span=" + a.last_span_id
 }
 
+proc actor_mailbox_utilization_pct(a: Actor) -> int {
+  if a.mailbox_capacity <= 0 { give 0 }
+  let pct = (a.mailbox.len * 100) / a.mailbox_capacity
+  if pct < 0 { give 0 }
+  if pct > 100 { give 100 }
+  give pct
+}
+
+proc actor_error_rate_pct(a: Actor) -> int {
+  let total = a.processed + a.failures + a.rejected + a.dropped
+  if total <= 0 { give 0 }
+  let errors = a.failures + a.rejected + a.dropped
+  let pct = (errors * 100) / total
+  if pct < 0 { give 0 }
+  if pct > 100 { give 100 }
+  give pct
+}
+
+proc actor_validate_code(a: Actor) -> string {
+  if actor_validate_pkg.valid_actor_id(a.id) == false { give "ACTOR-ID" }
+  if actor_validate_pkg.valid_actor_name(a.name) == false { give "ACTOR-NAME" }
+  if actor_validate_pkg.valid_mailbox_capacity(a.mailbox_capacity, actor_policy_pkg.max_mailbox_capacity()) == false {
+    give "ACTOR-MAILBOX-CAPACITY"
+  }
+  if actor_validate_pkg.valid_mailbox_len(a.mailbox.len, a.mailbox_capacity) == false { give "ACTOR-MAILBOX-LEN" }
+  if actor_validate_pkg.valid_restart_limit(a.restart_limit, actor_policy_pkg.max_restart_limit()) == false {
+    give "ACTOR-RESTART-LIMIT"
+  }
+  if actor_validate_pkg.valid_snapshot_interval(a.snapshot_interval, actor_policy_pkg.max_snapshot_interval()) == false {
+    give "ACTOR-SNAPSHOT-INTERVAL"
+  }
+  if actor_validate_pkg.valid_lane(a.scheduler_lane) == false { give "ACTOR-LANE" }
+  if actor_validate_pkg.valid_non_negative(a.processed) == false { give "ACTOR-PROCESSED" }
+  if actor_validate_pkg.valid_non_negative(a.failures) == false { give "ACTOR-FAILURES" }
+  if actor_validate_pkg.valid_non_negative(a.restarts) == false { give "ACTOR-RESTARTS" }
+  if actor_validate_pkg.valid_non_negative(a.dropped) == false { give "ACTOR-DROPPED" }
+  if actor_validate_pkg.valid_non_negative(a.rejected) == false { give "ACTOR-REJECTED" }
+  if actor_validate_pkg.valid_non_negative(a.tick) == false { give "ACTOR-TICK" }
+  if actor_validate_pkg.valid_non_negative(a.next_message_seq) == false { give "ACTOR-MSG-SEQ" }
+  if actor_validate_pkg.valid_non_negative(a.dead_letters.len) == false { give "ACTOR-DEAD-LETTERS" }
+  give "ACTOR-OK"
+}
+
+proc actor_validate(a: Actor) -> bool {
+  give actor_validate_code(a) == "ACTOR-OK"
+}
+
+proc actor_normalize(a: Actor) -> Actor {
+  let cap = actor_policy_pkg.normalize_mailbox_capacity(a.mailbox_capacity)
+  let restart_limit = actor_policy_pkg.normalize_restart_limit(a.restart_limit)
+  let snapshot_interval = actor_policy_pkg.normalize_snapshot_interval(a.snapshot_interval)
+  let backoff_base = actor_policy_pkg.normalize_backoff_base(a.backoff_base)
+  let backoff_max = actor_policy_pkg.normalize_backoff_max(backoff_base, a.backoff_max)
+  let backoff_jitter = actor_policy_pkg.normalize_backoff_jitter(a.backoff_jitter)
+
+  give Actor(
+    a.id, a.name, a.state,
+    a.mailbox, cap, a.mailbox_policy,
+    a.processed, a.failures, a.restarts, a.dropped, a.rejected, a.dead_letters,
+    a.supervision, restart_limit,
+    backoff_base, backoff_max, backoff_jitter, a.restart_ready_tick,
+    a.circuit_state, a.circuit_failures, a.circuit_threshold, a.circuit_cooldown, a.circuit_open_until,
+    a.dedup_window, trim_recent(a.recent_message_ids, a.dedup_window),
+    a.scheduler_lane, a.tick, a.next_message_seq,
+    a.hooks, a.hook_runs,
+    a.latency_total, a.latency_max, a.last_latency, a.last_trace_id, a.last_span_id,
+    a.asks, a.events, a.snapshots, snapshot_interval
+  )
+}
+
+proc actor_health(a: Actor) -> ActorHealthSummary {
+  let code = actor_validate_code(a)
+  let util = actor_mailbox_utilization_pct(a)
+  let err = actor_error_rate_pct(a)
+  if code != "ACTOR-OK" {
+    give ActorHealthSummary(false, code, util, err)
+  }
+  if util >= 95 { give ActorHealthSummary(false, "ACTOR-BACKPRESSURE", util, err) }
+  if err >= 50 { give ActorHealthSummary(false, "ACTOR-ERROR-RATE", util, err) }
+  give ActorHealthSummary(true, "ACTOR-OK", util, err)
+}
+
+proc router_backlog(r: ActorRouter) -> int {
+  give total_backlog(r.workers)
+}
+
+proc router_balance_delta(r: ActorRouter) -> int {
+  if r.workers.len == 0 { give 0 }
+  let min = r.workers[0].mailbox.len
+  let max = r.workers[0].mailbox.len
+  let i: int = 1
+  loop {
+    if i >= r.workers.len { break }
+    let q = r.workers[i].mailbox.len
+    if q < min { min = q }
+    if q > max { max = q }
+    i = i + 1
+  }
+  give max - min
+}
+
+proc router_health(r: ActorRouter) -> RouterHealthSummary {
+  let workers = r.workers.len
+  let backlog = router_backlog(r)
+  let delta = router_balance_delta(r)
+  if actor_validate_pkg.valid_router_bounds(r.min_workers, r.max_workers, actor_policy_pkg.hard_max_workers()) == false {
+    give RouterHealthSummary(false, "ROUTER-BOUNDS", workers, backlog, delta)
+  }
+  if actor_validate_pkg.valid_backlog_threshold(r.scale_up_backlog) == false { give RouterHealthSummary(false, "ROUTER-SCALE-UP", workers, backlog, delta) }
+  if actor_validate_pkg.valid_backlog_threshold(r.scale_down_backlog) == false { give RouterHealthSummary(false, "ROUTER-SCALE-DOWN", workers, backlog, delta) }
+  if workers < r.min_workers { give RouterHealthSummary(false, "ROUTER-UNDER-PROVISIONED", workers, backlog, delta) }
+  if workers > r.max_workers { give RouterHealthSummary(false, "ROUTER-OVER-PROVISIONED", workers, backlog, delta) }
+  if delta > r.scale_up_backlog && r.scale_up_backlog > 0 {
+    give RouterHealthSummary(false, "ROUTER-IMBALANCED", workers, backlog, delta)
+  }
+  give RouterHealthSummary(true, "ROUTER-OK", workers, backlog, delta)
+}
+
+proc runtime_info() -> ActorRuntimeInfo {
+  give ActorRuntimeInfo(
+    actor_runtime_pkg.runtime_name(),
+    actor_runtime_pkg.runtime_version(),
+    actor_runtime_pkg.scheduler_name(),
+    actor_runtime_pkg.supports_tracing(),
+    actor_runtime_pkg.supports_snapshots(),
+    actor_runtime_pkg.monotonic_tick()
+  )
+}
+
 proc ready() -> bool {
+  if actor_runtime_pkg.runtime_status() == false { give false }
+  if actor_policy_pkg.default_mailbox_capacity() < 1 { give false }
+  if actor_policy_pkg.default_restart_limit() < 0 { give false }
+  if actor_policy_pkg.default_snapshot_interval() < 1 { give false }
+
+  let sample = actor_normalize(spawn(1, "ready"))
+  if actor_validate(sample) == false { give false }
+  if actor_validate_pkg.valid_actor_name(sample.name) == false { give false }
+  if actor_validate_pkg.valid_percent(actor_mailbox_utilization_pct(sample)) == false { give false }
+  if actor_validate_pkg.valid_percent(actor_error_rate_pct(sample)) == false { give false }
+  if actor_runtime_pkg.monotonic_tick() == false { give false }
   give true
 }
 
@@ -1885,7 +2053,7 @@ proc actor_snapshot(a: Actor) -> string {
 }
 
 proc api_version() -> string {
-  give "2.4.0"
+  give "2.5.0"
 }
 
 proc package_meta() -> string {

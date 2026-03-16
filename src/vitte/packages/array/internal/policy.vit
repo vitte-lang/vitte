@@ -1,0 +1,40 @@
+space vitte/array/internal/policy
+
+proc max_length() -> int {
+  give 1000000
+}
+
+proc default_slice_limit() -> int {
+  give 4096
+}
+
+proc normalize_length(length: int) -> int {
+  let out = length
+  if out < 0 { out = 0 }
+  if out > max_length() { out = max_length() }
+  give out
+}
+
+proc normalize_index(index: int, length: int) -> int {
+  if length <= 0 { give 0 }
+  let out = index
+  if out < 0 { out = 0 }
+  if out >= length { out = length - 1 }
+  give out
+}
+
+proc normalize_slice_start(start: int, length: int) -> int {
+  if length <= 0 { give 0 }
+  let out = start
+  if out < 0 { out = 0 }
+  if out > length { out = length }
+  give out
+}
+
+proc normalize_slice_end(end: int, start: int, length: int) -> int {
+  if length <= 0 { give 0 }
+  let out = end
+  if out < start { out = start }
+  if out > length { out = length }
+  give out
+}

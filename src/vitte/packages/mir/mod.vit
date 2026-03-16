@@ -5,6 +5,9 @@ package vitte/mir
 
 space vitte/mir
 
+use vitte/mir/internal/policy as mir_policy_pkg
+use vitte/mir/internal/runtime as mir_runtime_pkg
+use vitte/mir/internal/validate as mir_validate_pkg
 
 pick MirOp {
   Nop
@@ -30,6 +33,28 @@ form MirBlock {
 form MirModule {
   name: string
   blocks: [MirBlock]
+}
+
+form MirConfig {
+  max_blocks: int
+  max_instrs: int
+}
+
+pick MirConfigError {
+  InvalidConfig
+  Internal
+}
+
+pick MirConfigResult[T] {
+  Ok(value: T)
+  Err(error: MirConfigError)
+}
+
+form MirRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_cfg_ops: bool
 }
 
 proc instr(id: int, op: MirOp, arg0: string, arg1: string) -> MirInstr {
@@ -145,6 +170,87 @@ proc mir_diagnostics(m: MirModule) -> string {
        ",health=" + mir_health(m)
 }
 
+proc default_config() -> MirConfig {
+  give MirConfig(mir_policy_pkg.default_max_blocks(), mir_policy_pkg.default_max_instrs())
+}
+
+proc strict_config() -> MirConfig {
+  let cfg = default_config()
+  give MirConfig(cfg.max_blocks, cfg.max_instrs)
+}
+
+proc normalize_config(cfg: MirConfig) -> MirConfig {
+  give MirConfig(mir_policy_pkg.normalize_max_blocks(cfg.max_blocks),
+                 mir_policy_pkg.normalize_max_instrs(cfg.max_instrs))
+}
+
+proc validate_config(cfg: MirConfig) -> MirConfigResult[bool] {
+  let nc = normalize_config(cfg)
+  if mir_validate_pkg.valid_limits(nc.max_blocks, nc.max_instrs) == false {
+    give MirConfigResult.Err(MirConfigError.InvalidConfig)
+  }
+  give MirConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: MirConfig, m: MirModule) -> MirConfigResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is MirConfigResult.Err { give MirConfigResult.Err(vr.error) }
+  if mir_runtime_pkg.runtime_status() == false { give MirConfigResult.Err(MirConfigError.Internal) }
+  if validate(m) == false { give MirConfigResult.Err(MirConfigError.InvalidConfig) }
+  if m.blocks.len > cfg.max_blocks { give MirConfigResult.Err(MirConfigError.InvalidConfig) }
+  if instr_count(m) > cfg.max_instrs { give MirConfigResult.Err(MirConfigError.InvalidConfig) }
+  give MirConfigResult.Ok(true)
+}
+
+proc runtime_info() -> MirRuntimeInfo {
+  give MirRuntimeInfo(mir_runtime_pkg.runtime_name(),
+                      mir_runtime_pkg.runtime_version(),
+                      mir_runtime_pkg.supports_diagnostics(),
+                      mir_runtime_pkg.supports_cfg_ops())
+}
+
+proc module_new_checked(name: string, cfg: MirConfig) -> MirConfigResult[MirModule] {
+  if mir_validate_pkg.valid_module_name(name) == false { give MirConfigResult.Err(MirConfigError.InvalidConfig) }
+  let _ = cfg
+  give MirConfigResult.Ok(module_new(name))
+}
+
+proc add_block_checked(m: MirModule, b: MirBlock, cfg: MirConfig) -> MirConfigResult[MirModule] {
+  let nc = normalize_config(cfg)
+  if b.name.len == 0 { give MirConfigResult.Err(MirConfigError.InvalidConfig) }
+  if m.blocks.len >= nc.max_blocks { give MirConfigResult.Err(MirConfigError.InvalidConfig) }
+  give MirConfigResult.Ok(add_block(m, b))
+}
+
+proc add_instr_checked(b: MirBlock, i: MirInstr, cfg: MirConfig) -> MirConfigResult[MirBlock] {
+  let nc = normalize_config(cfg)
+  if i.id < 0 { give MirConfigResult.Err(MirConfigError.InvalidConfig) }
+  if b.instrs.len >= nc.max_instrs { give MirConfigResult.Err(MirConfigError.InvalidConfig) }
+  give MirConfigResult.Ok(add_instr(b, i))
+}
+
+proc capabilities() -> [string] {
+  give ["module", "block", "instr", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-MIR0001" { give "invalid mir configuration or arguments" }
+  give "mir diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "check module names, block counts and instruction limits"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
 proc ready() -> bool {
   give true
 }
@@ -152,7 +258,7 @@ proc ready() -> bool {
 
 
 proc package_meta() -> string {
-    give "vitte/mir"
+  give "vitte/mir"
 }
 
 <<< ROLE-CONTRACT

@@ -1,13 +1,119 @@
 <<<
 mod.vit
 package vitte/hash
+version: 3.1.0
+tier: utility-core
+purpose:
+  Fonctions de hachage non cryptographiques deterministes.
+  Validation explicite des entrees et du bucketing.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/hash
 
+use vitte/hash/internal/policy as hash_policy_pkg
+use vitte/hash/internal/runtime as hash_runtime_pkg
+use vitte/hash/internal/validate as hash_validate_pkg
+
+form HashConfig {
+  buckets: int
+  non_crypto_only: bool
+}
+
+pick HashError {
+  InvalidConfig
+  Internal
+}
+
+pick HashResult[T] {
+  Ok(value: T)
+  Err(error: HashError)
+}
+
+form HashRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_non_crypto: bool
+}
+
+form HashHealth {
+  ok: bool
+  code: string
+}
+
+proc default_config() -> HashConfig {
+  give HashConfig(hash_policy_pkg.default_buckets(), true)
+}
+
+proc strict_config() -> HashConfig {
+  let cfg = default_config()
+  give HashConfig(cfg.buckets, true)
+}
+
+proc with_buckets(cfg: HashConfig, buckets: int) -> HashConfig {
+  give HashConfig(hash_policy_pkg.normalize_buckets(buckets), cfg.non_crypto_only)
+}
+
+proc normalize_config(cfg: HashConfig) -> HashConfig {
+  give HashConfig(hash_policy_pkg.normalize_buckets(cfg.buckets), cfg.non_crypto_only)
+}
+
+proc validate_config(cfg: HashConfig) -> HashResult[bool] {
+  let nc = normalize_config(cfg)
+  if hash_validate_pkg.valid_buckets(nc.buckets, hash_policy_pkg.max_buckets()) == false {
+    give HashResult.Err(HashError.InvalidConfig)
+  }
+  if nc.non_crypto_only == false {
+    give HashResult.Err(HashError.InvalidConfig)
+  }
+  give HashResult.Ok(true)
+}
+
+proc runtime_info() -> HashRuntimeInfo {
+  give HashRuntimeInfo(hash_runtime_pkg.runtime_name(),
+                       hash_runtime_pkg.runtime_version(),
+                       hash_runtime_pkg.supports_diagnostics(),
+                       hash_runtime_pkg.supports_non_crypto())
+}
+
+proc healthcheck(cfg: HashConfig) -> HashResult[HashHealth] {
+  let vr = validate_config(cfg)
+  when vr is HashResult.Err { give HashResult.Err(vr.error) }
+  if hash_runtime_pkg.runtime_status() == false {
+    give HashResult.Err(HashError.Internal)
+  }
+  give HashResult.Ok(HashHealth(true, "ok"))
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["bucket", "combine", "diagnostics", "hash-pair", "non-crypto"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-HASH0001" { give "invalid hash configuration" }
+  if code == "VITTE-HASH0002" { give "invalid hash input" }
+  if code == "VITTE-HASH0003" { give "hash runtime unavailable" }
+  give "hash diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-HASH0001" { give "use buckets in valid range and non_crypto_only=true" }
+  if code == "VITTE-HASH0002" { give "provide valid text and positive buckets" }
+  if code == "VITTE-HASH0003" { give "check hash runtime status" }
+  give "review hash configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
 
 proc djb2(text: string) -> int {
-  let h: int = 5381
+  let h: int = hash_policy_pkg.default_seed()
   let i: int = 0
   loop {
     if i >= text.len { break }
@@ -51,19 +157,38 @@ proc bucket(hash_value: int, buckets: int) -> int {
   give b
 }
 
+proc hash_pair_checked(left: string, right: string, cfg: HashConfig) -> HashResult[int] {
+  let vr = validate_config(cfg)
+  when vr is HashResult.Err { give HashResult.Err(vr.error) }
+  if hash_validate_pkg.valid_text(left) == false || hash_validate_pkg.valid_text(right) == false {
+    give HashResult.Err(HashError.InvalidConfig)
+  }
+  give HashResult.Ok(hash_pair(left, right))
+}
+
+proc bucket_checked(hash_value: int, buckets: int, cfg: HashConfig) -> HashResult[int] {
+  let vr = validate_config(cfg)
+  when vr is HashResult.Err { give HashResult.Err(vr.error) }
+  if hash_validate_pkg.valid_hash_value(hash_value) == false {
+    give HashResult.Err(HashError.InvalidConfig)
+  }
+  if hash_validate_pkg.valid_buckets(buckets, cfg.buckets) == false {
+    give HashResult.Err(HashError.InvalidConfig)
+  }
+  give HashResult.Ok(bucket(hash_value, buckets))
+}
+
 proc summary(text: string) -> string {
   give "djb2=" + djb2(text).to_string() +
        ",fnv1a=" + fnv1a(text).to_string()
 }
 
 proc ready() -> bool {
-    give true
+  give hash_runtime_pkg.runtime_status()
 }
 
-
-
 proc package_meta() -> string {
-    give "vitte/hash"
+  give "vitte/hash"
 }
 
 <<< ROLE-CONTRACT

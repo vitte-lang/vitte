@@ -1,7 +1,7 @@
 <<<
 mod.vit
 package vitte/ast
-version: 2.0.0
+version: 2.1.0
 tier: compiler-core
 purpose:
   Representation et transformation d arbres AST.
@@ -10,6 +10,10 @@ purpose:
 >>>
 
 space vitte/ast
+
+use vitte/ast/internal/runtime as ast_runtime_pkg
+use vitte/ast/internal/validate as ast_validate_pkg
+use vitte/ast/internal/policy as ast_policy_pkg
 
 pick AstKind {
   Module
@@ -76,6 +80,21 @@ form AstMetrics {
   alloc_estimate: int
 }
 
+form AstHealthSummary {
+  ok: bool
+  code: string
+  pressure_percent: int
+  depth_percent: int
+}
+
+form AstRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_traversal: bool
+  supports_rewrite: bool
+}
+
 form PropertyReport {
   ok: bool
   checks: int
@@ -126,7 +145,7 @@ proc ast_node_with_links(id: int,
 }
 
 proc ast_module(name: string) -> AstModule {
-  give AstModule(name, [], 0, 10000, 256)
+  give AstModule(name, [], 0, ast_policy_pkg.default_max_visits(), ast_policy_pkg.default_max_depth_guard())
 }
 
 proc stable_new(name: string) -> AstModule {
@@ -138,10 +157,8 @@ proc reset(m: AstModule) -> AstModule {
 }
 
 proc set_budget(m: AstModule, max_visits: int, max_depth_guard: int) -> AstModule {
-  let visits = max_visits
-  let depth_guard = max_depth_guard
-  if visits < 1 { visits = 1 }
-  if depth_guard < 1 { depth_guard = 1 }
+  let visits = ast_policy_pkg.normalize_max_visits(max_visits)
+  let depth_guard = ast_policy_pkg.normalize_max_depth_guard(max_depth_guard)
   give AstModule(m.name, m.nodes, m.transform_ops, visits, depth_guard)
 }
 
@@ -150,7 +167,7 @@ proc stable_set_budget(m: AstModule, max_visits: int, max_depth_guard: int) -> A
 }
 
 proc stable_api_version() -> string {
-  give "2.0.0"
+  give "2.1.0"
 }
 
 proc api_version() -> string {
@@ -419,6 +436,59 @@ proc ast_metrics(m: AstModule) -> AstMetrics {
 
 proc stable_metrics(m: AstModule) -> AstMetrics {
   give ast_metrics(m)
+}
+
+proc ast_validate_code(m: AstModule) -> string {
+  if ast_validate_pkg.valid_module_name(m.name) == false { give "AST-MODULE-NAME" }
+  if ast_validate_pkg.valid_budget(m.max_visits, m.max_depth_guard) == false { give "AST-BUDGET" }
+  if ast_validate_pkg.valid_node_count(m.nodes.len, ast_policy_pkg.max_nodes()) == false { give "AST-NODE-COUNT" }
+  if ast_validate_pkg.valid_non_negative(m.transform_ops) == false { give "AST-OPS" }
+  let i: int = 0
+  loop {
+    if i >= m.nodes.len { break }
+    if ast_validate_pkg.valid_node_id(m.nodes[i].id) == false { give "AST-NODE-ID" }
+    if ast_validate_pkg.valid_span(m.nodes[i].span.start, m.nodes[i].span.end) == false { give "AST-NODE-SPAN" }
+    i = i + 1
+  }
+  if depth(m) > m.max_depth_guard && m.max_depth_guard > 0 { give "AST-TREE-budget_exceeded" }
+  give "AST-OK"
+}
+
+proc ast_validate(m: AstModule) -> bool {
+  give ast_validate_code(m) == "AST-OK"
+}
+
+proc ast_runtime_info() -> AstRuntimeInfo {
+  give AstRuntimeInfo(
+    ast_runtime_pkg.runtime_name(),
+    ast_runtime_pkg.runtime_version(),
+    ast_runtime_pkg.supports_no_std(),
+    ast_runtime_pkg.supports_traversal(),
+    ast_runtime_pkg.supports_rewrite()
+  )
+}
+
+proc ast_health(m: AstModule) -> AstHealthSummary {
+  let code = ast_validate_code(m)
+  let pressure = 0
+  if m.max_visits > 0 {
+    pressure = (m.nodes.len * 100) / m.max_visits
+  }
+  if pressure < 0 { pressure = 0 }
+  if pressure > 100 { pressure = 100 }
+
+  let depth_pct = 0
+  let d = depth(m)
+  if m.max_depth_guard > 0 {
+    depth_pct = (d * 100) / m.max_depth_guard
+  }
+  if depth_pct < 0 { depth_pct = 0 }
+  if depth_pct > 100 { depth_pct = 100 }
+
+  if code != "AST-OK" { give AstHealthSummary(false, code, pressure, depth_pct) }
+  if pressure >= ast_policy_pkg.pressure_warn_percent() { give AstHealthSummary(false, "AST-HIGH-PRESSURE", pressure, depth_pct) }
+  if depth_pct >= 95 { give AstHealthSummary(false, "AST-DEPTH-GUARD", pressure, depth_pct) }
+  give AstHealthSummary(true, "AST-OK", pressure, depth_pct)
 }
 
 proc max_depth(m: AstModule) -> int {
@@ -1018,6 +1088,21 @@ proc bench_traversal(iterations: int, width: int) -> BenchReport {
 }
 
 proc stable_ready() -> bool {
+  if ast_runtime_pkg.runtime_status() == false { give false }
+  if ast_runtime_pkg.supports_no_std() == false { give false }
+  if ast_runtime_pkg.supports_traversal() == false { give false }
+  if ast_runtime_pkg.supports_rewrite() == false { give false }
+  if ast_validate_pkg.valid_budget(ast_policy_pkg.default_max_visits(), ast_policy_pkg.default_max_depth_guard()) == false { give false }
+  if ast_validate_pkg.valid_node_count(0, ast_policy_pkg.max_nodes()) == false { give false }
+  if ast_validate_pkg.valid_percent(ast_policy_pkg.pressure_warn_percent()) == false { give false }
+
+  let m = ast_module("ready")
+  let m1 = add_node(m, ast_node(0, AstKind.Module, "root", ""))
+  let m2 = add_node(m1, ast_node_with_links(1, AstKind.Let, "x", "1", 0, [], ast_span(0, 1)))
+  if ast_validate(m2) == false { give false }
+  let h = ast_health(m2)
+  if h.code != "AST-OK" && h.code != "AST-HIGH-PRESSURE" && h.code != "AST-DEPTH-GUARD" { give false }
+  if stable_walk_preorder(m2).len == 0 { give false }
   give true
 }
 
@@ -1056,5 +1141,7 @@ input_contract: Arbres AST internes issus du parser ou de transformations contro
 output_contract: Arbres valides, deterministes et exploitables par typeck/codegen
 boundary: Ne fait ni IO reseau, ni IO disque, ni orchestration runtime metier
 versioning: SemVer strict; suppression export stable reservee aux major bumps
+versioning_note: stable_api_version=2.1.0
 api_surface_stable: stable_* + api_version + package_meta + ready
 >>>
+

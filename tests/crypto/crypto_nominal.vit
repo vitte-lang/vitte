@@ -1,0 +1,36 @@
+use vitte/crypto as crypto_pkg
+
+entry main at core/app {
+  let cfg = crypto_pkg.strict_config()
+  let vr: crypto_pkg.CryptoResult[bool] = crypto_pkg.validate_config(cfg)
+  when vr is crypto_pkg.CryptoResult.Err {
+    return 1
+  }
+
+  let hr: crypto_pkg.CryptoResult[int] = crypto_pkg.hash32_checked("abc", cfg)
+  when hr is crypto_pkg.CryptoResult.Err {
+    return 1
+  }
+  if hr.value <= 0 {
+    return 1
+  }
+
+  let sr: crypto_pkg.CryptoResult[string] = crypto_pkg.sign_checked("supersecret", "hello", cfg)
+  when sr is crypto_pkg.CryptoResult.Err {
+    return 1
+  }
+
+  let vrf: crypto_pkg.CryptoResult[bool] = crypto_pkg.verify_checked("supersecret", "hello", sr.value, cfg)
+  when vrf is crypto_pkg.CryptoResult.Err {
+    return 1
+  }
+  if vrf.value == false {
+    return 1
+  }
+
+  if crypto_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

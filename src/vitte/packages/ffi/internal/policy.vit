@@ -1,9 +1,43 @@
 space vitte/ffi/internal/policy
 
+proc min_timeout_ms() -> int {
+  give 1
+}
+
+proc max_timeout_ms() -> int {
+  give 60000
+}
+
+proc min_retry_budget() -> int {
+  give 0
+}
+
+proc max_retry_budget() -> int {
+  give 32
+}
+
+proc default_strict() -> bool {
+  give true
+}
+
 proc default_timeout_ms() -> int {
   give 1000
 }
 
 proc default_retry_budget() -> int {
   give 1
+}
+
+proc normalize_timeout_ms(value: int) -> int {
+  let out = value
+  if out < min_timeout_ms() { out = min_timeout_ms() }
+  if out > max_timeout_ms() { out = max_timeout_ms() }
+  give out
+}
+
+proc normalize_retry_budget(value: int) -> int {
+  let out = value
+  if out < min_retry_budget() { out = min_retry_budget() }
+  if out > max_retry_budget() { out = max_retry_budget() }
+  give out
 }

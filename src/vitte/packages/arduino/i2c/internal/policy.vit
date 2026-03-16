@@ -4,6 +4,30 @@ proc default_timeout_ms() -> int {
   give 100
 }
 
+proc min_timeout_ms() -> int {
+  give 1
+}
+
+proc max_timeout_ms() -> int {
+  give 60000
+}
+
 proc default_retry_budget() -> int {
   give 2
+}
+
+proc max_retry_budget() -> int {
+  give 5
+}
+
+proc normalize_timeout_ms(timeout_ms: int) -> int {
+  if timeout_ms < min_timeout_ms() { give min_timeout_ms() }
+  if timeout_ms > max_timeout_ms() { give max_timeout_ms() }
+  give timeout_ms
+}
+
+proc normalize_retry_budget(retry_budget: int) -> int {
+  if retry_budget < 0 { give 0 }
+  if retry_budget > max_retry_budget() { give max_retry_budget() }
+  give retry_budget
 }
