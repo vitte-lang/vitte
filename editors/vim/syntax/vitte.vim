@@ -12,9 +12,10 @@ syn keyword vitteTodo TODO FIXME NOTE XXX
 syn match vitteNumber "\v\b(0x[0-9A-Fa-f]+|0b[01]+|[0-9]+)\b"
 syn region vitteString start=+"+ skip=+\\"+ end=+"+
 syn match vitteChar "\v'([^'\\]|\\.)'"
-syn match vitteUsePath "\v\<use\>\s+\zs[A-Za-z0-9_./]+"
-syn match vitteModulePath "\v\<(space|pull|share|at)\>\s+\zs[A-Za-z0-9_./]+"
+syn match vitteUsePath "\v\<use\>\s+\zs[A-Za-z0-9_./:]+"
+syn match vitteModulePath "\v\<(space|pull|share|at|use)\>\s+\zs[A-Za-z0-9_./:]+"
 syn match vitteDeclName "\v\<(proc|form|pick|trait|entry)\>\s+\zs[A-Za-z_][A-Za-z0-9_]*"
+syn match vitteUseAlias "\v\<as\>\s+\zs[A-Za-z_][A-Za-z0-9_]*(_pkg)?"
 syn match vitteCall "\v\<[A-Za-z_][A-Za-z0-9_]*\ze\("
 syn match vitteDiagCode "\vVITTE-[A-Z]+[0-9]{4}"
 syn match vitteAliasPkg "\v[A-Za-z_][A-Za-z0-9_]*_pkg"
@@ -35,6 +36,7 @@ hi def link vitteChar Character
 hi def link vitteUsePath Include
 hi def link vitteModulePath Include
 hi def link vitteDeclName Function
+hi def link vitteUseAlias Identifier
 hi def link vitteCall Function
 hi def link vitteDiagCode Error
 hi def link vitteAliasPkg Identifier
