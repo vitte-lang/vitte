@@ -5,6 +5,13 @@ Vitte is an experimental systems language and toolchain.
 The project is built around one idea: low-level code should stay readable.
 No hidden magic, no overly clever syntax, and a compiler pipeline you can inspect.
 
+Language maturity:
+
+- the project is experimental overall
+- the language core is being stabilized first
+- non-core surface should be treated as `experimental` unless documented otherwise
+- `internal` surface is not a public contract
+
 If you are a beginner: this README is enough to get you from zero to first contribution.
 
 ## In One Minute
@@ -58,6 +65,8 @@ If both commands pass, your setup is good.
 Before opening a PR:
 
 - run `make build`
+- run `make core-language-gate` for language, diagnostics, and import behavior changes
+- run `make core-release-gate` if you are validating the protected language contract for release-facing work
 - run relevant tests (`make test`, `make parse`, `make hir-validate`)
 - add/update tests for behavior changes
 - update docs when behavior changes
@@ -66,7 +75,7 @@ Before opening a PR:
 
 ## Quick Start
 
-Documentation: https://vitte.netlify.app/
+Documentation: https://vitte-lang.org/
 
 ### Try a file
 
@@ -149,6 +158,32 @@ entry main at core/app {
 - Tooling-friendly syntax
 - Deterministic outputs where possible
 - Low-level control when needed (`unsafe`, `asm`)
+
+Core language stability policy:
+
+- `docs/LANGUAGE_CORE.md`
+- `docs/LANGUAGE_CORE_CHECKLIST.md`
+- `docs/LANGUAGE_CORE_COMPATIBILITY.md`
+- `docs/LANGUAGE_CORE_GUARANTEES.md`
+- `docs/LANGUAGE_CORE_TEST_PLAN.md`
+- `docs/LANGUAGE_CORE_SURFACE.md`
+- `docs/GENERIC_CALL_SYNTAX.md`
+
+Current guarantee summary:
+
+- `stable`: protected by an explicit gate or compatibility policy
+- `experimental`: implemented, but outside the protected contract
+- `internal`: not public API or language contract
+
+Current experimental language examples:
+
+- explicit generic constructors like `Public[int](...)` and `facade_mod.Public[int](...)`
+- explicit generic proc calls like `id[int](...)`
+
+Release-facing language contract:
+
+- use `make core-release-gate`
+- treat `docs/LANGUAGE_CORE_GUARANTEES.md` as the minimum public promise
 
 ## Compiler Pipeline
 

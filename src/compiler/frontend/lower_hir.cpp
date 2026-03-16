@@ -105,8 +105,13 @@ static ir::HirExprId lower_invoke(
     const std::unordered_map<std::string, bool>& enum_like)
 {
     ir::HirExprId callee = ir::kInvalidHirId;
+    std::vector<ir::HirTypeId> type_args;
     if (inv.callee_expr != kInvalidAstId) {
         callee = lower_expr(ctx, inv.callee_expr, hir_ctx, diagnostics, type_names, enum_like);
+        type_args.reserve(inv.type_args.size());
+        for (auto arg : inv.type_args) {
+            type_args.push_back(lower_type(ctx, arg, hir_ctx));
+        }
     } else if (inv.callee_type != kInvalidAstId) {
         const AstNode& tnode = ctx.node(inv.callee_type);
         if (tnode.kind == NodeKind::BuiltinType) {
@@ -118,6 +123,10 @@ static ir::HirExprId lower_invoke(
         } else if (tnode.kind == NodeKind::GenericType) {
             auto& t = static_cast<const GenericType&>(tnode);
             callee = hir_ctx.make<ir::HirVarExpr>(t.base_ident.name, t.base_ident.span);
+            type_args.reserve(t.type_args.size());
+            for (auto arg : t.type_args) {
+                type_args.push_back(lower_type(ctx, arg, hir_ctx));
+            }
         }
     }
 
@@ -131,7 +140,7 @@ static ir::HirExprId lower_invoke(
         callee = hir_ctx.make<ir::HirVarExpr>("<error>", inv.span);
     }
 
-    return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), inv.span);
+    return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), std::move(type_args), inv.span);
 }
 
 static ir::HirExprId lower_expr(
@@ -241,7 +250,7 @@ static ir::HirExprId lower_expr(
             std::vector<ir::HirExprId> args;
             args.push_back(lower_expr(ctx, e.arg, hir_ctx, diagnostics, type_names, enum_like));
             auto callee = hir_ctx.make<ir::HirVarExpr>(e.callee.name, e.callee.span);
-            return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), e.span);
+            return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), std::vector<ir::HirTypeId>{}, e.span);
         }
         case NodeKind::ListExpr: {
             auto& e = static_cast<const ListExpr&>(node);
@@ -250,7 +259,7 @@ static ir::HirExprId lower_expr(
                 args.push_back(lower_expr(ctx, item, hir_ctx, diagnostics, type_names, enum_like));
             }
             auto callee = hir_ctx.make<ir::HirVarExpr>("list", e.span);
-            return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), e.span);
+            return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), std::vector<ir::HirTypeId>{}, e.span);
         }
         default:
             diag::error(diagnostics, diag::DiagId::UnsupportedExpressionInHir, node.span);
@@ -360,7 +369,7 @@ static ir::HirStmtId lower_stmt(
             auto mk_call = [&](const char* name) {
                 auto callee = hir_ctx.make<ir::HirVarExpr>(name, s.span);
                 std::vector<ir::HirExprId> args;
-                auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), s.span);
+                auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), std::vector<ir::HirTypeId>{}, s.span);
                 return hir_ctx.make<ir::HirExprStmt>(call, s.span);
             };
             stmts.push_back(mk_call("unsafe_begin"));
@@ -387,7 +396,7 @@ static ir::HirStmtId lower_stmt(
             auto callee = hir_ctx.make<ir::HirVarExpr>("asm", s.span);
             std::vector<ir::HirExprId> args;
             args.push_back(lit);
-            auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), s.span);
+            auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), std::vector<ir::HirTypeId>{}, s.span);
             return hir_ctx.make<ir::HirExprStmt>(call, s.span);
         }
         case NodeKind::LetStmt: {
@@ -424,7 +433,7 @@ static ir::HirStmtId lower_stmt(
             std::vector<ir::HirExprId> args;
             args.push_back(lower_expr(ctx, s.value, hir_ctx, diagnostics, type_names, enum_like));
             auto callee = hir_ctx.make<ir::HirVarExpr>("emit", s.span);
-            auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), s.span);
+            auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), std::vector<ir::HirTypeId>{}, s.span);
             return hir_ctx.make<ir::HirExprStmt>(call, s.span);
         }
         case NodeKind::ExprStmt: {
@@ -556,6 +565,7 @@ ir::HirModuleId lower_to_hir(
                     d.body != kInvalidAstId
                         ? lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like)
                         : ir::kInvalidHirId,
+                    !d.type_params.empty(),
                     d.span));
                 break;
             }
@@ -570,6 +580,7 @@ ir::HirModuleId lower_to_hir(
                     std::move(params),
                     ir::kInvalidHirId,
                     lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like),
+                    false,
                     d.span));
                 break;
             }
@@ -600,6 +611,7 @@ ir::HirModuleId lower_to_hir(
                     std::move(params),
                     ir::kInvalidHirId,
                     lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like),
+                    false,
                     d.span));
                 break;
             }
@@ -612,6 +624,7 @@ ir::HirModuleId lower_to_hir(
                 decls.push_back(hir_ctx.make<ir::HirFormDecl>(
                     d.name.name,
                     std::move(fields),
+                    !d.type_params.empty(),
                     d.span));
                 break;
             }
@@ -633,6 +646,7 @@ ir::HirModuleId lower_to_hir(
                     d.name.name,
                     std::move(cases),
                     is_enum,
+                    !d.type_params.empty(),
                     d.span));
                 break;
             }

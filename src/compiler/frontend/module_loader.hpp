@@ -13,6 +13,7 @@ namespace vitte::frontend::modules {
 struct ModuleIndex {
     std::unordered_map<std::string, std::string> path_to_prefix;
     std::unordered_map<std::string, std::unordered_set<std::string>> exports;
+    std::unordered_map<std::string, std::string> exported_alias_targets;
     std::unordered_map<std::string, std::unordered_set<std::string>> imports;
     std::unordered_map<std::string, std::string> module_files;
     std::unordered_map<std::string, std::size_t> module_loc;

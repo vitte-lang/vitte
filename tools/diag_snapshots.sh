@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 BIN="${BIN:-$ROOT_DIR/bin/vitte}"
 TEST_DIR="${TEST_DIR:-$ROOT_DIR/tests/diag_snapshots}"
+MANIFEST="${MANIFEST:-}"
 
 log() { printf "[diag-snapshots] %s\n" "$*"; }
 die() { printf "[diag-snapshots][error] %s\n" "$*" >&2; exit 1; }
@@ -12,9 +13,32 @@ die() { printf "[diag-snapshots][error] %s\n" "$*" >&2; exit 1; }
 [ -d "$TEST_DIR" ] || die "missing dir: $TEST_DIR"
 
 files=()
-while IFS= read -r f; do
-  files+=("$f")
-done < <(find "$TEST_DIR" -type f -name '*.vit' | sort)
+if [ -n "$MANIFEST" ]; then
+  manifest_path="$MANIFEST"
+  case "$manifest_path" in
+    /*) ;;
+    *) manifest_path="$ROOT_DIR/$manifest_path" ;;
+  esac
+  [ -f "$manifest_path" ] || die "missing manifest: $manifest_path"
+  while IFS= read -r rel; do
+    rel="${rel#"${rel%%[![:space:]]*}"}"
+    rel="${rel%"${rel##*[![:space:]]}"}"
+    [ -z "$rel" ] && continue
+    case "$rel" in
+      \#*) continue ;;
+    esac
+    case "$rel" in
+      /*) f="$rel" ;;
+      *) f="$ROOT_DIR/$rel" ;;
+    esac
+    [ -f "$f" ] || die "manifest entry missing file: $rel"
+    files+=("$f")
+  done < "$manifest_path"
+else
+  while IFS= read -r f; do
+    files+=("$f")
+  done < <(find "$TEST_DIR" -type f -name '*.vit' | sort)
+fi
 [ "${#files[@]}" -gt 0 ] || die "no .vit files in $TEST_DIR"
 
 for src in "${files[@]}"; do

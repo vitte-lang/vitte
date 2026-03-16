@@ -162,11 +162,13 @@ CallNoParenExpr::CallNoParenExpr(Ident c, ExprId a, SourceSpan sp)
 InvokeExpr::InvokeExpr(
     ExprId callee_expr_in,
     TypeId callee_type_in,
+    std::vector<TypeId> type_args_in,
     std::vector<ExprId> args_in,
     SourceSpan sp)
     : Expr(NodeKind::InvokeExpr, sp),
       callee_expr(callee_expr_in),
       callee_type(callee_type_in),
+      type_args(std::move(type_args_in)),
       args(std::move(args_in)) {}
 
 ListExpr::ListExpr(std::vector<ExprId> items, SourceSpan sp)

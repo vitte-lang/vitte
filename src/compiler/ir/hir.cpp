@@ -78,10 +78,12 @@ HirBinaryExpr::HirBinaryExpr(
 HirCallExpr::HirCallExpr(
     HirExprId c,
     std::vector<HirExprId> a,
+    std::vector<HirTypeId> ta,
     vitte::frontend::ast::SourceSpan sp)
     : HirExpr(HirKind::CallExpr, sp),
       callee(c),
-      args(std::move(a)) {}
+      args(std::move(a)),
+      type_args(std::move(ta)) {}
 
 HirMemberExpr::HirMemberExpr(
     HirExprId b,
@@ -229,10 +231,12 @@ HirFieldDecl::HirFieldDecl(std::string n, HirTypeId t)
 HirFormDecl::HirFormDecl(
     std::string n,
     std::vector<HirFieldDecl> f,
+    bool has_generics,
     vitte::frontend::ast::SourceSpan sp)
     : HirDecl(HirKind::FormDecl, sp),
       name(std::move(n)),
-      fields(std::move(f)) {}
+      fields(std::move(f)),
+      has_type_params(has_generics) {}
 
 HirPickCase::HirPickCase(std::string n, std::vector<HirFieldDecl> f)
     : name(std::move(n)),
@@ -242,23 +246,27 @@ HirPickDecl::HirPickDecl(
     std::string n,
     std::vector<HirPickCase> c,
     bool is_enum,
+    bool has_generics,
     vitte::frontend::ast::SourceSpan sp)
     : HirDecl(HirKind::PickDecl, sp),
       name(std::move(n)),
       cases(std::move(c)),
-      enum_like(is_enum) {}
+      enum_like(is_enum),
+      has_type_params(has_generics) {}
 
 HirFnDecl::HirFnDecl(
     std::string n,
     std::vector<HirParam> p,
     HirTypeId ret,
     HirStmtId b,
+    bool has_generics,
     vitte::frontend::ast::SourceSpan sp)
     : HirDecl(HirKind::FnDecl, sp),
       name(std::move(n)),
       params(std::move(p)),
       return_type(ret),
-      body(b) {}
+      body(b),
+      has_type_params(has_generics) {}
 
 HirModule::HirModule(
     std::string n,
@@ -448,6 +456,9 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
         case HirKind::CallExpr: {
             auto& c = static_cast<const HirCallExpr&>(n);
             dump(ctx, c.callee, os, depth + 1);
+            for (auto t : c.type_args) {
+                dump(ctx, t, os, depth + 1);
+            }
             for (auto a : c.args) {
                 dump(ctx, a, os, depth + 1);
             }
@@ -614,6 +625,7 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
         case HirKind::CallExpr: {
             auto& c = static_cast<const HirCallExpr&>(n);
             children.push_back(c.callee);
+            children.insert(children.end(), c.type_args.begin(), c.type_args.end());
             children.insert(children.end(), c.args.begin(), c.args.end());
             break;
         }
@@ -687,6 +699,19 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
     } else if (n.kind == HirKind::BinaryExpr) {
         auto& b = static_cast<const HirBinaryExpr&>(n);
         os << ",\"op\":\"" << to_string(b.op) << "\"";
+    } else if (n.kind == HirKind::CallExpr) {
+        auto& c = static_cast<const HirCallExpr&>(n);
+        os << ",\"typeArgsCount\":" << c.type_args.size();
+        if (!c.type_args.empty()) {
+            os << ",\"typeArgs\":[";
+            for (std::size_t i = 0; i < c.type_args.size(); ++i) {
+                dump_json_impl(ctx, c.type_args[i], os);
+                if (i + 1 < c.type_args.size()) {
+                    os << ",";
+                }
+            }
+            os << "]";
+        }
     } else if (n.kind == HirKind::MemberExpr) {
         auto& m = static_cast<const HirMemberExpr&>(n);
         os << ",\"member\":\"" << m.member << "\"";
@@ -788,6 +813,7 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
         case HirKind::CallExpr: {
             auto& c = static_cast<const HirCallExpr&>(n);
             children.push_back(c.callee);
+            children.insert(children.end(), c.type_args.begin(), c.type_args.end());
             children.insert(children.end(), c.args.begin(), c.args.end());
             break;
         }

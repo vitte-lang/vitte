@@ -116,10 +116,16 @@ struct Token {
  * ------------------------------------------------- */
 class Lexer {
 public:
+    struct State {
+        std::size_t index = 0;
+    };
+
     explicit Lexer(const std::string& source, std::string path = "<input>");
     const std::shared_ptr<ast::SourceFile>& source_file() const { return source_file_; }
 
     Token next();
+    State snapshot() const;
+    void restore(State state);
 
 private:
     const std::string& source_;

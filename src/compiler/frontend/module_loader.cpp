@@ -132,6 +132,49 @@ static std::string internal_owner_namespace(std::string_view key) {
     return std::string(key.substr(0, pos));
 }
 
+static diag::Diagnostic make_experimental_import_denied(const SourceSpan& span, const std::string& requested) {
+    diag::Diagnostic denied(
+        diag::Severity::Error,
+        "E1015",
+        "experimental module import denied",
+        span
+    );
+    denied.add_note("requested module: " + requested);
+    denied.add_note("pass --allow-experimental to opt into experimental imports");
+    denied.add_fix("allow experimental imports", "--allow-experimental", span);
+    return denied;
+}
+
+static diag::Diagnostic make_stdlib_module_not_found(const SourceSpan& span, const std::string& requested) {
+    diag::Diagnostic missing(
+        diag::Severity::Error,
+        "E1014",
+        "stdlib module not found",
+        span
+    );
+    missing.add_note("requested stdlib module: " + requested);
+    missing.add_note("check the module path spelling and the active runtime profile");
+    missing.add_fix("use a canonical stdlib import", "use std/<domain>/mod as <alias>", span);
+    return missing;
+}
+
+static diag::Diagnostic make_internal_import_denied(
+    const SourceSpan& span,
+    const std::string& requested,
+    const std::string& owner
+) {
+    diag::Diagnostic denied(
+        diag::Severity::Error,
+        "E1016",
+        "internal module import denied",
+        span
+    );
+    denied.add_note("requested internal module: " + requested);
+    denied.add_note("internal modules are private to their owning namespace");
+    denied.add_fix("import the public facade instead", "use " + owner + " as <alias>", span);
+    return denied;
+}
+
 bool is_stdlib_path_allowed(const ModulePath& path, const std::string& profile) {
     const std::string normalized = normalized_stdlib_path(path);
     if (normalized.empty()) {
@@ -329,6 +372,146 @@ static void collect_decl_names(
                 break;
             default:
                 break;
+        }
+    }
+}
+
+struct DeclaredExports {
+    bool has_share_decl = false;
+    bool share_all = false;
+    std::unordered_set<std::string> names;
+};
+
+static std::string join_import_target_member(const std::string& target, const std::string& member) {
+    if (target.size() >= 2 && target.substr(target.size() - 2) == "__") {
+        return target + member;
+    }
+    return target + "." + member;
+}
+
+static std::unordered_set<std::string> collect_shareable_names(
+    const AstContext& ctx,
+    ModuleId module_id
+) {
+    std::unordered_set<std::string> names;
+    collect_decl_names(ctx, module_id, names);
+
+    const auto& module = ctx.get<Module>(module_id);
+    for (auto decl_id : module.decls) {
+        if (decl_id == kInvalidAstId) continue;
+        const auto& decl = ctx.get<Decl>(decl_id);
+        switch (decl.kind) {
+            case NodeKind::UseDecl: {
+                const auto& use = static_cast<const UseDecl&>(decl);
+                if (use.alias.has_value()) {
+                    names.insert(use.alias->name);
+                } else if (!use.path.parts.empty()) {
+                    names.insert(use.path.parts.back().name);
+                }
+                break;
+            }
+            case NodeKind::PullDecl: {
+                const auto& pull = static_cast<const PullDecl&>(decl);
+                if (pull.alias.has_value()) {
+                    names.insert(pull.alias->name);
+                } else if (!pull.path.parts.empty()) {
+                    names.insert(pull.path.parts.back().name);
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    return names;
+}
+
+static DeclaredExports collect_declared_exports(
+    const AstContext& ctx,
+    ModuleId module_id
+) {
+    DeclaredExports out;
+    const auto& module = ctx.get<Module>(module_id);
+    for (auto decl_id : module.decls) {
+        if (decl_id == kInvalidAstId) continue;
+        const auto& decl = ctx.get<Decl>(decl_id);
+        if (decl.kind != NodeKind::ShareDecl) {
+            continue;
+        }
+        out.has_share_decl = true;
+        const auto& share = static_cast<const ShareDecl&>(decl);
+        if (share.share_all) {
+            out.share_all = true;
+            continue;
+        }
+        for (const auto& name : share.names) {
+            out.names.insert(name.name);
+        }
+    }
+    return out;
+}
+
+static void collect_export_alias_targets(
+    const AstContext& ctx,
+    ModuleId module_id,
+    const DeclaredExports& declared,
+    const std::string& prefix,
+    ModuleIndex& index
+) {
+    if (prefix.empty()) {
+        return;
+    }
+
+    const auto& module = ctx.get<Module>(module_id);
+    for (auto decl_id : module.decls) {
+        if (decl_id == kInvalidAstId) continue;
+        const auto& decl = ctx.get<Decl>(decl_id);
+        const ModulePath* path = nullptr;
+        std::optional<Ident> alias;
+        if (decl.kind == NodeKind::UseDecl) {
+            const auto& use = static_cast<const UseDecl&>(decl);
+            path = &use.path;
+            alias = use.alias;
+        } else if (decl.kind == NodeKind::PullDecl) {
+            const auto& pull = static_cast<const PullDecl&>(decl);
+            path = &pull.path;
+            alias = pull.alias;
+        }
+        if (path == nullptr) {
+            continue;
+        }
+
+        std::string exported_name;
+        if (alias.has_value()) {
+            exported_name = alias->name;
+        } else if (!path->parts.empty()) {
+            exported_name = path->parts.back().name;
+        }
+        if (exported_name.empty()) {
+            continue;
+        }
+
+        if (declared.has_share_decl && !declared.share_all && declared.names.count(exported_name) == 0) {
+            continue;
+        }
+
+        std::string key = module_path_key(*path);
+        auto it = index.path_to_prefix.find(key);
+        if (it != index.path_to_prefix.end()) {
+            index.exported_alias_targets[prefix + exported_name] = it->second;
+            continue;
+        }
+
+        if (path->parts.size() > 1) {
+            ModulePath parent = *path;
+            const auto last = parent.parts.back().name;
+            parent.parts.pop_back();
+            std::string parent_key = module_path_key(parent);
+            auto pit = index.path_to_prefix.find(parent_key);
+            if (pit != index.path_to_prefix.end()) {
+                index.exported_alias_targets[prefix + exported_name] = pit->second + last;
+            }
         }
     }
 }
@@ -615,7 +798,16 @@ static void qualify_module(AstContext& ctx,
     collect_decl_names(ctx, module_id, locals);
 
     if (!prefix.empty()) {
-        index.exports[prefix].insert(locals.begin(), locals.end());
+        const auto declared = collect_declared_exports(ctx, module_id);
+        if (!declared.has_share_decl) {
+            index.exports[prefix].insert(locals.begin(), locals.end());
+        } else if (declared.share_all) {
+            auto shareable = collect_shareable_names(ctx, module_id);
+            index.exports[prefix].insert(shareable.begin(), shareable.end());
+        } else {
+            index.exports[prefix].insert(declared.names.begin(), declared.names.end());
+        }
+        collect_export_alias_targets(ctx, module_id, declared, prefix, index);
     }
 
     auto& module = ctx.get<Module>(module_id);
@@ -748,11 +940,7 @@ struct Loader {
                         (*path).span
                     );
                 } else {
-                    diagnostics.error_code(
-                        "E1015",
-                        "experimental module '" + raw_key + "' is forbidden (use --allow-experimental)",
-                        (*path).span
-                    );
+                    diagnostics.emit(make_experimental_import_denied((*path).span, raw_key));
                     continue;
                 }
             }
@@ -764,11 +952,7 @@ struct Loader {
                         (*path).span
                     );
                 } else {
-                    diagnostics.error_code(
-                        "E1015",
-                        "experimental stdlib module '" + normalized + "' is forbidden (use --allow-experimental)",
-                        (*path).span
-                    );
+                    diagnostics.emit(make_experimental_import_denied((*path).span, normalized));
                     continue;
                 }
             }
@@ -853,11 +1037,7 @@ struct Loader {
                 const std::string key = module_path_key(*path);
                 const std::string missing_normalized = normalized_stdlib_path(*path);
                 if (!missing_normalized.empty()) {
-                    diagnostics.error_code(
-                        "E1014",
-                        "stdlib module not found: " + missing_normalized,
-                        (*path).span
-                    );
+                    diagnostics.emit(make_stdlib_module_not_found((*path).span, missing_normalized));
                 } else {
                     diagnostics.error("module not found: " + key, (*path).span);
                 }
@@ -876,12 +1056,7 @@ struct Loader {
                 std::string owner = internal_owner_namespace(key);
                 if (owner.empty() ||
                     (!has_prefix(current_module_key, owner + "/") && current_module_key != owner)) {
-                    diagnostics.error_code(
-                        "E1016",
-                        "internal module '" + key + "' cannot be imported from '" + current_module_key + "'",
-                        (*path).span
-                    );
-                    diagnostics.note("internal modules are private to their owning namespace", (*path).span);
+                    diagnostics.emit(make_internal_import_denied((*path).span, key, owner));
                     continue;
                 }
             }
@@ -1069,36 +1244,103 @@ static void rewrite_stmt_for_alias(
     AstContext& ctx,
     StmtId& stmt_id,
     const std::unordered_map<std::string, std::string>& alias_to_prefix,
+    const std::unordered_map<std::string, std::string>& alias_to_module_key,
+    const std::unordered_map<std::string, std::string>& exported_alias_targets,
     const std::unordered_map<std::string, std::unordered_set<std::string>>& exports,
     const std::unordered_set<std::string>& glob_aliases,
-    const std::unordered_map<std::string, std::string>& symbol_imports
+    const std::unordered_map<std::string, std::string>& symbol_imports,
+    diag::DiagnosticEngine* diagnostics
 );
+
+static std::string resolve_module_alias_target(
+    const std::string& module_prefix,
+    const std::string& member,
+    const std::unordered_map<std::string, std::string>& exported_alias_targets
+) {
+    auto it = exported_alias_targets.find(module_prefix + member);
+    if (it != exported_alias_targets.end()) {
+        return it->second;
+    }
+    return module_prefix + member;
+}
+
+static std::pair<std::string, std::string> split_member_chain(const std::string& member_chain) {
+    const auto dot = member_chain.find('.');
+    if (dot == std::string::npos) {
+        return {member_chain, {}};
+    }
+    return {member_chain.substr(0, dot), member_chain.substr(dot + 1)};
+}
+
+static std::string resolve_module_alias_member_chain(
+    const std::string& module_prefix,
+    const std::string& member_chain,
+    const std::unordered_map<std::string, std::string>& exported_alias_targets
+) {
+    const auto [head, tail] = split_member_chain(member_chain);
+    std::string target = resolve_module_alias_target(module_prefix, head, exported_alias_targets);
+    if (!tail.empty()) {
+        target += ".";
+        target += tail;
+    }
+    return target;
+}
+
+static void emit_module_alias_member_not_exported(
+    diag::DiagnosticEngine& diagnostics,
+    const std::string& alias,
+    const std::string& module_key,
+    const std::string& member,
+    const SourceSpan& span
+) {
+    diag::Diagnostic not_exported(
+        diag::Severity::Error,
+        "E1030",
+        "module alias member not exported",
+        span
+    );
+    not_exported.add_note(
+        "alias '" + alias + "' targets module '" + module_key + "', which does not publish member '" + member + "'"
+    );
+    not_exported.add_fix(
+        "use an exported module member",
+        alias + ".<exported_member>",
+        span
+    );
+    diagnostics.emit(std::move(not_exported));
+}
 
 static void rewrite_type_for_alias(
     AstContext& ctx,
     TypeId& type_id,
     const std::unordered_map<std::string, std::string>& alias_to_prefix,
+    const std::unordered_map<std::string, std::string>& alias_to_module_key,
+    const std::unordered_map<std::string, std::string>& exported_alias_targets,
     const std::unordered_map<std::string, std::unordered_set<std::string>>& exports,
     const std::unordered_set<std::string>& glob_aliases,
-    const std::unordered_map<std::string, std::string>& symbol_imports
+    const std::unordered_map<std::string, std::string>& symbol_imports,
+    diag::DiagnosticEngine* diagnostics
 );
 
 static void rewrite_pattern_for_alias(
     AstContext& ctx,
     PatternId& pattern_id,
     const std::unordered_map<std::string, std::string>& alias_to_prefix,
+    const std::unordered_map<std::string, std::string>& alias_to_module_key,
+    const std::unordered_map<std::string, std::string>& exported_alias_targets,
     const std::unordered_map<std::string, std::unordered_set<std::string>>& exports,
     const std::unordered_set<std::string>& glob_aliases,
-    const std::unordered_map<std::string, std::string>& symbol_imports
+    const std::unordered_map<std::string, std::string>& symbol_imports,
+    diag::DiagnosticEngine* diagnostics
 ) {
     if (pattern_id == kInvalidAstId) return;
     auto& node = ctx.node(pattern_id);
     switch (node.kind) {
         case NodeKind::CtorPattern: {
             auto& p = static_cast<CtorPattern&>(node);
-            rewrite_type_for_alias(ctx, p.type, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_type_for_alias(ctx, p.type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             for (auto& arg : p.args) {
-                rewrite_pattern_for_alias(ctx, arg, alias_to_prefix, exports, glob_aliases, symbol_imports);
+                rewrite_pattern_for_alias(ctx, arg, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             }
             break;
         }
@@ -1112,9 +1354,12 @@ static void rewrite_type_for_alias(
     AstContext& ctx,
     TypeId& type_id,
     const std::unordered_map<std::string, std::string>& alias_to_prefix,
+    const std::unordered_map<std::string, std::string>& alias_to_module_key,
+    const std::unordered_map<std::string, std::string>& exported_alias_targets,
     const std::unordered_map<std::string, std::unordered_set<std::string>>& exports,
     const std::unordered_set<std::string>& glob_aliases,
-    const std::unordered_map<std::string, std::string>& symbol_imports
+    const std::unordered_map<std::string, std::string>& symbol_imports,
+    diag::DiagnosticEngine* diagnostics
 ) {
     if (type_id == kInvalidAstId) return;
     auto& node = ctx.node(type_id);
@@ -1124,15 +1369,28 @@ static void rewrite_type_for_alias(
             auto dot = t.ident.name.find('.');
             if (dot != std::string::npos) {
                 std::string base = t.ident.name.substr(0, dot);
-                std::string member = t.ident.name.substr(dot + 1);
-                auto it_alias = alias_to_prefix.find(base);
-                if (it_alias != alias_to_prefix.end()) {
-                    t.ident.name = it_alias->second + member;
-                    break;
-                }
+                std::string member_chain = t.ident.name.substr(dot + 1);
+                auto [member, tail] = split_member_chain(member_chain);
                 auto it_sym = symbol_imports.find(base);
                 if (it_sym != symbol_imports.end()) {
-                    t.ident.name = it_sym->second + "." + member;
+                    t.ident.name = join_import_target_member(it_sym->second, member_chain);
+                    break;
+                }
+                auto it_alias = alias_to_prefix.find(base);
+                if (it_alias != alias_to_prefix.end()) {
+                    auto exp = exports.find(it_alias->second);
+                    if (diagnostics != nullptr &&
+                        (exp == exports.end() || exp->second.count(member) == 0)) {
+                        auto key_it = alias_to_module_key.find(base);
+                        emit_module_alias_member_not_exported(
+                            *diagnostics,
+                            base,
+                            key_it == alias_to_module_key.end() ? base : key_it->second,
+                            member,
+                            t.ident.span
+                        );
+                    }
+                    t.ident.name = resolve_module_alias_member_chain(it_alias->second, member_chain, exported_alias_targets);
                     break;
                 }
             }
@@ -1157,14 +1415,28 @@ static void rewrite_type_for_alias(
             auto dot = t.base_ident.name.find('.');
             if (dot != std::string::npos) {
                 std::string base = t.base_ident.name.substr(0, dot);
-                std::string member = t.base_ident.name.substr(dot + 1);
-                auto it_alias = alias_to_prefix.find(base);
-                if (it_alias != alias_to_prefix.end()) {
-                    t.base_ident.name = it_alias->second + member;
-                }
+                std::string member_chain = t.base_ident.name.substr(dot + 1);
+                auto [member, tail] = split_member_chain(member_chain);
                 auto it_sym = symbol_imports.find(base);
                 if (it_sym != symbol_imports.end()) {
-                    t.base_ident.name = it_sym->second + "." + member;
+                    t.base_ident.name = join_import_target_member(it_sym->second, member_chain);
+                } else {
+                    auto it_alias = alias_to_prefix.find(base);
+                    if (it_alias != alias_to_prefix.end()) {
+                        auto exp = exports.find(it_alias->second);
+                        if (diagnostics != nullptr &&
+                            (exp == exports.end() || exp->second.count(member) == 0)) {
+                            auto key_it = alias_to_module_key.find(base);
+                            emit_module_alias_member_not_exported(
+                                *diagnostics,
+                                base,
+                                key_it == alias_to_module_key.end() ? base : key_it->second,
+                                member,
+                                t.base_ident.span
+                            );
+                        }
+                        t.base_ident.name = resolve_module_alias_member_chain(it_alias->second, member_chain, exported_alias_targets);
+                    }
                 }
             }
             auto it = symbol_imports.find(t.base_ident.name);
@@ -1182,26 +1454,26 @@ static void rewrite_type_for_alias(
                 }
             }
             for (auto& arg : t.type_args) {
-                rewrite_type_for_alias(ctx, arg, alias_to_prefix, exports, glob_aliases, symbol_imports);
+                rewrite_type_for_alias(ctx, arg, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             }
             break;
         }
         case NodeKind::PointerType: {
             auto& t = static_cast<PointerType&>(node);
-            rewrite_type_for_alias(ctx, t.pointee, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_type_for_alias(ctx, t.pointee, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::SliceType: {
             auto& t = static_cast<SliceType&>(node);
-            rewrite_type_for_alias(ctx, t.element, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_type_for_alias(ctx, t.element, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::ProcType: {
             auto& t = static_cast<ProcType&>(node);
             for (auto& p : t.params) {
-                rewrite_type_for_alias(ctx, p, alias_to_prefix, exports, glob_aliases, symbol_imports);
+                rewrite_type_for_alias(ctx, p, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             }
-            rewrite_type_for_alias(ctx, t.return_type, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_type_for_alias(ctx, t.return_type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         default:
@@ -1213,27 +1485,50 @@ static void rewrite_expr_for_alias(
     AstContext& ctx,
     ExprId& expr_id,
     const std::unordered_map<std::string, std::string>& alias_to_prefix,
+    const std::unordered_map<std::string, std::string>& alias_to_module_key,
+    const std::unordered_map<std::string, std::string>& exported_alias_targets,
     const std::unordered_map<std::string, std::unordered_set<std::string>>& exports,
     const std::unordered_set<std::string>& glob_aliases,
-    const std::unordered_map<std::string, std::string>& symbol_imports
+    const std::unordered_map<std::string, std::string>& symbol_imports,
+    diag::DiagnosticEngine* diagnostics
 ) {
     if (expr_id == kInvalidAstId) return;
     auto& node = ctx.get<Expr>(expr_id);
     switch (node.kind) {
         case NodeKind::MemberExpr: {
             auto& e = static_cast<MemberExpr&>(node);
-            rewrite_expr_for_alias(ctx, e.base, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, e.base, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             if (e.base == kInvalidAstId) {
                 return;
             }
             auto& base_node = ctx.get<Expr>(e.base);
             if (base_node.kind == NodeKind::IdentExpr) {
                 auto& base = static_cast<IdentExpr&>(base_node);
-                auto it = alias_to_prefix.find(base.ident.name);
-                if (it != alias_to_prefix.end()) {
-                    const auto& prefix = it->second;
-                    std::string qual = prefix + e.member.name;
+                if (auto it_sym = symbol_imports.find(base.ident.name); it_sym != symbol_imports.end()) {
+                    std::string qual = join_import_target_member(it_sym->second, e.member.name);
                     expr_id = ctx.make<IdentExpr>(Ident(qual, e.span), e.span);
+                } else if (auto nested_dot = base.ident.name.rfind('.'); nested_dot != std::string::npos) {
+                    std::string qual = base.ident.name + "." + e.member.name;
+                    expr_id = ctx.make<IdentExpr>(Ident(qual, e.span), e.span);
+                } else {
+                    auto it = alias_to_prefix.find(base.ident.name);
+                    if (it != alias_to_prefix.end()) {
+                        auto exp = exports.find(it->second);
+                        if (diagnostics != nullptr &&
+                            (exp == exports.end() || exp->second.count(e.member.name) == 0)) {
+                            auto key_it = alias_to_module_key.find(base.ident.name);
+                            emit_module_alias_member_not_exported(
+                                *diagnostics,
+                                base.ident.name,
+                                key_it == alias_to_module_key.end() ? base.ident.name : key_it->second,
+                                e.member.name,
+                                e.span
+                            );
+                        }
+                        const auto& prefix = it->second;
+                        std::string qual = resolve_module_alias_member_chain(prefix, e.member.name, exported_alias_targets);
+                        expr_id = ctx.make<IdentExpr>(Ident(qual, e.span), e.span);
+                    }
                 }
             }
             break;
@@ -1243,15 +1538,28 @@ static void rewrite_expr_for_alias(
             auto dot = e.ident.name.find('.');
             if (dot != std::string::npos) {
                 std::string base = e.ident.name.substr(0, dot);
-                std::string member = e.ident.name.substr(dot + 1);
-                auto it_alias = alias_to_prefix.find(base);
-                if (it_alias != alias_to_prefix.end()) {
-                    e.ident.name = it_alias->second + member;
-                    break;
-                }
+                std::string member_chain = e.ident.name.substr(dot + 1);
+                auto [member, tail] = split_member_chain(member_chain);
                 auto it_sym = symbol_imports.find(base);
                 if (it_sym != symbol_imports.end()) {
-                    e.ident.name = it_sym->second + "." + member;
+                    e.ident.name = join_import_target_member(it_sym->second, member_chain);
+                    break;
+                }
+                auto it_alias = alias_to_prefix.find(base);
+                if (it_alias != alias_to_prefix.end()) {
+                    auto exp = exports.find(it_alias->second);
+                    if (diagnostics != nullptr &&
+                        (exp == exports.end() || exp->second.count(member) == 0)) {
+                        auto key_it = alias_to_module_key.find(base);
+                        emit_module_alias_member_not_exported(
+                            *diagnostics,
+                            base,
+                            key_it == alias_to_module_key.end() ? base : key_it->second,
+                            member,
+                            e.ident.span
+                        );
+                    }
+                    e.ident.name = resolve_module_alias_member_chain(it_alias->second, member_chain, exported_alias_targets);
                     break;
                 }
             }
@@ -1279,54 +1587,54 @@ static void rewrite_expr_for_alias(
         }
         case NodeKind::UnaryExpr: {
             auto& e = static_cast<UnaryExpr&>(node);
-            rewrite_expr_for_alias(ctx, e.expr, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, e.expr, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::BinaryExpr: {
             auto& e = static_cast<BinaryExpr&>(node);
-            rewrite_expr_for_alias(ctx, e.lhs, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_expr_for_alias(ctx, e.rhs, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, e.lhs, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_expr_for_alias(ctx, e.rhs, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::ProcExpr: {
             auto& e = static_cast<ProcExpr&>(node);
             for (auto& p : e.params) {
-                rewrite_type_for_alias(ctx, p.type, alias_to_prefix, exports, glob_aliases, symbol_imports);
+                rewrite_type_for_alias(ctx, p.type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             }
-            rewrite_type_for_alias(ctx, e.return_type, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_stmt_for_alias(ctx, e.body, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_type_for_alias(ctx, e.return_type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_stmt_for_alias(ctx, e.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::IndexExpr: {
             auto& e = static_cast<IndexExpr&>(node);
-            rewrite_expr_for_alias(ctx, e.base, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_expr_for_alias(ctx, e.index, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, e.base, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_expr_for_alias(ctx, e.index, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::IfExpr: {
             auto& e = static_cast<IfExpr&>(node);
-            rewrite_expr_for_alias(ctx, e.cond, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_stmt_for_alias(ctx, e.then_block, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_stmt_for_alias(ctx, e.else_block, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, e.cond, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_stmt_for_alias(ctx, e.then_block, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_stmt_for_alias(ctx, e.else_block, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::IsExpr: {
             auto& e = static_cast<IsExpr&>(node);
-            rewrite_expr_for_alias(ctx, e.value, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, e.value, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::AsExpr: {
             auto& e = static_cast<AsExpr&>(node);
-            rewrite_expr_for_alias(ctx, e.value, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_type_for_alias(ctx, e.type, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, e.value, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_type_for_alias(ctx, e.type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::InvokeExpr: {
             auto& e = static_cast<InvokeExpr&>(node);
-            rewrite_expr_for_alias(ctx, e.callee_expr, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_type_for_alias(ctx, e.callee_type, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, e.callee_expr, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_type_for_alias(ctx, e.callee_type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             for (auto& a : e.args) {
-                rewrite_expr_for_alias(ctx, a, alias_to_prefix, exports, glob_aliases, symbol_imports);
+                rewrite_expr_for_alias(ctx, a, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             }
             break;
         }
@@ -1335,15 +1643,29 @@ static void rewrite_expr_for_alias(
             auto dot = e.callee.name.find('.');
             if (dot != std::string::npos) {
                 std::string base = e.callee.name.substr(0, dot);
-                std::string member = e.callee.name.substr(dot + 1);
-                auto it_alias = alias_to_prefix.find(base);
-                if (it_alias != alias_to_prefix.end()) {
-                    e.callee.name = it_alias->second + member;
-                    break;
-                }
+                std::string member_chain = e.callee.name.substr(dot + 1);
+                auto [member, tail] = split_member_chain(member_chain);
                 auto it_sym = symbol_imports.find(base);
                 if (it_sym != symbol_imports.end()) {
-                    e.callee.name = it_sym->second + "." + member;
+                    e.callee.name = join_import_target_member(it_sym->second, member_chain);
+                } else {
+                    auto it_alias = alias_to_prefix.find(base);
+                    if (it_alias != alias_to_prefix.end()) {
+                        auto exp = exports.find(it_alias->second);
+                        if (diagnostics != nullptr &&
+                            (exp == exports.end() || exp->second.count(member) == 0)) {
+                            auto key_it = alias_to_module_key.find(base);
+                            emit_module_alias_member_not_exported(
+                                *diagnostics,
+                                base,
+                                key_it == alias_to_module_key.end() ? base : key_it->second,
+                                member,
+                                e.callee.span
+                            );
+                        }
+                        e.callee.name = resolve_module_alias_member_chain(it_alias->second, member_chain, exported_alias_targets);
+                        break;
+                    }
                 }
             }
             auto it_sym = symbol_imports.find(e.callee.name);
@@ -1363,13 +1685,13 @@ static void rewrite_expr_for_alias(
                     }
                 }
             }
-            rewrite_expr_for_alias(ctx, e.arg, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, e.arg, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::ListExpr: {
             auto& e = static_cast<ListExpr&>(node);
             for (auto& item : e.items) {
-                rewrite_expr_for_alias(ctx, item, alias_to_prefix, exports, glob_aliases, symbol_imports);
+                rewrite_expr_for_alias(ctx, item, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             }
             break;
         }
@@ -1382,9 +1704,12 @@ static void rewrite_stmt_for_alias(
     AstContext& ctx,
     StmtId& stmt_id,
     const std::unordered_map<std::string, std::string>& alias_to_prefix,
+    const std::unordered_map<std::string, std::string>& alias_to_module_key,
+    const std::unordered_map<std::string, std::string>& exported_alias_targets,
     const std::unordered_map<std::string, std::unordered_set<std::string>>& exports,
     const std::unordered_set<std::string>& glob_aliases,
-    const std::unordered_map<std::string, std::string>& symbol_imports
+    const std::unordered_map<std::string, std::string>& symbol_imports,
+    diag::DiagnosticEngine* diagnostics
 ) {
     if (stmt_id == kInvalidAstId) return;
     auto& node = ctx.get<Stmt>(stmt_id);
@@ -1392,78 +1717,78 @@ static void rewrite_stmt_for_alias(
         case NodeKind::BlockStmt: {
             auto& s = static_cast<BlockStmt&>(node);
             for (auto& st : s.stmts) {
-                rewrite_stmt_for_alias(ctx, st, alias_to_prefix, exports, glob_aliases, symbol_imports);
+                rewrite_stmt_for_alias(ctx, st, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             }
             break;
         }
         case NodeKind::LetStmt: {
             auto& s = static_cast<LetStmt&>(node);
-            rewrite_type_for_alias(ctx, s.type, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_expr_for_alias(ctx, s.initializer, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_type_for_alias(ctx, s.type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_expr_for_alias(ctx, s.initializer, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::MakeStmt: {
             auto& s = static_cast<MakeStmt&>(node);
-            rewrite_type_for_alias(ctx, s.type, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_expr_for_alias(ctx, s.value, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_type_for_alias(ctx, s.type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_expr_for_alias(ctx, s.value, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::SetStmt: {
             auto& s = static_cast<SetStmt&>(node);
-            rewrite_expr_for_alias(ctx, s.value, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, s.value, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::GiveStmt: {
             auto& s = static_cast<GiveStmt&>(node);
-            rewrite_expr_for_alias(ctx, s.value, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, s.value, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::EmitStmt: {
             auto& s = static_cast<EmitStmt&>(node);
-            rewrite_expr_for_alias(ctx, s.value, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, s.value, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::ExprStmt: {
             auto& s = static_cast<ExprStmt&>(node);
-            rewrite_expr_for_alias(ctx, s.expr, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, s.expr, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::ReturnStmt: {
             auto& s = static_cast<ReturnStmt&>(node);
-            rewrite_expr_for_alias(ctx, s.expr, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, s.expr, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::IfStmt: {
             auto& s = static_cast<IfStmt&>(node);
-            rewrite_expr_for_alias(ctx, s.cond, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_stmt_for_alias(ctx, s.then_block, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_stmt_for_alias(ctx, s.else_block, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, s.cond, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_stmt_for_alias(ctx, s.then_block, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_stmt_for_alias(ctx, s.else_block, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::LoopStmt: {
             auto& s = static_cast<LoopStmt&>(node);
-            rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::SelectStmt: {
             auto& s = static_cast<SelectStmt&>(node);
-            rewrite_expr_for_alias(ctx, s.expr, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, s.expr, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             for (auto& w : s.whens) {
-                rewrite_stmt_for_alias(ctx, w, alias_to_prefix, exports, glob_aliases, symbol_imports);
+                rewrite_stmt_for_alias(ctx, w, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             }
-            rewrite_stmt_for_alias(ctx, s.otherwise_block, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_stmt_for_alias(ctx, s.otherwise_block, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::WhenStmt: {
             auto& s = static_cast<WhenStmt&>(node);
-            rewrite_pattern_for_alias(ctx, s.pattern, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_stmt_for_alias(ctx, s.block, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_pattern_for_alias(ctx, s.pattern, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_stmt_for_alias(ctx, s.block, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         case NodeKind::ForStmt: {
             auto& s = static_cast<ForStmt&>(node);
-            rewrite_expr_for_alias(ctx, s.iterable, alias_to_prefix, exports, glob_aliases, symbol_imports);
-            rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            rewrite_expr_for_alias(ctx, s.iterable, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         default:
@@ -1476,9 +1801,14 @@ void rewrite_member_access(ast::AstContext& ctx,
                            const ModuleIndex& index,
                            diag::DiagnosticEngine* diagnostics) {
     std::unordered_map<std::string, std::string> alias_to_prefix;
+    std::unordered_map<std::string, std::string> alias_to_module_key;
     std::unordered_map<std::string, SourceSpan> alias_to_span;
     std::unordered_set<std::string> glob_aliases;
     std::unordered_map<std::string, std::string> symbol_imports;
+    const auto declared_exports = collect_declared_exports(ctx, root);
+    for (const auto& kv : index.exported_alias_targets) {
+        symbol_imports[kv.first] = kv.second;
+    }
 
     const auto& module = ctx.get<Module>(root);
     for (auto decl_id : module.decls) {
@@ -1509,6 +1839,7 @@ void rewrite_member_access(ast::AstContext& ctx,
         auto it = index.path_to_prefix.find(key);
         if (it != index.path_to_prefix.end()) {
             alias_to_prefix[alias] = it->second;
+            alias_to_module_key[alias] = key;
             alias_to_span[alias] = u.span;
             if (u.is_glob) {
                 glob_aliases.insert(alias);
@@ -1522,14 +1853,38 @@ void rewrite_member_access(ast::AstContext& ctx,
             std::string parent_key = module_path_key(parent);
             auto pit = index.path_to_prefix.find(parent_key);
             if (pit != index.path_to_prefix.end()) {
-                symbol_imports[alias] = pit->second + last.name;
+                auto exp = index.exports.find(pit->second);
+                if (exp != index.exports.end() && exp->second.count(last.name) != 0) {
+                    symbol_imports[alias] = pit->second + last.name;
+                } else if (diagnostics != nullptr) {
+                    diag::Diagnostic not_exported(
+                        diag::Severity::Error,
+                        "E1025",
+                        "symbol not exported by module",
+                        u.path.span
+                    );
+                    not_exported.add_note(
+                        "module '" + parent_key + "' does not publish symbol '" + last.name + "' in its declared share surface"
+                    );
+                    not_exported.add_fix(
+                        "import an exported symbol",
+                        "use " + parent_key + "/<exported_symbol> as " + alias,
+                        u.path.span
+                    );
+                    diagnostics->emit(std::move(not_exported));
+                }
             }
         }
     }
 
     if (diagnostics != nullptr) {
-        std::unordered_map<std::string, std::string> seen_symbol_owner;
+        std::unordered_map<std::string, std::pair<std::string, std::string>> seen_symbol_owner;
         for (const auto& alias : glob_aliases) {
+            if (declared_exports.has_share_decl &&
+                !declared_exports.share_all &&
+                declared_exports.names.count(alias) == 0) {
+                continue;
+            }
             auto pfx = alias_to_prefix.find(alias);
             if (pfx == alias_to_prefix.end()) {
                 continue;
@@ -1540,7 +1895,7 @@ void rewrite_member_access(ast::AstContext& ctx,
             }
             for (const auto& sym : exp->second) {
                 auto it = seen_symbol_owner.find(sym);
-                if (it != seen_symbol_owner.end() && it->second != alias) {
+                if (it != seen_symbol_owner.end() && it->second.first != pfx->second) {
                     SourceSpan conflict_span{};
                     auto current_span = alias_to_span.find(alias);
                     if (current_span != alias_to_span.end()) {
@@ -1549,13 +1904,13 @@ void rewrite_member_access(ast::AstContext& ctx,
                     diag::Diagnostic conflict(
                         diag::Severity::Error,
                         "E1017",
-                        "re-export symbol conflict for '" + sym + "' between aliases '" + it->second + "' and '" + alias + "'",
+                        "re-export symbol conflict for '" + sym + "' between aliases '" + it->second.second + "' and '" + alias + "'",
                         conflict_span
                     );
-                    auto owner_span = alias_to_span.find(it->second);
+                    auto owner_span = alias_to_span.find(it->second.second);
                     if (owner_span != alias_to_span.end()) {
                         conflict.add_note(
-                            "first conflicting glob alias '" + it->second + "' is declared here"
+                            "first conflicting glob alias '" + it->second.second + "' is declared here"
                         );
                     }
                     conflict.add_note(
@@ -1571,12 +1926,12 @@ void rewrite_member_access(ast::AstContext& ctx,
                     );
                     conflict.add_fix(
                         "remove one conflicting glob alias",
-                        "remove alias '" + alias + "' or '" + it->second + "'",
+                        "remove alias '" + alias + "' or '" + it->second.second + "'",
                         conflict_span
                     );
                     diagnostics->emit(std::move(conflict));
                 } else {
-                    seen_symbol_owner[sym] = alias;
+                    seen_symbol_owner[sym] = {pfx->second, alias};
                 }
             }
         }
@@ -1589,54 +1944,54 @@ void rewrite_member_access(ast::AstContext& ctx,
             case NodeKind::ProcDecl: {
                 auto& d = static_cast<ProcDecl&>(decl);
                 for (auto& p : d.params) {
-                    rewrite_type_for_alias(ctx, p.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                rewrite_type_for_alias(ctx, p.type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 }
-                rewrite_type_for_alias(ctx, d.return_type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
-                rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                rewrite_type_for_alias(ctx, d.return_type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
+                rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 break;
             }
             case NodeKind::FnDecl: {
                 auto& d = static_cast<FnDecl&>(decl);
                 for (auto& p : d.params) {
-                    rewrite_type_for_alias(ctx, p.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                    rewrite_type_for_alias(ctx, p.type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 }
-                rewrite_type_for_alias(ctx, d.return_type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
-                rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                rewrite_type_for_alias(ctx, d.return_type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
+                rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 break;
             }
             case NodeKind::MacroDecl: {
                 auto& d = static_cast<MacroDecl&>(decl);
-                rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 break;
             }
             case NodeKind::ConstDecl: {
                 auto& d = static_cast<ConstDecl&>(decl);
-                rewrite_type_for_alias(ctx, d.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
-                rewrite_expr_for_alias(ctx, d.value, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                rewrite_type_for_alias(ctx, d.type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
+                rewrite_expr_for_alias(ctx, d.value, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 break;
             }
             case NodeKind::GlobalDecl: {
                 auto& d = static_cast<GlobalDecl&>(decl);
-                rewrite_type_for_alias(ctx, d.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
-                rewrite_expr_for_alias(ctx, d.value, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                rewrite_type_for_alias(ctx, d.type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
+                rewrite_expr_for_alias(ctx, d.value, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 break;
             }
             case NodeKind::TypeDecl: {
                 auto& d = static_cast<TypeDecl&>(decl);
                 for (auto& f : d.fields) {
-                    rewrite_type_for_alias(ctx, f.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                    rewrite_type_for_alias(ctx, f.type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 }
                 break;
             }
             case NodeKind::TypeAliasDecl: {
                 auto& d = static_cast<TypeAliasDecl&>(decl);
-                rewrite_type_for_alias(ctx, d.target, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                rewrite_type_for_alias(ctx, d.target, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 break;
             }
             case NodeKind::FormDecl: {
                 auto& d = static_cast<FormDecl&>(decl);
                 for (auto& f : d.fields) {
-                    rewrite_type_for_alias(ctx, f.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                    rewrite_type_for_alias(ctx, f.type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 }
                 break;
             }
@@ -1644,14 +1999,14 @@ void rewrite_member_access(ast::AstContext& ctx,
                 auto& d = static_cast<PickDecl&>(decl);
                 for (auto& c : d.cases) {
                     for (auto& f : c.fields) {
-                        rewrite_type_for_alias(ctx, f.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                        rewrite_type_for_alias(ctx, f.type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                     }
                 }
                 break;
             }
             case NodeKind::EntryDecl: {
                 auto& d = static_cast<EntryDecl&>(decl);
-                rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 break;
             }
             default:

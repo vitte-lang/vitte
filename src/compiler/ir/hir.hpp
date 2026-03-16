@@ -211,9 +211,11 @@ struct HirBinaryExpr : HirExpr {
 struct HirCallExpr : HirExpr {
     HirExprId callee;
     std::vector<HirExprId> args;
+    std::vector<HirTypeId> type_args;
 
     HirCallExpr(HirExprId callee,
                 std::vector<HirExprId> args,
+                std::vector<HirTypeId> type_args,
                 vitte::frontend::ast::SourceSpan span);
 };
 
@@ -396,9 +398,11 @@ struct HirFieldDecl {
 struct HirFormDecl : HirDecl {
     std::string name;
     std::vector<HirFieldDecl> fields;
+    bool has_type_params = false;
 
     HirFormDecl(std::string name,
                 std::vector<HirFieldDecl> fields,
+                bool has_type_params,
                 vitte::frontend::ast::SourceSpan span);
 };
 
@@ -413,10 +417,12 @@ struct HirPickDecl : HirDecl {
     std::string name;
     std::vector<HirPickCase> cases;
     bool enum_like = false;
+    bool has_type_params = false;
 
     HirPickDecl(std::string name,
                 std::vector<HirPickCase> cases,
                 bool enum_like,
+                bool has_type_params,
                 vitte::frontend::ast::SourceSpan span);
 };
 
@@ -433,11 +439,13 @@ struct HirFnDecl : HirDecl {
     std::vector<HirParam> params;
     HirTypeId return_type;
     HirStmtId body;
+    bool has_type_params = false;
 
     HirFnDecl(std::string name,
               std::vector<HirParam> params,
               HirTypeId return_type,
               HirStmtId body,
+              bool has_type_params,
               vitte::frontend::ast::SourceSpan span);
 };
 

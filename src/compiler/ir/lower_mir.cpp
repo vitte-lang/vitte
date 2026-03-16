@@ -9,6 +9,20 @@ using namespace vitte::ir;
 using vitte::frontend::diag::DiagnosticEngine;
 
 namespace {
+static void emit_generic_codegen_unsupported(
+    DiagnosticEngine& diagnostics,
+    const std::string& kind,
+    const frontend::ast::SourceSpan& span
+) {
+    diagnostics.error(
+        "generic " + kind + " codegen is not supported yet",
+        span
+    );
+    diagnostics.note(
+        "generic declarations currently erase type parameters in the backend; stop before codegen instead of emitting invalid C++",
+        span
+    );
+}
 
 struct Builder {
     const HirContext& hir;
@@ -1135,6 +1149,10 @@ MirModule lower_to_mir(
         const auto& decl = hir_ctx.get<HirDecl>(decl_id);
         if (decl.kind == HirKind::FormDecl) {
             const auto& f = hir_ctx.get<HirFormDecl>(decl_id);
+            if (f.has_type_params) {
+                emit_generic_codegen_unsupported(diagnostics, "form", f.span);
+                continue;
+            }
             std::vector<MirField> fields;
             for (const auto& field : f.fields) {
                 auto ftype = field_type_from_hir(field.type);
@@ -1144,6 +1162,10 @@ MirModule lower_to_mir(
             structs.emplace_back(f.name, std::move(fields));
         } else if (decl.kind == HirKind::PickDecl) {
             const auto& p = hir_ctx.get<HirPickDecl>(decl_id);
+            if (p.has_type_params) {
+                emit_generic_codegen_unsupported(diagnostics, "pick", p.span);
+                continue;
+            }
             std::vector<MirPickCase> cases;
             std::size_t tag = 0;
             for (const auto& c : p.cases) {
@@ -1166,6 +1188,17 @@ MirModule lower_to_mir(
                 enums.emplace_back(p.name, std::move(items));
             }
         }
+    }
+
+    if (diagnostics.has_errors()) {
+        return MirModule(
+            std::move(structs),
+            std::move(enums),
+            std::move(picks),
+            std::move(globals),
+            std::move(funcs),
+            {}
+        );
     }
 
     std::unordered_map<std::string, std::pair<MirConstKind, std::string>> consts;
@@ -1246,6 +1279,10 @@ MirModule lower_to_mir(
             continue;
         }
         const auto& fn = hir_ctx.get<HirFnDecl>(decl_id);
+        if (fn.has_type_params) {
+            emit_generic_codegen_unsupported(diagnostics, "proc", fn.span);
+            continue;
+        }
         std::string ret = "Unit";
         if (fn.return_type != kInvalidHirId) {
             const auto& tnode = hir_ctx.node(fn.return_type);
@@ -1275,6 +1312,9 @@ MirModule lower_to_mir(
             continue;
         }
         const auto& fn = hir_ctx.get<HirFnDecl>(decl_id);
+        if (fn.has_type_params) {
+            continue;
+        }
 
         std::vector<MirParam> params;
         std::vector<MirLocalPtr> locals;

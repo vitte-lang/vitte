@@ -1,5 +1,17 @@
 # Grammar Changelog
 
+## 2026-03-16
+
+### non-breaking
+- Documented explicit generic call surface syntax in EBNF as `foo[T](...)`.
+- Added an ambiguity note for generic-call vs index-then-call parsing.
+
+### breaking
+- None.
+
+### diagnostic-only
+- None.
+
 ## 2026-03-03
 
 ### non-breaking
