@@ -5,6 +5,9 @@ package vitte/macros
 
 space vitte/macros
 
+use vitte/macros/internal/policy as macros_policy_pkg
+use vitte/macros/internal/runtime as macros_runtime_pkg
+use vitte/macros/internal/validate as macros_validate_pkg
 
 form MacroDef {
   name: string
@@ -13,6 +16,29 @@ form MacroDef {
 
 form MacroSet {
   defs: [MacroDef]
+}
+
+form MacrosConfig {
+  max_defs: int
+  max_rounds: int
+  allow_empty_body: bool
+}
+
+pick MacrosConfigError {
+  InvalidConfig
+  Internal
+}
+
+pick MacrosConfigResult[T] {
+  Ok(value: T)
+  Err(error: MacrosConfigError)
+}
+
+form MacrosRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_multi_round_expand: bool
 }
 
 proc macros_new() -> MacroSet {
@@ -223,6 +249,84 @@ proc names(macros: MacroSet) -> [string] {
 proc summary(macros: MacroSet) -> string {
   give "macros=" + macros.defs.len.to_string() +
        ",valid=" + validate(macros).to_string()
+}
+
+proc default_config() -> MacrosConfig {
+  give MacrosConfig(macros_policy_pkg.default_max_defs(),
+                    macros_policy_pkg.default_max_rounds(),
+                    macros_policy_pkg.default_allow_empty_body())
+}
+
+proc strict_config() -> MacrosConfig {
+  let cfg = default_config()
+  give MacrosConfig(cfg.max_defs, cfg.max_rounds, false)
+}
+
+proc normalize_config(cfg: MacrosConfig) -> MacrosConfig {
+  give MacrosConfig(macros_policy_pkg.normalize_max_defs(cfg.max_defs),
+                    macros_policy_pkg.normalize_max_rounds(cfg.max_rounds),
+                    cfg.allow_empty_body)
+}
+
+proc validate_config(cfg: MacrosConfig) -> MacrosConfigResult[bool] {
+  let nc = normalize_config(cfg)
+  if nc.max_defs <= 0 { give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig) }
+  if macros_validate_pkg.valid_rounds(nc.max_rounds) == false { give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig) }
+  give MacrosConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: MacrosConfig, macros: MacroSet) -> MacrosConfigResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is MacrosConfigResult.Err { give MacrosConfigResult.Err(vr.error) }
+  if macros_runtime_pkg.runtime_status() == false { give MacrosConfigResult.Err(MacrosConfigError.Internal) }
+  if macros.defs.len > cfg.max_defs { give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig) }
+  give MacrosConfigResult.Ok(true)
+}
+
+proc runtime_info() -> MacrosRuntimeInfo {
+  give MacrosRuntimeInfo(macros_runtime_pkg.runtime_name(),
+                         macros_runtime_pkg.runtime_version(),
+                         macros_runtime_pkg.supports_diagnostics(),
+                         macros_runtime_pkg.supports_multi_round_expand())
+}
+
+proc define_checked(macros: MacroSet, name: string, body: string, cfg: MacrosConfig) -> MacrosConfigResult[MacroSet] {
+  let nc = normalize_config(cfg)
+  if macros_validate_pkg.valid_name(name) == false { give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig) }
+  if body.len == 0 && nc.allow_empty_body == false { give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig) }
+  if macros.defs.len >= nc.max_defs && has_macro(macros, name) == false {
+    give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig)
+  }
+  give MacrosConfigResult.Ok(define(macros, name, body))
+}
+
+proc expand_times_checked(macros: MacroSet, text: string, rounds: int, cfg: MacrosConfig) -> MacrosConfigResult[string] {
+  let nc = normalize_config(cfg)
+  if macros_validate_pkg.valid_rounds(rounds) == false { give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig) }
+  if rounds > nc.max_rounds { give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig) }
+  give MacrosConfigResult.Ok(expand_times(macros, text, rounds))
+}
+
+proc capabilities() -> [string] {
+  give ["define", "expand", "merge", "config", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-MACRO0001" { give "invalid macros configuration or arguments" }
+  give "macros diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "check macro names and limits"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc api_version() -> string {
+  give "v1"
 }
 
 proc ready() -> bool {

@@ -1,6 +1,12 @@
 <<<
 mod.vit
 package vitte/catalog
+version: 2.0.0
+tier: index-core
+purpose:
+  Index de catalogues et metadonnees d'entrees.
+  Validation deterministic, query simple et stats stables.
+  API stable versionnee avec diagnostics.
 >>>
 
 space vitte/catalog
@@ -20,6 +26,8 @@ pick CatalogError {
   Unsupported
   Timeout
   Internal
+  NotFound
+  CapacityExceeded
 }
 
 pick CatalogResult[T] {
@@ -27,8 +35,68 @@ pick CatalogResult[T] {
   Err(error: CatalogError)
 }
 
+form CatalogEntry {
+  id: string
+  name: string
+  tags: [string]
+  active: bool
+}
+
+form Catalog {
+  config: CatalogConfig
+  entries: [CatalogEntry]
+}
+
+form CatalogStats {
+  total: int
+  active: int
+  tags: int
+  fill_percent: int
+}
+
+form CatalogRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_indexing: bool
+  supports_query: bool
+  supports_diagnostics: bool
+}
+
+form CatalogHealth {
+  ok: bool
+  code: string
+  fill_percent: int
+}
+
+proc contains_string(values: [string], value: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= values.len { break }
+    if values[i] == value { give true }
+    i = i + 1
+  }
+  give false
+}
+
 proc default_config() -> CatalogConfig {
   give CatalogConfig("default", true, catalog_policy_pkg.default_max_entries())
+}
+
+proc strict_config() -> CatalogConfig {
+  let cfg = default_config()
+  give CatalogConfig(cfg.catalog_name, true, cfg.max_entries)
+}
+
+proc with_max_entries(cfg: CatalogConfig, max_entries: int) -> CatalogConfig {
+  give CatalogConfig(cfg.catalog_name,
+                     cfg.strict,
+                     catalog_policy_pkg.normalize_max_entries(max_entries))
+}
+
+proc with_name(cfg: CatalogConfig, catalog_name: string) -> CatalogConfig {
+  let name = catalog_runtime_pkg.sanitize(catalog_name, catalog_policy_pkg.max_catalog_name_len())
+  give CatalogConfig(name, cfg.strict, cfg.max_entries)
 }
 
 proc validate_config(cfg: CatalogConfig) -> CatalogResult[bool] {
@@ -41,35 +109,363 @@ proc validate_config(cfg: CatalogConfig) -> CatalogResult[bool] {
   give CatalogResult.Ok(true)
 }
 
+proc catalog_new(cfg: CatalogConfig) -> CatalogResult[Catalog] {
+  let vr: CatalogResult[bool] = validate_config(cfg)
+  when vr is CatalogResult.Err { give CatalogResult.Err(vr.error) }
+  give CatalogResult.Ok(Catalog(cfg, []))
+}
+
+proc entry_new(id: string, name: string, tags: [string]) -> CatalogResult[CatalogEntry] {
+  let idv = catalog_runtime_pkg.sanitize(id, catalog_policy_pkg.max_entry_id_len())
+  let namev = catalog_runtime_pkg.sanitize(name, catalog_policy_pkg.max_entry_name_len())
+
+  if catalog_validate_pkg.valid_entry_id(idv, catalog_policy_pkg.max_entry_id_len()) == false {
+    give CatalogResult.Err(CatalogError.InvalidConfig)
+  }
+  if catalog_validate_pkg.valid_entry_name(namev, catalog_policy_pkg.max_entry_name_len()) == false {
+    give CatalogResult.Err(CatalogError.InvalidConfig)
+  }
+
+  let out_tags: [string] = []
+  let i: int = 0
+  loop {
+    if i >= tags.len { break }
+    if out_tags.len >= catalog_policy_pkg.max_tags_per_entry() { break }
+
+    let t = catalog_runtime_pkg.sanitize(tags[i], catalog_policy_pkg.max_tag_len())
+    if catalog_validate_pkg.valid_tag(t, catalog_policy_pkg.max_tag_len()) {
+      if contains_string(out_tags, t) == false {
+        out_tags = out_tags.push(t)
+      }
+    }
+    i = i + 1
+  }
+
+  give CatalogResult.Ok(CatalogEntry(idv, namev, out_tags, true))
+}
+
+proc count(c: Catalog) -> int {
+  give c.entries.len
+}
+
+proc active_count(c: Catalog) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= c.entries.len { break }
+    if c.entries[i].active { n = n + 1 }
+    i = i + 1
+  }
+  give n
+}
+
+proc contains_id(c: Catalog, id: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= c.entries.len { break }
+    if c.entries[i].id == id { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc find(c: Catalog, id: string) -> CatalogResult[CatalogEntry] {
+  let i: int = 0
+  loop {
+    if i >= c.entries.len { break }
+    if c.entries[i].id == id {
+      give CatalogResult.Ok(c.entries[i])
+    }
+    i = i + 1
+  }
+  give CatalogResult.Err(CatalogError.NotFound)
+}
+
+proc add(c: Catalog, item: CatalogEntry) -> CatalogResult[Catalog] {
+  if count(c) >= c.config.max_entries { give CatalogResult.Err(CatalogError.CapacityExceeded) }
+  if contains_id(c, item.id) { give CatalogResult.Err(CatalogError.InvalidConfig) }
+  give CatalogResult.Ok(Catalog(c.config, c.entries.push(item)))
+}
+
+proc upsert(c: Catalog, item: CatalogEntry) -> CatalogResult[Catalog] {
+  let out: [CatalogEntry] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= c.entries.len { break }
+    if c.entries[i].id == item.id {
+      out = out.push(item)
+      found = true
+    } else {
+      out = out.push(c.entries[i])
+    }
+    i = i + 1
+  }
+
+  if found {
+    give CatalogResult.Ok(Catalog(c.config, out))
+  }
+
+  if out.len >= c.config.max_entries {
+    give CatalogResult.Err(CatalogError.CapacityExceeded)
+  }
+
+  give CatalogResult.Ok(Catalog(c.config, out.push(item)))
+}
+
+proc remove(c: Catalog, id: string) -> CatalogResult[Catalog] {
+  let out: [CatalogEntry] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= c.entries.len { break }
+    if c.entries[i].id == id {
+      found = true
+    } else {
+      out = out.push(c.entries[i])
+    }
+    i = i + 1
+  }
+
+  if !found { give CatalogResult.Err(CatalogError.NotFound) }
+  give CatalogResult.Ok(Catalog(c.config, out))
+}
+
+proc deactivate(c: Catalog, id: string) -> CatalogResult[Catalog] {
+  let out: [CatalogEntry] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= c.entries.len { break }
+    let e = c.entries[i]
+    if e.id == id {
+      out = out.push(CatalogEntry(e.id, e.name, e.tags, false))
+      found = true
+    } else {
+      out = out.push(e)
+    }
+    i = i + 1
+  }
+
+  if !found { give CatalogResult.Err(CatalogError.NotFound) }
+  give CatalogResult.Ok(Catalog(c.config, out))
+}
+
+proc query_by_tag(c: Catalog, tag: string) -> [CatalogEntry] {
+  let out: [CatalogEntry] = []
+  let i: int = 0
+  loop {
+    if i >= c.entries.len { break }
+    let e = c.entries[i]
+    if e.active && contains_string(e.tags, tag) {
+      out = out.push(e)
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc list_active(c: Catalog) -> [CatalogEntry] {
+  let out: [CatalogEntry] = []
+  let i: int = 0
+  loop {
+    if i >= c.entries.len { break }
+    if c.entries[i].active {
+      out = out.push(c.entries[i])
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc count_unique_tags(c: Catalog) -> int {
+  let seen: [string] = []
+  let i: int = 0
+  loop {
+    if i >= c.entries.len { break }
+    let e = c.entries[i]
+    let j: int = 0
+    loop {
+      if j >= e.tags.len { break }
+      if contains_string(seen, e.tags[j]) == false {
+        seen = seen.push(e.tags[j])
+      }
+      j = j + 1
+    }
+    i = i + 1
+  }
+  give seen.len
+}
+
+proc fill_percent(c: Catalog) -> int {
+  if c.config.max_entries <= 0 { give 0 }
+  let pct = (count(c) * 100) / c.config.max_entries
+  if pct < 0 { give 0 }
+  if pct > 100 { give 100 }
+  give pct
+}
+
+proc stats(c: Catalog) -> CatalogStats {
+  give CatalogStats(count(c),
+                    active_count(c),
+                    count_unique_tags(c),
+                    fill_percent(c))
+}
+
+proc summary(c: Catalog) -> string {
+  let s = stats(c)
+  give "name=" + c.config.catalog_name +
+       ",total=" + s.total.to_string() +
+       ",active=" + s.active.to_string() +
+       ",tags=" + s.tags.to_string() +
+       ",fill=" + s.fill_percent.to_string()
+}
+
+proc catalog_validate_code(c: Catalog) -> string {
+  let vr = validate_config(c.config)
+  when vr is CatalogResult.Err { give "invalid-config" }
+
+  if c.entries.len > c.config.max_entries { give "capacity-exceeded" }
+
+  let i: int = 0
+  loop {
+    if i >= c.entries.len { break }
+    let e = c.entries[i]
+    if catalog_validate_pkg.valid_entry_id(e.id, catalog_policy_pkg.max_entry_id_len()) == false { give "invalid-entry-id" }
+    if catalog_validate_pkg.valid_entry_name(e.name, catalog_policy_pkg.max_entry_name_len()) == false { give "invalid-entry-name" }
+    i = i + 1
+  }
+
+  give "ok"
+}
+
+proc catalog_validate(c: Catalog) -> bool {
+  give catalog_validate_code(c) == "ok"
+}
+
+proc catalog_normalize(c: Catalog) -> Catalog {
+  let cfg = with_name(with_max_entries(c.config, c.config.max_entries), c.config.catalog_name)
+
+  let out: [CatalogEntry] = []
+  let i: int = 0
+  loop {
+    if i >= c.entries.len { break }
+    if out.len >= cfg.max_entries { break }
+
+    let e = c.entries[i]
+    let id = catalog_runtime_pkg.sanitize(e.id, catalog_policy_pkg.max_entry_id_len())
+    let name = catalog_runtime_pkg.sanitize(e.name, catalog_policy_pkg.max_entry_name_len())
+
+    if catalog_validate_pkg.valid_entry_id(id, catalog_policy_pkg.max_entry_id_len()) &&
+       catalog_validate_pkg.valid_entry_name(name, catalog_policy_pkg.max_entry_name_len()) {
+      out = out.push(CatalogEntry(id, name, e.tags, e.active))
+    }
+    i = i + 1
+  }
+
+  give Catalog(cfg, out)
+}
+
+proc catalog_runtime_info() -> CatalogRuntimeInfo {
+  give CatalogRuntimeInfo(catalog_runtime_pkg.runtime_name(),
+                          catalog_runtime_pkg.runtime_version(),
+                          true,
+                          catalog_runtime_pkg.supports_indexing(),
+                          catalog_runtime_pkg.supports_query(),
+                          catalog_runtime_pkg.supports_diagnostics())
+}
+
+proc catalog_health(c: Catalog) -> CatalogHealth {
+  let pct = fill_percent(c)
+  if catalog_validate_pkg.valid_percent(pct) == false {
+    give CatalogHealth(false, "invalid-fill", 0)
+  }
+  if pct >= catalog_policy_pkg.warn_entries_percent() {
+    give CatalogHealth(false, "near-capacity", pct)
+  }
+  give CatalogHealth(true, "ok", pct)
+}
+
 proc healthcheck(cfg: CatalogConfig) -> CatalogResult[bool] {
   let vr: CatalogResult[bool] = validate_config(cfg)
   when vr is CatalogResult.Err { give CatalogResult.Err(vr.error) }
   if catalog_runtime_pkg.runtime_status() == false {
     give CatalogResult.Err(CatalogError.Internal)
   }
+  if catalog_runtime_pkg.supports_indexing() == false {
+    give CatalogResult.Err(CatalogError.Internal)
+  }
   give CatalogResult.Ok(true)
 }
 
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_max_entries,with_name,validate_config,catalog_new,entry_new,count,active_count,contains_id,find,add,upsert,remove,deactivate,query_by_tag,list_active,stats,summary,catalog_validate_code,catalog_validate,catalog_normalize,catalog_runtime_info,catalog_health,healthcheck,stable_api_surface_hash,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
 proc version() -> string {
-  give "v1"
+  give "v2"
 }
 
 proc capabilities() -> [string] {
-  give ["catalog-index", "strict-mode", "entry-budget"]
+  give ["catalog-index", "query-by-tag", "strict-mode", "entry-budget", catalog_runtime_pkg.runtime_name()]
 }
 
 proc diagnostics_message(code: string) -> string {
   if code == "VITTE-CAT0001" { give "invalid catalog configuration" }
+  if code == "VITTE-CAT0002" { give "entry not found" }
+  if code == "VITTE-CAT0003" { give "catalog capacity exceeded" }
   give "catalog diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
-  if code == "VITTE-CAT0001" { give "set non-empty catalog_name and valid max_entries" }
+  if code == "VITTE-CAT0001" { give "set valid catalog_name and max_entries" }
+  if code == "VITTE-CAT0002" { give "check entry id before remove/deactivate" }
+  if code == "VITTE-CAT0003" { give "increase max_entries or compact catalog" }
   give "review catalog configuration"
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if catalog_runtime_pkg.runtime_status() == false { give false }
+
+  let cfg = strict_config()
+  let vr = validate_config(cfg)
+  when vr is CatalogResult.Err { give false }
+
+  let cr = catalog_new(cfg)
+  when cr is CatalogResult.Err { give false }
+
+  let er = entry_new("id-1", "entry one", ["core", "stable"])
+  when er is CatalogResult.Err { give false }
+
+  let ar = add(cr.value, er.value)
+  when ar is CatalogResult.Err { give false }
+
+  if contains_id(ar.value, "id-1") == false { give false }
+  if query_by_tag(ar.value, "core").len != 1 { give false }
+
+  let n = catalog_normalize(ar.value)
+  if catalog_validate(n) == false { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
+  give true
 }
 
 proc package_meta() -> string {
@@ -77,7 +473,7 @@ proc package_meta() -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give stable_ready()
 }
 
 <<< ROLE-CONTRACT
@@ -91,5 +487,6 @@ input_contract: Config explicite et typable
 output_contract: Validation stable et predictible
 boundary: Aucun import legacy; aliases explicites uniquement
 compat_policy: additive-only
-api_version: v1
+api_version: v2
+versioning_note: stable_api_version=2.0.0
 >>>

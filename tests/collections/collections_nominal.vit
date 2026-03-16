@@ -1,0 +1,67 @@
+use vitte/collections as collections_pkg
+
+proc eq_str(a: string, b: string) -> bool {
+  give a == b
+}
+
+entry main at core/app {
+  let cfg = collections_pkg.strict_config()
+  let cv: collections_pkg.CollectionsResult[bool] = collections_pkg.validate_config(cfg)
+  when cv is collections_pkg.CollectionsResult.Err {
+    return 1
+  }
+
+  let xs = collections_pkg.vec_push(collections_pkg.vec_push(collections_pkg.vec_new[int](), 10), 20)
+  let g: collections_pkg.CollectionsResult[int] = collections_pkg.vec_get_checked(xs, 1)
+  when g is collections_pkg.CollectionsResult.Err {
+    return 1
+  }
+  if g.value != 20 {
+    return 1
+  }
+
+  let m0: collections_pkg.Map[string, int] = collections_pkg.map_new()
+  let m1 = collections_pkg.map_put(m0, "k", 7, eq_str)
+  let mg: collections_pkg.CollectionsResult[int] = collections_pkg.map_get_checked(m1, "k", eq_str)
+  when mg is collections_pkg.CollectionsResult.Err {
+    return 1
+  }
+
+  let s0: collections_pkg.Set[string] = collections_pkg.set_new()
+  let sr: collections_pkg.CollectionsResult[collections_pkg.Set[string]] = collections_pkg.set_insert_checked(s0, "x", eq_str, cfg)
+  when sr is collections_pkg.CollectionsResult.Err {
+    return 1
+  }
+
+  let rb0: collections_pkg.CollectionsResult[collections_pkg.RingBuffer[int]] = collections_pkg.ring_new_checked[int](3, cfg)
+  when rb0 is collections_pkg.CollectionsResult.Err {
+    return 1
+  }
+
+  let rb1: collections_pkg.CollectionsResult[collections_pkg.RingBuffer[int]] = collections_pkg.ring_push_checked(rb0.value, 1, cfg)
+  when rb1 is collections_pkg.CollectionsResult.Err {
+    return 1
+  }
+
+  let ro: collections_pkg.CollectionsResult[collections_pkg.Rope] = collections_pkg.rope_append_checked(collections_pkg.rope_new(), "hello", cfg)
+  when ro is collections_pkg.CollectionsResult.Err {
+    return 1
+  }
+
+  let snap = collections_pkg.snapshot_new(xs, m1, sr.value, rb1.value, ro.value)
+  let norm = collections_pkg.collections_normalize(snap, cfg)
+  if collections_pkg.collections_validate(norm, cfg) == false {
+    return 1
+  }
+
+  let h = collections_pkg.collections_health(norm, cfg)
+  if h.ok == false {
+    return 1
+  }
+
+  if collections_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

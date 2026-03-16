@@ -1,0 +1,39 @@
+use vitte/auth as auth_pkg
+
+entry main at core/app {
+  let cfg = auth_pkg.strict_config()
+  let vr: auth_pkg.AuthResult[bool] = auth_pkg.validate_config(cfg)
+  when vr is auth_pkg.AuthResult.Err {
+    return 1
+  }
+
+  let p = auth_pkg.authenticate_with_config(auth_pkg.Credentials("admin", "admin123456", "000000"), cfg)
+  if p.role != auth_pkg.AuthRole.Admin {
+    return 1
+  }
+
+  let s = auth_pkg.issue_token_with_config(p, cfg)
+  if s.token.len == 0 {
+    return 1
+  }
+
+  if auth_pkg.validate_with_config(s, 1, cfg) != auth_pkg.AuthError.None {
+    return 1
+  }
+
+  let d = auth_pkg.decide_access_with_config(s, auth_pkg.AuthRole.Admin, 1, cfg)
+  if d.allowed == false {
+    return 1
+  }
+
+  let h = auth_pkg.auth_health(cfg)
+  if h.runtime_ok == false {
+    return 1
+  }
+
+  if auth_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

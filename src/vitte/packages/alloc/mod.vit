@@ -103,6 +103,10 @@ purpose:
 
 space vitte/alloc
 
+use vitte/alloc/internal/runtime as alloc_runtime_pkg
+use vitte/alloc/internal/validate as alloc_validate_pkg
+use vitte/alloc/internal/policy as alloc_policy_pkg
+
 <<< ============================================================
     ENUMERATIONS
 ============================================================ >>>
@@ -271,6 +275,21 @@ form BenchReport {
   throughput: int
 }
 
+form AllocHealthSummary {
+  ok: bool
+  code: string
+  pressure_percent: int
+  fragmentation_percent: int
+}
+
+form AllocRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_canaries: bool
+  supports_poison: bool
+}
+
 <<<
   Invariants:
     capacity >= 0
@@ -307,7 +326,7 @@ proc state_new(kind: AllocatorKind, capacity: int) -> AllocState {
 }
 
 proc stable_api_version() -> string {
-  give "2.1.0"
+  give "2.2.0"
 }
 
 proc api_version() -> string {
@@ -1518,6 +1537,71 @@ proc experimental_stats(st: AllocState) -> string {
        ", capacity=" + st.capacity.to_string() + ")"
 }
 
+proc alloc_validate_code(st: AllocState) -> string {
+  if alloc_validate_pkg.valid_capacity(st.capacity, alloc_policy_pkg.max_capacity()) == false { give "ALLOC-CAPACITY" }
+  if alloc_validate_pkg.valid_used(st.used, st.capacity) == false { give "ALLOC-USED" }
+  if alloc_validate_pkg.valid_high_watermark(st.high_watermark, st.used, st.capacity) == false { give "ALLOC-HWM" }
+  if alloc_validate_pkg.valid_non_negative(st.stats.allocated) == false { give "ALLOC-STATS-ALLOCATED" }
+  if alloc_validate_pkg.valid_non_negative(st.stats.released) == false { give "ALLOC-STATS-RELEASED" }
+  if alloc_validate_pkg.valid_non_negative(st.stats.alloc_calls) == false { give "ALLOC-STATS-ALLOC-CALLS" }
+  if alloc_validate_pkg.valid_non_negative(st.stats.free_calls) == false { give "ALLOC-STATS-FREE-CALLS" }
+  if alloc_validate_pkg.valid_pressure(pressure_percent(st)) == false { give "ALLOC-PRESSURE" }
+  give "ALLOC-OK"
+}
+
+proc alloc_validate(st: AllocState) -> bool {
+  give alloc_validate_code(st) == "ALLOC-OK"
+}
+
+proc alloc_normalize(st: AllocState) -> AllocState {
+  let cap = alloc_policy_pkg.normalize_capacity(st.capacity)
+  let used = st.used
+  if used < 0 { used = 0 }
+  if used > cap { used = cap }
+  let high = st.high_watermark
+  if high < used { high = used }
+  if high > cap { high = cap }
+
+  let allocated = st.stats.allocated
+  if allocated < 0 { allocated = 0 }
+  let released = st.stats.released
+  if released < 0 { released = 0 }
+  let alloc_calls = st.stats.alloc_calls
+  if alloc_calls < 0 { alloc_calls = 0 }
+  let free_calls = st.stats.free_calls
+  if free_calls < 0 { free_calls = 0 }
+
+  give AllocState(
+    st.kind,
+    cap,
+    used,
+    high,
+    AllocStats(allocated, released, alloc_calls, free_calls)
+  )
+}
+
+proc runtime_info() -> AllocRuntimeInfo {
+  give AllocRuntimeInfo(
+    alloc_runtime_pkg.runtime_name(),
+    alloc_runtime_pkg.runtime_version(),
+    alloc_runtime_pkg.supports_no_std(),
+    alloc_runtime_pkg.supports_canaries(),
+    alloc_runtime_pkg.supports_poison()
+  )
+}
+
+proc stable_health(runtime: StableAllocRuntime) -> AllocHealthSummary {
+  let base = alloc_validate_code(runtime.allocator)
+  let p = pressure_percent(runtime.allocator)
+  let f = runtime.metrics.fragmentation_percent
+  if f < 0 { f = 0 }
+  if f > 100 { f = 100 }
+  if base != "ALLOC-OK" { give AllocHealthSummary(false, base, p, f) }
+  if p >= alloc_policy_pkg.panic_threshold_percent() { give AllocHealthSummary(false, "ALLOC-HIGH-PRESSURE", p, f) }
+  if f >= 90 { give AllocHealthSummary(false, "ALLOC-HIGH-FRAGMENTATION", p, f) }
+  give AllocHealthSummary(true, "ALLOC-OK", p, f)
+}
+
 <<< ============================================================
     GLOBAL POLICY
 ============================================================ >>>
@@ -1553,6 +1637,20 @@ proc package_meta() -> string {
 }
 
 proc ready() -> bool {
+  if alloc_runtime_pkg.runtime_status() == false { give false }
+  if alloc_policy_pkg.default_capacity() < 1 { give false }
+  if alloc_policy_pkg.default_alignment() < 1 { give false }
+  if alloc_policy_pkg.max_alignment() < alloc_policy_pkg.default_alignment() { give false }
+  if no_std_fallback_enabled() != alloc_runtime_pkg.supports_no_std() { give false }
+  if alloc_validate_pkg.valid_alignment_value(alloc_policy_pkg.default_alignment()) == false { give false }
+
+  let st = alloc_normalize(state_new(default_allocator_kind(), alloc_policy_pkg.default_capacity()))
+  if alloc_validate(st) == false { give false }
+  let rt = stable_runtime_new(default_allocator_kind(), alloc_policy_pkg.default_capacity())
+  let h = stable_health(rt)
+  if h.ok == false && h.code != "ALLOC-HIGH-FRAGMENTATION" && h.code != "ALLOC-HIGH-PRESSURE" {
+    give false
+  }
   give true
 }
 
@@ -1583,7 +1681,7 @@ boundary:
   - Ne remplace pas le runtime.
 
 versioning:
-  api_version: 2.1.0
+  api_version: 2.2.0
   stable_prefix: stable_
   experimental_prefix: experimental_
   breaking_change_policy: major-only
@@ -1606,3 +1704,9 @@ guarantees:
   - No hidden global
   - no_std compatible
 >>>
+
+
+
+
+
+

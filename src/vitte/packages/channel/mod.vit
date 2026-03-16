@@ -1,11 +1,21 @@
 <<<
 mod.vit
 package vitte/channel
+version: 2.0.0
+tier: concurrency-core
+purpose:
+  Communication concurrente via canaux immuables.
+  Modes bounded/unbounded/broadcast avec diagnostics.
+  API stable versionnee et deterministic.
 >>>
 
 space vitte/channel
 
 share all
+
+use vitte/channel/internal/runtime as channel_runtime_pkg
+use vitte/channel/internal/validate as channel_validate_pkg
+use vitte/channel/internal/policy as channel_policy_pkg
 
 pick ChannelMode {
   Bounded
@@ -13,27 +23,114 @@ pick ChannelMode {
   Broadcast
 }
 
+pick ChannelError {
+  None
+  Closed
+  InvalidConfig
+  InvalidMessage
+  Empty
+  Saturated
+  RuntimeUnavailable
+}
+
+pick ChannelResult[T] {
+  Ok(value: T)
+  Err(error: ChannelError)
+}
+
 form Channel {
   mode: ChannelMode
   capacity: int
   queue: [string]
+  messages: [string]
   dropped: int
   subscribers: int
   closed: bool
+  sent: int
+  received: int
+}
+
+form ChannelConfig {
+  strict: bool
+  timeout_ticks: int
+  max_message_len: int
+}
+
+form ChannelStats {
+  len: int
+  dropped: int
+  subscribers: int
+  sent: int
+  received: int
+  fill_percent: int
+}
+
+form ChannelRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_broadcast: bool
+  supports_timeouts: bool
+  supports_diagnostics: bool
+}
+
+form ChannelHealth {
+  ok: bool
+  code: string
+  fill_percent: int
+  dropped: int
+}
+
+proc default_config() -> ChannelConfig {
+  give ChannelConfig(false,
+                     channel_policy_pkg.default_timeout_ticks(),
+                     channel_policy_pkg.max_message_len())
+}
+
+proc strict_config() -> ChannelConfig {
+  let cfg = default_config()
+  give ChannelConfig(true, cfg.timeout_ticks, cfg.max_message_len)
+}
+
+proc with_timeout_ticks(cfg: ChannelConfig, timeout_ticks: int) -> ChannelConfig {
+  give ChannelConfig(cfg.strict,
+                     channel_policy_pkg.normalize_timeout_ticks(timeout_ticks),
+                     cfg.max_message_len)
+}
+
+proc with_max_message_len(cfg: ChannelConfig, max_message_len: int) -> ChannelConfig {
+  give ChannelConfig(cfg.strict,
+                     cfg.timeout_ticks,
+                     channel_policy_pkg.normalize_message_len(max_message_len))
+}
+
+proc validate_config(cfg: ChannelConfig) -> ChannelResult[bool] {
+  if channel_validate_pkg.valid_timeout_ticks(cfg.timeout_ticks, channel_policy_pkg.max_timeout_ticks()) == false {
+    give ChannelResult.Err(ChannelError.InvalidConfig)
+  }
+  if channel_validate_pkg.valid_non_negative(cfg.max_message_len) == false {
+    give ChannelResult.Err(ChannelError.InvalidConfig)
+  }
+  give ChannelResult.Ok(true)
 }
 
 proc channel_bounded(capacity: int) -> Channel {
-  let cap = capacity
-  if cap <= 0 { cap = 1 }
-  give Channel(ChannelMode.Bounded, cap, [], 0, 1, false)
+  let cap = channel_policy_pkg.normalize_capacity(capacity)
+  give Channel(ChannelMode.Bounded, cap, [], [], 0, 1, false, 0, 0)
 }
 
 proc channel_unbounded() -> Channel {
-  give Channel(ChannelMode.Unbounded, 0, [], 0, 1, false)
+  give Channel(ChannelMode.Unbounded, 0, [], [], 0, 1, false, 0, 0)
 }
 
 proc channel_broadcast() -> Channel {
-  give Channel(ChannelMode.Broadcast, 0, [], 0, 0, false)
+  give Channel(ChannelMode.Broadcast, 0, [], [], 0, 0, false, 0, 0)
+}
+
+proc channel_bounded_with_config(capacity: int, cfg: ChannelConfig) -> ChannelResult[Channel] {
+  let vr = validate_config(cfg)
+  when vr is ChannelResult.Err { give ChannelResult.Err(vr.error) }
+  give ChannelResult.Ok(channel_bounded(capacity))
 }
 
 proc drop_first(queue: [string]) -> [string] {
@@ -47,6 +144,12 @@ proc drop_first(queue: [string]) -> [string] {
     i = i + 1
   }
   give out
+}
+
+proc mode_name(mode: ChannelMode) -> string {
+  when mode is ChannelMode.Bounded { give "bounded" }
+  when mode is ChannelMode.Unbounded { give "unbounded" }
+  give "broadcast"
 }
 
 proc is_empty(c: Channel) -> bool {
@@ -75,7 +178,8 @@ proc subscribers(c: Channel) -> int {
 
 proc subscribe(c: Channel) -> Channel {
   when c.mode is ChannelMode.Broadcast {
-    give Channel(c.mode, c.capacity, c.queue, c.dropped, c.subscribers + 1, c.closed)
+    let s = channel_policy_pkg.normalize_subscribers(c.subscribers + 1)
+    give Channel(c.mode, c.capacity, c.queue, c.messages, c.dropped, s, c.closed, c.sent, c.received)
   }
   give c
 }
@@ -83,8 +187,15 @@ proc subscribe(c: Channel) -> Channel {
 proc unsubscribe(c: Channel) -> Channel {
   when c.mode is ChannelMode.Broadcast {
     let s = c.subscribers - 1
-    if s < 0 { s = 0 }
-    give Channel(c.mode, c.capacity, c.queue, c.dropped, s, c.closed)
+    give Channel(c.mode,
+                 c.capacity,
+                 c.queue,
+                 c.messages,
+                 c.dropped,
+                 channel_policy_pkg.normalize_subscribers(s),
+                 c.closed,
+                 c.sent,
+                 c.received)
   }
   give c
 }
@@ -95,6 +206,8 @@ proc can_send(c: Channel) -> bool {
 
 proc send(c: Channel, message: string) -> Channel {
   if c.closed { give c }
+
+  let msg = channel_runtime_pkg.sanitize(message, channel_policy_pkg.max_message_len())
 
   let queue = c.queue
   let dropped = c.dropped
@@ -110,8 +223,32 @@ proc send(c: Channel, message: string) -> Channel {
     if c.subscribers == 0 { give c }
   }
 
-  queue = queue.push(message)
-  give Channel(c.mode, c.capacity, queue, dropped, c.subscribers, c.closed)
+  queue = queue.push(msg)
+  give Channel(c.mode,
+               c.capacity,
+               queue,
+               queue,
+               dropped,
+               c.subscribers,
+               c.closed,
+               c.sent + 1,
+               c.received)
+}
+
+proc send_checked(c: Channel, message: string, cfg: ChannelConfig) -> ChannelResult[Channel] {
+  let vr = validate_config(cfg)
+  when vr is ChannelResult.Err { give ChannelResult.Err(vr.error) }
+
+  if c.closed { give ChannelResult.Err(ChannelError.Closed) }
+  if channel_validate_pkg.valid_message(message, cfg.max_message_len) == false {
+    give ChannelResult.Err(ChannelError.InvalidMessage)
+  }
+
+  if c.mode == ChannelMode.Bounded && c.capacity > 0 && c.queue.len >= c.capacity && cfg.strict {
+    give ChannelResult.Err(ChannelError.Saturated)
+  }
+
+  give ChannelResult.Ok(send(c, message))
 }
 
 proc peek(c: Channel) -> string {
@@ -119,25 +256,225 @@ proc peek(c: Channel) -> string {
   give c.queue[0]
 }
 
+proc recv(c: Channel) -> ChannelResult[string] {
+  if c.queue.len == 0 { give ChannelResult.Err(ChannelError.Empty) }
+  give ChannelResult.Ok(c.queue[0])
+}
+
 proc pop(c: Channel) -> Channel {
   if c.queue.len == 0 { give c }
-  give Channel(c.mode, c.capacity, drop_first(c.queue), c.dropped, c.subscribers, c.closed)
+  let next = drop_first(c.queue)
+  give Channel(c.mode,
+               c.capacity,
+               next,
+               next,
+               c.dropped,
+               c.subscribers,
+               c.closed,
+               c.sent,
+               c.received + 1)
 }
 
 proc close(c: Channel) -> Channel {
-  give Channel(c.mode, c.capacity, c.queue, c.dropped, c.subscribers, true)
+  give Channel(c.mode, c.capacity, c.queue, c.messages, c.dropped, c.subscribers, true, c.sent, c.received)
+}
+
+proc channel_stats(c: Channel) -> ChannelStats {
+  let pct = 0
+  if c.capacity > 0 {
+    pct = (c.queue.len * 100) / c.capacity
+    if pct < 0 { pct = 0 }
+    if pct > 100 { pct = 100 }
+  }
+  give ChannelStats(c.queue.len, c.dropped, c.subscribers, c.sent, c.received, pct)
+}
+
+proc channel_validate_code(c: Channel) -> string {
+  if c.mode == ChannelMode.Bounded {
+    if channel_validate_pkg.valid_capacity(c.capacity,
+                                           channel_policy_pkg.min_capacity(),
+                                           channel_policy_pkg.max_capacity()) == false {
+      give "invalid-capacity"
+    }
+  }
+
+  if channel_validate_pkg.valid_subscribers(c.subscribers, channel_policy_pkg.max_subscribers()) == false {
+    give "invalid-subscribers"
+  }
+  if channel_validate_pkg.valid_non_negative(c.dropped) == false { give "invalid-dropped" }
+  if channel_validate_pkg.valid_non_negative(c.sent) == false { give "invalid-sent" }
+  if channel_validate_pkg.valid_non_negative(c.received) == false { give "invalid-received" }
+
+  let i: int = 0
+  loop {
+    if i >= c.queue.len { break }
+    if channel_validate_pkg.valid_message(c.queue[i], channel_policy_pkg.max_message_len()) == false {
+      give "invalid-message"
+    }
+    i = i + 1
+  }
+
+  give "ok"
+}
+
+proc channel_validate(c: Channel) -> bool {
+  give channel_validate_code(c) == "ok"
+}
+
+proc channel_normalize(c: Channel) -> Channel {
+  let cap = c.capacity
+  if c.mode == ChannelMode.Bounded {
+    cap = channel_policy_pkg.normalize_capacity(c.capacity)
+  }
+
+  let queue: [string] = []
+  let i: int = 0
+  loop {
+    if i >= c.queue.len { break }
+    let msg = channel_runtime_pkg.sanitize(c.queue[i], channel_policy_pkg.max_message_len())
+    queue = queue.push(msg)
+    i = i + 1
+    if cap > 0 && queue.len >= cap { break }
+  }
+
+  let dropped = c.dropped
+  if dropped < 0 { dropped = 0 }
+  let sent = c.sent
+  if sent < 0 { sent = 0 }
+  let received = c.received
+  if received < 0 { received = 0 }
+
+  give Channel(c.mode,
+               cap,
+               queue,
+               queue,
+               dropped,
+               channel_policy_pkg.normalize_subscribers(c.subscribers),
+               c.closed,
+               sent,
+               received)
+}
+
+proc channel_runtime_info() -> ChannelRuntimeInfo {
+  give ChannelRuntimeInfo(channel_runtime_pkg.runtime_name(),
+                          channel_runtime_pkg.runtime_version(),
+                          channel_runtime_pkg.supports_no_std(),
+                          channel_runtime_pkg.supports_broadcast(),
+                          channel_runtime_pkg.supports_timeouts(),
+                          channel_runtime_pkg.supports_diagnostics())
+}
+
+proc channel_health(c: Channel) -> ChannelHealth {
+  let st = channel_stats(c)
+  if channel_validate_pkg.valid_percent(st.fill_percent) == false {
+    give ChannelHealth(false, "invalid-fill", 0, c.dropped)
+  }
+  if st.fill_percent >= channel_policy_pkg.warn_queue_percent() {
+    give ChannelHealth(false, "queue-near-capacity", st.fill_percent, c.dropped)
+  }
+  if c.closed && st.len > 0 {
+    give ChannelHealth(false, "closed-with-pending", st.fill_percent, c.dropped)
+  }
+  give ChannelHealth(true, "ok", st.fill_percent, c.dropped)
+}
+
+proc healthcheck(cfg: ChannelConfig) -> ChannelResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is ChannelResult.Err { give ChannelResult.Err(vr.error) }
+  if channel_runtime_pkg.runtime_status() == false { give ChannelResult.Err(ChannelError.RuntimeUnavailable) }
+  give ChannelResult.Ok(true)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_timeout_ticks,with_max_message_len,validate_config,channel_bounded,channel_unbounded,channel_broadcast,channel_bounded_with_config,is_empty,is_closed,len,dropped,dropped_count,subscribers,subscribe,unsubscribe,can_send,send,send_checked,peek,recv,pop,close,channel_stats,channel_validate_code,channel_validate,channel_normalize,channel_runtime_info,channel_health,healthcheck,stats,stable_api_surface_hash,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["bounded", "unbounded", "broadcast", "ttl-like-timeout", "diagnostics", channel_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CHANNEL0001" { give "invalid channel configuration" }
+  if code == "VITTE-CHANNEL0002" { give "invalid or oversized message" }
+  if code == "VITTE-CHANNEL0003" { give "channel is closed" }
+  if code == "VITTE-CHANNEL0004" { give "channel is saturated" }
+  give "channel diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-CHANNEL0001" { give "normalize capacity/timeout/message length" }
+  if code == "VITTE-CHANNEL0002" { give "reduce message size or sanitize payload" }
+  if code == "VITTE-CHANNEL0003" { give "re-open by constructing a fresh channel" }
+  if code == "VITTE-CHANNEL0004" { give "consume with pop/recv or increase bounded capacity" }
+  give "inspect channel stats and health"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc ready() -> bool {
+  if channel_runtime_pkg.runtime_status() == false { give false }
+  let cfg = strict_config()
+  let vr = validate_config(cfg)
+  when vr is ChannelResult.Err { give false }
   give true
 }
 
 proc stats(c: Channel) -> string {
-  give "mode=" + c.mode.to_string() +
-       ";len=" + c.queue.len.to_string() +
-       ";dropped=" + c.dropped.to_string() +
-       ";subs=" + c.subscribers.to_string() +
-       ";closed=" + c.closed.to_string()
+  let s = channel_stats(c)
+  give "mode=" + mode_name(c.mode) +
+       ";len=" + s.len.to_string() +
+       ";dropped=" + s.dropped.to_string() +
+       ";subs=" + s.subscribers.to_string() +
+       ";closed=" + c.closed.to_string() +
+       ";sent=" + s.sent.to_string() +
+       ";recv=" + s.received.to_string()
+}
+
+proc stable_ready() -> bool {
+  if channel_runtime_pkg.runtime_status() == false { give false }
+
+  let cfg = strict_config()
+  let vr = validate_config(cfg)
+  when vr is ChannelResult.Err { give false }
+
+  let c0 = channel_bounded(2)
+  let s1 = send_checked(c0, "m1", cfg)
+  when s1 is ChannelResult.Err { give false }
+
+  let s2 = send_checked(s1.value, "m2", cfg)
+  when s2 is ChannelResult.Err { give false }
+
+  let r = recv(s2.value)
+  when r is ChannelResult.Err { give false }
+
+  let c3 = pop(s2.value)
+  if len(c3) != 1 { give false }
+
+  let n = channel_normalize(c3)
+  if channel_validate(n) == false { give false }
+  if stable_api_surface_hash() <= 0 { give false }
+
+  give true
 }
 
 proc package_meta() -> string {
@@ -154,4 +491,5 @@ role: Communication concurrente via canaux et files immuables
 input_contract: Messages texte et etats Channel explicites
 output_contract: Etats deterministes, observables et interop compatibles
 boundary: Abstraction pure sans scheduling/threading system
+versioning_note: stable_api_version=2.0.0
 >>>

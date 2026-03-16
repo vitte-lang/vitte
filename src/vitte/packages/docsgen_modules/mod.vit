@@ -1,6 +1,12 @@
 <<<
 mod.vit
 package vitte/docsgen_modules
+version: 2.0.0
+tier: docsgen-core
+purpose:
+  Generation de documentation de modules publics.
+  Rendu markdown/json deterministe avec limites policy.
+  API stable versionnee et diagnosticable.
 >>>
 
 space vitte/docsgen_modules
@@ -15,8 +21,36 @@ form DocsgenModulesConfig {
   max_modules: int
 }
 
+form ModuleDoc {
+  name: string
+  summary: string
+  internal: bool
+}
+
+form DocsgenModulesState {
+  config: DocsgenModulesConfig
+  modules: [ModuleDoc]
+}
+
+form DocsgenModulesRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_markdown: bool
+  supports_json: bool
+  supports_diagnostics: bool
+}
+
+form DocsgenModulesHealth {
+  ok: bool
+  code: string
+  pressure_percent: int
+}
+
 pick DocsgenModulesError {
   InvalidConfig
+  InvalidModule
+  TooManyModules
   Unsupported
   Timeout
   Internal
@@ -27,18 +61,166 @@ pick DocsgenModulesResult[T] {
   Err(error: DocsgenModulesError)
 }
 
+proc config_ok(cfg: DocsgenModulesConfig) -> bool {
+  if docsgen_validate_pkg.valid_format(cfg.format) == false { give false }
+  if docsgen_validate_pkg.valid_max_modules(cfg.max_modules) == false { give false }
+  give true
+}
+
 proc default_config() -> DocsgenModulesConfig {
   give DocsgenModulesConfig(docsgen_policy_pkg.default_format(), false, 500)
 }
 
+proc strict_config() -> DocsgenModulesConfig {
+  let cfg = default_config()
+  give DocsgenModulesConfig(cfg.format, false, cfg.max_modules)
+}
+
+proc with_max_modules(cfg: DocsgenModulesConfig, max_modules: int) -> DocsgenModulesConfig {
+  give DocsgenModulesConfig(cfg.format,
+                            cfg.include_internal,
+                            docsgen_policy_pkg.normalize_max_modules(max_modules))
+}
+
+proc with_format(cfg: DocsgenModulesConfig, format: string) -> DocsgenModulesConfig {
+  give DocsgenModulesConfig(format,
+                            cfg.include_internal,
+                            cfg.max_modules)
+}
+
 proc validate_config(cfg: DocsgenModulesConfig) -> DocsgenModulesResult[bool] {
-  if docsgen_validate_pkg.valid_format(cfg.format) == false {
-    give DocsgenModulesResult.Err(DocsgenModulesError.InvalidConfig)
-  }
-  if docsgen_validate_pkg.valid_max_modules(cfg.max_modules) == false {
+  if config_ok(cfg) == false {
     give DocsgenModulesResult.Err(DocsgenModulesError.InvalidConfig)
   }
   give DocsgenModulesResult.Ok(true)
+}
+
+proc validate_config_code(cfg: DocsgenModulesConfig) -> string {
+  if config_ok(cfg) == false { give "invalid-config" }
+  give "ok"
+}
+
+proc normalize_config(cfg: DocsgenModulesConfig) -> DocsgenModulesConfig {
+  let format = cfg.format
+  if docsgen_validate_pkg.valid_format(format) == false {
+    format = docsgen_policy_pkg.default_format()
+  }
+  give DocsgenModulesConfig(format,
+                            cfg.include_internal,
+                            docsgen_policy_pkg.normalize_max_modules(cfg.max_modules))
+}
+
+proc state_new(cfg: DocsgenModulesConfig) -> DocsgenModulesResult[DocsgenModulesState] {
+  let vr = validate_config(cfg)
+  when vr is DocsgenModulesResult.Err { give DocsgenModulesResult.Err(vr.error) }
+  give DocsgenModulesResult.Ok(DocsgenModulesState(cfg, []))
+}
+
+proc module_doc(name: string, summary: string, internal: bool) -> DocsgenModulesResult[ModuleDoc] {
+  if docsgen_validate_pkg.valid_module_name(name, docsgen_policy_pkg.max_module_name_len()) == false {
+    give DocsgenModulesResult.Err(DocsgenModulesError.InvalidModule)
+  }
+  give DocsgenModulesResult.Ok(ModuleDoc(name, summary, internal))
+}
+
+proc add_module(st: DocsgenModulesState, m: ModuleDoc) -> DocsgenModulesResult[DocsgenModulesState] {
+  if st.modules.len >= st.config.max_modules {
+    give DocsgenModulesResult.Err(DocsgenModulesError.TooManyModules)
+  }
+  give DocsgenModulesResult.Ok(DocsgenModulesState(st.config, st.modules.push(m)))
+}
+
+proc add_module_checked(st: DocsgenModulesState, name: string, summary: string, internal: bool) -> DocsgenModulesResult[DocsgenModulesState] {
+  let mr = module_doc(name, summary, internal)
+  when mr is DocsgenModulesResult.Err { give DocsgenModulesResult.Err(mr.error) }
+  give add_module(st, mr.value)
+}
+
+proc visible_modules(st: DocsgenModulesState) -> [ModuleDoc] {
+  let out: [ModuleDoc] = []
+  let i: int = 0
+  loop {
+    if i >= st.modules.len { break }
+    if st.config.include_internal || st.modules[i].internal == false {
+      out = out.push(st.modules[i])
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc render_markdown(st: DocsgenModulesState) -> string {
+  let list = visible_modules(st)
+  let out = "# Modules\n\n"
+  let i: int = 0
+  loop {
+    if i >= list.len { break }
+    out = out + "## " + list[i].name + "\n"
+    out = out + list[i].summary + "\n\n"
+    i = i + 1
+  }
+  give out
+}
+
+proc render_json(st: DocsgenModulesState) -> string {
+  let list = visible_modules(st)
+  let out = "{\"modules\":["
+  let i: int = 0
+  loop {
+    if i >= list.len { break }
+    if i > 0 { out = out + "," }
+    out = out + "{\"name\":\"" + list[i].name + "\",\"summary\":\"" + list[i].summary + "\"}"
+    i = i + 1
+  }
+  give out + "]}"
+}
+
+proc render(st: DocsgenModulesState) -> DocsgenModulesResult[string] {
+  if st.config.format == "md" {
+    let md = render_markdown(st)
+    if docsgen_validate_pkg.valid_rendered_len(md.len, docsgen_policy_pkg.max_rendered_len()) == false {
+      give DocsgenModulesResult.Err(DocsgenModulesError.InvalidConfig)
+    }
+    give DocsgenModulesResult.Ok(md)
+  }
+
+  if st.config.format == "json" {
+    let js = render_json(st)
+    if docsgen_validate_pkg.valid_rendered_len(js.len, docsgen_policy_pkg.max_rendered_len()) == false {
+      give DocsgenModulesResult.Err(DocsgenModulesError.InvalidConfig)
+    }
+    give DocsgenModulesResult.Ok(js)
+  }
+
+  give DocsgenModulesResult.Err(DocsgenModulesError.Unsupported)
+}
+
+proc pressure_percent(st: DocsgenModulesState) -> int {
+  if st.config.max_modules <= 0 { give 0 }
+  let p = st.modules.len * 100 / st.config.max_modules
+  if p < 0 { p = 0 }
+  if p > 100 { p = 100 }
+  give p
+}
+
+proc docsgen_health(st: DocsgenModulesState) -> DocsgenModulesHealth {
+  let code = validate_config_code(st.config)
+  if code != "ok" { give DocsgenModulesHealth(false, code, 100) }
+
+  let p = pressure_percent(st)
+  if docsgen_validate_pkg.valid_percent(p) == false {
+    give DocsgenModulesHealth(false, "invalid-percent", 100)
+  }
+  give DocsgenModulesHealth(true, "ok", p)
+}
+
+proc runtime_info() -> DocsgenModulesRuntimeInfo {
+  give DocsgenModulesRuntimeInfo(docsgen_runtime_pkg.runtime_name(),
+                                 docsgen_runtime_pkg.runtime_version(),
+                                 docsgen_runtime_pkg.supports_no_std(),
+                                 docsgen_runtime_pkg.supports_markdown(),
+                                 docsgen_runtime_pkg.supports_json(),
+                                 docsgen_runtime_pkg.supports_diagnostics())
 }
 
 proc healthcheck(cfg: DocsgenModulesConfig) -> DocsgenModulesResult[bool] {
@@ -50,26 +232,66 @@ proc healthcheck(cfg: DocsgenModulesConfig) -> DocsgenModulesResult[bool] {
   give DocsgenModulesResult.Ok(true)
 }
 
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_max_modules,with_format,validate_config,validate_config_code,normalize_config,state_new,module_doc,add_module,add_module_checked,visible_modules,render_markdown,render_json,render,pressure_percent,docsgen_health,runtime_info,healthcheck,stable_api_surface_hash,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,api_version,package_meta,ready"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
 proc version() -> string {
-  give "v1"
+  give "v2"
 }
 
 proc capabilities() -> [string] {
-  give ["render-md", "render-json", "module-catalog"]
+  give ["render-md", "render-json", "module-catalog", "health", "diagnostics"]
 }
 
 proc diagnostics_message(code: string) -> string {
   if code == "VITTE-DOCM0001" { give "invalid docsgen_modules configuration" }
+  if code == "VITTE-DOCM0002" { give "invalid module descriptor" }
+  if code == "VITTE-DOCM0003" { give "too many modules in registry" }
   give "docsgen_modules diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
   if code == "VITTE-DOCM0001" { give "use format in {md,json} and positive max_modules" }
+  if code == "VITTE-DOCM0002" { give "set non-empty module name and concise summary" }
+  if code == "VITTE-DOCM0003" { give "increase max_modules or split generation batches" }
   give "review docsgen_modules config"
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  let cfg = strict_config()
+  let hr = healthcheck(cfg)
+  when hr is DocsgenModulesResult.Err { give false }
+
+  let st0 = state_new(cfg)
+  when st0 is DocsgenModulesResult.Err { give false }
+
+  let st1 = add_module_checked(st0.value, "vitte/core", "core package", false)
+  when st1 is DocsgenModulesResult.Err { give false }
+
+  let rr = render(st1.value)
+  when rr is DocsgenModulesResult.Err { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
+  give true
 }
 
 proc package_meta() -> string {
@@ -77,7 +299,7 @@ proc package_meta() -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give stable_ready()
 }
 
 <<< ROLE-CONTRACT
@@ -91,5 +313,5 @@ input_contract: Config explicite format/internal/max_modules
 output_contract: Sorties stables et predictibles
 boundary: Aucun import legacy; aliases explicites uniquement
 compat_policy: additive-only
-api_version: v1
+api_version: v2
 >>>

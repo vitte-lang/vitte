@@ -1,15 +1,35 @@
 <<<
 mod.vit
 package vitte/circuit_breaker
+version: 2.0.0
+tier: resilience-core
+purpose:
+  Protection anti cascade en cas de pannes repetees.
+  Etats closed/open/half-open deterministes.
+  API stable versionnee avec diagnostics et health.
 >>>
 
 space vitte/circuit_breaker
 
+use vitte/circuit_breaker/internal/runtime as cb_runtime_pkg
+use vitte/circuit_breaker/internal/validate as cb_validate_pkg
+use vitte/circuit_breaker/internal/policy as cb_policy_pkg
 
 pick BreakerState {
   Closed
   Open
   HalfOpen
+}
+
+pick CircuitBreakerError {
+  InvalidConfig
+  InvalidTick
+  RuntimeUnavailable
+}
+
+pick CircuitBreakerResult[T] {
+  Ok(value: T)
+  Err(error: CircuitBreakerError)
 }
 
 form CircuitBreaker {
@@ -21,18 +41,83 @@ form CircuitBreaker {
   state: BreakerState
 }
 
+form CircuitBreakerConfig {
+  strict: bool
+  threshold: int
+  cooldown_ticks: int
+}
+
+form CircuitBreakerRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_half_open: bool
+  supports_diagnostics: bool
+}
+
+form CircuitBreakerHealth {
+  ok: bool
+  code: string
+  trip_ratio_percent: int
+}
+
+proc default_config() -> CircuitBreakerConfig {
+  give CircuitBreakerConfig(false,
+                            cb_policy_pkg.default_threshold(),
+                            cb_policy_pkg.default_cooldown_ticks())
+}
+
+proc strict_config() -> CircuitBreakerConfig {
+  let cfg = default_config()
+  give CircuitBreakerConfig(true, cfg.threshold, cfg.cooldown_ticks)
+}
+
+proc with_threshold(cfg: CircuitBreakerConfig, threshold: int) -> CircuitBreakerConfig {
+  give CircuitBreakerConfig(cfg.strict,
+                            cb_policy_pkg.normalize_threshold(threshold),
+                            cfg.cooldown_ticks)
+}
+
+proc with_cooldown(cfg: CircuitBreakerConfig, cooldown_ticks: int) -> CircuitBreakerConfig {
+  give CircuitBreakerConfig(cfg.strict,
+                            cfg.threshold,
+                            cb_policy_pkg.normalize_cooldown_ticks(cooldown_ticks))
+}
+
+proc validate_config(cfg: CircuitBreakerConfig) -> CircuitBreakerResult[bool] {
+  if cb_validate_pkg.valid_threshold(cfg.threshold,
+                                     cb_policy_pkg.min_threshold(),
+                                     cb_policy_pkg.max_threshold()) == false {
+    give CircuitBreakerResult.Err(CircuitBreakerError.InvalidConfig)
+  }
+  if cb_validate_pkg.valid_cooldown_ticks(cfg.cooldown_ticks,
+                                          cb_policy_pkg.min_cooldown_ticks(),
+                                          cb_policy_pkg.max_cooldown_ticks()) == false {
+    give CircuitBreakerResult.Err(CircuitBreakerError.InvalidConfig)
+  }
+  give CircuitBreakerResult.Ok(true)
+}
+
 proc breaker_new(threshold: int, cooldown_ticks: int) -> CircuitBreaker {
-  let t = threshold
-  if t < 1 { t = 1 }
-
-  let c = cooldown_ticks
-  if c < 1 { c = 1 }
-
+  let t = cb_policy_pkg.normalize_threshold(threshold)
+  let c = cb_policy_pkg.normalize_cooldown_ticks(cooldown_ticks)
   give CircuitBreaker(t, 0, 0, c, 0, BreakerState.Closed)
+}
+
+proc breaker_new_with_config(cfg: CircuitBreakerConfig) -> CircuitBreakerResult[CircuitBreaker] {
+  let vr = validate_config(cfg)
+  when vr is CircuitBreakerResult.Err { give CircuitBreakerResult.Err(vr.error) }
+  give CircuitBreakerResult.Ok(breaker_new(cfg.threshold, cfg.cooldown_ticks))
 }
 
 proc state(br: CircuitBreaker) -> BreakerState {
   give br.state
+}
+
+proc state_name(st: BreakerState) -> string {
+  when st is BreakerState.Closed { give "closed" }
+  when st is BreakerState.Open { give "open" }
+  give "half-open"
 }
 
 proc allow(br: CircuitBreaker, now_tick: int) -> bool {
@@ -50,13 +135,23 @@ proc allow(br: CircuitBreaker, now_tick: int) -> bool {
   give false
 }
 
+proc allow_checked(br: CircuitBreaker, now_tick: int) -> CircuitBreakerResult[bool] {
+  if cb_validate_pkg.valid_tick(now_tick) == false {
+    give CircuitBreakerResult.Err(CircuitBreakerError.InvalidTick)
+  }
+  give CircuitBreakerResult.Ok(allow(br, now_tick))
+}
+
 proc record_success(br: CircuitBreaker) -> CircuitBreaker {
   when br.state is BreakerState.Open {
     give CircuitBreaker(br.threshold, 0, br.successes + 1, br.cooldown_ticks, br.opened_at, BreakerState.HalfOpen)
   }
 
   when br.state is BreakerState.HalfOpen {
-    give CircuitBreaker(br.threshold, 0, br.successes + 1, br.cooldown_ticks, br.opened_at, BreakerState.Closed)
+    if br.successes + 1 >= cb_policy_pkg.half_open_success_target() {
+      give CircuitBreaker(br.threshold, 0, br.successes + 1, br.cooldown_ticks, br.opened_at, BreakerState.Closed)
+    }
+    give CircuitBreaker(br.threshold, 0, br.successes + 1, br.cooldown_ticks, br.opened_at, BreakerState.HalfOpen)
   }
 
   give CircuitBreaker(br.threshold, 0, br.successes + 1, br.cooldown_ticks, br.opened_at, BreakerState.Closed)
@@ -78,6 +173,13 @@ proc record_failure(br: CircuitBreaker, now_tick: int) -> CircuitBreaker {
   give CircuitBreaker(br.threshold, failures, br.successes, br.cooldown_ticks, br.opened_at, BreakerState.Closed)
 }
 
+proc record_failure_checked(br: CircuitBreaker, now_tick: int) -> CircuitBreakerResult[CircuitBreaker] {
+  if cb_validate_pkg.valid_tick(now_tick) == false {
+    give CircuitBreakerResult.Err(CircuitBreakerError.InvalidTick)
+  }
+  give CircuitBreakerResult.Ok(record_failure(br, now_tick))
+}
+
 proc on_tick(br: CircuitBreaker, now_tick: int) -> CircuitBreaker {
   when br.state is BreakerState.Open {
     if now_tick - br.opened_at >= br.cooldown_ticks {
@@ -85,6 +187,13 @@ proc on_tick(br: CircuitBreaker, now_tick: int) -> CircuitBreaker {
     }
   }
   give br
+}
+
+proc on_tick_checked(br: CircuitBreaker, now_tick: int) -> CircuitBreakerResult[CircuitBreaker] {
+  if cb_validate_pkg.valid_tick(now_tick) == false {
+    give CircuitBreakerResult.Err(CircuitBreakerError.InvalidTick)
+  }
+  give CircuitBreakerResult.Ok(on_tick(br, now_tick))
 }
 
 proc is_open(br: CircuitBreaker) -> bool {
@@ -136,33 +245,160 @@ proc force_close(br: CircuitBreaker) -> CircuitBreaker {
 
 proc trip_ratio_percent(br: CircuitBreaker) -> int {
   if br.threshold <= 0 { give 0 }
-  give br.failures * 100 / br.threshold
+  let pct = br.failures * 100 / br.threshold
+  if pct < 0 { give 0 }
+  if pct > 100 { give 100 }
+  give pct
 }
 
 proc stats(br: CircuitBreaker, now_tick: int) -> string {
-  let state_name = "half-open"
-  if is_open(br) { state_name = "open" }
-  if is_closed(br) { state_name = "closed" }
-  give "state=" + state_name +
+  give "state=" + state_name(br.state) +
        ",failures=" + br.failures.to_string() +
        ",successes=" + br.successes.to_string() +
        ",cooldown_left=" + cooldown_remaining(br, now_tick).to_string()
 }
 
-proc ready() -> bool {
+proc circuit_breaker_validate_code(br: CircuitBreaker) -> string {
+  if cb_validate_pkg.valid_threshold(br.threshold, cb_policy_pkg.min_threshold(), cb_policy_pkg.max_threshold()) == false {
+    give "invalid-threshold"
+  }
+  if cb_validate_pkg.valid_cooldown_ticks(br.cooldown_ticks,
+                                          cb_policy_pkg.min_cooldown_ticks(),
+                                          cb_policy_pkg.max_cooldown_ticks()) == false {
+    give "invalid-cooldown"
+  }
+  if cb_validate_pkg.valid_counter(br.failures) == false { give "invalid-failures" }
+  if cb_validate_pkg.valid_counter(br.successes) == false { give "invalid-successes" }
+  if cb_validate_pkg.valid_tick(br.opened_at) == false { give "invalid-opened-at" }
+  give "ok"
+}
+
+proc circuit_breaker_validate(br: CircuitBreaker) -> bool {
+  give circuit_breaker_validate_code(br) == "ok"
+}
+
+proc circuit_breaker_normalize(br: CircuitBreaker) -> CircuitBreaker {
+  let t = cb_policy_pkg.normalize_threshold(br.threshold)
+  let c = cb_policy_pkg.normalize_cooldown_ticks(br.cooldown_ticks)
+
+  let f = br.failures
+  if f < 0 { f = 0 }
+  let s = br.successes
+  if s < 0 { s = 0 }
+  let o = br.opened_at
+  if o < 0 { o = 0 }
+
+  give CircuitBreaker(t, f, s, c, o, br.state)
+}
+
+proc circuit_breaker_runtime_info() -> CircuitBreakerRuntimeInfo {
+  give CircuitBreakerRuntimeInfo(cb_runtime_pkg.runtime_name(),
+                                 cb_runtime_pkg.runtime_version(),
+                                 cb_runtime_pkg.supports_no_std(),
+                                 cb_runtime_pkg.supports_half_open(),
+                                 cb_runtime_pkg.supports_diagnostics())
+}
+
+proc circuit_breaker_health(br: CircuitBreaker) -> CircuitBreakerHealth {
+  let ratio = trip_ratio_percent(br)
+  if cb_validate_pkg.valid_percent(ratio) == false {
+    give CircuitBreakerHealth(false, "invalid-ratio", 0)
+  }
+  if ratio >= cb_policy_pkg.warn_trip_ratio_percent() {
+    give CircuitBreakerHealth(false, "trip-ratio-high", ratio)
+  }
+  give CircuitBreakerHealth(true, "ok", ratio)
+}
+
+proc healthcheck(cfg: CircuitBreakerConfig) -> CircuitBreakerResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is CircuitBreakerResult.Err { give CircuitBreakerResult.Err(vr.error) }
+  if cb_runtime_pkg.runtime_status() == false { give CircuitBreakerResult.Err(CircuitBreakerError.RuntimeUnavailable) }
+  give CircuitBreakerResult.Ok(true)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_threshold,with_cooldown,validate_config,breaker_new,breaker_new_with_config,state,allow,allow_checked,record_success,record_failure,record_failure_checked,on_tick,on_tick_checked,is_open,is_closed,is_half_open,failure_count,success_count,opened_for,cooldown_remaining,can_probe,force_open,force_close,trip_ratio_percent,stats,circuit_breaker_validate_code,circuit_breaker_validate,circuit_breaker_normalize,circuit_breaker_runtime_info,circuit_breaker_health,healthcheck,stable_api_surface_hash,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["closed-open-halfopen", "cooldown", "health", "diagnostics", cb_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CB0001" { give "invalid circuit breaker configuration" }
+  if code == "VITTE-CB0002" { give "invalid tick value" }
+  if code == "VITTE-CB0003" { give "circuit breaker runtime unavailable" }
+  give "circuit_breaker diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-CB0001" { give "normalize threshold/cooldown and validate config" }
+  if code == "VITTE-CB0002" { give "use monotonic non-negative ticks" }
+  if code == "VITTE-CB0003" { give "check runtime availability before healthcheck" }
+  give "inspect breaker state and stats"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if cb_runtime_pkg.runtime_status() == false { give false }
+
+  let cfg = strict_config()
+  let vr = validate_config(cfg)
+  when vr is CircuitBreakerResult.Err { give false }
+
+  let b0 = breaker_new(cfg.threshold, cfg.cooldown_ticks)
+  let b1 = record_failure(b0, 1)
+  let b2 = record_failure(b1, 2)
+  if allow(b2, 2) { give false }
+
+  let b3 = on_tick(b2, 100)
+  if allow(b3, 100) == false { give false }
+
+  let b4 = record_success(b3)
+  if is_closed(b4) == false { give false }
+
+  let n = circuit_breaker_normalize(b4)
+  if circuit_breaker_validate(n) == false { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
   give true
 }
 
-
+proc ready() -> bool {
+  give stable_ready()
+}
 
 proc package_meta() -> string {
-    give "vitte/circuit_breaker"
+  give "vitte/circuit_breaker"
 }
 
 <<< ROLE-CONTRACT
 package: vitte/circuit_breaker
 role: Protection anti cascade en cas de pannes repetees
 input_contract: Historique d echec et horloge de cooldown explicite
-output_contract: Etat de coupure deterministe et decision allow traçable
+output_contract: Etat de coupure deterministe et decision allow tracable
 boundary: Ne remplace pas retry ni timeout; controle uniquement l ouverture du circuit
+versioning_note: stable_api_version=2.0.0
 >>>

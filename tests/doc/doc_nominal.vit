@@ -1,0 +1,69 @@
+use vitte/doc as doc_pkg
+
+entry main at core/app {
+  let cfg = doc_pkg.strict_config()
+  let vr: doc_pkg.DocResult[bool] = doc_pkg.validate_config(cfg)
+  when vr is doc_pkg.DocResult.Err {
+    return 1
+  }
+
+  let p0: doc_pkg.DocResult[doc_pkg.DocPage] = doc_pkg.page_new_checked("intro", "Introduction", cfg)
+  when p0 is doc_pkg.DocResult.Err {
+    return 1
+  }
+
+  let p1: doc_pkg.DocResult[doc_pkg.DocPage] = doc_pkg.add_section_checked(p0.value, "Overview", "Welcome to docs", cfg)
+  when p1 is doc_pkg.DocResult.Err {
+    return 1
+  }
+
+  let p2: doc_pkg.DocResult[doc_pkg.DocPage] = doc_pkg.add_section_checked(p1.value, "Install", "Install steps", cfg)
+  when p2 is doc_pkg.DocResult.Err {
+    return 1
+  }
+
+  let fs: doc_pkg.DocResult[doc_pkg.DocSection] = doc_pkg.find_section_checked(p2.value, "Overview")
+  when fs is doc_pkg.DocResult.Err {
+    return 1
+  }
+
+  if fs.value.title != "Overview" {
+    return 1
+  }
+
+  let toc = doc_pkg.toc_markdown(p2.value)
+  if toc.len == 0 {
+    return 1
+  }
+
+  let hits = doc_pkg.search_sections(p2.value, "Install")
+  if hits.len == 0 {
+    return 1
+  }
+
+  let st = doc_pkg.doc_stats(p2.value)
+  if st.sections != 2 {
+    return 1
+  }
+
+  let rm: doc_pkg.DocResult[doc_pkg.DocPage] = doc_pkg.remove_section_checked(p2.value, "Install")
+  when rm is doc_pkg.DocResult.Err {
+    return 1
+  }
+
+  let merged = doc_pkg.merge_page(rm.value, p2.value)
+  if doc_pkg.validate_page_code(merged, cfg) != "ok" {
+    return 1
+  }
+
+  let h = doc_pkg.doc_health(merged, cfg)
+  if h.ok == false {
+    return 1
+  }
+
+  if doc_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

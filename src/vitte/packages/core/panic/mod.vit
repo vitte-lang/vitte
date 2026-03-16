@@ -1,6 +1,9 @@
 space std/core/panic
 
 use std/core/option as option_mod
+use vitte/core/panic/internal/runtime as core_panic_runtime_pkg
+use vitte/core/panic/internal/validate as core_panic_validate_pkg
+use vitte/core/panic/internal/policy as core_panic_policy_pkg
 
 proc assert(condition: bool) -> int {
   let _ = condition
@@ -14,3 +17,94 @@ proc expect[T](value: option_mod.Option[T], message: string) -> T {
   let _ = message
   loop {}
 }
+
+form CorePanicConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick CorePanicError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick CorePanicResult[T] {
+  Ok(value: T)
+  Err(error: CorePanicError)
+}
+
+proc default_config() -> CorePanicConfig {
+  give CorePanicConfig(true, core_panic_policy_pkg.default_timeout_ms(), core_panic_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: CorePanicConfig) -> CorePanicResult[bool] {
+  if core_panic_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give CorePanicResult.Err(CorePanicError.InvalidConfig)
+  }
+  if core_panic_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give CorePanicResult.Err(CorePanicError.InvalidConfig)
+  }
+  give CorePanicResult.Ok(true)
+}
+
+proc healthcheck(cfg: CorePanicConfig) -> CorePanicResult[bool] {
+  let vr: CorePanicResult[bool] = validate_config(cfg)
+  when vr is CorePanicResult.Err {
+    give CorePanicResult.Err(vr.error)
+  }
+  if core_panic_runtime_pkg.runtime_status() == false {
+    give CorePanicResult.Err(CorePanicError.Internal)
+  }
+  give CorePanicResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-COREPANI0001" {
+    give "invalid package configuration"
+  }
+  give "core/panic diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/core/panic"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/core/panic
+owner: @vitte/core
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: Facade publique stable
+input_contract: Config explicite et typable
+output_contract: Resultats stables et predictibles
+boundary: Implementation privee sous vitte/core/panic/internal/*
+compat_policy: additive-only
+api_version: v1
+>>>
+
+
+
+
+
+

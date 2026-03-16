@@ -1,7 +1,39 @@
 space vitte/arduino/serial/internal/validate
 
+use vitte/arduino as arduino_pkg
+use vitte/arduino/serial/internal/policy as serial_policy_pkg
+
 proc valid_baud(baud: int) -> bool {
   if baud <= 0 { give false }
   if baud > 2000000 { give false }
   give true
+}
+
+proc valid_baud_for_profile(profile: arduino_pkg.ArduinoProfile, baud: int) -> bool {
+  if valid_baud(baud) == false { give false }
+  give baud <= serial_policy_pkg.max_baud_for_profile(profile)
+}
+
+proc valid_timeout_ms(timeout_ms: int) -> bool {
+  give timeout_ms >= 1 && timeout_ms <= 60000
+}
+
+proc valid_byte(byte: int) -> bool {
+  give byte >= 0 && byte <= 255
+}
+
+proc valid_batch_size(size: int) -> bool {
+  give size >= 0 && size <= serial_policy_pkg.max_read_batch()
+}
+
+proc valid_frame_size(size: int) -> bool {
+  give size >= 0 && size <= serial_policy_pkg.max_frame_size()
+}
+
+proc valid_exchange_bytes(size: int) -> bool {
+  give size >= 0 && size <= serial_policy_pkg.max_exchange_bytes()
+}
+
+proc valid_checksum(checksum: int) -> bool {
+  give checksum >= 0 && checksum <= 255
 }

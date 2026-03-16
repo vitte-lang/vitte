@@ -1,0 +1,46 @@
+space vitte/codec/internal/policy
+
+proc min_payload_len() -> int {
+  give 1
+}
+
+proc max_key_len() -> int {
+  give 256
+}
+
+proc max_value_len() -> int {
+  give 65536
+}
+
+proc max_payload_len() -> int {
+  give 1048576
+}
+
+proc default_strict() -> bool {
+  give true
+}
+
+proc default_allow_binary_control() -> bool {
+  give true
+}
+
+proc normalize_key_len(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_key_len() { out = max_key_len() }
+  give out
+}
+
+proc normalize_value_len(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_value_len() { out = max_value_len() }
+  give out
+}
+
+proc normalize_payload_len(value: int) -> int {
+  let out = value
+  if out < min_payload_len() { out = min_payload_len() }
+  if out > max_payload_len() { out = max_payload_len() }
+  give out
+}

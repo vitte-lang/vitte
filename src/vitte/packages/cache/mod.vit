@@ -1,10 +1,38 @@
 <<<
 mod.vit
 package vitte/cache
+version: 2.0.0
+tier: runtime-cache
+purpose:
+  Cache memoire deterministic avec TTL.
+  Eviction controlee et diagnostics stables.
+  API stable versionnee.
 >>>
 
 space vitte/cache
 
+use vitte/cache/internal/runtime as cache_runtime_pkg
+use vitte/cache/internal/validate as cache_validate_pkg
+use vitte/cache/internal/policy as cache_policy_pkg
+
+pick CacheEviction {
+  FIFO
+  LRU
+}
+
+pick CacheError {
+  None
+  InvalidConfig
+  InvalidKey
+  InvalidValue
+  NotFound
+  Saturated
+}
+
+pick CacheResult[T] {
+  Ok(value: T)
+  Err(error: CacheError)
+}
 
 form CacheEntry {
   key: string
@@ -21,14 +49,92 @@ form Cache {
   dropped: int
 }
 
+form CacheConfig {
+  strict: bool
+  default_ttl: int
+  eviction: CacheEviction
+}
+
+form CacheStats {
+  size: int
+  dropped: int
+  hits: int
+  misses: int
+  fill_percent: int
+}
+
+form CacheRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_ttl: bool
+  supports_eviction: bool
+  supports_diagnostics: bool
+}
+
+form CacheHealth {
+  ok: bool
+  code: string
+  fill_percent: int
+  dropped: int
+}
+
+proc default_config() -> CacheConfig {
+  give CacheConfig(false, cache_policy_pkg.default_ttl(), CacheEviction.FIFO)
+}
+
+proc strict_config() -> CacheConfig {
+  let cfg = default_config()
+  give CacheConfig(true, cfg.default_ttl, CacheEviction.LRU)
+}
+
+proc with_default_ttl(cfg: CacheConfig, default_ttl: int) -> CacheConfig {
+  give CacheConfig(cfg.strict,
+                   cache_policy_pkg.normalize_ttl(default_ttl),
+                   cfg.eviction)
+}
+
+proc with_eviction(cfg: CacheConfig, eviction: CacheEviction) -> CacheConfig {
+  give CacheConfig(cfg.strict, cfg.default_ttl, eviction)
+}
+
+proc validate_config(cfg: CacheConfig) -> CacheResult[bool] {
+  if cache_validate_pkg.valid_ttl(cfg.default_ttl, cache_policy_pkg.min_ttl(), cache_policy_pkg.max_ttl()) == false {
+    give CacheResult.Err(CacheError.InvalidConfig)
+  }
+  give CacheResult.Ok(true)
+}
+
 proc cache_new(capacity: int) -> Cache {
-  if capacity < 0 { give Cache(0, [], 0, 0) }
-  give Cache(capacity, [], 0, 0)
+  let cap = cache_policy_pkg.normalize_capacity(capacity)
+  give Cache(cap, [], 0, 0)
+}
+
+proc cache_new_with_config(capacity: int, cfg: CacheConfig) -> Cache {
+  let _ = validate_config(cfg)
+  give cache_new(capacity)
 }
 
 proc make_entry(key: string, value: string, ttl: int) -> CacheEntry {
-  if ttl < 0 { give CacheEntry(key, value, 0, 0, false) }
-  give CacheEntry(key, value, ttl, 0, ttl > 0)
+  let t = cache_policy_pkg.normalize_ttl(ttl)
+  give CacheEntry(key, value, t, 0, t > 0)
+}
+
+proc make_entry_checked(key: string, value: string, ttl: int) -> CacheResult[CacheEntry] {
+  let k = cache_runtime_pkg.sanitize(key, cache_policy_pkg.max_key_len())
+  let v = cache_runtime_pkg.sanitize(value, cache_policy_pkg.max_value_len())
+
+  if cache_validate_pkg.valid_key(k, cache_policy_pkg.max_key_len()) == false {
+    give CacheResult.Err(CacheError.InvalidKey)
+  }
+  if cache_validate_pkg.valid_value(v, cache_policy_pkg.max_value_len()) == false {
+    give CacheResult.Err(CacheError.InvalidValue)
+  }
+  if cache_validate_pkg.valid_ttl(ttl, cache_policy_pkg.min_ttl(), cache_policy_pkg.max_ttl()) == false {
+    give CacheResult.Err(CacheError.InvalidConfig)
+  }
+
+  give CacheResult.Ok(CacheEntry(k, v, ttl, 0, ttl > 0))
 }
 
 proc drop_first(entries: [CacheEntry]) -> [CacheEntry] {
@@ -37,6 +143,32 @@ proc drop_first(entries: [CacheEntry]) -> [CacheEntry] {
   loop {
     if i >= entries.len { break }
     out = out.push(entries[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc drop_lru(entries: [CacheEntry]) -> [CacheEntry] {
+  if entries.len <= 1 { give [] }
+
+  let min_hits = entries[0].hits
+  let min_idx: int = 0
+
+  let i: int = 1
+  loop {
+    if i >= entries.len { break }
+    if entries[i].hits < min_hits {
+      min_hits = entries[i].hits
+      min_idx = i
+    }
+    i = i + 1
+  }
+
+  let out: [CacheEntry] = []
+  i = 0
+  loop {
+    if i >= entries.len { break }
+    if i != min_idx { out = out.push(entries[i]) }
     i = i + 1
   }
   give out
@@ -64,6 +196,23 @@ proc get(cache: Cache, key: string, fallback: string) -> string {
   give fallback
 }
 
+proc get_checked(cache: Cache, key: string) -> CacheResult[string] {
+  if cache_validate_pkg.valid_key(key, cache_policy_pkg.max_key_len()) == false {
+    give CacheResult.Err(CacheError.InvalidKey)
+  }
+
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    let e = cache.entries[i]
+    if e.active && e.key == key {
+      give CacheResult.Ok(e.value)
+    }
+    i = i + 1
+  }
+  give CacheResult.Err(CacheError.NotFound)
+}
+
 proc put(cache: Cache, key: string, value: string, ttl: int) -> Cache {
   if cache.capacity <= 0 { give cache }
 
@@ -74,7 +223,7 @@ proc put(cache: Cache, key: string, value: string, ttl: int) -> Cache {
     if i >= cache.entries.len { break }
     let e = cache.entries[i]
     if e.key == key {
-      updated = updated.push(CacheEntry(key, value, ttl, e.hits, ttl > 0))
+      updated = updated.push(CacheEntry(key, value, cache_policy_pkg.normalize_ttl(ttl), e.hits, ttl > 0))
       found = true
     } else {
       updated = updated.push(e)
@@ -95,6 +244,59 @@ proc put(cache: Cache, key: string, value: string, ttl: int) -> Cache {
   give Cache(cache.capacity, updated, cache.clock, dropped)
 }
 
+proc put_checked(cache: Cache, key: string, value: string, ttl: int) -> CacheResult[Cache] {
+  let er = make_entry_checked(key, value, ttl)
+  when er is CacheResult.Err { give CacheResult.Err(er.error) }
+
+  if cache_validate_pkg.valid_capacity(cache.capacity, cache_policy_pkg.min_capacity(), cache_policy_pkg.max_capacity()) == false {
+    give CacheResult.Err(CacheError.InvalidConfig)
+  }
+
+  if cache.capacity <= 0 { give CacheResult.Err(CacheError.Saturated) }
+
+  let updated: [CacheEntry] = []
+  let found = false
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    let e = cache.entries[i]
+    if e.key == er.value.key {
+      updated = updated.push(CacheEntry(er.value.key, er.value.value, er.value.ttl, e.hits, er.value.active))
+      found = true
+    } else {
+      updated = updated.push(e)
+    }
+    i = i + 1
+  }
+
+  if found {
+    give CacheResult.Ok(Cache(cache.capacity, updated, cache.clock, cache.dropped))
+  }
+
+  let dropped = cache.dropped
+  if updated.len >= cache.capacity {
+    updated = drop_first(updated)
+    dropped = dropped + 1
+  }
+  updated = updated.push(er.value)
+  give CacheResult.Ok(Cache(cache.capacity, updated, cache.clock, dropped))
+}
+
+proc put_with_config(cache: Cache, key: string, value: string, cfg: CacheConfig) -> CacheResult[Cache] {
+  let vr = validate_config(cfg)
+  when vr is CacheResult.Err { give CacheResult.Err(vr.error) }
+
+  let rr = put_checked(cache, key, value, cfg.default_ttl)
+  when rr is CacheResult.Err { give CacheResult.Err(rr.error) }
+
+  if cfg.eviction == CacheEviction.LRU && rr.value.entries.len >= rr.value.capacity && rr.value.capacity > 0 {
+    let entries = drop_lru(rr.value.entries)
+    give CacheResult.Ok(Cache(rr.value.capacity, entries, rr.value.clock, rr.value.dropped + 1))
+  }
+
+  give rr
+}
+
 proc touch(cache: Cache, key: string) -> Cache {
   let updated: [CacheEntry] = []
   let i: int = 0
@@ -112,7 +314,8 @@ proc touch(cache: Cache, key: string) -> Cache {
 }
 
 proc tick(cache: Cache, delta: int) -> Cache {
-  if delta <= 0 { give cache }
+  if cache_validate_pkg.valid_clock_delta(delta) == false { give cache }
+
   let updated: [CacheEntry] = []
   let i: int = 0
   loop {
@@ -126,6 +329,7 @@ proc tick(cache: Cache, delta: int) -> Cache {
     }
     i = i + 1
   }
+
   give Cache(cache.capacity, updated, cache.clock + delta, cache.dropped)
 }
 
@@ -156,18 +360,189 @@ proc size(cache: Cache) -> int {
   give n
 }
 
-proc stats(cache: Cache) -> string {
-  give "size=" + size(cache).to_string() + ",dropped=" + cache.dropped.to_string()
+proc count_hits(cache: Cache) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    n = n + cache.entries[i].hits
+    i = i + 1
+  }
+  give n
 }
 
-proc ready() -> bool {
+proc fill_percent(cache: Cache) -> int {
+  if cache.capacity <= 0 { give 0 }
+  let pct = (size(cache) * 100) / cache.capacity
+  if pct < 0 { give 0 }
+  if pct > 100 { give 100 }
+  give pct
+}
+
+proc cache_stats(cache: Cache) -> CacheStats {
+  give CacheStats(size(cache),
+                  cache.dropped,
+                  count_hits(cache),
+                  cache.dropped,
+                  fill_percent(cache))
+}
+
+proc stats(cache: Cache) -> string {
+  let s = cache_stats(cache)
+  give "size=" + s.size.to_string() +
+       ",dropped=" + s.dropped.to_string() +
+       ",hits=" + s.hits.to_string() +
+       ",fill=" + s.fill_percent.to_string()
+}
+
+proc cache_validate_code(cache: Cache) -> string {
+  if cache_validate_pkg.valid_capacity(cache.capacity, cache_policy_pkg.min_capacity(), cache_policy_pkg.max_capacity()) == false {
+    give "invalid-capacity"
+  }
+  if cache_validate_pkg.valid_non_negative(cache.clock) == false { give "invalid-clock" }
+  if cache_validate_pkg.valid_non_negative(cache.dropped) == false { give "invalid-dropped" }
+
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    let e = cache.entries[i]
+    if cache_validate_pkg.valid_key(e.key, cache_policy_pkg.max_key_len()) == false { give "invalid-key" }
+    if cache_validate_pkg.valid_value(e.value, cache_policy_pkg.max_value_len()) == false { give "invalid-value" }
+    if cache_validate_pkg.valid_ttl(e.ttl, cache_policy_pkg.min_ttl(), cache_policy_pkg.max_ttl()) == false { give "invalid-ttl" }
+    i = i + 1
+  }
+
+  give "ok"
+}
+
+proc cache_validate(cache: Cache) -> bool {
+  give cache_validate_code(cache) == "ok"
+}
+
+proc cache_normalize(cache: Cache) -> Cache {
+  let cap = cache_policy_pkg.normalize_capacity(cache.capacity)
+  let entries: [CacheEntry] = []
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    let e = cache.entries[i]
+    let k = cache_runtime_pkg.sanitize(e.key, cache_policy_pkg.max_key_len())
+    let v = cache_runtime_pkg.sanitize(e.value, cache_policy_pkg.max_value_len())
+    let t = cache_policy_pkg.normalize_ttl(e.ttl)
+
+    if cache_validate_pkg.valid_key(k, cache_policy_pkg.max_key_len()) &&
+       cache_validate_pkg.valid_value(v, cache_policy_pkg.max_value_len()) {
+      entries = entries.push(CacheEntry(k, v, t, e.hits, t > 0 && e.active))
+      if entries.len >= cap { break }
+    }
+    i = i + 1
+  }
+
+  let clock = cache.clock
+  if clock < 0 { clock = 0 }
+  let dropped = cache.dropped
+  if dropped < 0 { dropped = 0 }
+
+  give Cache(cap, entries, clock, dropped)
+}
+
+proc cache_runtime_info() -> CacheRuntimeInfo {
+  give CacheRuntimeInfo(cache_runtime_pkg.runtime_name(),
+                        cache_runtime_pkg.runtime_version(),
+                        cache_runtime_pkg.supports_no_std(),
+                        cache_runtime_pkg.supports_ttl(),
+                        cache_runtime_pkg.supports_eviction(),
+                        cache_runtime_pkg.supports_diagnostics())
+}
+
+proc cache_health(cache: Cache) -> CacheHealth {
+  let pct = fill_percent(cache)
+  if cache_validate_pkg.valid_percent(pct) == false {
+    give CacheHealth(false, "invalid-fill", 0, cache.dropped)
+  }
+  if pct >= cache_policy_pkg.warn_fill_percent() {
+    give CacheHealth(false, "cache-near-capacity", pct, cache.dropped)
+  }
+  give CacheHealth(true, "ok", pct, cache.dropped)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,with_default_ttl,with_eviction,validate_config,cache_new,cache_new_with_config,make_entry,make_entry_checked,contains,get,get_checked,put,put_checked,put_with_config,touch,tick,expire,size,cache_stats,stats,cache_validate_code,cache_validate,cache_normalize,cache_runtime_info,cache_health,stable_api_surface_hash,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["ttl", "eviction", "normalize", "diagnostics", cache_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CACHE0001" { give "invalid cache configuration" }
+  if code == "VITTE-CACHE0002" { give "invalid cache key/value" }
+  if code == "VITTE-CACHE0003" { give "cache saturated" }
+  if code == "VITTE-CACHE0004" { give "cache entry not found" }
+  give "cache diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-CACHE0001" { give "normalize capacity and ttl with config helpers" }
+  if code == "VITTE-CACHE0002" { give "sanitize key/value length and remove spaces from key" }
+  if code == "VITTE-CACHE0003" { give "increase capacity or expire old entries" }
+  if code == "VITTE-CACHE0004" { give "check key presence with contains/get_checked" }
+  give "inspect cache state and diagnostics"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if cache_runtime_pkg.runtime_status() == false { give false }
+  if cache_runtime_pkg.supports_ttl() == false { give false }
+
+  let cfg = strict_config()
+  let v = validate_config(cfg)
+  when v is CacheResult.Err { give false }
+
+  let c0 = cache_new_with_config(2, cfg)
+  let p1 = put_checked(c0, "k1", "v1", cfg.default_ttl)
+  when p1 is CacheResult.Err { give false }
+
+  let p2 = put_with_config(p1.value, "k2", "v2", cfg)
+  when p2 is CacheResult.Err { give false }
+
+  let g = get_checked(p2.value, "k1")
+  when g is CacheResult.Err { give false }
+
+  let n = cache_normalize(p2.value)
+  if cache_validate(n) == false { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
   give true
 }
 
-
+proc ready() -> bool {
+  give stable_ready()
+}
 
 proc package_meta() -> string {
-    give "vitte/cache"
+  give "vitte/cache"
 }
 
 <<< ROLE-CONTRACT
@@ -176,4 +551,5 @@ role: Cache memoire avec politique eviction et TTL
 input_contract: Valeurs metier explicites, deja parsees et typables
 output_contract: Sorties stables, observables et compatibles avec les autres packages
 boundary: Ne remplace pas les autres couches; respecte la separation de roles
+versioning_note: stable_api_version=2.0.0
 >>>

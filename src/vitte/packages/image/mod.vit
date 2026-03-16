@@ -1,10 +1,48 @@
 <<<
 mod.vit
 package vitte/image
+version: 3.1.0
+tier: media-core
+purpose:
+  Representation image en memoire et transformations de base.
+  Validation explicite des dimensions/pixels/coordonnees.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/image
 
+use vitte/image/internal/policy as image_policy_pkg
+use vitte/image/internal/runtime as image_runtime_pkg
+use vitte/image/internal/validate as image_validate_pkg
+
+form ImageConfig {
+  max_dimension: int
+  allow_out_of_bounds_write: bool
+}
+
+pick ImageError {
+  InvalidConfig
+  NotFound
+  Internal
+}
+
+pick ImageResult[T] {
+  Ok(value: T)
+  Err(error: ImageError)
+}
+
+form ImageRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_alpha: bool
+  supports_diagnostics: bool
+}
+
+form ImageHealth {
+  ok: bool
+  code: string
+  pixels: int
+}
 
 form Pixel {
   r: int
@@ -19,8 +57,89 @@ form Image {
   pixels: [Pixel]
 }
 
+proc default_config() -> ImageConfig {
+  give ImageConfig(image_policy_pkg.max_dimension(), image_policy_pkg.default_allow_out_of_bounds_write())
+}
+
+proc strict_config() -> ImageConfig {
+  let cfg = default_config()
+  give ImageConfig(cfg.max_dimension, false)
+}
+
+proc with_max_dimension(cfg: ImageConfig, max_dimension: int) -> ImageConfig {
+  give ImageConfig(image_policy_pkg.normalize_dimension(max_dimension), cfg.allow_out_of_bounds_write)
+}
+
+proc normalize_config(cfg: ImageConfig) -> ImageConfig {
+  give ImageConfig(image_policy_pkg.normalize_dimension(cfg.max_dimension), cfg.allow_out_of_bounds_write)
+}
+
+proc validate_config(cfg: ImageConfig) -> ImageResult[bool] {
+  let nc = normalize_config(cfg)
+  if image_validate_pkg.valid_dimension(nc.max_dimension, image_policy_pkg.max_dimension()) == false {
+    give ImageResult.Err(ImageError.InvalidConfig)
+  }
+  give ImageResult.Ok(true)
+}
+
+proc runtime_info() -> ImageRuntimeInfo {
+  give ImageRuntimeInfo(image_runtime_pkg.runtime_name(),
+                        image_runtime_pkg.runtime_version(),
+                        image_runtime_pkg.supports_alpha(),
+                        image_runtime_pkg.supports_diagnostics())
+}
+
+proc healthcheck(cfg: ImageConfig, img: Image) -> ImageResult[ImageHealth] {
+  let vr = validate_config(cfg)
+  when vr is ImageResult.Err { give ImageResult.Err(vr.error) }
+  if image_runtime_pkg.runtime_status() == false {
+    give ImageResult.Err(ImageError.Internal)
+  }
+  if image_validate_pkg.valid_dimension(img.width, cfg.max_dimension) == false {
+    give ImageResult.Err(ImageError.InvalidConfig)
+  }
+  if image_validate_pkg.valid_dimension(img.height, cfg.max_dimension) == false {
+    give ImageResult.Err(ImageError.InvalidConfig)
+  }
+  give ImageResult.Ok(ImageHealth(true, "ok", img.pixels.len))
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["alpha", "diagnostics", "fill-rect", "healthcheck", "pixel-read-write"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-IMAGE0001" { give "invalid image configuration" }
+  if code == "VITTE-IMAGE0002" { give "invalid image coordinates or channels" }
+  if code == "VITTE-IMAGE0003" { give "image runtime unavailable" }
+  give "image diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-IMAGE0001" { give "set max_dimension in valid range" }
+  if code == "VITTE-IMAGE0002" { give "use in-bounds coordinates and channels in 0..255" }
+  if code == "VITTE-IMAGE0003" { give "check image runtime status" }
+  give "review image configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
 proc rgba(r: int, g: int, b: int, a: int) -> Pixel {
   give Pixel(r, g, b, a)
+}
+
+proc rgba_checked(r: int, g: int, b: int, a: int) -> ImageResult[Pixel] {
+  if image_validate_pkg.valid_channel(r) == false { give ImageResult.Err(ImageError.InvalidConfig) }
+  if image_validate_pkg.valid_channel(g) == false { give ImageResult.Err(ImageError.InvalidConfig) }
+  if image_validate_pkg.valid_channel(b) == false { give ImageResult.Err(ImageError.InvalidConfig) }
+  if image_validate_pkg.valid_channel(a) == false { give ImageResult.Err(ImageError.InvalidConfig) }
+  give ImageResult.Ok(rgba(r, g, b, a))
 }
 
 proc image_new(width: int, height: int, fill: Pixel) -> Image {
@@ -33,6 +152,17 @@ proc image_new(width: int, height: int, fill: Pixel) -> Image {
     i = i + 1
   }
   give Image(width, height, out)
+}
+
+proc image_new_checked(width: int, height: int, fill: Pixel, cfg: ImageConfig) -> ImageResult[Image] {
+  if image_validate_pkg.valid_dimension(width, cfg.max_dimension) == false {
+    give ImageResult.Err(ImageError.InvalidConfig)
+  }
+  if image_validate_pkg.valid_dimension(height, cfg.max_dimension) == false {
+    give ImageResult.Err(ImageError.InvalidConfig)
+  }
+  let _ = fill
+  give ImageResult.Ok(image_new(width, height, fill))
 }
 
 proc in_bounds(img: Image, x: int, y: int) -> bool {
@@ -59,6 +189,14 @@ proc set_pixel(img: Image, x: int, y: int, p: Pixel) -> Image {
     i = i + 1
   }
   give Image(img.width, img.height, out)
+}
+
+proc set_pixel_checked(img: Image, x: int, y: int, p: Pixel, cfg: ImageConfig) -> ImageResult[Image] {
+  if image_validate_pkg.valid_coords(x, y, img.width, img.height) == false {
+    if cfg.allow_out_of_bounds_write { give ImageResult.Ok(img) }
+    give ImageResult.Err(ImageError.InvalidConfig)
+  }
+  give ImageResult.Ok(set_pixel(img, x, y, p))
 }
 
 proc fill_rect(img: Image, x: int, y: int, w: int, h: int, p: Pixel) -> Image {
@@ -90,7 +228,7 @@ proc alpha_average(img: Image) -> int {
 }
 
 proc ready() -> bool {
-  give true
+  give image_runtime_pkg.runtime_status()
 }
 
 proc package_meta() -> string {

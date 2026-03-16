@@ -10,7 +10,9 @@ package vitte/json
 
 space vitte/json
 
+use vitte/json/internal/policy as json_policy_pkg
 use vitte/json/internal/runtime as json_runtime_pkg
+use vitte/json/internal/validate as json_validate_pkg
 
 pick JsonError {
   Failure(code: string, message: string, context: string)
@@ -76,6 +78,28 @@ form StreamState {
   last_error: string
 }
 
+form JsonConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick JsonConfigError {
+  InvalidConfig
+  Internal
+}
+
+pick JsonConfigResult[T] {
+  Ok(value: T)
+  Err(error: JsonConfigError)
+}
+
+form JsonRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc ok[T](value: T) -> JsonResult[T] {
   give JsonResult.Ok(value)
 }
@@ -93,7 +117,43 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc default_config() -> JsonConfig {
+  give JsonConfig(json_policy_pkg.default_strict(), json_policy_pkg.default_timeout_ms(), json_policy_pkg.default_retry_budget())
+}
+
+proc normalize_config(cfg: JsonConfig) -> JsonConfig {
+  give JsonConfig(cfg.strict,
+                  json_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
+                  json_policy_pkg.normalize_retry_budget(cfg.retry_budget))
+}
+
+proc validate_config(cfg: JsonConfig) -> JsonConfigResult[bool] {
+  let nc = normalize_config(cfg)
+  if json_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
+    give JsonConfigResult.Err(JsonConfigError.InvalidConfig)
+  }
+  if json_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
+    give JsonConfigResult.Err(JsonConfigError.InvalidConfig)
+  }
+  give JsonConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: JsonConfig) -> JsonConfigResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is JsonConfigResult.Err { give JsonConfigResult.Err(vr.error) }
+  if json_runtime_pkg.runtime_status() == false {
+    give JsonConfigResult.Err(JsonConfigError.Internal)
+  }
+  give JsonConfigResult.Ok(true)
+}
+
+proc runtime_info() -> JsonRuntimeInfo {
+  give JsonRuntimeInfo(json_runtime_pkg.runtime_name(),
+                       json_runtime_pkg.runtime_version(),
+                       json_runtime_pkg.supports_diagnostics())
 }
 
 proc default_parse_options() -> ParseOptions {
@@ -193,6 +253,23 @@ proc api_version() -> string {
   give "v1"
 }
 
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give [
+    "config",
+    "diagnostics",
+    "format",
+    "healthcheck",
+    "parse",
+    "query-path",
+    "schema",
+    "stream"
+  ]
+}
+
 proc doctor_status() -> string {
   give "vitte/json doctor:ready api=" + api_version()
 }
@@ -212,7 +289,7 @@ proc quickfix_apply(payload: string) -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give json_runtime_pkg.runtime_status()
 }
 
 proc package_meta() -> string {

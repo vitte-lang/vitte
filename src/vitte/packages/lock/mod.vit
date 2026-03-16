@@ -5,6 +5,10 @@ package vitte/lock
 
 space vitte/lock
 
+use vitte/lock/internal/policy as lock_policy_pkg
+use vitte/lock/internal/runtime as lock_runtime_pkg
+use vitte/lock/internal/validate as lock_validate_pkg
+
 form Lease {
   key: string
   owner: string
@@ -23,6 +27,29 @@ form AcquireResult {
   table: LockTable
   acquired: bool
   lease: Lease
+}
+
+form LockConfig {
+  min_ttl: int
+  max_ttl: int
+  strict_owner: bool
+}
+
+pick LockConfigError {
+  InvalidConfig
+  Internal
+}
+
+pick LockConfigResult[T] {
+  Ok(value: T)
+  Err(error: LockConfigError)
+}
+
+form LockRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_fencing: bool
 }
 
 proc lock_table_new() -> LockTable {
@@ -197,6 +224,92 @@ proc stats(table: LockTable) -> string {
        ",active=" + active_count(table).to_string() +
        ",known=" + table.leases.len.to_string() +
        ",next_fencing=" + table.next_fencing.to_string()
+}
+
+proc default_config() -> LockConfig {
+  give LockConfig(lock_policy_pkg.default_min_ttl(),
+                  lock_policy_pkg.default_max_ttl(),
+                  lock_policy_pkg.default_strict_owner())
+}
+
+proc strict_config() -> LockConfig {
+  let cfg = default_config()
+  give LockConfig(cfg.min_ttl, cfg.max_ttl, true)
+}
+
+proc normalize_config(cfg: LockConfig) -> LockConfig {
+  let min_ttl = lock_policy_pkg.normalize_min_ttl(cfg.min_ttl)
+  let max_ttl = lock_policy_pkg.normalize_max_ttl(cfg.max_ttl, min_ttl)
+  give LockConfig(min_ttl, max_ttl, cfg.strict_owner)
+}
+
+proc validate_config(cfg: LockConfig) -> LockConfigResult[bool] {
+  let nc = normalize_config(cfg)
+  if lock_validate_pkg.valid_ttl(nc.min_ttl, 1, 86400) == false {
+    give LockConfigResult.Err(LockConfigError.InvalidConfig)
+  }
+  if lock_validate_pkg.valid_ttl(nc.max_ttl, nc.min_ttl, 86400) == false {
+    give LockConfigResult.Err(LockConfigError.InvalidConfig)
+  }
+  give LockConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: LockConfig) -> LockConfigResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is LockConfigResult.Err { give LockConfigResult.Err(vr.error) }
+  if lock_runtime_pkg.runtime_status() == false {
+    give LockConfigResult.Err(LockConfigError.Internal)
+  }
+  give LockConfigResult.Ok(true)
+}
+
+proc runtime_info() -> LockRuntimeInfo {
+  give LockRuntimeInfo(lock_runtime_pkg.runtime_name(),
+                       lock_runtime_pkg.runtime_version(),
+                       lock_runtime_pkg.supports_diagnostics(),
+                       lock_runtime_pkg.supports_fencing())
+}
+
+proc acquire_checked(table: LockTable, key: string, owner: string, ttl: int, cfg: LockConfig) -> LockConfigResult[AcquireResult] {
+  let nc = normalize_config(cfg)
+  if lock_validate_pkg.valid_key(key) == false { give LockConfigResult.Err(LockConfigError.InvalidConfig) }
+  if lock_validate_pkg.valid_owner(owner, nc.strict_owner) == false { give LockConfigResult.Err(LockConfigError.InvalidConfig) }
+  if lock_validate_pkg.valid_ttl(ttl, nc.min_ttl, nc.max_ttl) == false { give LockConfigResult.Err(LockConfigError.InvalidConfig) }
+  give LockConfigResult.Ok(acquire(table, key, owner, ttl))
+}
+
+proc renew_checked(table: LockTable, key: string, owner: string, ttl: int, cfg: LockConfig) -> LockConfigResult[LockTable] {
+  let nc = normalize_config(cfg)
+  if lock_validate_pkg.valid_key(key) == false { give LockConfigResult.Err(LockConfigError.InvalidConfig) }
+  if lock_validate_pkg.valid_owner(owner, nc.strict_owner) == false { give LockConfigResult.Err(LockConfigError.InvalidConfig) }
+  if lock_validate_pkg.valid_ttl(ttl, nc.min_ttl, nc.max_ttl) == false { give LockConfigResult.Err(LockConfigError.InvalidConfig) }
+  give LockConfigResult.Ok(renew(table, key, owner, ttl))
+}
+
+proc capabilities() -> [string] {
+  give ["lease", "fencing", "config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-LOCK0001" { give "invalid lock configuration or arguments" }
+  give "lock diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "verify ttl bounds and owner/key values"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc package_meta() -> string {
+  give "vitte/lock"
 }
 
 proc ready() -> bool {

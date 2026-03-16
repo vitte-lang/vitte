@@ -1,0 +1,42 @@
+use vitte/sync as sync_pkg
+
+entry main at core/app {
+  let cfg = sync_pkg.strict_config()
+  let cfg2 = sync_pkg.with_timeout_ticks(cfg, 5)
+  let vr: sync_pkg.SyncResult[bool] = sync_pkg.validate_config(cfg2)
+  when vr is sync_pkg.SyncResult.Err {
+    return 1
+  }
+
+  let hr: sync_pkg.SyncResult[bool] = sync_pkg.healthcheck(cfg2)
+  when hr is sync_pkg.SyncResult.Err {
+    return 1
+  }
+
+  let m = sync_pkg.mutex_new_from_config("m", cfg2)
+  let t = sync_pkg.thread_id("t0")
+  let r: sync_pkg.SyncResult[sync_pkg.MutexState] = sync_pkg.mutex_lock_with_config(m, t, cfg2)
+  when r is sync_pkg.SyncResult.Err {
+    return 1
+  }
+
+  let s = sync_pkg.snapshot_new()
+  let txt = sync_pkg.snapshot_summary(s)
+  if txt.len == 0 {
+    return 1
+  }
+
+  if sync_pkg.capabilities().len < 5 {
+    return 1
+  }
+
+  if sync_pkg.diagnostics_message("VITTE-SYNC0001").len == 0 {
+    return 1
+  }
+
+  if sync_pkg.stable_api_surface_hash() <= 0 {
+    return 1
+  }
+
+  return 0
+}

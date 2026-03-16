@@ -3,3 +3,21 @@ space vitte/std/async/internal/validate
 proc valid_queue_depth(queue_depth: int) -> bool {
   give queue_depth > 0 && queue_depth <= 100000
 }
+
+proc valid_mode(mode: string) -> bool {
+  if mode == "default" { give true }
+  if mode == "low-latency" { give true }
+  if mode == "throughput" { give true }
+  give false
+}
+
+proc validate_code(queue_depth: int) -> string {
+  if valid_queue_depth(queue_depth) == false { give "VITTE-STDASYNC0001" }
+  give ""
+}
+
+proc valid_config(queue_depth: int, cooperative: bool, deterministic: bool) -> bool {
+  if valid_queue_depth(queue_depth) == false { give false }
+  if deterministic && cooperative == false { give false }
+  give true
+}

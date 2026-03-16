@@ -1,0 +1,42 @@
+use vitte/ecs as ecs_pkg
+
+entry main at core/app {
+  let cfg = ecs_pkg.strict_config()
+  let vr: ecs_pkg.EcsResult[bool] = ecs_pkg.validate_config(cfg)
+  when vr is ecs_pkg.EcsResult.Err {
+    return 1
+  }
+
+  let w0 = ecs_pkg.world_new()
+  let s1: ecs_pkg.EcsResult[ecs_pkg.World] = ecs_pkg.spawn_checked(w0, cfg)
+  when s1 is ecs_pkg.EcsResult.Err {
+    return 1
+  }
+
+  let eid = ecs_pkg.last_spawned_id(s1.value)
+  let p1: ecs_pkg.EcsResult[ecs_pkg.World] = ecs_pkg.add_position_checked(s1.value, eid, 2, 3, cfg)
+  when p1 is ecs_pkg.EcsResult.Err {
+    return 1
+  }
+
+  let v1: ecs_pkg.EcsResult[ecs_pkg.World] = ecs_pkg.add_velocity_checked(p1.value, eid, 4, 5, cfg)
+  when v1 is ecs_pkg.EcsResult.Err {
+    return 1
+  }
+
+  let w1 = ecs_pkg.step(v1.value)
+  if ecs_pkg.position_x(w1, eid) != 6 {
+    return 1
+  }
+
+  let h = ecs_pkg.ecs_health(w1, cfg)
+  if h.ok == false {
+    return 1
+  }
+
+  if ecs_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

@@ -1,0 +1,59 @@
+space vitte/std/internal/validate
+
+proc valid_timeout_ms(timeout_ms: int) -> bool {
+  give timeout_ms > 0 && timeout_ms <= 60000
+}
+
+proc valid_retry_budget(retry_budget: int) -> bool {
+  give retry_budget >= 0 && retry_budget <= 32
+}
+
+proc valid_strict(strict: bool) -> bool {
+  if strict { give true }
+  give true
+}
+
+proc valid_profile_name(profile: string) -> bool {
+  if profile == "core" { give true }
+  if profile == "balanced" { give true }
+  if profile == "throughput" { give true }
+  if profile == "default" { give true }
+  give false
+}
+
+proc config_error_code(timeout_ms: int, retry_budget: int) -> string {
+  if valid_timeout_ms(timeout_ms) == false { give "VITTE-S0001" }
+  if valid_retry_budget(retry_budget) == false { give "VITTE-S0002" }
+  give ""
+}
+
+proc valid_config(timeout_ms: int, retry_budget: int, strict: bool) -> bool {
+  if valid_timeout_ms(timeout_ms) == false { give false }
+  if valid_retry_budget(retry_budget) == false { give false }
+  if valid_strict(strict) == false { give false }
+  give true
+}
+
+proc valid_profile_config(profile: string, timeout_ms: int, retry_budget: int, strict: bool) -> bool {
+  if valid_profile_name(profile) == false { give false }
+  give valid_config(timeout_ms, retry_budget, strict)
+}
+
+proc valid_module_name(name: string) -> bool {
+  give name.len > 0
+}
+
+proc valid_group_name(group: string) -> bool {
+  give group.len > 0
+}
+
+proc valid_module_path(path: string) -> bool {
+  give path.len > 0
+}
+
+proc register_error_code(name: string, group: string, path: string) -> string {
+  if valid_module_name(name) == false { give "VITTE-S0004" }
+  if valid_group_name(group) == false { give "VITTE-S0005" }
+  if valid_module_path(path) == false { give "VITTE-S0006" }
+  give ""
+}

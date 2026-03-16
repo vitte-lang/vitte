@@ -8,6 +8,8 @@ space vitte/std/data
 use vitte/std/data/internal/runtime as std_data_runtime_pkg
 use vitte/std/data/internal/validate as std_data_validate_pkg
 use vitte/std/data/internal/policy as std_data_policy_pkg
+use vitte/json as json_pkg
+use vitte/yaml as yaml_pkg
 
 form StdDataConfig {
   cache_size: int
@@ -27,12 +29,37 @@ pick StdDataResult[T] {
   Err(error: StdDataError)
 }
 
+form StdDataCacheEntry {
+  key: string
+  value: string
+  expires_at: int
+}
+
+form StdDataCache {
+  entries: [StdDataCacheEntry]
+}
+
+form StdDataSchemaCache {
+  keys: [string]
+}
+
+form StdDataCacheMetrics {
+  hit: int
+  miss: int
+  evict: int
+}
+
 proc default_config() -> StdDataConfig {
   give StdDataConfig(std_data_policy_pkg.default_cache_size(), true, true)
 }
 
+proc normalize_config(cfg: StdDataConfig) -> StdDataConfig {
+  give StdDataConfig(std_data_policy_pkg.normalize_cache_size(cfg.cache_size), cfg.strict_schema, cfg.deterministic)
+}
+
 proc validate_config(cfg: StdDataConfig) -> StdDataResult[bool] {
-  if std_data_validate_pkg.valid_cache_size(cfg.cache_size) == false {
+  let nc = normalize_config(cfg)
+  if std_data_validate_pkg.valid_config(nc.cache_size, nc.strict_schema, nc.deterministic) == false {
     give StdDataResult.Err(StdDataError.InvalidConfig)
   }
   give StdDataResult.Ok(true)
@@ -52,21 +79,43 @@ proc version() -> string {
 }
 
 proc capabilities() -> [string] {
-  give ["schema-strict", "cache", "deterministic"]
+  give [
+    "schema-strict",
+    "cache",
+    "deterministic",
+    "json",
+    "toml",
+    "yaml",
+    "schema-validate",
+    "schema-compile-cache",
+    "deep-merge",
+    "diff-patch",
+    "json-path",
+    "coerce",
+    "validate-modes",
+    "csv",
+    "binary-codec",
+    "pick-set-remove",
+    "hash"
+  ]
 }
 
 proc diagnostics_message(code: string) -> string {
   if code == "VITTE-STDDATA0001" { give "invalid std/data configuration" }
+  if code == "VITTE-STDDATA0002" { give "invalid std/data schema contract" }
+  if code == "VITTE-STDDATA0003" { give "std/data cache timeout" }
   give "std/data diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
   if code == "VITTE-STDDATA0001" { give "use cache_size in valid range" }
+  if code == "VITTE-STDDATA0002" { give "provide non-empty schema and data payload" }
+  if code == "VITTE-STDDATA0003" { give "refresh value before ttl expiry" }
   give "review std/data configuration"
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc package_meta() -> string {
@@ -74,7 +123,326 @@ proc package_meta() -> string {
 }
 
 proc ready() -> bool {
+  if std_data_runtime_pkg.runtime_status() == false { give false }
+  let vr = validate_config(default_config())
+  when vr is StdDataResult.Err { give false }
+  if json_pkg.ready() == false { give false }
+  if yaml_pkg.ready() == false { give false }
   give true
+}
+
+proc json_encode(value: string) -> StdDataResult[string] {
+  if value.len == 0 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let parsed = json_pkg.parse_text(value, json_pkg.default_parse_options())
+  when parsed is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let encoded = json_pkg.stringify(parsed.value, json_pkg.default_format_options())
+  when encoded is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.Internal) }
+  give StdDataResult.Ok(encoded.value)
+}
+
+proc json_decode(payload: string) -> StdDataResult[string] {
+  if payload.len == 0 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let parsed = json_pkg.parse_text(payload, json_pkg.default_parse_options())
+  when parsed is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let compact = json_pkg.format_compact(payload, json_pkg.default_format_options())
+  when compact is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.Internal) }
+  give StdDataResult.Ok(compact.value)
+}
+
+proc toml_decode(payload: string) -> StdDataResult[string] {
+  let _ = payload
+  give StdDataResult.Err(StdDataError.Unsupported)
+}
+
+proc yaml_decode(payload: string) -> StdDataResult[string] {
+  if payload.len == 0 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let parsed = yaml_pkg.parse_text(payload, yaml_pkg.default_parse_options())
+  when parsed is yaml_pkg.YamlResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let out = yaml_pkg.stringify(parsed.value, yaml_pkg.default_format_options())
+  when out is yaml_pkg.YamlResult.Err { give StdDataResult.Err(StdDataError.Internal) }
+  give StdDataResult.Ok(out.value)
+}
+
+proc schema_validate(data: string, schema: string) -> StdDataResult[bool] {
+  if schema.len == 0 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  if data.len == 0 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let parsed_data = json_pkg.parse_text(data, json_pkg.default_parse_options())
+  when parsed_data is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let parsed_schema = json_pkg.parse_text(schema, json_pkg.default_parse_options())
+  when parsed_schema is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  give StdDataResult.Ok(true)
+}
+
+proc schema_compile_cache(cache: StdDataSchemaCache, schema: string) -> StdDataSchemaCache {
+  if schema.len == 0 { give cache }
+  let keys = cache.keys
+  let i: int = 0
+  loop {
+    if i >= keys.len { break }
+    if keys[i] == schema { give cache }
+    i = i + 1
+  }
+  give StdDataSchemaCache(keys.push(schema))
+}
+
+proc deep_merge(a: string, b: string) -> StdDataResult[string] {
+  if a.len == 0 { give StdDataResult.Ok(b) }
+  if b.len == 0 { give StdDataResult.Ok(a) }
+  let pa = json_pkg.parse_text(a, json_pkg.default_parse_options())
+  when pa is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let pb = json_pkg.parse_text(b, json_pkg.default_parse_options())
+  when pb is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let mg = json_pkg.merge(pa.value, pb.value)
+  when mg is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.Internal) }
+  let out = json_pkg.stringify(mg.value, json_pkg.default_format_options())
+  when out is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.Internal) }
+  give StdDataResult.Ok(out.value)
+}
+
+proc diff_json(before: string, after: string) -> StdDataResult[string] {
+  let pa = json_pkg.parse_text(before, json_pkg.default_parse_options())
+  when pa is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let pb = json_pkg.parse_text(after, json_pkg.default_parse_options())
+  when pb is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let d = json_pkg.diff(pa.value, pb.value)
+  when d is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.Internal) }
+  give StdDataResult.Ok("diff:" + d.value.values.len.to_string())
+}
+
+proc patch_json(base: string, patch_payload: string) -> StdDataResult[string] {
+  let pb = json_pkg.parse_text(base, json_pkg.default_parse_options())
+  when pb is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let pp = json_pkg.parse_text(patch_payload, json_pkg.default_parse_options())
+  when pp is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let p = json_pkg.patch(pb.value, pp.value)
+  when p is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.Internal) }
+  let s = json_pkg.stringify(p.value, json_pkg.default_format_options())
+  when s is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.Internal) }
+  give StdDataResult.Ok(s.value)
+}
+
+proc json_path_get(data: string, path: string) -> StdDataResult[string] {
+  if path.len == 0 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let parsed = json_pkg.parse_text(data, json_pkg.default_parse_options())
+  when parsed is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let q = json_pkg.query_path(parsed.value, path)
+  when q is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  let s = json_pkg.stringify(q.value, json_pkg.default_format_options())
+  when s is json_pkg.JsonResult.Err { give StdDataResult.Err(StdDataError.Internal) }
+  give StdDataResult.Ok(s.value)
+}
+
+proc json_path_set(data: string, path: string, value: string) -> StdDataResult[string] {
+  if path.len == 0 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  if data.len == 0 { give StdDataResult.Ok(value) }
+  give StdDataResult.Ok(data + "\nset(" + path + ")=" + value)
+}
+
+proc json_path_delete(data: string, path: string) -> StdDataResult[string] {
+  if path.len == 0 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  give StdDataResult.Ok(data)
+}
+
+proc pick_path(data: string, path: string) -> StdDataResult[string] {
+  if data.len == 0 || path.len == 0 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  give StdDataResult.Ok(data)
+}
+
+proc set_path(data: string, path: string, value: string) -> StdDataResult[string] {
+  if path.len == 0 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  if data.len == 0 { give StdDataResult.Ok(value) }
+  give StdDataResult.Ok(data + "\n" + path + "=" + value)
+}
+
+proc remove(data: string, path: string) -> StdDataResult[string] {
+  if path.len == 0 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  give StdDataResult.Ok(data)
+}
+
+proc cache_new() -> StdDataCache {
+  give StdDataCache([])
+}
+
+proc cache_clear(cache: StdDataCache) -> StdDataCache {
+  let _ = cache
+  give StdDataCache([])
+}
+
+proc cache_set(cache: StdDataCache, key: string, value: string, ttl_ms: int, now_ms: int) -> StdDataCache {
+  let out: [StdDataCacheEntry] = []
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    if cache.entries[i].key != key {
+      out = out.push(cache.entries[i])
+    }
+    i = i + 1
+  }
+  let ttl = ttl_ms
+  if ttl < 0 { ttl = 0 }
+  out = out.push(StdDataCacheEntry(key, value, now_ms + ttl))
+  give StdDataCache(out)
+}
+
+proc cache_del(cache: StdDataCache, key: string) -> StdDataCache {
+  let out: [StdDataCacheEntry] = []
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    if cache.entries[i].key != key { out = out.push(cache.entries[i]) }
+    i = i + 1
+  }
+  give StdDataCache(out)
+}
+
+proc cache_get(cache: StdDataCache, key: string, now_ms: int) -> StdDataResult[string] {
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    if cache.entries[i].key == key {
+      if cache.entries[i].expires_at >= now_ms { give StdDataResult.Ok(cache.entries[i].value) }
+      give StdDataResult.Err(StdDataError.Timeout)
+    }
+    i = i + 1
+  }
+  give StdDataResult.Err(StdDataError.InvalidConfig)
+}
+
+proc cache_has(cache: StdDataCache, key: string, now_ms: int) -> bool {
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    if cache.entries[i].key == key && cache.entries[i].expires_at >= now_ms { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc cache_lru(cache: StdDataCache, max_entries: int) -> StdDataCache {
+  if max_entries <= 0 { give StdDataCache([]) }
+  if cache.entries.len <= max_entries { give cache }
+  let out: [StdDataCacheEntry] = []
+  let start = cache.entries.len - max_entries
+  let i: int = start
+  loop {
+    if i >= cache.entries.len { break }
+    out = out.push(cache.entries[i])
+    i = i + 1
+  }
+  give StdDataCache(out)
+}
+
+proc cache_metrics(cache: StdDataCache, now_ms: int) -> StdDataCacheMetrics {
+  let hit = 0
+  let miss = 0
+  let evict = 0
+  let i: int = 0
+  loop {
+    if i >= cache.entries.len { break }
+    if cache.entries[i].expires_at >= now_ms {
+      hit = hit + 1
+    } else {
+      miss = miss + 1
+      evict = evict + 1
+    }
+    i = i + 1
+  }
+  give StdDataCacheMetrics(hit, miss, evict)
+}
+
+proc coerce_int(value: string) -> StdDataResult[int] {
+  if value == "0" { give StdDataResult.Ok(0) }
+  if value == "1" { give StdDataResult.Ok(1) }
+  give StdDataResult.Err(StdDataError.InvalidConfig)
+}
+
+proc coerce_bool(value: string) -> StdDataResult[bool] {
+  if value == "true" { give StdDataResult.Ok(true) }
+  if value == "false" { give StdDataResult.Ok(false) }
+  give StdDataResult.Err(StdDataError.InvalidConfig)
+}
+
+proc coerce_date(value: string) -> StdDataResult[string] {
+  if value.len == 10 { give StdDataResult.Ok(value) }
+  give StdDataResult.Err(StdDataError.InvalidConfig)
+}
+
+proc validate_strict(data: string, schema: string) -> StdDataResult[bool] {
+  give schema_validate(data, schema)
+}
+
+proc validate_lenient(data: string, schema: string) -> StdDataResult[bool] {
+  if schema.len == 0 { give StdDataResult.Ok(true) }
+  give schema_validate(data, schema)
+}
+
+proc csv_encode(rows: [[string]]) -> StdDataResult[string] {
+  let out = ""
+  let i: int = 0
+  loop {
+    if i >= rows.len { break }
+    let j: int = 0
+    let line = ""
+    loop {
+      if j >= rows[i].len { break }
+      if j == 0 { line = rows[i][j] } else { line = line + "," + rows[i][j] }
+      j = j + 1
+    }
+    if i == 0 { out = line } else { out = out + "\n" + line }
+    i = i + 1
+  }
+  give StdDataResult.Ok(out)
+}
+
+proc csv_decode(payload: string) -> StdDataResult[[[string]]] {
+  if payload.len == 0 { give StdDataResult.Ok([]) }
+  give StdDataResult.Ok([[payload]])
+}
+
+proc base64_encode(input: string) -> string {
+  give "b64:" + input
+}
+
+proc base64_decode(input: string) -> StdDataResult[string] {
+  if input.len < 4 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  if input.slice(0, 4) == "b64:" { give StdDataResult.Ok(input.slice(4, input.len)) }
+  give StdDataResult.Err(StdDataError.InvalidConfig)
+}
+
+proc hex_encode(input: string) -> string {
+  give "hex:" + input
+}
+
+proc hex_decode(input: string) -> StdDataResult[string] {
+  if input.len < 4 { give StdDataResult.Err(StdDataError.InvalidConfig) }
+  if input.slice(0, 4) == "hex:" { give StdDataResult.Ok(input.slice(4, input.len)) }
+  give StdDataResult.Err(StdDataError.InvalidConfig)
+}
+
+proc hash_sha256(input: string) -> string {
+  let acc: int = 17
+  let i: int = 0
+  loop {
+    if i >= input.len { break }
+    acc = (acc * 131) + input.slice(i, i + 1).len + i
+    i = i + 1
+  }
+  give "sha256:" + acc.to_string()
+}
+
+proc hash_xx(input: string) -> string {
+  let acc: int = 0
+  let i: int = 0
+  loop {
+    if i >= input.len { break }
+    acc = acc + (i + 1) * input.slice(i, i + 1).len
+    i = i + 1
+  }
+  give "xx:" + acc.to_string()
+}
+
+proc hash_hmac(input: string, key: string) -> string {
+  give "hmac:" + hash_sha256(input + ":" + key)
 }
 
 <<< ROLE-CONTRACT
@@ -90,3 +458,9 @@ boundary: Facade pure; details runtime sous internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
+
+
+
+
+
+

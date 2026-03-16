@@ -5,6 +5,10 @@ package vitte/slab
 
 space vitte/slab
 
+use vitte/slab/internal/policy as slab_policy_pkg
+use vitte/slab/internal/runtime as slab_runtime_pkg
+use vitte/slab/internal/validate as slab_validate_pkg
+
 
 form Slot {
   id: int
@@ -203,6 +207,119 @@ proc stats(s: Slab) -> string {
        ",cap=" + s.slots.len.to_string()
 }
 
+form PackageConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick PackageConfigError {
+  InvalidConfig
+  Internal
+}
+
+pick PackageConfigResult[T] {
+  Ok(value: T)
+  Err(error: PackageConfigError)
+}
+
+form PackageRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
+proc default_config() -> PackageConfig {
+  give PackageConfig(true,
+                     slab_policy_pkg.default_timeout_ms(),
+                     slab_policy_pkg.default_retry_budget())
+}
+
+proc strict_config() -> PackageConfig {
+  let cfg = default_config()
+  give PackageConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc normalize_config(cfg: PackageConfig) -> PackageConfig {
+  give PackageConfig(cfg.strict,
+                     slab_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
+                     cfg.retry_budget)
+}
+
+proc validate_config(cfg: PackageConfig) -> PackageConfigResult[bool] {
+  let nc = normalize_config(cfg)
+  if slab_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
+    give PackageConfigResult.Err(PackageConfigError.InvalidConfig)
+  }
+  if slab_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
+    give PackageConfigResult.Err(PackageConfigError.InvalidConfig)
+  }
+  give PackageConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: PackageConfig) -> PackageConfigResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is PackageConfigResult.Err { give PackageConfigResult.Err(vr.error) }
+  if slab_runtime_pkg.runtime_status() == false {
+    give PackageConfigResult.Err(PackageConfigError.Internal)
+  }
+  give PackageConfigResult.Ok(true)
+}
+
+proc runtime_info() -> PackageRuntimeInfo {
+  give PackageRuntimeInfo(slab_runtime_pkg.runtime_name(),
+                          slab_runtime_pkg.runtime_version(),
+                          slab_runtime_pkg.supports_diagnostics())
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-PKG0001" { give "invalid package configuration" }
+  give "slab diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review timeout/retry configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
+proc version() -> string {
+  give api_version()
+}
+
+proc doctor_status() -> string {
+  give "vitte/slab doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: PackageConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is PackageConfigResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> PackageConfigResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
+}
 proc ready() -> bool {
   give true
 }

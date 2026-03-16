@@ -1,0 +1,16 @@
+<<<
+db_profile_strict.vit
+strict profile smoke for vitte/db
+>>>
+
+use vitte/db as db_pkg
+
+entry main at core/app {
+  let cfg: db_pkg.DbConfig = db_pkg.default_config()
+  cfg = db_pkg.DbConfig(cfg.dsn, "core", cfg.timeout_ms, cfg.cancel_token, cfg.retry_backoff_ms, cfg.retry_budget, cfg.pool_min, cfg.pool_max, cfg.pool_idle_timeout_ms, cfg.pool_health_interval_ms, cfg.circuit_error_threshold, cfg.circuit_open_ms)
+  let conn: db_pkg.DbResult[db_pkg.DbConn] = db_pkg.connect(cfg)
+  when conn is db_pkg.DbResult.Ok {
+    give 1
+  }
+  give 0
+}

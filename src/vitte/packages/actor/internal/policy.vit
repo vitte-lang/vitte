@@ -1,0 +1,69 @@
+space vitte/actor/internal/policy
+
+proc max_actor_name_len() -> int {
+  give 128
+}
+
+proc max_mailbox_capacity() -> int {
+  give 8192
+}
+
+proc default_mailbox_capacity() -> int {
+  give 128
+}
+
+proc default_restart_limit() -> int {
+  give 3
+}
+
+proc max_restart_limit() -> int {
+  give 1024
+}
+
+proc default_snapshot_interval() -> int {
+  give 8
+}
+
+proc max_snapshot_interval() -> int {
+  give 100000
+}
+
+proc hard_max_workers() -> int {
+  give 1024
+}
+
+proc normalize_mailbox_capacity(capacity: int) -> int {
+  let out = capacity
+  if out < 1 { out = 1 }
+  if out > max_mailbox_capacity() { out = max_mailbox_capacity() }
+  give out
+}
+
+proc normalize_restart_limit(limit: int) -> int {
+  let out = limit
+  if out < 0 { out = 0 }
+  if out > max_restart_limit() { out = max_restart_limit() }
+  give out
+}
+
+proc normalize_snapshot_interval(interval: int) -> int {
+  let out = interval
+  if out < 1 { out = 1 }
+  if out > max_snapshot_interval() { out = max_snapshot_interval() }
+  give out
+}
+
+proc normalize_backoff_base(value: int) -> int {
+  if value < 1 { give 1 }
+  give value
+}
+
+proc normalize_backoff_max(base: int, max: int) -> int {
+  if max < base { give base }
+  give max
+}
+
+proc normalize_backoff_jitter(value: int) -> int {
+  if value < 0 { give 0 }
+  give value
+}

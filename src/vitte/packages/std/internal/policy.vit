@@ -1,0 +1,102 @@
+space vitte/std/internal/policy
+
+form StdPolicyLimits {
+  timeout_min_ms: int
+  timeout_max_ms: int
+  retry_min: int
+  retry_max: int
+}
+
+form StdPolicyProfile {
+  name: string
+  timeout_ms: int
+  retry_budget: int
+  strict: bool
+}
+
+proc default_timeout_ms() -> int {
+  give 1000
+}
+
+proc default_retry_budget() -> int {
+  give 1
+}
+
+proc default_profile_name() -> string {
+  give "balanced"
+}
+
+proc default_strict() -> bool {
+  give true
+}
+
+proc limits() -> StdPolicyLimits {
+  give StdPolicyLimits(1, 60000, 0, 32)
+}
+
+proc core_profile() -> StdPolicyProfile {
+  give StdPolicyProfile("core", 800, 1, true)
+}
+
+proc balanced_profile() -> StdPolicyProfile {
+  give StdPolicyProfile("balanced", 1000, 1, true)
+}
+
+proc throughput_profile() -> StdPolicyProfile {
+  give StdPolicyProfile("throughput", 2500, 3, false)
+}
+
+proc profile_by_name(name: string) -> StdPolicyProfile {
+  if name == "core" { give core_profile() }
+  if name == "throughput" { give throughput_profile() }
+  if name == "balanced" { give balanced_profile() }
+  give StdPolicyProfile("default", default_timeout_ms(), default_retry_budget(), true)
+}
+
+proc profile_names() -> [string] {
+  give ["core", "balanced", "throughput", "default"]
+}
+
+proc profile_exists(name: string) -> bool {
+  let names = profile_names()
+  let i: int = 0
+  loop {
+    if i >= names.len { break }
+    if names[i] == name { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc normalize_profile_name(name: string) -> string {
+  if profile_exists(name) { give name }
+  give default_profile_name()
+}
+
+proc clamp_timeout_ms(timeout_ms: int) -> int {
+  let lim = limits()
+  if timeout_ms < lim.timeout_min_ms { give lim.timeout_min_ms }
+  if timeout_ms > lim.timeout_max_ms { give lim.timeout_max_ms }
+  give timeout_ms
+}
+
+proc clamp_retry_budget(retry_budget: int) -> int {
+  let lim = limits()
+  if retry_budget < lim.retry_min { give lim.retry_min }
+  if retry_budget > lim.retry_max { give lim.retry_max }
+  give retry_budget
+}
+
+proc normalize_timeout_ms(timeout_ms: int) -> int {
+  if timeout_ms <= 0 { give default_timeout_ms() }
+  give clamp_timeout_ms(timeout_ms)
+}
+
+proc normalize_retry_budget(retry_budget: int) -> int {
+  if retry_budget < 0 { give default_retry_budget() }
+  give clamp_retry_budget(retry_budget)
+}
+
+proc policy_version() -> string {
+  give "v1"
+}

@@ -1,0 +1,52 @@
+space vitte/codec/internal/validate
+
+proc has_control(value: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= value.len { break }
+    if value.slice(i, i + 1) == "\x00" { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc valid_key(key: string, max_len: int) -> bool {
+  if key.len == 0 { give false }
+  give key.len <= max_len
+}
+
+proc valid_value(value: string, max_len: int) -> bool {
+  give value.len <= max_len
+}
+
+proc valid_payload_len(value: int, max_len: int) -> bool {
+  if value < 0 { give false }
+  give value <= max_len
+}
+
+proc valid_payload_len_range(value: int, min_len: int, max_len: int) -> bool {
+  if value < min_len { give false }
+  give value <= max_len
+}
+
+proc valid_json_payload(data: string) -> bool {
+  if data.len < 2 { give false }
+  if data.slice(0, 1) != "{" { give false }
+  give data.slice(data.len - 1, data.len) == "}"
+}
+
+proc valid_msgpack_payload(data: string) -> bool {
+  if data.len < 4 { give false }
+  give data.slice(0, 3) == "mp:"
+}
+
+proc valid_binary_payload(data: string) -> bool {
+  if data.len < 3 { give false }
+  let i: int = 0
+  loop {
+    if i >= data.len { break }
+    if data.slice(i, i + 1) == "\x00" { give true }
+    i = i + 1
+  }
+  give false
+}

@@ -1,6 +1,9 @@
 space std/io/error
 
 use std/core/result.Result
+use vitte/io/error/internal/runtime as io_error_runtime_pkg
+use vitte/io/error/internal/validate as io_error_validate_pkg
+use vitte/io/error/internal/policy as io_error_policy_pkg
 
 pick IoErrorKind {
   NotFound
@@ -22,3 +25,94 @@ proc with_message(kind: IoErrorKind, message: string) -> IoError {
 proc is_not_found(err: IoError) -> bool {
   give err.kind == IoErrorKind.NotFound
 }
+
+form IoErrorConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick IoErrorError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick IoErrorResult[T] {
+  Ok(value: T)
+  Err(error: IoErrorError)
+}
+
+proc default_config() -> IoErrorConfig {
+  give IoErrorConfig(true, io_error_policy_pkg.default_timeout_ms(), io_error_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: IoErrorConfig) -> IoErrorResult[bool] {
+  if io_error_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give IoErrorResult.Err(IoErrorError.InvalidConfig)
+  }
+  if io_error_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give IoErrorResult.Err(IoErrorError.InvalidConfig)
+  }
+  give IoErrorResult.Ok(true)
+}
+
+proc healthcheck(cfg: IoErrorConfig) -> IoErrorResult[bool] {
+  let vr: IoErrorResult[bool] = validate_config(cfg)
+  when vr is IoErrorResult.Err {
+    give IoErrorResult.Err(vr.error)
+  }
+  if io_error_runtime_pkg.runtime_status() == false {
+    give IoErrorResult.Err(IoErrorError.Internal)
+  }
+  give IoErrorResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-IOERROR0001" {
+    give "invalid package configuration"
+  }
+  give "io/error diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/io/error"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/io/error
+owner: @vitte/std
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: Facade publique stable
+input_contract: Config explicite et typable
+output_contract: Resultats stables et predictibles
+boundary: Implementation privee sous vitte/io/error/internal/*
+compat_policy: additive-only
+api_version: v1
+>>>
+
+
+
+
+
+

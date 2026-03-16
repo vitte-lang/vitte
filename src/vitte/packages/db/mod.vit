@@ -24,11 +24,14 @@ diagnostics: VITTE-D0001..VITTE-D0099
 compat_policy: additive-only
 internal_exports: forbidden
 api_version: v1
+versioning_note: stable_api_version=1.3.0
 >>>
 
 space vitte/db
 
 use vitte/db/internal/runtime as db_runtime_pkg
+use vitte/db/internal/policy as db_policy_pkg
+use vitte/db/internal/validate as db_validate_pkg
 
 pick DbError {
   Failure(code: string, message: string)
@@ -111,6 +114,21 @@ form MigrationState {
   checksums: [string]
 }
 
+form DbRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_safe_sql: bool
+  supports_transactions: bool
+  supports_pooling: bool
+  supports_diagnostics: bool
+}
+
+form DbHealth {
+  ok: bool
+  code: string
+  pressure_percent: int
+}
+
 proc ok[T](value: T) -> DbResult[T] {
   give DbResult.Ok(value)
 }
@@ -138,39 +156,213 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc default_config() -> DbConfig {
-  give DbConfig("", "desktop", 2000, "", 50, 3, 1, 8, 10000, 5000, 5, 1000)
+  give DbConfig("",
+                db_policy_pkg.default_profile(),
+                db_policy_pkg.default_timeout_ms(),
+                "",
+                50,
+                db_policy_pkg.default_retry_budget(),
+                db_policy_pkg.default_pool_min(),
+                db_policy_pkg.default_pool_max(),
+                10000,
+                5000,
+                5,
+                1000)
+}
+
+proc strict_config() -> DbConfig {
+  let cfg = default_config()
+  give DbConfig(cfg.dsn,
+                cfg.profile,
+                cfg.timeout_ms,
+                cfg.cancel_token,
+                cfg.retry_backoff_ms,
+                cfg.retry_budget,
+                cfg.pool_min,
+                cfg.pool_max,
+                cfg.pool_idle_timeout_ms,
+                cfg.pool_health_interval_ms,
+                cfg.circuit_error_threshold,
+                cfg.circuit_open_ms)
+}
+
+proc with_timeout_ms(cfg: DbConfig, timeout_ms: int) -> DbConfig {
+  give DbConfig(cfg.dsn,
+                cfg.profile,
+                db_policy_pkg.normalize_timeout_ms(timeout_ms),
+                cfg.cancel_token,
+                cfg.retry_backoff_ms,
+                cfg.retry_budget,
+                cfg.pool_min,
+                cfg.pool_max,
+                cfg.pool_idle_timeout_ms,
+                cfg.pool_health_interval_ms,
+                cfg.circuit_error_threshold,
+                cfg.circuit_open_ms)
+}
+
+proc with_retry_budget(cfg: DbConfig, retry_budget: int) -> DbConfig {
+  give DbConfig(cfg.dsn,
+                cfg.profile,
+                cfg.timeout_ms,
+                cfg.cancel_token,
+                cfg.retry_backoff_ms,
+                db_policy_pkg.normalize_retry_budget(retry_budget),
+                cfg.pool_min,
+                cfg.pool_max,
+                cfg.pool_idle_timeout_ms,
+                cfg.pool_health_interval_ms,
+                cfg.circuit_error_threshold,
+                cfg.circuit_open_ms)
+}
+
+proc with_pool_bounds(cfg: DbConfig, pool_min: int, pool_max: int) -> DbConfig {
+  let mn = db_policy_pkg.normalize_pool_size(pool_min)
+  let mx = db_policy_pkg.normalize_pool_size(pool_max)
+  if mx < mn { mx = mn }
+  give DbConfig(cfg.dsn,
+                cfg.profile,
+                cfg.timeout_ms,
+                cfg.cancel_token,
+                cfg.retry_backoff_ms,
+                cfg.retry_budget,
+                mn,
+                mx,
+                cfg.pool_idle_timeout_ms,
+                cfg.pool_health_interval_ms,
+                cfg.circuit_error_threshold,
+                cfg.circuit_open_ms)
+}
+
+proc validate_config_code(cfg: DbConfig) -> string {
+  if db_validate_pkg.valid_non_empty(db_runtime_pkg.normalize_dsn(cfg.dsn)) == false { give "VITTE-D0001" }
+  if db_validate_pkg.valid_max_len(cfg.dsn, db_policy_pkg.max_dsn_len()) == false { give "VITTE-D0001" }
+  if db_runtime_pkg.profile_allows(cfg.profile) == false { give "VITTE-D0009" }
+
+  if db_validate_pkg.valid_timeout_ms(cfg.timeout_ms,
+                                      db_policy_pkg.min_timeout_ms(),
+                                      db_policy_pkg.max_timeout_ms()) == false { give "VITTE-D0005" }
+  if db_validate_pkg.valid_retry_budget(cfg.retry_budget,
+                                        db_policy_pkg.min_retry_budget(),
+                                        db_policy_pkg.max_retry_budget()) == false { give "VITTE-D0006" }
+  if db_validate_pkg.valid_pool_bounds(cfg.pool_min, cfg.pool_max,
+                                       db_policy_pkg.min_pool_size(),
+                                       db_policy_pkg.max_pool_size()) == false { give "VITTE-D0007" }
+  if db_validate_pkg.valid_backoff_ms(cfg.retry_backoff_ms,
+                                      db_policy_pkg.min_backoff_ms(),
+                                      db_policy_pkg.max_backoff_ms()) == false { give "VITTE-D0006" }
+  if db_validate_pkg.valid_circuit_threshold(cfg.circuit_error_threshold,
+                                             db_policy_pkg.min_circuit_threshold(),
+                                             db_policy_pkg.max_circuit_threshold()) == false { give "VITTE-D0006" }
+  if db_validate_pkg.valid_circuit_open_ms(cfg.circuit_open_ms,
+                                           db_policy_pkg.min_circuit_open_ms(),
+                                           db_policy_pkg.max_circuit_open_ms()) == false { give "VITTE-D0006" }
+  if db_validate_pkg.valid_pool_idle_timeout_ms(cfg.pool_idle_timeout_ms,
+                                                db_policy_pkg.min_pool_idle_timeout_ms(),
+                                                db_policy_pkg.max_pool_idle_timeout_ms()) == false { give "VITTE-D0007" }
+  if db_validate_pkg.valid_pool_health_interval_ms(cfg.pool_health_interval_ms,
+                                                   db_policy_pkg.min_pool_health_interval_ms(),
+                                                   db_policy_pkg.max_pool_health_interval_ms()) == false { give "VITTE-D0007" }
+  give "ok"
+}
+
+proc validate_config(cfg: DbConfig) -> DbResult[bool] {
+  let code = validate_config_code(cfg)
+  if code != "ok" { give err(code, diagnostics_message(code)) }
+  give ok(true)
+}
+
+proc normalize_config(cfg: DbConfig) -> DbConfig {
+  let dsn = db_runtime_pkg.normalize_dsn(cfg.dsn)
+  let profile = cfg.profile
+
+  let pool = with_pool_bounds(cfg, cfg.pool_min, cfg.pool_max)
+  give DbConfig(dsn,
+                profile,
+                db_policy_pkg.normalize_timeout_ms(pool.timeout_ms),
+                pool.cancel_token,
+                db_policy_pkg.normalize_backoff_ms(pool.retry_backoff_ms),
+                db_policy_pkg.normalize_retry_budget(pool.retry_budget),
+                pool.pool_min,
+                pool.pool_max,
+                db_policy_pkg.normalize_pool_idle_timeout_ms(pool.pool_idle_timeout_ms),
+                db_policy_pkg.normalize_pool_health_interval_ms(pool.pool_health_interval_ms),
+                db_policy_pkg.normalize_circuit_threshold(pool.circuit_error_threshold),
+                db_policy_pkg.normalize_circuit_open_ms(pool.circuit_open_ms))
+}
+
+proc db_validate_code(conn: DbConn) -> string {
+  if conn.connected == false { give "VITTE-D0002" }
+  if validate_config_code(conn.config) != "ok" { give validate_config_code(conn.config) }
+  if conn.pool_in_use < 0 || conn.pool_in_use > conn.config.pool_max { give "VITTE-D0007" }
+  if conn.queue_depth < 0 { give "VITTE-D0007" }
+  if conn.error_count < 0 || conn.retry_count < 0 { give "VITTE-D0006" }
+  give "ok"
+}
+
+proc db_validate(conn: DbConn) -> bool {
+  give db_validate_code(conn) == "ok"
+}
+
+proc db_normalize(conn: DbConn) -> DbConn {
+  let cfg = normalize_config(conn.config)
+  let in_use = conn.pool_in_use
+  if in_use < 0 { in_use = 0 }
+  if in_use > cfg.pool_max { in_use = cfg.pool_max }
+  let qd = conn.queue_depth
+  if qd < 0 { qd = 0 }
+  let p50 = conn.latency_p50_ms
+  if p50 < 0 { p50 = 0 }
+  let p95 = conn.latency_p95_ms
+  if p95 < p50 { p95 = p50 }
+  let ec = conn.error_count
+  if ec < 0 { ec = 0 }
+  let rc = conn.retry_count
+  if rc < 0 { rc = 0 }
+  let circuit = conn.circuit_open
+  if ec < cfg.circuit_error_threshold { circuit = false }
+  give DbConn(cfg, conn.connected, conn.readonly, in_use, circuit, qd, p50, p95, ec, rc)
 }
 
 proc connect(config: DbConfig) -> DbResult[DbConn] {
-  let dsn: string = db_runtime_pkg.normalize_dsn(config.dsn)
+  let vc = validate_config(config)
+  when vc is DbResult.Err { give DbResult.Err(vc.error) }
+
+  let ncfg = normalize_config(config)
+
+  let dsn: string = ncfg.dsn
   if dsn.len == 0 {
     give DbResult.Err(DbError.Failure("VITTE-D0001", diagnostics_message("VITTE-D0001")))
   }
-  if db_runtime_pkg.profile_allows(config.profile) == false {
+  if db_runtime_pkg.profile_allows(ncfg.profile) == false {
     give DbResult.Err(DbError.Failure("VITTE-D0009", diagnostics_message("VITTE-D0009")))
   }
-  if config.pool_min > config.pool_max {
+  if ncfg.pool_min > ncfg.pool_max {
     give DbResult.Err(DbError.Failure("VITTE-D0007", diagnostics_message("VITTE-D0007")))
   }
   let cfg: DbConfig = DbConfig(
     dsn,
-    config.profile,
-    config.timeout_ms,
-    config.cancel_token,
-    config.retry_backoff_ms,
-    config.retry_budget,
-    config.pool_min,
-    config.pool_max,
-    config.pool_idle_timeout_ms,
-    config.pool_health_interval_ms,
-    config.circuit_error_threshold,
-    config.circuit_open_ms
+    ncfg.profile,
+    ncfg.timeout_ms,
+    ncfg.cancel_token,
+    ncfg.retry_backoff_ms,
+    ncfg.retry_budget,
+    ncfg.pool_min,
+    ncfg.pool_max,
+    ncfg.pool_idle_timeout_ms,
+    ncfg.pool_health_interval_ms,
+    ncfg.circuit_error_threshold,
+    ncfg.circuit_open_ms
   )
   give DbResult.Ok(DbConn(cfg, true, false, 0, false, 0, 1, 2, 0, 0))
+}
+
+proc connect_checked(config: DbConfig) -> DbResult[DbConn] {
+  give connect(config)
 }
 
 proc ping(conn: DbConn) -> DbResult[bool] {
@@ -227,6 +419,18 @@ proc bind_null(stmt: DbStmt) -> DbStmt {
   give DbStmt(stmt.sql, stmt.prepared, stmt.binds.push(DbBindValue.Null))
 }
 
+proc bind_count(stmt: DbStmt) -> int {
+  give stmt.binds.len
+}
+
+proc clear_binds(stmt: DbStmt) -> DbStmt {
+  give DbStmt(stmt.sql, stmt.prepared, [])
+}
+
+proc bind_count_ok(stmt: DbStmt) -> bool {
+  give db_validate_pkg.valid_binds_count(stmt.binds.len, db_policy_pkg.max_binds())
+}
+
 proc is_select(sql: string) -> bool {
   give db_runtime_pkg.is_select_sql(sql)
 }
@@ -257,6 +461,13 @@ proc execute_prepared(conn: DbConn, stmt: DbStmt, timeout_ms: int, cancel_token:
     give DbResult.Ok(DbRows([], 1))
   }
   give DbResult.Ok(DbRows([], 0))
+}
+
+proc execute_prepared_checked(conn: DbConn, stmt: DbStmt, timeout_ms: int, cancel_token: string) -> DbResult[DbRows] {
+  if db_validate_pkg.valid_timeout_ms(timeout_ms, db_policy_pkg.min_timeout_ms(), db_policy_pkg.max_timeout_ms()) == false {
+    give err("VITTE-D0005", diagnostics_message("VITTE-D0005"))
+  }
+  give execute_prepared(conn, stmt, timeout_ms, cancel_token)
 }
 
 proc query_one(conn: DbConn, stmt: DbStmt, timeout_ms: int, cancel_token: string) -> DbResult[DbRow] {
@@ -379,8 +590,49 @@ proc analyze_report_json_stub() -> string {
   give "{\"package\":\"vitte/db\",\"diag_namespace\":\"VITTE-D****\",\"status\":\"ok\"}"
 }
 
+proc runtime_info() -> DbRuntimeInfo {
+  give DbRuntimeInfo(db_runtime_pkg.runtime_name(),
+                     db_runtime_pkg.runtime_version(),
+                     db_runtime_pkg.supports_safe_sql(),
+                     db_runtime_pkg.supports_transactions(),
+                     db_runtime_pkg.supports_pooling(),
+                     db_runtime_pkg.supports_diagnostics())
+}
+
+proc pressure_percent(conn: DbConn) -> int {
+  if conn.config.pool_max <= 0 { give 0 }
+  let p = conn.pool_in_use * 100 / conn.config.pool_max
+  if p < 0 { p = 0 }
+  if p > 100 { p = 100 }
+  give p
+}
+
+proc db_health(conn: DbConn) -> DbHealth {
+  if conn.connected == false { give DbHealth(false, "VITTE-D0002", 100) }
+  if conn.circuit_open { give DbHealth(false, "VITTE-D0006", 100) }
+  let p = pressure_percent(conn)
+  if db_validate_pkg.valid_percent(p) == false {
+    give DbHealth(false, "VITTE-D0006", 100)
+  }
+  give DbHealth(true, "ok", p)
+}
+
 proc api_version() -> string {
   give "v1"
+}
+
+proc stable_api_version() -> string {
+  give "1.3.0"
+}
+
+proc stable_api_surface() -> string {
+  give "ok,err,assert_or_err,panic_guard,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,default_config,strict_config,with_timeout_ms,with_retry_budget,with_pool_bounds,validate_config_code,validate_config,normalize_config,db_validate_code,db_validate,db_normalize,connect,connect_checked,ping,close,query,query_with_timeout,query_with_cancel,prepare,bind_int,bind_string,bind_bool,bind_time,bind_bytes,bind_null,bind_count,clear_binds,bind_count_ok,is_select,is_mutation,execute_prepared,execute_prepared_checked,query_one,query_many,exec,begin,commit,rollback,map_row_nullable,migration_lock,migration_unlock,migration_apply,migration_compat_check,structured_query_log,observe,pool_checkout,pool_release,analyze_report_json_stub,runtime_info,pressure_percent,db_health,api_version,stable_api_version,stable_api_surface,stable_api_surface_hash,doctor_status,quickfix_preview,quickfix_apply,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
 }
 
 proc doctor_status() -> string {
@@ -402,6 +654,16 @@ proc quickfix_apply(payload: string) -> string {
 }
 
 proc ready() -> bool {
+  let cfg = default_config()
+  let conn = connect(DbConfig("local", cfg.profile, cfg.timeout_ms, cfg.cancel_token, cfg.retry_backoff_ms, cfg.retry_budget, cfg.pool_min, cfg.pool_max, cfg.pool_idle_timeout_ms, cfg.pool_health_interval_ms, cfg.circuit_error_threshold, cfg.circuit_open_ms))
+  when conn is DbResult.Err { give false }
+
+  let p = ping(conn.value)
+  when p is DbResult.Err { give false }
+  if bind_count_ok(bind_int(prepare("SELECT * FROM t WHERE id=?"), 1)) == false { give false }
+  if db_validate(conn.value) == false { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
   give true
 }
 
@@ -422,3 +684,6 @@ compat_policy: additive-only
 internal_exports: forbidden
 api_version: v1
 >>>
+
+
+

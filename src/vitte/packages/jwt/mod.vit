@@ -6,6 +6,9 @@ package vitte/jwt
 space vitte/jwt
 
 use vitte/crypto as crypto
+use vitte/jwt/internal/policy as jwt_policy_pkg
+use vitte/jwt/internal/runtime as jwt_runtime_pkg
+use vitte/jwt/internal/validate as jwt_validate_pkg
 
 form Claims {
   sub: string
@@ -27,6 +30,59 @@ pick JwtError {
   InvalidAudience
   InvalidClaims
   WeakSecret
+}
+
+form JwtConfig {
+  min_secret_len: int
+  strict: bool
+  default_ttl: int
+}
+
+pick JwtConfigError {
+  InvalidConfig
+  Internal
+}
+
+pick JwtConfigResult[T] {
+  Ok(value: T)
+  Err(error: JwtConfigError)
+}
+
+form JwtRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_hs256: bool
+}
+
+proc default_config() -> JwtConfig {
+  give JwtConfig(jwt_policy_pkg.default_min_secret_len(), true, jwt_policy_pkg.default_ttl())
+}
+
+proc normalize_config(cfg: JwtConfig) -> JwtConfig {
+  give JwtConfig(cfg.min_secret_len, cfg.strict, jwt_policy_pkg.normalize_ttl(cfg.default_ttl))
+}
+
+proc validate_config(cfg: JwtConfig) -> JwtConfigResult[bool] {
+  let nc = normalize_config(cfg)
+  if nc.min_secret_len <= 0 { give JwtConfigResult.Err(JwtConfigError.InvalidConfig) }
+  if jwt_validate_pkg.valid_ttl(nc.default_ttl) == false { give JwtConfigResult.Err(JwtConfigError.InvalidConfig) }
+  give JwtConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: JwtConfig) -> JwtConfigResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is JwtConfigResult.Err { give JwtConfigResult.Err(vr.error) }
+  if jwt_runtime_pkg.runtime_status() == false { give JwtConfigResult.Err(JwtConfigError.Internal) }
+  if jwt_runtime_pkg.supports_hs256() == false { give JwtConfigResult.Err(JwtConfigError.Internal) }
+  give JwtConfigResult.Ok(true)
+}
+
+proc runtime_info() -> JwtRuntimeInfo {
+  give JwtRuntimeInfo(jwt_runtime_pkg.runtime_name(),
+                      jwt_runtime_pkg.runtime_version(),
+                      jwt_runtime_pkg.supports_diagnostics(),
+                      jwt_runtime_pkg.supports_hs256())
 }
 
 proc claims(sub: string, iss: string, aud: string, iat: int, exp: int, scope: string) -> Claims {
@@ -475,8 +531,34 @@ proc summary(token: string, secret: string, now: int) -> string {
   give "sub=" + cl.sub + ",iss=" + cl.iss + ",aud=" + cl.aud + ",scope=" + cl.scope
 }
 
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["claims", "diagnostics", "encode-decode", "healthcheck", "refresh", "validate"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-JWT0001" { give "invalid jwt configuration" }
+  if code == "VITTE-JWT0002" { give "invalid jwt token format/signature" }
+  if code == "VITTE-JWT0003" { give "jwt runtime unavailable" }
+  give "jwt diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-JWT0001" { give "set valid min_secret_len and ttl" }
+  if code == "VITTE-JWT0002" { give "verify token format and signing secret" }
+  if code == "VITTE-JWT0003" { give "check jwt runtime status" }
+  give "review jwt configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
 proc ready() -> bool {
-  give true
+  give jwt_runtime_pkg.runtime_status()
 }
 
 

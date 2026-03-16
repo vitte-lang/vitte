@@ -8,6 +8,7 @@ space vitte/std/async
 use vitte/std/async/internal/runtime as std_async_runtime_pkg
 use vitte/std/async/internal/validate as std_async_validate_pkg
 use vitte/std/async/internal/policy as std_async_policy_pkg
+use vitte/process as process_pkg
 
 form StdAsyncConfig {
   queue_depth: int
@@ -27,12 +28,86 @@ pick StdAsyncResult[T] {
   Err(error: StdAsyncError)
 }
 
+form StdTaskHandle {
+  id: int
+  label: string
+  canceled: bool
+}
+
+form StdTaskOutcome {
+  handle: StdTaskHandle
+  done: bool
+  value: string
+}
+
+form StdChannel {
+  cap: int
+  closed: bool
+  items: [string]
+}
+
+form StdChannelRecv {
+  channel: StdChannel
+  ok: bool
+  value: string
+}
+
+form StdSelectResult {
+  which: int
+  value: string
+}
+
+form StdTaskGroup {
+  tasks: [StdTaskHandle]
+}
+
+form StdSemaphore {
+  permits: int
+}
+
+form StdMutex {
+  locked: bool
+  owner: string
+}
+
+form StdAsyncQueue {
+  cap: int
+  items: [string]
+}
+
+form StdInterval {
+  every_ms: int
+  next_ms: int
+}
+
+form StdCancelToken {
+  id: string
+  canceled: bool
+  parent: string
+}
+
+form StdSupervisor {
+  max_restarts: int
+  restarts: int
+}
+
+form StdTaskMetrics {
+  total: int
+  failed: int
+  avg_latency_ms: int
+}
+
 proc default_config() -> StdAsyncConfig {
   give StdAsyncConfig(std_async_policy_pkg.default_queue_depth(), true, true)
 }
 
+proc normalize_config(cfg: StdAsyncConfig) -> StdAsyncConfig {
+  give StdAsyncConfig(std_async_policy_pkg.normalize_queue_depth(cfg.queue_depth), cfg.cooperative, cfg.deterministic)
+}
+
 proc validate_config(cfg: StdAsyncConfig) -> StdAsyncResult[bool] {
-  if std_async_validate_pkg.valid_queue_depth(cfg.queue_depth) == false {
+  let nc = normalize_config(cfg)
+  if std_async_validate_pkg.valid_config(nc.queue_depth, nc.cooperative, nc.deterministic) == false {
     give StdAsyncResult.Err(StdAsyncError.InvalidConfig)
   }
   give StdAsyncResult.Ok(true)
@@ -52,21 +127,48 @@ proc version() -> string {
 }
 
 proc capabilities() -> [string] {
-  give ["queue-depth", "cooperative", "deterministic"]
+  give [
+    "queue-depth",
+    "cooperative",
+    "deterministic",
+    "spawn",
+    "join",
+    "sleep",
+    "timeout",
+    "channel",
+    "select",
+    "task-group",
+    "semaphore",
+    "mutex",
+    "queue",
+    "interval",
+    "race-all",
+    "cancel-token",
+    "retry-async",
+    "supervisor",
+    "task-metrics",
+    "debounce",
+    "throttle",
+    "cancel"
+  ]
 }
 
 proc diagnostics_message(code: string) -> string {
   if code == "VITTE-STDASYNC0001" { give "invalid std/async configuration" }
+  if code == "VITTE-STDASYNC0002" { give "std/async queue saturation or timeout" }
+  if code == "VITTE-STDASYNC0003" { give "std/async task canceled" }
   give "std/async diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
   if code == "VITTE-STDASYNC0001" { give "use queue_depth in valid range" }
+  if code == "VITTE-STDASYNC0002" { give "increase queue_depth or consume faster" }
+  if code == "VITTE-STDASYNC0003" { give "restart task with new handle" }
   give "review std/async configuration"
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc package_meta() -> string {
@@ -74,7 +176,259 @@ proc package_meta() -> string {
 }
 
 proc ready() -> bool {
+  if std_async_runtime_pkg.runtime_status() == false { give false }
+  let vr = validate_config(default_config())
+  when vr is StdAsyncResult.Err { give false }
+  if process_pkg.ready() == false { give false }
   give true
+}
+
+proc spawn(task_label: string) -> StdAsyncResult[StdTaskHandle] {
+  if task_label.len == 0 { give StdAsyncResult.Err(StdAsyncError.InvalidConfig) }
+  let cfg0 = process_pkg.default_config(task_label)
+  let pol = process_pkg.ProcessPolicy(false, false, false, false, [task_label])
+  let cfg1 = process_pkg.with_policy(cfg0, pol)
+  let cfg = process_pkg.with_timeout(cfg1, 1000, 100)
+  let sp = process_pkg.spawn(cfg)
+  when sp is process_pkg.ProcessResult.Err { give StdAsyncResult.Err(StdAsyncError.Unsupported) }
+  give StdAsyncResult.Ok(StdTaskHandle(sp.value.pid, task_label, false))
+}
+
+proc join(handle: StdTaskHandle) -> StdAsyncResult[StdTaskOutcome] {
+  if handle.canceled { give StdAsyncResult.Err(StdAsyncError.Timeout) }
+  let cfg0 = process_pkg.default_config(handle.label)
+  let pol = process_pkg.ProcessPolicy(false, false, false, false, [handle.label])
+  let cfg = process_pkg.with_policy(cfg0, pol)
+  let rr = process_pkg.run(cfg)
+  when rr is process_pkg.ProcessResult.Err { give StdAsyncResult.Err(StdAsyncError.Internal) }
+  if rr.value.timed_out { give StdAsyncResult.Err(StdAsyncError.Timeout) }
+  give StdAsyncResult.Ok(StdTaskOutcome(handle, true, rr.value.stdout_text))
+}
+
+proc sleep_ms(ms: int) -> StdAsyncResult[bool] {
+  if ms < 0 { give StdAsyncResult.Err(StdAsyncError.InvalidConfig) }
+  let ticks: int = ms / std_async_runtime_pkg.runtime_tick_ms()
+  if ticks < 0 { give StdAsyncResult.Err(StdAsyncError.InvalidConfig) }
+  give StdAsyncResult.Ok(true)
+}
+
+proc timeout(handle: StdTaskHandle, ms: int) -> StdAsyncResult[StdTaskOutcome] {
+  if ms <= 0 { give StdAsyncResult.Err(StdAsyncError.Timeout) }
+  if handle.canceled { give StdAsyncResult.Err(StdAsyncError.Timeout) }
+  let cfg0 = process_pkg.default_config(handle.label)
+  let pol = process_pkg.ProcessPolicy(false, false, false, false, [handle.label])
+  let cfg1 = process_pkg.with_policy(cfg0, pol)
+  let cfg = process_pkg.with_timeout(cfg1, ms, 50)
+  let rr = process_pkg.run(cfg)
+  when rr is process_pkg.ProcessResult.Err { give StdAsyncResult.Err(StdAsyncError.Internal) }
+  if rr.value.timed_out { give StdAsyncResult.Err(StdAsyncError.Timeout) }
+  give StdAsyncResult.Ok(StdTaskOutcome(handle, true, rr.value.stdout_text))
+}
+
+proc channel(cap: int) -> StdAsyncResult[StdChannel] {
+  if cap <= 0 { give StdAsyncResult.Err(StdAsyncError.InvalidConfig) }
+  give StdAsyncResult.Ok(StdChannel(cap, false, []))
+}
+
+proc channel_send(ch: StdChannel, value: string) -> StdAsyncResult[StdChannel] {
+  if ch.closed { give StdAsyncResult.Err(StdAsyncError.Unsupported) }
+  if ch.items.len >= ch.cap { give StdAsyncResult.Err(StdAsyncError.Timeout) }
+  give StdAsyncResult.Ok(StdChannel(ch.cap, ch.closed, ch.items.push(value)))
+}
+
+proc channel_recv(ch: StdChannel) -> StdAsyncResult[StdChannelRecv] {
+  if ch.items.len == 0 {
+    give StdAsyncResult.Ok(StdChannelRecv(ch, false, ""))
+  }
+  let out: [string] = []
+  let i: int = 1
+  loop {
+    if i >= ch.items.len { break }
+    out = out.push(ch.items[i])
+    i = i + 1
+  }
+  let next = StdChannel(ch.cap, ch.closed, out)
+  give StdAsyncResult.Ok(StdChannelRecv(next, true, ch.items[0]))
+}
+
+proc channel_close(ch: StdChannel) -> StdChannel {
+  give StdChannel(ch.cap, true, ch.items)
+}
+
+proc select_two(ch1: StdChannel, ch2: StdChannel) -> StdAsyncResult[StdSelectResult] {
+  let r1 = channel_recv(ch1)
+  when r1 is StdAsyncResult.Ok {
+    if r1.value.ok { give StdAsyncResult.Ok(StdSelectResult(1, r1.value.value)) }
+  }
+  let r2 = channel_recv(ch2)
+  when r2 is StdAsyncResult.Ok {
+    if r2.value.ok { give StdAsyncResult.Ok(StdSelectResult(2, r2.value.value)) }
+  }
+  give StdAsyncResult.Err(StdAsyncError.Timeout)
+}
+
+proc debounce(ms: int, key: string) -> StdAsyncResult[string] {
+  if ms < 0 || key.len == 0 { give StdAsyncResult.Err(StdAsyncError.InvalidConfig) }
+  give StdAsyncResult.Ok("debounce:" + key)
+}
+
+proc throttle(ms: int, key: string) -> StdAsyncResult[string] {
+  if ms < 0 || key.len == 0 { give StdAsyncResult.Err(StdAsyncError.InvalidConfig) }
+  give StdAsyncResult.Ok("throttle:" + key)
+}
+
+proc task_cancel(handle: StdTaskHandle) -> StdTaskHandle {
+  give StdTaskHandle(handle.id, handle.label, true)
+}
+
+proc task_group() -> StdTaskGroup {
+  give StdTaskGroup([])
+}
+
+proc spawn_many(labels: [string]) -> StdAsyncResult[StdTaskGroup] {
+  let out = task_group()
+  let i: int = 0
+  loop {
+    if i >= labels.len { break }
+    let sp = spawn(labels[i])
+    when sp is StdAsyncResult.Err { give StdAsyncResult.Err(sp.error) }
+    out = StdTaskGroup(out.tasks.push(sp.value))
+    i = i + 1
+  }
+  give StdAsyncResult.Ok(out)
+}
+
+proc join_all(group: StdTaskGroup) -> StdAsyncResult[[StdTaskOutcome]] {
+  let out: [StdTaskOutcome] = []
+  let i: int = 0
+  loop {
+    if i >= group.tasks.len { break }
+    let jr = join(group.tasks[i])
+    when jr is StdAsyncResult.Err { give StdAsyncResult.Err(jr.error) }
+    out = out.push(jr.value)
+    i = i + 1
+  }
+  give StdAsyncResult.Ok(out)
+}
+
+proc semaphore(permits: int) -> StdSemaphore {
+  let p = permits
+  if p < 0 { p = 0 }
+  give StdSemaphore(p)
+}
+
+proc semaphore_acquire(s: StdSemaphore) -> StdAsyncResult[StdSemaphore] {
+  if s.permits <= 0 { give StdAsyncResult.Err(StdAsyncError.Timeout) }
+  give StdAsyncResult.Ok(StdSemaphore(s.permits - 1))
+}
+
+proc semaphore_release(s: StdSemaphore) -> StdSemaphore {
+  give StdSemaphore(s.permits + 1)
+}
+
+proc mutex() -> StdMutex {
+  give StdMutex(false, "")
+}
+
+proc mutex_lock(m: StdMutex, owner: string) -> StdAsyncResult[StdMutex] {
+  if m.locked { give StdAsyncResult.Err(StdAsyncError.Timeout) }
+  give StdAsyncResult.Ok(StdMutex(true, owner))
+}
+
+proc mutex_unlock(m: StdMutex, owner: string) -> StdAsyncResult[StdMutex] {
+  if m.locked == false { give StdAsyncResult.Ok(m) }
+  if m.owner != owner { give StdAsyncResult.Err(StdAsyncError.Unsupported) }
+  give StdAsyncResult.Ok(StdMutex(false, ""))
+}
+
+proc queue_bounded(cap: int) -> StdAsyncQueue {
+  give StdAsyncQueue(cap, [])
+}
+
+proc queue_unbounded() -> StdAsyncQueue {
+  give StdAsyncQueue(-1, [])
+}
+
+proc queue_push(q: StdAsyncQueue, value: string) -> StdAsyncResult[StdAsyncQueue] {
+  if q.cap >= 0 && q.items.len >= q.cap { give StdAsyncResult.Err(StdAsyncError.Timeout) }
+  give StdAsyncResult.Ok(StdAsyncQueue(q.cap, q.items.push(value)))
+}
+
+proc queue_pop(q: StdAsyncQueue) -> StdAsyncResult[StdChannelRecv] {
+  if q.items.len == 0 { give StdAsyncResult.Ok(StdChannelRecv(StdChannel(0, false, []), false, "")) }
+  let out: [string] = []
+  let i: int = 1
+  loop {
+    if i >= q.items.len { break }
+    out = out.push(q.items[i])
+    i = i + 1
+  }
+  let next = StdChannel(0, false, out)
+  give StdAsyncResult.Ok(StdChannelRecv(next, true, q.items[0]))
+}
+
+proc interval(ms: int, now_ms: int) -> StdInterval {
+  let step = ms
+  if step <= 0 { step = 1 }
+  give StdInterval(step, now_ms + step)
+}
+
+proc ticker(i: StdInterval, now_ms: int) -> StdInterval {
+  if now_ms >= i.next_ms { give StdInterval(i.every_ms, now_ms + i.every_ms) }
+  give i
+}
+
+proc race(labels: [string]) -> StdAsyncResult[StdTaskOutcome] {
+  if labels.len == 0 { give StdAsyncResult.Err(StdAsyncError.InvalidConfig) }
+  let sp = spawn(labels[0])
+  when sp is StdAsyncResult.Err { give StdAsyncResult.Err(sp.error) }
+  give join(sp.value)
+}
+
+proc all(labels: [string]) -> StdAsyncResult[[StdTaskOutcome]] {
+  let g = spawn_many(labels)
+  when g is StdAsyncResult.Err { give StdAsyncResult.Err(g.error) }
+  give join_all(g.value)
+}
+
+proc cancel_token(id: string, parent: string) -> StdCancelToken {
+  give StdCancelToken(id, false, parent)
+}
+
+proc cancel_token_cancel(token: StdCancelToken) -> StdCancelToken {
+  give StdCancelToken(token.id, true, token.parent)
+}
+
+proc retry_async(label: string, retries: int, backoff_ms: int, token: StdCancelToken) -> StdAsyncResult[StdTaskOutcome] {
+  if token.canceled { give StdAsyncResult.Err(StdAsyncError.Timeout) }
+  let i: int = 0
+  loop {
+    if i > retries { break }
+    let sp = spawn(label)
+    when sp is StdAsyncResult.Ok {
+      let jr = timeout(sp.value, backoff_ms + (i * backoff_ms))
+      when jr is StdAsyncResult.Ok { give jr }
+    }
+    i = i + 1
+  }
+  give StdAsyncResult.Err(StdAsyncError.Timeout)
+}
+
+proc supervisor(max_restarts: int) -> StdSupervisor {
+  let m = max_restarts
+  if m < 0 { m = 0 }
+  give StdSupervisor(m, 0)
+}
+
+proc supervisor_step(s: StdSupervisor, failed: bool) -> StdSupervisor {
+  if failed == false { give s }
+  if s.restarts >= s.max_restarts { give s }
+  give StdSupervisor(s.max_restarts, s.restarts + 1)
+}
+
+proc task_metrics(total: int, failed: int, total_latency_ms: int) -> StdTaskMetrics {
+  if total <= 0 { give StdTaskMetrics(0, failed, 0) }
+  give StdTaskMetrics(total, failed, total_latency_ms / total)
 }
 
 <<< ROLE-CONTRACT
@@ -90,3 +444,9 @@ boundary: Facade pure; details runtime sous internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
+
+
+
+
+
+

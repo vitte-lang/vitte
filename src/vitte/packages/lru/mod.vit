@@ -5,6 +5,9 @@ package vitte/lru
 
 space vitte/lru
 
+use vitte/lru/internal/policy as lru_policy_pkg
+use vitte/lru/internal/runtime as lru_runtime_pkg
+use vitte/lru/internal/validate as lru_validate_pkg
 
 form LruItem {
   key: string
@@ -16,6 +19,29 @@ form Lru {
   capacity: int
   now: int
   items: [LruItem]
+}
+
+form LruConfig {
+  min_capacity: int
+  max_capacity: int
+  require_non_empty_key: bool
+}
+
+pick LruConfigError {
+  InvalidConfig
+  Internal
+}
+
+pick LruConfigResult[T] {
+  Ok(value: T)
+  Err(error: LruConfigError)
+}
+
+form LruRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_eviction: bool
 }
 
 proc lru_new(capacity: int) -> Lru {
@@ -114,14 +140,96 @@ proc summary(lru: Lru) -> string {
        ",size=" + len(lru).to_string()
 }
 
+proc default_config() -> LruConfig {
+  give LruConfig(lru_policy_pkg.default_min_capacity(),
+                 lru_policy_pkg.default_max_capacity(),
+                 lru_policy_pkg.default_require_non_empty_key())
+}
+
+proc strict_config() -> LruConfig {
+  let cfg = default_config()
+  give LruConfig(cfg.min_capacity, cfg.max_capacity, true)
+}
+
+proc normalize_config(cfg: LruConfig) -> LruConfig {
+  let min_capacity = lru_policy_pkg.normalize_capacity(cfg.min_capacity)
+  let max_capacity = lru_policy_pkg.normalize_capacity(cfg.max_capacity)
+  let out_max = max_capacity
+  if out_max < min_capacity { out_max = min_capacity }
+  give LruConfig(min_capacity, out_max, cfg.require_non_empty_key)
+}
+
+proc validate_config(cfg: LruConfig) -> LruConfigResult[bool] {
+  let nc = normalize_config(cfg)
+  if lru_validate_pkg.valid_capacity(nc.min_capacity, 1, 100000) == false { give LruConfigResult.Err(LruConfigError.InvalidConfig) }
+  if lru_validate_pkg.valid_capacity(nc.max_capacity, nc.min_capacity, 100000) == false { give LruConfigResult.Err(LruConfigError.InvalidConfig) }
+  give LruConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: LruConfig, lru: Lru) -> LruConfigResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is LruConfigResult.Err { give LruConfigResult.Err(vr.error) }
+  if lru_runtime_pkg.runtime_status() == false { give LruConfigResult.Err(LruConfigError.Internal) }
+  if lru.items.len > cfg.max_capacity { give LruConfigResult.Err(LruConfigError.InvalidConfig) }
+  give LruConfigResult.Ok(true)
+}
+
+proc runtime_info() -> LruRuntimeInfo {
+  give LruRuntimeInfo(lru_runtime_pkg.runtime_name(),
+                      lru_runtime_pkg.runtime_version(),
+                      lru_runtime_pkg.supports_diagnostics(),
+                      lru_runtime_pkg.supports_eviction())
+}
+
+proc lru_new_checked(capacity: int, cfg: LruConfig) -> LruConfigResult[Lru] {
+  let nc = normalize_config(cfg)
+  if lru_validate_pkg.valid_capacity(capacity, nc.min_capacity, nc.max_capacity) == false { give LruConfigResult.Err(LruConfigError.InvalidConfig) }
+  give LruConfigResult.Ok(lru_new(capacity))
+}
+
+proc put_checked(lru: Lru, key: string, value: string, cfg: LruConfig) -> LruConfigResult[Lru] {
+  let _ = value
+  let nc = normalize_config(cfg)
+  if lru_validate_pkg.valid_key(key, nc.require_non_empty_key) == false { give LruConfigResult.Err(LruConfigError.InvalidConfig) }
+  if lru.capacity < nc.min_capacity || lru.capacity > nc.max_capacity { give LruConfigResult.Err(LruConfigError.InvalidConfig) }
+  give LruConfigResult.Ok(put(lru, key, value))
+}
+
+proc get_checked(lru: Lru, key: string, cfg: LruConfig) -> LruConfigResult[string] {
+  if lru_validate_pkg.valid_key(key, cfg.require_non_empty_key) == false { give LruConfigResult.Err(LruConfigError.InvalidConfig) }
+  give LruConfigResult.Ok(get(lru, key))
+}
+
+proc capabilities() -> [string] {
+  give ["cache", "eviction", "config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-LRU0001" { give "invalid lru configuration or arguments" }
+  give "lru diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "check key policy and capacity bounds"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc api_version() -> string {
+  give "v1"
+}
+
 proc ready() -> bool {
-    give true
+  give true
 }
 
 
 
 proc package_meta() -> string {
-    give "vitte/lru"
+  give "vitte/lru"
 }
 
 <<< ROLE-CONTRACT

@@ -1,1 +1,96 @@
 space std/core/types/i32
+
+use vitte/core/types/i32/internal/runtime as core_types_i32_runtime_pkg
+use vitte/core/types/i32/internal/validate as core_types_i32_validate_pkg
+use vitte/core/types/i32/internal/policy as core_types_i32_policy_pkg
+
+form CoreTypesI32Config {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick CoreTypesI32Error {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick CoreTypesI32Result[T] {
+  Ok(value: T)
+  Err(error: CoreTypesI32Error)
+}
+
+proc default_config() -> CoreTypesI32Config {
+  give CoreTypesI32Config(true, core_types_i32_policy_pkg.default_timeout_ms(), core_types_i32_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: CoreTypesI32Config) -> CoreTypesI32Result[bool] {
+  if core_types_i32_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give CoreTypesI32Result.Err(CoreTypesI32Error.InvalidConfig)
+  }
+  if core_types_i32_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give CoreTypesI32Result.Err(CoreTypesI32Error.InvalidConfig)
+  }
+  give CoreTypesI32Result.Ok(true)
+}
+
+proc healthcheck(cfg: CoreTypesI32Config) -> CoreTypesI32Result[bool] {
+  let vr: CoreTypesI32Result[bool] = validate_config(cfg)
+  when vr is CoreTypesI32Result.Err {
+    give CoreTypesI32Result.Err(vr.error)
+  }
+  if core_types_i32_runtime_pkg.runtime_status() == false {
+    give CoreTypesI32Result.Err(CoreTypesI32Error.Internal)
+  }
+  give CoreTypesI32Result.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CORETYPE0001" {
+    give "invalid package configuration"
+  }
+  give "core/types/i32 diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/core/types/i32"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/core/types/i32
+owner: @vitte/core
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: Facade publique stable
+input_contract: Config explicite et typable
+output_contract: Resultats stables et predictibles
+boundary: Implementation privee sous vitte/core/types/i32/internal/*
+compat_policy: additive-only
+api_version: v1
+>>>
+
+
+
+
+
+
