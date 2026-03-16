@@ -8,6 +8,8 @@ ENTRY_GLOB="${ENTRY_GLOB:-main.vit}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/target/reports}"
 OUT_FILE="${OUT_FILE:-$OUT_DIR/modules_report.txt}"
 OUT_JSON="${OUT_JSON:-$OUT_DIR/modules_report.json}"
+DEPENDENCY_OVERLAP_ALLOWLIST="${DEPENDENCY_OVERLAP_ALLOWLIST:-}"
+FAIL_ON_DEPENDENCY_OVERLAP="${FAIL_ON_DEPENDENCY_OVERLAP:-0}"
 
 log() { printf "[modules-report] %s\n" "$*"; }
 die() { printf "[modules-report][error] %s\n" "$*" >&2; exit 1; }
@@ -52,15 +54,18 @@ PY
   rm -f "$tmp_out"
 done < <(find "$SEARCH_ROOT" -type f -name "$ENTRY_GLOB" | sort)
 
-python3 - "$tmp_json" "$OUT_FILE" "$OUT_JSON" <<'PY'
+python3 - "$tmp_json" "$OUT_FILE" "$OUT_JSON" "$DEPENDENCY_OVERLAP_ALLOWLIST" "$FAIL_ON_DEPENDENCY_OVERLAP" <<'PY'
 import json
 import sys
 from collections import defaultdict
 from statistics import median
+from pathlib import Path
 
 path = sys.argv[1]
 out_file = sys.argv[2]
 out_json = sys.argv[3]
+allowlist_path = sys.argv[4]
+fail_on_dependency_overlap = sys.argv[5] == "1"
 
 records = []
 with open(path, encoding="utf-8") as f:
@@ -75,13 +80,29 @@ mod_loc = defaultdict(int)
 mod_exports = defaultdict(set)
 edges = set()
 collision_entries = []
+dependency_overlap_entries = []
+allowed_dependency_overlap_entries = []
 export_frequency = defaultdict(set)
+
+dependency_overlap_allow = set()
+if allowlist_path:
+    p = Path(allowlist_path)
+    if p.exists():
+        for raw in p.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            dependency_overlap_allow.add(line)
 
 for rec in records:
     fixture = rec["fixture"]
     per_symbol = defaultdict(set)
+    direct_public = set()
+    root_exports = set()
+    root_imports = set()
     for m in rec.get("modules", []):
         key = m.get("key", "")
+        level = m.get("level", "")
         imps = m.get("imports", [])
         exps = m.get("exports", [])
         loc = int(m.get("loc", 0) or 0)
@@ -90,13 +111,28 @@ for rec in records:
         for dep in imps:
             edges.add((key, dep))
             mod_fanin[dep] += 1
+        if key == "__root__":
+            root_imports.update(imps)
+            root_exports.update(exps)
+        if level != "public":
+            continue
+        if key == "__root__" or key in root_imports:
+            direct_public.add(key)
         for s in exps:
             mod_exports[key].add(s)
             per_symbol[s].add(key)
             export_frequency[s].add(key)
     for sym, owners in per_symbol.items():
-        if len(owners) > 1:
+        if len(owners) > 1 and "__root__" in owners:
             collision_entries.append((fixture, sym, sorted(owners)))
+        direct_owners = sorted(owners & direct_public)
+        if len(direct_owners) > 1 and "__root__" not in owners:
+            owner_key = ",".join(direct_owners)
+            allow_key = f"{fixture}|{owner_key}"
+            if allow_key in dependency_overlap_allow:
+                allowed_dependency_overlap_entries.append((fixture, sym, direct_owners))
+            else:
+                dependency_overlap_entries.append((fixture, sym, direct_owners))
 
 # cycle detection (small graphs; DFS from each node)
 graph = defaultdict(set)
@@ -151,6 +187,8 @@ fanout_top = sorted(mod_imports.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
 fanin_top = sorted(mod_fanin.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
 loc_top = sorted(mod_loc.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
 collisions_top = collision_entries[:20]
+dependency_overlaps_top = dependency_overlap_entries[:20]
+allowed_dependency_overlaps_top = allowed_dependency_overlap_entries[:20]
 frequent_collisions = sorted(
     [(sym, sorted(owners)) for sym, owners in export_frequency.items() if len(owners) >= 3],
     key=lambda kv: (-len(kv[1]), kv[0]),
@@ -210,6 +248,20 @@ if collisions_top:
 else:
     lines.append("  none")
 lines.append("")
+lines.append("dependency_export_overlap:")
+if dependency_overlaps_top:
+    for fixture, sym, owners in dependency_overlaps_top:
+        lines.append(f"  {fixture}: symbol='{sym}' owners={','.join(owners)}")
+else:
+    lines.append("  none")
+lines.append("")
+lines.append("dependency_export_overlap_allowlisted:")
+if allowed_dependency_overlaps_top:
+    for fixture, sym, owners in allowed_dependency_overlaps_top:
+        lines.append(f"  {fixture}: symbol='{sym}' owners={','.join(owners)}")
+else:
+    lines.append("  none")
+lines.append("")
 lines.append("high_frequency_symbols:")
 if frequent_collisions:
     for sym, owners in frequent_collisions:
@@ -239,6 +291,14 @@ payload = {
         {"fixture": fixture, "symbol": sym, "owners": owners}
         for fixture, sym, owners in collisions_top
     ],
+    "dependency_export_overlap": [
+        {"fixture": fixture, "symbol": sym, "owners": owners}
+        for fixture, sym, owners in dependency_overlaps_top
+    ],
+    "dependency_export_overlap_allowlisted": [
+        {"fixture": fixture, "symbol": sym, "owners": owners}
+        for fixture, sym, owners in allowed_dependency_overlaps_top
+    ],
     "high_frequency_symbols": [
         {"symbol": sym, "owners": owners, "count": len(owners)}
         for sym, owners in frequent_collisions
@@ -248,6 +308,8 @@ with open(out_json, "w", encoding="utf-8") as f:
     json.dump(payload, f, indent=2, sort_keys=True)
 
 if critical_cycles:
+    raise SystemExit(1)
+if fail_on_dependency_overlap and dependency_overlap_entries:
     raise SystemExit(1)
 PY
 

@@ -193,3 +193,14 @@ make packages-gate
 make migration-check
 make release-modules-gate
 ```
+
+`packages-report` distingue maintenant deux signaux:
+- `potential_collisions`: collision actionnable sur la surface exportée du module racine analysé
+- `dependency_export_overlap`: recouvrement de noms entre dépendances publiques co-chargees par une facade, utile a surveiller mais non bloquant a lui seul
+- `dependency_export_overlap_allowlisted`: recouvrement intentional versionne dans `tools/package_dependency_export_overlap_allowlist.txt`
+
+Pour rendre la gate stricte sans penaliser les facades connues:
+- `make packages-dependency-overlap-lint`
+
+Pour verifier directement une facade package qui depend de son propre `internal/*`:
+- `make package-check SRC=src/vitte/packages/std/data/mod.vit`
