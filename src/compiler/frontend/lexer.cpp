@@ -106,6 +106,14 @@ Lexer::Lexer(const std::string& source, std::string path)
     source_file_->content = source_;
 }
 
+Lexer::State Lexer::snapshot() const {
+    return State{index_};
+}
+
+void Lexer::restore(State state) {
+    index_ = state.index;
+}
+
 Token Lexer::next() {
     auto eof = [&]() {
         return index_ >= source_.size();

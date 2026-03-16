@@ -8,6 +8,10 @@
   - Resolution: `when <expr> is <pattern>` is preferred when `is` token is present.
 - `use` simple path vs grouped path:
   - Resolution: parser reads `.{` as group start and `.*` as glob import.
+- generic call vs index-then-call:
+  - Surface syntax allows `foo[T](...)`.
+  - Resolution today: the parser only commits to a generic call when the bracket payload is an unambiguous type list; otherwise it stays on normal indexing followed by call.
+  - Example: `id[int](1)` is a generic call, while `id[i](1)` stays `index` then `call`.
 
 ## Top-level vs Statement vs Expression matrix
 

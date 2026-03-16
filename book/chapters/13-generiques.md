@@ -73,6 +73,11 @@ Le comportement est uniforme: la fonction renvoie exactement ce qu'elle reçoit,
 - `id[int](42)` retourne `42`.
 - `id[string]("ok")` retourne `"ok"`.
 
+Note de syntaxe actuelle:
+- les appels génériques explicites comme `id[int](42)` sont implémentés
+- cette surface reste `experimental`
+- une forme comme `id[i](42)` ne devient pas un appel générique: elle reste une indexation suivie d'appel
+
 Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
@@ -148,6 +153,11 @@ L'intention de cette étape est directe: montrer que la généricité s'applique
 Le point clé est la conservation du type: un `Pair[int]` transformé reste un `Pair[int]`.
 
 À l'exécution, `swap_pair(Pair[int](1,2))` retourne `Pair[int](2,1)`.
+
+Lecture de surface utile:
+- `Pair[int](1,2)` utilise aujourd'hui la même famille de syntaxe explicite que `id[int](42)`
+- la forme qualifiée `mod.Pair[int](...)` est aussi supportée
+- la promotion de cette syntaxe au noyau stable reste volontairement différée
 
 Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 

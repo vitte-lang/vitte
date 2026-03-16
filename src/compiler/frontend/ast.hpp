@@ -395,12 +395,14 @@ struct InvokeExpr : Expr {
 
     ExprId callee_expr;
     TypeId callee_type;
+    std::vector<TypeId> type_args;
     std::vector<ExprId> args;
     Kind invoke_kind = Kind::Unknown;
 
     InvokeExpr(
         ExprId callee_expr,
         TypeId callee_type,
+        std::vector<TypeId> type_args,
         std::vector<ExprId> args,
         SourceSpan span);
 };

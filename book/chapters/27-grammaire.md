@@ -79,6 +79,7 @@ Utilisez ce chemin de lecture pour aller vite quand un parseur échoue:
 Voir aussi:
 - `docs/book/chapters/31-erreurs-build.md` pour la table erreur -> correction.
 - `book/grammar/grammar-notes.md` pour les ambiguïtés connues.
+- `docs/GENERIC_CALL_SYNTAX.md` pour la borne actuelle des appels génériques explicites.
 
 ## Diagrammes Railroad (SVG)
 
@@ -210,6 +211,38 @@ Erreurs fréquentes à éviter:
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
 
+## 27.4 Lire la forme `foo[T](...)` sans surinterpréter
+
+```vit
+proc id[T](x: T) -> T {
+  give x
+}
+
+proc main() -> int {
+  let a = id[int](1)
+  let i = 0
+  let b = arr[i](1)
+  give 0
+}
+```
+
+Lecture grammaticale utile:
+1. `id[int](1)` peut être lu comme un appel générique explicite.
+2. `arr[i](1)` ne doit pas être relu trop vite comme un appel générique.
+3. La même surface `foo[...](...)` porte donc une ambiguïté réelle.
+
+Règle actuelle du parser:
+- si le contenu entre crochets est lu comme une liste de types non ambigus, la forme devient un appel générique explicite
+- sinon, la lecture reste `index_suffix` puis `call_suffix`
+
+Conséquences actuelles:
+- `id[int](1)` est accepté comme appel générique explicite
+- `Public[int](1)` et `facade_mod.Public[int](1)` suivent la même logique
+- `id[i](1)` reste une indexation suivie d'appel
+
+Cette borne est volontaire.
+Elle documente le comportement réel sans prétendre que toute forme `foo[...](...)` est déjà stabilisée.
+
 ## À retenir
 
 Les formes syntaxiques critiques sont maîtrisées, ce qui réduit les erreurs de structure avant type-check. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, contrat explicite, et comportement observable du début à la fin.
@@ -244,6 +277,7 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 - Top-level: seules les déclarations de module (`space`, `pull`, `use`, `share`, `const`, `type`, `form`, `pick`, `proc`, `entry`, `macro`) apparaissent hors bloc.
 - Statements: les instructions (`let`, `make`, `set`, `give`, `emit`, `if`, `loop`, `for`, `match`, `select`, `return`) restent dans un `block`.
 - Types primaires: `bool`, `string`, `int`, `i32`, `i64`, `i128`, `u32`, `u64`, `u128` sont acceptés dans `type_primary`.
+- Postfix: la surface EBNF inclut maintenant `generic_call_suffix`, mais l'acceptation réelle reste plus étroite et dépend d'une règle d'ambiguïté documentée.
 
 ## Keywords à revoir
 

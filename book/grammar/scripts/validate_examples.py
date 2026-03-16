@@ -9,6 +9,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -89,26 +90,76 @@ def snapshot_payload(diags: list[Diagnostic]) -> str:
     return json.dumps({"diagnostics": rows}, ensure_ascii=False, indent=2) + "\n"
 
 
+def load_manifest(repo: Path, manifest_path: Path) -> tuple[list[Path], list[Path]]:
+    valid: list[Path] = []
+    invalid: list[Path] = []
+
+    raw_lines = manifest_path.read_text(encoding="utf-8").splitlines()
+    for lineno, raw in enumerate(raw_lines, start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        rel = Path(line)
+        file_path = (repo / rel).resolve()
+        try:
+            file_path.relative_to(repo.resolve())
+        except ValueError as exc:
+            raise ValueError(f"{manifest_path}:{lineno}: path escapes repo: {line}") from exc
+
+        if not file_path.exists():
+            raise ValueError(f"{manifest_path}:{lineno}: missing file: {line}")
+
+        parts = rel.parts
+        if len(parts) < 3 or parts[0] != "tests" or parts[1] != "grammar":
+            raise ValueError(f"{manifest_path}:{lineno}: expected tests/grammar path: {line}")
+        if parts[2] == "valid":
+            valid.append(file_path)
+        elif parts[2] == "invalid":
+            invalid.append(file_path)
+        else:
+            raise ValueError(f"{manifest_path}:{lineno}: expected valid/invalid path: {line}")
+
+    return (sorted(valid), sorted(invalid))
+
+
+def collect_examples(repo: Path, manifest: Path | None) -> tuple[Iterable[Path], Iterable[Path]]:
+    if manifest is None:
+        return (
+            sorted((repo / "tests/grammar/valid").glob("*.vit")),
+            sorted((repo / "tests/grammar/invalid").glob("*.vit")),
+        )
+    return load_manifest(repo, manifest)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate grammar valid/invalid examples")
     parser.add_argument("--update-snapshots", action="store_true", help="rewrite tests/grammar/snapshots/*.json")
     parser.add_argument("--vitte-bin", default="bin/vitte", help="path to vitte binary")
+    parser.add_argument("--manifest", help="optional manifest listing tests/grammar/valid|invalid/*.vit paths")
     args = parser.parse_args()
 
     repo = Path(__file__).resolve().parents[3]
-    valid_dir = repo / "tests/grammar/valid"
-    invalid_dir = repo / "tests/grammar/invalid"
     expected_dir = repo / "book/grammar/diagnostics/expected"
     snapshots_dir = repo / "tests/grammar/snapshots"
     vitte_bin = (repo / args.vitte_bin) if not Path(args.vitte_bin).is_absolute() else Path(args.vitte_bin)
+    manifest = (repo / args.manifest) if args.manifest and not Path(args.manifest).is_absolute() else (
+        Path(args.manifest) if args.manifest else None
+    )
 
     if not vitte_bin.exists():
         print(f"[grammar-test] missing vitte binary: {vitte_bin}")
         return 1
 
+    try:
+        valid_files, invalid_files = collect_examples(repo, manifest)
+    except ValueError as exc:
+        print(f"[grammar-test] {exc}")
+        return 1
+
     failures: list[str] = []
 
-    for file_path in sorted(valid_dir.glob("*.vit")):
+    for file_path in valid_files:
         raw_diags = run_parse(vitte_bin, file_path)
         diags = normalize(file_path, raw_diags)
         if diags:
@@ -124,7 +175,7 @@ def main() -> int:
             if current != payload:
                 failures.append(f"{snap_path}: snapshot drift (run --update-snapshots)")
 
-    for file_path in sorted(invalid_dir.glob("*.vit")):
+    for file_path in invalid_files:
         raw_diags = run_parse(vitte_bin, file_path)
         diags = normalize(file_path, raw_diags)
         if not diags:

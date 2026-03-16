@@ -35,6 +35,20 @@ const Token& Parser::previous() const {
     return previous_;
 }
 
+Parser::State Parser::snapshot() const {
+    return State{
+        lexer_.snapshot(),
+        current_,
+        previous_,
+    };
+}
+
+void Parser::restore(State state) {
+    lexer_.restore(state.lexer);
+    current_ = std::move(state.current);
+    previous_ = std::move(state.previous);
+}
+
 void Parser::advance() {
     previous_ = current_;
     current_ = lexer_.next();
@@ -1278,6 +1292,18 @@ ExprId Parser::parse_primary() {
 ExprId Parser::parse_postfix_expr(ExprId base) {
     ExprId expr = base;
     while (true) {
+        if (current_.kind == TokenKind::LBracket && looks_like_type_constructor_head(expr)) {
+            if (ExprId ctor = try_parse_generic_ctor_call_expr(expr); ctor != ast::kInvalidAstId) {
+                expr = ctor;
+                continue;
+            }
+        }
+        if (current_.kind == TokenKind::LBracket) {
+            if (ExprId call = try_parse_generic_proc_call_expr(expr); call != ast::kInvalidAstId) {
+                expr = call;
+                continue;
+            }
+        }
         if (match(TokenKind::Dot)) {
             if (match(TokenKind::Star)) {
                 SourceSpan span = ast_ctx_.get<Expr>(expr).span;
@@ -1308,6 +1334,247 @@ ExprId Parser::parse_postfix_expr(ExprId base) {
     return expr;
 }
 
+bool Parser::looks_like_type_constructor_head(ExprId expr) const {
+    if (expr == ast::kInvalidAstId) {
+        return false;
+    }
+    const auto& node = ast_ctx_.get<Expr>(expr);
+    if (node.kind == NodeKind::IdentExpr) {
+        const auto& ident = static_cast<const IdentExpr&>(node).ident.name;
+        if (ident.empty()) {
+            return false;
+        }
+        const char c = ident.front();
+        return c >= 'A' && c <= 'Z';
+    }
+    if (node.kind == NodeKind::MemberExpr) {
+        const auto& member = static_cast<const MemberExpr&>(node);
+        if (member.base == ast::kInvalidAstId) {
+            return false;
+        }
+        const auto& base_node = ast_ctx_.get<Expr>(member.base);
+        if (base_node.kind != NodeKind::IdentExpr) {
+            return false;
+        }
+        const auto& member_name = member.member.name;
+        if (member_name.empty()) {
+            return false;
+        }
+        const char c = member_name.front();
+        return c >= 'A' && c <= 'Z';
+    }
+    return false;
+}
+
+bool Parser::looks_like_type_expr_start(TokenKind kind) const {
+    switch (kind) {
+        case TokenKind::Ident:
+        case TokenKind::Star:
+        case TokenKind::LBracket:
+        case TokenKind::KwProc:
+        case TokenKind::KwBool:
+        case TokenKind::KwString:
+        case TokenKind::KwInt:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool Parser::is_unambiguous_type_expr(TypeId type) const {
+    if (type == ast::kInvalidAstId) {
+        return false;
+    }
+    const auto& node = ast_ctx_.get<TypeNode>(type);
+    switch (node.kind) {
+        case NodeKind::BuiltinType:
+            return true;
+        case NodeKind::NamedType: {
+            const auto& t = static_cast<const NamedType&>(node);
+            const auto& name = t.ident.name;
+            if (name.find('.') != std::string::npos) {
+                return true;
+            }
+            if (name.empty()) {
+                return false;
+            }
+            const char c = name.front();
+            return c >= 'A' && c <= 'Z';
+        }
+        case NodeKind::GenericType: {
+            const auto& t = static_cast<const GenericType&>(node);
+            const auto& base = t.base_ident.name;
+            bool base_ok = false;
+            if (base.find('.') != std::string::npos) {
+                base_ok = true;
+            } else if (!base.empty()) {
+                const char c = base.front();
+                base_ok = (c >= 'A' && c <= 'Z');
+            }
+            if (!base_ok) {
+                return false;
+            }
+            for (auto arg : t.type_args) {
+                if (!is_unambiguous_type_expr(arg)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        case NodeKind::PointerType: {
+            const auto& t = static_cast<const PointerType&>(node);
+            return is_unambiguous_type_expr(t.pointee);
+        }
+        case NodeKind::SliceType: {
+            const auto& t = static_cast<const SliceType&>(node);
+            return is_unambiguous_type_expr(t.element);
+        }
+        case NodeKind::ProcType: {
+            const auto& t = static_cast<const ProcType&>(node);
+            for (auto p : t.params) {
+                if (!is_unambiguous_type_expr(p)) {
+                    return false;
+                }
+            }
+            return t.return_type == ast::kInvalidAstId || is_unambiguous_type_expr(t.return_type);
+        }
+        default:
+            return false;
+    }
+}
+
+ExprId Parser::try_parse_generic_ctor_call_expr(ExprId base) {
+    if (base == ast::kInvalidAstId || current_.kind != TokenKind::LBracket) {
+        return ast::kInvalidAstId;
+    }
+    const auto& node = ast_ctx_.get<Expr>(base);
+    Ident ctor_ident("", node.span);
+    SourceSpan ctor_span = node.span;
+    if (node.kind == NodeKind::IdentExpr) {
+        ctor_ident = static_cast<const IdentExpr&>(node).ident;
+    } else if (node.kind == NodeKind::MemberExpr) {
+        const auto& member = static_cast<const MemberExpr&>(node);
+        if (member.base == ast::kInvalidAstId) {
+            return ast::kInvalidAstId;
+        }
+        const auto& base_node = ast_ctx_.get<Expr>(member.base);
+        if (base_node.kind != NodeKind::IdentExpr) {
+            return ast::kInvalidAstId;
+        }
+        const auto& base_ident = static_cast<const IdentExpr&>(base_node).ident;
+        ctor_ident = Ident(base_ident.name + "." + member.member.name, ctor_span);
+    } else {
+        return ast::kInvalidAstId;
+    }
+
+    State state = snapshot();
+    SourceSpan span = node.span;
+    match(TokenKind::LBracket);
+    if (!looks_like_type_expr_start(current_.kind)) {
+        restore(std::move(state));
+        return ast::kInvalidAstId;
+    }
+
+    std::vector<TypeId> type_args;
+    if (current_.kind != TokenKind::RBracket) {
+        type_args.push_back(parse_type_expr());
+        while (match(TokenKind::Comma)) {
+            type_args.push_back(parse_type_expr());
+        }
+    }
+    if (!expect(TokenKind::RBracket, "expected ']'")) {
+        restore(std::move(state));
+        return ast::kInvalidAstId;
+    }
+    if (current_.kind != TokenKind::LParen) {
+        restore(std::move(state));
+        return ast::kInvalidAstId;
+    }
+
+    SourceSpan type_span = ctor_span;
+    type_span.end = previous_.span.end;
+    TypeId callee_type = ast_ctx_.make<GenericType>(
+        std::move(ctor_ident),
+        std::move(type_args),
+        type_span
+    );
+
+    expect(TokenKind::LParen, "expected '('");
+    std::vector<ExprId> args;
+    if (current_.kind != TokenKind::RParen) {
+        args = parse_arg_list();
+    }
+    expect(TokenKind::RParen, "expected ')'");
+    span.end = previous_.span.end;
+    return ast_ctx_.make<InvokeExpr>(
+        ast::kInvalidAstId,
+        callee_type,
+        std::vector<TypeId>{},
+        std::move(args),
+        span
+    );
+}
+
+ExprId Parser::try_parse_generic_proc_call_expr(ExprId base) {
+    if (base == ast::kInvalidAstId || current_.kind != TokenKind::LBracket) {
+        return ast::kInvalidAstId;
+    }
+
+    const auto& node = ast_ctx_.get<Expr>(base);
+    if (node.kind != NodeKind::IdentExpr && node.kind != NodeKind::MemberExpr) {
+        return ast::kInvalidAstId;
+    }
+
+    State state = snapshot();
+    match(TokenKind::LBracket);
+    if (!looks_like_type_expr_start(current_.kind)) {
+        restore(std::move(state));
+        return ast::kInvalidAstId;
+    }
+
+    std::vector<TypeId> type_args;
+    if (current_.kind != TokenKind::RBracket) {
+        type_args.push_back(parse_type_expr());
+        while (match(TokenKind::Comma)) {
+            type_args.push_back(parse_type_expr());
+        }
+    }
+    if (!expect(TokenKind::RBracket, "expected ']'")) {
+        restore(std::move(state));
+        return ast::kInvalidAstId;
+    }
+    if (current_.kind != TokenKind::LParen) {
+        restore(std::move(state));
+        return ast::kInvalidAstId;
+    }
+    if (type_args.empty()) {
+        restore(std::move(state));
+        return ast::kInvalidAstId;
+    }
+    for (auto arg : type_args) {
+        if (!is_unambiguous_type_expr(arg)) {
+            restore(std::move(state));
+            return ast::kInvalidAstId;
+        }
+    }
+
+    SourceSpan span = node.span;
+    expect(TokenKind::LParen, "expected '('");
+    std::vector<ExprId> args;
+    if (current_.kind != TokenKind::RParen) {
+        args = parse_arg_list();
+    }
+    expect(TokenKind::RParen, "expected ')'");
+    span.end = previous_.span.end;
+    return ast_ctx_.make<InvokeExpr>(
+        base,
+        ast::kInvalidAstId,
+        std::move(type_args),
+        std::move(args),
+        span
+    );
+}
+
 ExprId Parser::parse_call_expr(ExprId callee) {
     SourceSpan span = callee != ast::kInvalidAstId
         ? ast_ctx_.get<Expr>(callee).span
@@ -1322,6 +1589,7 @@ ExprId Parser::parse_call_expr(ExprId callee) {
     return ast_ctx_.make<InvokeExpr>(
         callee,
         ast::kInvalidAstId,
+        std::vector<TypeId>{},
         std::move(args),
         span);
 }

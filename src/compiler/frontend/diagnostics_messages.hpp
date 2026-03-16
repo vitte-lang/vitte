@@ -24,6 +24,7 @@ namespace vitte::frontend::diag {
     X(E0010, TypeAliasRequiresTargetType, "type alias requires a target type") \
     X(E0011, SelectRequiresAtLeastOneWhenBranch, "select requires at least one when branch") \
     X(E0012, SelectBranchMustBeWhenStatement, "select branch must be a when statement") \
+    X(E0013, ProcMayExitWithoutReturnValue, "proc may exit without returning a value") \
     X(E1001, DuplicatePatternBinding, "duplicate pattern binding") \
     X(E1002, UnknownType, "unknown type (did you mean a built-in like int/i32/i64/i128/u32/u64/u128/bool/string?)") \
     X(E1003, UnknownGenericBaseType, "unknown generic base type") \
@@ -42,6 +43,17 @@ namespace vitte::frontend::diag {
     X(E1018, AmbiguousImportPath, "ambiguous import path") \
     X(E1019, StrictModulesGlobForbidden, "strict-modules forbids glob imports") \
     X(E1020, LegacyImportPathDeprecated, "legacy import path is deprecated") \
+    X(E1021, EntryModulePathMustBeCanonical, "entry module path must be canonical") \
+    X(E1022, DuplicateEntryName, "duplicate entry name") \
+    X(E1023, ShareUnknownSymbol, "share references unknown symbol") \
+    X(E1024, DuplicateSharedSymbol, "duplicate symbol in share list") \
+    X(E1025, SymbolNotExportedByModule, "symbol not exported by module") \
+    X(E1026, DuplicateShareDeclaration, "duplicate share declaration") \
+    X(E1027, DuplicateImportBinding, "duplicate import binding") \
+    X(E1028, ImportBindingConflictsWithLocalDeclaration, "import binding conflicts with local declaration") \
+    X(E1029, DuplicateLocalDeclarationName, "duplicate local declaration name") \
+    X(E1030, ModuleAliasMemberNotExported, "module alias member not exported") \
+    X(E1031, QualifiedTypeMemberNotFound, "qualified type member not found") \
     X(E2001, UnsupportedType, "unsupported type") \
     X(E2002, InvokeHasNoCallee, "invoke has no callee") \
     X(E2003, UnsupportedExpressionInHir, "unsupported expression in HIR") \
@@ -140,6 +152,12 @@ constexpr DiagExplain diag_explain(DiagId id) {
                 "Each select branch must be a when statement.",
                 "Replace the branch with a when pattern (or use otherwise).",
                 "select x\n  when int(v) { return v }\notherwise { return 0 }",
+            };
+        case DiagId::ProcMayExitWithoutReturnValue:
+            return {
+                "A procedure with an explicit return type has at least one path that reaches the end without returning a value.",
+                "Make every path end with 'give <value>' or 'return <value>', or remove the explicit return type if the proc is not meant to return one.",
+                "proc to_code(ok: bool) -> int {\n  if ok { give 0 }\n  give 1\n}",
             };
         case DiagId::ExpectedPattern:
             return {
@@ -290,6 +308,72 @@ constexpr DiagExplain diag_explain(DiagId id) {
                 "A legacy import path was accepted for compatibility but is deprecated.",
                 "Replace the import with the canonical package path suggested by the diagnostic.",
                 "use vitte/abi as abi_mod",
+            };
+        case DiagId::EntryModulePathMustBeCanonical:
+            return {
+                "An entrypoint declared a relative module path.",
+                "Use a canonical entry module path without leading dots.",
+                "entry main at app/core { return 0 }",
+            };
+        case DiagId::DuplicateEntryName:
+            return {
+                "Two entry declarations expose the same entry name in one module.",
+                "Keep one entry per public name, or rename one of the entries.",
+                "entry main at app/core { return 0 }",
+            };
+        case DiagId::ShareUnknownSymbol:
+            return {
+                "A share declaration names a symbol that is not declared or imported in this module.",
+                "Share only local declarations or explicit import aliases that exist in the module.",
+                "pull app/core as core_mod\nshare core_mod",
+            };
+        case DiagId::DuplicateSharedSymbol:
+            return {
+                "A share declaration lists the same symbol more than once.",
+                "Keep each shared symbol only once in the list.",
+                "share ping, pong",
+            };
+        case DiagId::SymbolNotExportedByModule:
+            return {
+                "An import targets a module symbol that exists only in the private/internal surface of that module.",
+                "Import a symbol that is explicitly shared by the module, or widen that module's share list intentionally.",
+                "use app/facade.public_api as api_mod",
+            };
+        case DiagId::DuplicateShareDeclaration:
+            return {
+                "A module declares more than one share surface.",
+                "Keep a single share declaration per module and merge exported names into that declaration.",
+                "share ping, pong",
+            };
+        case DiagId::DuplicateImportBinding:
+            return {
+                "Two imports create the same visible binding in one module.",
+                "Keep imported binding names unique, or rename one import with 'as'.",
+                "use app/facade/dep as dep_mod",
+            };
+        case DiagId::ImportBindingConflictsWithLocalDeclaration:
+            return {
+                "An imported binding reuses a name that is already declared locally in the same module, or vice versa.",
+                "Keep imported names and local declaration names distinct within one module.",
+                "use app/facade/dep as dep_mod",
+            };
+        case DiagId::DuplicateLocalDeclarationName:
+            return {
+                "Two local declarations in the same module expose the same public name.",
+                "Keep local declaration names unique within one module.",
+                "proc ping_alt() -> i32 { return 0 }",
+            };
+        case DiagId::ModuleAliasMemberNotExported:
+            return {
+                "A module alias is used to access a member or type that is not in that module's declared public surface.",
+                "Access only members explicitly exported by that module, or widen its public share surface intentionally.",
+                "use app/facade as facade_mod",
+            };
+        case DiagId::QualifiedTypeMemberNotFound:
+            return {
+                "A qualified type reference uses a known base type but names a missing nested member.",
+                "Use a type member or case that actually exists on the referenced base type.",
+                "let x: Option.Some = value",
             };
         case DiagId::UnexpectedHirTypeKind:
             return {

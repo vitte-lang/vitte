@@ -110,6 +110,7 @@ static ExprId clone_expr(
         }
         case NodeKind::InvokeExpr: {
             auto& e = static_cast<const InvokeExpr&>(node);
+            std::vector<TypeId> type_args = e.type_args;
             std::vector<ExprId> args;
             args.reserve(e.args.size());
             for (auto a : e.args) {
@@ -118,7 +119,7 @@ static ExprId clone_expr(
             ExprId callee = e.callee_expr != kInvalidAstId
                 ? clone_expr(ctx, e.callee_expr, subst)
                 : kInvalidAstId;
-            return ctx.make<InvokeExpr>(callee, e.callee_type, std::move(args), e.span);
+            return ctx.make<InvokeExpr>(callee, e.callee_type, std::move(type_args), std::move(args), e.span);
         }
         case NodeKind::ListExpr: {
             auto& e = static_cast<const ListExpr&>(node);

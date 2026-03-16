@@ -183,7 +183,8 @@ cast_expr ::= unary_expr { WS? ("as" WS? type_expr | "is" WS? pattern) } ;
 unary_expr ::= ("not" | "!" | "-" | "&" | "*") WS? unary_expr | postfix_expr ;
 
 postfix_expr ::= primary { postfix } ;
-postfix ::= call_suffix | member_suffix | index_suffix ;
+postfix ::= generic_call_suffix | call_suffix | member_suffix | index_suffix ;
+generic_call_suffix ::= "[" WS? explicit_generic_args WS? "]" WS? "(" WS? arg_list? WS? ")" ;
 call_suffix ::= "(" WS? arg_list? WS? ")" ;
 member_suffix ::= "." ( ident | "*" ) ;
 index_suffix ::= "[" WS? expr WS? "]" ;
@@ -200,6 +201,11 @@ if_expr ::= "if" WS1 expr WS? block [ WS? ("else" | "otherwise") WS? ( block | i
 proc_expr ::= "proc" WS? "(" WS? param_list? WS? ")" WS? [ "->" WS? type_expr ] WS? block ;
 
 arg_list ::= expr { WS? "," WS? expr } ;
+explicit_generic_args ::= type_expr { WS? "," WS? type_expr } ;
+
+<<< note: generic_call_suffix documents surface syntax only.
+        Parser acceptance is narrower today: the bracket payload must be read as
+        unambiguous type arguments, otherwise the same tokens stay on index-then-call parsing. >>>
 
 <<< ——————————————————— ) ( Patterns ) ( ——————————————————— >>>
 
@@ -6278,4 +6284,3 @@ integration_NEWLINE_25 ::= NEWLINE ;
 integration_LETTER_25 ::= LETTER ;
 integration_DIGIT_25 ::= DIGIT ;
 integration_HEXDIGIT_25 ::= HEXDIGIT ;
-

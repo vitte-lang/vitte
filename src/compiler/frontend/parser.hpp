@@ -34,11 +34,19 @@ public:
     ast::ModuleId parse_module();
 
 private:
+    struct State {
+        Lexer::State lexer;
+        Token current;
+        Token previous;
+    };
+
     const Token& current() const;
     const Token& previous() const;
     void advance();
     bool match(TokenKind kind);
     bool expect(TokenKind kind, const char* message);
+    State snapshot() const;
+    void restore(State state);
 
     // Top-level
     DeclId parse_toplevel();
@@ -92,6 +100,8 @@ private:
     ExprId parse_unary_expr();
     ExprId parse_primary();
     ExprId parse_postfix_expr(ExprId base);
+    ExprId try_parse_generic_ctor_call_expr(ExprId base);
+    ExprId try_parse_generic_proc_call_expr(ExprId base);
     ExprId parse_call_expr(ExprId callee);
     ExprId parse_proc_expr();
     ExprId parse_if_expr();
@@ -106,6 +116,9 @@ private:
     TypeId parse_type_expr_from_base(ast::Ident base);
     TypeId parse_type_primary();
     ast::Ident parse_qualified_ident();
+    bool looks_like_type_constructor_head(ExprId expr) const;
+    bool looks_like_type_expr_start(TokenKind kind) const;
+    bool is_unambiguous_type_expr(TypeId type) const;
 
     bool is_expr_start(TokenKind kind) const;
     bool is_unary_start(TokenKind kind) const;

@@ -145,17 +145,39 @@ static void emit_unknown_type_error(
     diag.error_code("E1002", std::move(msg), span);
 }
 
+static void emit_qualified_type_member_not_found(
+    diag::DiagnosticEngine& diag,
+    const std::string& base,
+    const std::string& member,
+    ast::SourceSpan span
+) {
+    diag::Diagnostic missing(
+        diag::Severity::Error,
+        "E1031",
+        "qualified type member not found",
+        span
+    );
+    missing.add_note("type '" + base + "' does not expose nested type member '" + member + "'");
+    missing.add_fix("use an existing qualified type member", base + ".<member>", span);
+    diag.emit(std::move(missing));
+}
+
 static void emit_unknown_identifier_error(
     diag::DiagnosticEngine& diag,
     const SymbolTable& symbols,
     const std::string& name,
     ast::SourceSpan span
 ) {
-    diag::error(diag, diag::DiagId::UnknownIdentifier, span);
+    diag::Diagnostic unknown(
+        diag::Severity::Error,
+        "E1005",
+        "unknown identifier",
+        span
+    );
 
     auto in_scope = symbols.in_scope_names();
     if (auto suggestion = suggest_closest(name, in_scope); !suggestion.empty()) {
-        diag.note("did you mean '" + suggestion + "'?", span);
+        unknown.add_note("did you mean '" + suggestion + "'?");
     }
 
     auto top = symbols.in_scope_names(3);
@@ -164,13 +186,14 @@ static void emit_unknown_identifier_error(
         for (std::size_t i = 1; i < top.size(); ++i) {
             list += ", " + top[i];
         }
-        diag.note("in scope: " + list, span);
+        unknown.add_note("in scope: " + list);
     }
 
     auto it = std_ident_suggestions().find(name);
     if (it != std_ident_suggestions().end()) {
-        diag.note("try: " + it->second, span);
+        unknown.add_note("try: " + it->second);
     }
+    diag.emit(std::move(unknown));
 }
 
 static bool is_known_import_type(std::string_view name) {
@@ -407,7 +430,19 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
             }
             auto id = types_.lookup(lookup_name);
             if (id == static_cast<types::TypeId>(-1)) {
-                emit_unknown_type_error(diag_, t.ident.name, t.ident.span);
+                const auto dot = t.ident.name.find('.');
+                bool emitted_qualified = false;
+                if (dot != std::string::npos) {
+                    std::string base = t.ident.name.substr(0, dot);
+                    std::string member = t.ident.name.substr(dot + 1);
+                    if (types_.lookup(base) != static_cast<types::TypeId>(-1)) {
+                        emit_qualified_type_member_not_found(diag_, base, member, t.ident.span);
+                        emitted_qualified = true;
+                    }
+                }
+                if (!emitted_qualified) {
+                    emit_unknown_type_error(diag_, t.ident.name, t.ident.span);
+                }
                 std::vector<std::string> names;
                 names.reserve(types_.all().size());
                 for (const auto& info : types_.all()) {
@@ -462,7 +497,19 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
             }
             auto id = types_.lookup(lookup_name);
             if (id == static_cast<types::TypeId>(-1)) {
-                diag::error(diag_, diag::DiagId::UnknownGenericBaseType, t.base_ident.span);
+                const auto dot = t.base_ident.name.find('.');
+                bool emitted_qualified = false;
+                if (dot != std::string::npos) {
+                    std::string base = t.base_ident.name.substr(0, dot);
+                    std::string member = t.base_ident.name.substr(dot + 1);
+                    if (types_.lookup(base) != static_cast<types::TypeId>(-1)) {
+                        emit_qualified_type_member_not_found(diag_, base, member, t.base_ident.span);
+                        emitted_qualified = true;
+                    }
+                }
+                if (!emitted_qualified) {
+                    diag::error(diag_, diag::DiagId::UnknownGenericBaseType, t.base_ident.span);
+                }
                 std::vector<std::string> names;
                 names.reserve(types_.all().size());
                 for (const auto& info : types_.all()) {
