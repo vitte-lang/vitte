@@ -1,0 +1,18 @@
+use vitte/std/base as base_pkg
+use vitte/std/io as io_pkg
+
+entry main at core/app {
+  let i: int = 0
+  loop {
+    if i >= 32 { break }
+    let cfg = base_pkg.normalize_config(i - 4, i - 2, i % 2 == 0)
+    let vr = base_pkg.validate_or_err(cfg)
+    when vr is base_pkg.StdResult.Err { give 1 }
+
+    let io_cfg = io_pkg.normalize_config(io_pkg.default_config())
+    let iv = io_pkg.validate_config(io_cfg)
+    when iv is io_pkg.StdIoResult.Err { give 2 }
+    i = i + 1
+  }
+  give 0
+}
