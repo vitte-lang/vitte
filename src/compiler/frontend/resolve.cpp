@@ -162,6 +162,75 @@ static void emit_qualified_type_member_not_found(
     diag.emit(std::move(missing));
 }
 
+static bool is_type_like_symbol(const Symbol* sym) {
+    if (sym == nullptr) {
+        return false;
+    }
+    return sym->kind == SymbolKind::Form || sym->kind == SymbolKind::Pick;
+}
+
+static bool is_callable_symbol(const Symbol* sym) {
+    if (sym == nullptr) {
+        return false;
+    }
+    return sym->kind == SymbolKind::Proc || sym->kind == SymbolKind::Form || sym->kind == SymbolKind::Pick;
+}
+
+static void emit_expression_not_callable(
+    diag::DiagnosticEngine& diag,
+    const Symbol& sym,
+    ast::SourceSpan span
+) {
+    diag::Diagnostic not_callable(
+        diag::Severity::Error,
+        "E1032",
+        "expression is not callable",
+        span
+    );
+    not_callable.add_note("'" + sym.name + "' resolves to a " + std::string(to_string(sym.kind)) + ", not a callable proc or constructor");
+    not_callable.add_fix("remove the trailing call syntax", sym.name, span);
+    diag.emit(std::move(not_callable));
+}
+
+static bool diagnose_missing_qualified_type_member_expr(
+    diag::DiagnosticEngine& diag,
+    const SymbolTable& symbols,
+    const types::TypeTable& types,
+    ast::AstContext& ctx,
+    ast::ExprId expr_id
+) {
+    if (expr_id == kInvalidAstId) {
+        return false;
+    }
+    const auto& node = ctx.get<Expr>(expr_id);
+    if (node.kind != NodeKind::MemberExpr) {
+        return false;
+    }
+
+    const auto& member = static_cast<const MemberExpr&>(node);
+    if (member.base == kInvalidAstId) {
+        return false;
+    }
+    const auto& base_node = ctx.get<Expr>(member.base);
+    if (base_node.kind != NodeKind::IdentExpr) {
+        return false;
+    }
+
+    const auto& base_ident = static_cast<const IdentExpr&>(base_node).ident;
+    const Symbol* base_sym = symbols.lookup(base_ident.name);
+    if (!is_type_like_symbol(base_sym)) {
+        return false;
+    }
+
+    const std::string qualified = base_ident.name + "." + member.member.name;
+    if (types.lookup(qualified) != static_cast<types::TypeId>(-1)) {
+        return false;
+    }
+
+    emit_qualified_type_member_not_found(diag, base_ident.name, member.member.name, member.member.span);
+    return true;
+}
+
 static void emit_unknown_identifier_error(
     diag::DiagnosticEngine& diag,
     const SymbolTable& symbols,
@@ -517,6 +586,13 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
                 }
                 if (auto suggestion = suggest_closest(t.base_ident.name, names); !suggestion.empty()) {
                     diag_.note("did you mean '" + suggestion + "'?", t.base_ident.span);
+                }
+                auto alias = common_type_alias_suggestions().find(t.base_ident.name);
+                if (alias != common_type_alias_suggestions().end()) {
+                    diag_.note("did you mean '" + alias->second + "'?", t.base_ident.span);
+                    if (strict_types_) {
+                        diag_.note("strict-types: aliases are forbidden, use canonical type names", t.base_ident.span);
+                    }
                 }
                 std::vector<std::string> builtins;
                 for (const auto& info : types_.all()) {
@@ -927,6 +1003,7 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
         case NodeKind::MemberExpr: {
             auto& e = static_cast<MemberExpr&>(expr);
             resolve_expr(ctx, e.base);
+            diagnose_missing_qualified_type_member_expr(diag_, symbols_, types_, ctx, expr_id);
             break;
         }
         case NodeKind::IndexExpr: {
@@ -996,6 +1073,13 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
             auto& e = static_cast<InvokeExpr&>(expr);
             if (e.callee_expr != kInvalidAstId) {
                 resolve_expr(ctx, e.callee_expr);
+                const auto& callee = ctx.get<Expr>(e.callee_expr);
+                if (callee.kind == NodeKind::IdentExpr) {
+                    const auto& ident = static_cast<const IdentExpr&>(callee).ident;
+                    if (const Symbol* sym = symbols_.lookup(ident.name); sym != nullptr && !is_callable_symbol(sym)) {
+                        emit_expression_not_callable(diag_, *sym, e.span);
+                    }
+                }
             }
             for (auto arg : e.args) {
                 resolve_expr(ctx, arg);
@@ -1007,8 +1091,11 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
             if (strict_imports_ && explicit_imports_.count(e.callee.name) != 0) {
                 used_explicit_imports_.insert(e.callee.name);
             }
-            if (!symbols_.lookup(e.callee.name)) {
+            const Symbol* sym = symbols_.lookup(e.callee.name);
+            if (sym == nullptr) {
                 emit_unknown_identifier_error(diag_, symbols_, e.callee.name, e.callee.span);
+            } else if (!is_callable_symbol(sym)) {
+                emit_expression_not_callable(diag_, *sym, e.span);
             }
             resolve_expr(ctx, e.arg);
             break;

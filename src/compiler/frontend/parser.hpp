@@ -100,6 +100,7 @@ private:
     ExprId parse_unary_expr();
     ExprId parse_primary();
     ExprId parse_postfix_expr(ExprId base);
+    bool try_recover_empty_generic_call_suffix(ExprId& expr);
     ExprId try_parse_generic_ctor_call_expr(ExprId base);
     ExprId try_parse_generic_proc_call_expr(ExprId base);
     ExprId parse_call_expr(ExprId callee);

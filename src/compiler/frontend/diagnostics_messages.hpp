@@ -54,6 +54,7 @@ namespace vitte::frontend::diag {
     X(E1029, DuplicateLocalDeclarationName, "duplicate local declaration name") \
     X(E1030, ModuleAliasMemberNotExported, "module alias member not exported") \
     X(E1031, QualifiedTypeMemberNotFound, "qualified type member not found") \
+    X(E1032, ExpressionIsNotCallable, "expression is not callable") \
     X(E2001, UnsupportedType, "unsupported type") \
     X(E2002, InvokeHasNoCallee, "invoke has no callee") \
     X(E2003, UnsupportedExpressionInHir, "unsupported expression in HIR") \
@@ -233,9 +234,9 @@ constexpr DiagExplain diag_explain(DiagId id) {
             };
         case DiagId::GenericTypeRequiresAtLeastOneTypeArgument:
             return {
-                "A generic type needs at least one type argument.",
-                "Provide type arguments inside [ ].",
-                "let xs: List[int] = List.empty()",
+                "A generic form or explicit generic call needs at least one type argument.",
+                "Provide one or more type arguments inside [ ].",
+                "let xs: List[int] = List.empty()\nlet y = id[int](1)",
             };
         case DiagId::InvalidSignedUnsignedCast:
             return {
@@ -371,9 +372,15 @@ constexpr DiagExplain diag_explain(DiagId id) {
             };
         case DiagId::QualifiedTypeMemberNotFound:
             return {
-                "A qualified type reference uses a known base type but names a missing nested member.",
+                "A qualified type-like reference uses a known base type but names a missing nested member.",
                 "Use a type member or case that actually exists on the referenced base type.",
                 "let x: Option.Some = value",
+            };
+        case DiagId::ExpressionIsNotCallable:
+            return {
+                "A call expression targets a value that exists but is not callable.",
+                "Call a proc/macro/constructor instead, or remove the trailing '(...)' from plain values.",
+                "let value = 1\n# not: value(1)",
             };
         case DiagId::UnexpectedHirTypeKind:
             return {
