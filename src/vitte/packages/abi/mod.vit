@@ -3,6 +3,10 @@ mod.vit
 package vitte/abi
 >>>
 
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/abi; additive API only.
+# - Keeps layout/signature math deterministic and backend-agnostic.
+
 space vitte/abi
 
 share all
@@ -10,6 +14,7 @@ share all
 use vitte/abi/internal/runtime as abi_runtime_pkg
 use vitte/abi/internal/validate as abi_validate_pkg
 use vitte/abi/internal/policy as abi_policy_pkg
+use vitte/abi/internal/diagnostics as abi_diag_pkg
 
 pick CallingConvention {
   SystemV
@@ -161,6 +166,22 @@ proc calling_from_tag(tag: string) -> CallingConvention {
 proc normalize_calling(calling: CallingConvention) -> CallingConvention {
   if is_supported_calling(calling) { give calling }
   give default_calling_convention()
+}
+
+proc with_calling(sig: AbiSignature, calling: CallingConvention) -> AbiSignature {
+  give AbiSignature(calling, sig.ret, sig.params)
+}
+
+proc with_return(sig: AbiSignature, ret: AbiTypeInfo) -> AbiSignature {
+  give AbiSignature(sig.calling, ret, sig.params)
+}
+
+proc with_params(sig: AbiSignature, params: [AbiTypeInfo]) -> AbiSignature {
+  give AbiSignature(sig.calling, sig.ret, params)
+}
+
+proc push_param(sig: AbiSignature, param: AbiTypeInfo) -> AbiSignature {
+  give AbiSignature(sig.calling, sig.ret, sig.params.push(param))
 }
 
 proc validate_type(kind: string, bits: int) -> AbiError {
@@ -486,6 +507,18 @@ proc validate_signature_error(sig: AbiSignature) -> AbiError {
   give AbiError.None
 }
 
+proc validate_signature_result(sig: AbiSignature) -> AbiCompatibility {
+  let err = validate_signature_error(sig)
+  if err == AbiError.None {
+    give AbiCompatibility(true, "valid")
+  }
+  if err == AbiError.UnsupportedConvention { give AbiCompatibility(false, "unsupported-calling") }
+  if err == AbiError.TooManyParams { give AbiCompatibility(false, "too-many-params") }
+  if err == AbiError.InvalidAlignment { give AbiCompatibility(false, "invalid-alignment") }
+  if err == AbiError.InvalidType { give AbiCompatibility(false, "invalid-type") }
+  give AbiCompatibility(false, "invalid-signature")
+}
+
 proc register_param_limit(sig: AbiSignature) -> int {
   give abi_policy_pkg.reg_limit_for_calling(calling_tag(sig.calling))
 }
@@ -614,6 +647,15 @@ proc signature_abi_summary(sig: AbiSignature) -> string {
   give out
 }
 
+proc layout_summary(layout: AbiLayout) -> string {
+  give "stack=" + layout.stack_arg_bytes.to_string() +
+       ",frame=" + layout.frame_bytes.to_string() +
+       ",register_args=" + layout.register_args.to_string() +
+       ",stack_align=" + layout.stack_align_bytes.to_string() +
+       ",shadow=" + layout.shadow_space_bytes.to_string() +
+       ",red_zone=" + layout.red_zone_bytes.to_string()
+}
+
 proc signature_hash(sig: AbiSignature) -> int {
   let h = type_size_bits(sig.ret) * 31 + sig.params.len * 17
   let i: int = 0
@@ -648,27 +690,42 @@ proc diagnostics_code(sig: AbiSignature) -> string {
 }
 
 proc diagnostics_message(code: string) -> string {
-  if code == "VITTE-ABI0000" { give "signature is valid" }
-  if code == "VITTE-ABI0001" { give "unsupported calling convention" }
-  if code == "VITTE-ABI0002" { give "invalid abi type encoding" }
-  if code == "VITTE-ABI0003" { give "invalid abi signature" }
-  if code == "VITTE-ABI0004" { give "too many abi parameters" }
-  if code == "VITTE-ABI0005" { give "invalid c type alias" }
-  give "abi diagnostic " + code
+  give abi_diag_pkg.message(code)
 }
 
 proc diagnostics_quickfix(code: string) -> string {
-  if code == "VITTE-ABI0000" { give "no action required" }
-  if code == "VITTE-ABI0001" { give "use systemv/win64/cdecl/fastcall on this runtime" }
-  if code == "VITTE-ABI0002" { give "use valid kinds (integer/float/pointer/void) and bits (8/16/32/64/128)" }
-  if code == "VITTE-ABI0003" { give "rebuild signature with type_info and validate_signature" }
-  if code == "VITTE-ABI0004" { give "reduce parameter count or pass an aggregate pointer" }
-  if code == "VITTE-ABI0005" { give "use one of: void,char,short,int,long,long_long,float,double,long_double,bool,size_t,ssize_t,intptr_t,uintptr_t,pointer" }
-  give "review abi signature and platform constraints"
+  give abi_diag_pkg.quickfix(code)
 }
 
 proc diagnostics_doc_url(code: string) -> string {
   give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc suggestions_for_signature(sig: AbiSignature) -> [string] {
+  give abi_diag_pkg.suggestions(diagnostics_code(sig))
+}
+
+proc suggestions_for_compatibility(cmp: AbiCompatibility) -> [string] {
+  if cmp.ok {
+    give ["signatures are ABI-compatible", "tail-call checks may now be evaluated"]
+  }
+  if cmp.reason == "calling-mismatch" {
+    give ["align both signatures on the same calling convention", "prefer c_calling_convention for C interop"]
+  }
+  if cmp.reason == "return-mismatch" {
+    give ["normalize return types on both sides", "avoid width drift across ABI boundaries"]
+  }
+  if cmp.reason == "arity-mismatch" {
+    give ["match parameter count exactly", "wrap optional trailing values behind a pointer"]
+  }
+  give ["compare each parameter kind and width", "rebuild both signatures from normalized types"]
+}
+
+proc suggestions_for_c_type(name: string) -> [string] {
+  if c_type_valid(name) {
+    give ["c type alias is valid for this runtime", "use c_signature for C-facing exported functions"]
+  }
+  give abi_diag_pkg.suggestions("VITTE-ABI0005")
 }
 
 proc compatible(a: AbiSignature, b: AbiSignature) -> AbiCompatibility {
@@ -739,6 +796,14 @@ proc abi_health(sig: AbiSignature) -> string {
   give "ok"
 }
 
+proc version() -> string {
+  give abi_diag_pkg.version()
+}
+
+proc capabilities() -> [string] {
+  give abi_diag_pkg.capabilities()
+}
+
 proc ready() -> bool {
   if abi_runtime_pkg.runtime_status() == false { give false }
   if pointer_bits() != abi_policy_pkg.default_pointer_bits() { give false }
@@ -783,4 +848,6 @@ role: Contrat ABI de surface pour signatures, tailles et conventions d appel
 input_contract: Descriptions de types ABI explicites (kind/bits) et signature normalisee
 output_contract: Resultats deterministes pour validation, layout de pile et etiquetage ABI
 boundary: Ne depend pas du backend; fournit une couche pure de calcul ABI
+compat_policy: additive-only
+api_version: v1
 >>>

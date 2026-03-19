@@ -1,0 +1,48 @@
+space vitte/abi/internal/diagnostics
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["type-normalization", "signature-validation", "layout", "c-interop", "compatibility", "suggestions"]
+}
+
+proc message(code: string) -> string {
+  if code == "VITTE-ABI0000" { give "signature is valid" }
+  if code == "VITTE-ABI0001" { give "unsupported calling convention" }
+  if code == "VITTE-ABI0002" { give "invalid abi type encoding" }
+  if code == "VITTE-ABI0003" { give "invalid abi signature" }
+  if code == "VITTE-ABI0004" { give "too many abi parameters" }
+  if code == "VITTE-ABI0005" { give "invalid c type alias" }
+  give "abi diagnostic " + code
+}
+
+proc quickfix(code: string) -> string {
+  if code == "VITTE-ABI0000" { give "no action required" }
+  if code == "VITTE-ABI0001" { give "use systemv/win64/cdecl/fastcall on this runtime" }
+  if code == "VITTE-ABI0002" { give "use valid kinds (integer/float/pointer/void) and bits (8/16/32/64/128)" }
+  if code == "VITTE-ABI0003" { give "rebuild signature with type_info and validate_signature" }
+  if code == "VITTE-ABI0004" { give "reduce parameter count or pass an aggregate pointer" }
+  if code == "VITTE-ABI0005" { give "use one of: void,char,short,int,long,long_long,float,double,long_double,bool,size_t,ssize_t,intptr_t,uintptr_t,pointer" }
+  give "review abi signature and platform constraints"
+}
+
+proc suggestions(code: string) -> [string] {
+  if code == "VITTE-ABI0001" {
+    give ["switch to the default calling convention for this runtime", "normalize_calling before exporting the signature"]
+  }
+  if code == "VITTE-ABI0002" {
+    give ["rebuild every type with type_info or normalize_type", "use only integer/float/pointer/void kinds"]
+  }
+  if code == "VITTE-ABI0003" {
+    give ["call validate_signature_result to inspect the failing category", "check return width and parameter alignments"]
+  }
+  if code == "VITTE-ABI0004" {
+    give ["reduce arity or pass a pointer to an aggregate", "group trailing values into a struct-like wrapper"]
+  }
+  if code == "VITTE-ABI0005" {
+    give ["map aliases through c_type before use", "prefer fixed-width aliases such as int32_t or uint64_t"]
+  }
+  give ["signature is valid for this ABI target"]
+}
