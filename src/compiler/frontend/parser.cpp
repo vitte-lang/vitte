@@ -1292,6 +1292,9 @@ ExprId Parser::parse_primary() {
 ExprId Parser::parse_postfix_expr(ExprId base) {
     ExprId expr = base;
     while (true) {
+        if (current_.kind == TokenKind::LBracket && try_recover_empty_generic_call_suffix(expr)) {
+            continue;
+        }
         if (current_.kind == TokenKind::LBracket && looks_like_type_constructor_head(expr)) {
             if (ExprId ctor = try_parse_generic_ctor_call_expr(expr); ctor != ast::kInvalidAstId) {
                 expr = ctor;
@@ -1332,6 +1335,30 @@ ExprId Parser::parse_postfix_expr(ExprId base) {
         break;
     }
     return expr;
+}
+
+bool Parser::try_recover_empty_generic_call_suffix(ExprId& expr) {
+    if (expr == ast::kInvalidAstId || current_.kind != TokenKind::LBracket) {
+        return false;
+    }
+
+    State state = snapshot();
+    SourceSpan span = current_.span;
+    match(TokenKind::LBracket);
+    if (current_.kind != TokenKind::RBracket) {
+        restore(std::move(state));
+        return false;
+    }
+    span.end = current_.span.end;
+    advance();
+    if (current_.kind != TokenKind::LParen) {
+        restore(std::move(state));
+        return false;
+    }
+
+    diag::error(diag_, diag::DiagId::GenericTypeRequiresAtLeastOneTypeArgument, span);
+    expr = parse_call_expr(expr);
+    return true;
 }
 
 bool Parser::looks_like_type_constructor_head(ExprId expr) const {

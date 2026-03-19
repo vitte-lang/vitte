@@ -1,0 +1,38 @@
+use vitte/catalog as catalog_pkg
+
+entry main at core/app {
+  let cfg: catalog_pkg.CatalogConfig = catalog_pkg.strict_config()
+  let cr: catalog_pkg.CatalogResult[catalog_pkg.Catalog] = catalog_pkg.catalog_new(cfg)
+  when cr is catalog_pkg.CatalogResult.Err {
+    return 1
+  }
+
+  let er: catalog_pkg.CatalogResult[catalog_pkg.CatalogEntry] = catalog_pkg.entry_new("item-1", "Entry One", ["core", "stable"])
+  when er is catalog_pkg.CatalogResult.Err {
+    return 1
+  }
+
+  let ar: catalog_pkg.CatalogResult[catalog_pkg.Catalog] = catalog_pkg.add(cr.value, er.value)
+  when ar is catalog_pkg.CatalogResult.Err {
+    return 1
+  }
+
+  if catalog_pkg.contains_id(ar.value, "item-1") == false {
+    return 1
+  }
+
+  let qr = catalog_pkg.query_by_tag(ar.value, "core")
+  if qr.len != 1 {
+    return 1
+  }
+
+  if catalog_pkg.catalog_validate(ar.value) == false {
+    return 1
+  }
+
+  if catalog_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

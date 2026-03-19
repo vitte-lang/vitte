@@ -41,6 +41,7 @@ Current consequences:
 - `id[int](1)` is treated as an explicit generic proc call
 - `id[Public](1)` is treated as an explicit generic proc call
 - `id[i](1)` stays an index expression followed by a normal call
+- `id[](1)` and `Public[](1)` are rejected with `E1006`
 
 This boundary is intentional.
 It avoids silently changing indexed-call code while the language still decides how broad generic-call syntax should be.
@@ -86,6 +87,11 @@ The current implementation is locked by focused IR snapshots:
 
 These snapshots prove the current parser and HIR lowering behavior.
 They do not promote the syntax into the protected core by themselves.
+
+Invalid empty generic-call suffixes are also diagnosed explicitly in the grammar corpus:
+
+- `tests/grammar/invalid/generic-call-empty-proc-01.vit`
+- `tests/grammar/invalid/generic-call-empty-ctor-01.vit`
 
 ## Promotion Rule
 
