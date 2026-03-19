@@ -3,6 +3,10 @@ mod.vit
 package vitte/alerts
 >>>
 
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/alerts; additive API only.
+# - Alert evaluation and routing remain pure and auditable.
+
 space vitte/alerts
 
 share all
@@ -10,6 +14,7 @@ share all
 use vitte/alerts/internal/runtime as alerts_runtime_pkg
 use vitte/alerts/internal/validate as alerts_validate_pkg
 use vitte/alerts/internal/policy as alerts_policy_pkg
+use vitte/alerts/internal/diagnostics as alerts_diag_pkg
 
 pick AlertState {
   Idle
@@ -1449,8 +1454,58 @@ proc experimental_authz_explain(policies: [AuthzPolicy], actor: string, action: 
   give authz_explain(policies, actor, action)
 }
 
+proc version() -> string {
+  give alerts_diag_pkg.version()
+}
+
+proc capabilities() -> [string] {
+  give alerts_diag_pkg.capabilities()
+}
+
+proc diagnostics_message(code: string) -> string {
+  give alerts_diag_pkg.message(code)
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  give alerts_diag_pkg.quickfix(code)
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc suggestions_for_rule(rule: AlertRule) -> [string] {
+  if alerts_validate_pkg.valid_rule_name(rule.name) == false {
+    give alerts_diag_pkg.suggestions_rule_invalid()
+  }
+  if alerts_validate_pkg.valid_threshold(rule.threshold) == false || alerts_validate_pkg.valid_window_ticks(rule.window_ticks) == false {
+    give alerts_diag_pkg.suggestions_rule_invalid()
+  }
+  if rule.level == AlertLevel.Page && rule.threshold < 2 {
+    give ["raise the threshold for paging rules to reduce alert noise", "pair page-level rules with a runbook-backed template"]
+  }
+  give ["alert rule is ready"]
+}
+
+proc suggestions_for_route(route: RoutePolicy) -> [string] {
+  if alerts_validate_pkg.valid_destination(route.destination) == false {
+    give alerts_diag_pkg.suggestions_route_invalid()
+  }
+  when route.channel is NotificationChannel.Pager {
+    give ["ensure page routes are reserved for high-severity alerts", "attach escalation documentation to pager destinations"]
+  }
+  give ["route policy is ready"]
+}
+
+proc suggestions_for_template(template: NotificationTemplate, level: AlertLevel) -> [string] {
+  if template_valid_for_level(template, level) == false {
+    give alerts_diag_pkg.suggestions_template_invalid()
+  }
+  give ["notification template is ready"]
+}
+
 proc api_version() -> string {
-  give "2.3.0"
+  give "2.4.0"
 }
 
 
@@ -1470,6 +1525,6 @@ output_contract: Decisions deterministes emit suppress dead et etats auditables
 boundary: Aucun IO externe; calcul pur des decisions/routage/quotas/authz
 api_surface_stable: rule_new rule_eval severity silence dedupe_key notify package_meta api_version
 versioning: api_version() doit evoluer a chaque ajout public
-versioning_note: api_version=2.3.0 inclut diagnostics/pipeline/slo
+versioning_note: api_version=2.4.0 inclut diagnostics/pipeline/slo/internal split
+compat_policy: additive-only
 >>>
-

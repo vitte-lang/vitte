@@ -1,0 +1,35 @@
+space vitte/alerts/internal/diagnostics
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["rules", "dedupe", "quota", "routing", "templates", "pipeline", "suggestions"]
+}
+
+proc message(code: string) -> string {
+  if code == "VITTE-ALERT0001" { give "alert rule or policy is invalid" }
+  if code == "VITTE-ALERT0002" { give "notification template or route is invalid" }
+  if code == "VITTE-ALERT0003" { give "quota or provider circuit prevents delivery" }
+  give "alerts diagnostic " + code
+}
+
+proc quickfix(code: string) -> string {
+  if code == "VITTE-ALERT0001" { give "normalize threshold, window and silence values before evaluation" }
+  if code == "VITTE-ALERT0002" { give "provide a valid destination and template with runbook for high severities" }
+  if code == "VITTE-ALERT0003" { give "increase quota, wait for cooldown, or reduce retry pressure" }
+  give "review alerts pipeline configuration"
+}
+
+proc suggestions_rule_invalid() -> [string] {
+  give ["set a non-empty rule name within policy limits", "use threshold >= 1 and window_ticks >= 1"]
+}
+
+proc suggestions_route_invalid() -> [string] {
+  give ["provide a non-empty route destination", "use route_default when no custom destination is needed"]
+}
+
+proc suggestions_template_invalid() -> [string] {
+  give ["fill template version and title", "attach a runbook URL for critical or page alerts"]
+}
