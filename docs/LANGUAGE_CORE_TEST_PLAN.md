@@ -178,6 +178,8 @@ Current import-boundary success coverage includes:
 - `facade_mod.hidden()` fails with a module-alias member-export diagnostic
 - `facade_mod.Hidden` fails with a module-alias member-export diagnostic
 - `Public.Missing` fails with a qualified-type-member diagnostic when `Public` is known locally
+- `Option.Missing(...)` fails with the same qualified-type-member diagnostic when `Option` is a known local `pick`
+- `x(1)` fails with a dedicated non-callable-expression diagnostic when `x` is a known local value
 - `--strict-imports` accepts an explicitly aliased local import when the alias is used
 - `--strict-modules` accepts an explicitly aliased local import when the alias is used
 - `--allow-experimental` admits explicit experimental imports
