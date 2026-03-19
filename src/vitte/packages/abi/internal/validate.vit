@@ -1,0 +1,130 @@
+space vitte/abi/internal/validate
+
+proc valid_kind(kind: string) -> bool {
+  if kind == "int" { give true }
+  if kind == "integer" { give true }
+  if kind == "float" { give true }
+  if kind == "pointer" { give true }
+  if kind == "void" { give true }
+  give false
+}
+
+proc valid_calling_tag(tag: string) -> bool {
+  if tag == "sysv" { give true }
+  if tag == "win64" { give true }
+  if tag == "cdecl" { give true }
+  if tag == "fastcall" { give true }
+  if tag == "stdcall" { give true }
+  give false
+}
+
+proc normalize_calling_tag(tag: string) -> string {
+  if tag == "systemv" { give "sysv" }
+  if tag == "sysv" { give "sysv" }
+  if tag == "win64" { give "win64" }
+  if tag == "cdecl" { give "cdecl" }
+  if tag == "fastcall" { give "fastcall" }
+  if tag == "stdcall" { give "stdcall" }
+  give "unknown"
+}
+
+proc normalize_kind(kind: string) -> string {
+  if kind == "int" { give "integer" }
+  if kind == "integer" { give "integer" }
+  if kind == "float" { give "float" }
+  if kind == "pointer" { give "pointer" }
+  if kind == "void" { give "void" }
+  give "unknown"
+}
+
+proc valid_bits_for_kind(kind: string, bits: int, pointer_bits: int, max_type_bits: int) -> bool {
+  let k = normalize_kind(kind)
+  if k == "unknown" { give false }
+  if k == "void" { give bits == 0 }
+  if k == "pointer" {
+    if bits == 0 { give true }
+    give bits == pointer_bits
+  }
+  if bits <= 0 { give false }
+  if bits > max_type_bits { give false }
+  if bits == 8 || bits == 16 || bits == 32 || bits == 64 || bits == 128 { give true }
+  give false
+}
+
+proc valid_param_count(count: int, max_params: int) -> bool {
+  if count < 0 { give false }
+  give count <= max_params
+}
+
+proc valid_alignment_bits(alignment: int) -> bool {
+  if alignment <= 0 { give false }
+  if alignment == 8 || alignment == 16 || alignment == 32 || alignment == 64 || alignment == 128 { give true }
+  give false
+}
+
+proc valid_stack_align_bytes(alignment: int) -> bool {
+  if alignment == 4 { give true }
+  if alignment == 8 { give true }
+  if alignment == 16 { give true }
+  if alignment == 32 { give true }
+  give false
+}
+
+proc valid_register_limit(limit: int) -> bool {
+  if limit < 0 { give false }
+  give limit <= 16
+}
+
+proc valid_endianness(endian: string) -> bool {
+  if endian == "little" { give true }
+  if endian == "big" { give true }
+  give false
+}
+
+proc valid_target_triple(triple: string) -> bool {
+  give triple.len >= 3
+}
+
+proc valid_index(index: int, len: int) -> bool {
+  if index < 0 { give false }
+  give index < len
+}
+
+proc valid_frame_bytes(bytes: int, max_frame: int) -> bool {
+  if bytes < 0 { give false }
+  give bytes <= max_frame
+}
+
+proc valid_non_empty(value: string) -> bool {
+  give value.len > 0
+}
+
+proc valid_c_type_name(name: string) -> bool {
+  if name == "void" { give true }
+  if name == "char" { give true }
+  if name == "short" { give true }
+  if name == "int" { give true }
+  if name == "long" { give true }
+  if name == "long_long" { give true }
+  if name == "float" { give true }
+  if name == "double" { give true }
+  if name == "long_double" { give true }
+  if name == "bool" { give true }
+  if name == "int8_t" { give true }
+  if name == "int16_t" { give true }
+  if name == "int32_t" { give true }
+  if name == "int64_t" { give true }
+  if name == "uint8_t" { give true }
+  if name == "uint16_t" { give true }
+  if name == "uint32_t" { give true }
+  if name == "uint64_t" { give true }
+  if name == "size_t" { give true }
+  if name == "ssize_t" { give true }
+  if name == "ptrdiff_t" { give true }
+  if name == "intptr_t" { give true }
+  if name == "uintptr_t" { give true }
+  if name == "wchar_t" { give true }
+  if name == "string" { give true }
+  if name == "pointer" { give true }
+  give false
+}

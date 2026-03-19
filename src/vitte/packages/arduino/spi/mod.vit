@@ -30,7 +30,7 @@ proc spi_default_config() -> SpiConfig {
 }
 
 proc spi_with_clock_hz(cfg: SpiConfig, clock_hz: int) -> SpiConfig {
-  give SpiConfig(cfg.profile, cfg.mode, cfg.bit_order, clock_hz)
+  give SpiConfig(cfg.profile, cfg.mode, cfg.bit_order, spi_policy_pkg.normalize_clock_hz(clock_hz))
 }
 
 proc spi_with_mode(cfg: SpiConfig, mode: arduino_pkg.SpiMode) -> SpiConfig {
@@ -41,10 +41,12 @@ proc spi_open(cfg: SpiConfig) -> arduino_pkg.ArduinoResult[SpiBusState] {
   if spi_validate_pkg.valid_clock_hz(cfg.clock_hz) == false {
     give arduino_pkg.err[SpiBusState](arduino_pkg.ArduinoError.Unsupported)
   }
-  if cfg.clock_hz > arduino_pkg.max_spi_hz(cfg.profile) {
+  let hz = spi_policy_pkg.normalize_clock_hz(cfg.clock_hz)
+  if hz > arduino_pkg.max_spi_hz(cfg.profile) {
     give arduino_pkg.err[SpiBusState](arduino_pkg.ArduinoError.Unsupported)
   }
-  give arduino_pkg.ok[SpiBusState](SpiBusState(cfg, true, 0, 0, 0))
+  let c = SpiConfig(cfg.profile, cfg.mode, cfg.bit_order, hz)
+  give arduino_pkg.ok[SpiBusState](SpiBusState(c, true, 0, 0, 0))
 }
 
 proc spi_close(st: SpiBusState) -> SpiBusState {
@@ -52,8 +54,55 @@ proc spi_close(st: SpiBusState) -> SpiBusState {
 }
 
 proc spi_transfer(st: SpiBusState, value: int) -> arduino_pkg.ArduinoResult[int] {
-  let _ = st
+  if st.opened == false { give arduino_pkg.err[int](arduino_pkg.ArduinoError.Conflict) }
+  if spi_validate_pkg.valid_transfer_byte(value) == false {
+    give arduino_pkg.err[int](arduino_pkg.ArduinoError.Unsupported)
+  }
   give arduino_pkg.ok[int](spi_runtime_pkg.runtime_transfer(value))
+}
+
+proc spi_bundle_required_libraries() -> [arduino_pkg.ArduinoLibrary] {
+  give [arduino_pkg.ArduinoLibrary.Spi]
+}
+
+proc spi_bundle_validate(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_pkg.ArduinoResult[bool] {
+  let pvr = arduino_pkg.project_validate(bundle.preset)
+  when pvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[bool](pvr.error) }
+
+  let lvr = arduino_pkg.library_set_validate(bundle.preset.profile, bundle.libraries)
+  when lvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[bool](lvr.error) }
+
+  if arduino_pkg.has_library(bundle.libraries, arduino_pkg.ArduinoLibrary.Spi) == false {
+    give arduino_pkg.err[bool](arduino_pkg.ArduinoError.Unsupported)
+  }
+  give arduino_pkg.ok[bool](true)
+}
+
+proc spi_bundle_open(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_pkg.ArduinoResult[SpiBusState] {
+  let bvr = spi_bundle_validate(bundle)
+  when bvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[SpiBusState](bvr.error) }
+  let cfg = SpiConfig(
+    bundle.preset.profile,
+    arduino_pkg.SpiMode.Mode0,
+    arduino_pkg.BitOrder.MsbFirst,
+    bundle.preset.spi_hz
+  )
+  give spi_open(cfg)
+}
+
+proc spi_bundle_transfer_frame(st: SpiBusState, frame: [int]) -> arduino_pkg.ArduinoResult[[int]] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= frame.len { break }
+    let tr = spi_transfer(st, frame[i])
+    when tr is arduino_pkg.ArduinoResult.Err {
+      give arduino_pkg.err[[int]](tr.error)
+    }
+    out = out.push(tr.value)
+    i = i + 1
+  }
+  give arduino_pkg.ok[[int]](out)
 }
 
 # Compatibility wrapper
@@ -73,3 +122,8 @@ output_contract: ArduinoResult avec controle de capabilities profil
 boundary: Les acces runtime restent sous internal/runtime
 compat_policy: additive-only
 >>>
+
+
+
+
+

@@ -1,10 +1,48 @@
 <<<
 mod.vit
 package vitte/fixtures
+version: 3.1.0
+tier: test-data-core
+purpose:
+  Jeux de donnees de test reproductibles.
+  Validation explicite des seeds et des rows.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/fixtures
 
+use vitte/fixtures/internal/policy as fixtures_policy_pkg
+use vitte/fixtures/internal/runtime as fixtures_runtime_pkg
+use vitte/fixtures/internal/validate as fixtures_validate_pkg
+
+form FixturesConfig {
+  seed_runs: int
+  allow_empty_rows: bool
+}
+
+pick FixturesError {
+  InvalidConfig
+  NotFound
+  Internal
+}
+
+pick FixturesResult[T] {
+  Ok(value: T)
+  Err(error: FixturesError)
+}
+
+form FixturesRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_snapshots: bool
+}
+
+form FixturesHealth {
+  ok: bool
+  code: string
+  rows_count: int
+}
 
 form FixtureSet {
   name: string
@@ -13,8 +51,101 @@ form FixtureSet {
   seed_runs: int
 }
 
+proc default_config() -> FixturesConfig {
+  give FixturesConfig(fixtures_policy_pkg.default_seed_runs(), fixtures_policy_pkg.default_allow_empty_rows())
+}
+
+proc strict_config() -> FixturesConfig {
+  let cfg = default_config()
+  give FixturesConfig(cfg.seed_runs, false)
+}
+
+proc with_allow_empty_rows(cfg: FixturesConfig, allow_empty_rows: bool) -> FixturesConfig {
+  give FixturesConfig(cfg.seed_runs, allow_empty_rows)
+}
+
+proc with_seed_runs(cfg: FixturesConfig, seed_runs: int) -> FixturesConfig {
+  give FixturesConfig(fixtures_policy_pkg.normalize_seed_runs(seed_runs), cfg.allow_empty_rows)
+}
+
+proc normalize_config(cfg: FixturesConfig) -> FixturesConfig {
+  give FixturesConfig(fixtures_policy_pkg.normalize_seed_runs(cfg.seed_runs), cfg.allow_empty_rows)
+}
+
+proc validate_config(cfg: FixturesConfig) -> FixturesResult[bool] {
+  let nc = normalize_config(cfg)
+  if fixtures_validate_pkg.valid_seed_runs(nc.seed_runs, fixtures_policy_pkg.max_seed_runs()) == false {
+    give FixturesResult.Err(FixturesError.InvalidConfig)
+  }
+  give FixturesResult.Ok(true)
+}
+
+proc healthcheck(cfg: FixturesConfig, fixtures: FixtureSet) -> FixturesResult[FixturesHealth] {
+  let vr = validate_config(cfg)
+  when vr is FixturesResult.Err { give FixturesResult.Err(vr.error) }
+  if fixtures_runtime_pkg.runtime_status() == false {
+    give FixturesResult.Err(FixturesError.Internal)
+  }
+  give FixturesResult.Ok(FixturesHealth(true, "ok", fixtures.current_rows.len))
+}
+
+proc runtime_info() -> FixturesRuntimeInfo {
+  give FixturesRuntimeInfo(fixtures_runtime_pkg.runtime_name(),
+                           fixtures_runtime_pkg.runtime_version(),
+                           fixtures_runtime_pkg.supports_diagnostics(),
+                           fixtures_runtime_pkg.supports_snapshots())
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-FIXTURES0001" { give "invalid fixtures configuration" }
+  if code == "VITTE-FIXTURES0002" { give "invalid fixture name or row" }
+  if code == "VITTE-FIXTURES0003" { give "fixtures runtime issue" }
+  give "fixtures diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-FIXTURES0001" { give "use seed_runs in valid range" }
+  if code == "VITTE-FIXTURES0002" { give "use non-empty fixture name and valid rows" }
+  if code == "VITTE-FIXTURES0003" { give "check runtime_status and reset fixtures" }
+  give "review fixtures configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/fixtures"
+}
+
+proc capabilities() -> [string] {
+  give [
+    "config",
+    "dedupe",
+    "diagnostics",
+    "healthcheck",
+    "replace-row",
+    "seed",
+    "snapshot"
+  ]
+}
+
 proc fixture_load(name: string, rows: [string]) -> FixtureSet {
   give FixtureSet(name, rows, rows, 0)
+}
+
+proc fixture_load_checked(name: string, rows: [string], cfg: FixturesConfig) -> FixturesResult[FixtureSet] {
+  let _ = rows
+  if fixtures_validate_pkg.valid_fixture_name(name) == false {
+    give FixturesResult.Err(FixturesError.InvalidConfig)
+  }
+  let vr = validate_config(cfg)
+  when vr is FixturesResult.Err { give FixturesResult.Err(vr.error) }
+  give FixturesResult.Ok(fixture_load(name, rows))
 }
 
 proc seed(fixtures: FixtureSet, count: int) -> FixtureSet {
@@ -39,6 +170,15 @@ proc seed(fixtures: FixtureSet, count: int) -> FixtureSet {
   give FixtureSet(fixtures.name, fixtures.base_rows, out, fixtures.seed_runs + runs)
 }
 
+proc seed_checked(fixtures: FixtureSet, count: int, cfg: FixturesConfig) -> FixturesResult[FixtureSet] {
+  let vr = validate_config(cfg)
+  when vr is FixturesResult.Err { give FixturesResult.Err(vr.error) }
+  if fixtures_validate_pkg.valid_seed_runs(count, fixtures_policy_pkg.max_seed_runs()) == false {
+    give FixturesResult.Err(FixturesError.InvalidConfig)
+  }
+  give FixturesResult.Ok(seed(fixtures, count))
+}
+
 proc seed_once(fixtures: FixtureSet) -> FixtureSet {
   give seed(fixtures, 1)
 }
@@ -53,6 +193,13 @@ proc clear_current(fixtures: FixtureSet) -> FixtureSet {
 
 proc append_row(fixtures: FixtureSet, row: string) -> FixtureSet {
   give FixtureSet(fixtures.name, fixtures.base_rows, fixtures.current_rows.push(row), fixtures.seed_runs)
+}
+
+proc append_row_checked(fixtures: FixtureSet, row: string, cfg: FixturesConfig) -> FixturesResult[FixtureSet] {
+  if fixtures_validate_pkg.valid_row(row, cfg.allow_empty_rows) == false {
+    give FixturesResult.Err(FixturesError.InvalidConfig)
+  }
+  give FixturesResult.Ok(append_row(fixtures, row))
 }
 
 proc remove_row(fixtures: FixtureSet, row: string) -> FixtureSet {
@@ -72,6 +219,13 @@ proc remove_row(fixtures: FixtureSet, row: string) -> FixtureSet {
   give FixtureSet(fixtures.name, fixtures.base_rows, out, fixtures.seed_runs)
 }
 
+proc remove_row_checked(fixtures: FixtureSet, row: string, cfg: FixturesConfig) -> FixturesResult[FixtureSet] {
+  if fixtures_validate_pkg.valid_row(row, cfg.allow_empty_rows) == false {
+    give FixturesResult.Err(FixturesError.InvalidConfig)
+  }
+  give FixturesResult.Ok(remove_row(fixtures, row))
+}
+
 proc replace_row(fixtures: FixtureSet, old_row: string, new_row: string) -> FixtureSet {
   let out: [string] = []
   let replaced: bool = false
@@ -88,6 +242,16 @@ proc replace_row(fixtures: FixtureSet, old_row: string, new_row: string) -> Fixt
     i = i + 1
   }
   give FixtureSet(fixtures.name, fixtures.base_rows, out, fixtures.seed_runs)
+}
+
+proc replace_row_checked(fixtures: FixtureSet, old_row: string, new_row: string, cfg: FixturesConfig) -> FixturesResult[FixtureSet] {
+  if fixtures_validate_pkg.valid_row(old_row, cfg.allow_empty_rows) == false {
+    give FixturesResult.Err(FixturesError.InvalidConfig)
+  }
+  if fixtures_validate_pkg.valid_row(new_row, cfg.allow_empty_rows) == false {
+    give FixturesResult.Err(FixturesError.InvalidConfig)
+  }
+  give FixturesResult.Ok(replace_row(fixtures, old_row, new_row))
 }
 
 proc row_count(fixtures: FixtureSet) -> int {
@@ -205,13 +369,7 @@ proc stats(fixtures: FixtureSet) -> string {
 }
 
 proc ready() -> bool {
-  give true
-}
-
-
-
-proc package_meta() -> string {
-    give "vitte/fixtures"
+  give fixtures_runtime_pkg.runtime_status()
 }
 
 <<< ROLE-CONTRACT

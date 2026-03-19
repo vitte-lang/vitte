@@ -1,0 +1,40 @@
+use vitte/channel as channel_pkg
+
+entry main at core/app {
+  let cfg = channel_pkg.strict_config()
+  let vr: channel_pkg.ChannelResult[bool] = channel_pkg.validate_config(cfg)
+  when vr is channel_pkg.ChannelResult.Err {
+    return 1
+  }
+
+  let c0 = channel_pkg.channel_bounded(2)
+  let s1: channel_pkg.ChannelResult[channel_pkg.Channel] = channel_pkg.send_checked(c0, "m1", cfg)
+  when s1 is channel_pkg.ChannelResult.Err {
+    return 1
+  }
+
+  let s2: channel_pkg.ChannelResult[channel_pkg.Channel] = channel_pkg.send_checked(s1.value, "m2", cfg)
+  when s2 is channel_pkg.ChannelResult.Err {
+    return 1
+  }
+
+  let r: channel_pkg.ChannelResult[string] = channel_pkg.recv(s2.value)
+  when r is channel_pkg.ChannelResult.Err {
+    return 1
+  }
+
+  if r.value != "m1" {
+    return 1
+  }
+
+  let c3 = channel_pkg.pop(s2.value)
+  if channel_pkg.len(c3) != 1 {
+    return 1
+  }
+
+  if channel_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

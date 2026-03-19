@@ -30,15 +30,20 @@ proc i2c_default_config() -> I2cConfig {
 }
 
 proc i2c_with_timeout(cfg: I2cConfig, timeout_ms: arduino_pkg.Millis) -> I2cConfig {
-  give I2cConfig(cfg.profile, timeout_ms, cfg.retry_budget)
+  give I2cConfig(cfg.profile, i2c_policy_pkg.normalize_timeout_ms(timeout_ms), cfg.retry_budget)
 }
 
 proc i2c_with_retry_budget(cfg: I2cConfig, retry_budget: int) -> I2cConfig {
-  give I2cConfig(cfg.profile, cfg.timeout_ms, retry_budget)
+  give I2cConfig(cfg.profile, cfg.timeout_ms, i2c_policy_pkg.normalize_retry_budget(retry_budget))
 }
 
 proc i2c_open(cfg: I2cConfig) -> I2cBusState {
-  give I2cBusState(cfg, true, 0, 0, 0, 0)
+  let c = I2cConfig(
+    cfg.profile,
+    i2c_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
+    i2c_policy_pkg.normalize_retry_budget(cfg.retry_budget)
+  )
+  give I2cBusState(c, true, 0, 0, 0, 0)
 }
 
 proc i2c_close(st: I2cBusState) -> I2cBusState {
@@ -46,8 +51,18 @@ proc i2c_close(st: I2cBusState) -> I2cBusState {
 }
 
 proc i2c_write_register(st: I2cBusState, addr: arduino_pkg.Address7, reg: arduino_pkg.Register, value: int) -> arduino_pkg.ArduinoResult[I2cBusState] {
+  if st.opened == false { give arduino_pkg.err[I2cBusState](arduino_pkg.ArduinoError.Conflict) }
+  if i2c_validate_pkg.valid_timeout_ms(st.cfg.timeout_ms) == false {
+    give arduino_pkg.err[I2cBusState](arduino_pkg.ArduinoError.Timeout)
+  }
+  if i2c_validate_pkg.valid_retry_budget(st.cfg.retry_budget) == false {
+    give arduino_pkg.err[I2cBusState](arduino_pkg.ArduinoError.Unsupported)
+  }
   if i2c_validate_pkg.valid_address(addr) == false {
     give arduino_pkg.err[I2cBusState](arduino_pkg.ArduinoError.InvalidAddress)
+  }
+  if i2c_validate_pkg.valid_register(reg) == false {
+    give arduino_pkg.err[I2cBusState](arduino_pkg.ArduinoError.Unsupported)
   }
   let status: int = i2c_runtime_pkg.runtime_write(addr, reg, value)
   if status != 0 {
@@ -57,11 +72,58 @@ proc i2c_write_register(st: I2cBusState, addr: arduino_pkg.Address7, reg: arduin
 }
 
 proc i2c_read_register(st: I2cBusState, addr: arduino_pkg.Address7, reg: arduino_pkg.Register) -> arduino_pkg.ArduinoResult[int] {
-  let _ = st
+  if st.opened == false { give arduino_pkg.err[int](arduino_pkg.ArduinoError.Conflict) }
   if i2c_validate_pkg.valid_address(addr) == false {
     give arduino_pkg.err[int](arduino_pkg.ArduinoError.InvalidAddress)
   }
+  if i2c_validate_pkg.valid_register(reg) == false {
+    give arduino_pkg.err[int](arduino_pkg.ArduinoError.Unsupported)
+  }
   give arduino_pkg.ok[int](i2c_runtime_pkg.runtime_read(addr, reg))
+}
+
+proc i2c_bundle_required_libraries() -> [arduino_pkg.ArduinoLibrary] {
+  give [arduino_pkg.ArduinoLibrary.Wire]
+}
+
+proc i2c_bundle_validate(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_pkg.ArduinoResult[bool] {
+  let pvr = arduino_pkg.project_validate(bundle.preset)
+  when pvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[bool](pvr.error) }
+
+  let lvr = arduino_pkg.library_set_validate(bundle.preset.profile, bundle.libraries)
+  when lvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[bool](lvr.error) }
+
+  if arduino_pkg.has_library(bundle.libraries, arduino_pkg.ArduinoLibrary.Wire) == false {
+    give arduino_pkg.err[bool](arduino_pkg.ArduinoError.Unsupported)
+  }
+  if arduino_pkg.supports_i2c(bundle.preset.profile, "7bit") == false {
+    give arduino_pkg.err[bool](arduino_pkg.ArduinoError.Unsupported)
+  }
+  give arduino_pkg.ok[bool](true)
+}
+
+proc i2c_bundle_open(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_pkg.ArduinoResult[I2cBusState] {
+  let bvr = i2c_bundle_validate(bundle)
+  when bvr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[I2cBusState](bvr.error) }
+  let cfg1 = I2cConfig(bundle.preset.profile, bundle.preset.i2c_timeout_ms, bundle.preset.i2c_retry_budget)
+  let cfg2 = i2c_with_timeout(cfg1, cfg1.timeout_ms)
+  let cfg3 = i2c_with_retry_budget(cfg2, cfg2.retry_budget)
+  give arduino_pkg.ok[I2cBusState](i2c_open(cfg3))
+}
+
+proc i2c_bundle_read_many(st: I2cBusState, addr: arduino_pkg.Address7, registers: [arduino_pkg.Register]) -> arduino_pkg.ArduinoResult[[int]] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= registers.len { break }
+    let rr = i2c_read_register(st, addr, registers[i])
+    when rr is arduino_pkg.ArduinoResult.Err {
+      give arduino_pkg.err[[int]](rr.error)
+    }
+    out = out.push(rr.value)
+    i = i + 1
+  }
+  give arduino_pkg.ok[[int]](out)
 }
 
 # Compatibility wrappers
@@ -94,3 +156,7 @@ output_contract: ArduinoResult + erreurs actionnables VITTE-Axxxx
 boundary: Aucun acces direct hardware hors internal/runtime
 compat_policy: additive-only
 >>>
+
+
+
+

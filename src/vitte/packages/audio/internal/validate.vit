@@ -1,0 +1,38 @@
+space vitte/audio/internal/validate
+
+proc valid_sample_rate(sample_rate: int) -> bool {
+  give sample_rate >= 8000 && sample_rate <= 384000
+}
+
+proc valid_channels(channels: int) -> bool {
+  give channels >= 1 && channels <= 8
+}
+
+proc valid_buffer_shape(sample_rate: int, channels: int) -> bool {
+  if valid_sample_rate(sample_rate) == false { give false }
+  if valid_channels(channels) == false { give false }
+  give true
+}
+
+proc valid_gain_percent(percent: int) -> bool {
+  give percent >= 0 && percent <= 1000
+}
+
+proc valid_target_peak(target_peak: int) -> bool {
+  give target_peak > 0 && target_peak <= 32767
+}
+
+proc valid_sample_value(sample: int) -> bool {
+  give sample >= -32768 && sample <= 32767
+}
+
+proc valid_samples_length(sample_count: int, channels: int) -> bool {
+  if sample_count < 0 { give false }
+  if channels <= 0 { give false }
+  give true
+}
+
+proc frame_aligned(sample_count: int, channels: int) -> bool {
+  if channels <= 0 { give false }
+  give sample_count % channels == 0
+}

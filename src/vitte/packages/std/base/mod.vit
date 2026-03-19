@@ -8,6 +8,10 @@ package vitte/std/base
 
 space vitte/std/base
 
+use vitte/std/base/internal/runtime as std_base_runtime_pkg
+use vitte/std/base/internal/validate as std_base_validate_pkg
+use vitte/std/base/internal/policy as std_base_policy_pkg
+
 form StdEntry {
   name: string
   group: string
@@ -112,3 +116,193 @@ proc export_allowed(profile: string, module: string) -> bool {
 proc package_meta() -> string {
   give "vitte/std/base"
 }
+
+form StdBaseConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick StdBaseError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick StdBaseResult[T] {
+  Ok(value: T)
+  Err(error: StdBaseError)
+}
+
+proc default_config() -> StdBaseConfig {
+  give StdBaseConfig(true, std_base_policy_pkg.default_timeout_ms(), std_base_policy_pkg.default_retry_budget())
+}
+
+proc normalize_config(timeout_ms: int, retry_budget: int, strict: bool) -> StdBaseConfig {
+  give StdBaseConfig(
+    strict,
+    std_base_policy_pkg.normalize_timeout_ms(timeout_ms),
+    std_base_policy_pkg.normalize_retry_budget(retry_budget)
+  )
+}
+
+proc profile_apply(name: string) -> StdBaseConfig {
+  let p = std_base_policy_pkg.profile_by_name(name)
+  give normalize_config(p.timeout_ms, p.retry_budget, p.strict)
+}
+
+proc validate_config(cfg: StdBaseConfig) -> StdBaseResult[bool] {
+  if std_base_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give StdBaseResult.Err(StdBaseError.InvalidConfig)
+  }
+  if std_base_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give StdBaseResult.Err(StdBaseError.InvalidConfig)
+  }
+  give StdBaseResult.Ok(true)
+}
+
+proc validate_or_err(cfg: StdBaseConfig) -> StdResult[bool] {
+  let code = std_base_validate_pkg.validate_code(cfg.timeout_ms, cfg.retry_budget)
+  if code.len > 0 {
+    if code == "VITTE-STDBASE0001" { give err(code, "invalid timeout_ms in std/base config") }
+    if code == "VITTE-STDBASE0002" { give err(code, "invalid retry_budget in std/base config") }
+    give err(code, "std/base diagnostic " + code)
+  }
+  if std_base_validate_pkg.valid_runtime_contract(cfg.timeout_ms, cfg.retry_budget, cfg.strict) == false {
+    give err("VITTE-STDBASE0003", "runtime profile is incompatible with strict settings")
+  }
+  give ok(true)
+}
+
+proc healthcheck(cfg: StdBaseConfig) -> StdBaseResult[bool] {
+  let vr: StdBaseResult[bool] = validate_config(cfg)
+  when vr is StdBaseResult.Err {
+    give StdBaseResult.Err(vr.error)
+  }
+  if std_base_runtime_pkg.runtime_status() == false {
+    give StdBaseResult.Err(StdBaseError.Internal)
+  }
+  give StdBaseResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give [
+    "config",
+    "normalize-config",
+    "normalize-profile",
+    "timeout-budget",
+    "profile-apply",
+    "validate",
+    "validate-or-err",
+    "healthcheck",
+    "diag",
+    "diag-json",
+    "feature-flags"
+  ]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-STDBASE0001" { give "invalid timeout_ms in std/base config" }
+  if code == "VITTE-STDBASE0002" { give "invalid retry_budget in std/base config" }
+  if code == "VITTE-STDBASE0003" { give "runtime profile is incompatible with strict settings" }
+  give "std/base diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-STDBASE0001" { give "use timeout_ms in range 1..60000" }
+  if code == "VITTE-STDBASE0002" { give "use retry_budget in range 0..32" }
+  if code == "VITTE-STDBASE0003" { give "disable strict or lower retry_budget" }
+  give "review std/base configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc error_code_to_message(code: string) -> string {
+  if code == "VITTE-STDBASE0001" { give "invalid std/base timeout configuration" }
+  if code == "VITTE-STDBASE0002" { give "invalid std/base retry configuration" }
+  if code == "VITTE-STDBASE0003" { give "invalid std/base strict runtime contract" }
+  give "std/base diagnostic " + code
+}
+
+proc diag(code: string, ctx: string) -> string {
+  let c = code
+  if c.len == 0 { c = "VITTE-STDBASE0000" }
+  let body = error_code_to_message(c)
+  if ctx.len == 0 { give c + ": " + body }
+  give c + ": " + body + " [" + ctx + "]"
+}
+
+proc normalize_profile(name: string, overrides: StdBaseConfig) -> StdBaseConfig {
+  let base = profile_apply(name)
+  let timeout_v = base.timeout_ms
+  if overrides.timeout_ms > 0 {
+    timeout_v = overrides.timeout_ms
+  }
+  let retry_v = base.retry_budget
+  if overrides.retry_budget >= 0 {
+    retry_v = overrides.retry_budget
+  }
+  # strict-first policy: once strict is true, it cannot be relaxed by overrides.
+  let strict_v = base.strict || overrides.strict
+  give normalize_config(timeout_v, retry_v, strict_v)
+}
+
+proc guard_timeout_budget(start_ms: int, now_ms: int, timeout_ms: int) -> bool {
+  if timeout_ms <= 0 { give false }
+  if now_ms < start_ms { give false }
+  let elapsed = now_ms - start_ms
+  if elapsed > timeout_ms { give false }
+  give true
+}
+
+proc diag_json(code: string, ctx: string, severity: string) -> string {
+  let c = code
+  if c.len == 0 { c = "VITTE-STDBASE0000" }
+  let s = severity
+  if s.len == 0 { s = "error" }
+  let msg = error_code_to_message(c)
+  let payload = "{\"code\":\"" + c + "\",\"severity\":\"" + s + "\",\"message\":\"" + msg + "\""
+  if ctx.len == 0 { give payload + "}" }
+  give payload + ",\"context\":\"" + ctx + "\"}"
+}
+
+proc feature_flags(profile: string) -> [string] {
+  if profile == "core" { give ["strict", "no-legacy", "low-latency"] }
+  if profile == "desktop" { give ["strict", "compat", "extended-retry"] }
+  if profile == "system" { give ["strict", "compat", "observability"] }
+  give ["strict"]
+}
+
+proc ready() -> bool {
+  if std_base_runtime_pkg.runtime_status() == false { give false }
+  let cfg = default_config()
+  let vr = validate_config(cfg)
+  when vr is StdBaseResult.Err { give false }
+  give true
+}
+
+<<< ROLE-CONTRACT
+package: vitte/std/base
+owner: @vitte/std
+stability: stable
+since: 3.1.0
+deprecated_in: -
+role: Facade publique stable
+input_contract: Config explicite et typable
+output_contract: Resultats stables et predictibles
+boundary: Implementation privee sous vitte/std/base/internal/*
+compat_policy: additive-only
+api_version: v1
+>>>
+
+
+
+
+

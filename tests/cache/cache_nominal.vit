@@ -1,0 +1,36 @@
+use vitte/cache as cache_pkg
+
+entry main at core/app {
+  let cfg = cache_pkg.strict_config()
+  let vr: cache_pkg.CacheResult[bool] = cache_pkg.validate_config(cfg)
+  when vr is cache_pkg.CacheResult.Err {
+    return 1
+  }
+
+  let c0 = cache_pkg.cache_new_with_config(2, cfg)
+  let p1: cache_pkg.CacheResult[cache_pkg.Cache] = cache_pkg.put_checked(c0, "k1", "v1", cfg.default_ttl)
+  when p1 is cache_pkg.CacheResult.Err {
+    return 1
+  }
+
+  let p2: cache_pkg.CacheResult[cache_pkg.Cache] = cache_pkg.put_with_config(p1.value, "k2", "v2", cfg)
+  when p2 is cache_pkg.CacheResult.Err {
+    return 1
+  }
+
+  let g: cache_pkg.CacheResult[string] = cache_pkg.get_checked(p2.value, "k1")
+  when g is cache_pkg.CacheResult.Err {
+    return 1
+  }
+
+  let n = cache_pkg.cache_normalize(p2.value)
+  if cache_pkg.cache_validate(n) == false {
+    return 1
+  }
+
+  if cache_pkg.ready() == false {
+    return 1
+  }
+
+  return 0
+}

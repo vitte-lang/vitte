@@ -1,9 +1,46 @@
 space vitte/catalog/internal/validate
 
+proc has_space(value: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= value.len { break }
+    if value.slice(i, i + 1) == " " { give true }
+    i = i + 1
+  }
+  give false
+}
+
 proc valid_catalog_name(name: string) -> bool {
-  give name.len > 0
+  if name.len == 0 { give false }
+  if name.len > 128 { give false }
+  if has_space(name) { give false }
+  give true
 }
 
 proc valid_max_entries(max_entries: int) -> bool {
   give max_entries > 0 && max_entries <= 100000
+}
+
+proc valid_entry_id(id: string, max_len: int) -> bool {
+  if id.len == 0 { give false }
+  if id.len > max_len { give false }
+  if has_space(id) { give false }
+  give true
+}
+
+proc valid_entry_name(name: string, max_len: int) -> bool {
+  if name.len == 0 { give false }
+  give name.len <= max_len
+}
+
+proc valid_tag(tag: string, max_len: int) -> bool {
+  if tag.len == 0 { give false }
+  if tag.len > max_len { give false }
+  if has_space(tag) { give false }
+  give true
+}
+
+proc valid_percent(value: int) -> bool {
+  if value < 0 { give false }
+  give value <= 100
 }

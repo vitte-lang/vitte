@@ -1,0 +1,88 @@
+space vitte/auth/internal/validate
+
+proc has_space(value: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= value.len { break }
+    if value.slice(i, i + 1) == " " { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc has_symbol(value: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= value.len { break }
+    let c = value.slice(i, i + 1)
+    if c == "!" || c == "@" || c == "#" || c == "$" || c == "%" || c == "^" || c == "&" || c == "*" {
+      give true
+    }
+    i = i + 1
+  }
+  give false
+}
+
+proc valid_username(username: string) -> bool {
+  if username.len < 3 { give false }
+  if username.len > 64 { give false }
+  if has_space(username) { give false }
+  give true
+}
+
+proc valid_password(password: string) -> bool {
+  if password.len < 8 { give false }
+  if password.len > 256 { give false }
+
+  let has_digit = false
+  let has_letter = false
+  let i: int = 0
+  loop {
+    if i >= password.len { break }
+    let c = password.slice(i, i + 1)
+    if c == "0" || c == "1" || c == "2" || c == "3" || c == "4" || c == "5" || c == "6" || c == "7" || c == "8" || c == "9" {
+      has_digit = true
+    } else {
+      has_letter = true
+    }
+    i = i + 1
+  }
+  give has_digit && has_letter
+}
+
+proc strong_password(password: string) -> bool {
+  if valid_password(password) == false { give false }
+  give has_symbol(password)
+}
+
+proc valid_token(token: string) -> bool {
+  if token.len < 8 { give false }
+  if token.slice(0, 4) != "tok:" { give false }
+  let subject = token.slice(4, token.len)
+  if subject.len < 3 { give false }
+  if has_space(subject) { give false }
+  give true
+}
+
+proc valid_subject(subject: string) -> bool {
+  if subject.len < 3 { give false }
+  if subject.len > 128 { give false }
+  if has_space(subject) { give false }
+  give true
+}
+
+proc valid_expiry(now: int, expires_at: int) -> bool {
+  if now < 0 { give false }
+  if expires_at <= 0 { give false }
+  give now < expires_at
+}
+
+proc valid_ttl(ttl: int, min_ttl: int, max_ttl: int) -> bool {
+  if ttl < min_ttl { give false }
+  give ttl <= max_ttl
+}
+
+proc valid_clock_skew(skew: int, max_skew: int) -> bool {
+  if skew < 0 { give false }
+  give skew <= max_skew
+}

@@ -1,9 +1,48 @@
 <<<
 mod.vit
 package vitte/event_bus
+version: 3.1.0
+tier: platform-core
+purpose:
+  Bus pub-sub in-memory deterministic.
+  Validation explicite des topics et limites de retention.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/event_bus
+
+use vitte/event_bus/internal/policy as event_bus_policy_pkg
+use vitte/event_bus/internal/runtime as event_bus_runtime_pkg
+use vitte/event_bus/internal/validate as event_bus_validate_pkg
+
+form EventBusConfig {
+  max_events: int
+  allow_empty_topic: bool
+}
+
+pick EventBusError {
+  InvalidConfig
+  NotFound
+  Internal
+}
+
+pick EventBusResult[T] {
+  Ok(value: T)
+  Err(error: EventBusError)
+}
+
+form EventBusRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_trim: bool
+}
+
+form EventBusHealth {
+  ok: bool
+  code: string
+  retained_events: int
+}
 
 form Event {
   id: int
@@ -37,8 +76,84 @@ form PullBatchResult {
   events: [Event]
 }
 
+proc default_config() -> EventBusConfig {
+  give EventBusConfig(event_bus_policy_pkg.default_max_events(), event_bus_policy_pkg.default_allow_empty_topic())
+}
+
+proc normalize_config(cfg: EventBusConfig) -> EventBusConfig {
+  give EventBusConfig(event_bus_policy_pkg.normalize_max_events(cfg.max_events), cfg.allow_empty_topic)
+}
+
+proc validate_config(cfg: EventBusConfig) -> EventBusResult[bool] {
+  let nc = normalize_config(cfg)
+  if event_bus_validate_pkg.valid_max_events(nc.max_events, event_bus_policy_pkg.max_max_events()) == false {
+    give EventBusResult.Err(EventBusError.InvalidConfig)
+  }
+  give EventBusResult.Ok(true)
+}
+
+proc healthcheck(cfg: EventBusConfig, bus: Bus) -> EventBusResult[EventBusHealth] {
+  let vr = validate_config(cfg)
+  when vr is EventBusResult.Err { give EventBusResult.Err(vr.error) }
+  if event_bus_runtime_pkg.runtime_status() == false {
+    give EventBusResult.Err(EventBusError.Internal)
+  }
+  give EventBusResult.Ok(EventBusHealth(true, "ok", bus.events.len))
+}
+
+proc runtime_info() -> EventBusRuntimeInfo {
+  give EventBusRuntimeInfo(event_bus_runtime_pkg.runtime_name(),
+                           event_bus_runtime_pkg.runtime_version(),
+                           event_bus_runtime_pkg.supports_diagnostics(),
+                           event_bus_runtime_pkg.supports_trim())
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-EVENTBUS0001" { give "invalid event_bus configuration" }
+  if code == "VITTE-EVENTBUS0002" { give "invalid topic or subscriber" }
+  if code == "VITTE-EVENTBUS0003" { give "event_bus internal runtime issue" }
+  give "event_bus diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-EVENTBUS0001" { give "use max_events in valid range" }
+  if code == "VITTE-EVENTBUS0002" { give "use non-empty topic and subscriber names" }
+  if code == "VITTE-EVENTBUS0003" { give "check runtime_status and reset bus" }
+  give "review event_bus configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/event_bus"
+}
+
+proc capabilities() -> [string] {
+  give [
+    "batch",
+    "config",
+    "diagnostics",
+    "healthcheck",
+    "in-memory",
+    "pub-sub",
+    "trim"
+  ]
+}
+
 proc bus_new() -> Bus {
   give Bus(1, 0, [], [])
+}
+
+proc bus_new_checked(cfg: EventBusConfig) -> EventBusResult[Bus] {
+  let vr = validate_config(cfg)
+  when vr is EventBusResult.Err { give EventBusResult.Err(vr.error) }
+  give EventBusResult.Ok(bus_new())
 }
 
 proc tick(bus: Bus, delta: int) -> Bus {
@@ -78,6 +193,16 @@ proc subscribe(bus: Bus, name: string, topic: string) -> Bus {
   give Bus(bus.next_id, bus.now_tick, bus.events, out)
 }
 
+proc subscribe_checked(bus: Bus, name: string, topic: string, cfg: EventBusConfig) -> EventBusResult[Bus] {
+  if event_bus_validate_pkg.valid_subscriber(name) == false {
+    give EventBusResult.Err(EventBusError.InvalidConfig)
+  }
+  if event_bus_validate_pkg.valid_topic(topic, cfg.allow_empty_topic) == false {
+    give EventBusResult.Err(EventBusError.InvalidConfig)
+  }
+  give EventBusResult.Ok(subscribe(bus, name, topic))
+}
+
 proc unsubscribe(bus: Bus, name: string) -> Bus {
   let out: [Subscription] = []
   let i: int = 0
@@ -95,6 +220,38 @@ proc unsubscribe(bus: Bus, name: string) -> Bus {
 proc publish(bus: Bus, topic: string, payload: string) -> Bus {
   let ev = Event(bus.next_id, topic, payload, bus.now_tick)
   give Bus(bus.next_id + 1, bus.now_tick, bus.events.push(ev), bus.subs)
+}
+
+proc publish_checked(bus: Bus, topic: string, payload: string, cfg: EventBusConfig) -> EventBusResult[Bus] {
+  if event_bus_validate_pkg.valid_topic(topic, cfg.allow_empty_topic) == false {
+    give EventBusResult.Err(EventBusError.InvalidConfig)
+  }
+  let trimmed = bus
+  if trimmed.events.len > cfg.max_events {
+    let start = trimmed.events.len - cfg.max_events
+    let out_events: [Event] = []
+    let i: int = start
+    loop {
+      if i >= trimmed.events.len { break }
+      out_events = out_events.push(trimmed.events[i])
+      i = i + 1
+    }
+    trimmed = Bus(trimmed.next_id, trimmed.now_tick, out_events, trimmed.subs)
+  }
+  give EventBusResult.Ok(publish(trimmed, topic, payload))
+}
+
+proc trim_to_max(bus: Bus, max_events: int) -> Bus {
+  if bus.events.len <= max_events { give bus }
+  let start = bus.events.len - max_events
+  let out_events: [Event] = []
+  let i: int = start
+  loop {
+    if i >= bus.events.len { break }
+    out_events = out_events.push(bus.events[i])
+    i = i + 1
+  }
+  give Bus(bus.next_id, bus.now_tick, out_events, bus.subs)
 }
 
 proc event_count(bus: Bus) -> int {
@@ -211,7 +368,7 @@ proc stats(bus: Bus) -> string {
 }
 
 proc ready() -> bool {
-  give true
+  give event_bus_runtime_pkg.runtime_status()
 }
 
 <<< ROLE-CONTRACT

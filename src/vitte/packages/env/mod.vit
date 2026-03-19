@@ -24,6 +24,27 @@ form EnvConfig {
   retry_budget: int
 }
 
+form EnvRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_process_env: bool
+  supports_diagnostics: bool
+}
+
+form EnvHealth {
+  ok: bool
+  code: string
+  pressure_percent: int
+}
+
+form EnvStats {
+  vars: int
+  empty_values: int
+  keys_total_len: int
+  values_total_len: int
+}
+
 pick EnvError {
   InvalidConfig
   Unsupported
@@ -36,8 +57,30 @@ pick EnvResult[T] {
   Err(error: EnvError)
 }
 
+proc config_ok(cfg: EnvConfig) -> bool {
+  if env_validate_pkg.valid_timeout_range(cfg.timeout_ms,
+                                          env_policy_pkg.min_timeout_ms(),
+                                          env_policy_pkg.max_timeout_ms()) == false {
+    give false
+  }
+  if env_validate_pkg.valid_retry_range(cfg.retry_budget,
+                                        env_policy_pkg.min_retry_budget(),
+                                        env_policy_pkg.max_retry_budget()) == false {
+    give false
+  }
+  give true
+}
+
 proc env_new() -> Env {
   give Env([])
+}
+
+proc size(env: Env) -> int {
+  give env.vars.len
+}
+
+proc clear() -> Env {
+  give env_new()
 }
 
 proc set_var(env: Env, key: string, value: string) -> Env {
@@ -117,6 +160,19 @@ proc merge_env(base: Env, overlay: Env) -> Env {
   give out
 }
 
+proc merge_checked(base: Env, overlay: Env) -> EnvResult[Env] {
+  let out = base
+  let i: int = 0
+  loop {
+    if i >= overlay.vars.len { break }
+    let r = set_checked(out, overlay.vars[i].key, overlay.vars[i].value)
+    when r is EnvResult.Err { give EnvResult.Err(r.error) }
+    out = r.value
+    i = i + 1
+  }
+  give EnvResult.Ok(out)
+}
+
 proc get_int(env: Env, key: string, fallback: int) -> int {
   let raw = get_var(env, key)
   if raw.len == 0 { give fallback }
@@ -150,18 +206,80 @@ proc require_default_key(env: Env) -> EnvResult[string] {
   give require_var(env, env_policy_pkg.default_required_key())
 }
 
+proc require_all(env: Env, keys: [string]) -> EnvResult[bool] {
+  let i: int = 0
+  loop {
+    if i >= keys.len { break }
+    let r = require_var(env, keys[i])
+    when r is EnvResult.Err { give EnvResult.Err(r.error) }
+    i = i + 1
+  }
+  give EnvResult.Ok(true)
+}
+
 proc default_config() -> EnvConfig {
   give EnvConfig(true, env_policy_pkg.default_timeout_ms(), env_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> EnvConfig {
+  let cfg = default_config()
+  give EnvConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc with_timeout_ms(cfg: EnvConfig, timeout_ms: int) -> EnvConfig {
+  give EnvConfig(cfg.strict,
+                 env_policy_pkg.normalize_timeout_ms(timeout_ms),
+                 cfg.retry_budget)
+}
+
+proc with_retry_budget(cfg: EnvConfig, retry_budget: int) -> EnvConfig {
+  give EnvConfig(cfg.strict,
+                 cfg.timeout_ms,
+                 env_policy_pkg.normalize_retry_budget(retry_budget))
+}
+
 proc validate_config(cfg: EnvConfig) -> EnvResult[bool] {
-  if env_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
-    give EnvResult.Err(EnvError.InvalidConfig)
-  }
-  if env_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
-    give EnvResult.Err(EnvError.InvalidConfig)
-  }
+  if config_ok(cfg) == false { give EnvResult.Err(EnvError.InvalidConfig) }
   give EnvResult.Ok(true)
+}
+
+proc validate_config_code(cfg: EnvConfig) -> string {
+  if config_ok(cfg) == false { give "invalid-config" }
+  give "ok"
+}
+
+proc normalize_config(cfg: EnvConfig) -> EnvConfig {
+  give EnvConfig(cfg.strict,
+                 env_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
+                 env_policy_pkg.normalize_retry_budget(cfg.retry_budget))
+}
+
+proc env_validate_code(env: Env) -> string {
+  let i: int = 0
+  loop {
+    if i >= env.vars.len { break }
+    if env_validate_pkg.valid_key(env.vars[i].key) == false { give "invalid-key" }
+    if env_validate_pkg.valid_scalar(env.vars[i].value) == false { give "invalid-value" }
+    i = i + 1
+  }
+  give "ok"
+}
+
+proc env_validate(env: Env) -> bool {
+  give env_validate_code(env) == "ok"
+}
+
+proc env_normalize(env: Env) -> Env {
+  let out = env_new()
+  let i: int = 0
+  loop {
+    if i >= env.vars.len { break }
+    if env_validate_pkg.valid_key(env.vars[i].key) && env_validate_pkg.valid_scalar(env.vars[i].value) {
+      out = set_var(out, env.vars[i].key, env.vars[i].value)
+    }
+    i = i + 1
+  }
+  give out
 }
 
 proc healthcheck(cfg: EnvConfig) -> EnvResult[bool] {
@@ -185,8 +303,19 @@ proc env_health(env: Env) -> string {
   give "ok"
 }
 
-proc ready() -> bool {
-  give true
+proc env_stats(env: Env) -> EnvStats {
+  let empty_values = 0
+  let keys_total_len = 0
+  let values_total_len = 0
+  let i: int = 0
+  loop {
+    if i >= env.vars.len { break }
+    keys_total_len = keys_total_len + env.vars[i].key.len
+    values_total_len = values_total_len + env.vars[i].value.len
+    if env.vars[i].value.len == 0 { empty_values = empty_values + 1 }
+    i = i + 1
+  }
+  give EnvStats(env.vars.len, empty_values, keys_total_len, values_total_len)
 }
 
 proc package_meta() -> string {
@@ -194,7 +323,7 @@ proc package_meta() -> string {
 }
 
 proc version() -> string {
-  give "v1"
+  give "v2"
 }
 
 proc capabilities() -> [string] {
@@ -216,7 +345,71 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc env_runtime_info() -> EnvRuntimeInfo {
+  give EnvRuntimeInfo(env_runtime_pkg.runtime_name(),
+                      env_runtime_pkg.runtime_version(),
+                      env_runtime_pkg.supports_no_std(),
+                      env_runtime_pkg.supports_process_env(),
+                      env_runtime_pkg.supports_diagnostics())
+}
+
+proc pressure_percent(env: Env) -> int {
+  let p = env.vars.len * 100 / env_policy_pkg.max_key_len()
+  if p < 0 { p = 0 }
+  if p > 100 { p = 100 }
+  give p
+}
+
+proc env_health_ex(env: Env, cfg: EnvConfig) -> EnvHealth {
+  let code = validate_config_code(cfg)
+  if code != "ok" { give EnvHealth(false, code, 100) }
+
+  let p = pressure_percent(env)
+  if env_validate_pkg.valid_percent(p) == false {
+    give EnvHealth(false, "invalid-percent", 100)
+  }
+  give EnvHealth(true, env_health(env), p)
+}
+
+proc stable_api_version() -> string {
+  give "2.1.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "env_new,size,clear,set_var,set_checked,get_var,has_var,unset_var,list_keys,merge_env,merge_checked,get_int,get_bool,require_var,require_default_key,require_all,default_config,strict_config,with_timeout_ms,with_retry_budget,validate_config,validate_config_code,normalize_config,env_validate_code,env_validate,env_normalize,healthcheck,env_health,env_stats,env_runtime_info,pressure_percent,env_health_ex,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,stable_api_version,stable_api_surface_hash,api_version,package_meta,ready"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc stable_ready() -> bool {
+  let cfg = strict_config()
+  let vr = validate_config(cfg)
+  when vr is EnvResult.Err { give false }
+
+  let e0 = env_new()
+  let e1r = set_checked(e0, "APP_ENV", "prod")
+  when e1r is EnvResult.Err { give false }
+
+  let req = require_default_key(e1r.value)
+  when req is EnvResult.Err { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
+  give true
+}
+
+proc ready() -> bool {
+  give stable_ready()
 }
 
 <<< ROLE-CONTRACT
@@ -231,5 +424,8 @@ stability: stable
 since: 3.0.0
 deprecated_in: -
 compat_policy: additive-only
-api_version: v1
+api_version: v2
+versioning_note: stable_api_version=2.1.0
 >>>
+
+

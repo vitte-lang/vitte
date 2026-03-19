@@ -1,14 +1,19 @@
 <<<
 mod.vit
 package vitte/ffi
+version: 3.1.0
+tier: interop-core
+purpose:
+  Pont explicite vers symboles natifs et signatures.
+  Validation stricte des symbols et des limites d'execution.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/ffi
 
+use vitte/ffi/internal/policy as ffi_policy_pkg
 use vitte/ffi/internal/runtime as ffi_runtime_pkg
 use vitte/ffi/internal/validate as ffi_validate_pkg
-use vitte/ffi/internal/policy as ffi_policy_pkg
-
 
 form ForeignSymbol {
   lib: string
@@ -20,12 +25,52 @@ form FfiRegistry {
   symbols: [ForeignSymbol]
 }
 
+form FfiConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick FfiError {
+  InvalidConfig
+  NotFound
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick FfiResult[T] {
+  Ok(value: T)
+  Err(error: FfiError)
+}
+
+form FfiRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_registry: bool
+  supports_diagnostics: bool
+}
+
+form FfiHealth {
+  ok: bool
+  code: string
+  symbols_count: int
+}
+
 proc registry_new() -> FfiRegistry {
   give FfiRegistry([])
 }
 
 proc bind(reg: FfiRegistry, lib: string, name: string, signature: string) -> FfiRegistry {
   give FfiRegistry(reg.symbols.push(ForeignSymbol(lib, name, signature)))
+}
+
+proc bind_checked(reg: FfiRegistry, lib: string, name: string, signature: string) -> FfiResult[FfiRegistry] {
+  if ffi_validate_pkg.valid_symbol(lib, name, signature) == false {
+    give FfiResult.Err(FfiError.InvalidConfig)
+  }
+  give FfiResult.Ok(bind(reg, lib, name, signature))
 }
 
 proc lookup(reg: FfiRegistry, lib: string, name: string) -> ForeignSymbol {
@@ -38,8 +83,32 @@ proc lookup(reg: FfiRegistry, lib: string, name: string) -> ForeignSymbol {
   give ForeignSymbol("", "", "")
 }
 
+proc lookup_checked(reg: FfiRegistry, lib: string, name: string) -> FfiResult[ForeignSymbol] {
+  let s = lookup(reg, lib, name)
+  if s.name.len == 0 { give FfiResult.Err(FfiError.NotFound) }
+  give FfiResult.Ok(s)
+}
+
+proc unbind(reg: FfiRegistry, lib: string, name: string) -> FfiRegistry {
+  let out: [ForeignSymbol] = []
+  let i: int = 0
+  loop {
+    if i >= reg.symbols.len { break }
+    let s = reg.symbols[i]
+    if s.lib != lib || s.name != name {
+      out = out.push(s)
+    }
+    i = i + 1
+  }
+  give FfiRegistry(out)
+}
+
 proc has_symbol(reg: FfiRegistry, lib: string, name: string) -> bool {
   give lookup(reg, lib, name).name.len > 0
+}
+
+proc symbol_count(reg: FfiRegistry) -> int {
+  give reg.symbols.len
 }
 
 proc list_libs(reg: FfiRegistry) -> [string] {
@@ -54,44 +123,38 @@ proc list_libs(reg: FfiRegistry) -> [string] {
 }
 
 proc validate_symbol(s: ForeignSymbol) -> bool {
-  give s.lib.len > 0 && s.name.len > 0 && s.signature.len > 0
-}
-
-proc ready() -> bool {
-  give true
-}
-
-proc package_meta() -> string {
-  give "vitte/ffi"
-}
-
-form FfiConfig {
-  strict: bool
-  timeout_ms: int
-  retry_budget: int
-}
-
-pick FfiError {
-  InvalidConfig
-  Unsupported
-  Timeout
-  Internal
-}
-
-pick FfiResult[T] {
-  Ok(value: T)
-  Err(error: FfiError)
+  give ffi_validate_pkg.valid_symbol(s.lib, s.name, s.signature)
 }
 
 proc default_config() -> FfiConfig {
-  give FfiConfig(true, ffi_policy_pkg.default_timeout_ms(), ffi_policy_pkg.default_retry_budget())
+  give FfiConfig(ffi_policy_pkg.default_strict(), ffi_policy_pkg.default_timeout_ms(), ffi_policy_pkg.default_retry_budget())
+}
+
+proc strict_config() -> FfiConfig {
+  let cfg = default_config()
+  give FfiConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc with_timeout_ms(cfg: FfiConfig, timeout_ms: int) -> FfiConfig {
+  give FfiConfig(cfg.strict, ffi_policy_pkg.normalize_timeout_ms(timeout_ms), cfg.retry_budget)
+}
+
+proc with_retry_budget(cfg: FfiConfig, retry_budget: int) -> FfiConfig {
+  give FfiConfig(cfg.strict, cfg.timeout_ms, ffi_policy_pkg.normalize_retry_budget(retry_budget))
+}
+
+proc normalize_config(cfg: FfiConfig) -> FfiConfig {
+  give FfiConfig(cfg.strict,
+                 ffi_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
+                 ffi_policy_pkg.normalize_retry_budget(cfg.retry_budget))
 }
 
 proc validate_config(cfg: FfiConfig) -> FfiResult[bool] {
-  if ffi_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if ffi_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give FfiResult.Err(FfiError.InvalidConfig)
   }
-  if ffi_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if ffi_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give FfiResult.Err(FfiError.InvalidConfig)
   }
   give FfiResult.Ok(true)
@@ -108,28 +171,52 @@ proc healthcheck(cfg: FfiConfig) -> FfiResult[bool] {
   give FfiResult.Ok(true)
 }
 
+proc healthcheck_registry(cfg: FfiConfig, reg: FfiRegistry) -> FfiResult[FfiHealth] {
+  let vr = healthcheck(cfg)
+  when vr is FfiResult.Err { give FfiResult.Err(vr.error) }
+  give FfiResult.Ok(FfiHealth(true, "ok", reg.symbols.len))
+}
+
+proc runtime_info() -> FfiRuntimeInfo {
+  give FfiRuntimeInfo(ffi_runtime_pkg.runtime_name(),
+                      ffi_runtime_pkg.runtime_version(),
+                      ffi_runtime_pkg.supports_no_std(),
+                      ffi_runtime_pkg.supports_registry(),
+                      ffi_runtime_pkg.supports_diagnostics())
+}
+
+proc ready() -> bool {
+  give ffi_runtime_pkg.runtime_status()
+}
+
+proc package_meta() -> string {
+  give "vitte/ffi"
+}
+
 proc version() -> string {
   give "v1"
 }
 
 proc capabilities() -> [string] {
-  give ["config", "validate", "healthcheck"]
+  give ["config", "diagnostics", "healthcheck", "registry", "symbol-bind", "validation"]
 }
 
 proc diagnostics_message(code: string) -> string {
-  if code == "VITTE-FFI0001" {
-    give "invalid package configuration"
-  }
+  if code == "VITTE-FFI0001" { give "invalid ffi configuration" }
+  if code == "VITTE-FFI0002" { give "invalid ffi symbol definition" }
+  if code == "VITTE-FFI0003" { give "ffi runtime unavailable" }
   give "ffi diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
-  let _ = code
-  give "review package configuration"
+  if code == "VITTE-FFI0001" { give "use timeout_ms 1..60000 and retry_budget 0..32" }
+  if code == "VITTE-FFI0002" { give "set non-empty lib name and signature" }
+  if code == "VITTE-FFI0003" { give "check ffi runtime health before binding" }
+  give "review ffi configuration"
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 <<< ROLE-CONTRACT

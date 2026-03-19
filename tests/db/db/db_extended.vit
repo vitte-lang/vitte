@@ -1,0 +1,56 @@
+use vitte/db as db_pkg
+
+entry main at core/app {
+  let cfg0 = db_pkg.default_config()
+  let cfg = db_pkg.normalize_config(db_pkg.DbConfig("local",
+                                                    cfg0.profile,
+                                                    cfg0.timeout_ms,
+                                                    cfg0.cancel_token,
+                                                    cfg0.retry_backoff_ms,
+                                                    cfg0.retry_budget,
+                                                    cfg0.pool_min,
+                                                    cfg0.pool_max,
+                                                    cfg0.pool_idle_timeout_ms,
+                                                    cfg0.pool_health_interval_ms,
+                                                    cfg0.circuit_error_threshold,
+                                                    cfg0.circuit_open_ms))
+
+  let conn_r: db_pkg.DbResult[db_pkg.DbConn] = db_pkg.connect(cfg)
+  when conn_r is db_pkg.DbResult.Err {
+    give 1
+  }
+
+  if db_pkg.db_validate(conn_r.value) == false {
+    give 2
+  }
+
+  let stmt = db_pkg.bind_string(db_pkg.bind_int(db_pkg.prepare("SELECT * FROM t WHERE id=? AND name=?"), 1), "ok")
+  if db_pkg.bind_count(stmt) != 2 {
+    give 3
+  }
+  if db_pkg.bind_count_ok(stmt) == false {
+    give 4
+  }
+
+  let stmt2 = db_pkg.clear_binds(stmt)
+  if db_pkg.bind_count(stmt2) != 0 {
+    give 5
+  }
+
+  let rows: db_pkg.DbResult[db_pkg.DbRows] = db_pkg.execute_prepared_checked(conn_r.value, stmt, 500, "")
+  when rows is db_pkg.DbResult.Err {
+    give 6
+  }
+
+  let nconn = db_pkg.db_normalize(conn_r.value)
+  if db_pkg.db_validate_code(nconn) != "ok" {
+    give 7
+  }
+
+  let ri = db_pkg.runtime_info()
+  if ri.runtime_name.len == 0 || ri.runtime_version.len == 0 {
+    give 8
+  }
+
+  give 0
+}

@@ -1,10 +1,19 @@
 <<<
 mod.vit
 package vitte/config_derive
+version: 2.0.0
+tier: config-schema
+purpose:
+  Derivation de schemas de configuration typee.
+  Validation explicite des fields et limites policy.
+  API stable versionnee avec diagnostics.
 >>>
 
 space vitte/config_derive
 
+use vitte/config_derive/internal/runtime as config_derive_runtime_pkg
+use vitte/config_derive/internal/validate as config_derive_validate_pkg
+use vitte/config_derive/internal/policy as config_derive_policy_pkg
 
 form FieldSpec {
   name: string
@@ -22,12 +31,130 @@ form DeriveResult {
   defaults: [string]
 }
 
+form DeriveOptions {
+  strict: bool
+  max_schema_name_len: int
+  max_field_name_len: int
+  max_default_len: int
+  max_fields: int
+}
+
+pick DeriveError {
+  InvalidOptions
+  InvalidSchema
+  InvalidField
+  TooManyFields
+  Internal
+}
+
+pick DeriveApiResult[T] {
+  Ok(value: T)
+  Err(error: DeriveError)
+}
+
+form DeriveRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_schema_derivation: bool
+  supports_validation: bool
+  supports_diagnostics: bool
+}
+
+form DeriveStats {
+  fields: int
+  required_fields: int
+  optional_fields: int
+}
+
+form DeriveHealth {
+  ok: bool
+  code: string
+  pressure_percent: int
+}
+
+proc options_ok(opts: DeriveOptions) -> bool {
+  if config_derive_validate_pkg.valid_limit(opts.max_schema_name_len, 1, config_derive_policy_pkg.max_schema_name_len()) == false { give false }
+  if config_derive_validate_pkg.valid_limit(opts.max_field_name_len, 1, config_derive_policy_pkg.max_field_name_len()) == false { give false }
+  if config_derive_validate_pkg.valid_limit(opts.max_default_len, 0, config_derive_policy_pkg.max_default_len()) == false { give false }
+  if config_derive_validate_pkg.valid_limit(opts.max_fields, 0, config_derive_policy_pkg.max_fields()) == false { give false }
+  give true
+}
+
+proc default_options() -> DeriveOptions {
+  give DeriveOptions(config_derive_policy_pkg.default_strict(),
+                     config_derive_policy_pkg.max_schema_name_len(),
+                     config_derive_policy_pkg.max_field_name_len(),
+                     config_derive_policy_pkg.max_default_len(),
+                     config_derive_policy_pkg.max_fields())
+}
+
+proc strict_options() -> DeriveOptions {
+  let o = default_options()
+  give DeriveOptions(true,
+                     o.max_schema_name_len,
+                     o.max_field_name_len,
+                     o.max_default_len,
+                     o.max_fields)
+}
+
+proc with_max_fields(opts: DeriveOptions, value: int) -> DeriveOptions {
+  give DeriveOptions(opts.strict,
+                     opts.max_schema_name_len,
+                     opts.max_field_name_len,
+                     opts.max_default_len,
+                     config_derive_policy_pkg.normalize_max_fields(value))
+}
+
+proc with_max_field_name_len(opts: DeriveOptions, value: int) -> DeriveOptions {
+  give DeriveOptions(opts.strict,
+                     opts.max_schema_name_len,
+                     config_derive_policy_pkg.normalize_field_name_len(value),
+                     opts.max_default_len,
+                     opts.max_fields)
+}
+
+proc validate_options(opts: DeriveOptions) -> DeriveApiResult[bool] {
+  if options_ok(opts) == false { give DeriveApiResult.Err(DeriveError.InvalidOptions) }
+  give DeriveApiResult.Ok(true)
+}
+
+proc validate_options_code(opts: DeriveOptions) -> string {
+  if options_ok(opts) == false { give "invalid-options" }
+  give "ok"
+}
+
+proc normalize_options(opts: DeriveOptions) -> DeriveOptions {
+  give DeriveOptions(opts.strict,
+                     config_derive_policy_pkg.normalize_schema_name_len(opts.max_schema_name_len),
+                     config_derive_policy_pkg.normalize_field_name_len(opts.max_field_name_len),
+                     config_derive_policy_pkg.normalize_default_len(opts.max_default_len),
+                     config_derive_policy_pkg.normalize_max_fields(opts.max_fields))
+}
+
 proc schema(name: string) -> Schema {
   give Schema(name, [])
 }
 
 proc add_field(s: Schema, name: string, default_value: string, required: bool) -> Schema {
   give Schema(s.name, s.fields.push(FieldSpec(name, default_value, required)))
+}
+
+proc add_field_checked(s: Schema, name: string, default_value: string, required: bool, opts: DeriveOptions) -> DeriveApiResult[Schema] {
+  let vr = validate_options(opts)
+  when vr is DeriveApiResult.Err { give DeriveApiResult.Err(vr.error) }
+
+  if config_derive_validate_pkg.valid_field_name(name, opts.max_field_name_len) == false {
+    give DeriveApiResult.Err(DeriveError.InvalidField)
+  }
+  if config_derive_validate_pkg.valid_default_value(default_value, opts.max_default_len) == false {
+    give DeriveApiResult.Err(DeriveError.InvalidField)
+  }
+  if config_derive_validate_pkg.valid_field_count(s.fields.len + 1, opts.max_fields) == false {
+    give DeriveApiResult.Err(DeriveError.TooManyFields)
+  }
+
+  give DeriveApiResult.Ok(add_field(s, name, default_value, required))
 }
 
 proc derive(s: Schema) -> DeriveResult {
@@ -43,6 +170,34 @@ proc derive(s: Schema) -> DeriveResult {
   give DeriveResult(keys, defaults)
 }
 
+proc schema_code(s: Schema, opts: DeriveOptions) -> string {
+  let vr = validate_options(opts)
+  when vr is DeriveApiResult.Err { give "invalid-options" }
+
+  if config_derive_validate_pkg.valid_schema_name(s.name, opts.max_schema_name_len) == false { give "invalid-schema-name" }
+  if config_derive_validate_pkg.valid_field_count(s.fields.len, opts.max_fields) == false { give "too-many-fields" }
+
+  let i: int = 0
+  loop {
+    if i >= s.fields.len { break }
+    if config_derive_validate_pkg.valid_field_name(s.fields[i].name, opts.max_field_name_len) == false {
+      give "invalid-field-name"
+    }
+    if config_derive_validate_pkg.valid_default_value(s.fields[i].default_value, opts.max_default_len) == false {
+      give "invalid-default"
+    }
+    i = i + 1
+  }
+
+  give "ok"
+}
+
+proc derive_checked(s: Schema, opts: DeriveOptions) -> DeriveApiResult[DeriveResult] {
+  let code = schema_code(s, opts)
+  if code != "ok" { give DeriveApiResult.Err(DeriveError.InvalidSchema) }
+  give DeriveApiResult.Ok(derive(s))
+}
+
 proc required_keys(s: Schema) -> [string] {
   let out: [string] = []
   let i: int = 0
@@ -54,15 +209,69 @@ proc required_keys(s: Schema) -> [string] {
   give out
 }
 
+proc required_ratio_percent(s: Schema) -> int {
+  if s.fields.len == 0 { give 0 }
+  let required_count = required_keys(s).len
+  let pct = required_count * 100 / s.fields.len
+  if pct < 0 { pct = 0 }
+  if pct > 100 { pct = 100 }
+  give pct
+}
+
 proc validate_schema(s: Schema) -> bool {
-  if s.name.len == 0 { give false }
+  let opts = default_options()
+  give schema_code(s, opts) == "ok"
+}
+
+proc validate_schema_code(s: Schema, opts: DeriveOptions) -> string {
+  give schema_code(s, opts)
+}
+
+proc schema_stats(s: Schema) -> DeriveStats {
+  let req = required_keys(s).len
+  give DeriveStats(s.fields.len, req, s.fields.len - req)
+}
+
+proc schema_normalize(s: Schema, opts: DeriveOptions) -> Schema {
+  let o = normalize_options(opts)
+  let out = schema(s.name)
   let i: int = 0
   loop {
     if i >= s.fields.len { break }
-    if s.fields[i].name.len == 0 { give false }
+    if out.fields.len >= o.max_fields { break }
+
+    let fname = s.fields[i].name
+    let fdefault = s.fields[i].default_value
+    if fname.len <= o.max_field_name_len {
+      if fdefault.len > o.max_default_len {
+        fdefault = fdefault.slice(0, o.max_default_len)
+      }
+      out = add_field(out, fname, fdefault, s.fields[i].required)
+    }
+
     i = i + 1
   }
-  give true
+
+  if out.name.len > o.max_schema_name_len {
+    give Schema(out.name.slice(0, o.max_schema_name_len), out.fields)
+  }
+  give out
+}
+
+proc schema_health(s: Schema, opts: DeriveOptions) -> DeriveHealth {
+  let code = validate_schema_code(s, opts)
+  if code != "ok" { give DeriveHealth(false, code, 100) }
+
+  let p = 0
+  if opts.max_fields > 0 {
+    p = s.fields.len * 100 / opts.max_fields
+  }
+  if p < 0 { p = 0 }
+  if p > 100 { p = 100 }
+  if config_derive_validate_pkg.valid_percent(p) == false {
+    give DeriveHealth(false, "invalid-percent", 100)
+  }
+  give DeriveHealth(true, "ok", p)
 }
 
 proc summary(s: Schema) -> string {
@@ -71,14 +280,91 @@ proc summary(s: Schema) -> string {
        ",valid=" + validate_schema(s).to_string()
 }
 
-proc ready() -> bool {
+proc derive_runtime_info() -> DeriveRuntimeInfo {
+  give DeriveRuntimeInfo(config_derive_runtime_pkg.runtime_name(),
+                         config_derive_runtime_pkg.runtime_version(),
+                         config_derive_runtime_pkg.supports_no_std(),
+                         config_derive_runtime_pkg.supports_schema_derivation(),
+                         config_derive_runtime_pkg.supports_validation(),
+                         config_derive_runtime_pkg.supports_diagnostics())
+}
+
+proc healthcheck(opts: DeriveOptions) -> DeriveApiResult[bool] {
+  let vr = validate_options(opts)
+  when vr is DeriveApiResult.Err { give DeriveApiResult.Err(vr.error) }
+  if config_derive_runtime_pkg.runtime_status() == false { give DeriveApiResult.Err(DeriveError.Internal) }
+  give DeriveApiResult.Ok(true)
+}
+
+proc stable_api_version() -> string {
+  give "2.0.0"
+}
+
+proc api_version() -> string {
+  give stable_api_version()
+}
+
+proc stable_api_surface() -> string {
+  give "default_options,strict_options,with_max_fields,with_max_field_name_len,validate_options,validate_options_code,normalize_options,schema,add_field,add_field_checked,derive,derive_checked,required_keys,required_ratio_percent,validate_schema,validate_schema_code,schema_stats,schema_normalize,schema_health,summary,derive_runtime_info,healthcheck,stable_api_surface_hash,version,capabilities,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,api_version,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc version() -> string {
+  give "v2"
+}
+
+proc capabilities() -> [string] {
+  give ["schema", "derive", "validate", "normalize", "diagnostics", config_derive_runtime_pkg.runtime_name()]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CONFIG-DERIVE0001" { give "invalid derive options" }
+  if code == "VITTE-CONFIG-DERIVE0002" { give "invalid schema field" }
+  if code == "VITTE-CONFIG-DERIVE0003" { give "too many schema fields" }
+  give "config_derive diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-CONFIG-DERIVE0001" { give "normalize derive options and revalidate" }
+  if code == "VITTE-CONFIG-DERIVE0002" { give "sanitize field names/defaults before add_field" }
+  if code == "VITTE-CONFIG-DERIVE0003" { give "increase max_fields or split schema" }
+  give "inspect schema validation code and health"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc stable_ready() -> bool {
+  if config_derive_runtime_pkg.runtime_status() == false { give false }
+
+  let opts = strict_options()
+  let vr = validate_options(opts)
+  when vr is DeriveApiResult.Err { give false }
+
+  let s0 = schema("app")
+  let r1 = add_field_checked(s0, "host", "localhost", true, opts)
+  when r1 is DeriveApiResult.Err { give false }
+
+  let dr = derive_checked(r1.value, opts)
+  when dr is DeriveApiResult.Err { give false }
+  if dr.value.keys.len != 1 { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
   give true
 }
 
-
+proc ready() -> bool {
+  give stable_ready()
+}
 
 proc package_meta() -> string {
-    give "vitte/config_derive"
+  give "vitte/config_derive"
 }
 
 <<< ROLE-CONTRACT
@@ -87,4 +373,5 @@ role: Generation automatique de configuration typee
 input_contract: Valeurs metier explicites, deja parsees et typables
 output_contract: Sorties stables, observables et compatibles avec les autres packages
 boundary: Ne remplace pas les autres couches; respecte la separation de roles
+versioning_note: stable_api_version=2.0.0
 >>>

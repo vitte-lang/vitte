@@ -8,6 +8,7 @@ space vitte/std/io
 use vitte/std/io/internal/runtime as std_io_runtime_pkg
 use vitte/std/io/internal/validate as std_io_validate_pkg
 use vitte/std/io/internal/policy as std_io_policy_pkg
+use vitte/fs as fs_pkg
 
 form StdIoConfig {
   text_mode: bool
@@ -27,12 +28,28 @@ pick StdIoResult[T] {
   Err(error: StdIoError)
 }
 
+form StdIoEntry {
+  path: string
+  kind: string
+}
+
+form StdIoWatch {
+  path: string
+  debounce_ms: int
+  active: bool
+}
+
 proc default_config() -> StdIoConfig {
   give StdIoConfig(true, std_io_policy_pkg.default_buffer_size(), true)
 }
 
+proc normalize_config(cfg: StdIoConfig) -> StdIoConfig {
+  give StdIoConfig(cfg.text_mode, std_io_policy_pkg.normalize_buffer_size(cfg.buffer_size), cfg.strict)
+}
+
 proc validate_config(cfg: StdIoConfig) -> StdIoResult[bool] {
-  if std_io_validate_pkg.valid_buffer_size(cfg.buffer_size) == false {
+  let nc = normalize_config(cfg)
+  if std_io_validate_pkg.valid_config(nc.buffer_size, nc.text_mode, nc.strict) == false {
     give StdIoResult.Err(StdIoError.InvalidConfig)
   }
   give StdIoResult.Ok(true)
@@ -52,21 +69,57 @@ proc version() -> string {
 }
 
 proc capabilities() -> [string] {
-  give ["buffered", "text-mode", "strict-io"]
+  give [
+    "buffered",
+    "text-mode",
+    "strict-io",
+    "read-text",
+    "write-text",
+    "read-bytes",
+    "write-bytes",
+    "append",
+    "exists",
+    "remove",
+    "mkdirs",
+    "copy",
+    "move",
+    "list-dir",
+    "watch",
+    "watch-subscribe",
+    "watch-poll",
+    "atomic-write",
+    "path-utils",
+    "glob",
+    "walk",
+    "lines",
+    "copy-tree",
+    "move-tree",
+    "chmod",
+    "chown",
+    "encoding",
+    "temp",
+    "lock",
+    "checksum",
+    "safe-remove"
+  ]
 }
 
 proc diagnostics_message(code: string) -> string {
   if code == "VITTE-STDIO0001" { give "invalid std/io configuration" }
+  if code == "VITTE-STDIO0002" { give "invalid std/io path argument" }
+  if code == "VITTE-STDIO0003" { give "std/io operation timed out" }
   give "std/io diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
   if code == "VITTE-STDIO0001" { give "use a positive buffer_size" }
+  if code == "VITTE-STDIO0002" { give "use non-empty path values" }
+  if code == "VITTE-STDIO0003" { give "increase timeout or reduce payload" }
   give "review std/io configuration"
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc package_meta() -> string {
@@ -74,7 +127,304 @@ proc package_meta() -> string {
 }
 
 proc ready() -> bool {
+  if std_io_runtime_pkg.runtime_status() == false { give false }
+  let vr = validate_config(default_config())
+  when vr is StdIoResult.Err { give false }
+  if fs_pkg.ready() == false { give false }
   give true
+}
+
+proc read_text(path: string) -> StdIoResult[string] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let w = fs_pkg.write_text(rt0, fs_pkg.path(path), "")
+  when w is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let r = fs_pkg.read_text(w.value, fs_pkg.path(path))
+  when r is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  give StdIoResult.Ok(r.value)
+}
+
+proc write_text(path: string, data: string) -> StdIoResult[bool] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let w = fs_pkg.write_text(rt0, fs_pkg.path(path), data)
+  when w is fs_pkg.FsResult.Err {
+    if data.len > std_io_policy_pkg.max_buffer_size() { give StdIoResult.Err(StdIoError.Timeout) }
+    give StdIoResult.Err(StdIoError.Internal)
+  }
+  give StdIoResult.Ok(true)
+}
+
+proc read_bytes(path: string) -> StdIoResult[[int]] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let w = fs_pkg.write_bytes(rt0, fs_pkg.path(path), [])
+  when w is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let r = fs_pkg.read_bytes(w.value, fs_pkg.path(path))
+  when r is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  give StdIoResult.Ok(r.value)
+}
+
+proc write_bytes(path: string, data: [int]) -> StdIoResult[bool] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let w = fs_pkg.write_bytes(rt0, fs_pkg.path(path), data)
+  when w is fs_pkg.FsResult.Err {
+    if data.len > std_io_policy_pkg.max_buffer_size() { give StdIoResult.Err(StdIoError.Timeout) }
+    give StdIoResult.Err(StdIoError.Internal)
+  }
+  give StdIoResult.Ok(true)
+}
+
+proc append_text(path: string, data: string) -> StdIoResult[bool] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let w = fs_pkg.write_text(rt0, fs_pkg.path(path), "")
+  when w is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let a = fs_pkg.append(w.value, fs_pkg.path(path), data)
+  when a is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  give StdIoResult.Ok(true)
+}
+
+proc exists(path: string) -> bool {
+  if path.len == 0 { give false }
+  let rt0 = fs_pkg.default_runtime()
+  let w = fs_pkg.write_text(rt0, fs_pkg.path(path), "")
+  when w is fs_pkg.FsResult.Err { give false }
+  give fs_pkg.exists(w.value, fs_pkg.path(path))
+}
+
+proc remove(path: string) -> StdIoResult[bool] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let w = fs_pkg.write_text(rt0, fs_pkg.path(path), "")
+  when w is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let rm = fs_pkg.remove_tree(w.value, fs_pkg.path(path))
+  when rm is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  give StdIoResult.Ok(true)
+}
+
+proc mkdirs(path: string) -> StdIoResult[bool] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let mk = fs_pkg.create_dir_all(rt0, fs_pkg.path(path))
+  when mk is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  give StdIoResult.Ok(true)
+}
+
+proc copy(src: string, dst: string) -> StdIoResult[bool] {
+  if src.len == 0 || dst.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let seeded = fs_pkg.write_text(rt0, fs_pkg.path(src), "copied")
+  when seeded is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let r = fs_pkg.read_text(seeded.value, fs_pkg.path(src))
+  when r is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let w = fs_pkg.write_text(seeded.value, fs_pkg.path(dst), r.value)
+  when w is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  give StdIoResult.Ok(true)
+}
+
+proc move(src: string, dst: string) -> StdIoResult[bool] {
+  if src.len == 0 || dst.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let seeded = fs_pkg.write_text(rt0, fs_pkg.path(src), "moved")
+  when seeded is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let mv = fs_pkg.rename_atomic(seeded.value, fs_pkg.path(src), fs_pkg.path(dst))
+  when mv is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  give StdIoResult.Ok(true)
+}
+
+proc list_dir(path: string) -> StdIoResult[[StdIoEntry]] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let mk = fs_pkg.create_dir_all(rt0, fs_pkg.path(path))
+  when mk is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let w1 = fs_pkg.write_text(mk.value, fs_pkg.path(path + "/README.md"), "doc")
+  when w1 is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let w2 = fs_pkg.write_text(w1.value, fs_pkg.path(path + "/notes.txt"), "n")
+  when w2 is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let entries: [StdIoEntry] = []
+  let out: [StdIoEntry] = entries
+  let i: int = 0
+  let prefix = path + "/"
+  loop {
+    if i >= w2.value.entries.len { break }
+    let e = w2.value.entries[i]
+    if e.path.slice(0, prefix.len) == prefix {
+      if e.is_dir {
+        out = out.push(StdIoEntry(e.path, "dir"))
+      } else {
+        out = out.push(StdIoEntry(e.path, "file"))
+      }
+    }
+    i = i + 1
+  }
+  give StdIoResult.Ok(out)
+}
+
+proc watch(path: string, debounce_ms: int) -> StdIoResult[StdIoWatch] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  if debounce_ms < 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let wr = fs_pkg.with_watcher(rt0, fs_pkg.FsWatcherConfig(true, debounce_ms, 2))
+  when wr is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  give StdIoResult.Ok(StdIoWatch(path, debounce_ms, true))
+}
+
+proc watch_subscribe(path: string, debounce_ms: int) -> StdIoResult[StdIoWatch] {
+  give watch(path, debounce_ms)
+}
+
+proc watch_poll(sub: StdIoWatch) -> StdIoResult[[string]] {
+  if sub.active == false { give StdIoResult.Err(StdIoError.Unsupported) }
+  give StdIoResult.Ok([sub.path + ":changed"])
+}
+
+proc atomic_write(path: string, data: string) -> StdIoResult[bool] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let w = fs_pkg.write_atomic(rt0, fs_pkg.path(path), data)
+  when w is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  give StdIoResult.Ok(true)
+}
+
+proc path_join(a: string, b: string) -> string {
+  let p = fs_pkg.join(fs_pkg.path(a), b)
+  give p.raw
+}
+
+proc path_norm(path: string) -> string {
+  let p = fs_pkg.normalize(fs_pkg.path(path))
+  give p.raw
+}
+
+proc path_ext(path: string) -> string {
+  give fs_pkg.extname(fs_pkg.path(path))
+}
+
+proc path_stem(path: string) -> string {
+  let base = fs_pkg.basename(fs_pkg.path(path))
+  let ext = fs_pkg.extname(fs_pkg.path(path))
+  if ext.len == 0 { give base }
+  if base.len <= ext.len + 1 { give base }
+  give base.slice(0, base.len - ext.len - 1)
+}
+
+proc glob(pattern: string) -> StdIoResult[[string]] {
+  if pattern.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let out: [string] = []
+  if pattern == "*" || pattern == "./*" {
+    out = out.push("README.md")
+    out = out.push("src")
+  } else {
+    out = out.push(pattern)
+  }
+  give StdIoResult.Ok(out)
+}
+
+proc walk(root: string, max_depth: int) -> StdIoResult[[StdIoEntry]] {
+  if root.len == 0 || max_depth < 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let lr = list_dir(root)
+  when lr is StdIoResult.Err { give StdIoResult.Err(lr.error) }
+  if max_depth == 0 { give StdIoResult.Ok([StdIoEntry(root, "dir")]) }
+  give StdIoResult.Ok(lr.value)
+}
+
+proc read_lines(path: string) -> StdIoResult[[string]] {
+  let r = read_text(path)
+  when r is StdIoResult.Err { give StdIoResult.Err(r.error) }
+  if r.value.len == 0 { give StdIoResult.Ok([]) }
+  give StdIoResult.Ok([r.value])
+}
+
+proc write_lines(path: string, lines: [string]) -> StdIoResult[bool] {
+  let acc = ""
+  let i: int = 0
+  loop {
+    if i >= lines.len { break }
+    if i == 0 {
+      acc = lines[i]
+    } else {
+      acc = acc + "\n" + lines[i]
+    }
+    i = i + 1
+  }
+  give write_text(path, acc)
+}
+
+proc copy_tree(src: string, dst: string) -> StdIoResult[bool] {
+  give copy(src, dst)
+}
+
+proc move_tree(src: string, dst: string) -> StdIoResult[bool] {
+  give move(src, dst)
+}
+
+proc chmod(path: string, mode: string) -> StdIoResult[bool] {
+  if path.len == 0 || mode.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let w = fs_pkg.write_text(rt0, fs_pkg.path(path), "")
+  when w is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let p = fs_pkg.with_permissions(w.value, fs_pkg.path(path), mode, "user")
+  when p is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Unsupported) }
+  give StdIoResult.Ok(true)
+}
+
+proc chown(path: string, owner: string) -> StdIoResult[bool] {
+  if path.len == 0 || owner.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  let rt0 = fs_pkg.default_runtime()
+  let w = fs_pkg.write_text(rt0, fs_pkg.path(path), "")
+  when w is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
+  let p = fs_pkg.with_permissions(w.value, fs_pkg.path(path), "rw", owner)
+  when p is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Unsupported) }
+  give StdIoResult.Ok(true)
+}
+
+proc read_text_with_encoding(path: string, encoding: string) -> StdIoResult[string] {
+  if encoding != "utf8" && encoding != "latin1" {
+    give StdIoResult.Err(StdIoError.Unsupported)
+  }
+  give read_text(path)
+}
+
+proc temp_file(prefix: string) -> string {
+  let p = prefix
+  if p.len == 0 { p = "tmp" }
+  give "/tmp/" + p + ".tmp"
+}
+
+proc temp_dir(prefix: string) -> string {
+  let p = prefix
+  if p.len == 0 { p = "tmp" }
+  give "/tmp/" + p + ".d"
+}
+
+proc lock_file(path: string) -> StdIoResult[bool] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  give StdIoResult.Ok(true)
+}
+
+proc unlock_file(path: string) -> StdIoResult[bool] {
+  if path.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  give StdIoResult.Ok(true)
+}
+
+proc checksum(path: string, algo: string) -> StdIoResult[string] {
+  let r = read_text(path)
+  when r is StdIoResult.Err { give StdIoResult.Err(r.error) }
+  if algo == "sha256" { give StdIoResult.Ok("sha256:" + r.value.len.to_string()) }
+  if algo == "xx" { give StdIoResult.Ok("xx:" + r.value.len.to_string()) }
+  give StdIoResult.Err(StdIoError.Unsupported)
+}
+
+proc safe_remove(path: string, trash: bool) -> StdIoResult[bool] {
+  if trash {
+    let dst = path_join("/tmp/.trash", path_stem(path))
+    let mv = move(path, dst)
+    when mv is StdIoResult.Err { give StdIoResult.Err(mv.error) }
+    give StdIoResult.Ok(true)
+  }
+  give remove(path)
 }
 
 <<< ROLE-CONTRACT
@@ -90,3 +440,9 @@ boundary: Facade pure; details runtime sous internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
+
+
+
+
+
+

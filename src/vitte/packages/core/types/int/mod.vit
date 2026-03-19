@@ -1,1 +1,96 @@
 space std/core/types/int
+
+use vitte/core/types/int/internal/runtime as core_types_int_runtime_pkg
+use vitte/core/types/int/internal/validate as core_types_int_validate_pkg
+use vitte/core/types/int/internal/policy as core_types_int_policy_pkg
+
+form CoreTypesIntConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick CoreTypesIntError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick CoreTypesIntResult[T] {
+  Ok(value: T)
+  Err(error: CoreTypesIntError)
+}
+
+proc default_config() -> CoreTypesIntConfig {
+  give CoreTypesIntConfig(true, core_types_int_policy_pkg.default_timeout_ms(), core_types_int_policy_pkg.default_retry_budget())
+}
+
+proc validate_config(cfg: CoreTypesIntConfig) -> CoreTypesIntResult[bool] {
+  if core_types_int_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+    give CoreTypesIntResult.Err(CoreTypesIntError.InvalidConfig)
+  }
+  if core_types_int_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+    give CoreTypesIntResult.Err(CoreTypesIntError.InvalidConfig)
+  }
+  give CoreTypesIntResult.Ok(true)
+}
+
+proc healthcheck(cfg: CoreTypesIntConfig) -> CoreTypesIntResult[bool] {
+  let vr: CoreTypesIntResult[bool] = validate_config(cfg)
+  when vr is CoreTypesIntResult.Err {
+    give CoreTypesIntResult.Err(vr.error)
+  }
+  if core_types_int_runtime_pkg.runtime_status() == false {
+    give CoreTypesIntResult.Err(CoreTypesIntError.Internal)
+  }
+  give CoreTypesIntResult.Ok(true)
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-CORETYPE0001" {
+    give "invalid package configuration"
+  }
+  give "core/types/int diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  let _ = code
+  give "review package configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/core/types/int"
+}
+
+<<< ROLE-CONTRACT
+package: vitte/core/types/int
+owner: @vitte/core
+stability: experimental
+since: 3.0.0
+deprecated_in: -
+role: Facade publique stable
+input_contract: Config explicite et typable
+output_contract: Resultats stables et predictibles
+boundary: Implementation privee sous vitte/core/types/int/internal/*
+compat_policy: additive-only
+api_version: v1
+>>>
+
+
+
+
+
+

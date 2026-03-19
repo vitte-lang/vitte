@@ -2,9 +2,40 @@
 runtime.vit
 package vitte/db/internal/runtime
 >>>
-# Internal DB helpers, keep private.
 
 space vitte/db/internal/runtime
+
+proc runtime_status() -> bool {
+  give true
+}
+
+proc runtime_name() -> string {
+  give "db-runtime-v2"
+}
+
+proc runtime_version() -> string {
+  give "2.1"
+}
+
+proc supports_no_std() -> bool {
+  give true
+}
+
+proc supports_safe_sql() -> bool {
+  give true
+}
+
+proc supports_transactions() -> bool {
+  give true
+}
+
+proc supports_pooling() -> bool {
+  give true
+}
+
+proc supports_diagnostics() -> bool {
+  give true
+}
 
 proc redact_secret(value: string) -> string {
   if value.len == 0 { give "" }
@@ -103,4 +134,9 @@ proc tx_begin_error_code(connected: bool) -> string {
 proc tx_transition_error_code(active: bool, committed: bool, rolled_back: bool) -> string {
   if active == false || committed || rolled_back { give "VITTE-D0003" }
   give ""
+}
+
+proc capabilities_hash() -> int {
+  let s = runtime_name() + runtime_version()
+  give s.len * 257
 }

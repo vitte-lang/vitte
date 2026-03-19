@@ -1,10 +1,48 @@
 <<<
 mod.vit
 package vitte/feature_flags
+version: 3.1.0
+tier: rollout-core
+purpose:
+  Activation progressive et controlee des fonctionnalites.
+  Evaluation deterministe par utilisateur et override explicite.
+  API stable versionnee avec diagnostics et healthcheck.
 >>>
 
 space vitte/feature_flags
 
+use vitte/feature_flags/internal/policy as feature_flags_policy_pkg
+use vitte/feature_flags/internal/runtime as feature_flags_runtime_pkg
+use vitte/feature_flags/internal/validate as feature_flags_validate_pkg
+
+form FeatureFlagsConfig {
+  allow_override: bool
+  unknown_fallback: bool
+}
+
+pick FeatureFlagsError {
+  InvalidConfig
+  NotFound
+  Internal
+}
+
+pick FeatureFlagsResult[T] {
+  Ok(value: T)
+  Err(error: FeatureFlagsError)
+}
+
+form FeatureFlagsRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_overrides: bool
+}
+
+form FeatureFlagsHealth {
+  ok: bool
+  code: string
+  flags_count: int
+}
 
 form FeatureFlag {
   name: string
@@ -19,14 +57,77 @@ form FeatureFlags {
   flags: [FeatureFlag]
 }
 
+proc default_config() -> FeatureFlagsConfig {
+  give FeatureFlagsConfig(feature_flags_policy_pkg.default_allow_override(), feature_flags_policy_pkg.default_unknown_fallback())
+}
+
+proc validate_config(cfg: FeatureFlagsConfig) -> FeatureFlagsResult[bool] {
+  let _ = cfg
+  if feature_flags_runtime_pkg.runtime_status() == false {
+    give FeatureFlagsResult.Err(FeatureFlagsError.Internal)
+  }
+  give FeatureFlagsResult.Ok(true)
+}
+
+proc healthcheck(cfg: FeatureFlagsConfig, flagset: FeatureFlags) -> FeatureFlagsResult[FeatureFlagsHealth] {
+  let vr = validate_config(cfg)
+  when vr is FeatureFlagsResult.Err { give FeatureFlagsResult.Err(vr.error) }
+  if flagset.flags.len > feature_flags_policy_pkg.max_flags() {
+    give FeatureFlagsResult.Err(FeatureFlagsError.InvalidConfig)
+  }
+  give FeatureFlagsResult.Ok(FeatureFlagsHealth(true, "ok", flagset.flags.len))
+}
+
+proc runtime_info() -> FeatureFlagsRuntimeInfo {
+  give FeatureFlagsRuntimeInfo(feature_flags_runtime_pkg.runtime_name(),
+                               feature_flags_runtime_pkg.runtime_version(),
+                               feature_flags_runtime_pkg.supports_diagnostics(),
+                               feature_flags_runtime_pkg.supports_overrides())
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-FEATUREFLAGS0001" { give "invalid feature_flags configuration" }
+  if code == "VITTE-FEATUREFLAGS0002" { give "unknown feature flag name" }
+  if code == "VITTE-FEATUREFLAGS0003" { give "feature_flags runtime issue" }
+  give "feature_flags diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-FEATUREFLAGS0001" { give "use rollout in range 0..100" }
+  if code == "VITTE-FEATUREFLAGS0002" { give "create flag before evaluating it" }
+  if code == "VITTE-FEATUREFLAGS0003" { give "check runtime_status and reset flagset" }
+  give "review feature_flags configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc package_meta() -> string {
+  give "vitte/feature_flags"
+}
+
+proc capabilities() -> [string] {
+  give [
+    "config",
+    "deterministic",
+    "diagnostics",
+    "healthcheck",
+    "override",
+    "rollout"
+  ]
+}
+
 proc flags_new() -> FeatureFlags {
   give FeatureFlags([])
 }
 
 proc clamp_rollout(rollout: int) -> int {
-  if rollout < 0 { give 0 }
-  if rollout > 100 { give 100 }
-  give rollout
+  give feature_flags_policy_pkg.normalize_rollout(rollout)
 }
 
 proc add_flag(flagset: FeatureFlags, name: string, enabled: bool, rollout: int) -> FeatureFlags {
@@ -53,6 +154,17 @@ proc add_flag(flagset: FeatureFlags, name: string, enabled: bool, rollout: int) 
   give FeatureFlags(out)
 }
 
+proc add_flag_checked(flagset: FeatureFlags, name: string, enabled: bool, rollout: int) -> FeatureFlagsResult[FeatureFlags] {
+  let _ = enabled
+  if feature_flags_validate_pkg.valid_flag_name(name) == false {
+    give FeatureFlagsResult.Err(FeatureFlagsError.InvalidConfig)
+  }
+  if feature_flags_validate_pkg.valid_rollout(rollout) == false {
+    give FeatureFlagsResult.Err(FeatureFlagsError.InvalidConfig)
+  }
+  give FeatureFlagsResult.Ok(add_flag(flagset, name, enabled, rollout))
+}
+
 proc override(flagset: FeatureFlags, name: string, user_id: string, value: bool) -> FeatureFlags {
   let out: [FeatureFlag] = []
   let found: bool = false
@@ -77,6 +189,17 @@ proc override(flagset: FeatureFlags, name: string, user_id: string, value: bool)
   give FeatureFlags(out)
 }
 
+proc override_checked(flagset: FeatureFlags, name: string, user_id: string, value: bool, cfg: FeatureFlagsConfig) -> FeatureFlagsResult[FeatureFlags] {
+  let _ = value
+  if feature_flags_validate_pkg.valid_flag_name(name) == false {
+    give FeatureFlagsResult.Err(FeatureFlagsError.InvalidConfig)
+  }
+  if feature_flags_validate_pkg.valid_override_user(user_id, cfg.allow_override) == false {
+    give FeatureFlagsResult.Err(FeatureFlagsError.InvalidConfig)
+  }
+  give FeatureFlagsResult.Ok(override(flagset, name, user_id, value))
+}
+
 proc percentage_rollout(user_id: string, rollout: int) -> bool {
   let pct = clamp_rollout(rollout)
   if pct <= 0 { give false }
@@ -98,6 +221,14 @@ proc flag_get(flagset: FeatureFlags, name: string, fallback: bool) -> bool {
   give fallback
 }
 
+proc flag_get_checked(flagset: FeatureFlags, name: string, cfg: FeatureFlagsConfig) -> FeatureFlagsResult[bool] {
+  if feature_flags_validate_pkg.valid_flag_name(name) == false {
+    give FeatureFlagsResult.Err(FeatureFlagsError.InvalidConfig)
+  }
+  let value = flag_get(flagset, name, cfg.unknown_fallback)
+  give FeatureFlagsResult.Ok(value)
+}
+
 proc flag_for_user(flagset: FeatureFlags, name: string, user_id: string, fallback: bool) -> bool {
   let i: int = 0
   loop {
@@ -113,14 +244,16 @@ proc flag_for_user(flagset: FeatureFlags, name: string, user_id: string, fallbac
   give fallback
 }
 
-proc ready() -> bool {
-  give true
+proc flag_for_user_checked(flagset: FeatureFlags, name: string, user_id: string, cfg: FeatureFlagsConfig) -> FeatureFlagsResult[bool] {
+  if feature_flags_validate_pkg.valid_flag_name(name) == false {
+    give FeatureFlagsResult.Err(FeatureFlagsError.InvalidConfig)
+  }
+  let value = flag_for_user(flagset, name, user_id, cfg.unknown_fallback)
+  give FeatureFlagsResult.Ok(value)
 }
 
-
-
-proc package_meta() -> string {
-    give "vitte/feature_flags"
+proc ready() -> bool {
+  give feature_flags_runtime_pkg.runtime_status()
 }
 
 <<< ROLE-CONTRACT

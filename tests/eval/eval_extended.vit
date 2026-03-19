@@ -1,0 +1,40 @@
+use vitte/eval as eval_pkg
+
+entry main at core/app {
+  let cfg = eval_pkg.strict_config()
+
+  let u: eval_pkg.EvalApiResult[eval_pkg.EvalResult] = eval_pkg.eval_unary_checked("neg", 5, cfg)
+  when u is eval_pkg.EvalApiResult.Err {
+    return 1
+  }
+  if u.value.error != eval_pkg.EvalError.None || u.value.value != -5 {
+    return 1
+  }
+
+  let s: eval_pkg.EvalApiResult[eval_pkg.EvalResult] = eval_pkg.eval_sum([1, 2, 3, 4], cfg)
+  when s is eval_pkg.EvalApiResult.Err {
+    return 1
+  }
+  if s.value.value != 10 {
+    return 1
+  }
+
+  let p: eval_pkg.EvalApiResult[eval_pkg.EvalResult] = eval_pkg.eval_product([2, 3, 4], cfg)
+  when p is eval_pkg.EvalApiResult.Err {
+    return 1
+  }
+  if p.value.value != 24 {
+    return 1
+  }
+
+  let st = eval_pkg.eval_stats([u.value, s.value, p.value])
+  if st.samples != 3 || st.errors != 0 || st.ok != 3 {
+    return 1
+  }
+
+  if eval_pkg.can_eval("abs") == false {
+    return 1
+  }
+
+  return 0
+}

@@ -5,9 +5,9 @@ package vitte/platform
 
 space vitte/platform
 
+use vitte/platform/internal/policy as platform_policy_pkg
 use vitte/platform/internal/runtime as platform_runtime_pkg
 use vitte/platform/internal/validate as platform_validate_pkg
-use vitte/platform/internal/policy as platform_policy_pkg
 
 form PlatformConfig {
   target: string
@@ -27,15 +27,35 @@ pick PlatformResult[T] {
   Err(error: PlatformError)
 }
 
+form PlatformRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> PlatformConfig {
   give PlatformConfig("host", platform_policy_pkg.default_profile(), true)
 }
 
+proc strict_config() -> PlatformConfig {
+  let cfg = default_config()
+  give PlatformConfig(cfg.target, cfg.profile, true)
+}
+
+proc normalize_config(cfg: PlatformConfig) -> PlatformConfig {
+  let target = cfg.target
+  let profile = cfg.profile
+  if target.len == 0 { target = "host" }
+  if profile.len == 0 { profile = platform_policy_pkg.default_profile() }
+  give PlatformConfig(target, profile, cfg.strict)
+}
+
 proc validate_config(cfg: PlatformConfig) -> PlatformResult[bool] {
-  if platform_validate_pkg.valid_target(cfg.target) == false {
+  let nc = normalize_config(cfg)
+  if platform_validate_pkg.valid_target(nc.target) == false {
     give PlatformResult.Err(PlatformError.InvalidConfig)
   }
-  if platform_validate_pkg.valid_profile(cfg.profile) == false {
+  if platform_validate_pkg.valid_profile(nc.profile) == false {
     give PlatformResult.Err(PlatformError.InvalidConfig)
   }
   give PlatformResult.Ok(true)
@@ -50,8 +70,18 @@ proc healthcheck(cfg: PlatformConfig) -> PlatformResult[bool] {
   give PlatformResult.Ok(true)
 }
 
+proc runtime_info() -> PlatformRuntimeInfo {
+  give PlatformRuntimeInfo(platform_runtime_pkg.runtime_name(),
+                           platform_runtime_pkg.runtime_version(),
+                           platform_runtime_pkg.supports_diagnostics())
+}
+
 proc version() -> string {
   give "v1"
+}
+
+proc api_version() -> string {
+  give version()
 }
 
 proc capabilities() -> [string] {
@@ -69,13 +99,35 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc package_meta() -> string {
   give "vitte/platform"
 }
 
+proc doctor_status() -> string {
+  give "vitte/platform doctor:ready api=" + api_version()
+}
+
+proc config_is_valid(cfg: PlatformConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is PlatformResult.Err { give false }
+  give true
+}
+
+proc healthcheck_default() -> PlatformResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " caps=" + capabilities().len.to_string()
+}
 proc ready() -> bool {
   give true
 }

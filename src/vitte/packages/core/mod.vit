@@ -11,6 +11,10 @@ package vitte/core
 
 space vitte/core
 
+use vitte/core/internal/runtime as core_runtime_pkg
+use vitte/core/internal/validate as core_validate_pkg
+use vitte/core/internal/policy as core_policy_pkg
+
 
 pick Option[T] {
   Some(value: T)
@@ -115,7 +119,7 @@ proc diagnostics_quickfix(code: string) -> string {
 }
 
 proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://vitte-lang.org/diagnostics/" + code
 }
 
 proc api_version() -> string {
@@ -140,12 +144,166 @@ proc quickfix_apply(payload: string) -> string {
   give "quickfix apply: " + payload
 }
 
-proc ready() -> bool {
+proc package_meta() -> string {
+  give "vitte/core"
+}
+
+form CoreConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick CoreError {
+  InvalidConfig
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick CoreResult[T] {
+  Ok(value: T)
+  Err(error: CoreError)
+}
+
+form CoreRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_no_std: bool
+  supports_option_result: bool
+  supports_diagnostics: bool
+}
+
+form CoreHealth {
+  ok: bool
+  code: string
+  pressure_percent: int
+}
+
+proc config_ok(cfg: CoreConfig) -> bool {
+  if core_validate_pkg.valid_timeout_range(cfg.timeout_ms,
+                                           core_policy_pkg.min_timeout_ms(),
+                                           core_policy_pkg.max_timeout_ms()) == false {
+    give false
+  }
+  if core_validate_pkg.valid_retry_range(cfg.retry_budget,
+                                         core_policy_pkg.min_retry_budget(),
+                                         core_policy_pkg.max_retry_budget()) == false {
+    give false
+  }
   give true
 }
 
-proc package_meta() -> string {
-  give "vitte/core"
+proc default_config() -> CoreConfig {
+  give CoreConfig(true, core_policy_pkg.default_timeout_ms(), core_policy_pkg.default_retry_budget())
+}
+
+proc strict_config() -> CoreConfig {
+  let cfg = default_config()
+  give CoreConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc with_timeout_ms(cfg: CoreConfig, timeout_ms: int) -> CoreConfig {
+  give CoreConfig(cfg.strict,
+                  core_policy_pkg.normalize_timeout_ms(timeout_ms),
+                  cfg.retry_budget)
+}
+
+proc with_retry_budget(cfg: CoreConfig, retry_budget: int) -> CoreConfig {
+  give CoreConfig(cfg.strict,
+                  cfg.timeout_ms,
+                  core_policy_pkg.normalize_retry_budget(retry_budget))
+}
+
+proc validate_config(cfg: CoreConfig) -> CoreResult[bool] {
+  if config_ok(cfg) == false { give CoreResult.Err(CoreError.InvalidConfig) }
+  give CoreResult.Ok(true)
+}
+
+proc validate_config_code(cfg: CoreConfig) -> string {
+  if config_ok(cfg) == false { give "invalid-config" }
+  give "ok"
+}
+
+proc normalize_config(cfg: CoreConfig) -> CoreConfig {
+  give CoreConfig(cfg.strict,
+                  core_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
+                  core_policy_pkg.normalize_retry_budget(cfg.retry_budget))
+}
+
+proc healthcheck(cfg: CoreConfig) -> CoreResult[bool] {
+  let vr: CoreResult[bool] = validate_config(cfg)
+  when vr is CoreResult.Err {
+    give CoreResult.Err(vr.error)
+  }
+  if core_runtime_pkg.runtime_status() == false {
+    give CoreResult.Err(CoreError.Internal)
+  }
+  give CoreResult.Ok(true)
+}
+
+proc core_runtime_info() -> CoreRuntimeInfo {
+  give CoreRuntimeInfo(core_runtime_pkg.runtime_name(),
+                       core_runtime_pkg.runtime_version(),
+                       core_runtime_pkg.supports_no_std(),
+                       core_runtime_pkg.supports_option_result(),
+                       core_runtime_pkg.supports_diagnostics())
+}
+
+proc core_health(cfg: CoreConfig) -> CoreHealth {
+  let code = validate_config_code(cfg)
+  if code != "ok" { give CoreHealth(false, code, 100) }
+
+  let t = cfg.timeout_ms * 100 / core_policy_pkg.max_timeout_ms()
+  let r = cfg.retry_budget * 100 / core_policy_pkg.max_retry_budget()
+  let p = t
+  if r > p { p = r }
+  if p < 0 { p = 0 }
+  if p > 100 { p = 100 }
+  if core_validate_pkg.valid_percent(p) == false {
+    give CoreHealth(false, "invalid-percent", 100)
+  }
+  give CoreHealth(true, "ok", p)
+}
+
+proc stable_api_version() -> string {
+  give "1.1.0"
+}
+
+proc stable_api_surface() -> string {
+  give "some,none,ok,err,is_some,is_none,is_ok,is_err,unwrap_or,result_unwrap_or,assert_or_err,panic_guard,checked_cast_int,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,api_version,doctor_status,quickfix_preview,quickfix_apply,default_config,strict_config,with_timeout_ms,with_retry_budget,validate_config,validate_config_code,normalize_config,healthcheck,core_runtime_info,core_health,stable_api_surface_hash,stable_api_version,version,capabilities,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = stable_api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc stable_ready() -> bool {
+  if core_runtime_pkg.runtime_status() == false { give false }
+
+  let cfg = strict_config()
+  let v = validate_config(cfg)
+  when v is CoreResult.Err { give false }
+
+  let h = core_health(cfg)
+  if h.ok == false { give false }
+
+  if stable_api_surface_hash() <= 0 { give false }
+  give true
+}
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "validate", "healthcheck", "runtime-info", "diagnostics"]
+}
+
+proc ready() -> bool {
+  give stable_ready()
 }
 
 <<< ROLE-CONTRACT
@@ -165,3 +323,8 @@ compat_policy: additive-only
 internal_exports: forbidden
 api_version: v1
 >>>
+
+
+
+
+

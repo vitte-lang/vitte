@@ -1,5 +1,29 @@
 space vitte/env/internal/policy
 
+proc min_timeout_ms() -> int {
+  give 1
+}
+
+proc max_timeout_ms() -> int {
+  give 60000
+}
+
+proc min_retry_budget() -> int {
+  give 0
+}
+
+proc max_retry_budget() -> int {
+  give 32
+}
+
+proc max_key_len() -> int {
+  give 128
+}
+
+proc max_scalar_len() -> int {
+  give 4096
+}
+
 proc default_timeout_ms() -> int {
   give 1000
 }
@@ -10,4 +34,18 @@ proc default_retry_budget() -> int {
 
 proc default_required_key() -> string {
   give "APP_ENV"
+}
+
+proc normalize_timeout_ms(value: int) -> int {
+  let out = value
+  if out < min_timeout_ms() { out = min_timeout_ms() }
+  if out > max_timeout_ms() { out = max_timeout_ms() }
+  give out
+}
+
+proc normalize_retry_budget(value: int) -> int {
+  let out = value
+  if out < min_retry_budget() { out = min_retry_budget() }
+  if out > max_retry_budget() { out = max_retry_budget() }
+  give out
 }

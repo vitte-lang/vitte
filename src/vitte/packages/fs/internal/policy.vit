@@ -1,0 +1,62 @@
+space vitte/fs/internal/policy
+
+proc default_watch_debounce_ms() -> int {
+  give 50
+}
+
+proc default_watch_coalesce_window() -> int {
+  give 4
+}
+
+proc default_cache_enabled() -> bool {
+  give true
+}
+
+proc default_cache_ttl_ms() -> int {
+  give 1000
+}
+
+proc default_cache_invalidate_hash() -> string {
+  give "0"
+}
+
+proc default_max_file_size() -> int {
+  give 10485760
+}
+
+proc default_max_open_files() -> int {
+  give 128
+}
+
+proc min_watch_debounce_ms() -> int {
+  give 10
+}
+
+proc max_cache_ttl_ms() -> int {
+  give 86400000
+}
+
+proc normalize_watch_debounce_ms(value: int) -> int {
+  let out = value
+  if out < min_watch_debounce_ms() { out = min_watch_debounce_ms() }
+  give out
+}
+
+proc normalize_cache_ttl_ms(value: int) -> int {
+  let out = value
+  if out < 0 { out = 0 }
+  if out > max_cache_ttl_ms() { out = max_cache_ttl_ms() }
+  give out
+}
+
+proc normalize_max_file_size(value: int) -> int {
+  let out = value
+  if out < 1 { out = 1 }
+  give out
+}
+
+proc normalize_max_open_files(value: int) -> int {
+  let out = value
+  if out < 1 { out = 1 }
+  give out
+}

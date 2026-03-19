@@ -5,6 +5,31 @@ package vitte/kv
 
 space vitte/kv
 
+use vitte/kv/internal/policy as kv_policy_pkg
+use vitte/kv/internal/runtime as kv_runtime_pkg
+use vitte/kv/internal/validate as kv_validate_pkg
+
+form KvConfig {
+  max_entries: int
+  require_non_empty_key: bool
+}
+
+pick KvConfigError {
+  InvalidConfig
+  Internal
+}
+
+pick KvConfigResult[T] {
+  Ok(value: T)
+  Err(error: KvConfigError)
+}
+
+form KvRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+  supports_ttl: bool
+}
 
 form KvEntry {
   key: string
@@ -20,6 +45,35 @@ form KvStore {
 
 proc kv_new() -> KvStore {
   give KvStore(0, [])
+}
+
+proc default_config() -> KvConfig {
+  give KvConfig(kv_policy_pkg.default_max_entries(), kv_policy_pkg.default_require_non_empty_key())
+}
+
+proc normalize_config(cfg: KvConfig) -> KvConfig {
+  give KvConfig(kv_policy_pkg.normalize_max_entries(cfg.max_entries), cfg.require_non_empty_key)
+}
+
+proc validate_config(cfg: KvConfig) -> KvConfigResult[bool] {
+  let nc = normalize_config(cfg)
+  if kv_validate_pkg.valid_max_entries(nc.max_entries) == false { give KvConfigResult.Err(KvConfigError.InvalidConfig) }
+  give KvConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: KvConfig, store: KvStore) -> KvConfigResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is KvConfigResult.Err { give KvConfigResult.Err(vr.error) }
+  if kv_runtime_pkg.runtime_status() == false { give KvConfigResult.Err(KvConfigError.Internal) }
+  if store.entries.len > cfg.max_entries { give KvConfigResult.Err(KvConfigError.InvalidConfig) }
+  give KvConfigResult.Ok(true)
+}
+
+proc runtime_info() -> KvRuntimeInfo {
+  give KvRuntimeInfo(kv_runtime_pkg.runtime_name(),
+                     kv_runtime_pkg.runtime_version(),
+                     kv_runtime_pkg.supports_diagnostics(),
+                     kv_runtime_pkg.supports_ttl())
 }
 
 proc is_alive(kv_item: KvEntry, clock: int) -> bool {
@@ -56,6 +110,14 @@ proc put(store: KvStore, key: string, value: string, ttl: int) -> KvStore {
   give KvStore(store.clock, out)
 }
 
+proc put_checked(store: KvStore, key: string, value: string, ttl: int, cfg: KvConfig) -> KvConfigResult[KvStore] {
+  let _ = value
+  if kv_validate_pkg.valid_key(key, cfg.require_non_empty_key) == false { give KvConfigResult.Err(KvConfigError.InvalidConfig) }
+  if kv_validate_pkg.valid_ttl(ttl) == false { give KvConfigResult.Err(KvConfigError.InvalidConfig) }
+  if store.entries.len > cfg.max_entries { give KvConfigResult.Err(KvConfigError.InvalidConfig) }
+  give KvConfigResult.Ok(put(store, key, value, ttl))
+}
+
 proc tick(store: KvStore, delta: int) -> KvStore {
   if delta <= 0 { give store }
   let next_clock = store.clock + delta
@@ -87,6 +149,11 @@ proc get(store: KvStore, key: string, fallback: string) -> string {
     i = i + 1
   }
   give fallback
+}
+
+proc get_checked(store: KvStore, key: string, fallback: string, cfg: KvConfig) -> KvConfigResult[string] {
+  if kv_validate_pkg.valid_key(key, cfg.require_non_empty_key) == false { give KvConfigResult.Err(KvConfigError.InvalidConfig) }
+  give KvConfigResult.Ok(get(store, key, fallback))
 }
 
 proc has(store: KvStore, key: string) -> bool {
@@ -206,8 +273,34 @@ proc stats(store: KvStore) -> string {
   give "size=" + size(store).to_string() + ",clock=" + store.clock.to_string()
 }
 
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["config", "diagnostics", "healthcheck", "put-get", "scan", "ttl"]
+}
+
+proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-KV0001" { give "invalid kv configuration" }
+  if code == "VITTE-KV0002" { give "invalid kv key/ttl" }
+  if code == "VITTE-KV0003" { give "kv runtime unavailable" }
+  give "kv diagnostic " + code
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-KV0001" { give "set max_entries to positive value" }
+  if code == "VITTE-KV0002" { give "use valid key and ttl range" }
+  if code == "VITTE-KV0003" { give "check kv runtime status" }
+  give "review kv configuration"
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
 proc ready() -> bool {
-  give true
+  give kv_runtime_pkg.runtime_status()
 }
 
 
