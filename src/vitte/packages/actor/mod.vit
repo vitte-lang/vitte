@@ -3,6 +3,10 @@ mod.vit
 package vitte/actor
 >>>
 
+# PREAMBLE (API stable facade)
+# - Public facade for vitte/actor; additive API only.
+# - Actor state transitions stay pure and deterministic.
+
 space vitte/actor
 
 share all
@@ -10,6 +14,7 @@ share all
 use vitte/actor/internal/runtime as actor_runtime_pkg
 use vitte/actor/internal/validate as actor_validate_pkg
 use vitte/actor/internal/policy as actor_policy_pkg
+use vitte/actor/internal/diagnostics as actor_diag_pkg
 
 pick ActorState {
   Idle
@@ -2022,6 +2027,54 @@ proc runtime_info() -> ActorRuntimeInfo {
   )
 }
 
+proc version() -> string {
+  give actor_diag_pkg.version()
+}
+
+proc capabilities() -> [string] {
+  give actor_diag_pkg.capabilities()
+}
+
+proc diagnostics_message(code: string) -> string {
+  give actor_diag_pkg.message(code)
+}
+
+proc diagnostics_quickfix(code: string) -> string {
+  give actor_diag_pkg.quickfix(code)
+}
+
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
+}
+
+proc suggestions_for_actor(a: Actor) -> [string] {
+  let health = actor_health(a)
+  if health.ok == false {
+    give actor_diag_pkg.suggestions_actor_invalid()
+  }
+  if a.mailbox.len >= a.mailbox_capacity {
+    give actor_diag_pkg.suggestions_mailbox_saturated()
+  }
+  if a.supervision == SupervisionStrategy.Escalate {
+    give ["attach a parent supervisor before using escalate", "prefer restart or stop for isolated workers"]
+  }
+  give ["actor configuration is ready"]
+}
+
+proc suggestions_for_router(r: ActorRouter) -> [string] {
+  let health = router_health(r)
+  if health.ok == false {
+    give actor_diag_pkg.suggestions_router_invalid()
+  }
+  if r.workers.len == 0 {
+    give ["spawn at least one worker before dispatch", "start from router_new with min_workers >= 1"]
+  }
+  if health.balance_delta > 0 && r.scale_up_backlog > 0 {
+    give ["review shard affinity to reduce imbalance", "allow router_scale to add workers sooner"]
+  }
+  give ["router configuration is ready"]
+}
+
 proc ready() -> bool {
   if actor_runtime_pkg.runtime_status() == false { give false }
   if actor_policy_pkg.default_mailbox_capacity() < 1 { give false }
@@ -2053,7 +2106,7 @@ proc actor_snapshot(a: Actor) -> string {
 }
 
 proc api_version() -> string {
-  give "2.5.0"
+  give "2.6.0"
 }
 
 proc package_meta() -> string {
@@ -2072,4 +2125,5 @@ output_contract: Transitions deterministes, dead-letters observables, metriques 
 boundary: Ne gere pas threading, scheduling systeme, IO ou persistence
 api_surface_stable: spawn send step fail supervision_decision stats ready package_meta
 versioning: api_version() doit evoluer a chaque extension publique
+compat_policy: additive-only
 >>>

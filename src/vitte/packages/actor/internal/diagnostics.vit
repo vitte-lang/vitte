@@ -1,0 +1,35 @@
+space vitte/actor/internal/diagnostics
+
+proc version() -> string {
+  give "v1"
+}
+
+proc capabilities() -> [string] {
+  give ["spawn", "send", "step", "supervision", "router", "health", "suggestions"]
+}
+
+proc message(code: string) -> string {
+  if code == "VITTE-ACTOR0001" { give "actor configuration is invalid" }
+  if code == "VITTE-ACTOR0002" { give "router bounds or scale thresholds are invalid" }
+  if code == "VITTE-ACTOR0003" { give "mailbox is saturated or dropping messages" }
+  give "actor diagnostic " + code
+}
+
+proc quickfix(code: string) -> string {
+  if code == "VITTE-ACTOR0001" { give "normalize actor mailbox, restart and snapshot settings" }
+  if code == "VITTE-ACTOR0002" { give "set min/max workers and backlog thresholds within policy bounds" }
+  if code == "VITTE-ACTOR0003" { give "increase mailbox capacity or change mailbox policy" }
+  give "review actor runtime and routing configuration"
+}
+
+proc suggestions_actor_invalid() -> [string] {
+  give ["call actor_normalize before deployment", "increase mailbox capacity or reduce input rate", "review restart and snapshot policy"]
+}
+
+proc suggestions_router_invalid() -> [string] {
+  give ["normalize router worker bounds", "align scale thresholds with backlog expectations", "rebalance sticky sharding if needed"]
+}
+
+proc suggestions_mailbox_saturated() -> [string] {
+  give ["increase mailbox_capacity to reduce drops", "switch mailbox policy depending on delivery guarantees"]
+}
