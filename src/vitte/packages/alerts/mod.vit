@@ -39,6 +39,7 @@ form TraceId {
 }
 
 pick NotificationChannel {
+  Stdout
   Email
   Webhook
   Pager
@@ -264,9 +265,17 @@ proc trace_id_text(id: TraceId) -> string {
 }
 
 proc channel_name(channel: NotificationChannel) -> string {
+  when channel is NotificationChannel.Stdout { give "stdout" }
   when channel is NotificationChannel.Email { give "email" }
   when channel is NotificationChannel.Webhook { give "webhook" }
   give "pager"
+}
+
+proc channel_from_text(name: string) -> NotificationChannel {
+  if name == "stdout" { give NotificationChannel.Stdout }
+  if name == "email" { give NotificationChannel.Email }
+  if name == "webhook" { give NotificationChannel.Webhook }
+  give NotificationChannel.Pager
 }
 
 proc dead_letter_reason_name(reason: DeadLetterReason) -> string {
@@ -621,6 +630,29 @@ proc severity(rule: AlertRule) -> string {
   give "page"
 }
 
+proc normalize_level(level: AlertLevel) -> AlertLevel {
+  if level == AlertLevel.Page { give AlertLevel.Critical }
+  give level
+}
+
+proc level_from_text(name: string) -> AlertLevel {
+  if name == "info" { give AlertLevel.Info }
+  if name == "warn" { give AlertLevel.Warn }
+  if name == "warning" { give AlertLevel.Warn }
+  if name == "error" { give AlertLevel.Error }
+  if name == "critical" { give AlertLevel.Critical }
+  if name == "page" { give AlertLevel.Critical }
+  give AlertLevel.Warn
+}
+
+proc severity_normalized(rule: AlertRule) -> string {
+  let lvl = normalize_level(rule.level)
+  when lvl is AlertLevel.Info { give "info" }
+  when lvl is AlertLevel.Warn { give "warn" }
+  when lvl is AlertLevel.Error { give "error" }
+  give "critical"
+}
+
 proc labels_key(labels: [string]) -> string {
   let out = ""
   let i: int = 0
@@ -804,6 +836,41 @@ proc dedupe_track(table: DedupeTable, event: AlertEvent, now_ts: int) -> DedupeT
   )
 }
 
+proc dedupe_track_temporal(table: DedupeTable, event: AlertEvent, now_ts: int, window_ticks: int) -> DedupeTable {
+  let win = window_ticks
+  if win < 1 { win = 1 }
+  let scoped = DedupeTable(win, table.entries, table.dedupe_hits, table.emitted)
+  let next = dedupe_track(scoped, event, now_ts)
+  give DedupeTable(table.ttl_ticks, next.entries, next.dedupe_hits, next.emitted)
+}
+
+proc dedupe_seen_temporal(table: DedupeTable, event: AlertEvent, now_ts: int, window_ticks: int) -> bool {
+  let win = window_ticks
+  if win < 1 { win = 1 }
+  let scoped = DedupeTable(win, table.entries, table.dedupe_hits, table.emitted)
+  give dedupe_seen(scoped, event, now_ts)
+}
+
+proc notify_with_temporal_dedupe(rule: AlertRule, event: AlertEvent, table: DedupeTable, window_ticks: int) -> NotifyResult {
+  let next_rule = rule
+  if rule.metric.len == 0 || event.metric == rule.metric {
+    next_rule = trigger(rule, event.value, event.ts)
+  }
+  let decision = "suppress:" + dedupe_key(event)
+  if is_firing(next_rule) {
+    decision = "emit:" + dedupe_key(event)
+  }
+  if !starts_with(decision, "emit:") {
+    give NotifyResult(decision, dedupe_prune(table, event.ts))
+  }
+  let seen = dedupe_seen_temporal(table, event, event.ts, window_ticks)
+  let next = dedupe_track_temporal(table, event, event.ts, window_ticks)
+  if seen {
+    give NotifyResult("suppress:dedupe:" + dedupe_hash(event), next)
+  }
+  give NotifyResult(decision, next)
+}
+
 proc policy_new(for_ticks: int, cooldown_ticks: int, auto_resolve_ticks: int) -> AlertPolicy {
   let for_t = for_ticks
   let cool = cooldown_ticks
@@ -882,11 +949,32 @@ proc incident_key(event: AlertEvent) -> string {
 }
 
 proc route_default(tid: TenantId, level: AlertLevel) -> RoutePolicy {
+  when level is AlertLevel.Info { give RoutePolicy(tid, level, NotificationChannel.Stdout, "stdout://alerts") }
   when level is AlertLevel.Page { give RoutePolicy(tid, level, NotificationChannel.Pager, "pager:primary") }
   when level is AlertLevel.Critical { give RoutePolicy(tid, level, NotificationChannel.Webhook, "webhook:critical") }
   when level is AlertLevel.Error { give RoutePolicy(tid, level, NotificationChannel.Webhook, "webhook:error") }
   when level is AlertLevel.Warn { give RoutePolicy(tid, level, NotificationChannel.Email, "email:ops") }
   give RoutePolicy(tid, level, NotificationChannel.Email, "email:info")
+}
+
+proc route_default_configurable(
+  tid: TenantId,
+  level: AlertLevel,
+  info_channel: NotificationChannel,
+  warn_channel: NotificationChannel,
+  error_channel: NotificationChannel,
+  critical_channel: NotificationChannel
+) -> RoutePolicy {
+  let ch = info_channel
+  if level == AlertLevel.Warn { ch = warn_channel }
+  if level == AlertLevel.Error { ch = error_channel }
+  if level == AlertLevel.Critical || level == AlertLevel.Page { ch = critical_channel }
+
+  let dst = "stdout://alerts"
+  if ch == NotificationChannel.Email { dst = "email:ops" }
+  if ch == NotificationChannel.Webhook { dst = "webhook:alerts" }
+  if ch == NotificationChannel.Pager { dst = "pager:primary" }
+  give RoutePolicy(tid, level, ch, dst)
 }
 
 proc route_for_event(routes: [RoutePolicy], tid: TenantId, level: AlertLevel) -> RoutePolicy {

@@ -90,6 +90,28 @@ proc main() -> i32 {
   if alerts.stable_api_surface().len == 0 { return 44 }
   if alerts.api_version().len == 0 { return 45 }
 
+  let r_page = alerts.AlertRule("p", "cpu", alerts.AlertLevel.Page, 80, 2, alerts.AlertState.Idle, -1, 0, 0)
+  if alerts.severity_normalized(r_page) != "critical" { return 47 }
+  if alerts.normalize_level(alerts.AlertLevel.Page) != alerts.AlertLevel.Critical { return 48 }
+  if alerts.level_from_text("error") != alerts.AlertLevel.Error { return 49 }
+  if alerts.channel_name(alerts.channel_from_text("stdout")) != "stdout" { return 50 }
+
+  let n_temporal_0 = alerts.notify_with_temporal_dedupe(r1, e0, alerts.dedupe_new(30), 5)
+  let n_temporal_1 = alerts.notify_with_temporal_dedupe(r1, e1, n_temporal_0.dedupe, 5)
+  if n_temporal_1.decision != "suppress:dedupe:" + alerts.dedupe_hash(e1) { return 51 }
+
+  let rd_info = alerts.route_default(alerts.tenant_id("tenant:t1"), alerts.AlertLevel.Info)
+  if alerts.channel_name(rd_info.channel) != "stdout" { return 52 }
+  let rd_cfg = alerts.route_default_configurable(
+    alerts.tenant_id("tenant:t1"),
+    alerts.AlertLevel.Critical,
+    alerts.NotificationChannel.Stdout,
+    alerts.NotificationChannel.Email,
+    alerts.NotificationChannel.Webhook,
+    alerts.NotificationChannel.Email
+  )
+  if alerts.channel_name(rd_cfg.channel) != "email" { return 53 }
+
   if alerts.package_meta() != "vitte/alerts" { return 46 }
   return 0
 }
