@@ -2,7 +2,8 @@
 
 Niveau: Avance
 
-Prerequis: `book/chapters/53-property-based-testing-parser.md`.
+Prérequis: `book/chapters/53-property-based-testing-parser.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -58,3 +59,21 @@ match 1 {
 1. Timeout par cas actif.
 2. Crashes archives.
 3. Cas crashants convertis en tests.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

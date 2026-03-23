@@ -2,7 +2,8 @@
 
 Niveau: Avance
 
-Prerequis: `book/chapters/27-grammaire.md`, `book/chapters/52-tests-grammaire-valid-invalid.md`.
+Prérequis: `book/chapters/27-grammaire.md`, `book/chapters/52-tests-grammaire-valid-invalid.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -54,3 +55,21 @@ entry main at app/demo {
 1. Determinisme parse valide.
 2. Pas de crash sur invalides.
 3. Proprietes AST verifiees.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

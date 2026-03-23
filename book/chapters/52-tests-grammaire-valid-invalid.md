@@ -2,7 +2,7 @@
 
 Niveau: Avance
 
-Prerequis: `book/chapters/27-grammaire.md`, `book/chapters/31-erreurs-build.md`.
+Prérequis: `book/chapters/27-grammaire.md`, `book/chapters/31-erreurs-build.md`.
 Voir aussi: `book/grammar/diagnostics/expected`.
 
 ## Objectif
@@ -59,3 +59,21 @@ match 1 {
 1. 1 valid + 1 invalid par regle critique.
 2. Diagnostics attendus versionnes.
 3. Couverture ambiguities mise a jour.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.
