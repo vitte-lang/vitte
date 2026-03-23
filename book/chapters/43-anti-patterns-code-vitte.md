@@ -2,7 +2,8 @@
 
 Niveau: Intermediaire
 
-Prerequis: `book/chapters/28-conventions.md`, `book/chapters/42-patterns-procedures-robustes.md`.
+Prérequis: `book/chapters/28-conventions.md`, `book/chapters/42-patterns-procedures-robustes.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -67,3 +68,21 @@ proc mega(a:int,b:int,c:int,d:int,e:int) -> int { give a+b+c+d+e }
 1. Detecter fonction trop large.
 2. Extraire responsabilites.
 3. Ajouter test de non-regression.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

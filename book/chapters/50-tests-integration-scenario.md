@@ -2,7 +2,8 @@
 
 Niveau: Avance
 
-Prerequis: `book/chapters/18-tests.md`, `book/chapters/21-projet-cli.md`.
+Prérequis: `book/chapters/18-tests.md`, `book/chapters/21-projet-cli.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -60,3 +61,21 @@ proc run_once(ok: bool) -> int {
 1. Nominal + erreur couverts.
 2. Sortie observable verifiee.
 3. Reexecution sans effet parasite.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

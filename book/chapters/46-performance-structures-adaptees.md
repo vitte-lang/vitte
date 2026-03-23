@@ -2,7 +2,8 @@
 
 Niveau: Avance
 
-Prerequis: `book/chapters/08-structures.md`, `book/chapters/11-collections.md`.
+Prérequis: `book/chapters/08-structures.md`, `book/chapters/11-collections.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -59,3 +60,21 @@ proc choose_unknown() -> int { give 0 }
 1. Identifier operation dominante.
 2. Justifier structure.
 3. Verifier performance cible.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

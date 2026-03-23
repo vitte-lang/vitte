@@ -2,7 +2,7 @@
 
 Niveau: Intermediaire
 
-Prerequis: `book/chapters/06-procedures.md`, `book/chapters/07-controle.md`.
+Prérequis: `book/chapters/06-procedures.md`, `book/chapters/07-controle.md`.
 Voir aussi: `book/chapters/18-tests.md`.
 
 ## Objectif
@@ -83,3 +83,21 @@ proc parse_port(x: int) -> int {
 1. Une sortie explicite par branche.
 2. Cas limites testes.
 3. Proc courte et lisible.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.
