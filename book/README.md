@@ -1,8 +1,12 @@
 # Apprendre Vitte
 
+Nouveau point d'entrée débutant: `book/poche/SOMMAIRE.md` (format tout-en-poche).
+
 Ce livre est organisé en trois couches complémentaires. Les chapitres portent la progression conceptuelle complète. La section logique isole les mécanismes d'exécution et les traces de code. La section mots-clés documente chaque élément lexical du langage avec exemples courts.
 
 Point d'entrée principal: `book/SUMMARY.md`.
+
+Parcours recommandé si le livre semble trop dense: `book/poche/SOMMAIRE.md`.
 
 Point d'entrée technique rapide: `book/INDEX-technique.md`.
 
