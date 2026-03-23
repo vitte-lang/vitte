@@ -5,12 +5,16 @@ Niveau: Intermédiaire
 Prérequis: chapitre précédent `book/chapters/10-diagnostics.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/10-diagnostics.md`, `book/chapters/12-pointeurs.md`, `book/glossaire.md`.
 
+## Objectif
+
+Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Collections et itération**.
 Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
-## Ce que vous allez faire
+## Ce que vous allez réellement faire
 
 Vous allez identifier les points clés de **Collections et itération**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
@@ -19,7 +23,7 @@ Vous allez identifier les points clés de **Collections et itération**, exécut
 Commencez par le premier extrait de code de ce chapitre.
 Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Collections et itération**.
 
-## Explication pas à pas
+## Méthode de lecture
 
 1. Repérez l'intention du bloc.
 2. Vérifiez la condition ou la garde principale.
@@ -57,7 +61,7 @@ give acc
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc sum(values: int[]) -> int {` : le contrat est défini pour `sum`: entrées `values: int[]` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `let acc: int = 0` : cette ligne crée la variable `acc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
 3. `for x in values {` : cette ligne définit une étape explicite du flux.
@@ -65,13 +69,13 @@ Lecture ligne par ligne (débutant):
 5. `}` : cette accolade ferme le bloc logique.
 6. `give acc` : la branche renvoie immédiatement `acc` pour la branche courante, la sortie de branche est explicite et vérifiable.
 7. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `acc`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: lire la collection en flux linéaire avec un seul état mutable, `acc`.
 
@@ -84,7 +88,7 @@ Lecture pas à pas pour `[2,3,4]`:
 - après `4`: `acc=9`.
 - retour final `9`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -104,7 +108,7 @@ give total / count
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc mean_floor(values: int[]) -> int {` : le contrat est posé pour `mean_floor`: entrées `values: int[]` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `let total: int = 0` : cette ligne crée la variable `total` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
 3. `let count: int = 0` : cette ligne crée la variable `count` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
@@ -115,13 +119,13 @@ Lecture ligne par ligne (débutant):
 8. `if count == 0 { give 0 }` : cette garde traite le cas limite avant le calcul.
 9. `give total / count` : la sortie est renvoyée immédiatement `total / count` pour la branche courante, la sortie de branche est explicite et vérifiable.
 10. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: si `count == 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `total / count`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: calculer une moyenne entière sans jamais exécuter une division invalide.
 
@@ -131,7 +135,7 @@ Le point clé est la garde `if count == 0`: elle traite explicitement le cas vid
 - `mean_floor([])` retourne `0`.
 - `mean_floor([4,5,6])` calcule `total=15`, `count=3`, puis retourne `5`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -149,7 +153,7 @@ give out
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc positive_only(values: int[]) -> int[] {` : le contrat est fixé pour `positive_only`: entrées `values: int[]` et sortie `int[]`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `let out: int[] = []` : cette ligne crée la variable `out` de type `int[]` pour nommer explicitement une étape intermédiaire du raisonnement.
 3. `for x in values {` : cette ligne définit une étape explicite du flux.
@@ -158,13 +162,13 @@ Lecture ligne par ligne (débutant):
 6. `}` : cette accolade ferme le bloc logique.
 7. `give out` : retourne immédiatement `out` pour la branche courante, la sortie de branche est explicite et vérifiable.
 8. `}` : cette accolade clôt le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `out`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: filtrer tôt pour conserver une boucle lisible.
 
@@ -176,7 +180,7 @@ La règle est locale et explicite: toute valeur `<= 0` est ignorée immédiateme
 - `0` est ignoré.
 - `7` est conservé -> `[2,7]`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -193,7 +197,7 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
 ## À faire
 
 1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
@@ -218,64 +222,3 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `book/keywords/for.md`.
 - `book/keywords/form.md`.
 - `book/keywords/give.md`.
-
-## Objectif
-Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
-
-## Exemple
-Exemple concret: partir d'une entrée simple, appliquer une transformation, puis observer la sortie attendue.
-
-## Pourquoi
-Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs basés sur le code du chapitre
-
-Thème: **collections et itération**. Cette section évite les généralités et part d'un extrait réel.
-
-### Exemple A: lecture exécutable du snippet principal
-
-```vit
-proc sum(values: int[]) -> int {
-  let acc: int = 0
-  for x in values {
-    set acc = acc + x
-  }
-give acc
-}
-```
-
-Lecture ligne par ligne:
-1. `proc sum(values: int[]) -> int {` -> pose un contrat clair de fonction.
-2. `let acc: int = 0` -> nomme une valeur intermédiaire utile.
-3. `for x in values {` -> participe au déroulé du traitement.
-4. `set acc = acc + x` -> participe au déroulé du traitement.
-5. `}` -> participe au déroulé du traitement.
-6. `give acc` -> renvoie la sortie vérifiable.
-7. `}` -> participe au déroulé du traitement.
-
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
-
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
-
-Étapes:
-1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
-3. Vérifier la nouvelle sortie sur une entrée limite.
-
-### Exemple C: bug reproductible puis correction locale
-
-Procédure:
-1. Introduire une incompatibilité de type sur un appel.
-2. Compiler et lire le premier diagnostic.
-3. Corriger une seule ligne (pas de refactor global).
-4. Recompiler et vérifier le retour nominal.
-
-### Résultat attendu
-
-- Le lecteur comprend ce que fait le code sans abstraction inutile.
-- Chaque exemple est relié à une action concrète.
-- La correction est reproductible et testable.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

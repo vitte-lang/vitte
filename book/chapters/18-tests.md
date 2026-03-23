@@ -5,12 +5,16 @@ Niveau: Intermédiaire
 Prérequis: chapitre précédent `book/chapters/17-stdlib.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/17-stdlib.md`, `book/chapters/19-performance.md`, `book/glossaire.md`.
 
+## Objectif
+
+Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Tests et validation**.
 Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
-## Ce que vous allez faire
+## Ce que vous allez réellement faire
 
 Vous allez identifier les points clés de **Tests et validation**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
@@ -19,7 +23,7 @@ Vous allez identifier les points clés de **Tests et validation**, exécuter les
 Commencez par le premier extrait de code de ce chapitre.
 Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Tests et validation**.
 
-## Explication pas à pas
+## Méthode de lecture
 
 1. Repérez l'intention du bloc.
 2. Vérifiez la condition ou la garde principale.
@@ -55,19 +59,19 @@ proc clamp(x: int, lo: int, hi: int) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc clamp(x: int, lo: int, hi: int) -> int {` : le contrat est défini pour `clamp`: entrées `x: int, lo: int, hi: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `if x < lo { give lo }` : cette garde traite le cas limite avant le calcul.
 3. `if x > hi { give hi }` : cette garde traite le cas limite avant le calcul.
 4. `give x` : la branche renvoie immédiatement `x` pour la branche courante, la sortie de branche est explicite et vérifiable.
 5. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: si `x < lo` est vrai, la sortie devient `lo`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `x`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: couvrir systématiquement les trois classes de cas d'un contrat borné.
 
@@ -78,7 +82,7 @@ Cette grille simple évite les tests "au hasard": on testé sous la borne, dans 
 - `clamp(5,0,10)` retourne `5`.
 - `clamp(99,0,10)` retourne `10`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - testér uniquement le cas nominal et ignorer les frontières.
 - confondre le symptôme observé et la cause réelle.
 - traiter les erreurs dans tous les sens au lieu de centraliser la politique.
@@ -93,19 +97,19 @@ proc parse_port(x: int) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc parse_port(x: int) -> int {` : le contrat est posé pour `parse_port`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `if x < 0 { give -1 }` : cette garde traite le cas limite avant le calcul.
 3. `if x > 65535 { give -1 }` : cette garde traite le cas limite avant le calcul.
 4. `give x` : la sortie est renvoyée immédiatement `x` pour la branche courante, la sortie de branche est explicite et vérifiable.
 5. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: si `x < 0` est vrai, la sortie devient `-1`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `x`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: verrouiller les frontières du domaine de validité.
 
@@ -119,7 +123,7 @@ Le choix des valeurs de test est volontaire:
 - `parse_port(65535)` retourne `65535`.
 - `parse_port(65536)` retourne `-1`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -133,18 +137,18 @@ proc non_reg_demo(x: int) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc non_reg_demo(x: int) -> int {` : le contrat est fixé pour `non_reg_demo`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `if x == 0 { give 0 }` : cette garde traite le cas limite avant le calcul.
 3. `give 10 / x` : retourne immédiatement `10 / x` pour la branche courante, la sortie de branche est explicite et vérifiable.
 4. `}` : cette accolade clôt le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: si `x == 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `10 / x`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: capturer explicitement un bug déjà rencontré pour empêcher son retour.
 
@@ -154,7 +158,7 @@ Ce test sert de mémoire technique: il documente un risque réel et verrouille l
 - `non_reg_demo(0)` retourne `0`.
 - `non_reg_demo(2)` retourne `5`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -171,7 +175,7 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
 ## À faire
 
 1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
@@ -202,66 +206,9 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 - `book/keywords/if.md`.
 - `book/keywords/int.md`.
 
-## Objectif
-Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
-
-## Exemple
-Exemple concret: partir d'une entrée simple, appliquer une transformation, puis observer la sortie attendue.
-
-## Pourquoi
-Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
 ## Checkpoint synthèse
 
 Mini quiz:
 1. Quelle est l'invariant central de ce chapitre ?
 2. Quelle garde évite l'état invalide le plus fréquent ?
 3. Quel test simple prouve le comportement nominal ?
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs basés sur le code du chapitre
-
-Thème: **tests et validation**. Cette section évite les généralités et part d'un extrait réel.
-
-### Exemple A: lecture exécutable du snippet principal
-
-```vit
-proc clamp(x: int, lo: int, hi: int) -> int {
-  if x < lo { give lo }
-  if x > hi { give hi }
-  give x
-}
-```
-
-Lecture ligne par ligne:
-1. `proc clamp(x: int, lo: int, hi: int) -> int {` -> pose un contrat clair de fonction.
-2. `if x < lo { give lo }` -> sépare nominal et cas limite.
-3. `if x > hi { give hi }` -> sépare nominal et cas limite.
-4. `give x` -> renvoie la sortie vérifiable.
-5. `}` -> participe au déroulé du traitement.
-
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
-
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
-
-Étapes:
-1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
-3. Vérifier la nouvelle sortie sur une entrée limite.
-
-### Exemple C: bug reproductible puis correction locale
-
-Procédure:
-1. Introduire une incompatibilité de type sur un appel.
-2. Compiler et lire le premier diagnostic.
-3. Corriger une seule ligne (pas de refactor global).
-4. Recompiler et vérifier le retour nominal.
-
-### Résultat attendu
-
-- Le lecteur comprend ce que fait le code sans abstraction inutile.
-- Chaque exemple est relié à une action concrète.
-- La correction est reproductible et testable.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

@@ -5,12 +5,16 @@ Niveau: Intermédiaire
 Prérequis: chapitre précédent `book/chapters/12-pointeurs.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/12-pointeurs.md`, `book/chapters/14-macros.md`, `book/glossaire.md`.
 
+## Objectif
+
+Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Génériques**.
 Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
-## Ce que vous allez faire
+## Ce que vous allez réellement faire
 
 Vous allez identifier les points clés de **Génériques**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
@@ -19,7 +23,7 @@ Vous allez identifier les points clés de **Génériques**, exécuter les exempl
 Commencez par le premier extrait de code de ce chapitre.
 Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Génériques**.
 
-## Explication pas à pas
+## Méthode de lecture
 
 1. Repérez l'intention du bloc.
 2. Vérifiez la condition ou la garde principale.
@@ -53,17 +57,17 @@ proc id[T](x: T) -> T {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc id[T](x: T) -> T {` : cette ligne définit une étape explicite du flux.
 2. `give x` : la branche renvoie immédiatement `x` pour la branche courante, la sortie de branche est explicite et vérifiable.
 3. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `x`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: montrer qu'un même corps de fonction peut être spécialisé par type, sans changer le contrat entrée/sortie.
 
@@ -78,7 +82,7 @@ Note de syntaxe actuelle:
 - cette surface reste `experimental`
 - une forme comme `id[i](42)` ne devient pas un appel générique: elle reste une indexation suivie d'appel
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - coder des conventions implicites au lieu de les porter par le type.
 - mélanger des cas métier différents dans une même représentation.
 - ajouter des variantes sans mettre à jour les points de traitement.
@@ -91,17 +95,17 @@ proc first[T](a: T, b: T) -> T {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc first[T](a: T, b: T) -> T {` : cette ligne définit une étape explicite du flux.
 2. `give a` : la sortie est renvoyée immédiatement `a` pour la branche courante, la sortie de branche est explicite et vérifiable.
 3. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `a`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: imposer le même type sur plusieurs arguments pour éviter les mélanges incohérents.
 
@@ -111,7 +115,7 @@ Ici, la sécurité est précoce: l'erreur est signalée à la compilation, avant
 - `first[int](7,9)` retourne `7`.
 - `first(7,"x")` est rejeté au type-check.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -128,7 +132,7 @@ proc swap_pair[T](p: Pair[T]) -> Pair[T] {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `form Pair[T] {` : cette ligne définit une étape explicite du flux.
 2. `left: T` : cette ligne déclare le champ `left` avec le type `T`, ce qui documente son rôle et limite les erreurs de manipulation.
 3. `right: T` : cette ligne déclare le champ `right` avec le type `T`, ce qui documente son rôle et limite les erreurs de manipulation.
@@ -136,13 +140,13 @@ Lecture ligne par ligne (débutant):
 5. `proc swap_pair[T](p: Pair[T]) -> Pair[T] {` : cette ligne définit une étape explicite du flux.
 6. `give Pair[T](p.right, p.left)` : retourne immédiatement `Pair[T](p.right, p.left)` pour la branche courante, la sortie de branche est explicite et vérifiable.
 7. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Pair[T](p.right, p.left)`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: montrer que la généricité s'applique autant aux structures qu'aux procédures.
 
@@ -155,7 +159,7 @@ Lecture de surface utile:
 - la forme qualifiée `mod.Pair[int](..)` est aussi supportée
 - la promotion de cette syntaxe au noyau stable reste volontairement différée
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - coder des conventions implicites au lieu de les porter par le type.
 - mélanger des cas métier différents dans une même représentation.
 - ajouter des variantes sans mettre à jour les points de traitement.
@@ -172,7 +176,7 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
 ## À faire
 
 1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
@@ -197,56 +201,3 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `book/keywords/form.md`.
 - `book/keywords/give.md`.
 - `book/keywords/int.md`.
-
-## Objectif
-Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
-
-## Exemple
-Exemple concret: partir d'une entrée simple, appliquer une transformation, puis observer la sortie attendue.
-
-## Pourquoi
-Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs basés sur le code du chapitre
-
-Thème: **génériques**. Cette section évite les généralités et part d'un extrait réel.
-
-### Exemple A: lecture exécutable du snippet principal
-
-```vit
-proc id[T](x: T) -> T {
-  give x
-}
-```
-
-Lecture ligne par ligne:
-1. `proc id[T](x: T) -> T {` -> pose un contrat clair de fonction.
-2. `give x` -> renvoie la sortie vérifiable.
-3. `}` -> participe au déroulé du traitement.
-
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
-
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
-
-Étapes:
-1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
-3. Vérifier la nouvelle sortie sur une entrée limite.
-
-### Exemple C: bug reproductible puis correction locale
-
-Procédure:
-1. Introduire une incompatibilité de type sur un appel.
-2. Compiler et lire le premier diagnostic.
-3. Corriger une seule ligne (pas de refactor global).
-4. Recompiler et vérifier le retour nominal.
-
-### Résultat attendu
-
-- Le lecteur comprend ce que fait le code sans abstraction inutile.
-- Chaque exemple est relié à une action concrète.
-- La correction est reproductible et testable.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

@@ -5,12 +5,16 @@ Niveau: Intermédiaire.
 Prérequis: chapitre précédent `book/chapters/16-interop.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/17-stdlib.md`, `book/chapters/23-projet-sys.md`, `book/chapters/30-faq.md`.
 
+## Objectif
+
+Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Liaison native avec `std/bridge`**.
 Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
-## Ce que vous allez faire
+## Ce que vous allez réellement faire
 
 Vous allez identifier les points clés de **Liaison native avec `std/bridge`**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
@@ -19,7 +23,7 @@ Vous allez identifier les points clés de **Liaison native avec `std/bridge`**, 
 Commencez par le premier extrait de code de ce chapitre.
 Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Liaison native avec `std/bridge`**.
 
-## Explication pas à pas
+## Méthode de lecture
 
 1. Repérez l'intention du bloc.
 2. Vérifiez la condition ou la garde principale.
@@ -60,116 +64,19 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 - `book/keywords/give.md`.
 - `book/keywords/return.md`.
 
-## Objectif
-
-Construire un point d’entrée unique pour la liaison native afin de réduire les dépendances directes à des détails d’implémentation.
-
-## Exemple
-
-```vit
-use std/bridge/io
-use std/bridge/system
-use std/bridge/time
-
-entry main at app/bridge_demo {
-  let home = get("HOME")
-  let here = cwd()
-  let t0 = now()
-  let _ = print_line("bridge ready")
-  return 0
-}
-```
-
-Lecture ligne par ligne:
-1. `use std/bridge/io` importe la façade d’E/S métier; le code appelant n’a pas besoin de connaître `std/io/*`.
-2. `use std/bridge/system` importe la façade système (`env`, `path`, `process`, `os`) dans un point unique.
-3. `use std/bridge/time` importe l’accès temporel sans coupler le code à un backend précis.
-4. `entry main at app/bridge_demo {` définit le point d’exécution du programme.
-5. `let home = get("HOME")` lit une variable d’environnement via la façade système.
-6. `let here = cwd()` récupère le répertoire courant via la même façade.
-7. `let t0 = now()` capture un instant via la façade temps.
-8. `let _ = print_line("bridge ready")` produit une sortie texte via la façade I/O.
-9. `return 0` termine proprement le programme.
-10. `}` ferme le bloc d’entrée.
-
-## Pourquoi
-
-Une façade de liaison évite la dispersion des appels natifs dans tout le code. Elle améliore la lisibilité, simplifie les migrations internes et stabilise les contrats pour les projets.
-
 ## Test mental
 
-Question: que se passe-t-il si l’entrée est invalide ?
-Réponse attendue: la validation doit être traitée dans la façade ou juste avant l’appel, pas dupliquée dans chaque appelant.
+Question: comment vérifier qu'une fonction native est bien chargée et appelée avec la bonne signature ?
+Repère: valider la signature, l'import, puis exécuter un cas nominal et un cas erreur.
 
 ## À faire
 
-1. Remplacer dans un module applicatif un import direct (`std/io/*` ou `std/os/*`) par `std/bridge/*`.
-2. Vérifier que le comportement observable ne change pas (mêmes sorties, même code retour).
-3. Identifier une règle d’invariant à conserver (exemple: pas d’appel natif direct hors façade).
+1. Ajouter un appel natif minimal.
+2. Vérifier le cas nominal.
+3. Provoquer une erreur de signature pour lire le diagnostic.
 
 ## Corrigé minimal
 
-- Import centralisé:
-  - `use std/bridge/io`
-  - `use std/bridge/system`
-- Appels inchangés côté métier (`get`, `cwd`, `print_line`).
-- Invariant respecté: un seul point d’abstraction pour la liaison native.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs basés sur le code du chapitre
-
-Thème: **liaison native avec `std/bridge`**. Cette section évite les généralités et part d'un extrait réel.
-
-### Exemple A: lecture exécutable du snippet principal
-
-```vit
-use std/bridge/io
-use std/bridge/system
-use std/bridge/time
-
-entry main at app/bridge_demo {
-  let home = get("HOME")
-  let here = cwd()
-  let t0 = now()
-  let _ = print_line("bridge ready")
-  return 0
-}
-```
-
-Lecture ligne par ligne:
-1. `use std/bridge/io` -> participe au déroulé du traitement.
-2. `use std/bridge/system` -> participe au déroulé du traitement.
-3. `use std/bridge/time` -> participe au déroulé du traitement.
-4. `entry main at app/bridge_demo {` -> définit le point d'entrée du scénario.
-5. `let home = get("HOME")` -> nomme une valeur intermédiaire utile.
-6. `let here = cwd()` -> nomme une valeur intermédiaire utile.
-7. `let t0 = now()` -> nomme une valeur intermédiaire utile.
-8. `let _ = print_line("bridge ready")` -> nomme une valeur intermédiaire utile.
-9. `return 0` -> renvoie la sortie vérifiable.
-10. `}` -> participe au déroulé du traitement.
-
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
-
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
-
-Étapes:
-1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
-3. Vérifier la nouvelle sortie sur une entrée limite.
-
-### Exemple C: bug reproductible puis correction locale
-
-Procédure:
-1. Introduire une incompatibilité de type sur un appel.
-2. Compiler et lire le premier diagnostic.
-3. Corriger une seule ligne (pas de refactor global).
-4. Recompiler et vérifier le retour nominal.
-
-### Résultat attendu
-
-- Le lecteur comprend ce que fait le code sans abstraction inutile.
-- Chaque exemple est relié à une action concrète.
-- La correction est reproductible et testable.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
+- Signature Vitte et signature native alignées.
+- Chemin de liaison explicite.
+- Test nominal + test erreur documentés.

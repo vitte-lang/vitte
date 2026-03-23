@@ -5,12 +5,16 @@ Niveau: Intermédiaire
 Prérequis: chapitre précédent `book/chapters/11-collections.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/11-collections.md`, `book/chapters/13-generiques.md`, `book/glossaire.md`.
 
+## Objectif
+
+Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Pointeurs, références et mémoire**.
 Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
-## Ce que vous allez faire
+## Ce que vous allez réellement faire
 
 Vous allez identifier les points clés de **Pointeurs, références et mémoire**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
@@ -19,7 +23,7 @@ Vous allez identifier les points clés de **Pointeurs, références et mémoire*
 Commencez par le premier extrait de code de ce chapitre.
 Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Pointeurs, références et mémoire**.
 
-## Explication pas à pas
+## Méthode de lecture
 
 1. Repérez l'intention du bloc.
 2. Vérifiez la condition ou la garde principale.
@@ -55,19 +59,19 @@ proc cpu_pause() {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc cpu_pause() {` : cette ligne définit une étape explicite du flux.
 2. `unsafe {` : cette ligne marque une zone sensible qui doit rester courte, justifiée et facile à auditer dans un contexte système.
 3. `asm("pause")` : cette ligne définit une étape explicite du flux.
 4. `}` : cette accolade ferme le bloc logique.
 5. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: confiner le code machine dans une zone `unsafe` très courte.
 
@@ -75,7 +79,7 @@ Ce confinement est crucial: l'audit de sécurité reste local, au lieu d'être d
 
 À l'exécution, l'appel exécute une pause CPU sans effet métier supplémentaire.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -93,7 +97,7 @@ proc read_at(b: Buffer, i: int) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `form Buffer {` : cette ligne ouvre la structure `Buffer` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable.
 2. `data: int[]` : cette ligne déclare le champ `data` avec le type `int[]`, ce qui documente son rôle et limite les erreurs de manipulation.
 3. `}` : cette accolade clôt le bloc logique.
@@ -102,13 +106,13 @@ Lecture ligne par ligne (débutant):
 6. `if i >= b.data.len() { give 0 }` : cette garde traite le cas limite avant le calcul.
 7. `give b.data[i]` : la branche renvoie immédiatement `b.data[i]` pour la branche courante, la sortie de branche est explicite et vérifiable.
 8. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: si `i < 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `b.data[i]`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: vérifier les bornes avant tout accès mémoire.
 
@@ -119,7 +123,7 @@ Le contrat est simple: un index invalide retourne `0`, un index valide retourne 
 - `read_at(..,9)` retourne `0`.
 - `read_at(..,-1)` retourne `0`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -135,20 +139,20 @@ proc write_at(b: Buffer, i: int, v: int) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc write_at(b: Buffer, i: int, v: int) -> int {` : le contrat est posé pour `write_at`: entrées `b: Buffer, i: int, v: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `if i < 0 { give 0 }` : cette garde traite le cas limite avant le calcul.
 3. `if i >= b.data.len() { give 0 }` : cette garde traite le cas limite avant le calcul.
 4. `b.data[i] = v` : cette ligne définit une étape explicite du flux.
 5. `give 1` : la sortie est renvoyée immédiatement `1` pour la branche courante, la sortie de branche est explicite et vérifiable.
 6. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: si `i < 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `1`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: appliquer la même politique de bornes en lecture et en écriture.
 
@@ -159,7 +163,7 @@ Cette symétrie réduit les incohérences: ce qui est interdit en lecture l'est 
 - `write_at(..,7,99)` retourne `0` sans mutation.
 - `write_at(..,-1,99)` retourne `0` sans mutation.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -176,7 +180,7 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
 ## À faire
 
 1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
@@ -207,66 +211,9 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 - `book/keywords/form.md`.
 - `book/keywords/give.md`.
 
-## Objectif
-Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
-
-## Exemple
-Exemple concret: partir d'une entrée simple, appliquer une transformation, puis observer la sortie attendue.
-
-## Pourquoi
-Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
 ## Checkpoint synthèse
 
 Mini quiz:
 1. Quelle est l'invariant central de ce chapitre ?
 2. Quelle garde évite l'état invalide le plus fréquent ?
 3. Quel test simple prouve le comportement nominal ?
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs basés sur le code du chapitre
-
-Thème: **pointeurs, références et mémoire**. Cette section évite les généralités et part d'un extrait réel.
-
-### Exemple A: lecture exécutable du snippet principal
-
-```vit
-proc cpu_pause() {
-  unsafe {
-    asm("pause")
-  }
-}
-```
-
-Lecture ligne par ligne:
-1. `proc cpu_pause() {` -> pose un contrat clair de fonction.
-2. `unsafe {` -> participe au déroulé du traitement.
-3. `asm("pause")` -> participe au déroulé du traitement.
-4. `}` -> participe au déroulé du traitement.
-5. `}` -> participe au déroulé du traitement.
-
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
-
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
-
-Étapes:
-1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
-3. Vérifier la nouvelle sortie sur une entrée limite.
-
-### Exemple C: bug reproductible puis correction locale
-
-Procédure:
-1. Introduire une incompatibilité de type sur un appel.
-2. Compiler et lire le premier diagnostic.
-3. Corriger une seule ligne (pas de refactor global).
-4. Recompiler et vérifier le retour nominal.
-
-### Résultat attendu
-
-- Le lecteur comprend ce que fait le code sans abstraction inutile.
-- Chaque exemple est relié à une action concrète.
-- La correction est reproductible et testable.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

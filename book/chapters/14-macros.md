@@ -5,12 +5,16 @@ Niveau: Intermédiaire
 Prérequis: chapitre précédent `book/chapters/13-generiques.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/13-generiques.md`, `book/chapters/15-pipeline.md`, `book/glossaire.md`.
 
+## Objectif
+
+Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Macros**.
 Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
-## Ce que vous allez faire
+## Ce que vous allez réellement faire
 
 Vous allez identifier les points clés de **Macros**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
@@ -19,7 +23,7 @@ Vous allez identifier les points clés de **Macros**, exécuter les exemples, pu
 Commencez par le premier extrait de code de ce chapitre.
 Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Macros**.
 
-## Explication pas à pas
+## Méthode de lecture
 
 1. Repérez l'intention du bloc.
 2. Vérifiez la condition ou la garde principale.
@@ -53,17 +57,17 @@ macro nop() {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `macro nop() {` : cette ligne définit une étape explicite du flux.
 2. `let _: int = 0` : cette ligne crée la variable `_` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
 3. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: commencer par une macro neutre pour comprendre le mécanisme d'expansion sans bruit métier.
 
@@ -71,7 +75,7 @@ Cette progression évite un piège fréquent: écrire des macros puissantes trop
 
 À l'exécution, l'appel `nop()` n'ajoute aucune logique fonctionnelle. Le flux observable du programme reste identique, ce qui permet d'isoler le comportement de la macro elle-même.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - introduire une macro sans pouvoir expliquer son expansion.
 - utiliser une macro là où une procédure claire suffit.
 - multiplier les macros "magiques" qui cachent le flux réel.
@@ -88,7 +92,7 @@ proc safe_div(num: int, den: int) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `macro guard_nonzero(x) {` : cette ligne définit une étape explicite du flux.
 2. `if x == 0 { return -1 }` : cette garde traite le cas limite avant le calcul.
 3. `}` : cette accolade ferme le bloc logique.
@@ -96,13 +100,13 @@ Lecture ligne par ligne (débutant):
 5. `guard_nonzero(den)` : cette ligne définit une étape explicite du flux.
 6. `give num / den` : la branche renvoie immédiatement `num / den` pour la branche courante, la sortie de branche est explicite et vérifiable.
 7. `}` : cette accolade clôt le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `num / den`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: utiliser une macro pour factoriser une garde critique répétée.
 
@@ -114,7 +118,7 @@ La valeur de `guard_nonzero` n'est pas seulement de gagner quelques lignes. Elle
 
 La frontière d'erreur est placée exactement là où le risque apparaît.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -133,7 +137,7 @@ proc normalize01(x: int) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `macro clamp01(v) {` : cette ligne définit une étape explicite du flux.
 2. `if v < 0 { set v = 0 }` : cette garde traite le cas limite avant le calcul.
 3. `if v > 1 { set v = 1 }` : cette garde traite le cas limite avant le calcul.
@@ -143,13 +147,13 @@ Lecture ligne par ligne (débutant):
 7. `clamp01(v)` : cette ligne définit une étape explicite du flux.
 8. `give v` : la sortie est renvoyée immédiatement `v` pour la branche courante, la sortie de branche est explicite et vérifiable.
 9. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `v`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: encapsuler une normalisation locale sans masquer la responsabilité métier.
 
@@ -162,7 +166,7 @@ La règle d'or est simple: une macro est acceptable tant qu'un lecteur peut reco
 
 La sortie est bornée dans `[0,1]`, et cette garantie reste visible dans la logique source.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -179,7 +183,7 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
 ## À faire
 
 1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
@@ -204,56 +208,3 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `book/keywords/continue.md`.
 - `book/keywords/give.md`.
 - `book/keywords/if.md`.
-
-## Objectif
-Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
-
-## Exemple
-Exemple concret: partir d'une entrée simple, appliquer une transformation, puis observer la sortie attendue.
-
-## Pourquoi
-Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs basés sur le code du chapitre
-
-Thème: **macros**. Cette section évite les généralités et part d'un extrait réel.
-
-### Exemple A: lecture exécutable du snippet principal
-
-```vit
-macro nop() {
-  let _: int = 0
-}
-```
-
-Lecture ligne par ligne:
-1. `macro nop() {` -> participe au déroulé du traitement.
-2. `let _: int = 0` -> nomme une valeur intermédiaire utile.
-3. `}` -> participe au déroulé du traitement.
-
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
-
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
-
-Étapes:
-1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
-3. Vérifier la nouvelle sortie sur une entrée limite.
-
-### Exemple C: bug reproductible puis correction locale
-
-Procédure:
-1. Introduire une incompatibilité de type sur un appel.
-2. Compiler et lire le premier diagnostic.
-3. Corriger une seule ligne (pas de refactor global).
-4. Recompiler et vérifier le retour nominal.
-
-### Résultat attendu
-
-- Le lecteur comprend ce que fait le code sans abstraction inutile.
-- Chaque exemple est relié à une action concrète.
-- La correction est reproductible et testable.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
