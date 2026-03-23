@@ -15,12 +15,57 @@ pick TaskState {
   Succeeded
   Failed
   Cancelled
+  TimedOut
 }
 
 form TaskMeta {
   name: string
   retries: int
   state: TaskState
+}
+
+pick CancelMode {
+  Cooperative
+  Immediate
+}
+
+form TaskPolicy {
+  timeout_ms: int
+  cancel_mode: CancelMode
+  retry_limit: int
+}
+
+form TaskRuntime {
+  id: int
+  meta: TaskMeta
+  policy: TaskPolicy
+  cancel_reason: string
+  latency_samples: [int]
+  queue_wait_ms: int
+}
+
+form TaskMetrics {
+  latency_last: int
+  latency_p95: int
+  queue_wait_ms: int
+  run_count: int
+}
+
+pick TimeSourceKind {
+  System
+  Mock
+}
+
+form TimeSource {
+  kind: TimeSourceKind
+  now_ms: int
+}
+
+form SchedulerFairnessReport {
+  ok: bool
+  backlog_per_slot: int
+  utilization_pct: int
+  imbalance: int
 }
 
 type Task = bool
@@ -62,6 +107,28 @@ proc task_meta(name: string) -> TaskMeta {
   give TaskMeta(name, 0, TaskState.Pending)
 }
 
+proc default_task_policy() -> TaskPolicy {
+  give TaskPolicy(async_policy_pkg.default_timeout_ms(), CancelMode.Cooperative, async_policy_pkg.default_retry_budget())
+}
+
+proc with_task_policy(timeout_ms: int, cancel_mode: CancelMode, retry_limit: int) -> TaskPolicy {
+  let t = timeout_ms
+  let r = retry_limit
+  if t < 1 { t = 1 }
+  if r < 0 { r = 0 }
+  give TaskPolicy(t, cancel_mode, r)
+}
+
+proc task_runtime(id: int, name: string, policy: TaskPolicy) -> TaskRuntime {
+  let pid = id
+  if pid < 0 { pid = 0 }
+  give TaskRuntime(pid, task_meta(name), policy, "", [], 0)
+}
+
+proc task_state(meta: TaskMeta) -> TaskState {
+  give meta.state
+}
+
 proc task_mark_running(meta: TaskMeta) -> TaskMeta {
   give TaskMeta(meta.name, meta.retries, TaskState.Running)
 }
@@ -75,6 +142,19 @@ proc task_mark_done(meta: TaskMeta, ok: bool) -> TaskMeta {
 
 proc task_cancel(meta: TaskMeta) -> TaskMeta {
   give TaskMeta(meta.name, meta.retries, TaskState.Cancelled)
+}
+
+proc cancel_with_reason(rt: TaskRuntime, reason: string) -> TaskRuntime {
+  let rs = reason
+  if rs.len == 0 { rs = "cancelled" }
+  give TaskRuntime(
+    rt.id,
+    task_cancel(rt.meta),
+    rt.policy,
+    rs,
+    rt.latency_samples,
+    rt.queue_wait_ms
+  )
 }
 
 proc task_can_retry(meta: TaskMeta, max_retries: int) -> bool {
@@ -94,6 +174,99 @@ proc run_with_retry(job: proc() -> int, retries: int) -> TaskState {
   give TaskState.Failed
 }
 
+proc join_all(tasks: [Task]) -> bool {
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    if tasks[i] == false { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc race(tasks: [Task]) -> int {
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    if tasks[i] == true { give i }
+    i = i + 1
+  }
+  give -1
+}
+
+proc child_policy_from_parent(
+  parent: TaskPolicy,
+  child_timeout_ms: int,
+  child_cancel_mode: CancelMode,
+  child_retry_limit: int
+) -> TaskPolicy {
+  let timeout = child_timeout_ms
+  if timeout < 1 { timeout = 1 }
+  if timeout > parent.timeout_ms { timeout = parent.timeout_ms }
+  let retry = child_retry_limit
+  if retry < 0 { retry = 0 }
+  if retry > parent.retry_limit { retry = parent.retry_limit }
+  let cancel_mode = child_cancel_mode
+  if parent.cancel_mode == CancelMode.Immediate {
+    cancel_mode = CancelMode.Immediate
+  }
+  give TaskPolicy(timeout, cancel_mode, retry)
+}
+
+proc percentile(values: [int], p: int) -> int {
+  if values.len == 0 { give 0 }
+  let mx = values[0]
+  let i: int = 1
+  loop {
+    if i >= values.len { break }
+    if values[i] > mx { mx = values[i] }
+    i = i + 1
+  }
+  let pi = p
+  if pi < 0 { pi = 0 }
+  if pi > 100 { pi = 100 }
+  give (mx * pi) / 100
+}
+
+proc task_push_latency(rt: TaskRuntime, latency_ms: int) -> TaskRuntime {
+  let lat = latency_ms
+  if lat < 0 { lat = 0 }
+  give TaskRuntime(
+    rt.id,
+    rt.meta,
+    rt.policy,
+    rt.cancel_reason,
+    rt.latency_samples.push(lat),
+    rt.queue_wait_ms
+  )
+}
+
+proc task_set_queue_wait(rt: TaskRuntime, wait_ms: int) -> TaskRuntime {
+  let w = wait_ms
+  if w < 0 { w = 0 }
+  give TaskRuntime(
+    rt.id,
+    rt.meta,
+    rt.policy,
+    rt.cancel_reason,
+    rt.latency_samples,
+    w
+  )
+}
+
+proc task_metrics(rt: TaskRuntime) -> TaskMetrics {
+  let last = 0
+  if rt.latency_samples.len > 0 {
+    last = rt.latency_samples[rt.latency_samples.len - 1]
+  }
+  give TaskMetrics(
+    last,
+    percentile(rt.latency_samples, 95),
+    rt.queue_wait_ms,
+    rt.latency_samples.len
+  )
+}
+
 proc backoff_ms(attempt: int) -> int {
   if attempt < 0 { give 0 }
   give (attempt + 1) * async_policy_pkg.default_backoff_unit_ms()
@@ -103,6 +276,7 @@ proc is_terminal(state: TaskState) -> bool {
   when state is TaskState.Succeeded { give true }
   when state is TaskState.Failed { give true }
   when state is TaskState.Cancelled { give true }
+  when state is TaskState.TimedOut { give true }
   give false
 }
 
@@ -141,6 +315,70 @@ proc scheduler_capacity(s: Scheduler) -> int {
   let cap = s.max_parallel - s.running
   if cap < 0 { give 0 }
   give cap
+}
+
+proc scheduler_backpressure(s: Scheduler) -> bool {
+  let threshold = s.max_parallel * 2
+  if threshold < 1 { threshold = 1 }
+  give s.queue_len > threshold
+}
+
+proc scheduler_fairness_report(s: Scheduler) -> SchedulerFairnessReport {
+  let slots = s.max_parallel
+  if slots < 1 { slots = 1 }
+  let backlog_per_slot = s.queue_len / slots
+  let utilization = 0
+  if s.max_parallel > 0 {
+    utilization = (s.running * 100) / s.max_parallel
+  }
+  if utilization < 0 { utilization = 0 }
+  if utilization > 100 { utilization = 100 }
+  let imbalance = s.queue_len - s.running
+  if imbalance < 0 { imbalance = 0 }
+  let ok = true
+  if scheduler_backpressure(s) { ok = false }
+  if utilization == 0 && s.queue_len > 0 { ok = false }
+  give SchedulerFairnessReport(ok, backlog_per_slot, utilization, imbalance)
+}
+
+proc time_source_system() -> TimeSource {
+  let now = async_runtime_pkg.timer_granularity_ms()
+  if now < 1 { now = 1 }
+  give TimeSource(TimeSourceKind.System, now)
+}
+
+proc time_source_mock(now_ms: int) -> TimeSource {
+  let now = now_ms
+  if now < 0 { now = 0 }
+  give TimeSource(TimeSourceKind.Mock, now)
+}
+
+proc time_now(ts: TimeSource) -> int {
+  give ts.now_ms
+}
+
+proc time_advance(ts: TimeSource, delta_ms: int) -> TimeSource {
+  let d = delta_ms
+  if d < 0 { d = 0 }
+  give TimeSource(ts.kind, ts.now_ms + d)
+}
+
+proc load_test_backpressure(task_count: int, max_parallel: int) -> bool {
+  let n = task_count
+  if n < 1 { n = 1 }
+  let sch = scheduler_new(max_parallel)
+  let i: int = 0
+  loop {
+    if i >= n { break }
+    sch = scheduler_enqueue(sch, 1)
+    sch = scheduler_tick(sch)
+    if scheduler_backpressure(sch) {
+      sch = scheduler_complete(sch, 1)
+    }
+    i = i + 1
+  }
+  sch = scheduler_complete(sch, n)
+  give scheduler_idle(sch)
 }
 
 proc default_config() -> AsyncConfig {
@@ -194,13 +432,16 @@ proc version() -> string {
 }
 
 proc capabilities() -> [string] {
-  give ["retry", "backoff", "scheduler", "task-state", async_runtime_pkg.runtime_name()]
+  give ["retry", "backoff", "scheduler", "task-state", "task-policy", "backpressure", "join-all", "race", "deadline-propagation", "fairness", "time-source", async_runtime_pkg.runtime_name()]
 }
 
 proc diagnostics_message(code: string) -> string {
   if code == "VITTE-ASYNC0001" { give "invalid async config: timeout or retry budget" }
   if code == "VITTE-ASYNC0002" { give "task failed after retry budget" }
   if code == "VITTE-ASYNC0003" { give "invalid scheduler parallelism or queue count" }
+  if code == "VITTE-ASYNC0004" { give "task timed out before completion" }
+  if code == "VITTE-ASYNC0005" { give "task cancelled by policy or user request" }
+  if code == "VITTE-ASYNC0006" { give "scheduler backpressure detected" }
   give "async diagnostic " + code
 }
 
@@ -208,7 +449,24 @@ proc diagnostics_quickfix(code: string) -> string {
   if code == "VITTE-ASYNC0001" { give "set timeout > 0 and retry budget >= 0" }
   if code == "VITTE-ASYNC0002" { give "increase retries or reduce transient failures" }
   if code == "VITTE-ASYNC0003" { give "use scheduler_new with positive max_parallel" }
+  if code == "VITTE-ASYNC0004" { give "increase timeout or reduce task latency" }
+  if code == "VITTE-ASYNC0005" { give "review cancellation mode and upstream interrupts" }
+  if code == "VITTE-ASYNC0006" { give "increase parallelism or apply queue throttling" }
   give "review async runtime settings"
+}
+
+proc diagnostics_code_for_state(state: TaskState, scheduler: Scheduler) -> string {
+  if state == TaskState.TimedOut { give "VITTE-ASYNC0004" }
+  if state == TaskState.Cancelled { give "VITTE-ASYNC0005" }
+  if scheduler_backpressure(scheduler) { give "VITTE-ASYNC0006" }
+  if state == TaskState.Failed { give "VITTE-ASYNC0002" }
+  if state == TaskState.Pending || state == TaskState.Running { give "VITTE-ASYNC0000" }
+  give "VITTE-ASYNC0000"
+}
+
+proc diagnostics_snapshot(state: TaskState, scheduler: Scheduler) -> string {
+  let code = diagnostics_code_for_state(state, scheduler)
+  give "code=" + code + ",message=" + diagnostics_message(code) + ",quickfix=" + diagnostics_quickfix(code)
 }
 
 proc diagnostics_doc_url(code: string) -> string {

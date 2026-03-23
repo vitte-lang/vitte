@@ -11,6 +11,20 @@ entry main at core/app {
     return 1
   }
 
+  let pol = async_pkg.with_task_policy(250, async_pkg.CancelMode.Cooperative, 2)
+  let rt0 = async_pkg.task_runtime(1, "job-1", pol)
+  let rt1 = async_pkg.task_set_queue_wait(rt0, 5)
+  let rt2 = async_pkg.task_push_latency(rt1, 7)
+  let rt3 = async_pkg.task_push_latency(rt2, 11)
+  let mt = async_pkg.task_metrics(rt3)
+  if mt.run_count != 2 || mt.latency_last != 11 || mt.queue_wait_ms != 5 {
+    return 1
+  }
+  let cancelled = async_pkg.cancel_with_reason(rt3, "user-stop")
+  if async_pkg.task_state(cancelled.meta) != async_pkg.TaskState.Cancelled {
+    return 1
+  }
+
   let sch0 = async_pkg.scheduler_new(2)
   let sch1 = async_pkg.scheduler_enqueue(sch0, 3)
   let sch2 = async_pkg.scheduler_tick(sch1)
