@@ -1,9 +1,18 @@
 # Vitte
 
-Vitte is an experimental systems language and toolchain.
+Vitte is an experimental readability-first systems language and toolchain.
 
 The project is built around one idea: low-level code should stay readable.
 No hidden magic, no overly clever syntax, and a compiler pipeline you can inspect.
+
+Vitte is for people who want explicit low-level code, a visible compiler pipeline,
+and a language surface that stays teachable while the project matures.
+
+Documentation entry points:
+
+- `docs/GETTING_STARTED.md` for the shortest path from install to first program
+- `ROADMAP.md` for current project priorities
+- `docs/LANGUAGE_CORE_GUARANTEES.md` for the minimum protected language promise
 
 Language maturity:
 
@@ -11,6 +20,14 @@ Language maturity:
 - the language core is being stabilized first
 - non-core surface should be treated as `experimental` unless documented otherwise
 - `internal` surface is not a public contract
+
+Public surface summary:
+
+| Label | Meaning | How to treat it |
+| --- | --- | --- |
+| `stable` | protected by an explicit gate or compatibility policy | safe to describe as part of the public promise |
+| `experimental` | implemented, but outside the protected contract | expect churn and avoid depending on long-term behavior |
+| `internal` | not a public API or language contract | do not treat as supported external surface |
 
 If you are a beginner: this README is enough to get you from zero to first contribution.
 
@@ -24,6 +41,15 @@ Vitte is for people building:
 - OS-level projects (see VitteOS)
 
 Vitte is not stable yet. Breaking changes are expected while the language evolves.
+
+Vitte is not trying to be:
+
+- a drop-in replacement for Rust, Zig, or C
+- a broad-ecosystem language with stable compatibility guarantees today
+- a language that hides low-level behavior behind inference-heavy syntax
+
+The current bet is narrower: readable systems code, explicit behavior, and an
+inspectable toolchain are worth prioritizing before broad language expansion.
 
 ## Beginner Path (Install -> Test -> Contribute)
 
@@ -76,6 +102,12 @@ Before opening a PR:
 ## Quick Start
 
 Documentation: https://vitte-lang.org/
+
+Recommended first docs in this repository:
+
+- `docs/GETTING_STARTED.md`
+- `ROADMAP.md`
+- `docs/LANGUAGE_CORE.md`
 
 ### Try a file
 
@@ -158,6 +190,22 @@ entry main at core/app {
 - Tooling-friendly syntax
 - Deterministic outputs where possible
 - Low-level control when needed (`unsafe`, `asm`)
+
+## Why Vitte Instead Of Rust, Zig, Odin, Or C?
+
+The goal is not to out-mature those languages today.
+
+- Rust offers stronger production maturity and safety tooling today
+- Zig offers a more established low-level toolchain path today
+- Odin offers a simpler language surface in a different design space
+- C remains ubiquitous and easy to deploy, despite weaker language guardrails
+
+Vitte is exploring a different balance:
+
+- readability first
+- explicit surface over compact cleverness
+- inspectable compiler stages
+- bounded public guarantees instead of broad implied stability
 
 Core language stability policy:
 

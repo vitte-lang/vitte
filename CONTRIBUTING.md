@@ -47,6 +47,22 @@ make package-check SRC=src/vitte/packages/std/data/mod.vit
 
 This intentionally enables `--allow-internal` so a package facade can validate against its own `internal/*` implementation modules.
 
+### Which Checks Should I Run?
+
+Use this matrix to avoid running the whole world when your change is narrower.
+
+| If you changed... | Minimum checks to run |
+| --- | --- |
+| README, docs, examples wording | `make build` and any docs-specific sync/lint gate you touched |
+| lexer, parser, surface syntax | `make parse` and `make core-language-gate` |
+| diagnostics, validation, imports, entry rules | `make hir-validate` and `make core-language-gate` |
+| protected language contract docs or release-facing language wording | `make core-release-gate` |
+| package/module policy, `mod.vit`, `info.vit`, `OWNERS`, lint rules | `make modules-tests`, `make modules-snapshots`, `make modules-contract-snapshots`, `make packages-gate` |
+| completions or CLI help surface | `make ci-completions` and related snapshot commands |
+| general compiler/runtime changes without a narrower fit | `make test`, `make parse`, `make hir-validate` |
+
+If your change affects user-visible behavior, add or update tests in the same PR.
+
 ## 3) Coding Style
 
 - C/C++ formatting: follow `.clang-format`
