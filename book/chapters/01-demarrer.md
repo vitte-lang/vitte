@@ -1,198 +1,187 @@
 # 1. Démarrer avec Vitte
 
-Niveau: Débutant
+Niveau: Fondations
 
-Prérequis: chapitre précédent `book/chapters/00-avant-propos.md` et `book/glossaire.md`.
-Voir aussi: `book/chapters/00-avant-propos.md`, `book/chapters/02-philosophie.md`, `book/glossaire.md`.
+Prérequis: `book/chapters/00-avant-propos.md`, `book/glossaire.md`.
+Voir aussi: `book/chapters/02-philosophie.md`.
 
-## Objectif
+## Objectif technique
 
-Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+Établir une base exécutable avec trois propriétés non négociables:
+1. point d'entrée explicite
+2. calcul isolé dans des procédures
+3. sortie observable sans ambiguïté
 
-## Pourquoi
-
-Ce chapitre vous donne une compréhension claire de **Démarrer avec Vitte**.
-Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
-
-## Ce que vous allez réellement faire
-
-Vous allez identifier les points clés de **Démarrer avec Vitte**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
-
-## Exemple minimal
-
-Commencez par le premier extrait de code de ce chapitre.
-Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Démarrer avec Vitte**.
-
-## Méthode de lecture
-
-1. Repérez l'intention du bloc.
-2. Vérifiez la condition ou la garde principale.
-3. Confirmez la sortie observable.
-4. Notez comment ce bloc sert **Démarrer avec Vitte** dans l'ensemble du chapitre.
-
-## Pièges fréquents
-
-- Lire la syntaxe sans vérifier le comportement.
-- Mélanger règle générale et cas limite dans la même explication.
-- Introduire une optimisation avant d'avoir stabilisé le flux de **Démarrer avec Vitte**.
-
-## Exercice court
-
-Prenez un exemple du chapitre sur **Démarrer avec Vitte**.
-Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
-
-## Résumé en 5 points
-
-1. Vous connaissez l'objectif du chapitre sur **Démarrer avec Vitte**.
-2. Vous savez lire un exemple du chapitre de façon structurée.
-3. Vous distinguez cas nominal et cas limite.
-4. Vous évitez les pièges les plus fréquents.
-5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
-
-## 1.1 Programme minimal exécutable
+## 1.1 Point d'entrée et contrat d'exécution
 
 ```vit
+// Orchestration: enchaîne les étapes sans logique cachée
 entry main at core/app {
+  // Sortie programme: code de retour observable
   return 0
 }
 ```
 
-Lecture simple du code:
-1. `entry main at core/app {` : cette ligne fixe le point d'entrée `main` dans `core/app` et sert de scénario exécutable de bout en bout pour le chapitre.
-2. `return 0` : cette ligne termine l'exécution du bloc courant avec le code `0`, utile pour observer le résultat global du scénario.
-3. `}` : cette accolade ferme le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: le scénario principal se termine avec `return 0`.
-- Observation testable: exécuter le scénario permet de vérifier le code de sortie `0`.
+Ce que ce bloc fixe:
+- frontière d'exécution: `main` dans `core/app`
+- sémantique de terminaison: sortie immédiate via `return`
+- comportement déterministe: aucune dépendance cachée
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Si ce bloc est instable, tout le reste l'est aussi.
 
-L'intention de cette étape est directe: `entry` fixe le point de depart. `return` fixe le code de sortie sans ambiguite.
-
-En pratique, ce choix simplifie la lecture: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
-
-À l'exécution, le programme entre dans `main` puis sort avec `0`.
-
-Erreurs classiques à éviter:
-- accumuler des cas spéciaux sans clarifier l'intention.
-- introduire de la complexité avant de stabiliser le comportement.
-- laisser des décisions implicites qui freinent la relecture.
-
-## 1.2 Introduire une procédure
+## 1.2 Extraction du calcul hors de l'orchestration
 
 ```vit
 proc add(a: int, b: int) -> int {
+  // Sortie locale: valeur retournee par la procedure
   give a + b
 }
+
+// Orchestration: enchaîne les étapes sans logique cachée
 entry main at core/app {
   let r: int = add(20, 22)
+  // Sortie programme: code de retour observable
   return r
 }
 ```
 
-Lecture simple du code:
-1. `proc add(a: int, b: int) -> int {` : le contrat est défini pour `add`: entrées `a: int, b: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `give a + b` : la branche renvoie immédiatement `a + b` pour la branche courante, la sortie de branche est explicite et vérifiable.
-3. `}` : cette accolade ferme le bloc logique.
-4. `entry main at core/app {` : cette ligne fixe le point d'entrée `main` dans `core/app` et sert de scénario exécutable de bout en bout pour le chapitre.
-5. `let r: int = add(20, 22)` : cette ligne crée la variable `r` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
-6. `return r` : cette ligne termine l'exécution du bloc courant avec le code `r`, utile pour observer le résultat global du scénario.
-7. `}` : cette accolade clôt le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `a + b`.
-- Observation testable: exécuter le scénario permet de vérifier le code de sortie `r`.
+Analyse:
+1. `add` porte un contrat pur (`int, int -> int`).
+2. `entry` orchestre l'appel et restitue le résultat.
+3. la responsabilité est séparée: calcul vs exécution.
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Invariant utile:
+- pour une même paire `(a,b)`, `add` doit produire la même sortie.
 
-L'intention de cette étape est directe: Signature compile-time stable et appel vérifie. Pas d'effet secondaire cache.
+Conséquence de design:
+- tests unitaires sur `add` sans dépendre de l'environnement d'entrée.
 
-En pratique, ce choix simplifie la lecture: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
-
-À l'exécution, `add(20,22)=42`, sortie finale `42`.
-
-Erreurs classiques à éviter:
-- accumuler des cas spéciaux sans clarifier l'intention.
-- introduire de la complexité avant de stabiliser le comportement.
-- laisser des décisions implicites qui freinent la relecture.
-
-## 1.3 Ajouter une boucle bornée
+## 1.3 Boucle bornée: preuve d'arrêt et invariant d'état
 
 ```vit
 proc sum_to(n: int) -> int {
   let i: int = 0
   let s: int = 0
+
+  // Boucle: progression controlee jusqu'a la borne
+
   loop {
+    // Borne d'arret: stoppe la boucle de maniere explicite
     if i > n { break }
     set s = s + i
     set i = i + 1
   }
-give s
+
+  // Sortie locale: valeur retournee par la procedure
+  give s
 }
 ```
 
-Lecture simple du code:
-1. `proc sum_to(n: int) -> int {` : le contrat est posé pour `sum_to`: entrées `n: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `let i: int = 0` : cette ligne crée la variable `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
-3. `let s: int = 0` : cette ligne crée la variable `s` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
-4. `loop {` : cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`).
-5. `if i > n { break }` : cette garde traite le cas limite avant le calcul.
-6. `set s = s + i` : cette ligne réalise une mutation volontaire et visible: l'état `s` change ici, à cet endroit précis du flux.
-7. `set i = i + 1` : cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux.
-8. `}` : cette accolade ferme le bloc logique.
-9. `give s` : la sortie est renvoyée immédiatement `s` pour la branche courante, la sortie de branche est explicite et vérifiable.
-10. `}` : cette accolade ferme le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `s`.
-- Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
+Invariants:
+- avant le test `i > n`, `s` contient la somme `[0..i-1]`
+- `i` progresse strictement de `+1`
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Preuve d'arrêt:
+- la variable de progression `i` est monotone croissante
+- la borne `n` est fixe
+- donc la condition `i > n` devient vraie en temps fini (pour `n` fini)
 
-L'intention de cette étape est directe: Borne de sortie explicite, mutation d'état localisée.
+Trace compacte pour `n=3`:
+- `(i,s)=(0,0)->(1,0)->(2,1)->(3,3)->(4,6)` puis arrêt, sortie `6`
 
-En pratique, ce choix simplifie la lecture: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
+## 1.4 Erreurs structurantes à éviter
 
-À l'exécution, `sum_to(3)` retourne `6`.
+1. surcharger `entry` avec de la logique métier
+2. introduire une boucle sans borne d'arrêt explicite
+3. mélanger calcul et conversion de sortie dans la même fonction
 
-Erreurs classiques à éviter:
-- laisser une boucle sans borne claire ou sans condition d'arrêt vérifiable.
-- faire évoluer plusieurs variables d'état sans documenter leur rôle.
-- optimiser trop tôt sans verrouiller d'abord le comportement attendu.
+## 1.5 Check-list de fin de chapitre
 
-## À retenir
-
-Entrée claire, signatures explicites, borne de boucle visible. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, contrat explicite, et comportement observable du début à la fin. L'objectif final est de rendre chaque décision de code explicable à la première lecture, comme dans un texte de référence.
-
-## Test mental
-
-Question: que se passe-t-il si l'entrée est invalide ?
-Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
-## À faire
-
-1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
-2. Écrivez un mini test mental sur une entrée invalide du chapitre, puis prédisez la branche exécutée.
-
-## Corrigé minimal
-
-- identifiez la ligne modifiée et expliquez en une phrase la nouvelle sortie attendue.
-- nommez la garde ou la branche de secours réellement utilisée.
-
-## Conforme EBNF
-
-<<< vérification rapide >>>
-- Top-level: seules les déclarations de module (`space`, `pull`, `use`, `share`, `const`, `type`, `form`, `pick`, `proc`, `entry`, `macro`) apparaissent hors bloc.
-- Statements: les instructions (`let`, `make`, `set`, `give`, `emit`, `if`, `loop`, `for`, `match`, `select`, `return`) restent dans un `block`.
-- Types primaires: `bool`, `string`, `int`, `i32`, `i64`, `i128`, `u32`, `u64`, `u128` sont acceptés dans `type_primary`.
+1. le point d'entrée est-il unique et explicite ?
+2. chaque `proc` a-t-elle un contrat lisible ?
+3. chaque boucle a-t-elle borne + progression + invariant ?
+4. la sortie finale est-elle directement traçable ?
 
 ## Keywords à revoir
 
-- `book/keywords/at.md`.
-- `book/keywords/bool.md`.
-- `book/keywords/break.md`.
-- `book/keywords/continue.md`.
-- `book/keywords/entry.md`.
+- `book/keywords/entry.md`
+- `book/keywords/proc.md`
+- `book/keywords/loop.md`
+- `book/keywords/give.md`
+- `book/keywords/return.md`
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **demarrer**: pipeline validation -> transformation -> décision -> projection.
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/demarrer
+
+form Input { id: int value: int quota: int }
+pick Eval { case Accepted(score: int) case Rejected(code: int) }
+
+proc validate(x: Input) -> Eval {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if x.id <= 0 { give Eval.Rejected(21) }
+  // Garde: bloque un cas invalide avant de continuer
+  if x.quota < 0 { give Eval.Rejected(22) }
+  // Garde: bloque un cas invalide avant de continuer
+  if x.value < 0 { give Eval.Rejected(23) }
+  // Sortie locale: valeur retournee par la procedure
+  give Eval.Accepted(x.value)
+}
+
+proc transform(score: int, quota: int) -> int {
+  let capped: int = score
+  if capped > quota { set capped = quota }
+  // Garde: bloque un cas invalide avant de continuer
+  if capped < 0 { give 0 }
+  // Sortie locale: valeur retournee par la procedure
+  give capped * 2
+}
+
+proc decide(r: Eval, quota: int) -> Eval {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match r {
+    case Accepted(s) {
+      let out: int = transform(s, quota)
+      // Garde: bloque un cas invalide avant de continuer
+  if out >= 10 { give Eval.Accepted(out) }
+      // Sortie locale: valeur retournee par la procedure
+  give Eval.Rejected(31)
+    }
+    case Rejected(c) { give Eval.Rejected(c) }
+    otherwise { give Eval.Rejected(70) }
+  }
+}
+
+// Projection finale: convertit l'état métier en code de sortie
+proc to_exit(r: Eval) -> int {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match r {
+    case Accepted(_) { give 0 }
+    case Rejected(code) { give code }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let x: Input = Input(1, 8, 9)
+  let v: Eval = validate(x)
+  let d: Eval = decide(v, x.quota)
+  // Sortie programme: code de retour observable
+  return to_exit(d)
+}
+```
+
+Scénarios recommandés (demarrer):
+- Cas nominal -> sortie 0.
+- Cas quota strict -> comportement déterministe.
+- Cas invalide id<=0 -> sortie 21.

@@ -97,6 +97,7 @@ Fix:
 ```vit
 entry main at app/repro {
   emit 1
+  // Sortie programme: code de retour observable
   return 0
 }
 ```
@@ -111,6 +112,7 @@ Lecture ligne par ligne (débutant):
 
 ```vit
 entry main at app/repro {
+  // Sortie programme: code de retour observable
   return native_missing(1)
 }
 # parse OK, link KO: symbole absent.
@@ -232,3 +234,65 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **erreurs build**: pipeline diagnostic (capture, classification, redaction, projection sortie).
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/erreurs-build
+
+form Event { code: int severity: int payload_len: int }
+pick Diagnostic { case Info(code: int) case Warn(code: int) case Error(code: int) }
+
+// Classification: mappe un événement vers un niveau explicite
+proc classify(e: Event) -> Diagnostic {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if e.code == 0 { give Diagnostic.Info(0) }
+  // Garde: bloque un cas invalide avant de continuer
+  if e.severity <= 2 { give Diagnostic.Warn(e.code) }
+  // Sortie locale: valeur retournee par la procedure
+  give Diagnostic.Error(e.code)
+}
+
+// Redaction: borne la charge utile avant diffusion
+proc redact(e: Event) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if e.payload_len < 0 { give 81 }
+  // Garde: bloque un cas invalide avant de continuer
+  if e.payload_len > 4096 { give 82 }
+  // Sortie locale: valeur retournee par la procedure
+  give 0
+}
+
+proc handle(e: Event) -> int {
+  let r: int = redact(e)
+  // Garde: bloque un cas invalide avant de continuer
+  if r != 0 { give r }
+  let d: Diagnostic = classify(e)
+  // Match: decision explicite selon l'etat
+  match d {
+    case Info(_) { give 0 }
+    case Warn(_) { give 0 }
+    case Error(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let e: Event = Event(17, 3, 120)
+  // Sortie programme: code de retour observable
+  return handle(e)
+}
+```
+
+Scénarios recommandés (erreurs build):
+- Niveau info ou warn -> sortie 0.
+- Erreur métier code 17 -> sortie 17.
+- Payload hors limites -> sortie 82.

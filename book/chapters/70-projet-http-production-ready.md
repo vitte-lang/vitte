@@ -68,6 +68,7 @@ Snippet Vitte:
 
 ```vit
 proc health() -> int {
+  // Sortie programme: code de retour observable
   return 200
 }
 ```
@@ -85,6 +86,7 @@ Snippet Vitte:
 ```vit
 proc login(ok: bool) -> int {
   if not ok { return 401 }
+  // Sortie programme: code de retour observable
   return 200
 }
 ```
@@ -102,6 +104,7 @@ Snippet Vitte (degrade mode):
 
 ```vit
 proc login_degraded() -> int {
+  // Sortie programme: code de retour observable
   return 503
 }
 ```
@@ -154,6 +157,7 @@ Thème: **projet complet http production-ready**. Cette section évite les gén�
 
 ```vit
 proc health() -> int {
+  // Sortie programme: code de retour observable
   return 200
 }
 ```
@@ -187,3 +191,83 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **projet http production ready**: flux applicatif complet (entrée, politique métier, persistance simulée, code de sortie).
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/projet-http-production-ready
+
+form Request { id: int amount: int quota: int }
+pick Result { case Accepted(total: int) case Rejected(code: int) }
+
+// Entrée applicative: validation des invariants de requête
+proc parse_request(r: Request) -> Result {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if r.id <= 0 { give Result.Rejected(91) }
+  // Garde: bloque un cas invalide avant de continuer
+  if r.quota < 0 { give Result.Rejected(92) }
+  // Garde: bloque un cas invalide avant de continuer
+  if r.amount < 0 { give Result.Rejected(93) }
+  // Sortie locale: valeur retournee par la procedure
+  give Result.Accepted(r.amount)
+}
+
+// Politique métier: applique les règles de décision
+proc apply_policy(total: int, quota: int) -> Result {
+  let capped: int = total
+  if capped > quota { set capped = quota }
+  // Garde: bloque un cas invalide avant de continuer
+  if capped < 5 { give Result.Rejected(94) }
+  // Sortie locale: valeur retournee par la procedure
+  give Result.Accepted(capped)
+}
+
+// Persistance simulée: matérialise un résultat sans I/O réel
+proc persist_sim(x: Result) -> Result {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match x {
+    case Accepted(v) {
+      // Garde: bloque un cas invalide avant de continuer
+  if v % 13 == 0 { give Result.Rejected(95) }
+      // Sortie locale: valeur retournee par la procedure
+  give Result.Accepted(v)
+    }
+    case Rejected(c) { give Result.Rejected(c) }
+    otherwise { give Result.Rejected(70) }
+  }
+}
+
+// Projection finale: convertit l'état métier en code de sortie
+proc to_exit(x: Result) -> int {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match x {
+    case Accepted(_) { give 0 }
+    case Rejected(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let req: Request = Request(7, 12, 15)
+  let p: Result = parse_request(req)
+  let d: Result = apply_policy(12, req.quota)
+  let s: Result = persist_sim(d)
+  let _probe: int = to_exit(p)
+  // Sortie programme: code de retour observable
+  return to_exit(s)
+}
+```
+
+Scénarios recommandés (projet http production ready):
+- Requête nominale -> sortie 0.
+- Entrée invalide id<=0 -> sortie 91.
+- Refus métier valeur<5 -> sortie 94.

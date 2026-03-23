@@ -120,11 +120,16 @@ Erreurs fréquentes à éviter:
 
 ```vit
 proc read_raw(v: int) -> Sample {
+  // Sortie locale: valeur retournee par la procedure
   give Sample(v)
 }
 proc clamp_raw(s: Sample, cfg: ControllerCfg) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if s.raw < cfg.min_raw { give cfg.min_raw }
+  // Garde: bloque un cas invalide avant de continuer
   if s.raw > cfg.max_raw { give cfg.max_raw }
+  // Sortie locale: valeur retournee par la procedure
   give s.raw
 }
 ```
@@ -168,9 +173,11 @@ form Filter3 {
   c: int
 }
 proc filter3_push(f: Filter3, v: int) -> Filter3 {
+  // Sortie locale: valeur retournee par la procedure
   give Filter3(f.b, f.c, v)
 }
 proc filter3_mean(f: Filter3) -> int {
+  // Sortie locale: valeur retournee par la procedure
   give (f.a + f.b + f.c) / 3
 }
 ```
@@ -212,7 +219,9 @@ Erreurs fréquentes à éviter:
 ```vit
 proc to_percent(v: int, cfg: ControllerCfg) -> int {
   let span: int = cfg.max_raw - cfg.min_raw
+  // Garde: bloque un cas invalide avant de continuer
   if span <= 0 { give 0 }
+  // Sortie locale: valeur retournee par la procedure
   give ((v - cfg.min_raw) * 100) / span
 }
 ```
@@ -246,17 +255,25 @@ Erreurs fréquentes à éviter:
 
 ```vit
 proc classify_hysteresis(p: int, prev: ControlState, cfg: ControllerCfg) -> ControlState {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
   match prev {
     case Alert {
-      if p <= cfg.alert_off { give Armed }
-      give Alert
+      // Garde: bloque un cas invalide avant de continuer
+  if p <= cfg.alert_off { give Armed }
+      // Sortie locale: valeur retournee par la procedure
+  give Alert
     }
   case Armed {
-    if p >= cfg.alert_on { give Alert }
-    give Armed
+    // Garde: bloque un cas invalide avant de continuer
+  if p >= cfg.alert_on { give Alert }
+    // Sortie locale: valeur retournee par la procedure
+  give Armed
   }
 case Idle {
+  // Garde: bloque un cas invalide avant de continuer
   if p >= cfg.alert_on { give Alert }
+  // Sortie locale: valeur retournee par la procedure
   give Armed
 }
 case Fault(code) { give Fault(code) }
@@ -307,8 +324,12 @@ Erreurs fréquentes à éviter:
 
 ```vit
 proc detect_fault(raw: int, cfg: ControllerCfg) -> ControlState {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if raw < cfg.min_raw - 100 { give Fault(1001) }
+  // Garde: bloque un cas invalide avant de continuer
   if raw > cfg.max_raw + 100 { give Fault(1002) }
+  // Sortie locale: valeur retournee par la procedure
   give Armed
 }
 ```
@@ -347,9 +368,11 @@ form ControllerState {
 proc step(raw_input: int, st: ControllerState, cfg: ControllerCfg) -> ControllerState {
   let s: Sample = read_raw(raw_input)
   let f0: ControlState = detect_fault(s.raw, cfg)
+  // Match: decision explicite selon l'etat
   match f0 {
     case Fault(code) {
-      give ControllerState(st.filter, Fault(code), st.percent)
+      // Sortie locale: valeur retournee par la procedure
+  give ControllerState(st.filter, Fault(code), st.percent)
     }
   otherwise {
     let clean: int = clamp_raw(s, cfg)
@@ -357,7 +380,8 @@ proc step(raw_input: int, st: ControllerState, cfg: ControllerCfg) -> Controller
     let avg: int = filter3_mean(f1)
     let p: int = to_percent(avg, cfg)
     let next_ctrl: ControlState = classify_hysteresis(p, st.control, cfg)
-    give ControllerState(f1, next_ctrl, p)
+    // Sortie locale: valeur retournee par la procedure
+  give ControllerState(f1, next_ctrl, p)
   }
 }
 }
@@ -410,6 +434,8 @@ Erreurs fréquentes à éviter:
 
 ```vit
 proc actuator_pwm(c: ControlState, p: int) -> int {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
   match c {
     case Idle { give 0 }
     case Armed { give p / 4 }    # pilotage doux
@@ -459,6 +485,7 @@ entry main at arduino/app {
   let st2: ControllerState = step(920, st1, cfg)
   let out: int = actuator_pwm(st2.control, st2.percent)
   if out >= 0 { return 0 }
+  // Sortie programme: code de retour observable
   return 70
 }
 ```
@@ -640,3 +667,73 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **projet arduino**: boucle embarquée robuste (lecture, validation, décision, sortie watchdog).
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/projet-arduino
+
+form Telemetry { temp_c: int volts_mv: int seq: int }
+pick Decision { case Keep case Cool(level: int) case Fault(code: int) }
+
+proc read_sensor(step: int) -> Telemetry {
+  let t: int = 30 + (step % 10)
+  let v: int = 3300 - (step % 30)
+  // Sortie locale: valeur retournee par la procedure
+  give Telemetry(t, v, step)
+}
+
+proc validate(t: Telemetry) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if t.volts_mv < 3000 { give 61 }
+  // Garde: bloque un cas invalide avant de continuer
+  if t.temp_c < -20 { give 62 }
+  // Garde: bloque un cas invalide avant de continuer
+  if t.temp_c > 120 { give 63 }
+  // Sortie locale: valeur retournee par la procedure
+  give 0
+}
+
+proc control(t: Telemetry) -> Decision {
+  let v: int = validate(t)
+  // Garde: bloque un cas invalide avant de continuer
+  if v != 0 { give Decision.Fault(v) }
+  // Garde: bloque un cas invalide avant de continuer
+  if t.temp_c >= 36 { give Decision.Cool(2) }
+  // Garde: bloque un cas invalide avant de continuer
+  if t.temp_c >= 33 { give Decision.Cool(1) }
+  // Sortie locale: valeur retournee par la procedure
+  give Decision.Keep
+}
+
+// Projection finale: convertit l'état métier en code de sortie
+proc to_exit(d: Decision) -> int {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match d {
+    case Keep { give 0 }
+    case Cool(_) { give 0 }
+    case Fault(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let t: Telemetry = read_sensor(9)
+  let d: Decision = control(t)
+  // Sortie programme: code de retour observable
+  return to_exit(d)
+}
+```
+
+Scénarios recommandés (projet arduino):
+- Temp nominale -> sortie 0.
+- Sous-tension -> sortie 61.
+- Température hors bornes -> sortie 62 ou 63.

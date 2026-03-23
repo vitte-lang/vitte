@@ -53,8 +53,12 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 
 ```vit
 proc clamp(x: int, lo: int, hi: int) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if x < lo { give lo }
+  // Garde: bloque un cas invalide avant de continuer
   if x > hi { give hi }
+  // Sortie locale: valeur retournee par la procedure
   give x
 }
 ```
@@ -91,8 +95,12 @@ Erreurs classiques à éviter:
 
 ```vit
 proc parse_port(x: int) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if x < 0 { give -1 }
+  // Garde: bloque un cas invalide avant de continuer
   if x > 65535 { give -1 }
+  // Sortie locale: valeur retournee par la procedure
   give x
 }
 ```
@@ -132,7 +140,10 @@ Erreurs classiques à éviter:
 
 ```vit
 proc non_reg_demo(x: int) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if x == 0 { give 0 }
+  // Sortie locale: valeur retournee par la procedure
   give 10 / x
 }
 ```
@@ -212,3 +223,72 @@ Mini quiz:
 1. Quelle est l'invariant central de ce chapitre ?
 2. Quelle garde évite l'état invalide le plus fréquent ?
 3. Quel test simple prouve le comportement nominal ?
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **tests**: harnais complet (cas unitaires, agrégation, projection CI).
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/tests
+
+form TestCase { id: int input: int expected: int }
+pick CaseResult { case Pass(id: int) case Fail(id: int, got: int, expected: int) }
+
+proc subject(x: int) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if x < 0 { give 0 }
+  // Garde: bloque un cas invalide avant de continuer
+  if x > 100 { give 100 }
+  // Sortie locale: valeur retournee par la procedure
+  give x
+}
+
+// Exécute un cas de test et retourne un résultat typé
+proc run(c: TestCase) -> CaseResult {
+  let got: int = subject(c.input)
+  // Garde: bloque un cas invalide avant de continuer
+  if got == c.expected { give CaseResult.Pass(c.id) }
+  // Sortie locale: valeur retournee par la procedure
+  give CaseResult.Fail(c.id, got, c.expected)
+}
+
+// Agrège les résultats et projette un code CI
+proc ci_exit(a: CaseResult, b: CaseResult, c: CaseResult) -> int {
+  let ok: int = 0
+  // Match: decision explicite selon l'etat
+  match a { case Pass(_) { set ok = ok + 1 } otherwise { } }
+  // Match: decision explicite selon l'etat
+  match b { case Pass(_) { set ok = ok + 1 } otherwise { } }
+  // Match: decision explicite selon l'etat
+  match c { case Pass(_) { set ok = ok + 1 } otherwise { } }
+  // Garde: bloque un cas invalide avant de continuer
+  if ok == 3 { give 0 }
+  // Garde: bloque un cas invalide avant de continuer
+  if ok == 2 { give 11 }
+  // Garde: bloque un cas invalide avant de continuer
+  if ok == 1 { give 12 }
+  // Sortie locale: valeur retournee par la procedure
+  give 13
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let c1: TestCase = TestCase(1, -3, 0)
+  let c2: TestCase = TestCase(2, 42, 42)
+  let c3: TestCase = TestCase(3, 160, 100)
+  let r1: CaseResult = run(c1)
+  let r2: CaseResult = run(c2)
+  let r3: CaseResult = run(c3)
+  // Sortie programme: code de retour observable
+  return ci_exit(r1, r2, r3)
+}
+```
+
+Scénarios recommandés (tests):
+- 3 sur 3 réussis -> sortie 0.
+- Régression partielle -> sortie 11.
+- Échec global -> sortie 13.

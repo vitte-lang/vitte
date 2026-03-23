@@ -57,6 +57,7 @@ form Request {
   payload: string
 }
 proc encode_code(r: Request) -> int {
+  // Sortie locale: valeur retournee par la procedure
   give r.code
 }
 ```
@@ -96,7 +97,10 @@ pick IoResult {
   case Err(errno: int)
 }
 proc map_errno(e: int) -> IoResult {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if e == 0 { give Ok(0) }
+  // Sortie locale: valeur retournee par la procedure
   give Err(e)
 }
 ```
@@ -138,7 +142,8 @@ proc syscall_halt() -> int {
   unsafe {
     asm("hlt")
   }
-give 0
+// Sortie locale: valeur retournee par la procedure
+  give 0
 }
 ```
 
@@ -213,3 +218,69 @@ Repère: une garde explicite ou un chemin de secours déterministe doit s'appliq
 - `book/keywords/case.md`.
 - `book/keywords/continue.md`.
 - `book/keywords/form.md`.
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **interop**: contrat ABI explicite (version, bornes, appel natif simulé, projection de code).
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/interop
+
+form AbiEnvelope { version: int payload_size: int flags: int }
+pick NativeCall { case Ok(code: int) case Err(code: int) }
+
+proc abi_version() -> int { give 3 }
+
+// Validation ABI: refuse toute incompatibilité avant appel natif
+proc validate_abi(e: AbiEnvelope) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if e.version != abi_version() { give 51 }
+  // Garde: bloque un cas invalide avant de continuer
+  if e.payload_size <= 0 { give 52 }
+  // Garde: bloque un cas invalide avant de continuer
+  if e.payload_size > 4096 { give 53 }
+  // Garde: bloque un cas invalide avant de continuer
+  if e.flags < 0 { give 54 }
+  // Sortie locale: valeur retournee par la procedure
+  give 0
+}
+
+// Appel natif simulé: exécution seulement si le contrat est valide
+proc call_native(e: AbiEnvelope) -> NativeCall {
+  let v: int = validate_abi(e)
+  // Garde: bloque un cas invalide avant de continuer
+  if v != 0 { give NativeCall.Err(v) }
+  // Garde: bloque un cas invalide avant de continuer
+  if e.payload_size % 2 == 0 { give NativeCall.Ok(0) }
+  // Sortie locale: valeur retournee par la procedure
+  give NativeCall.Err(55)
+}
+
+// Projection finale: convertit l'état métier en code de sortie
+proc to_exit(r: NativeCall) -> int {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match r {
+    case Ok(c) { give c }
+    case Err(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let e: AbiEnvelope = AbiEnvelope(3, 128, 1)
+  let r: NativeCall = call_native(e)
+  // Sortie programme: code de retour observable
+  return to_exit(r)
+}
+```
+
+Scénarios recommandés (interop):
+- ABI valide -> sortie 0.
+- Version incompatible -> sortie 51.
+- Payload hors contrat -> sortie 52 ou 53.

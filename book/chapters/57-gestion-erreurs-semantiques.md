@@ -28,6 +28,7 @@ Differencier clairement erreurs syntaxiques et erreurs semantiques pour accelere
 
 ```vit
 entry main at app/demo {
+  // Sortie programme: code de retour observable
   return unknown_name
 }
 ```
@@ -37,6 +38,7 @@ entry main at app/demo {
 ```vit
 entry main at app/demo {
   let x: int = "bad"
+  // Sortie programme: code de retour observable
   return x
 }
 ```
@@ -89,6 +91,7 @@ Thème: **gestion des erreurs semantiques**. Cette section évite les générali
 
 ```vit
 entry main at app/demo {
+  // Sortie programme: code de retour observable
   return unknown_name
 }
 ```
@@ -122,3 +125,65 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **gestion erreurs semantiques**: pipeline diagnostic (capture, classification, redaction, projection sortie).
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/gestion-erreurs-semantiques
+
+form Event { code: int severity: int payload_len: int }
+pick Diagnostic { case Info(code: int) case Warn(code: int) case Error(code: int) }
+
+// Classification: mappe un événement vers un niveau explicite
+proc classify(e: Event) -> Diagnostic {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if e.code == 0 { give Diagnostic.Info(0) }
+  // Garde: bloque un cas invalide avant de continuer
+  if e.severity <= 2 { give Diagnostic.Warn(e.code) }
+  // Sortie locale: valeur retournee par la procedure
+  give Diagnostic.Error(e.code)
+}
+
+// Redaction: borne la charge utile avant diffusion
+proc redact(e: Event) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if e.payload_len < 0 { give 81 }
+  // Garde: bloque un cas invalide avant de continuer
+  if e.payload_len > 4096 { give 82 }
+  // Sortie locale: valeur retournee par la procedure
+  give 0
+}
+
+proc handle(e: Event) -> int {
+  let r: int = redact(e)
+  // Garde: bloque un cas invalide avant de continuer
+  if r != 0 { give r }
+  let d: Diagnostic = classify(e)
+  // Match: decision explicite selon l'etat
+  match d {
+    case Info(_) { give 0 }
+    case Warn(_) { give 0 }
+    case Error(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let e: Event = Event(17, 3, 120)
+  // Sortie programme: code de retour observable
+  return handle(e)
+}
+```
+
+Scénarios recommandés (gestion erreurs semantiques):
+- Niveau info ou warn -> sortie 0.
+- Erreur métier code 17 -> sortie 17.
+- Payload hors limites -> sortie 82.

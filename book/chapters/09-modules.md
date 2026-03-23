@@ -54,6 +54,7 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 ```vit
 space app/core
 proc add(a: int, b: int) -> int {
+  // Sortie locale: valeur retournee par la procedure
   give a + b
 }
 ```
@@ -91,6 +92,7 @@ space app/math
 pull app/core as core
 share add_pair
 proc add_pair(x: int, y: int) -> int {
+  // Sortie locale: valeur retournee par la procedure
   give core.add(x, y)
 }
 ```
@@ -203,3 +205,63 @@ Mini quiz:
 1. Quelle est l'invariant central de ce chapitre ?
 2. Quelle garde évite l'état invalide le plus fréquent ?
 3. Quel test simple prouve le comportement nominal ?
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **modules**: résolution de module (normalisation, versionnage, décision de chargement).
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/modules
+
+form ModuleSpec { name_len: int major: int minor: int }
+pick Resolve { case Loaded(path_code: int) case Missing(code: int) }
+
+proc normalize_len(n: int) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if n <= 0 { give 0 }
+  // Sortie locale: valeur retournee par la procedure
+  give n
+}
+
+// Résolution: valide la référence et produit une décision de chargement
+proc resolve(m: ModuleSpec) -> Resolve {
+  let n: int = normalize_len(m.name_len)
+  // Garde: bloque un cas invalide avant de continuer
+  if n == 0 { give Resolve.Missing(71) }
+  // Garde: bloque un cas invalide avant de continuer
+  if m.major <= 0 { give Resolve.Missing(72) }
+  // Garde: bloque un cas invalide avant de continuer
+  if m.minor < 0 { give Resolve.Missing(73) }
+  let code: int = 100 + (m.major * 10) + m.minor
+  // Sortie locale: valeur retournee par la procedure
+  give Resolve.Loaded(code)
+}
+
+// Projection finale: convertit l'état métier en code de sortie
+proc to_exit(r: Resolve) -> int {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match r {
+    case Loaded(_) { give 0 }
+    case Missing(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let m: ModuleSpec = ModuleSpec(8, 1, 2)
+  let r: Resolve = resolve(m)
+  // Sortie programme: code de retour observable
+  return to_exit(r)
+}
+```
+
+Scénarios recommandés (modules):
+- Spécification valide -> sortie 0.
+- Nom invalide -> sortie 71.
+- Version invalide -> sortie 72 ou 73.

@@ -41,6 +41,7 @@ proc sum3(a:int,b:int,c:int) -> int { give a+b+c }
 ```vit
 proc hot_path(v: int) -> int {
   let acc: int = v
+  // Sortie locale: valeur retournee par la procedure
   give acc
 }
 ```
@@ -52,6 +53,7 @@ proc noisy(v:int)->int{
   let a:int=v
   let b:int=a
   let c:int=b
+  // Sortie locale: valeur retournee par la procedure
   give c
 }
 ```
@@ -119,3 +121,80 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **performance allocations copies**: mesure reproductible (warmup, séries, garde anti-bruit, décision de stabilité).
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/performance-allocations-copies
+
+pick Bench { case Stable(avg: int, p95: int) case Unstable(code: int) }
+
+proc workload(n: int) -> int {
+  let i: int = 0
+  let acc: int = 0
+  // Boucle: progression controlee jusqu'a la borne
+  loop {
+    // Borne d'arret: stoppe la boucle de maniere explicite
+    if i >= n { break }
+    set acc = acc + (i * 5)
+    set i = i + 1
+  }
+  // Sortie locale: valeur retournee par la procedure
+  give acc
+}
+
+proc sample(iter: int, size: int) -> int {
+  let base: int = size * 10
+  let jitter: int = iter % 9
+  // Sortie locale: valeur retournee par la procedure
+  give base + jitter
+}
+
+// Benchmark: warmup + mesures + décision de stabilité
+proc benchmark(size: int) -> Bench {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if size <= 0 { give Bench.Unstable(41) }
+  let w: int = workload(120)
+  let _w: int = w
+  let s1: int = sample(1, size)
+  let s2: int = sample(2, size)
+  let s3: int = sample(3, size)
+  let s4: int = sample(4, size)
+  let s5: int = sample(5, size)
+  let avg: int = (s1 + s2 + s3 + s4 + s5) / 5
+  let p95: int = s5
+  // Garde: bloque un cas invalide avant de continuer
+  if p95 > (avg * 2) { give Bench.Unstable(42) }
+  // Sortie locale: valeur retournee par la procedure
+  give Bench.Stable(avg, p95)
+}
+
+// Projection finale: convertit l'état métier en code de sortie
+proc to_exit(b: Bench) -> int {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match b {
+    case Stable(_, _) { give 0 }
+    case Unstable(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let b: Bench = benchmark(600)
+  // Sortie programme: code de retour observable
+  return to_exit(b)
+}
+```
+
+Scénarios recommandés (performance allocations copies):
+- Campagne stable -> sortie 0.
+- Paramètre invalide (size=0) -> sortie 41.
+- Variance excessive -> sortie 42.

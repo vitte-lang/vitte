@@ -55,6 +55,7 @@ Une procédure commence toujours par une promesse explicite: "si vous me donnez 
 
 ```vit
 proc add(a: int, b: int) -> int {
+  // Sortie locale: valeur retournee par la procedure
   give a + b
 }
 ```
@@ -91,8 +92,12 @@ Dans la plupart des programmes, les bugs viennent moins du cas normal que des bo
 
 ```vit
 proc clamp01(v: int) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if v < 0 { give 0 }
+  // Garde: bloque un cas invalide avant de continuer
   if v > 1 { give 1 }
+  // Sortie locale: valeur retournee par la procedure
   give v
 }
 ```
@@ -132,11 +137,14 @@ Une boucle devient dangereuse dès que l'on ne sait plus exactement comment l'é
 ```vit
 proc count(n: int) -> int {
   let i: int = 0
+  // Boucle: progression controlee jusqu'a la borne
   loop {
+    // Borne d'arret: stoppe la boucle de maniere explicite
     if i >= n { break }
     set i = i + 1
   }
-give i
+// Sortie locale: valeur retournee par la procedure
+  give i
 }
 ```
 
@@ -211,3 +219,80 @@ Repère: une garde explicite ou un chemin de secours déterministe doit s'appliq
 - `book/keywords/continue.md`.
 - `book/keywords/give.md`.
 - `book/keywords/if.md`.
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **syntaxe**: chaîne d'analyse complète (scan -> parse -> validation structurelle -> projection diagnostic).
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/syntaxe
+
+form SourceUnit { bytes: int lines: int tokens_hint: int }
+pick ParseState { case Parsed(nodes: int) case Failed(code: int) }
+
+// Scan: transforme l'entrée brute en signal exploitable
+proc scan(u: SourceUnit) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if u.bytes <= 0 { give 0 }
+  // Garde: bloque un cas invalide avant de continuer
+  if u.lines <= 0 { give 0 }
+  // Sortie locale: valeur retournee par la procedure
+  give (u.tokens_hint + u.lines)
+}
+
+// Parse: construit un état syntaxique déterministe
+proc parse(token_count: int) -> ParseState {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if token_count == 0 { give ParseState.Failed(101) }
+  // Garde: bloque un cas invalide avant de continuer
+  if token_count < 4 { give ParseState.Failed(102) }
+  // Sortie locale: valeur retournee par la procedure
+  give ParseState.Parsed(token_count)
+}
+
+proc validate_structure(nodes: int) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if nodes <= 0 { give 201 }
+  // Garde: bloque un cas invalide avant de continuer
+  if nodes > 200000 { give 202 }
+  // Sortie locale: valeur retournee par la procedure
+  give 0
+}
+
+// Projection finale: convertit l'état métier en code de sortie
+proc to_exit(p: ParseState) -> int {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match p {
+    case Parsed(n) {
+      let v: int = validate_structure(n)
+      // Garde: bloque un cas invalide avant de continuer
+  if v != 0 { give v }
+      // Sortie locale: valeur retournee par la procedure
+  give 0
+    }
+    case Failed(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let u: SourceUnit = SourceUnit(120, 12, 18)
+  let t: int = scan(u)
+  let p: ParseState = parse(t)
+  // Sortie programme: code de retour observable
+  return to_exit(p)
+}
+```
+
+Scénarios recommandés (syntaxe):
+- Unité valide -> sortie 0.
+- Entrée vide (bytes=0) -> sortie 101.
+- Structure surdimensionnée -> sortie 202.

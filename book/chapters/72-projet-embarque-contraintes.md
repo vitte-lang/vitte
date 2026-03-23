@@ -46,6 +46,7 @@ Livrer un projet embarque respectant budget mémoire et contraintes de latence.
 
 ```vit
 proc sample_once(v: int) -> int {
+  // Sortie locale: valeur retournee par la procedure
   give v
 }
 ```
@@ -57,7 +58,10 @@ Objectif:
 
 ```vit
 proc read_checked(ok: bool, value: int) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if not ok { give -1 }
+  // Sortie locale: valeur retournee par la procedure
   give value
 }
 ```
@@ -123,6 +127,7 @@ Thème: **projet embarque (contraintes mémoire/temps)**. Cette section évite l
 
 ```vit
 proc sample_once(v: int) -> int {
+  // Sortie locale: valeur retournee par la procedure
   give v
 }
 ```
@@ -156,3 +161,73 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **projet embarque contraintes**: boucle embarquée robuste (lecture, validation, décision, sortie watchdog).
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/projet-embarque-contraintes
+
+form Telemetry { temp_c: int volts_mv: int seq: int }
+pick Decision { case Keep case Cool(level: int) case Fault(code: int) }
+
+proc read_sensor(step: int) -> Telemetry {
+  let t: int = 30 + (step % 10)
+  let v: int = 3300 - (step % 30)
+  // Sortie locale: valeur retournee par la procedure
+  give Telemetry(t, v, step)
+}
+
+proc validate(t: Telemetry) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if t.volts_mv < 3000 { give 61 }
+  // Garde: bloque un cas invalide avant de continuer
+  if t.temp_c < -20 { give 62 }
+  // Garde: bloque un cas invalide avant de continuer
+  if t.temp_c > 120 { give 63 }
+  // Sortie locale: valeur retournee par la procedure
+  give 0
+}
+
+proc control(t: Telemetry) -> Decision {
+  let v: int = validate(t)
+  // Garde: bloque un cas invalide avant de continuer
+  if v != 0 { give Decision.Fault(v) }
+  // Garde: bloque un cas invalide avant de continuer
+  if t.temp_c >= 36 { give Decision.Cool(2) }
+  // Garde: bloque un cas invalide avant de continuer
+  if t.temp_c >= 33 { give Decision.Cool(1) }
+  // Sortie locale: valeur retournee par la procedure
+  give Decision.Keep
+}
+
+// Projection finale: convertit l'état métier en code de sortie
+proc to_exit(d: Decision) -> int {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match d {
+    case Keep { give 0 }
+    case Cool(_) { give 0 }
+    case Fault(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let t: Telemetry = read_sensor(9)
+  let d: Decision = control(t)
+  // Sortie programme: code de retour observable
+  return to_exit(d)
+}
+```
+
+Scénarios recommandés (projet embarque contraintes):
+- Temp nominale -> sortie 0.
+- Sous-tension -> sortie 61.
+- Température hors bornes -> sortie 62 ou 63.

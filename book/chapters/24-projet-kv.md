@@ -120,7 +120,10 @@ Erreurs fréquentes à éviter:
 
 ```vit
 proc key_valid(k: string) -> bool {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if k == "" { give false }
+  // Sortie locale: valeur retournee par la procedure
   give true
 }
 ```
@@ -160,12 +163,16 @@ form KvMem {
 }
 proc find_index(m: KvMem, k: string) -> int {
   let i: int = 0
+  // Boucle: progression controlee jusqu'a la borne
   loop {
+    // Borne d'arret: stoppe la boucle de maniere explicite
     if i >= m.entries.len() { break }
-    if m.entries[i].key == k { give i }
+    // Garde: bloque un cas invalide avant de continuer
+  if m.entries[i].key == k { give i }
     set i = i + 1
   }
-give -1
+// Sortie locale: valeur retournee par la procedure
+  give -1
 }
 ```
 
@@ -201,21 +208,28 @@ Erreurs fréquentes à éviter:
 
 ```vit
 proc put_guard(entries_len: int, k: string) -> KvResult {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if not key_valid(k) { give ErrKey }
+  // Garde: bloque un cas invalide avant de continuer
   if entries_len < 0 { give ErrState }
+  // Sortie locale: valeur retournee par la procedure
   give Ok
 }
 proc put(m: KvMem, k: string, v: string) -> KvResult {
   let g: KvResult = put_guard(m.entries.len(), k)
+  // Match: decision explicite selon l'etat
   match g {
     case Ok {
       let idx: int = find_index(m, k)
       if idx < 0 {
         m.entries.push(Entry(k, v))
-        give Ok
+        // Sortie locale: valeur retournee par la procedure
+  give Ok
       }
     m.entries[idx] = Entry(k, v)
-    give Ok
+    // Sortie locale: valeur retournee par la procedure
+  give Ok
   }
 case ErrKey { give ErrKey }
 otherwise { give ErrState }
@@ -271,34 +285,48 @@ Erreurs fréquentes à éviter:
 
 ```vit
 proc get_guard(entries_len: int, k: string) -> KvResult {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if not key_valid(k) { give ErrKey }
+  // Garde: bloque un cas invalide avant de continuer
   if entries_len == 0 { give ErrState }
+  // Sortie locale: valeur retournee par la procedure
   give Ok
 }
 proc delete_guard(entries_len: int, k: string) -> KvResult {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if not key_valid(k) { give ErrKey }
+  // Garde: bloque un cas invalide avant de continuer
   if entries_len <= 0 { give ErrState }
+  // Sortie locale: valeur retournee par la procedure
   give Ok
 }
 proc get(m: KvMem, k: string) -> KvValue {
   let g: KvResult = get_guard(m.entries.len(), k)
+  // Match: decision explicite selon l'etat
   match g {
     case Ok {
       let idx: int = find_index(m, k)
-      if idx < 0 { give None }
-      give Some(m.entries[idx].value)
+      // Garde: bloque un cas invalide avant de continuer
+  if idx < 0 { give None }
+      // Sortie locale: valeur retournee par la procedure
+  give Some(m.entries[idx].value)
     }
   otherwise { give None }
 }
 }
 proc delete(m: KvMem, k: string) -> KvResult {
   let g: KvResult = delete_guard(m.entries.len(), k)
+  // Match: decision explicite selon l'etat
   match g {
     case Ok {
       let idx: int = find_index(m, k)
-      if idx < 0 { give ErrState }
+      // Garde: bloque un cas invalide avant de continuer
+  if idx < 0 { give ErrState }
       m.entries.remove_at(idx)
-      give Ok
+      // Sortie locale: valeur retournee par la procedure
+  give Ok
     }
   case ErrKey { give ErrKey }
   otherwise { give ErrState }
@@ -368,10 +396,12 @@ Erreurs fréquentes à éviter:
 ```vit
 proc kv_roundtrip(m: KvMem, k: string, v: string) -> KvResult {
   let p: KvResult = put(m, k, v)
+  // Match: decision explicite selon l'etat
   match p {
     case Ok {
       let g: KvValue = get(m, k)
-      match g {
+      // Match: decision explicite selon l'etat
+  match g {
         case Some(_) { give Ok }
         otherwise { give ErrState }
       }
@@ -427,6 +457,7 @@ entry main at kv/app {
   let b: KvValue = get(m, "user:1")
   let c: KvResult = delete(m, "user:1")
   if a == Ok and c == Ok { return 0 }
+  // Sortie programme: code de retour observable
   return 70
 }
 ```
@@ -581,3 +612,83 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **projet kv**: flux applicatif complet (entrée, politique métier, persistance simulée, code de sortie).
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/projet-kv
+
+form Request { id: int amount: int quota: int }
+pick Result { case Accepted(total: int) case Rejected(code: int) }
+
+// Entrée applicative: validation des invariants de requête
+proc parse_request(r: Request) -> Result {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if r.id <= 0 { give Result.Rejected(91) }
+  // Garde: bloque un cas invalide avant de continuer
+  if r.quota < 0 { give Result.Rejected(92) }
+  // Garde: bloque un cas invalide avant de continuer
+  if r.amount < 0 { give Result.Rejected(93) }
+  // Sortie locale: valeur retournee par la procedure
+  give Result.Accepted(r.amount)
+}
+
+// Politique métier: applique les règles de décision
+proc apply_policy(total: int, quota: int) -> Result {
+  let capped: int = total
+  if capped > quota { set capped = quota }
+  // Garde: bloque un cas invalide avant de continuer
+  if capped < 5 { give Result.Rejected(94) }
+  // Sortie locale: valeur retournee par la procedure
+  give Result.Accepted(capped)
+}
+
+// Persistance simulée: matérialise un résultat sans I/O réel
+proc persist_sim(x: Result) -> Result {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match x {
+    case Accepted(v) {
+      // Garde: bloque un cas invalide avant de continuer
+  if v % 13 == 0 { give Result.Rejected(95) }
+      // Sortie locale: valeur retournee par la procedure
+  give Result.Accepted(v)
+    }
+    case Rejected(c) { give Result.Rejected(c) }
+    otherwise { give Result.Rejected(70) }
+  }
+}
+
+// Projection finale: convertit l'état métier en code de sortie
+proc to_exit(x: Result) -> int {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match x {
+    case Accepted(_) { give 0 }
+    case Rejected(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let req: Request = Request(7, 12, 15)
+  let p: Result = parse_request(req)
+  let d: Result = apply_policy(12, req.quota)
+  let s: Result = persist_sim(d)
+  let _probe: int = to_exit(p)
+  // Sortie programme: code de retour observable
+  return to_exit(s)
+}
+```
+
+Scénarios recommandés (projet kv):
+- Requête nominale -> sortie 0.
+- Entrée invalide id<=0 -> sortie 91.
+- Refus métier valeur<5 -> sortie 94.

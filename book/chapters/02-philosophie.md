@@ -1,96 +1,53 @@
 # 2. Philosophie du langage
 
-Niveau: Débutant
+Niveau: Fondations avancées
 
-Prérequis: chapitre précédent `book/chapters/01-demarrer.md` et `book/glossaire.md`.
-Voir aussi: `book/chapters/01-demarrer.md`, `book/chapters/03-projet.md`, `book/glossaire.md`.
+Prérequis: `book/chapters/01-demarrer.md`, `book/glossaire.md`.
+Voir aussi: `book/chapters/03-projet.md`.
 
-## Objectif
+## Thèse
 
-Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+Vitte est efficace quand on transforme les implicites en structures explicites:
+- erreur explicite
+- état explicite
+- frontière explicite
 
-## Pourquoi
-
-Ce chapitre vous donne une compréhension claire de **Philosophie du langage**.
-Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
-
-## Ce que vous allez réellement faire
-
-Vous allez identifier les points clés de **Philosophie du langage**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
-
-## Exemple minimal
-
-Commencez par le premier extrait de code de ce chapitre.
-Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Philosophie du langage**.
-
-## Méthode de lecture
-
-1. Repérez l'intention du bloc.
-2. Vérifiez la condition ou la garde principale.
-3. Confirmez la sortie observable.
-4. Notez comment ce bloc sert **Philosophie du langage** dans l'ensemble du chapitre.
-
-## Pièges fréquents
-
-- Lire la syntaxe sans vérifier le comportement.
-- Mélanger règle générale et cas limite dans la même explication.
-- Introduire une optimisation avant d'avoir stabilisé le flux de **Philosophie du langage**.
-
-## Exercice court
-
-Prenez un exemple du chapitre sur **Philosophie du langage**.
-Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
-
-## Résumé en 5 points
-
-1. Vous connaissez l'objectif du chapitre sur **Philosophie du langage**.
-2. Vous savez lire un exemple du chapitre de façon structurée.
-3. Vous distinguez cas nominal et cas limite.
-4. Vous évitez les pièges les plus fréquents.
-5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
-
-## 2.1 Rendre l'erreur explicite
+## 2.1 Erreur explicite avant opération risquée
 
 ```vit
 proc safe_div(num: int, den: int) -> int {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
   if den == 0 { give 0 }
+  // Sortie locale: valeur retournee par la procedure
   give num / den
 }
 ```
 
-Lecture simple du code:
-1. `proc safe_div(num: int, den: int) -> int {` : contrat clair pour la division.
-2. `if den == 0 { give 0 }` : bloque le cas dangereux avant l’opération.
-3. `give num / den` : exécute uniquement le chemin nominal.
-4. `}` : fin déterministe du bloc.
+Décision d'architecture:
+- traiter le cas invalide **avant** la zone sensible
 
-Ce qu'on vérifie en pratique:
-- Cas limite: si `den == 0` est vrai, la sortie devient `0`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `num / den`.
-- Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
+Gain:
+- comportement déterministe
+- absence de chemin implicite pour la faute
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Perte assumée:
+- une branche supplémentaire à lire
 
-L'intention de cette étape est directe: La frontière de faute est placee avant l'operation sensible.
+Compromis choisi:
+- lisibilité et robustesse priment sur la compacité syntaxique.
 
-En pratique, ce choix simplifie la lecture: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
-
-À l'exécution, `safe_div(10,2)=5`, `safe_div(10,0)=0`.
-
-Erreurs classiques à éviter:
-- testér uniquement le cas nominal et ignorer les frontières.
-- confondre le symptôme observé et la cause réelle.
-- traiter les erreurs dans tous les sens au lieu de centraliser la politique.
-
-## 2.2 Modéliser les états au lieu de coder des nombres magiques
+## 2.2 État métier explicite via type somme
 
 ```vit
 pick Auth {
   case Granted(user: int)
   case Denied(code: int)
 }
+
 proc can_access(a: Auth) -> bool {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
   match a {
     case Granted(_) { give true }
     case Denied(_) { give false }
@@ -99,95 +56,139 @@ proc can_access(a: Auth) -> bool {
 }
 ```
 
-Lecture simple du code:
-1. `pick Auth { .. }` : définit un espace d’états fermé (`Granted`/`Denied`).
-2. `proc can_access(a: Auth) -> bool {` : convertit un état métier en décision booléenne.
-3. `case Granted(_) { give true }` : autorise explicitement le cas de succès.
-4. `case Denied(_) { give false }` : refuse explicitement le cas d’échec.
-5. `otherwise { give false }` : protège contre un état non géré.
+Pourquoi ce modèle tient mieux que `status: int`:
+1. le domaine des états est fermé et documenté par le type
+2. la branche de décision est explicite et auditable
+3. l'ambiguïté sémantique disparaît (`1` ne veut plus “peut-être succès”)
 
-Ce qu'on vérifie en pratique:
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
-- Observation testable: forcer le cas `Granted(user: int)` permet de confirmer la branche attendue.
+Risque résiduel:
+- oubli d'un cas lors de l'évolution du type
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Mesure de mitigation:
+- garder un `otherwise` défensif tant que l'outillage d'exhaustivité n'est pas strict.
 
-L'intention de cette étape est directe: Les cas sont portes par le type, pas par convention.
-
-En pratique, ce choix simplifie la lecture: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
-
-À l'exécution, `Granted` donne `true`, `Denied` donne `false`.
-
-Erreurs classiques à éviter:
-- accumuler des cas spéciaux sans clarifier l'intention.
-- introduire de la complexité avant de stabiliser le comportement.
-- laisser des décisions implicites qui freinent la relecture.
-
-## 2.3 Garder `entry` mince
+## 2.3 Frontière explicite: `entry` orchestre, `proc` décide
 
 ```vit
-proc run() -> int { give 0 }
+// Exécute un cas de test et retourne un résultat typé
+proc run() -> int {
+  // Sortie locale: valeur retournee par la procedure
+  give 0
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
 entry main at core/app {
+  // Sortie programme: code de retour observable
   return run()
 }
 ```
 
-Lecture simple du code:
-1. `proc run() -> int { give 0 }` : logique métier isolée dans une fonction courte.
-2. `entry main at core/app {` : orchestration uniquement, pas de logique lourde.
-3. `return run()` : relaie explicitement le résultat métier.
-4. `}` : fin nette de l’orchestration.
+Principe:
+- l'orchestration est une couche d'assemblage
+- la logique est une couche de décision
 
-Ce qu'on vérifie en pratique:
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: le scénario principal se termine avec `return run()`.
-- Observation testable: exécuter le scénario permet de vérifier le code de sortie `run()`.
+Effet direct:
+- testabilité: `run` se teste sans runtime complet
+- maintenabilité: on peut changer l'entrée sans recoder le métier
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+## 2.4 Anti-patterns et coût réel
 
-L'intention de cette étape est directe: Orchestration séparée du métier.
+1. gérer l'erreur “après coup”
+Coût: diffusion des vérifications, diagnostic tardif.
 
-En pratique, ce choix simplifie la lecture: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
+2. encoder l'état métier en codes numériques
+Coût: dette sémantique, branches ambiguës, bugs de convention.
 
-À l'exécution, `run` est appelee, puis code retourne.
+3. transformer `entry` en “god function”
+Coût: tests fragiles, couplage excessif, refactorings risqués.
 
-Erreurs classiques à éviter:
-- accumuler des cas spéciaux sans clarifier l'intention.
-- introduire de la complexité avant de stabiliser le comportement.
-- laisser des décisions implicites qui freinent la relecture.
+## 2.5 Check-list d'audit local
 
-## À retenir
-
-Erreurs explicites, états modelises, orchestration séparée. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, contrat explicite, et comportement observable du début à la fin. L'objectif final est de rendre chaque décision de code explicable à la première lecture, comme dans un texte de référence.
-
-## Test mental
-
-Question: que se passe-t-il si l'entrée est invalide ?
-Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
-## À faire
-
-1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
-2. Écrivez un mini test mental sur une entrée invalide du chapitre, puis prédisez la branche exécutée.
-
-## Corrigé minimal
-
-- identifiez la ligne modifiée et expliquez en une phrase la nouvelle sortie attendue.
-- nommez la garde ou la branche de secours réellement utilisée.
-
-## Conforme EBNF
-
-<<< vérification rapide >>>
-- Top-level: seules les déclarations de module (`space`, `pull`, `use`, `share`, `const`, `type`, `form`, `pick`, `proc`, `entry`, `macro`) apparaissent hors bloc.
-- Statements: les instructions (`let`, `make`, `set`, `give`, `emit`, `if`, `loop`, `for`, `match`, `select`, `return`) restent dans un `block`.
-- Types primaires: `bool`, `string`, `int`, `i32`, `i64`, `i128`, `u32`, `u64`, `u128` sont acceptés dans `type_primary`.
+1. la première zone de la procédure traite-t-elle les invalides ?
+2. les états métier sont-ils représentés par des types nommés ?
+3. la frontière orchestration/métier est-elle nette ?
+4. peut-on expliquer la politique d'erreur en 2 phrases maximum ?
 
 ## Keywords à revoir
 
-- `book/keywords/at.md`.
-- `book/keywords/bool.md`.
-- `book/keywords/case.md`.
-- `book/keywords/continue.md`.
-- `book/keywords/entry.md`.
+- `book/keywords/if.md`
+- `book/keywords/pick.md`
+- `book/keywords/match.md`
+- `book/keywords/case.md`
+- `book/keywords/entry.md`
+
+
+
+## Exemple Étendu
+
+Exemple approfondi pour **philosophie**: pipeline validation -> transformation -> décision -> projection.
+
+```vit
+// Exemple long: flux complet et vérifiable
+space demo/philosophie
+
+form Input { id: int value: int quota: int }
+pick Eval { case Accepted(score: int) case Rejected(code: int) }
+
+proc validate(x: Input) -> Eval {
+  // Bloc logique: validations et gardes d'entree
+  // Garde: bloque un cas invalide avant de continuer
+  if x.id <= 0 { give Eval.Rejected(21) }
+  // Garde: bloque un cas invalide avant de continuer
+  if x.quota < 0 { give Eval.Rejected(22) }
+  // Garde: bloque un cas invalide avant de continuer
+  if x.value < 0 { give Eval.Rejected(23) }
+  // Sortie locale: valeur retournee par la procedure
+  give Eval.Accepted(x.value)
+}
+
+proc transform(score: int, quota: int) -> int {
+  let capped: int = score
+  if capped > quota { set capped = quota }
+  // Garde: bloque un cas invalide avant de continuer
+  if capped < 0 { give 0 }
+  // Sortie locale: valeur retournee par la procedure
+  give capped * 2
+}
+
+proc decide(r: Eval, quota: int) -> Eval {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match r {
+    case Accepted(s) {
+      let out: int = transform(s, quota)
+      // Garde: bloque un cas invalide avant de continuer
+  if out >= 10 { give Eval.Accepted(out) }
+      // Sortie locale: valeur retournee par la procedure
+  give Eval.Rejected(31)
+    }
+    case Rejected(c) { give Eval.Rejected(c) }
+    otherwise { give Eval.Rejected(70) }
+  }
+}
+
+// Projection finale: convertit l'état métier en code de sortie
+proc to_exit(r: Eval) -> int {
+  // Bloc logique: decision par branches explicites
+  // Match: decision explicite selon l'etat
+  match r {
+    case Accepted(_) { give 0 }
+    case Rejected(code) { give code }
+    otherwise { give 70 }
+  }
+}
+
+// Orchestration: enchaîne les étapes sans logique cachée
+entry main at core/app {
+  let x: Input = Input(1, 8, 9)
+  let v: Eval = validate(x)
+  let d: Eval = decide(v, x.quota)
+  // Sortie programme: code de retour observable
+  return to_exit(d)
+}
+```
+
+Scénarios recommandés (philosophie):
+- Cas nominal -> sortie 0.
+- Cas quota strict -> comportement déterministe.
+- Cas invalide id<=0 -> sortie 21.
