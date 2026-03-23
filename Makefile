@@ -207,6 +207,14 @@ tidy:
 test:
 	@toolchain/scripts/test/run.sh
 
+.PHONY: quickstart-check
+quickstart-check:
+	@tools/quickstart_check.sh
+
+.PHONY: doctor
+doctor:
+	@tools/doctor.sh
+
 .PHONY: parse
 parse:
 	@tools/parse_tests.sh
@@ -969,6 +977,8 @@ help:
 	@echo "  make format     run code formatter"
 	@echo "  make tidy       run C/C++ linter"
 	@echo "  make test       run tests (std/test)"
+	@echo "  make quickstart-check verify the beginner path against examples/first_project.vit"
+	@echo "  make doctor     print local toolchain and environment readiness"
 	@echo "  make grammar-sync regenerate grammar surface artifacts from src/vitte/grammar/vitte.ebnf"
 	@echo "  make grammar-check fail if grammar generated artifacts are out of sync"
 	@echo "  make grammar-test validate grammar corpus + diagnostics snapshots"
