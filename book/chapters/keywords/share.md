@@ -4,13 +4,13 @@ Niveau: Avancé.
 
 ## Lecture rapide
 
-Repère: `share` sert à rendre le code plus explicite, pas à ajouter du bruit.
-Utilisez-le quand il clarifie le contrat; évitez-le hors de son niveau grammatical.
+Repère concret: `share` sert à décider un chemin d'exécution de façon lisible et vérifiable.
+Utilisez `share` quand il sert à organiser les modules et les symboles; évitez-le s'il n'apporte aucune différence observable sur la branche ou la sortie.
 
 ## Pourquoi (métier)
 
-En code reel, `share` sert a clarifier une decision et a reduire les conventions implicites.
-Si ce mot cle ne clarifie ni le contrat, ni la branche, ni la sortie, il faut simplifier le snippet.
+En pratique algorithmique, `share` sert à transformer une condition en branche exécutable, sans ambiguïté de lecture.
+Règle pratique: si retirer `share` ne change ni le chemin exécuté ni la sortie, simplifiez le bloc.
 
 ## Définition
 
@@ -19,6 +19,10 @@ Si ce mot cle ne clarifie ni le contrat, ni la branche, ni la sortie, il faut si
 ## Syntaxe
 
 Forme canonique: `share all` ou `share id1, id2`.
+
+## Lecture algorithmique
+
+Lecture conseillée: traquez où `share` intervient dans le flux, puis vérifiez son effet sur l'exécution réelle.
 
 ## Exemple nominal
 

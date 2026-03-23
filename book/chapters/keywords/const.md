@@ -4,26 +4,30 @@ Niveau: Intermédiaire.
 
 ## Lecture rapide
 
-Repère: `const` sert à rendre le code plus explicite, pas à ajouter du bruit.
-Utilisez-le quand il clarifie le contrat; évitez-le hors de son niveau grammatical.
+Repère concret: `const` sert à décider un chemin d'exécution de façon lisible et vérifiable.
+Utilisez `const` quand il sert à définir un modèle de données; évitez-le s'il n'apporte aucune différence observable sur la branche ou la sortie.
 
 ## Pourquoi (métier)
 
-En code reel, `const` sert a clarifier une decision et a reduire les conventions implicites.
-Si ce mot cle ne clarifie ni le contrat, ni la branche, ni la sortie, il faut simplifier le snippet.
+En pratique algorithmique, `const` sert à transformer une condition en branche exécutable, sans ambiguïté de lecture.
+Règle pratique: si retirer `const` ne change ni le chemin exécuté ni la sortie, simplifiez le bloc.
 
 ## Définition
 
-`const` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
+`const` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec une règle lisible et testable.
 
 ## Syntaxe
 
 Forme canonique: `const PORT: int = 8080`.
 
+## Lecture algorithmique
+
+Lecture conseillée: traquez où `const` intervient dans le flux, puis vérifiez son effet sur l'exécution réelle.
+
 ## Exemple nominal
 
 Entrée:
-- Cas nominal contrôlé et déterministe.
+- Cas nominal: `const` est utilisé dans le bon contexte et la branche attendue est exécutée.
 
 ```vit
 // Exemple concret: cas nominal puis cas invalide
@@ -36,12 +40,12 @@ proc retries() -> int {
 ```
 
 Sortie observable:
-- Le flux suit la branche attendue et produit une sortie stable.
+- Pour l'entrée nominale, la branche attendue est prise et la sortie correspond au calcul prévu.
 
 ## Exemple invalide
 
 Entrée:
-- Cas volontairement hors contrat.
+- Cas d'erreur: usage invalide de `const`; la validation doit refuser le snippet avec un diagnostic exploitable.
 
 ```vit
 // Exemple concret: cas nominal puis cas invalide
@@ -50,7 +54,7 @@ const PORT = "8080"
 ```
 
 Sortie observable:
-- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
+- Pour l'entrée invalide, la validation doit échouer avec un message exploitable pour corriger le code.
 
 Diagnostic attendu:
 - Code: `VITTE-XXXX` (ou code compilateur `E000X` correspondant).
@@ -79,15 +83,15 @@ Après:
 
 ## Quand l’utiliser / Quand l’éviter
 
-- Quand l’utiliser: quand `const` rend l’intention plus explicite et vérifiable.
-- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
+- Quand l’utiliser: quand `const` réduit une ambiguïté de lecture dans le flux d'exécution.
+- Quand l’éviter: quand son usage masque la règle ou duplique une logique déjà portée ailleurs.
 
 ## Erreurs compilateur fréquentes
 
 | Message type | Cause | Correction |
 | --- | --- | --- |
 | `unexpected token near const` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
-| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `const`. | Aligner les types attendus avant exécution. |
+| `type mismatch` | Règle d’entrée/sortie incohérent autour de `const`. | Aligner les types attendus avant exécution. |
 | `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
 
 ## Mot-clé voisin

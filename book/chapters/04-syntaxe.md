@@ -7,17 +7,17 @@ Voir aussi: `book/chapters/03-projet.md`, `book/chapters/05-types.md`, `book/glo
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Situation réelle: Syntaxe essentielle se comprend mieux en rejouant le programme comme un algorithme exécutable. Vous lisez les données entrantes, la condition évaluée, puis la valeur renvoyée.
+Question directrice: quelle condition est évaluée en premier, et quelle sortie cette décision impose-t-elle ?
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+Fil conducteur: on conserve un même mini-programme pour comparer les effets d'une modification sans changer tout le contexte.
+Objectif pédagogique: passer de la lecture passive à la preuve: même entrée, même branche, même sortie attendue.
 
 ## Objectif
 
-Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+Vous devez pouvoir relire un extrait, prédire son résultat, puis vérifier cette prédiction avec une exécution simple.
 
 ## Pourquoi
 
@@ -26,36 +26,35 @@ Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en p
 
 ## Ce que vous allez réellement faire
 
-Vous allez identifier les points clés de **Syntaxe essentielle**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+Vous allez lire les extraits dans l'ordre d'exécution réel, puis valider les sorties attendues sur un cas nominal et un cas d'erreur.
 
 ## Exemple minimal
 
-Commencez par le premier extrait de code de ce chapitre.
-Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Syntaxe essentielle**.
+Premier réflexe recommandé: lisez d'abord les entrées et les conditions, ensuite seulement la forme syntaxique.
 
 ## Méthode de lecture
 
 1. Repérez l'intention du bloc.
-2. Vérifiez la condition ou la garde principale.
+2. Vérifiez la condition ou le test principal.
 3. Confirmez la sortie observable.
 4. Notez comment ce bloc sert **Syntaxe essentielle** dans l'ensemble du chapitre.
 
 ## Pièges fréquents
 
 - Lire la syntaxe sans vérifier le comportement.
-- Mélanger règle générale et cas limite dans la même explication.
+- Mélanger règle générale et cas d'erreur dans la même explication.
 - Introduire une optimisation avant d'avoir stabilisé le flux de **Syntaxe essentielle**.
 
 ## Exercice court
 
 Prenez un exemple du chapitre sur **Syntaxe essentielle**.
-Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au résultat attendu.
 
 ## Résumé en 5 points
 
 1. Vous connaissez l'objectif du chapitre sur **Syntaxe essentielle**.
 2. Vous savez lire un exemple du chapitre de façon structurée.
-3. Vous distinguez cas nominal et cas limite.
+3. Vous distinguez cas nominal et cas d'erreur.
 4. Vous évitez les pièges les plus fréquents.
 5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
@@ -69,17 +68,15 @@ proc add(a: int, b: int) -> int {
 }
 ```
 
-Lecture simple du code:
-1. `proc add(a: int, b: int) -> int {` : le contrat est défini pour `add`: entrées `a: int, b: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `give a + b` : la branche renvoie immédiatement `a + b` pour la branche courante, la sortie de branche est explicite et vérifiable.
-3. `}` : cette accolade ferme le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `a + b`.
-- Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
+Lecture algorithmique guidée:
+1. Entrée lue: identifiez d'abord les paramètres et leur type, ce sont les données de départ du calcul.
+2. Pas de branchement critique ici: le flux est séquentiel, ligne après ligne.
+3. Traitement: appliquez les opérations dans l'ordre écrit, sans sauter d'étape implicite.
+4. Sortie produite: le chemin courant renvoie `a + b`.
+5. Notion débutant: une variable est une case mémoire nommée qui contient une valeur d'un type annoncé.
+6. Notion débutant: une condition booléenne vaut `vrai` ou `faux`; c'est elle qui détermine la branche exécutée.
+Vérification rapide: tracez une exécution avec des valeurs concrètes (`x=...`, `i=...`) pour confirmer la branche réellement prise.
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 Cette fonction se lit presque comme une phrase: prends `a` et `b`, additionne-les, rends le résultat. Pour `add(1, 2)`, le calcul donne `3`. Pour `add(10, -4)`, il donne `6`. Rien d'autre ne se produit, aucun effet de bord ne vient perturber la lecture.
 
@@ -95,7 +92,7 @@ Erreurs classiques à éviter:
 - faire des calculs corrects mais renvoyer la mauvaise valeur.
 - écrire une fonction simple avec une structure inutilement complexe.
 
-## 4.2 Encadrer une valeur avec des gardes
+## 4.2 Encadrer une valeur avec des tests
 
 Dans la plupart des programmes, les bugs viennent moins du cas normal que des bords: valeurs négatives, dépassements, entrées inattendues. Une bonne habitude consiste donc à protéger d'abord les limites, puis à laisser le cas nominal en dernier.
 
@@ -110,33 +107,29 @@ proc clamp01(v: int) -> int {
 }
 ```
 
-Lecture simple du code:
-1. `proc clamp01(v: int) -> int {` : le contrat est posé pour `clamp01`: entrées `v: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `if v < 0 { give 0 }` : cette garde traite le cas limite avant le calcul.
-3. `if v > 1 { give 1 }` : cette garde traite le cas limite avant le calcul.
-4. `give v` : la sortie est renvoyée immédiatement `v` pour la branche courante, la sortie de branche est explicite et vérifiable.
-5. `}` : cette accolade ferme le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: si `v < 0` est vrai, la sortie devient `0`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `v`.
-- Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
+Lecture algorithmique guidée:
+1. Entrée lue: identifiez d'abord les paramètres et leur type, ce sont les données de départ du calcul.
+2. Condition évaluée en premier: `v < 0`. Si elle est vraie, le chemin de test est exécuté immédiatement.
+3. Traitement: appliquez les opérations dans l'ordre écrit, sans sauter d'étape implicite.
+4. Sortie produite: le chemin courant renvoie `0`.
+5. Notion débutant: une variable est une case mémoire nommée qui contient une valeur d'un type annoncé.
+6. Notion débutant: une condition booléenne vaut `vrai` ou `faux`; c'est elle qui détermine la branche exécutée.
+Vérification rapide: testez une entrée nominale puis une entrée limite, et comparez les deux sorties obtenues.
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention est claire: forcer une valeur à rester dans l'intervalle `[0, 1]`. On lit le code dans l'ordre naturel. Si `v` est trop petite, on renvoie immédiatement `0`. Si elle est trop grande, on renvoie immédiatement `1`. Sinon, on la renvoie telle quelle.
 
 Lecture pas à pas:
-- `clamp01(-2)`: la première garde est vraie (`v < 0`), donc retour `0`.
-- `clamp01(0)`: aucune garde n'est vraie, donc retour `0`.
-- `clamp01(9)`: la seconde garde est vraie (`v > 1`), donc retour `1`.
+- `clamp01(-2)`: la premier test est vrai (`v < 0`), donc retour `0`.
+- `clamp01(0)`: aucun test n'est vrai, donc retour `0`.
+- `clamp01(9)`: la second test est vrai (`v > 1`), donc retour `1`.
 
 La force de ce style, c'est sa franchise. Chaque ligne répond à une question précise: "que faire si c'est trop bas?", "que faire si c'est trop haut?", "que faire sinon?". Cette structure rend le code solide et agréable à relire.
 
 Erreurs classiques à éviter:
 - traiter le cas nominal avant les bornes, ce qui cache les exceptions.
 - oublier un des deux bords de l'intervalle.
-- multiplier les branches imbriquées alors que des gardes simples suffisent.
+- multiplier les branches imbriquées alors que des tests simples suffisent.
 
 ## 4.3 Itérer avec une mutation explicite
 
@@ -157,22 +150,15 @@ proc count(n: int) -> int {
 }
 ```
 
-Lecture simple du code:
-1. `proc count(n: int) -> int {` : le contrat est fixé pour `count`: entrées `n: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `let i: int = 0` : cette ligne crée la variable `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
-3. `loop {` : cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`).
-4. `if i >= n { break }` : cette garde traite le cas limite avant le calcul.
-5. `set i = i + 1` : cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux.
-6. `}` : cette accolade clôt le bloc logique.
-7. `give i` : retourne immédiatement `i` pour la branche courante, la sortie de branche est explicite et vérifiable.
-8. `}` : cette accolade ferme le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `i`.
-- Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
+Lecture algorithmique guidée:
+1. Entrée lue: identifiez d'abord les paramètres et leur type, ce sont les données de départ du calcul.
+2. Condition évaluée en premier: `i >= n`. Si elle est vraie, le chemin de test est exécuté immédiatement.
+3. Boucle: vérifiez la condition d'arrêt et la progression de l'état à chaque itération.
+4. Sortie produite: le chemin courant renvoie `i`.
+5. Notion débutant: une variable est une case mémoire nommée qui contient une valeur d'un type annoncé.
+6. Notion débutant: une condition booléenne vaut `vrai` ou `faux`; c'est elle qui détermine la branche exécutée.
+Vérification rapide: gardez la même entrée avant/après modification pour prouver que le comportement attendu est conservé.
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 Ici, la logique est volontairement simple. On initialise `i` à `0`. À chaque tour, on vérifie la condition d'arrêt: si `i >= n`, on quitte la boucle. Sinon, on avance d'un pas avec `set i = i + 1`.
 
@@ -193,7 +179,7 @@ Erreurs classiques à éviter:
 
 ## À retenir
 
-Si vous ne retenez qu'une idée, retenez celle-ci: un bon code n'est pas seulement correct, il est explicite. Dans Vitte, cette explicitation passe par des signatures nettes, des gardes honnêtes sur les limites, et des boucles où chaque mutation se voit. Quand ces trois éléments sont en place, vous obtenez un programme que l'on peut comprendre sans deviner, corriger sans trembler, et faire évoluer sans le casser.
+Si vous ne retenez qu'une idée, retenez celle-ci: un bon code n'est pas seulement correct, il est explicite. Dans Vitte, cette explicitation passe par des signatures nettes, des tests honnêtes sur les limites, et des boucles où chaque mutation se voit. Quand ces trois éléments sont en place, vous obtenez un programme que l'on peut comprendre sans deviner, corriger sans trembler, et faire évoluer sans le casser.
 
 Critère pratique de qualité pour ce chapitre:
 - vous pouvez expliquer chaque exemple à voix haute en moins d'une minute.
@@ -203,16 +189,16 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: un test explicite ou un chemin de secours stable doit s'appliquer.
 ## À faire
 
-1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
+1. Reprenez un exemple du chapitre et modifiez une condition de test pour observer un comportement différent.
 2. Écrivez un mini test mental sur une entrée invalide du chapitre, puis prédisez la branche exécutée.
 
 ## Corrigé minimal
 
 - identifiez la ligne modifiée et expliquez en une phrase la nouvelle sortie attendue.
-- nommez la garde ou la branche de secours réellement utilisée.
+- nommez le test ou la branche de secours réellement utilisée.
 
 ## Conforme EBNF
 
@@ -228,7 +214,6 @@ Repère: une garde explicite ou un chemin de secours déterministe doit s'appliq
 - `book/keywords/continue.md`.
 - `book/keywords/give.md`.
 - `book/keywords/if.md`.
-
 
 
 ## Exemple Étendu
@@ -251,7 +236,7 @@ proc scan(u: SourceUnit) -> int {
   give (u.tokens_hint + u.lines)
 }
 
-// Parse: construit un état syntaxique déterministe
+// Parse: construit un état syntaxique stable
 proc parse(token_count: int) -> ParseState {
 
   if token_count == 0 { give ParseState.Failed(101) }
@@ -296,21 +281,104 @@ entry main at core/app {
 }
 ```
 
+## Explication détaillée du gros bloc
+
+Ce gros bloc montre un programme entier, pas un extrait isolé: on suit le flux du début à la fin.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `scan`: lit `u: SourceUnit` et renvoie `int`.
+- `parse`: lit `token_count: int` et renvoie `ParseState`.
+- `validate_structure`: lit `nodes: int` et renvoie `int`.
+- `to_exit`: lit `p: ParseState` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `scan` est appelé pour traiter l'étape suivante.
+3. `parse` est appelé pour traiter l'étape suivante.
+4. `to_exit` est appelé pour traiter l'étape suivante.
+5. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `u.bytes <= 0`.
+- Test évalué: `u.lines <= 0`.
+- Test évalué: `token_count == 0`.
+- Test évalué: `token_count < 4`.
+- Test évalué: `nodes <= 0`.
+- Test évalué: `nodes > 200000`.
+- Sélection par `match p`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> scan -> parse -> to_exit -> sortie 0`.
+- Exemple erreur: `entrée invalide -> scan renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
+
+
 ## Design Notes
 
 - Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- Les tests sont placées tôt pour réduire le coût de diagnostic.
 - La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+Cas d'erreur réel:
+- Entree degradee ou incomplete: le test doit couper le flux tot avec une sortie explicite.
 
 A tester:
 - Unité valide -> sortie 0.
 - Entrée vide (bytes=0) -> sortie 101.
 - Structure surdimensionnée -> sortie 202.
 
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `scan` lit `u: SourceUnit` puis renvoie `int`.
+- `parse` lit `token_count: int` puis renvoie `ParseState`.
+- `validate_structure` lit `nodes: int` puis renvoie `int`.
+- `to_exit` lit `p: ParseState` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `v: int` démarre avec `validate_structure(n)`.
+- `u: SourceUnit` démarre avec `SourceUnit(120, 12, 18)`.
+- `t: int` démarre avec `scan(u)`.
+- `p: ParseState` démarre avec `parse(t)`.
+
+- Conditions qui changent le chemin:
+- si `u.bytes <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `u.lines <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `token_count == 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `token_count < 4` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `nodes <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `nodes > 200000` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `v != 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: v=validate_structure(n) -> u=SourceUnit(120, 12, 18) -> t=scan(u) -> p=parse(t)
+- enchaînement: scan -> parse -> to_exit
+- sortie finale sur ce chemin: `to_exit(p)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `u.bytes <= 0` devient vrai, la fonction renvoie immédiatement `0`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
@@ -332,21 +400,21 @@ A tester:
 
 | Symptôme | Cause probable | Vérification | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Sortie inattendue | Test absente ou mal ordonnée | Rejouer avec cas d'erreur | Remonter le test avant la zone sensible |
 | Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+| Régression silencieuse | Règle implicite | Comparer nominal vs limite | Formaliser la règle dans le code |
 
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
 - expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
+- isoler un cas d'erreur réel et prévoir sa sortie,
+- identifier où ajouter un test sans casser le nominal.
 
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+1. Vérifier que les tests d'entrée sont placés avant les opérations sensibles.
 2. Vérifier que la décision métier est séparée de la projection de sortie.
 3. Vérifier un test nominal et un test limite réellement exécutables.

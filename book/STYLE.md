@@ -1,6 +1,6 @@
 # Guide de style éditorial (Vitte Book)
 
-## Ton
+## Votre
 - Précis, concret, orienté exécution.
 - Éviter les formulations vagues et les répétitions automatiques.
 - Expliquer l'intention avant le détail syntaxique.

@@ -7,6 +7,6 @@ Voir aussi: `book/chapters/27-grammaire.md`, `book/chapters/31-erreurs-build.md`
 
 ## Lecture rapide
 
-Repère: `all` sert à rendre le code plus explicite, pas à ajouter du bruit.
-Utilisez-le quand il clarifie le contrat; évitez-le hors de son niveau grammatical.
+Repère concret: `all` sert à décider un chemin d'exécution de façon lisible et vérifiable.
+Utilisez `all` quand il sert à rendre le comportement du programme lisible; évitez-le s'il n'apporte aucune différence observable sur la branche ou la sortie.
 

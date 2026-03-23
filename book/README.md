@@ -25,7 +25,7 @@ Si l'objectif est l'apprentissage linéaire, suivre les chapitres `01` a `30`. S
 
 ## Charte éditoriale
 
-- Ton: précis, pédagogique, orienté exécution concrète.
+- Votre: précis, pédagogique, orienté exécution concrète.
 - Niveau de détail: expliciter l'intention, la garde, la sortie et l'effet d'état.
 - Trame obligatoire: `Objectif -> Exemple -> Pourquoi -> Test mental -> À faire -> Corrigé minimal`.
 - Longueur cible: voir les seuils détaillés dans `book/STYLE.md`.

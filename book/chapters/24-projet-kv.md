@@ -7,13 +7,13 @@ Voir aussi: `book/chapters/23-projet-sys.md`, `book/chapters/25-projet-arduino.m
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Situation réelle: Projet guide KV store devient clair quand on trace chaque étape du calcul. L'objectif est de relier ligne de code et effet concret sur la sortie.
+Question directrice: quelle condition est évaluée en premier, et quelle sortie cette décision impose-t-elle ?
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+Fil conducteur: on conserve un même mini-programme pour comparer les effets d'une modification sans changer tout le contexte.
+Objectif pédagogique: comprendre pourquoi une ligne existe et ce qu'elle change dans la trajectoire du programme.
 
 ## Pourquoi
 
@@ -22,36 +22,35 @@ Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en p
 
 ## Ce que vous allez faire
 
-Vous allez identifier les points clés de **Projet guide KV store**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+Vous allez lire les extraits dans l'ordre d'exécution réel, puis valider les sorties attendues sur un cas nominal et un cas d'erreur.
 
 ## Exemple minimal
 
-Commencez par le premier extrait de code de ce chapitre.
-Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Projet guide KV store**.
+Premier réflexe recommandé: lisez d'abord les entrées et les conditions, ensuite seulement la forme syntaxique.
 
 ## Explication pas à pas
 
 1. Repérez l'intention du bloc.
-2. Vérifiez la condition ou la garde principale.
+2. Vérifiez la condition ou le test principal.
 3. Confirmez la sortie observable.
 4. Notez comment ce bloc sert **Projet guide KV store** dans l'ensemble du chapitre.
 
 ## Pièges fréquents
 
 - Lire la syntaxe sans vérifier le comportement.
-- Mélanger règle générale et cas limite dans la même explication.
+- Mélanger règle générale et cas d'erreur dans la même explication.
 - Introduire une optimisation avant d'avoir stabilisé le flux de **Projet guide KV store**.
 
 ## Exercice court
 
 Prenez un exemple du chapitre sur **Projet guide KV store**.
-Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au résultat attendu.
 
 ## Résumé en 5 points
 
 1. Vous connaissez l'objectif du chapitre sur **Projet guide KV store**.
 2. Vous savez lire un exemple du chapitre de façon structurée.
-3. Vous distinguez cas nominal et cas limite.
+3. Vous distinguez cas nominal et cas d'erreur.
 4. Vous évitez les pièges les plus fréquents.
 5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
@@ -61,7 +60,7 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 - Niveau local exemples guidés: Intermédiaire.
 - Niveau local exercices de diagnostic: Avancé.
 
-Ce chapitre poursuit un objectif clair: construire un KV store Vitte exploitable, avec un protocole d'opérations clair, une validation de clé unique et un flux d'erreurs déterministe. Nous allons passer d'un simple garde-fou de validation à un mini moteur clé-valeur complet (put/get/delete) avec backend mémoire.
+Ce chapitre poursuit un objectif clair: construire un KV store Vitte exploitable, avec un protocole d'opérations clair, une validation de clé unique et un flux d'erreurs stable. Nous allons passer d'un simple test-fou de validation à un mini moteur clé-valeur complet (put/get/delete) avec backend mémoire.
 
 L'approche adoptée est volontairement littérale: chaque exemple doit être lisible comme une démonstration courte, avec une intention claire, un chemin d'exécution explicite et une conclusion vérifiable. Ce rythme est celui d'un manuel: comprendre, exécuter, puis retenir l'invariant utile.
 
@@ -108,12 +107,12 @@ Lecture ligne par ligne (débutant):
 12. `case None` : ce cas décrit `None` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 13. `}` : cette accolade clôt le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
+- Cas nominal: le flux suit la branche principale et produit une sortie stable.
 - Observation testable: forcer le cas `Ok` permet de confirmer la branche attendue.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: fermer l'espace des issues possibles dès le modèle de domaine.
 
@@ -138,17 +137,17 @@ proc key_valid(k: string) -> bool {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc key_valid(k: string) -> bool {` : le contrat est défini pour `key_valid`: entrées `k: string` et sortie `bool`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `if k == "" { give false }` : cette garde traite le cas limite avant le calcul.
+1. `proc key_valid(k: string) -> bool {` : la règle est défini pour `key_valid`: entrées `k: string` et sortie `bool`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `if k == "" { give false }` : cette test traite le cas d'erreur avant le calcul.
 3. `give true` : la branche renvoie immédiatement `true` pour la branche courante, la sortie de branche est explicite et vérifiable.
 4. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: si `k == ""` est vrai, la sortie devient `false`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `true`.
+- Cas d'erreur: si `k == ""` est vrai, la sortie devient `false`.
+- Cas nominal: sans test bloquante, la branche principale renvoie `true`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: créer une seule source de vérité pour la validité de clé.
 
@@ -190,24 +189,24 @@ Lecture ligne par ligne (débutant):
 1. `form KvMem {` : cette ligne ouvre la structure `KvMem` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable.
 2. `entries: Entry[]` : cette ligne déclare le champ `entries` avec le type `Entry[]`, ce qui documente son rôle et limite les erreurs de manipulation.
 3. `}` : cette accolade ferme le bloc logique.
-4. `proc find_index(m: KvMem, k: string) -> int {` : le contrat est posé pour `find_index`: entrées `m: KvMem, k: string` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+4. `proc find_index(m: KvMem, k: string) -> int {` : la règle est posé pour `find_index`: entrées `m: KvMem, k: string` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 5. `let i: int = 0` : cette ligne crée la variable `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
 6. `loop {` : cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`).
-7. `if i >= m.entries.len() { break }` : cette garde traite le cas limite avant le calcul.
-8. `if m.entries[i].key == k { give i }` : cette garde traite le cas limite avant le calcul.
+7. `if i >= m.entries.len() { break }` : cette test traite le cas d'erreur avant le calcul.
+8. `if m.entries[i].key == k { give i }` : cette test traite le cas d'erreur avant le calcul.
 9. `set i = i + 1` : cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux.
 10. `}` : cette accolade clôt le bloc logique.
 11. `give -1` : la sortie est renvoyée immédiatement `-1` pour la branche courante, la sortie de branche est explicite et vérifiable.
 12. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: si `m.entries[i].key == k` est vrai, la sortie devient `i`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `-1`.
+- Cas d'erreur: si `m.entries[i].key == k` est vrai, la sortie devient `i`.
+- Cas nominal: sans test bloquante, la branche principale renvoie `-1`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
-Ce backend est volontairement simple (tableau d'entrées), mais il suffit pour testér le protocole complet.
+Ce backend est volontairement simple (tableau d'entrées), mais il suffit pour tester le protocole complet.
 
 Erreurs fréquentes à éviter:
 - implémenter le protocole avant de disposer d'un backend testable.
@@ -247,14 +246,14 @@ proc put(m: KvMem, k: string, v: string) -> KvResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc put_guard(entries_len: int, k: string) -> KvResult {` : le contrat est fixé pour `put_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `if not key_valid(k) { give ErrKey }` : cette garde traite le cas limite avant le calcul.
-3. `if entries_len < 0 { give ErrState }` : cette garde traite le cas limite avant le calcul.
+1. `proc put_guard(entries_len: int, k: string) -> KvResult {` : la règle est fixé pour `put_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `if not key_valid(k) { give ErrKey }` : cette test traite le cas d'erreur avant le calcul.
+3. `if entries_len < 0 { give ErrState }` : cette test traite le cas d'erreur avant le calcul.
 4. `give Ok` : retourne immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable.
 5. `}` : cette accolade ferme le bloc logique.
-6. `proc put(m: KvMem, k: string, v: string) -> KvResult {` : le contrat est défini pour `put`: entrées `m: KvMem, k: string, v: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
+6. `proc put(m: KvMem, k: string, v: string) -> KvResult {` : la règle est défini pour `put`: entrées `m: KvMem, k: string, v: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
 7. `let g: KvResult = put_guard(m.entries.len(), k)` : cette ligne crée la variable `g` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement.
-8. `match g {` : cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée.
+8. `match g {` : cette ligne démarre un dispatch stable sur `g`: une seule branche sera choisie selon la forme de la valeur analysée.
 9. `case Ok {` : ce cas décrit `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 10. `let idx: int = find_index(m, k)` : cette ligne crée la variable `idx` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
 11. `if idx < 0 {` : cette ligne définit une étape explicite du flux.
@@ -269,12 +268,12 @@ Lecture ligne par ligne (débutant):
 20. `}` : cette accolade ferme le bloc logique.
 21. `}` : cette accolade clôt le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: si `not key_valid(k)` est vrai, la sortie devient `ErrKey`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `Ok`.
+- Cas d'erreur: si `not key_valid(k)` est vrai, la sortie devient `ErrKey`.
+- Cas nominal: sans test bloquante, la branche principale renvoie `Ok`.
 - Observation testable: forcer le cas `Ok` permet de confirmer la branche attendue.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: connecter le protocole de validation au backend concret d'écriture.
 
@@ -342,33 +341,33 @@ proc delete(m: KvMem, k: string) -> KvResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc get_guard(entries_len: int, k: string) -> KvResult {` : le contrat est posé pour `get_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `if not key_valid(k) { give ErrKey }` : cette garde traite le cas limite avant le calcul.
-3. `if entries_len == 0 { give ErrState }` : cette garde traite le cas limite avant le calcul.
+1. `proc get_guard(entries_len: int, k: string) -> KvResult {` : la règle est posé pour `get_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `if not key_valid(k) { give ErrKey }` : cette test traite le cas d'erreur avant le calcul.
+3. `if entries_len == 0 { give ErrState }` : cette test traite le cas d'erreur avant le calcul.
 4. `give Ok` : retourne immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable.
 5. `}` : cette accolade ferme le bloc logique.
-6. `proc delete_guard(entries_len: int, k: string) -> KvResult {` : le contrat est fixé pour `delete_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
-7. `if not key_valid(k) { give ErrKey }` : cette garde traite le cas limite avant le calcul.
-8. `if entries_len <= 0 { give ErrState }` : cette garde traite le cas limite avant le calcul.
+6. `proc delete_guard(entries_len: int, k: string) -> KvResult {` : la règle est fixé pour `delete_guard`: entrées `entries_len: int, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
+7. `if not key_valid(k) { give ErrKey }` : cette test traite le cas d'erreur avant le calcul.
+8. `if entries_len <= 0 { give ErrState }` : cette test traite le cas d'erreur avant le calcul.
 9. `give Ok` : la branche renvoie immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable.
 10. `}` : cette accolade ferme le bloc logique.
-11. `proc get(m: KvMem, k: string) -> KvValue {` : le contrat est défini pour `get`: entrées `m: KvMem, k: string` et sortie `KvValue`, elle clarifie l'intention avant lecture détaillée du corps.
+11. `proc get(m: KvMem, k: string) -> KvValue {` : la règle est défini pour `get`: entrées `m: KvMem, k: string` et sortie `KvValue`, elle clarifie l'intention avant lecture détaillée du corps.
 12. `let g: KvResult = get_guard(m.entries.len(), k)` : cette ligne crée la variable `g` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement.
-13. `match g {` : cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée.
+13. `match g {` : cette ligne démarre un dispatch stable sur `g`: une seule branche sera choisie selon la forme de la valeur analysée.
 14. `case Ok {` : ce cas décrit `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 15. `let idx: int = find_index(m, k)` : cette ligne crée la variable `idx` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
-16. `if idx < 0 { give None }` : cette garde traite le cas limite avant le calcul.
+16. `if idx < 0 { give None }` : cette test traite le cas d'erreur avant le calcul.
 17. `give Some(m.entries[idx].value)` : la sortie est renvoyée immédiatement `Some(m.entries[idx].value)` pour la branche courante, la sortie de branche est explicite et vérifiable.
 18. `}` : cette accolade clôt le bloc logique.
 19. `otherwise { give None }` : cette ligne définit un chemin de secours explicite.
 20. `}` : cette accolade ferme le bloc logique.
 21. `}` : cette accolade ferme le bloc logique.
-22. `proc delete(m: KvMem, k: string) -> KvResult {` : le contrat est posé pour `delete`: entrées `m: KvMem, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
+22. `proc delete(m: KvMem, k: string) -> KvResult {` : la règle est posé pour `delete`: entrées `m: KvMem, k: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
 23. `let g: KvResult = delete_guard(m.entries.len(), k)` : cette ligne crée la variable `g` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement.
-24. `match g {` : cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée.
+24. `match g {` : cette ligne démarre un dispatch stable sur `g`: une seule branche sera choisie selon la forme de la valeur analysée.
 25. `case Ok {` : ce cas décrit `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 26. `let idx: int = find_index(m, k)` : cette ligne crée la variable `idx` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
-27. `if idx < 0 { give ErrState }` : cette garde traite le cas limite avant le calcul.
+27. `if idx < 0 { give ErrState }` : cette test traite le cas d'erreur avant le calcul.
 28. `m.entries.remove_at(idx)` : cette ligne définit une étape explicite du flux.
 29. `give Ok` : retourne immédiatement `Ok` pour la branche courante, la sortie de branche est explicite et vérifiable.
 30. `}` : cette accolade clôt le bloc logique.
@@ -377,12 +376,12 @@ Lecture ligne par ligne (débutant):
 33. `}` : cette accolade ferme le bloc logique.
 34. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: si `not key_valid(k)` est vrai, la sortie devient `ErrKey`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `Ok`.
+- Cas d'erreur: si `not key_valid(k)` est vrai, la sortie devient `ErrKey`.
+- Cas nominal: sans test bloquante, la branche principale renvoie `Ok`.
 - Observation testable: forcer le cas `Ok` permet de confirmer la branche attendue.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: mutualiser la grammaire de validation et varier seulement la règle d'état selon l'opération.
 
@@ -420,12 +419,12 @@ proc kv_roundtrip(m: KvMem, k: string, v: string) -> KvResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc kv_roundtrip(m: KvMem, k: string, v: string) -> KvResult {` : le contrat est fixé pour `kv_roundtrip`: entrées `m: KvMem, k: string, v: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
+1. `proc kv_roundtrip(m: KvMem, k: string, v: string) -> KvResult {` : la règle est fixé pour `kv_roundtrip`: entrées `m: KvMem, k: string, v: string` et sortie `KvResult`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `let p: KvResult = put(m, k, v)` : cette ligne crée la variable `p` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement.
-3. `match p {` : cette ligne démarre un dispatch déterministe sur `p`: une seule branche sera choisie selon la forme de la valeur analysée.
+3. `match p {` : cette ligne démarre un dispatch stable sur `p`: une seule branche sera choisie selon la forme de la valeur analysée.
 4. `case Ok {` : ce cas décrit `Ok` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 5. `let g: KvValue = get(m, k)` : cette ligne crée la variable `g` de type `KvValue` pour nommer explicitement une étape intermédiaire du raisonnement.
-6. `match g {` : cette ligne démarre un dispatch déterministe sur `g`: une seule branche sera choisie selon la forme de la valeur analysée.
+6. `match g {` : cette ligne démarre un dispatch stable sur `g`: une seule branche sera choisie selon la forme de la valeur analysée.
 7. `case Some(_) { give Ok }` : ce cas décrit `Some(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 8. `otherwise { give ErrState }` : cette ligne définit un chemin de secours explicite.
 9. `}` : cette accolade clôt le bloc logique.
@@ -435,12 +434,12 @@ Lecture ligne par ligne (débutant):
 13. `}` : cette accolade ferme le bloc logique.
 14. `}` : cette accolade clôt le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
+- Cas nominal: le flux suit la branche principale et produit une sortie stable.
 - Observation testable: forcer le cas `Ok` permet de confirmer la branche attendue.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: prouver que `put` et `get` composent correctement dans un scénario nominal.
 
@@ -475,16 +474,16 @@ Lecture ligne par ligne (débutant):
 3. `let a: KvResult = put(m, "user:1", "alice")` : cette ligne crée la variable `a` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement.
 4. `let b: KvValue = get(m, "user:1")` : cette ligne crée la variable `b` de type `KvValue` pour nommer explicitement une étape intermédiaire du raisonnement.
 5. `let c: KvResult = delete(m, "user:1")` : cette ligne crée la variable `c` de type `KvResult` pour nommer explicitement une étape intermédiaire du raisonnement.
-6. `if a == Ok and c == Ok { return 0 }` : cette garde traite le cas limite avant le calcul.
+6. `if a == Ok and c == Ok { return 0 }` : cette test traite le cas d'erreur avant le calcul.
 7. `return 70` : cette ligne termine l'exécution du bloc courant avec le code `70`, utile pour observer le résultat global du scénario.
 8. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
 - Cas nominal: le scénario principal se termine avec `return 70`.
 - Observation testable: exécuter le scénario permet de vérifier le code de sortie `70`.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 Ce scénario est le minimum vital d'un KV store:
 - écrire.
@@ -502,30 +501,30 @@ Ce scénario est le minimum vital d'un KV store:
 
 ## À retenir
 
-Un KV store robuste n'est pas un tableau de couples clé-valeur. C'est un protocole explicite: validation unique, backend isolé, opérations déterministes et composition testable de bout en bout.
+Un KV store robuste n'est pas un tableau de couples clé-valeur. C'est un protocole explicite: validation unique, backend isolé, opérations stables et composition testable de bout en bout.
 
 Critère pratique de qualité pour ce chapitre:
 - vous savez tracer `put/get/delete` en distinguant nominal, absence et erreur.
-- vous savez testér la validité de clé sans dépendre du backend.
-- vous pouvez changer le backend sans changer le contrat public des opérations.
+- vous savez tester la validité de clé sans dépendre du backend.
+- vous pouvez changer le backend sans changer la règle public des opérations.
 
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Réponse attendue: un test explicite ou un chemin de secours stable doit s'appliquer.
 ## À faire
 
-1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
+1. Reprenez un exemple du chapitre et modifiez une condition de test pour observer un comportement différent.
 2. Écrivez un mini test mental sur une entrée invalide du chapitre, puis prédisez la branche exécutée.
 
 ## Corrigé minimal
 
 - identifiez la ligne modifiée et expliquez en une phrase la nouvelle sortie attendue.
-- nommez la garde ou la branche de secours réellement utilisée.
+- nommez le test ou la branche de secours réellement utilisée.
 
 ## Mini défi transverse
 
-Défi: combinez au moins deux notions des trois derniers chapitres dans une fonction courte (garde + transformation + sortie).
+Défi: combinez au moins deux notions des trois derniers chapitres dans une fonction courte (test + transformation + sortie).
 Vérification minimale: montrez un cas nominal et un cas invalide, puis expliquez quelle branche est prise.
 
 ## Conforme EBNF
@@ -556,7 +555,7 @@ Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambig
 
 Mini quiz:
 1. Quelle est l'invariant central de ce chapitre ?
-2. Quelle garde évite l'état invalide le plus fréquent ?
+2. Quelle test évite l'état invalide le plus fréquent ?
 3. Quel test simple prouve le comportement nominal ?
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
@@ -595,13 +594,13 @@ Lecture ligne par ligne:
 9. `}` -> participe au déroulé du traitement.
 10. `pick KvValue {` -> participe au déroulé du traitement.
 
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
+### Exemple B: variante cas d'erreur (même intention, comportement sécurisé)
 
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
+Objectif: conserver la logique métier tout en ajoutant un test explicite.
 
 Étapes:
 1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
+2. Ajouter un test avant cette ligne.
 3. Vérifier la nouvelle sortie sur une entrée limite.
 
 ### Exemple C: bug reproductible puis correction locale
@@ -619,7 +618,6 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
-
 
 
 ## Exemple Étendu
@@ -690,21 +688,110 @@ entry main at core/app {
 }
 ```
 
+## Explication détaillée du gros bloc
+
+Ce gros bloc montre un programme entier, pas un extrait isolé: on suit le flux du début à la fin.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `parse_request`: lit `r: Request` et renvoie `Result`.
+- `apply_policy`: lit `total: int, quota: int` et renvoie `Result`.
+- `persist_sim`: lit `x: Result` et renvoie `Result`.
+- `to_exit`: lit `x: Result` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `parse_request` est appelé pour traiter l'étape suivante.
+3. `apply_policy` est appelé pour traiter l'étape suivante.
+4. `persist_sim` est appelé pour traiter l'étape suivante.
+5. `to_exit` est appelé pour traiter l'étape suivante.
+6. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `r.id <= 0`.
+- Test évalué: `r.quota < 0`.
+- Test évalué: `r.amount < 0`.
+- Test évalué: `capped > quota`.
+- Test évalué: `capped < 5`.
+- Test évalué: `v % 13 == 0`.
+- Sélection par `match x`: le chemin dépend de l'état reçu.
+- Sélection par `match x`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> parse_request -> apply_policy -> persist_sim -> to_exit -> sortie 0`.
+- Exemple erreur: `entrée invalide -> parse_request renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
+
+
 ## Design Notes
 
 - Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- Les tests sont placées tôt pour réduire le coût de diagnostic.
 - La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+Cas d'erreur réel:
+- Entree degradee ou incomplete: le test doit couper le flux tot avec une sortie explicite.
 
 A tester:
 - Requête nominale -> sortie 0.
 - Entrée invalide id<=0 -> sortie 91.
 - Refus métier valeur<5 -> sortie 94.
 
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `parse_request` lit `r: Request` puis renvoie `Result`.
+- `apply_policy` lit `total: int, quota: int` puis renvoie `Result`.
+- `persist_sim` lit `x: Result` puis renvoie `Result`.
+- `to_exit` lit `x: Result` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `capped: int` démarre avec `total`.
+- `req: Request` démarre avec `Request(7, 12, 15)`.
+- `p: Result` démarre avec `parse_request(req)`.
+- `d: Result` démarre avec `apply_policy(12, req.quota)`.
+- `s: Result` démarre avec `persist_sim(d)`.
+- `_probe: int` démarre avec `to_exit(p)`.
+
+- Variables modifiées pendant le traitement:
+- `capped` est mis à jour avec `quota`.
+
+- Conditions qui changent le chemin:
+- si `r.id <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `r.quota < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `r.amount < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `capped > quota` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `capped < 5` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `v % 13 == 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: capped=total -> req=Request(7, 12, 15) -> p=parse_request(req) -> d=apply_policy(12, req.quota)
+- enchaînement: parse_request -> apply_policy -> persist_sim -> to_exit
+- sortie finale sur ce chemin: `to_exit(s)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `r.id <= 0` devient vrai, la fonction renvoie immédiatement `Result.Rejected(91)`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
@@ -726,28 +813,28 @@ A tester:
 
 | Symptôme | Cause probable | Vérification | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Sortie inattendue | Test absente ou mal ordonnée | Rejouer avec cas d'erreur | Remonter le test avant la zone sensible |
 | Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+| Régression silencieuse | Règle implicite | Comparer nominal vs limite | Formaliser la règle dans le code |
 
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
 - expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
+- isoler un cas d'erreur réel et prévoir sa sortie,
+- identifier où ajouter un test sans casser le nominal.
 
 
 ## Mini Étude De Cas (Avant / Après)
 
 Avant: logique métier et sortie technique mélangées, diagnostic coûteux.
-Après: gardes d'entrée, décision métier, projection finale séparées; comportement plus lisible et testable.
+Après: tests d'entrée, décision métier, projection finale séparées; comportement plus lisible et testable.
 Impact: revue plus rapide, régression plus facile à localiser.
 
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+1. Vérifier que les tests d'entrée sont placés avant les opérations sensibles.
 2. Vérifier que la décision métier est séparée de la projection de sortie.
 3. Vérifier un test nominal et un test limite réellement exécutables.

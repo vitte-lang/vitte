@@ -7,13 +7,13 @@ Voir aussi: `book/chapters/20-repro.md`, `book/chapters/22-projet-http.md`, `boo
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Situation réelle: Projet guide CLI devient clair quand on trace chaque étape du calcul. L'objectif est de relier ligne de code et effet concret sur la sortie.
+Question directrice: quelle condition est évaluée en premier, et quelle sortie cette décision impose-t-elle ?
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+Fil conducteur: on conserve un même mini-programme pour comparer les effets d'une modification sans changer tout le contexte.
+Objectif pédagogique: passer de la lecture passive à la preuve: même entrée, même branche, même sortie attendue.
 
 ## Pourquoi
 
@@ -22,36 +22,35 @@ Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en p
 
 ## Ce que vous allez faire
 
-Vous allez identifier les points clés de **Projet guide CLI**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+Vous allez lire les extraits dans l'ordre d'exécution réel, puis valider les sorties attendues sur un cas nominal et un cas d'erreur.
 
 ## Exemple minimal
 
-Commencez par le premier extrait de code de ce chapitre.
-Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Projet guide CLI**.
+Premier réflexe recommandé: lisez d'abord les entrées et les conditions, ensuite seulement la forme syntaxique.
 
 ## Explication pas à pas
 
 1. Repérez l'intention du bloc.
-2. Vérifiez la condition ou la garde principale.
+2. Vérifiez la condition ou le test principal.
 3. Confirmez la sortie observable.
 4. Notez comment ce bloc sert **Projet guide CLI** dans l'ensemble du chapitre.
 
 ## Pièges fréquents
 
 - Lire la syntaxe sans vérifier le comportement.
-- Mélanger règle générale et cas limite dans la même explication.
+- Mélanger règle générale et cas d'erreur dans la même explication.
 - Introduire une optimisation avant d'avoir stabilisé le flux de **Projet guide CLI**.
 
 ## Exercice court
 
 Prenez un exemple du chapitre sur **Projet guide CLI**.
-Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au résultat attendu.
 
 ## Résumé en 5 points
 
 1. Vous connaissez l'objectif du chapitre sur **Projet guide CLI**.
 2. Vous savez lire un exemple du chapitre de façon structurée.
-3. Vous distinguez cas nominal et cas limite.
+3. Vous distinguez cas nominal et cas d'erreur.
 4. Vous évitez les pièges les plus fréquents.
 5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
@@ -75,7 +74,7 @@ Schéma pipeline du chapitre:
 - Sortie: résultat métier ou code de statut.
 - Invariant: propriété qui doit rester vraie à chaque étape.
 
-## 21.1 Déclarer le contrat de résultat avant d'écrire l'orchestration
+## 21.1 Déclarer la règle de résultat avant d'écrire l'orchestration
 
 ```vit
 pick CliError {
@@ -98,14 +97,14 @@ Lecture ligne par ligne (débutant):
 7. `case Err(e: CliError)` : ce cas décrit `Err(e: CliError)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 8. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
+- Cas nominal: le flux suit la branche principale et produit une sortie stable.
 - Observation testable: forcer le cas `MissingArgs` permet de confirmer la branche attendue.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
-L'intention de cette étape est directe: poser le contrat de sortie avant toute orchestration. Tant que les fautes restent des entiers dispersés, le programme cache sa structure réelle. En introduisant `CliError` et `CliResult`, chaque fonction assume explicitement son issue.
+L'intention de cette étape est directe: poser la règle de sortie avant toute orchestration. Tant que les fautes restent des entiers dispersés, le programme cache sa structure réelle. En introduisant `CliError` et `CliResult`, chaque fonction assume explicitement son issue.
 
 Dans une lecture de production, ce choix réduit le coût mental: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
 
@@ -130,17 +129,17 @@ proc parse_arg_count(argc: int) -> CliResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc parse_arg_count(argc: int) -> CliResult {` : le contrat est défini pour `parse_arg_count`: entrées `argc: int` et sortie `CliResult`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `if argc < 2 { give Err(MissingArgs) }` : cette garde traite le cas limite avant le calcul.
+1. `proc parse_arg_count(argc: int) -> CliResult {` : la règle est défini pour `parse_arg_count`: entrées `argc: int` et sortie `CliResult`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `if argc < 2 { give Err(MissingArgs) }` : cette test traite le cas d'erreur avant le calcul.
 3. `give Ok(argc)` : la branche renvoie immédiatement `Ok(argc)` pour la branche courante, la sortie de branche est explicite et vérifiable.
 4. `}` : cette accolade clôt le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: si `argc < 2` est vrai, la sortie devient `Err(MissingArgs)`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `Ok(argc)`.
+- Cas d'erreur: si `argc < 2` est vrai, la sortie devient `Err(MissingArgs)`.
+- Cas nominal: sans test bloquante, la branche principale renvoie `Ok(argc)`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: placer la validation au bord du système, avant toute logique métier.
 
@@ -167,18 +166,18 @@ proc run_mode(mode: int) -> CliResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc run_mode(mode: int) -> CliResult {` : le contrat est posé pour `run_mode`: entrées `mode: int` et sortie `CliResult`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `if mode == 1 { give Ok(10) }` : cette garde traite le cas limite avant le calcul.
-3. `if mode == 2 { give Ok(20) }` : cette garde traite le cas limite avant le calcul.
+1. `proc run_mode(mode: int) -> CliResult {` : la règle est posé pour `run_mode`: entrées `mode: int` et sortie `CliResult`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `if mode == 1 { give Ok(10) }` : cette test traite le cas d'erreur avant le calcul.
+3. `if mode == 2 { give Ok(20) }` : cette test traite le cas d'erreur avant le calcul.
 4. `give Err(UnknownMode(mode))` : la sortie est renvoyée immédiatement `Err(UnknownMode(mode))` pour la branche courante, la sortie de branche est explicite et vérifiable.
 5. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: si `mode == 1` est vrai, la sortie devient `Ok(10)`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `Err(UnknownMode(mode))`.
+- Cas d'erreur: si `mode == 1` est vrai, la sortie devient `Ok(10)`.
+- Cas nominal: sans test bloquante, la branche principale renvoie `Err(UnknownMode(mode))`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: isoler le routage métier dans une fonction pure.
 
@@ -208,8 +207,8 @@ proc to_exit_code(r: CliResult) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc to_exit_code(r: CliResult) -> int {` : le contrat est fixé pour `to_exit_code`: entrées `r: CliResult` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `match r {` : cette ligne démarre un dispatch déterministe sur `r`: une seule branche sera choisie selon la forme de la valeur analysée.
+1. `proc to_exit_code(r: CliResult) -> int {` : la règle est fixé pour `to_exit_code`: entrées `r: CliResult` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `match r {` : cette ligne démarre un dispatch stable sur `r`: une seule branche sera choisie selon la forme de la valeur analysée.
 3. `case Ok(_) { give 0 }` : ce cas décrit `Ok(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 4. `case Err(MissingArgs) { give 64 }` : ce cas décrit `Err(MissingArgs)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 5. `case Err(UnknownMode(_)) { give 65 }` : ce cas décrit `Err(UnknownMode(_))` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
@@ -217,12 +216,12 @@ Lecture ligne par ligne (débutant):
 7. `}` : cette accolade ferme le bloc logique.
 8. `}` : cette accolade clôt le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
+- Cas nominal: le flux suit la branche principale et produit une sortie stable.
 - Observation testable: forcer le cas `Ok(_)` permet de confirmer la branche attendue.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: séparer la sémantique métier de la politique d'exit code.
 
@@ -265,7 +264,7 @@ Lecture ligne par ligne (débutant):
 1. `entry main at core/app {` : cette ligne fixe le point d'entrée `main` dans `core/app` et sert de scénario exécutable de bout en bout pour le chapitre.
 2. `let argc: int = 2` : cette ligne crée la variable `argc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
 3. `let parse_res: CliResult = parse_arg_count(argc)` : cette ligne crée la variable `parse_res` de type `CliResult` pour nommer explicitement une étape intermédiaire du raisonnement.
-4. `match parse_res {` : cette ligne démarre un dispatch déterministe sur `parse_res`: une seule branche sera choisie selon la forme de la valeur analysée.
+4. `match parse_res {` : cette ligne démarre un dispatch stable sur `parse_res`: une seule branche sera choisie selon la forme de la valeur analysée.
 5. `case Err(e) {` : ce cas décrit `Err(e)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 6. `return to_exit_code(Err(e))` : cette ligne termine l'exécution du bloc courant avec le code `to_exit_code(Err(e))`, utile pour observer le résultat global du scénario.
 7. `}` : cette accolade ferme le bloc logique.
@@ -279,12 +278,12 @@ Lecture ligne par ligne (débutant):
 15. `}` : cette accolade ferme le bloc logique.
 16. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
 - Cas nominal: le scénario principal se termine avec `return to_exit_code(Err(e))`.
 - Observation testable: exécuter le scénario permet de vérifier le code de sortie `to_exit_code(Err(e))`.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: `main` orchestre, il ne redéfinit pas les règles métier.
 
@@ -311,7 +310,7 @@ Erreurs fréquentes à éviter:
 
 ## À retenir
 
-Un CLI Vitte robuste n'est pas celui qui contient beaucoup de code, mais celui qui expose une grammaire claire de décisions. Entrée validée en frontière, métier routé dans des fonctions pures, projection système centralisée, et `entry` réduite au rôle d'orchestrateur. Avec cette discipline, la complexité augmente sans détruire la lisibilité. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, contrat explicite, et comportement observable du début à la fin.
+Un CLI Vitte robuste n'est pas celui qui contient beaucoup de code, mais celui qui expose une grammaire claire de décisions. Entrée validée en frontière, métier routé dans des fonctions pures, projection système centralisée, et `entry` réduite au rôle d'orchestrateur. Avec cette discipline, la complexité augmente sans détruire la lisibilité. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, règle explicite, et comportement observable du début à la fin.
 
 Critère pratique de qualité pour ce chapitre:
 - vous savez tracer le flux complet d'un appel CLI en quelques étapes.
@@ -321,20 +320,20 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Réponse attendue: un test explicite ou un chemin de secours stable doit s'appliquer.
 ## À faire
 
-1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
+1. Reprenez un exemple du chapitre et modifiez une condition de test pour observer un comportement différent.
 2. Écrivez un mini test mental sur une entrée invalide du chapitre, puis prédisez la branche exécutée.
 
 ## Corrigé minimal
 
 - identifiez la ligne modifiée et expliquez en une phrase la nouvelle sortie attendue.
-- nommez la garde ou la branche de secours réellement utilisée.
+- nommez le test ou la branche de secours réellement utilisée.
 
 ## Mini défi transverse
 
-Défi: combinez au moins deux notions des trois derniers chapitres dans une fonction courte (garde + transformation + sortie).
+Défi: combinez au moins deux notions des trois derniers chapitres dans une fonction courte (test + transformation + sortie).
 Vérification minimale: montrez un cas nominal et un cas invalide, puis expliquez quelle branche est prise.
 
 ## Conforme EBNF
@@ -365,7 +364,7 @@ Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambig
 
 Mini quiz:
 1. Quelle est l'invariant central de ce chapitre ?
-2. Quelle garde évite l'état invalide le plus fréquent ?
+2. Quelle test évite l'état invalide le plus fréquent ?
 3. Quel test simple prouve le comportement nominal ?
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
@@ -397,13 +396,13 @@ Lecture ligne par ligne:
 7. `case Err(e: CliError)` -> participe au déroulé du traitement.
 8. `}` -> participe au déroulé du traitement.
 
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
+### Exemple B: variante cas d'erreur (même intention, comportement sécurisé)
 
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
+Objectif: conserver la logique métier tout en ajoutant un test explicite.
 
 Étapes:
 1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
+2. Ajouter un test avant cette ligne.
 3. Vérifier la nouvelle sortie sur une entrée limite.
 
 ### Exemple C: bug reproductible puis correction locale
@@ -421,7 +420,6 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
-
 
 
 ## Exemple Étendu
@@ -492,21 +490,110 @@ entry main at core/app {
 }
 ```
 
+## Explication détaillée du gros bloc
+
+Ici, l'objectif est de comprendre le chemin réel du programme, ligne par ligne, jusqu'au code de sortie.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `parse_request`: lit `r: Request` et renvoie `Result`.
+- `apply_policy`: lit `total: int, quota: int` et renvoie `Result`.
+- `persist_sim`: lit `x: Result` et renvoie `Result`.
+- `to_exit`: lit `x: Result` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `parse_request` est appelé pour traiter l'étape suivante.
+3. `apply_policy` est appelé pour traiter l'étape suivante.
+4. `persist_sim` est appelé pour traiter l'étape suivante.
+5. `to_exit` est appelé pour traiter l'étape suivante.
+6. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `r.id <= 0`.
+- Test évalué: `r.quota < 0`.
+- Test évalué: `r.amount < 0`.
+- Test évalué: `capped > quota`.
+- Test évalué: `capped < 5`.
+- Test évalué: `v % 13 == 0`.
+- Sélection par `match x`: le chemin dépend de l'état reçu.
+- Sélection par `match x`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> parse_request -> apply_policy -> persist_sim -> to_exit -> sortie 0`.
+- Exemple erreur: `entrée invalide -> parse_request renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
+
+
 ## Design Notes
 
 - Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- Les tests sont placées tôt pour réduire le coût de diagnostic.
 - La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+Cas d'erreur réel:
+- Entree degradee ou incomplete: le test doit couper le flux tot avec une sortie explicite.
 
 A tester:
 - Requête nominale -> sortie 0.
 - Entrée invalide id<=0 -> sortie 91.
 - Refus métier valeur<5 -> sortie 94.
 
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `parse_request` lit `r: Request` puis renvoie `Result`.
+- `apply_policy` lit `total: int, quota: int` puis renvoie `Result`.
+- `persist_sim` lit `x: Result` puis renvoie `Result`.
+- `to_exit` lit `x: Result` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `capped: int` démarre avec `total`.
+- `req: Request` démarre avec `Request(7, 12, 15)`.
+- `p: Result` démarre avec `parse_request(req)`.
+- `d: Result` démarre avec `apply_policy(12, req.quota)`.
+- `s: Result` démarre avec `persist_sim(d)`.
+- `_probe: int` démarre avec `to_exit(p)`.
+
+- Variables modifiées pendant le traitement:
+- `capped` est mis à jour avec `quota`.
+
+- Conditions qui changent le chemin:
+- si `r.id <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `r.quota < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `r.amount < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `capped > quota` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `capped < 5` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `v % 13 == 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: capped=total -> req=Request(7, 12, 15) -> p=parse_request(req) -> d=apply_policy(12, req.quota)
+- enchaînement: parse_request -> apply_policy -> persist_sim -> to_exit
+- sortie finale sur ce chemin: `to_exit(s)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `r.id <= 0` devient vrai, la fonction renvoie immédiatement `Result.Rejected(91)`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
@@ -528,28 +615,28 @@ A tester:
 
 | Symptôme | Cause probable | Vérification | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Sortie inattendue | Test absente ou mal ordonnée | Rejouer avec cas d'erreur | Remonter le test avant la zone sensible |
 | Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+| Régression silencieuse | Règle implicite | Comparer nominal vs limite | Formaliser la règle dans le code |
 
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
 - expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
+- isoler un cas d'erreur réel et prévoir sa sortie,
+- identifier où ajouter un test sans casser le nominal.
 
 
 ## Mini Étude De Cas (Avant / Après)
 
 Avant: logique métier et sortie technique mélangées, diagnostic coûteux.
-Après: gardes d'entrée, décision métier, projection finale séparées; comportement plus lisible et testable.
+Après: tests d'entrée, décision métier, projection finale séparées; comportement plus lisible et testable.
 Impact: revue plus rapide, régression plus facile à localiser.
 
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+1. Vérifier que les tests d'entrée sont placés avant les opérations sensibles.
 2. Vérifier que la décision métier est séparée de la projection de sortie.
 3. Vérifier un test nominal et un test limite réellement exécutables.

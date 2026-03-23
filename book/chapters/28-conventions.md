@@ -7,13 +7,13 @@ Voir aussi: `book/chapters/27-grammaire.md`, `book/chapters/29-style.md`, `book/
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Situation réelle: pour Conventions de code, la question n'est pas 'quella règle écrire' mais 'quel chemin le code prend vraiment'. Cette lecture par exécution évite les interprétations vagues.
+Question directrice: quelle condition est évaluée en premier, et quelle sortie cette décision impose-t-elle ?
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+Fil conducteur: vous retrouvez le même pipeline pour observer ce qui change réellement quand on modifie une branche.
+Objectif pédagogique: passer de la lecture passive à la preuve: même entrée, même branche, même sortie attendue.
 
 ## Pourquoi
 
@@ -22,36 +22,35 @@ Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en p
 
 ## Ce que vous allez faire
 
-Vous allez identifier les points clés de **Conventions de code**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+Vous allez lire les extraits dans l'ordre d'exécution réel, puis valider les sorties attendues sur un cas nominal et un cas d'erreur.
 
 ## Exemple minimal
 
-Commencez par le premier extrait de code de ce chapitre.
-Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Conventions de code**.
+Premier réflexe recommandé: lisez d'abord les entrées et les conditions, ensuite seulement la forme syntaxique.
 
 ## Explication pas à pas
 
 1. Repérez l'intention du bloc.
-2. Vérifiez la condition ou la garde principale.
+2. Vérifiez la condition ou le test principal.
 3. Confirmez la sortie observable.
 4. Notez comment ce bloc sert **Conventions de code** dans l'ensemble du chapitre.
 
 ## Pièges fréquents
 
 - Lire la syntaxe sans vérifier le comportement.
-- Mélanger règle générale et cas limite dans la même explication.
+- Mélanger règle générale et cas d'erreur dans la même explication.
 - Introduire une optimisation avant d'avoir stabilisé le flux de **Conventions de code**.
 
 ## Exercice court
 
 Prenez un exemple du chapitre sur **Conventions de code**.
-Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au résultat attendu.
 
 ## Résumé en 5 points
 
 1. Vous connaissez l'objectif du chapitre sur **Conventions de code**.
 2. Vous savez lire un exemple du chapitre de façon structurée.
-3. Vous distinguez cas nominal et cas limite.
+3. Vous distinguez cas nominal et cas d'erreur.
 4. Vous évitez les pièges les plus fréquents.
 5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
@@ -69,22 +68,22 @@ proc parse_port(x: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc parse_port(x: int) -> int {` : le contrat est défini pour `parse_port`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `if x < 0 { give -1 }` : cette garde traite le cas limite avant le calcul.
-3. `if x > 65535 { give -1 }` : cette garde traite le cas limite avant le calcul.
+1. `proc parse_port(x: int) -> int {` : la règle est défini pour `parse_port`: entrées `x: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `if x < 0 { give -1 }` : cette test traite le cas d'erreur avant le calcul.
+3. `if x > 65535 { give -1 }` : cette test traite le cas d'erreur avant le calcul.
 4. `give x` : la branche renvoie immédiatement `x` pour la branche courante, la sortie de branche est explicite et vérifiable.
 5. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: si `x < 0` est vrai, la sortie devient `-1`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `x`.
+- Cas d'erreur: si `x < 0` est vrai, la sortie devient `-1`.
+- Cas nominal: sans test bloquante, la branche principale renvoie `x`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: faire porter l'intention métier par le nom de la procédure.
 
-Le verbe `parse` signale un contrat de validation, et les gardes en tête rendent le flux immédiat à relire.
+Le verbe `parse` signale une règle de validation, et les tests en tête rendent le flux immédiat à relire.
 
 À l'exécution, `parse_port(8080)=8080`, `parse_port(70000)=-1`.
 
@@ -108,18 +107,18 @@ Lecture ligne par ligne (débutant):
 3. `name: string` : cette ligne déclare le champ `name` avec le type `string`, ce qui documente son rôle et limite les erreurs de manipulation.
 4. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
+- Cas nominal: le flux suit la branche principale et produit une sortie stable.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: utiliser des noms de structure et de champs qui décrivent le domaine, pas l'implémentation.
 
 Le schéma devient auto-documenté: la structure se lit comme une mini spécification métier.
 
-À l'exécution, cette déclaration n'exécute rien, mais elle fixe un contrat de données clair au compile-time.
+À l'exécution, cette déclaration n'exécute rien, mais elle fixe une règle de données clair au compile-time.
 
 Erreurs fréquentes à éviter:
 - coder des conventions implicites au lieu de les porter par le type.
@@ -135,16 +134,16 @@ proc is_admin(role: int) -> bool {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc is_admin(role: int) -> bool {` : le contrat est posé pour `is_admin`: entrées `role: int` et sortie `bool`, elle clarifie l'intention avant lecture détaillée du corps.
+1. `proc is_admin(role: int) -> bool {` : la règle est posé pour `is_admin`: entrées `role: int` et sortie `bool`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `give role == 9` : la sortie est renvoyée immédiatement `role == 9` pour la branche courante, la sortie de branche est explicite et vérifiable.
 3. `}` : cette accolade clôt le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `role == 9`.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
+- Cas nominal: sans test bloquante, la branche principale renvoie `role == 9`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'intention de cette étape est directe: rendre les prédicats immédiatement reconnaissables dans les conditions.
 
@@ -159,7 +158,7 @@ Erreurs fréquentes à éviter:
 
 ## À retenir
 
-Les noms expriment l'intention, les gardes sont en tête et les prédicats booléens sont reconnaissables instantanément. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, contrat explicite, et comportement observable du début à la fin.
+Les noms expriment l'intention, les tests sont en tête et les prédicats booléens sont reconnaissables instantanément. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, règle explicite, et comportement observable du début à la fin.
 
 Critère pratique de qualité pour ce chapitre:
 - vous pouvez deviner le rôle d'une fonction en lisant uniquement son nom.
@@ -169,16 +168,16 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Réponse attendue: un test explicite ou un chemin de secours stable doit s'appliquer.
 ## À faire
 
-1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
+1. Reprenez un exemple du chapitre et modifiez une condition de test pour observer un comportement différent.
 2. Écrivez un mini test mental sur une entrée invalide du chapitre, puis prédisez la branche exécutée.
 
 ## Corrigé minimal
 
 - identifiez la ligne modifiée et expliquez en une phrase la nouvelle sortie attendue.
-- nommez la garde ou la branche de secours réellement utilisée.
+- nommez le test ou la branche de secours réellement utilisée.
 
 ## Conforme EBNF
 
@@ -224,19 +223,19 @@ proc parse_port(x: int) -> int {
 ```
 
 Lecture ligne par ligne:
-1. `proc parse_port(x: int) -> int {` -> pose un contrat clair de fonction.
-2. `if x < 0 { give -1 }` -> sépare nominal et cas limite.
-3. `if x > 65535 { give -1 }` -> sépare nominal et cas limite.
+1. `proc parse_port(x: int) -> int {` -> pose une règle clair de fonction.
+2. `if x < 0 { give -1 }` -> sépare nominal et cas d'erreur.
+3. `if x > 65535 { give -1 }` -> sépare nominal et cas d'erreur.
 4. `give x` -> renvoie la sortie vérifiable.
 5. `}` -> participe au déroulé du traitement.
 
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
+### Exemple B: variante cas d'erreur (même intention, comportement sécurisé)
 
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
+Objectif: conserver la logique métier tout en ajoutant un test explicite.
 
 Étapes:
 1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
+2. Ajouter un test avant cette ligne.
 3. Vérifier la nouvelle sortie sur une entrée limite.
 
 ### Exemple C: bug reproductible puis correction locale
@@ -254,7 +253,6 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
-
 
 
 ## Exemple Étendu
@@ -307,21 +305,96 @@ entry main at core/app {
 }
 ```
 
+## Explication détaillée du gros bloc
+
+Ce gros bloc montre un programme entier, pas un extrait isolé: on suit le flux du début à la fin.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `normalize_len`: lit `n: int` et renvoie `int`.
+- `resolve`: lit `m: ModuleSpec` et renvoie `Resolve`.
+- `to_exit`: lit `r: Resolve` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `resolve` est appelé pour traiter l'étape suivante.
+3. `to_exit` est appelé pour traiter l'étape suivante.
+4. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `n <= 0`.
+- Test évalué: `n == 0`.
+- Test évalué: `m.major <= 0`.
+- Test évalué: `m.minor < 0`.
+- Sélection par `match r`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> resolve -> to_exit -> sortie 0`.
+- Exemple erreur: `entrée invalide -> resolve renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
+
+
 ## Design Notes
 
 - Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- Les tests sont placées tôt pour réduire le coût de diagnostic.
 - La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+Cas d'erreur réel:
+- Entree degradee ou incomplete: le test doit couper le flux tot avec une sortie explicite.
 
 A tester:
 - Spécification valide -> sortie 0.
 - Nom invalide -> sortie 71.
 - Version invalide -> sortie 72 ou 73.
 
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `normalize_len` lit `n: int` puis renvoie `int`.
+- `resolve` lit `m: ModuleSpec` puis renvoie `Resolve`.
+- `to_exit` lit `r: Resolve` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `n: int` démarre avec `normalize_len(m.name_len)`.
+- `code: int` démarre avec `100 + (m.major * 10) + m.minor`.
+- `m: ModuleSpec` démarre avec `ModuleSpec(8, 1, 2)`.
+- `r: Resolve` démarre avec `resolve(m)`.
+
+- Conditions qui changent le chemin:
+- si `n <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `n == 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `m.major <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `m.minor < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: n=normalize_len(m.name_len) -> code=100 + (m.major * 10) + m.minor -> m=ModuleSpec(8, 1, 2) -> r=resolve(m)
+- enchaînement: resolve -> to_exit
+- sortie finale sur ce chemin: `to_exit(r)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `n <= 0` devient vrai, la fonction renvoie immédiatement `0`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
@@ -343,21 +416,21 @@ A tester:
 
 | Symptôme | Cause probable | Vérification | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Sortie inattendue | Test absente ou mal ordonnée | Rejouer avec cas d'erreur | Remonter le test avant la zone sensible |
 | Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+| Régression silencieuse | Règle implicite | Comparer nominal vs limite | Formaliser la règle dans le code |
 
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
 - expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
+- isoler un cas d'erreur réel et prévoir sa sortie,
+- identifier où ajouter un test sans casser le nominal.
 
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+1. Vérifier que les tests d'entrée sont placés avant les opérations sensibles.
 2. Vérifier que la décision métier est séparée de la projection de sortie.
 3. Vérifier un test nominal et un test limite réellement exécutables.

@@ -7,22 +7,22 @@ Voir aussi: `book/chapters/02-philosophie.md`.
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Quand un programme démarre mal, tout le reste devient flou.
+Dans ce chapitre, vous allez lire le code comme une suite d'actions: entrée, test, action, sortie.
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+On conserve le même mini-programme pour éviter de changer de contexte à chaque section.
+Le but est simple: comprendre pourquoi chaque ligne existe et ce qu'elle produit.
 
 ## Objectif technique
 
-Établir une base exécutable avec trois propriétés non négociables:
-1. point d'entrée explicite
-2. calcul isolé dans des procédures
-3. sortie observable sans ambiguïté
+À la fin de ce chapitre, vous devez savoir:
+1. où démarre le programme
+2. où se fait le calcul
+3. où la sortie finale est décidée
 
-## 1.1 Point d'entrée et contrat d'exécution
+## 1.1 Point d'entrée
 
 ```vit
 // Point d'entree du scenario
@@ -31,14 +31,14 @@ entry main at core/app {
 }
 ```
 
-Ce que ce bloc fixe:
-- frontière d'exécution: `main` dans `core/app`
-- sémantique de terminaison: sortie immédiate via `return`
-- comportement déterministe: aucune dépendance cachée
+Lecture directe:
+1. `main` est la porte d'entrée du programme.
+2. `return 0` arrête tout de suite l'exécution.
+3. le résultat final est `0`.
 
-Si ce bloc est instable, tout le reste l'est aussi.
+Ce bloc sert de base propre: il montre le démarrage le plus simple possible.
 
-## 1.2 Extraction du calcul hors de l'orchestration
+## 1.2 Séparer calcul et orchestration
 
 ```vit
 proc add(a: int, b: int) -> int {
@@ -53,18 +53,20 @@ entry main at core/app {
 }
 ```
 
-Analyse:
-1. `add` porte un contrat pur (`int, int -> int`).
-2. `entry` orchestre l'appel et restitue le résultat.
-3. la responsabilité est séparée: calcul vs exécution.
+Lecture directe:
+1. `add` fait une seule chose: additionner deux entiers.
+2. `main` appelle `add(20, 22)` puis récupère le résultat dans `r`.
+3. `main` renvoie `r`.
 
-Invariant utile:
-- pour une même paire `(a,b)`, `add` doit produire la même sortie.
+Pourquoi c'est bien:
+- la fonction de calcul est facile à tester seule.
+- le point d'entrée reste court et lisible.
 
-Conséquence de design:
-- tests unitaires sur `add` sans dépendre de l'environnement d'entrée.
+Test rapide:
+- entrée de `add`: `20` et `22`
+- sortie attendue: `42`
 
-## 1.3 Boucle bornée: preuve d'arrêt et invariant d'état
+## 1.3 Boucle avec arrêt clair
 
 ```vit
 proc sum_to(n: int) -> int {
@@ -84,30 +86,32 @@ proc sum_to(n: int) -> int {
 }
 ```
 
-Invariants:
-- avant le test `i > n`, `s` contient la somme `[0..i-1]`
-- `i` progresse strictement de `+1`
+Lecture directe:
+1. départ: `i = 0`, `s = 0`.
+2. tant que `i <= n`, on ajoute `i` dans `s`.
+3. on avance `i` de `1` à chaque tour.
+4. quand `i > n`, on s'arrête.
+5. on renvoie `s`.
 
-Preuve d'arrêt:
-- la variable de progression `i` est monotone croissante
-- la borne `n` est fixe
-- donc la condition `i > n` devient vraie en temps fini (pour `n` fini)
+Exemple concret avec `n = 3`:
+- tour 1: `i=0`, `s=0`
+- tour 2: `i=1`, `s=1`
+- tour 3: `i=2`, `s=3`
+- tour 4: `i=3`, `s=6`
+- arrêt quand `i=4`, sortie `6`
 
-Trace compacte pour `n=3`:
-- `(i,s)=(0,0)->(1,0)->(2,1)->(3,3)->(4,6)` puis arrêt, sortie `6`
+## 1.4 Erreurs fréquentes
 
-## 1.4 Erreurs structurantes à éviter
-
-1. surcharger `entry` avec de la logique métier
-2. introduire une boucle sans borne d'arrêt explicite
-3. mélanger calcul et conversion de sortie dans la même fonction
+1. mettre toute la logique dans `entry main`
+2. oublier la condition d'arrêt d'une boucle
+3. mélanger calcul métier et code de sortie système
 
 ## 1.5 Check-list de fin de chapitre
 
-1. le point d'entrée est-il unique et explicite ?
-2. chaque `proc` a-t-elle un contrat lisible ?
-3. chaque boucle a-t-elle borne + progression + invariant ?
-4. la sortie finale est-elle directement traçable ?
+1. le point d'entrée est-il unique et visible ?
+2. chaque fonction a-t-elle un rôle simple ?
+3. chaque boucle a-t-elle une condition d'arrêt claire ?
+4. peut-on prédire la sortie sans deviner ?
 
 ## Keywords à revoir
 
@@ -117,10 +121,7 @@ Trace compacte pour `n=3`:
 - `book/keywords/give.md`
 - `book/keywords/return.md`
 
-
-
 ## Exemple Étendu
-
 
 ```vit
 // Scenario demarrer: execution complete et verifiable
@@ -184,57 +185,140 @@ entry main at core/app {
 }
 ```
 
-## Design Notes
+## Explication détaillée du gros bloc
 
-- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
-- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+Ici, l'objectif est de comprendre le chemin réel du programme, ligne par ligne, jusqu'au code de sortie.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `validate`: lit `x: Input` et renvoie `Eval`.
+- `transform`: lit `score: int, quota: int` et renvoie `int`.
+- `decide`: lit `r: Eval, quota: int` et renvoie `Eval`.
+- `to_exit`: lit `r: Eval` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `validate` est appelé pour traiter l'étape suivante.
+3. `decide` est appelé pour traiter l'étape suivante.
+4. `to_exit` est appelé pour traiter l'étape suivante.
+5. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `x.id <= 0`.
+- Test évalué: `x.quota < 0`.
+- Test évalué: `x.value < 0`.
+- Test évalué: `capped > quota`.
+- Test évalué: `capped < 0`.
+- Test évalué: `out >= 10`.
+- Sélection par `match r`: le chemin dépend de l'état reçu.
+- Sélection par `match r`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> validate -> decide -> to_exit -> sortie 0`.
+- Exemple erreur: `entrée invalide -> validate renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+## Lecture du flux complet
 
-A tester:
-- Cas nominal -> sortie 0.
-- Cas quota strict -> comportement déterministe.
-- Cas invalide id<=0 -> sortie 21.
+Ordre d'exécution réel:
+1. `main` crée `x`.
+2. `validate(x)` vérifie les valeurs d'entrée.
+3. si les données sont correctes, on obtient `Accepted(...)`; sinon `Rejected(code)`.
+4. `decide(...)` transforme le score puis décide réussite/échec.
+5. `to_exit(...)` convertit le résultat métier en code de sortie.
 
+Exécution type:
+- entrée: `Input(1, 8, 9)`
+- `validate` -> `Accepted(8)`
+- `transform(8,9)` -> `16`
+- `decide` -> `Accepted(16)`
+- `to_exit` -> `0`
+
+Exécution d'erreur:
+- entrée: `Input(0, 8, 9)`
+- `validate` -> `Rejected(21)`
+- `decide` laisse `Rejected(21)`
+- `to_exit` -> `21`
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `validate` lit `x: Input` puis renvoie `Eval`.
+- `transform` lit `score: int, quota: int` puis renvoie `int`.
+- `decide` lit `r: Eval, quota: int` puis renvoie `Eval`.
+- `to_exit` lit `r: Eval` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `capped: int` démarre avec `score`.
+- `out: int` démarre avec `transform(s, quota)`.
+- `x: Input` démarre avec `Input(1, 8, 9)`.
+- `v: Eval` démarre avec `validate(x)`.
+- `d: Eval` démarre avec `decide(v, x.quota)`.
+
+- Variables modifiées pendant le traitement:
+- `capped` est mis à jour avec `quota`.
+
+- Conditions qui changent le chemin:
+- si `x.id <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `x.quota < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `x.value < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `capped > quota` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `capped < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `out >= 10` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: capped=score -> out=transform(s, quota) -> x=Input(1, 8, 9) -> v=validate(x)
+- enchaînement: validate -> decide -> to_exit
+- sortie finale sur ce chemin: `to_exit(d)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `x.id <= 0` devient vrai, la fonction renvoie immédiatement `Eval.Rejected(21)`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
-| Contrainte | Option A | Option B | Décision recommandée |
+| Besoin | Option 1 | Option 2 | Choix conseillé |
 | --- | --- | --- | --- |
-| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
-| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
-| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
-
-
-## Décision Selon Contrainte
-
-- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
-- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
-- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
-
+| Lecture facile | Fonctions courtes | Gros bloc unique | Option 1 |
+| Debug rapide | Codes d'erreur explicites | Message implicite | Option 1 |
+| Évolution du code | Pipeline par étapes | Logique mélangée | Option 1 |
 
 ## Diagnostic Rapide
 
-| Symptôme | Cause probable | Vérification | Correction |
+| Problème observé | Cause probable | Comment vérifier | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
-| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
-
+| Sortie inattendue | ordre des tests mauvais | rejouer avec une entrée simple | remonter les tests d'entrée |
+| Mauvais code retour | conversion finale oubliée | tracer `to_exit` | centraliser la conversion |
+| Résultat incohérent | fonction trop chargée | relire rôle de chaque fonction | découper en étapes courtes |
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
-- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
-
+- suivre l'exécution du début à la fin,
+- expliquer pourquoi une branche est prise,
+- relier chaque fonction à une responsabilité claire.
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
-2. Vérifier que la décision métier est séparée de la projection de sortie.
-3. Vérifier un test nominal et un test limite réellement exécutables.
+1. vérifier que `main` orchestre sans faire tout le calcul
+2. vérifier que chaque fonction a une seule responsabilité
+3. vérifier un scénario normal + un scénario d'erreur exécutables

@@ -7,29 +7,24 @@ Voir aussi: `book/chapters/04-syntaxe.md`.
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Un projet devient vite confus quand les responsabilités sont mélangées.
+Le but de ce chapitre: organiser le code pour savoir immédiatement où lire, où modifier, et où tester.
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+On conserve le même scénario pour voir l'impact d'une bonne structure.
+Vous allez suivre un chemin simple: entrée -> traitement -> résultat.
 
-## Problème structurel
+## Idée principale
 
-La plupart des dégradations projet viennent d'une cause unique: des dépendances orientées dans le mauvais sens.
-La syntaxe ne corrige pas ça. L'architecture, oui.
+On découpe le projet en 3 zones:
+1. `domain`: données métier
+2. `service`: règles de calcul
+3. `io`: lancement et sortie
 
-## Principe directeur
+Flux conseillé: `io -> service -> domain`.
 
-Imposer un graphe de dépendances acyclique et lisible:
-- `domain` ne dépend d'aucune couche applicative
-- `service` dépend de `domain`
-- `io` dépend de `service` (et parfois `domain` pour l'assemblage des données)
-
-Flux de contrôle attendu: `io -> service -> domain`.
-
-## 3.1 Couche domaine: modèle métier stable
+## 3.1 Domaine: définir les données métier
 
 ```vit
 space app/domain
@@ -40,13 +35,12 @@ form Ticket {
 }
 ```
 
-Responsabilité:
-- exprimer le vocabulaire métier sans détail d'exécution.
+Lecture directe:
+1. `Ticket` décrit les données utiles au métier.
+2. aucune logique d'exécution ici.
+3. ce module reste stable même si l'application change de canal (CLI, HTTP, job).
 
-Critère de qualité:
-- un type de domaine doit rester valide même si on change de transport (CLI/API/job).
-
-## 3.2 Couche service: règles métier centralisées
+## 3.2 Service: centraliser les règles métier
 
 ```vit
 space app/service
@@ -58,13 +52,16 @@ proc is_critical(t: d.Ticket) -> bool {
 }
 ```
 
-Responsabilité:
-- encapsuler la règle “critique” en un point unique.
+Lecture directe:
+1. `service` utilise le type de `domain`.
+2. la règle métier est écrite une seule fois.
+3. la sortie est booléenne: vrai ou faux.
 
-Impact:
-- si le seuil change (ex: `>= 8`), une seule zone est modifiée.
+Exemple:
+- priorité `9` -> `true`
+- priorité `4` -> `false`
 
-## 3.3 Couche io: orchestration et projection de sortie
+## 3.3 IO: lancer le flux et produire la sortie
 
 ```vit
 space app/io
@@ -82,43 +79,38 @@ entry main at core/app {
 }
 ```
 
-Responsabilité:
-- construire les entrées
-- appeler le service
-- projeter le résultat dans un format de sortie process
+Lecture directe:
+1. `main` construit une entrée.
+2. `main` appelle le service.
+3. `main` convertit le résultat en code de sortie.
 
-Ce que `io` ne doit pas faire:
-- redéfinir des règles métier
-- manipuler des conventions internes du domaine
+À éviter dans `io`:
+- écrire les règles métier ici
+- dupliquer la logique déjà présente dans `service`
 
-## 3.4 Détection rapide des mauvaises frontières
+## 3.4 Signaux d'une mauvaise structure
 
-Signal 1:
-- une règle métier apparaît dans `entry`.
+1. une règle métier est écrite dans `entry`
+2. `service` dépend de `io`
+3. un type métier contient des détails techniques de sortie
 
-Signal 2:
-- un module `service` importe `io`.
+Si un de ces signaux apparaît, la maintenance coûtera plus cher.
 
-Signal 3:
-- un type métier contient des considérations de transport (codes CLI, format HTTP, etc.).
+## 3.5 Test rapide de structure (30 secondes)
 
-Chacun de ces signaux augmente le coût de changement.
+Pour chaque fichier, posez 3 questions:
+1. est-ce une donnée métier ? -> `domain`
+2. est-ce une règle métier ? -> `service`
+3. est-ce du lancement/sortie ? -> `io`
 
-## 3.5 Test d'architecture (30 secondes)
+Si un fichier répond à plusieurs questions, il faut le découper.
 
-Pour chaque fichier:
-1. représente-t-il un concept métier pur ? -> `domain`
-2. porte-t-il une décision métier ? -> `service`
-3. gère-t-il exécution/assemblage/sortie ? -> `io`
+## 3.6 Check-list avant commit
 
-S'il répond “oui” à plusieurs questions, la responsabilité est probablement mal découpée.
-
-## 3.6 Check-list de revue avant commit
-
-1. le graphe des dépendances est-il orienté `io -> service -> domain` ?
-2. les règles métier sont-elles uniquement dans `service` ?
-3. les types de `domain` sont-ils indépendants du transport ?
-4. `entry` est-il court, lisible et purement orchestral ?
+1. le sens des dépendances est-il `io -> service -> domain` ?
+2. les règles sont-elles dans `service` ?
+3. les types métier sont-ils dans `domain` ?
+4. `entry` reste-t-il court et lisible ?
 
 ## Keywords à revoir
 
@@ -128,10 +120,7 @@ S'il répond “oui” à plusieurs questions, la responsabilité est probableme
 - `book/keywords/proc.md`
 - `book/keywords/entry.md`
 
-
-
 ## Exemple Étendu
-
 
 ```vit
 // Scenario projet: execution complete et verifiable
@@ -198,64 +187,147 @@ entry main at core/app {
 }
 ```
 
-## Design Notes
+## Explication détaillée du gros bloc
 
-- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
-- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+Ici, l'objectif est de comprendre le chemin réel du programme, ligne par ligne, jusqu'au code de sortie.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `parse_request`: lit `r: Request` et renvoie `Result`.
+- `apply_policy`: lit `total: int, quota: int` et renvoie `Result`.
+- `persist_sim`: lit `x: Result` et renvoie `Result`.
+- `to_exit`: lit `x: Result` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `parse_request` est appelé pour traiter l'étape suivante.
+3. `apply_policy` est appelé pour traiter l'étape suivante.
+4. `persist_sim` est appelé pour traiter l'étape suivante.
+5. `to_exit` est appelé pour traiter l'étape suivante.
+6. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `r.id <= 0`.
+- Test évalué: `r.quota < 0`.
+- Test évalué: `r.amount < 0`.
+- Test évalué: `capped > quota`.
+- Test évalué: `capped < 5`.
+- Test évalué: `v % 13 == 0`.
+- Sélection par `match x`: le chemin dépend de l'état reçu.
+- Sélection par `match x`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> parse_request -> apply_policy -> persist_sim -> to_exit -> sortie 0`.
+- Exemple erreur: `entrée invalide -> parse_request renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+## Lecture du flux complet
 
-A tester:
-- Requête nominale -> sortie 0.
-- Entrée invalide id<=0 -> sortie 91.
-- Refus métier valeur<5 -> sortie 94.
+Ordre d'exécution:
+1. `main` construit `req`.
+2. `parse_request` contrôle les données.
+3. `apply_policy` applique la règle métier.
+4. `persist_sim` simule un traitement final.
+5. `to_exit` produit le code de sortie.
 
+Exécution normale:
+- entrée: `Request(7, 12, 15)`
+- sortie finale: `0`
+
+Exécution d'erreur 1:
+- entrée avec `id = 0`
+- sortie finale: `91`
+
+Exécution d'erreur 2:
+- entrée avec `amount = 3`
+- sortie finale: `94`
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `parse_request` lit `r: Request` puis renvoie `Result`.
+- `apply_policy` lit `total: int, quota: int` puis renvoie `Result`.
+- `persist_sim` lit `x: Result` puis renvoie `Result`.
+- `to_exit` lit `x: Result` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `capped: int` démarre avec `total`.
+- `req: Request` démarre avec `Request(7, 12, 15)`.
+- `p: Result` démarre avec `parse_request(req)`.
+- `d: Result` démarre avec `apply_policy(12, req.quota)`.
+- `s: Result` démarre avec `persist_sim(d)`.
+- `_probe: int` démarre avec `to_exit(p)`.
+
+- Variables modifiées pendant le traitement:
+- `capped` est mis à jour avec `quota`.
+
+- Conditions qui changent le chemin:
+- si `r.id <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `r.quota < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `r.amount < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `capped > quota` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `capped < 5` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `v % 13 == 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: capped=total -> req=Request(7, 12, 15) -> p=parse_request(req) -> d=apply_policy(12, req.quota)
+- enchaînement: parse_request -> apply_policy -> persist_sim -> to_exit
+- sortie finale sur ce chemin: `to_exit(s)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `r.id <= 0` devient vrai, la fonction renvoie immédiatement `Result.Rejected(91)`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
-| Contrainte | Option A | Option B | Décision recommandée |
+| Besoin | Option 1 | Option 2 | Choix conseillé |
 | --- | --- | --- | --- |
-| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
-| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
-| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
-
-
-## Décision Selon Contrainte
-
-- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
-- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
-- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
-
+| Lecture rapide | Séparation en 3 zones | Tout dans un fichier | Option 1 |
+| Debug rapide | Fonctions ciblées | Gros flux mélangé | Option 1 |
+| Évolution sûre | Dépendances orientées | Imports croisés | Option 1 |
 
 ## Diagnostic Rapide
 
-| Symptôme | Cause probable | Vérification | Correction |
+| Problème observé | Cause probable | Comment vérifier | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
-| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
-
+| Résultat imprévisible | règles dispersées | tracer les appels | regrouper dans `service` |
+| Fichier difficile à lire | responsabilités mélangées | relire rôle du module | séparer `domain/service/io` |
+| Tests fragiles | logique dans `entry` | isoler la logique | déplacer dans `proc` |
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
-- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
-
+- placer un fichier au bon endroit,
+- suivre le flux d'un projet sans confusion,
+- expliquer la sortie à partir des fonctions appelées.
 
 ## Mini Étude De Cas (Avant / Après)
 
-Avant: logique métier et sortie technique mélangées, diagnostic coûteux.
-Après: gardes d'entrée, décision métier, projection finale séparées; comportement plus lisible et testable.
-Impact: revue plus rapide, régression plus facile à localiser.
-
+Avant: un seul fichier mélange entrée, règles et sortie.
+Après: `domain` décrit les données, `service` décide, `io` lance.
+Résultat: lecture plus rapide, correction plus simple, tests plus stables.
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
-2. Vérifier que la décision métier est séparée de la projection de sortie.
-3. Vérifier un test nominal et un test limite réellement exécutables.
+1. vérifier le sens des dépendances (`io -> service -> domain`)
+2. vérifier que les règles ne sont pas dans `entry`
+3. vérifier un scénario normal + un scénario d'erreur

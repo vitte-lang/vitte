@@ -7,13 +7,13 @@ Voir aussi: `book/chapters/32-catalogue-modules.md`.
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Situation réelle: Conventions de modules a grande echelle se comprend mieux en rejouant le programme comme un algorithme exécutable. Vous lisez les données entrantes, la condition évaluée, puis la valeur renvoyée.
+Question directrice: quelle condition est évaluée en premier, et quelle sortie cette décision impose-t-elle ?
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+Fil conducteur: on conserve un même mini-programme pour comparer les effets d'une modification sans changer tout le contexte.
+Objectif pédagogique: passer de la lecture passive à la preuve: même entrée, même branche, même sortie attendue.
 
 ## Objectif
 
@@ -101,12 +101,12 @@ Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit
 ## À faire
 
 1. Exécuter l’exemple nominal.
-2. Introduire un cas limite.
+2. Introduire un cas d'erreur.
 3. Vérifier la sortie et documenter l’écart.
 
 ## Corrigé minimal
 
-Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.
+Corrigé: conserver la version la plus simple qui respecte la règle, puis ajouter un test de non-régression.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
 
@@ -129,13 +129,13 @@ Lecture ligne par ligne:
 3. `use core/user.{UserRepo}` -> participe au déroulé du traitement.
 4. `share login, logout` -> participe au déroulé du traitement.
 
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
+### Exemple B: variante cas d'erreur (même intention, comportement sécurisé)
 
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
+Objectif: conserver la logique métier tout en ajoutant un test explicite.
 
 Étapes:
 1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
+2. Ajouter un test avant cette ligne.
 3. Vérifier la nouvelle sortie sur une entrée limite.
 
 ### Exemple C: bug reproductible puis correction locale
@@ -153,7 +153,6 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
-
 
 
 ## Exemple Étendu
@@ -206,21 +205,96 @@ entry main at core/app {
 }
 ```
 
+## Explication détaillée du gros bloc
+
+Ici, l'objectif est de comprendre le chemin réel du programme, ligne par ligne, jusqu'au code de sortie.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `normalize_len`: lit `n: int` et renvoie `int`.
+- `resolve`: lit `m: ModuleSpec` et renvoie `Resolve`.
+- `to_exit`: lit `r: Resolve` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `resolve` est appelé pour traiter l'étape suivante.
+3. `to_exit` est appelé pour traiter l'étape suivante.
+4. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `n <= 0`.
+- Test évalué: `n == 0`.
+- Test évalué: `m.major <= 0`.
+- Test évalué: `m.minor < 0`.
+- Sélection par `match r`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> resolve -> to_exit -> sortie 0`.
+- Exemple erreur: `entrée invalide -> resolve renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
+
+
 ## Design Notes
 
 - Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- Les tests sont placées tôt pour réduire le coût de diagnostic.
 - La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+Cas d'erreur réel:
+- Entree degradee ou incomplete: le test doit couper le flux tot avec une sortie explicite.
 
 A tester:
 - Spécification valide -> sortie 0.
 - Nom invalide -> sortie 71.
 - Version invalide -> sortie 72 ou 73.
 
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `normalize_len` lit `n: int` puis renvoie `int`.
+- `resolve` lit `m: ModuleSpec` puis renvoie `Resolve`.
+- `to_exit` lit `r: Resolve` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `n: int` démarre avec `normalize_len(m.name_len)`.
+- `code: int` démarre avec `100 + (m.major * 10) + m.minor`.
+- `m: ModuleSpec` démarre avec `ModuleSpec(8, 1, 2)`.
+- `r: Resolve` démarre avec `resolve(m)`.
+
+- Conditions qui changent le chemin:
+- si `n <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `n == 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `m.major <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `m.minor < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: n=normalize_len(m.name_len) -> code=100 + (m.major * 10) + m.minor -> m=ModuleSpec(8, 1, 2) -> r=resolve(m)
+- enchaînement: resolve -> to_exit
+- sortie finale sur ce chemin: `to_exit(r)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `n <= 0` devient vrai, la fonction renvoie immédiatement `0`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
@@ -242,21 +316,21 @@ A tester:
 
 | Symptôme | Cause probable | Vérification | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Sortie inattendue | Test absente ou mal ordonnée | Rejouer avec cas d'erreur | Remonter le test avant la zone sensible |
 | Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+| Régression silencieuse | Règle implicite | Comparer nominal vs limite | Formaliser la règle dans le code |
 
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
 - expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
+- isoler un cas d'erreur réel et prévoir sa sortie,
+- identifier où ajouter un test sans casser le nominal.
 
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+1. Vérifier que les tests d'entrée sont placés avant les opérations sensibles.
 2. Vérifier que la décision métier est séparée de la projection de sortie.
 3. Vérifier un test nominal et un test limite réellement exécutables.

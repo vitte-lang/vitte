@@ -7,17 +7,17 @@ Voir aussi: `book/chapters/09-modules.md`, `book/chapters/11-collections.md`, `b
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Situation réelle: Diagnostics et erreurs se comprend mieux en rejouant le programme comme un algorithme exécutable. Vous lisez les données entrantes, la condition évaluée, puis la valeur renvoyée.
+Question directrice: quelle condition est évaluée en premier, et quelle sortie cette décision impose-t-elle ?
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+Fil conducteur: chaque section reprend le même scénario pour isoler une seule décision technique à la fois.
+Objectif pédagogique: comprendre pourquoi une ligne existe et ce qu'elle change dans la trajectoire du programme.
 
 ## Objectif
 
-Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+Vous devez pouvoir relire un extrait, prédire son résultat, puis vérifier cette prédiction avec une exécution simple.
 
 ## Pourquoi
 
@@ -26,40 +26,39 @@ Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en p
 
 ## Ce que vous allez réellement faire
 
-Vous allez identifier les points clés de **Diagnostics et erreurs**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+Vous allez lire les extraits dans l'ordre d'exécution réel, puis valider les sorties attendues sur un cas nominal et un cas d'erreur.
 
 ## Exemple minimal
 
-Commencez par le premier extrait de code de ce chapitre.
-Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Diagnostics et erreurs**.
+Premier réflexe recommandé: lisez d'abord les entrées et les conditions, ensuite seulement la forme syntaxique.
 
 ## Méthode de lecture
 
 1. Repérez l'intention du bloc.
-2. Vérifiez la condition ou la garde principale.
+2. Vérifiez la condition ou le test principal.
 3. Confirmez la sortie observable.
 4. Notez comment ce bloc sert **Diagnostics et erreurs** dans l'ensemble du chapitre.
 
 ## Pièges fréquents
 
 - Lire la syntaxe sans vérifier le comportement.
-- Mélanger règle générale et cas limite dans la même explication.
+- Mélanger règle générale et cas d'erreur dans la même explication.
 - Introduire une optimisation avant d'avoir stabilisé le flux de **Diagnostics et erreurs**.
 
 ## Exercice court
 
 Prenez un exemple du chapitre sur **Diagnostics et erreurs**.
-Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au résultat attendu.
 
 ## Résumé en 5 points
 
 1. Vous connaissez l'objectif du chapitre sur **Diagnostics et erreurs**.
 2. Vous savez lire un exemple du chapitre de façon structurée.
-3. Vous distinguez cas nominal et cas limite.
+3. Vous distinguez cas nominal et cas d'erreur.
 4. Vous évitez les pièges les plus fréquents.
 5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
-## 10.1 Garde de division
+## 10.1 Test de division
 
 ```vit
 proc safe_div(num: int, den: int) -> int {
@@ -70,18 +69,15 @@ proc safe_div(num: int, den: int) -> int {
 }
 ```
 
-Lecture simple du code:
-1. `proc safe_div(num: int, den: int) -> int {` : le contrat est défini pour `safe_div`: entrées `num: int, den: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `if den == 0 { give 0 }` : cette garde traite le cas limite avant le calcul.
-3. `give num / den` : la branche renvoie immédiatement `num / den` pour la branche courante, la sortie de branche est explicite et vérifiable.
-4. `}` : cette accolade ferme le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: si `den == 0` est vrai, la sortie devient `0`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `num / den`.
-- Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
+Lecture algorithmique guidée:
+1. Entrée lue: identifiez d'abord les paramètres et leur type, ce sont les données de départ du calcul.
+2. Condition évaluée en premier: `den == 0`. Si elle est vraie, le chemin de test est exécuté immédiatement.
+3. Traitement: appliquez les opérations dans l'ordre écrit, sans sauter d'étape implicite.
+4. Sortie produite: le chemin courant renvoie `0`.
+5. Notion intermédiaire: une fonction est une transformation `Entrée -> Sortie`; sa règle sert à limiter les ambiguïtés.
+6. Notion intermédiaire: un invariant est une propriété qui reste vraie pendant la boucle ou pendant un pipeline d'appels.
+Vérification rapide: testez une entrée nominale puis une entrée limite, et comparez les deux sorties obtenues.
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: placer la frontière d'erreur au plus près de l'opération risquée.
 
@@ -113,27 +109,19 @@ proc parse_port(x: int) -> ParsePort {
 }
 ```
 
-Lecture simple du code:
-1. `pick ParsePort {` : cette ligne ouvre le type fermé `ParsePort` pour forcer un ensemble fini de cas possibles et supprimer les états implicites.
-2. `case Ok(value: int)` : ce cas décrit `Ok(value: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
-3. `case Err(code: int)` : ce cas décrit `Err(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
-4. `}` : cette accolade ferme le bloc logique.
-5. `proc parse_port(x: int) -> ParsePort {` : le contrat est posé pour `parse_port`: entrées `x: int` et sortie `ParsePort`, elle clarifie l'intention avant lecture détaillée du corps.
-6. `if x < 0 { give Err(400) }` : cette garde traite le cas limite avant le calcul.
-7. `if x > 65535 { give Err(422) }` : cette garde traite le cas limite avant le calcul.
-8. `give Ok(x)` : la sortie est renvoyée immédiatement `Ok(x)` pour la branche courante, la sortie de branche est explicite et vérifiable.
-9. `}` : cette accolade clôt le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: si `x < 0` est vrai, la sortie devient `Err(400)`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `Ok(x)`.
-- Observation testable: forcer le cas `Ok(value: int)` permet de confirmer la branche attendue.
+Lecture algorithmique guidée:
+1. Entrée lue: identifiez d'abord les paramètres et leur type, ce sont les données de départ du calcul.
+2. Condition évaluée en premier: `x < 0`. Si elle est vraie, le chemin de test est exécuté immédiatement.
+3. Traitement: appliquez les opérations dans l'ordre écrit, sans sauter d'étape implicite.
+4. Sortie produite: le chemin courant renvoie `Err(400)`.
+5. Notion intermédiaire: une fonction est une transformation `Entrée -> Sortie`; sa règle sert à limiter les ambiguïtés.
+6. Notion intermédiaire: un invariant est une propriété qui reste vraie pendant la boucle ou pendant un pipeline d'appels.
+Vérification rapide: testez une entrée nominale puis une entrée limite, et comparez les deux sorties obtenues.
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: encoder le diagnostic dans le type de retour, pour rendre les échecs aussi explicites que les succès.
 
-Avec ce modèle, on ne perd pas l'information d'erreur: chaque cas garde son code associé.
+Avec ce modèle, on ne perd pas l'information d'erreur: chaque cas porte son code associé.
 
 À l'exécution:
 - `parse_port(-1)` retourne `Err(400)`.
@@ -159,21 +147,15 @@ proc to_exit(p: ParsePort) -> int {
 }
 ```
 
-Lecture simple du code:
-1. `proc to_exit(p: ParsePort) -> int {` : le contrat est fixé pour `to_exit`: entrées `p: ParsePort` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `match p {` : cette ligne démarre un dispatch déterministe sur `p`: une seule branche sera choisie selon la forme de la valeur analysée.
-3. `case Ok(_) { give 0 }` : ce cas décrit `Ok(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
-4. `case Err(c) { give c }` : ce cas décrit `Err(c)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
-5. `otherwise { give 70 }` : cette ligne définit un chemin de secours explicite.
-6. `}` : cette accolade ferme le bloc logique.
-7. `}` : cette accolade ferme le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
-- Observation testable: forcer le cas `Ok(_)` permet de confirmer la branche attendue.
+Lecture algorithmique guidée:
+1. Entrée lue: identifiez d'abord les paramètres et leur type, ce sont les données de départ du calcul.
+2. Sélection de branche: `match p` choisit un cas selon l'état courant.
+3. Traitement: appliquez les opérations dans l'ordre écrit, sans sauter d'étape implicite.
+4. Sortie produite: le chemin courant renvoie `0`.
+5. Notion intermédiaire: une fonction est une transformation `Entrée -> Sortie`; sa règle sert à limiter les ambiguïtés.
+6. Notion intermédiaire: un invariant est une propriété qui reste vraie pendant la boucle ou pendant un pipeline d'appels.
+Vérification rapide: tracez une exécution avec des valeurs concrètes (`x=...`, `i=...`) pour confirmer la branche réellement prise.
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: séparer la logique métier de sa projection technique (ici, le code de sortie).
 
@@ -182,7 +164,7 @@ Ce découplage est important: la politique système peut évoluer sans réécrir
 À l'exécution:
 - `to_exit(Ok(_))` retourne `0`.
 - `to_exit(Err(422))` retourne `422`.
-- `otherwise` garde un code de secours (`70`).
+- `otherwise` test un code de secours (`70`).
 
 Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
@@ -191,26 +173,26 @@ Erreurs classiques à éviter:
 
 ## À retenir
 
-Cause localisée, typée, projetée proprement. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, contrat explicite, et comportement observable du début à la fin.
+Cause localisée, typée, projetée proprement. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, règle explicite, et comportement observable du début à la fin.
 
 Critère pratique de qualité pour ce chapitre:
 - vous savez localiser la cause d'une erreur sans parcourir tout le code.
 - vous savez distinguer résultat métier et projection technique.
-- vous pouvez testér séparément le parsing et la politique d'exit code.
+- vous pouvez tester séparément le parsing et la politique d'exit code.
 
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: un test explicite ou un chemin de secours stable doit s'appliquer.
 ## À faire
 
-1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
+1. Reprenez un exemple du chapitre et modifiez une condition de test pour observer un comportement différent.
 2. Écrivez un mini test mental sur une entrée invalide du chapitre, puis prédisez la branche exécutée.
 
 ## Corrigé minimal
 
 - identifiez la ligne modifiée et expliquez en une phrase la nouvelle sortie attendue.
-- nommez la garde ou la branche de secours réellement utilisée.
+- nommez le test ou la branche de secours réellement utilisée.
 
 ## Conforme EBNF
 
@@ -226,7 +208,6 @@ Repère: une garde explicite ou un chemin de secours déterministe doit s'appliq
 - `book/keywords/field.md`.
 - `book/keywords/form.md`.
 - `book/keywords/give.md`.
-
 
 
 ## Exemple Étendu
@@ -281,21 +262,96 @@ entry main at core/app {
 }
 ```
 
+## Explication détaillée du gros bloc
+
+Ce gros bloc montre un programme entier, pas un extrait isolé: on suit le flux du début à la fin.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `classify`: lit `e: Event` et renvoie `Diagnostic`.
+- `redact`: lit `e: Event` et renvoie `int`.
+- `handle`: lit `e: Event` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `handle` est appelé pour traiter l'étape suivante.
+3. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `e.code == 0`.
+- Test évalué: `e.severity <= 2`.
+- Test évalué: `e.payload_len < 0`.
+- Test évalué: `e.payload_len > 4096`.
+- Test évalué: `r != 0`.
+- Sélection par `match d`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> handle -> sortie 0`.
+- Exemple erreur: `entrée invalide -> handle renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
+
+
 ## Design Notes
 
 - Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- Les tests sont placées tôt pour réduire le coût de diagnostic.
 - La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+Cas d'erreur réel:
+- Entree degradee ou incomplete: le test doit couper le flux tot avec une sortie explicite.
 
 A tester:
 - Niveau info ou warn -> sortie 0.
 - Erreur métier code 17 -> sortie 17.
 - Payload hors limites -> sortie 82.
 
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `classify` lit `e: Event` puis renvoie `Diagnostic`.
+- `redact` lit `e: Event` puis renvoie `int`.
+- `handle` lit `e: Event` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `r: int` démarre avec `redact(e)`.
+- `d: Diagnostic` démarre avec `classify(e)`.
+- `e: Event` démarre avec `Event(17, 3, 120)`.
+
+- Conditions qui changent le chemin:
+- si `e.code == 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `e.severity <= 2` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `e.payload_len < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `e.payload_len > 4096` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `r != 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: r=redact(e) -> d=classify(e) -> e=Event(17, 3, 120)
+- enchaînement: handle
+- sortie finale sur ce chemin: `handle(e)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `e.code == 0` devient vrai, la fonction renvoie immédiatement `Diagnostic.Info(0)`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
@@ -317,28 +373,28 @@ A tester:
 
 | Symptôme | Cause probable | Vérification | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Sortie inattendue | Test absente ou mal ordonnée | Rejouer avec cas d'erreur | Remonter le test avant la zone sensible |
 | Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+| Régression silencieuse | Règle implicite | Comparer nominal vs limite | Formaliser la règle dans le code |
 
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
 - expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
+- isoler un cas d'erreur réel et prévoir sa sortie,
+- identifier où ajouter un test sans casser le nominal.
 
 
 ## Pourquoi Cette Erreur Arrive En Prod
 
 Cause fréquente: entrée partiellement valide, hypothèse implicite dans une branche, puis projection de sortie trop tardive.
 Symptôme: comportement correct en nominal mais instable sous charge ou données incomplètes.
-Mesure utile: tracer l'entrée effective, rejouer le cas limite, verrouiller la garde au bon niveau.
+Mesure utile: tracer l'entrée effective, rejouer le cas d'erreur, verrouiller le test au bon niveau.
 
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+1. Vérifier que les tests d'entrée sont placés avant les opérations sensibles.
 2. Vérifier que la décision métier est séparée de la projection de sortie.
 3. Vérifier un test nominal et un test limite réellement exécutables.

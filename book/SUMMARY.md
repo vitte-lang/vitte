@@ -1,6 +1,5 @@
 # Sommaire
 
-
 - [Vitte Tout-En-Poche (débuter simplement)](poche/README.md)
 - [Sommaire Tout-En-Poche](poche/SOMMAIRE.md)
 - [Glossaire Vitte](glossaire.md)

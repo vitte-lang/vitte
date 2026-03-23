@@ -4,13 +4,13 @@ Niveau: Débutant.
 
 ## Lecture rapide
 
-Repère: `make` sert à rendre le code plus explicite, pas à ajouter du bruit.
-Utilisez-le quand il clarifie le contrat; évitez-le hors de son niveau grammatical.
+Repère concret: `make` sert à décider un chemin d'exécution de façon lisible et vérifiable.
+Utilisez `make` quand il sert à structurer le flux d'exécution; évitez-le s'il n'apporte aucune différence observable sur la branche ou la sortie.
 
 ## Pourquoi (métier)
 
-En code reel, `make` sert a clarifier une decision et a reduire les conventions implicites.
-Si ce mot cle ne clarifie ni le contrat, ni la branche, ni la sortie, il faut simplifier le snippet.
+En pratique algorithmique, `make` sert à transformer une condition en branche exécutable, sans ambiguïté de lecture.
+Règle pratique: si retirer `make` ne change ni le chemin exécuté ni la sortie, simplifiez le bloc.
 
 ## Définition
 
@@ -19,6 +19,10 @@ Si ce mot cle ne clarifie ni le contrat, ni la branche, ni la sortie, il faut si
 ## Syntaxe
 
 Forme canonique: `make nom [as type] = expr`.
+
+## Lecture algorithmique
+
+Lecture conseillée: traquez où `make` intervient dans le flux, puis vérifiez son effet sur l'exécution réelle.
 
 ## Exemple nominal
 

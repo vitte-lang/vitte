@@ -7,17 +7,17 @@ Voir aussi: `book/chapters/15-pipeline.md`, `book/chapters/17-stdlib.md`, `book/
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Situation réelle: dans ce chapitre sur Interop et ABI, l'échec vient souvent d'une décision mal ordonnée plutôt que d'une faute de syntaxe. On suit donc le flux exact: entrée, test, branche, sortie.
+Question directrice: quelle condition est évaluée en premier, et quelle sortie cette décision impose-t-elle ?
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+Fil conducteur: vous retrouvez le même pipeline pour observer ce qui change réellement quand on modifie une branche.
+Objectif pédagogique: relire un bloc, prédire la sortie, puis confirmer la prédiction avec une exécution simple et reproductible.
 
 ## Objectif
 
-Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+Vous devez pouvoir relire un extrait, prédire son résultat, puis vérifier cette prédiction avec une exécution simple.
 
 ## Pourquoi
 
@@ -26,36 +26,35 @@ Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en p
 
 ## Ce que vous allez réellement faire
 
-Vous allez identifier les points clés de **Interop et ABI**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+Vous allez lire les extraits dans l'ordre d'exécution réel, puis valider les sorties attendues sur un cas nominal et un cas d'erreur.
 
 ## Exemple minimal
 
-Commencez par le premier extrait de code de ce chapitre.
-Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Interop et ABI**.
+Premier réflexe recommandé: lisez d'abord les entrées et les conditions, ensuite seulement la forme syntaxique.
 
 ## Méthode de lecture
 
 1. Repérez l'intention du bloc.
-2. Vérifiez la condition ou la garde principale.
+2. Vérifiez la condition ou le test principal.
 3. Confirmez la sortie observable.
 4. Notez comment ce bloc sert **Interop et ABI** dans l'ensemble du chapitre.
 
 ## Pièges fréquents
 
 - Lire la syntaxe sans vérifier le comportement.
-- Mélanger règle générale et cas limite dans la même explication.
+- Mélanger règle générale et cas d'erreur dans la même explication.
 - Introduire une optimisation avant d'avoir stabilisé le flux de **Interop et ABI**.
 
 ## Exercice court
 
 Prenez un exemple du chapitre sur **Interop et ABI**.
-Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au résultat attendu.
 
 ## Résumé en 5 points
 
 1. Vous connaissez l'objectif du chapitre sur **Interop et ABI**.
 2. Vous savez lire un exemple du chapitre de façon structurée.
-3. Vous distinguez cas nominal et cas limite.
+3. Vous distinguez cas nominal et cas d'erreur.
 4. Vous évitez les pièges les plus fréquents.
 5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
@@ -71,21 +70,15 @@ proc encode_code(r: Request) -> int {
 }
 ```
 
-Lecture simple du code:
-1. `form Request {` : cette ligne ouvre la structure `Request` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable.
-2. `code: int` : cette ligne déclare le champ `code` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation.
-3. `payload: string` : cette ligne déclare le champ `payload` avec le type `string`, ce qui documente son rôle et limite les erreurs de manipulation.
-4. `}` : cette accolade ferme le bloc logique.
-5. `proc encode_code(r: Request) -> int {` : le contrat est défini pour `encode_code`: entrées `r: Request` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-6. `give r.code` : la branche renvoie immédiatement `r.code` pour la branche courante, la sortie de branche est explicite et vérifiable.
-7. `}` : cette accolade ferme le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `r.code`.
-- Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
+Lecture algorithmique guidée:
+1. Entrée lue: identifiez d'abord les paramètres et leur type, ce sont les données de départ du calcul.
+2. Pas de branchement critique ici: le flux est séquentiel, ligne après ligne.
+3. Traitement: appliquez les opérations dans l'ordre écrit, sans sauter d'étape implicite.
+4. Sortie produite: le chemin courant renvoie `r.code`.
+5. Notion intermédiaire: une fonction est une transformation `Entrée -> Sortie`; sa règle sert à limiter les ambiguïtés.
+6. Notion intermédiaire: un invariant est une propriété qui reste vraie pendant la boucle ou pendant un pipeline d'appels.
+Vérification rapide: tracez une exécution avec des valeurs concrètes (`x=...`, `i=...`) pour confirmer la branche réellement prise.
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: rendre explicites les données qui traversent la frontière ABI.
 
@@ -113,22 +106,15 @@ proc map_errno(e: int) -> IoResult {
 }
 ```
 
-Lecture simple du code:
-1. `pick IoResult {` : cette ligne ouvre le type fermé `IoResult` pour forcer un ensemble fini de cas possibles et supprimer les états implicites.
-2. `case Ok(value: int)` : ce cas décrit `Ok(value: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
-3. `case Err(errno: int)` : ce cas décrit `Err(errno: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
-4. `}` : cette accolade clôt le bloc logique.
-5. `proc map_errno(e: int) -> IoResult {` : le contrat est posé pour `map_errno`: entrées `e: int` et sortie `IoResult`, elle clarifie l'intention avant lecture détaillée du corps.
-6. `if e == 0 { give Ok(0) }` : cette garde traite le cas limite avant le calcul.
-7. `give Err(e)` : la sortie est renvoyée immédiatement `Err(e)` pour la branche courante, la sortie de branche est explicite et vérifiable.
-8. `}` : cette accolade ferme le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: si `e == 0` est vrai, la sortie devient `Ok(0)`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `Err(e)`.
-- Observation testable: forcer le cas `Ok(value: int)` permet de confirmer la branche attendue.
+Lecture algorithmique guidée:
+1. Entrée lue: identifiez d'abord les paramètres et leur type, ce sont les données de départ du calcul.
+2. Condition évaluée en premier: `e == 0`. Si elle est vraie, le chemin de test est exécuté immédiatement.
+3. Traitement: appliquez les opérations dans l'ordre écrit, sans sauter d'étape implicite.
+4. Sortie produite: le chemin courant renvoie `Ok(0)`.
+5. Notion intermédiaire: une fonction est une transformation `Entrée -> Sortie`; sa règle sert à limiter les ambiguïtés.
+6. Notion intermédiaire: un invariant est une propriété qui reste vraie pendant la boucle ou pendant un pipeline d'appels.
+Vérification rapide: tracez une exécution avec des valeurs concrètes (`x=...`, `i=...`) pour confirmer la branche réellement prise.
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: convertir un protocole d'erreur externe (codes entiers) en modèle interne typé.
 
@@ -155,24 +141,19 @@ proc syscall_halt() -> int {
 }
 ```
 
-Lecture simple du code:
-1. `proc syscall_halt() -> int {` : le contrat est fixé pour `syscall_halt`: entrées `` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `unsafe {` : cette ligne marque une zone sensible qui doit rester courte, justifiée et facile à auditer dans un contexte système.
-3. `asm("hlt")` : cette ligne définit une étape explicite du flux.
-4. `}` : cette accolade ferme le bloc logique.
-5. `give 0` : retourne immédiatement `0` pour la branche courante, la sortie de branche est explicite et vérifiable.
-6. `}` : cette accolade clôt le bloc logique.
-Ce qu'on vérifie en pratique:
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `0`.
-- Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
+Lecture algorithmique guidée:
+1. Entrée lue: identifiez d'abord les paramètres et leur type, ce sont les données de départ du calcul.
+2. Pas de branchement critique ici: le flux est séquentiel, ligne après ligne.
+3. Traitement: appliquez les opérations dans l'ordre écrit, sans sauter d'étape implicite.
+4. Sortie produite: le chemin courant renvoie `0`.
+5. Notion intermédiaire: une fonction est une transformation `Entrée -> Sortie`; sa règle sert à limiter les ambiguïtés.
+6. Notion intermédiaire: un invariant est une propriété qui reste vraie pendant la boucle ou pendant un pipeline d'appels.
+Vérification rapide: testez une entrée nominale puis une entrée limite, et comparez les deux sorties obtenues.
 
-Question utile: que se passe-t-il si l'entrée est invalide ?
-Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: isoler strictement le point `unsafe` lié à l'instruction machine.
 
-Cette isolation rend l'audit concret: un seul point à inspecter, un seul point à encadrer, un seul point à testér indirectement.
+Cette isolation rend l'audit concret: un seul point à inspecter, un seul point à encadrer, un seul point à tester indirectement.
 
 À l'exécution, en contexte autorisé, `hlt` est exécuté puis la procédure retourne `0` si le flot revient.
 
@@ -183,7 +164,7 @@ Erreurs classiques à éviter:
 
 ## À retenir
 
-Les données ABI sont explicites, les erreurs externes sont typées et la zone `unsafe` est strictement bornée. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, contrat explicite, et comportement observable du début à la fin.
+Les données ABI sont explicites, les erreurs externes sont typées et la zone `unsafe` est strictement bornée. Ce chapitre doit vous laisser une grille de lecture stable: intention visible, règle explicite, et comportement observable du début à la fin.
 
 Critère pratique de qualité pour ce chapitre:
 - vous savez identifier exactement quelles données traversent l'ABI.
@@ -193,16 +174,16 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: un test explicite ou un chemin de secours stable doit s'appliquer.
 ## À faire
 
-1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
+1. Reprenez un exemple du chapitre et modifiez une condition de test pour observer un comportement différent.
 2. Écrivez un mini test mental sur une entrée invalide du chapitre, puis prédisez la branche exécutée.
 
 ## Corrigé minimal
 
 - identifiez la ligne modifiée et expliquez en une phrase la nouvelle sortie attendue.
-- nommez la garde ou la branche de secours réellement utilisée.
+- nommez le test ou la branche de secours réellement utilisée.
 
 ## ABI/runtime checklist (commun)
 
@@ -226,7 +207,6 @@ Repère: une garde explicite ou un chemin de secours déterministe doit s'appliq
 - `book/keywords/case.md`.
 - `book/keywords/continue.md`.
 - `book/keywords/form.md`.
-
 
 
 ## Exemple Étendu
@@ -255,7 +235,7 @@ proc validate_abi(e: AbiEnvelope) -> int {
   give 0
 }
 
-// Appel natif simulé: exécution seulement si le contrat est valide
+// Appel natif simulé: exécution seulement si la règle est valide
 proc call_native(e: AbiEnvelope) -> NativeCall {
   let v: int = validate_abi(e)
 
@@ -285,21 +265,101 @@ entry main at core/app {
 }
 ```
 
+## Explication détaillée du gros bloc
+
+Ici, l'objectif est de comprendre le chemin réel du programme, ligne par ligne, jusqu'au code de sortie.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `abi_version`: lit `aucun paramètre` et renvoie `int`.
+- `validate_abi`: lit `e: AbiEnvelope` et renvoie `int`.
+- `call_native`: lit `e: AbiEnvelope` et renvoie `NativeCall`.
+- `to_exit`: lit `r: NativeCall` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `call_native` est appelé pour traiter l'étape suivante.
+3. `to_exit` est appelé pour traiter l'étape suivante.
+4. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `e.version != abi_version()`.
+- Test évalué: `e.payload_size <= 0`.
+- Test évalué: `e.payload_size > 4096`.
+- Test évalué: `e.flags < 0`.
+- Test évalué: `v != 0`.
+- Test évalué: `e.payload_size % 2 == 0`.
+- Sélection par `match r`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> call_native -> to_exit -> sortie 0`.
+- Exemple erreur: `entrée invalide -> call_native renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
+
+
 ## Design Notes
 
 - Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- Les tests sont placées tôt pour réduire le coût de diagnostic.
 - La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+Cas d'erreur réel:
+- Entree degradee ou incomplete: le test doit couper le flux tot avec une sortie explicite.
 
 A tester:
 - ABI valide -> sortie 0.
 - Version incompatible -> sortie 51.
-- Payload hors contrat -> sortie 52 ou 53.
+- Payload hors règle -> sortie 52 ou 53.
 
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `abi_version` lit `aucun paramètre` puis renvoie `int`.
+- `validate_abi` lit `e: AbiEnvelope` puis renvoie `int`.
+- `call_native` lit `e: AbiEnvelope` puis renvoie `NativeCall`.
+- `to_exit` lit `r: NativeCall` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `v: int` démarre avec `validate_abi(e)`.
+- `e: AbiEnvelope` démarre avec `AbiEnvelope(3, 128, 1)`.
+- `r: NativeCall` démarre avec `call_native(e)`.
+
+- Conditions qui changent le chemin:
+- si `e.version != abi_version()` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `e.payload_size <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `e.payload_size > 4096` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `e.flags < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `v != 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `e.payload_size % 2 == 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: v=validate_abi(e) -> e=AbiEnvelope(3, 128, 1) -> r=call_native(e)
+- enchaînement: call_native -> to_exit
+- sortie finale sur ce chemin: `to_exit(r)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `e.version != abi_version()` devient vrai, la fonction renvoie immédiatement `51`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
@@ -321,28 +381,28 @@ A tester:
 
 | Symptôme | Cause probable | Vérification | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Sortie inattendue | Test absente ou mal ordonnée | Rejouer avec cas d'erreur | Remonter le test avant la zone sensible |
 | Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+| Régression silencieuse | Règle implicite | Comparer nominal vs limite | Formaliser la règle dans le code |
 
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
 - expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
+- isoler un cas d'erreur réel et prévoir sa sortie,
+- identifier où ajouter un test sans casser le nominal.
 
 
 ## Pourquoi Cette Erreur Arrive En Prod
 
 Cause fréquente: entrée partiellement valide, hypothèse implicite dans une branche, puis projection de sortie trop tardive.
 Symptôme: comportement correct en nominal mais instable sous charge ou données incomplètes.
-Mesure utile: tracer l'entrée effective, rejouer le cas limite, verrouiller la garde au bon niveau.
+Mesure utile: tracer l'entrée effective, rejouer le cas d'erreur, verrouiller le test au bon niveau.
 
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+1. Vérifier que les tests d'entrée sont placés avant les opérations sensibles.
 2. Vérifier que la décision métier est séparée de la projection de sortie.
 3. Vérifier un test nominal et un test limite réellement exécutables.

@@ -4,13 +4,13 @@ Niveau: Avancé.
 
 ## Lecture rapide
 
-Repère: `trait` sert à rendre le code plus explicite, pas à ajouter du bruit.
-Utilisez-le quand il clarifie le contrat; évitez-le hors de son niveau grammatical.
+Repère concret: `trait` sert à décider un chemin d'exécution de façon lisible et vérifiable.
+Utilisez `trait` quand il sert à rendre le comportement du programme lisible; évitez-le s'il n'apporte aucune différence observable sur la branche ou la sortie.
 
 ## Pourquoi (métier)
 
-En code reel, `trait` sert a clarifier une decision et a reduire les conventions implicites.
-Si ce mot cle ne clarifie ni le contrat, ni la branche, ni la sortie, il faut simplifier le snippet.
+En pratique algorithmique, `trait` sert à transformer une condition en branche exécutable, sans ambiguïté de lecture.
+Règle pratique: si retirer `trait` ne change ni le chemin exécuté ni la sortie, simplifiez le bloc.
 
 ## Définition
 
@@ -19,6 +19,10 @@ Si ce mot cle ne clarifie ni le contrat, ni la branche, ni la sortie, il faut si
 ## Syntaxe
 
 Forme canonique: `trait Name { champ: type }` ou forme legacy `.end`.
+
+## Lecture algorithmique
+
+Lecture conseillée: traquez où `trait` intervient dans le flux, puis vérifiez son effet sur l'exécution réelle.
 
 ## Exemple nominal
 

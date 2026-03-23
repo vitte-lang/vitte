@@ -9,7 +9,7 @@
 ## Exemples
 
 - Cas nominal explicite.
-- Cas limite reel explicite.
+- Cas d'erreur reel explicite.
 - Sortie attendue verifiable.
 
 ## Code
@@ -20,8 +20,8 @@
 
 ## Testabilite
 
-- Garde visible sur entree invalide.
-- Branche de decision explicable.
+- Test visible sur entree invalide.
+- Branche de décision explicable.
 - Sortie finale tracable.
 
 ## QA finale

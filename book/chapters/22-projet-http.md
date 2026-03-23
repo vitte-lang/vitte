@@ -7,13 +7,13 @@ Voir aussi: `book/chapters/21-projet-cli.md`, `book/chapters/23-projet-sys.md`, 
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Situation réelle: pour Projet guide HTTP, la question n'est pas 'quella règle écrire' mais 'quel chemin le code prend vraiment'. Cette lecture par exécution évite les interprétations vagues.
+Question directrice: quelle condition est évaluée en premier, et quelle sortie cette décision impose-t-elle ?
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+Fil conducteur: vous retrouvez le même pipeline pour observer ce qui change réellement quand on modifie une branche.
+Objectif pédagogique: comprendre pourquoi une ligne existe et ce qu'elle change dans la trajectoire du programme.
 
 ## Pourquoi
 
@@ -22,36 +22,35 @@ Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en p
 
 ## Ce que vous allez faire
 
-Vous allez identifier les points clés de **Projet guide HTTP**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+Vous allez lire les extraits dans l'ordre d'exécution réel, puis valider les sorties attendues sur un cas nominal et un cas d'erreur.
 
 ## Exemple minimal
 
-Commencez par le premier extrait de code de ce chapitre.
-Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Projet guide HTTP**.
+Premier réflexe recommandé: lisez d'abord les entrées et les conditions, ensuite seulement la forme syntaxique.
 
 ## Explication pas à pas
 
 1. Repérez l'intention du bloc.
-2. Vérifiez la condition ou la garde principale.
+2. Vérifiez la condition ou le test principal.
 3. Confirmez la sortie observable.
 4. Notez comment ce bloc sert **Projet guide HTTP** dans l'ensemble du chapitre.
 
 ## Pièges fréquents
 
 - Lire la syntaxe sans vérifier le comportement.
-- Mélanger règle générale et cas limite dans la même explication.
+- Mélanger règle générale et cas d'erreur dans la même explication.
 - Introduire une optimisation avant d'avoir stabilisé le flux de **Projet guide HTTP**.
 
 ## Exercice court
 
 Prenez un exemple du chapitre sur **Projet guide HTTP**.
-Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au résultat attendu.
 
 ## Résumé en 5 points
 
 1. Vous connaissez l'objectif du chapitre sur **Projet guide HTTP**.
 2. Vous savez lire un exemple du chapitre de façon structurée.
-3. Vous distinguez cas nominal et cas limite.
+3. Vous distinguez cas nominal et cas d'erreur.
 4. Vous évitez les pièges les plus fréquents.
 5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
@@ -72,9 +71,9 @@ Schéma pipeline du chapitre:
 - Sortie: `HttpResult` puis code HTTP final.
 - Invariant: une erreur donnée produit toujours le même statut.
 
-## 22.0 Contrat HTTP minimal
+## 22.0 Règle HTTP minimal
 
-Contrat retenu pour ce chapitre:
+Règle retenu pour ce chapitre:
 - Méthode: `GET` uniquement (les autres méthodes sont rejetées).
 - Chemins supportés: `/health`, `/metrics`.
 - Payload: longueur `body_len >= 0`.
@@ -131,12 +130,12 @@ Lecture ligne par ligne (débutant):
 12. `case Err(e: HttpError)` porte une erreur typée pour la projection finale.
 
 Entrée -> sortie (à vérifier):
-- Cas limite: si une étape détecte une faute, elle renvoie `Err(..)` plutôt qu'un entier magique.
+- Cas d'erreur: si une étape détecte une faute, elle renvoie `Err(..)` plutôt qu'un entier magique.
 - Cas nominal: un succès transporte `Ok(code)`.
 - Observation testable: les transitions possibles sont bornées par `HttpResult`.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: la valeur passe en `Err(..)` dès la première garde concernée.
+Réponse attendue: la valeur passe en `Err(..)` dès la premier test concernée.
 
 ## 22.2 Valider la requête au bord du système
 
@@ -163,19 +162,19 @@ Validation renforcée, entrées invalides concrètes:
 - `auth_token=""` -> `Err(Unauthorized)`.
 
 Lecture ligne par ligne (débutant):
-1. `if r.method != "GET" { give Err(BadRequest) }` rejette immédiatement les méthodes hors contrat.
+1. `if r.method != "GET" { give Err(BadRequest) }` rejette immédiatement les méthodes hors règle.
 2. `if r.path == "" { give Err(BadRequest) }` rejette une route vide.
 3. `if r.body_len < 0 { give Err(BadRequest) }` rejette une longueur incohérente.
 4. `if r.auth_token == "" { give Err(Unauthorized) }` rejette l'absence de token.
 5. `give Ok(200)` autorise la suite du pipeline lorsque le transport est valide.
 
 Entrée -> sortie (à vérifier):
-- Cas limite: `path=""` donne `Err(BadRequest)`.
+- Cas d'erreur: `path=""` donne `Err(BadRequest)`.
 - Cas nominal: `GET /health` avec token non vide donne `Ok(200)`.
 - Observation testable: une même requête invalide produit toujours la même erreur.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: la fonction s'arrête sur la première garde invalide.
+Réponse attendue: la fonction s'arrête sur la premier test invalide.
 
 ## 22.3 Isoler le routage de chemin
 
@@ -198,9 +197,9 @@ Lecture ligne par ligne (débutant):
 3. `give Err(NotFound)` route inconnue explicitement typée.
 
 Entrée -> sortie (à vérifier):
-- Cas limite: `/unknown` donne `Err(NotFound)`.
+- Cas d'erreur: `/unknown` donne `Err(NotFound)`.
 - Cas nominal: `/health` donne `Ok(200)`.
-- Observation testable: le routage est déterministe et indépendant de l'auth.
+- Observation testable: le routage est stable et indépendant de l'auth.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: la route inconnue est convertie en `Err(NotFound)`.
@@ -225,10 +224,10 @@ Lecture ligne par ligne (débutant):
 1. `let t: HttpResult = validate_transport(r)` exécute d'abord la frontière transport.
 2. `case Err(e) { give Err(e) }` court-circuite immédiatement en cas d'échec.
 3. `case Ok(_) { give route_path(r.path) }` passe au routage seulement si transport valide.
-4. `otherwise { give Err(BadRequest) }` verrouille un fallback déterministe.
+4. `otherwise { give Err(BadRequest) }` verrouille un fallback stable.
 
 Entrée -> sortie (à vérifier):
-- Cas limite: token absent -> `Err(Unauthorized)` sans passer au routage.
+- Cas d'erreur: token absent -> `Err(Unauthorized)` sans passer au routage.
 - Cas nominal: transport valide + `/metrics` -> `Ok(200)`.
 - Observation testable: aucune duplication de validation dans le routeur.
 
@@ -260,7 +259,7 @@ Lecture ligne par ligne (débutant):
 5. `otherwise { give 500 }` protège la production avec un filet de sécurité.
 
 Entrée -> sortie (à vérifier):
-- Cas limite: erreur non prévue -> `500`.
+- Cas d'erreur: erreur non prévue -> `500`.
 - Cas nominal: `Ok(200)` -> `200`.
 - Observation testable: chaque `HttpError` connu a un statut stable.
 
@@ -310,7 +309,7 @@ Trajet invalide (auth absente):
 - Mapper trop tôt en statut: on perd l'information métier (`Err(..)`) et on complique le debug.
 - Dupliquer la validation dans plusieurs couches: divergences et incohérences garanties.
 - Mélanger transport et métier dans une seule fonction: tests fragiles, maintenance coûteuse.
-- Oublier le fallback `500`: comportement non déterministe en cas inattendu.
+- Oublier le fallback `500`: comportement non stable en cas inattendu.
 
 ## Table erreur -> diagnostic -> correction
 
@@ -322,7 +321,7 @@ Trajet invalide (auth absente):
 
 ## À retenir
 
-Un service HTTP robuste commence par des frontières nettes: validation transport, routage indépendant, orchestration minimale, projection finale centralisée. Si chaque couche garde sa responsabilité, le système devient lisible, testable et stable.
+Un service HTTP robuste commence par des frontières nettes: validation transport, routage indépendant, orchestration minimale, projection finale centralisée. Si chaque couche test sa responsabilité, le système devient lisible, testable et stable.
 
 Critère pratique de qualité pour ce chapitre:
 - vous savez localiser immédiatement la couche responsable d'une erreur.
@@ -332,7 +331,7 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde de validation ou une route de secours convertit l'entrée en `Err(..)`, puis en code HTTP stable.
+Réponse attendue: un test de validation ou une route de secours convertit l'entrée en `Err(..)`, puis en code HTTP stable.
 
 ## À faire
 
@@ -342,7 +341,7 @@ Réponse attendue: une garde de validation ou une route de secours convertit l'e
 ## Corrigé minimal
 
 - La nouvelle route doit être ajoutée dans `route_path` sans modifier `validate_transport`.
-- La nouvelle garde de taille doit vivre dans `validate_transport` et garder la projection centralisée dans `to_http_code`.
+- La nouvelle test de taille doit vivre dans `validate_transport` et garder la projection centralisée dans `to_http_code`.
 
 ## Micro challenge HTTP
 
@@ -417,13 +416,13 @@ Lecture ligne par ligne:
 9. `case Unauthorized` -> participe au déroulé du traitement.
 10. `case NotFound` -> participe au déroulé du traitement.
 
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
+### Exemple B: variante cas d'erreur (même intention, comportement sécurisé)
 
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
+Objectif: conserver la logique métier tout en ajoutant un test explicite.
 
 Étapes:
 1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
+2. Ajouter un test avant cette ligne.
 3. Vérifier la nouvelle sortie sur une entrée limite.
 
 ### Exemple C: bug reproductible puis correction locale
@@ -441,7 +440,6 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
-
 
 
 ## Exemple Étendu
@@ -512,21 +510,110 @@ entry main at core/app {
 }
 ```
 
+## Explication détaillée du gros bloc
+
+Ce gros bloc montre un programme entier, pas un extrait isolé: on suit le flux du début à la fin.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `parse_request`: lit `r: Request` et renvoie `Result`.
+- `apply_policy`: lit `total: int, quota: int` et renvoie `Result`.
+- `persist_sim`: lit `x: Result` et renvoie `Result`.
+- `to_exit`: lit `x: Result` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `parse_request` est appelé pour traiter l'étape suivante.
+3. `apply_policy` est appelé pour traiter l'étape suivante.
+4. `persist_sim` est appelé pour traiter l'étape suivante.
+5. `to_exit` est appelé pour traiter l'étape suivante.
+6. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `r.id <= 0`.
+- Test évalué: `r.quota < 0`.
+- Test évalué: `r.amount < 0`.
+- Test évalué: `capped > quota`.
+- Test évalué: `capped < 5`.
+- Test évalué: `v % 13 == 0`.
+- Sélection par `match x`: le chemin dépend de l'état reçu.
+- Sélection par `match x`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> parse_request -> apply_policy -> persist_sim -> to_exit -> sortie 0`.
+- Exemple erreur: `entrée invalide -> parse_request renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
+
+
 ## Design Notes
 
 - Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- Les tests sont placées tôt pour réduire le coût de diagnostic.
 - La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+Cas d'erreur réel:
+- Entree degradee ou incomplete: le test doit couper le flux tot avec une sortie explicite.
 
 A tester:
 - Requête nominale -> sortie 0.
 - Entrée invalide id<=0 -> sortie 91.
 - Refus métier valeur<5 -> sortie 94.
 
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `parse_request` lit `r: Request` puis renvoie `Result`.
+- `apply_policy` lit `total: int, quota: int` puis renvoie `Result`.
+- `persist_sim` lit `x: Result` puis renvoie `Result`.
+- `to_exit` lit `x: Result` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `capped: int` démarre avec `total`.
+- `req: Request` démarre avec `Request(7, 12, 15)`.
+- `p: Result` démarre avec `parse_request(req)`.
+- `d: Result` démarre avec `apply_policy(12, req.quota)`.
+- `s: Result` démarre avec `persist_sim(d)`.
+- `_probe: int` démarre avec `to_exit(p)`.
+
+- Variables modifiées pendant le traitement:
+- `capped` est mis à jour avec `quota`.
+
+- Conditions qui changent le chemin:
+- si `r.id <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `r.quota < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `r.amount < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `capped > quota` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `capped < 5` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `v % 13 == 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: capped=total -> req=Request(7, 12, 15) -> p=parse_request(req) -> d=apply_policy(12, req.quota)
+- enchaînement: parse_request -> apply_policy -> persist_sim -> to_exit
+- sortie finale sur ce chemin: `to_exit(s)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `r.id <= 0` devient vrai, la fonction renvoie immédiatement `Result.Rejected(91)`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
@@ -548,21 +635,21 @@ A tester:
 
 | Symptôme | Cause probable | Vérification | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Sortie inattendue | Test absente ou mal ordonnée | Rejouer avec cas d'erreur | Remonter le test avant la zone sensible |
 | Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+| Régression silencieuse | Règle implicite | Comparer nominal vs limite | Formaliser la règle dans le code |
 
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
 - expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
+- isoler un cas d'erreur réel et prévoir sa sortie,
+- identifier où ajouter un test sans casser le nominal.
 
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+1. Vérifier que les tests d'entrée sont placés avant les opérations sensibles.
 2. Vérifier que la décision métier est séparée de la projection de sortie.
 3. Vérifier un test nominal et un test limite réellement exécutables.

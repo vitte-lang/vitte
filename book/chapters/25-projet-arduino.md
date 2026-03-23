@@ -7,13 +7,13 @@ Voir aussi: `book/chapters/24-projet-kv.md`, `book/chapters/26-projet-editor.md`
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Situation réelle: Projet guide Arduino devient clair quand on trace chaque étape du calcul. L'objectif est de relier ligne de code et effet concret sur la sortie.
+Question directrice: quelle condition est évaluée en premier, et quelle sortie cette décision impose-t-elle ?
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+Fil conducteur: on conserve un même mini-programme pour comparer les effets d'une modification sans changer tout le contexte.
+Objectif pédagogique: passer de la lecture passive à la preuve: même entrée, même branche, même sortie attendue.
 
 ## Pourquoi
 
@@ -22,36 +22,35 @@ Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en p
 
 ## Ce que vous allez faire
 
-Vous allez identifier les points clés de **Projet guide Arduino**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+Vous allez lire les extraits dans l'ordre d'exécution réel, puis valider les sorties attendues sur un cas nominal et un cas d'erreur.
 
 ## Exemple minimal
 
-Commencez par le premier extrait de code de ce chapitre.
-Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Projet guide Arduino**.
+Premier réflexe recommandé: lisez d'abord les entrées et les conditions, ensuite seulement la forme syntaxique.
 
 ## Explication pas à pas
 
 1. Repérez l'intention du bloc.
-2. Vérifiez la condition ou la garde principale.
+2. Vérifiez la condition ou le test principal.
 3. Confirmez la sortie observable.
 4. Notez comment ce bloc sert **Projet guide Arduino** dans l'ensemble du chapitre.
 
 ## Pièges fréquents
 
 - Lire la syntaxe sans vérifier le comportement.
-- Mélanger règle générale et cas limite dans la même explication.
+- Mélanger règle générale et cas d'erreur dans la même explication.
 - Introduire une optimisation avant d'avoir stabilisé le flux de **Projet guide Arduino**.
 
 ## Exercice court
 
 Prenez un exemple du chapitre sur **Projet guide Arduino**.
-Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au résultat attendu.
 
 ## Résumé en 5 points
 
 1. Vous connaissez l'objectif du chapitre sur **Projet guide Arduino**.
 2. Vous savez lire un exemple du chapitre de façon structurée.
-3. Vous distinguez cas nominal et cas limite.
+3. Vous distinguez cas nominal et cas d'erreur.
 4. Vous évitez les pièges les plus fréquents.
 5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
@@ -61,7 +60,7 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 - Niveau local exemples guidés: Intermédiaire.
 - Niveau local exercices de diagnostic: Avancé.
 
-Ce chapitre poursuit un objectif clair: construire une boucle embarquée Vitte utilisable en conditions réelles, avec gestion du bruit capteur, seuils robustes, sécurité actionneur et comportement déterministe. Nous allons passer d'une démonstration simple à un mini contrôleur complet.
+Ce chapitre poursuit un objectif clair: construire une boucle embarquée Vitte utilisable en conditions réelles, avec gestion du bruit capteur, seuils robustes, sécurité actionneur et comportement stable. Nous allons passer d'une démonstration simple à un mini contrôleur complet.
 
 L'idée directrice est la suivante: en embarqué, la robustesse vient de la discipline des invariants. Chaque étape doit être explicite, testable et isolable: acquisition, assainissement, filtrage, décision, projection matérielle.
 
@@ -110,12 +109,12 @@ Lecture ligne par ligne (débutant):
 14. `alert_off: int` : cette ligne déclare le champ `alert_off` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation.
 15. `}` : cette accolade clôt le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
+- Cas nominal: le flux suit la branche principale et produit une sortie stable.
 - Observation testable: forcer le cas `Idle` permet de confirmer la branche attendue.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 Ce modèle introduit deux idées fortes:
 - l'état n'est pas binaire (`Idle/Alert`), il est explicite (`Armed`, `Fault`).
@@ -143,21 +142,21 @@ proc clamp_raw(s: Sample, cfg: ControllerCfg) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc read_raw(v: int) -> Sample {` : le contrat est défini pour `read_raw`: entrées `v: int` et sortie `Sample`, elle clarifie l'intention avant lecture détaillée du corps.
+1. `proc read_raw(v: int) -> Sample {` : la règle est défini pour `read_raw`: entrées `v: int` et sortie `Sample`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `give Sample(v)` : la branche renvoie immédiatement `Sample(v)` pour la branche courante, la sortie de branche est explicite et vérifiable.
 3. `}` : cette accolade ferme le bloc logique.
-4. `proc clamp_raw(s: Sample, cfg: ControllerCfg) -> int {` : le contrat est posé pour `clamp_raw`: entrées `s: Sample, cfg: ControllerCfg` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-5. `if s.raw < cfg.min_raw { give cfg.min_raw }` : cette garde traite le cas limite avant le calcul.
-6. `if s.raw > cfg.max_raw { give cfg.max_raw }` : cette garde traite le cas limite avant le calcul.
+4. `proc clamp_raw(s: Sample, cfg: ControllerCfg) -> int {` : la règle est posé pour `clamp_raw`: entrées `s: Sample, cfg: ControllerCfg` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+5. `if s.raw < cfg.min_raw { give cfg.min_raw }` : cette test traite le cas d'erreur avant le calcul.
+6. `if s.raw > cfg.max_raw { give cfg.max_raw }` : cette test traite le cas d'erreur avant le calcul.
 7. `give s.raw` : la sortie est renvoyée immédiatement `s.raw` pour la branche courante, la sortie de branche est explicite et vérifiable.
 8. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: si `s.raw < cfg.min_raw` est vrai, la sortie devient `cfg.min_raw`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `Sample(v)`.
+- Cas d'erreur: si `s.raw < cfg.min_raw` est vrai, la sortie devient `cfg.min_raw`.
+- Cas nominal: sans test bloquante, la branche principale renvoie `Sample(v)`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 La saturation doit être la première barrière de robustesse:
 - elle coupe les valeurs impossibles.
@@ -194,19 +193,19 @@ Lecture ligne par ligne (débutant):
 3. `b: int` : cette ligne déclare le champ `b` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation.
 4. `c: int` : cette ligne déclare le champ `c` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation.
 5. `}` : cette accolade clôt le bloc logique.
-6. `proc filter3_push(f: Filter3, v: int) -> Filter3 {` : le contrat est fixé pour `filter3_push`: entrées `f: Filter3, v: int` et sortie `Filter3`, elle clarifie l'intention avant lecture détaillée du corps.
+6. `proc filter3_push(f: Filter3, v: int) -> Filter3 {` : la règle est fixé pour `filter3_push`: entrées `f: Filter3, v: int` et sortie `Filter3`, elle clarifie l'intention avant lecture détaillée du corps.
 7. `give Filter3(f.b, f.c, v)` : retourne immédiatement `Filter3(f.b, f.c, v)` pour la branche courante, la sortie de branche est explicite et vérifiable.
 8. `}` : cette accolade ferme le bloc logique.
-9. `proc filter3_mean(f: Filter3) -> int {` : le contrat est défini pour `filter3_mean`: entrées `f: Filter3` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+9. `proc filter3_mean(f: Filter3) -> int {` : la règle est défini pour `filter3_mean`: entrées `f: Filter3` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 10. `give (f.a + f.b + f.c) / 3` : la branche renvoie immédiatement `(f.a + f.b + f.c) / 3` pour la branche courante, la sortie de branche est explicite et vérifiable.
 11. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `Filter3(f.b, f.c, v)`.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
+- Cas nominal: sans test bloquante, la branche principale renvoie `Filter3(f.b, f.c, v)`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 Un simple filtre glissant sur 3 échantillons réduit fortement les oscillations sans coûter cher en CPU.
 
@@ -233,18 +232,18 @@ proc to_percent(v: int, cfg: ControllerCfg) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc to_percent(v: int, cfg: ControllerCfg) -> int {` : le contrat est posé pour `to_percent`: entrées `v: int, cfg: ControllerCfg` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+1. `proc to_percent(v: int, cfg: ControllerCfg) -> int {` : la règle est posé pour `to_percent`: entrées `v: int, cfg: ControllerCfg` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `let span: int = cfg.max_raw - cfg.min_raw` : cette ligne crée la variable `span` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
-3. `if span <= 0 { give 0 }` : cette garde traite le cas limite avant le calcul.
+3. `if span <= 0 { give 0 }` : cette test traite le cas d'erreur avant le calcul.
 4. `give ((v - cfg.min_raw) * 100) / span` : la sortie est renvoyée immédiatement `((v - cfg.min_raw) * 100) / span` pour la branche courante, la sortie de branche est explicite et vérifiable.
 5. `}` : cette accolade clôt le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: si `span <= 0` est vrai, la sortie devient `0`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `((v - cfg.min_raw) * 100) / span`.
+- Cas d'erreur: si `span <= 0` est vrai, la sortie devient `0`.
+- Cas nominal: sans test bloquante, la branche principale renvoie `((v - cfg.min_raw) * 100) / span`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 La normalisation doit dépendre de la calibration, pas d'une échelle figée.
 
@@ -285,18 +284,18 @@ proc classify_hysteresis(p: int, prev: ControlState, cfg: ControllerCfg) -> Cont
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc classify_hysteresis(p: int, prev: ControlState, cfg: ControllerCfg) -> ControlState {` : le contrat est fixé pour `classify_hysteresis`: entrées `p: int, prev: ControlState, cfg: ControllerCfg` et sortie `ControlState`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `match prev {` : cette ligne démarre un dispatch déterministe sur `prev`: une seule branche sera choisie selon la forme de la valeur analysée.
+1. `proc classify_hysteresis(p: int, prev: ControlState, cfg: ControllerCfg) -> ControlState {` : la règle est fixé pour `classify_hysteresis`: entrées `p: int, prev: ControlState, cfg: ControllerCfg` et sortie `ControlState`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `match prev {` : cette ligne démarre un dispatch stable sur `prev`: une seule branche sera choisie selon la forme de la valeur analysée.
 3. `case Alert {` : ce cas décrit `Alert` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
-4. `if p <= cfg.alert_off { give Armed }` : cette garde traite le cas limite avant le calcul.
+4. `if p <= cfg.alert_off { give Armed }` : cette test traite le cas d'erreur avant le calcul.
 5. `give Alert` : retourne immédiatement `Alert` pour la branche courante, la sortie de branche est explicite et vérifiable.
 6. `}` : cette accolade ferme le bloc logique.
 7. `case Armed {` : ce cas décrit `Armed` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
-8. `if p >= cfg.alert_on { give Alert }` : cette garde traite le cas limite avant le calcul.
+8. `if p >= cfg.alert_on { give Alert }` : cette test traite le cas d'erreur avant le calcul.
 9. `give Armed` : la branche renvoie immédiatement `Armed` pour la branche courante, la sortie de branche est explicite et vérifiable.
 10. `}` : cette accolade ferme le bloc logique.
 11. `case Idle {` : ce cas décrit `Idle` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
-12. `if p >= cfg.alert_on { give Alert }` : cette garde traite le cas limite avant le calcul.
+12. `if p >= cfg.alert_on { give Alert }` : cette test traite le cas d'erreur avant le calcul.
 13. `give Armed` : la sortie est renvoyée immédiatement `Armed` pour la branche courante, la sortie de branche est explicite et vérifiable.
 14. `}` : cette accolade clôt le bloc logique.
 15. `case Fault(code) { give Fault(code) }` : ce cas décrit `Fault(code)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
@@ -304,12 +303,12 @@ Lecture ligne par ligne (débutant):
 17. `}` : cette accolade ferme le bloc logique.
 18. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: si `p <= cfg.alert_off` est vrai, la sortie devient `Armed`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `Alert`.
+- Cas d'erreur: si `p <= cfg.alert_off` est vrai, la sortie devient `Armed`.
+- Cas nominal: sans test bloquante, la branche principale renvoie `Alert`.
 - Observation testable: forcer le cas `Alert` permet de confirmer la branche attendue.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 L'hystérésis évite les bascules rapides autour du seuil:
 - passage en `Alert` au seuil haut `alert_on`.
@@ -336,18 +335,18 @@ proc detect_fault(raw: int, cfg: ControllerCfg) -> ControlState {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc detect_fault(raw: int, cfg: ControllerCfg) -> ControlState {` : le contrat est défini pour `detect_fault`: entrées `raw: int, cfg: ControllerCfg` et sortie `ControlState`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `if raw < cfg.min_raw - 100 { give Fault(1001) }` : cette garde traite le cas limite avant le calcul.
-3. `if raw > cfg.max_raw + 100 { give Fault(1002) }` : cette garde traite le cas limite avant le calcul.
+1. `proc detect_fault(raw: int, cfg: ControllerCfg) -> ControlState {` : la règle est défini pour `detect_fault`: entrées `raw: int, cfg: ControllerCfg` et sortie `ControlState`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `if raw < cfg.min_raw - 100 { give Fault(1001) }` : cette test traite le cas d'erreur avant le calcul.
+3. `if raw > cfg.max_raw + 100 { give Fault(1002) }` : cette test traite le cas d'erreur avant le calcul.
 4. `give Armed` : retourne immédiatement `Armed` pour la branche courante, la sortie de branche est explicite et vérifiable.
 5. `}` : cette accolade clôt le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: si `raw < cfg.min_raw - 100` est vrai, la sortie devient `Fault(1001)`.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `Armed`.
+- Cas d'erreur: si `raw < cfg.min_raw - 100` est vrai, la sortie devient `Fault(1001)`.
+- Cas nominal: sans test bloquante, la branche principale renvoie `Armed`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 La sécurité embarquée exige un chemin d'erreur explicite:
 - signal trop hors plage => `Fault`.
@@ -393,10 +392,10 @@ Lecture ligne par ligne (débutant):
 3. `control: ControlState` : cette ligne déclare le champ `control` avec le type `ControlState`, ce qui documente son rôle et limite les erreurs de manipulation.
 4. `percent: int` : cette ligne déclare le champ `percent` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation.
 5. `}` : cette accolade ferme le bloc logique.
-6. `proc step(raw_input: int, st: ControllerState, cfg: ControllerCfg) -> ControllerState {` : le contrat est posé pour `step`: entrées `raw_input: int, st: ControllerState, cfg: ControllerCfg` et sortie `ControllerState`, elle clarifie l'intention avant lecture détaillée du corps.
+6. `proc step(raw_input: int, st: ControllerState, cfg: ControllerCfg) -> ControllerState {` : la règle est posé pour `step`: entrées `raw_input: int, st: ControllerState, cfg: ControllerCfg` et sortie `ControllerState`, elle clarifie l'intention avant lecture détaillée du corps.
 7. `let s: Sample = read_raw(raw_input)` : cette ligne crée la variable `s` de type `Sample` pour nommer explicitement une étape intermédiaire du raisonnement.
 8. `let f0: ControlState = detect_fault(s.raw, cfg)` : cette ligne crée la variable `f0` de type `ControlState` pour nommer explicitement une étape intermédiaire du raisonnement.
-9. `match f0 {` : cette ligne démarre un dispatch déterministe sur `f0`: une seule branche sera choisie selon la forme de la valeur analysée.
+9. `match f0 {` : cette ligne démarre un dispatch stable sur `f0`: une seule branche sera choisie selon la forme de la valeur analysée.
 10. `case Fault(code) {` : ce cas décrit `Fault(code)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 11. `give ControllerState(st.filter, Fault(code), st.percent)` : la branche renvoie immédiatement `ControllerState(st.filter, Fault(code), st.percent)` pour la branche courante, la sortie de branche est explicite et vérifiable.
 12. `}` : cette accolade ferme le bloc logique.
@@ -411,19 +410,19 @@ Lecture ligne par ligne (débutant):
 21. `}` : cette accolade ferme le bloc logique.
 22. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: sans garde bloquante, la branche principale renvoie `ControllerState(st.filter, Fault(code), st.percent)`.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
+- Cas nominal: sans test bloquante, la branche principale renvoie `ControllerState(st.filter, Fault(code), st.percent)`.
 - Observation testable: forcer le cas `Fault(code)` permet de confirmer la branche attendue.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 Cette fonction constitue le cœur du projet:
 - entrée brute.
 - pipeline de traitement.
 - sortie état + métrique.
 
-Elle est déterministe et rejouable.
+Elle est stable et rejouable.
 
 Erreurs fréquentes à éviter:
 - lire deux fois la mesure dans la même itération.
@@ -446,8 +445,8 @@ proc actuator_pwm(c: ControlState, p: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc actuator_pwm(c: ControlState, p: int) -> int {` : le contrat est fixé pour `actuator_pwm`: entrées `c: ControlState, p: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
-2. `match c {` : cette ligne démarre un dispatch déterministe sur `c`: une seule branche sera choisie selon la forme de la valeur analysée.
+1. `proc actuator_pwm(c: ControlState, p: int) -> int {` : la règle est fixé pour `actuator_pwm`: entrées `c: ControlState, p: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `match c {` : cette ligne démarre un dispatch stable sur `c`: une seule branche sera choisie selon la forme de la valeur analysée.
 3. `case Idle { give 0 }` : ce cas décrit `Idle` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 4. `case Armed { give p / 4 }    # pilotage doux` : ce cas décrit `Armed` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 5. `case Alert { give 255 }      # pleine puissance / alarme` : ce cas décrit `Alert` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
@@ -456,12 +455,12 @@ Lecture ligne par ligne (débutant):
 8. `}` : cette accolade clôt le bloc logique.
 9. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
-- Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
+- Cas nominal: le flux suit la branche principale et produit une sortie stable.
 - Observation testable: forcer le cas `Idle` permet de confirmer la branche attendue.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 La projection matérielle est volontairement séparée:
 - le moteur décide de l'état.
@@ -496,16 +495,16 @@ Lecture ligne par ligne (débutant):
 4. `let st1: ControllerState = step(200, st0, cfg)` : cette ligne crée la variable `st1` de type `ControllerState` pour nommer explicitement une étape intermédiaire du raisonnement.
 5. `let st2: ControllerState = step(920, st1, cfg)` : cette ligne crée la variable `st2` de type `ControllerState` pour nommer explicitement une étape intermédiaire du raisonnement.
 6. `let out: int = actuator_pwm(st2.control, st2.percent)` : cette ligne crée la variable `out` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
-7. `if out >= 0 { return 0 }` : cette garde traite le cas limite avant le calcul.
+7. `if out >= 0 { return 0 }` : cette test traite le cas d'erreur avant le calcul.
 8. `return 70` : cette ligne termine l'exécution du bloc courant avec le code `70`, utile pour observer le résultat global du scénario.
 9. `}` : cette accolade ferme le bloc logique.
 Entrée -> sortie (à vérifier):
-- Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
+- Cas d'erreur: un test explicite du bloc gère les entrées hors règle avant le chemin nominal.
 - Cas nominal: le scénario principal se termine avec `return 70`.
 - Observation testable: exécuter le scénario permet de vérifier le code de sortie `70`.
 
 Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Réponse attendue: le bloc doit activer un test explicite ou un chemin de secours stable.
 
 Ce scénario montre le trajet complet:
 - initialisation.
@@ -513,8 +512,8 @@ Ce scénario montre le trajet complet:
 - projection actionneur.
 
 Erreurs fréquentes à éviter:
-- testér uniquement des fonctions isolées.
-- oublier de testér la transition `Armed -> Alert`.
+- tester uniquement des fonctions isolées.
+- oublier de tester la transition `Armed -> Alert`.
 - valider le code sans valider le comportement fail-safe.
 
 ## 25.10 Plan de tests ultra concret
@@ -569,16 +568,16 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Réponse attendue: un test explicite ou un chemin de secours stable doit s'appliquer.
 ## À faire
 
-1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
+1. Reprenez un exemple du chapitre et modifiez une condition de test pour observer un comportement différent.
 2. Écrivez un mini test mental sur une entrée invalide du chapitre, puis prédisez la branche exécutée.
 
 ## Corrigé minimal
 
 - identifiez la ligne modifiée et expliquez en une phrase la nouvelle sortie attendue.
-- nommez la garde ou la branche de secours réellement utilisée.
+- nommez le test ou la branche de secours réellement utilisée.
 
 ## Conforme EBNF
 
@@ -642,13 +641,13 @@ Lecture ligne par ligne:
 9. `}` -> participe au déroulé du traitement.
 10. `form ControllerCfg {` -> participe au déroulé du traitement.
 
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
+### Exemple B: variante cas d'erreur (même intention, comportement sécurisé)
 
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
+Objectif: conserver la logique métier tout en ajoutant un test explicite.
 
 Étapes:
 1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
+2. Ajouter un test avant cette ligne.
 3. Vérifier la nouvelle sortie sur une entrée limite.
 
 ### Exemple C: bug reproductible puis correction locale
@@ -666,7 +665,6 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
-
 
 
 ## Exemple Étendu
@@ -729,21 +727,104 @@ entry main at core/app {
 }
 ```
 
+## Explication détaillée du gros bloc
+
+Vous lisez ce gros bloc comme un scénario complet: préparation des données, traitement, puis sortie finale.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `read_sensor`: lit `step: int` et renvoie `Telemetry`.
+- `validate`: lit `t: Telemetry` et renvoie `int`.
+- `control`: lit `t: Telemetry` et renvoie `Decision`.
+- `to_exit`: lit `d: Decision` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `read_sensor` est appelé pour traiter l'étape suivante.
+3. `control` est appelé pour traiter l'étape suivante.
+4. `to_exit` est appelé pour traiter l'étape suivante.
+5. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `t.volts_mv < 3000`.
+- Test évalué: `t.temp_c < -20`.
+- Test évalué: `t.temp_c > 120`.
+- Test évalué: `v != 0`.
+- Test évalué: `t.temp_c >= 36`.
+- Test évalué: `t.temp_c >= 33`.
+- Sélection par `match d`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> read_sensor -> control -> to_exit -> sortie 0`.
+- Exemple erreur: `entrée invalide -> read_sensor renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
+
+
 ## Design Notes
 
 - Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- Les tests sont placées tôt pour réduire le coût de diagnostic.
 - La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+Cas d'erreur réel:
+- Entree degradee ou incomplete: le test doit couper le flux tot avec une sortie explicite.
 
 A tester:
 - Temp nominale -> sortie 0.
 - Sous-tension -> sortie 61.
 - Température hors bornes -> sortie 62 ou 63.
 
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `read_sensor` lit `step: int` puis renvoie `Telemetry`.
+- `validate` lit `t: Telemetry` puis renvoie `int`.
+- `control` lit `t: Telemetry` puis renvoie `Decision`.
+- `to_exit` lit `d: Decision` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `t: int` démarre avec `30 + (step % 10)`.
+- `v: int` démarre avec `3300 - (step % 30)`.
+- `v: int` démarre avec `validate(t)`.
+- `t: Telemetry` démarre avec `read_sensor(9)`.
+- `d: Decision` démarre avec `control(t)`.
+
+- Conditions qui changent le chemin:
+- si `t.volts_mv < 3000` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `t.temp_c < -20` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `t.temp_c > 120` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `v != 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `t.temp_c >= 36` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `t.temp_c >= 33` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: t=30 + (step % 10) -> v=3300 - (step % 30) -> v=validate(t) -> t=read_sensor(9)
+- enchaînement: read_sensor -> control -> to_exit
+- sortie finale sur ce chemin: `to_exit(d)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `t.volts_mv < 3000` devient vrai, la fonction renvoie immédiatement `61`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
@@ -765,21 +846,21 @@ A tester:
 
 | Symptôme | Cause probable | Vérification | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Sortie inattendue | Test absente ou mal ordonnée | Rejouer avec cas d'erreur | Remonter le test avant la zone sensible |
 | Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+| Régression silencieuse | Règle implicite | Comparer nominal vs limite | Formaliser la règle dans le code |
 
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
 - expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
+- isoler un cas d'erreur réel et prévoir sa sortie,
+- identifier où ajouter un test sans casser le nominal.
 
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+1. Vérifier que les tests d'entrée sont placés avant les opérations sensibles.
 2. Vérifier que la décision métier est séparée de la projection de sortie.
 3. Vérifier un test nominal et un test limite réellement exécutables.

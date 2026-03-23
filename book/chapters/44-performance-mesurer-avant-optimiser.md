@@ -7,13 +7,13 @@ Voir aussi: à définir.
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Situation réelle: dans ce chapitre sur Performance: mesurer avant d'optimiser, l'échec vient souvent d'une décision mal ordonnée plutôt que d'une faute de syntaxe. On suit donc le flux exact: entrée, test, branche, sortie.
+Question directrice: quelle condition est évaluée en premier, et quelle sortie cette décision impose-t-elle ?
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+Fil conducteur: chaque section reprend le même scénario pour isoler une seule décision technique à la fois.
+Objectif pédagogique: comprendre pourquoi une ligne existe et ce qu'elle change dans la trajectoire du programme.
 
 ## Objectif
 
@@ -28,7 +28,7 @@ Eviter les optimisations speculatives en partant de mesures reproductibles.
 
 ## Checklist
 
-1. Cas nominal et cas limite mesures.
+1. Cas nominal et cas d'erreur mesures.
 2. Environnement de benchmark stable.
 3. Resultats traces et historises.
 
@@ -77,12 +77,12 @@ Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit
 ## À faire
 
 1. Exécuter l’exemple nominal.
-2. Introduire un cas limite.
+2. Introduire un cas d'erreur.
 3. Vérifier la sortie et documenter l’écart.
 
 ## Corrigé minimal
 
-Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.
+Corrigé: conserver la version la plus simple qui respecte la règle, puis ajouter un test de non-régression.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
 
@@ -97,15 +97,15 @@ proc compute(x: int) -> int { give x + 1 }
 ```
 
 Lecture ligne par ligne:
-1. `proc compute(x: int) -> int { give x + 1 }` -> pose un contrat clair de fonction.
+1. `proc compute(x: int) -> int { give x + 1 }` -> pose une règle clair de fonction.
 
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
+### Exemple B: variante cas d'erreur (même intention, comportement sécurisé)
 
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
+Objectif: conserver la logique métier tout en ajoutant un test explicite.
 
 Étapes:
 1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
+2. Ajouter un test avant cette ligne.
 3. Vérifier la nouvelle sortie sur une entrée limite.
 
 ### Exemple C: bug reproductible puis correction locale
@@ -123,7 +123,6 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
-
 
 
 ## Exemple Étendu
@@ -194,21 +193,108 @@ entry main at core/app {
 }
 ```
 
+## Explication détaillée du gros bloc
+
+Vous lisez ce gros bloc comme un scénario complet: préparation des données, traitement, puis sortie finale.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `workload`: lit `n: int` et renvoie `int`.
+- `sample`: lit `iter: int, size: int` et renvoie `int`.
+- `benchmark`: lit `size: int` et renvoie `Bench`.
+- `to_exit`: lit `b: Bench` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `benchmark` est appelé pour traiter l'étape suivante.
+3. `to_exit` est appelé pour traiter l'étape suivante.
+4. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `i >= n`.
+- Test évalué: `size <= 0`.
+- Test évalué: `p95 > (avg * 2)`.
+- Sélection par `match b`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> benchmark -> to_exit -> sortie 0`.
+- Exemple erreur: `entrée invalide -> benchmark renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
+
+
 ## Design Notes
 
 - Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- Les tests sont placées tôt pour réduire le coût de diagnostic.
 - La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+Cas d'erreur réel:
+- Entree degradee ou incomplete: le test doit couper le flux tot avec une sortie explicite.
 
 A tester:
 - Campagne stable -> sortie 0.
 - Paramètre invalide (size=0) -> sortie 41.
 - Variance excessive -> sortie 42.
 
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `workload` lit `n: int` puis renvoie `int`.
+- `sample` lit `iter: int, size: int` puis renvoie `int`.
+- `benchmark` lit `size: int` puis renvoie `Bench`.
+- `to_exit` lit `b: Bench` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `i: int` démarre avec `0`.
+- `acc: int` démarre avec `0`.
+- `base: int` démarre avec `size * 10`.
+- `jitter: int` démarre avec `iter % 9`.
+- `w: int` démarre avec `workload(120)`.
+- `_w: int` démarre avec `w`.
+- `s1: int` démarre avec `sample(1, size)`.
+- `s2: int` démarre avec `sample(2, size)`.
+- `s3: int` démarre avec `sample(3, size)`.
+- `s4: int` démarre avec `sample(4, size)`.
+- `s5: int` démarre avec `sample(5, size)`.
+- `avg: int` démarre avec `(s1 + s2 + s3 + s4 + s5) / 5`.
+
+- Variables modifiées pendant le traitement:
+- `acc` est mis à jour avec `acc + (i * 5)`.
+- `i` est mis à jour avec `i + 1`.
+
+- Conditions qui changent le chemin:
+- si `i >= n` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `size <= 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `p95 > (avg * 2)` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: i=0 -> acc=0 -> base=size * 10 -> jitter=iter % 9
+- enchaînement: benchmark -> to_exit
+- sortie finale sur ce chemin: `to_exit(b)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `size <= 0` devient vrai, la fonction renvoie immédiatement `Bench.Unstable(41)`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
@@ -230,28 +316,28 @@ A tester:
 
 | Symptôme | Cause probable | Vérification | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Sortie inattendue | Test absente ou mal ordonnée | Rejouer avec cas d'erreur | Remonter le test avant la zone sensible |
 | Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+| Régression silencieuse | Règle implicite | Comparer nominal vs limite | Formaliser la règle dans le code |
 
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
 - expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
+- isoler un cas d'erreur réel et prévoir sa sortie,
+- identifier où ajouter un test sans casser le nominal.
 
 
 ## Pourquoi Cette Erreur Arrive En Prod
 
 Cause fréquente: entrée partiellement valide, hypothèse implicite dans une branche, puis projection de sortie trop tardive.
 Symptôme: comportement correct en nominal mais instable sous charge ou données incomplètes.
-Mesure utile: tracer l'entrée effective, rejouer le cas limite, verrouiller la garde au bon niveau.
+Mesure utile: tracer l'entrée effective, rejouer le cas d'erreur, verrouiller le test au bon niveau.
 
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+1. Vérifier que les tests d'entrée sont placés avant les opérations sensibles.
 2. Vérifier que la décision métier est séparée de la projection de sortie.
 3. Vérifier un test nominal et un test limite réellement exécutables.

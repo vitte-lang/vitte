@@ -7,13 +7,13 @@ Voir aussi: `book/chapters/30-faq.md`, `book/chapters/16-interop.md`, `book/chap
 
 ## Problème Concret
 
-Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
-Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+Situation réelle: Erreurs de build se comprend mieux en rejouant le programme comme un algorithme exécutable. Vous lisez les données entrantes, la condition évaluée, puis la valeur renvoyée.
+Question directrice: quelle condition est évaluée en premier, et quelle sortie cette décision impose-t-elle ?
 
 ## Fil Rouge (Projet Unique)
 
-Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
-Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+Fil conducteur: on conserve un même mini-programme pour comparer les effets d'une modification sans changer tout le contexte.
+Objectif pédagogique: passer de la lecture passive à la preuve: même entrée, même branche, même sortie attendue.
 
 ## Pourquoi
 
@@ -22,36 +22,35 @@ Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en p
 
 ## Ce que vous allez faire
 
-Vous allez identifier les points clés de **Erreurs de build**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
+Vous allez lire les extraits dans l'ordre d'exécution réel, puis valider les sorties attendues sur un cas nominal et un cas d'erreur.
 
 ## Exemple minimal
 
-Commencez par le premier extrait de code de ce chapitre.
-Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Erreurs de build**.
+Premier réflexe recommandé: lisez d'abord les entrées et les conditions, ensuite seulement la forme syntaxique.
 
 ## Explication pas à pas
 
 1. Repérez l'intention du bloc.
-2. Vérifiez la condition ou la garde principale.
+2. Vérifiez la condition ou le test principal.
 3. Confirmez la sortie observable.
 4. Notez comment ce bloc sert **Erreurs de build** dans l'ensemble du chapitre.
 
 ## Pièges fréquents
 
 - Lire la syntaxe sans vérifier le comportement.
-- Mélanger règle générale et cas limite dans la même explication.
+- Mélanger règle générale et cas d'erreur dans la même explication.
 - Introduire une optimisation avant d'avoir stabilisé le flux de **Erreurs de build**.
 
 ## Exercice court
 
 Prenez un exemple du chapitre sur **Erreurs de build**.
-Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au contrat attendu.
+Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat reste conforme au résultat attendu.
 
 ## Résumé en 5 points
 
 1. Vous connaissez l'objectif du chapitre sur **Erreurs de build**.
 2. Vous savez lire un exemple du chapitre de façon structurée.
-3. Vous distinguez cas nominal et cas limite.
+3. Vous distinguez cas nominal et cas d'erreur.
 4. Vous évitez les pièges les plus fréquents.
 5. Vous pouvez réutiliser ces règles dans le chapitre suivant.
 
@@ -85,7 +84,7 @@ Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de 
 | --- | --- | --- | --- |
 | `expected top-level declaration` | parse | statement au top-level. | Encapsuler dans `entry`/`proc`. |
 | `unknown symbol` | resolve | symbole non déclaré/importé. | Ajouter déclaration/import correct. |
-| `type mismatch` | resolve/ir | contrat de type incohérent. | Aligner type attendu et type fourni. |
+| `type mismatch` | resolve/ir | règle de type incohérent. | Aligner type attendu et type fourni. |
 | `undefined symbol` (link) | backend/cpp | runtime/symbole natif absent. | Ajouter définition/link/runtime manquant. |
 | `toolchain invocation failed` | backend | génération ou toolchain cassée. | Inspecter `vitte_out.cpp` et flags. |
 
@@ -146,7 +145,7 @@ Checklist commune:
 ## 31.5 Glossaire erreurs fréquentes
 
 - `E0007`: forme syntaxique inattendue au top-level.
-- `E001x` (famille type mismatch): contrat de type violé.
+- `E001x` (famille type mismatch): règle de type violé.
 - `undefined symbol`: symbole absent à l'édition de liens.
 - `invalid module path`: chemin module/import mal formé.
 
@@ -219,13 +218,13 @@ Lecture ligne par ligne:
 1. `emit 1` -> participe au déroulé du traitement.
 2. `# casse: statement top-level.` -> participe au déroulé du traitement.
 
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
+### Exemple B: variante cas d'erreur (même intention, comportement sécurisé)
 
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
+Objectif: conserver la logique métier tout en ajoutant un test explicite.
 
 Étapes:
 1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
+2. Ajouter un test avant cette ligne.
 3. Vérifier la nouvelle sortie sur une entrée limite.
 
 ### Exemple C: bug reproductible puis correction locale
@@ -243,7 +242,6 @@ Procédure:
 - La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
-
 
 
 ## Exemple Étendu
@@ -298,21 +296,96 @@ entry main at core/app {
 }
 ```
 
+## Explication détaillée du gros bloc
+
+Ce gros bloc montre un programme entier, pas un extrait isolé: on suit le flux du début à la fin.
+
+### 1. Rôle de chaque partie
+- Point de départ: `entry main at core/app`.
+- `classify`: lit `e: Event` et renvoie `Diagnostic`.
+- `redact`: lit `e: Event` et renvoie `int`.
+- `handle`: lit `e: Event` et renvoie `int`.
+
+### 2. Ordre réel d'exécution
+1. Le programme entre dans `main`.
+2. `handle` est appelé pour traiter l'étape suivante.
+3. La valeur finale est convertie en sortie process (`return ...`).
+
+### 3. Tests qui changent le chemin
+- Test évalué: `e.code == 0`.
+- Test évalué: `e.severity <= 2`.
+- Test évalué: `e.payload_len < 0`.
+- Test évalué: `e.payload_len > 4096`.
+- Test évalué: `r != 0`.
+- Sélection par `match d`: le chemin dépend de l'état reçu.
+
+### 4. Trace rapide avec valeurs
+- Exemple nominal: `entrée valide -> handle -> sortie 0`.
+- Exemple erreur: `entrée invalide -> handle renvoie un code d'erreur -> sortie non nulle`.
+
+### 5. Pourquoi ce découpage est utile
+- Vous testez chaque fonction seule, puis le flux complet.
+- Vous savez où modifier une règle sans casser tout le programme.
+- Vous pouvez expliquer la sortie en suivant simplement les appels.
+
+### 6. Vérification rapide
+1. Relancer avec une entrée normale et noter la sortie.
+2. Relancer avec une entrée invalide et vérifier le code d'erreur.
+3. Confirmer que la même entrée donne toujours la même sortie.
+
+
 ## Design Notes
 
 - Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
-- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- Les tests sont placées tôt pour réduire le coût de diagnostic.
 - La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
 
 
-Cas limite réel:
-- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+Cas d'erreur réel:
+- Entree degradee ou incomplete: le test doit couper le flux tot avec une sortie explicite.
 
 A tester:
 - Niveau info ou warn -> sortie 0.
 - Erreur métier code 17 -> sortie 17.
 - Payload hors limites -> sortie 82.
 
+
+### 7. Ligne par ligne (variables + valeurs)
+
+Lecture pratique: suivez les variables dans l'ordre réel d'exécution, puis vérifiez la sortie observée.
+
+- Point d'entrée:
+- `entry main at core/app` lance le scénario complet.
+
+- Fonctions du bloc:
+- `classify` lit `e: Event` puis renvoie `Diagnostic`.
+- `redact` lit `e: Event` puis renvoie `int`.
+- `handle` lit `e: Event` puis renvoie `int`.
+
+- Variables créées (valeur initiale):
+- `r: int` démarre avec `redact(e)`.
+- `d: Diagnostic` démarre avec `classify(e)`.
+- `e: Event` démarre avec `Event(17, 3, 120)`.
+
+- Conditions qui changent le chemin:
+- si `e.code == 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `e.severity <= 2` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `e.payload_len < 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `e.payload_len > 4096` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+- si `r != 0` est vrai: sortie anticipée ou branche dédiée; sinon: le flux continue.
+
+- Trace nominale (valeurs exemple):
+- initialisation: r=redact(e) -> d=classify(e) -> e=Event(17, 3, 120)
+- enchaînement: handle
+- sortie finale sur ce chemin: `handle(e)`.
+
+- Trace d'erreur (valeurs exemple):
+- si `e.code == 0` devient vrai, la fonction renvoie immédiatement `Diagnostic.Info(0)`.
+
+- Vérification rapide:
+- relancer avec une entrée normale et noter la sortie,
+- relancer avec une entrée invalide et noter le code d'erreur,
+- confirmer qu'une même entrée produit toujours la même sortie.
 
 ## Trade-offs
 
@@ -334,28 +407,28 @@ A tester:
 
 | Symptôme | Cause probable | Vérification | Correction |
 | --- | --- | --- | --- |
-| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Sortie inattendue | Test absente ou mal ordonnée | Rejouer avec cas d'erreur | Remonter le test avant la zone sensible |
 | Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
-| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+| Régression silencieuse | Règle implicite | Comparer nominal vs limite | Formaliser la règle dans le code |
 
 
 ## Checkpoint
 
 À ce stade, vous devez savoir:
 - expliquer le flux entrée -> décision -> sortie sans ambiguïté,
-- isoler un cas limite réel et prévoir sa sortie,
-- identifier où ajouter une garde sans casser le nominal.
+- isoler un cas d'erreur réel et prévoir sa sortie,
+- identifier où ajouter un test sans casser le nominal.
 
 
 ## Pourquoi Cette Erreur Arrive En Prod
 
 Cause fréquente: entrée partiellement valide, hypothèse implicite dans une branche, puis projection de sortie trop tardive.
 Symptôme: comportement correct en nominal mais instable sous charge ou données incomplètes.
-Mesure utile: tracer l'entrée effective, rejouer le cas limite, verrouiller la garde au bon niveau.
+Mesure utile: tracer l'entrée effective, rejouer le cas d'erreur, verrouiller le test au bon niveau.
 
 
 ## Ce Que Je Ferais En Revue De Code
 
-1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+1. Vérifier que les tests d'entrée sont placés avant les opérations sensibles.
 2. Vérifier que la décision métier est séparée de la projection de sortie.
 3. Vérifier un test nominal et un test limite réellement exécutables.
