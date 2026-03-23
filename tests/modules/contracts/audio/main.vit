@@ -1,0 +1,36 @@
+use vitte/audio as audio
+
+proc main() -> i32 {
+  if !audio.ready() { return 1 }
+
+  let b0 = audio.backend_default()
+  let b1 = audio.backend_mock("mock-dsp")
+  if !audio.backend_is_mockable(b0) { return 2 }
+  if audio.backend_name(b1) != "mock-dsp" { return 3 }
+
+  let req = audio.format_request_with_order(
+    audio.format_request_new(48000, 2, true),
+    [audio.AudioSampleFormat.Float32, audio.AudioSampleFormat.Float32, audio.AudioSampleFormat.PCM16]
+  )
+  if req.preferred_formats.len != 2 { return 4 }
+  let req_norm = audio.normalize_format_request(audio.AudioFormatRequest(0, 0, [audio.AudioSampleFormat.PCM16], true))
+  if req_norm.preferred_sample_rate < 8000 || req_norm.preferred_channels < 1 { return 5 }
+  let out = audio.negotiate_format(req, [
+    audio.AudioFormat(48000, 2, audio.AudioSampleFormat.PCM16, true),
+    audio.AudioFormat(48000, 2, audio.AudioSampleFormat.Float32, true)
+  ])
+  if audio.sample_format_name(out.format) != "float32" { return 6 }
+  if !audio.format_is_valid(out) { return 7 }
+  if audio.format_default().sample_rate <= 0 { return 8 }
+  if audio.format_summary(out).len == 0 { return 9 }
+
+  let ref = [10, -10, 20, -20]
+  let g = audio.golden_snapshot("g0", ref)
+  if !audio.golden_match(g, ref) { return 10 }
+  if audio.golden_match(g, [10, -10, 20, -21]) { return 11 }
+  if audio.golden_diff_count(ref, [10, -10]) != 2 { return 12 }
+  if audio.pcm_checksum(ref) <= 0 { return 13 }
+
+  if audio.package_meta() != "vitte/audio" { return 14 }
+  return 0
+}

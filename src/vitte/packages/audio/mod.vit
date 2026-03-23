@@ -27,10 +27,241 @@ form AudioStats {
   samples: int
 }
 
+form AudioBackend {
+  name: string
+  mockable: bool
+  supports_input: bool
+  supports_output: bool
+}
+
+mask AudioSampleFormat {
+  PCM16
+  PCM24
+  Float32
+}
+
+form AudioFormat {
+  sample_rate: int
+  channels: int
+  format: AudioSampleFormat
+  interleaved: bool
+}
+
+form AudioFormatRequest {
+  preferred_sample_rate: int
+  preferred_channels: int
+  preferred_formats: [AudioSampleFormat]
+  prefer_interleaved: bool
+}
+
+form AudioGoldenSnapshot {
+  id: string
+  samples: [int]
+  checksum: int
+}
+
 proc valid_buffer(buf: AudioBuffer) -> bool {
   if audio_validate_pkg.valid_buffer_shape(buf.sample_rate, buf.channels) == false { give false }
   if audio_validate_pkg.valid_samples_length(buf.samples.len, buf.channels) == false { give false }
   give true
+}
+
+proc backend_default() -> AudioBackend {
+  give AudioBackend(
+    audio_runtime_pkg.runtime_name(),
+    true,
+    true,
+    true
+  )
+}
+
+proc backend_mock(name: string) -> AudioBackend {
+  let n = name
+  if n.len == 0 { n = "mock-backend" }
+  give AudioBackend(n, true, true, true)
+}
+
+proc backend_is_mockable(backend: AudioBackend) -> bool {
+  give backend.mockable
+}
+
+proc backend_name(backend: AudioBackend) -> string {
+  give backend.name
+}
+
+proc sample_format_name(format: AudioSampleFormat) -> string {
+  if format == AudioSampleFormat.PCM24 { give "pcm24" }
+  if format == AudioSampleFormat.Float32 { give "float32" }
+  give "pcm16"
+}
+
+proc format_default() -> AudioFormat {
+  give AudioFormat(
+    audio_policy_pkg.default_sample_rate(),
+    2,
+    AudioSampleFormat.PCM16,
+    true
+  )
+}
+
+proc format_request_new(
+  preferred_sample_rate: int,
+  preferred_channels: int,
+  prefer_interleaved: bool
+) -> AudioFormatRequest {
+  give AudioFormatRequest(
+    audio_policy_pkg.normalize_sample_rate(preferred_sample_rate),
+    audio_policy_pkg.normalize_channels(preferred_channels),
+    [AudioSampleFormat.PCM16, AudioSampleFormat.Float32, AudioSampleFormat.PCM24],
+    prefer_interleaved
+  )
+}
+
+proc format_request_with_order(req: AudioFormatRequest, formats: [AudioSampleFormat]) -> AudioFormatRequest {
+  if formats.len == 0 {
+    give AudioFormatRequest(req.preferred_sample_rate, req.preferred_channels, req.preferred_formats, req.prefer_interleaved)
+  }
+  let uniq: [AudioSampleFormat] = []
+  let i: int = 0
+  loop {
+    if i >= formats.len { break }
+    let f = formats[i]
+    let seen = false
+    let j: int = 0
+    loop {
+      if j >= uniq.len { break }
+      if uniq[j] == f {
+        seen = true
+        break
+      }
+      j = j + 1
+    }
+    if seen == false { uniq = uniq.push(f) }
+    i = i + 1
+  }
+  if uniq.len == 0 {
+    give AudioFormatRequest(req.preferred_sample_rate, req.preferred_channels, req.preferred_formats, req.prefer_interleaved)
+  }
+  give AudioFormatRequest(req.preferred_sample_rate, req.preferred_channels, uniq, req.prefer_interleaved)
+}
+
+proc normalize_format_request(req: AudioFormatRequest) -> AudioFormatRequest {
+  let sr = audio_policy_pkg.normalize_sample_rate(req.preferred_sample_rate)
+  let ch = audio_policy_pkg.normalize_channels(req.preferred_channels)
+  give format_request_with_order(
+    AudioFormatRequest(sr, ch, req.preferred_formats, req.prefer_interleaved),
+    req.preferred_formats
+  )
+}
+
+proc format_is_valid(fmt: AudioFormat) -> bool {
+  if audio_validate_pkg.valid_buffer_shape(fmt.sample_rate, fmt.channels) == false { give false }
+  give true
+}
+
+proc format_rank(req: AudioFormatRequest, fmt: AudioFormat) -> int {
+  let rank: int = 0
+  if fmt.sample_rate == req.preferred_sample_rate { rank = rank + 4 }
+  if fmt.channels == req.preferred_channels { rank = rank + 3 }
+  if fmt.interleaved == req.prefer_interleaved { rank = rank + 1 }
+
+  let i: int = 0
+  loop {
+    if i >= req.preferred_formats.len { break }
+    if req.preferred_formats[i] == fmt.format {
+      rank = rank + (30 - i)
+      break
+    }
+    i = i + 1
+  }
+
+  give rank
+}
+
+proc negotiate_format(req: AudioFormatRequest, supported: [AudioFormat]) -> AudioFormat {
+  let normalized_req = normalize_format_request(req)
+  let default_fmt = AudioFormat(
+    normalized_req.preferred_sample_rate,
+    normalized_req.preferred_channels,
+    AudioSampleFormat.PCM16,
+    normalized_req.prefer_interleaved
+  )
+  if supported.len == 0 { give default_fmt }
+
+  let winner = default_fmt
+  let has_winner = false
+  let winner_rank: int = -1
+  let i: int = 0
+
+  loop {
+    if i >= supported.len { break }
+    let cand = supported[i]
+    if format_is_valid(cand) {
+      let r = format_rank(normalized_req, cand)
+      if has_winner == false || r > winner_rank {
+        winner = cand
+        winner_rank = r
+        has_winner = true
+      }
+    }
+    i = i + 1
+  }
+
+  if has_winner == false { give default_fmt }
+  give winner
+}
+
+proc format_summary(fmt: AudioFormat) -> string {
+  give "sr=" + fmt.sample_rate.to_string() +
+       ",ch=" + fmt.channels.to_string() +
+       ",fmt=" + sample_format_name(fmt.format) +
+       ",interleaved=" + fmt.interleaved.to_string()
+}
+
+proc pcm_checksum(samples: [int]) -> int {
+  let acc: int = 17
+  let i: int = 0
+  loop {
+    if i >= samples.len { break }
+    let v = clamp_sample(samples[i])
+    acc = acc * 31 + (v + 32768) + i
+    i = i + 1
+  }
+  if acc < 0 { acc = 0 - acc }
+  give acc
+}
+
+proc golden_snapshot(id: string, samples: [int]) -> AudioGoldenSnapshot {
+  give AudioGoldenSnapshot(id, samples, pcm_checksum(samples))
+}
+
+proc golden_match(golden: AudioGoldenSnapshot, samples: [int]) -> bool {
+  if golden.samples.len != samples.len { give false }
+  if golden.checksum != pcm_checksum(samples) { give false }
+  let i: int = 0
+  loop {
+    if i >= samples.len { break }
+    if golden.samples[i] != samples[i] { give false }
+    i = i + 1
+  }
+  give true
+}
+
+proc golden_diff_count(expected: [int], actual: [int]) -> int {
+  let n = expected.len
+  if actual.len < n { n = actual.len }
+
+  let diff: int = 0
+  let i: int = 0
+  loop {
+    if i >= n { break }
+    if expected[i] != actual[i] { diff = diff + 1 }
+    i = i + 1
+  }
+
+  if expected.len > n { diff = diff + (expected.len - n) }
+  if actual.len > n { diff = diff + (actual.len - n) }
+  give diff
 }
 
 
