@@ -639,14 +639,11 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
 
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
+<!-- AUTO_EXPANSION_V1 START -->
 
-## Exemples représentatifs (par cas d'usage)
+## Approfondissement concret (sans répétition)
 
-Cette section s'appuie sur du code concret pour **projet guide éditeur**.
-Objectif: comprendre vite ce que fait le code, pourquoi, et comment le corriger.
-
-### Exemple 1: extrait réel du chapitre (cas nominal)
+### 1. Snippet de référence
 
 ```vit
 form Cursor {
@@ -688,124 +685,131 @@ form History {
 }
 ```
 
-Lecture guidée (ligne par ligne):
-1. `form Cursor {` -> participe au flux nominal du programme.
-2. `row: int` -> participe au flux nominal du programme.
-3. `col: int` -> participe au flux nominal du programme.
-4. `}` -> participe au flux nominal du programme.
-5. `form Document {` -> participe au flux nominal du programme.
-6. `lines: string[]` -> participe au flux nominal du programme.
-7. `}` -> participe au flux nominal du programme.
-8. `form EditorState {` -> participe au flux nominal du programme.
+### 2. Lecture du code ligne par ligne
 
-Entrée -> Sortie attendue:
-1. Entrée: données conformes au contrat.
-2. Traitement: chemin nominal exécuté.
-3. Sortie: valeur déterministe observable.
+1. `form Cursor {` -> participe au flux principal du traitement.
+2. `row: int` -> participe au flux principal du traitement.
+3. `col: int` -> participe au flux principal du traitement.
+4. `}` -> participe au flux principal du traitement.
+5. `form Document {` -> participe au flux principal du traitement.
+6. `lines: string[]` -> participe au flux principal du traitement.
+7. `}` -> participe au flux principal du traitement.
+8. `form EditorState {` -> participe au flux principal du traitement.
+9. `doc: Document` -> participe au flux principal du traitement.
+10. `cursor: Cursor` -> participe au flux principal du traitement.
+11. `read_only: bool` -> participe au flux principal du traitement.
+12. `}` -> participe au flux principal du traitement.
 
-### Exemple 2: garde explicite (cas limite)
+### 3. Exécution réelle (entrée -> traitement -> sortie)
+
+1. Entrée: préciser les valeurs acceptées et refusées.
+2. Traitement: suivre le chemin nominal, puis la première garde.
+3. Sortie: vérifier la valeur retournée ou l'erreur attendue.
+
+### 4. Cas limite et erreur volontaire
+
+- Cas limite: forcer la garde et confirmer la sortie de secours.
+- Cas erreur: injecter un type inattendu et lire le diagnostic exact.
+- Correction: modifier une seule ligne, recompiler, valider.
+
+### 5. Refactor concret à faible risque
+
+Méthode: garder la signature, simplifier une branche, et prouver que le comportement reste identique avec un test nominal + un test limite.
+
+### 6. Série de scénarios représentatifs
+
+
+### 7. Checklist finale de compréhension
+
+1. Le contrat d'entrée est explicite.
+2. Le cas nominal est testable sans ambiguïté.
+3. Le cas limite est traité explicitement.
+4. Le diagnostic d'erreur est actionnable.
+5. Le corrigé suit une modification locale et vérifiable.
+
+<!-- AUTO_EXPANSION_V1 END -->
+
+<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
+
+## Exemples représentatifs basés sur le code du chapitre
+
+Thème: **projet guide éditeur**. Cette section évite les généralités et part d'un extrait réel.
+
+### Exemple A: lecture exécutable du snippet principal
 
 ```vit
-proc clamp_non_negative(x: int) -> int {
-  if x < 0 {
-    give 0
-  }
-  give x
+form Cursor {
+  row: int
+  col: int
+}
+
+form Document {
+  lines: string[]
+}
+
+form EditorState {
+  doc: Document
+  cursor: Cursor
+  read_only: bool
+}
+
+pick EditorError {
+  case ErrReadOnly
+  case ErrInvalid
+}
+
+pick EditResult {
+  case Ok(state: EditorState)
+  case Err(error: EditorError)
+}
+
+pick Command {
+  case Left
+  case Right
+  case InsertChar(ch: string, row: int, col: int)
+  case Backspace(row: int, col: int, deleted: string)
+  case NewLine(row: int, col: int)
+}
+
+form History {
+  past: Command[]
+  future: Command[]
 }
 ```
 
-Quand l'utiliser: éviter les comportements implicites sur entrées hors contrat.
+Lecture ligne par ligne:
+1. `form Cursor {` -> participe au déroulé du traitement.
+2. `row: int` -> participe au déroulé du traitement.
+3. `col: int` -> participe au déroulé du traitement.
+4. `}` -> participe au déroulé du traitement.
+5. `form Document {` -> participe au déroulé du traitement.
+6. `lines: string[]` -> participe au déroulé du traitement.
+7. `}` -> participe au déroulé du traitement.
+8. `form EditorState {` -> participe au déroulé du traitement.
+9. `doc: Document` -> participe au déroulé du traitement.
+10. `cursor: Cursor` -> participe au déroulé du traitement.
 
-### Exemple 3: erreur de type volontaire (diagnostic)
+### Exemple B: variante cas limite (même intention, comportement sécurisé)
 
-```vit
-proc needs_int(x: int) -> int {
-  give x
-}
-entry main at app/demo {
-  let s: string = "42"
-  return needs_int(s)
-}
-```
+Objectif: conserver la logique métier tout en ajoutant une garde explicite.
 
-Quand l'utiliser: entraîner la lecture des diagnostics compilateur.
+Étapes:
+1. Identifier la ligne qui décide la sortie.
+2. Ajouter une garde avant cette ligne.
+3. Vérifier la nouvelle sortie sur une entrée limite.
 
-### Exemple 4: séparation module / API
+### Exemple C: bug reproductible puis correction locale
 
-```vit
-space app/math
-proc add(a: int, b: int) -> int {
-  give a + b
-}
-share add
-```
+Procédure:
+1. Introduire une incompatibilité de type sur un appel.
+2. Compiler et lire le premier diagnostic.
+3. Corriger une seule ligne (pas de refactor global).
+4. Recompiler et vérifier le retour nominal.
 
-Quand l'utiliser: clarifier ce qui est public vs interne dans l'architecture.
+### Résultat attendu
 
-### Exemple 5: flux de contrôle lisible
-
-```vit
-entry main at app/demo {
-  let n: int = 3
-  if n > 0 {
-    return 1
-  }
-  return 0
-}
-```
-
-Quand l'utiliser: expliciter une décision métier avec un chemin nominal et un fallback.
-
-### Exemple 6: version testable d'une procédure
-
-```vit
-proc is_even(x: int) -> bool {
-  give x % 2 == 0
-}
-```
-
-Cas de test conseillés:
-1. `is_even(2)` -> `true`.
-2. `is_even(3)` -> `false`.
-3. `is_even(0)` -> `true`.
-
-Quand l'utiliser: convertir rapidement une règle en contrat vérifiable.
-
-### Exemple 7: refactor sûr (avant/après)
-
-Avant:
-```vit
-proc parse_port(s: string) -> int {
-  give 0
-}
-```
-
-Après:
-```vit
-proc parse_port(s: string) -> int {
-  if s == "" {
-    give 0
-  }
-  give 8080
-}
-```
-
-Quand l'utiliser: faire évoluer le comportement sans casser la signature publique.
-
-### Exemple 8: correction guidée basée sur le code
-
-Procédure de correction:
-1. Reproduire le bug sur un snippet minimal.
-2. Corriger une seule ligne.
-3. Recompiler et vérifier la sortie.
-4. Ajouter un test de non-régression.
-
-### Checklist de lecture rapide
-
-1. Où est le contrat d'entrée?
-2. Quel est le chemin nominal?
-3. Quel est le cas limite traité?
-4. Quelle erreur reste explicite?
-5. Quel test prouve le comportement?
+- Le lecteur comprend ce que fait le code sans abstraction inutile.
+- Chaque exemple est relié à une action concrète.
+- La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

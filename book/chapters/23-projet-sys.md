@@ -562,12 +562,11 @@ Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambig
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
 
-## Exemples représentatifs (par cas d'usage)
+## Exemples représentatifs basés sur le code du chapitre
 
-Cette section s'appuie sur du code concret pour **projet guide système**.
-Objectif: comprendre vite ce que fait le code, pourquoi, et comment le corriger.
+Thème: **projet guide système**. Cette section évite les généralités et part d'un extrait réel.
 
-### Exemple 1: extrait réel du chapitre (cas nominal)
+### Exemple A: lecture exécutable du snippet principal
 
 ```vit
 form Region {
@@ -585,124 +584,39 @@ pick SysResult {
 }
 ```
 
-Lecture guidée (ligne par ligne):
-1. `form Region {` -> participe au flux nominal du programme.
-2. `base: int` -> participe au flux nominal du programme.
-3. `size: int` -> participe au flux nominal du programme.
-4. `}` -> participe au flux nominal du programme.
-5. `form SysMem {` -> participe au flux nominal du programme.
-6. `region: Region` -> participe au flux nominal du programme.
-7. `cells: int[]` -> participe au flux nominal du programme.
-8. `}` -> participe au flux nominal du programme.
+Lecture ligne par ligne:
+1. `form Region {` -> participe au déroulé du traitement.
+2. `base: int` -> participe au déroulé du traitement.
+3. `size: int` -> participe au déroulé du traitement.
+4. `}` -> participe au déroulé du traitement.
+5. `form SysMem {` -> participe au déroulé du traitement.
+6. `region: Region` -> participe au déroulé du traitement.
+7. `cells: int[]` -> participe au déroulé du traitement.
+8. `}` -> participe au déroulé du traitement.
+9. `pick SysResult {` -> participe au déroulé du traitement.
+10. `case Ok` -> participe au déroulé du traitement.
 
-Entrée -> Sortie attendue:
-1. Entrée: données conformes au contrat.
-2. Traitement: chemin nominal exécuté.
-3. Sortie: valeur déterministe observable.
+### Exemple B: variante cas limite (même intention, comportement sécurisé)
 
-### Exemple 2: garde explicite (cas limite)
+Objectif: conserver la logique métier tout en ajoutant une garde explicite.
 
-```vit
-proc clamp_non_negative(x: int) -> int {
-  if x < 0 {
-    give 0
-  }
-  give x
-}
-```
+Étapes:
+1. Identifier la ligne qui décide la sortie.
+2. Ajouter une garde avant cette ligne.
+3. Vérifier la nouvelle sortie sur une entrée limite.
 
-Quand l'utiliser: éviter les comportements implicites sur entrées hors contrat.
+### Exemple C: bug reproductible puis correction locale
 
-### Exemple 3: erreur de type volontaire (diagnostic)
+Procédure:
+1. Introduire une incompatibilité de type sur un appel.
+2. Compiler et lire le premier diagnostic.
+3. Corriger une seule ligne (pas de refactor global).
+4. Recompiler et vérifier le retour nominal.
 
-```vit
-proc needs_int(x: int) -> int {
-  give x
-}
-entry main at app/demo {
-  let s: string = "42"
-  return needs_int(s)
-}
-```
+### Résultat attendu
 
-Quand l'utiliser: entraîner la lecture des diagnostics compilateur.
-
-### Exemple 4: séparation module / API
-
-```vit
-space app/math
-proc add(a: int, b: int) -> int {
-  give a + b
-}
-share add
-```
-
-Quand l'utiliser: clarifier ce qui est public vs interne dans l'architecture.
-
-### Exemple 5: flux de contrôle lisible
-
-```vit
-entry main at app/demo {
-  let n: int = 3
-  if n > 0 {
-    return 1
-  }
-  return 0
-}
-```
-
-Quand l'utiliser: expliciter une décision métier avec un chemin nominal et un fallback.
-
-### Exemple 6: version testable d'une procédure
-
-```vit
-proc is_even(x: int) -> bool {
-  give x % 2 == 0
-}
-```
-
-Cas de test conseillés:
-1. `is_even(2)` -> `true`.
-2. `is_even(3)` -> `false`.
-3. `is_even(0)` -> `true`.
-
-Quand l'utiliser: convertir rapidement une règle en contrat vérifiable.
-
-### Exemple 7: refactor sûr (avant/après)
-
-Avant:
-```vit
-proc parse_port(s: string) -> int {
-  give 0
-}
-```
-
-Après:
-```vit
-proc parse_port(s: string) -> int {
-  if s == "" {
-    give 0
-  }
-  give 8080
-}
-```
-
-Quand l'utiliser: faire évoluer le comportement sans casser la signature publique.
-
-### Exemple 8: correction guidée basée sur le code
-
-Procédure de correction:
-1. Reproduire le bug sur un snippet minimal.
-2. Corriger une seule ligne.
-3. Recompiler et vérifier la sortie.
-4. Ajouter un test de non-régression.
-
-### Checklist de lecture rapide
-
-1. Où est le contrat d'entrée?
-2. Quel est le chemin nominal?
-3. Quel est le cas limite traité?
-4. Quelle erreur reste explicite?
-5. Quel test prouve le comportement?
+- Le lecteur comprend ce que fait le code sans abstraction inutile.
+- Chaque exemple est relié à une action concrète.
+- La correction est reproductible et testable.
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

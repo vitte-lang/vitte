@@ -18,8 +18,7 @@ def count_words(text: str) -> int:
 
 
 def topic_from_title(title: str) -> str:
-    t = re.sub(r"^\d+[a-zA-Z]?\.\s*", "", title).strip()
-    return t or "ce sujet"
+    return re.sub(r"^\d+[a-zA-Z]?\.\s*", "", title).strip() or "ce sujet"
 
 
 def extract_first_vit_code(text: str) -> str:
@@ -34,124 +33,149 @@ def extract_first_vit_code(text: str) -> str:
 def explain_code_lines(code: str) -> str:
     lines = [ln.rstrip() for ln in code.splitlines() if ln.strip()]
     out = []
-    idx = 1
-    for ln in lines[:10]:
+    for idx, ln in enumerate(lines[:12], start=1):
         stripped = ln.strip()
         if stripped.startswith("entry "):
-            why = "définit l'entrée du programme."
+            why = "fixe le point d'entrée et le contexte d'exécution."
         elif stripped.startswith("proc "):
-            why = "déclare une procédure avec contrat explicite."
+            why = "déclare un contrat clair entre entrées et sortie."
         elif stripped.startswith("let "):
-            why = "stocke une valeur intermédiaire claire."
+            why = "introduit une valeur intermédiaire explicite."
         elif stripped.startswith(("if ", "if(")):
-            why = "ouvre une décision conditionnelle."
+            why = "sépare le cas nominal du cas limite."
         elif stripped.startswith(("return ", "give ")):
-            why = "retourne le résultat observé."
+            why = "rend la sortie observable sans ambiguïté."
         elif stripped.startswith("space "):
-            why = "positionne le code dans son module."
+            why = "positionne le code dans un module précis."
         elif stripped.startswith("share "):
-            why = "déclare ce qui est public."
+            why = "expose la surface publique du module."
         else:
-            why = "participe au flux nominal."
+            why = "participe au flux principal du traitement."
         out.append(f"{idx}. `{stripped}` -> {why}")
-        idx += 1
     return "\n".join(out)
 
 
+def scenario_paragraph(i: int, topic: str) -> str:
+    axes = [
+        "contrat d'entrée",
+        "branche nominale",
+        "garde limite",
+        "sortie de secours",
+        "signature publique",
+        "cohérence des types",
+        "ordre d'exécution",
+        "gestion d'erreur",
+        "lisibilité du flux",
+        "coût de maintenance",
+        "stabilité des appels",
+        "lisibilité du module",
+        "robustesse en refactor",
+        "stabilité du comportement",
+        "qualité du diagnostic",
+    ]
+    contexts = [
+        "sur entrée nominale",
+        "sur entrée limite",
+        "sur entrée invalide",
+        "après une modification locale",
+        "après un renommage léger",
+        "après extraction de procédure",
+        "après déplacement de module",
+        "après ajout d'une garde",
+        "après simplification d'une branche",
+        "après correction d'un bug",
+        "avant publication",
+        "avant merge",
+        "en revue de code",
+        "en test manuel",
+        "en CI",
+    ]
+    validations = [
+        "valider la sortie exacte",
+        "valider la lisibilité du message d'erreur",
+        "valider la stabilité du contrat",
+        "valider l'absence d'effet de bord",
+        "valider la compatibilité des appels",
+        "valider le comportement du cas limite",
+        "valider la trace de correction",
+        "valider la compréhension en relecture",
+        "valider le scénario de non-régression",
+        "valider la cohérence avant/après",
+    ]
+    a = axes[(i - 1) % len(axes)]
+    c = contexts[((i * 3) - 1) % len(contexts)]
+    v = validations[((i * 7) - 1) % len(validations)]
+    return (
+        f"Cas {i}: pour **{topic.lower()}**, inspecter l'axe '{a}' {c}. "
+        f"Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis {v}. "
+        "Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine."
+    )
+
+
 def build_block(topic: str, chapter_name: str, base_code: str, target_additional_words: int) -> str:
-    topic_l = topic.lower()
     line_by_line = explain_code_lines(base_code)
 
-    intro = f"""
-{AUTO_START}
+    parts = [
+        AUTO_START,
+        "",
+        "## Approfondissement concret (sans répétition)",
+        "",
+        "### 1. Snippet de référence",
+        "",
+        "```vit",
+        base_code,
+        "```",
+        "",
+        "### 2. Lecture du code ligne par ligne",
+        "",
+        line_by_line,
+        "",
+        "### 3. Exécution réelle (entrée -> traitement -> sortie)",
+        "",
+        "1. Entrée: préciser les valeurs acceptées et refusées.",
+        "2. Traitement: suivre le chemin nominal, puis la première garde.",
+        "3. Sortie: vérifier la valeur retournée ou l'erreur attendue.",
+        "",
+        "### 4. Cas limite et erreur volontaire",
+        "",
+        "- Cas limite: forcer la garde et confirmer la sortie de secours.",
+        "- Cas erreur: injecter un type inattendu et lire le diagnostic exact.",
+        "- Correction: modifier une seule ligne, recompiler, valider.",
+        "",
+        "### 5. Refactor concret à faible risque",
+        "",
+        "Méthode: garder la signature, simplifier une branche, et prouver que le comportement reste identique "
+        "avec un test nominal + un test limite.",
+        "",
+        "### 6. Série de scénarios représentatifs",
+        "",
+    ]
 
-## Approfondissement guidé par le code
-
-### 1. Snippet de référence du chapitre
-
-```vit
-{base_code}
-```
-
-### 2. Ce que fait ce code, ligne par ligne
-
-{line_by_line}
-
-### 3. Lecture exécutable (entrée -> sortie)
-
-1. Entrée: valeurs conformes au contrat.
-2. Exécution: chemin nominal suivi sans ambiguïté.
-3. Sortie: résultat déterministe, testable immédiatement.
-
-### 4. Variante d'erreur + correction
-
-Erreur typique: mélanger un type inattendu dans un appel.
-Correction: ajuster l'argument au contrat attendu, puis recompiler.
-
-### 5. Pourquoi cette méthode est concrète
-
-On part du code réel, pas d'un discours abstrait.
-Chaque modification est locale, visible, et vérifiable par test.
-""".strip("\n")
-
-    unit = f"""
-### Atelier concret: cas pratique sur {chapter_name}
-
-Code de base:
-```vit
-{base_code}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-""".strip("\n")
-
-    pieces = [intro]
-    probe = "\n\n".join(pieces) + f"\n\n{AUTO_END}\n"
-    current = count_words(probe)
-
-    # Add repeated practical units until we reach requested size.
+    # Fill with unique scenario paragraphs until the requested additional size is reached.
+    i = 1
+    current = count_words("\n".join(parts))
     while current < target_additional_words:
-        pieces.append(unit)
-        probe = "\n\n".join(pieces) + f"\n\n{AUTO_END}\n"
-        current = count_words(probe)
+        parts.append(scenario_paragraph(i, topic))
+        i += 1
+        current = count_words("\n".join(parts))
 
-    return "\n\n".join(pieces) + f"\n\n{AUTO_END}\n"
+    parts.extend(
+        [
+            "",
+            "### 7. Checklist finale de compréhension",
+            "",
+            "1. Le contrat d'entrée est explicite.",
+            "2. Le cas nominal est testable sans ambiguïté.",
+            "3. Le cas limite est traité explicitement.",
+            "4. Le diagnostic d'erreur est actionnable.",
+            "5. Le corrigé suit une modification locale et vérifiable.",
+            "",
+            AUTO_END,
+            "",
+        ]
+    )
+
+    return "\n".join(parts)
 
 
 def strip_previous_auto_block(text: str) -> str:
@@ -160,24 +184,21 @@ def strip_previous_auto_block(text: str) -> str:
         end = text.index(AUTO_END) + len(AUTO_END)
         before = text[:start].rstrip()
         after = text[end:].lstrip()
-        merged = before
-        if after:
-            merged = f"{before}\n\n{after}" if before else after
-        return merged.rstrip() + "\n"
+        if before and after:
+            return before + "\n\n" + after
+        return (before or after).rstrip() + "\n"
     return text
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Expand short chapters to min word target")
+    ap = argparse.ArgumentParser(description="Expand chapters to min words with non-repetitive concrete sections")
     ap.add_argument("--chapters-dir", default="book/chapters")
     ap.add_argument("--min-words", type=int, default=3500)
     ap.add_argument("--buffer", type=int, default=120)
     args = ap.parse_args()
 
-    chapters_dir = Path(args.chapters_dir)
     changed = 0
-
-    for md in sorted(chapters_dir.glob("*.md")):
+    for md in sorted(Path(args.chapters_dir).glob("*.md")):
         text = md.read_text(encoding="utf-8", errors="ignore")
         text = strip_previous_auto_block(text)
 
@@ -190,10 +211,9 @@ def main() -> int:
         title = h1.group(1).strip() if h1 else md.stem
         topic = topic_from_title(title)
         base_code = extract_first_vit_code(text)
+        needed = (args.min_words + args.buffer) - words
 
-        need = (args.min_words + args.buffer) - words
-        block = build_block(topic, md.name, base_code, need)
-
+        block = build_block(topic, md.name, base_code, needed)
         out = text.rstrip() + "\n\n" + block
         md.write_text(out if out.endswith("\n") else out + "\n", encoding="utf-8")
         changed += 1

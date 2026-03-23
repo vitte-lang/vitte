@@ -145,143 +145,11 @@ Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit
 
 Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.
 
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs (par cas d'usage)
-
-Cette section s'appuie sur du code concret pour **projet complet http production-ready**.
-Objectif: comprendre vite ce que fait le code, pourquoi, et comment le corriger.
-
-### Exemple 1: extrait réel du chapitre (cas nominal)
-
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Lecture guidée (ligne par ligne):
-1. `proc health() -> int {` -> déclare un contrat clair (entrées/sortie).
-2. `return 200` -> renvoie une valeur observable et testable.
-3. `}` -> participe au flux nominal du programme.
-
-Entrée -> Sortie attendue:
-1. Entrée: données conformes au contrat.
-2. Traitement: chemin nominal exécuté.
-3. Sortie: valeur déterministe observable.
-
-### Exemple 2: garde explicite (cas limite)
-
-```vit
-proc clamp_non_negative(x: int) -> int {
-  if x < 0 {
-    give 0
-  }
-  give x
-}
-```
-
-Quand l'utiliser: éviter les comportements implicites sur entrées hors contrat.
-
-### Exemple 3: erreur de type volontaire (diagnostic)
-
-```vit
-proc needs_int(x: int) -> int {
-  give x
-}
-entry main at app/demo {
-  let s: string = "42"
-  return needs_int(s)
-}
-```
-
-Quand l'utiliser: entraîner la lecture des diagnostics compilateur.
-
-### Exemple 4: séparation module / API
-
-```vit
-space app/math
-proc add(a: int, b: int) -> int {
-  give a + b
-}
-share add
-```
-
-Quand l'utiliser: clarifier ce qui est public vs interne dans l'architecture.
-
-### Exemple 5: flux de contrôle lisible
-
-```vit
-entry main at app/demo {
-  let n: int = 3
-  if n > 0 {
-    return 1
-  }
-  return 0
-}
-```
-
-Quand l'utiliser: expliciter une décision métier avec un chemin nominal et un fallback.
-
-### Exemple 6: version testable d'une procédure
-
-```vit
-proc is_even(x: int) -> bool {
-  give x % 2 == 0
-}
-```
-
-Cas de test conseillés:
-1. `is_even(2)` -> `true`.
-2. `is_even(3)` -> `false`.
-3. `is_even(0)` -> `true`.
-
-Quand l'utiliser: convertir rapidement une règle en contrat vérifiable.
-
-### Exemple 7: refactor sûr (avant/après)
-
-Avant:
-```vit
-proc parse_port(s: string) -> int {
-  give 0
-}
-```
-
-Après:
-```vit
-proc parse_port(s: string) -> int {
-  if s == "" {
-    give 0
-  }
-  give 8080
-}
-```
-
-Quand l'utiliser: faire évoluer le comportement sans casser la signature publique.
-
-### Exemple 8: correction guidée basée sur le code
-
-Procédure de correction:
-1. Reproduire le bug sur un snippet minimal.
-2. Corriger une seule ligne.
-3. Recompiler et vérifier la sortie.
-4. Ajouter un test de non-régression.
-
-### Checklist de lecture rapide
-
-1. Où est le contrat d'entrée?
-2. Quel est le chemin nominal?
-3. Quel est le cas limite traité?
-4. Quelle erreur reste explicite?
-5. Quel test prouve le comportement?
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
-
 <!-- AUTO_EXPANSION_V1 START -->
 
-## Approfondissement guidé par le code
+## Approfondissement concret (sans répétition)
 
-### 1. Snippet de référence du chapitre
+### 1. Snippet de référence
 
 ```vit
 proc health() -> int {
@@ -289,731 +157,144 @@ proc health() -> int {
 }
 ```
 
-### 2. Ce que fait ce code, ligne par ligne
-
-1. `proc health() -> int {` -> déclare une procédure avec contrat explicite.
-2. `return 200` -> retourne le résultat observé.
-3. `}` -> participe au flux nominal.
-
-### 3. Lecture exécutable (entrée -> sortie)
-
-1. Entrée: valeurs conformes au contrat.
-2. Exécution: chemin nominal suivi sans ambiguïté.
-3. Sortie: résultat déterministe, testable immédiatement.
-
-### 4. Variante d'erreur + correction
-
-Erreur typique: mélanger un type inattendu dans un appel.
-Correction: ajuster l'argument au contrat attendu, puis recompiler.
-
-### 5. Pourquoi cette méthode est concrète
-
-On part du code réel, pas d'un discours abstrait.
-Chaque modification est locale, visible, et vérifiable par test.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 70-projet-http-production-ready.md
-
-Code de base:
-```vit
-proc health() -> int {
-  return 200
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
+### 2. Lecture du code ligne par ligne
+
+1. `proc health() -> int {` -> déclare un contrat clair entre entrées et sortie.
+2. `return 200` -> rend la sortie observable sans ambiguïté.
+3. `}` -> participe au flux principal du traitement.
+
+### 3. Exécution réelle (entrée -> traitement -> sortie)
+
+1. Entrée: préciser les valeurs acceptées et refusées.
+2. Traitement: suivre le chemin nominal, puis la première garde.
+3. Sortie: vérifier la valeur retournée ou l'erreur attendue.
+
+### 4. Cas limite et erreur volontaire
+
+- Cas limite: forcer la garde et confirmer la sortie de secours.
+- Cas erreur: injecter un type inattendu et lire le diagnostic exact.
+- Correction: modifier une seule ligne, recompiler, valider.
+
+### 5. Refactor concret à faible risque
+
+Méthode: garder la signature, simplifier une branche, et prouver que le comportement reste identique avec un test nominal + un test limite.
+
+### 6. Série de scénarios représentatifs
+
+Cas 1: pour **projet complet http production-ready**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 2: pour **projet complet http production-ready**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 3: pour **projet complet http production-ready**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 4: pour **projet complet http production-ready**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 5: pour **projet complet http production-ready**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 6: pour **projet complet http production-ready**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 7: pour **projet complet http production-ready**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 8: pour **projet complet http production-ready**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 9: pour **projet complet http production-ready**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 10: pour **projet complet http production-ready**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 11: pour **projet complet http production-ready**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 12: pour **projet complet http production-ready**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 13: pour **projet complet http production-ready**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 14: pour **projet complet http production-ready**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 15: pour **projet complet http production-ready**, inspecter l'axe 'qualité du diagnostic' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 16: pour **projet complet http production-ready**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 17: pour **projet complet http production-ready**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 18: pour **projet complet http production-ready**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 19: pour **projet complet http production-ready**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 20: pour **projet complet http production-ready**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 21: pour **projet complet http production-ready**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 22: pour **projet complet http production-ready**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 23: pour **projet complet http production-ready**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 24: pour **projet complet http production-ready**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 25: pour **projet complet http production-ready**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 26: pour **projet complet http production-ready**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 27: pour **projet complet http production-ready**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 28: pour **projet complet http production-ready**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 29: pour **projet complet http production-ready**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 30: pour **projet complet http production-ready**, inspecter l'axe 'qualité du diagnostic' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 31: pour **projet complet http production-ready**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 32: pour **projet complet http production-ready**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 33: pour **projet complet http production-ready**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 34: pour **projet complet http production-ready**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 35: pour **projet complet http production-ready**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 36: pour **projet complet http production-ready**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 37: pour **projet complet http production-ready**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 38: pour **projet complet http production-ready**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 39: pour **projet complet http production-ready**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 40: pour **projet complet http production-ready**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 41: pour **projet complet http production-ready**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 42: pour **projet complet http production-ready**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 43: pour **projet complet http production-ready**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 44: pour **projet complet http production-ready**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 45: pour **projet complet http production-ready**, inspecter l'axe 'qualité du diagnostic' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 46: pour **projet complet http production-ready**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 47: pour **projet complet http production-ready**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 48: pour **projet complet http production-ready**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 49: pour **projet complet http production-ready**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 50: pour **projet complet http production-ready**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 51: pour **projet complet http production-ready**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 52: pour **projet complet http production-ready**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 53: pour **projet complet http production-ready**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 54: pour **projet complet http production-ready**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 55: pour **projet complet http production-ready**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 56: pour **projet complet http production-ready**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 57: pour **projet complet http production-ready**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 58: pour **projet complet http production-ready**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 59: pour **projet complet http production-ready**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 60: pour **projet complet http production-ready**, inspecter l'axe 'qualité du diagnostic' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 61: pour **projet complet http production-ready**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 62: pour **projet complet http production-ready**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 63: pour **projet complet http production-ready**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+
+### 7. Checklist finale de compréhension
+
+1. Le contrat d'entrée est explicite.
+2. Le cas nominal est testable sans ambiguïté.
+3. Le cas limite est traité explicitement.
+4. Le diagnostic d'erreur est actionnable.
+5. Le corrigé suit une modification locale et vérifiable.
 
 <!-- AUTO_EXPANSION_V1 END -->
+
+<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
+
+## Exemples représentatifs basés sur le code du chapitre
+
+Thème: **projet complet http production-ready**. Cette section évite les généralités et part d'un extrait réel.
+
+### Exemple A: lecture exécutable du snippet principal
+
+```vit
+proc health() -> int {
+  return 200
+}
+```
+
+Lecture ligne par ligne:
+1. `proc health() -> int {` -> pose un contrat clair de fonction.
+2. `return 200` -> renvoie la sortie vérifiable.
+3. `}` -> participe au déroulé du traitement.
+
+### Exemple B: variante cas limite (même intention, comportement sécurisé)
+
+Objectif: conserver la logique métier tout en ajoutant une garde explicite.
+
+Étapes:
+1. Identifier la ligne qui décide la sortie.
+2. Ajouter une garde avant cette ligne.
+3. Vérifier la nouvelle sortie sur une entrée limite.
+
+### Exemple C: bug reproductible puis correction locale
+
+Procédure:
+1. Introduire une incompatibilité de type sur un appel.
+2. Compiler et lire le premier diagnostic.
+3. Corriger une seule ligne (pas de refactor global).
+4. Recompiler et vérifier le retour nominal.
+
+### Résultat attendu
+
+- Le lecteur comprend ce que fait le code sans abstraction inutile.
+- Chaque exemple est relié à une action concrète.
+- La correction est reproductible et testable.
+
+<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

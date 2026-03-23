@@ -357,162 +357,11 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
 
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs (par cas d'usage)
-
-Cette section s'appuie sur du code concret pour **projet guide http**.
-Objectif: comprendre vite ce que fait le code, pourquoi, et comment le corriger.
-
-### Exemple 1: extrait réel du chapitre (cas nominal)
-
-```vit
-form HttpRequest {
-  method: string
-  path: string
-  body_len: int
-  auth_token: string
-}
-
-pick HttpError {
-  case BadRequest
-  case Unauthorized
-  case NotFound
-}
-
-pick HttpResult {
-  case Ok(code: int)
-  case Err(e: HttpError)
-}
-```
-
-Lecture guidée (ligne par ligne):
-1. `form HttpRequest {` -> participe au flux nominal du programme.
-2. `method: string` -> participe au flux nominal du programme.
-3. `path: string` -> participe au flux nominal du programme.
-4. `body_len: int` -> participe au flux nominal du programme.
-5. `auth_token: string` -> participe au flux nominal du programme.
-6. `}` -> participe au flux nominal du programme.
-7. `pick HttpError {` -> participe au flux nominal du programme.
-8. `case BadRequest` -> participe au flux nominal du programme.
-
-Entrée -> Sortie attendue:
-1. Entrée: données conformes au contrat.
-2. Traitement: chemin nominal exécuté.
-3. Sortie: valeur déterministe observable.
-
-### Exemple 2: garde explicite (cas limite)
-
-```vit
-proc clamp_non_negative(x: int) -> int {
-  if x < 0 {
-    give 0
-  }
-  give x
-}
-```
-
-Quand l'utiliser: éviter les comportements implicites sur entrées hors contrat.
-
-### Exemple 3: erreur de type volontaire (diagnostic)
-
-```vit
-proc needs_int(x: int) -> int {
-  give x
-}
-entry main at app/demo {
-  let s: string = "42"
-  return needs_int(s)
-}
-```
-
-Quand l'utiliser: entraîner la lecture des diagnostics compilateur.
-
-### Exemple 4: séparation module / API
-
-```vit
-space app/math
-proc add(a: int, b: int) -> int {
-  give a + b
-}
-share add
-```
-
-Quand l'utiliser: clarifier ce qui est public vs interne dans l'architecture.
-
-### Exemple 5: flux de contrôle lisible
-
-```vit
-entry main at app/demo {
-  let n: int = 3
-  if n > 0 {
-    return 1
-  }
-  return 0
-}
-```
-
-Quand l'utiliser: expliciter une décision métier avec un chemin nominal et un fallback.
-
-### Exemple 6: version testable d'une procédure
-
-```vit
-proc is_even(x: int) -> bool {
-  give x % 2 == 0
-}
-```
-
-Cas de test conseillés:
-1. `is_even(2)` -> `true`.
-2. `is_even(3)` -> `false`.
-3. `is_even(0)` -> `true`.
-
-Quand l'utiliser: convertir rapidement une règle en contrat vérifiable.
-
-### Exemple 7: refactor sûr (avant/après)
-
-Avant:
-```vit
-proc parse_port(s: string) -> int {
-  give 0
-}
-```
-
-Après:
-```vit
-proc parse_port(s: string) -> int {
-  if s == "" {
-    give 0
-  }
-  give 8080
-}
-```
-
-Quand l'utiliser: faire évoluer le comportement sans casser la signature publique.
-
-### Exemple 8: correction guidée basée sur le code
-
-Procédure de correction:
-1. Reproduire le bug sur un snippet minimal.
-2. Corriger une seule ligne.
-3. Recompiler et vérifier la sortie.
-4. Ajouter un test de non-régression.
-
-### Checklist de lecture rapide
-
-1. Où est le contrat d'entrée?
-2. Quel est le chemin nominal?
-3. Quel est le cas limite traité?
-4. Quelle erreur reste explicite?
-5. Quel test prouve le comportement?
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
-
 <!-- AUTO_EXPANSION_V1 START -->
 
-## Approfondissement guidé par le code
+## Approfondissement concret (sans répétition)
 
-### 1. Snippet de référence du chapitre
+### 1. Snippet de référence
 
 ```vit
 form HttpRequest {
@@ -534,338 +383,135 @@ pick HttpResult {
 }
 ```
 
-### 2. Ce que fait ce code, ligne par ligne
-
-1. `form HttpRequest {` -> participe au flux nominal.
-2. `method: string` -> participe au flux nominal.
-3. `path: string` -> participe au flux nominal.
-4. `body_len: int` -> participe au flux nominal.
-5. `auth_token: string` -> participe au flux nominal.
-6. `}` -> participe au flux nominal.
-7. `pick HttpError {` -> participe au flux nominal.
-8. `case BadRequest` -> participe au flux nominal.
-9. `case Unauthorized` -> participe au flux nominal.
-10. `case NotFound` -> participe au flux nominal.
-
-### 3. Lecture exécutable (entrée -> sortie)
-
-1. Entrée: valeurs conformes au contrat.
-2. Exécution: chemin nominal suivi sans ambiguïté.
-3. Sortie: résultat déterministe, testable immédiatement.
-
-### 4. Variante d'erreur + correction
-
-Erreur typique: mélanger un type inattendu dans un appel.
-Correction: ajuster l'argument au contrat attendu, puis recompiler.
-
-### 5. Pourquoi cette méthode est concrète
-
-On part du code réel, pas d'un discours abstrait.
-Chaque modification est locale, visible, et vérifiable par test.
-
-### Atelier concret: cas pratique sur 22-projet-http.md
-
-Code de base:
-```vit
-form HttpRequest {
-  method: string
-  path: string
-  body_len: int
-  auth_token: string
-}
-
-pick HttpError {
-  case BadRequest
-  case Unauthorized
-  case NotFound
-}
-
-pick HttpResult {
-  case Ok(code: int)
-  case Err(e: HttpError)
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 22-projet-http.md
-
-Code de base:
-```vit
-form HttpRequest {
-  method: string
-  path: string
-  body_len: int
-  auth_token: string
-}
-
-pick HttpError {
-  case BadRequest
-  case Unauthorized
-  case NotFound
-}
-
-pick HttpResult {
-  case Ok(code: int)
-  case Err(e: HttpError)
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 22-projet-http.md
-
-Code de base:
-```vit
-form HttpRequest {
-  method: string
-  path: string
-  body_len: int
-  auth_token: string
-}
-
-pick HttpError {
-  case BadRequest
-  case Unauthorized
-  case NotFound
-}
-
-pick HttpResult {
-  case Ok(code: int)
-  case Err(e: HttpError)
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 22-projet-http.md
-
-Code de base:
-```vit
-form HttpRequest {
-  method: string
-  path: string
-  body_len: int
-  auth_token: string
-}
-
-pick HttpError {
-  case BadRequest
-  case Unauthorized
-  case NotFound
-}
-
-pick HttpResult {
-  case Ok(code: int)
-  case Err(e: HttpError)
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
-
-### Atelier concret: cas pratique sur 22-projet-http.md
-
-Code de base:
-```vit
-form HttpRequest {
-  method: string
-  path: string
-  body_len: int
-  auth_token: string
-}
-
-pick HttpError {
-  case BadRequest
-  case Unauthorized
-  case NotFound
-}
-
-pick HttpResult {
-  case Ok(code: int)
-  case Err(e: HttpError)
-}
-```
-
-Étape A: reproduire le cas nominal.
-Étape B: introduire une variation minimale (une ligne).
-Étape C: observer la différence de sortie.
-Étape D: corriger le comportement si l'écart est non voulu.
-
-Observation attendue:
-1. Le changement doit être visible.
-2. Le contrat doit rester lisible.
-3. Le diagnostic d'erreur doit rester actionnable.
-
-### Entrées / sorties représentatives
-
-- Entrée nominale: respecte le contrat, sortie attendue stable.
-- Entrée limite: force une garde explicite, sortie de secours.
-- Entrée invalide: doit produire une erreur compréhensible.
-
-### Pièges concrets
-
-1. Modifier plusieurs lignes sans isoler la cause.
-2. Corriger le symptôme sans vérifier l'entrée.
-3. Ajouter une abstraction avant d'avoir stabilisé la base.
-
-### Micro-tests recommandés
-
-1. Test nominal: le résultat attendu passe.
-2. Test limite: la garde produit la bonne sortie.
-3. Test erreur: le message est utile pour corriger vite.
-
-### Checklist de compréhension
-
-- Contrat d'entrée explicite.
-- Cas nominal validé.
-- Cas limite validé.
-- Erreurs lisibles.
-- Section "À faire" exécutable.
-- Corrigé minimal cohérent.
-- Lien vers chapitre voisin pertinent.
+### 2. Lecture du code ligne par ligne
+
+1. `form HttpRequest {` -> participe au flux principal du traitement.
+2. `method: string` -> participe au flux principal du traitement.
+3. `path: string` -> participe au flux principal du traitement.
+4. `body_len: int` -> participe au flux principal du traitement.
+5. `auth_token: string` -> participe au flux principal du traitement.
+6. `}` -> participe au flux principal du traitement.
+7. `pick HttpError {` -> participe au flux principal du traitement.
+8. `case BadRequest` -> participe au flux principal du traitement.
+9. `case Unauthorized` -> participe au flux principal du traitement.
+10. `case NotFound` -> participe au flux principal du traitement.
+11. `}` -> participe au flux principal du traitement.
+12. `pick HttpResult {` -> participe au flux principal du traitement.
+
+### 3. Exécution réelle (entrée -> traitement -> sortie)
+
+1. Entrée: préciser les valeurs acceptées et refusées.
+2. Traitement: suivre le chemin nominal, puis la première garde.
+3. Sortie: vérifier la valeur retournée ou l'erreur attendue.
+
+### 4. Cas limite et erreur volontaire
+
+- Cas limite: forcer la garde et confirmer la sortie de secours.
+- Cas erreur: injecter un type inattendu et lire le diagnostic exact.
+- Correction: modifier une seule ligne, recompiler, valider.
+
+### 5. Refactor concret à faible risque
+
+Méthode: garder la signature, simplifier une branche, et prouver que le comportement reste identique avec un test nominal + un test limite.
+
+### 6. Série de scénarios représentatifs
+
+Cas 1: pour **projet guide http**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 2: pour **projet guide http**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 3: pour **projet guide http**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 4: pour **projet guide http**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 5: pour **projet guide http**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 6: pour **projet guide http**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 7: pour **projet guide http**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 8: pour **projet guide http**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 9: pour **projet guide http**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 10: pour **projet guide http**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 11: pour **projet guide http**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 12: pour **projet guide http**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 13: pour **projet guide http**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 14: pour **projet guide http**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 15: pour **projet guide http**, inspecter l'axe 'qualité du diagnostic' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 16: pour **projet guide http**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 17: pour **projet guide http**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 18: pour **projet guide http**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 19: pour **projet guide http**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 20: pour **projet guide http**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 21: pour **projet guide http**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 22: pour **projet guide http**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 23: pour **projet guide http**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+Cas 24: pour **projet guide http**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
+
+### 7. Checklist finale de compréhension
+
+1. Le contrat d'entrée est explicite.
+2. Le cas nominal est testable sans ambiguïté.
+3. Le cas limite est traité explicitement.
+4. Le diagnostic d'erreur est actionnable.
+5. Le corrigé suit une modification locale et vérifiable.
 
 <!-- AUTO_EXPANSION_V1 END -->
+
+<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
+
+## Exemples représentatifs basés sur le code du chapitre
+
+Thème: **projet guide http**. Cette section évite les généralités et part d'un extrait réel.
+
+### Exemple A: lecture exécutable du snippet principal
+
+```vit
+form HttpRequest {
+  method: string
+  path: string
+  body_len: int
+  auth_token: string
+}
+
+pick HttpError {
+  case BadRequest
+  case Unauthorized
+  case NotFound
+}
+
+pick HttpResult {
+  case Ok(code: int)
+  case Err(e: HttpError)
+}
+```
+
+Lecture ligne par ligne:
+1. `form HttpRequest {` -> participe au déroulé du traitement.
+2. `method: string` -> participe au déroulé du traitement.
+3. `path: string` -> participe au déroulé du traitement.
+4. `body_len: int` -> participe au déroulé du traitement.
+5. `auth_token: string` -> participe au déroulé du traitement.
+6. `}` -> participe au déroulé du traitement.
+7. `pick HttpError {` -> participe au déroulé du traitement.
+8. `case BadRequest` -> participe au déroulé du traitement.
+9. `case Unauthorized` -> participe au déroulé du traitement.
+10. `case NotFound` -> participe au déroulé du traitement.
+
+### Exemple B: variante cas limite (même intention, comportement sécurisé)
+
+Objectif: conserver la logique métier tout en ajoutant une garde explicite.
+
+Étapes:
+1. Identifier la ligne qui décide la sortie.
+2. Ajouter une garde avant cette ligne.
+3. Vérifier la nouvelle sortie sur une entrée limite.
+
+### Exemple C: bug reproductible puis correction locale
+
+Procédure:
+1. Introduire une incompatibilité de type sur un appel.
+2. Compiler et lire le premier diagnostic.
+3. Corriger une seule ligne (pas de refactor global).
+4. Recompiler et vérifier le retour nominal.
+
+### Résultat attendu
+
+- Le lecteur comprend ce que fait le code sans abstraction inutile.
+- Chaque exemple est relié à une action concrète.
+- La correction est reproductible et testable.
+
+<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

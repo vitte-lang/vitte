@@ -13,8 +13,7 @@ END = "<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->"
 
 
 def clean_topic(title: str) -> str:
-    t = re.sub(r"^\d+[a-zA-Z]?\.\s*", "", title).strip()
-    return t or "Sujet"
+    return re.sub(r"^\d+[a-zA-Z]?\.\s*", "", title).strip() or "Sujet"
 
 
 def extract_first_vit_code(text: str) -> str:
@@ -27,29 +26,22 @@ def extract_first_vit_code(text: str) -> str:
 
 
 def explain_code_lines(code: str) -> str:
-    lines = [ln.rstrip() for ln in code.splitlines() if ln.strip()]
+    lines = [ln.strip() for ln in code.splitlines() if ln.strip()]
     out = []
-    idx = 1
-    for ln in lines[:8]:
-        stripped = ln.strip()
-        if stripped.startswith("entry "):
-            why = "définit le point d'entrée exécutable."
-        elif stripped.startswith("proc "):
-            why = "déclare un contrat clair (entrées/sortie)."
-        elif stripped.startswith("let "):
-            why = "fixe une valeur intermédiaire réutilisable."
-        elif stripped.startswith(("if ", "if(")):
-            why = "ouvre une branche conditionnelle lisible."
-        elif stripped.startswith(("return ", "give ")):
-            why = "renvoie une valeur observable et testable."
-        elif stripped.startswith("share "):
-            why = "expose explicitement l'API publique."
-        elif stripped.startswith("space "):
-            why = "positionne le code dans son module."
+    for idx, ln in enumerate(lines[:10], start=1):
+        if ln.startswith("entry "):
+            why = "définit le point d'entrée du scénario."
+        elif ln.startswith("proc "):
+            why = "pose un contrat clair de fonction."
+        elif ln.startswith("let "):
+            why = "nomme une valeur intermédiaire utile."
+        elif ln.startswith(("if ", "if(")):
+            why = "sépare nominal et cas limite."
+        elif ln.startswith(("return ", "give ")):
+            why = "renvoie la sortie vérifiable."
         else:
-            why = "participe au flux nominal du programme."
-        out.append(f"{idx}. `{stripped}` -> {why}")
-        idx += 1
+            why = "participe au déroulé du traitement."
+        out.append(f"{idx}. `{ln}` -> {why}")
     return "\n".join(out)
 
 
@@ -68,138 +60,51 @@ def strip_old_block(text: str) -> str:
 def build_examples_block(topic: str, base_code: str) -> str:
     topic_l = topic.lower()
     line_by_line = explain_code_lines(base_code)
+
     return f"""{START}
 
-## Exemples représentatifs (par cas d'usage)
+## Exemples représentatifs basés sur le code du chapitre
 
-Cette section s'appuie sur du code concret pour **{topic_l}**.
-Objectif: comprendre vite ce que fait le code, pourquoi, et comment le corriger.
+Thème: **{topic_l}**. Cette section évite les généralités et part d'un extrait réel.
 
-### Exemple 1: extrait réel du chapitre (cas nominal)
+### Exemple A: lecture exécutable du snippet principal
 
 ```vit
 {base_code}
 ```
 
-Lecture guidée (ligne par ligne):
+Lecture ligne par ligne:
 {line_by_line}
 
-Entrée -> Sortie attendue:
-1. Entrée: données conformes au contrat.
-2. Traitement: chemin nominal exécuté.
-3. Sortie: valeur déterministe observable.
+### Exemple B: variante cas limite (même intention, comportement sécurisé)
 
-### Exemple 2: garde explicite (cas limite)
+Objectif: conserver la logique métier tout en ajoutant une garde explicite.
 
-```vit
-proc clamp_non_negative(x: int) -> int {{
-  if x < 0 {{
-    give 0
-  }}
-  give x
-}}
-```
+Étapes:
+1. Identifier la ligne qui décide la sortie.
+2. Ajouter une garde avant cette ligne.
+3. Vérifier la nouvelle sortie sur une entrée limite.
 
-Quand l'utiliser: éviter les comportements implicites sur entrées hors contrat.
+### Exemple C: bug reproductible puis correction locale
 
-### Exemple 3: erreur de type volontaire (diagnostic)
+Procédure:
+1. Introduire une incompatibilité de type sur un appel.
+2. Compiler et lire le premier diagnostic.
+3. Corriger une seule ligne (pas de refactor global).
+4. Recompiler et vérifier le retour nominal.
 
-```vit
-proc needs_int(x: int) -> int {{
-  give x
-}}
-entry main at app/demo {{
-  let s: string = "42"
-  return needs_int(s)
-}}
-```
+### Résultat attendu
 
-Quand l'utiliser: entraîner la lecture des diagnostics compilateur.
-
-### Exemple 4: séparation module / API
-
-```vit
-space app/math
-proc add(a: int, b: int) -> int {{
-  give a + b
-}}
-share add
-```
-
-Quand l'utiliser: clarifier ce qui est public vs interne dans l'architecture.
-
-### Exemple 5: flux de contrôle lisible
-
-```vit
-entry main at app/demo {{
-  let n: int = 3
-  if n > 0 {{
-    return 1
-  }}
-  return 0
-}}
-```
-
-Quand l'utiliser: expliciter une décision métier avec un chemin nominal et un fallback.
-
-### Exemple 6: version testable d'une procédure
-
-```vit
-proc is_even(x: int) -> bool {{
-  give x % 2 == 0
-}}
-```
-
-Cas de test conseillés:
-1. `is_even(2)` -> `true`.
-2. `is_even(3)` -> `false`.
-3. `is_even(0)` -> `true`.
-
-Quand l'utiliser: convertir rapidement une règle en contrat vérifiable.
-
-### Exemple 7: refactor sûr (avant/après)
-
-Avant:
-```vit
-proc parse_port(s: string) -> int {{
-  give 0
-}}
-```
-
-Après:
-```vit
-proc parse_port(s: string) -> int {{
-  if s == "" {{
-    give 0
-  }}
-  give 8080
-}}
-```
-
-Quand l'utiliser: faire évoluer le comportement sans casser la signature publique.
-
-### Exemple 8: correction guidée basée sur le code
-
-Procédure de correction:
-1. Reproduire le bug sur un snippet minimal.
-2. Corriger une seule ligne.
-3. Recompiler et vérifier la sortie.
-4. Ajouter un test de non-régression.
-
-### Checklist de lecture rapide
-
-1. Où est le contrat d'entrée?
-2. Quel est le chemin nominal?
-3. Quel est le cas limite traité?
-4. Quelle erreur reste explicite?
-5. Quel test prouve le comportement?
+- Le lecteur comprend ce que fait le code sans abstraction inutile.
+- Chaque exemple est relié à une action concrète.
+- La correction est reproductible et testable.
 
 {END}
 """
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Add representative examples block to chapters")
+    ap = argparse.ArgumentParser(description="Add concrete representative examples based on chapter code")
     ap.add_argument("--chapters-dir", default="book/chapters")
     args = ap.parse_args()
 
