@@ -4,6 +4,14 @@ This page is the short human-readable health summary for Vitte.
 
 It should stay honest, compact, and less aspirational than marketing copy.
 
+## Status Legend
+
+| Status | Meaning |
+| --- | --- |
+| `green` | credible and intentionally maintained |
+| `yellow` | usable or promising, but still bounded by notable caveats |
+| `red` | not currently credible as a public promise |
+
 ## Current Summary
 
 | Area | Status | Notes |
@@ -55,6 +63,16 @@ See:
 - some surfaces are documented before they are fully maturity-classified
 - release expectations are easier to infer than to read directly unless docs are kept synchronized
 - repository breadth can make the project look more stable or more unified than some areas really are
+
+## Status Update Triggers
+
+Re-evaluate this page when one of these changes:
+
+- a core gate becomes stricter or weaker
+- a new public package family is promoted
+- a platform moves from experimental to credible
+- the release model changes materially
+- a recurring regression or instability changes confidence in a major area
 
 ## Maintenance Rule
 

@@ -17,6 +17,8 @@ Use it to find the shortest path to the document you actually need.
 - `docs/RELEASE_POLICY.md`: lightweight release model for `main`, `rc`, and `snapshot`
 - `docs/PROJECT_HEALTH.md`: current health summary, credible platforms, and risk zones
 - `docs/PERFORMANCE.md`: baseline performance policy and recommended tracked metrics
+- `docs/PACKAGE_MATURITY.md`: package-family maturity levels and promotion rules
+- `docs/COMPATIBILITY_POLICY.md`: compatibility expectations across commands, diagnostics, packages, and internals
 - `docs/PROJECT_SURFACES.md`: what is core, official, adjacent, or experimental
 - `docs/REPOSITORY_HYGIENE.md`: repository cleanliness and artifact discipline
 
