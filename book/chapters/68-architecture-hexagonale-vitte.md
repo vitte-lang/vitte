@@ -3,6 +3,7 @@
 Niveau: Avancé
 
 Prérequis: `book/chapters/29-style.md`, `book/chapters/37-conventions-modules-echelle.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -129,3 +130,21 @@ Pourquoi c'est un probleme:
 1. Verifier que N1 et N2 restent sans dependance externe.
 2. Verifier que N3 place l'I/O uniquement dans `adapters`.
 3. Refuser tout anti-exemple qui melange domaine et infrastructure.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

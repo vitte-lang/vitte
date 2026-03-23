@@ -3,6 +3,7 @@
 Niveau: Avancé
 
 Prérequis: `book/chapters/13-generiques.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -79,3 +80,21 @@ Généraliser trop tôt sans besoin ni mesure.
 1. Justifier l'abstraction.
 2. Définir les contraintes minimales.
 3. Mesurer lisibilité/performance.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

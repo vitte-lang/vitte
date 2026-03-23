@@ -3,6 +3,7 @@
 Niveau: Avancé
 
 Prérequis: `book/chapters/62-lecture-avancee-ebnf.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -88,3 +89,21 @@ Corriger l'ambiguïté sans mettre à jour le corpus.
 1. Reproduire avant correction.
 2. Vérifier après correction.
 3. Confirmer absence de régression globale.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

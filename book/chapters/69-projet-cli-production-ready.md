@@ -3,6 +3,7 @@
 Niveau: Intermédiaire
 
 Prérequis: `book/chapters/21-projet-cli.md`, `book/chapters/58-pipeline-ci-projet-vitte.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -80,3 +81,21 @@ CLI sans code de sortie stable, sans tests de cas d'erreur, sans validation CI.
 1. Vérifier codes de sortie nominal/erreur.
 2. Vérifier commandes CI vertes.
 3. Vérifier documentation utilisateur minimale.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

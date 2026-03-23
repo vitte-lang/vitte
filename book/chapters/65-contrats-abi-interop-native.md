@@ -3,6 +3,7 @@
 Niveau: Avancé
 
 Prérequis: `book/chapters/16-interop.md`, `book/chapters/55-securite-memoire-invariants.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -82,3 +83,21 @@ Changer ABI natif sans version ni plan de migration.
 1. Aligner signatures.
 2. Vérifier layout mémoire.
 3. Vérifier tests interop.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

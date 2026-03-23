@@ -3,6 +3,7 @@
 Niveau: Avancé
 
 Prérequis: `book/chapters/23-projet-sys.md`, `book/chapters/65-contrats-abi-interop-native.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -81,3 +82,21 @@ Service sans chemin d'échec explicite, sans supervision et sans tests de résil
 1. Vérifier cycle de vie start/tick.
 2. Vérifier gestion d'échec.
 3. Vérifier checks CI et runbook d'exploitation.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

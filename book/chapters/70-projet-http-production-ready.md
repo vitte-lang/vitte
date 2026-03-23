@@ -3,6 +3,7 @@
 Niveau: Avancé
 
 Prérequis: `book/chapters/22-projet-http.md`, `book/chapters/48-tracage-observabilite.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -125,3 +126,21 @@ Pas de route health, pas de code erreur stable, pas de rollback.
 1. N1: health check repond.
 2. N2: codes 200/401 testes.
 3. N3: procedure rollback executable.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.
