@@ -58,19 +58,19 @@ give acc
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc sum(values: int[]) -> int {` -> Comportement: le contrat est défini pour `sum`: entrées `values: int[]` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `sum` retourne toujours une valeur compatible avec `int`.
-2. `let acc: int = 0` -> Comportement: cette ligne crée la variable `acc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `acc` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-3. `for x in values {` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
-4. `set acc = acc + x` -> Comportement: cette ligne réalise une mutation volontaire et visible: l'état `acc` change ici, à cet endroit précis du flux. -> Preuve: après exécution, `acc` prend la nouvelle valeur `acc + x` pour les étapes suivantes.
-5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-6. `give acc` -> Comportement: la branche renvoie immédiatement `acc` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `acc`.
-7. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `proc sum(values: int[]) -> int {` : le contrat est défini pour `sum`: entrées `values: int[]` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `let acc: int = 0` : cette ligne crée la variable `acc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
+3. `for x in values {` : cette ligne définit une étape explicite du flux.
+4. `set acc = acc + x` : cette ligne réalise une mutation volontaire et visible: l'état `acc` change ici, à cet endroit précis du flux.
+5. `}` : cette accolade ferme le bloc logique.
+6. `give acc` : la branche renvoie immédiatement `acc` pour la branche courante, la sortie de branche est explicite et vérifiable.
+7. `}` : cette accolade ferme le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `acc`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: lire la collection en flux linéaire avec un seul état mutable, `acc`.
@@ -83,8 +83,6 @@ Lecture pas à pas pour `[2,3,4]`:
 - après `3`: `acc=5`.
 - après `4`: `acc=9`.
 - retour final `9`.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
@@ -107,22 +105,22 @@ give total / count
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc mean_floor(values: int[]) -> int {` -> Comportement: le contrat est posé pour `mean_floor`: entrées `values: int[]` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `mean_floor` retourne toujours une valeur compatible avec `int`.
-2. `let total: int = 0` -> Comportement: cette ligne crée la variable `total` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `total` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-3. `let count: int = 0` -> Comportement: cette ligne crée la variable `count` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `count` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-4. `for x in values {` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
-5. `set total = total + x` -> Comportement: cette ligne réalise une mutation volontaire et visible: l'état `total` change ici, à cet endroit précis du flux. -> Preuve: après exécution, `total` prend la nouvelle valeur `total + x` pour les étapes suivantes.
-6. `set count = count + 1` -> Comportement: cette ligne réalise une mutation volontaire et visible: l'état `count` change ici, à cet endroit précis du flux. -> Preuve: après exécution, `count` prend la nouvelle valeur `count + 1` pour les étapes suivantes.
-7. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-8. `if count == 0 { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `count == 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-9. `give total / count` -> Comportement: la sortie est renvoyée immédiatement `total / count` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `total / count`.
-10. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `proc mean_floor(values: int[]) -> int {` : le contrat est posé pour `mean_floor`: entrées `values: int[]` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `let total: int = 0` : cette ligne crée la variable `total` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
+3. `let count: int = 0` : cette ligne crée la variable `count` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
+4. `for x in values {` : cette ligne définit une étape explicite du flux.
+5. `set total = total + x` : cette ligne réalise une mutation volontaire et visible: l'état `total` change ici, à cet endroit précis du flux.
+6. `set count = count + 1` : cette ligne réalise une mutation volontaire et visible: l'état `count` change ici, à cet endroit précis du flux.
+7. `}` : cette accolade clôt le bloc logique.
+8. `if count == 0 { give 0 }` : cette garde traite le cas limite avant le calcul.
+9. `give total / count` : la sortie est renvoyée immédiatement `total / count` pour la branche courante, la sortie de branche est explicite et vérifiable.
+10. `}` : cette accolade ferme le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: si `count == 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `total / count`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: calculer une moyenne entière sans jamais exécuter une division invalide.
@@ -132,8 +130,6 @@ Le point clé est la garde `if count == 0`: elle traite explicitement le cas vid
 À l'exécution:
 - `mean_floor([])` retourne `0`.
 - `mean_floor([4,5,6])` calcule `total=15`, `count=3`, puis retourne `5`.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
@@ -154,20 +150,20 @@ give out
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc positive_only(values: int[]) -> int[] {` -> Comportement: le contrat est fixé pour `positive_only`: entrées `values: int[]` et sortie `int[]`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `positive_only` retourne toujours une valeur compatible avec `int[]`.
-2. `let out: int[] = []` -> Comportement: cette ligne crée la variable `out` de type `int[]` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `out` reçoit ici le résultat de `[]` et peut être réutilisé ensuite sans recalcul.
-3. `for x in values {` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
-4. `if x <= 0 { continue }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `x <= 0` est vrai, `continue` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-5. `out.push(x)` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
-6. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-7. `give out` -> Comportement: retourne immédiatement `out` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `out`.
-8. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `proc positive_only(values: int[]) -> int[] {` : le contrat est fixé pour `positive_only`: entrées `values: int[]` et sortie `int[]`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `let out: int[] = []` : cette ligne crée la variable `out` de type `int[]` pour nommer explicitement une étape intermédiaire du raisonnement.
+3. `for x in values {` : cette ligne définit une étape explicite du flux.
+4. `if x <= 0 { continue }` : cette garde traite le cas limite avant le calcul.
+5. `out.push(x)` : cette ligne définit une étape explicite du flux.
+6. `}` : cette accolade ferme le bloc logique.
+7. `give out` : retourne immédiatement `out` pour la branche courante, la sortie de branche est explicite et vérifiable.
+8. `}` : cette accolade clôt le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `out`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: filtrer tôt pour conserver une boucle lisible.
@@ -179,8 +175,6 @@ La règle est locale et explicite: toute valeur `<= 0` est ignorée immédiateme
 - `2` est conservé -> `[2]`.
 - `0` est ignoré.
 - `7` est conservé -> `[2,7]`.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
@@ -233,86 +227,6 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_EXPANSION_V1 START -->
-
-## Approfondissement concret (sans répétition)
-
-### 1. Snippet de référence
-
-```vit
-proc sum(values: int[]) -> int {
-  let acc: int = 0
-  for x in values {
-    set acc = acc + x
-  }
-give acc
-}
-```
-
-### 2. Lecture du code ligne par ligne
-
-1. `proc sum(values: int[]) -> int {` -> déclare un contrat clair entre entrées et sortie.
-2. `let acc: int = 0` -> introduit une valeur intermédiaire explicite.
-3. `for x in values {` -> participe au flux principal du traitement.
-4. `set acc = acc + x` -> participe au flux principal du traitement.
-5. `}` -> participe au flux principal du traitement.
-6. `give acc` -> rend la sortie observable sans ambiguïté.
-7. `}` -> participe au flux principal du traitement.
-
-### 3. Exécution réelle (entrée -> traitement -> sortie)
-
-1. Entrée: préciser les valeurs acceptées et refusées.
-2. Traitement: suivre le chemin nominal, puis la première garde.
-3. Sortie: vérifier la valeur retournée ou l'erreur attendue.
-
-### 4. Cas limite et erreur volontaire
-
-- Cas limite: forcer la garde et confirmer la sortie de secours.
-- Cas erreur: injecter un type inattendu et lire le diagnostic exact.
-- Correction: modifier une seule ligne, recompiler, valider.
-
-### 5. Refactor concret à faible risque
-
-Méthode: garder la signature, simplifier une branche, et prouver que le comportement reste identique avec un test nominal + un test limite.
-
-### 6. Série de scénarios représentatifs
-
-Cas 1: pour **collections et itération**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 2: pour **collections et itération**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 3: pour **collections et itération**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 4: pour **collections et itération**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 5: pour **collections et itération**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 6: pour **collections et itération**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 7: pour **collections et itération**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 8: pour **collections et itération**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 9: pour **collections et itération**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 10: pour **collections et itération**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 11: pour **collections et itération**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 12: pour **collections et itération**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 13: pour **collections et itération**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 14: pour **collections et itération**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 15: pour **collections et itération**, inspecter l'axe 'qualité du diagnostic' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 16: pour **collections et itération**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 17: pour **collections et itération**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 18: pour **collections et itération**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 19: pour **collections et itération**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 20: pour **collections et itération**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 21: pour **collections et itération**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 22: pour **collections et itération**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 23: pour **collections et itération**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 24: pour **collections et itération**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 25: pour **collections et itération**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-
-### 7. Checklist finale de compréhension
-
-1. Le contrat d'entrée est explicite.
-2. Le cas nominal est testable sans ambiguïté.
-3. Le cas limite est traité explicitement.
-4. Le diagnostic d'erreur est actionnable.
-5. Le corrigé suit une modification locale et vérifiable.
-
-<!-- AUTO_EXPANSION_V1 END -->
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
 

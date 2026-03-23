@@ -55,16 +55,16 @@ proc safe_div(num: int, den: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc safe_div(num: int, den: int) -> int {` -> Comportement: le contrat est défini pour `safe_div`: entrées `num: int, den: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `safe_div` retourne toujours une valeur compatible avec `int`.
-2. `if den == 0 { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `den == 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `give num / den` -> Comportement: la branche renvoie immédiatement `num / den` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `num / den`.
-4. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `proc safe_div(num: int, den: int) -> int {` : le contrat est défini pour `safe_div`: entrées `num: int, den: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `if den == 0 { give 0 }` : cette garde traite le cas limite avant le calcul.
+3. `give num / den` : la branche renvoie immédiatement `num / den` pour la branche courante, la sortie de branche est explicite et vérifiable.
+4. `}` : cette accolade ferme le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: si `den == 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `num / den`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: placer la frontière d'erreur au plus près de l'opération risquée.
@@ -74,8 +74,6 @@ Ce principe évite les crashs évitables: la division est protégée avant d'êt
 À l'exécution:
 - `safe_div(12,3)` retourne `4`.
 - `safe_div(12,0)` retourne `0` sans tenter la division.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
@@ -97,21 +95,21 @@ proc parse_port(x: int) -> ParsePort {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `pick ParsePort {` -> Comportement: cette ligne ouvre le type fermé `ParsePort` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. -> Preuve: toute valeur hors des `case` déclarés devient impossible à représenter.
-2. `case Ok(value: int)` -> Comportement: ce cas décrit `Ok(value: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok(value: int)`, ce bloc devient le chemin actif.
-3. `case Err(code: int)` -> Comportement: ce cas décrit `Err(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Err(code: int)`, ce bloc devient le chemin actif.
-4. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-5. `proc parse_port(x: int) -> ParsePort {` -> Comportement: le contrat est posé pour `parse_port`: entrées `x: int` et sortie `ParsePort`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `parse_port` retourne toujours une valeur compatible avec `ParsePort`.
-6. `if x < 0 { give Err(400) }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `x < 0` est vrai, `give Err(400)` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-7. `if x > 65535 { give Err(422) }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `x > 65535` est vrai, `give Err(422)` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-8. `give Ok(x)` -> Comportement: la sortie est renvoyée immédiatement `Ok(x)` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Ok(x)`.
-9. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `pick ParsePort {` : cette ligne ouvre le type fermé `ParsePort` pour forcer un ensemble fini de cas possibles et supprimer les états implicites.
+2. `case Ok(value: int)` : ce cas décrit `Ok(value: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+3. `case Err(code: int)` : ce cas décrit `Err(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+4. `}` : cette accolade ferme le bloc logique.
+5. `proc parse_port(x: int) -> ParsePort {` : le contrat est posé pour `parse_port`: entrées `x: int` et sortie `ParsePort`, elle clarifie l'intention avant lecture détaillée du corps.
+6. `if x < 0 { give Err(400) }` : cette garde traite le cas limite avant le calcul.
+7. `if x > 65535 { give Err(422) }` : cette garde traite le cas limite avant le calcul.
+8. `give Ok(x)` : la sortie est renvoyée immédiatement `Ok(x)` pour la branche courante, la sortie de branche est explicite et vérifiable.
+9. `}` : cette accolade clôt le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: si `x < 0` est vrai, la sortie devient `Err(400)`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Ok(x)`.
 - Observation testable: forcer le cas `Ok(value: int)` permet de confirmer la branche attendue.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: encoder le diagnostic dans le type de retour, pour rendre les échecs aussi explicites que les succès.
@@ -122,8 +120,6 @@ Avec ce modèle, on ne perd pas l'information d'erreur: chaque cas garde son cod
 - `parse_port(-1)` retourne `Err(400)`.
 - `parse_port(8080)` retourne `Ok(8080)`.
 - `parse_port(70000)` retourne `Err(422)`.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - coder des conventions implicites au lieu de les porter par le type.
@@ -143,19 +139,19 @@ proc to_exit(p: ParsePort) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc to_exit(p: ParsePort) -> int {` -> Comportement: le contrat est fixé pour `to_exit`: entrées `p: ParsePort` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `to_exit` retourne toujours une valeur compatible avec `int`.
-2. `match p {` -> Comportement: cette ligne démarre un dispatch déterministe sur `p`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `p`, la même branche sera toujours exécutée.
-3. `case Ok(_) { give 0 }` -> Comportement: ce cas décrit `Ok(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok(_)`, ce bloc devient le chemin actif.
-4. `case Err(c) { give c }` -> Comportement: ce cas décrit `Err(c)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Err(c)`, ce bloc devient le chemin actif.
-5. `otherwise { give 70 }` -> Comportement: cette ligne définit un chemin de secours explicite. -> Preuve: si aucun `case` ne correspond, `give 70` est exécuté pour garantir une sortie stable.
-6. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-7. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `proc to_exit(p: ParsePort) -> int {` : le contrat est fixé pour `to_exit`: entrées `p: ParsePort` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `match p {` : cette ligne démarre un dispatch déterministe sur `p`: une seule branche sera choisie selon la forme de la valeur analysée.
+3. `case Ok(_) { give 0 }` : ce cas décrit `Ok(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+4. `case Err(c) { give c }` : ce cas décrit `Err(c)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+5. `otherwise { give 70 }` : cette ligne définit un chemin de secours explicite.
+6. `}` : cette accolade ferme le bloc logique.
+7. `}` : cette accolade ferme le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: forcer le cas `Ok(_)` permet de confirmer la branche attendue.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: séparer la logique métier de sa projection technique (ici, le code de sortie).
@@ -166,8 +162,6 @@ Ce découplage est important: la politique système peut évoluer sans réécrir
 - `to_exit(Ok(_))` retourne `0`.
 - `to_exit(Err(422))` retourne `422`.
 - `otherwise` garde un code de secours (`70`).
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
@@ -220,85 +214,6 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_EXPANSION_V1 START -->
-
-## Approfondissement concret (sans répétition)
-
-### 1. Snippet de référence
-
-```vit
-proc safe_div(num: int, den: int) -> int {
-  if den == 0 { give 0 }
-  give num / den
-}
-```
-
-### 2. Lecture du code ligne par ligne
-
-1. `proc safe_div(num: int, den: int) -> int {` -> déclare un contrat clair entre entrées et sortie.
-2. `if den == 0 { give 0 }` -> sépare le cas nominal du cas limite.
-3. `give num / den` -> rend la sortie observable sans ambiguïté.
-4. `}` -> participe au flux principal du traitement.
-
-### 3. Exécution réelle (entrée -> traitement -> sortie)
-
-1. Entrée: préciser les valeurs acceptées et refusées.
-2. Traitement: suivre le chemin nominal, puis la première garde.
-3. Sortie: vérifier la valeur retournée ou l'erreur attendue.
-
-### 4. Cas limite et erreur volontaire
-
-- Cas limite: forcer la garde et confirmer la sortie de secours.
-- Cas erreur: injecter un type inattendu et lire le diagnostic exact.
-- Correction: modifier une seule ligne, recompiler, valider.
-
-### 5. Refactor concret à faible risque
-
-Méthode: garder la signature, simplifier une branche, et prouver que le comportement reste identique avec un test nominal + un test limite.
-
-### 6. Série de scénarios représentatifs
-
-Cas 1: pour **diagnostics et erreurs**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 2: pour **diagnostics et erreurs**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 3: pour **diagnostics et erreurs**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 4: pour **diagnostics et erreurs**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 5: pour **diagnostics et erreurs**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 6: pour **diagnostics et erreurs**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 7: pour **diagnostics et erreurs**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 8: pour **diagnostics et erreurs**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 9: pour **diagnostics et erreurs**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 10: pour **diagnostics et erreurs**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 11: pour **diagnostics et erreurs**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 12: pour **diagnostics et erreurs**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 13: pour **diagnostics et erreurs**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 14: pour **diagnostics et erreurs**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 15: pour **diagnostics et erreurs**, inspecter l'axe 'qualité du diagnostic' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 16: pour **diagnostics et erreurs**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 17: pour **diagnostics et erreurs**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 18: pour **diagnostics et erreurs**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 19: pour **diagnostics et erreurs**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 20: pour **diagnostics et erreurs**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 21: pour **diagnostics et erreurs**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 22: pour **diagnostics et erreurs**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 23: pour **diagnostics et erreurs**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 24: pour **diagnostics et erreurs**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 25: pour **diagnostics et erreurs**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 26: pour **diagnostics et erreurs**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 27: pour **diagnostics et erreurs**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 28: pour **diagnostics et erreurs**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 29: pour **diagnostics et erreurs**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 30: pour **diagnostics et erreurs**, inspecter l'axe 'qualité du diagnostic' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-
-### 7. Checklist finale de compréhension
-
-1. Le contrat d'entrée est explicite.
-2. Le cas nominal est testable sans ambiguïté.
-3. Le cas limite est traité explicitement.
-4. Le diagnostic d'erreur est actionnable.
-5. Le corrigé suit une modification locale et vérifiable.
-
-<!-- AUTO_EXPANSION_V1 END -->
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
 

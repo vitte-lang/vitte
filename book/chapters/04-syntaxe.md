@@ -56,15 +56,15 @@ proc add(a: int, b: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc add(a: int, b: int) -> int {` -> Comportement: le contrat est défini pour `add`: entrées `a: int, b: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `add` retourne toujours une valeur compatible avec `int`.
-2. `give a + b` -> Comportement: la branche renvoie immédiatement `a + b` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `a + b`.
-3. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `proc add(a: int, b: int) -> int {` : le contrat est défini pour `add`: entrées `a: int, b: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `give a + b` : la branche renvoie immédiatement `a + b` pour la branche courante, la sortie de branche est explicite et vérifiable.
+3. `}` : cette accolade ferme le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `a + b`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 Cette fonction se lit presque comme une phrase: prends `a` et `b`, additionne-les, rends le résultat. Pour `add(1, 2)`, le calcul donne `3`. Pour `add(10, -4)`, il donne `6`. Rien d'autre ne se produit, aucun effet de bord ne vient perturber la lecture.
@@ -94,17 +94,17 @@ proc clamp01(v: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc clamp01(v: int) -> int {` -> Comportement: le contrat est posé pour `clamp01`: entrées `v: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `clamp01` retourne toujours une valeur compatible avec `int`.
-2. `if v < 0 { give 0 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `v < 0` est vrai, `give 0` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `if v > 1 { give 1 }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `v > 1` est vrai, `give 1` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-4. `give v` -> Comportement: la sortie est renvoyée immédiatement `v` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `v`.
-5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `proc clamp01(v: int) -> int {` : le contrat est posé pour `clamp01`: entrées `v: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `if v < 0 { give 0 }` : cette garde traite le cas limite avant le calcul.
+3. `if v > 1 { give 1 }` : cette garde traite le cas limite avant le calcul.
+4. `give v` : la sortie est renvoyée immédiatement `v` pour la branche courante, la sortie de branche est explicite et vérifiable.
+5. `}` : cette accolade ferme le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: si `v < 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `v`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention est claire: forcer une valeur à rester dans l'intervalle `[0, 1]`. On lit le code dans l'ordre naturel. Si `v` est trop petite, on renvoie immédiatement `0`. Si elle est trop grande, on renvoie immédiatement `1`. Sinon, on la renvoie telle quelle.
@@ -137,20 +137,20 @@ give i
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc count(n: int) -> int {` -> Comportement: le contrat est fixé pour `count`: entrées `n: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `count` retourne toujours une valeur compatible avec `int`.
-2. `let i: int = 0` -> Comportement: cette ligne crée la variable `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `i` reçoit ici le résultat de `0` et peut être réutilisé ensuite sans recalcul.
-3. `loop {` -> Comportement: cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`). -> Preuve: à chaque tour, les gardes internes décident de continuer ou de sortir proprement.
-4. `if i >= n { break }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `i >= n` est vrai, `break` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-5. `set i = i + 1` -> Comportement: cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux. -> Preuve: après exécution, `i` prend la nouvelle valeur `i + 1` pour les étapes suivantes.
-6. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-7. `give i` -> Comportement: retourne immédiatement `i` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `i`.
-8. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `proc count(n: int) -> int {` : le contrat est fixé pour `count`: entrées `n: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `let i: int = 0` : cette ligne crée la variable `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
+3. `loop {` : cette ligne ouvre une boucle contrôlée qui répète les mêmes étapes jusqu'à une condition d'arrêt claire (`break` ou `give`).
+4. `if i >= n { break }` : cette garde traite le cas limite avant le calcul.
+5. `set i = i + 1` : cette ligne réalise une mutation volontaire et visible: l'état `i` change ici, à cet endroit précis du flux.
+6. `}` : cette accolade clôt le bloc logique.
+7. `give i` : retourne immédiatement `i` pour la branche courante, la sortie de branche est explicite et vérifiable.
+8. `}` : cette accolade ferme le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `i`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 Ici, la logique est volontairement simple. On initialise `i` à `0`. À chaque tour, on vérifie la condition d'arrêt: si `i >= n`, on quitte la boucle. Sinon, on avance d'un pas avec `set i = i + 1`.
@@ -216,82 +216,6 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_EXPANSION_V1 START -->
-
-## Approfondissement concret (sans répétition)
-
-### 1. Snippet de référence
-
-```vit
-proc add(a: int, b: int) -> int {
-  give a + b
-}
-```
-
-### 2. Lecture du code ligne par ligne
-
-1. `proc add(a: int, b: int) -> int {` -> déclare un contrat clair entre entrées et sortie.
-2. `give a + b` -> rend la sortie observable sans ambiguïté.
-3. `}` -> participe au flux principal du traitement.
-
-### 3. Exécution réelle (entrée -> traitement -> sortie)
-
-1. Entrée: préciser les valeurs acceptées et refusées.
-2. Traitement: suivre le chemin nominal, puis la première garde.
-3. Sortie: vérifier la valeur retournée ou l'erreur attendue.
-
-### 4. Cas limite et erreur volontaire
-
-- Cas limite: forcer la garde et confirmer la sortie de secours.
-- Cas erreur: injecter un type inattendu et lire le diagnostic exact.
-- Correction: modifier une seule ligne, recompiler, valider.
-
-### 5. Refactor concret à faible risque
-
-Méthode: garder la signature, simplifier une branche, et prouver que le comportement reste identique avec un test nominal + un test limite.
-
-### 6. Série de scénarios représentatifs
-
-Cas 1: pour **syntaxe essentielle**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 2: pour **syntaxe essentielle**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 3: pour **syntaxe essentielle**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 4: pour **syntaxe essentielle**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 5: pour **syntaxe essentielle**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 6: pour **syntaxe essentielle**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 7: pour **syntaxe essentielle**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 8: pour **syntaxe essentielle**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 9: pour **syntaxe essentielle**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 10: pour **syntaxe essentielle**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 11: pour **syntaxe essentielle**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 12: pour **syntaxe essentielle**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 13: pour **syntaxe essentielle**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 14: pour **syntaxe essentielle**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 15: pour **syntaxe essentielle**, inspecter l'axe 'qualité du diagnostic' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 16: pour **syntaxe essentielle**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 17: pour **syntaxe essentielle**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 18: pour **syntaxe essentielle**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 19: pour **syntaxe essentielle**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 20: pour **syntaxe essentielle**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 21: pour **syntaxe essentielle**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 22: pour **syntaxe essentielle**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 23: pour **syntaxe essentielle**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 24: pour **syntaxe essentielle**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 25: pour **syntaxe essentielle**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 26: pour **syntaxe essentielle**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 27: pour **syntaxe essentielle**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 28: pour **syntaxe essentielle**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 29: pour **syntaxe essentielle**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-
-### 7. Checklist finale de compréhension
-
-1. Le contrat d'entrée est explicite.
-2. Le cas nominal est testable sans ambiguïté.
-3. Le cas limite est traité explicitement.
-4. Le diagnostic d'erreur est actionnable.
-5. Le corrigé suit une modification locale et vérifiable.
-
-<!-- AUTO_EXPANSION_V1 END -->
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
 

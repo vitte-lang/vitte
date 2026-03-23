@@ -120,13 +120,13 @@ Lecture ligne par ligne (débutant):
 11. `case Ok(code: int)` porte un statut nominal explicite.
 12. `case Err(e: HttpError)` porte une erreur typée pour la projection finale.
 
-Mini tableau Entrée -> Sortie (exemples):
-- Cas limite: si une étape détecte une faute, elle renvoie `Err(...)` plutôt qu'un entier magique.
+Entrée -> sortie (à vérifier):
+- Cas limite: si une étape détecte une faute, elle renvoie `Err(..)` plutôt qu'un entier magique.
 - Cas nominal: un succès transporte `Ok(code)`.
 - Observation testable: les transitions possibles sont bornées par `HttpResult`.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: la valeur passe en `Err(...)` dès la première garde concernée.
+Test mental: que se passe-t-il si l'entrée est invalide ?
+Réponse attendue: la valeur passe en `Err(..)` dès la première garde concernée.
 
 ## 22.2 Valider la requête au bord du système
 
@@ -154,12 +154,12 @@ Lecture ligne par ligne (débutant):
 4. `if r.auth_token == "" { give Err(Unauthorized) }` rejette l'absence de token.
 5. `give Ok(200)` autorise la suite du pipeline lorsque le transport est valide.
 
-Mini tableau Entrée -> Sortie (exemples):
+Entrée -> sortie (à vérifier):
 - Cas limite: `path=""` donne `Err(BadRequest)`.
 - Cas nominal: `GET /health` avec token non vide donne `Ok(200)`.
 - Observation testable: une même requête invalide produit toujours la même erreur.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: la fonction s'arrête sur la première garde invalide.
 
 ## 22.3 Isoler le routage de chemin
@@ -179,12 +179,12 @@ Lecture ligne par ligne (débutant):
 2. `if path == "/metrics" { give Ok(200) }` route nominale de métriques.
 3. `give Err(NotFound)` route inconnue explicitement typée.
 
-Mini tableau Entrée -> Sortie (exemples):
+Entrée -> sortie (à vérifier):
 - Cas limite: `/unknown` donne `Err(NotFound)`.
 - Cas nominal: `/health` donne `Ok(200)`.
 - Observation testable: le routage est déterministe et indépendant de l'auth.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: la route inconnue est convertie en `Err(NotFound)`.
 
 ## 22.4 Composer les étapes dans un handler
@@ -208,12 +208,12 @@ Lecture ligne par ligne (débutant):
 3. `case Ok(_) { give route_path(r.path) }` passe au routage seulement si transport valide.
 4. `otherwise { give Err(BadRequest) }` verrouille un fallback déterministe.
 
-Mini tableau Entrée -> Sortie (exemples):
+Entrée -> sortie (à vérifier):
 - Cas limite: token absent -> `Err(Unauthorized)` sans passer au routage.
 - Cas nominal: transport valide + `/metrics` -> `Ok(200)`.
 - Observation testable: aucune duplication de validation dans le routeur.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: la branche `Err(e)` renvoie immédiatement l'erreur déjà qualifiée.
 
 ## 22.5 Convertir le résultat en statut HTTP final
@@ -239,12 +239,12 @@ Lecture ligne par ligne (débutant):
 4. `case Err(NotFound) { give 404 }` mappe route absente en `404`.
 5. `otherwise { give 500 }` protège la production avec un filet de sécurité.
 
-Mini tableau Entrée -> Sortie (exemples):
+Entrée -> sortie (à vérifier):
 - Cas limite: erreur non prévue -> `500`.
 - Cas nominal: `Ok(200)` -> `200`.
 - Observation testable: chaque `HttpError` connu a un statut stable.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: elle est traduite en un code 4xx/5xx explicite, sans ambiguïté.
 
 ## 22.6 Idempotence (règle d'exploitation)
@@ -287,7 +287,7 @@ Trajet invalide (auth absente):
 
 ## 22.9 Erreurs classiques HTTP
 
-- Mapper trop tôt en statut: on perd l'information métier (`Err(...)`) et on complique le debug.
+- Mapper trop tôt en statut: on perd l'information métier (`Err(..)`) et on complique le debug.
 - Dupliquer la validation dans plusieurs couches: divergences et incohérences garanties.
 - Mélanger transport et métier dans une seule fonction: tests fragiles, maintenance coûteuse.
 - Oublier le fallback `500`: comportement non déterministe en cas inattendu.
@@ -312,7 +312,7 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde de validation ou une route de secours convertit l'entrée en `Err(...)`, puis en code HTTP stable.
+Réponse attendue: une garde de validation ou une route de secours convertit l'entrée en `Err(..)`, puis en code HTTP stable.
 
 ## À faire
 
@@ -356,100 +356,6 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_EXPANSION_V1 START -->
-
-## Approfondissement concret (sans répétition)
-
-### 1. Snippet de référence
-
-```vit
-form HttpRequest {
-  method: string
-  path: string
-  body_len: int
-  auth_token: string
-}
-
-pick HttpError {
-  case BadRequest
-  case Unauthorized
-  case NotFound
-}
-
-pick HttpResult {
-  case Ok(code: int)
-  case Err(e: HttpError)
-}
-```
-
-### 2. Lecture du code ligne par ligne
-
-1. `form HttpRequest {` -> participe au flux principal du traitement.
-2. `method: string` -> participe au flux principal du traitement.
-3. `path: string` -> participe au flux principal du traitement.
-4. `body_len: int` -> participe au flux principal du traitement.
-5. `auth_token: string` -> participe au flux principal du traitement.
-6. `}` -> participe au flux principal du traitement.
-7. `pick HttpError {` -> participe au flux principal du traitement.
-8. `case BadRequest` -> participe au flux principal du traitement.
-9. `case Unauthorized` -> participe au flux principal du traitement.
-10. `case NotFound` -> participe au flux principal du traitement.
-11. `}` -> participe au flux principal du traitement.
-12. `pick HttpResult {` -> participe au flux principal du traitement.
-
-### 3. Exécution réelle (entrée -> traitement -> sortie)
-
-1. Entrée: préciser les valeurs acceptées et refusées.
-2. Traitement: suivre le chemin nominal, puis la première garde.
-3. Sortie: vérifier la valeur retournée ou l'erreur attendue.
-
-### 4. Cas limite et erreur volontaire
-
-- Cas limite: forcer la garde et confirmer la sortie de secours.
-- Cas erreur: injecter un type inattendu et lire le diagnostic exact.
-- Correction: modifier une seule ligne, recompiler, valider.
-
-### 5. Refactor concret à faible risque
-
-Méthode: garder la signature, simplifier une branche, et prouver que le comportement reste identique avec un test nominal + un test limite.
-
-### 6. Série de scénarios représentatifs
-
-Cas 1: pour **projet guide http**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 2: pour **projet guide http**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 3: pour **projet guide http**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 4: pour **projet guide http**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 5: pour **projet guide http**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 6: pour **projet guide http**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 7: pour **projet guide http**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 8: pour **projet guide http**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 9: pour **projet guide http**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 10: pour **projet guide http**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 11: pour **projet guide http**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 12: pour **projet guide http**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 13: pour **projet guide http**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 14: pour **projet guide http**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 15: pour **projet guide http**, inspecter l'axe 'qualité du diagnostic' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 16: pour **projet guide http**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 17: pour **projet guide http**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 18: pour **projet guide http**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 19: pour **projet guide http**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 20: pour **projet guide http**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 21: pour **projet guide http**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 22: pour **projet guide http**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 23: pour **projet guide http**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 24: pour **projet guide http**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-
-### 7. Checklist finale de compréhension
-
-1. Le contrat d'entrée est explicite.
-2. Le cas nominal est testable sans ambiguïté.
-3. Le cas limite est traité explicitement.
-4. Le diagnostic d'erreur est actionnable.
-5. Le corrigé suit une modification locale et vérifiable.
-
-<!-- AUTO_EXPANSION_V1 END -->
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
 

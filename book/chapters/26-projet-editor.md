@@ -127,10 +127,10 @@ Encadré de stabilité:
 
 Pourquoi ce bloc existe:
 1. `EditResult` impose un traitement explicite des erreurs métier au lieu d'erreurs implicites.
-2. `Backspace(..., deleted)` capture l'information minimale pour garantir un undo exact.
+2. `Backspace(.., deleted)` capture l'information minimale pour garantir un undo exact.
 3. `History` rend la trajectoire d'édition vérifiable et donc testable.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: `Err(ErrInvalid)`, sans mutation partielle.
 
 ## 26.2 Bornes et normalisation
@@ -292,7 +292,7 @@ proc apply_command(s: EditorState, cmd: Command) -> EditResult {
 ```
 
 Règle d'atomicité:
-- `Err(...)` => état initial intact.
+- `Err(..)` => état initial intact.
 - `Ok(state)` => commande entièrement appliquée.
 
 Exemples concrets de refus:
@@ -392,7 +392,7 @@ Test multi-lignes piège (ligne vide intermédiaire):
 - Document initial: ligne 0 `"ab"`, ligne 1 `""`, ligne 2 `"cd"`, curseur `(2, 0)`.
 - Commande: `Backspace(2, 0, "\n")`.
 - Attendu: ligne 1 devient `"cd"`, ligne 2 est supprimée, curseur sur `(1, 0)`.
-- Vérification: aucune donnée perdue malgré la ligne vide intermédiaire.
+- aucune donnée perdue malgré la ligne vide intermédiaire.
 
 ## 26.8 Test de propriété `undo(redo(s)) == s`
 
@@ -508,7 +508,7 @@ Usage:
 
 Format minimal conseillé:
 - un événement par commande acceptée.
-- pas d'événement si `Err(...)`.
+- pas d'événement si `Err(..)`.
 
 Format de log texte stable (une ligne par événement):
 - `ts=<unix_ms> before=<hash> after=<hash> cmd=<CommandCompact>`.
@@ -593,7 +593,7 @@ Réponse attendue: `Err(ErrInvalid)` et état inchangé. Si `read_only` est acti
 
 ## Corrigé minimal
 
-- `Backspace(..., deleted)` élimine l'heuristique et rend l'inversion exacte.
+- `Backspace(.., deleted)` élimine l'heuristique et rend l'inversion exacte.
 - `EditResult` impose un flux explicite pour erreurs métier.
 - La cohérence historique est obtenue si toute commande valide pousse dans `past` et vide `future`.
 
@@ -638,96 +638,6 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_EXPANSION_V1 START -->
-
-## Approfondissement concret (sans répétition)
-
-### 1. Snippet de référence
-
-```vit
-form Cursor {
-  row: int
-  col: int
-}
-
-form Document {
-  lines: string[]
-}
-
-form EditorState {
-  doc: Document
-  cursor: Cursor
-  read_only: bool
-}
-
-pick EditorError {
-  case ErrReadOnly
-  case ErrInvalid
-}
-
-pick EditResult {
-  case Ok(state: EditorState)
-  case Err(error: EditorError)
-}
-
-pick Command {
-  case Left
-  case Right
-  case InsertChar(ch: string, row: int, col: int)
-  case Backspace(row: int, col: int, deleted: string)
-  case NewLine(row: int, col: int)
-}
-
-form History {
-  past: Command[]
-  future: Command[]
-}
-```
-
-### 2. Lecture du code ligne par ligne
-
-1. `form Cursor {` -> participe au flux principal du traitement.
-2. `row: int` -> participe au flux principal du traitement.
-3. `col: int` -> participe au flux principal du traitement.
-4. `}` -> participe au flux principal du traitement.
-5. `form Document {` -> participe au flux principal du traitement.
-6. `lines: string[]` -> participe au flux principal du traitement.
-7. `}` -> participe au flux principal du traitement.
-8. `form EditorState {` -> participe au flux principal du traitement.
-9. `doc: Document` -> participe au flux principal du traitement.
-10. `cursor: Cursor` -> participe au flux principal du traitement.
-11. `read_only: bool` -> participe au flux principal du traitement.
-12. `}` -> participe au flux principal du traitement.
-
-### 3. Exécution réelle (entrée -> traitement -> sortie)
-
-1. Entrée: préciser les valeurs acceptées et refusées.
-2. Traitement: suivre le chemin nominal, puis la première garde.
-3. Sortie: vérifier la valeur retournée ou l'erreur attendue.
-
-### 4. Cas limite et erreur volontaire
-
-- Cas limite: forcer la garde et confirmer la sortie de secours.
-- Cas erreur: injecter un type inattendu et lire le diagnostic exact.
-- Correction: modifier une seule ligne, recompiler, valider.
-
-### 5. Refactor concret à faible risque
-
-Méthode: garder la signature, simplifier une branche, et prouver que le comportement reste identique avec un test nominal + un test limite.
-
-### 6. Série de scénarios représentatifs
-
-
-### 7. Checklist finale de compréhension
-
-1. Le contrat d'entrée est explicite.
-2. Le cas nominal est testable sans ambiguïté.
-3. Le cas limite est traité explicitement.
-4. Le diagnostic d'erreur est actionnable.
-5. Le corrigé suit une modification locale et vérifiable.
-
-<!-- AUTO_EXPANSION_V1 END -->
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
 

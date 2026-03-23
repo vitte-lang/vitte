@@ -73,12 +73,12 @@ Avant d'entrer dans les exemples, nous fixons ici les bases de vocabulaire. Elle
 - `u128`: entier non signé 128 bits, utile pour identifiants/compteurs très larges non négatifs.
 - `string`: type du texte, utilisé pour stocker des mots, phrases, identifiants ou messages. Exemple simple: `let name: string = "alice"`.
 - `bool`: type logique avec seulement deux valeurs possibles, `true` ou `false`, utilisé pour décider si une condition est vérifiée. Exemple simple: `let ok: bool = true`.
-- `proc`: mot-clé qui déclare une procédure (fonction) avec des paramètres d'entrée et un type de sortie annoncé. Exemple simple: `proc add(a: int, b: int) -> int { ... }`.
-- `entry`: mot-clé qui déclare le point d'entrée du programme, c'est-à-dire l'endroit où l'exécution commence réellement. Exemple simple: `entry main at core/app { ... }`.
+- `proc`: mot-clé qui déclare une procédure (fonction) avec des paramètres d'entrée et un type de sortie annoncé. Exemple simple: `proc add(a: int, b: int) -> int { .. }`.
+- `entry`: mot-clé qui déclare le point d'entrée du programme, c'est-à-dire l'endroit où l'exécution commence réellement. Exemple simple: `entry main at core/app { .. }`.
 - `let`: mot-clé qui crée une variable locale nommée, avec un type explicite et une valeur initiale. Exemple simple: `let total: int = 0`.
 - `set`: mot-clé qui modifie une variable déjà créée avec `let`; on l'utilise pour faire évoluer un état dans une boucle ou un algorithme. Exemple simple: `set total = total + 1`.
 - `if`: mot-clé de condition; il exécute une branche uniquement si l'expression logique est vraie. Exemple simple: `if total > 10 { give 10 }`.
-- `match`: mot-clé de sélection de branche selon la forme d'une valeur (souvent un type déclaré avec `pick`); il rend les décisions explicites. Exemple simple: `match result { ... }`.
+- `match`: mot-clé de sélection de branche selon la forme d'une valeur (souvent un type déclaré avec `pick`); il rend les décisions explicites. Exemple simple: `match result { .. }`.
 - `case`: branche précise dans un `match`; chaque `case` traite une forme de valeur donnée. Exemple simple: `case Ok(v) { give v }`.
 - `otherwise`: branche de secours dans un `match`, utilisée si aucune branche `case` ne correspond. Exemple simple: `otherwise { give 70 }`.
 - `give`: mot-clé de retour immédiat depuis une branche locale d'une procédure, souvent utilisé pour rendre les sorties explicites dans des gardes. Exemple simple: `give total`.
@@ -109,17 +109,17 @@ proc contract_demo(x: int) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc contract_demo(x: int) -> int {` -> Comportement: le contrat annonce une entrée `x` et une sortie `int`. -> Preuve: tout appel doit produire un entier.
-2. `if x < 0 { give 0 }` -> Comportement: garde immédiate sur le cas invalide. -> Preuve: `x = -3` déclenche la branche et renvoie `0`.
-3. `give x` -> Comportement: chemin nominal sans transformation cachée. -> Preuve: `x = 8` renvoie `8`.
-4. `}` -> Comportement: fin du bloc, aucune instruction implicite. -> Preuve: la sortie est déjà déterminée par les `give` précédents.
+1. `proc contract_demo(x: int) -> int {` : le contrat annonce une entrée `x` et une sortie `int`.
+2. `if x < 0 { give 0 }` : garde immédiate sur le cas invalide.
+3. `give x` : chemin nominal sans transformation cachée.
+4. `}` : fin du bloc, aucune instruction implicite.
 
-Mini tableau Entrée -> Sortie (exemples):
+Entrée -> sortie (à vérifier):
 - Cas limite: si `x < 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `x`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: Une signature claire et des gardes visibles réduisent les interprétations implicites. Le style du livre suit cette discipline partout.
@@ -127,8 +127,6 @@ L'intention de cette étape est directe: Une signature claire et des gardes visi
 Dans une lecture de production, ce choix réduit le coût mental: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
 
 À l'exécution, `contract_demo(-3)=0` et `contract_demo(8)=8`.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
@@ -151,19 +149,19 @@ give acc
 ```
 
 Lecture ligne par ligne (débutant):
-1. `let i: int = 0` -> Comportement: initialise l’index de boucle. -> Preuve: la première itération part toujours de `i = 0`.
-2. `let acc: int = 0` -> Comportement: initialise l’accumulateur. -> Preuve: la somme démarre à zéro.
-3. `if i >= n { break }` -> Comportement: borne de sortie explicite. -> Preuve: la boucle s’arrête dès que la condition devient vraie.
-4. `set acc = acc + i` -> Comportement: ajoute la valeur courante à la somme. -> Preuve: `acc` augmente de `i` à chaque tour valide.
-5. `set i = i + 1` -> Comportement: progression monotone vers la borne. -> Preuve: `i` finit par atteindre `n`.
-6. `give acc` -> Comportement: renvoie la somme calculée. -> Preuve: pour `n = 4`, la sortie vaut `6` (0+1+2+3).
+1. `let i: int = 0` : initialise l’index de boucle.
+2. `let acc: int = 0` : initialise l’accumulateur.
+3. `if i >= n { break }` : borne de sortie explicite.
+4. `set acc = acc + i` : ajoute la valeur courante à la somme.
+5. `set i = i + 1` : progression monotone vers la borne.
+6. `give acc` : renvoie la somme calculée.
 
-Mini tableau Entrée -> Sortie (exemples):
+Entrée -> sortie (à vérifier):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `acc`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: Le code est écrit pour être testé rapidement. La borne de boucle explicite facilite audit et debug.
@@ -171,8 +169,6 @@ L'intention de cette étape est directe: Le code est écrit pour être testé ra
 Dans une lecture de production, ce choix réduit le coût mental: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
 
 À l'exécution, `loop_demo(4)=6`.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - laisser une boucle sans borne claire ou sans condition d'arrêt vérifiable.
@@ -196,18 +192,18 @@ proc to_exit(r: OpResult) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `pick OpResult { ... }` -> Comportement: encode explicitement les états `Ok` et `Err`. -> Preuve: aucun autre état n’est accepté sans modifier le type.
-2. `match r {` -> Comportement: force un choix de branche lisible. -> Preuve: un même `r` prend toujours la même branche.
-3. `case Ok(_) { give 0 }` -> Comportement: projection technique du succès vers le code `0`. -> Preuve: `Ok(42)` renvoie `0`.
-4. `case Err(c) { give c }` -> Comportement: propage le code d’erreur métier. -> Preuve: `Err(64)` renvoie `64`.
-5. `otherwise { give 70 }` -> Comportement: garde de secours explicite. -> Preuve: une forme non prévue renvoie `70` au lieu de casser.
+1. `pick OpResult { .. }` : encode explicitement les états `Ok` et `Err`.
+2. `match r {` : force un choix de branche lisible.
+3. `case Ok(_) { give 0 }` : projection technique du succès vers le code `0`.
+4. `case Err(c) { give c }` : propage le code d’erreur métier.
+5. `otherwise { give 70 }` : garde de secours explicite.
 
-Mini tableau Entrée -> Sortie (exemples):
+Entrée -> sortie (à vérifier):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: forcer le cas `Ok(value: int)` permet de confirmer la branche attendue.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: Le métier produit des valeurs typées. La projection système est une étape finale et localisée.
@@ -215,8 +211,6 @@ L'intention de cette étape est directe: Le métier produit des valeurs typées.
 Dans une lecture de production, ce choix réduit le coût mental: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
 
 À l'exécution, `to_exit(Ok(42))=0` et `to_exit(Err(64))=64`.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - étendre la zone sensible au lieu de la garder courte et auditable.
@@ -264,77 +258,6 @@ Exemple concret: partir d'une entrée simple, appliquer une transformation, puis
 
 ## Pourquoi
 Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_EXPANSION_V1 START -->
-
-## Approfondissement concret (sans répétition)
-
-### 1. Snippet de référence
-
-```vit
-proc contract_demo(x: int) -> int {
-  if x < 0 { give 0 }
-  give x
-}
-```
-
-### 2. Lecture du code ligne par ligne
-
-1. `proc contract_demo(x: int) -> int {` -> déclare un contrat clair entre entrées et sortie.
-2. `if x < 0 { give 0 }` -> sépare le cas nominal du cas limite.
-3. `give x` -> rend la sortie observable sans ambiguïté.
-4. `}` -> participe au flux principal du traitement.
-
-### 3. Exécution réelle (entrée -> traitement -> sortie)
-
-1. Entrée: préciser les valeurs acceptées et refusées.
-2. Traitement: suivre le chemin nominal, puis la première garde.
-3. Sortie: vérifier la valeur retournée ou l'erreur attendue.
-
-### 4. Cas limite et erreur volontaire
-
-- Cas limite: forcer la garde et confirmer la sortie de secours.
-- Cas erreur: injecter un type inattendu et lire le diagnostic exact.
-- Correction: modifier une seule ligne, recompiler, valider.
-
-### 5. Refactor concret à faible risque
-
-Méthode: garder la signature, simplifier une branche, et prouver que le comportement reste identique avec un test nominal + un test limite.
-
-### 6. Série de scénarios représentatifs
-
-Cas 1: pour **avant-propos**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 2: pour **avant-propos**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 3: pour **avant-propos**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 4: pour **avant-propos**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 5: pour **avant-propos**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 6: pour **avant-propos**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 7: pour **avant-propos**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 8: pour **avant-propos**, inspecter l'axe 'gestion d'erreur' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 9: pour **avant-propos**, inspecter l'axe 'lisibilité du flux' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 10: pour **avant-propos**, inspecter l'axe 'coût de maintenance' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 11: pour **avant-propos**, inspecter l'axe 'stabilité des appels' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 12: pour **avant-propos**, inspecter l'axe 'lisibilité du module' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 13: pour **avant-propos**, inspecter l'axe 'robustesse en refactor' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la sortie exacte. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 14: pour **avant-propos**, inspecter l'axe 'stabilité du comportement' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compréhension en relecture. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 15: pour **avant-propos**, inspecter l'axe 'qualité du diagnostic' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la compatibilité des appels. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 16: pour **avant-propos**, inspecter l'axe 'contrat d'entrée' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la lisibilité du message d'erreur. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 17: pour **avant-propos**, inspecter l'axe 'branche nominale' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le scénario de non-régression. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 18: pour **avant-propos**, inspecter l'axe 'garde limite' après simplification d'une branche. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider le comportement du cas limite. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 19: pour **avant-propos**, inspecter l'axe 'sortie de secours' avant merge. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la stabilité du contrat. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 20: pour **avant-propos**, inspecter l'axe 'signature publique' en CI. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la cohérence avant/après. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 21: pour **avant-propos**, inspecter l'axe 'cohérence des types' sur entrée invalide. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider la trace de correction. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-Cas 22: pour **avant-propos**, inspecter l'axe 'ordre d'exécution' après extraction de procédure. Objectif: isoler une seule hypothèse de code, comparer l'état avant/après, puis valider l'absence d'effet de bord. Si le résultat diverge, corriger une seule ligne, recompiler, et documenter la cause racine.
-
-### 7. Checklist finale de compréhension
-
-1. Le contrat d'entrée est explicite.
-2. Le cas nominal est testable sans ambiguïté.
-3. Le cas limite est traité explicitement.
-4. Le diagnostic d'erreur est actionnable.
-5. Le corrigé suit une modification locale et vérifiable.
-
-<!-- AUTO_EXPANSION_V1 END -->
 
 <!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
 

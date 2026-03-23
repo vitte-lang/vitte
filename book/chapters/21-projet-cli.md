@@ -79,20 +79,20 @@ pick CliResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `pick CliError {` -> Comportement: cette ligne ouvre le type fermé `CliError` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. -> Preuve: toute valeur hors des `case` déclarés devient impossible à représenter.
-2. `case MissingArgs` -> Comportement: ce cas décrit `MissingArgs` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `MissingArgs`, ce bloc devient le chemin actif.
-3. `case UnknownMode(mode: int)` -> Comportement: ce cas décrit `UnknownMode(mode: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `UnknownMode(mode: int)`, ce bloc devient le chemin actif.
-4. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-5. `pick CliResult {` -> Comportement: cette ligne ouvre le type fermé `CliResult` pour forcer un ensemble fini de cas possibles et supprimer les états implicites. -> Preuve: toute valeur hors des `case` déclarés devient impossible à représenter.
-6. `case Ok(code: int)` -> Comportement: ce cas décrit `Ok(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok(code: int)`, ce bloc devient le chemin actif.
-7. `case Err(e: CliError)` -> Comportement: ce cas décrit `Err(e: CliError)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Err(e: CliError)`, ce bloc devient le chemin actif.
-8. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `pick CliError {` : cette ligne ouvre le type fermé `CliError` pour forcer un ensemble fini de cas possibles et supprimer les états implicites.
+2. `case MissingArgs` : ce cas décrit `MissingArgs` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+3. `case UnknownMode(mode: int)` : ce cas décrit `UnknownMode(mode: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+4. `}` : cette accolade ferme le bloc logique.
+5. `pick CliResult {` : cette ligne ouvre le type fermé `CliResult` pour forcer un ensemble fini de cas possibles et supprimer les états implicites.
+6. `case Ok(code: int)` : ce cas décrit `Ok(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+7. `case Err(e: CliError)` : ce cas décrit `Err(e: CliError)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+8. `}` : cette accolade ferme le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: forcer le cas `MissingArgs` permet de confirmer la branche attendue.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: poser le contrat de sortie avant toute orchestration. Tant que les fautes restent des entiers dispersés, le programme cache sa structure réelle. En introduisant `CliError` et `CliResult`, chaque fonction assume explicitement son issue.
@@ -102,8 +102,6 @@ Dans une lecture de production, ce choix réduit le coût mental: on voit imméd
 À l'exécution, à ce stade, rien ne "tourne" encore, mais l'espace des sorties possibles est déjà fermé:
 - soit `Ok(code)`.
 - soit `Err(e)`.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
@@ -120,16 +118,16 @@ proc parse_arg_count(argc: int) -> CliResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc parse_arg_count(argc: int) -> CliResult {` -> Comportement: le contrat est défini pour `parse_arg_count`: entrées `argc: int` et sortie `CliResult`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `parse_arg_count` retourne toujours une valeur compatible avec `CliResult`.
-2. `if argc < 2 { give Err(MissingArgs) }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `argc < 2` est vrai, `give Err(MissingArgs)` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `give Ok(argc)` -> Comportement: la branche renvoie immédiatement `Ok(argc)` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Ok(argc)`.
-4. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `proc parse_arg_count(argc: int) -> CliResult {` : le contrat est défini pour `parse_arg_count`: entrées `argc: int` et sortie `CliResult`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `if argc < 2 { give Err(MissingArgs) }` : cette garde traite le cas limite avant le calcul.
+3. `give Ok(argc)` : la branche renvoie immédiatement `Ok(argc)` pour la branche courante, la sortie de branche est explicite et vérifiable.
+4. `}` : cette accolade clôt le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: si `argc < 2` est vrai, la sortie devient `Err(MissingArgs)`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Ok(argc)`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: placer la validation au bord du système, avant toute logique métier.
@@ -137,8 +135,6 @@ L'intention de cette étape est directe: placer la validation au bord du systèm
 Cette séparation est décisive: vous testéz la politique d'arité indépendamment du routage.
 
 À l'exécution, `parse_arg_count(1)` retourne `Err(MissingArgs)` et coupe le flux nominal. `parse_arg_count(3)` retourne `Ok(3)` et autorise la suite.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
@@ -156,17 +152,17 @@ proc run_mode(mode: int) -> CliResult {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc run_mode(mode: int) -> CliResult {` -> Comportement: le contrat est posé pour `run_mode`: entrées `mode: int` et sortie `CliResult`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `run_mode` retourne toujours une valeur compatible avec `CliResult`.
-2. `if mode == 1 { give Ok(10) }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `mode == 1` est vrai, `give Ok(10)` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-3. `if mode == 2 { give Ok(20) }` -> Comportement: cette garde traite le cas limite avant le calcul. -> Preuve: si `mode == 2` est vrai, `give Ok(20)` est exécuté immédiatement; sinon on continue sur la ligne suivante.
-4. `give Err(UnknownMode(mode))` -> Comportement: la sortie est renvoyée immédiatement `Err(UnknownMode(mode))` pour la branche courante, la sortie de branche est explicite et vérifiable. -> Preuve: dès cette instruction, la fonction quitte la branche avec la valeur `Err(UnknownMode(mode))`.
-5. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `proc run_mode(mode: int) -> CliResult {` : le contrat est posé pour `run_mode`: entrées `mode: int` et sortie `CliResult`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `if mode == 1 { give Ok(10) }` : cette garde traite le cas limite avant le calcul.
+3. `if mode == 2 { give Ok(20) }` : cette garde traite le cas limite avant le calcul.
+4. `give Err(UnknownMode(mode))` : la sortie est renvoyée immédiatement `Err(UnknownMode(mode))` pour la branche courante, la sortie de branche est explicite et vérifiable.
+5. `}` : cette accolade ferme le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: si `mode == 1` est vrai, la sortie devient `Ok(10)`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `Err(UnknownMode(mode))`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: isoler le routage métier dans une fonction pure.
@@ -176,8 +172,6 @@ Le cas inconnu n'est pas aplati dans un `-1` anonyme: il conserve la valeur faut
 Dans une lecture de production, ce choix réduit le coût mental: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
 
 À l'exécution, `run_mode(1)` retourne `Ok(10)`, `run_mode(2)` retourne `Ok(20)`, `run_mode(9)` retourne `Err(UnknownMode(9))`.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
@@ -198,20 +192,20 @@ proc to_exit_code(r: CliResult) -> int {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `proc to_exit_code(r: CliResult) -> int {` -> Comportement: le contrat est fixé pour `to_exit_code`: entrées `r: CliResult` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps. -> Preuve: un appel valide à `to_exit_code` retourne toujours une valeur compatible avec `int`.
-2. `match r {` -> Comportement: cette ligne démarre un dispatch déterministe sur `r`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `r`, la même branche sera toujours exécutée.
-3. `case Ok(_) { give 0 }` -> Comportement: ce cas décrit `Ok(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok(_)`, ce bloc devient le chemin actif.
-4. `case Err(MissingArgs) { give 64 }` -> Comportement: ce cas décrit `Err(MissingArgs)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Err(MissingArgs)`, ce bloc devient le chemin actif.
-5. `case Err(UnknownMode(_)) { give 65 }` -> Comportement: ce cas décrit `Err(UnknownMode(_))` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Err(UnknownMode(_))`, ce bloc devient le chemin actif.
-6. `otherwise { give 70 }` -> Comportement: cette ligne définit un chemin de secours explicite. -> Preuve: si aucun `case` ne correspond, `give 70` est exécuté pour garantir une sortie stable.
-7. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-8. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `proc to_exit_code(r: CliResult) -> int {` : le contrat est fixé pour `to_exit_code`: entrées `r: CliResult` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
+2. `match r {` : cette ligne démarre un dispatch déterministe sur `r`: une seule branche sera choisie selon la forme de la valeur analysée.
+3. `case Ok(_) { give 0 }` : ce cas décrit `Ok(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+4. `case Err(MissingArgs) { give 64 }` : ce cas décrit `Err(MissingArgs)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+5. `case Err(UnknownMode(_)) { give 65 }` : ce cas décrit `Err(UnknownMode(_))` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+6. `otherwise { give 70 }` : cette ligne définit un chemin de secours explicite.
+7. `}` : cette accolade ferme le bloc logique.
+8. `}` : cette accolade clôt le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: forcer le cas `Ok(_)` permet de confirmer la branche attendue.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: séparer la sémantique métier de la politique d'exit code.
@@ -221,8 +215,6 @@ La conversion vers les exit-codes est un sujet d'intégration système, pas un s
 Dans une lecture de production, ce choix réduit le coût mental: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
 
 À l'exécution, un succès donne `0`, une arité manquante donne `64`, un mode inconnu donne `65`. Le `otherwise` garantit un filet de sécurité avec `70`.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - mélanger règles métier et règles de projection système.
@@ -251,28 +243,28 @@ otherwise {
 ```
 
 Lecture ligne par ligne (débutant):
-1. `entry main at core/app {` -> Comportement: cette ligne fixe le point d'entrée `main` dans `core/app` et sert de scénario exécutable de bout en bout pour le chapitre. -> Preuve: lancer cette entrée permet de vérifier la chaîne complète des fonctions appelées.
-2. `let argc: int = 2` -> Comportement: cette ligne crée la variable `argc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `argc` reçoit ici le résultat de `2` et peut être réutilisé ensuite sans recalcul.
-3. `let parse_res: CliResult = parse_arg_count(argc)` -> Comportement: cette ligne crée la variable `parse_res` de type `CliResult` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `parse_res` reçoit ici le résultat de `parse_arg_count(argc)` et peut être réutilisé ensuite sans recalcul.
-4. `match parse_res {` -> Comportement: cette ligne démarre un dispatch déterministe sur `parse_res`: une seule branche sera choisie selon la forme de la valeur analysée. -> Preuve: pour la même valeur de `parse_res`, la même branche sera toujours exécutée.
-5. `case Err(e) {` -> Comportement: ce cas décrit `Err(e)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Err(e)`, ce bloc devient le chemin actif.
-6. `return to_exit_code(Err(e))` -> Comportement: cette ligne termine l'exécution du bloc courant avec le code `to_exit_code(Err(e))`, utile pour observer le résultat global du scénario. -> Preuve: un test d'exécution peut vérifier directement que le programme retourne `to_exit_code(Err(e))`.
-7. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-8. `case Ok(_) {` -> Comportement: ce cas décrit `Ok(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture. -> Preuve: si la valeur analysée correspond à `Ok(_)`, ce bloc devient le chemin actif.
-9. `let run_res: CliResult = run_mode(1)` -> Comportement: cette ligne crée la variable `run_res` de type `CliResult` pour nommer explicitement une étape intermédiaire du raisonnement. -> Preuve: `run_res` reçoit ici le résultat de `run_mode(1)` et peut être réutilisé ensuite sans recalcul.
-10. `return to_exit_code(run_res)` -> Comportement: cette ligne termine l'exécution du bloc courant avec le code `to_exit_code(run_res)`, utile pour observer le résultat global du scénario. -> Preuve: un test d'exécution peut vérifier directement que le programme retourne `to_exit_code(run_res)`.
-11. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-12. `otherwise {` -> Comportement: cette ligne définit une étape explicite du flux. -> Preuve: sa présence influence l'état ou la valeur observée à la fin du scénario.
-13. `return 70` -> Comportement: cette ligne termine l'exécution du bloc courant avec le code `70`, utile pour observer le résultat global du scénario. -> Preuve: un test d'exécution peut vérifier directement que le programme retourne `70`.
-14. `}` -> Comportement: cette accolade clôt le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-15. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-16. `}` -> Comportement: cette accolade ferme le bloc logique. -> Preuve: après cette fermeture, l'exécution revient au niveau supérieur de structure.
-Mini tableau Entrée -> Sortie (exemples):
+1. `entry main at core/app {` : cette ligne fixe le point d'entrée `main` dans `core/app` et sert de scénario exécutable de bout en bout pour le chapitre.
+2. `let argc: int = 2` : cette ligne crée la variable `argc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
+3. `let parse_res: CliResult = parse_arg_count(argc)` : cette ligne crée la variable `parse_res` de type `CliResult` pour nommer explicitement une étape intermédiaire du raisonnement.
+4. `match parse_res {` : cette ligne démarre un dispatch déterministe sur `parse_res`: une seule branche sera choisie selon la forme de la valeur analysée.
+5. `case Err(e) {` : ce cas décrit `Err(e)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+6. `return to_exit_code(Err(e))` : cette ligne termine l'exécution du bloc courant avec le code `to_exit_code(Err(e))`, utile pour observer le résultat global du scénario.
+7. `}` : cette accolade ferme le bloc logique.
+8. `case Ok(_) {` : ce cas décrit `Ok(_)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
+9. `let run_res: CliResult = run_mode(1)` : cette ligne crée la variable `run_res` de type `CliResult` pour nommer explicitement une étape intermédiaire du raisonnement.
+10. `return to_exit_code(run_res)` : cette ligne termine l'exécution du bloc courant avec le code `to_exit_code(run_res)`, utile pour observer le résultat global du scénario.
+11. `}` : cette accolade ferme le bloc logique.
+12. `otherwise {` : cette ligne définit une étape explicite du flux.
+13. `return 70` : cette ligne termine l'exécution du bloc courant avec le code `70`, utile pour observer le résultat global du scénario.
+14. `}` : cette accolade clôt le bloc logique.
+15. `}` : cette accolade ferme le bloc logique.
+16. `}` : cette accolade ferme le bloc logique.
+Entrée -> sortie (à vérifier):
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le scénario principal se termine avec `return to_exit_code(Err(e))`.
 - Observation testable: exécuter le scénario permet de vérifier le code de sortie `to_exit_code(Err(e))`.
 
-Test mental standard: que se passe-t-il si l'entrée est invalide ?
+Test mental: que se passe-t-il si l'entrée est invalide ?
 Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: `main` orchestre, il ne redéfinit pas les règles métier.
@@ -284,8 +276,6 @@ Dans une lecture de production, ce choix réduit le coût mental: on voit imméd
 À l'exécution:
 - scénario nominal `argc=2`, `mode=1`: flux `parse -> run -> to_exit_code`, sortie `0`.
 - scénario invalide `argc=1`: échec immédiat de validation, sortie `64`.
-
-Ce déroulé concret sert de preuve locale: il confirme que la forme du code et le résultat attendu restent alignés.
 
 Erreurs fréquentes à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
