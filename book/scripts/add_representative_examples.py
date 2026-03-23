@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 H1_RE = re.compile(r"^#\s+(.+)$", re.M)
+VIT_CODE_RE = re.compile(r"```vit\n(.*?)\n```", re.S)
 
 START = "<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->"
 END = "<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->"
@@ -14,6 +15,42 @@ END = "<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->"
 def clean_topic(title: str) -> str:
     t = re.sub(r"^\d+[a-zA-Z]?\.\s*", "", title).strip()
     return t or "Sujet"
+
+
+def extract_first_vit_code(text: str) -> str:
+    m = VIT_CODE_RE.search(text)
+    if m:
+        code = m.group(1).strip()
+        if code:
+            return code
+    return "entry main at app/demo {\n  return 0\n}"
+
+
+def explain_code_lines(code: str) -> str:
+    lines = [ln.rstrip() for ln in code.splitlines() if ln.strip()]
+    out = []
+    idx = 1
+    for ln in lines[:8]:
+        stripped = ln.strip()
+        if stripped.startswith("entry "):
+            why = "définit le point d'entrée exécutable."
+        elif stripped.startswith("proc "):
+            why = "déclare un contrat clair (entrées/sortie)."
+        elif stripped.startswith("let "):
+            why = "fixe une valeur intermédiaire réutilisable."
+        elif stripped.startswith(("if ", "if(")):
+            why = "ouvre une branche conditionnelle lisible."
+        elif stripped.startswith(("return ", "give ")):
+            why = "renvoie une valeur observable et testable."
+        elif stripped.startswith("share "):
+            why = "expose explicitement l'API publique."
+        elif stripped.startswith("space "):
+            why = "positionne le code dans son module."
+        else:
+            why = "participe au flux nominal du programme."
+        out.append(f"{idx}. `{stripped}` -> {why}")
+        idx += 1
+    return "\n".join(out)
 
 
 def strip_old_block(text: str) -> str:
@@ -28,24 +65,29 @@ def strip_old_block(text: str) -> str:
     return text
 
 
-def build_examples_block(topic: str) -> str:
+def build_examples_block(topic: str, base_code: str) -> str:
     topic_l = topic.lower()
+    line_by_line = explain_code_lines(base_code)
     return f"""{START}
 
 ## Exemples représentatifs (par cas d'usage)
 
-Cette section donne des exemples variés et réalistes pour **{topic_l}**.
-Objectif: multiplier les angles de lecture sans alourdir le noyau du chapitre.
+Cette section s'appuie sur du code concret pour **{topic_l}**.
+Objectif: comprendre vite ce que fait le code, pourquoi, et comment le corriger.
 
-### Exemple 1: cas nominal minimal
+### Exemple 1: extrait réel du chapitre (cas nominal)
 
 ```vit
-entry main at app/demo {{
-  return 0
-}}
+{base_code}
 ```
 
-Quand l'utiliser: valider la base exécutable avant tout ajout de complexité.
+Lecture guidée (ligne par ligne):
+{line_by_line}
+
+Entrée -> Sortie attendue:
+1. Entrée: données conformes au contrat.
+2. Traitement: chemin nominal exécuté.
+3. Sortie: valeur déterministe observable.
 
 ### Exemple 2: garde explicite (cas limite)
 
@@ -136,7 +178,15 @@ proc parse_port(s: string) -> int {{
 
 Quand l'utiliser: faire évoluer le comportement sans casser la signature publique.
 
-### Exemple 8: checklist de lecture rapide
+### Exemple 8: correction guidée basée sur le code
+
+Procédure de correction:
+1. Reproduire le bug sur un snippet minimal.
+2. Corriger une seule ligne.
+3. Recompiler et vérifier la sortie.
+4. Ajouter un test de non-régression.
+
+### Checklist de lecture rapide
 
 1. Où est le contrat d'entrée?
 2. Quel est le chemin nominal?
@@ -161,8 +211,9 @@ def main() -> int:
         h1 = H1_RE.search(text)
         title = h1.group(1).strip() if h1 else md.stem
         topic = clean_topic(title)
+        base_code = extract_first_vit_code(text)
 
-        out = text.rstrip() + "\n\n" + build_examples_block(topic).rstrip() + "\n"
+        out = text.rstrip() + "\n\n" + build_examples_block(topic, base_code).rstrip() + "\n"
         md.write_text(out, encoding="utf-8")
         changed += 1
 

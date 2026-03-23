@@ -363,18 +363,36 @@ Mini quiz:
 
 ## Exemples représentatifs (par cas d'usage)
 
-Cette section donne des exemples variés et réalistes pour **projet guide cli**.
-Objectif: multiplier les angles de lecture sans alourdir le noyau du chapitre.
+Cette section s'appuie sur du code concret pour **projet guide cli**.
+Objectif: comprendre vite ce que fait le code, pourquoi, et comment le corriger.
 
-### Exemple 1: cas nominal minimal
+### Exemple 1: extrait réel du chapitre (cas nominal)
 
 ```vit
-entry main at app/demo {
-  return 0
+pick CliError {
+  case MissingArgs
+  case UnknownMode(mode: int)
+}
+pick CliResult {
+  case Ok(code: int)
+  case Err(e: CliError)
 }
 ```
 
-Quand l'utiliser: valider la base exécutable avant tout ajout de complexité.
+Lecture guidée (ligne par ligne):
+1. `pick CliError {` -> participe au flux nominal du programme.
+2. `case MissingArgs` -> participe au flux nominal du programme.
+3. `case UnknownMode(mode: int)` -> participe au flux nominal du programme.
+4. `}` -> participe au flux nominal du programme.
+5. `pick CliResult {` -> participe au flux nominal du programme.
+6. `case Ok(code: int)` -> participe au flux nominal du programme.
+7. `case Err(e: CliError)` -> participe au flux nominal du programme.
+8. `}` -> participe au flux nominal du programme.
+
+Entrée -> Sortie attendue:
+1. Entrée: données conformes au contrat.
+2. Traitement: chemin nominal exécuté.
+3. Sortie: valeur déterministe observable.
 
 ### Exemple 2: garde explicite (cas limite)
 
@@ -465,7 +483,15 @@ proc parse_port(s: string) -> int {
 
 Quand l'utiliser: faire évoluer le comportement sans casser la signature publique.
 
-### Exemple 8: checklist de lecture rapide
+### Exemple 8: correction guidée basée sur le code
+
+Procédure de correction:
+1. Reproduire le bug sur un snippet minimal.
+2. Corriger une seule ligne.
+3. Recompiler et vérifier la sortie.
+4. Ajouter un test de non-régression.
+
+### Checklist de lecture rapide
 
 1. Où est le contrat d'entrée?
 2. Quel est le chemin nominal?

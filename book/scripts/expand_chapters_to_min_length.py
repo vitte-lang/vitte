@@ -7,6 +7,7 @@ from pathlib import Path
 
 WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9_'-]+")
 H1_RE = re.compile(r"^#\s+(.+)$", re.M)
+VIT_CODE_RE = re.compile(r"```vit\n(.*?)\n```", re.S)
 
 AUTO_START = "<!-- AUTO_EXPANSION_V1 START -->"
 AUTO_END = "<!-- AUTO_EXPANSION_V1 END -->"
@@ -21,104 +22,115 @@ def topic_from_title(title: str) -> str:
     return t or "ce sujet"
 
 
-def build_block(topic: str, chapter_name: str, target_additional_words: int) -> str:
+def extract_first_vit_code(text: str) -> str:
+    m = VIT_CODE_RE.search(text)
+    if m:
+        code = m.group(1).strip()
+        if code:
+            return code
+    return "entry main at app/demo {\n  return 0\n}"
+
+
+def explain_code_lines(code: str) -> str:
+    lines = [ln.rstrip() for ln in code.splitlines() if ln.strip()]
+    out = []
+    idx = 1
+    for ln in lines[:10]:
+        stripped = ln.strip()
+        if stripped.startswith("entry "):
+            why = "définit l'entrée du programme."
+        elif stripped.startswith("proc "):
+            why = "déclare une procédure avec contrat explicite."
+        elif stripped.startswith("let "):
+            why = "stocke une valeur intermédiaire claire."
+        elif stripped.startswith(("if ", "if(")):
+            why = "ouvre une décision conditionnelle."
+        elif stripped.startswith(("return ", "give ")):
+            why = "retourne le résultat observé."
+        elif stripped.startswith("space "):
+            why = "positionne le code dans son module."
+        elif stripped.startswith("share "):
+            why = "déclare ce qui est public."
+        else:
+            why = "participe au flux nominal."
+        out.append(f"{idx}. `{stripped}` -> {why}")
+        idx += 1
+    return "\n".join(out)
+
+
+def build_block(topic: str, chapter_name: str, base_code: str, target_additional_words: int) -> str:
     topic_l = topic.lower()
+    line_by_line = explain_code_lines(base_code)
 
     intro = f"""
 {AUTO_START}
 
-## Approfondissement guidé
+## Approfondissement guidé par le code
 
-### 1. Ce qu'il faut vraiment retenir
+### 1. Snippet de référence du chapitre
 
-Le coeur de **{topic_l}** est de prendre des décisions lisibles et vérifiables.
-Dans un projet réel, la compréhension rapide prime sur la complexité apparente.
-L'objectif de cette section est de transformer le chapitre en guide opérationnel,
-pas en résumé théorique.
+```vit
+{base_code}
+```
 
-Trois idées pratiques gouvernent ce sujet:
-1. faire un changement à la fois;
-2. garder des invariants explicites;
-3. valider le résultat avec une preuve simple (test, sortie, diagnostic).
+### 2. Ce que fait ce code, ligne par ligne
 
-### 2. Carte mentale utilisable en équipe
+{line_by_line}
 
-Quand vous travaillez sur **{topic_l}**, posez systématiquement ces questions:
-- quel est le contrat d'entrée;
-- quel est le résultat attendu;
-- quels sont les cas limites visibles;
-- quelle erreur doit être compréhensible en moins de 30 secondes.
+### 3. Lecture exécutable (entrée -> sortie)
 
-Cette carte mentale évite les refactors fragiles.
-Elle permet aussi d'aligner débutants et profils avancés sur le même langage de travail.
+1. Entrée: valeurs conformes au contrat.
+2. Exécution: chemin nominal suivi sans ambiguïté.
+3. Sortie: résultat déterministe, testable immédiatement.
+
+### 4. Variante d'erreur + correction
+
+Erreur typique: mélanger un type inattendu dans un appel.
+Correction: ajuster l'argument au contrat attendu, puis recompiler.
+
+### 5. Pourquoi cette méthode est concrète
+
+On part du code réel, pas d'un discours abstrait.
+Chaque modification est locale, visible, et vérifiable par test.
 """.strip("\n")
 
     unit = f"""
-### Étude de cas pratique
+### Atelier concret: cas pratique sur {chapter_name}
 
-Cas: un module lié à **{topic_l}** ({chapter_name}) doit évoluer sans casser l'existant.
-On commence par figer le comportement nominal avec un exemple concret,
-puis on introduit une variation contrôlée.
+Code de base:
+```vit
+{base_code}
+```
 
-Étape 1: définir un scénario simple, reproductible, et documenté.
-Étape 2: identifier un seul point d'évolution.
-Étape 3: appliquer la modification en conservant les invariants.
-Étape 4: observer la sortie et les diagnostics.
-Étape 5: corriger immédiatement l'écart le plus proche de la cause.
+Étape A: reproduire le cas nominal.
+Étape B: introduire une variation minimale (une ligne).
+Étape C: observer la différence de sortie.
+Étape D: corriger le comportement si l'écart est non voulu.
 
-Cette méthode paraît lente, mais elle réduit fortement les régressions.
-Elle accélère la livraison au niveau du sprint, car les retours arrière diminuent.
+Observation attendue:
+1. Le changement doit être visible.
+2. Le contrat doit rester lisible.
+3. Le diagnostic d'erreur doit rester actionnable.
 
-### Anti-patterns à éviter
+### Entrées / sorties représentatives
 
-1. Changer la structure et le comportement dans le même commit.
-2. Ajouter des options avant d'avoir validé le cas nominal.
-3. Masquer les erreurs derrière des valeurs par défaut silencieuses.
-4. Empiler des exceptions sans règle de priorisation.
-5. Écrire la documentation après coup sans trace de décision.
+- Entrée nominale: respecte le contrat, sortie attendue stable.
+- Entrée limite: force une garde explicite, sortie de secours.
+- Entrée invalide: doit produire une erreur compréhensible.
 
-### Questions de revue (pair review)
+### Pièges concrets
 
-- Le lecteur comprend-il le flux en une seule lecture?
-- Le code expose-t-il clairement le contrat attendu?
-- Les erreurs sont-elles actionnables?
-- Le test couvre-t-il un cas nominal et un cas limite?
-- Le changement est-il réversible sans risque majeur?
+1. Modifier plusieurs lignes sans isoler la cause.
+2. Corriger le symptôme sans vérifier l'entrée.
+3. Ajouter une abstraction avant d'avoir stabilisé la base.
 
-### Exercice guidé
+### Micro-tests recommandés
 
-Exercice A:
-- Reprendre l'exemple principal du chapitre.
-- Ajouter un cas limite explicite.
-- Mesurer l'impact du changement.
+1. Test nominal: le résultat attendu passe.
+2. Test limite: la garde produit la bonne sortie.
+3. Test erreur: le message est utile pour corriger vite.
 
-Exercice B:
-- Introduire une erreur volontaire.
-- Lire le diagnostic exact.
-- Corriger uniquement la première cause détectée.
-
-Exercice C:
-- Simplifier une partie du code sans changer le comportement.
-- Vérifier que les tests restent verts.
-- Expliquer en 5 lignes pourquoi la nouvelle version est plus maintenable.
-
-### Corrigé détaillé (méthode)
-
-Un corrigé solide commence par les invariants:
-- ce qui doit toujours rester vrai;
-- ce qui peut varier;
-- ce qui doit échouer explicitement.
-
-Ensuite, on trace la preuve minimale:
-1. une entrée claire;
-2. une transformation observable;
-3. une sortie vérifiable.
-
-Enfin, on documente les limites connues.
-La transparence sur les limites augmente la qualité perçue du chapitre,
-car le lecteur sait où s'arrête la garantie.
-
-### Checklist de mise en production
+### Checklist de compréhension
 
 - Contrat d'entrée explicite.
 - Cas nominal validé.
@@ -177,9 +189,10 @@ def main() -> int:
         h1 = H1_RE.search(text)
         title = h1.group(1).strip() if h1 else md.stem
         topic = topic_from_title(title)
+        base_code = extract_first_vit_code(text)
 
         need = (args.min_words + args.buffer) - words
-        block = build_block(topic, md.name, need)
+        block = build_block(topic, md.name, base_code, need)
 
         out = text.rstrip() + "\n\n" + block
         md.write_text(out if out.endswith("\n") else out + "\n", encoding="utf-8")

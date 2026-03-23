@@ -582,18 +582,43 @@ Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambig
 
 ## Exemples représentatifs (par cas d'usage)
 
-Cette section donne des exemples variés et réalistes pour **projet guide arduino**.
-Objectif: multiplier les angles de lecture sans alourdir le noyau du chapitre.
+Cette section s'appuie sur du code concret pour **projet guide arduino**.
+Objectif: comprendre vite ce que fait le code, pourquoi, et comment le corriger.
 
-### Exemple 1: cas nominal minimal
+### Exemple 1: extrait réel du chapitre (cas nominal)
 
 ```vit
-entry main at app/demo {
-  return 0
+pick ControlState {
+  case Idle
+  case Armed
+  case Alert
+  case Fault(code: int)
+}
+form Sample {
+  raw: int
+}
+form ControllerCfg {
+  min_raw: int
+  max_raw: int
+  alert_on: int
+  alert_off: int
 }
 ```
 
-Quand l'utiliser: valider la base exécutable avant tout ajout de complexité.
+Lecture guidée (ligne par ligne):
+1. `pick ControlState {` -> participe au flux nominal du programme.
+2. `case Idle` -> participe au flux nominal du programme.
+3. `case Armed` -> participe au flux nominal du programme.
+4. `case Alert` -> participe au flux nominal du programme.
+5. `case Fault(code: int)` -> participe au flux nominal du programme.
+6. `}` -> participe au flux nominal du programme.
+7. `form Sample {` -> participe au flux nominal du programme.
+8. `raw: int` -> participe au flux nominal du programme.
+
+Entrée -> Sortie attendue:
+1. Entrée: données conformes au contrat.
+2. Traitement: chemin nominal exécuté.
+3. Sortie: valeur déterministe observable.
 
 ### Exemple 2: garde explicite (cas limite)
 
@@ -684,7 +709,15 @@ proc parse_port(s: string) -> int {
 
 Quand l'utiliser: faire évoluer le comportement sans casser la signature publique.
 
-### Exemple 8: checklist de lecture rapide
+### Exemple 8: correction guidée basée sur le code
+
+Procédure de correction:
+1. Reproduire le bug sur un snippet minimal.
+2. Corriger une seule ligne.
+3. Recompiler et vérifier la sortie.
+4. Ajouter un test de non-régression.
+
+### Checklist de lecture rapide
 
 1. Où est le contrat d'entrée?
 2. Quel est le chemin nominal?

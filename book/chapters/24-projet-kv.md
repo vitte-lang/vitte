@@ -535,18 +535,41 @@ Mini quiz:
 
 ## Exemples représentatifs (par cas d'usage)
 
-Cette section donne des exemples variés et réalistes pour **projet guide kv store**.
-Objectif: multiplier les angles de lecture sans alourdir le noyau du chapitre.
+Cette section s'appuie sur du code concret pour **projet guide kv store**.
+Objectif: comprendre vite ce que fait le code, pourquoi, et comment le corriger.
 
-### Exemple 1: cas nominal minimal
+### Exemple 1: extrait réel du chapitre (cas nominal)
 
 ```vit
-entry main at app/demo {
-  return 0
+form Entry {
+  key: string
+  value: string
+}
+pick KvResult {
+  case Ok
+  case ErrKey
+  case ErrState
+}
+pick KvValue {
+  case Some(value: string)
+  case None
 }
 ```
 
-Quand l'utiliser: valider la base exécutable avant tout ajout de complexité.
+Lecture guidée (ligne par ligne):
+1. `form Entry {` -> participe au flux nominal du programme.
+2. `key: string` -> participe au flux nominal du programme.
+3. `value: string` -> participe au flux nominal du programme.
+4. `}` -> participe au flux nominal du programme.
+5. `pick KvResult {` -> participe au flux nominal du programme.
+6. `case Ok` -> participe au flux nominal du programme.
+7. `case ErrKey` -> participe au flux nominal du programme.
+8. `case ErrState` -> participe au flux nominal du programme.
+
+Entrée -> Sortie attendue:
+1. Entrée: données conformes au contrat.
+2. Traitement: chemin nominal exécuté.
+3. Sortie: valeur déterministe observable.
 
 ### Exemple 2: garde explicite (cas limite)
 
@@ -637,7 +660,15 @@ proc parse_port(s: string) -> int {
 
 Quand l'utiliser: faire évoluer le comportement sans casser la signature publique.
 
-### Exemple 8: checklist de lecture rapide
+### Exemple 8: correction guidée basée sur le code
+
+Procédure de correction:
+1. Reproduire le bug sur un snippet minimal.
+2. Corriger une seule ligne.
+3. Recompiler et vérifier la sortie.
+4. Ajouter un test de non-régression.
+
+### Checklist de lecture rapide
 
 1. Où est le contrat d'entrée?
 2. Quel est le chemin nominal?

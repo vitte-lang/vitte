@@ -564,18 +564,41 @@ Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambig
 
 ## Exemples représentatifs (par cas d'usage)
 
-Cette section donne des exemples variés et réalistes pour **projet guide système**.
-Objectif: multiplier les angles de lecture sans alourdir le noyau du chapitre.
+Cette section s'appuie sur du code concret pour **projet guide système**.
+Objectif: comprendre vite ce que fait le code, pourquoi, et comment le corriger.
 
-### Exemple 1: cas nominal minimal
+### Exemple 1: extrait réel du chapitre (cas nominal)
 
 ```vit
-entry main at app/demo {
-  return 0
+form Region {
+  base: int
+  size: int
+}
+form SysMem {
+  region: Region
+  cells: int[]
+}
+pick SysResult {
+  case Ok
+  case ErrBounds
+  case ErrState
 }
 ```
 
-Quand l'utiliser: valider la base exécutable avant tout ajout de complexité.
+Lecture guidée (ligne par ligne):
+1. `form Region {` -> participe au flux nominal du programme.
+2. `base: int` -> participe au flux nominal du programme.
+3. `size: int` -> participe au flux nominal du programme.
+4. `}` -> participe au flux nominal du programme.
+5. `form SysMem {` -> participe au flux nominal du programme.
+6. `region: Region` -> participe au flux nominal du programme.
+7. `cells: int[]` -> participe au flux nominal du programme.
+8. `}` -> participe au flux nominal du programme.
+
+Entrée -> Sortie attendue:
+1. Entrée: données conformes au contrat.
+2. Traitement: chemin nominal exécuté.
+3. Sortie: valeur déterministe observable.
 
 ### Exemple 2: garde explicite (cas limite)
 
@@ -666,7 +689,15 @@ proc parse_port(s: string) -> int {
 
 Quand l'utiliser: faire évoluer le comportement sans casser la signature publique.
 
-### Exemple 8: checklist de lecture rapide
+### Exemple 8: correction guidée basée sur le code
+
+Procédure de correction:
+1. Reproduire le bug sur un snippet minimal.
+2. Corriger une seule ligne.
+3. Recompiler et vérifier la sortie.
+4. Ajouter un test de non-régression.
+
+### Checklist de lecture rapide
 
 1. Où est le contrat d'entrée?
 2. Quel est le chemin nominal?
