@@ -60,6 +60,17 @@ make core-language-test
 make core-language-test-update
 make core-semantic-success
 make core-semantic-snapshots
+make core-semantic-themes
+make core-semantic-imports-success
+make core-semantic-imports-snapshots
+make core-semantic-returns-success
+make core-semantic-returns-snapshots
+make core-semantic-match-success
+make core-semantic-match-snapshots
+make core-semantic-share-success
+make core-semantic-share-snapshots
+make core-semantic-entry-success
+make core-semantic-entry-snapshots
 make update-diagnostics-ftl
 make diagnostics-ftl-check
 ```
@@ -71,9 +82,31 @@ Manifest:
 - `tests/grammar/core_manifest.txt`
 - `tests/diag_snapshots/core_semantic_manifest.txt`
 - `tests/core_semantic_success_manifest.txt`
+- `tests/diag_snapshots/core_semantic_imports_manifest.txt`
+- `tests/core_semantic_imports_success_manifest.txt`
+- `tests/diag_snapshots/core_semantic_returns_manifest.txt`
+- `tests/core_semantic_returns_success_manifest.txt`
+- `tests/diag_snapshots/core_semantic_match_manifest.txt`
+- `tests/core_semantic_match_success_manifest.txt`
+- `tests/diag_snapshots/core_semantic_share_manifest.txt`
+- `tests/core_semantic_share_success_manifest.txt`
+- `tests/diag_snapshots/core_semantic_entry_manifest.txt`
+- `tests/core_semantic_entry_success_manifest.txt`
 
 The manifest intentionally points to a small subset of `tests/grammar/valid` and `tests/grammar/invalid`.
 This subset exists to protect the language center from silent drift.
+
+Interpretation rule:
+
+- `tests/grammar/core_manifest.txt` protects the canonical forms listed in `docs/LANGUAGE_CORE_SURFACE.md`
+- grammar accepted outside that manifest is implemented surface, not frozen core surface
+- adding a form to the parser does not promote it into the protected core by itself
+
+Theme rule:
+
+- the aggregate manifests remain the source for the protected core gate
+- thematic manifests slice the same regression space by concern: imports, returns, match, share, and entry
+- explicit generic-call regressions stay in a separate experimental snapshot manifest because they are implemented but not part of the frozen core surface
 
 Current core coverage includes:
 
@@ -193,6 +226,12 @@ Current generic boundary note:
 - `E1003` and `E1004` are covered in the protected core gate
 - finer generic diagnostics beyond the frontend resolve layer are not yet part of the protected core gate
 - `--allow-internal` admits explicit internal imports
+
+Current non-core grammar note:
+
+- top-level forms such as `space`, `const`, `make`, `type`, `form`, `trait`, `pick`, and `macro` are outside the protected core gate
+- statement forms such as `set`, `emit`, `return`, `select`, and `when` are outside the protected core gate
+- acceptance in `src/vitte/grammar/vitte.ebnf` without matching manifest coverage must be read as experimental or broader language surface, not as frozen core grammar
 
 ## Inclusion Rules
 

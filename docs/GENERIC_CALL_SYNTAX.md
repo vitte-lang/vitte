@@ -84,6 +84,7 @@ The current implementation is locked by focused IR snapshots:
 - `tests/diag_snapshots/ir/qualified_generic_ctor_type_args_preserved/main.vit`
 - `tests/diag_snapshots/ir/generic_proc_type_args_preserved.vit`
 - `tests/diag_snapshots/ir/generic_proc_call_still_indexed_variable.vit`
+- `tests/diag_snapshots/explicit_generics_manifest.txt`
 
 These snapshots prove the current parser and HIR lowering behavior.
 They do not promote the syntax into the protected core by themselves.
