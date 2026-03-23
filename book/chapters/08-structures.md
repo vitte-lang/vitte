@@ -5,12 +5,16 @@ Niveau: Débutant
 Prérequis: chapitre précédent `book/chapters/07-controle.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/07-controle.md`, `book/chapters/09-modules.md`, `book/glossaire.md`.
 
+## Objectif
+
+Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Structures de données**.
 Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
-## Ce que vous allez faire
+## Ce que vous allez réellement faire
 
 Vous allez identifier les points clés de **Structures de données**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
@@ -19,7 +23,7 @@ Vous allez identifier les points clés de **Structures de données**, exécuter 
 Commencez par le premier extrait de code de ce chapitre.
 Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Structures de données**.
 
-## Explication pas à pas
+## Méthode de lecture
 
 1. Repérez l'intention du bloc.
 2. Vérifiez la condition ou la garde principale.
@@ -55,29 +59,29 @@ form Ticket {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `form Ticket {` : cette ligne ouvre la structure `Ticket` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable.
 2. `id: int` : cette ligne déclare le champ `id` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation.
 3. `priority: int` : cette ligne déclare le champ `priority` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation.
 4. `assignee: string` : cette ligne déclare le champ `assignee` avec le type `string`, ce qui documente son rôle et limite les erreurs de manipulation.
 5. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: décrire une entité métier explicite avec des champs nommés, plutôt que manipuler des valeurs anonymes.
 
-Dans une lecture de production, ce choix réduit le coût mental: on voit immédiatement ce qu'est un ticket et quelles informations il doit porter.
+En pratique, ce choix simplifie la lecture: on voit immédiatement ce qu'est un ticket et quelles informations il doit porter.
 
 À l'exécution, la vérification de structure se fait dès la compilation:
 - un `Ticket` doit toujours avoir `id`, `priority` et `assignee`.
 - un champ manquant ou de mauvais type est rejeté avant exécution.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - coder des conventions implicites au lieu de les porter par le type.
 - mélanger des cas métier différents dans une même représentation.
 - ajouter des variantes sans mettre à jour les points de traitement.
@@ -92,19 +96,19 @@ pick TicketState {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `pick TicketState {` : cette ligne ouvre le type fermé `TicketState` pour forcer un ensemble fini de cas possibles et supprimer les états implicites.
 2. `case Open` : ce cas décrit `Open` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 3. `case Assigned(user: string)` : ce cas décrit `Assigned(user: string)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 4. `case Closed(code: int)` : ce cas décrit `Closed(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 5. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: forcer le cas `Open` permet de confirmer la branche attendue.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: modéliser un cycle de vie par états exclusifs, avec une charge utile seulement quand c'est utile.
 
@@ -115,7 +119,7 @@ Ce modèle empêche les combinaisons incohérentes: un ticket ne peut pas être 
 - `Assigned(user)`.
 - `Closed(code)`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -134,7 +138,7 @@ give 0
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc is_critical(t: Ticket) -> bool {` : le contrat est défini pour `is_critical`: entrées `t: Ticket` et sortie `bool`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `give t.priority >= 9` : la branche renvoie immédiatement `t.priority >= 9` pour la branche courante, la sortie de branche est explicite et vérifiable.
 3. `}` : cette accolade clôt le bloc logique.
@@ -144,13 +148,13 @@ Lecture ligne par ligne (débutant):
 7. `}` : cette accolade ferme le bloc logique.
 8. `give 0` : retourne immédiatement `0` pour la branche courante, la sortie de branche est explicite et vérifiable.
 9. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `t.priority >= 9`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: composer une règle métier à partir de deux axes explicites, la structure (`Ticket`) et l'état (`TicketState`).
 
@@ -164,7 +168,7 @@ Logique de la fonction `route`:
 - ticket fermé, même prioritaire -> `0`.
 - priorité basse -> `0`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -181,7 +185,7 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
 ## À faire
 
 1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
@@ -206,60 +210,3 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `book/keywords/break.md`.
 - `book/keywords/case.md`.
 - `book/keywords/continue.md`.
-
-## Objectif
-Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
-
-## Exemple
-Exemple concret: partir d'une entrée simple, appliquer une transformation, puis observer la sortie attendue.
-
-## Pourquoi
-Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs basés sur le code du chapitre
-
-Thème: **structures de données**. Cette section évite les généralités et part d'un extrait réel.
-
-### Exemple A: lecture exécutable du snippet principal
-
-```vit
-form Ticket {
-  id: int
-  priority: int
-  assignee: string
-}
-```
-
-Lecture ligne par ligne:
-1. `form Ticket {` -> participe au déroulé du traitement.
-2. `id: int` -> participe au déroulé du traitement.
-3. `priority: int` -> participe au déroulé du traitement.
-4. `assignee: string` -> participe au déroulé du traitement.
-5. `}` -> participe au déroulé du traitement.
-
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
-
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
-
-Étapes:
-1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
-3. Vérifier la nouvelle sortie sur une entrée limite.
-
-### Exemple C: bug reproductible puis correction locale
-
-Procédure:
-1. Introduire une incompatibilité de type sur un appel.
-2. Compiler et lire le premier diagnostic.
-3. Corriger une seule ligne (pas de refactor global).
-4. Recompiler et vérifier le retour nominal.
-
-### Résultat attendu
-
-- Le lecteur comprend ce que fait le code sans abstraction inutile.
-- Chaque exemple est relié à une action concrète.
-- La correction est reproductible et testable.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

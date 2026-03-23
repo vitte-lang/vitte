@@ -5,12 +5,16 @@ Niveau: Débutant
 Prérequis: chapitre précédent `book/chapters/04-syntaxe.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/04-syntaxe.md`, `book/chapters/06-procedures.md`, `book/glossaire.md`.
 
+## Objectif
+
+Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Types et valeurs**.
 Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
-## Ce que vous allez faire
+## Ce que vous allez réellement faire
 
 Vous allez identifier les points clés de **Types et valeurs**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
@@ -19,7 +23,7 @@ Vous allez identifier les points clés de **Types et valeurs**, exécuter les ex
 Commencez par le premier extrait de code de ce chapitre.
 Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Types et valeurs**.
 
-## Explication pas à pas
+## Méthode de lecture
 
 1. Repérez l'intention du bloc.
 2. Vérifiez la condition ou la garde principale.
@@ -88,7 +92,7 @@ proc manhattan(p: Point) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `form Point {` : cette ligne ouvre la structure `Point` qui regroupe des données cohérentes sous un même nom métier, utile pour garder un vocabulaire stable.
 2. `x: int` : cette ligne déclare le champ `x` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation.
 3. `y: int` : cette ligne déclare le champ `y` avec le type `int`, ce qui documente son rôle et limite les erreurs de manipulation.
@@ -96,13 +100,13 @@ Lecture ligne par ligne (débutant):
 5. `proc manhattan(p: Point) -> int {` : le contrat est défini pour `manhattan`: entrées `p: Point` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 6. `give p.x + p.y` : la branche renvoie immédiatement `p.x + p.y` pour la branche courante, la sortie de branche est explicite et vérifiable.
 7. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `p.x + p.y`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 `Point` exprime une idée claire: une valeur avec deux coordonnées `x` et `y`. La procédure `manhattan` n'accepte donc pas n'importe quelles données; elle exige un `Point`. Cette contrainte est précieuse, car elle empêche les appels ambigus et rend l'intention évidente dans la signature.
 
@@ -114,7 +118,7 @@ Mais la vraie valeur de l'exemple n'est pas le calcul en lui-même. Elle est dan
 
 Réflexe à garder: quand une donnée a un sens métier, donnez-lui un type métier. Vous évitez ainsi les échanges implicites de "deux entiers qui se ressemblent" mais ne veulent pas dire la même chose.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - manipuler des tuples ou des entiers séparés au lieu d'un type métier explicite.
 - donner des noms de champs trop vagues, qui masquent l'intention.
 - multiplier les conversions inutiles autour d'un type déjà bien défini.
@@ -130,18 +134,18 @@ pick Result {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `pick Result {` : cette ligne ouvre le type fermé `Result` pour forcer un ensemble fini de cas possibles et supprimer les états implicites.
 2. `case Ok(value: int)` : ce cas décrit `Ok(value: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 3. `case Err(code: int)` : ce cas décrit `Err(code: int)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
 4. `}` : cette accolade clôt le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: forcer le cas `Ok(value: int)` permet de confirmer la branche attendue.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 Ici, `Result` décrit un univers fermé d'états valides: soit `Ok` avec une valeur entière, soit `Err` avec un code d'erreur. Ce point est essentiel. Le programme n'a plus à deviner l'état réel d'une donnée à partir de conventions implicites; l'état est nommé et porté par le type.
 
@@ -152,7 +156,7 @@ En pratique, ce modèle améliore aussi les messages d'erreur et les tests:
 - les erreurs métiers restent nommées.
 - les cas non gérés deviennent visibles plus tôt.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - utiliser un entier "sentinelle" (par exemple `-1`) à la place d'une variante d'erreur.
 - mélanger dans un même champ des données de nature différente.
 - introduire des cas implicites que le type ne documente pas.
@@ -171,7 +175,7 @@ proc unwrap_or_zero(r: Result) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc unwrap_or_zero(r: Result) -> int {` : le contrat est posé pour `unwrap_or_zero`: entrées `r: Result` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `match r {` : cette ligne démarre un dispatch déterministe sur `r`: une seule branche sera choisie selon la forme de la valeur analysée.
 3. `case Ok(v) { give v }` : ce cas décrit `Ok(v)` et explicite la décision métier associée, ce qui réduit les ambiguïtés de lecture.
@@ -179,13 +183,13 @@ Lecture ligne par ligne (débutant):
 5. `otherwise { give 0 }` : cette ligne définit un chemin de secours explicite.
 6. `}` : cette accolade ferme le bloc logique.
 7. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: forcer le cas `Ok(v)` permet de confirmer la branche attendue.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 La fonction `unwrap_or_zero` exprime une règle concrète: si le résultat est `Ok`, on récupère sa valeur; s'il s'agit d'une erreur, on renvoie `0`. Le flux suit exactement les variantes de `Result`, ce qui rend le comportement immédiat à vérifier.
 
@@ -196,7 +200,7 @@ Lecture pas à pas:
 
 Le code ne "devine" rien: il inspecte la forme de la valeur, puis applique la règle associée. C'est cette correspondance entre type et branches qui rend le système robuste.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - traiter seulement une variante et oublier les autres.
 - écrire des branches qui contredisent le sens métier des cas.
 - ajouter un `otherwise` pour masquer un oubli de conception plutôt que corriger le modèle.
@@ -213,7 +217,7 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
 ## À faire
 
 1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
@@ -238,64 +242,3 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `book/keywords/give.md`.
 - `book/keywords/if.md`.
 - `book/keywords/int.md`.
-
-## Objectif
-Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
-
-## Exemple
-Exemple concret: partir d'une entrée simple, appliquer une transformation, puis observer la sortie attendue.
-
-## Pourquoi
-Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs basés sur le code du chapitre
-
-Thème: **types et valeurs**. Cette section évite les généralités et part d'un extrait réel.
-
-### Exemple A: lecture exécutable du snippet principal
-
-```vit
-form Point {
-  x: int
-  y: int
-}
-proc manhattan(p: Point) -> int {
-  give p.x + p.y
-}
-```
-
-Lecture ligne par ligne:
-1. `form Point {` -> participe au déroulé du traitement.
-2. `x: int` -> participe au déroulé du traitement.
-3. `y: int` -> participe au déroulé du traitement.
-4. `}` -> participe au déroulé du traitement.
-5. `proc manhattan(p: Point) -> int {` -> pose un contrat clair de fonction.
-6. `give p.x + p.y` -> renvoie la sortie vérifiable.
-7. `}` -> participe au déroulé du traitement.
-
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
-
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
-
-Étapes:
-1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
-3. Vérifier la nouvelle sortie sur une entrée limite.
-
-### Exemple C: bug reproductible puis correction locale
-
-Procédure:
-1. Introduire une incompatibilité de type sur un appel.
-2. Compiler et lire le premier diagnostic.
-3. Corriger une seule ligne (pas de refactor global).
-4. Recompiler et vérifier le retour nominal.
-
-### Résultat attendu
-
-- Le lecteur comprend ce que fait le code sans abstraction inutile.
-- Chaque exemple est relié à une action concrète.
-- La correction est reproductible et testable.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

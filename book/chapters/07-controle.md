@@ -5,12 +5,16 @@ Niveau: Débutant
 Prérequis: chapitre précédent `book/chapters/06-procedures.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/06-procedures.md`, `book/chapters/08-structures.md`, `book/glossaire.md`.
 
+## Objectif
+
+Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Instructions de contrôle**.
 Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
-## Ce que vous allez faire
+## Ce que vous allez réellement faire
 
 Vous allez identifier les points clés de **Instructions de contrôle**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
@@ -19,7 +23,7 @@ Vous allez identifier les points clés de **Instructions de contrôle**, exécut
 Commencez par le premier extrait de code de ce chapitre.
 Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Instructions de contrôle**.
 
-## Explication pas à pas
+## Méthode de lecture
 
 1. Repérez l'intention du bloc.
 2. Vérifiez la condition ou la garde principale.
@@ -55,19 +59,19 @@ proc classify(temp: int) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc classify(temp: int) -> int {` : le contrat est défini pour `classify`: entrées `temp: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `if temp < 0 { give -1 }` : cette garde traite le cas limite avant le calcul.
 3. `if temp > 100 { give 2 }` : cette garde traite le cas limite avant le calcul.
 4. `give 1` : la branche renvoie immédiatement `1` pour la branche courante, la sortie de branche est explicite et vérifiable.
 5. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: si `temp < 0` est vrai, la sortie devient `-1`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `1`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: classer une valeur en traitant d'abord les cas hors plage, puis le cas nominal.
 
@@ -78,7 +82,7 @@ Lecture pas à pas:
 - `classify(50)` retourne `1` (valeur nominale).
 - `classify(120)` retourne `2` (valeur au-dessus de la plage).
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -98,7 +102,7 @@ give acc
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc sum_to(limit: int) -> int {` : le contrat est posé pour `sum_to`: entrées `limit: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `let i: int = 0` : cette ligne crée la variable `i` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
 3. `let acc: int = 0` : cette ligne crée la variable `acc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
@@ -109,13 +113,13 @@ Lecture ligne par ligne (débutant):
 8. `}` : cette accolade ferme le bloc logique.
 9. `give acc` : la sortie est renvoyée immédiatement `acc` pour la branche courante, la sortie de branche est explicite et vérifiable.
 10. `}` : cette accolade clôt le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `acc`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: construire une boucle dont l'invariant est verbalizable, ici `acc` contient la somme des valeurs déjà parcourues.
 
@@ -132,7 +136,7 @@ Ordre de lecture recommandé:
 - après `i=3`: `acc=6`.
 - `i=4` déclenche l'arrêt, retour `6`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - laisser une boucle sans borne claire ou sans condition d'arrêt vérifiable.
 - faire évoluer plusieurs variables d'état sans documenter leur rôle.
 - optimiser trop tôt sans verrouiller d'abord le comportement attendu.
@@ -150,7 +154,7 @@ give acc
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc filtered_sum(values: int[]) -> int {` : le contrat est fixé pour `filtered_sum`: entrées `values: int[]` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 2. `let acc: int = 0` : cette ligne crée la variable `acc` de type `int` pour nommer explicitement une étape intermédiaire du raisonnement.
 3. `for x in values {` : cette ligne définit une étape explicite du flux.
@@ -159,13 +163,13 @@ Lecture ligne par ligne (débutant):
 6. `}` : cette accolade ferme le bloc logique.
 7. `give acc` : retourne immédiatement `acc` pour la branche courante, la sortie de branche est explicite et vérifiable.
 8. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `acc`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: filtrer en parcours sans casser la lisibilité de la boucle.
 
@@ -177,7 +181,7 @@ La règle est simple: les valeurs négatives sont ignorées (`continue`), les au
 - `7` est ajoutée, `acc=12`.
 - retour final `12`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - laisser une boucle sans borne claire ou sans condition d'arrêt vérifiable.
 - faire évoluer plusieurs variables d'état sans documenter leur rôle.
 - optimiser trop tôt sans verrouiller d'abord le comportement attendu.
@@ -194,7 +198,7 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
 ## À faire
 
 1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
@@ -219,60 +223,3 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `book/keywords/for.md`.
 - `book/keywords/give.md`.
 - `book/keywords/if.md`.
-
-## Objectif
-Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
-
-## Exemple
-Exemple concret: partir d'une entrée simple, appliquer une transformation, puis observer la sortie attendue.
-
-## Pourquoi
-Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs basés sur le code du chapitre
-
-Thème: **instructions de contrôle**. Cette section évite les généralités et part d'un extrait réel.
-
-### Exemple A: lecture exécutable du snippet principal
-
-```vit
-proc classify(temp: int) -> int {
-  if temp < 0 { give -1 }
-  if temp > 100 { give 2 }
-  give 1
-}
-```
-
-Lecture ligne par ligne:
-1. `proc classify(temp: int) -> int {` -> pose un contrat clair de fonction.
-2. `if temp < 0 { give -1 }` -> sépare nominal et cas limite.
-3. `if temp > 100 { give 2 }` -> sépare nominal et cas limite.
-4. `give 1` -> renvoie la sortie vérifiable.
-5. `}` -> participe au déroulé du traitement.
-
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
-
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
-
-Étapes:
-1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
-3. Vérifier la nouvelle sortie sur une entrée limite.
-
-### Exemple C: bug reproductible puis correction locale
-
-Procédure:
-1. Introduire une incompatibilité de type sur un appel.
-2. Compiler et lire le premier diagnostic.
-3. Corriger une seule ligne (pas de refactor global).
-4. Recompiler et vérifier le retour nominal.
-
-### Résultat attendu
-
-- Le lecteur comprend ce que fait le code sans abstraction inutile.
-- Chaque exemple est relié à une action concrète.
-- La correction est reproductible et testable.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

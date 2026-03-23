@@ -5,12 +5,16 @@ Niveau: Intermédiaire
 Prérequis: chapitre précédent `book/chapters/08-structures.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/08-structures.md`, `book/chapters/10-diagnostics.md`, `book/glossaire.md`.
 
+## Objectif
+
+Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Modules et organisation**.
 Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
-## Ce que vous allez faire
+## Ce que vous allez réellement faire
 
 Vous allez identifier les points clés de **Modules et organisation**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
@@ -19,7 +23,7 @@ Vous allez identifier les points clés de **Modules et organisation**, exécuter
 Commencez par le premier extrait de code de ce chapitre.
 Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Modules et organisation**.
 
-## Explication pas à pas
+## Méthode de lecture
 
 1. Repérez l'intention du bloc.
 2. Vérifiez la condition ou la garde principale.
@@ -54,18 +58,18 @@ proc add(a: int, b: int) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `space app/core` : cette ligne définit une étape explicite du flux.
 2. `proc add(a: int, b: int) -> int {` : le contrat est défini pour `add`: entrées `a: int, b: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 3. `give a + b` : la branche renvoie immédiatement `a + b` pour la branche courante, la sortie de branche est explicite et vérifiable.
 4. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `a + b`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: poser un module source minimal, centré sur une responsabilité unique.
 
@@ -75,7 +79,7 @@ Ce noyau est simple à testér et à réutiliser, car il ne dépend pas d'une co
 - `add(10,32)` retourne `42`.
 - la fonction reste locale au module tant qu'elle n'est pas exportée.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - coder des conventions implicites au lieu de les porter par le type.
 - mélanger des cas métier différents dans une même représentation.
 - ajouter des variantes sans mettre à jour les points de traitement.
@@ -91,20 +95,20 @@ proc add_pair(x: int, y: int) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `space app/math` : cette ligne définit une étape explicite du flux.
 2. `pull app/core as core` : cette ligne définit une étape explicite du flux.
 3. `share add_pair` : cette ligne définit une étape explicite du flux.
 4. `proc add_pair(x: int, y: int) -> int {` : le contrat est posé pour `add_pair`: entrées `x: int, y: int` et sortie `int`, elle clarifie l'intention avant lecture détaillée du corps.
 5. `give core.add(x, y)` : la sortie est renvoyée immédiatement `core.add(x, y)` pour la branche courante, la sortie de branche est explicite et vérifiable.
 6. `}` : cette accolade ferme le bloc logique.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `core.add(x, y)`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: consommer un module externe de manière explicite et exposer une surface publique contrôlée.
 
@@ -112,7 +116,7 @@ Le `pull.. as core` rend la dépendance visible, et `share add_pair` limite pré
 
 À l'exécution, `add_pair(1,2)` délègue à `core.add(1,2)` puis retourne `3`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - coder des conventions implicites au lieu de les porter par le type.
 - mélanger des cas métier différents dans une même représentation.
 - ajouter des variantes sans mettre à jour les points de traitement.
@@ -125,17 +129,17 @@ form Ticket { id: int, priority: int }
 proc is_critical(t: Ticket) -> bool { give t.priority >= 9 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `space app/domain` : cette ligne définit une étape explicite du flux.
 2. `form Ticket { id: int, priority: int }` : cette ligne définit une étape explicite du flux.
 3. `proc is_critical(t: Ticket) -> bool { give t.priority >= 9 }` : cette ligne définit une étape explicite du flux.
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: garder le domaine indépendant des couches d'orchestration et d'infrastructure.
 
@@ -145,7 +149,7 @@ Cette séparation rend les règles métier stables: elles ne changent pas quand 
 - `Ticket(priority=9)` retourne `true`.
 - `Ticket(priority=8)` retourne `false`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - coder des conventions implicites au lieu de les porter par le type.
 - mélanger des cas métier différents dans une même représentation.
 - ajouter des variantes sans mettre à jour les points de traitement.
@@ -162,7 +166,7 @@ Critère pratique de qualité pour ce chapitre:
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
 ## À faire
 
 1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
@@ -193,64 +197,9 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 - `book/keywords/field.md`.
 - `book/keywords/form.md`.
 
-## Objectif
-Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
-
-## Exemple
-Exemple concret: partir d'une entrée simple, appliquer une transformation, puis observer la sortie attendue.
-
-## Pourquoi
-Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
 ## Checkpoint synthèse
 
 Mini quiz:
 1. Quelle est l'invariant central de ce chapitre ?
 2. Quelle garde évite l'état invalide le plus fréquent ?
 3. Quel test simple prouve le comportement nominal ?
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs basés sur le code du chapitre
-
-Thème: **modules et organisation**. Cette section évite les généralités et part d'un extrait réel.
-
-### Exemple A: lecture exécutable du snippet principal
-
-```vit
-space app/core
-proc add(a: int, b: int) -> int {
-  give a + b
-}
-```
-
-Lecture ligne par ligne:
-1. `space app/core` -> participe au déroulé du traitement.
-2. `proc add(a: int, b: int) -> int {` -> pose un contrat clair de fonction.
-3. `give a + b` -> renvoie la sortie vérifiable.
-4. `}` -> participe au déroulé du traitement.
-
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
-
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
-
-Étapes:
-1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
-3. Vérifier la nouvelle sortie sur une entrée limite.
-
-### Exemple C: bug reproductible puis correction locale
-
-Procédure:
-1. Introduire une incompatibilité de type sur un appel.
-2. Compiler et lire le premier diagnostic.
-3. Corriger une seule ligne (pas de refactor global).
-4. Recompiler et vérifier le retour nominal.
-
-### Résultat attendu
-
-- Le lecteur comprend ce que fait le code sans abstraction inutile.
-- Chaque exemple est relié à une action concrète.
-- La correction est reproductible et testable.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->

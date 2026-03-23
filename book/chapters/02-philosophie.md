@@ -5,12 +5,16 @@ Niveau: Débutant
 Prérequis: chapitre précédent `book/chapters/01-demarrer.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/01-demarrer.md`, `book/chapters/03-projet.md`, `book/glossaire.md`.
 
+## Objectif
+
+Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Philosophie du langage**.
 Vous y trouvez le cadre, les invariants et les décisions de lecture utiles en pratique.
 
-## Ce que vous allez faire
+## Ce que vous allez réellement faire
 
 Vous allez identifier les points clés de **Philosophie du langage**, exécuter les exemples, puis valider le comportement attendu avec un test simple par section.
 
@@ -19,7 +23,7 @@ Vous allez identifier les points clés de **Philosophie du langage**, exécuter 
 Commencez par le premier extrait de code de ce chapitre.
 Lisez d'abord l'entrée, puis la sortie, avant d'examiner les détails d'implémentation liés à **Philosophie du langage**.
 
-## Explication pas à pas
+## Méthode de lecture
 
 1. Repérez l'intention du bloc.
 2. Vérifiez la condition ou la garde principale.
@@ -54,27 +58,27 @@ proc safe_div(num: int, den: int) -> int {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc safe_div(num: int, den: int) -> int {` : contrat clair pour la division.
 2. `if den == 0 { give 0 }` : bloque le cas dangereux avant l’opération.
 3. `give num / den` : exécute uniquement le chemin nominal.
 4. `}` : fin déterministe du bloc.
 
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: si `den == 0` est vrai, la sortie devient `0`.
 - Cas nominal: sans garde bloquante, la branche principale renvoie `num / den`.
 - Observation testable: répéter la même entrée doit reproduire exactement la même sortie.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: La frontière de faute est placee avant l'operation sensible.
 
-Dans une lecture de production, ce choix réduit le coût mental: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
+En pratique, ce choix simplifie la lecture: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
 
 À l'exécution, `safe_div(10,2)=5`, `safe_div(10,0)=0`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - testér uniquement le cas nominal et ignorer les frontières.
 - confondre le symptôme observé et la cause réelle.
 - traiter les erreurs dans tous les sens au lieu de centraliser la politique.
@@ -95,28 +99,28 @@ proc can_access(a: Auth) -> bool {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `pick Auth { .. }` : définit un espace d’états fermé (`Granted`/`Denied`).
 2. `proc can_access(a: Auth) -> bool {` : convertit un état métier en décision booléenne.
 3. `case Granted(_) { give true }` : autorise explicitement le cas de succès.
 4. `case Denied(_) { give false }` : refuse explicitement le cas d’échec.
 5. `otherwise { give false }` : protège contre un état non géré.
 
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le flux suit la branche principale et produit une sortie déterministe.
 - Observation testable: forcer le cas `Granted(user: int)` permet de confirmer la branche attendue.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: Les cas sont portes par le type, pas par convention.
 
-Dans une lecture de production, ce choix réduit le coût mental: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
+En pratique, ce choix simplifie la lecture: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
 
 À l'exécution, `Granted` donne `true`, `Denied` donne `false`.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -130,27 +134,27 @@ entry main at core/app {
 }
 ```
 
-Lecture ligne par ligne (débutant):
+Lecture simple du code:
 1. `proc run() -> int { give 0 }` : logique métier isolée dans une fonction courte.
 2. `entry main at core/app {` : orchestration uniquement, pas de logique lourde.
 3. `return run()` : relaie explicitement le résultat métier.
 4. `}` : fin nette de l’orchestration.
 
-Entrée -> sortie (à vérifier):
+Ce qu'on vérifie en pratique:
 - Cas limite: une garde explicite du bloc gère les entrées hors contrat avant le chemin nominal.
 - Cas nominal: le scénario principal se termine avec `return run()`.
 - Observation testable: exécuter le scénario permet de vérifier le code de sortie `run()`.
 
-Test mental: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
+Question utile: que se passe-t-il si l'entrée est invalide ?
+Repère: le bloc doit activer une garde explicite ou un chemin de secours déterministe.
 
 L'intention de cette étape est directe: Orchestration séparée du métier.
 
-Dans une lecture de production, ce choix réduit le coût mental: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
+En pratique, ce choix simplifie la lecture: on voit immédiatement ce qui est garanti, ce qui est refusé, et où la décision est prise.
 
 À l'exécution, `run` est appelee, puis code retourne.
 
-Erreurs fréquentes à éviter:
+Erreurs classiques à éviter:
 - accumuler des cas spéciaux sans clarifier l'intention.
 - introduire de la complexité avant de stabiliser le comportement.
 - laisser des décisions implicites qui freinent la relecture.
@@ -162,7 +166,7 @@ Erreurs explicites, états modelises, orchestration séparée. Ce chapitre doit 
 ## Test mental
 
 Question: que se passe-t-il si l'entrée est invalide ?
-Réponse attendue: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
+Repère: une garde explicite ou un chemin de secours déterministe doit s'appliquer.
 ## À faire
 
 1. Reprenez un exemple du chapitre et modifiez une condition de garde pour observer un comportement différent.
@@ -187,58 +191,3 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 - `book/keywords/case.md`.
 - `book/keywords/continue.md`.
 - `book/keywords/entry.md`.
-
-## Objectif
-Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.
-
-## Exemple
-Exemple concret: partir d'une entrée simple, appliquer une transformation, puis observer la sortie attendue.
-
-## Pourquoi
-Ce bloc existe pour relier la syntaxe à l'intention métier, réduire les ambiguïtés et préparer les tests.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
-
-## Exemples représentatifs basés sur le code du chapitre
-
-Thème: **philosophie du langage**. Cette section évite les généralités et part d'un extrait réel.
-
-### Exemple A: lecture exécutable du snippet principal
-
-```vit
-proc safe_div(num: int, den: int) -> int {
-  if den == 0 { give 0 }
-  give num / den
-}
-```
-
-Lecture ligne par ligne:
-1. `proc safe_div(num: int, den: int) -> int {` -> pose un contrat clair de fonction.
-2. `if den == 0 { give 0 }` -> sépare nominal et cas limite.
-3. `give num / den` -> renvoie la sortie vérifiable.
-4. `}` -> participe au déroulé du traitement.
-
-### Exemple B: variante cas limite (même intention, comportement sécurisé)
-
-Objectif: conserver la logique métier tout en ajoutant une garde explicite.
-
-Étapes:
-1. Identifier la ligne qui décide la sortie.
-2. Ajouter une garde avant cette ligne.
-3. Vérifier la nouvelle sortie sur une entrée limite.
-
-### Exemple C: bug reproductible puis correction locale
-
-Procédure:
-1. Introduire une incompatibilité de type sur un appel.
-2. Compiler et lire le premier diagnostic.
-3. Corriger une seule ligne (pas de refactor global).
-4. Recompiler et vérifier le retour nominal.
-
-### Résultat attendu
-
-- Le lecteur comprend ce que fait le code sans abstraction inutile.
-- Chaque exemple est relié à une action concrète.
-- La correction est reproductible et testable.
-
-<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
