@@ -937,6 +937,14 @@ release-modules-gate: modules-ci-strict modules-contract-snapshots modules-repor
 reports-index:
 	@python3 tools/reports_index.py
 
+.PHONY: test-map
+test-map:
+	@python3 tools/generate_test_map.py
+
+.PHONY: package-index
+package-index:
+	@python3 tools/generate_package_index.py
+
 .PHONY: platon-editor
 platon-editor:
 	@./bin/vitte build platon-editor/editor_core.vit -o platon-editor/editor_core
@@ -1035,6 +1043,8 @@ help:
 	@echo "  make release-check run build + core-release-gate + ci-fast + ci-completions + pkg build"
 	@echo "  make release-doctor run the snapshot/release readiness report suite"
 	@echo "  make reports-index build target/reports/index.json (unified reports registry)"
+	@echo "  make test-map generate docs/TEST_MAP.md from the tests tree"
+	@echo "  make package-index generate docs/PACKAGE_INDEX.md from package metadata"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
 	@echo "  make vittec-kernel build target/kernel-tools/vittec-kernel (no curl runtime)"

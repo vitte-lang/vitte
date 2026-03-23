@@ -18,7 +18,9 @@ Use it to find the shortest path to the document you actually need.
 - `docs/PROJECT_HEALTH.md`: current health summary, credible platforms, and risk zones
 - `docs/PERFORMANCE.md`: baseline performance policy and recommended tracked metrics
 - `docs/PACKAGE_MATURITY.md`: package-family maturity levels and promotion rules
+- `docs/PACKAGE_INDEX.md`: generated package-family map across facades, metadata, and docs
 - `docs/COMPATIBILITY_POLICY.md`: compatibility expectations across commands, diagnostics, packages, and internals
+- `docs/MACHINE_READABLE_OUTPUTS.md`: rules for stable JSON/report outputs
 - `docs/PLATFORM_MATRIX.md`: credible versus experimental platform paths
 - `docs/KNOWN_LIMITATIONS.md`: explicit current caveats
 - `docs/DEPRECATION_POLICY.md`: minimum deprecation flow
@@ -41,6 +43,7 @@ Use it to find the shortest path to the document you actually need.
 - `docs/DEBUGGING_COMPILER.md`
 - `docs/WHERE_TO_PATCH_WHAT.md`
 - `docs/TEST_STRATEGY.md`
+- `docs/TEST_MAP.md`
 - `docs/MAKE_TARGETS.md`
 - `docs/TROUBLESHOOTING.md`
 - `docs/CI_WORKFLOWS.md`
@@ -78,6 +81,7 @@ API indexes:
 - `docs/alerts_patterns.md`
 - `docs/alloc_patterns.md`
 - `docs/core_facade_symbols.md`
+- `docs/GOOD_FIRST_ISSUES.md`
 - `docs/generated/std_api.generated.md`
 
 ## Maintenance Rule

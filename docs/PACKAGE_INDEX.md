@@ -1,0 +1,141 @@
+# Package Index
+
+This file maps package families to their main repository anchors.
+
+Use `docs/PACKAGE_MATURITY.md` for the maturity policy.
+Use this file when you need the practical index of facades, metadata, docs, and API pages.
+
+| Package | Default maturity | Facade | Metadata | Owners | Docs | API index |
+| --- | --- | --- | --- | --- | --- | --- |
+| `abi` | `internal-by-default` | `src/vitte/packages/abi/mod.vit` | `src/vitte/packages/abi/info.vit` | `src/vitte/packages/abi/OWNERS` | `-` | `-` |
+| `actor` | `internal-by-default` | `src/vitte/packages/actor/mod.vit` | `src/vitte/packages/actor/info.vit` | `src/vitte/packages/actor/OWNERS` | `-` | `-` |
+| `alerts` | `internal-by-default` | `src/vitte/packages/alerts/mod.vit` | `src/vitte/packages/alerts/info.vit` | `src/vitte/packages/alerts/OWNERS` | `-` | `-` |
+| `alloc` | `internal-by-default` | `src/vitte/packages/alloc/mod.vit` | `src/vitte/packages/alloc/info.vit` | `src/vitte/packages/alloc/OWNERS` | `-` | `-` |
+| `arduino` | `internal-by-default` | `src/vitte/packages/arduino/mod.vit` | `src/vitte/packages/arduino/info.vit` | `src/vitte/packages/arduino/OWNERS` | `-` | `-` |
+| `array` | `internal-by-default` | `src/vitte/packages/array/mod.vit` | `src/vitte/packages/array/info.vit` | `src/vitte/packages/array/OWNERS` | `-` | `-` |
+| `ast` | `internal-by-default` | `src/vitte/packages/ast/mod.vit` | `src/vitte/packages/ast/info.vit` | `src/vitte/packages/ast/OWNERS` | `-` | `-` |
+| `async` | `internal-by-default` | `src/vitte/packages/async/mod.vit` | `src/vitte/packages/async/info.vit` | `src/vitte/packages/async/OWNERS` | `-` | `-` |
+| `audio` | `internal-by-default` | `src/vitte/packages/audio/mod.vit` | `src/vitte/packages/audio/info.vit` | `src/vitte/packages/audio/OWNERS` | `-` | `-` |
+| `audit` | `internal-by-default` | `src/vitte/packages/audit/mod.vit` | `src/vitte/packages/audit/info.vit` | `src/vitte/packages/audit/OWNERS` | `-` | `-` |
+| `auth` | `internal-by-default` | `src/vitte/packages/auth/mod.vit` | `src/vitte/packages/auth/info.vit` | `src/vitte/packages/auth/OWNERS` | `-` | `-` |
+| `bench` | `internal-by-default` | `src/vitte/packages/bench/mod.vit` | `src/vitte/packages/bench/info.vit` | `src/vitte/packages/bench/OWNERS` | `-` | `-` |
+| `benchkit` | `internal-by-default` | `src/vitte/packages/benchkit/mod.vit` | `src/vitte/packages/benchkit/info.vit` | `src/vitte/packages/benchkit/OWNERS` | `-` | `-` |
+| `borrow` | `internal-by-default` | `src/vitte/packages/borrow/mod.vit` | `src/vitte/packages/borrow/info.vit` | `src/vitte/packages/borrow/OWNERS` | `-` | `-` |
+| `bridge` | `internal-by-default` | `src/vitte/packages/bridge/mod.vit` | `src/vitte/packages/bridge/info.vit` | `src/vitte/packages/bridge/OWNERS` | `-` | `-` |
+| `bulkhead` | `internal-by-default` | `src/vitte/packages/bulkhead/mod.vit` | `src/vitte/packages/bulkhead/info.vit` | `src/vitte/packages/bulkhead/OWNERS` | `-` | `-` |
+| `cache` | `internal-by-default` | `src/vitte/packages/cache/mod.vit` | `src/vitte/packages/cache/info.vit` | `src/vitte/packages/cache/OWNERS` | `-` | `-` |
+| `catalog` | `internal-by-default` | `src/vitte/packages/catalog/mod.vit` | `src/vitte/packages/catalog/info.vit` | `src/vitte/packages/catalog/OWNERS` | `-` | `-` |
+| `channel` | `internal-by-default` | `src/vitte/packages/channel/mod.vit` | `src/vitte/packages/channel/info.vit` | `src/vitte/packages/channel/OWNERS` | `-` | `-` |
+| `circuit_breaker` | `internal-by-default` | `src/vitte/packages/circuit_breaker/mod.vit` | `src/vitte/packages/circuit_breaker/info.vit` | `src/vitte/packages/circuit_breaker/OWNERS` | `-` | `-` |
+| `cli` | `internal-by-default` | `src/vitte/packages/cli/mod.vit` | `src/vitte/packages/cli/info.vit` | `src/vitte/packages/cli/OWNERS` | `-` | `-` |
+| `codec` | `internal-by-default` | `src/vitte/packages/codec/mod.vit` | `src/vitte/packages/codec/info.vit` | `src/vitte/packages/codec/OWNERS` | `-` | `-` |
+| `codegen` | `internal-by-default` | `src/vitte/packages/codegen/mod.vit` | `src/vitte/packages/codegen/info.vit` | `src/vitte/packages/codegen/OWNERS` | `-` | `-` |
+| `collections` | `internal-by-default` | `src/vitte/packages/collections/mod.vit` | `src/vitte/packages/collections/info.vit` | `src/vitte/packages/collections/OWNERS` | `-` | `-` |
+| `config` | `internal-by-default` | `src/vitte/packages/config/mod.vit` | `src/vitte/packages/config/info.vit` | `src/vitte/packages/config/OWNERS` | `-` | `-` |
+| `config_derive` | `internal-by-default` | `src/vitte/packages/config_derive/mod.vit` | `src/vitte/packages/config_derive/info.vit` | `src/vitte/packages/config_derive/OWNERS` | `-` | `-` |
+| `const_eval` | `internal-by-default` | `src/vitte/packages/const_eval/mod.vit` | `src/vitte/packages/const_eval/info.vit` | `src/vitte/packages/const_eval/OWNERS` | `-` | `-` |
+| `contracts` | `internal-by-default` | `src/vitte/packages/contracts/mod.vit` | `src/vitte/packages/contracts/info.vit` | `src/vitte/packages/contracts/OWNERS` | `-` | `-` |
+| `contracts_registry` | `internal-by-default` | `src/vitte/packages/contracts_registry/mod.vit` | `src/vitte/packages/contracts_registry/info.vit` | `src/vitte/packages/contracts_registry/OWNERS` | `-` | `-` |
+| `core` | `internal-by-default` | `src/vitte/packages/core/mod.vit` | `src/vitte/packages/core/info.vit` | `src/vitte/packages/core/OWNERS` | `-` | `-` |
+| `crypto` | `internal-by-default` | `src/vitte/packages/crypto/mod.vit` | `src/vitte/packages/crypto/info.vit` | `src/vitte/packages/crypto/OWNERS` | `-` | `-` |
+| `data` | `internal-by-default` | `src/vitte/packages/data/mod.vit` | `src/vitte/packages/data/info.vit` | `src/vitte/packages/data/OWNERS` | `-` | `-` |
+| `datetime` | `internal-by-default` | `src/vitte/packages/datetime/mod.vit` | `src/vitte/packages/datetime/info.vit` | `src/vitte/packages/datetime/OWNERS` | `-` | `-` |
+| `db` | `documented-experimental` | `src/vitte/packages/db/mod.vit` | `src/vitte/packages/db/info.vit` | `src/vitte/packages/db/OWNERS` | `docs/db/README.md` | `docs/db/API_INDEX.md` |
+| `doc` | `internal-by-default` | `src/vitte/packages/doc/mod.vit` | `src/vitte/packages/doc/info.vit` | `src/vitte/packages/doc/OWNERS` | `-` | `-` |
+| `docsgen_modules` | `internal-by-default` | `src/vitte/packages/docsgen_modules/mod.vit` | `src/vitte/packages/docsgen_modules/info.vit` | `src/vitte/packages/docsgen_modules/OWNERS` | `-` | `-` |
+| `ecs` | `internal-by-default` | `src/vitte/packages/ecs/mod.vit` | `src/vitte/packages/ecs/info.vit` | `src/vitte/packages/ecs/OWNERS` | `-` | `-` |
+| `env` | `internal-by-default` | `src/vitte/packages/env/mod.vit` | `src/vitte/packages/env/info.vit` | `src/vitte/packages/env/OWNERS` | `-` | `-` |
+| `eval` | `internal-by-default` | `src/vitte/packages/eval/mod.vit` | `src/vitte/packages/eval/info.vit` | `src/vitte/packages/eval/OWNERS` | `-` | `-` |
+| `event_bus` | `internal-by-default` | `src/vitte/packages/event_bus/mod.vit` | `src/vitte/packages/event_bus/info.vit` | `src/vitte/packages/event_bus/OWNERS` | `-` | `-` |
+| `feature_flags` | `internal-by-default` | `src/vitte/packages/feature_flags/mod.vit` | `src/vitte/packages/feature_flags/info.vit` | `src/vitte/packages/feature_flags/OWNERS` | `-` | `-` |
+| `ffi` | `internal-by-default` | `src/vitte/packages/ffi/mod.vit` | `src/vitte/packages/ffi/info.vit` | `src/vitte/packages/ffi/OWNERS` | `-` | `-` |
+| `fixtures` | `internal-by-default` | `src/vitte/packages/fixtures/mod.vit` | `src/vitte/packages/fixtures/info.vit` | `src/vitte/packages/fixtures/OWNERS` | `-` | `-` |
+| `fs` | `documented-experimental` | `src/vitte/packages/fs/mod.vit` | `src/vitte/packages/fs/info.vit` | `src/vitte/packages/fs/OWNERS` | `docs/fs/README.md` | `docs/fs/API_INDEX.md` |
+| `fuzzkit` | `internal-by-default` | `src/vitte/packages/fuzzkit/mod.vit` | `src/vitte/packages/fuzzkit/info.vit` | `src/vitte/packages/fuzzkit/OWNERS` | `-` | `-` |
+| `graph` | `internal-by-default` | `src/vitte/packages/graph/mod.vit` | `src/vitte/packages/graph/info.vit` | `src/vitte/packages/graph/OWNERS` | `-` | `-` |
+| `gui` | `internal-by-default` | `src/vitte/packages/gui/mod.vit` | `src/vitte/packages/gui/info.vit` | `src/vitte/packages/gui/OWNERS` | `-` | `-` |
+| `hash` | `internal-by-default` | `src/vitte/packages/hash/mod.vit` | `src/vitte/packages/hash/info.vit` | `src/vitte/packages/hash/OWNERS` | `-` | `-` |
+| `health` | `internal-by-default` | `src/vitte/packages/health/mod.vit` | `src/vitte/packages/health/info.vit` | `src/vitte/packages/health/OWNERS` | `-` | `-` |
+| `hir` | `internal-by-default` | `src/vitte/packages/hir/mod.vit` | `src/vitte/packages/hir/info.vit` | `src/vitte/packages/hir/OWNERS` | `-` | `-` |
+| `http` | `documented-experimental` | `src/vitte/packages/http/mod.vit` | `src/vitte/packages/http/info.vit` | `src/vitte/packages/http/OWNERS` | `docs/http/README.md` | `docs/http/API_INDEX.md` |
+| `http_client` | `documented-experimental` | `src/vitte/packages/http_client/mod.vit` | `src/vitte/packages/http_client/info.vit` | `src/vitte/packages/http_client/OWNERS` | `docs/http_client/README.md` | `docs/http_client/API_INDEX.md` |
+| `idempotency` | `internal-by-default` | `src/vitte/packages/idempotency/mod.vit` | `src/vitte/packages/idempotency/info.vit` | `src/vitte/packages/idempotency/OWNERS` | `-` | `-` |
+| `image` | `internal-by-default` | `src/vitte/packages/image/mod.vit` | `src/vitte/packages/image/info.vit` | `src/vitte/packages/image/OWNERS` | `-` | `-` |
+| `indexmap` | `internal-by-default` | `src/vitte/packages/indexmap/mod.vit` | `src/vitte/packages/indexmap/info.vit` | `src/vitte/packages/indexmap/OWNERS` | `-` | `-` |
+| `io` | `internal-by-default` | `src/vitte/packages/io/mod.vit` | `src/vitte/packages/io/info.vit` | `src/vitte/packages/io/OWNERS` | `-` | `-` |
+| `jobs` | `internal-by-default` | `src/vitte/packages/jobs/mod.vit` | `src/vitte/packages/jobs/info.vit` | `src/vitte/packages/jobs/OWNERS` | `-` | `-` |
+| `json` | `documented-experimental` | `src/vitte/packages/json/mod.vit` | `src/vitte/packages/json/info.vit` | `src/vitte/packages/json/OWNERS` | `-` | `docs/json/API_INDEX.md` |
+| `jsonpath` | `internal-by-default` | `src/vitte/packages/jsonpath/mod.vit` | `src/vitte/packages/jsonpath/info.vit` | `src/vitte/packages/jsonpath/OWNERS` | `-` | `-` |
+| `jwt` | `internal-by-default` | `src/vitte/packages/jwt/mod.vit` | `src/vitte/packages/jwt/info.vit` | `src/vitte/packages/jwt/OWNERS` | `-` | `-` |
+| `kernel` | `internal-by-default` | `src/vitte/packages/kernel/mod.vit` | `src/vitte/packages/kernel/info.vit` | `src/vitte/packages/kernel/OWNERS` | `-` | `-` |
+| `kv` | `internal-by-default` | `src/vitte/packages/kv/mod.vit` | `src/vitte/packages/kv/info.vit` | `src/vitte/packages/kv/OWNERS` | `-` | `-` |
+| `lint` | `documented-experimental` | `src/vitte/packages/lint/mod.vit` | `src/vitte/packages/lint/info.vit` | `src/vitte/packages/lint/OWNERS` | `-` | `docs/lint/API_INDEX.md` |
+| `lock` | `internal-by-default` | `src/vitte/packages/lock/mod.vit` | `src/vitte/packages/lock/info.vit` | `src/vitte/packages/lock/OWNERS` | `-` | `-` |
+| `log` | `documented-experimental` | `src/vitte/packages/log/mod.vit` | `src/vitte/packages/log/info.vit` | `src/vitte/packages/log/OWNERS` | `docs/log/README.md` | `docs/log/API_INDEX.md` |
+| `lru` | `internal-by-default` | `src/vitte/packages/lru/mod.vit` | `src/vitte/packages/lru/info.vit` | `src/vitte/packages/lru/OWNERS` | `-` | `-` |
+| `lsp` | `internal-by-default` | `src/vitte/packages/lsp/mod.vit` | `src/vitte/packages/lsp/info.vit` | `src/vitte/packages/lsp/OWNERS` | `-` | `-` |
+| `macros` | `internal-by-default` | `src/vitte/packages/macros/mod.vit` | `src/vitte/packages/macros/info.vit` | `src/vitte/packages/macros/OWNERS` | `-` | `-` |
+| `math` | `internal-by-default` | `src/vitte/packages/math/mod.vit` | `src/vitte/packages/math/info.vit` | `src/vitte/packages/math/OWNERS` | `-` | `-` |
+| `migrate` | `internal-by-default` | `src/vitte/packages/migrate/mod.vit` | `src/vitte/packages/migrate/info.vit` | `src/vitte/packages/migrate/OWNERS` | `-` | `-` |
+| `migration_playbook` | `internal-by-default` | `src/vitte/packages/migration_playbook/mod.vit` | `src/vitte/packages/migration_playbook/info.vit` | `src/vitte/packages/migration_playbook/OWNERS` | `-` | `-` |
+| `mir` | `internal-by-default` | `src/vitte/packages/mir/mod.vit` | `src/vitte/packages/mir/info.vit` | `src/vitte/packages/mir/OWNERS` | `-` | `-` |
+| `ml` | `internal-by-default` | `src/vitte/packages/ml/mod.vit` | `src/vitte/packages/ml/info.vit` | `src/vitte/packages/ml/OWNERS` | `-` | `-` |
+| `mock_http` | `internal-by-default` | `src/vitte/packages/mock_http/mod.vit` | `src/vitte/packages/mock_http/info.vit` | `src/vitte/packages/mock_http/OWNERS` | `-` | `-` |
+| `module_index` | `internal-by-default` | `src/vitte/packages/module_index/mod.vit` | `src/vitte/packages/module_index/info.vit` | `src/vitte/packages/module_index/OWNERS` | `-` | `-` |
+| `monomorphize` | `internal-by-default` | `src/vitte/packages/monomorphize/mod.vit` | `src/vitte/packages/monomorphize/info.vit` | `src/vitte/packages/monomorphize/OWNERS` | `-` | `-` |
+| `net` | `internal-by-default` | `src/vitte/packages/net/mod.vit` | `src/vitte/packages/net/info.vit` | `src/vitte/packages/net/OWNERS` | `-` | `-` |
+| `observability` | `internal-by-default` | `src/vitte/packages/observability/mod.vit` | `src/vitte/packages/observability/info.vit` | `src/vitte/packages/observability/OWNERS` | `-` | `-` |
+| `openapi` | `internal-by-default` | `src/vitte/packages/openapi/mod.vit` | `src/vitte/packages/openapi/info.vit` | `src/vitte/packages/openapi/OWNERS` | `-` | `-` |
+| `orm` | `internal-by-default` | `src/vitte/packages/orm/mod.vit` | `src/vitte/packages/orm/info.vit` | `src/vitte/packages/orm/OWNERS` | `-` | `-` |
+| `outbox` | `internal-by-default` | `src/vitte/packages/outbox/mod.vit` | `src/vitte/packages/outbox/info.vit` | `src/vitte/packages/outbox/OWNERS` | `-` | `-` |
+| `pack` | `internal-by-default` | `src/vitte/packages/pack/mod.vit` | `src/vitte/packages/pack/info.vit` | `src/vitte/packages/pack/OWNERS` | `-` | `-` |
+| `pagination` | `internal-by-default` | `src/vitte/packages/pagination/mod.vit` | `src/vitte/packages/pagination/info.vit` | `src/vitte/packages/pagination/OWNERS` | `-` | `-` |
+| `pathlib` | `internal-by-default` | `src/vitte/packages/pathlib/mod.vit` | `src/vitte/packages/pathlib/info.vit` | `src/vitte/packages/pathlib/OWNERS` | `-` | `-` |
+| `pickle` | `internal-by-default` | `src/vitte/packages/pickle/mod.vit` | `src/vitte/packages/pickle/info.vit` | `src/vitte/packages/pickle/OWNERS` | `-` | `-` |
+| `platform` | `internal-by-default` | `src/vitte/packages/platform/mod.vit` | `src/vitte/packages/platform/info.vit` | `src/vitte/packages/platform/OWNERS` | `-` | `-` |
+| `plot` | `internal-by-default` | `src/vitte/packages/plot/mod.vit` | `src/vitte/packages/plot/info.vit` | `src/vitte/packages/plot/OWNERS` | `-` | `-` |
+| `plugin` | `internal-by-default` | `src/vitte/packages/plugin/mod.vit` | `src/vitte/packages/plugin/info.vit` | `src/vitte/packages/plugin/OWNERS` | `-` | `-` |
+| `policy` | `internal-by-default` | `src/vitte/packages/policy/mod.vit` | `src/vitte/packages/policy/info.vit` | `src/vitte/packages/policy/OWNERS` | `-` | `-` |
+| `process` | `documented-experimental` | `src/vitte/packages/process/mod.vit` | `src/vitte/packages/process/info.vit` | `src/vitte/packages/process/OWNERS` | `docs/process/README.md` | `docs/process/API_INDEX.md` |
+| `queue` | `internal-by-default` | `src/vitte/packages/queue/mod.vit` | `src/vitte/packages/queue/info.vit` | `src/vitte/packages/queue/OWNERS` | `-` | `-` |
+| `random_secure` | `internal-by-default` | `src/vitte/packages/random_secure/mod.vit` | `src/vitte/packages/random_secure/info.vit` | `src/vitte/packages/random_secure/OWNERS` | `-` | `-` |
+| `rate_limit` | `internal-by-default` | `src/vitte/packages/rate_limit/mod.vit` | `src/vitte/packages/rate_limit/info.vit` | `src/vitte/packages/rate_limit/OWNERS` | `-` | `-` |
+| `reflect` | `internal-by-default` | `src/vitte/packages/reflect/mod.vit` | `src/vitte/packages/reflect/info.vit` | `src/vitte/packages/reflect/OWNERS` | `-` | `-` |
+| `registry` | `internal-by-default` | `src/vitte/packages/registry/mod.vit` | `src/vitte/packages/registry/info.vit` | `src/vitte/packages/registry/OWNERS` | `-` | `-` |
+| `release_guard` | `internal-by-default` | `src/vitte/packages/release_guard/mod.vit` | `src/vitte/packages/release_guard/info.vit` | `src/vitte/packages/release_guard/OWNERS` | `-` | `-` |
+| `requests` | `internal-by-default` | `src/vitte/packages/requests/mod.vit` | `src/vitte/packages/requests/info.vit` | `src/vitte/packages/requests/OWNERS` | `-` | `-` |
+| `retry` | `internal-by-default` | `src/vitte/packages/retry/mod.vit` | `src/vitte/packages/retry/info.vit` | `src/vitte/packages/retry/OWNERS` | `-` | `-` |
+| `rope` | `internal-by-default` | `src/vitte/packages/rope/mod.vit` | `src/vitte/packages/rope/info.vit` | `src/vitte/packages/rope/OWNERS` | `-` | `-` |
+| `runtime` | `internal-by-default` | `src/vitte/packages/runtime/mod.vit` | `src/vitte/packages/runtime/info.vit` | `src/vitte/packages/runtime/OWNERS` | `-` | `-` |
+| `saga` | `internal-by-default` | `src/vitte/packages/saga/mod.vit` | `src/vitte/packages/saga/info.vit` | `src/vitte/packages/saga/OWNERS` | `-` | `-` |
+| `scheduler` | `internal-by-default` | `src/vitte/packages/scheduler/mod.vit` | `src/vitte/packages/scheduler/info.vit` | `src/vitte/packages/scheduler/OWNERS` | `-` | `-` |
+| `schema_registry` | `internal-by-default` | `src/vitte/packages/schema_registry/mod.vit` | `src/vitte/packages/schema_registry/info.vit` | `src/vitte/packages/schema_registry/OWNERS` | `-` | `-` |
+| `search` | `internal-by-default` | `src/vitte/packages/search/mod.vit` | `src/vitte/packages/search/info.vit` | `src/vitte/packages/search/OWNERS` | `-` | `-` |
+| `secrets` | `internal-by-default` | `src/vitte/packages/secrets/mod.vit` | `src/vitte/packages/secrets/info.vit` | `src/vitte/packages/secrets/OWNERS` | `-` | `-` |
+| `serialize` | `internal-by-default` | `src/vitte/packages/serialize/mod.vit` | `src/vitte/packages/serialize/info.vit` | `src/vitte/packages/serialize/OWNERS` | `-` | `-` |
+| `shell` | `internal-by-default` | `src/vitte/packages/shell/mod.vit` | `src/vitte/packages/shell/info.vit` | `src/vitte/packages/shell/OWNERS` | `-` | `-` |
+| `slab` | `internal-by-default` | `src/vitte/packages/slab/mod.vit` | `src/vitte/packages/slab/info.vit` | `src/vitte/packages/slab/OWNERS` | `-` | `-` |
+| `slo` | `internal-by-default` | `src/vitte/packages/slo/mod.vit` | `src/vitte/packages/slo/info.vit` | `src/vitte/packages/slo/OWNERS` | `-` | `-` |
+| `sql` | `internal-by-default` | `src/vitte/packages/sql/mod.vit` | `src/vitte/packages/sql/info.vit` | `src/vitte/packages/sql/OWNERS` | `-` | `-` |
+| `stats` | `internal-by-default` | `src/vitte/packages/stats/mod.vit` | `src/vitte/packages/stats/info.vit` | `src/vitte/packages/stats/OWNERS` | `-` | `-` |
+| `std` | `documented-experimental` | `src/vitte/packages/std/mod.vit` | `src/vitte/packages/std/info.vit` | `src/vitte/packages/std/OWNERS` | `docs/std/README.md` | `docs/std/API_INDEX.md` |
+| `stream` | `internal-by-default` | `src/vitte/packages/stream/mod.vit` | `src/vitte/packages/stream/info.vit` | `src/vitte/packages/stream/OWNERS` | `-` | `-` |
+| `subprocess` | `internal-by-default` | `src/vitte/packages/subprocess/mod.vit` | `src/vitte/packages/subprocess/info.vit` | `src/vitte/packages/subprocess/OWNERS` | `-` | `-` |
+| `sync` | `internal-by-default` | `src/vitte/packages/sync/mod.vit` | `src/vitte/packages/sync/info.vit` | `src/vitte/packages/sync/OWNERS` | `-` | `-` |
+| `template` | `internal-by-default` | `src/vitte/packages/template/mod.vit` | `src/vitte/packages/template/info.vit` | `src/vitte/packages/template/OWNERS` | `-` | `-` |
+| `tenant` | `internal-by-default` | `src/vitte/packages/tenant/mod.vit` | `src/vitte/packages/tenant/info.vit` | `src/vitte/packages/tenant/OWNERS` | `-` | `-` |
+| `test` | `documented-experimental` | `src/vitte/packages/test/mod.vit` | `src/vitte/packages/test/info.vit` | `src/vitte/packages/test/OWNERS` | `-` | `docs/test/API_INDEX.md` |
+| `testkit_modules` | `internal-by-default` | `src/vitte/packages/testkit_modules/mod.vit` | `src/vitte/packages/testkit_modules/info.vit` | `src/vitte/packages/testkit_modules/OWNERS` | `-` | `-` |
+| `timeout` | `internal-by-default` | `src/vitte/packages/timeout/mod.vit` | `src/vitte/packages/timeout/info.vit` | `src/vitte/packages/timeout/OWNERS` | `-` | `-` |
+| `tls` | `internal-by-default` | `src/vitte/packages/tls/mod.vit` | `src/vitte/packages/tls/info.vit` | `src/vitte/packages/tls/OWNERS` | `-` | `-` |
+| `trace` | `internal-by-default` | `src/vitte/packages/trace/mod.vit` | `src/vitte/packages/trace/info.vit` | `src/vitte/packages/trace/OWNERS` | `-` | `-` |
+| `typeck` | `internal-by-default` | `src/vitte/packages/typeck/mod.vit` | `src/vitte/packages/typeck/info.vit` | `src/vitte/packages/typeck/OWNERS` | `-` | `-` |
+| `validation` | `internal-by-default` | `src/vitte/packages/validation/mod.vit` | `src/vitte/packages/validation/info.vit` | `src/vitte/packages/validation/OWNERS` | `-` | `-` |
+| `video` | `internal-by-default` | `src/vitte/packages/video/mod.vit` | `src/vitte/packages/video/info.vit` | `src/vitte/packages/video/OWNERS` | `-` | `-` |
+| `ws` | `internal-by-default` | `src/vitte/packages/ws/mod.vit` | `src/vitte/packages/ws/info.vit` | `src/vitte/packages/ws/OWNERS` | `-` | `-` |
+| `yaml` | `documented-experimental` | `src/vitte/packages/yaml/mod.vit` | `src/vitte/packages/yaml/info.vit` | `src/vitte/packages/yaml/OWNERS` | `-` | `docs/yaml/API_INDEX.md` |
+
+## Reading Rule
+
+- `documented-experimental` means visible public surface, but still expected to change unless explicitly promoted
+- `internal-by-default` means the package exists in the repository, but should not be treated as a public promise just because it is present
