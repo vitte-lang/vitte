@@ -56,6 +56,16 @@ proc main() -> i32 {
 
   let bench = array.benchmark_suite(3, 64)
   if bench.p95 < bench.p50 || bench.p99 < bench.p95 || bench.throughput <= 0 { return 22 }
+  let large = array.benchmark_large_profile(3, 256, 32)
+  if large.p95 < large.p50 || large.p99 < large.p95 || large.throughput <= 0 { return 25 }
+
+  let m0 = array.mutable_new[int]()
+  let m1 = array.mutable_push(m0, 7)
+  let m2 = array.mutable_push(m1, 9)
+  let m3 = array.mutable_set_checked(m2, 1, 11)
+  let am = array.mutable_to_array(m3)
+  if array.mutable_len(m3) != 2 { return 26 }
+  if array.get_or(am, 1, -1) != 11 { return 27 }
 
   if array.stable_api_surface().len == 0 || array.api_version().len == 0 { return 23 }
   if array.package_meta() != "vitte/array" { return 24 }

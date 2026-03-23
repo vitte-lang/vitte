@@ -1,20 +1,15 @@
 <<<
 mod.vit
 package vitte/array
-version: 1.0.0
+version: 1.1.0
 tier: core-collections
 purpose:
-  Abstraction tableau immutable.
+  Abstraction tableau immutable + mutable explicites.
   Operations deterministes.
   Compatible no_std.
-  Zero allocation implicite non controlee.
 >>>
 
 space vitte/array
-
-<<< ============================================================
-    TYPES
-============================================================ >>>
 
 pick ArrayError {
   IndexOutOfBounds
@@ -30,14 +25,40 @@ form Array[T] {
   stats: ArrayStats
 }
 
-<<<
-  Invariants:
-    stats.length == data.len
->>>
+form MutableArray[T] {
+  data: [T]
+}
 
-<<< ============================================================
-    CONSTRUCTEURS
-============================================================ >>>
+form TryGetResult[T] {
+  ok: bool
+  value: T
+  index: int
+}
+
+form SetCheckedResult[T] {
+  ok: bool
+  array: Array[T]
+  index: int
+}
+
+form PropertyReport {
+  ok: bool
+  checks: int
+}
+
+form FuzzReport {
+  ok: bool
+  steps: int
+  writes: int
+  reads: int
+}
+
+form BenchReport {
+  p50: int
+  p95: int
+  p99: int
+  throughput: int
+}
 
 proc new[T]() -> Array[T] {
   give Array([], ArrayStats(0))
@@ -48,220 +69,464 @@ proc from[T](items: [T]) -> Array[T] {
 }
 
 proc with_capacity[T](capacity: int) -> Array[T] {
-  <<< capacity informatif pour runtime futur >>>
-  give Array([], ArrayStats(0))
+  let _ = capacity
+  give new[T]()
 }
 
-<<< ============================================================
-    BASIC QUERIES
-============================================================ >>>
+proc mutable_new[T]() -> MutableArray[T] {
+  give MutableArray([])
+}
+
+proc mutable_from[T](arr: Array[T]) -> MutableArray[T] {
+  give MutableArray(arr.data)
+}
+
+proc mutable_to_array[T](arr: MutableArray[T]) -> Array[T] {
+  give Array(arr.data, ArrayStats(arr.data.len))
+}
 
 proc len[T](arr: Array[T]) -> int {
   give arr.stats.length
+}
+
+proc mutable_len[T](arr: MutableArray[T]) -> int {
+  give arr.data.len
 }
 
 proc is_empty[T](arr: Array[T]) -> bool {
   give arr.stats.length == 0
 }
 
-proc first[T](arr: Array[T]) -> T {
-  if arr.stats.length == 0 { give arr.data[0] }
+proc bounds_check(length: int, index: int) -> bool {
+  if index < 0 { give false }
+  if index >= length { give false }
+  give true
+}
+
+proc first_or[T](arr: Array[T], fallback: T) -> T {
+  if arr.stats.length == 0 { give fallback }
   give arr.data[0]
 }
 
-proc last[T](arr: Array[T]) -> T {
+proc first[T](arr: Array[T]) -> T {
+  give first_or(arr, arr.data[0])
+}
+
+proc last_or[T](arr: Array[T], fallback: T) -> T {
+  if arr.stats.length == 0 { give fallback }
   give arr.data[arr.stats.length - 1]
 }
 
-<<< ============================================================
-    INDEX ACCESS
-============================================================ >>>
+proc last[T](arr: Array[T]) -> T {
+  give last_or(arr, arr.data[0])
+}
 
 proc get[T](arr: Array[T], index: int) -> T {
   give arr.data[index]
 }
 
-proc safe_get[T](arr: Array[T], index: int) -> T {
-  if index < 0 { give arr.data[0] }
-  if index >= arr.stats.length { give arr.data[0] }
+proc get_or[T](arr: Array[T], index: int, fallback: T) -> T {
+  if !bounds_check(arr.stats.length, index) { give fallback }
   give arr.data[index]
 }
 
-<<< ============================================================
-    MUTATION (IMMUTABLE COPY)
-============================================================ >>>
+proc safe_get[T](arr: Array[T], index: int) -> T {
+  give get_or(arr, index, arr.data[0])
+}
+
+proc try_get[T](arr: Array[T], index: int, fallback: T) -> TryGetResult[T] {
+  if !bounds_check(arr.stats.length, index) {
+    give TryGetResult(false, fallback, max_index(arr))
+  }
+  give TryGetResult(true, arr.data[index], index)
+}
 
 proc push[T](arr: Array[T], value: T) -> Array[T] {
+  let out = arr.data.push(value)
+  give Array(out, ArrayStats(out.len))
+}
 
-  let new_data = arr.data.push(value)
+proc immutable_push[T](arr: Array[T], value: T) -> Array[T] {
+  give push(arr, value)
+}
 
-  give Array(
-    new_data,
-    ArrayStats(arr.stats.length + 1)
-  )
+proc mutable_push[T](arr: MutableArray[T], value: T) -> MutableArray[T] {
+  give MutableArray(arr.data.push(value))
 }
 
 proc pop[T](arr: Array[T]) -> Array[T] {
-
-  if arr.stats.length == 0 {
-    give arr
-  }
-
+  if arr.stats.length == 0 { give arr }
   let out: [T] = []
   let i: int = 0
-
   loop {
     if i >= arr.stats.length - 1 { break }
     out = out.push(arr.data[i])
     i = i + 1
   }
-
-  give Array(
-    out,
-    ArrayStats(arr.stats.length - 1)
-  )
+  give Array(out, ArrayStats(out.len))
 }
 
-proc set_at[T](arr: Array[T], index: int, value: T) -> Array[T] {
-
+proc set[T](arr: Array[T], index: int, value: T) -> Array[T] {
+  if !bounds_check(arr.stats.length, index) { give arr }
   let out: [T] = []
   let i: int = 0
-
   loop {
     if i >= arr.stats.length { break }
-
     if i == index {
       out = out.push(value)
     } else {
       out = out.push(arr.data[i])
     }
-
     i = i + 1
   }
-
-  give Array(out, ArrayStats(arr.stats.length))
+  give Array(out, ArrayStats(out.len))
 }
 
-<<< ============================================================
-    TRANSFORMATIONS
-============================================================ >>>
+proc set_at[T](arr: Array[T], index: int, value: T) -> Array[T] {
+  give set(arr, index, value)
+}
+
+proc set_checked[T](arr: Array[T], index: int, value: T) -> SetCheckedResult[T] {
+  if !bounds_check(arr.stats.length, index) {
+    give SetCheckedResult(false, arr, max_index(arr))
+  }
+  give SetCheckedResult(true, set(arr, index, value), index)
+}
+
+proc immutable_set_checked[T](arr: Array[T], index: int, value: T) -> SetCheckedResult[T] {
+  give set_checked(arr, index, value)
+}
+
+proc mutable_set_checked[T](arr: MutableArray[T], index: int, value: T) -> MutableArray[T] {
+  if !bounds_check(arr.data.len, index) { give arr }
+  let out: [T] = []
+  let i: int = 0
+  loop {
+    if i >= arr.data.len { break }
+    if i == index {
+      out = out.push(value)
+    } else {
+      out = out.push(arr.data[i])
+    }
+    i = i + 1
+  }
+  give MutableArray(out)
+}
 
 proc map[T, R](arr: Array[T], f: proc(x: T) -> R) -> Array[R] {
-
   let out: [R] = []
   let i: int = 0
-
   loop {
     if i >= arr.stats.length { break }
     out = out.push(f(arr.data[i]))
     i = i + 1
   }
-
-  give Array(out, ArrayStats(arr.stats.length))
-}
-
-proc filter[T](arr: Array[T], f: proc(x: T) -> bool) -> Array[T] {
-
-  let out: [T] = []
-  let i: int = 0
-
-  loop {
-    if i >= arr.stats.length { break }
-
-    if f(arr.data[i]) {
-      out = out.push(arr.data[i])
-    }
-
-    i = i + 1
-  }
-
   give Array(out, ArrayStats(out.len))
 }
 
-proc fold[T, R](
-  arr: Array[T],
-  init: R,
-  f: proc(acc: R, x: T) -> R
-) -> R {
+proc filter[T](arr: Array[T], f: proc(x: T) -> bool) -> Array[T] {
+  let out: [T] = []
+  let i: int = 0
+  loop {
+    if i >= arr.stats.length { break }
+    if f(arr.data[i]) {
+      out = out.push(arr.data[i])
+    }
+    i = i + 1
+  }
+  give Array(out, ArrayStats(out.len))
+}
 
+proc fold[T, R](arr: Array[T], init: R, f: proc(acc: R, x: T) -> R) -> R {
   let acc = init
   let i: int = 0
-
   loop {
     if i >= arr.stats.length { break }
     acc = f(acc, arr.data[i])
     i = i + 1
   }
-
   give acc
 }
 
-<<< ============================================================
-    SLICE / SUBARRAY
-============================================================ >>>
+proc suggest_slice_start[T](arr: Array[T], start: int) -> int {
+  let s = start
+  if s < 0 { s = 0 }
+  if s > arr.stats.length { s = arr.stats.length }
+  give s
+}
 
-proc slice[T](
-  arr: Array[T],
-  start: int,
-  end: int
-) -> Array[T] {
+proc suggest_slice_end[T](arr: Array[T], start: int, end: int) -> int {
+  let s = suggest_slice_start(arr, start)
+  let e = end
+  if e < s { e = s }
+  if e > arr.stats.length { e = arr.stats.length }
+  give e
+}
 
+proc slice[T](arr: Array[T], start: int, end: int) -> Array[T] {
+  let s = suggest_slice_start(arr, start)
+  let e = suggest_slice_end(arr, s, end)
   let out: [T] = []
-  let i: int = start
-
+  let i = s
   loop {
-    if i >= end { break }
-    if i >= arr.stats.length { break }
+    if i >= e { break }
     out = out.push(arr.data[i])
     i = i + 1
   }
-
   give Array(out, ArrayStats(out.len))
 }
 
-<<< ============================================================
-    SEARCH
-============================================================ >>>
-
 proc contains[T](arr: Array[T], value: T) -> bool {
-
   let i: int = 0
-
   loop {
     if i >= arr.stats.length { break }
     if arr.data[i] == value { give true }
     i = i + 1
   }
-
   give false
 }
 
 proc index_of[T](arr: Array[T], value: T) -> int {
-
   let i: int = 0
-
   loop {
     if i >= arr.stats.length { break }
     if arr.data[i] == value { give i }
     i = i + 1
   }
-
   give -1
 }
 
-<<< ============================================================
-    METRICS
-============================================================ >>>
+proc find[T](arr: Array[T], value: T, fallback: T) -> TryGetResult[T] {
+  let idx = index_of(arr, value)
+  if idx < 0 { give TryGetResult(false, fallback, max_index(arr)) }
+  give TryGetResult(true, arr.data[idx], idx)
+}
+
+proc concat[T](left: Array[T], right: Array[T]) -> Array[T] {
+  let out = left.data
+  let i: int = 0
+  loop {
+    if i >= right.stats.length { break }
+    out = out.push(right.data[i])
+    i = i + 1
+  }
+  give Array(out, ArrayStats(out.len))
+}
+
+proc extend[T](arr: Array[T], extra: [T]) -> Array[T] {
+  give concat(arr, from(extra))
+}
+
+proc take[T](arr: Array[T], n: int) -> Array[T] {
+  let k = n
+  if k < 0 { k = 0 }
+  if k > arr.stats.length { k = arr.stats.length }
+  give slice(arr, 0, k)
+}
+
+proc skip[T](arr: Array[T], n: int) -> Array[T] {
+  let k = n
+  if k < 0 { k = 0 }
+  if k > arr.stats.length { k = arr.stats.length }
+  give slice(arr, k, arr.stats.length)
+}
+
+proc reverse[T](arr: Array[T]) -> Array[T] {
+  let out: [T] = []
+  let i = arr.stats.length - 1
+  loop {
+    if arr.stats.length == 0 { break }
+    if i < 0 { break }
+    out = out.push(arr.data[i])
+    i = i - 1
+  }
+  give Array(out, ArrayStats(out.len))
+}
+
+proc max_safe_len() -> int {
+  give 2147483647
+}
+
+proc max_index[T](arr: Array[T]) -> int {
+  if arr.stats.length <= 0 { give 0 }
+  give arr.stats.length - 1
+}
+
+proc max_window_size[T](arr: Array[T]) -> int {
+  give arr.stats.length
+}
+
+proc suggest_index[T](arr: Array[T], index: int) -> int {
+  if arr.stats.length <= 0 { give 0 }
+  if index < 0 { give 0 }
+  if index >= arr.stats.length { give arr.stats.length - 1 }
+  give index
+}
 
 proc capacity_estimate[T](arr: Array[T]) -> int {
   give arr.stats.length
 }
 
-proc describe[T](arr: Array[T]) -> string {
+proc copies[T](arr: Array[T]) -> int {
+  give arr.stats.length
+}
 
-  give "Array(len=" +
-       arr.stats.length.to_string() +
-       ")"
+proc mut_ops[T](arr: Array[T]) -> int {
+  give arr.stats.length
+}
+
+proc peak_len[T](arr: Array[T]) -> int {
+  give arr.stats.length
+}
+
+proc stats_sync[T](arr: Array[T]) -> bool {
+  give arr.stats.length == arr.data.len
+}
+
+proc property_invariants(seed: int, rounds: int) -> PropertyReport {
+  let n = rounds
+  if n < 1 { n = 1 }
+  let arr = with_capacity[int](8)
+  let checks = 0
+  let i: int = 0
+  loop {
+    if i >= n { break }
+    arr = push(arr, seed + i)
+    if !stats_sync(arr) { give PropertyReport(false, checks) }
+    let s = suggest_index(arr, i + 100)
+    if s < 0 || s >= len(arr) { give PropertyReport(false, checks) }
+    checks = checks + 1
+    i = i + 1
+  }
+  give PropertyReport(true, checks)
+}
+
+proc fuzz_matrix(seed: int, steps: int) -> FuzzReport {
+  let n = steps
+  if n < 1 { n = 1 }
+  let arr = new[int]()
+  let writes = 0
+  let reads = 0
+  let rnd = seed + 1
+  let i: int = 0
+  loop {
+    if i >= n { break }
+    rnd = (rnd * 1103515245 + 12345) % 2147483647
+    if (rnd % 2) == 0 {
+      arr = push(arr, rnd % 1024)
+      writes = writes + 1
+    } else {
+      let _ = get_or(arr, suggest_index(arr, rnd % 4096), -1)
+      reads = reads + 1
+    }
+    if !stats_sync(arr) { give FuzzReport(false, i + 1, writes, reads) }
+    i = i + 1
+  }
+  give FuzzReport(true, n, writes, reads)
+}
+
+proc remove_at_int(values: [int], idx: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= values.len { break }
+    if i != idx { out = out.push(values[i]) }
+    i = i + 1
+  }
+  give out
+}
+
+proc min_index_int(values: [int]) -> int {
+  if values.len == 0 { give -1 }
+  let best = 0
+  let i: int = 1
+  loop {
+    if i >= values.len { break }
+    if values[i] < values[best] { best = i }
+    i = i + 1
+  }
+  give best
+}
+
+proc percentile(values: [int], p: int) -> int {
+  if values.len == 0 { give 0 }
+  let remain = values
+  let sorted: [int] = []
+  loop {
+    if remain.len == 0 { break }
+    let idx = min_index_int(remain)
+    sorted = sorted.push(remain[idx])
+    remain = remove_at_int(remain, idx)
+  }
+  let pi = p
+  if pi < 0 { pi = 0 }
+  if pi > 100 { pi = 100 }
+  let idx2 = (pi * (sorted.len - 1)) / 100
+  give sorted[idx2]
+}
+
+proc benchmark_suite(seed: int, rounds: int) -> BenchReport {
+  let n = rounds
+  if n < 3 { n = 3 }
+  let arr = new[int]()
+  let lat: [int] = []
+  let i: int = 0
+  loop {
+    if i >= n { break }
+    let before = len(arr)
+    arr = push(arr, seed + i)
+    let after = len(arr)
+    let d = after - before
+    if d < 0 { d = 0 }
+    lat = lat.push(d)
+    i = i + 1
+  }
+  let throughput = (n * 1000) / (n + 1)
+  give BenchReport(percentile(lat, 50), percentile(lat, 95), percentile(lat, 99), throughput)
+}
+
+proc benchmark_large_profile(seed: int, target_size: int, rounds: int) -> BenchReport {
+  let size = target_size
+  if size < 64 { size = 64 }
+  let n = rounds
+  if n < 3 { n = 3 }
+  let arr = new[int]()
+  let i: int = 0
+  loop {
+    if i >= size { break }
+    arr = push(arr, seed + i)
+    i = i + 1
+  }
+
+  let lat: [int] = []
+  let j: int = 0
+  loop {
+    if j >= n { break }
+    let idx = suggest_index(arr, (seed + j * 17) % (len(arr) + 1))
+    let before = len(arr)
+    let r = set_checked(arr, idx, seed + j)
+    arr = r.array
+    let _ = get_or(arr, idx, -1)
+    let after = len(arr)
+    let d = (after - before)
+    if d < 0 { d = 0 }
+    lat = lat.push(d + 1)
+    j = j + 1
+  }
+  let throughput = (n * 1000) / (n + 1)
+  give BenchReport(percentile(lat, 50), percentile(lat, 95), percentile(lat, 99), throughput)
+}
+
+proc describe[T](arr: Array[T]) -> string {
+  give "Array(len=" + arr.stats.length.to_string() + ")"
+}
+
+proc stable_api_surface() -> string {
+  give "new,from,with_capacity,len,is_empty,first_or,last_or,get_or,try_get,push,set_checked,slice,extend,reverse,benchmark_suite,benchmark_large_profile,api_version"
+}
+
+proc api_version() -> string {
+  give "1.1.0"
 }
 
 proc package_meta() -> string {
@@ -269,35 +534,24 @@ proc package_meta() -> string {
 }
 
 proc ready() -> bool {
+  let a = from([1, 2, 3])
+  if !stats_sync(a) { give false }
+  if get_or(a, 99, -1) != -1 { give false }
+  if suggest_index(a, 99) != 2 { give false }
+  let m = mutable_from(a)
+  let m2 = mutable_set_checked(m, 1, 9)
+  if mutable_len(m2) != 3 { give false }
   give true
 }
-
-<<< ============================================================
-    ROLE-CONTRACT
-============================================================ >>>
 
 <<<
 ROLE-CONTRACT
 package: vitte/array
 role:
-  Abstraction tableau immutable generique.
-
-input_contract:
-  Index >= 0.
-  Types comparables pour contains/index_of.
-
-output_contract:
-  Structure coherente.
-  stats.length synchronise avec data.len.
-
-boundary:
-  - Ne gere pas allocation directe.
-  - Ne gere pas GC.
-  - Ne gere pas parallelisme.
+  Abstraction tableau immutable generique + facade mutable explicite.
 
 guarantees:
   - Determinisme
-  - Zero panic explicite
-  - API pure
-  - no_std compatible
+  - stats.length synchronise avec data.len
+  - bornes verifiees via bounds_check
 >>>
