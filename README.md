@@ -12,6 +12,7 @@ Documentation entry points:
 
 - `docs/GETTING_STARTED.md` for the shortest path from install to first program
 - `ROADMAP.md` for current project priorities
+- `docs/README.md` for the repository doc index
 - `docs/LANGUAGE_CORE_GUARANTEES.md` for the minimum protected language promise
 
 Language maturity:
@@ -107,13 +108,14 @@ Recommended first docs in this repository:
 
 - `docs/GETTING_STARTED.md`
 - `ROADMAP.md`
+- `docs/README.md`
 - `docs/LANGUAGE_CORE.md`
 
 ### Try a file
 
 ```sh
-vitte check examples/syntax_features.vit
-vitte build examples/syntax_features.vit
+vitte check examples/first_project.vit
+vitte build examples/first_project.vit
 ```
 
 ## Install Details
@@ -183,6 +185,17 @@ entry main at core/app {
 - `give` returns a value
 - `entry` is the program entrypoint
 
+## Canonical First Project
+
+If you want one example to start from, use:
+
+```sh
+vitte check examples/first_project.vit
+vitte build examples/first_project.vit
+```
+
+This is the repository's recommended first non-trivial example.
+
 ## Design Principles
 
 - Explicitness over inference
@@ -216,6 +229,11 @@ Core language stability policy:
 - `docs/LANGUAGE_CORE_TEST_PLAN.md`
 - `docs/LANGUAGE_CORE_SURFACE.md`
 - `docs/GENERIC_CALL_SYNTAX.md`
+- `docs/PUBLIC_SURFACE.md`
+- `docs/RELEASE_POLICY.md`
+- `docs/PROJECT_HEALTH.md`
+- `docs/PERFORMANCE.md`
+- `docs/PROJECT_SURFACES.md`
 
 Current guarantee summary:
 

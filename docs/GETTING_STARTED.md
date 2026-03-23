@@ -32,11 +32,15 @@ bin/vitte
 Run:
 
 ```sh
-bin/vitte check examples/syntax_features.vit
-bin/vitte build examples/syntax_features.vit
+bin/vitte check examples/first_project.vit
+bin/vitte build examples/first_project.vit
 ```
 
 If both commands pass, your local setup is working.
+
+Recommended first example:
+
+- `examples/first_project.vit`
 
 ## 3. Read One Small Program First
 
@@ -114,6 +118,7 @@ make core-release-gate
 ## 7. Where To Go Next
 
 - `README.md` for the project overview
+- `docs/FIRST_PROJECT.md` for the canonical first example
 - `CONTRIBUTING.md` for contribution workflow
 - `ROADMAP.md` for current priorities
 - `docs/LANGUAGE_CORE.md` for core language policy

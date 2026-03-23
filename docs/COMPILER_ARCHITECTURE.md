@@ -140,6 +140,47 @@ A useful mental model:
 
 If a behavior is ambiguous, prefer fixing it in the earliest stage that can own it clearly.
 
+More normative ownership rules:
+
+### Frontend owns
+
+- grammar acceptance and rejection
+- source spans and user-facing diagnostic anchoring
+- import/module resolution behavior
+- early semantic checks that still depend on source structure
+
+Frontend should not quietly defer obvious source-level errors to later stages if they can be diagnosed deterministically here.
+
+### HIR owns
+
+- normalized high-level semantics after parsing
+- invariants needed before MIR lowering
+- validation that becomes clearer once source syntax has been normalized
+
+HIR should not re-litigate lexer or parser rules.
+
+### MIR owns
+
+- normalized control flow
+- lower-level operational shape needed by the backend
+
+MIR should not become an ad hoc dumping ground for unresolved frontend ambiguity.
+
+### Backend owns
+
+- code emission and target-oriented lowering
+- preserving established language semantics during generation
+
+Backend should not invent user-visible semantics that were never fixed earlier in the pipeline.
+
+### Driver owns
+
+- explicit command behavior
+- pass orchestration
+- pipeline assembly and end-to-end execution policy
+
+Driver should not hide stage contract changes behind convenience logic.
+
 ## How To Read The Compiler
 
 A practical reading order for new contributors:
