@@ -161,6 +161,54 @@ proc with_clock_skew(cfg: AuthConfig, clock_skew: int) -> AuthConfig {
                   auth_policy_pkg.normalize_clock_skew(clock_skew))
 }
 
+proc with_require_active(cfg: AuthConfig, require_active: bool) -> AuthConfig {
+  give AuthConfig(cfg.strict,
+                  cfg.token_ttl,
+                  require_active,
+                  cfg.allow_service,
+                  cfg.require_otp,
+                  cfg.clock_skew)
+}
+
+proc with_allow_service(cfg: AuthConfig, allow_service: bool) -> AuthConfig {
+  give AuthConfig(cfg.strict,
+                  cfg.token_ttl,
+                  cfg.require_active,
+                  allow_service,
+                  cfg.require_otp,
+                  cfg.clock_skew)
+}
+
+proc with_require_otp(cfg: AuthConfig, require_otp: bool) -> AuthConfig {
+  give AuthConfig(cfg.strict,
+                  cfg.token_ttl,
+                  cfg.require_active,
+                  cfg.allow_service,
+                  require_otp,
+                  cfg.clock_skew)
+}
+
+proc valid_otp(otp: string) -> bool {
+  if otp.len != 6 { give false }
+  let i: int = 0
+  loop {
+    if i >= otp.len { break }
+    let c = otp.slice(i, i + 1)
+    if c != "0" && c != "1" && c != "2" && c != "3" && c != "4" && c != "5" && c != "6" && c != "7" && c != "8" && c != "9" {
+      give false
+    }
+    i = i + 1
+  }
+  give true
+}
+
+proc valid_expiry_with_skew(now: int, expires_at: int, clock_skew: int) -> bool {
+  if now < 0 { give false }
+  if expires_at <= 0 { give false }
+  let skew = auth_policy_pkg.normalize_clock_skew(clock_skew)
+  give now <= (expires_at + skew)
+}
+
 proc validate_config(cfg: AuthConfig) -> AuthResult[bool] {
   if auth_validate_pkg.valid_ttl(cfg.token_ttl, auth_policy_pkg.min_token_ttl(), auth_policy_pkg.max_token_ttl()) == false {
     give AuthResult.Err(AuthError.InvalidCredentials)
@@ -194,7 +242,7 @@ proc authenticate_with_config(creds: Credentials, cfg: AuthConfig) -> Principal 
   when vr is AuthResult.Err { give principal_guest() }
 
   if cfg.require_otp {
-    if creds.otp.len == 0 { give principal_guest() }
+    if valid_otp(creds.otp) == false { give principal_guest() }
   }
 
   let p = authenticate_with(creds)
@@ -229,7 +277,11 @@ proc refresh(session: Session, now: int, ttl: int) -> Session {
 }
 
 proc refresh_with_config(session: Session, now: int, cfg: AuthConfig) -> Session {
-  give refresh(session, now, cfg.token_ttl)
+  if auth_validate_pkg.valid_token(session.token) == false { give session }
+  if cfg.require_active && !session.principal.active { give session }
+  if valid_expiry_with_skew(now, session.expires_at, cfg.clock_skew) == false { give session }
+  let t = auth_policy_pkg.normalize_token_ttl(cfg.token_ttl)
+  give Session(session.principal, session.token, now + t)
 }
 
 proc parse_token_subject(token: string) -> string {
@@ -253,9 +305,11 @@ proc validate(session: Session, now: int) -> AuthError {
 }
 
 proc validate_with_config(session: Session, now: int, cfg: AuthConfig) -> AuthError {
-  let err = validate(session, now)
-  if err != AuthError.None { give err }
+  if auth_validate_pkg.valid_token(session.token) == false { give AuthError.MissingToken }
+  if auth_validate_pkg.valid_username(session.principal.id) == false { give AuthError.InvalidCredentials }
   if cfg.require_active && session.principal.active == false { give AuthError.InvalidCredentials }
+  if valid_expiry_with_skew(now, session.expires_at, cfg.clock_skew) == false { give AuthError.Expired }
+  if !token_matches_principal(session) { give AuthError.InvalidCredentials }
   if cfg.allow_service == false && session.principal.role == AuthRole.Service { give AuthError.Forbidden }
   give AuthError.None
 }
@@ -297,6 +351,8 @@ proc decision_error(d: AccessDecision) -> AuthError {
   if d.reason == "expired" { give AuthError.Expired }
   if d.reason == "required-role" { give AuthError.Forbidden }
   if d.reason == "policy-min-role" { give AuthError.Forbidden }
+  if d.reason == "service-disallowed" { give AuthError.Forbidden }
+  if d.reason == "inactive-principal" { give AuthError.Forbidden }
   give AuthError.InvalidCredentials
 }
 
@@ -377,7 +433,7 @@ proc api_version() -> string {
 }
 
 proc stable_api_surface() -> string {
-  give "default_config,strict_config,with_token_ttl,with_clock_skew,validate_config,authenticate,authenticate_with,authenticate_with_config,issue_token,issue_token_with_config,refresh,refresh_with_config,parse_token_subject,token_matches_principal,validate,validate_with_config,can_access,decide_access,decide_access_with_config,decision_error,revoke,auth_runtime_info,auth_health,healthcheck,stable_api_surface_hash,api_version,ready,package_meta"
+  give "default_config,strict_config,with_token_ttl,with_clock_skew,with_require_active,with_allow_service,with_require_otp,valid_otp,valid_expiry_with_skew,validate_config,authenticate,authenticate_with,authenticate_with_config,issue_token,issue_token_with_config,refresh,refresh_with_config,parse_token_subject,token_matches_principal,validate,validate_with_config,can_access,decide_access,decide_access_with_config,decision_error,revoke,auth_runtime_info,auth_health,healthcheck,stable_api_surface_hash,api_version,ready,package_meta"
 }
 
 proc stable_api_surface_hash() -> int {
