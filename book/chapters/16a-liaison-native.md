@@ -2,7 +2,7 @@
 
 Niveau: Intermédiaire.
 
-Prérequis: chapitre précédent `docs/book/chapters/16-interop.md` et `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/16-interop.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/17-stdlib.md`, `book/chapters/23-projet-sys.md`, `book/chapters/30-faq.md`.
 
 ## Pourquoi
@@ -54,11 +54,11 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 
 ## Keywords à revoir
 
-- `docs/book/keywords/use.md`.
-- `docs/book/keywords/proc.md`.
-- `docs/book/keywords/entry.md`.
-- `docs/book/keywords/give.md`.
-- `docs/book/keywords/return.md`.
+- `book/keywords/use.md`.
+- `book/keywords/proc.md`.
+- `book/keywords/entry.md`.
+- `book/keywords/give.md`.
+- `book/keywords/return.md`.
 
 ## Objectif
 

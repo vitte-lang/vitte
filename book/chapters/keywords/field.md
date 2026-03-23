@@ -59,12 +59,6 @@ Diagnostic attendu:
 - Position: `ligne 1, colonne 1` (ajustez selon le snippet réel).
 - Message: motif stable orienté correction.
 
-## Différences proches
-
-| Mot-clé | Différence opérationnelle |
-| --- | --- |
-| `form` | `form` déclare le conteneur; `field` déclare un champ legacy. |
-
 ## Refactor rapide
 
 Avant:
@@ -104,16 +98,16 @@ Après:
 
 ## Utilisé dans les chapitres
 
-- `docs/book/chapters/07-controle.md`.
-- `docs/book/chapters/27-grammaire.md`.
-- `docs/book/chapters/31-erreurs-build.md`.
+- `book/chapters/07-controle.md`.
+- `book/chapters/27-grammaire.md`.
+- `book/chapters/31-erreurs-build.md`.
 
 ## Voir aussi
 
-- `docs/book/keywords/erreurs-compilateur.md`.
-- `docs/book/keywords/form.md`.
-- `docs/book/keywords/trait.md`.
-- `docs/book/chapters/27-grammaire.md`.
+- `book/keywords/erreurs-compilateur.md`.
+- `book/keywords/form.md`.
+- `book/keywords/trait.md`.
+- `book/chapters/27-grammaire.md`.
 
 ## Score de complétude
 

@@ -2,8 +2,8 @@
 
 Niveau: Avancé
 
-Prérequis: chapitre précédent `docs/book/chapters/22-projet-http.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/22-projet-http.md`, `docs/book/chapters/24-projet-kv.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/22-projet-http.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/22-projet-http.md`, `book/chapters/24-projet-kv.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -55,7 +55,7 @@ Ce chapitre poursuit un objectif clair: construire un noyau système Vitte qui r
 
 L'enjeu n'est pas de « faire marcher » une instruction machine, mais de conserver des invariants lisibles dans tout le flux. En code système, la lisibilité n'est pas un luxe: c'est une mesure de sécurité.
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `book/checklist-editoriale.md`. Complément: `book/erreurs-classiques.md`.
 
 Schéma pipeline du chapitre:
 - Entrée: données initiales ou requête.
@@ -545,11 +545,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/asm.md`.
-- `docs/book/keywords/at.md`.
-- `docs/book/keywords/bool.md`.
-- `docs/book/keywords/break.md`.
-- `docs/book/keywords/case.md`.
+- `book/keywords/asm.md`.
+- `book/keywords/at.md`.
+- `book/keywords/bool.md`.
+- `book/keywords/break.md`.
+- `book/keywords/case.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

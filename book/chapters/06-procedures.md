@@ -2,8 +2,8 @@
 
 Niveau: Débutant
 
-Prérequis: chapitre précédent `docs/book/chapters/05-types.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/05-types.md`, `docs/book/chapters/07-controle.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/05-types.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/05-types.md`, `book/chapters/07-controle.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -202,11 +202,11 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 
 ## Keywords à revoir
 
-- `docs/book/keywords/bool.md`.
-- `docs/book/keywords/break.md`.
-- `docs/book/keywords/continue.md`.
-- `docs/book/keywords/false.md`.
-- `docs/book/keywords/for.md`.
+- `book/keywords/bool.md`.
+- `book/keywords/break.md`.
+- `book/keywords/continue.md`.
+- `book/keywords/false.md`.
+- `book/keywords/for.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

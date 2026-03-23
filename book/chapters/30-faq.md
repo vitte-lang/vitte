@@ -2,8 +2,8 @@
 
 Niveau: Avancé.
 
-Prérequis: chapitre précédent `docs/book/chapters/29-style.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/29-style.md`, `docs/book/chapters/27-grammaire.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/29-style.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/29-style.md`, `book/chapters/27-grammaire.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -53,7 +53,7 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 
 Ce chapitre répond aux incidents de build les plus fréquents avec un diagnostic par couche. L'objectif n'est pas de mémoriser des messages d'erreur, mais de savoir localiser la cause et appliquer une correction minimale fiable.
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `book/checklist-editoriale.md`. Complément: `book/erreurs-classiques.md`.
 
 ## 30.1 FAQ Parseur vs Backend
 
@@ -95,14 +95,14 @@ Source normative:
 - `src/vitte/grammar/vitte.ebnf`.
 
 Copie documentaire:
-- `docs/book/grammar-surface.ebnf`.
+- `book/grammar-surface.ebnf`.
 - `docs/grammar/vitte.ebnf`.
 
 Politique d'alignement:
 - toute évolution de la grammaire source doit être répliquée dans la copie doc.
 - les exemples des chapitres doivent rester compatibles avec cette grammaire.
-- synchronisation automatique: `python3 docs/book/scripts/sync_grammar_surface.py`.
-- validation bloquante: `python3 docs/book/scripts/sync_grammar_surface.py --check`.
+- synchronisation automatique: `python3 book/scripts/sync_grammar_surface.py`.
+- validation bloquante: `python3 book/scripts/sync_grammar_surface.py --check`.
 
 ## 30.4 FAQ `emit` vs `return`
 
@@ -157,8 +157,8 @@ Commandes utiles:
 - `vitte check --dump-ast <fichier.vit>` et `vitte check --dump-ir <fichier.vit>`: debug déterministe.
 - `vitte reduce <fichier.vit>`: reproducer minimal automatique.
 - lire le log de stage (`parse`, `resolve`, `ir`, `backend`).
-- `python3 docs/book/scripts/qa_book.py`: QA doc standard.
-- `python3 docs/book/scripts/qa_book.py --strict`: QA CI stricte.
+- `python3 book/scripts/qa_book.py`: QA doc standard.
+- `python3 book/scripts/qa_book.py --strict`: QA CI stricte.
 
 ## 30.8 Cinq scénarios de debug pas à pas
 
@@ -315,11 +315,11 @@ trait Pair {
 
 ## Keywords à revoir
 
-- `docs/book/keywords/emit.md`.
-- `docs/book/keywords/return.md`.
-- `docs/book/keywords/space.md`.
-- `docs/book/keywords/use.md`.
-- `docs/book/keywords/make.md`.
+- `book/keywords/emit.md`.
+- `book/keywords/return.md`.
+- `book/keywords/space.md`.
+- `book/keywords/use.md`.
+- `book/keywords/make.md`.
 
 ## Objectif
 
@@ -348,7 +348,7 @@ Réponse attendue: identifier la première couche en faute, appliquer la correct
 
 - Parseur: corriger la forme grammaticale avant toute hypothèse runtime.
 - Link/backend: vérifier symboles, runtime et ABI avant refactor.
-- Documentation: maintenir l'alignement `src/vitte/grammar/vitte.ebnf` <-> `docs/book/grammar-surface.ebnf`.
+- Documentation: maintenir l'alignement `src/vitte/grammar/vitte.ebnf` <-> `book/grammar-surface.ebnf`.
 
 ## Checkpoint synthèse
 

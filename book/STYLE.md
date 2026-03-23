@@ -31,7 +31,27 @@
 - `## À faire`
 - `## Corrigé minimal`
 
+## Trame obligatoire des fiches mot-clé
+- `## Définition`
+- `## Syntaxe`
+- `## Quand l’utiliser / Quand l’éviter`
+- `## Exemple nominal`
+- `## Exemple invalide`
+- `## Erreurs compilateur fréquentes`
+- `## Mot-clé voisin`
+- `## Pièges`
+- `## Utilisé dans les chapitres`
+- `## Voir aussi`
+
+Règle anti-redondance:
+- Ne pas dupliquer `## Différences proches` et `## Mot-clé voisin`.
+- Conserver uniquement `## Mot-clé voisin`.
+
 ## Balisage global
 - Inclure un bandeau `Prérequis` en tête de chapitre.
 - Inclure une ligne `Voir aussi` vers chapitres connexes.
 - Ajouter un `Checkpoint synthèse` tous les 2 à 3 chapitres.
+
+## Liens et chemins
+- Référencer le livre avec le préfixe `book/` (pas `docs/book/`).
+- Préférer des chemins stables et relatifs à la racine du repo.

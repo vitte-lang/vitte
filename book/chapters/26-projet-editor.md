@@ -2,8 +2,8 @@
 
 Niveau: Avancé.
 
-Prérequis: chapitre précédent `docs/book/chapters/25-projet-arduino.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/25-projet-arduino.md`, `docs/book/chapters/27-grammaire.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/25-projet-arduino.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/25-projet-arduino.md`, `book/chapters/27-grammaire.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -53,7 +53,7 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 
 Ce chapitre construit un moteur d'éditeur exploitable en contexte réel: commandes enrichies, undo/redo exact, invariants explicites, résultat typé, historique cohérent, observabilité et extension maîtrisée.
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `book/checklist-editoriale.md`. Complément: `book/erreurs-classiques.md`.
 
 Schéma pipeline du chapitre:
 - Input -> Validate -> Apply -> Record History -> Project.
@@ -624,11 +624,11 @@ Contraintes:
 
 ## Keywords à revoir
 
-- `docs/book/keywords/and.md`.
-- `docs/book/keywords/bool.md`.
-- `docs/book/keywords/break.md`.
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/entry.md`.
+- `book/keywords/and.md`.
+- `book/keywords/bool.md`.
+- `book/keywords/break.md`.
+- `book/keywords/case.md`.
+- `book/keywords/entry.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

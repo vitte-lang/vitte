@@ -4,7 +4,7 @@ import re
 
 root = Path(__file__).resolve().parents[1]
 chapters = sorted((root / 'chapters').glob('*.md'))
-keywords_dir = root / 'keywords'
+keywords_dir = root / 'chapters' / 'keywords'
 
 keyword_files = sorted(
     p for p in keywords_dir.glob('*.md')
@@ -40,14 +40,14 @@ for kf in keyword_files:
 out = [
     '# Couverture des keywords',
     '',
-    'Cette page est générée automatiquement par `docs/book/scripts/generate_keyword_coverage.py`.',
+    'Cette page est générée automatiquement par `book/scripts/generate_keyword_coverage.py`.',
     '',
     '| Mot-clé | Niveau | Chapitre principal | Chapitres couverts | Occurrences en exemples |',
     '| --- | --- | --- | --- | --- |',
 ]
 
 for kw, level, principal, ch_hits, ex_hits in rows:
-    chap_ref = f'`docs/book/chapters/{principal}`' if principal != '-' else '-'
+    chap_ref = f'`book/chapters/{principal}`' if principal != '-' else '-'
     out.append(f'| `{kw}` | {level} | {chap_ref} | {ch_hits} | {ex_hits} |')
 
 (keywords_dir / 'couverture.md').write_text('\n'.join(out) + '\n', encoding='utf-8')
@@ -56,11 +56,11 @@ unused = [kw for kw, _lvl, _principal, ch_hits, _ex_hits in rows if ch_hits == 0
 unused_out = [
     '# Keywords non utilisés dans les chapitres',
     '',
-    'Cette liste est générée automatiquement par `docs/book/scripts/generate_keyword_coverage.py`.',
+    'Cette liste est générée automatiquement par `book/scripts/generate_keyword_coverage.py`.',
     '',
 ]
 for kw in unused:
-    unused_out.append(f'- `docs/book/keywords/{kw}.md`.')
+    unused_out.append(f'- `book/chapters/keywords/{kw}.md`.')
 (keywords_dir / 'non-utilises.md').write_text('\n'.join(unused_out) + '\n', encoding='utf-8')
 
 print('generated', keywords_dir / 'couverture.md')

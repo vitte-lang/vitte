@@ -2,8 +2,8 @@
 
 Niveau: Intermédiaire
 
-Prérequis: chapitre précédent `docs/book/chapters/12-pointeurs.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/12-pointeurs.md`, `docs/book/chapters/14-macros.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/12-pointeurs.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/12-pointeurs.md`, `book/chapters/14-macros.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -198,11 +198,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/as.md`.
-- `docs/book/keywords/asm.md`.
-- `docs/book/keywords/form.md`.
-- `docs/book/keywords/give.md`.
-- `docs/book/keywords/int.md`.
+- `book/keywords/as.md`.
+- `book/keywords/asm.md`.
+- `book/keywords/form.md`.
+- `book/keywords/give.md`.
+- `book/keywords/int.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

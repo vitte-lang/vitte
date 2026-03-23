@@ -2,8 +2,8 @@
 
 Niveau: Avancé
 
-Prérequis: chapitre précédent `docs/book/chapters/18-tests.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/18-tests.md`, `docs/book/chapters/20-repro.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/18-tests.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/18-tests.md`, `book/chapters/20-repro.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -233,11 +233,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/break.md`.
-- `docs/book/keywords/const.md`.
-- `docs/book/keywords/continue.md`.
-- `docs/book/keywords/give.md`.
-- `docs/book/keywords/if.md`.
+- `book/keywords/break.md`.
+- `book/keywords/const.md`.
+- `book/keywords/continue.md`.
+- `book/keywords/give.md`.
+- `book/keywords/if.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

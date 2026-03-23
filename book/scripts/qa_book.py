@@ -7,15 +7,15 @@ from collections import Counter
 root = Path(__file__).resolve().parents[1]
 repo = root.parents[0]
 chapters = sorted((root / 'chapters').glob('*.md'))
-keywords = sorted((root / 'keywords').glob('*.md'))
+keywords = sorted((root / 'chapters' / 'keywords').glob('*.md'))
 
 required_global_files = [
     root / 'STYLE.md',
-    root / 'keywords' / 'couverture.md',
-    root / 'keywords' / 'parcours.md',
-    root / 'keywords' / 'packs-apprentissage.md',
-    root / 'keywords' / 'non-utilises.md',
-    root / 'keywords' / 'erreurs-compilateur.md',
+    root / 'chapters' / 'keywords' / 'couverture.md',
+    root / 'chapters' / 'keywords' / 'parcours.md',
+    root / 'chapters' / 'keywords' / 'packs-apprentissage.md',
+    root / 'chapters' / 'keywords' / 'non-utilises.md',
+    root / 'chapters' / 'keywords' / 'erreurs-compilateur.md',
 ]
 ebnf_source = repo / 'src/vitte/grammar/vitte.ebnf'
 ebnf_doc_root = root / 'grammar-surface.ebnf'
@@ -25,8 +25,8 @@ ebnf_doc_legacy = root / 'grammar' / 'vitte.ebnf'
 link_re = re.compile(r'\[[^\]]+\]\(([^)]+)\)')
 level_re = re.compile(r'^Niveau:\s*(Débutant|Intermédiaire|Avancé)\.?\s*$', re.MULTILINE)
 num_re = re.compile(r'^(\d+)')
-kw_path_re = re.compile(r'`(docs/book/keywords/[a-z0-9\-]+\.md)`')
-ch_path_re = re.compile(r'`(docs/book/chapters/[0-9a-z\-]+\.md)`')
+kw_path_re = re.compile(r'`(book/chapters/keywords/[a-z0-9\-]+\.md)`')
+ch_path_re = re.compile(r'`(book/chapters/[0-9a-z\-]+\.md)`')
 
 required_chapter_sections = [
     '## Objectif',
@@ -51,7 +51,7 @@ required_keyword_sections = [
     '## Utilisé dans les chapitres',
 ]
 
-parser = argparse.ArgumentParser(description='QA éditoriale docs/book')
+parser = argparse.ArgumentParser(description='QA éditoriale book')
 parser.add_argument('--strict', action='store_true', help='activer les contrôles stricts (répétitions et formulations génériques)')
 args = parser.parse_args()
 
@@ -201,7 +201,7 @@ for p in chapters:
                 else:
                     # Bidirectional chapter -> keyword -> chapter.
                     kw_text = lp.read_text(encoding='utf-8')
-                    chap_ref = f'docs/book/chapters/{p.name}'
+                    chap_ref = f'book/chapters/{p.name}'
                     if chap_ref not in kw_text:
                         add_issue(f"{p}: lien non bidirectionnel avec {link} (chapitre absent de 'Utilisé dans les chapitres')", strict_only=True)
 
@@ -230,7 +230,7 @@ for p in keywords:
         if sec not in t:
             add_issue(f"{p}: section manquante: {sec}")
 
-    if 'docs/book/keywords/erreurs-compilateur.md' not in t:
+    if 'book/chapters/keywords/erreurs-compilateur.md' not in t:
         add_issue(f"{p}: référence manquante vers erreurs-compilateur.md")
 
     code_blocks = t.count('```vit')
@@ -253,7 +253,7 @@ for p in keywords:
                 add_issue(f"{p}: chapitre référencé introuvable: {link}")
                 continue
             ch_text = cp.read_text(encoding='utf-8')
-            kw_ref = f'docs/book/keywords/{kw}.md'
+            kw_ref = f'book/chapters/keywords/{kw}.md'
             if not (word_re.search(ch_text) or kw_ref in ch_text):
                 add_issue(f"{p}: lien non bidirectionnel vers {link} (mot-clé absent du chapitre)", strict_only=True)
 

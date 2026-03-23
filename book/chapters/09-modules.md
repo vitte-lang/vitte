@@ -2,8 +2,8 @@
 
 Niveau: Intermédiaire
 
-Prérequis: chapitre précédent `docs/book/chapters/08-structures.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/08-structures.md`, `docs/book/chapters/10-diagnostics.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/08-structures.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/08-structures.md`, `book/chapters/10-diagnostics.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -193,11 +193,11 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 
 ## Keywords à revoir
 
-- `docs/book/keywords/as.md`.
-- `docs/book/keywords/bool.md`.
-- `docs/book/keywords/false.md`.
-- `docs/book/keywords/field.md`.
-- `docs/book/keywords/form.md`.
+- `book/keywords/as.md`.
+- `book/keywords/bool.md`.
+- `book/keywords/false.md`.
+- `book/keywords/field.md`.
+- `book/keywords/form.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

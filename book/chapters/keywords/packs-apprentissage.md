@@ -2,27 +2,27 @@
 
 ## Pack Contrôle
 
-- `docs/book/keywords/if.md`.
-- `docs/book/keywords/else.md`.
-- `docs/book/keywords/match.md`.
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/otherwise.md`.
-- `docs/book/keywords/loop.md`.
-- `docs/book/keywords/for.md`.
+- `book/keywords/if.md`.
+- `book/keywords/else.md`.
+- `book/keywords/match.md`.
+- `book/keywords/case.md`.
+- `book/keywords/otherwise.md`.
+- `book/keywords/loop.md`.
+- `book/keywords/for.md`.
 
 ## Pack Types
 
-- `docs/book/keywords/int.md`.
-- `docs/book/keywords/string.md`.
-- `docs/book/keywords/bool.md`.
-- `docs/book/keywords/type.md`.
-- `docs/book/keywords/form.md`.
-- `docs/book/keywords/pick.md`.
+- `book/keywords/int.md`.
+- `book/keywords/string.md`.
+- `book/keywords/bool.md`.
+- `book/keywords/type.md`.
+- `book/keywords/form.md`.
+- `book/keywords/pick.md`.
 
 ## Pack Système
 
-- `docs/book/keywords/unsafe.md`.
-- `docs/book/keywords/asm.md`.
-- `docs/book/keywords/share.md`.
-- `docs/book/keywords/pull.md`.
-- `docs/book/keywords/space.md`.
+- `book/keywords/unsafe.md`.
+- `book/keywords/asm.md`.
+- `book/keywords/share.md`.
+- `book/keywords/pull.md`.
+- `book/keywords/space.md`.

@@ -2,8 +2,8 @@
 
 Niveau: Avancé.
 
-Prérequis: chapitre précédent `book/chapters/30-faq.md` et `docs/book/grammar-surface.ebnf`.
-Voir aussi: `book/chapters/30-faq.md`, `docs/book/chapters/16-interop.md`, `book/chapters/23-projet-sys.md`.
+Prérequis: chapitre précédent `book/chapters/30-faq.md` et `book/grammar-surface.ebnf`.
+Voir aussi: `book/chapters/30-faq.md`, `book/chapters/16-interop.md`, `book/chapters/23-projet-sys.md`.
 
 ## Pourquoi
 
@@ -53,7 +53,7 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 
 Ce chapitre sert de guide opérationnel pour diagnostiquer un échec de build Vitte en moins de cinq minutes, de la première erreur brute jusqu'au patch validé.
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `book/checklist-editoriale.md`. Complément: `book/erreurs-classiques.md`.
 
 ## 31.1 Matrice mot-clé -> top-level/stmt/expr
 
@@ -156,11 +156,11 @@ Checklist commune:
 
 ## Keywords à revoir
 
-- `docs/book/keywords/emit.md`.
-- `docs/book/keywords/use.md`.
-- `docs/book/keywords/space.md`.
-- `docs/book/keywords/make.md`.
-- `docs/book/keywords/share.md`.
+- `book/keywords/emit.md`.
+- `book/keywords/use.md`.
+- `book/keywords/space.md`.
+- `book/keywords/make.md`.
+- `book/keywords/share.md`.
 
 ## Objectif
 

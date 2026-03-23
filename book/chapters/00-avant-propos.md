@@ -3,7 +3,7 @@
 Niveau: Débutant
 
 Prérequis: aucun prérequis technique; lire `book/glossaire.md` pour le vocabulaire de base.
-Voir aussi: `docs/book/chapters/01-demarrer.md`, `book/glossaire.md`.
+Voir aussi: `book/chapters/01-demarrer.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -59,7 +59,7 @@ L'approche adoptée est volontairement littérale: chaque exemple doit être lis
 
 La méthode reste constante: poser une intention, l'implémenter dans une forme compacte, puis observer précisément ce que le programme garantit à l'exécution.
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `book/checklist-editoriale.md`. Complément: `book/erreurs-classiques.md`.
 ## 0.0 Repères de base
 
 Avant d'entrer dans les exemples, nous fixons ici les bases de vocabulaire. Elles ne seront plus redéfinies en détail dans chaque chapitre.
@@ -250,11 +250,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/at.md`.
-- `docs/book/keywords/bool.md`.
-- `docs/book/keywords/break.md`.
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/continue.md`.
+- `book/keywords/at.md`.
+- `book/keywords/bool.md`.
+- `book/keywords/break.md`.
+- `book/keywords/case.md`.
+- `book/keywords/continue.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

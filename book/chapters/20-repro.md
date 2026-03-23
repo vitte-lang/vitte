@@ -3,7 +3,7 @@
 Niveau: Avancé
 
 Prérequis: chapitre précédent `book/chapters/19-performance.md` et `book/glossaire.md`.
-Voir aussi: `book/chapters/19-performance.md`, `docs/book/chapters/21-projet-cli.md`, `book/glossaire.md`.
+Voir aussi: `book/chapters/19-performance.md`, `book/chapters/21-projet-cli.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -203,11 +203,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/break.md`.
-- `docs/book/keywords/const.md`.
-- `docs/book/keywords/continue.md`.
-- `docs/book/keywords/give.md`.
-- `docs/book/keywords/if.md`.
+- `book/keywords/break.md`.
+- `book/keywords/const.md`.
+- `book/keywords/continue.md`.
+- `book/keywords/give.md`.
+- `book/keywords/if.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

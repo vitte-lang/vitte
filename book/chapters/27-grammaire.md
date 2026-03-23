@@ -2,8 +2,8 @@
 
 Niveau: Avancé
 
-Prérequis: chapitre précédent `docs/book/chapters/26-projet-editor.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/26-projet-editor.md`, `docs/book/chapters/28-conventions.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/26-projet-editor.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/26-projet-editor.md`, `book/chapters/28-conventions.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -77,7 +77,7 @@ Utilisez ce chemin de lecture pour aller vite quand un parseur échoue:
 5. Confirmez le diagnostic attendu dans `book/grammar/diagnostics/expected`.
 
 Voir aussi:
-- `docs/book/chapters/31-erreurs-build.md` pour la table erreur -> correction.
+- `book/chapters/31-erreurs-build.md` pour la table erreur -> correction.
 - `book/grammar/grammar-notes.md` pour les ambiguïtés connues.
 - `docs/GENERIC_CALL_SYNTAX.md` pour la borne actuelle des appels génériques explicites.
 
@@ -281,11 +281,11 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 
 ## Keywords à revoir
 
-- `docs/book/keywords/at.md`.
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/entry.md`.
-- `docs/book/keywords/give.md`.
-- `docs/book/keywords/int.md`.
+- `book/keywords/at.md`.
+- `book/keywords/case.md`.
+- `book/keywords/entry.md`.
+- `book/keywords/give.md`.
+- `book/keywords/int.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

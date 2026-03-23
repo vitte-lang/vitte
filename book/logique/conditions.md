@@ -37,4 +37,4 @@ Pourquoi cette etape est solide. Condition composee en conjonction courte-circui
 
 Ce qui se passe a l'execution. `(true,true,false)->1`, `(true,false,false)->0`, `(true,true,true)->0`.
 
-Cette page se rattache aux mecanismes de `if`, `and`, `or`, `not` et `otherwise`, details dans `docs/book/keywords/if.md`, `docs/book/keywords/and.md`, `docs/book/keywords/or.md`, `docs/book/keywords/not.md` et `docs/book/keywords/otherwise.md`.
+Cette page se rattache aux mecanismes de `if`, `and`, `or`, `not` et `otherwise`, details dans `book/keywords/if.md`, `book/keywords/and.md`, `book/keywords/or.md`, `book/keywords/not.md` et `book/keywords/otherwise.md`.

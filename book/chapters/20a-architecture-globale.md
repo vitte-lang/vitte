@@ -2,8 +2,8 @@
 
 Niveau: Intermédiaire.
 
-Prérequis: chapitre précédent `docs/book/chapters/20-repro.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/21-projet-cli.md`, `book/chapters/15-pipeline.md`, `docs/book/INDEX-technique.md`.
+Prérequis: chapitre précédent `book/chapters/20-repro.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/21-projet-cli.md`, `book/chapters/15-pipeline.md`, `book/INDEX-technique.md`.
 
 ## Pourquoi
 
@@ -54,11 +54,11 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 
 ## Keywords à revoir
 
-- `docs/book/keywords/proc.md`.
-- `docs/book/keywords/type.md`.
-- `docs/book/keywords/form.md`.
-- `docs/book/keywords/pick.md`.
-- `docs/book/keywords/match.md`.
+- `book/keywords/proc.md`.
+- `book/keywords/type.md`.
+- `book/keywords/form.md`.
+- `book/keywords/pick.md`.
+- `book/keywords/match.md`.
 
 ## Objectif
 

@@ -57,12 +57,6 @@ Diagnostic attendu:
 - Position: `ligne 1, colonne 1` (ajustez selon le snippet réel).
 - Message: motif stable orienté correction.
 
-## Différences proches
-
-| Mot-clé | Différence opérationnelle |
-| --- | --- |
-| `pull` | `share` définit ce que l’on exporte; `pull` définit ce que l’on importe. |
-
 ## Refactor rapide
 
 Avant:
@@ -102,16 +96,16 @@ Après:
 
 ## Utilisé dans les chapitres
 
-- `docs/book/chapters/07-controle.md`.
-- `docs/book/chapters/27-grammaire.md`.
-- `docs/book/chapters/31-erreurs-build.md`.
+- `book/chapters/07-controle.md`.
+- `book/chapters/27-grammaire.md`.
+- `book/chapters/31-erreurs-build.md`.
 
 ## Voir aussi
 
-- `docs/book/keywords/erreurs-compilateur.md`.
-- `docs/book/keywords/pull.md`.
-- `docs/book/keywords/space.md`.
-- `docs/book/chapters/09-modules.md`.
+- `book/keywords/erreurs-compilateur.md`.
+- `book/keywords/pull.md`.
+- `book/keywords/space.md`.
+- `book/chapters/09-modules.md`.
 
 ## Score de complétude
 

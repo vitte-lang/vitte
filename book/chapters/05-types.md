@@ -2,8 +2,8 @@
 
 Niveau: Débutant
 
-Prérequis: chapitre précédent `docs/book/chapters/04-syntaxe.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/04-syntaxe.md`, `docs/book/chapters/06-procedures.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/04-syntaxe.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/04-syntaxe.md`, `book/chapters/06-procedures.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -73,7 +73,7 @@ Règle explicite de ce livre:
 
 Dans ces cas, imposer une largeur explicite (`i32/i64/i128/u32/u64/u128`) et conserver cette largeur de bout en bout.
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `book/checklist-editoriale.md`. Complément: `book/erreurs-classiques.md`.
 ## 5.1 Décrire une donnée avec un type structurel
 
 Un type structurel regroupe plusieurs champs nommés qui forment une seule entité logique. Il ne s'agit plus de "deux entiers quelconques", mais d'un point du plan avec un sens métier explicite.
@@ -233,11 +233,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/form.md`.
-- `docs/book/keywords/give.md`.
-- `docs/book/keywords/if.md`.
-- `docs/book/keywords/int.md`.
+- `book/keywords/case.md`.
+- `book/keywords/form.md`.
+- `book/keywords/give.md`.
+- `book/keywords/if.md`.
+- `book/keywords/int.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

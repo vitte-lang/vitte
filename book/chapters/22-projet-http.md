@@ -2,8 +2,8 @@
 
 Niveau: Avancé
 
-Prérequis: chapitre précédent `docs/book/chapters/21-projet-cli.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/21-projet-cli.md`, `book/chapters/23-projet-sys.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/21-projet-cli.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/21-projet-cli.md`, `book/chapters/23-projet-sys.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -53,7 +53,7 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 
 Ce chapitre poursuit un objectif clair: construire un service HTTP réaliste en séparant strictement transport, routage métier et projection finale de statut. Le but n'est pas d'empiler des conditions, mais de poser un pipeline stable, testable et traçable.
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `book/checklist-editoriale.md`. Complément: `book/erreurs-classiques.md`.
 
 Schéma pipeline du chapitre:
 - Request -> Validate -> Route -> Execute -> Map Response.
@@ -342,11 +342,11 @@ Contrainte de conception:
 
 ## Keywords à revoir
 
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/entry.md`.
-- `docs/book/keywords/form.md`.
-- `docs/book/keywords/give.md`.
-- `docs/book/keywords/if.md`.
+- `book/keywords/case.md`.
+- `book/keywords/entry.md`.
+- `book/keywords/form.md`.
+- `book/keywords/give.md`.
+- `book/keywords/if.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

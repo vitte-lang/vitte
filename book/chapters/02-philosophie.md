@@ -2,8 +2,8 @@
 
 Niveau: Débutant
 
-Prérequis: chapitre précédent `docs/book/chapters/01-demarrer.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/01-demarrer.md`, `docs/book/chapters/03-projet.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/01-demarrer.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/01-demarrer.md`, `book/chapters/03-projet.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -188,11 +188,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/at.md`.
-- `docs/book/keywords/bool.md`.
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/continue.md`.
-- `docs/book/keywords/entry.md`.
+- `book/keywords/at.md`.
+- `book/keywords/bool.md`.
+- `book/keywords/case.md`.
+- `book/keywords/continue.md`.
+- `book/keywords/entry.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

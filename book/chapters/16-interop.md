@@ -210,11 +210,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/as.md`.
-- `docs/book/keywords/asm.md`.
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/continue.md`.
-- `docs/book/keywords/form.md`.
+- `book/keywords/as.md`.
+- `book/keywords/asm.md`.
+- `book/keywords/case.md`.
+- `book/keywords/continue.md`.
+- `book/keywords/form.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

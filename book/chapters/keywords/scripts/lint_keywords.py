@@ -34,8 +34,8 @@ REQUIRED = [
     "## Score de complétude",
 ]
 
-CH_LINK_RE = re.compile(r"`(docs/book/chapters/[0-9a-z\-]+\.md)`")
-KW_LINK_RE = re.compile(r"`(docs/book/keywords/[a-z0-9\-]+\.md)`")
+CH_LINK_RE = re.compile(r"`(book/chapters/[0-9a-z\-]+\.md)`")
+KW_LINK_RE = re.compile(r"`(book/chapters/keywords/[a-z0-9\-]+\.md)`")
 
 
 def section_body(text: str, heading: str) -> str:

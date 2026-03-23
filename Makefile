@@ -614,6 +614,14 @@ no-std-lint:
 modules-report:
 	@tools/modules_report.sh
 
+.PHONY: book-links-check
+book-links-check:
+	@python3 book/scripts/check_links.py --book-root book --report target/reports/book_links_report.txt
+
+.PHONY: book-structure-check
+book-structure-check:
+	@python3 book/scripts/check_structure.py --book-root book
+
 .PHONY: packages-report
 packages-report:
 	@SEARCH_ROOT=src/vitte/packages ENTRY_GLOB=mod.vit OUT_FILE=target/reports/packages_modules_report.txt OUT_JSON=target/reports/packages_modules_report.json DEPENDENCY_OVERLAP_ALLOWLIST=tools/package_dependency_export_overlap_allowlist.txt tools/modules_report.sh

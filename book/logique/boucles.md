@@ -48,4 +48,4 @@ Pourquoi cette etape est solide. Sortie anticipee `give` dans la boucle. Le prem
 
 Ce qui se passe a l'execution. `[-2,-1,7,8]` retourne `7` au troisieme element. `[-2,-1]` retourne `0`.
 
-Cette page prolonge `docs/book/chapters/07-controle.md` et renvoie aux mots-cles `loop`, `for`, `break`, `continue` dans `docs/book/keywords/loop.md`, `docs/book/keywords/for.md`, `docs/book/keywords/break.md`, `docs/book/keywords/continue.md`.
+Cette page prolonge `book/chapters/07-controle.md` et renvoie aux mots-cles `loop`, `for`, `break`, `continue` dans `book/keywords/loop.md`, `book/keywords/for.md`, `book/keywords/break.md`, `book/keywords/continue.md`.

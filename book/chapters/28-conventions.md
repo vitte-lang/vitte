@@ -2,8 +2,8 @@
 
 Niveau: Avancé
 
-Prérequis: chapitre précédent `docs/book/chapters/27-grammaire.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/27-grammaire.md`, `docs/book/chapters/29-style.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/27-grammaire.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/27-grammaire.md`, `book/chapters/29-style.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -182,11 +182,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/bool.md`.
-- `docs/book/keywords/continue.md`.
-- `docs/book/keywords/false.md`.
-- `docs/book/keywords/form.md`.
-- `docs/book/keywords/give.md`.
+- `book/keywords/bool.md`.
+- `book/keywords/continue.md`.
+- `book/keywords/false.md`.
+- `book/keywords/form.md`.
+- `book/keywords/give.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

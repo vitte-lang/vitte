@@ -15,9 +15,9 @@ Trame de chaque fiche:
 - `Voir aussi`.
 
 Navigation utile:
-- Vue synthétique: `docs/book/keywords/couverture.md`.
-- Ordre recommandé: `docs/book/keywords/parcours.md`.
-- Packs thématiques: `docs/book/keywords/packs-apprentissage.md`.
-- Priorités de couverture: `docs/book/keywords/non-utilises.md`.
-- Diagnostics partagés: `docs/book/keywords/erreurs-compilateur.md`.
-- Progression complète: `docs/book/chapters/`.
+- Vue synthétique: `book/chapters/keywords/couverture.md`.
+- Ordre recommandé: `book/chapters/keywords/parcours.md`.
+- Packs thématiques: `book/chapters/keywords/packs-apprentissage.md`.
+- Priorités de couverture: `book/chapters/keywords/non-utilises.md`.
+- Diagnostics partagés: `book/chapters/keywords/erreurs-compilateur.md`.
+- Progression complète: `book/chapters/`.

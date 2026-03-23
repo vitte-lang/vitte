@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Normalize docs/book/keywords to a strict editorial template."""
+"""Normalize book/keywords to a strict editorial template."""
 
 from __future__ import annotations
 
@@ -117,9 +117,9 @@ def ensure_section(sections: dict[str, str], heading: str, keyword: str) -> str:
     if heading == "## Score de complétude":
         return "coverage: syntaxe/exemples/invalides/diagnostics/liens = 3/5"
     if heading == "## Utilisé dans les chapitres":
-        return "- `docs/book/chapters/27-grammaire.md`.\n- `docs/book/chapters/31-erreurs-build.md`.\n- `docs/book/chapters/07-controle.md`."
+        return "- `book/chapters/27-grammaire.md`.\n- `book/chapters/31-erreurs-build.md`.\n- `book/chapters/07-controle.md`."
     if heading == "## Voir aussi":
-        return "- `docs/book/keywords/erreurs-compilateur.md`.\n- `book/glossaire.md`."
+        return "- `book/chapters/keywords/erreurs-compilateur.md`.\n- `book/glossaire.md`."
     if heading == "## Définition":
         return f"`{base}` est un mot-clé Vitte. Cette fiche vous donne sa forme, son usage et ses erreurs courantes."
     if heading == "## Syntaxe":
@@ -178,9 +178,9 @@ def normalize_chapter_links(body: str) -> str:
         if path not in links:
             links.append(path)
     defaults = [
-        "docs/book/chapters/07-controle.md",
-        "docs/book/chapters/27-grammaire.md",
-        "docs/book/chapters/31-erreurs-build.md",
+        "book/chapters/07-controle.md",
+        "book/chapters/27-grammaire.md",
+        "book/chapters/31-erreurs-build.md",
     ]
     for d in defaults:
         if len(links) >= 3:
@@ -193,11 +193,11 @@ def normalize_chapter_links(body: str) -> str:
 
 def normalize_see_also(body: str) -> str:
     lines = [l.strip() for l in body.splitlines() if l.strip().startswith("- ")]
-    if not any("docs/book/keywords/" in l for l in lines):
-        lines.insert(0, "- `docs/book/keywords/erreurs-compilateur.md`.")
+    if not any("book/chapters/keywords/" in l for l in lines):
+        lines.insert(0, "- `book/chapters/keywords/erreurs-compilateur.md`.")
     if not lines:
         lines = [
-            "- `docs/book/keywords/erreurs-compilateur.md`.",
+            "- `book/chapters/keywords/erreurs-compilateur.md`.",
             "- `book/glossaire.md`.",
         ]
     return "\n".join(lines)

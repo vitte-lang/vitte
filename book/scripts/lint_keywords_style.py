@@ -4,7 +4,7 @@ import re
 from collections import Counter
 
 root = Path(__file__).resolve().parents[1]
-keywords = sorted((root / 'keywords').glob('*.md'))
+keywords = sorted((root / 'chapters' / 'keywords').glob('*.md'))
 skip = {'README.md', 'couverture.md', 'parcours.md', 'packs-apprentissage.md', 'non-utilises.md', 'erreurs-compilateur.md'}
 
 vague_terms = [

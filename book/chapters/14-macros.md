@@ -2,8 +2,8 @@
 
 Niveau: Intermédiaire
 
-Prérequis: chapitre précédent `docs/book/chapters/13-generiques.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/13-generiques.md`, `book/chapters/15-pipeline.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/13-generiques.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/13-generiques.md`, `book/chapters/15-pipeline.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -205,11 +205,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/as.md`.
-- `docs/book/keywords/asm.md`.
-- `docs/book/keywords/continue.md`.
-- `docs/book/keywords/give.md`.
-- `docs/book/keywords/if.md`.
+- `book/keywords/as.md`.
+- `book/keywords/asm.md`.
+- `book/keywords/continue.md`.
+- `book/keywords/give.md`.
+- `book/keywords/if.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

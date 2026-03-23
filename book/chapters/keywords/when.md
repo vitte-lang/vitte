@@ -58,12 +58,6 @@ Diagnostic attendu:
 - Position: `ligne 1, colonne 1` (ajustez selon le snippet réel).
 - Message: motif stable orienté correction.
 
-## Différences proches
-
-| Mot-clé | Différence opérationnelle |
-| --- | --- |
-| `select` | `select` porte la séquence; `when` porte chaque branche. |
-
 ## Refactor rapide
 
 Avant:
@@ -103,16 +97,16 @@ Après:
 
 ## Utilisé dans les chapitres
 
-- `docs/book/chapters/07-controle.md`.
-- `docs/book/chapters/27-grammaire.md`.
-- `docs/book/chapters/31-erreurs-build.md`.
+- `book/chapters/07-controle.md`.
+- `book/chapters/27-grammaire.md`.
+- `book/chapters/31-erreurs-build.md`.
 
 ## Voir aussi
 
-- `docs/book/keywords/erreurs-compilateur.md`.
-- `docs/book/keywords/select.md`.
-- `docs/book/keywords/is.md`.
-- `docs/book/chapters/27-grammaire.md`.
+- `book/keywords/erreurs-compilateur.md`.
+- `book/keywords/select.md`.
+- `book/keywords/is.md`.
+- `book/chapters/27-grammaire.md`.
 
 ## Score de complétude
 

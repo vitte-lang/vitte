@@ -58,12 +58,6 @@ Diagnostic attendu:
 - Position: `ligne 1, colonne 1` (ajustez selon le snippet réel).
 - Message: motif stable orienté correction.
 
-## Différences proches
-
-| Mot-clé | Différence opérationnelle |
-| --- | --- |
-| `and` | `or` et `and` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
-
 ## Refactor rapide
 
 Avant:
@@ -103,16 +97,16 @@ Après:
 
 ## Utilisé dans les chapitres
 
-- `docs/book/chapters/07-controle.md`.
-- `docs/book/chapters/27-grammaire.md`.
-- `docs/book/chapters/31-erreurs-build.md`.
+- `book/chapters/07-controle.md`.
+- `book/chapters/27-grammaire.md`.
+- `book/chapters/31-erreurs-build.md`.
 
 ## Voir aussi
 
-- `docs/book/keywords/erreurs-compilateur.md`.
-- `docs/book/keywords/and.md`.
+- `book/keywords/erreurs-compilateur.md`.
+- `book/keywords/and.md`.
 - `book/glossaire.md`.
-- `docs/book/chapters/06-procedures.md`.
+- `book/chapters/06-procedures.md`.
 
 ## Score de complétude
 

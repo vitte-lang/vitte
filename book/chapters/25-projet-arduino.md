@@ -2,8 +2,8 @@
 
 Niveau: Avancé
 
-Prérequis: chapitre précédent `docs/book/chapters/24-projet-kv.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/24-projet-kv.md`, `docs/book/chapters/26-projet-editor.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/24-projet-kv.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/24-projet-kv.md`, `book/chapters/26-projet-editor.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -55,7 +55,7 @@ Ce chapitre poursuit un objectif clair: construire une boucle embarquée Vitte u
 
 L'idée directrice est la suivante: en embarqué, la robustesse vient de la discipline des invariants. Chaque étape doit être explicite, testable et isolable: acquisition, assainissement, filtrage, décision, projection matérielle.
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `book/checklist-editoriale.md`. Complément: `book/erreurs-classiques.md`.
 
 Schéma pipeline du chapitre:
 - Entrée: données initiales ou requête.
@@ -563,11 +563,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/at.md`.
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/continue.md`.
-- `docs/book/keywords/entry.md`.
-- `docs/book/keywords/form.md`.
+- `book/keywords/at.md`.
+- `book/keywords/case.md`.
+- `book/keywords/continue.md`.
+- `book/keywords/entry.md`.
+- `book/keywords/form.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

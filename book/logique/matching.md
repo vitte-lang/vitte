@@ -50,4 +50,4 @@ Pourquoi cette etape est solide. Variante de style avec `select/when`. Le flux e
 
 Ce qui se passe a l'execution. `status2(Ready)=0`, `status2(Running)=1`, `status2(Failed(9))=-1`.
 
-Cette page se connecte aux mots-cles `pick`, `case`, `match`, `select`, `when`, `is` dans `docs/book/keywords/pick.md`, `docs/book/keywords/case.md`, `docs/book/keywords/match.md`, `docs/book/keywords/select.md`, `docs/book/keywords/when.md`, `docs/book/keywords/is.md`.
+Cette page se connecte aux mots-cles `pick`, `case`, `match`, `select`, `when`, `is` dans `book/keywords/pick.md`, `book/keywords/case.md`, `book/keywords/match.md`, `book/keywords/select.md`, `book/keywords/when.md`, `book/keywords/is.md`.

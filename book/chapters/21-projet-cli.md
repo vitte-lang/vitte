@@ -2,8 +2,8 @@
 
 Niveau: Avancé
 
-Prérequis: chapitre précédent `docs/book/chapters/20-repro.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/20-repro.md`, `docs/book/chapters/22-projet-http.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/20-repro.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/20-repro.md`, `book/chapters/22-projet-http.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -57,7 +57,7 @@ L'approche adoptée est volontairement littérale: chaque exemple doit être lis
 
 La méthode reste constante: poser une intention, l'implémenter dans une forme compacte, puis observer précisément ce que le programme garantit à l'exécution.
 
-Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
+Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de relecture` dans `book/checklist-editoriale.md`. Complément: `book/erreurs-classiques.md`.
 
 Schéma pipeline du chapitre:
 - Entrée: données initiales ou requête.
@@ -337,11 +337,11 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 
 ## Keywords à revoir
 
-- `docs/book/keywords/at.md`.
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/continue.md`.
-- `docs/book/keywords/entry.md`.
-- `docs/book/keywords/give.md`.
+- `book/keywords/at.md`.
+- `book/keywords/case.md`.
+- `book/keywords/continue.md`.
+- `book/keywords/entry.md`.
+- `book/keywords/give.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

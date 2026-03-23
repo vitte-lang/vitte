@@ -2,8 +2,8 @@
 
 Niveau: Débutant
 
-Prérequis: chapitre précédent `docs/book/chapters/07-controle.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/07-controle.md`, `docs/book/chapters/09-modules.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/07-controle.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/07-controle.md`, `book/chapters/09-modules.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -207,11 +207,11 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 
 ## Keywords à revoir
 
-- `docs/book/keywords/and.md`.
-- `docs/book/keywords/bool.md`.
-- `docs/book/keywords/break.md`.
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/continue.md`.
+- `book/keywords/and.md`.
+- `book/keywords/bool.md`.
+- `book/keywords/break.md`.
+- `book/keywords/case.md`.
+- `book/keywords/continue.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

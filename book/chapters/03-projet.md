@@ -2,8 +2,8 @@
 
 Niveau: Débutant
 
-Prérequis: chapitre précédent `docs/book/chapters/02-philosophie.md` et `book/glossaire.md`.
-Voir aussi: `docs/book/chapters/02-philosophie.md`, `docs/book/chapters/04-syntaxe.md`, `book/glossaire.md`.
+Prérequis: chapitre précédent `book/chapters/02-philosophie.md` et `book/glossaire.md`.
+Voir aussi: `book/chapters/02-philosophie.md`, `book/chapters/04-syntaxe.md`, `book/glossaire.md`.
 
 ## Pourquoi
 
@@ -190,11 +190,11 @@ Vérification minimale: montrez un cas nominal et un cas invalide, puis explique
 
 ## Keywords à revoir
 
-- `docs/book/keywords/as.md`.
-- `docs/book/keywords/at.md`.
-- `docs/book/keywords/bool.md`.
-- `docs/book/keywords/case.md`.
-- `docs/book/keywords/entry.md`.
+- `book/keywords/as.md`.
+- `book/keywords/at.md`.
+- `book/keywords/bool.md`.
+- `book/keywords/case.md`.
+- `book/keywords/entry.md`.
 
 ## Objectif
 Ce chapitre fixe un objectif opérationnel clair et vérifiable pour le concept étudié.

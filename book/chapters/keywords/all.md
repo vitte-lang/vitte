@@ -74,14 +74,6 @@ Pourquoi c'est invalide:
 1. `share` attend `all` ou une liste d'identifiants.
 2. La declaration est syntaxiquement incomplete.
 
-## Différences proches
-
-| Mot-cle | Difference operationnelle |
-| --- | --- |
-| `share` | `share` porte la declaration; `all` est un argument possible de `share`. |
-| `use` | `use` importe depuis un autre module; `share all` exporte depuis le module courant. |
-| `pull` | `pull` recupere une dependance; `share all` definit la surface publique locale. |
-
 ## Quand utiliser `share all`
 
 1. Module interne stable avec surface volontairement large.
