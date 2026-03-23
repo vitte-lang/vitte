@@ -79,16 +79,24 @@ form BenchHealth {
 }
 
 proc now_ns() -> int {
-  <<< abstraction monotonic clock >>>
+  if benchkit_runtime_pkg.monotonic_available() == false { give 0 }
   give 0
 }
 
 proc sort(values: [int]) -> [int] {
-  let out: [int] = []
-  let i: int = 0
+  let out = values
+  let i: int = 1
   loop {
     if i >= values.len { break }
-    out = out.push(values[i])
+    let key = out[i]
+    let j: int = i - 1
+    loop {
+      if j < 0 { break }
+      if out[j] <= key { break }
+      out[j + 1] = out[j]
+      j = j - 1
+    }
+    out[j + 1] = key
     i = i + 1
   }
   give out
@@ -175,16 +183,21 @@ proc default_config() -> BenchConfig {
 }
 
 proc strict_config() -> BenchConfig {
-  give BenchConfig(10000, 500, 10, BenchMode.Latency)
+  give BenchConfig(benchkit_policy_pkg.strict_iterations(),
+                   benchkit_policy_pkg.strict_warmup(),
+                   benchkit_policy_pkg.strict_trim_percent(),
+                   BenchMode.Latency)
 }
 
 proc run_once(job: proc() -> int) -> int {
   let start = now_ns()
-  job()
+  let job_result = job()
   let end = now_ns()
   let d = end - start
+  if d > 0 { give d }
+  if benchkit_runtime_pkg.monotonic_available() == false { give 0 }
   if d < 0 { give 0 }
-  give d
+  give benchkit_runtime_pkg.fallback_duration_ns(job_result)
 }
 
 proc run_bench_checked(name: string, job: proc() -> int, cfg: BenchConfig) -> BenchkitResult[BenchResult] {
@@ -214,7 +227,7 @@ proc run_bench_checked(name: string, job: proc() -> int, cfg: BenchConfig) -> Be
   }
 
   if benchkit_validate_pkg.valid_sample_count(samples.len) == false {
-    give BenchkitResult.Err(BenchError.InvalidSample)
+    give BenchkitResult.Err(BenchError.EmptySamples)
   }
 
   let trimmed = trim(samples, cfg.trim_percent)
