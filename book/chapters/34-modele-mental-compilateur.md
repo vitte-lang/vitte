@@ -796,3 +796,119 @@ car le lecteur sait où s'arrête la garantie.
 - Lien vers chapitre voisin pertinent.
 
 <!-- AUTO_EXPANSION_V1 END -->
+
+<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START -->
+
+## Exemples représentatifs (par cas d'usage)
+
+Cette section donne des exemples variés et réalistes pour **modele mental du compilateur**.
+Objectif: multiplier les angles de lecture sans alourdir le noyau du chapitre.
+
+### Exemple 1: cas nominal minimal
+
+```vit
+entry main at app/demo {
+  return 0
+}
+```
+
+Quand l'utiliser: valider la base exécutable avant tout ajout de complexité.
+
+### Exemple 2: garde explicite (cas limite)
+
+```vit
+proc clamp_non_negative(x: int) -> int {
+  if x < 0 {
+    give 0
+  }
+  give x
+}
+```
+
+Quand l'utiliser: éviter les comportements implicites sur entrées hors contrat.
+
+### Exemple 3: erreur de type volontaire (diagnostic)
+
+```vit
+proc needs_int(x: int) -> int {
+  give x
+}
+entry main at app/demo {
+  let s: string = "42"
+  return needs_int(s)
+}
+```
+
+Quand l'utiliser: entraîner la lecture des diagnostics compilateur.
+
+### Exemple 4: séparation module / API
+
+```vit
+space app/math
+proc add(a: int, b: int) -> int {
+  give a + b
+}
+share add
+```
+
+Quand l'utiliser: clarifier ce qui est public vs interne dans l'architecture.
+
+### Exemple 5: flux de contrôle lisible
+
+```vit
+entry main at app/demo {
+  let n: int = 3
+  if n > 0 {
+    return 1
+  }
+  return 0
+}
+```
+
+Quand l'utiliser: expliciter une décision métier avec un chemin nominal et un fallback.
+
+### Exemple 6: version testable d'une procédure
+
+```vit
+proc is_even(x: int) -> bool {
+  give x % 2 == 0
+}
+```
+
+Cas de test conseillés:
+1. `is_even(2)` -> `true`.
+2. `is_even(3)` -> `false`.
+3. `is_even(0)` -> `true`.
+
+Quand l'utiliser: convertir rapidement une règle en contrat vérifiable.
+
+### Exemple 7: refactor sûr (avant/après)
+
+Avant:
+```vit
+proc parse_port(s: string) -> int {
+  give 0
+}
+```
+
+Après:
+```vit
+proc parse_port(s: string) -> int {
+  if s == "" {
+    give 0
+  }
+  give 8080
+}
+```
+
+Quand l'utiliser: faire évoluer le comportement sans casser la signature publique.
+
+### Exemple 8: checklist de lecture rapide
+
+1. Où est le contrat d'entrée?
+2. Quel est le chemin nominal?
+3. Quel est le cas limite traité?
+4. Quelle erreur reste explicite?
+5. Quel test prouve le comportement?
+
+<!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END -->
