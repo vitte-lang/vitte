@@ -5,6 +5,16 @@ Niveau: Avancé
 Prérequis: `book/chapters/15-pipeline.md`, `book/chapters/27-grammaire.md`.
 Voir aussi: à définir.
 
+## Problème Concret
+
+Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
+Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+
+## Fil Rouge (Projet Unique)
+
+Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
+Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+
 ## Objectif
 
 Comprendre comment les noeuds AST sont transformes en IR exploitable par le backend.
@@ -45,7 +55,7 @@ Snippet Vitte:
 ```vit
 entry main at app/demo {
   if true { return 1 }
-  // Sortie programme: code de retour observable
+
   return 0
 }
 ```
@@ -146,10 +156,9 @@ Procédure:
 
 ## Exemple Étendu
 
-Exemple approfondi pour **mapping ast vers ir**: chaîne d'analyse complète (scan -> parse -> validation structurelle -> projection diagnostic).
 
 ```vit
-// Exemple long: flux complet et vérifiable
+// Scenario mapping ast vers ir: execution complete et verifiable
 space demo/mapping-ast-vers-ir
 
 form SourceUnit { bytes: int lines: int tokens_hint: int }
@@ -157,64 +166,110 @@ pick ParseState { case Parsed(nodes: int) case Failed(code: int) }
 
 // Scan: transforme l'entrée brute en signal exploitable
 proc scan(u: SourceUnit) -> int {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if u.bytes <= 0 { give 0 }
-  // Garde: bloque un cas invalide avant de continuer
+
   if u.lines <= 0 { give 0 }
-  // Sortie locale: valeur retournee par la procedure
+
   give (u.tokens_hint + u.lines)
 }
 
 // Parse: construit un état syntaxique déterministe
 proc parse(token_count: int) -> ParseState {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if token_count == 0 { give ParseState.Failed(101) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if token_count < 4 { give ParseState.Failed(102) }
-  // Sortie locale: valeur retournee par la procedure
+
   give ParseState.Parsed(token_count)
 }
 
 proc validate_structure(nodes: int) -> int {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if nodes <= 0 { give 201 }
-  // Garde: bloque un cas invalide avant de continuer
+
   if nodes > 200000 { give 202 }
-  // Sortie locale: valeur retournee par la procedure
+
   give 0
 }
 
-// Projection finale: convertit l'état métier en code de sortie
+// Conversion finale vers un code de sortie
 proc to_exit(p: ParseState) -> int {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match p {
     case Parsed(n) {
       let v: int = validate_structure(n)
-      // Garde: bloque un cas invalide avant de continuer
-  if v != 0 { give v }
-      // Sortie locale: valeur retournee par la procedure
-  give 0
+
+      if v != 0 { give v }
+
+      give 0
     }
     case Failed(c) { give c }
     otherwise { give 70 }
   }
 }
 
-// Orchestration: enchaîne les étapes sans logique cachée
+// Point d'entree du scenario
 entry main at core/app {
   let u: SourceUnit = SourceUnit(120, 12, 18)
   let t: int = scan(u)
   let p: ParseState = parse(t)
-  // Sortie programme: code de retour observable
+
   return to_exit(p)
 }
 ```
 
-Scénarios recommandés (mapping ast vers ir):
+## Design Notes
+
+- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
+- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+
+
+Cas limite réel:
+- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+
+A tester:
 - Unité valide -> sortie 0.
 - Entrée vide (bytes=0) -> sortie 101.
 - Structure surdimensionnée -> sortie 202.
+
+
+## Trade-offs
+
+| Contrainte | Option A | Option B | Décision recommandée |
+| --- | --- | --- | --- |
+| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
+| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
+| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
+
+
+## Décision Selon Contrainte
+
+- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
+- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
+- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
+
+
+## Diagnostic Rapide
+
+| Symptôme | Cause probable | Vérification | Correction |
+| --- | --- | --- | --- |
+| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
+| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+
+
+## Checkpoint
+
+À ce stade, vous devez savoir:
+- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
+- isoler un cas limite réel et prévoir sa sortie,
+- identifier où ajouter une garde sans casser le nominal.
+
+
+## Ce Que Je Ferais En Revue De Code
+
+1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+2. Vérifier que la décision métier est séparée de la projection de sortie.
+3. Vérifier un test nominal et un test limite réellement exécutables.

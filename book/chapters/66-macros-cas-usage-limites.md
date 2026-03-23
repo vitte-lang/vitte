@@ -5,6 +5,16 @@ Niveau: Avancé
 Prérequis: `book/chapters/14-macros.md`.
 Voir aussi: à définir.
 
+## Problème Concret
+
+Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
+Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+
+## Fil Rouge (Projet Unique)
+
+Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
+Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+
 ## Objectif
 
 Utiliser les macros quand elles simplifient vraiment, sans detruire lisibilite et debuggabilite.
@@ -56,9 +66,8 @@ Snippet Vitte:
 
 ```vit
 macro guard_nonneg(x) {
-  // Garde: bloque un cas invalide avant de continuer
   if x < 0 { give -1 }
-  // Sortie locale: valeur retournee par la procedure
+
   give x
 }
 ```
@@ -144,56 +153,52 @@ Procédure:
 
 ## Exemple Étendu
 
-Exemple approfondi pour **macros cas usage limites**: pipeline validation -> transformation -> décision -> projection.
 
 ```vit
-// Exemple long: flux complet et vérifiable
+// Scenario macros cas usage limites: execution complete et verifiable
 space demo/macros-cas-usage-limites
 
 form Input { id: int value: int quota: int }
 pick Eval { case Accepted(score: int) case Rejected(code: int) }
 
 proc validate(x: Input) -> Eval {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if x.id <= 0 { give Eval.Rejected(21) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if x.quota < 0 { give Eval.Rejected(22) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if x.value < 0 { give Eval.Rejected(23) }
-  // Sortie locale: valeur retournee par la procedure
+
   give Eval.Accepted(x.value)
 }
 
 proc transform(score: int, quota: int) -> int {
   let capped: int = score
   if capped > quota { set capped = quota }
-  // Garde: bloque un cas invalide avant de continuer
+
   if capped < 0 { give 0 }
-  // Sortie locale: valeur retournee par la procedure
+
   give capped * 2
 }
 
 proc decide(r: Eval, quota: int) -> Eval {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match r {
     case Accepted(s) {
       let out: int = transform(s, quota)
-      // Garde: bloque un cas invalide avant de continuer
-  if out >= 10 { give Eval.Accepted(out) }
-      // Sortie locale: valeur retournee par la procedure
-  give Eval.Rejected(31)
+
+      if out >= 10 { give Eval.Accepted(out) }
+
+      give Eval.Rejected(31)
     }
     case Rejected(c) { give Eval.Rejected(c) }
     otherwise { give Eval.Rejected(70) }
   }
 }
 
-// Projection finale: convertit l'état métier en code de sortie
+// Conversion finale vers un code de sortie
 proc to_exit(r: Eval) -> int {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match r {
     case Accepted(_) { give 0 }
     case Rejected(code) { give code }
@@ -201,17 +206,74 @@ proc to_exit(r: Eval) -> int {
   }
 }
 
-// Orchestration: enchaîne les étapes sans logique cachée
+// Point d'entree du scenario
 entry main at core/app {
   let x: Input = Input(1, 8, 9)
   let v: Eval = validate(x)
   let d: Eval = decide(v, x.quota)
-  // Sortie programme: code de retour observable
+
   return to_exit(d)
 }
 ```
 
-Scénarios recommandés (macros cas usage limites):
+## Design Notes
+
+- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
+- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+
+
+Cas limite réel:
+- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+
+A tester:
 - Cas nominal -> sortie 0.
 - Cas quota strict -> comportement déterministe.
 - Cas invalide id<=0 -> sortie 21.
+
+
+## Trade-offs
+
+| Contrainte | Option A | Option B | Décision recommandée |
+| --- | --- | --- | --- |
+| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
+| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
+| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
+
+
+## Décision Selon Contrainte
+
+- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
+- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
+- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
+
+
+## Diagnostic Rapide
+
+| Symptôme | Cause probable | Vérification | Correction |
+| --- | --- | --- | --- |
+| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
+| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+
+
+## Checkpoint
+
+À ce stade, vous devez savoir:
+- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
+- isoler un cas limite réel et prévoir sa sortie,
+- identifier où ajouter une garde sans casser le nominal.
+
+
+## Mini Étude De Cas (Avant / Après)
+
+Avant: logique métier et sortie technique mélangées, diagnostic coûteux.
+Après: gardes d'entrée, décision métier, projection finale séparées; comportement plus lisible et testable.
+Impact: revue plus rapide, régression plus facile à localiser.
+
+
+## Ce Que Je Ferais En Revue De Code
+
+1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+2. Vérifier que la décision métier est séparée de la projection de sortie.
+3. Vérifier un test nominal et un test limite réellement exécutables.

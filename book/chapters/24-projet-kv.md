@@ -5,6 +5,16 @@ Niveau: Avancé
 Prérequis: chapitre précédent `book/chapters/23-projet-sys.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/23-projet-sys.md`, `book/chapters/25-projet-arduino.md`, `book/glossaire.md`.
 
+## Problème Concret
+
+Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
+Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+
+## Fil Rouge (Projet Unique)
+
+Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
+Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Projet guide KV store**.
@@ -120,10 +130,9 @@ Erreurs fréquentes à éviter:
 
 ```vit
 proc key_valid(k: string) -> bool {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if k == "" { give false }
-  // Sortie locale: valeur retournee par la procedure
+
   give true
 }
 ```
@@ -163,15 +172,16 @@ form KvMem {
 }
 proc find_index(m: KvMem, k: string) -> int {
   let i: int = 0
+
   // Boucle: progression controlee jusqu'a la borne
   loop {
     // Borne d'arret: stoppe la boucle de maniere explicite
     if i >= m.entries.len() { break }
-    // Garde: bloque un cas invalide avant de continuer
-  if m.entries[i].key == k { give i }
+
+    if m.entries[i].key == k { give i }
     set i = i + 1
   }
-// Sortie locale: valeur retournee par la procedure
+
   give -1
 }
 ```
@@ -208,32 +218,31 @@ Erreurs fréquentes à éviter:
 
 ```vit
 proc put_guard(entries_len: int, k: string) -> KvResult {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if not key_valid(k) { give ErrKey }
-  // Garde: bloque un cas invalide avant de continuer
+
   if entries_len < 0 { give ErrState }
-  // Sortie locale: valeur retournee par la procedure
+
   give Ok
 }
 proc put(m: KvMem, k: string, v: string) -> KvResult {
   let g: KvResult = put_guard(m.entries.len(), k)
-  // Match: decision explicite selon l'etat
+
   match g {
     case Ok {
       let idx: int = find_index(m, k)
       if idx < 0 {
         m.entries.push(Entry(k, v))
-        // Sortie locale: valeur retournee par la procedure
-  give Ok
+
+        give Ok
       }
-    m.entries[idx] = Entry(k, v)
-    // Sortie locale: valeur retournee par la procedure
-  give Ok
+      m.entries[idx] = Entry(k, v)
+
+      give Ok
+    }
+    case ErrKey { give ErrKey }
+    otherwise { give ErrState }
   }
-case ErrKey { give ErrKey }
-otherwise { give ErrState }
-}
 }
 ```
 
@@ -285,52 +294,50 @@ Erreurs fréquentes à éviter:
 
 ```vit
 proc get_guard(entries_len: int, k: string) -> KvResult {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if not key_valid(k) { give ErrKey }
-  // Garde: bloque un cas invalide avant de continuer
+
   if entries_len == 0 { give ErrState }
-  // Sortie locale: valeur retournee par la procedure
+
   give Ok
 }
 proc delete_guard(entries_len: int, k: string) -> KvResult {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if not key_valid(k) { give ErrKey }
-  // Garde: bloque un cas invalide avant de continuer
+
   if entries_len <= 0 { give ErrState }
-  // Sortie locale: valeur retournee par la procedure
+
   give Ok
 }
 proc get(m: KvMem, k: string) -> KvValue {
   let g: KvResult = get_guard(m.entries.len(), k)
-  // Match: decision explicite selon l'etat
+
   match g {
     case Ok {
       let idx: int = find_index(m, k)
-      // Garde: bloque un cas invalide avant de continuer
-  if idx < 0 { give None }
-      // Sortie locale: valeur retournee par la procedure
-  give Some(m.entries[idx].value)
+
+      if idx < 0 { give None }
+
+      give Some(m.entries[idx].value)
     }
-  otherwise { give None }
-}
+    otherwise { give None }
+  }
 }
 proc delete(m: KvMem, k: string) -> KvResult {
   let g: KvResult = delete_guard(m.entries.len(), k)
-  // Match: decision explicite selon l'etat
+
   match g {
     case Ok {
       let idx: int = find_index(m, k)
-      // Garde: bloque un cas invalide avant de continuer
-  if idx < 0 { give ErrState }
+
+      if idx < 0 { give ErrState }
       m.entries.remove_at(idx)
-      // Sortie locale: valeur retournee par la procedure
-  give Ok
+
+      give Ok
     }
-  case ErrKey { give ErrKey }
-  otherwise { give ErrState }
-}
+    case ErrKey { give ErrKey }
+    otherwise { give ErrState }
+  }
 }
 ```
 
@@ -396,19 +403,19 @@ Erreurs fréquentes à éviter:
 ```vit
 proc kv_roundtrip(m: KvMem, k: string, v: string) -> KvResult {
   let p: KvResult = put(m, k, v)
-  // Match: decision explicite selon l'etat
+
   match p {
     case Ok {
       let g: KvValue = get(m, k)
-      // Match: decision explicite selon l'etat
-  match g {
+
+      match g {
         case Some(_) { give Ok }
         otherwise { give ErrState }
       }
+    }
+    case ErrKey { give ErrKey }
+    otherwise { give ErrState }
   }
-case ErrKey { give ErrKey }
-otherwise { give ErrState }
-}
 }
 ```
 
@@ -457,7 +464,7 @@ entry main at kv/app {
   let b: KvValue = get(m, "user:1")
   let c: KvResult = delete(m, "user:1")
   if a == Ok and c == Ok { return 0 }
-  // Sortie programme: code de retour observable
+
   return 70
 }
 ```
@@ -617,10 +624,9 @@ Procédure:
 
 ## Exemple Étendu
 
-Exemple approfondi pour **projet kv**: flux applicatif complet (entrée, politique métier, persistance simulée, code de sortie).
 
 ```vit
-// Exemple long: flux complet et vérifiable
+// Scenario projet kv: execution complete et verifiable
 space demo/projet-kv
 
 form Request { id: int amount: int quota: int }
@@ -628,14 +634,13 @@ pick Result { case Accepted(total: int) case Rejected(code: int) }
 
 // Entrée applicative: validation des invariants de requête
 proc parse_request(r: Request) -> Result {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if r.id <= 0 { give Result.Rejected(91) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if r.quota < 0 { give Result.Rejected(92) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if r.amount < 0 { give Result.Rejected(93) }
-  // Sortie locale: valeur retournee par la procedure
+
   give Result.Accepted(r.amount)
 }
 
@@ -643,32 +648,29 @@ proc parse_request(r: Request) -> Result {
 proc apply_policy(total: int, quota: int) -> Result {
   let capped: int = total
   if capped > quota { set capped = quota }
-  // Garde: bloque un cas invalide avant de continuer
+
   if capped < 5 { give Result.Rejected(94) }
-  // Sortie locale: valeur retournee par la procedure
+
   give Result.Accepted(capped)
 }
 
 // Persistance simulée: matérialise un résultat sans I/O réel
 proc persist_sim(x: Result) -> Result {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match x {
     case Accepted(v) {
-      // Garde: bloque un cas invalide avant de continuer
-  if v % 13 == 0 { give Result.Rejected(95) }
-      // Sortie locale: valeur retournee par la procedure
-  give Result.Accepted(v)
+      if v % 13 == 0 { give Result.Rejected(95) }
+
+      give Result.Accepted(v)
     }
     case Rejected(c) { give Result.Rejected(c) }
     otherwise { give Result.Rejected(70) }
   }
 }
 
-// Projection finale: convertit l'état métier en code de sortie
+// Conversion finale vers un code de sortie
 proc to_exit(x: Result) -> int {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match x {
     case Accepted(_) { give 0 }
     case Rejected(c) { give c }
@@ -676,19 +678,76 @@ proc to_exit(x: Result) -> int {
   }
 }
 
-// Orchestration: enchaîne les étapes sans logique cachée
+// Point d'entree du scenario
 entry main at core/app {
   let req: Request = Request(7, 12, 15)
   let p: Result = parse_request(req)
   let d: Result = apply_policy(12, req.quota)
   let s: Result = persist_sim(d)
   let _probe: int = to_exit(p)
-  // Sortie programme: code de retour observable
+
   return to_exit(s)
 }
 ```
 
-Scénarios recommandés (projet kv):
+## Design Notes
+
+- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
+- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+
+
+Cas limite réel:
+- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+
+A tester:
 - Requête nominale -> sortie 0.
 - Entrée invalide id<=0 -> sortie 91.
 - Refus métier valeur<5 -> sortie 94.
+
+
+## Trade-offs
+
+| Contrainte | Option A | Option B | Décision recommandée |
+| --- | --- | --- | --- |
+| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
+| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
+| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
+
+
+## Décision Selon Contrainte
+
+- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
+- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
+- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
+
+
+## Diagnostic Rapide
+
+| Symptôme | Cause probable | Vérification | Correction |
+| --- | --- | --- | --- |
+| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
+| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+
+
+## Checkpoint
+
+À ce stade, vous devez savoir:
+- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
+- isoler un cas limite réel et prévoir sa sortie,
+- identifier où ajouter une garde sans casser le nominal.
+
+
+## Mini Étude De Cas (Avant / Après)
+
+Avant: logique métier et sortie technique mélangées, diagnostic coûteux.
+Après: gardes d'entrée, décision métier, projection finale séparées; comportement plus lisible et testable.
+Impact: revue plus rapide, régression plus facile à localiser.
+
+
+## Ce Que Je Ferais En Revue De Code
+
+1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+2. Vérifier que la décision métier est séparée de la projection de sortie.
+3. Vérifier un test nominal et un test limite réellement exécutables.

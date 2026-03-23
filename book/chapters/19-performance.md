@@ -5,6 +5,16 @@ Niveau: Avancé
 Prérequis: chapitre précédent `book/chapters/18-tests.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/18-tests.md`, `book/chapters/20-repro.md`, `book/glossaire.md`.
 
+## Problème Concret
+
+Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
+Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+
+## Fil Rouge (Projet Unique)
+
+Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
+Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+
 ## Objectif
 
 Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
@@ -55,6 +65,7 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 proc sum_loop(n: int) -> int {
   let i: int = 0
   let acc: int = 0
+
   // Boucle: progression controlee jusqu'a la borne
   loop {
     // Borne d'arret: stoppe la boucle de maniere explicite
@@ -62,7 +73,7 @@ proc sum_loop(n: int) -> int {
     set acc = acc + i
     set i = i + 1
   }
-// Sortie locale: valeur retournee par la procedure
+
   give acc
 }
 ```
@@ -103,6 +114,7 @@ Erreurs classiques à éviter:
 proc sum_even(n: int) -> int {
   let i: int = 0
   let acc: int = 0
+
   // Boucle: progression controlee jusqu'a la borne
   loop {
     // Borne d'arret: stoppe la boucle de maniere explicite
@@ -111,10 +123,10 @@ proc sum_even(n: int) -> int {
       set i = i + 1
       continue
     }
-  set acc = acc + i
-  set i = i + 1
-}
-// Sortie locale: valeur retournee par la procedure
+    set acc = acc + i
+    set i = i + 1
+  }
+
   give acc
 }
 ```
@@ -166,6 +178,7 @@ Erreurs classiques à éviter:
 proc sum_even_step(n: int) -> int {
   let i: int = 0
   let acc: int = 0
+
   // Boucle: progression controlee jusqu'a la borne
   loop {
     // Borne d'arret: stoppe la boucle de maniere explicite
@@ -173,7 +186,7 @@ proc sum_even_step(n: int) -> int {
     set acc = acc + i
     set i = i + 2
   }
-// Sortie locale: valeur retournee par la procedure
+
   give acc
 }
 ```
@@ -250,10 +263,9 @@ Repère: une garde explicite ou un chemin de secours déterministe doit s'appliq
 
 ## Exemple Étendu
 
-Exemple approfondi pour **performance**: mesure reproductible (warmup, séries, garde anti-bruit, décision de stabilité).
 
 ```vit
-// Exemple long: flux complet et vérifiable
+// Scenario performance: execution complete et verifiable
 space demo/performance
 
 pick Bench { case Stable(avg: int, p95: int) case Unstable(code: int) }
@@ -261,6 +273,7 @@ pick Bench { case Stable(avg: int, p95: int) case Unstable(code: int) }
 proc workload(n: int) -> int {
   let i: int = 0
   let acc: int = 0
+
   // Boucle: progression controlee jusqu'a la borne
   loop {
     // Borne d'arret: stoppe la boucle de maniere explicite
@@ -268,21 +281,20 @@ proc workload(n: int) -> int {
     set acc = acc + (i * 5)
     set i = i + 1
   }
-  // Sortie locale: valeur retournee par la procedure
+
   give acc
 }
 
 proc sample(iter: int, size: int) -> int {
   let base: int = size * 10
   let jitter: int = iter % 9
-  // Sortie locale: valeur retournee par la procedure
+
   give base + jitter
 }
 
 // Benchmark: warmup + mesures + décision de stabilité
 proc benchmark(size: int) -> Bench {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if size <= 0 { give Bench.Unstable(41) }
   let w: int = workload(120)
   let _w: int = w
@@ -293,16 +305,15 @@ proc benchmark(size: int) -> Bench {
   let s5: int = sample(5, size)
   let avg: int = (s1 + s2 + s3 + s4 + s5) / 5
   let p95: int = s5
-  // Garde: bloque un cas invalide avant de continuer
+
   if p95 > (avg * 2) { give Bench.Unstable(42) }
-  // Sortie locale: valeur retournee par la procedure
+
   give Bench.Stable(avg, p95)
 }
 
-// Projection finale: convertit l'état métier en code de sortie
+// Conversion finale vers un code de sortie
 proc to_exit(b: Bench) -> int {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match b {
     case Stable(_, _) { give 0 }
     case Unstable(c) { give c }
@@ -310,15 +321,72 @@ proc to_exit(b: Bench) -> int {
   }
 }
 
-// Orchestration: enchaîne les étapes sans logique cachée
+// Point d'entree du scenario
 entry main at core/app {
   let b: Bench = benchmark(600)
-  // Sortie programme: code de retour observable
+
   return to_exit(b)
 }
 ```
 
-Scénarios recommandés (performance):
+## Design Notes
+
+- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
+- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+
+
+Cas limite réel:
+- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+
+A tester:
 - Campagne stable -> sortie 0.
 - Paramètre invalide (size=0) -> sortie 41.
 - Variance excessive -> sortie 42.
+
+
+## Trade-offs
+
+| Contrainte | Option A | Option B | Décision recommandée |
+| --- | --- | --- | --- |
+| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
+| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
+| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
+
+
+## Décision Selon Contrainte
+
+- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
+- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
+- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
+
+
+## Diagnostic Rapide
+
+| Symptôme | Cause probable | Vérification | Correction |
+| --- | --- | --- | --- |
+| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
+| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+
+
+## Checkpoint
+
+À ce stade, vous devez savoir:
+- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
+- isoler un cas limite réel et prévoir sa sortie,
+- identifier où ajouter une garde sans casser le nominal.
+
+
+## Pourquoi Cette Erreur Arrive En Prod
+
+Cause fréquente: entrée partiellement valide, hypothèse implicite dans une branche, puis projection de sortie trop tardive.
+Symptôme: comportement correct en nominal mais instable sous charge ou données incomplètes.
+Mesure utile: tracer l'entrée effective, rejouer le cas limite, verrouiller la garde au bon niveau.
+
+
+## Ce Que Je Ferais En Revue De Code
+
+1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+2. Vérifier que la décision métier est séparée de la projection de sortie.
+3. Vérifier un test nominal et un test limite réellement exécutables.

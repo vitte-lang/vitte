@@ -2,19 +2,15 @@
 
 Niveau: Débutant.
 
-## Lecture rapide (30s)
+## Lecture rapide
 
-- Ce que c’est: ce mot-clé exprime une intention précise dans le flux Vitte.
-- Quand l’utiliser: quand il rend la lecture du contrat plus directe.
-- Erreur classique: l’utiliser au mauvais niveau (top-level vs bloc).
+Repère: `make` sert à rendre le code plus explicite, pas à ajouter du bruit.
+Utilisez-le quand il clarifie le contrat; évitez-le hors de son niveau grammatical.
 
 ## Pourquoi (métier)
 
-`make` réduit l’ambiguïté dans le code de production.
-
-Vous l’utilisez pour rendre la règle métier explicite dès la lecture.
-Cela simplifie les revues et accélère le diagnostic en cas d’erreur.
-Le but est un comportement stable, lisible et testable.
+En code reel, `make` sert a clarifier une decision et a reduire les conventions implicites.
+Si ce mot cle ne clarifie ni le contrat, ni la branche, ni la sortie, il faut simplifier le snippet.
 
 ## Définition
 
@@ -30,8 +26,11 @@ Entrée:
 - Initialisation locale valide.
 
 ```vit
+// Exemple concret: cas nominal puis cas invalide
+
 proc init() -> int {
   make counter as int = 0
+  // Valeur retournee par cette branche
   give counter
 }
 ```
@@ -45,8 +44,11 @@ Entrée:
 - Usage de `make` comme expression.
 
 ```vit
+// Exemple concret: cas nominal puis cas invalide
+
 proc bad() -> int {
   let c: int = make 0
+  // Valeur retournee par cette branche
   give c
 }
 # invalide: `make` est une déclaration, pas une expression.
@@ -64,11 +66,13 @@ Diagnostic attendu:
 
 Avant:
 ```vit
+// Exemple concret: cas nominal puis cas invalide
 # usage fragile à corriger
 ```
 
 Après:
 ```vit
+// Exemple concret: cas nominal puis cas invalide
 # usage clair et testable
 ```
 

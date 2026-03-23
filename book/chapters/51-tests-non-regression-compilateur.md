@@ -5,6 +5,16 @@ Niveau: Avance
 Prérequis: `book/chapters/15-pipeline.md`, `book/chapters/31-erreurs-build.md`.
 Voir aussi: à définir.
 
+## Problème Concret
+
+Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
+Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+
+## Fil Rouge (Projet Unique)
+
+Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
+Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+
 ## Objectif
 
 Eviter la reintroduction de bugs deja corriges dans parse, typecheck, backend.
@@ -35,7 +45,7 @@ emit 1
 ```vit
 entry main at app/demo {
   let x: int = "oops"
-  // Sortie programme: code de retour observable
+
   return x
 }
 ```
@@ -45,7 +55,7 @@ entry main at app/demo {
 ```vit
 entry main at app/demo {
   let x: int = 1
-  // Sortie programme: code de retour observable
+
   return x
 }
 ```
@@ -124,54 +134,52 @@ Procédure:
 
 ## Exemple Étendu
 
-Exemple approfondi pour **tests non regression compilateur**: harnais complet (cas unitaires, agrégation, projection CI).
 
 ```vit
-// Exemple long: flux complet et vérifiable
+// Scenario tests non regression compilateur: execution complete et verifiable
 space demo/tests-non-regression-compilateur
 
 form TestCase { id: int input: int expected: int }
 pick CaseResult { case Pass(id: int) case Fail(id: int, got: int, expected: int) }
 
 proc subject(x: int) -> int {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if x < 0 { give 0 }
-  // Garde: bloque un cas invalide avant de continuer
+
   if x > 100 { give 100 }
-  // Sortie locale: valeur retournee par la procedure
+
   give x
 }
 
 // Exécute un cas de test et retourne un résultat typé
 proc run(c: TestCase) -> CaseResult {
   let got: int = subject(c.input)
-  // Garde: bloque un cas invalide avant de continuer
+
   if got == c.expected { give CaseResult.Pass(c.id) }
-  // Sortie locale: valeur retournee par la procedure
+
   give CaseResult.Fail(c.id, got, c.expected)
 }
 
 // Agrège les résultats et projette un code CI
 proc ci_exit(a: CaseResult, b: CaseResult, c: CaseResult) -> int {
   let ok: int = 0
-  // Match: decision explicite selon l'etat
+
   match a { case Pass(_) { set ok = ok + 1 } otherwise { } }
-  // Match: decision explicite selon l'etat
+
   match b { case Pass(_) { set ok = ok + 1 } otherwise { } }
-  // Match: decision explicite selon l'etat
+
   match c { case Pass(_) { set ok = ok + 1 } otherwise { } }
-  // Garde: bloque un cas invalide avant de continuer
+
   if ok == 3 { give 0 }
-  // Garde: bloque un cas invalide avant de continuer
+
   if ok == 2 { give 11 }
-  // Garde: bloque un cas invalide avant de continuer
+
   if ok == 1 { give 12 }
-  // Sortie locale: valeur retournee par la procedure
+
   give 13
 }
 
-// Orchestration: enchaîne les étapes sans logique cachée
+// Point d'entree du scenario
 entry main at core/app {
   let c1: TestCase = TestCase(1, -3, 0)
   let c2: TestCase = TestCase(2, 42, 42)
@@ -179,12 +187,76 @@ entry main at core/app {
   let r1: CaseResult = run(c1)
   let r2: CaseResult = run(c2)
   let r3: CaseResult = run(c3)
-  // Sortie programme: code de retour observable
+
   return ci_exit(r1, r2, r3)
 }
 ```
 
-Scénarios recommandés (tests non regression compilateur):
+## Design Notes
+
+- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
+- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+
+
+Cas limite réel:
+- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+
+A tester:
 - 3 sur 3 réussis -> sortie 0.
 - Régression partielle -> sortie 11.
 - Échec global -> sortie 13.
+
+
+## Trade-offs
+
+| Contrainte | Option A | Option B | Décision recommandée |
+| --- | --- | --- | --- |
+| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
+| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
+| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
+
+
+## Décision Selon Contrainte
+
+- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
+- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
+- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
+
+
+## Diagnostic Rapide
+
+| Symptôme | Cause probable | Vérification | Correction |
+| --- | --- | --- | --- |
+| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
+| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+
+
+## Checkpoint
+
+À ce stade, vous devez savoir:
+- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
+- isoler un cas limite réel et prévoir sa sortie,
+- identifier où ajouter une garde sans casser le nominal.
+
+
+## Pourquoi Cette Erreur Arrive En Prod
+
+Cause fréquente: entrée partiellement valide, hypothèse implicite dans une branche, puis projection de sortie trop tardive.
+Symptôme: comportement correct en nominal mais instable sous charge ou données incomplètes.
+Mesure utile: tracer l'entrée effective, rejouer le cas limite, verrouiller la garde au bon niveau.
+
+
+## Mini Étude De Cas (Avant / Après)
+
+Avant: logique métier et sortie technique mélangées, diagnostic coûteux.
+Après: gardes d'entrée, décision métier, projection finale séparées; comportement plus lisible et testable.
+Impact: revue plus rapide, régression plus facile à localiser.
+
+
+## Ce Que Je Ferais En Revue De Code
+
+1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+2. Vérifier que la décision métier est séparée de la projection de sortie.
+3. Vérifier un test nominal et un test limite réellement exécutables.

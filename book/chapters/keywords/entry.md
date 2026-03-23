@@ -2,19 +2,15 @@
 
 Niveau: Débutant.
 
-## Lecture rapide (30s)
+## Lecture rapide
 
-- Ce que c’est: ce mot-clé exprime une intention précise dans le flux Vitte.
-- Quand l’utiliser: quand il rend la lecture du contrat plus directe.
-- Erreur classique: l’utiliser au mauvais niveau (top-level vs bloc).
+Repère: `entry` sert à rendre le code plus explicite, pas à ajouter du bruit.
+Utilisez-le quand il clarifie le contrat; évitez-le hors de son niveau grammatical.
 
 ## Pourquoi (métier)
 
-`entry` réduit l’ambiguïté dans le code de production.
-
-Vous l’utilisez pour rendre la règle métier explicite dès la lecture.
-Cela simplifie les revues et accélère le diagnostic en cas d’erreur.
-Le but est un comportement stable, lisible et testable.
+En code reel, `entry` sert a clarifier une decision et a reduire les conventions implicites.
+Si ce mot cle ne clarifie ni le contrat, ni la branche, ni la sortie, il faut simplifier le snippet.
 
 ## Définition
 
@@ -30,7 +26,10 @@ Entrée:
 - Cas nominal contrôlé et déterministe.
 
 ```vit
+// Exemple concret: cas nominal puis cas invalide
+
 entry main at app/core {
+  // Code de sortie pour ce cas
   return 0
 }
 ```
@@ -44,8 +43,11 @@ Entrée:
 - Cas volontairement hors contrat.
 
 ```vit
+// Exemple concret: cas nominal puis cas invalide
+
 proc bad_entry() -> int {
   entry
+  // Valeur retournee par cette branche
   give 0
 }
 # invalide: usage hors grammaire attendue pour `entry`.
@@ -63,11 +65,13 @@ Diagnostic attendu:
 
 Avant:
 ```vit
+// Exemple concret: cas nominal puis cas invalide
 # usage fragile à corriger
 ```
 
 Après:
 ```vit
+// Exemple concret: cas nominal puis cas invalide
 # usage clair et testable
 ```
 

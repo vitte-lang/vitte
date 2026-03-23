@@ -5,6 +5,16 @@ Niveau: Intermédiaire.
 Prérequis: chapitre précédent `book/chapters/16-interop.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/17-stdlib.md`, `book/chapters/23-projet-sys.md`, `book/chapters/30-faq.md`.
 
+## Problème Concret
+
+Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
+Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+
+## Fil Rouge (Projet Unique)
+
+Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
+Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+
 ## Objectif
 
 Comprendre le coeur du chapitre avec des exemples concrets et savoir reproduire le résultat sur votre propre code.
@@ -85,10 +95,9 @@ Repère: valider la signature, l'import, puis exécuter un cas nominal et un cas
 
 ## Exemple Étendu
 
-Exemple approfondi pour **liaison native**: contrat ABI explicite (version, bornes, appel natif simulé, projection de code).
 
 ```vit
-// Exemple long: flux complet et vérifiable
+// Scenario liaison native: execution complete et verifiable
 space demo/liaison-native
 
 form AbiEnvelope { version: int payload_size: int flags: int }
@@ -98,34 +107,32 @@ proc abi_version() -> int { give 3 }
 
 // Validation ABI: refuse toute incompatibilité avant appel natif
 proc validate_abi(e: AbiEnvelope) -> int {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if e.version != abi_version() { give 51 }
-  // Garde: bloque un cas invalide avant de continuer
+
   if e.payload_size <= 0 { give 52 }
-  // Garde: bloque un cas invalide avant de continuer
+
   if e.payload_size > 4096 { give 53 }
-  // Garde: bloque un cas invalide avant de continuer
+
   if e.flags < 0 { give 54 }
-  // Sortie locale: valeur retournee par la procedure
+
   give 0
 }
 
 // Appel natif simulé: exécution seulement si le contrat est valide
 proc call_native(e: AbiEnvelope) -> NativeCall {
   let v: int = validate_abi(e)
-  // Garde: bloque un cas invalide avant de continuer
+
   if v != 0 { give NativeCall.Err(v) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if e.payload_size % 2 == 0 { give NativeCall.Ok(0) }
-  // Sortie locale: valeur retournee par la procedure
+
   give NativeCall.Err(55)
 }
 
-// Projection finale: convertit l'état métier en code de sortie
+// Conversion finale vers un code de sortie
 proc to_exit(r: NativeCall) -> int {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match r {
     case Ok(c) { give c }
     case Err(c) { give c }
@@ -133,16 +140,73 @@ proc to_exit(r: NativeCall) -> int {
   }
 }
 
-// Orchestration: enchaîne les étapes sans logique cachée
+// Point d'entree du scenario
 entry main at core/app {
   let e: AbiEnvelope = AbiEnvelope(3, 128, 1)
   let r: NativeCall = call_native(e)
-  // Sortie programme: code de retour observable
+
   return to_exit(r)
 }
 ```
 
-Scénarios recommandés (liaison native):
+## Design Notes
+
+- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
+- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+
+
+Cas limite réel:
+- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+
+A tester:
 - ABI valide -> sortie 0.
 - Version incompatible -> sortie 51.
 - Payload hors contrat -> sortie 52 ou 53.
+
+
+## Trade-offs
+
+| Contrainte | Option A | Option B | Décision recommandée |
+| --- | --- | --- | --- |
+| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
+| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
+| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
+
+
+## Décision Selon Contrainte
+
+- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
+- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
+- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
+
+
+## Diagnostic Rapide
+
+| Symptôme | Cause probable | Vérification | Correction |
+| --- | --- | --- | --- |
+| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
+| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+
+
+## Checkpoint
+
+À ce stade, vous devez savoir:
+- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
+- isoler un cas limite réel et prévoir sa sortie,
+- identifier où ajouter une garde sans casser le nominal.
+
+
+## Pourquoi Cette Erreur Arrive En Prod
+
+Cause fréquente: entrée partiellement valide, hypothèse implicite dans une branche, puis projection de sortie trop tardive.
+Symptôme: comportement correct en nominal mais instable sous charge ou données incomplètes.
+Mesure utile: tracer l'entrée effective, rejouer le cas limite, verrouiller la garde au bon niveau.
+
+
+## Ce Que Je Ferais En Revue De Code
+
+1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+2. Vérifier que la décision métier est séparée de la projection de sortie.
+3. Vérifier un test nominal et un test limite réellement exécutables.

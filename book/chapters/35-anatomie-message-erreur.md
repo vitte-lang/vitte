@@ -5,6 +5,16 @@ Niveau: Intermediaire
 Prérequis: `book/chapters/10-diagnostics.md`, `book/chapters/31-erreurs-build.md`.
 Voir aussi: `book/grammar/diagnostics/expected`.
 
+## Problème Concret
+
+Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
+Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+
+## Fil Rouge (Projet Unique)
+
+Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
+Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+
 ## Objectif
 
 Lire un diagnostic en moins de 30 secondes: categorie, position, cause probable, correction.
@@ -46,7 +56,6 @@ Interpretation:
 
 ```vit
 entry main at app/demo {
-  // Sortie programme: code de retour observable
   return 0
 }
 ```
@@ -63,7 +72,6 @@ entry main at app/demo {
 
 ```vit
 entry main at app/demo {
-  // Sortie programme: code de retour observable
   return unknown_value
 }
 ```
@@ -72,9 +80,8 @@ entry main at app/demo {
 
 ```vit
 entry main at app/demo {
-  // Sortie programme: code de retour observable
   return 0
-  // Sortie programme: code de retour observable
+
   return 1
 }
 ```
@@ -113,7 +120,6 @@ Thème: **anatomie d'un message d'erreur**. Cette section évite les généralit
 
 ```vit
 entry main at app/demo {
-  // Sortie programme: code de retour observable
   return 0
 }
 ```
@@ -152,10 +158,9 @@ Procédure:
 
 ## Exemple Étendu
 
-Exemple approfondi pour **anatomie message erreur**: pipeline diagnostic (capture, classification, redaction, projection sortie).
 
 ```vit
-// Exemple long: flux complet et vérifiable
+// Scenario anatomie message erreur: execution complete et verifiable
 space demo/anatomie-message-erreur
 
 form Event { code: int severity: int payload_len: int }
@@ -163,32 +168,30 @@ pick Diagnostic { case Info(code: int) case Warn(code: int) case Error(code: int
 
 // Classification: mappe un événement vers un niveau explicite
 proc classify(e: Event) -> Diagnostic {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if e.code == 0 { give Diagnostic.Info(0) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if e.severity <= 2 { give Diagnostic.Warn(e.code) }
-  // Sortie locale: valeur retournee par la procedure
+
   give Diagnostic.Error(e.code)
 }
 
 // Redaction: borne la charge utile avant diffusion
 proc redact(e: Event) -> int {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if e.payload_len < 0 { give 81 }
-  // Garde: bloque un cas invalide avant de continuer
+
   if e.payload_len > 4096 { give 82 }
-  // Sortie locale: valeur retournee par la procedure
+
   give 0
 }
 
 proc handle(e: Event) -> int {
   let r: int = redact(e)
-  // Garde: bloque un cas invalide avant de continuer
+
   if r != 0 { give r }
   let d: Diagnostic = classify(e)
-  // Match: decision explicite selon l'etat
+
   match d {
     case Info(_) { give 0 }
     case Warn(_) { give 0 }
@@ -197,15 +200,72 @@ proc handle(e: Event) -> int {
   }
 }
 
-// Orchestration: enchaîne les étapes sans logique cachée
+// Point d'entree du scenario
 entry main at core/app {
   let e: Event = Event(17, 3, 120)
-  // Sortie programme: code de retour observable
+
   return handle(e)
 }
 ```
 
-Scénarios recommandés (anatomie message erreur):
+## Design Notes
+
+- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
+- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+
+
+Cas limite réel:
+- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+
+A tester:
 - Niveau info ou warn -> sortie 0.
 - Erreur métier code 17 -> sortie 17.
 - Payload hors limites -> sortie 82.
+
+
+## Trade-offs
+
+| Contrainte | Option A | Option B | Décision recommandée |
+| --- | --- | --- | --- |
+| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
+| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
+| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
+
+
+## Décision Selon Contrainte
+
+- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
+- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
+- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
+
+
+## Diagnostic Rapide
+
+| Symptôme | Cause probable | Vérification | Correction |
+| --- | --- | --- | --- |
+| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
+| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+
+
+## Checkpoint
+
+À ce stade, vous devez savoir:
+- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
+- isoler un cas limite réel et prévoir sa sortie,
+- identifier où ajouter une garde sans casser le nominal.
+
+
+## Pourquoi Cette Erreur Arrive En Prod
+
+Cause fréquente: entrée partiellement valide, hypothèse implicite dans une branche, puis projection de sortie trop tardive.
+Symptôme: comportement correct en nominal mais instable sous charge ou données incomplètes.
+Mesure utile: tracer l'entrée effective, rejouer le cas limite, verrouiller la garde au bon niveau.
+
+
+## Ce Que Je Ferais En Revue De Code
+
+1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+2. Vérifier que la décision métier est séparée de la projection de sortie.
+3. Vérifier un test nominal et un test limite réellement exécutables.

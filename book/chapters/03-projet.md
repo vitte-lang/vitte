@@ -5,6 +5,16 @@ Niveau: Fondations avancées
 Prérequis: `book/chapters/02-philosophie.md`, `book/glossaire.md`.
 Voir aussi: `book/chapters/04-syntaxe.md`.
 
+## Problème Concret
+
+Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
+Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+
+## Fil Rouge (Projet Unique)
+
+Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
+Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+
 ## Problème structurel
 
 La plupart des dégradations projet viennent d'une cause unique: des dépendances orientées dans le mauvais sens.
@@ -44,7 +54,6 @@ space app/service
 pull app/domain as d
 
 proc is_critical(t: d.Ticket) -> bool {
-  // Sortie locale: valeur retournee par la procedure
   give t.priority >= 9
 }
 ```
@@ -63,12 +72,12 @@ space app/io
 pull app/domain as d
 pull app/service as s
 
-// Orchestration: enchaîne les étapes sans logique cachée
+// Point d'entree du scenario
 entry main at core/app {
   let t: d.Ticket = d.Ticket(1, 9)
   let critical: bool = s.is_critical(t)
   let code: int = critical as int
-  // Sortie programme: code de retour observable
+
   return code
 }
 ```
@@ -123,10 +132,9 @@ S'il répond “oui” à plusieurs questions, la responsabilité est probableme
 
 ## Exemple Étendu
 
-Exemple approfondi pour **projet**: flux applicatif complet (entrée, politique métier, persistance simulée, code de sortie).
 
 ```vit
-// Exemple long: flux complet et vérifiable
+// Scenario projet: execution complete et verifiable
 space demo/projet
 
 form Request { id: int amount: int quota: int }
@@ -134,14 +142,13 @@ pick Result { case Accepted(total: int) case Rejected(code: int) }
 
 // Entrée applicative: validation des invariants de requête
 proc parse_request(r: Request) -> Result {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if r.id <= 0 { give Result.Rejected(91) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if r.quota < 0 { give Result.Rejected(92) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if r.amount < 0 { give Result.Rejected(93) }
-  // Sortie locale: valeur retournee par la procedure
+
   give Result.Accepted(r.amount)
 }
 
@@ -149,32 +156,29 @@ proc parse_request(r: Request) -> Result {
 proc apply_policy(total: int, quota: int) -> Result {
   let capped: int = total
   if capped > quota { set capped = quota }
-  // Garde: bloque un cas invalide avant de continuer
+
   if capped < 5 { give Result.Rejected(94) }
-  // Sortie locale: valeur retournee par la procedure
+
   give Result.Accepted(capped)
 }
 
 // Persistance simulée: matérialise un résultat sans I/O réel
 proc persist_sim(x: Result) -> Result {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match x {
     case Accepted(v) {
-      // Garde: bloque un cas invalide avant de continuer
-  if v % 13 == 0 { give Result.Rejected(95) }
-      // Sortie locale: valeur retournee par la procedure
-  give Result.Accepted(v)
+      if v % 13 == 0 { give Result.Rejected(95) }
+
+      give Result.Accepted(v)
     }
     case Rejected(c) { give Result.Rejected(c) }
     otherwise { give Result.Rejected(70) }
   }
 }
 
-// Projection finale: convertit l'état métier en code de sortie
+// Conversion finale vers un code de sortie
 proc to_exit(x: Result) -> int {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match x {
     case Accepted(_) { give 0 }
     case Rejected(c) { give c }
@@ -182,19 +186,76 @@ proc to_exit(x: Result) -> int {
   }
 }
 
-// Orchestration: enchaîne les étapes sans logique cachée
+// Point d'entree du scenario
 entry main at core/app {
   let req: Request = Request(7, 12, 15)
   let p: Result = parse_request(req)
   let d: Result = apply_policy(12, req.quota)
   let s: Result = persist_sim(d)
   let _probe: int = to_exit(p)
-  // Sortie programme: code de retour observable
+
   return to_exit(s)
 }
 ```
 
-Scénarios recommandés (projet):
+## Design Notes
+
+- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
+- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+
+
+Cas limite réel:
+- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+
+A tester:
 - Requête nominale -> sortie 0.
 - Entrée invalide id<=0 -> sortie 91.
 - Refus métier valeur<5 -> sortie 94.
+
+
+## Trade-offs
+
+| Contrainte | Option A | Option B | Décision recommandée |
+| --- | --- | --- | --- |
+| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
+| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
+| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
+
+
+## Décision Selon Contrainte
+
+- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
+- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
+- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
+
+
+## Diagnostic Rapide
+
+| Symptôme | Cause probable | Vérification | Correction |
+| --- | --- | --- | --- |
+| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
+| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+
+
+## Checkpoint
+
+À ce stade, vous devez savoir:
+- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
+- isoler un cas limite réel et prévoir sa sortie,
+- identifier où ajouter une garde sans casser le nominal.
+
+
+## Mini Étude De Cas (Avant / Après)
+
+Avant: logique métier et sortie technique mélangées, diagnostic coûteux.
+Après: gardes d'entrée, décision métier, projection finale séparées; comportement plus lisible et testable.
+Impact: revue plus rapide, régression plus facile à localiser.
+
+
+## Ce Que Je Ferais En Revue De Code
+
+1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+2. Vérifier que la décision métier est séparée de la projection de sortie.
+3. Vérifier un test nominal et un test limite réellement exécutables.

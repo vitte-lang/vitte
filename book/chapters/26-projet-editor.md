@@ -5,6 +5,16 @@ Niveau: Avancé.
 Prérequis: chapitre précédent `book/chapters/25-projet-arduino.md` et `book/glossaire.md`.
 Voir aussi: `book/chapters/25-projet-arduino.md`, `book/chapters/27-grammaire.md`, `book/glossaire.md`.
 
+## Problème Concret
+
+Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
+Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+
+## Fil Rouge (Projet Unique)
+
+Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
+Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+
 ## Pourquoi
 
 Ce chapitre vous donne une compréhension claire de **Projet guide Éditeur**.
@@ -122,7 +132,7 @@ form History {
 ```
 
 Encadré de stabilité:
-> Ce modèle est canonique et ne changera plus dans ce chapitre.  
+> Ce modèle est canonique et ne changera plus dans ce chapitre.
 > Toutes les sections suivantes ne font qu'ajouter des règles d'exécution et de vérification.
 
 Pourquoi ce bloc existe:
@@ -145,10 +155,10 @@ form Bounds {
 
 proc bounds_from_doc(d: Document) -> Bounds {
   let last_row: int = d.lines.len() - 1
-  // Garde: bloque un cas invalide avant de continuer
+
   if last_row < 0 { give Bounds(0, 0) }
   let last_col: int = d.lines[last_row].len()
-  // Sortie locale: valeur retournee par la procedure
+
   give Bounds(last_row, last_col)
 }
 
@@ -161,7 +171,7 @@ proc clamp_cursor(c: Cursor, d: Document) -> Cursor {
   let line_len: int = d.lines[r].len()
   if k < 0 { set k = 0 }
   if k > line_len { set k = line_len }
-  // Sortie locale: valeur retournee par la procedure
+
   give Cursor(r, k)
 }
 ```
@@ -177,7 +187,7 @@ proc insert_at(s: EditorState, ch: string, row: int, col: int) -> EditorState {
   let left: string = line.slice(0, c.col)
   let right: string = line.slice(c.col, line.len())
   s.doc.lines[c.row] = left + ch + right
-  // Sortie locale: valeur retournee par la procedure
+
   give EditorState(s.doc, Cursor(c.row, c.col + 1), s.read_only)
 }
 
@@ -188,7 +198,7 @@ proc newline_split(s: EditorState, row: int, col: int) -> EditorState {
   let right: string = line.slice(c.col, line.len())
   s.doc.lines[c.row] = left
   s.doc.lines.insert(c.row + 1, right)
-  // Sortie locale: valeur retournee par la procedure
+
   give EditorState(s.doc, Cursor(c.row + 1, 0), s.read_only)
 }
 
@@ -199,11 +209,10 @@ proc backspace_apply(s: EditorState, row: int, col: int) -> EditorState {
     let left: string = line.slice(0, c.col - 1)
     let right: string = line.slice(c.col, line.len())
     s.doc.lines[c.row] = left + right
-    // Sortie locale: valeur retournee par la procedure
-  give EditorState(s.doc, Cursor(c.row, c.col - 1), s.read_only)
+
+    give EditorState(s.doc, Cursor(c.row, c.col - 1), s.read_only)
   }
 
-  // Garde: bloque un cas invalide avant de continuer
   if c.row == 0 { give s }
 
   let prev: string = s.doc.lines[c.row - 1]
@@ -211,7 +220,7 @@ proc backspace_apply(s: EditorState, row: int, col: int) -> EditorState {
   let join_col: int = prev.len()
   s.doc.lines[c.row - 1] = prev + cur
   s.doc.lines.remove_at(c.row)
-  // Sortie locale: valeur retournee par la procedure
+
   give EditorState(s.doc, Cursor(c.row - 1, join_col), s.read_only)
 }
 ```
@@ -227,26 +236,22 @@ Principe:
 
 ```vit
 proc inverse_of(cmd: Command) -> Command {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match cmd {
     case Left { give Right }
     case Right { give Left }
     case InsertChar(ch, row, col) {
-      // Sortie locale: valeur retournee par la procedure
-  give Backspace(row, col + ch.len(), ch)
+      give Backspace(row, col + ch.len(), ch)
     }
     case NewLine(row, col) {
-      // Sortie locale: valeur retournee par la procedure
-  give Backspace(row + 1, 0, "\n")
+      give Backspace(row + 1, 0, "\n")
     }
     case Backspace(row, col, deleted) {
       if deleted == "\n" {
-        // Sortie locale: valeur retournee par la procedure
-  give NewLine(row - 1, col)
+        give NewLine(row - 1, col)
       }
-      // Sortie locale: valeur retournee par la procedure
-  give InsertChar(deleted, row, col - deleted.len())
+
+      give InsertChar(deleted, row, col - deleted.len())
     }
     otherwise { give Left }
   }
@@ -271,8 +276,7 @@ Frontière: ce bloc valide et applique une commande avec retour explicite.
 
 ```vit
 proc is_mutating(cmd: Command) -> bool {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match cmd {
     case InsertChar(_, _, _) { give true }
     case Backspace(_, _, _) { give true }
@@ -283,26 +287,23 @@ proc is_mutating(cmd: Command) -> bool {
 
 proc apply_command(s: EditorState, cmd: Command) -> EditResult {
   if s.doc.lines.len() == 0 {
-    // Sortie locale: valeur retournee par la procedure
-  give Err(ErrInvalid)
+    give Err(ErrInvalid)
   }
 
   if s.read_only and is_mutating(cmd) {
-    // Sortie locale: valeur retournee par la procedure
-  give Err(ErrReadOnly)
+    give Err(ErrReadOnly)
   }
 
-  // Match: decision explicite selon l'etat
   match cmd {
     case Left {
       let c: Cursor = clamp_cursor(Cursor(s.cursor.row, s.cursor.col - 1), s.doc)
-      // Sortie locale: valeur retournee par la procedure
-  give Ok(EditorState(s.doc, c, s.read_only))
+
+      give Ok(EditorState(s.doc, c, s.read_only))
     }
     case Right {
       let c: Cursor = clamp_cursor(Cursor(s.cursor.row, s.cursor.col + 1), s.doc)
-      // Sortie locale: valeur retournee par la procedure
-  give Ok(EditorState(s.doc, c, s.read_only))
+
+      give Ok(EditorState(s.doc, c, s.read_only))
     }
     case InsertChar(ch, row, col) { give Ok(insert_at(s, ch, row, col)) }
     case Backspace(row, col, _) { give Ok(backspace_apply(s, row, col)) }
@@ -328,18 +329,18 @@ Frontière: ce bloc manipule historique + moteur; il ne fait pas de rendu.
 proc push_history(h: History, cmd: Command) -> History {
   h.past.push(cmd)
   h.future = []
-  // Sortie locale: valeur retournee par la procedure
+
   give h
 }
 
 proc apply_with_history(s: EditorState, h: History, cmd: Command) -> EditResult {
   let r: EditResult = apply_command(s, cmd)
-  // Match: decision explicite selon l'etat
+
   match r {
     case Ok(next) {
       let h2: History = push_history(h, cmd)
-      // Sortie locale: valeur retournee par la procedure
-  give Ok(next)
+
+      give Ok(next)
     }
     case Err(e) { give Err(e) }
     otherwise { give Err(ErrInvalid) }
@@ -347,19 +348,18 @@ proc apply_with_history(s: EditorState, h: History, cmd: Command) -> EditResult 
 }
 
 proc undo_step(s: EditorState, h: History) -> EditResult {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if h.past.len() == 0 { give Ok(s) }
   let cmd: Command = h.past[h.past.len() - 1]
   h.past.remove_at(h.past.len() - 1)
   let inv: Command = inverse_of(cmd)
   let r: EditResult = apply_command(s, inv)
-  // Match: decision explicite selon l'etat
+
   match r {
     case Ok(next) {
       h.future.push(cmd)
-      // Sortie locale: valeur retournee par la procedure
-  give Ok(next)
+
+      give Ok(next)
     }
     case Err(e) { give Err(e) }
     otherwise { give Err(ErrInvalid) }
@@ -367,18 +367,17 @@ proc undo_step(s: EditorState, h: History) -> EditResult {
 }
 
 proc redo_step(s: EditorState, h: History) -> EditResult {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if h.future.len() == 0 { give Ok(s) }
   let cmd: Command = h.future[h.future.len() - 1]
   h.future.remove_at(h.future.len() - 1)
   let r: EditResult = apply_command(s, cmd)
-  // Match: decision explicite selon l'etat
+
   match r {
     case Ok(next) {
       h.past.push(cmd)
-      // Sortie locale: valeur retournee par la procedure
-  give Ok(next)
+
+      give Ok(next)
     }
     case Err(e) { give Err(e) }
     otherwise { give Err(ErrInvalid) }
@@ -438,12 +437,12 @@ Pseudo-test:
 ```vit
 proc prop_undo_redo_identity(s: EditorState, h: History) -> bool {
   let a: EditResult = redo_step(s, h)
-  // Match: decision explicite selon l'etat
+
   match a {
     case Ok(s1) {
       let b: EditResult = undo_step(s1, h)
-      // Match: decision explicite selon l'etat
-  match b {
+
+      match b {
         case Ok(s2) { give hash_state(s2) == hash_state(s) }
         otherwise { give false }
       }
@@ -462,20 +461,21 @@ Objectif: prouver qu'une séquence `redo` puis `undo` conserve l'état quand ell
 proc replay(s0: EditorState, cmds: Command[]) -> EditResult {
   let i: int = 0
   let s: EditorState = s0
+
   // Boucle: progression controlee jusqu'a la borne
   loop {
     // Borne d'arret: stoppe la boucle de maniere explicite
     if i >= cmds.len() { break }
     let r: EditResult = apply_command(s, cmds[i])
-    // Match: decision explicite selon l'etat
-  match r {
+
+    match r {
       case Ok(next) { set s = next }
       case Err(e) { give Err(e) }
       otherwise { give Err(ErrInvalid) }
     }
     set i = i + 1
   }
-  // Sortie locale: valeur retournee par la procedure
+
   give Ok(s)
 }
 ```
@@ -563,16 +563,18 @@ form Viewport {
 proc visible_lines(d: Document, v: Viewport) -> string[] {
   let out: string[] = []
   let i: int = v.top
+
   // Boucle: progression controlee jusqu'a la borne
   loop {
     // Borne d'arret: stoppe la boucle de maniere explicite
     if i >= d.lines.len() { break }
+
     // Borne d'arret: stoppe la boucle de maniere explicite
     if i >= v.top + v.height { break }
     out.push(d.lines[i])
     set i = i + 1
   }
-  // Sortie locale: valeur retournee par la procedure
+
   give out
 }
 ```
@@ -770,10 +772,9 @@ Procédure:
 
 ## Exemple Étendu
 
-Exemple approfondi pour **projet editor**: flux applicatif complet (entrée, politique métier, persistance simulée, code de sortie).
 
 ```vit
-// Exemple long: flux complet et vérifiable
+// Scenario projet editor: execution complete et verifiable
 space demo/projet-editor
 
 form Request { id: int amount: int quota: int }
@@ -781,14 +782,13 @@ pick Result { case Accepted(total: int) case Rejected(code: int) }
 
 // Entrée applicative: validation des invariants de requête
 proc parse_request(r: Request) -> Result {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if r.id <= 0 { give Result.Rejected(91) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if r.quota < 0 { give Result.Rejected(92) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if r.amount < 0 { give Result.Rejected(93) }
-  // Sortie locale: valeur retournee par la procedure
+
   give Result.Accepted(r.amount)
 }
 
@@ -796,32 +796,29 @@ proc parse_request(r: Request) -> Result {
 proc apply_policy(total: int, quota: int) -> Result {
   let capped: int = total
   if capped > quota { set capped = quota }
-  // Garde: bloque un cas invalide avant de continuer
+
   if capped < 5 { give Result.Rejected(94) }
-  // Sortie locale: valeur retournee par la procedure
+
   give Result.Accepted(capped)
 }
 
 // Persistance simulée: matérialise un résultat sans I/O réel
 proc persist_sim(x: Result) -> Result {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match x {
     case Accepted(v) {
-      // Garde: bloque un cas invalide avant de continuer
-  if v % 13 == 0 { give Result.Rejected(95) }
-      // Sortie locale: valeur retournee par la procedure
-  give Result.Accepted(v)
+      if v % 13 == 0 { give Result.Rejected(95) }
+
+      give Result.Accepted(v)
     }
     case Rejected(c) { give Result.Rejected(c) }
     otherwise { give Result.Rejected(70) }
   }
 }
 
-// Projection finale: convertit l'état métier en code de sortie
+// Conversion finale vers un code de sortie
 proc to_exit(x: Result) -> int {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match x {
     case Accepted(_) { give 0 }
     case Rejected(c) { give c }
@@ -829,19 +826,69 @@ proc to_exit(x: Result) -> int {
   }
 }
 
-// Orchestration: enchaîne les étapes sans logique cachée
+// Point d'entree du scenario
 entry main at core/app {
   let req: Request = Request(7, 12, 15)
   let p: Result = parse_request(req)
   let d: Result = apply_policy(12, req.quota)
   let s: Result = persist_sim(d)
   let _probe: int = to_exit(p)
-  // Sortie programme: code de retour observable
+
   return to_exit(s)
 }
 ```
 
-Scénarios recommandés (projet editor):
+## Design Notes
+
+- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
+- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+
+
+Cas limite réel:
+- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+
+A tester:
 - Requête nominale -> sortie 0.
 - Entrée invalide id<=0 -> sortie 91.
 - Refus métier valeur<5 -> sortie 94.
+
+
+## Trade-offs
+
+| Contrainte | Option A | Option B | Décision recommandée |
+| --- | --- | --- | --- |
+| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
+| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
+| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
+
+
+## Décision Selon Contrainte
+
+- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
+- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
+- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
+
+
+## Diagnostic Rapide
+
+| Symptôme | Cause probable | Vérification | Correction |
+| --- | --- | --- | --- |
+| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
+| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+
+
+## Checkpoint
+
+À ce stade, vous devez savoir:
+- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
+- isoler un cas limite réel et prévoir sa sortie,
+- identifier où ajouter une garde sans casser le nominal.
+
+
+## Ce Que Je Ferais En Revue De Code
+
+1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+2. Vérifier que la décision métier est séparée de la projection de sortie.
+3. Vérifier un test nominal et un test limite réellement exécutables.

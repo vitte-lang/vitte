@@ -5,6 +5,16 @@ Niveau: Avancé
 Prérequis: `book/chapters/25-projet-arduino.md`, `book/chapters/45-performance-allocations-copies.md`.
 Voir aussi: à définir.
 
+## Problème Concret
+
+Contexte réel: un flux de traitement doit rester lisible, testable et deterministic même quand l'entrée est partielle ou invalide.
+Avant de parler syntaxe, ce chapitre répond à une question pratique: **quelle décision prend le code et pourquoi**.
+
+## Fil Rouge (Projet Unique)
+
+Mini-projet suivi: **OpsTicket** (ingestion, validation, decision, sortie).
+Chaque chapitre modifie une partie du meme flux pour garder la continuité technique.
+
 ## Objectif
 
 Livrer un projet embarque respectant budget mémoire et contraintes de latence.
@@ -46,7 +56,6 @@ Livrer un projet embarque respectant budget mémoire et contraintes de latence.
 
 ```vit
 proc sample_once(v: int) -> int {
-  // Sortie locale: valeur retournee par la procedure
   give v
 }
 ```
@@ -58,10 +67,9 @@ Objectif:
 
 ```vit
 proc read_checked(ok: bool, value: int) -> int {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if not ok { give -1 }
-  // Sortie locale: valeur retournee par la procedure
+
   give value
 }
 ```
@@ -127,7 +135,6 @@ Thème: **projet embarque (contraintes mémoire/temps)**. Cette section évite l
 
 ```vit
 proc sample_once(v: int) -> int {
-  // Sortie locale: valeur retournee par la procedure
   give v
 }
 ```
@@ -166,10 +173,9 @@ Procédure:
 
 ## Exemple Étendu
 
-Exemple approfondi pour **projet embarque contraintes**: boucle embarquée robuste (lecture, validation, décision, sortie watchdog).
 
 ```vit
-// Exemple long: flux complet et vérifiable
+// Scenario projet embarque contraintes: execution complete et verifiable
 space demo/projet-embarque-contraintes
 
 form Telemetry { temp_c: int volts_mv: int seq: int }
@@ -178,38 +184,36 @@ pick Decision { case Keep case Cool(level: int) case Fault(code: int) }
 proc read_sensor(step: int) -> Telemetry {
   let t: int = 30 + (step % 10)
   let v: int = 3300 - (step % 30)
-  // Sortie locale: valeur retournee par la procedure
+
   give Telemetry(t, v, step)
 }
 
 proc validate(t: Telemetry) -> int {
-  // Bloc logique: validations et gardes d'entree
-  // Garde: bloque un cas invalide avant de continuer
+
   if t.volts_mv < 3000 { give 61 }
-  // Garde: bloque un cas invalide avant de continuer
+
   if t.temp_c < -20 { give 62 }
-  // Garde: bloque un cas invalide avant de continuer
+
   if t.temp_c > 120 { give 63 }
-  // Sortie locale: valeur retournee par la procedure
+
   give 0
 }
 
 proc control(t: Telemetry) -> Decision {
   let v: int = validate(t)
-  // Garde: bloque un cas invalide avant de continuer
+
   if v != 0 { give Decision.Fault(v) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if t.temp_c >= 36 { give Decision.Cool(2) }
-  // Garde: bloque un cas invalide avant de continuer
+
   if t.temp_c >= 33 { give Decision.Cool(1) }
-  // Sortie locale: valeur retournee par la procedure
+
   give Decision.Keep
 }
 
-// Projection finale: convertit l'état métier en code de sortie
+// Conversion finale vers un code de sortie
 proc to_exit(d: Decision) -> int {
-  // Bloc logique: decision par branches explicites
-  // Match: decision explicite selon l'etat
+
   match d {
     case Keep { give 0 }
     case Cool(_) { give 0 }
@@ -218,16 +222,73 @@ proc to_exit(d: Decision) -> int {
   }
 }
 
-// Orchestration: enchaîne les étapes sans logique cachée
+// Point d'entree du scenario
 entry main at core/app {
   let t: Telemetry = read_sensor(9)
   let d: Decision = control(t)
-  // Sortie programme: code de retour observable
+
   return to_exit(d)
 }
 ```
 
-Scénarios recommandés (projet embarque contraintes):
+## Design Notes
+
+- Le snippet privilégie des frontières explicites plutôt qu'un code minimaliste.
+- Les gardes sont placées tôt pour réduire le coût de diagnostic.
+- La sortie est projetée en fin de flux pour garder le métier indépendant du transport.
+
+
+Cas limite réel:
+- Entree degradee ou incomplete: la garde doit couper le flux tot avec une sortie explicite.
+
+A tester:
 - Temp nominale -> sortie 0.
 - Sous-tension -> sortie 61.
 - Température hors bornes -> sortie 62 ou 63.
+
+
+## Trade-offs
+
+| Contrainte | Option A | Option B | Décision recommandée |
+| --- | --- | --- | --- |
+| Lisibilité prioritaire | Branches explicites | Code compact | A si l'équipe maintient le code longtemps |
+| Perf critique | Spécialisation ciblée | Généralisation | A si profiling confirme le gain |
+| Évolution rapide | Contrats stricts | Conventions implicites | A pour réduire les régressions |
+
+
+## Décision Selon Contrainte
+
+- Si la contrainte dominante est la sûreté: valider tôt, échouer explicitement.
+- Si la contrainte dominante est la latence: mesurer d'abord, optimiser ensuite.
+- Si la contrainte dominante est l'évolutivité: isoler orchestration, décisions et conversion de sortie.
+
+
+## Diagnostic Rapide
+
+| Symptôme | Cause probable | Vérification | Correction |
+| --- | --- | --- | --- |
+| Sortie inattendue | Garde absente ou mal ordonnée | Rejouer avec cas limite | Remonter la garde avant la zone sensible |
+| Branche non prise | Condition trop large/trop stricte | Tracer l'entrée effective | Rendre la condition explicite et testée |
+| Régression silencieuse | Contrat implicite | Comparer nominal vs limite | Formaliser le contrat dans le code |
+
+
+## Checkpoint
+
+À ce stade, vous devez savoir:
+- expliquer le flux entrée -> décision -> sortie sans ambiguïté,
+- isoler un cas limite réel et prévoir sa sortie,
+- identifier où ajouter une garde sans casser le nominal.
+
+
+## Mini Étude De Cas (Avant / Après)
+
+Avant: logique métier et sortie technique mélangées, diagnostic coûteux.
+Après: gardes d'entrée, décision métier, projection finale séparées; comportement plus lisible et testable.
+Impact: revue plus rapide, régression plus facile à localiser.
+
+
+## Ce Que Je Ferais En Revue De Code
+
+1. Vérifier que les gardes d'entrée apparaissent avant les opérations sensibles.
+2. Vérifier que la décision métier est séparée de la projection de sortie.
+3. Vérifier un test nominal et un test limite réellement exécutables.

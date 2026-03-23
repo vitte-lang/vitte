@@ -2,19 +2,15 @@
 
 Niveau: Intermédiaire.
 
-## Lecture rapide (30s)
+## Lecture rapide
 
-- Ce que c’est: ce mot-clé exprime une intention précise dans le flux Vitte.
-- Quand l’utiliser: quand il rend la lecture du contrat plus directe.
-- Erreur classique: l’utiliser au mauvais niveau (top-level vs bloc).
+Repère: `when` sert à rendre le code plus explicite, pas à ajouter du bruit.
+Utilisez-le quand il clarifie le contrat; évitez-le hors de son niveau grammatical.
 
 ## Pourquoi (métier)
 
-`when` réduit l’ambiguïté dans le code de production.
-
-Vous l’utilisez pour rendre la règle métier explicite dès la lecture.
-Cela simplifie les revues et accélère le diagnostic en cas d’erreur.
-Le but est un comportement stable, lisible et testable.
+En code reel, `when` sert a clarifier une decision et a reduire les conventions implicites.
+Si ce mot cle ne clarifie ni le contrat, ni la branche, ni la sortie, il faut simplifier le snippet.
 
 ## Définition
 
@@ -30,9 +26,13 @@ Entrée:
 - Forme `when expr is pattern`.
 
 ```vit
+// Exemple concret: cas nominal puis cas invalide
+
 pick Resp { case Ok, case Err }
+
 proc on_resp(r: Resp) -> int {
   when r is Ok { give 0 }
+  // Valeur retournee par cette branche
   give 1
 }
 ```
@@ -46,6 +46,7 @@ Entrée:
 - Clause incomplète.
 
 ```vit
+// Exemple concret: cas nominal puis cas invalide
 when r is { give 0 }
 # invalide: pattern manquant après `is`.
 ```
@@ -62,11 +63,13 @@ Diagnostic attendu:
 
 Avant:
 ```vit
+// Exemple concret: cas nominal puis cas invalide
 # usage fragile à corriger
 ```
 
 Après:
 ```vit
+// Exemple concret: cas nominal puis cas invalide
 # usage clair et testable
 ```
 
