@@ -204,6 +204,21 @@ form ActorRuntimeInfo {
   monotonic_tick: bool
 }
 
+form ActorRestartPolicy {
+  strategy: SupervisionStrategy
+  restart_limit: int
+  backoff_base: int
+  backoff_max: int
+  backoff_jitter: int
+}
+
+form ActorLatencyMetrics {
+  last_ms: int
+  avg_ms: int
+  max_ms: int
+  samples: int
+}
+
 form Actor {
   id: int
   name: string
@@ -540,6 +555,33 @@ proc configure_supervision(a: Actor, strategy: SupervisionStrategy, restart_limi
   )
 }
 
+proc restart_policy(
+  strategy: SupervisionStrategy,
+  restart_limit: int,
+  backoff_base: int,
+  backoff_max: int,
+  backoff_jitter: int
+) -> ActorRestartPolicy {
+  let limit = restart_limit
+  let base = backoff_base
+  let max = backoff_max
+  let jitter = backoff_jitter
+  if limit < 0 { limit = 0 }
+  if base < 1 { base = 1 }
+  if max < base { max = base }
+  if jitter < 0 { jitter = 0 }
+  give ActorRestartPolicy(strategy, limit, base, max, jitter)
+}
+
+proc current_restart_policy(a: Actor) -> ActorRestartPolicy {
+  give ActorRestartPolicy(a.supervision, a.restart_limit, a.backoff_base, a.backoff_max, a.backoff_jitter)
+}
+
+proc configure_restart_policy(a: Actor, policy: ActorRestartPolicy) -> Actor {
+  let with_supervision = configure_supervision(a, policy.strategy, policy.restart_limit)
+  give configure_backoff(with_supervision, policy.backoff_base, policy.backoff_max, policy.backoff_jitter)
+}
+
 proc configure_backoff(a: Actor, base: int, max: int, jitter: int) -> Actor {
   let b = base
   let m = max
@@ -620,6 +662,10 @@ proc mailbox_len(a: Actor) -> int {
   give a.mailbox.len
 }
 
+proc mailbox_limit(a: Actor) -> int {
+  give a.mailbox_capacity
+}
+
 proc mailbox_is_empty(a: Actor) -> bool {
   give a.mailbox.len == 0
 }
@@ -687,23 +733,42 @@ proc sweep_asks(asks: [AskRecord], tick: int) -> AskSweepResult {
   give AskSweepResult(out, timed_out)
 }
 
+proc mailbox_contains_message_id(mailbox: [ActorMessage], message_id: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= mailbox.len { break }
+    if mailbox[i].message_id == message_id { give true }
+    i = i + 1
+  }
+  give false
+}
+
 proc ask(a: Actor, request_id: string, message: ActorMessage, timeout_ticks: int) -> Actor {
   let timeout = timeout_ticks
   if timeout < 1 { timeout = 1 }
   let msg = assign_message_identity(a, message)
   let rec = AskRecord(request_id, msg.message_id, a.tick + timeout, false, false, false)
+  let staged = send(a, msg)
+  let asks = staged.asks
+  let events = staged.events
+  if mailbox_contains_message_id(staged.mailbox, msg.message_id) {
+    asks = asks.push(rec)
+    events = events.push("ask_open:" + request_id)
+  } else {
+    events = events.push("ask_rejected:" + request_id)
+  }
   give Actor(
-    a.id, a.name, ActorState.Busy,
-    a.mailbox.push(msg), a.mailbox_capacity, a.mailbox_policy,
-    a.processed, a.failures, a.restarts, a.dropped, a.rejected, a.dead_letters,
-    a.supervision, a.restart_limit,
-    a.backoff_base, a.backoff_max, a.backoff_jitter, a.restart_ready_tick,
-    a.circuit_state, a.circuit_failures, a.circuit_threshold, a.circuit_cooldown, a.circuit_open_until,
-    a.dedup_window, trim_recent(a.recent_message_ids.push(msg.message_id), a.dedup_window),
-    a.scheduler_lane, a.tick, a.next_message_seq + 1,
-    a.hooks, a.hook_runs,
-    a.latency_total, a.latency_max, a.last_latency, a.last_trace_id, a.last_span_id,
-    a.asks.push(rec), a.events.push("ask_open:" + request_id), a.snapshots, a.snapshot_interval
+    staged.id, staged.name, staged.state,
+    staged.mailbox, staged.mailbox_capacity, staged.mailbox_policy,
+    staged.processed, staged.failures, staged.restarts, staged.dropped, staged.rejected, staged.dead_letters,
+    staged.supervision, staged.restart_limit,
+    staged.backoff_base, staged.backoff_max, staged.backoff_jitter, staged.restart_ready_tick,
+    staged.circuit_state, staged.circuit_failures, staged.circuit_threshold, staged.circuit_cooldown, staged.circuit_open_until,
+    staged.dedup_window, staged.recent_message_ids,
+    staged.scheduler_lane, staged.tick, staged.next_message_seq,
+    staged.hooks, staged.hook_runs,
+    staged.latency_total, staged.latency_max, staged.last_latency, staged.last_trace_id, staged.last_span_id,
+    asks, events, staged.snapshots, staged.snapshot_interval
   )
 }
 
@@ -1412,6 +1477,15 @@ proc processing_latency_max(a: Actor) -> int {
 proc processing_latency_avg(a: Actor) -> int {
   if a.processed <= 0 { give 0 }
   give a.latency_total / a.processed
+}
+
+proc actor_latency_metrics(a: Actor) -> ActorLatencyMetrics {
+  give ActorLatencyMetrics(
+    processing_latency_last(a),
+    processing_latency_avg(a),
+    processing_latency_max(a),
+    a.processed
+  )
 }
 
 proc trace_state(a: Actor) -> string {

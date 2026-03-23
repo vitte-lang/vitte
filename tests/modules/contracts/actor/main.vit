@@ -5,7 +5,12 @@ proc main() -> i32 {
 
   let a0 = actor.spawn(1, "worker")
   let a1 = actor.configure_mailbox(a0, 8, actor.MailboxPolicy.Reject)
+  if actor.mailbox_limit(a1) != 8 { return 44 }
   let a2 = actor.configure_supervision(a1, actor.SupervisionStrategy.Restart, 2)
+  let rp = actor.restart_policy(actor.SupervisionStrategy.Restart, 2, 2, 16, 1)
+  let a2p = actor.configure_restart_policy(a2, rp)
+  let rp_cur = actor.current_restart_policy(a2p)
+  if rp_cur.restart_limit != 2 || rp_cur.backoff_max != 16 { return 45 }
   let a3 = actor.configure_backoff(a2, 2, 16, 0)
   let a4 = actor.configure_circuit_breaker(a3, 2, 3)
   let a5 = actor.configure_idempotence(a4, 8)
@@ -63,8 +68,16 @@ proc main() -> i32 {
   if actor.max_message_age(o1) != 0 { return 19 }
   let o2 = actor.step(o1)
   if actor.processing_latency_last(o2) < 0 { return 20 }
+  let lm = actor.actor_latency_metrics(o2)
+  if lm.last_ms < 0 || lm.max_ms < lm.last_ms || lm.samples <= 0 { return 46 }
   if actor.throughput(o2) <= 0 { return 21 }
   if actor.trace_state(o2).len == 0 { return 22 }
+
+  let aq0 = actor.configure_mailbox(actor.spawn(40, "ask-cap"), 1, actor.MailboxPolicy.Reject)
+  let aq1 = actor.send(aq0, actor.make_message("evt", "first", "trace-aq"))
+  let aq2 = actor.ask(aq1, "req-cap", actor.make_message("ask", "second", "trace-aq"), 2)
+  if actor.ask_state(aq2, "req-cap") != "unknown" { return 47 }
+  if actor.dead_letter_count(aq2) <= 0 { return 48 }
 
   let s0 = actor.configure_snapshot(actor.spawn(5, "snap"), 1)
   let s1 = actor.send(s0, actor.make_message("evt", "one", "trace-s"))
