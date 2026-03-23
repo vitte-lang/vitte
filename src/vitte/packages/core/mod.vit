@@ -34,6 +34,14 @@ form Ord[T] {
   cmp: proc(a: T, b: T) -> int
 }
 
+proc eq[T](value: Eq[T], left: T, right: T) -> bool {
+  give value.eq(left, right)
+}
+
+proc ord_cmp[T](value: Ord[T], left: T, right: T) -> int {
+  give value.cmp(left, right)
+}
+
 proc some[T](value: T) -> Option[T] {
   give Option.Some(value)
 }
@@ -85,9 +93,82 @@ proc unwrap_or[T](opt: Option[T], fallback: T) -> T {
   give fallback
 }
 
+proc option_map[T, U](opt: Option[T], f: proc(value: T) -> U) -> Option[U] {
+  when opt is Option.Some {
+    give Option.Some(f(opt.value))
+  }
+  give Option.None
+}
+
+proc option_map_or[T, U](opt: Option[T], fallback: U, f: proc(value: T) -> U) -> U {
+  when opt is Option.Some {
+    give f(opt.value)
+  }
+  give fallback
+}
+
+proc option_and_then[T, U](opt: Option[T], f: proc(value: T) -> Option[U]) -> Option[U] {
+  when opt is Option.Some {
+    give f(opt.value)
+  }
+  give Option.None
+}
+
+proc option_contains[T](opt: Option[T], expected: T, equality: Eq[T]) -> bool {
+  when opt is Option.Some {
+    give eq[T](equality, opt.value, expected)
+  }
+  give false
+}
+
+proc option_expect_or[T](opt: Option[T], fallback: T, message: string) -> T {
+  let _ = message
+  give unwrap_or(opt, fallback)
+}
+
+proc option_to_result[T, E](opt: Option[T], error: E) -> Result[T, E] {
+  when opt is Option.Some {
+    give Result.Ok(opt.value)
+  }
+  give Result.Err(error)
+}
+
 proc result_unwrap_or[T, E](r: Result[T, E], fallback: T) -> T {
   when r is Result.Ok {
     give r.value
+  }
+  give fallback
+}
+
+proc result_map[T, U, E](r: Result[T, E], f: proc(value: T) -> U) -> Result[U, E] {
+  when r is Result.Ok {
+    give Result.Ok(f(r.value))
+  }
+  give Result.Err(r.error)
+}
+
+proc result_map_err[T, E, F](r: Result[T, E], f: proc(error: E) -> F) -> Result[T, F] {
+  when r is Result.Ok {
+    give Result.Ok(r.value)
+  }
+  give Result.Err(f(r.error))
+}
+
+proc result_and_then[T, U, E](r: Result[T, E], f: proc(value: T) -> Result[U, E]) -> Result[U, E] {
+  when r is Result.Ok {
+    give f(r.value)
+  }
+  give Result.Err(r.error)
+}
+
+proc result_expect_or[T, E](r: Result[T, E], fallback: T, message: string) -> T {
+  let _ = message
+  give result_unwrap_or(r, fallback)
+}
+
+proc result_error_or[T, E](r: Result[T, E], fallback: E) -> E {
+  when r is Result.Err {
+    give r.error
   }
   give fallback
 }
@@ -110,11 +191,28 @@ proc checked_cast_int(value: int) -> Result[int, string] {
   give Result.Ok(value)
 }
 
+proc clamp_int(value: int, min_value: int, max_value: int) -> int {
+  let out = value
+  if out < min_value { out = min_value }
+  if out > max_value { out = max_value }
+  give out
+}
+
+proc non_negative(value: int) -> int {
+  give clamp_int(value, 0, value)
+}
+
 proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-C0001" { give "invalid core configuration" }
+  if code == "VITTE-C0002" { give "Option contained no value where one was expected" }
+  if code == "VITTE-C0003" { give "Result carried an error value" }
   give "core diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-C0001" { give "normalize config and keep timeout/retry within policy bounds" }
+  if code == "VITTE-C0002" { give "use unwrap_or, option_map_or, or handle the None branch explicitly" }
+  if code == "VITTE-C0003" { give "inspect the Err branch or use result_unwrap_or with a fallback" }
   give "review core API usage for " + code
 }
 
@@ -128,6 +226,19 @@ proc api_version() -> string {
 
 proc doctor_status() -> string {
   give "vitte/core doctor:ready api=" + api_version()
+}
+
+proc suggestions_for_diagnostic(code: string) -> [string] {
+  if code == "VITTE-C0001" {
+    give ["call normalize_config before validate_config", "keep timeout and retry budget within published policy ranges"]
+  }
+  if code == "VITTE-C0002" {
+    give ["replace direct expectations with unwrap_or", "propagate absence using option_to_result when needed"]
+  }
+  if code == "VITTE-C0003" {
+    give ["pattern-match on Result.Err explicitly", "map or transform the error before crossing boundaries"]
+  }
+  give ["review core contracts and fallback paths"]
 }
 
 proc quickfix_preview(payload: string) -> string {
@@ -203,6 +314,10 @@ proc strict_config() -> CoreConfig {
   give CoreConfig(true, cfg.timeout_ms, cfg.retry_budget)
 }
 
+proc with_strict(cfg: CoreConfig, strict: bool) -> CoreConfig {
+  give CoreConfig(strict, cfg.timeout_ms, cfg.retry_budget)
+}
+
 proc with_timeout_ms(cfg: CoreConfig, timeout_ms: int) -> CoreConfig {
   give CoreConfig(cfg.strict,
                   core_policy_pkg.normalize_timeout_ms(timeout_ms),
@@ -229,6 +344,12 @@ proc normalize_config(cfg: CoreConfig) -> CoreConfig {
   give CoreConfig(cfg.strict,
                   core_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
                   core_policy_pkg.normalize_retry_budget(cfg.retry_budget))
+}
+
+proc config_summary(cfg: CoreConfig) -> string {
+  give "strict=" + cfg.strict.to_string() +
+       ",timeout_ms=" + cfg.timeout_ms.to_string() +
+       ",retry_budget=" + cfg.retry_budget.to_string()
 }
 
 proc healthcheck(cfg: CoreConfig) -> CoreResult[bool] {
@@ -266,12 +387,36 @@ proc core_health(cfg: CoreConfig) -> CoreHealth {
   give CoreHealth(true, "ok", p)
 }
 
+proc suggestions_for_option_state[T](opt: Option[T]) -> [string] {
+  when opt is Option.None {
+    give ["handle the None branch explicitly", "provide a fallback with unwrap_or or option_map_or"]
+  }
+  give ["option contains a value and is ready to unwrap safely"]
+}
+
+proc suggestions_for_result_state[T, E](r: Result[T, E]) -> [string] {
+  when r is Result.Err {
+    give ["propagate the error explicitly", "map the error into a boundary-safe representation"]
+  }
+  give ["result is ok and ready for downstream processing"]
+}
+
+proc suggestions_for_config(cfg: CoreConfig) -> [string] {
+  if config_ok(cfg) == false {
+    give ["call normalize_config before validate_config", "start from default_config or strict_config when unsure"]
+  }
+  if cfg.strict == false {
+    give ["enable strict mode for library-grade invariants", "reserve non-strict mode for transitional code only"]
+  }
+  give ["core configuration is ready"]
+}
+
 proc stable_api_version() -> string {
   give "1.1.0"
 }
 
 proc stable_api_surface() -> string {
-  give "some,none,ok,err,is_some,is_none,is_ok,is_err,unwrap_or,result_unwrap_or,assert_or_err,panic_guard,checked_cast_int,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,api_version,doctor_status,quickfix_preview,quickfix_apply,default_config,strict_config,with_timeout_ms,with_retry_budget,validate_config,validate_config_code,normalize_config,healthcheck,core_runtime_info,core_health,stable_api_surface_hash,stable_api_version,version,capabilities,ready,package_meta"
+  give "eq,ord_cmp,some,none,ok,err,is_some,is_none,is_ok,is_err,unwrap_or,option_map,option_map_or,option_and_then,option_contains,option_expect_or,option_to_result,result_unwrap_or,result_map,result_map_err,result_and_then,result_expect_or,result_error_or,assert_or_err,panic_guard,checked_cast_int,clamp_int,non_negative,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,suggestions_for_diagnostic,api_version,doctor_status,quickfix_preview,quickfix_apply,default_config,strict_config,with_strict,with_timeout_ms,with_retry_budget,validate_config,validate_config_code,normalize_config,config_summary,healthcheck,core_runtime_info,core_health,suggestions_for_option_state,suggestions_for_result_state,suggestions_for_config,stable_api_surface_hash,stable_api_version,version,capabilities,ready,package_meta"
 }
 
 proc stable_api_surface_hash() -> int {
@@ -299,7 +444,7 @@ proc version() -> string {
 }
 
 proc capabilities() -> [string] {
-  give ["config", "validate", "healthcheck", "runtime-info", "diagnostics"]
+  give ["option", "result", "config", "validate", "healthcheck", "runtime-info", "diagnostics", "suggestions"]
 }
 
 proc ready() -> bool {
@@ -323,7 +468,6 @@ compat_policy: additive-only
 internal_exports: forbidden
 api_version: v1
 >>>
-
 
 
 
