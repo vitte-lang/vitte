@@ -19,6 +19,9 @@ Use it to find the shortest path to the document you actually need.
 - `docs/PERFORMANCE.md`: baseline performance policy and recommended tracked metrics
 - `docs/PACKAGE_MATURITY.md`: package-family maturity levels and promotion rules
 - `docs/COMPATIBILITY_POLICY.md`: compatibility expectations across commands, diagnostics, packages, and internals
+- `docs/PLATFORM_MATRIX.md`: credible versus experimental platform paths
+- `docs/KNOWN_LIMITATIONS.md`: explicit current caveats
+- `docs/DEPRECATION_POLICY.md`: minimum deprecation flow
 - `docs/PROJECT_SURFACES.md`: what is core, official, adjacent, or experimental
 - `docs/REPOSITORY_HYGIENE.md`: repository cleanliness and artifact discipline
 
@@ -35,6 +38,8 @@ Use it to find the shortest path to the document you actually need.
 ## Compiler / Toolchain
 
 - `docs/COMPILER_ARCHITECTURE.md`
+- `docs/DEBUGGING_COMPILER.md`
+- `docs/TEST_STRATEGY.md`
 - `docs/API_LIFECYCLE.md`
 - `docs/ARCH_CONTRACT.md`
 - `docs/HIGHLIGHTING.md`

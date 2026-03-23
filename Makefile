@@ -875,6 +875,10 @@ pkg-macos-uninstall:
 .PHONY: release-check
 release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos
 
+.PHONY: release-doctor
+release-doctor:
+	@python3 tools/release_doctor.py
+
 .PHONY: migration-check
 migration-check: diag-snapshots package-layout-lint-strict legacy-import-path-lint
 
@@ -1019,6 +1023,7 @@ help:
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make pkg-macos-uninstall build macOS uninstall pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make release-check run build + core-release-gate + ci-fast + ci-completions + pkg build"
+	@echo "  make release-doctor run the snapshot/release readiness report suite"
 	@echo "  make reports-index build target/reports/index.json (unified reports registry)"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
