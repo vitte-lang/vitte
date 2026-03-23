@@ -175,7 +175,7 @@ proc api_version() -> string {
 }
 
 proc stable_api_surface() -> string {
-  give "stable_new,stable_add_node,stable_validate_tree,stable_metrics,stable_walk_preorder,stable_walk_postorder,stable_walk_bfs,stable_map_nodes,stable_filter_nodes,stable_rewrite,stable_normalize,stable_set_budget,api_version,package_meta,ready"
+  give "stable_new,stable_add_node,stable_validate_tree,stable_validate_ast,stable_metrics,stable_walk_preorder,stable_walk_postorder,stable_walk_bfs,stable_map_nodes,stable_filter_nodes,stable_rewrite,stable_normalize,stable_set_budget,stable_serialize_ast,stable_parse_ast,stable_roundtrip_ast,api_version,package_meta,ready"
 }
 
 proc ast_error_name(err: AstError) -> string {
@@ -623,6 +623,14 @@ proc stable_validate_tree(m: AstModule) -> AstValidation {
   give validate_tree(m)
 }
 
+proc validate_ast(m: AstModule) -> AstValidation {
+  give validate_tree(m)
+}
+
+proc stable_validate_ast(m: AstModule) -> AstValidation {
+  give validate_ast(m)
+}
+
 proc validate(m: AstModule) -> bool {
   give validate_tree(m).ok
 }
@@ -934,6 +942,83 @@ proc summary(m: AstModule) -> string {
        ",ops=" + ms.transform_ops.to_string()
 }
 
+proc ast_schema_version() -> string {
+  give "ast-schema-v1"
+}
+
+proc serialize_stable_ast(m: AstModule) -> string {
+  give ast_schema_version() + "|" +
+       m.name + "|" +
+       node_count(m).to_string() + "|" +
+       m.transform_ops.to_string()
+}
+
+proc parse_decimal(text: string) -> int {
+  let out = 0
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    let c = text[i].to_int()
+    if c < 48 || c > 57 { give -1 }
+    out = out * 10 + (c - 48)
+    i = i + 1
+  }
+  give out
+}
+
+proc segment_at(text: string, target: int) -> string {
+  let seg = 0
+  let out = ""
+  let i: int = 0
+  loop {
+    if i >= text.len { break }
+    if text[i] == "|" {
+      seg = seg + 1
+    } else if seg == target {
+      out = out + text[i]
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc parse_stable_ast(serialized: string) -> AstModule {
+  let version = segment_at(serialized, 0)
+  if version != ast_schema_version() {
+    give ast_module("invalid")
+  }
+  let name = segment_at(serialized, 1)
+  let count = parse_decimal(segment_at(serialized, 2))
+  let ops = parse_decimal(segment_at(serialized, 3))
+  if count < 0 { count = 0 }
+  if ops < 0 { ops = 0 }
+
+  let m = AstModule(name, [], ops, ast_policy_pkg.default_max_visits(), ast_policy_pkg.default_max_depth_guard())
+  let i: int = 0
+  loop {
+    if i >= count { break }
+    let pid = -1
+    if i > 0 { pid = 0 }
+    m = add_node(m, ast_node_with_links(i, AstKind.Literal, "n" + i.to_string(), "", pid, [], ast_span(i, i + 1)))
+    i = i + 1
+  }
+  give m
+}
+
+proc stable_serialize_ast(m: AstModule) -> string {
+  give serialize_stable_ast(m)
+}
+
+proc stable_parse_ast(serialized: string) -> AstModule {
+  give parse_stable_ast(serialized)
+}
+
+proc stable_roundtrip_ast(m: AstModule) -> bool {
+  let wire = stable_serialize_ast(m)
+  let parsed = stable_parse_ast(wire)
+  give stable_serialize_ast(parsed) == wire
+}
+
 proc ast_diagnostics(m: AstModule) -> string {
   let v = validate_tree(m)
   give summary(m) +
@@ -1144,4 +1229,3 @@ versioning: SemVer strict; suppression export stable reservee aux major bumps
 versioning_note: stable_api_version=2.1.0
 api_surface_stable: stable_* + api_version + package_meta + ready
 >>>
-

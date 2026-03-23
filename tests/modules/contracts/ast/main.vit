@@ -12,6 +12,8 @@ proc main() -> i32 {
 
   let v0 = ast.stable_validate_tree(m3)
   if !v0.ok || v0.error != ast.AstError.None { return 4 }
+  let v1 = ast.stable_validate_ast(m3)
+  if !v1.ok || v1.error != ast.AstError.None { return 16 }
 
   let mxd = ast.max_depth(m3)
   let mxc = ast.max_children(m3)
@@ -54,6 +56,13 @@ proc main() -> i32 {
   if bn.p95 < bn.p50 || bn.p99 < bn.p95 || bn.throughput <= 0 { return 14 }
 
   if ast.ast_error_name(ast.AstError.DuplicateId).len == 0 { return 15 }
+
+  let wire = ast.stable_serialize_ast(m3)
+  if wire.len == 0 { return 17 }
+  let parsed = ast.stable_parse_ast(wire)
+  let wire2 = ast.stable_serialize_ast(parsed)
+  if wire2 != wire { return 18 }
+  if !ast.stable_roundtrip_ast(m3) { return 19 }
 
   return 0
 }
