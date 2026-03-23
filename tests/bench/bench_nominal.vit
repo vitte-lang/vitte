@@ -1,0 +1,63 @@
+use vitte/bench as bench
+
+proc main() -> i32 {
+  if !bench.ready() { return 1 }
+
+  let c = bench.bench_case("", 0)
+  if c.name != "bench-case" { return 2 }
+  if c.iterations <= 0 { return 3 }
+
+  let r0 = bench.run_start(c, 100)
+  let r1 = bench.run_stop(r0, 130)
+  if bench.elapsed_ms(r1) != 30 { return 4 }
+  if !bench.run_valid(r1) { return 5 }
+
+  let samples = [30, 10, 20, 40, 50]
+  if bench.percentile50(samples) != 30 { return 6 }
+  if bench.percentile25(samples) != 20 { return 6 }
+  if bench.percentile75(samples) != 40 { return 6 }
+  if bench.percentile90(samples) != 40 { return 7 }
+  if bench.percentile95(samples) != 40 { return 8 }
+  if bench.jitter_percent(samples) <= 0 { return 9 }
+  let st = bench.sample_stats(samples)
+  if st.count != 5 || st.p50 != 30 { return 9 }
+  let thr = bench.throughput_samples(samples, 1000)
+  if thr.len != 5 { return 9 }
+  if bench.sample_confidence(samples) <= 0 { return 9 }
+
+  let a = bench.run_stop(bench.run_start(bench.bench_case("a", 1000), 0), 100)
+  let b = bench.run_stop(bench.run_start(bench.bench_case("b", 1000), 0), 200)
+  if bench.compare_percent(a, b) <= 0 { return 10 }
+  if bench.compare_percent_symmetric(a, b) <= 0 { return 11 }
+
+  let trend = bench.regression_trend(a, b, [100, 200, 300, 150, 90], 5)
+  if !trend.improved { return 12 }
+  if trend.delta_pct <= 0 { return 13 }
+  if !bench.regression_gate(a, b, 5, [100, 110, 105, 99, 101, 108]) { return 13 }
+  let base = bench.baseline_from_run(b, [100, 110, 105, 99, 101, 108], 1)
+  if !bench.baseline_is_compatible(base, b) { return 13 }
+  let base2 = bench.baseline_update_if_better(base, a, [100, 99, 98, 101, 100], true)
+  if base2.iter_per_sec < base.iter_per_sec { return 13 }
+  let gate = bench.gate_eval(a, base, [100, 99, 98, 101, 100], 10, 30)
+  if !gate.pass { return 13 }
+  if bench.ci_should_fail(gate) { return 13 }
+  if bench.ci_exit_code(gate) != 0 { return 13 }
+  let report = bench.report_build(a, base, [100, 99, 98, 101, 100], 10, 30)
+  if report.current_ips <= 0 { return 13 }
+  if bench.report_text(report).len == 0 { return 13 }
+  if bench.report_markdown(report).len == 0 { return 13 }
+
+  let code_ok = bench.diagnostics_code_for_run(r1, samples)
+  if code_ok.len != 0 { return 14 }
+  let code_bad = bench.diagnostics_code_for_run(bench.BenchRun("x", 10, 0, 1), samples)
+  if code_bad != "VITTE-BENCH0002" { return 15 }
+  let code_jitter = bench.diagnostics_code_for_run(r1, [10, 10, 10, 1000])
+  if code_jitter != "VITTE-BENCH0004" { return 16 }
+  let code_outlier = bench.diagnostics_code_for_samples([10, 11, 10, 200])
+  if code_outlier != "VITTE-BENCH0005" { return 16 }
+  if bench.diagnostics_snapshot(r1, samples).len == 0 { return 16 }
+  if bench.diagnostics_code_for_gate(gate).len != 0 { return 16 }
+  if bench.diagnostics_snapshot_gate(gate).len == 0 { return 16 }
+
+  return 0
+}
