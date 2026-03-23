@@ -327,6 +327,73 @@ core-semantic-snapshots:
 core-semantic-success:
 	@MANIFEST=tests/core_semantic_success_manifest.txt tools/check_manifest.sh
 
+.PHONY: core-semantic-imports-snapshots
+core-semantic-imports-snapshots:
+	@MANIFEST=tests/diag_snapshots/core_semantic_imports_manifest.txt tools/diag_snapshots.sh
+
+.PHONY: core-semantic-imports-success
+core-semantic-imports-success:
+	@MANIFEST=tests/core_semantic_imports_success_manifest.txt tools/check_manifest.sh
+
+.PHONY: core-semantic-resolve-snapshots
+core-semantic-resolve-snapshots:
+	@MANIFEST=tests/diag_snapshots/core_semantic_resolve_manifest.txt tools/diag_snapshots.sh
+
+.PHONY: core-semantic-resolve-success
+core-semantic-resolve-success:
+	@MANIFEST=tests/core_semantic_resolve_success_manifest.txt tools/check_manifest.sh
+
+.PHONY: core-semantic-returns-snapshots
+core-semantic-returns-snapshots:
+	@MANIFEST=tests/diag_snapshots/core_semantic_returns_manifest.txt tools/diag_snapshots.sh
+
+.PHONY: core-semantic-returns-success
+core-semantic-returns-success:
+	@MANIFEST=tests/core_semantic_returns_success_manifest.txt tools/check_manifest.sh
+
+.PHONY: core-semantic-match-snapshots
+core-semantic-match-snapshots:
+	@MANIFEST=tests/diag_snapshots/core_semantic_match_manifest.txt tools/diag_snapshots.sh
+
+.PHONY: core-semantic-match-success
+core-semantic-match-success:
+	@MANIFEST=tests/core_semantic_match_success_manifest.txt tools/check_manifest.sh
+
+.PHONY: core-semantic-share-snapshots
+core-semantic-share-snapshots:
+	@MANIFEST=tests/diag_snapshots/core_semantic_share_manifest.txt tools/diag_snapshots.sh
+
+.PHONY: core-semantic-share-success
+core-semantic-share-success:
+	@MANIFEST=tests/core_semantic_share_success_manifest.txt tools/check_manifest.sh
+
+.PHONY: core-semantic-entry-snapshots
+core-semantic-entry-snapshots:
+	@MANIFEST=tests/diag_snapshots/core_semantic_entry_manifest.txt tools/diag_snapshots.sh
+
+.PHONY: core-semantic-entry-success
+core-semantic-entry-success:
+	@MANIFEST=tests/core_semantic_entry_success_manifest.txt tools/check_manifest.sh
+
+.PHONY: explicit-generics-snapshots
+explicit-generics-snapshots:
+	@MANIFEST=tests/diag_snapshots/explicit_generics_manifest.txt tools/diag_snapshots.sh
+
+.PHONY: core-semantic-themes
+core-semantic-themes: \
+	core-semantic-imports-success \
+	core-semantic-imports-snapshots \
+	core-semantic-resolve-success \
+	core-semantic-resolve-snapshots \
+	core-semantic-returns-success \
+	core-semantic-returns-snapshots \
+	core-semantic-match-success \
+	core-semantic-match-snapshots \
+	core-semantic-share-success \
+	core-semantic-share-snapshots \
+	core-semantic-entry-success \
+	core-semantic-entry-snapshots
+
 .PHONY: resolve-tests
 resolve-tests:
 	@TEST_DIR=tests/diag_snapshots/resolve tools/diag_snapshots.sh
@@ -1005,6 +1072,20 @@ help:
 	@echo "  make core-language-test validate the focused core language corpus"
 	@echo "  make core-semantic-success validate focused passing core semantic examples"
 	@echo "  make core-semantic-snapshots validate focused core semantic diagnostics"
+	@echo "  make core-semantic-themes run semantic non-regression suites by theme"
+	@echo "  make core-semantic-imports-success validate import-focused passing semantic examples"
+	@echo "  make core-semantic-imports-snapshots validate import-focused semantic diagnostics"
+	@echo "  make core-semantic-resolve-success validate resolve-focused passing semantic examples"
+	@echo "  make core-semantic-resolve-snapshots validate resolve-focused semantic diagnostics"
+	@echo "  make core-semantic-returns-success validate return-focused passing semantic examples"
+	@echo "  make core-semantic-returns-snapshots validate return-focused semantic diagnostics"
+	@echo "  make core-semantic-match-success validate match-focused passing semantic examples"
+	@echo "  make core-semantic-match-snapshots validate match-focused semantic diagnostics"
+	@echo "  make core-semantic-share-success validate share-focused passing semantic examples"
+	@echo "  make core-semantic-share-snapshots validate share-focused semantic diagnostics"
+	@echo "  make core-semantic-entry-success validate entry-focused passing semantic examples"
+	@echo "  make core-semantic-entry-snapshots validate entry-focused semantic diagnostics"
+	@echo "  make explicit-generics-snapshots validate explicit generic-call IR snapshots"
 	@echo "  make diagnostics-locales-lint validate locale files against centralized diagnostics"
 	@echo "  make update-diagnostics-ftl synchronize diagnostics locales from the central table"
 	@echo "  make diagnostics-ftl-check fail if diagnostics locales are out of sync"

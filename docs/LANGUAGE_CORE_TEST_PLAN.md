@@ -84,6 +84,8 @@ Manifest:
 - `tests/core_semantic_success_manifest.txt`
 - `tests/diag_snapshots/core_semantic_imports_manifest.txt`
 - `tests/core_semantic_imports_success_manifest.txt`
+- `tests/diag_snapshots/core_semantic_resolve_manifest.txt`
+- `tests/core_semantic_resolve_success_manifest.txt`
 - `tests/diag_snapshots/core_semantic_returns_manifest.txt`
 - `tests/core_semantic_returns_success_manifest.txt`
 - `tests/diag_snapshots/core_semantic_match_manifest.txt`
@@ -105,7 +107,7 @@ Interpretation rule:
 Theme rule:
 
 - the aggregate manifests remain the source for the protected core gate
-- thematic manifests slice the same regression space by concern: imports, returns, match, share, and entry
+- thematic manifests slice the same regression space by concern: imports, resolve, returns, match, share, and entry
 - explicit generic-call regressions stay in a separate experimental snapshot manifest because they are implemented but not part of the frozen core surface
 
 Current core coverage includes:
