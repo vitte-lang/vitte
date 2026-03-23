@@ -1,0 +1,46 @@
+use vitte/audit as audit
+
+proc main() -> i32 {
+  if !audit.ready() { return 1 }
+  if audit.audit_schema_version() <= 0 { return 2 }
+
+  let log0 = audit.log_new()
+  let e0 = audit.sign(audit.event(log0, 100, "alice", "create", "db:users", "trace-1"), "s3cr3t")
+  let log1 = audit.append(log0, e0)
+  if audit.count(log1) != 1 { return 3 }
+
+  let e1 = audit.sign(audit.event_with_schema(log1, 101, "alice", "update", "db:users", "trace-2", 1), "s3cr3t")
+  let log2 = audit.append(log1, e1)
+  if audit.count(log2) != 2 { return 4 }
+
+  if !audit.verify_chain(log2) { return 5 }
+  if !audit.verify_all(log2, "s3cr3t") { return 6 }
+
+  let integ = audit.verify_integrity(log2)
+  if !integ.ok { return 7 }
+  if integ.checked != 2 { return 8 }
+  if audit.chain_hash(log2).len == 0 { return 9 }
+
+  let red = audit.redact_log(log2, audit.redaction_default_rules())
+  if red.events[0].target != "[REDACTED]" { return 10 }
+  if red.events[0].trace_id != "[TRACE]" { return 11 }
+  if !audit.verify_chain(red) { return 12 }
+
+  let bad = audit.AuditLog([
+    audit.AuditEvent(
+      1,
+      100,
+      "alice",
+      "create",
+      "db:users",
+      "trace-1",
+      "bad-prev",
+      red.events[0].hash,
+      ""
+    )
+  ], 1)
+  if audit.chain_hash(bad).len != 0 { return 13 }
+  if audit.verify_integrity(bad).ok { return 14 }
+
+  return 0
+}

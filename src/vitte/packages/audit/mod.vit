@@ -22,6 +22,7 @@ TYPES
 ============================================================ >>>
 
 form AuditEvent {
+  schema_version: int
   ts: int
   actor: string
   action: string
@@ -49,6 +50,17 @@ form AuditStats {
   actions: int
 }
 
+form AuditRedactionRule {
+  field: string
+  replacement: string
+}
+
+form AuditIntegrityStatus {
+  ok: bool
+  checked: int
+  reason: string
+}
+
 proc contains_string(values: [string], value: string) -> bool {
   let i: int = 0
   loop {
@@ -57,6 +69,15 @@ proc contains_string(values: [string], value: string) -> bool {
     i = i + 1
   }
   give false
+}
+
+proc audit_schema_version() -> int {
+  give 1
+}
+
+proc schema_supported(schema_version: int) -> bool {
+  if schema_version < 1 { give false }
+  give schema_version <= audit_schema_version()
 }
 
 <<<
@@ -71,6 +92,7 @@ HASH UTILS
 ============================================================ >>>
 
 proc compute_hash(
+  schema_version: int,
   ts: int,
   actor: string,
   action: string,
@@ -80,6 +102,8 @@ proc compute_hash(
 ) -> string {
 
   give prev_hash +
+       "|" +
+       schema_version.to_string() +
        "|" +
        ts.to_string() +
        "|" +
@@ -117,8 +141,22 @@ proc event(
   target: string,
   trace_id: string
 ) -> AuditEvent {
+  give event_with_schema(log, ts, actor, action, target, trace_id, audit_schema_version())
+}
+
+proc event_with_schema(
+  log: AuditLog,
+  ts: int,
+  actor: string,
+  action: string,
+  target: string,
+  trace_id: string,
+  schema_version: int
+) -> AuditEvent {
   let ts_v = ts
   if audit_validate_pkg.valid_timestamp(ts_v) == false { ts_v = 0 }
+  let schema_v = schema_version
+  if schema_supported(schema_v) == false { schema_v = audit_schema_version() }
   let actor_v = audit_runtime_pkg.sanitize_field(actor, audit_policy_pkg.max_actor_len())
   let action_v = audit_runtime_pkg.sanitize_field(action, audit_policy_pkg.max_action_len())
   let target_v = audit_runtime_pkg.sanitize_field(target, audit_policy_pkg.max_target_len())
@@ -131,6 +169,7 @@ proc event(
 
   let h =
     compute_hash(
+      schema_v,
       ts_v,
       actor_v,
       action_v,
@@ -140,6 +179,7 @@ proc event(
     )
 
   give AuditEvent(
+    schema_v,
     ts_v,
     actor_v,
     action_v,
@@ -159,6 +199,7 @@ proc sign(e: AuditEvent, secret: string) -> AuditEvent {
   let sig = audit_runtime_pkg.signature(secret, e.hash)
 
   give AuditEvent(
+    e.schema_version,
     e.ts,
     e.actor,
     e.action,
@@ -188,7 +229,8 @@ proc append(log: AuditLog, e: AuditEvent) -> AuditLog {
     if e.ts < log.events[log.size - 1].ts { give log }
   }
   if e.prev_hash != last_hash(log) { give log }
-  let expected_hash = compute_hash(e.ts, e.actor, e.action, e.target, e.trace_id, e.prev_hash)
+  if schema_supported(e.schema_version) == false { give log }
+  let expected_hash = compute_hash(e.schema_version, e.ts, e.actor, e.action, e.target, e.trace_id, e.prev_hash)
   if e.hash != expected_hash { give log }
 
   let events = log.events.push(e)
@@ -206,9 +248,10 @@ proc verify_chain(log: AuditLog) -> bool {
   if log.size == 0 { give true }
   let first = log.events[0]
   if first.prev_hash != audit_policy_pkg.genesis_hash() { give false }
+  if schema_supported(first.schema_version) == false { give false }
   if audit_validate_pkg.valid_timestamp(first.ts) == false { give false }
   if audit_validate_pkg.valid_event_fields(first.actor, first.action, first.target, first.trace_id) == false { give false }
-  let first_hash = compute_hash(first.ts, first.actor, first.action, first.target, first.trace_id, first.prev_hash)
+  let first_hash = compute_hash(first.schema_version, first.ts, first.actor, first.action, first.target, first.trace_id, first.prev_hash)
   if first.hash != first_hash { give false }
 
   let i: int = 1
@@ -220,6 +263,7 @@ proc verify_chain(log: AuditLog) -> bool {
     let prev = log.events[i - 1]
     let cur = log.events[i]
     if cur.ts < prev.ts { give false }
+    if schema_supported(cur.schema_version) == false { give false }
     if audit_validate_pkg.valid_timestamp(cur.ts) == false { give false }
 
     if audit_validate_pkg.valid_event_fields(cur.actor, cur.action, cur.target, cur.trace_id) == false {
@@ -232,6 +276,7 @@ proc verify_chain(log: AuditLog) -> bool {
 
     let recomputed =
       compute_hash(
+        cur.schema_version,
         cur.ts,
         cur.actor,
         cur.action,
@@ -315,6 +360,86 @@ proc query(
   give out
 }
 
+proc redaction_rule(field: string, replacement: string) -> AuditRedactionRule {
+  let f = field
+  if f.len == 0 { f = "target" }
+  let r = replacement
+  if r.len == 0 { r = "[REDACTED]" }
+  give AuditRedactionRule(f, r)
+}
+
+proc redaction_default_rules() -> [AuditRedactionRule] {
+  give [
+    AuditRedactionRule("target", "[REDACTED]"),
+    AuditRedactionRule("trace_id", "[TRACE]")
+  ]
+}
+
+proc redaction_replacement(rules: [AuditRedactionRule], field: string) -> string {
+  let i: int = 0
+  loop {
+    if i >= rules.len { break }
+    if rules[i].field == field { give rules[i].replacement }
+    i = i + 1
+  }
+  give ""
+}
+
+proc redact_event(e: AuditEvent, rules: [AuditRedactionRule]) -> AuditEvent {
+  let actor = e.actor
+  let action = e.action
+  let target = e.target
+  let trace_id = e.trace_id
+
+  let actor_r = redaction_replacement(rules, "actor")
+  if actor_r.len > 0 { actor = actor_r }
+  let action_r = redaction_replacement(rules, "action")
+  if action_r.len > 0 { action = action_r }
+  let target_r = redaction_replacement(rules, "target")
+  if target_r.len > 0 { target = target_r }
+  let trace_r = redaction_replacement(rules, "trace_id")
+  if trace_r.len > 0 { trace_id = trace_r }
+
+  let hash = compute_hash(e.schema_version, e.ts, actor, action, target, trace_id, e.prev_hash)
+  give AuditEvent(
+    e.schema_version,
+    e.ts,
+    actor,
+    action,
+    target,
+    trace_id,
+    e.prev_hash,
+    hash,
+    e.signature
+  )
+}
+
+proc redact_log(log: AuditLog, rules: [AuditRedactionRule]) -> AuditLog {
+  let out: [AuditEvent] = []
+  let prev = audit_policy_pkg.genesis_hash()
+  let i: int = 0
+  loop {
+    if i >= log.size { break }
+    let red = redact_event(log.events[i], rules)
+    let hashed = compute_hash(red.schema_version, red.ts, red.actor, red.action, red.target, red.trace_id, prev)
+    let chained = AuditEvent(
+      red.schema_version,
+      red.ts,
+      red.actor,
+      red.action,
+      red.target,
+      red.trace_id,
+      prev,
+      hashed,
+      ""
+    )
+    prev = chained.hash
+    out = out.push(chained)
+    i = i + 1
+  }
+  give AuditLog(out, out.len)
+}
+
 <<< ============================================================
 FORENSIC TOOLS
 ============================================================ >>>
@@ -332,6 +457,61 @@ proc proof(log: AuditLog, index: int) -> AuditProof {
     e.hash,
     e.prev_hash
   )
+}
+
+proc chain_hash(log: AuditLog) -> string {
+  if audit_validate_pkg.valid_log_size(log.size, log.events.len) == false { give "" }
+  if log.size == 0 { give audit_policy_pkg.genesis_hash() }
+  let acc = audit_policy_pkg.genesis_hash()
+  let i: int = 0
+  loop {
+    if i >= log.size { break }
+    let e = log.events[i]
+    if e.prev_hash != acc { give "" }
+    let recomputed = compute_hash(
+      e.schema_version,
+      e.ts,
+      e.actor,
+      e.action,
+      e.target,
+      e.trace_id,
+      acc
+    )
+    if e.hash != recomputed { give "" }
+    acc = recomputed
+    i = i + 1
+  }
+  give acc
+}
+
+proc verify_integrity(log: AuditLog) -> AuditIntegrityStatus {
+  if audit_validate_pkg.valid_log_size(log.size, log.events.len) == false {
+    give AuditIntegrityStatus(false, 0, "invalid-log-size")
+  }
+  if verify_chain(log) == false {
+    give AuditIntegrityStatus(false, 0, "broken-chain")
+  }
+  if log.size == 0 {
+    give AuditIntegrityStatus(true, 0, "ok")
+  }
+
+  let i: int = 0
+  loop {
+    if i >= log.size { break }
+    if schema_supported(log.events[i].schema_version) == false {
+      give AuditIntegrityStatus(false, i, "unsupported-schema")
+    }
+    i = i + 1
+  }
+
+  let c = chain_hash(log)
+  if c.len == 0 {
+    give AuditIntegrityStatus(false, log.size, "chain-hash-mismatch")
+  }
+  if c != last_hash(log) {
+    give AuditIntegrityStatus(false, log.size, "tail-hash-mismatch")
+  }
+  give AuditIntegrityStatus(true, log.size, "ok")
 }
 
 proc export_hashes(log: AuditLog) -> [string] {
