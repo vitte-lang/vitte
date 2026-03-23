@@ -622,6 +622,10 @@ book-links-check:
 book-structure-check:
 	@python3 book/scripts/check_structure.py --book-root book
 
+.PHONY: book-length-check
+book-length-check:
+	@python3 book/scripts/check_chapter_length.py --chapters-dir book/chapters --min-pages 10 --max-pages 30 --words-per-page 350 --report target/reports/chapter_length_report.txt
+
 .PHONY: packages-report
 packages-report:
 	@SEARCH_ROOT=src/vitte/packages ENTRY_GLOB=mod.vit OUT_FILE=target/reports/packages_modules_report.txt OUT_JSON=target/reports/packages_modules_report.json DEPENDENCY_OVERLAP_ALLOWLIST=tools/package_dependency_export_overlap_allowlist.txt tools/modules_report.sh

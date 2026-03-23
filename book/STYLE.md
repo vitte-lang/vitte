@@ -12,6 +12,10 @@
 - `Test mental`: 1 question + 1 réponse attendue.
 - `À faire`: 2 à 4 exercices courts.
 - `Corrigé minimal`: 3 points vérifiables.
+- Taille chapitre complet: équivalent `10` à `30` pages papier.
+- Référence de calcul: `350` mots/page.
+- Bornes opérationnelles: `3500` à `10500` mots par chapitre.
+- Contrôle automatique: `make book-length-check`.
 
 ## Format des exemples
 - Utiliser une progression stable: entrée -> traitement -> sortie.
