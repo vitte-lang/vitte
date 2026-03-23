@@ -2,7 +2,7 @@
 
 Niveau: Intermediaire
 
-Prerequis: `book/chapters/28-conventions.md`.
+Prérequis: `book/chapters/28-conventions.md`.
 Voir aussi: `book/chapters/09-modules.md`, `book/chapters/06-procedures.md`.
 
 ## Objectif
@@ -75,3 +75,21 @@ proc do_it(x: int) -> int { give x }
 1. Verbe + objet.
 2. Predicats en `is_`/`has_`.
 3. Vocabulaire coherent sur tout le module.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

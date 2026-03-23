@@ -2,7 +2,7 @@
 
 Niveau: Avance
 
-Prerequis: `book/chapters/05-types.md`, `book/chapters/13-generiques.md`.
+Prérequis: `book/chapters/05-types.md`, `book/chapters/13-generiques.md`.
 Voir aussi: `book/chapters/18-tests.md`.
 
 ## Objectif
@@ -72,3 +72,21 @@ proc parse_count(s: string) { give 0 }
 1. Ajouter annotation sur signatures critiques.
 2. Corriger call sites via erreurs de type.
 3. Garder tests verts entre chaque lot.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

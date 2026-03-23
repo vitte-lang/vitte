@@ -2,7 +2,7 @@
 
 Niveau: Avance
 
-Prerequis: `book/chapters/39-design-api-publiques-stables.md`.
+Prérequis: `book/chapters/39-design-api-publiques-stables.md`.
 Voir aussi: `book/grammar/grammar-changelog.md`.
 
 ## Objectif
@@ -67,3 +67,21 @@ proc load_user(id: int) -> bool { give true }
 1. Classer impact (breaking/non-breaking).
 2. Fournir migration explicite.
 3. Bloquer regressions en CI.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

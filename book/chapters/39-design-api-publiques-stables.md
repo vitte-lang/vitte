@@ -2,7 +2,7 @@
 
 Niveau: Avance
 
-Prerequis: `book/chapters/06-procedures.md`, `book/chapters/17-stdlib.md`.
+Prérequis: `book/chapters/06-procedures.md`, `book/chapters/17-stdlib.md`.
 Voir aussi: `book/chapters/40-compatibilite-breaking.md`.
 
 ## Objectif
@@ -65,3 +65,21 @@ proc parse_port(s: string) -> bool { give true }
 1. Priorite aux changements additifs.
 2. Documenter deprecation.
 3. Tester v1 + v2.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

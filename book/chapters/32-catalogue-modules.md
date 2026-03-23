@@ -1,5 +1,7 @@
 # 32. Catalogue Des Modules Vitte
 
+Prérequis: à définir.
+Voir aussi: à définir.
 Ce document fournit une vue d'ensemble des modules de `src/vitte/packages`.
 
 ## Pourquoi
@@ -208,3 +210,21 @@ Modifiez une condition ou une valeur d'entrée, puis vérifiez si le résultat r
 - `vitte/video`
 - `vitte/ws`
 - `vitte/yaml`
+
+## Objectif
+
+Rendre ce chapitre immédiatement exploitable avec un objectif concret, mesurable et réutilisable.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

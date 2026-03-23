@@ -2,7 +2,7 @@
 
 Niveau: Intermediaire
 
-Prerequis: `book/chapters/10-diagnostics.md`, `book/chapters/31-erreurs-build.md`.
+Prérequis: `book/chapters/10-diagnostics.md`, `book/chapters/31-erreurs-build.md`.
 Voir aussi: `book/grammar/diagnostics/expected`.
 
 ## Objectif
@@ -81,3 +81,21 @@ entry main at app/demo {
 1. Identifier code + position du premier diagnostic.
 2. Corriger une erreur a la fois.
 3. Relancer jusqu'a zero erreur.
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.
