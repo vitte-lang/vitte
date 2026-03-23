@@ -47,5 +47,26 @@ proc main() -> i32 {
   let prop = alloc.property_invariants(5, 24)
   if !prop.ok { return 18 }
 
+  let dbg0 = alloc.debug_runtime_new(alloc.AllocatorKind.Global, 256)
+  if !alloc.debug_runtime_enabled(dbg0) { return 19 }
+  let dbg_a = alloc.stable_alloc(dbg0, alloc.bytes(32), alloc.alignment(8), alloc.pool_id("tenant:d"))
+  if !dbg_a.ok { return 20 }
+  let dbg_f0 = alloc.stable_free(dbg_a.runtime, dbg_a.handle)
+  if !dbg_f0.ok { return 21 }
+  let dbg_f1 = alloc.stable_free(dbg_f0.runtime, dbg_a.handle)
+  if dbg_f1.ok { return 22 }
+  if !alloc.debug_detect_double_free(dbg_f1.runtime, dbg_a.handle) { return 23 }
+
+  let st_dbg = alloc.stable_stats(dbg_f0.runtime)
+  if alloc.alloc_counter_alloc_calls(dbg_f0.runtime) != st_dbg.alloc_total { return 24 }
+  if alloc.alloc_counter_free_calls(dbg_f0.runtime) != st_dbg.free_total { return 25 }
+  if alloc.alloc_counter_bytes_in_use(dbg_f0.runtime) != 0 { return 26 }
+
+  let b_tiny = alloc.benchmark_micro_profile(3, 12, "tiny")
+  let b_stress = alloc.benchmark_micro_profile(3, 12, "stress")
+  if b_tiny.p95 < b_tiny.p50 { return 27 }
+  if b_stress.p99 < b_stress.p95 { return 28 }
+  if b_tiny.throughput <= 0 || b_stress.throughput <= 0 { return 29 }
+
   return 0
 }

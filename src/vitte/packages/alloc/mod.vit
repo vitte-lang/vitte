@@ -379,6 +379,36 @@ proc stable_runtime_new(kind: AllocatorKind, capacity: int) -> StableAllocRuntim
   )
 }
 
+proc debug_runtime_new(kind: AllocatorKind, capacity: int) -> StableAllocRuntime {
+  let rt = stable_runtime_new(kind, capacity)
+  let with_poison = with_poison_bytes(rt, 170, 221)
+  give with_canaries(with_poison, true)
+}
+
+proc debug_runtime_enabled(runtime: StableAllocRuntime) -> bool {
+  if runtime.canaries_enabled == false { give false }
+  if runtime.poison_alloc == runtime.poison_free { give false }
+  give true
+}
+
+proc alloc_counter_alloc_calls(runtime: StableAllocRuntime) -> int {
+  give runtime.allocator.stats.alloc_calls
+}
+
+proc alloc_counter_free_calls(runtime: StableAllocRuntime) -> int {
+  give runtime.allocator.stats.free_calls
+}
+
+proc alloc_counter_bytes_in_use(runtime: StableAllocRuntime) -> int {
+  give runtime.allocator.used
+}
+
+proc debug_detect_double_free(runtime: StableAllocRuntime, handle: AllocHandle) -> bool {
+  let idx = find_alloc_index(runtime.allocs, handle)
+  if idx < 0 { give false }
+  give runtime.allocs[idx].active == false
+}
+
 proc with_oom_policy(runtime: StableAllocRuntime, policy: OomPolicy) -> StableAllocRuntime {
   give StableAllocRuntime(
     runtime.allocator,
@@ -1523,6 +1553,42 @@ proc benchmark_suite(seed: int, rounds: int) -> BenchReport {
   give BenchReport(percentile(lat, 50), percentile(lat, 95), percentile(lat, 99), throughput)
 }
 
+proc benchmark_micro_profile(seed: int, rounds: int, profile: string) -> BenchReport {
+  let n = rounds
+  if n < 3 { n = 3 }
+  let rt = with_seed(stable_runtime_new(AllocatorKind.Global, 32768), seed)
+  let lat: [int] = []
+  let i: int = 0
+  loop {
+    if i >= n { break }
+    let req = 64
+    if profile == "tiny" {
+      req = 16 + (i % 16)
+    } else if profile == "stress" {
+      req = 128 + ((i * 7) % 256)
+    } else {
+      req = 64 + (i % 32)
+    }
+    let before = rt.metrics.alloc_total + rt.metrics.free_total
+    let a = stable_alloc(rt, bytes(req), alignment(8), pool_id("tenant:bench"))
+    rt = a.runtime
+    if a.ok {
+      let f = stable_free(rt, a.handle)
+      rt = f.runtime
+    }
+    let after = rt.metrics.alloc_total + rt.metrics.free_total
+    let d = after - before
+    if d < 0 { d = 0 }
+    lat = lat.push(d)
+    i = i + 1
+  }
+  let throughput = (n * 1000) / (n + 1)
+  if profile == "stress" {
+    throughput = throughput / 2
+  }
+  give BenchReport(percentile(lat, 50), percentile(lat, 95), percentile(lat, 99), throughput)
+}
+
 proc experimental_alloc(st: AllocState, bytes: int) -> AllocState {
   give alloc(st, bytes)
 }
@@ -1704,7 +1770,6 @@ guarantees:
   - No hidden global
   - no_std compatible
 >>>
-
 
 
 
