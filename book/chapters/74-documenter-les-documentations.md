@@ -144,3 +144,17 @@ Documentation sans snippets testables ni commandes de vérification.
 1. Verifier snippet nominal et invalide.
 2. Verifier QA documentaire.
 3. Verifier owner + DoD + revues datees.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

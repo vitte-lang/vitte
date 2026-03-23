@@ -3,6 +3,7 @@
 Niveau: Tous niveaux
 
 Prérequis: `book/chapters/33-chapitres-suggeres.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -104,3 +105,20 @@ Objectifs formation sans livrables ni commandes de validation.
 2. Associer chaque niveau a une commande preuve.
 3. Tracer progression hebdomadaire.
 
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.

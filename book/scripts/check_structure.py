@@ -38,6 +38,7 @@ KEYWORD_SKIP = {
     "packs-apprentissage.md",
     "non-utilises.md",
     "erreurs-compilateur.md",
+    "all.md",
 }
 
 

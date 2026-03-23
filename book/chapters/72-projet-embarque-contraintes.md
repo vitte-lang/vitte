@@ -3,6 +3,7 @@
 Niveau: Avancé
 
 Prérequis: `book/chapters/25-projet-arduino.md`, `book/chapters/45-performance-allocations-copies.md`.
+Voir aussi: à définir.
 
 ## Objectif
 
@@ -93,3 +94,21 @@ Pourquoi c'est un probleme:
 1. Verifier N1 (pas d'allocation superflue).
 2. Verifier N2 (cas echec couvre).
 3. Verifier N3 (budgets et mesures respectes).
+
+## Pourquoi
+
+Cette section explicite la valeur pratique: réduire les erreurs, accélérer le diagnostic et stabiliser les évolutions.
+
+## Test mental
+
+Question de contrôle: si vous modifiez une hypothèse clé, quel résultat doit changer et pourquoi?
+
+## À faire
+
+1. Exécuter l’exemple nominal.
+2. Introduire un cas limite.
+3. Vérifier la sortie et documenter l’écart.
+
+## Corrigé minimal
+
+Corrigé: conserver la version la plus simple qui respecte le contrat, puis ajouter un test de non-régression.
