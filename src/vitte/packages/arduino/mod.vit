@@ -97,6 +97,15 @@ form ArduinoProjectBundle {
   libraries: [ArduinoLibrary]
 }
 
+form ArduinoProfileMatrixEntry {
+  profile: ArduinoProfile
+  min_pin: Pin
+  max_pin: Pin
+  pwm_supported: bool
+  i2c_supported: bool
+  max_spi_hz: int
+}
+
 proc ok[T](value: T) -> ArduinoResult[T] {
   give ArduinoResult.Ok(value)
 }
@@ -205,6 +214,50 @@ proc profile_name(profile: ArduinoProfile) -> string {
   if profile == ArduinoProfile.Uno { give "uno" }
   if profile == ArduinoProfile.Mega { give "mega" }
   give "esp32"
+}
+
+proc profile_min_pin(profile: ArduinoProfile) -> Pin {
+  let _ = profile
+  give 0
+}
+
+proc profile_max_pin(profile: ArduinoProfile) -> Pin {
+  if profile == ArduinoProfile.Uno { give 19 }
+  if profile == ArduinoProfile.Mega { give 53 }
+  give 39
+}
+
+proc profile_supports_network(profile: ArduinoProfile) -> bool {
+  give profile == ArduinoProfile.Esp32
+}
+
+proc compatibility_matrix() -> [ArduinoProfileMatrixEntry] {
+  give [
+    ArduinoProfileMatrixEntry(
+      ArduinoProfile.Uno,
+      profile_min_pin(ArduinoProfile.Uno),
+      profile_max_pin(ArduinoProfile.Uno),
+      supports_pwm(ArduinoProfile.Uno, 9),
+      supports_i2c(ArduinoProfile.Uno, "7bit"),
+      max_spi_hz(ArduinoProfile.Uno)
+    ),
+    ArduinoProfileMatrixEntry(
+      ArduinoProfile.Mega,
+      profile_min_pin(ArduinoProfile.Mega),
+      profile_max_pin(ArduinoProfile.Mega),
+      supports_pwm(ArduinoProfile.Mega, 8),
+      supports_i2c(ArduinoProfile.Mega, "7bit"),
+      max_spi_hz(ArduinoProfile.Mega)
+    ),
+    ArduinoProfileMatrixEntry(
+      ArduinoProfile.Esp32,
+      profile_min_pin(ArduinoProfile.Esp32),
+      profile_max_pin(ArduinoProfile.Esp32),
+      supports_pwm(ArduinoProfile.Esp32, 18),
+      supports_i2c(ArduinoProfile.Esp32, "7bit"),
+      max_spi_hz(ArduinoProfile.Esp32)
+    )
+  ]
 }
 
 proc project_kind_name(kind: ArduinoProjectType) -> string {
@@ -575,8 +628,65 @@ proc diagnostics_doc_url(code: string) -> string {
   give "https://vitte-lang.org/diagnostics/" + code
 }
 
+proc compile_error_message(profile: ArduinoProfile, err: ArduinoError) -> string {
+  let board = profile_name(profile)
+  if err == ArduinoError.InvalidPin {
+    give "compile error on " + board + ": pin is out of supported range 0.." + profile_max_pin(profile).to_string()
+  }
+  if err == ArduinoError.InvalidBaudRate {
+    give "compile error on " + board + ": baud rate is invalid for serial configuration"
+  }
+  if err == ArduinoError.InvalidAddress {
+    give "compile error on " + board + ": i2c address must be 0x08..0x77"
+  }
+  if err == ArduinoError.Unsupported {
+    give "compile error on " + board + ": feature not supported by selected profile"
+  }
+  if err == ArduinoError.Conflict {
+    give "compile error on " + board + ": conflicting libraries or missing dependency"
+  }
+  if err == ArduinoError.Timeout {
+    give "compile error on " + board + ": timeout budget invalid for project preset"
+  }
+  if err == ArduinoError.BusBusy {
+    give "compile error on " + board + ": peripheral bus is currently busy"
+  }
+  give "compile error on " + board + ": unknown arduino configuration error"
+}
+
+proc compile_diag(profile: ArduinoProfile, err: ArduinoError, context: string) -> ArduinoDiag {
+  let code = "VITTE-A0099"
+  if err == ArduinoError.InvalidPin { code = "VITTE-A0012" }
+  if err == ArduinoError.InvalidAddress { code = "VITTE-A0013" }
+  if err == ArduinoError.InvalidBaudRate { code = "VITTE-A0014" }
+  if err == ArduinoError.Timeout { code = "VITTE-A0020" }
+  if err == ArduinoError.Unsupported { code = "VITTE-A0031" }
+  if err == ArduinoError.Conflict { code = "VITTE-A0032" }
+  give ArduinoDiag(code, compile_error_message(profile, err), context)
+}
+
 proc diag(code: string, context: string) -> ArduinoDiag {
   give ArduinoDiag(code, diagnostics_message(code), context)
+}
+
+proc example_minimal_blink(profile: ArduinoProfile) -> string {
+  let pin = 13
+  if profile == ArduinoProfile.Esp32 { pin = 2 }
+  give "setup(){ pinMode(" + pin.to_string() + ", OUTPUT); }\nloop(){ digitalWrite(" + pin.to_string() + ", HIGH); delay(250); digitalWrite(" + pin.to_string() + ", LOW); delay(250); }"
+}
+
+proc example_minimal_io(profile: ArduinoProfile) -> string {
+  let _ = profile
+  give "setup(){ Serial.begin(115200); }\nloop(){ if (Serial.available()>0){ int b=Serial.read(); Serial.write(b); } }"
+}
+
+proc example_minimal_net(profile: ArduinoProfile) -> ArduinoResult[string] {
+  if profile_supports_network(profile) == false {
+    give err[string](ArduinoError.Unsupported)
+  }
+  give ok[string](
+    "setup(){ WiFi.begin(\"ssid\",\"pass\"); }\nloop(){ if(WiFi.status()==WL_CONNECTED){ /* publish heartbeat */ } delay(1000); }"
+  )
 }
 
 proc ready() -> bool {
@@ -615,6 +725,5 @@ output_contract: Resultats ArduinoResult avec diagnostics VITTE-Axxxx
 boundary: Aucun acces hardware direct dans la facade
 compat_policy: additive-only
 >>>
-
 
 
