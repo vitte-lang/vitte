@@ -17,9 +17,9 @@ export VITTE_TARGET_TRIPLE="aarch64-unknown-linux-gnu"
 # ----------------------------
 # Toolchain selection
 # ----------------------------
-# Prefer clang/LLD when available; allow override
-export CC="${CC:-clang}"
-export CXX="${CXX:-clang++}"
+# Prefer GCC/LLD when available; allow override
+export CC="${CC:-gcc}"
+export CXX="${CXX:-g++}"
 export AR="${AR:-llvm-ar}"
 export LD="${LD:-ld.lld}"
 export NM="${NM:-llvm-nm}"

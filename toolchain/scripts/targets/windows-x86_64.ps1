@@ -21,15 +21,15 @@ $env:VITTE_TARGET_TRIPLE = "x86_64-pc-windows-msvc"
 function Has-Cmd($n) { Get-Command $n -ErrorAction SilentlyContinue | Out-Null; return $? }
 
 if (-not $env:CC) {
-  if (Has-Cmd "clang") { $env:CC = "clang" }
+  if (Has-Cmd "gcc") { $env:CC = "gcc" }
   elseif (Has-Cmd "cl") { $env:CC = "cl" }
-  else { throw "No suitable C compiler found (clang or cl)" }
+  else { throw "No suitable C compiler found (gcc or cl)" }
 }
 
 if (-not $env:CXX) {
-  if (Has-Cmd "clang++") { $env:CXX = "clang++" }
+  if (Has-Cmd "g++") { $env:CXX = "g++" }
   elseif (Has-Cmd "cl") { $env:CXX = "cl" }
-  else { throw "No suitable C++ compiler found (clang++ or cl)" }
+  else { throw "No suitable C++ compiler found (g++ or cl)" }
 }
 
 if (-not $env:AR)  { $env:AR  = "llvm-ar" }

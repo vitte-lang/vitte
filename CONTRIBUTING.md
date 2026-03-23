@@ -7,7 +7,7 @@ This guide is the shortest safe path from first change to merged PR.
 
 You need:
 
-- C/C++ toolchain (`clang`/`clang++` or compatible)
+- C/C++ toolchain (`gcc`/`g++` or compatible)
 - `make`
 - `openssl` and `curl` development libraries
 
@@ -65,7 +65,7 @@ If your change affects user-visible behavior, add or update tests in the same PR
 
 ## 3) Coding Style
 
-- C/C++ formatting: follow `.clang-format`
+- C/C++ formatting: follow the project formatter configuration
 - Vitte files: keep style consistent with existing package/module patterns
 - Prefer small, focused changes over broad refactors
 

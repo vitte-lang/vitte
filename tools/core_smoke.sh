@@ -22,7 +22,7 @@ if [ "$rc" -eq 0 ]; then
   exit 0
 fi
 
-if printf "%s" "$out" | grep -Eqi "fatal error: 'cstdint' file not found|fatal error: 'cstddef' file not found|\[clang\] invocation failed|backend compilation failed"; then
+if printf "%s" "$out" | grep -Eqi "fatal error: 'cstdint' file not found|fatal error: 'cstddef' file not found|toolchain invocation failed|backend compilation failed"; then
   log "warning: host C++ toolchain incomplete, smoke check skipped"
   exit 0
 fi

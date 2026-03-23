@@ -14,9 +14,9 @@ SRC_DIR      := src
 STD_DIR      := src/vitte/packages
 TOOLS_DIR    := tools
 
-CC           := clang
-CXX          ?= clang++
-CXX_FALLBACK ?= g++
+CC           ?= gcc
+CXX          ?= g++
+CXX_FALLBACK ?= c++
 AUTO_CXX_FALLBACK ?= 1
 AR           := ar
 RM           := rm -rf
@@ -24,8 +24,8 @@ MKDIR        := mkdir -p
 INSTALL      := install
 CP           := cp -f
 
-# Auto-fallback to g++ when clang++ cannot locate C++ standard headers.
-# This keeps local builds working on hosts with partial clang toolchains.
+# Auto-fallback when the default C++ compiler cannot locate standard headers.
+# This keeps local builds working on hosts with partial toolchains.
 ifeq ($(AUTO_CXX_FALLBACK),1)
 ifneq ($(origin CXX),command line)
   CXX_STDLIB_OK := $(shell printf '#include <cstddef>\nint main(){return 0;}\n' | $(CXX) -std=c++20 -x c++ -fsyntax-only - >/dev/null 2>&1; echo $$?)
@@ -73,8 +73,8 @@ ifneq ($(strip $(CURL_LDFLAGS)),)
 endif
 KERNEL_LDFLAGS := $(filter-out -lcurl,$(LDFLAGS))
 
-CLANG_TIDY   := clang-tidy
-FORMAT       := clang-format
+CPP_TIDY     ?= true
+FORMAT_TOOL  ?= true
 
 # ------------------------------------------------------------
 # Files
@@ -186,7 +186,7 @@ dirs:
 
 .PHONY: format
 format:
-	$(FORMAT) -i $(C_SOURCES) $(CPP_SOURCES)
+	$(FORMAT_TOOL) -i $(C_SOURCES) $(CPP_SOURCES)
 
 # ------------------------------------------------------------
 # Static analysis
@@ -194,7 +194,7 @@ format:
 
 .PHONY: tidy
 tidy:
-	$(CLANG_TIDY) \
+	$(CPP_TIDY) \
 		$(CPP_SOURCES) \
 		-- \
 		$(CXXFLAGS)
@@ -617,7 +617,7 @@ packages-dependency-overlap-lint:
 .PHONY: package-check
 package-check:
 	@test -n "$(SRC)" || (echo "usage: make package-check SRC=src/vitte/packages/<pkg>/mod.vit" >&2; exit 2)
-	@bin/vitte check --lang=en --allow-internal --resolve-only "$(SRC)"
+	@tools/package_check_portable.sh "$(SRC)"
 
 .PHONY: modules-perf-cache
 modules-perf-cache:
@@ -944,7 +944,7 @@ clean:
 
 .PHONY: distclean
 distclean: clean
-	$(RM) .cache .clangd
+	$(RM) .cache
 
 # ------------------------------------------------------------
 # Help
@@ -962,8 +962,8 @@ help:
 	@echo "  make install-editors install syntax configs for Vim/Emacs/Nano/Geany in HOME (override USER_HOME=..., PREFIX=...)"
 	@echo "  make install-geany install Geany Vitte config only (VITTE_GEANY_WD_MODE=file|project|current)"
 	@echo "  make uninstall-geany remove Geany Vitte config from user profile"
-	@echo "  make format     run clang-format"
-	@echo "  make tidy       run clang-tidy"
+	@echo "  make format     run code formatter"
+	@echo "  make tidy       run C/C++ linter"
 	@echo "  make test       run tests (std/test)"
 	@echo "  make grammar-sync regenerate grammar surface artifacts from src/vitte/grammar/vitte.ebnf"
 	@echo "  make grammar-check fail if grammar generated artifacts are out of sync"

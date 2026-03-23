@@ -15,7 +15,7 @@ JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
 
 # Tools (optional)
 SHELLCHECK="${SHELLCHECK:-shellcheck}"
-CLANG_TIDY="${CLANG_TIDY:-clang-tidy}"
+CPP_TIDY="${CPP_TIDY:-}"
 CPPCHECK="${CPPCHECK:-cppcheck}"
 
 # ----------------------------
@@ -75,12 +75,12 @@ log "c/c++ lint"
 CC_FILES=$(git ls-files "*.c" "*.h" "*.cpp" "*.hpp" || true)
 
 if [ -n "$CC_FILES" ]; then
-  if has "$CLANG_TIDY" && [ -f "compile_commands.json" ]; then
-    log "clang-tidy (compile_commands.json detected)"
+  if [ -n "$CPP_TIDY" ] && has "$CPP_TIDY" && [ -f "compile_commands.json" ]; then
+    log "c/c++ tidy (compile_commands.json detected)"
     echo "$CC_FILES" | xargs -r -n 5 -P "$JOBS" \
-      "$CLANG_TIDY" || die "clang-tidy failed"
+      "$CPP_TIDY" || die "c/c++ tidy failed"
   else
-    warn "clang-tidy skipped (missing tool or compile_commands.json)"
+    warn "c/c++ tidy skipped (missing tool or compile_commands.json)"
   fi
 
   if has "$CPPCHECK"; then

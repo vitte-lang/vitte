@@ -17,10 +17,10 @@ export VITTE_TARGET_TRIPLE="arm64-apple-darwin"
 # ----------------------------
 # Toolchain selection
 # ----------------------------
-# Apple Clang toolchain by default
-export CC="${CC:-clang}"
-export CXX="${CXX:-clang++}"
-export AR="${AR:-libtool}"
+# Generic toolchain defaults (no IDE hard dependency)
+export CC="${CC:-gcc}"
+export CXX="${CXX:-g++}"
+export AR="${AR:-ar}"
 export LD="${LD:-ld}"
 export NM="${NM:-nm}"
 export STRIP="${STRIP:-strip}"
@@ -28,15 +28,8 @@ export STRIP="${STRIP:-strip}"
 # ----------------------------
 # SDK / Sysroot
 # ----------------------------
-# Native build: SDK auto-detected via xcrun
-# Cross-build / pin SDK: set MACOS_SDK (path)
-if command -v xcrun >/dev/null 2>&1; then
-  DEFAULT_SDK="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
-else
-  DEFAULT_SDK=""
-fi
-
-export SDKROOT="${MACOS_SDK:-$DEFAULT_SDK}"
+# No SDK auto-detection: set MACOS_SDK/SDKROOT explicitly if needed
+export SDKROOT="${MACOS_SDK:-${SDKROOT:-}}"
 SYSROOT_FLAGS=()
 if [ -n "$SDKROOT" ]; then
   SYSROOT_FLAGS+=( "-isysroot" "$SDKROOT" )

@@ -17,18 +17,18 @@ case "$MODE" in
 esac
 
 cxx_ready() {
-  if ! command -v clang++ >/dev/null 2>&1; then
+  if ! command -v "${CXX:-c++}" >/dev/null 2>&1; then
     return 1
   fi
   if ! printf '#include <cstdint>\n#include <cstddef>\nint main(){return 0;}\n' \
-      | clang++ -x c++ -std=c++20 -fsyntax-only - >/dev/null 2>&1; then
+      | "${CXX:-c++}" -x c++ -std=c++20 -fsyntax-only - >/dev/null 2>&1; then
     return 1
   fi
   return 0
 }
 
 if [ "$MODE" = "build" ] && ! cxx_ready; then
-  log "skip: C++ toolchain not ready (clang++/stdlib headers missing)"
+  log "skip: C++ toolchain not ready (c++ toolchain/stdlib headers missing)"
   exit 0
 fi
 

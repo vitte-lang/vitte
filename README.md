@@ -122,7 +122,7 @@ vitte build examples/first_project.vit
 
 ### macOS
 
-Requirements: `clang`, `openssl`, `curl`.
+Requirements: C/C++ compiler toolchain, `openssl`, `curl`.
 
 ```sh
 brew install llvm openssl@3 curl
@@ -139,7 +139,7 @@ OPENSSL_DIR=/opt/homebrew/opt/openssl@3 make install
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y clang libssl-dev libcurl4-openssl-dev
+sudo apt-get install -y g++ libssl-dev libcurl4-openssl-dev
 make build
 ```
 
@@ -258,7 +258,7 @@ Release-facing language contract:
 3. MIR: normalize control flow and operations
 4. Backend: emit C++ (then native toolchain)
 
-## Reproducible Object Mode (macOS/clang)
+## Reproducible Object Mode (macOS/C++)
 
 For byte-level object comparison:
 

@@ -17,9 +17,9 @@ export VITTE_TARGET_TRIPLE="x86_64-unknown-freebsd"
 # ----------------------------
 # Toolchain selection
 # ----------------------------
-# Prefer clang/ld.lld on FreeBSD
-export CC="${CC:-clang}"
-export CXX="${CXX:-clang++}"
+# Prefer GCC/ld.lld on FreeBSD
+export CC="${CC:-gcc}"
+export CXX="${CXX:-g++}"
 export AR="${AR:-llvm-ar}"
 export LD="${LD:-ld.lld}"
 export NM="${NM:-llvm-nm}"

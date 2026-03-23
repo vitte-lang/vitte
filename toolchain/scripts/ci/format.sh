@@ -16,7 +16,7 @@ JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
 # Tools (override if needed)
 SHFMT="${SHFMT:-shfmt}"
 PRETTIER="${PRETTIER:-prettier}"
-CLANG_FORMAT="${CLANG_FORMAT:-clang-format}"
+CPP_FORMAT="${CPP_FORMAT:-}"
 
 # ----------------------------
 # Helpers
@@ -45,7 +45,7 @@ else
   SHFMT_AVAILABLE=0
   log "shfmt not found — skipping shell formatting"
 fi
-# prettier / clang-format are optional; detect later
+# prettier / C++ formatter are optional; detect later
 
 cd "$ROOT_DIR"
 
@@ -113,20 +113,20 @@ fi
 # ----------------------------
 # C / C++ (optional)
 # ----------------------------
-if command -v "$CLANG_FORMAT" >/dev/null 2>&1 && [ -f ".clang-format" ]; then
-  log "clang-format"
+if [ -n "$CPP_FORMAT" ] && command -v "$CPP_FORMAT" >/dev/null 2>&1; then
+  log "c/c++ formatter"
   CC_FILES=$(git ls-files "*.c" "*.h" "*.cpp" "*.hpp" || true)
   if [ -n "$CC_FILES" ]; then
     if [ "$MODE" = "check" ]; then
       echo "$CC_FILES" | xargs -r -n 50 -P "$JOBS" \
-        "$CLANG_FORMAT" --dry-run --Werror || die "clang-format check failed"
+        "$CPP_FORMAT" --dry-run --Werror || die "c/c++ format check failed"
     else
       echo "$CC_FILES" | xargs -r -n 50 -P "$JOBS" \
-        "$CLANG_FORMAT" -i
+        "$CPP_FORMAT" -i
     fi
   fi
 else
-  log "clang-format not configured — skipping"
+  log "c/c++ formatter not configured — skipping"
 fi
 
 # ----------------------------

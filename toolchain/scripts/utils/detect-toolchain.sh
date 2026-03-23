@@ -49,8 +49,8 @@ OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 # ----------------------------
 # Compiler detection
 # ----------------------------
-CC="$(pick_first "${CC:-}" clang gcc cc || true)"
-CXX="$(pick_first "${CXX:-}" clang++ g++ c++ || true)"
+CC="$(pick_first "${CC:-}" gcc cc || true)"
+CXX="$(pick_first "${CXX:-}" g++ c++ || true)"
 
 [ -n "$CC" ]  || { echo "error: no C compiler found"; exit 1; }
 [ -n "$CXX" ] || { echo "error: no C++ compiler found"; exit 1; }
@@ -94,8 +94,8 @@ log "ld=$LD"
 # Toolchain flavor
 # ----------------------------
 TOOLCHAIN_FLAVOR="unknown"
-if "$CC" --version 2>&1 | grep -qi clang; then
-  TOOLCHAIN_FLAVOR="clang"
+if "$CC" --version 2>&1 | grep -qiE 'apple|llvm'; then
+  TOOLCHAIN_FLAVOR="llvm"
 elif "$CC" --version 2>&1 | grep -qi gcc; then
   TOOLCHAIN_FLAVOR="gcc"
 fi
@@ -108,12 +108,9 @@ fi
 # ----------------------------
 # SDK / sysroot (best-effort)
 # ----------------------------
+# no SDK auto-detection: only consume explicit env vars
 SDKROOT="${SDKROOT:-}"
 SYSROOT="${SYSROOT:-}"
-
-if [ -z "$SDKROOT" ] && [ "$OS" = "darwin" ] && has xcrun; then
-  SDKROOT="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
-fi
 
 # ----------------------------
 # Versions

@@ -87,7 +87,7 @@ Checklist courte:
 - ABI incohérente (signature/calling convention incompatible).
 - ordre d'édition de liens incorrect (objet/lib non inclus).
 
-Règle pratique: si `parse/resolve/ir` passent et que l'échec arrive en `backend/clang`, chercher d'abord dans l'intégration runtime.
+Règle pratique: si `parse/resolve/ir` passent et que l'échec arrive en `backend/cpp`, chercher d'abord dans l'intégration runtime.
 
 ## 30.3 EBNF source of truth
 
@@ -136,7 +136,7 @@ emit 10 + 20 * 3
 | `unknown symbol` | resolve |
 | incohérence de forme IR | ir |
 | génération C++ invalide | backend |
-| erreur clang (`undefined`, headers, link) | clang |
+| erreur toolchain C++ (`undefined`, headers, link) | c++ |
 
 ## 30.6 FAQ Projet kernel
 
@@ -235,7 +235,7 @@ Statement-level (dans un bloc):
 ## 30.11 Plan de triage en 90 secondes
 
 1. Lire la première erreur, pas la cascade.
-2. Identifier la couche (`parse` vs `resolve` vs `backend/clang`).
+2. Identifier la couche (`parse` vs `resolve` vs `backend/cpp`).
 3. Réduire au plus petit input reproductible.
 4. Corriger une seule cause, relancer le build.
 5. Vérifier qu'aucune régression n'apparaît dans les stages précédents.

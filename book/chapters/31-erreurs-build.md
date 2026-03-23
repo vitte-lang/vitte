@@ -76,8 +76,8 @@ Repère: voir le `Glossaire Vitte` dans `book/glossaire.md` et la `Checklist de 
 | `expected top-level declaration` | parse | statement au top-level. | Encapsuler dans `entry`/`proc`. |
 | `unknown symbol` | resolve | symbole non déclaré/importé. | Ajouter déclaration/import correct. |
 | `type mismatch` | resolve/ir | contrat de type incohérent. | Aligner type attendu et type fourni. |
-| `undefined symbol` (clang/link) | backend/clang | runtime/symbole natif absent. | Ajouter définition/link/runtime manquant. |
-| `clang invocation failed` | backend | génération ou toolchain cassée. | Inspecter `vitte_out.cpp` et flags. |
+| `undefined symbol` (link) | backend/cpp | runtime/symbole natif absent. | Ajouter définition/link/runtime manquant. |
+| `toolchain invocation failed` | backend | génération ou toolchain cassée. | Inspecter `vitte_out.cpp` et flags. |
 
 ## 31.3 Minimal reproducers
 

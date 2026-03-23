@@ -96,7 +96,7 @@ for name in "${cases[@]}"; do
   "$BIN" --emit-cpp --stdout --repro "$VITTE_SRC" > "$EMIT_CPP"
 
   log "$name: emitted c++ -> object"
-  clang++ -std=c++20 -c "$EMIT_CPP" -o "$EMIT_OBJ" "${OBJ_FLAGS[@]}" "${INCLUDES[@]}"
+  ${CXX:-c++} -std=c++20 -c "$EMIT_CPP" -o "$EMIT_OBJ" "${OBJ_FLAGS[@]}" "${INCLUDES[@]}"
 
   log "$name: compare objects"
   if ! cmp -s "$EMIT_OBJ" "$VITTE_OBJ"; then
@@ -108,7 +108,7 @@ for name in "${cases[@]}"; do
 
   if [ "$COMPARE_MANUAL_CPP" = "1" ]; then
     log "$name: manual c++ -> object"
-    clang++ -std=c++20 -c "$CPP_SRC" -o "$CPP_OBJ" "${FLAGS[@]}" "${INCLUDES[@]}"
+    ${CXX:-c++} -std=c++20 -c "$CPP_SRC" -o "$CPP_OBJ" "${FLAGS[@]}" "${INCLUDES[@]}"
     log "$name: compare manual c++"
     if cmp -s "$CPP_OBJ" "$VITTE_OBJ"; then
       log "$name: OK (manual c++ matches)"
@@ -128,7 +128,7 @@ for name in "${cases[@]}"; do
     "$BIN" build --repro -o "$VITTE_BIN" "$VITTE_SRC"
 
     log "$name: emitted c++ -> binary"
-    clang++ -std=c++20 "$EMIT_CPP" "$RUNTIME_CPP" -o "$EMIT_BIN" \
+    ${CXX:-c++} -std=c++20 "$EMIT_CPP" "$RUNTIME_CPP" -o "$EMIT_BIN" \
       "${BIN_FLAGS[@]}" "${INCLUDES[@]}" "${LIB_DIRS[@]}" -lstdc++ -lssl -lcrypto -lcurl "${LD_FLAGS[@]}"
 
     log "$name: compare binaries"

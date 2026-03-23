@@ -79,8 +79,8 @@ cmd_ver bash
 cmd_ver sh
 cmd_ver python3
 cmd_ver python
-cmd_ver clang
-cmd_ver clang++
+cmd_ver gcc
+cmd_ver gcc++
 cmd_ver gcc
 cmd_ver g++
 cmd_ver cmake
@@ -96,8 +96,8 @@ hr
 log "ci / build tools"
 cmd_ver shfmt
 cmd_ver shellcheck
-cmd_ver clang-format
-cmd_ver clang-tidy
+cmd_ver gcc-format
+cmd_ver gcc-tidy
 cmd_ver cppcheck
 cmd_ver prettier
 
