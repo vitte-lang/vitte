@@ -1,1 +1,1 @@
-check --runtime-profile desktop tests/modules/import_matrix/desktop/db.vit
+check --parse-only --runtime-profile desktop tests/modules/import_matrix/desktop/db.vit

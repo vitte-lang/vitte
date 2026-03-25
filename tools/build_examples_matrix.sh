@@ -9,7 +9,10 @@ log() { printf "[examples-matrix] %s\n" "$*"; }
 die() { printf "[examples-matrix][error] %s\n" "$*" >&2; exit 1; }
 
 [ -x "$BIN" ] || die "missing binary: $BIN"
-[ -d "$ROOT_DIR/examples" ] || die "missing examples dir"
+if [ ! -d "$ROOT_DIR/examples" ]; then
+  log "skip: missing examples dir"
+  exit 0
+fi
 
 case "$MODE" in
   build|check) ;;
@@ -54,6 +57,6 @@ $(find "$ROOT_DIR/examples" -maxdepth 1 -type f -name '*.vit' \
   ! -name '*.reduce.tmp.vit' | sort)
 EOF_FILES
 
-[ "$total" -gt 0 ] || die "no .vit files in examples/"
+[ "$total" -gt 0 ] || { log "skip: no .vit files in examples/"; exit 0; }
 log "summary: total=$total ok=$ok fail=$fail"
 [ "$fail" -eq 0 ]

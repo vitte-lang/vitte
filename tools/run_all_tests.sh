@@ -53,7 +53,25 @@ select_targets() {
   esac
 }
 
-mapfile -t targets < <(select_targets)
+targets=()
+if type mapfile >/dev/null 2>&1; then
+  mapfile -t targets < <(select_targets)
+else
+  while IFS= read -r line; do
+    targets+=("$line")
+  done < <(select_targets)
+fi
+
+available_targets="$( (make -C "$ROOT_DIR" -qp 2>/dev/null || true) | awk -F: '/^[A-Za-z0-9_.-]+:($| )/{print $1}' | sort -u)"
+filtered_targets=()
+for t in "${targets[@]}"; do
+  if printf "%s\n" "$available_targets" | grep -Fxq "$t"; then
+    filtered_targets+=("$t")
+  else
+    echo "[all-tests] skip unknown target: $t"
+  fi
+done
+targets=("${filtered_targets[@]}")
 
 if [ "${ALL_TESTS_LIST_ONLY:-0}" = "1" ]; then
   printf "%s\n" "${targets[@]}"

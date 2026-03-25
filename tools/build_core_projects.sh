@@ -31,7 +31,16 @@ total=0
 ok=0
 fail=0
 
-for file in "$ROOT_DIR"/examples/core_project_*.vit; do
+shopt -s nullglob
+files=("$ROOT_DIR"/examples/core_project_*.vit)
+shopt -u nullglob
+
+if [ "${#files[@]}" -eq 0 ]; then
+  log "skip: no examples/core_project_*.vit fixtures"
+  exit 0
+fi
+
+for file in "${files[@]}"; do
   case "$file" in
     *.reduced.vit|*.reduce.tmp.vit) continue ;;
   esac

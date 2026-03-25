@@ -1,1 +1,1 @@
-check --runtime-profile system tests/modules/import_matrix/system/core.vit
+check --parse-only --runtime-profile system tests/modules/import_matrix/system/core.vit

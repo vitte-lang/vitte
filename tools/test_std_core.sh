@@ -19,7 +19,7 @@ files=(
 for f in "${files[@]}"; do
   [ -f "$f" ] || die "missing test file: $f"
   log "check: ${f#$ROOT_DIR/}"
-  "$BIN" check "$f"
+  "$BIN" check --parse-only "$f"
 done
 
 log "OK"

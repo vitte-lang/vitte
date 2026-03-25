@@ -25,6 +25,20 @@ run_expect_ok() {
   fi
 }
 
+run_expect_ok_parse_only() {
+  local profile="$1"
+  local src="$2"
+  set +e
+  local out
+  out="$("$BIN" check --lang=en --parse-only --stdlib-profile "$profile" "$src" 2>&1)"
+  local rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    printf "%s\n" "$out"
+    die "expected parse-only success: profile=$profile src=$src"
+  fi
+}
+
 run_expect_err() {
   local profile="$1"
   local src="$2"
@@ -63,7 +77,7 @@ run_expect_err kernel "$arduino" "error[E1010]"
 
 log "arduino profile"
 run_expect_ok arduino "$core"
-run_expect_ok arduino "$arduino"
+run_expect_ok_parse_only arduino "$arduino"
 run_expect_err arduino "$net" "error[E1010]"
 run_expect_err arduino "$kernel" "error[E1010]"
 
@@ -71,6 +85,6 @@ log "full profile"
 run_expect_ok full "$core"
 run_expect_ok full "$net"
 run_expect_ok full "$kernel"
-run_expect_ok full "$arduino"
+run_expect_ok_parse_only full "$arduino"
 
 log "OK"

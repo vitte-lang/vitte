@@ -1,9 +1,11 @@
 space std/core/panic
 
 use std/core/option as option_mod
-use vitte/core/panic/internal/runtime as core_panic_runtime_pkg
-use vitte/core/panic/internal/validate as core_panic_validate_pkg
-use vitte/core/panic/internal/policy as core_panic_policy_pkg
+proc core_panic_default_timeout_ms() -> int { give 1500 }
+proc core_panic_default_retry_budget() -> int { give 2 }
+proc core_panic_valid_timeout_ms(v: int) -> bool { give v > 0 && v <= 600000 }
+proc core_panic_valid_retry_budget(v: int) -> bool { give v >= 0 && v <= 64 }
+proc core_panic_runtime_status() -> bool { give true }
 
 proc assert(condition: bool) -> int {
   let _ = condition
@@ -37,14 +39,14 @@ pick CorePanicResult[T] {
 }
 
 proc default_config() -> CorePanicConfig {
-  give CorePanicConfig(true, core_panic_policy_pkg.default_timeout_ms(), core_panic_policy_pkg.default_retry_budget())
+  give CorePanicConfig(true, core_panic_default_timeout_ms(), core_panic_default_retry_budget())
 }
 
 proc validate_config(cfg: CorePanicConfig) -> CorePanicResult[bool] {
-  if core_panic_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  if core_panic_valid_timeout_ms(cfg.timeout_ms) == false {
     give CorePanicResult.Err(CorePanicError.InvalidConfig)
   }
-  if core_panic_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if core_panic_valid_retry_budget(cfg.retry_budget) == false {
     give CorePanicResult.Err(CorePanicError.InvalidConfig)
   }
   give CorePanicResult.Ok(true)
@@ -55,7 +57,7 @@ proc healthcheck(cfg: CorePanicConfig) -> CorePanicResult[bool] {
   when vr is CorePanicResult.Err {
     give CorePanicResult.Err(vr.error)
   }
-  if core_panic_runtime_pkg.runtime_status() == false {
+  if core_panic_runtime_status() == false {
     give CorePanicResult.Err(CorePanicError.Internal)
   }
   give CorePanicResult.Ok(true)
@@ -102,7 +104,6 @@ boundary: Implementation privee sous vitte/core/panic/internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
-
 
 
 

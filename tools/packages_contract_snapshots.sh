@@ -35,6 +35,15 @@ mkdir -p "$SNAP_ROOT"
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/vitte-packages-contracts-XXXXXX")"
 trap 'rm -rf "$tmp_root"' EXIT
 
+sha256_file() {
+  local path="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+    return
+  fi
+  shasum -a 256 "$path" | awk '{print $1}'
+}
+
 for mod in "${CRITICAL[@]}"; do
   src="$PACKAGES_ROOT/$mod/mod.vit"
   [ -f "$src" ] || die "missing source module: $src"
@@ -91,7 +100,7 @@ for path, items in ((out_all, exports), (out_public, public), (out_internal, int
             f.write(item + "\n")
 PY
 
-  sha="$(sha256sum "$gen_all" | awk '{print $1}')"
+  sha="$(sha256_file "$gen_all")"
   printf "%s\n" "$sha" > "$tmp_root/$mod.exports.sha256"
 
   if [ "$UPDATE" -eq 1 ]; then

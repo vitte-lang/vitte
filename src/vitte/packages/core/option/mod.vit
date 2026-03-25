@@ -1,19 +1,14 @@
 space std/core/option
 
-use vitte/core/option/internal/runtime as core_option_runtime_pkg
-use vitte/core/option/internal/validate as core_option_validate_pkg
-use vitte/core/option/internal/policy as core_option_policy_pkg
+proc core_option_default_timeout_ms() -> int { give 1500 }
+proc core_option_default_retry_budget() -> int { give 2 }
+proc core_option_valid_timeout_ms(v: int) -> bool { give v > 0 && v <= 600000 }
+proc core_option_valid_retry_budget(v: int) -> bool { give v >= 0 && v <= 64 }
+proc core_option_runtime_status() -> bool { give true }
 
 pick Option[T] {
   Some(value: T)
   None
-}
-
-proc map[T, U](value: Option[T], f: proc(x: T) -> U) -> Option[U] {
-  when value is Option.Some {
-    give Option.Some(f(value.value))
-  }
-  give Option.None
 }
 
 form CoreOptionConfig {
@@ -35,14 +30,14 @@ pick CoreOptionResult[T] {
 }
 
 proc default_config() -> CoreOptionConfig {
-  give CoreOptionConfig(true, core_option_policy_pkg.default_timeout_ms(), core_option_policy_pkg.default_retry_budget())
+  give CoreOptionConfig(true, core_option_default_timeout_ms(), core_option_default_retry_budget())
 }
 
 proc validate_config(cfg: CoreOptionConfig) -> CoreOptionResult[bool] {
-  if core_option_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  if core_option_valid_timeout_ms(cfg.timeout_ms) == false {
     give CoreOptionResult.Err(CoreOptionError.InvalidConfig)
   }
-  if core_option_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if core_option_valid_retry_budget(cfg.retry_budget) == false {
     give CoreOptionResult.Err(CoreOptionError.InvalidConfig)
   }
   give CoreOptionResult.Ok(true)
@@ -53,7 +48,7 @@ proc healthcheck(cfg: CoreOptionConfig) -> CoreOptionResult[bool] {
   when vr is CoreOptionResult.Err {
     give CoreOptionResult.Err(vr.error)
   }
-  if core_option_runtime_pkg.runtime_status() == false {
+  if core_option_runtime_status() == false {
     give CoreOptionResult.Err(CoreOptionError.Internal)
   }
   give CoreOptionResult.Ok(true)
@@ -100,8 +95,6 @@ boundary: Implementation privee sous vitte/core/option/internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
-
-
 
 
 

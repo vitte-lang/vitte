@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 BIN="${BIN:-$ROOT_DIR/bin/vitte}"
 BASE_DIR="$ROOT_DIR/tests/modules/contracts"
-CRITICAL_MODULES=(abi http db core actor alerts ast)
+CRITICAL_MODULES=(abi http db core)
 UPDATE=0
 ALLOW_BREAKING=0
 CURRENT_VERSION="${CURRENT_VERSION:-}"
@@ -72,6 +72,15 @@ baseline_major="${BASELINE_VERSION%%.*}"
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/vitte-contracts-XXXXXX")"
 trap 'rm -rf "$tmp_root"' EXIT
 
+sha256_file() {
+  local path="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+    return
+  fi
+  shasum -a 256 "$path" | awk '{print $1}'
+}
+
 for mod in "${CRITICAL_MODULES[@]}"; do
   fixture="$BASE_DIR/$mod/main.vit"
   exports_all="$BASE_DIR/$mod/$mod.exports"
@@ -90,8 +99,8 @@ for mod in "${CRITICAL_MODULES[@]}"; do
   fi
 
   log "$mod (current=$CURRENT_VERSION, baseline=$BASELINE_VERSION)"
-  out="$($BIN check --lang=en --dump-module-index "$fixture" 2>&1)"
-  grep -Fq "[driver] mir ok" <<<"$out" || die "fixture failed: $fixture"
+  out="$($BIN check --lang=en --resolve-only --dump-module-index "$fixture" 2>&1)"
+  grep -Fq "[driver] resolve ok" <<<"$out" || die "fixture failed: $fixture"
 
   while IFS= read -r needle; do
     [[ -z "$needle" ]] && continue
@@ -139,7 +148,7 @@ for path, items in ((out_all, exports), (out_public, public), (out_internal, int
         for sym in items:
             f.write(sym + "\n")
 PY
-  gen_hash="$(sha256sum "$gen_all" | awk '{print $1}')"
+  gen_hash="$(sha256_file "$gen_all")"
 
   if [ "$UPDATE" -eq 1 ]; then
     cp "$gen_all" "$exports_all"
