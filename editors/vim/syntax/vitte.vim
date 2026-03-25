@@ -3,18 +3,18 @@ if exists("b:current_syntax")
   finish
 endif
 
-syn keyword vitteKeyword space pull use share const let make type form trait pick case proc entry at macro give emit asm unsafe if else otherwise loop for in break continue select when match return not and or is as
-syn keyword vitteDecl proc form pick trait entry
-syn keyword vitteType bool string int char i8 i16 i32 i64 isize u8 u16 u32 u64 usize f32 f64
-syn keyword vitteBuiltin true false null
-syn keyword vitteTodo TODO FIXME NOTE XXX
+syn keyword vitteKeyword space pull use share form field pick case trait type const macro proc entry at asm unsafe match let make set give emit if else otherwise select when is loop for in break continue return not and or as all
+syn keyword vitteDecl proc form pick trait entry macro type field case
+syn keyword vitteType bool string int
+syn keyword vitteBuiltin true false
+syn keyword vitteTodo TODO FIXME BUG HACK NOTE XXX
 
 syn match vitteNumber "\v\b(0x[0-9A-Fa-f]+|0b[01]+|[0-9]+)\b"
 syn region vitteString start=+"+ skip=+\\"+ end=+"+
 syn match vitteChar "\v'([^'\\]|\\.)'"
 syn match vitteUsePath "\v\<use\>\s+\zs[A-Za-z0-9_./:]+"
 syn match vitteModulePath "\v\<(space|pull|share|at|use)\>\s+\zs[A-Za-z0-9_./:]+"
-syn match vitteDeclName "\v\<(proc|form|pick|trait|entry)\>\s+\zs[A-Za-z_][A-Za-z0-9_]*"
+syn match vitteDeclName "\v\<(proc|form|pick|trait|entry|macro|type|field|case)\>\s+\zs[A-Za-z_][A-Za-z0-9_]*"
 syn match vitteUseAlias "\v\<as\>\s+\zs[A-Za-z_][A-Za-z0-9_]*(_pkg)?"
 syn match vitteDiagCode "\vVITTE-[A-Z]+[0-9]{4}"
 syn match vitteAliasPkg "\v[A-Za-z_][A-Za-z0-9_]*_pkg"

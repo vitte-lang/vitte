@@ -38,17 +38,17 @@
   '((t :inherit font-lock-preprocessor-face :weight bold))
   "Face for ROLE-CONTRACT headers.")
 
-(defconst vitte-keywords '("space" "pull" "use" "share" "const" "let" "make" "type" "form" "trait" "pick" "case" "proc" "entry" "at" "macro" "give" "emit" "asm" "unsafe" "if" "else" "otherwise" "loop" "for" "in" "break" "continue" "select" "when" "match" "return" "not" "and" "or" "is" "as"))
-(defconst vitte-decls '("proc" "form" "pick" "trait" "entry"))
-(defconst vitte-types '("bool" "string" "int" "char" "i8" "i16" "i32" "i64" "isize" "u8" "u16" "u32" "u64" "usize" "f32" "f64"))
-(defconst vitte-builtins '("true" "false" "null"))
+(defconst vitte-keywords '("space" "pull" "use" "share" "form" "field" "pick" "case" "trait" "type" "const" "macro" "proc" "entry" "at" "asm" "unsafe" "match" "let" "make" "set" "give" "emit" "if" "else" "otherwise" "select" "when" "is" "loop" "for" "in" "break" "continue" "return" "not" "and" "or" "as" "all"))
+(defconst vitte-decls '("proc" "form" "pick" "trait" "entry" "macro" "type" "field" "case"))
+(defconst vitte-types '("bool" "string" "int"))
+(defconst vitte-builtins '("true" "false"))
 
 (defvar vitte-font-lock-keywords
   `((,(regexp-opt vitte-keywords 'symbols) . font-lock-keyword-face)
     (,(regexp-opt vitte-decls 'symbols) . font-lock-function-name-face)
     (,(regexp-opt vitte-types 'symbols) . font-lock-type-face)
     (,(regexp-opt vitte-builtins 'symbols) . font-lock-constant-face)
-    ("\\<\\(proc\\|form\\|pick\\|trait\\|entry\\)\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 2 font-lock-function-name-face)
+    ("\\<\\(proc\\|form\\|pick\\|trait\\|entry\\|macro\\|type\\|field\\|case\\)\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 2 font-lock-function-name-face)
     ("\\<\\(space\\|pull\\|share\\|at\\|use\\)\\>\\s-+\\([A-Za-z0-9_./:]+\\)" 2 font-lock-constant-face)
     ("\\<as\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\(?:_pkg\\)?\\)" 1 'vitte-alias-face)
     ("'\\([^'\\\\]\\|\\\\.\\)'" . font-lock-string-face)
@@ -56,7 +56,7 @@
     ("\\<VITTE-[A-Z]+[0-9]\\{4\\}\\>" . 'vitte-diag-face)
     ("^\\s-*<<<\\s-+ROLE-CONTRACT" . 'vitte-contract-face)
     ("\\<\\(diagnostics_[A-Za-z0-9_]*\\|quickfix_[A-Za-z0-9_]*\\|doctor_[A-Za-z0-9_]*\\)\\>" . font-lock-builtin-face)
-    ("\\<\\(TODO\|FIXME\|NOTE\|XXX\\)\\>" . font-lock-warning-face)
+    ("\\<\\(TODO\|FIXME\|BUG\|HACK\|NOTE\|XXX\\)\\>" . font-lock-warning-face)
     ("\\<use\\>\\s-+\\([A-Za-z0-9_./:]+\\)" 1 font-lock-constant-face)))
 
 (defvar vitte-imenu-generic-expression
@@ -103,7 +103,7 @@
     (setq-local indent-line-function #'vitte-indent-line)))
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.vit\\'" . vitte-mode))
+(add-to-list 'auto-mode-alist '("\\.\(vit\|vitte\)\\'" . vitte-mode))
 
 (provide 'vitte-mode)
 ;;; vitte-mode.el ends here

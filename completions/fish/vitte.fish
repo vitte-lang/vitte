@@ -2,7 +2,7 @@
 # completion-generator-version: 2.0
 # completion-schema-version: 2
 # completion-spec-sha256: a46b9e61f1fa16194d10ce338e98c8f899abd2f46075c1f7492f276b768931c1
-# completion-help-mode: static-fallback
+# completion-help-mode: dynamic
 complete -c vitte -n "__fish_use_subcommand" -a "build" -d "Full build"
 complete -c vitte -n "__fish_use_subcommand" -a "check" -d "Parse + resolve + IR"
 complete -c vitte -n "__fish_use_subcommand" -a "clean-cache" -d "Remove .vitte-cache artifacts"

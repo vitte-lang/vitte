@@ -1,1 +1,1 @@
-au BufRead,BufNewFile *.vit set filetype=vitte
+au BufRead,BufNewFile *.vit,*.vitte set filetype=vitte

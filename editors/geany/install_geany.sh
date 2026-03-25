@@ -2,37 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-detect_geany_home() {
-  if [[ -n "${GEANY_HOME:-}" ]]; then
-    printf "%s\n" "$GEANY_HOME"
-    return
-  fi
 
-  case "$(uname -s 2>/dev/null || echo unknown)" in
-    Darwin)
-      printf "%s\n" "$HOME/Library/Application Support/geany"
-      ;;
-    MINGW*|MSYS*|CYGWIN*)
-      if [[ -n "${APPDATA:-}" ]]; then
-        printf "%s\n" "$APPDATA/geany"
-      else
-        printf "%s\n" "$HOME/AppData/Roaming/geany"
-      fi
-      ;;
-    *)
-      printf "%s\n" "${XDG_CONFIG_HOME:-$HOME/.config}/geany"
-      ;;
-  esac
-}
-
-GEANY_HOME="$(detect_geany_home)"
-FILEDEFS_DIR="$GEANY_HOME/filedefs"
-SNIPPETS_FILE="$GEANY_HOME/snippets.conf"
-EXT_FILE="$GEANY_HOME/filetype_extensions.conf"
-
-mkdir -p "$FILEDEFS_DIR"
-
-cp "$SCRIPT_DIR/filetypes.vitte.conf" "$FILEDEFS_DIR/filetypes.vitte.conf"
 wd_mode="${VITTE_GEANY_WD_MODE:-file}"
 case "$wd_mode" in
   file) wd_token="%d" ;;
@@ -44,51 +14,89 @@ case "$wd_mode" in
     wd_mode="file"
     ;;
 esac
-awk -v wd="$wd_token" '
-  { if ($0 ~ /^(FT|EX)_[0-9][0-9]_WD=/) { sub(/=.*/, "=" wd, $0) } print $0 }
-' "$FILEDEFS_DIR/filetypes.vitte.conf" >"$FILEDEFS_DIR/filetypes.vitte.conf.tmp"
-mv "$FILEDEFS_DIR/filetypes.vitte.conf.tmp" "$FILEDEFS_DIR/filetypes.vitte.conf"
 
 if ! command -v geany >/dev/null 2>&1; then
   echo "[geany][warning] geany binary not found in PATH; only config files were installed."
 fi
 
-if [[ ! -f "$EXT_FILE" ]]; then
-  cat >"$EXT_FILE" <<'EOF'
+detect_geany_homes() {
+  if [[ -n "${GEANY_HOME:-}" ]]; then
+    printf "%s\n" "$GEANY_HOME"
+    return
+  fi
+
+  local xdg_home="${XDG_CONFIG_HOME:-$HOME/.config}/geany"
+  local mac_home="$HOME/Library/Application Support/geany"
+
+  case "$(uname -s 2>/dev/null || echo unknown)" in
+    Darwin)
+      if [[ -d "$xdg_home" ]]; then printf "%s\n" "$xdg_home"; fi
+      if [[ -d "$mac_home" ]]; then printf "%s\n" "$mac_home"; fi
+      if [[ ! -d "$xdg_home" && ! -d "$mac_home" ]]; then printf "%s\n" "$xdg_home"; fi
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      if [[ -n "${APPDATA:-}" ]]; then
+        printf "%s\n" "$APPDATA/geany"
+      else
+        printf "%s\n" "$HOME/AppData/Roaming/geany"
+      fi
+      ;;
+    *)
+      printf "%s\n" "$xdg_home"
+      ;;
+  esac
+}
+
+install_into_geany_home() {
+  local geany_home="$1"
+  local filedefs_dir="$geany_home/filedefs"
+  local snippets_file="$geany_home/snippets.conf"
+  local ext_file="$geany_home/filetype_extensions.conf"
+
+  mkdir -p "$filedefs_dir"
+
+  cp "$SCRIPT_DIR/filetypes.vitte.conf" "$filedefs_dir/filetypes.vitte.conf"
+  cp "$SCRIPT_DIR/filetypes.vitte.conf" "$filedefs_dir/filetypes.Vitte.conf"
+  awk -v wd="$wd_token" '
+    { if ($0 ~ /^(FT|EX)_[0-9][0-9]_WD=/) { sub(/=.*/, "=" wd, $0) } print $0 }
+  ' "$filedefs_dir/filetypes.vitte.conf" >"$filedefs_dir/filetypes.vitte.conf.tmp"
+  mv "$filedefs_dir/filetypes.vitte.conf.tmp" "$filedefs_dir/filetypes.vitte.conf"
+
+  if [[ ! -f "$ext_file" ]]; then
+    cat >"$ext_file" <<'EOT'
 [Extensions]
-EOF
-fi
+EOT
+  fi
 
-# Idempotent strict: keep a single Vitte=*.vit mapping in [Extensions].
-awk '
-  BEGIN { inext=0; inserted=0 }
-  /^\[Extensions\]/ {
-    print $0
-    print "Vitte=*.vit;"
-    inext=1
-    inserted=1
-    next
-  }
-  /^\[/ {
-    inext=0
-    print $0
-    next
-  }
-  {
-    if (inext && $0 ~ /^(Vitte|vitte)=.*\*\.vit/) next
-    print $0
-  }
-  END {
-    if (inserted==0) {
-      print "[Extensions]"
-      print "Vitte=*.vit;"
+  awk '
+    BEGIN { inext=0; inserted=0 }
+    /^\[Extensions\]/ {
+      print $0
+      print "vitte=*.vit;*.vitte;"
+      inext=1
+      inserted=1
+      next
     }
-  }
-' "$EXT_FILE" >"$EXT_FILE.tmp"
-mv "$EXT_FILE.tmp" "$EXT_FILE"
+    /^\[/ {
+      inext=0
+      print $0
+      next
+    }
+    {
+      if (inext && $0 ~ /^(Vitte|vitte)=.*\*\.vit/) next
+      print $0
+    }
+    END {
+      if (inserted==0) {
+        print "[Extensions]"
+        print "vitte=*.vit;*.vitte;"
+      }
+    }
+  ' "$ext_file" >"$ext_file.tmp"
+  mv "$ext_file.tmp" "$ext_file"
 
-if [[ ! -f "$SNIPPETS_FILE" ]]; then
-  cat >"$SNIPPETS_FILE" <<'EOF'
+  if [[ ! -f "$snippets_file" ]]; then
+    cat >"$snippets_file" <<'EOT'
 [Default]
 
 [Special]
@@ -96,30 +104,36 @@ brace_open=\n{\n\t
 brace_close=}\n
 block=\n{\n\t%cursor%\n}
 block_cursor=\n{\n\t%cursor%\n}
-EOF
-fi
+EOT
+  fi
 
-# Idempotent strict: replace existing [vitte]/[Vitte] blocks, then append canonical.
-awk '
-  BEGIN { skip=0 }
-  /^\[(vitte|Vitte)\]$/ { skip=1; next }
-  /^\[/ {
-    if (skip==1) skip=0
-    print $0
-    next
-  }
-  { if (skip==0) print $0 }
-' "$SNIPPETS_FILE" >"$SNIPPETS_FILE.tmp"
-mv "$SNIPPETS_FILE.tmp" "$SNIPPETS_FILE"
-{
+  awk '
+    BEGIN { skip=0 }
+    /^\[(vitte|Vitte)\]$/ { skip=1; next }
+    /^\[/ {
+      if (skip==1) skip=0
+      print $0
+      next
+    }
+    { if (skip==0) print $0 }
+  ' "$snippets_file" >"$snippets_file.tmp"
+  mv "$snippets_file.tmp" "$snippets_file"
+  {
+    echo
+    cat "$SCRIPT_DIR/snippets.vitte.conf"
+  } >>"$snippets_file"
+
+  echo "Geany Vitte config installed:"
+  echo "  - $filedefs_dir/filetypes.vitte.conf"
+  echo "  - $ext_file (mapping *.vit)"
+  echo "  - $snippets_file (section [vitte])"
+  echo "  - WD mode: $wd_mode ($wd_token)"
   echo
-  cat "$SCRIPT_DIR/snippets.vitte.conf"
-} >>"$SNIPPETS_FILE"
+}
 
-echo "Geany Vitte config installed:"
-echo "  - $FILEDEFS_DIR/filetypes.vitte.conf"
-echo "  - $EXT_FILE (mapping *.vit)"
-echo "  - $SNIPPETS_FILE (section [vitte])"
-echo "  - WD mode: $wd_mode ($wd_token)"
-echo
+while IFS= read -r geany_home; do
+  [ -n "$geany_home" ] || continue
+  install_into_geany_home "$geany_home"
+done < <(detect_geany_homes)
+
 echo "Restart Geany."
