@@ -94,6 +94,28 @@ def query(sym: str) -> int:
     return 0 if out else 1
 
 
+def complete(prefix: str, limit: int) -> int:
+    man = CACHE / "manifest.json"
+    if not man.exists():
+        build_manifest()
+    out = []
+    pref = prefix.strip()
+    for p in sorted(CACHE.glob("*.json")):
+        if p.name == "manifest.json":
+            continue
+        data = json.loads(p.read_text(encoding="utf-8"))
+        for s in data.get("symbols", []):
+            name = str(s.get("name", ""))
+            if pref and not name.startswith(pref):
+                continue
+            out.append(s)
+            if len(out) >= limit:
+                print(json.dumps({"prefix": pref, "limit": limit, "hits": out}, indent=2, sort_keys=True))
+                return 0
+    print(json.dumps({"prefix": pref, "limit": limit, "hits": out}, indent=2, sort_keys=True))
+    return 0 if out else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -102,6 +124,9 @@ def main() -> int:
     d.add_argument("--interval", type=float, default=2.0)
     q = sub.add_parser("query")
     q.add_argument("--symbol", required=True)
+    c = sub.add_parser("complete")
+    c.add_argument("--prefix", required=True)
+    c.add_argument("--limit", type=int, default=20)
     args = ap.parse_args()
 
     if args.cmd == "run-once":
@@ -110,6 +135,8 @@ def main() -> int:
         return 0
     if args.cmd == "daemon":
         return run_daemon(args.interval)
+    if args.cmd == "complete":
+        return complete(args.prefix, args.limit)
     return query(args.symbol)
 
 

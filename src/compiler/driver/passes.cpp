@@ -22,14 +22,28 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <cstdint>
+#include <functional>
 
-#include <openssl/sha.h>
+#if defined(VITTE_OPENSSL_FALLBACK)
+#  define VITTE_SHA256_DIGEST_LENGTH 32
+#else
+#  include <openssl/sha.h>
+#  define VITTE_SHA256_DIGEST_LENGTH SHA256_DIGEST_LENGTH
+#endif
 
 namespace vitte::driver {
 
 static std::string hash_content(const std::string& text) {
-    unsigned char digest[SHA256_DIGEST_LENGTH];
+    unsigned char digest[VITTE_SHA256_DIGEST_LENGTH];
+#if defined(VITTE_OPENSSL_FALLBACK)
+    std::uint64_t h = std::hash<std::string>{}(text);
+    for (std::size_t i = 0; i < VITTE_SHA256_DIGEST_LENGTH; ++i) {
+        digest[i] = static_cast<unsigned char>((h >> ((i % 8) * 8)) & 0xFFu);
+    }
+#else
     SHA256(reinterpret_cast<const unsigned char*>(text.data()), text.size(), digest);
+#endif
     std::ostringstream oss;
     oss << std::hex << std::setfill('0');
     for (unsigned char b : digest) {

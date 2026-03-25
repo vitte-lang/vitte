@@ -46,8 +46,26 @@ Options parse_options(int argc, char** argv) {
         }
         else if (arg == "init") {
             opts.init_project = true;
-            if (i + 1 < argc) {
+            while (i + 1 < argc) {
                 std::string next = argv[i + 1];
+                if (next == "--template" || next == "-t") {
+                    if (i + 2 < argc) {
+                        opts.init_template = argv[i + 2];
+                        i += 2;
+                        continue;
+                    }
+                    break;
+                }
+                if (next.rfind("--template=", 0) == 0) {
+                    opts.init_template = next.substr(std::string("--template=").size());
+                    ++i;
+                    continue;
+                }
+                if (next == "--list-templates") {
+                    opts.init_list_templates = true;
+                    ++i;
+                    continue;
+                }
                 if (!next.empty() && next[0] != '-' &&
                     next != "help" && next != "init" &&
                     next != "explain" && next != "parse" &&
@@ -57,7 +75,9 @@ Options parse_options(int argc, char** argv) {
                     next != "grammar" &&
                     next != "mod") {
                     opts.init_dir = argv[++i];
+                    continue;
                 }
+                break;
             }
         }
         else if (arg == "grammar") {
@@ -134,6 +154,18 @@ Options parse_options(int argc, char** argv) {
         }
         else if (arg.rfind("--lang=", 0) == 0) {
             opts.lang = arg.substr(std::string("--lang=").size());
+        }
+        else if (arg == "--template" && i + 1 < argc) {
+            opts.init_template = argv[++i];
+        }
+        else if (arg == "-t" && i + 1 < argc) {
+            opts.init_template = argv[++i];
+        }
+        else if (arg.rfind("--template=", 0) == 0) {
+            opts.init_template = arg.substr(std::string("--template=").size());
+        }
+        else if (arg == "--list-templates") {
+            opts.init_list_templates = true;
         }
         else if (arg == "--explain" && i + 1 < argc) {
             opts.explain_diagnostic = true;
@@ -450,7 +482,7 @@ void print_help() {
         "\n"
         "Commands:\n"
         "  help             Show this help message\n"
-        "  init [dir]       Create a minimal project scaffold\n"
+        "  init [dir]       Create a project scaffold (use --template)\n"
         "  explain <code>   Explain a diagnostic (e.g. E0001)\n"
         "  doctor           Check toolchain prerequisites\n"
         "  grammar check    Validate grammar sync + corpus diagnostics snapshots\n"
@@ -471,6 +503,8 @@ void print_help() {
         "  -h, --help        Show this help message\n"
         "  -o <file>         Output executable name\n"
         "  --lang <code>     Language for diagnostics (e.g. en, fr)\n"
+        "  --template <name> Template for init: cli|service|lib-native\n"
+        "  --list-templates  For init: print available templates\n"
         "  --explain <code>  Explain a diagnostic (e.g. E0001)\n"
         "  --runtime-include <path>\n"
         "                    Add include dir for vitte_runtime.hpp\n"
@@ -542,7 +576,8 @@ void print_help() {
         "\n"
         "Common tasks:\n"
         "  vitte init\n"
-        "  vitte init app\n"
+        "  vitte init app --template service\n"
+        "  vitte init native-lib --template lib-native\n"
         "  vitte build src/main.vit\n"
         "  vitte check src/main.vit\n"
         "  vitte emit src/main.vit\n"

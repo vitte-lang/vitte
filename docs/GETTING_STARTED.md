@@ -24,7 +24,7 @@ make build
 Compiler binary:
 
 ```text
-bin/vitte
+vitte
 ```
 
 ## 2. Verify The Toolchain
@@ -32,8 +32,8 @@ bin/vitte
 Run:
 
 ```sh
-bin/vitte check examples/first_project.vit
-bin/vitte build examples/first_project.vit
+vitte check examples/first_project.vit
+vitte build examples/first_project.vit
 ```
 
 If both commands pass, your local setup is working.
@@ -67,16 +67,32 @@ What to notice:
 ## 4. Use The Core Commands
 
 ```sh
-bin/vitte parse path/to/file.vit
-bin/vitte check path/to/file.vit
-bin/vitte build path/to/file.vit
+vitte parse path/to/file.vit
+vitte check path/to/file.vit
+vitte build path/to/file.vit
 ```
 
 - `parse`: syntax and structure only
 - `check`: semantic validation without full build output
 - `build`: compile the program
 
-## 5. Understand Surface Stability
+## 5. Bootstrap With Templates
+
+Use `init` with an explicit template:
+
+```sh
+vitte init app-cli --template cli
+vitte init app-service --template service
+vitte init app-lib --template lib-native
+```
+
+List templates:
+
+```sh
+vitte init --list-templates
+```
+
+## 6. Understand Surface Stability
 
 Vitte is experimental overall, but not every surface has the same expectation.
 
@@ -92,7 +108,7 @@ Important references:
 - `docs/LANGUAGE_CORE_GUARANTEES.md`
 - `docs/LANGUAGE_CORE_SURFACE.md`
 
-## 6. Choose Your Next Step
+## 7. Choose Your Next Step
 
 If you want to contribute safely:
 
@@ -115,7 +131,13 @@ If you are validating release-facing core promises, also run:
 make core-release-gate
 ```
 
-## 7. Where To Go Next
+For DX/adoption checks (init templates, frequent diagnostics autofix guidance, local completion latency, hello->prod KPI), run:
+
+```sh
+make dx-adoption
+```
+
+## 8. Where To Go Next
 
 - `README.md` for the project overview
 - `docs/FIRST_PROJECT.md` for the canonical first example

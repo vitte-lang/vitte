@@ -12,6 +12,8 @@ struct Options {
     bool show_help = false;
     bool init_project = false;
     std::string init_dir;
+    std::string init_template = "cli";
+    bool init_list_templates = false;
     bool explain_diagnostic = false;
     bool reduce_reproducer = false;
     bool clean_cache = false;

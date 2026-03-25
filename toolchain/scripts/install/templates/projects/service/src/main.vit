@@ -1,0 +1,21 @@
+space app/service
+
+form ServiceConfig {
+  host: string
+  port: int
+}
+
+proc default_config() -> ServiceConfig {
+  give ServiceConfig("127.0.0.1", 8080)
+}
+
+proc health() -> string {
+  give "ok"
+}
+
+entry main at app/service {
+  let cfg = default_config()
+  if cfg.port <= 0 { give 1 }
+  if health() != "ok" { give 2 }
+  give 0
+}

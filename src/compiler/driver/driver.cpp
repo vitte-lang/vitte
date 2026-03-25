@@ -283,8 +283,305 @@ static bool looks_like_vitte_project(const std::filesystem::path& dir) {
     return fs::exists(dir / "steelconf") || fs::exists(dir / "src");
 }
 
+struct InitTemplateSpec {
+    std::string name;
+    std::string description;
+    std::vector<std::pair<std::filesystem::path, std::string>> files;
+};
+
+static InitTemplateSpec make_init_template_cli() {
+    InitTemplateSpec spec;
+    spec.name = "cli";
+    spec.description = "single binary command-line app";
+    spec.files = {
+        {
+            "src/main.vit",
+            "space app/cli\n"
+            "\n"
+            "proc run() -> int {\n"
+            "  give 0\n"
+            "}\n"
+            "\n"
+            "entry main at app/cli {\n"
+            "  give run()\n"
+            "}\n",
+        },
+        {
+            "README.md",
+            "# app (cli template)\n"
+            "\n"
+            "## Build\n"
+            "\n"
+            "```sh\n"
+            "vitte build src/main.vit\n"
+            "```\n"
+            "\n"
+            "## Check\n"
+            "\n"
+            "```sh\n"
+            "vitte check src/main.vit\n"
+            "```\n",
+        },
+        {
+            ".gitignore",
+            "a.out\n"
+            "build/\n"
+            ".vitte-cache/\n",
+        },
+        {
+            "steelconf",
+            "!muf 4\n"
+            "\n"
+            "[workspace]\n"
+            "  .set name \"app-cli\"\n"
+            "  .set root \".\"\n"
+            "  .set target_dir \"build\"\n"
+            "  .set profile \"debug\"\n"
+            "..\n"
+            "\n"
+            "[tool sh]\n"
+            "  .exec \"sh\"\n"
+            "..\n"
+            "\n"
+            "[bake check]\n"
+            "  [run sh]\n"
+            "    .set \"-c\" \"vitte check src/main.vit\"\n"
+            "  ..\n"
+            "  .output marker \"build/.check.ok\"\n"
+            "..\n"
+            "\n"
+            "[bake build]\n"
+            "  [run sh]\n"
+            "    .set \"-c\" \"vitte build src/main.vit\"\n"
+            "  ..\n"
+            "  .output marker \"build/.build.ok\"\n"
+            "..\n",
+        },
+    };
+    return spec;
+}
+
+static InitTemplateSpec make_init_template_service() {
+    InitTemplateSpec spec;
+    spec.name = "service";
+    spec.description = "service skeleton with health handler";
+    spec.files = {
+        {
+            "src/main.vit",
+            "space app/service\n"
+            "\n"
+            "form ServiceConfig {\n"
+            "  host: string\n"
+            "  port: int\n"
+            "}\n"
+            "\n"
+            "proc default_config() -> ServiceConfig {\n"
+            "  give ServiceConfig(\"127.0.0.1\", 8080)\n"
+            "}\n"
+            "\n"
+            "proc health() -> string {\n"
+            "  give \"ok\"\n"
+            "}\n"
+            "\n"
+            "entry main at app/service {\n"
+            "  let cfg = default_config()\n"
+            "  if cfg.port <= 0 { give 1 }\n"
+            "  if health() != \"ok\" { give 2 }\n"
+            "  give 0\n"
+            "}\n",
+        },
+        {
+            "README.md",
+            "# app (service template)\n"
+            "\n"
+            "## Healthcheck\n"
+            "\n"
+            "The entry validates config and health endpoint logic.\n"
+            "\n"
+            "## Build\n"
+            "\n"
+            "```sh\n"
+            "vitte build src/main.vit\n"
+            "```\n",
+        },
+        {
+            ".gitignore",
+            "a.out\n"
+            "build/\n"
+            ".vitte-cache/\n",
+        },
+        {
+            "steelconf",
+            "!muf 4\n"
+            "\n"
+            "[workspace]\n"
+            "  .set name \"app-service\"\n"
+            "  .set root \".\"\n"
+            "  .set target_dir \"build\"\n"
+            "  .set profile \"debug\"\n"
+            "..\n"
+            "\n"
+            "[tool sh]\n"
+            "  .exec \"sh\"\n"
+            "..\n"
+            "\n"
+            "[bake check]\n"
+            "  [run sh]\n"
+            "    .set \"-c\" \"vitte check src/main.vit\"\n"
+            "  ..\n"
+            "  .output marker \"build/.check.ok\"\n"
+            "..\n"
+            "\n"
+            "[bake build]\n"
+            "  [run sh]\n"
+            "    .set \"-c\" \"vitte build src/main.vit\"\n"
+            "  ..\n"
+            "  .output marker \"build/.build.ok\"\n"
+            "..\n",
+        },
+    };
+    return spec;
+}
+
+static InitTemplateSpec make_init_template_lib_native() {
+    InitTemplateSpec spec;
+    spec.name = "lib-native";
+    spec.description = "native library-oriented layout with reusable API";
+    spec.files = {
+        {
+            "src/lib.vit",
+            "space app/lib\n"
+            "\n"
+            "proc add_i32(a: int, b: int) -> int {\n"
+            "  give a + b\n"
+            "}\n"
+            "\n"
+            "proc version() -> string {\n"
+            "  give \"0.1.0\"\n"
+            "}\n",
+        },
+        {
+            "src/main.vit",
+            "entry main at app/lib {\n"
+            "  give 0\n"
+            "}\n",
+        },
+        {
+            "include/app_lib.h",
+            "#pragma once\n"
+            "#ifdef __cplusplus\n"
+            "extern \"C\" {\n"
+            "#endif\n"
+            "int app_add_i32(int a, int b);\n"
+            "#ifdef __cplusplus\n"
+            "}\n"
+            "#endif\n",
+        },
+        {
+            "README.md",
+            "# app (lib-native template)\n"
+            "\n"
+            "This template starts with a reusable `src/lib.vit` and a small entrypoint smoke test.\n"
+            "\n"
+            "## Check library surface\n"
+            "\n"
+            "```sh\n"
+            "vitte check src/lib.vit\n"
+            "```\n"
+            "\n"
+            "## Build smoke entry\n"
+            "\n"
+            "```sh\n"
+            "vitte build src/main.vit\n"
+            "```\n",
+        },
+        {
+            ".gitignore",
+            "a.out\n"
+            "build/\n"
+            ".vitte-cache/\n",
+        },
+        {
+            "steelconf",
+            "!muf 4\n"
+            "\n"
+            "[workspace]\n"
+            "  .set name \"app-lib-native\"\n"
+            "  .set root \".\"\n"
+            "  .set target_dir \"build\"\n"
+            "  .set profile \"debug\"\n"
+            "..\n"
+            "\n"
+            "[tool sh]\n"
+            "  .exec \"sh\"\n"
+            "..\n"
+            "\n"
+            "[bake check-lib]\n"
+            "  [run sh]\n"
+            "    .set \"-c\" \"vitte check src/lib.vit\"\n"
+            "  ..\n"
+            "  .output marker \"build/.check-lib.ok\"\n"
+            "..\n"
+            "\n"
+            "[bake build]\n"
+            "  [run sh]\n"
+            "    .set \"-c\" \"vitte build src/main.vit\"\n"
+            "  ..\n"
+            "  .output marker \"build/.build.ok\"\n"
+            "..\n",
+        },
+    };
+    return spec;
+}
+
+static bool write_file_if_missing(const std::filesystem::path& path, const std::string& content) {
+    namespace fs = std::filesystem;
+    if (fs::exists(path)) {
+        std::cout << "[init] exists " << path.string() << "\n";
+        return true;
+    }
+    std::error_code ec;
+    fs::create_directories(path.parent_path(), ec);
+    std::ofstream out(path);
+    if (!out.is_open()) {
+        std::cerr << "[init] error: failed to write " << path.string() << "\n";
+        return false;
+    }
+    out << content;
+    std::cout << "[init] created " << path.string() << "\n";
+    return true;
+}
+
 static int run_init(const Options& opts) {
     namespace fs = std::filesystem;
+    std::vector<InitTemplateSpec> templates;
+    templates.push_back(make_init_template_cli());
+    templates.push_back(make_init_template_service());
+    templates.push_back(make_init_template_lib_native());
+
+    if (opts.init_list_templates) {
+        std::cout << "[init] templates:\n";
+        for (const auto& spec : templates) {
+            std::cout << "  - " << spec.name << ": " << spec.description << "\n";
+        }
+        return 0;
+    }
+
+    InitTemplateSpec selected = templates.front();
+    bool found_template = false;
+    for (const auto& spec : templates) {
+        if (spec.name == opts.init_template) {
+            selected = spec;
+            found_template = true;
+            break;
+        }
+    }
+    if (!found_template) {
+        std::cerr << "[init] error: unknown template '" << opts.init_template
+                  << "' (expected: cli|service|lib-native)\n";
+        return 1;
+    }
+
     fs::path cwd = fs::current_path();
     fs::path base = cwd;
     bool auto_subdir = false;
@@ -308,68 +605,16 @@ static int run_init(const Options& opts) {
         std::cout << "[init] non-empty directory detected; using " << base.string() << "\n";
     }
 
-    fs::path src_dir = base / "src";
-    fs::path main_path = src_dir / "main.vit";
-    fs::path steelconf_path = base / "steelconf";
-
     bool ok = true;
-
-    if (!fs::exists(src_dir)) {
-        fs::create_directories(src_dir);
-        std::cout << "[init] created " << src_dir.string() << "\n";
-    }
-
-    if (!fs::exists(main_path)) {
-        std::ofstream out(main_path);
-        if (!out.is_open()) {
-            std::cerr << "[init] error: failed to write " << main_path.string() << "\n";
+    for (const auto& [rel_path, content] : selected.files) {
+        if (!write_file_if_missing(base / rel_path, content)) {
             ok = false;
-        } else {
-            out <<
-                "proc main() -> i32 {\n"
-                "  return 0\n"
-                "}\n";
-            std::cout << "[init] created " << main_path.string() << "\n";
         }
-    } else {
-        std::cout << "[init] exists " << main_path.string() << "\n";
-    }
-
-    if (!fs::exists(steelconf_path)) {
-        std::ofstream out(steelconf_path);
-        if (!out.is_open()) {
-            std::cerr << "[init] error: failed to write " << steelconf_path.string() << "\n";
-            ok = false;
-        } else {
-            out <<
-                "!muf 4\n"
-                "\n"
-                "[workspace]\n"
-                "  .set name \"app\"\n"
-                "  .set root \".\"\n"
-                "  .set target_dir \"build\"\n"
-                "  .set profile \"debug\"\n"
-                "..\n"
-                "\n"
-                "[tool sh]\n"
-                "  .exec \"sh\"\n"
-                "..\n"
-                "\n"
-                "[bake build]\n"
-                "  [run sh]\n"
-                "    .set \"-c\" \"vitte build src/main.vit\"\n"
-                "  ..\n"
-                "  .output marker \"build/.build.ok\"\n"
-                "..\n";
-            std::cout << "[init] created " << steelconf_path.string() << "\n";
-        }
-    } else {
-        std::cout << "[init] exists " << steelconf_path.string() << "\n";
     }
 
     if (ok) {
         fs::path hint = base == cwd ? fs::path("src/main.vit") : (fs::path(base.filename()) / "src/main.vit");
-        std::cout << "[init] done. Try: vitte build " << hint.string() << "\n";
+        std::cout << "[init] done (" << selected.name << "). Try: vitte build " << hint.string() << "\n";
         return 0;
     }
     return 1;
