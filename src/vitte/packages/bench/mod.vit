@@ -537,25 +537,9 @@ proc run_diagnostics(r: BenchRun) -> string {
   give summary_text(s) + ",health=" + bench_health(r)
 }
 
-proc ready() -> bool {
-  if bench_runtime_pkg.runtime_status() == false { give false }
-  if bench_runtime_pkg.timer_resolution_ms() <= 0 { give false }
-  give true
+proc diagnostics_doc_url(code: string) -> string {
+  give "https://vitte-lang.org/diagnostics/" + code
 }
-
-
-
-proc package_meta() -> string {
-    give "vitte/bench"
-}
-
-<<< ROLE-CONTRACT
-package: vitte/bench
-role: Mesure performance et bench reproductibles
-input_contract: Valeurs metier explicites, deja parsees et typables
-output_contract: Sorties stables, observables et compatibles avec les autres packages
-boundary: Ne remplace pas les autres couches; respecte la separation de roles
->>>
 
 proc diagnostics_message(code: string) -> string {
   if code == "VITTE-BENCH0001" { give "invalid iterations in bench case" }
@@ -581,101 +565,26 @@ proc diagnostics_quickfix(code: string) -> string {
   give "review bench configuration"
 }
 
-proc diagnostics_doc_url(code: string) -> string {
-  give "https://vitte-lang.org/diagnostics/" + code
-}
-
-proc suggestion_contexts() -> [string] {
-  give ["arborescence", "public-api", "types", "diagnostics", "quickfix"]
+proc package_meta() -> string {
+  give "vitte/bench"
 }
 
 proc suggestion_arborescence() -> [string] {
   give [
-    "src/vitte/packages/bench/mod.vit",
     "src/vitte/packages/bench/info.vit",
     "src/vitte/packages/bench/internal/policy.vit",
     "src/vitte/packages/bench/internal/runtime.vit",
-    "src/vitte/packages/bench/internal/validate.vit"
+    "src/vitte/packages/bench/internal/validate.vit",
+    "src/vitte/packages/bench/mod.vit"
   ]
 }
 
-proc suggestion_public_api() -> [string] {
-  give [
-    "normalize_case_name",
-    "bench_case",
-    "run_start",
-    "run_stop",
-    "elapsed_ms",
-    "iter_per_sec",
-    "summarize",
-    "compare",
-    "faster",
-    "summary_text",
-    "sorted_copy",
-    "percentile",
-    "percentile50",
-    "percentile25",
-    "percentile75",
-    "percentile90",
-    "percentile95",
-    "average",
-    "min_value",
-    "max_value",
-    "sanitize_samples",
-    "sample_stats",
-    "throughput_samples",
-    "outlier_count_iqr",
-    "sample_confidence",
-    "stability_score",
-    "jitter_percent",
-    "bench_health",
-    "normalize_run",
-    "run_valid",
-    "compare_percent",
-    "compare_percent_symmetric",
-    "regression_trend",
-    "regression_gate",
-    "baseline_from_run",
-    "baseline_is_compatible",
-    "baseline_update_if_better",
-    "gate_eval",
-    "report_build",
-    "report_text",
-    "report_markdown",
-    "ci_should_fail",
-    "ci_exit_code",
-    "diagnostics_code_for_run",
-    "diagnostics_code_for_samples",
-    "diagnostics_code_for_gate",
-    "diagnostics_snapshot",
-    "diagnostics_snapshot_gate",
-    "run_diagnostics",
-    "ready",
-    "package_meta",
-    "diagnostics_message",
-    "diagnostics_quickfix",
-    "diagnostics_doc_url",
-    "suggestion_contexts",
-    "suggestion_arborescence",
-    "suggestion_public_api",
-    "suggestion_types",
-    "suggestion_diagnostics_codes",
-    "suggestion_quickfix_codes",
-    "suggestion_catalog_json"
-  ]
+proc suggestion_catalog_json() -> string {
+  give "{\"package\":\"vitte/bench\",\"contexts\":[\"arborescence\",\"diagnostics\",\"public-api\",\"quickfix\",\"types\"],\"counts\":{\"arborescence\":5,\"public_api\":61,\"types\":8,\"diagnostics\":8,\"quickfix\":8}}"
 }
 
-proc suggestion_types() -> [string] {
-  give [
-    "form BenchCase",
-    "form BenchRun",
-    "form BenchSummary",
-    "form BenchTrend",
-    "form BenchStats",
-    "form BenchBaseline",
-    "form BenchGateResult",
-    "form BenchReport"
-  ]
+proc suggestion_contexts() -> [string] {
+  give ["arborescence", "diagnostics", "public-api", "quickfix", "types"]
 }
 
 proc suggestion_diagnostics_codes() -> [string] {
@@ -691,13 +600,99 @@ proc suggestion_diagnostics_codes() -> [string] {
   ]
 }
 
+proc suggestion_public_api() -> [string] {
+  give [
+    "average",
+    "baseline_from_run",
+    "baseline_is_compatible",
+    "baseline_update_if_better",
+    "bench_case",
+    "bench_health",
+    "ci_exit_code",
+    "ci_should_fail",
+    "compare",
+    "compare_percent",
+    "compare_percent_symmetric",
+    "diagnostics_code_for_gate",
+    "diagnostics_code_for_run",
+    "diagnostics_code_for_samples",
+    "diagnostics_doc_url",
+    "diagnostics_message",
+    "diagnostics_quickfix",
+    "diagnostics_snapshot",
+    "diagnostics_snapshot_gate",
+    "elapsed_ms",
+    "faster",
+    "gate_eval",
+    "iter_per_sec",
+    "jitter_percent",
+    "max_value",
+    "min_value",
+    "normalize_case_name",
+    "normalize_run",
+    "outlier_count_iqr",
+    "package_meta",
+    "percentile",
+    "percentile25",
+    "percentile50",
+    "percentile75",
+    "percentile90",
+    "percentile95",
+    "ready",
+    "regression_gate",
+    "regression_trend",
+    "report_build",
+    "report_markdown",
+    "report_text",
+    "run_diagnostics",
+    "run_start",
+    "run_stop",
+    "run_valid",
+    "sample_confidence",
+    "sample_stats",
+    "sanitize_samples",
+    "sorted_copy",
+    "stability_score",
+    "suggestion_arborescence",
+    "suggestion_catalog_json",
+    "suggestion_contexts",
+    "suggestion_diagnostics_codes",
+    "suggestion_public_api",
+    "suggestion_quickfix_codes",
+    "suggestion_types",
+    "summarize",
+    "summary_text",
+    "throughput_samples"
+  ]
+}
+
 proc suggestion_quickfix_codes() -> [string] {
   give suggestion_diagnostics_codes()
 }
 
-proc suggestion_catalog_json() -> string {
-  give "{\"package\":\"vitte/bench\",\"contexts\":[\"arborescence\",\"public-api\",\"types\",\"diagnostics\",\"quickfix\"],\"counts\":{\"arborescence\":5,\"public_api\":65,\"types\":8,\"diagnostics\":8,\"quickfix\":8}}"
+proc suggestion_types() -> [string] {
+  give [
+    "form BenchBaseline",
+    "form BenchCase",
+    "form BenchGateResult",
+    "form BenchReport",
+    "form BenchRun",
+    "form BenchStats",
+    "form BenchSummary",
+    "form BenchTrend"
+  ]
 }
 
+proc ready() -> bool {
+  if bench_runtime_pkg.runtime_status() == false { give false }
+  if bench_runtime_pkg.timer_resolution_ms() <= 0 { give false }
+  give true
+}
 
-
+<<< ROLE-CONTRACT
+package: vitte/bench
+role: Mesure performance et bench reproductibles
+input_contract: Valeurs metier explicites, deja parsees et typables
+output_contract: Sorties stables, observables et compatibles avec les autres packages
+boundary: Ne remplace pas les autres couches; respecte la separation de roles
+>>>
