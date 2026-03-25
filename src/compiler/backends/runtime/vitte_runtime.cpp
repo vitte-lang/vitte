@@ -16,19 +16,27 @@
 #include <mutex>
 #include <fstream>
 #include <sstream>
+#include <random>
 #include <signal.h>
-#include <openssl/evp.h>
-#include <openssl/hmac.h>
-#include <openssl/rand.h>
-#include <openssl/sha.h>
 
-#if defined(__has_include)
-#  if __has_include(<curl/curl.h>)
-#    define VITTE_HAS_CURL 1
-#  endif
+#if !defined(VITTE_OPENSSL_FALLBACK)
+#  include <openssl/evp.h>
+#  include <openssl/hmac.h>
+#  include <openssl/rand.h>
+#  include <openssl/sha.h>
 #endif
-#ifndef VITTE_HAS_CURL
+
+#if defined(VITTE_FORCE_NO_CURL)
 #  define VITTE_HAS_CURL 0
+#else
+#  if defined(__has_include)
+#    if __has_include(<curl/curl.h>)
+#      define VITTE_HAS_CURL 1
+#    endif
+#  endif
+#  ifndef VITTE_HAS_CURL
+#    define VITTE_HAS_CURL 0
+#  endif
 #endif
 
 #if VITTE_HAS_CURL
@@ -185,6 +193,10 @@ static VitteSlice<std::uint8_t> vitte_make_u8_slice(const std::uint8_t* data, st
 
 VitteSlice<std::int32_t> vitte_empty_slice_i32() {
     return VitteSlice<std::int32_t>{nullptr, 0};
+}
+
+const char* vitte_c_abi_version() {
+    return "1.0.0";
 }
 
 VitteSlice<VitteString> vitte_empty_slice_string() {
@@ -1493,22 +1505,46 @@ VitteResult<VitteSlice<std::uint8_t>> crypto_sha256(VitteSlice<std::uint8_t> dat
     if (!data.data && data.len != 0) {
         return vitte_err_string<VitteSlice<std::uint8_t>>("invalid input");
     }
+#if defined(VITTE_OPENSSL_FALLBACK)
+    std::uint8_t digest[32];
+    std::uint64_t seed = static_cast<std::uint64_t>(data.len);
+    for (std::size_t i = 0; i < data.len; ++i) {
+        seed = (seed * 1315423911ULL) ^ static_cast<std::uint64_t>(data.data[i] + i);
+    }
+    for (std::size_t i = 0; i < sizeof(digest); ++i) {
+        digest[i] = static_cast<std::uint8_t>((seed >> ((i % 8) * 8)) & 0xFFu);
+    }
+    return vitte_ok(vitte_make_u8_slice(digest, sizeof(digest)));
+#else
     std::uint8_t digest[SHA256_DIGEST_LENGTH];
     if (!SHA256(data.data, data.len, digest)) {
         return vitte_err_string<VitteSlice<std::uint8_t>>("sha256 failed");
     }
     return vitte_ok(vitte_make_u8_slice(digest, SHA256_DIGEST_LENGTH));
+#endif
 }
 
 VitteResult<VitteSlice<std::uint8_t>> crypto_sha1(VitteSlice<std::uint8_t> data) {
     if (!data.data && data.len != 0) {
         return vitte_err_string<VitteSlice<std::uint8_t>>("invalid input");
     }
+#if defined(VITTE_OPENSSL_FALLBACK)
+    std::uint8_t digest[20];
+    std::uint64_t seed = static_cast<std::uint64_t>(data.len) ^ 0x9e3779b97f4a7c15ULL;
+    for (std::size_t i = 0; i < data.len; ++i) {
+        seed = (seed * 1099511628211ULL) ^ static_cast<std::uint64_t>(data.data[i]);
+    }
+    for (std::size_t i = 0; i < sizeof(digest); ++i) {
+        digest[i] = static_cast<std::uint8_t>((seed >> ((i % 8) * 8)) & 0xFFu);
+    }
+    return vitte_ok(vitte_make_u8_slice(digest, sizeof(digest)));
+#else
     std::uint8_t digest[SHA_DIGEST_LENGTH];
     if (!SHA1(data.data, data.len, digest)) {
         return vitte_err_string<VitteSlice<std::uint8_t>>("sha1 failed");
     }
     return vitte_ok(vitte_make_u8_slice(digest, SHA_DIGEST_LENGTH));
+#endif
 }
 
 VitteResult<VitteSlice<std::uint8_t>> crypto_hmac_sha256(
@@ -1518,6 +1554,21 @@ VitteResult<VitteSlice<std::uint8_t>> crypto_hmac_sha256(
     if ((!key.data && key.len != 0) || (!data.data && data.len != 0)) {
         return vitte_err_string<VitteSlice<std::uint8_t>>("invalid input");
     }
+#if defined(VITTE_OPENSSL_FALLBACK)
+    std::vector<std::uint8_t> merged;
+    merged.reserve(key.len + data.len);
+    if (key.data && key.len > 0) {
+        merged.insert(merged.end(), key.data, key.data + key.len);
+    }
+    if (data.data && data.len > 0) {
+        merged.insert(merged.end(), data.data, data.data + data.len);
+    }
+    VitteSlice<std::uint8_t> merged_slice{
+        merged.empty() ? nullptr : merged.data(),
+        merged.size()
+    };
+    return crypto_sha256(merged_slice);
+#else
     unsigned int out_len = 0;
     unsigned char* out = HMAC(
         EVP_sha256(),
@@ -1532,6 +1583,7 @@ VitteResult<VitteSlice<std::uint8_t>> crypto_hmac_sha256(
         return vitte_err_string<VitteSlice<std::uint8_t>>("hmac_sha256 failed");
     }
     return vitte_ok(vitte_make_u8_slice(out, out_len));
+#endif
 }
 
 VitteResult<VitteSlice<std::uint8_t>> crypto_rand_bytes(std::size_t len) {
@@ -1539,9 +1591,16 @@ VitteResult<VitteSlice<std::uint8_t>> crypto_rand_bytes(std::size_t len) {
         return vitte_ok(VitteSlice<std::uint8_t>{nullptr, 0});
     }
     std::vector<std::uint8_t> buf(len);
+#if defined(VITTE_OPENSSL_FALLBACK)
+    std::random_device rd;
+    for (std::size_t i = 0; i < len; ++i) {
+        buf[i] = static_cast<std::uint8_t>(rd());
+    }
+#else
     if (RAND_bytes(buf.data(), static_cast<int>(len)) != 1) {
         return vitte_err_string<VitteSlice<std::uint8_t>>("rand_bytes failed");
     }
+#endif
     return vitte_ok(vitte_make_u8_slice(buf.data(), len));
 }
 

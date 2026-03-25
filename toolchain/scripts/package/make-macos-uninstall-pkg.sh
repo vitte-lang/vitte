@@ -53,6 +53,12 @@ cleanup_user_editor_config() {
   remove_path "$home_dir/.emacs.d/lisp/vitte-mode.el"
   remove_path "$home_dir/.emacs.d/lisp/vitte-indent.el"
   remove_path "$home_dir/.config/nano/vitte.nanorc"
+  remove_path "$home_dir/.config/geany/filedefs/filetypes.vitte.conf"
+  remove_path "$home_dir/.config/geany/filedefs/snippets.vitte.conf"
+  remove_path "$home_dir/.config/geany/filetype_extensions.conf"
+  remove_path "$home_dir/Library/Application Support/geany/filedefs/filetypes.vitte.conf"
+  remove_path "$home_dir/Library/Application Support/geany/filedefs/snippets.vitte.conf"
+  remove_path "$home_dir/Library/Application Support/geany/filetype_extensions.conf"
 
   # Guard rail: only remove the exact include line from .nanorc.
   local nanorc="$home_dir/.nanorc"

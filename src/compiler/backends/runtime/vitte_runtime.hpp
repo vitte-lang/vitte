@@ -45,6 +45,10 @@ void terminate();
  * C ABI for stdlib bindings (experimental)
  * ------------------------------------------------- */
 
+#define VITTE_C_ABI_VERSION_MAJOR 1
+#define VITTE_C_ABI_VERSION_MINOR 0
+#define VITTE_C_ABI_VERSION_PATCH 0
+
 struct VitteString {
     const char* data;
     std::size_t len;
@@ -61,6 +65,7 @@ struct VitteUnit {
 };
 
 extern "C" void vitte_builtin_trap(VitteString msg);
+extern "C" const char* vitte_c_abi_version();
 VitteSlice<std::int32_t> vitte_empty_slice_i32();
 VitteSlice<VitteString> vitte_empty_slice_string();
 VitteSlice<std::int32_t> vitte_slice_push_i32(VitteSlice<std::int32_t> base, std::int32_t value);
