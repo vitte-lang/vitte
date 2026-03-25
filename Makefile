@@ -18,11 +18,34 @@ CC           ?= gcc
 CXX          ?= g++
 CXX_FALLBACK ?= c++
 AUTO_CXX_FALLBACK ?= 1
+CCACHE       ?= $(shell command -v ccache 2>/dev/null)
+JOBS         ?= $(shell (sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4) | tr -d '\n')
+OPT_LEVEL    ?= 2
+DEBUG_SYMBOLS ?= 1
+LTO          ?= 0
+NDEBUG_BUILD ?= 0
+PGO_MODE     ?= off
+PGO_DIR      ?= target/pgo
+PGO_RAW      ?= $(PGO_DIR)/default.profraw
+PGO_DATA     ?= $(PGO_DIR)/default.profdata
 AR           := ar
 RM           := rm -rf
 MKDIR        := mkdir -p
 INSTALL      := install
 CP           := cp -f
+
+ifdef CCACHE
+  ifneq ($(strip $(CCACHE)),)
+    CC_RUN  := $(CCACHE) $(CC)
+    CXX_RUN := $(CCACHE) $(CXX)
+  else
+    CC_RUN  := $(CC)
+    CXX_RUN := $(CXX)
+  endif
+else
+  CC_RUN  := $(CC)
+  CXX_RUN := $(CXX)
+endif
 
 # Auto-fallback when the default C++ compiler cannot locate standard headers.
 # This keeps local builds working on hosts with partial toolchains.
@@ -49,9 +72,52 @@ EMACS_DIR    ?= $(USER_HOME)/.emacs.d
 NANO_DIR     ?= $(USER_HOME)/.config/nano
 LEGACY_ALLOWLIST_BUDGET ?= 5
 
-CFLAGS       := -std=c17 -Wall -Wextra -Werror -O2 -g
-CXXFLAGS     := -std=c++20 -Wall -Wextra -Werror -O2 -g
+CFLAGS       := -std=c17 -Wall -Wextra -Werror -O$(OPT_LEVEL)
+CXXFLAGS     := -std=c++20 -Wall -Wextra -Werror -O$(OPT_LEVEL)
 LDFLAGS      :=
+
+ifeq ($(DEBUG_SYMBOLS),1)
+  CFLAGS   += -g
+  CXXFLAGS += -g
+endif
+
+ifeq ($(LTO),1)
+  CFLAGS   += -flto
+  CXXFLAGS += -flto
+  LDFLAGS  += -flto
+endif
+
+ifeq ($(NDEBUG_BUILD),1)
+  CFLAGS   += -DNDEBUG
+  CXXFLAGS += -DNDEBUG
+endif
+
+CLANG_VERSION_LINE := $(shell $(CXX) --version 2>/dev/null | head -n 1)
+ifneq ($(findstring clang,$(CLANG_VERSION_LINE)),)
+  ifeq ($(PGO_MODE),gen)
+    CFLAGS   += -fprofile-instr-generate=$(PGO_RAW)
+    CXXFLAGS += -fprofile-instr-generate=$(PGO_RAW)
+    LDFLAGS  += -fprofile-instr-generate=$(PGO_RAW)
+  endif
+  ifeq ($(PGO_MODE),use)
+    CFLAGS   += -fprofile-instr-use=$(PGO_DATA)
+    CXXFLAGS += -fprofile-instr-use=$(PGO_DATA)
+    CFLAGS   += -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date
+    CXXFLAGS += -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date
+    LDFLAGS  += -fprofile-instr-use=$(PGO_DATA)
+  endif
+else
+  ifeq ($(PGO_MODE),gen)
+    CFLAGS   += -fprofile-generate=$(PGO_DIR)
+    CXXFLAGS += -fprofile-generate=$(PGO_DIR)
+    LDFLAGS  += -fprofile-generate=$(PGO_DIR)
+  endif
+  ifeq ($(PGO_MODE),use)
+    CFLAGS   += -fprofile-use=$(PGO_DIR) -fprofile-correction
+    CXXFLAGS += -fprofile-use=$(PGO_DIR) -fprofile-correction
+    LDFLAGS  += -fprofile-use=$(PGO_DIR)
+  endif
+endif
 
 # Optional dependency roots (e.g. Homebrew)
 ifndef OPENSSL_DIR
@@ -167,15 +233,36 @@ $(KERNEL_TOOLS_DIR)/vittec-kernel: $(KERNEL_OBJECTS)
 
 $(BUILD_DIR)/%.o: %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC_RUN) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.o: %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX_RUN) $(CXXFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/kernel/%.o: %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX_RUN) $(CXXFLAGS) -c $< -o $@
+
+.PHONY: build-fast
+build-fast: dirs
+	@$(MAKE) --no-print-directory -j$(JOBS) $(BIN_DIR)/$(PROJECT)
+
+.PHONY: build-release
+build-release:
+	@$(MAKE) --no-print-directory clean build-fast OPT_LEVEL=3 DEBUG_SYMBOLS=0 LTO=1 NDEBUG_BUILD=1
+
+.PHONY: pgo-clean
+pgo-clean:
+	@$(RM) "$(PGO_DIR)"
+	@$(MKDIR) "$(PGO_DIR)"
+
+.PHONY: build-pgo-generate
+build-pgo-generate:
+	@$(MAKE) --no-print-directory clean pgo-clean build-fast OPT_LEVEL=3 DEBUG_SYMBOLS=0 LTO=1 NDEBUG_BUILD=1 PGO_MODE=gen
+
+.PHONY: build-pgo-use
+build-pgo-use:
+	@$(MAKE) --no-print-directory clean build-fast OPT_LEVEL=3 DEBUG_SYMBOLS=0 LTO=1 NDEBUG_BUILD=1 PGO_MODE=use
 
 # ------------------------------------------------------------
 # Directories
@@ -269,6 +356,37 @@ hir-validate: hir-validate-test hir-validate-fixture
 .PHONY: check-tests
 check-tests:
 	@tools/check_tests.sh
+
+.PHONY: init-templates-smoke
+init-templates-smoke:
+	@set -e; \
+	for tpl in cli service lib-native; do \
+		td="$$(mktemp -d 2>/dev/null || mktemp -d -t vitte-init)"; \
+		"$(BIN_DIR)/$(PROJECT)" init "$$td/app" --template "$$tpl" >/dev/null; \
+		"$(BIN_DIR)/$(PROJECT)" check "$$td/app/src/main.vit" >/dev/null; \
+		rm -rf "$$td"; \
+		echo "[init-templates-smoke] $$tpl ok"; \
+	done
+
+.PHONY: dx-hello-prod-bench
+dx-hello-prod-bench:
+	@python3 tools/dx_hello_prod_bench.py --template cli
+
+.PHONY: dx-hello-prod-gate
+dx-hello-prod-gate:
+	@python3 tools/dx_hello_prod_bench.py --template cli --strict
+
+.PHONY: lsp-completion-bench
+lsp-completion-bench:
+	@python3 tools/lsp_completion_bench.py --prefix diag
+
+.PHONY: lsp-completion-gate
+lsp-completion-gate:
+	@python3 tools/lsp_completion_bench.py --prefix diag --strict
+
+.PHONY: diag-autofix-frequent
+diag-autofix-frequent:
+	@python3 tools/frequent_diag_autofix_check.py --strict
 
 .PHONY: stress-alloc
 stress-alloc:
@@ -491,6 +609,9 @@ ci-fast: core-language-gate package-layout-lint legacy-import-path-lint negative
 .PHONY: ci-completions
 ci-completions: completions-check completions-lint completions-snapshots completions-fallback
 
+.PHONY: dx-adoption
+dx-adoption: init-templates-smoke diag-autofix-frequent lsp-completion-gate dx-hello-prod-gate
+
 .PHONY: generate-highlights
 generate-highlights:
 	@python3 tools/generate_editor_highlights.py
@@ -619,6 +740,22 @@ extern-abi-kernel-uefi:
 extern-abi-all:
 	@tools/validate_extern_abi.py --profile all
 
+.PHONY: interop-headers-gen
+interop-headers-gen:
+	@python3 toolchain/scripts/interop/generate_interop_headers.py
+
+.PHONY: interop-headers-check
+interop-headers-check:
+	@python3 toolchain/scripts/interop/generate_interop_headers.py --check
+
+.PHONY: interop-headers-snapshot-update
+interop-headers-snapshot-update:
+	@python3 toolchain/scripts/interop/generate_interop_headers.py --update-snapshot
+
+.PHONY: interop-abi-matrix
+interop-abi-matrix:
+	@python3 tools/interop_abi_matrix.py
+
 .PHONY: std-core-tests
 std-core-tests:
 	@tools/test_std_core.sh
@@ -711,6 +848,10 @@ packages-dependency-overlap-lint:
 package-check:
 	@test -n "$(SRC)" || (echo "usage: make package-check SRC=src/vitte/packages/<pkg>/mod.vit" >&2; exit 2)
 	@tools/package_check_portable.sh "$(SRC)"
+
+.PHONY: packages-check-all
+packages-check-all:
+	@tools/package_check_all.sh
 
 .PHONY: modules-perf-cache
 modules-perf-cache:
@@ -961,6 +1102,10 @@ pkg-debian-install: pkg-debian
 pkg-macos:
 	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-pkg.sh
 
+.PHONY: pkg-macos-universal
+pkg-macos-universal:
+	@VERSION=03.2025 OUT_FILE_NAME=vitte_03_2025_macOS_universal.pkg toolchain/scripts/package/make-macos-universal-pkg.sh
+
 .PHONY: pkg-macos-uninstall
 pkg-macos-uninstall:
 	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
@@ -971,6 +1116,59 @@ release-check: build core-release-gate ci-fast package-layout-lint-strict legacy
 .PHONY: release-doctor
 release-doctor:
 	@python3 tools/release_doctor.py
+
+.PHONY: contract-lockfiles-lint
+contract-lockfiles-lint:
+	@python3 tools/lint_contract_lockfiles.py
+
+.PHONY: contracts-dashboard
+contracts-dashboard:
+	@python3 tools/contracts_dashboard.py
+
+.PHONY: security-hardening-gate
+security-hardening-gate:
+	@python3 tools/security_hardening_gate.py
+
+.PHONY: security-baseline-diff
+security-baseline-diff:
+	@tools/security_gates_report.sh
+	@python3 tools/security_baseline_diff.py
+
+.PHONY: security-gates-report
+security-gates-report:
+	@tools/security_gates_report.sh
+
+.PHONY: perf-regression-robust
+perf-regression-robust:
+	@python3 tools/perf_regression_robust.py
+
+.PHONY: perf-budget
+perf-budget:
+	@python3 tools/perf_budget_check.py
+
+.PHONY: docs-sync-gate
+docs-sync-gate:
+	@python3 tools/docs_sync_gate.py
+
+.PHONY: plugin-abi-compat
+plugin-abi-compat:
+	@python3 tools/plugin_abi_compat_check.py
+
+.PHONY: plugin-manifest-lint
+plugin-manifest-lint:
+	@python3 tools/lint_plugin_manifest.py
+
+.PHONY: plugin-sandbox-lint
+plugin-sandbox-lint:
+	@python3 tools/lint_plugin_sandbox_permissions.py
+
+.PHONY: plugin-binary-abi
+plugin-binary-abi:
+	@python3 tools/plugin_binary_abi_smoke.py
+
+.PHONY: repro-report
+repro-report:
+	@python3 tools/repro_report.py
 
 .PHONY: migration-check
 migration-check: diag-snapshots package-layout-lint-strict legacy-import-path-lint
@@ -1030,6 +1228,26 @@ test-map:
 package-index:
 	@python3 tools/generate_package_index.py
 
+.PHONY: perf-baseline
+perf-baseline:
+	@python3 tools/perf_baseline_report.py
+
+.PHONY: runtime-native-bench
+runtime-native-bench:
+	@python3 tools/runtime_native_bench.py
+
+.PHONY: runtime-native-pgo-bench
+runtime-native-pgo-bench:
+	@python3 tools/runtime_native_pgo.py
+
+.PHONY: public-benchmark-dashboard
+public-benchmark-dashboard:
+	@python3 tools/public_benchmark_dashboard.py
+
+.PHONY: release-proof-notes
+release-proof-notes:
+	@python3 tools/release_proof_notes.py
+
 .PHONY: platon-editor
 platon-editor:
 	@./bin/vitte build platon-editor/editor_core.vit -o platon-editor/editor_core
@@ -1061,6 +1279,10 @@ help:
 	@echo "Vitte Makefile targets:"
 	@echo ""
 	@echo "  make            build everything"
+	@echo "  make build-fast parallel build with auto jobs (JOBS override supported)"
+	@echo "  make build-release optimized native build (O3 + LTO + NDEBUG)"
+	@echo "  make build-pgo-generate build instrumented binary for PGO training"
+	@echo "  make build-pgo-use build release binary using merged PGO profile"
 	@echo "  make install    build + install binary + Vim/Emacs/Nano/Geany syntax files"
 	@echo "  make install-debian-2.1.1 install vitte on Debian/Ubuntu (deps + build + install via installer profile 2.1.1)"
 	@echo "  make install-bin install only the vitte binary (PREFIX=$(PREFIX))"
@@ -1107,6 +1329,10 @@ help:
 	@echo "  make extern-abi-kernel validate #[extern] ABI (kernel grub)"
 	@echo "  make extern-abi-kernel-uefi validate #[extern] ABI (kernel uefi)"
 	@echo "  make extern-abi-all validate #[extern] ABI (all std vs host)"
+	@echo "  make interop-headers-gen generate C/C++ interop headers under target/interop/include/vitte"
+	@echo "  make interop-headers-check fail if generated interop headers/snapshot are out of date"
+	@echo "  make interop-headers-snapshot-update update tests/interop ABI exports snapshot"
+	@echo "  make interop-abi-matrix run ABI compatibility matrix + C/C++ interop smoke checks"
 	@echo "  make quasi-empty-package-tests run checks for newly hardened quasi-empty package modules"
 	@echo "  make std-core-tests run std/core regression tests"
 	@echo "  make stdlib-api-lint check stable stdlib ABI surface entries"
@@ -1138,10 +1364,16 @@ help:
 	@echo "  make pkg-debian-audit audit generated Debian .deb content and largest files"
 	@echo "  make pkg-debian-install build and install Debian .deb locally via dpkg"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
+	@echo "  make pkg-macos-universal build macOS universal installer pkg (vitte_03_2025_macOS_universal.pkg)"
 	@echo "  make pkg-macos-uninstall build macOS uninstall pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make release-check run build + core-release-gate + ci-fast + ci-completions + pkg build"
 	@echo "  make release-doctor run the snapshot/release readiness report suite"
 	@echo "  make reports-index build target/reports/index.json (unified reports registry)"
+	@echo "  make perf-baseline build competitive KPI baseline JSON+Markdown under target/reports/competitive"
+	@echo "  make runtime-native-bench compare default vs release runtime on parse/check fixtures"
+	@echo "  make runtime-native-pgo-bench compare release vs PGO runtime and report speedup"
+	@echo "  make public-benchmark-dashboard generate publication dashboard + KPI (3/3 use cases)"
+	@echo "  make release-proof-notes generate proof-oriented release notes + tag candidate"
 	@echo "  make test-map generate docs/TEST_MAP.md from the tests tree"
 	@echo "  make package-index generate docs/PACKAGE_INDEX.md from package metadata"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"

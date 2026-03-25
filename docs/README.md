@@ -15,8 +15,12 @@ Use it to find the shortest path to the document you actually need.
 
 - `docs/PUBLIC_SURFACE.md`: minimum public perimeter for commands, language, and documented package families
 - `docs/RELEASE_POLICY.md`: lightweight release model for `main`, `rc`, and `snapshot`
+- `docs/RELEASE_NOTES_PROOF.md`: proof-first release notes workflow
 - `docs/PROJECT_HEALTH.md`: current health summary, credible platforms, and risk zones
 - `docs/PERFORMANCE.md`: baseline performance policy and recommended tracked metrics
+- `docs/PUBLIC_BENCHMARK_METHODOLOGY.md`: publication-grade benchmark process and KPI rules
+- `docs/VITTE_PERFORMANCE_GUIDE.md`: practical performance tuning and regression gates
+- `docs/MIGRATION_CPP_TO_VITTE.md`: migration path from C++ systems to Vitte
 - `docs/PACKAGE_MATURITY.md`: package-family maturity levels and promotion rules
 - `docs/PACKAGE_INDEX.md`: generated package-family map across facades, metadata, and docs
 - `docs/COMPATIBILITY_POLICY.md`: compatibility expectations across commands, diagnostics, packages, and internals

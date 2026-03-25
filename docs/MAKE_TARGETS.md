@@ -36,6 +36,9 @@ make help
 - `make ci-fast`
 - `make ci-strict`
 - `make ci-completions`
+- `make dx-adoption`
+- `make public-benchmark-dashboard`
+- `make release-proof-notes`
 - `make all-tests`
 - `make reports-index`
 - `make release-doctor`

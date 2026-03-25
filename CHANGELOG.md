@@ -21,6 +21,12 @@ All notable changes to this project will be documented here.
 - Documentation refresh:
   - README simplified for beginner onboarding (`install -> test -> contribute`)
   - `CONTRIBUTING.md`, `SUPPORT.md`, `SECURITY.md`, and `CODE_OF_CONDUCT.md` clarified and expanded
+- DX/adoption and publication proof layer:
+  - `vitte init --template` supports `cli`, `service`, `lib-native`
+  - new DX gate: `make dx-adoption` (completion latency, frequent diagnostics fix guidance, hello->prod KPI)
+  - public benchmark methodology + dashboard (`make public-benchmark-dashboard`)
+  - proof-oriented release notes generator with tag candidate (`make release-proof-notes`)
+  - Steelconf aligned with Makefile fast/release/PGO + DX/report targets
 
 ---
 

@@ -21,8 +21,9 @@
 
 [profile release]
   .set opt 2
-  .set debug 1
+  .set debug 0
 ..
+
 
 ;; ------------------------------------------------------------
 ;; Tools
@@ -55,7 +56,7 @@
 [bake all]
   .make cpp_src cglob "src/**/*.cpp"
   [run sh]
-    .set "-c" "make build"
+    .set "-c" "make build-fast"
   ..
   .output marker "build/.all.ok"
 ..
@@ -70,9 +71,33 @@
 [bake build]
   .make cpp_src cglob "src/**/*.cpp"
   [run sh]
-    .set "-c" "make build"
+    .set "-c" "make build-fast"
   ..
   .output exe "bin/vitte"
+..
+
+[bake build_release]
+  .make cpp_src cglob "src/**/*.cpp"
+  [run sh]
+    .set "-c" "make build-release"
+  ..
+  .output exe "bin/vitte"
+..
+
+[bake build_pgo_generate]
+  .make cpp_src cglob "src/**/*.cpp"
+  [run sh]
+    .set "-c" "make build-pgo-generate"
+  ..
+  .output marker "build/.build_pgo_generate.ok"
+..
+
+[bake build_pgo_use]
+  .make cpp_src cglob "src/**/*.cpp"
+  [run sh]
+    .set "-c" "make build-pgo-use"
+  ..
+  .output marker "build/.build_pgo_use.ok"
 ..
 
 ;; ------------------------------------------------------------
@@ -267,6 +292,13 @@
     .set "-c" "make ci-fast"
   ..
   .output marker "build/.ci_fast.ok"
+..
+
+[bake dx_adoption]
+  [run sh]
+    .set "-c" "make dx-adoption"
+  ..
+  .output marker "build/.dx_adoption.ok"
 ..
 
 [bake runtime_matrix_modules]
@@ -605,6 +637,35 @@
   ..
   .output marker "build/.packages_contract_snapshots_update.ok"
 ..
+
+[bake runtime_native_bench]
+  [run sh]
+    .set "-c" "make runtime-native-bench"
+  ..
+  .output marker "build/.runtime_native_bench.ok"
+..
+
+[bake runtime_native_pgo_bench]
+  [run sh]
+    .set "-c" "make runtime-native-pgo-bench"
+  ..
+  .output marker "build/.runtime_native_pgo_bench.ok"
+..
+
+[bake public_benchmark_dashboard]
+  [run sh]
+    .set "-c" "make public-benchmark-dashboard"
+  ..
+  .output marker "build/.public_benchmark_dashboard.ok"
+..
+
+[bake release_proof_notes]
+  [run sh]
+    .set "-c" "make release-proof-notes"
+  ..
+  .output marker "build/.release_proof_notes.ok"
+..
+
 
 [bake packages_gate]
   [run sh]
