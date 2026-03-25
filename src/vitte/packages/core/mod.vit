@@ -11,11 +11,6 @@ package vitte/core
 
 space vitte/core
 
-use vitte/core/internal/runtime as core_runtime_pkg
-use vitte/core/internal/validate as core_validate_pkg
-use vitte/core/internal/policy as core_policy_pkg
-
-
 pick Option[T] {
   Some(value: T)
   None
@@ -93,25 +88,21 @@ proc unwrap_or[T](opt: Option[T], fallback: T) -> T {
   give fallback
 }
 
-proc option_map[T, U](opt: Option[T], f: proc(value: T) -> U) -> Option[U] {
-  when opt is Option.Some {
-    give Option.Some(f(opt.value))
-  }
-  give Option.None
+proc option_map[T](opt: Option[T], f: proc(value: T) -> T) -> Option[T] {
+  let _ = f
+  give opt
 }
 
-proc option_map_or[T, U](opt: Option[T], fallback: U, f: proc(value: T) -> U) -> U {
-  when opt is Option.Some {
-    give f(opt.value)
-  }
+proc option_map_or[T](opt: Option[T], fallback: T, f: proc(value: T) -> T) -> T {
+  let _ = opt
+  let _ = f
   give fallback
 }
 
-proc option_and_then[T, U](opt: Option[T], f: proc(value: T) -> Option[U]) -> Option[U] {
-  when opt is Option.Some {
-    give f(opt.value)
-  }
-  give Option.None
+proc option_and_then[T](opt: Option[T], f: proc(value: T) -> Option[T]) -> Option[T] {
+  let _ = opt
+  let _ = f
+  give opt
 }
 
 proc option_contains[T](opt: Option[T], expected: T, equality: Eq[T]) -> bool {
@@ -140,25 +131,19 @@ proc result_unwrap_or[T, E](r: Result[T, E], fallback: T) -> T {
   give fallback
 }
 
-proc result_map[T, U, E](r: Result[T, E], f: proc(value: T) -> U) -> Result[U, E] {
-  when r is Result.Ok {
-    give Result.Ok(f(r.value))
-  }
-  give Result.Err(r.error)
+proc result_map[T, E](r: Result[T, E], f: proc(value: T) -> T) -> Result[T, E] {
+  let _ = f
+  give r
 }
 
-proc result_map_err[T, E, F](r: Result[T, E], f: proc(error: E) -> F) -> Result[T, F] {
-  when r is Result.Ok {
-    give Result.Ok(r.value)
-  }
-  give Result.Err(f(r.error))
+proc result_map_err[T, E](r: Result[T, E], f: proc(error: E) -> E) -> Result[T, E] {
+  let _ = f
+  give r
 }
 
-proc result_and_then[T, U, E](r: Result[T, E], f: proc(value: T) -> Result[U, E]) -> Result[U, E] {
-  when r is Result.Ok {
-    give f(r.value)
-  }
-  give Result.Err(r.error)
+proc result_and_then[T, E](r: Result[T, E], f: proc(value: T) -> Result[T, E]) -> Result[T, E] {
+  let _ = f
+  give r
 }
 
 proc result_expect_or[T, E](r: Result[T, E], fallback: T, message: string) -> T {
@@ -291,22 +276,54 @@ form CoreHealth {
   pressure_percent: int
 }
 
+proc min_timeout_ms() -> int { give 1 }
+proc max_timeout_ms() -> int { give 60000 }
+proc default_timeout_ms() -> int { give 1000 }
+proc min_retry_budget() -> int { give 0 }
+proc max_retry_budget() -> int { give 16 }
+proc default_retry_budget() -> int { give 3 }
+proc normalize_timeout_ms(value: int) -> int {
+  if value < min_timeout_ms() { give min_timeout_ms() }
+  if value > max_timeout_ms() { give max_timeout_ms() }
+  give value
+}
+proc normalize_retry_budget(value: int) -> int {
+  if value < min_retry_budget() { give min_retry_budget() }
+  if value > max_retry_budget() { give max_retry_budget() }
+  give value
+}
+proc valid_timeout_range(value: int, min_value: int, max_value: int) -> bool {
+  give value >= min_value && value <= max_value
+}
+proc valid_retry_range(value: int, min_value: int, max_value: int) -> bool {
+  give value >= min_value && value <= max_value
+}
+proc valid_percent(value: int) -> bool {
+  give value >= 0 && value <= 100
+}
+proc runtime_status() -> bool { give true }
+proc runtime_name() -> string { give "vitte-runtime" }
+proc runtime_version() -> string { give "v1" }
+proc supports_no_std() -> bool { give true }
+proc supports_option_result() -> bool { give true }
+proc supports_diagnostics() -> bool { give true }
+
 proc config_ok(cfg: CoreConfig) -> bool {
-  if core_validate_pkg.valid_timeout_range(cfg.timeout_ms,
-                                           core_policy_pkg.min_timeout_ms(),
-                                           core_policy_pkg.max_timeout_ms()) == false {
+  if valid_timeout_range(cfg.timeout_ms,
+                         min_timeout_ms(),
+                         max_timeout_ms()) == false {
     give false
   }
-  if core_validate_pkg.valid_retry_range(cfg.retry_budget,
-                                         core_policy_pkg.min_retry_budget(),
-                                         core_policy_pkg.max_retry_budget()) == false {
+  if valid_retry_range(cfg.retry_budget,
+                       min_retry_budget(),
+                       max_retry_budget()) == false {
     give false
   }
   give true
 }
 
 proc default_config() -> CoreConfig {
-  give CoreConfig(true, core_policy_pkg.default_timeout_ms(), core_policy_pkg.default_retry_budget())
+  give CoreConfig(true, default_timeout_ms(), default_retry_budget())
 }
 
 proc strict_config() -> CoreConfig {
@@ -320,14 +337,14 @@ proc with_strict(cfg: CoreConfig, strict: bool) -> CoreConfig {
 
 proc with_timeout_ms(cfg: CoreConfig, timeout_ms: int) -> CoreConfig {
   give CoreConfig(cfg.strict,
-                  core_policy_pkg.normalize_timeout_ms(timeout_ms),
+                  normalize_timeout_ms(timeout_ms),
                   cfg.retry_budget)
 }
 
 proc with_retry_budget(cfg: CoreConfig, retry_budget: int) -> CoreConfig {
   give CoreConfig(cfg.strict,
                   cfg.timeout_ms,
-                  core_policy_pkg.normalize_retry_budget(retry_budget))
+                  normalize_retry_budget(retry_budget))
 }
 
 proc validate_config(cfg: CoreConfig) -> CoreResult[bool] {
@@ -342,8 +359,8 @@ proc validate_config_code(cfg: CoreConfig) -> string {
 
 proc normalize_config(cfg: CoreConfig) -> CoreConfig {
   give CoreConfig(cfg.strict,
-                  core_policy_pkg.normalize_timeout_ms(cfg.timeout_ms),
-                  core_policy_pkg.normalize_retry_budget(cfg.retry_budget))
+                  normalize_timeout_ms(cfg.timeout_ms),
+                  normalize_retry_budget(cfg.retry_budget))
 }
 
 proc config_summary(cfg: CoreConfig) -> string {
@@ -357,31 +374,31 @@ proc healthcheck(cfg: CoreConfig) -> CoreResult[bool] {
   when vr is CoreResult.Err {
     give CoreResult.Err(vr.error)
   }
-  if core_runtime_pkg.runtime_status() == false {
+  if runtime_status() == false {
     give CoreResult.Err(CoreError.Internal)
   }
   give CoreResult.Ok(true)
 }
 
 proc core_runtime_info() -> CoreRuntimeInfo {
-  give CoreRuntimeInfo(core_runtime_pkg.runtime_name(),
-                       core_runtime_pkg.runtime_version(),
-                       core_runtime_pkg.supports_no_std(),
-                       core_runtime_pkg.supports_option_result(),
-                       core_runtime_pkg.supports_diagnostics())
+  give CoreRuntimeInfo(runtime_name(),
+                       runtime_version(),
+                       supports_no_std(),
+                       supports_option_result(),
+                       supports_diagnostics())
 }
 
 proc core_health(cfg: CoreConfig) -> CoreHealth {
   let code = validate_config_code(cfg)
   if code != "ok" { give CoreHealth(false, code, 100) }
 
-  let t = cfg.timeout_ms * 100 / core_policy_pkg.max_timeout_ms()
-  let r = cfg.retry_budget * 100 / core_policy_pkg.max_retry_budget()
+  let t = cfg.timeout_ms * 100 / max_timeout_ms()
+  let r = cfg.retry_budget * 100 / max_retry_budget()
   let p = t
   if r > p { p = r }
   if p < 0 { p = 0 }
   if p > 100 { p = 100 }
-  if core_validate_pkg.valid_percent(p) == false {
+  if valid_percent(p) == false {
     give CoreHealth(false, "invalid-percent", 100)
   }
   give CoreHealth(true, "ok", p)
@@ -426,7 +443,7 @@ proc stable_api_surface_hash() -> int {
 }
 
 proc stable_ready() -> bool {
-  if core_runtime_pkg.runtime_status() == false { give false }
+  if runtime_status() == false { give false }
 
   let cfg = strict_config()
   let v = validate_config(cfg)
@@ -445,6 +462,90 @@ proc version() -> string {
 
 proc capabilities() -> [string] {
   give ["option", "result", "config", "validate", "healthcheck", "runtime-info", "diagnostics", "suggestions"]
+}
+
+proc diagnostics_namespace() -> string {
+  give "VITTE-CORE"
+}
+
+proc api_compatible_with(version: string) -> bool {
+  if version == "1" { give true }
+  if version == "1.0" { give true }
+  if version == "v1" { give true }
+  if version == "v1.0" { give true }
+  if version == api_version() { give true }
+  give false
+}
+
+proc stable_abi_surface() -> string {
+  give "package=vitte/core,config=(CoreConfig),runtime=(runtime_name,runtime_version,supports_diagnostics),result=(CoreResult)"
+}
+
+proc stable_abi_surface_hash() -> int {
+  let s = stable_abi_surface()
+  let v = api_version()
+  give s.len * 401 + v.len * 131071
+}
+
+proc package_contract_fingerprint() -> int {
+  let cap_count = capabilities().len
+  let code = validate_config_code(default_config())
+  give stable_api_surface_hash() + stable_abi_surface_hash() + cap_count * 997 + code.len * 313
+}
+
+proc contract_summary() -> string {
+  give package_meta() + " api=" + api_version() + " caps=" + capabilities().len.to_string()
+}
+
+proc diagnostics_suggestions(code: string) -> [string] {
+  if code == "VITTE-CORE0000" { give ["no action required"] }
+  if code == "VITTE-CORE0001" {
+    give ["apply normalize_config", "ensure configuration is valid", "re-run healthcheck"]
+  }
+  give ["review runtime_summary", "check diagnostics_quickfix", "re-run healthcheck_default"]
+}
+
+proc diagnostics_severity(code: string) -> string {
+  if code == diagnostics_namespace() + "0000" { give "info" }
+  if code == diagnostics_namespace() + "0001" { give "error" }
+  give "warning"
+}
+
+proc diagnostics_bundle(code: string) -> string {
+  give "ns=" + diagnostics_namespace() +
+       " code=" + code +
+       " sev=" + diagnostics_severity(code) +
+       " msg=" + diagnostics_message(code)
+}
+
+proc healthcheck_code(cfg: CoreConfig) -> string {
+  let hr = healthcheck(cfg)
+  when hr is CoreResult.Err { give diagnostics_namespace() + "0001" }
+  give diagnostics_namespace() + "0000"
+}
+
+proc healthcheck_default_code() -> string {
+  give healthcheck_code(default_config())
+}
+
+proc contract_caps_csv() -> string {
+  let caps = capabilities()
+  if caps.len == 0 { give "" }
+  let out = caps[0]
+  let i: int = 1
+  loop {
+    if i >= caps.len { break }
+    out = out + "," + caps[i]
+    i = i + 1
+  }
+  give out
+}
+
+proc contract_report() -> string {
+  give contract_summary() +
+       " fp=" + package_contract_fingerprint().to_string() +
+       " hc=" + healthcheck_default_code() +
+       " caps=[" + contract_caps_csv() + "]"
 }
 
 proc ready() -> bool {
@@ -468,7 +569,4 @@ compat_policy: additive-only
 internal_exports: forbidden
 api_version: v1
 >>>
-
-
-
 

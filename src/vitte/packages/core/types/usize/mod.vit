@@ -1,9 +1,5 @@
 space std/core/types/usize
 
-use vitte/core/types/usize/internal/runtime as core_types_usize_runtime_pkg
-use vitte/core/types/usize/internal/validate as core_types_usize_validate_pkg
-use vitte/core/types/usize/internal/policy as core_types_usize_policy_pkg
-
 form CoreTypesUsizeConfig {
   strict: bool
   timeout_ms: int
@@ -17,34 +13,31 @@ pick CoreTypesUsizeError {
   Internal
 }
 
-pick CoreTypesUsizeResult[T] {
-  Ok(value: T)
+pick CoreTypesUsizeResult {
+  Ok
   Err(error: CoreTypesUsizeError)
 }
 
 proc default_config() -> CoreTypesUsizeConfig {
-  give CoreTypesUsizeConfig(true, core_types_usize_policy_pkg.default_timeout_ms(), core_types_usize_policy_pkg.default_retry_budget())
+  give CoreTypesUsizeConfig(true, 1000, 3)
 }
 
-proc validate_config(cfg: CoreTypesUsizeConfig) -> CoreTypesUsizeResult[bool] {
-  if core_types_usize_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+proc validate_config(cfg: CoreTypesUsizeConfig) -> CoreTypesUsizeResult {
+  if cfg.timeout_ms <= 0 {
     give CoreTypesUsizeResult.Err(CoreTypesUsizeError.InvalidConfig)
   }
-  if core_types_usize_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if cfg.retry_budget < 0 {
     give CoreTypesUsizeResult.Err(CoreTypesUsizeError.InvalidConfig)
   }
-  give CoreTypesUsizeResult.Ok(true)
+  give CoreTypesUsizeResult.Ok
 }
 
-proc healthcheck(cfg: CoreTypesUsizeConfig) -> CoreTypesUsizeResult[bool] {
-  let vr: CoreTypesUsizeResult[bool] = validate_config(cfg)
+proc healthcheck(cfg: CoreTypesUsizeConfig) -> CoreTypesUsizeResult {
+  let vr: CoreTypesUsizeResult = validate_config(cfg)
   when vr is CoreTypesUsizeResult.Err {
     give CoreTypesUsizeResult.Err(vr.error)
   }
-  if core_types_usize_runtime_pkg.runtime_status() == false {
-    give CoreTypesUsizeResult.Err(CoreTypesUsizeError.Internal)
-  }
-  give CoreTypesUsizeResult.Ok(true)
+  give CoreTypesUsizeResult.Ok
 }
 
 proc version() -> string {
@@ -88,8 +81,6 @@ boundary: Implementation privee sous vitte/core/types/usize/internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
-
-
 
 
 

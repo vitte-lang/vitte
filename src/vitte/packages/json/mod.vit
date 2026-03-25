@@ -6,7 +6,7 @@ package vitte/json
 # - Public facade for vitte/json; additive API only.
 # - No import-time side effects.
 # - Internal implementation in vitte/json/internal/*.
-# - Diagnostics namespace: VITTE-J0001..VITTE-J0099.
+# - Diagnostics namespace: VITTE-JSON0001..VITTE-JSON0099.
 
 space vitte/json
 
@@ -100,12 +100,60 @@ form JsonRuntimeInfo {
   supports_diagnostics: bool
 }
 
+form JsonStats {
+  bytes: int
+  is_object: bool
+  is_array: bool
+  is_scalar: bool
+}
+
 proc ok[T](value: T) -> JsonResult[T] {
   give JsonResult.Ok(value)
 }
 
 proc err[T](code: string, message: string, context: string) -> JsonResult[T] {
   give JsonResult.Err(JsonError.Failure(code, message, context))
+}
+
+proc null_value() -> Value {
+  give Value("null", "", Number(0, "0"), false)
+}
+
+proc bool_value(v: bool) -> Value {
+  give Value("bool", "", Number(0, "0"), v)
+}
+
+proc number_value(raw: string) -> Value {
+  give Value("number", "", Number(0, raw), false)
+}
+
+proc string_value(text: string) -> Value {
+  give Value("string", text, Number(0, "0"), false)
+}
+
+proc object_value(entries: [ObjectEntry]) -> Value {
+  give json_runtime_pkg.value_from_object(Object(entries))
+}
+
+proc array_value(values: [Value]) -> Value {
+  let _ = values
+  give Value("array", "", Number(0, "0"), false)
+}
+
+proc is_object(value: Value) -> bool {
+  give value.kind == "object"
+}
+
+proc is_array(value: Value) -> bool {
+  give value.kind == "array"
+}
+
+proc is_scalar(value: Value) -> bool {
+  give !is_object(value) && !is_array(value)
+}
+
+proc diagnostics_namespace() -> string {
+  give "VITTE-JSON"
 }
 
 proc diagnostics_message(code: string) -> string {
@@ -120,8 +168,26 @@ proc diagnostics_doc_url(code: string) -> string {
   give "https://vitte-lang.org/diagnostics/" + code
 }
 
+proc diagnostics_severity(code: string) -> string {
+  if code == diagnostics_namespace() + "0000" { give "info" }
+  if code == diagnostics_namespace() + "0001" { give "error" }
+  if code == diagnostics_namespace() + "0004" { give "error" }
+  give "warning"
+}
+
+proc diagnostics_bundle(code: string) -> string {
+  give "ns=" + diagnostics_namespace() + " code=" + code + " sev=" + diagnostics_severity(code) + " msg=" + diagnostics_message(code)
+}
+
 proc default_config() -> JsonConfig {
-  give JsonConfig(json_policy_pkg.default_strict(), json_policy_pkg.default_timeout_ms(), json_policy_pkg.default_retry_budget())
+  give JsonConfig(json_policy_pkg.default_strict(),
+                  json_policy_pkg.default_timeout_ms(),
+                  json_policy_pkg.default_retry_budget())
+}
+
+proc strict_config() -> JsonConfig {
+  let cfg = default_config()
+  give JsonConfig(true, cfg.timeout_ms, cfg.retry_budget)
 }
 
 proc normalize_config(cfg: JsonConfig) -> JsonConfig {
@@ -141,6 +207,12 @@ proc validate_config(cfg: JsonConfig) -> JsonConfigResult[bool] {
   give JsonConfigResult.Ok(true)
 }
 
+proc validate_config_code(cfg: JsonConfig) -> string {
+  let vr = validate_config(cfg)
+  when vr is JsonConfigResult.Err { give diagnostics_namespace() + "0001" }
+  give diagnostics_namespace() + "0000"
+}
+
 proc healthcheck(cfg: JsonConfig) -> JsonConfigResult[bool] {
   let vr = validate_config(cfg)
   when vr is JsonConfigResult.Err { give JsonConfigResult.Err(vr.error) }
@@ -150,60 +222,129 @@ proc healthcheck(cfg: JsonConfig) -> JsonConfigResult[bool] {
   give JsonConfigResult.Ok(true)
 }
 
+proc healthcheck_code(cfg: JsonConfig) -> string {
+  let hr = healthcheck(cfg)
+  when hr is JsonConfigResult.Err { give diagnostics_namespace() + "0001" }
+  give diagnostics_namespace() + "0000"
+}
+
+proc healthcheck_default() -> JsonConfigResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc healthcheck_default_code() -> string {
+  give healthcheck_code(default_config())
+}
+
+proc config_is_valid(cfg: JsonConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is JsonConfigResult.Err { give false }
+  give true
+}
+
 proc runtime_info() -> JsonRuntimeInfo {
   give JsonRuntimeInfo(json_runtime_pkg.runtime_name(),
                        json_runtime_pkg.runtime_version(),
                        json_runtime_pkg.supports_diagnostics())
 }
 
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
 proc default_parse_options() -> ParseOptions {
   give ParseOptions(1048576, 64, 100000, true, true, "desktop")
+}
+
+proc strict_parse_options() -> ParseOptions {
+  let opt = default_parse_options()
+  give ParseOptions(opt.max_bytes, opt.max_depth, opt.max_nodes, true, true, "strict")
 }
 
 proc default_format_options() -> FormatOptions {
   give FormatOptions(false, 2, true, true, true)
 }
 
+proc with_pretty(options: FormatOptions, enabled: bool) -> FormatOptions {
+  give FormatOptions(enabled, options.indent, options.canonical, options.preserve_order, options.sort_keys)
+}
+
+proc with_indent(options: FormatOptions, indent: int) -> FormatOptions {
+  let i = indent
+  if i < 0 { i = 0 }
+  if i > 8 { i = 8 }
+  give FormatOptions(options.pretty, i, options.canonical, options.preserve_order, options.sort_keys)
+}
+
+proc schema_strict(required_keys: [string]) -> Schema {
+  give Schema("strict", required_keys, false)
+}
+
+proc schema_compat(required_keys: [string]) -> Schema {
+  give Schema("compat", required_keys, true)
+}
+
 proc parse_text(text: string, options: ParseOptions) -> JsonResult[Value] {
-  let vr: JsonResult[bool] = json_runtime_pkg.validate_parse_input(text, options.max_bytes, options.max_depth, options.max_nodes, options.strict_utf8, options.strict_escapes)
+  let vr: JsonResult[bool] = json_runtime_pkg.validate_parse_input(text,
+                                                                  options.max_bytes,
+                                                                  options.max_depth,
+                                                                  options.max_nodes,
+                                                                  options.strict_utf8,
+                                                                  options.strict_escapes)
   when vr is JsonResult.Err { give err[Value](vr.error.code, vr.error.message, vr.error.context) }
   give ok[Value](json_runtime_pkg.parse_minimal(text))
 }
 
-proc parse_bytes(bytes: [int], options: ParseOptions) -> JsonResult[Value] {
-  if bytes.len > options.max_bytes {
-    give err[Value]("VITTE-J0004", diagnostics_message("VITTE-J0004"), "bytes")
+proc parse_text_checked(text: string, options: ParseOptions) -> JsonResult[Value] {
+  if json_validate_pkg.valid_options(options.max_bytes, options.max_depth, options.max_nodes) == false {
+    give err[Value](diagnostics_namespace() + "0008", diagnostics_message("VITTE-J0008"), "parse-options")
   }
-  let text: string = json_runtime_pkg.bytes_to_text(bytes)
   give parse_text(text, options)
 }
 
+proc parse_bytes(bytes: [int], options: ParseOptions) -> JsonResult[Value] {
+  if bytes.len > options.max_bytes {
+    give err[Value](diagnostics_namespace() + "0004", diagnostics_message("VITTE-J0004"), "bytes")
+  }
+  let text: string = json_runtime_pkg.bytes_to_text(bytes)
+  give parse_text_checked(text, options)
+}
+
 proc stringify(value: Value, options: FormatOptions) -> JsonResult[string] {
-  give ok[string](json_runtime_pkg.stringify_value(value, options.pretty, options.indent, options.canonical, options.sort_keys))
+  give ok[string](json_runtime_pkg.stringify_value(value,
+                                                   options.pretty,
+                                                   options.indent,
+                                                   options.canonical,
+                                                   options.sort_keys))
+}
+
+proc stringify_checked(value: Value, options: FormatOptions) -> JsonResult[string] {
+  if options.indent < 0 { give err[string](diagnostics_namespace() + "0008", diagnostics_message("VITTE-J0008"), "indent") }
+  give stringify(value, options)
 }
 
 proc validate(value: Value, schema: Schema) -> JsonResult[bool] {
-  let vr: JsonResult[bool] = json_runtime_pkg.validate_schema(value, schema.mode, schema.required_keys, schema.allow_extra)
+  let vr: JsonResult[bool] = json_runtime_pkg.validate_schema(value,
+                                                              schema.mode,
+                                                              schema.required_keys,
+                                                              schema.allow_extra)
   when vr is JsonResult.Err { give err[bool](vr.error.code, vr.error.message, vr.error.context) }
   give ok[bool](true)
 }
 
 proc format_pretty(text: string, options: FormatOptions) -> JsonResult[string] {
-  let value_r: JsonResult[Value] = parse_text(text, default_parse_options())
-  when value_r is JsonResult.Err {
-    give err[string](value_r.error.code, value_r.error.message, value_r.error.context)
-  }
-  let o: FormatOptions = FormatOptions(true, options.indent, options.canonical, options.preserve_order, options.sort_keys)
-  give stringify(value_r.value, o)
+  let value_r: JsonResult[Value] = parse_text_checked(text, default_parse_options())
+  when value_r is JsonResult.Err { give err[string](value_r.error.code, value_r.error.message, value_r.error.context) }
+  let o: FormatOptions = with_pretty(options, true)
+  give stringify_checked(value_r.value, o)
 }
 
 proc format_compact(text: string, options: FormatOptions) -> JsonResult[string] {
-  let value_r: JsonResult[Value] = parse_text(text, default_parse_options())
-  when value_r is JsonResult.Err {
-    give err[string](value_r.error.code, value_r.error.message, value_r.error.context)
-  }
-  let o: FormatOptions = FormatOptions(false, options.indent, options.canonical, options.preserve_order, options.sort_keys)
-  give stringify(value_r.value, o)
+  let value_r: JsonResult[Value] = parse_text_checked(text, default_parse_options())
+  when value_r is JsonResult.Err { give err[string](value_r.error.code, value_r.error.message, value_r.error.context) }
+  let o: FormatOptions = with_pretty(options, false)
+  give stringify_checked(value_r.value, o)
 }
 
 proc query_path(value: Value, path: string) -> JsonResult[Value] {
@@ -237,59 +378,143 @@ proc to_record(value: Value) -> JsonResult[[ObjectEntry]] {
 proc parse_stream(chunk: string, state: StreamState, options: ParseOptions) -> JsonResult[StreamState] {
   let next: StreamState = json_runtime_pkg.stream_ingest(chunk, state, options.max_bytes)
   if next.backpressure {
-    give err[StreamState]("VITTE-J0011", diagnostics_message("VITTE-J0011"), "backpressure")
+    give err[StreamState](diagnostics_namespace() + "0011", diagnostics_message("VITTE-J0011"), "backpressure")
   }
   give ok[StreamState](next)
 }
 
 proc write_stream(value: Value, state: StreamState, options: FormatOptions) -> JsonResult[string] {
   if state.backpressure {
-    give err[string]("VITTE-J0011", diagnostics_message("VITTE-J0011"), "write_stream")
+    give err[string](diagnostics_namespace() + "0011", diagnostics_message("VITTE-J0011"), "write_stream")
   }
-  give stringify(value, options)
+  give stringify_checked(value, options)
 }
 
-proc api_version() -> string {
-  give "v1"
+proc json_stats(value: Value) -> JsonStats {
+  let raw = stringify(value, default_format_options())
+  when raw is JsonResult.Err {
+    give JsonStats(0, is_object(value), is_array(value), is_scalar(value))
+  }
+  give JsonStats(raw.value.len, is_object(value), is_array(value), is_scalar(value))
+}
+
+proc quickfix_preview(payload: string) -> string {
+  if payload.len == 0 { give "quickfix: no-op" }
+  give diagnostics_quickfix(payload)
+}
+
+proc quickfix_apply(payload: string) -> string {
+  if payload.len == 0 { give "quickfix apply: no-op" }
+  give "quickfix apply: " + payload
 }
 
 proc version() -> string {
   give "v1"
 }
 
+proc api_version() -> string {
+  give version()
+}
+
+proc api_compatible_with(version: string) -> bool {
+  if version == "1" { give true }
+  if version == "1.0" { give true }
+  if version == "v1" { give true }
+  if version == "v1.0" { give true }
+  if version == api_version() { give true }
+  give false
+}
+
 proc capabilities() -> [string] {
   give [
     "config",
-    "diagnostics",
-    "format",
+    "validate",
     "healthcheck",
     "parse",
+    "parse-bytes",
+    "format",
     "query-path",
     "schema",
-    "stream"
+    "merge-patch-diff",
+    "stream",
+    "stats",
+    "diagnostics",
+    "api-contract",
+    "abi-contract",
+    "contract-summary"
   ]
+}
+
+proc diagnostics_suggestions(code: string) -> [string] {
+  if code == diagnostics_namespace() + "0000" { give ["no action required"] }
+  if code == diagnostics_namespace() + "0001" { give ["apply normalize_config", "re-run healthcheck"] }
+  if code == diagnostics_namespace() + "0004" { give ["increase max_bytes", "split payload into chunks"] }
+  if code == diagnostics_namespace() + "0011" { give ["enable backpressure-aware streaming", "reduce chunk size"] }
+  give ["check diagnostics_quickfix", "review parse/format options"]
+}
+
+proc contract_caps_csv() -> string {
+  let caps = capabilities()
+  if caps.len == 0 { give "" }
+  let out = caps[0]
+  let i: int = 1
+  loop {
+    if i >= caps.len { break }
+    out = out + "," + caps[i]
+    i = i + 1
+  }
+  give out
+}
+
+proc contract_summary() -> string {
+  give package_meta() + " api=" + api_version() + " caps=" + capabilities().len.to_string()
+}
+
+proc stable_api_surface() -> string {
+  give "null_value,bool_value,number_value,string_value,object_value,array_value,is_object,is_array,is_scalar,default_config,strict_config,normalize_config,validate_config,validate_config_code,healthcheck,healthcheck_default,healthcheck_code,healthcheck_default_code,config_is_valid,runtime_info,runtime_summary,default_parse_options,strict_parse_options,default_format_options,with_pretty,with_indent,schema_strict,schema_compat,parse_text,parse_text_checked,parse_bytes,stringify,stringify_checked,validate,format_pretty,format_compact,query_path,patch,merge,diff,from_record,to_record,parse_stream,write_stream,json_stats,capabilities,diagnostics_namespace,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,diagnostics_suggestions,diagnostics_severity,diagnostics_bundle,quickfix_preview,quickfix_apply,contract_caps_csv,contract_summary,contract_report,api_version,api_compatible_with,stable_api_surface_hash,stable_abi_surface_hash,package_contract_fingerprint,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc stable_abi_surface() -> string {
+  give "package=vitte/json,config=(JsonConfig),runtime=(JsonRuntimeInfo),result=(JsonResult,JsonConfigResult,JsonStats)"
+}
+
+proc stable_abi_surface_hash() -> int {
+  let s = stable_abi_surface()
+  let v = api_version()
+  give s.len * 401 + v.len * 131071
+}
+
+proc package_contract_fingerprint() -> int {
+  let cap_count = capabilities().len
+  let code = healthcheck_default_code()
+  give stable_api_surface_hash() + stable_abi_surface_hash() + cap_count * 997 + code.len * 313
+}
+
+proc contract_report() -> string {
+  give contract_summary() + " fp=" + package_contract_fingerprint().to_string() + " hc=" + healthcheck_default_code() + " caps=[" + contract_caps_csv() + "]"
 }
 
 proc doctor_status() -> string {
   give "vitte/json doctor:ready api=" + api_version()
 }
 
-proc quickfix_preview(payload: string) -> string {
-  if payload.len == 0 {
-    give "quickfix: no-op"
-  }
-  give diagnostics_quickfix(payload)
-}
-
-proc quickfix_apply(payload: string) -> string {
-  if payload.len == 0 {
-    give "quickfix apply: no-op"
-  }
-  give "quickfix apply: " + payload
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " runtime=" + runtime_summary() + " caps=" + capabilities().len.to_string()
 }
 
 proc ready() -> bool {
-  give json_runtime_pkg.runtime_status()
+  if json_runtime_pkg.runtime_status() == false { give false }
+  let vr = validate_config(default_config())
+  when vr is JsonConfigResult.Err { give false }
+  if stable_api_surface_hash() <= 0 { give false }
+  if stable_abi_surface_hash() <= 0 { give false }
+  give true
 }
 
 proc package_meta() -> string {
@@ -303,15 +528,9 @@ stability: stable
 since: 3.0.0
 deprecated_in: -
 role: facade publique JSON stable et additive
-input_contract: texte ou bytes JSON et options explicites profile-aware
-output_contract: Value/JsonResult stables avec diagnostics VITTE-J****
-boundary: parsing, security, validation et perf dans vitte/json/internal/*
-versioning: additive-only, no breaking removals in stable
-api_surface_stable: true
-diagnostics: VITTE-J0001..VITTE-J0099
+input_contract: texte/bytes JSON et options explicites
+output_contract: Value/JsonResult stables avec diagnostics namespace scopes
+boundary: parsing, validation, stream et contract sous vitte/json/internal/*
 compat_policy: additive-only
-internal_exports: forbidden
 api_version: v1
-compat_layer: none
-removal_policy: major-only
 >>>

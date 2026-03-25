@@ -16,7 +16,6 @@ syn match vitteUsePath "\v\<use\>\s+\zs[A-Za-z0-9_./:]+"
 syn match vitteModulePath "\v\<(space|pull|share|at|use)\>\s+\zs[A-Za-z0-9_./:]+"
 syn match vitteDeclName "\v\<(proc|form|pick|trait|entry)\>\s+\zs[A-Za-z_][A-Za-z0-9_]*"
 syn match vitteUseAlias "\v\<as\>\s+\zs[A-Za-z_][A-Za-z0-9_]*(_pkg)?"
-syn match vitteCall "\v\<[A-Za-z_][A-Za-z0-9_]*\ze\("
 syn match vitteDiagCode "\vVITTE-[A-Z]+[0-9]{4}"
 syn match vitteAliasPkg "\v[A-Za-z_][A-Za-z0-9_]*_pkg"
 syn match vitteContractBlock "\v^\s*<<<\s+ROLE-CONTRACT"
@@ -37,7 +36,6 @@ hi def link vitteUsePath Include
 hi def link vitteModulePath Include
 hi def link vitteDeclName Function
 hi def link vitteUseAlias Identifier
-hi def link vitteCall Function
 hi def link vitteDiagCode Error
 hi def link vitteAliasPkg Identifier
 hi def link vitteContractBlock PreProc
@@ -46,5 +44,7 @@ hi def link vitteTodo Todo
 hi def link vitteLineComment Comment
 hi def link vitteBlockComment Comment
 hi def link vitteZoneComment Comment
+
+syn sync minlines=64
 
 let b:current_syntax = "vitte"

@@ -1,9 +1,5 @@
 space std/core/types/string
 
-use vitte/core/types/string/internal/runtime as core_types_string_runtime_pkg
-use vitte/core/types/string/internal/validate as core_types_string_validate_pkg
-use vitte/core/types/string/internal/policy as core_types_string_policy_pkg
-
 form CoreTypesStringConfig {
   strict: bool
   timeout_ms: int
@@ -17,34 +13,31 @@ pick CoreTypesStringError {
   Internal
 }
 
-pick CoreTypesStringResult[T] {
-  Ok(value: T)
+pick CoreTypesStringResult {
+  Ok
   Err(error: CoreTypesStringError)
 }
 
 proc default_config() -> CoreTypesStringConfig {
-  give CoreTypesStringConfig(true, core_types_string_policy_pkg.default_timeout_ms(), core_types_string_policy_pkg.default_retry_budget())
+  give CoreTypesStringConfig(true, 1000, 3)
 }
 
-proc validate_config(cfg: CoreTypesStringConfig) -> CoreTypesStringResult[bool] {
-  if core_types_string_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+proc validate_config(cfg: CoreTypesStringConfig) -> CoreTypesStringResult {
+  if cfg.timeout_ms <= 0 {
     give CoreTypesStringResult.Err(CoreTypesStringError.InvalidConfig)
   }
-  if core_types_string_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if cfg.retry_budget < 0 {
     give CoreTypesStringResult.Err(CoreTypesStringError.InvalidConfig)
   }
-  give CoreTypesStringResult.Ok(true)
+  give CoreTypesStringResult.Ok
 }
 
-proc healthcheck(cfg: CoreTypesStringConfig) -> CoreTypesStringResult[bool] {
-  let vr: CoreTypesStringResult[bool] = validate_config(cfg)
+proc healthcheck(cfg: CoreTypesStringConfig) -> CoreTypesStringResult {
+  let vr: CoreTypesStringResult = validate_config(cfg)
   when vr is CoreTypesStringResult.Err {
     give CoreTypesStringResult.Err(vr.error)
   }
-  if core_types_string_runtime_pkg.runtime_status() == false {
-    give CoreTypesStringResult.Err(CoreTypesStringError.Internal)
-  }
-  give CoreTypesStringResult.Ok(true)
+  give CoreTypesStringResult.Ok
 }
 
 proc version() -> string {
@@ -88,7 +81,6 @@ boundary: Implementation privee sous vitte/core/types/string/internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
-
 
 
 

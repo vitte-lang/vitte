@@ -28,7 +28,7 @@ CP           := cp -f
 # This keeps local builds working on hosts with partial toolchains.
 ifeq ($(AUTO_CXX_FALLBACK),1)
 ifneq ($(origin CXX),command line)
-  CXX_STDLIB_OK := $(shell printf '#include <cstddef>\nint main(){return 0;}\n' | $(CXX) -std=c++20 -x c++ -fsyntax-only - >/dev/null 2>&1; echo $$?)
+  CXX_STDLIB_OK := $(shell printf 'int stdlib_probe;\n' | $(CXX) -std=c++20 -include cstddef -x c++ -fsyntax-only - >/dev/null 2>&1; echo $$?)
   ifneq ($(CXX_STDLIB_OK),0)
     ifneq ($(shell command -v $(CXX_FALLBACK) 2>/dev/null),)
       $(warning [make] CXX='$(CXX)' missing C++ std headers; falling back to '$(CXX_FALLBACK)')
@@ -54,6 +54,12 @@ CXXFLAGS     := -std=c++20 -Wall -Wextra -Werror -O2 -g
 LDFLAGS      :=
 
 # Optional dependency roots (e.g. Homebrew)
+ifndef OPENSSL_DIR
+  OPENSSL_DIR := $(shell brew --prefix openssl@3 2>/dev/null)
+  ifeq ($(strip $(OPENSSL_DIR)),)
+    OPENSSL_DIR := $(shell pkg-config --variable=prefix openssl 2>/dev/null)
+  endif
+endif
 ifdef OPENSSL_DIR
   CXXFLAGS += -I$(OPENSSL_DIR)/include
   LDFLAGS  += -L$(OPENSSL_DIR)/lib

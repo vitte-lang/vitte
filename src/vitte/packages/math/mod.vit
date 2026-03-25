@@ -9,16 +9,109 @@ use vitte/math/internal/policy as math_policy_pkg
 use vitte/math/internal/runtime as math_runtime_pkg
 use vitte/math/internal/validate as math_validate_pkg
 
+form MathConfig {
+  strict: bool
+  timeout_ms: int
+  retry_budget: int
+}
+
+pick MathError {
+  InvalidConfig
+  InvalidInput
+  Overflow
+  Unsupported
+  Timeout
+  Internal
+}
+
+pick MathResult[T] {
+  Ok(value: T)
+  Err(error: MathError)
+}
+
+form MathRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
+form IntStats {
+  count: int
+  min: int
+  max: int
+  mean: int
+  median: int
+}
 
 proc abs(n: int) -> int {
   if n < 0 { give 0 - n }
   give n
 }
 
+proc min(a: int, b: int) -> int {
+  if a <= b { give a }
+  give b
+}
+
+proc max(a: int, b: int) -> int {
+  if a >= b { give a }
+  give b
+}
+
+proc sign(n: int) -> int {
+  if n < 0 { give -1 }
+  if n > 0 { give 1 }
+  give 0
+}
+
+proc is_even(n: int) -> bool {
+  give n % 2 == 0
+}
+
+proc is_odd(n: int) -> bool {
+  give n % 2 != 0
+}
+
 proc clamp(n: int, lo: int, hi: int) -> int {
-  if n < lo { give lo }
-  if n > hi { give hi }
+  let low = lo
+  let high = hi
+  if low > high {
+    let t = low
+    low = high
+    high = t
+  }
+  if n < low { give low }
+  if n > high { give high }
   give n
+}
+
+proc square(n: int) -> int {
+  give n * n
+}
+
+proc cube(n: int) -> int {
+  give n * n * n
+}
+
+proc mod_norm(n: int, m: int) -> int {
+  if m == 0 { give 0 }
+  let d = abs(m)
+  let r = n % d
+  if r < 0 { give r + d }
+  give r
+}
+
+proc wrap(n: int, lo: int, hi: int) -> int {
+  let low = lo
+  let high = hi
+  if low > high {
+    let t = low
+    low = high
+    high = t
+  }
+  let span = (high - low) + 1
+  if span <= 0 { give low }
+  give low + mod_norm(n - low, span)
 }
 
 proc gcd(a: int, b: int) -> int {
@@ -35,7 +128,31 @@ proc gcd(a: int, b: int) -> int {
 
 proc lcm(a: int, b: int) -> int {
   if a == 0 || b == 0 { give 0 }
-  give abs(a * b) / gcd(a, b)
+  give abs(a / gcd(a, b) * b)
+}
+
+proc gcd_many(values: [int]) -> int {
+  if values.len == 0 { give 0 }
+  let g = abs(values[0])
+  let i: int = 1
+  loop {
+    if i >= values.len { break }
+    g = gcd(g, values[i])
+    i = i + 1
+  }
+  give g
+}
+
+proc lcm_many(values: [int]) -> int {
+  if values.len == 0 { give 0 }
+  let out = abs(values[0])
+  let i: int = 1
+  loop {
+    if i >= values.len { break }
+    out = lcm(out, values[i])
+    i = i + 1
+  }
+  give out
 }
 
 proc powi(base: int, exp: int) -> int {
@@ -50,41 +167,210 @@ proc powi(base: int, exp: int) -> int {
   give out
 }
 
-proc ready() -> bool {
+proc pow_mod(base: int, exp: int, modulus: int) -> int {
+  if modulus == 0 { give 0 }
+  if exp < 0 { give 0 }
+  let mod = abs(modulus)
+  let b = mod_norm(base, mod)
+  let e = exp
+  let out: int = 1
+  loop {
+    if e <= 0 { break }
+    if e % 2 == 1 { out = mod_norm(out * b, mod) }
+    b = mod_norm(b * b, mod)
+    e = e / 2
+  }
+  give out
+}
+
+proc factorial(n: int) -> int {
+  if n < 0 { give 0 }
+  let out: int = 1
+  let i: int = 2
+  loop {
+    if i > n { break }
+    out = out * i
+    i = i + 1
+  }
+  give out
+}
+
+proc fibonacci(n: int) -> int {
+  if n < 0 { give 0 }
+  if n == 0 { give 0 }
+  if n == 1 { give 1 }
+  let a: int = 0
+  let b: int = 1
+  let i: int = 2
+  loop {
+    if i > n { break }
+    let c = a + b
+    a = b
+    b = c
+    i = i + 1
+  }
+  give b
+}
+
+proc is_prime(n: int) -> bool {
+  if n < 2 { give false }
+  if n == 2 { give true }
+  if n % 2 == 0 { give false }
+  let i: int = 3
+  loop {
+    if i * i > n { break }
+    if n % i == 0 { give false }
+    i = i + 2
+  }
   give true
 }
 
-proc package_meta() -> string {
-  give "vitte/math"
+proc next_prime(n: int) -> int {
+  let c = max(2, n)
+  if c == 2 { give 2 }
+  if c % 2 == 0 { c = c + 1 }
+  loop {
+    if is_prime(c) { give c }
+    c = c + 2
+  }
 }
 
-form MathConfig {
-  strict: bool
-  timeout_ms: int
-  retry_budget: int
+proc sort_ints(values: [int]) -> [int] {
+  let out = values
+  let i: int = 1
+  loop {
+    if i >= out.len { break }
+    let key = out[i]
+    let j: int = i - 1
+    loop {
+      if j < 0 { break }
+      if out[j] <= key { break }
+      out[j + 1] = out[j]
+      j = j - 1
+    }
+    out[j + 1] = key
+    i = i + 1
+  }
+  give out
 }
 
-pick MathError {
-  InvalidConfig
-  Unsupported
-  Timeout
-  Internal
+proc sum(values: [int]) -> int {
+  let out: int = 0
+  let i: int = 0
+  loop {
+    if i >= values.len { break }
+    out = out + values[i]
+    i = i + 1
+  }
+  give out
 }
 
-pick MathResult[T] {
-  Ok(value: T)
-  Err(error: MathError)
+proc mean(values: [int]) -> int {
+  if values.len == 0 { give 0 }
+  give sum(values) / values.len
+}
+
+proc median(values: [int]) -> int {
+  if values.len == 0 { give 0 }
+  let s = sort_ints(values)
+  give s[s.len / 2]
+}
+
+proc min_of(values: [int]) -> int {
+  if values.len == 0 { give 0 }
+  let out = values[0]
+  let i: int = 1
+  loop {
+    if i >= values.len { break }
+    out = min(out, values[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc max_of(values: [int]) -> int {
+  if values.len == 0 { give 0 }
+  let out = values[0]
+  let i: int = 1
+  loop {
+    if i >= values.len { break }
+    out = max(out, values[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc range_sum(lo: int, hi: int) -> int {
+  let a = min(lo, hi)
+  let b = max(lo, hi)
+  let out: int = 0
+  let i = a
+  loop {
+    if i > b { break }
+    out = out + i
+    i = i + 1
+  }
+  give out
+}
+
+proc lerp_int(a: int, b: int, t_num: int, t_den: int) -> int {
+  if t_den == 0 { give a }
+  give a + ((b - a) * t_num) / t_den
+}
+
+proc manhattan2(x1: int, y1: int, x2: int, y2: int) -> int {
+  give abs(x2 - x1) + abs(y2 - y1)
+}
+
+proc dot2(ax: int, ay: int, bx: int, by: int) -> int {
+  give ax * bx + ay * by
+}
+
+proc isqrt(n: int) -> int {
+  if n <= 0 { give 0 }
+  let x: int = 0
+  loop {
+    if (x + 1) * (x + 1) > n { break }
+    x = x + 1
+  }
+  give x
+}
+
+proc hypot2_floor(x: int, y: int) -> int {
+  give isqrt(x * x + y * y)
+}
+
+proc stats(values: [int]) -> IntStats {
+  if values.len == 0 { give IntStats(0, 0, 0, 0, 0) }
+  give IntStats(values.len, min_of(values), max_of(values), mean(values), median(values))
 }
 
 proc default_config() -> MathConfig {
   give MathConfig(true, math_policy_pkg.default_timeout_ms(), math_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> MathConfig {
+  give MathConfig(true, default_config().timeout_ms, default_config().retry_budget)
+}
+
+proc normalize_config(cfg: MathConfig) -> MathConfig {
+  let timeout_ms = cfg.timeout_ms
+  if timeout_ms < 1 { timeout_ms = 1 }
+  if timeout_ms > 60000 { timeout_ms = 60000 }
+
+  let retry_budget = cfg.retry_budget
+  if retry_budget < 0 { retry_budget = 0 }
+  if retry_budget > 32 { retry_budget = 32 }
+
+  give MathConfig(cfg.strict, timeout_ms, retry_budget)
+}
+
 proc validate_config(cfg: MathConfig) -> MathResult[bool] {
-  if math_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if math_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give MathResult.Err(MathError.InvalidConfig)
   }
-  if math_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if math_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give MathResult.Err(MathError.InvalidConfig)
   }
   give MathResult.Ok(true)
@@ -92,32 +378,101 @@ proc validate_config(cfg: MathConfig) -> MathResult[bool] {
 
 proc healthcheck(cfg: MathConfig) -> MathResult[bool] {
   let vr: MathResult[bool] = validate_config(cfg)
-  when vr is MathResult.Err {
-    give MathResult.Err(vr.error)
-  }
+  when vr is MathResult.Err { give MathResult.Err(vr.error) }
   if math_runtime_pkg.runtime_status() == false {
     give MathResult.Err(MathError.Internal)
   }
   give MathResult.Ok(true)
 }
 
+proc healthcheck_default() -> MathResult[bool] {
+  give healthcheck(default_config())
+}
+
+proc config_is_valid(cfg: MathConfig) -> bool {
+  let vr = validate_config(cfg)
+  when vr is MathResult.Err { give false }
+  give true
+}
+
+proc runtime_info() -> MathRuntimeInfo {
+  give MathRuntimeInfo("math-runtime", "1.0", true)
+}
+
+proc runtime_summary() -> string {
+  let ri = runtime_info()
+  give ri.runtime_name + "@" + ri.runtime_version + " api=" + api_version()
+}
+
 proc version() -> string {
   give "v1"
 }
 
+proc api_version() -> string {
+  give version()
+}
+
+proc api_compatible_with(version: string) -> bool {
+  if version == "1" { give true }
+  if version == "1.0" { give true }
+  if version == "v1" { give true }
+  if version == "v1.0" { give true }
+  if version == api_version() { give true }
+  give false
+}
+
+proc diagnostics_namespace() -> string {
+  give "VITTE-MATH"
+}
+
+proc validate_config_code(cfg: MathConfig) -> string {
+  let vr = validate_config(cfg)
+  when vr is MathResult.Err { give diagnostics_namespace() + "0001" }
+  give diagnostics_namespace() + "0000"
+}
+
+proc healthcheck_code(cfg: MathConfig) -> string {
+  let hr = healthcheck(cfg)
+  when hr is MathResult.Err { give diagnostics_namespace() + "0001" }
+  give diagnostics_namespace() + "0000"
+}
+
+proc healthcheck_default_code() -> string {
+  give healthcheck_code(default_config())
+}
+
 proc capabilities() -> [string] {
-  give ["config", "validate", "healthcheck"]
+  give [
+    "config",
+    "validate",
+    "healthcheck",
+    "number-theory",
+    "power",
+    "prime",
+    "stats",
+    "vector2",
+    "api-contract",
+    "abi-contract",
+    "diagnostics",
+    "contract-summary"
+  ]
 }
 
 proc diagnostics_message(code: string) -> string {
-  if code == "VITTE-MATH0001" {
-    give "invalid package configuration"
-  }
+  if code == diagnostics_namespace() + "0000" { give "math package ready" }
+  if code == diagnostics_namespace() + "0001" { give "invalid package configuration" }
+  if code == diagnostics_namespace() + "0002" { give "invalid math input" }
+  if code == diagnostics_namespace() + "0003" { give "math overflow detected" }
+  if code == diagnostics_namespace() + "0004" { give "operation unsupported" }
+  if code == diagnostics_namespace() + "0005" { give "math runtime unavailable" }
   give "math diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
-  let _ = code
+  if code == diagnostics_namespace() + "0001" { give "apply normalize_config and retry" }
+  if code == diagnostics_namespace() + "0002" { give "validate arguments and bounds before calling" }
+  if code == diagnostics_namespace() + "0003" { give "reduce input range or use checked variants" }
+  if code == diagnostics_namespace() + "0005" { give "check runtime_status and initialization" }
   give "review package configuration"
 }
 
@@ -125,11 +480,98 @@ proc diagnostics_doc_url(code: string) -> string {
   give "https://vitte-lang.org/diagnostics/" + code
 }
 
+proc diagnostics_suggestions(code: string) -> [string] {
+  if code == diagnostics_namespace() + "0000" { give ["no action required"] }
+  if code == diagnostics_namespace() + "0001" { give ["apply normalize_config", "ensure timeout_ms and retry_budget are valid"] }
+  if code == diagnostics_namespace() + "0002" { give ["check domain constraints", "guard against negative/empty inputs"] }
+  if code == diagnostics_namespace() + "0003" { give ["use smaller inputs", "prefer bounded/checked computations"] }
+  give ["review runtime_summary", "check diagnostics_quickfix", "re-run healthcheck_default"]
+}
+
+proc diagnostics_severity(code: string) -> string {
+  if code == diagnostics_namespace() + "0000" { give "info" }
+  if code == diagnostics_namespace() + "0001" { give "error" }
+  if code == diagnostics_namespace() + "0003" { give "error" }
+  give "warning"
+}
+
+proc diagnostics_bundle(code: string) -> string {
+  give "ns=" + diagnostics_namespace() + " code=" + code + " sev=" + diagnostics_severity(code) + " msg=" + diagnostics_message(code)
+}
+
+proc stable_api_surface() -> string {
+  give "abs,min,max,sign,is_even,is_odd,clamp,square,cube,mod_norm,wrap,gcd,lcm,gcd_many,lcm_many,powi,pow_mod,factorial,fibonacci,is_prime,next_prime,sort_ints,sum,mean,median,min_of,max_of,range_sum,lerp_int,manhattan2,dot2,isqrt,hypot2_floor,stats,default_config,strict_config,normalize_config,validate_config,validate_config_code,healthcheck,healthcheck_default,config_is_valid,runtime_info,runtime_summary,capabilities,diagnostics_namespace,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,diagnostics_suggestions,diagnostics_severity,diagnostics_bundle,healthcheck_code,healthcheck_default_code,contract_caps_csv,contract_summary,contract_report,api_version,api_compatible_with,package_contract_fingerprint,stable_api_surface_hash,stable_abi_surface_hash,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc stable_abi_surface() -> string {
+  give "package=vitte/math,config=(MathConfig),runtime=(MathRuntimeInfo),result=(MathResult,IntStats)"
+}
+
+proc stable_abi_surface_hash() -> int {
+  let s = stable_abi_surface()
+  let v = api_version()
+  give s.len * 401 + v.len * 131071
+}
+
+proc contract_caps_csv() -> string {
+  let caps = capabilities()
+  if caps.len == 0 { give "" }
+  let out = caps[0]
+  let i: int = 1
+  loop {
+    if i >= caps.len { break }
+    out = out + "," + caps[i]
+    i = i + 1
+  }
+  give out
+}
+
+proc package_contract_fingerprint() -> int {
+  let cap_count = capabilities().len
+  let code = healthcheck_default_code()
+  give stable_api_surface_hash() + stable_abi_surface_hash() + cap_count * 997 + code.len * 313
+}
+
+proc contract_summary() -> string {
+  give package_meta() + " api=" + api_version() + " caps=" + capabilities().len.to_string()
+}
+
+proc contract_report() -> string {
+  give contract_summary() + " fp=" + package_contract_fingerprint().to_string() + " hc=" + healthcheck_default_code() + " caps=[" + contract_caps_csv() + "]"
+}
+
+proc doctor_status() -> string {
+  give "vitte/math doctor:ready api=" + api_version()
+}
+
+proc doctor_status_verbose() -> string {
+  give doctor_status() + " runtime=" + runtime_summary() + " caps=" + capabilities().len.to_string()
+}
+
+proc ready() -> bool {
+  if math_runtime_pkg.runtime_status() == false { give false }
+  let vr = validate_config(default_config())
+  when vr is MathResult.Err { give false }
+  if stable_api_surface_hash() <= 0 { give false }
+  if stable_abi_surface_hash() <= 0 { give false }
+  give true
+}
+
+proc package_meta() -> string {
+  give "vitte/math"
+}
+
 <<< ROLE-CONTRACT
 package: vitte/math
 role: Operations mathematiques utilitaires deterministes
 input_contract: Entiers deja valides selon domaine metier
-output_contract: Resultats purs et reproductibles
+output_contract: Resultats purs, reproductibles et auditables
 boundary: Pas d approximation flottante implicite
 
 owner: @vitte/math

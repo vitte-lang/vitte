@@ -79,8 +79,8 @@ pick PackageConfigError {
   Internal
 }
 
-pick PackageConfigResult[T] {
-  Ok(value: T)
+pick PackageConfigResult {
+  Ok(ok: bool)
   Err(error: PackageConfigError)
 }
 
@@ -107,7 +107,7 @@ proc normalize_config(cfg: PackageConfig) -> PackageConfig {
                      cfg.retry_budget)
 }
 
-proc validate_config(cfg: PackageConfig) -> PackageConfigResult[bool] {
+proc validate_config(cfg: PackageConfig) -> PackageConfigResult {
   let nc = normalize_config(cfg)
   if stats_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give PackageConfigResult.Err(PackageConfigError.InvalidConfig)
@@ -118,7 +118,7 @@ proc validate_config(cfg: PackageConfig) -> PackageConfigResult[bool] {
   give PackageConfigResult.Ok(true)
 }
 
-proc healthcheck(cfg: PackageConfig) -> PackageConfigResult[bool] {
+proc healthcheck(cfg: PackageConfig) -> PackageConfigResult {
   let vr = validate_config(cfg)
   when vr is PackageConfigResult.Err { give PackageConfigResult.Err(vr.error) }
   if stats_runtime_pkg.runtime_status() == false {
@@ -134,7 +134,7 @@ proc runtime_info() -> PackageRuntimeInfo {
 }
 
 proc capabilities() -> [string] {
-  give ["config", "validate", "healthcheck"]
+  give ["config", "validate", "healthcheck", "api-contract", "abi-contract", "diagnostics", "contract-summary"]
 }
 
 proc diagnostics_message(code: string) -> string {
@@ -169,7 +169,7 @@ proc config_is_valid(cfg: PackageConfig) -> bool {
   give true
 }
 
-proc healthcheck_default() -> PackageConfigResult[bool] {
+proc healthcheck_default() -> PackageConfigResult {
   give healthcheck(default_config())
 }
 
@@ -181,6 +181,105 @@ proc runtime_summary() -> string {
 proc doctor_status_verbose() -> string {
   give doctor_status() + " caps=" + capabilities().len.to_string()
 }
+proc validate_config_code(cfg: PackageConfig) -> string {
+  let vr = validate_config(cfg)
+  when vr is PackageConfigResult.Err { give "VITTE-PKG0001" }
+  give "VITTE-PKG0000"
+}
+
+proc diagnostics_namespace() -> string {
+  give "VITTE-STATS"
+}
+
+proc api_compatible_with(version: string) -> bool {
+  if version == "1" { give true }
+  if version == "1.0" { give true }
+  if version == "v1" { give true }
+  if version == "v1.0" { give true }
+  if version == api_version() { give true }
+  give false
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,normalize_config,validate_config,validate_config_code,healthcheck,runtime_info,capabilities,diagnostics_namespace,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,diagnostics_suggestions,diagnostics_severity,diagnostics_bundle,healthcheck_code,healthcheck_default_code,contract_caps_csv,contract_summary,contract_report,api_version,api_compatible_with,package_contract_fingerprint,stable_api_surface_hash,stable_abi_surface_hash,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc stable_abi_surface() -> string {
+  give "package=vitte/stats,config=(strict,timeout_ms,retry_budget),runtime=(runtime_name,runtime_version,supports_diagnostics),result=(PackageConfigResult)"
+}
+
+proc stable_abi_surface_hash() -> int {
+  let s = stable_abi_surface()
+  let v = api_version()
+  give s.len * 401 + v.len * 131071
+}
+
+proc package_contract_fingerprint() -> int {
+  let cap_count = capabilities().len
+  let code = validate_config_code(default_config())
+  give stable_api_surface_hash() + stable_abi_surface_hash() + cap_count * 997 + code.len * 313
+}
+
+proc contract_summary() -> string {
+  give package_meta() + " api=" + api_version() + " caps=" + capabilities().len.to_string()
+}
+
+proc diagnostics_suggestions(code: string) -> [string] {
+  if code == "VITTE-PKG0000" { give ["no action required"] }
+  if code == "VITTE-PKG0001" {
+    give ["apply normalize_config", "ensure timeout_ms is valid", "ensure retry_budget is valid"]
+  }
+  give ["review runtime_summary", "check diagnostics_quickfix", "re-run healthcheck_default"]
+}
+
+proc diagnostics_severity(code: string) -> string {
+  if code == diagnostics_namespace() + "0000" { give "info" }
+  if code == diagnostics_namespace() + "0001" { give "error" }
+  give "warning"
+}
+
+proc diagnostics_bundle(code: string) -> string {
+  give "ns=" + diagnostics_namespace() + " code=" + code + " sev=" + diagnostics_severity(code) + " msg=" + diagnostics_message(code)
+}
+
+proc healthcheck_code(cfg: PackageConfig) -> string {
+  let hr = healthcheck(cfg)
+  when hr is PackageConfigResult.Err { give diagnostics_namespace() + "0001" }
+  give diagnostics_namespace() + "0000"
+}
+
+proc healthcheck_default_code() -> string {
+  give healthcheck_code(default_config())
+}
+
+proc contract_caps_csv() -> string {
+  let caps = capabilities()
+  if caps.len == 0 { give "" }
+  let out = caps[0]
+  let i: int = 1
+  loop {
+    if i >= caps.len { break }
+    out = out + "," + caps[i]
+    i = i + 1
+  }
+  give out
+}
+
+proc contract_summary() -> string {
+  let ri = runtime_info()
+  give package_meta() + " api=" + api_version() + " runtime=" + ri.runtime_name + " caps=" + capabilities().len.to_string()
+}
+
+proc contract_report() -> string {
+  give contract_summary() + " fp=" + package_contract_fingerprint().to_string() + " hc=" + healthcheck_default_code() + " caps=[" + contract_caps_csv() + "]"
+}
+
 proc ready() -> bool {
   give true
 }

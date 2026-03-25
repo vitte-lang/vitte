@@ -1,9 +1,5 @@
 space std/core/types
 
-use vitte/core/types/internal/runtime as core_types_runtime_pkg
-use vitte/core/types/internal/validate as core_types_validate_pkg
-use vitte/core/types/internal/policy as core_types_policy_pkg
-
 type i32 = int
 type int = int
 type usize = usize
@@ -24,34 +20,31 @@ pick CoreTypesError {
   Internal
 }
 
-pick CoreTypesResult[T] {
-  Ok(value: T)
+pick CoreTypesResult {
+  Ok
   Err(error: CoreTypesError)
 }
 
 proc default_config() -> CoreTypesConfig {
-  give CoreTypesConfig(true, core_types_policy_pkg.default_timeout_ms(), core_types_policy_pkg.default_retry_budget())
+  give CoreTypesConfig(true, 1000, 3)
 }
 
-proc validate_config(cfg: CoreTypesConfig) -> CoreTypesResult[bool] {
-  if core_types_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+proc validate_config(cfg: CoreTypesConfig) -> CoreTypesResult {
+  if cfg.timeout_ms <= 0 {
     give CoreTypesResult.Err(CoreTypesError.InvalidConfig)
   }
-  if core_types_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if cfg.retry_budget < 0 {
     give CoreTypesResult.Err(CoreTypesError.InvalidConfig)
   }
-  give CoreTypesResult.Ok(true)
+  give CoreTypesResult.Ok
 }
 
-proc healthcheck(cfg: CoreTypesConfig) -> CoreTypesResult[bool] {
-  let vr: CoreTypesResult[bool] = validate_config(cfg)
+proc healthcheck(cfg: CoreTypesConfig) -> CoreTypesResult {
+  let vr: CoreTypesResult = validate_config(cfg)
   when vr is CoreTypesResult.Err {
     give CoreTypesResult.Err(vr.error)
   }
-  if core_types_runtime_pkg.runtime_status() == false {
-    give CoreTypesResult.Err(CoreTypesError.Internal)
-  }
-  give CoreTypesResult.Ok(true)
+  give CoreTypesResult.Ok
 }
 
 proc version() -> string {
@@ -95,7 +88,6 @@ boundary: Implementation privee sous vitte/core/types/internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
-
 
 
 

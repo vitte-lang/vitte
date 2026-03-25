@@ -50,6 +50,101 @@ proc validate(r: CodegenRequest) -> bool {
   give true
 }
 
+proc api_version() -> string {
+  give "v1"
+}
+
+proc validate_config_code(cfg: CodegenConfig) -> string {
+  if cfg.timeout_ms <= 0 { give "VITTE-CODEGEN0001" }
+  if cfg.retry_budget < 0 { give "VITTE-CODEGEN0001" }
+  give "VITTE-CODEGEN0000"
+}
+
+proc diagnostics_namespace() -> string {
+  give "VITTE-CODEGEN"
+}
+
+proc api_compatible_with(ver: string) -> bool {
+  if ver == "1" { give true }
+  if ver == "1.0" { give true }
+  if ver == "v1" { give true }
+  if ver == "v1.0" { give true }
+  if ver == api_version() { give true }
+  give false
+}
+
+proc stable_api_surface() -> string {
+  give "default_config,strict_config,normalize_config,validate_config,validate_config_code,healthcheck,runtime_info,capabilities,diagnostics_namespace,diagnostics_message,diagnostics_quickfix,diagnostics_doc_url,diagnostics_suggestions,api_version,api_compatible_with,contract_summary,package_contract_fingerprint,stable_api_surface_hash,stable_abi_surface_hash,ready,package_meta"
+}
+
+proc stable_api_surface_hash() -> int {
+  let s = stable_api_surface()
+  let v = api_version()
+  give s.len * 257 + v.len * 65537
+}
+
+proc stable_abi_surface() -> string {
+  give "package=vitte/codegen,config=(CodegenConfig),runtime=(runtime_name,runtime_version,supports_diagnostics),result=(CodegenResult)"
+}
+
+proc stable_abi_surface_hash() -> int {
+  let s = stable_abi_surface()
+  let v = api_version()
+  give s.len * 401 + v.len * 131071
+}
+
+proc package_contract_fingerprint() -> int {
+  let cap_count = 7
+  let code = "VITTE-CODEGEN0000"
+  give stable_api_surface_hash() + stable_abi_surface_hash() + cap_count * 997 + code.len * 313
+}
+
+proc contract_summary() -> string {
+  give "vitte/codegen" + " api=" + api_version() + " caps=7"
+}
+
+proc diagnostics_suggestions(code: string) -> [string] {
+  if code == "VITTE-CODEGEN0000" { give ["no action required"] }
+  if code == "VITTE-CODEGEN0001" {
+    give ["apply normalize_config", "ensure configuration is valid", "re-run healthcheck"]
+  }
+  give ["review runtime_summary", "check diagnostics_quickfix", "re-run healthcheck_default"]
+}
+
+proc diagnostics_severity(code: string) -> string {
+  if code == diagnostics_namespace() + "0000" { give "info" }
+  if code == diagnostics_namespace() + "0001" { give "error" }
+  give "warning"
+}
+
+proc diagnostics_bundle(code: string) -> string {
+  give "ns=" + diagnostics_namespace() +
+       " code=" + code +
+       " sev=" + diagnostics_severity(code) +
+       " msg=codegen diagnostic"
+}
+
+proc healthcheck_code(cfg: CodegenConfig) -> string {
+  if cfg.timeout_ms <= 0 { give diagnostics_namespace() + "0001" }
+  if cfg.retry_budget < 0 { give diagnostics_namespace() + "0001" }
+  give diagnostics_namespace() + "0000"
+}
+
+proc healthcheck_default_code() -> string {
+  give diagnostics_namespace() + "0000"
+}
+
+proc contract_caps_csv() -> string {
+  give "config,validate,healthcheck,api-contract,abi-contract,diagnostics,contract-summary"
+}
+
+proc contract_report() -> string {
+  give contract_summary() +
+       " fp=" + package_contract_fingerprint().to_string() +
+       " hc=" + healthcheck_default_code() +
+       " caps=[" + contract_caps_csv() + "]"
+}
+
 proc ready() -> bool {
   give true
 }
@@ -71,8 +166,8 @@ pick CodegenError {
   Internal
 }
 
-pick CodegenResult[T] {
-  Ok(value: T)
+pick CodegenResult {
+  Ok(ok: bool)
   Err(error: CodegenError)
 }
 
@@ -80,7 +175,7 @@ proc default_config() -> CodegenConfig {
   give CodegenConfig(true, codegen_policy_pkg.default_timeout_ms(), codegen_policy_pkg.default_retry_budget())
 }
 
-proc validate_config(cfg: CodegenConfig) -> CodegenResult[bool] {
+proc validate_config(cfg: CodegenConfig) -> CodegenResult {
   if codegen_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
     give CodegenResult.Err(CodegenError.InvalidConfig)
   }
@@ -90,8 +185,8 @@ proc validate_config(cfg: CodegenConfig) -> CodegenResult[bool] {
   give CodegenResult.Ok(true)
 }
 
-proc healthcheck(cfg: CodegenConfig) -> CodegenResult[bool] {
-  let vr: CodegenResult[bool] = validate_config(cfg)
+proc healthcheck(cfg: CodegenConfig) -> CodegenResult {
+  let vr: CodegenResult = validate_config(cfg)
   when vr is CodegenResult.Err {
     give CodegenResult.Err(vr.error)
   }
@@ -106,7 +201,7 @@ proc version() -> string {
 }
 
 proc capabilities() -> [string] {
-  give ["config", "validate", "healthcheck"]
+  give ["config", "validate", "healthcheck", "api-contract", "abi-contract", "diagnostics", "contract-summary"]
 }
 
 proc diagnostics_message(code: string) -> string {
@@ -139,8 +234,6 @@ deprecated_in: -
 compat_policy: additive-only
 api_version: v1
 >>>
-
-
 
 
 

@@ -30,7 +30,7 @@ static bool test_select_requires_when() {
     auto lit = ctx.make<vitte::ir::HirLiteralExpr>(HirLiteralKind::Int, "1", span);
     auto select = ctx.make<HirSelect>(lit, std::vector<vitte::ir::HirStmtId>{}, vitte::ir::kInvalidHirId, span);
     auto block = ctx.make<HirBlock>(std::vector<vitte::ir::HirStmtId>{select}, span);
-    auto fn = ctx.make<HirFnDecl>("main", std::vector<vitte::ir::HirParam>{}, vitte::ir::kInvalidHirId, block, span);
+    auto fn = ctx.make<HirFnDecl>("main", std::vector<vitte::ir::HirParam>{}, vitte::ir::kInvalidHirId, block, false, span);
     auto mod = ctx.make<HirModule>("test", std::vector<vitte::ir::HirDeclId>{fn}, span);
 
     validate_module(ctx, mod, diagnostics);
@@ -44,7 +44,7 @@ static bool test_generic_requires_args() {
 
     auto ret = ctx.make<HirGenericType>("Box", std::vector<vitte::ir::HirTypeId>{}, span);
     auto block = ctx.make<HirBlock>(std::vector<vitte::ir::HirStmtId>{}, span);
-    auto fn = ctx.make<HirFnDecl>("main", std::vector<vitte::ir::HirParam>{}, ret, block, span);
+    auto fn = ctx.make<HirFnDecl>("main", std::vector<vitte::ir::HirParam>{}, ret, block, false, span);
     auto mod = ctx.make<HirModule>("test", std::vector<vitte::ir::HirDeclId>{fn}, span);
 
     validate_module(ctx, mod, diagnostics);

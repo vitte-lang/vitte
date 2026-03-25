@@ -1,12 +1,12 @@
 <<<
 mod.vit
 package vitte/benchkit
-version: 3.0.0
+version: 3.1.0
 tier: tooling-core
 purpose:
   Micro benchmarking deterministe.
   Warmup + trimming + percentiles.
-  API stable versionnee et diagnostiquable.
+  API stable versionnee, diagnostiquable et avec surface ABI explicite.
 >>>
 
 space vitte/benchkit
@@ -76,6 +76,13 @@ form BenchHealth {
   ok: bool
   code: string
   samples: int
+}
+
+form BenchAbiSurface {
+  package_tag: string
+  api_version: string
+  api_surface_hash: int
+  abi_surface_hash: int
 }
 
 proc now_ns() -> int {
@@ -187,6 +194,31 @@ proc strict_config() -> BenchConfig {
                    benchkit_policy_pkg.strict_warmup(),
                    benchkit_policy_pkg.strict_trim_percent(),
                    BenchMode.Latency)
+}
+
+proc normalize_config(cfg: BenchConfig) -> BenchConfig {
+  let m = cfg.mode
+  when m is BenchMode.Throughput { m = BenchMode.Throughput }
+  when m is BenchMode.Latency { m = BenchMode.Latency }
+  give BenchConfig(benchkit_policy_pkg.normalize_iterations(cfg.iterations),
+                   benchkit_policy_pkg.normalize_warmup(cfg.warmup),
+                   benchkit_policy_pkg.normalize_trim_percent(cfg.trim_percent),
+                   m)
+}
+
+proc validate_config_code(cfg: BenchConfig) -> string {
+  let vr = validate_config(cfg)
+  when vr is BenchkitResult.Err {
+    if vr.error == BenchError.InvalidConfig { give "VITTE-BENCHKIT0001" }
+    give "VITTE-BENCHKIT0009"
+  }
+  give "VITTE-BENCHKIT0000"
+}
+
+proc config_fingerprint(cfg: BenchConfig) -> int {
+  let mode_tag = 2
+  when cfg.mode is BenchMode.Throughput { mode_tag = 3 }
+  give cfg.iterations * 97 + cfg.warmup * 193 + cfg.trim_percent * 389 + mode_tag * 769
 }
 
 proc run_once(job: proc() -> int) -> int {
@@ -324,16 +356,67 @@ proc bench_health(result: BenchResult) -> BenchHealth {
   give BenchHealth(true, "ok", result.stats.iterations)
 }
 
+proc samples_stats(samples: [int]) -> BenchStats {
+  if benchkit_validate_pkg.valid_sample_count(samples.len) == false {
+    give BenchStats(0, 0, 0, 0, 0, 0, 0)
+  }
+  let sorted = sort(samples)
+  give BenchStats(sorted[0],
+                  sorted[sorted.len - 1],
+                  mean(sorted),
+                  median(sorted),
+                  percentile(sorted, 95),
+                  percentile(sorted, 99),
+                  sorted.len)
+}
+
+proc result_valid(result: BenchResult) -> bool {
+  if benchkit_validate_pkg.valid_name(result.name) == false { give false }
+  let h = bench_health(result)
+  if h.ok == false { give false }
+  give result.stats.min <= result.stats.max
+}
+
+proc suite_merge(left: BenchSuite, right: BenchSuite) -> BenchSuite {
+  let out = left
+  let i: int = 0
+  loop {
+    if i >= right.results.len { break }
+    out = suite_add(out, right.results[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc suite_count(suite: BenchSuite) -> int {
+  give suite.results.len
+}
+
+proc suite_is_empty(suite: BenchSuite) -> bool {
+  give suite_count(suite) == 0
+}
+
 proc stable_api_version() -> string {
-  give "3.0.0"
+  give "3.1.0"
 }
 
 proc api_version() -> string {
   give stable_api_version()
 }
 
+proc api_compatible_with(version: string) -> bool {
+  if version == "3" { give true }
+  if version == "3.0" { give true }
+  if version == "3.1" { give true }
+  if version == "v3" { give true }
+  if version == "v3.0" { give true }
+  if version == "v3.1" { give true }
+  if version == stable_api_version() { give true }
+  give false
+}
+
 proc stable_api_surface() -> string {
-  give "default_config,strict_config,validate_config,run_once,run_bench_checked,run_bench,suite_new,suite_add,suite_run,format_stats,report,calibrate,bench_runtime_info,bench_health,stable_api_surface_hash,api_version,ready,package_meta"
+  give "default_config,strict_config,normalize_config,validate_config,validate_config_code,config_fingerprint,run_once,run_bench_checked,run_bench,suite_new,suite_add,suite_run,suite_merge,suite_count,suite_is_empty,format_stats,report,calibrate,samples_stats,result_valid,bench_runtime_info,bench_health,stable_api_surface_hash,stable_abi_surface_hash,api_version,api_compatible_with,ready,package_meta,bench_abi_surface"
 }
 
 proc stable_api_surface_hash() -> int {
@@ -342,25 +425,61 @@ proc stable_api_surface_hash() -> int {
   give s.len * 257 + v.len * 65537
 }
 
+proc stable_abi_surface() -> string {
+  give "benchconfig(iterations,warmup,trim_percent,mode),benchstats(min,max,mean,median,p95,p99,iterations),benchresult(name,stats),benchsuite(results),benchabisurface(package_tag,api_version,api_surface_hash,abi_surface_hash)"
+}
+
+proc stable_abi_surface_hash() -> int {
+  let s = stable_abi_surface()
+  let v = stable_api_version()
+  give s.len * 401 + v.len * 131071
+}
+
+proc bench_abi_surface() -> BenchAbiSurface {
+  give BenchAbiSurface(package_meta(),
+                       stable_api_version(),
+                       stable_api_surface_hash(),
+                       stable_abi_surface_hash())
+}
+
 proc version() -> string {
   give "v3"
 }
 
 proc capabilities() -> [string] {
-  give ["warmup", "trim", "percentiles", "suite", "health", benchkit_runtime_pkg.runtime_name()]
+  give ["warmup", "trim", "percentiles", "suite", "health", "config-normalization", "abi-contract", "diagnostics", benchkit_runtime_pkg.runtime_name()]
+}
+
+proc bench_error_code(err: BenchError) -> string {
+  when err is BenchError.InvalidConfig { give "VITTE-BENCHKIT0001" }
+  when err is BenchError.EmptySamples { give "VITTE-BENCHKIT0002" }
+  when err is BenchError.RuntimeUnavailable { give "VITTE-BENCHKIT0003" }
+  when err is BenchError.InvalidName { give "VITTE-BENCHKIT0004" }
+  when err is BenchError.InvalidSample { give "VITTE-BENCHKIT0005" }
+  give "VITTE-BENCHKIT0009"
+}
+
+proc bench_error_message(err: BenchError) -> string {
+  give diagnostics_message(bench_error_code(err))
 }
 
 proc diagnostics_message(code: string) -> string {
+  if code == "VITTE-BENCHKIT0000" { give "benchmark configuration and runtime are valid" }
   if code == "VITTE-BENCHKIT0001" { give "invalid benchmark config" }
   if code == "VITTE-BENCHKIT0002" { give "empty sample set after trimming" }
   if code == "VITTE-BENCHKIT0003" { give "runtime unavailable for benchmark" }
+  if code == "VITTE-BENCHKIT0004" { give "invalid benchmark name" }
+  if code == "VITTE-BENCHKIT0005" { give "invalid benchmark sample duration" }
   give "benchkit diagnostic " + code
 }
 
 proc diagnostics_quickfix(code: string) -> string {
+  if code == "VITTE-BENCHKIT0000" { give "no action required" }
   if code == "VITTE-BENCHKIT0001" { give "use default_config or normalize iterations/warmup/trim" }
   if code == "VITTE-BENCHKIT0002" { give "reduce trim_percent or increase iterations" }
   if code == "VITTE-BENCHKIT0003" { give "check monotonic clock runtime wiring" }
+  if code == "VITTE-BENCHKIT0004" { give "use non-empty benchmark names up to 256 chars" }
+  if code == "VITTE-BENCHKIT0005" { give "ensure timer source returns non-negative nanoseconds" }
   give "inspect bench input and runtime"
 }
 
@@ -368,24 +487,96 @@ proc diagnostics_doc_url(code: string) -> string {
   give "https://vitte-lang.org/diagnostics/" + code
 }
 
+proc diagnostics_suggestions(code: string) -> [string] {
+  if code == "VITTE-BENCHKIT0001" {
+    give ["apply normalize_config", "bound iterations to policy limits", "bound warmup and trim_percent"]
+  }
+  if code == "VITTE-BENCHKIT0002" {
+    give ["set trim_percent lower than 40", "increase iterations", "inspect outlier distribution"]
+  }
+  if code == "VITTE-BENCHKIT0003" {
+    give ["check monotonic clock runtime", "ensure runtime_status is true", "retry after runtime init"]
+  }
+  if code == "VITTE-BENCHKIT0004" {
+    give ["set explicit benchmark name", "avoid empty name", "limit name length to 256"]
+  }
+  if code == "VITTE-BENCHKIT0005" {
+    give ["sanitize timer source", "avoid negative durations", "use fallback_duration_ns path"]
+  }
+  give ["review benchmark setup and diagnostics_quickfix output"]
+}
+
 proc stable_ready() -> bool {
   if benchkit_runtime_pkg.runtime_status() == false { give false }
   if benchkit_runtime_pkg.monotonic_available() == false { give false }
 
-  let cfg = strict_config()
+  let cfg = normalize_config(strict_config())
   let vr = validate_config(cfg)
   when vr is BenchkitResult.Err { give false }
 
   let b = run_bench("probe", now_ns, default_config())
+  if result_valid(b) == false { give false }
   let h = bench_health(b)
   if h.samples < 0 { give false }
 
   if stable_api_surface_hash() <= 0 { give false }
+  if stable_abi_surface_hash() <= 0 { give false }
   give true
 }
 
 proc probe_job() -> int {
   give 0
+}
+
+proc diagnostics_namespace() -> string {
+  give "VITTE-BENCHKIT"
+}
+
+proc package_contract_fingerprint() -> int {
+  let cap_count = capabilities().len
+  let code = healthcheck_default_code()
+  give stable_api_surface_hash() + stable_abi_surface_hash() + cap_count * 997 + code.len * 313
+}
+
+proc diagnostics_severity(code: string) -> string {
+  if code == diagnostics_namespace() + "0000" { give "info" }
+  if code == diagnostics_namespace() + "0001" { give "error" }
+  give "warning"
+}
+
+proc diagnostics_bundle(code: string) -> string {
+  give "ns=" + diagnostics_namespace() + " code=" + code + " sev=" + diagnostics_severity(code) + " msg=" + diagnostics_message(code)
+}
+
+proc healthcheck_code(cfg: BenchConfig) -> string {
+  let _ = cfg
+  if ready() == false { give diagnostics_namespace() + "0001" }
+  give diagnostics_namespace() + "0000"
+}
+
+proc healthcheck_default_code() -> string {
+  give healthcheck_code(default_config())
+}
+
+proc contract_caps_csv() -> string {
+  let caps = capabilities()
+  if caps.len == 0 { give "" }
+  let out = caps[0]
+  let i: int = 1
+  loop {
+    if i >= caps.len { break }
+    out = out + "," + caps[i]
+    i = i + 1
+  }
+  give out
+}
+
+proc contract_summary() -> string {
+  give package_meta() + " api=" + api_version() + " caps=" + capabilities().len.to_string()
+}
+
+proc contract_report() -> string {
+  give contract_summary() + " fp=" + package_contract_fingerprint().to_string() + " hc=" + healthcheck_default_code() + " caps=[" + contract_caps_csv() + "]"
 }
 
 proc ready() -> bool {
@@ -402,5 +593,5 @@ role: Micro benchmarking deterministe
 input_contract: Jobs purs et configuration explicite
 output_contract: Statistiques stables et reproductibles
 boundary: Ne gere pas CPU pinning ni scheduling OS
-versioning_note: stable_api_version=3.0.0
+versioning_note: stable_api_version=3.1.0
 >>>

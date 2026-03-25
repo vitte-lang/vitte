@@ -51,7 +51,6 @@
     ("\\<\\(proc\\|form\\|pick\\|trait\\|entry\\)\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 2 font-lock-function-name-face)
     ("\\<\\(space\\|pull\\|share\\|at\\|use\\)\\>\\s-+\\([A-Za-z0-9_./:]+\\)" 2 font-lock-constant-face)
     ("\\<as\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\(?:_pkg\\)?\\)" 1 'vitte-alias-face)
-    ("\\<[A-Za-z_][A-Za-z0-9_]*\\s-*(" . font-lock-function-name-face)
     ("'\\([^'\\\\]\\|\\\\.\\)'" . font-lock-string-face)
     ("\\<[A-Za-z_][A-Za-z0-9_]*_pkg\\>" . 'vitte-alias-face)
     ("\\<VITTE-[A-Z]+[0-9]\\{4\\}\\>" . 'vitte-diag-face)
@@ -101,9 +100,7 @@
   (setq-local imenu-generic-expression vitte-imenu-generic-expression)
   (add-hook 'completion-at-point-functions #'vitte--completion-at-point nil t)
   (when (require 'vitte-indent nil t)
-    (setq-local indent-line-function #'vitte-indent-line))
-  (when (require 'lsp-mode nil t)
-    (add-hook 'vitte-mode-hook #'lsp-deferred nil t)))
+    (setq-local indent-line-function #'vitte-indent-line)))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.vit\\'" . vitte-mode))
