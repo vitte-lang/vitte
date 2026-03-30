@@ -71,6 +71,8 @@ VIM_DIR      ?= $(USER_HOME)/.vim
 EMACS_DIR    ?= $(USER_HOME)/.emacs.d
 NANO_DIR     ?= $(USER_HOME)/.config/nano
 LEGACY_ALLOWLIST_BUDGET ?= 5
+PKG_VERSION_FILE ?= toolchain/scripts/package/PACKAGE_VERSION
+PKG_VERSION ?= $(shell tr -d ' \r\n' < $(PKG_VERSION_FILE) 2>/dev/null || echo 2.1.1)
 
 CFLAGS       := -std=c17 -Wall -Wextra -Werror -O$(OPT_LEVEL)
 CXXFLAGS     := -std=c++20 -Wall -Wextra -Werror -O$(OPT_LEVEL)
@@ -173,7 +175,7 @@ all: build
 # Install
 # ------------------------------------------------------------
 
-.PHONY: install install-bin install-editors install-geany uninstall-geany install-debian-2.1.1
+.PHONY: install install-bin install-editors install-geany uninstall-geany install-debian install-debian-2.1.1
 install: build install-bin install-editors
 
 install-bin:
@@ -209,8 +211,10 @@ install-geany:
 uninstall-geany:
 	@GEANY_HOME="$(GEANY_HOME)" XDG_CONFIG_HOME="$(XDG_CONFIG_HOME)" APPDATA="$(APPDATA)" ./editors/geany/uninstall_geany.sh
 
-install-debian-2.1.1:
-	@toolchain/scripts/install/install-debian-vitte-2.1.1.sh
+install-debian:
+	@EXPECTED_PKG_VERSION=$(PKG_VERSION) toolchain/scripts/install/install-debian-vitte.sh
+
+install-debian-2.1.1: install-debian
 
 # ------------------------------------------------------------
 # Build
@@ -398,7 +402,7 @@ core-projects:
 
 .PHONY: test-examples
 test-examples:
-	@MODE=$${TEST_EXAMPLES_MODE:-check} tools/build_examples_matrix.sh
+	@MODE=$${TEST_EXAMPLES_MODE:-check} STRICT_EXAMPLES=1 tools/build_examples_matrix.sh
 
 .PHONY: arduino-projects
 arduino-projects:
@@ -592,6 +596,18 @@ keywords-normalize:
 keywords-lint:
 	@python3 book/keywords/scripts/lint_keywords.py
 
+.PHONY: make-targets-doc
+make-targets-doc:
+	@python3 tools/generate_make_targets_doc.py
+
+.PHONY: make-targets-doc-check
+make-targets-doc-check:
+	@python3 tools/generate_make_targets_doc.py --check
+
+.PHONY: docs-paths-check
+docs-paths-check:
+	@python3 tools/docs_paths_check.py
+
 .PHONY: update-diagnostics-ftl
 update-diagnostics-ftl:
 	@tools/update_diagnostics_ftl.py
@@ -601,10 +617,14 @@ diagnostics-ftl-check:
 	@tools/update_diagnostics_ftl.py --check
 
 .PHONY: ci-strict
-ci-strict: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots geany-lint highlight-snapshots
+ci-strict: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots geany-lint highlight-snapshots repo-hygiene-check make-targets-doc-check docs-paths-check
 
 .PHONY: ci-fast
-ci-fast: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots completions-snapshots wrapper-stage-test geany-lint
+ci-fast: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots completions-snapshots wrapper-stage-test geany-lint repo-hygiene-check make-targets-doc-check docs-paths-check
+
+.PHONY: repo-hygiene-check
+repo-hygiene-check:
+	@tools/repo_hygiene_check.sh
 
 .PHONY: ci-completions
 ci-completions: completions-check completions-lint completions-snapshots completions-fallback
@@ -1080,8 +1100,6 @@ vitteos-ci-local: vitteos-bin-runnable-check vitteos-scripts-check-soft vitteos-
 .PHONY: vitteos-ci-min
 vitteos-ci-min: vitteos-scripts-check-soft vitteos-issues-check vitteos-domain-contract vitteos-no-orphan-check vitteos-space-naming-lint vitteos-vit-header-lint vitteos-vit-targeted-check
 
-PKG_VERSION ?= 2.1.1
-
 .PHONY: pkg-debian
 pkg-debian:
 	@VERSION=$(PKG_VERSION) PACKAGE_PROFILE=full toolchain/scripts/package/make-debian-deb.sh
@@ -1284,7 +1302,8 @@ help:
 	@echo "  make build-pgo-generate build instrumented binary for PGO training"
 	@echo "  make build-pgo-use build release binary using merged PGO profile"
 	@echo "  make install    build + install binary + Vim/Emacs/Nano/Geany syntax files"
-	@echo "  make install-debian-2.1.1 install vitte on Debian/Ubuntu (deps + build + install via installer profile 2.1.1)"
+	@echo "  make install-debian install vitte on Debian/Ubuntu (deps + build + install via installer profile PKG_VERSION=$(PKG_VERSION))"
+	@echo "  make install-debian-2.1.1 compatibility alias for install-debian"
 	@echo "  make install-bin install only the vitte binary (PREFIX=$(PREFIX))"
 	@echo "  make install-editors install syntax configs for Vim/Emacs/Nano/Geany in HOME (override USER_HOME=..., PREFIX=...)"
 	@echo "  make install-geany install Geany Vitte config only (VITTE_GEANY_WD_MODE=file|project|current)"
@@ -1294,6 +1313,8 @@ help:
 	@echo "  make test       run tests (std/test)"
 	@echo "  make quickstart-check verify the beginner path against examples/first_project.vit"
 	@echo "  make doctor     print local toolchain and environment readiness"
+	@echo "  make parse      run parser-level tests"
+	@echo "  make hir-validate run HIR validator test fixtures"
 	@echo "  make grammar-sync regenerate grammar surface artifacts from src/vitte/grammar/vitte.ebnf"
 	@echo "  make grammar-check fail if grammar generated artifacts are out of sync"
 	@echo "  make grammar-test validate grammar corpus + diagnostics snapshots"
@@ -1341,6 +1362,7 @@ help:
 	@echo "  make ci-std-fast std-focused CI (stdlib + snapshots + wrappers)"
 	@echo "  make ci-bridge-compat alias of ci-mod-fast for native liaison compatibility"
 	@echo "  make modules-tests run module graph/doctor fixtures"
+	@echo "  make modules-contract-snapshots assert modules contract snapshots"
 	@echo "  make module-shape-policy enforce single module layout (<name>.vit xor <name>/mod.vit)"
 	@echo "  make modules-snapshots assert mod graph/doctor outputs"
 	@echo "  make modules-snapshots-update regenerate modules snapshot files (.must/.diagjson/.codes/.fr)"
@@ -1353,6 +1375,11 @@ help:
 	@echo "  make completions-snapshots-update update completion golden snapshots"
 	@echo "  make completions-lint syntax-check bash/zsh/fish completion files"
 	@echo "  make ci-completions run completion check + lint + snapshots + fallback"
+	@echo "  make ci-fast run fast CI chain for language/compiler snapshots and checks"
+	@echo "  make ci-strict run strict CI chain with additional diagnostics/highlight checks"
+	@echo "  make repo-hygiene-check verify root-level repository hygiene constraints"
+	@echo "  make docs-paths-check verify README/docs local path references exist"
+	@echo "  make dx-adoption run DX/adoption quality gates"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
 	@echo "  make vittec-kernel build target/kernel-tools/vittec-kernel (no curl runtime)"
@@ -1374,6 +1401,10 @@ help:
 	@echo "  make runtime-native-pgo-bench compare release vs PGO runtime and report speedup"
 	@echo "  make public-benchmark-dashboard generate publication dashboard + KPI (3/3 use cases)"
 	@echo "  make release-proof-notes generate proof-oriented release notes + tag candidate"
+	@echo "  make all-tests run full grouped test inventory"
+	@echo "  make packages-gate run package governance/layout/perf/contract gate"
+	@echo "  make make-targets-doc regenerate docs/MAKE_TARGETS.md from make help"
+	@echo "  make make-targets-doc-check fail if docs/MAKE_TARGETS.md is out of date"
 	@echo "  make test-map generate docs/TEST_MAP.md from the tests tree"
 	@echo "  make package-index generate docs/PACKAGE_INDEX.md from package metadata"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"

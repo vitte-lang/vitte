@@ -84,7 +84,13 @@ bool LinkerDriver::run(std::string& error) {
     //
 
     if (verbose_) {
-        std::cerr << "[linker] symbol resolution: TODO\n";
+        std::cerr
+            << "[linker][LNK-W-UNIMPL-SYMBOL-RESOLUTION] "
+            << "symbol resolution phase is not implemented yet; "
+            << "the current linker run validates/archive-loads inputs only\n";
+        std::cerr
+            << "[linker][action] if your build depends on symbol resolution, "
+            << "use the default compiler driver/linker path for now\n";
     }
 
     // --------------------------------------------------------
@@ -95,7 +101,13 @@ bool LinkerDriver::run(std::string& error) {
     //
 
     if (verbose_) {
-        std::cerr << "[linker] output generation: TODO\n";
+        std::cerr
+            << "[linker][LNK-W-UNIMPL-OUTPUT-GENERATION] "
+            << "output generation phase is not implemented yet; "
+            << "no executable/shared object is emitted by this path\n";
+        std::cerr
+            << "[linker][action] use this linker path for orchestration and "
+            << "input validation only until emit support lands\n";
     }
 
     return true;

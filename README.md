@@ -146,7 +146,7 @@ make build
 Optional packaging commands:
 
 ```sh
-make install-debian-2.1.1
+make install-debian
 make pkg-debian
 make pkg-debian-install
 ```
@@ -340,9 +340,9 @@ Tip for beginners: small PRs get reviewed faster than large rewrites.
 
 ## Docs
 
-- `docs/cli.md`
-- `docs/errors.md`
-- `docs/stdlib.md`
+- `docs/GETTING_STARTED.md`
+- `docs/TROUBLESHOOTING.md`
+- `docs/std/README.md`
 - `toolchain/scripts/README.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`

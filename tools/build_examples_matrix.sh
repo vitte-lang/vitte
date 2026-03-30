@@ -4,12 +4,16 @@ set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 BIN="${BIN:-$ROOT_DIR/bin/vitte}"
 MODE="${MODE:-build}"  # build | check
+STRICT_EXAMPLES="${STRICT_EXAMPLES:-0}"
 
 log() { printf "[examples-matrix] %s\n" "$*"; }
 die() { printf "[examples-matrix][error] %s\n" "$*" >&2; exit 1; }
 
 [ -x "$BIN" ] || die "missing binary: $BIN"
 if [ ! -d "$ROOT_DIR/examples" ]; then
+  if [ "$STRICT_EXAMPLES" = "1" ]; then
+    die "missing examples dir"
+  fi
   log "skip: missing examples dir"
   exit 0
 fi
@@ -57,6 +61,12 @@ $(find "$ROOT_DIR/examples" -maxdepth 1 -type f -name '*.vit' \
   ! -name '*.reduce.tmp.vit' | sort)
 EOF_FILES
 
-[ "$total" -gt 0 ] || { log "skip: no .vit files in examples/"; exit 0; }
+[ "$total" -gt 0 ] || {
+  if [ "$STRICT_EXAMPLES" = "1" ]; then
+    die "no .vit files in examples/"
+  fi
+  log "skip: no .vit files in examples/"
+  exit 0
+}
 log "summary: total=$total ok=$ok fail=$fail"
 [ "$fail" -eq 0 ]
