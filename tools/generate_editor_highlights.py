@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GRAMMAR = ROOT / "editors/grammar/vitte_highlight_grammar.json"
-GEANY_VERSION = "2.0"
+GEANY_VERSION = "2.1"
 
 
 def w(path: Path, text: str) -> None:
@@ -367,6 +367,12 @@ FT_03_WD=%p
 FT_04_LB=F_ormat
 FT_04_CM=sh -lc 'vitte fmt "$1"' sh "%f"
 FT_04_WD=%d
+FT_05_LB=Project _Check
+FT_05_CM=sh -lc 'if [ -f Makefile ]; then make quickstart-check; else vitte check "$1"; fi' sh "%f"
+FT_05_WD=%p
+FT_06_LB=Project T_est
+FT_06_CM=sh -lc 'if [ -f Makefile ]; then vitte test .; else vitte test "$1"; fi' sh "%f"
+FT_06_WD=%p
 EX_00_LB=_Parse
 EX_00_CM=sh -lc 'vitte parse "$1"' sh "%f"
 EX_00_WD=%d
@@ -376,6 +382,12 @@ EX_01_WD=%d
 EX_02_LB=_Workspace Symbols (Vitte)
 EX_02_CM=sh -lc '/usr/bin/find . -type f \\( -name "*.vit" -o -name "*.vitte" \\) -print0 | /usr/bin/xargs -0 /usr/bin/grep -nHE "^[[:space:]]*(proc|form|pick|trait|entry|macro|type|field|case)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*|^[[:space:]]*<<<[[:space:]]+ROLE-CONTRACT|VITTE-D[0-9][0-9][0-9][0-9]|diagnostics_[A-Za-z0-9_]+" || echo "No Vitte symbols detected in workspace"' sh
 EX_02_WD=%p
+EX_03_LB=Quickstart _Check (Makefile)
+EX_03_CM=sh -lc 'if [ -f Makefile ]; then make quickstart-check; else echo "No Makefile in project root"; fi' sh
+EX_03_WD=%p
+EX_04_LB=Core _Language Gate (Makefile)
+EX_04_CM=sh -lc 'if [ -f Makefile ]; then make core-language-gate; else echo "No Makefile in project root"; fi' sh
+EX_04_WD=%p
 
 # Optional mono/multi-root overrides:
 # - project-root mode: set *_WD=%p

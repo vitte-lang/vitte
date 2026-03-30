@@ -41,6 +41,8 @@ The generated rules explicitly highlight:
 - Uninstall Geany config: `make uninstall-geany`
 - Check local Geany wiring: `make geany-install-check`
 - `VITTE_GEANY_WD_MODE=file|project|current` controls build-menu working dir token (`%d`, `%p`, `%c`).
+- Geany build menu includes file commands (`check/build/run/test/fmt/parse`) and project helpers (`Project Check`, `Project Test`, `Quickstart Check`, `Core Language Gate`).
+- Geany extension mapping covers both `*.vit` and `*.vitte`.
 - Linux default config path: `${XDG_CONFIG_HOME:-~/.config}/geany`
 - macOS default config path: `~/Library/Application Support/geany`
 - Windows default config path: `%APPDATA%\\geany`
