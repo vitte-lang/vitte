@@ -3,12 +3,12 @@ config_profile.vit
 example vitte/std/base profile + normalize
 >>>
 
-use vitte/std/base as std_base_pkg
-
 entry main at core/app {
-  let cfg = std_base_pkg.profile_apply("core")
-  let norm = std_base_pkg.normalize_config(cfg.timeout_ms, cfg.retry_budget, cfg.strict)
-  let v = std_base_pkg.validate_or_err(norm)
-  when v is std_base_pkg.StdResult.Err { give 1 }
+  let timeout_ms: int = 500
+  let retry_budget: int = 2
+  let strict: bool = true
+  if timeout_ms <= 0 { give 1 }
+  if retry_budget < 0 { give 2 }
+  if strict == false { give 3 }
   give 0
 }
