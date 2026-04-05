@@ -30,6 +30,7 @@ using vitte::frontend::diag::DiagnosticEngine;
 class Parser {
 public:
     Parser(Lexer& lexer, DiagnosticEngine& diagnostics, AstContext& ast_ctx, bool strict_parse);
+    Parser(Lexer& lexer, DiagnosticEngine& diagnostics, AstContext& ast_ctx, bool strict_parse, bool strict_core);
 
     ast::ModuleId parse_module();
 
@@ -131,6 +132,7 @@ private:
     DiagnosticEngine& diag_;
     AstContext& ast_ctx_;
     bool strict_;
+    bool strict_core_;
     Token current_;
     Token previous_;
     std::vector<DeclId> pending_decls_;

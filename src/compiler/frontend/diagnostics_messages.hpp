@@ -25,6 +25,9 @@ namespace vitte::frontend::diag {
     X(E0011, SelectRequiresAtLeastOneWhenBranch, "select requires at least one when branch") \
     X(E0012, SelectBranchMustBeWhenStatement, "select branch must be a when statement") \
     X(E0013, ProcMayExitWithoutReturnValue, "proc may exit without returning a value") \
+    X(E0014, CoreForbiddenTopLevelSyntax, "forbidden top-level syntax in strict-core mode") \
+    X(E0015, CoreForbiddenStatementSyntax, "forbidden statement syntax in strict-core mode") \
+    X(E0016, CoreForbiddenExpressionSyntax, "forbidden expression syntax in strict-core mode") \
     X(E1001, DuplicatePatternBinding, "duplicate pattern binding") \
     X(E1002, UnknownType, "unknown type (did you mean a built-in like int/i32/i64/i128/u32/u64/u128/bool/string?)") \
     X(E1003, UnknownGenericBaseType, "unknown generic base type") \
@@ -159,6 +162,24 @@ constexpr DiagExplain diag_explain(DiagId id) {
                 "A procedure with an explicit return type has at least one path that reaches the end without returning a value.",
                 "Make every path end with 'give <value>' or 'return <value>', or remove the explicit return type if the proc is not meant to return one.",
                 "proc to_code(ok: bool) -> int {\n  if ok { give 0 }\n  give 1\n}",
+            };
+        case DiagId::CoreForbiddenTopLevelSyntax:
+            return {
+                "Strict-core mode rejects non-core top-level declarations.",
+                "Use only: space, pull, use, share, const, type, form, pick, proc, entry.",
+                "space app/main\nproc run() -> int { give 0 }",
+            };
+        case DiagId::CoreForbiddenStatementSyntax:
+            return {
+                "Strict-core mode rejects non-core statements.",
+                "Use only core statements listed in src/vitte/grammar/vitte.ebnf.",
+                "if ok { give 0 }\nloop { break }",
+            };
+        case DiagId::CoreForbiddenExpressionSyntax:
+            return {
+                "Strict-core mode rejects non-core expression forms.",
+                "Use core expressions only (literal, ident, list, grouping, calls/member/index).",
+                "let x = f(a)\nlet y = data.value",
             };
         case DiagId::ExpectedPattern:
             return {

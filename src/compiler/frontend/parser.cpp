@@ -5,6 +5,7 @@
 
 #include "parser.hpp"
 #include "diagnostics_messages.hpp"
+#include "token_tables.hpp"
 
 #include <functional>
 #include <algorithm>
@@ -23,7 +24,10 @@ static const char* closest_toplevel_keyword(std::string_view ident);
 static void emit_toplevel_hint(DiagnosticEngine& diag, const Token& tok);
 
 Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse)
-    : lexer_(lexer), diag_(diag), ast_ctx_(ast_ctx), strict_(strict_parse) {
+    : Parser(lexer, diag, ast_ctx, strict_parse, false) {}
+
+Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse, bool strict_core)
+    : lexer_(lexer), diag_(diag), ast_ctx_(ast_ctx), strict_(strict_parse), strict_core_(strict_core) {
     advance();
 }
 
@@ -164,6 +168,11 @@ ast::ModuleId Parser::parse_module() {
 // ------------------------------------------------------------
 
 DeclId Parser::parse_toplevel() {
+    if (strict_core_ && tokens::is_forbidden_in_core(current_.kind)) {
+        diag::error(diag_, diag::DiagId::CoreForbiddenTopLevelSyntax, current_.span);
+        return ast::kInvalidAstId;
+    }
+
     if (current_.kind == TokenKind::KwSpace) {
         return parse_space_decl();
     }
@@ -656,8 +665,9 @@ StmtId Parser::parse_block() {
             advance();
         }
     }
-    bool closed = expect(TokenKind::RBrace, "expected '}'");
+    bool closed = match(TokenKind::RBrace);
     if (!closed) {
+        diag_.error("expected '}'", current_.span);
         diag_.note("block opened here", span);
         diag_.note("parser will resume after '}'", current_.span);
     }
@@ -666,6 +676,11 @@ StmtId Parser::parse_block() {
 }
 
 StmtId Parser::parse_stmt() {
+    if (strict_core_ && tokens::is_forbidden_in_core(current_.kind)) {
+        diag::error(diag_, diag::DiagId::CoreForbiddenStatementSyntax, current_.span);
+        return ast::kInvalidAstId;
+    }
+
     switch (current_.kind) {
         case TokenKind::KwLet: return parse_let_stmt();
         case TokenKind::KwMake: return parse_make_stmt();
@@ -964,33 +979,7 @@ StmtId Parser::parse_when_stmt() {
 // ------------------------------------------------------------
 
 static int precedence(TokenKind kind) {
-    switch (kind) {
-        case TokenKind::Equal:
-            return 1;
-        case TokenKind::KwOr:
-        case TokenKind::PipePipe:
-            return 2;
-        case TokenKind::KwAnd:
-        case TokenKind::AmpAmp:
-            return 3;
-        case TokenKind::EqEq:
-        case TokenKind::NotEq:
-            return 4;
-        case TokenKind::Lt:
-        case TokenKind::Le:
-        case TokenKind::Gt:
-        case TokenKind::Ge:
-            return 5;
-        case TokenKind::Plus:
-        case TokenKind::Minus:
-            return 6;
-        case TokenKind::Star:
-        case TokenKind::Slash:
-        case TokenKind::Percent:
-            return 7;
-        default:
-            return 0;
-    }
+    return tokens::binary_precedence(kind);
 }
 
 static int edit_distance(std::string_view a, std::string_view b) {
@@ -1014,49 +1003,7 @@ static int edit_distance(std::string_view a, std::string_view b) {
 }
 
 static const char* keyword_text(TokenKind kind) {
-    switch (kind) {
-        case TokenKind::KwSpace: return "space";
-        case TokenKind::KwPull: return "pull";
-        case TokenKind::KwUse: return "use";
-        case TokenKind::KwShare: return "share";
-        case TokenKind::KwForm: return "form";
-        case TokenKind::KwField: return "field";
-        case TokenKind::KwPick: return "pick";
-        case TokenKind::KwCase: return "case";
-        case TokenKind::KwType: return "type";
-        case TokenKind::KwConst: return "const";
-        case TokenKind::KwProc: return "proc";
-        case TokenKind::KwEntry: return "entry";
-        case TokenKind::KwAt: return "at";
-        case TokenKind::KwMatch: return "match";
-        case TokenKind::KwLet: return "let";
-        case TokenKind::KwMake: return "make";
-        case TokenKind::KwSet: return "set";
-        case TokenKind::KwGive: return "give";
-        case TokenKind::KwEmit: return "emit";
-        case TokenKind::KwIf: return "if";
-        case TokenKind::KwElse: return "else";
-        case TokenKind::KwOtherwise: return "otherwise";
-        case TokenKind::KwWhen: return "when";
-        case TokenKind::KwIs: return "is";
-        case TokenKind::KwLoop: return "loop";
-        case TokenKind::KwFor: return "for";
-        case TokenKind::KwIn: return "in";
-        case TokenKind::KwBreak: return "break";
-        case TokenKind::KwContinue: return "continue";
-        case TokenKind::KwReturn: return "return";
-        case TokenKind::KwNot: return "not";
-        case TokenKind::KwAnd: return "and";
-        case TokenKind::KwOr: return "or";
-        case TokenKind::KwAs: return "as";
-        case TokenKind::KwAll: return "all";
-        case TokenKind::KwTrue: return "true";
-        case TokenKind::KwFalse: return "false";
-        case TokenKind::KwBool: return "bool";
-        case TokenKind::KwString: return "string";
-        case TokenKind::KwInt: return "int";
-        default: return nullptr;
-    }
+    return tokens::keyword_text(kind);
 }
 
 ExprId Parser::parse_expr() {
@@ -1136,6 +1083,12 @@ ExprId Parser::parse_unary_expr() {
 
 ExprId Parser::parse_primary() {
     SourceSpan span = current_.span;
+
+    if (strict_core_ && (current_.kind == TokenKind::KwIf || current_.kind == TokenKind::KwProc)) {
+        diag::error(diag_, diag::DiagId::CoreForbiddenExpressionSyntax, current_.span);
+        advance();
+        return ast::kInvalidAstId;
+    }
 
     if (current_.kind == TokenKind::KwTrue || current_.kind == TokenKind::KwFalse) {
         std::string value = current_.text;
@@ -1747,50 +1700,11 @@ bool Parser::is_unary_start(TokenKind kind) const {
 }
 
 bool Parser::is_binary_op(TokenKind kind) const {
-    switch (kind) {
-        case TokenKind::Plus:
-        case TokenKind::Minus:
-        case TokenKind::Star:
-        case TokenKind::Slash:
-        case TokenKind::Percent:
-        case TokenKind::AmpAmp:
-        case TokenKind::PipePipe:
-        case TokenKind::Equal:
-        case TokenKind::EqEq:
-        case TokenKind::NotEq:
-        case TokenKind::Lt:
-        case TokenKind::Le:
-        case TokenKind::Gt:
-        case TokenKind::Ge:
-        case TokenKind::KwAnd:
-        case TokenKind::KwOr:
-            return true;
-        default:
-            return false;
-    }
+    return tokens::is_binary_operator(kind);
 }
 
 BinaryOp Parser::to_binary_op(TokenKind kind) const {
-    switch (kind) {
-        case TokenKind::Plus: return BinaryOp::Add;
-        case TokenKind::Minus: return BinaryOp::Sub;
-        case TokenKind::Star: return BinaryOp::Mul;
-        case TokenKind::Slash: return BinaryOp::Div;
-        case TokenKind::Percent: return BinaryOp::Mod;
-        case TokenKind::EqEq: return BinaryOp::Eq;
-        case TokenKind::NotEq: return BinaryOp::Ne;
-        case TokenKind::Lt: return BinaryOp::Lt;
-        case TokenKind::Le: return BinaryOp::Le;
-        case TokenKind::Gt: return BinaryOp::Gt;
-        case TokenKind::Ge: return BinaryOp::Ge;
-        case TokenKind::Equal: return BinaryOp::Assign;
-        case TokenKind::KwAnd: return BinaryOp::And;
-        case TokenKind::KwOr: return BinaryOp::Or;
-        case TokenKind::AmpAmp: return BinaryOp::And;
-        case TokenKind::PipePipe: return BinaryOp::Or;
-        default:
-            return BinaryOp::Add;
-    }
+    return tokens::to_binary_op(kind);
 }
 
 } // namespace vitte::frontend::parser

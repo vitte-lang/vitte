@@ -2,6 +2,7 @@
 
 #include "options.hpp"
 #include "driver.hpp"
+#include "strict_core_guard.hpp"
 
 #include "../frontend/lexer.hpp"
 #include "../frontend/parser.hpp"
@@ -229,7 +230,11 @@ bool run_pipeline(const Options& opts) {
     };
     frontend::ast::AstContext ast_ctx;
     ast_ctx.sources.push_back(lexer.source_file());
-    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse);
+    if (!apply_strict_core_guard(opts, source, opts.input, diagnostics)) {
+        emit_diags();
+        return false;
+    }
+    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core);
     auto ast = parser.parse_module();
     (void)ast;
 

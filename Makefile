@@ -537,6 +537,7 @@ wrapper-stage-test:
 .PHONY: grammar-sync
 grammar-sync:
 	@python3 book/grammar/scripts/sync_grammar.py
+	@python3 book/grammar/scripts/sync_pest.py
 
 .PHONY: harden-mod-vits
 harden-mod-vits:
@@ -546,6 +547,7 @@ harden-mod-vits:
 .PHONY: grammar-check
 grammar-check:
 	@python3 book/grammar/scripts/sync_grammar.py --check
+	@python3 book/grammar/scripts/sync_pest.py --check
 
 .PHONY: grammar-test
 grammar-test:
@@ -553,11 +555,11 @@ grammar-test:
 
 .PHONY: core-language-test
 core-language-test:
-	@python3 book/grammar/scripts/validate_examples.py --manifest tests/grammar/core_manifest.txt
+	@python3 book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt
 
 .PHONY: core-language-test-update
 core-language-test-update:
-	@python3 book/grammar/scripts/validate_examples.py --manifest tests/grammar/core_manifest.txt --update-snapshots
+	@python3 book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt --update-snapshots
 
 .PHONY: grammar-test-update
 grammar-test-update:
@@ -574,8 +576,16 @@ grammar-docs-check:
 .PHONY: grammar-gate
 grammar-gate: grammar-check grammar-test grammar-docs-check
 
+.PHONY: core-forbidden-syntax-lint
+core-forbidden-syntax-lint:
+	@python3 tools/lint_core_forbidden_syntax.py
+
+.PHONY: strict-core-guard-test
+strict-core-guard-test:
+	@tools/strict_core_guard_test.sh
+
 .PHONY: core-language-gate
-core-language-gate: grammar-check core-language-test core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+core-language-gate: grammar-check grammar-test core-language-test strict-core-guard-test core-forbidden-syntax-lint core-semantic-success core-semantic-snapshots diagnostics-locales-lint
 
 .PHONY: core-release-gate
 core-release-gate: core-language-gate diagnostics-ftl-check

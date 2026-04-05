@@ -85,11 +85,13 @@ Options parse_options(int argc, char** argv) {
                 std::string mode = argv[++i];
                 if (mode == "check") {
                     opts.grammar_check = true;
+                } else if (mode == "diff") {
+                    opts.grammar_diff = true;
                 } else {
                     std::cerr << "[driver] warning: unknown grammar subcommand '" << mode << "'\n";
                 }
             } else {
-                std::cerr << "[driver] warning: missing grammar subcommand (expected check)\n";
+                std::cerr << "[driver] warning: missing grammar subcommand (expected check|diff)\n";
             }
         }
         else if (arg == "doctor") {
@@ -239,6 +241,9 @@ Options parse_options(int argc, char** argv) {
         }
         else if (arg == "--strict-parse") {
             opts.strict_parse = true;
+        }
+        else if (arg == "--strict-core") {
+            opts.strict_core = true;
         }
         else if (arg == "--resolve-only") {
             opts.resolve_only = true;
@@ -486,6 +491,7 @@ void print_help() {
         "  explain <code>   Explain a diagnostic (e.g. E0001)\n"
         "  doctor           Check toolchain prerequisites\n"
         "  grammar check    Validate grammar sync + corpus diagnostics snapshots\n"
+        "  grammar diff     Compare EBNF surface with frontend keyword/operator tables\n"
         "  parse            Parse only (no backend)\n"
         "  check            Parse + resolve + IR (no backend)\n"
         "  emit             Emit C++ only (no native compile)\n"
@@ -516,6 +522,7 @@ void print_help() {
         "  --parse-modules   Parse + load modules (no resolve/lowering)\n"
         "  --parse-silent    Suppress parse-only informational logs\n"
         "  --strict-parse    Disallow keywords as identifiers\n"
+        "  --strict-core     Enforce core grammar guardrails (reject non-core syntax)\n"
         "  --resolve-only    Resolve only (no lowering)\n"
         "  --hir-only        Lower to HIR only\n"
         "  --mir-only        Lower to MIR only\n"
@@ -583,6 +590,7 @@ void print_help() {
         "  vitte emit src/main.vit\n"
         "  vitte doctor\n"
         "  vitte grammar check\n"
+        "  vitte grammar diff\n"
         "\n"
         "Examples:\n"
         "  vitte parse --lang=fr src/main.vit\n"

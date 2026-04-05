@@ -9,6 +9,7 @@
 #include "../frontend/lexer.hpp"
 #include "../frontend/module_loader.hpp"
 #include "../frontend/parser.hpp"
+#include "../frontend/token_tables.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -1062,12 +1063,103 @@ static int run_grammar_check() {
         ok = false;
     }
 
+    const int pest_rc = std::system("python3 book/grammar/scripts/sync_pest.py --check");
+    if (pest_rc != 0) {
+        std::cerr << "[grammar] error: vitte.pest is out of sync with vitte.ebnf\n";
+        ok = false;
+    }
+
     if (!ok) {
         std::cerr << "[grammar] FAILED\n";
         return 1;
     }
     std::cout << "[grammar] OK\n";
     return 0;
+}
+
+static int run_grammar_diff() {
+    namespace fs = std::filesystem;
+    const fs::path source = fs::path("src") / "vitte" / "grammar" / "vitte.ebnf";
+    std::string source_text;
+    if (!read_file_text(source, source_text)) {
+        std::cerr << "[grammar-diff] error: missing source " << source.string() << "\n";
+        return 1;
+    }
+
+    static const std::regex quoted_re("\"([^\"]+)\"");
+    static const std::regex word_re("^[a-z_][a-z0-9_]*$");
+    const std::unordered_set<std::string> non_keyword_terms = {
+        "_", "i32", "i64", "i128", "u32", "u64", "u128",
+    };
+    const std::unordered_set<std::string> binary_ops = {
+        "=", "or", "||", "and", "&&", "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "%",
+    };
+
+    std::unordered_set<std::string> ebnf_keywords;
+    std::unordered_set<std::string> ebnf_ops;
+    for (std::sregex_iterator it(source_text.begin(), source_text.end(), quoted_re), end; it != end; ++it) {
+        const std::string t = (*it)[1].str();
+        if (std::regex_match(t, word_re) && !non_keyword_terms.count(t)) {
+            ebnf_keywords.insert(t);
+        }
+        if (binary_ops.count(t)) {
+            ebnf_ops.insert(t);
+        }
+    }
+
+    std::unordered_set<std::string> parser_keywords;
+    for (const auto& kw : frontend::tokens::core_keywords()) {
+        parser_keywords.insert(kw);
+    }
+
+    std::unordered_set<std::string> parser_ops;
+    for (const auto& op : frontend::tokens::core_binary_operators()) {
+        parser_ops.insert(op);
+    }
+
+    std::vector<std::string> missing_kw;
+    std::vector<std::string> extra_kw;
+    std::vector<std::string> missing_ops;
+    std::vector<std::string> extra_ops;
+
+    for (const auto& kw : ebnf_keywords) {
+        if (!parser_keywords.count(kw)) {
+            missing_kw.push_back(kw);
+        }
+    }
+    for (const auto& kw : parser_keywords) {
+        if (!ebnf_keywords.count(kw)) {
+            extra_kw.push_back(kw);
+        }
+    }
+    for (const auto& op : ebnf_ops) {
+        if (!parser_ops.count(op)) {
+            missing_ops.push_back(op);
+        }
+    }
+    for (const auto& op : parser_ops) {
+        if (!ebnf_ops.count(op)) {
+            extra_ops.push_back(op);
+        }
+    }
+
+    std::sort(missing_kw.begin(), missing_kw.end());
+    std::sort(extra_kw.begin(), extra_kw.end());
+    std::sort(missing_ops.begin(), missing_ops.end());
+    std::sort(extra_ops.begin(), extra_ops.end());
+
+    const bool ok = missing_kw.empty() && extra_kw.empty() && missing_ops.empty() && extra_ops.empty();
+    if (ok) {
+        std::cout << "[grammar-diff] OK\n";
+        return 0;
+    }
+
+    std::cerr << "[grammar-diff] FAILED\n";
+    for (const auto& s : missing_kw) std::cerr << "- missing parser keyword: " << s << "\n";
+    for (const auto& s : extra_kw) std::cerr << "- extra parser keyword: " << s << "\n";
+    for (const auto& s : missing_ops) std::cerr << "- missing parser operator: " << s << "\n";
+    for (const auto& s : extra_ops) std::cerr << "- extra parser operator: " << s << "\n";
+    return 1;
 }
 
 static int run_reduce(const Options& opts) {
@@ -1184,7 +1276,7 @@ static bool build_module_index_for_tooling(const Options& opts,
     std::string source((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     frontend::Lexer lexer(source, opts.input);
     ast_ctx.sources.push_back(lexer.source_file());
-    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse);
+    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core);
     auto root = parser.parse_module();
     root_out = root;
 
@@ -1992,6 +2084,9 @@ int run(int argc, char** argv) {
 
     if (opts.grammar_check) {
         return run_grammar_check();
+    }
+    if (opts.grammar_diff) {
+        return run_grammar_diff();
     }
 
     const bool api_diff_without_input =

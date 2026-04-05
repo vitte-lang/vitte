@@ -20,6 +20,7 @@ struct Options {
     bool profile_mode = false;
     bool run_doctor = false;
     bool grammar_check = false;
+    bool grammar_diff = false;
     bool emit_stdout = false;
     bool emit_obj = false;
     bool repro = false;
@@ -32,6 +33,7 @@ struct Options {
     bool parse_with_modules = false;
     bool parse_silent = false;
     bool strict_parse = false;
+    bool strict_core = false;
 
     /* Resolve only (no lowering) */
     bool resolve_only = false;

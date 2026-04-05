@@ -20,15 +20,17 @@ class Diagnostic:
     column: int
 
 
-def run_parse(vitte_bin: Path, file_path: Path) -> list[dict[str, object]]:
+def run_parse(vitte_bin: Path, file_path: Path, strict_core: bool = False) -> list[dict[str, object]]:
     cmd = [
         str(vitte_bin),
         "parse",
         "--parse-silent",
         "--diag-json",
         "--lang=en",
-        str(file_path),
     ]
+    if strict_core:
+        cmd.append("--strict-core")
+    cmd.append(str(file_path))
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     out = f"{proc.stdout}\n{proc.stderr}".strip()
     if not out:
@@ -137,6 +139,7 @@ def main() -> int:
     parser.add_argument("--update-snapshots", action="store_true", help="rewrite tests/grammar/snapshots/*.json")
     parser.add_argument("--vitte-bin", default="bin/vitte", help="path to vitte binary")
     parser.add_argument("--manifest", help="optional manifest listing tests/grammar/valid|invalid/*.vit paths")
+    parser.add_argument("--strict-core", action="store_true", help="run parser in strict-core mode")
     args = parser.parse_args()
 
     repo = Path(__file__).resolve().parents[3]
@@ -160,7 +163,7 @@ def main() -> int:
     failures: list[str] = []
 
     for file_path in valid_files:
-        raw_diags = run_parse(vitte_bin, file_path)
+        raw_diags = run_parse(vitte_bin, file_path, strict_core=args.strict_core)
         diags = normalize(file_path, raw_diags)
         if diags:
             failures.append(f"{file_path}: expected no diagnostics, got {len(diags)}")
@@ -176,7 +179,7 @@ def main() -> int:
                 failures.append(f"{snap_path}: snapshot drift (run --update-snapshots)")
 
     for file_path in invalid_files:
-        raw_diags = run_parse(vitte_bin, file_path)
+        raw_diags = run_parse(vitte_bin, file_path, strict_core=args.strict_core)
         diags = normalize(file_path, raw_diags)
         if not diags:
             failures.append(f"{file_path}: expected diagnostics, got none")

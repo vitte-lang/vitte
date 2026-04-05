@@ -1,7 +1,7 @@
 #include "lexer.hpp"
+#include "token_tables.hpp"
 
 #include <cctype>
-#include <unordered_map>
 
 namespace vitte::frontend {
 
@@ -41,62 +41,6 @@ static bool is_space(char c) {
 
 static bool is_suffix_start(char c) {
     return std::isalpha(static_cast<unsigned char>(c)) != 0;
-}
-
-static TokenKind keyword_kind(const std::string& ident) {
-    static const std::unordered_map<std::string, TokenKind> kKeywords = {
-        {"space", TokenKind::KwSpace},
-        {"pull", TokenKind::KwPull},
-        {"use", TokenKind::KwUse},
-        {"share", TokenKind::KwShare},
-        {"form", TokenKind::KwForm},
-        {"field", TokenKind::KwField},
-        {"pick", TokenKind::KwPick},
-        {"case", TokenKind::KwCase},
-        {"trait", TokenKind::KwTrait},
-        {"type", TokenKind::KwType},
-        {"const", TokenKind::KwConst},
-        {"macro", TokenKind::KwMacro},
-        {"proc", TokenKind::KwProc},
-        {"entry", TokenKind::KwEntry},
-        {"at", TokenKind::KwAt},
-        {"asm", TokenKind::KwAsm},
-        {"unsafe", TokenKind::KwUnsafe},
-        {"match", TokenKind::KwMatch},
-        {"let", TokenKind::KwLet},
-        {"make", TokenKind::KwMake},
-        {"set", TokenKind::KwSet},
-        {"give", TokenKind::KwGive},
-        {"emit", TokenKind::KwEmit},
-        {"if", TokenKind::KwIf},
-        {"else", TokenKind::KwElse},
-        {"otherwise", TokenKind::KwOtherwise},
-        {"select", TokenKind::KwSelect},
-        {"when", TokenKind::KwWhen},
-        {"is", TokenKind::KwIs},
-        {"loop", TokenKind::KwLoop},
-        {"for", TokenKind::KwFor},
-        {"in", TokenKind::KwIn},
-        {"break", TokenKind::KwBreak},
-        {"continue", TokenKind::KwContinue},
-        {"return", TokenKind::KwReturn},
-        {"not", TokenKind::KwNot},
-        {"and", TokenKind::KwAnd},
-        {"or", TokenKind::KwOr},
-        {"as", TokenKind::KwAs},
-        {"all", TokenKind::KwAll},
-        {"true", TokenKind::KwTrue},
-        {"false", TokenKind::KwFalse},
-        {"bool", TokenKind::KwBool},
-        {"string", TokenKind::KwString},
-        {"int", TokenKind::KwInt},
-    };
-
-    auto it = kKeywords.find(ident);
-    if (it != kKeywords.end()) {
-        return it->second;
-    }
-    return TokenKind::Ident;
 }
 
 Lexer::Lexer(const std::string& source, std::string path)
@@ -171,7 +115,7 @@ Token Lexer::next() {
         while (!eof() && is_ident_continue(peek())) {
             ident.push_back(advance());
         }
-        TokenKind kind = keyword_kind(ident);
+        TokenKind kind = tokens::keyword_kind(ident);
         return make(kind, ident, start, index_);
     }
 

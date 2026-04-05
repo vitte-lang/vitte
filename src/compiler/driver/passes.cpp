@@ -1,6 +1,7 @@
 #include "passes.hpp"
 
 #include "options.hpp"
+#include "strict_core_guard.hpp"
 
 #include "../frontend/diagnostics.hpp"
 #include "../frontend/disambiguate.hpp"
@@ -141,7 +142,12 @@ PassResult run_passes(const Options& opts) {
     };
     frontend::ast::AstContext ast_ctx;
     ast_ctx.sources.push_back(lexer.source_file());
-    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse);
+    if (!apply_strict_core_guard(opts, source, opts.input, diagnostics)) {
+        emit_diags();
+        result.ok = false;
+        return result;
+    }
+    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core);
     auto module = parser.parse_module();
 
     if (opts.parse_only) {
