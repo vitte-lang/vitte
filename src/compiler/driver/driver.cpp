@@ -1365,7 +1365,7 @@ static bool build_module_index_for_tooling(const Options& opts,
     frontend::Lexer lexer(source, opts.input);
     ast_ctx.sources.push_back(lexer.source_file());
     frontend::parser::Parser parser(
-        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget);
+        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget, opts.panic_budget_notes);
     auto root = parser.parse_module();
     root_out = root;
 

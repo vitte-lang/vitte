@@ -31,6 +31,14 @@ using vitte::frontend::diag::DiagnosticEngine;
 
 class Parser {
 public:
+    struct ParseMetrics {
+        int emitted_errors = 0;
+        int emitted_notes = 0;
+        int recoveries = 0;
+        int lookahead_snapshots = 0;
+        int lookahead_restores = 0;
+    };
+
     Parser(Lexer& lexer, DiagnosticEngine& diagnostics, AstContext& ast_ctx, bool strict_parse);
     Parser(Lexer& lexer, DiagnosticEngine& diagnostics, AstContext& ast_ctx, bool strict_parse, bool strict_core);
     Parser(Lexer& lexer,
@@ -39,9 +47,11 @@ public:
            bool strict_parse,
            bool strict_core,
            bool trace_parse,
-           int panic_budget);
+           int panic_budget,
+           int panic_budget_notes = 0);
 
     ast::ModuleId parse_module();
+    const ParseMetrics& metrics() const { return metrics_; }
 
 private:
     struct State {
@@ -61,7 +71,9 @@ private:
     void sync_to_stmt_boundary();
     void sync_to_match_arm_boundary();
     void trace(std::string_view event) const;
+    void note_parse(std::string msg, ast::SourceSpan span);
     bool can_emit_parse_error() const;
+    bool can_emit_parse_note() const;
     bool emit_parse_error(::vitte::frontend::diag::DiagId id, ast::SourceSpan span);
 
     // Top-level
@@ -150,7 +162,10 @@ private:
     bool strict_core_;
     bool trace_parse_ = false;
     int panic_budget_ = 0;
+    int panic_budget_notes_ = 0;
     int parse_error_count_ = 0;
+    int parse_note_count_ = 0;
+    ParseMetrics metrics_{};
     Token current_;
     Token previous_;
     std::vector<DeclId> pending_decls_;

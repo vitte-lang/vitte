@@ -50,13 +50,16 @@ public:
     explicit Resolver(diag::DiagnosticEngine& diagnostics,
                       bool strict_types = false,
                       bool strict_imports = false,
-                      bool strict_modules = false);
+                      bool strict_modules = false,
+                      bool trace_resolve = false);
 
     bool resolve_module(ast::AstContext& ctx, ast::ModuleId module);
     const SymbolTable& symbols() const { return symbols_; }
     types::TypeId type_id(ast::TypeId node) const;
 
 private:
+    void trace(std::string_view event, ast::NodeKind kind, ast::SourceSpan span) const;
+
     void resolve_decl(ast::AstContext& ctx, ast::DeclId decl);
     void resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt);
     void resolve_expr(ast::AstContext& ctx, ast::ExprId expr);
@@ -70,6 +73,7 @@ private:
     bool strict_types_ = false;
     bool strict_imports_ = false;
     bool strict_modules_ = false;
+    bool trace_resolve_ = false;
     std::unordered_map<ast::TypeId, types::TypeId> resolved_types_;
     std::unordered_map<std::string, ast::SourceSpan> explicit_imports_;
     std::unordered_set<std::string> used_explicit_imports_;

@@ -248,11 +248,26 @@ Options parse_options(int argc, char** argv) {
         else if (arg == "--trace-parse") {
             opts.trace_parse = true;
         }
+        else if (arg == "--trace-resolve") {
+            opts.trace_resolve = true;
+        }
         else if (arg == "--panic-budget" && i + 1 < argc) {
             opts.panic_budget = std::max(0, std::stoi(argv[++i]));
         }
         else if (arg.rfind("--panic-budget=", 0) == 0) {
             opts.panic_budget = std::max(0, std::stoi(arg.substr(std::string("--panic-budget=").size())));
+        }
+        else if (arg == "--panic-budget-notes" && i + 1 < argc) {
+            opts.panic_budget_notes = std::max(0, std::stoi(argv[++i]));
+        }
+        else if (arg.rfind("--panic-budget-notes=", 0) == 0) {
+            opts.panic_budget_notes = std::max(0, std::stoi(arg.substr(std::string("--panic-budget-notes=").size())));
+        }
+        else if (arg == "--strict-recovery" && i + 1 < argc) {
+            opts.strict_recovery_limit = std::max(0, std::stoi(argv[++i]));
+        }
+        else if (arg.rfind("--strict-recovery=", 0) == 0) {
+            opts.strict_recovery_limit = std::max(0, std::stoi(arg.substr(std::string("--strict-recovery=").size())));
         }
         else if (arg == "--syntax-profile" && i + 1 < argc) {
             opts.syntax_profile = argv[++i];
@@ -280,6 +295,13 @@ Options parse_options(int argc, char** argv) {
         }
         else if (arg == "--dump-ast-json") {
             opts.dump_ast_json = true;
+        }
+        else if (arg == "--dump-ast-json-pretty") {
+            opts.dump_ast_json = true;
+            opts.dump_ast_json_pretty = true;
+        }
+        else if (arg == "--dump-parse-metrics") {
+            opts.dump_parse_metrics = true;
         }
         else if (arg == "--dump-ir") {
             opts.dump_ir = true;
@@ -548,7 +570,12 @@ void print_help() {
         "  --strict-parse    Disallow keywords as identifiers\n"
         "  --strict-core     Enforce core grammar guardrails (reject non-core syntax)\n"
         "  --trace-parse     Emit parser trace (rules/lookahead/recovery)\n"
+        "  --trace-resolve   Emit resolve trace (symbols/types/imports)\n"
         "  --panic-budget N  Cap parser-emitted errors before stopping parse recovery\n"
+        "  --panic-budget-notes N\n"
+        "                    Cap parser-emitted notes before suppressing extras\n"
+        "  --strict-recovery N\n"
+        "                    Fail compilation if parser recoveries exceed N\n"
         "  --syntax-profile <name>\n"
         "                    Syntax profile: stable-v1|core-v1|legacy-v1\n"
         "  --syntax-version <name>\n"
@@ -558,6 +585,10 @@ void print_help() {
         "  --mir-only        Lower to MIR only\n"
         "  --dump-ast        Dump AST after parsing\n"
         "  --dump-ast-json   Dump AST as normalized JSON\n"
+        "  --dump-ast-json-pretty\n"
+        "                    Dump AST as normalized pretty JSON\n"
+        "  --dump-parse-metrics\n"
+        "                    Dump parser metrics (errors/notes/recoveries/lookahead)\n"
         "  --dump-ir         Dump IR (alias of --dump-mir)\n"
         "  --dump-resolve    Dump symbol table after resolve\n"
         "  --dump-hir        Dump HIR after lowering\n"

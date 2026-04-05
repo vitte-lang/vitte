@@ -22,8 +22,8 @@ StmtId Parser::parse_block() {
     bool closed = match(TokenKind::RBrace);
     if (!closed) {
         if (emit_parse_error(diag::DiagId::ExpectedRightBrace, current_.span)) {
-            diag_.note("block opened here", span);
-            diag_.note("parser will resume after '}'", current_.span);
+            note_parse("block opened here", span);
+            note_parse("parser will resume after '}'", current_.span);
         }
     }
     span.end = previous_.span.end;

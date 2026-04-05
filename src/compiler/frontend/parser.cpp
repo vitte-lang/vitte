@@ -28,10 +28,10 @@ static bool is_stmt_sync_kind(TokenKind kind);
 static bool is_match_arm_sync_kind(TokenKind kind);
 
 Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse)
-    : Parser(lexer, diag, ast_ctx, strict_parse, false, false, 0) {}
+    : Parser(lexer, diag, ast_ctx, strict_parse, false, false, 0, 0) {}
 
 Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse, bool strict_core)
-    : Parser(lexer, diag, ast_ctx, strict_parse, strict_core, false, 0) {}
+    : Parser(lexer, diag, ast_ctx, strict_parse, strict_core, false, 0, 0) {}
 
 Parser::Parser(Lexer& lexer,
                DiagnosticEngine& diag,
@@ -39,14 +39,16 @@ Parser::Parser(Lexer& lexer,
                bool strict_parse,
                bool strict_core,
                bool trace_parse,
-               int panic_budget)
+               int panic_budget,
+               int panic_budget_notes)
     : lexer_(lexer),
       diag_(diag),
       ast_ctx_(ast_ctx),
       strict_(strict_parse),
       strict_core_(strict_core),
       trace_parse_(trace_parse),
-      panic_budget_(panic_budget) {
+      panic_budget_(panic_budget),
+      panic_budget_notes_(panic_budget_notes) {
     advance();
 }
 
@@ -60,6 +62,7 @@ const Token& Parser::previous() const {
 
 Parser::State Parser::snapshot() const {
     trace("lookahead snapshot");
+    const_cast<Parser*>(this)->metrics_.lookahead_snapshots++;
     return State{
         lexer_.snapshot(),
         current_,
@@ -69,6 +72,7 @@ Parser::State Parser::snapshot() const {
 
 void Parser::restore(State state) {
     trace("lookahead restore");
+    metrics_.lookahead_restores++;
     lexer_.restore(state.lexer);
     current_ = std::move(state.current);
     previous_ = std::move(state.previous);
@@ -76,6 +80,7 @@ void Parser::restore(State state) {
 
 void Parser::sync_to_toplevel_boundary() {
     trace("recover sync_to_toplevel_boundary");
+    metrics_.recoveries++;
     while (current_.kind != TokenKind::Eof && !is_toplevel_sync_kind(current_.kind)) {
         advance();
     }
@@ -83,6 +88,7 @@ void Parser::sync_to_toplevel_boundary() {
 
 void Parser::sync_to_stmt_boundary() {
     trace("recover sync_to_stmt_boundary");
+    metrics_.recoveries++;
     while (current_.kind != TokenKind::Eof && !is_stmt_sync_kind(current_.kind)) {
         advance();
     }
@@ -90,6 +96,7 @@ void Parser::sync_to_stmt_boundary() {
 
 void Parser::sync_to_match_arm_boundary() {
     trace("recover sync_to_match_arm_boundary");
+    metrics_.recoveries++;
     while (current_.kind != TokenKind::Eof && !is_match_arm_sync_kind(current_.kind)) {
         advance();
     }
@@ -117,10 +124,11 @@ bool Parser::expect(TokenKind kind, const char* message) {
         return false;
     }
     ++parse_error_count_;
+    ++metrics_.emitted_errors;
     const auto token_msg = diag::diag_message(diag::DiagId::ExpectedToken);
     diag_.error_code(token_msg.code, message, current_.span);
     if (kind == TokenKind::Dot && current_.kind == TokenKind::Ident && current_.text == "end") {
-        diag_.note("did you mean '.end'?", current_.span);
+        note_parse("did you mean '.end'?", current_.span);
     }
     if (current_.kind == TokenKind::Ident) {
         const char* kw = keyword_text(kind);
@@ -128,7 +136,7 @@ bool Parser::expect(TokenKind kind, const char* message) {
             std::string note = "did you mean '";
             note += kw;
             note += "'?";
-            diag_.note(std::move(note), current_.span);
+            note_parse(std::move(note), current_.span);
         }
     }
     return false;
@@ -148,11 +156,28 @@ bool Parser::can_emit_parse_error() const {
     return parse_error_count_ < panic_budget_;
 }
 
+bool Parser::can_emit_parse_note() const {
+    if (panic_budget_notes_ <= 0) {
+        return true;
+    }
+    return parse_note_count_ < panic_budget_notes_;
+}
+
+void Parser::note_parse(std::string msg, SourceSpan span) {
+    if (!can_emit_parse_note()) {
+        return;
+    }
+    ++parse_note_count_;
+    ++metrics_.emitted_notes;
+    diag_.note(std::move(msg), span);
+}
+
 bool Parser::emit_parse_error(diag::DiagId id, SourceSpan span) {
     if (!can_emit_parse_error()) {
         return false;
     }
     ++parse_error_count_;
+    ++metrics_.emitted_errors;
     diag::error(diag_, id, span);
     return true;
 }
@@ -220,7 +245,7 @@ ast::ModuleId Parser::parse_module() {
     while (current_.kind != TokenKind::Eof) {
         if (!can_emit_parse_error()) {
             trace("panic-budget exhausted; stop parse_module");
-            diag_.note("parse stopped after panic budget limit", current_.span);
+            note_parse("parse stopped after panic budget limit", current_.span);
             break;
         }
         if (!pending_decls_.empty()) {

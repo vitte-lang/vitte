@@ -2,6 +2,7 @@
 #include "diagnostics_messages.hpp"
 
 #include <algorithm>
+#include <iostream>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
@@ -341,13 +342,26 @@ std::vector<std::string> SymbolTable::in_scope_names(std::size_t limit) const {
 Resolver::Resolver(diag::DiagnosticEngine& diagnostics,
                    bool strict_types,
                    bool strict_imports,
-                   bool strict_modules)
+                   bool strict_modules,
+                   bool trace_resolve)
     : diag_(diagnostics),
       strict_types_(strict_types),
       strict_imports_(strict_imports),
-      strict_modules_(strict_modules) {
+      strict_modules_(strict_modules),
+      trace_resolve_(trace_resolve) {
     symbols_.push_scope();
     define_builtin_types();
+}
+
+void Resolver::trace(std::string_view event, ast::NodeKind kind, ast::SourceSpan span) const {
+    if (!trace_resolve_) {
+        return;
+    }
+    std::cerr << "[resolve] " << event << " kind=" << ast::to_string(kind);
+    if (span.is_valid()) {
+        std::cerr << " span=[" << span.start << ".." << span.end << "]";
+    }
+    std::cerr << "\n";
 }
 
 void Resolver::define_builtin_types() {
@@ -390,6 +404,7 @@ bool Resolver::resolve_module(ast::AstContext& ctx, ast::ModuleId module_id) {
         return false;
     }
     auto& module = ctx.get<Module>(module_id);
+    trace("module-start", module.kind, module.span);
     for (auto decl_id : module.decls) {
         if (decl_id == kInvalidAstId) {
             continue;
@@ -449,6 +464,7 @@ bool Resolver::resolve_module(ast::AstContext& ctx, ast::ModuleId module_id) {
             }
         }
     }
+    trace("module-end", module.kind, module.span);
     return !diag_.has_errors();
 }
 
@@ -647,6 +663,7 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
 
 void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
     auto& decl = ctx.get<Decl>(decl_id);
+    trace("decl", decl.kind, decl.span);
     switch (decl.kind) {
         case NodeKind::FormDecl: {
             auto& d = static_cast<FormDecl&>(decl);
@@ -811,6 +828,7 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
     }
 
     auto& stmt = ctx.get<Stmt>(stmt_id);
+    trace("stmt", stmt.kind, stmt.span);
     switch (stmt.kind) {
         case NodeKind::BlockStmt: {
             auto& b = static_cast<BlockStmt&>(stmt);
@@ -959,6 +977,7 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
     }
 
     auto& expr = ctx.get<Expr>(expr_id);
+    trace("expr", expr.kind, expr.span);
     switch (expr.kind) {
         case NodeKind::IdentExpr: {
             auto& e = static_cast<IdentExpr&>(expr);

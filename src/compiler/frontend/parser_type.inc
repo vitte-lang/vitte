@@ -64,8 +64,8 @@ TypeId Parser::parse_type_primary() {
 
     if (current_.kind != TokenKind::Ident) {
         if (emit_parse_error(diag::DiagId::ExpectedType, current_.span)) {
-            diag_.note("expected type (e.g. int, i32, i64, i128, u32, u64, u128, string, bool, Option[T])", current_.span);
-            diag_.note("parser will resume after the next token", current_.span);
+            note_parse("expected type (e.g. int, i32, i64, i128, u32, u64, u128, string, bool, Option[T])", current_.span);
+            note_parse("parser will resume after the next token", current_.span);
         }
         return ast::kInvalidAstId;
     }

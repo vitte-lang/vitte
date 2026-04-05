@@ -798,6 +798,6 @@ struct AstVisitor {
 
 const char* to_string(NodeKind kind);
 std::string dump_to_string(const AstNode& node);
-std::string dump_json_to_string(const AstContext& ast_ctx, AstId root_id);
+std::string dump_json_to_string(const AstContext& ast_ctx, AstId root_id, bool pretty = false);
 
 } // namespace vitte::frontend::ast

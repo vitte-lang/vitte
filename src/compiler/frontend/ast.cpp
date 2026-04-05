@@ -1111,11 +1111,73 @@ static void append_node_json(const AstContext& ctx,
     stack.erase(id);
 }
 
-std::string dump_json_to_string(const AstContext& ast_ctx, AstId root_id) {
+static std::string pretty_json_compact(std::string_view in) {
+    std::string out;
+    out.reserve(in.size() + in.size() / 3);
+    int indent = 0;
+    bool in_string = false;
+    bool escape = false;
+    auto newline_indent = [&](int n) {
+        out.push_back('\n');
+        out.append(static_cast<std::size_t>(n * 2), ' ');
+    };
+    for (char c : in) {
+        if (in_string) {
+            out.push_back(c);
+            if (escape) {
+                escape = false;
+            } else if (c == '\\') {
+                escape = true;
+            } else if (c == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        switch (c) {
+            case '"':
+                in_string = true;
+                out.push_back(c);
+                break;
+            case '{':
+            case '[':
+                out.push_back(c);
+                indent++;
+                newline_indent(indent);
+                break;
+            case '}':
+            case ']':
+                indent = std::max(0, indent - 1);
+                newline_indent(indent);
+                out.push_back(c);
+                break;
+            case ',':
+                out.push_back(c);
+                newline_indent(indent);
+                break;
+            case ':':
+                out.push_back(c);
+                out.push_back(' ');
+                break;
+            default:
+                if (c != '\n' && c != '\r' && c != '\t' && c != ' ') {
+                    out.push_back(c);
+                }
+                break;
+        }
+    }
+    out.push_back('\n');
+    return out;
+}
+
+std::string dump_json_to_string(const AstContext& ast_ctx, AstId root_id, bool pretty) {
     std::ostringstream os;
     std::unordered_set<AstId> stack;
     append_node_json(ast_ctx, root_id, os, stack);
-    return os.str();
+    const std::string compact = os.str();
+    if (!pretty) {
+        return compact;
+    }
+    return pretty_json_compact(compact);
 }
 
 } // namespace vitte::frontend::ast

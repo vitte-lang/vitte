@@ -229,8 +229,8 @@ ExprId Parser::parse_primary() {
     }
 
     if (emit_parse_error(diag::DiagId::ExpectedExpression, current_.span)) {
-        diag_.note("expected expression (e.g. 1, name, call(), { ... })", current_.span);
-        diag_.note("parser will resume after the next token", current_.span);
+        note_parse("expected expression (e.g. 1, name, call(), { ... })", current_.span);
+        note_parse("parser will resume after the next token", current_.span);
     }
     advance();
     return ast::kInvalidAstId;

@@ -174,15 +174,31 @@ PassResult run_passes(const Options& opts) {
         return result;
     }
     frontend::parser::Parser parser(
-        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget);
+        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget, opts.panic_budget_notes);
     auto module = parser.parse_module();
+    if (opts.strict_recovery_limit >= 0 && parser.metrics().recoveries > opts.strict_recovery_limit) {
+        std::cerr << "[driver] error: parser recoveries (" << parser.metrics().recoveries
+                  << ") exceed --strict-recovery=" << opts.strict_recovery_limit << "\n";
+        result.ok = false;
+        emit_phase_profile();
+        return result;
+    }
     parse_ms = ms(Clock::now() - t_parse_start);
 
     if (opts.parse_only) {
         if (opts.dump_ast_json) {
-            std::cout << frontend::ast::dump_json_to_string(ast_ctx, module) << "\n";
+            std::cout << frontend::ast::dump_json_to_string(ast_ctx, module, opts.dump_ast_json_pretty) << "\n";
         } else if (opts.dump_ast) {
             std::cout << frontend::ast::dump_to_string(ast_ctx.node(module));
+        }
+        if (opts.dump_parse_metrics) {
+            const auto& m = parser.metrics();
+            std::cout << "[parse-metrics] errors=" << m.emitted_errors
+                      << " notes=" << m.emitted_notes
+                      << " recoveries=" << m.recoveries
+                      << " lookahead_snapshots=" << m.lookahead_snapshots
+                      << " lookahead_restores=" << m.lookahead_restores
+                      << "\n";
         }
         if (opts.parse_with_modules) {
             frontend::modules::ModuleIndex module_index;
@@ -271,9 +287,18 @@ PassResult run_passes(const Options& opts) {
     frontend::passes::disambiguate_invokes(ast_ctx, module);
 
     if (opts.dump_ast_json) {
-        std::cout << frontend::ast::dump_json_to_string(ast_ctx, module) << "\n";
+        std::cout << frontend::ast::dump_json_to_string(ast_ctx, module, opts.dump_ast_json_pretty) << "\n";
     } else if (opts.dump_ast) {
         std::cout << frontend::ast::dump_to_string(ast_ctx.node(module));
+    }
+    if (opts.dump_parse_metrics) {
+        const auto& m = parser.metrics();
+        std::cout << "[parse-metrics] errors=" << m.emitted_errors
+                  << " notes=" << m.emitted_notes
+                  << " recoveries=" << m.recoveries
+                  << " lookahead_snapshots=" << m.lookahead_snapshots
+                  << " lookahead_restores=" << m.lookahead_restores
+                  << "\n";
     }
 
     frontend::validate::validate_module(ast_ctx, module, diagnostics);
@@ -286,7 +311,12 @@ PassResult run_passes(const Options& opts) {
         return result;
     }
 
-    frontend::resolve::Resolver resolver(diagnostics, opts.strict_types, opts.strict_imports || opts.strict_modules, opts.strict_modules);
+    frontend::resolve::Resolver resolver(
+        diagnostics,
+        opts.strict_types,
+        opts.strict_imports || opts.strict_modules,
+        opts.strict_modules,
+        opts.trace_resolve);
     resolver.resolve_module(ast_ctx, module);
 
     if (opts.dump_resolve) {

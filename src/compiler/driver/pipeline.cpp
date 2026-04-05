@@ -235,8 +235,13 @@ bool run_pipeline(const Options& opts) {
         return false;
     }
     frontend::parser::Parser parser(
-        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget);
+        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget, opts.panic_budget_notes);
     auto ast = parser.parse_module();
+    if (opts.strict_recovery_limit >= 0 && parser.metrics().recoveries > opts.strict_recovery_limit) {
+        std::cerr << "[pipeline] error: parser recoveries (" << parser.metrics().recoveries
+                  << ") exceed --strict-recovery=" << opts.strict_recovery_limit << "\n";
+        return false;
+    }
     (void)ast;
 
     frontend::modules::ModuleIndex module_index;
@@ -273,7 +278,12 @@ bool run_pipeline(const Options& opts) {
     log << "[stage] resolve\n";
     set_crash_stage(CrashStage::Resolve);
     auto t_resolve_start = Clock::now();
-    frontend::resolve::Resolver resolver(diagnostics, opts.strict_types, opts.strict_imports || opts.strict_modules, opts.strict_modules);
+    frontend::resolve::Resolver resolver(
+        diagnostics,
+        opts.strict_types,
+        opts.strict_imports || opts.strict_modules,
+        opts.strict_modules,
+        opts.trace_resolve);
     resolver.resolve_module(ast_ctx, ast);
     if (diagnostics.has_errors()) {
         emit_diags();
