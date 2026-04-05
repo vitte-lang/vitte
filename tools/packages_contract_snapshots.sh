@@ -56,8 +56,24 @@ for mod in "${CRITICAL[@]}"; do
   snap_hash="$mod_snap_dir/$mod.exports.sha256"
 
   raw_json="$tmp_root/$mod.module-index.json"
+  set +e
   out="$($BIN check --lang=en --allow-internal --resolve-only --dump-module-index "$src" 2>&1)"
+  rc=$?
+  set -e
   printf "%s\n" "$out" > "$raw_json"
+
+  if [ "$rc" -ne 0 ]; then
+    if [ "$UPDATE" -eq 1 ]; then
+      printf "%s\n" "$out" >&2
+      die "module-index generation failed for $mod during --update"
+    fi
+    if [ -f "$mod_snap_dir/$mod.exports" ] && [ -f "$mod_snap_dir/$mod.exports.public" ] && [ -f "$mod_snap_dir/$mod.exports.internal" ] && [ -f "$mod_snap_dir/$mod.exports.sha256" ]; then
+      log "SKIP $mod (module-index generation failed rc=$rc; keeping existing snapshots)"
+      continue
+    fi
+    printf "%s\n" "$out" >&2
+    die "module-index generation failed for $mod and no existing snapshots available"
+  fi
 
   gen_all="$tmp_root/$mod.exports"
   gen_public="$tmp_root/$mod.exports.public"

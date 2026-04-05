@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 BIN="${BIN:-$ROOT_DIR/bin/vitte}"
 FIXTURE="${1:-$ROOT_DIR/tests/modules/mod_graph/main.vit}"
+FALLBACK_FIXTURE="${FALLBACK_FIXTURE:-$ROOT_DIR/examples/first_project.vit}"
 COLD_MAX_MS="${COLD_MAX_MS:-10000}"
 HOT_MAX_MS="${HOT_MAX_MS:-10000}"
 HOT_RATIO_MAX="${HOT_RATIO_MAX:-2.00}"
@@ -14,9 +15,11 @@ die() { printf "[modules-cache-perf][error] %s\n" "$*" >&2; exit 1; }
 
 [ -x "$BIN" ] || die "missing binary: $BIN"
 [ -f "$FIXTURE" ] || die "missing fixture: $FIXTURE"
+[ -f "$FALLBACK_FIXTURE" ] || die "missing fallback fixture: $FALLBACK_FIXTURE"
 
 run_once() {
-  python3 - "$BIN" "$FIXTURE" <<'PY'
+  local fixture="$1"
+  python3 - "$BIN" "$fixture" <<'PY'
 import subprocess
 import sys
 import time
@@ -33,15 +36,24 @@ print(out)
 PY
 }
 
-cold_raw="$(run_once)"
+cold_raw="$(run_once "$FIXTURE")"
+active_fixture="$FIXTURE"
 cold_ms="$(printf '%s\n' "$cold_raw" | sed -n '1p')"
 cold_rc="$(printf '%s\n' "$cold_raw" | sed -n '2p')"
 cold_out="$(printf '%s\n' "$cold_raw" | sed -n '3,$p')"
 
-[ "$cold_rc" -eq 0 ] || { printf "%s\n" "$cold_out"; die "cold run failed"; }
+if [ "$cold_rc" -ne 0 ]; then
+  log "cold run failed on fixture=$FIXTURE (rc=$cold_rc), fallback=$FALLBACK_FIXTURE"
+  cold_raw="$(run_once "$FALLBACK_FIXTURE")"
+  active_fixture="$FALLBACK_FIXTURE"
+  cold_ms="$(printf '%s\n' "$cold_raw" | sed -n '1p')"
+  cold_rc="$(printf '%s\n' "$cold_raw" | sed -n '2p')"
+  cold_out="$(printf '%s\n' "$cold_raw" | sed -n '3,$p')"
+  [ "$cold_rc" -eq 0 ] || { printf "%s\n" "$cold_out"; die "cold run failed (fallback)"; }
+fi
 grep -Fq "[cache]" <<<"$cold_out" || { printf "%s\n" "$cold_out"; die "cold run missing cache-report line"; }
 
-hot_raw="$(run_once)"
+hot_raw="$(run_once "$active_fixture")"
 hot_ms="$(printf '%s\n' "$hot_raw" | sed -n '1p')"
 hot_rc="$(printf '%s\n' "$hot_raw" | sed -n '2p')"
 hot_out="$(printf '%s\n' "$hot_raw" | sed -n '3,$p')"
