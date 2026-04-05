@@ -34,6 +34,8 @@ struct Options {
     bool parse_silent = false;
     bool strict_parse = false;
     bool strict_core = false;
+    bool trace_parse = false;
+    int panic_budget = 0;
     std::string syntax_profile = "stable-v1";
 
     /* Resolve only (no lowering) */
@@ -45,6 +47,7 @@ struct Options {
 
     /* Dump AST after parsing */
     bool dump_ast = false;
+    bool dump_ast_json = false;
     bool dump_ir = false;
     bool dump_resolve = false;
     bool dump_hir = false;

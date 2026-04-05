@@ -30,6 +30,9 @@ namespace vitte::frontend::diag {
     X(E0016, CoreForbiddenExpressionSyntax, "forbidden expression syntax in strict-core mode") \
     X(E0017, ExpectedRightBrace, "expected '}'") \
     X(E0018, ExpectedMatchArm, "expected 'case' or 'otherwise' in match") \
+    X(E0019, ExpectedToken, "expected token") \
+    X(E0020, ExpectedAttributeArgument, "expected attribute argument") \
+    X(E0021, ExpectedAsmStringLiteral, "expected string literal in asm()") \
     X(E1001, DuplicatePatternBinding, "duplicate pattern binding") \
     X(E1002, UnknownType, "unknown type (did you mean a built-in like int/i32/i64/i128/u32/u64/u128/bool/string?)") \
     X(E1003, UnknownGenericBaseType, "unknown generic base type") \
@@ -194,6 +197,24 @@ constexpr DiagExplain diag_explain(DiagId id) {
                 "A match block accepts only 'case <pattern> { ... }' arms and an optional 'otherwise { ... }'.",
                 "Replace the unexpected token with a valid case arm or otherwise branch.",
                 "match x {\n  case Some(v) { give v }\n  otherwise { give 0 }\n}",
+            };
+        case DiagId::ExpectedToken:
+            return {
+                "The parser expected a specific token at this position.",
+                "Fix the local punctuation/keyword mismatch shown in the note.",
+                "proc main() -> int { give 0 }",
+            };
+        case DiagId::ExpectedAttributeArgument:
+            return {
+                "An attribute argument must be an identifier, string, or integer literal.",
+                "Replace the invalid attribute argument with a supported literal or identifier.",
+                "#[tag(\"x\", 1)]\nproc main() -> int { give 0 }",
+            };
+        case DiagId::ExpectedAsmStringLiteral:
+            return {
+                "asm(...) requires a string literal payload.",
+                "Pass a string literal as the asm body.",
+                "asm(\"nop\")",
             };
         case DiagId::ExpectedPattern:
             return {

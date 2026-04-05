@@ -234,7 +234,8 @@ bool run_pipeline(const Options& opts) {
         emit_diags();
         return false;
     }
-    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core);
+    frontend::parser::Parser parser(
+        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget);
     auto ast = parser.parse_module();
     (void)ast;
 

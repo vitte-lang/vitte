@@ -7,6 +7,7 @@
 
 #include <cassert>
 #include <sstream>
+#include <unordered_set>
 #include <utility>
 
 namespace vitte::frontend::ast {
@@ -480,6 +481,640 @@ const char* to_string(NodeKind kind) {
 std::string dump_to_string(const AstNode& node) {
     std::ostringstream os;
     os << to_string(node.kind);
+    return os.str();
+}
+
+static void append_json_escaped(std::ostringstream& os, const std::string& text) {
+    for (char c : text) {
+        switch (c) {
+            case '\\': os << "\\\\"; break;
+            case '"': os << "\\\""; break;
+            case '\n': os << "\\n"; break;
+            case '\r': os << "\\r"; break;
+            case '\t': os << "\\t"; break;
+            default: os << c; break;
+        }
+    }
+}
+
+static void append_json_string(std::ostringstream& os, const std::string& text) {
+    os << '"';
+    append_json_escaped(os, text);
+    os << '"';
+}
+
+static std::string unary_op_to_string(UnaryOp op) {
+    switch (op) {
+        case UnaryOp::Not: return "Not";
+        case UnaryOp::Neg: return "Neg";
+        case UnaryOp::Addr: return "Addr";
+        case UnaryOp::Deref: return "Deref";
+    }
+    return "Unknown";
+}
+
+static std::string binary_op_to_string(BinaryOp op) {
+    switch (op) {
+        case BinaryOp::Add: return "Add";
+        case BinaryOp::Sub: return "Sub";
+        case BinaryOp::Mul: return "Mul";
+        case BinaryOp::Div: return "Div";
+        case BinaryOp::Mod: return "Mod";
+        case BinaryOp::Eq: return "Eq";
+        case BinaryOp::Ne: return "Ne";
+        case BinaryOp::Lt: return "Lt";
+        case BinaryOp::Le: return "Le";
+        case BinaryOp::Gt: return "Gt";
+        case BinaryOp::Ge: return "Ge";
+        case BinaryOp::BitAnd: return "BitAnd";
+        case BinaryOp::BitOr: return "BitOr";
+        case BinaryOp::BitXor: return "BitXor";
+        case BinaryOp::Shl: return "Shl";
+        case BinaryOp::Shr: return "Shr";
+        case BinaryOp::And: return "And";
+        case BinaryOp::Or: return "Or";
+        case BinaryOp::Assign: return "Assign";
+    }
+    return "Unknown";
+}
+
+static std::string literal_kind_to_string(LiteralKind kind) {
+    switch (kind) {
+        case LiteralKind::Bool: return "Bool";
+        case LiteralKind::Int: return "Int";
+        case LiteralKind::String: return "String";
+        case LiteralKind::Float: return "Float";
+        case LiteralKind::Char: return "Char";
+    }
+    return "Unknown";
+}
+
+static std::string invoke_kind_to_string(InvokeExpr::Kind kind) {
+    switch (kind) {
+        case InvokeExpr::Kind::Unknown: return "Unknown";
+        case InvokeExpr::Kind::Call: return "Call";
+        case InvokeExpr::Kind::Ctor: return "Ctor";
+    }
+    return "Unknown";
+}
+
+static std::string module_path_to_string(const ModulePath& path) {
+    std::string out;
+    for (std::size_t i = 0; i < path.relative_depth; ++i) {
+        out += ".";
+    }
+    for (std::size_t i = 0; i < path.parts.size(); ++i) {
+        if (!out.empty() && out.back() != '.') {
+            out += "/";
+        }
+        out += path.parts[i].name;
+    }
+    return out;
+}
+
+static void append_int_list(std::ostringstream& os, const std::vector<AstId>& values) {
+    os << "[";
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i) os << ",";
+        os << values[i];
+    }
+    os << "]";
+}
+
+static void append_string_list(std::ostringstream& os, const std::vector<std::string>& values) {
+    os << "[";
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i) os << ",";
+        append_json_string(os, values[i]);
+    }
+    os << "]";
+}
+
+static void append_node_json(const AstContext& ctx,
+                             AstId id,
+                             std::ostringstream& os,
+                             std::unordered_set<AstId>& stack);
+
+static void append_children_json(const AstContext& ctx,
+                                 const std::vector<AstId>& children,
+                                 std::ostringstream& os,
+                                 std::unordered_set<AstId>& stack) {
+    os << "[";
+    for (std::size_t i = 0; i < children.size(); ++i) {
+        if (i) os << ",";
+        append_node_json(ctx, children[i], os, stack);
+    }
+    os << "]";
+}
+
+static void append_node_json(const AstContext& ctx,
+                             AstId id,
+                             std::ostringstream& os,
+                             std::unordered_set<AstId>& stack) {
+    if (id == kInvalidAstId) {
+        os << "null";
+        return;
+    }
+    if (stack.count(id)) {
+        os << "{\"id\":" << id << ",\"cycle\":true}";
+        return;
+    }
+
+    stack.insert(id);
+    const AstNode& node = ctx.node(id);
+    std::vector<AstId> children;
+    std::vector<std::string> names;
+
+    os << "{";
+    os << "\"id\":" << id << ",";
+    os << "\"kind\":";
+    append_json_string(os, to_string(node.kind));
+    os << ",\"span\":{\"start\":" << node.span.start << ",\"end\":" << node.span.end << "},\"data\":{";
+
+    switch (node.kind) {
+        case NodeKind::Module: {
+            const auto& n = ctx.get<Module>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name);
+            os << ",\"decl_count\":" << n.decls.size();
+            children = n.decls;
+            break;
+        }
+        case NodeKind::Ident: {
+            const auto& n = ctx.get<Ident>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name);
+            break;
+        }
+        case NodeKind::NamedType: {
+            const auto& n = ctx.get<NamedType>(id);
+            os << "\"name\":";
+            append_json_string(os, n.ident.name);
+            break;
+        }
+        case NodeKind::GenericType: {
+            const auto& n = ctx.get<GenericType>(id);
+            os << "\"base\":";
+            append_json_string(os, n.base_ident.name);
+            os << ",\"type_arg_count\":" << n.type_args.size();
+            children = n.type_args;
+            break;
+        }
+        case NodeKind::BuiltinType: {
+            const auto& n = ctx.get<BuiltinType>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name);
+            break;
+        }
+        case NodeKind::PointerType: {
+            const auto& n = ctx.get<PointerType>(id);
+            children.push_back(n.pointee);
+            break;
+        }
+        case NodeKind::SliceType: {
+            const auto& n = ctx.get<SliceType>(id);
+            children.push_back(n.element);
+            break;
+        }
+        case NodeKind::ProcType: {
+            const auto& n = ctx.get<ProcType>(id);
+            os << "\"param_count\":" << n.params.size();
+            children = n.params;
+            children.push_back(n.return_type);
+            break;
+        }
+        case NodeKind::LiteralExpr: {
+            const auto& n = ctx.get<LiteralExpr>(id);
+            os << "\"literal_kind\":";
+            append_json_string(os, literal_kind_to_string(n.lit_kind));
+            os << ",\"value\":";
+            append_json_string(os, n.value);
+            break;
+        }
+        case NodeKind::IdentExpr: {
+            const auto& n = ctx.get<IdentExpr>(id);
+            os << "\"name\":";
+            append_json_string(os, n.ident.name);
+            break;
+        }
+        case NodeKind::UnaryExpr: {
+            const auto& n = ctx.get<UnaryExpr>(id);
+            os << "\"op\":";
+            append_json_string(os, unary_op_to_string(n.op));
+            children.push_back(n.expr);
+            break;
+        }
+        case NodeKind::BinaryExpr: {
+            const auto& n = ctx.get<BinaryExpr>(id);
+            os << "\"op\":";
+            append_json_string(os, binary_op_to_string(n.op));
+            children.push_back(n.lhs);
+            children.push_back(n.rhs);
+            break;
+        }
+        case NodeKind::ProcExpr: {
+            const auto& n = ctx.get<ProcExpr>(id);
+            os << "\"param_count\":" << n.params.size();
+            for (const auto& p : n.params) {
+                if (p.type != kInvalidAstId) {
+                    children.push_back(p.type);
+                }
+                names.push_back(p.ident.name);
+            }
+            os << ",\"params\":";
+            append_string_list(os, names);
+            children.push_back(n.return_type);
+            children.push_back(n.body);
+            break;
+        }
+        case NodeKind::MemberExpr: {
+            const auto& n = ctx.get<MemberExpr>(id);
+            os << "\"member\":";
+            append_json_string(os, n.member.name);
+            children.push_back(n.base);
+            break;
+        }
+        case NodeKind::IndexExpr: {
+            const auto& n = ctx.get<IndexExpr>(id);
+            children.push_back(n.base);
+            children.push_back(n.index);
+            break;
+        }
+        case NodeKind::IfExpr: {
+            const auto& n = ctx.get<IfExpr>(id);
+            children.push_back(n.cond);
+            children.push_back(n.then_block);
+            children.push_back(n.else_block);
+            break;
+        }
+        case NodeKind::IsExpr: {
+            const auto& n = ctx.get<IsExpr>(id);
+            children.push_back(n.value);
+            children.push_back(n.pattern);
+            break;
+        }
+        case NodeKind::AsExpr: {
+            const auto& n = ctx.get<AsExpr>(id);
+            children.push_back(n.value);
+            children.push_back(n.type);
+            break;
+        }
+        case NodeKind::CallNoParenExpr: {
+            const auto& n = ctx.get<CallNoParenExpr>(id);
+            os << "\"callee\":";
+            append_json_string(os, n.callee.name);
+            children.push_back(n.arg);
+            break;
+        }
+        case NodeKind::InvokeExpr: {
+            const auto& n = ctx.get<InvokeExpr>(id);
+            os << "\"invoke_kind\":";
+            append_json_string(os, invoke_kind_to_string(n.invoke_kind));
+            os << ",\"type_arg_count\":" << n.type_args.size() << ",\"arg_count\":" << n.args.size();
+            children.push_back(n.callee_expr);
+            if (n.callee_type != kInvalidAstId) {
+                children.push_back(n.callee_type);
+            }
+            children.insert(children.end(), n.type_args.begin(), n.type_args.end());
+            children.insert(children.end(), n.args.begin(), n.args.end());
+            break;
+        }
+        case NodeKind::ListExpr: {
+            const auto& n = ctx.get<ListExpr>(id);
+            os << "\"item_count\":" << n.items.size();
+            children = n.items;
+            break;
+        }
+        case NodeKind::IdentPattern: {
+            const auto& n = ctx.get<IdentPattern>(id);
+            os << "\"name\":";
+            append_json_string(os, n.ident.name);
+            break;
+        }
+        case NodeKind::CtorPattern: {
+            const auto& n = ctx.get<CtorPattern>(id);
+            children.push_back(n.type);
+            children.insert(children.end(), n.args.begin(), n.args.end());
+            break;
+        }
+        case NodeKind::BlockStmt: {
+            const auto& n = ctx.get<BlockStmt>(id);
+            os << "\"stmt_count\":" << n.stmts.size();
+            children = n.stmts;
+            break;
+        }
+        case NodeKind::AsmStmt: {
+            const auto& n = ctx.get<AsmStmt>(id);
+            os << "\"code\":";
+            append_json_string(os, n.code);
+            break;
+        }
+        case NodeKind::UnsafeStmt: {
+            const auto& n = ctx.get<UnsafeStmt>(id);
+            children.push_back(n.body);
+            break;
+        }
+        case NodeKind::LetStmt: {
+            const auto& n = ctx.get<LetStmt>(id);
+            os << "\"ident\":";
+            append_json_string(os, n.ident.name);
+            if (n.type != kInvalidAstId) {
+                children.push_back(n.type);
+            }
+            children.push_back(n.initializer);
+            break;
+        }
+        case NodeKind::ExprStmt: {
+            const auto& n = ctx.get<ExprStmt>(id);
+            children.push_back(n.expr);
+            break;
+        }
+        case NodeKind::ReturnStmt: {
+            const auto& n = ctx.get<ReturnStmt>(id);
+            if (n.expr != kInvalidAstId) {
+                children.push_back(n.expr);
+            }
+            break;
+        }
+        case NodeKind::IfStmt: {
+            const auto& n = ctx.get<IfStmt>(id);
+            children.push_back(n.cond);
+            children.push_back(n.then_block);
+            children.push_back(n.else_block);
+            break;
+        }
+        case NodeKind::LoopStmt: {
+            const auto& n = ctx.get<LoopStmt>(id);
+            children.push_back(n.body);
+            break;
+        }
+        case NodeKind::BreakStmt:
+        case NodeKind::ContinueStmt:
+            break;
+        case NodeKind::ForStmt: {
+            const auto& n = ctx.get<ForStmt>(id);
+            os << "\"ident\":";
+            append_json_string(os, n.ident.name);
+            children.push_back(n.iterable);
+            children.push_back(n.body);
+            break;
+        }
+        case NodeKind::MakeStmt: {
+            const auto& n = ctx.get<MakeStmt>(id);
+            os << "\"ident\":";
+            append_json_string(os, n.ident.name);
+            if (n.type != kInvalidAstId) {
+                children.push_back(n.type);
+            }
+            children.push_back(n.value);
+            break;
+        }
+        case NodeKind::SetStmt: {
+            const auto& n = ctx.get<SetStmt>(id);
+            os << "\"ident\":";
+            append_json_string(os, n.ident.name);
+            children.push_back(n.value);
+            break;
+        }
+        case NodeKind::GiveStmt: {
+            const auto& n = ctx.get<GiveStmt>(id);
+            children.push_back(n.value);
+            break;
+        }
+        case NodeKind::EmitStmt: {
+            const auto& n = ctx.get<EmitStmt>(id);
+            children.push_back(n.value);
+            break;
+        }
+        case NodeKind::WhenStmt: {
+            const auto& n = ctx.get<WhenStmt>(id);
+            children.push_back(n.pattern);
+            children.push_back(n.block);
+            break;
+        }
+        case NodeKind::SelectStmt: {
+            const auto& n = ctx.get<SelectStmt>(id);
+            os << "\"when_count\":" << n.whens.size();
+            children.push_back(n.expr);
+            children.insert(children.end(), n.whens.begin(), n.whens.end());
+            if (n.otherwise_block != kInvalidAstId) {
+                children.push_back(n.otherwise_block);
+            }
+            break;
+        }
+        case NodeKind::FnDecl: {
+            const auto& n = ctx.get<FnDecl>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            os << ",\"param_count\":" << n.params.size();
+            for (const auto& p : n.params) {
+                names.push_back(p.ident.name);
+                if (p.type != kInvalidAstId) {
+                    children.push_back(p.type);
+                }
+            }
+            os << ",\"params\":";
+            append_string_list(os, names);
+            children.push_back(n.return_type);
+            children.push_back(n.body);
+            break;
+        }
+        case NodeKind::TypeDecl: {
+            const auto& n = ctx.get<TypeDecl>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            os << ",\"field_count\":" << n.fields.size();
+            for (const auto& f : n.fields) {
+                names.push_back(f.ident.name);
+                if (f.type != kInvalidAstId) {
+                    children.push_back(f.type);
+                }
+            }
+            os << ",\"fields\":";
+            append_string_list(os, names);
+            break;
+        }
+        case NodeKind::TypeAliasDecl: {
+            const auto& n = ctx.get<TypeAliasDecl>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            for (const auto& p : n.type_params) {
+                names.push_back(p.name);
+            }
+            os << ",\"type_params\":";
+            append_string_list(os, names);
+            children.push_back(n.target);
+            break;
+        }
+        case NodeKind::SpaceDecl: {
+            const auto& n = ctx.get<SpaceDecl>(id);
+            os << "\"path\":";
+            append_json_string(os, module_path_to_string(n.path));
+            break;
+        }
+        case NodeKind::PullDecl: {
+            const auto& n = ctx.get<PullDecl>(id);
+            os << "\"path\":";
+            append_json_string(os, module_path_to_string(n.path));
+            os << ",\"alias\":";
+            if (n.alias.has_value()) {
+                append_json_string(os, n.alias->name);
+            } else {
+                os << "null";
+            }
+            break;
+        }
+        case NodeKind::UseDecl: {
+            const auto& n = ctx.get<UseDecl>(id);
+            os << "\"path\":";
+            append_json_string(os, module_path_to_string(n.path));
+            os << ",\"is_glob\":" << (n.is_glob ? "true" : "false") << ",\"alias\":";
+            if (n.alias.has_value()) {
+                append_json_string(os, n.alias->name);
+            } else {
+                os << "null";
+            }
+            break;
+        }
+        case NodeKind::ShareDecl: {
+            const auto& n = ctx.get<ShareDecl>(id);
+            os << "\"share_all\":" << (n.share_all ? "true" : "false");
+            for (const auto& p : n.names) {
+                names.push_back(p.name);
+            }
+            os << ",\"names\":";
+            append_string_list(os, names);
+            break;
+        }
+        case NodeKind::ConstDecl: {
+            const auto& n = ctx.get<ConstDecl>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            if (n.type != kInvalidAstId) {
+                children.push_back(n.type);
+            }
+            children.push_back(n.value);
+            break;
+        }
+        case NodeKind::GlobalDecl: {
+            const auto& n = ctx.get<GlobalDecl>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            os << ",\"is_mut\":" << (n.is_mut ? "true" : "false");
+            if (n.type != kInvalidAstId) {
+                children.push_back(n.type);
+            }
+            children.push_back(n.value);
+            break;
+        }
+        case NodeKind::MacroDecl: {
+            const auto& n = ctx.get<MacroDecl>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            for (const auto& p : n.params) {
+                names.push_back(p.name);
+            }
+            os << ",\"params\":";
+            append_string_list(os, names);
+            children.push_back(n.body);
+            break;
+        }
+        case NodeKind::FormDecl: {
+            const auto& n = ctx.get<FormDecl>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            for (const auto& p : n.type_params) {
+                names.push_back(p.name);
+            }
+            os << ",\"type_params\":";
+            append_string_list(os, names);
+            names.clear();
+            for (const auto& f : n.fields) {
+                names.push_back(f.ident.name);
+                if (f.type != kInvalidAstId) {
+                    children.push_back(f.type);
+                }
+            }
+            os << ",\"fields\":";
+            append_string_list(os, names);
+            break;
+        }
+        case NodeKind::PickDecl: {
+            const auto& n = ctx.get<PickDecl>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            for (const auto& p : n.type_params) {
+                names.push_back(p.name);
+            }
+            os << ",\"type_params\":";
+            append_string_list(os, names);
+            names.clear();
+            for (const auto& c : n.cases) {
+                names.push_back(c.ident.name);
+                for (const auto& f : c.fields) {
+                    if (f.type != kInvalidAstId) {
+                        children.push_back(f.type);
+                    }
+                }
+            }
+            os << ",\"cases\":";
+            append_string_list(os, names);
+            break;
+        }
+        case NodeKind::ProcDecl: {
+            const auto& n = ctx.get<ProcDecl>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            os << ",\"attr_count\":" << n.attrs.size() << ",\"param_count\":" << n.params.size();
+            for (const auto& p : n.type_params) {
+                names.push_back(p.name);
+            }
+            os << ",\"type_params\":";
+            append_string_list(os, names);
+            names.clear();
+            for (const auto& p : n.params) {
+                names.push_back(p.ident.name);
+                if (p.type != kInvalidAstId) {
+                    children.push_back(p.type);
+                }
+            }
+            os << ",\"params\":";
+            append_string_list(os, names);
+            children.push_back(n.return_type);
+            if (n.body != kInvalidAstId) {
+                children.push_back(n.body);
+            }
+            break;
+        }
+        case NodeKind::EntryDecl: {
+            const auto& n = ctx.get<EntryDecl>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            os << ",\"module\":";
+            append_json_string(os, module_path_to_string(n.module));
+            children.push_back(n.body);
+            break;
+        }
+        case NodeKind::Attribute:
+        case NodeKind::ModulePath:
+            os << "\"raw\":";
+            append_json_string(os, to_string(node.kind));
+            break;
+    }
+
+    os << "},\"child_ids\":";
+    append_int_list(os, children);
+    os << ",\"children\":";
+    append_children_json(ctx, children, os, stack);
+    os << "}";
+
+    stack.erase(id);
+}
+
+std::string dump_json_to_string(const AstContext& ast_ctx, AstId root_id) {
+    std::ostringstream os;
+    std::unordered_set<AstId> stack;
+    append_node_json(ast_ctx, root_id, os, stack);
     return os.str();
 }
 

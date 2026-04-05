@@ -6,9 +6,11 @@
 #pragma once
 
 #include <vector>
+#include <string_view>
 
 #include "ast.hpp"
 #include "diagnostics.hpp"
+#include "diagnostics_messages.hpp"
 #include "keywords.hpp"
 #include "lexer.hpp"
 
@@ -31,6 +33,13 @@ class Parser {
 public:
     Parser(Lexer& lexer, DiagnosticEngine& diagnostics, AstContext& ast_ctx, bool strict_parse);
     Parser(Lexer& lexer, DiagnosticEngine& diagnostics, AstContext& ast_ctx, bool strict_parse, bool strict_core);
+    Parser(Lexer& lexer,
+           DiagnosticEngine& diagnostics,
+           AstContext& ast_ctx,
+           bool strict_parse,
+           bool strict_core,
+           bool trace_parse,
+           int panic_budget);
 
     ast::ModuleId parse_module();
 
@@ -51,6 +60,9 @@ private:
     void sync_to_toplevel_boundary();
     void sync_to_stmt_boundary();
     void sync_to_match_arm_boundary();
+    void trace(std::string_view event) const;
+    bool can_emit_parse_error() const;
+    bool emit_parse_error(::vitte::frontend::diag::DiagId id, ast::SourceSpan span);
 
     // Top-level
     DeclId parse_toplevel();
@@ -136,6 +148,9 @@ private:
     AstContext& ast_ctx_;
     bool strict_;
     bool strict_core_;
+    bool trace_parse_ = false;
+    int panic_budget_ = 0;
+    int parse_error_count_ = 0;
     Token current_;
     Token previous_;
     std::vector<DeclId> pending_decls_;

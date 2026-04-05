@@ -173,12 +173,15 @@ PassResult run_passes(const Options& opts) {
         result.ok = false;
         return result;
     }
-    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core);
+    frontend::parser::Parser parser(
+        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget);
     auto module = parser.parse_module();
     parse_ms = ms(Clock::now() - t_parse_start);
 
     if (opts.parse_only) {
-        if (opts.dump_ast) {
+        if (opts.dump_ast_json) {
+            std::cout << frontend::ast::dump_json_to_string(ast_ctx, module) << "\n";
+        } else if (opts.dump_ast) {
             std::cout << frontend::ast::dump_to_string(ast_ctx.node(module));
         }
         if (opts.parse_with_modules) {
@@ -267,7 +270,9 @@ PassResult run_passes(const Options& opts) {
     frontend::passes::expand_macros(ast_ctx, module, diagnostics);
     frontend::passes::disambiguate_invokes(ast_ctx, module);
 
-    if (opts.dump_ast) {
+    if (opts.dump_ast_json) {
+        std::cout << frontend::ast::dump_json_to_string(ast_ctx, module) << "\n";
+    } else if (opts.dump_ast) {
         std::cout << frontend::ast::dump_to_string(ast_ctx.node(module));
     }
 

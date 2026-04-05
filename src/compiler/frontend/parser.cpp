@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 #include <string_view>
+#include <iostream>
 
 namespace vitte::frontend::parser {
 
@@ -27,10 +28,25 @@ static bool is_stmt_sync_kind(TokenKind kind);
 static bool is_match_arm_sync_kind(TokenKind kind);
 
 Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse)
-    : Parser(lexer, diag, ast_ctx, strict_parse, false) {}
+    : Parser(lexer, diag, ast_ctx, strict_parse, false, false, 0) {}
 
 Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse, bool strict_core)
-    : lexer_(lexer), diag_(diag), ast_ctx_(ast_ctx), strict_(strict_parse), strict_core_(strict_core) {
+    : Parser(lexer, diag, ast_ctx, strict_parse, strict_core, false, 0) {}
+
+Parser::Parser(Lexer& lexer,
+               DiagnosticEngine& diag,
+               AstContext& ast_ctx,
+               bool strict_parse,
+               bool strict_core,
+               bool trace_parse,
+               int panic_budget)
+    : lexer_(lexer),
+      diag_(diag),
+      ast_ctx_(ast_ctx),
+      strict_(strict_parse),
+      strict_core_(strict_core),
+      trace_parse_(trace_parse),
+      panic_budget_(panic_budget) {
     advance();
 }
 
@@ -43,6 +59,7 @@ const Token& Parser::previous() const {
 }
 
 Parser::State Parser::snapshot() const {
+    trace("lookahead snapshot");
     return State{
         lexer_.snapshot(),
         current_,
@@ -51,24 +68,28 @@ Parser::State Parser::snapshot() const {
 }
 
 void Parser::restore(State state) {
+    trace("lookahead restore");
     lexer_.restore(state.lexer);
     current_ = std::move(state.current);
     previous_ = std::move(state.previous);
 }
 
 void Parser::sync_to_toplevel_boundary() {
+    trace("recover sync_to_toplevel_boundary");
     while (current_.kind != TokenKind::Eof && !is_toplevel_sync_kind(current_.kind)) {
         advance();
     }
 }
 
 void Parser::sync_to_stmt_boundary() {
+    trace("recover sync_to_stmt_boundary");
     while (current_.kind != TokenKind::Eof && !is_stmt_sync_kind(current_.kind)) {
         advance();
     }
 }
 
 void Parser::sync_to_match_arm_boundary() {
+    trace("recover sync_to_match_arm_boundary");
     while (current_.kind != TokenKind::Eof && !is_match_arm_sync_kind(current_.kind)) {
         advance();
     }
@@ -92,7 +113,11 @@ bool Parser::expect(TokenKind kind, const char* message) {
         advance();
         return true;
     }
-    diag_.error(message, current_.span);
+    const bool emitted = emit_parse_error(diag::DiagId::ExpectedToken, current_.span);
+    if (!emitted) {
+        return false;
+    }
+    diag_.note(message, current_.span);
     if (kind == TokenKind::Dot && current_.kind == TokenKind::Ident && current_.text == "end") {
         diag_.note("did you mean '.end'?", current_.span);
     }
@@ -106,6 +131,29 @@ bool Parser::expect(TokenKind kind, const char* message) {
         }
     }
     return false;
+}
+
+void Parser::trace(std::string_view event) const {
+    if (!trace_parse_) {
+        return;
+    }
+    std::cerr << "[parse-trace] " << event << " tok=" << current_.text << "\n";
+}
+
+bool Parser::can_emit_parse_error() const {
+    if (panic_budget_ <= 0) {
+        return true;
+    }
+    return parse_error_count_ < panic_budget_;
+}
+
+bool Parser::emit_parse_error(diag::DiagId id, SourceSpan span) {
+    if (!can_emit_parse_error()) {
+        return false;
+    }
+    ++parse_error_count_;
+    diag::error(diag_, id, span);
+    return true;
 }
 
 static const char* closest_toplevel_keyword(std::string_view ident) {
@@ -166,8 +214,14 @@ static void emit_toplevel_hint(DiagnosticEngine& diag, const Token& tok) {
 
 ast::ModuleId Parser::parse_module() {
     std::vector<DeclId> decls;
+    trace("enter parse_module");
 
     while (current_.kind != TokenKind::Eof) {
+        if (!can_emit_parse_error()) {
+            trace("panic-budget exhausted; stop parse_module");
+            diag_.note("parse stopped after panic budget limit", current_.span);
+            break;
+        }
         if (!pending_decls_.empty()) {
             decls.push_back(pending_decls_.front());
             pending_decls_.erase(pending_decls_.begin());
@@ -184,6 +238,7 @@ ast::ModuleId Parser::parse_module() {
         }
     }
 
+    trace("exit parse_module");
     return ast_ctx_.make<Module>("<root>", std::move(decls), SourceSpan{});
 }
 
@@ -192,8 +247,9 @@ ast::ModuleId Parser::parse_module() {
 // ------------------------------------------------------------
 
 DeclId Parser::parse_toplevel() {
+    trace("parse_toplevel");
     if (strict_core_ && tokens::is_forbidden_in_core(current_.kind)) {
-        diag::error(diag_, diag::DiagId::CoreForbiddenTopLevelSyntax, current_.span);
+        emit_parse_error(diag::DiagId::CoreForbiddenTopLevelSyntax, current_.span);
         return ast::kInvalidAstId;
     }
 
@@ -227,7 +283,7 @@ DeclId Parser::parse_toplevel() {
             attrs.push_back(parse_attribute());
         }
         if (current_.kind != TokenKind::KwProc) {
-            diag::error(diag_, diag::DiagId::ExpectedProcAfterAttribute, current_.span);
+            emit_parse_error(diag::DiagId::ExpectedProcAfterAttribute, current_.span);
             return ast::kInvalidAstId;
         }
         return parse_proc_decl(std::move(attrs));
@@ -236,7 +292,7 @@ DeclId Parser::parse_toplevel() {
         return parse_entry_decl();
     }
 
-    diag::error(diag_, diag::DiagId::ExpectedTopLevelDeclaration, current_.span);
+    emit_parse_error(diag::DiagId::ExpectedTopLevelDeclaration, current_.span);
     emit_toplevel_hint(diag_, current_);
     return ast::kInvalidAstId;
 }
@@ -266,7 +322,7 @@ ModulePath Parser::parse_module_path() {
 Ident Parser::parse_ident() {
     auto policy = strict_ ? KeywordPolicy::Strict : KeywordPolicy::Permissive;
     if (!is_identifier_token(current_.kind, policy)) {
-        diag::error(diag_, diag::DiagId::ExpectedIdentifier, current_.span);
+        emit_parse_error(diag::DiagId::ExpectedIdentifier, current_.span);
         advance();
         return Ident("<error>", current_.span);
     }
@@ -319,7 +375,7 @@ std::vector<AttributeArg> Parser::parse_attribute_args() {
             advance();
             args.emplace_back(AttributeArg::Kind::Int, tok.text);
         } else {
-            diag_.error("expected attribute argument", current_.span);
+            emit_parse_error(diag::DiagId::ExpectedAttributeArgument, current_.span);
             advance();
         }
         if (!match(TokenKind::Comma)) {
@@ -696,17 +752,19 @@ StmtId Parser::parse_block() {
     }
     bool closed = match(TokenKind::RBrace);
     if (!closed) {
-        diag::error(diag_, diag::DiagId::ExpectedRightBrace, current_.span);
-        diag_.note("block opened here", span);
-        diag_.note("parser will resume after '}'", current_.span);
+        if (emit_parse_error(diag::DiagId::ExpectedRightBrace, current_.span)) {
+            diag_.note("block opened here", span);
+            diag_.note("parser will resume after '}'", current_.span);
+        }
     }
     span.end = previous_.span.end;
     return ast_ctx_.make<BlockStmt>(std::move(stmts), span);
 }
 
 StmtId Parser::parse_stmt() {
+    trace("parse_stmt");
     if (strict_core_ && tokens::is_forbidden_in_core(current_.kind)) {
-        diag::error(diag_, diag::DiagId::CoreForbiddenStatementSyntax, current_.span);
+        emit_parse_error(diag::DiagId::CoreForbiddenStatementSyntax, current_.span);
         return ast::kInvalidAstId;
     }
 
@@ -737,7 +795,7 @@ StmtId Parser::parse_asm_stmt() {
         code = current_.text;
         advance();
     } else {
-        diag_.error("expected string literal in asm()", current_.span);
+        emit_parse_error(diag::DiagId::ExpectedAsmStringLiteral, current_.span);
     }
     expect(TokenKind::RParen, "expected ')' after asm");
     span.end = previous_.span.end;
@@ -917,7 +975,7 @@ StmtId Parser::parse_match_stmt() {
             otherwise_block = parse_block();
             continue;
         }
-        diag::error(diag_, diag::DiagId::ExpectedMatchArm, current_.span);
+        emit_parse_error(diag::DiagId::ExpectedMatchArm, current_.span);
         sync_to_match_arm_boundary();
         if (current_.kind != TokenKind::Eof &&
             current_.kind != TokenKind::RBrace &&
@@ -1102,6 +1160,7 @@ static const char* keyword_text(TokenKind kind) {
 }
 
 ExprId Parser::parse_expr() {
+    trace("parse_expr");
     std::function<ExprId(int)> parse_prec = [&](int min_prec) -> ExprId {
         auto lhs = parse_unary_expr();
         if (lhs == ast::kInvalidAstId) {
@@ -1180,7 +1239,7 @@ ExprId Parser::parse_primary() {
     SourceSpan span = current_.span;
 
     if (strict_core_ && (current_.kind == TokenKind::KwIf || current_.kind == TokenKind::KwProc)) {
-        diag::error(diag_, diag::DiagId::CoreForbiddenExpressionSyntax, current_.span);
+        emit_parse_error(diag::DiagId::CoreForbiddenExpressionSyntax, current_.span);
         advance();
         return ast::kInvalidAstId;
     }
@@ -1239,9 +1298,10 @@ ExprId Parser::parse_primary() {
         return parse_postfix_expr(base);
     }
 
-    diag::error(diag_, diag::DiagId::ExpectedExpression, current_.span);
-    diag_.note("expected expression (e.g. 1, name, call(), { ... })", current_.span);
-    diag_.note("parser will resume after the next token", current_.span);
+    if (emit_parse_error(diag::DiagId::ExpectedExpression, current_.span)) {
+        diag_.note("expected expression (e.g. 1, name, call(), { ... })", current_.span);
+        diag_.note("parser will resume after the next token", current_.span);
+    }
     advance();
     return ast::kInvalidAstId;
 }
@@ -1292,7 +1352,7 @@ bool Parser::try_recover_empty_generic_call_suffix(ExprId& expr) {
         return false;
     }
 
-    diag::error(diag_, diag::DiagId::GenericTypeRequiresAtLeastOneTypeArgument, span);
+    emit_parse_error(diag::DiagId::GenericTypeRequiresAtLeastOneTypeArgument, span);
     expr = parse_call_expr(expr);
     return true;
 }
@@ -1656,7 +1716,7 @@ PatternId Parser::parse_pattern() {
         return ast_ctx_.make<IdentPattern>(std::move(ident), span);
     }
 
-    diag::error(diag_, diag::DiagId::ExpectedPattern, current_.span);
+    emit_parse_error(diag::DiagId::ExpectedPattern, current_.span);
     advance();
     return ast::kInvalidAstId;
 }
@@ -1735,9 +1795,10 @@ TypeId Parser::parse_type_primary() {
     }
 
     if (current_.kind != TokenKind::Ident) {
-        diag::error(diag_, diag::DiagId::ExpectedType, current_.span);
-        diag_.note("expected type (e.g. int, i32, i64, i128, u32, u64, u128, string, bool, Option[T])", current_.span);
-        diag_.note("parser will resume after the next token", current_.span);
+        if (emit_parse_error(diag::DiagId::ExpectedType, current_.span)) {
+            diag_.note("expected type (e.g. int, i32, i64, i128, u32, u64, u128, string, bool, Option[T])", current_.span);
+            diag_.note("parser will resume after the next token", current_.span);
+        }
         return ast::kInvalidAstId;
     }
 

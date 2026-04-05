@@ -1087,6 +1087,7 @@ static int run_grammar_diff() {
     }
 
     static const std::regex quoted_re("\"([^\"]+)\"");
+    static const std::regex rule_re("^\\s*([a-z_][a-z0-9_]*)\\s*::=", std::regex::ECMAScript);
     static const std::regex word_re("^[a-z_][a-z0-9_]*$");
     const std::unordered_set<std::string> non_keyword_terms = {
         "_", "i32", "i64", "i128", "u32", "u64", "u128",
@@ -1097,6 +1098,7 @@ static int run_grammar_diff() {
 
     std::unordered_set<std::string> ebnf_keywords;
     std::unordered_set<std::string> ebnf_ops;
+    std::unordered_set<std::string> ebnf_rules;
     for (std::sregex_iterator it(source_text.begin(), source_text.end(), quoted_re), end; it != end; ++it) {
         const std::string t = (*it)[1].str();
         if (std::regex_match(t, word_re) && !non_keyword_terms.count(t)) {
@@ -1104,6 +1106,16 @@ static int run_grammar_diff() {
         }
         if (binary_ops.count(t)) {
             ebnf_ops.insert(t);
+        }
+    }
+    {
+        std::istringstream lines(source_text);
+        std::string line;
+        while (std::getline(lines, line)) {
+            std::smatch m;
+            if (std::regex_search(line, m, rule_re) && m.size() >= 2) {
+                ebnf_rules.insert(m[1].str());
+            }
         }
     }
 
@@ -1117,10 +1129,47 @@ static int run_grammar_diff() {
         parser_ops.insert(op);
     }
 
+    const std::unordered_map<std::string, std::vector<std::string>> parser_construct_ast = {
+        {"space_decl", {"SpaceDecl"}},
+        {"pull_decl", {"PullDecl"}},
+        {"use_decl", {"UseDecl"}},
+        {"share_decl", {"ShareDecl"}},
+        {"const_decl", {"ConstDecl"}},
+        {"type_alias_decl", {"TypeAliasDecl"}},
+        {"form_decl", {"FormDecl"}},
+        {"pick_decl", {"PickDecl"}},
+        {"proc_decl", {"ProcDecl"}},
+        {"entry_decl", {"EntryDecl"}},
+        {"let_stmt", {"LetStmt"}},
+        {"make_stmt", {"MakeStmt"}},
+        {"set_stmt", {"SetStmt"}},
+        {"give_stmt", {"GiveStmt"}},
+        {"emit_stmt", {"EmitStmt"}},
+        {"if_stmt", {"IfStmt"}},
+        {"loop_stmt", {"LoopStmt"}},
+        {"for_stmt", {"ForStmt"}},
+        {"break_stmt", {"BreakStmt"}},
+        {"continue_stmt", {"ContinueStmt"}},
+        {"match_stmt", {"SelectStmt", "WhenStmt"}},
+        {"when_match_stmt", {"WhenStmt"}},
+        {"return_stmt", {"ReturnStmt"}},
+        {"expr_stmt", {"ExprStmt"}},
+        {"list_lit", {"ListExpr"}},
+        {"pattern", {"IdentPattern", "CtorPattern"}},
+        {"proc_type", {"ProcType"}},
+    };
+    std::unordered_set<std::string> parser_constructs;
+    parser_constructs.reserve(parser_construct_ast.size());
+    for (const auto& kv : parser_construct_ast) {
+        parser_constructs.insert(kv.first);
+    }
+
     std::vector<std::string> missing_kw;
     std::vector<std::string> extra_kw;
     std::vector<std::string> missing_ops;
     std::vector<std::string> extra_ops;
+    std::vector<std::string> missing_constructs;
+    std::vector<std::string> extra_constructs;
 
     for (const auto& kw : ebnf_keywords) {
         if (!parser_keywords.count(kw)) {
@@ -1142,13 +1191,44 @@ static int run_grammar_diff() {
             extra_ops.push_back(op);
         }
     }
+    for (const auto& c : parser_constructs) {
+        if (!ebnf_rules.count(c)) {
+            extra_constructs.push_back(c);
+        }
+    }
+    for (const auto& c : ebnf_rules) {
+        if (parser_constructs.count(c)) {
+            continue;
+        }
+        if (c == "program" || c == "toplevel" || c == "stmt" || c == "expr" ||
+            c == "assign_expr" || c == "or_expr" || c == "and_expr" || c == "eq_expr" ||
+            c == "rel_expr" || c == "add_expr" || c == "mul_expr" || c == "cast_expr" ||
+            c == "unary_expr" || c == "postfix_expr" || c == "primary" || c == "type_expr" ||
+            c == "type_primary" || c == "literal" || c == "module_path" || c == "package_path" ||
+            c == "field_list" || c == "field_item" || c == "case_list" || c == "case_item" ||
+            c == "case_payload" || c == "case_field" || c == "arg_list" || c == "pattern_head" ||
+            c == "pattern_args" || c == "type_list" || c == "type_param" || c == "param" ||
+            c == "param_list" || c == "ident_list" || c == "relative" || c == "package_parts" ||
+            c == "pointer_type" || c == "slice_type" || c == "bool_lit" || c == "int_lit" ||
+            c == "float_lit" || c == "char_lit" || c == "string_lit" || c == "raw_string_lit" ||
+            c == "raw_string_char" || c == "char_char" || c == "string_char" || c == "ident" ||
+            c == "suffix" || c == "WS" || c == "WS1" || c == "NEWLINE" || c == "LETTER" ||
+            c == "DIGIT" || c == "HEXDIGIT" || c == "use_group" || c == "use_glob" || c == "block" ||
+            c == "call_suffix" || c == "member_suffix" || c == "index_suffix") {
+            continue;
+        }
+        missing_constructs.push_back(c);
+    }
 
     std::sort(missing_kw.begin(), missing_kw.end());
     std::sort(extra_kw.begin(), extra_kw.end());
     std::sort(missing_ops.begin(), missing_ops.end());
     std::sort(extra_ops.begin(), extra_ops.end());
+    std::sort(missing_constructs.begin(), missing_constructs.end());
+    std::sort(extra_constructs.begin(), extra_constructs.end());
 
-    const bool ok = missing_kw.empty() && extra_kw.empty() && missing_ops.empty() && extra_ops.empty();
+    const bool ok = missing_kw.empty() && extra_kw.empty() && missing_ops.empty() && extra_ops.empty()
+                 && missing_constructs.empty() && extra_constructs.empty();
     if (ok) {
         std::cout << "[grammar-diff] OK\n";
         return 0;
@@ -1159,6 +1239,8 @@ static int run_grammar_diff() {
     for (const auto& s : extra_kw) std::cerr << "- extra parser keyword: " << s << "\n";
     for (const auto& s : missing_ops) std::cerr << "- missing parser operator: " << s << "\n";
     for (const auto& s : extra_ops) std::cerr << "- extra parser operator: " << s << "\n";
+    for (const auto& s : missing_constructs) std::cerr << "- missing parser construct mapping: " << s << "\n";
+    for (const auto& s : extra_constructs) std::cerr << "- extra parser construct mapping: " << s << "\n";
     return 1;
 }
 
@@ -1276,7 +1358,8 @@ static bool build_module_index_for_tooling(const Options& opts,
     std::string source((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     frontend::Lexer lexer(source, opts.input);
     ast_ctx.sources.push_back(lexer.source_file());
-    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core);
+    frontend::parser::Parser parser(
+        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget);
     auto root = parser.parse_module();
     root_out = root;
 

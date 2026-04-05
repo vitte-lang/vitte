@@ -245,6 +245,15 @@ Options parse_options(int argc, char** argv) {
         else if (arg == "--strict-core") {
             opts.strict_core = true;
         }
+        else if (arg == "--trace-parse") {
+            opts.trace_parse = true;
+        }
+        else if (arg == "--panic-budget" && i + 1 < argc) {
+            opts.panic_budget = std::max(0, std::stoi(argv[++i]));
+        }
+        else if (arg.rfind("--panic-budget=", 0) == 0) {
+            opts.panic_budget = std::max(0, std::stoi(arg.substr(std::string("--panic-budget=").size())));
+        }
         else if (arg == "--syntax-profile" && i + 1 < argc) {
             opts.syntax_profile = argv[++i];
         }
@@ -268,6 +277,9 @@ Options parse_options(int argc, char** argv) {
         }
         else if (arg == "--dump-ast") {
             opts.dump_ast = true;
+        }
+        else if (arg == "--dump-ast-json") {
+            opts.dump_ast_json = true;
         }
         else if (arg == "--dump-ir") {
             opts.dump_ir = true;
@@ -535,6 +547,8 @@ void print_help() {
         "  --parse-silent    Suppress parse-only informational logs\n"
         "  --strict-parse    Disallow keywords as identifiers\n"
         "  --strict-core     Enforce core grammar guardrails (reject non-core syntax)\n"
+        "  --trace-parse     Emit parser trace (rules/lookahead/recovery)\n"
+        "  --panic-budget N  Cap parser-emitted errors before stopping parse recovery\n"
         "  --syntax-profile <name>\n"
         "                    Syntax profile: stable-v1|core-v1|legacy-v1\n"
         "  --syntax-version <name>\n"
@@ -543,6 +557,7 @@ void print_help() {
         "  --hir-only        Lower to HIR only\n"
         "  --mir-only        Lower to MIR only\n"
         "  --dump-ast        Dump AST after parsing\n"
+        "  --dump-ast-json   Dump AST as normalized JSON\n"
         "  --dump-ir         Dump IR (alias of --dump-mir)\n"
         "  --dump-resolve    Dump symbol table after resolve\n"
         "  --dump-hir        Dump HIR after lowering\n"
