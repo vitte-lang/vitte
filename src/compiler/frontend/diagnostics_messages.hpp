@@ -28,6 +28,8 @@ namespace vitte::frontend::diag {
     X(E0014, CoreForbiddenTopLevelSyntax, "forbidden top-level syntax in strict-core mode") \
     X(E0015, CoreForbiddenStatementSyntax, "forbidden statement syntax in strict-core mode") \
     X(E0016, CoreForbiddenExpressionSyntax, "forbidden expression syntax in strict-core mode") \
+    X(E0017, ExpectedRightBrace, "expected '}'") \
+    X(E0018, ExpectedMatchArm, "expected 'case' or 'otherwise' in match") \
     X(E1001, DuplicatePatternBinding, "duplicate pattern binding") \
     X(E1002, UnknownType, "unknown type (did you mean a built-in like int/i32/i64/i128/u32/u64/u128/bool/string?)") \
     X(E1003, UnknownGenericBaseType, "unknown generic base type") \
@@ -180,6 +182,18 @@ constexpr DiagExplain diag_explain(DiagId id) {
                 "Strict-core mode rejects non-core expression forms.",
                 "Use core expressions only (literal, ident, list, grouping, calls/member/index).",
                 "let x = f(a)\nlet y = data.value",
+            };
+        case DiagId::ExpectedRightBrace:
+            return {
+                "A block or braced construct is missing a closing '}'.",
+                "Insert the missing '}' at the end of the current block.",
+                "proc main() -> int {\n  let x = 1\n}",
+            };
+        case DiagId::ExpectedMatchArm:
+            return {
+                "A match block accepts only 'case <pattern> { ... }' arms and an optional 'otherwise { ... }'.",
+                "Replace the unexpected token with a valid case arm or otherwise branch.",
+                "match x {\n  case Some(v) { give v }\n  otherwise { give 0 }\n}",
             };
         case DiagId::ExpectedPattern:
             return {

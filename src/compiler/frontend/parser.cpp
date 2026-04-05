@@ -22,6 +22,9 @@ static int edit_distance(std::string_view a, std::string_view b);
 static const char* keyword_text(TokenKind kind);
 static const char* closest_toplevel_keyword(std::string_view ident);
 static void emit_toplevel_hint(DiagnosticEngine& diag, const Token& tok);
+static bool is_toplevel_sync_kind(TokenKind kind);
+static bool is_stmt_sync_kind(TokenKind kind);
+static bool is_match_arm_sync_kind(TokenKind kind);
 
 Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse)
     : Parser(lexer, diag, ast_ctx, strict_parse, false) {}
@@ -51,6 +54,24 @@ void Parser::restore(State state) {
     lexer_.restore(state.lexer);
     current_ = std::move(state.current);
     previous_ = std::move(state.previous);
+}
+
+void Parser::sync_to_toplevel_boundary() {
+    while (current_.kind != TokenKind::Eof && !is_toplevel_sync_kind(current_.kind)) {
+        advance();
+    }
+}
+
+void Parser::sync_to_stmt_boundary() {
+    while (current_.kind != TokenKind::Eof && !is_stmt_sync_kind(current_.kind)) {
+        advance();
+    }
+}
+
+void Parser::sync_to_match_arm_boundary() {
+    while (current_.kind != TokenKind::Eof && !is_match_arm_sync_kind(current_.kind)) {
+        advance();
+    }
 }
 
 void Parser::advance() {
@@ -156,7 +177,10 @@ ast::ModuleId Parser::parse_module() {
         if (d != ast::kInvalidAstId) {
             decls.push_back(d);
         } else {
-            advance();
+            sync_to_toplevel_boundary();
+            if (current_.kind != TokenKind::Eof && !is_toplevel_sync_kind(current_.kind)) {
+                advance();
+            }
         }
     }
 
@@ -662,12 +686,17 @@ StmtId Parser::parse_block() {
         if (s != ast::kInvalidAstId) {
             stmts.push_back(s);
         } else {
-            advance();
+            sync_to_stmt_boundary();
+            if (current_.kind != TokenKind::Eof &&
+                current_.kind != TokenKind::RBrace &&
+                !is_stmt_sync_kind(current_.kind)) {
+                advance();
+            }
         }
     }
     bool closed = match(TokenKind::RBrace);
     if (!closed) {
-        diag_.error("expected '}'", current_.span);
+        diag::error(diag_, diag::DiagId::ExpectedRightBrace, current_.span);
         diag_.note("block opened here", span);
         diag_.note("parser will resume after '}'", current_.span);
     }
@@ -888,8 +917,15 @@ StmtId Parser::parse_match_stmt() {
             otherwise_block = parse_block();
             continue;
         }
-        diag_.error("expected 'case' or 'otherwise' in match", current_.span);
-        advance();
+        diag::error(diag_, diag::DiagId::ExpectedMatchArm, current_.span);
+        sync_to_match_arm_boundary();
+        if (current_.kind != TokenKind::Eof &&
+            current_.kind != TokenKind::RBrace &&
+            current_.kind != TokenKind::KwCase &&
+            current_.kind != TokenKind::KwElse &&
+            current_.kind != TokenKind::KwOtherwise) {
+            advance();
+        }
     }
     expect(TokenKind::RBrace, "expected '}' after match");
     span.end = previous_.span.end;
@@ -980,6 +1016,65 @@ StmtId Parser::parse_when_stmt() {
 
 static int precedence(TokenKind kind) {
     return tokens::binary_precedence(kind);
+}
+
+static bool is_toplevel_sync_kind(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::KwSpace:
+        case TokenKind::KwPull:
+        case TokenKind::KwUse:
+        case TokenKind::KwShare:
+        case TokenKind::KwConst:
+        case TokenKind::KwType:
+        case TokenKind::KwForm:
+        case TokenKind::KwPick:
+        case TokenKind::KwProc:
+        case TokenKind::KwEntry:
+        case TokenKind::AttrStart:
+        case TokenKind::Eof:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool is_stmt_sync_kind(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::RBrace:
+        case TokenKind::KwCase:
+        case TokenKind::KwElse:
+        case TokenKind::KwOtherwise:
+        case TokenKind::KwLet:
+        case TokenKind::KwMake:
+        case TokenKind::KwSet:
+        case TokenKind::KwGive:
+        case TokenKind::KwEmit:
+        case TokenKind::KwIf:
+        case TokenKind::KwLoop:
+        case TokenKind::KwFor:
+        case TokenKind::KwBreak:
+        case TokenKind::KwContinue:
+        case TokenKind::KwMatch:
+        case TokenKind::KwWhen:
+        case TokenKind::KwReturn:
+        case TokenKind::Eof:
+            return true;
+        default:
+            return is_toplevel_sync_kind(kind);
+    }
+}
+
+static bool is_match_arm_sync_kind(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::KwCase:
+        case TokenKind::KwElse:
+        case TokenKind::KwOtherwise:
+        case TokenKind::RBrace:
+        case TokenKind::Eof:
+            return true;
+        default:
+            return false;
+    }
 }
 
 static int edit_distance(std::string_view a, std::string_view b) {

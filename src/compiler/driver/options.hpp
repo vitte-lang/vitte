@@ -34,6 +34,7 @@ struct Options {
     bool parse_silent = false;
     bool strict_parse = false;
     bool strict_core = false;
+    std::string syntax_profile = "stable-v1";
 
     /* Resolve only (no lowering) */
     bool resolve_only = false;

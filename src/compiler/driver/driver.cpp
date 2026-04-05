@@ -2109,6 +2109,16 @@ int run(int argc, char** argv) {
         return 1;
     }
 
+    if (opts.syntax_profile == "core-v1") {
+        opts.strict_core = true;
+    } else if (opts.syntax_profile == "stable-v1" || opts.syntax_profile == "legacy-v1") {
+        // accepted profiles
+    } else {
+        std::cerr << "[driver] error: invalid --syntax-profile/--syntax-version '" << opts.syntax_profile
+                  << "' (expected stable-v1|core-v1|legacy-v1)\n";
+        return 1;
+    }
+
     if (opts.target == "kernel") {
         opts.target = "kernel-x86_64-grub";
     }

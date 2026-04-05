@@ -245,6 +245,18 @@ Options parse_options(int argc, char** argv) {
         else if (arg == "--strict-core") {
             opts.strict_core = true;
         }
+        else if (arg == "--syntax-profile" && i + 1 < argc) {
+            opts.syntax_profile = argv[++i];
+        }
+        else if (arg.rfind("--syntax-profile=", 0) == 0) {
+            opts.syntax_profile = arg.substr(std::string("--syntax-profile=").size());
+        }
+        else if (arg == "--syntax-version" && i + 1 < argc) {
+            opts.syntax_profile = argv[++i];
+        }
+        else if (arg.rfind("--syntax-version=", 0) == 0) {
+            opts.syntax_profile = arg.substr(std::string("--syntax-version=").size());
+        }
         else if (arg == "--resolve-only") {
             opts.resolve_only = true;
         }
@@ -523,6 +535,10 @@ void print_help() {
         "  --parse-silent    Suppress parse-only informational logs\n"
         "  --strict-parse    Disallow keywords as identifiers\n"
         "  --strict-core     Enforce core grammar guardrails (reject non-core syntax)\n"
+        "  --syntax-profile <name>\n"
+        "                    Syntax profile: stable-v1|core-v1|legacy-v1\n"
+        "  --syntax-version <name>\n"
+        "                    Alias of --syntax-profile\n"
         "  --resolve-only    Resolve only (no lowering)\n"
         "  --hir-only        Lower to HIR only\n"
         "  --mir-only        Lower to MIR only\n"

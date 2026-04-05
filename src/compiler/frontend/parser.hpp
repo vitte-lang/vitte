@@ -48,6 +48,9 @@ private:
     bool expect(TokenKind kind, const char* message);
     State snapshot() const;
     void restore(State state);
+    void sync_to_toplevel_boundary();
+    void sync_to_stmt_boundary();
+    void sync_to_match_arm_boundary();
 
     // Top-level
     DeclId parse_toplevel();

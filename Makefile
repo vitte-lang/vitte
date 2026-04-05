@@ -507,6 +507,10 @@ core-semantic-entry-success:
 explicit-generics-snapshots:
 	@MANIFEST=tests/diag_snapshots/explicit_generics_manifest.txt tools/diag_snapshots.sh
 
+.PHONY: core-ir-golden-snapshots
+core-ir-golden-snapshots:
+	@MANIFEST=tests/diag_snapshots/core_ir_golden_manifest.txt tools/diag_snapshots.sh
+
 .PHONY: core-semantic-themes
 core-semantic-themes: \
 	core-semantic-imports-success \
@@ -584,8 +588,12 @@ core-forbidden-syntax-lint:
 strict-core-guard-test:
 	@tools/strict_core_guard_test.sh
 
+.PHONY: parser-lexer-fuzz-smoke
+parser-lexer-fuzz-smoke:
+	@python3 tools/parser_lexer_fuzz_smoke.py --cases 80 --seed 1337
+
 .PHONY: core-language-gate
-core-language-gate: grammar-check grammar-test core-language-test strict-core-guard-test core-forbidden-syntax-lint core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+core-language-gate: grammar-check grammar-test core-language-test strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
 
 .PHONY: core-release-gate
 core-release-gate: core-language-gate diagnostics-ftl-check

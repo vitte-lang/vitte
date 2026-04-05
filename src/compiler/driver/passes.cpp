@@ -25,6 +25,7 @@
 #include <sstream>
 #include <cstdint>
 #include <functional>
+#include <chrono>
 
 #if defined(VITTE_OPENSSL_FALLBACK)
 #  define VITTE_SHA256_DIGEST_LENGTH 32
@@ -121,13 +122,38 @@ static bool read_file(const std::string& path, std::string& out) {
 
 PassResult run_passes(const Options& opts) {
     PassResult result;
+    using Clock = std::chrono::steady_clock;
+    auto t_total_start = Clock::now();
+    auto ms = [](auto dur) -> long long {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(dur).count();
+    };
+    long long parse_ms = 0;
+    long long resolve_ms = 0;
+    long long type_ms = 0;
+    long long lower_ms = 0;
+    long long codegen_ms = 0;
+    auto emit_phase_profile = [&]() {
+        if (!opts.profile_mode) {
+            return;
+        }
+        auto t_total_end = Clock::now();
+        std::cout << "[profile] phases:\n";
+        std::cout << "  parse: " << parse_ms << " ms\n";
+        std::cout << "  resolve: " << resolve_ms << " ms\n";
+        std::cout << "  type: " << type_ms << " ms\n";
+        std::cout << "  lower: " << lower_ms << " ms\n";
+        std::cout << "  codegen: " << codegen_ms << " ms\n";
+        std::cout << "  total: " << ms(t_total_end - t_total_start) << " ms\n";
+    };
 
     std::string source;
     if (!read_file(opts.input, source)) {
         result.ok = false;
+        emit_phase_profile();
         return result;
     }
 
+    auto t_parse_start = Clock::now();
     frontend::Lexer lexer(source, opts.input);
     frontend::diag::DiagnosticEngine diagnostics(opts.lang);
     auto emit_diags = [&](std::ostream& os = std::cerr) {
@@ -149,6 +175,7 @@ PassResult run_passes(const Options& opts) {
     }
     frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core);
     auto module = parser.parse_module();
+    parse_ms = ms(Clock::now() - t_parse_start);
 
     if (opts.parse_only) {
         if (opts.dump_ast) {
@@ -174,6 +201,7 @@ PassResult run_passes(const Options& opts) {
             if (diagnostics.has_errors()) {
                 emit_diags();
                 result.ok = false;
+                emit_phase_profile();
                 return result;
             }
             if (!opts.parse_silent) {
@@ -188,6 +216,7 @@ PassResult run_passes(const Options& opts) {
         if (diagnostics.has_errors()) {
             emit_diags();
             result.ok = false;
+            emit_phase_profile();
             return result;
         }
         std::cout << "[driver] parse ok\n";
@@ -195,12 +224,15 @@ PassResult run_passes(const Options& opts) {
             emit_diags();
             std::cerr << "[driver] error: warnings are treated as errors (--fail-on-warning)\n";
             result.ok = false;
+            emit_phase_profile();
             return result;
         }
         result.ok = true;
+        emit_phase_profile();
         return result;
     }
 
+    auto t_resolve_start = Clock::now();
     frontend::modules::ModuleIndex module_index;
     frontend::modules::LoadOptions module_opts;
     module_opts.stdlib_profile = opts.stdlib_profile;
@@ -225,9 +257,13 @@ PassResult run_passes(const Options& opts) {
     if (diagnostics.has_errors()) {
         emit_diags();
         result.ok = false;
+        resolve_ms = ms(Clock::now() - t_resolve_start);
+        emit_phase_profile();
         return result;
     }
+    resolve_ms = ms(Clock::now() - t_resolve_start);
 
+    auto t_type_start = Clock::now();
     frontend::passes::expand_macros(ast_ctx, module, diagnostics);
     frontend::passes::disambiguate_invokes(ast_ctx, module);
 
@@ -240,6 +276,8 @@ PassResult run_passes(const Options& opts) {
     if (diagnostics.has_errors()) {
         emit_diags();
         result.ok = false;
+        type_ms = ms(Clock::now() - t_type_start);
+        emit_phase_profile();
         return result;
     }
 
@@ -254,8 +292,11 @@ PassResult run_passes(const Options& opts) {
         emit_diags();
         std::cerr << "[driver] error[E1000]: resolve failed\n";
         result.ok = false;
+        type_ms = ms(Clock::now() - t_type_start);
+        emit_phase_profile();
         return result;
     }
+    type_ms = ms(Clock::now() - t_type_start);
 
     if (opts.resolve_only) {
         std::cout << "[driver] resolve ok\n";
@@ -263,9 +304,11 @@ PassResult run_passes(const Options& opts) {
             emit_diags();
             std::cerr << "[driver] error: warnings are treated as errors (--fail-on-warning)\n";
             result.ok = false;
+            emit_phase_profile();
             return result;
         }
         result.ok = true;
+        emit_phase_profile();
         return result;
     }
 
@@ -291,6 +334,7 @@ PassResult run_passes(const Options& opts) {
     }
 
     if (opts.hir_only || dump_hir_pretty || dump_hir_json || dump_hir_compact) {
+        auto t_lower_start = Clock::now();
         ir::HirContext hir_ctx;
         auto hir = frontend::lower::lower_to_hir(ast_ctx, module, hir_ctx, diagnostics);
         if (dump_hir_pretty) {
@@ -307,22 +351,28 @@ PassResult run_passes(const Options& opts) {
             emit_diags();
             std::cerr << "[driver] error[E2000]: hir lowering failed\n";
             result.ok = false;
+            lower_ms = ms(Clock::now() - t_lower_start);
+            emit_phase_profile();
             return result;
         }
+        lower_ms = ms(Clock::now() - t_lower_start);
         if (opts.hir_only) {
             std::cout << "[driver] hir ok\n";
             if (opts.fail_on_warning && diagnostics.warning_count() > 0) {
                 emit_diags();
                 std::cerr << "[driver] error: warnings are treated as errors (--fail-on-warning)\n";
                 result.ok = false;
+                emit_phase_profile();
                 return result;
             }
             result.ok = true;
+            emit_phase_profile();
             return result;
         }
     }
 
     if (opts.dump_mir) {
+        auto t_lower_start = Clock::now();
         ir::HirContext hir_ctx;
         auto hir = frontend::lower::lower_to_hir(ast_ctx, module, hir_ctx, diagnostics);
         ir::validate::validate_module(hir_ctx, hir, diagnostics);
@@ -330,6 +380,8 @@ PassResult run_passes(const Options& opts) {
             emit_diags();
             std::cerr << "[driver] error[E2000]: hir lowering failed\n";
             result.ok = false;
+            lower_ms = ms(Clock::now() - t_lower_start);
+            emit_phase_profile();
             return result;
         }
         auto mir = ir::lower::lower_to_mir(hir_ctx, hir, diagnostics);
@@ -337,12 +389,16 @@ PassResult run_passes(const Options& opts) {
             emit_diags();
             std::cerr << "[driver] error[E2000]: mir lowering failed\n";
             result.ok = false;
+            lower_ms = ms(Clock::now() - t_lower_start);
+            emit_phase_profile();
             return result;
         }
+        lower_ms = ms(Clock::now() - t_lower_start);
         std::cout << ir::dump_to_string(mir);
     }
 
     if (opts.mir_only) {
+        auto t_lower_start = Clock::now();
         ir::HirContext hir_ctx;
         auto hir = frontend::lower::lower_to_hir(ast_ctx, module, hir_ctx, diagnostics);
         ir::validate::validate_module(hir_ctx, hir, diagnostics);
@@ -350,6 +406,8 @@ PassResult run_passes(const Options& opts) {
             emit_diags();
             std::cerr << "[driver] error[E2000]: hir lowering failed\n";
             result.ok = false;
+            lower_ms = ms(Clock::now() - t_lower_start);
+            emit_phase_profile();
             return result;
         }
         auto mir = ir::lower::lower_to_mir(hir_ctx, hir, diagnostics);
@@ -357,8 +415,11 @@ PassResult run_passes(const Options& opts) {
             emit_diags();
             std::cerr << "[driver] error[E2000]: mir lowering failed\n";
             result.ok = false;
+            lower_ms = ms(Clock::now() - t_lower_start);
+            emit_phase_profile();
             return result;
         }
+        lower_ms = ms(Clock::now() - t_lower_start);
         if (opts.dump_mir) {
             std::cout << ir::dump_to_string(mir);
         }
@@ -367,9 +428,11 @@ PassResult run_passes(const Options& opts) {
             emit_diags();
             std::cerr << "[driver] error: warnings are treated as errors (--fail-on-warning)\n";
             result.ok = false;
+            emit_phase_profile();
             return result;
         }
         result.ok = true;
+        emit_phase_profile();
         return result;
     }
 
@@ -377,9 +440,11 @@ PassResult run_passes(const Options& opts) {
         emit_diags();
         std::cerr << "[driver] error: warnings are treated as errors (--fail-on-warning)\n";
         result.ok = false;
+        emit_phase_profile();
         return result;
     }
     result.ok = true;
+    emit_phase_profile();
     return result;
 }
 

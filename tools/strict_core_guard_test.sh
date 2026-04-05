@@ -28,6 +28,7 @@ entry main at core/app {
 EOF
 
 "$BIN" parse --parse-silent --strict-core "$TMP_OK" >/dev/null
+"$BIN" parse --parse-silent --syntax-profile core-v1 "$TMP_OK" >/dev/null
 
 set +e
 OUT="$("$BIN" parse --parse-silent --diag-code-only --strict-core "$TMP_BAD" 2>&1)"
@@ -45,5 +46,20 @@ if ! grep -q "E0014" <<<"$OUT"; then
   exit 1
 fi
 
-echo "[strict-core-test] OK"
+set +e
+OUT_PROFILE="$("$BIN" parse --parse-silent --diag-code-only --syntax-profile core-v1 "$TMP_BAD" 2>&1)"
+RC_PROFILE=$?
+set -e
 
+if [[ $RC_PROFILE -eq 0 ]]; then
+  echo "[strict-core-test][error] expected failure for syntax-profile core-v1 forbidden syntax"
+  exit 1
+fi
+
+if ! grep -q "E0014" <<<"$OUT_PROFILE"; then
+  echo "[strict-core-test][error] expected E0014 for syntax-profile core-v1 forbidden syntax"
+  echo "$OUT_PROFILE"
+  exit 1
+fi
+
+echo "[strict-core-test] OK"
