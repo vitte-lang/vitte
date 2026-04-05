@@ -577,6 +577,18 @@ grammar-test-update:
 parser-recovery-golden:
 	@python3 book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/recovery_manifest.txt
 
+.PHONY: test-golden
+test-golden:
+	@tools/golden_runner --check
+
+.PHONY: test-golden-update
+test-golden-update:
+	@tools/golden_runner --update
+
+.PHONY: test-golden-critical
+test-golden-critical:
+	@tools/golden_runner --check --subset critical
+
 .PHONY: parser-sync-coverage
 parser-sync-coverage:
 	@python3 tools/parser_sync_coverage_report.py --check
@@ -744,6 +756,14 @@ legacy-import-allowlist-empty:
 .PHONY: ci-fast-compiler
 ci-fast-compiler:
 	@tools/ci_fast_compiler.sh
+
+.PHONY: compiler-max-gate-fast
+compiler-max-gate-fast:
+	@tools/compiler_max_gate.sh fast
+
+.PHONY: compiler-max-gate
+compiler-max-gate:
+	@tools/compiler_max_gate.sh full
 
 .PHONY: repro
 repro:
@@ -1397,6 +1417,9 @@ help:
 	@echo "  make modules-snapshots assert mod graph/doctor outputs"
 	@echo "  make modules-snapshots-update regenerate modules snapshot files (.must/.diagjson/.codes/.fr)"
 	@echo "  make modules-snapshots-bless regenerate modules snapshots and print diffs"
+	@echo "  make test-golden run frontend golden snapshots (AST/HIR/MIR + diagnostics)"
+	@echo "  make test-golden-update regenerate frontend golden snapshots under tests/golden/frontend/snapshots"
+	@echo "  make test-golden-critical run cross-platform critical frontend golden subset"
 	@echo "  make explain-snapshots assert vitte explain outputs"
 	@echo "  make same-output-hash verify deterministic emit hash stability"
 	@echo "  make completions-gen regenerate bash/zsh/fish completions from unified spec"
@@ -1412,6 +1435,8 @@ help:
 	@echo "  make dx-adoption run DX/adoption quality gates"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
+	@echo "  make compiler-max-gate-fast run consolidated compiler quality gate (fast profile)"
+	@echo "  make compiler-max-gate run consolidated compiler quality gate (full profile)"
 	@echo "  make vittec-kernel build target/kernel-tools/vittec-kernel (no curl runtime)"
 	@echo "  make vitteos-bin-quality run /bin quality checks + matrix report"
 	@echo "  make vitteos-bin-runnable-check assert bin/vitte is host-runnable (non-regression arch/format guard)"
