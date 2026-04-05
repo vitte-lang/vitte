@@ -1,0 +1,148 @@
+// Vitte grammar (core minimal surface) - Pest format
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+NEWLINE = _{ "\r\n" | "\n" }
+
+program = { SOI ~ toplevel* ~ EOI }
+
+toplevel = {
+    space_decl
+  | pull_decl
+  | use_decl
+  | share_decl
+  | const_decl
+  | type_alias_decl
+  | form_decl
+  | pick_decl
+  | proc_decl
+  | entry_decl
+}
+
+space_decl = { "space" ~ module_path }
+pull_decl = { "pull" ~ module_path ~ ("as" ~ ident)? }
+use_decl = { "use" ~ package_path ~ (use_group | use_glob)? ~ ("as" ~ ident)? }
+use_glob = { "." ~ "*" }
+use_group = { "." ~ "{" ~ ("*" | ident_list ~ ("," ~ "*")?) ~ "}" }
+share_decl = { "share" ~ ("all" | ident_list) }
+const_decl = { "const" ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr }
+type_alias_decl = { "type" ~ ident ~ ("[" ~ ident_list ~ "]")? ~ "=" ~ type_expr }
+
+form_decl = { "form" ~ ident ~ ("[" ~ ident_list ~ "]")? ~ "{" ~ field_list? ~ "}" }
+field_list = { field_item ~ ("," ~ field_item)* }
+field_item = { ident ~ ":" ~ type_expr }
+
+pick_decl = { "pick" ~ ident ~ ("[" ~ ident_list ~ "]")? ~ "{" ~ case_list? ~ "}" }
+case_list = { case_item ~ ("," ~ case_item)* }
+case_item = { ("case")? ~ ident ~ ("(" ~ case_payload ~ ")")? }
+case_payload = { case_field ~ ("," ~ case_field)* }
+case_field = { ident ~ ":" ~ type_expr }
+
+proc_decl = { "proc" ~ ident ~ ("[" ~ ident_list ~ "]")? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ block? }
+param_list = { param ~ ("," ~ param)* }
+param = { ident ~ (":" ~ type_expr)? }
+
+entry_decl = { "entry" ~ ident ~ "at" ~ module_path ~ block }
+
+module_path = { relative? ~ package_parts }
+package_path = { relative? ~ package_parts }
+relative = { "."* }
+package_parts = { ident ~ (("/" | ".") ~ ident)* }
+ident_list = { ident ~ ("," ~ ident)* }
+
+block = { "{" ~ stmt* ~ "}" }
+
+stmt = {
+    let_stmt
+  | make_stmt
+  | set_stmt
+  | give_stmt
+  | emit_stmt
+  | if_stmt
+  | loop_stmt
+  | for_stmt
+  | break_stmt
+  | continue_stmt
+  | match_stmt
+  | when_match_stmt
+  | return_stmt
+  | expr_stmt
+}
+
+let_stmt = { "let" ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr }
+make_stmt = { "make" ~ ident ~ ("as" ~ type_expr)? ~ "=" ~ expr }
+set_stmt = { "set" ~ ident ~ "=" ~ expr }
+
+give_stmt = { "give" ~ expr }
+emit_stmt = { "emit" ~ expr }
+return_stmt = { "return" ~ expr? }
+
+if_stmt = { "if" ~ expr ~ block ~ (("else" | "otherwise") ~ (block | if_stmt))? }
+loop_stmt = { "loop" ~ block }
+for_stmt = { "for" ~ ident ~ "in" ~ expr ~ block }
+
+break_stmt = { "break" }
+continue_stmt = { "continue" }
+
+match_stmt = { "match" ~ expr ~ "{" ~ ("case" ~ pattern ~ block)* ~ (("else" | "otherwise") ~ block)? ~ "}" }
+when_match_stmt = { "when" ~ expr ~ "is" ~ pattern ~ block }
+
+expr_stmt = { expr }
+
+expr = { assign_expr }
+assign_expr = { or_expr ~ ("=" ~ assign_expr)? }
+
+or_expr = { and_expr ~ (("or" | "||") ~ and_expr)* }
+and_expr = { eq_expr ~ (("and" | "&&") ~ eq_expr)* }
+
+eq_expr = { rel_expr ~ (("==" | "!=") ~ rel_expr)* }
+rel_expr = { add_expr ~ (("<" | "<=" | ">" | ">=") ~ add_expr)* }
+
+add_expr = { mul_expr ~ (("+" | "-") ~ mul_expr)* }
+mul_expr = { cast_expr ~ (("*" | "/" | "%") ~ cast_expr)* }
+
+cast_expr = { unary_expr ~ (("as" ~ type_expr) | ("is" ~ pattern))* }
+unary_expr = { (("not" | "!" | "-") ~ unary_expr) | postfix_expr }
+
+postfix_expr = { primary ~ (call_suffix | member_suffix | index_suffix)* }
+call_suffix = { "(" ~ arg_list? ~ ")" }
+member_suffix = { "." ~ ident }
+index_suffix = { "[" ~ expr ~ "]" }
+
+primary = { literal | ident | list_lit | "(" ~ expr ~ ")" }
+
+arg_list = { expr ~ ("," ~ expr)* }
+
+pattern = { pattern_head ~ ("(" ~ pattern_args? ~ ")")? }
+pattern_head = { ident ~ ("." ~ ident)* }
+pattern_args = { pattern ~ ("," ~ pattern)* }
+
+type_expr = { pointer_type | slice_type | proc_type | type_primary }
+pointer_type = { "*" ~ type_expr }
+slice_type = { "[" ~ type_expr ~ "]" }
+proc_type = { "proc" ~ "(" ~ type_list? ~ ")" ~ ("->" ~ type_expr)? }
+type_list = { type_param ~ ("," ~ type_param)* }
+type_param = { (ident ~ ":" ~ type_expr) | type_expr }
+type_primary = {
+    (ident ~ ("." ~ ident)* ~ ("[" ~ type_list? ~ "]")?)
+  | "bool" | "string" | "int"
+  | "i32" | "i64" | "i128" | "u32" | "u64" | "u128"
+}
+
+literal = { bool_lit | int_lit | float_lit | char_lit | string_lit | list_lit }
+list_lit = { "[" ~ arg_list? ~ "]" }
+bool_lit = { "true" | "false" }
+int_lit = { ("-"? ~ DIGIT ~ (DIGIT | "_")* ~ suffix?) | ("-"? ~ "0x" ~ HEXDIGIT ~ (HEXDIGIT | "_")*) }
+float_lit = { "-"? ~ DIGIT ~ (DIGIT | "_")* ~ "." ~ DIGIT ~ (DIGIT | "_")* }
+char_lit = { "'" ~ char_char* ~ "'" }
+char_char = { "\\\\" | (!("'") ~ ANY) }
+string_lit = { ("\"" ~ string_char* ~ "\"") | raw_string_lit }
+string_char = { "\\\"" | "\\\\" | (!("\"") ~ ANY) }
+raw_string_lit = { "\"\"\"" ~ raw_string_char* ~ "\"\"\"" }
+raw_string_char = { !("\"\"\"") ~ ANY }
+
+ident = @{ (LETTER | "_") ~ (LETTER | DIGIT | "_")* }
+suffix = @{ LETTER+ }
+
+LETTER = _{ 'a'..'z' | 'A'..'Z' }
+DIGIT = _{ '0'..'9' }
+HEXDIGIT = _{ DIGIT | 'a'..'f' | 'A'..'F' }
