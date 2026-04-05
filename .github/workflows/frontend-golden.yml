@@ -1,0 +1,117 @@
+name: frontend-golden
+
+on:
+  pull_request:
+    paths:
+      - 'src/compiler/frontend/**'
+      - 'src/compiler/driver/**'
+      - 'tests/golden/frontend/**'
+      - 'tools/golden_runner'
+      - 'Makefile'
+      - '.github/workflows/frontend-golden.yml'
+      - '.github/pull_request_template.md'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  golden-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          if [ -f toolchain/scripts/install/debian-deps.sh ]; then
+            source toolchain/scripts/install/debian-deps.sh
+            sudo apt-get install -y "${DEBIAN_APT_BUILD_DEPS[@]}"
+          else
+            sudo apt-get install -y clang g++ make pkg-config libssl-dev libcurl4-openssl-dev python3
+          fi
+
+      - name: Build
+        run: make build
+
+      - name: Check frontend golden snapshots
+        run: make test-golden
+
+      - name: Ensure snapshots unchanged
+        run: git diff --exit-code -- tests/golden/frontend/snapshots tests/golden/frontend/CONFIG.json tests/golden/frontend/MANIFEST.txt
+
+  golden-critical-cross-platform:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install deps (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang g++ make pkg-config libssl-dev libcurl4-openssl-dev python3
+
+      - name: Install deps (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install openssl@3 curl
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: make build
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: OPENSSL_DIR=$(brew --prefix openssl@3) CURL_DIR=$(brew --prefix curl) make build
+
+      - name: Check critical golden subset
+        run: make test-golden-critical
+
+  golden-delta-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require Golden Delta Review section when snapshots change
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- tests/golden/frontend/snapshots || true)"
+          if [ -z "$changed" ]; then
+            echo "No frontend golden snapshot changes detected."
+            exit 0
+          fi
+
+          echo "Frontend golden snapshots changed:" 
+          echo "$changed"
+
+          if ! printf '%s\n' "$PR_BODY" | grep -q "## Golden Delta Review"; then
+            echo "[frontend-golden][error] PR must include '## Golden Delta Review' when snapshots change." >&2
+            exit 1
+          fi
+
+          body_tail="$(printf '%s\n' "$PR_BODY" | sed -n '/^## Golden Delta Review/,$p' | tail -n +2 | tr -d '[:space:]')"
+          if [ -z "$body_tail" ]; then
+            echo "[frontend-golden][error] Golden Delta Review section is empty." >&2
+            exit 1
+          fi
+
+          echo "Golden Delta Review section present."

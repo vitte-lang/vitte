@@ -1,0 +1,488 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CONFIG = ROOT / "tests/golden/frontend/CONFIG.json"
+DEFAULT_MANIFEST = ROOT / "tests/golden/frontend/MANIFEST.txt"
+DEFAULT_SNAP_DIR = ROOT / "tests/golden/frontend/snapshots"
+
+
+@dataclass
+class CmdResult:
+    cmd: list[str]
+    rc: int
+    stdout: str
+    stderr: str
+
+    @property
+    def combined(self) -> str:
+        return f"{self.stdout}\n{self.stderr}".strip()
+
+
+def run_cmd(cmd: list[str]) -> CmdResult:
+    p = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return CmdResult(cmd=cmd, rc=p.returncode, stdout=p.stdout or "", stderr=p.stderr or "")
+
+
+def find_first_json_blob(text: str) -> Any | None:
+    dec = json.JSONDecoder()
+    for i, ch in enumerate(text):
+        if ch not in "[{":
+            continue
+        try:
+            obj, _ = dec.raw_decode(text[i:])
+            return obj
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def offset_to_line_col(src: str, offset: int) -> tuple[int, int]:
+    if offset < 0:
+        return (1, 1)
+    pref = src[:offset]
+    line = pref.count("\n") + 1
+    last_nl = pref.rfind("\n")
+    col = offset + 1 if last_nl < 0 else offset - last_nl
+    return (line, col)
+
+
+def sort_json(v: Any) -> Any:
+    if isinstance(v, dict):
+        return {k: sort_json(v[k]) for k in sorted(v.keys())}
+    if isinstance(v, list):
+        return [sort_json(x) for x in v]
+    return v
+
+
+def strip_spans(v: Any) -> Any:
+    if isinstance(v, dict):
+        out: dict[str, Any] = {}
+        for k, val in v.items():
+            if k == "span":
+                continue
+            out[k] = strip_spans(val)
+        return out
+    if isinstance(v, list):
+        return [strip_spans(x) for x in v]
+    return v
+
+
+def normalize_json_payload(payload: Any, remove_spans: bool) -> Any:
+    out = payload
+    if remove_spans:
+        out = strip_spans(out)
+    return sort_json(out)
+
+
+def extract_mir_text(text: str) -> str:
+    blocks = re.findall(r"(?ms)^MIR Module.*?(?=^MIR Module|^\[driver\]|\Z)", text)
+    cleaned = [b.strip("\n") for b in blocks if b.strip()]
+    if not cleaned:
+        return ""
+    uniq: list[str] = []
+    for b in cleaned:
+        if b not in uniq:
+            uniq.append(b)
+    if len(uniq) == 1:
+        return uniq[0].rstrip() + "\n"
+    return "\n\n".join(uniq).rstrip() + "\n"
+
+
+def normalize_text(text: str) -> str:
+    lines = [ln.rstrip() for ln in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines) + "\n"
+
+
+def ast_kind_counts(node: Any, out: dict[str, int], depth: int = 1) -> int:
+    if not isinstance(node, dict):
+        return depth
+    kind = str(node.get("kind", ""))
+    if kind:
+        out[kind] = out.get(kind, 0) + 1
+    max_depth = depth
+    for ch in node.get("children", []):
+        d = ast_kind_counts(ch, out, depth + 1)
+        if d > max_depth:
+            max_depth = d
+    return max_depth
+
+
+def hir_kind_counts(node: Any, out: dict[str, int], depth: int = 1) -> int:
+    if not isinstance(node, dict):
+        return depth
+    kind = str(node.get("kind", ""))
+    if kind:
+        out[kind] = out.get(kind, 0) + 1
+    max_depth = depth
+    for ch in node.get("children", []):
+        d = hir_kind_counts(ch, out, depth + 1)
+        if d > max_depth:
+            max_depth = d
+    return max_depth
+
+
+def mir_shape(text: str) -> dict[str, Any]:
+    op_counts: dict[str, int] = {}
+    fn_count = 0
+    bb_count = 0
+    for ln in text.splitlines():
+        s = ln.strip()
+        if not s:
+            continue
+        if s.startswith("fn "):
+            fn_count += 1
+            continue
+        if re.match(r"^bb[0-9]+:$", s):
+            bb_count += 1
+            continue
+        if s[0].isupper():
+            op_counts[s] = op_counts.get(s, 0) + 1
+    return {
+        "fn_count": fn_count,
+        "bb_count": bb_count,
+        "op_counts": {k: op_counts[k] for k in sorted(op_counts.keys())},
+    }
+
+
+def to_json_text(obj: Any) -> str:
+    return json.dumps(obj, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+def parse_parse_metrics(text: str) -> dict[str, int]:
+    m = re.search(
+        r"\[parse-metrics\]\s+errors=(\d+)\s+notes=(\d+)\s+recoveries=(\d+)\s+lookahead_snapshots=(\d+)\s+lookahead_restores=(\d+)",
+        text,
+    )
+    if not m:
+        return {}
+    return {
+        "errors": int(m.group(1)),
+        "notes": int(m.group(2)),
+        "recoveries": int(m.group(3)),
+        "lookahead_snapshots": int(m.group(4)),
+        "lookahead_restores": int(m.group(5)),
+    }
+
+
+def flatten_diagnostics(diag_payload: Any, src_text: str) -> list[dict[str, Any]]:
+    if not isinstance(diag_payload, dict):
+        return []
+    rows = diag_payload.get("diagnostics", [])
+    out: list[dict[str, Any]] = []
+    if not isinstance(rows, list):
+        return out
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        code = str(row.get("code", ""))
+        sev = str(row.get("severity", ""))
+        msg = str(row.get("message", ""))
+        start = int(row.get("start", 0))
+        line, col = offset_to_line_col(src_text, start)
+        out.append({
+            "severity": sev,
+            "code": code,
+            "message": msg,
+            "line": line,
+            "column": col,
+            "start": start,
+        })
+    return out
+
+
+def merge_cfg(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    out.update(extra)
+    return out
+
+
+def load_manifest(path: Path) -> list[str]:
+    rows: list[str] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        rows.append(line)
+    return rows
+
+
+def contains_kind(node: Any, want: str) -> bool:
+    if not isinstance(node, dict):
+        return False
+    if str(node.get("kind", "")) == want:
+        return True
+    for ch in node.get("children", []):
+        if contains_kind(ch, want):
+            return True
+    return False
+
+
+def expected_diag_match(diags: list[dict[str, Any]], expected: dict[str, Any]) -> bool:
+    code = str(expected.get("code", ""))
+    msg_sub = str(expected.get("message_contains", ""))
+    line = int(expected.get("line", 0))
+    col = int(expected.get("column", 0))
+    for d in diags:
+        if code and d.get("code") != code:
+            continue
+        if msg_sub and msg_sub.lower() not in str(d.get("message", "")).lower():
+            continue
+        if line > 0 and int(d.get("line", 0)) != line:
+            continue
+        if col > 0 and int(d.get("column", 0)) != col:
+            continue
+        return True
+    return False
+
+
+def stage_json_snapshot(snapshot_version: int, fixture: str, stage: str, cmd: list[str], rc: int, payload: Any) -> dict[str, Any]:
+    return {
+        "snapshot_version": snapshot_version,
+        "fixture": fixture,
+        "stage": stage,
+        "command": cmd,
+        "exit_code": rc,
+        "payload": payload,
+    }
+
+
+def stage_text_snapshot(snapshot_version: int, fixture: str, stage: str, cmd: list[str], rc: int, text: str) -> dict[str, Any]:
+    return {
+        "snapshot_version": snapshot_version,
+        "fixture": fixture,
+        "stage": stage,
+        "command": cmd,
+        "exit_code": rc,
+        "payload": {
+            "text": text,
+        },
+    }
+
+
+def write_if_changed(path: Path, content: str) -> bool:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cur = path.read_text(encoding="utf-8") if path.exists() else None
+    if cur == content:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Frontend golden snapshot runner")
+    ap.add_argument("--check", action="store_true", help="check snapshots (default mode)")
+    ap.add_argument("--update", action="store_true", help="regenerate snapshots")
+    ap.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
+    ap.add_argument("--config", default=str(DEFAULT_CONFIG))
+    ap.add_argument("--snap-dir", default=str(DEFAULT_SNAP_DIR))
+    ap.add_argument("--vitte-bin", default="bin/vitte")
+    ap.add_argument("--subset", choices=["all", "critical"], default="all")
+    ap.add_argument("--fail-fast", action="store_true")
+    args = ap.parse_args()
+
+    manifest = Path(args.manifest)
+    config_path = Path(args.config)
+    snap_dir = Path(args.snap_dir)
+    vitte_bin = Path(args.vitte_bin)
+    if not vitte_bin.is_absolute():
+        vitte_bin = ROOT / vitte_bin
+
+    if not manifest.exists():
+        print(f"[golden] missing manifest: {manifest}")
+        return 1
+    if not config_path.exists():
+        print(f"[golden] missing config: {config_path}")
+        return 1
+    if not vitte_bin.exists():
+        print(f"[golden] missing binary: {vitte_bin}")
+        return 1
+
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    snapshot_version = int(config.get("snapshot_version", 1))
+    files = load_manifest(manifest)
+    if args.subset == "critical":
+        keep = set(config.get("critical_subset", []))
+        files = [f for f in files if f in keep]
+
+    failures: list[str] = []
+    updates = 0
+
+    for rel in files:
+        src = manifest.parent / rel
+        if not src.exists():
+            failures.append(f"missing fixture: {src}")
+            if args.fail_fast:
+                break
+            continue
+
+        category = rel.split("/", 1)[0]
+        cfg = merge_cfg(config.get("default", {}), config.get("by_category", {}).get(category, {}))
+        cfg = merge_cfg(cfg, config.get("by_fixture", {}).get(rel, {}))
+
+        options = [str(o) for o in cfg.get("options", [])]
+        expect_success = bool(cfg.get("expect_success", True))
+        strip_spans_opt = bool(cfg.get("strip_spans", False))
+        comparison = str(cfg.get("comparison", "exact"))
+        skip_check_stage = bool(cfg.get("skip_check_stage", False))
+
+        src_text = src.read_text(encoding="utf-8")
+
+        ast_cmd = [str(vitte_bin), "parse", "--parse-silent", "--deterministic", "--dump-ast-json", "--lang=en", *options, str(src)]
+        ast_res = run_cmd(ast_cmd)
+        ast_json = find_first_json_blob(ast_res.combined)
+        ast_payload = normalize_json_payload(ast_json, strip_spans_opt) if ast_json is not None else {"unavailable": "ast-json-missing"}
+
+        if skip_check_stage:
+            hir_cmd = [str(vitte_bin), "check", "--deterministic", "--dump-hir-json", "--lang=en", *options, str(src)]
+            hir_res = CmdResult(cmd=hir_cmd, rc=0, stdout="", stderr="")
+            hir_json = None
+            hir_payload = {"skipped": "check-stage-disabled"}
+            mir_cmd = [str(vitte_bin), "check", "--deterministic", "--dump-mir", "--lang=en", *options, str(src)]
+            mir_res = CmdResult(cmd=mir_cmd, rc=0, stdout="", stderr="")
+            mir_text = ""
+            diag_cmd = [str(vitte_bin), "parse", "--parse-silent", "--deterministic", "--diag-json", "--lang=en", *options, str(src)]
+        else:
+            hir_cmd = [str(vitte_bin), "check", "--deterministic", "--dump-hir-json", "--lang=en", *options, str(src)]
+            hir_res = run_cmd(hir_cmd)
+            hir_json = find_first_json_blob(hir_res.combined)
+            hir_payload = normalize_json_payload(hir_json, strip_spans_opt) if hir_json is not None else {"unavailable": "hir-json-missing"}
+
+            mir_cmd = [str(vitte_bin), "check", "--deterministic", "--dump-mir", "--lang=en", *options, str(src)]
+            mir_res = run_cmd(mir_cmd)
+            mir_text = normalize_text(extract_mir_text(mir_res.combined))
+            diag_cmd = [str(vitte_bin), "check", "--deterministic", "--diag-json", "--lang=en", *options, str(src)]
+
+        diag_res = run_cmd(diag_cmd)
+        diag_json = find_first_json_blob(diag_res.combined)
+        diag_rows = flatten_diagnostics(diag_json, src_text)
+
+        metrics_cmd = [str(vitte_bin), "parse", "--parse-silent", "--deterministic", "--dump-parse-metrics", "--lang=en", *options, str(src)]
+        metrics_res = run_cmd(metrics_cmd)
+        parse_metrics = parse_parse_metrics(metrics_res.combined)
+
+        expected_diags = cfg.get("expected_diagnostics", [])
+        for exp in expected_diags:
+            if not expected_diag_match(diag_rows, exp):
+                failures.append(f"{rel}: missing expected diagnostic {exp}")
+
+        must_kinds = cfg.get("ast_must_contain_kinds", [])
+        for kind in must_kinds:
+            if not contains_kind(ast_payload if isinstance(ast_payload, dict) else {}, str(kind)):
+                failures.append(f"{rel}: AST missing required kind '{kind}'")
+
+        pm = cfg.get("parse_metrics", {})
+        if pm:
+            errors_min = int(pm.get("errors_min", 0))
+            if int(parse_metrics.get("errors", 0)) < errors_min:
+                failures.append(f"{rel}: parse errors {parse_metrics.get('errors', 0)} < {errors_min}")
+
+        success_rc = (ast_res.rc == 0 and hir_res.rc == 0 and mir_res.rc == 0)
+        if expect_success and not success_rc:
+            failures.append(f"{rel}: expected success but got rc parse={ast_res.rc} hir={hir_res.rc} mir={mir_res.rc}")
+        if not expect_success and ast_res.rc == 0 and hir_res.rc == 0 and mir_res.rc == 0:
+            failures.append(f"{rel}: expected failure but all stages succeeded")
+
+        require_hir = bool(cfg.get("require_hir", True))
+        require_mir = bool(cfg.get("require_mir", True))
+        if require_hir and hir_json is None:
+            failures.append(f"{rel}: expected HIR JSON but none found")
+        if require_mir and not mir_text.strip():
+            failures.append(f"{rel}: expected MIR dump but none found")
+
+        ast_snap_obj = stage_json_snapshot(snapshot_version, rel, "ast", ast_cmd, ast_res.rc, ast_payload)
+        hir_snap_obj = stage_json_snapshot(snapshot_version, rel, "hir", hir_cmd, hir_res.rc, hir_payload)
+        mir_snap_obj = stage_text_snapshot(snapshot_version, rel, "mir", mir_cmd, mir_res.rc, mir_text)
+
+        ast_counts: dict[str, int] = {}
+        ast_depth = ast_kind_counts(ast_payload if isinstance(ast_payload, dict) else {}, ast_counts)
+        hir_counts: dict[str, int] = {}
+        hir_depth = hir_kind_counts(hir_payload if isinstance(hir_payload, dict) else {}, hir_counts)
+        shape_obj = {
+            "snapshot_version": snapshot_version,
+            "fixture": rel,
+            "comparison": comparison,
+            "ast": {
+                "max_depth": ast_depth,
+                "kind_counts": {k: ast_counts[k] for k in sorted(ast_counts.keys())},
+            },
+            "hir": {
+                "max_depth": hir_depth,
+                "kind_counts": {k: hir_counts[k] for k in sorted(hir_counts.keys())},
+            },
+            "mir": mir_shape(mir_text),
+        }
+
+        diag_obj = {
+            "snapshot_version": snapshot_version,
+            "fixture": rel,
+            "diagnostics": sort_json(diag_rows),
+            "parse_metrics": sort_json(parse_metrics),
+        }
+
+        base = snap_dir / rel
+        ast_path = base.with_suffix(".ast.json")
+        hir_path = base.with_suffix(".hir.json")
+        mir_path = base.with_suffix(".mir.json")
+        shape_path = base.with_suffix(".shape.json")
+        diag_path = base.with_suffix(".diag.json")
+
+        ast_text = to_json_text(ast_snap_obj)
+        hir_text = to_json_text(hir_snap_obj)
+        mir_json_text = to_json_text(mir_snap_obj)
+        shape_text = to_json_text(shape_obj)
+        diag_text = to_json_text(diag_obj)
+
+        if args.update:
+            updates += int(write_if_changed(ast_path, ast_text))
+            updates += int(write_if_changed(hir_path, hir_text))
+            updates += int(write_if_changed(mir_path, mir_json_text))
+            updates += int(write_if_changed(shape_path, shape_text))
+            updates += int(write_if_changed(diag_path, diag_text))
+        else:
+            for p, cur in [
+                (ast_path, ast_text),
+                (hir_path, hir_text),
+                (mir_path, mir_json_text),
+                (shape_path, shape_text),
+                (diag_path, diag_text),
+            ]:
+                if not p.exists():
+                    failures.append(f"{rel}: missing snapshot {p.relative_to(ROOT)} (run --update)")
+                    continue
+                got = p.read_text(encoding="utf-8")
+                if comparison == "shape" and p.suffixes[-2:] in [[".ast", ".json"], [".hir", ".json"], [".mir", ".json"]]:
+                    # shape fixtures still require files but do not enforce exact content for stage dumps.
+                    continue
+                if got != cur:
+                    failures.append(f"{rel}: snapshot drift in {p.relative_to(ROOT)} (run --update)")
+
+        if args.fail_fast and failures:
+            break
+
+    if failures:
+        print("[golden] FAILED")
+        for f in failures:
+            print(f"- {f}")
+        return 1
+
+    if args.update:
+        print(f"[golden] UPDATED files={updates} fixtures={len(files)} subset={args.subset}")
+    else:
+        print(f"[golden] OK fixtures={len(files)} subset={args.subset}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
