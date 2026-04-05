@@ -85,8 +85,8 @@ bool Parser::expect(TokenKind kind, const char* message) {
 
 static const char* closest_toplevel_keyword(std::string_view ident) {
     static constexpr const char* kDeclKeywords[] = {
-        "space", "pull", "use", "share", "const", "let", "make",
-        "type", "macro", "form", "trait", "pick", "proc", "entry",
+        "space", "pull", "use", "share", "const",
+        "type", "form", "pick", "proc", "entry",
     };
     const char* best = nullptr;
     int best_dist = 1000;
@@ -114,14 +114,11 @@ static void emit_toplevel_hint(DiagnosticEngine& diag, const Token& tok) {
         case TokenKind::KwSet:
         case TokenKind::KwGive:
         case TokenKind::KwEmit:
-        case TokenKind::KwSelect:
         case TokenKind::KwMatch:
         case TokenKind::KwWhen:
         case TokenKind::KwReturn:
         case TokenKind::KwBreak:
         case TokenKind::KwContinue:
-        case TokenKind::KwUnsafe:
-        case TokenKind::KwAsm:
             diag.note("this is a statement; place it inside 'proc { ... }' or 'entry { ... }'", tok.span);
             return;
         case TokenKind::Ident: {
@@ -182,16 +179,10 @@ DeclId Parser::parse_toplevel() {
     if (current_.kind == TokenKind::KwConst) {
         return parse_const_decl();
     }
-    if (current_.kind == TokenKind::KwLet || current_.kind == TokenKind::KwMake) {
-        return parse_global_decl();
-    }
     if (current_.kind == TokenKind::KwType) {
         return parse_type_alias_decl();
     }
-    if (current_.kind == TokenKind::KwMacro) {
-        return parse_macro_decl();
-    }
-    if (current_.kind == TokenKind::KwForm || current_.kind == TokenKind::KwTrait) {
+    if (current_.kind == TokenKind::KwForm) {
         return parse_form_decl();
     }
     if (current_.kind == TokenKind::KwPick) {
@@ -491,41 +482,22 @@ DeclId Parser::parse_macro_decl() {
 
 DeclId Parser::parse_form_decl() {
     SourceSpan span = current_.span;
-    if (current_.kind == TokenKind::KwTrait) {
-        advance();
-    } else {
-        expect(TokenKind::KwForm, "expected 'form'");
-    }
+    expect(TokenKind::KwForm, "expected 'form'");
     Ident name = parse_ident();
     auto type_params = parse_type_params();
     std::vector<FieldDecl> fields;
-    if (match(TokenKind::LBrace)) {
-        while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
-            Ident field_name = parse_ident();
-            expect(TokenKind::Colon, "expected ':'");
-            TypeId ty = parse_type_expr();
-            fields.emplace_back(std::move(field_name), ty);
-            if (match(TokenKind::Comma)) {
-                continue;
-            }
+    expect(TokenKind::LBrace, "expected '{'");
+    while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
+        Ident field_name = parse_ident();
+        expect(TokenKind::Colon, "expected ':'");
+        TypeId ty = parse_type_expr();
+        fields.emplace_back(std::move(field_name), ty);
+        if (match(TokenKind::Comma)) {
+            continue;
         }
-        expect(TokenKind::RBrace, "expected '}'");
-        span.end = previous_.span.end;
-    } else {
-        while (current_.kind == TokenKind::KwField) {
-            fields.push_back(parse_field_decl());
-        }
-        expect(TokenKind::Dot, "expected '.end'");
-        if (!(current_.kind == TokenKind::Ident && current_.text == "end")) {
-            diag::error(diag_, diag::DiagId::ExpectedEnd, current_.span);
-            diag_.note("did you mean '.end'?", current_.span);
-            diag_.note("block opened here", span);
-            diag_.note("parser will resume after '.end'", current_.span);
-        } else {
-            advance();
-        }
-        span.end = previous_.span.end;
     }
+    expect(TokenKind::RBrace, "expected '}'");
+    span.end = previous_.span.end;
     return ast_ctx_.make<FormDecl>(std::move(name), std::move(type_params), std::move(fields), span);
 }
 
@@ -535,48 +507,33 @@ DeclId Parser::parse_pick_decl() {
     Ident name = parse_ident();
     auto type_params = parse_type_params();
     std::vector<CaseDecl> cases;
-    if (match(TokenKind::LBrace)) {
-        while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
-            if (match(TokenKind::KwCase)) {
-                // optional in brace form
-            }
-            Ident case_name = parse_ident();
-            std::vector<CaseField> fields;
-            if (match(TokenKind::LParen)) {
-                if (current_.kind != TokenKind::RParen) {
-                    Ident field_name = parse_ident();
+    expect(TokenKind::LBrace, "expected '{'");
+    while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
+        if (match(TokenKind::KwCase)) {
+            // optional in core brace form
+        }
+        Ident case_name = parse_ident();
+        std::vector<CaseField> fields;
+        if (match(TokenKind::LParen)) {
+            if (current_.kind != TokenKind::RParen) {
+                Ident field_name = parse_ident();
+                expect(TokenKind::Colon, "expected ':'");
+                fields.emplace_back(std::move(field_name), parse_type_expr());
+                while (match(TokenKind::Comma)) {
+                    Ident next_name = parse_ident();
                     expect(TokenKind::Colon, "expected ':'");
-                    fields.emplace_back(std::move(field_name), parse_type_expr());
-                    while (match(TokenKind::Comma)) {
-                        Ident next_name = parse_ident();
-                        expect(TokenKind::Colon, "expected ':'");
-                        fields.emplace_back(std::move(next_name), parse_type_expr());
-                    }
+                    fields.emplace_back(std::move(next_name), parse_type_expr());
                 }
-                expect(TokenKind::RParen, "expected ')'");
             }
-            cases.emplace_back(std::move(case_name), std::move(fields));
-            if (match(TokenKind::Comma)) {
-                continue;
-            }
+            expect(TokenKind::RParen, "expected ')'");
         }
-        expect(TokenKind::RBrace, "expected '}'");
-        span.end = previous_.span.end;
-    } else {
-        while (current_.kind == TokenKind::KwCase) {
-            cases.push_back(parse_case_decl());
+        cases.emplace_back(std::move(case_name), std::move(fields));
+        if (match(TokenKind::Comma)) {
+            continue;
         }
-        expect(TokenKind::Dot, "expected '.end'");
-        if (!(current_.kind == TokenKind::Ident && current_.text == "end")) {
-            diag::error(diag_, diag::DiagId::ExpectedEnd, current_.span);
-            diag_.note("did you mean '.end'?", current_.span);
-            diag_.note("block opened here", span);
-            diag_.note("parser will resume after '.end'", current_.span);
-        } else {
-            advance();
-        }
-        span.end = previous_.span.end;
     }
+    expect(TokenKind::RBrace, "expected '}'");
+    span.end = previous_.span.end;
     return ast_ctx_.make<PickDecl>(std::move(name), std::move(type_params), std::move(cases), span);
 }
 
@@ -710,8 +667,6 @@ StmtId Parser::parse_block() {
 
 StmtId Parser::parse_stmt() {
     switch (current_.kind) {
-        case TokenKind::KwAsm: return parse_asm_stmt();
-        case TokenKind::KwUnsafe: return parse_unsafe_stmt();
         case TokenKind::KwLet: return parse_let_stmt();
         case TokenKind::KwMake: return parse_make_stmt();
         case TokenKind::KwSet: return parse_set_stmt();
@@ -722,7 +677,6 @@ StmtId Parser::parse_stmt() {
         case TokenKind::KwFor: return parse_for_stmt();
         case TokenKind::KwBreak: return parse_break_stmt();
         case TokenKind::KwContinue: return parse_continue_stmt();
-        case TokenKind::KwSelect: return parse_select_stmt();
         case TokenKind::KwMatch: return parse_match_stmt();
         case TokenKind::KwWhen: return parse_when_match_stmt();
         case TokenKind::KwReturn: return parse_return_stmt();
@@ -1019,30 +973,21 @@ static int precedence(TokenKind kind) {
         case TokenKind::KwAnd:
         case TokenKind::AmpAmp:
             return 3;
-        case TokenKind::Pipe:
-            return 4;
-        case TokenKind::Caret:
-            return 5;
-        case TokenKind::Amp:
-            return 6;
         case TokenKind::EqEq:
         case TokenKind::NotEq:
-            return 7;
+            return 4;
         case TokenKind::Lt:
         case TokenKind::Le:
         case TokenKind::Gt:
         case TokenKind::Ge:
-            return 8;
-        case TokenKind::Shl:
-        case TokenKind::Shr:
-            return 9;
+            return 5;
         case TokenKind::Plus:
         case TokenKind::Minus:
-            return 10;
+            return 6;
         case TokenKind::Star:
         case TokenKind::Slash:
         case TokenKind::Percent:
-            return 11;
+            return 7;
         default:
             return 0;
     }
@@ -1078,15 +1023,11 @@ static const char* keyword_text(TokenKind kind) {
         case TokenKind::KwField: return "field";
         case TokenKind::KwPick: return "pick";
         case TokenKind::KwCase: return "case";
-        case TokenKind::KwTrait: return "trait";
         case TokenKind::KwType: return "type";
         case TokenKind::KwConst: return "const";
-        case TokenKind::KwMacro: return "macro";
         case TokenKind::KwProc: return "proc";
         case TokenKind::KwEntry: return "entry";
         case TokenKind::KwAt: return "at";
-        case TokenKind::KwAsm: return "asm";
-        case TokenKind::KwUnsafe: return "unsafe";
         case TokenKind::KwMatch: return "match";
         case TokenKind::KwLet: return "let";
         case TokenKind::KwMake: return "make";
@@ -1096,7 +1037,6 @@ static const char* keyword_text(TokenKind kind) {
         case TokenKind::KwIf: return "if";
         case TokenKind::KwElse: return "else";
         case TokenKind::KwOtherwise: return "otherwise";
-        case TokenKind::KwSelect: return "select";
         case TokenKind::KwWhen: return "when";
         case TokenKind::KwIs: return "is";
         case TokenKind::KwLoop: return "loop";
@@ -1191,22 +1131,6 @@ ExprId Parser::parse_unary_expr() {
         }
         return ast_ctx_.make<UnaryExpr>(UnaryOp::Neg, rhs, span);
     }
-    if (match(TokenKind::Amp)) {
-        auto rhs = parse_unary_expr();
-        SourceSpan span = previous_.span;
-        if (rhs != ast::kInvalidAstId) {
-            span.end = ast_ctx_.get<Expr>(rhs).span.end;
-        }
-        return ast_ctx_.make<UnaryExpr>(UnaryOp::Addr, rhs, span);
-    }
-    if (match(TokenKind::Star)) {
-        auto rhs = parse_unary_expr();
-        SourceSpan span = previous_.span;
-        if (rhs != ast::kInvalidAstId) {
-            span.end = ast_ctx_.get<Expr>(rhs).span.end;
-        }
-        return ast_ctx_.make<UnaryExpr>(UnaryOp::Deref, rhs, span);
-    }
     return parse_primary();
 }
 
@@ -1243,14 +1167,6 @@ ExprId Parser::parse_primary() {
         return ast_ctx_.make<LiteralExpr>(LiteralKind::String, value, span);
     }
 
-    if (current_.kind == TokenKind::KwIf) {
-        return parse_if_expr();
-    }
-
-    if (current_.kind == TokenKind::KwProc) {
-        return parse_proc_expr();
-    }
-
     if (current_.kind == TokenKind::LBracket) {
         advance();
         std::vector<ExprId> items;
@@ -1269,13 +1185,6 @@ ExprId Parser::parse_primary() {
         return parse_postfix_expr(expr);
     }
 
-    if (!strict_ && is_type_keyword(current_.kind)) {
-        Ident ident(current_.text, current_.span);
-        advance();
-        auto base = ast_ctx_.make<IdentExpr>(std::move(ident), ident.span);
-        return parse_postfix_expr(base);
-    }
-
     if (current_.kind == TokenKind::Ident) {
         Ident ident = parse_ident();
         auto base = ast_ctx_.make<IdentExpr>(std::move(ident), ident.span);
@@ -1292,32 +1201,11 @@ ExprId Parser::parse_primary() {
 ExprId Parser::parse_postfix_expr(ExprId base) {
     ExprId expr = base;
     while (true) {
-        if (current_.kind == TokenKind::LBracket && try_recover_empty_generic_call_suffix(expr)) {
-            continue;
-        }
-        if (current_.kind == TokenKind::LBracket && looks_like_type_constructor_head(expr)) {
-            if (ExprId ctor = try_parse_generic_ctor_call_expr(expr); ctor != ast::kInvalidAstId) {
-                expr = ctor;
-                continue;
-            }
-        }
-        if (current_.kind == TokenKind::LBracket) {
-            if (ExprId call = try_parse_generic_proc_call_expr(expr); call != ast::kInvalidAstId) {
-                expr = call;
-                continue;
-            }
-        }
         if (match(TokenKind::Dot)) {
-            if (match(TokenKind::Star)) {
-                SourceSpan span = ast_ctx_.get<Expr>(expr).span;
-                span.end = previous_.span.end;
-                expr = ast_ctx_.make<UnaryExpr>(UnaryOp::Deref, expr, span);
-            } else {
-                Ident member = parse_ident();
-                SourceSpan span = ast_ctx_.get<Expr>(expr).span;
-                span.end = member.span.end;
-                expr = ast_ctx_.make<MemberExpr>(expr, std::move(member), span);
-            }
+            Ident member = parse_ident();
+            SourceSpan span = ast_ctx_.get<Expr>(expr).span;
+            span.end = member.span.end;
+            expr = ast_ctx_.make<MemberExpr>(expr, std::move(member), span);
             continue;
         }
         if (current_.kind == TokenKind::LParen) {
@@ -1692,14 +1580,7 @@ std::vector<ExprId> Parser::parse_arg_list() {
 PatternId Parser::parse_pattern() {
     SourceSpan span = current_.span;
 
-    if (current_.kind == TokenKind::Ident ||
-        current_.kind == TokenKind::KwBool ||
-        current_.kind == TokenKind::KwString ||
-        current_.kind == TokenKind::KwInt ||
-        current_.kind == TokenKind::KwAnd ||
-        current_.kind == TokenKind::KwOr ||
-        current_.kind == TokenKind::KwNot ||
-        current_.kind == TokenKind::KwAll) {
+    if (current_.kind == TokenKind::Ident) {
         Ident ident = parse_qualified_ident();
         bool has_dot = ident.name.find('.') != std::string::npos;
         if (current_.kind == TokenKind::LParen) {
@@ -1846,17 +1727,10 @@ bool Parser::is_expr_start(TokenKind kind) const {
 }
 
 bool Parser::is_unary_start(TokenKind kind) const {
-    if (!strict_ && is_type_keyword(kind)) {
-        return true;
-    }
     switch (kind) {
         case TokenKind::Bang:
         case TokenKind::Minus:
-        case TokenKind::Amp:
-        case TokenKind::Star:
         case TokenKind::KwNot:
-        case TokenKind::KwIf:
-        case TokenKind::KwProc:
         case TokenKind::KwTrue:
         case TokenKind::KwFalse:
         case TokenKind::IntLit:
@@ -1879,13 +1753,8 @@ bool Parser::is_binary_op(TokenKind kind) const {
         case TokenKind::Star:
         case TokenKind::Slash:
         case TokenKind::Percent:
-        case TokenKind::Amp:
-        case TokenKind::Pipe:
-        case TokenKind::Caret:
         case TokenKind::AmpAmp:
         case TokenKind::PipePipe:
-        case TokenKind::Shl:
-        case TokenKind::Shr:
         case TokenKind::Equal:
         case TokenKind::EqEq:
         case TokenKind::NotEq:
@@ -1914,11 +1783,6 @@ BinaryOp Parser::to_binary_op(TokenKind kind) const {
         case TokenKind::Le: return BinaryOp::Le;
         case TokenKind::Gt: return BinaryOp::Gt;
         case TokenKind::Ge: return BinaryOp::Ge;
-        case TokenKind::Amp: return BinaryOp::BitAnd;
-        case TokenKind::Pipe: return BinaryOp::BitOr;
-        case TokenKind::Caret: return BinaryOp::BitXor;
-        case TokenKind::Shl: return BinaryOp::Shl;
-        case TokenKind::Shr: return BinaryOp::Shr;
         case TokenKind::Equal: return BinaryOp::Assign;
         case TokenKind::KwAnd: return BinaryOp::And;
         case TokenKind::KwOr: return BinaryOp::Or;
