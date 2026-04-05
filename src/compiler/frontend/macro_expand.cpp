@@ -1,4 +1,5 @@
 #include "macro_expand.hpp"
+#include "diagnostics_messages.hpp"
 
 #include <unordered_map>
 
@@ -320,13 +321,13 @@ static std::vector<StmtId> inline_macro(
     }
     const AstNode& body_node = ctx.node(mac.body);
     if (body_node.kind != NodeKind::BlockStmt) {
-        diagnostics.error("macro body must be a block", mac.span);
+        diag::error(diagnostics, diag::DiagId::MacroBodyMustBeBlock, mac.span);
         return out;
     }
 
     std::vector<Subst> subst;
     if (mac.params.size() != args.size()) {
-        diagnostics.error("macro argument count mismatch", mac.span);
+        diag::error(diagnostics, diag::DiagId::MacroArgumentCountMismatch, mac.span);
         return out;
     }
     subst.reserve(mac.params.size());

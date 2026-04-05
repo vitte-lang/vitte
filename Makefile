@@ -542,6 +542,7 @@ wrapper-stage-test:
 grammar-sync:
 	@python3 book/grammar/scripts/sync_grammar.py
 	@python3 book/grammar/scripts/sync_pest.py
+	@python3 book/grammar/scripts/sync_precedence.py
 
 .PHONY: harden-mod-vits
 harden-mod-vits:
@@ -552,14 +553,17 @@ harden-mod-vits:
 grammar-check:
 	@python3 book/grammar/scripts/sync_grammar.py --check
 	@python3 book/grammar/scripts/sync_pest.py --check
+	@python3 book/grammar/scripts/sync_precedence.py --check
 
 .PHONY: grammar-test
 grammar-test:
 	@python3 book/grammar/scripts/validate_examples.py
+	@python3 tools/parser_precedence_property_test.py
 
 .PHONY: core-language-test
 core-language-test:
 	@python3 book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt
+	@python3 tools/parser_precedence_property_test.py
 
 .PHONY: core-language-test-update
 core-language-test-update:
@@ -568,6 +572,14 @@ core-language-test-update:
 .PHONY: grammar-test-update
 grammar-test-update:
 	@python3 book/grammar/scripts/validate_examples.py --update-snapshots
+
+.PHONY: parser-recovery-golden
+parser-recovery-golden:
+	@python3 book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/recovery_manifest.txt
+
+.PHONY: parser-sync-coverage
+parser-sync-coverage:
+	@python3 tools/parser_sync_coverage_report.py --check
 
 .PHONY: grammar-docs
 grammar-docs:
@@ -593,7 +605,7 @@ parser-lexer-fuzz-smoke:
 	@python3 tools/parser_lexer_fuzz_smoke.py --cases 80 --seed 1337
 
 .PHONY: core-language-gate
-core-language-gate: grammar-check grammar-test core-language-test strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden parser-sync-coverage strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
 
 .PHONY: core-release-gate
 core-release-gate: core-language-gate diagnostics-ftl-check

@@ -1069,6 +1069,12 @@ static int run_grammar_check() {
         ok = false;
     }
 
+    const int precedence_rc = std::system("python3 book/grammar/scripts/sync_precedence.py --check");
+    if (precedence_rc != 0) {
+        std::cerr << "[grammar] error: precedence table artifact is out of sync\n";
+        ok = false;
+    }
+
     if (!ok) {
         std::cerr << "[grammar] FAILED\n";
         return 1;

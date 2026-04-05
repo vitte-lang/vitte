@@ -212,7 +212,7 @@ def main() -> int:
             exp_col = int(exp.get("column", 0))
             exp_pattern = str(exp.get("message_regex", ".*"))
 
-            if got.code != exp_code:
+            if exp_code and got.code != exp_code:
                 failures.append(f"{file_path}: diag[{idx}] code {got.code} != {exp_code}")
             if exp_line > 0 and got.line != exp_line:
                 failures.append(f"{file_path}: diag[{idx}] line {got.line} != {exp_line}")

@@ -1,5 +1,6 @@
 #include "module_loader.hpp"
 
+#include "diagnostics_messages.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 
@@ -957,7 +958,8 @@ struct Loader {
                 }
             }
             if (!is_valid_stdlib_profile(options.stdlib_profile)) {
-                diagnostics.error("invalid stdlib profile: " + options.stdlib_profile, (*path).span);
+                diag::error(diagnostics, diag::DiagId::InvalidStdlibProfile, (*path).span);
+                diagnostics.note("invalid stdlib profile: " + options.stdlib_profile, (*path).span);
                 continue;
             }
             if (!normalized.empty() &&
@@ -1039,7 +1041,8 @@ struct Loader {
                 if (!missing_normalized.empty()) {
                     diagnostics.emit(make_stdlib_module_not_found((*path).span, missing_normalized));
                 } else {
-                    diagnostics.error("module not found: " + key, (*path).span);
+                    diag::error(diagnostics, diag::DiagId::ModuleNotFound, (*path).span);
+                    diagnostics.note("module not found: " + key, (*path).span);
                 }
                 continue;
             }
@@ -1075,7 +1078,8 @@ struct Loader {
 
             std::ifstream in(file);
             if (!in.is_open()) {
-                diagnostics.error("failed to open module file: " + file.string(), (*path).span);
+                diag::error(diagnostics, diag::DiagId::ModuleFileOpenFailed, (*path).span);
+                diagnostics.note("failed to open module file: " + file.string(), (*path).span);
                 continue;
             }
 

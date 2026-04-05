@@ -59,28 +59,9 @@ static constexpr KeywordSpec kKeywords[] = {
 };
 
 static constexpr BinaryOpSpec kBinaryOps[] = {
-    {TokenKind::Equal, "=", ast::BinaryOp::Assign, 1, true},
-    {TokenKind::KwOr, "or", ast::BinaryOp::Or, 2, true},
-    {TokenKind::PipePipe, "||", ast::BinaryOp::Or, 2, true},
-    {TokenKind::KwAnd, "and", ast::BinaryOp::And, 3, true},
-    {TokenKind::AmpAmp, "&&", ast::BinaryOp::And, 3, true},
-    {TokenKind::EqEq, "==", ast::BinaryOp::Eq, 4, true},
-    {TokenKind::NotEq, "!=", ast::BinaryOp::Ne, 4, true},
-    {TokenKind::Lt, "<", ast::BinaryOp::Lt, 5, true},
-    {TokenKind::Le, "<=", ast::BinaryOp::Le, 5, true},
-    {TokenKind::Gt, ">", ast::BinaryOp::Gt, 5, true},
-    {TokenKind::Ge, ">=", ast::BinaryOp::Ge, 5, true},
-    {TokenKind::Plus, "+", ast::BinaryOp::Add, 6, true},
-    {TokenKind::Minus, "-", ast::BinaryOp::Sub, 6, true},
-    {TokenKind::Star, "*", ast::BinaryOp::Mul, 7, true},
-    {TokenKind::Slash, "/", ast::BinaryOp::Div, 7, true},
-    {TokenKind::Percent, "%", ast::BinaryOp::Mod, 7, true},
-    // Non-core operators kept for compatibility tables.
-    {TokenKind::Pipe, "|", ast::BinaryOp::BitOr, 0, false},
-    {TokenKind::Caret, "^", ast::BinaryOp::BitXor, 0, false},
-    {TokenKind::Amp, "&", ast::BinaryOp::BitAnd, 0, false},
-    {TokenKind::Shl, "<<", ast::BinaryOp::Shl, 0, false},
-    {TokenKind::Shr, ">>", ast::BinaryOp::Shr, 0, false},
+#define VITTE_PRECEDENCE_OP(token, lexeme, op, prec, core) {token, lexeme, op, prec, core},
+#include "precedence_table.def"
+#undef VITTE_PRECEDENCE_OP
 };
 
 TokenKind keyword_kind(std::string_view ident) {
@@ -179,4 +160,3 @@ std::vector<std::string> core_binary_operators() {
 }
 
 } // namespace vitte::frontend::tokens
-

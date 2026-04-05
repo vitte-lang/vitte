@@ -33,9 +33,8 @@ static void validate_type_params(
     for (const auto& param : params) {
         auto it = seen.find(param.name);
         if (it != seen.end()) {
-            diagnostics.error(
-                std::string("duplicate type parameter '") + param.name + "' in " + owner,
-                param.span);
+            diag::error(diagnostics, diag::DiagId::DuplicateTypeParameter, param.span);
+            diagnostics.note(std::string("duplicate type parameter '") + param.name + "' in " + owner, param.span);
             continue;
         }
         seen.emplace(param.name, param.span);

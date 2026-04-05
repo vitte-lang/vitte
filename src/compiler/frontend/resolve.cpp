@@ -141,8 +141,8 @@ static void emit_unknown_type_error(
     const std::string& name,
     ast::SourceSpan span
 ) {
-    std::string msg = "unknown type '" + name + "' (did you mean: int, i32, i64, i128, u32, u64, u128, bool, string?)";
-    diag.error_code("E1002", std::move(msg), span);
+    diag::error(diag, diag::DiagId::UnknownType, span);
+    diag.note("unknown type '" + name + "'", span);
 }
 
 static void emit_qualified_type_member_not_found(
@@ -444,11 +444,8 @@ bool Resolver::resolve_module(ast::AstContext& ctx, ast::ModuleId module_id) {
     if (strict_imports_) {
         for (const auto& imported : explicit_imports_) {
             if (used_explicit_imports_.count(imported.first) == 0) {
-                diag_.error_code(
-                    "E1012",
-                    "unused import alias '" + imported.first + "' in strict-imports mode",
-                    imported.second
-                );
+                diag::error(diag_, diag::DiagId::StrictImportUnusedAlias, imported.second);
+                diag_.note("unused import alias '" + imported.first + "' in strict-imports mode", imported.second);
             }
         }
     }
@@ -490,8 +487,8 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
             if (auto alias = common_type_alias_suggestions().find(t.ident.name);
                 alias != common_type_alias_suggestions().end()) {
                 if (strict_types_) {
-                    std::string msg = "type alias '" + t.ident.name + "' is forbidden in strict mode; use '" + alias->second + "'";
-                    diag_.error_code("E1002", std::move(msg), t.ident.span);
+                    diag::error(diag_, diag::DiagId::UnknownType, t.ident.span);
+                    diag_.note("type alias '" + t.ident.name + "' is forbidden in strict mode; use '" + alias->second + "'", t.ident.span);
                 } else {
                     diag_.warning("type alias '" + t.ident.name + "' is accepted for compatibility; prefer '" + alias->second + "'", t.ident.span);
                 }
@@ -557,8 +554,8 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
             if (auto alias = common_type_alias_suggestions().find(t.base_ident.name);
                 alias != common_type_alias_suggestions().end()) {
                 if (strict_types_) {
-                    std::string msg = "type alias '" + t.base_ident.name + "' is forbidden in strict mode; use '" + alias->second + "'";
-                    diag_.error_code("E1002", std::move(msg), t.base_ident.span);
+                    diag::error(diag_, diag::DiagId::UnknownType, t.base_ident.span);
+                    diag_.note("type alias '" + t.base_ident.name + "' is forbidden in strict mode; use '" + alias->second + "'", t.base_ident.span);
                 } else {
                     diag_.warning("type alias '" + t.base_ident.name + "' is accepted for compatibility; prefer '" + alias->second + "'", t.base_ident.span);
                 }
@@ -716,19 +713,17 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
         {
             auto& d = static_cast<UseDecl&>(decl);
             if (strict_modules_ && d.is_glob) {
-                diag_.error_code("E1019", "glob imports are forbidden in strict-modules mode", d.span);
+                diag::error(diag_, diag::DiagId::StrictModulesGlobForbidden, d.span);
                 diag_.note("replace 'use ...*' with explicit imports", d.span);
             }
             if (strict_imports_) {
                 if (d.path.relative_depth > 0) {
-                    diag_.error_code("E1013",
-                                     "non-canonical import path is forbidden in strict-imports mode (remove relative dots)",
-                                     d.path.span);
+                    diag::error(diag_, diag::DiagId::StrictImportNonCanonicalPath, d.path.span);
+                    diag_.note("remove relative dots from import path", d.path.span);
                 }
                 if (!d.alias.has_value()) {
-                    diag_.error_code("E1011",
-                                     "explicit alias is required for 'use' in strict-imports mode",
-                                     d.span);
+                    diag::error(diag_, diag::DiagId::StrictImportAliasRequired, d.span);
+                    diag_.note("explicit alias is required for 'use' in strict-imports mode", d.span);
                 }
             }
             std::string name;
@@ -752,14 +747,12 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
             auto& d = static_cast<PullDecl&>(decl);
             if (strict_imports_) {
                 if (d.path.relative_depth > 0) {
-                    diag_.error_code("E1013",
-                                     "non-canonical import path is forbidden in strict-imports mode (remove relative dots)",
-                                     d.path.span);
+                    diag::error(diag_, diag::DiagId::StrictImportNonCanonicalPath, d.path.span);
+                    diag_.note("remove relative dots from import path", d.path.span);
                 }
                 if (!d.alias.has_value()) {
-                    diag_.error_code("E1011",
-                                     "explicit alias is required for 'pull' in strict-imports mode",
-                                     d.span);
+                    diag::error(diag_, diag::DiagId::StrictImportAliasRequired, d.span);
+                    diag_.note("explicit alias is required for 'pull' in strict-imports mode", d.span);
                 } else {
                     explicit_imports_[d.alias->name] = d.alias->span;
                 }
@@ -1061,8 +1054,8 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
                         }
                     }
                     if (negative_literal) {
-                        std::string msg = "invalid cast: signed value cannot be cast to unsigned type '" + target_name + "'";
-                        diag_.error_code("E1007", std::move(msg), e.span);
+                        diag::error(diag_, diag::DiagId::InvalidSignedUnsignedCast, e.span);
+                        diag_.note("invalid cast: signed value cannot be cast to unsigned type '" + target_name + "'", e.span);
                         diag_.note("use a non-negative source value or normalize before cast", e.span);
                     }
                 }

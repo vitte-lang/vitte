@@ -33,6 +33,9 @@ namespace vitte::frontend::diag {
     X(E0019, ExpectedToken, "expected token") \
     X(E0020, ExpectedAttributeArgument, "expected attribute argument") \
     X(E0021, ExpectedAsmStringLiteral, "expected string literal in asm()") \
+    X(E0022, DuplicateTypeParameter, "duplicate type parameter") \
+    X(E0023, MacroBodyMustBeBlock, "macro body must be a block") \
+    X(E0024, MacroArgumentCountMismatch, "macro argument count mismatch") \
     X(E1001, DuplicatePatternBinding, "duplicate pattern binding") \
     X(E1002, UnknownType, "unknown type (did you mean a built-in like int/i32/i64/i128/u32/u64/u128/bool/string?)") \
     X(E1003, UnknownGenericBaseType, "unknown generic base type") \
@@ -63,6 +66,9 @@ namespace vitte::frontend::diag {
     X(E1030, ModuleAliasMemberNotExported, "module alias member not exported") \
     X(E1031, QualifiedTypeMemberNotFound, "qualified type member not found") \
     X(E1032, ExpressionIsNotCallable, "expression is not callable") \
+    X(E1033, ModuleNotFound, "module not found") \
+    X(E1034, ModuleFileOpenFailed, "failed to open module file") \
+    X(E1035, InvalidStdlibProfile, "invalid stdlib profile") \
     X(E2001, UnsupportedType, "unsupported type") \
     X(E2002, InvokeHasNoCallee, "invoke has no callee") \
     X(E2003, UnsupportedExpressionInHir, "unsupported expression in HIR") \
@@ -215,6 +221,24 @@ constexpr DiagExplain diag_explain(DiagId id) {
                 "asm(...) requires a string literal payload.",
                 "Pass a string literal as the asm body.",
                 "asm(\"nop\")",
+            };
+        case DiagId::DuplicateTypeParameter:
+            return {
+                "A generic declaration reused the same type parameter name.",
+                "Rename duplicate type parameters so each one is unique.",
+                "type Box[T] = T",
+            };
+        case DiagId::MacroBodyMustBeBlock:
+            return {
+                "Macro declarations require a block body.",
+                "Wrap the macro body in '{ ... }'.",
+                "macro m(x) { give x }",
+            };
+        case DiagId::MacroArgumentCountMismatch:
+            return {
+                "Macro invocation arity does not match macro parameters.",
+                "Pass the expected number of macro arguments.",
+                "macro add(a, b) { ... }",
             };
         case DiagId::ExpectedPattern:
             return {
@@ -437,6 +461,24 @@ constexpr DiagExplain diag_explain(DiagId id) {
                 "A call expression targets a value that exists but is not callable.",
                 "Call a proc/macro/constructor instead, or remove the trailing '(...)' from plain values.",
                 "let value = 1\n# not: value(1)",
+            };
+        case DiagId::ModuleNotFound:
+            return {
+                "The imported module path cannot be resolved to a source file.",
+                "Fix the import path or add the missing module file.",
+                "use std/core/math as math",
+            };
+        case DiagId::ModuleFileOpenFailed:
+            return {
+                "A module path resolved, but opening the source file failed.",
+                "Check file permissions and path validity.",
+                "use app/net as net",
+            };
+        case DiagId::InvalidStdlibProfile:
+            return {
+                "The selected stdlib profile is unknown.",
+                "Use one of: core, system, arduino, desktop.",
+                "--runtime-profile desktop",
             };
         case DiagId::UnexpectedHirTypeKind:
             return {
