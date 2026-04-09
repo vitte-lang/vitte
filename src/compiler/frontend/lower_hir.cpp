@@ -82,6 +82,15 @@ static ir::HirTypeId lower_type(
                 std::move(args),
                 t.span);
         }
+        case NodeKind::PointerType: {
+            auto& t = static_cast<const PointerType&>(node);
+            std::vector<ir::HirTypeId> args;
+            args.push_back(lower_type(ctx, t.pointee, hir_ctx));
+            return hir_ctx.make<ir::HirGenericType>(
+                "ptr",
+                std::move(args),
+                t.span);
+        }
         case NodeKind::ProcType: {
             auto& t = static_cast<const ProcType&>(node);
             std::vector<ir::HirTypeId> params;
@@ -204,6 +213,20 @@ static ir::HirExprId lower_expr(
                 op,
                 lower_expr(ctx, e.lhs, hir_ctx, diagnostics, type_names, enum_like),
                 lower_expr(ctx, e.rhs, hir_ctx, diagnostics, type_names, enum_like),
+                e.span);
+        }
+        case NodeKind::AsExpr: {
+            auto& e = static_cast<const AsExpr&>(node);
+            return hir_ctx.make<ir::HirCastExpr>(
+                lower_expr(ctx, e.value, hir_ctx, diagnostics, type_names, enum_like),
+                lower_type(ctx, e.type, hir_ctx),
+                e.span);
+        }
+        case NodeKind::IsExpr: {
+            auto& e = static_cast<const IsExpr&>(node);
+            return hir_ctx.make<ir::HirPatternTestExpr>(
+                lower_expr(ctx, e.value, hir_ctx, diagnostics, type_names, enum_like),
+                lower_pattern(ctx, e.pattern, hir_ctx, diagnostics),
                 e.span);
         }
         case NodeKind::InvokeExpr:
