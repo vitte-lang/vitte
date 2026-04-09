@@ -372,15 +372,6 @@ PassResult run_passes(const Options& opts) {
         auto t_lower_start = Clock::now();
         ir::HirContext hir_ctx;
         auto hir = frontend::lower::lower_to_hir(ast_ctx, module, hir_ctx, diagnostics);
-        if (dump_hir_pretty) {
-            std::cout << ir::dump_to_string(hir_ctx, hir);
-        }
-        if (dump_hir_json) {
-            std::cout << ir::dump_json_to_string(hir_ctx, hir);
-        }
-        if (dump_hir_compact) {
-            std::cout << ir::dump_compact_to_string(hir_ctx, hir);
-        }
         ir::validate::validate_module(hir_ctx, hir, diagnostics);
         if (diagnostics.has_errors()) {
             emit_diags();
@@ -389,6 +380,15 @@ PassResult run_passes(const Options& opts) {
             lower_ms = ms(Clock::now() - t_lower_start);
             emit_phase_profile();
             return result;
+        }
+        if (dump_hir_pretty) {
+            std::cout << ir::dump_to_string(hir_ctx, hir);
+        }
+        if (dump_hir_json) {
+            std::cout << ir::dump_json_to_string(hir_ctx, hir);
+        }
+        if (dump_hir_compact) {
+            std::cout << ir::dump_compact_to_string(hir_ctx, hir);
         }
         lower_ms = ms(Clock::now() - t_lower_start);
         if (opts.hir_only) {
