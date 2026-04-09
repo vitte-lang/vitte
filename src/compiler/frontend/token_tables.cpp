@@ -26,8 +26,8 @@ static constexpr KeywordSpec kKeywords[] = {
     {"proc", TokenKind::KwProc, true},
     {"entry", TokenKind::KwEntry, true},
     {"at", TokenKind::KwAt, true},
-    {"asm", TokenKind::KwAsm, false},
-    {"unsafe", TokenKind::KwUnsafe, false},
+    {"asm", TokenKind::KwAsm, true},
+    {"unsafe", TokenKind::KwUnsafe, true},
     {"match", TokenKind::KwMatch, true},
     {"let", TokenKind::KwLet, true},
     {"make", TokenKind::KwMake, true},
@@ -41,6 +41,7 @@ static constexpr KeywordSpec kKeywords[] = {
     {"when", TokenKind::KwWhen, true},
     {"is", TokenKind::KwIs, true},
     {"loop", TokenKind::KwLoop, true},
+    {"while", TokenKind::KwWhile, true},
     {"for", TokenKind::KwFor, true},
     {"in", TokenKind::KwIn, true},
     {"break", TokenKind::KwBreak, true},
@@ -101,8 +102,6 @@ bool is_forbidden_in_core(TokenKind kind) {
     switch (kind) {
         case TokenKind::KwMacro:
         case TokenKind::KwTrait:
-        case TokenKind::KwAsm:
-        case TokenKind::KwUnsafe:
         case TokenKind::KwSelect:
         case TokenKind::KwField:
             return true;
