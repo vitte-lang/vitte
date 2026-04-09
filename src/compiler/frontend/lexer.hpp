@@ -51,6 +51,7 @@ enum class TokenKind {
     KwWhen,
     KwIs,
     KwLoop,
+    KwWhile,
     KwFor,
     KwIn,
     KwBreak,
