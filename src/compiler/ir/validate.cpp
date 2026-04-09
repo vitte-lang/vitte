@@ -106,6 +106,18 @@ static void validate_expr(const HirContext& ctx,
             validate_expr(ctx, e.rhs, diagnostics, e.span, true);
             return;
         }
+        case HirKind::CastExpr: {
+            const auto& e = ctx.get<HirCastExpr>(expr);
+            validate_expr(ctx, e.expr, diagnostics, e.span, true);
+            validate_type(ctx, e.type, diagnostics, e.span, true);
+            return;
+        }
+        case HirKind::PatternTestExpr: {
+            const auto& e = ctx.get<HirPatternTestExpr>(expr);
+            validate_expr(ctx, e.expr, diagnostics, e.span, true);
+            validate_pattern(ctx, e.pattern, diagnostics, e.span, true);
+            return;
+        }
         case HirKind::CallExpr: {
             const auto& e = ctx.get<HirCallExpr>(expr);
             validate_expr(ctx, e.callee, diagnostics, e.span, true);
