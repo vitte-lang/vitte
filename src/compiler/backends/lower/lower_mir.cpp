@@ -42,12 +42,26 @@ static CppType* builtin_type(CppContext& ctx, const std::string& name) {
     return ty;
 }
 
+static CppType* pointer_type(CppContext& ctx, CppType* base, const std::string& key) {
+    if (auto* t = ctx.resolve_type(key)) {
+        return t;
+    }
+    auto* ty = new CppType(CppType::pointer(base));
+    ctx.register_type(key, ty);
+    return ty;
+}
+
 static CppType* map_type(CppContext& ctx, const std::string& mir_name) {
     const std::string name = normalized_type_name(mir_name);
     if (name.rfind("slice<", 0) == 0 && name.size() > 7 && name.back() == '>') {
         const std::string inner = name.substr(6, name.size() - 7);
         CppType* elem = map_type(ctx, inner);
         return builtin_type(ctx, "VitteSlice<" + elem->name + ">");
+    }
+    if (name.rfind("ptr<", 0) == 0 && name.size() > 5 && name.back() == '>') {
+        const std::string inner = name.substr(4, name.size() - 5);
+        CppType* elem = map_type(ctx, inner);
+        return pointer_type(ctx, elem, mir_name);
     }
     if (name == "i32") return builtin_type(ctx, "int32_t");
     if (name == "i64") return builtin_type(ctx, "int64_t");
