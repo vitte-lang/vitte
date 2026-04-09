@@ -1153,6 +1153,7 @@ static int run_grammar_diff() {
         {"emit_stmt", {"EmitStmt"}},
         {"if_stmt", {"IfStmt"}},
         {"loop_stmt", {"LoopStmt"}},
+        {"while_stmt", {"LoopStmt", "IfStmt", "BreakStmt", "BlockStmt", "UnaryExpr"}},
         {"for_stmt", {"ForStmt"}},
         {"break_stmt", {"BreakStmt"}},
         {"continue_stmt", {"ContinueStmt"}},
