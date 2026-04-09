@@ -75,6 +75,22 @@ HirBinaryExpr::HirBinaryExpr(
       lhs(l),
       rhs(r) {}
 
+HirCastExpr::HirCastExpr(
+    HirExprId e,
+    HirTypeId t,
+    vitte::frontend::ast::SourceSpan sp)
+    : HirExpr(HirKind::CastExpr, sp),
+      expr(e),
+      type(t) {}
+
+HirPatternTestExpr::HirPatternTestExpr(
+    HirExprId e,
+    HirPatternId p,
+    vitte::frontend::ast::SourceSpan sp)
+    : HirExpr(HirKind::PatternTestExpr, sp),
+      expr(e),
+      pattern(p) {}
+
 HirCallExpr::HirCallExpr(
     HirExprId c,
     std::vector<HirExprId> a,
@@ -344,6 +360,10 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
     } else if (n.kind == HirKind::BinaryExpr) {
         auto& b = static_cast<const HirBinaryExpr&>(n);
         os << " " << to_string(b.op);
+    } else if (n.kind == HirKind::CastExpr) {
+        os << " as";
+    } else if (n.kind == HirKind::PatternTestExpr) {
+        os << " is";
     } else if (n.kind == HirKind::MemberExpr) {
         auto& m = static_cast<const HirMemberExpr&>(n);
         os << " " << (m.pointer ? "->" : ".") << m.member;
@@ -453,6 +473,18 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
             dump(ctx, b.rhs, os, depth + 1);
             break;
         }
+        case HirKind::CastExpr: {
+            auto& c = static_cast<const HirCastExpr&>(n);
+            dump(ctx, c.expr, os, depth + 1);
+            dump(ctx, c.type, os, depth + 1);
+            break;
+        }
+        case HirKind::PatternTestExpr: {
+            auto& p = static_cast<const HirPatternTestExpr&>(n);
+            dump(ctx, p.expr, os, depth + 1);
+            dump(ctx, p.pattern, os, depth + 1);
+            break;
+        }
         case HirKind::CallExpr: {
             auto& c = static_cast<const HirCallExpr&>(n);
             dump(ctx, c.callee, os, depth + 1);
@@ -520,6 +552,10 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
     } else if (n.kind == HirKind::BinaryExpr) {
         auto& b = static_cast<const HirBinaryExpr&>(n);
         os << "(" << to_string(b.op) << ")";
+    } else if (n.kind == HirKind::CastExpr) {
+        os << "(as)";
+    } else if (n.kind == HirKind::PatternTestExpr) {
+        os << "(is)";
     } else if (n.kind == HirKind::MemberExpr) {
         auto& m = static_cast<const HirMemberExpr&>(n);
         os << "(" << (m.pointer ? "->" : ".") << m.member << ")";
@@ -622,6 +658,18 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
             children.push_back(b.rhs);
             break;
         }
+        case HirKind::CastExpr: {
+            auto& c = static_cast<const HirCastExpr&>(n);
+            children.push_back(c.expr);
+            children.push_back(c.type);
+            break;
+        }
+        case HirKind::PatternTestExpr: {
+            auto& p = static_cast<const HirPatternTestExpr&>(n);
+            children.push_back(p.expr);
+            children.push_back(p.pattern);
+            break;
+        }
         case HirKind::CallExpr: {
             auto& c = static_cast<const HirCallExpr&>(n);
             children.push_back(c.callee);
@@ -699,6 +747,10 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
     } else if (n.kind == HirKind::BinaryExpr) {
         auto& b = static_cast<const HirBinaryExpr&>(n);
         os << ",\"op\":\"" << to_string(b.op) << "\"";
+    } else if (n.kind == HirKind::CastExpr) {
+        os << ",\"op\":\"as\"";
+    } else if (n.kind == HirKind::PatternTestExpr) {
+        os << ",\"op\":\"is\"";
     } else if (n.kind == HirKind::CallExpr) {
         auto& c = static_cast<const HirCallExpr&>(n);
         os << ",\"typeArgsCount\":" << c.type_args.size();
@@ -810,6 +862,18 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
             children.push_back(b.rhs);
             break;
         }
+        case HirKind::CastExpr: {
+            auto& c = static_cast<const HirCastExpr&>(n);
+            children.push_back(c.expr);
+            children.push_back(c.type);
+            break;
+        }
+        case HirKind::PatternTestExpr: {
+            auto& p = static_cast<const HirPatternTestExpr&>(n);
+            children.push_back(p.expr);
+            children.push_back(p.pattern);
+            break;
+        }
         case HirKind::CallExpr: {
             auto& c = static_cast<const HirCallExpr&>(n);
             children.push_back(c.callee);
@@ -869,6 +933,8 @@ const char* to_string(HirKind kind) {
         case HirKind::VarExpr: return "VarExpr";
         case HirKind::UnaryExpr: return "UnaryExpr";
         case HirKind::BinaryExpr: return "BinaryExpr";
+        case HirKind::CastExpr: return "CastExpr";
+        case HirKind::PatternTestExpr: return "PatternTestExpr";
         case HirKind::CallExpr: return "CallExpr";
         case HirKind::MemberExpr: return "MemberExpr";
         case HirKind::IndexExpr: return "IndexExpr";
