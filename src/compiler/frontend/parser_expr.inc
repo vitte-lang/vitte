@@ -37,11 +37,14 @@ static bool is_stmt_sync_kind(TokenKind kind) {
         case TokenKind::KwSet:
         case TokenKind::KwGive:
         case TokenKind::KwEmit:
+        case TokenKind::KwAsm:
+        case TokenKind::KwUnsafe:
         case TokenKind::KwIf:
         case TokenKind::KwLoop:
         case TokenKind::KwFor:
         case TokenKind::KwBreak:
         case TokenKind::KwContinue:
+        case TokenKind::KwSelect:
         case TokenKind::KwMatch:
         case TokenKind::KwWhen:
         case TokenKind::KwReturn:
@@ -610,4 +613,3 @@ std::vector<ExprId> Parser::parse_arg_list() {
     }
     return args;
 }
-
