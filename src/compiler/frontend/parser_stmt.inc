@@ -38,6 +38,8 @@ StmtId Parser::parse_stmt() {
     }
 
     switch (current_.kind) {
+        case TokenKind::KwAsm: return parse_asm_stmt();
+        case TokenKind::KwUnsafe: return parse_unsafe_stmt();
         case TokenKind::KwLet: return parse_let_stmt();
         case TokenKind::KwMake: return parse_make_stmt();
         case TokenKind::KwSet: return parse_set_stmt();
@@ -45,9 +47,11 @@ StmtId Parser::parse_stmt() {
         case TokenKind::KwEmit: return parse_emit_stmt();
         case TokenKind::KwIf: return parse_if_stmt();
         case TokenKind::KwLoop: return parse_loop_stmt();
+        case TokenKind::KwWhile: return parse_while_stmt();
         case TokenKind::KwFor: return parse_for_stmt();
         case TokenKind::KwBreak: return parse_break_stmt();
         case TokenKind::KwContinue: return parse_continue_stmt();
+        case TokenKind::KwSelect: return parse_select_stmt();
         case TokenKind::KwMatch: return parse_match_stmt();
         case TokenKind::KwWhen: return parse_when_match_stmt();
         case TokenKind::KwReturn: return parse_return_stmt();
@@ -181,6 +185,36 @@ StmtId Parser::parse_loop_stmt() {
     StmtId body = parse_block();
     span.end = ast_ctx_.get<Stmt>(body).span.end;
     return ast_ctx_.make<LoopStmt>(body, span);
+}
+
+StmtId Parser::parse_while_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwWhile, "expected 'while'");
+    ExprId cond = parse_expr();
+    StmtId body = parse_block();
+
+    const auto& body_block = ast_ctx_.get<BlockStmt>(body);
+    SourceSpan cond_span = cond != ast::kInvalidAstId
+        ? ast_ctx_.get<Expr>(cond).span
+        : span;
+    ExprId negated = ast_ctx_.make<UnaryExpr>(UnaryOp::Not, cond, cond_span);
+
+    StmtId break_stmt = ast_ctx_.make<BreakStmt>(cond_span);
+    std::vector<StmtId> break_stmts;
+    break_stmts.push_back(break_stmt);
+    StmtId break_block = ast_ctx_.make<BlockStmt>(std::move(break_stmts), cond_span);
+    StmtId guard_if = ast_ctx_.make<IfStmt>(negated, break_block, ast::kInvalidAstId, cond_span);
+
+    std::vector<StmtId> loop_stmts;
+    loop_stmts.reserve(body_block.stmts.size() + 1);
+    loop_stmts.push_back(guard_if);
+    for (auto stmt_id : body_block.stmts) {
+        loop_stmts.push_back(stmt_id);
+    }
+
+    StmtId loop_body = ast_ctx_.make<BlockStmt>(std::move(loop_stmts), body_block.span);
+    span.end = ast_ctx_.get<Stmt>(body).span.end;
+    return ast_ctx_.make<LoopStmt>(loop_body, span);
 }
 
 StmtId Parser::parse_for_stmt() {
