@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -96,6 +97,8 @@ public:
     void error_code(std::string code, std::string message, SourceSpan span);
     void fatal_code(std::string code, std::string message, SourceSpan span);
 
+    void retain_source(std::shared_ptr<const ast::SourceFile> source_file);
+
     // state
     bool has_errors() const;
     std::size_t error_count() const;
@@ -106,6 +109,7 @@ public:
 private:
     Localization localization_;
     std::vector<Diagnostic> diagnostics_;
+    std::vector<std::shared_ptr<const ast::SourceFile>> retained_sources_;
     std::size_t error_count_;
     std::size_t warning_count_;
 };
