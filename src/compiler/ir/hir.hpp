@@ -61,6 +61,8 @@ enum class HirKind {
     VarExpr,
     UnaryExpr,
     BinaryExpr,
+    CastExpr,
+    PatternTestExpr,
     CallExpr,
     MemberExpr,
     IndexExpr,
@@ -206,6 +208,24 @@ struct HirBinaryExpr : HirExpr {
                   HirExprId lhs,
                   HirExprId rhs,
                   vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirCastExpr : HirExpr {
+    HirExprId expr;
+    HirTypeId type;
+
+    HirCastExpr(HirExprId expr,
+                HirTypeId type,
+                vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirPatternTestExpr : HirExpr {
+    HirExprId expr;
+    HirPatternId pattern;
+
+    HirPatternTestExpr(HirExprId expr,
+                       HirPatternId pattern,
+                       vitte::frontend::ast::SourceSpan span);
 };
 
 struct HirCallExpr : HirExpr {
