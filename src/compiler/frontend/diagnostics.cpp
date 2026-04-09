@@ -257,6 +257,13 @@ const std::vector<Diagnostic>& DiagnosticEngine::all() const {
     return diagnostics_;
 }
 
+void DiagnosticEngine::retain_source(std::shared_ptr<const ast::SourceFile> source_file) {
+    if (!source_file) {
+        return;
+    }
+    retained_sources_.push_back(std::move(source_file));
+}
+
 // ------------------------------------------------------------
 // Rendering helpers
 // ------------------------------------------------------------
