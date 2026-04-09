@@ -15,6 +15,7 @@ bool apply_strict_core_guard(const Options& opts,
     }
 
     frontend::Lexer lexer(source, path);
+    diagnostics.retain_source(lexer.source_file());
     bool ok = true;
     frontend::Token prev{frontend::TokenKind::Eof, "", {}};
     while (true) {
@@ -40,4 +41,3 @@ bool apply_strict_core_guard(const Options& opts,
 }
 
 } // namespace vitte::driver
-
