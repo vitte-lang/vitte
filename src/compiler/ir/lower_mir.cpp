@@ -167,6 +167,9 @@ struct Builder {
                 if (t.base_name == "slice" && t.type_args.size() == 1) {
                     return "slice<" + type_from_hir(t.type_args[0], span) + ">";
                 }
+                if (t.base_name == "ptr" && t.type_args.size() == 1) {
+                    return "ptr<" + type_from_hir(t.type_args[0], span) + ">";
+                }
                 return t.base_name;
             }
             default:
@@ -649,6 +652,53 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
             register_local(tmp, ty, e.span);
             return dest_copy;
         }
+        case HirKind::CastExpr: {
+            const auto& e = hir.get<HirCastExpr>(expr_id);
+            auto value = lower_expr(e.expr);
+            if (!value) {
+                diag.error("invalid operand for cast expression", e.span);
+                value = make_const(MirConstKind::Int, "0", e.span);
+            }
+            std::string dst_ty = type_from_hir(e.type, e.span);
+            std::string src_ty = type_of_value(value);
+            if (dst_ty == "string" && src_ty != "string") {
+                if (src_ty == "i32" || src_ty == "int" || src_ty == "unknown") {
+                    std::vector<MirValuePtr> args;
+                    args.push_back(std::move(value));
+                    return emit_call_value("vitte_i32_to_string", std::move(args), "string", e.span);
+                }
+                diag.error("unsupported cast to string", e.span);
+                return make_const(MirConstKind::String, "", e.span);
+            }
+            std::string tmp = next_temp();
+            auto dest = make_local(tmp, dst_ty, e.span);
+            MirLocalPtr dest_copy = make_local(tmp, dst_ty, e.span);
+            emit(std::make_unique<MirAssign>(
+                std::move(dest),
+                std::move(value),
+                e.span));
+            register_local(tmp, dst_ty, e.span);
+            return dest_copy;
+        }
+        case HirKind::PatternTestExpr: {
+            const auto& e = hir.get<HirPatternTestExpr>(expr_id);
+            auto value = lower_expr(e.expr);
+            std::string value_ty = type_of_value(value);
+            std::string value_tmp = next_temp();
+            register_local(value_tmp, value_ty, e.span);
+            auto value_dst = make_local(value_tmp, value_ty, e.span);
+            if (value) {
+                emit(std::make_unique<MirAssign>(
+                    std::move(value_dst),
+                    std::move(value),
+                    e.span));
+            }
+            PatternResult pr = lower_pattern(*this, e.pattern, value_tmp);
+            if (!pr.cond) {
+                return make_const(MirConstKind::Bool, "false", e.span);
+            }
+            return std::move(pr.cond);
+        }
         case HirKind::CallExpr: {
             const auto& e = hir.get<HirCallExpr>(expr_id);
             std::string callee = "<unknown>";
@@ -1111,6 +1161,9 @@ MirModule lower_to_mir(
             if (gt.base_name == "slice" && gt.type_args.size() == 1) {
                 return "slice<" + normalize_type_name(type_name_from_hir(gt.type_args[0])) + ">";
             }
+            if (gt.base_name == "ptr" && gt.type_args.size() == 1) {
+                return "ptr<" + normalize_type_name(type_name_from_hir(gt.type_args[0])) + ">";
+            }
             return normalize_type_name(gt.base_name);
         }
         return "i32";
@@ -1295,6 +1348,8 @@ MirModule lower_to_mir(
                 const auto& gt = hir_ctx.get<HirGenericType>(fn.return_type);
                 if (gt.base_name == "slice" && gt.type_args.size() == 1) {
                     ret = "slice<" + type_name_from_hir(gt.type_args[0]) + ">";
+                } else if (gt.base_name == "ptr" && gt.type_args.size() == 1) {
+                    ret = "ptr<" + type_name_from_hir(gt.type_args[0]) + ">";
                 } else {
                     ret = gt.base_name;
                 }
