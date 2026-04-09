@@ -25,6 +25,11 @@ static void emit_type(
         os << "<unknown>";
         return;
     }
+    if (type->kind == ast::cpp::CppTypeKind::Pointer) {
+        emit_type(os, type->pointee);
+        os << "*";
+        return;
+    }
     os << type->name;
 }
 
