@@ -4,7 +4,7 @@ This file is the shortest public view of where the project is going.
 It complements the detailed roadmaps in:
 
 - `docs/ROADMAP_QUARTERLY_PACKAGE_FIRST.md`
-- `vitteos-roadmap.md`
+- `docs/vitteos/ROADMAP.md`
 
 The goal here is simple: show what matters now, what is next, and what is later.
 
@@ -19,7 +19,7 @@ These are the current priorities that should stay visible to contributors and us
 | Modules/packages CI | active | keep package snapshots, reports, and ownership policy deterministic | modules suites stay green without snapshot churn |
 | Beginner onboarding | active | reduce time from clone to first successful `check` and `build` | a new contributor can follow `README.md` and `docs/GETTING_STARTED.md` without guesswork |
 | Completions/tooling quality | active | keep shell completions and tooling outputs reproducible | `make ci-completions` and related snapshots remain stable |
-| VitteOS foundations | planned | keep OS work staged behind narrow milestones | VitteOS work follows milestone contracts in `vitteos-roadmap.md` |
+| VitteOS foundations | planned | keep OS work staged behind narrow milestones | VitteOS work follows milestone contracts in `docs/vitteos/ROADMAP.md` |
 
 ## Next
 
@@ -48,6 +48,6 @@ These are important, but should not outrank the current stabilization work.
 ## Detailed Sources
 
 - `docs/ROADMAP_QUARTERLY_PACKAGE_FIRST.md`
-- `vitteos-roadmap.md`
+- `docs/vitteos/ROADMAP.md`
 - `docs/LANGUAGE_CORE.md`
 - `docs/LANGUAGE_CORE_GUARANTEES.md`

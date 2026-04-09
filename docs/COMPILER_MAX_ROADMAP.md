@@ -57,7 +57,7 @@ Definition of Done (Lot 4):
 
 ## Lot 5: Robustesse avancée (fuzz + crash)
 - [ ] Fuzzing coverage-guided lexer/parser (libFuzzer/AFL harness).
-- [ ] Corpus versionné de crash minimisés (`tests/fuzz_regressions`).
+- [ ] Corpus versionné de crash minimisés (`tests/fuzzkit`).
 - [ ] Replay automatique des crash repro en CI.
 
 Definition of Done (Lot 5):

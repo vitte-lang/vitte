@@ -4,8 +4,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-OUT_FILE="${1:-vitteos-status.md}"
+OUT_FILE="${1:-docs/vitteos/STATUS.md}"
 TMP_OUT="$(mktemp)"
+
+mkdir -p "$(dirname "${OUT_FILE}")"
 
 cleanup() {
   rm -f "${TMP_OUT}"

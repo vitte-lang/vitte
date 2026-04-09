@@ -342,7 +342,10 @@ Tip for beginners: small PRs get reviewed faster than large rewrites.
 
 - `docs/GETTING_STARTED.md`
 - `docs/TROUBLESHOOTING.md`
+- `docs/README.md`
+- `docs/vitteos/README.md`
 - `docs/std/README.md`
+- `tools/README.md`
 - `toolchain/scripts/README.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`

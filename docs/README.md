@@ -79,6 +79,12 @@ API indexes:
 - `docs/lint/API_INDEX.md`
 - `docs/test/API_INDEX.md`
 
+## VitteOS
+
+- `docs/vitteos/README.md`
+- `docs/vitteos/ROADMAP.md`
+- `docs/vitteos/STATUS.md`
+
 ## Patterns / References
 
 - `docs/actor_patterns.md`

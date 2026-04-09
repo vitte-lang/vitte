@@ -21,6 +21,20 @@ Pourquoi cette etape est solide. Invariant principal: avant chaque test de sorti
 Ce qui se passe a l'execution. `sum_to(3)` produit la sequence `acc=0,1,3,6` puis retourne `6`.
 
 ```vit
+proc sum_to_while(limit: int) -> int {
+  let i: int = 0
+  let acc: int = 0
+  while i <= limit {
+    set acc = acc + i
+    set i = i + 1
+  }
+  give acc
+}
+```
+
+Pourquoi cette etape est solide. `while` rend la condition de continuation frontale sans changer le modele d'execution de Vitte. C'est l'ecriture la plus directe quand l'invariant depend d'un test booleen unique.
+
+```vit
 proc positive_sum(values: int[]) -> int {
   let acc: int = 0
   for x in values {

@@ -23,15 +23,19 @@ then maps each construct to AST and HIR shapes used by the compiler pipeline.
 | Syntax | AST | IR (HIR) |
 |---|---|---|
 | `let` | `LetStmt` | `LetStmt` |
+| `asm("...")` | `AsmStmt` | lowered to runtime intrinsic call |
+| `unsafe { ... }` | `UnsafeStmt` | lowered to unsafe boundary markers |
 | `make` | `MakeStmt` | `LetStmt` (mutable lowering path) |
 | `set` | `SetStmt` | `AssignStmt` |
 | `give` | `GiveStmt` | `ReturnStmt` |
 | `emit` | `EmitStmt` | side-effect statement |
 | `if/else/otherwise` | `IfStmt` | `IfStmt` |
 | `loop` | `LoopStmt` | `LoopStmt` |
+| `while ...` | `LoopStmt` + guard `IfStmt` | `LoopStmt` |
 | `for ... in ...` | `ForStmt` | `ForStmt` |
 | `break` | `BreakStmt` | `BreakStmt` |
 | `continue` | `ContinueStmt` | `ContinueStmt` |
+| `select ... when ... otherwise ...` | `SelectStmt` + `WhenStmt` | `SelectStmt` |
 | `match` | `SelectStmt` + `WhenStmt` | `SelectStmt` + lowered branches |
 | `when <expr> is <pattern>` | `SelectStmt` + one `WhenStmt` | `SelectStmt` |
 | `return` | `ReturnStmt` | `ReturnStmt` |
@@ -45,8 +49,8 @@ then maps each construct to AST and HIR shapes used by the compiler pipeline.
 | identifier | `IdentExpr` | `VarExpr` |
 | unary `not` / `!` / `-` | `UnaryExpr` | `UnaryExpr` |
 | binary core operators | `BinaryExpr` | `BinaryExpr` |
-| `x as T` | `AsExpr` | currently restricted / partial lowering |
-| `x is P` | `IsExpr` | currently restricted / partial lowering |
+| `x as T` | `AsExpr` | lowered through HIR/MIR |
+| `x is P` | `IsExpr` | lowered as boolean pattern-test expression |
 | call | `InvokeExpr` | `CallExpr` |
 | member access | `MemberExpr` | `MemberExpr` |
 | index access | `IndexExpr` | `IndexExpr` |

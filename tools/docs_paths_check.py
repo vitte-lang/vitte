@@ -19,8 +19,6 @@ TOP_FILES = {
     "LICENSE",
     "Makefile",
     "version",
-    "vitteos-roadmap.md",
-    "vitteos-status.md",
 }
 
 TOP_DIRS = {

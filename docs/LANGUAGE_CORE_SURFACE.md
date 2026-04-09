@@ -85,6 +85,7 @@ Only these statement forms are in the protected core surface:
 - `if cond { ... } else { ... }`
 - `if cond { ... } otherwise { ... }`
 - `loop { ... }`
+- `while cond { ... }`
 - `for item in expr { ... }`
 - `break`
 - `continue`
@@ -114,11 +115,11 @@ The protected expression core is intentionally small:
 - simple calls: `name(...)` and `module.name(...)`
 - assignment with `=`
 - simple operator expressions
-- `if` expressions with explicit fallback
 - nominal type names in annotations and return types
 
 Explicitly outside the protected expression core:
 
+- `if` expressions with explicit fallback
 - explicit generic proc calls such as `id[T](...)`
 - explicit generic constructor calls outside nominal type application
 - parser heuristics that choose between generic-call parsing and index-then-call parsing

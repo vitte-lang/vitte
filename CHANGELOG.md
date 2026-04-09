@@ -18,6 +18,8 @@ All notable changes to this project will be documented here.
 - Tooling and build metadata:
   - `steelconf` aligned with current modules/packages gates and migration targets
   - `compile_commands.json` refreshed from current build
+  - removed stray generated root artifacts from version control (`-B`, `vitte_out.cpp`, `.vitte-hash-*.cpp`, malformed `OPENSSL_DIR=` tree)
+  - grouped VitteOS planning/status docs under `docs/vitteos/` and added a `tools/README.md` index
 - Documentation refresh:
   - README simplified for beginner onboarding (`install -> test -> contribute`)
   - `CONTRIBUTING.md`, `SUPPORT.md`, `SECURITY.md`, and `CODE_OF_CONDUCT.md` clarified and expanded

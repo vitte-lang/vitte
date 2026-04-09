@@ -77,6 +77,7 @@ PKG_VERSION ?= $(shell tr -d ' \r\n' < $(PKG_VERSION_FILE) 2>/dev/null || echo 2
 CFLAGS       := -std=c17 -Wall -Wextra -Werror -O$(OPT_LEVEL)
 CXXFLAGS     := -std=c++20 -Wall -Wextra -Werror -O$(OPT_LEVEL)
 LDFLAGS      :=
+DEPFLAGS     := -MMD -MP
 
 ifeq ($(DEBUG_SYMBOLS),1)
   CFLAGS   += -g
@@ -159,6 +160,9 @@ CPP_SOURCES  := $(shell find $(SRC_DIR) -name '*.cpp')
 OBJECTS     := \
 	$(C_SOURCES:%.c=$(BUILD_DIR)/%.o) \
 	$(CPP_SOURCES:%.cpp=$(BUILD_DIR)/%.o)
+DEPFILES     = \
+	$(OBJECTS:.o=.d) \
+	$(KERNEL_OBJECTS:.o=.d)
 
 KERNEL_CPP_SOURCES := $(filter-out src/compiler/backends/runtime/vitte_runtime.cpp,$(CPP_SOURCES))
 KERNEL_OBJECTS := $(KERNEL_CPP_SOURCES:%.cpp=$(BUILD_DIR)/kernel/%.o)
@@ -237,15 +241,15 @@ $(KERNEL_TOOLS_DIR)/vittec-kernel: $(KERNEL_OBJECTS)
 
 $(BUILD_DIR)/%.o: %.c
 	@$(MKDIR) $(dir $@)
-	$(CC_RUN) $(CFLAGS) -c $< -o $@
+	$(CC_RUN) $(CFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.o: %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX_RUN) $(CXXFLAGS) -c $< -o $@
+	$(CXX_RUN) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/kernel/%.o: %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX_RUN) $(CXXFLAGS) -c $< -o $@
+	$(CXX_RUN) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
 .PHONY: build-fast
 build-fast: dirs
@@ -276,6 +280,8 @@ build-pgo-use:
 dirs:
 	@$(MKDIR) $(BUILD_DIR)
 	@$(MKDIR) $(BIN_DIR)
+
+-include $(DEPFILES)
 
 # ------------------------------------------------------------
 # Formatting
@@ -1486,7 +1492,7 @@ help:
 	@echo "  make vitteos-kernel-smoke-runtime-update refresh runtime smoke snapshot"
 	@echo "  make vitteos-adr-policy-check enforce ADR id in commit message for boot/mm/sched changes"
 	@echo "  make vitteos-doctor print VitteOS environment diagnostics"
-	@echo "  make vitteos-status regenerate vitteos-status.md from checks/snapshots"
+	@echo "  make vitteos-status regenerate docs/vitteos/STATUS.md from checks/snapshots"
 	@echo "  make vitteos-new-module MODULE=vitteos/<path> generate module template files"
 	@echo "  make vitteos-quick run quick local loop (issues + domain + orphan + space + arch-contract + header + targeted + smoke)"
 	@echo "  make vitteos-ci run VitteOS CI chain (soft scripts + bin gate + issues + domain + orphan + space + arch-contract + header + targeted + smoke + adr)"

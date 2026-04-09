@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ISSUES_FILE="${ROOT_DIR}/vitteos/issues.yaml"
-ROADMAP_FILE="${ROOT_DIR}/vitteos-roadmap.md"
+ROADMAP_FILE="${ROOT_DIR}/docs/vitteos/ROADMAP.md"
 
 if [[ ! -f "${ISSUES_FILE}" ]]; then
   echo "missing file: vitteos/issues.yaml" >&2
@@ -11,7 +11,7 @@ if [[ ! -f "${ISSUES_FILE}" ]]; then
 fi
 
 if [[ ! -f "${ROADMAP_FILE}" ]]; then
-  echo "missing file: vitteos-roadmap.md" >&2
+  echo "missing file: docs/vitteos/ROADMAP.md" >&2
   exit 1
 fi
 

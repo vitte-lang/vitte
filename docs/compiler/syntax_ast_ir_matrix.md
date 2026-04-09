@@ -18,15 +18,19 @@ Source of truth:
 | `proc f(...) { ... }` | `ProcDecl` | lowered to HIR proc |
 | `entry main at ... { ... }` | `EntryDecl` | lowered as entry proc |
 | `let name = expr` | `LetStmt` | HIR let statement |
+| `asm("...")` | `AsmStmt` | lowered as intrinsic call |
+| `unsafe { ... }` | `UnsafeStmt` | lowered as unsafe markers + block |
 | `make name = expr` | `MakeStmt` | mutable binding |
 | `set name = expr` | `SetStmt` | assignment |
 | `give expr` | `GiveStmt` | return-with-value equivalent |
 | `emit expr` | `EmitStmt` | side-effect emission |
 | `if cond { ... } else { ... }` | `IfStmt` | conditional control-flow |
 | `loop { ... }` | `LoopStmt` | loop control-flow |
+| `while cond { ... }` | `LoopStmt` + guard `IfStmt` | loop control-flow |
 | `for x in expr { ... }` | `ForStmt` | iteration lowering |
 | `break` | `BreakStmt` | loop exit |
 | `continue` | `ContinueStmt` | loop continue |
+| `select expr when Pattern { ... } otherwise { ... }` | `SelectStmt` + `WhenStmt` | select lowering |
 | `match expr { case ... }` | `SelectStmt` + `WhenStmt` | match/select normalized form |
 | `when expr is pattern { ... }` | `SelectStmt` + `WhenStmt` | single-arm select form |
 | `return` / `return expr` | `ReturnStmt` | function return |
@@ -34,8 +38,7 @@ Source of truth:
 | unary `-expr`, `not expr` | `UnaryExpr` | unary lowering |
 | call `f(args)` | `InvokeExpr` | call lowering |
 | member/index `a.b`, `a[i]` | `MemberExpr`, `IndexExpr` | resolved then lowered |
-| cast/pattern test `expr as T`, `expr is P` | `AsExpr`, `IsExpr` | typed check/cast lowering |
+| cast/pattern test `expr as T`, `expr is P` | `AsExpr`, `IsExpr` | lowered to HIR/MIR; `is` currently behaves as a boolean pattern test expression |
 | literals (`int`, `bool`, `string`, list) | `LiteralExpr`, `ListExpr` | constant lowering |
 | patterns | `IdentPattern`, `CtorPattern` | match lowering |
-| types (`proc`, pointer, slice, generic) | `ProcType`, `PointerType`, `SliceType`, `GenericType`, `NamedType`, `BuiltinType` | type resolution + lowering |
-
+| types (`proc`, pointer, slice, generic) | `ProcType`, `PointerType`, `SliceType`, `GenericType`, `NamedType`, `BuiltinType` | lowered to HIR/MIR; pointers flow as `ptr<T>` internally |

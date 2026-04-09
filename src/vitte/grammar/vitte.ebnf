@@ -57,21 +57,27 @@ ident_list ::= ident { WS? "," WS? ident } ;
 block ::= "{" WS? { stmt WS? } "}" ;
 
 stmt ::= let_stmt
+       | asm_stmt
+       | unsafe_stmt
        | make_stmt
        | set_stmt
        | give_stmt
        | emit_stmt
        | if_stmt
        | loop_stmt
+       | while_stmt
        | for_stmt
        | break_stmt
        | continue_stmt
+       | select_stmt
        | match_stmt
        | when_match_stmt
        | return_stmt
        | expr_stmt
        ;
 
+asm_stmt ::= "asm" WS? "(" WS? string_lit WS? ")" ;
+unsafe_stmt ::= "unsafe" WS? block ;
 let_stmt  ::= "let" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
 make_stmt ::= "make" WS1 ident [ WS1 "as" WS1 type_expr ] WS? "=" WS? expr ;
 set_stmt  ::= "set" WS1 ident WS? "=" WS? expr ;
@@ -83,11 +89,13 @@ return_stmt ::= "return" [ WS1 expr ] ;
 if_stmt ::= "if" WS1 expr WS? block
             [ WS? ("else" | "otherwise") WS? ( block | if_stmt ) ] ;
 loop_stmt ::= "loop" WS? block ;
+while_stmt ::= "while" WS1 expr WS? block ;
 for_stmt ::= "for" WS1 ident WS1 "in" WS1 expr WS? block ;
 
 break_stmt ::= "break" ;
 continue_stmt ::= "continue" ;
 
+select_stmt ::= "select" WS1 expr WS? { "when" WS1 pattern WS? block WS? } [ WS? "otherwise" WS? block ] ;
 match_stmt ::= "match" WS1 expr WS?
                "{" WS? { "case" WS1 pattern WS? block WS? } [ WS? ("else" | "otherwise") WS? block ] "}" ;
 when_match_stmt ::= "when" WS1 expr WS1 "is" WS1 pattern WS? block ;
