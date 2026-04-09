@@ -112,6 +112,7 @@ private:
     StmtId parse_emit_stmt();
     StmtId parse_if_stmt();
     StmtId parse_loop_stmt();
+    StmtId parse_while_stmt();
     StmtId parse_for_stmt();
     StmtId parse_break_stmt();
     StmtId parse_continue_stmt();
