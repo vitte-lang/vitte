@@ -30,6 +30,7 @@ static constexpr KeywordSpec kKeywords[] = {
     {"unsafe", TokenKind::KwUnsafe, true},
     {"match", TokenKind::KwMatch, true},
     {"let", TokenKind::KwLet, true},
+    {"mut", TokenKind::KwMut, true},
     {"make", TokenKind::KwMake, true},
     {"set", TokenKind::KwSet, true},
     {"give", TokenKind::KwGive, true},

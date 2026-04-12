@@ -252,7 +252,10 @@ ExprId Parser::parse_primary() {
     if (current_.kind == TokenKind::StringLit) {
         std::string value = current_.text;
         advance();
-        return ast_ctx_.make<LiteralExpr>(LiteralKind::String, value, span);
+        if (value.find("${") == std::string::npos) {
+            return ast_ctx_.make<LiteralExpr>(LiteralKind::String, value, span);
+        }
+        return parse_interpolated_string_expr(value, span);
     }
 
     if (current_.kind == TokenKind::LBracket) {
@@ -669,4 +672,110 @@ std::vector<ExprId> Parser::parse_arg_list() {
         args.push_back(parse_expr());
     }
     return args;
+}
+
+ExprId Parser::parse_interpolation_path_expr(std::string_view raw, SourceSpan span) {
+    auto valid_start = [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+    };
+    auto valid_continue = [&](char c) {
+        return valid_start(c) || (c >= '0' && c <= '9');
+    };
+    auto trim = [](std::string_view in) {
+        std::size_t b = 0;
+        while (b < in.size() && (in[b] == ' ' || in[b] == '\t' || in[b] == '\n' || in[b] == '\r')) {
+            ++b;
+        }
+        std::size_t e = in.size();
+        while (e > b && (in[e - 1] == ' ' || in[e - 1] == '\t' || in[e - 1] == '\n' || in[e - 1] == '\r')) {
+            --e;
+        }
+        return in.substr(b, e - b);
+    };
+
+    std::string_view body = trim(raw);
+    if (body.empty()) {
+        emit_parse_error(diag::DiagId::ExpectedExpression, span);
+        note_parse("empty interpolation; use ${name}", span);
+        return ast::kInvalidAstId;
+    }
+
+    std::vector<std::string> parts;
+    std::size_t start = 0;
+    while (true) {
+        std::size_t dot = body.find('.', start);
+        std::string_view part = body.substr(start, dot == std::string_view::npos ? body.size() - start : dot - start);
+        if (part.empty() || !valid_start(part[0])) {
+            emit_parse_error(diag::DiagId::ExpectedExpression, span);
+            note_parse("interpolation supports identifier/member paths like ${x} or ${user.name}", span);
+            return ast::kInvalidAstId;
+        }
+        for (char c : part) {
+            if (!valid_continue(c)) {
+                emit_parse_error(diag::DiagId::ExpectedExpression, span);
+                note_parse("invalid interpolation token; expected identifier/member path", span);
+                return ast::kInvalidAstId;
+            }
+        }
+        parts.emplace_back(part);
+        if (dot == std::string_view::npos) {
+            break;
+        }
+        start = dot + 1;
+    }
+
+    Ident base(parts[0], span);
+    ExprId expr = ast_ctx_.make<IdentExpr>(base, span);
+    for (std::size_t i = 1; i < parts.size(); ++i) {
+        expr = ast_ctx_.make<MemberExpr>(expr, Ident(parts[i], span), span);
+    }
+    return expr;
+}
+
+ExprId Parser::parse_interpolated_string_expr(const std::string& value, SourceSpan span) {
+    std::vector<ExprId> pieces;
+    std::size_t i = 0;
+    while (i < value.size()) {
+        std::size_t open = value.find("${", i);
+        if (open == std::string::npos) {
+            std::string tail = value.substr(i);
+            if (!tail.empty()) {
+                pieces.push_back(ast_ctx_.make<LiteralExpr>(LiteralKind::String, tail, span));
+            }
+            break;
+        }
+
+        if (open > i) {
+            std::string lit = value.substr(i, open - i);
+            if (!lit.empty()) {
+                pieces.push_back(ast_ctx_.make<LiteralExpr>(LiteralKind::String, lit, span));
+            }
+        }
+
+        std::size_t close = value.find('}', open + 2);
+        if (close == std::string::npos) {
+            emit_parse_error(diag::DiagId::ExpectedToken, span);
+            note_parse("unterminated interpolation; add '}'", span);
+            return ast_ctx_.make<LiteralExpr>(LiteralKind::String, value, span);
+        }
+        std::string_view raw = std::string_view(value).substr(open + 2, close - (open + 2));
+        ExprId expr = parse_interpolation_path_expr(raw, span);
+        if (expr == ast::kInvalidAstId) {
+            return ast_ctx_.make<LiteralExpr>(LiteralKind::String, value, span);
+        }
+        pieces.push_back(expr);
+        i = close + 1;
+    }
+
+    if (pieces.empty()) {
+        return ast_ctx_.make<LiteralExpr>(LiteralKind::String, "", span);
+    }
+
+    ExprId out = pieces[0];
+    for (std::size_t k = 1; k < pieces.size(); ++k) {
+        SourceSpan add_span = ast_ctx_.get<Expr>(out).span;
+        add_span.end = ast_ctx_.get<Expr>(pieces[k]).span.end;
+        out = ast_ctx_.make<BinaryExpr>(BinaryOp::Add, out, pieces[k], add_span);
+    }
+    return out;
 }

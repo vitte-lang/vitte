@@ -350,6 +350,9 @@ static PatternResult lower_pattern(
     if (pnode.kind == HirKind::PatternIdent) {
         auto& pat = b.hir.get<HirIdentPattern>(pat_id);
         out.cond = b.make_const(MirConstKind::Bool, "true", pat.span);
+        if (pat.name == "_") {
+            return out;
+        }
         out.bindings.push_back(Binding{
             Binding::Kind::FromValue,
             pat.name,
@@ -358,6 +361,11 @@ static PatternResult lower_pattern(
             "",
             pat.span
         });
+        return out;
+    }
+    if (pnode.kind == HirKind::PatternWildcard) {
+        auto& pat = b.hir.get<HirWildcardPattern>(pat_id);
+        out.cond = b.make_const(MirConstKind::Bool, "true", pat.span);
         return out;
     }
     if (pnode.kind == HirKind::PatternCtor) {
@@ -415,14 +423,18 @@ static PatternResult lower_pattern(
             std::string field_name = i < field_names.size() ? field_names[i] : "";
             if (anode.kind == HirKind::PatternIdent) {
                 auto& arg = b.hir.get<HirIdentPattern>(arg_pat);
-                out.bindings.push_back(Binding{
-                    Binding::Kind::FromCtorField,
-                    arg.name,
-                    base_local,
-                    i,
-                    field_name,
-                    arg.span
-                });
+                if (arg.name != "_") {
+                    out.bindings.push_back(Binding{
+                        Binding::Kind::FromCtorField,
+                        arg.name,
+                        base_local,
+                        i,
+                        field_name,
+                        arg.span
+                    });
+                }
+            } else if (anode.kind == HirKind::PatternWildcard) {
+                continue;
             } else if (anode.kind == HirKind::PatternCtor) {
                 std::string field_local = b.next_temp();
                 auto field_val = std::make_unique<MirMember>(
@@ -462,7 +474,7 @@ static PatternResult lower_pattern(
                     out.bindings.push_back(std::move(bind));
                 }
             } else {
-                b.diag.error("unsupported pattern in ctor (only ident/ctor)", pat.span);
+                b.diag.error("unsupported pattern in ctor (only ident/wildcard/ctor)", pat.span);
             }
         }
         return out;
@@ -1049,7 +1061,11 @@ void Builder::lower_stmt(HirStmtId stmt_id) {
                 set_current(next_bb);
                 const auto& w = hir.get<HirWhen>(s.whens[i]);
                 MirBlockId then_bb = new_block(w.span);
+                MirBlockId body_bb = then_bb;
                 MirBlockId else_bb = new_block(w.span);
+                if (w.guard != kInvalidHirId) {
+                    body_bb = new_block(w.span);
+                }
 
                 PatternResult pr = lower_pattern(*this, w.pattern, sel_tmp);
                 MirValuePtr cond = std::move(pr.cond);
@@ -1078,6 +1094,14 @@ void Builder::lower_stmt(HirStmtId stmt_id) {
                             std::move(field_val),
                             bind.span));
                     }
+                }
+                if (w.guard != kInvalidHirId) {
+                    auto guard = lower_expr(w.guard);
+                    if (!guard) {
+                        guard = make_const(MirConstKind::Bool, "false", w.span);
+                    }
+                    terminate(std::make_unique<MirCondGoto>(std::move(guard), body_bb, else_bb, w.span));
+                    set_current(body_bb);
                 }
                 lower_block(w.block);
                 if (!terminated) {

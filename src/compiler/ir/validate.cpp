@@ -197,6 +197,7 @@ static void validate_stmt(const HirContext& ctx,
         case HirKind::WhenStmt: {
             const auto& s = ctx.get<HirWhen>(stmt);
             validate_pattern(ctx, s.pattern, diagnostics, s.span, true);
+            validate_expr(ctx, s.guard, diagnostics, s.span, false);
             validate_stmt(ctx, s.block, diagnostics, s.span, true);
             return;
         }
@@ -246,6 +247,7 @@ static void validate_pattern(const HirContext& ctx,
     const auto& node = ctx.node(pattern);
     switch (node.kind) {
         case HirKind::PatternIdent:
+        case HirKind::PatternWildcard:
             return;
         case HirKind::PatternCtor: {
             const auto& p = ctx.get<HirCtorPattern>(pattern);

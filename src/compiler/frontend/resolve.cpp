@@ -934,6 +934,9 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
                     switch (pnode.kind) {
                         case NodeKind::IdentPattern: {
                             auto& ip = static_cast<const IdentPattern&>(pnode);
+                            if (ip.ident.name == "_") {
+                                break;
+                            }
                             if (seen.find(ip.ident.name) != seen.end()) {
                                 diag::error(diag_, diag::DiagId::DuplicatePatternBinding, ip.ident.span);
                             } else {
@@ -950,12 +953,17 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
                             }
                             break;
                         }
+                        case NodeKind::WildcardPattern:
+                            break;
                         default:
                             break;
                     }
                 };
 
                 bind_pattern(bind_pattern, w.pattern);
+                if (w.guard != kInvalidAstId) {
+                    resolve_expr(ctx, w.guard);
+                }
                 resolve_stmt(ctx, w.block);
                 symbols_.pop_scope();
             }

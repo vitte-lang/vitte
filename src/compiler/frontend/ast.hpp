@@ -108,6 +108,7 @@ enum class NodeKind {
     // patterns
     IdentPattern,
     CtorPattern,
+    WildcardPattern,
 
     // statements
     BlockStmt,
@@ -434,6 +435,10 @@ struct CtorPattern : Pattern {
     CtorPattern(TypeId type, std::vector<PatternId> args, SourceSpan span);
 };
 
+struct WildcardPattern : Pattern {
+    explicit WildcardPattern(SourceSpan span);
+};
+
 // ------------------------------------------------------------
 // Statements
 // ------------------------------------------------------------
@@ -547,9 +552,10 @@ struct ForStmt : Stmt {
 
 struct WhenStmt : Stmt {
     PatternId pattern;
+    ExprId guard;
     StmtId block;
 
-    WhenStmt(PatternId pattern, StmtId block, SourceSpan span);
+    WhenStmt(PatternId pattern, ExprId guard, StmtId block, SourceSpan span);
 };
 
 struct SelectStmt : Stmt {

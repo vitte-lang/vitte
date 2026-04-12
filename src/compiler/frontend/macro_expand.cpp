@@ -241,8 +241,11 @@ static StmtId clone_stmt(
         }
         case NodeKind::WhenStmt: {
             auto& s = static_cast<const WhenStmt&>(node);
+            ExprId guard = s.guard != kInvalidAstId
+                ? clone_expr(ctx, s.guard, subst)
+                : kInvalidAstId;
             StmtId block = clone_stmt(ctx, s.block, subst);
-            return ctx.make<WhenStmt>(s.pattern, block, s.span);
+            return ctx.make<WhenStmt>(s.pattern, guard, block, s.span);
         }
         case NodeKind::SelectStmt: {
             auto& s = static_cast<const SelectStmt&>(node);
@@ -254,8 +257,11 @@ static StmtId clone_stmt(
                     continue;
                 }
                 auto& w = static_cast<const WhenStmt&>(ctx.node(w_id));
+                ExprId guard = w.guard != kInvalidAstId
+                    ? clone_expr(ctx, w.guard, subst)
+                    : kInvalidAstId;
                 StmtId block = clone_stmt(ctx, w.block, subst);
-                whens.push_back(ctx.make<WhenStmt>(w.pattern, block, w.span));
+                whens.push_back(ctx.make<WhenStmt>(w.pattern, guard, block, w.span));
             }
             StmtId otherwise_block = s.otherwise_block != kInvalidAstId
                 ? clone_stmt(ctx, s.otherwise_block, subst)
@@ -426,7 +432,7 @@ static StmtId expand_stmt(
                 }
                 auto& w = static_cast<const WhenStmt&>(ctx.node(w_id));
                 StmtId block = expand_stmt(ctx, w.block, macros, diagnostics);
-                whens.push_back(ctx.make<WhenStmt>(w.pattern, block, w.span));
+                whens.push_back(ctx.make<WhenStmt>(w.pattern, w.guard, block, w.span));
             }
             StmtId otherwise_block = s.otherwise_block != kInvalidAstId
                 ? expand_stmt(ctx, s.otherwise_block, macros, diagnostics)

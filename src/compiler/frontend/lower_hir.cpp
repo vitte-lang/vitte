@@ -340,6 +340,10 @@ static ir::HirPatternId lower_pattern(
                 std::move(args),
                 p.span);
         }
+        case NodeKind::WildcardPattern: {
+            auto& p = static_cast<const WildcardPattern&>(node);
+            return hir_ctx.make<ir::HirWildcardPattern>(p.span);
+        }
         default:
             diag::error(diagnostics, diag::DiagId::UnsupportedPatternInHir, node.span);
             return ir::kInvalidHirId;
@@ -505,6 +509,9 @@ static ir::HirStmtId lower_stmt(
                 auto& w = static_cast<const WhenStmt&>(ctx.node(w_id));
                 whens.push_back(hir_ctx.make<ir::HirWhen>(
                     lower_pattern(ctx, w.pattern, hir_ctx, diagnostics),
+                    w.guard != kInvalidAstId
+                        ? lower_expr(ctx, w.guard, hir_ctx, diagnostics, type_names, enum_like)
+                        : ir::kInvalidHirId,
                     lower_block(ctx, w.block, hir_ctx, diagnostics, type_names, enum_like),
                     w.span));
             }
@@ -522,6 +529,9 @@ static ir::HirStmtId lower_stmt(
             auto& w = static_cast<const WhenStmt&>(node);
             return hir_ctx.make<ir::HirWhen>(
                 lower_pattern(ctx, w.pattern, hir_ctx, diagnostics),
+                w.guard != kInvalidAstId
+                    ? lower_expr(ctx, w.guard, hir_ctx, diagnostics, type_names, enum_like)
+                    : ir::kInvalidHirId,
                 lower_block(ctx, w.block, hir_ctx, diagnostics, type_names, enum_like),
                 w.span);
         }

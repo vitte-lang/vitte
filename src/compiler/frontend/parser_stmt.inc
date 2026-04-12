@@ -86,6 +86,7 @@ StmtId Parser::parse_unsafe_stmt() {
 StmtId Parser::parse_let_stmt() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwLet, "expected 'let'");
+    bool is_mut = match(TokenKind::KwMut);
     Ident name = parse_ident();
     TypeId ty = ast::kInvalidAstId;
     if (match(TokenKind::Colon)) {
@@ -96,6 +97,9 @@ StmtId Parser::parse_let_stmt() {
     span.end = value != ast::kInvalidAstId
         ? ast_ctx_.get<Expr>(value).span.end
         : previous_.span.end;
+    if (is_mut) {
+        return ast_ctx_.make<MakeStmt>(std::move(name), ty, value, span);
+    }
     return ast_ctx_.make<LetStmt>(std::move(name), ty, value, span);
 }
 
@@ -312,8 +316,16 @@ StmtId Parser::parse_match_stmt() {
     while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
         if (match(TokenKind::KwCase)) {
             PatternId pat = parse_pattern();
+            ExprId guard = ast::kInvalidAstId;
+            if (match(TokenKind::KwIf)) {
+                guard = parse_expr();
+            }
             StmtId block = parse_block();
-            whens.push_back(ast_ctx_.make<WhenStmt>(pat, block, ast_ctx_.get<Stmt>(block).span));
+            whens.push_back(ast_ctx_.make<WhenStmt>(
+                pat,
+                guard,
+                block,
+                ast_ctx_.get<Stmt>(block).span));
             continue;
         }
         if (match(TokenKind::KwOtherwise) || match(TokenKind::KwElse)) {
@@ -377,8 +389,16 @@ StmtId Parser::parse_when_match_stmt() {
     ExprId value = parse_value();
     expect(TokenKind::KwIs, "expected 'is'");
     PatternId pat = parse_pattern();
+    ExprId guard = ast::kInvalidAstId;
+    if (match(TokenKind::KwIf)) {
+        guard = parse_expr();
+    }
     StmtId block = parse_block();
-    auto when_id = ast_ctx_.make<WhenStmt>(pat, block, ast_ctx_.get<Stmt>(block).span);
+    auto when_id = ast_ctx_.make<WhenStmt>(
+        pat,
+        guard,
+        block,
+        ast_ctx_.get<Stmt>(block).span);
     std::vector<StmtId> whens;
     whens.push_back(when_id);
     span.end = ast_ctx_.get<Stmt>(block).span.end;
@@ -408,7 +428,11 @@ StmtId Parser::parse_when_stmt() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwWhen, "expected 'when'");
     PatternId pat = parse_pattern();
+    ExprId guard = ast::kInvalidAstId;
+    if (match(TokenKind::KwIf)) {
+        guard = parse_expr();
+    }
     StmtId block = parse_block();
     span.end = ast_ctx_.get<Stmt>(block).span.end;
-    return ast_ctx_.make<WhenStmt>(pat, block, span);
+    return ast_ctx_.make<WhenStmt>(pat, guard, block, span);
 }

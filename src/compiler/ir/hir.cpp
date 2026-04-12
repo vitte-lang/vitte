@@ -190,12 +190,17 @@ HirCtorPattern::HirCtorPattern(
       name(std::move(n)),
       args(std::move(a)) {}
 
+HirWildcardPattern::HirWildcardPattern(vitte::frontend::ast::SourceSpan sp)
+    : HirPattern(HirKind::PatternWildcard, sp) {}
+
 HirWhen::HirWhen(
     HirPatternId p,
+    HirExprId g,
     HirStmtId b,
     vitte::frontend::ast::SourceSpan sp)
     : HirStmt(HirKind::WhenStmt, sp),
       pattern(p),
+      guard(g),
       block(b) {}
 
 HirSelect::HirSelect(
@@ -375,6 +380,8 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
     } else if (n.kind == HirKind::PatternCtor) {
         auto& p = static_cast<const HirCtorPattern&>(n);
         os << " " << p.name;
+    } else if (n.kind == HirKind::PatternWildcard) {
+        os << " _";
     }
 
     os << "\n";
@@ -440,6 +447,9 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
         case HirKind::WhenStmt: {
             auto& w = static_cast<const HirWhen&>(n);
             dump(ctx, w.pattern, os, depth + 1);
+            if (w.guard != kInvalidHirId) {
+                dump(ctx, w.guard, os, depth + 1);
+            }
             dump(ctx, w.block, os, depth + 1);
             break;
         }
@@ -514,6 +524,8 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
             }
             break;
         }
+        case HirKind::PatternWildcard:
+            break;
         default:
             break;
     }
@@ -567,6 +579,8 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
     } else if (n.kind == HirKind::PatternCtor) {
         auto& p = static_cast<const HirCtorPattern&>(n);
         os << "(" << p.name << ")";
+    } else if (n.kind == HirKind::PatternWildcard) {
+        os << "(_)";
     }
 
     std::vector<HirId> children;
@@ -625,6 +639,9 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
         case HirKind::WhenStmt: {
             auto& w = static_cast<const HirWhen&>(n);
             children.push_back(w.pattern);
+            if (w.guard != kInvalidHirId) {
+                children.push_back(w.guard);
+            }
             children.push_back(w.block);
             break;
         }
@@ -693,6 +710,8 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
             children.insert(children.end(), p.args.begin(), p.args.end());
             break;
         }
+        case HirKind::PatternWildcard:
+            break;
         default:
             break;
     }
@@ -776,6 +795,8 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
     } else if (n.kind == HirKind::PatternCtor) {
         auto& p = static_cast<const HirCtorPattern&>(n);
         os << ",\"name\":\"" << p.name << "\"";
+    } else if (n.kind == HirKind::PatternWildcard) {
+        os << ",\"name\":\"_\"";
     }
 
     std::vector<HirId> children;
@@ -829,6 +850,9 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
         case HirKind::WhenStmt: {
             auto& w = static_cast<const HirWhen&>(n);
             children.push_back(w.pattern);
+            if (w.guard != kInvalidHirId) {
+                children.push_back(w.guard);
+            }
             children.push_back(w.block);
             break;
         }
@@ -897,6 +921,8 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
             children.insert(children.end(), p.args.begin(), p.args.end());
             break;
         }
+        case HirKind::PatternWildcard:
+            break;
         default:
             break;
     }
@@ -956,6 +982,7 @@ const char* to_string(HirKind kind) {
         case HirKind::Module: return "Module";
         case HirKind::PatternIdent: return "PatternIdent";
         case HirKind::PatternCtor: return "PatternCtor";
+        case HirKind::PatternWildcard: return "PatternWildcard";
         case HirKind::ProcType: return "ProcType";
         default:
             return "Unknown";

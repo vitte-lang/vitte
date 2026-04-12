@@ -7,6 +7,10 @@ PatternId Parser::parse_pattern() {
 
     if (current_.kind == TokenKind::Ident) {
         Ident ident = parse_qualified_ident();
+        if (ident.name == "_") {
+            span.end = ident.span.end;
+            return ast_ctx_.make<WildcardPattern>(span);
+        }
         bool has_dot = ident.name.find('.') != std::string::npos;
         if (current_.kind == TokenKind::LParen) {
             TypeId ty = ast_ctx_.make<NamedType>(ident, ident.span);

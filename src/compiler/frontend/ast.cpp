@@ -190,6 +190,9 @@ CtorPattern::CtorPattern(TypeId t, std::vector<PatternId> a, SourceSpan sp)
       type(t),
       args(std::move(a)) {}
 
+WildcardPattern::WildcardPattern(SourceSpan sp)
+    : Pattern(NodeKind::WildcardPattern, sp) {}
+
 // ------------------------------------------------------------
 // Statements
 // ------------------------------------------------------------
@@ -265,9 +268,10 @@ ForStmt::ForStmt(Ident id, ExprId it, StmtId b, SourceSpan sp)
       ident(std::move(id)),
       iterable(it),
       body(b) {}
-WhenStmt::WhenStmt(PatternId p, StmtId b, SourceSpan sp)
+WhenStmt::WhenStmt(PatternId p, ExprId g, StmtId b, SourceSpan sp)
     : Stmt(NodeKind::WhenStmt, sp),
       pattern(p),
+      guard(g),
       block(b) {}
 
 SelectStmt::SelectStmt(
@@ -442,6 +446,7 @@ const char* to_string(NodeKind kind) {
         case NodeKind::ListExpr: return "ListExpr";
         case NodeKind::IdentPattern: return "IdentPattern";
         case NodeKind::CtorPattern: return "CtorPattern";
+        case NodeKind::WildcardPattern: return "WildcardPattern";
         case NodeKind::BlockStmt: return "BlockStmt";
         case NodeKind::AsmStmt: return "AsmStmt";
         case NodeKind::UnsafeStmt: return "UnsafeStmt";
@@ -797,6 +802,8 @@ static void append_node_json(const AstContext& ctx,
             children.insert(children.end(), n.args.begin(), n.args.end());
             break;
         }
+        case NodeKind::WildcardPattern:
+            break;
         case NodeKind::BlockStmt: {
             const auto& n = ctx.get<BlockStmt>(id);
             os << "\"stmt_count\":" << n.stmts.size();
@@ -889,6 +896,9 @@ static void append_node_json(const AstContext& ctx,
         case NodeKind::WhenStmt: {
             const auto& n = ctx.get<WhenStmt>(id);
             children.push_back(n.pattern);
+            if (n.guard != kInvalidAstId) {
+                children.push_back(n.guard);
+            }
             children.push_back(n.block);
             break;
         }

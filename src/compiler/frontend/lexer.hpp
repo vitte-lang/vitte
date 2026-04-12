@@ -40,6 +40,7 @@ enum class TokenKind {
     KwUnsafe,
     KwMatch,
     KwLet,
+    KwMut,
     KwMake,
     KwSet,
     KwGive,

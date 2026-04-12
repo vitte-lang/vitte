@@ -26,6 +26,7 @@ static void emit_toplevel_hint(DiagnosticEngine& diag, const Token& tok);
 static bool is_toplevel_sync_kind(TokenKind kind);
 static bool is_stmt_sync_kind(TokenKind kind);
 static bool is_match_arm_sync_kind(TokenKind kind);
+static const char* expected_token_fix_hint(TokenKind kind);
 
 Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse)
     : Parser(lexer, diag, ast_ctx, strict_parse, false, false, 0, 0) {}
@@ -139,6 +140,9 @@ bool Parser::expect(TokenKind kind, const char* message) {
             note_parse(std::move(note), current_.span);
         }
     }
+    if (const char* fix = expected_token_fix_hint(kind); fix != nullptr) {
+        note_parse(fix, current_.span);
+    }
     return false;
 }
 
@@ -231,6 +235,27 @@ static void emit_toplevel_hint(DiagnosticEngine& diag, const Token& tok) {
         }
         default:
             return;
+    }
+}
+
+static const char* expected_token_fix_hint(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::RParen:
+            return "insert ')' to close this parenthesized section";
+        case TokenKind::RBracket:
+            return "insert ']' to close this bracketed section";
+        case TokenKind::RBrace:
+            return "insert '}' to close this block";
+        case TokenKind::Equal:
+            return "add '=' between the target and assigned value";
+        case TokenKind::Colon:
+            return "add ':' between name and type";
+        case TokenKind::KwIn:
+            return "use 'for <name> in <iterable> { ... }'";
+        case TokenKind::KwAs:
+            return "use 'as' to introduce alias or cast target type";
+        default:
+            return nullptr;
     }
 }
 

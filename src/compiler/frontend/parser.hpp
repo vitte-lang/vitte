@@ -135,6 +135,8 @@ private:
     ExprId parse_call_expr(ExprId callee);
     ExprId parse_proc_expr();
     ExprId parse_if_expr();
+    ExprId parse_interpolated_string_expr(const std::string& value, ast::SourceSpan span);
+    ExprId parse_interpolation_path_expr(std::string_view raw, ast::SourceSpan span);
     std::vector<ExprId> parse_arg_list();
 
     // Patterns

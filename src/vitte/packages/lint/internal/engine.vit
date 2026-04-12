@@ -123,6 +123,9 @@ proc issues_from_text(file: string, text: string, rules: [LintRule], cfg: LintCo
       if rules[i].id == "let-make-set-role" && contains(text, "set ") && contains(text, " = ") {
         out = out.push(make_issue("VITTE-I0014", LintSeverity.Info, file, 1, "clarify variable role: let declaration, make mutable declaration, set reassignment", rules[i].id, rules[i].quickfix))
       }
+      if rules[i].id == "prefer-mut-marker" && contains(text, "make ") {
+        out = out.push(make_issue("VITTE-I0024", LintSeverity.Info, file, 1, "prefer explicit mutability marker (let mut) in canonical style", rules[i].id, rules[i].quickfix))
+      }
       if rules[i].id == "brace-blocks" && (contains(text, "\nend") || contains(text, ".end")) {
         out = out.push(make_issue("VITTE-I0015", LintSeverity.Warning, file, 1, "prefer brace blocks { ... } over legacy terminators", rules[i].id, rules[i].quickfix))
       }
@@ -230,6 +233,7 @@ proc diag_message(code: string) -> string {
   if code == "VITTE-I0021" { give "prefer named aliases for long function signatures" }
   if code == "VITTE-I0022" { give "prefer compact aliases for verbose generic signatures" }
   if code == "VITTE-I0023" { give "reduce import primitives in canonical style" }
+  if code == "VITTE-I0024" { give "prefer explicit mutability marker with let mut" }
   if code == "VITTE-I0009" { give "rule perf budget exceeded" }
   give "unknown lint diagnostic"
 }
@@ -253,5 +257,6 @@ proc quickfix_for(code: string) -> string {
   if code == "VITTE-I0021" { give "define a type alias for proc(...) -> ... and reuse it" }
   if code == "VITTE-I0022" { give "extract nested generic/composite signatures into named aliases" }
   if code == "VITTE-I0023" { give "prefer use; keep pull/share only where strictly needed" }
+  if code == "VITTE-I0024" { give "rewrite make x = ... to let mut x = ... when supported" }
   give "no quick-fix"
 }

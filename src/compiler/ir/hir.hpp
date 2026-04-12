@@ -89,6 +89,7 @@ enum class HirKind {
     // patterns
     PatternIdent,
     PatternCtor,
+    PatternWildcard,
 };
 
 // ------------------------------------------------------------
@@ -355,11 +356,17 @@ struct HirCtorPattern : HirPattern {
                    vitte::frontend::ast::SourceSpan span);
 };
 
+struct HirWildcardPattern : HirPattern {
+    explicit HirWildcardPattern(vitte::frontend::ast::SourceSpan span);
+};
+
 struct HirWhen : HirStmt {
     HirPatternId pattern;
+    HirExprId guard;
     HirStmtId block;
 
     HirWhen(HirPatternId pattern,
+            HirExprId guard,
             HirStmtId block,
             vitte::frontend::ast::SourceSpan span);
 };

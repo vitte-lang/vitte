@@ -600,6 +600,7 @@ static void qualify_pattern(AstContext& ctx,
             break;
         }
         case NodeKind::IdentPattern:
+        case NodeKind::WildcardPattern:
         default:
             break;
     }
@@ -685,6 +686,7 @@ static void qualify_stmt(AstContext& ctx,
         case NodeKind::WhenStmt: {
             auto& s = static_cast<WhenStmt&>(node);
             qualify_pattern(ctx, s.pattern, locals, prefix);
+            qualify_expr(ctx, s.guard, locals, prefix);
             qualify_stmt(ctx, s.block, locals, prefix);
             break;
         }
@@ -1349,6 +1351,7 @@ static void rewrite_pattern_for_alias(
             break;
         }
         case NodeKind::IdentPattern:
+        case NodeKind::WildcardPattern:
         default:
             break;
     }
@@ -1786,6 +1789,7 @@ static void rewrite_stmt_for_alias(
         case NodeKind::WhenStmt: {
             auto& s = static_cast<WhenStmt&>(node);
             rewrite_pattern_for_alias(ctx, s.pattern, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_expr_for_alias(ctx, s.guard, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             rewrite_stmt_for_alias(ctx, s.block, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
