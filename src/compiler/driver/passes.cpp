@@ -174,7 +174,7 @@ PassResult run_passes(const Options& opts) {
         return result;
     }
     frontend::parser::Parser parser(
-        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget, opts.panic_budget_notes);
+        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget, opts.panic_budget_notes, opts.syntax_strict);
     auto module = parser.parse_module();
     if (opts.strict_recovery_limit >= 0 && parser.metrics().recoveries > opts.strict_recovery_limit) {
         std::cerr << "[driver] error: parser recoveries (" << parser.metrics().recoveries
@@ -208,6 +208,9 @@ PassResult run_passes(const Options& opts) {
             module_opts.warn_experimental = opts.warn_experimental;
             module_opts.deny_internal = opts.deny_internal;
             module_opts.allow_legacy_self_leaf = opts.allow_legacy_self_leaf;
+            module_opts.legacy_self_leaf_warn_only = opts.legacy_self_leaf_warn_only;
+            module_opts.strict_legacy_forms = opts.strict_modules || opts.syntax_strict;
+            module_opts.syntax_strict = opts.syntax_strict;
             frontend::modules::load_modules(ast_ctx, module, diagnostics, opts.input, module_index, module_opts);
             frontend::modules::rewrite_member_access(ast_ctx, module, module_index, &diagnostics);
             if (opts.dump_stdlib_map) {
@@ -259,6 +262,9 @@ PassResult run_passes(const Options& opts) {
     module_opts.warn_experimental = opts.warn_experimental;
     module_opts.deny_internal = opts.deny_internal;
     module_opts.allow_legacy_self_leaf = opts.allow_legacy_self_leaf;
+    module_opts.legacy_self_leaf_warn_only = opts.legacy_self_leaf_warn_only;
+    module_opts.strict_legacy_forms = opts.strict_modules || opts.syntax_strict;
+    module_opts.syntax_strict = opts.syntax_strict;
     frontend::modules::load_modules(ast_ctx, module, diagnostics, opts.input, module_index, module_opts);
     frontend::modules::rewrite_member_access(ast_ctx, module, module_index, &diagnostics);
     if (opts.cache_report) {
