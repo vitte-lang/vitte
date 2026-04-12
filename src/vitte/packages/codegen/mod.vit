@@ -51,12 +51,12 @@ proc validate(r: CodegenRequest) -> bool {
 }
 
 proc api_version() -> string {
-  give "v1"
+  give version()
 }
 
 proc validate_config_code(cfg: CodegenConfig) -> string {
-  if cfg.timeout_ms <= 0 { give "VITTE-CODEGEN0001" }
-  if cfg.retry_budget < 0 { give "VITTE-CODEGEN0001" }
+  let vr = validate_config(cfg)
+  when vr is CodegenResult.Err { give "VITTE-CODEGEN0001" }
   give "VITTE-CODEGEN0000"
 }
 
@@ -94,13 +94,13 @@ proc stable_abi_surface_hash() -> int {
 }
 
 proc package_contract_fingerprint() -> int {
-  let cap_count = 7
-  let code = "VITTE-CODEGEN0000"
+  let cap_count = capabilities().len
+  let code = validate_config_code(default_config())
   give stable_api_surface_hash() + stable_abi_surface_hash() + cap_count * 997 + code.len * 313
 }
 
 proc contract_summary() -> string {
-  give "vitte/codegen" + " api=" + api_version() + " caps=7"
+  give package_meta() + " api=" + api_version() + " caps=" + capabilities().len.to_string()
 }
 
 proc diagnostics_suggestions(code: string) -> [string] {
@@ -121,21 +121,30 @@ proc diagnostics_bundle(code: string) -> string {
   give "ns=" + diagnostics_namespace() +
        " code=" + code +
        " sev=" + diagnostics_severity(code) +
-       " msg=codegen diagnostic"
+       " msg=" + diagnostics_message(code)
 }
 
 proc healthcheck_code(cfg: CodegenConfig) -> string {
-  if cfg.timeout_ms <= 0 { give diagnostics_namespace() + "0001" }
-  if cfg.retry_budget < 0 { give diagnostics_namespace() + "0001" }
+  let hr = healthcheck(cfg)
+  when hr is CodegenResult.Err { give diagnostics_namespace() + "0001" }
   give diagnostics_namespace() + "0000"
 }
 
 proc healthcheck_default_code() -> string {
-  give diagnostics_namespace() + "0000"
+  give healthcheck_code(default_config())
 }
 
 proc contract_caps_csv() -> string {
-  give "config,validate,healthcheck,api-contract,abi-contract,diagnostics,contract-summary"
+  let caps = capabilities()
+  if caps.len == 0 { give "" }
+  let out = caps[0]
+  let i: int = 1
+  loop {
+    if i >= caps.len { break }
+    out = out + "," + caps[i]
+    i = i + 1
+  }
+  give out
 }
 
 proc contract_report() -> string {
@@ -171,15 +180,37 @@ pick CodegenResult {
   Err(error: CodegenError)
 }
 
+form CodegenRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> CodegenConfig {
   give CodegenConfig(true, codegen_policy_pkg.default_timeout_ms(), codegen_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> CodegenConfig {
+  let cfg = default_config()
+  give CodegenConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc normalize_config(cfg: CodegenConfig) -> CodegenConfig {
+  let timeout_ms = cfg.timeout_ms
+  let retry_budget = cfg.retry_budget
+  if timeout_ms < 1 { timeout_ms = 1 }
+  if timeout_ms > 60000 { timeout_ms = 60000 }
+  if retry_budget < 0 { retry_budget = 0 }
+  if retry_budget > 32 { retry_budget = 32 }
+  give CodegenConfig(cfg.strict, timeout_ms, retry_budget)
+}
+
 proc validate_config(cfg: CodegenConfig) -> CodegenResult {
-  if codegen_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if codegen_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give CodegenResult.Err(CodegenError.InvalidConfig)
   }
-  if codegen_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if codegen_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give CodegenResult.Err(CodegenError.InvalidConfig)
   }
   give CodegenResult.Ok(true)
@@ -194,6 +225,12 @@ proc healthcheck(cfg: CodegenConfig) -> CodegenResult {
     give CodegenResult.Err(CodegenError.Internal)
   }
   give CodegenResult.Ok(true)
+}
+
+proc runtime_info() -> CodegenRuntimeInfo {
+  give CodegenRuntimeInfo(codegen_runtime_pkg.runtime_name(),
+                          codegen_runtime_pkg.runtime_version(),
+                          codegen_runtime_pkg.supports_diagnostics())
 }
 
 proc version() -> string {
@@ -234,7 +271,6 @@ deprecated_in: -
 compat_policy: additive-only
 api_version: v1
 >>>
-
 
 
 

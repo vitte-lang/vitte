@@ -178,15 +178,37 @@ pick CodegenGccResult[T] {
   Err(error: CodegenGccError)
 }
 
+form CodegenGccRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> CodegenGccConfig {
   give CodegenGccConfig(true, codegen_gcc_policy_pkg.default_timeout_ms(), codegen_gcc_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> CodegenGccConfig {
+  let cfg = default_config()
+  give CodegenGccConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc normalize_config(cfg: CodegenGccConfig) -> CodegenGccConfig {
+  let timeout_ms = cfg.timeout_ms
+  let retry_budget = cfg.retry_budget
+  if timeout_ms < 1 { timeout_ms = 1 }
+  if timeout_ms > 60000 { timeout_ms = 60000 }
+  if retry_budget < 0 { retry_budget = 0 }
+  if retry_budget > 32 { retry_budget = 32 }
+  give CodegenGccConfig(cfg.strict, timeout_ms, retry_budget)
+}
+
 proc validate_config(cfg: CodegenGccConfig) -> CodegenGccResult[bool] {
-  if codegen_gcc_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if codegen_gcc_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give CodegenGccResult.Err(CodegenGccError.InvalidConfig)
   }
-  if codegen_gcc_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if codegen_gcc_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give CodegenGccResult.Err(CodegenGccError.InvalidConfig)
   }
   give CodegenGccResult.Ok(true)
@@ -203,6 +225,12 @@ proc healthcheck(cfg: CodegenGccConfig) -> CodegenGccResult[bool] {
   give CodegenGccResult.Ok(true)
 }
 
+proc runtime_info() -> CodegenGccRuntimeInfo {
+  give CodegenGccRuntimeInfo(codegen_gcc_runtime_pkg.runtime_name(),
+                             codegen_gcc_runtime_pkg.runtime_version(),
+                             codegen_gcc_runtime_pkg.supports_diagnostics())
+}
+
 proc version() -> string {
   give "v1"
 }
@@ -212,7 +240,7 @@ proc capabilities() -> [string] {
 }
 
 proc diagnostics_message(code: string) -> string {
-  if code == "VITTE-CODEGENG0001" {
+  if code == "VITTE-CODEGEN_GCC0001" {
     give "invalid package configuration"
   }
   give "codegen/gcc diagnostic " + code
@@ -241,7 +269,6 @@ deprecated_in: -
 compat_policy: additive-only
 api_version: v1
 >>>
-
 
 
 

@@ -167,15 +167,37 @@ pick CodegenCraneliftResult[T] {
   Err(error: CodegenCraneliftError)
 }
 
+form CodegenCraneliftRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> CodegenCraneliftConfig {
   give CodegenCraneliftConfig(true, codegen_cranelift_policy_pkg.default_timeout_ms(), codegen_cranelift_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> CodegenCraneliftConfig {
+  let cfg = default_config()
+  give CodegenCraneliftConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc normalize_config(cfg: CodegenCraneliftConfig) -> CodegenCraneliftConfig {
+  let timeout_ms = cfg.timeout_ms
+  let retry_budget = cfg.retry_budget
+  if timeout_ms < 1 { timeout_ms = 1 }
+  if timeout_ms > 60000 { timeout_ms = 60000 }
+  if retry_budget < 0 { retry_budget = 0 }
+  if retry_budget > 32 { retry_budget = 32 }
+  give CodegenCraneliftConfig(cfg.strict, timeout_ms, retry_budget)
+}
+
 proc validate_config(cfg: CodegenCraneliftConfig) -> CodegenCraneliftResult[bool] {
-  if codegen_cranelift_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if codegen_cranelift_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give CodegenCraneliftResult.Err(CodegenCraneliftError.InvalidConfig)
   }
-  if codegen_cranelift_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if codegen_cranelift_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give CodegenCraneliftResult.Err(CodegenCraneliftError.InvalidConfig)
   }
   give CodegenCraneliftResult.Ok(true)
@@ -192,6 +214,12 @@ proc healthcheck(cfg: CodegenCraneliftConfig) -> CodegenCraneliftResult[bool] {
   give CodegenCraneliftResult.Ok(true)
 }
 
+proc runtime_info() -> CodegenCraneliftRuntimeInfo {
+  give CodegenCraneliftRuntimeInfo(codegen_cranelift_runtime_pkg.runtime_name(),
+                                   codegen_cranelift_runtime_pkg.runtime_version(),
+                                   codegen_cranelift_runtime_pkg.supports_diagnostics())
+}
+
 proc version() -> string {
   give "v1"
 }
@@ -201,7 +229,7 @@ proc capabilities() -> [string] {
 }
 
 proc diagnostics_message(code: string) -> string {
-  if code == "VITTE-CODEGENC0001" {
+  if code == "VITTE-CODEGEN_CRANELIFT0001" {
     give "invalid package configuration"
   }
   give "codegen/cranelift diagnostic " + code
@@ -230,7 +258,6 @@ deprecated_in: -
 compat_policy: additive-only
 api_version: v1
 >>>
-
 
 
 
