@@ -49,8 +49,19 @@ form StdDataCacheMetrics {
   evict: int
 }
 
+form StdDataRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> StdDataConfig {
   give StdDataConfig(std_data_policy_pkg.default_cache_size(), true, true)
+}
+
+proc strict_config() -> StdDataConfig {
+  let cfg = default_config()
+  give StdDataConfig(cfg.cache_size, true, true)
 }
 
 proc normalize_config(cfg: StdDataConfig) -> StdDataConfig {
@@ -72,6 +83,12 @@ proc healthcheck(cfg: StdDataConfig) -> StdDataResult[bool] {
     give StdDataResult.Err(StdDataError.Internal)
   }
   give StdDataResult.Ok(true)
+}
+
+proc runtime_info() -> StdDataRuntimeInfo {
+  give StdDataRuntimeInfo(std_data_runtime_pkg.runtime_name(),
+                          std_data_runtime_pkg.runtime_version(),
+                          std_data_runtime_pkg.supports_diagnostics())
 }
 
 proc version() -> string {
@@ -565,7 +582,6 @@ boundary: Facade pure; details runtime sous internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
-
 
 
 

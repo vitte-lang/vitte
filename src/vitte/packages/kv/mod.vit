@@ -51,6 +51,11 @@ proc default_config() -> KvConfig {
   give KvConfig(kv_policy_pkg.default_max_entries(), kv_policy_pkg.default_require_non_empty_key())
 }
 
+proc strict_config() -> KvConfig {
+  let cfg = default_config()
+  give KvConfig(cfg.max_entries, true)
+}
+
 proc normalize_config(cfg: KvConfig) -> KvConfig {
   give KvConfig(kv_policy_pkg.normalize_max_entries(cfg.max_entries), cfg.require_non_empty_key)
 }
@@ -67,6 +72,10 @@ proc healthcheck(cfg: KvConfig, store: KvStore) -> KvConfigResult[bool] {
   if kv_runtime_pkg.runtime_status() == false { give KvConfigResult.Err(KvConfigError.Internal) }
   if store.entries.len > cfg.max_entries { give KvConfigResult.Err(KvConfigError.InvalidConfig) }
   give KvConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: KvConfig) -> KvConfigResult[bool] {
+  give healthcheck(cfg, kv_new())
 }
 
 proc runtime_info() -> KvRuntimeInfo {

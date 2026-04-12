@@ -97,8 +97,19 @@ form StdTaskMetrics {
   avg_latency_ms: int
 }
 
+form StdAsyncRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> StdAsyncConfig {
   give StdAsyncConfig(std_async_policy_pkg.default_queue_depth(), true, true)
+}
+
+proc strict_config() -> StdAsyncConfig {
+  let cfg = default_config()
+  give StdAsyncConfig(cfg.queue_depth, true, true)
 }
 
 proc normalize_config(cfg: StdAsyncConfig) -> StdAsyncConfig {
@@ -120,6 +131,12 @@ proc healthcheck(cfg: StdAsyncConfig) -> StdAsyncResult[bool] {
     give StdAsyncResult.Err(StdAsyncError.Internal)
   }
   give StdAsyncResult.Ok(true)
+}
+
+proc runtime_info() -> StdAsyncRuntimeInfo {
+  give StdAsyncRuntimeInfo(std_async_runtime_pkg.runtime_name(),
+                           std_async_runtime_pkg.runtime_version(),
+                           std_async_runtime_pkg.supports_diagnostics())
 }
 
 proc version() -> string {
@@ -551,7 +568,6 @@ boundary: Facade pure; details runtime sous internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
-
 
 
 

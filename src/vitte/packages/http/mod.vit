@@ -104,6 +104,12 @@ form HttpConfig {
   retry_budget: int
 }
 
+form HttpRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc error(code: string, message: string, context: string) -> HttpError {
   give HttpError(code, message, context)
 }
@@ -138,6 +144,11 @@ proc default_config() -> HttpConfig {
   give HttpConfig(true, http_policy_pkg.default_timeout_ms(), http_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> HttpConfig {
+  let cfg = default_config()
+  give HttpConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
 proc normalize_config(cfg: HttpConfig) -> HttpConfig {
   give HttpConfig(cfg.strict, cfg.timeout_ms, cfg.retry_budget)
 }
@@ -160,6 +171,12 @@ proc healthcheck(cfg: HttpConfig) -> HttpResult[bool] {
     give err_ctx[bool]("VITTE-H0003", "http runtime unavailable", "runtime")
   }
   give ok(true)
+}
+
+proc runtime_info() -> HttpRuntimeInfo {
+  give HttpRuntimeInfo(http_runtime_pkg.runtime_name(),
+                       http_runtime_pkg.runtime_version(),
+                       http_runtime_pkg.supports_diagnostics())
 }
 
 proc version() -> string {

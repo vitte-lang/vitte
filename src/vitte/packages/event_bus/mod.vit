@@ -80,6 +80,11 @@ proc default_config() -> EventBusConfig {
   give EventBusConfig(event_bus_policy_pkg.default_max_events(), event_bus_policy_pkg.default_allow_empty_topic())
 }
 
+proc strict_config() -> EventBusConfig {
+  let cfg = default_config()
+  give EventBusConfig(cfg.max_events, false)
+}
+
 proc normalize_config(cfg: EventBusConfig) -> EventBusConfig {
   give EventBusConfig(event_bus_policy_pkg.normalize_max_events(cfg.max_events), cfg.allow_empty_topic)
 }
@@ -99,6 +104,12 @@ proc healthcheck(cfg: EventBusConfig, bus: Bus) -> EventBusResult[EventBusHealth
     give EventBusResult.Err(EventBusError.Internal)
   }
   give EventBusResult.Ok(EventBusHealth(true, "ok", bus.events.len))
+}
+
+proc healthcheck(cfg: EventBusConfig) -> EventBusResult[bool] {
+  let hr = healthcheck(cfg, bus_new())
+  when hr is EventBusResult.Err { give EventBusResult.Err(hr.error) }
+  give EventBusResult.Ok(hr.value.ok)
 }
 
 proc runtime_info() -> EventBusRuntimeInfo {

@@ -123,6 +123,12 @@ form StdBaseConfig {
   retry_budget: int
 }
 
+form StdBaseRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 pick StdBaseError {
   InvalidConfig
   Unsupported
@@ -139,12 +145,21 @@ proc default_config() -> StdBaseConfig {
   give StdBaseConfig(true, std_base_policy_pkg.default_timeout_ms(), std_base_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> StdBaseConfig {
+  let cfg = default_config()
+  give StdBaseConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
 proc normalize_config(timeout_ms: int, retry_budget: int, strict: bool) -> StdBaseConfig {
   give StdBaseConfig(
     strict,
     std_base_policy_pkg.normalize_timeout_ms(timeout_ms),
     std_base_policy_pkg.normalize_retry_budget(retry_budget)
   )
+}
+
+proc normalize_config(cfg: StdBaseConfig) -> StdBaseConfig {
+  give normalize_config(cfg.timeout_ms, cfg.retry_budget, cfg.strict)
 }
 
 proc profile_apply(name: string) -> StdBaseConfig {
@@ -184,6 +199,12 @@ proc healthcheck(cfg: StdBaseConfig) -> StdBaseResult[bool] {
     give StdBaseResult.Err(StdBaseError.Internal)
   }
   give StdBaseResult.Ok(true)
+}
+
+proc runtime_info() -> StdBaseRuntimeInfo {
+  give StdBaseRuntimeInfo(std_base_runtime_pkg.runtime_name(),
+                          std_base_runtime_pkg.runtime_version(),
+                          std_base_runtime_pkg.supports_diagnostics())
 }
 
 proc version() -> string {
@@ -408,6 +429,5 @@ boundary: Implementation privee sous vitte/std/base/internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
-
 
 

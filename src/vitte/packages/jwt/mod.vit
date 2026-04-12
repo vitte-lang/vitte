@@ -59,6 +59,12 @@ proc default_config() -> JwtConfig {
   give JwtConfig(jwt_policy_pkg.default_min_secret_len(), true, jwt_policy_pkg.default_ttl())
 }
 
+proc strict_config() -> JwtConfig {
+  let cfg = default_config()
+  let ttl = jwt_policy_pkg.normalize_ttl(cfg.default_ttl)
+  give JwtConfig(cfg.min_secret_len, true, ttl)
+}
+
 proc normalize_config(cfg: JwtConfig) -> JwtConfig {
   give JwtConfig(cfg.min_secret_len, cfg.strict, jwt_policy_pkg.normalize_ttl(cfg.default_ttl))
 }

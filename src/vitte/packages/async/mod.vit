@@ -76,6 +76,12 @@ form AsyncConfig {
   retry_budget: int
 }
 
+form AsyncRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 pick AsyncError {
   InvalidConfig
   Unsupported
@@ -385,6 +391,21 @@ proc default_config() -> AsyncConfig {
   give AsyncConfig(true, async_policy_pkg.default_timeout_ms(), async_policy_pkg.default_retry_budget())
 }
 
+proc strict_config() -> AsyncConfig {
+  let cfg = default_config()
+  give AsyncConfig(true, cfg.timeout_ms, cfg.retry_budget)
+}
+
+proc normalize_config(cfg: AsyncConfig) -> AsyncConfig {
+  let timeout_ms = cfg.timeout_ms
+  let retry_budget = cfg.retry_budget
+  if timeout_ms < 1 { timeout_ms = 1 }
+  if timeout_ms > 60000 { timeout_ms = 60000 }
+  if retry_budget < 0 { retry_budget = 0 }
+  if retry_budget > 32 { retry_budget = 32 }
+  give AsyncConfig(cfg.strict, timeout_ms, retry_budget)
+}
+
 proc with_retry_budget(cfg: AsyncConfig, retry_budget: int) -> AsyncConfig {
   give AsyncConfig(cfg.strict, cfg.timeout_ms, retry_budget)
 }
@@ -394,10 +415,11 @@ proc with_timeout_ms(cfg: AsyncConfig, timeout_ms: int) -> AsyncConfig {
 }
 
 proc validate_config(cfg: AsyncConfig) -> AsyncResult[bool] {
-  if async_validate_pkg.valid_timeout_ms(cfg.timeout_ms) == false {
+  let nc = normalize_config(cfg)
+  if async_validate_pkg.valid_timeout_ms(nc.timeout_ms) == false {
     give AsyncResult.Err(AsyncError.InvalidConfig)
   }
-  if async_validate_pkg.valid_retry_budget(cfg.retry_budget) == false {
+  if async_validate_pkg.valid_retry_budget(nc.retry_budget) == false {
     give AsyncResult.Err(AsyncError.InvalidConfig)
   }
   give AsyncResult.Ok(true)
@@ -417,6 +439,12 @@ proc healthcheck(cfg: AsyncConfig) -> AsyncResult[bool] {
     give AsyncResult.Err(AsyncError.Internal)
   }
   give AsyncResult.Ok(true)
+}
+
+proc runtime_info() -> AsyncRuntimeInfo {
+  give AsyncRuntimeInfo(async_runtime_pkg.runtime_name(),
+                        async_runtime_pkg.runtime_version(),
+                        async_runtime_pkg.supports_diagnostics())
 }
 
 proc api_version() -> string {

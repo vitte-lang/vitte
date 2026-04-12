@@ -80,8 +80,19 @@ form StdNetRedirectPolicy {
   allow_http_downgrade: bool
 }
 
+form StdNetRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> StdNetConfig {
   give StdNetConfig(std_net_policy_pkg.default_timeout_ms(), 1, true)
+}
+
+proc strict_config() -> StdNetConfig {
+  let cfg = default_config()
+  give StdNetConfig(cfg.timeout_ms, cfg.retries, true)
 }
 
 proc normalize_config(cfg: StdNetConfig) -> StdNetConfig {
@@ -107,6 +118,12 @@ proc healthcheck(cfg: StdNetConfig) -> StdNetResult[bool] {
     give StdNetResult.Err(StdNetError.Internal)
   }
   give StdNetResult.Ok(true)
+}
+
+proc runtime_info() -> StdNetRuntimeInfo {
+  give StdNetRuntimeInfo(std_net_runtime_pkg.runtime_name(),
+                         std_net_runtime_pkg.runtime_version(),
+                         std_net_runtime_pkg.supports_diagnostics())
 }
 
 proc version() -> string {
@@ -549,7 +566,6 @@ boundary: Facade pure; details runtime sous internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
-
 
 
 

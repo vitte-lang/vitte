@@ -61,6 +61,17 @@ proc default_config() -> FeatureFlagsConfig {
   give FeatureFlagsConfig(feature_flags_policy_pkg.default_allow_override(), feature_flags_policy_pkg.default_unknown_fallback())
 }
 
+proc strict_config() -> FeatureFlagsConfig {
+  let cfg = default_config()
+  give FeatureFlagsConfig(false, cfg.unknown_fallback)
+}
+
+proc normalize_config(cfg: FeatureFlagsConfig) -> FeatureFlagsConfig {
+  let _ = cfg
+  let d = default_config()
+  give FeatureFlagsConfig(cfg.allow_override, d.unknown_fallback)
+}
+
 proc validate_config(cfg: FeatureFlagsConfig) -> FeatureFlagsResult[bool] {
   let _ = cfg
   if feature_flags_runtime_pkg.runtime_status() == false {
@@ -76,6 +87,12 @@ proc healthcheck(cfg: FeatureFlagsConfig, flagset: FeatureFlags) -> FeatureFlags
     give FeatureFlagsResult.Err(FeatureFlagsError.InvalidConfig)
   }
   give FeatureFlagsResult.Ok(FeatureFlagsHealth(true, "ok", flagset.flags.len))
+}
+
+proc healthcheck(cfg: FeatureFlagsConfig) -> FeatureFlagsResult[bool] {
+  let hr = healthcheck(cfg, flags_new())
+  when hr is FeatureFlagsResult.Err { give FeatureFlagsResult.Err(hr.error) }
+  give FeatureFlagsResult.Ok(hr.value.ok)
 }
 
 proc runtime_info() -> FeatureFlagsRuntimeInfo {

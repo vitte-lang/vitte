@@ -75,6 +75,12 @@ form ClientConfig {
   profile: string
 }
 
+form ClientRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 form ClientRequest {
   method: ClientMethod
   url: string
@@ -119,13 +125,14 @@ proc panic_guard[T](r: ClientResult[T], fallback: T) -> T {
 }
 
 proc validate_config(cfg: ClientConfig) -> ClientResult[bool] {
-  if http_client_validate_pkg.valid_timeout_ms(cfg.connect_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid connect_timeout_ms") }
-  if http_client_validate_pkg.valid_timeout_ms(cfg.read_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid read_timeout_ms") }
-  if http_client_validate_pkg.valid_timeout_ms(cfg.write_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid write_timeout_ms") }
-  if http_client_validate_pkg.valid_timeout_ms(cfg.header_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid header_timeout_ms") }
-  if http_client_validate_pkg.valid_timeout_ms(cfg.body_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid body_timeout_ms") }
-  if http_client_validate_pkg.valid_profile(cfg.profile) == false { give err[bool]("VITTE-C0002", "invalid profile") }
-  if http_client_validate_pkg.valid_max_redirects(cfg.max_redirects) == false { give err[bool]("VITTE-C0008", "invalid max_redirects") }
+  let nc = normalize_config(cfg)
+  if http_client_validate_pkg.valid_timeout_ms(nc.connect_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid connect_timeout_ms") }
+  if http_client_validate_pkg.valid_timeout_ms(nc.read_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid read_timeout_ms") }
+  if http_client_validate_pkg.valid_timeout_ms(nc.write_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid write_timeout_ms") }
+  if http_client_validate_pkg.valid_timeout_ms(nc.header_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid header_timeout_ms") }
+  if http_client_validate_pkg.valid_timeout_ms(nc.body_timeout_ms) == false { give err[bool]("VITTE-C0001", "invalid body_timeout_ms") }
+  if http_client_validate_pkg.valid_profile(nc.profile) == false { give err[bool]("VITTE-C0002", "invalid profile") }
+  if http_client_validate_pkg.valid_max_redirects(nc.max_redirects) == false { give err[bool]("VITTE-C0008", "invalid max_redirects") }
   give ok(true)
 }
 
@@ -226,8 +233,73 @@ proc default_config() -> ClientConfig {
                     http_client_policy_pkg.default_profile())
 }
 
+proc strict_config() -> ClientConfig {
+  let cfg = default_config()
+  give ClientConfig(cfg.connect_timeout_ms,
+                    cfg.read_timeout_ms,
+                    cfg.write_timeout_ms,
+                    cfg.header_timeout_ms,
+                    cfg.body_timeout_ms,
+                    cfg.cancel_token,
+                    true,
+                    false,
+                    cfg.follow_redirects,
+                    cfg.max_redirects,
+                    cfg.profile)
+}
+
+proc normalize_config(cfg: ClientConfig) -> ClientConfig {
+  let connect_timeout_ms = cfg.connect_timeout_ms
+  let read_timeout_ms = cfg.read_timeout_ms
+  let write_timeout_ms = cfg.write_timeout_ms
+  let header_timeout_ms = cfg.header_timeout_ms
+  let body_timeout_ms = cfg.body_timeout_ms
+  let max_redirects = cfg.max_redirects
+  let profile = cfg.profile
+
+  if connect_timeout_ms < 1 { connect_timeout_ms = 1 }
+  if connect_timeout_ms > 60000 { connect_timeout_ms = 60000 }
+  if read_timeout_ms < 1 { read_timeout_ms = 1 }
+  if read_timeout_ms > 60000 { read_timeout_ms = 60000 }
+  if write_timeout_ms < 1 { write_timeout_ms = 1 }
+  if write_timeout_ms > 60000 { write_timeout_ms = 60000 }
+  if header_timeout_ms < 1 { header_timeout_ms = 1 }
+  if header_timeout_ms > 60000 { header_timeout_ms = 60000 }
+  if body_timeout_ms < 1 { body_timeout_ms = 1 }
+  if body_timeout_ms > 60000 { body_timeout_ms = 60000 }
+  if max_redirects < 0 { max_redirects = 0 }
+  if max_redirects > 32 { max_redirects = 32 }
+  if http_client_validate_pkg.valid_profile(profile) == false {
+    profile = http_client_policy_pkg.default_profile()
+  }
+
+  give ClientConfig(connect_timeout_ms,
+                    read_timeout_ms,
+                    write_timeout_ms,
+                    header_timeout_ms,
+                    body_timeout_ms,
+                    cfg.cancel_token,
+                    cfg.strict_tls,
+                    cfg.allow_private_hosts,
+                    cfg.follow_redirects,
+                    max_redirects,
+                    profile)
+}
+
 proc default_state() -> ClientState {
   give ClientState(default_config(), default_retry(), CircuitState(false, 0, 5, 1000), ClientPool(8, 0, 10000, 60000), 0, 0, 0)
+}
+
+proc healthcheck(cfg: ClientConfig) -> ClientResult[bool] {
+  let s = default_state()
+  let state = ClientState(cfg, s.retry, s.circuit, s.pool, s.latency_p50_ms, s.latency_p95_ms, s.errors)
+  give healthcheck(state)
+}
+
+proc runtime_info() -> ClientRuntimeInfo {
+  give ClientRuntimeInfo(http_client_runtime_pkg.runtime_name(),
+                         http_client_runtime_pkg.runtime_version(),
+                         http_client_runtime_pkg.supports_diagnostics())
 }
 
 proc request(method: ClientMethod, url: string, body: string) -> ClientRequest {

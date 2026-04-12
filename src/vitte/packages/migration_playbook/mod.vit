@@ -27,15 +27,35 @@ pick MigrationPlaybookResult[T] {
   Err(error: MigrationPlaybookError)
 }
 
+form MigrationPlaybookRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> MigrationPlaybookConfig {
   give MigrationPlaybookConfig("0.0.0", "0.0.1", migration_playbook_policy_pkg.default_dry_run())
 }
 
+proc strict_config() -> MigrationPlaybookConfig {
+  let cfg = default_config()
+  give MigrationPlaybookConfig(cfg.from_version, cfg.to_version, true)
+}
+
+proc normalize_config(cfg: MigrationPlaybookConfig) -> MigrationPlaybookConfig {
+  let from_version = cfg.from_version
+  let to_version = cfg.to_version
+  if from_version.len == 0 { from_version = "0.0.0" }
+  if to_version.len == 0 { to_version = "0.0.1" }
+  give MigrationPlaybookConfig(from_version, to_version, cfg.dry_run)
+}
+
 proc validate_config(cfg: MigrationPlaybookConfig) -> MigrationPlaybookResult[bool] {
-  if migration_playbook_validate_pkg.valid_from_version(cfg.from_version) == false {
+  let nc = normalize_config(cfg)
+  if migration_playbook_validate_pkg.valid_from_version(nc.from_version) == false {
     give MigrationPlaybookResult.Err(MigrationPlaybookError.InvalidConfig)
   }
-  if migration_playbook_validate_pkg.valid_to_version(cfg.to_version) == false {
+  if migration_playbook_validate_pkg.valid_to_version(nc.to_version) == false {
     give MigrationPlaybookResult.Err(MigrationPlaybookError.InvalidConfig)
   }
   give MigrationPlaybookResult.Ok(true)
@@ -48,6 +68,12 @@ proc healthcheck(cfg: MigrationPlaybookConfig) -> MigrationPlaybookResult[bool] 
     give MigrationPlaybookResult.Err(MigrationPlaybookError.Internal)
   }
   give MigrationPlaybookResult.Ok(true)
+}
+
+proc runtime_info() -> MigrationPlaybookRuntimeInfo {
+  give MigrationPlaybookRuntimeInfo(migration_playbook_runtime_pkg.runtime_name(),
+                                    migration_playbook_runtime_pkg.runtime_version(),
+                                    migration_playbook_runtime_pkg.supports_diagnostics())
 }
 
 proc version() -> string {

@@ -39,8 +39,19 @@ form StdIoWatch {
   active: bool
 }
 
+form StdIoRuntimeInfo {
+  runtime_name: string
+  runtime_version: string
+  supports_diagnostics: bool
+}
+
 proc default_config() -> StdIoConfig {
   give StdIoConfig(true, std_io_policy_pkg.default_buffer_size(), true)
+}
+
+proc strict_config() -> StdIoConfig {
+  let cfg = default_config()
+  give StdIoConfig(cfg.text_mode, cfg.buffer_size, true)
 }
 
 proc normalize_config(cfg: StdIoConfig) -> StdIoConfig {
@@ -62,6 +73,12 @@ proc healthcheck(cfg: StdIoConfig) -> StdIoResult[bool] {
     give StdIoResult.Err(StdIoError.Internal)
   }
   give StdIoResult.Ok(true)
+}
+
+proc runtime_info() -> StdIoRuntimeInfo {
+  give StdIoRuntimeInfo(std_io_runtime_pkg.runtime_name(),
+                        std_io_runtime_pkg.runtime_version(),
+                        std_io_runtime_pkg.supports_diagnostics())
 }
 
 proc version() -> string {
@@ -536,7 +553,6 @@ boundary: Facade pure; details runtime sous internal/*
 compat_policy: additive-only
 api_version: v1
 >>>
-
 
 
 
