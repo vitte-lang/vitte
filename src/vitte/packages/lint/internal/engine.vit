@@ -103,6 +103,32 @@ proc issues_from_text(file: string, text: string, rules: [LintRule], cfg: LintCo
       if rules[i].id == "prefer-give" && contains(text, "return ") {
         out = out.push(make_issue("VITTE-I0012", LintSeverity.Info, file, 1, "prefer give as canonical return keyword", rules[i].id, rules[i].quickfix))
       }
+      if rules[i].id == "for-stability" && contains(text, "for ") && contains(text, " in ") {
+        out = out.push(make_issue("VITTE-I0013", LintSeverity.Warning, file, 1, "for-in usage should stay limited until lowering is fully stabilized", rules[i].id, rules[i].quickfix))
+      }
+      if rules[i].id == "let-make-set-role" && contains(text, "set ") && contains(text, " = ") {
+        out = out.push(make_issue("VITTE-I0014", LintSeverity.Info, file, 1, "clarify variable role: let declaration, make mutable declaration, set reassignment", rules[i].id, rules[i].quickfix))
+      }
+      if rules[i].id == "brace-blocks" && (contains(text, "\nend") || contains(text, ".end")) {
+        out = out.push(make_issue("VITTE-I0015", LintSeverity.Warning, file, 1, "prefer brace blocks { ... } over legacy terminators", rules[i].id, rules[i].quickfix))
+      }
+      if rules[i].id == "prefer-else" && contains(text, "otherwise") {
+        out = out.push(make_issue("VITTE-I0016", LintSeverity.Info, file, 1, "prefer else; otherwise is compatibility syntax", rules[i].id, rules[i].quickfix))
+      }
+      if rules[i].id == "prefer-match" && contains(text, "select ") && contains(text, "when ") {
+        out = out.push(make_issue("VITTE-I0017", LintSeverity.Info, file, 1, "prefer match/case for value branching in new code", rules[i].id, rules[i].quickfix))
+      }
+      if rules[i].id == "logical-keywords" && (contains(text, "&&") || contains(text, "||")) {
+        out = out.push(make_issue("VITTE-I0018", LintSeverity.Info, file, 1, "prefer logical keywords not/and/or over symbolic operators", rules[i].id, rules[i].quickfix))
+      }
+      if rules[i].id == "ambiguous-precedence" && contains(text, " = ") {
+        if (contains(text, " + ") && contains(text, " * ") && contains(text, "(") == false) {
+          out = out.push(make_issue("VITTE-I0019", LintSeverity.Warning, file, 1, "mixed arithmetic precedence without parentheses", rules[i].id, rules[i].quickfix))
+        }
+        if (contains(text, " and ") && contains(text, " or ") && contains(text, "(") == false) {
+          out = out.push(make_issue("VITTE-I0019", LintSeverity.Warning, file, 1, "mixed logical precedence without parentheses", rules[i].id, rules[i].quickfix))
+        }
+      }
       if rules[i].id == "facade-thin" && contains(text, "while true {") {
         out = out.push(make_issue("VITTE-I0005", LintSeverity.Info, file, 1, "facade may be too heavy", rules[i].id, rules[i].quickfix))
       }
@@ -179,6 +205,13 @@ proc diag_message(code: string) -> string {
   if code == "VITTE-I0006" { give "diagnostic namespace mismatch" }
   if code == "VITTE-I0011" { give "prefer positive while condition" }
   if code == "VITTE-I0012" { give "prefer give over return in canonical style" }
+  if code == "VITTE-I0013" { give "for-in usage should stay limited until lowering is fully stabilized" }
+  if code == "VITTE-I0014" { give "let/make/set roles should be explicit" }
+  if code == "VITTE-I0015" { give "brace block style is required in strict mode" }
+  if code == "VITTE-I0016" { give "prefer else over otherwise" }
+  if code == "VITTE-I0017" { give "prefer match/case for new value-branching code" }
+  if code == "VITTE-I0018" { give "prefer logical keywords not/and/or" }
+  if code == "VITTE-I0019" { give "add parentheses to disambiguate precedence" }
   if code == "VITTE-I0009" { give "rule perf budget exceeded" }
   give "unknown lint diagnostic"
 }
@@ -191,5 +224,12 @@ proc quickfix_for(code: string) -> string {
   if code == "VITTE-I0006" { give "replace code namespace with VITTE-I****" }
   if code == "VITTE-I0011" { give "rewrite while !(a >= b) to while a < b (or equivalent inverse)" }
   if code == "VITTE-I0012" { give "replace return expr with give expr in non-entry code" }
+  if code == "VITTE-I0013" { give "use while with explicit index/guard until for-in lowering is stabilized for your targets" }
+  if code == "VITTE-I0014" { give "declare with let/make, then reassign with set only" }
+  if code == "VITTE-I0015" { give "convert end/.end blocks to braces { ... }" }
+  if code == "VITTE-I0016" { give "replace otherwise with else in if/match branches" }
+  if code == "VITTE-I0017" { give "rewrite select/when into match/case for new code" }
+  if code == "VITTE-I0018" { give "replace &&/|| with and/or and use not for negation" }
+  if code == "VITTE-I0019" { give "add parentheses around mixed operators" }
   give "no quick-fix"
 }

@@ -7,7 +7,9 @@ It is stricter than parser acceptance.
 
 - Prefer `while` as the default loop form.
 - Avoid `loop` in new code.
-- Use `for ... in` only where backend lowering is confirmed stable for your target.
+- Treat `for ... in` as limited-use until lowering is fully stable on your target backend.
+- Prefer `match/case` for value branching in new code.
+- Keep `select/when` for compatibility-oriented contexts.
 
 Preferred:
 
@@ -41,14 +43,45 @@ Avoid: `while !(i >= n) { ... }`
   - `+=`, `-=`, `*=`, `/=`
 - Avoid verbose self-assignments (`x = x + 1`, etc.).
 
+## Variable Role Clarity
+
+- `let`: declaration (default).
+- `make`: mutable declaration intent.
+- `set`: reassignment.
+
+Do not blur declaration and reassignment roles inside the same code path.
+
 ## Return Keyword
 
 - `give` is the canonical return keyword in surface code.
 - `return` is accepted for compatibility but should be treated as legacy style in libraries/facades.
 
+## Block Syntax
+
+- Use braces `{ ... }` as the single canonical block style.
+- Avoid legacy terminators (`end`, `.end`) in new code.
+
+## Branch Fallback Keyword
+
+- Use `else` as canonical fallback keyword.
+- `otherwise` remains compatibility syntax only.
+
+## Logical Operators
+
+- Prefer `not`, `and`, `or`.
+- Avoid `&&` and `||` in canonical style.
+
+## Operator Precedence
+
+- Add parentheses whenever mixed operators could be ambiguous to a human reader.
+- Do not rely on implicit precedence in critical or shared code.
+
 ## Canonical Recommendation Summary
 
 1. Use `while` with positive conditions.
-2. Use compound assignment for arithmetic updates.
-3. Use `give` for returns.
-4. Keep `loop` and legacy forms out of new code unless explicitly required.
+2. Treat `for` as constrained until lowering is stable for your targets.
+3. Use `let`/`make`/`set` with explicit role separation.
+4. Use braces and `else` in canonical source.
+5. Prefer `match/case` over `select/when` for new value branching.
+6. Prefer keyword logical operators and explicit parentheses.
+7. Use compound assignments and `give` as canonical style.
