@@ -2,6 +2,32 @@
 // Top-level
 // ------------------------------------------------------------
 
+static void emit_pull_deprecation(DiagnosticEngine& diag, const SourceSpan& span, bool syntax_strict) {
+    (void)syntax_strict;
+    diag::Diagnostic deprec(
+        diag::Severity::Error,
+        "E1104",
+        "legacy syntax: 'pull' was removed from the stable grammar; use 'use'",
+        span
+    );
+    deprec.add_note("canonical import keyword is 'use'");
+    deprec.add_fix("rewrite import keyword", "use", span);
+    diag.emit(std::move(deprec));
+}
+
+static void emit_share_deprecation(DiagnosticEngine& diag, const SourceSpan& span, bool syntax_strict) {
+    (void)syntax_strict;
+    diag::Diagnostic deprec(
+        diag::Severity::Error,
+        "E1105",
+        "legacy syntax: 'share' was removed from the stable grammar",
+        span
+    );
+    deprec.add_note("canonical module surface uses explicit 'use ... as ...' imports and implicit exports");
+    deprec.add_fix("remove share declaration", "", span);
+    diag.emit(std::move(deprec));
+}
+
 DeclId Parser::parse_toplevel() {
     trace("parse_toplevel");
     if (strict_core_ && tokens::is_forbidden_in_core(current_.kind)) {
@@ -155,6 +181,7 @@ DeclId Parser::parse_space_decl() {
 DeclId Parser::parse_pull_decl() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwPull, "expected 'pull'");
+    emit_pull_deprecation(diag_, previous_.span, syntax_strict_);
     ModulePath path = parse_module_path();
     std::optional<Ident> alias;
     if (match(TokenKind::KwAs)) {
@@ -245,6 +272,7 @@ DeclId Parser::parse_use_decl() {
 DeclId Parser::parse_share_decl() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwShare, "expected 'share'");
+    emit_share_deprecation(diag_, previous_.span, syntax_strict_);
     bool share_all = false;
     std::vector<Ident> names;
     if (match(TokenKind::KwAll)) {
