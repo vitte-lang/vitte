@@ -34,6 +34,7 @@ struct Options {
     bool parse_silent = false;
     bool strict_parse = false;
     bool strict_core = false;
+    bool syntax_strict = false;
     bool trace_parse = false;
     bool trace_resolve = false;
     int panic_budget = 0;
