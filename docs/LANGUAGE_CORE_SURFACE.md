@@ -27,15 +27,13 @@ This file defines the frozen core grammar surface that must remain stable unless
 - `proc`
 - `entry`
 - `use`
-- `pull`
-- `share`
 - `let`
 - `give`
 - blocks `{ ... }`
 - simple calls
 - assignment
-- `if` / `else` / `otherwise`
-- `loop`
+- `if` / `else`
+- `while`
 - `for`
 - `break`
 - `continue`
@@ -57,10 +55,6 @@ Only these top-level forms are in the protected core surface:
 - `entry name at module/path { ... }`
 - `use package/path`
 - `use package/path as alias`
-- `pull module/path`
-- `pull module/path as alias`
-- `share all`
-- `share a, b, c`
 
 Not part of the frozen top-level core surface:
 
@@ -84,13 +78,11 @@ Only these statement forms are in the protected core surface:
 - `give expr`
 - `if cond { ... }`
 - `if cond { ... } else { ... }`
-- `if cond { ... } otherwise { ... }`
-- `loop { ... }`
 - `while cond { ... }`
 - `for item in expr { ... }`
 - `break`
 - `continue`
-- `match expr { case Pattern { ... } otherwise { ... } }`
+- `match expr { case Pattern { ... } else { ... } }`
 - `unsafe { ... }`
 - `asm("...")`
 - expression statements based on simple calls and assignment
@@ -104,6 +96,8 @@ Not part of the frozen statement core surface:
 - `select`
 - `when`
 - `when ... is ...`
+- `otherwise`
+- `loop`
 - statement forms that exist only as parser convenience or experimental surface
 
 ### Canonical Expression Surface
@@ -133,10 +127,7 @@ The frozen module core is the following:
 
 - `entry` uses `entry name at module/path { ... }`
 - `entry` module paths stay canonical
-- `pull` and `use` stay top-level only
-- `share` stays top-level only
-- one module declares at most one `share` surface
-- explicit `share` lists refer only to real local or aliased public symbols
+- `use` stays top-level only
 
 Explicitly excluded from the protected module core:
 
@@ -147,15 +138,12 @@ Explicitly excluded from the protected module core:
 ### Core Semantic Invariants
 
 - typed procedures must not fall off the end without returning a value
-- typed-procedure return analysis is conservative for `loop` and `for`
+- typed-procedure return analysis is conservative for `while` and `for`
 - entry names must stay unique within one module
 - entry module paths must stay canonical
-- modules must not declare multiple `share` surfaces
 - imported binding names must stay unique within one module
 - imported binding names must not collide with local declaration names in one module
 - local declaration names must stay unique within one module
-- explicit `share` lists must reference real local or aliased public symbols
-- declared `share` lists define the exported surface when present
 - duplicate glob aliases of the same underlying module must not create false public export conflicts
 - module-alias member and type access must stay inside the declared exported surface
 - symbol imports must stay inside the declared exported surface of a module

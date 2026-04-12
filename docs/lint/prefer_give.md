@@ -5,7 +5,7 @@ Rule id: `prefer-give`
 ## Intent
 
 Use `give` as the canonical return keyword in surface Vitte code.
-`return` remains accepted for compatibility and specific contexts, but is not the preferred style.
+`return` is legacy and removed from the stable grammar.
 
 ## Examples
 

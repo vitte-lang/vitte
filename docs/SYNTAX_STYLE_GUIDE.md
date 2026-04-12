@@ -2,12 +2,14 @@
 
 This guide defines the recommended canonical writing style for Vitte code.
 It is stricter than parser acceptance.
+For the policy baseline used by codemod/lint workflows, see `docs/VITTE_1X_CANONICAL_STYLE.md`.
 
 ## Control Flow
 
 - Prefer `while` as the default loop form.
-- Avoid `loop` in new code.
-- Treat `for ... in` as limited-use until lowering is fully stable on your target backend.
+- Avoid `loop`; it is legacy and removed from the stable grammar.
+- `for ... in` is the canonical collection iteration form.
+- Current lowering contract for `for ... in` is index-based iteration (`len` + index access).
 - Prefer `match/case` for value branching in new code.
 - Keep `select/when` for compatibility-oriented contexts.
 
@@ -40,7 +42,7 @@ Avoid: `while !(i >= n) { ... }`
 ## Increments And Assignment
 
 - Prefer compound assignment:
-  - `+=`, `-=`, `*=`, `/=`
+  - `+=`, `-=`, `*=`, `/=`, `%=`
 - Direct statement form is allowed and recommended for fluency: `x += 1` (no `set` required).
 - Avoid verbose self-assignments (`x = x + 1`, etc.).
 - In multiline calls/signatures/constructors, prefer trailing commas.
@@ -65,7 +67,7 @@ Do not blur declaration and reassignment roles inside the same code path.
 ## Return Keyword
 
 - `give` is the canonical return keyword in surface code.
-- `return` is accepted for compatibility but should be treated as legacy style in libraries/facades.
+- `return` is legacy and removed from the stable grammar.
 
 ## Block Syntax
 
@@ -75,7 +77,7 @@ Do not blur declaration and reassignment roles inside the same code path.
 ## Branch Fallback Keyword
 
 - Use `else` as canonical fallback keyword.
-- `otherwise` remains compatibility syntax only.
+- `otherwise` is legacy and removed from the stable grammar.
 
 ## Pattern Matching
 
@@ -101,6 +103,6 @@ Do not blur declaration and reassignment roles inside the same code path.
 4. Prefer trailing commas in multiline lists.
 5. Use braces and `else` in canonical source.
 6. Prefer `match/case` over `select/when` for new value branching.
-7. Prefer `use` as primary import primitive; keep `pull`/`share` minimal.
+7. Use `use` as the single primary import primitive; migrate away from `pull`/`share`.
 8. Prefer keyword logical operators and explicit parentheses.
 9. Use compound assignments and `give` as canonical style.
