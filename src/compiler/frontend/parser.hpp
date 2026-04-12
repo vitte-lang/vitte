@@ -48,7 +48,8 @@ public:
            bool strict_core,
            bool trace_parse,
            int panic_budget,
-           int panic_budget_notes = 0);
+           int panic_budget_notes = 0,
+           bool syntax_strict = false);
 
     ast::ModuleId parse_module();
     const ParseMetrics& metrics() const { return metrics_; }
@@ -163,6 +164,7 @@ private:
     AstContext& ast_ctx_;
     bool strict_;
     bool strict_core_;
+    bool syntax_strict_ = false;
     bool trace_parse_ = false;
     int panic_budget_ = 0;
     int panic_budget_notes_ = 0;
