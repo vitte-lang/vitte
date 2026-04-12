@@ -88,6 +88,7 @@ enum class TokenKind {
     Star,
     StarEqual,
     Percent,
+    PercentEqual,
     SlashEqual,
     Amp,
     Pipe,
