@@ -120,11 +120,19 @@ proc validate_config(cfg: MigrateConfig, plan: Plan) -> MigrateConfigResult[bool
   give MigrateConfigResult.Ok(true)
 }
 
+proc validate_config(cfg: MigrateConfig) -> MigrateConfigResult[bool] {
+  give validate_config(cfg, plan_new())
+}
+
 proc healthcheck(cfg: MigrateConfig, plan: Plan) -> MigrateConfigResult[bool] {
   let vr = validate_config(cfg, plan)
   when vr is MigrateConfigResult.Err { give MigrateConfigResult.Err(vr.error) }
   if migrate_runtime_pkg.runtime_status() == false { give MigrateConfigResult.Err(MigrateConfigError.Internal) }
   give MigrateConfigResult.Ok(true)
+}
+
+proc healthcheck(cfg: MigrateConfig) -> MigrateConfigResult[bool] {
+  give healthcheck(cfg, plan_new())
 }
 
 proc runtime_info() -> MigrateRuntimeInfo {
@@ -178,9 +186,13 @@ proc diagnostics_namespace() -> string {
 }
 
 proc validate_config_code(cfg: MigrateConfig, plan: Plan) -> string {
-  let vr = validate_config(cfg)
+  let vr = validate_config(cfg, plan)
   when vr is MigrateConfigResult.Err { give diagnostics_namespace() + "0001" }
   give diagnostics_namespace() + "0000"
+}
+
+proc validate_config_code(cfg: MigrateConfig) -> string {
+  give validate_config_code(cfg, plan_new())
 }
 
 proc api_compatible_with(version: string) -> bool {
@@ -240,8 +252,12 @@ proc healthcheck_code(cfg: MigrateConfig, plan: Plan) -> string {
   give diagnostics_namespace() + "0000"
 }
 
+proc healthcheck_code(cfg: MigrateConfig) -> string {
+  give healthcheck_code(cfg, plan_new())
+}
+
 proc healthcheck_default_code() -> string {
-  give healthcheck_code(default_config(), plan_new())
+  give healthcheck_code(default_config())
 }
 
 proc contract_caps_csv() -> string {
