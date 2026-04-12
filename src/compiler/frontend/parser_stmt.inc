@@ -2,6 +2,42 @@
 // Blocks / statements
 // ------------------------------------------------------------
 
+static void emit_removed_loop_syntax(DiagnosticEngine& diag, const SourceSpan& span) {
+    diag::Diagnostic deprec(
+        diag::Severity::Error,
+        "E1101",
+        "legacy syntax: 'loop' was removed from the stable grammar; use 'while true'",
+        span
+    );
+    deprec.add_note("canonical loop form is 'while true { ... }'");
+    deprec.add_fix("rewrite loop to canonical while form", "while true { ... }", span);
+    diag.emit(std::move(deprec));
+}
+
+static void emit_removed_otherwise_syntax(DiagnosticEngine& diag, const SourceSpan& span) {
+    diag::Diagnostic deprec(
+        diag::Severity::Error,
+        "E1102",
+        "legacy syntax: 'otherwise' was removed from the stable grammar; use 'else'",
+        span
+    );
+    deprec.add_note("canonical fallback keyword is 'else'");
+    deprec.add_fix("rewrite fallback keyword", "else", span);
+    diag.emit(std::move(deprec));
+}
+
+static void emit_removed_return_syntax(DiagnosticEngine& diag, const SourceSpan& span, bool has_expr) {
+    diag::Diagnostic deprec(
+        diag::Severity::Error,
+        "E1103",
+        "legacy syntax: 'return' was removed from the stable grammar; use 'give'",
+        span
+    );
+    deprec.add_note("canonical return keyword is 'give'");
+    deprec.add_fix("rewrite return keyword", has_expr ? "give <expr>" : "give", span);
+    diag.emit(std::move(deprec));
+}
+
 StmtId Parser::parse_block() {
     SourceSpan span = current_.span;
     expect(TokenKind::LBrace, "expected '{'");
@@ -136,6 +172,8 @@ StmtId Parser::parse_set_stmt() {
         assign_op = TokenKind::StarEqual;
     } else if (match(TokenKind::SlashEqual)) {
         assign_op = TokenKind::SlashEqual;
+    } else if (match(TokenKind::PercentEqual)) {
+        assign_op = TokenKind::PercentEqual;
     } else {
         expect(TokenKind::Equal, "expected '='");
     }
@@ -157,6 +195,10 @@ StmtId Parser::parse_set_stmt() {
             break;
         case TokenKind::SlashEqual:
             compound_op = BinaryOp::Div;
+            has_compound = true;
+            break;
+        case TokenKind::PercentEqual:
+            compound_op = BinaryOp::Mod;
             has_compound = true;
             break;
         default:
@@ -206,7 +248,18 @@ StmtId Parser::parse_if_stmt() {
     ExprId cond = parse_expr();
     StmtId then_block = parse_block();
     StmtId else_block = ast::kInvalidAstId;
-    if (match(TokenKind::KwElse) || match(TokenKind::KwOtherwise)) {
+    if (match(TokenKind::KwElse)) {
+        if (current_.kind == TokenKind::KwIf) {
+            auto nested_if = parse_if_stmt();
+            std::vector<StmtId> stmts;
+            stmts.push_back(nested_if);
+            SourceSpan block_span = ast_ctx_.get<Stmt>(nested_if).span;
+            else_block = ast_ctx_.make<BlockStmt>(std::move(stmts), block_span);
+        } else {
+            else_block = parse_block();
+        }
+    } else if (match(TokenKind::KwOtherwise)) {
+        emit_removed_otherwise_syntax(diag_, previous_.span);
         if (current_.kind == TokenKind::KwIf) {
             auto nested_if = parse_if_stmt();
             std::vector<StmtId> stmts;
@@ -228,6 +281,7 @@ StmtId Parser::parse_if_stmt() {
 StmtId Parser::parse_loop_stmt() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwLoop, "expected 'loop'");
+    emit_removed_loop_syntax(diag_, previous_.span);
     StmtId body = parse_block();
     span.end = ast_ctx_.get<Stmt>(body).span.end;
     return ast_ctx_.make<LoopStmt>(body, span);
@@ -296,6 +350,7 @@ StmtId Parser::parse_select_stmt() {
     }
     StmtId otherwise_block = ast::kInvalidAstId;
     if (match(TokenKind::KwOtherwise)) {
+        emit_removed_otherwise_syntax(diag_, previous_.span);
         otherwise_block = parse_block();
     }
     span.end = previous_.span.end;
@@ -320,6 +375,11 @@ StmtId Parser::parse_match_stmt() {
             if (match(TokenKind::KwIf)) {
                 guard = parse_expr();
             }
+            if (current_.kind != TokenKind::LBrace) {
+                expect(TokenKind::LBrace, "expected '{' after match case pattern");
+                sync_to_match_arm_boundary();
+                continue;
+            }
             StmtId block = parse_block();
             whens.push_back(ast_ctx_.make<WhenStmt>(
                 pat,
@@ -328,7 +388,12 @@ StmtId Parser::parse_match_stmt() {
                 ast_ctx_.get<Stmt>(block).span));
             continue;
         }
-        if (match(TokenKind::KwOtherwise) || match(TokenKind::KwElse)) {
+        if (match(TokenKind::KwOtherwise)) {
+            emit_removed_otherwise_syntax(diag_, previous_.span);
+            otherwise_block = parse_block();
+            continue;
+        }
+        if (match(TokenKind::KwElse)) {
             otherwise_block = parse_block();
             continue;
         }
@@ -412,6 +477,7 @@ StmtId Parser::parse_return_stmt() {
     if (is_expr_start(current_.kind)) {
         expr = parse_expr();
     }
+    emit_removed_return_syntax(diag_, span, expr != ast::kInvalidAstId);
     span.end = previous_.span.end;
     return ast_ctx_.make<ReturnStmt>(expr, span);
 }
