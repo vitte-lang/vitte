@@ -25,6 +25,9 @@ struct LoadOptions {
     bool warn_experimental = false;
     bool deny_internal = true;
     bool allow_legacy_self_leaf = true;
+    bool legacy_self_leaf_warn_only = false;
+    bool strict_legacy_forms = false;
+    bool syntax_strict = false;
 };
 
 std::string module_prefix(const ast::ModulePath& path);
