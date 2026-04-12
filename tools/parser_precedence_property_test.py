@@ -22,7 +22,14 @@ def load_precedence(repo: Path) -> dict[str, tuple[int, str]]:
         prec = int(row.get("precedence", 0))
         assoc = str(row.get("assoc", "left"))
         if op:
-            out[op] = (prec, assoc)
+            prev = out.get(op)
+            if prev is None:
+                out[op] = (prec, assoc)
+            else:
+                prev_prec, prev_assoc = prev
+                merged_prec = max(prev_prec, prec)
+                merged_assoc = "right" if (prev_assoc == "right" or assoc == "right") else "left"
+                out[op] = (merged_prec, merged_assoc)
     return out
 
 

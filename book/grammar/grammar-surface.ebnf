@@ -1,9 +1,9 @@
 # GENERATED FILE - DO NOT EDIT
 # grammar_version: 1
 # source: src/vitte/grammar/vitte.ebnf
-# source_commit: 1e635dc0fb6c63cb45f8e7b771acd214d92f3b24
-# source_date: 2026-04-05T19:19:40+02:00
-# generated_at: 2026-04-05T19:19:40+02:00
+# source_commit: a171f97a77a4006bbf4366232b151f88c94b2cd7
+# source_date: 2026-04-09T22:42:40+02:00
+# generated_at: 2026-04-09T22:42:40+02:00
 # tool: book/grammar/scripts/sync_grammar.py v1
 <<< ========================================================= ) ( Vitte — Core Grammar (minimal surface) ) ( ========================================================= >>>
 
@@ -64,6 +64,8 @@ ident_list ::= ident { WS? "," WS? ident } ;
 block ::= "{" WS? { stmt WS? } "}" ;
 
 stmt ::= let_stmt
+       | asm_stmt
+       | unsafe_stmt
        | make_stmt
        | set_stmt
        | give_stmt
@@ -74,12 +76,15 @@ stmt ::= let_stmt
        | for_stmt
        | break_stmt
        | continue_stmt
+       | select_stmt
        | match_stmt
        | when_match_stmt
        | return_stmt
        | expr_stmt
        ;
 
+asm_stmt ::= "asm" WS? "(" WS? string_lit WS? ")" ;
+unsafe_stmt ::= "unsafe" WS? block ;
 let_stmt  ::= "let" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
 make_stmt ::= "make" WS1 ident [ WS1 "as" WS1 type_expr ] WS? "=" WS? expr ;
 set_stmt  ::= "set" WS1 ident WS? "=" WS? expr ;
@@ -97,6 +102,7 @@ for_stmt ::= "for" WS1 ident WS1 "in" WS1 expr WS? block ;
 break_stmt ::= "break" ;
 continue_stmt ::= "continue" ;
 
+select_stmt ::= "select" WS1 expr WS? { "when" WS1 pattern WS? block WS? } [ WS? "otherwise" WS? block ] ;
 match_stmt ::= "match" WS1 expr WS?
                "{" WS? { "case" WS1 pattern WS? block WS? } [ WS? ("else" | "otherwise") WS? block ] "}" ;
 when_match_stmt ::= "when" WS1 expr WS1 "is" WS1 pattern WS? block ;

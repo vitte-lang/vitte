@@ -40,6 +40,7 @@ Use it to find the shortest path to the document you actually need.
 - `docs/LANGUAGE_CORE_SURFACE.md`
 - `docs/LANGUAGE_CORE_TEST_PLAN.md`
 - `docs/GENERIC_CALL_SYNTAX.md`
+- `docs/SYNTAX_STYLE_GUIDE.md`
 
 ## Compiler / Toolchain
 

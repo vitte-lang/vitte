@@ -123,21 +123,49 @@ StmtId Parser::parse_set_stmt() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwSet, "expected 'set'");
     Ident name = parse_ident();
-    bool plus_equal = false;
+    TokenKind assign_op = TokenKind::Equal;
     if (match(TokenKind::PlusEqual)) {
-        plus_equal = true;
+        assign_op = TokenKind::PlusEqual;
+    } else if (match(TokenKind::MinusEqual)) {
+        assign_op = TokenKind::MinusEqual;
+    } else if (match(TokenKind::StarEqual)) {
+        assign_op = TokenKind::StarEqual;
+    } else if (match(TokenKind::SlashEqual)) {
+        assign_op = TokenKind::SlashEqual;
     } else {
         expect(TokenKind::Equal, "expected '='");
     }
     ExprId value = parse_expr();
-    if (plus_equal) {
+    BinaryOp compound_op = BinaryOp::Add;
+    bool has_compound = false;
+    switch (assign_op) {
+        case TokenKind::PlusEqual:
+            compound_op = BinaryOp::Add;
+            has_compound = true;
+            break;
+        case TokenKind::MinusEqual:
+            compound_op = BinaryOp::Sub;
+            has_compound = true;
+            break;
+        case TokenKind::StarEqual:
+            compound_op = BinaryOp::Mul;
+            has_compound = true;
+            break;
+        case TokenKind::SlashEqual:
+            compound_op = BinaryOp::Div;
+            has_compound = true;
+            break;
+        default:
+            break;
+    }
+    if (has_compound) {
         SourceSpan name_span = name.span;
         ExprId lhs = ast_ctx_.make<IdentExpr>(name, name_span);
         SourceSpan add_span = name_span;
         if (value != ast::kInvalidAstId) {
             add_span.end = ast_ctx_.get<Expr>(value).span.end;
         }
-        value = ast_ctx_.make<BinaryExpr>(BinaryOp::Add, lhs, value, add_span);
+        value = ast_ctx_.make<BinaryExpr>(compound_op, lhs, value, add_span);
     }
     span.end = value != ast::kInvalidAstId
         ? ast_ctx_.get<Expr>(value).span.end

@@ -97,6 +97,12 @@ proc issues_from_text(file: string, text: string, rules: [LintRule], cfg: LintCo
       if rules[i].id == "export-naming" && contains(text, "proc ") && contains(text, "-") {
         out = out.push(make_issue("VITTE-I0004", LintSeverity.Warning, file, 1, "invalid export naming style", rules[i].id, rules[i].quickfix))
       }
+      if rules[i].id == "while-not" && contains(text, "while !(") {
+        out = out.push(make_issue("VITTE-I0011", LintSeverity.Warning, file, 1, "prefer positive while conditions", rules[i].id, rules[i].quickfix))
+      }
+      if rules[i].id == "prefer-give" && contains(text, "return ") {
+        out = out.push(make_issue("VITTE-I0012", LintSeverity.Info, file, 1, "prefer give as canonical return keyword", rules[i].id, rules[i].quickfix))
+      }
       if rules[i].id == "facade-thin" && contains(text, "while true {") {
         out = out.push(make_issue("VITTE-I0005", LintSeverity.Info, file, 1, "facade may be too heavy", rules[i].id, rules[i].quickfix))
       }
@@ -171,6 +177,8 @@ proc diag_message(code: string) -> string {
   if code == "VITTE-I0004" { give "export naming violation" }
   if code == "VITTE-I0005" { give "facade-thin warning" }
   if code == "VITTE-I0006" { give "diagnostic namespace mismatch" }
+  if code == "VITTE-I0011" { give "prefer positive while condition" }
+  if code == "VITTE-I0012" { give "prefer give over return in canonical style" }
   if code == "VITTE-I0009" { give "rule perf budget exceeded" }
   give "unknown lint diagnostic"
 }
@@ -181,5 +189,7 @@ proc quickfix_for(code: string) -> string {
   if code == "VITTE-I0003" { give "add allowlist or remove sensitive import" }
   if code == "VITTE-I0004" { give "rename symbol to snake_case/PascalCase" }
   if code == "VITTE-I0006" { give "replace code namespace with VITTE-I****" }
+  if code == "VITTE-I0011" { give "rewrite while !(a >= b) to while a < b (or equivalent inverse)" }
+  if code == "VITTE-I0012" { give "replace return expr with give expr in non-entry code" }
   give "no quick-fix"
 }

@@ -10,6 +10,7 @@ Related documents:
 - `docs/LANGUAGE_CORE_CHECKLIST.md`
 - `docs/LANGUAGE_CORE_TEST_PLAN.md`
 - `docs/GENERIC_CALL_SYNTAX.md`
+- `docs/SYNTAX_STYLE_GUIDE.md`
 - `docs/API_LIFECYCLE.md`
 
 ## Stable Core Path

@@ -7,7 +7,35 @@ static int precedence(TokenKind kind) {
 }
 
 static bool is_assignment_op(TokenKind kind) {
-    return kind == TokenKind::Equal || kind == TokenKind::PlusEqual;
+    switch (kind) {
+        case TokenKind::Equal:
+        case TokenKind::PlusEqual:
+        case TokenKind::MinusEqual:
+        case TokenKind::StarEqual:
+        case TokenKind::SlashEqual:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool compound_assignment_binary_op(TokenKind kind, BinaryOp& out) {
+    switch (kind) {
+        case TokenKind::PlusEqual:
+            out = BinaryOp::Add;
+            return true;
+        case TokenKind::MinusEqual:
+            out = BinaryOp::Sub;
+            return true;
+        case TokenKind::StarEqual:
+            out = BinaryOp::Mul;
+            return true;
+        case TokenKind::SlashEqual:
+            out = BinaryOp::Div;
+            return true;
+        default:
+            return false;
+    }
 }
 
 static bool is_toplevel_sync_kind(TokenKind kind) {
@@ -140,11 +168,12 @@ ExprId Parser::parse_expr() {
             }
             SourceSpan span = ast_ctx_.get<Expr>(lhs).span;
             span.end = ast_ctx_.get<Expr>(rhs).span.end;
-            if (op == TokenKind::PlusEqual) {
+            BinaryOp compound_op = BinaryOp::Add;
+            if (compound_assignment_binary_op(op, compound_op)) {
                 SourceSpan add_span = ast_ctx_.get<Expr>(lhs).span;
                 add_span.end = ast_ctx_.get<Expr>(rhs).span.end;
                 ExprId add_expr = ast_ctx_.make<BinaryExpr>(
-                    BinaryOp::Add,
+                    compound_op,
                     lhs,
                     rhs,
                     add_span);

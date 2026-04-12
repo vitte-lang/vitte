@@ -237,6 +237,10 @@ Token Lexer::next() {
         case '.':
             return make(TokenKind::Dot, ".", start, index_);
         case '/':
+            if (peek() == '=') {
+                advance();
+                return make(TokenKind::SlashEqual, "/=", start, index_);
+            }
             return make(TokenKind::Slash, "/", start, index_);
         case '+':
             if (peek() == '=') {
@@ -245,12 +249,20 @@ Token Lexer::next() {
             }
             return make(TokenKind::Plus, "+", start, index_);
         case '-':
+            if (peek() == '=') {
+                advance();
+                return make(TokenKind::MinusEqual, "-=", start, index_);
+            }
             if (peek() == '>') {
                 advance();
                 return make(TokenKind::Arrow, "->", start, index_);
             }
             return make(TokenKind::Minus, "-", start, index_);
         case '*':
+            if (peek() == '=') {
+                advance();
+                return make(TokenKind::StarEqual, "*=", start, index_);
+            }
             return make(TokenKind::Star, "*", start, index_);
         case '%':
             return make(TokenKind::Percent, "%", start, index_);
