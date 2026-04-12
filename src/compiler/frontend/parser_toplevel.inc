@@ -137,6 +137,9 @@ std::vector<AttributeArg> Parser::parse_attribute_args() {
         if (!match(TokenKind::Comma)) {
             break;
         }
+        if (current_.kind == TokenKind::RParen) {
+            break;
+        }
     }
     return args;
 }
@@ -338,6 +341,9 @@ DeclId Parser::parse_form_decl() {
         TypeId ty = parse_type_expr();
         fields.emplace_back(std::move(field_name), ty);
         if (match(TokenKind::Comma)) {
+            if (current_.kind == TokenKind::RBrace) {
+                break;
+            }
             continue;
         }
     }
@@ -397,6 +403,9 @@ DeclId Parser::parse_proc_decl(std::vector<Attribute> attrs) {
         }
         params.emplace_back(std::move(param_name), param_type);
         while (match(TokenKind::Comma)) {
+            if (current_.kind == TokenKind::RParen) {
+                break;
+            }
             Ident next_name = parse_ident();
             TypeId next_type = ast::kInvalidAstId;
             if (match(TokenKind::Colon)) {
@@ -455,16 +464,19 @@ CaseDecl Parser::parse_case_decl() {
     Ident name = parse_ident();
     std::vector<CaseField> fields;
     if (match(TokenKind::LParen)) {
-        if (current_.kind != TokenKind::RParen) {
-            Ident field_name = parse_ident();
-            expect(TokenKind::KwAs, "expected 'as'");
-            fields.emplace_back(std::move(field_name), parse_type_expr());
-            while (match(TokenKind::Comma)) {
-                Ident next_name = parse_ident();
+            if (current_.kind != TokenKind::RParen) {
+                Ident field_name = parse_ident();
                 expect(TokenKind::KwAs, "expected 'as'");
-                fields.emplace_back(std::move(next_name), parse_type_expr());
+                fields.emplace_back(std::move(field_name), parse_type_expr());
+                while (match(TokenKind::Comma)) {
+                    if (current_.kind == TokenKind::RParen) {
+                        break;
+                    }
+                    Ident next_name = parse_ident();
+                    expect(TokenKind::KwAs, "expected 'as'");
+                    fields.emplace_back(std::move(next_name), parse_type_expr());
+                }
             }
-        }
         expect(TokenKind::RParen, "expected ')'");
     }
     return CaseDecl(std::move(name), std::move(fields));
@@ -478,6 +490,9 @@ std::vector<Ident> Parser::parse_type_params() {
     if (current_.kind != TokenKind::RBracket) {
         params.push_back(parse_ident());
         while (match(TokenKind::Comma)) {
+            if (current_.kind == TokenKind::RBracket) {
+                break;
+            }
             params.push_back(parse_ident());
         }
     }

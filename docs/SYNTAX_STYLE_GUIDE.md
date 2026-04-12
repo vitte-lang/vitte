@@ -42,12 +42,15 @@ Avoid: `while !(i >= n) { ... }`
 - Prefer compound assignment:
   - `+=`, `-=`, `*=`, `/=`
 - Avoid verbose self-assignments (`x = x + 1`, etc.).
+- In multiline calls/signatures/constructors, prefer trailing commas.
 
 ## Variable Role Clarity
 
 - `let`: declaration (default).
 - `make`: mutable declaration intent.
 - `set`: reassignment.
+- For long function types (`proc(...) -> ...`), extract named type aliases.
+- For verbose generic/composite signatures, prefer alias-based compact forms.
 
 Do not blur declaration and reassignment roles inside the same code path.
 
@@ -81,7 +84,9 @@ Do not blur declaration and reassignment roles inside the same code path.
 1. Use `while` with positive conditions.
 2. Treat `for` as constrained until lowering is stable for your targets.
 3. Use `let`/`make`/`set` with explicit role separation.
-4. Use braces and `else` in canonical source.
-5. Prefer `match/case` over `select/when` for new value branching.
-6. Prefer keyword logical operators and explicit parentheses.
-7. Use compound assignments and `give` as canonical style.
+4. Prefer trailing commas in multiline lists.
+5. Use braces and `else` in canonical source.
+6. Prefer `match/case` over `select/when` for new value branching.
+7. Prefer `use` as primary import primitive; keep `pull`/`share` minimal.
+8. Prefer keyword logical operators and explicit parentheses.
+9. Use compound assignments and `give` as canonical style.

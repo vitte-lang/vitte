@@ -483,6 +483,9 @@ ExprId Parser::try_parse_generic_ctor_call_expr(ExprId base) {
     if (current_.kind != TokenKind::RBracket) {
         type_args.push_back(parse_type_expr());
         while (match(TokenKind::Comma)) {
+            if (current_.kind == TokenKind::RBracket) {
+                break;
+            }
             type_args.push_back(parse_type_expr());
         }
     }
@@ -611,6 +614,9 @@ ExprId Parser::parse_proc_expr() {
         }
         params.emplace_back(std::move(param_name), param_type);
         while (match(TokenKind::Comma)) {
+            if (current_.kind == TokenKind::RParen) {
+                break;
+            }
             Ident next_name = parse_ident();
             TypeId next_type = ast::kInvalidAstId;
             if (match(TokenKind::Colon)) {
@@ -657,6 +663,9 @@ std::vector<ExprId> Parser::parse_arg_list() {
     std::vector<ExprId> args;
     args.push_back(parse_expr());
     while (match(TokenKind::Comma)) {
+        if (current_.kind == TokenKind::RParen || current_.kind == TokenKind::RBracket || current_.kind == TokenKind::RBrace) {
+            break;
+        }
         args.push_back(parse_expr());
     }
     return args;

@@ -106,6 +106,20 @@ proc issues_from_text(file: string, text: string, rules: [LintRule], cfg: LintCo
       if rules[i].id == "for-stability" && contains(text, "for ") && contains(text, " in ") {
         out = out.push(make_issue("VITTE-I0013", LintSeverity.Warning, file, 1, "for-in usage should stay limited until lowering is fully stabilized", rules[i].id, rules[i].quickfix))
       }
+      if rules[i].id == "trailing-comma" && contains(text, "\n") {
+        if contains(text, ",\n)") == false && (contains(text, "(\n") || contains(text, "[\n") || contains(text, "{\n")) {
+          out = out.push(make_issue("VITTE-I0020", LintSeverity.Info, file, 1, "prefer trailing commas in multiline lists", rules[i].id, rules[i].quickfix))
+        }
+      }
+      if rules[i].id == "function-type-alias" && contains(text, "proc(") && contains(text, "->") && contains(text, "type ") == false {
+        out = out.push(make_issue("VITTE-I0021", LintSeverity.Info, file, 1, "long function type signatures should be extracted into aliases", rules[i].id, rules[i].quickfix))
+      }
+      if rules[i].id == "generic-signature-sugar" && contains(text, "[") && contains(text, "]") && contains(text, "->") {
+        out = out.push(make_issue("VITTE-I0022", LintSeverity.Info, file, 1, "verbose generic/composite signatures should use compact aliases", rules[i].id, rules[i].quickfix))
+      }
+      if rules[i].id == "import-primitives" && (contains(text, "pull ") || contains(text, "share ")) {
+        out = out.push(make_issue("VITTE-I0023", LintSeverity.Info, file, 1, "reduce import surface primitives in new code", rules[i].id, rules[i].quickfix))
+      }
       if rules[i].id == "let-make-set-role" && contains(text, "set ") && contains(text, " = ") {
         out = out.push(make_issue("VITTE-I0014", LintSeverity.Info, file, 1, "clarify variable role: let declaration, make mutable declaration, set reassignment", rules[i].id, rules[i].quickfix))
       }
@@ -212,6 +226,10 @@ proc diag_message(code: string) -> string {
   if code == "VITTE-I0017" { give "prefer match/case for new value-branching code" }
   if code == "VITTE-I0018" { give "prefer logical keywords not/and/or" }
   if code == "VITTE-I0019" { give "add parentheses to disambiguate precedence" }
+  if code == "VITTE-I0020" { give "prefer trailing commas in multiline lists" }
+  if code == "VITTE-I0021" { give "prefer named aliases for long function signatures" }
+  if code == "VITTE-I0022" { give "prefer compact aliases for verbose generic signatures" }
+  if code == "VITTE-I0023" { give "reduce import primitives in canonical style" }
   if code == "VITTE-I0009" { give "rule perf budget exceeded" }
   give "unknown lint diagnostic"
 }
@@ -231,5 +249,9 @@ proc quickfix_for(code: string) -> string {
   if code == "VITTE-I0017" { give "rewrite select/when into match/case for new code" }
   if code == "VITTE-I0018" { give "replace &&/|| with and/or and use not for negation" }
   if code == "VITTE-I0019" { give "add parentheses around mixed operators" }
+  if code == "VITTE-I0020" { give "add trailing comma to multiline call/type/field lists" }
+  if code == "VITTE-I0021" { give "define a type alias for proc(...) -> ... and reuse it" }
+  if code == "VITTE-I0022" { give "extract nested generic/composite signatures into named aliases" }
+  if code == "VITTE-I0023" { give "prefer use; keep pull/share only where strictly needed" }
   give "no quick-fix"
 }
