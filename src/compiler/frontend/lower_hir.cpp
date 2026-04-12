@@ -27,7 +27,8 @@ static ir::HirStmtId lower_block(
     ir::HirContext& hir_ctx,
     diag::DiagnosticEngine& diagnostics,
     const std::unordered_set<std::string>& type_names,
-    const std::unordered_map<std::string, bool>& enum_like);
+    const std::unordered_map<std::string, bool>& enum_like,
+    std::size_t& tmp_counter);
 
 static ir::HirPatternId lower_pattern(
     const AstContext& ctx,
@@ -41,7 +42,8 @@ static ir::HirStmtId lower_stmt(
     ir::HirContext& hir_ctx,
     diag::DiagnosticEngine& diagnostics,
     const std::unordered_set<std::string>& type_names,
-    const std::unordered_map<std::string, bool>& enum_like);
+    const std::unordered_map<std::string, bool>& enum_like,
+    std::size_t& tmp_counter);
 
 static ir::HirTypeId lower_type(
     const AstContext& ctx,
@@ -356,7 +358,8 @@ static ir::HirStmtId lower_block(
     ir::HirContext& hir_ctx,
     diag::DiagnosticEngine& diagnostics,
     const std::unordered_set<std::string>& type_names,
-    const std::unordered_map<std::string, bool>& enum_like)
+    const std::unordered_map<std::string, bool>& enum_like,
+    std::size_t& tmp_counter)
 {
     if (block_id == kInvalidAstId) {
         return ir::kInvalidHirId;
@@ -365,7 +368,7 @@ static ir::HirStmtId lower_block(
     auto& block = ctx.get<BlockStmt>(block_id);
     std::vector<ir::HirStmtId> out;
     for (auto s : block.stmts) {
-        auto hs = lower_stmt(ctx, s, hir_ctx, diagnostics, type_names, enum_like);
+        auto hs = lower_stmt(ctx, s, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
         if (hs != ir::kInvalidHirId) {
             out.push_back(hs);
         }
@@ -379,7 +382,8 @@ static ir::HirStmtId lower_stmt(
     ir::HirContext& hir_ctx,
     diag::DiagnosticEngine& diagnostics,
     const std::unordered_set<std::string>& type_names,
-    const std::unordered_map<std::string, bool>& enum_like)
+    const std::unordered_map<std::string, bool>& enum_like,
+    std::size_t& tmp_counter)
 {
     if (stmt == kInvalidAstId) {
         return ir::kInvalidHirId;
@@ -388,7 +392,7 @@ static ir::HirStmtId lower_stmt(
     const AstNode& node = ctx.node(stmt);
     switch (node.kind) {
         case NodeKind::BlockStmt: {
-            return lower_block(ctx, stmt, hir_ctx, diagnostics, type_names, enum_like);
+            return lower_block(ctx, stmt, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
         }
         case NodeKind::UnsafeStmt: {
             auto& s = static_cast<const UnsafeStmt&>(node);
@@ -400,7 +404,7 @@ static ir::HirStmtId lower_stmt(
                 return hir_ctx.make<ir::HirExprStmt>(call, s.span);
             };
             stmts.push_back(mk_call("unsafe_begin"));
-            auto inner_block = lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like);
+            auto inner_block = lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
             if (inner_block != ir::kInvalidHirId) {
                 if (hir_ctx.node(inner_block).kind == ir::HirKind::Block) {
                     auto& b = hir_ctx.get<ir::HirBlock>(inner_block);
@@ -479,16 +483,16 @@ static ir::HirStmtId lower_stmt(
             auto& s = static_cast<const IfStmt&>(node);
             return hir_ctx.make<ir::HirIf>(
                 lower_expr(ctx, s.cond, hir_ctx, diagnostics, type_names, enum_like),
-                lower_block(ctx, s.then_block, hir_ctx, diagnostics, type_names, enum_like),
+                lower_block(ctx, s.then_block, hir_ctx, diagnostics, type_names, enum_like, tmp_counter),
                 s.else_block != kInvalidAstId
-                    ? lower_block(ctx, s.else_block, hir_ctx, diagnostics, type_names, enum_like)
+                    ? lower_block(ctx, s.else_block, hir_ctx, diagnostics, type_names, enum_like, tmp_counter)
                     : ir::kInvalidHirId,
                 s.span);
         }
         case NodeKind::LoopStmt: {
             auto& s = static_cast<const LoopStmt&>(node);
             return hir_ctx.make<ir::HirLoop>(
-                lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like),
+                lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter),
                 s.span);
         }
         case NodeKind::BreakStmt: {
@@ -498,6 +502,86 @@ static ir::HirStmtId lower_stmt(
         case NodeKind::ContinueStmt: {
             auto& s = static_cast<const ContinueStmt&>(node);
             return hir_ctx.make<ir::HirContinue>(s.span);
+        }
+        case NodeKind::ForStmt: {
+            auto& s = static_cast<const ForStmt&>(node);
+            if (s.iterable != kInvalidAstId) {
+                const auto& iterable_node = ctx.node(s.iterable);
+                if (iterable_node.kind == NodeKind::LiteralExpr) {
+                    const auto& lit = static_cast<const LiteralExpr&>(iterable_node);
+                    if (lit.lit_kind != LiteralKind::String) {
+                        diag::Diagnostic d(
+                            diag::Severity::Error,
+                            "E1109",
+                            "for-in expects an iterable value (collection or iterable expression), not a scalar literal",
+                            lit.span
+                        );
+                        d.add_note("current for-in lowering expects len/index iteration semantics");
+                        d.add_fix("iterate over a list/expression with len and index semantics", "for x in [ ... ] { ... }", lit.span);
+                        diagnostics.emit(std::move(d));
+                        return ir::kInvalidHirId;
+                    }
+                }
+            }
+
+            const std::string tmp_iter = "__for_iter_" + std::to_string(tmp_counter++);
+            const std::string tmp_idx = "__for_idx_" + std::to_string(tmp_counter++);
+
+            std::vector<ir::HirStmtId> lowered;
+            lowered.reserve(4);
+
+            auto iter_init = lower_expr(ctx, s.iterable, hir_ctx, diagnostics, type_names, enum_like);
+            lowered.push_back(hir_ctx.make<ir::HirLetStmt>(tmp_iter, ir::kInvalidHirId, iter_init, s.span));
+
+            auto zero = hir_ctx.make<ir::HirLiteralExpr>(ir::HirLiteralKind::Int, "0", s.span);
+            lowered.push_back(hir_ctx.make<ir::HirLetStmt>(tmp_idx, ir::kInvalidHirId, zero, s.span));
+
+            auto idx_var = hir_ctx.make<ir::HirVarExpr>(tmp_idx, s.span);
+            auto iter_var_for_len = hir_ctx.make<ir::HirVarExpr>(tmp_iter, s.span);
+            auto len_member = hir_ctx.make<ir::HirMemberExpr>(
+                iter_var_for_len,
+                "len",
+                false,
+                false,
+                false,
+                s.span);
+            auto cond = hir_ctx.make<ir::HirBinaryExpr>(ir::HirBinaryOp::Lt, idx_var, len_member, s.span);
+            auto not_cond = hir_ctx.make<ir::HirUnaryExpr>(ir::HirUnaryOp::Not, cond, s.span);
+            auto break_stmt = hir_ctx.make<ir::HirBreak>(s.span);
+            std::vector<ir::HirStmtId> break_stmts;
+            break_stmts.push_back(break_stmt);
+            auto break_block = hir_ctx.make<ir::HirBlock>(std::move(break_stmts), s.span);
+            auto guard_if = hir_ctx.make<ir::HirIf>(not_cond, break_block, ir::kInvalidHirId, s.span);
+
+            std::vector<ir::HirStmtId> loop_body_stmts;
+            loop_body_stmts.push_back(guard_if);
+
+            auto iter_var_for_item = hir_ctx.make<ir::HirVarExpr>(tmp_iter, s.span);
+            auto idx_var_for_item = hir_ctx.make<ir::HirVarExpr>(tmp_idx, s.span);
+            auto item_expr = hir_ctx.make<ir::HirIndexExpr>(iter_var_for_item, idx_var_for_item, s.span);
+            loop_body_stmts.push_back(hir_ctx.make<ir::HirLetStmt>(s.ident.name, ir::kInvalidHirId, item_expr, s.span));
+
+            auto lowered_user_body = lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
+            if (lowered_user_body != ir::kInvalidHirId) {
+                const auto& lowered_node = hir_ctx.node(lowered_user_body);
+                if (lowered_node.kind == ir::HirKind::Block) {
+                    const auto& lowered_block = hir_ctx.get<ir::HirBlock>(lowered_user_body);
+                    loop_body_stmts.insert(loop_body_stmts.end(), lowered_block.stmts.begin(), lowered_block.stmts.end());
+                } else {
+                    loop_body_stmts.push_back(lowered_user_body);
+                }
+            }
+
+            auto idx_var_lhs = hir_ctx.make<ir::HirVarExpr>(tmp_idx, s.span);
+            auto idx_var_rhs = hir_ctx.make<ir::HirVarExpr>(tmp_idx, s.span);
+            auto one = hir_ctx.make<ir::HirLiteralExpr>(ir::HirLiteralKind::Int, "1", s.span);
+            auto plus_one = hir_ctx.make<ir::HirBinaryExpr>(ir::HirBinaryOp::Add, idx_var_rhs, one, s.span);
+            auto assign_next = hir_ctx.make<ir::HirBinaryExpr>(ir::HirBinaryOp::Assign, idx_var_lhs, plus_one, s.span);
+            loop_body_stmts.push_back(hir_ctx.make<ir::HirExprStmt>(assign_next, s.span));
+
+            auto loop_body = hir_ctx.make<ir::HirBlock>(std::move(loop_body_stmts), s.span);
+            lowered.push_back(hir_ctx.make<ir::HirLoop>(loop_body, s.span));
+            return hir_ctx.make<ir::HirBlock>(std::move(lowered), s.span);
         }
         case NodeKind::SelectStmt: {
             auto& s = static_cast<const SelectStmt&>(node);
@@ -512,12 +596,12 @@ static ir::HirStmtId lower_stmt(
                     w.guard != kInvalidAstId
                         ? lower_expr(ctx, w.guard, hir_ctx, diagnostics, type_names, enum_like)
                         : ir::kInvalidHirId,
-                    lower_block(ctx, w.block, hir_ctx, diagnostics, type_names, enum_like),
+                    lower_block(ctx, w.block, hir_ctx, diagnostics, type_names, enum_like, tmp_counter),
                     w.span));
             }
             ir::HirStmtId otherwise_block = ir::kInvalidHirId;
             if (s.otherwise_block != kInvalidAstId) {
-                otherwise_block = lower_block(ctx, s.otherwise_block, hir_ctx, diagnostics, type_names, enum_like);
+                otherwise_block = lower_block(ctx, s.otherwise_block, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
             }
             return hir_ctx.make<ir::HirSelect>(
                 lower_expr(ctx, s.expr, hir_ctx, diagnostics, type_names, enum_like),
@@ -532,7 +616,7 @@ static ir::HirStmtId lower_stmt(
                 w.guard != kInvalidAstId
                     ? lower_expr(ctx, w.guard, hir_ctx, diagnostics, type_names, enum_like)
                     : ir::kInvalidHirId,
-                lower_block(ctx, w.block, hir_ctx, diagnostics, type_names, enum_like),
+                lower_block(ctx, w.block, hir_ctx, diagnostics, type_names, enum_like, tmp_counter),
                 w.span);
         }
         default:
@@ -555,6 +639,7 @@ ir::HirModuleId lower_to_hir(
     std::vector<ir::HirDeclId> decls;
     std::unordered_set<std::string> type_names;
     std::unordered_map<std::string, bool> enum_like;
+    std::size_t tmp_counter = 0;
 
     for (auto decl_id : module.decls) {
         if (decl_id == kInvalidAstId) {
@@ -596,7 +681,7 @@ ir::HirModuleId lower_to_hir(
                     std::move(params),
                     lower_type(ctx, d.return_type, hir_ctx),
                     d.body != kInvalidAstId
-                        ? lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like)
+                        ? lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter)
                         : ir::kInvalidHirId,
                     !d.type_params.empty(),
                     d.span));
@@ -612,7 +697,7 @@ ir::HirModuleId lower_to_hir(
                     d.name.name,
                     std::move(params),
                     ir::kInvalidHirId,
-                    lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like),
+                    lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter),
                     false,
                     d.span));
                 break;
@@ -643,7 +728,7 @@ ir::HirModuleId lower_to_hir(
                     d.name.name,
                     std::move(params),
                     ir::kInvalidHirId,
-                    lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like),
+                    lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter),
                     false,
                     d.span));
                 break;
