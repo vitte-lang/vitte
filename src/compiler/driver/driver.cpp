@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
@@ -1366,7 +1367,7 @@ static bool build_module_index_for_tooling(const Options& opts,
     frontend::Lexer lexer(source, opts.input);
     ast_ctx.sources.push_back(lexer.source_file());
     frontend::parser::Parser parser(
-        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget, opts.panic_budget_notes);
+        lexer, diagnostics, ast_ctx, opts.strict_parse, opts.strict_core, opts.trace_parse, opts.panic_budget, opts.panic_budget_notes, opts.syntax_strict);
     auto root = parser.parse_module();
     root_out = root;
 
@@ -1376,6 +1377,9 @@ static bool build_module_index_for_tooling(const Options& opts,
     load_opts.warn_experimental = opts.warn_experimental;
     load_opts.deny_internal = opts.deny_internal;
     load_opts.allow_legacy_self_leaf = opts.allow_legacy_self_leaf;
+    load_opts.legacy_self_leaf_warn_only = opts.legacy_self_leaf_warn_only;
+    load_opts.strict_legacy_forms = opts.strict_modules || opts.syntax_strict;
+    load_opts.syntax_strict = opts.syntax_strict;
     frontend::modules::load_modules(ast_ctx, root, diagnostics, opts.input, index, load_opts);
     frontend::modules::rewrite_member_access(ast_ctx, root, index, &diagnostics);
     return !diagnostics.has_errors();
@@ -1422,6 +1426,164 @@ static bool rewrite_legacy_import_path(const std::string& import_path, std::stri
     }
     fallback_alias = parts[parts.size() - 2];
     return true;
+}
+
+struct CanonicalStyleRewriteResult {
+    std::size_t changes = 0;
+    bool while_not_ge_rewritten = false;
+    bool loop_rewritten = false;
+    std::size_t otherwise_rewritten = 0;
+    std::size_t pull_rewritten = 0;
+    std::size_t share_removed = 0;
+    std::size_t return_rewritten = 0;
+    std::size_t and_rewritten = 0;
+    std::size_t or_rewritten = 0;
+    std::size_t not_rewritten = 0;
+    std::size_t set_compound_rewritten = 0;
+};
+
+static std::size_t find_comment_start_outside_strings(const std::string& line) {
+    bool in_single = false;
+    bool in_double = false;
+    bool escaped = false;
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        const char c = line[i];
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (c == '\\' && (in_single || in_double)) {
+            escaped = true;
+            continue;
+        }
+        if (!in_double && c == '\'') {
+            in_single = !in_single;
+            continue;
+        }
+        if (!in_single && c == '"') {
+            in_double = !in_double;
+            continue;
+        }
+        if (!in_single && !in_double && c == '#') {
+            return i;
+        }
+    }
+    return std::string::npos;
+}
+
+static CanonicalStyleRewriteResult apply_canonical_style_rewrites(std::string& line) {
+    CanonicalStyleRewriteResult out;
+
+    const std::size_t comment_start = find_comment_start_outside_strings(line);
+    std::string code = comment_start == std::string::npos
+        ? line
+        : line.substr(0, comment_start);
+    const std::string suffix = comment_start == std::string::npos
+        ? std::string()
+        : line.substr(comment_start);
+
+    static const std::regex while_not_ge_re(
+        R"((^\s*while\s+)!\(\s*([A-Za-z_][A-Za-z0-9_.\[\]]*)\s*>=\s*([A-Za-z_][A-Za-z0-9_.\[\]]*)\s*\)(\s*\{.*)$)"
+    );
+    std::smatch while_m;
+    if (std::regex_match(code, while_m, while_not_ge_re)) {
+        code = while_m[1].str() + while_m[2].str() + " < " + while_m[3].str() + while_m[4].str();
+        out.while_not_ge_rewritten = true;
+        out.changes += 1;
+    }
+
+    static const std::regex loop_re(
+        R"((^\s*)loop(\s*\{.*)$)"
+    );
+    std::smatch loop_m;
+    if (std::regex_match(code, loop_m, loop_re)) {
+        code = loop_m[1].str() + "while true" + loop_m[2].str();
+        out.loop_rewritten = true;
+        out.changes += 1;
+    }
+
+    static const std::regex otherwise_re(R"(\botherwise\b)");
+    for (std::sregex_iterator it(code.begin(), code.end(), otherwise_re), end; it != end; ++it) {
+        ++out.otherwise_rewritten;
+    }
+    if (out.otherwise_rewritten > 0) {
+        code = std::regex_replace(code, otherwise_re, "else");
+        out.changes += out.otherwise_rewritten;
+    }
+
+    static const std::regex pull_re(R"((^\s*)pull(\s+.*$))");
+    std::smatch pull_m;
+    if (std::regex_match(code, pull_m, pull_re)) {
+        code = pull_m[1].str() + "use" + pull_m[2].str();
+        out.pull_rewritten = 1;
+        out.changes += 1;
+    }
+
+    static const std::regex share_re(R"(^\s*share\b.*$)");
+    if (std::regex_match(code, share_re)) {
+        code.clear();
+        out.share_removed = 1;
+        out.changes += 1;
+    }
+
+    static const std::regex return_re(R"((^\s*)return(\b.*$))");
+    std::smatch return_m;
+    if (std::regex_match(code, return_m, return_re)) {
+        code = return_m[1].str() + "give" + return_m[2].str();
+        out.return_rewritten = 1;
+        out.changes += 1;
+    }
+
+    static const std::regex and_re(R"(\&\&)");
+    for (std::sregex_iterator it(code.begin(), code.end(), and_re), end; it != end; ++it) {
+        ++out.and_rewritten;
+    }
+    if (out.and_rewritten > 0) {
+        code = std::regex_replace(code, and_re, " and ");
+        out.changes += out.and_rewritten;
+    }
+
+    static const std::regex or_re(R"(\|\|)");
+    for (std::sregex_iterator it(code.begin(), code.end(), or_re), end; it != end; ++it) {
+        ++out.or_rewritten;
+    }
+    if (out.or_rewritten > 0) {
+        code = std::regex_replace(code, or_re, " or ");
+        out.changes += out.or_rewritten;
+    }
+
+    static const std::regex not_re(R"((^|[^=!<>])!\s*([A-Za-z_(\[]))");
+    std::string rewritten_not;
+    rewritten_not.reserve(code.size() + 8);
+    std::size_t cursor = 0;
+    for (std::sregex_iterator it(code.begin(), code.end(), not_re), end; it != end; ++it) {
+        const auto& m = *it;
+        rewritten_not.append(code, cursor, static_cast<std::size_t>(m.position()) - cursor);
+        rewritten_not.append(m[1].str());
+        rewritten_not.append("not ");
+        rewritten_not.append(m[2].str());
+        cursor = static_cast<std::size_t>(m.position() + m.length());
+        ++out.not_rewritten;
+    }
+    if (out.not_rewritten > 0) {
+        rewritten_not.append(code, cursor, std::string::npos);
+        code = std::move(rewritten_not);
+        out.changes += out.not_rewritten;
+    }
+
+    static const std::regex set_compound_re(
+        R"((^\s*)set\s+([A-Za-z_][A-Za-z0-9_]*)\s*(\+=|-=|\*=|/=|%=)\s*(.+)$)"
+    );
+    std::smatch set_compound_m;
+    if (std::regex_match(code, set_compound_m, set_compound_re)) {
+        code = set_compound_m[1].str() + set_compound_m[2].str() + " " +
+               set_compound_m[3].str() + " " + set_compound_m[4].str();
+        out.set_compound_rewritten = 1;
+        out.changes += 1;
+    }
+
+    line = code + suffix;
+    return out;
 }
 
 static std::unordered_set<std::string> reachable_from(
@@ -1659,6 +1821,9 @@ static int run_mod_doctor(const Options& opts) {
     std::size_t issues = 0;
     auto& root = ast_ctx.get<frontend::ast::Module>(root_id);
     const std::string input_file_abs = std::filesystem::weakly_canonical(std::filesystem::path(opts.input)).string();
+    const bool is_package_facade =
+        std::filesystem::path(input_file_abs).filename() == "mod.vit" &&
+        input_file_abs.find("/src/vitte/packages/") != std::string::npos;
     auto is_input_decl = [&](const frontend::ast::Decl& decl) -> bool {
         if (decl.span.file == nullptr) {
             return false;
@@ -1684,10 +1849,91 @@ static int run_mod_doctor(const Options& opts) {
         std::ifstream in(opts.input);
         if (in.is_open()) {
             const std::regex legacy_re(R"(^\s*(use|pull)\s+([A-Za-z0-9_./]+)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?)");
+            const std::regex grouped_use_re(R"(^\s*use\s+[A-Za-z0-9_./]+\s*\.\s*\{)");
             std::string line;
             while (std::getline(in, line)) {
+                std::string canon_line = line;
+                const auto style_result = apply_canonical_style_rewrites(canon_line);
+                if (style_result.while_not_ge_rewritten) {
+                    ++issues;
+                    std::cout << "[doctor] canonical style: rewrite 'while !(a >= b)' as 'while a < b'\n";
+                    if (opts.mod_doctor_fix) {
+                        std::cout << "  fix: " << canon_line << "\n";
+                    }
+                }
+                if (style_result.loop_rewritten) {
+                    ++issues;
+                    std::cout << "[doctor] canonical style: replace legacy 'loop' with 'while true'\n";
+                    if (opts.mod_doctor_fix) {
+                        std::cout << "  fix: " << canon_line << "\n";
+                    }
+                }
+                if (style_result.otherwise_rewritten > 0) {
+                    ++issues;
+                    std::cout << "[doctor] canonical style: replace legacy 'otherwise' with 'else'\n";
+                    if (opts.mod_doctor_fix) {
+                        std::cout << "  fix: " << canon_line << "\n";
+                    }
+                }
+                if (style_result.pull_rewritten > 0) {
+                    ++issues;
+                    std::cout << "[doctor] canonical style: replace legacy import keyword 'pull' with 'use'\n";
+                    if (opts.mod_doctor_fix) {
+                        std::cout << "  fix: " << canon_line << "\n";
+                    }
+                }
+                if (style_result.share_removed > 0) {
+                    ++issues;
+                    std::cout << "[doctor] canonical style: remove deprecated 'share' declaration\n";
+                    if (opts.mod_doctor_fix) {
+                        std::cout << "  fix: " << (canon_line.empty() ? "<remove line>" : canon_line) << "\n";
+                    }
+                }
+                if (style_result.return_rewritten > 0) {
+                    ++issues;
+                    std::cout << "[doctor] canonical style: replace legacy 'return' with 'give'\n";
+                    if (opts.mod_doctor_fix) {
+                        std::cout << "  fix: " << canon_line << "\n";
+                    }
+                }
+                if (style_result.and_rewritten > 0) {
+                    ++issues;
+                    std::cout << "[doctor] canonical style: replace symbolic '&&' with 'and'\n";
+                    if (opts.mod_doctor_fix) {
+                        std::cout << "  fix: " << canon_line << "\n";
+                    }
+                }
+                if (style_result.or_rewritten > 0) {
+                    ++issues;
+                    std::cout << "[doctor] canonical style: replace symbolic '||' with 'or'\n";
+                    if (opts.mod_doctor_fix) {
+                        std::cout << "  fix: " << canon_line << "\n";
+                    }
+                }
+                if (style_result.not_rewritten > 0) {
+                    ++issues;
+                    std::cout << "[doctor] canonical style: replace symbolic '!' with 'not'\n";
+                    if (opts.mod_doctor_fix) {
+                        std::cout << "  fix: " << canon_line << "\n";
+                    }
+                }
+                if (style_result.set_compound_rewritten > 0) {
+                    ++issues;
+                    std::cout << "[doctor] canonical style: replace 'set <name> <op>= ...' with direct compound assignment\n";
+                    if (opts.mod_doctor_fix) {
+                        std::cout << "  fix: " << canon_line << "\n";
+                    }
+                }
+
                 std::smatch m;
                 if (!std::regex_search(line, m, legacy_re)) {
+                    if (is_package_facade && std::regex_search(line, grouped_use_re)) {
+                        ++issues;
+                        std::cout << "[doctor] package facade style: grouped imports are forbidden\n";
+                        if (opts.mod_doctor_fix) {
+                            std::cout << "  fix: split grouped imports into one 'use <path>/<item> as <alias>' per line\n";
+                        }
+                    }
                     continue;
                 }
                 const std::string kind = m[1].str();
@@ -1742,15 +1988,21 @@ static int run_mod_doctor(const Options& opts) {
             } else {
                 alias_span[u.alias->name] = u.alias->span;
             }
-            if (u.is_glob && opts.mod_doctor_fix) {
-                std::string key = slash_path(u.path);
-                if (auto pfx = index.path_to_prefix.find(key); pfx != index.path_to_prefix.end()) {
-                    if (auto ex = index.exports.find(pfx->second); ex != index.exports.end()) {
-                        std::vector<std::string> names(ex->second.begin(), ex->second.end());
-                        std::sort(names.begin(), names.end());
-                        std::cout << "  fix: replace glob with explicit imports:\n";
-                        for (const auto& n : names) {
-                            std::cout << "    use " << key << "/" << n << " as " << n << "\n";
+            if (u.is_glob) {
+                if (is_package_facade) {
+                    ++issues;
+                    std::cout << "[doctor] package facade style: glob imports are forbidden\n";
+                }
+                if (opts.mod_doctor_fix) {
+                    std::string key = slash_path(u.path);
+                    if (auto pfx = index.path_to_prefix.find(key); pfx != index.path_to_prefix.end()) {
+                        if (auto ex = index.exports.find(pfx->second); ex != index.exports.end()) {
+                            std::vector<std::string> names(ex->second.begin(), ex->second.end());
+                            std::sort(names.begin(), names.end());
+                            std::cout << "  fix: replace glob with explicit imports:\n";
+                            for (const auto& n : names) {
+                                std::cout << "    use " << key << "/" << n << " as " << n << "\n";
+                            }
                         }
                     }
                 }
@@ -1777,6 +2029,14 @@ static int run_mod_doctor(const Options& opts) {
                 }
             } else {
                 alias_span[p.alias->name] = p.alias->span;
+            }
+            if (is_package_facade) {
+                ++issues;
+                std::cout << "[doctor] package facade style: pull imports are forbidden (use explicit 'use ... as ...')\n";
+                if (opts.mod_doctor_fix && p.alias.has_value()) {
+                    std::string canonical = slash_path(p.path);
+                    std::cout << "  fix: use " << canonical << " as " << p.alias->name << "\n";
+                }
             }
         }
     }
@@ -1897,6 +2157,9 @@ static int run_mod_doctor(const Options& opts) {
         }
         const std::regex rw_re(R"(^(\s*)(use|pull)(\s+)([A-Za-z0-9_./]+)(.*)$)");
         for (auto& ln : lines) {
+            const auto style_result = apply_canonical_style_rewrites(ln);
+            rewrite_count += style_result.changes;
+
             std::smatch m;
             if (!std::regex_match(ln, m, rw_re)) {
                 continue;
@@ -1951,7 +2214,7 @@ static int run_mod_migrate_imports(const Options& opts) {
     std::size_t scanned = 0;
     std::size_t candidates = 0;
     std::size_t rewritten_files = 0;
-    std::size_t rewritten_imports = 0;
+    std::size_t rewritten_edits = 0;
     const std::regex rw_re(R"(^(\s*)(use|pull)(\s+)([A-Za-z0-9_./]+)(.*)$)");
 
     for (const auto& root : roots) {
@@ -1974,6 +2237,9 @@ static int run_mod_migrate_imports(const Options& opts) {
 
             std::size_t local_rewrites = 0;
             for (auto& ln : lines) {
+                const auto style_result = apply_canonical_style_rewrites(ln);
+                local_rewrites += style_result.changes;
+
                 std::smatch m;
                 if (!std::regex_match(ln, m, rw_re)) continue;
                 std::string canonical;
@@ -1988,7 +2254,7 @@ static int run_mod_migrate_imports(const Options& opts) {
 
             if (local_rewrites == 0) continue;
             ++candidates;
-            rewritten_imports += local_rewrites;
+            rewritten_edits += local_rewrites;
             std::cout << "[migrate-imports] candidate: " << it->path().string()
                       << " rewrites=" << local_rewrites << "\n";
 
@@ -2015,7 +2281,7 @@ static int run_mod_migrate_imports(const Options& opts) {
     std::cout << "[migrate-imports] scanned=" << scanned
               << " candidates=" << candidates
               << " rewritten_files=" << rewritten_files
-              << " rewritten_imports=" << rewritten_imports << "\n";
+              << " rewritten_edits=" << rewritten_edits << "\n";
 
     if (!opts.mod_migrate_write && candidates > 0) {
         return 1;
@@ -2201,14 +2467,17 @@ int run(int argc, char** argv) {
 
     if (opts.syntax_profile == "core-v1") {
         opts.strict_core = true;
+        opts.strict_parse = true;
     } else if (opts.syntax_profile == "stable-v1" || opts.syntax_profile == "legacy-v1") {
-        // accepted profiles
+        if (opts.syntax_profile == "stable-v1") {
+            // Stable profile freezes keyword vocabulary (no permissive identifier fallback).
+            opts.strict_parse = true;
+        }
     } else {
         std::cerr << "[driver] error: invalid --syntax-profile/--syntax-version '" << opts.syntax_profile
                   << "' (expected stable-v1|core-v1|legacy-v1)\n";
         return 1;
     }
-
     if (opts.target == "kernel") {
         opts.target = "kernel-x86_64-grub";
     }
