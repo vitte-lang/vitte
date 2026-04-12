@@ -184,7 +184,7 @@ proc fold_chain(values: [int], op: string) -> ConstResult {
     let r = eval(ConstExpr(op, acc, values[i]))
     if r.error != ConstError.None { give r }
     acc = r.value
-    i = i + 1
+    i += 1
   }
   give ok(acc)
 }
@@ -211,7 +211,7 @@ proc fold_chain_checked(values: [int], op: string, cfg: ConstEvalConfig) -> Cons
       give ConstEvalResult.Ok(er.value)
     }
     acc = er.value.value
-    i = i + 1
+    i += 1
   }
 
   give ConstEvalResult.Ok(ok(acc))
@@ -294,7 +294,7 @@ proc const_health(exprs: [ConstExpr]) -> string {
   while i < exprs.len {
     let r = eval(exprs[i])
     if r.error != ConstError.None { give "invalid" }
-    i = i + 1
+    i += 1
   }
   give "ok"
 }
@@ -314,7 +314,7 @@ proc eval_pow(base: int, exp: int) -> ConstResult {
   let i: int = 0
   while i < exp {
     out = out * base
-    i = i + 1
+    i += 1
   }
   give ok(out)
 }
@@ -324,7 +324,7 @@ proc eval_many(exprs: [ConstExpr]) -> [ConstResult] {
   let i: int = 0
   while i < exprs.len {
     out = out.push(eval(exprs[i]))
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -343,7 +343,7 @@ proc eval_many_checked(exprs: [ConstExpr], cfg: ConstEvalConfig) -> ConstEvalRes
     let r = eval_checked(exprs[i], cfg)
     when r is ConstEvalResult.Err { give ConstEvalResult.Err(r.error) }
     out = out.push(r.value)
-    i = i + 1
+    i += 1
   }
   give ConstEvalResult.Ok(out)
 }
@@ -352,8 +352,8 @@ proc error_count(results: [ConstResult]) -> int {
   let c: int = 0
   let i: int = 0
   while i < results.len {
-    if results[i].error != ConstError.None { c = c + 1 }
-    i = i + 1
+    if results[i].error != ConstError.None { c += 1 }
+    i += 1
   }
   give c
 }
@@ -366,16 +366,16 @@ proc const_eval_stats(results: [ConstResult]) -> ConstEvalStats {
   while i < results.len {
 
     if results[i].error != ConstError.None {
-      errors = errors + 1
+      errors += 1
     }
     if results[i].error == ConstError.Overflow {
-      overflow_count = overflow_count + 1
+      overflow_count += 1
     }
     if results[i].error == ConstError.DivisionByZero {
-      div0_count = div0_count + 1
+      div0_count += 1
     }
 
-    i = i + 1
+    i += 1
   }
   give ConstEvalStats(results.len, errors, overflow_count, div0_count)
 }
@@ -564,7 +564,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

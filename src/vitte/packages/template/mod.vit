@@ -104,7 +104,7 @@ proc contains(ctx: Context, key: string) -> bool {
   let i: int = 0
   while i < ctx.vars.len {
     if ctx.vars[i].key == key { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -113,7 +113,7 @@ proc get(ctx: Context, key: string) -> TemplateResult[string] {
   let i: int = 0
   while i < ctx.vars.len {
     if ctx.vars[i].key == key { give TemplateResult.Ok(ctx.vars[i].value) }
-    i = i + 1
+    i += 1
   }
   give TemplateResult.Err(TemplateError.MissingPlaceholder)
 }
@@ -136,7 +136,7 @@ proc put(ctx: Context, key: string, value: string) -> TemplateResult[Context] {
     } else {
       out = out.push(ctx.vars[i])
     }
-    i = i + 1
+    i += 1
   }
 
   if !found {
@@ -156,7 +156,7 @@ proc remove(ctx: Context, key: string) -> Context {
     if ctx.vars[i].key != key {
       out = out.push(ctx.vars[i])
     }
-    i = i + 1
+    i += 1
   }
   give Context(out)
 }
@@ -171,7 +171,7 @@ proc replace_once(text: string, needle: string, replacement: string) -> string {
     if text.slice(i, i + needle.len) == needle {
       give text.slice(0, i) + replacement + text.slice(i + needle.len, text.len)
     }
-    i = i + 1
+    i += 1
   }
   give text
 }
@@ -184,7 +184,7 @@ proc contains_text(text: string, needle: string) -> bool {
   let i: int = 0
   while i <= last {
     if text.slice(i, i + needle.len) == needle { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -196,7 +196,7 @@ proc replace_all(text: string, needle: string, replacement: string) -> string {
   let guard: int = 0
   while contains_text(out, needle) {
     out = replace_once(out, needle, replacement)
-    guard = guard + 1
+    guard += 1
     if guard > template_policy_pkg.max_template_len() { break }
   }
   give out
@@ -214,7 +214,7 @@ proc find_substring_from(text: string, needle: string, start: int) -> int {
   let i: int = begin
   while i <= last {
     if text.slice(i, i + needle.len) == needle { give i }
-    i = i + 1
+    i += 1
   }
   give -1
 }
@@ -243,7 +243,7 @@ proc analyze_with_config(text: string, ctx: Context, cfg: TemplateConfig) -> Tem
       let tail = text.slice(i, text.len)
       if tail.len > 0 {
         tokens = tokens.push(TemplateToken(tail, "", false))
-        literal_count = literal_count + 1
+        literal_count += 1
       }
       break
     }
@@ -251,7 +251,7 @@ proc analyze_with_config(text: string, ctx: Context, cfg: TemplateConfig) -> Tem
     if open_at > i {
       let lit = text.slice(i, open_at)
       tokens = tokens.push(TemplateToken(lit, "", false))
-      literal_count = literal_count + 1
+      literal_count += 1
     }
 
     let key_start = open_at + cfg.open_delim.len
@@ -259,17 +259,17 @@ proc analyze_with_config(text: string, ctx: Context, cfg: TemplateConfig) -> Tem
     if close_at < 0 {
       let raw = text.slice(open_at, text.len)
       tokens = tokens.push(TemplateToken(raw, "", false))
-      literal_count = literal_count + 1
+      literal_count += 1
       break
     }
 
     let key = text.slice(key_start, close_at)
     let raw = text.slice(open_at, close_at + cfg.close_delim.len)
     tokens = tokens.push(TemplateToken(raw, key, true))
-    placeholder_count = placeholder_count + 1
+    placeholder_count += 1
 
     if contains(ctx, key) == false {
-      missing_count = missing_count + 1
+      missing_count += 1
       missing_keys = missing_keys.push(key)
     }
 
@@ -301,7 +301,7 @@ proc render_with_config(text: string, ctx: Context, cfg: TemplateConfig) -> Temp
   while i < ctx.vars.len {
     let token = cfg.open_delim + ctx.vars[i].key + cfg.close_delim
     out = replace_all(out, token, ctx.vars[i].value)
-    i = i + 1
+    i += 1
   }
 
   if template_validate_pkg.valid_template_len(out.len, template_policy_pkg.max_output_len()) == false {
@@ -336,7 +336,7 @@ proc template_validate_code(text: string, ctx: Context, cfg: TemplateConfig) -> 
   while i < ctx.vars.len {
     if template_validate_pkg.valid_key(ctx.vars[i].key, template_policy_pkg.max_key_len()) == false { give "invalid-key" }
     if template_validate_pkg.valid_value(ctx.vars[i].value, template_policy_pkg.max_value_len()) == false { give "invalid-value" }
-    i = i + 1
+    i += 1
   }
 
   give "ok"
@@ -361,7 +361,7 @@ proc template_normalize(ctx: Context, cfg: TemplateConfig) -> TemplateNormalized
       }
     }
 
-    i = i + 1
+    i += 1
   }
 
   let open_delim = cfg.open_delim
@@ -619,7 +619,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

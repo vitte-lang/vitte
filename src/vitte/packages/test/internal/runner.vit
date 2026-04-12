@@ -130,7 +130,7 @@ proc contains(text: string, needle: string) -> bool {
   let i: int = 0
   while i + needle.len <= text.len {
     if text.slice(i, i + needle.len) == needle { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -141,9 +141,9 @@ proc has_tag(c: TestCase, tags: [string]) -> bool {
     let j: int = 0
     while j < tags.len {
       if c.tags[i] == tags[j] { give true }
-      j = j + 1
+      j += 1
     }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -159,13 +159,13 @@ proc report_for_suite(ctx: TestContext, s: TestSuite, chosen: [bool]) -> TestRes
   let i: int = 0
   while i < s.cases.len {
     if chosen[i] {
-      if s.cases[i].passed { passed = passed + 1 } else { failed = failed + 1 }
-      if s.cases[i].flaky { flaky = flaky + 1 }
-      if s.cases[i].timed_out { timed_out = timed_out + 1 }
+      if s.cases[i].passed { passed += 1 } else { failed += 1 }
+      if s.cases[i].flaky { flaky += 1 }
+      if s.cases[i].timed_out { timed_out += 1 }
       duration = duration + s.cases[i].duration_ms
       retry_used = retry_used + s.cases[i].retries
     }
-    i = i + 1
+    i += 1
   }
   if duration > ctx.suite_timeout_ms {
     give err[TestReport]("VITTE-T0016", "suite timeout exceeded", s.name, false)
@@ -193,7 +193,7 @@ proc run_suite(ctx: TestContext, s: TestSuite) -> TestResult[TestReport] {
   let ch: [bool] = chosen
   while i < s.cases.len {
     ch = ch.push(true)
-    i = i + 1
+    i += 1
   }
   give report_for_suite(ctx, s, ch)
 }
@@ -207,10 +207,10 @@ proc run_selected(ctx: TestContext, s: TestSuite, names: [string]) -> TestResult
     let j: int = 0
     while j < names.len {
       if s.cases[i].name == names[j] { keep = true }
-      j = j + 1
+      j += 1
     }
     out = out.push(keep)
-    i = i + 1
+    i += 1
   }
   give report_for_suite(ctx, s, out)
 }
@@ -221,7 +221,7 @@ proc run_tagged(ctx: TestContext, s: TestSuite, tags: [string]) -> TestResult[Te
   let i: int = 0
   while i < s.cases.len {
     out = out.push(has_tag(s.cases[i], tags))
-    i = i + 1
+    i += 1
   }
   give report_for_suite(ctx, s, out)
 }
@@ -235,7 +235,7 @@ proc run_all(ctx: TestContext, suites: [TestSuite]) -> TestResult[[TestReport]] 
       give err[[TestReport]](r.error.code, r.error.message, r.error.context, r.error.retryable)
     }
     out = out.push(r.value)
-    i = i + 1
+    i += 1
   }
   give ok[[TestReport]](out)
 }
@@ -257,7 +257,7 @@ proc merge_reports(reports: [TestReport]) -> TestReport {
     timed_out = timed_out + reports[i].timed_out
     duration = duration + reports[i].duration_ms
     if reports[i].flaky_budget_exceeded { exceeded = true }
-    i = i + 1
+    i += 1
   }
   give TestReport("1", "merged", total, passed, failed, flaky, timed_out, duration, TestMode.Ci, "workspace", exceeded)
 }

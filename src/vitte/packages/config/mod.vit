@@ -166,7 +166,7 @@ proc contains_key(cfg: Config, key: string) -> bool {
   let i: int = 0
   while i < cfg.entries.len {
     if cfg.entries[i].key == key { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -183,7 +183,7 @@ proc set_entry(cfg: Config, key: string, value: string) -> Config {
     } else {
       out = out.push(e)
     }
-    i = i + 1
+    i += 1
   }
   if !found { out = out.push(ConfigEntry(key, value)) }
   give Config(out)
@@ -213,7 +213,7 @@ proc get_entry(cfg: Config, key: string) -> string {
   let i: int = 0
   while i < cfg.entries.len {
     if cfg.entries[i].key == key { give cfg.entries[i].value }
-    i = i + 1
+    i += 1
   }
   give ""
 }
@@ -222,7 +222,7 @@ proc get_entry_checked(cfg: Config, key: string) -> ConfigResult[string] {
   let i: int = 0
   while i < cfg.entries.len {
     if cfg.entries[i].key == key { give ConfigResult.Ok(cfg.entries[i].value) }
-    i = i + 1
+    i += 1
   }
   give ConfigResult.Err(ConfigError.NotFound)
 }
@@ -236,7 +236,7 @@ proc remove_entry(cfg: Config, key: string) -> Config {
   let i: int = 0
   while i < cfg.entries.len {
     if cfg.entries[i].key != key { out = out.push(cfg.entries[i]) }
-    i = i + 1
+    i += 1
   }
   give Config(out)
 }
@@ -251,7 +251,7 @@ proc keys(cfg: Config) -> [string] {
   let i: int = 0
   while i < cfg.entries.len {
     out = out.push(cfg.entries[i].key)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -261,7 +261,7 @@ proc values(cfg: Config) -> [string] {
   let i: int = 0
   while i < cfg.entries.len {
     out = out.push(cfg.entries[i].value)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -275,7 +275,7 @@ proc merge(base: Config, overlay: Config) -> Config {
   let i: int = 0
   while i < overlay.entries.len {
     out = set_entry(out, overlay.entries[i].key, overlay.entries[i].value)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -290,7 +290,7 @@ proc merge_checked(base: Config, overlay: Config, opts: ConfigOptions) -> Config
     let r = set_entry_checked(out, overlay.entries[i].key, overlay.entries[i].value, opts)
     when r is ConfigResult.Err { give ConfigResult.Err(r.error) }
     out = r.value
-    i = i + 1
+    i += 1
   }
   give ConfigResult.Ok(out)
 }
@@ -299,7 +299,7 @@ proc required(cfg: Config, wanted_keys: [string]) -> bool {
   let i: int = 0
   while i < wanted_keys.len {
     if !contains_key(cfg, wanted_keys[i]) { give false }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -316,7 +316,7 @@ proc config_stats(cfg: Config) -> ConfigStats {
   while i < cfg.entries.len {
 
     if cfg.entries[i].value.len == 0 {
-      empty_values = empty_values + 1
+      empty_values += 1
     }
     if cfg.entries[i].key.len > max_key_len_seen {
       max_key_len_seen = cfg.entries[i].key.len
@@ -325,7 +325,7 @@ proc config_stats(cfg: Config) -> ConfigStats {
       max_value_len_seen = cfg.entries[i].value.len
     }
 
-    i = i + 1
+    i += 1
   }
   give ConfigStats(cfg.entries.len, empty_values, max_key_len_seen, max_value_len_seen)
 }
@@ -351,7 +351,7 @@ proc config_validate_code(cfg: Config, opts: ConfigOptions) -> string {
       give "invalid-value"
     }
 
-    i = i + 1
+    i += 1
   }
 
   give "ok"
@@ -382,7 +382,7 @@ proc config_normalize(cfg: Config, opts: ConfigOptions) -> Config {
       }
     }
 
-    i = i + 1
+    i += 1
   }
 
   give out
@@ -559,7 +559,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

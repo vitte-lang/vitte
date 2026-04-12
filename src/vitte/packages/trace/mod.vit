@@ -38,7 +38,7 @@ proc contains_span(t: Trace, id: string) -> bool {
   let i: int = 0
   while i < t.spans.len {
     if t.spans[i].id == id { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -47,7 +47,7 @@ proc get_span(t: Trace, id: string) -> Span {
   let i: int = 0
   while i < t.spans.len {
     if t.spans[i].id == id { give t.spans[i] }
-    i = i + 1
+    i += 1
   }
   give Span("", "", "", 0, 0, SpanStatus.Closed, [])
 }
@@ -67,7 +67,7 @@ proc end_span(t: Trace, id: string, end_ms: int) -> Trace {
     } else {
       out = out.push(s)
     }
-    i = i + 1
+    i += 1
   }
   give Trace(out)
 }
@@ -82,7 +82,7 @@ proc mark_error(t: Trace, id: string) -> Trace {
     } else {
       out = out.push(s)
     }
-    i = i + 1
+    i += 1
   }
   give Trace(out)
 }
@@ -97,7 +97,7 @@ proc close_all_open(t: Trace, end_ms: int) -> Trace {
     } else {
       out = out.push(s)
     }
-    i = i + 1
+    i += 1
   }
   give Trace(out)
 }
@@ -112,7 +112,7 @@ proc add_attr(t: Trace, id: string, attr: string) -> Trace {
     } else {
       out = out.push(s)
     }
-    i = i + 1
+    i += 1
   }
   give Trace(out)
 }
@@ -128,7 +128,7 @@ proc average_duration(t: Trace) -> int {
   let i: int = 0
   while i < t.spans.len {
     d = d + duration(t.spans[i])
-    i = i + 1
+    i += 1
   }
   give d / t.spans.len
 }
@@ -138,7 +138,7 @@ proc total_duration(t: Trace) -> int {
   let i: int = 0
   while i < t.spans.len {
     d = d + duration(t.spans[i])
-    i = i + 1
+    i += 1
   }
   give d
 }
@@ -147,8 +147,8 @@ proc open_count(t: Trace) -> int {
   let c: int = 0
   let i: int = 0
   while i < t.spans.len {
-    if t.spans[i].status == SpanStatus.Open { c = c + 1 }
-    i = i + 1
+    if t.spans[i].status == SpanStatus.Open { c += 1 }
+    i += 1
   }
   give c
 }
@@ -157,8 +157,8 @@ proc error_count(t: Trace) -> int {
   let c: int = 0
   let i: int = 0
   while i < t.spans.len {
-    if t.spans[i].status == SpanStatus.Error { c = c + 1 }
-    i = i + 1
+    if t.spans[i].status == SpanStatus.Error { c += 1 }
+    i += 1
   }
   give c
 }
@@ -168,7 +168,7 @@ proc children_of(t: Trace, parent_id: string) -> [Span] {
   let i: int = 0
   while i < t.spans.len {
     if t.spans[i].parent_id == parent_id { out = out.push(t.spans[i]) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -178,7 +178,7 @@ proc root_spans(t: Trace) -> [Span] {
   let i: int = 0
   while i < t.spans.len {
     if t.spans[i].parent_id.len == 0 { out = out.push(t.spans[i]) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -188,7 +188,7 @@ proc slow_spans(t: Trace, threshold_ms: int) -> [Span] {
   let i: int = 0
   while i < t.spans.len {
     if duration(t.spans[i]) >= threshold_ms { out = out.push(t.spans[i]) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -199,7 +199,7 @@ proc max_duration_span(t: Trace) -> Span {
   let i: int = 1
   while i < t.spans.len {
     if duration(t.spans[i]) > duration(best) { best = t.spans[i] }
-    i = i + 1
+    i += 1
   }
   give best
 }
@@ -209,9 +209,9 @@ proc status_counts(t: Trace) -> string {
   let err_n: int = 0
   let i: int = 0
   while i < t.spans.len {
-    if t.spans[i].status == SpanStatus.Open { open_n = open_n + 1 }
-    if t.spans[i].status == SpanStatus.Error { err_n = err_n + 1 }
-    i = i + 1
+    if t.spans[i].status == SpanStatus.Open { open_n += 1 }
+    if t.spans[i].status == SpanStatus.Error { err_n += 1 }
+    i += 1
   }
   give "open=" + open_n.to_string() +
        ",errors=" + err_n.to_string() +
@@ -427,7 +427,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

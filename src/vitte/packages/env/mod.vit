@@ -94,7 +94,7 @@ proc set_var(env: Env, key: string, value: string) -> Env {
     } else {
       out = out.push(env.vars[i])
     }
-    i = i + 1
+    i += 1
   }
   if !found { out = out.push(EnvVar(key, value)) }
   give Env(out)
@@ -110,7 +110,7 @@ proc get_var(env: Env, key: string) -> string {
   let i: int = 0
   while i < env.vars.len {
     if env.vars[i].key == key { give env.vars[i].value }
-    i = i + 1
+    i += 1
   }
   give ""
 }
@@ -119,7 +119,7 @@ proc has_var(env: Env, key: string) -> bool {
   let i: int = 0
   while i < env.vars.len {
     if env.vars[i].key == key { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -129,7 +129,7 @@ proc unset_var(env: Env, key: string) -> Env {
   let i: int = 0
   while i < env.vars.len {
     if env.vars[i].key != key { out = out.push(env.vars[i]) }
-    i = i + 1
+    i += 1
   }
   give Env(out)
 }
@@ -139,7 +139,7 @@ proc list_keys(env: Env) -> [string] {
   let i: int = 0
   while i < env.vars.len {
     out = out.push(env.vars[i].key)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -149,7 +149,7 @@ proc merge_env(base: Env, overlay: Env) -> Env {
   let i: int = 0
   while i < overlay.vars.len {
     out = set_var(out, overlay.vars[i].key, overlay.vars[i].value)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -161,7 +161,7 @@ proc merge_checked(base: Env, overlay: Env) -> EnvResult[Env] {
     let r = set_checked(out, overlay.vars[i].key, overlay.vars[i].value)
     when r is EnvResult.Err { give EnvResult.Err(r.error) }
     out = r.value
-    i = i + 1
+    i += 1
   }
   give EnvResult.Ok(out)
 }
@@ -204,7 +204,7 @@ proc require_all(env: Env, keys: [string]) -> EnvResult[bool] {
   while i < keys.len {
     let r = require_var(env, keys[i])
     when r is EnvResult.Err { give EnvResult.Err(r.error) }
-    i = i + 1
+    i += 1
   }
   give EnvResult.Ok(true)
 }
@@ -251,7 +251,7 @@ proc env_validate_code(env: Env) -> string {
   while i < env.vars.len {
     if env_validate_pkg.valid_key(env.vars[i].key) == false { give "invalid-key" }
     if env_validate_pkg.valid_scalar(env.vars[i].value) == false { give "invalid-value" }
-    i = i + 1
+    i += 1
   }
   give "ok"
 }
@@ -267,7 +267,7 @@ proc env_normalize(env: Env) -> Env {
     if env_validate_pkg.valid_key(env.vars[i].key) && env_validate_pkg.valid_scalar(env.vars[i].value) {
       out = set_var(out, env.vars[i].key, env.vars[i].value)
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -301,8 +301,8 @@ proc env_stats(env: Env) -> EnvStats {
   while i < env.vars.len {
     keys_total_len = keys_total_len + env.vars[i].key.len
     values_total_len = values_total_len + env.vars[i].value.len
-    if env.vars[i].value.len == 0 { empty_values = empty_values + 1 }
-    i = i + 1
+    if env.vars[i].value.len == 0 { empty_values += 1 }
+    i += 1
   }
   give EnvStats(env.vars.len, empty_values, keys_total_len, values_total_len)
 }
@@ -461,7 +461,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

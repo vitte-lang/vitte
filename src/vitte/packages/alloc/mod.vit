@@ -741,7 +741,7 @@ proc suggest_slab_blocks(st: AllocState, requested_bytes: int) -> int {
   if block <= 0 { give 0 }
 
   let blocks = requested / block
-  if requested % block != 0 { blocks = blocks + 1 }
+  if requested % block != 0 { blocks += 1 }
 
   let max_blocks = max_allocatable(st) / block
   if blocks > max_blocks { blocks = max_blocks }
@@ -818,7 +818,7 @@ proc suggest_windowed_alloc(st: AllocState, requested: int, window_calls: int) -
   if calls <= 0 { calls = 1 }
 
   let per_call = req / calls
-  if req % calls != 0 { per_call = per_call + 1 }
+  if req % calls != 0 { per_call += 1 }
   give suggest_alloc_bytes(st, per_call)
 }
 
@@ -847,7 +847,7 @@ proc quota_allow(quotas: [PoolQuota], pid: PoolId, bytes: int) -> bool {
     if q.pool_id.value == pid.value {
       give q.used_bytes + bytes <= quota_limit(q)
     }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -864,7 +864,7 @@ proc quota_reserve(quotas: [PoolQuota], pid: PoolId, bytes: int) -> [PoolQuota] 
     } else {
       out = out.push(q)
     }
-    i = i + 1
+    i += 1
   }
   if !found {
     out = out.push(PoolQuota(pid, max_int(), 0, bytes))
@@ -884,7 +884,7 @@ proc quota_release(quotas: [PoolQuota], pid: PoolId, bytes: int) -> [PoolQuota] 
     } else {
       out = out.push(q)
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -893,7 +893,7 @@ proc find_alloc_index(allocs: [ActiveAlloc], handle: AllocHandle) -> int {
   let i: int = 0
   while i < allocs.len {
     if allocs[i].handle.value == handle.value { give i }
-    i = i + 1
+    i += 1
   }
   give -1
 }
@@ -907,7 +907,7 @@ proc replace_alloc(allocs: [ActiveAlloc], index: int, value: ActiveAlloc) -> [Ac
     } else {
       out = out.push(allocs[i])
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -920,11 +920,11 @@ proc compute_fragmentation(allocs: [ActiveAlloc]) -> StableMetrics {
   while i < allocs.len {
     let a = allocs[i]
     if !a.active {
-      blocks = blocks + 1
+      blocks += 1
       sum_free = sum_free + a.bytes.value
       if a.bytes.value > largest { largest = a.bytes.value }
     }
-    i = i + 1
+    i += 1
   }
   let frag = 0
   if sum_free > 0 {
@@ -1183,7 +1183,7 @@ proc stable_reset(runtime: StableAllocRuntime) -> StableAllocRuntime {
   while i < runtime.quotas.len {
     let q = runtime.quotas[i]
     next_quotas = next_quotas.push(PoolQuota(q.pool_id, q.limit_bytes, q.burst_bytes, 0))
-    i = i + 1
+    i += 1
   }
   let reset_allocator = state_new(runtime.allocator.kind, runtime.allocator.capacity)
   let reset_runtime = StableAllocRuntime(
@@ -1210,10 +1210,10 @@ proc leak_report(runtime: StableAllocRuntime) -> LeakReport {
   while i < runtime.allocs.len {
     let a = runtime.allocs[i]
     if a.active {
-      count = count + 1
+      count += 1
       leaked = leaked + a.bytes.value
     }
-    i = i + 1
+    i += 1
   }
   give LeakReport(count, leaked)
 }
@@ -1301,10 +1301,10 @@ proc no_active_overlap(runtime: StableAllocRuntime) -> bool {
         if b.active && a.handle.value == b.handle.value {
           give false
         }
-        j = j + 1
+        j += 1
       }
     }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -1316,7 +1316,7 @@ proc free_then_reuse_coherent(runtime: StableAllocRuntime) -> bool {
     if !a.active && a.poison_byte != runtime.poison_free {
       give false
     }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -1342,8 +1342,8 @@ proc property_invariants(seed: int, rounds: int) -> PropertyReport {
     if !counters_non_negative(rt) { give PropertyReport(false, checks) }
     if !no_active_overlap(rt) { give PropertyReport(false, checks) }
     if !free_then_reuse_coherent(rt) { give PropertyReport(false, checks) }
-    checks = checks + 1
-    i = i + 1
+    checks += 1
+    i += 1
   }
   give PropertyReport(true, checks)
 }
@@ -1366,21 +1366,21 @@ proc fuzz_matrix(seed: int, steps: int) -> FuzzReport {
       let req = (rnd % 256) + 1
       let ar = stable_alloc(rt, bytes(req), alignment(8), pool_id("tenant:fz"))
       rt = ar.runtime
-      if ar.ok { hs = hs.push(ar.handle) } else { failures = failures + 1 }
-      alloc_ops = alloc_ops + 1
+      if ar.ok { hs = hs.push(ar.handle) } else { failures += 1 }
+      alloc_ops += 1
     } else if op == 1 {
       let fr = stable_free(rt, hs[0])
       rt = fr.runtime
-      if !fr.ok { failures = failures + 1 } else { hs = [] }
-      free_ops = free_ops + 1
+      if !fr.ok { failures += 1 } else { hs = [] }
+      free_ops += 1
     } else {
       let rr = stable_realloc(rt, hs[0], bytes((rnd % 512) + 1), alignment(8))
       rt = rr.runtime
-      if !rr.ok { failures = failures + 1 }
-      realloc_ops = realloc_ops + 1
+      if !rr.ok { failures += 1 }
+      realloc_ops += 1
     }
     if !counters_non_negative(rt) { give FuzzReport(false, i + 1, alloc_ops, free_ops, realloc_ops, failures) }
-    i = i + 1
+    i += 1
   }
   give FuzzReport(true, n, alloc_ops, free_ops, realloc_ops, failures)
 }
@@ -1390,7 +1390,7 @@ proc remove_at_int(values: [int], idx: int) -> [int] {
   let i: int = 0
   while i < values.len {
     if i != idx { out = out.push(values[i]) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -1401,7 +1401,7 @@ proc min_index_int(values: [int]) -> int {
   let i: int = 1
   while i < values.len {
     if values[i] < values[best] { best = i }
-    i = i + 1
+    i += 1
   }
   give best
 }
@@ -1442,7 +1442,7 @@ proc benchmark_suite(seed: int, rounds: int) -> BenchReport {
     let d = after - before
     if d < 0 { d = 0 }
     lat = lat.push(d)
-    i = i + 1
+    i += 1
   }
   let throughput = (n * 1000) / (n + 1)
   give BenchReport(percentile(lat, 50), percentile(lat, 95), percentile(lat, 99), throughput)
@@ -1474,7 +1474,7 @@ proc benchmark_micro_profile(seed: int, rounds: int, profile: string) -> BenchRe
     let d = after - before
     if d < 0 { d = 0 }
     lat = lat.push(d)
-    i = i + 1
+    i += 1
   }
   let throughput = (n * 1000) / (n + 1)
   if profile == "stress" {

@@ -142,7 +142,7 @@ proc drop_first(entries: [CacheEntry]) -> [CacheEntry] {
   let i: int = 1
   while i < entries.len {
     out = out.push(entries[i])
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -159,14 +159,14 @@ proc drop_lru(entries: [CacheEntry]) -> [CacheEntry] {
       min_hits = entries[i].hits
       min_idx = i
     }
-    i = i + 1
+    i += 1
   }
 
   let out: [CacheEntry] = []
   i = 0
   while i < entries.len {
     if i != min_idx { out = out.push(entries[i]) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -176,7 +176,7 @@ proc contains(cache: Cache, key: string) -> bool {
   while i < cache.entries.len {
     let e = cache.entries[i]
     if e.active && e.key == key { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -186,7 +186,7 @@ proc get(cache: Cache, key: string, fallback: string) -> string {
   while i < cache.entries.len {
     let e = cache.entries[i]
     if e.active && e.key == key { give e.value }
-    i = i + 1
+    i += 1
   }
   give fallback
 }
@@ -202,7 +202,7 @@ proc get_checked(cache: Cache, key: string) -> CacheResult[string] {
     if e.active && e.key == key {
       give CacheResult.Ok(e.value)
     }
-    i = i + 1
+    i += 1
   }
   give CacheResult.Err(CacheError.NotFound)
 }
@@ -221,7 +221,7 @@ proc put(cache: Cache, key: string, value: string, ttl: int) -> Cache {
     } else {
       updated = updated.push(e)
     }
-    i = i + 1
+    i += 1
   }
 
   if found {
@@ -231,7 +231,7 @@ proc put(cache: Cache, key: string, value: string, ttl: int) -> Cache {
   let dropped = cache.dropped
   if updated.len >= cache.capacity {
     updated = drop_first(updated)
-    dropped = dropped + 1
+    dropped += 1
   }
   updated = updated.push(make_entry(key, value, ttl))
   give Cache(cache.capacity, updated, cache.clock, dropped)
@@ -258,7 +258,7 @@ proc put_checked(cache: Cache, key: string, value: string, ttl: int) -> CacheRes
     } else {
       updated = updated.push(e)
     }
-    i = i + 1
+    i += 1
   }
 
   if found {
@@ -268,7 +268,7 @@ proc put_checked(cache: Cache, key: string, value: string, ttl: int) -> CacheRes
   let dropped = cache.dropped
   if updated.len >= cache.capacity {
     updated = drop_first(updated)
-    dropped = dropped + 1
+    dropped += 1
   }
   updated = updated.push(er.value)
   give CacheResult.Ok(Cache(cache.capacity, updated, cache.clock, dropped))
@@ -299,7 +299,7 @@ proc touch(cache: Cache, key: string) -> Cache {
     } else {
       updated = updated.push(e)
     }
-    i = i + 1
+    i += 1
   }
   give Cache(cache.capacity, updated, cache.clock, cache.dropped)
 }
@@ -317,7 +317,7 @@ proc tick(cache: Cache, delta: int) -> Cache {
     } else {
       updated = updated.push(CacheEntry(e.key, e.value, next_ttl, e.hits, true))
     }
-    i = i + 1
+    i += 1
   }
 
   give Cache(cache.capacity, updated, cache.clock + delta, cache.dropped)
@@ -331,7 +331,7 @@ proc expire(cache: Cache) -> Cache {
     if e.active && e.ttl > 0 {
       kept = kept.push(e)
     }
-    i = i + 1
+    i += 1
   }
   give Cache(cache.capacity, kept, cache.clock, cache.dropped)
 }
@@ -341,9 +341,9 @@ proc size(cache: Cache) -> int {
   let i: int = 0
   while i < cache.entries.len {
     if cache.entries[i].active {
-      n = n + 1
+      n += 1
     }
-    i = i + 1
+    i += 1
   }
   give n
 }
@@ -353,7 +353,7 @@ proc count_hits(cache: Cache) -> int {
   let i: int = 0
   while i < cache.entries.len {
     n = n + cache.entries[i].hits
-    i = i + 1
+    i += 1
   }
   give n
 }
@@ -395,7 +395,7 @@ proc cache_validate_code(cache: Cache) -> string {
     if cache_validate_pkg.valid_key(e.key, cache_policy_pkg.max_key_len()) == false { give "invalid-key" }
     if cache_validate_pkg.valid_value(e.value, cache_policy_pkg.max_value_len()) == false { give "invalid-value" }
     if cache_validate_pkg.valid_ttl(e.ttl, cache_policy_pkg.min_ttl(), cache_policy_pkg.max_ttl()) == false { give "invalid-ttl" }
-    i = i + 1
+    i += 1
   }
 
   give "ok"
@@ -420,7 +420,7 @@ proc cache_normalize(cache: Cache) -> Cache {
       entries = entries.push(CacheEntry(k, v, t, e.hits, t > 0 && e.active))
       if entries.len >= cap { break }
     }
-    i = i + 1
+    i += 1
   }
 
   let clock = cache.clock
@@ -610,7 +610,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

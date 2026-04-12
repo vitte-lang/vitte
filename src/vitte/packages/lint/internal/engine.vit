@@ -71,7 +71,7 @@ proc contains(text: string, needle: string) -> bool {
   let i: int = 0
   while i + needle.len <= text.len {
     if text.slice(i, i + needle.len) == needle { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -104,7 +104,7 @@ proc issues_from_text(file: string, text: string, rules: [LintRule], cfg: LintCo
         out = out.push(make_issue("VITTE-I0006", LintSeverity.Warning, file, 1, "diagnostic namespace mismatch", rules[i].id, rules[i].quickfix))
       }
     }
-    i = i + 1
+    i += 1
   }
   if cfg.explain {
     out = out.push(make_issue("VITTE-I0098", LintSeverity.Info, file, 1, "explain mode enabled", "explain", "disable explain for speed"))
@@ -118,10 +118,10 @@ proc build_report(issues: [LintIssue], latency_ms: int) -> LintReport {
   let inf: int = 0
   let i: int = 0
   while i < issues.len {
-    if issues[i].severity == LintSeverity.Error { e = e + 1 }
-    if issues[i].severity == LintSeverity.Warning { w = w + 1 }
-    if issues[i].severity == LintSeverity.Info { inf = inf + 1 }
-    i = i + 1
+    if issues[i].severity == LintSeverity.Error { e += 1 }
+    if issues[i].severity == LintSeverity.Warning { w += 1 }
+    if issues[i].severity == LintSeverity.Info { inf += 1 }
+    i += 1
   }
   give LintReport(issues, issues.len, e, w, inf, latency_ms)
 }
@@ -153,9 +153,9 @@ proc lint_package(pkg: string, files: [string], rules: [LintRule], cfg: LintConf
     let j: int = 0
     while j < r.value.issues.len {
       out = out.push(r.value.issues[j])
-      j = j + 1
+      j += 1
     }
-    i = i + 1
+    i += 1
   }
   give ok[LintReport](build_report(out, 1))
 }

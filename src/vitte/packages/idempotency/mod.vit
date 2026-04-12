@@ -146,7 +146,7 @@ proc expire_keys(store: IdempotencyStore, now_tick: int) -> IdempotencyStore {
     if rec.active && now_tick < rec.expires_at {
       out = out.push(rec)
     }
-    i = i + 1
+    i += 1
   }
   give IdempotencyStore(out)
 }
@@ -159,7 +159,7 @@ proc get_record(store: IdempotencyStore, key: string, now_tick: int) -> Idempote
     if rec.active && rec.key == key {
       give rec
     }
-    i = i + 1
+    i += 1
   }
   give IdempotencyRecord("", "", now_tick, false)
 }
@@ -182,7 +182,7 @@ proc keys(store: IdempotencyStore, now_tick: int) -> [string] {
   let i: int = 0
   while i < s.records.len {
     out = out.push(s.records[i].key)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -199,7 +199,7 @@ proc check_key(store: IdempotencyStore, key: string, now_tick: int) -> bool {
     if rec.active && rec.key == key {
       give false
     }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -246,7 +246,7 @@ proc store_result(store: IdempotencyStore, key: string, result: string, ttl_tick
     } else {
       out = out.push(rec)
     }
-    i = i + 1
+    i += 1
   }
 
   if !found {
@@ -264,7 +264,7 @@ proc replay_result(store: IdempotencyStore, key: string, now_tick: int) -> strin
     if rec.active && rec.key == key {
       give rec.result
     }
-    i = i + 1
+    i += 1
   }
   give ""
 }
@@ -285,7 +285,7 @@ proc remove_key(store: IdempotencyStore, key: string, now_tick: int) -> Idempote
     if s.records[i].key != key {
       out = out.push(s.records[i])
     }
-    i = i + 1
+    i += 1
   }
   give IdempotencyStore(out)
 }
@@ -305,7 +305,7 @@ proc touch_key(store: IdempotencyStore, key: string, ttl_ticks: int, now_tick: i
     } else {
       out = out.push(rec)
     }
-    i = i + 1
+    i += 1
   }
   give IdempotencyStore(out)
 }
@@ -405,7 +405,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

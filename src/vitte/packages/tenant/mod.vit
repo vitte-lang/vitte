@@ -97,7 +97,7 @@ proc stack_contains(stack: [TenantCtx], tenant_id: string) -> bool {
   let i: int = 0
   while i < stack.len {
     if stack[i].tenant_id == tenant_id { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -182,7 +182,7 @@ proc stack_pop(stack: [TenantCtx]) -> [TenantCtx] {
   let i: int = 0
   while i + 1 < stack.len {
     out = out.push(stack[i])
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -197,7 +197,7 @@ proc stack_replace_top(stack: [TenantCtx], ctx: TenantCtx) -> [TenantCtx] {
     } else {
       out = out.push(stack[i])
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -212,7 +212,7 @@ proc extract_tenant_id(scoped_key: string) -> string {
     if scoped_key.slice(i, i + 1) == ":" {
       give scoped_key.slice(0, i)
     }
-    i = i + 1
+    i += 1
   }
   give ""
 }
@@ -256,7 +256,7 @@ proc stack_ids(stack: [TenantCtx]) -> [string] {
   let i: int = 0
   while i < stack.len {
     out = out.push(stack[i].tenant_id)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -269,9 +269,9 @@ proc verify_stack(stack: [TenantCtx]) -> bool {
     let j: int = i + 1
     while j < stack.len {
       if stack[j].tenant_id == item.tenant_id { give false }
-      j = j + 1
+      j += 1
     }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -290,7 +290,7 @@ proc validate_stack(stack: [TenantCtx]) -> TenantError {
   while i < stack.len {
     let err = validate_ctx(stack[i])
     if err != TenantError.None { give err }
-    i = i + 1
+    i += 1
   }
   give TenantError.None
 }
@@ -352,7 +352,7 @@ proc strip_scope(scoped_key: string) -> string {
     if scoped_key.slice(i, i + 1) == ":" {
       give scoped_key.slice(i + 1, scoped_key.len)
     }
-    i = i + 1
+    i += 1
   }
   give scoped_key
 }
@@ -366,7 +366,7 @@ proc stack_tenant_keys(stack: [TenantCtx]) -> [string] {
   let i: int = 0
   while i < stack.len {
     out = out.push(tenant_key(stack[i]))
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -375,7 +375,7 @@ proc stack_has_active_only(stack: [TenantCtx]) -> bool {
   let i: int = 0
   while i < stack.len {
     if !stack[i].active { give false }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -386,7 +386,7 @@ proc rotate_stack(stack: [TenantCtx]) -> [TenantCtx] {
   let i: int = 1
   while i < stack.len {
     out = out.push(stack[i])
-    i = i + 1
+    i += 1
   }
   out = out.push(stack[0])
   give out
@@ -613,7 +613,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

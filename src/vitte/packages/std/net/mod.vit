@@ -262,7 +262,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -306,7 +306,7 @@ proc headers_normalize(headers: [StdNetHeader]) -> [StdNetHeader] {
       if n == "x-request-id" || n == "X-Request-Id" { n = "X-Request-Id" }
       out = out.push(StdNetHeader(n, headers[i].value))
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -330,7 +330,7 @@ proc ensure_request_id(headers: [StdNetHeader], url: string, method: string) -> 
   let i: int = 0
   while i < out.len {
     if out[i].name == "X-Request-Id" { give out }
-    i = i + 1
+    i += 1
   }
   give out.push(StdNetHeader("X-Request-Id", request_id(url, method)))
 }
@@ -355,7 +355,7 @@ proc request(method: string, url: string, headers: [StdNetHeader], body: string,
   let i: int = 0
   while i < hs.len {
     req = http_client_pkg.request_with_header(req, hs[i].name, hs[i].value)
-    i = i + 1
+    i += 1
   }
 
   let st = http_client_pkg.default_state()
@@ -369,7 +369,7 @@ proc request(method: string, url: string, headers: [StdNetHeader], body: string,
   let j: int = 0
   while j < pr.value.headers.values.len {
     out_h = out_h.push(StdNetHeader(pr.value.headers.values[j].key, pr.value.headers.values[j].value))
-    j = j + 1
+    j += 1
   }
   give StdNetResult.Ok(StdNetResponse(pr.value.status, pr.value.reason, out_h, pr.value.body))
 }
@@ -415,7 +415,7 @@ proc parse_url(url: string) -> StdNetResult[StdNetUrl] {
       host = url.slice(cut + 3, url.len)
       break
     }
-    cut = cut + 1
+    cut += 1
   }
   let slash: int = 0
   while slash < host.len {
@@ -424,7 +424,7 @@ proc parse_url(url: string) -> StdNetResult[StdNetUrl] {
       host = host.slice(0, slash)
       break
     }
-    slash = slash + 1
+    slash += 1
   }
   let q: int = 0
   while q < path.len {
@@ -433,7 +433,7 @@ proc parse_url(url: string) -> StdNetResult[StdNetUrl] {
       path = path.slice(0, q)
       break
     }
-    q = q + 1
+    q += 1
   }
   give StdNetResult.Ok(StdNetUrl(scheme, host, path, query))
 }
@@ -507,7 +507,7 @@ proc multipart(fields: [StdNetHeader], boundary: string) -> string {
   let i: int = 0
   while i < fields.len {
     out = out + "--" + boundary + "\n" + fields[i].name + ": " + fields[i].value + "\n"
-    i = i + 1
+    i += 1
   }
   give out + "--" + boundary + "--"
 }
@@ -530,7 +530,7 @@ proc host_allow(host: string, allowlist: [string]) -> bool {
   let i: int = 0
   while i < allowlist.len {
     if host == allowlist[i] { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -539,7 +539,7 @@ proc host_deny(host: string, denylist: [string]) -> bool {
   let i: int = 0
   while i < denylist.len {
     if host == denylist[i] { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }

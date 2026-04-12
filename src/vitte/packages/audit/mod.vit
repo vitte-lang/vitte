@@ -65,7 +65,7 @@ proc contains_string(values: [string], value: string) -> bool {
   let i: int = 0
   while i < values.len {
     if values[i] == value { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -288,7 +288,7 @@ proc verify_chain(log: AuditLog) -> bool {
       give false
     }
 
-    i = i + 1
+    i += 1
   }
 
   give true
@@ -317,7 +317,7 @@ proc verify_all(
       give false
     }
 
-    i = i + 1
+    i += 1
   }
 
   give true
@@ -353,7 +353,7 @@ proc query(
       out = out.push(e)
     }
 
-    i = i + 1
+    i += 1
   }
 
   give out
@@ -378,7 +378,7 @@ proc redaction_replacement(rules: [AuditRedactionRule], field: string) -> string
   let i: int = 0
   while i < rules.len {
     if rules[i].field == field { give rules[i].replacement }
-    i = i + 1
+    i += 1
   }
   give ""
 }
@@ -432,7 +432,7 @@ proc redact_log(log: AuditLog, rules: [AuditRedactionRule]) -> AuditLog {
     )
     prev = chained.hash
     out = out.push(chained)
-    i = i + 1
+    i += 1
   }
   give AuditLog(out, out.len)
 }
@@ -475,7 +475,7 @@ proc chain_hash(log: AuditLog) -> string {
     )
     if e.hash != recomputed { give "" }
     acc = recomputed
-    i = i + 1
+    i += 1
   }
   give acc
 }
@@ -496,7 +496,7 @@ proc verify_integrity(log: AuditLog) -> AuditIntegrityStatus {
     if schema_supported(log.events[i].schema_version) == false {
       give AuditIntegrityStatus(false, i, "unsupported-schema")
     }
-    i = i + 1
+    i += 1
   }
 
   let c = chain_hash(log)
@@ -520,7 +520,7 @@ proc export_hashes(log: AuditLog) -> [string] {
 
     out = out.push(log.events[i].hash)
 
-    i = i + 1
+    i += 1
   }
 
   give out
@@ -546,7 +546,7 @@ proc stats(log: AuditLog) -> AuditStats {
     let action = log.events[i].action
     if contains_string(actor_keys, actor) == false { actor_keys = actor_keys.push(actor) }
     if contains_string(action_keys, action) == false { action_keys = action_keys.push(action) }
-    i = i + 1
+    i += 1
   }
 
   give AuditStats(

@@ -132,10 +132,10 @@ proc format_request_with_order(req: AudioFormatRequest, formats: [AudioSampleFor
         seen = true
         break
       }
-      j = j + 1
+      j += 1
     }
     if seen == false { uniq = uniq.push(f) }
-    i = i + 1
+    i += 1
   }
   if uniq.len == 0 {
     give AudioFormatRequest(req.preferred_sample_rate, req.preferred_channels, req.preferred_formats, req.prefer_interleaved)
@@ -161,7 +161,7 @@ proc format_rank(req: AudioFormatRequest, fmt: AudioFormat) -> int {
   let rank: int = 0
   if fmt.sample_rate == req.preferred_sample_rate { rank = rank + 4 }
   if fmt.channels == req.preferred_channels { rank = rank + 3 }
-  if fmt.interleaved == req.prefer_interleaved { rank = rank + 1 }
+  if fmt.interleaved == req.prefer_interleaved { rank += 1 }
 
   let i: int = 0
   while i < req.preferred_formats.len {
@@ -169,7 +169,7 @@ proc format_rank(req: AudioFormatRequest, fmt: AudioFormat) -> int {
       rank = rank + (30 - i)
       break
     }
-    i = i + 1
+    i += 1
   }
 
   give rank
@@ -200,7 +200,7 @@ proc negotiate_format(req: AudioFormatRequest, supported: [AudioFormat]) -> Audi
         has_winner = true
       }
     }
-    i = i + 1
+    i += 1
   }
 
   if has_winner == false { give default_fmt }
@@ -220,7 +220,7 @@ proc pcm_checksum(samples: [int]) -> int {
   while i < samples.len {
     let v = clamp_sample(samples[i])
     acc = acc * 31 + (v + 32768) + i
-    i = i + 1
+    i += 1
   }
   if acc < 0 { acc = 0 - acc }
   give acc
@@ -236,7 +236,7 @@ proc golden_match(golden: AudioGoldenSnapshot, samples: [int]) -> bool {
   let i: int = 0
   while i < samples.len {
     if golden.samples[i] != samples[i] { give false }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -248,8 +248,8 @@ proc golden_diff_count(expected: [int], actual: [int]) -> int {
   let diff: int = 0
   let i: int = 0
   while i < n {
-    if expected[i] != actual[i] { diff = diff + 1 }
-    i = i + 1
+    if expected[i] != actual[i] { diff += 1 }
+    i += 1
   }
 
   if expected.len > n { diff = diff + (expected.len - n) }
@@ -319,7 +319,7 @@ proc append_buffer(left: AudioBuffer, right: AudioBuffer) -> AudioBuffer {
 
   while i < right.samples.len {
     out = out.push(right.samples[i])
-    i = i + 1
+    i += 1
   }
 
   give AudioBuffer(left.sample_rate, left.channels, out)
@@ -331,7 +331,7 @@ proc silence(buf: AudioBuffer) -> AudioBuffer {
 
   while i < buf.samples.len {
     out = out.push(0)
-    i = i + 1
+    i += 1
   }
 
   give AudioBuffer(buf.sample_rate, buf.channels, out)
@@ -358,7 +358,7 @@ proc gain(buf: AudioBuffer, percent: int) -> AudioBuffer {
     let scaled = buf.samples[i] * p / 100
     out = out.push(clamp_sample(scaled))
 
-    i = i + 1
+    i += 1
   }
 
   give AudioBuffer(buf.sample_rate, buf.channels, out)
@@ -380,20 +380,20 @@ proc mix(a: AudioBuffer, b: AudioBuffer) -> AudioBuffer {
     let v = (a.samples[i] + b.samples[i]) / 2
     out = out.push(clamp_sample(v))
 
-    i = i + 1
+    i += 1
   }
 
   if a.samples.len > n {
     let j: int = n
     while j < a.samples.len {
       out = out.push(a.samples[j])
-      j = j + 1
+      j += 1
     }
   } else {
     let j: int = n
     while j < b.samples.len {
       out = out.push(b.samples[j])
-      j = j + 1
+      j += 1
     }
   }
 
@@ -408,7 +408,7 @@ proc normalize_peak(buf: AudioBuffer, target_peak: int) -> AudioBuffer {
   while i < buf.samples.len {
     let a = abs_sample(buf.samples[i])
     if a > p { p = a }
-    i = i + 1
+    i += 1
   }
 
   if p <= 0 { give buf }
@@ -432,7 +432,7 @@ proc peak(buf: AudioBuffer) -> int {
     let a = abs_sample(buf.samples[i])
     if a > max { max = a }
 
-    i = i + 1
+    i += 1
   }
 
   give max
@@ -462,7 +462,7 @@ proc rms(buf: AudioBuffer) -> int {
     let sq = s * s
     mean_sq = mean_sq + ((sq - mean_sq) / (i + 1))
 
-    i = i + 1
+    i += 1
   }
 
   give int_sqrt(mean_sq)
@@ -505,7 +505,7 @@ proc downmix_mono(buf: AudioBuffer) -> AudioBuffer {
       if i + c >= buf.samples.len { break }
 
       acc = acc + buf.samples[i + c]
-      c = c + 1
+      c += 1
     }
 
     if c > 0 {
@@ -549,7 +549,7 @@ proc trim_samples(buf: AudioBuffer, max_samples: int) -> AudioBuffer {
   while i < buf.samples.len {
 
     out = out.push(buf.samples[i])
-    i = i + 1
+    i += 1
   }
 
   give AudioBuffer(buf.sample_rate, buf.channels, out)

@@ -55,7 +55,7 @@ proc next_delay_ms(p: RetryPolicy, attempt: int) -> int {
       delay = p.max_delay_ms
       break
     }
-    i = i + 1
+    i += 1
   }
 
   when p.jitter is RetryJitter.Full {
@@ -85,8 +85,8 @@ proc run_with_retry(statuses: [int], p: RetryPolicy) -> int {
     current = statuses[idx]
     if !should_retry(current, attempt, p) { break }
     if idx + 1 >= statuses.len { break }
-    idx = idx + 1
-    attempt = attempt + 1
+    idx += 1
+    attempt += 1
   }
 
   give current
@@ -101,8 +101,8 @@ proc attempts_used(statuses: [int], p: RetryPolicy) -> int {
   while idx < statuses.len {
     if !should_retry(statuses[idx], attempt, p) { break }
     if idx + 1 >= statuses.len { break }
-    idx = idx + 1
-    attempt = attempt + 1
+    idx += 1
+    attempt += 1
   }
 
   give attempt
@@ -156,7 +156,7 @@ proc delay_plan(p: RetryPolicy, count: int) -> [int] {
   let i: int = 0
   while i < n {
     out = out.push(next_delay_ms(p, i))
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -170,7 +170,7 @@ proc first_retryable(statuses: [int], p: RetryPolicy) -> int {
   let i: int = 0
   while i < statuses.len {
     if should_retry(statuses[i], 0, p) { give statuses[i] }
-    i = i + 1
+    i += 1
   }
   give 0
 }
@@ -383,7 +383,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

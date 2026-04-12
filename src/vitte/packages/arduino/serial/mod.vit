@@ -199,7 +199,7 @@ proc serial_write_bytes(st: SerialState, bytes: [int]) -> arduino_pkg.ArduinoRes
       give arduino_pkg.err[SerialState](wr.error)
     }
     out = wr.value
-    i = i + 1
+    i += 1
   }
   give arduino_pkg.ok[SerialState](out)
 }
@@ -215,7 +215,7 @@ proc serial_read_n(st: SerialState, count: int) -> arduino_pkg.ArduinoResult[[in
   while i < n {
     if serial_available(st) <= 0 { break }
     out = out.push(serial_runtime_pkg.runtime_read())
-    i = i + 1
+    i += 1
   }
   give arduino_pkg.ok[[int]](out)
 }
@@ -236,11 +236,11 @@ proc serial_read_line(st: SerialState, max_bytes: int) -> arduino_pkg.ArduinoRes
     cur = rr.value.state
     if rr.value.byte == 10 { break }
     if rr.value.byte == 13 {
-      i = i + 1
+      i += 1
       continue
     }
     out = out.push(rr.value.byte)
-    i = i + 1
+    i += 1
   }
   give arduino_pkg.ok[SerialLineResult](SerialLineResult(cur, out))
 }
@@ -305,7 +305,7 @@ proc serial_checksum(bytes: [int]) -> int {
     let b = bytes[i]
     if serial_validate_pkg.valid_byte(b) == false { give -1 }
     sum = (sum + b) % 256
-    i = i + 1
+    i += 1
   }
   give sum
 }
@@ -367,7 +367,7 @@ proc serial_read_until(st: SerialState, terminator: int, max_bytes: int) -> ardu
     when rr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[[int]](rr.error) }
     out = out.push(rr.value)
     if rr.value == terminator { break }
-    i = i + 1
+    i += 1
   }
   give arduino_pkg.ok[[int]](out)
 }

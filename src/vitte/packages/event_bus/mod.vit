@@ -179,7 +179,7 @@ proc find_sub_index(bus: Bus, name: string) -> int {
   let i: int = 0
   while i < bus.subs.len {
     if bus.subs[i].name == name { give i }
-    i = i + 1
+    i += 1
   }
   give -1
 }
@@ -199,7 +199,7 @@ proc subscribe(bus: Bus, name: string, topic: string) -> Bus {
     } else {
       out = out.push(s)
     }
-    i = i + 1
+    i += 1
   }
   give Bus(bus.next_id, bus.now_tick, bus.events, out)
 }
@@ -222,7 +222,7 @@ proc unsubscribe(bus: Bus, name: string) -> Bus {
     if s.name != name {
       out = out.push(s)
     }
-    i = i + 1
+    i += 1
   }
   give Bus(bus.next_id, bus.now_tick, bus.events, out)
 }
@@ -243,7 +243,7 @@ proc publish_checked(bus: Bus, topic: string, payload: string, cfg: EventBusConf
     let i: int = start
     while i < trimmed.events.len {
       out_events = out_events.push(trimmed.events[i])
-      i = i + 1
+      i += 1
     }
     trimmed = Bus(trimmed.next_id, trimmed.now_tick, out_events, trimmed.subs)
   }
@@ -257,7 +257,7 @@ proc trim_to_max(bus: Bus, max_events: int) -> Bus {
   let i: int = start
   while i < bus.events.len {
     out_events = out_events.push(bus.events[i])
-    i = i + 1
+    i += 1
   }
   give Bus(bus.next_id, bus.now_tick, out_events, bus.subs)
 }
@@ -280,9 +280,9 @@ proc pending_for(bus: Bus, name: string) -> int {
   let i: int = s.cursor
   while i < bus.events.len {
     if bus.events[i].topic == s.topic {
-      out = out + 1
+      out += 1
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -310,12 +310,12 @@ proc pull_next(bus: Bus, name: string) -> PullResult {
         } else {
           out_subs = out_subs.push(bus.subs[j])
         }
-        j = j + 1
+        j += 1
       }
       let next = Bus(bus.next_id, bus.now_tick, bus.events, out_subs)
       give PullResult(next, true, ev)
     }
-    i = i + 1
+    i += 1
   }
 
   give PullResult(bus, false, Event(-1, "", "", bus.now_tick))
@@ -333,7 +333,7 @@ proc pull_batch(bus: Bus, name: string, max_items: int) -> PullBatchResult {
     if !next.found { break }
     out_bus = next.bus
     out_events = out_events.push(next.event)
-    i = i + 1
+    i += 1
   }
 
   give PullBatchResult(out_bus, out_events)
@@ -346,7 +346,7 @@ proc trim_before_id(bus: Bus, min_id: int) -> Bus {
     if bus.events[i].id >= min_id {
       out_events = out_events.push(bus.events[i])
     }
-    i = i + 1
+    i += 1
   }
   give Bus(bus.next_id, bus.now_tick, out_events, bus.subs)
 }
@@ -356,9 +356,9 @@ proc topic_backlog(bus: Bus, topic: string) -> int {
   let i: int = 0
   while i < bus.events.len {
     if bus.events[i].topic == topic {
-      out = out + 1
+      out += 1
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -451,7 +451,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

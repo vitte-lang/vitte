@@ -204,7 +204,7 @@ proc validate_pin_list(profile: ArduinoProfile, pins: [Pin]) -> ArduinoResult[bo
     when vr is ArduinoResult.Err {
       give err[bool](vr.error)
     }
-    i = i + 1
+    i += 1
   }
   give ok[bool](true)
 }
@@ -476,7 +476,7 @@ proc has_library(libs: [ArduinoLibrary], target: ArduinoLibrary) -> bool {
   let i: int = 0
   while i < libs.len {
     if libs[i] == target { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -488,7 +488,7 @@ proc libs_merge_unique(base: [ArduinoLibrary], extra: [ArduinoLibrary]) -> [Ardu
     if has_library(out, extra[i]) == false {
       out = out.push(extra[i])
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -534,16 +534,16 @@ proc library_set_validate(profile: ArduinoProfile, libs: [ArduinoLibrary]) -> Ar
     let d: int = 0
     while d < deps.len {
       if has_library(libs, deps[d]) == false { give err[bool](ArduinoError.Conflict) }
-      d = d + 1
+      d += 1
     }
 
     let j: int = i + 1
     while j < libs.len {
       if library_conflict(lib, libs[j]) { give err[bool](ArduinoError.Conflict) }
-      j = j + 1
+      j += 1
     }
 
-    i = i + 1
+    i += 1
   }
   give ok[bool](true)
 }
@@ -571,7 +571,7 @@ proc bundle_summary(bundle: ArduinoProjectBundle) -> string {
   let i: int = 0
   while i < bundle.libraries.len {
     names = names.push(library_name(bundle.libraries[i]))
-    i = i + 1
+    i += 1
   }
   give project_summary(bundle.preset) + ",libraries=" + names.len.to_string()
 }

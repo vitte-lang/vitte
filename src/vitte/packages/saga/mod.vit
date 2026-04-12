@@ -50,7 +50,7 @@ proc run(saga: Saga, fail_step: int) -> Saga {
 
     if failed_at >= 0 {
       out = out.push(step)
-      i = i + 1
+      i += 1
       continue
     }
 
@@ -61,7 +61,7 @@ proc run(saga: Saga, fail_step: int) -> Saga {
       out = out.push(SagaStep(step.name, true, false))
     }
 
-    i = i + 1
+    i += 1
   }
 
   if failed_at >= 0 {
@@ -80,7 +80,7 @@ proc compensate(saga: Saga) -> Saga {
     } else {
       out = out.push(step)
     }
-    i = i + 1
+    i += 1
   }
 
   if saga.state == SagaState.Failed {
@@ -94,7 +94,7 @@ proc add_steps(saga: Saga, names: [string]) -> Saga {
   let i: int = 0
   while i < names.len {
     out = step_add(out, names[i])
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -109,7 +109,7 @@ proc has_step(saga: Saga, name: string) -> bool {
   let i: int = 0
   while i < saga.steps.len {
     if saga.steps[i].name == name { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -118,7 +118,7 @@ proc next_pending_step(saga: Saga) -> string {
   let i: int = 0
   while i < saga.steps.len {
     if !saga.steps[i].done { give saga.steps[i].name }
-    i = i + 1
+    i += 1
   }
   give ""
 }
@@ -144,7 +144,7 @@ proc mark_done(saga: Saga, name: string) -> Saga {
     } else {
       out = out.push(step)
     }
-    i = i + 1
+    i += 1
   }
   give Saga(saga.id, out, saga.failed_at, saga.state)
 }
@@ -159,7 +159,7 @@ proc mark_compensated(saga: Saga, name: string) -> Saga {
     } else {
       out = out.push(step)
     }
-    i = i + 1
+    i += 1
   }
   give Saga(saga.id, out, saga.failed_at, saga.state)
 }
@@ -181,7 +181,7 @@ proc reset(saga: Saga) -> Saga {
   while i < saga.steps.len {
     let step = saga.steps[i]
     out = out.push(SagaStep(step.name, false, false))
-    i = i + 1
+    i += 1
   }
   give Saga(saga.id, out, -1, SagaState.Draft)
 }
@@ -195,9 +195,9 @@ proc done_count(saga: Saga) -> int {
   let i: int = 0
   while i < saga.steps.len {
     if saga.steps[i].done {
-      n = n + 1
+      n += 1
     }
-    i = i + 1
+    i += 1
   }
   give n
 }
@@ -218,9 +218,9 @@ proc compensated_count(saga: Saga) -> int {
   let i: int = 0
   while i < saga.steps.len {
     if saga.steps[i].compensated {
-      n = n + 1
+      n += 1
     }
-    i = i + 1
+    i += 1
   }
   give n
 }
@@ -234,7 +234,7 @@ proc step_index(saga: Saga, name: string) -> int {
   let i: int = 0
   while i < saga.steps.len {
     if saga.steps[i].name == name { give i }
-    i = i + 1
+    i += 1
   }
   give -1
 }
@@ -279,7 +279,7 @@ proc rename_step(saga: Saga, old_name: string, new_name: string) -> Saga {
     } else {
       out = out.push(step)
     }
-    i = i + 1
+    i += 1
   }
   give Saga(saga.id, out, saga.failed_at, saga.state)
 }
@@ -290,7 +290,7 @@ proc append_step_suffix(saga: Saga, suffix: string) -> Saga {
   while i < saga.steps.len {
     let step = saga.steps[i]
     out = out.push(SagaStep(step.name + suffix, step.done, step.compensated))
-    i = i + 1
+    i += 1
   }
   give Saga(saga.id, out, saga.failed_at, saga.state)
 }
@@ -314,9 +314,9 @@ proc verify_invariants(saga: Saga) -> bool {
     let j: int = i + 1
     while j < saga.steps.len {
       if saga.steps[j].name == step.name { give false }
-      j = j + 1
+      j += 1
     }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -553,7 +553,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

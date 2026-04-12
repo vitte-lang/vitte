@@ -286,7 +286,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -369,7 +369,7 @@ proc channel_recv(ch: StdChannel) -> StdAsyncResult[StdChannelRecv] {
   let i: int = 1
   while i < ch.items.len {
     out = out.push(ch.items[i])
-    i = i + 1
+    i += 1
   }
   let next = StdChannel(ch.cap, ch.closed, out)
   give StdAsyncResult.Ok(StdChannelRecv(next, true, ch.items[0]))
@@ -416,7 +416,7 @@ proc spawn_many(labels: [string]) -> StdAsyncResult[StdTaskGroup] {
     let sp = spawn(labels[i])
     when sp is StdAsyncResult.Err { give StdAsyncResult.Err(sp.error) }
     out = StdTaskGroup(out.tasks.push(sp.value))
-    i = i + 1
+    i += 1
   }
   give StdAsyncResult.Ok(out)
 }
@@ -428,7 +428,7 @@ proc join_all(group: StdTaskGroup) -> StdAsyncResult[[StdTaskOutcome]] {
     let jr = join(group.tasks[i])
     when jr is StdAsyncResult.Err { give StdAsyncResult.Err(jr.error) }
     out = out.push(jr.value)
-    i = i + 1
+    i += 1
   }
   give StdAsyncResult.Ok(out)
 }
@@ -482,7 +482,7 @@ proc queue_pop(q: StdAsyncQueue) -> StdAsyncResult[StdChannelRecv] {
   let i: int = 1
   while i < q.items.len {
     out = out.push(q.items[i])
-    i = i + 1
+    i += 1
   }
   let next = StdChannel(0, false, out)
   give StdAsyncResult.Ok(StdChannelRecv(next, true, q.items[0]))
@@ -529,7 +529,7 @@ proc retry_async(label: string, retries: int, backoff_ms: int, token: StdCancelT
       let jr = timeout(sp.value, backoff_ms + (i * backoff_ms))
       when jr is StdAsyncResult.Ok { give jr }
     }
-    i = i + 1
+    i += 1
   }
   give StdAsyncResult.Err(StdAsyncError.Timeout)
 }

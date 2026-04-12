@@ -175,7 +175,7 @@ proc drop_first(jobs: [Job]) -> [Job] {
   let i: int = 1
   while i < jobs.len {
     out = out.push(jobs[i])
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -200,7 +200,7 @@ proc ack(queue: JobQueue, job_id: int) -> JobQueue {
     } else {
       inflight = inflight.push(job)
     }
-    i = i + 1
+    i += 1
   }
   give JobQueue(queue.next_id, queue.max_attempts, queue.pending, inflight, done, queue.dlq)
 }
@@ -224,7 +224,7 @@ proc nack(queue: JobQueue, job_id: int) -> JobQueue {
     } else {
       inflight = inflight.push(job)
     }
-    i = i + 1
+    i += 1
   }
 
   give JobQueue(queue.next_id, queue.max_attempts, pending, inflight, queue.done, dlq)
@@ -279,25 +279,25 @@ proc attempts_of(queue: JobQueue, job_id: int) -> int {
   let i: int = 0
   while i < queue.pending.len {
     if queue.pending[i].id == job_id { give queue.pending[i].attempts }
-    i = i + 1
+    i += 1
   }
 
   i = 0
   while i < queue.inflight.len {
     if queue.inflight[i].id == job_id { give queue.inflight[i].attempts }
-    i = i + 1
+    i += 1
   }
 
   i = 0
   while i < queue.done.len {
     if queue.done[i].id == job_id { give queue.done[i].attempts }
-    i = i + 1
+    i += 1
   }
 
   i = 0
   while i < queue.dlq.len {
     if queue.dlq[i].id == job_id { give queue.dlq[i].attempts }
-    i = i + 1
+    i += 1
   }
 
   give -1
@@ -307,25 +307,25 @@ proc state_of(queue: JobQueue, job_id: int) -> string {
   let i: int = 0
   while i < queue.pending.len {
     if queue.pending[i].id == job_id { give "pending" }
-    i = i + 1
+    i += 1
   }
 
   i = 0
   while i < queue.inflight.len {
     if queue.inflight[i].id == job_id { give "inflight" }
-    i = i + 1
+    i += 1
   }
 
   i = 0
   while i < queue.done.len {
     if queue.done[i].id == job_id { give "done" }
-    i = i + 1
+    i += 1
   }
 
   i = 0
   while i < queue.dlq.len {
     if queue.dlq[i].id == job_id { give "failed" }
-    i = i + 1
+    i += 1
   }
 
   give "missing"
@@ -347,7 +347,7 @@ proc requeue_dead(queue: JobQueue, job_id: int) -> JobQueue {
     } else {
       dlq = dlq.push(job)
     }
-    i = i + 1
+    i += 1
   }
 
   give JobQueue(queue.next_id, queue.max_attempts, pending, queue.inflight, queue.done, dlq)
@@ -524,7 +524,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

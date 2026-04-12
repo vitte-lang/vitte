@@ -123,8 +123,22 @@ StmtId Parser::parse_set_stmt() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwSet, "expected 'set'");
     Ident name = parse_ident();
-    expect(TokenKind::Equal, "expected '='");
+    bool plus_equal = false;
+    if (match(TokenKind::PlusEqual)) {
+        plus_equal = true;
+    } else {
+        expect(TokenKind::Equal, "expected '='");
+    }
     ExprId value = parse_expr();
+    if (plus_equal) {
+        SourceSpan name_span = name.span;
+        ExprId lhs = ast_ctx_.make<IdentExpr>(name, name_span);
+        SourceSpan add_span = name_span;
+        if (value != ast::kInvalidAstId) {
+            add_span.end = ast_ctx_.get<Expr>(value).span.end;
+        }
+        value = ast_ctx_.make<BinaryExpr>(BinaryOp::Add, lhs, value, add_span);
+    }
     span.end = value != ast::kInvalidAstId
         ? ast_ctx_.get<Expr>(value).span.end
         : previous_.span.end;

@@ -148,7 +148,7 @@ proc contains(reg: ContractsRegistry, name: string, contract_version_value: stri
   let i: int = 0
   while i < reg.contracts.len {
     if reg.contracts[i].name == name && reg.contracts[i].version == contract_version_value { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -159,7 +159,7 @@ proc find(reg: ContractsRegistry, name: string, contract_version_value: string) 
     if reg.contracts[i].name == name && reg.contracts[i].version == contract_version_value {
       give ContractsRegistryResult.Ok(reg.contracts[i])
     }
-    i = i + 1
+    i += 1
   }
   give ContractsRegistryResult.Err(ContractsRegistryError.NotFound)
 }
@@ -190,7 +190,7 @@ proc upsert(reg: ContractsRegistry, contract: RegistryContract) -> ContractsRegi
     } else {
       out = out.push(reg.contracts[i])
     }
-    i = i + 1
+    i += 1
   }
 
   if updated {
@@ -217,7 +217,7 @@ proc remove(reg: ContractsRegistry, name: string, contract_version_value: string
     if reg.contracts[i].name != name || reg.contracts[i].version != contract_version_value {
       out = out.push(reg.contracts[i])
     }
-    i = i + 1
+    i += 1
   }
 
   give ContractsRegistryResult.Ok(ContractsRegistry(reg.config, out, reg.rejected))
@@ -237,11 +237,11 @@ proc unique_name_count(reg: ContractsRegistry) -> int {
     let j: int = 0
     while j < seen.len {
       if seen[j] == n { has = true }
-      j = j + 1
+      j += 1
     }
 
     if has == false { seen = seen.push(n) }
-    i = i + 1
+    i += 1
   }
 
   give seen.len
@@ -271,7 +271,7 @@ proc registry_validate_code(reg: ContractsRegistry) -> string {
     }
     if reg.contracts[i].schema_hash.len == 0 { give "invalid-contract-hash" }
 
-    i = i + 1
+    i += 1
   }
 
   give "ok"
@@ -297,7 +297,7 @@ proc registry_normalize(reg: ContractsRegistry) -> ContractsRegistry {
        c.schema_hash.len > 0 {
       out = out.push(c)
     }
-    i = i + 1
+    i += 1
   }
 
   let rejected = reg.rejected
@@ -481,7 +481,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

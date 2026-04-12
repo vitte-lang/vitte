@@ -160,7 +160,7 @@ proc pop[T](arr: Array[T]) -> Array[T] {
   let i: int = 0
   while i < arr.stats.length - 1 {
     out = out.push(arr.data[i])
-    i = i + 1
+    i += 1
   }
   give Array(out, ArrayStats(out.len))
 }
@@ -175,7 +175,7 @@ proc set[T](arr: Array[T], index: int, value: T) -> Array[T] {
     } else {
       out = out.push(arr.data[i])
     }
-    i = i + 1
+    i += 1
   }
   give Array(out, ArrayStats(out.len))
 }
@@ -205,7 +205,7 @@ proc mutable_set_checked[T](arr: MutableArray[T], index: int, value: T) -> Mutab
     } else {
       out = out.push(arr.data[i])
     }
-    i = i + 1
+    i += 1
   }
   give MutableArray(out)
 }
@@ -215,7 +215,7 @@ proc map[T, R](arr: Array[T], f: proc(x: T) -> R) -> Array[R] {
   let i: int = 0
   while i < arr.stats.length {
     out = out.push(f(arr.data[i]))
-    i = i + 1
+    i += 1
   }
   give Array(out, ArrayStats(out.len))
 }
@@ -227,7 +227,7 @@ proc filter[T](arr: Array[T], f: proc(x: T) -> bool) -> Array[T] {
     if f(arr.data[i]) {
       out = out.push(arr.data[i])
     }
-    i = i + 1
+    i += 1
   }
   give Array(out, ArrayStats(out.len))
 }
@@ -237,7 +237,7 @@ proc fold[T, R](arr: Array[T], init: R, f: proc(acc: R, x: T) -> R) -> R {
   let i: int = 0
   while i < arr.stats.length {
     acc = f(acc, arr.data[i])
-    i = i + 1
+    i += 1
   }
   give acc
 }
@@ -264,7 +264,7 @@ proc slice[T](arr: Array[T], start: int, end: int) -> Array[T] {
   let i = s
   while i < e {
     out = out.push(arr.data[i])
-    i = i + 1
+    i += 1
   }
   give Array(out, ArrayStats(out.len))
 }
@@ -273,7 +273,7 @@ proc contains[T](arr: Array[T], value: T) -> bool {
   let i: int = 0
   while i < arr.stats.length {
     if arr.data[i] == value { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -282,7 +282,7 @@ proc index_of[T](arr: Array[T], value: T) -> int {
   let i: int = 0
   while i < arr.stats.length {
     if arr.data[i] == value { give i }
-    i = i + 1
+    i += 1
   }
   give -1
 }
@@ -298,7 +298,7 @@ proc concat[T](left: Array[T], right: Array[T]) -> Array[T] {
   let i: int = 0
   while i < right.stats.length {
     out = out.push(right.data[i])
-    i = i + 1
+    i += 1
   }
   give Array(out, ArrayStats(out.len))
 }
@@ -383,8 +383,8 @@ proc property_invariants(seed: int, rounds: int) -> PropertyReport {
     if !stats_sync(arr) { give PropertyReport(false, checks) }
     let s = suggest_index(arr, i + 100)
     if s < 0 || s >= len(arr) { give PropertyReport(false, checks) }
-    checks = checks + 1
-    i = i + 1
+    checks += 1
+    i += 1
   }
   give PropertyReport(true, checks)
 }
@@ -401,13 +401,13 @@ proc fuzz_matrix(seed: int, steps: int) -> FuzzReport {
     rnd = (rnd * 1103515245 + 12345) % 2147483647
     if (rnd % 2) == 0 {
       arr = push(arr, rnd % 1024)
-      writes = writes + 1
+      writes += 1
     } else {
       let _ = get_or(arr, suggest_index(arr, rnd % 4096), -1)
-      reads = reads + 1
+      reads += 1
     }
     if !stats_sync(arr) { give FuzzReport(false, i + 1, writes, reads) }
-    i = i + 1
+    i += 1
   }
   give FuzzReport(true, n, writes, reads)
 }
@@ -417,7 +417,7 @@ proc remove_at_int(values: [int], idx: int) -> [int] {
   let i: int = 0
   while i < values.len {
     if i != idx { out = out.push(values[i]) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -428,7 +428,7 @@ proc min_index_int(values: [int]) -> int {
   let i: int = 1
   while i < values.len {
     if values[i] < values[best] { best = i }
-    i = i + 1
+    i += 1
   }
   give best
 }
@@ -462,7 +462,7 @@ proc benchmark_suite(seed: int, rounds: int) -> BenchReport {
     let d = after - before
     if d < 0 { d = 0 }
     lat = lat.push(d)
-    i = i + 1
+    i += 1
   }
   let throughput = (n * 1000) / (n + 1)
   give BenchReport(percentile(lat, 50), percentile(lat, 95), percentile(lat, 99), throughput)
@@ -477,7 +477,7 @@ proc benchmark_large_profile(seed: int, target_size: int, rounds: int) -> BenchR
   let i: int = 0
   while i < size {
     arr = push(arr, seed + i)
-    i = i + 1
+    i += 1
   }
 
   let lat: [int] = []
@@ -492,7 +492,7 @@ proc benchmark_large_profile(seed: int, target_size: int, rounds: int) -> BenchR
     let d = (after - before)
     if d < 0 { d = 0 }
     lat = lat.push(d + 1)
-    j = j + 1
+    j += 1
   }
   let throughput = (n * 1000) / (n + 1)
   give BenchReport(percentile(lat, 50), percentile(lat, 95), percentile(lat, 99), throughput)

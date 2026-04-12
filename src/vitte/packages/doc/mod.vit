@@ -173,7 +173,7 @@ proc find_section(p: DocPage, title: string) -> DocSection {
   let i: int = 0
   while i < p.sections.len {
     if p.sections[i].title == title { give p.sections[i] }
-    i = i + 1
+    i += 1
   }
   give DocSection("", "")
 }
@@ -193,7 +193,7 @@ proc section_titles(p: DocPage) -> [string] {
   let i: int = 0
   while i < p.sections.len {
     out = out.push(p.sections[i].title)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -205,7 +205,7 @@ proc remove_section(p: DocPage, title: string) -> DocPage {
     if p.sections[i].title != title {
       out = out.push(p.sections[i])
     }
-    i = i + 1
+    i += 1
   }
   give DocPage(p.id, p.title, out)
 }
@@ -222,7 +222,7 @@ proc contains_text(text: string, needle: string) -> bool {
   let limit = text.len - needle.len
   while i <= limit {
     if text.slice(i, i + needle.len) == needle { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -233,11 +233,11 @@ proc search_sections(p: DocPage, needle: string) -> [DocSearchHit] {
   while i < p.sections.len {
     let score = 0
     if contains_text(p.sections[i].title, needle) { score = score + 2 }
-    if contains_text(p.sections[i].body, needle) { score = score + 1 }
+    if contains_text(p.sections[i].body, needle) { score += 1 }
     if score > 0 {
       out = out.push(DocSearchHit(p.sections[i].title, score))
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -248,7 +248,7 @@ proc toc_markdown(p: DocPage) -> string {
   while i < p.sections.len {
     if doc_validate_pkg.valid_toc_count(i, doc_policy_pkg.max_toc_items()) == false { break }
     out = out + "- " + p.sections[i].title + "\n"
-    i = i + 1
+    i += 1
   }
   give out + "\n"
 }
@@ -261,7 +261,7 @@ proc merge_page(base: DocPage, overlay: DocPage) -> DocPage {
       out = remove_section(out, overlay.sections[i].title)
     }
     out = add_section(out, overlay.sections[i].title, overlay.sections[i].body)
-    i = i + 1
+    i += 1
   }
   give DocPage(base.id, overlay.title, out.sections)
 }
@@ -272,7 +272,7 @@ proc render_markdown(p: DocPage) -> string {
   while i < p.sections.len {
     out = out + "## " + p.sections[i].title + "\n"
     out = out + p.sections[i].body + "\n\n"
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -282,7 +282,7 @@ proc render_plaintext(p: DocPage) -> string {
   let i: int = 0
   while i < p.sections.len {
     out = out + p.sections[i].title + ": " + p.sections[i].body + "\n"
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -292,8 +292,8 @@ proc word_count(text: string) -> int {
   let c: int = 1
   let i: int = 0
   while i < text.len {
-    if text.slice(i, i + 1) == " " { c = c + 1 }
-    i = i + 1
+    if text.slice(i, i + 1) == " " { c += 1 }
+    i += 1
   }
   give c
 }
@@ -304,7 +304,7 @@ proc total_words(p: DocPage) -> int {
   while i < p.sections.len {
     c = c + word_count(p.sections[i].title)
     c = c + word_count(p.sections[i].body)
-    i = i + 1
+    i += 1
   }
   give c
 }
@@ -315,7 +315,7 @@ proc doc_stats(p: DocPage) -> DocStats {
   let i: int = 0
   while i < p.sections.len {
     if p.sections[i].body.len == 0 { empty = true }
-    i = i + 1
+    i += 1
   }
   give DocStats(p.sections.len, total_words(p), md.len, empty)
 }
@@ -325,7 +325,7 @@ proc validate_page(p: DocPage) -> bool {
   let i: int = 0
   while i < p.sections.len {
     if p.sections[i].title.len == 0 { give false }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -342,7 +342,7 @@ proc validate_page_code(p: DocPage, cfg: DocConfig) -> string {
   while i < p.sections.len {
     if doc_validate_pkg.valid_title(p.sections[i].title, cfg.max_title_len) == false { give "invalid-section-title" }
     if doc_validate_pkg.valid_body(p.sections[i].body, cfg.max_body_len) == false { give "invalid-section-body" }
-    i = i + 1
+    i += 1
   }
 
   give "ok"
@@ -369,7 +369,7 @@ proc page_normalize(p: DocPage, cfg: DocConfig) -> DocPage {
     if sb.len > ncfg.max_body_len { sb = sb.slice(0, ncfg.max_body_len) }
 
     out = out.push(DocSection(st, sb))
-    i = i + 1
+    i += 1
   }
 
   give DocPage(id, title, out)
@@ -572,7 +572,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

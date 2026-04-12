@@ -81,6 +81,7 @@ enum class TokenKind {
     Dot,
     Slash,
     Plus,
+    PlusEqual,
     Minus,
     Star,
     Percent,

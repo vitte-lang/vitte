@@ -61,7 +61,7 @@ proc is_identifier(text: string) -> bool {
   while i < text.len {
     let ch = text.slice(i, i + 1)
     if !is_alpha_num_or_underscore(ch) { give false }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -72,7 +72,7 @@ proc contains(text: string, needle: string) -> bool {
   let i: int = 0
   while i + needle.len <= text.len {
     if text.slice(i, i + needle.len) == needle { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -83,7 +83,7 @@ proc join(parts: [string], sep: string) -> string {
   let i: int = 1
   while i < parts.len {
     out = out + sep + parts[i]
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -145,7 +145,7 @@ proc has_field(m: OrmModel, field_name: string) -> bool {
   let i: int = 0
   while i < m.fields.len {
     if m.fields[i].name == field_name { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -159,7 +159,7 @@ proc field_names(m: OrmModel) -> [string] {
   let i: int = 0
   while i < m.fields.len {
     out = out.push(m.fields[i].name)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -175,7 +175,7 @@ proc validate_model(m: OrmModel) -> OrmError {
     let f = m.fields[i]
     if !is_identifier(f.name) { give OrmError.InvalidField }
     if f.kind.len == 0 { give OrmError.InvalidField }
-    i = i + 1
+    i += 1
   }
   give OrmError.None
 }
@@ -188,21 +188,21 @@ proc validate_query(q: Query) -> OrmError {
   let i: int = 0
   while i < q.select_cols.len {
     if !is_identifier(q.select_cols[i]) { give OrmError.InvalidSelect }
-    i = i + 1
+    i += 1
   }
 
   i = 0
   while i < q.where_clauses.len {
     if q.where_clauses[i].len == 0 { give OrmError.InvalidWhere }
     if contains(q.where_clauses[i], ";") { give OrmError.InvalidWhere }
-    i = i + 1
+    i += 1
   }
 
   i = 0
   while i < q.order_bys.len {
     if q.order_bys[i].len == 0 { give OrmError.InvalidOrder }
     if contains(q.order_bys[i], ";") { give OrmError.InvalidOrder }
-    i = i + 1
+    i += 1
   }
 
   give OrmError.None
@@ -259,7 +259,7 @@ proc build_insert_sql(m: OrmModel, cols: [string]) -> string {
   while i < cols.len {
     if !has_field(m, cols[i]) { give "" }
     values = values.push("?")
-    i = i + 1
+    i += 1
   }
 
   give "INSERT INTO " + m.table +
@@ -278,7 +278,7 @@ proc build_update_sql(m: OrmModel, cols: [string]) -> string {
       if !has_field(m, cols[i]) { give "" }
       assignments = assignments.push(cols[i] + " = ?")
     }
-    i = i + 1
+    i += 1
   }
 
   if assignments.len == 0 { give "" }
@@ -492,7 +492,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

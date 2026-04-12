@@ -567,8 +567,8 @@ proc observe(conn: DbConn, latency_ms: int, error_happened: bool, retry_happened
   if latency_ms > p95 { p95 = latency_ms }
   let ec: int = conn.error_count
   let rc: int = conn.retry_count
-  if error_happened { ec = ec + 1 }
-  if retry_happened { rc = rc + 1 }
+  if error_happened { ec += 1 }
+  if retry_happened { rc += 1 }
   let circuit: bool = ec >= conn.config.circuit_error_threshold
   give DbConn(conn.config, conn.connected, conn.readonly, conn.pool_in_use, circuit, conn.queue_depth, p50, p95, ec, rc)
 }

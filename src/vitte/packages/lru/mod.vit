@@ -54,7 +54,7 @@ proc find_index(lru: Lru, key: string) -> int {
   let i: int = 0
   while i < lru.items.len {
     if lru.items[i].key == key { give i }
-    i = i + 1
+    i += 1
   }
   give -1
 }
@@ -71,7 +71,7 @@ proc touch(lru: Lru, key: string) -> Lru {
     } else {
       out = out.push(it)
     }
-    i = i + 1
+    i += 1
   }
   give Lru(lru.capacity, lru.now + 1, out)
 }
@@ -86,13 +86,13 @@ proc evict_one(lru: Lru) -> Lru {
       min_tick = lru.items[i].tick
       min_i = i
     }
-    i = i + 1
+    i += 1
   }
   let out: [LruItem] = []
   i = 0
   while i < lru.items.len {
     if i != min_i { out = out.push(lru.items[i]) }
-    i = i + 1
+    i += 1
   }
   give Lru(lru.capacity, lru.now, out)
 }
@@ -107,7 +107,7 @@ proc put(lru: Lru, key: string, value: string) -> Lru {
       let it = next.items[i]
       if it.key == key { out = out.push(LruItem(key, value, next.now)) }
       if it.key != key { out = out.push(it) }
-      i = i + 1
+      i += 1
     }
     give Lru(next.capacity, next.now, out)
   }
@@ -301,7 +301,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

@@ -616,7 +616,7 @@ proc redacted_fields(fields: [LogField]) -> [LogField] {
   let i: int = 0
   while i < fields.len {
     out = out.push(LogField(fields[i].key, log_runtime_pkg.redact_field_value(fields[i].key, fields[i].value)))
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -626,7 +626,7 @@ proc merge_context_fields(base: [LogField], extra: [LogField]) -> [LogField] {
   let i: int = 0
   while i < extra.len {
     out = out.push(extra[i])
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -644,7 +644,7 @@ proc append_buffer(l: Logger, e: LogEvent) -> Logger {
   let dropped: int = l.dropped
   if b.len >= l.config.buffer_capacity {
     if l.config.drop_policy == DropPolicy.DropNewest {
-      dropped = dropped + 1
+      dropped += 1
       give Logger(l.sink, l.fallback_sink, l.format, l.config, l.context_module, l.context_trace_id, l.context_span_id, l.context_fields, b, l.events, dropped, l.window_count, l.sample_count, l.last_key, l.last_repeat)
     }
     if l.config.drop_policy == DropPolicy.DropOldest {
@@ -652,10 +652,10 @@ proc append_buffer(l: Logger, e: LogEvent) -> Logger {
       let i: int = 1
       while i < b.len {
         out = out.push(b[i])
-        i = i + 1
+        i += 1
       }
       b = out
-      dropped = dropped + 1
+      dropped += 1
     }
   }
   b = b.push(e)

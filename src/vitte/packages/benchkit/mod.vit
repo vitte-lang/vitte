@@ -102,7 +102,7 @@ proc sort(values: [int]) -> [int] {
       j = j - 1
     }
     out[j + 1] = key
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -126,7 +126,7 @@ proc mean(values: [int]) -> int {
   let i: int = 0
   while i < values.len {
     sum = sum + values[i]
-    i = i + 1
+    i += 1
   }
 
   give sum / values.len
@@ -152,7 +152,7 @@ proc trim(values: [int], percent: int) -> [int] {
   let i: int = start
   while i < end {
     out = out.push(sorted[i])
-    i = i + 1
+    i += 1
   }
 
   if out.len == 0 { give sorted }
@@ -238,7 +238,7 @@ proc run_bench_checked(name: string, job: proc() -> int, cfg: BenchConfig) -> Be
   let w: int = 0
   while w < cfg.warmup {
     job()
-    w = w + 1
+    w += 1
   }
 
   let samples: [int] = []
@@ -249,7 +249,7 @@ proc run_bench_checked(name: string, job: proc() -> int, cfg: BenchConfig) -> Be
       give BenchkitResult.Err(BenchError.InvalidSample)
     }
     samples = samples.push(duration)
-    i = i + 1
+    i += 1
   }
 
   if benchkit_validate_pkg.valid_sample_count(samples.len) == false {
@@ -308,7 +308,7 @@ proc report(suite: BenchSuite) -> string {
   while i < suite.results.len {
     let r = suite.results[i]
     out = out + r.name + " -> " + format_stats(r.stats) + "\n"
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -320,7 +320,7 @@ proc calibrate(job: proc() -> int) -> int {
     let i: int = 0
     while i < iterations {
       job()
-      i = i + 1
+      i += 1
     }
     let end = now_ns()
 
@@ -374,7 +374,7 @@ proc suite_merge(left: BenchSuite, right: BenchSuite) -> BenchSuite {
   let i: int = 0
   while i < right.results.len {
     out = suite_add(out, right.results[i])
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -567,7 +567,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

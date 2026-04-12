@@ -41,8 +41,8 @@ proc required_count(t: TypeInfo) -> int {
   let c: int = 0
   let i: int = 0
   while i < t.fields.len {
-    if t.fields[i].required { c = c + 1 }
-    i = i + 1
+    if t.fields[i].required { c += 1 }
+    i += 1
   }
   give c
 }
@@ -55,7 +55,7 @@ proc has_field(t: TypeInfo, name: string) -> bool {
   let i: int = 0
   while i < t.fields.len {
     if t.fields[i].name == name { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -64,7 +64,7 @@ proc field_kind(t: TypeInfo, name: string) -> string {
   let i: int = 0
   while i < t.fields.len {
     if t.fields[i].name == name { give t.fields[i].kind }
-    i = i + 1
+    i += 1
   }
   give ""
 }
@@ -73,7 +73,7 @@ proc is_required(t: TypeInfo, name: string) -> bool {
   let i: int = 0
   while i < t.fields.len {
     if t.fields[i].name == name { give t.fields[i].required }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -88,7 +88,7 @@ proc rename_field(t: TypeInfo, old_name: string, new_name: string) -> TypeInfo {
     } else {
       out = out.push(f)
     }
-    i = i + 1
+    i += 1
   }
   give TypeInfo(t.name, out)
 }
@@ -98,7 +98,7 @@ proc remove_field(t: TypeInfo, name: string) -> TypeInfo {
   let i: int = 0
   while i < t.fields.len {
     if t.fields[i].name != name { out = out.push(t.fields[i]) }
-    i = i + 1
+    i += 1
   }
   give TypeInfo(t.name, out)
 }
@@ -111,7 +111,7 @@ proc merge(left: TypeInfo, right: TypeInfo) -> TypeInfo {
     if !has_field(out, f.name) {
       out = TypeInfo(out.name, out.fields.push(f))
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -121,7 +121,7 @@ proc required_fields(t: TypeInfo) -> [string] {
   let i: int = 0
   while i < t.fields.len {
     if t.fields[i].required { out = out.push(t.fields[i].name) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -131,7 +131,7 @@ proc optional_fields(t: TypeInfo) -> [string] {
   let i: int = 0
   while i < t.fields.len {
     if !t.fields[i].required { out = out.push(t.fields[i].name) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -141,7 +141,7 @@ proc select_kind(t: TypeInfo, kind: string) -> [string] {
   let i: int = 0
   while i < t.fields.len {
     if t.fields[i].kind == kind { out = out.push(t.fields[i].name) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -152,7 +152,7 @@ proc is_compatible(base: TypeInfo, incoming: TypeInfo) -> bool {
   while i < req.len {
     if !has_field(incoming, req[i]) { give false }
     if field_kind(incoming, req[i]) != field_kind(base, req[i]) { give false }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -164,7 +164,7 @@ proc signature(t: TypeInfo) -> string {
     if i > 0 { out = out + "," }
     out = out + t.fields[i].name + ":" + t.fields[i].kind
     if !t.fields[i].required { out = out + "?" }
-    i = i + 1
+    i += 1
   }
   out = out + ")"
   give out
@@ -175,7 +175,7 @@ proc validate(t: TypeInfo) -> bool {
   let i: int = 0
   while i < t.fields.len {
     if t.fields[i].name.len == 0 || t.fields[i].kind.len == 0 { give false }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -385,7 +385,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

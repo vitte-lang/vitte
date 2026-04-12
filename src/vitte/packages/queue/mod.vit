@@ -49,7 +49,7 @@ proc drop_first(items: [QueueItem]) -> [QueueItem] {
   let i: int = 1
   while i < items.len {
     out = out.push(items[i])
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -72,7 +72,7 @@ proc ack(queue: Queue, item_id: int) -> Queue {
     } else {
       inflight = inflight.push(item)
     }
-    i = i + 1
+    i += 1
   }
   give Queue(queue.next_id, queue.max_attempts, queue.pending, inflight, done, queue.dead)
 }
@@ -94,7 +94,7 @@ proc nack(queue: Queue, item_id: int) -> Queue {
     } else {
       inflight = inflight.push(item)
     }
-    i = i + 1
+    i += 1
   }
   give Queue(queue.next_id, queue.max_attempts, pending, inflight, queue.done, dead)
 }
@@ -118,25 +118,25 @@ proc attempts_of(queue: Queue, item_id: int) -> int {
   let i: int = 0
   while i < queue.pending.len {
     if queue.pending[i].id == item_id { give queue.pending[i].attempts }
-    i = i + 1
+    i += 1
   }
 
   i = 0
   while i < queue.inflight.len {
     if queue.inflight[i].id == item_id { give queue.inflight[i].attempts }
-    i = i + 1
+    i += 1
   }
 
   i = 0
   while i < queue.done.len {
     if queue.done[i].id == item_id { give queue.done[i].attempts }
-    i = i + 1
+    i += 1
   }
 
   i = 0
   while i < queue.dead.len {
     if queue.dead[i].id == item_id { give queue.dead[i].attempts }
-    i = i + 1
+    i += 1
   }
 
   give -1
@@ -153,7 +153,7 @@ proc requeue_dead(queue: Queue, item_id: int) -> Queue {
     } else {
       dead = dead.push(item)
     }
-    i = i + 1
+    i += 1
   }
   give Queue(queue.next_id, queue.max_attempts, pending, queue.inflight, queue.done, dead)
 }
@@ -202,7 +202,7 @@ proc find_pending(queue: Queue, item_id: int) -> QueueItem {
   let i: int = 0
   while i < queue.pending.len {
     if queue.pending[i].id == item_id { give queue.pending[i] }
-    i = i + 1
+    i += 1
   }
   give QueueItem(-1, "", 0, QueueState.Pending)
 }
@@ -211,7 +211,7 @@ proc find_inflight(queue: Queue, item_id: int) -> QueueItem {
   let i: int = 0
   while i < queue.inflight.len {
     if queue.inflight[i].id == item_id { give queue.inflight[i] }
-    i = i + 1
+    i += 1
   }
   give QueueItem(-1, "", 0, QueueState.Inflight)
 }
@@ -478,7 +478,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

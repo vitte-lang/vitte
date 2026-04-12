@@ -233,7 +233,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -304,7 +304,7 @@ proc schema_compile_cache(cache: StdDataSchemaCache, schema: string) -> StdDataS
   let i: int = 0
   while i < keys.len {
     if keys[i] == schema { give cache }
-    i = i + 1
+    i += 1
   }
   give StdDataSchemaCache(keys.push(schema))
 }
@@ -399,7 +399,7 @@ proc cache_set(cache: StdDataCache, key: string, value: string, ttl_ms: int, now
     if cache.entries[i].key != key {
       out = out.push(cache.entries[i])
     }
-    i = i + 1
+    i += 1
   }
   let ttl = ttl_ms
   if ttl < 0 { ttl = 0 }
@@ -412,7 +412,7 @@ proc cache_del(cache: StdDataCache, key: string) -> StdDataCache {
   let i: int = 0
   while i < cache.entries.len {
     if cache.entries[i].key != key { out = out.push(cache.entries[i]) }
-    i = i + 1
+    i += 1
   }
   give StdDataCache(out)
 }
@@ -424,7 +424,7 @@ proc cache_get(cache: StdDataCache, key: string, now_ms: int) -> StdDataResult[s
       if cache.entries[i].expires_at >= now_ms { give StdDataResult.Ok(cache.entries[i].value) }
       give StdDataResult.Err(StdDataError.Timeout)
     }
-    i = i + 1
+    i += 1
   }
   give StdDataResult.Err(StdDataError.InvalidConfig)
 }
@@ -433,7 +433,7 @@ proc cache_has(cache: StdDataCache, key: string, now_ms: int) -> bool {
   let i: int = 0
   while i < cache.entries.len {
     if cache.entries[i].key == key && cache.entries[i].expires_at >= now_ms { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -446,7 +446,7 @@ proc cache_lru(cache: StdDataCache, max_entries: int) -> StdDataCache {
   let i: int = start
   while i < cache.entries.len {
     out = out.push(cache.entries[i])
-    i = i + 1
+    i += 1
   }
   give StdDataCache(out)
 }
@@ -458,12 +458,12 @@ proc cache_metrics(cache: StdDataCache, now_ms: int) -> StdDataCacheMetrics {
   let i: int = 0
   while i < cache.entries.len {
     if cache.entries[i].expires_at >= now_ms {
-      hit = hit + 1
+      hit += 1
     } else {
-      miss = miss + 1
-      evict = evict + 1
+      miss += 1
+      evict += 1
     }
-    i = i + 1
+    i += 1
   }
   give StdDataCacheMetrics(hit, miss, evict)
 }
@@ -502,10 +502,10 @@ proc csv_encode(rows: [[string]]) -> StdDataResult[string] {
     let line = ""
     while j < rows[i].len {
       if j == 0 { line = rows[i][j] } else { line = line + "," + rows[i][j] }
-      j = j + 1
+      j += 1
     }
     if i == 0 { out = line } else { out = out + "\n" + line }
-    i = i + 1
+    i += 1
   }
   give StdDataResult.Ok(out)
 }
@@ -540,7 +540,7 @@ proc hash_sha256(input: string) -> string {
   let i: int = 0
   while i < input.len {
     acc = (acc * 131) + input.slice(i, i + 1).len + i
-    i = i + 1
+    i += 1
   }
   give "sha256:" + acc.to_string()
 }
@@ -550,7 +550,7 @@ proc hash_xx(input: string) -> string {
   let i: int = 0
   while i < input.len {
     acc = acc + (i + 1) * input.slice(i, i + 1).len
-    i = i + 1
+    i += 1
   }
   give "xx:" + acc.to_string()
 }

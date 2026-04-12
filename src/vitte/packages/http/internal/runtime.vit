@@ -55,7 +55,7 @@ proc contains(text: string, needle: string) -> bool {
   let i: int = 0
   while i + needle.len <= text.len {
     if text.slice(i, i + needle.len) == needle { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -68,7 +68,7 @@ proc parse_method_token(line: string) -> string {
   let i: int = 0
   while i < line.len {
     if is_space(line.slice(i, i + 1)) { break }
-    i = i + 1
+    i += 1
   }
   if i <= 0 || i >= line.len { give "" }
   give line.slice(0, i)
@@ -78,14 +78,14 @@ proc parse_path_token(line: string) -> string {
   let i: int = 0
   while i < line.len {
     if is_space(line.slice(i, i + 1)) { break }
-    i = i + 1
+    i += 1
   }
   if i >= line.len - 1 { give "" }
   let rest: string = line.slice(i + 1, line.len)
   let j: int = 0
   while j < rest.len {
     if is_space(rest.slice(j, j + 1)) { break }
-    j = j + 1
+    j += 1
   }
   if j <= 0 { give "" }
   give rest.slice(0, j)
@@ -95,14 +95,14 @@ proc parse_version_token(line: string) -> string {
   let i: int = 0
   while i < line.len {
     if is_space(line.slice(i, i + 1)) { break }
-    i = i + 1
+    i += 1
   }
   if i >= line.len - 1 { give "" }
   let rest: string = line.slice(i + 1, line.len)
   let j: int = 0
   while j < rest.len {
     if is_space(rest.slice(j, j + 1)) { break }
-    j = j + 1
+    j += 1
   }
   if j >= rest.len - 1 { give "" }
   give rest.slice(j + 1, rest.len)
@@ -130,7 +130,7 @@ proc normalize_path(path: string) -> string {
         out = out + ch
         prev_slash = false
       }
-      i = i + 1
+      i += 1
     }
     p = out
   }
@@ -159,7 +159,7 @@ proc host_from_url(url: string) -> string {
   let i: int = 0
   while i < url.len {
     if url.slice(i, i + 3) == "://" { break }
-    i = i + 1
+    i += 1
   }
   if i + 3 >= url.len { give "" }
   let rest: string = url.slice(i + 3, url.len)
@@ -167,7 +167,7 @@ proc host_from_url(url: string) -> string {
   while j < rest.len {
     let ch: string = rest.slice(j, j + 1)
     if ch == "/" || ch == ":" || ch == "?" { break }
-    j = j + 1
+    j += 1
   }
   if j <= 0 { give "" }
   give rest.slice(0, j)
@@ -182,7 +182,7 @@ proc parse_query(path_or_url: string) -> string {
   let i: int = 0
   while i < path_or_url.len {
     if path_or_url.slice(i, i + 1) == "?" { break }
-    i = i + 1
+    i += 1
   }
   if i >= path_or_url.len - 1 { give "" }
   give path_or_url.slice(i + 1, path_or_url.len)
@@ -248,7 +248,7 @@ proc route_matches(pattern: string, path: string) -> bool {
     let i: int = 0
     while i < p.len {
       if p.slice(i, i + 1) == ":" { break }
-      i = i + 1
+      i += 1
     }
     if i <= 0 { give false }
     let prefix: string = p.slice(0, i)
@@ -339,12 +339,12 @@ proc openapi_contract_diff_missing(old_snapshot: [string], new_snapshot: [string
     let j: int = 0
     while j < new_snapshot.len {
       if old_snapshot[i] == new_snapshot[j] { found = true }
-      j = j + 1
+      j += 1
     }
     if found == false {
       give old_snapshot[i]
     }
-    i = i + 1
+    i += 1
   }
   give ""
 }

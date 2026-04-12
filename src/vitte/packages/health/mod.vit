@@ -93,12 +93,12 @@ proc healthcheck(cfg: HealthConfig, h: HealthInput) -> HealthResult[HealthStatus
     give HealthResult.Err(HealthError.Internal)
   }
   let score: int = 0
-  if h.db_ok { score = score + 1 }
-  if h.cache_ok { score = score + 1 }
-  if h.queue_ok { score = score + 1 }
-  if h.migrations_ok { score = score + 1 }
-  if h.warmed { score = score + 1 }
-  if h.started { score = score + 1 }
+  if h.db_ok { score += 1 }
+  if h.cache_ok { score += 1 }
+  if h.queue_ok { score += 1 }
+  if h.migrations_ok { score += 1 }
+  if h.warmed { score += 1 }
+  if h.started { score += 1 }
   score = score * 100 / 6
   if score < cfg.min_score_ok_percent {
     give HealthResult.Ok(HealthStatus(false, "below-score-threshold", score))
@@ -196,12 +196,12 @@ proc failing_count(h: HealthInput) -> int {
 
 proc score_percent(h: HealthInput) -> int {
   let ok: int = 0
-  if h.db_ok { ok = ok + 1 }
-  if h.cache_ok { ok = ok + 1 }
-  if h.queue_ok { ok = ok + 1 }
-  if h.migrations_ok { ok = ok + 1 }
-  if h.warmed { ok = ok + 1 }
-  if h.started { ok = ok + 1 }
+  if h.db_ok { ok += 1 }
+  if h.cache_ok { ok += 1 }
+  if h.queue_ok { ok += 1 }
+  if h.migrations_ok { ok += 1 }
+  if h.warmed { ok += 1 }
+  if h.started { ok += 1 }
   give ok * 100 / 6
 }
 
@@ -275,12 +275,12 @@ proc summary(h: HealthInput) -> string {
 proc verify_invariants(h: HealthInput) -> bool {
   let cfg = default_config()
   let score: int = 0
-  if h.db_ok { score = score + 1 }
-  if h.cache_ok { score = score + 1 }
-  if h.queue_ok { score = score + 1 }
-  if h.migrations_ok { score = score + 1 }
-  if h.warmed { score = score + 1 }
-  if h.started { score = score + 1 }
+  if h.db_ok { score += 1 }
+  if h.cache_ok { score += 1 }
+  if h.queue_ok { score += 1 }
+  if h.migrations_ok { score += 1 }
+  if h.warmed { score += 1 }
+  if h.started { score += 1 }
   score = score * 100 / 6
   if check_operational(h) && score < cfg.min_score_ok_percent { give false }
   if is_down(h) && status_text(h) != "down" { give false }
@@ -398,7 +398,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

@@ -105,8 +105,8 @@ proc has_three_parts(token: string) -> bool {
   let dots: int = 0
   let i: int = 0
   while i < token.len {
-    if token.slice(i, i + 1) == "." { dots = dots + 1 }
-    i = i + 1
+    if token.slice(i, i + 1) == "." { dots += 1 }
+    i += 1
   }
   give dots == 2
 }
@@ -145,7 +145,7 @@ proc is_uint(text: string) -> bool {
   let i: int = 0
   while i < text.len {
     if !is_digit(text.slice(i, i + 1)) { give false }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -180,17 +180,17 @@ proc b64url_value(ch: string) -> int {
   let i: int = 0
   while i < 26 {
     if ch == u.slice(i, i + 1) { give i }
-    i = i + 1
+    i += 1
   }
   i = 0
   while i < 26 {
     if ch == l.slice(i, i + 1) { give 26 + i }
-    i = i + 1
+    i += 1
   }
   i = 0
   while i < 10 {
     if ch == d.slice(i, i + 1) { give 52 + i }
-    i = i + 1
+    i += 1
   }
   if ch == "-" { give 62 }
   if ch == "_" { give 63 }
@@ -261,7 +261,7 @@ proc base64url_decode(text: string) -> string {
       out = out + ch
       bit_len = bit_len - 8
     }
-    i = i + 1
+    i += 1
   }
   if bit_len >= 6 { give "" }
   give out
@@ -275,7 +275,7 @@ proc is_safe_claim_char(ch: string) -> bool {
   while i < 26 {
     if ch == u.slice(i, i + 1) { give true }
     if ch == l.slice(i, i + 1) { give true }
-    i = i + 1
+    i += 1
   }
   if ch == "-" { give true }
   if ch == "_" { give true }
@@ -290,7 +290,7 @@ proc is_safe_claim_text(text: string) -> bool {
   let i: int = 0
   while i < text.len {
     if !is_safe_claim_char(text.slice(i, i + 1)) { give false }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -322,7 +322,7 @@ proc find_from(text: string, pattern: string, start: int) -> int {
   let i = start
   while i + pattern.len <= text.len {
     if text.slice(i, i + pattern.len) == pattern { give i }
-    i = i + 1
+    i += 1
   }
   give -1
 }
@@ -339,7 +339,7 @@ proc parse_json_string_field(json: string, key: string) -> string {
     if ch == "\"" { give out }
     if !is_safe_claim_char(ch) { give "" }
     out = out + ch
-    i = i + 1
+    i += 1
   }
   give ""
 }
@@ -354,7 +354,7 @@ proc parse_json_int_field(json: string, key: string) -> int {
     let ch = json.slice(i, i + 1)
     if !is_digit(ch) { break }
     out = out + ch
-    i = i + 1
+    i += 1
   }
   if out.len == 0 { give -1 }
   give out.to_int()
@@ -399,10 +399,10 @@ proc split_part(token: string, index: int) -> string {
   while i <= token.len {
     if i == token.len || token.slice(i, i + 1) == "." {
       if part == index { give token.slice(start, i) }
-      part = part + 1
+      part += 1
       start = i + 1
     }
-    i = i + 1
+    i += 1
   }
   give ""
 }
@@ -634,7 +634,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

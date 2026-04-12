@@ -239,6 +239,10 @@ Token Lexer::next() {
         case '/':
             return make(TokenKind::Slash, "/", start, index_);
         case '+':
+            if (peek() == '=') {
+                advance();
+                return make(TokenKind::PlusEqual, "+=", start, index_);
+            }
             return make(TokenKind::Plus, "+", start, index_);
         case '-':
             if (peek() == '>') {

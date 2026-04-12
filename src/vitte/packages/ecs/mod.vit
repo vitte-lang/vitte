@@ -173,7 +173,7 @@ proc entity_exists(world: World, entity: int) -> bool {
   let i: int = 0
   while i < world.entities.len {
     if world.entities[i].id == entity { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -206,7 +206,7 @@ proc remove_position(world: World, entity: int) -> World {
     if world.positions[i].entity != entity {
       updated = updated.push(world.positions[i])
     }
-    i = i + 1
+    i += 1
   }
   give World(world.next_id, world.tick, world.entities, updated, world.velocities)
 }
@@ -244,7 +244,7 @@ proc remove_velocity(world: World, entity: int) -> World {
     if world.velocities[i].entity != entity {
       updated = updated.push(world.velocities[i])
     }
-    i = i + 1
+    i += 1
   }
   give World(world.next_id, world.tick, world.entities, world.positions, updated)
 }
@@ -259,7 +259,7 @@ proc velocity_dx(world: World, entity: int) -> int {
   while i < world.velocities.len {
     let v = world.velocities[i]
     if v.entity == entity { give v.dx }
-    i = i + 1
+    i += 1
   }
   give 0
 }
@@ -269,7 +269,7 @@ proc velocity_dy(world: World, entity: int) -> int {
   while i < world.velocities.len {
     let v = world.velocities[i]
     if v.entity == entity { give v.dy }
-    i = i + 1
+    i += 1
   }
   give 0
 }
@@ -282,7 +282,7 @@ proc step(world: World) -> World {
     let dx = velocity_dx(world, p.entity)
     let dy = velocity_dy(world, p.entity)
     updated = updated.push(Position(p.entity, p.x + dx, p.y + dy))
-    i = i + 1
+    i += 1
   }
 
   let next_tick = ecs_policy_pkg.normalize_tick(world.tick + 1)
@@ -296,7 +296,7 @@ proc step_n(world: World, n: int) -> World {
   if steps < 0 { steps = 0 }
   while i < steps {
     out = step(out)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -306,7 +306,7 @@ proc position_x(world: World, entity: int) -> int {
   while i < world.positions.len {
     let p = world.positions[i]
     if p.entity == entity { give p.x }
-    i = i + 1
+    i += 1
   }
   give 0
 }
@@ -316,7 +316,7 @@ proc position_y(world: World, entity: int) -> int {
   while i < world.positions.len {
     let p = world.positions[i]
     if p.entity == entity { give p.y }
-    i = i + 1
+    i += 1
   }
   give 0
 }
@@ -325,7 +325,7 @@ proc has_position(world: World, entity: int) -> bool {
   let i: int = 0
   while i < world.positions.len {
     if world.positions[i].entity == entity { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -334,7 +334,7 @@ proc has_velocity(world: World, entity: int) -> bool {
   let i: int = 0
   while i < world.velocities.len {
     if world.velocities[i].entity == entity { give true }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -344,7 +344,7 @@ proc is_alive(world: World, entity: int) -> bool {
   while i < world.entities.len {
     let e = world.entities[i]
     if e.id == entity { give e.alive }
-    i = i + 1
+    i += 1
   }
   give false
 }
@@ -359,7 +359,7 @@ proc kill(world: World, entity: int) -> World {
     } else {
       updated = updated.push(e)
     }
-    i = i + 1
+    i += 1
   }
   give World(world.next_id, world.tick, updated, world.positions, world.velocities)
 }
@@ -383,7 +383,7 @@ proc ecs_validate_code(world: World, cfg: EcsConfig) -> string {
   let i: int = 0
   while i < world.entities.len {
     if ecs_validate_pkg.valid_generation(world.entities[i].generation) == false { give "invalid-generation" }
-    i = i + 1
+    i += 1
   }
 
   give "ok"
@@ -403,7 +403,7 @@ proc ecs_normalize(world: World, cfg: EcsConfig) -> World {
     if ecs_validate_pkg.valid_generation(world.entities[i].generation) {
       entities = entities.push(world.entities[i])
     }
-    i = i + 1
+    i += 1
   }
 
   let positions: [Position] = []
@@ -415,7 +415,7 @@ proc ecs_normalize(world: World, cfg: EcsConfig) -> World {
     if ecs_validate_pkg.valid_coord(x, c.max_abs_coord) && ecs_validate_pkg.valid_coord(y, c.max_abs_coord) {
       positions = positions.push(world.positions[j])
     }
-    j = j + 1
+    j += 1
   }
 
   let velocities: [Velocity] = []
@@ -427,7 +427,7 @@ proc ecs_normalize(world: World, cfg: EcsConfig) -> World {
     if ecs_validate_pkg.valid_coord(dx, c.max_abs_coord) && ecs_validate_pkg.valid_coord(dy, c.max_abs_coord) {
       velocities = velocities.push(world.velocities[k])
     }
-    k = k + 1
+    k += 1
   }
 
   give World(world.next_id, ecs_policy_pkg.normalize_tick(world.tick), entities, positions, velocities)
@@ -453,8 +453,8 @@ proc ecs_stats(world: World) -> EcsStats {
   let alive = 0
   let i: int = 0
   while i < world.entities.len {
-    if world.entities[i].alive { alive = alive + 1 }
-    i = i + 1
+    if world.entities[i].alive { alive += 1 }
+    i += 1
   }
   give EcsStats(world.entities.len,
                 alive,
@@ -631,7 +631,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

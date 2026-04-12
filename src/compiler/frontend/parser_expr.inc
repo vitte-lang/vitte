@@ -6,6 +6,10 @@ static int precedence(TokenKind kind) {
     return tokens::binary_precedence(kind);
 }
 
+static bool is_assignment_op(TokenKind kind) {
+    return kind == TokenKind::Equal || kind == TokenKind::PlusEqual;
+}
+
 static bool is_toplevel_sync_kind(TokenKind kind) {
     switch (kind) {
         case TokenKind::KwSpace:
@@ -129,13 +133,28 @@ ExprId Parser::parse_expr() {
             TokenKind op = current_.kind;
             int prec = precedence(op);
             advance();
-            int next_min_prec = (op == TokenKind::Equal) ? prec : (prec + 1);
+            int next_min_prec = is_assignment_op(op) ? prec : (prec + 1);
             auto rhs = parse_prec(next_min_prec);
             if (rhs == ast::kInvalidAstId) {
                 return lhs;
             }
             SourceSpan span = ast_ctx_.get<Expr>(lhs).span;
             span.end = ast_ctx_.get<Expr>(rhs).span.end;
+            if (op == TokenKind::PlusEqual) {
+                SourceSpan add_span = ast_ctx_.get<Expr>(lhs).span;
+                add_span.end = ast_ctx_.get<Expr>(rhs).span.end;
+                ExprId add_expr = ast_ctx_.make<BinaryExpr>(
+                    BinaryOp::Add,
+                    lhs,
+                    rhs,
+                    add_span);
+                lhs = ast_ctx_.make<BinaryExpr>(
+                    BinaryOp::Assign,
+                    lhs,
+                    add_expr,
+                    span);
+                continue;
+            }
             lhs = ast_ctx_.make<BinaryExpr>(
                 to_binary_op(op),
                 lhs,

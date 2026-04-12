@@ -208,7 +208,7 @@ proc header_get(headers: ClientHeaders, key: string) -> string {
   let i: int = 0
   while i < headers.values.len {
     if headers.values[i].key == key { give headers.values[i].value }
-    i = i + 1
+    i += 1
   }
   give ""
 }
@@ -414,7 +414,7 @@ proc perform(state: ClientState, req: ClientRequest) -> ClientResult[ClientRespo
   when last is ClientResult.Err { give last }
 
   while should_retry(state, req, last.value, attempt) {
-    attempt = attempt + 1
+    attempt += 1
     if attempt > state.retry.max_retries {
       give ClientResult.Err(ClientError.Failure("VITTE-C0005", diagnostics_message("VITTE-C0005")))
     }
@@ -552,7 +552,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

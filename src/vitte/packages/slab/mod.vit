@@ -32,7 +32,7 @@ proc find_free(s: Slab) -> int {
   let i: int = 0
   while i < s.slots.len {
     if !s.slots[i].used { give i }
-    i = i + 1
+    i += 1
   }
   give -1
 }
@@ -48,7 +48,7 @@ proc insert(s: Slab, value: string) -> Slab {
       } else {
         out = out.push(s.slots[i])
       }
-      i = i + 1
+      i += 1
     }
     give Slab(out)
   }
@@ -66,7 +66,7 @@ proc put_at(s: Slab, id: int, value: string) -> Slab {
     } else {
       out = out.push(s.slots[i])
     }
-    i = i + 1
+    i += 1
   }
   give Slab(out)
 }
@@ -93,7 +93,7 @@ proc remove(s: Slab, id: int) -> Slab {
     } else {
       out = out.push(s.slots[i])
     }
-    i = i + 1
+    i += 1
   }
   give Slab(out)
 }
@@ -105,9 +105,9 @@ proc compact(s: Slab) -> Slab {
   while i < s.slots.len {
     if s.slots[i].used {
       out = out.push(Slot(next_id, s.slots[i].value, true))
-      next_id = next_id + 1
+      next_id += 1
     }
-    i = i + 1
+    i += 1
   }
   give Slab(out)
 }
@@ -117,7 +117,7 @@ proc rebuild_ids(s: Slab) -> Slab {
   let i: int = 0
   while i < s.slots.len {
     out = out.push(Slot(i, s.slots[i].value, s.slots[i].used))
-    i = i + 1
+    i += 1
   }
   give Slab(out)
 }
@@ -126,8 +126,8 @@ proc used_count(s: Slab) -> int {
   let c: int = 0
   let i: int = 0
   while i < s.slots.len {
-    if s.slots[i].used { c = c + 1 }
-    i = i + 1
+    if s.slots[i].used { c += 1 }
+    i += 1
   }
   give c
 }
@@ -141,7 +141,7 @@ proc keys(s: Slab) -> [int] {
   let i: int = 0
   while i < s.slots.len {
     if s.slots[i].used { out = out.push(s.slots[i].id) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -151,7 +151,7 @@ proc values(s: Slab) -> [string] {
   let i: int = 0
   while i < s.slots.len {
     if s.slots[i].used { out = out.push(s.slots[i].value) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -160,7 +160,7 @@ proc first_used_id(s: Slab) -> int {
   let i: int = 0
   while i < s.slots.len {
     if s.slots[i].used { give s.slots[i].id }
-    i = i + 1
+    i += 1
   }
   give -1
 }
@@ -184,7 +184,7 @@ proc filter_values_prefix(s: Slab, prefix: string) -> [string] {
         out = out.push(v)
       }
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -394,7 +394,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

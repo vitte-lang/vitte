@@ -47,7 +47,7 @@ proc drop_first(events: [StreamEvent]) -> [StreamEvent] {
   let i: int = 1
   while i < events.len {
     out = out.push(events[i])
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -57,7 +57,7 @@ proc push(stream: Stream, value: string, tick: int) -> Stream {
   let dropped = stream.dropped
   if buffer.len >= stream.cfg.max_buffer {
     buffer = drop_first(buffer)
-    dropped = dropped + 1
+    dropped += 1
   }
   let event = StreamEvent(stream.next_seq, value, tick)
   give Stream(stream.cfg, stream.next_seq + 1, buffer.push(event), dropped)
@@ -73,7 +73,7 @@ proc batch(stream: Stream) -> [StreamEvent] {
   while i < stream.buffer.len {
     if i >= stream.cfg.batch_size { break }
     out = out.push(stream.buffer[i])
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -83,7 +83,7 @@ proc drain_batch(stream: Stream) -> Stream {
   let i: int = stream.cfg.batch_size
   while i < stream.buffer.len {
     out = out.push(stream.buffer[i])
-    i = i + 1
+    i += 1
   }
   give Stream(stream.cfg, stream.next_seq, out, stream.dropped)
 }
@@ -96,7 +96,7 @@ proc window(stream: Stream, now_tick: int) -> [StreamEvent] {
     if now_tick - event.tick <= stream.cfg.window_ticks {
       out = out.push(event)
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -182,7 +182,7 @@ proc find_by_seq(stream: Stream, seq: int) -> StreamEvent {
   let i: int = 0
   while i < stream.buffer.len {
     if stream.buffer[i].seq == seq { give stream.buffer[i] }
-    i = i + 1
+    i += 1
   }
   give StreamEvent(-1, "", 0)
 }
@@ -192,7 +192,7 @@ proc replay_from(stream: Stream, seq: int) -> [StreamEvent] {
   let i: int = 0
   while i < stream.buffer.len {
     if stream.buffer[i].seq >= seq { out = out.push(stream.buffer[i]) }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -202,7 +202,7 @@ proc trim_before_tick(stream: Stream, tick: int) -> Stream {
   let i: int = 0
   while i < stream.buffer.len {
     if stream.buffer[i].tick >= tick { out = out.push(stream.buffer[i]) }
-    i = i + 1
+    i += 1
   }
   give Stream(stream.cfg, stream.next_seq, out, stream.dropped)
 }
@@ -420,7 +420,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }

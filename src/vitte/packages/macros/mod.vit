@@ -56,7 +56,7 @@ proc define(macros: MacroSet, name: string, body: string) -> MacroSet {
     } else {
       out = out.push(macros.defs[i])
     }
-    i = i + 1
+    i += 1
   }
   if !found { out = out.push(MacroDef(name, body)) }
   give MacroSet(out)
@@ -67,7 +67,7 @@ proc undefine(macros: MacroSet, name: string) -> MacroSet {
   let i: int = 0
   while i < macros.defs.len {
     if macros.defs[i].name != name { out = out.push(macros.defs[i]) }
-    i = i + 1
+    i += 1
   }
   give MacroSet(out)
 }
@@ -76,7 +76,7 @@ proc lookup(macros: MacroSet, name: string) -> string {
   let i: int = 0
   while i < macros.defs.len {
     if macros.defs[i].name == name { give macros.defs[i].body }
-    i = i + 1
+    i += 1
   }
   give ""
 }
@@ -99,7 +99,7 @@ proc clone(macros: MacroSet) -> MacroSet {
   let i: int = 0
   while i < macros.defs.len {
     out = out.push(macros.defs[i])
-    i = i + 1
+    i += 1
   }
   give MacroSet(out)
 }
@@ -130,7 +130,7 @@ proc expand_once(macros: MacroSet, text: string) -> string {
     } else {
       current = current + ch
     }
-    i = i + 1
+    i += 1
   }
 
   let out = ""
@@ -138,7 +138,7 @@ proc expand_once(macros: MacroSet, text: string) -> string {
   while j < parts.len {
     if j > 0 { out = out + " " }
     out = out + expand_token(macros, parts[j])
-    j = j + 1
+    j += 1
   }
   give out
 }
@@ -150,7 +150,7 @@ proc expand_times(macros: MacroSet, text: string, rounds: int) -> string {
     let next = expand_once(macros, out)
     if next == out { break }
     out = next
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -160,7 +160,7 @@ proc merge(left: MacroSet, right: MacroSet) -> MacroSet {
   let i: int = 0
   while i < right.defs.len {
     out = define(out, right.defs[i].name, right.defs[i].body)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -181,12 +181,12 @@ proc import_pairs(lines: [string]) -> MacroSet {
       } else {
         if seen_eq { value = value + ch } else { key = key + ch }
       }
-      j = j + 1
+      j += 1
     }
     if key.len > 0 {
       out = define(out, key, value)
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -196,7 +196,7 @@ proc render_pairs(macros: MacroSet) -> [string] {
   let i: int = 0
   while i < macros.defs.len {
     out = out.push(macros.defs[i].name + "=" + macros.defs[i].body)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -209,7 +209,7 @@ proc prefixed_names(macros: MacroSet, prefix: string) -> [string] {
     if prefix.len <= n.len && n.slice(0, prefix.len) == prefix {
       out = out.push(n)
     }
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -218,7 +218,7 @@ proc validate(macros: MacroSet) -> bool {
   let i: int = 0
   while i < macros.defs.len {
     if macros.defs[i].name.len == 0 { give false }
-    i = i + 1
+    i += 1
   }
   give true
 }
@@ -228,7 +228,7 @@ proc names(macros: MacroSet) -> [string] {
   let i: int = 0
   while i < macros.defs.len {
     out = out.push(macros.defs[i].name)
-    i = i + 1
+    i += 1
   }
   give out
 }
@@ -400,7 +400,7 @@ proc contract_caps_csv() -> string {
   let i: int = 1
   while i < caps.len {
     out = out + "," + caps[i]
-    i = i + 1
+    i += 1
   }
   give out
 }
