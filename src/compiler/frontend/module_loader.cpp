@@ -803,7 +803,8 @@ static void qualify_module(AstContext& ctx,
     if (!prefix.empty()) {
         const auto declared = collect_declared_exports(ctx, module_id);
         if (!declared.has_share_decl) {
-            index.exports[prefix].insert(locals.begin(), locals.end());
+            auto shareable = collect_shareable_names(ctx, module_id);
+            index.exports[prefix].insert(shareable.begin(), shareable.end());
         } else if (declared.share_all) {
             auto shareable = collect_shareable_names(ctx, module_id);
             index.exports[prefix].insert(shareable.begin(), shareable.end());
@@ -1004,17 +1005,34 @@ struct Loader {
                 diagnostics.emit(std::move(ambiguous));
                 continue;
             }
-            if (options.allow_legacy_self_leaf && is_legacy_self_leaf_path(module_path)) {
+            const bool legacy_self_leaf = is_legacy_self_leaf_path(module_path);
+            if (legacy_self_leaf && options.strict_legacy_forms) {
+                ModulePath parent = module_path;
+                parent.parts.pop_back();
+                const std::string legacy_key = module_path_key(module_path);
+                const std::string canonical_key = module_path_key(parent);
+                diagnostics.error_code(
+                    "E1020",
+                    "legacy import path '" + legacy_key + "' is forbidden in strict mode; use '" + canonical_key + "'",
+                    (*path).span
+                );
+                continue;
+            }
+            if (legacy_self_leaf && options.allow_legacy_self_leaf) {
                 ModulePath parent = module_path;
                 parent.parts.pop_back();
                 std::filesystem::path parent_file = resolve_module_file(parent, base_dir, repo_root);
                 if (!parent_file.empty()) {
-                    diagnostics.warning_code(
-                        "E1020",
-                        "legacy import path '" + module_path_key(module_path) +
-                            "' is deprecated; use '" + module_path_key(parent) + "'",
-                        (*path).span
-                    );
+                    const std::string legacy_key = module_path_key(module_path);
+                    const std::string canonical_key = module_path_key(parent);
+                    if (!options.legacy_self_leaf_warn_only) {
+                        diagnostics.warning_code(
+                            "E1020",
+                            "legacy import path '" + legacy_key +
+                                "' is deprecated; use '" + canonical_key + "'",
+                            (*path).span
+                        );
+                    }
                     module_path = std::move(parent);
                     *path = module_path;
                 }
@@ -1025,16 +1043,20 @@ struct Loader {
                 parent.parts.pop_back();
                 std::filesystem::path parent_file = resolve_module_file(parent, base_dir, repo_root);
                 if (!parent_file.empty()) {
-                    if (options.allow_legacy_self_leaf && is_legacy_self_leaf_path(module_path)) {
-                        diagnostics.warning_code(
-                            "E1020",
-                            "legacy import path '" + module_path_key(module_path) +
-                                "' is deprecated; use '" + module_path_key(parent) + "'",
-                            (*path).span
-                        );
+                    if (legacy_self_leaf && options.allow_legacy_self_leaf) {
+                        const std::string legacy_key = module_path_key(module_path);
+                        const std::string canonical_key = module_path_key(parent);
+                        if (!options.legacy_self_leaf_warn_only) {
+                            diagnostics.warning_code(
+                                "E1020",
+                                "legacy import path '" + legacy_key +
+                                    "' is deprecated; use '" + canonical_key + "'",
+                                (*path).span
+                            );
+                        }
+                        module_path = std::move(parent);
+                        file = std::move(parent_file);
                     }
-                    module_path = std::move(parent);
-                    file = std::move(parent_file);
                 }
             }
             if (file.empty()) {
@@ -1093,7 +1115,7 @@ struct Loader {
 
             Lexer lexer(source, file.string());
             ctx.sources.push_back(lexer.source_file());
-            parser::Parser parser(lexer, diagnostics, ctx, false);
+            parser::Parser parser(lexer, diagnostics, ctx, false, false, false, 0, 0, options.syntax_strict);
             ModuleId mod_id = parser.parse_module();
 
             std::filesystem::path mod_dir = file.parent_path();
