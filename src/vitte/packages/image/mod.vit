@@ -104,6 +104,12 @@ proc healthcheck(cfg: ImageConfig, img: Image) -> ImageResult[ImageHealth] {
   give ImageResult.Ok(ImageHealth(true, "ok", img.pixels.len))
 }
 
+proc healthcheck(cfg: ImageConfig) -> ImageResult[bool] {
+  let hr = healthcheck(cfg, image_new(1, 1, rgba(0, 0, 0, 255)))
+  when hr is ImageResult.Err { give ImageResult.Err(hr.error) }
+  give ImageResult.Ok(hr.value.ok)
+}
+
 proc version() -> string {
   give "v1"
 }

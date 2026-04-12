@@ -100,6 +100,12 @@ proc healthcheck(cfg: IdempotencyConfig, store: IdempotencyStore, now_tick: int)
   give IdempotencyResult.Ok(IdempotencyHealth(true, "ok", active.records.len))
 }
 
+proc healthcheck(cfg: IdempotencyConfig) -> IdempotencyResult[bool] {
+  let hr = healthcheck(cfg, store_new(), 0)
+  when hr is IdempotencyResult.Err { give IdempotencyResult.Err(hr.error) }
+  give IdempotencyResult.Ok(hr.value.ok)
+}
+
 proc version() -> string {
   give "v1"
 }

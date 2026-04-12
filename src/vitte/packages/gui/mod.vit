@@ -121,6 +121,12 @@ proc healthcheck(cfg: GuiConfig, v: View) -> GuiResult[GuiHealth] {
   give GuiResult.Ok(GuiHealth(true, "ok", v.widgets.len))
 }
 
+proc healthcheck(cfg: GuiConfig) -> GuiResult[bool] {
+  let hr = healthcheck(cfg, view("healthcheck"))
+  when hr is GuiResult.Err { give GuiResult.Err(hr.error) }
+  give GuiResult.Ok(hr.value.ok)
+}
+
 proc version() -> string {
   give "v1"
 }

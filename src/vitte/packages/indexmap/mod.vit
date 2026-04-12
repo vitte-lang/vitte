@@ -97,6 +97,12 @@ proc healthcheck(cfg: IndexMapConfig, m: IndexMap) -> IndexMapResult[IndexMapHea
   give IndexMapResult.Ok(IndexMapHealth(true, "ok", m.entries.len))
 }
 
+proc healthcheck(cfg: IndexMapConfig) -> IndexMapResult[bool] {
+  let hr = healthcheck(cfg, map_new())
+  when hr is IndexMapResult.Err { give IndexMapResult.Err(hr.error) }
+  give IndexMapResult.Ok(hr.value.ok)
+}
+
 proc version() -> string {
   give "v1"
 }

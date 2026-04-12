@@ -103,6 +103,12 @@ proc healthcheck(cfg: GraphConfig, g: Graph) -> GraphResult[GraphHealth] {
   give GraphResult.Ok(GraphHealth(true, "ok", g.nodes, g.edge_count))
 }
 
+proc healthcheck(cfg: GraphConfig) -> GraphResult[bool] {
+  let hr = healthcheck(cfg, graph_new(1, false))
+  when hr is GraphResult.Err { give GraphResult.Err(hr.error) }
+  give GraphResult.Ok(hr.value.ok)
+}
+
 proc version() -> string {
   give "v1"
 }

@@ -120,6 +120,13 @@ proc healthcheck(cfg: HirConfig, m: HirModule) -> HirResult[HirHealth] {
   give HirResult.Ok(HirHealth(true, "ok", m.nodes.len))
 }
 
+proc healthcheck(cfg: HirConfig) -> HirResult[bool] {
+  let probe = HirModule("healthcheck", [HirNode(0, HirKind.Return, "ret", "unit")])
+  let hr = healthcheck(cfg, probe)
+  when hr is HirResult.Err { give HirResult.Err(hr.error) }
+  give HirResult.Ok(hr.value.ok)
+}
+
 proc version() -> string {
   give "v1"
 }

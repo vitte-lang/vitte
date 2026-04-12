@@ -89,6 +89,12 @@ proc healthcheck(cfg: FixturesConfig, fixtures: FixtureSet) -> FixturesResult[Fi
   give FixturesResult.Ok(FixturesHealth(true, "ok", fixtures.current_rows.len))
 }
 
+proc healthcheck(cfg: FixturesConfig) -> FixturesResult[bool] {
+  let hr = healthcheck(cfg, fixture_load("healthcheck", []))
+  when hr is FixturesResult.Err { give FixturesResult.Err(hr.error) }
+  give FixturesResult.Ok(hr.value.ok)
+}
+
 proc runtime_info() -> FixturesRuntimeInfo {
   give FixturesRuntimeInfo(fixtures_runtime_pkg.runtime_name(),
                            fixtures_runtime_pkg.runtime_version(),
