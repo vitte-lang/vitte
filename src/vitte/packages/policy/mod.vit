@@ -54,8 +54,7 @@ proc remove_rule(policyset: PolicySet, index: int) -> PolicySet {
   if index < 0 || index >= policyset.rules.len { give policyset }
   let out: [PolicyRule] = []
   let i: int = 0
-  loop {
-    if i >= policyset.rules.len { break }
+  while !(i >= policyset.rules.len) {
     if i != index {
       out = out.push(policyset.rules[i])
     }
@@ -74,8 +73,7 @@ proc matches(rule: PolicyRule, subject: string, action: string, resource: string
 proc subject_rule_count(policyset: PolicySet, subject: string) -> int {
   let n: int = 0
   let i: int = 0
-  loop {
-    if i >= policyset.rules.len { break }
+  while !(i >= policyset.rules.len) {
     if policyset.rules[i].subject == subject {
       n = n + 1
     }
@@ -86,8 +84,7 @@ proc subject_rule_count(policyset: PolicySet, subject: string) -> int {
 
 proc has_rule(policyset: PolicySet, subject: string, action: string, resource: string) -> bool {
   let i: int = 0
-  loop {
-    if i >= policyset.rules.len { break }
+  while !(i >= policyset.rules.len) {
     if matches(policyset.rules[i], subject, action, resource) { give true }
     i = i + 1
   }
@@ -96,8 +93,7 @@ proc has_rule(policyset: PolicySet, subject: string, action: string, resource: s
 
 proc first_match(policyset: PolicySet, subject: string, action: string, resource: string) -> PolicyRule {
   let i: int = 0
-  loop {
-    if i >= policyset.rules.len { break }
+  while !(i >= policyset.rules.len) {
     let rule = policyset.rules[i]
     if matches(rule, subject, action, resource) {
       give rule
@@ -109,8 +105,7 @@ proc first_match(policyset: PolicySet, subject: string, action: string, resource
 
 proc allow(policyset: PolicySet, subject: string, action: string, resource: string) -> bool {
   let i: int = 0
-  loop {
-    if i >= policyset.rules.len { break }
+  while !(i >= policyset.rules.len) {
     let rule = policyset.rules[i]
     if matches(rule, subject, action, resource) {
       give rule.effect == Effect.Allow
@@ -122,8 +117,7 @@ proc allow(policyset: PolicySet, subject: string, action: string, resource: stri
 
 proc deny_reason(policyset: PolicySet, subject: string, action: string, resource: string) -> string {
   let i: int = 0
-  loop {
-    if i >= policyset.rules.len { break }
+  while !(i >= policyset.rules.len) {
     let rule = policyset.rules[i]
     if matches(rule, subject, action, resource) {
       if rule.effect == Effect.Deny {
@@ -142,8 +136,7 @@ proc deny_reason(policyset: PolicySet, subject: string, action: string, resource
 
 proc explain(policyset: PolicySet, subject: string, action: string, resource: string) -> string {
   let i: int = 0
-  loop {
-    if i >= policyset.rules.len { break }
+  while !(i >= policyset.rules.len) {
     let rule = policyset.rules[i]
     if matches(rule, subject, action, resource) {
       if rule.effect == Effect.Allow {
@@ -369,8 +362,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

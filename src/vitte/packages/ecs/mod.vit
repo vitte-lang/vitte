@@ -171,8 +171,7 @@ proc entity_count(world: World) -> int {
 
 proc entity_exists(world: World, entity: int) -> bool {
   let i: int = 0
-  loop {
-    if i >= world.entities.len { break }
+  while !(i >= world.entities.len) {
     if world.entities[i].id == entity { give true }
     i = i + 1
   }
@@ -203,8 +202,7 @@ proc add_position_checked(world: World, entity: int, x: int, y: int, cfg: EcsCon
 proc remove_position(world: World, entity: int) -> World {
   let updated: [Position] = []
   let i: int = 0
-  loop {
-    if i >= world.positions.len { break }
+  while !(i >= world.positions.len) {
     if world.positions[i].entity != entity {
       updated = updated.push(world.positions[i])
     }
@@ -242,8 +240,7 @@ proc add_velocity_checked(world: World, entity: int, dx: int, dy: int, cfg: EcsC
 proc remove_velocity(world: World, entity: int) -> World {
   let updated: [Velocity] = []
   let i: int = 0
-  loop {
-    if i >= world.velocities.len { break }
+  while !(i >= world.velocities.len) {
     if world.velocities[i].entity != entity {
       updated = updated.push(world.velocities[i])
     }
@@ -259,8 +256,7 @@ proc remove_velocity_checked(world: World, entity: int) -> EcsResult[World] {
 
 proc velocity_dx(world: World, entity: int) -> int {
   let i: int = 0
-  loop {
-    if i >= world.velocities.len { break }
+  while !(i >= world.velocities.len) {
     let v = world.velocities[i]
     if v.entity == entity { give v.dx }
     i = i + 1
@@ -270,8 +266,7 @@ proc velocity_dx(world: World, entity: int) -> int {
 
 proc velocity_dy(world: World, entity: int) -> int {
   let i: int = 0
-  loop {
-    if i >= world.velocities.len { break }
+  while !(i >= world.velocities.len) {
     let v = world.velocities[i]
     if v.entity == entity { give v.dy }
     i = i + 1
@@ -282,8 +277,7 @@ proc velocity_dy(world: World, entity: int) -> int {
 proc step(world: World) -> World {
   let updated: [Position] = []
   let i: int = 0
-  loop {
-    if i >= world.positions.len { break }
+  while !(i >= world.positions.len) {
     let p = world.positions[i]
     let dx = velocity_dx(world, p.entity)
     let dy = velocity_dy(world, p.entity)
@@ -300,8 +294,7 @@ proc step_n(world: World, n: int) -> World {
   let i: int = 0
   let steps = n
   if steps < 0 { steps = 0 }
-  loop {
-    if i >= steps { break }
+  while !(i >= steps) {
     out = step(out)
     i = i + 1
   }
@@ -310,8 +303,7 @@ proc step_n(world: World, n: int) -> World {
 
 proc position_x(world: World, entity: int) -> int {
   let i: int = 0
-  loop {
-    if i >= world.positions.len { break }
+  while !(i >= world.positions.len) {
     let p = world.positions[i]
     if p.entity == entity { give p.x }
     i = i + 1
@@ -321,8 +313,7 @@ proc position_x(world: World, entity: int) -> int {
 
 proc position_y(world: World, entity: int) -> int {
   let i: int = 0
-  loop {
-    if i >= world.positions.len { break }
+  while !(i >= world.positions.len) {
     let p = world.positions[i]
     if p.entity == entity { give p.y }
     i = i + 1
@@ -332,8 +323,7 @@ proc position_y(world: World, entity: int) -> int {
 
 proc has_position(world: World, entity: int) -> bool {
   let i: int = 0
-  loop {
-    if i >= world.positions.len { break }
+  while !(i >= world.positions.len) {
     if world.positions[i].entity == entity { give true }
     i = i + 1
   }
@@ -342,8 +332,7 @@ proc has_position(world: World, entity: int) -> bool {
 
 proc has_velocity(world: World, entity: int) -> bool {
   let i: int = 0
-  loop {
-    if i >= world.velocities.len { break }
+  while !(i >= world.velocities.len) {
     if world.velocities[i].entity == entity { give true }
     i = i + 1
   }
@@ -352,8 +341,7 @@ proc has_velocity(world: World, entity: int) -> bool {
 
 proc is_alive(world: World, entity: int) -> bool {
   let i: int = 0
-  loop {
-    if i >= world.entities.len { break }
+  while !(i >= world.entities.len) {
     let e = world.entities[i]
     if e.id == entity { give e.alive }
     i = i + 1
@@ -364,8 +352,7 @@ proc is_alive(world: World, entity: int) -> bool {
 proc kill(world: World, entity: int) -> World {
   let updated: [Entity] = []
   let i: int = 0
-  loop {
-    if i >= world.entities.len { break }
+  while !(i >= world.entities.len) {
     let e = world.entities[i]
     if e.id == entity {
       updated = updated.push(Entity(e.id, false, e.generation + 1))
@@ -394,8 +381,7 @@ proc ecs_validate_code(world: World, cfg: EcsConfig) -> string {
   if ecs_validate_pkg.valid_limit(world.velocities.len, cfg.max_components_per_type) == false { give "too-many-velocities" }
 
   let i: int = 0
-  loop {
-    if i >= world.entities.len { break }
+  while !(i >= world.entities.len) {
     if ecs_validate_pkg.valid_generation(world.entities[i].generation) == false { give "invalid-generation" }
     i = i + 1
   }
@@ -412,8 +398,7 @@ proc ecs_normalize(world: World, cfg: EcsConfig) -> World {
 
   let entities: [Entity] = []
   let i: int = 0
-  loop {
-    if i >= world.entities.len { break }
+  while !(i >= world.entities.len) {
     if entities.len >= c.max_entities { break }
     if ecs_validate_pkg.valid_generation(world.entities[i].generation) {
       entities = entities.push(world.entities[i])
@@ -423,8 +408,7 @@ proc ecs_normalize(world: World, cfg: EcsConfig) -> World {
 
   let positions: [Position] = []
   let j: int = 0
-  loop {
-    if j >= world.positions.len { break }
+  while !(j >= world.positions.len) {
     if positions.len >= c.max_components_per_type { break }
     let x = world.positions[j].x
     let y = world.positions[j].y
@@ -436,8 +420,7 @@ proc ecs_normalize(world: World, cfg: EcsConfig) -> World {
 
   let velocities: [Velocity] = []
   let k: int = 0
-  loop {
-    if k >= world.velocities.len { break }
+  while !(k >= world.velocities.len) {
     if velocities.len >= c.max_components_per_type { break }
     let dx = world.velocities[k].dx
     let dy = world.velocities[k].dy
@@ -469,8 +452,7 @@ proc pressure_percent(world: World, cfg: EcsConfig) -> int {
 proc ecs_stats(world: World) -> EcsStats {
   let alive = 0
   let i: int = 0
-  loop {
-    if i >= world.entities.len { break }
+  while !(i >= world.entities.len) {
     if world.entities[i].alive { alive = alive + 1 }
     i = i + 1
   }
@@ -647,8 +629,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

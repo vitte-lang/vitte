@@ -193,8 +193,7 @@ proc ast_error_name(err: AstError) -> string {
 
 proc contains_id(ids: [int], id: int) -> bool {
   let i: int = 0
-  loop {
-    if i >= ids.len { break }
+  while !(i >= ids.len) {
     if ids[i] == id { give true }
     i = i + 1
   }
@@ -203,8 +202,7 @@ proc contains_id(ids: [int], id: int) -> bool {
 
 proc find_index_by_id(m: AstModule, id: int) -> int {
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].id == id { give i }
     i = i + 1
   }
@@ -225,8 +223,7 @@ proc try_find_by_id(m: AstModule, id: int) -> AstNodeResult {
 
 proc find_by_name(m: AstModule, name: string) -> AstNode {
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].name == name { give m.nodes[i] }
     i = i + 1
   }
@@ -235,8 +232,7 @@ proc find_by_name(m: AstModule, name: string) -> AstNode {
 
 proc try_find_by_name(m: AstModule, name: string) -> AstNodeResult {
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].name == name { give AstNodeResult(true, m.nodes[i], AstError.None) }
     i = i + 1
   }
@@ -256,8 +252,7 @@ proc normalize_nodes(nodes: [AstNode]) -> [AstNode] {
   let uniq: [AstNode] = []
 
   let i: int = 0
-  loop {
-    if i >= nodes.len { break }
+  while !(i >= nodes.len) {
     let n0 = nodes[i]
     if n0.id >= 0 && !contains_id(ids, n0.id) {
       ids = ids.push(n0.id)
@@ -274,8 +269,7 @@ proc normalize_nodes(nodes: [AstNode]) -> [AstNode] {
 
   let pfix: [AstNode] = []
   i = 0
-  loop {
-    if i >= uniq.len { break }
+  while !(i >= uniq.len) {
     let n1 = uniq[i]
     let p = n1.parent_id
     if p == n1.id { p = -1 }
@@ -286,13 +280,11 @@ proc normalize_nodes(nodes: [AstNode]) -> [AstNode] {
 
   let out: [AstNode] = []
   i = 0
-  loop {
-    if i >= pfix.len { break }
+  while !(i >= pfix.len) {
     let parent = pfix[i]
     let children: [int] = []
     let j: int = 0
-    loop {
-      if j >= pfix.len { break }
+    while !(j >= pfix.len) {
       let cand = pfix[j]
       if cand.parent_id == parent.id {
         children = children.push(cand.id)
@@ -334,8 +326,7 @@ proc experimental_add_node_unchecked(m: AstModule, node: AstNode) -> AstModule {
 proc remove_by_id(m: AstModule, id: int) -> AstModule {
   let out: [AstNode] = []
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].id != id {
       out = out.push(m.nodes[i])
     }
@@ -347,8 +338,7 @@ proc remove_by_id(m: AstModule, id: int) -> AstModule {
 proc rename_node(m: AstModule, id: int, new_name: string) -> AstModule {
   let out: [AstNode] = []
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     let n = m.nodes[i]
     if n.id == id {
       out = out.push(AstNode(n.id, n.kind, new_name, n.value, n.parent_id, n.children, n.span))
@@ -367,8 +357,7 @@ proc node_count(m: AstModule) -> int {
 proc leaf_count(m: AstModule) -> int {
   let leaves: int = 0
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].children.len == 0 { leaves = leaves + 1 }
     i = i + 1
   }
@@ -380,8 +369,7 @@ proc node_depth_by_index(m: AstModule, idx: int) -> int {
   let cur = m.nodes[idx].parent_id
   let guard: int = 0
 
-  loop {
-    if cur < 0 { break }
+  while !(cur < 0) {
     if guard > m.nodes.len { break }
     let pidx = find_index_by_id(m, cur)
     if pidx < 0 { break }
@@ -398,8 +386,7 @@ proc depth(m: AstModule) -> int {
 
   let d: int = 0
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     let nd = node_depth_by_index(m, i)
     if nd > d { d = nd }
     i = i + 1
@@ -414,8 +401,7 @@ proc transform_ops(m: AstModule) -> int {
 proc alloc_estimate(m: AstModule) -> int {
   let bytes: int = 0
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     let n = m.nodes[i]
     bytes = bytes + 64
     bytes = bytes + n.name.len
@@ -444,8 +430,7 @@ proc ast_validate_code(m: AstModule) -> string {
   if ast_validate_pkg.valid_node_count(m.nodes.len, ast_policy_pkg.max_nodes()) == false { give "AST-NODE-COUNT" }
   if ast_validate_pkg.valid_non_negative(m.transform_ops) == false { give "AST-OPS" }
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if ast_validate_pkg.valid_node_id(m.nodes[i].id) == false { give "AST-NODE-ID" }
     if ast_validate_pkg.valid_span(m.nodes[i].span.start, m.nodes[i].span.end) == false { give "AST-NODE-SPAN" }
     i = i + 1
@@ -498,8 +483,7 @@ proc max_depth(m: AstModule) -> int {
 proc max_children(m: AstModule) -> int {
   let mx: int = 0
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].children.len > mx { mx = m.nodes[i].children.len }
     i = i + 1
   }
@@ -550,8 +534,7 @@ proc validate_tree(m: AstModule) -> AstValidation {
 
   let ids: [int] = []
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     let n = m.nodes[i]
 
     if n.id < 0 { give AstValidation(false, AstError.InvalidId, n.id) }
@@ -576,13 +559,11 @@ proc validate_tree(m: AstModule) -> AstValidation {
   }
 
   i = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     let n = m.nodes[i]
 
     let j: int = 0
-    loop {
-      if j >= n.children.len { break }
+    while !(j >= n.children.len) {
       let child_id = n.children[j]
       if child_id == n.id { give AstValidation(false, AstError.InvalidChild, n.id) }
       let cidx = find_index_by_id(m, child_id)
@@ -595,8 +576,7 @@ proc validate_tree(m: AstModule) -> AstValidation {
 
     let cur = n.parent_id
     let guard: int = 0
-    loop {
-      if cur < 0 { break }
+    while !(cur < 0) {
       if guard > m.nodes.len {
         give AstValidation(false, AstError.CycleDetected, n.id)
       }
@@ -651,8 +631,7 @@ proc module_health(m: AstModule) -> string {
 proc root_ids(m: AstModule) -> [int] {
   let out: [int] = []
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].parent_id < 0 {
       out = out.push(m.nodes[i].id)
     }
@@ -669,8 +648,7 @@ proc walk_preorder(m: AstModule) -> [int] {
   let stack_len: int = 0
 
   let r: int = roots.len - 1
-  loop {
-    if r < 0 { break }
+  while !(r < 0) {
     stack = stack.push(roots[r])
     stack_len = stack_len + 1
     r = r - 1
@@ -679,8 +657,7 @@ proc walk_preorder(m: AstModule) -> [int] {
   let out: [int] = []
   let visits: int = 0
 
-  loop {
-    if stack_len <= 0 { break }
+  while !(stack_len <= 0) {
     if visits >= budget { break }
 
     let top = stack_len - 1
@@ -692,8 +669,7 @@ proc walk_preorder(m: AstModule) -> [int] {
     if idx >= 0 {
       let children = m.nodes[idx].children
       let c: int = children.len - 1
-      loop {
-        if c < 0 { break }
+      while !(c < 0) {
         stack = stack.push(children[c])
         stack_len = stack_len + 1
         c = c - 1
@@ -716,16 +692,14 @@ proc walk_postorder(m: AstModule) -> [int] {
   let s2_len: int = 0
 
   let r: int = roots.len - 1
-  loop {
-    if r < 0 { break }
+  while !(r < 0) {
     s1 = s1.push(roots[r])
     s1_len = s1_len + 1
     r = r - 1
   }
 
   let visits: int = 0
-  loop {
-    if s1_len <= 0 { break }
+  while !(s1_len <= 0) {
     if visits >= budget { break }
 
     let top = s1_len - 1
@@ -739,8 +713,7 @@ proc walk_postorder(m: AstModule) -> [int] {
     if idx >= 0 {
       let children = m.nodes[idx].children
       let c: int = 0
-      loop {
-        if c >= children.len { break }
+      while !(c >= children.len) {
         s1 = s1.push(children[c])
         s1_len = s1_len + 1
         c = c + 1
@@ -752,8 +725,7 @@ proc walk_postorder(m: AstModule) -> [int] {
 
   let out: [int] = []
   let i: int = s2_len - 1
-  loop {
-    if i < 0 { break }
+  while !(i < 0) {
     out = out.push(s2[i])
     i = i - 1
   }
@@ -770,8 +742,7 @@ proc walk_bfs(m: AstModule) -> [int] {
   let out: [int] = []
   let visits: int = 0
 
-  loop {
-    if head >= q.len { break }
+  while !(head >= q.len) {
     if visits >= budget { break }
 
     let id = q[head]
@@ -782,8 +753,7 @@ proc walk_bfs(m: AstModule) -> [int] {
     if idx >= 0 {
       let children = m.nodes[idx].children
       let c: int = 0
-      loop {
-        if c >= children.len { break }
+      while !(c >= children.len) {
         q = q.push(children[c])
         c = c + 1
       }
@@ -813,8 +783,7 @@ proc map_nodes(m: AstModule) -> AstModule {
 
   let out: [AstNode] = []
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     let n = m.nodes[i]
     out = out.push(AstNode(n.id, n.kind, n.name, n.value, n.parent_id, n.children, n.span))
     i = i + 1
@@ -832,8 +801,7 @@ proc filter_nodes(m: AstModule, drop_kind: AstKind) -> AstModule {
 
   let out: [AstNode] = []
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].kind != drop_kind {
       out = out.push(m.nodes[i])
     }
@@ -852,8 +820,7 @@ proc rewrite(m: AstModule, from_value: string, to_value: string) -> AstModule {
 
   let out: [AstNode] = []
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     let n = m.nodes[i]
     if n.value == from_value {
       out = out.push(AstNode(n.id, n.kind, n.name, to_value, n.parent_id, n.children, n.span))
@@ -900,8 +867,7 @@ proc stable_normalize(m: AstModule) -> AstModule {
 proc nodes_of_kind(m: AstModule, kind: AstKind) -> [AstNode] {
   let out: [AstNode] = []
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].kind == kind {
       out = out.push(m.nodes[i])
     }
@@ -922,8 +888,7 @@ proc kind_name(kind: AstKind) -> string {
 proc next_id(m: AstModule) -> int {
   let mx: int = -1
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].id > mx { mx = m.nodes[i].id }
     i = i + 1
   }
@@ -958,8 +923,7 @@ proc serialize_stable_ast(m: AstModule) -> string {
 proc parse_decimal(text: string) -> int {
   let out = 0
   let i: int = 0
-  loop {
-    if i >= text.len { break }
+  while !(i >= text.len) {
     let c = text[i].to_int()
     if c < 48 || c > 57 { give -1 }
     out = out * 10 + (c - 48)
@@ -972,8 +936,7 @@ proc segment_at(text: string, target: int) -> string {
   let seg = 0
   let out = ""
   let i: int = 0
-  loop {
-    if i >= text.len { break }
+  while !(i >= text.len) {
     if text[i] == "|" {
       seg = seg + 1
     } else if seg == target {
@@ -997,8 +960,7 @@ proc parse_stable_ast(serialized: string) -> AstModule {
 
   let m = AstModule(name, [], ops, ast_policy_pkg.default_max_visits(), ast_policy_pkg.default_max_depth_guard())
   let i: int = 0
-  loop {
-    if i >= count { break }
+  while !(i >= count) {
     let pid = -1
     if i > 0 { pid = 0 }
     m = add_node(m, ast_node_with_links(i, AstKind.Literal, "n" + i.to_string(), "", pid, [], ast_span(i, i + 1)))
@@ -1033,8 +995,7 @@ proc property_tree_integrity(rounds: int, width: int) -> PropertyReport {
   let ok = true
 
   let r: int = 0
-  loop {
-    if r >= rounds { break }
+  while !(r >= rounds) {
 
     let m0 = set_budget(ast_module("prop"), width * 16 + 1, width + 8)
     let m1 = add_node(m0, ast_node(0, AstKind.Module, "root", ""))
@@ -1060,8 +1021,7 @@ proc property_normalize_stability(rounds: int, width: int) -> PropertyReport {
   let ok = true
 
   let r: int = 0
-  loop {
-    if r >= rounds { break }
+  while !(r >= rounds) {
 
     let m0 = set_budget(ast_module("norm"), width * 8 + 1, width + 8)
     let m1 = experimental_add_node_unchecked(m0, ast_node_with_links(0, AstKind.Module, "root", "", -1, [1, 2], ast_span(0, 2)))
@@ -1091,8 +1051,7 @@ proc fuzz_tree_matrix(seed: int, steps: int) -> FuzzReport {
   let rewrites: int = 0
 
   let i: int = 0
-  loop {
-    if i >= steps { break }
+  while !(i >= steps) {
 
     let choice = (s + i) % 4
     let id = next_id(m)
@@ -1139,8 +1098,7 @@ proc bench_traversal(iterations: int, width: int) -> BenchReport {
   m = add_node(m, ast_node(0, AstKind.Module, "root", ""))
 
   let i: int = 1
-  loop {
-    if i > w { break }
+  while !(i > w) {
     let pid = 0
     m = add_node(m, ast_node_with_links(i, AstKind.Let, "n" + i.to_string(), "", pid, [], ast_span(i, i + 1)))
     i = i + 1
@@ -1148,8 +1106,7 @@ proc bench_traversal(iterations: int, width: int) -> BenchReport {
 
   let sample: [int] = []
   let k: int = 0
-  loop {
-    if k >= iters { break }
+  while !(k >= iters) {
     let p = walk_preorder(m).len
     let o = walk_postorder(m).len
     let b = walk_bfs(m).len
@@ -1162,8 +1119,7 @@ proc bench_traversal(iterations: int, width: int) -> BenchReport {
   let p95 = sample[0]
   let p99 = sample[0]
   let t: int = 0
-  loop {
-    if t >= sample.len { break }
+  while !(t >= sample.len) {
     if sample[t] > p50 { p50 = sample[t] }
     if sample[t] > p95 { p95 = sample[t] }
     if sample[t] > p99 { p99 = sample[t] }

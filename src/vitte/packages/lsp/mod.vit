@@ -71,8 +71,7 @@ proc contains(text: string, needle: string) -> bool {
 
   let last = text.len - needle.len
   let i: int = 0
-  loop {
-    if i > last { break }
+  while !(i > last) {
     if text.slice(i, i + needle.len) == needle { give true }
     i = i + 1
   }
@@ -82,8 +81,7 @@ proc contains(text: string, needle: string) -> bool {
 proc clear_uri_diags(diags: [LspDiagnostic], uri: string) -> [LspDiagnostic] {
   let out: [LspDiagnostic] = []
   let i: int = 0
-  loop {
-    if i >= diags.len { break }
+  while !(i >= diags.len) {
     let d = diags[i]
     if d.uri != uri {
       out = out.push(d)
@@ -113,8 +111,7 @@ proc index(state: LspIndex, uri: string, text: string, version: int) -> LspIndex
   let docs: [LspDocument] = []
   let replaced: bool = false
   let i: int = 0
-  loop {
-    if i >= state.docs.len { break }
+  while !(i >= state.docs.len) {
     let d = state.docs[i]
     if d.uri == uri {
       docs = docs.push(LspDocument(uri, text, version))
@@ -131,8 +128,7 @@ proc index(state: LspIndex, uri: string, text: string, version: int) -> LspIndex
   let diags = clear_uri_diags(state.diagnostics, uri)
   let generated = doc_diagnostics(LspDocument(uri, text, version))
   i = 0
-  loop {
-    if i >= generated.len { break }
+  while !(i >= generated.len) {
     diags = diags.push(generated[i])
     i = i + 1
   }
@@ -143,8 +139,7 @@ proc index(state: LspIndex, uri: string, text: string, version: int) -> LspIndex
 proc diagnostics(state: LspIndex, uri: string) -> [LspDiagnostic] {
   let out: [LspDiagnostic] = []
   let i: int = 0
-  loop {
-    if i >= state.diagnostics.len { break }
+  while !(i >= state.diagnostics.len) {
     let d = state.diagnostics[i]
     if d.uri == uri {
       out = out.push(d)
@@ -169,8 +164,7 @@ proc error_count(state: LspIndex, uri: string) -> int {
   let n: int = 0
   let rows = diagnostics(state, uri)
   let i: int = 0
-  loop {
-    if i >= rows.len { break }
+  while !(i >= rows.len) {
     if rows[i].severity == LspSeverity.Error {
       n = n + 1
     }
@@ -189,8 +183,7 @@ proc replace_once(text: string, needle: string, replacement: string) -> string {
 
   let last = text.len - needle.len
   let i: int = 0
-  loop {
-    if i > last { break }
+  while !(i > last) {
     if text.slice(i, i + needle.len) == needle {
       give text.slice(0, i) + replacement + text.slice(i + needle.len, text.len)
     }
@@ -383,8 +376,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

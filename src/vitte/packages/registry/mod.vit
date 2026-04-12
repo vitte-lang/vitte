@@ -53,8 +53,7 @@ proc publish(idx: RegistryIndex, rec: PackageRecord) -> RegistryIndex {
   let out: [PackageRecord] = []
   let replaced: bool = false
   let i: int = 0
-  loop {
-    if i >= idx.records.len { break }
+  while !(i >= idx.records.len) {
     let cur = idx.records[i]
     if same_package(cur, rec.name, rec.version) {
       out = out.push(PackageRecord(rec.name, rec.version, rec.checksum, cur.downloads, PackageState.Published))
@@ -74,8 +73,7 @@ proc publish(idx: RegistryIndex, rec: PackageRecord) -> RegistryIndex {
 
 proc fetch(idx: RegistryIndex, name: string, version: string) -> PackageRecord {
   let i: int = 0
-  loop {
-    if i >= idx.records.len { break }
+  while !(i >= idx.records.len) {
     let rec = idx.records[i]
     if same_package(rec, name, version) { give rec }
     i = i + 1
@@ -91,8 +89,7 @@ proc has(idx: RegistryIndex, name: string, version: string) -> bool {
 proc download(idx: RegistryIndex, name: string, version: string) -> RegistryIndex {
   let out: [PackageRecord] = []
   let i: int = 0
-  loop {
-    if i >= idx.records.len { break }
+  while !(i >= idx.records.len) {
     let rec = idx.records[i]
     if same_package(rec, name, version) {
       out = out.push(PackageRecord(rec.name, rec.version, rec.checksum, rec.downloads + 1, rec.state))
@@ -107,8 +104,7 @@ proc download(idx: RegistryIndex, name: string, version: string) -> RegistryInde
 proc deprecate(idx: RegistryIndex, name: string, version: string) -> RegistryIndex {
   let out: [PackageRecord] = []
   let i: int = 0
-  loop {
-    if i >= idx.records.len { break }
+  while !(i >= idx.records.len) {
     let rec = idx.records[i]
     if same_package(rec, name, version) {
       out = out.push(PackageRecord(rec.name, rec.version, rec.checksum, rec.downloads, PackageState.Deprecated))
@@ -127,8 +123,7 @@ proc count(idx: RegistryIndex) -> int {
 proc published_count(idx: RegistryIndex) -> int {
   let n: int = 0
   let i: int = 0
-  loop {
-    if i >= idx.records.len { break }
+  while !(i >= idx.records.len) {
     if idx.records[i].state == PackageState.Published {
       n = n + 1
     }
@@ -340,8 +335,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

@@ -158,8 +158,7 @@ proc pop[T](arr: Array[T]) -> Array[T] {
   if arr.stats.length == 0 { give arr }
   let out: [T] = []
   let i: int = 0
-  loop {
-    if i >= arr.stats.length - 1 { break }
+  while !(i >= arr.stats.length - 1) {
     out = out.push(arr.data[i])
     i = i + 1
   }
@@ -170,8 +169,7 @@ proc set[T](arr: Array[T], index: int, value: T) -> Array[T] {
   if !bounds_check(arr.stats.length, index) { give arr }
   let out: [T] = []
   let i: int = 0
-  loop {
-    if i >= arr.stats.length { break }
+  while !(i >= arr.stats.length) {
     if i == index {
       out = out.push(value)
     } else {
@@ -201,8 +199,7 @@ proc mutable_set_checked[T](arr: MutableArray[T], index: int, value: T) -> Mutab
   if !bounds_check(arr.data.len, index) { give arr }
   let out: [T] = []
   let i: int = 0
-  loop {
-    if i >= arr.data.len { break }
+  while !(i >= arr.data.len) {
     if i == index {
       out = out.push(value)
     } else {
@@ -216,8 +213,7 @@ proc mutable_set_checked[T](arr: MutableArray[T], index: int, value: T) -> Mutab
 proc map[T, R](arr: Array[T], f: proc(x: T) -> R) -> Array[R] {
   let out: [R] = []
   let i: int = 0
-  loop {
-    if i >= arr.stats.length { break }
+  while !(i >= arr.stats.length) {
     out = out.push(f(arr.data[i]))
     i = i + 1
   }
@@ -227,8 +223,7 @@ proc map[T, R](arr: Array[T], f: proc(x: T) -> R) -> Array[R] {
 proc filter[T](arr: Array[T], f: proc(x: T) -> bool) -> Array[T] {
   let out: [T] = []
   let i: int = 0
-  loop {
-    if i >= arr.stats.length { break }
+  while !(i >= arr.stats.length) {
     if f(arr.data[i]) {
       out = out.push(arr.data[i])
     }
@@ -240,8 +235,7 @@ proc filter[T](arr: Array[T], f: proc(x: T) -> bool) -> Array[T] {
 proc fold[T, R](arr: Array[T], init: R, f: proc(acc: R, x: T) -> R) -> R {
   let acc = init
   let i: int = 0
-  loop {
-    if i >= arr.stats.length { break }
+  while !(i >= arr.stats.length) {
     acc = f(acc, arr.data[i])
     i = i + 1
   }
@@ -268,8 +262,7 @@ proc slice[T](arr: Array[T], start: int, end: int) -> Array[T] {
   let e = suggest_slice_end(arr, s, end)
   let out: [T] = []
   let i = s
-  loop {
-    if i >= e { break }
+  while !(i >= e) {
     out = out.push(arr.data[i])
     i = i + 1
   }
@@ -278,8 +271,7 @@ proc slice[T](arr: Array[T], start: int, end: int) -> Array[T] {
 
 proc contains[T](arr: Array[T], value: T) -> bool {
   let i: int = 0
-  loop {
-    if i >= arr.stats.length { break }
+  while !(i >= arr.stats.length) {
     if arr.data[i] == value { give true }
     i = i + 1
   }
@@ -288,8 +280,7 @@ proc contains[T](arr: Array[T], value: T) -> bool {
 
 proc index_of[T](arr: Array[T], value: T) -> int {
   let i: int = 0
-  loop {
-    if i >= arr.stats.length { break }
+  while !(i >= arr.stats.length) {
     if arr.data[i] == value { give i }
     i = i + 1
   }
@@ -305,8 +296,7 @@ proc find[T](arr: Array[T], value: T, fallback: T) -> TryGetResult[T] {
 proc concat[T](left: Array[T], right: Array[T]) -> Array[T] {
   let out = left.data
   let i: int = 0
-  loop {
-    if i >= right.stats.length { break }
+  while !(i >= right.stats.length) {
     out = out.push(right.data[i])
     i = i + 1
   }
@@ -334,8 +324,7 @@ proc skip[T](arr: Array[T], n: int) -> Array[T] {
 proc reverse[T](arr: Array[T]) -> Array[T] {
   let out: [T] = []
   let i = arr.stats.length - 1
-  loop {
-    if arr.stats.length == 0 { break }
+  while !(arr.stats.length == 0) {
     if i < 0 { break }
     out = out.push(arr.data[i])
     i = i - 1
@@ -389,8 +378,7 @@ proc property_invariants(seed: int, rounds: int) -> PropertyReport {
   let arr = with_capacity[int](8)
   let checks = 0
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     arr = push(arr, seed + i)
     if !stats_sync(arr) { give PropertyReport(false, checks) }
     let s = suggest_index(arr, i + 100)
@@ -409,8 +397,7 @@ proc fuzz_matrix(seed: int, steps: int) -> FuzzReport {
   let reads = 0
   let rnd = seed + 1
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     rnd = (rnd * 1103515245 + 12345) % 2147483647
     if (rnd % 2) == 0 {
       arr = push(arr, rnd % 1024)
@@ -428,8 +415,7 @@ proc fuzz_matrix(seed: int, steps: int) -> FuzzReport {
 proc remove_at_int(values: [int], idx: int) -> [int] {
   let out: [int] = []
   let i: int = 0
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     if i != idx { out = out.push(values[i]) }
     i = i + 1
   }
@@ -440,8 +426,7 @@ proc min_index_int(values: [int]) -> int {
   if values.len == 0 { give -1 }
   let best = 0
   let i: int = 1
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     if values[i] < values[best] { best = i }
     i = i + 1
   }
@@ -452,8 +437,7 @@ proc percentile(values: [int], p: int) -> int {
   if values.len == 0 { give 0 }
   let remain = values
   let sorted: [int] = []
-  loop {
-    if remain.len == 0 { break }
+  while !(remain.len == 0) {
     let idx = min_index_int(remain)
     sorted = sorted.push(remain[idx])
     remain = remove_at_int(remain, idx)
@@ -471,8 +455,7 @@ proc benchmark_suite(seed: int, rounds: int) -> BenchReport {
   let arr = new[int]()
   let lat: [int] = []
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     let before = len(arr)
     arr = push(arr, seed + i)
     let after = len(arr)
@@ -492,16 +475,14 @@ proc benchmark_large_profile(seed: int, target_size: int, rounds: int) -> BenchR
   if n < 3 { n = 3 }
   let arr = new[int]()
   let i: int = 0
-  loop {
-    if i >= size { break }
+  while !(i >= size) {
     arr = push(arr, seed + i)
     i = i + 1
   }
 
   let lat: [int] = []
   let j: int = 0
-  loop {
-    if j >= n { break }
+  while !(j >= n) {
     let idx = suggest_index(arr, (seed + j * 17) % (len(arr) + 1))
     let before = len(arr)
     let r = set_checked(arr, idx, seed + j)

@@ -85,8 +85,7 @@ proc contains(schema: Schema, key: string, needle: string) -> Schema {
 
 proc get_value(values: [FieldValue], key: string) -> string {
   let i: int = 0
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     if values[i].key == key { give values[i].value }
     i = i + 1
   }
@@ -108,8 +107,7 @@ proc string_contains(text: string, needle: string) -> bool {
   if text.len < needle.len { give false }
 
   let i: int = 0
-  loop {
-    if i + needle.len > text.len { break }
+  while !(i + needle.len > text.len) {
     if text.slice(i, i + needle.len) == needle { give true }
     i = i + 1
   }
@@ -119,8 +117,7 @@ proc string_contains(text: string, needle: string) -> bool {
 proc csv_contains(csv: string, value: string) -> bool {
   let start: int = 0
   let i: int = 0
-  loop {
-    if i > csv.len { break }
+  while !(i > csv.len) {
     if i == csv.len || csv.slice(i, i + 1) == "," {
       let token = csv.slice(start, i)
       if token == value { give true }
@@ -204,15 +201,13 @@ proc validate_rule(rule: Rule, value: string) -> [ValidationError] {
 proc validate(schema: Schema, values: [FieldValue]) -> [ValidationError] {
   let errors: [ValidationError] = []
   let i: int = 0
-  loop {
-    if i >= schema.rules.len { break }
+  while !(i >= schema.rules.len) {
     let rule = schema.rules[i]
     let value = get_value(values, rule.key)
     let local = validate_rule(rule, value)
 
     let j: int = 0
-    loop {
-      if j >= local.len { break }
+    while !(j >= local.len) {
       errors = errors.push(local[j])
       j = j + 1
     }
@@ -437,8 +432,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

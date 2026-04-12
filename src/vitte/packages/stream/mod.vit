@@ -45,8 +45,7 @@ proc stream_new(window_ticks: int, batch_size: int, max_buffer: int) -> Stream {
 proc drop_first(events: [StreamEvent]) -> [StreamEvent] {
   let out: [StreamEvent] = []
   let i: int = 1
-  loop {
-    if i >= events.len { break }
+  while !(i >= events.len) {
     out = out.push(events[i])
     i = i + 1
   }
@@ -71,8 +70,7 @@ proc backpressure(stream: Stream) -> bool {
 proc batch(stream: Stream) -> [StreamEvent] {
   let out: [StreamEvent] = []
   let i: int = 0
-  loop {
-    if i >= stream.buffer.len { break }
+  while !(i >= stream.buffer.len) {
     if i >= stream.cfg.batch_size { break }
     out = out.push(stream.buffer[i])
     i = i + 1
@@ -83,8 +81,7 @@ proc batch(stream: Stream) -> [StreamEvent] {
 proc drain_batch(stream: Stream) -> Stream {
   let out: [StreamEvent] = []
   let i: int = stream.cfg.batch_size
-  loop {
-    if i >= stream.buffer.len { break }
+  while !(i >= stream.buffer.len) {
     out = out.push(stream.buffer[i])
     i = i + 1
   }
@@ -94,8 +91,7 @@ proc drain_batch(stream: Stream) -> Stream {
 proc window(stream: Stream, now_tick: int) -> [StreamEvent] {
   let out: [StreamEvent] = []
   let i: int = 0
-  loop {
-    if i >= stream.buffer.len { break }
+  while !(i >= stream.buffer.len) {
     let event = stream.buffer[i]
     if now_tick - event.tick <= stream.cfg.window_ticks {
       out = out.push(event)
@@ -184,8 +180,7 @@ proc push_safe(stream: Stream, value: string, tick: int) -> StreamResult {
 
 proc find_by_seq(stream: Stream, seq: int) -> StreamEvent {
   let i: int = 0
-  loop {
-    if i >= stream.buffer.len { break }
+  while !(i >= stream.buffer.len) {
     if stream.buffer[i].seq == seq { give stream.buffer[i] }
     i = i + 1
   }
@@ -195,8 +190,7 @@ proc find_by_seq(stream: Stream, seq: int) -> StreamEvent {
 proc replay_from(stream: Stream, seq: int) -> [StreamEvent] {
   let out: [StreamEvent] = []
   let i: int = 0
-  loop {
-    if i >= stream.buffer.len { break }
+  while !(i >= stream.buffer.len) {
     if stream.buffer[i].seq >= seq { out = out.push(stream.buffer[i]) }
     i = i + 1
   }
@@ -206,8 +200,7 @@ proc replay_from(stream: Stream, seq: int) -> [StreamEvent] {
 proc trim_before_tick(stream: Stream, tick: int) -> Stream {
   let out: [StreamEvent] = []
   let i: int = 0
-  loop {
-    if i >= stream.buffer.len { break }
+  while !(i >= stream.buffer.len) {
     if stream.buffer[i].tick >= tick { out = out.push(stream.buffer[i]) }
     i = i + 1
   }
@@ -425,8 +418,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

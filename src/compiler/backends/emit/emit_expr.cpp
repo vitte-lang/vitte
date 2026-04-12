@@ -70,10 +70,13 @@ static void emit_expr_impl(
             os << e.callee;
         }
         os << "(";
-        for (size_t i = 0; i < e.args.size(); ++i) {
-            emit_expr_impl(os, *e.args[i]);
-            if (i + 1 < e.args.size())
+        bool first = true;
+        for (const auto& arg : e.args) {
+            if (!first) {
                 os << ", ";
+            }
+            first = false;
+            emit_expr_impl(os, *arg);
         }
         os << ")";
         break;

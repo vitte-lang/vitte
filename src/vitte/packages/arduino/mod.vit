@@ -199,8 +199,7 @@ proc validate_spi_hz(profile: ArduinoProfile, spi_hz: int) -> ArduinoResult[bool
 
 proc validate_pin_list(profile: ArduinoProfile, pins: [Pin]) -> ArduinoResult[bool] {
   let i: int = 0
-  loop {
-    if i >= pins.len { break }
+  while !(i >= pins.len) {
     let vr = validate_pin(profile, pins[i])
     when vr is ArduinoResult.Err {
       give err[bool](vr.error)
@@ -475,8 +474,7 @@ proc library_supported(profile: ArduinoProfile, lib: ArduinoLibrary) -> bool {
 
 proc has_library(libs: [ArduinoLibrary], target: ArduinoLibrary) -> bool {
   let i: int = 0
-  loop {
-    if i >= libs.len { break }
+  while !(i >= libs.len) {
     if libs[i] == target { give true }
     i = i + 1
   }
@@ -486,8 +484,7 @@ proc has_library(libs: [ArduinoLibrary], target: ArduinoLibrary) -> bool {
 proc libs_merge_unique(base: [ArduinoLibrary], extra: [ArduinoLibrary]) -> [ArduinoLibrary] {
   let out = base
   let i: int = 0
-  loop {
-    if i >= extra.len { break }
+  while !(i >= extra.len) {
     if has_library(out, extra[i]) == false {
       out = out.push(extra[i])
     }
@@ -529,22 +526,19 @@ proc project_default_libraries(kind: ArduinoProjectType) -> [ArduinoLibrary] {
 
 proc library_set_validate(profile: ArduinoProfile, libs: [ArduinoLibrary]) -> ArduinoResult[bool] {
   let i: int = 0
-  loop {
-    if i >= libs.len { break }
+  while !(i >= libs.len) {
     let lib = libs[i]
     if library_supported(profile, lib) == false { give err[bool](ArduinoError.Unsupported) }
 
     let deps = library_dependencies(lib)
     let d: int = 0
-    loop {
-      if d >= deps.len { break }
+    while !(d >= deps.len) {
       if has_library(libs, deps[d]) == false { give err[bool](ArduinoError.Conflict) }
       d = d + 1
     }
 
     let j: int = i + 1
-    loop {
-      if j >= libs.len { break }
+    while !(j >= libs.len) {
       if library_conflict(lib, libs[j]) { give err[bool](ArduinoError.Conflict) }
       j = j + 1
     }
@@ -575,8 +569,7 @@ proc project_bundle(kind: ArduinoProjectType, extra_libraries: [ArduinoLibrary])
 proc bundle_summary(bundle: ArduinoProjectBundle) -> string {
   let names: [string] = []
   let i: int = 0
-  loop {
-    if i >= bundle.libraries.len { break }
+  while !(i >= bundle.libraries.len) {
     names = names.push(library_name(bundle.libraries[i]))
     i = i + 1
   }

@@ -172,8 +172,7 @@ proc task_can_retry(meta: TaskMeta, max_retries: int) -> bool {
 
 proc run_with_retry(job: proc() -> int, retries: int) -> TaskState {
   let attempt: int = 0
-  loop {
-    if attempt > retries { break }
+  while !(attempt > retries) {
     if job() == 0 { give TaskState.Succeeded }
     attempt = attempt + 1
   }
@@ -182,8 +181,7 @@ proc run_with_retry(job: proc() -> int, retries: int) -> TaskState {
 
 proc join_all(tasks: [Task]) -> bool {
   let i: int = 0
-  loop {
-    if i >= tasks.len { break }
+  while !(i >= tasks.len) {
     if tasks[i] == false { give false }
     i = i + 1
   }
@@ -192,8 +190,7 @@ proc join_all(tasks: [Task]) -> bool {
 
 proc race(tasks: [Task]) -> int {
   let i: int = 0
-  loop {
-    if i >= tasks.len { break }
+  while !(i >= tasks.len) {
     if tasks[i] == true { give i }
     i = i + 1
   }
@@ -223,8 +220,7 @@ proc percentile(values: [int], p: int) -> int {
   if values.len == 0 { give 0 }
   let mx = values[0]
   let i: int = 1
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     if values[i] > mx { mx = values[i] }
     i = i + 1
   }
@@ -374,8 +370,7 @@ proc load_test_backpressure(task_count: int, max_parallel: int) -> bool {
   if n < 1 { n = 1 }
   let sch = scheduler_new(max_parallel)
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     sch = scheduler_enqueue(sch, 1)
     sch = scheduler_tick(sch)
     if scheduler_backpressure(sch) {
@@ -536,8 +531,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

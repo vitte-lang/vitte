@@ -69,8 +69,7 @@ proc is_expired(table: LockTable, lease: Lease) -> bool {
 
 proc find_lease_index(table: LockTable, key: string) -> int {
   let i: int = 0
-  loop {
-    if i >= table.leases.len { break }
+  while !(i >= table.leases.len) {
     if table.leases[i].key == key { give i }
     i = i + 1
   }
@@ -105,8 +104,7 @@ proc acquire(table: LockTable, key: string, owner: string, ttl: int) -> AcquireR
     out = table.leases.push(fresh)
   } else {
     let i: int = 0
-    loop {
-      if i >= table.leases.len { break }
+    while !(i >= table.leases.len) {
       if i == idx {
         out = out.push(fresh)
       } else {
@@ -133,8 +131,7 @@ proc renew(table: LockTable, key: string, owner: string, ttl: int) -> LockTable 
 
   let out: [Lease] = []
   let i: int = 0
-  loop {
-    if i >= table.leases.len { break }
+  while !(i >= table.leases.len) {
     if i == idx {
       out = out.push(Lease(cur.key, cur.owner, cur.fencing, table.now_tick + lease_ttl, true))
     } else {
@@ -155,8 +152,7 @@ proc release(table: LockTable, key: string, owner: string) -> LockTable {
 
   let out: [Lease] = []
   let i: int = 0
-  loop {
-    if i >= table.leases.len { break }
+  while !(i >= table.leases.len) {
     if i == idx {
       out = out.push(Lease(cur.key, cur.owner, cur.fencing, cur.lease_until, false))
     } else {
@@ -171,8 +167,7 @@ proc release(table: LockTable, key: string, owner: string) -> LockTable {
 proc purge_expired(table: LockTable) -> LockTable {
   let out: [Lease] = []
   let i: int = 0
-  loop {
-    if i >= table.leases.len { break }
+  while !(i >= table.leases.len) {
     let l = table.leases[i]
     if !is_expired(table, l) {
       out = out.push(l)
@@ -209,8 +204,7 @@ proc fencing_token(table: LockTable, key: string) -> int {
 proc active_count(table: LockTable) -> int {
   let out = 0
   let i: int = 0
-  loop {
-    if i >= table.leases.len { break }
+  while !(i >= table.leases.len) {
     if !is_expired(table, table.leases[i]) {
       out = out + 1
     }
@@ -390,8 +384,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

@@ -30,9 +30,13 @@ std::string CppContext::current_namespace() const {
         return {};
 
     std::ostringstream oss;
-    for (size_t i = 0; i < namespace_stack.size(); ++i) {
-        if (i) oss << "::";
-        oss << namespace_stack[i];
+    bool first = true;
+    for (const auto& ns : namespace_stack) {
+        if (!first) {
+            oss << "::";
+        }
+        first = false;
+        oss << ns;
     }
     return oss.str();
 }
@@ -103,9 +107,13 @@ std::string CppContext::mangle(
     // parameters (for overloads / generics)
     if (!params.empty()) {
         oss << "__";
-        for (size_t i = 0; i < params.size(); ++i) {
-            if (i) oss << "_";
-            oss << safe_ident(params[i]);
+        bool first = true;
+        for (const auto& param : params) {
+            if (!first) {
+                oss << "_";
+            }
+            first = false;
+            oss << safe_ident(param);
         }
     }
 

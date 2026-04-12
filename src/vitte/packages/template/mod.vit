@@ -102,8 +102,7 @@ proc size(ctx: Context) -> int {
 
 proc contains(ctx: Context, key: string) -> bool {
   let i: int = 0
-  loop {
-    if i >= ctx.vars.len { break }
+  while !(i >= ctx.vars.len) {
     if ctx.vars[i].key == key { give true }
     i = i + 1
   }
@@ -112,8 +111,7 @@ proc contains(ctx: Context, key: string) -> bool {
 
 proc get(ctx: Context, key: string) -> TemplateResult[string] {
   let i: int = 0
-  loop {
-    if i >= ctx.vars.len { break }
+  while !(i >= ctx.vars.len) {
     if ctx.vars[i].key == key { give TemplateResult.Ok(ctx.vars[i].value) }
     i = i + 1
   }
@@ -131,8 +129,7 @@ proc put(ctx: Context, key: string, value: string) -> TemplateResult[Context] {
   let out: [Var] = []
   let found = false
   let i: int = 0
-  loop {
-    if i >= ctx.vars.len { break }
+  while !(i >= ctx.vars.len) {
     if ctx.vars[i].key == key {
       out = out.push(Var(key, value))
       found = true
@@ -155,8 +152,7 @@ proc put(ctx: Context, key: string, value: string) -> TemplateResult[Context] {
 proc remove(ctx: Context, key: string) -> Context {
   let out: [Var] = []
   let i: int = 0
-  loop {
-    if i >= ctx.vars.len { break }
+  while !(i >= ctx.vars.len) {
     if ctx.vars[i].key != key {
       out = out.push(ctx.vars[i])
     }
@@ -171,8 +167,7 @@ proc replace_once(text: string, needle: string, replacement: string) -> string {
 
   let last = text.len - needle.len
   let i: int = 0
-  loop {
-    if i > last { break }
+  while !(i > last) {
     if text.slice(i, i + needle.len) == needle {
       give text.slice(0, i) + replacement + text.slice(i + needle.len, text.len)
     }
@@ -187,8 +182,7 @@ proc contains_text(text: string, needle: string) -> bool {
 
   let last = text.len - needle.len
   let i: int = 0
-  loop {
-    if i > last { break }
+  while !(i > last) {
     if text.slice(i, i + needle.len) == needle { give true }
     i = i + 1
   }
@@ -200,8 +194,7 @@ proc replace_all(text: string, needle: string, replacement: string) -> string {
 
   let out = text
   let guard: int = 0
-  loop {
-    if contains_text(out, needle) == false { break }
+  while !(contains_text(out, needle) == false) {
     out = replace_once(out, needle, replacement)
     guard = guard + 1
     if guard > template_policy_pkg.max_template_len() { break }
@@ -219,8 +212,7 @@ proc find_substring_from(text: string, needle: string, start: int) -> int {
   if begin > last { give -1 }
 
   let i: int = begin
-  loop {
-    if i > last { break }
+  while !(i > last) {
     if text.slice(i, i + needle.len) == needle { give i }
     i = i + 1
   }
@@ -244,8 +236,7 @@ proc analyze_with_config(text: string, ctx: Context, cfg: TemplateConfig) -> Tem
   let literal_count: int = 0
 
   let i: int = 0
-  loop {
-    if i >= text.len { break }
+  while !(i >= text.len) {
 
     let open_at = find_substring_from(text, cfg.open_delim, i)
     if open_at < 0 {
@@ -307,8 +298,7 @@ proc render_with_config(text: string, ctx: Context, cfg: TemplateConfig) -> Temp
 
   let out = text
   let i: int = 0
-  loop {
-    if i >= ctx.vars.len { break }
+  while !(i >= ctx.vars.len) {
     let token = cfg.open_delim + ctx.vars[i].key + cfg.close_delim
     out = replace_all(out, token, ctx.vars[i].value)
     i = i + 1
@@ -343,8 +333,7 @@ proc template_validate_code(text: string, ctx: Context, cfg: TemplateConfig) -> 
   if template_validate_pkg.valid_var_count(ctx.vars.len, template_policy_pkg.max_vars()) == false { give "too-many-vars" }
 
   let i: int = 0
-  loop {
-    if i >= ctx.vars.len { break }
+  while !(i >= ctx.vars.len) {
     if template_validate_pkg.valid_key(ctx.vars[i].key, template_policy_pkg.max_key_len()) == false { give "invalid-key" }
     if template_validate_pkg.valid_value(ctx.vars[i].value, template_policy_pkg.max_value_len()) == false { give "invalid-value" }
     i = i + 1
@@ -360,8 +349,7 @@ proc template_validate(text: string, ctx: Context, cfg: TemplateConfig) -> bool 
 proc template_normalize(ctx: Context, cfg: TemplateConfig) -> TemplateNormalized {
   let vars: [Var] = []
   let i: int = 0
-  loop {
-    if i >= ctx.vars.len { break }
+  while !(i >= ctx.vars.len) {
     if vars.len >= template_policy_pkg.max_vars() { break }
 
     let key = ctx.vars[i].key
@@ -629,8 +617,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

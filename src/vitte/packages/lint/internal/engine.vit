@@ -69,8 +69,7 @@ proc contains(text: string, needle: string) -> bool {
   if needle.len == 0 { give true }
   if text.len < needle.len { give false }
   let i: int = 0
-  loop {
-    if i + needle.len > text.len { break }
+  while !(i + needle.len > text.len) {
     if text.slice(i, i + needle.len) == needle { give true }
     i = i + 1
   }
@@ -84,8 +83,7 @@ proc make_issue(code: string, severity: LintSeverity, file: string, line: int, m
 proc issues_from_text(file: string, text: string, rules: [LintRule], cfg: LintConfig) -> [LintIssue] {
   let out: [LintIssue] = []
   let i: int = 0
-  loop {
-    if i >= rules.len { break }
+  while !(i >= rules.len) {
     if rules[i].enabled {
       if rules[i].id == "alias-pkg" && contains(text, "use ") && contains(text, " as ") && contains(text, "_pkg") == false {
         out = out.push(make_issue("VITTE-I0001", LintSeverity.Warning, file, 1, "alias should end with _pkg", rules[i].id, rules[i].quickfix))
@@ -99,7 +97,7 @@ proc issues_from_text(file: string, text: string, rules: [LintRule], cfg: LintCo
       if rules[i].id == "export-naming" && contains(text, "proc ") && contains(text, "-") {
         out = out.push(make_issue("VITTE-I0004", LintSeverity.Warning, file, 1, "invalid export naming style", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "facade-thin" && contains(text, "loop {") {
+      if rules[i].id == "facade-thin" && contains(text, "while true {") {
         out = out.push(make_issue("VITTE-I0005", LintSeverity.Info, file, 1, "facade may be too heavy", rules[i].id, rules[i].quickfix))
       }
       if rules[i].id == "diag-namespace" && contains(text, "VITTE-") && contains(text, "VITTE-I") == false {
@@ -119,8 +117,7 @@ proc build_report(issues: [LintIssue], latency_ms: int) -> LintReport {
   let w: int = 0
   let inf: int = 0
   let i: int = 0
-  loop {
-    if i >= issues.len { break }
+  while !(i >= issues.len) {
     if issues[i].severity == LintSeverity.Error { e = e + 1 }
     if issues[i].severity == LintSeverity.Warning { w = w + 1 }
     if issues[i].severity == LintSeverity.Info { inf = inf + 1 }
@@ -148,15 +145,13 @@ proc lint_package(pkg: string, files: [string], rules: [LintRule], cfg: LintConf
   if pkg.len == 0 { give err[LintReport]("VITTE-I0010", "package empty", "pkg") }
   let i: int = 0
   let out: [LintIssue] = []
-  loop {
-    if i >= files.len { break }
+  while !(i >= files.len) {
     let r: LintResult[LintReport] = lint_file(files[i], files[i], rules, cfg)
     when r is LintResult.Err {
       give err[LintReport](r.error.code, r.error.message, r.error.context)
     }
     let j: int = 0
-    loop {
-      if j >= r.value.issues.len { break }
+    while !(j >= r.value.issues.len) {
       out = out.push(r.value.issues[j])
       j = j + 1
     }

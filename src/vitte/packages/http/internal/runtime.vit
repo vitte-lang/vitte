@@ -53,8 +53,7 @@ proc contains(text: string, needle: string) -> bool {
   if needle.len == 0 { give true }
   if text.len < needle.len { give false }
   let i: int = 0
-  loop {
-    if i + needle.len > text.len { break }
+  while !(i + needle.len > text.len) {
     if text.slice(i, i + needle.len) == needle { give true }
     i = i + 1
   }
@@ -67,8 +66,7 @@ proc is_space(ch: string) -> bool {
 
 proc parse_method_token(line: string) -> string {
   let i: int = 0
-  loop {
-    if i >= line.len { break }
+  while !(i >= line.len) {
     if is_space(line.slice(i, i + 1)) { break }
     i = i + 1
   }
@@ -78,16 +76,14 @@ proc parse_method_token(line: string) -> string {
 
 proc parse_path_token(line: string) -> string {
   let i: int = 0
-  loop {
-    if i >= line.len { break }
+  while !(i >= line.len) {
     if is_space(line.slice(i, i + 1)) { break }
     i = i + 1
   }
   if i >= line.len - 1 { give "" }
   let rest: string = line.slice(i + 1, line.len)
   let j: int = 0
-  loop {
-    if j >= rest.len { break }
+  while !(j >= rest.len) {
     if is_space(rest.slice(j, j + 1)) { break }
     j = j + 1
   }
@@ -97,16 +93,14 @@ proc parse_path_token(line: string) -> string {
 
 proc parse_version_token(line: string) -> string {
   let i: int = 0
-  loop {
-    if i >= line.len { break }
+  while !(i >= line.len) {
     if is_space(line.slice(i, i + 1)) { break }
     i = i + 1
   }
   if i >= line.len - 1 { give "" }
   let rest: string = line.slice(i + 1, line.len)
   let j: int = 0
-  loop {
-    if j >= rest.len { break }
+  while !(j >= rest.len) {
     if is_space(rest.slice(j, j + 1)) { break }
     j = j + 1
   }
@@ -125,8 +119,7 @@ proc normalize_path(path: string) -> string {
     let out: string = ""
     let i: int = 0
     let prev_slash: bool = false
-    loop {
-      if i >= p.len { break }
+    while !(i >= p.len) {
       let ch: string = p.slice(i, i + 1)
       if ch == "/" {
         if prev_slash == false {
@@ -164,16 +157,14 @@ proc is_private_host(host: string) -> bool {
 
 proc host_from_url(url: string) -> string {
   let i: int = 0
-  loop {
-    if i >= url.len { break }
+  while !(i >= url.len) {
     if url.slice(i, i + 3) == "://" { break }
     i = i + 1
   }
   if i + 3 >= url.len { give "" }
   let rest: string = url.slice(i + 3, url.len)
   let j: int = 0
-  loop {
-    if j >= rest.len { break }
+  while !(j >= rest.len) {
     let ch: string = rest.slice(j, j + 1)
     if ch == "/" || ch == ":" || ch == "?" { break }
     j = j + 1
@@ -189,8 +180,7 @@ proc is_private_host_from_url(url: string) -> bool {
 
 proc parse_query(path_or_url: string) -> string {
   let i: int = 0
-  loop {
-    if i >= path_or_url.len { break }
+  while !(i >= path_or_url.len) {
     if path_or_url.slice(i, i + 1) == "?" { break }
     i = i + 1
   }
@@ -256,8 +246,7 @@ proc route_matches(pattern: string, path: string) -> bool {
   if p == n { give true }
   if contains(p, ":") {
     let i: int = 0
-    loop {
-      if i >= p.len { break }
+    while !(i >= p.len) {
       if p.slice(i, i + 1) == ":" { break }
       i = i + 1
     }
@@ -345,12 +334,10 @@ proc quickfix_for(code: string) -> string {
 
 proc openapi_contract_diff_missing(old_snapshot: [string], new_snapshot: [string]) -> string {
   let i: int = 0
-  loop {
-    if i >= old_snapshot.len { break }
+  while !(i >= old_snapshot.len) {
     let found: bool = false
     let j: int = 0
-    loop {
-      if j >= new_snapshot.len { break }
+    while !(j >= new_snapshot.len) {
       if old_snapshot[i] == new_snapshot[j] { found = true }
       j = j + 1
     }

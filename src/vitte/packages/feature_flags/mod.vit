@@ -154,8 +154,7 @@ proc add_flag(flagset: FeatureFlags, name: string, enabled: bool, rollout: int) 
   let replaced: bool = false
   let i: int = 0
 
-  loop {
-    if i >= flagset.flags.len { break }
+  while !(i >= flagset.flags.len) {
     let f = flagset.flags[i]
     if f.name == name {
       out = out.push(FeatureFlag(name, enabled, clamp_rollout(rollout), "", false, false))
@@ -189,8 +188,7 @@ proc override(flagset: FeatureFlags, name: string, user_id: string, value: bool)
   let found: bool = false
   let i: int = 0
 
-  loop {
-    if i >= flagset.flags.len { break }
+  while !(i >= flagset.flags.len) {
     let f = flagset.flags[i]
     if f.name == name {
       out = out.push(FeatureFlag(f.name, f.enabled, f.rollout, user_id, value, true))
@@ -229,8 +227,7 @@ proc percentage_rollout(user_id: string, rollout: int) -> bool {
 
 proc flag_get(flagset: FeatureFlags, name: string, fallback: bool) -> bool {
   let i: int = 0
-  loop {
-    if i >= flagset.flags.len { break }
+  while !(i >= flagset.flags.len) {
     let f = flagset.flags[i]
     if f.name == name {
       give f.enabled
@@ -250,8 +247,7 @@ proc flag_get_checked(flagset: FeatureFlags, name: string, cfg: FeatureFlagsConf
 
 proc flag_for_user(flagset: FeatureFlags, name: string, user_id: string, fallback: bool) -> bool {
   let i: int = 0
-  loop {
-    if i >= flagset.flags.len { break }
+  while !(i >= flagset.flags.len) {
     let f = flagset.flags[i]
     if f.name == name {
       if f.has_override && f.override_user == user_id { give f.override_value }
@@ -351,8 +347,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

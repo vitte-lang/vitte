@@ -52,8 +52,7 @@ proc add_migration(p: Plan, id: string, up_sql: string, down_sql: string) -> Pla
 
 proc is_applied(p: Plan, id: string) -> bool {
   let i: int = 0
-  loop {
-    if i >= p.applied.len { break }
+  while !(i >= p.applied.len) {
     if p.applied[i] == id { give true }
     i = i + 1
   }
@@ -68,8 +67,7 @@ proc apply(p: Plan, id: string) -> Plan {
 proc rollback(p: Plan, id: string) -> Plan {
   let out: [string] = []
   let i: int = 0
-  loop {
-    if i >= p.applied.len { break }
+  while !(i >= p.applied.len) {
     if p.applied[i] != id { out = out.push(p.applied[i]) }
     i = i + 1
   }
@@ -79,8 +77,7 @@ proc rollback(p: Plan, id: string) -> Plan {
 proc pending(p: Plan) -> [Migration] {
   let out: [Migration] = []
   let i: int = 0
-  loop {
-    if i >= p.available.len { break }
+  while !(i >= p.available.len) {
     if !is_applied(p, p.available[i].id) { out = out.push(p.available[i]) }
     i = i + 1
   }
@@ -267,8 +264,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

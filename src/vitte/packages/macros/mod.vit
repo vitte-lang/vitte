@@ -49,8 +49,7 @@ proc define(macros: MacroSet, name: string, body: string) -> MacroSet {
   let out: [MacroDef] = []
   let found = false
   let i: int = 0
-  loop {
-    if i >= macros.defs.len { break }
+  while !(i >= macros.defs.len) {
     if macros.defs[i].name == name {
       out = out.push(MacroDef(name, body))
       found = true
@@ -66,8 +65,7 @@ proc define(macros: MacroSet, name: string, body: string) -> MacroSet {
 proc undefine(macros: MacroSet, name: string) -> MacroSet {
   let out: [MacroDef] = []
   let i: int = 0
-  loop {
-    if i >= macros.defs.len { break }
+  while !(i >= macros.defs.len) {
     if macros.defs[i].name != name { out = out.push(macros.defs[i]) }
     i = i + 1
   }
@@ -76,8 +74,7 @@ proc undefine(macros: MacroSet, name: string) -> MacroSet {
 
 proc lookup(macros: MacroSet, name: string) -> string {
   let i: int = 0
-  loop {
-    if i >= macros.defs.len { break }
+  while !(i >= macros.defs.len) {
     if macros.defs[i].name == name { give macros.defs[i].body }
     i = i + 1
   }
@@ -100,8 +97,7 @@ proc clear(macros: MacroSet) -> MacroSet {
 proc clone(macros: MacroSet) -> MacroSet {
   let out: [MacroDef] = []
   let i: int = 0
-  loop {
-    if i >= macros.defs.len { break }
+  while !(i >= macros.defs.len) {
     out = out.push(macros.defs[i])
     i = i + 1
   }
@@ -122,7 +118,7 @@ proc expand_once(macros: MacroSet, text: string) -> string {
   let parts: [string] = []
   let current = ""
   let i: int = 0
-  loop {
+  while true {
     if i >= text.len {
       parts = parts.push(current)
       break
@@ -139,8 +135,7 @@ proc expand_once(macros: MacroSet, text: string) -> string {
 
   let out = ""
   let j: int = 0
-  loop {
-    if j >= parts.len { break }
+  while !(j >= parts.len) {
     if j > 0 { out = out + " " }
     out = out + expand_token(macros, parts[j])
     j = j + 1
@@ -151,8 +146,7 @@ proc expand_once(macros: MacroSet, text: string) -> string {
 proc expand_times(macros: MacroSet, text: string, rounds: int) -> string {
   let out = text
   let i: int = 0
-  loop {
-    if i >= rounds { break }
+  while !(i >= rounds) {
     let next = expand_once(macros, out)
     if next == out { break }
     out = next
@@ -164,8 +158,7 @@ proc expand_times(macros: MacroSet, text: string, rounds: int) -> string {
 proc merge(left: MacroSet, right: MacroSet) -> MacroSet {
   let out = left
   let i: int = 0
-  loop {
-    if i >= right.defs.len { break }
+  while !(i >= right.defs.len) {
     out = define(out, right.defs[i].name, right.defs[i].body)
     i = i + 1
   }
@@ -175,15 +168,13 @@ proc merge(left: MacroSet, right: MacroSet) -> MacroSet {
 proc import_pairs(lines: [string]) -> MacroSet {
   let out = macros_new()
   let i: int = 0
-  loop {
-    if i >= lines.len { break }
+  while !(i >= lines.len) {
     let line = lines[i]
     let j: int = 0
     let key = ""
     let value = ""
     let seen_eq = false
-    loop {
-      if j >= line.len { break }
+    while !(j >= line.len) {
       let ch = line.slice(j, j + 1)
       if ch == "=" && !seen_eq {
         seen_eq = true
@@ -203,8 +194,7 @@ proc import_pairs(lines: [string]) -> MacroSet {
 proc render_pairs(macros: MacroSet) -> [string] {
   let out: [string] = []
   let i: int = 0
-  loop {
-    if i >= macros.defs.len { break }
+  while !(i >= macros.defs.len) {
     out = out.push(macros.defs[i].name + "=" + macros.defs[i].body)
     i = i + 1
   }
@@ -214,8 +204,7 @@ proc render_pairs(macros: MacroSet) -> [string] {
 proc prefixed_names(macros: MacroSet, prefix: string) -> [string] {
   let out: [string] = []
   let i: int = 0
-  loop {
-    if i >= macros.defs.len { break }
+  while !(i >= macros.defs.len) {
     let n = macros.defs[i].name
     if prefix.len <= n.len && n.slice(0, prefix.len) == prefix {
       out = out.push(n)
@@ -227,8 +216,7 @@ proc prefixed_names(macros: MacroSet, prefix: string) -> [string] {
 
 proc validate(macros: MacroSet) -> bool {
   let i: int = 0
-  loop {
-    if i >= macros.defs.len { break }
+  while !(i >= macros.defs.len) {
     if macros.defs[i].name.len == 0 { give false }
     i = i + 1
   }
@@ -238,8 +226,7 @@ proc validate(macros: MacroSet) -> bool {
 proc names(macros: MacroSet) -> [string] {
   let out: [string] = []
   let i: int = 0
-  loop {
-    if i >= macros.defs.len { break }
+  while !(i >= macros.defs.len) {
     out = out.push(macros.defs[i].name)
     i = i + 1
   }
@@ -411,8 +398,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

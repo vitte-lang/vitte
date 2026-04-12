@@ -97,8 +97,7 @@ proc set_now(scheduler: Scheduler, now_tick: int) -> Scheduler {
 
 proc find_task(scheduler: Scheduler, task_id: int) -> Task {
   let i: int = 0
-  loop {
-    if i >= scheduler.tasks.len { break }
+  while !(i >= scheduler.tasks.len) {
     if scheduler.tasks[i].id == task_id { give scheduler.tasks[i] }
     i = i + 1
   }
@@ -119,8 +118,7 @@ proc should_run(task: Task, now_tick: int) -> bool {
 proc due_tasks(scheduler: Scheduler) -> [Task] {
   let out: [Task] = []
   let i: int = 0
-  loop {
-    if i >= scheduler.tasks.len { break }
+  while !(i >= scheduler.tasks.len) {
     let task = scheduler.tasks[i]
     if should_run(task, scheduler.now_tick) { out = out.push(task) }
     i = i + 1
@@ -131,8 +129,7 @@ proc due_tasks(scheduler: Scheduler) -> [Task] {
 proc mark_running(scheduler: Scheduler, task_id: int) -> Scheduler {
   let out: [Task] = []
   let i: int = 0
-  loop {
-    if i >= scheduler.tasks.len { break }
+  while !(i >= scheduler.tasks.len) {
     let t = scheduler.tasks[i]
     if t.id == task_id {
       out = out.push(Task(t.id, t.name, t.mode, t.run_at, t.interval_ticks, t.max_runs, t.runs, t.last_run, t.enabled, TaskState.Running))
@@ -147,8 +144,7 @@ proc mark_running(scheduler: Scheduler, task_id: int) -> Scheduler {
 proc record_result(scheduler: Scheduler, task_id: int, success: bool) -> Scheduler {
   let out: [Task] = []
   let i: int = 0
-  loop {
-    if i >= scheduler.tasks.len { break }
+  while !(i >= scheduler.tasks.len) {
     let t = scheduler.tasks[i]
     if t.id == task_id {
       let st = TaskState.Failed
@@ -166,8 +162,7 @@ proc record_result(scheduler: Scheduler, task_id: int, success: bool) -> Schedul
 proc disable_task(scheduler: Scheduler, task_id: int) -> Scheduler {
   let out: [Task] = []
   let i: int = 0
-  loop {
-    if i >= scheduler.tasks.len { break }
+  while !(i >= scheduler.tasks.len) {
     let t = scheduler.tasks[i]
     if t.id == task_id {
       out = out.push(Task(t.id, t.name, t.mode, t.run_at, t.interval_ticks, t.max_runs, t.runs, t.last_run, false, TaskState.Disabled))
@@ -182,8 +177,7 @@ proc disable_task(scheduler: Scheduler, task_id: int) -> Scheduler {
 proc enable_task(scheduler: Scheduler, task_id: int) -> Scheduler {
   let out: [Task] = []
   let i: int = 0
-  loop {
-    if i >= scheduler.tasks.len { break }
+  while !(i >= scheduler.tasks.len) {
     let t = scheduler.tasks[i]
     if t.id == task_id {
       out = out.push(Task(t.id, t.name, t.mode, t.run_at, t.interval_ticks, t.max_runs, t.runs, t.last_run, true, TaskState.Idle))
@@ -206,8 +200,7 @@ proc pending_count(scheduler: Scheduler) -> int {
 proc running_count(scheduler: Scheduler) -> int {
   let count: int = 0
   let i: int = 0
-  loop {
-    if i >= scheduler.tasks.len { break }
+  while !(i >= scheduler.tasks.len) {
     if scheduler.tasks[i].state == TaskState.Running { count = count + 1 }
     i = i + 1
   }
@@ -426,8 +419,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

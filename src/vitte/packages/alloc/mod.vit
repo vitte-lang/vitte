@@ -435,8 +435,7 @@ proc max_int() -> int {
 proc is_power_of_two(value: int) -> bool {
   if value < 1 { give false }
   let v = value
-  loop {
-    if v == 1 { break }
+  while !(v == 1) {
     if v % 2 != 0 { give false }
     v = v / 2
   }
@@ -720,8 +719,7 @@ proc suggest_retry_bytes(st: AllocState, requested: int, step: int) -> int {
   if s <= 1 { s = 2 }
 
   let out = req
-  loop {
-    if out <= max { break }
+  while !(out <= max) {
     out = out / s
     if out <= 0 { give 0 }
   }
@@ -844,8 +842,7 @@ proc quota_limit(quota: PoolQuota) -> int {
 
 proc quota_allow(quotas: [PoolQuota], pid: PoolId, bytes: int) -> bool {
   let i: int = 0
-  loop {
-    if i >= quotas.len { break }
+  while !(i >= quotas.len) {
     let q = quotas[i]
     if q.pool_id.value == pid.value {
       give q.used_bytes + bytes <= quota_limit(q)
@@ -859,8 +856,7 @@ proc quota_reserve(quotas: [PoolQuota], pid: PoolId, bytes: int) -> [PoolQuota] 
   let out: [PoolQuota] = []
   let found = false
   let i: int = 0
-  loop {
-    if i >= quotas.len { break }
+  while !(i >= quotas.len) {
     let q = quotas[i]
     if q.pool_id.value == pid.value {
       found = true
@@ -879,8 +875,7 @@ proc quota_reserve(quotas: [PoolQuota], pid: PoolId, bytes: int) -> [PoolQuota] 
 proc quota_release(quotas: [PoolQuota], pid: PoolId, bytes: int) -> [PoolQuota] {
   let out: [PoolQuota] = []
   let i: int = 0
-  loop {
-    if i >= quotas.len { break }
+  while !(i >= quotas.len) {
     let q = quotas[i]
     if q.pool_id.value == pid.value {
       let used = q.used_bytes - bytes
@@ -896,8 +891,7 @@ proc quota_release(quotas: [PoolQuota], pid: PoolId, bytes: int) -> [PoolQuota] 
 
 proc find_alloc_index(allocs: [ActiveAlloc], handle: AllocHandle) -> int {
   let i: int = 0
-  loop {
-    if i >= allocs.len { break }
+  while !(i >= allocs.len) {
     if allocs[i].handle.value == handle.value { give i }
     i = i + 1
   }
@@ -907,8 +901,7 @@ proc find_alloc_index(allocs: [ActiveAlloc], handle: AllocHandle) -> int {
 proc replace_alloc(allocs: [ActiveAlloc], index: int, value: ActiveAlloc) -> [ActiveAlloc] {
   let out: [ActiveAlloc] = []
   let i: int = 0
-  loop {
-    if i >= allocs.len { break }
+  while !(i >= allocs.len) {
     if i == index {
       out = out.push(value)
     } else {
@@ -924,8 +917,7 @@ proc compute_fragmentation(allocs: [ActiveAlloc]) -> StableMetrics {
   let largest = 0
   let blocks = 0
   let i: int = 0
-  loop {
-    if i >= allocs.len { break }
+  while !(i >= allocs.len) {
     let a = allocs[i]
     if !a.active {
       blocks = blocks + 1
@@ -1188,8 +1180,7 @@ proc stable_stats(runtime: StableAllocRuntime) -> StableMetrics {
 proc stable_reset(runtime: StableAllocRuntime) -> StableAllocRuntime {
   let i: int = 0
   let next_quotas: [PoolQuota] = []
-  loop {
-    if i >= runtime.quotas.len { break }
+  while !(i >= runtime.quotas.len) {
     let q = runtime.quotas[i]
     next_quotas = next_quotas.push(PoolQuota(q.pool_id, q.limit_bytes, q.burst_bytes, 0))
     i = i + 1
@@ -1216,8 +1207,7 @@ proc leak_report(runtime: StableAllocRuntime) -> LeakReport {
   let count = 0
   let leaked = 0
   let i: int = 0
-  loop {
-    if i >= runtime.allocs.len { break }
+  while !(i >= runtime.allocs.len) {
     let a = runtime.allocs[i]
     if a.active {
       count = count + 1
@@ -1302,13 +1292,11 @@ proc counters_non_negative(runtime: StableAllocRuntime) -> bool {
 
 proc no_active_overlap(runtime: StableAllocRuntime) -> bool {
   let i: int = 0
-  loop {
-    if i >= runtime.allocs.len { break }
+  while !(i >= runtime.allocs.len) {
     let a = runtime.allocs[i]
     if a.active {
       let j = i + 1
-      loop {
-        if j >= runtime.allocs.len { break }
+      while !(j >= runtime.allocs.len) {
         let b = runtime.allocs[j]
         if b.active && a.handle.value == b.handle.value {
           give false
@@ -1323,8 +1311,7 @@ proc no_active_overlap(runtime: StableAllocRuntime) -> bool {
 
 proc free_then_reuse_coherent(runtime: StableAllocRuntime) -> bool {
   let i: int = 0
-  loop {
-    if i >= runtime.allocs.len { break }
+  while !(i >= runtime.allocs.len) {
     let a = runtime.allocs[i]
     if !a.active && a.poison_byte != runtime.poison_free {
       give false
@@ -1341,8 +1328,7 @@ proc property_invariants(seed: int, rounds: int) -> PropertyReport {
   let hs: [AllocHandle] = []
   let checks = 0
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     let r = stable_alloc(rt, bytes(16 + (i % 8)), alignment(8), pool_id("tenant:t1"))
     rt = r.runtime
     if r.ok {
@@ -1373,8 +1359,7 @@ proc fuzz_matrix(seed: int, steps: int) -> FuzzReport {
   let failures = 0
   let rnd = seed + 7
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     rnd = (rnd * 1103515245 + 12345) % 2147483647
     let op = rnd % 3
     if op == 0 || hs.len == 0 {
@@ -1403,8 +1388,7 @@ proc fuzz_matrix(seed: int, steps: int) -> FuzzReport {
 proc remove_at_int(values: [int], idx: int) -> [int] {
   let out: [int] = []
   let i: int = 0
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     if i != idx { out = out.push(values[i]) }
     i = i + 1
   }
@@ -1415,8 +1399,7 @@ proc min_index_int(values: [int]) -> int {
   if values.len == 0 { give -1 }
   let best = 0
   let i: int = 1
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     if values[i] < values[best] { best = i }
     i = i + 1
   }
@@ -1427,8 +1410,7 @@ proc percentile(values: [int], p: int) -> int {
   if values.len == 0 { give 0 }
   let remain = values
   let sorted: [int] = []
-  loop {
-    if remain.len == 0 { break }
+  while !(remain.len == 0) {
     let idx = min_index_int(remain)
     sorted = sorted.push(remain[idx])
     remain = remove_at_int(remain, idx)
@@ -1447,8 +1429,7 @@ proc benchmark_suite(seed: int, rounds: int) -> BenchReport {
   let h = alloc_handle(0)
   let lat: [int] = []
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     let before = rt.metrics.alloc_total + rt.metrics.free_total
     let a = stable_alloc(rt, bytes(64 + (i % 32)), alignment(8), pool_id("tenant:bench"))
     rt = a.runtime
@@ -1473,8 +1454,7 @@ proc benchmark_micro_profile(seed: int, rounds: int, profile: string) -> BenchRe
   let rt = with_seed(stable_runtime_new(AllocatorKind.Global, 32768), seed)
   let lat: [int] = []
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     let req = 64
     if profile == "tiny" {
       req = 16 + (i % 16)

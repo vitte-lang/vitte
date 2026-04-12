@@ -193,8 +193,7 @@ proc serial_write_with_state(st: SerialState, byte: int) -> arduino_pkg.ArduinoR
 proc serial_write_bytes(st: SerialState, bytes: [int]) -> arduino_pkg.ArduinoResult[SerialState] {
   let out = st
   let i: int = 0
-  loop {
-    if i >= bytes.len { break }
+  while !(i >= bytes.len) {
     let wr = serial_write(out, bytes[i])
     when wr is arduino_pkg.ArduinoResult.Err {
       give arduino_pkg.err[SerialState](wr.error)
@@ -213,8 +212,7 @@ proc serial_read_n(st: SerialState, count: int) -> arduino_pkg.ArduinoResult[[in
   }
   let out: [int] = []
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     if serial_available(st) <= 0 { break }
     out = out.push(serial_runtime_pkg.runtime_read())
     i = i + 1
@@ -229,8 +227,7 @@ proc serial_read_line(st: SerialState, max_bytes: int) -> arduino_pkg.ArduinoRes
   let out: [int] = []
   let cur = st
   let i: int = 0
-  loop {
-    if i >= cap { break }
+  while !(i >= cap) {
     if serial_available(cur) <= 0 { break }
     let rr = serial_read_step(cur)
     when rr is arduino_pkg.ArduinoResult.Err {
@@ -304,8 +301,7 @@ proc serial_port_info(st: SerialState) -> SerialPortInfo {
 proc serial_checksum(bytes: [int]) -> int {
   let sum: int = 0
   let i: int = 0
-  loop {
-    if i >= bytes.len { break }
+  while !(i >= bytes.len) {
     let b = bytes[i]
     if serial_validate_pkg.valid_byte(b) == false { give -1 }
     sum = (sum + b) % 256
@@ -365,8 +361,7 @@ proc serial_read_until(st: SerialState, terminator: int, max_bytes: int) -> ardu
   if serial_validate_pkg.valid_exchange_bytes(cap) == false { give arduino_pkg.err[[int]](arduino_pkg.ArduinoError.Unsupported) }
   let out: [int] = []
   let i: int = 0
-  loop {
-    if i >= cap { break }
+  while !(i >= cap) {
     if serial_available(st) <= 0 { break }
     let rr = serial_read(st)
     when rr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[[int]](rr.error) }

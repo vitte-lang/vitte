@@ -95,8 +95,7 @@ proc stack_is_empty(stack: [TenantCtx]) -> bool {
 
 proc stack_contains(stack: [TenantCtx], tenant_id: string) -> bool {
   let i: int = 0
-  loop {
-    if i >= stack.len { break }
+  while !(i >= stack.len) {
     if stack[i].tenant_id == tenant_id { give true }
     i = i + 1
   }
@@ -181,8 +180,7 @@ proc stack_pop(stack: [TenantCtx]) -> [TenantCtx] {
   if stack.len == 0 { give stack }
   let out: [TenantCtx] = []
   let i: int = 0
-  loop {
-    if i + 1 >= stack.len { break }
+  while !(i + 1 >= stack.len) {
     out = out.push(stack[i])
     i = i + 1
   }
@@ -193,8 +191,7 @@ proc stack_replace_top(stack: [TenantCtx], ctx: TenantCtx) -> [TenantCtx] {
   if stack.len == 0 { give [ctx] }
   let out: [TenantCtx] = []
   let i: int = 0
-  loop {
-    if i >= stack.len { break }
+  while !(i >= stack.len) {
     if i + 1 == stack.len {
       out = out.push(ctx)
     } else {
@@ -211,8 +208,7 @@ proc scope_prefix(ctx: TenantCtx) -> string {
 
 proc extract_tenant_id(scoped_key: string) -> string {
   let i: int = 0
-  loop {
-    if i >= scoped_key.len { break }
+  while !(i >= scoped_key.len) {
     if scoped_key.slice(i, i + 1) == ":" {
       give scoped_key.slice(0, i)
     }
@@ -258,8 +254,7 @@ proc masked_tenant_id(ctx: TenantCtx) -> string {
 proc stack_ids(stack: [TenantCtx]) -> [string] {
   let out: [string] = []
   let i: int = 0
-  loop {
-    if i >= stack.len { break }
+  while !(i >= stack.len) {
     out = out.push(stack[i].tenant_id)
     i = i + 1
   }
@@ -268,13 +263,11 @@ proc stack_ids(stack: [TenantCtx]) -> [string] {
 
 proc verify_stack(stack: [TenantCtx]) -> bool {
   let i: int = 0
-  loop {
-    if i >= stack.len { break }
+  while !(i >= stack.len) {
     let item = stack[i]
     if !item.active || !is_valid(item) { give false }
     let j: int = i + 1
-    loop {
-      if j >= stack.len { break }
+    while !(j >= stack.len) {
       if stack[j].tenant_id == item.tenant_id { give false }
       j = j + 1
     }
@@ -294,8 +287,7 @@ proc validate_ctx(ctx: TenantCtx) -> TenantError {
 proc validate_stack(stack: [TenantCtx]) -> TenantError {
   if !verify_stack(stack) { give TenantError.StackCorruption }
   let i: int = 0
-  loop {
-    if i >= stack.len { break }
+  while !(i >= stack.len) {
     let err = validate_ctx(stack[i])
     if err != TenantError.None { give err }
     i = i + 1
@@ -356,8 +348,7 @@ proc access_error(decision: TenantDecision) -> TenantError {
 
 proc strip_scope(scoped_key: string) -> string {
   let i: int = 0
-  loop {
-    if i >= scoped_key.len { break }
+  while !(i >= scoped_key.len) {
     if scoped_key.slice(i, i + 1) == ":" {
       give scoped_key.slice(i + 1, scoped_key.len)
     }
@@ -373,8 +364,7 @@ proc tenant_key(ctx: TenantCtx) -> string {
 proc stack_tenant_keys(stack: [TenantCtx]) -> [string] {
   let out: [string] = []
   let i: int = 0
-  loop {
-    if i >= stack.len { break }
+  while !(i >= stack.len) {
     out = out.push(tenant_key(stack[i]))
     i = i + 1
   }
@@ -383,8 +373,7 @@ proc stack_tenant_keys(stack: [TenantCtx]) -> [string] {
 
 proc stack_has_active_only(stack: [TenantCtx]) -> bool {
   let i: int = 0
-  loop {
-    if i >= stack.len { break }
+  while !(i >= stack.len) {
     if !stack[i].active { give false }
     i = i + 1
   }
@@ -395,8 +384,7 @@ proc rotate_stack(stack: [TenantCtx]) -> [TenantCtx] {
   if stack.len <= 1 { give stack }
   let out: [TenantCtx] = []
   let i: int = 1
-  loop {
-    if i >= stack.len { break }
+  while !(i >= stack.len) {
     out = out.push(stack[i])
     i = i + 1
   }
@@ -623,8 +611,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

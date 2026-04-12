@@ -47,8 +47,7 @@ proc enqueue(queue: Queue, payload: string) -> Queue {
 proc drop_first(items: [QueueItem]) -> [QueueItem] {
   let out: [QueueItem] = []
   let i: int = 1
-  loop {
-    if i >= items.len { break }
+  while !(i >= items.len) {
     out = out.push(items[i])
     i = i + 1
   }
@@ -66,8 +65,7 @@ proc ack(queue: Queue, item_id: int) -> Queue {
   let inflight: [QueueItem] = []
   let done = queue.done
   let i: int = 0
-  loop {
-    if i >= queue.inflight.len { break }
+  while !(i >= queue.inflight.len) {
     let item = queue.inflight[i]
     if item.id == item_id {
       done = done.push(QueueItem(item.id, item.payload, item.attempts, QueueState.Done))
@@ -84,8 +82,7 @@ proc nack(queue: Queue, item_id: int) -> Queue {
   let pending = queue.pending
   let dead = queue.dead
   let i: int = 0
-  loop {
-    if i >= queue.inflight.len { break }
+  while !(i >= queue.inflight.len) {
     let item = queue.inflight[i]
     if item.id == item_id {
       let attempts = item.attempts + 1
@@ -119,29 +116,25 @@ proc peek(queue: Queue) -> QueueItem {
 
 proc attempts_of(queue: Queue, item_id: int) -> int {
   let i: int = 0
-  loop {
-    if i >= queue.pending.len { break }
+  while !(i >= queue.pending.len) {
     if queue.pending[i].id == item_id { give queue.pending[i].attempts }
     i = i + 1
   }
 
   i = 0
-  loop {
-    if i >= queue.inflight.len { break }
+  while !(i >= queue.inflight.len) {
     if queue.inflight[i].id == item_id { give queue.inflight[i].attempts }
     i = i + 1
   }
 
   i = 0
-  loop {
-    if i >= queue.done.len { break }
+  while !(i >= queue.done.len) {
     if queue.done[i].id == item_id { give queue.done[i].attempts }
     i = i + 1
   }
 
   i = 0
-  loop {
-    if i >= queue.dead.len { break }
+  while !(i >= queue.dead.len) {
     if queue.dead[i].id == item_id { give queue.dead[i].attempts }
     i = i + 1
   }
@@ -153,8 +146,7 @@ proc requeue_dead(queue: Queue, item_id: int) -> Queue {
   let dead: [QueueItem] = []
   let pending = queue.pending
   let i: int = 0
-  loop {
-    if i >= queue.dead.len { break }
+  while !(i >= queue.dead.len) {
     let item = queue.dead[i]
     if item.id == item_id {
       pending = pending.push(QueueItem(item.id, item.payload, 0, QueueState.Pending))
@@ -208,8 +200,7 @@ form QueueProcessResult {
 
 proc find_pending(queue: Queue, item_id: int) -> QueueItem {
   let i: int = 0
-  loop {
-    if i >= queue.pending.len { break }
+  while !(i >= queue.pending.len) {
     if queue.pending[i].id == item_id { give queue.pending[i] }
     i = i + 1
   }
@@ -218,8 +209,7 @@ proc find_pending(queue: Queue, item_id: int) -> QueueItem {
 
 proc find_inflight(queue: Queue, item_id: int) -> QueueItem {
   let i: int = 0
-  loop {
-    if i >= queue.inflight.len { break }
+  while !(i >= queue.inflight.len) {
     if queue.inflight[i].id == item_id { give queue.inflight[i] }
     i = i + 1
   }
@@ -486,8 +476,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

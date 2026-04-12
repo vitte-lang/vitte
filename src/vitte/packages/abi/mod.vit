@@ -391,8 +391,7 @@ proc c_struct_layout(names: [string], types: [AbiTypeInfo]) -> CStructLayout {
   let off: int = 0
   let max_align: int = 1
   let i: int = 0
-  loop {
-    if i >= names.len { break }
+  while !(i >= names.len) {
     if type_error(types[i]) != AbiError.None { give CStructLayout(0, 1, []) }
     let align = alignof_type(types[i])
     if align <= 0 { give CStructLayout(0, 1, []) }
@@ -468,8 +467,7 @@ proc c_compatible(a: AbiSignature, b: AbiSignature) -> bool {
   if a.ret.kind != b.ret.kind || a.ret.bits != b.ret.bits { give false }
   if a.params.len != b.params.len { give false }
   let i: int = 0
-  loop {
-    if i >= a.params.len { break }
+  while !(i >= a.params.len) {
     if a.params[i].kind != b.params[i].kind { give false }
     if a.params[i].bits != b.params[i].bits { give false }
     i = i + 1
@@ -491,8 +489,7 @@ proc validate_signature(sig: AbiSignature) -> bool {
   if type_size_bits(sig.ret) > abi_policy_pkg.return_bits_limit(sig.ret.kind) { give false }
 
   let i: int = 0
-  loop {
-    if i >= sig.params.len { break }
+  while !(i >= sig.params.len) {
     if type_error(sig.params[i]) != AbiError.None { give false }
     if abi_validate_pkg.valid_alignment_bits(type_align_bits(sig.params[i])) == false { give false }
     i = i + 1
@@ -509,8 +506,7 @@ proc validate_signature_error(sig: AbiSignature) -> AbiError {
   if type_size_bits(sig.ret) > abi_policy_pkg.return_bits_limit(sig.ret.kind) { give AbiError.InvalidSignature }
 
   let i: int = 0
-  loop {
-    if i >= sig.params.len { break }
+  while !(i >= sig.params.len) {
     if type_error(sig.params[i]) != AbiError.None { give AbiError.InvalidType }
     if abi_validate_pkg.valid_alignment_bits(type_align_bits(sig.params[i])) == false { give AbiError.InvalidAlignment }
     i = i + 1
@@ -545,8 +541,7 @@ proc stack_arg_bytes(sig: AbiSignature) -> int {
   let stack_bits: int = 0
 
   let i: int = 0
-  loop {
-    if i >= sig.params.len { break }
+  while !(i >= sig.params.len) {
     if i >= reg_limit {
       let aligned = align_up(type_size_bits(sig.params[i]), type_align_bits(sig.params[i]))
       stack_bits = stack_bits + aligned
@@ -576,8 +571,7 @@ proc layout(sig: AbiSignature) -> AbiLayout {
   let stack_off: int = 0
   let i: int = 0
 
-  loop {
-    if i >= sig.params.len { break }
+  while !(i >= sig.params.len) {
 
     let bits = type_size_bits(sig.params[i])
     let align_bits = type_align_bits(sig.params[i])
@@ -671,8 +665,7 @@ proc layout_summary(layout: AbiLayout) -> string {
 proc signature_hash(sig: AbiSignature) -> int {
   let h = type_size_bits(sig.ret) * 31 + sig.params.len * 17
   let i: int = 0
-  loop {
-    if i >= sig.params.len { break }
+  while !(i >= sig.params.len) {
     h = h + (type_size_bits(sig.params[i]) * (i + 3))
     h = h + (type_align_bits(sig.params[i]) * (i + 5))
     i = i + 1
@@ -750,8 +743,7 @@ proc compatible(a: AbiSignature, b: AbiSignature) -> AbiCompatibility {
   if a.params.len != b.params.len { give AbiCompatibility(false, "arity-mismatch") }
 
   let i: int = 0
-  loop {
-    if i >= a.params.len { break }
+  while !(i >= a.params.len) {
     if a.params[i].kind != b.params[i].kind { give AbiCompatibility(false, "param-kind-mismatch") }
     if a.params[i].bits != b.params[i].bits { give AbiCompatibility(false, "param-bits-mismatch") }
     i = i + 1
@@ -892,8 +884,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

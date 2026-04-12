@@ -136,12 +136,10 @@ proc percentile50(values: [int]) -> int {
 proc sorted_copy(values: [int]) -> [int] {
   let out = values
   let i: int = 1
-  loop {
-    if i >= out.len { break }
+  while !(i >= out.len) {
     let key = out[i]
     let j: int = i - 1
-    loop {
-      if j < 0 { break }
+    while !(j < 0) {
       if out[j] <= key { break }
       out[j + 1] = out[j]
       j = j - 1
@@ -182,8 +180,7 @@ proc average(values: [int]) -> int {
   if values.len == 0 { give 0 }
   let sum: int = 0
   let i: int = 0
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     sum = sum + values[i]
     i = i + 1
   }
@@ -194,8 +191,7 @@ proc min_value(values: [int]) -> int {
   if bench_validate_pkg.valid_samples(values) == false { give 0 }
   let min = values[0]
   let i: int = 1
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     if values[i] < min { min = values[i] }
     i = i + 1
   }
@@ -206,8 +202,7 @@ proc max_value(values: [int]) -> int {
   if bench_validate_pkg.valid_samples(values) == false { give 0 }
   let max = values[0]
   let i: int = 1
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     if values[i] > max { max = values[i] }
     i = i + 1
   }
@@ -217,8 +212,7 @@ proc max_value(values: [int]) -> int {
 proc sanitize_samples(samples: [int]) -> [int] {
   let out: [int] = []
   let i: int = 0
-  loop {
-    if i >= samples.len { break }
+  while !(i >= samples.len) {
     let v = samples[i]
     if v < 1 { v = 1 }
     out = out.push(v)
@@ -235,8 +229,7 @@ proc stability_score(samples: [int]) -> int {
   let min = norm[0]
   let max = norm[0]
   let i: int = 1
-  loop {
-    if i >= norm.len { break }
+  while !(i >= norm.len) {
     if norm[i] < min { min = norm[i] }
     if norm[i] > max { max = norm[i] }
     i = i + 1
@@ -282,8 +275,7 @@ proc throughput_samples(elapsed_ms_samples: [int], iterations: int) -> [int] {
   let out: [int] = []
   let norm = sanitize_samples(elapsed_ms_samples)
   let i: int = 0
-  loop {
-    if i >= norm.len { break }
+  while !(i >= norm.len) {
     let t = norm[i]
     out = out.push(it * 1000 / t)
     i = i + 1
@@ -303,8 +295,7 @@ proc outlier_count_iqr(samples: [int]) -> int {
   let high = q3 + (iqr * 3 / 2)
   let count: int = 0
   let i: int = 0
-  loop {
-    if i >= norm.len { break }
+  while !(i >= norm.len) {
     let v = norm[i]
     if v < low || v > high { count = count + 1 }
     i = i + 1

@@ -58,8 +58,7 @@ proc is_identifier(text: string) -> bool {
   if text.len == 0 { give false }
   if text.slice(0, 1) >= "0" && text.slice(0, 1) <= "9" { give false }
   let i: int = 0
-  loop {
-    if i >= text.len { break }
+  while !(i >= text.len) {
     let ch = text.slice(i, i + 1)
     if !is_alpha_num_or_underscore(ch) { give false }
     i = i + 1
@@ -71,8 +70,7 @@ proc contains(text: string, needle: string) -> bool {
   if needle.len == 0 { give true }
   if text.len < needle.len { give false }
   let i: int = 0
-  loop {
-    if i + needle.len > text.len { break }
+  while !(i + needle.len > text.len) {
     if text.slice(i, i + needle.len) == needle { give true }
     i = i + 1
   }
@@ -83,8 +81,7 @@ proc join(parts: [string], sep: string) -> string {
   if parts.len == 0 { give "" }
   let out = parts[0]
   let i: int = 1
-  loop {
-    if i >= parts.len { break }
+  while !(i >= parts.len) {
     out = out + sep + parts[i]
     i = i + 1
   }
@@ -146,8 +143,7 @@ proc paginate(q: Query, page: int, page_size: int) -> Query {
 
 proc has_field(m: OrmModel, field_name: string) -> bool {
   let i: int = 0
-  loop {
-    if i >= m.fields.len { break }
+  while !(i >= m.fields.len) {
     if m.fields[i].name == field_name { give true }
     i = i + 1
   }
@@ -161,8 +157,7 @@ proc field_count(m: OrmModel) -> int {
 proc field_names(m: OrmModel) -> [string] {
   let out: [string] = []
   let i: int = 0
-  loop {
-    if i >= m.fields.len { break }
+  while !(i >= m.fields.len) {
     out = out.push(m.fields[i].name)
     i = i + 1
   }
@@ -176,8 +171,7 @@ proc validate_model(m: OrmModel) -> OrmError {
   if !has_field(m, m.primary_key) { give OrmError.InvalidPrimaryKey }
 
   let i: int = 0
-  loop {
-    if i >= m.fields.len { break }
+  while !(i >= m.fields.len) {
     let f = m.fields[i]
     if !is_identifier(f.name) { give OrmError.InvalidField }
     if f.kind.len == 0 { give OrmError.InvalidField }
@@ -192,23 +186,20 @@ proc validate_query(q: Query) -> OrmError {
   if q.offset < 0 { give OrmError.InvalidOffset }
 
   let i: int = 0
-  loop {
-    if i >= q.select_cols.len { break }
+  while !(i >= q.select_cols.len) {
     if !is_identifier(q.select_cols[i]) { give OrmError.InvalidSelect }
     i = i + 1
   }
 
   i = 0
-  loop {
-    if i >= q.where_clauses.len { break }
+  while !(i >= q.where_clauses.len) {
     if q.where_clauses[i].len == 0 { give OrmError.InvalidWhere }
     if contains(q.where_clauses[i], ";") { give OrmError.InvalidWhere }
     i = i + 1
   }
 
   i = 0
-  loop {
-    if i >= q.order_bys.len { break }
+  while !(i >= q.order_bys.len) {
     if q.order_bys[i].len == 0 { give OrmError.InvalidOrder }
     if contains(q.order_bys[i], ";") { give OrmError.InvalidOrder }
     i = i + 1
@@ -265,8 +256,7 @@ proc build_insert_sql(m: OrmModel, cols: [string]) -> string {
 
   let values: [string] = []
   let i: int = 0
-  loop {
-    if i >= cols.len { break }
+  while !(i >= cols.len) {
     if !has_field(m, cols[i]) { give "" }
     values = values.push("?")
     i = i + 1
@@ -283,8 +273,7 @@ proc build_update_sql(m: OrmModel, cols: [string]) -> string {
 
   let assignments: [string] = []
   let i: int = 0
-  loop {
-    if i >= cols.len { break }
+  while !(i >= cols.len) {
     if cols[i] != m.primary_key {
       if !has_field(m, cols[i]) { give "" }
       assignments = assignments.push(cols[i] + " = ?")
@@ -501,8 +490,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

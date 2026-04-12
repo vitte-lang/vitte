@@ -56,24 +56,28 @@ void emit_function(
     emit_type(os, fn.return_type);
     os << " " << fn.name << "(";
 
-    for (size_t i = 0; i < fn.params.size(); ++i) {
-        const auto& p = fn.params[i];
+    bool first_param = true;
+    for (const auto& p : fn.params) {
+        if (!first_param) {
+            os << ", ";
+        }
+        first_param = false;
         if (p.type && p.type->kind == ast::cpp::CppTypeKind::Function) {
             emit_type(os, p.type->return_type);
             os << " (*" << p.name << ")(";
-            for (size_t j = 0; j < p.type->param_types.size(); ++j) {
-                emit_type(os, p.type->param_types[j]);
-                if (j + 1 < p.type->param_types.size()) {
+            bool first_fn_param = true;
+            for (const auto* fn_param : p.type->param_types) {
+                if (!first_fn_param) {
                     os << ", ";
                 }
+                first_fn_param = false;
+                emit_type(os, fn_param);
             }
             os << ")";
         } else {
             emit_type(os, p.type);
             os << " " << p.name;
         }
-        if (i + 1 < fn.params.size())
-            os << ", ";
     }
 
     os << ")";
@@ -109,24 +113,28 @@ static void emit_function_decl(
     emit_type(os, fn.return_type);
     os << " " << fn.name << "(";
 
-    for (size_t i = 0; i < fn.params.size(); ++i) {
-        const auto& p = fn.params[i];
+    bool first_param = true;
+    for (const auto& p : fn.params) {
+        if (!first_param) {
+            os << ", ";
+        }
+        first_param = false;
         if (p.type && p.type->kind == ast::cpp::CppTypeKind::Function) {
             emit_type(os, p.type->return_type);
             os << " (*" << p.name << ")(";
-            for (size_t j = 0; j < p.type->param_types.size(); ++j) {
-                emit_type(os, p.type->param_types[j]);
-                if (j + 1 < p.type->param_types.size()) {
+            bool first_fn_param = true;
+            for (const auto* fn_param : p.type->param_types) {
+                if (!first_fn_param) {
                     os << ", ";
                 }
+                first_fn_param = false;
+                emit_type(os, fn_param);
             }
             os << ")";
         } else {
             emit_type(os, p.type);
             os << " " << p.name;
         }
-        if (i + 1 < fn.params.size())
-            os << ", ";
     }
 
     os << ")";
@@ -189,11 +197,13 @@ void emit_struct(
         if (f.type && f.type->kind == ast::cpp::CppTypeKind::Function) {
             emit_type(os, f.type->return_type);
             os << " (*" << f.name << ")(";
-            for (size_t i = 0; i < f.type->param_types.size(); ++i) {
-                emit_type(os, f.type->param_types[i]);
-                if (i + 1 < f.type->param_types.size()) {
+            bool first_fn_param = true;
+            for (const auto* fn_param : f.type->param_types) {
+                if (!first_fn_param) {
                     os << ", ";
                 }
+                first_fn_param = false;
+                emit_type(os, fn_param);
             }
             os << ");\n";
         } else {
@@ -218,14 +228,18 @@ void emit_enum(
     indent(os, indent_level);
     os << "enum class " << e.name << " {\n";
 
-    for (size_t i = 0; i < e.items.size(); ++i) {
-        const auto& it = e.items[i];
+    bool first_item = true;
+    for (const auto& it : e.items) {
+        if (!first_item) {
+            os << ",\n";
+        }
+        first_item = false;
         indent(os, indent_level + 1);
         os << it.name;
         if (it.value)
             os << " = " << *it.value;
-        if (i + 1 < e.items.size())
-            os << ",";
+    }
+    if (!e.items.empty()) {
         os << "\n";
     }
 

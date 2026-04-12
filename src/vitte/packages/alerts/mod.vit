@@ -444,8 +444,7 @@ proc dedupe_normalize(table: DedupeTable) -> DedupeTable {
 proc quota_normalize(quotas: [TenantQuota]) -> [TenantQuota] {
   let out: [TenantQuota] = []
   let i: int = 0
-  loop {
-    if i >= quotas.len { break }
+  while !(i >= quotas.len) {
     let q = quotas[i]
     out = out.push(TenantQuota(
       q.tenant_id,
@@ -486,8 +485,7 @@ proc alerts_runtime_info() -> AlertsRuntimeInfo {
 
 proc route_validate(routes: [RoutePolicy]) -> bool {
   let i: int = 0
-  loop {
-    if i >= routes.len { break }
+  while !(i >= routes.len) {
     if alerts_validate_pkg.valid_destination(routes[i].destination) == false { give false }
     i = i + 1
   }
@@ -497,8 +495,7 @@ proc route_validate(routes: [RoutePolicy]) -> bool {
 proc incident_backlog(groups: [IncidentGroup]) -> int {
   let total = 0
   let i: int = 0
-  loop {
-    if i >= groups.len { break }
+  while !(i >= groups.len) {
     total = total + groups[i].count
     i = i + 1
   }
@@ -508,8 +505,7 @@ proc incident_backlog(groups: [IncidentGroup]) -> int {
 proc incident_max_age(groups: [IncidentGroup], now_ts: int) -> int {
   let max_age = 0
   let i: int = 0
-  loop {
-    if i >= groups.len { break }
+  while !(i >= groups.len) {
     let age = now_ts - groups[i].first_ts
     if age > max_age { max_age = age }
     i = i + 1
@@ -664,8 +660,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }
@@ -738,8 +733,7 @@ proc severity_normalized(rule: AlertRule) -> string {
 proc labels_key(labels: [string]) -> string {
   let out = ""
   let i: int = 0
-  loop {
-    if i >= labels.len { break }
+  while !(i >= labels.len) {
     if i > 0 { out = out + "," }
     out = out + labels[i]
     i = i + 1
@@ -749,8 +743,7 @@ proc labels_key(labels: [string]) -> string {
 
 proc labels_contains(labels: [string], label: string) -> bool {
   let i: int = 0
-  loop {
-    if i >= labels.len { break }
+  while !(i >= labels.len) {
     if labels[i] == label { give true }
     i = i + 1
   }
@@ -759,8 +752,7 @@ proc labels_contains(labels: [string], label: string) -> bool {
 
 proc labels_match_scope(event_labels: [string], scope_labels: [string]) -> bool {
   let i: int = 0
-  loop {
-    if i >= scope_labels.len { break }
+  while !(i >= scope_labels.len) {
     if !labels_contains(event_labels, scope_labels[i]) { give false }
     i = i + 1
   }
@@ -774,8 +766,7 @@ proc silence_window_active(window: PlannedSilence, now_ts: int) -> bool {
 
 proc silenced_by_windows(event: AlertEvent, windows: [PlannedSilence], now_ts: int) -> bool {
   let i: int = 0
-  loop {
-    if i >= windows.len { break }
+  while !(i >= windows.len) {
     let w = windows[i]
     if silence_window_active(w, now_ts) && labels_match_scope(event.labels, w.scope_labels) {
       give true
@@ -789,8 +780,7 @@ proc apply_planned_silence(rule: AlertRule, event: AlertEvent, windows: [Planned
   if silenced_by_windows(event, windows, now_ts) {
     let until = now_ts
     let i: int = 0
-    loop {
-      if i >= windows.len { break }
+    while !(i >= windows.len) {
       let w = windows[i]
       if silence_window_active(w, now_ts) && labels_match_scope(event.labels, w.scope_labels) {
         if w.end_ts > until { until = w.end_ts }
@@ -805,14 +795,12 @@ proc apply_planned_silence(rule: AlertRule, event: AlertEvent, windows: [Planned
 proc silence_conflicts(windows: [PlannedSilence]) -> int {
   let conflicts = 0
   let i: int = 0
-  loop {
-    if i >= windows.len { break }
+  while !(i >= windows.len) {
     if windows[i].end_ts < windows[i].start_ts {
       conflicts = conflicts + 1
     }
     let j = i + 1
-    loop {
-      if j >= windows.len { break }
+    while !(j >= windows.len) {
       let a = windows[i]
       let b = windows[j]
       if labels_match_scope(a.scope_labels, b.scope_labels) || labels_match_scope(b.scope_labels, a.scope_labels) {
@@ -830,8 +818,7 @@ proc silence_conflicts(windows: [PlannedSilence]) -> int {
 proc starts_with(text: string, prefix: string) -> bool {
   if prefix.len > text.len { give false }
   let i: int = 0
-  loop {
-    if i >= prefix.len { break }
+  while !(i >= prefix.len) {
     if text[i] != prefix[i] { give false }
     i = i + 1
   }
@@ -841,8 +828,7 @@ proc starts_with(text: string, prefix: string) -> bool {
 proc hash_text(text: string) -> int {
   let h = 0
   let i: int = 0
-  loop {
-    if i >= text.len { break }
+  while !(i >= text.len) {
     h = h * 31 + text[i].to_int()
     i = i + 1
   }
@@ -867,8 +853,7 @@ proc dedupe_new(ttl_ticks: int) -> DedupeTable {
 proc dedupe_prune(table: DedupeTable, now_ts: int) -> DedupeTable {
   let kept: [DedupeEntry] = []
   let i: int = 0
-  loop {
-    if i >= table.entries.len { break }
+  while !(i >= table.entries.len) {
     if table.entries[i].expires_at >= now_ts {
       kept = kept.push(table.entries[i])
     }
@@ -880,8 +865,7 @@ proc dedupe_prune(table: DedupeTable, now_ts: int) -> DedupeTable {
 proc dedupe_ttl_remaining(table: DedupeTable, key_hash: string, now_ts: int) -> int {
   let live = dedupe_prune(table, now_ts)
   let i: int = 0
-  loop {
-    if i >= live.entries.len { break }
+  while !(i >= live.entries.len) {
     let e = live.entries[i]
     if e.key_hash == key_hash {
       let left = e.expires_at - now_ts
@@ -897,8 +881,7 @@ proc dedupe_seen(table: DedupeTable, event: AlertEvent, now_ts: int) -> bool {
   let live = dedupe_prune(table, now_ts)
   let key_hash = dedupe_hash(event)
   let i: int = 0
-  loop {
-    if i >= live.entries.len { break }
+  while !(i >= live.entries.len) {
     if live.entries[i].key_hash == key_hash { give true }
     i = i + 1
   }
@@ -1015,8 +998,7 @@ proc notify_with_dedupe(rule: AlertRule, event: AlertEvent, table: DedupeTable) 
 
 proc event_tenant_id(event: AlertEvent) -> TenantId {
   let i: int = 0
-  loop {
-    if i >= event.labels.len { break }
+  while !(i >= event.labels.len) {
     let l = event.labels[i]
     if starts_with(l, "tenant:") {
       give tenant_id(l)
@@ -1061,8 +1043,7 @@ proc route_default_configurable(
 
 proc route_for_event(routes: [RoutePolicy], tid: TenantId, level: AlertLevel) -> RoutePolicy {
   let i: int = 0
-  loop {
-    if i >= routes.len { break }
+  while !(i >= routes.len) {
     if routes[i].tenant_id.value == tid.value && routes[i].level == level { give routes[i] }
     i = i + 1
   }
@@ -1198,8 +1179,7 @@ proc notify_routed(
   let next_circuit = circuit
   let next_runtime = runtime
   let ok = true
-  loop {
-    if retries > max_retries { break }
+  while !(retries > max_retries) {
     if provider_should_fail(route) {
       next_circuit = provider_circuit_on_failure(next_circuit, event.ts + retries)
       next_runtime = NotifyRuntime(next_runtime.retries + 1, next_runtime.notify_failures + 1, next_runtime.alerts_suppressed, next_runtime.dead_letters)
@@ -1234,15 +1214,13 @@ proc notify_routed(
 proc correlate_incidents(events: [AlertEvent]) -> [IncidentGroup] {
   let groups: [IncidentGroup] = []
   let i: int = 0
-  loop {
-    if i >= events.len { break }
+  while !(i >= events.len) {
     let e = events[i]
     let key = incident_key(e)
     let out: [IncidentGroup] = []
     let found = false
     let j: int = 0
-    loop {
-      if j >= groups.len { break }
+    while !(j >= groups.len) {
       let g = groups[j]
       if g.key == key {
         out = out.push(IncidentGroup(key, g.count + 1, g.first_ts, e.ts))
@@ -1268,8 +1246,7 @@ proc minute_slot(ts: int) -> int {
 
 proc quota_for_tenant(quotas: [TenantQuota], tid: TenantId) -> TenantQuota {
   let i: int = 0
-  loop {
-    if i >= quotas.len { break }
+  while !(i >= quotas.len) {
     if quotas[i].tenant_id.value == tid.value { give quotas[i] }
     i = i + 1
   }
@@ -1285,8 +1262,7 @@ proc quota_check(quotas: [TenantQuota], states: [TenantQuotaState], event: Alert
   let allowed = true
   let limit = quota.per_minute + quota.burst
   let i: int = 0
-  loop {
-    if i >= states.len { break }
+  while !(i >= states.len) {
     let s = states[i]
     if s.tenant_id.value == tid.value {
       found = true
@@ -1325,8 +1301,7 @@ proc tenant_quota_stats(quotas: [TenantQuota], states: [TenantQuotaState], tid: 
   let used = 0
   let denied = 0
   let i: int = 0
-  loop {
-    if i >= states.len { break }
+  while !(i >= states.len) {
     if states[i].tenant_id.value == tid.value {
       used = states[i].count
       denied = states[i].denied
@@ -1339,8 +1314,7 @@ proc tenant_quota_stats(quotas: [TenantQuota], states: [TenantQuotaState], tid: 
 
 proc authz_can_create_rule(policies: [AuthzPolicy], actor: string) -> bool {
   let i: int = 0
-  loop {
-    if i >= policies.len { break }
+  while !(i >= policies.len) {
     if policies[i].actor == actor { give policies[i].can_create_rule }
     i = i + 1
   }
@@ -1349,8 +1323,7 @@ proc authz_can_create_rule(policies: [AuthzPolicy], actor: string) -> bool {
 
 proc authz_can_silence_rule(policies: [AuthzPolicy], actor: string) -> bool {
   let i: int = 0
-  loop {
-    if i >= policies.len { break }
+  while !(i >= policies.len) {
     if policies[i].actor == actor { give policies[i].can_silence_rule }
     i = i + 1
   }
@@ -1446,8 +1419,7 @@ proc counters_non_negative(
   if notify_runtime.notify_failures < 0 { give false }
   if notify_runtime.alerts_suppressed < 0 { give false }
   let i: int = 0
-  loop {
-    if i >= quota_states.len { break }
+  while !(i >= quota_states.len) {
     if quota_states[i].count < 0 { give false }
     if quota_states[i].denied < 0 { give false }
     i = i + 1
@@ -1472,8 +1444,7 @@ proc property_invariants(seed: int, rounds: int) -> PropertyReport {
   let qs: [TenantQuotaState] = []
   let checks = 0
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     let v = (seed + i * 17) % 100
     let e = AlertEvent("k" + i.to_string(), "src", "m", v, i, ["tenant:t1"], trace_id("tr-p"))
     let prev = rt
@@ -1492,8 +1463,7 @@ proc property_invariants(seed: int, rounds: int) -> PropertyReport {
 proc remove_at_int(values: [int], idx: int) -> [int] {
   let out: [int] = []
   let i: int = 0
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     if i != idx { out = out.push(values[i]) }
     i = i + 1
   }
@@ -1504,8 +1474,7 @@ proc min_index_int(values: [int]) -> int {
   if values.len == 0 { give -1 }
   let best = 0
   let i: int = 1
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     if values[i] < values[best] { best = i }
     i = i + 1
   }
@@ -1516,8 +1485,7 @@ proc percentile(values: [int], p: int) -> int {
   if values.len == 0 { give 0 }
   let remain = values
   let sorted: [int] = []
-  loop {
-    if remain.len == 0 { break }
+  while !(remain.len == 0) {
     let idx = min_index_int(remain)
     sorted = sorted.push(remain[idx])
     remain = remove_at_int(remain, idx)
@@ -1537,8 +1505,7 @@ proc benchmark_eval(seed: int, rounds: int) -> BenchReport {
   let rt = runtime_new()
   let lat: [int] = []
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     let v = (seed * 13 + i * 7) % 100
     let e = AlertEvent("b" + i.to_string(), "src", "m", v, i, ["tenant:t1"], trace_id("tr-b"))
     let before = rt.last_fired_at
@@ -1567,8 +1534,7 @@ proc fuzz_events(seed: int, steps: int) -> FuzzReport {
   let suppressed = 0
   let rnd = seed + 3
   let i: int = 0
-  loop {
-    if i >= n { break }
+  while !(i >= n) {
     rnd = (rnd * 1103515245 + 12345) % 2147483647
     let val = rnd % 120
     let e = AlertEvent("fz-" + i.to_string(), "src", "m", val, i, ["tenant:t1"], trace_id("tr-fz"))

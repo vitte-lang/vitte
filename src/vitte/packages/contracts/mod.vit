@@ -140,8 +140,7 @@ proc contract_load_checked(name: string, contract_version_value: string, schema_
   if contracts_validate_pkg.valid_required_count(required_fields.len, opts.max_required_fields) == false { give ContractsResult.Err(ContractsError.InvalidContract) }
 
   let i: int = 0
-  loop {
-    if i >= required_fields.len { break }
+  while !(i >= required_fields.len) {
     if contracts_validate_pkg.valid_field_name(required_fields[i], opts.max_field_name_len) == false {
       give ContractsResult.Err(ContractsError.InvalidField)
     }
@@ -169,8 +168,7 @@ proc field_count(contract: Contract) -> int {
 
 proc has_required_field(contract: Contract, field_name: string) -> bool {
   let i: int = 0
-  loop {
-    if i >= contract.required_fields.len { break }
+  while !(i >= contract.required_fields.len) {
     if contract.required_fields[i] == field_name { give true }
     i = i + 1
   }
@@ -212,8 +210,7 @@ proc contains(text: string, needle: string) -> bool {
 
   let limit = text.len - needle.len
   let i: int = 0
-  loop {
-    if i > limit { break }
+  while !(i > limit) {
     if text.slice(i, i + needle.len) == needle { give true }
     i = i + 1
   }
@@ -223,8 +220,7 @@ proc contains(text: string, needle: string) -> bool {
 
 proc first_missing_field(contract: Contract, payload: string) -> string {
   let i: int = 0
-  loop {
-    if i >= contract.required_fields.len { break }
+  while !(i >= contract.required_fields.len) {
     let req_field = contract.required_fields[i]
     if !contains(payload, req_field) {
       give req_field
@@ -240,8 +236,7 @@ proc contract_verify(contract: Contract, payload: string) -> ContractCheck {
   }
 
   let i: int = 0
-  loop {
-    if i >= contract.required_fields.len { break }
+  while !(i >= contract.required_fields.len) {
     let req_field = contract.required_fields[i]
     if !contains(payload, req_field) {
       give ContractCheck(false, "missing-field:" + req_field)
@@ -262,8 +257,7 @@ proc contract_code(contract: Contract, opts: ContractsOptions) -> string {
   if contracts_validate_pkg.valid_required_count(contract.required_fields.len, opts.max_required_fields) == false { give "too-many-required-fields" }
 
   let i: int = 0
-  loop {
-    if i >= contract.required_fields.len { break }
+  while !(i >= contract.required_fields.len) {
     if contracts_validate_pkg.valid_field_name(contract.required_fields[i], opts.max_field_name_len) == false {
       give "invalid-required-field"
     }
@@ -333,8 +327,7 @@ proc contract_normalize(contract: Contract, opts: ContractsOptions) -> Contract 
 
   let reqs: [string] = []
   let i: int = 0
-  loop {
-    if i >= contract.required_fields.len { break }
+  while !(i >= contract.required_fields.len) {
     if reqs.len >= o.max_required_fields { break }
 
     let f = contract.required_fields[i]
@@ -351,8 +344,7 @@ proc contract_normalize(contract: Contract, opts: ContractsOptions) -> Contract 
 proc contracts_stats(contract: Contract, payload: string) -> ContractsStats {
   let missing = 0
   let i: int = 0
-  loop {
-    if i >= contract.required_fields.len { break }
+  while !(i >= contract.required_fields.len) {
     if contains(payload, contract.required_fields[i]) == false {
       missing = missing + 1
     }
@@ -520,8 +512,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

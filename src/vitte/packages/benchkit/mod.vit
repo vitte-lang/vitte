@@ -93,12 +93,10 @@ proc now_ns() -> int {
 proc sort(values: [int]) -> [int] {
   let out = values
   let i: int = 1
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     let key = out[i]
     let j: int = i - 1
-    loop {
-      if j < 0 { break }
+    while !(j < 0) {
       if out[j] <= key { break }
       out[j + 1] = out[j]
       j = j - 1
@@ -126,8 +124,7 @@ proc mean(values: [int]) -> int {
 
   let sum: int = 0
   let i: int = 0
-  loop {
-    if i >= values.len { break }
+  while !(i >= values.len) {
     sum = sum + values[i]
     i = i + 1
   }
@@ -153,8 +150,7 @@ proc trim(values: [int], percent: int) -> [int] {
 
   let out: [int] = []
   let i: int = start
-  loop {
-    if i >= end { break }
+  while !(i >= end) {
     out = out.push(sorted[i])
     i = i + 1
   }
@@ -240,16 +236,14 @@ proc run_bench_checked(name: string, job: proc() -> int, cfg: BenchConfig) -> Be
   when vr is BenchkitResult.Err { give BenchkitResult.Err(vr.error) }
 
   let w: int = 0
-  loop {
-    if w >= cfg.warmup { break }
+  while !(w >= cfg.warmup) {
     job()
     w = w + 1
   }
 
   let samples: [int] = []
   let i: int = 0
-  loop {
-    if i >= cfg.iterations { break }
+  while !(i >= cfg.iterations) {
     let duration = run_once(job)
     if benchkit_validate_pkg.valid_non_negative(duration) == false {
       give BenchkitResult.Err(BenchError.InvalidSample)
@@ -311,8 +305,7 @@ proc format_stats(stats: BenchStats) -> string {
 proc report(suite: BenchSuite) -> string {
   let out: string = ""
   let i: int = 0
-  loop {
-    if i >= suite.results.len { break }
+  while !(i >= suite.results.len) {
     let r = suite.results[i]
     out = out + r.name + " -> " + format_stats(r.stats) + "\n"
     i = i + 1
@@ -322,11 +315,10 @@ proc report(suite: BenchSuite) -> string {
 
 proc calibrate(job: proc() -> int) -> int {
   let iterations: int = 1
-  loop {
+  while true {
     let start = now_ns()
     let i: int = 0
-    loop {
-      if i >= iterations { break }
+    while !(i >= iterations) {
       job()
       i = i + 1
     }
@@ -380,8 +372,7 @@ proc result_valid(result: BenchResult) -> bool {
 proc suite_merge(left: BenchSuite, right: BenchSuite) -> BenchSuite {
   let out = left
   let i: int = 0
-  loop {
-    if i >= right.results.len { break }
+  while !(i >= right.results.len) {
     out = suite_add(out, right.results[i])
     i = i + 1
   }
@@ -574,8 +565,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

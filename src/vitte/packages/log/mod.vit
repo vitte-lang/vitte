@@ -614,8 +614,7 @@ proc enabled_for_emit(l: Logger, level: LogLevel, module: string) -> bool {
 proc redacted_fields(fields: [LogField]) -> [LogField] {
   let out: [LogField] = []
   let i: int = 0
-  loop {
-    if i >= fields.len { break }
+  while !(i >= fields.len) {
     out = out.push(LogField(fields[i].key, log_runtime_pkg.redact_field_value(fields[i].key, fields[i].value)))
     i = i + 1
   }
@@ -625,8 +624,7 @@ proc redacted_fields(fields: [LogField]) -> [LogField] {
 proc merge_context_fields(base: [LogField], extra: [LogField]) -> [LogField] {
   let out: [LogField] = base
   let i: int = 0
-  loop {
-    if i >= extra.len { break }
+  while !(i >= extra.len) {
     out = out.push(extra[i])
     i = i + 1
   }
@@ -652,8 +650,7 @@ proc append_buffer(l: Logger, e: LogEvent) -> Logger {
     if l.config.drop_policy == DropPolicy.DropOldest {
       let out: [LogEvent] = []
       let i: int = 1
-      loop {
-        if i >= b.len { break }
+      while !(i >= b.len) {
         out = out.push(b[i])
         i = i + 1
       }

@@ -108,8 +108,7 @@ proc healthcheck(cfg: HirConfig, m: HirModule) -> HirResult[HirHealth] {
   }
   let i: int = 0
   let returns: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].id < 0 { give HirResult.Err(HirError.InvalidConfig) }
     if m.nodes[i].kind == HirKind.Return { returns = returns + 1 }
     i = i + 1
@@ -201,8 +200,7 @@ proc add_checked(m: HirModule, n: HirNode, cfg: HirConfig) -> HirResult[HirModul
 proc type_count(m: HirModule, ty: string) -> int {
   let c: int = 0
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].ty == ty { c = c + 1 }
     i = i + 1
   }
@@ -212,8 +210,7 @@ proc type_count(m: HirModule, ty: string) -> int {
 proc validate(m: HirModule) -> bool {
   if m.name.len == 0 { give false }
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].id < 0 { give false }
     i = i + 1
   }
@@ -235,8 +232,7 @@ proc summary(m: HirModule) -> string {
 proc symbols(m: HirModule) -> [string] {
   let out: [string] = []
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     out = out.push(m.nodes[i].symbol)
     i = i + 1
   }
@@ -246,8 +242,7 @@ proc symbols(m: HirModule) -> [string] {
 proc rename_symbol(m: HirModule, old_name: string, new_name: string) -> HirModule {
   let out: [HirNode] = []
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     let n = m.nodes[i]
     if n.symbol == old_name {
       out = out.push(HirNode(n.id, n.kind, new_name, n.ty))
@@ -262,8 +257,7 @@ proc rename_symbol(m: HirModule, old_name: string, new_name: string) -> HirModul
 proc count_kind(m: HirModule, kind: HirKind) -> int {
   let c: int = 0
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].kind == kind { c = c + 1 }
     i = i + 1
   }
@@ -278,8 +272,7 @@ proc hir_health(m: HirModule) -> string {
 
 proc find_symbol(m: HirModule, symbol: string) -> HirNode {
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     if m.nodes[i].symbol == symbol { give m.nodes[i] }
     i = i + 1
   }
@@ -289,8 +282,7 @@ proc find_symbol(m: HirModule, symbol: string) -> HirNode {
 proc type_names(m: HirModule) -> [string] {
   let out: [string] = []
   let i: int = 0
-  loop {
-    if i >= m.nodes.len { break }
+  while !(i >= m.nodes.len) {
     out = out.push(m.nodes[i].ty)
     i = i + 1
   }
@@ -383,8 +375,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

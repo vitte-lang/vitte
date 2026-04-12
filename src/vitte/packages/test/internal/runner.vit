@@ -128,8 +128,7 @@ proc contains(text: string, needle: string) -> bool {
   if needle.len == 0 { give true }
   if text.len < needle.len { give false }
   let i: int = 0
-  loop {
-    if i + needle.len > text.len { break }
+  while !(i + needle.len > text.len) {
     if text.slice(i, i + needle.len) == needle { give true }
     i = i + 1
   }
@@ -138,11 +137,9 @@ proc contains(text: string, needle: string) -> bool {
 
 proc has_tag(c: TestCase, tags: [string]) -> bool {
   let i: int = 0
-  loop {
-    if i >= c.tags.len { break }
+  while !(i >= c.tags.len) {
     let j: int = 0
-    loop {
-      if j >= tags.len { break }
+    while !(j >= tags.len) {
       if c.tags[i] == tags[j] { give true }
       j = j + 1
     }
@@ -160,8 +157,7 @@ proc report_for_suite(ctx: TestContext, s: TestSuite, chosen: [bool]) -> TestRes
   let duration: int = 0
   let retry_used: int = 0
   let i: int = 0
-  loop {
-    if i >= s.cases.len { break }
+  while !(i >= s.cases.len) {
     if chosen[i] {
       if s.cases[i].passed { passed = passed + 1 } else { failed = failed + 1 }
       if s.cases[i].flaky { flaky = flaky + 1 }
@@ -195,8 +191,7 @@ proc run_suite(ctx: TestContext, s: TestSuite) -> TestResult[TestReport] {
   let chosen: [bool] = []
   let i: int = 0
   let ch: [bool] = chosen
-  loop {
-    if i >= s.cases.len { break }
+  while !(i >= s.cases.len) {
     ch = ch.push(true)
     i = i + 1
   }
@@ -207,12 +202,10 @@ proc run_selected(ctx: TestContext, s: TestSuite, names: [string]) -> TestResult
   let chosen: [bool] = []
   let out: [bool] = chosen
   let i: int = 0
-  loop {
-    if i >= s.cases.len { break }
+  while !(i >= s.cases.len) {
     let keep: bool = false
     let j: int = 0
-    loop {
-      if j >= names.len { break }
+    while !(j >= names.len) {
       if s.cases[i].name == names[j] { keep = true }
       j = j + 1
     }
@@ -226,8 +219,7 @@ proc run_tagged(ctx: TestContext, s: TestSuite, tags: [string]) -> TestResult[Te
   let chosen: [bool] = []
   let out: [bool] = chosen
   let i: int = 0
-  loop {
-    if i >= s.cases.len { break }
+  while !(i >= s.cases.len) {
     out = out.push(has_tag(s.cases[i], tags))
     i = i + 1
   }
@@ -237,8 +229,7 @@ proc run_tagged(ctx: TestContext, s: TestSuite, tags: [string]) -> TestResult[Te
 proc run_all(ctx: TestContext, suites: [TestSuite]) -> TestResult[[TestReport]] {
   let out: [TestReport] = []
   let i: int = 0
-  loop {
-    if i >= suites.len { break }
+  while !(i >= suites.len) {
     let r: TestResult[TestReport] = run_suite(ctx, suites[i])
     when r is TestResult.Err {
       give err[[TestReport]](r.error.code, r.error.message, r.error.context, r.error.retryable)
@@ -258,8 +249,7 @@ proc merge_reports(reports: [TestReport]) -> TestReport {
   let duration: int = 0
   let exceeded: bool = false
   let i: int = 0
-  loop {
-    if i >= reports.len { break }
+  while !(i >= reports.len) {
     total = total + reports[i].total
     passed = passed + reports[i].passed
     failed = failed + reports[i].failed

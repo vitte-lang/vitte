@@ -104,8 +104,7 @@ proc default_claims(sub: string, now: int, ttl: int) -> Claims {
 proc has_three_parts(token: string) -> bool {
   let dots: int = 0
   let i: int = 0
-  loop {
-    if i >= token.len { break }
+  while !(i >= token.len) {
     if token.slice(i, i + 1) == "." { dots = dots + 1 }
     i = i + 1
   }
@@ -144,8 +143,7 @@ proc is_digit(ch: string) -> bool {
 proc is_uint(text: string) -> bool {
   if text.len == 0 { give false }
   let i: int = 0
-  loop {
-    if i >= text.len { break }
+  while !(i >= text.len) {
     if !is_digit(text.slice(i, i + 1)) { give false }
     i = i + 1
   }
@@ -180,20 +178,17 @@ proc b64url_value(ch: string) -> int {
   let l = lower_letters()
   let d = digits()
   let i: int = 0
-  loop {
-    if i >= 26 { break }
+  while !(i >= 26) {
     if ch == u.slice(i, i + 1) { give i }
     i = i + 1
   }
   i = 0
-  loop {
-    if i >= 26 { break }
+  while !(i >= 26) {
     if ch == l.slice(i, i + 1) { give 26 + i }
     i = i + 1
   }
   i = 0
-  loop {
-    if i >= 10 { break }
+  while !(i >= 10) {
     if ch == d.slice(i, i + 1) { give 52 + i }
     i = i + 1
   }
@@ -228,8 +223,7 @@ proc base64url_encode(text: string) -> string {
   if text.len == 0 { give "" }
   let out = ""
   let i: int = 0
-  loop {
-    if i >= text.len { break }
+  while !(i >= text.len) {
     let rem = text.len - i
     let b0 = text.slice(i, i + 1).to_int() & 255
     let b1: int = 0
@@ -255,14 +249,12 @@ proc base64url_decode(text: string) -> string {
   let bits: int = 0
   let bit_len: int = 0
   let i: int = 0
-  loop {
-    if i >= text.len { break }
+  while !(i >= text.len) {
     let v = b64url_value(text.slice(i, i + 1))
     if v < 0 { give "" }
     bits = (bits << 6) + v
     bit_len = bit_len + 6
-    loop {
-      if bit_len < 8 { break }
+    while !(bit_len < 8) {
       let b = (bits >> (bit_len - 8)) & 255
       let ch = ascii_from_byte(b)
       if ch.len == 0 { give "" }
@@ -280,8 +272,7 @@ proc is_safe_claim_char(ch: string) -> bool {
   let u = upper_letters()
   let l = lower_letters()
   let i: int = 0
-  loop {
-    if i >= 26 { break }
+  while !(i >= 26) {
     if ch == u.slice(i, i + 1) { give true }
     if ch == l.slice(i, i + 1) { give true }
     i = i + 1
@@ -297,8 +288,7 @@ proc is_safe_claim_char(ch: string) -> bool {
 
 proc is_safe_claim_text(text: string) -> bool {
   let i: int = 0
-  loop {
-    if i >= text.len { break }
+  while !(i >= text.len) {
     if !is_safe_claim_char(text.slice(i, i + 1)) { give false }
     i = i + 1
   }
@@ -330,8 +320,7 @@ proc find_from(text: string, pattern: string, start: int) -> int {
   if pattern.len == 0 { give -1 }
   if start < 0 { give -1 }
   let i = start
-  loop {
-    if i + pattern.len > text.len { break }
+  while !(i + pattern.len > text.len) {
     if text.slice(i, i + pattern.len) == pattern { give i }
     i = i + 1
   }
@@ -344,7 +333,7 @@ proc parse_json_string_field(json: string, key: string) -> string {
   if start < 0 { give "" }
   let i = start + pat.len
   let out = ""
-  loop {
+  while true {
     if i >= json.len { give "" }
     let ch = json.slice(i, i + 1)
     if ch == "\"" { give out }
@@ -361,8 +350,7 @@ proc parse_json_int_field(json: string, key: string) -> int {
   if start < 0 { give -1 }
   let i = start + pat.len
   let out = ""
-  loop {
-    if i >= json.len { break }
+  while !(i >= json.len) {
     let ch = json.slice(i, i + 1)
     if !is_digit(ch) { break }
     out = out + ch
@@ -408,8 +396,7 @@ proc split_part(token: string, index: int) -> string {
   let part: int = 0
   let start: int = 0
   let i: int = 0
-  loop {
-    if i > token.len { break }
+  while !(i > token.len) {
     if i == token.len || token.slice(i, i + 1) == "." {
       if part == index { give token.slice(start, i) }
       part = part + 1
@@ -645,8 +632,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

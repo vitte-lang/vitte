@@ -27,8 +27,7 @@ proc put(doc: PickleDoc, key: string, value: string) -> PickleDoc {
   let out: [Pair] = []
   let found = false
   let i: int = 0
-  loop {
-    if i >= doc.pairs.len { break }
+  while !(i >= doc.pairs.len) {
     if doc.pairs[i].key == key {
       out = out.push(Pair(key, value))
       found = true
@@ -43,8 +42,7 @@ proc put(doc: PickleDoc, key: string, value: string) -> PickleDoc {
 
 proc get(doc: PickleDoc, key: string) -> string {
   let i: int = 0
-  loop {
-    if i >= doc.pairs.len { break }
+  while !(i >= doc.pairs.len) {
     if doc.pairs[i].key == key { give doc.pairs[i].value }
     i = i + 1
   }
@@ -54,8 +52,7 @@ proc get(doc: PickleDoc, key: string) -> string {
 proc encode(doc: PickleDoc) -> string {
   let out = ""
   let i: int = 0
-  loop {
-    if i >= doc.pairs.len { break }
+  while !(i >= doc.pairs.len) {
     if i > 0 { out = out + ";" }
     out = out + doc.pairs[i].key + "=" + doc.pairs[i].value
     i = i + 1
@@ -69,7 +66,7 @@ proc decode(text: string) -> PickleDoc {
   let value = ""
   let reading_value = false
   let i: int = 0
-  loop {
+  while true {
     if i >= text.len {
       if key.len > 0 { out = put(out, key, value) }
       break
@@ -166,8 +163,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  loop {
-    if i >= caps.len { break }
+  while !(i >= caps.len) {
     out = out + "," + caps[i]
     i = i + 1
   }

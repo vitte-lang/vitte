@@ -102,11 +102,13 @@ static void emit_stmt_impl(
         if (s.type && s.type->kind == ast::cpp::CppTypeKind::Function) {
             emit_type(os, s.type->return_type);
             os << " (*" << s.name << ")(";
-            for (size_t i = 0; i < s.type->param_types.size(); ++i) {
-                emit_type(os, s.type->param_types[i]);
-                if (i + 1 < s.type->param_types.size()) {
+            bool first = true;
+            for (const auto* param_type : s.type->param_types) {
+                if (!first) {
                     os << ", ";
                 }
+                first = false;
+                emit_type(os, param_type);
             }
             os << ")";
         } else {
