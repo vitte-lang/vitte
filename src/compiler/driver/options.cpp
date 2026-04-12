@@ -245,6 +245,9 @@ Options parse_options(int argc, char** argv) {
         else if (arg == "--strict-core") {
             opts.strict_core = true;
         }
+        else if (arg == "--syntax-strict") {
+            opts.syntax_strict = true;
+        }
         else if (arg == "--trace-parse") {
             opts.trace_parse = true;
         }
@@ -547,7 +550,7 @@ void print_help() {
         "  clean-cache      Remove .vitte-cache artifacts\n"
         "  mod graph        Show module import graph and cycle report\n"
         "  mod doctor       Lint module imports/aliases/collisions\n"
-        "  mod migrate-imports Rewrite legacy imports across roots\n"
+        "  mod migrate-imports Rewrite legacy imports and canonical style forms across roots\n"
         "  mod contract-diff Compare exported module contract between 2 inputs\n"
         "  mod api-diff     Legacy alias for mod contract-diff\n"
         "\n"
@@ -569,6 +572,7 @@ void print_help() {
         "  --parse-silent    Suppress parse-only informational logs\n"
         "  --strict-parse    Disallow keywords as identifiers\n"
         "  --strict-core     Enforce core grammar guardrails (reject non-core syntax)\n"
+        "  --syntax-strict   Reject deprecated syntax forms (loop/otherwise/return)\n"
         "  --trace-parse     Emit parser trace (rules/lookahead/recovery)\n"
         "  --trace-resolve   Emit resolve trace (symbols/types/imports)\n"
         "  --panic-budget N  Cap parser-emitted errors before stopping parse recovery\n"
@@ -578,6 +582,7 @@ void print_help() {
         "                    Fail compilation if parser recoveries exceed N\n"
         "  --syntax-profile <name>\n"
         "                    Syntax profile: stable-v1|core-v1|legacy-v1\n"
+        "                    stable-v1 freezes keyword vocabulary; legacy-v1 keeps permissive parsing\n"
         "  --syntax-version <name>\n"
         "                    Alias of --syntax-profile\n"
         "  --resolve-only    Resolve only (no lowering)\n"
@@ -628,7 +633,7 @@ void print_help() {
         "  --old <file>     For mod contract-diff: old entry file\n"
         "  --new <file>     For mod contract-diff: new entry file\n"
         "  --strict-types    Enforce canonical type names (reject aliases)\n"
-        "  --strict-modules  Forbid glob imports, require alias + canonical path\n"
+        "  --strict-modules  Forbid glob imports, require alias + canonical path, and reject legacy self-leaf imports\n"
         "  --strict-imports  Enforce explicit/canonical imports and reject unused aliases\n"
         "  --strict-bridge   Alias of --strict-imports for native liaison policy\n"
         "  --fail-on-warning Fail build/check when warnings are emitted\n"
