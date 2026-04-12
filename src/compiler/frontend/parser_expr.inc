@@ -6,6 +6,48 @@ static int precedence(TokenKind kind) {
     return tokens::binary_precedence(kind);
 }
 
+static void emit_symbolic_not_deprecation(DiagnosticEngine& diag, const SourceSpan& span, bool syntax_strict) {
+    diag::Diagnostic deprec(
+        syntax_strict ? diag::Severity::Error : diag::Severity::Warning,
+        syntax_strict ? "E1106" : "W1106",
+        syntax_strict
+            ? "deprecated syntax: symbolic '!' is forbidden in --syntax-strict mode; use 'not'"
+            : "deprecated syntax: symbolic '!' is deprecated; prefer 'not'",
+        span
+    );
+    deprec.add_note("canonical boolean negation operator is 'not'");
+    deprec.add_fix("rewrite symbolic negation", "not <expr>", span);
+    diag.emit(std::move(deprec));
+}
+
+static void emit_symbolic_and_deprecation(DiagnosticEngine& diag, const SourceSpan& span, bool syntax_strict) {
+    diag::Diagnostic deprec(
+        syntax_strict ? diag::Severity::Error : diag::Severity::Warning,
+        syntax_strict ? "E1107" : "W1107",
+        syntax_strict
+            ? "deprecated syntax: symbolic '&&' is forbidden in --syntax-strict mode; use 'and'"
+            : "deprecated syntax: symbolic '&&' is deprecated; prefer 'and'",
+        span
+    );
+    deprec.add_note("canonical boolean conjunction operator is 'and'");
+    deprec.add_fix("rewrite symbolic conjunction", "and", span);
+    diag.emit(std::move(deprec));
+}
+
+static void emit_symbolic_or_deprecation(DiagnosticEngine& diag, const SourceSpan& span, bool syntax_strict) {
+    diag::Diagnostic deprec(
+        syntax_strict ? diag::Severity::Error : diag::Severity::Warning,
+        syntax_strict ? "E1108" : "W1108",
+        syntax_strict
+            ? "deprecated syntax: symbolic '||' is forbidden in --syntax-strict mode; use 'or'"
+            : "deprecated syntax: symbolic '||' is deprecated; prefer 'or'",
+        span
+    );
+    deprec.add_note("canonical boolean disjunction operator is 'or'");
+    deprec.add_fix("rewrite symbolic disjunction", "or", span);
+    diag.emit(std::move(deprec));
+}
+
 static bool is_assignment_op(TokenKind kind) {
     switch (kind) {
         case TokenKind::Equal:
@@ -13,6 +55,7 @@ static bool is_assignment_op(TokenKind kind) {
         case TokenKind::MinusEqual:
         case TokenKind::StarEqual:
         case TokenKind::SlashEqual:
+        case TokenKind::PercentEqual:
             return true;
         default:
             return false;
@@ -32,6 +75,9 @@ static bool compound_assignment_binary_op(TokenKind kind, BinaryOp& out) {
             return true;
         case TokenKind::SlashEqual:
             out = BinaryOp::Div;
+            return true;
+        case TokenKind::PercentEqual:
+            out = BinaryOp::Mod;
             return true;
         default:
             return false;
@@ -160,11 +206,17 @@ ExprId Parser::parse_expr() {
             }
             TokenKind op = current_.kind;
             int prec = precedence(op);
+            SourceSpan op_span = current_.span;
             advance();
             int next_min_prec = is_assignment_op(op) ? prec : (prec + 1);
             auto rhs = parse_prec(next_min_prec);
             if (rhs == ast::kInvalidAstId) {
                 return lhs;
+            }
+            if (op == TokenKind::AmpAmp) {
+                emit_symbolic_and_deprecation(diag_, op_span, syntax_strict_);
+            } else if (op == TokenKind::PipePipe) {
+                emit_symbolic_or_deprecation(diag_, op_span, syntax_strict_);
             }
             SourceSpan span = ast_ctx_.get<Expr>(lhs).span;
             span.end = ast_ctx_.get<Expr>(rhs).span.end;
@@ -197,7 +249,16 @@ ExprId Parser::parse_expr() {
 }
 
 ExprId Parser::parse_unary_expr() {
-    if (match(TokenKind::KwNot) || match(TokenKind::Bang)) {
+    if (match(TokenKind::KwNot)) {
+        auto rhs = parse_unary_expr();
+        SourceSpan span = previous_.span;
+        if (rhs != ast::kInvalidAstId) {
+            span.end = ast_ctx_.get<Expr>(rhs).span.end;
+        }
+        return ast_ctx_.make<UnaryExpr>(UnaryOp::Not, rhs, span);
+    }
+    if (match(TokenKind::Bang)) {
+        emit_symbolic_not_deprecation(diag_, previous_.span, syntax_strict_);
         auto rhs = parse_unary_expr();
         SourceSpan span = previous_.span;
         if (rhs != ast::kInvalidAstId) {
