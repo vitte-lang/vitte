@@ -382,6 +382,17 @@ proc stable_ready() -> bool {
   give true
 }
 
+proc healthcheck(cfg: BridgeConfig) -> BridgeResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is BridgeResult.Err { give BridgeResult.Err(vr.error) }
+  if bridge_runtime_pkg.runtime_status() == false { give BridgeResult.Err(BridgeError.InvalidConfig) }
+  let rr = route_new("health-a", "health-b", cfg)
+  when rr is BridgeResult.Err { give BridgeResult.Err(rr.error) }
+  let h = bridge_health(connect(rr.value))
+  if h.ok == false { give BridgeResult.Err(BridgeError.InvalidConfig) }
+  give BridgeResult.Ok(true)
+}
+
 proc validate_config_code(cfg: BridgeConfig) -> string {
   let vr = validate_config(cfg)
   when vr is BridgeResult.Err { give "VITTE-BRIDGE0001" }
@@ -443,8 +454,8 @@ proc diagnostics_bundle(code: string) -> string {
 }
 
 proc healthcheck_code(cfg: BridgeConfig) -> string {
-  let _ = cfg
-  if ready() == false { give diagnostics_namespace() + "0001" }
+  let hr = healthcheck(cfg)
+  when hr is BridgeResult.Err { give diagnostics_namespace() + "0001" }
   give diagnostics_namespace() + "0000"
 }
 

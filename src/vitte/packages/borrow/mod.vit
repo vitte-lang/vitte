@@ -492,6 +492,15 @@ proc stable_ready() -> bool {
   give true
 }
 
+proc healthcheck(cfg: BorrowConfig) -> BorrowResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is BorrowResult.Err { give BorrowResult.Err(vr.error) }
+  if borrow_runtime_pkg.runtime_status() == false { give BorrowResult.Err(BorrowError.InvalidConfig) }
+  let t = table_new()
+  if table_validate(t) == false { give BorrowResult.Err(BorrowError.InvalidConfig) }
+  give BorrowResult.Ok(true)
+}
+
 proc validate_config_code(cfg: BorrowConfig) -> string {
   let vr = validate_config(cfg)
   when vr is BorrowResult.Err { give "VITTE-BORROW0001" }
@@ -553,8 +562,8 @@ proc diagnostics_bundle(code: string) -> string {
 }
 
 proc healthcheck_code(cfg: BorrowConfig) -> string {
-  let _ = cfg
-  if ready() == false { give diagnostics_namespace() + "0001" }
+  let hr = healthcheck(cfg)
+  when hr is BorrowResult.Err { give diagnostics_namespace() + "0001" }
   give diagnostics_namespace() + "0000"
 }
 

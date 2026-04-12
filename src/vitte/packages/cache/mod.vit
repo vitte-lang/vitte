@@ -537,6 +537,15 @@ proc stable_ready() -> bool {
   give true
 }
 
+proc healthcheck(cfg: CacheConfig) -> CacheResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is CacheResult.Err { give CacheResult.Err(vr.error) }
+  if cache_runtime_pkg.runtime_status() == false { give CacheResult.Err(CacheError.InvalidConfig) }
+  let h = cache_health(cache_new_with_config(1, cfg))
+  if h.ok == false { give CacheResult.Err(CacheError.InvalidConfig) }
+  give CacheResult.Ok(true)
+}
+
 proc validate_config_code(cfg: CacheConfig) -> string {
   let vr = validate_config(cfg)
   when vr is CacheResult.Err { give "VITTE-CACHE0001" }
@@ -598,8 +607,8 @@ proc diagnostics_bundle(code: string) -> string {
 }
 
 proc healthcheck_code(cfg: CacheConfig) -> string {
-  let _ = cfg
-  if ready() == false { give diagnostics_namespace() + "0001" }
+  let hr = healthcheck(cfg)
+  when hr is CacheResult.Err { give diagnostics_namespace() + "0001" }
   give diagnostics_namespace() + "0000"
 }
 

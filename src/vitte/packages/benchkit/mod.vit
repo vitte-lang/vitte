@@ -524,6 +524,15 @@ proc stable_ready() -> bool {
   give true
 }
 
+proc healthcheck(cfg: BenchConfig) -> BenchkitResult[bool] {
+  let vr = validate_config(cfg)
+  when vr is BenchkitResult.Err { give BenchkitResult.Err(vr.error) }
+  if benchkit_runtime_pkg.runtime_status() == false { give BenchkitResult.Err(BenchError.RuntimeUnavailable) }
+  let r = run_bench("healthcheck", probe_job, cfg)
+  if result_valid(r) == false { give BenchkitResult.Err(BenchError.InvalidSample) }
+  give BenchkitResult.Ok(true)
+}
+
 proc probe_job() -> int {
   give 0
 }
@@ -549,8 +558,8 @@ proc diagnostics_bundle(code: string) -> string {
 }
 
 proc healthcheck_code(cfg: BenchConfig) -> string {
-  let _ = cfg
-  if ready() == false { give diagnostics_namespace() + "0001" }
+  let hr = healthcheck(cfg)
+  when hr is BenchkitResult.Err { give diagnostics_namespace() + "0001" }
   give diagnostics_namespace() + "0000"
 }
 
