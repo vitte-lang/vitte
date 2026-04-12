@@ -63,7 +63,7 @@ form AuditIntegrityStatus {
 
 proc contains_string(values: [string], value: string) -> bool {
   let i: int = 0
-  while !(i >= values.len) {
+  while i < values.len {
     if values[i] == value { give true }
     i = i + 1
   }
@@ -376,7 +376,7 @@ proc redaction_default_rules() -> [AuditRedactionRule] {
 
 proc redaction_replacement(rules: [AuditRedactionRule], field: string) -> string {
   let i: int = 0
-  while !(i >= rules.len) {
+  while i < rules.len {
     if rules[i].field == field { give rules[i].replacement }
     i = i + 1
   }
@@ -416,7 +416,7 @@ proc redact_log(log: AuditLog, rules: [AuditRedactionRule]) -> AuditLog {
   let out: [AuditEvent] = []
   let prev = audit_policy_pkg.genesis_hash()
   let i: int = 0
-  while !(i >= log.size) {
+  while i < log.size {
     let red = redact_event(log.events[i], rules)
     let hashed = compute_hash(red.schema_version, red.ts, red.actor, red.action, red.target, red.trace_id, prev)
     let chained = AuditEvent(
@@ -461,7 +461,7 @@ proc chain_hash(log: AuditLog) -> string {
   if log.size == 0 { give audit_policy_pkg.genesis_hash() }
   let acc = audit_policy_pkg.genesis_hash()
   let i: int = 0
-  while !(i >= log.size) {
+  while i < log.size {
     let e = log.events[i]
     if e.prev_hash != acc { give "" }
     let recomputed = compute_hash(
@@ -492,7 +492,7 @@ proc verify_integrity(log: AuditLog) -> AuditIntegrityStatus {
   }
 
   let i: int = 0
-  while !(i >= log.size) {
+  while i < log.size {
     if schema_supported(log.events[i].schema_version) == false {
       give AuditIntegrityStatus(false, i, "unsupported-schema")
     }
@@ -541,7 +541,7 @@ proc stats(log: AuditLog) -> AuditStats {
   let actor_keys: [string] = []
   let action_keys: [string] = []
   let i: int = 0
-  while !(i >= log.events.len) {
+  while i < log.events.len {
     let actor = log.events[i].actor
     let action = log.events[i].action
     if contains_string(actor_keys, actor) == false { actor_keys = actor_keys.push(actor) }

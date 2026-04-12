@@ -140,7 +140,7 @@ proc make_entry_checked(key: string, value: string, ttl: int) -> CacheResult[Cac
 proc drop_first(entries: [CacheEntry]) -> [CacheEntry] {
   let out: [CacheEntry] = []
   let i: int = 1
-  while !(i >= entries.len) {
+  while i < entries.len {
     out = out.push(entries[i])
     i = i + 1
   }
@@ -154,7 +154,7 @@ proc drop_lru(entries: [CacheEntry]) -> [CacheEntry] {
   let min_idx: int = 0
 
   let i: int = 1
-  while !(i >= entries.len) {
+  while i < entries.len {
     if entries[i].hits < min_hits {
       min_hits = entries[i].hits
       min_idx = i
@@ -164,7 +164,7 @@ proc drop_lru(entries: [CacheEntry]) -> [CacheEntry] {
 
   let out: [CacheEntry] = []
   i = 0
-  while !(i >= entries.len) {
+  while i < entries.len {
     if i != min_idx { out = out.push(entries[i]) }
     i = i + 1
   }
@@ -173,7 +173,7 @@ proc drop_lru(entries: [CacheEntry]) -> [CacheEntry] {
 
 proc contains(cache: Cache, key: string) -> bool {
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     let e = cache.entries[i]
     if e.active && e.key == key { give true }
     i = i + 1
@@ -183,7 +183,7 @@ proc contains(cache: Cache, key: string) -> bool {
 
 proc get(cache: Cache, key: string, fallback: string) -> string {
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     let e = cache.entries[i]
     if e.active && e.key == key { give e.value }
     i = i + 1
@@ -197,7 +197,7 @@ proc get_checked(cache: Cache, key: string) -> CacheResult[string] {
   }
 
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     let e = cache.entries[i]
     if e.active && e.key == key {
       give CacheResult.Ok(e.value)
@@ -213,7 +213,7 @@ proc put(cache: Cache, key: string, value: string, ttl: int) -> Cache {
   let updated: [CacheEntry] = []
   let found: bool = false
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     let e = cache.entries[i]
     if e.key == key {
       updated = updated.push(CacheEntry(key, value, cache_policy_pkg.normalize_ttl(ttl), e.hits, ttl > 0))
@@ -250,7 +250,7 @@ proc put_checked(cache: Cache, key: string, value: string, ttl: int) -> CacheRes
   let updated: [CacheEntry] = []
   let found = false
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     let e = cache.entries[i]
     if e.key == er.value.key {
       updated = updated.push(CacheEntry(er.value.key, er.value.value, er.value.ttl, e.hits, er.value.active))
@@ -292,7 +292,7 @@ proc put_with_config(cache: Cache, key: string, value: string, cfg: CacheConfig)
 proc touch(cache: Cache, key: string) -> Cache {
   let updated: [CacheEntry] = []
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     let e = cache.entries[i]
     if e.key == key {
       updated = updated.push(CacheEntry(e.key, e.value, e.ttl, e.hits + 1, e.active))
@@ -309,7 +309,7 @@ proc tick(cache: Cache, delta: int) -> Cache {
 
   let updated: [CacheEntry] = []
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     let e = cache.entries[i]
     let next_ttl = e.ttl - delta
     if next_ttl <= 0 {
@@ -326,7 +326,7 @@ proc tick(cache: Cache, delta: int) -> Cache {
 proc expire(cache: Cache) -> Cache {
   let kept: [CacheEntry] = []
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     let e = cache.entries[i]
     if e.active && e.ttl > 0 {
       kept = kept.push(e)
@@ -339,7 +339,7 @@ proc expire(cache: Cache) -> Cache {
 proc size(cache: Cache) -> int {
   let n: int = 0
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     if cache.entries[i].active {
       n = n + 1
     }
@@ -351,7 +351,7 @@ proc size(cache: Cache) -> int {
 proc count_hits(cache: Cache) -> int {
   let n: int = 0
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     n = n + cache.entries[i].hits
     i = i + 1
   }
@@ -390,7 +390,7 @@ proc cache_validate_code(cache: Cache) -> string {
   if cache_validate_pkg.valid_non_negative(cache.dropped) == false { give "invalid-dropped" }
 
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     let e = cache.entries[i]
     if cache_validate_pkg.valid_key(e.key, cache_policy_pkg.max_key_len()) == false { give "invalid-key" }
     if cache_validate_pkg.valid_value(e.value, cache_policy_pkg.max_value_len()) == false { give "invalid-value" }
@@ -409,7 +409,7 @@ proc cache_normalize(cache: Cache) -> Cache {
   let cap = cache_policy_pkg.normalize_capacity(cache.capacity)
   let entries: [CacheEntry] = []
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     let e = cache.entries[i]
     let k = cache_runtime_pkg.sanitize(e.key, cache_policy_pkg.max_key_len())
     let v = cache_runtime_pkg.sanitize(e.value, cache_policy_pkg.max_value_len())
@@ -608,7 +608,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

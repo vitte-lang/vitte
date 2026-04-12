@@ -194,7 +194,7 @@ proc join(base: PathInfo, leaf: string) -> PathInfo {
 
 proc dirname(p: PathInfo) -> string {
   let i: int = p.raw.len - 1
-  while !(i < 0) {
+  while i >= 0 {
     if p.raw.slice(i, i + 1) == "/" { give p.raw.slice(0, i) }
     i = i - 1
   }
@@ -203,7 +203,7 @@ proc dirname(p: PathInfo) -> string {
 
 proc basename(p: PathInfo) -> string {
   let i: int = p.raw.len - 1
-  while !(i < 0) {
+  while i >= 0 {
     if p.raw.slice(i, i + 1) == "/" { give p.raw.slice(i + 1, p.raw.len) }
     i = i - 1
   }
@@ -213,7 +213,7 @@ proc basename(p: PathInfo) -> string {
 proc extname(p: PathInfo) -> string {
   let b: string = basename(p)
   let i: int = b.len - 1
-  while !(i < 0) {
+  while i >= 0 {
     if b.slice(i, i + 1) == "." { give b.slice(i + 1, b.len) }
     i = i - 1
   }
@@ -224,7 +224,7 @@ proc path_allowed(rt: FsRuntime, p: PathInfo) -> bool {
   let n: PathInfo = normalize(p)
   if fs_runtime_pkg.is_sensitive(n.raw) {
     let i: int = 0
-    while !(i >= rt.policy.allowlist_workspace_roots.len) {
+    while i < rt.policy.allowlist_workspace_roots.len {
       let root: PathInfo = normalize(PathInfo(rt.policy.allowlist_workspace_roots[i]))
       if is_subpath(root, n) { give true }
       i = i + 1
@@ -266,7 +266,7 @@ proc upsert_entry(rt: FsRuntime, path_raw: string, text: string, bytes: [int], d
   let out: [FsEntry] = []
   let replaced: bool = false
   let i: int = 0
-  while !(i >= rt.entries.len) {
+  while i < rt.entries.len {
     let e: FsEntry = rt.entries[i]
     if e.path == path_raw {
       out = out.push(FsEntry(path_raw, text, bytes, FsMetadata("rw", "user", 0, bytes.len), dir_flag))
@@ -285,7 +285,7 @@ proc upsert_entry(rt: FsRuntime, path_raw: string, text: string, bytes: [int], d
 proc exists(rt: FsRuntime, p: PathInfo) -> bool {
   let n: PathInfo = normalize(p)
   let i: int = 0
-  while !(i >= rt.entries.len) {
+  while i < rt.entries.len {
     if rt.entries[i].path == n.raw { give true }
     i = i + 1
   }
@@ -295,7 +295,7 @@ proc exists(rt: FsRuntime, p: PathInfo) -> bool {
 proc is_file(rt: FsRuntime, p: PathInfo) -> bool {
   let n: PathInfo = normalize(p)
   let i: int = 0
-  while !(i >= rt.entries.len) {
+  while i < rt.entries.len {
     if rt.entries[i].path == n.raw { give rt.entries[i].is_dir == false }
     i = i + 1
   }
@@ -305,7 +305,7 @@ proc is_file(rt: FsRuntime, p: PathInfo) -> bool {
 proc is_dir(rt: FsRuntime, p: PathInfo) -> bool {
   let n: PathInfo = normalize(p)
   let i: int = 0
-  while !(i >= rt.entries.len) {
+  while i < rt.entries.len {
     if rt.entries[i].path == n.raw { give rt.entries[i].is_dir }
     i = i + 1
   }
@@ -329,7 +329,7 @@ proc remove_tree(rt: FsRuntime, p: PathInfo) -> FsResult[FsRuntime] {
   let n: PathInfo = normalize(p)
   let out: [FsEntry] = []
   let i: int = 0
-  while !(i >= rt.entries.len) {
+  while i < rt.entries.len {
     let e: FsEntry = rt.entries[i]
     if e.path.slice(0, n.raw.len) != n.raw {
       out = out.push(e)
@@ -345,7 +345,7 @@ proc read_text(rt: FsRuntime, p: PathInfo) -> FsResult[string] {
   }
   let n: PathInfo = normalize(p)
   let i: int = 0
-  while !(i >= rt.entries.len) {
+  while i < rt.entries.len {
     if rt.entries[i].path == n.raw {
       give FsResult.Ok(rt.entries[i].text)
     }
@@ -360,7 +360,7 @@ proc read_bytes(rt: FsRuntime, p: PathInfo) -> FsResult[[int]] {
   }
   let n: PathInfo = normalize(p)
   let i: int = 0
-  while !(i >= rt.entries.len) {
+  while i < rt.entries.len {
     if rt.entries[i].path == n.raw {
       give FsResult.Ok(rt.entries[i].bytes)
     }
@@ -409,7 +409,7 @@ proc rename_atomic(rt: FsRuntime, src: PathInfo, dst: PathInfo) -> FsResult[FsRu
   let out: [FsEntry] = []
   let moved: bool = false
   let i: int = 0
-  while !(i >= rt.entries.len) {
+  while i < rt.entries.len {
     let e: FsEntry = rt.entries[i]
     if e.path == s.raw {
       out = out.push(FsEntry(d.raw, e.text, e.bytes, e.metadata, e.is_dir))
@@ -437,7 +437,7 @@ proc write_atomic(rt: FsRuntime, p: PathInfo, content: string) -> FsResult[FsRun
 proc metadata(rt: FsRuntime, p: PathInfo) -> FsResult[FsMetadata] {
   let n: PathInfo = normalize(p)
   let i: int = 0
-  while !(i >= rt.entries.len) {
+  while i < rt.entries.len {
     if rt.entries[i].path == n.raw {
       give FsResult.Ok(rt.entries[i].metadata)
     }
@@ -451,7 +451,7 @@ proc with_permissions(rt: FsRuntime, p: PathInfo, mode: string, owner: string) -
   let out: [FsEntry] = []
   let found: bool = false
   let i: int = 0
-  while !(i >= rt.entries.len) {
+  while i < rt.entries.len {
     let e: FsEntry = rt.entries[i]
     if e.path == n.raw {
       out = out.push(FsEntry(e.path, e.text, e.bytes, FsMetadata(mode, owner, e.metadata.mtime, e.metadata.size), e.is_dir))
@@ -497,7 +497,7 @@ proc build_search_index(rt: FsRuntime) -> FsRuntime {
   let idx: [string] = []
   let out: [string] = idx
   let i: int = 0
-  while !(i >= rt.entries.len) {
+  while i < rt.entries.len {
     out = fs_runtime_pkg.walk_index_add(out, rt.entries[i].path)
     i = i + 1
   }

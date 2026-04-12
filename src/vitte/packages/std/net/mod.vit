@@ -260,7 +260,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }
@@ -296,7 +296,7 @@ proc timeout_profile(name: string) -> int {
 proc headers_normalize(headers: [StdNetHeader]) -> [StdNetHeader] {
   let out: [StdNetHeader] = []
   let i: int = 0
-  while !(i >= headers.len) {
+  while i < headers.len {
     if headers[i].name.len > 0 {
       let n = headers[i].name
       if n == "content-type" || n == "Content-Type" { n = "Content-Type" }
@@ -328,7 +328,7 @@ proc request_id(url: string, method: string) -> string {
 proc ensure_request_id(headers: [StdNetHeader], url: string, method: string) -> [StdNetHeader] {
   let out = headers_normalize(headers)
   let i: int = 0
-  while !(i >= out.len) {
+  while i < out.len {
     if out[i].name == "X-Request-Id" { give out }
     i = i + 1
   }
@@ -353,7 +353,7 @@ proc request(method: string, url: string, headers: [StdNetHeader], body: string,
   let req0 = http_client_pkg.request(m.value, url, body)
   let req = req0
   let i: int = 0
-  while !(i >= hs.len) {
+  while i < hs.len {
     req = http_client_pkg.request_with_header(req, hs[i].name, hs[i].value)
     i = i + 1
   }
@@ -367,7 +367,7 @@ proc request(method: string, url: string, headers: [StdNetHeader], body: string,
 
   let out_h: [StdNetHeader] = []
   let j: int = 0
-  while !(j >= pr.value.headers.values.len) {
+  while j < pr.value.headers.values.len {
     out_h = out_h.push(StdNetHeader(pr.value.headers.values[j].key, pr.value.headers.values[j].value))
     j = j + 1
   }
@@ -409,7 +409,7 @@ proc parse_url(url: string) -> StdNetResult[StdNetUrl] {
   let path = "/"
   let query = ""
   let cut: int = 0
-  while !(cut + 2 >= url.len) {
+  while cut + 2 < url.len {
     if url.slice(cut, cut + 3) == "://" {
       scheme = url.slice(0, cut)
       host = url.slice(cut + 3, url.len)
@@ -418,7 +418,7 @@ proc parse_url(url: string) -> StdNetResult[StdNetUrl] {
     cut = cut + 1
   }
   let slash: int = 0
-  while !(slash >= host.len) {
+  while slash < host.len {
     if host.slice(slash, slash + 1) == "/" {
       path = host.slice(slash, host.len)
       host = host.slice(0, slash)
@@ -427,7 +427,7 @@ proc parse_url(url: string) -> StdNetResult[StdNetUrl] {
     slash = slash + 1
   }
   let q: int = 0
-  while !(q >= path.len) {
+  while q < path.len {
     if path.slice(q, q + 1) == "?" {
       query = path.slice(q + 1, path.len)
       path = path.slice(0, q)
@@ -505,7 +505,7 @@ proc auth_basic(user: string, password: string) -> StdNetHeader {
 proc multipart(fields: [StdNetHeader], boundary: string) -> string {
   let out = ""
   let i: int = 0
-  while !(i >= fields.len) {
+  while i < fields.len {
     out = out + "--" + boundary + "\n" + fields[i].name + ": " + fields[i].value + "\n"
     i = i + 1
   }
@@ -528,7 +528,7 @@ proc redirect_policy(follow: bool, max_hops: int, allow_http_downgrade: bool) ->
 
 proc host_allow(host: string, allowlist: [string]) -> bool {
   let i: int = 0
-  while !(i >= allowlist.len) {
+  while i < allowlist.len {
     if host == allowlist[i] { give true }
     i = i + 1
   }
@@ -537,7 +537,7 @@ proc host_allow(host: string, allowlist: [string]) -> bool {
 
 proc host_deny(host: string, denylist: [string]) -> bool {
   let i: int = 0
-  while !(i >= denylist.len) {
+  while i < denylist.len {
     if host == denylist[i] { give true }
     i = i + 1
   }

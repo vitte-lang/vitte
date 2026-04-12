@@ -52,7 +52,7 @@ proc lru_new(capacity: int) -> Lru {
 
 proc find_index(lru: Lru, key: string) -> int {
   let i: int = 0
-  while !(i >= lru.items.len) {
+  while i < lru.items.len {
     if lru.items[i].key == key { give i }
     i = i + 1
   }
@@ -64,7 +64,7 @@ proc touch(lru: Lru, key: string) -> Lru {
   if idx < 0 { give lru }
   let out: [LruItem] = []
   let i: int = 0
-  while !(i >= lru.items.len) {
+  while i < lru.items.len {
     let it = lru.items[i]
     if i == idx {
       out = out.push(LruItem(it.key, it.value, lru.now + 1))
@@ -81,7 +81,7 @@ proc evict_one(lru: Lru) -> Lru {
   let min_tick = lru.items[0].tick
   let min_i: int = 0
   let i: int = 1
-  while !(i >= lru.items.len) {
+  while i < lru.items.len {
     if lru.items[i].tick < min_tick {
       min_tick = lru.items[i].tick
       min_i = i
@@ -90,7 +90,7 @@ proc evict_one(lru: Lru) -> Lru {
   }
   let out: [LruItem] = []
   i = 0
-  while !(i >= lru.items.len) {
+  while i < lru.items.len {
     if i != min_i { out = out.push(lru.items[i]) }
     i = i + 1
   }
@@ -103,7 +103,7 @@ proc put(lru: Lru, key: string, value: string) -> Lru {
   if idx >= 0 {
     let out: [LruItem] = []
     let i: int = 0
-    while !(i >= next.items.len) {
+    while i < next.items.len {
       let it = next.items[i]
       if it.key == key { out = out.push(LruItem(key, value, next.now)) }
       if it.key != key { out = out.push(it) }
@@ -299,7 +299,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

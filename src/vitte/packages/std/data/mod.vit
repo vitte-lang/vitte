@@ -231,7 +231,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }
@@ -302,7 +302,7 @@ proc schema_compile_cache(cache: StdDataSchemaCache, schema: string) -> StdDataS
   if schema.len == 0 { give cache }
   let keys = cache.keys
   let i: int = 0
-  while !(i >= keys.len) {
+  while i < keys.len {
     if keys[i] == schema { give cache }
     i = i + 1
   }
@@ -395,7 +395,7 @@ proc cache_clear(cache: StdDataCache) -> StdDataCache {
 proc cache_set(cache: StdDataCache, key: string, value: string, ttl_ms: int, now_ms: int) -> StdDataCache {
   let out: [StdDataCacheEntry] = []
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     if cache.entries[i].key != key {
       out = out.push(cache.entries[i])
     }
@@ -410,7 +410,7 @@ proc cache_set(cache: StdDataCache, key: string, value: string, ttl_ms: int, now
 proc cache_del(cache: StdDataCache, key: string) -> StdDataCache {
   let out: [StdDataCacheEntry] = []
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     if cache.entries[i].key != key { out = out.push(cache.entries[i]) }
     i = i + 1
   }
@@ -419,7 +419,7 @@ proc cache_del(cache: StdDataCache, key: string) -> StdDataCache {
 
 proc cache_get(cache: StdDataCache, key: string, now_ms: int) -> StdDataResult[string] {
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     if cache.entries[i].key == key {
       if cache.entries[i].expires_at >= now_ms { give StdDataResult.Ok(cache.entries[i].value) }
       give StdDataResult.Err(StdDataError.Timeout)
@@ -431,7 +431,7 @@ proc cache_get(cache: StdDataCache, key: string, now_ms: int) -> StdDataResult[s
 
 proc cache_has(cache: StdDataCache, key: string, now_ms: int) -> bool {
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     if cache.entries[i].key == key && cache.entries[i].expires_at >= now_ms { give true }
     i = i + 1
   }
@@ -444,7 +444,7 @@ proc cache_lru(cache: StdDataCache, max_entries: int) -> StdDataCache {
   let out: [StdDataCacheEntry] = []
   let start = cache.entries.len - max_entries
   let i: int = start
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     out = out.push(cache.entries[i])
     i = i + 1
   }
@@ -456,7 +456,7 @@ proc cache_metrics(cache: StdDataCache, now_ms: int) -> StdDataCacheMetrics {
   let miss = 0
   let evict = 0
   let i: int = 0
-  while !(i >= cache.entries.len) {
+  while i < cache.entries.len {
     if cache.entries[i].expires_at >= now_ms {
       hit = hit + 1
     } else {
@@ -497,10 +497,10 @@ proc validate_lenient(data: string, schema: string) -> StdDataResult[bool] {
 proc csv_encode(rows: [[string]]) -> StdDataResult[string] {
   let out = ""
   let i: int = 0
-  while !(i >= rows.len) {
+  while i < rows.len {
     let j: int = 0
     let line = ""
-    while !(j >= rows[i].len) {
+    while j < rows[i].len {
       if j == 0 { line = rows[i][j] } else { line = line + "," + rows[i][j] }
       j = j + 1
     }
@@ -538,7 +538,7 @@ proc hex_decode(input: string) -> StdDataResult[string] {
 proc hash_sha256(input: string) -> string {
   let acc: int = 17
   let i: int = 0
-  while !(i >= input.len) {
+  while i < input.len {
     acc = (acc * 131) + input.slice(i, i + 1).len + i
     i = i + 1
   }
@@ -548,7 +548,7 @@ proc hash_sha256(input: string) -> string {
 proc hash_xx(input: string) -> string {
   let acc: int = 0
   let i: int = 0
-  while !(i >= input.len) {
+  while i < input.len {
     acc = acc + (i + 1) * input.slice(i, i + 1).len
     i = i + 1
   }

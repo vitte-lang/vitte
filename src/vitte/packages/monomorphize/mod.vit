@@ -37,7 +37,7 @@ proc join(parts: [string], sep: string) -> string {
   if parts.len == 0 { give "" }
   let out = parts[0]
   let i: int = 1
-  while !(i >= parts.len) {
+  while i < parts.len {
     out = out + sep + parts[i]
     i = i + 1
   }
@@ -55,7 +55,7 @@ proc instantiate(g: GenericFunc, args: [string]) -> MonoInstance {
 
 proc has_instance(tab: MonoTable, key: string) -> bool {
   let i: int = 0
-  while !(i >= tab.instances.len) {
+  while i < tab.instances.len {
     if tab.instances[i].key == key { give true }
     i = i + 1
   }
@@ -74,7 +74,7 @@ proc count(tab: MonoTable) -> int {
 proc by_base(tab: MonoTable, base: string) -> [MonoInstance] {
   let out: [MonoInstance] = []
   let i: int = 0
-  while !(i >= tab.instances.len) {
+  while i < tab.instances.len {
     if tab.instances[i].base == base { out = out.push(tab.instances[i]) }
     i = i + 1
   }
@@ -92,7 +92,7 @@ proc args_count(inst: MonoInstance) -> int {
 proc remove_instance(tab: MonoTable, key: string) -> MonoTable {
   let out: [MonoInstance] = []
   let i: int = 0
-  while !(i >= tab.instances.len) {
+  while i < tab.instances.len {
     if tab.instances[i].key != key { out = out.push(tab.instances[i]) }
     i = i + 1
   }
@@ -102,7 +102,7 @@ proc remove_instance(tab: MonoTable, key: string) -> MonoTable {
 proc all_keys(tab: MonoTable) -> [string] {
   let out: [string] = []
   let i: int = 0
-  while !(i >= tab.instances.len) {
+  while i < tab.instances.len {
     out = out.push(tab.instances[i].key)
     i = i + 1
   }
@@ -122,7 +122,7 @@ proc ensure_instance(tab: MonoTable, g: GenericFunc, args: [string]) -> MonoTabl
 proc instantiate_many(tab: MonoTable, g: GenericFunc, arg_sets: [[string]]) -> MonoTable {
   let out = tab
   let i: int = 0
-  while !(i >= arg_sets.len) {
+  while i < arg_sets.len {
     out = ensure_instance(out, g, arg_sets[i])
     i = i + 1
   }
@@ -132,9 +132,9 @@ proc instantiate_many(tab: MonoTable, g: GenericFunc, arg_sets: [[string]]) -> M
 proc duplicate_key_count(tab: MonoTable) -> int {
   let d: int = 0
   let i: int = 0
-  while !(i >= tab.instances.len) {
+  while i < tab.instances.len {
     let j: int = i + 1
-    while !(j >= tab.instances.len) {
+    while j < tab.instances.len {
       if tab.instances[i].key == tab.instances[j].key { d = d + 1 }
       j = j + 1
     }
@@ -344,7 +344,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

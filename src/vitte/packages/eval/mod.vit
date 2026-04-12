@@ -208,7 +208,7 @@ proc eval_chain(values: [int], op: string) -> EvalResult {
   if values.len == 0 { give ok(0) }
   let acc = values[0]
   let i: int = 1
-  while !(i >= values.len) {
+  while i < values.len {
     let r = eval_binary(op, acc, values[i])
     if r.error != EvalError.None { give r }
     acc = r.value
@@ -230,7 +230,7 @@ proc eval_chain_checked(values: [int], op: string, cfg: EvalConfig) -> EvalApiRe
 
   let acc = values[0]
   let i: int = 1
-  while !(i >= values.len) {
+  while i < values.len {
     let r = eval_binary_checked(op, acc, values[i], cfg)
     when r is EvalApiResult.Err { give EvalApiResult.Err(r.error) }
     if r.value.error != EvalError.None { give EvalApiResult.Ok(r.value) }
@@ -280,7 +280,7 @@ proc eval_stats(results: [EvalResult]) -> EvalStats {
   let overflow = 0
   let oks = 0
   let i: int = 0
-  while !(i >= max_len) {
+  while i < max_len {
     if results[i].error == EvalError.None {
       oks = oks + 1
     } else {
@@ -468,7 +468,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

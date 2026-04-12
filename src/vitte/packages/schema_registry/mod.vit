@@ -31,7 +31,7 @@ proc register(registry: SchemaRegistry, subject: string, version: int, fingerpri
   let replaced: bool = false
   let i: int = 0
 
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     let rec = registry.records[i]
     if rec.subject == subject && rec.version == version {
       out = out.push(SchemaRecord(subject, version, fingerprint, fields, true))
@@ -52,7 +52,7 @@ proc register(registry: SchemaRegistry, subject: string, version: int, fingerpri
 proc latest(registry: SchemaRegistry, subject: string) -> SchemaRecord {
   let best = SchemaRecord(subject, 0, "", [], false)
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     let rec = registry.records[i]
     if rec.active && rec.subject == subject && rec.version >= best.version {
       best = rec
@@ -64,7 +64,7 @@ proc latest(registry: SchemaRegistry, subject: string) -> SchemaRecord {
 
 proc get(registry: SchemaRegistry, subject: string, version: int) -> SchemaRecord {
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     let rec = registry.records[i]
     if rec.subject == subject && rec.version == version && rec.active {
       give rec
@@ -80,7 +80,7 @@ proc has(registry: SchemaRegistry, subject: string, version: int) -> bool {
 
 proc subject_exists(registry: SchemaRegistry, subject: string) -> bool {
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     if registry.records[i].subject == subject {
       give true
     }
@@ -92,7 +92,7 @@ proc subject_exists(registry: SchemaRegistry, subject: string) -> bool {
 proc deactivate(registry: SchemaRegistry, subject: string, version: int) -> SchemaRegistry {
   let out: [SchemaRecord] = []
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     let rec = registry.records[i]
     if rec.subject == subject && rec.version == version {
       out = out.push(SchemaRecord(rec.subject, rec.version, rec.fingerprint, rec.fields, false))
@@ -107,7 +107,7 @@ proc deactivate(registry: SchemaRegistry, subject: string, version: int) -> Sche
 proc reactivate(registry: SchemaRegistry, subject: string, version: int) -> SchemaRegistry {
   let out: [SchemaRecord] = []
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     let rec = registry.records[i]
     if rec.subject == subject && rec.version == version {
       out = out.push(SchemaRecord(rec.subject, rec.version, rec.fingerprint, rec.fields, true))
@@ -122,7 +122,7 @@ proc reactivate(registry: SchemaRegistry, subject: string, version: int) -> Sche
 proc remove(registry: SchemaRegistry, subject: string, version: int) -> SchemaRegistry {
   let out: [SchemaRecord] = []
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     let rec = registry.records[i]
     if !(rec.subject == subject && rec.version == version) {
       out = out.push(rec)
@@ -142,7 +142,7 @@ proc field_count(rec: SchemaRecord) -> int {
 
 proc has_field(rec: SchemaRecord, field_name: string) -> bool {
   let i: int = 0
-  while !(i >= rec.fields.len) {
+  while i < rec.fields.len {
     if rec.fields[i] == field_name { give true }
     i = i + 1
   }
@@ -151,7 +151,7 @@ proc has_field(rec: SchemaRecord, field_name: string) -> bool {
 
 proc list_contains(items: [string], value: string) -> bool {
   let i: int = 0
-  while !(i >= items.len) {
+  while i < items.len {
     if items[i] == value { give true }
     i = i + 1
   }
@@ -161,7 +161,7 @@ proc list_contains(items: [string], value: string) -> bool {
 proc subjects(registry: SchemaRegistry) -> [string] {
   let out: [string] = []
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     let name = registry.records[i].subject
     if !list_contains(out, name) {
       out = out.push(name)
@@ -174,7 +174,7 @@ proc subjects(registry: SchemaRegistry) -> [string] {
 proc versions(registry: SchemaRegistry, subject: string) -> [int] {
   let out: [int] = []
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     let rec = registry.records[i]
     if rec.subject == subject && rec.active {
       out = out.push(rec.version)
@@ -187,7 +187,7 @@ proc versions(registry: SchemaRegistry, subject: string) -> [int] {
 proc fingerprints(registry: SchemaRegistry, subject: string) -> [string] {
   let out: [string] = []
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     let rec = registry.records[i]
     if rec.subject == subject && rec.active {
       out = out.push(rec.fingerprint)
@@ -230,7 +230,7 @@ proc diff(base: SchemaRecord, next: SchemaRecord) -> string {
 proc count(registry: SchemaRegistry, subject: string) -> int {
   let n: int = 0
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     if registry.records[i].subject == subject && registry.records[i].active {
       n = n + 1
     }
@@ -242,7 +242,7 @@ proc count(registry: SchemaRegistry, subject: string) -> int {
 proc active_count(registry: SchemaRegistry) -> int {
   let n: int = 0
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     if registry.records[i].active {
       n = n + 1
     }
@@ -254,7 +254,7 @@ proc active_count(registry: SchemaRegistry) -> int {
 proc inactive_count(registry: SchemaRegistry) -> int {
   let n: int = 0
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     if !registry.records[i].active {
       n = n + 1
     }
@@ -266,7 +266,7 @@ proc inactive_count(registry: SchemaRegistry) -> int {
 proc subject_total_count(registry: SchemaRegistry, subject: string) -> int {
   let n: int = 0
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     if registry.records[i].subject == subject {
       n = n + 1
     }
@@ -299,7 +299,7 @@ proc latest_fingerprint(registry: SchemaRegistry, subject: string) -> string {
 
 proc first_inactive_version(registry: SchemaRegistry, subject: string) -> int {
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     let rec = registry.records[i]
     if rec.subject == subject && !rec.active {
       give rec.version
@@ -336,12 +336,12 @@ proc subject_stats(registry: SchemaRegistry, subject: string) -> string {
 
 proc verify_invariants(registry: SchemaRegistry) -> bool {
   let i: int = 0
-  while !(i >= registry.records.len) {
+  while i < registry.records.len {
     let rec = registry.records[i]
     if rec.subject.len == 0 { give false }
     if rec.version <= 0 { give false }
     let j: int = i + 1
-    while !(j >= registry.records.len) {
+    while j < registry.records.len {
       let other = registry.records[j]
       if rec.subject == other.subject && rec.version == other.version {
         give false
@@ -555,7 +555,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

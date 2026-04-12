@@ -180,7 +180,7 @@ proc fold_chain(values: [int], op: string) -> ConstResult {
   if values.len == 0 { give ok(0) }
   let acc = values[0]
   let i: int = 1
-  while !(i >= values.len) {
+  while i < values.len {
     let r = eval(ConstExpr(op, acc, values[i]))
     if r.error != ConstError.None { give r }
     acc = r.value
@@ -204,7 +204,7 @@ proc fold_chain_checked(values: [int], op: string, cfg: ConstEvalConfig) -> Cons
 
   let acc = values[0]
   let i: int = 1
-  while !(i >= values.len) {
+  while i < values.len {
     let er = eval_checked(ConstExpr(op, acc, values[i]), cfg)
     when er is ConstEvalResult.Err { give ConstEvalResult.Err(er.error) }
     if er.value.error != ConstError.None {
@@ -291,7 +291,7 @@ proc eval_min_max(left: int, right: int, op: string) -> ConstResult {
 
 proc const_health(exprs: [ConstExpr]) -> string {
   let i: int = 0
-  while !(i >= exprs.len) {
+  while i < exprs.len {
     let r = eval(exprs[i])
     if r.error != ConstError.None { give "invalid" }
     i = i + 1
@@ -312,7 +312,7 @@ proc eval_pow(base: int, exp: int) -> ConstResult {
   if exp < 0 { give err(ConstError.InvalidOp) }
   let out: int = 1
   let i: int = 0
-  while !(i >= exp) {
+  while i < exp {
     out = out * base
     i = i + 1
   }
@@ -322,7 +322,7 @@ proc eval_pow(base: int, exp: int) -> ConstResult {
 proc eval_many(exprs: [ConstExpr]) -> [ConstResult] {
   let out: [ConstResult] = []
   let i: int = 0
-  while !(i >= exprs.len) {
+  while i < exprs.len {
     out = out.push(eval(exprs[i]))
     i = i + 1
   }
@@ -339,7 +339,7 @@ proc eval_many_checked(exprs: [ConstExpr], cfg: ConstEvalConfig) -> ConstEvalRes
 
   let out: [ConstResult] = []
   let i: int = 0
-  while !(i >= exprs.len) {
+  while i < exprs.len {
     let r = eval_checked(exprs[i], cfg)
     when r is ConstEvalResult.Err { give ConstEvalResult.Err(r.error) }
     out = out.push(r.value)
@@ -351,7 +351,7 @@ proc eval_many_checked(exprs: [ConstExpr], cfg: ConstEvalConfig) -> ConstEvalRes
 proc error_count(results: [ConstResult]) -> int {
   let c: int = 0
   let i: int = 0
-  while !(i >= results.len) {
+  while i < results.len {
     if results[i].error != ConstError.None { c = c + 1 }
     i = i + 1
   }
@@ -363,7 +363,7 @@ proc const_eval_stats(results: [ConstResult]) -> ConstEvalStats {
   let overflow_count = 0
   let div0_count = 0
   let i: int = 0
-  while !(i >= results.len) {
+  while i < results.len {
 
     if results[i].error != ConstError.None {
       errors = errors + 1
@@ -562,7 +562,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

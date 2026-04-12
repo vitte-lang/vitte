@@ -87,7 +87,7 @@ proc set_var(env: Env, key: string, value: string) -> Env {
   let out: [EnvVar] = []
   let found = false
   let i: int = 0
-  while !(i >= env.vars.len) {
+  while i < env.vars.len {
     if env.vars[i].key == key {
       out = out.push(EnvVar(key, value))
       found = true
@@ -108,7 +108,7 @@ proc set_checked(env: Env, key: string, value: string) -> EnvResult[Env] {
 
 proc get_var(env: Env, key: string) -> string {
   let i: int = 0
-  while !(i >= env.vars.len) {
+  while i < env.vars.len {
     if env.vars[i].key == key { give env.vars[i].value }
     i = i + 1
   }
@@ -117,7 +117,7 @@ proc get_var(env: Env, key: string) -> string {
 
 proc has_var(env: Env, key: string) -> bool {
   let i: int = 0
-  while !(i >= env.vars.len) {
+  while i < env.vars.len {
     if env.vars[i].key == key { give true }
     i = i + 1
   }
@@ -127,7 +127,7 @@ proc has_var(env: Env, key: string) -> bool {
 proc unset_var(env: Env, key: string) -> Env {
   let out: [EnvVar] = []
   let i: int = 0
-  while !(i >= env.vars.len) {
+  while i < env.vars.len {
     if env.vars[i].key != key { out = out.push(env.vars[i]) }
     i = i + 1
   }
@@ -137,7 +137,7 @@ proc unset_var(env: Env, key: string) -> Env {
 proc list_keys(env: Env) -> [string] {
   let out: [string] = []
   let i: int = 0
-  while !(i >= env.vars.len) {
+  while i < env.vars.len {
     out = out.push(env.vars[i].key)
     i = i + 1
   }
@@ -147,7 +147,7 @@ proc list_keys(env: Env) -> [string] {
 proc merge_env(base: Env, overlay: Env) -> Env {
   let out = base
   let i: int = 0
-  while !(i >= overlay.vars.len) {
+  while i < overlay.vars.len {
     out = set_var(out, overlay.vars[i].key, overlay.vars[i].value)
     i = i + 1
   }
@@ -157,7 +157,7 @@ proc merge_env(base: Env, overlay: Env) -> Env {
 proc merge_checked(base: Env, overlay: Env) -> EnvResult[Env] {
   let out = base
   let i: int = 0
-  while !(i >= overlay.vars.len) {
+  while i < overlay.vars.len {
     let r = set_checked(out, overlay.vars[i].key, overlay.vars[i].value)
     when r is EnvResult.Err { give EnvResult.Err(r.error) }
     out = r.value
@@ -201,7 +201,7 @@ proc require_default_key(env: Env) -> EnvResult[string] {
 
 proc require_all(env: Env, keys: [string]) -> EnvResult[bool] {
   let i: int = 0
-  while !(i >= keys.len) {
+  while i < keys.len {
     let r = require_var(env, keys[i])
     when r is EnvResult.Err { give EnvResult.Err(r.error) }
     i = i + 1
@@ -248,7 +248,7 @@ proc normalize_config(cfg: EnvConfig) -> EnvConfig {
 
 proc env_validate_code(env: Env) -> string {
   let i: int = 0
-  while !(i >= env.vars.len) {
+  while i < env.vars.len {
     if env_validate_pkg.valid_key(env.vars[i].key) == false { give "invalid-key" }
     if env_validate_pkg.valid_scalar(env.vars[i].value) == false { give "invalid-value" }
     i = i + 1
@@ -263,7 +263,7 @@ proc env_validate(env: Env) -> bool {
 proc env_normalize(env: Env) -> Env {
   let out = env_new()
   let i: int = 0
-  while !(i >= env.vars.len) {
+  while i < env.vars.len {
     if env_validate_pkg.valid_key(env.vars[i].key) && env_validate_pkg.valid_scalar(env.vars[i].value) {
       out = set_var(out, env.vars[i].key, env.vars[i].value)
     }
@@ -298,7 +298,7 @@ proc env_stats(env: Env) -> EnvStats {
   let keys_total_len = 0
   let values_total_len = 0
   let i: int = 0
-  while !(i >= env.vars.len) {
+  while i < env.vars.len {
     keys_total_len = keys_total_len + env.vars[i].key.len
     values_total_len = values_total_len + env.vars[i].value.len
     if env.vars[i].value.len == 0 { empty_values = empty_values + 1 }
@@ -459,7 +459,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

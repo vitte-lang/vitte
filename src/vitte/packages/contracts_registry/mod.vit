@@ -146,7 +146,7 @@ proc key_of(c: RegistryContract) -> string {
 
 proc contains(reg: ContractsRegistry, name: string, contract_version_value: string) -> bool {
   let i: int = 0
-  while !(i >= reg.contracts.len) {
+  while i < reg.contracts.len {
     if reg.contracts[i].name == name && reg.contracts[i].version == contract_version_value { give true }
     i = i + 1
   }
@@ -155,7 +155,7 @@ proc contains(reg: ContractsRegistry, name: string, contract_version_value: stri
 
 proc find(reg: ContractsRegistry, name: string, contract_version_value: string) -> ContractsRegistryResult[RegistryContract] {
   let i: int = 0
-  while !(i >= reg.contracts.len) {
+  while i < reg.contracts.len {
     if reg.contracts[i].name == name && reg.contracts[i].version == contract_version_value {
       give ContractsRegistryResult.Ok(reg.contracts[i])
     }
@@ -183,7 +183,7 @@ proc upsert(reg: ContractsRegistry, contract: RegistryContract) -> ContractsRegi
   let updated = false
 
   let i: int = 0
-  while !(i >= reg.contracts.len) {
+  while i < reg.contracts.len {
     if reg.contracts[i].name == contract.name && reg.contracts[i].version == contract.version {
       out = out.push(contract)
       updated = true
@@ -213,7 +213,7 @@ proc remove(reg: ContractsRegistry, name: string, contract_version_value: string
 
   let out: [RegistryContract] = []
   let i: int = 0
-  while !(i >= reg.contracts.len) {
+  while i < reg.contracts.len {
     if reg.contracts[i].name != name || reg.contracts[i].version != contract_version_value {
       out = out.push(reg.contracts[i])
     }
@@ -230,12 +230,12 @@ proc size(reg: ContractsRegistry) -> int {
 proc unique_name_count(reg: ContractsRegistry) -> int {
   let seen: [string] = []
   let i: int = 0
-  while !(i >= reg.contracts.len) {
+  while i < reg.contracts.len {
 
     let n = reg.contracts[i].name
     let has = false
     let j: int = 0
-    while !(j >= seen.len) {
+    while j < seen.len {
       if seen[j] == n { has = true }
       j = j + 1
     }
@@ -259,7 +259,7 @@ proc registry_validate_code(reg: ContractsRegistry) -> string {
   if reg.contracts.len > reg.config.max_contracts { give "too-many-contracts" }
 
   let i: int = 0
-  while !(i >= reg.contracts.len) {
+  while i < reg.contracts.len {
 
     if contracts_registry_validate_pkg.valid_contract_name(reg.contracts[i].name,
                                                            contracts_registry_policy_pkg.max_contract_name_len()) == false {
@@ -286,7 +286,7 @@ proc registry_normalize(reg: ContractsRegistry) -> ContractsRegistry {
 
   let out: [RegistryContract] = []
   let i: int = 0
-  while !(i >= reg.contracts.len) {
+  while i < reg.contracts.len {
     if out.len >= cfg.max_contracts { break }
 
     let c = reg.contracts[i]
@@ -479,7 +479,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

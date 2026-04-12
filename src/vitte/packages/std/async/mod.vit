@@ -284,7 +284,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }
@@ -367,7 +367,7 @@ proc channel_recv(ch: StdChannel) -> StdAsyncResult[StdChannelRecv] {
   }
   let out: [string] = []
   let i: int = 1
-  while !(i >= ch.items.len) {
+  while i < ch.items.len {
     out = out.push(ch.items[i])
     i = i + 1
   }
@@ -412,7 +412,7 @@ proc task_group() -> StdTaskGroup {
 proc spawn_many(labels: [string]) -> StdAsyncResult[StdTaskGroup] {
   let out = task_group()
   let i: int = 0
-  while !(i >= labels.len) {
+  while i < labels.len {
     let sp = spawn(labels[i])
     when sp is StdAsyncResult.Err { give StdAsyncResult.Err(sp.error) }
     out = StdTaskGroup(out.tasks.push(sp.value))
@@ -424,7 +424,7 @@ proc spawn_many(labels: [string]) -> StdAsyncResult[StdTaskGroup] {
 proc join_all(group: StdTaskGroup) -> StdAsyncResult[[StdTaskOutcome]] {
   let out: [StdTaskOutcome] = []
   let i: int = 0
-  while !(i >= group.tasks.len) {
+  while i < group.tasks.len {
     let jr = join(group.tasks[i])
     when jr is StdAsyncResult.Err { give StdAsyncResult.Err(jr.error) }
     out = out.push(jr.value)
@@ -480,7 +480,7 @@ proc queue_pop(q: StdAsyncQueue) -> StdAsyncResult[StdChannelRecv] {
   if q.items.len == 0 { give StdAsyncResult.Ok(StdChannelRecv(StdChannel(0, false, []), false, "")) }
   let out: [string] = []
   let i: int = 1
-  while !(i >= q.items.len) {
+  while i < q.items.len {
     out = out.push(q.items[i])
     i = i + 1
   }
@@ -523,7 +523,7 @@ proc cancel_token_cancel(token: StdCancelToken) -> StdCancelToken {
 proc retry_async(label: string, retries: int, backoff_ms: int, token: StdCancelToken) -> StdAsyncResult[StdTaskOutcome] {
   if token.canceled { give StdAsyncResult.Err(StdAsyncError.Timeout) }
   let i: int = 0
-  while !(i > retries) {
+  while i <= retries {
     let sp = spawn(label)
     when sp is StdAsyncResult.Ok {
       let jr = timeout(sp.value, backoff_ms + (i * backoff_ms))

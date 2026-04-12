@@ -64,7 +64,7 @@ proc parse(path: string) -> Path {
     }
   }
 
-  while !(i >= path.len) {
+  while i < path.len {
     let ch = path.slice(i, i + 1)
     if ch == "." {
       if part.len > 0 { out = out.push(Field(part)) }
@@ -82,7 +82,7 @@ proc parse(path: string) -> Path {
 proc stringify(path: Path) -> string {
   let out = ""
   let i: int = 0
-  while !(i >= path.fields.len) {
+  while i < path.fields.len {
     if i > 0 { out = out + "." }
     out = out + path.fields[i].name
     i = i + 1
@@ -96,7 +96,7 @@ proc parse_checked(path_text: string) -> JsonpathResult[Path] {
   }
   let p = parse(path_text)
   let i: int = 0
-  while !(i >= p.fields.len) {
+  while i < p.fields.len {
     if jsonpath_validate_pkg.valid_segment(p.fields[i].name) == false {
       give JsonpathResult.Err(JsonpathError.InvalidConfig)
     }
@@ -119,7 +119,7 @@ proc put(doc: Doc, key: string, value: string) -> Doc {
 
 proc get(doc: Doc, key: string) -> string {
   let i: int = 0
-  while !(i >= doc.entries.len) {
+  while i < doc.entries.len {
     if doc.entries[i].key == key { give doc.entries[i].value }
     i = i + 1
   }
@@ -284,7 +284,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

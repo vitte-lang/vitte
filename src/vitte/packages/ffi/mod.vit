@@ -75,7 +75,7 @@ proc bind_checked(reg: FfiRegistry, lib: string, name: string, signature: string
 
 proc lookup(reg: FfiRegistry, lib: string, name: string) -> ForeignSymbol {
   let i: int = 0
-  while !(i >= reg.symbols.len) {
+  while i < reg.symbols.len {
     if reg.symbols[i].lib == lib && reg.symbols[i].name == name { give reg.symbols[i] }
     i = i + 1
   }
@@ -91,7 +91,7 @@ proc lookup_checked(reg: FfiRegistry, lib: string, name: string) -> FfiResult[Fo
 proc unbind(reg: FfiRegistry, lib: string, name: string) -> FfiRegistry {
   let out: [ForeignSymbol] = []
   let i: int = 0
-  while !(i >= reg.symbols.len) {
+  while i < reg.symbols.len {
     let s = reg.symbols[i]
     if s.lib != lib || s.name != name {
       out = out.push(s)
@@ -112,7 +112,7 @@ proc symbol_count(reg: FfiRegistry) -> int {
 proc list_libs(reg: FfiRegistry) -> [string] {
   let out: [string] = []
   let i: int = 0
-  while !(i >= reg.symbols.len) {
+  while i < reg.symbols.len {
     out = out.push(reg.symbols[i].lib)
     i = i + 1
   }
@@ -262,7 +262,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

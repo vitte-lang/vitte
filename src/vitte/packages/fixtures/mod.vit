@@ -162,10 +162,10 @@ proc seed(fixtures: FixtureSet, count: int) -> FixtureSet {
 
   let out = fixtures.current_rows
   let r: int = 0
-  while !(r >= runs) {
+  while r < runs {
 
     let i: int = 0
-    while !(i >= fixtures.base_rows.len) {
+    while i < fixtures.base_rows.len {
       out = out.push(fixtures.base_rows[i])
       i = i + 1
     }
@@ -212,7 +212,7 @@ proc remove_row(fixtures: FixtureSet, row: string) -> FixtureSet {
   let out: [string] = []
   let removed: bool = false
   let i: int = 0
-  while !(i >= fixtures.current_rows.len) {
+  while i < fixtures.current_rows.len {
     let cur = fixtures.current_rows[i]
     if !removed && cur == row {
       removed = true
@@ -235,7 +235,7 @@ proc replace_row(fixtures: FixtureSet, old_row: string, new_row: string) -> Fixt
   let out: [string] = []
   let replaced: bool = false
   let i: int = 0
-  while !(i >= fixtures.current_rows.len) {
+  while i < fixtures.current_rows.len {
     let cur = fixtures.current_rows[i]
     if !replaced && cur == old_row {
       out = out.push(new_row)
@@ -283,7 +283,7 @@ proc last_row(fixtures: FixtureSet, fallback: string) -> string {
 
 proc contains_row(fixtures: FixtureSet, row: string) -> bool {
   let i: int = 0
-  while !(i >= fixtures.current_rows.len) {
+  while i < fixtures.current_rows.len {
     if fixtures.current_rows[i] == row { give true }
     i = i + 1
   }
@@ -299,11 +299,11 @@ proc diff_count(fixtures: FixtureSet) -> int {
 proc duplicate_count(fixtures: FixtureSet) -> int {
   let dup: int = 0
   let i: int = 0
-  while !(i >= fixtures.current_rows.len) {
+  while i < fixtures.current_rows.len {
     let cur = fixtures.current_rows[i]
     let j: int = 0
     let seen: bool = false
-    while !(j >= i) {
+    while j < i {
       if fixtures.current_rows[j] == cur {
         seen = true
         break
@@ -319,12 +319,12 @@ proc duplicate_count(fixtures: FixtureSet) -> int {
 proc dedupe(fixtures: FixtureSet) -> FixtureSet {
   let out: [string] = []
   let i: int = 0
-  while !(i >= fixtures.current_rows.len) {
+  while i < fixtures.current_rows.len {
     let cur = fixtures.current_rows[i]
 
     let exists: bool = false
     let j: int = 0
-    while !(j >= out.len) {
+    while j < out.len {
       if out[j] == cur {
         exists = true
         break
@@ -347,7 +347,7 @@ proc is_empty(fixtures: FixtureSet) -> bool {
 proc checksum(fixtures: FixtureSet) -> int {
   let sum = fixtures.seed_runs + fixtures.current_rows.len * 13
   let i: int = 0
-  while !(i >= fixtures.current_rows.len) {
+  while i < fixtures.current_rows.len {
     sum = sum + fixtures.current_rows[i].len
     i = i + 1
   }
@@ -446,7 +446,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

@@ -30,7 +30,7 @@ proc index_add(index: SearchIndex, id: string, text: string) -> SearchIndex {
   let replaced: bool = false
   let i: int = 0
 
-  while !(i >= index.docs.len) {
+  while i < index.docs.len {
     let doc = index.docs[i]
     if doc.id == id {
       out = out.push(SearchDoc(id, text, true, 0))
@@ -51,7 +51,7 @@ proc index_add(index: SearchIndex, id: string, text: string) -> SearchIndex {
 proc index_remove(index: SearchIndex, id: string) -> SearchIndex {
   let out: [SearchDoc] = []
   let i: int = 0
-  while !(i >= index.docs.len) {
+  while i < index.docs.len {
     let doc = index.docs[i]
     if doc.id == id {
       out = out.push(SearchDoc(doc.id, doc.text, false, doc.score_hint))
@@ -69,7 +69,7 @@ proc contains(text: string, needle: string) -> bool {
 
   let last = text.len - needle.len
   let i: int = 0
-  while !(i > last) {
+  while i <= last {
     if text.slice(i, i + needle.len) == needle { give true }
     i = i + 1
   }
@@ -84,7 +84,7 @@ proc score(doc: SearchDoc, needle: string) -> int {
   let matches: int = 0
   let last = doc.text.len - needle.len
   let i: int = 0
-  while !(i > last) {
+  while i <= last {
     if doc.text.slice(i, i + needle.len) == needle {
       matches = matches + 1
     }
@@ -96,7 +96,7 @@ proc score(doc: SearchDoc, needle: string) -> int {
 proc query(index: SearchIndex, term: string) -> [SearchDoc] {
   let out: [SearchDoc] = []
   let i: int = 0
-  while !(i >= index.docs.len) {
+  while i < index.docs.len {
     let doc = index.docs[i]
     if doc.active && contains(doc.text, term) {
       out = out.push(SearchDoc(doc.id, doc.text, doc.active, score(doc, term)))
@@ -113,7 +113,7 @@ proc doc_count(index: SearchIndex) -> int {
 proc active_count(index: SearchIndex) -> int {
   let n: int = 0
   let i: int = 0
-  while !(i >= index.docs.len) {
+  while i < index.docs.len {
     if index.docs[i].active {
       n = n + 1
     }
@@ -124,7 +124,7 @@ proc active_count(index: SearchIndex) -> int {
 
 proc has_doc(index: SearchIndex, id: string) -> bool {
   let i: int = 0
-  while !(i >= index.docs.len) {
+  while i < index.docs.len {
     if index.docs[i].id == id { give true }
     i = i + 1
   }
@@ -133,7 +133,7 @@ proc has_doc(index: SearchIndex, id: string) -> bool {
 
 proc get_doc(index: SearchIndex, id: string) -> SearchDoc {
   let i: int = 0
-  while !(i >= index.docs.len) {
+  while i < index.docs.len {
     if index.docs[i].id == id { give index.docs[i] }
     i = i + 1
   }
@@ -143,7 +143,7 @@ proc get_doc(index: SearchIndex, id: string) -> SearchDoc {
 proc reactivate(index: SearchIndex, id: string) -> SearchIndex {
   let out: [SearchDoc] = []
   let i: int = 0
-  while !(i >= index.docs.len) {
+  while i < index.docs.len {
     let doc = index.docs[i]
     if doc.id == id {
       out = out.push(SearchDoc(doc.id, doc.text, true, doc.score_hint))
@@ -158,7 +158,7 @@ proc reactivate(index: SearchIndex, id: string) -> SearchIndex {
 proc set_score_hint(index: SearchIndex, id: string, hint: int) -> SearchIndex {
   let out: [SearchDoc] = []
   let i: int = 0
-  while !(i >= index.docs.len) {
+  while i < index.docs.len {
     let doc = index.docs[i]
     if doc.id == id {
       out = out.push(SearchDoc(doc.id, doc.text, doc.active, hint))
@@ -178,7 +178,7 @@ proc query_ids(index: SearchIndex, term: string) -> [string] {
   let rows = query(index, term)
   let out: [string] = []
   let i: int = 0
-  while !(i >= rows.len) {
+  while i < rows.len {
     out = out.push(rows[i].id)
     i = i + 1
   }
@@ -191,7 +191,7 @@ proc best_match(index: SearchIndex, term: string) -> SearchDoc {
 
   let best = rows[0]
   let i: int = 1
-  while !(i >= rows.len) {
+  while i < rows.len {
     let cur = rows[i]
     let cur_score = cur.score_hint + score(cur, term)
     let best_score = best.score_hint + score(best, term)
@@ -411,7 +411,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

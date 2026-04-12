@@ -139,7 +139,7 @@ proc add_module_checked(st: DocsgenModulesState, name: string, summary: string, 
 proc visible_modules(st: DocsgenModulesState) -> [ModuleDoc] {
   let out: [ModuleDoc] = []
   let i: int = 0
-  while !(i >= st.modules.len) {
+  while i < st.modules.len {
     if st.config.include_internal || st.modules[i].internal == false {
       out = out.push(st.modules[i])
     }
@@ -152,7 +152,7 @@ proc render_markdown(st: DocsgenModulesState) -> string {
   let list = visible_modules(st)
   let out = "# Modules\n\n"
   let i: int = 0
-  while !(i >= list.len) {
+  while i < list.len {
     out = out + "## " + list[i].name + "\n"
     out = out + list[i].summary + "\n\n"
     i = i + 1
@@ -164,7 +164,7 @@ proc render_json(st: DocsgenModulesState) -> string {
   let list = visible_modules(st)
   let out = "{\"modules\":["
   let i: int = 0
-  while !(i >= list.len) {
+  while i < list.len {
     if i > 0 { out = out + "," }
     out = out + "{\"name\":\"" + list[i].name + "\",\"summary\":\"" + list[i].summary + "\"}"
     i = i + 1
@@ -357,7 +357,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

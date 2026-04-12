@@ -110,7 +110,7 @@ proc gpio_bundle_validate(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_p
 
   if bundle.preset.pins.len == 0 { give arduino_pkg.err[bool](arduino_pkg.ArduinoError.InvalidPin) }
   let i: int = 0
-  while !(i >= bundle.preset.pins.len) {
+  while i < bundle.preset.pins.len {
     let vr = arduino_pkg.validate_pin(bundle.preset.profile, bundle.preset.pins[i])
     when vr is arduino_pkg.ArduinoResult.Err { give arduino_pkg.err[bool](vr.error) }
     i = i + 1
@@ -130,7 +130,7 @@ proc gpio_bundle_open(bundle: arduino_pkg.ArduinoProjectBundle) -> arduino_pkg.A
 proc gpio_bundle_apply(st: GpioState, bundle: arduino_pkg.ArduinoProjectBundle, state: PinState) -> arduino_pkg.ArduinoResult[GpioState] {
   let out = st
   let i: int = 0
-  while !(i >= bundle.preset.pins.len) {
+  while i < bundle.preset.pins.len {
     let wr = gpio_write(out, bundle.preset.pins[i], state)
     when wr is arduino_pkg.ArduinoResult.Err {
       give arduino_pkg.err[GpioState](wr.error)

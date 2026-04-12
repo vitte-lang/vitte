@@ -288,7 +288,7 @@ proc make_message_with_priority(kind: string, payload: string, trace_id: string,
 
 proc has_hook(a: Actor, hook: LifecycleHook) -> bool {
   let i: int = 0
-  while !(i >= a.hooks.len) {
+  while i < a.hooks.len {
     if a.hooks[i] == hook { give true }
     i = i + 1
   }
@@ -314,7 +314,7 @@ proc run_hook(a: Actor, hook: LifecycleHook) -> Actor {
 
 proc contains_text(xs: [string], x: string) -> bool {
   let i: int = 0
-  while !(i >= xs.len) {
+  while i < xs.len {
     if xs[i] == x { give true }
     i = i + 1
   }
@@ -326,7 +326,7 @@ proc trim_recent(ids: [string], max_len: int) -> [string] {
   let out: [string] = []
   let start = ids.len - max_len
   let i = start
-  while !(i >= ids.len) {
+  while i < ids.len {
     out = out.push(ids[i])
     i = i + 1
   }
@@ -336,7 +336,7 @@ proc trim_recent(ids: [string], max_len: int) -> [string] {
 proc drop_first(mailbox: [ActorMessage]) -> [ActorMessage] {
   let out: [ActorMessage] = []
   let i: int = 1
-  while !(i >= mailbox.len) {
+  while i < mailbox.len {
     out = out.push(mailbox[i])
     i = i + 1
   }
@@ -346,7 +346,7 @@ proc drop_first(mailbox: [ActorMessage]) -> [ActorMessage] {
 proc remove_at(mailbox: [ActorMessage], idx: int) -> [ActorMessage] {
   let out: [ActorMessage] = []
   let i: int = 0
-  while !(i >= mailbox.len) {
+  while i < mailbox.len {
     if i != idx {
       out = out.push(mailbox[i])
     }
@@ -363,7 +363,7 @@ proc lane_for_priority(p: MessagePriority) -> int {
 
 proc find_index_for_lane(mailbox: [ActorMessage], lane: int) -> int {
   let i: int = 0
-  while !(i >= mailbox.len) {
+  while i < mailbox.len {
     if lane_for_priority(mailbox[i].priority) == lane { give i }
     i = i + 1
   }
@@ -374,7 +374,7 @@ proc pop_by_fair_lane(mailbox: [ActorMessage], lane: int) -> PopResult {
   if mailbox.len == 0 { give PopResult(false, default_message(), mailbox, lane) }
 
   let pass: int = 0
-  while !(pass >= 3) {
+  while pass < 3 {
     let target = lane + pass
     let t = target
     if t >= 3 { t = t - 3 }
@@ -394,7 +394,7 @@ proc pow2_clamped(exp: int) -> int {
   if exp <= 0 { give 1 }
   let out: int = 1
   let i: int = 0
-  while !(i >= exp) {
+  while i < exp {
     out = out * 2
     if out > 1_000_000 { give 1_000_000 }
     i = i + 1
@@ -491,7 +491,7 @@ proc actor_with_mailbox(id: int, name: string, mailbox: [string]) -> Actor {
   let a = spawn(id, name)
   let i: int = 0
   let msg_mailbox: [ActorMessage] = []
-  while !(i >= mailbox.len) {
+  while i < mailbox.len {
     msg_mailbox = msg_mailbox.push(make_message_with_id("bootstrap-" + i.to_string(), "text", mailbox[i], ""))
     i = i + 1
   }
@@ -692,7 +692,7 @@ proc mark_ask_completed(asks: [AskRecord], message_id: string) -> AskCompleteRes
   let out: [AskRecord] = []
   let completed = 0
   let i: int = 0
-  while !(i >= asks.len) {
+  while i < asks.len {
     let rec = asks[i]
     if !rec.completed && !rec.canceled && !rec.timed_out && rec.message_id == message_id {
       out = out.push(AskRecord(rec.request_id, rec.message_id, rec.deadline_tick, rec.canceled, true, rec.timed_out))
@@ -709,7 +709,7 @@ proc sweep_asks(asks: [AskRecord], tick: int) -> AskSweepResult {
   let out: [AskRecord] = []
   let timed_out: [string] = []
   let i: int = 0
-  while !(i >= asks.len) {
+  while i < asks.len {
     let rec = asks[i]
     if !rec.completed && !rec.canceled && !rec.timed_out && tick >= rec.deadline_tick {
       out = out.push(AskRecord(rec.request_id, rec.message_id, rec.deadline_tick, rec.canceled, rec.completed, true))
@@ -724,7 +724,7 @@ proc sweep_asks(asks: [AskRecord], tick: int) -> AskSweepResult {
 
 proc mailbox_contains_message_id(mailbox: [ActorMessage], message_id: string) -> bool {
   let i: int = 0
-  while !(i >= mailbox.len) {
+  while i < mailbox.len {
     if mailbox[i].message_id == message_id { give true }
     i = i + 1
   }
@@ -764,7 +764,7 @@ proc cancel_ask(a: Actor, request_id: string) -> Actor {
   let out: [AskRecord] = []
   let changed = false
   let i: int = 0
-  while !(i >= a.asks.len) {
+  while i < a.asks.len {
     let rec = a.asks[i]
     if rec.request_id == request_id && !rec.completed && !rec.timed_out && !rec.canceled {
       out = out.push(AskRecord(rec.request_id, rec.message_id, rec.deadline_tick, true, rec.completed, rec.timed_out))
@@ -795,7 +795,7 @@ proc cancel_ask(a: Actor, request_id: string) -> Actor {
 
 proc ask_state(a: Actor, request_id: string) -> string {
   let i: int = 0
-  while !(i >= a.asks.len) {
+  while i < a.asks.len {
     let rec = a.asks[i]
     if rec.request_id == request_id {
       if rec.completed { give "completed" }
@@ -829,7 +829,7 @@ proc configure_snapshot(a: Actor, interval: int) -> Actor {
 proc starts_with(text: string, prefix: string) -> bool {
   if prefix.len > text.len { give false }
   let i: int = 0
-  while !(i >= prefix.len) {
+  while i < prefix.len {
     if text[i] != prefix[i] { give false }
     i = i + 1
   }
@@ -839,7 +839,7 @@ proc starts_with(text: string, prefix: string) -> bool {
 proc hash_text(text: string) -> int {
   let h = 0
   let i: int = 0
-  while !(i >= text.len) {
+  while i < text.len {
     h = h + text[i].to_int()
     i = i + 1
   }
@@ -850,7 +850,7 @@ proc hash_text(text: string) -> int {
 proc replace_actor_at(workers: [Actor], idx: int, next: Actor) -> [Actor] {
   let out: [Actor] = []
   let i: int = 0
-  while !(i >= workers.len) {
+  while i < workers.len {
     if i == idx {
       out = out.push(next)
     } else {
@@ -865,7 +865,7 @@ proc remove_last_actor(workers: [Actor]) -> [Actor] {
   if workers.len == 0 { give workers }
   let out: [Actor] = []
   let i: int = 0
-  while !(i >= workers.len - 1) {
+  while i < workers.len - 1 {
     out = out.push(workers[i])
     i = i + 1
   }
@@ -874,7 +874,7 @@ proc remove_last_actor(workers: [Actor]) -> [Actor] {
 
 proc sticky_find(sticky: [RouteBinding], key: string) -> int {
   let i: int = 0
-  while !(i >= sticky.len) {
+  while i < sticky.len {
     if sticky[i].key == key { give sticky[i].shard_index }
     i = i + 1
   }
@@ -885,7 +885,7 @@ proc sticky_set(sticky: [RouteBinding], key: string, shard_index: int) -> [Route
   let out: [RouteBinding] = []
   let found = false
   let i: int = 0
-  while !(i >= sticky.len) {
+  while i < sticky.len {
     let b = sticky[i]
     if b.key == key {
       out = out.push(RouteBinding(key, shard_index))
@@ -904,7 +904,7 @@ proc sticky_set(sticky: [RouteBinding], key: string, shard_index: int) -> [Route
 proc total_backlog(workers: [Actor]) -> int {
   let total = 0
   let i: int = 0
-  while !(i >= workers.len) {
+  while i < workers.len {
     total = total + workers[i].mailbox.len
     i = i + 1
   }
@@ -933,7 +933,7 @@ proc router_new(
 
   let workers: [Actor] = []
   let i: int = 0
-  while !(i >= minw) {
+  while i < minw {
     workers = workers.push(spawn(i + 1, name + "-w" + i.to_string()))
     i = i + 1
   }
@@ -1011,7 +1011,7 @@ proc family_sibling_unchanged(before: ActorFamily, after: ActorFamily, child_ind
   if before.children.len != after.children.len { give false }
   if before.parent.failures != after.parent.failures { give false }
   let i: int = 0
-  while !(i >= before.children.len) {
+  while i < before.children.len {
     if i != child_index {
       if before.children[i].failures != after.children[i].failures { give false }
       if before.children[i].mailbox.len != after.children[i].mailbox.len { give false }
@@ -1132,7 +1132,7 @@ proc step(a: Actor) -> Actor {
   let sweep = sweep_asks(a.asks, tick)
   let dead = a.dead_letters
   let ei: int = 0
-  while !(ei >= sweep.timed_out_message_ids.len) {
+  while ei < sweep.timed_out_message_ids.len {
     let mid = sweep.timed_out_message_ids[ei]
     dead = dead.push(DeadLetter(ActorMessage(mid, "ask", "", a.last_trace_id, a.last_span_id, tick, MessagePriority.Normal), "ask_timeout"))
     ei = ei + 1
@@ -1428,7 +1428,7 @@ proc queue_depth(a: Actor) -> int {
 proc max_message_age(a: Actor) -> int {
   let max_age = 0
   let i: int = 0
-  while !(i >= a.mailbox.len) {
+  while i < a.mailbox.len {
     let age = a.tick - a.mailbox[i].enqueued_tick
     if age > max_age { max_age = age }
     i = i + 1
@@ -1488,7 +1488,7 @@ proc snapshot_at(a: Actor, index: int) -> string {
 proc replay_events(a: Actor, events: [string]) -> Actor {
   let out = a
   let i: int = 0
-  while !(i >= events.len) {
+  while i < events.len {
     let e = events[i]
     if e == "step" {
       out = step(out)
@@ -1521,7 +1521,7 @@ proc send_with_delivery(a: Actor, message: ActorMessage, semantics: DeliverySema
   }
 
   let retries = 0
-  while !(retries >= retry_limit) {
+  while retries < retry_limit {
     out = send(out, message)
     retries = retries + 1
   }
@@ -1580,7 +1580,7 @@ proc property_invariants(seed: int, rounds: int) -> InvariantReport {
   let injected = 0
   let checks = 0
   let i: int = 0
-  while !(i >= total_rounds) {
+  while i < total_rounds {
     let kind = "ok"
     if (i % 5) == 0 {
       kind = "nack"
@@ -1614,7 +1614,7 @@ proc close(a: Actor) -> Actor {
 
 proc find_tenant_limit(limits: [TenantLimit], tenant_id: string) -> TenantLimit {
   let i: int = 0
-  while !(i >= limits.len) {
+  while i < limits.len {
     if limits[i].tenant_id == tenant_id { give limits[i] }
     i = i + 1
   }
@@ -1625,7 +1625,7 @@ proc upsert_tenant_counter(counters: [TenantCounter], tenant_id: string, sent_de
   let out: [TenantCounter] = []
   let found = false
   let i: int = 0
-  while !(i >= counters.len) {
+  while i < counters.len {
     let c = counters[i]
     if c.tenant_id == tenant_id {
       out = out.push(TenantCounter(tenant_id, c.sent + sent_delta, c.denied + denied_delta))
@@ -1645,7 +1645,7 @@ proc auth_allowed(rules: [AuthRule], from_ns: string, to_ns: string) -> bool {
   let i: int = 0
   let found = false
   let allowed = false
-  while !(i >= rules.len) {
+  while i < rules.len {
     let rule = rules[i]
     if rule.from_ns == from_ns && rule.to_ns == to_ns {
       found = true
@@ -1665,7 +1665,7 @@ proc router_with_tenant_limit(r: ActorRouter, tenant_id: string, mailbox_quota: 
   let out: [TenantLimit] = []
   let found = false
   let i: int = 0
-  while !(i >= r.tenant_limits.len) {
+  while i < r.tenant_limits.len {
     let lim = r.tenant_limits[i]
     if lim.tenant_id == tenant_id {
       out = out.push(TenantLimit(tenant_id, mq, sq, namespace_prefix))
@@ -1742,7 +1742,7 @@ proc router_dispatch_secure(
 
 proc tenant_denied_count(r: ActorRouter, tenant_id: string) -> int {
   let i: int = 0
-  while !(i >= r.tenant_counters.len) {
+  while i < r.tenant_counters.len {
     if r.tenant_counters[i].tenant_id == tenant_id { give r.tenant_counters[i].denied }
     i = i + 1
   }
@@ -1751,7 +1751,7 @@ proc tenant_denied_count(r: ActorRouter, tenant_id: string) -> int {
 
 proc tenant_sent_count(r: ActorRouter, tenant_id: string) -> int {
   let i: int = 0
-  while !(i >= r.tenant_counters.len) {
+  while i < r.tenant_counters.len {
     if r.tenant_counters[i].tenant_id == tenant_id { give r.tenant_counters[i].sent }
     i = i + 1
   }
@@ -1767,7 +1767,7 @@ proc actor_last_error(a: Actor) -> string {
 proc admin_list_actors(r: ActorRouter) -> [AdminActorInfo] {
   let out: [AdminActorInfo] = []
   let i: int = 0
-  while !(i >= r.workers.len) {
+  while i < r.workers.len {
     let w = r.workers[i]
     out = out.push(AdminActorInfo(w.name, w.mailbox.len, actor_last_error(w)))
     i = i + 1
@@ -1777,7 +1777,7 @@ proc admin_list_actors(r: ActorRouter) -> [AdminActorInfo] {
 
 proc admin_mailbox_depth(r: ActorRouter, actor_name: string) -> int {
   let i: int = 0
-  while !(i >= r.workers.len) {
+  while i < r.workers.len {
     if r.workers[i].name == actor_name { give r.workers[i].mailbox.len }
     i = i + 1
   }
@@ -1786,7 +1786,7 @@ proc admin_mailbox_depth(r: ActorRouter, actor_name: string) -> int {
 
 proc admin_last_error(r: ActorRouter, actor_name: string) -> string {
   let i: int = 0
-  while !(i >= r.workers.len) {
+  while i < r.workers.len {
     if r.workers[i].name == actor_name { give actor_last_error(r.workers[i]) }
     i = i + 1
   }
@@ -1796,7 +1796,7 @@ proc admin_last_error(r: ActorRouter, actor_name: string) -> string {
 proc remove_at_int(values: [int], idx: int) -> [int] {
   let out: [int] = []
   let i: int = 0
-  while !(i >= values.len) {
+  while i < values.len {
     if i != idx {
       out = out.push(values[i])
     }
@@ -1809,7 +1809,7 @@ proc min_index_int(values: [int]) -> int {
   if values.len == 0 { give -1 }
   let best = 0
   let i: int = 1
-  while !(i >= values.len) {
+  while i < values.len {
     if values[i] < values[best] {
       best = i
     }
@@ -1822,7 +1822,7 @@ proc percentile_linear(values: [int], p: int) -> int {
   if values.len == 0 { give 0 }
   let remaining = values
   let sorted: [int] = []
-  while !(remaining.len == 0) {
+  while remaining.len != 0 {
     let idx_min = min_index_int(remaining)
     sorted = sorted.push(remaining[idx_min])
     remaining = remove_at_int(remaining, idx_min)
@@ -1839,7 +1839,7 @@ proc benchmark_suite(seed: int, rounds: int) -> BenchReport {
   let restart_cost = 0
   let supervision_cost = 0
   let i: int = 0
-  while !(i >= n) {
+  while i < n {
     let msg = make_message_with_id("b-" + i.to_string(), "job", "payload", "trace-bench")
     a = send(a, msg)
     a = step(a)
@@ -1878,7 +1878,7 @@ proc fuzz_runtime(seed: int, steps: int) -> FuzzReport {
   let restarts = 0
   let closes = 0
   let i: int = 0
-  while !(i >= n) {
+  while i < n {
     rnd = (rnd * 1103515245 + 12345) % 2147483647
     let op = rnd % 5
     if op == 0 {
@@ -2022,7 +2022,7 @@ proc router_balance_delta(r: ActorRouter) -> int {
   let min = r.workers[0].mailbox.len
   let max = r.workers[0].mailbox.len
   let i: int = 1
-  while !(i >= r.workers.len) {
+  while i < r.workers.len {
     let q = r.workers[i].mailbox.len
     if q < min { min = q }
     if q > max { max = q }
@@ -2179,7 +2179,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

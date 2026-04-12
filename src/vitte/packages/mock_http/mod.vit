@@ -47,7 +47,7 @@ proc mock_add(mock: MockHttp, method: string, path: string, status: int, body: s
   let out: [MockRoute] = []
   let replaced: bool = false
   let i: int = 0
-  while !(i >= mock.routes.len) {
+  while i < mock.routes.len {
     let route = mock.routes[i]
     if route.method == meth && route.path == path {
       out = out.push(MockRoute(meth, path, http_status, body))
@@ -68,7 +68,7 @@ proc mock_add(mock: MockHttp, method: string, path: string, status: int, body: s
 proc mock_match(mock: MockHttp, method: string, path: string) -> bool {
   let meth = canonical_method(method)
   let i: int = 0
-  while !(i >= mock.routes.len) {
+  while i < mock.routes.len {
     let route = mock.routes[i]
     if route.method == meth && route.path == path {
       give true
@@ -85,7 +85,7 @@ proc mock_exists(mock: MockHttp, method: string, path: string) -> bool {
 proc mock_reply(mock: MockHttp, method: string, path: string) -> MockReply {
   let meth = canonical_method(method)
   let i: int = 0
-  while !(i >= mock.routes.len) {
+  while i < mock.routes.len {
     let route = mock.routes[i]
     if route.method == meth && route.path == path {
       give MockReply(route.status, route.body, true)
@@ -109,7 +109,7 @@ proc mock_remove(mock: MockHttp, method: string, path: string) -> MockHttp {
   let meth = canonical_method(method)
   let out: [MockRoute] = []
   let i: int = 0
-  while !(i >= mock.routes.len) {
+  while i < mock.routes.len {
     let route = mock.routes[i]
     if !(route.method == meth && route.path == path) {
       out = out.push(route)
@@ -131,7 +131,7 @@ proc mock_count_method(mock: MockHttp, method: string) -> int {
   let meth = canonical_method(method)
   let count: int = 0
   let i: int = 0
-  while !(i >= mock.routes.len) {
+  while i < mock.routes.len {
     if mock.routes[i].method == meth {
       count = count + 1
     }
@@ -143,12 +143,12 @@ proc mock_count_method(mock: MockHttp, method: string) -> int {
 proc mock_methods(mock: MockHttp) -> [string] {
   let out: [string] = []
   let i: int = 0
-  while !(i >= mock.routes.len) {
+  while i < mock.routes.len {
     let meth = mock.routes[i].method
 
     let exists: bool = false
     let j: int = 0
-    while !(j >= out.len) {
+    while j < out.len {
       if out[j] == meth {
         exists = true
         break
@@ -168,7 +168,7 @@ proc mock_list_paths(mock: MockHttp, method: string) -> [string] {
   let meth = canonical_method(method)
   let out: [string] = []
   let i: int = 0
-  while !(i >= mock.routes.len) {
+  while i < mock.routes.len {
     if mock.routes[i].method == meth {
       out = out.push(mock.routes[i].path)
     }
@@ -405,7 +405,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

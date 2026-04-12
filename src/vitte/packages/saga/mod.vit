@@ -45,7 +45,7 @@ proc run(saga: Saga, fail_step: int) -> Saga {
   let failed_at = -1
 
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     let step = saga.steps[i]
 
     if failed_at >= 0 {
@@ -73,7 +73,7 @@ proc run(saga: Saga, fail_step: int) -> Saga {
 proc compensate(saga: Saga) -> Saga {
   let out: [SagaStep] = []
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     let step = saga.steps[i]
     if step.done {
       out = out.push(SagaStep(step.name, step.done, true))
@@ -92,7 +92,7 @@ proc compensate(saga: Saga) -> Saga {
 proc add_steps(saga: Saga, names: [string]) -> Saga {
   let out = saga
   let i: int = 0
-  while !(i >= names.len) {
+  while i < names.len {
     out = step_add(out, names[i])
     i = i + 1
   }
@@ -107,7 +107,7 @@ proc get_step(saga: Saga, index: int) -> SagaStep {
 
 proc has_step(saga: Saga, name: string) -> bool {
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     if saga.steps[i].name == name { give true }
     i = i + 1
   }
@@ -116,7 +116,7 @@ proc has_step(saga: Saga, name: string) -> bool {
 
 proc next_pending_step(saga: Saga) -> string {
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     if !saga.steps[i].done { give saga.steps[i].name }
     i = i + 1
   }
@@ -137,7 +137,7 @@ proc fail(saga: Saga, fail_idx: int) -> Saga {
 proc mark_done(saga: Saga, name: string) -> Saga {
   let out: [SagaStep] = []
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     let step = saga.steps[i]
     if step.name == name {
       out = out.push(SagaStep(step.name, true, step.compensated))
@@ -152,7 +152,7 @@ proc mark_done(saga: Saga, name: string) -> Saga {
 proc mark_compensated(saga: Saga, name: string) -> Saga {
   let out: [SagaStep] = []
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     let step = saga.steps[i]
     if step.name == name {
       out = out.push(SagaStep(step.name, step.done, true))
@@ -178,7 +178,7 @@ proc failed_index(saga: Saga) -> int {
 proc reset(saga: Saga) -> Saga {
   let out: [SagaStep] = []
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     let step = saga.steps[i]
     out = out.push(SagaStep(step.name, false, false))
     i = i + 1
@@ -193,7 +193,7 @@ proc step_count(saga: Saga) -> int {
 proc done_count(saga: Saga) -> int {
   let n: int = 0
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     if saga.steps[i].done {
       n = n + 1
     }
@@ -216,7 +216,7 @@ proc pending_count(saga: Saga) -> int {
 proc compensated_count(saga: Saga) -> int {
   let n: int = 0
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     if saga.steps[i].compensated {
       n = n + 1
     }
@@ -232,7 +232,7 @@ proc failed_step(saga: Saga) -> string {
 
 proc step_index(saga: Saga, name: string) -> int {
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     if saga.steps[i].name == name { give i }
     i = i + 1
   }
@@ -272,7 +272,7 @@ proc can_resume(saga: Saga) -> bool {
 proc rename_step(saga: Saga, old_name: string, new_name: string) -> Saga {
   let out: [SagaStep] = []
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     let step = saga.steps[i]
     if step.name == old_name {
       out = out.push(SagaStep(new_name, step.done, step.compensated))
@@ -287,7 +287,7 @@ proc rename_step(saga: Saga, old_name: string, new_name: string) -> Saga {
 proc append_step_suffix(saga: Saga, suffix: string) -> Saga {
   let out: [SagaStep] = []
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     let step = saga.steps[i]
     out = out.push(SagaStep(step.name + suffix, step.done, step.compensated))
     i = i + 1
@@ -308,11 +308,11 @@ proc verify_invariants(saga: Saga) -> bool {
   if saga.state == SagaState.Succeeded && pending_count(saga) != 0 { give false }
 
   let i: int = 0
-  while !(i >= saga.steps.len) {
+  while i < saga.steps.len {
     let step = saga.steps[i]
     if step.name.len == 0 { give false }
     let j: int = i + 1
-    while !(j >= saga.steps.len) {
+    while j < saga.steps.len {
       if saga.steps[j].name == step.name { give false }
       j = j + 1
     }
@@ -551,7 +551,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

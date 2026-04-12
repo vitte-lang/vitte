@@ -141,7 +141,7 @@ proc store_new() -> IdempotencyStore {
 proc expire_keys(store: IdempotencyStore, now_tick: int) -> IdempotencyStore {
   let out: [IdempotencyRecord] = []
   let i: int = 0
-  while !(i >= store.records.len) {
+  while i < store.records.len {
     let rec = store.records[i]
     if rec.active && now_tick < rec.expires_at {
       out = out.push(rec)
@@ -154,7 +154,7 @@ proc expire_keys(store: IdempotencyStore, now_tick: int) -> IdempotencyStore {
 proc get_record(store: IdempotencyStore, key: string, now_tick: int) -> IdempotencyRecord {
   let s = expire_keys(store, now_tick)
   let i: int = 0
-  while !(i >= s.records.len) {
+  while i < s.records.len {
     let rec = s.records[i]
     if rec.active && rec.key == key {
       give rec
@@ -180,7 +180,7 @@ proc keys(store: IdempotencyStore, now_tick: int) -> [string] {
   let s = expire_keys(store, now_tick)
   let out: [string] = []
   let i: int = 0
-  while !(i >= s.records.len) {
+  while i < s.records.len {
     out = out.push(s.records[i].key)
     i = i + 1
   }
@@ -194,7 +194,7 @@ proc has_key(store: IdempotencyStore, key: string, now_tick: int) -> bool {
 proc check_key(store: IdempotencyStore, key: string, now_tick: int) -> bool {
   let s = expire_keys(store, now_tick)
   let i: int = 0
-  while !(i >= s.records.len) {
+  while i < s.records.len {
     let rec = s.records[i]
     if rec.active && rec.key == key {
       give false
@@ -238,7 +238,7 @@ proc store_result(store: IdempotencyStore, key: string, result: string, ttl_tick
   if ttl_ticks <= 0 { expiry = now_tick + 1 }
 
   let i: int = 0
-  while !(i >= s.records.len) {
+  while i < s.records.len {
     let rec = s.records[i]
     if rec.key == key {
       out = out.push(IdempotencyRecord(key, result, expiry, true))
@@ -259,7 +259,7 @@ proc store_result(store: IdempotencyStore, key: string, result: string, ttl_tick
 proc replay_result(store: IdempotencyStore, key: string, now_tick: int) -> string {
   let s = expire_keys(store, now_tick)
   let i: int = 0
-  while !(i >= s.records.len) {
+  while i < s.records.len {
     let rec = s.records[i]
     if rec.active && rec.key == key {
       give rec.result
@@ -281,7 +281,7 @@ proc remove_key(store: IdempotencyStore, key: string, now_tick: int) -> Idempote
   let s = expire_keys(store, now_tick)
   let out: [IdempotencyRecord] = []
   let i: int = 0
-  while !(i >= s.records.len) {
+  while i < s.records.len {
     if s.records[i].key != key {
       out = out.push(s.records[i])
     }
@@ -298,7 +298,7 @@ proc touch_key(store: IdempotencyStore, key: string, ttl_ticks: int, now_tick: i
   let expiry = now_tick + ttl
 
   let i: int = 0
-  while !(i >= s.records.len) {
+  while i < s.records.len {
     let rec = s.records[i]
     if rec.key == key {
       out = out.push(IdempotencyRecord(rec.key, rec.result, expiry, true))
@@ -403,7 +403,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

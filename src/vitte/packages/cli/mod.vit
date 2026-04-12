@@ -114,7 +114,7 @@ proc validate_args(args: [string]) -> CliResult[bool] {
   }
 
   let i: int = 0
-  while !(i >= args.len) {
+  while i < args.len {
     if cli_validate_pkg.valid_arg(args[i], cli_policy_pkg.max_arg_len()) == false {
       give CliResult.Err(CliError.InvalidArgs)
     }
@@ -128,7 +128,7 @@ proc has_flag(args: [string], name: string) -> bool {
   if cli_validate_pkg.valid_flag_name(name) == false { give false }
 
   let i: int = 0
-  while !(i >= args.len) {
+  while i < args.len {
     if args[i] == name { give true }
     if args[i].len > name.len + 1 {
       let pref = name + "="
@@ -143,7 +143,7 @@ proc flag_value(args: [string], name: string, fallback: string) -> string {
   if cli_validate_pkg.valid_flag_name(name) == false { give fallback }
 
   let i: int = 0
-  while !(i >= args.len) {
+  while i < args.len {
     if args[i] == name {
       if i + 1 < args.len { give args[i + 1] }
       give fallback
@@ -170,7 +170,7 @@ proc option(args: [string], name: string) -> CliOption {
 proc positional(args: [string]) -> [string] {
   let out: [string] = []
   let i: int = 0
-  while !(i >= args.len) {
+  while i < args.len {
     if args[i].len > 0 && args[i].slice(0, 1) == "-" {
       i = i + 1
       continue
@@ -202,7 +202,7 @@ proc parse_checked(args: [string], cfg: CliConfig) -> CliResult[CliParse] {
 
   if cfg.allow_short_bundles == false {
     let i: int = 0
-    while !(i >= args.len) {
+    while i < args.len {
       if args[i].len > 2 && args[i].slice(0, 1) == "-" && args[i].slice(0, 2) != "--" {
         give CliResult.Err(CliError.InvalidArgs)
       }
@@ -212,9 +212,9 @@ proc parse_checked(args: [string], cfg: CliConfig) -> CliResult[CliParse] {
 
   if cfg.allow_equals == false {
     let i: int = 0
-    while !(i >= args.len) {
+    while i < args.len {
       let j: int = 0
-      while !(j >= args[i].len) {
+      while j < args[i].len {
         if args[i].slice(j, j + 1) == "=" {
           give CliResult.Err(CliError.InvalidArgs)
         }
@@ -234,7 +234,7 @@ proc usage(s: CliSpec) -> string {
 proc stats(args: [string]) -> CliStats {
   let flags: int = 0
   let i: int = 0
-  while !(i >= args.len) {
+  while i < args.len {
     if args[i].len > 0 && args[i].slice(0, 1) == "-" { flags = flags + 1 }
     i = i + 1
   }
@@ -388,7 +388,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

@@ -138,7 +138,7 @@ proc drop_first(queue: [string]) -> [string] {
 
   let out: [string] = []
   let i: int = 1
-  while !(i >= queue.len) {
+  while i < queue.len {
     out = out.push(queue[i])
     i = i + 1
   }
@@ -305,7 +305,7 @@ proc channel_validate_code(c: Channel) -> string {
   if channel_validate_pkg.valid_non_negative(c.received) == false { give "invalid-received" }
 
   let i: int = 0
-  while !(i >= c.queue.len) {
+  while i < c.queue.len {
     if channel_validate_pkg.valid_message(c.queue[i], channel_policy_pkg.max_message_len()) == false {
       give "invalid-message"
     }
@@ -327,7 +327,7 @@ proc channel_normalize(c: Channel) -> Channel {
 
   let queue: [string] = []
   let i: int = 0
-  while !(i >= c.queue.len) {
+  while i < c.queue.len {
     let msg = channel_runtime_pkg.sanitize(c.queue[i], channel_policy_pkg.max_message_len())
     queue = queue.push(msg)
     i = i + 1
@@ -505,7 +505,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

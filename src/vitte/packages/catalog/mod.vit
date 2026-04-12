@@ -71,7 +71,7 @@ form CatalogHealth {
 
 proc contains_string(values: [string], value: string) -> bool {
   let i: int = 0
-  while !(i >= values.len) {
+  while i < values.len {
     if values[i] == value { give true }
     i = i + 1
   }
@@ -127,7 +127,7 @@ proc entry_new(id: string, name: string, tags: [string]) -> CatalogResult[Catalo
 
   let out_tags: [string] = []
   let i: int = 0
-  while !(i >= tags.len) {
+  while i < tags.len {
     if out_tags.len >= catalog_policy_pkg.max_tags_per_entry() { break }
 
     let t = catalog_runtime_pkg.sanitize(tags[i], catalog_policy_pkg.max_tag_len())
@@ -149,7 +149,7 @@ proc count(c: Catalog) -> int {
 proc active_count(c: Catalog) -> int {
   let n: int = 0
   let i: int = 0
-  while !(i >= c.entries.len) {
+  while i < c.entries.len {
     if c.entries[i].active { n = n + 1 }
     i = i + 1
   }
@@ -158,7 +158,7 @@ proc active_count(c: Catalog) -> int {
 
 proc contains_id(c: Catalog, id: string) -> bool {
   let i: int = 0
-  while !(i >= c.entries.len) {
+  while i < c.entries.len {
     if c.entries[i].id == id { give true }
     i = i + 1
   }
@@ -167,7 +167,7 @@ proc contains_id(c: Catalog, id: string) -> bool {
 
 proc find(c: Catalog, id: string) -> CatalogResult[CatalogEntry] {
   let i: int = 0
-  while !(i >= c.entries.len) {
+  while i < c.entries.len {
     if c.entries[i].id == id {
       give CatalogResult.Ok(c.entries[i])
     }
@@ -186,7 +186,7 @@ proc upsert(c: Catalog, item: CatalogEntry) -> CatalogResult[Catalog] {
   let out: [CatalogEntry] = []
   let found = false
   let i: int = 0
-  while !(i >= c.entries.len) {
+  while i < c.entries.len {
     if c.entries[i].id == item.id {
       out = out.push(item)
       found = true
@@ -211,7 +211,7 @@ proc remove(c: Catalog, id: string) -> CatalogResult[Catalog] {
   let out: [CatalogEntry] = []
   let found = false
   let i: int = 0
-  while !(i >= c.entries.len) {
+  while i < c.entries.len {
     if c.entries[i].id == id {
       found = true
     } else {
@@ -228,7 +228,7 @@ proc deactivate(c: Catalog, id: string) -> CatalogResult[Catalog] {
   let out: [CatalogEntry] = []
   let found = false
   let i: int = 0
-  while !(i >= c.entries.len) {
+  while i < c.entries.len {
     let e = c.entries[i]
     if e.id == id {
       out = out.push(CatalogEntry(e.id, e.name, e.tags, false))
@@ -246,7 +246,7 @@ proc deactivate(c: Catalog, id: string) -> CatalogResult[Catalog] {
 proc query_by_tag(c: Catalog, tag: string) -> [CatalogEntry] {
   let out: [CatalogEntry] = []
   let i: int = 0
-  while !(i >= c.entries.len) {
+  while i < c.entries.len {
     let e = c.entries[i]
     if e.active && contains_string(e.tags, tag) {
       out = out.push(e)
@@ -259,7 +259,7 @@ proc query_by_tag(c: Catalog, tag: string) -> [CatalogEntry] {
 proc list_active(c: Catalog) -> [CatalogEntry] {
   let out: [CatalogEntry] = []
   let i: int = 0
-  while !(i >= c.entries.len) {
+  while i < c.entries.len {
     if c.entries[i].active {
       out = out.push(c.entries[i])
     }
@@ -271,10 +271,10 @@ proc list_active(c: Catalog) -> [CatalogEntry] {
 proc count_unique_tags(c: Catalog) -> int {
   let seen: [string] = []
   let i: int = 0
-  while !(i >= c.entries.len) {
+  while i < c.entries.len {
     let e = c.entries[i]
     let j: int = 0
-    while !(j >= e.tags.len) {
+    while j < e.tags.len {
       if contains_string(seen, e.tags[j]) == false {
         seen = seen.push(e.tags[j])
       }
@@ -316,7 +316,7 @@ proc catalog_validate_code(c: Catalog) -> string {
   if c.entries.len > c.config.max_entries { give "capacity-exceeded" }
 
   let i: int = 0
-  while !(i >= c.entries.len) {
+  while i < c.entries.len {
     let e = c.entries[i]
     if catalog_validate_pkg.valid_entry_id(e.id, catalog_policy_pkg.max_entry_id_len()) == false { give "invalid-entry-id" }
     if catalog_validate_pkg.valid_entry_name(e.name, catalog_policy_pkg.max_entry_name_len()) == false { give "invalid-entry-name" }
@@ -335,7 +335,7 @@ proc catalog_normalize(c: Catalog) -> Catalog {
 
   let out: [CatalogEntry] = []
   let i: int = 0
-  while !(i >= c.entries.len) {
+  while i < c.entries.len {
     if out.len >= cfg.max_entries { break }
 
     let e = c.entries[i]
@@ -535,7 +535,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

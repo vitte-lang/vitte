@@ -83,7 +83,7 @@ proc pop_line(buf: Buffer) -> Buffer {
   if buf.lines.len == 0 { give buf }
   let out: [string] = []
   let i: int = 0
-  while !(i >= buf.lines.len - 1) {
+  while i < buf.lines.len - 1 {
     out = out.push(buf.lines[i])
     i = i + 1
   }
@@ -94,7 +94,7 @@ proc replace_line(buf: Buffer, index: int, line: string) -> Buffer {
   if index < 0 || index >= buf.lines.len { give buf }
   let out: [string] = []
   let i: int = 0
-  while !(i >= buf.lines.len) {
+  while i < buf.lines.len {
     if i == index { out = out.push(line) } else { out = out.push(buf.lines[i]) }
     i = i + 1
   }
@@ -105,7 +105,7 @@ proc remove_line(buf: Buffer, index: int) -> Buffer {
   if index < 0 || index >= buf.lines.len { give buf }
   let out: [string] = []
   let i: int = 0
-  while !(i >= buf.lines.len) {
+  while i < buf.lines.len {
     if i != index { out = out.push(buf.lines[i]) }
     i = i + 1
   }
@@ -134,7 +134,7 @@ proc insert_line(buf: Buffer, index: int, line: string) -> Buffer {
 proc to_text(buf: Buffer) -> string {
   let out = ""
   let i: int = 0
-  while !(i >= buf.lines.len) {
+  while i < buf.lines.len {
     if i > 0 { out = out + "\n" }
     out = out + buf.lines[i]
     i = i + 1
@@ -151,7 +151,7 @@ proc join_path(a: string, b: string) -> string {
 
 proc dirname(p: string) -> string {
   let i: int = p.len - 1
-  while !(i < 0) {
+  while i >= 0 {
     if p.slice(i, i + 1) == "/" { give p.slice(0, i) }
     i = i - 1
   }
@@ -160,7 +160,7 @@ proc dirname(p: string) -> string {
 
 proc basename(p: string) -> string {
   let i: int = p.len - 1
-  while !(i < 0) {
+  while i >= 0 {
     if p.slice(i, i + 1) == "/" { give p.slice(i + 1, p.len) }
     i = i - 1
   }
@@ -170,7 +170,7 @@ proc basename(p: string) -> string {
 proc extname(p: string) -> string {
   let b = basename(p)
   let i: int = b.len - 1
-  while !(i < 0) {
+  while i >= 0 {
     if b.slice(i, i + 1) == "." { give b.slice(i + 1, b.len) }
     i = i - 1
   }
@@ -185,7 +185,7 @@ proc normalize_path(p: string) -> string {
   let out = ""
   let prev_slash = false
   let i: int = 0
-  while !(i >= p.len) {
+  while i < p.len {
     let ch = p.slice(i, i + 1)
     if ch == "/" {
       if !prev_slash { out = out + ch }
@@ -301,7 +301,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

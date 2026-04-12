@@ -100,7 +100,7 @@ proc put(store: KvStore, key: string, value: string, ttl: int) -> KvStore {
   let out: [KvEntry] = []
   let replaced: bool = false
   let i: int = 0
-  while !(i >= store.entries.len) {
+  while i < store.entries.len {
     let kv_item = store.entries[i]
     if kv_item.key == key {
       out = out.push(KvEntry(key, value, expiry, true))
@@ -132,7 +132,7 @@ proc tick(store: KvStore, delta: int) -> KvStore {
 
   let out: [KvEntry] = []
   let i: int = 0
-  while !(i >= store.entries.len) {
+  while i < store.entries.len {
     let kv_item = store.entries[i]
     if is_alive(kv_item, next_clock) {
       out = out.push(kv_item)
@@ -147,7 +147,7 @@ proc tick(store: KvStore, delta: int) -> KvStore {
 
 proc get(store: KvStore, key: string, fallback: string) -> string {
   let i: int = 0
-  while !(i >= store.entries.len) {
+  while i < store.entries.len {
     let kv_item = store.entries[i]
     if kv_item.key == key && is_alive(kv_item, store.clock) {
       give kv_item.value
@@ -169,7 +169,7 @@ proc has(store: KvStore, key: string) -> bool {
 proc delete(store: KvStore, key: string) -> KvStore {
   let out: [KvEntry] = []
   let i: int = 0
-  while !(i >= store.entries.len) {
+  while i < store.entries.len {
     let kv_item = store.entries[i]
     if kv_item.key == key {
       out = out.push(KvEntry(kv_item.key, kv_item.value, kv_item.expires_at, false))
@@ -184,7 +184,7 @@ proc delete(store: KvStore, key: string) -> KvStore {
 proc scan(store: KvStore, prefix: string) -> [KvEntry] {
   let out: [KvEntry] = []
   let i: int = 0
-  while !(i >= store.entries.len) {
+  while i < store.entries.len {
     let kv_item = store.entries[i]
     if is_alive(kv_item, store.clock) && kv_item.key.len >= prefix.len && kv_item.key.slice(0, prefix.len) == prefix {
       out = out.push(kv_item)
@@ -197,7 +197,7 @@ proc scan(store: KvStore, prefix: string) -> [KvEntry] {
 proc size(store: KvStore) -> int {
   let n: int = 0
   let i: int = 0
-  while !(i >= store.entries.len) {
+  while i < store.entries.len {
     if is_alive(store.entries[i], store.clock) {
       n = n + 1
     }
@@ -208,7 +208,7 @@ proc size(store: KvStore) -> int {
 
 proc ttl_left(store: KvStore, key: string) -> int {
   let i: int = 0
-  while !(i >= store.entries.len) {
+  while i < store.entries.len {
     let kv_item = store.entries[i]
     if kv_item.key == key && is_alive(kv_item, store.clock) {
       if kv_item.expires_at < 0 { give -1 }
@@ -227,7 +227,7 @@ proc touch(store: KvStore, key: string, ttl: int) -> KvStore {
   let expiry = -1
   if ttl > 0 { expiry = store.clock + ttl }
 
-  while !(i >= store.entries.len) {
+  while i < store.entries.len {
     let kv_item = store.entries[i]
     if kv_item.key == key && is_alive(kv_item, store.clock) {
       if expiry < 0 {
@@ -248,7 +248,7 @@ proc keys(store: KvStore, prefix: string) -> [string] {
   let out: [string] = []
   let rows = scan(store, prefix)
   let i: int = 0
-  while !(i >= rows.len) {
+  while i < rows.len {
     out = out.push(rows[i].key)
     i = i + 1
   }
@@ -258,7 +258,7 @@ proc keys(store: KvStore, prefix: string) -> [string] {
 proc expire(store: KvStore) -> KvStore {
   let out: [KvEntry] = []
   let i: int = 0
-  while !(i >= store.entries.len) {
+  while i < store.entries.len {
     let kv_item = store.entries[i]
     if is_alive(kv_item, store.clock) {
       out = out.push(kv_item)
@@ -380,7 +380,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

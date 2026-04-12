@@ -49,7 +49,7 @@ proc next_delay_ms(p: RetryPolicy, attempt: int) -> int {
 
   let delay = p.base_delay_ms
   let i: int = 0
-  while !(i >= attempt) {
+  while i < attempt {
     delay = delay * 2
     if delay > p.max_delay_ms {
       delay = p.max_delay_ms
@@ -81,7 +81,7 @@ proc run_with_retry(statuses: [int], p: RetryPolicy) -> int {
   let attempt: int = 0
   let current: int = statuses[0]
 
-  while !(idx >= statuses.len) {
+  while idx < statuses.len {
     current = statuses[idx]
     if !should_retry(current, attempt, p) { break }
     if idx + 1 >= statuses.len { break }
@@ -98,7 +98,7 @@ proc attempts_used(statuses: [int], p: RetryPolicy) -> int {
   let idx: int = 0
   let attempt: int = 0
 
-  while !(idx >= statuses.len) {
+  while idx < statuses.len {
     if !should_retry(statuses[idx], attempt, p) { break }
     if idx + 1 >= statuses.len { break }
     idx = idx + 1
@@ -154,7 +154,7 @@ proc delay_plan(p: RetryPolicy, count: int) -> [int] {
   let n = count
   if n < 0 { n = 0 }
   let i: int = 0
-  while !(i >= n) {
+  while i < n {
     out = out.push(next_delay_ms(p, i))
     i = i + 1
   }
@@ -168,7 +168,7 @@ proc run_succeeds(statuses: [int], p: RetryPolicy) -> bool {
 
 proc first_retryable(statuses: [int], p: RetryPolicy) -> int {
   let i: int = 0
-  while !(i >= statuses.len) {
+  while i < statuses.len {
     if should_retry(statuses[i], 0, p) { give statuses[i] }
     i = i + 1
   }
@@ -381,7 +381,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

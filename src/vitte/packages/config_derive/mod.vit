@@ -161,7 +161,7 @@ proc derive(s: Schema) -> DeriveResult {
   let keys: [string] = []
   let defaults: [string] = []
   let i: int = 0
-  while !(i >= s.fields.len) {
+  while i < s.fields.len {
     keys = keys.push(s.fields[i].name)
     defaults = defaults.push(s.fields[i].default_value)
     i = i + 1
@@ -177,7 +177,7 @@ proc schema_code(s: Schema, opts: DeriveOptions) -> string {
   if config_derive_validate_pkg.valid_field_count(s.fields.len, opts.max_fields) == false { give "too-many-fields" }
 
   let i: int = 0
-  while !(i >= s.fields.len) {
+  while i < s.fields.len {
     if config_derive_validate_pkg.valid_field_name(s.fields[i].name, opts.max_field_name_len) == false {
       give "invalid-field-name"
     }
@@ -199,7 +199,7 @@ proc derive_checked(s: Schema, opts: DeriveOptions) -> DeriveApiResult[DeriveRes
 proc required_keys(s: Schema) -> [string] {
   let out: [string] = []
   let i: int = 0
-  while !(i >= s.fields.len) {
+  while i < s.fields.len {
     if s.fields[i].required { out = out.push(s.fields[i].name) }
     i = i + 1
   }
@@ -233,7 +233,7 @@ proc schema_normalize(s: Schema, opts: DeriveOptions) -> Schema {
   let o = normalize_options(opts)
   let out = schema(s.name)
   let i: int = 0
-  while !(i >= s.fields.len) {
+  while i < s.fields.len {
     if out.fields.len >= o.max_fields { break }
 
     let fname = s.fields[i].name
@@ -417,7 +417,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

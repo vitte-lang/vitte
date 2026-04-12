@@ -125,7 +125,7 @@ proc conflicts(existing: BorrowRef, incoming: BorrowRef) -> bool {
 
 proc can_borrow(tab: BorrowTable, incoming: BorrowRef) -> bool {
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     if conflicts(tab.refs[i], incoming) { give false }
     i = i + 1
   }
@@ -137,7 +137,7 @@ proc can_borrow_with_config(tab: BorrowTable, incoming: BorrowRef, cfg: BorrowCo
 
   if cfg.allow_reentrant_shared == false {
     let i: int = 0
-    while !(i >= tab.refs.len) {
+    while i < tab.refs.len {
       let r = tab.refs[i]
       if r.active && r.symbol == incoming.symbol && r.owner == incoming.owner {
         give false
@@ -148,7 +148,7 @@ proc can_borrow_with_config(tab: BorrowTable, incoming: BorrowRef, cfg: BorrowCo
 
   let symbol_active: int = 0
   let j: int = 0
-  while !(j >= tab.refs.len) {
+  while j < tab.refs.len {
     let r = tab.refs[j]
     if r.active && r.symbol == incoming.symbol { symbol_active = symbol_active + 1 }
     j = j + 1
@@ -187,7 +187,7 @@ proc acquire_with_config(tab: BorrowTable, incoming: BorrowRef, cfg: BorrowConfi
 proc release(tab: BorrowTable, symbol: string, owner: string) -> BorrowTable {
   let out: [BorrowRef] = []
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     let r = tab.refs[i]
     if r.symbol == symbol && r.owner == owner {
       out = out.push(BorrowRef(r.symbol, r.owner, r.mode, false))
@@ -209,7 +209,7 @@ proc release_checked(tab: BorrowTable, symbol: string, owner: string) -> BorrowR
 
   let found = false
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     if tab.refs[i].symbol == symbol && tab.refs[i].owner == owner && tab.refs[i].active {
       found = true
       break
@@ -224,7 +224,7 @@ proc release_checked(tab: BorrowTable, symbol: string, owner: string) -> BorrowR
 proc active_count(tab: BorrowTable, symbol: string) -> int {
   let count: int = 0
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     if tab.refs[i].symbol == symbol && tab.refs[i].active { count = count + 1 }
     i = i + 1
   }
@@ -233,7 +233,7 @@ proc active_count(tab: BorrowTable, symbol: string) -> int {
 
 proc has_mutable(tab: BorrowTable, symbol: string) -> bool {
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     let r = tab.refs[i]
     if r.symbol == symbol && r.active && r.mode == BorrowMode.Mutable { give true }
     i = i + 1
@@ -250,7 +250,7 @@ proc summary(tab: BorrowTable, symbol: string) -> string {
 proc owner_count(tab: BorrowTable, owner: string) -> int {
   let c: int = 0
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     if tab.refs[i].owner == owner && tab.refs[i].active { c = c + 1 }
     i = i + 1
   }
@@ -260,7 +260,7 @@ proc owner_count(tab: BorrowTable, owner: string) -> int {
 proc release_all_owner(tab: BorrowTable, owner: string) -> BorrowTable {
   let out: [BorrowRef] = []
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     let r = tab.refs[i]
     if r.owner == owner {
       out = out.push(BorrowRef(r.symbol, r.owner, r.mode, false))
@@ -275,7 +275,7 @@ proc release_all_owner(tab: BorrowTable, owner: string) -> BorrowTable {
 proc active_refs(tab: BorrowTable) -> [BorrowRef] {
   let out: [BorrowRef] = []
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     if tab.refs[i].active { out = out.push(tab.refs[i]) }
     i = i + 1
   }
@@ -295,7 +295,7 @@ proc mode_name(mode: BorrowMode) -> string {
 proc active_for_symbol(tab: BorrowTable, symbol: string) -> [BorrowRef] {
   let out: [BorrowRef] = []
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     let r = tab.refs[i]
     if r.active && r.symbol == symbol { out = out.push(r) }
     i = i + 1
@@ -306,7 +306,7 @@ proc active_for_symbol(tab: BorrowTable, symbol: string) -> [BorrowRef] {
 proc conflict_count(tab: BorrowTable, incoming: BorrowRef) -> int {
   let c: int = 0
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     if conflicts(tab.refs[i], incoming) { c = c + 1 }
     i = i + 1
   }
@@ -316,7 +316,7 @@ proc conflict_count(tab: BorrowTable, incoming: BorrowRef) -> int {
 proc revoke_symbol(tab: BorrowTable, symbol: string) -> BorrowTable {
   let out: [BorrowRef] = []
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     let r = tab.refs[i]
     if r.symbol == symbol {
       out = out.push(BorrowRef(r.symbol, r.owner, r.mode, false))
@@ -334,7 +334,7 @@ proc table_validate_code(tab: BorrowTable) -> string {
   }
 
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
     let r = tab.refs[i]
 
     if borrow_validate_pkg.valid_symbol(r.symbol, borrow_policy_pkg.max_symbol_len()) == false {
@@ -357,7 +357,7 @@ proc table_validate(tab: BorrowTable) -> bool {
 proc table_normalize(tab: BorrowTable) -> BorrowTable {
   let out: [BorrowRef] = []
   let i: int = 0
-  while !(i >= tab.refs.len) {
+  while i < tab.refs.len {
 
     let r = tab.refs[i]
     let sym = borrow_runtime_pkg.sanitize_field(r.symbol, borrow_policy_pkg.max_symbol_len())
@@ -563,7 +563,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }

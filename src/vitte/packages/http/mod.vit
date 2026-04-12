@@ -261,7 +261,7 @@ proc header_add(headers: HttpHeaders, key: string, value: string) -> HttpHeaders
 
 proc header_get(headers: HttpHeaders, key: string) -> string {
   let i: int = 0
-  while !(i >= headers.values.len) {
+  while i < headers.values.len {
     if headers.values[i].key == key { give headers.values[i].value }
     i = i + 1
   }
@@ -357,7 +357,7 @@ proc route(method: HttpMethod, pattern: string, target: string, priority: int, s
 
 proc route_conflict(routes: [HttpRoute], candidate: HttpRoute) -> bool {
   let i: int = 0
-  while !(i >= routes.len) {
+  while i < routes.len {
     let r: HttpRoute = routes[i]
     if r.method == candidate.method && http_runtime_pkg.normalize_path(r.pattern) == http_runtime_pkg.normalize_path(candidate.pattern) {
       give true
@@ -389,7 +389,7 @@ proc add_middleware(state: HttpServerState, name: string) -> HttpServerState {
 proc apply_middleware(state: HttpServerState, req: HttpRequest) -> HttpResult[HttpRequest] {
   let out: HttpRequest = req
   let i: int = 0
-  while !(i >= state.middlewares.len) {
+  while i < state.middlewares.len {
     let m: HttpMiddleware = state.middlewares[i]
     if m.enabled {
       if m.name == "normalize-path" {
@@ -434,7 +434,7 @@ proc find_route(routes: [HttpRoute], req: HttpRequest) -> HttpResult[HttpRoute] 
   let best_idx: int = -1
   let best_rank: int = -1000000
   let i: int = 0
-  while !(i >= routes.len) {
+  while i < routes.len {
     let r: HttpRoute = routes[i]
     if r.method == req.method && http_runtime_pkg.route_matches(r.pattern, req.path) {
       let rank: int = http_runtime_pkg.route_rank(r.priority, r.pattern)
@@ -526,7 +526,7 @@ proc handle(state: HttpServerState, req: HttpRequest) -> HttpResult[HttpResponse
 proc openapi_contract_snapshot(routes: [HttpRoute]) -> [string] {
   let out: [string] = []
   let i: int = 0
-  while !(i >= routes.len) {
+  while i < routes.len {
     let r: HttpRoute = routes[i]
     out = out.push(method_name(r.method) + " " + r.pattern + " -> " + r.target)
     i = i + 1
@@ -644,7 +644,7 @@ proc contract_caps_csv() -> string {
   if caps.len == 0 { give "" }
   let out = caps[0]
   let i: int = 1
-  while !(i >= caps.len) {
+  while i < caps.len {
     out = out + "," + caps[i]
     i = i + 1
   }
