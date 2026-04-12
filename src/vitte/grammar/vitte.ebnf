@@ -5,9 +5,7 @@ program ::= WS? { toplevel WS? } ;
 <<< ——————————————————— ) ( Top-level ) ( ——————————————————— >>>
 
 toplevel ::= space_decl
-          | pull_decl
           | use_decl
-          | share_decl
           | const_decl
           | type_alias_decl
           | form_decl
@@ -17,11 +15,9 @@ toplevel ::= space_decl
           ;
 
 space_decl ::= "space" WS1 module_path ;
-pull_decl  ::= "pull" WS1 module_path [ WS1 "as" WS1 ident ] ;
 use_decl   ::= "use" WS1 package_path [ use_group | use_glob ] [ WS1 "as" WS1 ident ] ;
 use_glob   ::= "." "*" ;
 use_group  ::= "." "{" WS? ( "*" | ident_list [ WS? "," WS? "*" ]? ) WS? "}" ;
-share_decl ::= "share" WS1 ( "all" | ident_list ) ;
 const_decl ::= "const" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
 type_alias_decl ::= "type" WS1 ident [ "[" WS? ident_list WS? "]" ] WS? "=" WS? type_expr ;
 
@@ -64,7 +60,6 @@ stmt ::= let_stmt
        | give_stmt
        | emit_stmt
        | if_stmt
-       | loop_stmt
        | while_stmt
        | for_stmt
        | break_stmt
@@ -72,7 +67,6 @@ stmt ::= let_stmt
        | select_stmt
        | match_stmt
        | when_match_stmt
-       | return_stmt
        | expr_stmt
        ;
 
@@ -84,20 +78,18 @@ set_stmt  ::= "set" WS1 ident WS? "=" WS? expr ;
 
 give_stmt ::= "give" WS1 expr ;
 emit_stmt ::= "emit" WS1 expr ;
-return_stmt ::= "return" [ WS1 expr ] ;
 
 if_stmt ::= "if" WS1 expr WS? block
-            [ WS? ("else" | "otherwise") WS? ( block | if_stmt ) ] ;
-loop_stmt ::= "loop" WS? block ;
+            [ WS? "else" WS? ( block | if_stmt ) ] ;
 while_stmt ::= "while" WS1 expr WS? block ;
 for_stmt ::= "for" WS1 ident WS1 "in" WS1 expr WS? block ;
 
 break_stmt ::= "break" ;
 continue_stmt ::= "continue" ;
 
-select_stmt ::= "select" WS1 expr WS? { "when" WS1 pattern WS? block WS? } [ WS? "otherwise" WS? block ] ;
+select_stmt ::= "select" WS1 expr WS? { "when" WS1 pattern WS? block WS? } ;
 match_stmt ::= "match" WS1 expr WS?
-               "{" WS? { "case" WS1 pattern WS? block WS? } [ WS? ("else" | "otherwise") WS? block ] "}" ;
+               "{" WS? { "case" WS1 pattern WS? block WS? } [ WS? "else" WS? block ] "}" ;
 when_match_stmt ::= "when" WS1 expr WS1 "is" WS1 pattern WS? block ;
 
 expr_stmt ::= expr ;
@@ -107,8 +99,8 @@ expr_stmt ::= expr ;
 expr ::= assign_expr ;
 assign_expr ::= or_expr [ WS? "=" WS? assign_expr ] ;
 
-or_expr  ::= and_expr { WS? ("or" | "||") WS? and_expr } ;
-and_expr ::= eq_expr { WS? ("and" | "&&") WS? eq_expr } ;
+or_expr  ::= and_expr { WS? "or" WS? and_expr } ;
+and_expr ::= eq_expr { WS? "and" WS? eq_expr } ;
 
 eq_expr  ::= rel_expr { WS? ("==" | "!=") WS? rel_expr } ;
 rel_expr ::= add_expr { WS? ("<" | "<=" | ">" | ">=") WS? add_expr } ;
@@ -117,7 +109,7 @@ add_expr ::= mul_expr { WS? ("+" | "-") WS? mul_expr } ;
 mul_expr ::= cast_expr { WS? ("*" | "/" | "%") WS? cast_expr } ;
 
 cast_expr ::= unary_expr { WS? ("as" WS? type_expr | "is" WS? pattern) } ;
-unary_expr ::= ("not" | "!" | "-") WS? unary_expr | postfix_expr ;
+unary_expr ::= ("not" | "-") WS? unary_expr | postfix_expr ;
 
 postfix_expr ::= primary { call_suffix | member_suffix | index_suffix } ;
 call_suffix ::= "(" WS? arg_list? WS? ")" ;

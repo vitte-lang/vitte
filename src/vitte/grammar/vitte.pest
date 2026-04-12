@@ -1,6 +1,6 @@
 // GENERATED FILE - DO NOT EDIT
 // source: src/vitte/grammar/vitte.ebnf
-// source_sha256: 2fe488336dfc22dfa8bcaaa2100a9e7c1a79215b168e53b1890003515a3932ec
+// source_sha256: d447c22a06fd14a1a595fd74c73bec42abf755668f288ad424fcd944e83fa6f9
 // tool: book/grammar/scripts/sync_pest.py v1
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 NEWLINE = _{ "\r\n" | "\n" }
@@ -9,9 +9,7 @@ program = { SOI ~ toplevel* ~ EOI }
 
 toplevel = {
     space_decl
-  | pull_decl
   | use_decl
-  | share_decl
   | const_decl
   | type_alias_decl
   | form_decl
@@ -21,11 +19,9 @@ toplevel = {
 }
 
 space_decl = { "space" ~ module_path }
-pull_decl = { "pull" ~ module_path ~ ("as" ~ ident)? }
 use_decl = { "use" ~ package_path ~ (use_group | use_glob)? ~ ("as" ~ ident)? }
 use_glob = { "." ~ "*" }
 use_group = { "." ~ "{" ~ ("*" | ident_list ~ ("," ~ "*")?) ~ "}" }
-share_decl = { "share" ~ ("all" | ident_list) }
 const_decl = { "const" ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr }
 type_alias_decl = { "type" ~ ident ~ ("[" ~ ident_list ~ "]")? ~ "=" ~ type_expr }
 
@@ -55,39 +51,41 @@ block = { "{" ~ stmt* ~ "}" }
 
 stmt = {
     let_stmt
+  | asm_stmt
+  | unsafe_stmt
   | make_stmt
   | set_stmt
   | give_stmt
   | emit_stmt
   | if_stmt
-  | loop_stmt
   | while_stmt
   | for_stmt
   | break_stmt
   | continue_stmt
+  | select_stmt
   | match_stmt
   | when_match_stmt
-  | return_stmt
   | expr_stmt
 }
 
+asm_stmt = { "asm" ~ "(" ~ string_lit ~ ")" }
+unsafe_stmt = { "unsafe" ~ block }
 let_stmt = { "let" ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr }
 make_stmt = { "make" ~ ident ~ ("as" ~ type_expr)? ~ "=" ~ expr }
 set_stmt = { "set" ~ ident ~ "=" ~ expr }
 
 give_stmt = { "give" ~ expr }
 emit_stmt = { "emit" ~ expr }
-return_stmt = { "return" ~ expr? }
 
-if_stmt = { "if" ~ expr ~ block ~ (("else" | "otherwise") ~ (block | if_stmt))? }
-loop_stmt = { "loop" ~ block }
+if_stmt = { "if" ~ expr ~ block ~ ("else" ~ (block | if_stmt))? }
 while_stmt = { "while" ~ expr ~ block }
 for_stmt = { "for" ~ ident ~ "in" ~ expr ~ block }
 
 break_stmt = { "break" }
 continue_stmt = { "continue" }
 
-match_stmt = { "match" ~ expr ~ "{" ~ ("case" ~ pattern ~ block)* ~ (("else" | "otherwise") ~ block)? ~ "}" }
+select_stmt = { "select" ~ expr ~ ("when" ~ pattern ~ block)* }
+match_stmt = { "match" ~ expr ~ "{" ~ ("case" ~ pattern ~ block)* ~ ("else" ~ block)? ~ "}" }
 when_match_stmt = { "when" ~ expr ~ "is" ~ pattern ~ block }
 
 expr_stmt = { expr }
@@ -95,8 +93,8 @@ expr_stmt = { expr }
 expr = { assign_expr }
 assign_expr = { or_expr ~ ("=" ~ assign_expr)? }
 
-or_expr = { and_expr ~ (("or" | "||") ~ and_expr)* }
-and_expr = { eq_expr ~ (("and" | "&&") ~ eq_expr)* }
+or_expr = { and_expr ~ ("or" ~ and_expr)* }
+and_expr = { eq_expr ~ ("and" ~ eq_expr)* }
 
 eq_expr = { rel_expr ~ (("==" | "!=") ~ rel_expr)* }
 rel_expr = { add_expr ~ (("<" | "<=" | ">" | ">=") ~ add_expr)* }
@@ -105,7 +103,7 @@ add_expr = { mul_expr ~ (("+" | "-") ~ mul_expr)* }
 mul_expr = { cast_expr ~ (("*" | "/" | "%") ~ cast_expr)* }
 
 cast_expr = { unary_expr ~ (("as" ~ type_expr) | ("is" ~ pattern))* }
-unary_expr = { (("not" | "!" | "-") ~ unary_expr) | postfix_expr }
+unary_expr = { (("not" | "-") ~ unary_expr) | postfix_expr }
 
 postfix_expr = { primary ~ (call_suffix | member_suffix | index_suffix)* }
 call_suffix = { "(" ~ arg_list? ~ ")" }
