@@ -265,6 +265,10 @@ Token Lexer::next() {
             }
             return make(TokenKind::Star, "*", start, index_);
         case '%':
+            if (peek() == '=') {
+                advance();
+                return make(TokenKind::PercentEqual, "%=", start, index_);
+            }
             return make(TokenKind::Percent, "%", start, index_);
         case '&':
             if (peek() == '&') {
