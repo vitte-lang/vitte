@@ -117,7 +117,7 @@ else
 fi
 
 log "mod doctor fix write"
-tmp_legacy="$(mktemp "${TMPDIR:-/tmp}/vitte-mod-doctor-write-XXXXXX.vit")"
+tmp_legacy="$(mktemp "${TMPDIR:-/tmp}/vitte-mod-doctor-write-XXXXXX")"
 cp "$legacy_runtime_src" "$tmp_legacy"
 set +e
 out_doctor_write="$("$BIN" mod doctor --lang=en --fix --write "$tmp_legacy" 2>&1)"
@@ -133,7 +133,7 @@ fi
 rm -f "$tmp_legacy"
 
 log "mod doctor fix write (use legacy)"
-tmp_use_legacy="$(mktemp "${TMPDIR:-/tmp}/vitte-mod-doctor-use-legacy-XXXXXX.vit")"
+tmp_use_legacy="$(mktemp "${TMPDIR:-/tmp}/vitte-mod-doctor-use-legacy-XXXXXX")"
 cp "$doctor_write_cases_dir/use_legacy.vit" "$tmp_use_legacy"
 set +e
 out_doctor_write_use="$("$BIN" mod doctor --lang=en --fix --write "$tmp_use_legacy" 2>&1)"
@@ -149,19 +149,14 @@ fi
 rm -f "$tmp_use_legacy"
 
 log "mod doctor fix write (pull legacy)"
-tmp_pull_legacy="$(mktemp "${TMPDIR:-/tmp}/vitte-mod-doctor-pull-legacy-XXXXXX.vit")"
+tmp_pull_legacy="$(mktemp "${TMPDIR:-/tmp}/vitte-mod-doctor-pull-legacy-XXXXXX")"
 cp "$doctor_write_cases_dir/pull_legacy.vit" "$tmp_pull_legacy"
 set +e
 out_doctor_write_pull="$("$BIN" mod doctor --lang=en --fix --write "$tmp_pull_legacy" 2>&1)"
 rc_doctor_write_pull=$?
 set -e
 [ "$rc_doctor_write_pull" -ne 0 ] || die "mod doctor --fix --write should report issues on pull_legacy fixture"
-grep -Fq "[doctor] write: rewrote 1 import(s)" <<<"$out_doctor_write_pull" || die "missing pull_legacy rewrite summary"
-if ! diff -u "$doctor_write_cases_dir/pull_legacy.rewritten.must" "$tmp_pull_legacy" >/dev/null 2>&1; then
-  diff -u "$doctor_write_cases_dir/pull_legacy.rewritten.must" "$tmp_pull_legacy" || true
-  rm -f "$tmp_pull_legacy"
-  die "pull_legacy rewrite snapshot mismatch"
-fi
+grep -Fq "error[E1104]" <<<"$out_doctor_write_pull" || die "missing E1104 diagnostic for removed pull syntax"
 rm -f "$tmp_pull_legacy"
 
 log "mod doctor fix write (glob/alias-missing/relative fixtures)"

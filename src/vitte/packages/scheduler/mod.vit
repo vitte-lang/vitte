@@ -105,12 +105,12 @@ proc find_task(scheduler: Scheduler, task_id: int) -> Task {
 }
 
 proc should_run(task: Task, now_tick: int) -> bool {
-  if !task.enabled { give false }
+  if not task.enabled { give false }
   when task.mode is ScheduleMode.Once {
     if task.runs >= 1 { give false }
     give now_tick >= task.run_at
   }
-  if task.max_runs > 0 && task.runs >= task.max_runs { give false }
+  if task.max_runs > 0  and  task.runs >= task.max_runs { give false }
   if task.runs == 0 { give now_tick >= task.run_at }
   give now_tick - task.last_run >= task.interval_ticks
 }

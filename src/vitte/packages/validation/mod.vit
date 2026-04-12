@@ -118,7 +118,7 @@ proc csv_contains(csv: string, value: string) -> bool {
   let start: int = 0
   let i: int = 0
   while i <= csv.len {
-    if i == csv.len || csv.slice(i, i + 1) == "," {
+    if i == csv.len  or  csv.slice(i, i + 1) == "," {
       let token = csv.slice(start, i)
       if token == value { give true }
       start = i + 1
@@ -168,28 +168,28 @@ proc validate_rule(rule: Rule, value: string) -> [ValidationError] {
   }
 
   if rule.kind == RuleKind.OneOfCsv {
-    if !csv_contains(rule.text_arg, value) {
+    if not csv_contains(rule.text_arg, value) {
       errors = push_error(errors, rule.key, "one_of", "value not in allowed list")
     }
     give errors
   }
 
   if rule.kind == RuleKind.Prefix {
-    if !starts_with(value, rule.text_arg) {
+    if not starts_with(value, rule.text_arg) {
       errors = push_error(errors, rule.key, "prefix", "value does not match required prefix")
     }
     give errors
   }
 
   if rule.kind == RuleKind.Suffix {
-    if !ends_with(value, rule.text_arg) {
+    if not ends_with(value, rule.text_arg) {
       errors = push_error(errors, rule.key, "suffix", "value does not match required suffix")
     }
     give errors
   }
 
   if rule.kind == RuleKind.Contains {
-    if !string_contains(value, rule.text_arg) {
+    if not string_contains(value, rule.text_arg) {
       errors = push_error(errors, rule.key, "contains", "value does not contain required token")
     }
     give errors

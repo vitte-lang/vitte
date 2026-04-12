@@ -224,7 +224,7 @@ proc send_checked(session: BridgeSession, pkt: BridgePacket, cfg: BridgeConfig) 
   }
 
   let retries = session.stats.retries
-  if cfg.strict && p.value.hops > 1 {
+  if cfg.strict  and  p.value.hops > 1 {
     retries += 1
     if retries > cfg.retry_budget {
       give BridgeResult.Err(BridgeError.Timeout)
@@ -259,7 +259,7 @@ proc drop_packet(session: BridgeSession) -> BridgeSession {
                           session.stats.retries,
                           inflight)
   let state = session.state
-  if stats.dropped > 0 && stats.sent > 0 { state = BridgeState.Degraded }
+  if stats.dropped > 0  and  stats.sent > 0 { state = BridgeState.Degraded }
   give BridgeSession(session.route, state, stats)
 }
 

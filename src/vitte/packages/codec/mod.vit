@@ -153,8 +153,8 @@ proc encode_checked(fmt: CodecFormat, key: string, value: string, cfg: CodecConf
     give CodecResult.Err(CodecError.InvalidInput)
   }
 
-  if fmt == CodecFormat.Binary && cfg.allow_binary_control == false {
-    if codec_validate_pkg.has_control(key) || codec_validate_pkg.has_control(value) {
+  if fmt == CodecFormat.Binary  and  cfg.allow_binary_control == false {
+    if codec_validate_pkg.has_control(key)  or  codec_validate_pkg.has_control(value) {
       give CodecResult.Err(CodecError.InvalidInput)
     }
   }
@@ -168,10 +168,10 @@ proc encode_checked(fmt: CodecFormat, key: string, value: string, cfg: CodecConf
 }
 
 proc detect(data: string) -> CodecFormat {
-  if data.len >= 1 && data.slice(0, 1) == "{" {
+  if data.len >= 1  and  data.slice(0, 1) == "{" {
     give CodecFormat.Json
   }
-  if data.len >= 3 && data.slice(0, 3) == "mp:" {
+  if data.len >= 3  and  data.slice(0, 3) == "mp:" {
     give CodecFormat.MsgPack
   }
   give CodecFormat.Binary
@@ -201,7 +201,7 @@ proc parse_payload(data: string) -> CodecPayload {
 }
 
 proc decode(payload: CodecPayload) -> string {
-  if !payload.valid { give "" }
+  if not payload.valid { give "" }
   give payload.data
 }
 
@@ -216,7 +216,7 @@ proc decode_checked(payload: CodecPayload, cfg: CodecConfig) -> CodecResult[stri
 }
 
 proc decode_pair(payload: CodecPayload) -> DecodedPair {
-  if !payload.valid || payload.data.len == 0 {
+  if not payload.valid  or  payload.data.len == 0 {
     give DecodedPair("", "", false)
   }
 
@@ -246,7 +246,7 @@ proc decode_pair(payload: CodecPayload) -> DecodedPair {
       i += 1
     }
 
-    if q1 < 0 || q2 <= q1 || q3 <= q2 || q4 <= q3 {
+    if q1 < 0  or  q2 <= q1  or  q3 <= q2  or  q4 <= q3 {
       give DecodedPair("", "", false)
     }
 
@@ -268,7 +268,7 @@ proc decode_pair(payload: CodecPayload) -> DecodedPair {
       i += 1
     }
 
-    if sep < 4 || sep + 1 >= raw.len { give DecodedPair("", "", false) }
+    if sep < 4  or  sep + 1 >= raw.len { give DecodedPair("", "", false) }
     give DecodedPair(raw.slice(3, sep), raw.slice(sep + 1, raw.len), true)
   }
 
@@ -282,7 +282,7 @@ proc decode_pair(payload: CodecPayload) -> DecodedPair {
     }
     i += 1
   }
-  if sep <= 0 || sep + 1 > raw.len { give DecodedPair("", "", false) }
+  if sep <= 0  or  sep + 1 > raw.len { give DecodedPair("", "", false) }
   give DecodedPair(raw.slice(0, sep), raw.slice(sep + 1, raw.len), true)
 }
 
@@ -313,12 +313,12 @@ proc decode_pair_checked(payload: CodecPayload, cfg: CodecConfig) -> CodecResult
 }
 
 proc can_decode(payload: CodecPayload) -> bool {
-  give payload.valid && payload.data.len > 0
+  give payload.valid  and  payload.data.len > 0
 }
 
 proc convert(payload: CodecPayload, target: CodecFormat) -> CodecPayload {
   let pair = decode_pair(payload)
-  if !pair.ok { give CodecPayload(target, "", false) }
+  if not pair.ok { give CodecPayload(target, "", false) }
   give encode(target, pair.key, pair.value)
 }
 
@@ -346,7 +346,7 @@ proc fingerprint(payload: CodecPayload) -> string {
 proc roundtrip(fmt: CodecFormat, key: string, value: string) -> bool {
   let encoded = encode(fmt, key, value)
   let pair = decode_pair(encoded)
-  give can_decode(encoded) && pair.ok && pair.key == key && pair.value == value
+  give can_decode(encoded)  and  pair.ok  and  pair.key == key  and  pair.value == value
 }
 
 proc codec_validate_code(payload: CodecPayload) -> string {

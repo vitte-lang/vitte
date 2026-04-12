@@ -149,19 +149,19 @@ proc check_live(h: HealthInput) -> bool {
 }
 
 proc deps_ok(h: HealthInput) -> bool {
-  give h.db_ok && h.cache_ok && h.queue_ok
+  give h.db_ok  and  h.cache_ok  and  h.queue_ok
 }
 
 proc check_ready(h: HealthInput) -> bool {
-  give h.started && deps_ok(h) && h.warmed
+  give h.started  and  deps_ok(h)  and  h.warmed
 }
 
 proc check_startup(h: HealthInput) -> bool {
-  give h.started && h.migrations_ok
+  give h.started  and  h.migrations_ok
 }
 
 proc check_operational(h: HealthInput) -> bool {
-  give check_ready(h) && check_startup(h)
+  give check_ready(h)  and  check_startup(h)
 }
 
 proc status_code_live(h: HealthInput) -> int {
@@ -181,12 +181,12 @@ proc status_code_startup(h: HealthInput) -> int {
 
 proc failing_components(h: HealthInput) -> [string] {
   let out: [string] = []
-  if !h.db_ok { out = out.push("db") }
-  if !h.cache_ok { out = out.push("cache") }
-  if !h.queue_ok { out = out.push("queue") }
-  if !h.migrations_ok { out = out.push("migrations") }
-  if !h.warmed { out = out.push("warmed") }
-  if !h.started { out = out.push("started") }
+  if not h.db_ok { out = out.push("db") }
+  if not h.cache_ok { out = out.push("cache") }
+  if not h.queue_ok { out = out.push("queue") }
+  if not h.migrations_ok { out = out.push("migrations") }
+  if not h.warmed { out = out.push("warmed") }
+  if not h.started { out = out.push("started") }
   give out
 }
 
@@ -206,7 +206,7 @@ proc score_percent(h: HealthInput) -> int {
 }
 
 proc status_text(h: HealthInput) -> string {
-  if !check_live(h) { give "down" }
+  if not check_live(h) { give "down" }
   if check_operational(h) { give "ok" }
   if check_ready(h) { give "starting" }
   give "degraded"
@@ -231,18 +231,18 @@ proc component_ok_checked(h: HealthInput, name: string) -> HealthResult[bool] {
 
 proc ready_blockers(h: HealthInput) -> [string] {
   let out: [string] = []
-  if !h.started { out = out.push("started") }
-  if !h.db_ok { out = out.push("db") }
-  if !h.cache_ok { out = out.push("cache") }
-  if !h.queue_ok { out = out.push("queue") }
-  if !h.warmed { out = out.push("warmed") }
+  if not h.started { out = out.push("started") }
+  if not h.db_ok { out = out.push("db") }
+  if not h.cache_ok { out = out.push("cache") }
+  if not h.queue_ok { out = out.push("queue") }
+  if not h.warmed { out = out.push("warmed") }
   give out
 }
 
 proc startup_blockers(h: HealthInput) -> [string] {
   let out: [string] = []
-  if !h.started { out = out.push("started") }
-  if !h.migrations_ok { out = out.push("migrations") }
+  if not h.started { out = out.push("started") }
+  if not h.migrations_ok { out = out.push("migrations") }
   give out
 }
 
@@ -252,12 +252,12 @@ proc status_code_operational(h: HealthInput) -> int {
 }
 
 proc is_down(h: HealthInput) -> bool {
-  give !check_live(h)
+  give not check_live(h)
 }
 
 proc is_degraded(h: HealthInput) -> bool {
-  if !check_live(h) { give false }
-  give !check_operational(h)
+  if not check_live(h) { give false }
+  give not check_operational(h)
 }
 
 proc severity(h: HealthInput) -> string {
@@ -282,17 +282,17 @@ proc verify_invariants(h: HealthInput) -> bool {
   if h.warmed { score += 1 }
   if h.started { score += 1 }
   score = score * 100 / 6
-  if check_operational(h) && score < cfg.min_score_ok_percent { give false }
-  if is_down(h) && status_text(h) != "down" { give false }
-  if check_live(h) && status_code_live(h) != 200 { give false }
+  if check_operational(h)  and  score < cfg.min_score_ok_percent { give false }
+  if is_down(h)  and  status_text(h) != "down" { give false }
+  if check_live(h)  and  status_code_live(h) != 200 { give false }
   give true
 }
 
 proc verify_invariants_with_config(h: HealthInput, cfg: HealthConfig) -> bool {
   let score = score_percent(h)
-  if check_operational(h) && score < cfg.min_score_ok_percent { give false }
-  if is_down(h) && status_text(h) != "down" { give false }
-  if check_live(h) && status_code_live(h) != 200 { give false }
+  if check_operational(h)  and  score < cfg.min_score_ok_percent { give false }
+  if is_down(h)  and  status_text(h) != "down" { give false }
+  if check_live(h)  and  status_code_live(h) != 200 { give false }
   give true
 }
 

@@ -3,39 +3,39 @@ use vitte/arduino as arduino_pkg
 entry main at core/app {
   let mx = arduino_pkg.compatibility_matrix()
   if mx.len != 3 {
-    return 1
+    give 1
   }
 
   if mx[0].max_pin < 13 {
-    return 2
+    give 2
   }
   if arduino_pkg.profile_supports_network(arduino_pkg.ArduinoProfile.Uno) {
-    return 3
+    give 3
   }
-  if !arduino_pkg.profile_supports_network(arduino_pkg.ArduinoProfile.Esp32) {
-    return 4
+  if not arduino_pkg.profile_supports_network(arduino_pkg.ArduinoProfile.Esp32) {
+    give 4
   }
 
   let d = arduino_pkg.compile_diag(arduino_pkg.ArduinoProfile.Uno, arduino_pkg.ArduinoError.InvalidPin, "pin=99")
-  if d.message.len == 0 || d.code != "VITTE-A0012" {
-    return 5
+  if d.message.len == 0  or  d.code != "VITTE-A0012" {
+    give 5
   }
 
   if arduino_pkg.example_minimal_blink(arduino_pkg.ArduinoProfile.Uno).len == 0 {
-    return 6
+    give 6
   }
   if arduino_pkg.example_minimal_io(arduino_pkg.ArduinoProfile.Mega).len == 0 {
-    return 7
+    give 7
   }
 
   let n0 = arduino_pkg.example_minimal_net(arduino_pkg.ArduinoProfile.Uno)
   when n0 is arduino_pkg.ArduinoResult.Ok {
-    return 8
+    give 8
   }
   let n1 = arduino_pkg.example_minimal_net(arduino_pkg.ArduinoProfile.Esp32)
   when n1 is arduino_pkg.ArduinoResult.Err {
-    return 9
+    give 9
   }
 
-  return 0
+  give 0
 }

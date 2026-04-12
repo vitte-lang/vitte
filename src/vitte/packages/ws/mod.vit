@@ -79,13 +79,13 @@ proc close_frame(reason: string) -> WsFrame {
 }
 
 proc is_ws_url(url: string) -> bool {
-  if url.len >= 5 && url.slice(0, 5) == "ws://" { give true }
-  if url.len >= 6 && url.slice(0, 6) == "wss://" { give true }
+  if url.len >= 5  and  url.slice(0, 5) == "ws://" { give true }
+  if url.len >= 6  and  url.slice(0, 6) == "wss://" { give true }
   give false
 }
 
 proc connect(url: string) -> WsConn {
-  if !is_ws_url(url) {
+  if not is_ws_url(url) {
     give WsConn(url, WsState.Closed, default_config(), [], [], 0)
   }
   give WsConn(url, WsState.Connecting, default_config(), [], [], 0)
@@ -119,12 +119,12 @@ proc can_send(conn: WsConn) -> bool {
 
 proc validate_frame(conn: WsConn, frm: WsFrame) -> WsError {
   if frm.payload.len > conn.config.max_frame_size { give WsError.FrameTooLarge }
-  if frm.opcode == WsOpcode.Close && frm.payload.len > 123 { give WsError.Protocol }
+  if frm.opcode == WsOpcode.Close  and  frm.payload.len > 123 { give WsError.Protocol }
   give WsError.None
 }
 
 proc send(conn: WsConn, frm: WsFrame) -> WsConn {
-  if !can_send(conn) { give conn }
+  if not can_send(conn) { give conn }
   if validate_frame(conn, frm) != WsError.None { give conn }
   give WsConn(conn.url, conn.state, conn.config, conn.sent.push(frm), conn.recv, conn.last_tick)
 }

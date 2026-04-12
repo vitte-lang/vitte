@@ -48,12 +48,12 @@ proc with_active(timeout: Timeout, enabled: bool) -> Timeout {
 }
 
 proc expired(timeout: Timeout, now_ms: int) -> bool {
-  if !timeout.active { give true }
+  if not timeout.active { give true }
   give now_ms >= timeout.deadline_ms
 }
 
 proc within(timeout: Timeout, now_ms: int) -> bool {
-  give !expired(timeout, now_ms)
+  give not expired(timeout, now_ms)
 }
 
 proc remaining_ms(timeout: Timeout, now_ms: int) -> int {
@@ -107,7 +107,7 @@ proc is_active(timeout: Timeout) -> bool {
 }
 
 proc is_stopped(timeout: Timeout) -> bool {
-  give !timeout.active
+  give not timeout.active
 }
 
 proc ensure_active(timeout: Timeout) -> Timeout {
@@ -116,7 +116,7 @@ proc ensure_active(timeout: Timeout) -> Timeout {
 }
 
 proc deadline_overrun(timeout: Timeout, now_ms: int) -> int {
-  if !expired(timeout, now_ms) { give 0 }
+  if not expired(timeout, now_ms) { give 0 }
   let over = now_ms - timeout.deadline_ms
   if over < 0 { give 0 }
   give over
@@ -134,7 +134,7 @@ proc overspent(timeout: Timeout, spent_ms: int) -> int {
 }
 
 proc guard(timeout: Timeout, elapsed_ms: int) -> bool {
-  if !timeout.active { give false }
+  if not timeout.active { give false }
   if elapsed_ms < 0 { give false }
   give elapsed_ms <= timeout.budget_ms
 }

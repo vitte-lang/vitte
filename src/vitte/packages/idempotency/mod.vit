@@ -143,7 +143,7 @@ proc expire_keys(store: IdempotencyStore, now_tick: int) -> IdempotencyStore {
   let i: int = 0
   while i < store.records.len {
     let rec = store.records[i]
-    if rec.active && now_tick < rec.expires_at {
+    if rec.active  and  now_tick < rec.expires_at {
       out = out.push(rec)
     }
     i += 1
@@ -156,7 +156,7 @@ proc get_record(store: IdempotencyStore, key: string, now_tick: int) -> Idempote
   let i: int = 0
   while i < s.records.len {
     let rec = s.records[i]
-    if rec.active && rec.key == key {
+    if rec.active  and  rec.key == key {
       give rec
     }
     i += 1
@@ -196,7 +196,7 @@ proc check_key(store: IdempotencyStore, key: string, now_tick: int) -> bool {
   let i: int = 0
   while i < s.records.len {
     let rec = s.records[i]
-    if rec.active && rec.key == key {
+    if rec.active  and  rec.key == key {
       give false
     }
     i += 1
@@ -206,7 +206,7 @@ proc check_key(store: IdempotencyStore, key: string, now_tick: int) -> bool {
 
 proc put_if_absent(store: IdempotencyStore, key: string, result: string, ttl_ticks: int, now_tick: int) -> IdempotencyStore {
   let s = expire_keys(store, now_tick)
-  if !check_key(s, key, now_tick) { give s }
+  if not check_key(s, key, now_tick) { give s }
 
   let expiry = now_tick + ttl_ticks
   if ttl_ticks <= 0 { expiry = now_tick + 1 }
@@ -249,7 +249,7 @@ proc store_result(store: IdempotencyStore, key: string, result: string, ttl_tick
     i += 1
   }
 
-  if !found {
+  if not found {
     out = out.push(IdempotencyRecord(key, result, expiry, true))
   }
 
@@ -261,7 +261,7 @@ proc replay_result(store: IdempotencyStore, key: string, now_tick: int) -> strin
   let i: int = 0
   while i < s.records.len {
     let rec = s.records[i]
-    if rec.active && rec.key == key {
+    if rec.active  and  rec.key == key {
       give rec.result
     }
     i += 1
@@ -271,7 +271,7 @@ proc replay_result(store: IdempotencyStore, key: string, now_tick: int) -> strin
 
 proc ttl_left(store: IdempotencyStore, key: string, now_tick: int) -> int {
   let rec = get_record(store, key, now_tick)
-  if !rec.active { give -1 }
+  if not rec.active { give -1 }
   let left = rec.expires_at - now_tick
   if left < 0 { give 0 }
   give left

@@ -43,7 +43,7 @@ proc flush_batch(outbox: Outbox, max_batch: int) -> Outbox {
   let i: int = 0
   while i < outbox.events.len {
     let ev = outbox.events[i]
-    if !ev.sent && !ev.flushed && flushed < max {
+    if not ev.sent  and  not ev.flushed  and  flushed < max {
       out = out.push(OutboxEvent(ev.id, ev.topic, ev.payload, ev.sent, true, ev.attempts + 1))
       flushed += 1
     } else {
@@ -85,7 +85,7 @@ proc pending_count(outbox: Outbox) -> int {
   let count: int = 0
   let i: int = 0
   while i < outbox.events.len {
-    if !outbox.events[i].sent {
+    if not outbox.events[i].sent {
       count += 1
     }
     i += 1
@@ -98,7 +98,7 @@ proc flushed_pending_count(outbox: Outbox) -> int {
   let i: int = 0
   while i < outbox.events.len {
     let ev = outbox.events[i]
-    if !ev.sent && ev.flushed {
+    if not ev.sent  and  ev.flushed {
       count += 1
     }
     i += 1
@@ -164,7 +164,7 @@ proc pending_ids(outbox: Outbox) -> [int] {
   let i: int = 0
   while i < outbox.events.len {
     let ev = outbox.events[i]
-    if !ev.sent {
+    if not ev.sent {
       out = out.push(ev.id)
     }
     i += 1
@@ -223,7 +223,7 @@ proc next_pending(outbox: Outbox) -> OutboxEvent {
   let i: int = 0
   while i < outbox.events.len {
     let ev = outbox.events[i]
-    if !ev.sent { give ev }
+    if not ev.sent { give ev }
     i += 1
   }
   give OutboxEvent(-1, "", "", false, false, 0)
@@ -234,7 +234,7 @@ proc retry_event(outbox: Outbox, event_id: int) -> Outbox {
   let i: int = 0
   while i < outbox.events.len {
     let ev = outbox.events[i]
-    if ev.id == event_id && !ev.sent {
+    if ev.id == event_id  and  not ev.sent {
       out = out.push(OutboxEvent(ev.id, ev.topic, ev.payload, false, false, ev.attempts + 1))
     } else {
       out = out.push(ev)
@@ -248,7 +248,7 @@ proc prune_sent(outbox: Outbox) -> Outbox {
   let out: [OutboxEvent] = []
   let i: int = 0
   while i < outbox.events.len {
-    if !outbox.events[i].sent {
+    if not outbox.events[i].sent {
       out = out.push(outbox.events[i])
     }
     i += 1
@@ -329,7 +329,7 @@ proc pending_by_topic(outbox: Outbox, topic: string) -> int {
   let i: int = 0
   while i < outbox.events.len {
     let ev = outbox.events[i]
-    if !ev.sent && ev.topic == topic {
+    if not ev.sent  and  ev.topic == topic {
       count += 1
     }
     i += 1
@@ -342,8 +342,8 @@ proc oldest_pending_id(outbox: Outbox) -> int {
   let i: int = 0
   while i < outbox.events.len {
     let ev = outbox.events[i]
-    if !ev.sent {
-      if best < 0 || ev.id < best {
+    if not ev.sent {
+      if best < 0  or  ev.id < best {
         best = ev.id
       }
     }
@@ -357,7 +357,7 @@ proc retry_all_pending(outbox: Outbox) -> Outbox {
   let i: int = 0
   while i < outbox.events.len {
     let ev = outbox.events[i]
-    if !ev.sent {
+    if not ev.sent {
       out = out.push(OutboxEvent(ev.id, ev.topic, ev.payload, false, false, ev.attempts + 1))
     } else {
       out = out.push(ev)

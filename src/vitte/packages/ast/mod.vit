@@ -254,7 +254,7 @@ proc normalize_nodes(nodes: [AstNode]) -> [AstNode] {
   let i: int = 0
   while i < nodes.len {
     let n0 = nodes[i]
-    if n0.id >= 0 && !contains_id(ids, n0.id) {
+    if n0.id >= 0  and  not contains_id(ids, n0.id) {
       ids = ids.push(n0.id)
       uniq = uniq.push(AstNode(n0.id,
                                n0.kind,
@@ -273,7 +273,7 @@ proc normalize_nodes(nodes: [AstNode]) -> [AstNode] {
     let n1 = uniq[i]
     let p = n1.parent_id
     if p == n1.id { p = -1 }
-    if p >= 0 && !contains_id(ids, p) { p = -1 }
+    if p >= 0  and  not contains_id(ids, p) { p = -1 }
     pfix = pfix.push(AstNode(n1.id, n1.kind, n1.name, n1.value, p, [], n1.span))
     i += 1
   }
@@ -435,7 +435,7 @@ proc ast_validate_code(m: AstModule) -> string {
     if ast_validate_pkg.valid_span(m.nodes[i].span.start, m.nodes[i].span.end) == false { give "AST-NODE-SPAN" }
     i += 1
   }
-  if depth(m) > m.max_depth_guard && m.max_depth_guard > 0 { give "AST-TREE-budget_exceeded" }
+  if depth(m) > m.max_depth_guard  and  m.max_depth_guard > 0 { give "AST-TREE-budget_exceeded" }
   give "AST-OK"
 }
 
@@ -491,7 +491,7 @@ proc max_children(m: AstModule) -> int {
 }
 
 proc max_nodes(m: AstModule) -> int {
-  if m.max_visits > 0 && m.max_visits < m.nodes.len { give m.max_visits }
+  if m.max_visits > 0  and  m.max_visits < m.nodes.len { give m.max_visits }
   give m.nodes.len
 }
 
@@ -500,7 +500,7 @@ proc suggest_fold_limit(m: AstModule, requested: int) -> int {
   let out = requested
   if out <= 0 { out = base * 2 }
   if out < base { out = base }
-  if m.max_visits > 0 && out > m.max_visits { out = m.max_visits }
+  if m.max_visits > 0  and  out > m.max_visits { out = m.max_visits }
   if out < 1 { out = 1 }
   give out
 }
@@ -510,7 +510,7 @@ proc suggest_traversal_budget(m: AstModule, requested: int) -> int {
   let out = requested
   if out <= 0 { out = base * 3 }
   if out < base { out = base }
-  if m.max_visits > 0 && out > m.max_visits { out = m.max_visits }
+  if m.max_visits > 0  and  out > m.max_visits { out = m.max_visits }
   if out < 1 { out = 1 }
   give out
 }
@@ -520,7 +520,7 @@ proc suggest_prune_depth(m: AstModule, requested: int) -> int {
   let out = requested
   if out <= 0 { out = d }
   if out > d { out = d }
-  if m.max_depth_guard > 0 && out > m.max_depth_guard { out = m.max_depth_guard }
+  if m.max_depth_guard > 0  and  out > m.max_depth_guard { out = m.max_depth_guard }
   if out < 1 { out = 1 }
   give out
 }
@@ -528,7 +528,7 @@ proc suggest_prune_depth(m: AstModule, requested: int) -> int {
 proc validate_tree(m: AstModule) -> AstValidation {
   if m.name.len == 0 { give AstValidation(false, AstError.EmptyModule, -1) }
 
-  if m.max_visits > 0 && m.nodes.len > m.max_visits {
+  if m.max_visits > 0  and  m.nodes.len > m.max_visits {
     give AstValidation(false, AstError.BudgetExceeded, -1)
   }
 
@@ -541,14 +541,14 @@ proc validate_tree(m: AstModule) -> AstValidation {
     if contains_id(ids, n.id) { give AstValidation(false, AstError.DuplicateId, n.id) }
     ids = ids.push(n.id)
 
-    if n.span.start < 0 || n.span.end < n.span.start {
+    if n.span.start < 0  or  n.span.end < n.span.start {
       give AstValidation(false, AstError.InvalidSpan, n.id)
     }
 
     if n.parent_id == n.id {
       give AstValidation(false, AstError.InvalidParent, n.id)
     }
-    if n.parent_id >= 0 && !contains_id(ids, n.parent_id) {
+    if n.parent_id >= 0  and  not contains_id(ids, n.parent_id) {
       let parent_idx = find_index_by_id(m, n.parent_id)
       if parent_idx < 0 {
         give AstValidation(false, AstError.InvalidParent, n.id)
@@ -592,7 +592,7 @@ proc validate_tree(m: AstModule) -> AstValidation {
     i += 1
   }
 
-  if m.max_depth_guard > 0 && depth(m) > m.max_depth_guard {
+  if m.max_depth_guard > 0  and  depth(m) > m.max_depth_guard {
     give AstValidation(false, AstError.BudgetExceeded, -1)
   }
 
@@ -617,14 +617,14 @@ proc validate(m: AstModule) -> bool {
 
 proc dedup_ids(m: AstModule) -> bool {
   let v = validate_tree(m)
-  if !v.ok && v.error == AstError.DuplicateId { give false }
-  if !v.ok { give true }
+  if not v.ok  and  v.error == AstError.DuplicateId { give false }
+  if not v.ok { give true }
   give true
 }
 
 proc module_health(m: AstModule) -> string {
   let v = validate_tree(m)
-  if !v.ok { give ast_error_name(v.error) }
+  if not v.ok { give ast_error_name(v.error) }
   give "ok"
 }
 
@@ -779,7 +779,7 @@ proc stable_walk_bfs(m: AstModule) -> [int] {
 
 proc map_nodes(m: AstModule) -> AstModule {
   let pre = validate_tree(m)
-  if !pre.ok { give m }
+  if not pre.ok { give m }
 
   let out: [AstNode] = []
   let i: int = 0
@@ -791,13 +791,13 @@ proc map_nodes(m: AstModule) -> AstModule {
 
   let next = normalize_with_ops(AstModule(m.name, out, m.transform_ops + 1, m.max_visits, m.max_depth_guard), 0)
   let post = validate_tree(next)
-  if !post.ok { give m }
+  if not post.ok { give m }
   give next
 }
 
 proc filter_nodes(m: AstModule, drop_kind: AstKind) -> AstModule {
   let pre = validate_tree(m)
-  if !pre.ok { give m }
+  if not pre.ok { give m }
 
   let out: [AstNode] = []
   let i: int = 0
@@ -810,13 +810,13 @@ proc filter_nodes(m: AstModule, drop_kind: AstKind) -> AstModule {
 
   let next = normalize_with_ops(AstModule(m.name, out, m.transform_ops + 1, m.max_visits, m.max_depth_guard), 0)
   let post = validate_tree(next)
-  if !post.ok { give m }
+  if not post.ok { give m }
   give next
 }
 
 proc rewrite(m: AstModule, from_value: string, to_value: string) -> AstModule {
   let pre = validate_tree(m)
-  if !pre.ok { give m }
+  if not pre.ok { give m }
 
   let out: [AstNode] = []
   let i: int = 0
@@ -832,19 +832,19 @@ proc rewrite(m: AstModule, from_value: string, to_value: string) -> AstModule {
 
   let next = normalize_with_ops(AstModule(m.name, out, m.transform_ops + 1, m.max_visits, m.max_depth_guard), 0)
   let post = validate_tree(next)
-  if !post.ok { give m }
+  if not post.ok { give m }
   give next
 }
 
 proc normalize(m: AstModule) -> AstModule {
   let pre = validate_tree(m)
-  if !pre.ok {
+  if not pre.ok {
     give normalize_with_ops(m, 1)
   }
 
   let next = normalize_with_ops(m, 1)
   let post = validate_tree(next)
-  if !post.ok { give m }
+  if not post.ok { give m }
   give next
 }
 
@@ -925,7 +925,7 @@ proc parse_decimal(text: string) -> int {
   let i: int = 0
   while i < text.len {
     let c = text[i].to_int()
-    if c < 48 || c > 57 { give -1 }
+    if c < 48  or  c > 57 { give -1 }
     out = out * 10 + (c - 48)
     i += 1
   }
@@ -1003,11 +1003,11 @@ proc property_tree_integrity(rounds: int, width: int) -> PropertyReport {
     let m3 = add_node(m2, ast_node_with_links(2, AstKind.Call, "f", "", 0, [], ast_span(3, 4)))
 
     let v1 = validate_tree(m3)
-    if !v1.ok { ok = false }
+    if not v1.ok { ok = false }
     checks += 1
 
     let ms = ast_metrics(m3)
-    if ms.node_count < 1 || ms.leaf_count < 1 || ms.depth < 1 { ok = false }
+    if ms.node_count < 1  or  ms.leaf_count < 1  or  ms.depth < 1 { ok = false }
     checks += 1
 
     r += 1
@@ -1035,7 +1035,7 @@ proc property_normalize_stability(rounds: int, width: int) -> PropertyReport {
     checks += 1
 
     let v = validate_tree(n2)
-    if !v.ok { ok = false }
+    if not v.ok { ok = false }
     checks += 1
 
     r += 1
@@ -1075,7 +1075,7 @@ proc fuzz_tree_matrix(seed: int, steps: int) -> FuzzReport {
     visits = visits + walk.len
 
     let v = validate_tree(m)
-    if !v.ok {
+    if not v.ok {
       m = normalize(m)
     }
 
@@ -1144,7 +1144,7 @@ proc stable_ready() -> bool {
   let m2 = add_node(m1, ast_node_with_links(1, AstKind.Let, "x", "1", 0, [], ast_span(0, 1)))
   if ast_validate(m2) == false { give false }
   let h = ast_health(m2)
-  if h.code != "AST-OK" && h.code != "AST-HIGH-PRESSURE" && h.code != "AST-DEPTH-GUARD" { give false }
+  if h.code != "AST-OK"  and  h.code != "AST-HIGH-PRESSURE"  and  h.code != "AST-DEPTH-GUARD" { give false }
   if stable_walk_preorder(m2).len == 0 { give false }
   give true
 }

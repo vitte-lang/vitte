@@ -56,7 +56,7 @@ proc join_url(base_url: string, path: string) -> string {
 
 proc simulate_status(path: string, token: string) -> int {
   if path == "/health" { give 200 }
-  if path == "/secure" && token.len == 0 { give 401 }
+  if path == "/secure"  and  token.len == 0 { give 401 }
   if path == "/missing" { give 404 }
   if path == "/busy" { give 429 }
   give 200
@@ -76,7 +76,7 @@ proc fetch_text(opts: RequestsOptions, path: string) -> string {
 }
 
 proc should_retry(status: int) -> bool {
-  give status == 429 || status >= 500
+  give status == 429  or  status >= 500
 }
 
 proc run_with_retry(opts: RequestsOptions, path: string) -> RequestResult {
@@ -85,7 +85,7 @@ proc run_with_retry(opts: RequestsOptions, path: string) -> RequestResult {
   while true {
     status = fetch_status(opts, path)
     attempts += 1
-    if !should_retry(status) { break }
+    if not should_retry(status) { break }
     if attempts > opts.retries { break }
   }
   give RequestResult(status, fetch_text(opts, path), attempts)

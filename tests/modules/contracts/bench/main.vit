@@ -1,55 +1,55 @@
 use vitte/bench as bench
 
 proc main() -> i32 {
-  if !bench.ready() { return 1 }
+  if not bench.ready() { give 1 }
 
   let c = bench.bench_case("case-1", 100)
   let r0 = bench.run_start(c, 10)
   let r1 = bench.run_stop(r0, 20)
   let s = bench.summarize(r1)
-  if s.case_name != "case-1" { return 2 }
+  if s.case_name != "case-1" { give 2 }
 
   let values = [5, 1, 2, 4, 3]
-  if bench.percentile(values, 50) != 3 { return 3 }
-  if bench.percentile50(values) != 3 { return 4 }
-  if bench.percentile25(values) != 2 { return 4 }
-  if bench.percentile75(values) != 4 { return 4 }
-  if bench.percentile90(values) != 4 { return 5 }
-  if bench.percentile95(values) != 4 { return 6 }
-  if bench.min_value(values) != 1 { return 6 }
-  if bench.max_value(values) != 5 { return 6 }
+  if bench.percentile(values, 50) != 3 { give 3 }
+  if bench.percentile50(values) != 3 { give 4 }
+  if bench.percentile25(values) != 2 { give 4 }
+  if bench.percentile75(values) != 4 { give 4 }
+  if bench.percentile90(values) != 4 { give 5 }
+  if bench.percentile95(values) != 4 { give 6 }
+  if bench.min_value(values) != 1 { give 6 }
+  if bench.max_value(values) != 5 { give 6 }
   let stats = bench.sample_stats(values)
-  if stats.count != 5 || stats.avg != 3 { return 6 }
-  if bench.throughput_samples([10, 20], 100).len != 2 { return 6 }
+  if stats.count != 5  or  stats.avg != 3 { give 6 }
+  if bench.throughput_samples([10, 20], 100).len != 2 { give 6 }
 
-  if !bench.run_valid(r1) { return 7 }
-  if bench.run_valid(bench.BenchRun("", 0, 0, 1)) { return 8 }
+  if not bench.run_valid(r1) { give 7 }
+  if bench.run_valid(bench.BenchRun("", 0, 0, 1)) { give 8 }
 
   let a = bench.run_stop(bench.run_start(bench.bench_case("a", 1000), 0), 100)
   let b = bench.run_stop(bench.run_start(bench.bench_case("b", 1000), 0), 150)
-  if bench.compare_percent_symmetric(a, b) <= 0 { return 9 }
-  if !bench.regression_gate(a, b, 1, [100, 105, 95, 102, 98]) { return 9 }
+  if bench.compare_percent_symmetric(a, b) <= 0 { give 9 }
+  if not bench.regression_gate(a, b, 1, [100, 105, 95, 102, 98]) { give 9 }
 
   let t = bench.regression_trend(a, b, [10, 11, 12, 10, 10], 2)
-  if !t.improved { return 10 }
-  if t.flaky { return 11 }
+  if not t.improved { give 10 }
+  if t.flaky { give 11 }
   let base = bench.baseline_from_run(b, [10, 11, 12, 10, 10], 1)
-  if !bench.baseline_is_compatible(base, b) { return 11 }
+  if not bench.baseline_is_compatible(base, b) { give 11 }
   let gate = bench.gate_eval(a, base, [10, 11, 12, 10, 10], 5, 20)
-  if !gate.pass { return 11 }
+  if not gate.pass { give 11 }
   let report = bench.report_build(a, base, [10, 11, 12, 10, 10], 5, 20)
-  if !report.gate_pass { return 11 }
-  if bench.ci_exit_code(gate) != 0 { return 11 }
-  if bench.report_text(report).len == 0 { return 11 }
-  if bench.report_markdown(report).len == 0 { return 11 }
+  if not report.gate_pass { give 11 }
+  if bench.ci_exit_code(gate) != 0 { give 11 }
+  if bench.report_text(report).len == 0 { give 11 }
+  if bench.report_markdown(report).len == 0 { give 11 }
 
-  if bench.diagnostics_code_for_run(r1, [10, 20]) != "" { return 12 }
-  if bench.diagnostics_code_for_run(r1, []) != "VITTE-BENCH0003" { return 13 }
-  if bench.diagnostics_code_for_samples([10, 11, 10, 200]) != "VITTE-BENCH0005" { return 13 }
-  if bench.diagnostics_snapshot(r1, [10, 20]).len == 0 { return 13 }
-  if bench.diagnostics_code_for_gate(gate).len != 0 { return 13 }
-  if bench.diagnostics_snapshot_gate(gate).len == 0 { return 13 }
+  if bench.diagnostics_code_for_run(r1, [10, 20]) != "" { give 12 }
+  if bench.diagnostics_code_for_run(r1, []) != "VITTE-BENCH0003" { give 13 }
+  if bench.diagnostics_code_for_samples([10, 11, 10, 200]) != "VITTE-BENCH0005" { give 13 }
+  if bench.diagnostics_snapshot(r1, [10, 20]).len == 0 { give 13 }
+  if bench.diagnostics_code_for_gate(gate).len != 0 { give 13 }
+  if bench.diagnostics_snapshot_gate(gate).len == 0 { give 13 }
 
-  if bench.package_meta() != "vitte/bench" { return 14 }
-  return 0
+  if bench.package_meta() != "vitte/bench" { give 14 }
+  give 0
 }

@@ -4,29 +4,29 @@ proc main() -> i32 {
   let cfg = auth.with_require_otp(auth.with_clock_skew(auth.default_config(), 5), true)
   let creds = auth.Credentials("admin", "admin123456", "000000")
   let p = auth.authenticate_with_config(creds, cfg)
-  if p.role != auth.AuthRole.Admin { return 1 }
+  if p.role != auth.AuthRole.Admin { give 1 }
 
   let s = auth.issue_token_with_config(p, cfg)
-  if s.token.len == 0 { return 2 }
-  if auth.validate_with_config(s, s.expires_at + 4, cfg) != auth.AuthError.None { return 3 }
-  if auth.validate_with_config(s, s.expires_at + 6, cfg) != auth.AuthError.Expired { return 4 }
+  if s.token.len == 0 { give 2 }
+  if auth.validate_with_config(s, s.expires_at + 4, cfg) != auth.AuthError.None { give 3 }
+  if auth.validate_with_config(s, s.expires_at + 6, cfg) != auth.AuthError.Expired { give 4 }
 
   let cfg_inactive = auth.with_require_active(auth.default_config(), false)
   let si = auth.Session(auth.Principal("alice", auth.AuthRole.User, false), "tok:alice", 10)
-  if auth.validate_with_config(si, 1, cfg_inactive) != auth.AuthError.None { return 5 }
+  if auth.validate_with_config(si, 1, cfg_inactive) != auth.AuthError.None { give 5 }
 
-  if !auth.valid_otp("123456") { return 6 }
-  if auth.valid_otp("12ab56") { return 7 }
+  if not auth.valid_otp("123456") { give 6 }
+  if auth.valid_otp("12ab56") { give 7 }
 
   let cfg_service = auth.with_allow_service(auth.default_config(), false)
   let svc = auth.principal_service("svc")
   let ss = auth.issue_token_with_config(svc, cfg_service)
   let d = auth.decide_access_with_config(ss, auth.AuthRole.User, 1, cfg_service)
-  if auth.decision_error(d) != auth.AuthError.Forbidden { return 8 }
+  if auth.decision_error(d) != auth.AuthError.Forbidden { give 8 }
 
-  if !auth.valid_expiry_with_skew(12, 10, 2) { return 9 }
-  if auth.valid_expiry_with_skew(13, 10, 2) { return 10 }
+  if not auth.valid_expiry_with_skew(12, 10, 2) { give 9 }
+  if auth.valid_expiry_with_skew(13, 10, 2) { give 10 }
 
-  if auth.package_meta() != "vitte/auth" { return 11 }
-  return 0
+  if auth.package_meta() != "vitte/auth" { give 11 }
+  give 0
 }

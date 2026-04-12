@@ -596,7 +596,7 @@ proc hot_reload_config(l: Logger, new_cfg: LogConfig) -> LogResult[Logger] {
 }
 
 proc enabled_for_emit(l: Logger, level: LogLevel, module: string) -> bool {
-  let trace_or_debug: bool = level == LogLevel.Trace || level == LogLevel.Debug
+  let trace_or_debug: bool = level == LogLevel.Trace  or  level == LogLevel.Debug
   give log_runtime_pkg.emit_enabled(
     level_rank(level),
     level_rank(l.config.min_level),
@@ -767,7 +767,7 @@ proc open_sink(l: Logger) -> LogResult[Logger] {
 }
 
 proc write_sink(l: Logger, e: LogEvent) -> LogResult[Logger] {
-  if l.sink == LogSink.File && l.config.profile == "core" {
+  if l.sink == LogSink.File  and  l.config.profile == "core" {
     let fallback: Logger = Logger(LogSink.Stderr, LogSink.Stderr, l.format, l.config, l.context_module, l.context_trace_id, l.context_span_id, l.context_fields, l.buffer, l.events, l.dropped, l.window_count, l.sample_count, l.last_key, l.last_repeat)
     give LogResult.Err(LogError.Failure("VITTE-L0002", log_runtime_pkg.diag_message("VITTE-L0002") + ";fallback=" + sink_name(fallback.sink) + ";line=" + format_event(e, l.format)))
   }

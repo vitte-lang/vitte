@@ -33,7 +33,7 @@ proc register(registry: SchemaRegistry, subject: string, version: int, fingerpri
 
   while i < registry.records.len {
     let rec = registry.records[i]
-    if rec.subject == subject && rec.version == version {
+    if rec.subject == subject  and  rec.version == version {
       out = out.push(SchemaRecord(subject, version, fingerprint, fields, true))
       replaced = true
     } else {
@@ -42,7 +42,7 @@ proc register(registry: SchemaRegistry, subject: string, version: int, fingerpri
     i += 1
   }
 
-  if !replaced {
+  if not replaced {
     out = out.push(SchemaRecord(subject, version, fingerprint, fields, true))
   }
 
@@ -54,7 +54,7 @@ proc latest(registry: SchemaRegistry, subject: string) -> SchemaRecord {
   let i: int = 0
   while i < registry.records.len {
     let rec = registry.records[i]
-    if rec.active && rec.subject == subject && rec.version >= best.version {
+    if rec.active  and  rec.subject == subject  and  rec.version >= best.version {
       best = rec
     }
     i += 1
@@ -66,7 +66,7 @@ proc get(registry: SchemaRegistry, subject: string, version: int) -> SchemaRecor
   let i: int = 0
   while i < registry.records.len {
     let rec = registry.records[i]
-    if rec.subject == subject && rec.version == version && rec.active {
+    if rec.subject == subject  and  rec.version == version  and  rec.active {
       give rec
     }
     i += 1
@@ -94,7 +94,7 @@ proc deactivate(registry: SchemaRegistry, subject: string, version: int) -> Sche
   let i: int = 0
   while i < registry.records.len {
     let rec = registry.records[i]
-    if rec.subject == subject && rec.version == version {
+    if rec.subject == subject  and  rec.version == version {
       out = out.push(SchemaRecord(rec.subject, rec.version, rec.fingerprint, rec.fields, false))
     } else {
       out = out.push(rec)
@@ -109,7 +109,7 @@ proc reactivate(registry: SchemaRegistry, subject: string, version: int) -> Sche
   let i: int = 0
   while i < registry.records.len {
     let rec = registry.records[i]
-    if rec.subject == subject && rec.version == version {
+    if rec.subject == subject  and  rec.version == version {
       out = out.push(SchemaRecord(rec.subject, rec.version, rec.fingerprint, rec.fields, true))
     } else {
       out = out.push(rec)
@@ -124,7 +124,7 @@ proc remove(registry: SchemaRegistry, subject: string, version: int) -> SchemaRe
   let i: int = 0
   while i < registry.records.len {
     let rec = registry.records[i]
-    if !(rec.subject == subject && rec.version == version) {
+    if not (rec.subject == subject  and  rec.version == version) {
       out = out.push(rec)
     }
     i += 1
@@ -163,7 +163,7 @@ proc subjects(registry: SchemaRegistry) -> [string] {
   let i: int = 0
   while i < registry.records.len {
     let name = registry.records[i].subject
-    if !list_contains(out, name) {
+    if not list_contains(out, name) {
       out = out.push(name)
     }
     i += 1
@@ -176,7 +176,7 @@ proc versions(registry: SchemaRegistry, subject: string) -> [int] {
   let i: int = 0
   while i < registry.records.len {
     let rec = registry.records[i]
-    if rec.subject == subject && rec.active {
+    if rec.subject == subject  and  rec.active {
       out = out.push(rec.version)
     }
     i += 1
@@ -189,7 +189,7 @@ proc fingerprints(registry: SchemaRegistry, subject: string) -> [string] {
   let i: int = 0
   while i < registry.records.len {
     let rec = registry.records[i]
-    if rec.subject == subject && rec.active {
+    if rec.subject == subject  and  rec.active {
       out = out.push(rec.fingerprint)
     }
     i += 1
@@ -198,26 +198,26 @@ proc fingerprints(registry: SchemaRegistry, subject: string) -> [string] {
 }
 
 proc compatibility_level(base: SchemaRecord, next: SchemaRecord) -> string {
-  if !base.active || !next.active { give "inactive" }
+  if not base.active  or  not next.active { give "inactive" }
   if base.subject != next.subject { give "subject-mismatch" }
   if base.fingerprint == next.fingerprint { give "identical" }
-  if next.version >= base.version && next.fields.len >= base.fields.len { give "backward-compatible" }
+  if next.version >= base.version  and  next.fields.len >= base.fields.len { give "backward-compatible" }
   give "breaking"
 }
 
 proc compatible(base: SchemaRecord, next: SchemaRecord) -> bool {
-  if !base.active || !next.active { give false }
+  if not base.active  or  not next.active { give false }
   if base.subject != next.subject { give false }
   if next.version < base.version { give false }
   give next.fields.len >= base.fields.len
 }
 
 proc compatible_bidirectional(left: SchemaRecord, right: SchemaRecord) -> bool {
-  give compatible(left, right) && compatible(right, left)
+  give compatible(left, right)  and  compatible(right, left)
 }
 
 proc is_breaking(base: SchemaRecord, next: SchemaRecord) -> bool {
-  give !compatible(base, next)
+  give not compatible(base, next)
 }
 
 proc diff(base: SchemaRecord, next: SchemaRecord) -> string {
@@ -231,7 +231,7 @@ proc count(registry: SchemaRegistry, subject: string) -> int {
   let n: int = 0
   let i: int = 0
   while i < registry.records.len {
-    if registry.records[i].subject == subject && registry.records[i].active {
+    if registry.records[i].subject == subject  and  registry.records[i].active {
       n += 1
     }
     i += 1
@@ -255,7 +255,7 @@ proc inactive_count(registry: SchemaRegistry) -> int {
   let n: int = 0
   let i: int = 0
   while i < registry.records.len {
-    if !registry.records[i].active {
+    if not registry.records[i].active {
       n += 1
     }
     i += 1
@@ -301,7 +301,7 @@ proc first_inactive_version(registry: SchemaRegistry, subject: string) -> int {
   let i: int = 0
   while i < registry.records.len {
     let rec = registry.records[i]
-    if rec.subject == subject && !rec.active {
+    if rec.subject == subject  and  not rec.active {
       give rec.version
     }
     i += 1
@@ -343,7 +343,7 @@ proc verify_invariants(registry: SchemaRegistry) -> bool {
     let j: int = i + 1
     while j < registry.records.len {
       let other = registry.records[j]
-      if rec.subject == other.subject && rec.version == other.version {
+      if rec.subject == other.subject  and  rec.version == other.version {
         give false
       }
       j += 1

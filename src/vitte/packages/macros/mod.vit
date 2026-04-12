@@ -58,7 +58,7 @@ proc define(macros: MacroSet, name: string, body: string) -> MacroSet {
     }
     i += 1
   }
-  if !found { out = out.push(MacroDef(name, body)) }
+  if not found { out = out.push(MacroDef(name, body)) }
   give MacroSet(out)
 }
 
@@ -176,7 +176,7 @@ proc import_pairs(lines: [string]) -> MacroSet {
     let seen_eq = false
     while j < line.len {
       let ch = line.slice(j, j + 1)
-      if ch == "=" && !seen_eq {
+      if ch == "="  and  not seen_eq {
         seen_eq = true
       } else {
         if seen_eq { value = value + ch } else { key = key + ch }
@@ -206,7 +206,7 @@ proc prefixed_names(macros: MacroSet, prefix: string) -> [string] {
   let i: int = 0
   while i < macros.defs.len {
     let n = macros.defs[i].name
-    if prefix.len <= n.len && n.slice(0, prefix.len) == prefix {
+    if prefix.len <= n.len  and  n.slice(0, prefix.len) == prefix {
       out = out.push(n)
     }
     i += 1
@@ -284,8 +284,8 @@ proc runtime_info() -> MacrosRuntimeInfo {
 proc define_checked(macros: MacroSet, name: string, body: string, cfg: MacrosConfig) -> MacrosConfigResult[MacroSet] {
   let nc = normalize_config(cfg)
   if macros_validate_pkg.valid_name(name) == false { give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig) }
-  if body.len == 0 && nc.allow_empty_body == false { give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig) }
-  if macros.defs.len >= nc.max_defs && has_macro(macros, name) == false {
+  if body.len == 0  and  nc.allow_empty_body == false { give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig) }
+  if macros.defs.len >= nc.max_defs  and  has_macro(macros, name) == false {
     give MacrosConfigResult.Err(MacrosConfigError.InvalidConfig)
   }
   give MacrosConfigResult.Ok(define(macros, name, body))

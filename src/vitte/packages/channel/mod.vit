@@ -11,7 +11,7 @@ purpose:
 
 space vitte/channel
 
-share all
+
 
 use vitte/channel/internal/runtime as channel_runtime_pkg
 use vitte/channel/internal/validate as channel_validate_pkg
@@ -200,7 +200,7 @@ proc unsubscribe(c: Channel) -> Channel {
 }
 
 proc can_send(c: Channel) -> bool {
-  give !c.closed
+  give not c.closed
 }
 
 proc send(c: Channel, message: string) -> Channel {
@@ -212,7 +212,7 @@ proc send(c: Channel, message: string) -> Channel {
   let dropped = c.dropped
 
   when c.mode is ChannelMode.Bounded {
-    if c.capacity > 0 && queue.len >= c.capacity {
+    if c.capacity > 0  and  queue.len >= c.capacity {
       queue = drop_first(queue)
       dropped += 1
     }
@@ -243,7 +243,7 @@ proc send_checked(c: Channel, message: string, cfg: ChannelConfig) -> ChannelRes
     give ChannelResult.Err(ChannelError.InvalidMessage)
   }
 
-  if c.mode == ChannelMode.Bounded && c.capacity > 0 && c.queue.len >= c.capacity && cfg.strict {
+  if c.mode == ChannelMode.Bounded  and  c.capacity > 0  and  c.queue.len >= c.capacity  and  cfg.strict {
     give ChannelResult.Err(ChannelError.Saturated)
   }
 
@@ -331,7 +331,7 @@ proc channel_normalize(c: Channel) -> Channel {
     let msg = channel_runtime_pkg.sanitize(c.queue[i], channel_policy_pkg.max_message_len())
     queue = queue.push(msg)
     i += 1
-    if cap > 0 && queue.len >= cap { break }
+    if cap > 0  and  queue.len >= cap { break }
   }
 
   let dropped = c.dropped
@@ -369,7 +369,7 @@ proc channel_health(c: Channel) -> ChannelHealth {
   if st.fill_percent >= channel_policy_pkg.warn_queue_percent() {
     give ChannelHealth(false, "queue-near-capacity", st.fill_percent, c.dropped)
   }
-  if c.closed && st.len > 0 {
+  if c.closed  and  st.len > 0 {
     give ChannelHealth(false, "closed-with-pending", st.fill_percent, c.dropped)
   }
   give ChannelHealth(true, "ok", st.fill_percent, c.dropped)

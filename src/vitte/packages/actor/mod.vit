@@ -9,7 +9,7 @@ package vitte/actor
 
 space vitte/actor
 
-share all
+
 
 use vitte/actor/internal/runtime as actor_runtime_pkg
 use vitte/actor/internal/validate as actor_validate_pkg
@@ -296,7 +296,7 @@ proc has_hook(a: Actor, hook: LifecycleHook) -> bool {
 }
 
 proc run_hook(a: Actor, hook: LifecycleHook) -> Actor {
-  if !has_hook(a, hook) { give a }
+  if not has_hook(a, hook) { give a }
   give Actor(
     a.id, a.name, a.state,
     a.mailbox, a.mailbox_capacity, a.mailbox_policy,
@@ -694,7 +694,7 @@ proc mark_ask_completed(asks: [AskRecord], message_id: string) -> AskCompleteRes
   let i: int = 0
   while i < asks.len {
     let rec = asks[i]
-    if !rec.completed && !rec.canceled && !rec.timed_out && rec.message_id == message_id {
+    if not rec.completed  and  not rec.canceled  and  not rec.timed_out  and  rec.message_id == message_id {
       out = out.push(AskRecord(rec.request_id, rec.message_id, rec.deadline_tick, rec.canceled, true, rec.timed_out))
       completed += 1
     } else {
@@ -711,7 +711,7 @@ proc sweep_asks(asks: [AskRecord], tick: int) -> AskSweepResult {
   let i: int = 0
   while i < asks.len {
     let rec = asks[i]
-    if !rec.completed && !rec.canceled && !rec.timed_out && tick >= rec.deadline_tick {
+    if not rec.completed  and  not rec.canceled  and  not rec.timed_out  and  tick >= rec.deadline_tick {
       out = out.push(AskRecord(rec.request_id, rec.message_id, rec.deadline_tick, rec.canceled, rec.completed, true))
       timed_out = timed_out.push(rec.message_id)
     } else {
@@ -766,7 +766,7 @@ proc cancel_ask(a: Actor, request_id: string) -> Actor {
   let i: int = 0
   while i < a.asks.len {
     let rec = a.asks[i]
-    if rec.request_id == request_id && !rec.completed && !rec.timed_out && !rec.canceled {
+    if rec.request_id == request_id  and  not rec.completed  and  not rec.timed_out  and  not rec.canceled {
       out = out.push(AskRecord(rec.request_id, rec.message_id, rec.deadline_tick, true, rec.completed, rec.timed_out))
       changed = true
     } else {
@@ -895,7 +895,7 @@ proc sticky_set(sticky: [RouteBinding], key: string, shard_index: int) -> [Route
     }
     i += 1
   }
-  if !found {
+  if not found {
     out = out.push(RouteBinding(key, shard_index))
   }
   give out
@@ -943,7 +943,7 @@ proc router_new(
 
 proc router_pick_index(r: ActorRouter, key: string) -> int {
   let existing = sticky_find(r.sticky, key)
-  if existing >= 0 && existing < r.workers.len { give existing }
+  if existing >= 0  and  existing < r.workers.len { give existing }
   if r.workers.len == 0 { give 0 }
   give hash_text(key) % r.workers.len
 }
@@ -953,11 +953,11 @@ proc router_scale(r: ActorRouter) -> ActorRouter {
   let workers = r.workers
   let next_id = r.next_worker_id
 
-  if backlog > r.scale_up_backlog && workers.len < r.max_workers {
+  if backlog > r.scale_up_backlog  and  workers.len < r.max_workers {
     workers = workers.push(spawn(next_id, r.name + "-w" + next_id.to_string()))
     next_id += 1
   }
-  if backlog <= r.scale_down_backlog && workers.len > r.min_workers {
+  if backlog <= r.scale_down_backlog  and  workers.len > r.min_workers {
     workers = remove_last_actor(workers)
   }
 
@@ -1050,7 +1050,7 @@ proc send(a: Actor, message: ActorMessage) -> Actor {
     give run_hook(stopped, LifecycleHook.OnError)
   }
 
-  if a.circuit_state == CircuitState.Open && a.tick < a.circuit_open_until {
+  if a.circuit_state == CircuitState.Open  and  a.tick < a.circuit_open_until {
     let blocked = with_dead_letter(a, msg, "circuit_open")
     give run_hook(blocked, LifecycleHook.OnError)
   }
@@ -1142,7 +1142,7 @@ proc step(a: Actor) -> Actor {
     base_events = base_events.push("ask_timeout")
   }
 
-  if a.state == ActorState.Stopped && a.restart_ready_tick > 0 && tick >= a.restart_ready_tick {
+  if a.state == ActorState.Stopped  and  a.restart_ready_tick > 0  and  tick >= a.restart_ready_tick {
     let resumed = Actor(
       a.id, a.name, ActorState.Idle,
       a.mailbox, a.mailbox_capacity, a.mailbox_policy,
@@ -1177,7 +1177,7 @@ proc step(a: Actor) -> Actor {
 
   let cstate = a.circuit_state
   let cfail = a.circuit_failures
-  if cstate == CircuitState.Open && tick >= a.circuit_open_until {
+  if cstate == CircuitState.Open  and  tick >= a.circuit_open_until {
     cstate = CircuitState.HalfOpen
     cfail = 0
   }
@@ -1396,17 +1396,17 @@ proc dead_letter_count(a: Actor) -> int {
 }
 
 proc dead_letter_reason(a: Actor, index: int) -> string {
-  if index < 0 || index >= a.dead_letters.len { give "" }
+  if index < 0  or  index >= a.dead_letters.len { give "" }
   give a.dead_letters[index].reason
 }
 
 proc dead_letter_payload(a: Actor, index: int) -> string {
-  if index < 0 || index >= a.dead_letters.len { give "" }
+  if index < 0  or  index >= a.dead_letters.len { give "" }
   give a.dead_letters[index].message.payload
 }
 
 proc circuit_is_open(a: Actor) -> bool {
-  give a.circuit_state == CircuitState.Open && a.tick < a.circuit_open_until
+  give a.circuit_state == CircuitState.Open  and  a.tick < a.circuit_open_until
 }
 
 proc restart_backoff(a: Actor) -> int {
@@ -1472,7 +1472,7 @@ proc event_count(a: Actor) -> int {
 }
 
 proc event_at(a: Actor, index: int) -> string {
-  if index < 0 || index >= a.events.len { give "" }
+  if index < 0  or  index >= a.events.len { give "" }
   give a.events[index]
 }
 
@@ -1481,7 +1481,7 @@ proc snapshot_count(a: Actor) -> int {
 }
 
 proc snapshot_at(a: Actor, index: int) -> string {
-  if index < 0 || index >= a.snapshots.len { give "" }
+  if index < 0  or  index >= a.snapshots.len { give "" }
   give a.snapshots[index]
 }
 
@@ -1516,7 +1516,7 @@ proc send_with_delivery(a: Actor, message: ActorMessage, semantics: DeliverySema
   }
 
   let out = send(a, message)
-  if !starts_with(message.kind, "nack") {
+  if not starts_with(message.kind, "nack") {
     give out
   }
 
@@ -1567,7 +1567,7 @@ proc delivery_attempt(a: Actor, message: ActorMessage, status: AckNack, retries:
 }
 
 proc family_fail_child_isolated(f: ActorFamily, child_index: int) -> ActorFamily {
-  if child_index < 0 || child_index >= f.children.len { give f }
+  if child_index < 0  or  child_index >= f.children.len { give f }
   let failed_child = fail(f.children[child_index])
   let children = replace_actor_at(f.children, child_index, failed_child)
   give ActorFamily(f.parent, children)
@@ -1604,7 +1604,7 @@ proc property_invariants(seed: int, rounds: int) -> InvariantReport {
     i += 1
   }
 
-  let ok = counters_non_negative(a) && no_loss_invariant(a, injected)
+  let ok = counters_non_negative(a)  and  no_loss_invariant(a, injected)
   give InvariantReport(ok, checks, injected)
 }
 
@@ -1635,7 +1635,7 @@ proc upsert_tenant_counter(counters: [TenantCounter], tenant_id: string, sent_de
     }
     i += 1
   }
-  if !found {
+  if not found {
     out = out.push(TenantCounter(tenant_id, sent_delta, denied_delta))
   }
   give out
@@ -1647,13 +1647,13 @@ proc auth_allowed(rules: [AuthRule], from_ns: string, to_ns: string) -> bool {
   let allowed = false
   while i < rules.len {
     let rule = rules[i]
-    if rule.from_ns == from_ns && rule.to_ns == to_ns {
+    if rule.from_ns == from_ns  and  rule.to_ns == to_ns {
       found = true
       allowed = rule.allow
     }
     i += 1
   }
-  if !found { give true }
+  if not found { give true }
   give allowed
 }
 
@@ -1675,7 +1675,7 @@ proc router_with_tenant_limit(r: ActorRouter, tenant_id: string, mailbox_quota: 
     }
     i += 1
   }
-  if !found {
+  if not found {
     out = out.push(TenantLimit(tenant_id, mq, sq, namespace_prefix))
   }
   give ActorRouter(
@@ -1709,10 +1709,10 @@ proc router_dispatch_secure(
   let target = planned.workers[idx]
   let allowed = auth_allowed(planned.auth_rules, from_ns, to_ns)
   let ns_ok = true
-  if lim.namespace_prefix.len > 0 && !starts_with(to_ns, lim.namespace_prefix) {
+  if lim.namespace_prefix.len > 0  and  not starts_with(to_ns, lim.namespace_prefix) {
     ns_ok = false
   }
-  if !allowed || !ns_ok || target.mailbox.len >= lim.mailbox_quota {
+  if not allowed  or  not ns_ok  or  target.mailbox.len >= lim.mailbox_quota {
     let counters = upsert_tenant_counter(planned.tenant_counters, tenant_id, 0, 1)
     give ActorRouter(
       planned.name, planned.workers, planned.sticky, planned.min_workers, planned.max_workers,
@@ -1897,7 +1897,7 @@ proc fuzz_runtime(seed: int, steps: int) -> FuzzReport {
     } else {
       a = step(a)
     }
-    if !counters_non_negative(a) { give FuzzReport(false, i + 1, sends, fails, restarts, closes) }
+    if not counters_non_negative(a) { give FuzzReport(false, i + 1, sends, fails, restarts, closes) }
     i += 1
   }
   give FuzzReport(true, n, sends, fails, restarts, closes)
@@ -2042,7 +2042,7 @@ proc router_health(r: ActorRouter) -> RouterHealthSummary {
   if actor_validate_pkg.valid_backlog_threshold(r.scale_down_backlog) == false { give RouterHealthSummary(false, "ROUTER-SCALE-DOWN", workers, backlog, delta) }
   if workers < r.min_workers { give RouterHealthSummary(false, "ROUTER-UNDER-PROVISIONED", workers, backlog, delta) }
   if workers > r.max_workers { give RouterHealthSummary(false, "ROUTER-OVER-PROVISIONED", workers, backlog, delta) }
-  if delta > r.scale_up_backlog && r.scale_up_backlog > 0 {
+  if delta > r.scale_up_backlog  and  r.scale_up_backlog > 0 {
     give RouterHealthSummary(false, "ROUTER-IMBALANCED", workers, backlog, delta)
   }
   give RouterHealthSummary(true, "ROUTER-OK", workers, backlog, delta)
@@ -2103,7 +2103,7 @@ proc suggestions_for_router(r: ActorRouter) -> [string] {
   if r.workers.len == 0 {
     give ["spawn at least one worker before dispatch", "start from router_new with min_workers >= 1"]
   }
-  if health.balance_delta > 0 && r.scale_up_backlog > 0 {
+  if health.balance_delta > 0  and  r.scale_up_backlog > 0 {
     give ["review shard affinity to reduce imbalance", "allow router_scale to add workers sooner"]
   }
   give ["router configuration is ready"]

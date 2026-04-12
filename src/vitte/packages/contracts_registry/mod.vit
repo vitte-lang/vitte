@@ -147,7 +147,7 @@ proc key_of(c: RegistryContract) -> string {
 proc contains(reg: ContractsRegistry, name: string, contract_version_value: string) -> bool {
   let i: int = 0
   while i < reg.contracts.len {
-    if reg.contracts[i].name == name && reg.contracts[i].version == contract_version_value { give true }
+    if reg.contracts[i].name == name  and  reg.contracts[i].version == contract_version_value { give true }
     i += 1
   }
   give false
@@ -156,7 +156,7 @@ proc contains(reg: ContractsRegistry, name: string, contract_version_value: stri
 proc find(reg: ContractsRegistry, name: string, contract_version_value: string) -> ContractsRegistryResult[RegistryContract] {
   let i: int = 0
   while i < reg.contracts.len {
-    if reg.contracts[i].name == name && reg.contracts[i].version == contract_version_value {
+    if reg.contracts[i].name == name  and  reg.contracts[i].version == contract_version_value {
       give ContractsRegistryResult.Ok(reg.contracts[i])
     }
     i += 1
@@ -184,7 +184,7 @@ proc upsert(reg: ContractsRegistry, contract: RegistryContract) -> ContractsRegi
 
   let i: int = 0
   while i < reg.contracts.len {
-    if reg.contracts[i].name == contract.name && reg.contracts[i].version == contract.version {
+    if reg.contracts[i].name == contract.name  and  reg.contracts[i].version == contract.version {
       out = out.push(contract)
       updated = true
     } else {
@@ -214,7 +214,7 @@ proc remove(reg: ContractsRegistry, name: string, contract_version_value: string
   let out: [RegistryContract] = []
   let i: int = 0
   while i < reg.contracts.len {
-    if reg.contracts[i].name != name || reg.contracts[i].version != contract_version_value {
+    if reg.contracts[i].name != name  or  reg.contracts[i].version != contract_version_value {
       out = out.push(reg.contracts[i])
     }
     i += 1
@@ -291,9 +291,9 @@ proc registry_normalize(reg: ContractsRegistry) -> ContractsRegistry {
 
     let c = reg.contracts[i]
     if contracts_registry_validate_pkg.valid_contract_name(c.name,
-                                                           contracts_registry_policy_pkg.max_contract_name_len()) &&
+                                                           contracts_registry_policy_pkg.max_contract_name_len())  and 
        contracts_registry_validate_pkg.valid_contract_version(c.version,
-                                                              contracts_registry_policy_pkg.max_contract_version_len()) &&
+                                                              contracts_registry_policy_pkg.max_contract_version_len())  and 
        c.schema_hash.len > 0 {
       out = out.push(c)
     }

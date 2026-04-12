@@ -44,11 +44,11 @@ proc record(name: string, version: string, checksum: string) -> PackageRecord {
 }
 
 proc same_package(rec: PackageRecord, name: string, version: string) -> bool {
-  give rec.name == name && rec.version == version
+  give rec.name == name  and  rec.version == version
 }
 
 proc publish(idx: RegistryIndex, rec: PackageRecord) -> RegistryIndex {
-  if idx.strict && rec.checksum.len == 0 { give idx }
+  if idx.strict  and  rec.checksum.len == 0 { give idx }
 
   let out: [PackageRecord] = []
   let replaced: bool = false
@@ -64,7 +64,7 @@ proc publish(idx: RegistryIndex, rec: PackageRecord) -> RegistryIndex {
     i += 1
   }
 
-  if !replaced {
+  if not replaced {
     out = out.push(PackageRecord(rec.name, rec.version, rec.checksum, rec.downloads, PackageState.Published))
   }
 

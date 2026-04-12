@@ -299,11 +299,11 @@ proc headers_normalize(headers: [StdNetHeader]) -> [StdNetHeader] {
   while i < headers.len {
     if headers[i].name.len > 0 {
       let n = headers[i].name
-      if n == "content-type" || n == "Content-Type" { n = "Content-Type" }
-      if n == "accept" || n == "Accept" { n = "Accept" }
-      if n == "authorization" || n == "Authorization" { n = "Authorization" }
-      if n == "user-agent" || n == "User-Agent" { n = "User-Agent" }
-      if n == "x-request-id" || n == "X-Request-Id" { n = "X-Request-Id" }
+      if n == "content-type"  or  n == "Content-Type" { n = "Content-Type" }
+      if n == "accept"  or  n == "Accept" { n = "Accept" }
+      if n == "authorization"  or  n == "Authorization" { n = "Authorization" }
+      if n == "user-agent"  or  n == "User-Agent" { n = "User-Agent" }
+      if n == "x-request-id"  or  n == "X-Request-Id" { n = "X-Request-Id" }
       out = out.push(StdNetHeader(n, headers[i].value))
     }
     i += 1
@@ -312,11 +312,11 @@ proc headers_normalize(headers: [StdNetHeader]) -> [StdNetHeader] {
 }
 
 proc canonical_header_name(name: string) -> string {
-  if name == "content-type" || name == "Content-Type" { give "Content-Type" }
-  if name == "accept" || name == "Accept" { give "Accept" }
-  if name == "authorization" || name == "Authorization" { give "Authorization" }
-  if name == "user-agent" || name == "User-Agent" { give "User-Agent" }
-  if name == "x-request-id" || name == "X-Request-Id" { give "X-Request-Id" }
+  if name == "content-type"  or  name == "Content-Type" { give "Content-Type" }
+  if name == "accept"  or  name == "Accept" { give "Accept" }
+  if name == "authorization"  or  name == "Authorization" { give "Authorization" }
+  if name == "user-agent"  or  name == "User-Agent" { give "User-Agent" }
+  if name == "x-request-id"  or  name == "X-Request-Id" { give "X-Request-Id" }
   give name
 }
 
@@ -344,7 +344,7 @@ proc to_client_method(method: string) -> StdNetResult[http_client_pkg.ClientMeth
 }
 
 proc request(method: string, url: string, headers: [StdNetHeader], body: string, timeout_ms: int) -> StdNetResult[StdNetResponse] {
-  if method.len == 0 || url.len == 0 { give StdNetResult.Err(StdNetError.InvalidConfig) }
+  if method.len == 0  or  url.len == 0 { give StdNetResult.Err(StdNetError.InvalidConfig) }
   if std_net_validate_pkg.valid_timeout_ms(timeout_ms) == false { give StdNetResult.Err(StdNetError.Timeout) }
   let m = to_client_method(method)
   when m is StdNetResult.Err { give StdNetResult.Err(m.error) }
@@ -460,15 +460,15 @@ proc status_text(code: int) -> string {
 }
 
 proc is_status_2xx(code: int) -> bool {
-  give code >= 200 && code <= 299
+  give code >= 200  and  code <= 299
 }
 
 proc is_status_4xx(code: int) -> bool {
-  give code >= 400 && code <= 499
+  give code >= 400  and  code <= 499
 }
 
 proc is_status_5xx(code: int) -> bool {
-  give code >= 500 && code <= 599
+  give code >= 500  and  code <= 599
 }
 
 proc retry_with_jitter(policy: StdNetRetryPolicy, seed: int) -> StdNetRetryPolicy {

@@ -167,7 +167,7 @@ proc is_valid_node(g: Graph, node: int) -> bool {
 }
 
 proc add_edge(g: Graph, src: int, dst: int, weight: int) -> Graph {
-  if !is_valid_node(g, src) || !is_valid_node(g, dst) {
+  if not is_valid_node(g, src)  or  not is_valid_node(g, dst) {
     give g
   }
   let out_edges = g.edges.push(edge(src, dst, weight))
@@ -175,10 +175,10 @@ proc add_edge(g: Graph, src: int, dst: int, weight: int) -> Graph {
 }
 
 proc add_edge_checked(g: Graph, src: int, dst: int, weight: int, cfg: GraphConfig) -> GraphResult[Graph] {
-  if is_valid_node(g, src) == false || is_valid_node(g, dst) == false {
+  if is_valid_node(g, src) == false  or  is_valid_node(g, dst) == false {
     give GraphResult.Err(GraphError.InvalidConfig)
   }
-  if cfg.allow_self_loop == false && src == dst {
+  if cfg.allow_self_loop == false  and  src == dst {
     give GraphResult.Err(GraphError.InvalidConfig)
   }
   if graph_validate_pkg.valid_weight(weight, graph_policy_pkg.min_weight(), graph_policy_pkg.max_weight()) == false {
@@ -191,8 +191,8 @@ proc has_edge(g: Graph, src: int, dst: int) -> bool {
   let i: int = 0
   while i < g.edges.len {
     let e = g.edges[i]
-    if e.src == src && e.dst == dst { give true }
-    if !g.directed && e.src == dst && e.dst == src { give true }
+    if e.src == src  and  e.dst == dst { give true }
+    if not g.directed  and  e.src == dst  and  e.dst == src { give true }
     i += 1
   }
   give false
@@ -206,7 +206,7 @@ proc degree_out(g: Graph, src: int) -> int {
     if e.src == src {
       d += 1
     }
-    if !g.directed && e.dst == src {
+    if not g.directed  and  e.dst == src {
       d += 1
     }
     i += 1
@@ -218,8 +218,8 @@ proc edge_weight_or(g: Graph, src: int, dst: int, fallback: int) -> int {
   let i: int = 0
   while i < g.edges.len {
     let e = g.edges[i]
-    if e.src == src && e.dst == dst { give e.weight }
-    if !g.directed && e.src == dst && e.dst == src { give e.weight }
+    if e.src == src  and  e.dst == dst { give e.weight }
+    if not g.directed  and  e.src == dst  and  e.dst == src { give e.weight }
     i += 1
   }
   give fallback
@@ -239,7 +239,7 @@ proc reverse(g: Graph) -> Graph {
 proc density_percent(g: Graph) -> int {
   if g.nodes <= 1 { give 0 }
   let max_edges = g.nodes * (g.nodes - 1)
-  if !g.directed {
+  if not g.directed {
     give (g.edge_count * 200) / max_edges
   }
   give (g.edge_count * 100) / max_edges

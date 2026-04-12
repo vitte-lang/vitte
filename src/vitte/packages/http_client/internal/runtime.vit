@@ -44,7 +44,7 @@ proc is_https(url: string) -> bool {
 }
 
 proc host(url: string) -> string {
-  if !is_https(url) { give "" }
+  if not is_https(url) { give "" }
   let i: int = 8
   while i < url.len {
     if url.slice(i, i + 1) == "/" {
@@ -99,8 +99,8 @@ proc validate_request_code(url: string, strict_tls: bool, allow_private_hosts: b
   if is_https(url) == false { give "VITTE-C0001" }
   if strict_tls == false { give "VITTE-C0002" }
   let h: string = host(url)
-  if is_private_host(h) && allow_private_hosts == false { give "VITTE-C0003" }
-  if contains(url, "\n") || contains(url, "\r") { give "VITTE-C0009" }
+  if is_private_host(h)  and  allow_private_hosts == false { give "VITTE-C0003" }
+  if contains(url, "\n")  or  contains(url, "\r") { give "VITTE-C0009" }
   if cancel_token == "cancelled" { give "VITTE-C0004" }
   if profile == "core" { give "VITTE-C0002" }
   give ""
@@ -123,7 +123,7 @@ proc circuit_check_code(open: bool) -> string {
 
 proc retry_decision(attempt: int, max_retries: int, idempotent_only: bool, request_is_idempotent: bool, status: int) -> bool {
   if attempt >= max_retries { give false }
-  if idempotent_only && request_is_idempotent == false { give false }
+  if idempotent_only  and  request_is_idempotent == false { give false }
   if status == 429 { give true }
   if status >= 500 { give true }
   give false
@@ -134,7 +134,7 @@ proc next_retry_elapsed(elapsed_ms: int, base_delay_ms: int, jitter_ms: int) -> 
 }
 
 proc observe_p50(prev: int, elapsed_ms: int) -> int {
-  if prev == 0 || elapsed_ms < prev { give elapsed_ms }
+  if prev == 0  or  elapsed_ms < prev { give elapsed_ms }
   give prev
 }
 

@@ -27,11 +27,11 @@ proc available(bh: Bulkhead) -> int {
 }
 
 proc can_accept(bh: Bulkhead) -> bool {
-  give bh.open && bh.in_use < bh.capacity
+  give bh.open  and  bh.in_use < bh.capacity
 }
 
 proc acquire(bh: Bulkhead) -> Bulkhead {
-  if !bh.open {
+  if not bh.open {
     give Bulkhead(bh.capacity, bh.in_use, bh.queued, bh.rejected + 1, bh.open)
   }
   if bh.in_use < bh.capacity {
@@ -75,7 +75,7 @@ proc utilization_percent(bh: Bulkhead) -> int {
 }
 
 proc drain_queue(bh: Bulkhead) -> Bulkhead {
-  if !bh.open { give bh }
+  if not bh.open { give bh }
   if bh.queued <= 0 { give bh }
   if bh.in_use >= bh.capacity { give bh }
   give Bulkhead(bh.capacity, bh.in_use + 1, bh.queued - 1, bh.rejected, bh.open)

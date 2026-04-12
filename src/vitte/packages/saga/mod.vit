@@ -117,7 +117,7 @@ proc has_step(saga: Saga, name: string) -> bool {
 proc next_pending_step(saga: Saga) -> string {
   let i: int = 0
   while i < saga.steps.len {
-    if !saga.steps[i].done { give saga.steps[i].name }
+    if not saga.steps[i].done { give saga.steps[i].name }
     i += 1
   }
   give ""
@@ -165,7 +165,7 @@ proc mark_compensated(saga: Saga, name: string) -> Saga {
 }
 
 proc resume(saga: Saga) -> Saga {
-  if saga.state == SagaState.Failed || saga.state == SagaState.Compensated {
+  if saga.state == SagaState.Failed  or  saga.state == SagaState.Compensated {
     give run(saga, -1)
   }
   give saga
@@ -226,7 +226,7 @@ proc compensated_count(saga: Saga) -> int {
 }
 
 proc failed_step(saga: Saga) -> string {
-  if saga.failed_at < 0 || saga.failed_at >= saga.steps.len { give "" }
+  if saga.failed_at < 0  or  saga.failed_at >= saga.steps.len { give "" }
   give saga.steps[saga.failed_at].name
 }
 
@@ -266,7 +266,7 @@ proc can_compensate(saga: Saga) -> bool {
 }
 
 proc can_resume(saga: Saga) -> bool {
-  give saga.state == SagaState.Failed || saga.state == SagaState.Compensated
+  give saga.state == SagaState.Failed  or  saga.state == SagaState.Compensated
 }
 
 proc rename_step(saga: Saga, old_name: string, new_name: string) -> Saga {
@@ -303,9 +303,9 @@ proc failure_ratio_percent(saga: Saga) -> int {
 proc verify_invariants(saga: Saga) -> bool {
   if saga.failed_at < -1 { give false }
   if saga.failed_at >= step_count(saga) { give false }
-  if saga.state == SagaState.Failed && saga.failed_at < 0 { give false }
-  if saga.state == SagaState.Compensated && saga.failed_at < 0 { give false }
-  if saga.state == SagaState.Succeeded && pending_count(saga) != 0 { give false }
+  if saga.state == SagaState.Failed  and  saga.failed_at < 0 { give false }
+  if saga.state == SagaState.Compensated  and  saga.failed_at < 0 { give false }
+  if saga.state == SagaState.Succeeded  and  pending_count(saga) != 0 { give false }
 
   let i: int = 0
   while i < saga.steps.len {

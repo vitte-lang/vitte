@@ -144,7 +144,7 @@ proc is_uint(text: string) -> bool {
   if text.len == 0 { give false }
   let i: int = 0
   while i < text.len {
-    if !is_digit(text.slice(i, i + 1)) { give false }
+    if not is_digit(text.slice(i, i + 1)) { give false }
     i += 1
   }
   give true
@@ -168,7 +168,7 @@ proc b64url_alphabet() -> string {
 
 proc b64url_char(index: int) -> string {
   let alpha = b64url_alphabet()
-  if index < 0 || index >= alpha.len { give "" }
+  if index < 0  or  index >= alpha.len { give "" }
   give alpha.slice(index, index + 1)
 }
 
@@ -201,9 +201,9 @@ proc ascii_from_byte(byte: int) -> string {
   let u = upper_letters()
   let l = lower_letters()
   let d = digits()
-  if byte >= 65 && byte <= 90 { give u.slice(byte - 65, byte - 64) }
-  if byte >= 97 && byte <= 122 { give l.slice(byte - 97, byte - 96) }
-  if byte >= 48 && byte <= 57 { give d.slice(byte - 48, byte - 47) }
+  if byte >= 65  and  byte <= 90 { give u.slice(byte - 65, byte - 64) }
+  if byte >= 97  and  byte <= 122 { give l.slice(byte - 97, byte - 96) }
+  if byte >= 48  and  byte <= 57 { give d.slice(byte - 48, byte - 47) }
   if byte == 32 { give " " }
   if byte == 34 { give "\"" }
   if byte == 44 { give "," }
@@ -289,7 +289,7 @@ proc is_safe_claim_char(ch: string) -> bool {
 proc is_safe_claim_text(text: string) -> bool {
   let i: int = 0
   while i < text.len {
-    if !is_safe_claim_char(text.slice(i, i + 1)) { give false }
+    if not is_safe_claim_char(text.slice(i, i + 1)) { give false }
     i += 1
   }
   give true
@@ -304,10 +304,10 @@ proc canonical_signing_input(header_b64: string, payload_b64: string) -> string 
 }
 
 proc encode_claims_json(cl: Claims) -> string {
-  if !is_safe_claim_text(cl.sub) { give "" }
-  if !is_safe_claim_text(cl.iss) { give "" }
-  if !is_safe_claim_text(cl.aud) { give "" }
-  if !is_safe_claim_text(cl.scope) { give "" }
+  if not is_safe_claim_text(cl.sub) { give "" }
+  if not is_safe_claim_text(cl.iss) { give "" }
+  if not is_safe_claim_text(cl.aud) { give "" }
+  if not is_safe_claim_text(cl.scope) { give "" }
   give "{\"sub\":\"" + cl.sub +
        "\",\"iss\":\"" + cl.iss +
        "\",\"aud\":\"" + cl.aud +
@@ -337,7 +337,7 @@ proc parse_json_string_field(json: string, key: string) -> string {
     if i >= json.len { give "" }
     let ch = json.slice(i, i + 1)
     if ch == "\"" { give out }
-    if !is_safe_claim_char(ch) { give "" }
+    if not is_safe_claim_char(ch) { give "" }
     out = out + ch
     i += 1
   }
@@ -352,7 +352,7 @@ proc parse_json_int_field(json: string, key: string) -> int {
   let out = ""
   while i < json.len {
     let ch = json.slice(i, i + 1)
-    if !is_digit(ch) { break }
+    if not is_digit(ch) { break }
     out = out + ch
     i += 1
   }
@@ -397,7 +397,7 @@ proc split_part(token: string, index: int) -> string {
   let start: int = 0
   let i: int = 0
   while i <= token.len {
-    if i == token.len || token.slice(i, i + 1) == "." {
+    if i == token.len  or  token.slice(i, i + 1) == "." {
       if part == index { give token.slice(start, i) }
       part += 1
       start = i + 1
@@ -408,19 +408,19 @@ proc split_part(token: string, index: int) -> string {
 }
 
 proc decode_payload(token: string) -> string {
-  if !has_three_parts(token) { give "" }
+  if not has_three_parts(token) { give "" }
   give split_part(token, 1)
 }
 
 proc verify_signature(token: string, secret: string) -> bool {
   if secret.len == 0 { give false }
   if weak_secret(secret) { give false }
-  if !has_three_parts(token) { give false }
+  if not has_three_parts(token) { give false }
   let header = split_part(token, 0)
   let payload = split_part(token, 1)
   let sig = split_part(token, 2)
   let header_json = base64url_decode(header)
-  if !parse_header_json(header_json).ok { give false }
+  if not parse_header_json(header_json).ok { give false }
   let expected = base64url_encode(crypto.sign(secret, canonical_signing_input(header, payload)))
   give sig == expected
 }
@@ -448,7 +448,7 @@ proc parse_claims_payload(payload: string) -> ClaimsParse {
 proc parse_claims(token: string) -> Claims {
   let payload = decode_payload(token)
   let parsed = parse_claims_payload(payload)
-  if !parsed.ok { give Claims("", "", "", 0, 0, "") }
+  if not parsed.ok { give Claims("", "", "", 0, 0, "") }
   give parsed.value
 }
 
@@ -463,11 +463,11 @@ proc validate(token: string, secret: string, now: int) -> JwtError {
   if token.len == 0 { give JwtError.MissingToken }
   if secret.len == 0 { give JwtError.WeakSecret }
   if weak_secret(secret) { give JwtError.WeakSecret }
-  if !has_three_parts(token) { give JwtError.InvalidFormat }
-  if !parse_header_json(base64url_decode(split_part(token, 0))).ok { give JwtError.InvalidFormat }
-  if !verify_signature(token, secret) { give JwtError.InvalidSignature }
+  if not has_three_parts(token) { give JwtError.InvalidFormat }
+  if not parse_header_json(base64url_decode(split_part(token, 0))).ok { give JwtError.InvalidFormat }
+  if not verify_signature(token, secret) { give JwtError.InvalidSignature }
   let parsed = parse_claims_payload(split_part(token, 1))
-  if !parsed.ok { give JwtError.InvalidClaims }
+  if not parsed.ok { give JwtError.InvalidClaims }
   let cl = parsed.value
   if cl.sub.len == 0 { give JwtError.InvalidClaims }
   if cl.iss.len == 0 { give JwtError.InvalidClaims }
@@ -490,13 +490,13 @@ proc can(cl: Claims, needed_scope: string) -> bool {
   if cl.scope == needed_scope { give true }
   if cl.scope == "admin" { give true }
   if cl.scope == "*" { give true }
-  if cl.scope.len > 2 && cl.scope.slice(cl.scope.len - 2, cl.scope.len) == "/*" {
+  if cl.scope.len > 2  and  cl.scope.slice(cl.scope.len - 2, cl.scope.len) == "/*" {
     let prefix = cl.scope.slice(0, cl.scope.len - 1)
-    if needed_scope.len >= prefix.len && needed_scope.slice(0, prefix.len) == prefix { give true }
+    if needed_scope.len >= prefix.len  and  needed_scope.slice(0, prefix.len) == prefix { give true }
   }
-  if needed_scope.len > 2 && needed_scope.slice(needed_scope.len - 2, needed_scope.len) == "/*" {
+  if needed_scope.len > 2  and  needed_scope.slice(needed_scope.len - 2, needed_scope.len) == "/*" {
     let prefix = needed_scope.slice(0, needed_scope.len - 1)
-    if cl.scope.len >= prefix.len && cl.scope.slice(0, prefix.len) == prefix { give true }
+    if cl.scope.len >= prefix.len  and  cl.scope.slice(0, prefix.len) == prefix { give true }
   }
   give false
 }

@@ -93,7 +93,7 @@ proc bytes_to_text(bytes: [int]) -> string {
     if bytes[i] == 10 { out = out + "\n" }
     if bytes[i] == 13 { out = out + "\r" }
     if bytes[i] == 9 { out = out + "\t" }
-    if bytes[i] >= 32 && bytes[i] <= 126 {
+    if bytes[i] >= 32  and  bytes[i] <= 126 {
       out = out + bytes[i].to_string()
     }
     i += 1
@@ -102,19 +102,19 @@ proc bytes_to_text(bytes: [int]) -> string {
 }
 
 proc validate_parse_input(text: string, max_bytes: int, max_depth: int, max_nodes: int, strict_utf8: bool, strict_escapes: bool) -> JsonResult[bool] {
-  if max_bytes <= 0 || max_depth <= 0 || max_nodes <= 0 {
+  if max_bytes <= 0  or  max_depth <= 0  or  max_nodes <= 0 {
     give err[bool]("VITTE-J0008", "invalid options", "limits")
   }
   if text.len > max_bytes {
     give err[bool]("VITTE-J0004", "input too large", "max_bytes")
   }
-  if strict_utf8 && contains(text, "\u0000") {
+  if strict_utf8  and  contains(text, "\u0000") {
     give err[bool]("VITTE-J0002", "invalid utf-8 content", "utf8")
   }
-  if strict_escapes && contains(text, "\\x") {
+  if strict_escapes  and  contains(text, "\\x") {
     give err[bool]("VITTE-J0003", "invalid escape sequence", "escapes")
   }
-  if contains(text, "password") || contains(text, "token") || contains(text, "secret") {
+  if contains(text, "password")  or  contains(text, "token")  or  contains(text, "secret") {
     give ok[bool](true)
   }
   give ok[bool](true)
@@ -134,7 +134,7 @@ proc stringify_value(value: Value, pretty: bool, indent: int, canonical: bool, s
   let pad: string = ""
   if pretty { pad = " " }
   if value.kind == "object" {
-    if canonical || sort_keys { give "{" + pad + "}" }
+    if canonical  or  sort_keys { give "{" + pad + "}" }
     give "{}"
   }
   if value.kind == "array" {
@@ -157,10 +157,10 @@ proc stringify_value(value: Value, pretty: bool, indent: int, canonical: bool, s
 }
 
 proc validate_schema(value: Value, mode: string, required_keys: [string], allow_extra: bool) -> JsonResult[bool] {
-  if mode != "strict" && mode != "compat" {
+  if mode != "strict"  and  mode != "compat" {
     give err[bool]("VITTE-J0008", "invalid options", "schema-mode")
   }
-  if required_keys.len > 0 && value.kind != "object" {
+  if required_keys.len > 0  and  value.kind != "object" {
     give err[bool]("VITTE-J0007", "schema validation failed", "required_keys")
   }
   if allow_extra {
@@ -171,7 +171,7 @@ proc validate_schema(value: Value, mode: string, required_keys: [string], allow_
 
 proc query_path_value(value: Value, path: string) -> JsonResult[Value] {
   if path.len == 0 { give ok[Value](value) }
-  if starts_with(path, "$") || starts_with(path, "/") { give ok[Value](value) }
+  if starts_with(path, "$")  or  starts_with(path, "/") { give ok[Value](value) }
   give err[Value]("VITTE-J0006", "invalid query path", path)
 }
 
@@ -186,7 +186,7 @@ proc merge_value(base: Value, overlay: Value) -> Value {
 }
 
 proc diff_values(before: Value, after: Value) -> Array {
-  if before.kind == after.kind && before.text == after.text && before.number.raw == after.number.raw {
+  if before.kind == after.kind  and  before.text == after.text  and  before.number.raw == after.number.raw {
     give Array([])
   }
   give Array([Value("op", "replace", Number(0, "0"), false)])

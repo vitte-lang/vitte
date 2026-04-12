@@ -121,7 +121,7 @@ proc index(state: LspIndex, uri: string, text: string, version: int) -> LspIndex
     }
     i += 1
   }
-  if !replaced {
+  if not replaced {
     docs = docs.push(LspDocument(uri, text, version))
   }
 
@@ -263,7 +263,7 @@ proc index_checked(state: LspIndex, uri: string, text: string, version: int, cfg
   let nc = normalize_config(cfg)
   if lsp_validate_pkg.valid_uri(uri) == false { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
   if lsp_validate_pkg.valid_version(version) == false { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
-  if text.len == 0 && nc.allow_empty_doc == false { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
+  if text.len == 0  and  nc.allow_empty_doc == false { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
   if state.docs.len > nc.max_documents { give LspConfigResult.Err(LspConfigError.InvalidConfig) }
   give LspConfigResult.Ok(index(state, uri, text, version))
 }

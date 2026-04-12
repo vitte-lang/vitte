@@ -74,7 +74,7 @@ proc has_scope_prefix(ctx: TenantCtx, scoped_key: string) -> bool {
 }
 
 proc enforce_isolation(ctx: TenantCtx, resource_tenant: string) -> bool {
-  if !ctx.active { give false }
+  if not ctx.active { give false }
   give ctx.tenant_id == resource_tenant
 }
 
@@ -133,7 +133,7 @@ proc is_active(ctx: TenantCtx) -> bool {
 }
 
 proc is_valid(ctx: TenantCtx) -> bool {
-  give ctx.tenant_id.len > 0 && ctx.region.len > 0 && ctx.plan.len > 0
+  give ctx.tenant_id.len > 0  and  ctx.region.len > 0  and  ctx.plan.len > 0
 }
 
 proc region_key(ctx: TenantCtx, key: string) -> string {
@@ -148,7 +148,7 @@ proc plan_rank(plan: string) -> int {
 }
 
 proc plan_known(plan: string) -> bool {
-  give plan == "free" || plan == "pro" || plan == "enterprise"
+  give plan == "free"  or  plan == "pro"  or  plan == "enterprise"
 }
 
 proc plan_allows(ctx: TenantCtx, required_plan: string) -> bool {
@@ -160,7 +160,7 @@ proc is_enterprise(ctx: TenantCtx) -> bool {
 }
 
 proc can_access_region(ctx: TenantCtx, region: string) -> bool {
-  if !ctx.active { give false }
+  if not ctx.active { give false }
   give ctx.region == region
 }
 
@@ -218,7 +218,7 @@ proc extract_tenant_id(scoped_key: string) -> string {
 }
 
 proc matches_scope(ctx: TenantCtx, scoped_key: string) -> bool {
-  if !ctx.active { give false }
+  if not ctx.active { give false }
   give extract_tenant_id(scoped_key) == ctx.tenant_id
 }
 
@@ -265,7 +265,7 @@ proc verify_stack(stack: [TenantCtx]) -> bool {
   let i: int = 0
   while i < stack.len {
     let item = stack[i]
-    if !item.active || !is_valid(item) { give false }
+    if not item.active  or  not is_valid(item) { give false }
     let j: int = i + 1
     while j < stack.len {
       if stack[j].tenant_id == item.tenant_id { give false }
@@ -279,13 +279,13 @@ proc verify_stack(stack: [TenantCtx]) -> bool {
 proc validate_ctx(ctx: TenantCtx) -> TenantError {
   if ctx.tenant_id.len == 0 { give TenantError.InvalidTenantId }
   if ctx.region.len == 0 { give TenantError.InvalidRegion }
-  if !plan_known(ctx.plan) { give TenantError.InvalidPlan }
-  if !ctx.active { give TenantError.InactiveCtx }
+  if not plan_known(ctx.plan) { give TenantError.InvalidPlan }
+  if not ctx.active { give TenantError.InactiveCtx }
   give TenantError.None
 }
 
 proc validate_stack(stack: [TenantCtx]) -> TenantError {
-  if !verify_stack(stack) { give TenantError.StackCorruption }
+  if not verify_stack(stack) { give TenantError.StackCorruption }
   let i: int = 0
   while i < stack.len {
     let err = validate_ctx(stack[i])
@@ -318,19 +318,19 @@ proc decide_access(
   required_plan: string,
   policy: TenantPolicy
 ) -> TenantDecision {
-  if policy.require_active && !ctx.active {
+  if policy.require_active  and  not ctx.active {
     give TenantDecision(false, "inactive-ctx")
   }
   if ctx.tenant_id != resource_tenant {
     give TenantDecision(false, "tenant-mismatch")
   }
-  if !policy.allow_cross_region && ctx.region != resource_region {
+  if not policy.allow_cross_region  and  ctx.region != resource_region {
     give TenantDecision(false, "region-mismatch")
   }
-  if !plan_allows(ctx, required_plan) {
+  if not plan_allows(ctx, required_plan) {
     give TenantDecision(false, "plan-too-low")
   }
-  if !plan_allows(ctx, policy.min_plan) {
+  if not plan_allows(ctx, policy.min_plan) {
     give TenantDecision(false, "policy-min-plan")
   }
   give TenantDecision(true, "ok")
@@ -374,7 +374,7 @@ proc stack_tenant_keys(stack: [TenantCtx]) -> [string] {
 proc stack_has_active_only(stack: [TenantCtx]) -> bool {
   let i: int = 0
   while i < stack.len {
-    if !stack[i].active { give false }
+    if not stack[i].active { give false }
     i += 1
   }
   give true

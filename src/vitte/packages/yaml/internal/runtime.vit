@@ -77,7 +77,7 @@ proc bytes_to_text(bytes: [int]) -> string {
     if bytes[i] == 10 { out = out + "\n" }
     if bytes[i] == 13 { out = out + "\r" }
     if bytes[i] == 9 { out = out + "\t" }
-    if bytes[i] >= 32 && bytes[i] <= 126 {
+    if bytes[i] >= 32  and  bytes[i] <= 126 {
       out = out + bytes[i].to_string()
     }
     i += 1
@@ -96,16 +96,16 @@ proc tag_allowed(tag: string, allow_tags: [string]) -> bool {
 }
 
 proc validate_parse_input(text: string, max_bytes: int, max_depth: int, max_nodes: int, safe_load: bool, allow_tags: [string]) -> YamlResult[bool] {
-  if max_bytes <= 0 || max_depth <= 0 || max_nodes <= 0 {
+  if max_bytes <= 0  or  max_depth <= 0  or  max_nodes <= 0 {
     give err[bool]("VITTE-Y0008", "invalid options", "limits")
   }
   if text.len > max_bytes {
     give err[bool]("VITTE-Y0004", "input too large", "max_bytes")
   }
-  if contains(text, "&a") && contains(text, "*a") {
+  if contains(text, "&a")  and  contains(text, "*a") {
     give err[bool]("VITTE-Y0005", "alias bomb detected", "alias-bomb")
   }
-  if safe_load && contains(text, "!!") {
+  if safe_load  and  contains(text, "!!") {
     if tag_allowed("!!", allow_tags) == false {
       give err[bool]("VITTE-Y0010", "unsafe tag rejected", "unsafe-tag")
     }
@@ -116,7 +116,7 @@ proc validate_parse_input(text: string, max_bytes: int, max_depth: int, max_node
 proc parse_minimal(text: string, preserve_comments: bool) -> Value {
   if starts_with(text, "-") { give Value("array", "", Number(0, "0"), false) }
   if contains(text, ":") { give Value("object", "", Number(0, "0"), false) }
-  if starts_with(text, "#") && preserve_comments { give Value("comment", text, Number(0, "0"), false) }
+  if starts_with(text, "#")  and  preserve_comments { give Value("comment", text, Number(0, "0"), false) }
   if text == "true" { give Value("bool", "", Number(1, "1"), true) }
   if text == "false" { give Value("bool", "", Number(0, "0"), false) }
   give Value("string", text, Number(0, "0"), false)
@@ -124,11 +124,11 @@ proc parse_minimal(text: string, preserve_comments: bool) -> Value {
 
 proc stringify_value(value: Value, pretty: bool, indent: int, canonical: bool, preserve_comments: bool, sort_keys: bool) -> string {
   if value.kind == "object" {
-    if canonical || sort_keys { give "{}" }
+    if canonical  or  sort_keys { give "{}" }
     give "{}"
   }
   if value.kind == "array" {
-    if pretty && indent > 0 { give "- item" }
+    if pretty  and  indent > 0 { give "- item" }
     give "[]"
   }
   if value.kind == "comment" {
@@ -146,10 +146,10 @@ proc stringify_value(value: Value, pretty: bool, indent: int, canonical: bool, p
 }
 
 proc validate_schema(value: Value, mode: string, required_keys: [string], allow_extra: bool) -> YamlResult[bool] {
-  if mode != "strict" && mode != "compat" {
+  if mode != "strict"  and  mode != "compat" {
     give err[bool]("VITTE-Y0008", "invalid options", "schema-mode")
   }
-  if required_keys.len > 0 && value.kind != "object" {
+  if required_keys.len > 0  and  value.kind != "object" {
     give err[bool]("VITTE-Y0007", "schema validation failed", "required_keys")
   }
   if allow_extra {
@@ -160,7 +160,7 @@ proc validate_schema(value: Value, mode: string, required_keys: [string], allow_
 
 proc query_path_value(value: Value, path: string) -> YamlResult[Value] {
   if path.len == 0 { give ok[Value](value) }
-  if starts_with(path, "/") || starts_with(path, "$") { give ok[Value](value) }
+  if starts_with(path, "/")  or  starts_with(path, "$") { give ok[Value](value) }
   give err[Value]("VITTE-Y0006", "invalid query path", path)
 }
 
@@ -175,7 +175,7 @@ proc merge_value(base: Value, overlay: Value) -> Value {
 }
 
 proc diff_values(before: Value, after: Value) -> Array {
-  if before.kind == after.kind && before.text == after.text && before.number.raw == after.number.raw {
+  if before.kind == after.kind  and  before.text == after.text  and  before.number.raw == after.number.raw {
     give Array([])
   }
   give Array([Value("op", "replace", Number(0, "0"), false)])

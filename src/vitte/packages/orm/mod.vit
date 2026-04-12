@@ -48,19 +48,19 @@ form Query {
 
 proc is_alpha_num_or_underscore(ch: string) -> bool {
   if ch == "_" { give true }
-  if ch >= "a" && ch <= "z" { give true }
-  if ch >= "A" && ch <= "Z" { give true }
-  if ch >= "0" && ch <= "9" { give true }
+  if ch >= "a"  and  ch <= "z" { give true }
+  if ch >= "A"  and  ch <= "Z" { give true }
+  if ch >= "0"  and  ch <= "9" { give true }
   give false
 }
 
 proc is_identifier(text: string) -> bool {
   if text.len == 0 { give false }
-  if text.slice(0, 1) >= "0" && text.slice(0, 1) <= "9" { give false }
+  if text.slice(0, 1) >= "0"  and  text.slice(0, 1) <= "9" { give false }
   let i: int = 0
   while i < text.len {
     let ch = text.slice(i, i + 1)
-    if !is_alpha_num_or_underscore(ch) { give false }
+    if not is_alpha_num_or_underscore(ch) { give false }
     i += 1
   }
   give true
@@ -165,15 +165,15 @@ proc field_names(m: OrmModel) -> [string] {
 }
 
 proc validate_model(m: OrmModel) -> OrmError {
-  if !is_identifier(m.table) { give OrmError.InvalidTable }
-  if !is_identifier(m.primary_key) { give OrmError.InvalidPrimaryKey }
+  if not is_identifier(m.table) { give OrmError.InvalidTable }
+  if not is_identifier(m.primary_key) { give OrmError.InvalidPrimaryKey }
   if m.fields.len == 0 { give OrmError.InvalidModel }
-  if !has_field(m, m.primary_key) { give OrmError.InvalidPrimaryKey }
+  if not has_field(m, m.primary_key) { give OrmError.InvalidPrimaryKey }
 
   let i: int = 0
   while i < m.fields.len {
     let f = m.fields[i]
-    if !is_identifier(f.name) { give OrmError.InvalidField }
+    if not is_identifier(f.name) { give OrmError.InvalidField }
     if f.kind.len == 0 { give OrmError.InvalidField }
     i += 1
   }
@@ -181,13 +181,13 @@ proc validate_model(m: OrmModel) -> OrmError {
 }
 
 proc validate_query(q: Query) -> OrmError {
-  if !is_identifier(q.table) { give OrmError.InvalidTable }
-  if q.limit < 1 || q.limit > 1000 { give OrmError.InvalidLimit }
+  if not is_identifier(q.table) { give OrmError.InvalidTable }
+  if q.limit < 1  or  q.limit > 1000 { give OrmError.InvalidLimit }
   if q.offset < 0 { give OrmError.InvalidOffset }
 
   let i: int = 0
   while i < q.select_cols.len {
-    if !is_identifier(q.select_cols[i]) { give OrmError.InvalidSelect }
+    if not is_identifier(q.select_cols[i]) { give OrmError.InvalidSelect }
     i += 1
   }
 
@@ -215,7 +215,7 @@ proc select_fragment(q: Query) -> string {
 
 proc where_fragment(q: Query, m: OrmModel) -> string {
   let filters = q.where_clauses
-  if m.soft_delete && !q.include_deleted {
+  if m.soft_delete  and  not q.include_deleted {
     filters = filters.push("deleted_at IS NULL")
   }
   if filters.len == 0 { give "" }
@@ -257,7 +257,7 @@ proc build_insert_sql(m: OrmModel, cols: [string]) -> string {
   let values: [string] = []
   let i: int = 0
   while i < cols.len {
-    if !has_field(m, cols[i]) { give "" }
+    if not has_field(m, cols[i]) { give "" }
     values = values.push("?")
     i += 1
   }
@@ -275,7 +275,7 @@ proc build_update_sql(m: OrmModel, cols: [string]) -> string {
   let i: int = 0
   while i < cols.len {
     if cols[i] != m.primary_key {
-      if !has_field(m, cols[i]) { give "" }
+      if not has_field(m, cols[i]) { give "" }
       assignments = assignments.push(cols[i] + " = ?")
     }
     i += 1
@@ -289,7 +289,7 @@ proc build_update_sql(m: OrmModel, cols: [string]) -> string {
 
 proc build_delete_sql(m: OrmModel, hard_delete: bool) -> string {
   if validate_model(m) != OrmError.None { give "" }
-  if hard_delete || !m.soft_delete {
+  if hard_delete  or  not m.soft_delete {
     give "DELETE FROM " + m.table + " WHERE " + m.primary_key + " = ?"
   }
   give "UPDATE " + m.table + " SET deleted_at = ? WHERE " + m.primary_key + " = ?"

@@ -120,13 +120,13 @@ proc default_profile() -> ArduinoProfile {
 
 proc supports_pwm(profile: ArduinoProfile, pin: Pin) -> bool {
   if profile == ArduinoProfile.Uno {
-    give pin == 3 || pin == 5 || pin == 6 || pin == 9 || pin == 10 || pin == 11
+    give pin == 3  or  pin == 5  or  pin == 6  or  pin == 9  or  pin == 10  or  pin == 11
   }
   if profile == ArduinoProfile.Mega {
-    give pin >= 2 && pin <= 13
+    give pin >= 2  and  pin <= 13
   }
   if profile == ArduinoProfile.Esp32 {
-    give pin >= 0 && pin <= 19
+    give pin >= 0  and  pin <= 19
   }
   give false
 }
@@ -145,43 +145,43 @@ proc max_spi_hz(profile: ArduinoProfile) -> int {
 
 proc validate_pin(profile: ArduinoProfile, pin: Pin) -> ArduinoResult[bool] {
   if profile == ArduinoProfile.Uno {
-    if pin < 0 || pin > 19 { give err[bool](ArduinoError.InvalidPin) }
+    if pin < 0  or  pin > 19 { give err[bool](ArduinoError.InvalidPin) }
     give ok[bool](true)
   }
   if profile == ArduinoProfile.Mega {
-    if pin < 0 || pin > 53 { give err[bool](ArduinoError.InvalidPin) }
+    if pin < 0  or  pin > 53 { give err[bool](ArduinoError.InvalidPin) }
     give ok[bool](true)
   }
   if profile == ArduinoProfile.Esp32 {
-    if pin < 0 || pin > 39 { give err[bool](ArduinoError.InvalidPin) }
+    if pin < 0  or  pin > 39 { give err[bool](ArduinoError.InvalidPin) }
     give ok[bool](true)
   }
   give err[bool](ArduinoError.Unsupported)
 }
 
 proc validate_address7(addr: Address7) -> ArduinoResult[bool] {
-  if addr < 0x08 || addr > 0x77 {
+  if addr < 0x08  or  addr > 0x77 {
     give err[bool](ArduinoError.InvalidAddress)
   }
   give ok[bool](true)
 }
 
 proc validate_baud_rate(baud: BaudRate) -> ArduinoResult[bool] {
-  if baud <= 0 || baud > 2000000 {
+  if baud <= 0  or  baud > 2000000 {
     give err[bool](ArduinoError.InvalidBaudRate)
   }
   give ok[bool](true)
 }
 
 proc validate_millis(ms: Millis) -> ArduinoResult[bool] {
-  if ms < 0 || ms > 60000 {
+  if ms < 0  or  ms > 60000 {
     give err[bool](ArduinoError.Timeout)
   }
   give ok[bool](true)
 }
 
 proc validate_retry_budget(retry_budget: int) -> ArduinoResult[bool] {
-  if retry_budget < 0 || retry_budget > 8 {
+  if retry_budget < 0  or  retry_budget > 8 {
     give err[bool](ArduinoError.Unsupported)
   }
   give ok[bool](true)
@@ -368,7 +368,7 @@ proc project_validate(preset: ArduinoProjectPreset) -> ArduinoResult[bool] {
   let pins_ok = validate_pin_list(preset.profile, preset.pins)
   when pins_ok is ArduinoResult.Err { give err[bool](pins_ok.error) }
 
-  if preset.kind == ArduinoProjectType.SensorI2c && supports_i2c(preset.profile, "7bit") == false {
+  if preset.kind == ArduinoProjectType.SensorI2c  and  supports_i2c(preset.profile, "7bit") == false {
     give err[bool](ArduinoError.Unsupported)
   }
   give ok[bool](true)
@@ -447,8 +447,8 @@ proc library_dependencies(lib: ArduinoLibrary) -> [ArduinoLibrary] {
 }
 
 proc library_conflict(a: ArduinoLibrary, b: ArduinoLibrary) -> bool {
-  if a == ArduinoLibrary.FastLed && b == ArduinoLibrary.NeoPixel { give true }
-  if a == ArduinoLibrary.NeoPixel && b == ArduinoLibrary.FastLed { give true }
+  if a == ArduinoLibrary.FastLed  and  b == ArduinoLibrary.NeoPixel { give true }
+  if a == ArduinoLibrary.NeoPixel  and  b == ArduinoLibrary.FastLed { give true }
   give false
 }
 
@@ -464,10 +464,10 @@ proc library_supported(profile: ArduinoProfile, lib: ArduinoLibrary) -> bool {
   if lib == ArduinoLibrary.FastLed { give true }
   if lib == ArduinoLibrary.NeoPixel { give true }
   if profile == ArduinoProfile.Esp32 {
-    if lib == ArduinoLibrary.Wifi || lib == ArduinoLibrary.Ble || lib == ArduinoLibrary.LoRa || lib == ArduinoLibrary.Mqtt { give true }
+    if lib == ArduinoLibrary.Wifi  or  lib == ArduinoLibrary.Ble  or  lib == ArduinoLibrary.LoRa  or  lib == ArduinoLibrary.Mqtt { give true }
   }
   if profile == ArduinoProfile.Mega {
-    if lib == ArduinoLibrary.LoRa || lib == ArduinoLibrary.Mqtt { give true }
+    if lib == ArduinoLibrary.LoRa  or  lib == ArduinoLibrary.Mqtt { give true }
   }
   give false
 }

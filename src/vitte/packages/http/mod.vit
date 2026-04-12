@@ -253,7 +253,7 @@ proc default_headers() -> HttpHeaders {
 
 proc header_add(headers: HttpHeaders, key: string, value: string) -> HttpHeaders {
   let v: string = value
-  if key == "authorization" || key == "cookie" {
+  if key == "authorization"  or  key == "cookie" {
     v = http_runtime_pkg.redact_sensitive(value)
   }
   give HttpHeaders(headers.values.push(HttpHeader(key, v)))
@@ -296,7 +296,7 @@ proc parse_request_line(line: string) -> HttpResult[HttpRequest] {
   let method_s: string = http_runtime_pkg.parse_method_token(line)
   let path_s: string = http_runtime_pkg.parse_path_token(line)
   let version_s: string = http_runtime_pkg.parse_version_token(line)
-  if method_s.len == 0 || path_s.len == 0 || version_s.len == 0 {
+  if method_s.len == 0  or  path_s.len == 0  or  version_s.len == 0 {
     give err_ctx[HttpRequest]("VITTE-H0001", diagnostics_message("VITTE-H0001"), "request-line")
   }
   if http_runtime_pkg.method_known(method_s) == false {
@@ -316,7 +316,7 @@ proc validate_request(state: HttpServerState, req: HttpRequest) -> HttpResult[bo
   if http_runtime_pkg.profile_allows_network(state.cfg.profile) == false {
     give err_ctx[bool]("VITTE-H0012", diagnostics_message("VITTE-H0012"), "profile=" + state.cfg.profile)
   }
-  if http_runtime_pkg.has_crlf(req.path) || http_runtime_pkg.has_crlf(req.query) {
+  if http_runtime_pkg.has_crlf(req.path)  or  http_runtime_pkg.has_crlf(req.query) {
     give err_ctx[bool]("VITTE-H0002", diagnostics_message("VITTE-H0002"), "path/query")
   }
   let host_h: string = header_get(req.headers, "host")
@@ -324,10 +324,10 @@ proc validate_request(state: HttpServerState, req: HttpRequest) -> HttpResult[bo
     give err_ctx[bool]("VITTE-H0011", diagnostics_message("VITTE-H0011"), "host")
   }
   let origin_h: string = header_get(req.headers, "origin")
-  if origin_h.len > 0 && http_runtime_pkg.cors_origin_allowed(state.cfg.cors_allow_origin, origin_h) == false {
+  if origin_h.len > 0  and  http_runtime_pkg.cors_origin_allowed(state.cfg.cors_allow_origin, origin_h) == false {
     give err_ctx[bool]("VITTE-H0008", diagnostics_message("VITTE-H0008"), "origin")
   }
-  if http_runtime_pkg.starts_with(req.path, "http://") || http_runtime_pkg.starts_with(req.path, "https://") {
+  if http_runtime_pkg.starts_with(req.path, "http://")  or  http_runtime_pkg.starts_with(req.path, "https://") {
     if http_runtime_pkg.is_private_host_from_url(req.path) {
       give err_ctx[bool]("VITTE-H0010", diagnostics_message("VITTE-H0010"), "ssrf")
     }
@@ -359,7 +359,7 @@ proc route_conflict(routes: [HttpRoute], candidate: HttpRoute) -> bool {
   let i: int = 0
   while i < routes.len {
     let r: HttpRoute = routes[i]
-    if r.method == candidate.method && http_runtime_pkg.normalize_path(r.pattern) == http_runtime_pkg.normalize_path(candidate.pattern) {
+    if r.method == candidate.method  and  http_runtime_pkg.normalize_path(r.pattern) == http_runtime_pkg.normalize_path(candidate.pattern) {
       give true
     }
     i += 1
@@ -400,7 +400,7 @@ proc apply_middleware(state: HttpServerState, req: HttpRequest) -> HttpResult[Ht
       }
       if m.name == "enforce-cors" {
         let origin_h: string = header_get(out.headers, "origin")
-        if origin_h.len > 0 && http_runtime_pkg.cors_origin_allowed(state.cfg.cors_allow_origin, origin_h) == false {
+        if origin_h.len > 0  and  http_runtime_pkg.cors_origin_allowed(state.cfg.cors_allow_origin, origin_h) == false {
           give err_ctx[HttpRequest]("VITTE-H0008", diagnostics_message("VITTE-H0008"), "middleware:cors")
         }
       }
@@ -436,7 +436,7 @@ proc find_route(routes: [HttpRoute], req: HttpRequest) -> HttpResult[HttpRoute] 
   let i: int = 0
   while i < routes.len {
     let r: HttpRoute = routes[i]
-    if r.method == req.method && http_runtime_pkg.route_matches(r.pattern, req.path) {
+    if r.method == req.method  and  http_runtime_pkg.route_matches(r.pattern, req.path) {
       let rank: int = http_runtime_pkg.route_rank(r.priority, r.pattern)
       if rank > best_rank {
         best_idx = i
@@ -472,7 +472,7 @@ proc apply_security_gates(state: HttpServerState, req: HttpRequest, matched: Htt
     }
   }
   if state.cfg.csrf_required {
-    if req.method == HttpMethod.Post || req.method == HttpMethod.Put || req.method == HttpMethod.Patch || req.method == HttpMethod.Delete {
+    if req.method == HttpMethod.Post  or  req.method == HttpMethod.Put  or  req.method == HttpMethod.Patch  or  req.method == HttpMethod.Delete {
       let token: string = header_get(req.headers, "x-csrf-token")
       if token.len == 0 {
         give err_ctx[bool]("VITTE-H0008", diagnostics_message("VITTE-H0008"), "csrf")

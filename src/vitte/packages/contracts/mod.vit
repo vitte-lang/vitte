@@ -201,7 +201,7 @@ proc with_hash(contract: Contract, schema_hash: string) -> Contract {
 }
 
 proc same_identity(left: Contract, right: Contract) -> bool {
-  give left.name == right.name && left.version == right.version
+  give left.name == right.name  and  left.version == right.version
 }
 
 proc contains(text: string, needle: string) -> bool {
@@ -222,7 +222,7 @@ proc first_missing_field(contract: Contract, payload: string) -> string {
   let i: int = 0
   while i < contract.required_fields.len {
     let req_field = contract.required_fields[i]
-    if !contains(payload, req_field) {
+    if not contains(payload, req_field) {
       give req_field
     }
     i += 1
@@ -238,7 +238,7 @@ proc contract_verify(contract: Contract, payload: string) -> ContractCheck {
   let i: int = 0
   while i < contract.required_fields.len {
     let req_field = contract.required_fields[i]
-    if !contains(payload, req_field) {
+    if not contains(payload, req_field) {
       give ContractCheck(false, "missing-field:" + req_field)
     }
     i += 1
@@ -331,7 +331,7 @@ proc contract_normalize(contract: Contract, opts: ContractsOptions) -> Contract 
     if reqs.len >= o.max_required_fields { break }
 
     let f = contract.required_fields[i]
-    if f.len <= o.max_field_name_len && has_required_field(Contract(name, ver, schema_hash, reqs), f) == false {
+    if f.len <= o.max_field_name_len  and  has_required_field(Contract(name, ver, schema_hash, reqs), f) == false {
       reqs = reqs.push(f)
     }
 

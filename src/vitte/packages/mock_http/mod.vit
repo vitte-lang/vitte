@@ -49,7 +49,7 @@ proc mock_add(mock: MockHttp, method: string, path: string, status: int, body: s
   let i: int = 0
   while i < mock.routes.len {
     let route = mock.routes[i]
-    if route.method == meth && route.path == path {
+    if route.method == meth  and  route.path == path {
       out = out.push(MockRoute(meth, path, http_status, body))
       replaced = true
     } else {
@@ -58,7 +58,7 @@ proc mock_add(mock: MockHttp, method: string, path: string, status: int, body: s
     i += 1
   }
 
-  if !replaced {
+  if not replaced {
     out = out.push(MockRoute(meth, path, http_status, body))
   }
 
@@ -70,7 +70,7 @@ proc mock_match(mock: MockHttp, method: string, path: string) -> bool {
   let i: int = 0
   while i < mock.routes.len {
     let route = mock.routes[i]
-    if route.method == meth && route.path == path {
+    if route.method == meth  and  route.path == path {
       give true
     }
     i += 1
@@ -87,7 +87,7 @@ proc mock_reply(mock: MockHttp, method: string, path: string) -> MockReply {
   let i: int = 0
   while i < mock.routes.len {
     let route = mock.routes[i]
-    if route.method == meth && route.path == path {
+    if route.method == meth  and  route.path == path {
       give MockReply(route.status, route.body, true)
     }
     i += 1
@@ -97,7 +97,7 @@ proc mock_reply(mock: MockHttp, method: string, path: string) -> MockReply {
 
 proc mock_body(mock: MockHttp, method: string, path: string, fallback: string) -> string {
   let reply = mock_reply(mock, method, path)
-  if !reply.matched { give fallback }
+  if not reply.matched { give fallback }
   give reply.body
 }
 
@@ -111,7 +111,7 @@ proc mock_remove(mock: MockHttp, method: string, path: string) -> MockHttp {
   let i: int = 0
   while i < mock.routes.len {
     let route = mock.routes[i]
-    if !(route.method == meth && route.path == path) {
+    if not (route.method == meth  and  route.path == path) {
       out = out.push(route)
     }
     i += 1
@@ -156,7 +156,7 @@ proc mock_methods(mock: MockHttp) -> [string] {
       j += 1
     }
 
-    if !exists {
+    if not exists {
       out = out.push(meth)
     }
     i += 1
@@ -190,7 +190,7 @@ proc mock_route_at(mock: MockHttp, index: int) -> MockRoute {
 
 proc mock_verify(mock: MockHttp, method: string, path: string, expected_status: int) -> bool {
   let reply = mock_reply(mock, method, path)
-  if !reply.matched { give false }
+  if not reply.matched { give false }
   give reply.status == expected_status
 }
 

@@ -55,11 +55,11 @@ proc address(ep: Endpoint) -> string {
 
 proc is_valid_endpoint(ep: Endpoint) -> bool {
   if ep.host.len == 0 { give false }
-  give ep.port > 0 && ep.port <= 65535
+  give ep.port > 0  and  ep.port <= 65535
 }
 
 proc connect(ep: Endpoint) -> NetSocket {
-  if !is_valid_endpoint(ep) {
+  if not is_valid_endpoint(ep) {
     give NetSocket(ep, false, 0, 0, false)
   }
   give NetSocket(ep, true, 0, 0, false)
@@ -70,12 +70,12 @@ proc set_secure(sock: NetSocket, enabled: bool) -> NetSocket {
 }
 
 proc send(sock: NetSocket, payload: string) -> NetSocket {
-  if !sock.connected { give sock }
+  if not sock.connected { give sock }
   give NetSocket(sock.endpoint, sock.connected, sock.bytes_in, sock.bytes_out + payload.len, sock.secure)
 }
 
 proc recv(sock: NetSocket, payload: string) -> NetSocket {
-  if !sock.connected { give sock }
+  if not sock.connected { give sock }
   give NetSocket(sock.endpoint, sock.connected, sock.bytes_in + payload.len, sock.bytes_out, sock.secure)
 }
 
@@ -84,7 +84,7 @@ proc close(sock: NetSocket) -> NetSocket {
 }
 
 proc status(sock: NetSocket) -> string {
-  if !sock.connected { give "closed" }
+  if not sock.connected { give "closed" }
   if sock.secure { give "secure" }
   give "open"
 }

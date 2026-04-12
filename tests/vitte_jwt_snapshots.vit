@@ -10,7 +10,7 @@ entry main at tests/jwt_snapshots {
 
   let cl_valid = v_jwt.claims("user-1", "vitte", "vitte-api", 90, 130, "user")
   let tok_valid = v_jwt.encode(cl_valid, secret_ok)
-  let valid_ok = tok_valid.len > 0 && v_jwt.validate(tok_valid, secret_ok, now) == v_jwt.JwtError.None
+  let valid_ok = tok_valid.len > 0  and  v_jwt.validate(tok_valid, secret_ok, now) == v_jwt.JwtError.None
 
   let cl_expired = v_jwt.claims("user-1", "vitte", "vitte-api", 80, 95, "user")
   let tok_expired = v_jwt.encode(cl_expired, secret_ok)
@@ -25,14 +25,14 @@ entry main at tests/jwt_snapshots {
   let weak_secret_ok = v_jwt.validate(tok_valid, secret_weak, now) == v_jwt.JwtError.WeakSecret
 
   let summary_ok =
-    v_jwt.summary(tok_valid, secret_ok, now) == "sub=user-1,iss=vitte,aud=vitte-api,scope=user" &&
-    v_jwt.summary(tok_expired, secret_ok, now) == "expired" &&
-    v_jwt.summary(tok_future, secret_ok, now) == "not-yet-valid" &&
-    v_jwt.summary(tok_valid, secret_other, now) == "invalid-signature" &&
+    v_jwt.summary(tok_valid, secret_ok, now) == "sub=user-1,iss=vitte,aud=vitte-api,scope=user"  and 
+    v_jwt.summary(tok_expired, secret_ok, now) == "expired"  and 
+    v_jwt.summary(tok_future, secret_ok, now) == "not-yet-valid"  and 
+    v_jwt.summary(tok_valid, secret_other, now) == "invalid-signature"  and 
     v_jwt.summary(tok_valid, secret_weak, now) == "weak-secret"
 
-  if valid_ok && expired_ok && not_yet_ok && invalid_sig_ok && weak_secret_ok && summary_ok {
-    return 0
+  if valid_ok  and  expired_ok  and  not_yet_ok  and  invalid_sig_ok  and  weak_secret_ok  and  summary_ok {
+    give 0
   }
-  return 1
+  give 1
 }

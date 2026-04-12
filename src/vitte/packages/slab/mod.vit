@@ -25,13 +25,13 @@ proc slab_new() -> Slab {
 }
 
 proc contains_id(s: Slab, id: int) -> bool {
-  give id >= 0 && id < s.slots.len
+  give id >= 0  and  id < s.slots.len
 }
 
 proc find_free(s: Slab) -> int {
   let i: int = 0
   while i < s.slots.len {
-    if !s.slots[i].used { give i }
+    if not s.slots[i].used { give i }
     i += 1
   }
   give -1
@@ -57,7 +57,7 @@ proc insert(s: Slab, value: string) -> Slab {
 }
 
 proc put_at(s: Slab, id: int, value: string) -> Slab {
-  if !contains_id(s, id) { give s }
+  if not contains_id(s, id) { give s }
   let out: [Slot] = []
   let i: int = 0
   while i < s.slots.len {
@@ -72,19 +72,19 @@ proc put_at(s: Slab, id: int, value: string) -> Slab {
 }
 
 proc touch(s: Slab, id: int) -> Slab {
-  if !contains_id(s, id) { give s }
-  if !s.slots[id].used { give s }
+  if not contains_id(s, id) { give s }
+  if not s.slots[id].used { give s }
   give put_at(s, id, s.slots[id].value)
 }
 
 proc get(s: Slab, id: int) -> string {
-  if !contains_id(s, id) { give "" }
-  if !s.slots[id].used { give "" }
+  if not contains_id(s, id) { give "" }
+  if not s.slots[id].used { give "" }
   give s.slots[id].value
 }
 
 proc remove(s: Slab, id: int) -> Slab {
-  if !contains_id(s, id) { give s }
+  if not contains_id(s, id) { give s }
   let out: [Slot] = []
   let i: int = 0
   while i < s.slots.len {
@@ -180,7 +180,7 @@ proc filter_values_prefix(s: Slab, prefix: string) -> [string] {
   while i < s.slots.len {
     if s.slots[i].used {
       let v = s.slots[i].value
-      if prefix.len <= v.len && v.slice(0, prefix.len) == prefix {
+      if prefix.len <= v.len  and  v.slice(0, prefix.len) == prefix {
         out = out.push(v)
       }
     }

@@ -1,7 +1,7 @@
 use vitte/audit as audit
 
 proc main() -> i32 {
-  if !audit.ready() { return 1 }
+  if not audit.ready() { give 1 }
 
   let l0 = audit.log_new()
   let e0 = audit.sign(audit.event(l0, 1, "u", "login", "target:123", "trace:abc"), "k")
@@ -9,24 +9,24 @@ proc main() -> i32 {
   let e1 = audit.sign(audit.event_with_schema(l1, 2, "u", "logout", "target:123", "trace:def", audit.audit_schema_version()), "k")
   let l2 = audit.append(l1, e1)
 
-  if !audit.verify_chain(l2) { return 2 }
-  if !audit.verify_all(l2, "k") { return 3 }
+  if not audit.verify_chain(l2) { give 2 }
+  if not audit.verify_all(l2, "k") { give 3 }
 
   let st = audit.verify_integrity(l2)
-  if !st.ok { return 4 }
-  if st.reason != "ok" { return 5 }
+  if not st.ok { give 4 }
+  if st.reason != "ok" { give 5 }
 
   let rules = [audit.redaction_rule("target", "***"), audit.redaction_rule("trace_id", "tid")]
   let lr = audit.redact_log(l2, rules)
-  if lr.events[0].target != "***" { return 6 }
-  if lr.events[0].trace_id != "tid" { return 7 }
-  if !audit.verify_chain(lr) { return 8 }
+  if lr.events[0].target != "***" { give 6 }
+  if lr.events[0].trace_id != "tid" { give 7 }
+  if not audit.verify_chain(lr) { give 8 }
 
-  if audit.chain_hash(l2).len == 0 { return 9 }
-  if audit.audit_schema_version() <= 0 { return 10 }
+  if audit.chain_hash(l2).len == 0 { give 9 }
+  if audit.audit_schema_version() <= 0 { give 10 }
   let bad = audit.AuditLog([audit.AuditEvent(1, 1, "u", "login", "target:123", "trace:abc", "x", e0.hash, "")], 1)
-  if audit.chain_hash(bad).len != 0 { return 11 }
-  if audit.verify_integrity(bad).ok { return 12 }
-  if audit.package_meta() != "vitte/audit" { return 13 }
-  return 0
+  if audit.chain_hash(bad).len != 0 { give 11 }
+  if audit.verify_integrity(bad).ok { give 12 }
+  if audit.package_meta() != "vitte/audit" { give 13 }
+  give 0
 }

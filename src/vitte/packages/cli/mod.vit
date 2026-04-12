@@ -161,7 +161,7 @@ proc flag_value(args: [string], name: string, fallback: string) -> string {
 
 proc option(args: [string], name: string) -> CliOption {
   let value = flag_value(args, name, "")
-  if value.len == 0 && has_flag(args, name) == false {
+  if value.len == 0  and  has_flag(args, name) == false {
     give CliOption(name, "", false)
   }
   give CliOption(name, value, true)
@@ -171,7 +171,7 @@ proc positional(args: [string]) -> [string] {
   let out: [string] = []
   let i: int = 0
   while i < args.len {
-    if args[i].len > 0 && args[i].slice(0, 1) == "-" {
+    if args[i].len > 0  and  args[i].slice(0, 1) == "-" {
       i += 1
       continue
     }
@@ -192,8 +192,8 @@ proc parse(args: [string]) -> CliParse {
   let cmd = command(args)
   give CliParse(cmd,
                 positional(args),
-                has_flag(args, "--help") || has_flag(args, "-h"),
-                has_flag(args, "--version") || has_flag(args, "-v"))
+                has_flag(args, "--help")  or  has_flag(args, "-h"),
+                has_flag(args, "--version")  or  has_flag(args, "-v"))
 }
 
 proc parse_checked(args: [string], cfg: CliConfig) -> CliResult[CliParse] {
@@ -203,7 +203,7 @@ proc parse_checked(args: [string], cfg: CliConfig) -> CliResult[CliParse] {
   if cfg.allow_short_bundles == false {
     let i: int = 0
     while i < args.len {
-      if args[i].len > 2 && args[i].slice(0, 1) == "-" && args[i].slice(0, 2) != "--" {
+      if args[i].len > 2  and  args[i].slice(0, 1) == "-"  and  args[i].slice(0, 2) != "--" {
         give CliResult.Err(CliError.InvalidArgs)
       }
       i += 1
@@ -235,7 +235,7 @@ proc stats(args: [string]) -> CliStats {
   let flags: int = 0
   let i: int = 0
   while i < args.len {
-    if args[i].len > 0 && args[i].slice(0, 1) == "-" { flags += 1 }
+    if args[i].len > 0  and  args[i].slice(0, 1) == "-" { flags += 1 }
     i += 1
   }
 

@@ -70,7 +70,7 @@ proc should_retry(status: int, attempt: int, p: RetryPolicy) -> bool {
   if attempt >= p.max_attempts { give false }
   if status == 429 { give true }
   if status >= 500 { give true }
-  if p.retry_4xx && status >= 400 { give true }
+  if p.retry_4xx  and  status >= 400 { give true }
   give false
 }
 
@@ -83,7 +83,7 @@ proc run_with_retry(statuses: [int], p: RetryPolicy) -> int {
 
   while idx < statuses.len {
     current = statuses[idx]
-    if !should_retry(current, attempt, p) { break }
+    if not should_retry(current, attempt, p) { break }
     if idx + 1 >= statuses.len { break }
     idx += 1
     attempt += 1
@@ -99,7 +99,7 @@ proc attempts_used(statuses: [int], p: RetryPolicy) -> int {
   let attempt: int = 0
 
   while idx < statuses.len {
-    if !should_retry(statuses[idx], attempt, p) { break }
+    if not should_retry(statuses[idx], attempt, p) { break }
     if idx + 1 >= statuses.len { break }
     idx += 1
     attempt += 1
@@ -114,7 +114,7 @@ proc jitter_name(p: RetryPolicy) -> string {
 }
 
 proc classify_status(status: int) -> string {
-  if status >= 200 && status < 300 { give "success" }
+  if status >= 200  and  status < 300 { give "success" }
   if status == 429 { give "throttle" }
   if status >= 500 { give "server-error" }
   if status >= 400 { give "client-error" }
@@ -146,7 +146,7 @@ proc with_delays(p: RetryPolicy, base_delay_ms: int, max_delay_ms: int) -> Retry
 }
 
 proc should_stop(status: int, attempt: int, p: RetryPolicy) -> bool {
-  give !should_retry(status, attempt, p)
+  give not should_retry(status, attempt, p)
 }
 
 proc delay_plan(p: RetryPolicy, count: int) -> [int] {
@@ -163,7 +163,7 @@ proc delay_plan(p: RetryPolicy, count: int) -> [int] {
 
 proc run_succeeds(statuses: [int], p: RetryPolicy) -> bool {
   let status = run_with_retry(statuses, p)
-  give status >= 200 && status < 300
+  give status >= 200  and  status < 300
 }
 
 proc first_retryable(statuses: [int], p: RetryPolicy) -> int {

@@ -9,16 +9,16 @@ proc main() -> i32 {
 
   let ch0 = channel.channel_bounded(2)
   let ch1 = channel.send(ch0, primary)
-  if channel.len(ch1) != 1 { return 1 }
+  if channel.len(ch1) != 1 { give 1 }
 
   let rule = alerts.rule_new("array-flow", 80, 2)
   let evt = alerts.AlertEvent("k1", "node-a", "cpu", 95, 100, labels.data, alerts.trace_id("tr-array"))
-  if alerts.notify(rule, evt).len == 0 { return 2 }
+  if alerts.notify(rule, evt).len == 0 { give 2 }
 
   let a0 = actor.spawn(1, "array-flow")
   let a1 = actor.send(a0, actor.make_message("evt", primary, "tr-array"))
   let a2 = actor.step(a1)
-  if actor.processed_count(a2) < 0 { return 3 }
+  if actor.processed_count(a2) < 0 { give 3 }
 
-  return 0
+  give 0
 }

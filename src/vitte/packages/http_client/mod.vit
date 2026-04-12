@@ -198,7 +198,7 @@ proc default_headers() -> ClientHeaders {
 
 proc header_add(headers: ClientHeaders, key: string, value: string) -> ClientHeaders {
   let v: string = value
-  if key == "authorization" || key == "cookie" {
+  if key == "authorization"  or  key == "cookie" {
     v = http_client_runtime_pkg.redact_sensitive(value)
   }
   give ClientHeaders(headers.values.push(ClientHeader(key, v)))
@@ -395,7 +395,7 @@ proc perform_once(state: ClientState, req: ClientRequest) -> ClientResult[Client
 
   let status: int = 200
   let body: string = "{\"ok\":true}"
-  if req.method == ClientMethod.Post && req.body.len == 0 {
+  if req.method == ClientMethod.Post  and  req.body.len == 0 {
     status = 400
     body = "{\"error\":\"empty\"}"
   }
@@ -438,7 +438,7 @@ proc security_redirect_allowed(state: ClientState, from_url: string, to_url: str
   let from_host: string = http_client_runtime_pkg.host(from_url)
   let to_host: string = http_client_runtime_pkg.host(to_url)
   if from_host == to_host { give true }
-  if state.cfg.allow_private_hosts && http_client_runtime_pkg.is_private_host(to_host) { give true }
+  if state.cfg.allow_private_hosts  and  http_client_runtime_pkg.is_private_host(to_host) { give true }
   give false
 }
 

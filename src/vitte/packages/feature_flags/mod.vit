@@ -165,7 +165,7 @@ proc add_flag(flagset: FeatureFlags, name: string, enabled: bool, rollout: int) 
     i += 1
   }
 
-  if !replaced {
+  if not replaced {
     out = out.push(FeatureFlag(name, enabled, clamp_rollout(rollout), "", false, false))
   }
 
@@ -199,7 +199,7 @@ proc override(flagset: FeatureFlags, name: string, user_id: string, value: bool)
     i += 1
   }
 
-  if !found {
+  if not found {
     out = out.push(FeatureFlag(name, false, 0, user_id, value, true))
   }
 
@@ -250,8 +250,8 @@ proc flag_for_user(flagset: FeatureFlags, name: string, user_id: string, fallbac
   while i < flagset.flags.len {
     let f = flagset.flags[i]
     if f.name == name {
-      if f.has_override && f.override_user == user_id { give f.override_value }
-      if !f.enabled { give false }
+      if f.has_override  and  f.override_user == user_id { give f.override_value }
+      if not f.enabled { give false }
       give percentage_rollout(user_id, f.rollout)
     }
     i += 1

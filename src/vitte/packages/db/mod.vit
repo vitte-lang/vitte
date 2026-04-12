@@ -298,9 +298,9 @@ proc normalize_config(cfg: DbConfig) -> DbConfig {
 proc db_validate_code(conn: DbConn) -> string {
   if conn.connected == false { give "VITTE-D0002" }
   if validate_config_code(conn.config) != "ok" { give validate_config_code(conn.config) }
-  if conn.pool_in_use < 0 || conn.pool_in_use > conn.config.pool_max { give "VITTE-D0007" }
+  if conn.pool_in_use < 0  or  conn.pool_in_use > conn.config.pool_max { give "VITTE-D0007" }
   if conn.queue_depth < 0 { give "VITTE-D0007" }
-  if conn.error_count < 0 || conn.retry_count < 0 { give "VITTE-D0006" }
+  if conn.error_count < 0  or  conn.retry_count < 0 { give "VITTE-D0006" }
   give "ok"
 }
 
@@ -514,7 +514,7 @@ proc rollback(tx: DbTx) -> DbResult[DbTx] {
 }
 
 proc map_row_nullable(row: DbRow, index: int) -> DbResult[DbBindValue] {
-  if index < 0 || index >= row.values.len {
+  if index < 0  or  index >= row.values.len {
     give DbResult.Err(DbError.Failure("VITTE-D0002", "column out of range"))
   }
   give DbResult.Ok(row.values[index])
@@ -552,7 +552,7 @@ proc migration_compat_check(old_state: MigrationState, new_state: MigrationState
 proc structured_query_log(sql: string, binds: [DbBindValue], latency_ms: int, ok: bool) -> string {
   let binds_count: int = binds.len
   let safe_sql: string = sql
-  if db_runtime_pkg.contains(sql, "password") || db_runtime_pkg.contains(sql, "token") {
+  if db_runtime_pkg.contains(sql, "password")  or  db_runtime_pkg.contains(sql, "token") {
     safe_sql = db_runtime_pkg.redact_secret(sql)
   }
   let ok_text: string = "false"
@@ -563,7 +563,7 @@ proc structured_query_log(sql: string, binds: [DbBindValue], latency_ms: int, ok
 proc observe(conn: DbConn, latency_ms: int, error_happened: bool, retry_happened: bool) -> DbConn {
   let p50: int = conn.latency_p50_ms
   let p95: int = conn.latency_p95_ms
-  if p50 == 0 || latency_ms < p50 { p50 = latency_ms }
+  if p50 == 0  or  latency_ms < p50 { p50 = latency_ms }
   if latency_ms > p95 { p95 = latency_ms }
   let ec: int = conn.error_count
   let rc: int = conn.retry_count

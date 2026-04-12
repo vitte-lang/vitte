@@ -170,7 +170,7 @@ proc normalize(p: PathInfo) -> PathInfo {
 }
 
 proc absolute(base: PathInfo, p: PathInfo) -> PathInfo {
-  if p.raw.len > 0 && p.raw.slice(0, 1) == "/" { give normalize(p) }
+  if p.raw.len > 0  and  p.raw.slice(0, 1) == "/" { give normalize(p) }
   if base.raw.len == 0 { give normalize(PathInfo(p.raw)) }
   if p.raw.len == 0 { give normalize(base) }
   if base.raw.slice(base.raw.len - 1, base.raw.len) == "/" { give normalize(PathInfo(base.raw + p.raw)) }
@@ -401,7 +401,7 @@ proc append(rt: FsRuntime, p: PathInfo, suffix: string) -> FsResult[FsRuntime] {
 }
 
 proc rename_atomic(rt: FsRuntime, src: PathInfo, dst: PathInfo) -> FsResult[FsRuntime] {
-  if path_allowed(rt, src) == false || path_allowed(rt, dst) == false {
+  if path_allowed(rt, src) == false  or  path_allowed(rt, dst) == false {
     give FsResult.Err(FsError.Failure("VITTE-F0001", diagnostics_message("VITTE-F0001")))
   }
   let s: PathInfo = normalize(src)

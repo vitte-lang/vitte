@@ -172,7 +172,7 @@ proc eval_binary_checked(op: string, left: int, right: int, cfg: EvalConfig) -> 
   }
 
   let r = eval_binary(op, left, right)
-  if cfg.detect_div_zero && (op == "/" || op == "%") && right == 0 {
+  if cfg.detect_div_zero  and  (op == "/"  or  op == "%")  and  right == 0 {
     give EvalApiResult.Ok(err(EvalError.DivisionByZero))
   }
 
@@ -249,7 +249,7 @@ proc eval_product(values: [int], cfg: EvalConfig) -> EvalApiResult[EvalResult] {
 }
 
 proc can_eval(op: string) -> bool {
-  give eval_validate_pkg.valid_op(op) || eval_validate_pkg.valid_unary_op(op)
+  give eval_validate_pkg.valid_op(op)  or  eval_validate_pkg.valid_unary_op(op)
 }
 
 proc is_ok(r: EvalResult) -> bool {
@@ -391,15 +391,15 @@ proc stable_ready() -> bool {
 
   let b = eval_binary_checked("+", 2, 3, cfg)
   when b is EvalApiResult.Err { give false }
-  if b.value.error != EvalError.None || b.value.value != 5 { give false }
+  if b.value.error != EvalError.None  or  b.value.value != 5 { give false }
 
   let u = eval_unary_checked("abs", -8, cfg)
   when u is EvalApiResult.Err { give false }
-  if u.value.error != EvalError.None || u.value.value != 8 { give false }
+  if u.value.error != EvalError.None  or  u.value.value != 8 { give false }
 
   let c = eval_chain_checked([1, 2, 3], "+", cfg)
   when c is EvalApiResult.Err { give false }
-  if c.value.error != EvalError.None || c.value.value != 6 { give false }
+  if c.value.error != EvalError.None  or  c.value.value != 6 { give false }
 
   let st = eval_stats([b.value, u.value, c.value])
   if st.errors != 0 { give false }

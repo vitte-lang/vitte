@@ -9,7 +9,7 @@ package vitte/abi
 
 space vitte/abi
 
-share all
+
 
 use vitte/abi/internal/runtime as abi_runtime_pkg
 use vitte/abi/internal/validate as abi_validate_pkg
@@ -232,15 +232,15 @@ proc type_error(info: AbiTypeInfo) -> AbiError {
 }
 
 proc is_integer_type(info: AbiTypeInfo) -> bool {
-  give info.err == AbiError.None && info.kind == "integer"
+  give info.err == AbiError.None  and  info.kind == "integer"
 }
 
 proc is_float_type(info: AbiTypeInfo) -> bool {
-  give info.err == AbiError.None && info.kind == "float"
+  give info.err == AbiError.None  and  info.kind == "float"
 }
 
 proc is_pointer_type(info: AbiTypeInfo) -> bool {
-  give info.err == AbiError.None && info.kind == "pointer"
+  give info.err == AbiError.None  and  info.kind == "pointer"
 }
 
 proc type_size_bits(info: AbiTypeInfo) -> int {
@@ -463,8 +463,8 @@ proc c_abi_info() -> CAbiInfo {
 proc c_compatible(a: AbiSignature, b: AbiSignature) -> bool {
   if calling_tag(a.calling) != calling_tag(c_calling_convention()) { give false }
   if calling_tag(b.calling) != calling_tag(c_calling_convention()) { give false }
-  if type_error(a.ret) != AbiError.None || type_error(b.ret) != AbiError.None { give false }
-  if a.ret.kind != b.ret.kind || a.ret.bits != b.ret.bits { give false }
+  if type_error(a.ret) != AbiError.None  or  type_error(b.ret) != AbiError.None { give false }
+  if a.ret.kind != b.ret.kind  or  a.ret.bits != b.ret.bits { give false }
   if a.params.len != b.params.len { give false }
   let i: int = 0
   while i < a.params.len {
@@ -482,7 +482,7 @@ proc signature(calling: CallingConvention, ret: AbiTypeInfo, params: [AbiTypeInf
 proc validate_signature(sig: AbiSignature) -> bool {
   let tag = calling_tag(sig.calling)
   if abi_validate_pkg.valid_calling_tag(tag) == false { give false }
-  if !is_supported_calling(sig.calling) { give false }
+  if not is_supported_calling(sig.calling) { give false }
   if abi_validate_pkg.valid_param_count(sig.params.len, abi_policy_pkg.max_params()) == false { give false }
   if type_error(sig.ret) != AbiError.None { give false }
   if abi_validate_pkg.valid_alignment_bits(type_align_bits(sig.ret)) == false { give false }
@@ -694,6 +694,10 @@ proc diagnostics_code(sig: AbiSignature) -> string {
   give "VITTE-ABI0000"
 }
 
+proc diagnostics_namespace() -> string {
+  give "VITTE-ABI"
+}
+
 proc diagnostics_message(code: string) -> string {
   if code == diagnostics_namespace() + "0000" { give "ok" }
   if code == diagnostics_namespace() + "0001" { give "invalid package configuration" }
@@ -739,7 +743,7 @@ proc compatible(a: AbiSignature, b: AbiSignature) -> AbiCompatibility {
   if validate_signature(a) == false { give AbiCompatibility(false, "lhs-invalid") }
   if validate_signature(b) == false { give AbiCompatibility(false, "rhs-invalid") }
   if calling_tag(a.calling) != calling_tag(b.calling) { give AbiCompatibility(false, "calling-mismatch") }
-  if a.ret.kind != b.ret.kind || a.ret.bits != b.ret.bits { give AbiCompatibility(false, "return-mismatch") }
+  if a.ret.kind != b.ret.kind  or  a.ret.bits != b.ret.bits { give AbiCompatibility(false, "return-mismatch") }
   if a.params.len != b.params.len { give AbiCompatibility(false, "arity-mismatch") }
 
   let i: int = 0
@@ -812,10 +816,6 @@ proc capabilities() -> [string] {
 
 proc api_version() -> string {
   give version()
-}
-
-proc diagnostics_namespace() -> string {
-  give "VITTE-ABI"
 }
 
 proc validate_config_code() -> string {

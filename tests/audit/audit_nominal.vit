@@ -1,7 +1,7 @@
 use vitte/audit as audit
 
 proc main() -> i32 {
-  if !audit.ready() { return 1 }
+  if not audit.ready() { return 1 }
   if audit.audit_schema_version() <= 0 { return 2 }
 
   let log0 = audit.log_new()
@@ -13,18 +13,18 @@ proc main() -> i32 {
   let log2 = audit.append(log1, e1)
   if audit.count(log2) != 2 { return 4 }
 
-  if !audit.verify_chain(log2) { return 5 }
-  if !audit.verify_all(log2, "s3cr3t") { return 6 }
+  if not audit.verify_chain(log2) { return 5 }
+  if not audit.verify_all(log2, "s3cr3t") { return 6 }
 
   let integ = audit.verify_integrity(log2)
-  if !integ.ok { return 7 }
+  if not integ.ok { return 7 }
   if integ.checked != 2 { return 8 }
   if audit.chain_hash(log2).len == 0 { return 9 }
 
   let red = audit.redact_log(log2, audit.redaction_default_rules())
   if red.events[0].target != "[REDACTED]" { return 10 }
   if red.events[0].trace_id != "[TRACE]" { return 11 }
-  if !audit.verify_chain(red) { return 12 }
+  if not audit.verify_chain(red) { return 12 }
 
   let bad = audit.AuditLog([
     audit.AuditEvent(
@@ -42,5 +42,5 @@ proc main() -> i32 {
   if audit.chain_hash(bad).len != 0 { return 13 }
   if audit.verify_integrity(bad).ok { return 14 }
 
-  return 0
+  give 0
 }

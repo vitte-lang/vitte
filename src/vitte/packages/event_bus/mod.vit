@@ -274,7 +274,7 @@ proc pending_for(bus: Bus, name: string) -> int {
   let idx = find_sub_index(bus, name)
   if idx < 0 { give 0 }
   let s = bus.subs[idx]
-  if !s.active { give 0 }
+  if not s.active { give 0 }
 
   let out = 0
   let i: int = s.cursor
@@ -294,7 +294,7 @@ proc pull_next(bus: Bus, name: string) -> PullResult {
   }
 
   let s = bus.subs[idx]
-  if !s.active {
+  if not s.active {
     give PullResult(bus, false, Event(-1, "", "", bus.now_tick))
   }
 
@@ -330,7 +330,7 @@ proc pull_batch(bus: Bus, name: string, max_items: int) -> PullBatchResult {
   let i: int = 0
   while i < limit {
     let next = pull_next(out_bus, name)
-    if !next.found { break }
+    if not next.found { break }
     out_bus = next.bus
     out_events = out_events.push(next.event)
     i += 1

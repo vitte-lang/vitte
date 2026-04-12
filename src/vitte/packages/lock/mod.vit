@@ -63,7 +63,7 @@ proc tick(table: LockTable, delta: int) -> LockTable {
 }
 
 proc is_expired(table: LockTable, lease: Lease) -> bool {
-  if !lease.active { give true }
+  if not lease.active { give true }
   give table.now_tick >= lease.lease_until
 }
 
@@ -92,7 +92,7 @@ proc acquire(table: LockTable, key: string, owner: string, ttl: int) -> AcquireR
   let lease_ttl = ttl
   if lease_ttl < 1 { lease_ttl = 1 }
 
-  if !can_acquire(table, key) {
+  if not can_acquire(table, key) {
     give AcquireResult(table, false, current_lease(table, key))
   }
 
@@ -169,7 +169,7 @@ proc purge_expired(table: LockTable) -> LockTable {
   let i: int = 0
   while i < table.leases.len {
     let l = table.leases[i]
-    if !is_expired(table, l) {
+    if not is_expired(table, l) {
       out = out.push(l)
     }
     i += 1
@@ -205,7 +205,7 @@ proc active_count(table: LockTable) -> int {
   let out = 0
   let i: int = 0
   while i < table.leases.len {
-    if !is_expired(table, table.leases[i]) {
+    if not is_expired(table, table.leases[i]) {
       out += 1
     }
     i += 1

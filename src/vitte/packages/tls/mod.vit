@@ -59,7 +59,7 @@ proc open(peer: string, config: TlsConfig) -> TlsSession {
 
 proc handshake_error(session: TlsSession, cert_ok: bool) -> TlsError {
   if session.peer.len == 0 { give TlsError.HandshakeFailed }
-  if !cert_ok { give TlsError.CertInvalid }
+  if not cert_ok { give TlsError.CertInvalid }
   give TlsError.None
 }
 
@@ -81,7 +81,7 @@ proc decrypt_size(cipher_bytes: int) -> int {
 }
 
 proc send(session: TlsSession, payload: string) -> TlsSession {
-  if !session.handshake_done { give session }
+  if not session.handshake_done { give session }
   give TlsSession(
     session.peer,
     session.secure,
@@ -94,7 +94,7 @@ proc send(session: TlsSession, payload: string) -> TlsSession {
 }
 
 proc recv(session: TlsSession, payload: string) -> TlsSession {
-  if !session.handshake_done { give session }
+  if not session.handshake_done { give session }
   give TlsSession(
     session.peer,
     session.secure,
@@ -127,7 +127,7 @@ proc bytes_out(session: TlsSession) -> int {
 }
 
 proc is_secure(session: TlsSession) -> bool {
-  give session.secure && session.handshake_done
+  give session.secure  and  session.handshake_done
 }
 
 proc ready() -> bool {

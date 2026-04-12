@@ -327,7 +327,7 @@ proc mkdirs(path: string) -> StdIoResult[bool] {
 }
 
 proc copy(src: string, dst: string) -> StdIoResult[bool] {
-  if src.len == 0 || dst.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  if src.len == 0  or  dst.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
   let rt0 = fs_pkg.default_runtime()
   let seeded = fs_pkg.write_text(rt0, fs_pkg.path(src), "copied")
   when seeded is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
@@ -339,7 +339,7 @@ proc copy(src: string, dst: string) -> StdIoResult[bool] {
 }
 
 proc move(src: string, dst: string) -> StdIoResult[bool] {
-  if src.len == 0 || dst.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  if src.len == 0  or  dst.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
   let rt0 = fs_pkg.default_runtime()
   let seeded = fs_pkg.write_text(rt0, fs_pkg.path(src), "moved")
   when seeded is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
@@ -426,7 +426,7 @@ proc path_stem(path: string) -> string {
 proc glob(pattern: string) -> StdIoResult[[string]] {
   if pattern.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
   let out: [string] = []
-  if pattern == "*" || pattern == "./*" {
+  if pattern == "*"  or  pattern == "./*" {
     out = out.push("README.md")
     out = out.push("src")
   } else {
@@ -436,7 +436,7 @@ proc glob(pattern: string) -> StdIoResult[[string]] {
 }
 
 proc walk(root: string, max_depth: int) -> StdIoResult[[StdIoEntry]] {
-  if root.len == 0 || max_depth < 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  if root.len == 0  or  max_depth < 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
   let lr = list_dir(root)
   when lr is StdIoResult.Err { give StdIoResult.Err(lr.error) }
   if max_depth == 0 { give StdIoResult.Ok([StdIoEntry(root, "dir")]) }
@@ -473,7 +473,7 @@ proc move_tree(src: string, dst: string) -> StdIoResult[bool] {
 }
 
 proc chmod(path: string, mode: string) -> StdIoResult[bool] {
-  if path.len == 0 || mode.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  if path.len == 0  or  mode.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
   let rt0 = fs_pkg.default_runtime()
   let w = fs_pkg.write_text(rt0, fs_pkg.path(path), "")
   when w is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
@@ -483,7 +483,7 @@ proc chmod(path: string, mode: string) -> StdIoResult[bool] {
 }
 
 proc chown(path: string, owner: string) -> StdIoResult[bool] {
-  if path.len == 0 || owner.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
+  if path.len == 0  or  owner.len == 0 { give StdIoResult.Err(StdIoError.InvalidConfig) }
   let rt0 = fs_pkg.default_runtime()
   let w = fs_pkg.write_text(rt0, fs_pkg.path(path), "")
   when w is fs_pkg.FsResult.Err { give StdIoResult.Err(StdIoError.Internal) }
@@ -493,7 +493,7 @@ proc chown(path: string, owner: string) -> StdIoResult[bool] {
 }
 
 proc read_text_with_encoding(path: string, encoding: string) -> StdIoResult[string] {
-  if encoding != "utf8" && encoding != "latin1" {
+  if encoding != "utf8"  and  encoding != "latin1" {
     give StdIoResult.Err(StdIoError.Unsupported)
   }
   give read_text(path)

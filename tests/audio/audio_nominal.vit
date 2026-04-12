@@ -1,10 +1,10 @@
 use vitte/audio as audio
 
 proc main() -> i32 {
-  if !audio.ready() { return 1 }
+  if not audio.ready() { return 1 }
 
   let backend = audio.backend_default()
-  if !audio.backend_is_mockable(backend) { return 2 }
+  if not audio.backend_is_mockable(backend) { return 2 }
   if audio.backend_name(audio.backend_mock("test-backend")) != "test-backend" { return 3 }
 
   let req0 = audio.format_request_new(48000, 2, true)
@@ -12,22 +12,22 @@ proc main() -> i32 {
   if req1.preferred_formats.len != 2 { return 4 }
   let req_bad = audio.AudioFormatRequest(0, 0, [audio.AudioSampleFormat.Float32], true)
   let req_norm = audio.normalize_format_request(req_bad)
-  if req_norm.preferred_sample_rate < 8000 || req_norm.preferred_channels < 1 { return 4 }
+  if req_norm.preferred_sample_rate < 8000  or  req_norm.preferred_channels < 1 { return 4 }
   let picked = audio.negotiate_format(req1, [
     audio.AudioFormat(44100, 2, audio.AudioSampleFormat.PCM16, true),
     audio.AudioFormat(48000, 2, audio.AudioSampleFormat.Float32, true),
     audio.AudioFormat(48000, 2, audio.AudioSampleFormat.PCM24, false)
   ])
   if audio.sample_format_name(picked.format) != "float32" { return 5 }
-  if !audio.format_is_valid(picked) { return 6 }
+  if not audio.format_is_valid(picked) { return 6 }
   if audio.format_summary(picked).len == 0 { return 7 }
 
   let pcm_ref = [0, 1000, -1000, 2000, -2000, 0]
   let golden = audio.golden_snapshot("pcm-basic", pcm_ref)
-  if !audio.golden_match(golden, pcm_ref) { return 8 }
+  if not audio.golden_match(golden, pcm_ref) { return 8 }
   if audio.golden_match(golden, [0, 1000, -1000, 2001, -2000, 0]) { return 9 }
   if audio.golden_diff_count(pcm_ref, [0, 999, -1000, 2001]) != 3 { return 10 }
   if audio.pcm_checksum(pcm_ref) <= 0 { return 11 }
 
-  return 0
+  give 0
 }

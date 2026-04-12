@@ -66,7 +66,7 @@ proc close(conn: SqlConn) -> SqlConn {
 }
 
 proc begin(conn: SqlConn) -> SqlConn {
-  if !conn.connected { give conn }
+  if not conn.connected { give conn }
   give SqlConn(conn.dsn, conn.dialect, conn.connected, conn.tx_depth + 1)
 }
 
@@ -81,15 +81,15 @@ proc rollback(conn: SqlConn) -> SqlConn {
 }
 
 proc execute(conn: SqlConn, q: Query) -> int {
-  if !conn.connected { give 0 }
+  if not conn.connected { give 0 }
   if q.text.len == 0 { give 0 }
   if q.readonly { give 0 }
   give 1 + q.param_count
 }
 
 proc fetch_one(conn: SqlConn, q: Query) -> string {
-  if !conn.connected { give "" }
-  if !q.readonly { give "" }
+  if not conn.connected { give "" }
+  if not q.readonly { give "" }
   give "{\"dialect\":\"" + dialect_name(conn.dialect) + "\"}"
 }
 

@@ -210,19 +210,19 @@ proc validate_config(cfg: ProcessConfig) -> ProcessResult[bool] {
   if nc.timeout_ms < nc.grace_ms {
     give err[bool]("VITTE-P0001", "timeout_ms must be >= grace_ms", "timeouts", false)
   }
-  if nc.capture_limit < 256 || nc.capture_limit > 1048576 {
+  if nc.capture_limit < 256  or  nc.capture_limit > 1048576 {
     give err[bool]("VITTE-P0010", diagnostics_message("VITTE-P0010"), "capture_limit", false)
   }
   if process_runtime_pkg.is_profile_allowed(nc.profile) == false {
     give err[bool]("VITTE-P0012", diagnostics_message("VITTE-P0012"), nc.profile, false)
   }
-  if nc.profile == "core" && nc.policy.allow_shell {
+  if nc.profile == "core"  and  nc.policy.allow_shell {
     give err[bool]("VITTE-P0012", "allow_shell forbidden on core", "policy", false)
   }
-  if nc.policy.allow_shell == false && process_runtime_pkg.shell_exec_pattern(program, nc.args) {
+  if nc.policy.allow_shell == false  and  process_runtime_pkg.shell_exec_pattern(program, nc.args) {
     give err[bool]("VITTE-P0011", diagnostics_message("VITTE-P0011"), "shell", false)
   }
-  if process_runtime_pkg.shell_exec_pattern(program, nc.args) && nc.policy.allow_shell == false {
+  if process_runtime_pkg.shell_exec_pattern(program, nc.args)  and  nc.policy.allow_shell == false {
     give err[bool]("VITTE-P0014", diagnostics_message("VITTE-P0014"), "sh-c", false)
   }
   give ok[bool](true)

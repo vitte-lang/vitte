@@ -220,7 +220,7 @@ proc remove(c: Catalog, id: string) -> CatalogResult[Catalog] {
     i += 1
   }
 
-  if !found { give CatalogResult.Err(CatalogError.NotFound) }
+  if not found { give CatalogResult.Err(CatalogError.NotFound) }
   give CatalogResult.Ok(Catalog(c.config, out))
 }
 
@@ -239,7 +239,7 @@ proc deactivate(c: Catalog, id: string) -> CatalogResult[Catalog] {
     i += 1
   }
 
-  if !found { give CatalogResult.Err(CatalogError.NotFound) }
+  if not found { give CatalogResult.Err(CatalogError.NotFound) }
   give CatalogResult.Ok(Catalog(c.config, out))
 }
 
@@ -248,7 +248,7 @@ proc query_by_tag(c: Catalog, tag: string) -> [CatalogEntry] {
   let i: int = 0
   while i < c.entries.len {
     let e = c.entries[i]
-    if e.active && contains_string(e.tags, tag) {
+    if e.active  and  contains_string(e.tags, tag) {
       out = out.push(e)
     }
     i += 1
@@ -342,7 +342,7 @@ proc catalog_normalize(c: Catalog) -> Catalog {
     let id = catalog_runtime_pkg.sanitize(e.id, catalog_policy_pkg.max_entry_id_len())
     let name = catalog_runtime_pkg.sanitize(e.name, catalog_policy_pkg.max_entry_name_len())
 
-    if catalog_validate_pkg.valid_entry_id(id, catalog_policy_pkg.max_entry_id_len()) &&
+    if catalog_validate_pkg.valid_entry_id(id, catalog_policy_pkg.max_entry_id_len())  and 
        catalog_validate_pkg.valid_entry_name(name, catalog_policy_pkg.max_entry_name_len()) {
       out = out.push(CatalogEntry(id, name, e.tags, e.active))
     }

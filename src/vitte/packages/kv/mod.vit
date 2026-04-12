@@ -86,7 +86,7 @@ proc runtime_info() -> KvRuntimeInfo {
 }
 
 proc is_alive(kv_item: KvEntry, clock: int) -> bool {
-  if !kv_item.active { give false }
+  if not kv_item.active { give false }
   if kv_item.expires_at < 0 { give true }
   give clock < kv_item.expires_at
 }
@@ -111,7 +111,7 @@ proc put(store: KvStore, key: string, value: string, ttl: int) -> KvStore {
     i += 1
   }
 
-  if !replaced {
+  if not replaced {
     out = out.push(KvEntry(key, value, expiry, true))
   }
 
@@ -149,7 +149,7 @@ proc get(store: KvStore, key: string, fallback: string) -> string {
   let i: int = 0
   while i < store.entries.len {
     let kv_item = store.entries[i]
-    if kv_item.key == key && is_alive(kv_item, store.clock) {
+    if kv_item.key == key  and  is_alive(kv_item, store.clock) {
       give kv_item.value
     }
     i += 1
@@ -186,7 +186,7 @@ proc scan(store: KvStore, prefix: string) -> [KvEntry] {
   let i: int = 0
   while i < store.entries.len {
     let kv_item = store.entries[i]
-    if is_alive(kv_item, store.clock) && kv_item.key.len >= prefix.len && kv_item.key.slice(0, prefix.len) == prefix {
+    if is_alive(kv_item, store.clock)  and  kv_item.key.len >= prefix.len  and  kv_item.key.slice(0, prefix.len) == prefix {
       out = out.push(kv_item)
     }
     i += 1
@@ -210,7 +210,7 @@ proc ttl_left(store: KvStore, key: string) -> int {
   let i: int = 0
   while i < store.entries.len {
     let kv_item = store.entries[i]
-    if kv_item.key == key && is_alive(kv_item, store.clock) {
+    if kv_item.key == key  and  is_alive(kv_item, store.clock) {
       if kv_item.expires_at < 0 { give -1 }
       let left = kv_item.expires_at - store.clock
       if left < 0 { give 0 }
@@ -229,7 +229,7 @@ proc touch(store: KvStore, key: string, ttl: int) -> KvStore {
 
   while i < store.entries.len {
     let kv_item = store.entries[i]
-    if kv_item.key == key && is_alive(kv_item, store.clock) {
+    if kv_item.key == key  and  is_alive(kv_item, store.clock) {
       if expiry < 0 {
         out = out.push(KvEntry(kv_item.key, kv_item.value, kv_item.expires_at, kv_item.active))
       } else {

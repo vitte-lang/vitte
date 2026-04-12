@@ -193,7 +193,7 @@ proc valid_otp(otp: string) -> bool {
   let i: int = 0
   while i < otp.len {
     let c = otp.slice(i, i + 1)
-    if c != "0" && c != "1" && c != "2" && c != "3" && c != "4" && c != "5" && c != "6" && c != "7" && c != "8" && c != "9" {
+    if c != "0"  and  c != "1"  and  c != "2"  and  c != "3"  and  c != "4"  and  c != "5"  and  c != "6"  and  c != "7"  and  c != "8"  and  c != "9" {
       give false
     }
     i += 1
@@ -219,10 +219,10 @@ proc validate_config(cfg: AuthConfig) -> AuthResult[bool] {
 }
 
 proc authenticate(username: string, password: string) -> Principal {
-  if auth_validate_pkg.valid_username(username) == false || auth_validate_pkg.valid_password(password) == false {
+  if auth_validate_pkg.valid_username(username) == false  or  auth_validate_pkg.valid_password(password) == false {
     give principal_guest()
   }
-  if username == "admin" && password.len >= 10 {
+  if username == "admin"  and  password.len >= 10 {
     give principal_admin(username)
   }
   give principal_user(username)
@@ -231,8 +231,8 @@ proc authenticate(username: string, password: string) -> Principal {
 proc authenticate_with(creds: Credentials) -> Principal {
   if auth_validate_pkg.valid_username(creds.username) == false { give principal_guest() }
   if auth_validate_pkg.valid_password(creds.password) == false { give principal_guest() }
-  if creds.username == "service" && creds.otp == "svc-ok" { give principal_service("service") }
-  if creds.username == "admin" && creds.otp == "000000" { give principal_admin("admin") }
+  if creds.username == "service"  and  creds.otp == "svc-ok" { give principal_service("service") }
+  if creds.username == "admin"  and  creds.otp == "000000" { give principal_admin("admin") }
   give principal_user(creds.username)
 }
 
@@ -245,7 +245,7 @@ proc authenticate_with_config(creds: Credentials, cfg: AuthConfig) -> Principal 
   }
 
   let p = authenticate_with(creds)
-  if cfg.allow_service == false && p.role == AuthRole.Service { give principal_guest() }
+  if cfg.allow_service == false  and  p.role == AuthRole.Service { give principal_guest() }
   give p
 }
 
@@ -269,7 +269,7 @@ proc issue_token_with_config(principal: Principal, cfg: AuthConfig) -> Session {
 
 proc refresh(session: Session, now: int, ttl: int) -> Session {
   if auth_validate_pkg.valid_token(session.token) == false { give session }
-  if !session.principal.active { give session }
+  if not session.principal.active { give session }
   if auth_validate_pkg.valid_expiry(now, session.expires_at) == false { give session }
   let t = auth_policy_pkg.normalize_token_ttl(ttl)
   give Session(session.principal, session.token, now + t)
@@ -277,7 +277,7 @@ proc refresh(session: Session, now: int, ttl: int) -> Session {
 
 proc refresh_with_config(session: Session, now: int, cfg: AuthConfig) -> Session {
   if auth_validate_pkg.valid_token(session.token) == false { give session }
-  if cfg.require_active && !session.principal.active { give session }
+  if cfg.require_active  and  not session.principal.active { give session }
   if valid_expiry_with_skew(now, session.expires_at, cfg.clock_skew) == false { give session }
   let t = auth_policy_pkg.normalize_token_ttl(cfg.token_ttl)
   give Session(session.principal, session.token, now + t)
@@ -297,19 +297,19 @@ proc token_matches_principal(session: Session) -> bool {
 proc validate(session: Session, now: int) -> AuthError {
   if auth_validate_pkg.valid_token(session.token) == false { give AuthError.MissingToken }
   if auth_validate_pkg.valid_username(session.principal.id) == false { give AuthError.InvalidCredentials }
-  if !session.principal.active { give AuthError.InvalidCredentials }
+  if not session.principal.active { give AuthError.InvalidCredentials }
   if auth_validate_pkg.valid_expiry(now, session.expires_at) == false { give AuthError.Expired }
-  if !token_matches_principal(session) { give AuthError.InvalidCredentials }
+  if not token_matches_principal(session) { give AuthError.InvalidCredentials }
   give AuthError.None
 }
 
 proc validate_with_config(session: Session, now: int, cfg: AuthConfig) -> AuthError {
   if auth_validate_pkg.valid_token(session.token) == false { give AuthError.MissingToken }
   if auth_validate_pkg.valid_username(session.principal.id) == false { give AuthError.InvalidCredentials }
-  if cfg.require_active && session.principal.active == false { give AuthError.InvalidCredentials }
+  if cfg.require_active  and  session.principal.active == false { give AuthError.InvalidCredentials }
   if valid_expiry_with_skew(now, session.expires_at, cfg.clock_skew) == false { give AuthError.Expired }
-  if !token_matches_principal(session) { give AuthError.InvalidCredentials }
-  if cfg.allow_service == false && session.principal.role == AuthRole.Service { give AuthError.Forbidden }
+  if not token_matches_principal(session) { give AuthError.InvalidCredentials }
+  if cfg.allow_service == false  and  session.principal.role == AuthRole.Service { give AuthError.Forbidden }
   give AuthError.None
 }
 
@@ -324,10 +324,10 @@ proc decide_access(session: Session, required: AuthRole, now: int, policy: AuthP
   if err == AuthError.InvalidCredentials { give AccessDecision(false, "invalid-credentials") }
   if err == AuthError.Expired { give AccessDecision(false, "expired") }
 
-  if policy.require_active && !session.principal.active {
+  if policy.require_active  and  not session.principal.active {
     give AccessDecision(false, "inactive-principal")
   }
-  if !policy.allow_service && session.principal.role == AuthRole.Service {
+  if not policy.allow_service  and  session.principal.role == AuthRole.Service {
     give AccessDecision(false, "service-disallowed")
   }
   if role_rank(session.principal.role) < role_rank(policy.min_role) {

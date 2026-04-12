@@ -296,7 +296,7 @@ proc scheduler_enqueue(s: Scheduler, count: int) -> Scheduler {
 
 proc scheduler_tick(s: Scheduler) -> Scheduler {
   let startable = s.max_parallel - s.running
-  if startable <= 0 || s.queue_len <= 0 { give s }
+  if startable <= 0  or  s.queue_len <= 0 { give s }
   let take = startable
   if take > s.queue_len { take = s.queue_len }
   give Scheduler(s.max_parallel, s.queue_len - take, s.running + take)
@@ -310,7 +310,7 @@ proc scheduler_complete(s: Scheduler, completed: int) -> Scheduler {
 }
 
 proc scheduler_idle(s: Scheduler) -> bool {
-  give s.running == 0 && s.queue_len == 0
+  give s.running == 0  and  s.queue_len == 0
 }
 
 proc scheduler_capacity(s: Scheduler) -> int {
@@ -339,7 +339,7 @@ proc scheduler_fairness_report(s: Scheduler) -> SchedulerFairnessReport {
   if imbalance < 0 { imbalance = 0 }
   let ok = true
   if scheduler_backpressure(s) { ok = false }
-  if utilization == 0 && s.queue_len > 0 { ok = false }
+  if utilization == 0  and  s.queue_len > 0 { ok = false }
   give SchedulerFairnessReport(ok, backlog_per_slot, utilization, imbalance)
 }
 
@@ -588,7 +588,7 @@ proc diagnostics_code_for_state(state: TaskState, scheduler: Scheduler) -> strin
   if state == TaskState.Cancelled { give "VITTE-ASYNC0005" }
   if scheduler_backpressure(scheduler) { give "VITTE-ASYNC0006" }
   if state == TaskState.Failed { give "VITTE-ASYNC0002" }
-  if state == TaskState.Pending || state == TaskState.Running { give "VITTE-ASYNC0000" }
+  if state == TaskState.Pending  or  state == TaskState.Running { give "VITTE-ASYNC0000" }
   give "VITTE-ASYNC0000"
 }
 

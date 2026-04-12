@@ -448,24 +448,24 @@ proc valid_alignment(a: Alignment) -> bool {
 }
 
 proc checked_add(left: int, right: int) -> CheckedInt {
-  if left < 0 || right < 0 { give CheckedInt(false, 0, AllocError.Overflow) }
+  if left < 0  or  right < 0 { give CheckedInt(false, 0, AllocError.Overflow) }
   if left > max_int() - right { give CheckedInt(false, 0, AllocError.Overflow) }
   give CheckedInt(true, left + right, AllocError.InvalidCapacity)
 }
 
 proc checked_mul(left: int, right: int) -> CheckedInt {
-  if left < 0 || right < 0 { give CheckedInt(false, 0, AllocError.Overflow) }
-  if left == 0 || right == 0 { give CheckedInt(true, 0, AllocError.InvalidCapacity) }
+  if left < 0  or  right < 0 { give CheckedInt(false, 0, AllocError.Overflow) }
+  if left == 0  or  right == 0 { give CheckedInt(true, 0, AllocError.InvalidCapacity) }
   if left > max_int() / right { give CheckedInt(false, 0, AllocError.Overflow) }
   give CheckedInt(true, left * right, AllocError.InvalidCapacity)
 }
 
 proc checked_align_up(size: int, align: Alignment) -> CheckedInt {
-  if !valid_alignment(align) {
+  if not valid_alignment(align) {
     give CheckedInt(false, 0, AllocError.AlignmentError)
   }
   let plus = checked_add(size, align.value - 1)
-  if !plus.ok { give plus }
+  if not plus.ok { give plus }
   give CheckedInt(true, (plus.value / align.value) * align.value, AllocError.InvalidCapacity)
 }
 
@@ -504,7 +504,7 @@ proc with_checksum(a: ActiveAlloc) -> ActiveAlloc {
 
 proc alloc_integrity_ok(a: ActiveAlloc, canaries_enabled: bool, seed: int) -> bool {
   if a.checksum != alloc_checksum(a) { give false }
-  if !canaries_enabled { give true }
+  if not canaries_enabled { give true }
   if a.canary_head != canary_value(seed, a.handle, 11) { give false }
   if a.canary_tail != canary_value(seed, a.handle, 29) { give false }
   give true
@@ -516,7 +516,7 @@ proc alloc_integrity_ok(a: ActiveAlloc, canaries_enabled: bool, seed: int) -> bo
 
 proc alloc(st: AllocState, bytes: int) -> AllocState {
 
-  if !can_alloc(st, bytes) {
+  if not can_alloc(st, bytes) {
     give st
   }
 
@@ -803,7 +803,7 @@ proc suggest_fragmentation_action(st: AllocState, frag_threshold: int) -> Fragme
     give FragmentationAction.Reuse
   }
 
-  if st.kind == AllocatorKind.Bump || st.kind == AllocatorKind.Arena {
+  if st.kind == AllocatorKind.Bump  or  st.kind == AllocatorKind.Arena {
     give FragmentationAction.Reset
   }
 
@@ -866,7 +866,7 @@ proc quota_reserve(quotas: [PoolQuota], pid: PoolId, bytes: int) -> [PoolQuota] 
     }
     i += 1
   }
-  if !found {
+  if not found {
     out = out.push(PoolQuota(pid, max_int(), 0, bytes))
   }
   give out
@@ -919,7 +919,7 @@ proc compute_fragmentation(allocs: [ActiveAlloc]) -> StableMetrics {
   let i: int = 0
   while i < allocs.len {
     let a = allocs[i]
-    if !a.active {
+    if not a.active {
       blocks += 1
       sum_free = sum_free + a.bytes.value
       if a.bytes.value > largest { largest = a.bytes.value }
@@ -971,16 +971,16 @@ proc stable_alloc(runtime: StableAllocRuntime, size: Bytes, align: Alignment, pi
   if size.value <= 0 {
     give StableAllocResult(false, runtime, alloc_handle(0), AllocError.InvalidCapacity)
   }
-  if !valid_alignment(align) {
+  if not valid_alignment(align) {
     give StableAllocResult(false, runtime, alloc_handle(0), AllocError.AlignmentError)
   }
 
   let aligned = checked_align_up(size.value, align)
-  if !aligned.ok {
+  if not aligned.ok {
     give StableAllocResult(false, runtime, alloc_handle(0), aligned.error)
   }
 
-  if !quota_allow(runtime.quotas, pid, aligned.value) || !can_alloc(runtime.allocator, aligned.value) {
+  if not quota_allow(runtime.quotas, pid, aligned.value)  or  not can_alloc(runtime.allocator, aligned.value) {
     let failed = refresh_metrics(runtime, 0, 0, 1)
     if runtime.oom_policy == OomPolicy.Panic {
       give StableAllocResult(false, with_panic_latched(failed, AllocError.OutOfMemory), alloc_handle(0), AllocError.OutOfMemory)
@@ -1035,10 +1035,10 @@ proc stable_free(runtime: StableAllocRuntime, handle: AllocHandle) -> StableFree
   }
 
   let rec = runtime.allocs[idx]
-  if !rec.active {
+  if not rec.active {
     give StableFreeResult(false, runtime, AllocError.DoubleFree)
   }
-  if !alloc_integrity_ok(rec, runtime.canaries_enabled, runtime.seed) {
+  if not alloc_integrity_ok(rec, runtime.canaries_enabled, runtime.seed) {
     give StableFreeResult(false, runtime, AllocError.InvalidFree)
   }
 
@@ -1078,15 +1078,15 @@ proc stable_realloc(runtime: StableAllocRuntime, handle: AllocHandle, new_size: 
   }
   let idx = find_alloc_index(runtime.allocs, handle)
   if idx < 0 { give StableAllocResult(false, runtime, alloc_handle(0), AllocError.InvalidFree) }
-  if !valid_alignment(align) { give StableAllocResult(false, runtime, alloc_handle(0), AllocError.AlignmentError) }
+  if not valid_alignment(align) { give StableAllocResult(false, runtime, alloc_handle(0), AllocError.AlignmentError) }
   if new_size.value <= 0 { give StableAllocResult(false, runtime, alloc_handle(0), AllocError.InvalidCapacity) }
 
   let rec = runtime.allocs[idx]
-  if !rec.active { give StableAllocResult(false, runtime, alloc_handle(0), AllocError.DoubleFree) }
-  if !alloc_integrity_ok(rec, runtime.canaries_enabled, runtime.seed) { give StableAllocResult(false, runtime, alloc_handle(0), AllocError.InvalidFree) }
+  if not rec.active { give StableAllocResult(false, runtime, alloc_handle(0), AllocError.DoubleFree) }
+  if not alloc_integrity_ok(rec, runtime.canaries_enabled, runtime.seed) { give StableAllocResult(false, runtime, alloc_handle(0), AllocError.InvalidFree) }
 
   let target = checked_align_up(new_size.value, align)
-  if !target.ok { give StableAllocResult(false, runtime, alloc_handle(0), target.error) }
+  if not target.ok { give StableAllocResult(false, runtime, alloc_handle(0), target.error) }
 
   let old = rec.bytes.value
   if target.value == old { give StableAllocResult(true, runtime, handle, AllocError.InvalidCapacity) }
@@ -1124,7 +1124,7 @@ proc stable_realloc(runtime: StableAllocRuntime, handle: AllocHandle, new_size: 
   }
 
   let grow = target.value - old
-  if !quota_allow(runtime.quotas, rec.pool_id, grow) || !can_alloc(runtime.allocator, grow) {
+  if not quota_allow(runtime.quotas, rec.pool_id, grow)  or  not can_alloc(runtime.allocator, grow) {
     let failed = refresh_metrics(runtime, 0, 0, 1)
     if runtime.oom_policy == OomPolicy.Panic {
       give StableAllocResult(false, with_panic_latched(failed, AllocError.OutOfMemory), handle, AllocError.OutOfMemory)
@@ -1167,7 +1167,7 @@ proc stable_calloc(runtime: StableAllocRuntime, count: int, elem_size: Bytes, al
     give StableAllocResult(false, runtime, alloc_handle(0), runtime.panic_error)
   }
   let total = checked_mul(count, elem_size.value)
-  if !total.ok {
+  if not total.ok {
     give StableAllocResult(false, runtime, alloc_handle(0), total.error)
   }
   give stable_alloc(runtime, bytes(total.value), align, pid)
@@ -1298,7 +1298,7 @@ proc no_active_overlap(runtime: StableAllocRuntime) -> bool {
       let j = i + 1
       while j < runtime.allocs.len {
         let b = runtime.allocs[j]
-        if b.active && a.handle.value == b.handle.value {
+        if b.active  and  a.handle.value == b.handle.value {
           give false
         }
         j += 1
@@ -1313,7 +1313,7 @@ proc free_then_reuse_coherent(runtime: StableAllocRuntime) -> bool {
   let i: int = 0
   while i < runtime.allocs.len {
     let a = runtime.allocs[i]
-    if !a.active && a.poison_byte != runtime.poison_free {
+    if not a.active  and  a.poison_byte != runtime.poison_free {
       give false
     }
     i += 1
@@ -1334,14 +1334,14 @@ proc property_invariants(seed: int, rounds: int) -> PropertyReport {
     if r.ok {
       hs = hs.push(r.handle)
     }
-    if hs.len > 0 && (i % 2) == 0 {
+    if hs.len > 0  and  (i % 2) == 0 {
       let f = stable_free(rt, hs[0])
       rt = f.runtime
       hs = []
     }
-    if !counters_non_negative(rt) { give PropertyReport(false, checks) }
-    if !no_active_overlap(rt) { give PropertyReport(false, checks) }
-    if !free_then_reuse_coherent(rt) { give PropertyReport(false, checks) }
+    if not counters_non_negative(rt) { give PropertyReport(false, checks) }
+    if not no_active_overlap(rt) { give PropertyReport(false, checks) }
+    if not free_then_reuse_coherent(rt) { give PropertyReport(false, checks) }
     checks += 1
     i += 1
   }
@@ -1362,7 +1362,7 @@ proc fuzz_matrix(seed: int, steps: int) -> FuzzReport {
   while i < n {
     rnd = (rnd * 1103515245 + 12345) % 2147483647
     let op = rnd % 3
-    if op == 0 || hs.len == 0 {
+    if op == 0  or  hs.len == 0 {
       let req = (rnd % 256) + 1
       let ar = stable_alloc(rt, bytes(req), alignment(8), pool_id("tenant:fz"))
       rt = ar.runtime
@@ -1371,15 +1371,15 @@ proc fuzz_matrix(seed: int, steps: int) -> FuzzReport {
     } else if op == 1 {
       let fr = stable_free(rt, hs[0])
       rt = fr.runtime
-      if !fr.ok { failures += 1 } else { hs = [] }
+      if not fr.ok { failures += 1 } else { hs = [] }
       free_ops += 1
     } else {
       let rr = stable_realloc(rt, hs[0], bytes((rnd % 512) + 1), alignment(8))
       rt = rr.runtime
-      if !rr.ok { failures += 1 }
+      if not rr.ok { failures += 1 }
       realloc_ops += 1
     }
-    if !counters_non_negative(rt) { give FuzzReport(false, i + 1, alloc_ops, free_ops, realloc_ops, failures) }
+    if not counters_non_negative(rt) { give FuzzReport(false, i + 1, alloc_ops, free_ops, realloc_ops, failures) }
     i += 1
   }
   give FuzzReport(true, n, alloc_ops, free_ops, realloc_ops, failures)
@@ -1608,7 +1608,7 @@ proc ready() -> bool {
   if alloc_validate(st) == false { give false }
   let rt = stable_runtime_new(default_allocator_kind(), alloc_policy_pkg.default_capacity())
   let h = stable_health(rt)
-  if h.ok == false && h.code != "ALLOC-HIGH-FRAGMENTATION" && h.code != "ALLOC-HIGH-PRESSURE" {
+  if h.ok == false  and  h.code != "ALLOC-HIGH-FRAGMENTATION"  and  h.code != "ALLOC-HIGH-PRESSURE" {
     give false
   }
   give true

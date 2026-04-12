@@ -102,7 +102,7 @@ proc normalized(pg: Page) -> Page {
   if off < 0 { off = 0 }
   if off > tot { off = tot }
 
-  if off + lim > tot && tot > 0 {
+  if off + lim > tot  and  tot > 0 {
     let last = tot - lim
     if last < 0 { last = 0 }
     if off > last { off = last }
@@ -157,7 +157,7 @@ proc with_limit(pg: Page, new_limit: int) -> Page {
 
 proc is_valid(pg: Page) -> bool {
   let n = normalized(pg)
-  give n.limit > 0 && n.total >= 0 && n.offset >= 0
+  give n.limit > 0  and  n.total >= 0  and  n.offset >= 0
 }
 
 proc stats(pg: Page) -> string {
@@ -233,18 +233,18 @@ proc includes_offset(pg: Page, offset: int) -> bool {
   let n = normalized(pg)
   let w = window(n)
   if offset < 0 { give false }
-  give offset >= w.start && offset < w.end
+  give offset >= w.start  and  offset < w.end
 }
 
 proc window_intersects(left: Page, right: Page) -> bool {
   let lw = window(normalized(left))
   let rw = window(normalized(right))
-  if lw.size == 0 || rw.size == 0 { give false }
-  give lw.start < rw.end && rw.start < lw.end
+  if lw.size == 0  or  rw.size == 0 { give false }
+  give lw.start < rw.end  and  rw.start < lw.end
 }
 
 proc window_overlap_size(left: Page, right: Page) -> int {
-  if !window_intersects(left, right) { give 0 }
+  if not window_intersects(left, right) { give 0 }
   let lw = window(normalized(left))
   let rw = window(normalized(right))
   let start = lw.start

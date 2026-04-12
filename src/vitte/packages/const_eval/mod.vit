@@ -262,7 +262,7 @@ proc eval_unary_checked(op: string, value: int, cfg: ConstEvalConfig) -> ConstEv
   }
 
   let r = eval_unary(op, value)
-  if r.error == ConstError.None && cfg.detect_overflow {
+  if r.error == ConstError.None  and  cfg.detect_overflow {
     if const_eval_validate_pkg.valid_abs(r.value, cfg.max_abs_value) == false {
       give ConstEvalResult.Ok(err(ConstError.Overflow))
     }
@@ -386,7 +386,7 @@ proc const_eval_validate_code(e: ConstExpr, cfg: ConstEvalConfig) -> string {
   if const_eval_validate_pkg.valid_binary_op(e.op) == false { give "invalid-op" }
   if const_eval_validate_pkg.valid_abs(e.left, cfg.max_abs_value) == false { give "left-overflow" }
   if const_eval_validate_pkg.valid_abs(e.right, cfg.max_abs_value) == false { give "right-overflow" }
-  if (e.op == "div" || e.op == "mod") && e.right == 0 { give "division-by-zero" }
+  if (e.op == "div"  or  e.op == "mod")  and  e.right == 0 { give "division-by-zero" }
   give "ok"
 }
 

@@ -9,7 +9,7 @@ package vitte/alerts
 
 space vitte/alerts
 
-share all
+
 
 use vitte/alerts/internal/runtime as alerts_runtime_pkg
 use vitte/alerts/internal/validate as alerts_validate_pkg
@@ -359,7 +359,7 @@ proc unsilence_if_due(rule: AlertRule, now_tick: int) -> AlertRule {
 }
 
 proc can_trigger(rule: AlertRule, now_tick: int) -> bool {
-  give !silenced(rule, now_tick)
+  give not silenced(rule, now_tick)
 }
 
 proc threshold_delta(rule: AlertRule, observed_value: int) -> int {
@@ -392,7 +392,7 @@ proc recover(rule: AlertRule, observed_value: int, now_tick: int) -> AlertRule {
 }
 
 proc should_page(rule: AlertRule, observed_value: int, now_tick: int, page_after: int) -> bool {
-  if !evaluate(rule, observed_value, now_tick) { give false }
+  if not evaluate(rule, observed_value, now_tick) { give false }
   let threshold_count = page_after
   if threshold_count < 1 { threshold_count = 1 }
   give rule.fired_count + 1 >= threshold_count
@@ -468,7 +468,7 @@ proc alerts_health(rule: AlertRule, runtime: AlertRuntime, notify_runtime: Notif
   if fired_ratio > 100 { fired_ratio = 100 }
   if error_ratio < 0 { error_ratio = 0 }
   if error_ratio > 100 { error_ratio = 100 }
-  if runtime.firing && error_ratio > 80 { give AlertsHealth(false, "ALERT-NOTIFY-DEGRADED", fired_ratio, error_ratio) }
+  if runtime.firing  and  error_ratio > 80 { give AlertsHealth(false, "ALERT-NOTIFY-DEGRADED", fired_ratio, error_ratio) }
   give AlertsHealth(true, "ALERT-OK", fired_ratio, error_ratio)
 }
 
@@ -528,7 +528,7 @@ proc alerts_diag_code(rule: AlertRule, template: NotificationTemplate, routes: [
   if alerts_validate_pkg.valid_template_version(template.version) == false { give "VITTE-ALERTS0002" }
   if alerts_validate_pkg.valid_text(template.title, alerts_policy_pkg.max_template_text_len()) == false { give "VITTE-ALERTS0002" }
   if alerts_validate_pkg.valid_text(template.context, alerts_policy_pkg.max_template_text_len()) == false { give "VITTE-ALERTS0002" }
-  if rule.level == AlertLevel.Critical || rule.level == AlertLevel.Page {
+  if rule.level == AlertLevel.Critical  or  rule.level == AlertLevel.Page {
     if alerts_validate_pkg.valid_destination(template.runbook_url) == false { give "VITTE-ALERTS0002" }
   }
   if route_validate(routes) == false { give "VITTE-ALERTS0003" }
@@ -584,7 +584,7 @@ proc process_event(
   let normalized_quotas = quota_normalize(quotas)
   let rule2 = normalized_rule
   let rt2 = runtime
-  if !can_trigger(normalized_rule, event.ts) {
+  if not can_trigger(normalized_rule, event.ts) {
     give AlertsPipelineResult("suppress:silenced", rule2, rt2, normalized_dedupe, quota_states, circuit, notify_runtime)
   }
   let nr = notify_runtime
@@ -753,7 +753,7 @@ proc labels_contains(labels: [string], label: string) -> bool {
 proc labels_match_scope(event_labels: [string], scope_labels: [string]) -> bool {
   let i: int = 0
   while i < scope_labels.len {
-    if !labels_contains(event_labels, scope_labels[i]) { give false }
+    if not labels_contains(event_labels, scope_labels[i]) { give false }
     i += 1
   }
   give true
@@ -768,7 +768,7 @@ proc silenced_by_windows(event: AlertEvent, windows: [PlannedSilence], now_ts: i
   let i: int = 0
   while i < windows.len {
     let w = windows[i]
-    if silence_window_active(w, now_ts) && labels_match_scope(event.labels, w.scope_labels) {
+    if silence_window_active(w, now_ts)  and  labels_match_scope(event.labels, w.scope_labels) {
       give true
     }
     i += 1
@@ -782,7 +782,7 @@ proc apply_planned_silence(rule: AlertRule, event: AlertEvent, windows: [Planned
     let i: int = 0
     while i < windows.len {
       let w = windows[i]
-      if silence_window_active(w, now_ts) && labels_match_scope(event.labels, w.scope_labels) {
+      if silence_window_active(w, now_ts)  and  labels_match_scope(event.labels, w.scope_labels) {
         if w.end_ts > until { until = w.end_ts }
       }
       i += 1
@@ -803,8 +803,8 @@ proc silence_conflicts(windows: [PlannedSilence]) -> int {
     while j < windows.len {
       let a = windows[i]
       let b = windows[j]
-      if labels_match_scope(a.scope_labels, b.scope_labels) || labels_match_scope(b.scope_labels, a.scope_labels) {
-        if !(a.end_ts < b.start_ts || b.end_ts < a.start_ts) {
+      if labels_match_scope(a.scope_labels, b.scope_labels)  or  labels_match_scope(b.scope_labels, a.scope_labels) {
+        if not (a.end_ts < b.start_ts  or  b.end_ts < a.start_ts) {
           conflicts += 1
         }
       }
@@ -918,14 +918,14 @@ proc dedupe_seen_temporal(table: DedupeTable, event: AlertEvent, now_ts: int, wi
 
 proc notify_with_temporal_dedupe(rule: AlertRule, event: AlertEvent, table: DedupeTable, window_ticks: int) -> NotifyResult {
   let next_rule = rule
-  if rule.metric.len == 0 || event.metric == rule.metric {
+  if rule.metric.len == 0  or  event.metric == rule.metric {
     next_rule = trigger(rule, event.value, event.ts)
   }
   let decision = "suppress:" + dedupe_key(event)
   if is_firing(next_rule) {
     decision = "emit:" + dedupe_key(event)
   }
-  if !starts_with(decision, "emit:") {
+  if not starts_with(decision, "emit:") {
     give NotifyResult(decision, dedupe_prune(table, event.ts))
   }
   let seen = dedupe_seen_temporal(table, event, event.ts, window_ticks)
@@ -957,19 +957,19 @@ proc in_cooldown(runtime: AlertRuntime, policy: AlertPolicy, now_ts: int) -> boo
 }
 
 proc rule_eval_timed(rule: AlertRule, event: AlertEvent, policy: AlertPolicy, runtime: AlertRuntime) -> AlertRuntime {
-  if rule.metric.len > 0 && event.metric != rule.metric { give runtime }
+  if rule.metric.len > 0  and  event.metric != rule.metric { give runtime }
   let out = runtime
   let breached = event.value >= rule.threshold
   if breached {
     out = AlertRuntime(out.firing, out.consecutive_breaches + 1, out.last_fired_at, -1, out.auto_resolved_count)
-    if out.consecutive_breaches >= policy.for_ticks && !in_cooldown(out, policy, event.ts) {
+    if out.consecutive_breaches >= policy.for_ticks  and  not in_cooldown(out, policy, event.ts) {
       out = AlertRuntime(true, out.consecutive_breaches, event.ts, out.last_ok_at, out.auto_resolved_count)
     }
     give out
   }
 
   out = AlertRuntime(out.firing, 0, out.last_fired_at, event.ts, out.auto_resolved_count)
-  if out.firing && policy.auto_resolve_ticks > 0 && out.last_ok_at >= 0 {
+  if out.firing  and  policy.auto_resolve_ticks > 0  and  out.last_ok_at >= 0 {
     if event.ts - out.last_ok_at >= policy.auto_resolve_ticks {
       out = AlertRuntime(false, 0, out.last_fired_at, out.last_ok_at, out.auto_resolved_count + 1)
     }
@@ -979,7 +979,7 @@ proc rule_eval_timed(rule: AlertRule, event: AlertEvent, policy: AlertPolicy, ru
 
 proc notify_with_dedupe(rule: AlertRule, event: AlertEvent, table: DedupeTable) -> NotifyResult {
   let next_rule = rule
-  if rule.metric.len == 0 || event.metric == rule.metric {
+  if rule.metric.len == 0  or  event.metric == rule.metric {
     next_rule = trigger(rule, event.value, event.ts)
   }
   let decision = "suppress:" + dedupe_key(event)
@@ -1032,7 +1032,7 @@ proc route_default_configurable(
   let ch = info_channel
   if level == AlertLevel.Warn { ch = warn_channel }
   if level == AlertLevel.Error { ch = error_channel }
-  if level == AlertLevel.Critical || level == AlertLevel.Page { ch = critical_channel }
+  if level == AlertLevel.Critical  or  level == AlertLevel.Page { ch = critical_channel }
 
   let dst = "stdout://alerts"
   if ch == NotificationChannel.Email { dst = "email:ops" }
@@ -1044,7 +1044,7 @@ proc route_default_configurable(
 proc route_for_event(routes: [RoutePolicy], tid: TenantId, level: AlertLevel) -> RoutePolicy {
   let i: int = 0
   while i < routes.len {
-    if routes[i].tenant_id.value == tid.value && routes[i].level == level { give routes[i] }
+    if routes[i].tenant_id.value == tid.value  and  routes[i].level == level { give routes[i] }
     i += 1
   }
   give route_default(tid, level)
@@ -1075,14 +1075,14 @@ proc template_runbook_required(level: AlertLevel) -> bool {
 proc template_valid_for_level(template: NotificationTemplate, level: AlertLevel) -> bool {
   if template.version.len == 0 { give false }
   if template.title.len == 0 { give false }
-  if template_runbook_required(level) && template.runbook_url.len == 0 { give false }
+  if template_runbook_required(level)  and  template.runbook_url.len == 0 { give false }
   give true
 }
 
 proc validate_template(template: NotificationTemplate, level: AlertLevel) -> string {
   if template.version.len == 0 { give "invalid_version" }
   if template.title.len == 0 { give "invalid_title" }
-  if template_runbook_required(level) && template.runbook_url.len == 0 { give "missing_runbook" }
+  if template_runbook_required(level)  and  template.runbook_url.len == 0 { give "missing_runbook" }
   give "ok"
 }
 
@@ -1107,7 +1107,7 @@ proc provider_circuit_new(threshold: int, cooldown_ticks: int) -> ProviderCircui
 }
 
 proc provider_circuit_allow(c: ProviderCircuit, now_ts: int) -> bool {
-  if c.state == ProviderCircuitState.Open && now_ts < c.open_until { give false }
+  if c.state == ProviderCircuitState.Open  and  now_ts < c.open_until { give false }
   give true
 }
 
@@ -1139,7 +1139,7 @@ proc notify_routed(
   let tid = event_tenant_id(event)
   let route = route_for_event(routes, tid, rule.level)
   let next_rule = rule
-  if rule.metric.len == 0 || event.metric == rule.metric {
+  if rule.metric.len == 0  or  event.metric == rule.metric {
     next_rule = trigger(rule, event.value, event.ts)
   }
   let decision = "suppress:" + dedupe_key(event)
@@ -1147,7 +1147,7 @@ proc notify_routed(
     decision = "emit:" + dedupe_key(event)
   }
 
-  if !starts_with(decision, "emit:") {
+  if not starts_with(decision, "emit:") {
     give RoutedNotifyResult(
       "suppress:routing",
       route,
@@ -1165,7 +1165,7 @@ proc notify_routed(
       NotifyRuntime(runtime.retries, runtime.notify_failures + 1, runtime.alerts_suppressed, dead)
     )
   }
-  if !provider_circuit_allow(circuit, event.ts) {
+  if not provider_circuit_allow(circuit, event.ts) {
     let dead = runtime.dead_letters.push(DeadNotification(dedupe_hash(event), DeadLetterReason.ProviderCircuitOpen, event.ts))
     give RoutedNotifyResult(
       "dead:circuit_open",
@@ -1192,7 +1192,7 @@ proc notify_routed(
     }
   }
 
-  if !ok {
+  if not ok {
     let dead = next_runtime.dead_letters.push(DeadNotification(dedupe_hash(event), DeadLetterReason.NotifyRetryExhausted, event.ts))
     give RoutedNotifyResult(
       "dead:retry_exhausted",
@@ -1230,7 +1230,7 @@ proc correlate_incidents(events: [AlertEvent]) -> [IncidentGroup] {
       }
       j += 1
     }
-    if !found {
+    if not found {
       out = out.push(IncidentGroup(key, 1, e.ts, e.ts))
     }
     groups = out
@@ -1285,7 +1285,7 @@ proc quota_check(quotas: [TenantQuota], states: [TenantQuotaState], event: Alert
     }
     i += 1
   }
-  if !found {
+  if not found {
     if limit <= 0 {
       out = out.push(TenantQuotaState(tid, slot, 0, 1))
       allowed = false
@@ -1344,19 +1344,19 @@ proc authz_explain(policies: [AuthzPolicy], actor: string, action: string) -> st
 }
 
 proc rule_new_authorized(policies: [AuthzPolicy], actor: string, name: string, threshold: int, window_ticks: int) -> AlertRule {
-  if !authz_can_create_rule(policies, actor) {
+  if not authz_can_create_rule(policies, actor) {
     give rule_new("denied:" + name, threshold, window_ticks)
   }
   give rule_new(name, threshold, window_ticks)
 }
 
 proc silence_authorized(policies: [AuthzPolicy], actor: string, rule: AlertRule, until_tick: int) -> AlertRule {
-  if !authz_can_silence_rule(policies, actor) { give rule }
+  if not authz_can_silence_rule(policies, actor) { give rule }
   give silence(rule, until_tick)
 }
 
 proc rule_eval(rule: AlertRule, event: AlertEvent) -> AlertRule {
-  if rule.metric.len > 0 && event.metric != rule.metric {
+  if rule.metric.len > 0  and  event.metric != rule.metric {
     give rule
   }
   give trigger(rule, event.value, event.ts)
@@ -1429,7 +1429,7 @@ proc counters_non_negative(
 
 proc resolve_coherent(prev: AlertRuntime, next: AlertRuntime) -> bool {
   if next.auto_resolved_count < prev.auto_resolved_count { give false }
-  if next.auto_resolved_count > prev.auto_resolved_count && next.firing { give false }
+  if next.auto_resolved_count > prev.auto_resolved_count  and  next.firing { give false }
   give true
 }
 
@@ -1452,8 +1452,8 @@ proc property_invariants(seed: int, rounds: int) -> PropertyReport {
     ded = dedupe_track(ded, e, e.ts)
     let q = quota_check([TenantQuota(tenant_id("tenant:t1"), 1000, 0)], qs, e)
     qs = q.states
-    if !counters_non_negative(ded, rt, notif, qs) { give PropertyReport(false, checks) }
-    if !resolve_coherent(prev, rt) { give PropertyReport(false, checks) }
+    if not counters_non_negative(ded, rt, notif, qs) { give PropertyReport(false, checks) }
+    if not resolve_coherent(prev, rt) { give PropertyReport(false, checks) }
     checks += 1
     i += 1
   }
@@ -1512,7 +1512,7 @@ proc benchmark_eval(seed: int, rounds: int) -> BenchReport {
     rt = rule_eval_timed(rule, e, policy, rt)
     let after = rt.last_fired_at
     let d = 0
-    if after >= 0 && before >= 0 {
+    if after >= 0  and  before >= 0 {
       d = after - before
       if d < 0 { d = 0 }
     }
@@ -1547,8 +1547,8 @@ proc fuzz_events(seed: int, steps: int) -> FuzzReport {
     } else {
       emitted += 1
     }
-    if !resolve_coherent(prev, rt) { give FuzzReport(false, i + 1, emitted, suppressed) }
-    if ded.dedupe_hits < 0 || ded.emitted < 0 { give FuzzReport(false, i + 1, emitted, suppressed) }
+    if not resolve_coherent(prev, rt) { give FuzzReport(false, i + 1, emitted, suppressed) }
+    if ded.dedupe_hits < 0  or  ded.emitted < 0 { give FuzzReport(false, i + 1, emitted, suppressed) }
     i += 1
   }
   give FuzzReport(true, n, emitted, suppressed)
@@ -1616,10 +1616,10 @@ proc suggestions_for_rule(rule: AlertRule) -> [string] {
   if alerts_validate_pkg.valid_rule_name(rule.name) == false {
     give alerts_diag_pkg.suggestions_rule_invalid()
   }
-  if alerts_validate_pkg.valid_threshold(rule.threshold) == false || alerts_validate_pkg.valid_window_ticks(rule.window_ticks) == false {
+  if alerts_validate_pkg.valid_threshold(rule.threshold) == false  or  alerts_validate_pkg.valid_window_ticks(rule.window_ticks) == false {
     give alerts_diag_pkg.suggestions_rule_invalid()
   }
-  if rule.level == AlertLevel.Page && rule.threshold < 2 {
+  if rule.level == AlertLevel.Page  and  rule.threshold < 2 {
     give ["raise the threshold for paging rules to reduce alert noise", "pair page-level rules with a runbook-backed template"]
   }
   give ["alert rule is ready"]

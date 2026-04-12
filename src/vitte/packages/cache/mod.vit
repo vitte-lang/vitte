@@ -175,7 +175,7 @@ proc contains(cache: Cache, key: string) -> bool {
   let i: int = 0
   while i < cache.entries.len {
     let e = cache.entries[i]
-    if e.active && e.key == key { give true }
+    if e.active  and  e.key == key { give true }
     i += 1
   }
   give false
@@ -185,7 +185,7 @@ proc get(cache: Cache, key: string, fallback: string) -> string {
   let i: int = 0
   while i < cache.entries.len {
     let e = cache.entries[i]
-    if e.active && e.key == key { give e.value }
+    if e.active  and  e.key == key { give e.value }
     i += 1
   }
   give fallback
@@ -199,7 +199,7 @@ proc get_checked(cache: Cache, key: string) -> CacheResult[string] {
   let i: int = 0
   while i < cache.entries.len {
     let e = cache.entries[i]
-    if e.active && e.key == key {
+    if e.active  and  e.key == key {
       give CacheResult.Ok(e.value)
     }
     i += 1
@@ -281,7 +281,7 @@ proc put_with_config(cache: Cache, key: string, value: string, cfg: CacheConfig)
   let rr = put_checked(cache, key, value, cfg.default_ttl)
   when rr is CacheResult.Err { give CacheResult.Err(rr.error) }
 
-  if cfg.eviction == CacheEviction.LRU && rr.value.entries.len >= rr.value.capacity && rr.value.capacity > 0 {
+  if cfg.eviction == CacheEviction.LRU  and  rr.value.entries.len >= rr.value.capacity  and  rr.value.capacity > 0 {
     let entries = drop_lru(rr.value.entries)
     give CacheResult.Ok(Cache(rr.value.capacity, entries, rr.value.clock, rr.value.dropped + 1))
   }
@@ -328,7 +328,7 @@ proc expire(cache: Cache) -> Cache {
   let i: int = 0
   while i < cache.entries.len {
     let e = cache.entries[i]
-    if e.active && e.ttl > 0 {
+    if e.active  and  e.ttl > 0 {
       kept = kept.push(e)
     }
     i += 1
@@ -415,9 +415,9 @@ proc cache_normalize(cache: Cache) -> Cache {
     let v = cache_runtime_pkg.sanitize(e.value, cache_policy_pkg.max_value_len())
     let t = cache_policy_pkg.normalize_ttl(e.ttl)
 
-    if cache_validate_pkg.valid_key(k, cache_policy_pkg.max_key_len()) &&
+    if cache_validate_pkg.valid_key(k, cache_policy_pkg.max_key_len())  and 
        cache_validate_pkg.valid_value(v, cache_policy_pkg.max_value_len()) {
-      entries = entries.push(CacheEntry(k, v, t, e.hits, t > 0 && e.active))
+      entries = entries.push(CacheEntry(k, v, t, e.hits, t > 0  and  e.active))
       if entries.len >= cap { break }
     }
     i += 1

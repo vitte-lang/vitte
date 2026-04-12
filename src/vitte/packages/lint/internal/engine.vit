@@ -85,71 +85,71 @@ proc issues_from_text(file: string, text: string, rules: [LintRule], cfg: LintCo
   let i: int = 0
   while i < rules.len {
     if rules[i].enabled {
-      if rules[i].id == "alias-pkg" && contains(text, "use ") && contains(text, " as ") && contains(text, "_pkg") == false {
+      if rules[i].id == "alias-pkg"  and  contains(text, "use ")  and  contains(text, " as ")  and  contains(text, "_pkg") == false {
         out = out.push(make_issue("VITTE-I0001", LintSeverity.Warning, file, 1, "alias should end with _pkg", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "no-side-effects" && contains(text, "entry ") {
+      if rules[i].id == "no-side-effects"  and  contains(text, "entry ") {
         out = out.push(make_issue("VITTE-I0002", LintSeverity.Error, file, 1, "entry forbidden for side-effect-free module", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "sensitive-imports" && (contains(text, "use vitte/ffi") || contains(text, "use vitte/net")) {
+      if rules[i].id == "sensitive-imports"  and  (contains(text, "use vitte/ffi")  or  contains(text, "use vitte/net")) {
         out = out.push(make_issue("VITTE-I0003", LintSeverity.Error, file, 1, "sensitive import requires allowlist", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "export-naming" && contains(text, "proc ") && contains(text, "-") {
+      if rules[i].id == "export-naming"  and  contains(text, "proc ")  and  contains(text, "-") {
         out = out.push(make_issue("VITTE-I0004", LintSeverity.Warning, file, 1, "invalid export naming style", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "while-not" && contains(text, "while !(") {
+      if rules[i].id == "while-not"  and  contains(text, "while not (") {
         out = out.push(make_issue("VITTE-I0011", LintSeverity.Warning, file, 1, "prefer positive while conditions", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "prefer-give" && contains(text, "return ") {
+      if rules[i].id == "prefer-give"  and  contains(text, "return ") {
         out = out.push(make_issue("VITTE-I0012", LintSeverity.Info, file, 1, "prefer give as canonical return keyword", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "for-stability" && contains(text, "for ") && contains(text, " in ") {
+      if rules[i].id == "for-stability"  and  contains(text, "for ")  and  contains(text, " in ") {
         out = out.push(make_issue("VITTE-I0013", LintSeverity.Warning, file, 1, "for-in usage should stay limited until lowering is fully stabilized", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "trailing-comma" && contains(text, "\n") {
-        if contains(text, ",\n)") == false && (contains(text, "(\n") || contains(text, "[\n") || contains(text, "{\n")) {
+      if rules[i].id == "trailing-comma"  and  contains(text, "\n") {
+        if contains(text, ",\n)") == false  and  (contains(text, "(\n")  or  contains(text, "[\n")  or  contains(text, "{\n")) {
           out = out.push(make_issue("VITTE-I0020", LintSeverity.Info, file, 1, "prefer trailing commas in multiline lists", rules[i].id, rules[i].quickfix))
         }
       }
-      if rules[i].id == "function-type-alias" && contains(text, "proc(") && contains(text, "->") && contains(text, "type ") == false {
+      if rules[i].id == "function-type-alias"  and  contains(text, "proc(")  and  contains(text, "->")  and  contains(text, "type ") == false {
         out = out.push(make_issue("VITTE-I0021", LintSeverity.Info, file, 1, "long function type signatures should be extracted into aliases", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "generic-signature-sugar" && contains(text, "[") && contains(text, "]") && contains(text, "->") {
+      if rules[i].id == "generic-signature-sugar"  and  contains(text, "[")  and  contains(text, "]")  and  contains(text, "->") {
         out = out.push(make_issue("VITTE-I0022", LintSeverity.Info, file, 1, "verbose generic/composite signatures should use compact aliases", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "import-primitives" && (contains(text, "pull ") || contains(text, "share ")) {
+      if rules[i].id == "import-primitives"  and  (contains(text, "pull ")  or  contains(text, "share ")) {
         out = out.push(make_issue("VITTE-I0023", LintSeverity.Info, file, 1, "reduce import surface primitives in new code", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "let-make-set-role" && contains(text, "set ") && contains(text, " = ") {
+      if rules[i].id == "let-make-set-role"  and  contains(text, "set ")  and  contains(text, " = ") {
         out = out.push(make_issue("VITTE-I0014", LintSeverity.Info, file, 1, "clarify variable role: let declaration, make mutable declaration, set reassignment", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "prefer-mut-marker" && contains(text, "make ") {
+      if rules[i].id == "prefer-mut-marker"  and  contains(text, "make ") {
         out = out.push(make_issue("VITTE-I0024", LintSeverity.Info, file, 1, "prefer explicit mutability marker (let mut) in canonical style", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "brace-blocks" && (contains(text, "\nend") || contains(text, ".end")) {
+      if rules[i].id == "brace-blocks"  and  (contains(text, "\nend")  or  contains(text, ".end")) {
         out = out.push(make_issue("VITTE-I0015", LintSeverity.Warning, file, 1, "prefer brace blocks { ... } over legacy terminators", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "prefer-else" && contains(text, "otherwise") {
-        out = out.push(make_issue("VITTE-I0016", LintSeverity.Info, file, 1, "prefer else; otherwise is compatibility syntax", rules[i].id, rules[i].quickfix))
+      if rules[i].id == "prefer-else"  and  contains(text, "else") {
+        out = out.push(make_issue("VITTE-I0016", LintSeverity.Info, file, 1, "prefer else; else is compatibility syntax", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "prefer-match" && contains(text, "select ") && contains(text, "when ") {
+      if rules[i].id == "prefer-match"  and  contains(text, "select ")  and  contains(text, "when ") {
         out = out.push(make_issue("VITTE-I0017", LintSeverity.Info, file, 1, "prefer match/case for value branching in new code", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "logical-keywords" && (contains(text, "&&") || contains(text, "||")) {
+      if rules[i].id == "logical-keywords"  and  (contains(text, " and ")  or  contains(text, " or ")) {
         out = out.push(make_issue("VITTE-I0018", LintSeverity.Info, file, 1, "prefer logical keywords not/and/or over symbolic operators", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "ambiguous-precedence" && contains(text, " = ") {
-        if (contains(text, " + ") && contains(text, " * ") && contains(text, "(") == false) {
+      if rules[i].id == "ambiguous-precedence"  and  contains(text, " = ") {
+        if (contains(text, " + ")  and  contains(text, " * ")  and  contains(text, "(") == false) {
           out = out.push(make_issue("VITTE-I0019", LintSeverity.Warning, file, 1, "mixed arithmetic precedence without parentheses", rules[i].id, rules[i].quickfix))
         }
-        if (contains(text, " and ") && contains(text, " or ") && contains(text, "(") == false) {
+        if (contains(text, " and ")  and  contains(text, " or ")  and  contains(text, "(") == false) {
           out = out.push(make_issue("VITTE-I0019", LintSeverity.Warning, file, 1, "mixed logical precedence without parentheses", rules[i].id, rules[i].quickfix))
         }
       }
-      if rules[i].id == "facade-thin" && contains(text, "while true {") {
+      if rules[i].id == "facade-thin"  and  contains(text, "while true {") {
         out = out.push(make_issue("VITTE-I0005", LintSeverity.Info, file, 1, "facade may be too heavy", rules[i].id, rules[i].quickfix))
       }
-      if rules[i].id == "diag-namespace" && contains(text, "VITTE-") && contains(text, "VITTE-I") == false {
+      if rules[i].id == "diag-namespace"  and  contains(text, "VITTE-")  and  contains(text, "VITTE-I") == false {
         out = out.push(make_issue("VITTE-I0006", LintSeverity.Warning, file, 1, "diagnostic namespace mismatch", rules[i].id, rules[i].quickfix))
       }
     }
@@ -225,7 +225,7 @@ proc diag_message(code: string) -> string {
   if code == "VITTE-I0013" { give "for-in usage should stay limited until lowering is fully stabilized" }
   if code == "VITTE-I0014" { give "let/make/set roles should be explicit" }
   if code == "VITTE-I0015" { give "brace block style is required in strict mode" }
-  if code == "VITTE-I0016" { give "prefer else over otherwise" }
+  if code == "VITTE-I0016" { give "prefer else over else" }
   if code == "VITTE-I0017" { give "prefer match/case for new value-branching code" }
   if code == "VITTE-I0018" { give "prefer logical keywords not/and/or" }
   if code == "VITTE-I0019" { give "add parentheses to disambiguate precedence" }
@@ -244,14 +244,14 @@ proc quickfix_for(code: string) -> string {
   if code == "VITTE-I0003" { give "add allowlist or remove sensitive import" }
   if code == "VITTE-I0004" { give "rename symbol to snake_case/PascalCase" }
   if code == "VITTE-I0006" { give "replace code namespace with VITTE-I****" }
-  if code == "VITTE-I0011" { give "rewrite while !(a >= b) to while a < b (or equivalent inverse)" }
+  if code == "VITTE-I0011" { give "rewrite while not (a >= b) to while a < b (or equivalent inverse)" }
   if code == "VITTE-I0012" { give "replace return expr with give expr in non-entry code" }
   if code == "VITTE-I0013" { give "use while with explicit index/guard until for-in lowering is stabilized for your targets" }
   if code == "VITTE-I0014" { give "declare with let/make, then reassign with set only" }
   if code == "VITTE-I0015" { give "convert end/.end blocks to braces { ... }" }
-  if code == "VITTE-I0016" { give "replace otherwise with else in if/match branches" }
+  if code == "VITTE-I0016" { give "replace else with else in if/match branches" }
   if code == "VITTE-I0017" { give "rewrite select/when into match/case for new code" }
-  if code == "VITTE-I0018" { give "replace &&/|| with and/or and use not for negation" }
+  if code == "VITTE-I0018" { give "replace  and / or  with and/or and use not for negation" }
   if code == "VITTE-I0019" { give "add parentheses around mixed operators" }
   if code == "VITTE-I0020" { give "add trailing comma to multiline call/type/field lists" }
   if code == "VITTE-I0021" { give "define a type alias for proc(...) -> ... and reuse it" }

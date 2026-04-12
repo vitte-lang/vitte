@@ -29,10 +29,10 @@ static bool is_match_arm_sync_kind(TokenKind kind);
 static const char* expected_token_fix_hint(TokenKind kind);
 
 Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse)
-    : Parser(lexer, diag, ast_ctx, strict_parse, false, false, 0, 0) {}
+    : Parser(lexer, diag, ast_ctx, strict_parse, false, false, 0, 0, false) {}
 
 Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse, bool strict_core)
-    : Parser(lexer, diag, ast_ctx, strict_parse, strict_core, false, 0, 0) {}
+    : Parser(lexer, diag, ast_ctx, strict_parse, strict_core, false, 0, 0, false) {}
 
 Parser::Parser(Lexer& lexer,
                DiagnosticEngine& diag,
@@ -41,12 +41,14 @@ Parser::Parser(Lexer& lexer,
                bool strict_core,
                bool trace_parse,
                int panic_budget,
-               int panic_budget_notes)
+               int panic_budget_notes,
+               bool syntax_strict)
     : lexer_(lexer),
       diag_(diag),
       ast_ctx_(ast_ctx),
       strict_(strict_parse),
       strict_core_(strict_core),
+      syntax_strict_(syntax_strict),
       trace_parse_(trace_parse),
       panic_budget_(panic_budget),
       panic_budget_notes_(panic_budget_notes) {

@@ -78,7 +78,7 @@ proc pending(p: Plan) -> [Migration] {
   let out: [Migration] = []
   let i: int = 0
   while i < p.available.len {
-    if !is_applied(p, p.available[i].id) { out = out.push(p.available[i]) }
+    if not is_applied(p, p.available[i].id) { out = out.push(p.available[i]) }
     i += 1
   }
   give out
@@ -146,7 +146,7 @@ proc add_migration_checked(p: Plan, id: string, up_sql: string, down_sql: string
   if migrate_validate_pkg.valid_sql(up_sql) == false { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
   if migrate_validate_pkg.valid_sql(down_sql) == false { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
   if p.available.len >= cfg.max_migrations { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
-  if cfg.require_unique_ids && is_applied(p, id) { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
+  if cfg.require_unique_ids  and  is_applied(p, id) { give MigrateConfigResult.Err(MigrateConfigError.InvalidConfig) }
   give MigrateConfigResult.Ok(add_migration(p, id, up_sql, down_sql))
 }
 
