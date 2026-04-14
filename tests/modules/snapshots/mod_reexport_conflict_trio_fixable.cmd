@@ -1,1 +1,0 @@
-check tests/modules/reexport_conflict_trio_fixable/main.vit
