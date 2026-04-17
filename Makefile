@@ -929,6 +929,33 @@ package-check:
 packages-check-all:
 	@tools/package_check_all.sh
 
+.PHONY: package-obj
+package-obj:
+	@test -n "$(SRC)" || (echo "usage: make package-obj SRC=src/vitte/packages/<pkg>/mod.vit" >&2; exit 2)
+	@pkg="$${SRC#src/vitte/packages/}"; \
+	pkg="$${pkg%/mod.vit}"; \
+	leaf="$${pkg##*/}"; \
+	out="target/packages_obj/$${pkg}/lib$${leaf}.o"; \
+	mkdir -p "$$(dirname "$$out")"; \
+	./bin/vitte build --lang=en --allow-internal --emit-obj "$(SRC)" -o "$$out"; \
+	echo "[package-obj] $$out"
+
+.PHONY: packages-obj-all
+packages-obj-all:
+	@tools/packages_emit_obj_all.sh
+
+.PHONY: crab-check
+crab-check:
+	@tools/crab_workspace.sh check
+
+.PHONY: crab-check-full
+crab-check-full:
+	@tools/crab_workspace.sh check-full
+
+.PHONY: crab-obj-all
+crab-obj-all:
+	@tools/crab_workspace.sh emit-obj
+
 .PHONY: modules-perf-cache
 modules-perf-cache:
 	@tools/modules_cache_perf.sh tests/modules/mod_doctor/main.vit
