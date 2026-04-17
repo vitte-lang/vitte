@@ -1,0 +1,455 @@
+
+space vitte/crabcore/api
+
+<<< =========================================================
+    CrabCore API (max max absolute)
+========================================================= >>>
+
+form ApiExport {
+    name: string,
+    kind: string,
+    stable: bool
+}
+
+form ApiFeature {
+    name: string,
+    enabled: bool,
+    stable: bool
+}
+
+form ApiCapability {
+    name: string,
+    description: string,
+    enabled: bool
+}
+
+form ApiProbe {
+    name: string,
+    ok: bool,
+    detail: string
+}
+
+form ApiSummary {
+    ok: bool,
+    export_count: i32,
+    stable_count: i32,
+    unstable_count: i32,
+    feature_count: i32,
+    capability_count: i32,
+    probe_count: i32,
+    notes: [string]
+}
+
+<<< =========================================================
+    Helpers
+========================================================= >>>
+
+proc push_string(list: [string], item: string) -> [string] {
+    give list + [item]
+}
+
+proc push_export(list: [ApiExport], item: ApiExport) -> [ApiExport] {
+    give list + [item]
+}
+
+proc push_feature(list: [ApiFeature], item: ApiFeature) -> [ApiFeature] {
+    give list + [item]
+}
+
+proc push_capability(list: [ApiCapability], item: ApiCapability) -> [ApiCapability] {
+    give list + [item]
+}
+
+proc push_probe(list: [ApiProbe], item: ApiProbe) -> [ApiProbe] {
+    give list + [item]
+}
+
+proc push_note(list: [string], item: string) -> [string] {
+    give list + [item]
+}
+
+proc count_strings(list: [string]) -> i32 {
+    make n = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_exports(list: [ApiExport]) -> i32 {
+    make n = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_features(list: [ApiFeature]) -> i32 {
+    make n = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_capabilities(list: [ApiCapability]) -> i32 {
+    make n = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_probes(list: [ApiProbe]) -> i32 {
+    make n = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_stable(list: [ApiExport]) -> i32 {
+    make n = 0
+    for item in list {
+        if item.stable {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc count_unstable(list: [ApiExport]) -> i32 {
+    make n = 0
+    for item in list {
+        if not item.stable {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc bool_to_string(v: bool) -> string {
+    if v { give "true" }
+    give "false"
+}
+
+<<< =========================================================
+    Features / capabilities / probes
+========================================================= >>>
+
+proc features() -> [ApiFeature] {
+    make out = []
+
+    set out = push_feature(out, ApiFeature {
+        name: "metadata",
+        enabled: true,
+        stable: true
+    })
+
+    set out = push_feature(out, ApiFeature {
+        name: "exports-registry",
+        enabled: true,
+        stable: true
+    })
+
+    set out = push_feature(out, ApiFeature {
+        name: "summary-model",
+        enabled: true,
+        stable: true
+    })
+
+    set out = push_feature(out, ApiFeature {
+        name: "printing",
+        enabled: true,
+        stable: true
+    })
+
+    set out = push_feature(out, ApiFeature {
+        name: "probes",
+        enabled: true,
+        stable: false
+    })
+
+    give out
+}
+
+proc capabilities() -> [ApiCapability] {
+    make out = []
+
+    set out = push_capability(out, ApiCapability {
+        name: "self-description",
+        description: "describe the crabcore api surface",
+        enabled: true
+    })
+
+    set out = push_capability(out, ApiCapability {
+        name: "export-introspection",
+        description: "enumerate exported functions and their stability",
+        enabled: true
+    })
+
+    set out = push_capability(out, ApiCapability {
+        name: "health-summary",
+        description: "aggregate a synthetic summary for the api layer",
+        enabled: true
+    })
+
+    set out = push_capability(out, ApiCapability {
+        name: "human-readable-printing",
+        description: "print readable api summaries and export registries",
+        enabled: true
+    })
+
+    give out
+}
+
+proc probes() -> [ApiProbe] {
+    make out = []
+
+    set out = push_probe(out, ApiProbe {
+        name: "ready",
+        ok: ready(),
+        detail: "core api readiness"
+    })
+
+    set out = push_probe(out, ApiProbe {
+        name: "members-non-empty",
+        ok: count_exports(members()) > 0,
+        detail: "members registry contains exports"
+    })
+
+    set out = push_probe(out, ApiProbe {
+        name: "exports-non-empty",
+        ok: count_strings(exports()) > 0,
+        detail: "export names registry contains entries"
+    })
+
+    set out = push_probe(out, ApiProbe {
+        name: "stable-present",
+        ok: count_stable(members()) > 0,
+        detail: "stable exports are present"
+    })
+
+    give out
+}
+
+<<< =========================================================
+    Core API
+========================================================= >>>
+
+proc version() -> string {
+    give "crabcore-api-max-max"
+}
+
+proc ready() -> bool {
+    give true
+}
+
+proc summary() -> string {
+    give "crabcore/api/max-max"
+}
+
+proc description() -> string {
+    give "Core API layer exposing stable and unstable exports for crabcore"
+}
+
+<<< =========================================================
+    Exports registry
+========================================================= >>>
+
+proc exports() -> [string] {
+    make out = []
+
+    set out = push_string(out, "version")
+    set out = push_string(out, "ready")
+    set out = push_string(out, "summary")
+    set out = push_string(out, "description")
+    set out = push_string(out, "exports")
+    set out = push_string(out, "members")
+    set out = push_string(out, "api_summary")
+    set out = push_string(out, "features")
+    set out = push_string(out, "capabilities")
+    set out = push_string(out, "probes")
+    set out = push_string(out, "print_all")
+
+    give out
+}
+
+proc members() -> [ApiExport] {
+    make out = []
+
+    set out = push_export(out, ApiExport {
+        name: "version",
+        kind: "function",
+        stable: true
+    })
+
+    set out = push_export(out, ApiExport {
+        name: "ready",
+        kind: "function",
+        stable: true
+    })
+
+    set out = push_export(out, ApiExport {
+        name: "summary",
+        kind: "function",
+        stable: true
+    })
+
+    set out = push_export(out, ApiExport {
+        name: "description",
+        kind: "function",
+        stable: true
+    })
+
+    set out = push_export(out, ApiExport {
+        name: "exports",
+        kind: "function",
+        stable: true
+    })
+
+    set out = push_export(out, ApiExport {
+        name: "members",
+        kind: "function",
+        stable: true
+    })
+
+    set out = push_export(out, ApiExport {
+        name: "api_summary",
+        kind: "function",
+        stable: false
+    })
+
+    set out = push_export(out, ApiExport {
+        name: "features",
+        kind: "function",
+        stable: true
+    })
+
+    set out = push_export(out, ApiExport {
+        name: "capabilities",
+        kind: "function",
+        stable: true
+    })
+
+    set out = push_export(out, ApiExport {
+        name: "probes",
+        kind: "function",
+        stable: false
+    })
+
+    set out = push_export(out, ApiExport {
+        name: "print_all",
+        kind: "function",
+        stable: true
+    })
+
+    give out
+}
+
+<<< =========================================================
+    Summary
+========================================================= >>>
+
+proc api_summary() -> ApiSummary {
+    make notes = []
+    make ex = exports()
+    make mem = members()
+    make feat = features()
+    make caps = capabilities()
+    make prs = probes()
+
+    set notes = push_note(notes, "version=" + version())
+    set notes = push_note(notes, "ready=" + bool_to_string(ready()))
+    set notes = push_note(notes, "summary=" + summary())
+    set notes = push_note(notes, "description=" + description())
+    set notes = push_note(notes, "feature_count=" + (count_features(feat) as string))
+    set notes = push_note(notes, "capability_count=" + (count_capabilities(caps) as string))
+    set notes = push_note(notes, "probe_count=" + (count_probes(prs) as string))
+
+    give ApiSummary {
+        ok: ready(),
+        export_count: count_strings(ex),
+        stable_count: count_stable(mem),
+        unstable_count: count_unstable(mem),
+        feature_count: count_features(feat),
+        capability_count: count_capabilities(caps),
+        probe_count: count_probes(prs),
+        notes: notes
+    }
+}
+
+<<< =========================================================
+    Printing
+========================================================= >>>
+
+proc print_export(item: ApiExport) {
+    emit item.name + ":" + item.kind + ":stable=" + bool_to_string(item.stable)
+}
+
+proc print_feature(item: ApiFeature) {
+    emit item.name + ":enabled=" + bool_to_string(item.enabled) + ":stable=" + bool_to_string(item.stable)
+}
+
+proc print_capability(item: ApiCapability) {
+    emit item.name + ":enabled=" + bool_to_string(item.enabled)
+    emit "  description=" + item.description
+}
+
+proc print_probe(item: ApiProbe) {
+    emit item.name + ":ok=" + bool_to_string(item.ok)
+    emit "  detail=" + item.detail
+}
+
+proc print_summary(s: ApiSummary) {
+    emit "==== CRABCORE API ===="
+    emit "ok=" + bool_to_string(s.ok)
+    emit "export_count=" + (s.export_count as string)
+    emit "stable=" + (s.stable_count as string)
+    emit "unstable=" + (s.unstable_count as string)
+    emit "feature_count=" + (s.feature_count as string)
+    emit "capability_count=" + (s.capability_count as string)
+    emit "probe_count=" + (s.probe_count as string)
+
+    for n in s.notes {
+        emit n
+    }
+}
+
+proc print_all() {
+    make s = api_summary()
+    make mem = members()
+    make feat = features()
+    make caps = capabilities()
+    make prs = probes()
+
+    print_summary(s)
+
+    emit "---- exports ----"
+    for item in mem {
+        print_export(item)
+    }
+
+    emit "---- features ----"
+    for item in feat {
+        print_feature(item)
+    }
+
+    emit "---- capabilities ----"
+    for item in caps {
+        print_capability(item)
+    }
+
+    emit "---- probes ----"
+    for item in prs {
+        print_probe(item)
+    }
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcore/api {
+    print_all()
+}

@@ -1,0 +1,212 @@
+
+space vitte/crabcli/internal/diagnostics
+
+use vitte/packages/crabcli/api as cli_api
+use vitte/packages/crabcli/compat as cli_compat
+use vitte/packages/crabbuilder/internal/diagnostics as builder_diagnostics
+use vitte/packages/crabbuilder/internal/validate as builder_validate
+use vitte/packages/crabbuilder/internal/policy as builder_policy
+use vitte/packages/crabbuilder/internal/runtime as builder_runtime
+use vitte/packages/crabbuilder/prelude as builder_prelude
+
+<<< =========================================================
+    Diagnostics domain
+========================================================= >>>
+
+form DiagnosticMessage {
+  code: string,
+  severity: string,
+  message: string,
+  origin: string
+}
+
+form DiagnosticSummary {
+  ok: bool,
+  total: i32,
+  errors: i32,
+  warnings: i32,
+  infos: i32,
+  notes: [string]
+}
+
+<<< =========================================================
+    Core namespace
+========================================================= >>>
+
+proc namespace() -> string {
+  give "VITTE-CRABCLI-"
+}
+
+proc code_ok() -> string {
+  give namespace() + "0000"
+}
+
+proc code_runtime_fail() -> string {
+  give namespace() + "1001"
+}
+
+proc code_validate_fail() -> string {
+  give namespace() + "1002"
+}
+
+proc code_policy_fail() -> string {
+  give namespace() + "1003"
+}
+
+proc code_compat_fail() -> string {
+  give namespace() + "1004"
+}
+
+<<< =========================================================
+    Message resolver
+========================================================= >>>
+
+proc message(code: string) -> string {
+  if code == code_ok() { give "ok" }
+  if code == code_runtime_fail() { give "runtime failure" }
+  if code == code_validate_fail() { give "validation failure" }
+  if code == code_policy_fail() { give "policy failure" }
+  if code == code_compat_fail() { give "compatibility failure" }
+
+  give "crabcli diagnostic " + code
+}
+
+proc severity_from_code(code: string) -> string {
+  if code == code_ok() { give "info" }
+  give "error"
+}
+
+<<< =========================================================
+    Builders
+========================================================= >>>
+
+proc push_diag(list: [DiagnosticMessage], item: DiagnosticMessage) -> [DiagnosticMessage] {
+  give list + [item]
+}
+
+proc push_note(list: [string], item: string) -> [string] {
+  give list + [item]
+}
+
+proc make_diag(code: string, origin: string) -> DiagnosticMessage {
+  give DiagnosticMessage {
+    code: code,
+    severity: severity_from_code(code),
+    message: message(code),
+    origin: origin
+  }
+}
+
+<<< =========================================================
+    Aggregation
+========================================================= >>>
+
+proc count_errors(list: [DiagnosticMessage]) -> i32 {
+  make n = 0
+  for item in list {
+    if item.severity == "error" {
+      set n = n + 1
+    }
+  }
+  give n
+}
+
+proc count_infos(list: [DiagnosticMessage]) -> i32 {
+  make n = 0
+  for item in list {
+    if item.severity == "info" {
+      set n = n + 1
+    }
+  }
+  give n
+}
+
+proc count(list: [DiagnosticMessage]) -> i32 {
+  make n = 0
+  for item in list {
+    set n = n + 1
+  }
+  give n
+}
+
+proc summarize(list: [DiagnosticMessage]) -> DiagnosticSummary {
+  make notes = []
+
+  set notes = push_note(notes, "total=" + (count(list) as string))
+  set notes = push_note(notes, "errors=" + (count_errors(list) as string))
+
+  give DiagnosticSummary {
+    ok: count_errors(list) == 0,
+    total: count(list),
+    errors: count_errors(list),
+    warnings: 0,
+    infos: count_infos(list),
+    notes: notes
+  }
+}
+
+<<< =========================================================
+    Full system diagnostics
+========================================================= >>>
+
+proc collect() -> DiagnosticSummary {
+  make b = builder_prelude.default_builder()
+
+  make r = builder_runtime.execute(b)
+  make v = builder_validate.validate_builder_integrated(b)
+  make c = cli_compat.plan_target(b.config.target)
+  make p = builder_policy.evaluate(b)
+
+  make diags = []
+
+  if r.ok {
+    set diags = push_diag(diags, make_diag(code_ok(), "runtime"))
+  } else {
+    set diags = push_diag(diags, make_diag(code_runtime_fail(), "runtime"))
+  }
+
+  if v.ok {
+    set diags = push_diag(diags, make_diag(code_ok(), "validate"))
+  } else {
+    set diags = push_diag(diags, make_diag(code_validate_fail(), "validate"))
+  }
+
+  if p.ok {
+    set diags = push_diag(diags, make_diag(code_ok(), "policy"))
+  } else {
+    set diags = push_diag(diags, make_diag(code_policy_fail(), "policy"))
+  }
+
+  if c.ok {
+    set diags = push_diag(diags, make_diag(code_ok(), "compat"))
+  } else {
+    set diags = push_diag(diags, make_diag(code_compat_fail(), "compat"))
+  }
+
+  give summarize(diags)
+}
+
+<<< =========================================================
+    Printing
+========================================================= >>>
+
+proc print_summary(s: DiagnosticSummary) {
+  emit "==== CRABCLI DIAGNOSTICS ===="
+  emit "ok=" + (s.ok as string)
+  emit "total=" + (s.total as string)
+  emit "errors=" + (s.errors as string)
+  emit "infos=" + (s.infos as string)
+
+  for n in s.notes {
+    emit n
+  }
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcli/internal/diagnostics {
+  make s = collect()
+  print_summary(s)
+}

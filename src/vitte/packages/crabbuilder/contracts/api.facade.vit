@@ -1,0 +1,619 @@
+
+
+space vitte/packages/crabbuilder/contracts/api/facade
+
+use vitte/packages/crabbuilder/api as api
+use vitte/packages/crabbuilder/compat as compat
+
+<<< =========================================================
+    Public facade contracts
+========================================================= >>>
+
+form FacadeConfig {
+    name: string,
+    version: string,
+    target: string,
+    profile: string,
+    optimize: bool,
+    debug: bool,
+    threads: i32,
+    out_dir: string,
+    cache_dir: string,
+    cwd: string,
+    enable_compat: bool,
+    enable_trace: bool,
+    enable_debug_hook: bool
+}
+
+form FacadeStepSpec {
+    id: string,
+    command: string,
+    enabled: bool,
+    always: bool,
+    timeout_ms: i64,
+    retries: i32,
+    workdir: string
+}
+
+form FacadeArtifactSpec {
+    step_id: string,
+    name: string,
+    path: string,
+    hash: string,
+    kind: string,
+    io: string
+}
+
+form FacadeDependencySpec {
+    step_id: string,
+    dep_id: string
+}
+
+form FacadeEnvSpec {
+    key: string,
+    value: string
+}
+
+form FacadePlan {
+    config: FacadeConfig,
+    env: [FacadeEnvSpec],
+    steps: [FacadeStepSpec],
+    deps: [FacadeDependencySpec],
+    artifacts: [FacadeArtifactSpec]
+}
+
+form FacadeRunResult {
+    ok: bool,
+    message: string,
+    target: string,
+    scheduled_steps: i32,
+    executed_steps: i32,
+    cached_steps: i32,
+    failed_steps: i32,
+    total_ms: i64
+}
+
+form FacadeReport {
+    ok: bool,
+    status: string,
+    target: string,
+    summary: string,
+    compat_ok: bool,
+    scheduled_steps: i32,
+    executed_steps: i32,
+    cached_steps: i32,
+    failed_steps: i32,
+    total_ms: i64,
+    notes: [string]
+}
+
+pick FacadeStatus {
+    case Ready,
+    case Invalid(reason: string),
+    case Executed,
+    case Failed(reason: string)
+}
+
+<<< =========================================================
+    Defaults / constructors
+========================================================= >>>
+
+proc default_config() -> FacadeConfig {
+    give FacadeConfig {
+        name: "crabbuilder-project",
+        version: "0.1.0",
+        target: "x86_64-unknown-linux-gnu",
+        profile: "dev",
+        optimize: false,
+        debug: true,
+        threads: 1,
+        out_dir: "./build",
+        cache_dir: "./.cache",
+        cwd: ".",
+        enable_compat: true,
+        enable_trace: false,
+        enable_debug_hook: false
+    }
+}
+
+proc empty_plan() -> FacadePlan {
+    give FacadePlan {
+        config: default_config(),
+        env: [],
+        steps: [],
+        deps: [],
+        artifacts: []
+    }
+}
+
+proc new_plan() -> FacadePlan {
+    give empty_plan()
+}
+
+proc make_result(ok: bool, message: string, target: string, scheduled_steps: i32, executed_steps: i32, cached_steps: i32, failed_steps: i32, total_ms: i64) -> FacadeRunResult {
+    give FacadeRunResult {
+        ok: ok,
+        message: message,
+        target: target,
+        scheduled_steps: scheduled_steps,
+        executed_steps: executed_steps,
+        cached_steps: cached_steps,
+        failed_steps: failed_steps,
+        total_ms: total_ms
+    }
+}
+
+<<< =========================================================
+    Plan config mutators
+========================================================= >>>
+
+proc set_name(p: FacadePlan, value: string) -> FacadePlan {
+    set p.config.name = value
+    give p
+}
+
+proc set_version(p: FacadePlan, value: string) -> FacadePlan {
+    set p.config.version = value
+    give p
+}
+
+proc set_target(p: FacadePlan, value: string) -> FacadePlan {
+    set p.config.target = value
+    give p
+}
+
+proc set_profile(p: FacadePlan, value: string) -> FacadePlan {
+    set p.config.profile = value
+    give p
+}
+
+proc set_optimize(p: FacadePlan, value: bool) -> FacadePlan {
+    set p.config.optimize = value
+    give p
+}
+
+proc set_debug(p: FacadePlan, value: bool) -> FacadePlan {
+    set p.config.debug = value
+    give p
+}
+
+proc set_threads(p: FacadePlan, value: i32) -> FacadePlan {
+    set p.config.threads = value
+    give p
+}
+
+proc set_out_dir(p: FacadePlan, value: string) -> FacadePlan {
+    set p.config.out_dir = value
+    give p
+}
+
+proc set_cache_dir(p: FacadePlan, value: string) -> FacadePlan {
+    set p.config.cache_dir = value
+    give p
+}
+
+proc set_cwd(p: FacadePlan, value: string) -> FacadePlan {
+    set p.config.cwd = value
+    give p
+}
+
+proc enable_compat(p: FacadePlan) -> FacadePlan {
+    set p.config.enable_compat = true
+    give p
+}
+
+proc disable_compat(p: FacadePlan) -> FacadePlan {
+    set p.config.enable_compat = false
+    give p
+}
+
+proc enable_trace(p: FacadePlan) -> FacadePlan {
+    set p.config.enable_trace = true
+    give p
+}
+
+proc disable_trace(p: FacadePlan) -> FacadePlan {
+    set p.config.enable_trace = false
+    give p
+}
+
+proc enable_debug_hook(p: FacadePlan) -> FacadePlan {
+    set p.config.enable_debug_hook = true
+    give p
+}
+
+proc disable_debug_hook(p: FacadePlan) -> FacadePlan {
+    set p.config.enable_debug_hook = false
+    give p
+}
+
+<<< =========================================================
+    Plan assembly
+========================================================= >>>
+
+proc add_env(p: FacadePlan, key: string, value: string) -> FacadePlan {
+    set p.env = p.env + [FacadeEnvSpec { key: key, value: value }]
+    give p
+}
+
+proc add_step(p: FacadePlan, id: string, command: string) -> FacadePlan {
+    set p.steps = p.steps + [FacadeStepSpec {
+        id: id,
+        command: command,
+        enabled: true,
+        always: false,
+        timeout_ms: 0,
+        retries: 0,
+        workdir: "."
+    }]
+    give p
+}
+
+proc add_step_full(p: FacadePlan, id: string, command: string, enabled: bool, always: bool, timeout_ms: i64, retries: i32, workdir: string) -> FacadePlan {
+    set p.steps = p.steps + [FacadeStepSpec {
+        id: id,
+        command: command,
+        enabled: enabled,
+        always: always,
+        timeout_ms: timeout_ms,
+        retries: retries,
+        workdir: workdir
+    }]
+    give p
+}
+
+proc add_dep(p: FacadePlan, step_id: string, dep_id: string) -> FacadePlan {
+    set p.deps = p.deps + [FacadeDependencySpec { step_id: step_id, dep_id: dep_id }]
+    give p
+}
+
+proc add_input(p: FacadePlan, step_id: string, name: string, path: string, hash: string, kind: string) -> FacadePlan {
+    set p.artifacts = p.artifacts + [FacadeArtifactSpec {
+        step_id: step_id,
+        name: name,
+        path: path,
+        hash: hash,
+        kind: kind,
+        io: "input"
+    }]
+    give p
+}
+
+proc add_output(p: FacadePlan, step_id: string, name: string, path: string, hash: string, kind: string) -> FacadePlan {
+    set p.artifacts = p.artifacts + [FacadeArtifactSpec {
+        step_id: step_id,
+        name: name,
+        path: path,
+        hash: hash,
+        kind: kind,
+        io: "output"
+    }]
+    give p
+}
+
+<<< =========================================================
+    Validation helpers
+========================================================= >>>
+
+proc has_step(p: FacadePlan, id: string) -> bool {
+    for s in p.steps {
+        if s.id == id {
+            give true
+        }
+    }
+
+    give false
+}
+
+proc count_steps(p: FacadePlan) -> i32 {
+    make n = 0
+
+    for s in p.steps {
+        set n = n + 1
+    }
+
+    give n
+}
+
+proc count_enabled_steps(p: FacadePlan) -> i32 {
+    make n = 0
+
+    for s in p.steps {
+        if s.enabled {
+            set n = n + 1
+        }
+    }
+
+    give n
+}
+
+proc validate_plan(p: FacadePlan) -> FacadeStatus {
+    if p.config.name == "" {
+        give FacadeStatus.Invalid("missing project name")
+    }
+
+    if p.config.target == "" {
+        give FacadeStatus.Invalid("missing target")
+    }
+
+    for s in p.steps {
+        if s.id == "" {
+            give FacadeStatus.Invalid("step id is empty")
+        }
+
+        if s.command == "" {
+            give FacadeStatus.Invalid("step command is empty")
+        }
+    }
+
+    for d in p.deps {
+        if not has_step(p, d.step_id) {
+            give FacadeStatus.Invalid("dependency owner step is missing")
+        }
+
+        if not has_step(p, d.dep_id) {
+            give FacadeStatus.Invalid("dependency target step is missing")
+        }
+    }
+
+    give FacadeStatus.Ready
+}
+
+<<< =========================================================
+    Bridge to api.CrabBuilder
+========================================================= >>>
+
+proc apply_config(b: api.CrabBuilder, cfg: FacadeConfig) -> api.CrabBuilder {
+    set b = api.set_name(b, cfg.name)
+    set b = api.set_version(b, cfg.version)
+    set b = api.set_target(b, cfg.target)
+    set b = api.set_profile(b, cfg.profile)
+    set b = api.set_out_dir(b, cfg.out_dir)
+    set b = api.set_cache_dir(b, cfg.cache_dir)
+    set b = api.set_cwd(b, cfg.cwd)
+    set b = api.set_threads(b, cfg.threads)
+    set b = api.set_debug(b, cfg.debug)
+
+    if cfg.optimize {
+        set b = api.enable_opt(b)
+    } else {
+        set b = api.disable_opt(b)
+    }
+
+    if cfg.enable_compat {
+        set b = compat.prepare_builder(b, cfg.target)
+    }
+
+    if cfg.enable_trace {
+        set b = api.register_plugin(b, api.trace_plugin())
+    }
+
+    if cfg.enable_debug_hook {
+        set b = api.add_hook(b, api.debug_hook())
+    }
+
+    give b
+}
+
+proc apply_env(b: api.CrabBuilder, env: [FacadeEnvSpec]) -> api.CrabBuilder {
+    for item in env {
+        set b = api.set_env(b, item.key, item.value)
+    }
+
+    give b
+}
+
+proc apply_steps(b: api.CrabBuilder, steps: [FacadeStepSpec]) -> api.CrabBuilder {
+    for item in steps {
+        set b = api.add_step(b, item.id, item.command)
+
+        if not item.enabled {
+            set b = api.disable_step(b, item.id)
+        }
+
+        if item.always {
+            set b = api.mark_step_always(b, item.id)
+        }
+
+        if item.timeout_ms > 0 {
+            set b = api.set_step_timeout(b, item.id, item.timeout_ms)
+        }
+
+        if item.retries > 0 {
+            set b = api.set_step_retries(b, item.id, item.retries)
+        }
+    }
+
+    give b
+}
+
+proc apply_deps(b: api.CrabBuilder, deps: [FacadeDependencySpec]) -> api.CrabBuilder {
+    for item in deps {
+        set b = api.add_dep(b, item.step_id, item.dep_id)
+    }
+
+    give b
+}
+
+proc apply_artifacts(b: api.CrabBuilder, artifacts: [FacadeArtifactSpec]) -> api.CrabBuilder {
+    for item in artifacts {
+        if item.io == "input" {
+            set b = api.add_input(b, item.step_id, item.name, item.path, item.hash, item.kind)
+        } else {
+            set b = api.add_output(b, item.step_id, item.name, item.path, item.hash, item.kind)
+        }
+    }
+
+    give b
+}
+
+proc compile_plan(p: FacadePlan) -> api.CrabBuilder {
+    make b = api.new()
+    set b = apply_config(b, p.config)
+    set b = apply_env(b, p.env)
+    set b = apply_steps(b, p.steps)
+    set b = apply_deps(b, p.deps)
+    set b = apply_artifacts(b, p.artifacts)
+    give b
+}
+
+<<< =========================================================
+    Execution facade
+========================================================= >>>
+
+proc run_plan(p: FacadePlan) -> FacadeRunResult {
+    make state = validate_plan(p)
+
+    when state is FacadeStatus.Invalid(reason) {
+        give make_result(false, reason, p.config.target, count_steps(p), 0, 0, 1, 0)
+    }
+
+    make b = compile_plan(p)
+    make ok = api.run(b)
+
+    if ok {
+        give make_result(true, "success", p.config.target, b.stats.scheduled_steps, b.stats.executed_steps, b.stats.cached_steps, b.stats.failed_steps, b.stats.total_ms)
+    }
+
+    give make_result(false, "build failed", p.config.target, b.stats.scheduled_steps, b.stats.executed_steps, b.stats.cached_steps, b.stats.failed_steps, b.stats.total_ms)
+}
+
+proc report_plan(p: FacadePlan) -> FacadeReport {
+    make state = validate_plan(p)
+
+    when state is FacadeStatus.Invalid(reason) {
+        give FacadeReport {
+            ok: false,
+            status: "invalid",
+            target: p.config.target,
+            summary: reason,
+            compat_ok: false,
+            scheduled_steps: count_steps(p),
+            executed_steps: 0,
+            cached_steps: 0,
+            failed_steps: 1,
+            total_ms: 0,
+            notes: [reason]
+        }
+    }
+
+    make b = compile_plan(p)
+    make report = api.run_report(b)
+    make compat_ok = true
+    make notes = []
+
+    if p.config.enable_compat {
+        make compat_report = compat.plan_target(p.config.target)
+        set compat_ok = compat_report.ok
+        set notes = notes + [compat.summary(compat_report)]
+
+        for line in compat.explain(compat_report) {
+            set notes = notes + [line]
+        }
+    }
+
+    set notes = notes + ["project=" + p.config.name]
+    set notes = notes + ["profile=" + p.config.profile]
+    set notes = notes + ["scheduled=" + (report.stats.scheduled_steps as string)]
+    set notes = notes + ["executed=" + (report.stats.executed_steps as string)]
+    set notes = notes + ["cached=" + (report.stats.cached_steps as string)]
+    set notes = notes + ["failed=" + (report.stats.failed_steps as string)]
+
+    give FacadeReport {
+        ok: report.ok,
+        status: report.status,
+        target: p.config.target,
+        summary: report.status,
+        compat_ok: compat_ok,
+        scheduled_steps: report.stats.scheduled_steps,
+        executed_steps: report.stats.executed_steps,
+        cached_steps: report.stats.cached_steps,
+        failed_steps: report.stats.failed_steps,
+        total_ms: report.total_ms,
+        notes: notes
+    }
+}
+
+<<< =========================================================
+    High level presets
+========================================================= >>>
+
+proc default_plan() -> FacadePlan {
+    make p = new_plan()
+    set p = set_name(p, "crabbuilder-project")
+    set p = set_target(p, "x86_64-unknown-linux-gnu")
+    set p = set_profile(p, "release")
+    set p = set_optimize(p, true)
+    set p = set_threads(p, 4)
+    set p = enable_compat(p)
+    set p = enable_trace(p)
+    set p = enable_debug_hook(p)
+    set p = add_step(p, "compile", "crabcc src/main.crab")
+    set p = add_step(p, "link", "ld build/main.o")
+    set p = add_dep(p, "link", "compile")
+    set p = add_step(p, "package", "tar -czf build.tar.gz build")
+    set p = add_dep(p, "package", "link")
+    set p = add_input(p, "compile", "main", "src/main.crab", "", "source")
+    set p = add_output(p, "compile", "main.o", "build/main.o", "", "object")
+    set p = add_output(p, "link", "app", "build/app", "", "binary")
+    give p
+}
+
+proc graph_plan(width: i32, depth: i32) -> FacadePlan {
+    make p = new_plan()
+    set p = set_name(p, "crabbuilder-graph")
+    set p = set_target(p, "x86_64-unknown-linux-gnu")
+    set p = set_profile(p, "dev")
+    set p = enable_compat(p)
+
+    make d = 0
+
+    while d < depth {
+        make w = 0
+
+        while w < width {
+            make sid = "g-" + (d as string) + "-" + (w as string)
+            make cmd = "crab graph " + (d as string) + " " + (w as string)
+            set p = add_step(p, sid, cmd)
+
+            if d > 0 {
+                make prev = "g-" + ((d - 1) as string) + "-" + (w as string)
+                set p = add_dep(p, sid, prev)
+            }
+
+            if d > 0 and w > 0 {
+                make prev_diag = "g-" + ((d - 1) as string) + "-" + ((w - 1) as string)
+                set p = add_dep(p, sid, prev_diag)
+            }
+
+            set w = w + 1
+        }
+
+        set d = d + 1
+    }
+
+    give p
+}
+
+proc fail_plan() -> FacadePlan {
+    make p = new_plan()
+    set p = set_name(p, "crabbuilder-fail")
+    set p = set_target(p, "x86_64-unknown-linux-gnu")
+    set p = add_step(p, "compile", "crabcc fail main.crab")
+    give p
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/packages/crabbuilder/contracts/api/facade {
+    make p = default_plan()
+    make r = run_plan(p)
+
+    if r.ok {
+        emit "OK"
+    } else {
+        emit "FAIL"
+    }
+}

@@ -1,0 +1,389 @@
+
+space vitte/crabcli/prelude
+
+use vitte/packages/crabcli/api as cli_api
+use vitte/packages/crabcli/compat as cli_compat
+use vitte/packages/crabcli/internal/runtime as cli_runtime
+use vitte/packages/crabcli/internal/validate as cli_validate
+use vitte/packages/crabcli/internal/diagnostics as cli_diagnostics
+use vitte/packages/crabcli/internal/policy as cli_policy
+use vitte/packages/crabcli/domain as cli_domain
+
+<<< =========================================================
+    CrabCLI Prelude (max max)
+========================================================= >>>
+
+form PreludeExport {
+    name: string,
+    path: string,
+    kind: string
+}
+
+form PreludeFeature {
+    name: string,
+    enabled: bool
+}
+
+form PreludeProbe {
+    name: string,
+    ok: bool,
+    detail: string
+}
+
+form PreludeSummary {
+    ok: bool,
+    module_count: i32,
+    export_count: i32,
+    feature_count: i32,
+    probe_count: i32,
+    notes: [string]
+}
+
+<<< =========================================================
+    Helpers
+========================================================= >>>
+
+proc push_string(list: [string], item: string) -> [string] {
+    give list + [item]
+}
+
+proc push_export(list: [PreludeExport], item: PreludeExport) -> [PreludeExport] {
+    give list + [item]
+}
+
+proc push_feature(list: [PreludeFeature], item: PreludeFeature) -> [PreludeFeature] {
+    give list + [item]
+}
+
+proc push_probe(list: [PreludeProbe], item: PreludeProbe) -> [PreludeProbe] {
+    give list + [item]
+}
+
+proc push_note(list: [string], item: string) -> [string] {
+    give list + [item]
+}
+
+proc count_strings(list: [string]) -> i32 {
+    make n = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_exports(list: [PreludeExport]) -> i32 {
+    make n = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_features(list: [PreludeFeature]) -> i32 {
+    make n = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_probes(list: [PreludeProbe]) -> i32 {
+    make n = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+<<< =========================================================
+    Core exports
+========================================================= >>>
+
+proc exports() -> [string] {
+    make out = []
+
+    set out = push_string(out, "version")
+    set out = push_string(out, "family")
+    set out = push_string(out, "members")
+    set out = push_string(out, "summary")
+    set out = push_string(out, "description")
+    set out = push_string(out, "runtime")
+    set out = push_string(out, "validate")
+    set out = push_string(out, "diagnostics")
+    set out = push_string(out, "policy")
+    set out = push_string(out, "domain")
+
+    give out
+}
+
+proc members() -> [PreludeExport] {
+    make out = []
+
+    set out = push_export(out, PreludeExport {
+        name: "api",
+        path: "vitte/packages/crabcli/api",
+        kind: "module"
+    })
+
+    set out = push_export(out, PreludeExport {
+        name: "compat",
+        path: "vitte/packages/crabcli/compat",
+        kind: "module"
+    })
+
+    set out = push_export(out, PreludeExport {
+        name: "runtime",
+        path: "vitte/packages/crabcli/internal/runtime",
+        kind: "module"
+    })
+
+    set out = push_export(out, PreludeExport {
+        name: "validate",
+        path: "vitte/packages/crabcli/internal/validate",
+        kind: "module"
+    })
+
+    set out = push_export(out, PreludeExport {
+        name: "diagnostics",
+        path: "vitte/packages/crabcli/internal/diagnostics",
+        kind: "module"
+    })
+
+    set out = push_export(out, PreludeExport {
+        name: "policy",
+        path: "vitte/packages/crabcli/internal/policy",
+        kind: "module"
+    })
+
+    set out = push_export(out, PreludeExport {
+        name: "domain",
+        path: "vitte/packages/crabcli/domain",
+        kind: "module"
+    })
+
+    give out
+}
+
+<<< =========================================================
+    Features
+========================================================= >>>
+
+proc features() -> [PreludeFeature] {
+    make out = []
+
+    set out = push_feature(out, PreludeFeature {
+        name: "api",
+        enabled: true
+    })
+
+    set out = push_feature(out, PreludeFeature {
+        name: "compat",
+        enabled: true
+    })
+
+    set out = push_feature(out, PreludeFeature {
+        name: "runtime",
+        enabled: true
+    })
+
+    set out = push_feature(out, PreludeFeature {
+        name: "validate",
+        enabled: true
+    })
+
+    set out = push_feature(out, PreludeFeature {
+        name: "diagnostics",
+        enabled: true
+    })
+
+    set out = push_feature(out, PreludeFeature {
+        name: "policy",
+        enabled: true
+    })
+
+    set out = push_feature(out, PreludeFeature {
+        name: "domain",
+        enabled: true
+    })
+
+    give out
+}
+
+<<< =========================================================
+    Probe registry
+========================================================= >>>
+
+proc probes() -> [PreludeProbe] {
+    make out = []
+
+    set out = push_probe(out, PreludeProbe {
+        name: "runtime",
+        ok: runtime_ok(),
+        detail: "runtime integration"
+    })
+
+    set out = push_probe(out, PreludeProbe {
+        name: "validate",
+        ok: validate_ok(),
+        detail: "validation integration"
+    })
+
+    set out = push_probe(out, PreludeProbe {
+        name: "diagnostics",
+        ok: diagnostics_ok(),
+        detail: "diagnostics integration"
+    })
+
+    set out = push_probe(out, PreludeProbe {
+        name: "policy",
+        ok: policy_ok(),
+        detail: "policy integration"
+    })
+
+    set out = push_probe(out, PreludeProbe {
+        name: "domain",
+        ok: domain_ok(),
+        detail: "domain integration"
+    })
+
+    give out
+}
+
+<<< =========================================================
+    Metadata
+========================================================= >>>
+
+proc version() -> string {
+    give "crabcli-prelude-1.0-max"
+}
+
+proc family() -> string {
+    give "crabcli-prelude"
+}
+
+proc description() -> string {
+    give "Unified prelude exposing crabcli modules: api, compat, runtime, validate, diagnostics, policy, domain"
+}
+
+proc ready() -> bool {
+    give true
+}
+
+proc summary() -> string {
+    give "crabcli/prelude/max-max"
+}
+
+<<< =========================================================
+    Integration probes
+========================================================= >>>
+
+proc runtime_ok() -> bool {
+    make s = cli_runtime.run()
+    give s.ok
+}
+
+proc validate_ok() -> bool {
+    make s = cli_validate.collect()
+    give s.ok
+}
+
+proc diagnostics_ok() -> bool {
+    make s = cli_diagnostics.collect()
+    give s.ok
+}
+
+proc policy_ok() -> bool {
+    make s = cli_policy.evaluate()
+    give s.ok
+}
+
+proc domain_ok() -> bool {
+    make s = cli_domain.domain_summary()
+    give s.ok
+}
+
+<<< =========================================================
+    Summary
+========================================================= >>>
+
+proc prelude_summary() -> PreludeSummary {
+    make notes = []
+    make ex = exports()
+    make mem = members()
+    make feat = features()
+    make prs = probes()
+
+    set notes = push_note(notes, "version=" + version())
+    set notes = push_note(notes, "family=" + family())
+    set notes = push_note(notes, "summary=" + summary())
+    set notes = push_note(notes, "description=" + description())
+    set notes = push_note(notes, "runtime_ok=" + (runtime_ok() as string))
+    set notes = push_note(notes, "validate_ok=" + (validate_ok() as string))
+    set notes = push_note(notes, "diagnostics_ok=" + (diagnostics_ok() as string))
+    set notes = push_note(notes, "policy_ok=" + (policy_ok() as string))
+    set notes = push_note(notes, "domain_ok=" + (domain_ok() as string))
+
+    give PreludeSummary {
+        ok: ready(),
+        module_count: count_exports(mem),
+        export_count: count_strings(ex),
+        feature_count: count_features(feat),
+        probe_count: count_probes(prs),
+        notes: notes
+    }
+}
+
+<<< =========================================================
+    Printing
+========================================================= >>>
+
+proc print_summary(s: PreludeSummary) {
+    emit "==== CRABCLI PRELUDE ===="
+    emit "ok=" + (s.ok as string)
+    emit "module_count=" + (s.module_count as string)
+    emit "export_count=" + (s.export_count as string)
+    emit "feature_count=" + (s.feature_count as string)
+    emit "probe_count=" + (s.probe_count as string)
+
+    for n in s.notes {
+        emit n
+    }
+}
+
+<<< =========================================================
+    Registry printing
+========================================================= >>>
+
+proc print_feature(item: PreludeFeature) {
+    emit item.name + "=" + (item.enabled as string)
+}
+
+proc print_probe(item: PreludeProbe) {
+    emit item.name + "=" + (item.ok as string)
+    emit "detail=" + item.detail
+}
+
+proc print_all() {
+    make feat = features()
+    make prs = probes()
+
+    emit "---- features ----"
+    for item in feat {
+        print_feature(item)
+    }
+
+    emit "---- probes ----"
+    for item in prs {
+        print_probe(item)
+    }
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcli/prelude {
+    make s = prelude_summary()
+    print_summary(s)
+    print_all()
+}

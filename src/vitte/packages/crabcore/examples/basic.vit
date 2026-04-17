@@ -1,0 +1,134 @@
+
+
+space vitte/crabcore/examples/basic
+
+use vitte/crabcore/api as api
+use vitte/crabcore/compat as compat
+use vitte/crabcore/domain as domain
+
+<<< =========================================================
+    Basic Example (max max)
+========================================================= >>>
+
+form AppConfig {
+    name: string,
+    version: string,
+    debug: bool
+}
+
+form AppReport {
+    ok: bool,
+    api_ok: bool,
+    compat_ok: bool,
+    domain_ok: bool,
+    notes: [string]
+}
+
+<<< =========================================================
+    Helpers
+========================================================= >>>
+
+proc push(list: [string], item: string) -> [string] {
+    give list + [item]
+}
+
+proc bool_s(v: bool) -> string {
+    if v { give "true" }
+    give "false"
+}
+
+<<< =========================================================
+    Build config
+========================================================= >>>
+
+proc config() -> AppConfig {
+    give AppConfig {
+        name: "crabcore-example",
+        version: "0.1-max",
+        debug: true
+    }
+}
+
+<<< =========================================================
+    Checks
+========================================================= >>>
+
+proc check_api() -> bool {
+    let s = api.api_summary()
+    give s.ok
+}
+
+proc check_compat() -> bool {
+    let s = compat.summary()
+    give s.ok
+}
+
+proc check_domain() -> bool {
+    let s = domain.domain_summary()
+    give s.ok
+}
+
+proc run() -> AppReport {
+    let notes = []
+
+    let a = check_api()
+    let c = check_compat()
+    let d = check_domain()
+
+    set notes = push(notes, "api_ok=" + bool_s(a))
+    set notes = push(notes, "compat_ok=" + bool_s(c))
+    set notes = push(notes, "domain_ok=" + bool_s(d))
+
+    give AppReport {
+        ok: a and c and d,
+        api_ok: a,
+        compat_ok: c,
+        domain_ok: d,
+        notes: notes
+    }
+}
+
+<<< =========================================================
+    Printing
+========================================================= >>>
+
+proc print_report(r: AppReport) {
+    emit "==== BASIC EXAMPLE ===="
+    emit "ok=" + bool_s(r.ok)
+    emit "api=" + bool_s(r.api_ok)
+    emit "compat=" + bool_s(r.compat_ok)
+    emit "domain=" + bool_s(r.domain_ok)
+
+    emit "---- notes ----"
+    for n in r.notes {
+        emit n
+    }
+}
+
+proc print_all() {
+    let cfg = config()
+
+    emit "app=" + cfg.name
+    emit "version=" + cfg.version
+    emit "debug=" + bool_s(cfg.debug)
+
+    let r = run()
+    print_report(r)
+
+    emit "---- api ----"
+    api.print_all()
+
+    emit "---- compat ----"
+    compat.print_all()
+
+    emit "---- domain ----"
+    domain.print_all()
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcore/examples/basic {
+    print_all()
+}

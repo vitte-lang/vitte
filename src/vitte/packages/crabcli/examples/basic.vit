@@ -1,0 +1,73 @@
+space vitte/crabcli/examples/basic
+
+use vitte/crabcli as crabcli_pkg
+use vitte/packages/crabcli/api as cli_api
+use vitte/packages/crabcli/compat as cli_compat
+use vitte/packages/crabbuilder/prelude as builder_prelude
+use vitte/packages/crabbuilder/internal/runtime as builder_runtime
+use vitte/packages/crabbuilder/internal/validate as builder_validate
+use vitte/packages/crabbuilder/internal/diagnostics as builder_diagnostics
+use vitte/packages/crabbuilder/internal/policy as builder_policy
+
+<<< =========================================================
+    Example domain
+========================================================= >>>
+
+form ExampleResult {
+  summary: string,
+  runtime_ok: bool,
+  validate_ok: bool,
+  diagnostics_ok: bool,
+  policy_ok: bool,
+  compat_ok: bool
+}
+
+<<< =========================================================
+    Core demo
+========================================================= >>>
+
+proc demo_summary() -> string {
+  give crabcli_pkg.summary()
+}
+
+proc demo_full() -> ExampleResult {
+  make b = builder_prelude.default_builder()
+
+  make r = builder_runtime.execute(b)
+  make v = builder_validate.validate_builder_integrated(b)
+  make cplan = cli_compat.plan_target(b.config.target)
+  make d = builder_diagnostics.summarize_builder_with_compat(b, cplan)
+  make p = builder_policy.evaluate(b)
+
+  give ExampleResult {
+    summary: crabcli_pkg.summary(),
+    runtime_ok: r.ok,
+    validate_ok: v.ok,
+    diagnostics_ok: d.ok,
+    policy_ok: p.ok,
+    compat_ok: cplan.ok
+  }
+}
+
+<<< =========================================================
+    Reporting
+========================================================= >>>
+
+proc print_result(r: ExampleResult) {
+  emit "==== CRABCLI EXAMPLE ===="
+  emit "summary=" + r.summary
+  emit "runtime_ok=" + (r.runtime_ok as string)
+  emit "validate_ok=" + (r.validate_ok as string)
+  emit "diagnostics_ok=" + (r.diagnostics_ok as string)
+  emit "policy_ok=" + (r.policy_ok as string)
+  emit "compat_ok=" + (r.compat_ok as string)
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcli/examples/basic {
+  make res = demo_full()
+  print_result(res)
+}

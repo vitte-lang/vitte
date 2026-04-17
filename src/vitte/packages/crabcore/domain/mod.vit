@@ -1,0 +1,941 @@
+
+<<< =========================================================
+    CrabCore Domain (absolute max)
+========================================================= >>>
+
+form DomainEntity {
+    name: string,
+    kind: string,
+    stable: bool
+}
+
+form DomainFeature {
+    name: string,
+    enabled: bool
+}
+
+form DomainCapability {
+    name: string,
+    description: string
+}
+
+form DomainProbe {
+    name: string,
+    ok: bool,
+    detail: string
+}
+
+form DomainSummary {
+    ok: bool,
+    entity_count: int,
+    feature_count: int,
+    capability_count: int,
+    probe_count: int,
+    notes: [string]
+}
+
+<<< =========================================================
+    Helpers
+========================================================= >>>
+
+proc push_string(list: [string], item: string) -> [string] {
+    give list + [item]
+}
+
+proc push_entity(list: [DomainEntity], item: DomainEntity) -> [DomainEntity] {
+    give list + [item]
+}
+
+proc push_feature(list: [DomainFeature], item: DomainFeature) -> [DomainFeature] {
+    give list + [item]
+}
+
+proc push_capability(list: [DomainCapability], item: DomainCapability) -> [DomainCapability] {
+    give list + [item]
+}
+
+proc push_probe(list: [DomainProbe], item: DomainProbe) -> [DomainProbe] {
+    give list + [item]
+}
+
+proc push_note(list: [string], item: string) -> [string] {
+    give list + [item]
+}
+
+proc count_strings(list: [string]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_entities(list: [DomainEntity]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_features(list: [DomainFeature]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_capabilities(list: [DomainCapability]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_probes(list: [DomainProbe]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc bool_to_string(v: bool) -> string {
+    if v { give "true" }
+    give "false"
+}
+
+<<< =========================================================
+    Metadata
+========================================================= >>>
+
+proc version() -> string {
+    give "crabcore-domain-max"
+}
+
+proc family() -> string {
+    give "crabcore-domain"
+}
+
+proc summary_text() -> string {
+    give "crabcore/domain/absolute-max"
+}
+
+proc description() -> string {
+    give "Domain layer describing entities, features, capabilities and probes for crabcore"
+}
+
+proc ready() -> bool {
+    give true
+}
+
+<<< =========================================================
+    Tags
+========================================================= >>>
+
+proc tags() -> [string] {
+    let out = []
+
+    set out = push_string(out, "core-types")
+    set out = push_string(out, "crabcore")
+    set out = push_string(out, "crab-fusion")
+    set out = push_string(out, "domain")
+    set out = push_string(out, "introspection")
+
+    give out
+}
+
+<<< =========================================================
+    Registry
+========================================================= >>>
+
+proc entities() -> [DomainEntity] {
+    let out = []
+
+    set out = push_entity(out, DomainEntity { name: "DomainEntity", kind: "form", stable: true })
+    set out = push_entity(out, DomainEntity { name: "DomainFeature", kind: "form", stable: true })
+    set out = push_entity(out, DomainEntity { name: "DomainCapability", kind: "form", stable: true })
+    set out = push_entity(out, DomainEntity { name: "DomainProbe", kind: "form", stable: false })
+
+    give out
+}
+
+proc features() -> [DomainFeature] {
+    let out = []
+
+    set out = push_feature(out, DomainFeature { name: "entities", enabled: true })
+    set out = push_feature(out, DomainFeature { name: "capabilities", enabled: true })
+    set out = push_feature(out, DomainFeature { name: "probes", enabled: true })
+    set out = push_feature(out, DomainFeature { name: "printing", enabled: true })
+
+    give out
+}
+
+proc capabilities() -> [DomainCapability] {
+    let out = []
+
+    set out = push_capability(out, DomainCapability {
+        name: "introspection",
+        description: "describe domain entities and features"
+    })
+
+    set out = push_capability(out, DomainCapability {
+        name: "aggregation",
+        description: "aggregate domain data into structured summary"
+    })
+
+    set out = push_capability(out, DomainCapability {
+        name: "printing",
+        description: "print domain summary and registries"
+    })
+
+    give out
+}
+
+proc probes() -> [DomainProbe] {
+    let out = []
+
+    set out = push_probe(out, DomainProbe {
+        name: "entities-present",
+        ok: count_entities(entities()) > 0,
+        detail: "entities registry is not empty"
+    })
+
+    set out = push_probe(out, DomainProbe {
+        name: "features-present",
+        ok: count_features(features()) > 0,
+        detail: "features registry is not empty"
+    })
+
+    set out = push_probe(out, DomainProbe {
+        name: "capabilities-present",
+        ok: count_capabilities(capabilities()) > 0,
+        detail: "capabilities registry is not empty"
+    })
+
+    set out = push_probe(out, DomainProbe {
+        name: "metadata-ready",
+        ok: ready(),
+        detail: "domain is ready"
+    })
+
+    give out
+}
+
+<<< =========================================================
+    Summary
+========================================================= >>>
+
+proc domain_summary() -> DomainSummary {
+    let ents = entities()
+    let feats = features()
+    let caps = capabilities()
+    let prs = probes()
+    let notes = []
+
+    set notes = push_note(notes, "version=" + version())
+    set notes = push_note(notes, "family=" + family())
+    set notes = push_note(notes, "summary=" + summary_text())
+    set notes = push_note(notes, "description=" + description())
+
+    give DomainSummary {
+        ok: ready(),
+        entity_count: count_entities(ents),
+        feature_count: count_features(feats),
+        capability_count: count_capabilities(caps),
+        probe_count: count_probes(prs),
+        notes: notes
+    }
+}
+
+<<< =========================================================
+    Printing
+========================================================= >>>
+
+proc print_summary(s: DomainSummary) {
+    emit "==== DOMAIN ===="
+    emit "ok=" + bool_to_string(s.ok)
+    emit "entities=" + (s.entity_count as string)
+    emit "features=" + (s.feature_count as string)
+    emit "capabilities=" + (s.capability_count as string)
+    emit "probes=" + (s.probe_count as string)
+
+    for n in s.notes {
+        emit n
+    }
+}
+
+proc print_all() {
+    let s = domain_summary()
+    print_summary(s)
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcore/domain {
+    print_all()
+}
+
+space vitte/crabcore/domain
+
+<<< =========================================================
+    CrabCore Domain (absolute maximum)
+========================================================= >>>
+
+form DomainEntity {
+    name: string,
+    kind: string,
+    stable: bool,
+    exposed: bool,
+    description: string
+}
+
+form DomainFeature {
+    name: string,
+    enabled: bool,
+    stable: bool,
+    description: string
+}
+
+form DomainCapability {
+    name: string,
+    description: string,
+    enabled: bool,
+    stable: bool
+}
+
+form DomainProbe {
+    name: string,
+    ok: bool,
+    severity: string,
+    detail: string
+}
+
+form DomainStats {
+    total_entities: int,
+    stable_entities: int,
+    unstable_entities: int,
+    exposed_entities: int,
+    total_features: int,
+    enabled_features: int,
+    stable_features: int,
+    total_capabilities: int,
+    enabled_capabilities: int,
+    stable_capabilities: int,
+    total_probes: int,
+    failed_probes: int
+}
+
+form DomainSummary {
+    ok: bool,
+    version: string,
+    family: string,
+    summary: string,
+    description: string,
+    tag_count: int,
+    entity_count: int,
+    feature_count: int,
+    capability_count: int,
+    probe_count: int,
+    stats: DomainStats,
+    notes: [string]
+}
+
+<<< =========================================================
+    Helpers
+========================================================= >>>
+
+proc push_string(list: [string], item: string) -> [string] {
+    give list + [item]
+}
+
+proc push_entity(list: [DomainEntity], item: DomainEntity) -> [DomainEntity] {
+    give list + [item]
+}
+
+proc push_feature(list: [DomainFeature], item: DomainFeature) -> [DomainFeature] {
+    give list + [item]
+}
+
+proc push_capability(list: [DomainCapability], item: DomainCapability) -> [DomainCapability] {
+    give list + [item]
+}
+
+proc push_probe(list: [DomainProbe], item: DomainProbe) -> [DomainProbe] {
+    give list + [item]
+}
+
+proc push_note(list: [string], item: string) -> [string] {
+    give list + [item]
+}
+
+proc count_strings(list: [string]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_entities(list: [DomainEntity]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_features(list: [DomainFeature]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_capabilities(list: [DomainCapability]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_probes(list: [DomainProbe]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_stable_entities(list: [DomainEntity]) -> int {
+    let n: int = 0
+    for item in list {
+        if item.stable {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc count_unstable_entities(list: [DomainEntity]) -> int {
+    let n: int = 0
+    for item in list {
+        if not item.stable {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc count_exposed_entities(list: [DomainEntity]) -> int {
+    let n: int = 0
+    for item in list {
+        if item.exposed {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc count_enabled_features(list: [DomainFeature]) -> int {
+    let n: int = 0
+    for item in list {
+        if item.enabled {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc count_stable_features(list: [DomainFeature]) -> int {
+    let n: int = 0
+    for item in list {
+        if item.stable {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc count_enabled_capabilities(list: [DomainCapability]) -> int {
+    let n: int = 0
+    for item in list {
+        if item.enabled {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc count_stable_capabilities(list: [DomainCapability]) -> int {
+    let n: int = 0
+    for item in list {
+        if item.stable {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc count_failed_probes(list: [DomainProbe]) -> int {
+    let n: int = 0
+    for item in list {
+        if not item.ok {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc bool_to_string(v: bool) -> string {
+    if v {
+        give "true"
+    }
+    give "false"
+}
+
+<<< =========================================================
+    Metadata
+========================================================= >>>
+
+proc version() -> string {
+    give "crabcore-domain-absolute-max"
+}
+
+proc family() -> string {
+    give "crabcore-domain"
+}
+
+proc summary_text() -> string {
+    give "crabcore/domain/absolute-maximum"
+}
+
+proc description() -> string {
+    give "Domain layer describing entities, features, capabilities, probes, statistics and printable summaries for crabcore"
+}
+
+proc ready() -> bool {
+    give true
+}
+
+<<< =========================================================
+    Tags
+========================================================= >>>
+
+proc tags() -> [string] {
+    let out = []
+
+    set out = push_string(out, "core-types")
+    set out = push_string(out, "crabcore")
+    set out = push_string(out, "crab-fusion")
+    set out = push_string(out, "domain")
+    set out = push_string(out, "introspection")
+    set out = push_string(out, "metadata")
+    set out = push_string(out, "registry")
+    set out = push_string(out, "observability")
+
+    give out
+}
+
+<<< =========================================================
+    Registry
+========================================================= >>>
+
+proc entities() -> [DomainEntity] {
+    let out = []
+
+    set out = push_entity(out, DomainEntity {
+        name: "DomainEntity",
+        kind: "form",
+        stable: true,
+        exposed: true,
+        description: "describes a registered domain entity"
+    })
+
+    set out = push_entity(out, DomainEntity {
+        name: "DomainFeature",
+        kind: "form",
+        stable: true,
+        exposed: true,
+        description: "describes a domain feature flag"
+    })
+
+    set out = push_entity(out, DomainEntity {
+        name: "DomainCapability",
+        kind: "form",
+        stable: true,
+        exposed: true,
+        description: "describes a domain capability"
+    })
+
+    set out = push_entity(out, DomainEntity {
+        name: "DomainProbe",
+        kind: "form",
+        stable: false,
+        exposed: true,
+        description: "describes a probe result for the domain"
+    })
+
+    set out = push_entity(out, DomainEntity {
+        name: "DomainStats",
+        kind: "form",
+        stable: true,
+        exposed: true,
+        description: "aggregated domain statistics"
+    })
+
+    set out = push_entity(out, DomainEntity {
+        name: "DomainSummary",
+        kind: "form",
+        stable: true,
+        exposed: true,
+        description: "high-level domain summary"
+    })
+
+    set out = push_entity(out, DomainEntity {
+        name: "entities",
+        kind: "proc",
+        stable: true,
+        exposed: true,
+        description: "returns the domain entity registry"
+    })
+
+    set out = push_entity(out, DomainEntity {
+        name: "features",
+        kind: "proc",
+        stable: true,
+        exposed: true,
+        description: "returns the feature registry"
+    })
+
+    set out = push_entity(out, DomainEntity {
+        name: "capabilities",
+        kind: "proc",
+        stable: true,
+        exposed: true,
+        description: "returns the capability registry"
+    })
+
+    set out = push_entity(out, DomainEntity {
+        name: "probes",
+        kind: "proc",
+        stable: false,
+        exposed: true,
+        description: "returns runtime probe results"
+    })
+
+    set out = push_entity(out, DomainEntity {
+        name: "domain_summary",
+        kind: "proc",
+        stable: true,
+        exposed: true,
+        description: "returns a complete domain summary"
+    })
+
+    give out
+}
+
+proc features() -> [DomainFeature] {
+    let out = []
+
+    set out = push_feature(out, DomainFeature {
+        name: "entities",
+        enabled: true,
+        stable: true,
+        description: "entity registry support"
+    })
+
+    set out = push_feature(out, DomainFeature {
+        name: "capabilities",
+        enabled: true,
+        stable: true,
+        description: "capability registry support"
+    })
+
+    set out = push_feature(out, DomainFeature {
+        name: "probes",
+        enabled: true,
+        stable: false,
+        description: "domain probe support"
+    })
+
+    set out = push_feature(out, DomainFeature {
+        name: "printing",
+        enabled: true,
+        stable: true,
+        description: "human-readable output"
+    })
+
+    set out = push_feature(out, DomainFeature {
+        name: "stats",
+        enabled: true,
+        stable: true,
+        description: "aggregated stats support"
+    })
+
+    set out = push_feature(out, DomainFeature {
+        name: "tags",
+        enabled: true,
+        stable: true,
+        description: "domain tag registry"
+    })
+
+    give out
+}
+
+proc capabilities() -> [DomainCapability] {
+    let out = []
+
+    set out = push_capability(out, DomainCapability {
+        name: "introspection",
+        description: "describe domain entities and features",
+        enabled: true,
+        stable: true
+    })
+
+    set out = push_capability(out, DomainCapability {
+        name: "aggregation",
+        description: "aggregate domain data into structured summary",
+        enabled: true,
+        stable: true
+    })
+
+    set out = push_capability(out, DomainCapability {
+        name: "printing",
+        description: "print domain summary and registries",
+        enabled: true,
+        stable: true
+    })
+
+    set out = push_capability(out, DomainCapability {
+        name: "probing",
+        description: "evaluate health of domain registries",
+        enabled: true,
+        stable: false
+    })
+
+    set out = push_capability(out, DomainCapability {
+        name: "metadata",
+        description: "surface version, family and summary metadata",
+        enabled: true,
+        stable: true
+    })
+
+    give out
+}
+
+proc probes() -> [DomainProbe] {
+    let out = []
+
+    set out = push_probe(out, DomainProbe {
+        name: "entities-present",
+        ok: count_entities(entities()) > 0,
+        severity: "error",
+        detail: "entities registry is not empty"
+    })
+
+    set out = push_probe(out, DomainProbe {
+        name: "features-present",
+        ok: count_features(features()) > 0,
+        severity: "error",
+        detail: "features registry is not empty"
+    })
+
+    set out = push_probe(out, DomainProbe {
+        name: "capabilities-present",
+        ok: count_capabilities(capabilities()) > 0,
+        severity: "error",
+        detail: "capabilities registry is not empty"
+    })
+
+    set out = push_probe(out, DomainProbe {
+        name: "tags-present",
+        ok: count_strings(tags()) > 0,
+        severity: "warn",
+        detail: "tags registry is not empty"
+    })
+
+    set out = push_probe(out, DomainProbe {
+        name: "metadata-ready",
+        ok: ready(),
+        severity: "error",
+        detail: "domain is ready"
+    })
+
+    set out = push_probe(out, DomainProbe {
+        name: "summary-text-present",
+        ok: summary_text() != "",
+        severity: "warn",
+        detail: "summary text is defined"
+    })
+
+    give out
+}
+
+<<< =========================================================
+    Stats / Summary
+========================================================= >>>
+
+proc domain_stats() -> DomainStats {
+    let ents = entities()
+    let feats = features()
+    let caps = capabilities()
+    let prs = probes()
+
+    give DomainStats {
+        total_entities: count_entities(ents),
+        stable_entities: count_stable_entities(ents),
+        unstable_entities: count_unstable_entities(ents),
+        exposed_entities: count_exposed_entities(ents),
+        total_features: count_features(feats),
+        enabled_features: count_enabled_features(feats),
+        stable_features: count_stable_features(feats),
+        total_capabilities: count_capabilities(caps),
+        enabled_capabilities: count_enabled_capabilities(caps),
+        stable_capabilities: count_stable_capabilities(caps),
+        total_probes: count_probes(prs),
+        failed_probes: count_failed_probes(prs)
+    }
+}
+
+proc domain_summary() -> DomainSummary {
+    let ents = entities()
+    let feats = features()
+    let caps = capabilities()
+    let prs = probes()
+    let ss = domain_stats()
+    let notes = []
+
+    set notes = push_note(notes, "version=" + version())
+    set notes = push_note(notes, "family=" + family())
+    set notes = push_note(notes, "summary=" + summary_text())
+    set notes = push_note(notes, "description=" + description())
+    set notes = push_note(notes, "tag_count=" + (count_strings(tags()) as string))
+    set notes = push_note(notes, "stable_entities=" + (ss.stable_entities as string))
+    set notes = push_note(notes, "failed_probes=" + (ss.failed_probes as string))
+
+    give DomainSummary {
+        ok: ready() and ss.failed_probes == 0,
+        version: version(),
+        family: family(),
+        summary: summary_text(),
+        description: description(),
+        tag_count: count_strings(tags()),
+        entity_count: count_entities(ents),
+        feature_count: count_features(feats),
+        capability_count: count_capabilities(caps),
+        probe_count: count_probes(prs),
+        stats: ss,
+        notes: notes
+    }
+}
+
+<<< =========================================================
+    Printing
+========================================================= >>>
+
+proc print_entity(item: DomainEntity) {
+    emit item.name + ":kind=" + item.kind + ":stable=" + bool_to_string(item.stable) + ":exposed=" + bool_to_string(item.exposed)
+    emit "description=" + item.description
+}
+
+proc print_feature(item: DomainFeature) {
+    emit item.name + ":enabled=" + bool_to_string(item.enabled) + ":stable=" + bool_to_string(item.stable)
+    emit "description=" + item.description
+}
+
+proc print_capability(item: DomainCapability) {
+    emit item.name + ":enabled=" + bool_to_string(item.enabled) + ":stable=" + bool_to_string(item.stable)
+    emit "description=" + item.description
+}
+
+proc print_probe(item: DomainProbe) {
+    emit item.name + ":ok=" + bool_to_string(item.ok) + ":severity=" + item.severity
+    emit "detail=" + item.detail
+}
+
+proc print_stats(s: DomainStats) {
+    emit "total_entities=" + (s.total_entities as string)
+    emit "stable_entities=" + (s.stable_entities as string)
+    emit "unstable_entities=" + (s.unstable_entities as string)
+    emit "exposed_entities=" + (s.exposed_entities as string)
+    emit "total_features=" + (s.total_features as string)
+    emit "enabled_features=" + (s.enabled_features as string)
+    emit "stable_features=" + (s.stable_features as string)
+    emit "total_capabilities=" + (s.total_capabilities as string)
+    emit "enabled_capabilities=" + (s.enabled_capabilities as string)
+    emit "stable_capabilities=" + (s.stable_capabilities as string)
+    emit "total_probes=" + (s.total_probes as string)
+    emit "failed_probes=" + (s.failed_probes as string)
+}
+
+proc print_summary(s: DomainSummary) {
+    emit "==== DOMAIN ===="
+    emit "ok=" + bool_to_string(s.ok)
+    emit "version=" + s.version
+    emit "family=" + s.family
+    emit "summary=" + s.summary
+    emit "description=" + s.description
+    emit "tag_count=" + (s.tag_count as string)
+    emit "entities=" + (s.entity_count as string)
+    emit "features=" + (s.feature_count as string)
+    emit "capabilities=" + (s.capability_count as string)
+    emit "probes=" + (s.probe_count as string)
+
+    emit "---- stats ----"
+    print_stats(s.stats)
+
+    emit "---- notes ----"
+    for n in s.notes {
+        emit n
+    }
+}
+
+proc print_all() {
+    let s = domain_summary()
+    let ents = entities()
+    let feats = features()
+    let caps = capabilities()
+    let prs = probes()
+
+    print_summary(s)
+
+    emit "---- tags ----"
+    for item in tags() {
+        emit item
+    }
+
+    emit "---- entities ----"
+    for item in ents {
+        print_entity(item)
+    }
+
+    emit "---- features ----"
+    for item in feats {
+        print_feature(item)
+    }
+
+    emit "---- capabilities ----"
+    for item in caps {
+        print_capability(item)
+    }
+
+    emit "---- probes ----"
+    for item in prs {
+        print_probe(item)
+    }
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcore/domain {
+    print_all()
+}

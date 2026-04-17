@@ -1,0 +1,503 @@
+space vitte/packages/crabcli/api
+
+use vitte/packages/crabbuilder/api as builder
+use vitte/packages/crabbuilder/compat as compat
+use vitte/packages/crabbuilder/prelude as prelude
+use vitte/packages/crabbuilder/internal/runtime as runtime
+use vitte/packages/crabbuilder/internal/validate as validate
+use vitte/packages/crabbuilder/internal/diagnostics as diagnostics
+use vitte/packages/crabbuilder/internal/policy as policy
+
+<<< =========================================================
+    CLI domain
+========================================================= >>>
+
+form CliArg {
+    key: string,
+    value: string
+}
+
+form CliCommand {
+    name: string,
+    args: [CliArg]
+}
+
+form CliContext {
+    command: CliCommand,
+    cwd: string,
+    env: [CliArg]
+}
+
+form CliResult {
+    ok: bool,
+    status: string,
+    message: string,
+    code: i32
+}
+
+form CliSummary {
+    command: string,
+    target: string,
+    profile: string,
+    cwd: string,
+    ok: bool,
+    status: string,
+    code: i32,
+    notes: [string]
+}
+
+form CliCommandSpec {
+    name: string,
+    description: string,
+    usage: string
+}
+
+form CliRegistry {
+    commands: [CliCommandSpec]
+}
+
+<<< =========================================================
+    Helpers
+========================================================= >>>
+
+proc push_arg(list: [CliArg], item: CliArg) -> [CliArg] {
+    give list + [item]
+}
+
+proc push_note(list: [string], item: string) -> [string] {
+    give list + [item]
+}
+
+proc push_command_spec(list: [CliCommandSpec], item: CliCommandSpec) -> [CliCommandSpec] {
+    give list + [item]
+}
+
+proc arg_value(args: [CliArg], key: string) -> string {
+    for a in args {
+        if a.key == key {
+            give a.value
+        }
+    }
+    give ""
+}
+
+proc has_flag(args: [CliArg], key: string) -> bool {
+    for a in args {
+        if a.key == key {
+            give true
+        }
+    }
+    give false
+}
+
+proc bool_to_string(v: bool) -> string {
+    if v {
+        give "true"
+    }
+
+    give "false"
+}
+
+proc default_target() -> string {
+    give "x86_64-unknown-linux-gnu"
+}
+
+proc default_profile() -> string {
+    give "dev"
+}
+
+proc resolve_target(ctx: CliContext) -> string {
+    make target = arg_value(ctx.command.args, "target")
+
+    if target == "" {
+        give default_target()
+    }
+
+    give target
+}
+
+proc resolve_profile(ctx: CliContext) -> string {
+    make profile = arg_value(ctx.command.args, "profile")
+
+    if profile == "" {
+        if has_flag(ctx.command.args, "release") {
+            give "release"
+        }
+
+        give default_profile()
+    }
+
+    give profile
+}
+
+proc ok(message: string) -> CliResult {
+    give CliResult {
+        ok: true,
+        status: "ok",
+        message: message,
+        code: 0
+    }
+}
+
+proc fail(message: string) -> CliResult {
+    give CliResult {
+        ok: false,
+        status: "error",
+        message: message,
+        code: 1
+    }
+}
+
+<<< =========================================================
+    Command registry
+========================================================= >>>
+
+proc command_registry() -> CliRegistry {
+    make out = []
+
+    set out = push_command_spec(out, CliCommandSpec {
+        name: "build",
+        description: "run the builder pipeline",
+        usage: "crabcli build --target <triple> --profile <name> --release --trace"
+    })
+
+    set out = push_command_spec(out, CliCommandSpec {
+        name: "run",
+        description: "run the internal runtime scheduler",
+        usage: "crabcli run --target <triple> --threads 4"
+    })
+
+    set out = push_command_spec(out, CliCommandSpec {
+        name: "validate",
+        description: "validate builder configuration and integration",
+        usage: "crabcli validate --target <triple>"
+    })
+
+    set out = push_command_spec(out, CliCommandSpec {
+        name: "diagnostics",
+        description: "collect builder diagnostics",
+        usage: "crabcli diagnostics --target <triple>"
+    })
+
+    set out = push_command_spec(out, CliCommandSpec {
+        name: "policy",
+        description: "evaluate build policies",
+        usage: "crabcli policy --target <triple>"
+    })
+
+    set out = push_command_spec(out, CliCommandSpec {
+        name: "report",
+        description: "produce a build report",
+        usage: "crabcli report --target <triple>"
+    })
+
+    set out = push_command_spec(out, CliCommandSpec {
+        name: "compat",
+        description: "inspect compatibility planning",
+        usage: "crabcli compat --target <triple>"
+    })
+
+    set out = push_command_spec(out, CliCommandSpec {
+        name: "summary",
+        description: "print a high-level command summary",
+        usage: "crabcli summary --target <triple>"
+    })
+
+    set out = push_command_spec(out, CliCommandSpec {
+        name: "help",
+        description: "show available commands",
+        usage: "crabcli help"
+    })
+
+    give CliRegistry {
+        commands: out
+    }
+}
+
+<<< =========================================================
+    Builder factory
+========================================================= >>>
+
+proc build_default(ctx: CliContext) -> builder.CrabBuilder {
+    make b = prelude.default_builder()
+
+    set b = builder.set_cwd(b, ctx.cwd)
+
+    for item in ctx.env {
+        set b = builder.set_env(b, item.key, item.value)
+    }
+
+    set b = builder.set_target(b, resolve_target(ctx))
+    set b = builder.set_profile(b, resolve_profile(ctx))
+
+    make threads = arg_value(ctx.command.args, "threads")
+    if threads == "1" {
+        set b = builder.set_threads(b, 1)
+    }
+    if threads == "2" {
+        set b = builder.set_threads(b, 2)
+    }
+    if threads == "3" {
+        set b = builder.set_threads(b, 3)
+    }
+    if threads == "4" {
+        set b = builder.set_threads(b, 4)
+    }
+    if threads == "8" {
+        set b = builder.set_threads(b, 8)
+    }
+
+    if has_flag(ctx.command.args, "release") {
+        set b = builder.set_profile(b, "release")
+        set b = builder.enable_opt(b)
+    }
+
+    if has_flag(ctx.command.args, "debug") {
+        set b = builder.set_debug(b, true)
+    }
+
+    if has_flag(ctx.command.args, "trace") {
+        set b = builder.register_plugin(b, builder.trace_plugin())
+    }
+
+    if has_flag(ctx.command.args, "hook") {
+        set b = builder.add_hook(b, builder.debug_hook())
+    }
+
+    if has_flag(ctx.command.args, "always-package") {
+        set b = builder.mark_step_always(b, "package")
+    }
+
+    give b
+}
+
+<<< =========================================================
+    Summary builders
+========================================================= >>>
+
+proc make_summary(ctx: CliContext, result: CliResult) -> CliSummary {
+    make notes = []
+    make target = resolve_target(ctx)
+    make profile = resolve_profile(ctx)
+
+    set notes = push_note(notes, "cwd=" + ctx.cwd)
+    set notes = push_note(notes, "command=" + ctx.command.name)
+    set notes = push_note(notes, "target=" + target)
+    set notes = push_note(notes, "profile=" + profile)
+    set notes = push_note(notes, "release=" + bool_to_string(has_flag(ctx.command.args, "release")))
+    set notes = push_note(notes, "debug=" + bool_to_string(has_flag(ctx.command.args, "debug")))
+    set notes = push_note(notes, "trace=" + bool_to_string(has_flag(ctx.command.args, "trace")))
+    set notes = push_note(notes, "hook=" + bool_to_string(has_flag(ctx.command.args, "hook")))
+
+    give CliSummary {
+        command: ctx.command.name,
+        target: target,
+        profile: profile,
+        cwd: ctx.cwd,
+        ok: result.ok,
+        status: result.status,
+        code: result.code,
+        notes: notes
+    }
+}
+
+proc print_summary(item: CliSummary) {
+    emit "==== CRABCLI ===="
+    emit "command=" + item.command
+    emit "target=" + item.target
+    emit "profile=" + item.profile
+    emit "cwd=" + item.cwd
+    emit "ok=" + bool_to_string(item.ok)
+    emit "status=" + item.status
+    emit "code=" + (item.code as string)
+
+    for line in item.notes {
+        emit line
+    }
+}
+
+<<< =========================================================
+    Commands
+========================================================= >>>
+
+proc cmd_build(ctx: CliContext) -> CliResult {
+    make b = build_default(ctx)
+    make ok_run = builder.run(b)
+
+    if ok_run {
+        give ok("build success")
+    }
+
+    give fail("build failed")
+}
+
+proc cmd_run(ctx: CliContext) -> CliResult {
+    make b = build_default(ctx)
+    make r = runtime.execute(b)
+
+    if r.ok {
+        give ok("runtime success")
+    }
+
+    give fail("runtime failed")
+}
+
+proc cmd_validate(ctx: CliContext) -> CliResult {
+    make b = build_default(ctx)
+    make v = validate.validate_builder_integrated(b)
+
+    if v.ok {
+        give ok("validation ok")
+    }
+
+    give fail("validation failed")
+}
+
+proc cmd_diagnostics(ctx: CliContext) -> CliResult {
+    make b = build_default(ctx)
+    make c = compat.plan_target(b.config.target)
+    make d = diagnostics.summarize_builder_with_compat(b, c)
+
+    if d.ok {
+        give ok("diagnostics ok")
+    }
+
+    give fail("diagnostics failed")
+}
+
+proc cmd_policy(ctx: CliContext) -> CliResult {
+    make b = build_default(ctx)
+    make p = policy.evaluate(b)
+
+    if p.ok {
+        give ok("policy ok")
+    }
+
+    give fail("policy failed")
+}
+
+proc cmd_report(ctx: CliContext) -> CliResult {
+    make b = build_default(ctx)
+    make r = builder.run_report(b)
+
+    if r.ok {
+        give ok("report success")
+    }
+
+    give fail("report failure")
+}
+
+proc cmd_compat(ctx: CliContext) -> CliResult {
+    make target = resolve_target(ctx)
+    make c = compat.plan_target(target)
+
+    emit "compat_target=" + c.target
+    emit "compat_ok=" + bool_to_string(c.ok)
+    emit "host_os=" + c.host.os
+    emit "host_arch=" + c.host.arch
+    emit "abi=" + c.abi.c_abi
+    emit "pointer_width=" + (c.abi.pointer_width as string)
+
+    if c.ok {
+        give ok("compat ok")
+    }
+
+    give fail("compat failed")
+}
+
+proc cmd_summary(ctx: CliContext) -> CliResult {
+    make res = ok("summary")
+    make sum = make_summary(ctx, res)
+    print_summary(sum)
+    give res
+}
+
+proc cmd_help() -> CliResult {
+    make reg = command_registry()
+
+    emit "crabcli commands:"
+    for item in reg.commands {
+        emit "  " + item.name + " - " + item.description
+        emit "    " + item.usage
+    }
+
+    give ok("help")
+}
+
+<<< =========================================================
+    Dispatcher
+========================================================= >>>
+
+proc dispatch(ctx: CliContext) -> CliResult {
+    if ctx.command.name == "build" {
+        give cmd_build(ctx)
+    }
+
+    if ctx.command.name == "run" {
+        give cmd_run(ctx)
+    }
+
+    if ctx.command.name == "validate" {
+        give cmd_validate(ctx)
+    }
+
+    if ctx.command.name == "diagnostics" {
+        give cmd_diagnostics(ctx)
+    }
+
+    if ctx.command.name == "policy" {
+        give cmd_policy(ctx)
+    }
+
+    if ctx.command.name == "report" {
+        give cmd_report(ctx)
+    }
+
+    if ctx.command.name == "compat" {
+        give cmd_compat(ctx)
+    }
+
+    if ctx.command.name == "summary" {
+        give cmd_summary(ctx)
+    }
+
+    give cmd_help()
+}
+
+<<< =========================================================
+    Demo context
+========================================================= >>>
+
+proc demo_context() -> CliContext {
+    give CliContext {
+        command: CliCommand {
+            name: "build",
+            args: [
+                CliArg { key: "target", value: "x86_64-unknown-linux-gnu" },
+                CliArg { key: "release", value: "true" },
+                CliArg { key: "trace", value: "true" },
+                CliArg { key: "hook", value: "true" },
+                CliArg { key: "threads", value: "4" }
+            ]
+        },
+        cwd: ".",
+        env: [
+            CliArg { key: "CRAB_ENV", value: "cli" },
+            CliArg { key: "CRAB_MODE", value: "demo" }
+        ]
+    }
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/packages/crabcli/api {
+    make ctx = demo_context()
+    make res = dispatch(ctx)
+    make sum = make_summary(ctx, res)
+
+    emit "status=" + res.status
+    emit "message=" + res.message
+    print_summary(sum)
+}

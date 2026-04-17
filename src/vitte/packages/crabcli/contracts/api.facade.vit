@@ -1,0 +1,386 @@
+
+space vitte/crabcli/contracts/api_facade
+
+use vitte/packages/crabcli/api as cli_api
+use vitte/packages/crabcli/compat as cli_compat
+use vitte/packages/crabbuilder/prelude as builder_prelude
+use vitte/packages/crabbuilder/internal/runtime as builder_runtime
+use vitte/packages/crabbuilder/internal/validate as builder_validate
+use vitte/packages/crabbuilder/internal/diagnostics as builder_diagnostics
+use vitte/packages/crabbuilder/internal/policy as builder_policy
+
+<<< =========================================================
+    Facade contract domain
+========================================================= >>>
+
+form FacadeExport {
+  name: string,
+  kind: string,
+  path: string,
+  enabled: bool
+}
+
+form FacadeCommandContract {
+  name: string,
+  description: string,
+  stable: bool,
+  requires_builder: bool,
+  requires_target: bool
+}
+
+form FacadeSummary {
+  ok: bool,
+  target: string,
+  export_count: i32,
+  command_count: i32,
+  notes: [string]
+}
+
+<<< =========================================================
+    Primitive helpers
+========================================================= >>>
+
+proc push_string(list: [string], item: string) -> [string] {
+  give list + [item]
+}
+
+proc push_export(list: [FacadeExport], item: FacadeExport) -> [FacadeExport] {
+  give list + [item]
+}
+
+proc push_command(list: [FacadeCommandContract], item: FacadeCommandContract) -> [FacadeCommandContract] {
+  give list + [item]
+}
+
+proc count_strings(list: [string]) -> i32 {
+  make n = 0
+  for item in list {
+    set n = n + 1
+  }
+  give n
+}
+
+proc count_exports(list: [FacadeExport]) -> i32 {
+  make n = 0
+  for item in list {
+    set n = n + 1
+  }
+  give n
+}
+
+proc count_commands(list: [FacadeCommandContract]) -> i32 {
+  make n = 0
+  for item in list {
+    set n = n + 1
+  }
+  give n
+}
+
+proc bool_to_string(v: bool) -> string {
+  if v {
+    give "true"
+  }
+  give "false"
+}
+
+<<< =========================================================
+    Public contract surface
+========================================================= >>>
+
+proc expected_exports() -> [string] {
+  make out = []
+  set out = push_string(out, "version")
+  set out = push_string(out, "family")
+  set out = push_string(out, "members")
+  set out = push_string(out, "descriptor")
+  set out = push_string(out, "ready")
+  set out = push_string(out, "summary")
+  set out = push_string(out, "description")
+  set out = push_string(out, "command_registry")
+  set out = push_string(out, "dispatch")
+  set out = push_string(out, "default_target")
+  set out = push_string(out, "default_profile")
+  give out
+}
+
+proc members() -> [FacadeExport] {
+  make out = []
+
+  set out = push_export(out, FacadeExport {
+    name: "api",
+    kind: "module",
+    path: "vitte/packages/crabcli/api",
+    enabled: true
+  })
+
+  set out = push_export(out, FacadeExport {
+    name: "compat",
+    kind: "module",
+    path: "vitte/crabcli/compat",
+    enabled: true
+  })
+
+  set out = push_export(out, FacadeExport {
+    name: "builder_prelude",
+    kind: "module",
+    path: "vitte/packages/crabbuilder/prelude",
+    enabled: true
+  })
+
+  set out = push_export(out, FacadeExport {
+    name: "builder_runtime",
+    kind: "module",
+    path: "vitte/packages/crabbuilder/internal/runtime",
+    enabled: true
+  })
+
+  set out = push_export(out, FacadeExport {
+    name: "builder_validate",
+    kind: "module",
+    path: "vitte/packages/crabbuilder/internal/validate",
+    enabled: true
+  })
+
+  set out = push_export(out, FacadeExport {
+    name: "builder_diagnostics",
+    kind: "module",
+    path: "vitte/packages/crabbuilder/internal/diagnostics",
+    enabled: true
+  })
+
+  set out = push_export(out, FacadeExport {
+    name: "builder_policy",
+    kind: "module",
+    path: "vitte/packages/crabbuilder/internal/policy",
+    enabled: true
+  })
+
+  give out
+}
+
+proc command_registry() -> [FacadeCommandContract] {
+  make out = []
+
+  set out = push_command(out, FacadeCommandContract {
+    name: "build",
+    description: "run builder pipeline",
+    stable: true,
+    requires_builder: true,
+    requires_target: false
+  })
+
+  set out = push_command(out, FacadeCommandContract {
+    name: "run",
+    description: "run internal runtime",
+    stable: true,
+    requires_builder: true,
+    requires_target: false
+  })
+
+  set out = push_command(out, FacadeCommandContract {
+    name: "validate",
+    description: "validate builder stack",
+    stable: true,
+    requires_builder: true,
+    requires_target: false
+  })
+
+  set out = push_command(out, FacadeCommandContract {
+    name: "diagnostics",
+    description: "collect diagnostics",
+    stable: true,
+    requires_builder: true,
+    requires_target: false
+  })
+
+  set out = push_command(out, FacadeCommandContract {
+    name: "policy",
+    description: "evaluate policies",
+    stable: true,
+    requires_builder: true,
+    requires_target: false
+  })
+
+  set out = push_command(out, FacadeCommandContract {
+    name: "report",
+    description: "produce builder report",
+    stable: true,
+    requires_builder: true,
+    requires_target: false
+  })
+
+  set out = push_command(out, FacadeCommandContract {
+    name: "compat",
+    description: "inspect compatibility",
+    stable: true,
+    requires_builder: false,
+    requires_target: true
+  })
+
+  set out = push_command(out, FacadeCommandContract {
+    name: "summary",
+    description: "print command summary",
+    stable: true,
+    requires_builder: false,
+    requires_target: false
+  })
+
+  set out = push_command(out, FacadeCommandContract {
+    name: "help",
+    description: "print help",
+    stable: true,
+    requires_builder: false,
+    requires_target: false
+  })
+
+  give out
+}
+
+<<< =========================================================
+    High level metadata
+========================================================= >>>
+
+proc version() -> string {
+  give "v0.2-max-max"
+}
+
+proc family() -> string {
+  give "cli-facade-contract"
+}
+
+proc descriptor() -> string {
+  give "crabcli/contracts/api_facade"
+}
+
+proc description() -> string {
+  give "Contract facade for crabcli API, command registry, compatibility and builder integration"
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc default_target() -> string {
+  give cli_compat.default_target()
+}
+
+proc default_profile() -> string {
+  give cli_api.default_profile()
+}
+
+proc summary() -> string {
+  give "crabcli/api-facade/contracts/max-max"
+}
+
+<<< =========================================================
+    Integrated probes
+========================================================= >>>
+
+proc builder_runtime_ready() -> bool {
+  make b = builder_prelude.default_builder()
+  make r = builder_runtime.execute(b)
+  give r.ok
+}
+
+proc builder_validate_ready() -> bool {
+  make b = builder_prelude.default_builder()
+  make r = builder_validate.validate_builder_integrated(b)
+  give r.ok
+}
+
+proc builder_diagnostics_ready() -> bool {
+  make b = builder_prelude.default_builder()
+  make c = cli_compat.plan_target(b.config.target)
+  make d = builder_diagnostics.summarize_builder_with_compat(b, compat_bridge(b.config.target))
+  give d.ok
+}
+
+proc builder_policy_ready() -> bool {
+  make b = builder_prelude.default_builder()
+  make p = builder_policy.evaluate(b)
+  give p.ok
+}
+
+proc compat_bridge(target: string) -> core_compat.CompatibilityReport {
+  give core_compat.plan_target(target)
+}
+
+<<< =========================================================
+    Summary object
+========================================================= >>>
+
+proc facade_summary() -> FacadeSummary {
+  make ex = members()
+  make cmds = command_registry()
+  make notes = []
+
+  set notes = push_string(notes, "version=" + version())
+  set notes = push_string(notes, "family=" + family())
+  set notes = push_string(notes, "descriptor=" + descriptor())
+  set notes = push_string(notes, "default_target=" + default_target())
+  set notes = push_string(notes, "default_profile=" + default_profile())
+  set notes = push_string(notes, "runtime_ready=" + bool_to_string(builder_runtime_ready()))
+  set notes = push_string(notes, "validate_ready=" + bool_to_string(builder_validate_ready()))
+  set notes = push_string(notes, "policy_ready=" + bool_to_string(builder_policy_ready()))
+
+  give FacadeSummary {
+    ok: ready(),
+    target: default_target(),
+    export_count: count_exports(ex),
+    command_count: count_commands(cmds),
+    notes: notes
+  }
+}
+
+<<< =========================================================
+    Printing
+========================================================= >>>
+
+proc print_export(item: FacadeExport) {
+  emit item.name + ":" + item.kind + ":" + item.path + ":" + bool_to_string(item.enabled)
+}
+
+proc print_command(item: FacadeCommandContract) {
+  emit item.name + ":stable=" + bool_to_string(item.stable)
+  emit "  description=" + item.description
+  emit "  requires_builder=" + bool_to_string(item.requires_builder)
+  emit "  requires_target=" + bool_to_string(item.requires_target)
+}
+
+proc print_summary(item: FacadeSummary) {
+  emit "==== CRABCLI API FACADE CONTRACT ===="
+  emit "ok=" + bool_to_string(item.ok)
+  emit "target=" + item.target
+  emit "export_count=" + (item.export_count as string)
+  emit "command_count=" + (item.command_count as string)
+
+  for note in item.notes {
+    emit note
+  }
+}
+
+proc print_all() {
+  make ex = members()
+  make cmds = command_registry()
+  make sum = facade_summary()
+
+  print_summary(sum)
+
+  emit "---- exports ----"
+  for item in ex {
+    print_export(item)
+  }
+
+  emit "---- commands ----"
+  for item in cmds {
+    print_command(item)
+  }
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcli/contracts/api_facade {
+  print_all()
+}

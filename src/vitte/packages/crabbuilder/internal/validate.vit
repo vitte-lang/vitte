@@ -1,0 +1,490 @@
+
+space vitte/packages/crabbuilder/internal/validate
+
+use vitte/packages/crabbuilder/api as api
+use vitte/packages/crabbuilder/compat as compat
+use vitte/packages/crabbuilder/domain as domain
+use vitte/packages/crabbuilder/internal/diagnostics as diagnostics
+use vitte/packages/crabbuilder/internal/policy as policy
+
+<<< =========================================================
+    Validation domain
+========================================================= >>>
+
+form ValidateIssue {
+    code: string,
+    severity: string,
+    message: string,
+    scope: string
+}
+
+form ValidateCounter {
+    name: string,
+    value: i32
+}
+
+form ValidateFlag {
+    name: string,
+    enabled: bool
+}
+
+form ValidateResult {
+    ok: bool,
+    target: string,
+    project_name: string,
+    issue_count: i32,
+    error_count: i32,
+    warn_count: i32,
+    counters: [ValidateCounter],
+    flags: [ValidateFlag],
+    issues: [ValidateIssue]
+}
+
+form ValidateConfig {
+    require_project_name: bool,
+    require_target: bool,
+    require_steps: bool,
+    require_positive_threads: bool,
+    require_non_empty_commands: bool,
+    require_existing_deps: bool,
+    require_compat_ok: bool,
+    require_policy_ok: bool,
+    require_diagnostics_ok: bool
+}
+
+<<< =========================================================
+    Defaults
+========================================================= >>>
+
+proc default_config() -> ValidateConfig {
+    give ValidateConfig {
+        require_project_name: true,
+        require_target: true,
+        require_steps: true,
+        require_positive_threads: true,
+        require_non_empty_commands: true,
+        require_existing_deps: true,
+        require_compat_ok: false,
+        require_policy_ok: false,
+        require_diagnostics_ok: false
+    }
+}
+
+proc empty_result() -> ValidateResult {
+    give ValidateResult {
+        ok: true,
+        target: "unknown",
+        project_name: "unknown",
+        issue_count: 0,
+        error_count: 0,
+        warn_count: 0,
+        counters: [],
+        flags: [],
+        issues: []
+    }
+}
+
+proc push_issue(list: [ValidateIssue], item: ValidateIssue) -> [ValidateIssue] {
+    give list + [item]
+}
+
+proc push_counter(list: [ValidateCounter], item: ValidateCounter) -> [ValidateCounter] {
+    give list + [item]
+}
+
+proc push_flag(list: [ValidateFlag], item: ValidateFlag) -> [ValidateFlag] {
+    give list + [item]
+}
+
+proc add_counter(r: ValidateResult, name: string, value: i32) -> ValidateResult {
+    set r.counters = push_counter(r.counters, ValidateCounter {
+        name: name,
+        value: value
+    })
+    give r
+}
+
+proc add_flag(r: ValidateResult, name: string, enabled: bool) -> ValidateResult {
+    set r.flags = push_flag(r.flags, ValidateFlag {
+        name: name,
+        enabled: enabled
+    })
+    give r
+}
+
+proc add_issue(r: ValidateResult, code: string, severity: string, message: string, scope: string) -> ValidateResult {
+    set r.issues = push_issue(r.issues, ValidateIssue {
+        code: code,
+        severity: severity,
+        message: message,
+        scope: scope
+    })
+
+    set r.issue_count = r.issue_count + 1
+
+    if severity == "error" {
+        set r.error_count = r.error_count + 1
+        set r.ok = false
+    }
+
+    if severity == "warn" {
+        set r.warn_count = r.warn_count + 1
+    }
+
+    give r
+}
+
+<<< =========================================================
+    Count / lookup helpers
+========================================================= >>>
+
+proc count_steps(steps: [api.BuildStep]) -> i32 {
+    make n = 0
+    for step in steps {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_enabled_steps(steps: [api.BuildStep]) -> i32 {
+    make n = 0
+    for step in steps {
+        if step.enabled {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc step_exists(steps: [api.BuildStep], id: string) -> bool {
+    for step in steps {
+        if step.id.value == id {
+            give true
+        }
+    }
+    give false
+}
+
+proc count_domain_steps(history: domain.StepExecutionHistory) -> i32 {
+    make n = 0
+    for item in history.items {
+        set n = n + 1
+    }
+    give n
+}
+
+proc valid_members_count(n: int) -> bool {
+    give n > 0
+}
+
+<<< =========================================================
+    Builder validation
+========================================================= >>>
+
+proc validate_project_name(cfg: ValidateConfig, r: ValidateResult, b: api.CrabBuilder) -> ValidateResult {
+    if cfg.require_project_name {
+        if b.config.name == "" {
+            set r = add_issue(r, "validate.project.name.empty", "error", "project name is empty", "builder")
+        }
+    }
+    give r
+}
+
+proc validate_target(cfg: ValidateConfig, r: ValidateResult, b: api.CrabBuilder) -> ValidateResult {
+    if cfg.require_target {
+        if b.config.target == "" {
+            set r = add_issue(r, "validate.project.target.empty", "error", "target is empty", "builder")
+        }
+    }
+    give r
+}
+
+proc validate_threads(cfg: ValidateConfig, r: ValidateResult, b: api.CrabBuilder) -> ValidateResult {
+    if cfg.require_positive_threads {
+        if b.config.threads <= 0 {
+            set r = add_issue(r, "validate.project.threads.invalid", "error", "thread count must be positive", "builder")
+        }
+    }
+    give r
+}
+
+proc validate_steps_presence(cfg: ValidateConfig, r: ValidateResult, b: api.CrabBuilder) -> ValidateResult {
+    make n = count_steps(b.steps)
+
+    if cfg.require_steps and n == 0 {
+        set r = add_issue(r, "validate.steps.missing", "error", "no build steps declared", "builder")
+    }
+
+    if not valid_members_count(n) {
+        set r = add_issue(r, "validate.steps.count.invalid", "warn", "step count is not strictly positive", "builder")
+    }
+
+    give r
+}
+
+proc validate_step_commands(cfg: ValidateConfig, r: ValidateResult, b: api.CrabBuilder) -> ValidateResult {
+    if not cfg.require_non_empty_commands {
+        give r
+    }
+
+    for step in b.steps {
+        if step.command == "" {
+            set r = add_issue(r, "validate.step.command.empty", "error", "step command is empty", step.id.value)
+        }
+    }
+
+    give r
+}
+
+proc validate_step_deps(cfg: ValidateConfig, r: ValidateResult, b: api.CrabBuilder) -> ValidateResult {
+    if not cfg.require_existing_deps {
+        give r
+    }
+
+    for step in b.steps {
+        for dep in step.deps {
+            if not step_exists(b.steps, dep.value) {
+                set r = add_issue(r, "validate.step.dep.missing", "error", "dependency does not exist", step.id.value)
+            }
+        }
+    }
+
+    give r
+}
+
+proc validate_builder(b: api.CrabBuilder) -> ValidateResult {
+    make cfg = default_config()
+    give validate_builder_with_config(b, cfg)
+}
+
+proc validate_builder_with_config(b: api.CrabBuilder, cfg: ValidateConfig) -> ValidateResult {
+    make r = empty_result()
+
+    set r.target = b.config.target
+    set r.project_name = b.config.name
+
+    set r = add_counter(r, "steps", count_steps(b.steps))
+    set r = add_counter(r, "enabled_steps", count_enabled_steps(b.steps))
+    set r = add_counter(r, "scheduled_steps", b.stats.scheduled_steps)
+    set r = add_counter(r, "executed_steps", b.stats.executed_steps)
+    set r = add_counter(r, "cached_steps", b.stats.cached_steps)
+    set r = add_counter(r, "failed_steps", b.stats.failed_steps)
+
+    set r = add_flag(r, "optimize", b.config.optimize)
+    set r = add_flag(r, "debug", b.config.debug)
+
+    set r = validate_project_name(cfg, r, b)
+    set r = validate_target(cfg, r, b)
+    set r = validate_threads(cfg, r, b)
+    set r = validate_steps_presence(cfg, r, b)
+    set r = validate_step_commands(cfg, r, b)
+    set r = validate_step_deps(cfg, r, b)
+
+    give r
+}
+
+<<< =========================================================
+    Integrated validation
+========================================================= >>>
+
+proc validate_builder_integrated(b: api.CrabBuilder) -> ValidateResult {
+    make cfg = default_config()
+    set cfg.require_compat_ok = true
+    set cfg.require_policy_ok = true
+    set cfg.require_diagnostics_ok = true
+    give validate_builder_integrated_with_config(b, cfg)
+}
+
+proc validate_builder_integrated_with_config(b: api.CrabBuilder, cfg: ValidateConfig) -> ValidateResult {
+    make r = validate_builder_with_config(b, cfg)
+    make comp = compat.plan_target(b.config.target)
+    make pol = policy.evaluate(b)
+    make diag = diagnostics.summarize_builder_with_compat(b, comp)
+
+    if cfg.require_compat_ok {
+        if not comp.ok {
+            set r = add_issue(r, "validate.compat.failed", "error", "compatibility validation failed", "compat")
+        }
+    }
+
+    if cfg.require_policy_ok {
+        if not pol.ok {
+            set r = add_issue(r, "validate.policy.failed", "error", "policy validation failed", "policy")
+        }
+    }
+
+    if cfg.require_diagnostics_ok {
+        if not diag.ok {
+            set r = add_issue(r, "validate.diagnostics.failed", "error", "diagnostics validation failed", "diagnostics")
+        }
+    }
+
+    set r = add_counter(r, "compat_issues", count_compat_issues(comp.issues))
+    set r = add_flag(r, "compat_ok", comp.ok)
+    set r = add_flag(r, "policy_ok", pol.ok)
+    set r = add_flag(r, "diagnostics_ok", diag.ok)
+
+    give r
+}
+
+proc count_compat_issues(items: [compat.CompatibilityIssue]) -> i32 {
+    make n = 0
+    for item in items {
+        set n = n + 1
+    }
+    give n
+}
+
+<<< =========================================================
+    Domain validation
+========================================================= >>>
+
+proc validate_domain_project(project: domain.ProjectModel) -> ValidateResult {
+    make r = empty_result()
+
+    set r.target = project.identity.target.value
+    set r.project_name = project.identity.name.value
+
+    set r = add_flag(r, "optimize", project.options.optimize)
+    set r = add_flag(r, "debug", project.options.debug)
+    set r = add_flag(r, "verbose", project.options.verbose)
+
+    if project.identity.name.value == "" {
+        set r = add_issue(r, "validate.domain.project.name.empty", "error", "domain project name is empty", "domain")
+    }
+
+    if project.identity.target.value == "" {
+        set r = add_issue(r, "validate.domain.project.target.empty", "error", "domain target is empty", "domain")
+    }
+
+    if project.options.threads <= 0 {
+        set r = add_issue(r, "validate.domain.project.threads.invalid", "error", "domain thread count must be positive", "domain")
+    }
+
+    give r
+}
+
+proc validate_domain_report(report: domain.BuildReportModel) -> ValidateResult {
+    make r = empty_result()
+
+    set r.target = report.project.target.value
+    set r.project_name = report.project.name.value
+
+    set r = add_counter(r, "scheduled_steps", report.stats.scheduled_steps)
+    set r = add_counter(r, "executed_steps", report.stats.executed_steps)
+    set r = add_counter(r, "cached_steps", report.stats.cached_steps)
+    set r = add_counter(r, "failed_steps", report.stats.failed_steps)
+    set r = add_counter(r, "history_items", count_domain_steps(report.history))
+
+    if not report.ok {
+        set r = add_issue(r, "validate.domain.report.failed", "error", "domain report is not ok", "domain-report")
+    }
+
+    if report.project.name.value == "" {
+        set r = add_issue(r, "validate.domain.report.project.empty", "error", "report project name is empty", "domain-report")
+    }
+
+    give r
+}
+
+proc validate_domain_all(project: domain.ProjectModel, graph: domain.BuildGraph, report: domain.BuildReportModel) -> ValidateResult {
+    make r = validate_domain_project(project)
+    make rr = validate_domain_report(report)
+
+    for item in rr.issues {
+        set r = add_issue(r, item.code, item.severity, item.message, item.scope)
+    }
+
+    set r = add_counter(r, "graph_nodes", domain.count_graph_nodes(graph))
+    set r = add_counter(r, "graph_edges", domain.count_graph_edges(graph))
+
+    if domain.count_graph_nodes(graph) == 0 {
+        set r = add_issue(r, "validate.domain.graph.empty", "warn", "domain graph has no nodes", "domain-graph")
+    }
+
+    give r
+}
+
+<<< =========================================================
+    Reporting
+========================================================= >>>
+
+proc print_issue(item: ValidateIssue) {
+    emit item.severity + ":" + item.code + ":" + item.message + ":" + item.scope
+}
+
+proc print_counter(item: ValidateCounter) {
+    emit item.name + "=" + (item.value as string)
+}
+
+proc print_flag(item: ValidateFlag) {
+    if item.enabled {
+        emit item.name + "=true"
+    } else {
+        emit item.name + "=false"
+    }
+}
+
+proc print_result(r: ValidateResult) {
+    emit "==== CRABBUILDER VALIDATE ===="
+    emit "ok=" + (r.ok as string)
+    emit "target=" + r.target
+    emit "project_name=" + r.project_name
+    emit "issue_count=" + (r.issue_count as string)
+    emit "error_count=" + (r.error_count as string)
+    emit "warn_count=" + (r.warn_count as string)
+
+    emit "---- counters ----"
+    for item in r.counters {
+        print_counter(item)
+    }
+
+    emit "---- flags ----"
+    for item in r.flags {
+        print_flag(item)
+    }
+
+    emit "---- issues ----"
+    for item in r.issues {
+        print_issue(item)
+    }
+}
+
+<<< =========================================================
+    Demo scenarios
+========================================================= >>>
+
+proc demo_builder() -> api.CrabBuilder {
+    make b = api.new()
+    set b = api.set_name(b, "validate-demo")
+    set b = api.set_version(b, "0.1.0")
+    set b = api.set_target(b, "x86_64-unknown-linux-gnu")
+    set b = api.set_profile(b, "release")
+    set b = api.enable_opt(b)
+    set b = api.set_debug(b, true)
+    set b = api.set_threads(b, 4)
+    set b = api.add_step(b, "compile", "crabcc src/main.crab")
+    set b = api.add_step(b, "link", "ld build/main.o")
+    set b = api.add_dep(b, "link", "compile")
+    give b
+}
+
+proc demo_builder_result() -> ValidateResult {
+    make b = demo_builder()
+    give validate_builder_integrated(b)
+}
+
+proc demo_domain_result() -> ValidateResult {
+    make project = domain.demo_project()
+    make graph = domain.demo_graph()
+    make report = domain.demo_report()
+    give validate_domain_all(project, graph, report)
+}
+
+entry main at vitte/packages/crabbuilder/internal/validate {
+    make a = demo_builder_result()
+    make d = demo_domain_result()
+
+    print_result(a)
+    print_result(d)
+}

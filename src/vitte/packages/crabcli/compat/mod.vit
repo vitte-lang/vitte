@@ -1,0 +1,139 @@
+
+use vitte/packages/crabbuilder/compat as core_compat
+
+<<< =========================================================
+    Compat domain
+========================================================= >>>
+
+form CliCompatTarget {
+  triple: string,
+  os: string,
+  arch: string
+}
+
+form CliCompatResult {
+  ok: bool,
+  target: string,
+  host_os: string,
+  host_arch: string,
+  abi: string,
+  pointer_width: i32,
+  issue_count: i32,
+  notes: [string]
+}
+
+<<< =========================================================
+    Helpers
+========================================================= >>>
+
+proc push_note(list: [string], item: string) -> [string] {
+  give list + [item]
+}
+
+proc bool_to_string(v: bool) -> string {
+  if v {
+    give "true"
+  }
+  give "false"
+}
+
+proc default_target() -> string {
+  give "x86_64-unknown-linux-gnu"
+}
+
+<<< =========================================================
+    Target parsing
+========================================================= >>>
+
+proc parse_target(triple: string) -> CliCompatTarget {
+  make os = "unknown"
+  make arch = "unknown"
+
+  if triple contains "linux" {
+    set os = "linux"
+  }
+  if triple contains "darwin" {
+    set os = "darwin"
+  }
+  if triple contains "windows" {
+    set os = "windows"
+  }
+
+  if triple contains "x86_64" {
+    set arch = "x86_64"
+  }
+  if triple contains "aarch64" {
+    set arch = "aarch64"
+  }
+
+  give CliCompatTarget {
+    triple: triple,
+    os: os,
+    arch: arch
+  }
+}
+
+<<< =========================================================
+    Core compat bridge
+========================================================= >>>
+
+proc plan_target(triple: string) -> CliCompatResult {
+  make core = core_compat.plan_target(triple)
+  make notes = []
+
+  set notes = push_note(notes, "target=" + triple)
+  set notes = push_note(notes, "host=" + core.host.os + "/" + core.host.arch)
+  set notes = push_note(notes, "abi=" + core.abi.c_abi)
+
+  give CliCompatResult {
+    ok: core.ok,
+    target: core.target,
+    host_os: core.host.os,
+    host_arch: core.host.arch,
+    abi: core.abi.c_abi,
+    pointer_width: core.abi.pointer_width,
+    issue_count: count_issues(core.issues),
+    notes: notes
+  }
+}
+
+proc count_issues(list: [core_compat.CompatibilityIssue]) -> i32 {
+  make n = 0
+  for item in list {
+    set n = n + 1
+  }
+  give n
+}
+
+<<< =========================================================
+    Reporting
+========================================================= >>>
+
+proc print_result(r: CliCompatResult) {
+  emit "==== CRABCLI COMPAT ===="
+  emit "target=" + r.target
+  emit "ok=" + bool_to_string(r.ok)
+  emit "host_os=" + r.host_os
+  emit "host_arch=" + r.host_arch
+  emit "abi=" + r.abi
+  emit "pointer_width=" + (r.pointer_width as string)
+  emit "issue_count=" + (r.issue_count as string)
+
+  for note in r.notes {
+    emit note
+  }
+}
+
+<<< =========================================================
+    Demo
+========================================================= >>>
+
+proc demo() {
+  make t = default_target()
+  make r = plan_target(t)
+  print_result(r)
+}
+
+entry main at vitte/crabcli/compat {
+  demo()
+}

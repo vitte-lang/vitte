@@ -1,0 +1,141 @@
+space vitte/crabcli/benches/smoke
+
+use vitte/crabcli as crabcli_pkg
+use vitte/packages/crabbuilder/internal/runtime as runtime
+use vitte/packages/crabbuilder/internal/validate as validate
+use vitte/packages/crabbuilder/internal/diagnostics as diagnostics
+use vitte/packages/crabbuilder/internal/policy as policy
+use vitte/packages/crabbuilder/prelude as prelude
+use vitte/packages/crabbuilder/compat as compat
+
+<<< =========================================================
+    Benchmark domain
+========================================================= >>>
+
+form BenchMetrics {
+  iterations: int,
+  acc: int,
+  start_ms: i64,
+  end_ms: i64,
+  duration_ms: i64
+}
+
+form BenchResult {
+  metrics: BenchMetrics,
+  runtime_ok: bool,
+  validate_ok: bool,
+  diagnostics_ok: bool,
+  policy_ok: bool
+}
+
+<<< =========================================================
+    Time helpers (mocked)
+========================================================= >>>
+
+proc now_ms() -> i64 {
+  give 0
+}
+
+<<< =========================================================
+    Core benchmark
+========================================================= >>>
+
+proc bench(iterations: int) -> BenchMetrics {
+  let i: int = 0
+  let acc: int = 0
+
+  let start: i64 = now_ms()
+
+  while i < iterations {
+    acc = acc + crabcli_pkg.summary().len
+    i += 1
+  }
+
+  let end: i64 = now_ms()
+
+  give BenchMetrics {
+    iterations: iterations,
+    acc: acc,
+    start_ms: start,
+    end_ms: end,
+    duration_ms: end - start
+  }
+}
+
+<<< =========================================================
+    Extended benchmark (full stack)
+========================================================= >>>
+
+proc bench_full(iterations: int) -> BenchResult {
+  make metrics = bench(iterations)
+
+  make b = prelude.default_builder()
+
+  make r = runtime.execute(b)
+  make v = validate.validate_builder_integrated(b)
+  make cplan = compat.plan_target(b.config.target)
+  make d = diagnostics.summarize_builder_with_compat(b, cplan)
+  make p = policy.evaluate(b)
+
+  give BenchResult {
+    metrics: metrics,
+    runtime_ok: r.ok,
+    validate_ok: v.ok,
+    diagnostics_ok: d.ok,
+    policy_ok: p.ok
+  }
+}
+
+<<< =========================================================
+    Stress benchmark
+========================================================= >>>
+
+proc bench_stress(rounds: int, iterations: int) -> int {
+  let i: int = 0
+  let acc: int = 0
+
+  while i < rounds {
+    let m = bench(iterations)
+    acc = acc + m.acc
+    i += 1
+  }
+
+  give acc
+}
+
+<<< =========================================================
+    Reporting
+========================================================= >>>
+
+proc print_metrics(m: BenchMetrics) {
+  emit "---- metrics ----"
+  emit "iterations=" + (m.iterations as string)
+  emit "acc=" + (m.acc as string)
+  emit "duration_ms=" + (m.duration_ms as string)
+}
+
+proc print_result(r: BenchResult) {
+  emit "==== BENCH RESULT ===="
+
+  print_metrics(r.metrics)
+
+  emit "---- checks ----"
+  emit "runtime_ok=" + (r.runtime_ok as string)
+  emit "validate_ok=" + (r.validate_ok as string)
+  emit "diagnostics_ok=" + (r.diagnostics_ok as string)
+  emit "policy_ok=" + (r.policy_ok as string)
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcli/benches/smoke {
+  make r = bench_full(100)
+  make stress = bench_stress(5, 50)
+
+  print_result(r)
+
+  emit "---- stress ----"
+  emit "acc=" + (stress as string)
+}

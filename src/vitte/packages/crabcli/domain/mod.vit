@@ -1,0 +1,499 @@
+
+space vitte/crabcli/domain
+
+use vitte/packages/crabcli/api as cli_api
+use vitte/packages/crabcli/compat as cli_compat
+use vitte/packages/crabbuilder/prelude as builder_prelude
+use vitte/packages/crabbuilder/internal/runtime as builder_runtime
+use vitte/packages/crabbuilder/internal/validate as builder_validate
+use vitte/packages/crabbuilder/internal/diagnostics as builder_diagnostics
+use vitte/packages/crabbuilder/internal/policy as builder_policy
+use vitte/packages/crabbuilder/domain as builder_domain
+
+<<< =========================================================
+    CrabCLI domain
+========================================================= >>>
+
+form DomainTag {
+  value: string
+}
+
+form DomainLabel {
+  name: string,
+  value: string
+}
+
+form DomainFeature {
+  name: string,
+  enabled: bool
+}
+
+form DomainCommand {
+  name: string,
+  stable: bool,
+  requires_target: bool,
+  requires_builder: bool,
+  description: string
+}
+
+form DomainCapability {
+  name: string,
+  description: string,
+  enabled: bool
+}
+
+form DomainSummary {
+  ok: bool,
+  name: string,
+  family: string,
+  target: string,
+  profile: string,
+  tag_count: i32,
+  feature_count: i32,
+  command_count: i32,
+  capability_count: i32,
+  notes: [string]
+}
+
+<<< =========================================================
+    Primitive helpers
+========================================================= >>>
+
+proc push_string(list: [string], item: string) -> [string] {
+  give list + [item]
+}
+
+proc push_tag(list: [DomainTag], item: DomainTag) -> [DomainTag] {
+  give list + [item]
+}
+
+proc push_label(list: [DomainLabel], item: DomainLabel) -> [DomainLabel] {
+  give list + [item]
+}
+
+proc push_feature(list: [DomainFeature], item: DomainFeature) -> [DomainFeature] {
+  give list + [item]
+}
+
+proc push_command(list: [DomainCommand], item: DomainCommand) -> [DomainCommand] {
+  give list + [item]
+}
+
+proc push_capability(list: [DomainCapability], item: DomainCapability) -> [DomainCapability] {
+  give list + [item]
+}
+
+proc count_strings(list: [string]) -> i32 {
+  make n = 0
+  for item in list {
+    set n = n + 1
+  }
+  give n
+}
+
+proc count_tags(list: [DomainTag]) -> i32 {
+  make n = 0
+  for item in list {
+    set n = n + 1
+  }
+  give n
+}
+
+proc count_features(list: [DomainFeature]) -> i32 {
+  make n = 0
+  for item in list {
+    set n = n + 1
+  }
+  give n
+}
+
+proc count_commands(list: [DomainCommand]) -> i32 {
+  make n = 0
+  for item in list {
+    set n = n + 1
+  }
+  give n
+}
+
+proc count_capabilities(list: [DomainCapability]) -> i32 {
+  make n = 0
+  for item in list {
+    set n = n + 1
+  }
+  give n
+}
+
+proc bool_to_string(v: bool) -> string {
+  if v {
+    give "true"
+  }
+  give "false"
+}
+
+<<< =========================================================
+    Core metadata
+========================================================= >>>
+
+proc name() -> string {
+  give "crabcli"
+}
+
+proc family() -> string {
+  give "cli-runtime"
+}
+
+proc default_target() -> string {
+  give cli_compat.default_target()
+}
+
+proc default_profile() -> string {
+  give cli_api.default_profile()
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc summary() -> string {
+  give "crabcli/domain/max-max"
+}
+
+proc description() -> string {
+  give "CrabCLI domain model aggregating CLI commands, compatibility, builder runtime, diagnostics, validation and policy"
+}
+
+<<< =========================================================
+    Tags / labels / features
+========================================================= >>>
+
+proc tags() -> [string] {
+  make out = []
+  set out = push_string(out, "cli-runtime")
+  set out = push_string(out, "crabcli")
+  set out = push_string(out, "crab-fusion")
+  set out = push_string(out, "builder-frontend")
+  set out = push_string(out, "runtime-probe")
+  set out = push_string(out, "validation-surface")
+  give out
+}
+
+proc typed_tags() -> [DomainTag] {
+  make out = []
+  set out = push_tag(out, DomainTag { value: "cli-runtime" })
+  set out = push_tag(out, DomainTag { value: "crabcli" })
+  set out = push_tag(out, DomainTag { value: "crab-fusion" })
+  set out = push_tag(out, DomainTag { value: "builder-frontend" })
+  set out = push_tag(out, DomainTag { value: "runtime-probe" })
+  set out = push_tag(out, DomainTag { value: "validation-surface" })
+  give out
+}
+
+proc labels() -> [DomainLabel] {
+  make out = []
+  set out = push_label(out, DomainLabel { name: "name", value: name() })
+  set out = push_label(out, DomainLabel { name: "family", value: family() })
+  set out = push_label(out, DomainLabel { name: "target", value: default_target() })
+  set out = push_label(out, DomainLabel { name: "profile", value: default_profile() })
+  set out = push_label(out, DomainLabel { name: "summary", value: summary() })
+  give out
+}
+
+proc features() -> [DomainFeature] {
+  make out = []
+  set out = push_feature(out, DomainFeature { name: "api", enabled: true })
+  set out = push_feature(out, DomainFeature { name: "compat", enabled: true })
+  set out = push_feature(out, DomainFeature { name: "builder-runtime", enabled: true })
+  set out = push_feature(out, DomainFeature { name: "builder-validate", enabled: true })
+  set out = push_feature(out, DomainFeature { name: "builder-diagnostics", enabled: true })
+  set out = push_feature(out, DomainFeature { name: "builder-policy", enabled: true })
+  set out = push_feature(out, DomainFeature { name: "builder-domain", enabled: true })
+  set out = push_feature(out, DomainFeature { name: "command-registry", enabled: true })
+  give out
+}
+
+<<< =========================================================
+    Command model
+========================================================= >>>
+
+proc commands() -> [DomainCommand] {
+  make out = []
+
+  set out = push_command(out, DomainCommand {
+    name: "build",
+    stable: true,
+    requires_target: false,
+    requires_builder: true,
+    description: "run the builder pipeline"
+  })
+
+  set out = push_command(out, DomainCommand {
+    name: "run",
+    stable: true,
+    requires_target: false,
+    requires_builder: true,
+    description: "run the internal runtime scheduler"
+  })
+
+  set out = push_command(out, DomainCommand {
+    name: "validate",
+    stable: true,
+    requires_target: false,
+    requires_builder: true,
+    description: "validate the builder integration stack"
+  })
+
+  set out = push_command(out, DomainCommand {
+    name: "diagnostics",
+    stable: true,
+    requires_target: false,
+    requires_builder: true,
+    description: "collect builder diagnostics"
+  })
+
+  set out = push_command(out, DomainCommand {
+    name: "policy",
+    stable: true,
+    requires_target: false,
+    requires_builder: true,
+    description: "evaluate builder policies"
+  })
+
+  set out = push_command(out, DomainCommand {
+    name: "report",
+    stable: true,
+    requires_target: false,
+    requires_builder: true,
+    description: "produce a builder report"
+  })
+
+  set out = push_command(out, DomainCommand {
+    name: "compat",
+    stable: true,
+    requires_target: true,
+    requires_builder: false,
+    description: "inspect compatibility planning"
+  })
+
+  set out = push_command(out, DomainCommand {
+    name: "summary",
+    stable: true,
+    requires_target: false,
+    requires_builder: false,
+    description: "print a command summary"
+  })
+
+  set out = push_command(out, DomainCommand {
+    name: "help",
+    stable: true,
+    requires_target: false,
+    requires_builder: false,
+    description: "print help"
+  })
+
+  give out
+}
+
+<<< =========================================================
+    Capabilities
+========================================================= >>>
+
+proc capabilities() -> [DomainCapability] {
+  make out = []
+
+  set out = push_capability(out, DomainCapability {
+    name: "command-dispatch",
+    description: "dispatch commands from a CLI context",
+    enabled: true
+  })
+
+  set out = push_capability(out, DomainCapability {
+    name: "compatibility-analysis",
+    description: "analyze target compatibility through crabbuilder compat",
+    enabled: true
+  })
+
+  set out = push_capability(out, DomainCapability {
+    name: "runtime-probing",
+    description: "run the internal crabbuilder runtime",
+    enabled: true
+  })
+
+  set out = push_capability(out, DomainCapability {
+    name: "validation-probing",
+    description: "run integrated validation checks",
+    enabled: true
+  })
+
+  set out = push_capability(out, DomainCapability {
+    name: "diagnostics-probing",
+    description: "collect integrated diagnostics summaries",
+    enabled: true
+  })
+
+  set out = push_capability(out, DomainCapability {
+    name: "policy-probing",
+    description: "evaluate builder policy rules",
+    enabled: true
+  })
+
+  set out = push_capability(out, DomainCapability {
+    name: "domain-bridge",
+    description: "bridge to crabbuilder domain models",
+    enabled: true
+  })
+
+  give out
+}
+
+<<< =========================================================
+    Integrated probes
+========================================================= >>>
+
+proc builder_runtime_ready() -> bool {
+  make b = builder_prelude.default_builder()
+  make r = builder_runtime.execute(b)
+  give r.ok
+}
+
+proc builder_validate_ready() -> bool {
+  make b = builder_prelude.default_builder()
+  make r = builder_validate.validate_builder_integrated(b)
+  give r.ok
+}
+
+proc builder_diagnostics_ready() -> bool {
+  make b = builder_prelude.default_builder()
+  make c = compat_bridge(b.config.target)
+  make d = builder_diagnostics.summarize_builder_with_compat(b, c)
+  give d.ok
+}
+
+proc builder_policy_ready() -> bool {
+  make b = builder_prelude.default_builder()
+  make p = builder_policy.evaluate(b)
+  give p.ok
+}
+
+proc builder_domain_ready() -> bool {
+  make report = builder_domain.demo_report()
+  give report.ok
+}
+
+proc compat_bridge(target: string) -> compat.CompatibilityReport {
+  give compat.plan_target(target)
+}
+
+<<< =========================================================
+    Summary
+========================================================= >>>
+
+proc domain_summary() -> DomainSummary {
+  make notes = []
+  make tag_list = typed_tags()
+  make feat_list = features()
+  make cmd_list = commands()
+  make cap_list = capabilities()
+
+  set notes = push_string(notes, "name=" + name())
+  set notes = push_string(notes, "family=" + family())
+  set notes = push_string(notes, "target=" + default_target())
+  set notes = push_string(notes, "profile=" + default_profile())
+  set notes = push_string(notes, "summary=" + summary())
+  set notes = push_string(notes, "runtime_ready=" + bool_to_string(builder_runtime_ready()))
+  set notes = push_string(notes, "validate_ready=" + bool_to_string(builder_validate_ready()))
+  set notes = push_string(notes, "diagnostics_ready=" + bool_to_string(builder_diagnostics_ready()))
+  set notes = push_string(notes, "policy_ready=" + bool_to_string(builder_policy_ready()))
+  set notes = push_string(notes, "domain_ready=" + bool_to_string(builder_domain_ready()))
+
+  give DomainSummary {
+    ok: ready(),
+    name: name(),
+    family: family(),
+    target: default_target(),
+    profile: default_profile(),
+    tag_count: count_tags(tag_list),
+    feature_count: count_features(feat_list),
+    command_count: count_commands(cmd_list),
+    capability_count: count_capabilities(cap_list),
+    notes: notes
+  }
+}
+
+<<< =========================================================
+    Printing
+========================================================= >>>
+
+proc print_label(item: DomainLabel) {
+  emit item.name + "=" + item.value
+}
+
+proc print_feature(item: DomainFeature) {
+  emit item.name + "=" + bool_to_string(item.enabled)
+}
+
+proc print_command(item: DomainCommand) {
+  emit item.name + ":stable=" + bool_to_string(item.stable)
+  emit "  description=" + item.description
+  emit "  requires_target=" + bool_to_string(item.requires_target)
+  emit "  requires_builder=" + bool_to_string(item.requires_builder)
+}
+
+proc print_capability(item: DomainCapability) {
+  emit item.name + "=" + bool_to_string(item.enabled)
+  emit "  description=" + item.description
+}
+
+proc print_summary(item: DomainSummary) {
+  emit "==== CRABCLI DOMAIN ===="
+  emit "ok=" + bool_to_string(item.ok)
+  emit "name=" + item.name
+  emit "family=" + item.family
+  emit "target=" + item.target
+  emit "profile=" + item.profile
+  emit "tag_count=" + (item.tag_count as string)
+  emit "feature_count=" + (item.feature_count as string)
+  emit "command_count=" + (item.command_count as string)
+  emit "capability_count=" + (item.capability_count as string)
+
+  for line in item.notes {
+    emit line
+  }
+}
+
+proc print_all() {
+  make sum = domain_summary()
+  make labs = labels()
+  make feat = features()
+  make cmds = commands()
+  make caps = capabilities()
+
+  print_summary(sum)
+
+  emit "---- labels ----"
+  for item in labs {
+    print_label(item)
+  }
+
+  emit "---- features ----"
+  for item in feat {
+    print_feature(item)
+  }
+
+  emit "---- commands ----"
+  for item in cmds {
+    print_command(item)
+  }
+
+  emit "---- capabilities ----"
+  for item in caps {
+    print_capability(item)
+  }
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcli/domain {
+  print_all()
+}

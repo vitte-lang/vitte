@@ -1,0 +1,321 @@
+space vitte/crabcore/internal/runtime
+
+<<< =========================================================
+    CrabCore Runtime (absolute max)
+========================================================= >>>
+
+form RuntimeStep {
+    name: string,
+    ready: bool,
+    running: bool,
+    finished: bool,
+    ok: bool,
+    detail: string
+}
+
+form RuntimeEvent {
+    kind: string,
+    step: string,
+    message: string
+}
+
+form RuntimeStats {
+    total_steps: int,
+    finished_steps: int,
+    failed_steps: int,
+    total_events: int
+}
+
+form RuntimeSummary {
+    ok: bool,
+    version: string,
+    family: string,
+    status: string,
+    stats: RuntimeStats,
+    notes: [string]
+}
+
+<<< =========================================================
+    Metadata
+========================================================= >>>
+
+proc version() -> string {
+    give "crabcore-runtime-absolute-max"
+}
+
+proc family() -> string {
+    give "crabcore-runtime"
+}
+
+proc summary_text() -> string {
+    give "crabcore/internal/runtime/absolute-max"
+}
+
+proc description() -> string {
+    give "Runtime engine for crabcore with steps, events, stats and printable summaries"
+}
+
+proc ready() -> bool {
+    give true
+}
+
+<<< =========================================================
+    Helpers
+========================================================= >>>
+
+proc push_step(list: [RuntimeStep], item: RuntimeStep) -> [RuntimeStep] {
+    give list + [item]
+}
+
+proc push_event(list: [RuntimeEvent], item: RuntimeEvent) -> [RuntimeEvent] {
+    give list + [item]
+}
+
+proc push_note(list: [string], item: string) -> [string] {
+    give list + [item]
+}
+
+proc bool_to_string(v: bool) -> string {
+    if v {
+        give "true"
+    }
+    give "false"
+}
+
+proc count_steps(list: [RuntimeStep]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+proc count_finished_steps(list: [RuntimeStep]) -> int {
+    let n: int = 0
+    for item in list {
+        if item.finished {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc count_failed_steps(list: [RuntimeStep]) -> int {
+    let n: int = 0
+    for item in list {
+        if item.finished and not item.ok {
+            set n = n + 1
+        }
+    }
+    give n
+}
+
+proc count_events(list: [RuntimeEvent]) -> int {
+    let n: int = 0
+    for _ in list {
+        set n = n + 1
+    }
+    give n
+}
+
+<<< =========================================================
+    Step registry
+========================================================= >>>
+
+proc steps() -> [RuntimeStep] {
+    let out = []
+
+    set out = push_step(out, RuntimeStep {
+        name: "prepare",
+        ready: true,
+        running: false,
+        finished: true,
+        ok: true,
+        detail: "prepare runtime context"
+    })
+
+    set out = push_step(out, RuntimeStep {
+        name: "bootstrap",
+        ready: true,
+        running: false,
+        finished: true,
+        ok: true,
+        detail: "bootstrap internal state"
+    })
+
+    set out = push_step(out, RuntimeStep {
+        name: "validate",
+        ready: true,
+        running: false,
+        finished: true,
+        ok: true,
+        detail: "validate runtime invariants"
+    })
+
+    set out = push_step(out, RuntimeStep {
+        name: "dispatch",
+        ready: true,
+        running: false,
+        finished: true,
+        ok: true,
+        detail: "dispatch runtime flow"
+    })
+
+    set out = push_step(out, RuntimeStep {
+        name: "finalize",
+        ready: true,
+        running: false,
+        finished: true,
+        ok: true,
+        detail: "finalize runtime execution"
+    })
+
+    give out
+}
+
+<<< =========================================================
+    Event registry
+========================================================= >>>
+
+proc events() -> [RuntimeEvent] {
+    let out = []
+
+    set out = push_event(out, RuntimeEvent {
+        kind: "info",
+        step: "prepare",
+        message: "runtime preparation completed"
+    })
+
+    set out = push_event(out, RuntimeEvent {
+        kind: "info",
+        step: "bootstrap",
+        message: "runtime bootstrap completed"
+    })
+
+    set out = push_event(out, RuntimeEvent {
+        kind: "info",
+        step: "validate",
+        message: "runtime validation completed"
+    })
+
+    set out = push_event(out, RuntimeEvent {
+        kind: "info",
+        step: "dispatch",
+        message: "runtime dispatch completed"
+    })
+
+    set out = push_event(out, RuntimeEvent {
+        kind: "info",
+        step: "finalize",
+        message: "runtime finalization completed"
+    })
+
+    give out
+}
+
+<<< =========================================================
+    Stats / Summary
+========================================================= >>>
+
+proc runtime_stats() -> RuntimeStats {
+    let ss = steps()
+    let es = events()
+
+    give RuntimeStats {
+        total_steps: count_steps(ss),
+        finished_steps: count_finished_steps(ss),
+        failed_steps: count_failed_steps(ss),
+        total_events: count_events(es)
+    }
+}
+
+proc runtime_status() -> bool {
+    let s = runtime_stats()
+    give ready() and s.failed_steps == 0
+}
+
+proc run() -> RuntimeSummary {
+    let rs = runtime_stats()
+    let notes = []
+
+    set notes = push_note(notes, "version=" + version())
+    set notes = push_note(notes, "family=" + family())
+    set notes = push_note(notes, "summary=" + summary_text())
+    set notes = push_note(notes, "description=" + description())
+    set notes = push_note(notes, "total_steps=" + (rs.total_steps as string))
+    set notes = push_note(notes, "finished_steps=" + (rs.finished_steps as string))
+    set notes = push_note(notes, "failed_steps=" + (rs.failed_steps as string))
+    set notes = push_note(notes, "total_events=" + (rs.total_events as string))
+
+    give RuntimeSummary {
+        ok: runtime_status(),
+        version: version(),
+        family: family(),
+        status: "done",
+        stats: rs,
+        notes: notes
+    }
+}
+
+<<< =========================================================
+    Printing
+========================================================= >>>
+
+proc print_step(item: RuntimeStep) {
+    emit item.name + ":ready=" + bool_to_string(item.ready) + ":running=" + bool_to_string(item.running) + ":finished=" + bool_to_string(item.finished) + ":ok=" + bool_to_string(item.ok)
+    emit "detail=" + item.detail
+}
+
+proc print_event(item: RuntimeEvent) {
+    emit item.kind + ":step=" + item.step
+    emit "message=" + item.message
+}
+
+proc print_stats(item: RuntimeStats) {
+    emit "total_steps=" + (item.total_steps as string)
+    emit "finished_steps=" + (item.finished_steps as string)
+    emit "failed_steps=" + (item.failed_steps as string)
+    emit "total_events=" + (item.total_events as string)
+}
+
+proc print_summary(item: RuntimeSummary) {
+    emit "==== RUNTIME ===="
+    emit "ok=" + bool_to_string(item.ok)
+    emit "version=" + item.version
+    emit "family=" + item.family
+    emit "status=" + item.status
+
+    emit "---- stats ----"
+    print_stats(item.stats)
+
+    emit "---- notes ----"
+    for n in item.notes {
+        emit n
+    }
+}
+
+proc print_all() {
+    let s = run()
+    let ss = steps()
+    let es = events()
+
+    print_summary(s)
+
+    emit "---- steps ----"
+    for item in ss {
+        print_step(item)
+    }
+
+    emit "---- events ----"
+    for item in es {
+        print_event(item)
+    }
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcore/internal/runtime {
+    print_all()
+}

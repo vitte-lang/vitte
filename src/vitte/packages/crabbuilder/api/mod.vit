@@ -1,0 +1,852 @@
+
+
+space vitte/packages/crabbuilder/api
+
+<<< =========================================================
+    Core build domain
+========================================================= >>>
+
+form CrabConfig {
+    name: string,
+    version: string,
+    target: string,
+    optimize: bool,
+    debug: bool,
+    threads: i32,
+    out_dir: string,
+    cache_dir: string,
+    profile: string
+}
+
+form EnvVar {
+    key: string,
+    value: string
+}
+
+form BuildEnv {
+    cwd: string,
+    vars: [EnvVar]
+}
+
+form Artifact {
+    name: string,
+    path: string,
+    hash: string,
+    kind: string
+}
+
+form BuildLog {
+    level: string,
+    message: string,
+    ts: i64
+}
+
+form StepId {
+    value: string
+}
+
+form BuildStep {
+    id: StepId,
+    command: string,
+    inputs: [Artifact],
+    outputs: [Artifact],
+    deps: [StepId],
+    enabled: bool,
+    always: bool,
+    timeout_ms: i64,
+    retries: i32,
+    workdir: string
+}
+
+form StepResult {
+    id: StepId,
+    ok: bool,
+    code: i32,
+    log: string,
+    elapsed_ms: i64,
+    cached: bool
+}
+
+form CacheEntry {
+    key: string,
+    value: string,
+    ts: i64
+}
+
+form BuildCache {
+    entries: [CacheEntry]
+}
+
+form Hook {
+    name: string,
+    callback: proc (CrabBuilder, BuildStep) -> CrabBuilder
+}
+
+form Plugin {
+    name: string,
+    on_load: proc (CrabBuilder) -> CrabBuilder,
+    on_step: proc (CrabBuilder, BuildStep) -> CrabBuilder,
+    on_finish: proc (CrabBuilder, StepResult) -> CrabBuilder
+}
+
+form BuildStats {
+    scheduled_steps: i32,
+    executed_steps: i32,
+    cached_steps: i32,
+    failed_steps: i32,
+    total_ms: i64
+}
+
+form BuildReport {
+    ok: bool,
+    status: string,
+    total_ms: i64,
+    stats: BuildStats,
+    results: [StepResult],
+    logs: [BuildLog]
+}
+
+pick BuildStatus {
+    case Idle,
+    case Planning,
+    case Ready,
+    case Running,
+    case Success,
+    case Failure(error: string)
+}
+
+form CrabBuilder {
+    config: CrabConfig,
+    env: BuildEnv,
+    steps: [BuildStep],
+    cache: BuildCache,
+    logs: [BuildLog],
+    hooks: [Hook],
+    plugins: [Plugin],
+    status: BuildStatus,
+    stats: BuildStats
+}
+
+<<< =========================================================
+    Constructors
+========================================================= >>>
+
+proc empty_stats() -> BuildStats {
+    give BuildStats {
+        scheduled_steps: 0,
+        executed_steps: 0,
+        cached_steps: 0,
+        failed_steps: 0,
+        total_ms: 0
+    }
+}
+
+proc empty_cache() -> BuildCache {
+    give BuildCache {
+        entries: []
+    }
+}
+
+proc empty_env() -> BuildEnv {
+    give BuildEnv {
+        cwd: ".",
+        vars: []
+    }
+}
+
+proc default_config() -> CrabConfig {
+    give CrabConfig {
+        name: "default",
+        version: "0.1.0",
+        target: "native",
+        optimize: false,
+        debug: true,
+        threads: 1,
+        out_dir: "./build",
+        cache_dir: "./.cache",
+        profile: "dev"
+    }
+}
+
+proc new() -> CrabBuilder {
+    give CrabBuilder {
+        config: default_config(),
+        env: empty_env(),
+        steps: [],
+        cache: empty_cache(),
+        logs: [],
+        hooks: [],
+        plugins: [],
+        status: BuildStatus.Idle,
+        stats: empty_stats()
+    }
+}
+
+proc new_step(id: string, command: string) -> BuildStep {
+    give BuildStep {
+        id: StepId { value: id },
+        command: command,
+        inputs: [],
+        outputs: [],
+        deps: [],
+        enabled: true,
+        always: false,
+        timeout_ms: 0,
+        retries: 0,
+        workdir: "."
+    }
+}
+
+<<< =========================================================
+    Time / logging / utility
+========================================================= >>>
+
+proc now_ms() -> i64 {
+    give 0
+}
+
+proc log(b: CrabBuilder, level: string, message: string) -> CrabBuilder {
+    make item = BuildLog {
+        level: level,
+        message: message,
+        ts: now_ms()
+    }
+
+    set b.logs = b.logs + [item]
+    give b
+}
+
+proc push_result(list: [StepResult], item: StepResult) -> [StepResult] {
+    give list + [item]
+}
+
+proc push_cache_entry(list: [CacheEntry], item: CacheEntry) -> [CacheEntry] {
+    give list + [item]
+}
+
+proc push_hook(list: [Hook], item: Hook) -> [Hook] {
+    give list + [item]
+}
+
+proc push_plugin(list: [Plugin], item: Plugin) -> [Plugin] {
+    give list + [item]
+}
+
+proc push_step(list: [BuildStep], item: BuildStep) -> [BuildStep] {
+    give list + [item]
+}
+
+proc str_contains(haystack: string, needle: string) -> bool {
+    give haystack contains needle
+}
+
+proc step_key(s: BuildStep) -> string {
+    give s.id.value + ":" + s.command
+}
+
+proc cache_get(c: BuildCache, key: string) -> string {
+    for e in c.entries {
+        if e.key == key {
+            give e.value
+        }
+    }
+
+    give ""
+}
+
+proc cache_put(c: BuildCache, key: string, value: string) -> BuildCache {
+    make item = CacheEntry {
+        key: key,
+        value: value,
+        ts: now_ms()
+    }
+
+    set c.entries = push_cache_entry(c.entries, item)
+    give c
+}
+
+<<< =========================================================
+    Config API
+========================================================= >>>
+
+proc set_name(b: CrabBuilder, value: string) -> CrabBuilder {
+    set b.config.name = value
+    give b
+}
+
+proc set_version(b: CrabBuilder, value: string) -> CrabBuilder {
+    set b.config.version = value
+    give b
+}
+
+proc set_target(b: CrabBuilder, value: string) -> CrabBuilder {
+    set b.config.target = value
+    give b
+}
+
+proc set_profile(b: CrabBuilder, value: string) -> CrabBuilder {
+    set b.config.profile = value
+    give b
+}
+
+proc set_out_dir(b: CrabBuilder, value: string) -> CrabBuilder {
+    set b.config.out_dir = value
+    give b
+}
+
+proc set_cache_dir(b: CrabBuilder, value: string) -> CrabBuilder {
+    set b.config.cache_dir = value
+    give b
+}
+
+proc set_threads(b: CrabBuilder, value: i32) -> CrabBuilder {
+    set b.config.threads = value
+    give b
+}
+
+proc enable_opt(b: CrabBuilder) -> CrabBuilder {
+    set b.config.optimize = true
+    give b
+}
+
+proc disable_opt(b: CrabBuilder) -> CrabBuilder {
+    set b.config.optimize = false
+    give b
+}
+
+proc set_debug(b: CrabBuilder, value: bool) -> CrabBuilder {
+    set b.config.debug = value
+    give b
+}
+
+proc set_cwd(b: CrabBuilder, value: string) -> CrabBuilder {
+    set b.env.cwd = value
+    give b
+}
+
+proc set_env(b: CrabBuilder, key: string, value: string) -> CrabBuilder {
+    set b.env.vars = b.env.vars + [EnvVar { key: key, value: value }]
+    give b
+}
+
+<<< =========================================================
+    Step graph API
+========================================================= >>>
+
+proc add_step(b: CrabBuilder, id: string, command: string) -> CrabBuilder {
+    set b.steps = push_step(b.steps, new_step(id, command))
+    set b.stats.scheduled_steps = b.stats.scheduled_steps + 1
+    give b
+}
+
+proc add_step_full(b: CrabBuilder, step: BuildStep) -> CrabBuilder {
+    set b.steps = push_step(b.steps, step)
+    set b.stats.scheduled_steps = b.stats.scheduled_steps + 1
+    give b
+}
+
+proc add_dep(b: CrabBuilder, id: string, dep: string) -> CrabBuilder {
+    make out = []
+
+    for s in b.steps {
+        if s.id.value == id {
+            set s.deps = s.deps + [StepId { value: dep }]
+        }
+
+        set out = out + [s]
+    }
+
+    set b.steps = out
+    give b
+}
+
+proc add_input(b: CrabBuilder, id: string, name: string, path: string, hash: string, kind: string) -> CrabBuilder {
+    make out = []
+
+    for s in b.steps {
+        if s.id.value == id {
+            set s.inputs = s.inputs + [Artifact { name: name, path: path, hash: hash, kind: kind }]
+        }
+
+        set out = out + [s]
+    }
+
+    set b.steps = out
+    give b
+}
+
+proc add_output(b: CrabBuilder, id: string, name: string, path: string, hash: string, kind: string) -> CrabBuilder {
+    make out = []
+
+    for s in b.steps {
+        if s.id.value == id {
+            set s.outputs = s.outputs + [Artifact { name: name, path: path, hash: hash, kind: kind }]
+        }
+
+        set out = out + [s]
+    }
+
+    set b.steps = out
+    give b
+}
+
+proc disable_step(b: CrabBuilder, id: string) -> CrabBuilder {
+    make out = []
+
+    for s in b.steps {
+        if s.id.value == id {
+            set s.enabled = false
+        }
+
+        set out = out + [s]
+    }
+
+    set b.steps = out
+    give b
+}
+
+proc set_step_timeout(b: CrabBuilder, id: string, timeout_ms: i64) -> CrabBuilder {
+    make out = []
+
+    for s in b.steps {
+        if s.id.value == id {
+            set s.timeout_ms = timeout_ms
+        }
+
+        set out = out + [s]
+    }
+
+    set b.steps = out
+    give b
+}
+
+proc set_step_retries(b: CrabBuilder, id: string, retries: i32) -> CrabBuilder {
+    make out = []
+
+    for s in b.steps {
+        if s.id.value == id {
+            set s.retries = retries
+        }
+
+        set out = out + [s]
+    }
+
+    set b.steps = out
+    give b
+}
+
+proc mark_step_always(b: CrabBuilder, id: string) -> CrabBuilder {
+    make out = []
+
+    for s in b.steps {
+        if s.id.value == id {
+            set s.always = true
+        }
+
+        set out = out + [s]
+    }
+
+    set b.steps = out
+    give b
+}
+
+<<< =========================================================
+    Hooks / plugins
+========================================================= >>>
+
+proc add_hook(b: CrabBuilder, hook: Hook) -> CrabBuilder {
+    set b.hooks = push_hook(b.hooks, hook)
+    give b
+}
+
+proc register_plugin(b: CrabBuilder, plugin: Plugin) -> CrabBuilder {
+    set b.plugins = push_plugin(b.plugins, plugin)
+    set b = plugin.on_load(b)
+    give b
+}
+
+proc run_hooks(b: CrabBuilder, step: BuildStep) -> CrabBuilder {
+    for h in b.hooks {
+        set b = h.callback(b, step)
+    }
+
+    give b
+}
+
+proc run_plugins_step(b: CrabBuilder, step: BuildStep) -> CrabBuilder {
+    for p in b.plugins {
+        set b = p.on_step(b, step)
+    }
+
+    give b
+}
+
+proc run_plugins_finish(b: CrabBuilder, result: StepResult) -> CrabBuilder {
+    for p in b.plugins {
+        set b = p.on_finish(b, result)
+    }
+
+    give b
+}
+
+<<< =========================================================
+    Planning / validation
+========================================================= >>>
+
+proc step_exists(steps: [BuildStep], id: string) -> bool {
+    for s in steps {
+        if s.id.value == id {
+            give true
+        }
+    }
+
+    give false
+}
+
+proc validate_steps(b: CrabBuilder) -> CrabBuilder {
+    for s in b.steps {
+        if s.command == "" {
+            set b = log(b, "error", "empty command for step: " + s.id.value)
+            set b.status = BuildStatus.Failure("invalid step")
+            give b
+        }
+
+        for dep in s.deps {
+            if not step_exists(b.steps, dep.value) {
+                set b = log(b, "error", "missing dependency " + dep.value + " for step: " + s.id.value)
+                set b.status = BuildStatus.Failure("missing dependency")
+                give b
+            }
+        }
+    }
+
+    set b = log(b, "info", "validation complete")
+    set b.status = BuildStatus.Ready
+    give b
+}
+
+proc resolve_order(b: CrabBuilder) -> [BuildStep] {
+    give b.steps
+}
+
+<<< =========================================================
+    Execution
+========================================================= >>>
+
+proc exec_step(step: BuildStep) -> StepResult {
+    make status = true
+    make code = 0
+    make log_line = "ok"
+
+    if str_contains(step.command, "fail") {
+        set status = false
+        set code = 1
+        set log_line = "simulated failure"
+    }
+
+    give StepResult {
+        id: step.id,
+        ok: status,
+        code: code,
+        log: log_line,
+        elapsed_ms: 0,
+        cached: false
+    }
+}
+
+proc run_step_once(b: CrabBuilder, step: BuildStep) -> StepResult {
+    make key = step_key(step)
+
+    if not step.always {
+        make cached = cache_get(b.cache, key)
+
+        if cached != "" {
+            give StepResult {
+                id: step.id,
+                ok: true,
+                code: 0,
+                log: cached,
+                elapsed_ms: 0,
+                cached: true
+            }
+        }
+    }
+
+    give exec_step(step)
+}
+
+proc run_step_with_retries(b: CrabBuilder, step: BuildStep) -> StepResult {
+    make tries = 0
+    make last = StepResult {
+        id: step.id,
+        ok: false,
+        code: 1,
+        log: "not executed",
+        elapsed_ms: 0,
+        cached: false
+    }
+
+    while tries <= step.retries {
+        set last = run_step_once(b, step)
+
+        if last.ok {
+            give last
+        }
+
+        set tries = tries + 1
+    }
+
+    give last
+}
+
+proc run(b: CrabBuilder) -> bool {
+    set b.status = BuildStatus.Planning
+    set b = log(b, "info", "planning build")
+    set b = validate_steps(b)
+
+    when b.status is BuildStatus.Failure(reason) {
+        give false
+    }
+
+    set b.status = BuildStatus.Running
+    set b = log(b, "info", "build running")
+
+    make ordered = resolve_order(b)
+
+    for step in ordered {
+        if not step.enabled {
+            set b = log(b, "info", "skip disabled step: " + step.id.value)
+            continue
+        }
+
+        set b = run_hooks(b, step)
+        set b = run_plugins_step(b, step)
+
+        make started = now_ms()
+        make result = run_step_with_retries(b, step)
+        make ended = now_ms()
+        set result.elapsed_ms = ended - started
+
+        if result.cached {
+            set b.stats.cached_steps = b.stats.cached_steps + 1
+            set b = log(b, "info", "cache hit: " + step.id.value)
+        } else {
+            set b.stats.executed_steps = b.stats.executed_steps + 1
+            set b.cache = cache_put(b.cache, step_key(step), result.log)
+            set b = log(b, "info", "executed: " + step.id.value)
+        }
+
+        set b.stats.total_ms = b.stats.total_ms + result.elapsed_ms
+        set b = run_plugins_finish(b, result)
+
+        if not result.ok {
+            set b.stats.failed_steps = b.stats.failed_steps + 1
+            set b.status = BuildStatus.Failure(result.log)
+            set b = log(b, "error", "step failed: " + step.id.value)
+            give false
+        }
+    }
+
+    set b.status = BuildStatus.Success
+    set b = log(b, "info", "build success")
+    give true
+}
+
+proc run_report(b: CrabBuilder) -> BuildReport {
+    make results = []
+    make ok = true
+
+    set b.status = BuildStatus.Planning
+    set b = validate_steps(b)
+
+    when b.status is BuildStatus.Failure(reason) {
+        set ok = false
+    }
+
+    if ok {
+        set b.status = BuildStatus.Running
+        make ordered = resolve_order(b)
+
+        for step in ordered {
+            if not step.enabled {
+                continue
+            }
+
+            set b = run_hooks(b, step)
+            set b = run_plugins_step(b, step)
+
+            make started = now_ms()
+            make result = run_step_with_retries(b, step)
+            make ended = now_ms()
+            set result.elapsed_ms = ended - started
+            set results = push_result(results, result)
+
+            if result.cached {
+                set b.stats.cached_steps = b.stats.cached_steps + 1
+            } else {
+                set b.stats.executed_steps = b.stats.executed_steps + 1
+                set b.cache = cache_put(b.cache, step_key(step), result.log)
+            }
+
+            set b.stats.total_ms = b.stats.total_ms + result.elapsed_ms
+            set b = run_plugins_finish(b, result)
+
+            if not result.ok {
+                set b.stats.failed_steps = b.stats.failed_steps + 1
+                set b.status = BuildStatus.Failure(result.log)
+                set ok = false
+                give BuildReport {
+                    ok: false,
+                    status: "failure",
+                    total_ms: b.stats.total_ms,
+                    stats: b.stats,
+                    results: results,
+                    logs: b.logs
+                }
+            }
+        }
+    }
+
+    set b.status = BuildStatus.Success
+
+    give BuildReport {
+        ok: true,
+        status: "success",
+        total_ms: b.stats.total_ms,
+        stats: b.stats,
+        results: results,
+        logs: b.logs
+    }
+}
+
+<<< =========================================================
+    High level presets
+========================================================= >>>
+
+proc build_default() -> bool {
+    make b = new()
+    set b = set_name(b, "crab-project")
+    set b = set_target(b, "x86_64-unknown-linux-gnu")
+    set b = enable_opt(b)
+    set b = set_threads(b, 4)
+    set b = add_step(b, "compile", "crabcc main.crab")
+    set b = add_step(b, "link", "ld main.o")
+    set b = add_dep(b, "link", "compile")
+    set b = add_step(b, "package", "tar -czf build.tar.gz")
+    set b = add_dep(b, "package", "link")
+    give run(b)
+}
+
+proc default_report() -> BuildReport {
+    make b = new()
+    set b = set_name(b, "crab-project")
+    set b = set_target(b, "x86_64-unknown-linux-gnu")
+    set b = enable_opt(b)
+    set b = add_step(b, "compile", "crabcc main.crab")
+    set b = add_step(b, "link", "ld main.o")
+    set b = add_dep(b, "link", "compile")
+    give run_report(b)
+}
+
+proc build_graph_demo(width: i32, depth: i32) -> bool {
+    make b = new()
+    set b = set_name(b, "graph-demo")
+
+    make d = 0
+
+    while d < depth {
+        make w = 0
+
+        while w < width {
+            make sid = "g-" + (d as string) + "-" + (w as string)
+            make cmd = "crab graph " + (d as string) + " " + (w as string)
+            set b = add_step(b, sid, cmd)
+
+            if d > 0 {
+                make prev = "g-" + ((d - 1) as string) + "-" + (w as string)
+                set b = add_dep(b, sid, prev)
+            }
+
+            if d > 0 and w > 0 {
+                make prev_diag = "g-" + ((d - 1) as string) + "-" + ((w - 1) as string)
+                set b = add_dep(b, sid, prev_diag)
+            }
+
+            set w = w + 1
+        }
+
+        set d = d + 1
+    }
+
+    give run(b)
+}
+
+<<< =========================================================
+    Plugin examples
+========================================================= >>>
+
+proc plugin_trace_load(b: CrabBuilder) -> CrabBuilder {
+    set b = log(b, "info", "trace plugin loaded")
+    give b
+}
+
+proc plugin_trace_step(b: CrabBuilder, step: BuildStep) -> CrabBuilder {
+    set b = log(b, "info", "trace step: " + step.id.value)
+    give b
+}
+
+proc plugin_trace_finish(b: CrabBuilder, result: StepResult) -> CrabBuilder {
+    if result.ok {
+        set b = log(b, "info", "trace finish ok: " + result.id.value)
+    } else {
+        set b = log(b, "error", "trace finish fail: " + result.id.value)
+    }
+
+    give b
+}
+
+proc trace_plugin() -> Plugin {
+    give Plugin {
+        name: "trace",
+        on_load: plugin_trace_load,
+        on_step: plugin_trace_step,
+        on_finish: plugin_trace_finish
+    }
+}
+
+proc hook_debug_callback(b: CrabBuilder, step: BuildStep) -> CrabBuilder {
+    set b = log(b, "info", "hook before step: " + step.id.value)
+    give b
+}
+
+proc debug_hook() -> Hook {
+    give Hook {
+        name: "debug-hook",
+        callback: hook_debug_callback
+    }
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/packages/crabbuilder/api {
+    make b = new()
+    set b = register_plugin(b, trace_plugin())
+    set b = add_hook(b, debug_hook())
+    set b = set_name(b, "crab-project")
+    set b = set_target(b, "x86_64-unknown-linux-gnu")
+    set b = enable_opt(b)
+    set b = set_threads(b, 4)
+    set b = add_step(b, "compile", "crabcc main.crab")
+    set b = add_step(b, "link", "ld main.o")
+    set b = add_dep(b, "link", "compile")
+    set b = add_step(b, "package", "tar -czf build.tar.gz")
+    set b = add_dep(b, "package", "link")
+
+    if run(b) {
+        emit "OK"
+    } else {
+        emit "FAIL"
+    }
+}

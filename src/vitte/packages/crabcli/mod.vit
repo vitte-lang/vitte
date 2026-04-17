@@ -1,0 +1,179 @@
+space vitte/crabcli
+
+proc version() -> string {
+  give "v0.1-rs"
+}
+
+proc family() -> string {
+  give "cli-runtime"
+}
+
+proc ready() -> bool {
+  give true
+}
+
+proc summary() -> string {
+  give "crabcli/cli-runtime"
+}
+
+space vitte/crabcli
+
+use vitte/packages/crabcli/prelude as prelude
+use vitte/packages/crabcli/internal/runtime as runtime
+use vitte/packages/crabcli/internal/validate as validate
+use vitte/packages/crabcli/internal/diagnostics as diagnostics
+use vitte/packages/crabcli/internal/policy as policy
+use vitte/packages/crabcli/domain as domain
+
+<<< =========================================================
+    CrabCLI root module (max max)
+========================================================= >>>
+
+form CrateInfo {
+    name: string,
+    version: string,
+    family: string,
+    summary: string,
+    ready: bool
+}
+
+form CrateHealth {
+    runtime_ok: bool,
+    validate_ok: bool,
+    diagnostics_ok: bool,
+    policy_ok: bool,
+    domain_ok: bool
+}
+
+<<< =========================================================
+    Metadata
+========================================================= >>>
+
+proc name() -> string {
+    give "crabcli"
+}
+
+proc version() -> string {
+    give "v0.2-max-max"
+}
+
+proc family() -> string {
+    give "cli-runtime"
+}
+
+proc ready() -> bool {
+    give true
+}
+
+proc summary() -> string {
+    give "crabcli/cli-runtime/max-max"
+}
+
+proc description() -> string {
+    give "Unified CLI runtime orchestration layer built on crabbuilder with runtime, validation, diagnostics, policy and domain"
+}
+
+<<< =========================================================
+    Health probes
+========================================================= >>>
+
+proc runtime_ok() -> bool {
+    make s = runtime.run()
+    give s.ok
+}
+
+proc validate_ok() -> bool {
+    make s = validate.collect()
+    give s.ok
+}
+
+proc diagnostics_ok() -> bool {
+    make s = diagnostics.collect()
+    give s.ok
+}
+
+proc policy_ok() -> bool {
+    make s = policy.evaluate()
+    give s.ok
+}
+
+proc domain_ok() -> bool {
+    make s = domain.domain_summary()
+    give s.ok
+}
+
+proc health() -> CrateHealth {
+    give CrateHealth {
+        runtime_ok: runtime_ok(),
+        validate_ok: validate_ok(),
+        diagnostics_ok: diagnostics_ok(),
+        policy_ok: policy_ok(),
+        domain_ok: domain_ok()
+    }
+}
+
+<<< =========================================================
+    Aggregation
+========================================================= >>>
+
+proc info() -> CrateInfo {
+    give CrateInfo {
+        name: name(),
+        version: version(),
+        family: family(),
+        summary: summary(),
+        ready: ready()
+    }
+}
+
+proc full_summary() -> string {
+    make h = health()
+
+    give "crabcli("
+        + "runtime=" + (h.runtime_ok as string) + ","
+        + "validate=" + (h.validate_ok as string) + ","
+        + "diagnostics=" + (h.diagnostics_ok as string) + ","
+        + "policy=" + (h.policy_ok as string) + ","
+        + "domain=" + (h.domain_ok as string)
+        + ")"
+}
+
+<<< =========================================================
+    Printing
+========================================================= >>>
+
+proc print_info(i: CrateInfo) {
+    emit "==== CRABCLI ===="
+    emit "name=" + i.name
+    emit "version=" + i.version
+    emit "family=" + i.family
+    emit "summary=" + i.summary
+    emit "ready=" + (i.ready as string)
+}
+
+proc print_health(h: CrateHealth) {
+    emit "---- health ----"
+    emit "runtime=" + (h.runtime_ok as string)
+    emit "validate=" + (h.validate_ok as string)
+    emit "diagnostics=" + (h.diagnostics_ok as string)
+    emit "policy=" + (h.policy_ok as string)
+    emit "domain=" + (h.domain_ok as string)
+}
+
+proc print_all() {
+    make i = info()
+    make h = health()
+
+    print_info(i)
+    print_health(h)
+
+    emit full_summary()
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcli {
+    print_all()
+}

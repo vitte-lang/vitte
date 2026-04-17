@@ -1,0 +1,231 @@
+
+
+space vitte/packages/crabbuilder/internal/policy
+
+use vitte/packages/crabbuilder/api as api
+use vitte/packages/crabbuilder/domain as domain
+use vitte/packages/crabbuilder/compat as compat
+
+<<< =========================================================
+    Policy domain
+========================================================= >>>
+
+form PolicyRule {
+    name: string,
+    enabled: bool,
+    severity: string,
+    description: string
+}
+
+form PolicyViolation {
+    rule: string,
+    severity: string,
+    message: string,
+    step_id: string
+}
+
+form PolicyResult {
+    ok: bool,
+    violations: [PolicyViolation]
+}
+
+form PolicyConfig {
+    require_target: bool,
+    require_steps: bool,
+    forbid_empty_command: bool,
+    max_steps: i32,
+    enforce_cache: bool,
+    enforce_compat: bool
+}
+
+<<< =========================================================
+    Defaults
+========================================================= >>>
+
+proc default_config() -> PolicyConfig {
+    give PolicyConfig {
+        require_target: true,
+        require_steps: true,
+        forbid_empty_command: true,
+        max_steps: 1000,
+        enforce_cache: false,
+        enforce_compat: false
+    }
+}
+
+proc empty_result() -> PolicyResult {
+    give PolicyResult {
+        ok: true,
+        violations: []
+    }
+}
+
+proc push_violation(list: [PolicyViolation], item: PolicyViolation) -> [PolicyViolation] {
+    give list + [item]
+}
+
+proc add_violation(r: PolicyResult, rule: string, severity: string, message: string, step_id: string) -> PolicyResult {
+    set r.violations = push_violation(r.violations, PolicyViolation {
+        rule: rule,
+        severity: severity,
+        message: message,
+        step_id: step_id
+    })
+
+    if severity == "error" {
+        set r.ok = false
+    }
+
+    give r
+}
+
+<<< =========================================================
+    Rule checks
+========================================================= >>>
+
+proc check_target(cfg: PolicyConfig, r: PolicyResult, b: api.CrabBuilder) -> PolicyResult {
+    if cfg.require_target {
+        if b.config.target == "" {
+            set r = add_violation(r, "require_target", "error", "target is missing", "")
+        }
+    }
+
+    give r
+}
+
+proc check_steps(cfg: PolicyConfig, r: PolicyResult, b: api.CrabBuilder) -> PolicyResult {
+    make count = 0
+
+    for s in b.steps {
+        set count = count + 1
+    }
+
+    if cfg.require_steps and count == 0 {
+        set r = add_violation(r, "require_steps", "error", "no steps defined", "")
+    }
+
+    if count > cfg.max_steps {
+        set r = add_violation(r, "max_steps", "warn", "too many steps", "")
+    }
+
+    give r
+}
+
+proc check_step_commands(cfg: PolicyConfig, r: PolicyResult, b: api.CrabBuilder) -> PolicyResult {
+    if not cfg.forbid_empty_command {
+        give r
+    }
+
+    for s in b.steps {
+        if s.command == "" {
+            set r = add_violation(r, "empty_command", "error", "step command is empty", s.id.value)
+        }
+    }
+
+    give r
+}
+
+proc check_cache(cfg: PolicyConfig, r: PolicyResult, b: api.CrabBuilder) -> PolicyResult {
+    if not cfg.enforce_cache {
+        give r
+    }
+
+    make count = 0
+    for e in b.cache.entries {
+        set count = count + 1
+    }
+
+    if count == 0 {
+        set r = add_violation(r, "cache_required", "warn", "cache is empty", "")
+    }
+
+    give r
+}
+
+proc check_compat(cfg: PolicyConfig, r: PolicyResult, target: string) -> PolicyResult {
+    if not cfg.enforce_compat {
+        give r
+    }
+
+    make report = compat.plan_target(target)
+
+    if not report.ok {
+        set r = add_violation(r, "compat_required", "error", "compatibility failed", "")
+    }
+
+    give r
+}
+
+<<< =========================================================
+    Public API
+========================================================= >>>
+
+proc evaluate(b: api.CrabBuilder) -> PolicyResult {
+    make cfg = default_config()
+    give evaluate_with_config(b, cfg)
+}
+
+proc evaluate_with_config(b: api.CrabBuilder, cfg: PolicyConfig) -> PolicyResult {
+    make r = empty_result()
+
+    set r = check_target(cfg, r, b)
+    set r = check_steps(cfg, r, b)
+    set r = check_step_commands(cfg, r, b)
+    set r = check_cache(cfg, r, b)
+    set r = check_compat(cfg, r, b.config.target)
+
+    give r
+}
+
+<<< =========================================================
+    Domain integration
+========================================================= >>>
+
+proc evaluate_domain(project: domain.ProjectModel, report: domain.BuildReportModel) -> PolicyResult {
+    make r = empty_result()
+
+    if project.identity.target.value == "" {
+        set r = add_violation(r, "domain.target", "error", "domain target missing", "")
+    }
+
+    if not report.ok {
+        set r = add_violation(r, "domain.report", "error", "domain report failed", "")
+    }
+
+    give r
+}
+
+<<< =========================================================
+    Reporting
+========================================================= >>>
+
+proc print_violation(v: PolicyViolation) {
+    emit v.severity + ":" + v.rule + ":" + v.message + ":" + v.step_id
+}
+
+proc print_result(r: PolicyResult) {
+    emit "==== POLICY RESULT ===="
+    emit "ok=" + (r.ok as string)
+
+    for v in r.violations {
+        print_violation(v)
+    }
+}
+
+<<< =========================================================
+    Demo
+========================================================= >>>
+
+proc demo_builder() -> api.CrabBuilder {
+    make b = api.new()
+    set b = api.set_name(b, "policy-demo")
+    set b = api.set_target(b, "x86_64-unknown-linux-gnu")
+    set b = api.add_step(b, "compile", "")
+    give b
+}
+
+entry main at vitte/packages/crabbuilder/internal/policy {
+    make b = demo_builder()
+    make r = evaluate(b)
+    print_result(r)
+}

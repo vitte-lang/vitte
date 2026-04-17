@@ -1,0 +1,237 @@
+space vitte/crabcli/internal/policy
+
+use vitte/packages/crabcli/api as cli_api
+use vitte/packages/crabcli/compat as cli_compat
+use vitte/packages/crabbuilder/prelude as builder_prelude
+use vitte/packages/crabbuilder/internal/policy as builder_policy
+use vitte/packages/crabbuilder/internal/runtime as builder_runtime
+use vitte/packages/crabbuilder/internal/validate as builder_validate
+use vitte/packages/crabbuilder/internal/diagnostics as builder_diagnostics
+
+<<< =========================================================
+    Policy domain
+========================================================= >>>
+
+form PolicyRule {
+  name: string,
+  enabled: bool,
+  severity: string,
+  description: string
+}
+
+form PolicyViolation {
+  rule: string,
+  message: string,
+  severity: string
+}
+
+form PolicySummary {
+  ok: bool,
+  total_rules: i32,
+  violations: i32,
+  errors: i32,
+  warnings: i32,
+  notes: [string]
+}
+
+<<< =========================================================
+    Defaults
+========================================================= >>>
+
+proc default_profile() -> string {
+  give "stable"
+}
+
+proc bool_to_string(v: bool) -> string {
+  if v { give "true" }
+  give "false"
+}
+
+proc push_rule(list: [PolicyRule], item: PolicyRule) -> [PolicyRule] {
+  give list + [item]
+}
+
+proc push_violation(list: [PolicyViolation], item: PolicyViolation) -> [PolicyViolation] {
+  give list + [item]
+}
+
+proc push_note(list: [string], item: string) -> [string] {
+  give list + [item]
+}
+
+<<< =========================================================
+    Rules registry
+========================================================= >>>
+
+proc rules() -> [PolicyRule] {
+  make out = []
+
+  set out = push_rule(out, PolicyRule {
+    name: "runtime-ok",
+    enabled: true,
+    severity: "error",
+    description: "runtime must succeed"
+  })
+
+  set out = push_rule(out, PolicyRule {
+    name: "validate-ok",
+    enabled: true,
+    severity: "error",
+    description: "validation must succeed"
+  })
+
+  set out = push_rule(out, PolicyRule {
+    name: "diagnostics-ok",
+    enabled: true,
+    severity: "warn",
+    description: "diagnostics should succeed"
+  })
+
+  set out = push_rule(out, PolicyRule {
+    name: "compat-ok",
+    enabled: true,
+    severity: "error",
+    description: "target must be compatible"
+  })
+
+  set out = push_rule(out, PolicyRule {
+    name: "policy-ok",
+    enabled: true,
+    severity: "error",
+    description: "builder policy must succeed"
+  })
+
+  give out
+}
+
+<<< =========================================================
+    Evaluation
+========================================================= >>>
+
+proc evaluate() -> PolicySummary {
+  make b = builder_prelude.default_builder()
+
+  make r = builder_runtime.execute(b)
+  make v = builder_validate.validate_builder_integrated(b)
+  make c = cli_compat.plan_target(b.config.target)
+  make d = builder_diagnostics.summarize_builder_with_compat(b, c)
+  make p = builder_policy.evaluate(b)
+
+  make violations = []
+
+  if not r.ok {
+    set violations = push_violation(violations, PolicyViolation {
+      rule: "runtime-ok",
+      message: "runtime failed",
+      severity: "error"
+    })
+  }
+
+  if not v.ok {
+    set violations = push_violation(violations, PolicyViolation {
+      rule: "validate-ok",
+      message: "validation failed",
+      severity: "error"
+    })
+  }
+
+  if not d.ok {
+    set violations = push_violation(violations, PolicyViolation {
+      rule: "diagnostics-ok",
+      message: "diagnostics degraded",
+      severity: "warn"
+    })
+  }
+
+  if not c.ok {
+    set violations = push_violation(violations, PolicyViolation {
+      rule: "compat-ok",
+      message: "compatibility failed",
+      severity: "error"
+    })
+  }
+
+  if not p.ok {
+    set violations = push_violation(violations, PolicyViolation {
+      rule: "policy-ok",
+      message: "builder policy failed",
+      severity: "error"
+    })
+  }
+
+  give summarize(violations)
+}
+
+<<< =========================================================
+    Aggregation
+========================================================= >>>
+
+proc count(list: [PolicyViolation]) -> i32 {
+  make n = 0
+  for item in list {
+    set n = n + 1
+  }
+  give n
+}
+
+proc count_errors(list: [PolicyViolation]) -> i32 {
+  make n = 0
+  for item in list {
+    if item.severity == "error" {
+      set n = n + 1
+    }
+  }
+  give n
+}
+
+proc count_warnings(list: [PolicyViolation]) -> i32 {
+  make n = 0
+  for item in list {
+    if item.severity == "warn" {
+      set n = n + 1
+    }
+  }
+  give n
+}
+
+proc summarize(list: [PolicyViolation]) -> PolicySummary {
+  make notes = []
+
+  set notes = push_note(notes, "violations=" + (count(list) as string))
+  set notes = push_note(notes, "errors=" + (count_errors(list) as string))
+
+  give PolicySummary {
+    ok: count_errors(list) == 0,
+    total_rules: count(rules()),
+    violations: count(list),
+    errors: count_errors(list),
+    warnings: count_warnings(list),
+    notes: notes
+  }
+}
+
+<<< =========================================================
+    Printing
+========================================================= >>>
+
+proc print_summary(s: PolicySummary) {
+  emit "==== CRABCLI POLICY ===="
+  emit "ok=" + bool_to_string(s.ok)
+  emit "total_rules=" + (s.total_rules as string)
+  emit "violations=" + (s.violations as string)
+  emit "errors=" + (s.errors as string)
+  emit "warnings=" + (s.warnings as string)
+
+  for n in s.notes {
+    emit n
+  }
+}
+
+<<< =========================================================
+    Entry
+========================================================= >>>
+
+entry main at vitte/crabcli/internal/policy {
+  make s = evaluate()
+  print_summary(s)
+}
