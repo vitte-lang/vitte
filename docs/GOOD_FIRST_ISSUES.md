@@ -44,7 +44,6 @@ Good first issue shape:
 Start with:
 
 - `docs/TEST_STRATEGY.md`
-- `docs/TEST_MAP.md`
 - `tests/`
 
 ### Tooling ergonomics

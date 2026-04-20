@@ -1,14 +1,16 @@
 // GENERATED FILE - DO NOT EDIT
 // source: src/vitte/grammar/vitte.ebnf
-// source_sha256: d447c22a06fd14a1a595fd74c73bec42abf755668f288ad424fcd944e83fa6f9
+// source_sha256: 73f29b53eb1a266d5ee6dbdbf2f23247f4c23fd6705e3f8604dbafb2ef8a022d
 // tool: book/grammar/scripts/sync_pest.py v1
-WHITESPACE = _{ " " | "\t" | NEWLINE }
+WHITESPACE = _{ " " | "\t" | NEWLINE | block_comment }
 NEWLINE = _{ "\r\n" | "\n" }
+block_comment = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 
 program = { SOI ~ toplevel* ~ EOI }
 
 toplevel = {
     space_decl
+  | from_import_decl
   | use_decl
   | const_decl
   | type_alias_decl
@@ -19,6 +21,7 @@ toplevel = {
 }
 
 space_decl = { "space" ~ module_path }
+from_import_decl = { "from" ~ package_path ~ "import" ~ ident_list }
 use_decl = { "use" ~ package_path ~ (use_group | use_glob)? ~ ("as" ~ ident)? }
 use_glob = { "." ~ "*" }
 use_group = { "." ~ "{" ~ ("*" | ident_list ~ ("," ~ "*")?) ~ "}" }
@@ -35,7 +38,14 @@ case_item = { ("case")? ~ ident ~ ("(" ~ case_payload ~ ")")? }
 case_payload = { case_field ~ ("," ~ case_field)* }
 case_field = { ident ~ ":" ~ type_expr }
 
-proc_decl = { "proc" ~ ident ~ ("[" ~ ident_list ~ "]")? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ block? }
+attr_prefix = { attribute | shorthand_attribute | docstring }
+attribute = { "#[" ~ ident ~ ("(" ~ attr_arg_list? ~ ")")? ~ "]" }
+shorthand_attribute = { "@" ~ ident }
+docstring = { raw_string_lit }
+attr_arg_list = { attr_arg ~ ("," ~ attr_arg)* }
+attr_arg = { ident | string_lit | int_lit }
+
+proc_decl = { attr_prefix* ~ "proc" ~ ident ~ ("[" ~ ident_list ~ "]")? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ block_body? }
 param_list = { param ~ ("," ~ param)* }
 param = { ident ~ (":" ~ type_expr)? }
 
@@ -48,6 +58,8 @@ package_parts = { ident ~ (("/" | ".") ~ ident)* }
 ident_list = { ident ~ ("," ~ ident)* }
 
 block = { "{" ~ stmt* ~ "}" }
+inline_block = { ":" ~ expr }
+block_body = { block | inline_block }
 
 stmt = {
     let_stmt
@@ -72,12 +84,13 @@ asm_stmt = { "asm" ~ "(" ~ string_lit ~ ")" }
 unsafe_stmt = { "unsafe" ~ block }
 let_stmt = { "let" ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr }
 make_stmt = { "make" ~ ident ~ ("as" ~ type_expr)? ~ "=" ~ expr }
-set_stmt = { "set" ~ ident ~ "=" ~ expr }
+set_stmt = { "set" ~ assign_target ~ "=" ~ expr }
+assign_target = { postfix_expr }
 
 give_stmt = { "give" ~ expr }
 emit_stmt = { "emit" ~ expr }
 
-if_stmt = { "if" ~ expr ~ block ~ ("else" ~ (block | if_stmt))? }
+if_stmt = { "if" ~ expr ~ block_body ~ ("else" ~ (block_body | if_stmt))? }
 while_stmt = { "while" ~ expr ~ block }
 for_stmt = { "for" ~ ident ~ "in" ~ expr ~ block }
 
@@ -85,13 +98,15 @@ break_stmt = { "break" }
 continue_stmt = { "continue" }
 
 select_stmt = { "select" ~ expr ~ ("when" ~ pattern ~ block)* }
-match_stmt = { "match" ~ expr ~ "{" ~ ("case" ~ pattern ~ block)* ~ ("else" ~ block)? ~ "}" }
+match_stmt = { "match" ~ expr ~ "{" ~ ("case" ~ pattern ~ ("if" ~ expr)? ~ block_body)* ~ ("else" ~ block_body)? ~ "}" }
+match_expr = { "match" ~ expr ~ "{" ~ ("case" ~ pattern ~ ("if" ~ expr)? ~ block_body)* ~ ("else" ~ block_body)? ~ "}" }
 when_match_stmt = { "when" ~ expr ~ "is" ~ pattern ~ block }
 
 expr_stmt = { expr }
 
 expr = { assign_expr }
-assign_expr = { or_expr ~ ("=" ~ assign_expr)? }
+assign_expr = { range_expr ~ ("=" ~ assign_expr)? }
+range_expr = { or_expr ~ ((".." | "..=") ~ or_expr)? }
 
 or_expr = { and_expr ~ ("or" ~ and_expr)* }
 and_expr = { eq_expr ~ ("and" ~ eq_expr)* }
@@ -110,9 +125,13 @@ call_suffix = { "(" ~ arg_list? ~ ")" }
 member_suffix = { "." ~ ident }
 index_suffix = { "[" ~ expr ~ "]" }
 
-primary = { literal | ident | list_lit | "(" ~ expr ~ ")" }
+primary = { literal | ident | list_lit | tuple_lit | set_lit | if_expr | proc_expr | match_expr | block | "(" ~ expr ~ ")" }
 
 arg_list = { expr ~ ("," ~ expr)* }
+tuple_lit = { "(" ~ expr ~ "," ~ expr ~ ("," ~ expr)* ~ ")" }
+set_lit = { "set" ~ "{" ~ arg_list? ~ "}" }
+if_expr = { "if" ~ expr ~ block_body ~ ("else" ~ (block_body | if_expr))? }
+proc_expr = { attr_prefix* ~ "proc" ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ block_body }
 
 pattern = { pattern_head ~ ("(" ~ pattern_args? ~ ")")? }
 pattern_head = { ident ~ ("." ~ ident)* }

@@ -5,6 +5,7 @@ program ::= WS? { toplevel WS? } ;
 <<< ——————————————————— ) ( Top-level ) ( ——————————————————— >>>
 
 toplevel ::= space_decl
+          | from_import_decl
           | use_decl
           | const_decl
           | type_alias_decl
@@ -15,6 +16,7 @@ toplevel ::= space_decl
           ;
 
 space_decl ::= "space" WS1 module_path ;
+from_import_decl ::= "from" WS1 package_path WS1 "import" WS1 ident_list ;
 use_decl   ::= "use" WS1 package_path [ use_group | use_glob ] [ WS1 "as" WS1 ident ] ;
 use_glob   ::= "." "*" ;
 use_group  ::= "." "{" WS? ( "*" | ident_list [ WS? "," WS? "*" ]? ) WS? "}" ;
@@ -33,10 +35,17 @@ case_item ::= [ "case" WS1 ] ident [ "(" WS? case_payload WS? ")" ] ;
 case_payload ::= case_field { WS? "," WS? case_field } ;
 case_field ::= ident WS? ":" WS? type_expr ;
 
-proc_decl ::= "proc" WS1 ident [ "[" WS? ident_list WS? "]" ]
+attr_prefix ::= attribute | shorthand_attribute | docstring ;
+attribute ::= "#[" ident [ "(" WS? attr_arg_list? WS? ")" ] "]" ;
+shorthand_attribute ::= "@" ident ;
+docstring ::= raw_string_lit ;
+attr_arg_list ::= attr_arg { WS? "," WS? attr_arg } ;
+attr_arg ::= ident | string_lit | int_lit ;
+
+proc_decl ::= { attr_prefix WS? } "proc" WS1 ident [ "[" WS? ident_list WS? "]" ]
              "(" WS? param_list? WS? ")"
              WS? [ "->" WS? type_expr ]
-             WS? block? ;
+             WS? block_body? ;
 param_list ::= param { WS? "," WS? param } ;
 param ::= ident [ WS? ":" WS? type_expr ] ;
 
@@ -51,6 +60,8 @@ ident_list ::= ident { WS? "," WS? ident } ;
 <<< ——————————————————— ) ( Block / Statements ) ( ——————————————————— >>>
 
 block ::= "{" WS? { stmt WS? } "}" ;
+inline_block ::= ":" WS? expr ;
+block_body ::= block | inline_block ;
 
 stmt ::= let_stmt
        | asm_stmt
@@ -74,13 +85,14 @@ asm_stmt ::= "asm" WS? "(" WS? string_lit WS? ")" ;
 unsafe_stmt ::= "unsafe" WS? block ;
 let_stmt  ::= "let" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
 make_stmt ::= "make" WS1 ident [ WS1 "as" WS1 type_expr ] WS? "=" WS? expr ;
-set_stmt  ::= "set" WS1 ident WS? "=" WS? expr ;
+set_stmt  ::= "set" WS1 assign_target WS? "=" WS? expr ;
+assign_target ::= postfix_expr ;
 
 give_stmt ::= "give" WS1 expr ;
 emit_stmt ::= "emit" WS1 expr ;
 
-if_stmt ::= "if" WS1 expr WS? block
-            [ WS? "else" WS? ( block | if_stmt ) ] ;
+if_stmt ::= "if" WS1 expr WS? block_body
+            [ WS? "else" WS? ( block_body | if_stmt ) ] ;
 while_stmt ::= "while" WS1 expr WS? block ;
 for_stmt ::= "for" WS1 ident WS1 "in" WS1 expr WS? block ;
 
@@ -89,7 +101,9 @@ continue_stmt ::= "continue" ;
 
 select_stmt ::= "select" WS1 expr WS? { "when" WS1 pattern WS? block WS? } ;
 match_stmt ::= "match" WS1 expr WS?
-               "{" WS? { "case" WS1 pattern WS? block WS? } [ WS? "else" WS? block ] "}" ;
+               "{" WS? { "case" WS1 pattern [ WS1 "if" WS1 expr ] WS? block_body WS? } [ WS? "else" WS? block_body ] "}" ;
+match_expr ::= "match" WS1 expr WS?
+               "{" WS? { "case" WS1 pattern [ WS1 "if" WS1 expr ] WS? block_body WS? } [ WS? "else" WS? block_body ] "}" ;
 when_match_stmt ::= "when" WS1 expr WS1 "is" WS1 pattern WS? block ;
 
 expr_stmt ::= expr ;
@@ -97,7 +111,8 @@ expr_stmt ::= expr ;
 <<< ——————————————————— ) ( Expressions ) ( ——————————————————— >>>
 
 expr ::= assign_expr ;
-assign_expr ::= or_expr [ WS? "=" WS? assign_expr ] ;
+assign_expr ::= range_expr [ WS? "=" WS? assign_expr ] ;
+range_expr ::= or_expr [ WS? (".." | "..=") WS? or_expr ] ;
 
 or_expr  ::= and_expr { WS? "or" WS? and_expr } ;
 and_expr ::= eq_expr { WS? "and" WS? eq_expr } ;
@@ -119,10 +134,20 @@ index_suffix ::= "[" WS? expr WS? "]" ;
 primary ::= literal
           | ident
           | list_lit
+          | tuple_lit
+          | set_lit
+          | if_expr
+          | proc_expr
+          | match_expr
+          | block
           | "(" WS? expr WS? ")"
           ;
 
 arg_list ::= expr { WS? "," WS? expr } ;
+tuple_lit ::= "(" WS? expr WS? "," WS? expr { WS? "," WS? expr } WS? ")" ;
+set_lit ::= "set" WS? "{" WS? arg_list? WS? "}" ;
+if_expr ::= "if" WS1 expr WS? block_body [ WS? "else" WS? ( block_body | if_expr ) ] ;
+proc_expr ::= { attr_prefix WS? } "proc" WS? "(" WS? param_list? WS? ")" WS? [ "->" WS? type_expr ] WS? block_body ;
 
 <<< ——————————————————— ) ( Patterns / Types / Literals ) ( ——————————————————— >>>
 
@@ -153,13 +178,17 @@ string_char ::= "\\\"" | "\\\\" | ~"\"" ;
 raw_string_lit ::= "\"\"\"" { raw_string_char } "\"\"\"" ;
 raw_string_char ::= ~"\"\"\"" ;
 
+<<< ——————————————————— ) ( Lexical notes ) ( ——————————————————— >>>
+
+block_comment ::= "/*" { ~"*/" ANY } "*/" ;
+
 <<< ——————————————————— ) ( Lexical ) ( ——————————————————— >>>
 
 ident ::= (LETTER | "_") { LETTER | DIGIT | "_" } ;
 suffix ::= LETTER { LETTER } ;
 
-WS ::= { " " | "\t" | NEWLINE } ;
-WS1 ::= ( " " | "\t" | NEWLINE ) { " " | "\t" | NEWLINE } ;
+WS ::= { " " | "\t" | NEWLINE | block_comment } ;
+WS1 ::= ( " " | "\t" | NEWLINE | block_comment ) { " " | "\t" | NEWLINE | block_comment } ;
 
 NEWLINE ::= "\n" | "\r\n" ;
 

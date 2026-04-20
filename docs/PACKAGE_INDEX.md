@@ -124,7 +124,6 @@ Use this file when you need the practical index of facades, metadata, docs, and 
 | `sync` | `internal-by-default` | `src/vitte/packages/sync/mod.vit` | `src/vitte/packages/sync/info.vit` | `src/vitte/packages/sync/OWNERS` | `-` | `-` |
 | `template` | `internal-by-default` | `src/vitte/packages/template/mod.vit` | `src/vitte/packages/template/info.vit` | `src/vitte/packages/template/OWNERS` | `-` | `-` |
 | `tenant` | `internal-by-default` | `src/vitte/packages/tenant/mod.vit` | `src/vitte/packages/tenant/info.vit` | `src/vitte/packages/tenant/OWNERS` | `-` | `-` |
-| `test` | `documented-experimental` | `src/vitte/packages/test/mod.vit` | `src/vitte/packages/test/info.vit` | `src/vitte/packages/test/OWNERS` | `-` | `docs/test/API_INDEX.md` |
 | `testkit_modules` | `internal-by-default` | `src/vitte/packages/testkit_modules/mod.vit` | `src/vitte/packages/testkit_modules/info.vit` | `src/vitte/packages/testkit_modules/OWNERS` | `-` | `-` |
 | `timeout` | `internal-by-default` | `src/vitte/packages/timeout/mod.vit` | `src/vitte/packages/timeout/info.vit` | `src/vitte/packages/timeout/OWNERS` | `-` | `-` |
 | `tls` | `internal-by-default` | `src/vitte/packages/tls/mod.vit` | `src/vitte/packages/tls/info.vit` | `src/vitte/packages/tls/OWNERS` | `-` | `-` |

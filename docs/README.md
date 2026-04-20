@@ -48,7 +48,6 @@ Use it to find the shortest path to the document you actually need.
 - `docs/DEBUGGING_COMPILER.md`
 - `docs/WHERE_TO_PATCH_WHAT.md`
 - `docs/TEST_STRATEGY.md`
-- `docs/TEST_MAP.md`
 - `docs/MAKE_TARGETS.md`
 - `docs/TROUBLESHOOTING.md`
 - `docs/CI_WORKFLOWS.md`
