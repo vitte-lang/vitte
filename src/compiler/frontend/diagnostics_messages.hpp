@@ -178,7 +178,7 @@ constexpr DiagExplain diag_explain(DiagId id) {
         case DiagId::CoreForbiddenTopLevelSyntax:
             return {
                 "Strict-core mode rejects non-core top-level declarations.",
-                "Use only: space, pull, use, share, const, type, form, pick, proc, entry.",
+                "Use only: space, pull, use, share, const, type, form, class, pick, proc, entry.",
                 "space app/main\nproc run() -> int { give 0 }",
             };
         case DiagId::CoreForbiddenStatementSyntax:
@@ -262,7 +262,7 @@ constexpr DiagExplain diag_explain(DiagId id) {
         case DiagId::ExpectedTopLevelDeclaration:
             return {
                 "The parser expected a top-level declaration.",
-                "Top-level items include space, use, form, pick, type, const, proc, and entry.",
+                "Top-level items include space, use, form, class, pick, type, const, proc, and entry.",
                 "space my/app\nproc main() -> int { return 0 }",
             };
         case DiagId::DuplicatePatternBinding:

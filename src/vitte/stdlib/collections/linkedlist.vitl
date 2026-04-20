@@ -1,63 +1,203 @@
+
 space vitte/collections/linkedlist
 
 <<< =========================================================
-   Linked List Module
+   Linked List — ULTRA MAX (index-based, pooled nodes)
+   - singly linked list
+   - node pool (reuse indices)
+   - O(1) push_front / push_back / pop_front
+   - O(n) pop_back (singly constraint)
    ========================================================= >>>
 
-# Linked list node
+const NIL: i64 = -1
+
 form ListNode {
     value: i64,
     next: i64
 }
 
 form LinkedList {
+    nodes: [ListNode],
+    free: [i64],      # stack of free indices
     head: i64,
     tail: i64,
     size: i32
 }
 
-proc list_new() -> LinkedList {
-  give LinkedList {
-    head: -1,
-    tail: -1,
-    size: 0
-  }
+<<< ---------------------------------------------------------
+   Internals
+   --------------------------------------------------------- >>>
+
+proc _alloc_node(l: LinkedList, value: i64) -> i64 {
+    if l.free.len > 0 {
+        let idx = l.free[l.free.len - 1]
+        set l.free = l.free[0:l.free.len - 1]
+        set l.nodes[idx] = ListNode { value: value, next: NIL }
+        give idx
+    }
+
+    let idx = l.nodes.len
+    set l.nodes = l.nodes + [ListNode { value: value, next: NIL }]
+    give idx
 }
 
+proc _free_node(l: LinkedList, idx: i64) {
+    set l.nodes[idx].next = NIL
+    set l.free = l.free + [idx]
+}
+
+<<< ---------------------------------------------------------
+   Constructors
+   --------------------------------------------------------- >>>
+
+proc list_new() -> LinkedList {
+    give LinkedList {
+        nodes: [],
+        free: [],
+        head: NIL,
+        tail: NIL,
+        size: 0
+    }
+}
+
+<<< ---------------------------------------------------------
+   Push operations
+   --------------------------------------------------------- >>>
+
 proc list_push_front(l: LinkedList, value: i64) -> int {
-  l.size = l.size + 1
-  give 0
+    let idx = _alloc_node(l, value)
+
+    if l.head == NIL {
+        set l.head = idx
+        set l.tail = idx
+    } else {
+        set l.nodes[idx].next = l.head
+        set l.head = idx
+    }
+
+    set l.size = l.size + 1
+    give 1
 }
 
 proc list_push_back(l: LinkedList, value: i64) -> int {
-  l.size = l.size + 1
-  give 0
+    let idx = _alloc_node(l, value)
+
+    if l.tail == NIL {
+        set l.head = idx
+        set l.tail = idx
+    } else {
+        set l.nodes[l.tail].next = idx
+        set l.tail = idx
+    }
+
+    set l.size = l.size + 1
+    give 1
 }
 
+<<< ---------------------------------------------------------
+   Pop operations
+   --------------------------------------------------------- >>>
+
 proc list_pop_front(l: LinkedList) -> i64 {
-  if l.size <= 0 {
-    give 0
-  }
-  l.size = l.size - 1
-  give 0
+    if l.head == NIL {
+        give 0
+    }
+
+    let idx = l.head
+    let val = l.nodes[idx].value
+
+    set l.head = l.nodes[idx].next
+    if l.head == NIL {
+        set l.tail = NIL
+    }
+
+    _free_node(l, idx)
+    set l.size = l.size - 1
+
+    give val
 }
 
 proc list_pop_back(l: LinkedList) -> i64 {
-  if l.size <= 0 {
-    give 0
-  }
-  l.size = l.size - 1
-  give 0
+    if l.tail == NIL {
+        give 0
+    }
+
+    let val = l.nodes[l.tail].value
+
+    if l.head == l.tail {
+        _free_node(l, l.tail)
+        set l.head = NIL
+        set l.tail = NIL
+        set l.size = 0
+        give val
+    }
+
+    # find previous (O(n))
+    let prev: i64 = l.head
+    while l.nodes[prev].next != l.tail {
+        set prev = l.nodes[prev].next
+    }
+
+    _free_node(l, l.tail)
+    set l.nodes[prev].next = NIL
+    set l.tail = prev
+    set l.size = l.size - 1
+
+    give val
 }
 
+<<< ---------------------------------------------------------
+   Access
+   --------------------------------------------------------- >>>
+
+proc list_front(l: LinkedList) -> i64 {
+    if l.head == NIL { give 0 }
+    give l.nodes[l.head].value
+}
+
+proc list_back(l: LinkedList) -> i64 {
+    if l.tail == NIL { give 0 }
+    give l.nodes[l.tail].value
+}
+
+<<< ---------------------------------------------------------
+   Iteration helpers
+   --------------------------------------------------------- >>>
+
+proc list_to_array(l: LinkedList) -> [i64] {
+    let out: [i64] = []
+    let cur: i64 = l.head
+
+    while cur != NIL {
+        set out = out + [l.nodes[cur].value]
+        set cur = l.nodes[cur].next
+    }
+
+    give out
+}
+
+<<< ---------------------------------------------------------
+   Utilities
+   --------------------------------------------------------- >>>
+
 proc list_size(l: LinkedList) -> i32 {
-  give l.size
+    give l.size
+}
+
+proc list_is_empty(l: LinkedList) -> int {
+    give if l.size == 0 { 1 } else { 0 }
 }
 
 proc list_clear(l: LinkedList) {
-  l.head = -1
-  l.tail = -1
-  l.size = 0
+    set l.nodes = []
+    set l.free = []
+    set l.head = NIL
+    set l.tail = NIL
+    set l.size = 0
 }
+
+<<< ---------------------------------------------------------
+   End module
+   --------------------------------------------------------- >>>
 
 share all

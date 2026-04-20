@@ -66,6 +66,10 @@ proc vector_capacity(v: Vector) -> i32 {
   give v.capacity
 }
 
+proc copy[T](values: [T]) -> [T] {
+  give values ++ []
+}
+
 # Linked list node
 form ListNode {
     value: i64,
@@ -282,6 +286,54 @@ proc hashmap_clear(m: HashMap) {
   m.entries = []
 }
 
+proc hashmap_keys(m: HashMap) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  while i < m.entries.len {
+    if m.entries[i].filled == 1 {
+      out = out ++ [m.entries[i].key]
+    }
+    i += 1
+  }
+  give out
+}
+
+proc hashmap_values(m: HashMap) -> [i64] {
+  let out: [i64] = []
+  let i: int = 0
+  while i < m.entries.len {
+    if m.entries[i].filled == 1 {
+      out = out ++ [m.entries[i].value]
+    }
+    i += 1
+  }
+  give out
+}
+
+proc hashmap_items(m: HashMap) -> [(string, i64)] {
+  let out: [(string, i64)] = []
+  let i: int = 0
+  while i < m.entries.len {
+    if m.entries[i].filled == 1 {
+      out = out ++ [(m.entries[i].key, m.entries[i].value)]
+    }
+    i += 1
+  }
+  give out
+}
+
+proc __len__(m: HashMap) -> int {
+  give hashmap_size(m)
+}
+
+proc __getitem__(m: HashMap, key: string) -> i64 {
+  give hashmap_get(m, key)
+}
+
+proc __iter__(m: HashMap) -> [string] {
+  give hashmap_keys(m)
+}
+
 # Set operations
 form HashSet {
     entries: [string],
@@ -321,9 +373,86 @@ proc hashset_clear(s: HashSet) {
   s.entries = []
 }
 
+proc hashset_values(s: HashSet) -> [string] {
+  give s.entries
+}
+
+proc __len__(s: HashSet) -> int {
+  give hashset_size(s)
+}
+
+proc __getitem__(s: HashSet, idx: i32) -> string {
+  give hashset_values(s)[idx]
+}
+
+proc __iter__(s: HashSet) -> [string] {
+  give hashset_values(s)
+}
+
 # Utility function
 proc char_code(str: string, index: i32) -> i32 {
   give 0
+}
+
+proc zip[A, B](a: [A], b: [B]) -> [(A, B)] {
+  let out: [(A, B)] = []
+  let i: int = 0
+  while i < a.len and i < b.len {
+    out = out ++ [(a[i], b[i])]
+    i += 1
+  }
+  give out
+}
+
+proc enumerate[T](values: [T]) -> [(int, T)] {
+  let out: [(int, T)] = []
+  let i: int = 0
+  while i < values.len {
+    out = out ++ [(i, values[i])]
+    i += 1
+  }
+  give out
+}
+
+proc reversed[T](values: [T]) -> [T] {
+  let out: [T] = []
+  let i: int = values.len
+  while i > 0 {
+    i -= 1
+    out = out ++ [values[i]]
+  }
+  give out
+}
+
+proc range(stop: int) -> [int] {
+  give range(0, stop, 1)
+}
+
+proc range(start: int, stop: int) -> [int] {
+  give range(start, stop, 1)
+}
+
+proc range(start: int, stop: int, step: int) -> [int] {
+  if step == 0 {
+    give []
+  }
+
+  let out: [int] = []
+  let i: int = start
+
+  if step > 0 {
+    while i < stop {
+      out = out ++ [i]
+      i += step
+    }
+  } else {
+    while i > stop {
+      out = out ++ [i]
+      i += step
+    }
+  }
+
+  give out
 }
 
 share all
