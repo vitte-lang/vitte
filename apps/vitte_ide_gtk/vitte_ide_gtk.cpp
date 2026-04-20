@@ -4404,33 +4404,6 @@ void on_action_process_quickfix_config(GtkWidget*, gpointer user_data) {
                               "Process config quick-fix unavailable");
 }
 
-void on_action_test_api_doctor(GtkWidget*, gpointer user_data) {
-    auto* s = static_cast<AppState*>(user_data);
-    EditorTab* tab = current_tab(s);
-    const std::string payload_file = (tab != nullptr) ? tab->path : (s->root + "/src/vitte/packages/test/mod.vit");
-    std::string out;
-    if (!run_plugin_command_by_name(s, "vitte-test.doctor", "file=" + payload_file, &out) || out.empty()) {
-        const fs::path root = primary_workspace_root(s);
-        std::ostringstream report;
-        report << "Test API Doctor\n\n";
-        const std::vector<std::pair<std::string, std::string>> checks = {
-            {"test-mod-lint", "cd " + root.string() + " && python3 tools/lint_test_mod_contracts.py"},
-            {"test-no-internal-exports", "cd " + root.string() + " && python3 tools/lint_test_no_internal_exports.py"},
-            {"test-contract-snapshots", "cd " + root.string() + " && tools/test_contract_snapshots.sh"},
-            {"test-facade-snapshot", "cd " + root.string() + " && tools/test_facade_snapshot.sh"},
-            {"test-compat-contracts", "cd " + root.string() + " && python3 tools/lint_test_compat_contracts.py"},
-            {"test-security", "cd " + root.string() + " && python3 tools/lint_test_security.py"},
-        };
-        for (const auto& [name, cmd] : checks) {
-            report << "## " << name << "\n";
-            report << run_shell_capture(cmd) << "\n";
-        }
-        out = report.str();
-    }
-    show_tools_output(s, "Test API Doctor", out);
-    set_status(s, "Test API Doctor updated");
-}
-
 void on_action_lint_api_doctor(GtkWidget*, gpointer user_data) {
     auto* s = static_cast<AppState*>(user_data);
     EditorTab* tab = current_tab(s);
@@ -5620,10 +5593,6 @@ gboolean on_window_key_press(GtkWidget*, GdkEventKey* event, gpointer user_data)
             on_action_process_quickfix_config(nullptr, s);
             return TRUE;
         }
-        if (event->keyval == GDK_KEY_4 && alt) {
-            on_action_test_api_doctor(nullptr, s);
-            return TRUE;
-        }
         if (event->keyval == GDK_KEY_5 && alt) {
             on_action_lint_api_doctor(nullptr, s);
             return TRUE;
@@ -5818,7 +5787,6 @@ void activate(GtkApplication* app, gpointer user_data) {
     gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("dialog-information", "HTTP API Doctor (Ctrl+Shift+H)", G_CALLBACK(on_action_http_api_doctor), s), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("dialog-information", "HTTP Client API Doctor (Ctrl+Shift+C)", G_CALLBACK(on_action_http_client_api_doctor), s), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("dialog-information", "Process API Doctor (Alt+M)", G_CALLBACK(on_action_process_api_doctor), s), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("dialog-information", "Test API Doctor (Alt+4)", G_CALLBACK(on_action_test_api_doctor), s), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("dialog-information", "Lint API Doctor (Alt+5)", G_CALLBACK(on_action_lint_api_doctor), s), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("tools-check-spelling", "Log config quick-fix (Ctrl+Shift+K)", G_CALLBACK(on_action_log_quickfix_config), s), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("tools-check-spelling", "DB config quick-fix (Ctrl+Shift+P)", G_CALLBACK(on_action_db_quickfix_config), s), FALSE, FALSE, 0);
