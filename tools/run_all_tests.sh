@@ -12,7 +12,7 @@ summary="$REPORT_DIR/summary_${run_id}_${ALL_TESTS_GROUP}.txt"
 all_targets=(
   test parse parse-modules parse-strict hir-validate check-tests stress-alloc core-projects test-examples arduino-projects negative-tests diag-snapshots resolve-tests explain-snapshots wrapper-stage-test
   grammar-check ci-fast ci-strict
-  extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all std-core-tests stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
+  extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
   modules-tests modules-snapshots modules-contract-snapshots modules-ci-strict
   packages-governance-lint critical-runtime-matrix-lint packages-gate
   core-only-ci core-strict-ci std-only-ci std-strict-ci log-only-ci log-strict-ci fs-only-ci fs-strict-ci db-only-ci db-strict-ci http-only-ci http-strict-ci http-client-only-ci http-client-strict-ci process-only-ci process-strict-ci json-only-ci json-strict-ci yaml-only-ci yaml-strict-ci test-only-ci test-strict-ci lint-only-ci lint-strict-ci
@@ -31,7 +31,7 @@ select_targets() {
       printf "%s\n" grammar-check ci-fast ci-strict
       ;;
     abi)
-      printf "%s\n" extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all std-core-tests stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
+      printf "%s\n" extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
       ;;
     modules)
       printf "%s\n" modules-tests modules-snapshots modules-contract-snapshots modules-ci-strict

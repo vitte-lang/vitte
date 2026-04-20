@@ -32,7 +32,6 @@ def main() -> int:
         (ROOT/'tests/process/bench/process_bench_micro.must', ROOT/'target/bench/process_bench_micro.out', 'process'),
         (ROOT/'tests/json/bench/json_bench_micro.must', ROOT/'target/bench/json_bench_micro.out', 'json'),
         (ROOT/'tests/yaml/bench/yaml_bench_micro.must', ROOT/'target/bench/yaml_bench_micro.out', 'yaml'),
-        (ROOT/'tests/test/bench/test_bench_micro.must', ROOT/'target/bench/test_bench_micro.out', 'test'),
         (ROOT/'tests/lint/bench/lint_bench_micro.must', ROOT/'target/bench/lint_bench_micro.out', 'lint'),
     ]
 

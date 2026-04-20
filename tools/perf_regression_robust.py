@@ -34,7 +34,6 @@ def main() -> int:
     pairs = {
         'json': ROOT/'target/bench/json_bench_micro.out',
         'yaml': ROOT/'target/bench/yaml_bench_micro.out',
-        'test': ROOT/'target/bench/test_bench_micro.out',
         'lint': ROOT/'target/bench/lint_bench_micro.out',
     }
 

@@ -87,7 +87,6 @@ def main() -> int:
         "process": ("src/vitte/packages/process", "process_validate_sanitize_diag"),
         "json": ("src/vitte/packages/json", "parse_stringify_query"),
         "yaml": ("src/vitte/packages/yaml", "parse_stringify_query"),
-        "test": ("src/vitte/packages/test", "test_runner_core"),
         "lint": ("src/vitte/packages/lint", "lint_engine_core"),
     }
     micro: dict[str, float | None] = {}
