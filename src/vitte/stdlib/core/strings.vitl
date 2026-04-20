@@ -1,0 +1,298 @@
+space vitte/core/strings
+
+<<< =========================================================
+   String Utilities — C-like string operations
+   strlen, strcpy, strcat, strcmp, etc.
+   ========================================================= >>>
+
+# String length
+proc strlen(str: string) -> int {
+  give len(str)
+}
+
+# String compare (returns 0 if equal, <0 if a<b, >0 if a>b)
+proc strcmp(a: string, b: string) -> int {
+  let i: int = 0
+  let n: int = len(a)
+  let m: int = len(b)
+  
+  while i < n and i < m {
+    let ca: int = a[i] as i32
+    let cb: int = b[i] as i32
+    
+    if ca != cb {
+      give ca - cb
+    }
+    set i = i + 1
+  }
+  
+  # One string is prefix of another
+  if n != m { give n - m }
+  give 0
+}
+
+# String compare (case-insensitive)
+proc strcasecmp(a: string, b: string) -> int {
+  let i: int = 0
+  let n: int = len(a)
+  let m: int = len(b)
+  
+  while i < n and i < m {
+    let ca: int = a[i] as i32
+    let cb: int = b[i] as i32
+    
+    # Convert to lowercase for comparison
+    if ca >= 65 and ca <= 90 { set ca = ca + 32 }
+    if cb >= 65 and cb <= 90 { set cb = cb + 32 }
+    
+    if ca != cb { give ca - cb }
+    set i = i + 1
+  }
+  
+  if n != m { give n - m }
+  give 0
+}
+
+# String equality
+proc streq(a: string, b: string) -> bool {
+  give strcmp(a, b) == 0
+}
+
+# String inequality
+proc strne(a: string, b: string) -> bool {
+  give strcmp(a, b) != 0
+}
+
+# Find substring
+proc strstr(haystack: string, needle: string) -> int {
+  let h_len: int = len(haystack)
+  let n_len: int = len(needle)
+  
+  if n_len == 0 { give 0 }
+  if n_len > h_len { give -1 }
+  
+  let i: int = 0
+  while i <= h_len - n_len {
+    let j: int = 0
+    let match: bool = true
+    
+    while j < n_len {
+      if haystack[i + j] != needle[j] {
+        set match = false
+      }
+      set j = j + 1
+    }
+    
+    if match { give i }
+    set i = i + 1
+  }
+  
+  give -1
+}
+
+# Find character in string
+proc strchr(str: string, ch: int) -> int {
+  let i: int = 0
+  let n: int = len(str)
+  
+  while i < n {
+    let c: int = str[i] as i32
+    if c == ch { give i }
+    set i = i + 1
+  }
+  
+  give -1
+}
+
+# Find last occurrence of character
+proc strrchr(str: string, ch: int) -> int {
+  let i: int = len(str) - 1
+  
+  while i >= 0 {
+    let c: int = str[i] as i32
+    if c == ch { give i }
+    set i = i - 1
+  }
+  
+  give -1
+}
+
+# Count occurrences of character
+proc chrcount(str: string, ch: int) -> int {
+  let count: int = 0
+  let i: int = 0
+  let n: int = len(str)
+  
+  while i < n {
+    let c: int = str[i] as i32
+    if c == ch { set count = count + 1 }
+    set i = i + 1
+  }
+  
+  give count
+}
+
+# String starts with
+proc strbegin(str: string, prefix: string) -> bool {
+  let n: int = len(str)
+  let p_len: int = len(prefix)
+  
+  if p_len > n { give false }
+  
+  let i: int = 0
+  while i < p_len {
+    if str[i] != prefix[i] { give false }
+    set i = i + 1
+  }
+  
+  give true
+}
+
+# String ends with
+proc strend(str: string, suffix: string) -> bool {
+  let n: int = len(str)
+  let s_len: int = len(suffix)
+  
+  if s_len > n { give false }
+  
+  let i: int = 0
+  while i < s_len {
+    if str[n - s_len + i] != suffix[i] { give false }
+    set i = i + 1
+  }
+  
+  give true
+}
+
+# String replace first occurrence
+proc strreplace_first(str: string, old: string, new: string) -> string {
+  let pos: int = strstr(str, old)
+  
+  if pos < 0 { give str }
+  
+  let result: string = ""
+  let i: int = 0
+  
+  # Add up to replace position
+  while i < pos {
+    set result = result + (str[i] as string)
+    set i = i + 1
+  }
+  
+  # Add replacement
+  set result = result + new
+  
+  # Add rest of string
+  set i = pos + len(old)
+  while i < len(str) {
+    set result = result + (str[i] as string)
+    set i = i + 1
+  }
+  
+  give result
+}
+
+# Convert to uppercase
+proc strupcase(str: string) -> string {
+  let result: string = ""
+  let i: int = 0
+  
+  while i < len(str) {
+    let c: int = str[i] as i32
+    
+    # If lowercase letter, convert to uppercase
+    if c >= 97 and c <= 122 {
+      set c = c - 32
+    }
+    
+    set result = result + (c as string)
+    set i = i + 1
+  }
+  
+  give result
+}
+
+# Convert to lowercase
+proc strdowncase(str: string) -> string {
+  let result: string = ""
+  let i: int = 0
+  
+  while i < len(str) {
+    let c: int = str[i] as i32
+    
+    # If uppercase letter, convert to lowercase
+    if c >= 65 and c <= 90 {
+      set c = c + 32
+    }
+    
+    set result = result + (c as string)
+    set i = i + 1
+  }
+  
+  give result
+}
+
+# Trim whitespace from beginning
+proc strlstrip(str: string) -> string {
+  let i: int = 0
+  let n: int = len(str)
+  
+  while i < n {
+    let c: int = str[i] as i32
+    # Space (32), tab (9), newline (10), carriage return (13)
+    if c != 32 and c != 9 and c != 10 and c != 13 {
+      give str
+    }
+    set i = i + 1
+  }
+  
+  give ""
+}
+
+# Trim whitespace from end
+proc strrstrip(str: string) -> string {
+  let i: int = len(str) - 1
+  
+  while i >= 0 {
+    let c: int = str[i] as i32
+    if c != 32 and c != 9 and c != 10 and c != 13 {
+      give str
+    }
+    set i = i - 1
+  }
+  
+  give ""
+}
+
+# Trim whitespace from both ends
+proc strstrip(str: string) -> string {
+  give strlstrip(strrstrip(str))
+}
+
+# Repeat string
+proc strrepeat(str: string, count: int) -> string {
+  let result: string = ""
+  let i: int = 0
+  
+  while i < count {
+    set result = result + str
+    set i = i + 1
+  }
+  
+  give result
+}
+
+# Reverse string
+proc strreverse(str: string) -> string {
+  let result: string = ""
+  let i: int = len(str) - 1
+  
+  while i >= 0 {
+    set result = result + (str[i] as string)
+    set i = i - 1
+  }
+  
+  give result
+}
+
+share all

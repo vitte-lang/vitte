@@ -1,0 +1,330 @@
+space vitte/kernel/network
+
+<<< =========================================================
+   Kernel Network Management — Sockets, Network I/O
+   TCP/UDP, IP protocols, socket operations
+   ========================================================= >>>
+
+# Address families
+const AF_UNSPEC: i32 = 0
+const AF_UNIX: i32 = 1
+const AF_INET: i32 = 2
+const AF_INET6: i32 = 10
+
+# Socket types
+const SOCK_STREAM: i32 = 1
+const SOCK_DGRAM: i32 = 2
+const SOCK_RAW: i32 = 3
+const SOCK_SEQPACKET: i32 = 5
+
+# Protocols
+const IPPROTO_IP: i32 = 0
+const IPPROTO_ICMP: i32 = 1
+const IPPROTO_TCP: i32 = 6
+const IPPROTO_UDP: i32 = 17
+
+# Socket options
+const SOL_SOCKET: i32 = 1
+const SO_REUSEADDR: i32 = 2
+const SO_KEEPALIVE: i32 = 9
+const SO_SNDBUF: i32 = 7
+const SO_RCVBUF: i32 = 8
+const SO_LINGER: i32 = 13
+const SO_TYPE: i32 = 3
+const SO_ERROR: i32 = 4
+
+# TCP socket options
+const IPPROTO_TCP: i32 = 6
+const TCP_NODELAY: i32 = 1
+const TCP_KEEPIDLE: i32 = 4
+const TCP_KEEPINTVL: i32 = 5
+
+# Socket shutdown options
+const SHUT_RD: i32 = 0
+const SHUT_WR: i32 = 1
+const SHUT_RDWR: i32 = 2
+
+# Maximum backlog
+const SOMAXCONN: i32 = 128
+
+# IP address representation
+form IPv4Addr {
+    addr: string
+}
+
+form IPv6Addr {
+    addr: string
+}
+
+# Sockaddr structure
+form SockAddr {
+    family: i32,
+    address: string,
+    port: i32
+}
+
+# Host entry
+form HostEnt {
+    name: string,
+    aliases: [string],
+    family: i32,
+    addresses: [string]
+}
+
+<<< =========================================================
+   Basic Socket Operations
+   ========================================================= >>>
+
+proc socket(family: i32, type: i32, protocol: i32) -> i32 {
+  # Create a new socket
+  give -1
+}
+
+proc bind(sockfd: i32, addr: SockAddr) -> int {
+  # Bind socket to address
+  give 0
+}
+
+proc listen(sockfd: i32, backlog: i32) -> int {
+  # Listen for connections
+  give 0
+}
+
+proc accept(sockfd: i32) -> i32 {
+  # Accept connection
+  give -1
+}
+
+proc connect(sockfd: i32, addr: SockAddr) -> int {
+  # Connect to remote address
+  give 0
+}
+
+proc close(sockfd: i32) -> int {
+  # Close socket
+  give 0
+}
+
+proc shutdown(sockfd: i32, how: i32) -> int {
+  # Shutdown socket
+  give 0
+}
+
+<<< =========================================================
+   Socket I/O Operations
+   ========================================================= >>>
+
+proc send(sockfd: i32, buf: string, flags: i32) -> i64 {
+  # Send data on socket
+  give -1
+}
+
+proc sendto(sockfd: i32, buf: string, addr: SockAddr, flags: i32) -> i64 {
+  # Send data to address
+  give -1
+}
+
+proc sendmsg(sockfd: i32, msg: string, flags: i32) -> i64 {
+  # Send message
+  give -1
+}
+
+proc recv(sockfd: i32, buf_size: i64, flags: i32) -> string {
+  # Receive data from socket
+  give ""
+}
+
+proc recvfrom(sockfd: i32, buf_size: i64, addr: SockAddr, flags: i32) -> string {
+  # Receive data from address
+  give ""
+}
+
+proc recvmsg(sockfd: i32, buf_size: i64, flags: i32) -> string {
+  # Receive message
+  give ""
+}
+
+<<< =========================================================
+   Socket Information and Control
+   ========================================================= >>>
+
+proc getsockname(sockfd: i32) -> SockAddr {
+  # Get socket name
+  give SockAddr {
+    family: 0,
+    address: "",
+    port: 0
+  }
+}
+
+proc getpeername(sockfd: i32) -> SockAddr {
+  # Get peer socket name
+  give SockAddr {
+    family: 0,
+    address: "",
+    port: 0
+  }
+}
+
+proc getsockopt(sockfd: i32, level: i32, optname: i32) -> string {
+  # Get socket option
+  give ""
+}
+
+proc setsockopt(sockfd: i32, level: i32, optname: i32, optval: string) -> int {
+  # Set socket option
+  give 0
+}
+
+proc fcntl(sockfd: i32, cmd: i32, arg: i32) -> int {
+  # File descriptor control
+  give 0
+}
+
+proc ioctl(sockfd: i32, req: i32, arg: string) -> int {
+  # Input/output control
+  give 0
+}
+
+<<< =========================================================
+   Internet Address Conversion
+   ========================================================= >>>
+
+proc inet_aton(cp: string) -> IPv4Addr {
+  # Convert IP string to binary
+  give IPv4Addr { addr: cp }
+}
+
+proc inet_ntoa(addr: IPv4Addr) -> string {
+  # Convert binary IP to string
+  give addr.addr
+}
+
+proc inet_pton(family: i32, src: string) -> string {
+  # Convert presentation format to network format
+  give src
+}
+
+proc inet_ntop(family: i32, src: string) -> string {
+  # Convert network format to presentation format
+  give src
+}
+
+proc htons(hostshort: i32) -> i32 {
+  # Convert host byte order to network byte order (short)
+  give hostshort
+}
+
+proc ntohs(netshort: i32) -> i32 {
+  # Convert network byte order to host byte order (short)
+  give netshort
+}
+
+proc htonl(hostlong: i32) -> i32 {
+  # Convert host byte order to network byte order (long)
+  give hostlong
+}
+
+proc ntohl(netlong: i32) -> i32 {
+  # Convert network byte order to host byte order (long)
+  give netlong
+}
+
+<<< =========================================================
+   Name Resolution
+   ========================================================= >>>
+
+proc gethostbyname(name: string) -> HostEnt {
+  # Get host information by name
+  give HostEnt {
+    name: name,
+    aliases: [],
+    family: AF_INET,
+    addresses: []
+  }
+}
+
+proc gethostbyaddr(addr: string) -> HostEnt {
+  # Get host information by address
+  give HostEnt {
+    name: "",
+    aliases: [],
+    family: AF_INET,
+    addresses: [addr]
+  }
+}
+
+proc getservbyname(name: string, proto: string) -> i32 {
+  # Get service port by name
+  give 0
+}
+
+proc getservbyport(port: i32, proto: string) -> string {
+  # Get service name by port
+  give ""
+}
+
+proc getprotobyname(name: string) -> i32 {
+  # Get protocol number by name
+  give 0
+}
+
+proc getprotobynumber(proto: i32) -> string {
+  # Get protocol name by number
+  give ""
+}
+
+<<< =========================================================
+   Advanced Socket Options
+   ========================================================= >>>
+
+proc setsockopt_int(sockfd: i32, level: i32, optname: i32, optval: i32) -> int {
+  # Set integer socket option
+  give 0
+}
+
+proc getsockopt_int(sockfd: i32, level: i32, optname: i32) -> i32 {
+  # Get integer socket option
+  give 0
+}
+
+proc poll(fds: [i32], timeout: i32) -> int {
+  # Poll file descriptors
+  give 0
+}
+
+proc select(nfds: i32, timeout: i32) -> int {
+  # Select from file descriptors
+  give 0
+}
+
+<<< =========================================================
+   Multicast Operations
+   ========================================================= >>>
+
+proc setsockopt_mcast_loop(sockfd: i32, loop: int) -> int {
+  # Enable/disable multicast loopback
+  give 0
+}
+
+proc setsockopt_mcast_ttl(sockfd: i32, ttl: i32) -> int {
+  # Set multicast TTL
+  give 0
+}
+
+proc setsockopt_mcast_if(sockfd: i32, ifaddr: string) -> int {
+  # Set multicast interface
+  give 0
+}
+
+proc setsockopt_join_group(sockfd: i32, group: string, ifaddr: string) -> int {
+  # Join multicast group
+  give 0
+}
+
+proc setsockopt_leave_group(sockfd: i32, group: string) -> int {
+  # Leave multicast group
+  give 0
+}
+
+share all

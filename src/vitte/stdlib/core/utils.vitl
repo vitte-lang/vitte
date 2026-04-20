@@ -1,0 +1,223 @@
+space vitte/core/utils
+
+<<< =========================================================
+   Utility Functions — Random, Time, Error handling
+   General-purpose utilities like C stdlib
+   ========================================================= >>>
+
+# Random number generation (LCG - Linear Congruential Generator)
+let _rand_seed: i64 = 1
+
+proc srand(seed: i64) -> () {
+  set _rand_seed = seed
+}
+
+proc rand() -> i64 {
+  # LCG formula: next = (a * prev + c) mod m
+  set _rand_seed = (6364136223846793005i64 * _rand_seed + 1i64)
+  give (_rand_seed / 65536i64) % 32768i64
+}
+
+proc rand_range(min: i64, max: i64) -> i64 {
+  if min > max { give min }
+  let range: i64 = max - min + 1i64
+  give min + (rand() % range)
+}
+
+proc rand_float() -> f64 {
+  give (rand() as f64) / 32767.0
+}
+
+proc rand_float_range(min: f64, max: f64) -> f64 {
+  if min > max { give min }
+  give min + rand_float() * (max - min)
+}
+
+<<< =========================================================
+   Time Functions (Simulated)
+   ========================================================= >>>
+
+# Clock structure
+form Clock {
+    seconds: i64,
+    milliseconds: i64
+}
+
+let _internal_clock: Clock = Clock { seconds: 0, milliseconds: 0 }
+
+proc clock() -> i64 {
+  # Placeholder: return clock ticks
+  give _internal_clock.milliseconds
+}
+
+proc get_time() -> Clock {
+  give _internal_clock
+}
+
+proc set_time(seconds: i64, milliseconds: i64) -> () {
+  set _internal_clock = Clock { seconds: seconds, milliseconds: milliseconds }
+}
+
+proc time() -> i64 {
+  give _internal_clock.seconds
+}
+
+proc difftime(end_time: i64, start_time: i64) -> i64 {
+  give end_time - start_time
+}
+
+<<< =========================================================
+   Error Handling
+   ========================================================= >>>
+
+# Error codes (errno-like)
+const NOERR: int = 0
+const EPERM: int = 1         # Operation not permitted
+const ENOENT: int = 2        # No such file or directory
+const ESRCH: int = 3         # No such process
+const EINTR: int = 4         # Interrupted system call
+const EIO: int = 5           # I/O error
+const ENXIO: int = 6         # No such device or address
+const E2BIG: int = 7         # Argument list too long
+const ENOEXEC: int = 8       # Exec format error
+const EBADF: int = 9         # Bad file number
+const ECHILD: int = 10       # No child processes
+const EAGAIN: int = 11       # Try again
+const ENOMEM: int = 12       # Out of memory
+const EACCES: int = 13       # Permission denied
+const EFAULT: int = 14       # Bad address
+const ENOTBLK: int = 15      # Block device required
+const EBUSY: int = 16        # Device or resource busy
+const EEXIST: int = 17       # File exists
+const EXDEV: int = 18        # Cross-device link
+const ENODEV: int = 19       # No such device
+const ENOTDIR: int = 20      # Not a directory
+
+let _errno: int = 0
+
+proc set_errno(err: int) -> () {
+  set _errno = err
+}
+
+proc get_errno() -> int {
+  give _errno
+}
+
+proc clear_errno() -> () {
+  set _errno = 0
+}
+
+proc strerror(err: int) -> string {
+  if err == 0 { give "No error" }
+  if err == 1 { give "Operation not permitted" }
+  if err == 2 { give "No such file or directory" }
+  if err == 5 { give "I/O error" }
+  if err == 12 { give "Out of memory" }
+  if err == 13 { give "Permission denied" }
+  if err == 17 { give "File exists" }
+  give "Unknown error"
+}
+
+<<< =========================================================
+   Assert & Debug
+   ========================================================= >>>
+
+proc assert(condition: bool, message: string) -> () {
+  if not condition {
+    # In real implementation, would abort or throw
+    # For now, just print to stderr
+  }
+}
+
+proc assert_equal(a: int, b: int, message: string) -> () {
+  if a != b {
+    # Assertion failed
+  }
+}
+
+proc assert_not_null(ptr: i64, message: string) -> () {
+  if ptr == 0 {
+    # Null pointer assertion failed
+  }
+}
+
+<<< =========================================================
+   Conversion Utilities
+   ========================================================= >>>
+
+proc atoi(str: string) -> i64 {
+  let result: i64 = 0
+  let i: int = 0
+  let negative: bool = false
+  
+  if i < len(str) and str[i] == '-' {
+    set negative = true
+    set i = i + 1
+  } else if i < len(str) and str[i] == '+' {
+    set i = i + 1
+  }
+  
+  while i < len(str) {
+    let c: int = str[i] as i32
+    if c >= 48 and c <= 57 {  # '0' to '9'
+      set result = result * 10 + (c - 48) as i64
+    } else {
+      give if negative { -result } else { result }
+    }
+    set i = i + 1
+  }
+  
+  give if negative { -result } else { result }
+}
+
+proc atof(str: string) -> f64 {
+  let result: f64 = 0.0
+  let i: int = 0
+  let negative: bool = false
+  
+  if i < len(str) and str[i] == '-' {
+    set negative = true
+    set i = i + 1
+  }
+  
+  while i < len(str) and str[i] != '.' {
+    let c: int = str[i] as i32
+    if c >= 48 and c <= 57 {
+      set result = result * 10.0 + (c - 48) as f64
+    }
+    set i = i + 1
+  }
+  
+  if i < len(str) and str[i] == '.' {
+    set i = i + 1
+    let frac: f64 = 0.1
+    while i < len(str) {
+      let c: int = str[i] as i32
+      if c >= 48 and c <= 57 {
+        set result = result + frac * (c - 48) as f64
+        set frac = frac * 0.1
+      }
+      set i = i + 1
+    }
+  }
+  
+  give if negative { -result } else { result }
+}
+
+proc itoa(value: i64) -> string {
+  if value == 0 { give "0" }
+  
+  let negative: bool = value < 0
+  let n: i64 = if negative { -value } else { value }
+  let result: string = ""
+  
+  while n > 0 {
+    let digit: int = (n % 10) as i32
+    set result = (digit + 48) as string + result
+    set n = n / 10
+  }
+  
+  give if negative { "-" + result } else { result }
+}
+
+share all

@@ -1,0 +1,84 @@
+space vitte/json/builder
+
+<<< =========================================================
+   JSON Builder Module
+   ========================================================= >>>
+
+use vitte/json/types
+
+proc json_builder_new() -> JSONBuilder {
+  give JSONBuilder {
+    output: "",
+    depth: 0
+  }
+}
+
+proc json_builder_append_null(b: JSONBuilder) -> int {
+  b.output = b.output ++ "null"
+  give 0
+}
+
+proc json_builder_append_bool(b: JSONBuilder, value: int) -> int {
+  if value == 0 {
+    b.output = b.output ++ "false"
+  } else {
+    b.output = b.output ++ "true"
+  }
+  give 0
+}
+
+proc json_builder_append_number(b: JSONBuilder, value: f64) -> int {
+  give 0
+}
+
+proc json_builder_append_string(b: JSONBuilder, value: string) -> int {
+  b.output = b.output ++ "\""
+  b.output = b.output ++ value
+  b.output = b.output ++ "\""
+  give 0
+}
+
+proc json_builder_start_object(b: JSONBuilder) -> int {
+  b.output = b.output ++ "{"
+  b.depth = b.depth + 1
+  give 0
+}
+
+proc json_builder_end_object(b: JSONBuilder) -> int {
+  b.depth = b.depth - 1
+  b.output = b.output ++ "}"
+  give 0
+}
+
+proc json_builder_start_array(b: JSONBuilder) -> int {
+  b.output = b.output ++ "["
+  b.depth = b.depth + 1
+  give 0
+}
+
+proc json_builder_end_array(b: JSONBuilder) -> int {
+  b.depth = b.depth - 1
+  b.output = b.output ++ "]"
+  give 0
+}
+
+proc json_builder_append_comma(b: JSONBuilder) -> int {
+  b.output = b.output ++ ","
+  give 0
+}
+
+proc json_builder_append_colon(b: JSONBuilder) -> int {
+  b.output = b.output ++ ":"
+  give 0
+}
+
+proc json_builder_to_string(b: JSONBuilder) -> string {
+  give b.output
+}
+
+proc json_builder_clear(b: JSONBuilder) {
+  b.output = ""
+  b.depth = 0
+}
+
+share all

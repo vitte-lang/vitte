@@ -1,0 +1,331 @@
+space vitte/kernel/users
+
+<<< =========================================================
+   User and Group Management — User/group operations,
+   Environment variables, resource limits, permissions
+   ========================================================= >>>
+
+# Resource limit constants
+const RLIMIT_CPU: i32 = 0
+const RLIMIT_FSIZE: i32 = 1
+const RLIMIT_DATA: i32 = 2
+const RLIMIT_STACK: i32 = 3
+const RLIMIT_CORE: i32 = 4
+const RLIMIT_RSS: i32 = 5
+const RLIMIT_NPROC: i32 = 6
+const RLIMIT_NOFILE: i32 = 7
+const RLIMIT_MEMLOCK: i32 = 8
+const RLIMIT_AS: i32 = 9
+
+const RLIM_INFINITY: i64 = 9223372036854775807
+
+# User and group structures
+form PasswdEntry {
+    pw_name: string,
+    pw_uid: i32,
+    pw_gid: i32,
+    pw_dir: string,
+    pw_shell: string,
+    pw_gecos: string
+}
+
+form GroupEntry {
+    gr_name: string,
+    gr_gid: i32,
+    gr_mem: [string]
+}
+
+# Resource limits
+form RlimitEntry {
+    rlim_cur: i64,
+    rlim_max: i64
+}
+
+<<< =========================================================
+   User ID Operations
+   ========================================================= >>>
+
+proc getuid() -> i32 {
+  # Get real user ID
+  give 0
+}
+
+proc geteuid() -> i32 {
+  # Get effective user ID
+  give 0
+}
+
+proc setuid(uid: i32) -> int {
+  # Set user ID
+  give 0
+}
+
+proc seteuid(uid: i32) -> int {
+  # Set effective user ID
+  give 0
+}
+
+proc getgid() -> i32 {
+  # Get real group ID
+  give 0
+}
+
+proc getegid() -> i32 {
+  # Get effective group ID
+  give 0
+}
+
+proc setgid(gid: i32) -> int {
+  # Set group ID
+  give 0
+}
+
+proc setegid(gid: i32) -> int {
+  # Set effective group ID
+  give 0
+}
+
+proc getgroups() -> [i32] {
+  # Get supplementary group IDs
+  give []
+}
+
+proc setgroups(groups: [i32]) -> int {
+  # Set supplementary group IDs
+  give 0
+}
+
+<<< =========================================================
+   Process ID Operations
+   ========================================================= >>>
+
+proc getpid() -> i32 {
+  # Get process ID
+  give 0
+}
+
+proc getppid() -> i32 {
+  # Get parent process ID
+  give 0
+}
+
+proc getpgid(pid: i32) -> i32 {
+  # Get process group ID
+  give 0
+}
+
+proc setpgid(pid: i32, pgid: i32) -> int {
+  # Set process group ID
+  give 0
+}
+
+proc getpgrp() -> i32 {
+  # Get current process group
+  give 0
+}
+
+proc setsid() -> i32 {
+  # Create new session
+  give 0
+}
+
+proc getsid(pid: i32) -> i32 {
+  # Get session ID
+  give 0
+}
+
+<<< =========================================================
+   Password and Group Database
+   ========================================================= >>>
+
+proc getpwuid(uid: i32) -> PasswdEntry {
+  # Get password entry by user ID
+  give PasswdEntry {
+    pw_name: "",
+    pw_uid: uid,
+    pw_gid: 0,
+    pw_dir: "",
+    pw_shell: "",
+    pw_gecos: ""
+  }
+}
+
+proc getpwnam(name: string) -> PasswdEntry {
+  # Get password entry by name
+  give PasswdEntry {
+    pw_name: name,
+    pw_uid: 0,
+    pw_gid: 0,
+    pw_dir: "",
+    pw_shell: "",
+    pw_gecos: ""
+  }
+}
+
+proc getgrgid(gid: i32) -> GroupEntry {
+  # Get group entry by group ID
+  give GroupEntry {
+    gr_name: "",
+    gr_gid: gid,
+    gr_mem: []
+  }
+}
+
+proc getgrnam(name: string) -> GroupEntry {
+  # Get group entry by name
+  give GroupEntry {
+    gr_name: name,
+    gr_gid: 0,
+    gr_mem: []
+  }
+}
+
+<<< =========================================================
+   Resource Limits
+   ========================================================= >>>
+
+proc getrlimit(resource: i32) -> RlimitEntry {
+  # Get resource limit
+  give RlimitEntry {
+    rlim_cur: 0,
+    rlim_max: 0
+  }
+}
+
+proc setrlimit(resource: i32, rlim: RlimitEntry) -> int {
+  # Set resource limit
+  give 0
+}
+
+proc getrlimit_cpu() -> RlimitEntry {
+  # Get CPU time limit
+  give RlimitEntry { rlim_cur: 0, rlim_max: 0 }
+}
+
+proc setrlimit_cpu(limit: RlimitEntry) -> int {
+  # Set CPU time limit
+  give 0
+}
+
+proc getrlimit_fsize() -> RlimitEntry {
+  # Get file size limit
+  give RlimitEntry { rlim_cur: 0, rlim_max: 0 }
+}
+
+proc setrlimit_fsize(limit: RlimitEntry) -> int {
+  # Set file size limit
+  give 0
+}
+
+proc getrlimit_nofile() -> RlimitEntry {
+  # Get open files limit
+  give RlimitEntry { rlim_cur: 1024, rlim_max: 65536 }
+}
+
+proc setrlimit_nofile(limit: RlimitEntry) -> int {
+  # Set open files limit
+  give 0
+}
+
+<<< =========================================================
+   Environment Variables
+   ========================================================= >>>
+
+proc getenv(name: string) -> string {
+  # Get environment variable
+  give ""
+}
+
+proc setenv(name: string, value: string, overwrite: int) -> int {
+  # Set environment variable
+  give 0
+}
+
+proc unsetenv(name: string) -> int {
+  # Unset environment variable
+  give 0
+}
+
+proc environ() -> [string] {
+  # Get all environment variables
+  give []
+}
+
+proc clearenv() -> int {
+  # Clear all environment variables
+  give 0
+}
+
+<<< =========================================================
+   Process Priority and Scheduling
+   ========================================================= >>>
+
+proc getpriority(which: i32, who: i32) -> i32 {
+  # Get process priority
+  give 0
+}
+
+proc setpriority(which: i32, who: i32, prio: i32) -> int {
+  # Set process priority
+  give 0
+}
+
+proc getrusage(who: i32) -> [i64] {
+  # Get resource usage
+  give []
+}
+
+<<< =========================================================
+   User Information Functions
+   ========================================================= >>>
+
+proc get_login() -> string {
+  # Get login name
+  give ""
+}
+
+proc get_username() -> string {
+  # Get current username
+  give ""
+}
+
+proc get_home_dir() -> string {
+  # Get home directory
+  give ""
+}
+
+proc get_shell() -> string {
+  # Get default shell
+  give ""
+}
+
+proc is_root() -> int {
+  # Check if running as root
+  give 0
+}
+
+<<< =========================================================
+   Access Control
+   ========================================================= >>>
+
+proc access(pathname: string, mode: i32) -> int {
+  # Check access permissions
+  give 0
+}
+
+proc faccessat(dirfd: i32, pathname: string, mode: i32, flags: i32) -> int {
+  # Check access permissions relative to directory
+  give 0
+}
+
+proc eaccess(pathname: string, mode: i32) -> int {
+  # Check effective access
+  give 0
+}
+
+proc initgroups(user: string, group: i32) -> int {
+  # Initialize group access list
+  give 0
+}
+
+share all

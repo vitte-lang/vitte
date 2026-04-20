@@ -1,0 +1,243 @@
+space vitte/core/algorithms
+
+<<< =========================================================
+   Algorithms — Sorting, Searching, Utilities
+   qsort, bsearch, generic comparisons
+   ========================================================= >>>
+
+<<< =========================================================
+   Swap & Comparison Utilities
+   ========================================================= >>>
+
+proc swap_int(a: int, b: int) -> (int, int) {
+  give (b, a)
+}
+
+proc swap_f64(a: f64, b: f64) -> (f64, f64) {
+  give (b, a)
+}
+
+proc min_int(a: int, b: int) -> int {
+  if a < b { give a }
+  give b
+}
+
+proc max_int(a: int, b: int) -> int {
+  if a > b { give a }
+  give b
+}
+
+proc min_f64(a: f64, b: f64) -> f64 {
+  if a < b { give a }
+  give b
+}
+
+proc max_f64(a: f64, b: f64) -> f64 {
+  if a > b { give a }
+  give b
+}
+
+proc clamp_int(x: int, low: int, high: int) -> int {
+  if x < low { give low }
+  if x > high { give high }
+  give x
+}
+
+proc clamp_f64(x: f64, low: f64, high: f64) -> f64 {
+  if x < low { give low }
+  if x > high { give high }
+  give x
+}
+
+<<< =========================================================
+   Sorting Algorithms
+   ========================================================= >>>
+
+# Bubble sort
+proc bubble_sort(arr: [int]) -> [int] {
+  let n: int = len(arr)
+  let i: int = 0
+  
+  while i < n {
+    let j: int = 0
+    while j < n - i - 1 {
+      if arr[j] > arr[j + 1] {
+        let temp: int = arr[j]
+        set arr[j] = arr[j + 1]
+        set arr[j + 1] = temp
+      }
+      set j = j + 1
+    }
+    set i = i + 1
+  }
+  
+  give arr
+}
+
+# Selection sort
+proc selection_sort(arr: [int]) -> [int] {
+  let n: int = len(arr)
+  let i: int = 0
+  
+  while i < n - 1 {
+    let min_idx: int = i
+    let j: int = i + 1
+    
+    while j < n {
+      if arr[j] < arr[min_idx] {
+        set min_idx = j
+      }
+      set j = j + 1
+    }
+    
+    if min_idx != i {
+      let temp: int = arr[i]
+      set arr[i] = arr[min_idx]
+      set arr[min_idx] = temp
+    }
+    
+    set i = i + 1
+  }
+  
+  give arr
+}
+
+# Insertion sort
+proc insertion_sort(arr: [int]) -> [int] {
+  let n: int = len(arr)
+  let i: int = 1
+  
+  while i < n {
+    let key: int = arr[i]
+    let j: int = i - 1
+    
+    while j >= 0 and arr[j] > key {
+      set arr[j + 1] = arr[j]
+      set j = j - 1
+    }
+    
+    set arr[j + 1] = key
+    set i = i + 1
+  }
+  
+  give arr
+}
+
+<<< =========================================================
+   Searching Algorithms
+   ========================================================= >>>
+
+# Linear search
+proc linear_search(arr: [int], target: int) -> int {
+  let i: int = 0
+  let n: int = len(arr)
+  
+  while i < n {
+    if arr[i] == target { give i }
+    set i = i + 1
+  }
+  
+  give -1
+}
+
+# Binary search (assumes sorted array)
+proc binary_search(arr: [int], target: int) -> int {
+  let low: int = 0
+  let high: int = len(arr) - 1
+  
+  while low <= high {
+    let mid: int = low + (high - low) / 2
+    
+    if arr[mid] == target { give mid }
+    if arr[mid] < target {
+      set low = mid + 1
+    } else {
+      set high = mid - 1
+    }
+  }
+  
+  give -1
+}
+
+<<< =========================================================
+   Array Operations
+   ========================================================= >>>
+
+# Reverse array
+proc reverse(arr: [int]) -> [int] {
+  let n: int = len(arr)
+  let i: int = 0
+  
+  while i < n / 2 {
+    let temp: int = arr[i]
+    set arr[i] = arr[n - 1 - i]
+    set arr[n - 1 - i] = temp
+    set i = i + 1
+  }
+  
+  give arr
+}
+
+# Find maximum
+proc find_max(arr: [int]) -> int {
+  if len(arr) == 0 { give 0 }
+  
+  let max_val: int = arr[0]
+  let i: int = 1
+  
+  while i < len(arr) {
+    if arr[i] > max_val { set max_val = arr[i] }
+    set i = i + 1
+  }
+  
+  give max_val
+}
+
+# Find minimum
+proc find_min(arr: [int]) -> int {
+  if len(arr) == 0 { give 0 }
+  
+  let min_val: int = arr[0]
+  let i: int = 1
+  
+  while i < len(arr) {
+    if arr[i] < min_val { set min_val = arr[i] }
+    set i = i + 1
+  }
+  
+  give min_val
+}
+
+# Sum array
+proc sum_array(arr: [int]) -> int {
+  let sum: int = 0
+  let i: int = 0
+  
+  while i < len(arr) {
+    set sum = sum + arr[i]
+    set i = i + 1
+  }
+  
+  give sum
+}
+
+# Average array
+proc average_array(arr: [int]) -> int {
+  if len(arr) == 0 { give 0 }
+  give sum_array(arr) / len(arr)
+}
+
+# Count occurrences
+proc count_occurrences(arr: [int], value: int) -> int {
+  let count: int = 0
+  let i: int = 0
+  
+  while i < len(arr) {
+    if arr[i] == value { set count = count + 1 }
+    set i = i + 1
+  }
+  
+  give count
+}
+
+share all

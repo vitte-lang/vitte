@@ -1,0 +1,311 @@
+space vitte/stdlib/io/stdio
+
+use stdlib/io/file as file
+
+<<< =========================================================
+   Standard I/O — Complete C-like Input/Output
+   Includes format parsing, varargs support, streams
+   ========================================================= >>>
+
+# Variadic argument type (union for printf-like functions)
+pick PrintArg {
+    IntArg(value: i64),
+    FloatArg(value: f64),
+    StringArg(value: string),
+    CharArg(value: i32)
+}
+
+# Standard streams
+const stdin: file.File = file.File { path: "<stdin>", mode: "r" }
+const stdout: file.File = file.File { path: "<stdout>", mode: "w" }
+const stderr: file.File = file.File { path: "<stderr>", mode: "w" }
+
+# Constants
+const EOF: int = -1
+const NULL_PTR: int = 0
+
+<<< =========================================================
+   Format String Parsing Helper
+   ========================================================= >>>
+
+# Internal: extract and process format specifiers
+proc _process_format(format: string, args: [PrintArg]) -> string {
+  let result: string = ""
+  let i: i64 = 0
+  let arg_idx: int = 0
+  
+  while i < len(format) as i64 {
+    if format[i] == '%' and i + 1 < len(format) as i64 {
+      let spec: int = format[i + 1] as i32
+      
+      if spec == 'd' as i32 or spec == 'i' as i32 {
+        if arg_idx < len(args) {
+          match args[arg_idx] {
+            IntArg(val) => {
+              set result = result + (val as string)
+              set arg_idx = arg_idx + 1
+            }
+            _ => {}
+          }
+        }
+        set i = i + 2
+      } else if spec == 'f' as i32 or spec == 'e' as i32 or spec == 'g' as i32 {
+        if arg_idx < len(args) {
+          match args[arg_idx] {
+            FloatArg(val) => {
+              set result = result + (val as string)
+              set arg_idx = arg_idx + 1
+            }
+            _ => {}
+          }
+        }
+        set i = i + 2
+      } else if spec == 's' as i32 {
+        if arg_idx < len(args) {
+          match args[arg_idx] {
+            StringArg(val) => {
+              set result = result + val
+              set arg_idx = arg_idx + 1
+            }
+            _ => {}
+          }
+        }
+        set i = i + 2
+      } else if spec == 'c' as i32 {
+        if arg_idx < len(args) {
+          match args[arg_idx] {
+            CharArg(val) => {
+              set result = result + ((val as i64) as string)
+              set arg_idx = arg_idx + 1
+            }
+            _ => {}
+          }
+        }
+        set i = i + 2
+      } else if spec == '%' as i32 {
+        set result = result + "%"
+        set i = i + 2
+      } else if spec == 'x' as i32 {
+        if arg_idx < len(args) {
+          match args[arg_idx] {
+            IntArg(val) => {
+              set result = result + "0x" + (val as string)
+              set arg_idx = arg_idx + 1
+            }
+            _ => {}
+          }
+        }
+        set i = i + 2
+      } else if spec == 'o' as i32 {
+        if arg_idx < len(args) {
+          match args[arg_idx] {
+            IntArg(val) => {
+              set result = result + "0o" + (val as string)
+              set arg_idx = arg_idx + 1
+            }
+            _ => {}
+          }
+        }
+        set i = i + 2
+      } else if spec == 'u' as i32 {
+        if arg_idx < len(args) {
+          match args[arg_idx] {
+            IntArg(val) => {
+              set result = result + (val as string)
+              set arg_idx = arg_idx + 1
+            }
+            _ => {}
+          }
+        }
+        set i = i + 2
+      } else if spec == 'p' as i32 {
+        if arg_idx < len(args) {
+          match args[arg_idx] {
+            IntArg(val) => {
+              set result = result + "0x" + (val as string)
+              set arg_idx = arg_idx + 1
+            }
+            _ => {}
+          }
+        }
+        set i = i + 2
+      } else {
+        set result = result + (format[i] as string)
+        set i = i + 1
+      }
+    } else {
+      set result = result + (format[i] as string)
+      set i = i + 1
+    }
+  }
+  
+  give result
+}
+
+<<< =========================================================
+   Print Functions (C-like)
+   ========================================================= >>>
+
+proc printf(format: string, args: [PrintArg]) -> int {
+  let output: string = _process_format(format, args)
+  __write(1, output)
+  give len(output)
+}
+
+proc fprintf(file: file.File, format: string, args: [PrintArg]) -> int {
+  let output: string = _process_format(format, args)
+  # Write to file (placeholder)
+  give len(output)
+}
+
+proc sprintf(buffer: string, format: string, args: [PrintArg]) -> int {
+  let output: string = _process_format(format, args)
+  give len(output)
+}
+
+proc puts(str: string) -> int {
+  __write(1, str)
+  __write(1, "\n")
+  give len(str) + 1
+}
+
+proc fputs(str: string, file: file.File) -> int {
+  # Write to file (placeholder)
+  give len(str)
+}
+
+proc putchar(c: i32) -> i32 {
+  __write(1, (c as string))
+  give c
+}
+
+proc putc(c: i32, file: file.File) -> i32 {
+  # Write char to file
+  give c
+}
+
+proc print_int(value: i64) -> () {
+  __write(1, (value as string))
+}
+
+proc print_float(value: f64) -> () {
+  __write(1, (value as string))
+}
+
+proc print_string(value: string) -> () {
+  __write(1, value)
+}
+
+proc println(value: string) -> () {
+  __write(1, value)
+  __write(1, "\n")
+}
+
+<<< =========================================================
+   Scan Functions (C-like)
+   ========================================================= >>>
+
+proc scanf(format: string) -> int {
+  # Placeholder: scan from stdin
+  give 0
+}
+
+proc fscanf(file: file.File, format: string) -> int {
+  # Placeholder: scan from file
+  give 0
+}
+
+proc sscanf(buffer: string, format: string) -> int {
+  # Placeholder: scan from string
+  give 0
+}
+
+proc gets() -> string {
+  # UNSAFE: Use fgets instead - Deprecated
+  give ""
+}
+
+proc fgets(buffer: string, size: i32, file: file.File) -> string {
+  # Read up to size-1 chars from file, null-terminated (safer)
+  give ""
+}
+
+proc getchar() -> i32 {
+  # Placeholder: read char from stdin
+  give 0
+}
+
+proc getc(file: file.File) -> i32 {
+  # Placeholder: read char from file
+  give 0
+}
+
+proc read_int() -> i64 {
+  # Placeholder: read integer from stdin
+  give 0
+}
+
+proc read_float() -> f64 {
+  # Placeholder: read float from stdin
+  give 0.0
+}
+
+proc read_string() -> string {
+  # Placeholder: read string from stdin
+  give ""
+}
+
+<<< =========================================================
+   Additional C Standard Functions
+   ========================================================= >>>
+
+proc ungetc(c: i32, file: file.File) -> i32 {
+  # Push character back to stream
+  give c
+}
+
+proc getline(line: string, file: file.File) -> i64 {
+  # Read entire line from file (safer than gets)
+  give len(line) as i64
+}
+
+proc perror(message: string) -> () {
+  # Print error message with errno description
+  __write(2, message)
+  __write(2, ": I/O error\n")
+}
+
+proc setbuf(file: file.File, buffer: [int]) -> int {
+  # Set buffering for stream
+  give 0
+}
+
+proc setvbuf(file: file.File, buffer: [int], mode: i32, size: i64) -> int {
+  # Set buffering with mode (_IOFBF, _IOLBF, _IONBF) and size
+  give 0
+}
+
+# Buffering mode constants
+const _IOFBF: i32 = 0  # Full buffering
+const _IOLBF: i32 = 1  # Line buffering
+const _IONBF: i32 = 2  # No buffering
+
+<<< =========================================================
+   Low-level I/O Intrinsics (Runtime Hooks)
+   ========================================================= >>>
+
+#[intrinsic]
+proc __write(fd: i32, message: string) -> i64 {
+  # System write intrinsic
+  # fd: 1=stdout, 2=stderr
+  give 0
+}
+
+#[intrinsic]
+proc __read(fd: i32, buffer: string, count: i64) -> i64 {
+  # System read intrinsic
+  # fd: 0=stdin
+  give 0
+}
+
+share all

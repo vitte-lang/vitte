@@ -500,6 +500,53 @@ proc cos_f64(x: f64) -> f64 {
     give sum
 }
 
+proc exp_f64(x: f64) -> f64 {
+    let term = 1.0
+    let sum = 1.0
+    let i: i64 = 1
+
+    while i < 20 {
+        set term = term * x / i as f64
+        set sum = sum + term
+        set i = i + 1
+    }
+
+    give sum
+}
+
+proc log_f64(x: f64) -> f64 {
+    if x <= 0.0 { give F64_NAN }
+    if x == 1.0 { give 0.0 }
+
+    let y = (x - 1.0) / (x + 1.0)
+    let y2 = y * y
+    let term = y
+    let sum = y
+    let i: i64 = 1
+
+    while i < 20 {
+        set term = term * y2
+        set sum = sum + term / (2*i + 1) as f64
+        set i = i + 1
+    }
+
+    give 2.0 * sum
+}
+
+proc log10_f64(x: f64) -> f64 { give log_f64(x) / log_f64(10.0) }
+
+proc pow_f64(base: f64, exp: f64) -> f64 { give exp_f64(exp * log_f64(base)) }
+
+proc fabs(x: f64) -> f64 { give abs_f64(x) }
+
+proc fmod(x: f64, y: f64) -> f64 {
+    let quotient = floor_f64(x / y)
+    give x - quotient * y
+}
+
+proc ceil(x: f64) -> f64 { give ceil_f64(x) }
+proc floor(x: f64) -> f64 { give floor_f64(x) }
+
 <<< =========================================================
    Random (LCG)
    ========================================================= >>>

@@ -1,0 +1,312 @@
+space vitte/kernel/device
+
+<<< =========================================================
+   Kernel Device Management — Device I/O Control,
+   Device operations, terminal control, terminal modes
+   ========================================================= >>>
+
+# Terminal control flags
+const TCSA_NOW: i32 = 0
+const TCSA_DRAIN: i32 = 1
+const TCSA_FLUSH: i32 = 2
+
+# Terminal modes
+const ICANON: i32 = 2
+const ECHO: i32 = 8
+const ECHOE: i32 = 16
+const ECHOK: i32 = 32
+const ECHONL: i32 = 64
+const NOFLSH: i32 = 128
+const IEXTEN: i32 = 256
+
+# Input modes
+const IGNBRK: i32 = 1
+const BRKINT: i32 = 2
+const IGNPAR: i32 = 4
+const PARMRK: i32 = 8
+const INPCK: i32 = 16
+const ISTRIP: i32 = 32
+const INLCR: i32 = 64
+const IGNCR: i32 = 128
+const ICRNL: i32 = 256
+const IXON: i32 = 512
+const IXOFF: i32 = 1024
+
+# Output modes
+const OPOST: i32 = 1
+const ONLCR: i32 = 4
+const OCRNL: i32 = 8
+const ONOCR: i32 = 16
+const ONLRET: i32 = 32
+const OFILL: i32 = 64
+const NLDLY: i32 = 256
+const CRDLY: i32 = 1200
+const TABDLY: i32 = 6144
+const BSDLY: i32 = 32768
+const VTDLY: i32 = 16384
+const FFDLY: i32 = 32768
+
+# Baud rates
+const B0: i32 = 0
+const B50: i32 = 1
+const B75: i32 = 2
+const B110: i32 = 3
+const B134: i32 = 4
+const B150: i32 = 5
+const B200: i32 = 6
+const B300: i32 = 7
+const B600: i32 = 8
+const B1200: i32 = 9
+const B1800: i32 = 10
+const B2400: i32 = 11
+const B4800: i32 = 12
+const B9600: i32 = 13
+const B19200: i32 = 14
+const B38400: i32 = 15
+const B57600: i32 = 16
+const B115200: i32 = 17
+
+# Control character indices
+const VINTR: i32 = 0
+const VQUIT: i32 = 1
+const VERASE: i32 = 2
+const VKILL: i32 = 3
+const VEOF: i32 = 4
+const VEOL: i32 = 5
+const VSTART: i32 = 8
+const VSTOP: i32 = 9
+
+# Terminal structure
+form Termios {
+    c_iflag: i32,
+    c_oflag: i32,
+    c_cflag: i32,
+    c_lflag: i32,
+    c_cc: [int]
+}
+
+# Device info
+form DeviceInfo {
+    name: string,
+    type: string,
+    major: i32,
+    minor: i32,
+    mode: i32
+}
+
+<<< =========================================================
+   Terminal Control
+   ========================================================= >>>
+
+proc tcgetattr(fd: i32) -> Termios {
+  # Get terminal attributes
+  give Termios {
+    c_iflag: 0,
+    c_oflag: 0,
+    c_cflag: 0,
+    c_lflag: 0,
+    c_cc: []
+  }
+}
+
+proc tcsetattr(fd: i32, optional_actions: i32, termios: Termios) -> int {
+  # Set terminal attributes
+  give 0
+}
+
+proc tcflow(fd: i32, action: i32) -> int {
+  # Flow control on terminal
+  give 0
+}
+
+proc tcflush(fd: i32, queue_selector: i32) -> int {
+  # Flush terminal
+  give 0
+}
+
+proc tcsendbreak(fd: i32, duration: i32) -> int {
+  # Send break on terminal
+  give 0
+}
+
+proc cfgetispeed(termios: Termios) -> i32 {
+  # Get input baud rate
+  give 0
+}
+
+proc cfgetospeed(termios: Termios) -> i32 {
+  # Get output baud rate
+  give 0
+}
+
+proc cfsetispeed(termios: Termios, speed: i32) -> int {
+  # Set input baud rate
+  give 0
+}
+
+proc cfsetospeed(termios: Termios, speed: i32) -> int {
+  # Set output baud rate
+  give 0
+}
+
+proc cfsetspeed(termios: Termios, speed: i32) -> int {
+  # Set both baud rates
+  give 0
+}
+
+<<< =========================================================
+   Terminal Window Control
+   ========================================================= >>>
+
+form WinSize {
+    ws_row: i32,
+    ws_col: i32,
+    ws_xpixel: i32,
+    ws_ypixel: i32
+}
+
+proc tiocgwinsz(fd: i32) -> WinSize {
+  # Get terminal window size
+  give WinSize {
+    ws_row: 24,
+    ws_col: 80,
+    ws_xpixel: 0,
+    ws_ypixel: 0
+  }
+}
+
+proc tiocswinsz(fd: i32, size: WinSize) -> int {
+  # Set terminal window size
+  give 0
+}
+
+proc isatty(fd: i32) -> int {
+  # Check if fd is terminal
+  give 0
+}
+
+proc ttyname(fd: i32) -> string {
+  # Get terminal name
+  give ""
+}
+
+<<< =========================================================
+   Device I/O Control
+   ========================================================= >>>
+
+proc ioctl(fd: i32, request: i32, argp: i64) -> int {
+  # Device control
+  give 0
+}
+
+proc ioctl_with_int(fd: i32, request: i32, arg: i32) -> int {
+  # Device control with int argument
+  give 0
+}
+
+proc ioctl_with_ptr(fd: i32, request: i32, arg: i64) -> int {
+  # Device control with pointer argument
+  give 0
+}
+
+<<< =========================================================
+   Device Access
+   ========================================================= >>>
+
+proc get_device_info(path: string) -> DeviceInfo {
+  # Get device information
+  give DeviceInfo {
+    name: path,
+    type: "",
+    major: 0,
+    minor: 0,
+    mode: 0
+  }
+}
+
+proc mknod(pathname: string, mode: i32, dev: i64) -> int {
+  # Create special file
+  give 0
+}
+
+proc makedev(major: i32, minor: i32) -> i64 {
+  # Make device number
+  give 0
+}
+
+proc major_num(dev: i64) -> i32 {
+  # Extract major number
+  give 0
+}
+
+proc minor_num(dev: i64) -> i32 {
+  # Extract minor number
+  give 0
+}
+
+<<< =========================================================
+   Console Control
+   =========================================================
+
+proc get_console_size() -> WinSize {
+  # Get console window size
+  give WinSize {
+    ws_row: 24,
+    ws_col: 80,
+    ws_xpixel: 0,
+    ws_ypixel: 0
+  }
+}
+
+proc get_tty_fd() -> i32 {
+  # Get controlling terminal fd
+  give -1
+}
+
+proc set_tty_raw_mode(fd: i32) -> int {
+  # Set raw input mode
+  give 0
+}
+
+proc set_tty_canonical_mode(fd: i32) -> int {
+  # Set canonical input mode
+  give 0
+}
+
+<<<
+
+proc enable_echo(fd: i32) -> int {
+  # Enable echo
+  give 0
+}
+
+proc disable_echo(fd: i32) -> int {
+  # Disable echo
+  give 0
+}
+
+<<< =========================================================
+   Device Query
+   ========================================================= >>>
+
+proc is_terminal(fd: i32) -> int {
+  # Check if file descriptor is terminal
+  give 0
+}
+
+proc is_socket(fd: i32) -> int {
+  # Check if file descriptor is socket
+  give 0
+}
+
+proc is_pipe(fd: i32) -> int {
+  # Check if file descriptor is pipe
+  give 0
+}
+
+proc is_regular_file(fd: i32) -> int {
+  # Check if file descriptor is regular file
+  give 0
+}
+
+share all

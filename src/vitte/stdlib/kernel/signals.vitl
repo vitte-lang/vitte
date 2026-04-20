@@ -1,0 +1,155 @@
+space vitte/kernel/signals
+
+<<< =========================================================
+   Signal Handling — Process Signals & Handlers
+   Signal definitions, handlers, masks
+   ========================================================= >>>
+
+# Signal numbers (POSIX)
+const SIGHUP: int = 1      # Hangup
+const SIGINT: int = 2      # Interrupt
+const SIGQUIT: int = 3     # Quit
+const SIGILL: int = 4      # Illegal instruction
+const SIGTRAP: int = 5     # Trace trap
+const SIGABRT: int = 6     # Abort
+const SIGBUS: int = 7      # Bus error
+const SIGFPE: int = 8      # Floating-point exception
+const SIGKILL: int = 9     # Kill
+const SIGUSR1: int = 10    # User signal 1
+const SIGSEGV: int = 11    # Segmentation violation
+const SIGUSR2: int = 12    # User signal 2
+const SIGPIPE: int = 13    # Broken pipe
+const SIGALRM: int = 14    # Alarm
+const SIGTERM: int = 15    # Termination
+const SIGCHLD: int = 17    # Child process status
+const SIGCONT: int = 18    # Continue
+const SIGSTOP: int = 19    # Stop
+const SIGTSTP: int = 20    # Terminal stop
+const SIGTTIN: int = 21    # Background read
+const SIGTTOU: int = 22    # Background write
+const SIGPOLL: int = 23    # Pollable event
+const SIGPROF: int = 27    # Profiling timer
+const SIGSYS: int = 31     # Bad system call
+
+# Signal action constants
+const SA_NOCLDSTOP: i32 = 1
+const SA_NOCLDWAIT: i32 = 2
+const SA_NODEFER: i32 = 4
+const SA_ONSTACK: i32 = 8
+const SA_RESETHAND: i32 = 16
+const SA_RESTART: i32 = 32
+const SA_SIGINFO: i32 = 64
+
+# Signal mask operations
+const SIG_BLOCK: int = 0
+const SIG_UNBLOCK: int = 1
+const SIG_SETMASK: int = 2
+
+# Signal handler type
+type SignalHandler = i64
+
+# Signal set structure
+form SignalSet {
+    mask: i64
+}
+
+<<< =========================================================
+   Signal Handler Setup
+   ========================================================= >>>
+
+proc signal(sig: int, handler: SignalHandler) -> SignalHandler {
+  # Install signal handler
+  give 0
+}
+
+proc signal_default(sig: int) -> int {
+  # Restore default handler
+  give 0
+}
+
+proc signal_ignore(sig: int) -> int {
+  # Ignore signal
+  give 0
+}
+
+proc sigaction(sig: int, new_handler: SignalHandler, old_handler: SignalHandler) -> int {
+  # Install signal handler with flags
+  give 0
+}
+
+proc sigprocmask(how: int, set: SignalSet, oldset: SignalSet) -> int {
+  # Change signal mask
+  give 0
+}
+
+proc pthread_sigmask(how: int, set: SignalSet, oldset: SignalSet) -> int {
+  # Change thread signal mask
+  give 0
+}
+
+<<< =========================================================
+   Signal Operations
+   ========================================================= >>>
+
+proc kill(pid: i64, sig: int) -> int {
+  # Send signal to process
+  give 0
+}
+
+proc raise(sig: int) -> int {
+  # Send signal to self
+  give 0
+}
+
+proc alarm(seconds: int) -> int {
+  # Schedule SIGALRM
+  give 0
+}
+
+proc pause() -> int {
+  # Wait for signal
+  give 0
+}
+
+proc sigsuspend(mask: SignalSet) -> int {
+  # Wait with different mask
+  give 0
+}
+
+proc sigpending(set: SignalSet) -> int {
+  # Get pending signals
+  give 0
+}
+
+proc sigwait(set: SignalSet) -> int {
+  # Wait for signal
+  give 0
+}
+
+<<< =========================================================
+   Signal Set Operations
+   ========================================================= >>>
+
+proc sigemptyset(set: SignalSet) -> SignalSet {
+  give SignalSet { mask: 0 }
+}
+
+proc sigfillset(set: SignalSet) -> SignalSet {
+  give SignalSet { mask: -1i64 }
+}
+
+proc sigaddset(set: SignalSet, sig: int) -> SignalSet {
+  let new_mask: i64 = set.mask | (1i64 << sig)
+  give SignalSet { mask: new_mask }
+}
+
+proc sigdelset(set: SignalSet, sig: int) -> SignalSet {
+  let new_mask: i64 = set.mask & (!(1i64 << sig))
+  give SignalSet { mask: new_mask }
+}
+
+proc sigismember(set: SignalSet, sig: int) -> bool {
+  give (set.mask & (1i64 << sig)) != 0
+}
+
+share all

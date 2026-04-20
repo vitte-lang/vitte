@@ -1,136 +1,345 @@
 space vitte/stdlib/collections/sort
 
 use vitte/stdlib/math/comparison.*
+use vitte/stdlib/math/arithmetic.*
 
-const INSERTION_THRESHOLD: int = 32
+const INSERTION_THRESHOLD: int = 24
 
 <<< =========================================================
-   Generic sorting algorithms
+   Generic sorting algorithms — ultra complete module
    ========================================================= >>>
 
 <<< ---------------------------------------------------------
-   Insertion sort (petits tableaux / fallback)
+   Internal helpers
    --------------------------------------------------------- >>>
 
-proc insertion_sort[T](values: [T], cmp: proc(T, T) -> int) -> [T] {
-  let out = copy(values)
-  let i: int = 1
+proc copy_range[T](values: [T], start: int, stop: int) -> [T] {
+  let out: [T] = []
+  let s: int = start
+  let e: int = stop
 
-  while i < out.len {
-    let key = out[i]
-    let j: int = i - 1
+  if s < 0 {
+    set s = 0
+  }
 
-    while j >= 0 and cmp(out[j], key) > 0 {
-      set out[j+1] = out[j]
-      set j = j - 1
-    }
+  if e < s {
+    give []
+  }
 
-    set out[j+1] = key
-    set i = i + 1
+  if e > values.len {
+    set e = values.len
+  }
+
+  while s < e {
+    set out = out + [values[s]]
+    set s = s + 1
   }
 
   give out
 }
 
+proc reverse_copy[T](values: [T]) -> [T] {
+  let out: [T] = []
+  let i: int = values.len - 1
+
+  while i >= 0 {
+    set out = out + [values[i]]
+    set i = i - 1
+  }
+
+  give out
+}
+
+proc swap[T](arr: [T], i: int, j: int) {
+  if i == j {
+    give
+  }
+
+  let tmp: T = arr[i]
+  set arr[i] = arr[j]
+  set arr[j] = tmp
+}
+
+proc floor_log2_int(n: int) -> int {
+  let value: int = n
+  let k: int = 0
+
+  while value > 1 {
+    set value = value / 2
+    set k = k + 1
+  }
+
+  give k
+}
+
+proc median3_index[T](arr: [T], a: int, b: int, c: int, cmp: proc(T, T) -> int) -> int {
+  if cmp(arr[a], arr[b]) < 0 {
+    if cmp(arr[b], arr[c]) < 0 {
+      give b
+    } else {
+      if cmp(arr[a], arr[c]) < 0 {
+        give c
+      } else {
+        give a
+      }
+    }
+  } else {
+    if cmp(arr[a], arr[c]) < 0 {
+      give a
+    } else {
+      if cmp(arr[b], arr[c]) < 0 {
+        give c
+      } else {
+        give b
+      }
+    }
+  }
+}
+
 <<< ---------------------------------------------------------
-   QuickSort (générique)
+   Sorted checks
+   --------------------------------------------------------- >>>
+
+proc is_sorted[T](values: [T], cmp: proc(T, T) -> int) -> bool {
+  let i: int = 1
+  while i < values.len {
+    if cmp(values[i], values[i - 1]) < 0 {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
+}
+
+proc is_strictly_sorted[T](values: [T], cmp: proc(T, T) -> int) -> bool {
+  let i: int = 1
+  while i < values.len {
+    if cmp(values[i], values[i - 1]) <= 0 {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
+}
+
+<<< ---------------------------------------------------------
+   Insertion sort
+   --------------------------------------------------------- >>>
+
+proc insertion_sort_range[T](arr: [T], low: int, high: int, cmp: proc(T, T) -> int) {
+  let i: int = low + 1
+
+  while i <= high {
+    let key: T = arr[i]
+    let j: int = i - 1
+
+    while j >= low and cmp(arr[j], key) > 0 {
+      set arr[j + 1] = arr[j]
+      set j = j - 1
+    }
+
+    set arr[j + 1] = key
+    set i = i + 1
+  }
+}
+
+proc insertion_sort_inplace[T](values: [T], cmp: proc(T, T) -> int) {
+  if values.len <= 1 {
+    give
+  }
+  insertion_sort_range(values, 0, values.len - 1, cmp)
+}
+
+proc insertion_sort[T](values: [T], cmp: proc(T, T) -> int) -> [T] {
+  let out: [T] = copy_range(values, 0, values.len)
+  insertion_sort_inplace(out, cmp)
+  give out
+}
+
+<<< ---------------------------------------------------------
+   Heap sort
+   --------------------------------------------------------- >>>
+
+proc sift_down[T](arr: [T], start: int, end: int, cmp: proc(T, T) -> int) {
+  let root: int = start
+
+  while root * 2 + 1 <= end {
+    let child: int = root * 2 + 1
+    let swap_index: int = root
+
+    if cmp(arr[swap_index], arr[child]) < 0 {
+      set swap_index = child
+    }
+
+    if child + 1 <= end and cmp(arr[swap_index], arr[child + 1]) < 0 {
+      set swap_index = child + 1
+    }
+
+    if swap_index == root {
+      give
+    }
+
+    swap(arr, root, swap_index)
+    set root = swap_index
+  }
+}
+
+proc heapify[T](arr: [T], cmp: proc(T, T) -> int) {
+  if arr.len <= 1 {
+    give
+  }
+
+  let start: int = (arr.len - 2) / 2
+  while start >= 0 {
+    sift_down(arr, start, arr.len - 1, cmp)
+    set start = start - 1
+  }
+}
+
+proc heapsort_inplace[T](values: [T], cmp: proc(T, T) -> int) {
+  if values.len <= 1 {
+    give
+  }
+
+  heapify(values, cmp)
+
+  let end: int = values.len - 1
+  while end > 0 {
+    swap(values, 0, end)
+    sift_down(values, 0, end - 1, cmp)
+    set end = end - 1
+  }
+}
+
+proc heapsort[T](values: [T], cmp: proc(T, T) -> int) -> [T] {
+  let out: [T] = copy_range(values, 0, values.len)
+  heapsort_inplace(out, cmp)
+  give out
+}
+
+<<< ---------------------------------------------------------
+   QuickSort / Introsort
    --------------------------------------------------------- >>>
 
 proc partition[T](arr: [T], low: int, high: int, cmp: proc(T, T) -> int) -> int {
-  let mid = (low + high) / 2
+  let mid: int = low + (high - low) / 2
+  let pivot_index: int = median3_index(arr, low, mid, high, cmp)
 
-  let a = arr[low]
-  let b = arr[mid]
-  let c = arr[high]
-
-  let pivot =
-    if cmp(a,b) < 0 {
-      if cmp(b,c) < 0 { b } else { if cmp(a,c) < 0 { c } else { a } }
-    } else {
-      if cmp(a,c) < 0 { a } else { if cmp(b,c) < 0 { c } else { b } }
-    }
-
-  let pivot_index = mid
-  let tmp_p = arr[pivot_index]
-  set arr[pivot_index] = arr[high]
-  set arr[high] = tmp_p
+  swap(arr, pivot_index, high)
 
   let i: int = low - 1
   let j: int = low
 
   while j < high {
-    if cmp(arr[j], pivot) <= 0 {
+    if cmp(arr[j], arr[high]) <= 0 {
       set i = i + 1
-      let tmp = arr[i]
-      set arr[i] = arr[j]
-      set arr[j] = tmp
+      swap(arr, i, j)
     }
     set j = j + 1
   }
 
-  let tmp = arr[i+1]
-  set arr[i+1] = arr[high]
-  set arr[high] = tmp
-
+  swap(arr, i + 1, high)
   give i + 1
 }
 
-proc quicksort_rec[T](arr: [T], low: int, high: int, cmp: proc(T, T) -> int) {
-  if low >= 0 and high >= 0 and low < high {
-    if high - low < INSERTION_THRESHOLD {
-      let sub = insertion_sort(arr[low:high+1], cmp)
-      let k: int = 0
-      while k < sub.len {
-        set arr[low + k] = sub[k]
-        set k = k + 1
-      }
-      give
-    }
-    let pi = partition(arr, low, high, cmp)
-    quicksort_rec(arr, low, pi - 1, cmp)
-    quicksort_rec(arr, pi + 1, high, cmp)
+proc heapsort_range[T](arr: [T], low: int, high: int, cmp: proc(T, T) -> int) {
+  let sub: [T] = copy_range(arr, low, high + 1)
+  heapsort_inplace(sub, cmp)
+
+  let i: int = 0
+  while i < sub.len {
+    set arr[low + i] = sub[i]
+    set i = i + 1
   }
 }
-proc sort_inplace[T](values: [T], cmp: proc(T, T) -> int) {
-  if values.len > 0 {
-    quicksort_rec(values, 0, values.len - 1, cmp)
+
+proc introsort_rec[T](arr: [T], low: int, high: int, depth_limit: int, cmp: proc(T, T) -> int) {
+  if low >= high {
+    give
   }
+
+  if high - low + 1 <= INSERTION_THRESHOLD {
+    insertion_sort_range(arr, low, high, cmp)
+    give
+  }
+
+  if depth_limit <= 0 {
+    heapsort_range(arr, low, high, cmp)
+    give
+  }
+
+  let pi: int = partition(arr, low, high, cmp)
+
+  if pi > low {
+    introsort_rec(arr, low, pi - 1, depth_limit - 1, cmp)
+  }
+
+  if pi < high {
+    introsort_rec(arr, pi + 1, high, depth_limit - 1, cmp)
+  }
+}
+
+proc sort_inplace[T](values: [T], cmp: proc(T, T) -> int) {
+  if values.len <= 1 {
+    give
+  }
+
+  let depth_limit: int = floor_log2_int(values.len) * 2
+  introsort_rec(values, 0, values.len - 1, depth_limit, cmp)
+}
+
+proc quicksort_inplace[T](values: [T], cmp: proc(T, T) -> int) {
+  sort_inplace(values, cmp)
 }
 
 proc quicksort[T](values: [T], cmp: proc(T, T) -> int) -> [T] {
-  let out = copy(values)
-  if out.len > 0 {
-    quicksort_rec(out, 0, out.len - 1, cmp)
-  }
+  let out: [T] = copy_range(values, 0, values.len)
+  sort_inplace(out, cmp)
   give out
 }
 
+proc introsort[T](values: [T], cmp: proc(T, T) -> int) -> [T] {
+  give quicksort(values, cmp)
+}
+
 <<< ---------------------------------------------------------
-   MergeSort (stable)
+   Merge sort (stable)
    --------------------------------------------------------- >>>
 
 proc merge[T](left: [T], right: [T], cmp: proc(T, T) -> int) -> [T] {
+  if left.len == 0 {
+    give copy_range(right, 0, right.len)
+  }
+
+  if right.len == 0 {
+    give copy_range(left, 0, left.len)
+  }
+
+  if cmp(left[left.len - 1], right[0]) <= 0 {
+    give left + right
+  }
+
   let result: [T] = []
   let i: int = 0
   let j: int = 0
 
   while i < left.len and j < right.len {
     if cmp(left[i], right[j]) <= 0 {
-      result = result + [left[i]]
+      set result = result + [left[i]]
       set i = i + 1
     } else {
-      result = result + [right[j]]
+      set result = result + [right[j]]
       set j = j + 1
     }
   }
 
   while i < left.len {
-    result = result + [left[i]]
+    set result = result + [left[i]]
     set i = i + 1
   }
 
   while j < right.len {
-    result = result + [right[j]]
+    set result = result + [right[j]]
     set j = j + 1
   }
 
@@ -139,34 +348,204 @@ proc merge[T](left: [T], right: [T], cmp: proc(T, T) -> int) -> [T] {
 
 proc mergesort[T](values: [T], cmp: proc(T, T) -> int) -> [T] {
   if values.len <= 1 {
-    give values
+    give copy_range(values, 0, values.len)
   }
 
-  let mid = values.len / 2
-  let left = mergesort(values[0:mid], cmp)
-  let right = mergesort(values[mid:values.len], cmp)
+  if values.len <= INSERTION_THRESHOLD {
+    give insertion_sort(values, cmp)
+  }
+
+  let mid: int = values.len / 2
+  let left: [T] = mergesort(copy_range(values, 0, mid), cmp)
+  let right: [T] = mergesort(copy_range(values, mid, values.len), cmp)
 
   give merge(left, right, cmp)
+}
+
+proc stable_sort[T](values: [T], cmp: proc(T, T) -> int) -> [T] {
+  give mergesort(values, cmp)
+}
+
+<<< ---------------------------------------------------------
+   Reverse / descending helpers
+   --------------------------------------------------------- >>>
+
+proc reverse[T](values: [T]) -> [T] {
+  give reverse_copy(values)
+}
+
+proc reverse_inplace[T](values: [T]) {
+  let i: int = 0
+  let j: int = values.len - 1
+
+  while i < j {
+    swap(values, i, j)
+    set i = i + 1
+    set j = j - 1
+  }
 }
 
 proc sort_desc[T](values: [T], cmp: proc(T, T) -> int) -> [T] {
   give sort(values, proc(a: T, b: T) -> int { give cmp(b, a) })
 }
 
-proc is_sorted[T](values: [T], cmp: proc(T, T) -> int) -> bool {
-  let i: int = 1
-  while i < values.len {
-    if cmp(values[i], values[i-1]) < 0 {
-      give false
-    }
-    i += 1
+proc sort_desc_inplace[T](values: [T], cmp: proc(T, T) -> int) {
+  sort_inplace(values, proc(a: T, b: T) -> int { give cmp(b, a) })
+}
+
+<<< ---------------------------------------------------------
+   Selection / partial sorting
+   --------------------------------------------------------- >>>
+
+proc nth_element[T](values: [T], n: int, cmp: proc(T, T) -> int) -> T {
+  let out: [T] = sort(values, cmp)
+
+  if out.len == 0 {
+    give values[0]
   }
-  give true
+
+  if n <= 0 {
+    give out[0]
+  }
+
+  if n >= out.len {
+    give out[out.len - 1]
+  }
+
+  give out[n]
 }
 
 proc partial_sort[T](values: [T], k: int, cmp: proc(T, T) -> int) -> [T] {
-  let out = quicksort(values, cmp)
-  give out[0:k]
+  if k <= 0 {
+    give []
+  }
+
+  if values.len == 0 {
+    give []
+  }
+
+  let out: [T] = sort(values, cmp)
+
+  if k >= out.len {
+    give out
+  }
+
+  give copy_range(out, 0, k)
+}
+
+proc top_k[T](values: [T], k: int, cmp: proc(T, T) -> [T] {
+  if k <= 0 {
+    give []
+  }
+
+  let desc: [T] = sort_desc(values, cmp)
+  if k >= desc.len {
+    give desc
+  }
+
+  give copy_range(desc, 0, k)
+}
+
+proc bottom_k[T](values: [T], k: int, cmp: proc(T, T) -> [T] {
+  give partial_sort(values, k, cmp)
+}
+
+<<< ---------------------------------------------------------
+   Binary-search helpers
+   --------------------------------------------------------- >>>
+
+proc lower_bound[T](values: [T], target: T, cmp: proc(T, T) -> int) -> int {
+  let low: int = 0
+  let high: int = values.len
+
+  while low < high {
+    let mid: int = low + (high - low) / 2
+    if cmp(values[mid], target) < 0 {
+      set low = mid + 1
+    } else {
+      set high = mid
+    }
+  }
+
+  give low
+}
+
+proc upper_bound[T](values: [T], target: T, cmp: proc(T, T) -> int) -> int {
+  let low: int = 0
+  let high: int = values.len
+
+  while low < high {
+    let mid: int = low + (high - low) / 2
+    if cmp(values[mid], target) <= 0 {
+      set low = mid + 1
+    } else {
+      set high = mid
+    }
+  }
+
+  give low
+}
+
+proc binary_search[T](values: [T], target: T, cmp: proc(T, T) -> int) -> int {
+  let low: int = 0
+  let high: int = values.len - 1
+
+  while low <= high {
+    let mid: int = low + (high - low) / 2
+    let order: int = cmp(values[mid], target)
+
+    if order == 0 {
+      give mid
+    }
+
+    if order < 0 {
+      set low = mid + 1
+    } else {
+      set high = mid - 1
+    }
+  }
+
+  give -1
+}
+
+proc contains_sorted[T](values: [T], target: T, cmp: proc(T, T) -> bool {
+  give binary_search(values, target, cmp) >= 0
+}
+
+<<< ---------------------------------------------------------
+   Specialized convenience wrappers
+   --------------------------------------------------------- >>>
+
+proc sort_int(values: [int]) -> [int] {
+  give sort(values, cmp_int)
+}
+
+proc sort_i32(values: [i32]) -> [i32] {
+  give sort(values, cmp_i32)
+}
+
+proc sort_i64(values: [i64]) -> [i64] {
+  give sort(values, cmp_i64)
+}
+
+proc sort_u32(values: [u32]) -> [u32] {
+  give sort(values, cmp_u32)
+}
+
+proc sort_u64(values: [u64]) -> [u64] {
+  give sort(values, cmp_u64)
+}
+
+proc sort_f64(values: [f64]) -> [f64] {
+  give sort(values, cmp_f64)
+}
+
+proc stable_sort_int(values: [int]) -> [int] {
+  give stable_sort(values, cmp_int)
+}
+
+proc stable_sort_f64(values: [f64]) -> [f64] {
+  give stable_sort(values, cmp_f64)
 }
 
 <<< ---------------------------------------------------------
@@ -174,15 +553,19 @@ proc partial_sort[T](values: [T], k: int, cmp: proc(T, T) -> int) -> [T] {
    --------------------------------------------------------- >>>
 
 proc sort[T](values: [T], cmp: proc(T, T) -> int) -> [T] {
-  if values.len < INSERTION_THRESHOLD {
+  if values.len <= 1 {
+    give copy_range(values, 0, values.len)
+  }
+
+  if is_sorted(values, cmp) {
+    give copy_range(values, 0, values.len)
+  }
+
+  if values.len <= INSERTION_THRESHOLD {
     give insertion_sort(values, cmp)
   }
 
   give quicksort(values, cmp)
-}
-
-proc stable_sort[T](values: [T], cmp: proc(T, T) -> int) -> [T] {
-  give mergesort(values, cmp)
 }
 
 share all
