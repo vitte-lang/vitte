@@ -1,0 +1,143 @@
+use stdlib/math/arrays as arrays
+
+proc abs_int(value: int) -> int {
+  if value < 0 { give 0 - value } else { give value }
+}
+proc gcd(a: int, b: int) -> int {
+  let x: int = abs_int(a)
+  let y: int = abs_int(b)
+  while y != 0 {
+    let r: int = x % y
+    x = y
+    y = r
+  }
+  give x
+}
+proc lcm(a: int, b: int) -> int {
+  if a == 0 or b == 0 { give 0 } else { give abs_int(a / gcd(a, b) * b) }
+}
+proc is_even(value: int) -> bool { give value % 2 == 0 }
+proc is_odd(value: int) -> bool { give value % 2 != 0 }
+proc is_prime(value: int) -> bool {
+  if value <= 1 {
+    give false
+  } else {
+    let i: int = 2
+    while i * i <= value {
+      if value % i == 0 { give false }
+      i += 1
+    }
+    give true
+  }
+}
+proc next_prime(value: int) -> int {
+  let candidate: int = value + 1
+  if candidate < 2 { candidate = 2 }
+  while not is_prime(candidate) {
+    candidate += 1
+  }
+  give candidate
+}
+
+proc prev_prime(value: int) -> int {
+  let candidate: int = value - 1
+  while candidate >= 2 and not is_prime(candidate) {
+    candidate -= 1
+  }
+  if candidate < 2 {
+    give 2
+  } else {
+    give candidate
+  }
+}
+
+proc gcd_many(values: [int]) -> int {
+  if values.len == 0 {
+    give 0
+  } else {
+    let result: int = values[0]
+    let i: int = 1
+    while i < values.len {
+      result = gcd(result, values[i])
+      i += 1
+    }
+    give result
+  }
+}
+
+proc lcm_many(values: [int]) -> int {
+  if values.len == 0 {
+    give 0
+  } else {
+    let result: int = values[0]
+    let i: int = 1
+    while i < values.len {
+      result = lcm(result, values[i])
+      i += 1
+    }
+    give result
+  }
+}
+
+proc is_composite(value: int) -> bool { give value > 1 and not is_prime(value) }
+
+proc prime_factors(value: int) -> [int] {
+  let n: int = abs_int(value)
+  let out: [int] = []
+  let d: int = 2
+  while d * d <= n {
+    while n % d == 0 {
+      out = arrays.append(out, d)
+      n /= d
+    }
+    d += 1
+  }
+  if n > 1 {
+    out = arrays.append(out, n)
+  }
+  give out
+}
+
+proc divisors(value: int) -> [int] {
+  let n: int = abs_int(value)
+  if n == 0 {
+    give []
+  } else {
+    let small: [int] = []
+    let large: [int] = []
+    let i: int = 1
+    while i * i <= n {
+      if n % i == 0 {
+        small = arrays.append(small, i)
+        if i != n / i {
+          large = arrays.append(large, n / i)
+        }
+      }
+      i += 1
+    }
+    give arrays.concat(small, arrays.reverse(large))
+  }
+}
+
+proc totient(value: int) -> int {
+  let n: int = abs_int(value)
+  if n == 0 {
+    give 0
+  } else {
+    let result: int = n
+    let factors: [int] = prime_factors(n)
+    let i: int = 0
+    let last: int = 0
+    while i < factors.len {
+      let p: int = factors[i]
+      if p != last {
+        result = result / p * (p - 1)
+        last = p
+      }
+      i += 1
+    }
+    give result
+  }
+}
+
+share all

@@ -1,0 +1,197 @@
+space vitte/stdlib/math/statistics
+
+use vitte/stdlib/math/comparison.*
+use vitte/stdlib/collections/sort.*
+
+<<< =========================================================
+   Statistics — ultra complete module
+   ========================================================= >>>
+
+<<< ---------------------------------------------------------
+   Basic aggregates
+   --------------------------------------------------------- >>>
+
+proc sum(values: [f64]) -> f64 {
+  let s: f64 = 0.0
+  let i: int = 0
+  while i < values.len {
+    set s = s + values[i]
+    i += 1
+  }
+  give s
+}
+
+proc mean(values: [f64]) -> f64 {
+  if values.len == 0 { give 0.0 }
+  give sum(values) / values.len as f64
+}
+
+proc min(values: [f64]) -> f64 {
+  let m = values[0]
+  let i: int = 1
+  while i < values.len {
+    if values[i] < m { set m = values[i] }
+    i += 1
+  }
+  give m
+}
+
+proc max(values: [f64]) -> f64 {
+  let m = values[0]
+  let i: int = 1
+  while i < values.len {
+    if values[i] > m { set m = values[i] }
+    i += 1
+  }
+  give m
+}
+
+proc range(values: [f64]) -> f64 {
+  give max(values) - min(values)
+}
+
+<<< ---------------------------------------------------------
+   Variance / stddev
+   --------------------------------------------------------- >>>
+
+proc variance(values: [f64]) -> f64 {
+  let m = mean(values)
+  let s: f64 = 0.0
+  let i: int = 0
+
+  while i < values.len {
+    let d = values[i] - m
+    set s = s + d * d
+    i += 1
+  }
+
+  give s / values.len as f64
+}
+
+proc stddev(values: [f64]) -> f64 {
+  give sqrt_f64(variance(values))
+}
+
+<<< ---------------------------------------------------------
+   Median / quantiles
+   --------------------------------------------------------- >>>
+
+proc median(values: [f64]) -> f64 {
+  let sorted = sort(values, cmp_f64)
+  let n = sorted.len
+
+  if n == 0 { give 0.0 }
+
+  if n % 2 == 0 {
+    give (sorted[n/2 - 1] + sorted[n/2]) / 2.0
+  }
+
+  give sorted[n/2]
+}
+
+proc quantile(values: [f64], q: f64) -> f64 {
+  let sorted = sort(values, cmp_f64)
+  let idx = (q * (sorted.len - 1) as f64) as int
+  give sorted[idx]
+}
+
+<<< ---------------------------------------------------------
+   Covariance / correlation
+   --------------------------------------------------------- >>>
+
+proc covariance(x: [f64], y: [f64]) -> f64 {
+  let mx = mean(x)
+  let my = mean(y)
+
+  let s: f64 = 0.0
+  let i: int = 0
+
+  while i < x.len {
+    set s = s + (x[i] - mx) * (y[i] - my)
+    i += 1
+  }
+
+  give s / x.len as f64
+}
+
+proc correlation(x: [f64], y: [f64]) -> f64 {
+  give covariance(x, y) / (stddev(x) * stddev(y))
+}
+
+<<< ---------------------------------------------------------
+   Histogram
+   --------------------------------------------------------- >>>
+
+proc histogram(values: [f64], bins: int, minv: f64, maxv: f64) -> [int] {
+  let hist: [int] = repeat(0, bins)
+  let i: int = 0
+
+  let width = (maxv - minv) / bins as f64
+
+  while i < values.len {
+    let idx = ((values[i] - minv) / width) as int
+    if idx >= 0 and idx < bins {
+      set hist[idx] = hist[idx] + 1
+    }
+    i += 1
+  }
+
+  give hist
+}
+
+<<< ---------------------------------------------------------
+   Mode
+   --------------------------------------------------------- >>>
+
+proc mode(values: [int]) -> int {
+  let sorted = sort(values, cmp_int)
+
+  let best = sorted[0]
+  let best_count: int = 1
+
+  let current = sorted[0]
+  let count: int = 1
+
+  let i: int = 1
+
+  while i < sorted.len {
+    if sorted[i] == current {
+      count += 1
+    } else {
+      if count > best_count {
+        set best = current
+        set best_count = count
+      }
+      set current = sorted[i]
+      set count = 1
+    }
+    i += 1
+  }
+
+  give best
+}
+
+<<< ---------------------------------------------------------
+   Z-score normalization
+   --------------------------------------------------------- >>>
+
+proc zscore(values: [f64]) -> [f64] {
+  let m = mean(values)
+  let s = stddev(values)
+
+  let out: [f64] = []
+  let i: int = 0
+
+  while i < values.len {
+    set out = out + [(values[i] - m) / s]
+    i += 1
+  }
+
+  give out
+}
+
+<<< ---------------------------------------------------------
+   End module
+   --------------------------------------------------------- >>>
+
+share all

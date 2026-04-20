@@ -1,0 +1,314 @@
+space vitte/stdlib/math/comparison
+
+<<< =========================================================
+   Comparison —
+   ========================================================= >>>
+
+<<< =========================================================
+   Generic core ordering
+   ========================================================= >>>
+
+proc eq[T](a: T, b: T, cmp: proc(T, T) -> int) -> bool {
+  give cmp(a, b) == 0
+}
+
+proc lt[T](a: T, b: T, cmp: proc(T, T) -> int) -> bool {
+  give cmp(a, b) < 0
+}
+
+proc gt[T](a: T, b: T, cmp: proc(T, T) -> int) -> bool {
+  give cmp(a, b) > 0
+}
+
+const EPS: f64 = 1e-9
+
+proc is_nan(x: f64) -> bool {
+  give x != x
+}
+
+proc is_inf(x: f64) -> bool {
+  give x == 1.0/0.0 or x == -1.0/0.0
+}
+
+<<< =========================================================
+   Integer basics
+   ========================================================= >>>
+
+proc min(a: int, b: int) -> int {
+  if a < b { give a } else { give b }
+}
+
+proc max(a: int, b: int) -> int {
+  if a > b { give a } else { give b }
+}
+
+proc clamp(value: int, low: int, high: int) -> int {
+  if value < low {
+    give low
+  } else {
+    if value > high { give high } else { give value }
+  }
+}
+
+proc abs(value: int) -> int {
+  if value < 0 { give 0 - value } else { give value }
+}
+
+proc sign(value: int) -> int {
+  if value < 0 { give -1 } else { if value > 0 { give 1 } else { give 0 } }
+}
+
+proc between(value: int, low: int, high: int) -> bool {
+  give value >= low and value <= high
+}
+
+proc in_range(value: int, low: int, high: int) -> bool {
+  give between(value, low, high)
+}
+
+proc compare(a: int, b: int) -> int {
+  if a < b { give -1 } else { if a > b { give 1 } else { give 0 } }
+}
+
+proc cmp_reverse(a: int, b: int) -> int {
+  give compare(b, a)
+}
+
+<<< =========================================================
+   Float equivalents
+   ========================================================= >>>
+
+proc min_f64(a: f64, b: f64) -> f64 {
+  if a < b { give a } else { give b }
+}
+
+proc max_f64(a: f64, b: f64) -> f64 {
+  if a > b { give a } else { give b }
+}
+
+proc clamp_f64(value: f64, low: f64, high: f64) -> f64 {
+  if value < low { give low }
+  if value > high { give high }
+  give value
+}
+
+proc abs_f64(x: f64) -> f64 {
+  if x < 0.0 { give -x } else { give x }
+}
+
+proc sign_f64(x: f64) -> f64 {
+  if x < 0.0 { give -1.0 }
+  if x > 0.0 { give 1.0 }
+  give 0.0
+}
+
+proc compare_f64(a: f64, b: f64) -> int {
+  if is_nan(a) and is_nan(b) { give 0 }
+  if is_nan(a) { give 1 }
+  if is_nan(b) { give -1 }
+
+  if a < b { give -1 }
+  if a > b { give 1 }
+  give 0
+}
+
+<<< =========================================================
+   Approximate comparisons
+   ========================================================= >>>
+
+proc approx_eq(a: f64, b: f64) -> bool {
+  if is_nan(a) or is_nan(b) { give false }
+  give abs_f64(a - b) < EPS
+}
+
+proc approx_lt(a: f64, b: f64) -> bool {
+  give a < b and not approx_eq(a, b)
+}
+
+proc approx_gt(a: f64, b: f64) -> bool {
+  give a > b and not approx_eq(a, b)
+}
+
+proc approx_between(x: f64, a: f64, b: f64) -> bool {
+  give x >= a - EPS and x <= b + EPS
+}
+
+proc approx_in_range(x: f64, a: f64, b: f64) -> bool {
+  give approx_between(x, a, b)
+}
+
+<<< =========================================================
+   Ordering utilities
+   ========================================================= >>>
+
+proc is_sorted(values: [int]) -> bool {
+  let i: int = 1
+  while i < values.len {
+    if values[i] < values[i-1] {
+      give false
+    }
+    i += 1
+  }
+  give true
+}
+
+proc is_sorted_desc(values: [int]) -> bool {
+  let i: int = 1
+  while i < values.len {
+    if values[i] > values[i-1] {
+      give false
+    }
+    i += 1
+  }
+  give true
+}
+
+proc is_sorted_f64(values: [f64]) -> bool {
+  let i: int = 1
+  while i < values.len {
+    if compare_f64(values[i], values[i-1]) < 0 {
+      give false
+    }
+    i += 1
+  }
+  give true
+}
+
+proc is_sorted_desc_f64(values: [f64]) -> bool {
+  let i: int = 1
+  while i < values.len {
+    if compare_f64(values[i], values[i-1]) > 0 {
+      give false
+    }
+    i += 1
+  }
+  give true
+}
+
+proc argmin(values: [int]) -> int {
+  let idx: int = 0
+  let i: int = 1
+  while i < values.len {
+    if values[i] < values[idx] {
+      idx = i
+    }
+    i += 1
+  }
+  give idx
+}
+
+proc argmax(values: [int]) -> int {
+  let idx: int = 0
+  let i: int = 1
+  while i < values.len {
+    if values[i] > values[idx] {
+      idx = i
+    }
+    i += 1
+  }
+  give idx
+}
+
+proc argmin_f64(values: [f64]) -> int {
+  let idx: int = 0
+  let i: int = 1
+  while i < values.len {
+    if values[i] < values[idx] {
+      idx = i
+    }
+    i += 1
+  }
+  give idx
+}
+
+proc argmax_f64(values: [f64]) -> int {
+  let idx: int = 0
+  let i: int = 1
+  while i < values.len {
+    if values[i] > values[idx] {
+      idx = i
+    }
+    i += 1
+  }
+  give idx
+}
+
+<<< =========================================================
+   Boolean reductions
+   ========================================================= >>>
+
+proc all(values: [bool]) -> bool {
+  let i: int = 0
+  while i < values.len {
+    if not values[i] { give false }
+    i += 1
+  }
+  give true
+}
+
+proc any(values: [bool]) -> bool {
+  let i: int = 0
+  while i < values.len {
+    if values[i] { give true }
+    i += 1
+  }
+  give false
+}
+
+proc none(values: [bool]) -> bool {
+  give not any(values)
+}
+
+proc count_true(values: [bool]) -> int {
+  let c: int = 0
+  let i: int = 0
+  while i < values.len {
+    if values[i] { c = c + 1 }
+    i += 1
+  }
+  give c
+}
+
+<<< =========================================================
+   End comparison
+   ========================================================= >>>
+
+proc min_fast(a: int, b: int) -> int {
+  give b ^ ((a ^ b) & -(a < b))
+}
+
+proc max_fast(a: int, b: int) -> int {
+  give a ^ ((a ^ b) & -(a < b))
+}
+
+proc compare_generic(a: T, b: T, cmp: proc(T, T) -> int) -> int {
+  give cmp(a, b)
+}
+
+proc min_generic[T](a: T, b: T, cmp: proc(T, T) -> int) -> T {
+  if cmp(a, b) < 0 { give a } else { give b }
+}
+
+proc max_generic[T](a: T, b: T, cmp: proc(T, T) -> int) -> T {
+  if cmp(a, b) > 0 { give a } else { give b }
+}
+
+proc clamp_generic[T](x: T, lo: T, hi: T, cmp: proc(T, T) -> int) -> T {
+  if cmp(x, lo) < 0 { give lo }
+  if cmp(x, hi) > 0 { give hi }
+  give x
+}
+
+
+proc is_sorted_generic[T](values: [T], cmp: proc(T, T) -> int) -> bool {
+  let i: int = 1
+  while i < values.len {
+    if cmp(values[i], values[i-1]) < 0 {
+      give false
+    }
+    i += 1
+  }
+  give true
+}
+
+share all

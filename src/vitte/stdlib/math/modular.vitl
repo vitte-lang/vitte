@@ -1,0 +1,65 @@
+proc mod_normalize(value: int, modulus: int) -> int {
+  if modulus == 0 { give 0 } else {
+    let remainder: int = value % modulus
+    if remainder < 0 { give remainder + modulus } else { give remainder }
+  }
+}
+proc mod_add(a: int, b: int, modulus: int) -> int { give mod_normalize(a + b, modulus) }
+proc mod_sub(a: int, b: int, modulus: int) -> int { give mod_normalize(a - b, modulus) }
+proc mod_mul(a: int, b: int, modulus: int) -> int { give mod_normalize(a * b, modulus) }
+proc mod_pow(base: int, exponent: int, modulus: int) -> int {
+  if modulus == 0 { give 0 } else {
+    let result: int = 1
+    let b: int = mod_normalize(base, modulus)
+    let e: int = exponent
+    while e > 0 {
+      if e % 2 != 0 {
+        result = mod_normalize(result * b, modulus)
+      }
+      e /= 2
+      b = mod_normalize(b * b, modulus)
+    }
+    give result
+  }
+}
+
+proc mod_neg(value: int, modulus: int) -> int { give mod_normalize(0 - value, modulus) }
+
+proc mod_inverse(value: int, modulus: int) -> int {
+  if modulus == 0 {
+    give 0
+  } else {
+    let r0: int = modulus
+    let r1: int = mod_normalize(value, modulus)
+    let t0: int = 0
+    let t1: int = 1
+    while r1 != 0 {
+      let q: int = r0 / r1
+      let nr: int = r0 - q * r1
+      let nt: int = t0 - q * t1
+      r0 = r1
+      r1 = nr
+      t0 = t1
+      t1 = nt
+    }
+    if r0 != 1 {
+      give 0
+    } else {
+      if t0 < 0 {
+        t0 += modulus
+      }
+      give mod_normalize(t0, modulus)
+    }
+  }
+}
+
+proc mod_div(a: int, b: int, modulus: int) -> int {
+  let inv: int = mod_inverse(b, modulus)
+  if inv == 0 {
+    give 0
+  } else {
+    give mod_mul(a, inv, modulus)
+  }
+}
+
+share all

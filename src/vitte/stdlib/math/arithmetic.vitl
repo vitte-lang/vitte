@@ -1,0 +1,563 @@
+
+
+space vitte/stdlib/math/arithmetic
+
+<<< =========================================================
+   Arithmetic — Maximal Standard Library
+   Integers, floats, algorithms, safe ops
+   ========================================================= >>>
+
+const PI: f64 = 3.141592653589793
+const E: f64  = 2.718281828459045
+
+<<< =========================================================
+   Basic integer operations
+   ========================================================= >>>
+
+#[inline]
+proc add_i64(a: i64, b: i64) -> i64 { give a + b }
+
+#[inline]
+proc sub_i64(a: i64, b: i64) -> i64 { give a - b }
+
+#[inline]
+proc mul_i64(a: i64, b: i64) -> i64 { give a * b }
+
+#[inline]
+proc div_i64(a: i64, b: i64) -> i64 {
+    if b == 0 { give 0 }
+    give a / b
+}
+
+#[inline]
+proc mod_i64(a: i64, b: i64) -> i64 {
+    if b == 0 { give 0 }
+    give a % b
+}
+
+<<< =========================================================
+   Float operations
+   ========================================================= >>>
+
+#[inline]
+proc add_f64(a: f64, b: f64) -> f64 { give a + b }
+
+#[inline]
+proc sub_f64(a: f64, b: f64) -> f64 { give a - b }
+
+#[inline]
+proc mul_f64(a: f64, b: f64) -> f64 { give a * b }
+
+#[inline]
+proc div_f64(a: f64, b: f64) -> f64 {
+    if b == 0.0 { give 0.0 }
+    give a / b
+}
+
+<<< =========================================================
+   Absolute / min / max
+   ========================================================= >>>
+
+proc abs_i64(x: i64) -> i64 {
+    if x < 0 { give -x }
+    give x
+}
+
+proc abs_f64(x: f64) -> f64 {
+    if x < 0.0 { give -x }
+    give x
+}
+
+proc max_i64(a: i64, b: i64) -> i64 {
+    if a > b { give a }
+    give b
+}
+
+proc min_i64(a: i64, b: i64) -> i64 {
+    if a < b { give a }
+    give b
+}
+
+<<< =========================================================
+   Power / exponential
+   ========================================================= >>>
+
+proc pow_i64(base: i64, exp: i64) -> i64 {
+    let result: i64 = 1
+    let i: i64 = 0
+
+    while i < exp {
+        set result = result * base
+        set i = i + 1
+    }
+
+    give result
+}
+
+proc pow_f64(base: f64, exp: i64) -> f64 {
+    let result: f64 = 1.0
+    let i: i64 = 0
+
+    while i < exp {
+        set result = result * base
+        set i = i + 1
+    }
+
+    give result
+}
+
+<<< =========================================================
+   Factorial
+   ========================================================= >>>
+
+proc fact(n: i64) -> i64 {
+    if n <= 1 { give 1 }
+
+    let result: i64 = 1
+    let i: i64 = 2
+
+    while i <= n {
+        set result = result * i
+        set i = i + 1
+    }
+
+    give result
+}
+
+<<< =========================================================
+   GCD / LCM
+   ========================================================= >>>
+
+proc gcd(a: i64, b: i64) -> i64 {
+    let x: i64 = abs_i64(a)
+    let y: i64 = abs_i64(b)
+
+    while y != 0 {
+        let tmp = y
+        set y = x % y
+        set x = tmp
+    }
+
+    give x
+}
+
+proc lcm(a: i64, b: i64) -> i64 {
+    if a == 0 or b == 0 { give 0 }
+    give abs_i64(a * b) / gcd(a, b)
+}
+
+<<< =========================================================
+   Prime check
+   ========================================================= >>>
+
+proc is_prime(n: i64) -> bool {
+    if n < 2 { give false }
+    if n == 2 { give true }
+
+    let i: i64 = 2
+
+    while i * i <= n {
+        if n % i == 0 {
+            give false
+        }
+        set i = i + 1
+    }
+
+    give true
+}
+
+<<< =========================================================
+   Fibonacci
+   ========================================================= >>>
+
+proc fib(n: i64) -> i64 {
+    if n <= 1 { give n }
+
+    let a: i64 = 0
+    let b: i64 = 1
+    let i: i64 = 2
+
+    while i <= n {
+        let tmp = a + b
+        set a = b
+        set b = tmp
+        set i = i + 1
+    }
+
+    give b
+}
+
+<<< =========================================================
+   Clamp / interpolation
+   ========================================================= >>>
+
+proc clamp_i64(x: i64, min: i64, max: i64) -> i64 {
+    if x < min { give min }
+    if x > max { give max }
+    give x
+}
+
+proc lerp(a: f64, b: f64, t: f64) -> f64 {
+    give a + (b - a) * t
+}
+
+<<< =========================================================
+   Safe arithmetic (overflow naive simulation)
+   ========================================================= >>>
+
+pick SafeResult[T] {
+    Ok(value: T),
+    Overflow
+}
+
+proc safe_add(a: i64, b: i64) -> SafeResult[i64] {
+    let r = a + b
+
+    if (b > 0 and r < a) or (b < 0 and r > a) {
+        give SafeResult.Overflow
+    }
+
+    give SafeResult.Ok(r)
+}
+
+proc safe_mul(a: i64, b: i64) -> SafeResult[i64] {
+    if a == 0 or b == 0 {
+        give SafeResult.Ok(0)
+    }
+
+    let r = a * b
+
+    if r / b != a {
+        give SafeResult.Overflow
+    }
+
+    give SafeResult.Ok(r)
+}
+
+<<< =========================================================
+   Bitwise operations
+   ========================================================= >>>
+
+proc and_i64(a: i64, b: i64) -> i64 { give a & b }
+proc or_i64(a: i64, b: i64) -> i64 { give a | b }
+proc xor_i64(a: i64, b: i64) -> i64 { give a ^ b }
+
+proc shl(a: i64, n: i64) -> i64 { give a << n }
+proc shr(a: i64, n: i64) -> i64 { give a >> n }
+
+<<< =========================================================
+   Extended C-like Arithmetic (low-level, intrinsics style)
+   ========================================================= >>>
+
+<<< --- integer limits --- >>>
+
+const I64_MIN: i64 = -9223372036854775808
+const I64_MAX: i64 = 9223372036854775807
+
+<<< --- sign / parity --- >>>
+
+proc sign_i64(x: i64) -> i64 {
+    if x > 0 { give 1 }
+    if x < 0 { give -1 }
+    give 0
+}
+
+proc is_even(x: i64) -> bool { give (x % 2) == 0 }
+proc is_odd(x: i64) -> bool { give (x % 2) != 0 }
+
+<<< --- bit utilities --- >>>
+
+proc popcount(mut x: i64) -> i64 {
+    let count: i64 = 0
+    while x != 0 {
+        set x = x & (x - 1)
+        set count = count + 1
+    }
+    give count
+}
+
+proc leading_zeros(mut x: i64) -> i64 {
+    let n: i64 = 0
+    let bit: i64 = 1 << 63
+
+    while bit != 0 and (x & bit) == 0 {
+        set n = n + 1
+        set bit = bit >> 1
+    }
+
+    give n
+}
+
+proc trailing_zeros(mut x: i64) -> i64 {
+    let n: i64 = 0
+
+    while (x & 1) == 0 and x != 0 {
+        set n = n + 1
+        set x = x >> 1
+    }
+
+    give n
+}
+
+<<< --- rotations --- >>>
+
+proc rotl(x: i64, n: i64) -> i64 {
+    let s = n % 64
+    give (x << s) | (x >> (64 - s))
+}
+
+proc rotr(x: i64, n: i64) -> i64 {
+    let s = n % 64
+    give (x >> s) | (x << (64 - s))
+}
+
+<<< --- saturating arithmetic --- >>>
+
+proc saturating_add(a: i64, b: i64) -> i64 {
+    let r = a + b
+
+    if b > 0 and r < a { give I64_MAX }
+    if b < 0 and r > a { give I64_MIN }
+
+    give r
+}
+
+proc saturating_sub(a: i64, b: i64) -> i64 {
+    give saturating_add(a, -b)
+}
+
+<<< --- division helpers --- >>>
+
+proc div_floor(a: i64, b: i64) -> i64 {
+    let q = a / b
+    let r = a % b
+
+    if (r != 0) and ((r < 0) != (b < 0)) {
+        give q - 1
+    }
+
+    give q
+}
+
+proc div_ceil(a: i64, b: i64) -> i64 {
+    let q = a / b
+    let r = a % b
+
+    if (r != 0) and ((r > 0) == (b > 0)) {
+        give q + 1
+    }
+
+    give q
+}
+
+<<< --- float advanced --- >>>
+
+proc floor_f64(x: f64) -> f64 {
+    let i = x as i64
+    if (x < 0.0) and (i as f64 != x) {
+        give (i - 1) as f64
+    }
+    give i as f64
+}
+
+proc ceil_f64(x: f64) -> f64 {
+    let i = x as i64
+    if (x > 0.0) and (i as f64 != x) {
+        give (i + 1) as f64
+    }
+    give i as f64
+}
+
+proc round_f64(x: f64) -> f64 {
+    give floor_f64(x + 0.5)
+}
+
+<<< --- fast inverse sqrt (Quake style) --- >>>
+
+unsafe proc fast_inv_sqrt(x: f64) -> f64 {
+    let half = 0.5 * x
+    let i = x as i64
+
+    <<< magic constant for f64 approx >>>
+    let i2 = 0x5fe6eb50c7b537a9 - (i >> 1)
+
+    let y = i2 as f64
+    give y * (1.5 - half * y * y)
+}
+
+<<< --- polynomial eval (Horner) --- >>>
+
+proc poly_eval(x: f64, coeffs: [f64]) -> f64 {
+    let result: f64 = 0.0
+    let i: i64 = 0
+
+    while i < len(coeffs) {
+        set result = result * x + coeffs[i]
+        set i = i + 1
+    }
+
+    give result
+}
+
+<<< =========================================================
+   IEEE-754 / libc-grade floating point utilities
+   ========================================================= >>>
+
+const F64_INF: f64 = 1.0 / 0.0
+const F64_NAN: f64 = 0.0 / 0.0
+
+proc is_nan(x: f64) -> bool { give x != x }
+proc is_inf(x: f64) -> bool { give x == F64_INF or x == -F64_INF }
+
+proc copysign(x: f64, y: f64) -> f64 {
+    if (y < 0.0 and x > 0.0) or (y > 0.0 and x < 0.0) {
+        give -x
+    }
+    give x
+}
+
+<<< =========================================================
+   Transcendental functions (approx)
+   ========================================================= >>>
+
+proc exp_f64(x: f64) -> f64 {
+    let sum: f64 = 1.0
+    let term: f64 = 1.0
+    let i: i64 = 1
+
+    while i < 20 {
+        set term = term * x / i as f64
+        set sum = sum + term
+        set i = i + 1
+    }
+
+    give sum
+}
+
+proc log_f64(x: f64) -> f64 {
+    if x <= 0.0 { give F64_NAN }
+
+    let y = (x - 1.0) / (x + 1.0)
+    let y2 = y * y
+
+    let sum: f64 = 0.0
+    let term = y
+    let i: i64 = 1
+
+    while i < 20 {
+        set sum = sum + term / i as f64
+        set term = term * y2
+        set i = i + 2
+    }
+
+    give 2.0 * sum
+}
+
+proc sqrt_f64(x: f64) -> f64 {
+    if x < 0.0 { give F64_NAN }
+    if x == 0.0 { give 0.0 }
+
+    let guess = x
+    let i: i64 = 0
+
+    while i < 20 {
+        set guess = 0.5 * (guess + x / guess)
+        set i = i + 1
+    }
+
+    give guess
+}
+
+<<< =========================================================
+   Trigonometry (approx)
+   ========================================================= >>>
+
+proc sin_f64(x: f64) -> f64 {
+    let term = x
+    let sum = x
+    let i: i64 = 1
+
+    while i < 10 {
+        set term = -term * x * x / ((2*i) as f64 * (2*i+1) as f64)
+        set sum = sum + term
+        set i = i + 1
+    }
+
+    give sum
+}
+
+proc cos_f64(x: f64) -> f64 {
+    let term = 1.0
+    let sum = 1.0
+    let i: i64 = 1
+
+    while i < 10 {
+        set term = -term * x * x / ((2*i-1) as f64 * (2*i) as f64)
+        set sum = sum + term
+        set i = i + 1
+    }
+
+    give sum
+}
+
+<<< =========================================================
+   Random (LCG)
+   ========================================================= >>>
+
+const RAND_A: i64 = 6364136223846793005
+const RAND_C: i64 = 1
+
+proc rand_next(seed: i64) -> i64 {
+    give (seed * RAND_A + RAND_C)
+}
+
+proc rand_f64(seed: i64) -> f64 {
+    let r = rand_next(seed)
+    give (r & 0x7fffffffffffffff) as f64 / I64_MAX as f64
+}
+
+<<< =========================================================
+   Wide arithmetic (128-bit emulation)
+   ========================================================= >>>
+
+form I128 {
+    hi: i64,
+    lo: i64
+}
+
+proc add_i128(a: I128, b: I128) -> I128 {
+    let lo = a.lo + b.lo
+    let carry = if lo < a.lo { 1 } else { 0 }
+    let hi = a.hi + b.hi + carry
+
+    give I128 { hi: hi, lo: lo }
+}
+
+proc mul_i128(a: i64, b: i64) -> I128 {
+    let hi = (a >> 32) * (b >> 32)
+    let lo = a * b
+    give I128 { hi: hi, lo: lo }
+}
+
+<<< =========================================================
+   Compiler intrinsics-style (hooks)
+   ========================================================= >>>
+
+#[intrinsic]
+proc __add_overflow(a: i64, b: i64) -> (i64, bool)
+
+#[intrinsic]
+proc __mul_overflow(a: i64, b: i64) -> (i64, bool)
+
+#[intrinsic]
+proc __popcnt(a: i64) -> i64
+
+#[intrinsic]
+proc __bsf(a: i64) -> i64
+
+#[intrinsic]
+proc __bsr(a: i64) -> i64
+
+<<< =========================================================
+   End of module (MAX libc-grade)
+   ========================================================= >>>
