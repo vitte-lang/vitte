@@ -832,10 +832,6 @@ interop-headers-snapshot-update:
 interop-abi-matrix:
 	@python3 tools/interop_abi_matrix.py
 
-.PHONY: std-core-tests
-std-core-tests:
-	@tools/test_std_core.sh
-
 .PHONY: stdlib-api-lint
 stdlib-api-lint:
 	@tools/lint_stdlib_api.py
@@ -1321,10 +1317,6 @@ release-modules-gate: modules-ci-strict modules-contract-snapshots modules-repor
 reports-index:
 	@python3 tools/reports_index.py
 
-.PHONY: test-map
-test-map:
-	@python3 tools/generate_test_map.py
-
 .PHONY: package-index
 package-index:
 	@python3 tools/generate_package_index.py
@@ -1438,7 +1430,6 @@ help:
 	@echo "  make interop-headers-snapshot-update update tests/interop ABI exports snapshot"
 	@echo "  make interop-abi-matrix run ABI compatibility matrix + C/C++ interop smoke checks"
 	@echo "  make quasi-empty-package-tests run checks for newly hardened quasi-empty package modules"
-	@echo "  make std-core-tests run std/core regression tests"
 	@echo "  make stdlib-api-lint check stable stdlib ABI surface entries"
 	@echo "  make stdlib-profile-snapshots check stdlib profile allow/deny matrix"
 	@echo "  make stdlib-abi-compat block ABI removals from v1 to v2"
@@ -1493,7 +1484,6 @@ help:
 	@echo "  make packages-gate run package governance/layout/perf/contract gate"
 	@echo "  make make-targets-doc regenerate docs/MAKE_TARGETS.md from make help"
 	@echo "  make make-targets-doc-check fail if docs/MAKE_TARGETS.md is out of date"
-	@echo "  make test-map generate docs/TEST_MAP.md from the tests tree"
 	@echo "  make package-index generate docs/PACKAGE_INDEX.md from package metadata"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
