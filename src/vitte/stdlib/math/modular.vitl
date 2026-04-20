@@ -1,65 +1,591 @@
-proc mod_normalize(value: int, modulus: int) -> int {
-  if modulus == 0 { give 0 } else {
-    let remainder: int = value % modulus
-    if remainder < 0 { give remainder + modulus } else { give remainder }
+space vitte/stdlib/math/modular
+
+use stdlib/math/number_theory as nt
+use stdlib/math/arrays as arrays
+
+<<< =========================================================
+   Modular arithmetic — normalization, powers, inverses,
+   congruences, CRT, combinatorics, sequences, polynomial eval
+   ========================================================= >>>
+
+const MOD_INVALID: int = 0
+
+<<< ---------------------------------------------------------
+   Internal helpers
+   --------------------------------------------------------- >>>
+
+proc abs_int(value: int) -> int {
+  if value < 0 {
+    give 0 - value
+  } else {
+    give value
   }
 }
-proc mod_add(a: int, b: int, modulus: int) -> int { give mod_normalize(a + b, modulus) }
-proc mod_sub(a: int, b: int, modulus: int) -> int { give mod_normalize(a - b, modulus) }
-proc mod_mul(a: int, b: int, modulus: int) -> int { give mod_normalize(a * b, modulus) }
-proc mod_pow(base: int, exponent: int, modulus: int) -> int {
-  if modulus == 0 { give 0 } else {
-    let result: int = 1
-    let b: int = mod_normalize(base, modulus)
-    let e: int = exponent
-    while e > 0 {
-      if e % 2 != 0 {
-        result = mod_normalize(result * b, modulus)
-      }
-      e /= 2
-      b = mod_normalize(b * b, modulus)
-    }
+
+proc min_int(a: int, b: int) -> int {
+  if a < b {
+    give a
+  } else {
+    give b
+  }
+}
+
+proc max_int(a: int, b: int) -> int {
+  if a > b {
+    give a
+  } else {
+    give b
+  }
+}
+
+form EgcdResult {
+  gcd: int,
+  x: int,
+  y: int
+}
+
+form Crt2Result {
+  value: int,
+  modulus: int,
+  valid: bool
+}
+
+<<< ---------------------------------------------------------
+   Validation / normalization
+   --------------------------------------------------------- >>>
+
+proc mod_is_valid(modulus: int) -> bool {
+  give modulus > 0
+}
+
+proc mod_norm(value: int, modulus: int) -> int {
+  if modulus <= 0 {
+    give 0
+  }
+
+  let result: int = value % modulus
+  if result < 0 {
+    give result + modulus
+  } else {
     give result
   }
 }
 
-proc mod_neg(value: int, modulus: int) -> int { give mod_normalize(0 - value, modulus) }
+proc mod_is_zero(value: int, modulus: int) -> bool {
+  if modulus <= 0 {
+    give false
+  }
 
-proc mod_inverse(value: int, modulus: int) -> int {
-  if modulus == 0 {
+  give mod_norm(value, modulus) == 0
+}
+
+proc mod_equal(a: int, b: int, modulus: int) -> bool {
+  if modulus <= 0 {
+    give false
+  }
+
+  give mod_norm(a, modulus) == mod_norm(b, modulus)
+}
+
+proc are_congruent(a: int, b: int, modulus: int) -> bool {
+  give mod_equal(a, b, modulus)
+}
+
+<<< ---------------------------------------------------------
+   Basic operations
+   --------------------------------------------------------- >>>
+
+proc mod_add(a: int, b: int, modulus: int) -> int {
+  if modulus <= 0 {
     give 0
-  } else {
-    let r0: int = modulus
-    let r1: int = mod_normalize(value, modulus)
-    let t0: int = 0
-    let t1: int = 1
-    while r1 != 0 {
-      let q: int = r0 / r1
-      let nr: int = r0 - q * r1
-      let nt: int = t0 - q * t1
-      r0 = r1
-      r1 = nr
-      t0 = t1
-      t1 = nt
+  }
+
+  give mod_norm(mod_norm(a, modulus) + mod_norm(b, modulus), modulus)
+}
+
+proc mod_sub(a: int, b: int, modulus: int) -> int {
+  if modulus <= 0 {
+    give 0
+  }
+
+  give mod_norm(mod_norm(a, modulus) - mod_norm(b, modulus), modulus)
+}
+
+proc mod_neg(value: int, modulus: int) -> int {
+  if modulus <= 0 {
+    give 0
+  }
+
+  give mod_norm(0 - mod_norm(value, modulus), modulus)
+}
+
+proc mod_double(value: int, modulus: int) -> int {
+  give mod_add(value, value, modulus)
+}
+
+proc mod_mul(a: int, b: int, modulus: int) -> int {
+  if modulus <= 0 {
+    give 0
+  }
+
+  give mod_norm(mod_norm(a, modulus) * mod_norm(b, modulus), modulus)
+}
+
+proc mod_mul_safe(a: int, b: int, modulus: int) -> int {
+  if modulus <= 0 {
+    give 0
+  }
+
+  let x: int = mod_norm(a, modulus)
+  let y: int = mod_norm(b, modulus)
+  let result: int = 0
+
+  while y > 0 {
+    if y % 2 == 1 {
+      set result = mod_add(result, x, modulus)
     }
-    if r0 != 1 {
-      give 0
+    set x = mod_add(x, x, modulus)
+    set y = y / 2
+  }
+
+  give result
+}
+
+proc mod_square(value: int, modulus: int) -> int {
+  give mod_mul_safe(value, value, modulus)
+}
+
+proc mod_cube(value: int, modulus: int) -> int {
+  give mod_mul_safe(mod_mul_safe(value, value, modulus), value, modulus)
+}
+
+<<< ---------------------------------------------------------
+   Extended GCD / inverses / division
+   --------------------------------------------------------- >>>
+
+proc extended_gcd(a: int, b: int) -> EgcdResult {
+  if b == 0 {
+    if a < 0 {
+      give EgcdResult { gcd: abs_int(a), x: -1, y: 0 }
     } else {
-      if t0 < 0 {
-        t0 += modulus
-      }
-      give mod_normalize(t0, modulus)
+      give EgcdResult { gcd: a, x: 1, y: 0 }
     }
+  }
+
+  let next: EgcdResult = extended_gcd(b, a % b)
+  give EgcdResult {
+    gcd: next.gcd,
+    x: next.y,
+    y: next.x - (a / b) * next.y
   }
 }
 
+proc mod_is_unit(value: int, modulus: int) -> bool {
+  if modulus <= 0 {
+    give false
+  }
+
+  give nt.gcd(mod_norm(value, modulus), modulus) == 1
+}
+
+proc mod_has_inverse(value: int, modulus: int) -> bool {
+  give mod_is_unit(value, modulus)
+}
+
+proc mod_inv(value: int, modulus: int) -> int {
+  if modulus <= 0 {
+    give 0
+  }
+
+  let eg: EgcdResult = extended_gcd(mod_norm(value, modulus), modulus)
+  if eg.gcd != 1 {
+    give 0
+  }
+
+  give mod_norm(eg.x, modulus)
+}
+
 proc mod_div(a: int, b: int, modulus: int) -> int {
-  let inv: int = mod_inverse(b, modulus)
+  if modulus <= 0 {
+    give 0
+  }
+
+  let inv: int = mod_inv(b, modulus)
+  if inv == 0 and mod_norm(b, modulus) != 1 {
+    give 0
+  }
+
+  give mod_mul_safe(a, inv, modulus)
+}
+
+proc mod_half(value: int, modulus: int) -> int {
+  give mod_div(value, 2, modulus)
+}
+
+<<< ---------------------------------------------------------
+   Fast exponentiation
+   --------------------------------------------------------- >>>
+
+proc mod_pow(base: int, exponent: int, modulus: int) -> int {
+  if modulus <= 0 {
+    give 0
+  }
+
+  if exponent < 0 {
+    give 0
+  }
+
+  let result: int = 1
+  let current_base: int = mod_norm(base, modulus)
+  let current_exponent: int = exponent
+
+  while current_exponent > 0 {
+    if current_exponent % 2 == 1 {
+      set result = mod_mul_safe(result, current_base, modulus)
+    }
+    set current_base = mod_mul_safe(current_base, current_base, modulus)
+    set current_exponent = current_exponent / 2
+  }
+
+  give result
+}
+
+proc mod_pow2(exponent: int, modulus: int) -> int {
+  give mod_pow(2, exponent, modulus)
+}
+
+proc mod_pow10(exponent: int, modulus: int) -> int {
+  give mod_pow(10, exponent, modulus)
+}
+
+<<< ---------------------------------------------------------
+   Linear congruence
+   --------------------------------------------------------- >>>
+
+proc solve_linear_congruence(a: int, b: int, modulus: int) -> int {
+  if modulus <= 0 {
+    give 0
+  }
+
+  let aa: int = mod_norm(a, modulus)
+  let bb: int = mod_norm(b, modulus)
+  let g: int = nt.gcd(aa, modulus)
+
+  if bb % g != 0 {
+    give 0
+  }
+
+  let reduced_a: int = aa / g
+  let reduced_b: int = bb / g
+  let reduced_m: int = modulus / g
+  let inv: int = mod_inv(reduced_a, reduced_m)
+
+  if inv == 0 and reduced_a != 1 {
+    give 0
+  }
+
+  give mod_norm(mod_mul_safe(reduced_b, inv, reduced_m), reduced_m)
+}
+
+<<< ---------------------------------------------------------
+   Chinese Remainder Theorem
+   --------------------------------------------------------- >>>
+
+proc crt2_full(a1: int, m1: int, a2: int, m2: int) -> Crt2Result {
+  if m1 <= 0 or m2 <= 0 {
+    give Crt2Result { value: 0, modulus: 0, valid: false }
+  }
+
+  let r1: int = mod_norm(a1, m1)
+  let r2: int = mod_norm(a2, m2)
+  let eg: EgcdResult = extended_gcd(m1, m2)
+  let g: int = eg.gcd
+
+  if (r2 - r1) % g != 0 {
+    give Crt2Result { value: 0, modulus: 0, valid: false }
+  }
+
+  let l: int = abs_int((m1 / g) * m2)
+  let step: int = (r2 - r1) / g
+  let merged: int = mod_norm(r1 + mod_mul_safe(step, eg.x, m2 / g) * m1, l)
+
+  give Crt2Result { value: merged, modulus: l, valid: true }
+}
+
+proc crt2(a1: int, m1: int, a2: int, m2: int) -> int {
+  let res: Crt2Result = crt2_full(a1, m1, a2, m2)
+  if not res.valid {
+    give 0
+  }
+
+  give res.value
+}
+
+proc crt(residues: [int], moduli: [int]) -> int {
+  if residues.len == 0 or moduli.len == 0 or residues.len != moduli.len {
+    give 0
+  }
+
+  let current_value: int = mod_norm(residues[0], moduli[0])
+  let current_modulus: int = moduli[0]
+  let i: int = 1
+
+  while i < residues.len {
+    let merged: Crt2Result = crt2_full(current_value, current_modulus, residues[i], moduli[i])
+    if not merged.valid {
+      give 0
+    }
+
+    set current_value = merged.value
+    set current_modulus = merged.modulus
+    set i = i + 1
+  }
+
+  give current_value
+}
+
+<<< ---------------------------------------------------------
+   Modular combinatorics
+   --------------------------------------------------------- >>>
+
+proc mod_factorial(n: int, modulus: int) -> int {
+  if modulus <= 0 or n < 0 {
+    give 0
+  }
+
+  let result: int = 1
+  let i: int = 2
+
+  while i <= n {
+    set result = mod_mul_safe(result, i, modulus)
+    set i = i + 1
+  }
+
+  give result
+}
+
+proc mod_permutations(n: int, k: int, modulus: int) -> int {
+  if modulus <= 0 or n < 0 or k < 0 or k > n {
+    give 0
+  }
+
+  let result: int = 1
+  let i: int = 0
+
+  while i < k {
+    set result = mod_mul_safe(result, n - i, modulus)
+    set i = i + 1
+  }
+
+  give result
+}
+
+proc mod_combinations_prime(n: int, k: int, modulus: int) -> int {
+  if modulus <= 1 or n < 0 or k < 0 or k > n {
+    give 0
+  }
+
+  if not nt.is_prime(modulus) {
+    give 0
+  }
+
+  let kk: int = min_int(k, n - k)
+  let numerator: int = mod_factorial(n, modulus)
+  let denominator_left: int = mod_factorial(kk, modulus)
+  let denominator_right: int = mod_factorial(n - kk, modulus)
+  let denominator: int = mod_mul_safe(denominator_left, denominator_right, modulus)
+  let inv: int = mod_inv(denominator, modulus)
+
   if inv == 0 {
     give 0
-  } else {
-    give mod_mul(a, inv, modulus)
   }
+
+  give mod_mul_safe(numerator, inv, modulus)
+}
+
+proc mod_combinations(n: int, k: int, modulus: int) -> int {
+  if modulus <= 0 or n < 0 or k < 0 or k > n {
+    give 0
+  }
+
+  let value: int = nt.binomial(n, k)
+  give mod_norm(value, modulus)
+}
+
+proc mod_factorial_table(limit: int, modulus: int) -> [int] {
+  if modulus <= 0 or limit < 0 {
+    give []
+  }
+
+  let out: [int] = [1]
+  let current: int = 1
+  let i: int = 1
+
+  while i <= limit {
+    set current = mod_mul_safe(current, i, modulus)
+    set out = arrays.append(out, current)
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc mod_inverse_table(limit: int, modulus: int) -> [int] {
+  if modulus <= 1 or limit < 0 {
+    give []
+  }
+
+  let out: [int] = []
+  let i: int = 0
+
+  while i <= limit {
+    set out = arrays.append(out, mod_inv(i, modulus))
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc mod_inverse_factorial_table(limit: int, modulus: int) -> [int] {
+  if modulus <= 1 or limit < 0 {
+    give []
+  }
+
+  let facts: [int] = mod_factorial_table(limit, modulus)
+  let out: [int] = []
+  let i: int = 0
+
+  while i < facts.len {
+    set out = arrays.append(out, mod_inv(facts[i], modulus))
+    set i = i + 1
+  }
+
+  give out
+}
+
+<<< ---------------------------------------------------------
+   Modular sequences
+   --------------------------------------------------------- >>>
+
+proc mod_fibonacci(index: int, modulus: int) -> int {
+  if modulus <= 0 or index < 0 {
+    give 0
+  }
+
+  if index == 0 {
+    give 0
+  }
+
+  if index == 1 {
+    give 1 % modulus
+  }
+
+  let prev: int = 0
+  let curr: int = 1 % modulus
+  let i: int = 1
+
+  while i < index {
+    let next: int = mod_add(prev, curr, modulus)
+    set prev = curr
+    set curr = next
+    set i = i + 1
+  }
+
+  give curr
+}
+
+proc mod_arithmetic_sum(first: int, step: int, count: int, modulus: int) -> int {
+  if modulus <= 0 or count <= 0 {
+    give 0
+  }
+
+  let result: int = 0
+  let current: int = mod_norm(first, modulus)
+  let i: int = 0
+
+  while i < count {
+    set result = mod_add(result, current, modulus)
+    set current = mod_add(current, step, modulus)
+    set i = i + 1
+  }
+
+  give result
+}
+
+proc mod_geometric_sum(first: int, ratio: int, count: int, modulus: int) -> int {
+  if modulus <= 0 or count <= 0 {
+    give 0
+  }
+
+  let result: int = 0
+  let current: int = mod_norm(first, modulus)
+  let i: int = 0
+
+  while i < count {
+    set result = mod_add(result, current, modulus)
+    set current = mod_mul_safe(current, ratio, modulus)
+    set i = i + 1
+  }
+
+  give result
+}
+
+proc mod_powers(base: int, count: int, modulus: int) -> [int] {
+  if modulus <= 0 or count <= 0 {
+    give []
+  }
+
+  let out: [int] = [1 % modulus]
+  let current: int = 1 % modulus
+  let i: int = 1
+
+  while i < count {
+    set current = mod_mul_safe(current, base, modulus)
+    set out = arrays.append(out, current)
+    set i = i + 1
+  }
+
+  give out
+}
+
+<<< ---------------------------------------------------------
+   Polynomial / rolling hash helpers
+   --------------------------------------------------------- >>>
+
+proc mod_poly_eval(coeffs: [int], x: int, modulus: int) -> int {
+  if modulus <= 0 {
+    give 0
+  }
+
+  let result: int = 0
+  let i: int = coeffs.len - 1
+
+  while i >= 0 {
+    set result = mod_add(mod_mul_safe(result, x, modulus), coeffs[i], modulus)
+    set i = i - 1
+  }
+
+  give result
+}
+
+proc mod_hash_step(current: int, value: int, base: int, modulus: int) -> int {
+  if modulus <= 0 {
+    give 0
+  }
+
+  give mod_add(mod_mul_safe(current, base, modulus), value, modulus)
+}
+
+<<< ---------------------------------------------------------
+   Public aliases
+   --------------------------------------------------------- >>>
+
+proc mod(value: int, modulus: int) -> int {
+  give mod_norm(value, modulus)
+}
+
+proc inv_mod(value: int, modulus: int) -> int {
+  give mod_inv(value, modulus)
 }
 
 share all
