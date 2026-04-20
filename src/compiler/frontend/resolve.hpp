@@ -58,11 +58,19 @@ public:
     types::TypeId type_id(ast::TypeId node) const;
 
 private:
+    struct ProcSignature {
+        std::vector<std::string> param_names;
+        std::vector<ast::ExprId> defaults;
+    };
+
     void trace(std::string_view event, ast::NodeKind kind, ast::SourceSpan span) const;
 
     void resolve_decl(ast::AstContext& ctx, ast::DeclId decl);
     void resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt);
     void resolve_expr(ast::AstContext& ctx, ast::ExprId expr);
+    void register_signature(const std::string& name, const std::vector<ast::FnParam>& params);
+    const ProcSignature* signature_for_callee(const ast::AstContext& ctx, ast::ExprId callee) const;
+    void normalize_invoke_args(ast::AstContext& ctx, ast::InvokeExpr& invoke);
 
     void define_builtin_types();
     types::TypeId resolve_type(ast::AstContext& ctx, ast::TypeId type);
@@ -77,6 +85,7 @@ private:
     std::unordered_map<ast::TypeId, types::TypeId> resolved_types_;
     std::unordered_map<std::string, ast::SourceSpan> explicit_imports_;
     std::unordered_set<std::string> used_explicit_imports_;
+    std::unordered_map<std::string, ProcSignature> proc_signatures_;
 };
 
 const char* to_string(SymbolKind kind);

@@ -240,8 +240,18 @@ struct BuiltinType : TypeNode {
 struct FnParam {
     Ident ident;
     TypeId type;
+    ExprId default_value;
 
-    FnParam(Ident ident, TypeId type);
+    FnParam(Ident ident, TypeId type, ExprId default_value = kInvalidAstId);
+};
+
+struct InvokeArg {
+    std::optional<Ident> name;
+    ExprId value;
+
+    InvokeArg();
+    explicit InvokeArg(ExprId value);
+    InvokeArg(Ident name, ExprId value);
 };
 
 struct PointerType : TypeNode {
@@ -397,14 +407,14 @@ struct InvokeExpr : Expr {
     ExprId callee_expr;
     TypeId callee_type;
     std::vector<TypeId> type_args;
-    std::vector<ExprId> args;
+    std::vector<InvokeArg> args;
     Kind invoke_kind = Kind::Unknown;
 
     InvokeExpr(
         ExprId callee_expr,
         TypeId callee_type,
         std::vector<TypeId> type_args,
-        std::vector<ExprId> args,
+        std::vector<InvokeArg> args,
         SourceSpan span);
 };
 
@@ -447,6 +457,15 @@ struct Stmt : AstNode {
     explicit Stmt(NodeKind kind, SourceSpan span);
 };
 
+struct LetBinding {
+    Ident ident;
+    std::vector<LetBinding> children;
+
+    explicit LetBinding(Ident ident);
+    explicit LetBinding(std::vector<LetBinding> children, SourceSpan span);
+    bool is_nested() const;
+};
+
 struct AsmStmt : Stmt {
     std::string code;
 
@@ -461,6 +480,9 @@ struct UnsafeStmt : Stmt {
 
 struct LetStmt : Stmt {
     Ident ident;
+    bool is_destructuring;
+    bool is_mutable;
+    std::vector<LetBinding> bindings;
     TypeId type;
     ExprId initializer;
 
@@ -468,6 +490,13 @@ struct LetStmt : Stmt {
         Ident ident,
         TypeId type,
         ExprId initializer,
+        SourceSpan span);
+
+    LetStmt(
+        std::vector<LetBinding> bindings,
+        TypeId type,
+        ExprId initializer,
+        bool is_mutable,
         SourceSpan span);
 };
 
@@ -480,10 +509,10 @@ struct MakeStmt : Stmt {
 };
 
 struct SetStmt : Stmt {
-    Ident ident;
+    ExprId target;
     ExprId value;
 
-    SetStmt(Ident ident, ExprId value, SourceSpan span);
+    SetStmt(ExprId target, ExprId value, SourceSpan span);
 };
 
 struct GiveStmt : Stmt {
@@ -543,11 +572,12 @@ struct ContinueStmt : Stmt {
 };
 
 struct ForStmt : Stmt {
+    std::optional<Ident> index_ident;
     Ident ident;
     ExprId iterable;
     StmtId body;
 
-    ForStmt(Ident ident, ExprId iterable, StmtId body, SourceSpan span);
+    ForStmt(std::optional<Ident> index_ident, Ident ident, ExprId iterable, StmtId body, SourceSpan span);
 };
 
 struct WhenStmt : Stmt {

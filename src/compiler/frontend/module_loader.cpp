@@ -9,6 +9,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <algorithm>
+#include <functional>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
@@ -24,6 +25,12 @@ static std::string join_path(const ModulePath& path, const char* sep) {
         out += path.parts[i].name;
     }
     return out;
+}
+
+static void push_source_candidates(std::vector<std::filesystem::path>& candidates,
+                                   const std::filesystem::path& base) {
+    candidates.push_back(base.string() + ".vitl");
+    candidates.push_back(base.string() + ".vit");
 }
 
 std::string module_prefix(const ModulePath& path) {
@@ -62,8 +69,40 @@ static bool is_vitte_package_root(const ModulePath& path) {
     return path.parts.front().name == "vitte";
 }
 
-static std::size_t vitte_package_trim_count(const ModulePath& path) {
-    return is_vitte_package_root(path) ? 1 : 0;
+static bool is_vitlib_root(const ModulePath& path) {
+    if (path.parts.empty()) {
+        return false;
+    }
+    return path.parts.front().name == "vitlib";
+}
+
+static bool is_local_stdlib_root(const ModulePath& path) {
+    if (path.parts.empty()) {
+        return false;
+    }
+    return path.parts.front().name == "stdlib";
+}
+
+static void append_repo_root_candidates(
+    std::vector<std::filesystem::path>& candidates,
+    const ModulePath& target_path,
+    const std::filesystem::path& repo_root,
+    const std::filesystem::path& rel
+) {
+    push_source_candidates(candidates, repo_root / rel);
+    push_source_candidates(candidates, repo_root / rel / "mod");
+
+    if (target_path.parts.size() >= 2 &&
+        target_path.parts.front().name == "dots" &&
+        target_path.parts[1].name == "cmd") {
+        std::filesystem::path dots_cmd_root = repo_root / "cmd" / "dots";
+        std::filesystem::path tail;
+        for (std::size_t i = 2; i < target_path.parts.size(); ++i) {
+            tail /= target_path.parts[i].name;
+        }
+        push_source_candidates(candidates, dots_cmd_root / tail);
+        push_source_candidates(candidates, dots_cmd_root / tail / "mod");
+    }
 }
 
 std::string normalized_stdlib_path(const ModulePath& path) {
@@ -205,9 +244,11 @@ static std::filesystem::path resolve_module_file(
 ) {
     auto module_file_candidates = [&](const ModulePath& target_path) {
         std::string rel_str = join_path(target_path, "/");
-        if (is_std_or_core_root(target_path) || is_vitte_package_root(target_path)) {
+        if (is_std_or_core_root(target_path) || is_vitte_package_root(target_path) || is_vitlib_root(target_path) || is_local_stdlib_root(target_path)) {
             ModulePath trimmed = target_path;
-            const std::size_t trim_count = is_std_or_core_root(target_path) ? 1 : vitte_package_trim_count(target_path);
+            const std::size_t trim_count = is_std_or_core_root(target_path) ? 1
+                : (is_local_stdlib_root(target_path) ? 1
+                : ((is_vitte_package_root(target_path) || is_vitlib_root(target_path)) ? 1 : 0));
             trimmed.parts.erase(trimmed.parts.begin(), trimmed.parts.begin() + static_cast<std::ptrdiff_t>(trim_count));
             rel_str = join_path(trimmed, "/");
         }
@@ -215,21 +256,34 @@ static std::filesystem::path resolve_module_file(
         std::vector<std::filesystem::path> candidates;
 
         if (is_std_or_core_root(target_path)) {
+            if (target_path.parts.front().name == "core") {
+                std::filesystem::path core_root = repo_root / "core";
+                push_source_candidates(candidates, core_root / rel);
+                push_source_candidates(candidates, core_root / rel / "mod");
+            }
             std::filesystem::path std_root = repo_root / "src/vitte/packages";
             if (target_path.parts.front().name == "core") {
                 std::filesystem::path core_root = std_root / "core";
-                candidates.push_back(core_root / (rel.string() + ".vit"));
-                candidates.push_back(core_root / rel / "mod.vit");
+                push_source_candidates(candidates, core_root / rel);
+                push_source_candidates(candidates, core_root / rel / "mod");
             }
-            candidates.push_back(std_root / (rel.string() + ".vit"));
-            candidates.push_back(std_root / rel / "mod.vit");
-        } else if (is_vitte_package_root(target_path)) {
+            push_source_candidates(candidates, std_root / rel);
+            push_source_candidates(candidates, std_root / rel / "mod");
+        } else if (is_local_stdlib_root(target_path)) {
+            std::filesystem::path stdlib_root = repo_root / "stdlib";
+            push_source_candidates(candidates, stdlib_root / rel);
+            push_source_candidates(candidates, stdlib_root / rel / "mod");
+        } else if (is_vitte_package_root(target_path) || is_vitlib_root(target_path)) {
             std::filesystem::path pkg_root = repo_root / "src/vitte/packages";
-            candidates.push_back(pkg_root / (rel.string() + ".vit"));
-            candidates.push_back(pkg_root / rel / "mod.vit");
+            if (is_vitlib_root(target_path)) {
+                pkg_root = repo_root / "src/vitte/vitlib";
+            }
+            push_source_candidates(candidates, pkg_root / rel);
+            push_source_candidates(candidates, pkg_root / rel / "mod");
         } else {
-            candidates.push_back(base_dir / (rel.string() + ".vit"));
-            candidates.push_back(base_dir / rel / "mod.vit");
+            push_source_candidates(candidates, base_dir / rel);
+            push_source_candidates(candidates, base_dir / rel / "mod");
+            append_repo_root_candidates(candidates, target_path, repo_root, rel);
         }
         return candidates;
     };
@@ -249,30 +303,45 @@ static std::vector<std::filesystem::path> existing_module_files(
     const std::filesystem::path& repo_root
 ) {
     std::string rel_str = join_path(path, "/");
-    if (is_std_or_core_root(path) || is_vitte_package_root(path)) {
+    if (is_std_or_core_root(path) || is_vitte_package_root(path) || is_vitlib_root(path) || is_local_stdlib_root(path)) {
         ModulePath trimmed = path;
-        const std::size_t trim_count = is_std_or_core_root(path) ? 1 : vitte_package_trim_count(path);
+        const std::size_t trim_count = is_std_or_core_root(path) ? 1
+            : (is_local_stdlib_root(path) ? 1
+            : ((is_vitte_package_root(path) || is_vitlib_root(path)) ? 1 : 0));
         trimmed.parts.erase(trimmed.parts.begin(), trimmed.parts.begin() + static_cast<std::ptrdiff_t>(trim_count));
         rel_str = join_path(trimmed, "/");
     }
     std::filesystem::path rel(rel_str);
     std::vector<std::filesystem::path> candidates;
     if (is_std_or_core_root(path)) {
+        if (path.parts.front().name == "core") {
+            std::filesystem::path core_root = repo_root / "core";
+            push_source_candidates(candidates, core_root / rel);
+            push_source_candidates(candidates, core_root / rel / "mod");
+        }
         std::filesystem::path std_root = repo_root / "src/vitte/packages";
         if (path.parts.front().name == "core") {
             std::filesystem::path core_root = std_root / "core";
-            candidates.push_back(core_root / (rel.string() + ".vit"));
-            candidates.push_back(core_root / rel / "mod.vit");
+            push_source_candidates(candidates, core_root / rel);
+            push_source_candidates(candidates, core_root / rel / "mod");
         }
-        candidates.push_back(std_root / (rel.string() + ".vit"));
-        candidates.push_back(std_root / rel / "mod.vit");
-    } else if (is_vitte_package_root(path)) {
+        push_source_candidates(candidates, std_root / rel);
+        push_source_candidates(candidates, std_root / rel / "mod");
+    } else if (is_local_stdlib_root(path)) {
+        std::filesystem::path stdlib_root = repo_root / "stdlib";
+        push_source_candidates(candidates, stdlib_root / rel);
+        push_source_candidates(candidates, stdlib_root / rel / "mod");
+    } else if (is_vitte_package_root(path) || is_vitlib_root(path)) {
         std::filesystem::path pkg_root = repo_root / "src/vitte/packages";
-        candidates.push_back(pkg_root / (rel.string() + ".vit"));
-        candidates.push_back(pkg_root / rel / "mod.vit");
+        if (is_vitlib_root(path)) {
+            pkg_root = repo_root / "src/vitte/vitlib";
+        }
+        push_source_candidates(candidates, pkg_root / rel);
+        push_source_candidates(candidates, pkg_root / rel / "mod");
     } else {
-        candidates.push_back(base_dir / (rel.string() + ".vit"));
-        candidates.push_back(base_dir / rel / "mod.vit");
+        push_source_candidates(candidates, base_dir / rel);
+        push_source_candidates(candidates, base_dir / rel / "mod");
+        append_repo_root_candidates(candidates, path, repo_root, rel);
     }
     std::vector<std::filesystem::path> found;
     for (const auto& c : candidates) {
@@ -295,7 +364,8 @@ static std::filesystem::path detect_repo_root(const std::filesystem::path& start
     const char* env_root = std::getenv("VITTE_ROOT");
     if (env_root && *env_root) {
         std::filesystem::path p(env_root);
-        if (std::filesystem::exists(p / "src/vitte/packages")) {
+        if (std::filesystem::exists(p / "src/vitte/packages") ||
+            std::filesystem::exists(p / "src/vitte/vitlib")) {
             return p;
         }
     }
@@ -309,8 +379,9 @@ static std::filesystem::path detect_repo_root(const std::filesystem::path& start
     }
 
     while (true) {
-        const auto candidate = cur / "src/vitte/packages";
-        if (std::filesystem::exists(candidate)) {
+        const auto candidate_packages = cur / "src/vitte/packages";
+        const auto candidate_vitlib = cur / "src/vitte/vitlib";
+        if (std::filesystem::exists(candidate_packages) || std::filesystem::exists(candidate_vitlib)) {
             return cur;
         }
         const auto parent = cur.parent_path();
@@ -629,6 +700,24 @@ static void qualify_stmt(AstContext& ctx,
             auto& s = static_cast<LetStmt&>(node);
             qualify_type(ctx, s.type, locals, prefix);
             qualify_expr(ctx, s.initializer, locals, prefix);
+            if (s.is_destructuring) {
+                std::function<void(LetBinding&)> rename = [&](LetBinding& binding) {
+                    if (binding.children.empty()) {
+                        if (locals.count(binding.ident.name)) {
+                            binding.ident.name = prefix + binding.ident.name;
+                        }
+                        return;
+                    }
+                    for (auto& child : binding.children) {
+                        rename(child);
+                    }
+                };
+                for (auto& binding : s.bindings) {
+                    rename(binding);
+                }
+            } else if (locals.count(s.ident.name)) {
+                s.ident.name = prefix + s.ident.name;
+            }
             break;
         }
         case NodeKind::MakeStmt: {
@@ -639,6 +728,7 @@ static void qualify_stmt(AstContext& ctx,
         }
         case NodeKind::SetStmt: {
             auto& s = static_cast<SetStmt&>(node);
+            qualify_expr(ctx, s.target, locals, prefix);
             qualify_expr(ctx, s.value, locals, prefix);
             break;
         }
@@ -693,6 +783,9 @@ static void qualify_stmt(AstContext& ctx,
         case NodeKind::ForStmt: {
             auto& s = static_cast<ForStmt&>(node);
             qualify_expr(ctx, s.iterable, locals, prefix);
+            if (s.index_ident.has_value() && locals.count(s.index_ident->name)) {
+                s.index_ident->name = prefix + s.index_ident->name;
+            }
             qualify_stmt(ctx, s.body, locals, prefix);
             break;
         }
@@ -734,6 +827,7 @@ static void qualify_expr(AstContext& ctx,
             auto& e = static_cast<ProcExpr&>(node);
             for (auto& p : e.params) {
                 qualify_type(ctx, p.type, locals, prefix);
+                qualify_expr(ctx, p.default_value, locals, prefix);
             }
             qualify_type(ctx, e.return_type, locals, prefix);
             qualify_stmt(ctx, e.body, locals, prefix);
@@ -772,7 +866,7 @@ static void qualify_expr(AstContext& ctx,
             auto& e = static_cast<InvokeExpr&>(node);
             qualify_expr(ctx, e.callee_expr, locals, prefix);
             for (auto& a : e.args) {
-                qualify_expr(ctx, a, locals, prefix);
+                qualify_expr(ctx, a.value, locals, prefix);
             }
             break;
         }
@@ -833,6 +927,7 @@ static void qualify_module(AstContext& ctx,
                 }
                 for (auto& p : d.params) {
                     qualify_type(ctx, p.type, locals, prefix);
+                    qualify_expr(ctx, p.default_value, locals, prefix);
                 }
                 qualify_type(ctx, d.return_type, locals, prefix);
                 qualify_stmt(ctx, d.body, locals, prefix);
@@ -843,6 +938,7 @@ static void qualify_module(AstContext& ctx,
                 d.name.name = prefix + d.name.name;
                 for (auto& p : d.params) {
                     qualify_type(ctx, p.type, locals, prefix);
+                    qualify_expr(ctx, p.default_value, locals, prefix);
                 }
                 qualify_type(ctx, d.return_type, locals, prefix);
                 qualify_stmt(ctx, d.body, locals, prefix);
@@ -988,7 +1084,7 @@ struct Loader {
                 diag::Diagnostic ambiguous(
                     diag::Severity::Error,
                     "E1018",
-                    "ambiguous import path '" + module_path_key(module_path) + "' (both file.vit and mod.vit exist)",
+                    "ambiguous import path '" + module_path_key(module_path) + "' (both file.vitl/file.vit and mod.vitl/mod.vit exist)",
                     (*path).span
                 );
                 const auto matches = existing_module_files(module_path, base_dir, repo_root);
@@ -1000,7 +1096,7 @@ struct Loader {
                     ambiguous.add_fix("keep directory module form", "remove '" + matches[0].filename().string() + "'", (*path).span);
                 }
                 ambiguous.add_note(
-                    "fix: keep only one module layout for this path (prefer directory form '<name>/mod.vit' or file form '<name>.vit')"
+                    "fix: keep only one module layout for this path (prefer directory form '<name>/mod.vitl' or file form '<name>.vitl')"
                 );
                 diagnostics.emit(std::move(ambiguous));
                 continue;
@@ -1629,6 +1725,7 @@ static void rewrite_expr_for_alias(
             auto& e = static_cast<ProcExpr&>(node);
             for (auto& p : e.params) {
                 rewrite_type_for_alias(ctx, p.type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+                rewrite_expr_for_alias(ctx, p.default_value, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             }
             rewrite_type_for_alias(ctx, e.return_type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             rewrite_stmt_for_alias(ctx, e.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
@@ -1663,7 +1760,7 @@ static void rewrite_expr_for_alias(
             rewrite_expr_for_alias(ctx, e.callee_expr, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             rewrite_type_for_alias(ctx, e.callee_type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             for (auto& a : e.args) {
-                rewrite_expr_for_alias(ctx, a, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+                rewrite_expr_for_alias(ctx, a.value, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             }
             break;
         }
@@ -1754,6 +1851,26 @@ static void rewrite_stmt_for_alias(
             auto& s = static_cast<LetStmt&>(node);
             rewrite_type_for_alias(ctx, s.type, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             rewrite_expr_for_alias(ctx, s.initializer, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            if (s.is_destructuring) {
+                std::function<void(LetBinding&)> rewrite = [&](LetBinding& binding) {
+                    if (binding.children.empty()) {
+                        if (auto it = symbol_imports.find(binding.ident.name); it != symbol_imports.end()) {
+                            binding.ident.name = it->second;
+                        }
+                        return;
+                    }
+                    for (auto& child : binding.children) {
+                        rewrite(child);
+                    }
+                };
+                for (auto& binding : s.bindings) {
+                    rewrite(binding);
+                }
+            } else {
+                if (auto it = symbol_imports.find(s.ident.name); it != symbol_imports.end()) {
+                    s.ident.name = it->second;
+                }
+            }
             break;
         }
         case NodeKind::MakeStmt: {
@@ -1764,6 +1881,7 @@ static void rewrite_stmt_for_alias(
         }
         case NodeKind::SetStmt: {
             auto& s = static_cast<SetStmt&>(node);
+            rewrite_expr_for_alias(ctx, s.target, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             rewrite_expr_for_alias(ctx, s.value, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
@@ -1818,6 +1936,11 @@ static void rewrite_stmt_for_alias(
         case NodeKind::ForStmt: {
             auto& s = static_cast<ForStmt&>(node);
             rewrite_expr_for_alias(ctx, s.iterable, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            if (s.index_ident.has_value()) {
+                if (auto it = symbol_imports.find(s.index_ident->name); it != symbol_imports.end()) {
+                    s.index_ident->name = it->second;
+                }
+            }
             rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
@@ -1975,6 +2098,7 @@ void rewrite_member_access(ast::AstContext& ctx,
                 auto& d = static_cast<ProcDecl&>(decl);
                 for (auto& p : d.params) {
                 rewrite_type_for_alias(ctx, p.type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
+                rewrite_expr_for_alias(ctx, p.default_value, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 }
                 rewrite_type_for_alias(ctx, d.return_type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
@@ -1984,6 +2108,7 @@ void rewrite_member_access(ast::AstContext& ctx,
                 auto& d = static_cast<FnDecl&>(decl);
                 for (auto& p : d.params) {
                     rewrite_type_for_alias(ctx, p.type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
+                    rewrite_expr_for_alias(ctx, p.default_value, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 }
                 rewrite_type_for_alias(ctx, d.return_type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);

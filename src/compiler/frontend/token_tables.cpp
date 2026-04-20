@@ -12,6 +12,8 @@ namespace vitte::frontend::tokens {
 
 static constexpr KeywordSpec kKeywords[] = {
     {"space", TokenKind::KwSpace, true},
+    {"from", TokenKind::KwFrom, false},
+    {"import", TokenKind::KwImport, false},
     {"pull", TokenKind::KwPull, true},
     {"use", TokenKind::KwUse, true},
     {"share", TokenKind::KwShare, true},
@@ -105,6 +107,8 @@ bool is_forbidden_in_core(TokenKind kind) {
         case TokenKind::KwTrait:
         case TokenKind::KwSelect:
         case TokenKind::KwField:
+        case TokenKind::KwFrom:
+        case TokenKind::KwImport:
             return true;
         default:
             return false;

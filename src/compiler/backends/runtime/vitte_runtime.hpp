@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace vitte::runtime {
 
@@ -52,13 +53,82 @@ void terminate();
 struct VitteString {
     const char* data;
     std::size_t len;
+
+    std::int64_t operator[](std::size_t idx) const;
+    operator std::int32_t() const;
+    operator std::int64_t() const;
 };
+
+bool operator==(VitteString a, VitteString b);
+bool operator!=(VitteString a, VitteString b);
+VitteString operator+(VitteString a, VitteString b);
 
 template <typename T>
 struct VitteSlice {
     T* data;
     std::size_t len;
+
+    T& operator[](std::size_t idx) {
+        return data[idx];
+    }
+
+    const T& operator[](std::size_t idx) const {
+        return data[idx];
+    }
+
+    VitteSlice<T> push(T value) const {
+        return vitte_slice_push<T>(*this, value);
+    }
 };
+
+template <typename T>
+inline VitteSlice<T> list(T value) {
+    void* mem = vitte::runtime::alloc(sizeof(T));
+    auto* data = static_cast<T*>(mem);
+    data[0] = value;
+    return VitteSlice<T>{data, 1};
+}
+
+template <typename T>
+inline VitteSlice<T> vitte_empty_slice() {
+    return VitteSlice<T>{nullptr, 0};
+}
+
+template <typename T>
+inline VitteSlice<T> vitte_slice_push(VitteSlice<T> base, T value) {
+    std::size_t next_len = base.len + 1;
+    void* mem = vitte::runtime::alloc(sizeof(T) * next_len);
+    auto* out = static_cast<T*>(mem);
+    for (std::size_t i = 0; i < base.len; ++i) {
+        out[i] = base.data[i];
+    }
+    out[base.len] = value;
+    return VitteSlice<T>{out, next_len};
+}
+
+template <typename T>
+inline VitteSlice<T> operator+(VitteSlice<T> lhs, VitteSlice<T> rhs) {
+    std::size_t next_len = lhs.len + rhs.len;
+    void* mem = vitte::runtime::alloc(sizeof(T) * next_len);
+    auto* out = static_cast<T*>(mem);
+    for (std::size_t i = 0; i < lhs.len; ++i) {
+        out[i] = lhs.data[i];
+    }
+    for (std::size_t i = 0; i < rhs.len; ++i) {
+        out[lhs.len + i] = rhs.data[i];
+    }
+    return VitteSlice<T>{out, next_len};
+}
+
+template <typename T>
+inline VitteSlice<T> list(T first, T second) {
+    return list(first) + list(second);
+}
+
+template <typename T, typename... Rest>
+inline VitteSlice<T> list(T first, T second, Rest... rest) {
+    return list(first, second) + list(rest...);
+}
 
 struct VitteUnit {
     std::uint8_t _dummy;
@@ -68,6 +138,7 @@ extern "C" void vitte_builtin_trap(VitteString msg);
 extern "C" const char* vitte_c_abi_version();
 VitteSlice<std::int32_t> vitte_empty_slice_i32();
 VitteSlice<VitteString> vitte_empty_slice_string();
+VitteSlice<VitteString> list();
 VitteSlice<std::int32_t> vitte_slice_push_i32(VitteSlice<std::int32_t> base, std::int32_t value);
 VitteSlice<VitteString> vitte_slice_push_string(VitteSlice<VitteString> base, VitteString value);
 VitteSlice<std::int32_t> vitte__vitte_empty_slice_i32();

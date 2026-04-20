@@ -2061,7 +2061,7 @@ static int run_mod_doctor(const Options& opts) {
         } else if (expr.kind == frontend::ast::NodeKind::InvokeExpr) {
             const auto& e = static_cast<const frontend::ast::InvokeExpr&>(expr);
             self(e.callee_expr, self);
-            for (auto a : e.args) self(a, self);
+            for (const auto& a : e.args) self(a.value, self);
         } else if (expr.kind == frontend::ast::NodeKind::UnaryExpr) {
             const auto& e = static_cast<const frontend::ast::UnaryExpr&>(expr);
             self(e.expr, self);
@@ -2224,7 +2224,8 @@ static int run_mod_migrate_imports(const Options& opts) {
         }
         for (auto it = fs::recursive_directory_iterator(root_path); it != fs::recursive_directory_iterator(); ++it) {
             if (!it->is_regular_file()) continue;
-            if (it->path().extension() != ".vit") continue;
+            const auto ext = it->path().extension();
+            if (ext != ".vit" && ext != ".vitl") continue;
             ++scanned;
 
             std::ifstream in(it->path());

@@ -65,6 +65,7 @@ enum class MirKind {
 
     // instructions
     Assign,
+    Store,
     BinaryOp,
     Call,
     CallIndirect,
@@ -200,6 +201,15 @@ struct MirAssign : MirInstr {
     MirAssign(MirLocalPtr dest,
               MirValuePtr value,
               vitte::frontend::ast::SourceSpan span);
+};
+
+struct MirStore : MirInstr {
+    MirValuePtr target;
+    MirValuePtr value;
+
+    MirStore(MirValuePtr target,
+             MirValuePtr value,
+             vitte::frontend::ast::SourceSpan span);
 };
 
 struct MirBinaryOp : MirInstr {

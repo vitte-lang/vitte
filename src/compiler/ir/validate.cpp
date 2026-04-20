@@ -121,7 +121,7 @@ static void validate_expr(const HirContext& ctx,
         case HirKind::CallExpr: {
             const auto& e = ctx.get<HirCallExpr>(expr);
             validate_expr(ctx, e.callee, diagnostics, e.span, true);
-            for (auto arg : e.args) {
+            for (const auto& arg : e.args) {
                 validate_expr(ctx, arg, diagnostics, e.span, true);
             }
             return;

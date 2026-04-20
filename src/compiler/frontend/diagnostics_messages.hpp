@@ -69,6 +69,7 @@ namespace vitte::frontend::diag {
     X(E1033, ModuleNotFound, "module not found") \
     X(E1034, ModuleFileOpenFailed, "failed to open module file") \
     X(E1035, InvalidStdlibProfile, "invalid stdlib profile") \
+    X(E1036, AssignmentTargetNotAssignable, "assignment target is not assignable") \
     X(E2001, UnsupportedType, "unsupported type") \
     X(E2002, InvokeHasNoCallee, "invoke has no callee") \
     X(E2003, UnsupportedExpressionInHir, "unsupported expression in HIR") \
@@ -221,6 +222,12 @@ constexpr DiagExplain diag_explain(DiagId id) {
                 "asm(...) requires a string literal payload.",
                 "Pass a string literal as the asm body.",
                 "asm(\"nop\")",
+            };
+        case DiagId::AssignmentTargetNotAssignable:
+            return {
+                "The left side of an assignment must be writable.",
+                "Use an identifier, a member access, or an indexed value as the target.",
+                "set value = 1\nset obj.field = 1\nset items[i] = 1",
             };
         case DiagId::DuplicateTypeParameter:
             return {
@@ -375,7 +382,7 @@ constexpr DiagExplain diag_explain(DiagId id) {
         case DiagId::AmbiguousImportPath:
             return {
                 "Multiple module files match the same import path.",
-                "Keep a single module layout for the path (either <name>.vit or <name>/mod.vit) and remove the duplicate file.",
+                "Keep a single module layout for the path (either <name>.vitl or <name>/mod.vitl, with .vit kept as a fallback) and remove the duplicate file.",
                 "use pkg/foo as foo_mod",
             };
         case DiagId::StrictModulesGlobForbidden:

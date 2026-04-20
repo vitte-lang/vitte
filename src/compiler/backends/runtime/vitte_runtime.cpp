@@ -161,6 +161,56 @@ static std::string vitte_to_string(VitteString s) {
     return std::string(s.data, s.len);
 }
 
+std::int64_t VitteString::operator[](std::size_t idx) const {
+    if (!data || idx >= len) {
+        return 0;
+    }
+    return static_cast<unsigned char>(data[idx]);
+}
+
+VitteString::operator std::int32_t() const {
+    if (!data || len == 0) {
+        return 0;
+    }
+    try {
+        return static_cast<std::int32_t>(std::stoll(vitte_to_string(*this)));
+    } catch (...) {
+        return 0;
+    }
+}
+
+VitteString::operator std::int64_t() const {
+    if (!data || len == 0) {
+        return 0;
+    }
+    try {
+        return static_cast<std::int64_t>(std::stoll(vitte_to_string(*this)));
+    } catch (...) {
+        return 0;
+    }
+}
+
+bool operator==(VitteString a, VitteString b) {
+    if (a.len != b.len) {
+        return false;
+    }
+    if (a.len == 0) {
+        return true;
+    }
+    if (!a.data || !b.data) {
+        return a.data == b.data;
+    }
+    return std::memcmp(a.data, b.data, a.len) == 0;
+}
+
+bool operator!=(VitteString a, VitteString b) {
+    return !(a == b);
+}
+
+VitteString operator+(VitteString a, VitteString b) {
+    return vitte_string_concat(a, b);
+}
+
 static std::vector<std::string> vitte_to_string_vec(VitteSlice<VitteString> args) {
     std::vector<std::string> out;
     out.reserve(args.len);
@@ -193,6 +243,10 @@ static VitteSlice<std::uint8_t> vitte_make_u8_slice(const std::uint8_t* data, st
 
 VitteSlice<std::int32_t> vitte_empty_slice_i32() {
     return VitteSlice<std::int32_t>{nullptr, 0};
+}
+
+VitteSlice<VitteString> list() {
+    return vitte_empty_slice_string();
 }
 
 const char* vitte_c_abi_version() {

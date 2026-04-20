@@ -1,6 +1,7 @@
 #include "lower_hir.hpp"
 #include "diagnostics_messages.hpp"
 
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -142,8 +143,8 @@ static ir::HirExprId lower_invoke(
     }
 
     std::vector<ir::HirExprId> args;
-    for (auto a : inv.args) {
-        args.push_back(lower_expr(ctx, a, hir_ctx, diagnostics, type_names, enum_like));
+    for (const auto& a : inv.args) {
+        args.push_back(lower_expr(ctx, a.value, hir_ctx, diagnostics, type_names, enum_like));
     }
 
     if (callee == ir::kInvalidHirId) {
@@ -432,6 +433,68 @@ static ir::HirStmtId lower_stmt(
         }
         case NodeKind::LetStmt: {
             auto& s = static_cast<const LetStmt&>(node);
+            if (s.is_destructuring) {
+                auto init = lower_expr(ctx, s.initializer, hir_ctx, diagnostics, type_names, enum_like);
+                if (!init) {
+                    diag::Diagnostic d(
+                        diag::Severity::Error,
+                        "E2003",
+                        "unsupported expression in HIR",
+                        s.span
+                    );
+                    d.add_note("destructuring initializer must lower to a value expression");
+                    diagnostics.emit(std::move(d));
+                    return ir::kInvalidHirId;
+                }
+                std::vector<ir::HirStmtId> lowered;
+                std::string tmp_name = "__destruct_" + std::to_string(tmp_counter++);
+                lowered.push_back(hir_ctx.make<ir::HirLetStmt>(
+                    tmp_name,
+                    lower_type(ctx, s.type, hir_ctx),
+                    init,
+                    s.span));
+                auto root_var = hir_ctx.make<ir::HirVarExpr>(tmp_name, s.span);
+                std::function<void(const LetBinding&, ir::HirExprId)> emit_binding =
+                    [&](const LetBinding& binding, ir::HirExprId source) {
+                        if (binding.children.empty()) {
+                            if (binding.ident.name != "_") {
+                                lowered.push_back(hir_ctx.make<ir::HirLetStmt>(
+                                    binding.ident.name,
+                                    ir::kInvalidHirId,
+                                    source,
+                                    binding.ident.span));
+                            }
+                            return;
+                        }
+                        std::string tmp_name = "__destruct_" + std::to_string(tmp_counter++);
+                        lowered.push_back(hir_ctx.make<ir::HirLetStmt>(
+                            tmp_name,
+                            ir::kInvalidHirId,
+                            source,
+                            binding.ident.span));
+                        auto tmp_var = hir_ctx.make<ir::HirVarExpr>(tmp_name, binding.ident.span);
+                        for (std::size_t i = 0; i < binding.children.size(); ++i) {
+                            auto idx = hir_ctx.make<ir::HirLiteralExpr>(
+                                ir::HirLiteralKind::Int,
+                                std::to_string(i),
+                                binding.children[i].ident.span);
+                            auto item = hir_ctx.make<ir::HirIndexExpr>(tmp_var, idx, binding.children[i].ident.span);
+                            emit_binding(binding.children[i], item);
+                        }
+                    };
+                for (std::size_t i = 0; i < s.bindings.size(); ++i) {
+                    auto idx = hir_ctx.make<ir::HirLiteralExpr>(
+                        ir::HirLiteralKind::Int,
+                        std::to_string(i),
+                        s.bindings[i].ident.span);
+                    auto item = hir_ctx.make<ir::HirIndexExpr>(
+                        root_var,
+                        idx,
+                        s.bindings[i].ident.span);
+                    emit_binding(s.bindings[i], item);
+                }
+                return hir_ctx.make<ir::HirBlock>(std::move(lowered), s.span);
+            }
             return hir_ctx.make<ir::HirLetStmt>(
                 s.ident.name,
                 lower_type(ctx, s.type, hir_ctx),
@@ -448,7 +511,78 @@ static ir::HirStmtId lower_stmt(
         }
         case NodeKind::SetStmt: {
             auto& s = static_cast<const SetStmt&>(node);
-            auto lhs = hir_ctx.make<ir::HirVarExpr>(s.ident.name, s.ident.span);
+            if (s.target != kInvalidAstId && ctx.node(s.target).kind == NodeKind::ListExpr) {
+                auto rhs = lower_expr(ctx, s.value, hir_ctx, diagnostics, type_names, enum_like);
+                if (!rhs) {
+                    diag::Diagnostic d(
+                        diag::Severity::Error,
+                        "E2003",
+                        "unsupported expression in HIR",
+                        s.span
+                    );
+                    d.add_note("multi-assignment source must lower to a value expression");
+                    diagnostics.emit(std::move(d));
+                    return ir::kInvalidHirId;
+                }
+                std::vector<ir::HirStmtId> lowered;
+                std::string tmp_name = "__assign_" + std::to_string(tmp_counter++);
+                lowered.push_back(hir_ctx.make<ir::HirLetStmt>(tmp_name, ir::kInvalidHirId, rhs, s.span));
+                auto root_var = hir_ctx.make<ir::HirVarExpr>(tmp_name, s.span);
+
+                std::function<void(ExprId, ir::HirExprId)> emit_binding =
+                    [&](ExprId target_expr, ir::HirExprId source_expr) {
+                        if (target_expr == kInvalidAstId) {
+                            return;
+                        }
+                        const auto& tnode = ctx.node(target_expr);
+                        if (tnode.kind == NodeKind::ListExpr) {
+                            const auto& target_list = static_cast<const ListExpr&>(tnode);
+                            std::string nested_name = "__assign_" + std::to_string(tmp_counter++);
+                            lowered.push_back(hir_ctx.make<ir::HirLetStmt>(
+                                nested_name,
+                                ir::kInvalidHirId,
+                                source_expr,
+                                tnode.span));
+                            auto nested_var = hir_ctx.make<ir::HirVarExpr>(nested_name, tnode.span);
+                            for (std::size_t i = 0; i < target_list.items.size(); ++i) {
+                                auto idx = hir_ctx.make<ir::HirLiteralExpr>(
+                                    ir::HirLiteralKind::Int,
+                                    std::to_string(i),
+                                    target_list.items[i] != kInvalidAstId
+                                        ? ctx.get<Expr>(target_list.items[i]).span
+                                        : tnode.span);
+                                auto item = hir_ctx.make<ir::HirIndexExpr>(
+                                    nested_var,
+                                    idx,
+                                    target_list.items[i] != kInvalidAstId
+                                        ? ctx.get<Expr>(target_list.items[i]).span
+                                        : tnode.span);
+                                emit_binding(target_list.items[i], item);
+                            }
+                            return;
+                        }
+                        auto assign = hir_ctx.make<ir::HirBinaryExpr>(
+                            ir::HirBinaryOp::Assign,
+                            lower_expr(ctx, target_expr, hir_ctx, diagnostics, type_names, enum_like),
+                            source_expr,
+                            ctx.node(target_expr).span);
+                        lowered.push_back(hir_ctx.make<ir::HirExprStmt>(assign, ctx.node(target_expr).span));
+                    };
+
+                auto& target_list = ctx.get<ListExpr>(s.target);
+                for (std::size_t i = 0; i < target_list.items.size(); ++i) {
+                    auto idx = hir_ctx.make<ir::HirLiteralExpr>(
+                        ir::HirLiteralKind::Int,
+                        std::to_string(i),
+                        target_list.items[i] != kInvalidAstId
+                            ? ctx.get<Expr>(target_list.items[i]).span
+                            : s.span);
+                    auto item = hir_ctx.make<ir::HirIndexExpr>(root_var, idx, s.span);
+                    emit_binding(target_list.items[i], item);
+                }
+                return hir_ctx.make<ir::HirBlock>(std::move(lowered), s.span);
+            }
+            auto lhs = lower_expr(ctx, s.target, hir_ctx, diagnostics, type_names, enum_like);
             auto rhs = lower_expr(ctx, s.value, hir_ctx, diagnostics, type_names, enum_like);
             auto assign = hir_ctx.make<ir::HirBinaryExpr>(ir::HirBinaryOp::Assign, lhs, rhs, s.span);
             return hir_ctx.make<ir::HirExprStmt>(assign, s.span);
@@ -559,6 +693,13 @@ static ir::HirStmtId lower_stmt(
             auto iter_var_for_item = hir_ctx.make<ir::HirVarExpr>(tmp_iter, s.span);
             auto idx_var_for_item = hir_ctx.make<ir::HirVarExpr>(tmp_idx, s.span);
             auto item_expr = hir_ctx.make<ir::HirIndexExpr>(iter_var_for_item, idx_var_for_item, s.span);
+            if (s.index_ident.has_value()) {
+                loop_body_stmts.push_back(hir_ctx.make<ir::HirLetStmt>(
+                    s.index_ident->name,
+                    ir::kInvalidHirId,
+                    idx_var_for_item,
+                    s.index_ident->span));
+            }
             loop_body_stmts.push_back(hir_ctx.make<ir::HirLetStmt>(s.ident.name, ir::kInvalidHirId, item_expr, s.span));
 
             auto lowered_user_body = lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);

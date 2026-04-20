@@ -2,12 +2,41 @@
 // Top-level
 // ------------------------------------------------------------
 
+static bool is_triple_quoted_docstring(const Token& tok) {
+    if (tok.kind != TokenKind::StringLit || tok.span.file == nullptr) {
+        return false;
+    }
+    if (tok.span.end <= tok.span.start) {
+        return false;
+    }
+    const std::string& content = tok.span.file->content;
+    if (tok.span.end > content.size() || tok.span.start + 3 > content.size()) {
+        return false;
+    }
+    if (tok.span.end - tok.span.start < 6) {
+        return false;
+    }
+    std::string_view raw(content.data() + tok.span.start, tok.span.end - tok.span.start);
+    return raw.starts_with("\"\"\"") && raw.ends_with("\"\"\"");
+}
+
+static Attribute make_docstring_attribute(const Token& tok) {
+    std::vector<AttributeArg> args;
+    args.emplace_back(AttributeArg::Kind::String, tok.text);
+    return Attribute(Ident("doc", tok.span), std::move(args), tok.span);
+}
+
+static Attribute make_shorthand_attribute(const Token& tok, Ident name) {
+    return Attribute(std::move(name), {}, tok.span);
+}
+
 static void emit_pull_deprecation(DiagnosticEngine& diag, const SourceSpan& span, bool syntax_strict) {
-    (void)syntax_strict;
     diag::Diagnostic deprec(
-        diag::Severity::Error,
-        "E1104",
-        "legacy syntax: 'pull' was removed from the stable grammar; use 'use'",
+        syntax_strict ? diag::Severity::Error : diag::Severity::Warning,
+        syntax_strict ? "E1104" : "W1104",
+        syntax_strict
+            ? "legacy syntax: 'pull' was removed from the stable grammar; use 'use'"
+            : "legacy syntax: 'pull' is deprecated; use 'use'",
         span
     );
     deprec.add_note("canonical import keyword is 'use'");
@@ -16,11 +45,12 @@ static void emit_pull_deprecation(DiagnosticEngine& diag, const SourceSpan& span
 }
 
 static void emit_share_deprecation(DiagnosticEngine& diag, const SourceSpan& span, bool syntax_strict) {
-    (void)syntax_strict;
     diag::Diagnostic deprec(
-        diag::Severity::Error,
-        "E1105",
-        "legacy syntax: 'share' was removed from the stable grammar",
+        syntax_strict ? diag::Severity::Error : diag::Severity::Warning,
+        syntax_strict ? "E1105" : "W1105",
+        syntax_strict
+            ? "legacy syntax: 'share' was removed from the stable grammar"
+            : "legacy syntax: 'share' is deprecated",
         span
     );
     deprec.add_note("canonical module surface uses explicit 'use ... as ...' imports and implicit exports");
@@ -35,8 +65,32 @@ DeclId Parser::parse_toplevel() {
         return ast::kInvalidAstId;
     }
 
+    std::vector<Attribute> attrs;
+    while (true) {
+        if (current_.kind == TokenKind::AttrStart) {
+            attrs.push_back(parse_attribute());
+            continue;
+        }
+        if (current_.kind == TokenKind::AtSign) {
+            Token at = current_;
+            advance();
+            attrs.push_back(make_shorthand_attribute(at, parse_ident()));
+            continue;
+        }
+        if (is_triple_quoted_docstring(current_)) {
+            Token doc = current_;
+            advance();
+            attrs.push_back(make_docstring_attribute(doc));
+            continue;
+        }
+        break;
+    }
+
     if (current_.kind == TokenKind::KwSpace) {
         return parse_space_decl();
+    }
+    if (current_.kind == TokenKind::KwFrom) {
+        return parse_from_import_decl();
     }
     if (current_.kind == TokenKind::KwPull) {
         return parse_pull_decl();
@@ -59,15 +113,11 @@ DeclId Parser::parse_toplevel() {
     if (current_.kind == TokenKind::KwPick) {
         return parse_pick_decl();
     }
-    if (current_.kind == TokenKind::KwProc || current_.kind == TokenKind::AttrStart) {
-        std::vector<Attribute> attrs;
-        while (current_.kind == TokenKind::AttrStart) {
-            attrs.push_back(parse_attribute());
-        }
-        if (current_.kind != TokenKind::KwProc) {
-            emit_parse_error(diag::DiagId::ExpectedProcAfterAttribute, current_.span);
-            return ast::kInvalidAstId;
-        }
+    if (!attrs.empty() && current_.kind != TokenKind::KwProc) {
+        emit_parse_error(diag::DiagId::ExpectedProcAfterAttribute, current_.span);
+        return ast::kInvalidAstId;
+    }
+    if (current_.kind == TokenKind::KwProc) {
         return parse_proc_decl(std::move(attrs));
     }
     if (current_.kind == TokenKind::KwEntry) {
@@ -176,6 +226,39 @@ DeclId Parser::parse_space_decl() {
     ModulePath path = parse_module_path();
     span.end = path.span.end;
     return ast_ctx_.make<SpaceDecl>(std::move(path), span);
+}
+
+DeclId Parser::parse_from_import_decl() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwFrom, "expected 'from'");
+    ModulePath path = parse_module_path();
+    expect(TokenKind::KwImport, "expected 'import'");
+
+    auto make_import = [&](const Ident& name) -> DeclId {
+        std::vector<Ident> joined(path.parts.begin(), path.parts.end());
+        joined.push_back(name);
+        SourceSpan item_span = name.span;
+        if (path.span.is_valid()) {
+            item_span.start = path.span.start;
+        }
+        ModulePath item_path(std::move(joined), path.relative_depth, item_span);
+        return ast_ctx_.make<UseDecl>(std::move(item_path), std::nullopt, false, item_span);
+    };
+
+    std::vector<DeclId> decls;
+    decls.push_back(make_import(parse_ident()));
+    while (match(TokenKind::Comma)) {
+        if (current_.kind == TokenKind::Eof || current_.kind == TokenKind::RBrace) {
+            break;
+        }
+        decls.push_back(make_import(parse_ident()));
+    }
+
+    span.end = previous_.span.end;
+    for (std::size_t i = 1; i < decls.size(); ++i) {
+        pending_decls_.push_back(decls[i]);
+    }
+    return decls.front();
 }
 
 DeclId Parser::parse_pull_decl() {
@@ -429,7 +512,11 @@ DeclId Parser::parse_proc_decl(std::vector<Attribute> attrs) {
         if (match(TokenKind::Colon)) {
             param_type = parse_type_expr();
         }
-        params.emplace_back(std::move(param_name), param_type);
+        ExprId default_value = ast::kInvalidAstId;
+        if (match(TokenKind::Equal)) {
+            default_value = parse_expr();
+        }
+        params.emplace_back(std::move(param_name), param_type, default_value);
         while (match(TokenKind::Comma)) {
             if (current_.kind == TokenKind::RParen) {
                 break;
@@ -439,7 +526,11 @@ DeclId Parser::parse_proc_decl(std::vector<Attribute> attrs) {
             if (match(TokenKind::Colon)) {
                 next_type = parse_type_expr();
             }
-            params.emplace_back(std::move(next_name), next_type);
+            ExprId next_default = ast::kInvalidAstId;
+            if (match(TokenKind::Equal)) {
+                next_default = parse_expr();
+            }
+            params.emplace_back(std::move(next_name), next_type, next_default);
         }
     }
     expect(TokenKind::RParen, "expected ')'");

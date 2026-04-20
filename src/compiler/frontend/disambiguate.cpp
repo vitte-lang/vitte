@@ -27,6 +27,9 @@ static void disambiguate_expr(AstContext& ctx, ExprId expr_id) {
         }
         case NodeKind::ProcExpr: {
             auto& p = static_cast<ProcExpr&>(node);
+            for (auto& param : p.params) {
+                disambiguate_expr(ctx, param.default_value);
+            }
             disambiguate_stmt(ctx, p.body);
             break;
         }
@@ -41,7 +44,7 @@ static void disambiguate_expr(AstContext& ctx, ExprId expr_id) {
                 disambiguate_expr(ctx, inv.callee_expr);
             }
             for (auto arg : inv.args) {
-                disambiguate_expr(ctx, arg);
+                disambiguate_expr(ctx, arg.value);
             }
             break;
         }
@@ -123,6 +126,7 @@ static void disambiguate_stmt(AstContext& ctx, StmtId stmt_id) {
         }
         case NodeKind::SetStmt: {
             auto& s = static_cast<SetStmt&>(node);
+            disambiguate_expr(ctx, s.target);
             disambiguate_expr(ctx, s.value);
             break;
         }
@@ -199,6 +203,9 @@ void disambiguate_invokes(AstContext& ctx, ModuleId module_id) {
         switch (decl.kind) {
             case NodeKind::ProcDecl: {
                 auto& d = static_cast<ProcDecl&>(decl);
+                for (auto& p : d.params) {
+                    disambiguate_expr(ctx, p.default_value);
+                }
                 if (d.body != kInvalidAstId) {
                     disambiguate_stmt(ctx, d.body);
                 }
@@ -213,6 +220,9 @@ void disambiguate_invokes(AstContext& ctx, ModuleId module_id) {
             }
             case NodeKind::FnDecl: {
                 auto& d = static_cast<FnDecl&>(decl);
+                for (auto& p : d.params) {
+                    disambiguate_expr(ctx, p.default_value);
+                }
                 disambiguate_stmt(ctx, d.body);
                 break;
             }

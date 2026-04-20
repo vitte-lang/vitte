@@ -50,6 +50,58 @@ static void emit_cpp_string(std::ostream& os, const std::string& value) {
     os << "\"";
 }
 
+static void emit_stmt_inline(
+    std::ostream& os,
+    const ast::cpp::CppStmt& stmt
+) {
+    using K = ast::cpp::CppStmt::Kind;
+
+    switch (stmt.kind) {
+    case K::Expr: {
+        auto& s = static_cast<const ast::cpp::CppExprStmt&>(stmt);
+        emit_expr(os, *s.expr);
+        break;
+    }
+    case K::Assign: {
+        auto& s = static_cast<const ast::cpp::CppAssign&>(stmt);
+        emit_expr(os, *s.lhs);
+        os << " = ";
+        emit_expr(os, *s.rhs);
+        break;
+    }
+    case K::Decl: {
+        auto& s = static_cast<const ast::cpp::CppVarDecl&>(stmt);
+        if (s.is_const) {
+            os << "const ";
+        }
+        if (s.type && s.type->kind == ast::cpp::CppTypeKind::Function) {
+            emit_type(os, s.type->return_type);
+            os << " (*" << s.name << ")(";
+            bool first = true;
+            for (const auto* param_type : s.type->param_types) {
+                if (!first) {
+                    os << ", ";
+                }
+                first = false;
+                emit_type(os, param_type);
+            }
+            os << ")";
+        } else {
+            emit_type(os, s.type);
+            os << " " << s.name;
+        }
+        if (s.init) {
+            os << " = ";
+            emit_expr(os, *(*s.init));
+        }
+        break;
+    }
+    default:
+        emit_stmt_impl(os, stmt, 0);
+        break;
+    }
+}
+
 /* -------------------------------------------------
  * Entry point
  * ------------------------------------------------- */
@@ -205,9 +257,7 @@ static void emit_stmt_impl(
         os << "for (";
 
         if (s.init) {
-            // init without trailing newline
-            emit_stmt_impl(os, *s.init, 0);
-            // remove trailing ";\n" effect by re-emitting minimally
+            emit_stmt_inline(os, *s.init);
         } else {
             os << ";";
         }
@@ -219,8 +269,7 @@ static void emit_stmt_impl(
         os << "; ";
 
         if (s.step) {
-            // step as expression/assign
-            emit_stmt_impl(os, *s.step, 0);
+            emit_stmt_inline(os, *s.step);
         }
 
         os << ") {\n";

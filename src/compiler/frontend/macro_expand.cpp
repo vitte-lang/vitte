@@ -1,6 +1,7 @@
 #include "macro_expand.hpp"
 #include "diagnostics_messages.hpp"
 
+#include <functional>
 #include <unordered_map>
 
 namespace vitte::frontend::passes {
@@ -84,7 +85,7 @@ static ExprId clone_expr(
             std::vector<FnParam> params;
             params.reserve(e.params.size());
             for (const auto& p : e.params) {
-                params.emplace_back(clone_ident(p.ident), p.type);
+                params.emplace_back(clone_ident(p.ident), p.type, clone_expr(ctx, p.default_value, subst));
             }
             StmtId body = e.body;
             return ctx.make<ProcExpr>(std::move(params), e.return_type, body, e.span);
@@ -112,10 +113,14 @@ static ExprId clone_expr(
         case NodeKind::InvokeExpr: {
             auto& e = static_cast<const InvokeExpr&>(node);
             std::vector<TypeId> type_args = e.type_args;
-            std::vector<ExprId> args;
+            std::vector<InvokeArg> args;
             args.reserve(e.args.size());
-            for (auto a : e.args) {
-                args.push_back(clone_expr(ctx, a, subst));
+            for (const auto& a : e.args) {
+                if (a.name.has_value()) {
+                    args.emplace_back(clone_ident(*a.name), clone_expr(ctx, a.value, subst));
+                } else {
+                    args.emplace_back(clone_expr(ctx, a.value, subst));
+                }
             }
             ExprId callee = e.callee_expr != kInvalidAstId
                 ? clone_expr(ctx, e.callee_expr, subst)
@@ -179,6 +184,23 @@ static StmtId clone_stmt(
         case NodeKind::LetStmt: {
             auto& s = static_cast<const LetStmt&>(node);
             ExprId init = clone_expr(ctx, s.initializer, subst);
+            if (s.is_destructuring) {
+                std::function<std::vector<LetBinding>(const std::vector<LetBinding>&)> clone_bindings =
+                    [&](const std::vector<LetBinding>& src) -> std::vector<LetBinding> {
+                        std::vector<LetBinding> out;
+                        out.reserve(src.size());
+                        for (const auto& binding : src) {
+                            if (binding.children.empty()) {
+                                out.emplace_back(clone_ident(binding.ident));
+                            } else {
+                                out.emplace_back(clone_bindings(binding.children), binding.ident.span);
+                            }
+                        }
+                        return out;
+                    };
+                std::vector<LetBinding> bindings = clone_bindings(s.bindings);
+                return ctx.make<LetStmt>(std::move(bindings), s.type, init, s.is_mutable, s.span);
+            }
             return ctx.make<LetStmt>(clone_ident(s.ident), s.type, init, s.span);
         }
         case NodeKind::MakeStmt: {
@@ -188,8 +210,9 @@ static StmtId clone_stmt(
         }
         case NodeKind::SetStmt: {
             auto& s = static_cast<const SetStmt&>(node);
+            ExprId target = clone_expr(ctx, s.target, subst);
             ExprId val = clone_expr(ctx, s.value, subst);
-            return ctx.make<SetStmt>(clone_ident(s.ident), val, s.span);
+            return ctx.make<SetStmt>(target, val, s.span);
         }
         case NodeKind::GiveStmt: {
             auto& s = static_cast<const GiveStmt&>(node);
@@ -237,7 +260,11 @@ static StmtId clone_stmt(
             auto& s = static_cast<const ForStmt&>(node);
             ExprId it = clone_expr(ctx, s.iterable, subst);
             StmtId body = clone_stmt(ctx, s.body, subst);
-            return ctx.make<ForStmt>(clone_ident(s.ident), it, body, s.span);
+            std::optional<Ident> index_ident;
+            if (s.index_ident.has_value()) {
+                index_ident = clone_ident(*s.index_ident);
+            }
+            return ctx.make<ForStmt>(std::move(index_ident), clone_ident(s.ident), it, body, s.span);
         }
         case NodeKind::WhenStmt: {
             auto& s = static_cast<const WhenStmt&>(node);
@@ -294,7 +321,11 @@ static bool extract_macro_call(
         }
         auto& id = static_cast<const IdentExpr&>(callee);
         name = id.ident.name;
-        args = e.args;
+        args.clear();
+        args.reserve(e.args.size());
+        for (const auto& arg : e.args) {
+            args.push_back(arg.value);
+        }
         return true;
     }
     if (node.kind == NodeKind::CallNoParenExpr) {
@@ -420,7 +451,11 @@ static StmtId expand_stmt(
         case NodeKind::ForStmt: {
             auto& s = static_cast<const ForStmt&>(node);
             StmtId body = expand_stmt(ctx, s.body, macros, diagnostics);
-            return ctx.make<ForStmt>(clone_ident(s.ident), s.iterable, body, s.span);
+            std::optional<Ident> index_ident;
+            if (s.index_ident.has_value()) {
+                index_ident = clone_ident(*s.index_ident);
+            }
+            return ctx.make<ForStmt>(std::move(index_ident), clone_ident(s.ident), s.iterable, body, s.span);
         }
         case NodeKind::SelectStmt: {
             auto& s = static_cast<const SelectStmt&>(node);

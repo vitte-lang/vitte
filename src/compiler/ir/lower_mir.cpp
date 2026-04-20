@@ -597,22 +597,43 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
         case HirKind::BinaryExpr: {
             const auto& e = hir.get<HirBinaryExpr>(expr_id);
             if (e.op == HirBinaryOp::Assign) {
-                if (e.lhs == kInvalidHirId || hir.node(e.lhs).kind != HirKind::VarExpr) {
-                    diag.error("assignment target must be a local variable", e.span);
+                if (e.lhs == kInvalidHirId) {
+                    diag.error("assignment target is missing", e.span);
                     return lower_expr(e.rhs);
                 }
-                const auto& lhs = hir.get<HirVarExpr>(e.lhs);
                 auto rhs = lower_expr(e.rhs);
                 if (!rhs) {
                     diag.error("invalid rhs for assignment", e.span);
                     rhs = make_const(MirConstKind::Int, "0", e.span);
                 }
-                std::string ty = type_for_local(lhs.name);
+                const auto& lhs_node = hir.node(e.lhs);
+                if (lhs_node.kind == HirKind::VarExpr) {
+                    const auto& lhs = hir.get<HirVarExpr>(e.lhs);
+                    std::string ty = type_for_local(lhs.name);
+                    emit(std::make_unique<MirAssign>(
+                        make_local(lhs.name, ty, e.span),
+                        std::move(rhs),
+                        e.span));
+                    return make_local_value(lhs.name, ty, e.span);
+                }
+                auto target = lower_expr(e.lhs);
+                if (!target) {
+                    diag.error("assignment target must be assignable", e.span);
+                    return rhs;
+                }
+                std::string rhs_ty = type_of_value(rhs);
+                std::string tmp = next_temp();
+                register_local(tmp, rhs_ty, e.span);
+                auto tmp_local = make_local(tmp, rhs_ty, e.span);
                 emit(std::make_unique<MirAssign>(
-                    make_local(lhs.name, ty, e.span),
+                    make_local(tmp, rhs_ty, e.span),
                     std::move(rhs),
                     e.span));
-                return make_local_value(lhs.name, ty, e.span);
+                emit(std::make_unique<MirStore>(
+                    std::move(target),
+                    make_local_value(tmp, rhs_ty, e.span),
+                    e.span));
+                return tmp_local;
             }
             auto lhs = lower_expr(e.lhs);
             auto rhs = lower_expr(e.rhs);
@@ -649,6 +670,23 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
                     args.push_back(std::move(lhs));
                     args.push_back(std::move(rhs));
                     return emit_call_value("vitte_string_concat", std::move(args), "string", e.span);
+                }
+                auto is_slice_ty = [](const std::string& ty) {
+                    return ty.rfind("slice<", 0) == 0 && ty.size() > 7 && ty.back() == '>';
+                };
+                if (is_slice_ty(lhs_ty) || is_slice_ty(rhs_ty)) {
+                    std::string slice_ty = is_slice_ty(lhs_ty) ? lhs_ty : rhs_ty;
+                    std::string tmp = next_temp();
+                    auto dest = make_local(tmp, slice_ty, e.span);
+                    MirLocalPtr dest_copy = make_local(tmp, slice_ty, e.span);
+                    emit(std::make_unique<MirBinaryOp>(
+                        MirBinOp::Add,
+                        std::move(dest),
+                        std::move(lhs),
+                        std::move(rhs),
+                        e.span));
+                    register_local(tmp, slice_ty, e.span);
+                    return dest_copy;
                 }
             }
             std::string tmp = next_temp();
@@ -810,6 +848,21 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
             if (!forced_ret_type.empty()) {
                 ret_type = forced_ret_type;
             }
+            if (is_direct && callee == "list" && e.args.empty()) {
+                if (ret_type == "slice<i32>") {
+                    std::vector<MirValuePtr> no_args;
+                    return emit_call_value("vitte_empty_slice_i32", std::move(no_args), ret_type, e.span);
+                }
+                if (ret_type == "slice<string>") {
+                    std::vector<MirValuePtr> no_args;
+                    return emit_call_value("vitte_empty_slice_string", std::move(no_args), ret_type, e.span);
+                }
+                if (ret_type.rfind("slice<", 0) == 0 && ret_type.size() > 7 && ret_type.back() == '>') {
+                    std::string elem = ret_type.substr(6, ret_type.size() - 7);
+                    std::vector<MirValuePtr> no_args;
+                    return emit_call_value("vitte_empty_slice<" + elem + ">", std::move(no_args), ret_type, e.span);
+                }
+            }
             if (!is_direct && e.callee != kInvalidHirId) {
                 const auto& cnode = hir.node(e.callee);
                 if (cnode.kind == HirKind::VarExpr) {
@@ -923,6 +976,11 @@ void Builder::lower_stmt(HirStmtId stmt_id) {
                                 } else if (ty == "slice<string>") {
                                     std::vector<MirValuePtr> no_args;
                                     val = emit_call_value("vitte_empty_slice_string", std::move(no_args), ty, s.span);
+                                    lowered_empty_list = true;
+                                } else if (ty.rfind("slice<", 0) == 0 && ty.size() > 7 && ty.back() == '>') {
+                                    std::string elem = ty.substr(6, ty.size() - 7);
+                                    std::vector<MirValuePtr> no_args;
+                                    val = emit_call_value("vitte_empty_slice<" + elem + ">", std::move(no_args), ty, s.span);
                                     lowered_empty_list = true;
                                 }
                             }

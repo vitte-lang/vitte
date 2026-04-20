@@ -2,6 +2,7 @@
 #include "diagnostics_messages.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <iostream>
 #include <string_view>
 #include <unordered_set>
@@ -52,6 +53,21 @@ static std::string suggest_closest(
         }
     }
     return best_dist <= max_dist ? best : std::string{};
+}
+
+static bool is_assignable_expr(const AstContext& ctx, ExprId expr) {
+    if (expr == kInvalidAstId) {
+        return false;
+    }
+    const auto& node = ctx.node(expr);
+    switch (node.kind) {
+        case NodeKind::IdentExpr:
+        case NodeKind::MemberExpr:
+        case NodeKind::IndexExpr:
+            return true;
+        default:
+            return false;
+    }
 }
 
 static const std::unordered_map<std::string, std::string>& std_ident_suggestions() {
@@ -175,6 +191,107 @@ static bool is_callable_symbol(const Symbol* sym) {
         return false;
     }
     return sym->kind == SymbolKind::Proc || sym->kind == SymbolKind::Form || sym->kind == SymbolKind::Pick;
+}
+
+static std::string callee_name_from_expr(const AstContext& ctx, ast::ExprId callee) {
+    if (callee == kInvalidAstId) {
+        return {};
+    }
+    const auto& node = ctx.get<Expr>(callee);
+    if (node.kind == NodeKind::IdentExpr) {
+        return static_cast<const IdentExpr&>(node).ident.name;
+    }
+    if (node.kind == NodeKind::MemberExpr) {
+        const auto& m = static_cast<const MemberExpr&>(node);
+        if (m.base == kInvalidAstId) {
+            return {};
+        }
+        const auto& base = ctx.get<Expr>(m.base);
+        if (base.kind != NodeKind::IdentExpr) {
+            return {};
+        }
+        return static_cast<const IdentExpr&>(base).ident.name + "." + m.member.name;
+    }
+    return {};
+}
+
+void Resolver::register_signature(const std::string& name, const std::vector<ast::FnParam>& params) {
+    ProcSignature sig;
+    sig.param_names.reserve(params.size());
+    sig.defaults.reserve(params.size());
+    for (const auto& p : params) {
+        sig.param_names.push_back(p.ident.name);
+        sig.defaults.push_back(p.default_value);
+    }
+    proc_signatures_[name] = std::move(sig);
+}
+
+const Resolver::ProcSignature* Resolver::signature_for_callee(const ast::AstContext& ctx, ast::ExprId callee) const {
+    const std::string name = callee_name_from_expr(ctx, callee);
+    if (name.empty()) {
+        return nullptr;
+    }
+    auto it = proc_signatures_.find(name);
+    if (it == proc_signatures_.end()) {
+        return nullptr;
+    }
+    return &it->second;
+}
+
+void Resolver::normalize_invoke_args(ast::AstContext& ctx, ast::InvokeExpr& invoke) {
+    const ProcSignature* sig = signature_for_callee(ctx, invoke.callee_expr);
+    if (sig == nullptr || sig->param_names.empty() || invoke.args.empty()) {
+        return;
+    }
+
+    std::vector<ast::InvokeArg> ordered;
+    ordered.resize(sig->param_names.size());
+    std::vector<bool> filled(sig->param_names.size(), false);
+    std::size_t next_pos = 0;
+
+    for (const auto& arg : invoke.args) {
+        if (arg.name.has_value()) {
+            const std::string& name = arg.name->name;
+            for (std::size_t i = 0; i < sig->param_names.size(); ++i) {
+                if (sig->param_names[i] == name) {
+                    ordered[i] = ast::InvokeArg(arg.value);
+                    filled[i] = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    for (const auto& arg : invoke.args) {
+        if (arg.name.has_value()) {
+            continue;
+        }
+        while (next_pos < filled.size() && filled[next_pos]) {
+            ++next_pos;
+        }
+        if (next_pos >= ordered.size()) {
+            break;
+        }
+        ordered[next_pos] = ast::InvokeArg(arg.value);
+        filled[next_pos] = true;
+        ++next_pos;
+    }
+
+    for (std::size_t i = 0; i < ordered.size(); ++i) {
+        if (!filled[i] && sig->defaults[i] != kInvalidAstId) {
+            ordered[i] = ast::InvokeArg(sig->defaults[i]);
+            filled[i] = true;
+        }
+    }
+
+    std::vector<ast::InvokeArg> compact;
+    compact.reserve(invoke.args.size() + ordered.size());
+    for (const auto& arg : ordered) {
+        if (arg.value != kInvalidAstId) {
+            compact.push_back(arg);
+        }
+    }
+    invoke.args = std::move(compact);
 }
 
 static void emit_expression_not_callable(
@@ -779,6 +896,7 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
         case NodeKind::ProcDecl: {
             auto& d = static_cast<ProcDecl&>(decl);
             symbols_.define({d.name.name, SymbolKind::Proc, d.span});
+            register_signature(d.name.name, d.params);
             symbols_.push_scope();
             for (const auto& param : d.type_params) {
                 types_.add_named(param.name);
@@ -786,6 +904,7 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
             for (const auto& p : d.params) {
                 symbols_.define({p.ident.name, SymbolKind::Param, p.ident.span});
                 resolve_type(ctx, p.type);
+                resolve_expr(ctx, p.default_value);
             }
             resolve_type(ctx, d.return_type);
             if (d.body != kInvalidAstId) {
@@ -807,10 +926,12 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
         case NodeKind::FnDecl: {
             auto& d = static_cast<FnDecl&>(decl);
             symbols_.define({d.name.name, SymbolKind::Proc, d.span});
+            register_signature(d.name.name, d.params);
             symbols_.push_scope();
             for (const auto& p : d.params) {
                 symbols_.define({p.ident.name, SymbolKind::Param, p.ident.span});
                 resolve_type(ctx, p.type);
+                resolve_expr(ctx, p.default_value);
             }
             resolve_type(ctx, d.return_type);
             resolve_stmt(ctx, d.body);
@@ -857,15 +978,66 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
         }
         case NodeKind::SetStmt: {
             auto& s = static_cast<SetStmt&>(stmt);
-            if (!symbols_.lookup(s.ident.name)) {
-                emit_unknown_identifier_error(diag_, symbols_, s.ident.name, s.ident.span);
+            if (s.target != kInvalidAstId && ctx.node(s.target).kind == NodeKind::ListExpr) {
+                const auto& list = static_cast<const ListExpr&>(ctx.node(s.target));
+                for (auto item : list.items) {
+                    resolve_expr(ctx, item);
+                    if (!is_assignable_expr(ctx, item)) {
+                        SourceSpan target_span = item != kInvalidAstId
+                            ? ctx.get<Expr>(item).span
+                            : s.span;
+                        diag::Diagnostic d(
+                            diag::Severity::Error,
+                            "E1036",
+                            "assignment target must be an identifier, member, or index expression",
+                            target_span
+                        );
+                        d.add_note("use a writable target such as 'x', 'obj.field', or 'items[i]'");
+                        diag_.emit(std::move(d));
+                    }
+                }
+            } else {
+                resolve_expr(ctx, s.target);
+                if (!is_assignable_expr(ctx, s.target)) {
+                    SourceSpan target_span = s.target != kInvalidAstId
+                        ? ctx.get<Expr>(s.target).span
+                        : s.span;
+                    diag::Diagnostic d(
+                        diag::Severity::Error,
+                        "E1036",
+                        "assignment target must be an identifier, member, or index expression",
+                        target_span
+                    );
+                    d.add_note("use a writable target such as 'x', 'obj.field', or 'items[i]'");
+                    diag_.emit(std::move(d));
+                }
             }
             resolve_expr(ctx, s.value);
             break;
         }
         case NodeKind::LetStmt: {
             auto& s = static_cast<LetStmt&>(stmt);
-            symbols_.define({s.ident.name, SymbolKind::Var, s.ident.span});
+            if (s.is_destructuring) {
+                std::unordered_set<std::string> seen;
+                std::function<void(const LetBinding&)> collect = [&](const LetBinding& binding) {
+                    if (binding.ident.name != "_" && binding.children.empty()) {
+                        if (!seen.insert(binding.ident.name).second) {
+                            diag::error(diag_, diag::DiagId::DuplicatePatternBinding, binding.ident.span);
+                            return;
+                        }
+                        symbols_.define({binding.ident.name, SymbolKind::Var, binding.ident.span});
+                        return;
+                    }
+                    for (const auto& child : binding.children) {
+                        collect(child);
+                    }
+                };
+                for (const auto& binding : s.bindings) {
+                    collect(binding);
+                }
+            } else {
+                symbols_.define({s.ident.name, SymbolKind::Var, s.ident.span});
+            }
             resolve_type(ctx, s.type);
             resolve_expr(ctx, s.initializer);
             break;
@@ -908,6 +1080,9 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
             auto& s = static_cast<ForStmt&>(stmt);
             resolve_expr(ctx, s.iterable);
             symbols_.push_scope();
+            if (s.index_ident.has_value()) {
+                symbols_.define({s.index_ident->name, SymbolKind::Var, s.index_ident->span});
+            }
             symbols_.define({s.ident.name, SymbolKind::Var, s.ident.span});
             resolve_stmt(ctx, s.body);
             symbols_.pop_scope();
@@ -1014,6 +1189,7 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
             for (const auto& p : e.params) {
                 symbols_.define({p.ident.name, SymbolKind::Param, p.ident.span});
                 resolve_type(ctx, p.type);
+                resolve_expr(ctx, p.default_value);
             }
             resolve_type(ctx, e.return_type);
             resolve_stmt(ctx, e.body);
@@ -1101,9 +1277,10 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
                     }
                 }
             }
-            for (auto arg : e.args) {
-                resolve_expr(ctx, arg);
+            for (auto& arg : e.args) {
+                resolve_expr(ctx, arg.value);
             }
+            normalize_invoke_args(ctx, e);
             break;
         }
         case NodeKind::CallNoParenExpr: {

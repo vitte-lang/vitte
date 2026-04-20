@@ -4,9 +4,9 @@
 
 static void emit_removed_loop_syntax(DiagnosticEngine& diag, const SourceSpan& span) {
     diag::Diagnostic deprec(
-        diag::Severity::Error,
-        "E1101",
-        "legacy syntax: 'loop' was removed from the stable grammar; use 'while true'",
+        diag::Severity::Warning,
+        "W1101",
+        "legacy syntax: 'loop' is deprecated; use 'while true'",
         span
     );
     deprec.add_note("canonical loop form is 'while true { ... }'");
@@ -16,9 +16,9 @@ static void emit_removed_loop_syntax(DiagnosticEngine& diag, const SourceSpan& s
 
 static void emit_removed_otherwise_syntax(DiagnosticEngine& diag, const SourceSpan& span) {
     diag::Diagnostic deprec(
-        diag::Severity::Error,
-        "E1102",
-        "legacy syntax: 'otherwise' was removed from the stable grammar; use 'else'",
+        diag::Severity::Warning,
+        "W1102",
+        "legacy syntax: 'otherwise' is deprecated; use 'else'",
         span
     );
     deprec.add_note("canonical fallback keyword is 'else'");
@@ -28,9 +28,9 @@ static void emit_removed_otherwise_syntax(DiagnosticEngine& diag, const SourceSp
 
 static void emit_removed_return_syntax(DiagnosticEngine& diag, const SourceSpan& span, bool has_expr) {
     diag::Diagnostic deprec(
-        diag::Severity::Error,
-        "E1103",
-        "legacy syntax: 'return' was removed from the stable grammar; use 'give'",
+        diag::Severity::Warning,
+        "W1103",
+        "legacy syntax: 'return' is deprecated; use 'give'",
         span
     );
     deprec.add_note("canonical return keyword is 'give'");
@@ -123,6 +123,118 @@ StmtId Parser::parse_let_stmt() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwLet, "expected 'let'");
     bool is_mut = match(TokenKind::KwMut);
+    if (current_.kind == TokenKind::Ident) {
+        Ident first = parse_ident();
+        std::vector<Ident> names;
+        names.push_back(std::move(first));
+        while (match(TokenKind::Comma)) {
+            if (current_.kind != TokenKind::Ident) {
+                emit_parse_error(diag::DiagId::ExpectedIdentifier, current_.span);
+                break;
+            }
+            names.push_back(parse_ident());
+        }
+        if (names.size() > 1) {
+            TypeId ty = ast::kInvalidAstId;
+            if (match(TokenKind::Colon)) {
+                ty = parse_type_expr();
+            }
+            expect(TokenKind::Equal, "expected '='");
+            ExprId value = parse_expr();
+            span.end = value != ast::kInvalidAstId
+                ? ast_ctx_.get<Expr>(value).span.end
+                : previous_.span.end;
+            std::vector<LetBinding> bindings;
+            bindings.reserve(names.size());
+            for (auto& n : names) {
+                bindings.emplace_back(std::move(n));
+            }
+            return ast_ctx_.make<LetStmt>(
+                std::move(bindings),
+                ty,
+                value,
+                is_mut,
+                span);
+        }
+        Ident name = std::move(names.front());
+        TypeId ty = ast::kInvalidAstId;
+        if (match(TokenKind::Colon)) {
+            ty = parse_type_expr();
+        }
+        expect(TokenKind::Equal, "expected '='");
+        ExprId value = parse_expr();
+        span.end = value != ast::kInvalidAstId
+            ? ast_ctx_.get<Expr>(value).span.end
+            : previous_.span.end;
+        if (is_mut) {
+            return ast_ctx_.make<MakeStmt>(std::move(name), ty, value, span);
+        }
+        return ast_ctx_.make<LetStmt>(std::move(name), ty, value, span);
+    }
+    if (current_.kind == TokenKind::LBracket) {
+        expect(TokenKind::LBracket, "expected '[' after 'let'");
+        std::function<std::optional<LetBinding>()> parse_binding = [&]() -> std::optional<LetBinding> {
+            if (current_.kind == TokenKind::Ident) {
+                return LetBinding(parse_ident());
+            }
+            if (current_.kind == TokenKind::LBracket) {
+                expect(TokenKind::LBracket, "expected '['");
+                std::vector<LetBinding> children;
+                if (current_.kind != TokenKind::RBracket) {
+                    while (true) {
+                        auto child = parse_binding();
+                        if (child.has_value()) {
+                            children.push_back(std::move(*child));
+                        }
+                        if (!match(TokenKind::Comma)) {
+                            break;
+                        }
+                        if (current_.kind == TokenKind::RBracket) {
+                            break;
+                        }
+                    }
+                }
+                expect(TokenKind::RBracket, "expected ']'");
+                return LetBinding(std::move(children), span);
+            }
+            if (current_.kind == TokenKind::Ident && current_.text == "_") {
+                return LetBinding(parse_ident());
+            }
+            emit_parse_error(diag::DiagId::ExpectedIdentifier, current_.span);
+            return std::nullopt;
+        };
+        std::vector<LetBinding> bindings;
+        if (current_.kind != TokenKind::RBracket) {
+            while (true) {
+                auto binding = parse_binding();
+                if (binding.has_value()) {
+                    bindings.push_back(std::move(*binding));
+                }
+                if (!match(TokenKind::Comma)) {
+                    break;
+                }
+                if (current_.kind == TokenKind::RBracket) {
+                    break;
+                }
+            }
+        }
+        expect(TokenKind::RBracket, "expected ']'");
+        TypeId ty = ast::kInvalidAstId;
+        if (match(TokenKind::Colon)) {
+            ty = parse_type_expr();
+        }
+        expect(TokenKind::Equal, "expected '='");
+        ExprId value = parse_expr();
+        span.end = value != ast::kInvalidAstId
+            ? ast_ctx_.get<Expr>(value).span.end
+            : previous_.span.end;
+        return ast_ctx_.make<LetStmt>(
+            std::move(bindings),
+            ty,
+            value,
+            is_mut,
+            span);
+    }
     Ident name = parse_ident();
     TypeId ty = ast::kInvalidAstId;
     if (match(TokenKind::Colon)) {
@@ -162,7 +274,19 @@ StmtId Parser::parse_make_stmt() {
 StmtId Parser::parse_set_stmt() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwSet, "expected 'set'");
-    Ident name = parse_ident();
+    ExprId target = parse_primary();
+    std::vector<ExprId> target_items;
+    bool has_multi_target = false;
+    if (match(TokenKind::Comma)) {
+        has_multi_target = true;
+        target_items.push_back(target);
+        while (true) {
+            target_items.push_back(parse_primary());
+            if (!match(TokenKind::Comma)) {
+                break;
+            }
+        }
+    }
     TokenKind assign_op = TokenKind::Equal;
     if (match(TokenKind::PlusEqual)) {
         assign_op = TokenKind::PlusEqual;
@@ -178,6 +302,20 @@ StmtId Parser::parse_set_stmt() {
         expect(TokenKind::Equal, "expected '='");
     }
     ExprId value = parse_expr();
+    if (has_multi_target) {
+        std::vector<ExprId> values;
+        values.push_back(value);
+        while (match(TokenKind::Comma)) {
+            values.push_back(parse_expr());
+        }
+        ExprId target_list = ast_ctx_.make<ListExpr>(std::move(target_items), ast_ctx_.get<Expr>(target_items.front()).span);
+        ExprId value_expr = value;
+        if (values.size() > 1) {
+            value_expr = ast_ctx_.make<ListExpr>(std::move(values), ast_ctx_.get<Expr>(values.front()).span);
+        }
+        span.end = ast_ctx_.get<Expr>(value_expr).span.end;
+        return ast_ctx_.make<SetStmt>(target_list, value_expr, span);
+    }
     BinaryOp compound_op = BinaryOp::Add;
     bool has_compound = false;
     switch (assign_op) {
@@ -204,20 +342,123 @@ StmtId Parser::parse_set_stmt() {
         default:
             break;
     }
+    auto build_value = [&](ExprId lhs, ExprId rhs, SourceSpan value_span) -> ExprId {
+        if (!has_compound) {
+            return rhs;
+        }
+        return ast_ctx_.make<BinaryExpr>(compound_op, lhs, rhs, value_span);
+    };
+    auto make_slice_index = [&](ExprId start_expr, ExprId step_expr, std::size_t offset, SourceSpan value_span) -> ExprId {
+        ExprId start_value = start_expr;
+        if (start_value == ast::kInvalidAstId) {
+            start_value = ast_ctx_.make<LiteralExpr>(LiteralKind::Int, "0", value_span);
+        }
+        ExprId step_value = step_expr;
+        if (step_value == ast::kInvalidAstId) {
+            step_value = ast_ctx_.make<LiteralExpr>(LiteralKind::Int, "1", value_span);
+        }
+        ExprId offset_expr = ast_ctx_.make<LiteralExpr>(LiteralKind::Int, std::to_string(offset), value_span);
+        ExprId scaled_offset = ast_ctx_.make<BinaryExpr>(BinaryOp::Mul, step_value, offset_expr, value_span);
+        return ast_ctx_.make<BinaryExpr>(BinaryOp::Add, start_value, scaled_offset, value_span);
+    };
+    std::function<StmtId(ExprId, ExprId, SourceSpan)> emit_target =
+        [&](ExprId t, ExprId v, SourceSpan tspan) -> StmtId {
+            if (t == ast::kInvalidAstId) {
+                return ast::kInvalidAstId;
+            }
+            const auto& tnode = ast_ctx_.node(t);
+            if (tnode.kind == NodeKind::ListExpr) {
+                const auto& target_list = ast_ctx_.get<ListExpr>(t);
+                if (v == ast::kInvalidAstId || ast_ctx_.node(v).kind != NodeKind::ListExpr) {
+                    return ast_ctx_.make<SetStmt>(t, v, tspan);
+                }
+                const auto& value_list = ast_ctx_.get<ListExpr>(v);
+                std::vector<StmtId> stmts;
+                std::size_t count = std::min(target_list.items.size(), value_list.items.size());
+                for (std::size_t i = 0; i < count; ++i) {
+                    ExprId item = target_list.items[i];
+                    ExprId rhs_item = value_list.items[i];
+                    SourceSpan item_span = item != ast::kInvalidAstId
+                        ? ast_ctx_.get<Expr>(item).span
+                        : tspan;
+                    stmts.push_back(emit_target(item, rhs_item, item_span));
+                }
+                return ast_ctx_.make<BlockStmt>(std::move(stmts), tspan);
+            }
+            if (tnode.kind == NodeKind::IndexExpr) {
+                const auto& idx = ast_ctx_.get<IndexExpr>(t);
+                if (idx.index != ast::kInvalidAstId && ast_ctx_.node(idx.index).kind == NodeKind::ListExpr) {
+                    if (v == ast::kInvalidAstId || ast_ctx_.node(v).kind != NodeKind::ListExpr) {
+                        return ast_ctx_.make<SetStmt>(t, v, tspan);
+                    }
+                    const auto& slice_idx = ast_ctx_.get<ListExpr>(idx.index);
+                    const auto& value_list = ast_ctx_.get<ListExpr>(v);
+                    ExprId start_expr = ast::kInvalidAstId;
+                    ExprId step_expr = ast::kInvalidAstId;
+                    if (!slice_idx.items.empty()) {
+                        start_expr = slice_idx.items[0];
+                    }
+                    if (slice_idx.items.size() >= 3) {
+                        step_expr = slice_idx.items[2];
+                    }
+                    std::vector<StmtId> stmts;
+                    for (std::size_t i = 0; i < value_list.items.size(); ++i) {
+                        SourceSpan item_span = value_list.items[i] != ast::kInvalidAstId
+                            ? ast_ctx_.get<Expr>(value_list.items[i]).span
+                            : tspan;
+                        ExprId index_expr = make_slice_index(start_expr, step_expr, i, item_span);
+                        ExprId item_target = ast_ctx_.make<IndexExpr>(idx.base, index_expr, item_span);
+                        ExprId item_value = build_value(item_target, value_list.items[i], item_span);
+                        stmts.push_back(ast_ctx_.make<SetStmt>(item_target, item_value, item_span));
+                    }
+                    return ast_ctx_.make<BlockStmt>(std::move(stmts), tspan);
+                }
+            }
+            ExprId final_value = build_value(t, v, tspan);
+            return ast_ctx_.make<SetStmt>(t, final_value, tspan);
+        };
+    if (target != ast::kInvalidAstId && ast_ctx_.node(target).kind == NodeKind::ListExpr) {
+        if (value != ast::kInvalidAstId && ast_ctx_.node(value).kind == NodeKind::ListExpr) {
+            std::vector<StmtId> stmts;
+            const auto& target_list = ast_ctx_.get<ListExpr>(target);
+            const auto& value_list = ast_ctx_.get<ListExpr>(value);
+            std::size_t count = std::min(target_list.items.size(), value_list.items.size());
+            for (std::size_t i = 0; i < count; ++i) {
+                ExprId item = target_list.items[i];
+                ExprId rhs_item = value_list.items[i];
+                SourceSpan item_span = item != ast::kInvalidAstId
+                    ? ast_ctx_.get<Expr>(item).span
+                    : span;
+                stmts.push_back(emit_target(item, rhs_item, item_span));
+            }
+            span.end = value != ast::kInvalidAstId
+                ? ast_ctx_.get<Expr>(value).span.end
+                : previous_.span.end;
+            return ast_ctx_.make<BlockStmt>(std::move(stmts), span);
+        }
+        return emit_target(target, value, span);
+    }
+    if (target != ast::kInvalidAstId && ast_ctx_.node(target).kind == NodeKind::IndexExpr) {
+        const auto& idx = ast_ctx_.get<IndexExpr>(target);
+        if (idx.index != ast::kInvalidAstId && ast_ctx_.node(idx.index).kind == NodeKind::ListExpr) {
+            return emit_target(target, value, span);
+        }
+    }
     if (has_compound) {
-        SourceSpan name_span = name.span;
-        ExprId lhs = ast_ctx_.make<IdentExpr>(name, name_span);
-        SourceSpan add_span = name_span;
+        SourceSpan target_span = target != ast::kInvalidAstId
+            ? ast_ctx_.get<Expr>(target).span
+            : span;
+        SourceSpan add_span = target_span;
         if (value != ast::kInvalidAstId) {
             add_span.end = ast_ctx_.get<Expr>(value).span.end;
         }
-        value = ast_ctx_.make<BinaryExpr>(compound_op, lhs, value, add_span);
+        value = ast_ctx_.make<BinaryExpr>(compound_op, target, value, add_span);
     }
     span.end = value != ast::kInvalidAstId
         ? ast_ctx_.get<Expr>(value).span.end
         : previous_.span.end;
     return ast_ctx_.make<SetStmt>(
-        std::move(name),
+        target,
         value,
         span);
 }
@@ -320,12 +561,17 @@ StmtId Parser::parse_while_stmt() {
 StmtId Parser::parse_for_stmt() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwFor, "expected 'for'");
+    std::optional<Ident> index_ident;
     Ident name = parse_ident();
+    if (match(TokenKind::Comma)) {
+        index_ident = std::move(name);
+        name = parse_ident();
+    }
     expect(TokenKind::KwIn, "expected 'in'");
     ExprId iterable = parse_expr();
     StmtId body = parse_block();
     span.end = ast_ctx_.get<Stmt>(body).span.end;
-    return ast_ctx_.make<ForStmt>(std::move(name), iterable, body, span);
+    return ast_ctx_.make<ForStmt>(std::move(index_ident), std::move(name), iterable, body, span);
 }
 
 StmtId Parser::parse_break_stmt() {

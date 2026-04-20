@@ -85,6 +85,7 @@ private:
     std::vector<ast::AttributeArg> parse_attribute_args();
 
     DeclId parse_space_decl();
+    DeclId parse_from_import_decl();
     DeclId parse_pull_decl();
     DeclId parse_use_decl();
     DeclId parse_share_decl();
@@ -139,6 +140,7 @@ private:
     ExprId parse_interpolated_string_expr(const std::string& value, ast::SourceSpan span);
     ExprId parse_interpolation_path_expr(std::string_view raw, ast::SourceSpan span);
     std::vector<ExprId> parse_arg_list();
+    std::vector<ast::InvokeArg> parse_call_arg_list();
 
     // Patterns
     PatternId parse_pattern();

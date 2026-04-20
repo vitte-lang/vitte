@@ -92,8 +92,26 @@ Token Lexer::next() {
         return false;
     };
 
+    auto skip_block_comment = [&]() {
+        if (peek() == '/' && peek(1) == '*') {
+            index_ += 2;
+            while (!eof()) {
+                if (peek() == '*' && peek(1) == '/') {
+                    index_ += 2;
+                    break;
+                }
+                advance();
+            }
+            return true;
+        }
+        return false;
+    };
+
     while (!eof()) {
         if (skip_zone_comment()) {
+            continue;
+        }
+        if (skip_block_comment()) {
             continue;
         }
         if (is_space(peek())) {
@@ -208,6 +226,18 @@ Token Lexer::next() {
     }
 
     switch (c) {
+        case '/':
+            if (peek() == '*') {
+                index_--; // rewind so the block-comment skipper sees the '/' again
+                if (skip_block_comment()) {
+                    return next();
+                }
+            }
+            if (peek() == '=') {
+                advance();
+                return make(TokenKind::SlashEqual, "/=", start, index_);
+            }
+            return make(TokenKind::Slash, "/", start, index_);
         case '#':
             if (peek() == '[') {
                 advance();
@@ -220,6 +250,8 @@ Token Lexer::next() {
             break;
         case '(':
             return make(TokenKind::LParen, "(", start, index_);
+        case '@':
+            return make(TokenKind::AtSign, "@", start, index_);
         case ')':
             return make(TokenKind::RParen, ")", start, index_);
         case '{':
@@ -236,12 +268,6 @@ Token Lexer::next() {
             return make(TokenKind::Colon, ":", start, index_);
         case '.':
             return make(TokenKind::Dot, ".", start, index_);
-        case '/':
-            if (peek() == '=') {
-                advance();
-                return make(TokenKind::SlashEqual, "/=", start, index_);
-            }
-            return make(TokenKind::Slash, "/", start, index_);
         case '+':
             if (peek() == '=') {
                 advance();

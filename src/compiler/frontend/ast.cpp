@@ -6,6 +6,7 @@
 #include "ast.hpp"
 
 #include <cassert>
+#include <functional>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
@@ -164,7 +165,7 @@ InvokeExpr::InvokeExpr(
     ExprId callee_expr_in,
     TypeId callee_type_in,
     std::vector<TypeId> type_args_in,
-    std::vector<ExprId> args_in,
+    std::vector<InvokeArg> args_in,
     SourceSpan sp)
     : Expr(NodeKind::InvokeExpr, sp),
       callee_expr(callee_expr_in),
@@ -200,6 +201,16 @@ WildcardPattern::WildcardPattern(SourceSpan sp)
 Stmt::Stmt(NodeKind k, SourceSpan sp)
     : AstNode(k, sp) {}
 
+LetBinding::LetBinding(Ident id)
+    : ident(std::move(id)), children() {}
+
+LetBinding::LetBinding(std::vector<LetBinding> ch, SourceSpan sp)
+    : ident(Ident("", sp)), children(std::move(ch)) {}
+
+bool LetBinding::is_nested() const {
+    return !children.empty();
+}
+
 AsmStmt::AsmStmt(std::string c, SourceSpan sp)
     : Stmt(NodeKind::AsmStmt, sp),
       code(std::move(c)) {}
@@ -215,6 +226,23 @@ LetStmt::LetStmt(
     SourceSpan sp)
     : Stmt(NodeKind::LetStmt, sp),
       ident(std::move(id)),
+      is_destructuring(false),
+      is_mutable(false),
+      bindings(),
+      type(ty),
+      initializer(init) {}
+
+LetStmt::LetStmt(
+    std::vector<LetBinding> bs,
+    TypeId ty,
+    ExprId init,
+    bool mut,
+    SourceSpan sp)
+    : Stmt(NodeKind::LetStmt, sp),
+      ident(Ident("", sp)),
+      is_destructuring(true),
+      is_mutable(mut),
+      bindings(std::move(bs)),
       type(ty),
       initializer(init) {}
 
@@ -224,9 +252,9 @@ MakeStmt::MakeStmt(Ident id, TypeId ty, ExprId v, SourceSpan sp)
       type(ty),
       value(v) {}
 
-SetStmt::SetStmt(Ident id, ExprId v, SourceSpan sp)
+SetStmt::SetStmt(ExprId t, ExprId v, SourceSpan sp)
     : Stmt(NodeKind::SetStmt, sp),
-      ident(std::move(id)),
+      target(t),
       value(v) {}
 
 GiveStmt::GiveStmt(ExprId v, SourceSpan sp)
@@ -263,8 +291,9 @@ BreakStmt::BreakStmt(SourceSpan sp)
 ContinueStmt::ContinueStmt(SourceSpan sp)
     : Stmt(NodeKind::ContinueStmt, sp) {}
 
-ForStmt::ForStmt(Ident id, ExprId it, StmtId b, SourceSpan sp)
+ForStmt::ForStmt(std::optional<Ident> idx, Ident id, ExprId it, StmtId b, SourceSpan sp)
     : Stmt(NodeKind::ForStmt, sp),
+      index_ident(std::move(idx)),
       ident(std::move(id)),
       iterable(it),
       body(b) {}
@@ -297,8 +326,17 @@ CaseField::CaseField(Ident id, TypeId ty)
 CaseDecl::CaseDecl(Ident id, std::vector<CaseField> f)
     : ident(std::move(id)), fields(std::move(f)) {}
 
-FnParam::FnParam(Ident id, TypeId ty)
-    : ident(std::move(id)), type(ty) {}
+FnParam::FnParam(Ident id, TypeId ty, ExprId default_value)
+    : ident(std::move(id)), type(ty), default_value(default_value) {}
+
+InvokeArg::InvokeArg(ExprId v)
+    : name(std::nullopt), value(v) {}
+
+InvokeArg::InvokeArg()
+    : name(std::nullopt), value(kInvalidAstId) {}
+
+InvokeArg::InvokeArg(Ident n, ExprId v)
+    : name(std::move(n)), value(v) {}
 
 Decl::Decl(NodeKind k, SourceSpan sp)
     : AstNode(k, sp) {}
@@ -725,6 +763,7 @@ static void append_node_json(const AstContext& ctx,
                     children.push_back(p.type);
                 }
                 names.push_back(p.ident.name);
+                children.push_back(p.default_value);
             }
             os << ",\"params\":";
             append_string_list(os, names);
@@ -781,7 +820,12 @@ static void append_node_json(const AstContext& ctx,
                 children.push_back(n.callee_type);
             }
             children.insert(children.end(), n.type_args.begin(), n.type_args.end());
-            children.insert(children.end(), n.args.begin(), n.args.end());
+            for (const auto& arg : n.args) {
+                names.push_back(arg.name.has_value() ? arg.name->name : "");
+                children.push_back(arg.value);
+            }
+            os << ",\"arg_names\":";
+            append_string_list(os, names);
             break;
         }
         case NodeKind::ListExpr: {
@@ -823,8 +867,33 @@ static void append_node_json(const AstContext& ctx,
         }
         case NodeKind::LetStmt: {
             const auto& n = ctx.get<LetStmt>(id);
-            os << "\"ident\":";
-            append_json_string(os, n.ident.name);
+            os << "\"is_destructuring\":" << (n.is_destructuring ? "true" : "false");
+            os << ",\"is_mutable\":" << (n.is_mutable ? "true" : "false");
+            if (n.is_destructuring) {
+                std::function<void(const LetBinding&)> dump_binding = [&](const LetBinding& binding) {
+                    os << "{";
+                    os << "\"name\":";
+                    append_json_string(os, binding.ident.name);
+                    if (!binding.children.empty()) {
+                        os << ",\"children\":[";
+                        for (std::size_t i = 0; i < binding.children.size(); ++i) {
+                            if (i) os << ",";
+                            dump_binding(binding.children[i]);
+                        }
+                        os << "]";
+                    }
+                    os << "}";
+                };
+                os << ",\"bindings\":[";
+                for (std::size_t i = 0; i < n.bindings.size(); ++i) {
+                    if (i) os << ",";
+                    dump_binding(n.bindings[i]);
+                }
+                os << "]";
+            } else {
+                os << ",\"ident\":";
+                append_json_string(os, n.ident.name);
+            }
             if (n.type != kInvalidAstId) {
                 children.push_back(n.type);
             }
@@ -860,6 +929,10 @@ static void append_node_json(const AstContext& ctx,
             break;
         case NodeKind::ForStmt: {
             const auto& n = ctx.get<ForStmt>(id);
+            if (n.index_ident.has_value()) {
+                os << "\"index_ident\":";
+                append_json_string(os, n.index_ident->name);
+            }
             os << "\"ident\":";
             append_json_string(os, n.ident.name);
             children.push_back(n.iterable);
@@ -878,8 +951,7 @@ static void append_node_json(const AstContext& ctx,
         }
         case NodeKind::SetStmt: {
             const auto& n = ctx.get<SetStmt>(id);
-            os << "\"ident\":";
-            append_json_string(os, n.ident.name);
+            children.push_back(n.target);
             children.push_back(n.value);
             break;
         }
@@ -922,6 +994,7 @@ static void append_node_json(const AstContext& ctx,
                 if (p.type != kInvalidAstId) {
                     children.push_back(p.type);
                 }
+                children.push_back(p.default_value);
             }
             os << ",\"params\":";
             append_string_list(os, names);
@@ -1087,6 +1160,7 @@ static void append_node_json(const AstContext& ctx,
                 if (p.type != kInvalidAstId) {
                     children.push_back(p.type);
                 }
+                children.push_back(p.default_value);
             }
             os << ",\"params\":";
             append_string_list(os, names);

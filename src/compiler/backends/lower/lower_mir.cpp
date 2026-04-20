@@ -498,13 +498,27 @@ ast::cpp::CppTranslationUnit lower_mir(
                                 decl_type,
                                 dname
                             );
-                            decl->init = emit_value(ctx, *ins.value);
-                            out.body.push_back(std::move(decl));
+                            if (decl_type->name == "auto") {
+                                decl->init = emit_value(ctx, *ins.value);
+                                out.body.push_back(std::move(decl));
+                            } else {
+                                out.body.push_back(std::move(decl));
+                                out.body.push_back(std::make_unique<CppAssign>(
+                                    std::make_unique<CppVar>(dname),
+                                    emit_value(ctx, *ins.value)));
+                            }
                         } else {
                             out.body.push_back(std::make_unique<CppAssign>(
                                 std::make_unique<CppVar>(dname),
                                 emit_value(ctx, *ins.value)));
                         }
+                        break;
+                    }
+                    case MirKind::Store: {
+                        auto& ins = static_cast<const vitte::ir::MirStore&>(*instr);
+                        out.body.push_back(std::make_unique<CppAssign>(
+                            emit_value(ctx, *ins.target),
+                            emit_value(ctx, *ins.value)));
                         break;
                     }
                     case MirKind::BinaryOp: {
@@ -520,8 +534,15 @@ ast::cpp::CppTranslationUnit lower_mir(
                                 map_type(ctx, dst.type),
                                 dname
                             );
-                            decl->init = std::move(expr);
-                            out.body.push_back(std::move(decl));
+                            if (decl->type && decl->type->name == "auto") {
+                                decl->init = std::move(expr);
+                                out.body.push_back(std::move(decl));
+                            } else {
+                                out.body.push_back(std::move(decl));
+                                out.body.push_back(std::make_unique<CppAssign>(
+                                    std::make_unique<CppVar>(dname),
+                                    std::move(expr)));
+                            }
                         } else {
                             out.body.push_back(std::make_unique<CppAssign>(
                                 std::make_unique<CppVar>(dname),
@@ -532,7 +553,16 @@ ast::cpp::CppTranslationUnit lower_mir(
                     case MirKind::Call: {
                         auto& ins = static_cast<const vitte::ir::MirCall&>(*instr);
                         std::string callee_name;
-                        if (ins.callee == "builtin.trap") {
+                        if (ins.callee.rfind("vitte_empty_slice<", 0) == 0 && !ins.callee.empty()) {
+                            const auto open = ins.callee.find('<');
+                            const auto close = ins.callee.rfind('>');
+                            if (open != std::string::npos && close != std::string::npos && close > open + 1) {
+                                const std::string inner = ins.callee.substr(open + 1, close - open - 1);
+                                callee_name = "vitte_empty_slice<" + map_type(ctx, inner)->name + ">";
+                            } else {
+                                callee_name = ins.callee;
+                            }
+                        } else if (ins.callee == "builtin.trap") {
                             callee_name = "vitte_builtin_trap";
                         } else if (externs.count(ins.callee) > 0) {
                             callee_name = ins.callee;
@@ -557,8 +587,15 @@ ast::cpp::CppTranslationUnit lower_mir(
                                     decl_type,
                                     dname
                                 );
-                                decl->init = std::move(call);
-                                out.body.push_back(std::move(decl));
+                                if (decl_type->name == "auto") {
+                                    decl->init = std::move(call);
+                                    out.body.push_back(std::move(decl));
+                                } else {
+                                    out.body.push_back(std::move(decl));
+                                    out.body.push_back(std::make_unique<CppAssign>(
+                                        std::make_unique<CppVar>(dname),
+                                        std::move(call)));
+                                }
                             } else {
                                 out.body.push_back(std::make_unique<CppAssign>(
                                     std::make_unique<CppVar>(dname),
@@ -589,8 +626,15 @@ ast::cpp::CppTranslationUnit lower_mir(
                                     decl_type,
                                     dname
                                 );
-                                decl->init = std::move(call);
-                                out.body.push_back(std::move(decl));
+                                if (decl_type->name == "auto") {
+                                    decl->init = std::move(call);
+                                    out.body.push_back(std::move(decl));
+                                } else {
+                                    out.body.push_back(std::move(decl));
+                                    out.body.push_back(std::make_unique<CppAssign>(
+                                        std::make_unique<CppVar>(dname),
+                                        std::move(call)));
+                                }
                             } else {
                                 out.body.push_back(std::make_unique<CppAssign>(
                                     std::make_unique<CppVar>(dname),

@@ -105,6 +105,16 @@ MirAssign::MirAssign(
     assert(dest && value);
 }
 
+MirStore::MirStore(
+    MirValuePtr tgt,
+    MirValuePtr src,
+    SourceSpan sp)
+    : MirInstr(MirKind::Store, sp),
+      target(std::move(tgt)),
+      value(std::move(src)) {
+    assert(target && value);
+}
+
 MirBinaryOp::MirBinaryOp(
     MirBinOp op,
     MirLocalPtr dst,
@@ -351,6 +361,7 @@ const char* to_string(MirKind kind) {
         case MirKind::Member: return "Member";
         case MirKind::Index: return "Index";
         case MirKind::Assign: return "Assign";
+        case MirKind::Store: return "Store";
         case MirKind::BinaryOp: return "BinaryOp";
         case MirKind::Call: return "Call";
         case MirKind::CallIndirect: return "CallIndirect";

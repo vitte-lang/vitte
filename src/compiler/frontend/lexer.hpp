@@ -22,6 +22,8 @@ enum class TokenKind {
 
     // keywords
     KwSpace,
+    KwFrom,
+    KwImport,
     KwPull,
     KwUse,
     KwShare,
@@ -71,6 +73,7 @@ enum class TokenKind {
 
     // symbols
     AttrStart, // #[
+    AtSign,    // @
     LParen,
     RParen,
     LBrace,

@@ -366,11 +366,39 @@ ExprId Parser::parse_postfix_expr(ExprId base) {
             continue;
         }
         if (match(TokenKind::LBracket)) {
-            ExprId index = parse_expr();
+            ExprId first = ast::kInvalidAstId;
+            ExprId second = ast::kInvalidAstId;
+            ExprId third = ast::kInvalidAstId;
+            bool is_slice = false;
+            if (current_.kind != TokenKind::Colon && current_.kind != TokenKind::RBracket) {
+                first = parse_expr();
+            }
+            if (match(TokenKind::Colon)) {
+                is_slice = true;
+                if (current_.kind != TokenKind::Colon && current_.kind != TokenKind::RBracket) {
+                    second = parse_expr();
+                }
+                if (match(TokenKind::Colon)) {
+                    if (current_.kind != TokenKind::RBracket) {
+                        third = parse_expr();
+                    }
+                }
+            }
             expect(TokenKind::RBracket, "expected ']'");
             SourceSpan span = ast_ctx_.get<Expr>(expr).span;
             span.end = previous_.span.end;
-            expr = ast_ctx_.make<IndexExpr>(expr, index, span);
+            if (is_slice) {
+                std::vector<ExprId> parts;
+                parts.push_back(first);
+                parts.push_back(second);
+                if (third != ast::kInvalidAstId || current_.kind != TokenKind::RBracket) {
+                    parts.push_back(third);
+                }
+                auto slice_idx = ast_ctx_.make<ListExpr>(std::move(parts), span);
+                expr = ast_ctx_.make<IndexExpr>(expr, slice_idx, span);
+            } else {
+                expr = ast_ctx_.make<IndexExpr>(expr, first, span);
+            }
             continue;
         }
         break;
@@ -571,9 +599,9 @@ ExprId Parser::try_parse_generic_ctor_call_expr(ExprId base) {
     );
 
     expect(TokenKind::LParen, "expected '('");
-    std::vector<ExprId> args;
+    std::vector<InvokeArg> args;
     if (current_.kind != TokenKind::RParen) {
-        args = parse_arg_list();
+        args = parse_call_arg_list();
     }
     expect(TokenKind::RParen, "expected ')'");
     span.end = previous_.span.end;
@@ -631,9 +659,9 @@ ExprId Parser::try_parse_generic_proc_call_expr(ExprId base) {
 
     SourceSpan span = node.span;
     expect(TokenKind::LParen, "expected '('");
-    std::vector<ExprId> args;
+    std::vector<InvokeArg> args;
     if (current_.kind != TokenKind::RParen) {
-        args = parse_arg_list();
+        args = parse_call_arg_list();
     }
     expect(TokenKind::RParen, "expected ')'");
     span.end = previous_.span.end;
@@ -651,9 +679,9 @@ ExprId Parser::parse_call_expr(ExprId callee) {
         ? ast_ctx_.get<Expr>(callee).span
         : current_.span;
     expect(TokenKind::LParen, "expected '('");
-    std::vector<ExprId> args;
+    std::vector<InvokeArg> args;
     if (current_.kind != TokenKind::RParen) {
-        args = parse_arg_list();
+        args = parse_call_arg_list();
     }
     expect(TokenKind::RParen, "expected ')'");
     span.end = previous_.span.end;
@@ -676,7 +704,11 @@ ExprId Parser::parse_proc_expr() {
         if (match(TokenKind::Colon)) {
             param_type = parse_type_expr();
         }
-        params.emplace_back(std::move(param_name), param_type);
+        ExprId default_value = ast::kInvalidAstId;
+        if (match(TokenKind::Equal)) {
+            default_value = parse_expr();
+        }
+        params.emplace_back(std::move(param_name), param_type, default_value);
         while (match(TokenKind::Comma)) {
             if (current_.kind == TokenKind::RParen) {
                 break;
@@ -686,7 +718,11 @@ ExprId Parser::parse_proc_expr() {
             if (match(TokenKind::Colon)) {
                 next_type = parse_type_expr();
             }
-            params.emplace_back(std::move(next_name), next_type);
+            ExprId next_default = ast::kInvalidAstId;
+            if (match(TokenKind::Equal)) {
+                next_default = parse_expr();
+            }
+            params.emplace_back(std::move(next_name), next_type, next_default);
         }
     }
     expect(TokenKind::RParen, "expected ')'");
@@ -731,6 +767,31 @@ std::vector<ExprId> Parser::parse_arg_list() {
             break;
         }
         args.push_back(parse_expr());
+    }
+    return args;
+}
+
+std::vector<InvokeArg> Parser::parse_call_arg_list() {
+    std::vector<InvokeArg> args;
+    while (true) {
+        if (current_.kind == TokenKind::Ident) {
+            State state = snapshot();
+            Ident name = parse_ident();
+            if (match(TokenKind::Colon)) {
+                args.emplace_back(std::move(name), parse_expr());
+            } else {
+                restore(std::move(state));
+                args.emplace_back(parse_expr());
+            }
+        } else {
+            args.emplace_back(parse_expr());
+        }
+        if (!match(TokenKind::Comma)) {
+            break;
+        }
+        if (current_.kind == TokenKind::RParen || current_.kind == TokenKind::RBracket || current_.kind == TokenKind::RBrace) {
+            break;
+        }
     }
     return args;
 }
