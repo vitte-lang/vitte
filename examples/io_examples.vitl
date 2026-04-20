@@ -1,0 +1,122 @@
+<<< =========================================================
+   Example: Using stdlib/io (C-like I/O)
+   Demonstrates format printing, file operations, etc.
+   ========================================================= >>>
+
+use stdlib/io as io
+
+# Example 1: Basic printf with format string
+proc example_printf() -> () {
+  let numbers: [io.stdio.PrintArg] = [
+    io.stdio.IntArg(42),
+    io.stdio.IntArg(100),
+    io.stdio.FloatArg(3.14159),
+    io.stdio.StringArg("Vitte language")
+  ]
+  
+  # Print with format specifiers
+  io.printf("Integer: %d, Hex: %x, Float: %f, String: %s\n", numbers)
+}
+
+# Example 2: puts and println
+proc example_simple_print() -> () {
+  io.puts("Hello, World!")
+  io.println("Line with custom format")
+}
+
+# Example 3: Multiple printf calls
+proc example_calculations() -> () {
+  let x: i64 = 25
+  let y: i64 = 7
+  let result: i64 = x + y
+  
+  let args: [io.stdio.PrintArg] = [
+    io.stdio.IntArg(x),
+    io.stdio.IntArg(y),
+    io.stdio.IntArg(result)
+  ]
+  
+  io.printf("%d + %d = %d\n", args)
+}
+
+# Example 4: Write to stderr for errors
+proc example_error() -> () {
+  io.perror("Failed to open file")
+}
+
+# Example 5: Format string with various types
+proc example_mixed_types() -> () {
+  let mixed_args: [io.stdio.PrintArg] = [
+    io.stdio.StringArg("Info"),
+    io.stdio.IntArg(99),
+    io.stdio.FloatArg(2.718),
+    io.stdio.CharArg(65)  # ASCII 'A'
+  ]
+  
+  io.printf("Message: %s, Code: %d, Value: %f, Char: %c\n", mixed_args)
+}
+
+# Example 6: File operations
+proc example_file_operations() -> () {
+  # Open file for writing
+  let file: io.file.File = io.fopen("output.txt", io.WRITE)
+  
+  # Write formatted data to file
+  let data: [io.stdio.PrintArg] = [
+    io.stdio.StringArg("Vitte"),
+    io.stdio.IntArg(2026)
+  ]
+  io.fprintf(file, "Language: %s, Year: %d\n", data)
+  
+  # Close file
+  io.fclose(file)
+}
+
+# Example 7: Variable formatting
+proc example_hex_octal() -> () {
+  let num: i64 = 255
+  
+  let dec_args: [io.stdio.PrintArg] = [
+    io.stdio.IntArg(num)
+  ]
+  io.printf("Decimal: %d\n", dec_args)
+  
+  let hex_args: [io.stdio.PrintArg] = [
+    io.stdio.IntArg(num)
+  ]
+  io.printf("Hexadecimal: %x\n", hex_args)
+  
+  let oct_args: [io.stdio.PrintArg] = [
+    io.stdio.IntArg(num)
+  ]
+  io.printf("Octal: %o\n", oct_args)
+}
+
+# Main example runner
+proc main() -> int {
+  io.puts("=== Vitte I/O Library Examples ===")
+  
+  io.puts("\n--- Example 1: printf ---")
+  example_printf()
+  
+  io.puts("\n--- Example 2: Simple Print ---")
+  example_simple_print()
+  
+  io.puts("\n--- Example 3: Calculations ---")
+  example_calculations()
+  
+  io.puts("\n--- Example 4: Error Output ---")
+  example_error()
+  
+  io.puts("\n--- Example 5: Mixed Types ---")
+  example_mixed_types()
+  
+  io.puts("\n--- Example 6: File Operations ---")
+  example_file_operations()
+  
+  io.puts("\n--- Example 7: Number Formats ---")
+  example_hex_octal()
+  
+  io.puts("\n=== Examples Complete ===")
+  give 0
+}
