@@ -1,47 +1,39 @@
-# Documentation Vitte
+# Accueil Vitte
 
-Une page d’entrée compacte pour aller vite vers la bonne ressource.
+Porte d’entrée compacte pour la documentation, les diagnostics, et les annonces du projet.
 
 ## Navigation
 
-- [Accueil](/site/index.md)
-- [Documentation](/site/doc.md)
-- [Téléchargement](/site/download.md)
-- [Source](/site/source.md)
-- [Communauté](/site/community.md)
-- [Actualités](/site/news.md)
-- [Diagnostics](/site/diagnostics.md)
-- [Suggestions](/site/suggestions.md)
+- [Accueil](index.md)
+- [Documentation](doc.md)
+- [Téléchargement](download.md)
+- [Source](source.md)
+- [Communauté](community.md)
+- [Actualités](news.md)
+- [Diagnostics](diagnostics.md)
+- [Suggestions](suggestions.md)
 
 ## Démarrer
 
-- [Installer les outils](/site/download.md)
-- [Lire la documentation](/site/doc.md)
-- [Sommaire poche](/book/poche/SOMMAIRE.md)
+- [Installer les outils](download.md)
+- [Lire la documentation](doc.md)
+- [Sommaire poche](../book/poche/SOMMAIRE.md)
 
 ## Lire le livre
 
-- [Ouvrir la documentation](/site/doc.md)
-- [Diagnostics](/site/diagnostics.md)
-- [Source](/site/source.md)
+- [Ouvrir la documentation](doc.md)
+- [Diagnostics](diagnostics.md)
+- [Source](source.md)
 
 ## Revenir au projet
 
-- [Téléchargement](/site/download.md)
-- [Actualités](/site/news.md)
-- [Communauté](/site/community.md)
+- [Téléchargement](download.md)
+- [Actualités](news.md)
+- [Communauté](community.md)
 
 ## Raccourcis
 
-- [Documentation](/site/doc.md)
-- [Diagnostics](/site/diagnostics.md)
-- [Source](/site/source.md)
-- [Téléchargement](/site/download.md)
-
-## Grille du site
-
-- **Documentation** : manuel, CLI, diagnostics, et parcours de lecture.
-- **Book** : sommaires, chapitres, logique, et mots-clés.
-- **Téléchargement** : binaires, archives, et outils.
-- **Source** : dépôt, organisation, et conventions.
-- **Actualités** : annonces et changements visibles.
+- [Documentation](doc.md)
+- [Diagnostics](diagnostics.md)
+- [Source](source.md)
+- [Téléchargement](download.md)

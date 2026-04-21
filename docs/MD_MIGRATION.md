@@ -6,7 +6,7 @@ Les pages HTML du répertoire `docs/` ont été supprimées et remplacées par d
 
 - Les pages du site vivent maintenant en `.md`.
 - Les liens internes pointent vers les pages Markdown correspondantes.
-- Le script de navigation utilise désormais `/site/diagnostics.md`.
+- La navigation vise désormais `diagnostics.md`.
 
 ## Ce qui ne change pas
 
@@ -16,5 +16,5 @@ Les pages HTML du répertoire `docs/` ont été supprimées et remplacées par d
 
 ## Point d’entrée
 
-- [Documentation](/index.md)
-- [Accueil](/site/index.md)
+- [Documentation](index.md)
+- [Accueil](index.md)

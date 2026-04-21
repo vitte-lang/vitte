@@ -4,14 +4,14 @@ Installer, compiler et vérifier rapidement avec des étapes courtes et concrèt
 
 ## Navigation
 
-- [Accueil](/site/index.md)
-- [Documentation](/site/doc.md)
-- [Téléchargement](/site/download.md)
-- [Source](/site/source.md)
-- [Communauté](/site/community.md)
-- [Actualités](/site/news.md)
-- [Diagnostics](/site/diagnostics.md)
-- [Suggestions](/site/suggestions.md)
+- [Accueil](index.md)
+- [Documentation](doc.md)
+- [Téléchargement](download.md)
+- [Source](source.md)
+- [Communauté](community.md)
+- [Actualités](news.md)
+- [Diagnostics](diagnostics.md)
+- [Suggestions](suggestions.md)
 
 ## Notes de version - Version 2.1.1
 
@@ -52,7 +52,7 @@ Date : 18 février 2026
 
 ## Raccourcis doc
 
-- [Lire la documentation complète](/site/doc.md)
-- [Voir la migration Markdown](/MD_MIGRATION.md)
-- [Lire les diagnostics](/site/diagnostics.md)
-- [Ouvrir le sommaire poche](/book/poche/SOMMAIRE.md)
+- [Lire la documentation complète](doc.md)
+- [Voir la migration Markdown](../MD_MIGRATION.md)
+- [Lire les diagnostics](diagnostics.md)
+- [Ouvrir le sommaire poche](../book/poche/SOMMAIRE.md)
