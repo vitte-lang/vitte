@@ -3,24 +3,24 @@
 ## 2026-03-16
 
 ### non-breaking
-- Documented explicit generic call surface syntax in EBNF as `foo[T](...)`.
-- Added an ambiguity note for generic-call vs index-then-call parsing.
+- Documenté la syntaxe de surface d'appel générique explicite en EBNF sous la forme `foo[T](...)`.
+- Ajouté une note d'ambiguïté pour l'analyse appel générique vs index puis appel.
 
 ### breaking
-- None.
+- Aucune.
 
 ### diagnostic-only
-- None.
+- Aucun.
 
 ## 2026-03-03
 
 ### non-breaking
-- Added generated `grammar-surface.ebnf` workflow with versioned metadata header.
-- Added grammar corpus scaffold (`tests/grammar/valid`, `tests/grammar/invalid`).
-- Added diagnostics contracts and snapshots for invalid grammar examples.
+- Ajouté le flux généré `grammar-surface.ebnf` avec en-tête de métadonnées versionné.
+- Ajouté l'ossature du corpus de grammaire (`tests/grammar/valid`, `tests/grammar/invalid`).
+- Ajouté les contrats de diagnostic et les instantanés pour les exemples de grammaire invalides.
 
 ### breaking
-- None.
+- Aucune.
 
 ### diagnostic-only
-- Established wording/code snapshots for parse diagnostics in grammar corpus.
+- Établi des instantanés de texte/code pour les diagnostics de parse dans le corpus de grammaire.

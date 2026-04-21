@@ -105,7 +105,7 @@ Reference structurelle: inspiree de `rustc`, adaptee au pipeline Vitte.
 - `BufReader`.
 - ANSI (type `std::io` + `std::fmt`).
 
-## 6) Dev tools
+## 6) Outils de dev
 
 ### `vitte-test`
 - runner.

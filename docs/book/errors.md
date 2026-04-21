@@ -1,14 +1,14 @@
-# Vitte Errors
+# Erreurs Vitte
 
-This page is the stable reference for diagnostics and common fixes.
+Cette page est la référence stable pour les diagnostics et les corrections courantes.
 
-Layer map:
-- `parse`: syntax and structure checks
-- `resolve`: name, type, import, and declaration checks
-- `IR`: lowering and intermediate representation checks
-- `backend`: code generation and toolchain checks
+Carte des couches :
+- `parse` : vérifications de syntaxe et de structure.
+- `resolve` : vérifications de nom, type, import et déclaration.
+- `IR` : vérifications de lowering et de représentation intermédiaire.
+- `backend` : vérifications de génération de code et de chaîne d'outils.
 
-Each diagnostic follows the same structure:
+Chaque diagnostic suit la même structure :
 - Code
 - Symptôme
 - Cause probable
@@ -17,13 +17,13 @@ Each diagnostic follows the same structure:
 - Voir aussi
 
 <a id="e0001"></a>
-## E0001 - expected identifier
+## E0001 - identifiant attendu
 
 - Code: `E0001`
 - Couche: `parse`
-- Symptôme: the parser expected a name for a variable, type, module, or declaration.
-- Cause probable: a declaration is missing its identifier, or the token after a keyword is not a valid name.
-- Correction: add a valid identifier where the parser points.
+- Symptôme: le parser attendait un nom de variable, de type, de module ou de déclaration.
+- Cause probable: une déclaration manque de son identifiant, ou le jeton après un mot-clé n'est pas un nom valide.
+- Correction: ajouter un identifiant valide à l'endroit indiqué par le parser.
 - Exemple:
 ```vit
 proc main() -> i32 { return 0 }
@@ -31,13 +31,13 @@ proc main() -> i32 { return 0 }
 - Voir aussi: `docs/book/poche/07-lire-les-erreurs.md`, `docs/book/cli.md`
 
 <a id="e0002"></a>
-## E0002 - expected expression
+## E0002 - expression attendue
 
 - Code: `E0002`
 - Couche: `parse`
-- Symptôme: the parser expected an expression at this location.
-- Cause probable: a value, call, or block expression is missing after a keyword or operator.
-- Correction: provide an expression such as `1`, `name`, `call()`, or `{ ... }`.
+- Symptôme: le parser attendait une expression à cet emplacement.
+- Cause probable: une valeur, un appel ou une expression de bloc manque après un mot-clé ou un opérateur.
+- Correction: fournir une expression comme `1`, `name`, `call()` ou `{ ... }`.
 - Exemple:
 ```vit
 let x = 1
@@ -45,13 +45,13 @@ let x = 1
 - Voir aussi: `docs/book/poche/07-lire-les-erreurs.md`, `docs/book/cli.md`
 
 <a id="e0003"></a>
-## E0003 - expected pattern
+## E0003 - motif attendu
 
 - Code: `E0003`
 - Couche: `parse`
-- Symptôme: the parser expected a pattern.
-- Cause probable: a `when` or match-like construct received an incomplete pattern.
-- Correction: use a pattern such as an identifier or constructor, for example `Some(x)`.
+- Symptôme: le parser attendait un motif.
+- Cause probable: un construct `when` ou similaire à `match` a reçu un motif incomplet.
+- Correction: utiliser un motif comme un identifiant ou un constructeur, par exemple `Some(x)`.
 - Exemple:
 ```vit
 when x is Option.Some { return 0 }
@@ -59,13 +59,13 @@ when x is Option.Some { return 0 }
 - Voir aussi: `docs/book/poche/07-lire-les-erreurs.md`, `docs/book/cli.md`
 
 <a id="e0004"></a>
-## E0004 - expected type
+## E0004 - type attendu
 
 - Code: `E0004`
 - Couche: `parse`
-- Symptôme: the parser expected a type name.
-- Cause probable: a type annotation is present, but the right-hand side is missing or malformed.
-- Correction: use a built-in type or a named type, for example `int` or `Option[T]`.
+- Symptôme: le parser attendait un nom de type.
+- Cause probable: une annotation de type est présente, mais le membre de droite manque ou est mal formé.
+- Correction: utiliser un type intégré ou un type nommé, par exemple `int` ou `Option[T]`.
 - Exemple:
 ```vit
 proc id(x: int) -> int { return x }
@@ -73,13 +73,13 @@ proc id(x: int) -> int { return x }
 - Voir aussi: `docs/book/poche/07-lire-les-erreurs.md`, `docs/book/cli.md`
 
 <a id="e0005"></a>
-## E0005 - expected 'end'
+## E0005 - `end` attendu
 
 - Code: `E0005`
 - Couche: `parse`
-- Symptôme: a block was opened but not closed with `end` or `.end`.
-- Cause probable: a `proc`, `form`, or `pick` block is missing its terminator.
-- Correction: add the missing terminator for the construct you opened.
+- Symptôme: un bloc a été ouvert mais pas fermé avec `end` ou `.end`.
+- Cause probable: un bloc `proc`, `form` ou `pick` manque de son terminateur.
+- Correction: ajouter le terminateur manquant pour le construct ouvert.
 - Exemple:
 ```vit
 form Point
@@ -89,13 +89,13 @@ form Point
 - Voir aussi: `docs/book/poche/07-lire-les-erreurs.md`, `docs/book/cli.md`
 
 <a id="e0006"></a>
-## E0006 - expected proc after attribute
+## E0006 - `proc` attendu après l'attribut
 
 - Code: `E0006`
 - Couche: `parse`
-- Symptôme: an attribute must be followed by a proc declaration.
-- Cause probable: the attribute is attached to the wrong item or stands alone.
-- Correction: place the attribute directly above a `proc`.
+- Symptôme: un attribut doit être suivi d'une déclaration `proc`.
+- Cause probable: l'attribut est accroché au mauvais élément ou se trouve seul.
+- Correction: placer l'attribut directement au-dessus d'un `proc`.
 - Exemple:
 ```vit
 #[inline]
@@ -104,13 +104,13 @@ proc add(a: int, b: int) -> int { return a + b }
 - Voir aussi: `docs/book/poche/07-lire-les-erreurs.md`, `docs/book/cli.md`
 
 <a id="e0007"></a>
-## E0007 - expected top-level declaration
+## E0007 - déclaration top-level attendue
 
 - Code: `E0007`
 - Couche: `parse`
-- Symptôme: the parser expected a top-level declaration.
-- Cause probable: an item appears at the file root, but it is not one of the supported declarations.
-- Correction: keep top-level items to `space`, `use`, `form`, `pick`, `type`, `const`, `proc`, and `entry`.
+- Symptôme: le parser attendait une déclaration top-level.
+- Cause probable: un élément apparaît à la racine du fichier, mais ce n'est pas l'une des déclarations supportées.
+- Correction: limiter le top-level à `space`, `use`, `form`, `pick`, `type`, `const`, `proc` et `entry`.
 - Exemple:
 ```vit
 space my/app
@@ -119,13 +119,13 @@ proc main() -> int { return 0 }
 - Voir aussi: `docs/book/poche/07-lire-les-erreurs.md`, `docs/book/cli.md`
 
 <a id="e0008"></a>
-## E0008 - duplicate pattern binding
+## E0008 - liaison de motif dupliquée
 
 - Code: `E0008`
 - Couche: `parse`
-- Symptôme: a pattern bound the same name more than once.
-- Cause probable: the pattern reuses one binding in two positions.
-- Correction: give each binding a distinct name.
+- Symptôme: un motif a lié le même nom plus d'une fois.
+- Cause probable: le motif réutilise une liaison à deux emplacements.
+- Correction: donner un nom distinct à chaque liaison.
 - Exemple:
 ```vit
 when Pair(x, x) { return 0 }
@@ -133,13 +133,13 @@ when Pair(x, x) { return 0 }
 - Voir aussi: `docs/book/poche/07-lire-les-erreurs.md`, `docs/book/cli.md`
 
 <a id="e0009"></a>
-## E0009 - unknown type
+## E0009 - type inconnu
 
 - Code: `E0009`
 - Couche: `resolve`
-- Symptôme: a referenced type name was not found.
-- Cause probable: the type is misspelled or not imported.
-- Correction: check spelling or import the type with `use` or `pull`.
+- Symptôme: un nom de type référencé n'a pas été trouvé.
+- Cause probable: le type est mal orthographié ou non importé.
+- Correction: vérifier l'orthographe ou importer le type avec `use` ou `pull`.
 - Exemple:
 ```vit
 use std/core/option.Option
@@ -148,13 +148,13 @@ proc f(x: Option[int]) -> int { return 0 }
 - Voir aussi: `docs/book/compiler-stdlib-contract.md`, `docs/book/cli.md`
 
 <a id="e0010"></a>
-## E0010 - unknown generic base type
+## E0010 - type de base générique inconnu
 
 - Code: `E0010`
 - Couche: `resolve`
-- Symptôme: the base type of a generic was not found.
-- Cause probable: the generic base type is misspelled or not imported.
-- Correction: check spelling or import the base type with `use` or `pull`.
+- Symptôme: le type de base d'un générique n'a pas été trouvé.
+- Cause probable: le type de base générique est mal orthographié ou non importé.
+- Correction: vérifier l'orthographe ou importer le type de base avec `use` ou `pull`.
 - Exemple:
 ```vit
 use std/core/option.Option
@@ -163,13 +163,13 @@ let x: Option[int] = Option.None
 - Voir aussi: `docs/book/compiler-stdlib-contract.md`, `docs/book/cli.md`
 
 <a id="e0011"></a>
-## E0011 - generic type requires at least one argument
+## E0011 - un type générique requiert au moins un argument
 
 - Code: `E0011`
 - Couche: `resolve`
-- Symptôme: a generic type was written without any type arguments.
-- Cause probable: the type application is incomplete.
-- Correction: provide one or more type arguments inside `[ ]`.
+- Symptôme: un type générique a été écrit sans argument de type.
+- Cause probable: l'application du type est incomplète.
+- Correction: fournir un ou plusieurs arguments de type entre `[ ]`.
 - Exemple:
 ```vit
 let x: Option = Option.None
@@ -177,13 +177,13 @@ let x: Option = Option.None
 - Voir aussi: `docs/book/compiler-stdlib-contract.md`, `docs/book/cli.md`
 
 <a id="e0012"></a>
-## E0012 - unsupported type
+## E0012 - type non pris en charge
 
 - Code: `E0012`
 - Couche: `resolve`
-- Symptôme: this type form is not supported yet.
-- Cause probable: the type syntax is valid enough to parse, but the compiler does not accept this form yet.
-- Correction: use a supported type form such as built-ins, named types, pointers, slices, or proc types.
+- Symptôme: cette forme de type n'est pas encore prise en charge.
+- Cause probable: la syntaxe de type est assez valide pour être parsée, mais le compilateur n'accepte pas encore cette forme.
+- Correction: utiliser une forme de type prise en charge comme les types intégrés, les types nommés, les pointeurs, les slices ou les types de proc.
 - Exemple:
 ```vit
 let p: *int = &value
@@ -191,13 +191,13 @@ let p: *int = &value
 - Voir aussi: `docs/book/compiler-stdlib-contract.md`, `docs/book/cli.md`
 
 <a id="e0013"></a>
-## E0013 - unknown identifier
+## E0013 - identifiant inconnu
 
 - Code: `E0013`
 - Couche: `resolve`
-- Symptôme: a referenced name was not found in the current scope.
-- Cause probable: the symbol is misspelled, out of scope, or not imported.
-- Correction: check spelling, or import it from a module with `use` or `pull`.
+- Symptôme: un nom référencé n'a pas été trouvé dans la portée courante.
+- Cause probable: le symbole est mal orthographié, hors portée ou non importé.
+- Correction: vérifier l'orthographe ou l'importer depuis un module avec `use` ou `pull`.
 - Exemple:
 ```vit
 use std/bridge/print.print
@@ -206,13 +206,13 @@ proc main() -> int { print("hi"); return 0 }
 - Voir aussi: `docs/book/compiler-stdlib-contract.md`, `docs/book/cli.md`
 
 <a id="e0014"></a>
-## E0014 - invoke has no callee
+## E0014 - invocation sans callee
 
 - Code: `E0014`
 - Couche: `parse`
-- Symptôme: an invocation is missing its callee.
-- Cause probable: the call expression starts with arguments instead of a function or proc name.
-- Correction: provide a function or proc name before the arguments.
+- Symptôme: une invocation n'a pas de callee.
+- Cause probable: l'expression d'appel commence par des arguments au lieu d'un nom de fonction ou de proc.
+- Correction: fournir un nom de fonction ou de proc avant les arguments.
 - Exemple:
 ```vit
 print("hi")
@@ -220,13 +220,13 @@ print("hi")
 - Voir aussi: `docs/book/poche/07-lire-les-erreurs.md`, `docs/book/cli.md`
 
 <a id="e0015"></a>
-## E0015 - unsupported expression in HIR
+## E0015 - expression non prise en charge dans le HIR
 
 - Code: `E0015`
 - Couche: `IR`
-- Symptôme: this expression is not supported by the HIR lowering yet.
-- Cause probable: the expression shape reaches lowering, but the lowering path does not implement it yet.
-- Correction: rewrite the expression using supported constructs.
+- Symptôme: cette expression n'est pas encore prise en charge par le lowering HIR.
+- Cause probable: la forme d'expression atteint le lowering, mais le chemin de lowering ne l'implémente pas encore.
+- Correction: réécrire l'expression avec des constructeurs pris en charge.
 - Exemple:
 ```vit
 let x = value
@@ -234,13 +234,13 @@ let x = value
 - Voir aussi: `docs/book/cli.md`, `docs/book/INDEX-technique.md`
 
 <a id="e0016"></a>
-## E0016 - unsupported pattern in HIR
+## E0016 - motif non pris en charge dans le HIR
 
 - Code: `E0016`
 - Couche: `IR`
-- Symptôme: this pattern is not supported by the HIR lowering yet.
-- Cause probable: the pattern reaches lowering, but the lowering path does not implement it yet.
-- Correction: rewrite the pattern using supported constructs.
+- Symptôme: ce motif n'est pas encore pris en charge par le lowering HIR.
+- Cause probable: le motif atteint le lowering, mais le chemin de lowering ne l'implémente pas encore.
+- Correction: réécrire le motif avec des constructeurs pris en charge.
 - Exemple:
 ```vit
 when x is Option.Some { return 0 }
@@ -248,13 +248,13 @@ when x is Option.Some { return 0 }
 - Voir aussi: `docs/book/cli.md`, `docs/book/INDEX-technique.md`
 
 <a id="e0017"></a>
-## E0017 - unsupported statement in HIR
+## E0017 - instruction non prise en charge dans le HIR
 
 - Code: `E0017`
 - Couche: `IR`
-- Symptôme: this statement is not supported by the HIR lowering yet.
-- Cause probable: the statement shape reaches lowering, but the lowering path does not implement it yet.
-- Correction: rewrite the statement using supported constructs.
+- Symptôme: cette instruction n'est pas encore prise en charge par le lowering HIR.
+- Cause probable: la forme d'instruction atteint le lowering, mais le chemin de lowering ne l'implémente pas encore.
+- Correction: réécrire l'instruction avec des constructeurs pris en charge.
 - Exemple:
 ```vit
 return 0
@@ -262,13 +262,13 @@ return 0
 - Voir aussi: `docs/book/cli.md`, `docs/book/INDEX-technique.md`
 
 <a id="e0018"></a>
-## E0018 - extern proc cannot have a body
+## E0018 - un `proc` extern ne peut pas avoir de corps
 
 - Code: `E0018`
 - Couche: `resolve`
-- Symptôme: an extern procedure cannot define a body.
-- Cause probable: `#[extern]` and a body were combined on the same proc.
-- Correction: remove the body or drop `#[extern]` if you want to implement it here.
+- Symptôme: une procédure extern ne peut pas définir de corps.
+- Cause probable: `#[extern]` et un corps ont été combinés sur le même proc.
+- Correction: supprimer le corps ou retirer `#[extern]` si vous voulez l'implémenter ici.
 - Exemple:
 ```vit
 #[extern]
@@ -277,13 +277,13 @@ proc puts(s: string) -> int
 - Voir aussi: `docs/book/compiler-stdlib-contract.md`, `docs/book/cli.md`
 
 <a id="e0019"></a>
-## E0019 - proc requires a body unless marked #[extern]
+## E0019 - un `proc` requiert un corps sauf s'il est marqué `#[extern]`
 
 - Code: `E0019`
 - Couche: `resolve`
-- Symptôme: a procedure must have a body unless marked `#[extern]`.
-- Cause probable: the declaration ends without a body or the extern marker is missing.
-- Correction: add a body with `{ ... }` or mark the proc `#[extern]`.
+- Symptôme: une procédure doit avoir un corps sauf si elle est marquée `#[extern]`.
+- Cause probable: la déclaration se termine sans corps ou le marqueur extern manque.
+- Correction: ajouter un corps avec `{ ... }` ou marquer le proc `#[extern]`.
 - Exemple:
 ```vit
 proc add(a: int, b: int) -> int { return a + b }
@@ -291,13 +291,13 @@ proc add(a: int, b: int) -> int { return a + b }
 - Voir aussi: `docs/book/compiler-stdlib-contract.md`, `docs/book/cli.md`
 
 <a id="e0020"></a>
-## E0020 - type alias requires a target type
+## E0020 - un alias de type requiert un type cible
 
 - Code: `E0020`
 - Couche: `resolve`
-- Symptôme: a type alias must specify a target type.
-- Cause probable: the alias definition stops after the name.
-- Correction: provide the right-hand side of the alias.
+- Symptôme: un alias de type doit préciser un type cible.
+- Cause probable: la définition de l'alias s'arrête après le nom.
+- Correction: fournir le membre de droite de l'alias.
 - Exemple:
 ```vit
 type Size = int
@@ -305,13 +305,13 @@ type Size = int
 - Voir aussi: `docs/book/compiler-stdlib-contract.md`, `docs/book/cli.md`
 
 <a id="e0021"></a>
-## E0021 - generic type requires at least one type argument
+## E0021 - un type générique requiert au moins un argument de type
 
 - Code: `E0021`
 - Couche: `resolve`
-- Symptôme: a generic type needs at least one type argument.
-- Cause probable: the generic application is empty.
-- Correction: provide type arguments inside `[ ]`.
+- Symptôme: un type générique a besoin d'au moins un argument de type.
+- Cause probable: l'application générique est vide.
+- Correction: fournir des arguments de type entre `[ ]`.
 - Exemple:
 ```vit
 let xs: List = List.empty()
@@ -319,13 +319,13 @@ let xs: List = List.empty()
 - Voir aussi: `docs/book/compiler-stdlib-contract.md`, `docs/book/cli.md`
 
 <a id="e0022"></a>
-## E0022 - unexpected HIR type kind
+## E0022 - forme de type HIR inattendue
 
 - Code: `E0022`
 - Couche: `IR`
-- Symptôme: the compiler encountered an unexpected HIR type kind.
-- Cause probable: lowering reached a type shape that is not handled correctly.
-- Correction: try a simpler type and report the issue if it still reproduces.
+- Symptôme: le compilateur a rencontré une forme de type HIR inattendue.
+- Cause probable: le lowering a atteint une forme de type qui n'est pas gérée correctement.
+- Correction: essayer un type plus simple et signaler le problème s'il se reproduit.
 - Exemple:
 ```vit
 let x: int = 0
@@ -333,13 +333,13 @@ let x: int = 0
 - Voir aussi: `docs/book/cli.md`, `docs/book/INDEX-technique.md`
 
 <a id="e0023"></a>
-## E0023 - unexpected HIR expr kind
+## E0023 - forme d'expression HIR inattendue
 
 - Code: `E0023`
 - Couche: `IR`
-- Symptôme: the compiler encountered an unexpected HIR expression kind.
-- Cause probable: lowering reached an expression shape that is not handled correctly.
-- Correction: try a simpler expression and report the issue if it still reproduces.
+- Symptôme: le compilateur a rencontré une forme d'expression HIR inattendue.
+- Cause probable: le lowering a atteint une forme d'expression qui n'est pas gérée correctement.
+- Correction: essayer une expression plus simple et signaler le problème s'il se reproduit.
 - Exemple:
 ```vit
 let x = 1
@@ -347,13 +347,13 @@ let x = 1
 - Voir aussi: `docs/book/cli.md`, `docs/book/INDEX-technique.md`
 
 <a id="e0024"></a>
-## E0024 - select requires at least one when branch
+## E0024 - `select` requiert au moins une branche `when`
 
 - Code: `E0024`
 - Couche: `resolve`
-- Symptôme: a `select` statement needs at least one `when` branch.
-- Cause probable: the `select` block was opened but not populated with valid branches.
-- Correction: add a `when` clause and optionally `otherwise`.
+- Symptôme: une instruction `select` a besoin d'au moins une branche `when`.
+- Cause probable: le bloc `select` a été ouvert mais pas peuplé de branches valides.
+- Correction: ajouter une clause `when` et éventuellement `otherwise`.
 - Exemple:
 ```vit
 select x
@@ -363,13 +363,13 @@ otherwise { return 0 }
 - Voir aussi: `docs/book/poche/07-lire-les-erreurs.md`, `docs/book/cli.md`
 
 <a id="e0025"></a>
-## E0025 - select branch must be a when statement
+## E0025 - une branche `select` doit être une instruction `when`
 
 - Code: `E0025`
 - Couche: `resolve`
-- Symptôme: each `select` branch must be a `when` statement.
-- Cause probable: a branch uses a statement form that is not allowed in this position.
-- Correction: replace the branch with a `when` pattern or use `otherwise`.
+- Symptôme: chaque branche `select` doit être une instruction `when`.
+- Cause probable: une branche utilise une forme d'instruction non autorisée à cet emplacement.
+- Correction: remplacer la branche par un motif `when` ou utiliser `otherwise`.
 - Exemple:
 ```vit
 select x
@@ -379,13 +379,13 @@ otherwise { return 0 }
 - Voir aussi: `docs/book/poche/07-lire-les-erreurs.md`, `docs/book/cli.md`
 
 <a id="e0026"></a>
-## E0026 - unexpected HIR stmt kind
+## E0026 - forme d'instruction HIR inattendue
 
 - Code: `E0026`
 - Couche: `IR`
-- Symptôme: the compiler encountered an unexpected HIR statement kind.
-- Cause probable: lowering hit a statement shape that should not reach this path.
-- Correction: try a simpler statement and report it as a compiler bug if it reproduces.
+- Symptôme: le compilateur a rencontré une forme d'instruction HIR inattendue.
+- Cause probable: le lowering a rencontré une forme d'instruction qui ne devrait pas atteindre ce chemin.
+- Correction: essayer une instruction plus simple et signaler un bug compilateur si cela se reproduit.
 - Exemple:
 ```vit
 return 0
@@ -393,13 +393,13 @@ return 0
 - Voir aussi: `docs/book/cli.md`, `docs/book/INDEX-technique.md`
 
 <a id="e0027"></a>
-## E0027 - unexpected HIR pattern kind
+## E0027 - forme de motif HIR inattendue
 
 - Code: `E0027`
 - Couche: `IR`
-- Symptôme: the compiler encountered an unexpected HIR pattern kind.
-- Cause probable: lowering hit a pattern shape that should not reach this path.
-- Correction: try a simpler pattern and report it as a compiler bug if it reproduces.
+- Symptôme: le compilateur a rencontré une forme de motif HIR inattendue.
+- Cause probable: le lowering a rencontré une forme de motif qui ne devrait pas atteindre ce chemin.
+- Correction: essayer un motif plus simple et signaler un bug compilateur si cela se reproduit.
 - Exemple:
 ```vit
 when x is Option.None { return 0 }
@@ -407,13 +407,13 @@ when x is Option.None { return 0 }
 - Voir aussi: `docs/book/cli.md`, `docs/book/INDEX-technique.md`
 
 <a id="e0028"></a>
-## E0028 - unexpected HIR decl kind
+## E0028 - forme de déclaration HIR inattendue
 
 - Code: `E0028`
 - Couche: `IR`
-- Symptôme: the compiler encountered an unexpected HIR declaration kind.
-- Cause probable: lowering hit a declaration shape that should not reach this path.
-- Correction: try a simpler declaration and report it as a compiler bug if it reproduces.
+- Symptôme: le compilateur a rencontré une forme de déclaration HIR inattendue.
+- Cause probable: le lowering a rencontré une forme de déclaration qui ne devrait pas atteindre ce chemin.
+- Correction: essayer une déclaration plus simple et signaler un bug compilateur si cela se reproduit.
 - Exemple:
 ```vit
 proc main() -> int { return 0 }

@@ -2,15 +2,15 @@
 
 <<<
 stdlib.md
-Stdlib modules (selected)
+Modules stdlib sélectionnés
 >>>
 
-## process module
+## Module `process`
 
-Run a command and capture output.
+Exécuter une commande et capturer la sortie.
 
-Notes:
-- `out` captures stdout and `err` captures stderr.
+Notes :
+- `out` capture `stdout` et `err` capture `stderr`.
 
 ```vitte
 use std/bridge/process
@@ -25,17 +25,17 @@ entry main at core/app {
 }
 ```
 
-## bridge module
+## Module `bridge`
 
 Façade de liaison native avec noms Vitte.
-Sous-modules:
+Sous-modules :
 - `std/bridge/io`
 - `std/bridge/memory`
 - `std/bridge/system`
 - `std/bridge/time`
 - `std/bridge/net`
 
-Modules métier directs:
+Modules métier directs :
 - `std/bridge/print`
 - `std/bridge/read`
 - `std/bridge/path`
@@ -56,9 +56,9 @@ entry main at core/app {
 }
 ```
 
-## system module (via bridge)
+## Module `system` (via bridge)
 
-Platform helpers.
+Assistants de plateforme.
 
 ```vitte
 use std/bridge/system
@@ -70,9 +70,9 @@ entry main at core/app {
 }
 ```
 
-## regex module
+## Module `regex`
 
-Regex compilation + matching.
+Compilation et correspondance regex.
 
 ```vitte
 use std/regex
@@ -87,9 +87,9 @@ entry main at core/app {
 }
 ```
 
-## fswatch module
+## Module `fswatch`
 
-Simple file watch (polling, last-write-time).
+Surveillance simple de fichiers (polling, dernière heure d'écriture).
 
 ```vitte
 use std/fswatch
@@ -103,9 +103,9 @@ entry main at core/app {
 }
 ```
 
-## metrics module
+## Module `metrics`
 
-In-memory counters, gauges, and timers.
+Compteurs, jauges et minuteurs en mémoire.
 
 ```vitte
 use std/metrics
@@ -121,9 +121,9 @@ entry main at core/app {
 }
 ```
 
-## async module
+## Module `async`
 
-Synchronous task helpers (spawn runs immediately for now).
+Aides pour tâches synchrones (`spawn` s'exécute immédiatement pour l'instant).
 
 ```vitte
 use std/async
@@ -140,9 +140,9 @@ entry main at core/app {
 }
 ```
 
-## db module
+## Module `db`
 
-Simple key/value database (file-backed).
+Base clé/valeur simple (adossée à un fichier).
 
 ```vitte
 use std/db

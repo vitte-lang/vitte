@@ -1,4 +1,3 @@
-# Grammar Precedence
+# Priorité de grammaire
 
-Compatibility pointer for operator precedence.
-
+Point de compatibilité pour la priorité des opérateurs.

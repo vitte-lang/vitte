@@ -1,61 +1,61 @@
-# Vitte CLI
+# CLI Vitte
 
-Usage:
+Utilisation :
 ```
 vitte [command] [options] <input>
 ```
 
-Commands (recommended):
-- `help`   Show help and common tasks
-- `init [dir]`   Create a minimal project scaffold
-- `explain <code>`  Explain a diagnostic (e.g. E0001)
-- `doctor` Check toolchain prerequisites
-- `parse`  Parse only (no backend)
-- `check`  Parse + resolve + IR (no backend)
-- `emit`   Emit C++ only (no native compile)
-- `build`  Full build (default)
-- `profile`  Full build with stage timing/memory profile summary
-- `reduce` Reduce a failing file to a minimal reproducer
-- `clean-cache`  Remove `.vitte-cache` stage cache files
-- `mod graph` Show import graph, cycles, and module weights (LOC/exports/imports)
-- `mod doctor` Check import hygiene (unused, aliasing, canonical paths, collisions)
-- `mod contract-diff` Compare exported module contract between 2 entries (`--old` / `--new`)
+Commandes (recommandées) :
+- `help`   Afficher l'aide et les tâches courantes
+- `init [dir]`   Créer un squelette de projet minimal
+- `explain <code>`  Expliquer un diagnostic (par ex. `E0001`)
+- `doctor` Vérifier les prérequis de la chaîne d'outils
+- `parse`  Parser uniquement (sans backend)
+- `check`  Parser + résoudre + IR (sans backend)
+- `emit`   Émettre uniquement le C++ (sans compilation native)
+- `build`  Construction complète (par défaut)
+- `profile`  Construction complète avec résumé des temps/mémoire par étape
+- `reduce` Réduire un fichier en échec à un reproducer minimal
+- `clean-cache`  Supprimer les fichiers de cache d'étape `.vitte-cache`
+- `mod graph` Afficher le graphe d'import, les cycles et les poids de modules (LOC/exports/imports)
+- `mod doctor` Vérifier l'hygiène des imports (non utilisés, alias, chemins canoniques, collisions)
+- `mod contract-diff` Comparer le contrat exporté d'un module entre 2 entrées (`--old` / `--new`)
 
-Options:
-- `--lang <code>`  Language for diagnostics (e.g. en, fr). Defaults to `LANG/LC_ALL`, then `en`.
-- `--explain <code>`  Explain a diagnostic (e.g. E0001).
-- `--stage <name>`  Stop at `parse|resolve|ir|backend`.
-- `--diag-json`  Emit diagnostics as JSON.
-- `--diag-json-pretty`  Emit pretty JSON diagnostics (includes `diag_schema`).
-- `--diag-code-only`  Emit compact diagnostics (`file:line:col CODE`), useful for CI.
-- `--deterministic`  Stable output ordering for diagnostics/tooling.
-- `--cache-report`  Print parse/resolve/ir cache hit/miss report.
-- `--runtime-profile <name>`  Restrict runtime/stdlib imports: `core|system|desktop|arduino`.
-- `--allow-experimental`  Allow imports from `experimental/...` modules.
-- `--warn-experimental`  Downgrade experimental import denial to warning (migration mode).
-- `--deny-internal`  Enforce internal module privacy (default behavior).
-- `--allow-internal`  Disable internal module privacy check.
-- `--strict-modules`  Forbid glob imports and enforce strict module import shape.
-- `--dump-stdlib-map`  Print resolved stdlib module -> exported symbols (legacy flag name).
-- `--dump-module-index`  Dump full module index JSON (`modules`, `imports`, `exports`, `loc`).
-- `--json`  For `mod graph`: emit JSON graph payload.
-- `--from <module>`  For `mod graph`: restrict view to module-reachable subgraph.
-- `--dump-ast`  Dump AST after parsing.
-- `--dump-ir`  Dump IR (`--dump-mir` alias).
-- `--strict-types`  Reject compatibility aliases (`integer`, `uint32`, etc.) and enforce canonical type names.
-- `--strict-imports`  Require explicit import aliases, reject unused aliases, and forbid relative import paths.
-- `--fix`  For `mod doctor`: print concrete rewrite suggestions.
-- `--max-imports <N>`  For `mod doctor`: report modules with fan-out > N.
-- `--old <file>` / `--new <file>`  For `mod contract-diff`.
-- `--strict-bridge`  Alias of `--strict-imports` for native liaison policy.
-- `--fail-on-warning`  Treat warnings as errors.
-- `--stdout`  Emit C++ to stdout (implies `emit`).
-- `--emit-obj`  Emit a native object file (`.o`).
-- `--repro`  Enable reproducible object output flags.
-- `--repro-strict`  Enforce strict deterministic IR lowering order.
-- `--parse-modules`  Parse + load modules (no resolve/lowering).
-- `--parse-silent`  Suppress parse-only informational logs.
-- Diagnostics include stable error codes (e.g. `error[E0001]: ...`).
+Options :
+- `--lang <code>`  Langue des diagnostics (par ex. `en`, `fr`). Par défaut `LANG/LC_ALL`, puis `en`.
+- `--explain <code>`  Expliquer un diagnostic (par ex. `E0001`).
+- `--stage <name>`  S'arrêter à `parse|resolve|ir|backend`.
+- `--diag-json`  Émettre les diagnostics en JSON.
+- `--diag-json-pretty`  Émettre des diagnostics JSON lisibles (inclut `diag_schema`).
+- `--diag-code-only`  Émettre des diagnostics compacts (`file:line:col CODE`), utile pour la CI.
+- `--deterministic`  Ordre de sortie stable pour les diagnostics et outils.
+- `--cache-report`  Afficher le rapport hit/miss du cache parse/resolve/ir.
+- `--runtime-profile <name>`  Restreindre les imports runtime/stdlib : `core|system|desktop|arduino`.
+- `--allow-experimental`  Autoriser les imports depuis les modules `experimental/...`.
+- `--warn-experimental`  Dégrader un refus d'import expérimental en avertissement (mode migration).
+- `--deny-internal`  Imposer la confidentialité des modules internes (comportement par défaut).
+- `--allow-internal`  Désactiver la vérification de confidentialité des modules internes.
+- `--strict-modules`  Interdire les imports glob et imposer une forme stricte des imports de module.
+- `--dump-stdlib-map`  Afficher la carte résolue module stdlib -> symboles exportés (nom d'option historique).
+- `--dump-module-index`  Exporter le JSON complet de l'index des modules (`modules`, `imports`, `exports`, `loc`).
+- `--json`  Pour `mod graph` : émettre la charge JSON du graphe.
+- `--from <module>`  Pour `mod graph` : limiter la vue au sous-graphe atteignable depuis le module.
+- `--dump-ast`  Exporter l'AST après le parsing.
+- `--dump-ir`  Exporter l'IR (`--dump-mir` en alias).
+- `--strict-types`  Rejeter les alias de compatibilité (`integer`, `uint32`, etc.) et imposer les noms canoniques.
+- `--strict-imports`  Exiger des alias d'import explicites, rejeter les alias inutilisés et interdire les chemins relatifs.
+- `--fix`  Pour `mod doctor` : afficher des suggestions de réécriture concrètes.
+- `--max-imports <N>`  Pour `mod doctor` : signaler les modules dont le fan-out dépasse `N`.
+- `--old <file>` / `--new <file>`  Pour `mod contract-diff`.
+- `--strict-bridge`  Alias de `--strict-imports` pour la politique de liaison native.
+- `--fail-on-warning`  Traiter les avertissements comme des erreurs.
+- `--stdout`  Émettre le C++ sur la sortie standard (implique `emit`).
+- `--emit-obj`  Émettre un fichier objet natif (`.o`).
+- `--repro`  Activer les drapeaux de sortie objet reproductible.
+- `--repro-strict`  Imposer un ordre strictement déterministe pour le lowering IR.
+- `--parse-modules`  Parser + charger les modules (sans résolution/lowering).
+- `--parse-silent`  Supprimer les journaux d'information du mode parse-only.
+- Les diagnostics incluent des codes d'erreur stables (par ex. `error[E0001]: ...`).
 
 Examples:
 ```
@@ -67,25 +67,25 @@ vitte doctor
 vitte parse --lang=fr src/main.vit
 ```
 
-Error Codes:
-- Diagnostics use stable layer prefixes:
-  - `E000x`: parse/grammar
-  - `E100x`: resolve
-  - `E1007`: invalid signed/unsigned cast
-  - `E1010..E1020`: module/stdlib import contract
-  - `E200x`: IR/lowering
-  - `E300x`: backend/toolchain
-- Codes are defined in `src/compiler/frontend/diagnostics_messages.hpp`.
-- The `.ftl` localization files can translate by code (preferred) or by message key.
+Codes d'erreur :
+- Les diagnostics utilisent des préfixes stables par couche :
+  - `E000x` : parse/grammaire
+  - `E100x` : résolution
+  - `E1007` : cast signé/non signé invalide
+  - `E1010..E1020` : contrat d'import module/stdlib
+  - `E200x` : IR/lowering
+  - `E300x` : backend/chaîne d'outils
+- Les codes sont définis dans `src/compiler/frontend/diagnostics_messages.hpp`.
+- Les fichiers de localisation `.ftl` peuvent traduire par code (préféré) ou par clé de message.
 
-Stdlib:
-- See `docs/book/stdlib.md` for stdlib modules and examples.
-- Contract and ABI surface: `docs/book/compiler-stdlib-contract.md`, `docs/book/stdlib_abi_surface_v1.txt`.
+Stdlib :
+- Voir `docs/book/stdlib.md` pour les modules stdlib et les exemples.
+- Contrat et surface ABI : `docs/book/compiler-stdlib-contract.md`, `docs/book/stdlib_abi_surface_v1.txt`.
 
-Legacy flags (still supported):
-- `mod api-diff` (alias of `mod contract-diff`)
-- `--stdlib-profile` (legacy alias of `--runtime-profile`)
-  - mapping: `minimal->core`, `kernel->system`, `full->desktop`
+Options historiques (toujours prises en charge) :
+- `mod api-diff` (alias de `mod contract-diff`)
+- `--stdlib-profile` (alias historique de `--runtime-profile`)
+  - correspondance : `minimal->core`, `kernel->system`, `full->desktop`
 - `--parse-only`
 - `--resolve-only`
 - `--hir-only`
@@ -93,7 +93,7 @@ Legacy flags (still supported):
 - `--emit-cpp`
 - `--strict-parse`
 
-Notes:
-- Commands set a default mode, but explicit flags still override.
-- For strict parsing, use `parse --strict-parse <file>`.
-- For graph JSON in CI: `vitte mod graph --json --from __root__ <file>`.
+Notes :
+- Les commandes définissent un mode par défaut, mais les options explicites restent prioritaires.
+- Pour un parsing strict, utiliser `parse --strict-parse <file>`.
+- Pour le JSON du graphe en CI : `vitte mod graph --json --from __root__ <file>`.

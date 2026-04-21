@@ -1,13 +1,13 @@
-# VITTE Grammar Reference
+# Référence de grammaire VITTE
 
-Source of truth: `src/vitte/grammar/vitte.ebnf`.
+Source de vérité : `src/vitte/grammar/vitte.ebnf`.
 
-Generated artifacts must not be edited manually:
+Les artefacts générés ne doivent pas être modifiés à la main :
 - `docs/book/grammar/grammar-surface.ebnf`
 - `docs/book/grammar/vitte.ebnf`
 - `docs/book/grammar-surface.ebnf`
 
-## Standard Commands
+## Commandes standard
 
 ```bash
 make grammar-sync
@@ -21,13 +21,13 @@ make core-language-gate
 bin/vitte grammar check
 ```
 
-## Maturity
+## Maturité
 
-Grammar coverage and implementation surface are broader than the stabilized language center.
+La couverture grammaticale et la surface d'implémentation sont plus larges que le cœur de langage stabilisé.
 
-- `stable`: behavior protected by the core language policy and core gate
-- `experimental`: implemented or documented, but not yet protected as part of the language center
-- `internal`: implementation detail, not a public language contract
+- `stable` : comportement protégé par la politique du noyau du langage et le core gate.
+- `experimental` : implémenté ou documenté, mais pas encore protégé comme partie du cœur du langage.
+- `internal` : détail d'implémentation, pas un contrat de langage public.
 
 References:
 
@@ -38,27 +38,27 @@ References:
 - `docs/LANGUAGE_CORE_TEST_PLAN.md`
 - `docs/API_LIFECYCLE.md`
 
-Focused semantic gate:
+Gate sémantique ciblé :
 
 - `make core-semantic-success`
 - `make core-semantic-snapshots`
 - `tests/core_semantic_success_manifest.txt`
 - `tests/diag_snapshots/core_semantic_manifest.txt`
 
-## Change Policy
+## Politique de changement
 
-- Breaking grammar change: updates accepted syntax or parse tree shape.
-- Non-breaking grammar change: refactor/factorization with same accepted surface.
-- Diagnostic-only change: grammar same, parse error wording/code changed.
+- Changement de grammaire cassant : modifie la syntaxe acceptée ou la forme de l'arbre d'analyse.
+- Changement de grammaire non cassant : refactorisation/factorisation avec la même surface acceptée.
+- Changement limité au diagnostic : grammaire identique, texte/code de l'erreur de parse modifiés.
 
-Record every grammar change in `docs/book/grammar/grammar-changelog.md`.
+Consigner chaque changement de grammaire dans `docs/book/grammar/grammar-changelog.md`.
 
-## PR Checklist (Grammar)
+## Checklist PR (grammaire)
 
-- Rule changed in `src/vitte/grammar/vitte.ebnf` only.
-- `make grammar-sync` executed.
-- `make core-language-test` is green if the change touches the language center.
-- Valid/invalid corpus updated under `tests/grammar`.
-- Expected diagnostics updated in `docs/book/grammar/diagnostics/expected`.
-- Snapshots refreshed if required.
-- `make grammar-gate` is green.
+- Règle modifiée uniquement dans `src/vitte/grammar/vitte.ebnf`.
+- `make grammar-sync` exécutée.
+- `make core-language-test` est verte si le changement touche le cœur du langage.
+- Corpus valide/invalide mis à jour dans `tests/grammar`.
+- Diagnostics attendus mis à jour dans `docs/book/grammar/diagnostics/expected`.
+- Instantanés rafraîchis si nécessaire.
+- `make grammar-gate` est vert.

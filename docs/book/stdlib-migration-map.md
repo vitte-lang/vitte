@@ -1,13 +1,13 @@
-# Stdlib Migration Map (Auto)
+# Carte de migration Stdlib (auto)
 
-Generated from legacy allowlists in `tools/`.
+Généré à partir des listes d'autorisation historiques dans `tools/`.
 
-| Location | Old import | New import |
+| Emplacement | Ancien import | Nouvel import |
 |---|---|---|
 
-## Legacy Wrappers (`<pkg>.vit` -> `mod.vit`)
+## Enveloppes historiques (`<pkg>.vit` -> `mod.vit`)
 
-| Stdlib module | Old entry | New entry |
+| Module stdlib | Ancienne entrée | Nouvelle entrée |
 |---|---|---|
 | `abi` | `abi/abi.vit` | `abi/mod.vit` |
 | `actor` | `actor/actor.vit` | `actor/mod.vit` |
@@ -18,9 +18,9 @@ Generated from legacy allowlists in `tools/`.
 | `async` | `async/async.vit` | `async/mod.vit` |
 | `audio` | `audio/audio.vit` | `audio/mod.vit` |
 
-## Legacy Names (`_` -> `/`)
+## Noms historiques (`_` -> `/`)
 
-| Legacy name | Target hierarchy |
+| Nom historique | Hiérarchie cible |
 |---|---|
 | `circuit_breaker` | `circuit/breaker` |
 | `config_derive` | `config/derive` |

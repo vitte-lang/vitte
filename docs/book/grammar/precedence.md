@@ -1,7 +1,7 @@
-# Operator Precedence (Vitte 1.0)
+# Priorité des opérateurs (Vitte 1.0)
 
-This table matches the current parser in `src/compiler/frontend/parser.cpp`.
-Higher rows bind tighter.
+Cette table correspond au parser actuel dans `src/compiler/frontend/parser.cpp`.
+Les lignes les plus hautes ont la liaison la plus forte.
 
 1. Postfix: call `f(x)`, index `a[b]`, member `a.b`, deref postfix `a.*`
 2. Unary: `not` / `!`, unary `-`, address `&`, deref `*`
@@ -18,7 +18,7 @@ Higher rows bind tighter.
 13. Logical OR: `or` `||`
 14. Assignment: `=`
 
-Notes:
-- `as` is parsed before any binary operator, so it binds tighter than comparisons and arithmetic.
-- `is` is handled at the same precedence level as equality.
-- Assignment is right-associative (`a = b = c` parses as `a = (b = c)`).
+Notes :
+- `as` est analysé avant tout opérateur binaire, donc il lie plus fort que les comparaisons et l'arithmétique.
+- `is` est traité au même niveau de priorité que l'égalité.
+- L'affectation est associative à droite (`a = b = c` se parse comme `a = (b = c)`).

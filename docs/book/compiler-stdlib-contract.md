@@ -1,70 +1,70 @@
-# Compiler <-> Stdlib Contract
+# Contrat compilateur <-> stdlib
 
-This document defines the stable contract between the Vitte compiler and the stdlib runtime surface.
+Ce document définit le contrat stable entre le compilateur Vitte et la surface runtime de la stdlib.
 
-Terminology used in docs/CLI:
-- "Surface de liaison Vitte" replaces "libc surface".
-- "liaison native" replaces "interop C".
+Terminologie utilisée dans la doc et la CLI :
+- « Surface de liaison Vitte » remplace « libc surface ».
+- « liaison native » remplace « interop C ».
 
-## 1. Source Of Truth
+## 1. Source de vérité
 
-- ABI surface file (versioned): `docs/book/stdlib_abi_surface_v1.txt` (legacy filename)
-- ABI next version: `docs/book/stdlib_abi_surface_v2.txt` (legacy filename)
-- Stdlib source root: arborescence source dédiée
-- Runtime ABI header: `src/compiler/backends/runtime/vitte_runtime.hpp`
+- Fichier de surface ABI versionné : `docs/book/stdlib_abi_surface_v1.txt` (nom historique).
+- Version ABI suivante : `docs/book/stdlib_abi_surface_v2.txt` (nom historique).
+- Racine source de la stdlib : arborescence source dédiée.
+- En-tête ABI runtime : `src/compiler/backends/runtime/vitte_runtime.hpp`.
 
-## 2. Stable Stdlib Profiles
+## 2. Profils stdlib stables
 
-`--runtime-profile` controls which stdlib modules are allowed.
-`--stdlib-profile` is kept as a legacy alias.
+`--runtime-profile` contrôle quels modules stdlib sont autorisés.
+`--stdlib-profile` est conservé comme alias historique.
 
-- `core` (legacy `minimal`): only `core/**`
-- `desktop` (legacy `full`): all stdlib modules
-- `system` (legacy `kernel`): `core/**` + `kernel/**`
-- `arduino`: `core/**` + `arduino/**`
+- `core` (historique `minimal`) : uniquement `core/**`.
+- `desktop` (historique `full`) : tous les modules stdlib.
+- `system` (historique `kernel`) : `core/**` + `kernel/**`.
+- `arduino` : `core/**` + `arduino/**`.
 
-If an import is not allowed, the compiler emits `E1010`.
-If a stdlib module is missing, the compiler emits `E1014`.
+Si un import n'est pas autorisé, le compilateur émet `E1010`.
+Si un module stdlib est manquant, le compilateur émet `E1014`.
 
-Module levels:
-- `public`: stable import surface.
-- `internal`: private namespace (`*/internal/*`), blocked outside owner (`E1016`).
-- `experimental`: opt-in only with `--allow-experimental` (`E1015`).
+Niveaux de module :
+- `public` : surface d'import stable.
+- `internal` : espace de noms privé (`*/internal/*`), bloqué hors propriétaire (`E1016`).
+- `experimental` : activation uniquement avec `--allow-experimental` (`E1015`).
 
-## 3. Import Strictness
+## 3. Strictness des imports
 
-`--strict-imports` (alias `--strict-bridge`) enforces import hygiene:
+`--strict-imports` (alias `--strict-bridge`) impose l'hygiène des imports :
 
-- explicit alias required on `use`/`pull` (`E1011`)
-- explicit aliases must be used (`E1012`)
-- non-canonical relative import paths are rejected (`E1013`)
+- alias explicite requis sur `use`/`pull` (`E1011`).
+- les alias explicites doivent être utilisés (`E1012`).
+- les chemins relatifs non canoniques sont rejetés (`E1013`).
 
-## 4. Runtime/Native Liaison Error Boundary
+## 4. Frontière d'erreurs liaison runtime/native
 
-- Parse layer: `E000x`
-- Resolve layer: `E100x` (includes stdlib/import constraints)
-- IR layer: `E200x`
-- Backend/toolchain layer: `E300x`
+- Couche parse : `E000x`.
+- Couche resolve : `E100x` (inclut les contraintes stdlib/import).
+- Couche IR : `E200x`.
+- Couche backend/chaîne d'outils : `E300x`.
 
-## 5. Tooling
+## 5. Outils
 
-- Dump stdlib exports map:
+- Exporter la carte des symboles stdlib :
   - `vitte check --dump-stdlib-map <file.vit>`
-- Dump full module index:
+- Exporter l'index complet des modules :
   - `vitte check --dump-module-index <file.vit>`
-- Graph and doctor:
+- Graphe et doctor :
   - `vitte mod graph <file.vit>`
   - `vitte mod doctor <file.vit>`
-- Lint ABI surface vs stdlib source:
+- Vérifier la surface ABI par rapport à la source stdlib :
   - `tools/lint_stdlib_api.py`
-- ABI compatibility diff:
+- Diff de compatibilité ABI :
   - `tools/check_stdlib_abi_compat.py`
-- Profile snapshots:
+- Instantanés de profil :
   - `tools/stdlib_profile_snapshots.sh`
 
-## 6. Liaison Surface Naming
+## 6. Nom de la surface de liaison
 
-For system/native liaison docs and examples, prefer stdlib-facing names:
+Pour la documentation et les exemples de liaison système/native, préférer les noms orientés stdlib :
 - `print`
 - `read`
 - `path`
@@ -73,7 +73,7 @@ For system/native liaison docs and examples, prefer stdlib-facing names:
 - `alloc`
 - `process`
 
-Bridge module plan in docs:
+Plan de modules bridge dans la doc :
 - `bridge/io`
 - `bridge/memory`
 - `bridge/system`
