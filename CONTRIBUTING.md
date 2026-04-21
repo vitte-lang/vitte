@@ -30,7 +30,7 @@ make negative-tests
 make test
 ```
 
-If you touched modules/packages policy or lint behavior, also run:
+If you touched stdlib/module policy or lint behavior, also run:
 
 ```sh
 make modules-tests
@@ -39,13 +39,13 @@ make modules-contract-snapshots
 make packages-gate
 ```
 
-To check a package facade directly, use:
+To check a stdlib facade directly, use:
 
 ```sh
 make package-check SRC=src/vitte/packages/std/data/mod.vit
 ```
 
-This intentionally enables `--allow-internal` so a package facade can validate against its own `internal/*` implementation modules.
+This intentionally enables `--allow-internal` so a stdlib facade can validate against its own `internal/*` implementation modules.
 
 ### Which Checks Should I Run?
 
@@ -57,7 +57,7 @@ Use this matrix to avoid running the whole world when your change is narrower.
 | lexer, parser, surface syntax | `make parse` and `make core-language-gate` |
 | diagnostics, validation, imports, entry rules | `make hir-validate` and `make core-language-gate` |
 | protected language contract docs or release-facing language wording | `make core-release-gate` |
-| package/module policy, `mod.vit`, `info.vit`, `OWNERS`, lint rules | `make modules-tests`, `make modules-snapshots`, `make modules-contract-snapshots`, `make packages-gate` |
+| stdlib/module policy, `mod.vit`, `info.vit`, `OWNERS`, lint rules | `make modules-tests`, `make modules-snapshots`, `make modules-contract-snapshots`, `make packages-gate` |
 | completions or CLI help surface | `make ci-completions` and related snapshot commands |
 | general compiler/runtime changes without a narrower fit | `make test`, `make parse`, `make hir-validate` |
 
@@ -66,7 +66,7 @@ If your change affects user-visible behavior, add or update tests in the same PR
 ## 3) Coding Style
 
 - C/C++ formatting: follow the project formatter configuration
-- Vitte files: keep style consistent with existing package/module patterns
+- Vitte files: keep style consistent with existing stdlib/module patterns
 - Prefer small, focused changes over broad refactors
 
 ## 4) PR Workflow
@@ -97,7 +97,7 @@ Examples:
 
 - `frontend: tighten module loader validation`
 - `docs: simplify beginner onboarding in README`
-- `modules: add package governance lint checks`
+- `stdlib: add stdlib governance lint checks`
 
 ## 6) Tests and Snapshots
 
@@ -133,11 +133,11 @@ Protected language contract references:
 - `docs/LANGUAGE_CORE_SURFACE.md`
 - `docs/LANGUAGE_CORE_TEST_PLAN.md`
 
-## 7) Modules / Packages Rules (Important)
+## 7) Stdlib / Module Rules (Important)
 
 Current direction in this repo:
 
-- `mod.vit` is the canonical package entrypoint
+- `mod.vit` is the canonical stdlib entrypoint
 - `info.vit` metadata is required in governed areas
 - `OWNERS` is required where policy enforces ownership
 - legacy paths/imports are being phased out progressively

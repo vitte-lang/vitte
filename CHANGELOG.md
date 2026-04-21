@@ -4,19 +4,19 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
-- Modules/packages governance hardening:
+- Stdlib governance hardening:
   - stricter module loader and lint pipeline integration
-  - package ownership/metadata conventions expanded (`OWNERS`, `info.vit`, `mod.vit`)
-  - new package scaffolds added (`module_index`, `contracts_registry`, `migration_playbook`, `benchkit`, `fuzzkit`, `docsgen_modules`, `catalog`, `data`, `kernel`)
-- JWT package update:
+  - ownership/metadata conventions expanded (`OWNERS`, `info.vit`, `mod.vit`)
+  - new stdlib scaffolds added (`module_index`, `contracts_registry`, `migration_playbook`, `benchkit`, `fuzzkit`, `docsgen_modules`, `catalog`, `data`, `kernel`)
+- JWT token update:
   - interop-oriented token format (`base64url(header).base64url(payload).base64url(signature)`)
   - stronger validation paths and dedicated regression test (`tests/vitte_jwt_snapshots.vit`)
-- Modules snapshots/reporting updates:
+- stdlib snapshots/reporting updates:
   - improved snapshot stability filtering
-  - refreshed `packages-gate` snapshots
-  - PR/weekly workflows for modules report and snapshots
+  - refreshed the stdlib gate snapshots
+  - PR/weekly workflows for module reports and snapshots
 - Tooling and build metadata:
-  - `steelconf` aligned with current modules/packages gates and migration targets
+  - `steelconf` aligned with current module and stdlib gates and migration targets
   - `compile_commands.json` refreshed from current build
   - removed stray generated root artifacts from version control (`-B`, `vitte_out.cpp`, `.vitte-hash-*.cpp`, malformed `OPENSSL_DIR=` tree)
   - grouped VitteOS planning/status docs under `docs/vitteos/` and added a `tools/README.md` index
