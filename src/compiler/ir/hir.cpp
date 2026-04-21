@@ -123,6 +123,24 @@ HirIndexExpr::HirIndexExpr(
       base(b),
       index(i) {}
 
+HirListCompExpr::HirListCompExpr(
+    Kind kind_in,
+    HirExprId key_in,
+    HirExprId v,
+    std::optional<std::string> idx,
+    std::string id,
+    HirExprId it,
+    HirExprId cond,
+    vitte::frontend::ast::SourceSpan sp)
+    : HirExpr(HirKind::ListCompExpr, sp),
+      kind(kind_in),
+      key(key_in),
+      value(v),
+      index_name(std::move(idx)),
+      ident(std::move(id)),
+      iterable(it),
+      condition(cond) {}
+
 // ------------------------------------------------------------
 // Statements
 // ------------------------------------------------------------
@@ -146,6 +164,20 @@ HirExprStmt::HirExprStmt(HirExprId e, vitte::frontend::ast::SourceSpan sp)
 
 HirReturnStmt::HirReturnStmt(HirExprId e, vitte::frontend::ast::SourceSpan sp)
     : HirStmt(HirKind::ReturnStmt, sp),
+      expr(e) {}
+
+HirTryStmt::HirTryStmt(
+    HirStmtId b,
+    HirStmtId e,
+    HirStmtId f,
+    vitte::frontend::ast::SourceSpan sp)
+    : HirStmt(HirKind::TryStmt, sp),
+      body(b),
+      except_body(e),
+      finally_body(f) {}
+
+HirRaiseStmt::HirRaiseStmt(HirExprId e, vitte::frontend::ast::SourceSpan sp)
+    : HirStmt(HirKind::RaiseStmt, sp),
       expr(e) {}
 
 HirBlock::HirBlock(std::vector<HirStmtId> s, vitte::frontend::ast::SourceSpan sp)
@@ -517,6 +549,19 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
             dump(ctx, i.index, os, depth + 1);
             break;
         }
+        case HirKind::ListCompExpr: {
+            auto& c = static_cast<const HirListCompExpr&>(n);
+            os << "\"kind\":\"" << (c.kind == HirListCompExpr::Kind::List ? "List" : (c.kind == HirListCompExpr::Kind::Set ? "Set" : "Dict")) << "\"";
+            if (c.key != kInvalidHirId) {
+                dump(ctx, c.key, os, depth + 1);
+            }
+            dump(ctx, c.value, os, depth + 1);
+            dump(ctx, c.iterable, os, depth + 1);
+            if (c.condition != kInvalidHirId) {
+                dump(ctx, c.condition, os, depth + 1);
+            }
+            break;
+        }
         case HirKind::PatternCtor: {
             auto& p = static_cast<const HirCtorPattern&>(n);
             for (auto a : p.args) {
@@ -664,6 +709,22 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
             }
             break;
         }
+        case HirKind::TryStmt: {
+            auto& s = static_cast<const HirTryStmt&>(n);
+            children.push_back(s.body);
+            if (s.except_body != kInvalidHirId) {
+                children.push_back(s.except_body);
+            }
+            if (s.finally_body != kInvalidHirId) {
+                children.push_back(s.finally_body);
+            }
+            break;
+        }
+        case HirKind::RaiseStmt: {
+            auto& s = static_cast<const HirRaiseStmt&>(n);
+            children.push_back(s.expr);
+            break;
+        }
         case HirKind::UnaryExpr: {
             auto& u = static_cast<const HirUnaryExpr&>(n);
             children.push_back(u.expr);
@@ -703,6 +764,15 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
             auto& i = static_cast<const HirIndexExpr&>(n);
             children.push_back(i.base);
             children.push_back(i.index);
+            break;
+        }
+        case HirKind::ListCompExpr: {
+            auto& c = static_cast<const HirListCompExpr&>(n);
+            children.push_back(c.value);
+            children.push_back(c.iterable);
+            if (c.condition != kInvalidHirId) {
+                children.push_back(c.condition);
+            }
             break;
         }
         case HirKind::PatternCtor: {
@@ -875,6 +945,22 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
             }
             break;
         }
+        case HirKind::TryStmt: {
+            auto& s = static_cast<const HirTryStmt&>(n);
+            children.push_back(s.body);
+            if (s.except_body != kInvalidHirId) {
+                children.push_back(s.except_body);
+            }
+            if (s.finally_body != kInvalidHirId) {
+                children.push_back(s.finally_body);
+            }
+            break;
+        }
+        case HirKind::RaiseStmt: {
+            auto& s = static_cast<const HirRaiseStmt&>(n);
+            children.push_back(s.expr);
+            break;
+        }
         case HirKind::UnaryExpr: {
             auto& u = static_cast<const HirUnaryExpr&>(n);
             children.push_back(u.expr);
@@ -964,9 +1050,12 @@ const char* to_string(HirKind kind) {
         case HirKind::CallExpr: return "CallExpr";
         case HirKind::MemberExpr: return "MemberExpr";
         case HirKind::IndexExpr: return "IndexExpr";
+        case HirKind::ListCompExpr: return "ListCompExpr";
         case HirKind::LetStmt: return "LetStmt";
         case HirKind::ExprStmt: return "ExprStmt";
         case HirKind::ReturnStmt: return "ReturnStmt";
+        case HirKind::TryStmt: return "TryStmt";
+        case HirKind::RaiseStmt: return "RaiseStmt";
         case HirKind::Block: return "Block";
         case HirKind::IfStmt: return "IfStmt";
         case HirKind::LoopStmt: return "LoopStmt";

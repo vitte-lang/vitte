@@ -546,9 +546,9 @@ wrapper-stage-test:
 
 .PHONY: grammar-sync
 grammar-sync:
-	@python3 book/grammar/scripts/sync_grammar.py
-	@python3 book/grammar/scripts/sync_pest.py
-	@python3 book/grammar/scripts/sync_precedence.py
+	@python3 docs/book/grammar/scripts/sync_grammar.py
+	@python3 docs/book/grammar/scripts/sync_pest.py
+	@python3 docs/book/grammar/scripts/sync_precedence.py
 
 .PHONY: harden-mod-vits
 harden-mod-vits:
@@ -557,31 +557,31 @@ harden-mod-vits:
 
 .PHONY: grammar-check
 grammar-check:
-	@python3 book/grammar/scripts/sync_grammar.py --check
-	@python3 book/grammar/scripts/sync_pest.py --check
-	@python3 book/grammar/scripts/sync_precedence.py --check
+	@python3 docs/book/grammar/scripts/sync_grammar.py --check
+	@python3 docs/book/grammar/scripts/sync_pest.py --check
+	@python3 docs/book/grammar/scripts/sync_precedence.py --check
 
 .PHONY: grammar-test
 grammar-test:
-	@python3 book/grammar/scripts/validate_examples.py
+	@python3 docs/book/grammar/scripts/validate_examples.py
 	@python3 tools/parser_precedence_property_test.py
 
 .PHONY: core-language-test
 core-language-test:
-	@python3 book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt
+	@python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt
 	@python3 tools/parser_precedence_property_test.py
 
 .PHONY: core-language-test-update
 core-language-test-update:
-	@python3 book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt --update-snapshots
+	@python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt --update-snapshots
 
 .PHONY: grammar-test-update
 grammar-test-update:
-	@python3 book/grammar/scripts/validate_examples.py --update-snapshots
+	@python3 docs/book/grammar/scripts/validate_examples.py --update-snapshots
 
 .PHONY: parser-recovery-golden
 parser-recovery-golden:
-	@python3 book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/recovery_manifest.txt
+	@python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/recovery_manifest.txt
 
 .PHONY: test-golden
 test-golden:
@@ -601,11 +601,11 @@ parser-sync-coverage:
 
 .PHONY: grammar-docs
 grammar-docs:
-	@python3 book/grammar/scripts/build_railroad.py
+	@python3 docs/book/grammar/scripts/build_railroad.py
 
 .PHONY: grammar-docs-check
 grammar-docs-check:
-	@python3 book/grammar/scripts/build_railroad.py --check
+	@python3 docs/book/grammar/scripts/build_railroad.py --check
 
 .PHONY: grammar-gate
 grammar-gate: grammar-check grammar-test grammar-docs-check
@@ -630,19 +630,19 @@ core-release-gate: core-language-gate diagnostics-ftl-check
 
 .PHONY: book-qa
 book-qa:
-	@python3 book/scripts/qa_book.py
+	@python3 docs/book/scripts/qa_book.py
 
 .PHONY: book-qa-strict
 book-qa-strict:
-	@python3 book/scripts/qa_book.py --strict
+	@python3 docs/book/scripts/qa_book.py --strict
 
 .PHONY: keywords-normalize
 keywords-normalize:
-	@python3 book/keywords/scripts/normalize_keywords.py
+	@python3 docs/book/chapters/keywords/scripts/normalize_keywords.py
 
 .PHONY: keywords-lint
 keywords-lint:
-	@python3 book/keywords/scripts/lint_keywords.py
+	@python3 docs/book/chapters/keywords/scripts/lint_keywords.py
 
 .PHONY: make-targets-doc
 make-targets-doc:
@@ -898,15 +898,15 @@ modules-report:
 
 .PHONY: book-links-check
 book-links-check:
-	@python3 book/scripts/check_links.py --book-root book --report target/reports/book_links_report.txt
+	@python3 docs/book/scripts/check_links.py --book-root docs/book --report target/reports/book_links_report.txt
 
 .PHONY: book-structure-check
 book-structure-check:
-	@python3 book/scripts/check_structure.py --book-root book
+	@python3 docs/book/scripts/check_structure.py --book-root docs/book
 
 .PHONY: book-length-check
 book-length-check:
-	@python3 book/scripts/check_chapter_length.py --chapters-dir book/chapters --min-pages 10 --max-pages 30 --words-per-page 350 --report target/reports/chapter_length_report.txt
+	@python3 docs/book/scripts/check_chapter_length.py --chapters-dir docs/book/chapters --min-pages 10 --max-pages 30 --words-per-page 350 --report target/reports/chapter_length_report.txt
 
 .PHONY: packages-report
 packages-report:
@@ -1417,7 +1417,7 @@ help:
 	@echo "  make grammar-gate run grammar-check + grammar-test"
 	@echo "  make core-language-gate run grammar-check + core-language-test + core semantic gates + diagnostics locales lint"
 	@echo "  make core-release-gate run the protected language contract gate for release-facing work"
-	@echo "  make keywords-normalize apply strict keyword template on book/keywords/*.md"
+	@echo "  make keywords-normalize apply strict keyword template on docs/book/chapters/keywords/*.md"
 	@echo "  make keywords-lint validate keyword quality sections/diagnostics/links/score"
 	@echo "  make test-examples build/check all examples/*.vit"
 	@echo "  make extern-abi validate #[extern] ABI (host profile)"

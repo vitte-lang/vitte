@@ -513,6 +513,7 @@ void Resolver::define_builtin_types() {
     symbols_.define({"u32", SymbolKind::Form, {}});
     symbols_.define({"u64", SymbolKind::Form, {}});
     symbols_.define({"u128", SymbolKind::Form, {}});
+    symbols_.define({"len", SymbolKind::Proc, {}});
     symbols_.define({"builtin", SymbolKind::Var, {}});
 }
 
@@ -1062,6 +1063,18 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
             resolve_expr(ctx, s.expr);
             break;
         }
+        case NodeKind::TryStmt: {
+            auto& s = static_cast<TryStmt&>(stmt);
+            resolve_stmt(ctx, s.body);
+            resolve_stmt(ctx, s.except_body);
+            resolve_stmt(ctx, s.finally_body);
+            break;
+        }
+        case NodeKind::RaiseStmt: {
+            auto& s = static_cast<RaiseStmt&>(stmt);
+            resolve_expr(ctx, s.expr);
+            break;
+        }
         case NodeKind::IfStmt: {
             auto& s = static_cast<IfStmt&>(stmt);
             resolve_expr(ctx, s.cond);
@@ -1302,6 +1315,11 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
             for (auto item : e.items) {
                 resolve_expr(ctx, item);
             }
+            break;
+        }
+        case NodeKind::ListCompExpr: {
+            auto& e = static_cast<ListCompExpr&>(expr);
+            resolve_expr(ctx, e.iterable);
             break;
         }
         default:

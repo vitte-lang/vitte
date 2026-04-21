@@ -33,6 +33,31 @@ static std::string normalized_type_name(const std::string& name) {
     return name;
 }
 
+static std::pair<std::string, std::string> split_pair_args(const std::string& inner) {
+    int depth = 0;
+    for (std::size_t i = 0; i < inner.size(); ++i) {
+        char c = inner[i];
+        if (c == '<') {
+            ++depth;
+        } else if (c == '>') {
+            --depth;
+        } else if (c == ',' && depth == 0) {
+            std::string lhs = inner.substr(0, i);
+            std::string rhs = inner.substr(i + 1);
+            auto trim = [](std::string s) {
+                auto first = s.find_first_not_of(" \t\n\r");
+                auto last = s.find_last_not_of(" \t\n\r");
+                if (first == std::string::npos) {
+                    return std::string{};
+                }
+                return s.substr(first, last - first + 1);
+            };
+            return {trim(lhs), trim(rhs)};
+        }
+    }
+    return {inner, {}};
+}
+
 static CppType* builtin_type(CppContext& ctx, const std::string& name) {
     if (auto* t = ctx.resolve_type(name)) {
         return t;
@@ -57,6 +82,13 @@ static CppType* map_type(CppContext& ctx, const std::string& mir_name) {
         const std::string inner = name.substr(6, name.size() - 7);
         CppType* elem = map_type(ctx, inner);
         return builtin_type(ctx, "VitteSlice<" + elem->name + ">");
+    }
+    if (name.rfind("VittePair<", 0) == 0 && name.size() > 11 && name.back() == '>') {
+        const std::string inner = name.substr(10, name.size() - 11);
+        auto [lhs, rhs] = split_pair_args(inner);
+        CppType* left = map_type(ctx, lhs);
+        CppType* right = map_type(ctx, rhs);
+        return builtin_type(ctx, "VittePair<" + left->name + ", " + right->name + ">");
     }
     if (name.rfind("ptr<", 0) == 0 && name.size() > 5 && name.back() == '>') {
         const std::string inner = name.substr(4, name.size() - 5);
@@ -131,6 +163,20 @@ static std::unique_ptr<CppExpr> emit_value(CppContext& ctx, const vitte::ir::Mir
     }
     if (v.kind == MirKind::Index) {
         const auto& i = static_cast<const vitte::ir::MirIndex&>(v);
+        if (i.base && i.base->kind == vitte::ir::MirKind::Local) {
+            const auto& base_local = static_cast<const vitte::ir::MirLocal&>(*i.base);
+            if (base_local.type && base_local.type->kind == vitte::ir::MirKind::NamedType) {
+                const auto& base_type = static_cast<const vitte::ir::MirNamedType&>(*base_local.type).name;
+                if (base_type.rfind("slice<", 0) != 0 && base_type != "string" && base_type != "unknown") {
+                    auto base = emit_value(ctx, *i.base);
+                    auto index = emit_value(ctx, *i.index);
+                    auto call = std::make_unique<CppCall>(ctx.mangle(base_type + "____getitem__"));
+                    call->args.push_back(std::move(base));
+                    call->args.push_back(std::move(index));
+                    return call;
+                }
+            }
+        }
         auto base = emit_value(ctx, *i.base);
         auto index = emit_value(ctx, *i.index);
         return std::make_unique<CppIndex>(std::move(base), std::move(index));
@@ -246,6 +292,65 @@ static std::string type_name(const vitte::ir::MirTypePtr& type) {
     return "i32";
 }
 
+static std::string infer_value_type_name(const vitte::ir::MirValuePtr& value) {
+    if (!value) {
+        return "unknown";
+    }
+    switch (value->kind) {
+        case vitte::ir::MirKind::Local: {
+            const auto& local = static_cast<const vitte::ir::MirLocal&>(*value);
+            if (local.type && local.type->kind == vitte::ir::MirKind::NamedType) {
+                const auto& name = static_cast<const vitte::ir::MirNamedType&>(*local.type).name;
+                if (name != "unknown") {
+                    return name;
+                }
+            }
+            return "unknown";
+        }
+        case vitte::ir::MirKind::Const: {
+            const auto& c = static_cast<const vitte::ir::MirConst&>(*value);
+            switch (c.const_kind) {
+                case vitte::ir::MirConstKind::Bool: return "bool";
+                case vitte::ir::MirConstKind::Int: return "i32";
+                case vitte::ir::MirConstKind::String: return "string";
+            }
+            return "unknown";
+        }
+        default:
+            return "unknown";
+    }
+}
+
+static std::string infer_call_result_type(
+    const std::string& callee,
+    const std::vector<vitte::ir::MirValuePtr>& args
+) {
+    if (callee == "list") {
+        std::string elem_ty = "unknown";
+        for (const auto& arg : args) {
+            elem_ty = infer_value_type_name(arg);
+            if (elem_ty != "unknown") {
+                break;
+            }
+        }
+        if (elem_ty == "unknown") {
+            elem_ty = "i32";
+        }
+        return "slice<" + elem_ty + ">";
+    }
+    if (callee == "vitte_pair" && args.size() >= 2) {
+        std::string lhs_ty = infer_value_type_name(args[0]);
+        std::string rhs_ty = infer_value_type_name(args[1]);
+        if (lhs_ty == "unknown") lhs_ty = "i32";
+        if (rhs_ty == "unknown") rhs_ty = "i32";
+        return "VittePair<" + lhs_ty + ", " + rhs_ty + ">";
+    }
+    if (callee == "len") {
+        return "i32";
+    }
+    return "unknown";
+}
+
 static bool is_void_cpp_type(const CppType* type) {
     if (!type) {
         return false;
@@ -304,6 +409,99 @@ static std::vector<const vitte::ir::MirLocal*> ordered_locals(
     return locals;
 }
 
+static std::vector<std::unique_ptr<CppStmt>> emit_block_stmts(
+    const vitte::ir::MirBasicBlock& bb,
+    CppContext& ctx,
+    const std::unordered_set<std::string>& externs,
+    std::size_t fn_index
+) {
+    (void)ctx;
+    std::vector<std::unique_ptr<CppStmt>> out;
+    for (const auto& instr : bb.instructions) {
+        switch (instr->kind) {
+            case MirKind::Assign: {
+                auto& ins = static_cast<const vitte::ir::MirAssign&>(*instr);
+                out.push_back(std::make_unique<CppExprStmt>(emit_value(ctx, *ins.value)));
+                break;
+            }
+            case MirKind::Call: {
+                auto& ins = static_cast<const vitte::ir::MirCall&>(*instr);
+                std::string callee_name = ins.callee;
+                if (ins.callee.rfind("vitte_empty_slice<", 0) == 0 && !ins.callee.empty()) {
+                    const auto open = ins.callee.find('<');
+                    const auto close = ins.callee.rfind('>');
+                    if (open != std::string::npos && close != std::string::npos && close > open + 1) {
+                        const std::string inner = ins.callee.substr(open + 1, close - open - 1);
+                        callee_name = "vitte_empty_slice<" + map_type(ctx, inner)->name + ">";
+                    }
+                } else if (ins.callee.rfind("vitte_slice_push<", 0) == 0 && !ins.callee.empty()) {
+                    const auto open = ins.callee.find('<');
+                    const auto close = ins.callee.rfind('>');
+                    if (open != std::string::npos && close != std::string::npos && close > open + 1) {
+                        const std::string inner = ins.callee.substr(open + 1, close - open - 1);
+                        callee_name = "vitte_slice_push<" + map_type(ctx, inner)->name + ">";
+                    }
+                } else if (ins.callee == "vitte_pair") {
+                    callee_name = "vitte_pair";
+                } else if (ins.callee == "len" && ins.args.size() == 1 && ins.args[0] && ins.args[0]->kind == vitte::ir::MirKind::Local) {
+                    const auto& arg = static_cast<const vitte::ir::MirLocal&>(*ins.args[0]);
+                    if (arg.type && arg.type->kind == vitte::ir::MirKind::NamedType) {
+                        const auto& arg_type = static_cast<const vitte::ir::MirNamedType&>(*arg.type).name;
+                        if (arg_type.rfind("slice<", 0) != 0 && arg_type != "string" && arg_type != "unknown") {
+                            callee_name = ctx.mangle(arg_type + "____len__");
+                        }
+                    }
+                } else if (ins.callee == "vitte_raise") {
+                    callee_name = "vitte_raise";
+                } else if (externs.count(ins.callee) == 0) {
+                    callee_name = ctx.mangle(ins.callee);
+                }
+                auto call = std::make_unique<CppCall>(callee_name);
+                for (const auto& a : ins.args) {
+                    if (a) {
+                        call->args.push_back(emit_value(ctx, *a));
+                    }
+                }
+                out.push_back(std::make_unique<CppExprStmt>(std::move(call)));
+                break;
+            }
+            case MirKind::Return: {
+                auto& ins = static_cast<const vitte::ir::MirReturn&>(*instr);
+                if (ins.value) {
+                    out.push_back(std::make_unique<CppReturn>(emit_value(ctx, *ins.value)));
+                } else {
+                    out.push_back(std::make_unique<CppReturn>());
+                }
+                break;
+            }
+            default:
+                out.push_back(std::make_unique<CppExprStmt>(std::make_unique<CppLiteral>("/* unsupported nested MIR */")));
+                break;
+        }
+    }
+    if (bb.terminator) {
+        switch (bb.terminator->kind) {
+            case MirKind::Goto: {
+                auto& term = static_cast<const vitte::ir::MirGoto&>(*bb.terminator);
+                out.push_back(std::make_unique<CppGoto>(label_for(fn_index, term.target)));
+                break;
+            }
+            case MirKind::CondGoto: {
+                auto& term = static_cast<const vitte::ir::MirCondGoto&>(*bb.terminator);
+                auto cond = emit_value(ctx, *term.cond);
+                auto if_stmt = std::make_unique<CppIf>(std::move(cond));
+                if_stmt->then_body.push_back(std::make_unique<CppGoto>(label_for(fn_index, term.then_block)));
+                if_stmt->else_body.push_back(std::make_unique<CppGoto>(label_for(fn_index, term.else_block)));
+                out.push_back(std::move(if_stmt));
+                break;
+            }
+            default:
+                break;
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 ast::cpp::CppTranslationUnit lower_mir(
@@ -344,6 +542,23 @@ ast::cpp::CppTranslationUnit lower_mir(
             tu.structs.push_back(std::move(st));
             auto* ty = new CppType(CppType::user(s.name, CppTypeKind::Struct));
             ctx.register_type(s.name, ty);
+
+            CppFunction ctor;
+            ctor.name = ctx.mangle(s.name);
+            ctor.return_type = map_type(ctx, s.name);
+            for (const auto& f : s.fields) {
+                ctor.params.push_back({map_field_type(ctx, f.type), ctx.safe_ident(f.name)});
+            }
+
+            auto decl = std::make_unique<CppVarDecl>(map_type(ctx, s.name), "_v");
+            ctor.body.push_back(std::move(decl));
+            for (const auto& f : s.fields) {
+                ctor.body.push_back(std::make_unique<CppAssign>(
+                    std::make_unique<CppMember>(std::make_unique<CppVar>("_v"), ctx.safe_ident(f.name)),
+                    std::make_unique<CppVar>(ctx.safe_ident(f.name))));
+            }
+            ctor.body.push_back(std::make_unique<CppReturn>(std::make_unique<CppVar>("_v")));
+            tu.functions.push_back(std::move(ctor));
         }
     }
 
@@ -434,6 +649,20 @@ ast::cpp::CppTranslationUnit lower_mir(
         }
     }
 
+    std::unordered_set<vitte::ir::MirBlockId> hidden_blocks;
+    for (const auto& fn : module.functions) {
+        for (const auto& bb : fn.blocks) {
+            for (const auto& instr : bb.instructions) {
+                if (instr->kind == MirKind::Try) {
+                    const auto& ins = static_cast<const vitte::ir::MirTry&>(*instr);
+                    if (ins.body != static_cast<vitte::ir::MirBlockId>(-1)) hidden_blocks.insert(ins.body);
+                    if (ins.except_body != static_cast<vitte::ir::MirBlockId>(-1)) hidden_blocks.insert(ins.except_body);
+                    if (ins.finally_body != static_cast<vitte::ir::MirBlockId>(-1)) hidden_blocks.insert(ins.finally_body);
+                }
+            }
+        }
+    }
+
     std::size_t fn_index = 0;
     for (const auto& fn : module.functions) {
         CppFunction out;
@@ -481,6 +710,9 @@ ast::cpp::CppTranslationUnit lower_mir(
         }
 
         for (const auto* bb : ordered_blocks(fn, ctx.repro_strict())) {
+            if (hidden_blocks.count(bb->id) > 0) {
+                continue;
+            }
             out.body.push_back(std::make_unique<CppLabel>(label_for(fn_index, bb->id)));
 
             for (const auto& instr : bb->instructions) {
@@ -492,7 +724,12 @@ ast::cpp::CppTranslationUnit lower_mir(
                         if (declared.insert(dname).second) {
                             auto decl_type = map_type(ctx, dst.type);
                             if (is_unknown_type_name(type_name(dst.type))) {
-                                decl_type = builtin_type(ctx, "auto");
+                                if (ins.value && ins.value->kind == vitte::ir::MirKind::Local) {
+                                    const auto& src = static_cast<const vitte::ir::MirLocal&>(*ins.value);
+                                    decl_type = map_type(ctx, src.type);
+                                } else {
+                                    decl_type = builtin_type(ctx, "auto");
+                                }
                             }
                             auto decl = std::make_unique<CppVarDecl>(
                                 decl_type,
@@ -562,13 +799,34 @@ ast::cpp::CppTranslationUnit lower_mir(
                             } else {
                                 callee_name = ins.callee;
                             }
+                        } else if (ins.callee.rfind("vitte_slice_push<", 0) == 0 && !ins.callee.empty()) {
+                            const auto open = ins.callee.find('<');
+                            const auto close = ins.callee.rfind('>');
+                            if (open != std::string::npos && close != std::string::npos && close > open + 1) {
+                                const std::string inner = ins.callee.substr(open + 1, close - open - 1);
+                                callee_name = "vitte_slice_push<" + map_type(ctx, inner)->name + ">";
+                            } else {
+                                callee_name = ins.callee;
+                            }
+                        } else if (ins.callee == "vitte_pair") {
+                            callee_name = "vitte_pair";
                         } else if (ins.callee == "builtin.trap") {
                             callee_name = "vitte_builtin_trap";
-                        } else if (externs.count(ins.callee) > 0) {
-                            callee_name = ins.callee;
-                        } else {
-                            callee_name = ctx.mangle(ins.callee);
+                } else if (ins.callee == "vitte_raise") {
+                    callee_name = "vitte_raise";
+                } else if (ins.callee == "len" && ins.args.size() == 1 && ins.args[0] && ins.args[0]->kind == vitte::ir::MirKind::Local) {
+                    const auto& arg = static_cast<const vitte::ir::MirLocal&>(*ins.args[0]);
+                    if (arg.type && arg.type->kind == vitte::ir::MirKind::NamedType) {
+                        const auto& arg_type = static_cast<const vitte::ir::MirNamedType&>(*arg.type).name;
+                        if (arg_type.rfind("slice<", 0) != 0 && arg_type != "string" && arg_type != "unknown") {
+                            callee_name = ctx.mangle(arg_type + "____len__");
                         }
+                    }
+                } else if (externs.count(ins.callee) > 0) {
+                    callee_name = ins.callee;
+                } else {
+                    callee_name = ctx.mangle(ins.callee);
+                }
                         auto call = std::make_unique<CppCall>(callee_name);
                         for (const auto& a : ins.args) {
                             if (a) {
@@ -581,7 +839,12 @@ ast::cpp::CppTranslationUnit lower_mir(
                             if (declared.insert(dname).second) {
                                 auto decl_type = map_type(ctx, dst.type);
                                 if (is_unknown_type_name(type_name(dst.type))) {
-                                    decl_type = builtin_type(ctx, "auto");
+                                    auto inferred = infer_call_result_type(ins.callee, ins.args);
+                                    if (!inferred.empty() && inferred != "unknown") {
+                                        decl_type = map_type(ctx, inferred);
+                                    } else {
+                                        decl_type = builtin_type(ctx, "auto");
+                                    }
                                 }
                                 auto decl = std::make_unique<CppVarDecl>(
                                     decl_type,
@@ -620,7 +883,12 @@ ast::cpp::CppTranslationUnit lower_mir(
                             if (declared.insert(dname).second) {
                                 auto decl_type = map_type(ctx, dst.type);
                                 if (is_unknown_type_name(type_name(dst.type))) {
-                                    decl_type = builtin_type(ctx, "auto");
+                                    auto inferred = infer_call_result_type("call_indirect", ins.args);
+                                    if (!inferred.empty() && inferred != "unknown") {
+                                        decl_type = map_type(ctx, inferred);
+                                    } else {
+                                        decl_type = builtin_type(ctx, "auto");
+                                    }
                                 }
                                 auto decl = std::make_unique<CppVarDecl>(
                                     decl_type,
@@ -670,6 +938,21 @@ ast::cpp::CppTranslationUnit lower_mir(
                         } else {
                             out.body.push_back(std::make_unique<CppReturn>());
                         }
+                        break;
+                    }
+                    case MirKind::Try: {
+                        auto& ins = static_cast<const vitte::ir::MirTry&>(*instr);
+                        auto try_stmt = std::make_unique<CppTry>();
+                        if (ins.body != static_cast<vitte::ir::MirBlockId>(-1)) {
+                            try_stmt->body = emit_block_stmts(fn.blocks.at(ins.body), ctx, externs, fn_index);
+                        }
+                        if (ins.except_body != static_cast<vitte::ir::MirBlockId>(-1)) {
+                            try_stmt->except_body = emit_block_stmts(fn.blocks.at(ins.except_body), ctx, externs, fn_index);
+                        }
+                        if (ins.finally_body != static_cast<vitte::ir::MirBlockId>(-1)) {
+                            try_stmt->finally_body = emit_block_stmts(fn.blocks.at(ins.finally_body), ctx, externs, fn_index);
+                        }
+                        out.body.push_back(std::move(try_stmt));
                         break;
                     }
                     default:

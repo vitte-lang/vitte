@@ -7,8 +7,8 @@
 // Redirect diagnostics subdomain
 (function () {
   if (window.location.hostname === "diagnostics.vitte-lang.org") {
-    if (!window.location.pathname.startsWith("/site/docs/diagnostics")) {
-      window.location.replace("/site/docs/diagnostics/");
+    if (!window.location.pathname.startsWith("/site/diagnostics.html")) {
+      window.location.replace("/site/diagnostics.html");
     }
   }
 })();
@@ -24,7 +24,7 @@ window.addEventListener("popstate", renderRoute);
 function renderRoute() {
   const path = window.location.pathname;
 
-  if (path.startsWith("/site/docs/diagnostics")) {
+  if (path === "/site/diagnostics.html") {
     document.body.classList.add("diagnostics-mode");
   } else {
     document.body.classList.remove("diagnostics-mode");

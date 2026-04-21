@@ -29,7 +29,8 @@ struct CppStmt {
         For,
         Break,
         Continue,
-        Block
+        Block,
+        Try
     };
 
     Kind kind;
@@ -180,6 +181,18 @@ struct CppBlock : CppStmt {
 
     CppBlock()
         : CppStmt(Kind::Block) {}
+};
+
+/* ----------------------------------------
+ * Try / catch / finally
+ * ---------------------------------------- */
+struct CppTry : CppStmt {
+    std::vector<std::unique_ptr<CppStmt>> body;
+    std::vector<std::unique_ptr<CppStmt>> except_body;
+    std::vector<std::unique_ptr<CppStmt>> finally_body;
+
+    CppTry()
+        : CppStmt(Kind::Try) {}
 };
 
 } // namespace vitte::backend::ast::cpp

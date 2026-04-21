@@ -789,6 +789,18 @@ static void qualify_stmt(AstContext& ctx,
             qualify_stmt(ctx, s.body, locals, prefix);
             break;
         }
+        case NodeKind::TryStmt: {
+            auto& s = static_cast<TryStmt&>(node);
+            qualify_stmt(ctx, s.body, locals, prefix);
+            qualify_stmt(ctx, s.except_body, locals, prefix);
+            qualify_stmt(ctx, s.finally_body, locals, prefix);
+            break;
+        }
+        case NodeKind::RaiseStmt: {
+            auto& s = static_cast<RaiseStmt&>(node);
+            qualify_expr(ctx, s.expr, locals, prefix);
+            break;
+        }
         case NodeKind::AsmStmt:
         case NodeKind::UnsafeStmt:
         case NodeKind::BreakStmt:
@@ -880,6 +892,13 @@ static void qualify_expr(AstContext& ctx,
             for (auto& item : e.items) {
                 qualify_expr(ctx, item, locals, prefix);
             }
+            break;
+        }
+        case NodeKind::ListCompExpr: {
+            auto& e = static_cast<ListCompExpr&>(node);
+            qualify_expr(ctx, e.value, locals, prefix);
+            qualify_expr(ctx, e.iterable, locals, prefix);
+            qualify_expr(ctx, e.condition, locals, prefix);
             break;
         }
         default:
@@ -1942,6 +1961,18 @@ static void rewrite_stmt_for_alias(
                 }
             }
             rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            break;
+        }
+        case NodeKind::TryStmt: {
+            auto& s = static_cast<TryStmt&>(node);
+            rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_stmt_for_alias(ctx, s.except_body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_stmt_for_alias(ctx, s.finally_body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            break;
+        }
+        case NodeKind::RaiseStmt: {
+            auto& s = static_cast<RaiseStmt&>(node);
+            rewrite_expr_for_alias(ctx, s.expr, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
         default:

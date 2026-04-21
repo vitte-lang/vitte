@@ -45,7 +45,7 @@ In scope:
 
 - compiler (`src/compiler/**`)
 - language/runtime behavior shipped in this repo
-- package modules under `src/vitte/packages/**`
+- stdlib modules shipped by this repository
 - official tooling in `tools/` and maintained editor integrations
 
 Out of scope:

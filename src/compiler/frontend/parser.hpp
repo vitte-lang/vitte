@@ -94,6 +94,7 @@ private:
     DeclId parse_type_alias_decl();
     DeclId parse_macro_decl();
     DeclId parse_form_decl();
+    DeclId parse_class_decl();
     DeclId parse_pick_decl();
     DeclId parse_proc_decl(std::vector<ast::Attribute> attrs);
     DeclId parse_entry_decl();
@@ -113,6 +114,8 @@ private:
     StmtId parse_give_stmt();
     StmtId parse_emit_stmt();
     StmtId parse_if_stmt();
+    StmtId parse_try_stmt();
+    StmtId parse_raise_stmt();
     StmtId parse_loop_stmt();
     StmtId parse_while_stmt();
     StmtId parse_for_stmt();
@@ -137,6 +140,8 @@ private:
     ExprId parse_call_expr(ExprId callee);
     ExprId parse_proc_expr();
     ExprId parse_if_expr();
+    ExprId parse_list_literal_or_comp_expr();
+    ExprId parse_brace_literal_or_comp_expr();
     ExprId parse_interpolated_string_expr(const std::string& value, ast::SourceSpan span);
     ExprId parse_interpolation_path_expr(std::string_view raw, ast::SourceSpan span);
     std::vector<ExprId> parse_arg_list();

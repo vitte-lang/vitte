@@ -331,7 +331,7 @@ Tip for beginners: small PRs get reviewed faster than large rewrites.
 ## Project Layout
 
 - `src/` compiler implementation
-- `src/vitte/packages/` package modules
+- stdlib module tree
 - `examples/` sample `.vit` programs
 - `tests/` regression and language tests
 - `tools/` scripts/utilities

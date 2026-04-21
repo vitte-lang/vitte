@@ -21,4 +21,4 @@ make core-language-test
 
 - Toute évolution de syntaxe passe d'abord par `vitte.ebnf`.
 - `vitte.pest` doit rester alignée.
-- Les artefacts du dossier `book/grammar` sont générés via `make grammar-sync`.
+- Les artefacts du dossier `docs/book/grammar` sont générés via `make grammar-sync`.

@@ -66,11 +66,14 @@ enum class HirKind {
     CallExpr,
     MemberExpr,
     IndexExpr,
+    ListCompExpr,
 
     // statements
     LetStmt,
     ExprStmt,
     ReturnStmt,
+    TryStmt,
+    RaiseStmt,
     Block,
     IfStmt,
     LoopStmt,
@@ -264,6 +267,32 @@ struct HirIndexExpr : HirExpr {
                  vitte::frontend::ast::SourceSpan span);
 };
 
+struct HirListCompExpr : HirExpr {
+    enum class Kind {
+        List,
+        Set,
+        Dict
+    };
+
+    Kind kind;
+    HirExprId key;
+    HirExprId value;
+    std::optional<std::string> index_name;
+    std::string ident;
+    HirExprId iterable;
+    HirExprId condition;
+
+    HirListCompExpr(
+        Kind kind,
+        HirExprId key,
+        HirExprId value,
+        std::optional<std::string> index_name,
+        std::string ident,
+        HirExprId iterable,
+        HirExprId condition,
+        vitte::frontend::ast::SourceSpan span);
+};
+
 // ------------------------------------------------------------
 // Statements
 // ------------------------------------------------------------
@@ -296,6 +325,24 @@ struct HirReturnStmt : HirStmt {
 
     HirReturnStmt(HirExprId expr,
                   vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirTryStmt : HirStmt {
+    HirStmtId body;
+    HirStmtId except_body;
+    HirStmtId finally_body;
+
+    HirTryStmt(HirStmtId body,
+               HirStmtId except_body,
+               HirStmtId finally_body,
+               vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirRaiseStmt : HirStmt {
+    HirExprId expr;
+
+    HirRaiseStmt(HirExprId expr,
+                 vitte::frontend::ast::SourceSpan span);
 };
 
 struct HirBlock : HirStmt {

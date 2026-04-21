@@ -33,7 +33,7 @@ SECTIONS: list[tuple[str, list[str]]] = [
         ],
     ),
     (
-        "Modules / Packages",
+        "Modules / Stdlib",
         [
             "modules-tests",
             "modules-snapshots",

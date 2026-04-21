@@ -46,6 +46,8 @@ static ir::HirStmtId lower_stmt(
     const std::unordered_map<std::string, bool>& enum_like,
     std::size_t& tmp_counter);
 
+static const std::unordered_map<std::string, std::vector<std::string>>* g_ctor_fields = nullptr;
+
 static ir::HirTypeId lower_type(
     const AstContext& ctx,
     TypeId type,
@@ -143,8 +145,60 @@ static ir::HirExprId lower_invoke(
     }
 
     std::vector<ir::HirExprId> args;
-    for (const auto& a : inv.args) {
-        args.push_back(lower_expr(ctx, a.value, hir_ctx, diagnostics, type_names, enum_like));
+    if (inv.invoke_kind == InvokeExpr::Kind::Ctor && g_ctor_fields != nullptr) {
+        std::string ctor_name;
+        if (inv.callee_type != kInvalidAstId) {
+            const AstNode& tnode = ctx.node(inv.callee_type);
+            if (tnode.kind == NodeKind::NamedType) {
+                ctor_name = static_cast<const NamedType&>(tnode).ident.name;
+            } else if (tnode.kind == NodeKind::GenericType) {
+                ctor_name = static_cast<const GenericType&>(tnode).base_ident.name;
+            } else if (tnode.kind == NodeKind::BuiltinType) {
+                ctor_name = static_cast<const BuiltinType&>(tnode).name;
+            }
+        }
+        if (!ctor_name.empty()) {
+            auto field_it = g_ctor_fields->find(ctor_name);
+            if (field_it != g_ctor_fields->end() && !field_it->second.empty()) {
+                const auto& field_order = field_it->second;
+                std::vector<ir::HirExprId> ordered(field_order.size(), ir::kInvalidHirId);
+                std::size_t next_pos = 0;
+                for (const auto& a : inv.args) {
+                    if (!a.name.has_value()) {
+                        continue;
+                    }
+                    for (std::size_t i = 0; i < field_order.size(); ++i) {
+                        if (field_order[i] == a.name->name) {
+                            ordered[i] = lower_expr(ctx, a.value, hir_ctx, diagnostics, type_names, enum_like);
+                            break;
+                        }
+                    }
+                }
+                for (const auto& a : inv.args) {
+                    if (a.name.has_value()) {
+                        continue;
+                    }
+                    while (next_pos < ordered.size() && ordered[next_pos] != ir::kInvalidHirId) {
+                        ++next_pos;
+                    }
+                    if (next_pos >= ordered.size()) {
+                        break;
+                    }
+                    ordered[next_pos] = lower_expr(ctx, a.value, hir_ctx, diagnostics, type_names, enum_like);
+                    ++next_pos;
+                }
+                for (auto& arg : ordered) {
+                    if (arg != ir::kInvalidHirId) {
+                        args.push_back(std::move(arg));
+                    }
+                }
+            }
+        }
+    }
+    if (args.empty()) {
+        for (const auto& a : inv.args) {
+            args.push_back(lower_expr(ctx, a.value, hir_ctx, diagnostics, type_names, enum_like));
+        }
     }
 
     if (callee == ir::kInvalidHirId) {
@@ -286,6 +340,26 @@ static ir::HirExprId lower_expr(
             }
             auto callee = hir_ctx.make<ir::HirVarExpr>("list", e.span);
             return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), std::vector<ir::HirTypeId>{}, e.span);
+        }
+        case NodeKind::ListCompExpr: {
+            auto& e = static_cast<const ListCompExpr&>(node);
+            return hir_ctx.make<ir::HirListCompExpr>(
+                static_cast<ir::HirListCompExpr::Kind>(e.kind == ListCompExpr::Kind::List
+                    ? ir::HirListCompExpr::Kind::List
+                    : (e.kind == ListCompExpr::Kind::Set
+                        ? ir::HirListCompExpr::Kind::Set
+                        : ir::HirListCompExpr::Kind::Dict)),
+                e.key != kInvalidAstId
+                    ? lower_expr(ctx, e.key, hir_ctx, diagnostics, type_names, enum_like)
+                    : ir::kInvalidHirId,
+                lower_expr(ctx, e.value, hir_ctx, diagnostics, type_names, enum_like),
+                e.index_ident.has_value() ? std::optional<std::string>(e.index_ident->name) : std::optional<std::string>{},
+                e.ident.name,
+                lower_expr(ctx, e.iterable, hir_ctx, diagnostics, type_names, enum_like),
+                e.condition != kInvalidAstId
+                    ? lower_expr(ctx, e.condition, hir_ctx, diagnostics, type_names, enum_like)
+                    : ir::kInvalidHirId,
+                e.span);
         }
         default:
             diag::error(diagnostics, diag::DiagId::UnsupportedExpressionInHir, node.span);
@@ -613,6 +687,24 @@ static ir::HirStmtId lower_stmt(
                 lower_expr(ctx, s.expr, hir_ctx, diagnostics, type_names, enum_like),
                 s.span);
         }
+        case NodeKind::TryStmt: {
+            auto& s = static_cast<const TryStmt&>(node);
+            return hir_ctx.make<ir::HirTryStmt>(
+                lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter),
+                s.except_body != kInvalidAstId
+                    ? lower_block(ctx, s.except_body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter)
+                    : ir::kInvalidHirId,
+                s.finally_body != kInvalidAstId
+                    ? lower_block(ctx, s.finally_body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter)
+                    : ir::kInvalidHirId,
+                s.span);
+        }
+        case NodeKind::RaiseStmt: {
+            auto& s = static_cast<const RaiseStmt&>(node);
+            return hir_ctx.make<ir::HirRaiseStmt>(
+                lower_expr(ctx, s.expr, hir_ctx, diagnostics, type_names, enum_like),
+                s.span);
+        }
         case NodeKind::IfStmt: {
             auto& s = static_cast<const IfStmt&>(node);
             return hir_ctx.make<ir::HirIf>(
@@ -667,11 +759,32 @@ static ir::HirStmtId lower_stmt(
             auto iter_init = lower_expr(ctx, s.iterable, hir_ctx, diagnostics, type_names, enum_like);
             lowered.push_back(hir_ctx.make<ir::HirLetStmt>(tmp_iter, ir::kInvalidHirId, iter_init, s.span));
 
+            const std::string tmp_seq = "__for_seq_" + std::to_string(tmp_counter++);
+            auto iter_source = hir_ctx.make<ir::HirVarExpr>(tmp_iter, s.span);
+            auto iter_member = hir_ctx.make<ir::HirMemberExpr>(
+                iter_source,
+                "__iter__",
+                false,
+                false,
+                false,
+                s.span);
+            std::vector<ir::HirExprId> iter_args;
+            auto iter_call = hir_ctx.make<ir::HirCallExpr>(
+                iter_member,
+                std::move(iter_args),
+                std::vector<ir::HirTypeId>{},
+                s.span);
+            lowered.push_back(hir_ctx.make<ir::HirLetStmt>(tmp_seq, ir::kInvalidHirId, iter_call, s.span));
+
             auto zero = hir_ctx.make<ir::HirLiteralExpr>(ir::HirLiteralKind::Int, "0", s.span);
-            lowered.push_back(hir_ctx.make<ir::HirLetStmt>(tmp_idx, ir::kInvalidHirId, zero, s.span));
+            lowered.push_back(hir_ctx.make<ir::HirLetStmt>(
+                tmp_idx,
+                hir_ctx.make<ir::HirNamedType>("usize", s.span),
+                zero,
+                s.span));
 
             auto idx_var = hir_ctx.make<ir::HirVarExpr>(tmp_idx, s.span);
-            auto iter_var_for_len = hir_ctx.make<ir::HirVarExpr>(tmp_iter, s.span);
+            auto iter_var_for_len = hir_ctx.make<ir::HirVarExpr>(tmp_seq, s.span);
             auto len_member = hir_ctx.make<ir::HirMemberExpr>(
                 iter_var_for_len,
                 "len",
@@ -690,17 +803,32 @@ static ir::HirStmtId lower_stmt(
             std::vector<ir::HirStmtId> loop_body_stmts;
             loop_body_stmts.push_back(guard_if);
 
-            auto iter_var_for_item = hir_ctx.make<ir::HirVarExpr>(tmp_iter, s.span);
+            auto iter_var_for_item = hir_ctx.make<ir::HirVarExpr>(tmp_seq, s.span);
             auto idx_var_for_item = hir_ctx.make<ir::HirVarExpr>(tmp_idx, s.span);
             auto item_expr = hir_ctx.make<ir::HirIndexExpr>(iter_var_for_item, idx_var_for_item, s.span);
-            if (s.index_ident.has_value()) {
+            if (s.tuple_destructure && s.index_ident.has_value()) {
+                auto first_item = hir_ctx.make<ir::HirIndexExpr>(item_expr, hir_ctx.make<ir::HirLiteralExpr>(ir::HirLiteralKind::Int, "0", s.span), s.span);
+                auto second_item = hir_ctx.make<ir::HirIndexExpr>(item_expr, hir_ctx.make<ir::HirLiteralExpr>(ir::HirLiteralKind::Int, "1", s.span), s.span);
                 loop_body_stmts.push_back(hir_ctx.make<ir::HirLetStmt>(
                     s.index_ident->name,
                     ir::kInvalidHirId,
-                    idx_var_for_item,
+                    first_item,
                     s.index_ident->span));
+                loop_body_stmts.push_back(hir_ctx.make<ir::HirLetStmt>(
+                    s.ident.name,
+                    ir::kInvalidHirId,
+                    second_item,
+                    s.span));
+            } else {
+                if (s.index_ident.has_value()) {
+                    loop_body_stmts.push_back(hir_ctx.make<ir::HirLetStmt>(
+                        s.index_ident->name,
+                        ir::kInvalidHirId,
+                        idx_var_for_item,
+                        s.index_ident->span));
+                }
+                loop_body_stmts.push_back(hir_ctx.make<ir::HirLetStmt>(s.ident.name, ir::kInvalidHirId, item_expr, s.span));
             }
-            loop_body_stmts.push_back(hir_ctx.make<ir::HirLetStmt>(s.ident.name, ir::kInvalidHirId, item_expr, s.span));
 
             auto lowered_user_body = lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
             if (lowered_user_body != ir::kInvalidHirId) {
@@ -780,6 +908,7 @@ ir::HirModuleId lower_to_hir(
     std::vector<ir::HirDeclId> decls;
     std::unordered_set<std::string> type_names;
     std::unordered_map<std::string, bool> enum_like;
+    std::unordered_map<std::string, std::vector<std::string>> ctor_fields;
     std::size_t tmp_counter = 0;
 
     for (auto decl_id : module.decls) {
@@ -790,7 +919,14 @@ ir::HirModuleId lower_to_hir(
         if (decl.kind == NodeKind::TypeDecl) {
             type_names.insert(static_cast<const TypeDecl&>(decl).name.name);
         } else if (decl.kind == NodeKind::FormDecl) {
-            type_names.insert(static_cast<const FormDecl&>(decl).name.name);
+            const auto& form = static_cast<const FormDecl&>(decl);
+            type_names.insert(form.name.name);
+            std::vector<std::string> fields;
+            fields.reserve(form.fields.size());
+            for (const auto& field : form.fields) {
+                fields.push_back(field.ident.name);
+            }
+            ctor_fields[form.name.name] = std::move(fields);
         } else if (decl.kind == NodeKind::PickDecl) {
             const auto& p = static_cast<const PickDecl&>(decl);
             type_names.insert(p.name.name);
@@ -804,6 +940,8 @@ ir::HirModuleId lower_to_hir(
             enum_like[p.name.name] = is_enum;
         }
     }
+
+    g_ctor_fields = &ctor_fields;
 
     for (auto decl_id : module.decls) {
         if (decl_id == kInvalidAstId) {
@@ -913,6 +1051,8 @@ ir::HirModuleId lower_to_hir(
                 break;
         }
     }
+
+    g_ctor_fields = nullptr;
 
     return hir_ctx.make<ir::HirModule>(module.name, std::move(decls), module.span);
 }

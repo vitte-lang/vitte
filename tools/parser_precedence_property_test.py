@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def load_precedence(repo: Path) -> dict[str, tuple[int, str]]:
-    payload = json.loads((repo / "book/grammar/precedence_table.json").read_text(encoding="utf-8"))
+    payload = json.loads((repo / "docs/book/grammar/precedence_table.json").read_text(encoding="utf-8"))
     rows = payload.get("rows", [])
     out: dict[str, tuple[int, str]] = {}
     for row in rows:

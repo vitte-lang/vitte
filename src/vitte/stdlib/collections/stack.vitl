@@ -1,63 +1,327 @@
 space vitte/collections/stack
 
 <<< =========================================================
-   Stack (LIFO) Module
+   Stack — ULTRA MAX (vector-backed)
+   - O(1) push/pop (amortized)
+   - dynamic resize + shrink
+   - no O(n) concatenations
    ========================================================= >>>
 
-# Stack (LIFO)
 form Stack {
-    top: i64,
+    data: [i64],
     size: i32,
-    data: [i64]
+    capacity: i32
 }
+
+<<< ---------------------------------------------------------
+   Constructors
+   --------------------------------------------------------- >>>
 
 proc stack_new(capacity: i32) -> Stack {
-  give Stack {
-    top: -1,
-    size: 0,
-    data: []
-  }
+    let cap = if capacity <= 0 { 8 } else { capacity }
+
+    give Stack {
+        data: repeat(0, cap),
+        size: 0,
+        capacity: cap
+    }
 }
 
+<<< ---------------------------------------------------------
+   Internal resize / shrink
+   --------------------------------------------------------- >>>
+
+proc _stack_resize(s: Stack) {
+    let new_cap = s.capacity + (s.capacity / 2)
+    let new_data: [i64] = repeat(0, new_cap)
+
+    let i: i32 = 0
+    while i < s.size {
+        set new_data[i] = s.data[i]
+        i += 1
+    }
+
+    set s.data = new_data
+    set s.capacity = new_cap
+}
+
+proc _stack_shrink(s: Stack) {
+    if s.capacity > 8 and s.size * 4 < s.capacity {
+        let new_cap = s.capacity / 2
+        let new_data: [i64] = repeat(0, new_cap)
+
+        let i: i32 = 0
+        while i < s.size {
+            set new_data[i] = s.data[i]
+            i += 1
+        }
+
+        set s.data = new_data
+        set s.capacity = new_cap
+    }
+}
+
+<<< ---------------------------------------------------------
+   Core operations
+   --------------------------------------------------------- >>>
+
 proc stack_push(s: Stack, value: i64) -> int {
-  s.data = s.data ++ [value]
-  s.top = s.top + 1
-  s.size = s.size + 1
-  give 0
+    if s.size == s.capacity {
+        _stack_resize(s)
+    }
+
+    set s.data[s.size] = value
+    set s.size = s.size + 1
+
+    give 1
+}
+
+
+proc stack_push_unchecked(s: Stack, value: i64) {
+    set s.data[s.size] = value
+    set s.size = s.size + 1
+}
+
+proc stack_push_fast(s: Stack, value: i64) {
+    if s.size < s.capacity {
+        set s.data[s.size] = value
+        set s.size = s.size + 1
+        give
+    }
+    _stack_resize(s)
+    stack_push_unchecked(s, value)
 }
 
 proc stack_pop(s: Stack) -> i64 {
-  if s.size <= 0 {
-    give 0
-  }
-  let val: i64 = s.data[s.top]
-  s.top = s.top - 1
-  s.size = s.size - 1
-  give val
+    if s.size == 0 {
+        give 0
+    }
+
+    set s.size = s.size - 1
+    let val = s.data[s.size]
+    set s.data[s.size] = 0
+
+    _stack_shrink(s)
+
+    give val
 }
 
 proc stack_peek(s: Stack) -> i64 {
-  if s.size <= 0 {
-    give 0
-  }
-  give s.data[s.top]
+    if s.size == 0 { give 0 }
+    give s.data[s.size - 1]
 }
 
+<<< ---------------------------------------------------------
+   Utilities
+   --------------------------------------------------------- >>>
+
 proc stack_empty(s: Stack) -> int {
-  if s.size == 0 {
-    give 1
-  }
-  give 0
+    give if s.size == 0 { 1 } else { 0 }
 }
 
 proc stack_size(s: Stack) -> i32 {
-  give s.size
+    give s.size
 }
 
 proc stack_clear(s: Stack) {
-  s.top = -1
-  s.size = 0
-  s.data = []
+    set s.size = 0
+}
+
+proc stack_reserve(s: Stack, new_cap: i32) {
+    if new_cap <= s.capacity { give }
+
+    let new_data: [i64] = repeat(0, new_cap)
+
+    let i: i32 = 0
+    while i < s.size {
+        set new_data[i] = s.data[i]
+        i += 1
+    }
+
+    set s.data = new_data
+    set s.capacity = new_cap
+}
+
+<<< ---------------------------------------------------------
+   Advanced helpers
+   --------------------------------------------------------- >>>
+
+proc stack_push_many(s: Stack, values: [i64]) {
+    let needed = s.size + values.len
+    if needed > s.capacity {
+        stack_reserve(s, needed * 2)
+    }
+
+    let i: i32 = 0
+    while i < values.len {
+        set s.data[s.size] = values[i]
+        set s.size = s.size + 1
+        i += 1
+    }
+}
+
+
+proc stack_pop_many(s: Stack, n: i32) -> [i64] {
+    if n <= 0 { give [] }
+
+    let count = if n > s.size { s.size } else { n }
+    let out: [i64] = repeat(0, count)
+
+    let i: i32 = 0
+    while i < count {
+        set s.size = s.size - 1
+        set out[i] = s.data[s.size]
+        set s.data[s.size] = 0
+        i += 1
+    }
+
+    _stack_shrink(s)
+    give out
+}
+
+proc stack_truncate(s: Stack, n: i32) {
+    if n < 0 { set n = 0 }
+    if n >= s.size { give }
+
+    let i: i32 = n
+    while i < s.size {
+        set s.data[i] = 0
+        i += 1
+    }
+
+    set s.size = n
+    _stack_shrink(s)
+}
+
+
+proc stack_swap(s: Stack) {
+    if s.size < 2 { give }
+
+    let a = s.data[s.size - 1]
+    let b = s.data[s.size - 2]
+
+    set s.data[s.size - 1] = b
+    set s.data[s.size - 2] = a
+}
+
+proc stack_drop(s: Stack) {
+    if s.size == 0 { give }
+    set s.size = s.size - 1
+    set s.data[s.size] = 0
+    _stack_shrink(s)
+}
+
+proc stack_over(s: Stack) {
+    if s.size < 2 { give }
+    stack_push(s, s.data[s.size - 2])
+}
+
+proc stack_dup(s: Stack) {
+    if s.size == 0 { give }
+    stack_push(s, s.data[s.size - 1])
+}
+
+proc stack_rot(s: Stack) {
+    if s.size < 3 { give }
+
+    let a = s.data[s.size - 1]
+    let b = s.data[s.size - 2]
+    let c = s.data[s.size - 3]
+
+    set s.data[s.size - 1] = b
+    set s.data[s.size - 2] = c
+    set s.data[s.size - 3] = a
+}
+
+
+proc stack_reverse(s: Stack) {
+    let i: i32 = 0
+    let j: i32 = s.size - 1
+
+    while i < j {
+        let tmp = s.data[i]
+        set s.data[i] = s.data[j]
+        set s.data[j] = tmp
+        i += 1
+        j -= 1
+    }
+}
+
+proc stack_equals(a: Stack, b: Stack) -> int {
+    if a.size != b.size { give 0 }
+
+    let i: i32 = 0
+    while i < a.size {
+        if a.data[i] != b.data[i] { give 0 }
+        i += 1
+    }
+
+    give 1
+}
+
+proc stack_get(s: Stack, idx: i32) -> i64 {
+    if idx < 0 or idx >= s.size { give 0 }
+    give s.data[idx]
+}
+
+
+proc stack_get_unchecked(s: Stack, idx: i32) -> i64 {
+    give s.data[idx]
+}
+
+proc stack_extend(s: Stack, other: Stack) {
+    let needed = s.size + other.size
+    if needed > s.capacity {
+        stack_reserve(s, needed * 2)
+    }
+
+    let i: i32 = 0
+    while i < other.size {
+        set s.data[s.size] = other.data[i]
+        set s.size = s.size + 1
+        i += 1
+    }
+}
+
+proc stack_to_array(s: Stack) -> [i64] {
+    let out: [i64] = repeat(0, s.size)
+
+    let i: i32 = 0
+    while i < s.size {
+        set out[i] = s.data[i]
+        i += 1
+    }
+
+    give out
+}
+
+proc __len__(s: Stack) -> int {
+    give stack_size(s)
+}
+
+proc __getitem__(s: Stack, idx: i32) -> i64 {
+    give stack_get(s, idx)
+}
+
+proc __iter__(s: Stack) -> [i64] {
+    give stack_to_array(s)
+}
+
+<<< ---------------------------------------------------------
+   End module
+   --------------------------------------------------------- >>>
+
+proc stack_clone(s: Stack) -> Stack {
+    let out = stack_new(s.capacity)
+
+    let i: i32 = 0
+    while i < s.size {
+        set out.data[i] = s.data[i]
+        i += 1
+    }
+
+    set out.size = s.size
+    give out
 }
 
 share all

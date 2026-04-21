@@ -69,7 +69,7 @@ Best support coverage:
 - compiler behavior
 - language syntax/diagnostics
 - official tooling in `tools/`
-- package/module workflows under `src/vitte/packages`
+- stdlib/module workflows
 
 Limited coverage:
 

@@ -17,7 +17,7 @@ def main() -> int:
     parser.add_argument("--allowlist", default="tools/legacy_import_path_allowlist.txt")
     parser.add_argument("--entry-allowlist", default="tools/package_entry_legacy_allowlist.txt")
     parser.add_argument("--name-allowlist", default="tools/package_name_legacy_allowlist.txt")
-    parser.add_argument("--out", default="book/packages-migration-map.md")
+    parser.add_argument("--out", default="docs/book/stdlib-migration-map.md")
     args = parser.parse_args()
 
     repo = Path(__file__).resolve().parents[1]
@@ -77,7 +77,7 @@ def main() -> int:
 
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8") as f:
-        f.write("# Packages Migration Map (Auto)\n\n")
+        f.write("# Stdlib Migration Map (Auto)\n\n")
         f.write("Generated from legacy allowlists in `tools/`.\n\n")
         f.write("| Location | Old import | New import |\n")
         f.write("|---|---|---|\n")
@@ -85,7 +85,7 @@ def main() -> int:
             f.write(f"| {loc} | `{old}` | `{new}` |\n")
         f.write("\n")
         f.write("## Legacy Wrappers (`<pkg>.vit` -> `mod.vit`)\n\n")
-        f.write("| Package | Old entry | New entry |\n")
+        f.write("| Stdlib module | Old entry | New entry |\n")
         f.write("|---|---|---|\n")
         for pkg in legacy_wrappers:
             f.write(f"| `{pkg}` | `{pkg}/{pkg}.vit` | `{pkg}/mod.vit` |\n")

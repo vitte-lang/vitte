@@ -1,0 +1,1000 @@
+<<<
+project-kernel-control-plane.vit
+package demo/project_kernel_control_plane
+>>>
+
+space demo/project_kernel_control_plane
+
+use vitte/core as core
+use vitte/std as std
+use vitte/runtime as runtime
+use vitte/scheduler as scheduler
+use vitte/process as process
+use vitte/io as io
+use vitte/fs as fs
+use vitte/net as net
+use vitte/http as http
+use vitte/crypto as crypto
+use vitte/hash as hash
+use vitte/trace as trace
+use vitte/observability as observability
+use vitte/health as health
+use vitte/timeout as timeout
+use vitte/retry as retry
+use vitte/rate_limit as rate_limit
+use vitte/circuit_breaker as cb
+use vitte/bulkhead as bulkhead
+use vitte/queue as queue
+use vitte/channel as channel
+use vitte/stream as stream
+use vitte/alerts as alerts
+use vitte/log as log
+use vitte/config as config
+use vitte/secrets as secrets
+use vitte/policy as policy
+use vitte/registry as registry
+use vitte/db as db
+use vitte/sql as sql
+use vitte/metrics as metrics_alias
+
+form BootConfig {
+  node: string
+  mode: string
+  profile: string
+  region: string
+}
+
+form Device {
+  id: string
+  class: string
+  online: bool
+  irq: int
+}
+
+form Task {
+  id: string
+  owner: string
+  priority: int
+  budget_ms: int
+}
+
+form Event {
+  code: string
+  level: string
+  detail: string
+}
+
+pick KernelState {
+  case Init(step: string)
+  case Ready(stage: string)
+  case Degraded(reason: string)
+  case Panic(reason: string)
+}
+
+proc project_name() -> string {
+  give "Kernel Control Plane"
+}
+
+proc project_focus() -> string {
+  give "kernel orchestration + device lifecycle"
+}
+
+proc load_boot_config() -> BootConfig {
+  give BootConfig("node-a", "production", "desktop", "eu-west")
+}
+
+proc init_clock() -> bool { give true }
+proc init_memory() -> bool { give true }
+proc init_scheduler() -> bool { give true }
+proc init_storage() -> bool { give true }
+proc init_network() -> bool { give true }
+proc init_security() -> bool { give true }
+proc init_observability() -> bool { give true }
+
+proc bootstrap_devices() -> [Device] {
+  let out: [Device] = []
+  give out
+}
+
+proc bootstrap_tasks() -> [Task] {
+  let out: [Task] = []
+  give out
+}
+
+proc validate_boot(c: BootConfig) -> bool {
+  if c.node == "" { give false }
+  if c.mode == "" { give false }
+  give true
+}
+
+proc plan_state(c: BootConfig, devices: [Device], tasks: [Task]) -> KernelState {
+  if !validate_boot(c) { give KernelState.Panic("invalid boot config") }
+  if devices.len == 0 { give KernelState.Degraded("no devices discovered") }
+  if tasks.len == 0 { give KernelState.Init("waiting tasks") }
+  give KernelState.Ready("steady")
+}
+
+proc subsystem_1_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_1_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_1_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_2_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_2_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_2_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_3_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_3_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_3_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_4_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_4_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_4_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_5_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_5_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_5_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_6_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_6_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_6_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_7_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_7_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_7_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_8_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_8_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_8_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_9_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_9_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_9_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_10_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_10_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_10_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_11_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_11_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_11_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_12_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_12_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_12_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_13_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_13_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_13_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_14_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_14_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_14_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_15_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_15_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_15_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_16_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_16_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_16_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_17_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_17_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_17_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_18_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_18_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_18_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_19_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_19_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_19_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_20_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_20_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_20_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_21_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_21_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_21_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_22_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_22_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_22_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_23_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_23_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_23_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_24_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_24_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_24_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_25_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_25_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_25_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_26_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_26_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_26_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_27_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_27_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_27_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_28_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_28_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_28_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_29_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_29_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_29_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_30_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_30_schedule(tasks: [Task]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= tasks.len { break }
+    total = total + tasks[i].budget_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc subsystem_30_guard(c: BootConfig) -> bool {
+  if c.mode == "debug" { give true }
+  if c.region == "" { give false }
+  give true
+}
+
+proc subsystem_31_probe(c: BootConfig, devices: [Device]) -> bool {
+  if c.profile == "" { give false }
+  let i: int = 0
+  let ok: bool = true
+  loop {
+    if i >= devices.len { break }
+    if devices[i].id == "" { ok = false }
+    i = i + 1
+  }
+  give ok
+}
+
+proc subsystem_31_schedule(tasks: [Task]) -> int {
+  let total: int = 0

@@ -1,7 +1,10 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <exception>
+#include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace vitte::runtime {
 
@@ -81,6 +84,26 @@ struct VitteSlice {
     }
 };
 
+template <typename A, typename B>
+struct VittePair {
+    A first;
+    B second;
+
+    A& operator[](std::size_t idx) {
+        if (idx == 0) {
+            return first;
+        }
+        return second;
+    }
+
+    const A& operator[](std::size_t idx) const {
+        if (idx == 0) {
+            return first;
+        }
+        return second;
+    }
+};
+
 template <typename T>
 inline VitteSlice<T> list(T value) {
     void* mem = vitte::runtime::alloc(sizeof(T));
@@ -92,6 +115,11 @@ inline VitteSlice<T> list(T value) {
 template <typename T>
 inline VitteSlice<T> vitte_empty_slice() {
     return VitteSlice<T>{nullptr, 0};
+}
+
+template <typename A, typename B>
+inline VittePair<A, B> vitte_pair(A first, B second) {
+    return VittePair<A, B>{std::move(first), std::move(second)};
 }
 
 template <typename T>
@@ -118,6 +146,39 @@ inline VitteSlice<T> operator+(VitteSlice<T> lhs, VitteSlice<T> rhs) {
         out[lhs.len + i] = rhs.data[i];
     }
     return VitteSlice<T>{out, next_len};
+}
+
+template <typename F>
+struct VitteScopeExit {
+    F fn;
+    bool active = true;
+
+    explicit VitteScopeExit(F f)
+        : fn(std::move(f)) {}
+
+    VitteScopeExit(VitteScopeExit&& other) noexcept
+        : fn(std::move(other.fn)), active(other.active) {
+        other.active = false;
+    }
+
+    VitteScopeExit(const VitteScopeExit&) = delete;
+    VitteScopeExit& operator=(const VitteScopeExit&) = delete;
+
+    ~VitteScopeExit() {
+        if (active) {
+            fn();
+        }
+    }
+};
+
+template <typename F>
+inline VitteScopeExit<F> vitte_make_scope_exit(F fn) {
+    return VitteScopeExit<F>(std::move(fn));
+}
+
+[[noreturn]]
+inline void vitte_raise(VitteString msg) {
+    throw std::runtime_error(std::string(msg.data ? msg.data : "", msg.len));
 }
 
 template <typename T>

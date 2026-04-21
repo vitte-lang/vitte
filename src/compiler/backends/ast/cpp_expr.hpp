@@ -9,6 +9,7 @@ namespace vitte::backend::ast::cpp {
 /* ----------------------------------------
  * Forward declarations
  * ---------------------------------------- */
+struct CppStmt;
 struct CppType;
 
 /* ----------------------------------------
@@ -23,7 +24,8 @@ struct CppExpr {
         Call,
         Cast,
         Member,
-        Index
+        Index,
+        Lambda
     };
 
     Kind kind;
@@ -140,6 +142,16 @@ struct CppIndex : CppExpr {
         : CppExpr(Kind::Index),
           base(std::move(b)),
           index(std::move(i)) {}
+};
+
+/* ----------------------------------------
+ * Lambda expression
+ * ---------------------------------------- */
+struct CppLambda : CppExpr {
+    std::vector<std::unique_ptr<CppStmt>> body;
+
+    CppLambda()
+        : CppExpr(Kind::Lambda) {}
 };
 
 } // namespace vitte::backend::ast::cpp

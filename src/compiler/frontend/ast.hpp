@@ -104,6 +104,7 @@ enum class NodeKind {
     CallNoParenExpr,
     InvokeExpr,
     ListExpr,
+    ListCompExpr,
 
     // patterns
     IdentPattern,
@@ -117,6 +118,8 @@ enum class NodeKind {
     LetStmt,
     ExprStmt,
     ReturnStmt,
+    TryStmt,
+    RaiseStmt,
     IfStmt,
     LoopStmt,
     BreakStmt,
@@ -424,6 +427,32 @@ struct ListExpr : Expr {
     explicit ListExpr(std::vector<ExprId> items, SourceSpan span);
 };
 
+struct ListCompExpr : Expr {
+    enum class Kind {
+        List,
+        Set,
+        Dict
+    };
+
+    Kind kind;
+    ExprId key;
+    ExprId value;
+    std::optional<Ident> index_ident;
+    Ident ident;
+    ExprId iterable;
+    ExprId condition;
+
+    ListCompExpr(
+        Kind kind,
+        ExprId key,
+        ExprId value,
+        std::optional<Ident> index_ident,
+        Ident ident,
+        ExprId iterable,
+        ExprId condition,
+        SourceSpan span);
+};
+
 // ------------------------------------------------------------
 // Patterns
 // ------------------------------------------------------------
@@ -539,6 +568,20 @@ struct ReturnStmt : Stmt {
     explicit ReturnStmt(ExprId expr, SourceSpan span);
 };
 
+struct TryStmt : Stmt {
+    StmtId body;
+    StmtId except_body;
+    StmtId finally_body;
+
+    TryStmt(StmtId body, StmtId except_body, StmtId finally_body, SourceSpan span);
+};
+
+struct RaiseStmt : Stmt {
+    ExprId expr;
+
+    RaiseStmt(ExprId expr, SourceSpan span);
+};
+
 struct BlockStmt : Stmt {
     std::vector<StmtId> stmts;
 
@@ -576,8 +619,9 @@ struct ForStmt : Stmt {
     Ident ident;
     ExprId iterable;
     StmtId body;
+    bool tuple_destructure;
 
-    ForStmt(std::optional<Ident> index_ident, Ident ident, ExprId iterable, StmtId body, SourceSpan span);
+    ForStmt(std::optional<Ident> index_ident, Ident ident, ExprId iterable, StmtId body, bool tuple_destructure, SourceSpan span);
 };
 
 struct WhenStmt : Stmt {

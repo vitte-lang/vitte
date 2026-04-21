@@ -176,6 +176,24 @@ InvokeExpr::InvokeExpr(
 ListExpr::ListExpr(std::vector<ExprId> items, SourceSpan sp)
     : Expr(NodeKind::ListExpr, sp), items(std::move(items)) {}
 
+ListCompExpr::ListCompExpr(
+    Kind kind_in,
+    ExprId key_in,
+    ExprId v,
+    std::optional<Ident> idx,
+    Ident id,
+    ExprId it,
+    ExprId cond,
+    SourceSpan sp)
+    : Expr(NodeKind::ListCompExpr, sp),
+      kind(kind_in),
+      key(key_in),
+      value(v),
+      index_ident(std::move(idx)),
+      ident(std::move(id)),
+      iterable(it),
+      condition(cond) {}
+
 // ------------------------------------------------------------
 // Patterns
 // ------------------------------------------------------------
@@ -269,6 +287,15 @@ ExprStmt::ExprStmt(ExprId e, SourceSpan sp)
 ReturnStmt::ReturnStmt(ExprId e, SourceSpan sp)
     : Stmt(NodeKind::ReturnStmt, sp), expr(e) {}
 
+TryStmt::TryStmt(StmtId b, StmtId e, StmtId f, SourceSpan sp)
+    : Stmt(NodeKind::TryStmt, sp),
+      body(b),
+      except_body(e),
+      finally_body(f) {}
+
+RaiseStmt::RaiseStmt(ExprId e, SourceSpan sp)
+    : Stmt(NodeKind::RaiseStmt, sp), expr(e) {}
+
 BlockStmt::BlockStmt(std::vector<StmtId> s, SourceSpan sp)
     : Stmt(NodeKind::BlockStmt, sp), stmts(std::move(s)) {}
 
@@ -291,12 +318,13 @@ BreakStmt::BreakStmt(SourceSpan sp)
 ContinueStmt::ContinueStmt(SourceSpan sp)
     : Stmt(NodeKind::ContinueStmt, sp) {}
 
-ForStmt::ForStmt(std::optional<Ident> idx, Ident id, ExprId it, StmtId b, SourceSpan sp)
+ForStmt::ForStmt(std::optional<Ident> idx, Ident id, ExprId it, StmtId b, bool tuple_destructure_in, SourceSpan sp)
     : Stmt(NodeKind::ForStmt, sp),
       index_ident(std::move(idx)),
       ident(std::move(id)),
       iterable(it),
-      body(b) {}
+      body(b),
+      tuple_destructure(tuple_destructure_in) {}
 WhenStmt::WhenStmt(PatternId p, ExprId g, StmtId b, SourceSpan sp)
     : Stmt(NodeKind::WhenStmt, sp),
       pattern(p),
@@ -482,6 +510,7 @@ const char* to_string(NodeKind kind) {
         case NodeKind::CallNoParenExpr: return "CallNoParenExpr";
         case NodeKind::InvokeExpr: return "InvokeExpr";
         case NodeKind::ListExpr: return "ListExpr";
+        case NodeKind::ListCompExpr: return "ListCompExpr";
         case NodeKind::IdentPattern: return "IdentPattern";
         case NodeKind::CtorPattern: return "CtorPattern";
         case NodeKind::WildcardPattern: return "WildcardPattern";
@@ -491,6 +520,8 @@ const char* to_string(NodeKind kind) {
         case NodeKind::LetStmt: return "LetStmt";
         case NodeKind::ExprStmt: return "ExprStmt";
         case NodeKind::ReturnStmt: return "ReturnStmt";
+        case NodeKind::TryStmt: return "TryStmt";
+        case NodeKind::RaiseStmt: return "RaiseStmt";
         case NodeKind::IfStmt: return "IfStmt";
         case NodeKind::LoopStmt: return "LoopStmt";
         case NodeKind::BreakStmt: return "BreakStmt";
@@ -834,6 +865,26 @@ static void append_node_json(const AstContext& ctx,
             children = n.items;
             break;
         }
+        case NodeKind::ListCompExpr: {
+            const auto& n = ctx.get<ListCompExpr>(id);
+            os << "\"kind\":";
+            append_json_string(os, n.kind == ListCompExpr::Kind::List
+                ? "List"
+                : (n.kind == ListCompExpr::Kind::Set ? "Set" : "Dict"));
+            os << ",\"ident\":";
+            append_json_string(os, n.ident.name);
+            if (n.index_ident.has_value()) {
+                os << ",\"index_ident\":";
+                append_json_string(os, n.index_ident->name);
+            }
+            if (n.key != kInvalidAstId) {
+                children.push_back(n.key);
+            }
+            children.push_back(n.value);
+            children.push_back(n.iterable);
+            children.push_back(n.condition);
+            break;
+        }
         case NodeKind::IdentPattern: {
             const auto& n = ctx.get<IdentPattern>(id);
             os << "\"name\":";
@@ -912,6 +963,18 @@ static void append_node_json(const AstContext& ctx,
             }
             break;
         }
+        case NodeKind::TryStmt: {
+            const auto& n = ctx.get<TryStmt>(id);
+            children.push_back(n.body);
+            children.push_back(n.except_body);
+            children.push_back(n.finally_body);
+            break;
+        }
+        case NodeKind::RaiseStmt: {
+            const auto& n = ctx.get<RaiseStmt>(id);
+            children.push_back(n.expr);
+            break;
+        }
         case NodeKind::IfStmt: {
             const auto& n = ctx.get<IfStmt>(id);
             children.push_back(n.cond);
@@ -933,7 +996,8 @@ static void append_node_json(const AstContext& ctx,
                 os << "\"index_ident\":";
                 append_json_string(os, n.index_ident->name);
             }
-            os << "\"ident\":";
+            os << ",\"tuple_destructure\":" << (n.tuple_destructure ? "true" : "false");
+            os << ",\"ident\":";
             append_json_string(os, n.ident.name);
             children.push_back(n.iterable);
             children.push_back(n.body);

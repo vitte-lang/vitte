@@ -85,6 +85,13 @@ static void disambiguate_expr(AstContext& ctx, ExprId expr_id) {
             }
             break;
         }
+        case NodeKind::ListCompExpr: {
+            auto& list = static_cast<ListCompExpr&>(node);
+            disambiguate_expr(ctx, list.value);
+            disambiguate_expr(ctx, list.iterable);
+            disambiguate_expr(ctx, list.condition);
+            break;
+        }
         case NodeKind::CallNoParenExpr: {
             auto& cnp = static_cast<CallNoParenExpr&>(node);
             disambiguate_expr(ctx, cnp.arg);
@@ -147,6 +154,18 @@ static void disambiguate_stmt(AstContext& ctx, StmtId stmt_id) {
         }
         case NodeKind::ReturnStmt: {
             auto& s = static_cast<ReturnStmt&>(node);
+            disambiguate_expr(ctx, s.expr);
+            break;
+        }
+        case NodeKind::TryStmt: {
+            auto& s = static_cast<TryStmt&>(node);
+            disambiguate_stmt(ctx, s.body);
+            disambiguate_stmt(ctx, s.except_body);
+            disambiguate_stmt(ctx, s.finally_body);
+            break;
+        }
+        case NodeKind::RaiseStmt: {
+            auto& s = static_cast<RaiseStmt&>(node);
             disambiguate_expr(ctx, s.expr);
             break;
         }

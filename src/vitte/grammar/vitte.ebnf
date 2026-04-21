@@ -10,6 +10,7 @@ toplevel ::= space_decl
           | const_decl
           | type_alias_decl
           | form_decl
+          | class_decl
           | pick_decl
           | proc_decl
           | entry_decl
@@ -24,6 +25,8 @@ const_decl ::= "const" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
 type_alias_decl ::= "type" WS1 ident [ "[" WS? ident_list WS? "]" ] WS? "=" WS? type_expr ;
 
 form_decl ::= "form" WS1 ident [ "[" WS? ident_list WS? "]" ] WS?
+             "{" WS? field_list? WS? "}" ;
+class_decl ::= "class" WS1 ident [ "[" WS? ident_list WS? "]" ] WS?
              "{" WS? field_list? WS? "}" ;
 field_list ::= field_item { WS? "," WS? field_item } ;
 field_item ::= ident WS? ":" WS? type_expr ;
@@ -69,6 +72,8 @@ stmt ::= let_stmt
        | make_stmt
        | set_stmt
        | give_stmt
+       | return_stmt
+       | try_stmt
        | emit_stmt
        | if_stmt
        | while_stmt
@@ -89,10 +94,13 @@ set_stmt  ::= "set" WS1 assign_target WS? "=" WS? expr ;
 assign_target ::= postfix_expr ;
 
 give_stmt ::= "give" WS1 expr ;
+return_stmt ::= "return" [ WS1 expr ] ;
+try_stmt ::= "try" WS? block_body [ WS? "except" WS? block_body ] [ WS? "finally" WS? block_body ] ;
 emit_stmt ::= "emit" WS1 expr ;
 
 if_stmt ::= "if" WS1 expr WS? block_body
-            [ WS? "else" WS? ( block_body | if_stmt ) ] ;
+            [ WS? ( "elif" WS1 expr WS? block_body [ WS? "else" WS? ( block_body | if_stmt ) ]
+                  | "else" WS? ( block_body | if_stmt ) ) ] ;
 while_stmt ::= "while" WS1 expr WS? block ;
 for_stmt ::= "for" WS1 ident WS1 "in" WS1 expr WS? block ;
 
@@ -146,7 +154,9 @@ primary ::= literal
 arg_list ::= expr { WS? "," WS? expr } ;
 tuple_lit ::= "(" WS? expr WS? "," WS? expr { WS? "," WS? expr } WS? ")" ;
 set_lit ::= "set" WS? "{" WS? arg_list? WS? "}" ;
-if_expr ::= "if" WS1 expr WS? block_body [ WS? "else" WS? ( block_body | if_expr ) ] ;
+if_expr ::= "if" WS1 expr WS? block_body
+            [ WS? ( "elif" WS1 expr WS? block_body [ WS? "else" WS? ( block_body | if_expr ) ]
+                  | "else" WS? ( block_body | if_expr ) ) ] ;
 proc_expr ::= { attr_prefix WS? } "proc" WS? "(" WS? param_list? WS? ")" WS? [ "->" WS? type_expr ] WS? block_body ;
 
 <<< ——————————————————— ) ( Patterns / Types / Literals ) ( ——————————————————— >>>
@@ -166,7 +176,8 @@ type_primary ::= ident { "." ident } [ "[" WS? type_list? WS? "]" ]
                | "i32" | "i64" | "i128" | "u32" | "u64" | "u128" ;
 
 literal ::= bool_lit | int_lit | float_lit | char_lit | string_lit | list_lit ;
-list_lit ::= "[" WS? arg_list? WS? "]" ;
+list_lit ::= "[" WS? ( list_comp | arg_list? ) WS? "]" ;
+list_comp ::= expr WS1 "for" WS1 ident [ WS? "," WS? ident ] WS1 "in" WS1 expr [ WS1 "if" WS1 expr ] ;
 bool_lit ::= "true" | "false" ;
 int_lit ::= [ "-" ] DIGIT { DIGIT | "_" } [ suffix ]
           | [ "-" ] "0x" HEXDIGIT { HEXDIGIT | "_" } ;

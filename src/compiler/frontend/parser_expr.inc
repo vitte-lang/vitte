@@ -93,6 +93,11 @@ static bool is_toplevel_sync_kind(TokenKind kind) {
         case TokenKind::KwConst:
         case TokenKind::KwType:
         case TokenKind::KwForm:
+        case TokenKind::KwClass:
+        case TokenKind::KwTry:
+        case TokenKind::KwExcept:
+        case TokenKind::KwFinally:
+        case TokenKind::KwRaise:
         case TokenKind::KwPick:
         case TokenKind::KwProc:
         case TokenKind::KwEntry:
@@ -118,6 +123,11 @@ static bool is_stmt_sync_kind(TokenKind kind) {
         case TokenKind::KwAsm:
         case TokenKind::KwUnsafe:
         case TokenKind::KwIf:
+        case TokenKind::KwElif:
+        case TokenKind::KwTry:
+        case TokenKind::KwExcept:
+        case TokenKind::KwFinally:
+        case TokenKind::KwRaise:
         case TokenKind::KwLoop:
         case TokenKind::KwFor:
         case TokenKind::KwBreak:
@@ -320,14 +330,11 @@ ExprId Parser::parse_primary() {
     }
 
     if (current_.kind == TokenKind::LBracket) {
-        advance();
-        std::vector<ExprId> items;
-        if (current_.kind != TokenKind::RBracket) {
-            items = parse_arg_list();
-        }
-        expect(TokenKind::RBracket, "expected ']'");
-        span.end = previous_.span.end;
-        return ast_ctx_.make<ListExpr>(std::move(items), span);
+        return parse_list_literal_or_comp_expr();
+    }
+
+    if (current_.kind == TokenKind::LBrace) {
+        return parse_brace_literal_or_comp_expr();
     }
 
     if (current_.kind == TokenKind::LParen) {
@@ -359,6 +366,42 @@ ExprId Parser::parse_postfix_expr(ExprId base) {
             SourceSpan span = ast_ctx_.get<Expr>(expr).span;
             span.end = member.span.end;
             expr = ast_ctx_.make<MemberExpr>(expr, std::move(member), span);
+            continue;
+        }
+        if (current_.kind == TokenKind::LBrace && looks_like_type_constructor_head(expr)) {
+            const auto& head = ast_ctx_.get<Expr>(expr);
+            TypeId ctor_type = ast::kInvalidAstId;
+            if (head.kind == NodeKind::IdentExpr) {
+                const auto& ident = static_cast<const IdentExpr&>(head).ident;
+                ctor_type = ast_ctx_.make<NamedType>(Ident(ident.name, ident.span), ident.span);
+            } else if (head.kind == NodeKind::MemberExpr) {
+                const auto& member = static_cast<const MemberExpr&>(head);
+                if (member.base != ast::kInvalidAstId) {
+                    const auto& base_node = ast_ctx_.get<Expr>(member.base);
+                    if (base_node.kind == NodeKind::IdentExpr) {
+                        const auto& base = static_cast<const IdentExpr&>(base_node).ident;
+                        std::string qualified = base.name + "." + member.member.name;
+                        ctor_type = ast_ctx_.make<NamedType>(Ident(std::move(qualified), head.span), head.span);
+                    }
+                }
+            }
+            if (ctor_type == ast::kInvalidAstId) {
+                break;
+            }
+            SourceSpan span = ast_ctx_.get<Expr>(expr).span;
+            expect(TokenKind::LBrace, "expected '{'");
+            std::vector<InvokeArg> args;
+            if (current_.kind != TokenKind::RBrace) {
+                args = parse_call_arg_list();
+            }
+            expect(TokenKind::RBrace, "expected '}'");
+            span.end = previous_.span.end;
+            expr = ast_ctx_.make<InvokeExpr>(
+                ast::kInvalidAstId,
+                ctor_type,
+                std::vector<TypeId>{},
+                std::move(args),
+                span);
             continue;
         }
         if (current_.kind == TokenKind::LParen) {
@@ -737,26 +780,180 @@ ExprId Parser::parse_proc_expr() {
 
 ExprId Parser::parse_if_expr() {
     SourceSpan span = current_.span;
-    expect(TokenKind::KwIf, "expected 'if'");
+    if (!match(TokenKind::KwIf)) {
+        expect(TokenKind::KwElif, "expected 'if'");
+    }
     ExprId cond = parse_expr();
     StmtId then_block = parse_block();
     StmtId else_block = ast::kInvalidAstId;
-    if (match(TokenKind::KwElse) || match(TokenKind::KwOtherwise)) {
-        if (current_.kind == TokenKind::KwIf) {
-            ExprId else_expr = parse_if_expr();
-            SourceSpan expr_span = else_expr != ast::kInvalidAstId
-                ? ast_ctx_.get<Expr>(else_expr).span
-                : current_.span;
-            StmtId expr_stmt = ast_ctx_.make<ExprStmt>(else_expr, expr_span);
-            std::vector<StmtId> stmts;
-            stmts.push_back(expr_stmt);
-            else_block = ast_ctx_.make<BlockStmt>(std::move(stmts), expr_span);
-        } else {
-            else_block = parse_block();
+    auto wrap_if_branch = [&](ExprId nested_if) -> StmtId {
+        SourceSpan expr_span = nested_if != ast::kInvalidAstId
+            ? ast_ctx_.get<Expr>(nested_if).span
+            : current_.span;
+        StmtId expr_stmt = ast_ctx_.make<ExprStmt>(nested_if, expr_span);
+        std::vector<StmtId> stmts;
+        stmts.push_back(expr_stmt);
+        return ast_ctx_.make<BlockStmt>(std::move(stmts), expr_span);
+    };
+    auto parse_else_branch = [&]() -> StmtId {
+        if (current_.kind == TokenKind::KwIf || current_.kind == TokenKind::KwElif) {
+            return wrap_if_branch(parse_if_expr());
         }
+        return parse_block();
+    };
+    if (current_.kind == TokenKind::KwElif) {
+        else_block = wrap_if_branch(parse_if_expr());
+    } else if (match(TokenKind::KwElse) || match(TokenKind::KwOtherwise)) {
+        else_block = parse_else_branch();
     }
     span.end = previous_.span.end;
     return ast_ctx_.make<IfExpr>(cond, then_block, else_block, span);
+}
+
+ExprId Parser::parse_list_literal_or_comp_expr() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::LBracket, "expected '['");
+    if (current_.kind == TokenKind::RBracket) {
+        advance();
+        span.end = previous_.span.end;
+        return ast_ctx_.make<ListExpr>(std::vector<ExprId>{}, span);
+    }
+
+    ExprId first = parse_expr();
+    if (current_.kind == TokenKind::KwFor) {
+        advance();
+        std::optional<Ident> index_ident;
+        Ident ident = parse_ident();
+        if (match(TokenKind::Comma)) {
+            index_ident = std::move(ident);
+            ident = parse_ident();
+        }
+        expect(TokenKind::KwIn, "expected 'in'");
+        ExprId iterable = parse_expr();
+        ExprId condition = ast::kInvalidAstId;
+        if (match(TokenKind::KwIf)) {
+            condition = parse_expr();
+        }
+        expect(TokenKind::RBracket, "expected ']'");
+        span.end = previous_.span.end;
+        return ast_ctx_.make<ListCompExpr>(
+            ListCompExpr::Kind::List,
+            ast::kInvalidAstId,
+            first,
+            std::move(index_ident),
+            std::move(ident),
+            iterable,
+            condition,
+            span);
+    }
+
+    std::vector<ExprId> items;
+    items.push_back(first);
+    while (match(TokenKind::Comma)) {
+        if (current_.kind == TokenKind::RBracket) {
+            break;
+        }
+        items.push_back(parse_expr());
+    }
+    expect(TokenKind::RBracket, "expected ']'");
+    span.end = previous_.span.end;
+    return ast_ctx_.make<ListExpr>(std::move(items), span);
+}
+
+ExprId Parser::parse_brace_literal_or_comp_expr() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::LBrace, "expected '{'");
+    if (current_.kind == TokenKind::RBrace) {
+        advance();
+        span.end = previous_.span.end;
+        return ast_ctx_.make<ListExpr>(std::vector<ExprId>{}, span);
+    }
+
+    ExprId first = parse_expr();
+    if (current_.kind == TokenKind::Colon) {
+        advance();
+        ExprId value = parse_expr();
+        if (current_.kind == TokenKind::KwFor) {
+            advance();
+            std::optional<Ident> index_ident;
+            Ident ident = parse_ident();
+            if (match(TokenKind::Comma)) {
+                index_ident = std::move(ident);
+                ident = parse_ident();
+            }
+            expect(TokenKind::KwIn, "expected 'in'");
+            ExprId iterable = parse_expr();
+            ExprId condition = ast::kInvalidAstId;
+            if (match(TokenKind::KwIf)) {
+                condition = parse_expr();
+            }
+            expect(TokenKind::RBrace, "expected '}'");
+            span.end = previous_.span.end;
+            return ast_ctx_.make<ListCompExpr>(
+                ListCompExpr::Kind::Dict,
+                first,
+                value,
+                std::move(index_ident),
+                std::move(ident),
+                iterable,
+                condition,
+                span);
+        }
+        std::vector<ExprId> items;
+        items.push_back(first);
+        items.push_back(value);
+        while (match(TokenKind::Comma)) {
+            if (current_.kind == TokenKind::RBrace) {
+                break;
+            }
+            items.push_back(parse_expr());
+            if (!match(TokenKind::Colon)) {
+                break;
+            }
+            items.push_back(parse_expr());
+        }
+        expect(TokenKind::RBrace, "expected '}'");
+        span.end = previous_.span.end;
+        return ast_ctx_.make<ListExpr>(std::move(items), span);
+    }
+    if (current_.kind == TokenKind::KwFor) {
+        advance();
+        std::optional<Ident> index_ident;
+        Ident ident = parse_ident();
+        if (match(TokenKind::Comma)) {
+            index_ident = std::move(ident);
+            ident = parse_ident();
+        }
+        expect(TokenKind::KwIn, "expected 'in'");
+        ExprId iterable = parse_expr();
+        ExprId condition = ast::kInvalidAstId;
+        if (match(TokenKind::KwIf)) {
+            condition = parse_expr();
+        }
+        expect(TokenKind::RBrace, "expected '}'");
+        span.end = previous_.span.end;
+        return ast_ctx_.make<ListCompExpr>(
+            ListCompExpr::Kind::Set,
+            ast::kInvalidAstId,
+            first,
+            std::move(index_ident),
+            std::move(ident),
+            iterable,
+            condition,
+            span);
+    }
+
+    std::vector<ExprId> items;
+    items.push_back(first);
+    while (match(TokenKind::Comma)) {
+        if (current_.kind == TokenKind::RBrace) {
+            break;
+        }
+        items.push_back(parse_expr());
+    }
+    expect(TokenKind::RBrace, "expected '}'");
+    span.end = previous_.span.end;
+    return ast_ctx_.make<ListExpr>(std::move(items), span);
 }
 
 std::vector<ExprId> Parser::parse_arg_list() {

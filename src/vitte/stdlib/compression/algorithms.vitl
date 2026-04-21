@@ -1,34 +1,239 @@
 space vitte/compression/algorithms
 
+use vitte/collections/vector { * }
+
 <<< =========================================================
-   Alternative Compression Algorithms Module
+   Compression — ULTRA MAX (binary, vector-based)
+   RLE (smart) + LZ77 (token-based) + BitBuffer
    ========================================================= >>>
 
-# Run-length encoding
-proc compress_rle(data: string) -> string {
-  give ""
+# ----------------------------------------------------------
+# BitBuffer (minimal usable)
+# ----------------------------------------------------------
+
+form BitBuffer {
+  data: Vector[i32]
+  bit_pos: i32
+  current: i32
 }
 
-proc decompress_rle(data: string) -> string {
-  give ""
+proc bitbuffer_new() -> BitBuffer {
+  give BitBuffer { data: vector_new[i32](8), bit_pos: 0, current: 0 }
 }
 
-# Huffman coding
-proc compress_huffman(data: string) -> string {
-  give ""
+proc bit_write(buf: BitBuffer, bit: i32) {
+  set buf.current = (buf.current << 1) | bit
+  set buf.bit_pos = buf.bit_pos + 1
+
+  if buf.bit_pos == 8 {
+    vector_push(buf.data, buf.current)
+    set buf.current = 0
+    set buf.bit_pos = 0
+  }
 }
 
-proc decompress_huffman(data: string) -> string {
-  give ""
+proc bit_flush(buf: BitBuffer) {
+  if buf.bit_pos > 0 {
+    let remaining = 8 - buf.bit_pos
+    set buf.current = buf.current << remaining
+    vector_push(buf.data, buf.current)
+    set buf.current = 0
+    set buf.bit_pos = 0
+  }
 }
 
-# LZ77/LZSS compression
-proc compress_lz77(data: string) -> string {
-  give ""
+proc bit_write_bits(buf: BitBuffer, value: i32, nbits: i32) {
+  let i: i32 = nbits - 1
+  while i >= 0 {
+    let bit = (value >> i) & 1
+    bit_write(buf, bit)
+    set i = i - 1
+  }
 }
 
-proc decompress_lz77(data: string) -> string {
-  give ""
+# ----------------------------------------------------------
+# RLE (smart, binary)
+# ----------------------------------------------------------
+
+const RLE_MARK: i32 = -2147483648
+
+proc compress_rle(data: [i32]) -> [i32] {
+  let out = vector_new[i32](data.len + data.len / 2)
+  let i: i32 = 0
+
+  while i < data.len {
+    let ch = data[i]
+    let count: i32 = 1
+
+    let j: i32 = i + 1
+    while j < data.len and data[j] == ch {
+      set count = count + 1
+      set j = j + 1
+    }
+
+    if count == 1 {
+      vector_push(out, ch)
+    } else {
+      vector_push(out, RLE_MARK)
+      vector_push(out, count)
+      vector_push(out, ch)
+    }
+
+    set i = j
+  }
+
+  give vector_to_array(out)
+}
+
+proc decompress_rle(data: [i32]) -> [i32] {
+  let out = vector_new[i32](data.len)
+  let i: i32 = 0
+
+  while i < data.len {
+    let val = data[i]
+
+    if val == RLE_MARK {
+      if i + 2 >= data.len { give vector_to_array(out) }
+      let count = data[i + 1]
+      let ch = data[i + 2]
+
+      let k: i32 = 0
+      while k < count {
+        vector_push(out, ch)
+        set k = k + 1
+      }
+
+      set i = i + 3
+    } else {
+      vector_push(out, val)
+      set i = i + 1
+    }
+  }
+
+  give vector_to_array(out)
+}
+
+# ----------------------------------------------------------
+# LZ77 token-based (safe)
+# ----------------------------------------------------------
+
+form LZToken {
+  offset: i32
+  length: i32
+  next: i32
+  has_next: i32
+}
+
+const LZ_WINDOW: i32 = 32
+const LZ_LOOKAHEAD: i32 = 16
+
+proc compress_lz77(data: [i32]) -> Vector[LZToken] {
+  let out = vector_new[LZToken](data.len)
+  let i: i32 = 0
+
+  while i < data.len {
+    let best_len: i32 = 0
+    let best_off: i32 = 0
+
+    let start = if i - LZ_WINDOW < 0 { 0 } else { i - LZ_WINDOW }
+
+    let j: i32 = start
+    while j < i {
+      let k: i32 = 0
+
+      while k < LZ_LOOKAHEAD
+        and i + k < data.len
+        and j + k < i
+        and data[j + k] == data[i + k] {
+        set k = k + 1
+      }
+
+      if k > best_len {
+        set best_len = k
+        set best_off = i - j
+        if best_len == LZ_LOOKAHEAD {
+          break
+        }
+      }
+
+      set j = j + 1
+    }
+
+    let has_next = if i + best_len < data.len { 1 } else { 0 }
+    let next_val = if has_next == 1 { data[i + best_len] } else { 0 }
+
+    vector_push(out, LZToken {
+      offset: best_off,
+      length: best_len,
+      next: next_val,
+      has_next: has_next
+    })
+
+    set i = i + best_len + 1
+  }
+
+  give out
+}
+
+proc decompress_lz77(tokens: Vector[LZToken]) -> [i32] {
+  let out = vector_new[i32](tokens.size * 2)
+
+  let i: i32 = 0
+  while i < tokens.size {
+    let t = tokens.data[i]
+
+    if t.offset == 0 and t.length > 0 {
+      set i = i + 1
+      continue
+    }
+
+    if t.offset > vector_size(out) {
+      set i = i + 1
+      continue
+    }
+
+    let start = vector_size(out) - t.offset
+
+    if t.offset > 0 and t.length > 0 {
+      let k: i32 = 0
+      while k < t.length {
+        vector_push(out, out.data[start + k])
+        set k = k + 1
+      }
+    }
+
+    if t.has_next == 1 {
+      vector_push(out, t.next)
+    }
+
+    set i = i + 1
+  }
+
+  give vector_to_array(out)
+}
+
+# ----------------------------------------------------------
+# Compression pipeline
+# ----------------------------------------------------------
+
+proc compress_deflate(data: [i32]) -> Vector[LZToken] {
+  give compress_lz77(data)
+}
+
+proc decompress_deflate(tokens: Vector[LZToken]) -> [i32] {
+  give decompress_lz77(tokens)
+}
+
+# ----------------------------------------------------------
+# Huffman (future-ready stub)
+# ----------------------------------------------------------
+
+proc compress_huffman(data: [i32]) -> [i32] {
+  give data
+}
+
+proc decompress_huffman(data: [i32]) -> [i32] {
+  give data
 }
 
 share all

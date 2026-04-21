@@ -1052,25 +1052,25 @@ static int run_grammar_check() {
         }
     }
 
-    const int corpus_rc = std::system("python3 book/grammar/scripts/validate_examples.py");
+    const int corpus_rc = std::system("python3 docs/book/grammar/scripts/validate_examples.py");
     if (corpus_rc != 0) {
         std::cerr << "[grammar] error: corpus/diagnostics validation failed\n";
         ok = false;
     }
 
-    const int railroad_rc = std::system("python3 book/grammar/scripts/build_railroad.py --check");
+    const int railroad_rc = std::system("python3 docs/book/grammar/scripts/build_railroad.py --check");
     if (railroad_rc != 0) {
         std::cerr << "[grammar] error: railroad artifacts are out of date\n";
         ok = false;
     }
 
-    const int pest_rc = std::system("python3 book/grammar/scripts/sync_pest.py --check");
+    const int pest_rc = std::system("python3 docs/book/grammar/scripts/sync_pest.py --check");
     if (pest_rc != 0) {
         std::cerr << "[grammar] error: vitte.pest is out of sync with vitte.ebnf\n";
         ok = false;
     }
 
-    const int precedence_rc = std::system("python3 book/grammar/scripts/sync_precedence.py --check");
+    const int precedence_rc = std::system("python3 docs/book/grammar/scripts/sync_precedence.py --check");
     if (precedence_rc != 0) {
         std::cerr << "[grammar] error: precedence table artifact is out of sync\n";
         ok = false;

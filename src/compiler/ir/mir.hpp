@@ -73,6 +73,7 @@ enum class MirKind {
     UnsafeBegin,
     UnsafeEnd,
     Return,
+    Try,
 
     // control flow
     Goto,
@@ -269,6 +270,17 @@ struct MirReturn : MirInstr {
 
     MirReturn(MirValuePtr value,
               vitte::frontend::ast::SourceSpan span);
+};
+
+struct MirTry : MirInstr {
+    MirBlockId body;
+    MirBlockId except_body;
+    MirBlockId finally_body;
+
+    MirTry(MirBlockId body,
+           MirBlockId except_body,
+           MirBlockId finally_body,
+           vitte::frontend::ast::SourceSpan span);
 };
 
 // ------------------------------------------------------------

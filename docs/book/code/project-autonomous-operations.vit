@@ -1,0 +1,377 @@
+<<<
+project-autonomous-operations.vit
+package demo/project_autonomous_operations
+>>>
+
+space demo/project_autonomous_operations
+
+use vitte/abi as m1
+use vitte/actor as m2
+use vitte/alerts as m3
+use vitte/alloc as m4
+use vitte/array as m5
+use vitte/ast as m6
+use vitte/async as m7
+use vitte/audio as m8
+use vitte/audit as m9
+use vitte/auth as m10
+use vitte/bench as m11
+use vitte/borrow as m12
+use vitte/bulkhead as m13
+use vitte/cache as m14
+use vitte/channel as m15
+use vitte/circuit_breaker as m16
+use vitte/cli as m17
+use vitte/codec as m18
+use vitte/codegen as m19
+use vitte/codegen/cranelift as m20
+use vitte/codegen/gcc as m21
+use vitte/codegen/llvm as m22
+use vitte/collections as m23
+use vitte/config as m24
+use vitte/config_derive as m25
+use vitte/const_eval as m26
+use vitte/contracts as m27
+use vitte/core as m28
+use vitte/crypto as m29
+use vitte/datetime as m30
+use vitte/db as m31
+use vitte/doc as m32
+use vitte/ecs as m33
+use vitte/env as m34
+use vitte/eval as m35
+use vitte/feature_flags as m36
+use vitte/ffi as m37
+use vitte/fixtures as m38
+use vitte/fs as m39
+use vitte/graph as m40
+use vitte/gui as m41
+use vitte/hash as m42
+use vitte/health as m43
+use vitte/hir as m44
+use vitte/http as m45
+use vitte/http_client as m46
+use vitte/idempotency as m47
+use vitte/image as m48
+use vitte/indexmap as m49
+use vitte/io as m50
+use vitte/jobs as m51
+use vitte/jsonpath as m52
+use vitte/jwt as m53
+use vitte/kv as m54
+use vitte/lint as m55
+use vitte/log as m56
+use vitte/lru as m57
+use vitte/lsp as m58
+use vitte/macros as m59
+use vitte/math as m60
+use vitte/migrate as m61
+use vitte/mir as m62
+use vitte/ml as m63
+use vitte/mock_http as m64
+use vitte/monomorphize as m65
+use vitte/net as m66
+use vitte/observability as m67
+use vitte/openapi as m68
+use vitte/orm as m69
+use vitte/outbox as m70
+use vitte/pack as m71
+use vitte/pagination as m72
+use vitte/pathlib as m73
+use vitte/pickle as m74
+use vitte/plot as m75
+use vitte/plugin as m76
+use vitte/policy as m77
+use vitte/process as m78
+use vitte/queue as m79
+use vitte/random_secure as m80
+use vitte/rate_limit as m81
+use vitte/reflect as m82
+use vitte/registry as m83
+use vitte/requests as m84
+use vitte/retry as m85
+use vitte/rope as m86
+use vitte/runtime as m87
+use vitte/saga as m88
+use vitte/scheduler as m89
+use vitte/schema_registry as m90
+use vitte/search as m91
+use vitte/secrets as m92
+use vitte/serialize as m93
+use vitte/shell as m94
+use vitte/slab as m95
+use vitte/slo as m96
+use vitte/sql as m97
+use vitte/stats as m98
+use vitte/std as m99
+use vitte/stream as m100
+use vitte/subprocess as m101
+use vitte/template as m102
+use vitte/tenant as m103
+use vitte/test as m104
+use vitte/test/internal as m105
+use vitte/timeout as m106
+use vitte/tls as m107
+use vitte/trace as m108
+use vitte/typeck as m109
+use vitte/video as m110
+use vitte/ws as m111
+use vitte/yaml as m112
+
+form PlatformContext {
+  name: string
+  version: string
+  profile: string
+  region: string
+}
+
+form ServiceNode {
+  id: string
+  role: string
+  health: string
+  latency_ms: int
+}
+
+form RiskEvent {
+  code: string
+  severity: string
+  message: string
+}
+
+pick PipelineState {
+  case Booting(step: string)
+  case Running(stage: string)
+  case Degraded(reason: string)
+  case Halted(reason: string)
+}
+
+proc project_title() -> string {
+  give "Autonomous Operations"
+}
+
+proc build_context() -> PlatformContext {
+  give PlatformContext(
+    "Autonomous Operations",
+    "2.1.1",
+    "desktop",
+    "global"
+  )
+}
+
+proc bootstrap_nodes() -> [ServiceNode] {
+  let nodes: [ServiceNode] = []
+  give nodes
+}
+
+proc domain_primary() -> string {
+  give "distributed operations"
+}
+
+proc domain_secondary() -> string {
+  give "incident-aware orchestration"
+}
+
+proc ingest_layer(ctx: PlatformContext) -> bool {
+  let ok: bool = true
+  if ctx.profile == "" { give false }
+  give ok
+}
+
+proc orchestration_layer(nodes: [ServiceNode]) -> bool {
+  let healthy: bool = true
+  let i: int = 0
+  loop {
+    if i >= nodes.len { break }
+    if nodes[i].health != "ok" { healthy = false }
+    i = i + 1
+  }
+  give healthy
+}
+
+proc security_layer(ctx: PlatformContext) -> bool {
+  if ctx.version == "" { give false }
+  give true
+}
+
+proc observability_layer(nodes: [ServiceNode]) -> int {
+  let total: int = 0
+  let i: int = 0
+  loop {
+    if i >= nodes.len { break }
+    total = total + nodes[i].latency_ms
+    i = i + 1
+  }
+  give total
+}
+
+proc governance_layer(ctx: PlatformContext) -> bool {
+  if ctx.region == "" { give false }
+  give true
+}
+
+proc risk_engine(nodes: [ServiceNode]) -> [RiskEvent] {
+  let out: [RiskEvent] = []
+  let i: int = 0
+  loop {
+    if i >= nodes.len { break }
+    if nodes[i].health != "ok" {
+      out = out.push(RiskEvent("RISK-NODE", "high", "node degraded"))
+    }
+    i = i + 1
+  }
+  give out
+}
+
+proc state_machine(ctx: PlatformContext, nodes: [ServiceNode]) -> PipelineState {
+  if ctx.name == "" { give PipelineState.Halted("invalid context") }
+  if !orchestration_layer(nodes) { give PipelineState.Degraded("cluster health") }
+  give PipelineState.Running("steady")
+}
+
+proc module_inventory() -> [string] {
+  let tags: [string] = []
+  tags = tags.push("vitte/abi")
+  tags = tags.push("vitte/actor")
+  tags = tags.push("vitte/alerts")
+  tags = tags.push("vitte/alloc")
+  tags = tags.push("vitte/array")
+  tags = tags.push("vitte/ast")
+  tags = tags.push("vitte/async")
+  tags = tags.push("vitte/audio")
+  tags = tags.push("vitte/audit")
+  tags = tags.push("vitte/auth")
+  tags = tags.push("vitte/bench")
+  tags = tags.push("vitte/borrow")
+  tags = tags.push("vitte/bulkhead")
+  tags = tags.push("vitte/cache")
+  tags = tags.push("vitte/channel")
+  tags = tags.push("vitte/circuit_breaker")
+  tags = tags.push("vitte/cli")
+  tags = tags.push("vitte/codec")
+  tags = tags.push("vitte/codegen")
+  tags = tags.push("vitte/codegen/cranelift")
+  tags = tags.push("vitte/codegen/gcc")
+  tags = tags.push("vitte/codegen/llvm")
+  tags = tags.push("vitte/collections")
+  tags = tags.push("vitte/config")
+  tags = tags.push("vitte/config_derive")
+  tags = tags.push("vitte/const_eval")
+  tags = tags.push("vitte/contracts")
+  tags = tags.push("vitte/core")
+  tags = tags.push("vitte/crypto")
+  tags = tags.push("vitte/datetime")
+  tags = tags.push("vitte/db")
+  tags = tags.push("vitte/doc")
+  tags = tags.push("vitte/ecs")
+  tags = tags.push("vitte/env")
+  tags = tags.push("vitte/eval")
+  tags = tags.push("vitte/feature_flags")
+  tags = tags.push("vitte/ffi")
+  tags = tags.push("vitte/fixtures")
+  tags = tags.push("vitte/fs")
+  tags = tags.push("vitte/graph")
+  tags = tags.push("vitte/gui")
+  tags = tags.push("vitte/hash")
+  tags = tags.push("vitte/health")
+  tags = tags.push("vitte/hir")
+  tags = tags.push("vitte/http")
+  tags = tags.push("vitte/http_client")
+  tags = tags.push("vitte/idempotency")
+  tags = tags.push("vitte/image")
+  tags = tags.push("vitte/indexmap")
+  tags = tags.push("vitte/io")
+  tags = tags.push("vitte/jobs")
+  tags = tags.push("vitte/jsonpath")
+  tags = tags.push("vitte/jwt")
+  tags = tags.push("vitte/kv")
+  tags = tags.push("vitte/lint")
+  tags = tags.push("vitte/log")
+  tags = tags.push("vitte/lru")
+  tags = tags.push("vitte/lsp")
+  tags = tags.push("vitte/macros")
+  tags = tags.push("vitte/math")
+  tags = tags.push("vitte/migrate")
+  tags = tags.push("vitte/mir")
+  tags = tags.push("vitte/ml")
+  tags = tags.push("vitte/mock_http")
+  tags = tags.push("vitte/monomorphize")
+  tags = tags.push("vitte/net")
+  tags = tags.push("vitte/observability")
+  tags = tags.push("vitte/openapi")
+  tags = tags.push("vitte/orm")
+  tags = tags.push("vitte/outbox")
+  tags = tags.push("vitte/pack")
+  tags = tags.push("vitte/pagination")
+  tags = tags.push("vitte/pathlib")
+  tags = tags.push("vitte/pickle")
+  tags = tags.push("vitte/plot")
+  tags = tags.push("vitte/plugin")
+  tags = tags.push("vitte/policy")
+  tags = tags.push("vitte/process")
+  tags = tags.push("vitte/queue")
+  tags = tags.push("vitte/random_secure")
+  tags = tags.push("vitte/rate_limit")
+  tags = tags.push("vitte/reflect")
+  tags = tags.push("vitte/registry")
+  tags = tags.push("vitte/requests")
+  tags = tags.push("vitte/retry")
+  tags = tags.push("vitte/rope")
+  tags = tags.push("vitte/runtime")
+  tags = tags.push("vitte/saga")
+  tags = tags.push("vitte/scheduler")
+  tags = tags.push("vitte/schema_registry")
+  tags = tags.push("vitte/search")
+  tags = tags.push("vitte/secrets")
+  tags = tags.push("vitte/serialize")
+  tags = tags.push("vitte/shell")
+  tags = tags.push("vitte/slab")
+  tags = tags.push("vitte/slo")
+  tags = tags.push("vitte/sql")
+  tags = tags.push("vitte/stats")
+  tags = tags.push("vitte/std")
+  tags = tags.push("vitte/stream")
+  tags = tags.push("vitte/subprocess")
+  tags = tags.push("vitte/template")
+  tags = tags.push("vitte/tenant")
+  tags = tags.push("vitte/test")
+  tags = tags.push("vitte/test/internal")
+  tags = tags.push("vitte/timeout")
+  tags = tags.push("vitte/tls")
+  tags = tags.push("vitte/trace")
+  tags = tags.push("vitte/typeck")
+  tags = tags.push("vitte/video")
+  tags = tags.push("vitte/ws")
+  tags = tags.push("vitte/yaml")
+  give tags
+}
+
+proc integration_contract() -> bool {
+  let tags = module_inventory()
+  if tags.len == 0 { give false }
+  give true
+}
+
+proc run_project() -> int {
+  let ctx = build_context()
+  let nodes = bootstrap_nodes()
+
+  if !ingest_layer(ctx) { give 10 }
+  if !security_layer(ctx) { give 20 }
+  if !governance_layer(ctx) { give 30 }
+
+  let _lat = observability_layer(nodes)
+  let _risk = risk_engine(nodes)
+  let st = state_machine(ctx, nodes)
+
+  match st {
+    case Running(stage) { give 0 }
+    case Degraded(reason) { give 2 }
+    case Booting(step) { give 1 }
+    case Halted(reason) { give 3 }
+    otherwise { give 9 }
+  }
+}
+
+entry main at core/app {
+  give run_project()
+}

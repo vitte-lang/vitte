@@ -110,6 +110,12 @@ DeclId Parser::parse_toplevel() {
     if (current_.kind == TokenKind::KwForm) {
         return parse_form_decl();
     }
+    if (current_.kind == TokenKind::KwClass) {
+        return parse_class_decl();
+    }
+    if (current_.kind == TokenKind::KwDef) {
+        return parse_proc_decl(std::move(attrs));
+    }
     if (current_.kind == TokenKind::KwPick) {
         return parse_pick_decl();
     }
@@ -463,6 +469,52 @@ DeclId Parser::parse_form_decl() {
     return ast_ctx_.make<FormDecl>(std::move(name), std::move(type_params), std::move(fields), span);
 }
 
+DeclId Parser::parse_class_decl() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwClass, "expected 'class'");
+    Ident name = parse_ident();
+    auto type_params = parse_type_params();
+    std::vector<FieldDecl> fields;
+    expect(TokenKind::LBrace, "expected '{'");
+    while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
+        if (current_.kind == TokenKind::KwProc || current_.kind == TokenKind::KwDef) {
+            DeclId method_id = parse_proc_decl({});
+            if (method_id != ast::kInvalidAstId) {
+                auto& method = ast_ctx_.get<ProcDecl>(method_id);
+                std::string mangled = name.name + "__" + method.name.name;
+                method.name = Ident(std::move(mangled), method.name.span);
+
+                std::vector<FnParam> params = std::move(method.params);
+                if (params.empty() || params.front().ident.name != "self") {
+                    TypeId self_ty = ast_ctx_.make<NamedType>(Ident(name.name, name.span), name.span);
+                    params.insert(params.begin(), FnParam(Ident("self", name.span), self_ty));
+                } else if (params.front().type == ast::kInvalidAstId) {
+                    params.front().type = ast_ctx_.make<NamedType>(Ident(name.name, name.span), name.span);
+                }
+                method.params = std::move(params);
+                pending_decls_.push_back(method_id);
+            }
+        } else {
+            Ident field_name = parse_ident();
+            expect(TokenKind::Colon, "expected ':'");
+            TypeId ty = parse_type_expr();
+            fields.emplace_back(std::move(field_name), ty);
+            if (match(TokenKind::Comma)) {
+                if (current_.kind == TokenKind::RBrace) {
+                    break;
+                }
+                continue;
+            }
+        }
+        if (match(TokenKind::Comma)) {
+            continue;
+        }
+    }
+    expect(TokenKind::RBrace, "expected '}'");
+    span.end = previous_.span.end;
+    return ast_ctx_.make<FormDecl>(std::move(name), std::move(type_params), std::move(fields), span);
+}
+
 DeclId Parser::parse_pick_decl() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwPick, "expected 'pick'");
@@ -501,7 +553,11 @@ DeclId Parser::parse_pick_decl() {
 
 DeclId Parser::parse_proc_decl(std::vector<Attribute> attrs) {
     SourceSpan span = current_.span;
-    expect(TokenKind::KwProc, "expected 'proc'");
+    if (current_.kind == TokenKind::KwProc || current_.kind == TokenKind::KwDef) {
+        advance();
+    } else {
+        expect(TokenKind::KwProc, "expected 'proc'");
+    }
     Ident name = parse_ident();
     auto type_params = parse_type_params();
     expect(TokenKind::LParen, "expected '('");

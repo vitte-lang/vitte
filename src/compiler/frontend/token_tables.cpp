@@ -18,6 +18,8 @@ static constexpr KeywordSpec kKeywords[] = {
     {"use", TokenKind::KwUse, true},
     {"share", TokenKind::KwShare, true},
     {"form", TokenKind::KwForm, true},
+    {"class", TokenKind::KwClass, false},
+    {"def", TokenKind::KwDef, false},
     {"field", TokenKind::KwField, false},
     {"pick", TokenKind::KwPick, true},
     {"case", TokenKind::KwCase, true},
@@ -31,6 +33,10 @@ static constexpr KeywordSpec kKeywords[] = {
     {"asm", TokenKind::KwAsm, true},
     {"unsafe", TokenKind::KwUnsafe, true},
     {"match", TokenKind::KwMatch, true},
+    {"try", TokenKind::KwTry, true},
+    {"except", TokenKind::KwExcept, true},
+    {"finally", TokenKind::KwFinally, true},
+    {"raise", TokenKind::KwRaise, true},
     {"let", TokenKind::KwLet, true},
     {"mut", TokenKind::KwMut, true},
     {"make", TokenKind::KwMake, true},
@@ -38,6 +44,7 @@ static constexpr KeywordSpec kKeywords[] = {
     {"give", TokenKind::KwGive, true},
     {"emit", TokenKind::KwEmit, true},
     {"if", TokenKind::KwIf, true},
+    {"elif", TokenKind::KwElif, true},
     {"else", TokenKind::KwElse, true},
     {"otherwise", TokenKind::KwOtherwise, true},
     {"select", TokenKind::KwSelect, false},
@@ -105,6 +112,8 @@ bool is_forbidden_in_core(TokenKind kind) {
     switch (kind) {
         case TokenKind::KwMacro:
         case TokenKind::KwTrait:
+        case TokenKind::KwClass:
+        case TokenKind::KwDef:
         case TokenKind::KwSelect:
         case TokenKind::KwField:
         case TokenKind::KwFrom:

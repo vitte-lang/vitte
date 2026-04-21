@@ -572,7 +572,7 @@ void print_help() {
         "  --parse-silent    Suppress parse-only informational logs\n"
         "  --strict-parse    Disallow keywords as identifiers\n"
         "  --strict-core     Enforce core grammar guardrails (reject non-core syntax)\n"
-        "  --syntax-strict   Reject deprecated syntax forms (loop/otherwise/return)\n"
+        "  --syntax-strict   Reject deprecated syntax forms (loop/otherwise)\n"
         "  --trace-parse     Emit parser trace (rules/lookahead/recovery)\n"
         "  --trace-resolve   Emit resolve trace (symbols/types/imports)\n"
         "  --panic-budget N  Cap parser-emitted errors before stopping parse recovery\n"

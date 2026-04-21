@@ -1,6 +1,6 @@
-# Lints (Packages Migration)
+# Lints (Stdlib Migration)
 
-## 1) Package layout lint
+## 1) Stdlib layout lint
 
 Command:
 
@@ -15,7 +15,7 @@ tools/lint_package_layout.py --strict
 ```
 
 Checks:
-- package entry conventions (`mod.vit`, `info.vit`)
+- stdlib entry conventions (`mod.vit`, `info.vit`)
 - legacy naming allowlists
 
 ## 2) Legacy import path lint
@@ -27,7 +27,7 @@ tools/lint_legacy_import_paths.py
 ```
 
 Checks:
-- forbids legacy self-leaf imports (`.../<pkg>/<pkg>`) in `src/`, `tests/`, `examples/`, `book/`, `docs/`
+- forbids legacy self-leaf imports (`.../<pkg>/<pkg>`) in `src/`, `tests/`, `examples/`, `docs/book/`, `docs/`
 - fails on orphan entries in `tools/legacy_import_path_allowlist.txt`
 
 ## 3) Module tree lint
@@ -106,7 +106,7 @@ Checks:
 - enforces cold/hot latency thresholds (`COLD_MAX_MS`, `HOT_MAX_MS`)
 - enforces hot/cold ratio (`HOT_RATIO_MAX`) when cold run duration is significant (`RATIO_MIN_COLD_MS`)
 
-## 9) Packages governance lint
+## 9) Stdlib governance lint
 
 Command:
 
@@ -116,12 +116,12 @@ tools/lint_packages_governance.py
 
 Checks on `src/vitte/packages/**/mod.vit`:
 - `OWNERS` mandatory and non-empty (`@team/name`)
-- `info.vit` mandatory with strict `PACKAGE-META`: `owner`, `stability`, `since`, `deprecated_in`
+- `info.vit` mandatory with strict stdlib metadata: `owner`, `stability`, `since`, `deprecated_in`
 - owner coherence: `info.vit owner` must exist in `OWNERS`
 - forbids `_` in path segments unless legacy allowlisted
-- forbids legacy self-leaf imports (`vitte/x/x`) in package `.vit` files
+- forbids legacy self-leaf imports (`vitte/x/x`) in stdlib `.vit` files
 - forbids `<pkg>.vit` leaf file when `mod.vit` exists (unless allowlisted)
-- forbids glob imports in `packages/public/*`
+- forbids glob imports in `public/*`
 
 ## 10) Critical runtime matrix lint
 
@@ -146,7 +146,7 @@ Checks:
 - forbids stable export removals without major version bump
 - allows explicit override with `--allow-breaking`
 
-## 12) New public packages snapshot lint
+## 12) New public stdlib snapshot lint
 
 Command:
 
@@ -166,7 +166,7 @@ tools/lint_no_std_imports.py --roots src/vitte/packages
 ```
 
 Checks:
-- forbids `use/pull std/...` in modern packages (`src/vitte/packages`)
+- forbids `use/pull std/...` in modern stdlib modules (`src/vitte/packages`)
 - supports temporary exceptions via `tools/std_import_legacy_allowlist.txt`
 
 ## CI usage
@@ -194,7 +194,7 @@ make migration-check
 make release-modules-gate
 ```
 
-`packages-report` distingue maintenant deux signaux:
+Le rapport distingue maintenant deux signaux:
 - `potential_collisions`: collision actionnable sur la surface exportée du module racine analysé
 - `dependency_export_overlap`: recouvrement de noms entre dépendances publiques co-chargees par une facade, utile a surveiller mais non bloquant a lui seul
 - `dependency_export_overlap_allowlisted`: recouvrement intentional versionne dans `tools/package_dependency_export_overlap_allowlist.txt`
@@ -202,5 +202,5 @@ make release-modules-gate
 Pour rendre la gate stricte sans penaliser les facades connues:
 - `make packages-dependency-overlap-lint`
 
-Pour verifier directement une facade package qui depend de son propre `internal/*`:
+Pour verifier directement une facade stdlib qui depend de son propre `internal/*`:
 - `make package-check SRC=src/vitte/packages/std/data/mod.vit`

@@ -264,7 +264,7 @@ static StmtId clone_stmt(
             if (s.index_ident.has_value()) {
                 index_ident = clone_ident(*s.index_ident);
             }
-            return ctx.make<ForStmt>(std::move(index_ident), clone_ident(s.ident), it, body, s.span);
+            return ctx.make<ForStmt>(std::move(index_ident), clone_ident(s.ident), it, body, s.tuple_destructure, s.span);
         }
         case NodeKind::WhenStmt: {
             auto& s = static_cast<const WhenStmt&>(node);
@@ -455,7 +455,7 @@ static StmtId expand_stmt(
             if (s.index_ident.has_value()) {
                 index_ident = clone_ident(*s.index_ident);
             }
-            return ctx.make<ForStmt>(std::move(index_ident), clone_ident(s.ident), s.iterable, body, s.span);
+            return ctx.make<ForStmt>(std::move(index_ident), clone_ident(s.ident), s.iterable, body, s.tuple_destructure, s.span);
         }
         case NodeKind::SelectStmt: {
             auto& s = static_cast<const SelectStmt&>(node);

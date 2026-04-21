@@ -191,7 +191,7 @@ bool Parser::emit_parse_error(diag::DiagId id, SourceSpan span) {
 static const char* closest_toplevel_keyword(std::string_view ident) {
     static constexpr const char* kDeclKeywords[] = {
         "space", "pull", "use", "share", "const",
-        "type", "form", "pick", "proc", "entry",
+        "type", "form", "class", "def", "pick", "proc", "entry",
     };
     const char* best = nullptr;
     int best_dist = 1000;
@@ -214,6 +214,12 @@ static void emit_toplevel_hint(DiagnosticEngine& diag, const Token& tok) {
             diag.note("stray '}' at top level; remove it or close the matching block earlier", tok.span);
             return;
         case TokenKind::KwIf:
+        case TokenKind::KwElif:
+        case TokenKind::KwTry:
+        case TokenKind::KwExcept:
+        case TokenKind::KwFinally:
+        case TokenKind::KwRaise:
+        case TokenKind::KwDef:
         case TokenKind::KwLoop:
         case TokenKind::KwFor:
         case TokenKind::KwSet:

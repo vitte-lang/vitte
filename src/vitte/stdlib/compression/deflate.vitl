@@ -1,13 +1,12 @@
+
 space vitte/compression/deflate
 
-<<< =========================================================
-   Deflate/GZIP/Zlib Compression Module
-   ========================================================= >>>
+use vitte/collections/vector { * }
+use vitte/compression/algorithms { * }
 
-# Compression algorithms
-const ZLIB_DEFAULT: i32 = -1
-const DEFLATE_RAW: i32 = -15
-const GZIP: i32 = 15
+<<< =========================================================
+   Deflate/GZIP/Zlib Compression Module (binary, integrated)
+   ========================================================= >>>
 
 # Compression levels
 const Z_NO_COMPRESSION: i32 = 0
@@ -15,34 +14,175 @@ const Z_FAST_COMPRESSION: i32 = 1
 const Z_DEFAULT_COMPRESSION: i32 = 6
 const Z_BEST_COMPRESSION: i32 = 9
 
-# Compression strategy
+# Strategy
 const Z_DEFAULT_STRATEGY: i32 = 0
-const Z_FILTERED: i32 = 1
-const Z_HUFFMAN_ONLY: i32 = 2
 const Z_RLE: i32 = 3
 
-proc compress_deflate(data: string, level: i32) -> string {
-  give ""
+# ----------------------------------------------------------
+# Context
+# ----------------------------------------------------------
+
+form DeflateContext {
+  level: i32
+  strategy: i32
 }
 
-proc decompress_deflate(data: string) -> string {
-  give ""
+# ----------------------------------------------------------
+# Checksums
+# ----------------------------------------------------------
+
+proc adler32(data: [i32]) -> i32 {
+  let a: i32 = 1
+  let b: i32 = 0
+
+  let i: i32 = 0
+  while i < data.len {
+    set a = (a + data[i]) % 65521
+    set b = (b + a) % 65521
+    set i = i + 1
+  }
+
+  give (b << 16) | a
 }
 
-proc compress_gzip(data: string, level: i32) -> string {
-  give ""
+proc crc32(data: [i32]) -> i32 {
+  let crc: i32 = -1
+
+  let i: i32 = 0
+  while i < data.len {
+    set crc = crc ^ data[i]
+
+    let j: i32 = 0
+    while j < 8 {
+      if (crc & 1) == 1 {
+        set crc = (crc >> 1) ^ 0xEDB88320
+      } else {
+        set crc = crc >> 1
+      }
+      set j = j + 1
+    }
+
+    set i = i + 1
+  }
+
+  give ~crc
 }
 
-proc decompress_gzip(data: string) -> string {
-  give ""
+# ----------------------------------------------------------
+# Token serialization
+# ----------------------------------------------------------
+
+proc serialize_tokens(tokens: Vector[LZToken]) -> [i32] {
+  let out = vector_new[i32](tokens.size * 4)
+
+  let i: i32 = 0
+  while i < tokens.size {
+    let t = tokens.data[i]
+
+    vector_push(out, t.offset)
+    vector_push(out, t.length)
+    vector_push(out, t.next)
+    vector_push(out, t.has_next)
+
+    set i = i + 1
+  }
+
+  give vector_to_array(out)
 }
 
-proc compress_zlib(data: string, level: i32) -> string {
-  give ""
+proc deserialize_tokens(data: [i32]) -> Vector[LZToken] {
+  let out = vector_new[LZToken](data.len / 4)
+
+  let i: i32 = 0
+  while i + 3 < data.len {
+    vector_push(out, LZToken {
+      offset: data[i],
+      length: data[i + 1],
+      next: data[i + 2],
+      has_next: data[i + 3]
+    })
+
+    set i = i + 4
+  }
+
+  give out
 }
 
-proc decompress_zlib(data: string) -> string {
-  give ""
+# ----------------------------------------------------------
+# Core Deflate (LZ77 only for now)
+# ----------------------------------------------------------
+
+proc compress_deflate(data: [i32], level: i32) -> [i32] {
+  let ctx = DeflateContext { level: level, strategy: Z_DEFAULT_STRATEGY }
+
+  if ctx.strategy == Z_RLE {
+    give compress_rle(data)
+  }
+
+  let tokens = compress_lz77(data)
+  give serialize_tokens(tokens)
+}
+
+proc decompress_deflate(data: [i32]) -> [i32] {
+  let tokens = deserialize_tokens(data)
+  give decompress_lz77(tokens)
+}
+
+# ----------------------------------------------------------
+# ZLIB wrapper
+# ----------------------------------------------------------
+
+proc compress_zlib(data: [i32], level: i32) -> [i32] {
+  let compressed = compress_deflate(data, level)
+  let checksum = adler32(data)
+
+  let out = vector_new[i32](compressed.len + 2)
+
+  vector_push(out, 0x78)  # header
+  vector_push(out, 0x9C)
+
+  vector_push_many(out, compressed)
+  vector_push(out, checksum)
+
+  give vector_to_array(out)
+}
+
+proc decompress_zlib(data: [i32]) -> [i32] {
+  if data.len < 3 { give [] }
+
+  let payload = data[2 : data.len - 1]
+  give decompress_deflate(payload)
+}
+
+# ----------------------------------------------------------
+# GZIP wrapper
+# ----------------------------------------------------------
+
+proc compress_gzip(data: [i32], level: i32) -> [i32] {
+  let compressed = compress_deflate(data, level)
+  let checksum = crc32(data)
+
+  let out = vector_new[i32](compressed.len + 10)
+
+  # minimal gzip header
+  vector_push(out, 0x1F)
+  vector_push(out, 0x8B)
+  vector_push(out, 8)
+  vector_push(out, 0)
+
+  vector_push_many(out, compressed)
+
+  vector_push(out, checksum)
+  vector_push(out, data.len)
+
+  give vector_to_array(out)
+}
+
+proc decompress_gzip(data: [i32]) -> [i32] {
+  if data.len < 10 { give [] }
+
+  let payload = data[4 : data.len - 2]
+  give decompress_deflate(payload)
 }
 
 share all

@@ -26,18 +26,6 @@ static void emit_removed_otherwise_syntax(DiagnosticEngine& diag, const SourceSp
     diag.emit(std::move(deprec));
 }
 
-static void emit_removed_return_syntax(DiagnosticEngine& diag, const SourceSpan& span, bool has_expr) {
-    diag::Diagnostic deprec(
-        diag::Severity::Warning,
-        "W1103",
-        "legacy syntax: 'return' is deprecated; use 'give'",
-        span
-    );
-    deprec.add_note("canonical return keyword is 'give'");
-    deprec.add_fix("rewrite return keyword", has_expr ? "give <expr>" : "give", span);
-    diag.emit(std::move(deprec));
-}
-
 StmtId Parser::parse_block() {
     SourceSpan span = current_.span;
     expect(TokenKind::LBrace, "expected '{'");
@@ -82,6 +70,7 @@ StmtId Parser::parse_stmt() {
         case TokenKind::KwGive: return parse_give_stmt();
         case TokenKind::KwEmit: return parse_emit_stmt();
         case TokenKind::KwIf: return parse_if_stmt();
+        case TokenKind::KwElif: return parse_if_stmt();
         case TokenKind::KwLoop: return parse_loop_stmt();
         case TokenKind::KwWhile: return parse_while_stmt();
         case TokenKind::KwFor: return parse_for_stmt();
@@ -91,6 +80,8 @@ StmtId Parser::parse_stmt() {
         case TokenKind::KwMatch: return parse_match_stmt();
         case TokenKind::KwWhen: return parse_when_match_stmt();
         case TokenKind::KwReturn: return parse_return_stmt();
+        case TokenKind::KwTry: return parse_try_stmt();
+        case TokenKind::KwRaise: return parse_raise_stmt();
         default: return parse_expr_stmt();
     }
 }
@@ -485,31 +476,31 @@ StmtId Parser::parse_emit_stmt() {
 
 StmtId Parser::parse_if_stmt() {
     SourceSpan span = current_.span;
-    expect(TokenKind::KwIf, "expected 'if'");
+    if (!match(TokenKind::KwIf)) {
+        expect(TokenKind::KwElif, "expected 'if'");
+    }
     ExprId cond = parse_expr();
     StmtId then_block = parse_block();
     StmtId else_block = ast::kInvalidAstId;
-    if (match(TokenKind::KwElse)) {
-        if (current_.kind == TokenKind::KwIf) {
-            auto nested_if = parse_if_stmt();
-            std::vector<StmtId> stmts;
-            stmts.push_back(nested_if);
-            SourceSpan block_span = ast_ctx_.get<Stmt>(nested_if).span;
-            else_block = ast_ctx_.make<BlockStmt>(std::move(stmts), block_span);
-        } else {
-            else_block = parse_block();
+    auto wrap_if_branch = [&](StmtId nested_if) -> StmtId {
+        std::vector<StmtId> stmts;
+        stmts.push_back(nested_if);
+        SourceSpan block_span = ast_ctx_.get<Stmt>(nested_if).span;
+        return ast_ctx_.make<BlockStmt>(std::move(stmts), block_span);
+    };
+    auto parse_else_branch = [&]() -> StmtId {
+        if (current_.kind == TokenKind::KwIf || current_.kind == TokenKind::KwElif) {
+            return wrap_if_branch(parse_if_stmt());
         }
+        return parse_block();
+    };
+    if (current_.kind == TokenKind::KwElif) {
+        else_block = wrap_if_branch(parse_if_stmt());
+    } else if (match(TokenKind::KwElse)) {
+        else_block = parse_else_branch();
     } else if (match(TokenKind::KwOtherwise)) {
         emit_removed_otherwise_syntax(diag_, previous_.span);
-        if (current_.kind == TokenKind::KwIf) {
-            auto nested_if = parse_if_stmt();
-            std::vector<StmtId> stmts;
-            stmts.push_back(nested_if);
-            SourceSpan block_span = ast_ctx_.get<Stmt>(nested_if).span;
-            else_block = ast_ctx_.make<BlockStmt>(std::move(stmts), block_span);
-        } else {
-            else_block = parse_block();
-        }
+        else_block = parse_else_branch();
     }
     span.end = previous_.span.end;
     return ast_ctx_.make<IfStmt>(
@@ -562,16 +553,26 @@ StmtId Parser::parse_for_stmt() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwFor, "expected 'for'");
     std::optional<Ident> index_ident;
-    Ident name = parse_ident();
-    if (match(TokenKind::Comma)) {
-        index_ident = std::move(name);
+    Ident name("", span);
+    bool tuple_destructure = false;
+    if (match(TokenKind::LParen)) {
+        tuple_destructure = true;
+        index_ident = parse_ident();
+        expect(TokenKind::Comma, "expected ',' in for destructuring");
         name = parse_ident();
+        expect(TokenKind::RParen, "expected ')' after for destructuring");
+    } else {
+        name = parse_ident();
+        if (match(TokenKind::Comma)) {
+            index_ident = std::move(name);
+            name = parse_ident();
+        }
     }
     expect(TokenKind::KwIn, "expected 'in'");
     ExprId iterable = parse_expr();
     StmtId body = parse_block();
     span.end = ast_ctx_.get<Stmt>(body).span.end;
-    return ast_ctx_.make<ForStmt>(std::move(index_ident), std::move(name), iterable, body, span);
+    return ast_ctx_.make<ForStmt>(std::move(index_ident), std::move(name), iterable, body, tuple_destructure, span);
 }
 
 StmtId Parser::parse_break_stmt() {
@@ -723,9 +724,32 @@ StmtId Parser::parse_return_stmt() {
     if (is_expr_start(current_.kind)) {
         expr = parse_expr();
     }
-    emit_removed_return_syntax(diag_, span, expr != ast::kInvalidAstId);
     span.end = previous_.span.end;
     return ast_ctx_.make<ReturnStmt>(expr, span);
+}
+
+StmtId Parser::parse_try_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwTry, "expected 'try'");
+    StmtId body = parse_block();
+    StmtId except_body = ast::kInvalidAstId;
+    StmtId finally_body = ast::kInvalidAstId;
+    if (match(TokenKind::KwExcept)) {
+        except_body = parse_block();
+    }
+    if (match(TokenKind::KwFinally)) {
+        finally_body = parse_block();
+    }
+    span.end = previous_.span.end;
+    return ast_ctx_.make<TryStmt>(body, except_body, finally_body, span);
+}
+
+StmtId Parser::parse_raise_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwRaise, "expected 'raise'");
+    ExprId expr = parse_expr();
+    span.end = expr != ast::kInvalidAstId ? ast_ctx_.get<Expr>(expr).span.end : previous_.span.end;
+    return ast_ctx_.make<RaiseStmt>(expr, span);
 }
 
 StmtId Parser::parse_expr_stmt() {

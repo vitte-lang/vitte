@@ -1,28 +1,58 @@
 space vitte/compression/interface
 
 <<< =========================================================
-   Compressor/Decompressor Interface Module
+   Compressor/Decompressor Interface Module (integrated)
    ========================================================= >>>
 
-use vitte/compression/deflate
+use vitte/compression/deflate { * }
+use vitte/compression/algorithms { * }
+use vitte/collections/vector { * }
 
-form Compressor {
-    level: i32,
-    strategy: i32,
-    algorithm: i32
+# ----------------------------------------------------------
+# Algorithms
+# ----------------------------------------------------------
+
+const ALGO_DEFLATE: i32 = 1
+const ALGO_GZIP: i32 = 2
+const ALGO_ZLIB: i32 = 3
+
+# ----------------------------------------------------------
+# Errors
+# ----------------------------------------------------------
+
+const ERR_INVALID_ALGO: i32 = -1
+
+form CompressionResult {
+  data: [i32]
+  error: i32
 }
 
-form Decompressor {
-    algorithm: i32,
-    window_bits: i32
+# ----------------------------------------------------------
+# Compressor
+# ----------------------------------------------------------
+
+form Compressor {
+  level: i32
+  strategy: i32
+  algorithm: i32
+  buffer: Vector[i32]
 }
 
 proc compressor_new(level: i32) -> Compressor {
   give Compressor {
     level: level,
     strategy: Z_DEFAULT_STRATEGY,
-    algorithm: ZLIB_DEFAULT
+    algorithm: ALGO_ZLIB,
+    buffer: vector_new[i32](16)
   }
+}
+
+proc compressor_set_algorithm(c: Compressor, algo: i32) -> int {
+  if algo != ALGO_DEFLATE and algo != ALGO_GZIP and algo != ALGO_ZLIB {
+    give ERR_INVALID_ALGO
+  }
+  c.algorithm = algo
+  give 0
 }
 
 proc compressor_set_strategy(c: Compressor, strategy: i32) -> int {
@@ -30,35 +60,106 @@ proc compressor_set_strategy(c: Compressor, strategy: i32) -> int {
   give 0
 }
 
-proc compressor_compress(c: Compressor, data: string) -> string {
-  give ""
+proc compressor_compress(c: Compressor, data: [i32]) -> [i32] {
+  # strategy override
+  if c.strategy == Z_RLE {
+    give compress_rle(data)
+  }
+
+  if c.algorithm == ALGO_DEFLATE {
+    give compress_deflate(data, c.level)
+  }
+
+  if c.algorithm == ALGO_GZIP {
+    give compress_gzip(data, c.level)
+  }
+
+  if c.algorithm == ALGO_ZLIB {
+    give compress_zlib(data, c.level)
+  }
+
+  give []  # ERR_INVALID_ALGO
 }
 
-proc compressor_flush(c: Compressor) -> string {
-  give ""
+proc compressor_flush(c: Compressor) -> [i32] {
+  # no streaming yet
+  give []
 }
 
 proc compressor_reset(c: Compressor) -> int {
+  set c.buffer = vector_new[i32](16)
+  set c.strategy = Z_DEFAULT_STRATEGY
+  set c.algorithm = ALGO_ZLIB
   give 0
+}
+
+# ----------------------------------------------------------
+# Decompressor
+# ----------------------------------------------------------
+
+form Decompressor {
+  algorithm: i32
 }
 
 proc decompressor_new() -> Decompressor {
   give Decompressor {
-    algorithm: ZLIB_DEFAULT,
-    window_bits: 15
+    algorithm: ALGO_ZLIB
   }
 }
 
-proc decompressor_decompress(d: Decompressor, data: string) -> string {
-  give ""
+proc decompressor_set_algorithm(d: Decompressor, algo: i32) -> int {
+  if algo != ALGO_DEFLATE and algo != ALGO_GZIP and algo != ALGO_ZLIB {
+    give ERR_INVALID_ALGO
+  }
+  d.algorithm = algo
+  give 0
 }
 
-proc decompressor_flush(d: Decompressor) -> string {
-  give ""
+proc decompressor_decompress(d: Decompressor, data: [i32]) -> [i32] {
+  if d.algorithm == ALGO_DEFLATE {
+    give decompress_deflate(data)
+  }
+
+  if d.algorithm == ALGO_GZIP {
+    give decompress_gzip(data)
+  }
+
+  if d.algorithm == ALGO_ZLIB {
+    give decompress_zlib(data)
+  }
+
+  give []  # ERR_INVALID_ALGO
+}
+
+proc decompressor_flush(d: Decompressor) -> [i32] {
+  give []
 }
 
 proc decompressor_reset(d: Decompressor) -> int {
   give 0
+}
+
+# ----------------------------------------------------------
+# Simple high-level API
+# ----------------------------------------------------------
+
+proc compress(data: [i32], algo: i32, level: i32) -> [i32] {
+  let c = compressor_new(level)
+  compressor_set_algorithm(c, algo)
+  give compressor_compress(c, data)
+}
+
+proc decompress(data: [i32], algo: i32) -> [i32] {
+  let d = decompressor_new()
+  decompressor_set_algorithm(d, algo)
+  give decompressor_decompress(d, data)
+}
+
+proc compress_ex(data: [i32], algo: i32, level: i32, strategy: i32) -> [i32] {
+  let c = compressor_new(level)
+  compressor_set_algorithm(c, algo)
+  compressor_set_strategy(c, strategy)
+  give compressor_compress(c, data)
 }
 
 share all

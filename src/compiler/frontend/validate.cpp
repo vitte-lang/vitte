@@ -50,7 +50,19 @@ static bool stmt_always_returns(const AstContext& ast_ctx, StmtId stmt_id) {
     switch (stmt.kind) {
         case NodeKind::GiveStmt:
         case NodeKind::ReturnStmt:
+        case NodeKind::RaiseStmt:
             return true;
+        case NodeKind::TryStmt: {
+            const auto& s = ast_ctx.get<TryStmt>(stmt_id);
+            bool body_ret = stmt_always_returns(ast_ctx, s.body);
+            bool except_ret = s.except_body != ast::kInvalidAstId
+                ? stmt_always_returns(ast_ctx, s.except_body)
+                : false;
+            bool finally_ret = s.finally_body != ast::kInvalidAstId
+                ? stmt_always_returns(ast_ctx, s.finally_body)
+                : true;
+            return finally_ret && (body_ret || except_ret);
+        }
         case NodeKind::UnsafeStmt: {
             const auto& s = ast_ctx.get<UnsafeStmt>(stmt_id);
             return stmt_always_returns(ast_ctx, s.body);

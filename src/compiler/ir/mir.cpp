@@ -171,6 +171,16 @@ MirReturn::MirReturn(
     : MirInstr(MirKind::Return, sp),
       value(std::move(v)) {}
 
+MirTry::MirTry(
+    MirBlockId body_id,
+    MirBlockId except_id,
+    MirBlockId finally_id,
+    SourceSpan sp)
+    : MirInstr(MirKind::Try, sp),
+      body(body_id),
+      except_body(except_id),
+      finally_body(finally_id) {}
+
 // ------------------------------------------------------------
 // Control Flow
 // ------------------------------------------------------------
@@ -369,6 +379,7 @@ const char* to_string(MirKind kind) {
         case MirKind::UnsafeBegin: return "UnsafeBegin";
         case MirKind::UnsafeEnd: return "UnsafeEnd";
         case MirKind::Return: return "Return";
+        case MirKind::Try: return "Try";
         case MirKind::Goto: return "Goto";
         case MirKind::CondGoto: return "CondGoto";
         default:

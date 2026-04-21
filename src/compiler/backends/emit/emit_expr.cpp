@@ -107,6 +107,16 @@ static void emit_expr_impl(
         break;
     }
 
+    case K::Lambda: {
+        auto& e = static_cast<const ast::cpp::CppLambda&>(expr);
+        os << "[&]() {\n";
+        for (const auto& st : e.body) {
+            emit_stmt(os, *st, 1);
+        }
+        os << "}";
+        break;
+    }
+
     default:
         os << "/* <unknown expr> */";
         break;

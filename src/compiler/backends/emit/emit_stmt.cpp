@@ -35,6 +35,16 @@ static void emit_stmt_impl(
     int indent_level
 );
 
+static void emit_stmt_list(
+    std::ostream& os,
+    const std::vector<std::unique_ptr<ast::cpp::CppStmt>>& stmts,
+    int indent_level
+) {
+    for (const auto& st : stmts) {
+        emit_stmt_impl(os, *st, indent_level);
+    }
+}
+
 static void emit_cpp_string(std::ostream& os, const std::string& value) {
     os << "\"";
     for (char c : value) {
@@ -149,8 +159,14 @@ static void emit_stmt_impl(
     case K::Decl: {
         auto& s = static_cast<const ast::cpp::CppVarDecl&>(stmt);
         indent(os, indent_level);
-        if (s.is_const)
-            os << "const ";
+        if (s.type && s.type->name == "auto") {
+            if (s.init) {
+                os << "auto " << s.name << " = ";
+                emit_expr(os, *(*s.init));
+                os << ";\n";
+            }
+            break;
+        }
         if (s.type && s.type->kind == ast::cpp::CppTypeKind::Function) {
             emit_type(os, s.type->return_type);
             os << " (*" << s.name << ")(";
@@ -167,11 +183,13 @@ static void emit_stmt_impl(
             emit_type(os, s.type);
             os << " " << s.name;
         }
-        if (s.init) {
-            os << " = ";
-            emit_expr(os, *(*s.init));
-        }
         os << ";\n";
+        if (s.init) {
+            indent(os, indent_level);
+            os << s.name << " = ";
+            emit_expr(os, *(*s.init));
+            os << ";\n";
+        }
         break;
     }
 
@@ -298,10 +316,35 @@ static void emit_stmt_impl(
         auto& s = static_cast<const ast::cpp::CppBlock&>(stmt);
         indent(os, indent_level);
         os << "{\n";
-        for (const auto& st : s.stmts)
-            emit_stmt_impl(os, *st, indent_level + 1);
+        emit_stmt_list(os, s.stmts, indent_level + 1);
         indent(os, indent_level);
         os << "}\n";
+        break;
+    }
+
+    case K::Try: {
+        auto& s = static_cast<const ast::cpp::CppTry&>(stmt);
+        static std::size_t guard_index = 0;
+        if (!s.finally_body.empty()) {
+            indent(os, indent_level);
+            os << "auto __vitte_guard_" << guard_index++
+               << " = vitte_make_scope_exit([&]() {\n";
+            emit_stmt_list(os, s.finally_body, indent_level + 1);
+            indent(os, indent_level);
+            os << "});\n";
+        }
+        indent(os, indent_level);
+        os << "try {\n";
+        emit_stmt_list(os, s.body, indent_level + 1);
+        indent(os, indent_level);
+        os << "}";
+        if (!s.except_body.empty()) {
+            os << " catch (...) {\n";
+            emit_stmt_list(os, s.except_body, indent_level + 1);
+            indent(os, indent_level);
+            os << "}";
+        }
+        os << "\n";
         break;
     }
 
