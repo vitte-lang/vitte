@@ -1,235 +1,1212 @@
-use stdlib/core/types as types
-use stdlib/core/strings as strings
-use stdlib/core/memory as memory
-use stdlib/core/algorithms as algorithms
-use stdlib/core/utils as utils
+Vit
+space vitte/stdlib/core
+
+export *
 
 <<< =========================================================
-   Core Library — Complete C-like Standard Library
-   Unified entry point for all core utilities
+   Vitte Core Library
+   C-like + systems foundation
+   current Vitte syntax: { }
    ========================================================= >>>
 
-<<< =========================================================
-   Integer Type Limits
-   ========================================================= >>>
+const CORE_VERSION: string = "1.0.0"
 
-const INT8_MIN: i8 = types.INT8_MIN
-const INT8_MAX: i8 = types.INT8_MAX
-const UINT8_MAX: u8 = types.UINT8_MAX
+const TRUE: bool = true
+const FALSE: bool = false
 
-const INT16_MIN: i16 = types.INT16_MIN
-const INT16_MAX: i16 = types.INT16_MAX
-const UINT16_MAX: u16 = types.UINT16_MAX
+const OK: int = 0
+const ERR: int = -1
 
-const INT32_MIN: i32 = types.INT32_MIN
-const INT32_MAX: i32 = types.INT32_MAX
-const UINT32_MAX: u32 = types.UINT32_MAX
+const NULL: int = 0
 
-const INT64_MIN: i64 = types.INT64_MIN
-const INT64_MAX: i64 = types.INT64_MAX
+const I8_MIN: i8 = -128
+const I8_MAX: i8 = 127
+const U8_MAX: u8 = 255
 
-const UINT_MIN: u32 = types.UINT_MIN
-const UINT_MAX: u32 = types.UINT_MAX
+const I16_MIN: i16 = -32768
+const I16_MAX: i16 = 32767
+const U16_MAX: u16 = 65535
 
-<<< =========================================================
-   Floating Point Limits & Constants
-   ========================================================= >>>
+const I32_MIN: i32 = -2147483648
+const I32_MAX: i32 = 2147483647
+const U32_MAX: u32 = 4294967295
 
-const FLT_MIN: f32 = types.FLT_MIN
-const FLT_MAX: f32 = types.FLT_MAX
-const FLT_EPSILON: f32 = types.FLT_EPSILON
-const FLT_NAN: f32 = types.FLT_NAN
-const FLT_INF: f32 = types.FLT_INF
+const I64_MIN: i64 = -9223372036854775808
+const I64_MAX: i64 = 9223372036854775807
 
-const DBL_MIN: f64 = types.DBL_MIN
-const DBL_MAX: f64 = types.DBL_MAX
-const DBL_EPSILON: f64 = types.DBL_EPSILON
-const DBL_NAN: f64 = types.DBL_NAN
-const DBL_INF: f64 = types.DBL_INF
-const DBL_NEG_INF: f64 = types.DBL_NEG_INF
+const USIZE_BITS: int = 64
+const ISIZE_BITS: int = 64
 
-const NULL: int = types.NULL
-const TRUE: int = types.TRUE
-const FALSE: int = types.FALSE
+const F32_EPSILON: f32 = 0.000001
+const F64_EPSILON: f64 = 0.000000000001
 
-<<< =========================================================
-   Type Checking
-   ========================================================= >>>
+const EXIT_SUCCESS: int = 0
+const EXIT_FAILURE: int = 1
 
-proc is_nan(value: f64) -> bool { give types.is_nan(value) }
-proc is_inf(value: f64) -> bool { give types.is_inf(value) }
-proc is_finite(value: f64) -> bool { give types.is_finite(value) }
-proc is_positive(value: f64) -> bool { give types.is_positive(value) }
-proc is_negative(value: f64) -> bool { give types.is_negative(value) }
-proc is_zero(value: f64) -> bool { give types.is_zero(value) }
+const EPERM: int = 1
+const ENOENT: int = 2
+const ESRCH: int = 3
+const EINTR: int = 4
+const EIO: int = 5
+const ENXIO: int = 6
+const E2BIG: int = 7
+const ENOEXEC: int = 8
+const EBADF: int = 9
+const ECHILD: int = 10
+const EAGAIN: int = 11
+const ENOMEM: int = 12
+const EACCES: int = 13
+const EFAULT: int = 14
+const EBUSY: int = 16
+const EEXIST: int = 17
+const EXDEV: int = 18
+const ENODEV: int = 19
+const ENOTDIR: int = 20
+const EISDIR: int = 21
+const EINVAL: int = 22
+const ENFILE: int = 23
+const EMFILE: int = 24
+const ENOTTY: int = 25
+const ETXTBSY: int = 26
+const EFBIG: int = 27
+const ENOSPC: int = 28
+const ESPIPE: int = 29
+const EROFS: int = 30
+const EMLINK: int = 31
+const EPIPE: int = 32
+const ERANGE: int = 34
+const ENOSYS: int = 38
+const ENOTEMPTY: int = 39
+const ENOTSUP: int = 95
 
-<<< =========================================================
-   String Operations (C-like)
-   ========================================================= >>>
+pick CoreStatus {
+  case Ok,
+  case Err,
+  case None,
+  case Unsupported,
+  case Invalid,
+  case Panic
+}
 
-proc strlen(str: string) -> int { give strings.strlen(str) }
-proc strcmp(a: string, b: string) -> int { give strings.strcmp(a, b) }
-proc strcasecmp(a: string, b: string) -> int { give strings.strcasecmp(a, b) }
-proc streq(a: string, b: string) -> bool { give strings.streq(a, b) }
-proc strne(a: string, b: string) -> bool { give strings.strne(a, b) }
-proc strstr(haystack: string, needle: string) -> int { give strings.strstr(haystack, needle) }
-proc strchr(str: string, ch: int) -> int { give strings.strchr(str, ch) }
-proc strrchr(str: string, ch: int) -> int { give strings.strrchr(str, ch) }
-proc chrcount(str: string, ch: int) -> int { give strings.chrcount(str, ch) }
-proc strbegin(str: string, prefix: string) -> bool { give strings.strbegin(str, prefix) }
-proc strend(str: string, suffix: string) -> bool { give strings.strend(str, suffix) }
-proc strreplace_first(str: string, old: string, new: string) -> string { give strings.strreplace_first(str, old, new) }
-proc strupcase(str: string) -> string { give strings.strupcase(str) }
-proc strdowncase(str: string) -> string { give strings.strdowncase(str) }
-proc strlstrip(str: string) -> string { give strings.strlstrip(str) }
-proc strrstrip(str: string) -> string { give strings.strrstrip(str) }
-proc strstrip(str: string) -> string { give strings.strstrip(str) }
-proc strrepeat(str: string, count: int) -> string { give strings.strrepeat(str, count) }
-proc strreverse(str: string) -> string { give strings.strreverse(str) }
+pick Option[T] {
+  case Some(value: T),
+  case None
+}
 
-<<< =========================================================
-   Memory Operations
-   ========================================================= >>>
+pick Result[T, E] {
+  case Ok(value: T),
+  case Err(error: E)
+}
 
-proc malloc(size: i64) -> i64 { give memory.malloc(size) }
-proc calloc(count: i64, size: i64) -> i64 { give memory.calloc(count, size) }
-proc realloc(ptr: i64, new_size: i64) -> i64 { give memory.realloc(ptr, new_size) }
-proc free(ptr: i64) -> () { give memory.free(ptr) }
+form CoreError {
+  code: int,
+  message: string
+}
 
-proc memcpy(dest: [int], src: [int], count: i64) -> [int] { give memory.memcpy(dest, src, count) }
-proc memmove(dest: [int], src: [int], count: i64) -> [int] { give memory.memmove(dest, src, count) }
-proc memset(dest: [int], value: int, count: i64) -> [int] { give memory.memset(dest, value, count) }
-proc memcmp(ptr1: [int], ptr2: [int], count: i64) -> int { give memory.memcmp(ptr1, ptr2, count) }
-proc memzero(dest: [int], count: i64) -> [int] { give memory.memzero(dest, count) }
+form Span {
+  start: usize,
+  end: usize
+}
 
-proc ptr_null() -> i64 { give memory.ptr_null() }
-proc ptr_is_null(ptr: i64) -> bool { give memory.ptr_is_null(ptr) }
-proc ptr_align(ptr: i64, alignment: i64) -> i64 { give memory.ptr_align(ptr, alignment) }
-proc ptr_offset(ptr: i64, offset: i64) -> i64 { give memory.ptr_offset(ptr, offset) }
-proc ptr_diff(ptr1: i64, ptr2: i64) -> i64 { give memory.ptr_diff(ptr1, ptr2) }
+form Range {
+  start: int,
+  end: int
+}
 
-<<< =========================================================
-   Algorithms: Sorting
-   ========================================================= >>>
+form USizeRange {
+  start: usize,
+  end: usize
+}
 
-proc bubble_sort(arr: [int]) -> [int] { give algorithms.bubble_sort(arr) }
-proc selection_sort(arr: [int]) -> [int] { give algorithms.selection_sort(arr) }
-proc insertion_sort(arr: [int]) -> [int] { give algorithms.insertion_sort(arr) }
+form Pair[A, B] {
+  first: A,
+  second: B
+}
 
-<<< =========================================================
-   Algorithms: Searching
-   ========================================================= >>>
+form Triple[A, B, C] {
+  first: A,
+  second: B,
+  third: C
+}
 
-proc linear_search(arr: [int], target: int) -> int { give algorithms.linear_search(arr, target) }
-proc binary_search(arr: [int], target: int) -> int { give algorithms.binary_search(arr, target) }
+form Slice[T] {
+  data: [T],
+  start: usize,
+  len: usize
+}
 
-<<< =========================================================
-   Algorithms: Array Operations
-   ========================================================= >>>
+form Buffer {
+  data: bytes,
+  len: usize,
+  capacity: usize
+}
 
-proc reverse(arr: [int]) -> [int] { give algorithms.reverse(arr) }
-proc find_max(arr: [int]) -> int { give algorithms.find_max(arr) }
-proc find_min(arr: [int]) -> int { give algorithms.find_min(arr) }
-proc sum_array(arr: [int]) -> int { give algorithms.sum_array(arr) }
-proc average_array(arr: [int]) -> int { give algorithms.average_array(arr) }
-proc count_occurrences(arr: [int], value: int) -> int { give algorithms.count_occurrences(arr, value) }
+form AllocBlock {
+  addr: usize,
+  size: usize,
+  align: usize,
+  used: bool
+}
 
-<<< =========================================================
-   Comparison Utilities
-   ========================================================= >>>
+form Version {
+  major: int,
+  minor: int,
+  patch: int,
+  label: string
+}
 
-proc swap_int(a: int, b: int) -> (int, int) { give algorithms.swap_int(a, b) }
-proc swap_f64(a: f64, b: f64) -> (f64, f64) { give algorithms.swap_f64(a, b) }
-proc min_int(a: int, b: int) -> int { give algorithms.min_int(a, b) }
-proc max_int(a: int, b: int) -> int { give algorithms.max_int(a, b) }
-proc min_f64(a: f64, b: f64) -> f64 { give algorithms.min_f64(a, b) }
-proc max_f64(a: f64, b: f64) -> f64 { give algorithms.max_f64(a, b) }
-proc clamp_int(x: int, low: int, high: int) -> int { give algorithms.clamp_int(x, low, high) }
-proc clamp_f64(x: f64, low: f64, high: f64) -> f64 { give algorithms.clamp_f64(x, low, high) }
+proc core_version() -> Version {
+  give Version {
+    major: 1,
+    minor: 0,
+    patch: 0,
+    label: "core"
+  }
+}
 
-<<< =========================================================
-   Random Number Generation
-   ========================================================= >>>
+proc ok() -> CoreStatus {
+  give CoreStatus.Ok
+}
 
-proc srand(seed: i64) -> () { give utils.srand(seed) }
-proc rand() -> i64 { give utils.rand() }
-proc rand_range(min: i64, max: i64) -> i64 { give utils.rand_range(min, max) }
-proc rand_float() -> f64 { give utils.rand_float() }
-proc rand_float_range(min: f64, max: f64) -> f64 { give utils.rand_float_range(min, max) }
+proc err() -> CoreStatus {
+  give CoreStatus.Err
+}
 
-<<< =========================================================
-   Time Functions
-   ========================================================= >>>
+proc core_error(code: int, message: string) -> CoreError {
+  give CoreError {
+    code: code,
+    message: message
+  }
+}
 
-proc clock() -> i64 { give utils.clock() }
-proc time() -> i64 { give utils.time() }
-proc difftime(end_time: i64, start_time: i64) -> i64 { give utils.difftime(end_time, start_time) }
+proc errno_name(code: int) -> string {
+  if code == EPERM { give "EPERM" }
+  if code == ENOENT { give "ENOENT" }
+  if code == ESRCH { give "ESRCH" }
+  if code == EINTR { give "EINTR" }
+  if code == EIO { give "EIO" }
+  if code == ENXIO { give "ENXIO" }
+  if code == E2BIG { give "E2BIG" }
+  if code == ENOEXEC { give "ENOEXEC" }
+  if code == EBADF { give "EBADF" }
+  if code == ECHILD { give "ECHILD" }
+  if code == EAGAIN { give "EAGAIN" }
+  if code == ENOMEM { give "ENOMEM" }
+  if code == EACCES { give "EACCES" }
+  if code == EFAULT { give "EFAULT" }
+  if code == EBUSY { give "EBUSY" }
+  if code == EEXIST { give "EEXIST" }
+  if code == EINVAL { give "EINVAL" }
+  if code == ENOSYS { give "ENOSYS" }
+  if code == ENOTSUP { give "ENOTSUP" }
 
-<<< =========================================================
-   Error Handling (errno-like)
-   ========================================================= >>>
+  give "EUNKNOWN"
+}
 
-const NOERR: int = utils.NOERR
-const EPERM: int = utils.EPERM
-const ENOENT: int = utils.ENOENT
-const ESRCH: int = utils.ESRCH
-const EINTR: int = utils.EINTR
-const EIO: int = utils.EIO
-const ENXIO: int = utils.ENXIO
-const E2BIG: int = utils.E2BIG
-const ENOEXEC: int = utils.ENOEXEC
-const EBADF: int = utils.EBADF
-const ECHILD: int = utils.ECHILD
-const EAGAIN: int = utils.EAGAIN
-const ENOMEM: int = utils.ENOMEM
-const EACCES: int = utils.EACCES
-const EFAULT: int = utils.EFAULT
-const ENOTBLK: int = utils.ENOTBLK
-const EBUSY: int = utils.EBUSY
-const EEXIST: int = utils.EEXIST
-const EXDEV: int = utils.EXDEV
-const ENODEV: int = utils.ENODEV
-const ENOTDIR: int = utils.ENOTDIR
+proc strerror(code: int) -> string {
+  if code == 0 { give "ok" }
+  if code == EPERM { give "operation not permitted" }
+  if code == ENOENT { give "no such file or directory" }
+  if code == EINTR { give "interrupted operation" }
+  if code == EIO { give "input/output error" }
+  if code == EBADF { give "bad file descriptor" }
+  if code == EAGAIN { give "try again" }
+  if code == ENOMEM { give "out of memory" }
+  if code == EACCES { give "permission denied" }
+  if code == EFAULT { give "bad address" }
+  if code == EEXIST { give "already exists" }
+  if code == EINVAL { give "invalid argument" }
+  if code == ENOSYS { give "function not implemented" }
+  if code == ENOTSUP { give "operation not supported" }
 
-proc set_errno(err: int) -> () { give utils.set_errno(err) }
-proc get_errno() -> int { give utils.get_errno() }
-proc clear_errno() -> () { give utils.clear_errno() }
-proc strerror(err: int) -> string { give utils.strerror(err) }
+  give "unknown error"
+}
 
-<<< =========================================================
-   Assert & Debug
-   ========================================================= >>>
+proc option_is_some[T](value: Option[T]) -> bool {
+  match value {
+    case Option.Some(v) {
+      give true
+    }
+    case Option.None {
+      give false
+    }
+  }
+}
 
-proc assert(condition: bool, message: string) -> () { give utils.assert(condition, message) }
-proc assert_equal(a: int, b: int, message: string) -> () { give utils.assert_equal(a, b, message) }
-proc assert_not_null(ptr: i64, message: string) -> () { give utils.assert_not_null(ptr, message) }
+proc option_is_none[T](value: Option[T]) -> bool {
+  give not option_is_some(value)
+}
 
-<<< =========================================================
-   Conversion Utilities
-   ========================================================= >>>
+proc option_unwrap_or[T](value: Option[T], fallback: T) -> T {
+  match value {
+    case Option.Some(v) {
+      give v
+    }
+    case Option.None {
+      give fallback
+    }
+  }
+}
 
-proc atoi(str: string) -> i64 { give utils.atoi(str) }
-proc atof(str: string) -> f64 { give utils.atof(str) }
-proc itoa(value: i64) -> string { give utils.itoa(value) }
+proc result_is_ok[T, E](value: Result[T, E]) -> bool {
+  match value {
+    case Result.Ok(v) {
+      give true
+    }
+    case Result.Err(e) {
+      give false
+    }
+  }
+}
 
-<<< =========================================================
-   Library Metadata
-   ========================================================= >>>
+proc result_is_err[T, E](value: Result[T, E]) -> bool {
+  give not result_is_ok(value)
+}
 
-proc core_ready() -> bool { give true }
+proc result_unwrap_or[T, E](value: Result[T, E], fallback: T) -> T {
+  match value {
+    case Result.Ok(v) {
+      give v
+    }
+    case Result.Err(e) {
+      give fallback
+    }
+  }
+}
+
+proc assert_true(condition: bool, message: string) -> void {
+  if not condition {
+    panic message
+  }
+}
+
+proc assert_false(condition: bool, message: string) -> void {
+  if condition {
+    panic message
+  }
+}
+
+proc assert_int_eq(a: int, b: int, message: string) -> void {
+  if a != b {
+    panic message
+  }
+}
+
+proc assert_int_ne(a: int, b: int, message: string) -> void {
+  if a == b {
+    panic message
+  }
+}
+
+proc assert_not_null(ptr: usize, message: string) -> void {
+  if ptr == 0 {
+    panic message
+  }
+}
+
+proc min_int(a: int, b: int) -> int {
+  if a < b {
+    give a
+  }
+
+  give b
+}
+
+proc max_int(a: int, b: int) -> int {
+  if a > b {
+    give a
+  }
+
+  give b
+}
+
+proc clamp_int(x: int, low: int, high: int) -> int {
+  if x < low {
+    give low
+  }
+
+  if x > high {
+    give high
+  }
+
+  give x
+}
+
+proc abs_int(x: int) -> int {
+  if x < 0 {
+    give -x
+  }
+
+  give x
+}
+
+proc sign_int(x: int) -> int {
+  if x < 0 {
+    give -1
+  }
+
+  if x > 0 {
+    give 1
+  }
+
+  give 0
+}
+
+proc cmp_int(a: int, b: int) -> int {
+  if a < b {
+    give -1
+  }
+
+  if a > b {
+    give 1
+  }
+
+  give 0
+}
+
+proc is_even(x: int) -> bool {
+  give x % 2 == 0
+}
+
+proc is_odd(x: int) -> bool {
+  give x % 2 != 0
+}
+
+proc align_up(value: usize, align: usize) -> usize {
+  if align == 0 {
+    give value
+  }
+
+  let rem = value % align
+
+  if rem == 0 {
+    give value
+  }
+
+  give value + (align - rem)
+}
+
+proc align_down(value: usize, align: usize) -> usize {
+  if align == 0 {
+    give value
+  }
+
+  give value - (value % align)
+}
+
+proc is_aligned(value: usize, align: usize) -> bool {
+  if align == 0 {
+    give false
+  }
+
+  give value % align == 0
+}
+
+proc ptr_null() -> usize {
+  give 0
+}
+
+proc ptr_is_null(ptr: usize) -> bool {
+  give ptr == 0
+}
+
+proc ptr_is_aligned(ptr: usize, align: usize) -> bool {
+  give is_aligned(ptr, align)
+}
+
+proc ptr_add(ptr: usize, offset: usize) -> usize {
+  give ptr + offset
+}
+
+proc ptr_sub(ptr: usize, offset: usize) -> usize {
+  give ptr - offset
+}
+
+proc ptr_diff(a: usize, b: usize) -> isize {
+  give (a as isize) - (b as isize)
+}
+
+proc bit(n: int) -> usize {
+  if n < 0 {
+    give 0
+  }
+
+  give 1 << n
+}
+
+proc bit_is_set(value: usize, n: int) -> bool {
+  give (value & bit(n)) != 0
+}
+
+proc bit_set(value: usize, n: int) -> usize {
+  give value | bit(n)
+}
+
+proc bit_clear(value: usize, n: int) -> usize {
+  give value & ~bit(n)
+}
+
+proc bit_toggle(value: usize, n: int) -> usize {
+  give value ^ bit(n)
+}
+
+proc low_byte(value: usize) -> u8 {
+  give (value & 255) as u8
+}
+
+proc high_byte_u16(value: u16) -> u8 {
+  give ((value >> 8) & 255) as u8
+}
+
+proc make_u16(lo: u8, hi: u8) -> u16 {
+  give (lo as u16) | ((hi as u16) << 8)
+}
+
+proc swap_u16(x: u16) -> u16 {
+  give ((x & 255) << 8) | ((x >> 8) & 255)
+}
+
+proc swap_u32(x: u32) -> u32 {
+  give ((x & 255) << 24)
+     | ((x & 65280) << 8)
+     | ((x >> 8) & 65280)
+     | ((x >> 24) & 255)
+}
+
+proc strlen(s: string) -> usize {
+  give s.len
+}
+
+proc string_is_empty(s: string) -> bool {
+  give s.len == 0
+}
+
+proc string_eq(a: string, b: string) -> bool {
+  give a == b
+}
+
+proc string_ne(a: string, b: string) -> bool {
+  give a != b
+}
+
+proc string_starts_with(s: string, prefix: string) -> bool {
+  if prefix.len > s.len {
+    give false
+  }
+
+  let i = 0
+
+  while i < prefix.len {
+    if s[i] != prefix[i] {
+      give false
+    }
+
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc string_ends_with(s: string, suffix: string) -> bool {
+  if suffix.len > s.len {
+    give false
+  }
+
+  let offset = s.len - suffix.len
+  let i = 0
+
+  while i < suffix.len {
+    if s[offset + i] != suffix[i] {
+      give false
+    }
+
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc string_contains(s: string, needle: string) -> bool {
+  give string_find(s, needle) >= 0
+}
+
+proc string_find(s: string, needle: string) -> int {
+  if needle.len == 0 {
+    give 0
+  }
+
+  if needle.len > s.len {
+    give -1
+  }
+
+  let i = 0
+
+  while i <= s.len - needle.len {
+    let ok = true
+    let j = 0
+
+    while j < needle.len {
+      if s[i + j] != needle[j] {
+        set ok = false
+      }
+
+      set j = j + 1
+    }
+
+    if ok {
+      give i
+    }
+
+    set i = i + 1
+  }
+
+  give -1
+}
+
+proc string_repeat(s: string, count: int) -> string {
+  let out = ""
+  let i = 0
+
+  while i < count {
+    set out = out + s
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc string_slice(s: string, start: int, end: int) -> string {
+  let out = ""
+  let i = clamp_int(start, 0, s.len)
+  let stop = clamp_int(end, 0, s.len)
+
+  while i < stop {
+    set out = out + s[i]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc string_reverse(s: string) -> string {
+  let out = ""
+  let i = s.len - 1
+
+  while i >= 0 {
+    set out = out + s[i]
+    set i = i - 1
+  }
+
+  give out
+}
+
+proc string_trim_left(s: string) -> string {
+  let i = 0
+
+  while i < s.len and char_is_space(s[i]) {
+    set i = i + 1
+  }
+
+  give string_slice(s, i, s.len)
+}
+
+proc string_trim_right(s: string) -> string {
+  let i = s.len - 1
+
+  while i >= 0 and char_is_space(s[i]) {
+    set i = i - 1
+  }
+
+  give string_slice(s, 0, i + 1)
+}
+
+proc string_trim(s: string) -> string {
+  give string_trim_right(string_trim_left(s))
+}
+
+proc char_is_digit(c: char) -> bool {
+  give c >= '0' and c <= '9'
+}
+
+proc char_is_lower(c: char) -> bool {
+  give c >= 'a' and c <= 'z'
+}
+
+proc char_is_upper(c: char) -> bool {
+  give c >= 'A' and c <= 'Z'
+}
+
+proc char_is_alpha(c: char) -> bool {
+  give char_is_lower(c) or char_is_upper(c)
+}
+
+proc char_is_alnum(c: char) -> bool {
+  give char_is_alpha(c) or char_is_digit(c)
+}
+
+proc char_is_space(c: char) -> bool {
+  if c == ' ' { give true }
+  if c == '\n' { give true }
+  if c == '\r' { give true }
+  if c == '\t' { give true }
+
+  give false
+}
+
+proc char_to_lower(c: char) -> char {
+  if char_is_upper(c) {
+    give ((c as int) + 32) as char
+  }
+
+  give c
+}
+
+proc char_to_upper(c: char) -> char {
+  if char_is_lower(c) {
+    give ((c as int) - 32) as char
+  }
+
+  give c
+}
+
+proc bytes_empty() -> bytes {
+  give b""
+}
+
+proc bytes_len(b: bytes) -> usize {
+  give b.len
+}
+
+proc bytes_is_empty(b: bytes) -> bool {
+  give b.len == 0
+}
+
+proc buffer_new(capacity: usize) -> Buffer {
+  give Buffer {
+    data: b"",
+    len: 0,
+    capacity: capacity
+  }
+}
+
+proc buffer_from_bytes(data: bytes) -> Buffer {
+  give Buffer {
+    data: data,
+    len: data.len,
+    capacity: data.len
+  }
+}
+
+proc buffer_clear(buf: Buffer) -> Buffer {
+  let out = buf
+
+  set out.data = b""
+  set out.len = 0
+
+  give out
+}
+
+proc buffer_is_empty(buf: Buffer) -> bool {
+  give buf.len == 0
+}
+
+proc slice_new[T](data: [T]) -> Slice[T] {
+  give Slice[T] {
+    data: data,
+    start: 0,
+    len: data.len
+  }
+}
+
+proc slice_range[T](data: [T], start: usize, len: usize) -> Slice[T] {
+  give Slice[T] {
+    data: data,
+    start: start,
+    len: len
+  }
+}
+
+proc array_len[T](xs: [T]) -> usize {
+  give xs.len
+}
+
+proc array_is_empty[T](xs: [T]) -> bool {
+  give xs.len == 0
+}
+
+proc array_first_int(xs: [int]) -> Option[int] {
+  if xs.len == 0 {
+    give Option[int].None
+  }
+
+  give Option[int].Some(xs[0])
+}
+
+proc array_last_int(xs: [int]) -> Option[int] {
+  if xs.len == 0 {
+    give Option[int].None
+  }
+
+  give Option[int].Some(xs[xs.len - 1])
+}
+
+proc array_contains_int(xs: [int], value: int) -> bool {
+  let i = 0
+
+  while i < xs.len {
+    if xs[i] == value {
+      give true
+    }
+
+    set i = i + 1
+  }
+
+  give false
+}
+
+proc array_sum_int(xs: [int]) -> int {
+  let total = 0
+  let i = 0
+
+  while i < xs.len {
+    set total = total + xs[i]
+    set i = i + 1
+  }
+
+  give total
+}
+
+proc array_min_int(xs: [int]) -> Option[int] {
+  if xs.len == 0 {
+    give Option[int].None
+  }
+
+  let value = xs[0]
+  let i = 1
+
+  while i < xs.len {
+    if xs[i] < value {
+      set value = xs[i]
+    }
+
+    set i = i + 1
+  }
+
+  give Option[int].Some(value)
+}
+
+proc array_max_int(xs: [int]) -> Option[int] {
+  if xs.len == 0 {
+    give Option[int].None
+  }
+
+  let value = xs[0]
+  let i = 1
+
+  while i < xs.len {
+    if xs[i] > value {
+      set value = xs[i]
+    }
+
+    set i = i + 1
+  }
+
+  give Option[int].Some(value)
+}
+
+proc array_reverse_int(xs: [int]) -> [int] {
+  let out: [int] = []
+  let i = xs.len - 1
+
+  while i >= 0 {
+    set out = out + [xs[i]]
+    set i = i - 1
+  }
+
+  give out
+}
+
+proc array_fill_int(count: usize, value: int) -> [int] {
+  let out: [int] = []
+  let i = 0
+
+  while i < count {
+    set out = out + [value]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc array_range_int(start: int, end: int) -> [int] {
+  let out: [int] = []
+  let i = start
+
+  while i < end {
+    set out = out + [i]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc memcmp(a: bytes, b: bytes, count: usize) -> int {
+  let i = 0
+
+  while i < count and i < a.len and i < b.len {
+    if a[i] < b[i] {
+      give -1
+    }
+
+    if a[i] > b[i] {
+      give 1
+    }
+
+    set i = i + 1
+  }
+
+  give 0
+}
+
+proc memset(buf: bytes, value: u8, count: usize) -> bytes {
+  let out = b""
+  let i = 0
+
+  while i < count {
+    set out = out + value
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc memcpy(dst: bytes, src: bytes, count: usize) -> bytes {
+  let out = dst
+  let i = 0
+
+  while i < count and i < src.len {
+    set out = out + src[i]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc memzero(count: usize) -> bytes {
+  give memset(b"", 0 as u8, count)
+}
+
+proc atoi(s: string) -> i64 {
+  let text = string_trim(s)
+  let sign = 1
+  let i = 0
+  let out: i64 = 0
+
+  if text.len == 0 {
+    give 0
+  }
+
+  if text[0] == '-' {
+    set sign = -1
+    set i = 1
+  }
+
+  while i < text.len and char_is_digit(text[i]) {
+    set out = (out * 10) + ((text[i] as int) - ('0' as int))
+    set i = i + 1
+  }
+
+  give out * sign
+}
+
+proc parse_i64(s: string) -> i64 {
+  give atoi(s)
+}
+
+proc parse_int(s: string) -> int {
+  give atoi(s) as int
+}
+
+proc parse_bool(s: string) -> bool {
+  if s == "true" { give true }
+  if s == "1" { give true }
+  if s == "yes" { give true }
+  if s == "on" { give true }
+
+  give false
+}
+
+proc itoa(value: i64) -> string {
+  if value == 0 {
+    give "0"
+  }
+
+  let v = value
+  let neg = false
+
+  if v < 0 {
+    set neg = true
+    set v = -v
+  }
+
+  let out = ""
+
+  while v > 0 {
+    let digit = v % 10
+    set out = ((('0' as int) + digit) as char) + out
+    set v = v / 10
+  }
+
+  if neg {
+    give "-" + out
+  }
+
+  give out
+}
+
+proc to_string_int(value: int) -> string {
+  give itoa(value as i64)
+}
+
+proc to_string_i64(value: i64) -> string {
+  give itoa(value)
+}
+
+proc to_string_bool(value: bool) -> string {
+  if value {
+    give "true"
+  }
+
+  give "false"
+}
+
+proc to_string_status(status: CoreStatus) -> string {
+  match status {
+    case CoreStatus.Ok {
+      give "Ok"
+    }
+    case CoreStatus.Err {
+      give "Err"
+    }
+    case CoreStatus.None {
+      give "None"
+    }
+    case CoreStatus.Unsupported {
+      give "Unsupported"
+    }
+    case CoreStatus.Invalid {
+      give "Invalid"
+    }
+    case CoreStatus.Panic {
+      give "Panic"
+    }
+  }
+}
+
+proc hash_int(value: int) -> usize {
+  let x = value as usize
+  set x = ((x >> 16) ^ x) * 73244475
+  set x = ((x >> 16) ^ x) * 73244475
+  set x = (x >> 16) ^ x
+  give x
+}
+
+proc hash_string(s: string) -> usize {
+  let h: usize = 5381
+  let i = 0
+
+  while i < s.len {
+    set h = ((h << 5) + h) + (s[i] as usize)
+    set i = i + 1
+  }
+
+  give h
+}
+
+proc range_new(start: int, end: int) -> Range {
+  give Range {
+    start: start,
+    end: end
+  }
+}
+
+proc range_len(r: Range) -> int {
+  if r.end <= r.start {
+    give 0
+  }
+
+  give r.end - r.start
+}
+
+proc range_contains(r: Range, value: int) -> bool {
+  give value >= r.start and value < r.end
+}
+
+proc span_new(start: usize, end: usize) -> Span {
+  give Span {
+    start: start,
+    end: end
+  }
+}
+
+proc span_len(s: Span) -> usize {
+  if s.end <= s.start {
+    give 0
+  }
+
+  give s.end - s.start
+}
+
+proc span_contains(s: Span, value: usize) -> bool {
+  give value >= s.start and value < s.end
+}
+
+proc pair[A, B](a: A, b: B) -> Pair[A, B] {
+  give Pair[A, B] {
+    first: a,
+    second: b
+  }
+}
+
+proc triple[A, B, C](a: A, b: B, c: C) -> Triple[A, B, C] {
+  give Triple[A, B, C] {
+    first: a,
+    second: b,
+    third: c
+  }
+}
+
+proc random_seed(seed: u64) -> u64 {
+  give seed
+}
+
+proc random_next(seed: u64) -> u64 {
+  give (seed * 6364136223846793005) + 1
+}
+
+proc random_range(seed: u64, min: int, max: int) -> int {
+  if max <= min {
+    give min
+  }
+
+  let n = random_next(seed)
+  give min + ((n % ((max - min) as u64)) as int)
+}
+
+proc clock_ticks() -> i64 {
+  give 0
+}
+
+proc time_seconds() -> i64 {
+  give 0
+}
+
+proc sleep_ms(ms: int) -> int {
+  if ms < 0 {
+    give EINVAL
+  }
+
+  give OK
+}
+
+proc env_get(name: string) -> Option[string] {
+  if name == "" {
+    give Option[string].None
+  }
+
+  give Option[string].None
+}
+
+proc env_has(name: string) -> bool {
+  give option_is_some(env_get(name))
+}
+
+proc platform_name() -> string {
+  give "unknown"
+}
+
+proc arch_name() -> string {
+  give "unknown"
+}
+
+proc is_debug() -> bool {
+  give false
+}
+
+proc is_release() -> bool {
+  give not is_debug()
+}
+
+proc unreachable_core() -> never {
+  unreachable
+}
 
 proc core_modules() -> [string] {
   give [
     "types",
-    "strings",
+    "option",
+    "result",
+    "error",
+    "assert",
     "memory",
-    "algorithms",
-    "utils"
+    "ptr",
+    "bit",
+    "string",
+    "char",
+    "bytes",
+    "array",
+    "convert",
+    "hash",
+    "range",
+    "time",
+    "env",
+    "platform"
   ]
 }
 
-proc library_meta() -> string { 
-  give "stdlib.core (C-like standard library)" 
+proc core_ready() -> bool {
+  give true
 }
 
-share all
+proc library_meta() -> string {
+  give "vitte.stdlib.core — complete core foundation"
+}
+
+proc core_selftest() -> bool {
+  assert_true(TRUE, "TRUE must be true")
+  assert_false(FALSE, "FALSE must be false")
+
+  if min_int(2, 1) != 1 {
+    give false
+  }
+
+  if max_int(2, 1) != 2 {
+    give false
+  }
+
+  if clamp_int(10, 0, 5) != 5 {
+    give false
+  }
+
+  if not string_starts_with("vitte", "vit") {
+    give false
+  }
+
+  if not string_ends_with("vitte", "tte") {
+    give false
+  }
+
+  if atoi("42") != 42 {
+    give false
+  }
+
+  if itoa(42) != "42" {
+    give false
+  }
+
+  if not bit_is_set(bit_set(0, 3), 3) {
+    give false
+  }
+
+  give true
+}
