@@ -1,0 +1,93 @@
+<<< =========================================================
+   Virtual Memory / Mapping
+   ========================================================= >>>
+
+pick VmPerm {
+  case None,
+  case Read,
+  case Write,
+  case Exec,
+  case ReadWrite,
+  case ReadExec,
+  case ReadWriteExec
+}
+
+form VmMapping {
+  virt: usize,
+  phys: usize,
+  size: usize,
+  perm: VmPerm,
+  present: bool,
+  user: bool,
+  global: bool,
+  dirty: bool,
+  accessed: bool
+}
+
+form AddressSpace {
+  id: usize,
+  name: string,
+  mappings: [VmMapping]
+}
+
+proc vm_mapping(virt: usize, phys: usize, size: usize, perm: VmPerm) -> VmMapping {
+  give VmMapping {
+    virt: page_align_down(virt),
+    phys: page_align_down(phys),
+    size: page_align_up(size),
+    perm: perm,
+    present: true,
+    user: false,
+    global: false,
+    dirty: false,
+    accessed: false
+  }
+}
+
+proc address_space_new(id: usize, name: string) -> AddressSpace {
+  give AddressSpace {
+    id: id,
+    name: name,
+    mappings: []
+  }
+}
+
+proc address_space_map(space: AddressSpace, virt: usize, phys: usize, size: usize, perm: VmPerm) -> AddressSpace {
+  let out = space
+  set out.mappings = out.mappings + [vm_mapping(virt, phys, size, perm)]
+  give out
+}
+
+proc address_space_unmap(space: AddressSpace, virt: usize) -> AddressSpace {
+  let out = space
+  let next: [VmMapping] = []
+  let v = page_align_down(virt)
+  let i = 0
+
+  while i < out.mappings.len {
+    if out.mappings[i].virt != v {
+      set next = next + [out.mappings[i]]
+    }
+
+    set i = i + 1
+  }
+
+  set out.mappings = next
+  give out
+}
+
+proc address_space_translate(space: AddressSpace, virt: usize) -> usize {
+  let i = 0
+
+  while i < space.mappings.len {
+    let m = space.mappings[i]
+
+    if ptr_in_range(virt, m.virt, m.size) {
+      give m.phys + (virt - m.virt)
+    }
+
+    set i = i + 1
+  }
+
+  give NULL
+}
