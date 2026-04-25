@@ -1,93 +1,1402 @@
+Vit
+space vitte/stdlib/memory
+
+export *
+
 <<< =========================================================
-   Virtual Memory / Mapping
+   Vitte Memory Library — MAX
+   allocators, raw memory helpers, pointer math, pages, arenas,
+   pools, buffers, slices, byte operations, alignment, diagnostics
+   current Vitte syntax: { }
    ========================================================= >>>
 
-pick VmPerm {
-  case None,
-  case Read,
-  case Write,
-  case Exec,
-  case ReadWrite,
-  case ReadExec,
-  case ReadWriteExec
+const MEMORY_VERSION: string = "1.0.0"
+
+const OK: int = 0
+const ERR: int = -1
+
+const NULL: usize = 0
+
+const PAGE_SIZE: usize = 4096
+const HUGE_PAGE_SIZE: usize = 2097152
+
+const DEFAULT_ALIGN: usize = 8
+const CACHE_LINE_SIZE: usize = 64
+
+const KB: usize = 1024
+const MB: usize = 1048576
+const GB: usize = 1073741824
+
+const MEM_READ: int = 1
+const MEM_WRITE: int = 2
+const MEM_EXEC: int = 4
+const MEM_USER: int = 8
+const MEM_KERNEL: int = 16
+const MEM_DEVICE: int = 32
+const MEM_DMA: int = 64
+
+pick MemoryStatus {
+  case Ok,
+  case Failed,
+  case OutOfMemory,
+  case Invalid,
+  case Misaligned,
+  case Overflow,
+  case NotFound,
+  case Unsupported
 }
 
-form VmMapping {
-  virt: usize,
-  phys: usize,
+pick AllocKind {
+  case Unknown,
+  case Heap,
+  case Arena,
+  case Pool,
+  case Slab,
+  case Page,
+  case Stack,
+  case Static
+}
+
+pick PageState {
+  case Free,
+  case Used,
+  case Reserved,
+  case Guard,
+  case Device,
+  case Shared
+}
+
+form MemoryResult {
+  status: MemoryStatus,
+  code: int,
+  message: string
+}
+
+form MemoryBlock {
+  addr: usize,
   size: usize,
-  perm: VmPerm,
-  present: bool,
-  user: bool,
-  global: bool,
-  dirty: bool,
-  accessed: bool
+  align: usize,
+  kind: AllocKind,
+  used: bool
 }
 
-form AddressSpace {
-  id: usize,
-  name: string,
-  mappings: [VmMapping]
+form MemoryRegion {
+  base: usize,
+  size: usize,
+  flags: int,
+  name: string
 }
 
-proc vm_mapping(virt: usize, phys: usize, size: usize, perm: VmPerm) -> VmMapping {
-  give VmMapping {
-    virt: page_align_down(virt),
-    phys: page_align_down(phys),
-    size: page_align_up(size),
-    perm: perm,
-    present: true,
-    user: false,
-    global: false,
-    dirty: false,
-    accessed: false
+form Page {
+  index: usize,
+  addr: usize,
+  state: PageState,
+  flags: int
+}
+
+form PageRange {
+  start: usize,
+  count: usize
+}
+
+form Heap {
+  base: usize,
+  size: usize,
+  used: usize,
+  peak: usize,
+  allocations: [MemoryBlock]
+}
+
+form Arena {
+  base: usize,
+  size: usize,
+  offset: usize,
+  align: usize
+}
+
+form Pool {
+  base: usize,
+  block_size: usize,
+  block_count: usize,
+  used_count: usize,
+  bitmap: [int]
+}
+
+form SlabClass {
+  block_size: usize,
+  block_count: usize,
+  free_count: usize
+}
+
+form SlabAllocator {
+  base: usize,
+  size: usize,
+  classes: [SlabClass]
+}
+
+form ByteBuffer {
+  data: bytes,
+  len: usize,
+  capacity: usize
+}
+
+form MemoryStats {
+  total: usize,
+  used: usize,
+  free: usize,
+  peak: usize,
+  allocations: usize,
+  frees: usize,
+  failures: usize
+}
+
+form MemoryMap {
+  regions: [MemoryRegion],
+  total: usize,
+  usable: usize,
+  reserved: usize
+}
+
+proc memory_ok(message: string) -> MemoryResult {
+  give MemoryResult {
+    status: MemoryStatus.Ok,
+    code: OK,
+    message: message
   }
 }
 
-proc address_space_new(id: usize, name: string) -> AddressSpace {
-  give AddressSpace {
-    id: id,
-    name: name,
-    mappings: []
+proc memory_error(status: MemoryStatus, code: int, message: string) -> MemoryResult {
+  give MemoryResult {
+    status: status,
+    code: code,
+    message: message
   }
 }
 
-proc address_space_map(space: AddressSpace, virt: usize, phys: usize, size: usize, perm: VmPerm) -> AddressSpace {
-  let out = space
-  set out.mappings = out.mappings + [vm_mapping(virt, phys, size, perm)]
+proc is_null(addr: usize) -> bool {
+  give addr == NULL
+}
+
+proc non_null(addr: usize) -> bool {
+  give addr != NULL
+}
+
+proc align_up(value: usize, align: usize) -> usize {
+  if align == 0 {
+    give value
+  }
+
+  let rem = value % align
+
+  if rem == 0 {
+    give value
+  }
+
+  give value + (align - rem)
+}
+
+proc align_down(value: usize, align: usize) -> usize {
+  if align == 0 {
+    give value
+  }
+
+  give value - (value % align)
+}
+
+proc is_aligned(value: usize, align: usize) -> bool {
+  if align == 0 {
+    give false
+  }
+
+  give value % align == 0
+}
+
+proc align_ptr(addr: usize, align: usize) -> usize {
+  give align_up(addr, align)
+}
+
+proc page_align_up(addr: usize) -> usize {
+  give align_up(addr, PAGE_SIZE)
+}
+
+proc page_align_down(addr: usize) -> usize {
+  give align_down(addr, PAGE_SIZE)
+}
+
+proc page_index(addr: usize) -> usize {
+  give addr / PAGE_SIZE
+}
+
+proc page_addr(index: usize) -> usize {
+  give index * PAGE_SIZE
+}
+
+proc page_offset(addr: usize) -> usize {
+  give addr % PAGE_SIZE
+}
+
+proc pages_for_size(size: usize) -> usize {
+  if size == 0 {
+    give 0
+  }
+
+  give (align_up(size, PAGE_SIZE)) / PAGE_SIZE
+}
+
+proc bytes_to_kb(size: usize) -> usize {
+  give size / KB
+}
+
+proc bytes_to_mb(size: usize) -> usize {
+  give size / MB
+}
+
+proc bytes_to_gb(size: usize) -> usize {
+  give size / GB
+}
+
+proc kb(value: usize) -> usize {
+  give value * KB
+}
+
+proc mb(value: usize) -> usize {
+  give value * MB
+}
+
+proc gb(value: usize) -> usize {
+  give value * GB
+}
+
+proc checked_add(a: usize, b: usize) -> usize {
+  let c = a + b
+
+  if c < a {
+    give 0
+  }
+
+  give c
+}
+
+proc checked_mul(a: usize, b: usize) -> usize {
+  if a == 0 or b == 0 {
+    give 0
+  }
+
+  let c = a * b
+
+  if c / a != b {
+    give 0
+  }
+
+  give c
+}
+
+proc ptr_add(addr: usize, offset: usize) -> usize {
+  give addr + offset
+}
+
+proc ptr_sub(addr: usize, offset: usize) -> usize {
+  give addr - offset
+}
+
+proc ptr_diff(a: usize, b: usize) -> isize {
+  give (a as isize) - (b as isize)
+}
+
+proc ptr_in_range(ptr: usize, base: usize, size: usize) -> bool {
+  if ptr < base {
+    give false
+  }
+
+  give ptr < base + size
+}
+
+proc ranges_overlap(a_base: usize, a_size: usize, b_base: usize, b_size: usize) -> bool {
+  let a_end = a_base + a_size
+  let b_end = b_base + b_size
+
+  if a_end <= b_base {
+    give false
+  }
+
+  if b_end <= a_base {
+    give false
+  }
+
+  give true
+}
+
+proc block_new(addr: usize, size: usize, align: usize, kind: AllocKind) -> MemoryBlock {
+  give MemoryBlock {
+    addr: addr,
+    size: size,
+    align: align,
+    kind: kind,
+    used: true
+  }
+}
+
+proc block_empty() -> MemoryBlock {
+  give MemoryBlock {
+    addr: NULL,
+    size: 0,
+    align: 0,
+    kind: AllocKind.Unknown,
+    used: false
+  }
+}
+
+proc block_end(block: MemoryBlock) -> usize {
+  give block.addr + block.size
+}
+
+proc block_contains(block: MemoryBlock, addr: usize) -> bool {
+  give ptr_in_range(addr, block.addr, block.size)
+}
+
+proc block_is_valid(block: MemoryBlock) -> bool {
+  if block.addr == NULL {
+    give false
+  }
+
+  if block.size == 0 {
+    give false
+  }
+
+  give block.used
+}
+
+proc region_new(base: usize, size: usize, flags: int, name: string) -> MemoryRegion {
+  give MemoryRegion {
+    base: base,
+    size: size,
+    flags: flags,
+    name: name
+  }
+}
+
+proc region_end(region: MemoryRegion) -> usize {
+  give region.base + region.size
+}
+
+proc region_contains(region: MemoryRegion, addr: usize) -> bool {
+  give ptr_in_range(addr, region.base, region.size)
+}
+
+proc region_is_readable(region: MemoryRegion) -> bool {
+  give (region.flags & MEM_READ) != 0
+}
+
+proc region_is_writable(region: MemoryRegion) -> bool {
+  give (region.flags & MEM_WRITE) != 0
+}
+
+proc region_is_executable(region: MemoryRegion) -> bool {
+  give (region.flags & MEM_EXEC) != 0
+}
+
+proc region_is_kernel(region: MemoryRegion) -> bool {
+  give (region.flags & MEM_KERNEL) != 0
+}
+
+proc region_is_user(region: MemoryRegion) -> bool {
+  give (region.flags & MEM_USER) != 0
+}
+
+proc memory_map_empty() -> MemoryMap {
+  give MemoryMap {
+    regions: [],
+    total: 0,
+    usable: 0,
+    reserved: 0
+  }
+}
+
+proc memory_map_add(map: MemoryMap, region: MemoryRegion) -> MemoryMap {
+  let out = map
+
+  set out.regions = out.regions + [region]
+  set out.total = out.total + region.size
+
+  if region_is_writable(region) {
+    set out.usable = out.usable + region.size
+  } else {
+    set out.reserved = out.reserved + region.size
+  }
+
   give out
 }
 
-proc address_space_unmap(space: AddressSpace, virt: usize) -> AddressSpace {
-  let out = space
-  let next: [VmMapping] = []
-  let v = page_align_down(virt)
+proc memory_map_find(map: MemoryMap, addr: usize) -> MemoryRegion {
   let i = 0
 
-  while i < out.mappings.len {
-    if out.mappings[i].virt != v {
-      set next = next + [out.mappings[i]]
+  while i < map.regions.len {
+    if region_contains(map.regions[i], addr) {
+      give map.regions[i]
     }
 
     set i = i + 1
   }
 
-  set out.mappings = next
+  give region_new(NULL, 0, 0, "")
+}
+
+proc memory_map_usable_regions(map: MemoryMap) -> [MemoryRegion] {
+  let out: [MemoryRegion] = []
+  let i = 0
+
+  while i < map.regions.len {
+    if region_is_writable(map.regions[i]) {
+      set out = out + [map.regions[i]]
+    }
+
+    set i = i + 1
+  }
+
   give out
 }
 
-proc address_space_translate(space: AddressSpace, virt: usize) -> usize {
+proc heap_new(base: usize, size: usize) -> Heap {
+  give Heap {
+    base: base,
+    size: size,
+    used: 0,
+    peak: 0,
+    allocations: []
+  }
+}
+
+proc heap_remaining(heap: Heap) -> usize {
+  if heap.used >= heap.size {
+    give 0
+  }
+
+  give heap.size - heap.used
+}
+
+proc heap_alloc(heap: Heap, size: usize, align: usize) -> Heap {
+  let out = heap
+
+  if size == 0 {
+    give out
+  }
+
+  let current = out.base + out.used
+  let aligned = align_up(current, align)
+  let padding = aligned - current
+  let total = padding + size
+
+  if total > heap_remaining(out) {
+    give out
+  }
+
+  let block = block_new(aligned, size, align, AllocKind.Heap)
+
+  set out.allocations = out.allocations + [block]
+  set out.used = out.used + total
+
+  if out.used > out.peak {
+    set out.peak = out.used
+  }
+
+  give out
+}
+
+proc heap_last_block(heap: Heap) -> MemoryBlock {
+  if heap.allocations.len == 0 {
+    give block_empty()
+  }
+
+  give heap.allocations[heap.allocations.len - 1]
+}
+
+proc heap_contains(heap: Heap, addr: usize) -> bool {
+  give ptr_in_range(addr, heap.base, heap.size)
+}
+
+proc heap_reset(heap: Heap) -> Heap {
+  let out = heap
+
+  set out.used = 0
+  set out.allocations = []
+
+  give out
+}
+
+proc heap_stats(heap: Heap) -> MemoryStats {
+  give MemoryStats {
+    total: heap.size,
+    used: heap.used,
+    free: heap_remaining(heap),
+    peak: heap.peak,
+    allocations: heap.allocations.len,
+    frees: 0,
+    failures: 0
+  }
+}
+
+proc arena_new(base: usize, size: usize, align: usize) -> Arena {
+  give Arena {
+    base: base,
+    size: size,
+    offset: 0,
+    align: align
+  }
+}
+
+proc arena_remaining(arena: Arena) -> usize {
+  if arena.offset >= arena.size {
+    give 0
+  }
+
+  give arena.size - arena.offset
+}
+
+proc arena_current(arena: Arena) -> usize {
+  give arena.base + arena.offset
+}
+
+proc arena_alloc(arena: Arena, size: usize) -> Arena {
+  let out = arena
+
+  if size == 0 {
+    give out
+  }
+
+  let current = out.base + out.offset
+  let aligned = align_up(current, out.align)
+  let padding = aligned - current
+  let total = padding + size
+
+  if total > arena_remaining(out) {
+    give out
+  }
+
+  set out.offset = out.offset + total
+  give out
+}
+
+proc arena_alloc_aligned(arena: Arena, size: usize, align: usize) -> Arena {
+  let out = arena
+
+  set out.align = align
+
+  give arena_alloc(out, size)
+}
+
+proc arena_last_addr(before: Arena, after: Arena) -> usize {
+  if after.offset <= before.offset {
+    give NULL
+  }
+
+  give before.base + before.offset
+}
+
+proc arena_reset(arena: Arena) -> Arena {
+  let out = arena
+
+  set out.offset = 0
+
+  give out
+}
+
+proc arena_mark(arena: Arena) -> usize {
+  give arena.offset
+}
+
+proc arena_restore(arena: Arena, mark: usize) -> Arena {
+  let out = arena
+
+  if mark <= out.size {
+    set out.offset = mark
+  }
+
+  give out
+}
+
+proc arena_used(arena: Arena) -> usize {
+  give arena.offset
+}
+
+proc arena_full(arena: Arena) -> bool {
+  give arena.offset >= arena.size
+}
+
+proc pool_new(base: usize, block_size: usize, block_count: usize) -> Pool {
+  give Pool {
+    base: base,
+    block_size: block_size,
+    block_count: block_count,
+    used_count: 0,
+    bitmap: array_fill_int(block_count, 0)
+  }
+}
+
+proc pool_block_addr(pool: Pool, index: usize) -> usize {
+  give pool.base + (index * pool.block_size)
+}
+
+proc pool_index_of(pool: Pool, addr: usize) -> usize {
+  if addr < pool.base {
+    give pool.block_count
+  }
+
+  give (addr - pool.base) / pool.block_size
+}
+
+proc pool_has_free(pool: Pool) -> bool {
+  give pool.used_count < pool.block_count
+}
+
+proc pool_alloc(pool: Pool) -> Pool {
+  let out = pool
   let i = 0
 
-  while i < space.mappings.len {
-    let m = space.mappings[i]
+  while i < out.block_count {
+    if out.bitmap[i] == 0 {
+      set out.bitmap[i] = 1
+      set out.used_count = out.used_count + 1
+      give out
+    }
 
-    if ptr_in_range(virt, m.virt, m.size) {
-      give m.phys + (virt - m.virt)
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc pool_last_alloc_addr(before: Pool, after: Pool) -> usize {
+  let i = 0
+
+  while i < before.block_count {
+    if before.bitmap[i] == 0 and after.bitmap[i] == 1 {
+      give pool_block_addr(after, i)
     }
 
     set i = i + 1
   }
 
   give NULL
+}
+
+proc pool_free(pool: Pool, addr: usize) -> Pool {
+  let out = pool
+  let index = pool_index_of(out, addr)
+
+  if index >= out.block_count {
+    give out
+  }
+
+  if out.bitmap[index] == 1 {
+    set out.bitmap[index] = 0
+    set out.used_count = out.used_count - 1
+  }
+
+  give out
+}
+
+proc pool_used(pool: Pool) -> usize {
+  give pool.used_count
+}
+
+proc pool_free_count(pool: Pool) -> usize {
+  give pool.block_count - pool.used_count
+}
+
+proc pool_capacity(pool: Pool) -> usize {
+  give pool.block_count * pool.block_size
+}
+
+proc pool_contains(pool: Pool, addr: usize) -> bool {
+  give ptr_in_range(addr, pool.base, pool_capacity(pool))
+}
+
+proc slab_class(block_size: usize, block_count: usize) -> SlabClass {
+  give SlabClass {
+    block_size: block_size,
+    block_count: block_count,
+    free_count: block_count
+  }
+}
+
+proc slab_new(base: usize, size: usize) -> SlabAllocator {
+  give SlabAllocator {
+    base: base,
+    size: size,
+    classes: [
+      slab_class(16, 256),
+      slab_class(32, 256),
+      slab_class(64, 256),
+      slab_class(128, 128),
+      slab_class(256, 128),
+      slab_class(512, 64),
+      slab_class(1024, 32),
+      slab_class(2048, 16),
+      slab_class(4096, 8)
+    ]
+  }
+}
+
+proc slab_find_class(slab: SlabAllocator, size: usize) -> int {
+  let i = 0
+
+  while i < slab.classes.len {
+    if size <= slab.classes[i].block_size {
+      give i
+    }
+
+    set i = i + 1
+  }
+
+  give -1
+}
+
+proc slab_alloc(slab: SlabAllocator, size: usize) -> SlabAllocator {
+  let out = slab
+  let index = slab_find_class(out, size)
+
+  if index < 0 {
+    give out
+  }
+
+  if out.classes[index].free_count == 0 {
+    give out
+  }
+
+  set out.classes[index].free_count = out.classes[index].free_count - 1
+  give out
+}
+
+proc slab_free(slab: SlabAllocator, size: usize) -> SlabAllocator {
+  let out = slab
+  let index = slab_find_class(out, size)
+
+  if index < 0 {
+    give out
+  }
+
+  if out.classes[index].free_count < out.classes[index].block_count {
+    set out.classes[index].free_count = out.classes[index].free_count + 1
+  }
+
+  give out
+}
+
+proc slab_free_blocks(slab: SlabAllocator) -> usize {
+  let total: usize = 0
+  let i = 0
+
+  while i < slab.classes.len {
+    set total = total + slab.classes[i].free_count
+    set i = i + 1
+  }
+
+  give total
+}
+
+proc page_new(index: usize, state: PageState, flags: int) -> Page {
+  give Page {
+    index: index,
+    addr: page_addr(index),
+    state: state,
+    flags: flags
+  }
+}
+
+proc page_is_free(page: Page) -> bool {
+  give page.state == PageState.Free
+}
+
+proc page_is_used(page: Page) -> bool {
+  give page.state == PageState.Used
+}
+
+proc page_range(start: usize, count: usize) -> PageRange {
+  give PageRange {
+    start: start,
+    count: count
+  }
+}
+
+proc page_range_end(r: PageRange) -> usize {
+  give r.start + r.count
+}
+
+proc page_range_contains(r: PageRange, index: usize) -> bool {
+  if index < r.start {
+    give false
+  }
+
+  give index < page_range_end(r)
+}
+
+proc pages_make(count: usize) -> [Page] {
+  let out: [Page] = []
+  let i = 0
+
+  while i < count {
+    set out = out + [page_new(i, PageState.Free, 0)]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc pages_mark_range(pages: [Page], r: PageRange, state: PageState) -> [Page] {
+  let out = pages
+  let i = r.start
+
+  while i < page_range_end(r) and i < out.len {
+    set out[i].state = state
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc pages_find_free_run(pages: [Page], count: usize) -> PageRange {
+  if count == 0 {
+    give page_range(0, 0)
+  }
+
+  let run_start: usize = 0
+  let run_len: usize = 0
+  let i = 0
+
+  while i < pages.len {
+    if pages[i].state == PageState.Free {
+      if run_len == 0 {
+        set run_start = i
+      }
+
+      set run_len = run_len + 1
+
+      if run_len >= count {
+        give page_range(run_start, count)
+      }
+    } else {
+      set run_len = 0
+    }
+
+    set i = i + 1
+  }
+
+  give page_range(0, 0)
+}
+
+proc pages_alloc(pages: [Page], count: usize) -> [Page] {
+  let r = pages_find_free_run(pages, count)
+
+  if r.count == 0 {
+    give pages
+  }
+
+  give pages_mark_range(pages, r, PageState.Used)
+}
+
+proc pages_free(pages: [Page], start: usize, count: usize) -> [Page] {
+  give pages_mark_range(pages, page_range(start, count), PageState.Free)
+}
+
+proc bytes_empty() -> bytes {
+  give b""
+}
+
+proc bytes_len(data: bytes) -> usize {
+  give data.len
+}
+
+proc bytes_is_empty(data: bytes) -> bool {
+  give data.len == 0
+}
+
+proc bytes_repeat(value: u8, count: usize) -> bytes {
+  let out = b""
+  let i = 0
+
+  while i < count {
+    set out = out + value
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc bytes_zero(count: usize) -> bytes {
+  give bytes_repeat(0 as u8, count)
+}
+
+proc bytes_fill(count: usize, value: u8) -> bytes {
+  give bytes_repeat(value, count)
+}
+
+proc bytes_slice(data: bytes, start: usize, end: usize) -> bytes {
+  let out = b""
+  let i = start
+  let stop = end
+
+  while i < stop and i < data.len {
+    set out = out + data[i]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc bytes_concat(a: bytes, b: bytes) -> bytes {
+  give a + b
+}
+
+proc bytes_get(data: bytes, index: usize) -> u8 {
+  if index >= data.len {
+    give 0 as u8
+  }
+
+  give data[index]
+}
+
+proc bytes_set(data: bytes, index: usize, value: u8) -> bytes {
+  let out = b""
+  let i = 0
+
+  while i < data.len {
+    if i == index {
+      set out = out + value
+    } else {
+      set out = out + data[i]
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc bytes_equal(a: bytes, b: bytes) -> bool {
+  if a.len != b.len {
+    give false
+  }
+
+  let i = 0
+
+  while i < a.len {
+    if a[i] != b[i] {
+      give false
+    }
+
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc memcmp(a: bytes, b: bytes, count: usize) -> int {
+  let i = 0
+
+  while i < count and i < a.len and i < b.len {
+    if a[i] < b[i] {
+      give -1
+    }
+
+    if a[i] > b[i] {
+      give 1
+    }
+
+    set i = i + 1
+  }
+
+  give 0
+}
+
+proc memcpy(dst: bytes, src: bytes, count: usize) -> bytes {
+  let out = dst
+  let i = 0
+
+  while i < count and i < src.len {
+    set out = out + src[i]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc memmove(dst: bytes, src: bytes, count: usize) -> bytes {
+  give memcpy(dst, src, count)
+}
+
+proc memset(dst: bytes, value: u8, count: usize) -> bytes {
+  let out = dst
+  let i = 0
+
+  while i < count {
+    set out = out + value
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc memzero(count: usize) -> bytes {
+  give bytes_zero(count)
+}
+
+proc memchr(data: bytes, value: u8) -> int {
+  let i = 0
+
+  while i < data.len {
+    if data[i] == value {
+      give i
+    }
+
+    set i = i + 1
+  }
+
+  give -1
+}
+
+proc memrchr(data: bytes, value: u8) -> int {
+  let i = data.len - 1
+
+  while i >= 0 {
+    if data[i] == value {
+      give i
+    }
+
+    set i = i - 1
+  }
+
+  give -1
+}
+
+proc buffer_new(capacity: usize) -> ByteBuffer {
+  give ByteBuffer {
+    data: b"",
+    len: 0,
+    capacity: capacity
+  }
+}
+
+proc buffer_from_bytes(data: bytes) -> ByteBuffer {
+  give ByteBuffer {
+    data: data,
+    len: data.len,
+    capacity: data.len
+  }
+}
+
+proc buffer_is_empty(buf: ByteBuffer) -> bool {
+  give buf.len == 0
+}
+
+proc buffer_remaining(buf: ByteBuffer) -> usize {
+  if buf.capacity <= buf.len {
+    give 0
+  }
+
+  give buf.capacity - buf.len
+}
+
+proc buffer_clear(buf: ByteBuffer) -> ByteBuffer {
+  let out = buf
+
+  set out.data = b""
+  set out.len = 0
+
+  give out
+}
+
+proc buffer_reserve(buf: ByteBuffer, capacity: usize) -> ByteBuffer {
+  let out = buf
+
+  if capacity > out.capacity {
+    set out.capacity = capacity
+  }
+
+  give out
+}
+
+proc buffer_push_byte(buf: ByteBuffer, value: u8) -> ByteBuffer {
+  let out = buf
+
+  if out.len + 1 > out.capacity {
+    set out.capacity = align_up(out.len + 1, 64)
+  }
+
+  set out.data = out.data + value
+  set out.len = out.len + 1
+
+  give out
+}
+
+proc buffer_append(buf: ByteBuffer, data: bytes) -> ByteBuffer {
+  let out = buf
+  let i = 0
+
+  while i < data.len {
+    set out = buffer_push_byte(out, data[i])
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc buffer_slice(buf: ByteBuffer, start: usize, end: usize) -> bytes {
+  give bytes_slice(buf.data, start, end)
+}
+
+proc buffer_to_bytes(buf: ByteBuffer) -> bytes {
+  give buf.data
+}
+
+proc array_fill_int(count: usize, value: int) -> [int] {
+  let out: [int] = []
+  let i = 0
+
+  while i < count {
+    set out = out + [value]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc memory_stats_empty() -> MemoryStats {
+  give MemoryStats {
+    total: 0,
+    used: 0,
+    free: 0,
+    peak: 0,
+    allocations: 0,
+    frees: 0,
+    failures: 0
+  }
+}
+
+proc memory_stats_from_heap(heap: Heap) -> MemoryStats {
+  give heap_stats(heap)
+}
+
+proc memory_stats_percent_used(stats: MemoryStats) -> int {
+  if stats.total == 0 {
+    give 0
+  }
+
+  give ((stats.used * 100) / stats.total) as int
+}
+
+proc memory_format_size(size: usize) -> string {
+  if size >= GB {
+    give "gb"
+  }
+
+  if size >= MB {
+    give "mb"
+  }
+
+  if size >= KB {
+    give "kb"
+  }
+
+  give "bytes"
+}
+
+proc memory_check_block(block: MemoryBlock) -> MemoryResult {
+  if block.addr == NULL {
+    give memory_error(MemoryStatus.Invalid, ERR, "null block")
+  }
+
+  if block.size == 0 {
+    give memory_error(MemoryStatus.Invalid, ERR, "empty block")
+  }
+
+  if not is_aligned(block.addr, block.align) {
+    give memory_error(MemoryStatus.Misaligned, ERR, "misaligned block")
+  }
+
+  give memory_ok("block ok")
+}
+
+proc memory_check_region(region: MemoryRegion) -> MemoryResult {
+  if region.base == NULL {
+    give memory_error(MemoryStatus.Invalid, ERR, "null region")
+  }
+
+  if region.size == 0 {
+    give memory_error(MemoryStatus.Invalid, ERR, "empty region")
+  }
+
+  give memory_ok("region ok")
+}
+
+proc memory_zero_block(block: MemoryBlock) -> bytes {
+  give bytes_zero(block.size)
+}
+
+proc memory_copy_block(block: MemoryBlock, src: bytes) -> bytes {
+  give memcpy(b"", src, block.size)
+}
+
+proc memory_domains() -> [string] {
+  give [
+    "alignment",
+    "pointer",
+    "region",
+    "map",
+    "heap",
+    "arena",
+    "pool",
+    "slab",
+    "pages",
+    "bytes",
+    "buffer",
+    "memops",
+    "stats"
+  ]
+}
+
+proc memory_ready() -> bool {
+  give true
+}
+
+proc library_meta() -> string {
+  give "vitte.stdlib.memory — allocators and raw memory foundation"
+}
+
+proc memory_selftest_alignment() -> bool {
+  if align_up(1, 8) != 8 {
+    give false
+  }
+
+  if align_down(15, 8) != 8 {
+    give false
+  }
+
+  if not is_aligned(4096, PAGE_SIZE) {
+    give false
+  }
+
+  give true
+}
+
+proc memory_selftest_bytes() -> bool {
+  let z = bytes_zero(4)
+
+  if z.len != 4 {
+    give false
+  }
+
+  let a = b"abc"
+  let b = b"abc"
+
+  if not bytes_equal(a, b) {
+    give false
+  }
+
+  if memchr(a, 'b' as u8) != 1 {
+    give false
+  }
+
+  give true
+}
+
+proc memory_selftest_heap() -> bool {
+  let h0 = heap_new(4096, 4096)
+  let h1 = heap_alloc(h0, 64, 8)
+
+  if h1.used == 0 {
+    give false
+  }
+
+  let block = heap_last_block(h1)
+
+  if not block_is_valid(block) {
+    give false
+  }
+
+  give true
+}
+
+proc memory_selftest_arena() -> bool {
+  let a0 = arena_new(8192, 4096, 8)
+  let mark = arena_mark(a0)
+  let a1 = arena_alloc(a0, 128)
+
+  if a1.offset <= mark {
+    give false
+  }
+
+  let a2 = arena_restore(a1, mark)
+
+  if a2.offset != mark {
+    give false
+  }
+
+  give true
+}
+
+proc memory_selftest_pool() -> bool {
+  let p0 = pool_new(16384, 64, 16)
+  let p1 = pool_alloc(p0)
+  let addr = pool_last_alloc_addr(p0, p1)
+
+  if addr == NULL {
+    give false
+  }
+
+  let p2 = pool_free(p1, addr)
+
+  if p2.used_count != 0 {
+    give false
+  }
+
+  give true
+}
+
+proc memory_selftest_pages() -> bool {
+  let pages = pages_make(16)
+  let used = pages_alloc(pages, 4)
+
+  if used[0].state != PageState.Used {
+    give false
+  }
+
+  let free = pages_free(used, 0, 4)
+
+  if free[0].state != PageState.Free {
+    give false
+  }
+
+  give true
+}
+
+proc memory_selftest() -> bool {
+  if not memory_selftest_alignment() {
+    give false
+  }
+
+  if not memory_selftest_bytes() {
+    give false
+  }
+
+  if not memory_selftest_heap() {
+    give false
+  }
+
+  if not memory_selftest_arena() {
+    give false
+  }
+
+  if not memory_selftest_pool() {
+    give false
+  }
+
+  if not memory_selftest_pages() {
+    give false
+  }
+
+  if not memory_ready() {
+    give false
+  }
+
+  give true
 }
