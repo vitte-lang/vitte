@@ -305,12 +305,20 @@ VitteString vitte_i32_to_string(std::int32_t v) {
     return vitte_make_string(std::to_string(v));
 }
 
+VitteString vitte_char_to_string(std::int32_t v) {
+    return vitte_make_string(std::string(1, static_cast<char>(v)));
+}
+
 VitteString vitte__vitte_string_concat(VitteString a, VitteString b) {
     return vitte_string_concat(a, b);
 }
 
 VitteString vitte__vitte_i32_to_string(std::int32_t v) {
     return vitte_i32_to_string(v);
+}
+
+VitteString vitte__vitte_char_to_string(std::int32_t v) {
+    return vitte_char_to_string(v);
 }
 
 static VitteOptionString vitte_none_string() {

@@ -145,11 +145,21 @@ pick PipelineState {
   case Halted(reason: string)
 }
 
-proc project_title() -> string {
+trait ServiceHealth {
+  proc healthy(self) -> bool
+}
+
+impl ServiceHealth for ServiceNode {
+  proc healthy(self) -> bool {
+    give self.health == "ok"
+  }
+}
+
+pub proc project_title() -> string {
   give "Unified Platform"
 }
 
-proc build_context() -> PlatformContext {
+pub proc build_context() -> PlatformContext {
   give PlatformContext(
     "Unified Platform",
     "2.1.1",
@@ -158,16 +168,16 @@ proc build_context() -> PlatformContext {
   )
 }
 
-proc bootstrap_nodes() -> [ServiceNode] {
+pub proc bootstrap_nodes() -> [ServiceNode] {
   let nodes: [ServiceNode] = []
   give nodes
 }
 
-proc domain_primary() -> string {
+pub proc domain_primary() -> string {
   give "data + media + realtime"
 }
 
-proc domain_secondary() -> string {
+pub proc domain_secondary() -> string {
   give "compliance observability"
 }
 
@@ -228,7 +238,7 @@ proc state_machine(ctx: PlatformContext, nodes: [ServiceNode]) -> PipelineState 
   give PipelineState.Running("steady")
 }
 
-proc module_inventory() -> [string] {
+pub proc module_inventory() -> [string] {
   let tags: [string] = []
   tags = tags.push("vitte/abi")
   tags = tags.push("vitte/actor")
@@ -345,13 +355,13 @@ proc module_inventory() -> [string] {
   give tags
 }
 
-proc integration_contract() -> bool {
+pub proc integration_contract() -> bool {
   let tags = module_inventory()
   if tags.len == 0 { give false }
   give true
 }
 
-proc run_project() -> int {
+pub proc run_project() -> int {
   let ctx = build_context()
   let nodes = bootstrap_nodes()
 

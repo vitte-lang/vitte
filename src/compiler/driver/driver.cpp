@@ -1097,10 +1097,12 @@ static int run_grammar_diff() {
     static const std::regex rule_re("^\\s*([a-z_][a-z0-9_]*)\\s*::=", std::regex::ECMAScript);
     static const std::regex word_re("^[a-z_][a-z0-9_]*$");
     const std::unordered_set<std::string> non_keyword_terms = {
-        "_", "i32", "i64", "i128", "u32", "u64", "u128",
+        "_", "b", "e", "expr", "ident", "item", "module", "stmt",
+        "i32", "i64", "i128", "u32", "u64", "u128",
     };
     const std::unordered_set<std::string> binary_ops = {
         "=", "or", "||", "and", "&&", "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "%",
+        "&", "|", "^", "<<", ">>", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
     };
 
     std::unordered_set<std::string> ebnf_keywords;
@@ -1127,31 +1129,67 @@ static int run_grammar_diff() {
     }
 
     std::unordered_set<std::string> parser_keywords;
-    for (const auto& kw : frontend::tokens::core_keywords()) {
+    for (const auto& kw : frontend::tokens::all_keywords()) {
         parser_keywords.insert(kw);
     }
 
     std::unordered_set<std::string> parser_ops;
-    for (const auto& op : frontend::tokens::core_binary_operators()) {
+    for (const auto& op : frontend::tokens::all_binary_operators()) {
         parser_ops.insert(op);
     }
 
     const std::unordered_map<std::string, std::vector<std::string>> parser_construct_ast = {
         {"space_decl", {"SpaceDecl"}},
-        {"pull_decl", {"PullDecl"}},
         {"use_decl", {"UseDecl"}},
-        {"share_decl", {"ShareDecl"}},
         {"const_decl", {"ConstDecl"}},
         {"type_alias_decl", {"TypeAliasDecl"}},
         {"form_decl", {"FormDecl"}},
         {"pick_decl", {"PickDecl"}},
         {"proc_decl", {"ProcDecl"}},
+        {"proc_modifier", {"ProcDecl"}},
+        {"extern_clause", {"ProcDecl"}},
+        {"where_clause", {"ProcDecl"}},
+        {"where_bounds", {"ProcDecl"}},
+        {"where_bound", {"ProcDecl"}},
+        {"generic_params", {"ProcDecl", "FormDecl", "PickDecl", "TypeDecl"}},
+        {"generic_param_list", {"ProcDecl", "FormDecl", "PickDecl", "TypeDecl"}},
+        {"generic_param", {"ProcDecl", "FormDecl", "PickDecl", "TypeDecl"}},
+        {"trait_bound", {"ProcDecl", "FormDecl", "PickDecl", "TypeDecl"}},
+        {"requires_clause", {"ProcDecl", "ComptimeDecl"}},
         {"entry_decl", {"EntryDecl"}},
+        {"comptime_decl", {"ComptimeDecl"}},
+        {"foreign_type_decl", {"TypeDecl"}},
+        {"foreign_proc_decl", {"ProcDecl"}},
+        {"union_decl", {"FormDecl"}},
+        {"trait_decl", {"FormDecl"}},
+        {"impl_decl", {"ComptimeDecl"}},
+        {"bench_decl", {"ComptimeDecl"}},
+        {"flags_decl", {"FormDecl"}},
+        {"opaque_type_decl", {"TypeDecl"}},
+        {"package_decl", {"SpaceDecl"}},
+        {"static_decl", {"ConstDecl"}},
+        {"static_assert_decl", {"ComptimeDecl"}},
+        {"attr_prefix", {"Attribute"}},
+        {"attr_arg", {"Attribute"}},
+        {"attr_arg_list", {"Attribute"}},
+        {"attr_path", {"Attribute"}},
+        {"outer_attribute", {"Attribute"}},
+        {"inner_attribute", {"Attribute"}},
+        {"shorthand_attribute", {"Attribute"}},
+        {"defer_stmt", {"DeferStmt"}},
         {"let_stmt", {"LetStmt"}},
         {"make_stmt", {"MakeStmt"}},
         {"set_stmt", {"SetStmt"}},
         {"give_stmt", {"GiveStmt"}},
         {"emit_stmt", {"EmitStmt"}},
+        {"with_stmt", {"WithStmt"}},
+        {"critical_stmt", {"CriticalStmt"}},
+        {"atomic_stmt", {"AtomicStmt"}},
+        {"volatile_stmt", {"VolatileStmt"}},
+        {"goto_stmt", {"GotoStmt"}},
+        {"label_stmt", {"LabelStmt"}},
+        {"preempt_stmt", {"PreemptStmt"}},
+        {"irq_stmt", {"IrqStmt"}},
         {"if_stmt", {"IfStmt"}},
         {"loop_stmt", {"LoopStmt"}},
         {"while_stmt", {"LoopStmt", "IfStmt", "BreakStmt", "BlockStmt", "UnaryExpr"}},
@@ -1162,7 +1200,20 @@ static int run_grammar_diff() {
         {"when_match_stmt", {"WhenStmt"}},
         {"return_stmt", {"ReturnStmt"}},
         {"expr_stmt", {"ExprStmt"}},
+        {"block_body", {"BlockStmt", "ExprStmt"}},
+        {"inline_block", {"ExprStmt"}},
+        {"match_arm_body", {"BlockStmt", "ExprStmt"}},
+        {"builtin_expr", {"BuiltinExpr"}},
+        {"sizeof_expr", {"BuiltinExpr"}},
+        {"alignof_expr", {"BuiltinExpr"}},
+        {"offsetof_expr", {"BuiltinExpr"}},
+        {"typeof_expr", {"BuiltinExpr"}},
+        {"nameof_expr", {"BuiltinExpr"}},
+        {"await_suffix", {"UnaryExpr"}},
         {"list_lit", {"ListExpr"}},
+        {"path_expr", {"ModulePath"}},
+        {"pointer_type", {"PointerType"}},
+        {"slice_type", {"SliceType"}},
         {"pattern", {"IdentPattern", "CtorPattern"}},
         {"proc_type", {"ProcType"}},
     };
@@ -1212,17 +1263,56 @@ static int run_grammar_diff() {
             c == "assign_expr" || c == "or_expr" || c == "and_expr" || c == "eq_expr" ||
             c == "rel_expr" || c == "add_expr" || c == "mul_expr" || c == "cast_expr" ||
             c == "unary_expr" || c == "postfix_expr" || c == "primary" || c == "type_expr" ||
-            c == "type_primary" || c == "literal" || c == "module_path" || c == "package_path" ||
-            c == "field_list" || c == "field_item" || c == "case_list" || c == "case_item" ||
-            c == "case_payload" || c == "case_field" || c == "arg_list" || c == "pattern_head" ||
-            c == "pattern_args" || c == "type_list" || c == "type_param" || c == "param" ||
-            c == "param_list" || c == "ident_list" || c == "relative" || c == "package_parts" ||
-            c == "pointer_type" || c == "slice_type" || c == "bool_lit" || c == "int_lit" ||
-            c == "float_lit" || c == "char_lit" || c == "string_lit" || c == "raw_string_lit" ||
-            c == "raw_string_char" || c == "char_char" || c == "string_char" || c == "ident" ||
-            c == "suffix" || c == "WS" || c == "WS1" || c == "NEWLINE" || c == "LETTER" ||
-            c == "DIGIT" || c == "HEXDIGIT" || c == "use_group" || c == "use_glob" || c == "block" ||
-            c == "call_suffix" || c == "member_suffix" || c == "index_suffix") {
+            c == "type_primary" || c == "literal" || c == "bool_lit" || c == "char_lit" ||
+            c == "char_char" || c == "float_lit" || c == "int_lit" || c == "string_lit" ||
+            c == "string_char" || c == "raw_string_lit" || c == "raw_string_char" ||
+            c == "ident" || c == "suffix" || c == "module_path" || c == "package_path" ||
+            c == "field_list" || c == "field_item" || c == "field_init" || c == "field_init_list" ||
+            c == "case_list" || c == "case_item" || c == "case_payload" || c == "case_field" ||
+            c == "arg_list" || c == "arg" || c == "assign_op" || c == "assign_target" ||
+            c == "bit_and_expr" || c == "bit_or_expr" || c == "bit_xor_expr" ||
+            c == "coalesce_expr" || c == "range_expr" || c == "shift_expr" || c == "rel_op" ||
+            c == "index_expr" || c == "slice_expr" || c == "lambda_expr" || c == "list_comp" ||
+            c == "match_expr" || c == "select_stmt" || c == "if_expr" || c == "proc_expr" ||
+            c == "proc_signature" || c == "proc_suffix" || c == "ternary_expr" ||
+            c == "try_stmt" || c == "try_suffix" || c == "unsafe_expr" || c == "unsafe_stmt" ||
+            c == "set_lit" || c == "map_lit" || c == "map_item" || c == "map_items" ||
+            c == "struct_lit" || c == "tuple_lit" || c == "bytes_lit" || c == "null_lit" ||
+            c == "resource_lit" || c == "resource_item" || c == "resource_items" ||
+            c == "pattern_head" || c == "pattern_args" || c == "pattern_atom" ||
+            c == "pattern_bind" || c == "pattern_ctor" || c == "pattern_field" ||
+            c == "pattern_fields" || c == "pattern_list" || c == "pattern_or" ||
+            c == "pattern_range" || c == "pattern_struct" || c == "pattern_tuple" ||
+            c == "type_list" || c == "type_param" || c == "type_path" || c == "type_qual" ||
+            c == "primitive_type" || c == "qualified_type" || c == "reference_type" ||
+            c == "optional_type" || c == "fixed_array_type" || c == "tuple_type" ||
+            c == "union_type_expr" || c == "addr_space" || c == "dyn_type" ||
+            c == "effects_clause" || c == "normal_param" || c == "param_mode" ||
+            c == "self_param" || c == "variadic_param" || c == "param" || c == "param_list" ||
+            c == "ident_list" || c == "relative" || c == "package_parts" || c == "package_item" ||
+            c == "package_items" || c == "package_value" || c == "attr_prefix" ||
+            c == "attr_arg" || c == "attr_arg_list" || c == "attr_path" ||
+            c == "outer_attribute" || c == "inner_attribute" || c == "shorthand_attribute" ||
+            c == "block_comment" || c == "doc_comment" || c == "docstring" ||
+            c == "escape_seq" || c == "exponent" || c == "line_comment" ||
+            c == "zone_comment" || c == "lifetime" || c == "stmt_end" ||
+            c == "capability" || c == "capability_list" || c == "callconv" ||
+            c == "visibility" || c == "visibility_scope" || c == "field_init" ||
+            c == "field_init_list" || c == "flag_item" || c == "flag_list" ||
+            c == "form_item" || c == "form_items" || c == "import_item" ||
+            c == "import_items" || c == "import_list" || c == "macro_kind" ||
+            c == "macro_param" || c == "macro_param_list" || c == "class_decl" ||
+            c == "class_item" || c == "class_items" || c == "impl_head" ||
+            c == "impl_item" || c == "impl_trait_type" || c == "trait_item" ||
+            c == "macro_decl" || c == "global_decl" || c == "local_const_stmt" ||
+            c == "test_decl" || c == "bench_decl" || c == "static_decl" ||
+            c == "static_assert_decl" || c == "opaque_type_decl" || c == "package_decl" ||
+            c == "flags_decl" || c == "from_import_decl" || c == "export_decl" ||
+            c == "foreign_type_decl" || c == "foreign_proc_decl" || c == "union_decl" ||
+            c == "trait_decl" || c == "impl_decl" || c == "panic_stmt" ||
+            c == "assert_stmt" || c == "unreachable_stmt" || c == "asm_stmt" ||
+            c == "use_group" || c == "use_glob" || c == "block" || c == "call_suffix" ||
+            c == "member_suffix" || c == "index_suffix") {
             continue;
         }
         missing_constructs.push_back(c);

@@ -19,6 +19,13 @@ static void disambiguate_expr(AstContext& ctx, ExprId expr_id) {
             disambiguate_expr(ctx, u.expr);
             break;
         }
+        case NodeKind::BuiltinExpr: {
+            auto& b = static_cast<BuiltinExpr&>(node);
+            if (b.expr != kInvalidAstId) {
+                disambiguate_expr(ctx, b.expr);
+            }
+            break;
+        }
         case NodeKind::BinaryExpr: {
             auto& b = static_cast<BinaryExpr&>(node);
             disambiguate_expr(ctx, b.lhs);
@@ -169,6 +176,37 @@ static void disambiguate_stmt(AstContext& ctx, StmtId stmt_id) {
             disambiguate_expr(ctx, s.expr);
             break;
         }
+        case NodeKind::WithStmt: {
+            auto& s = static_cast<WithStmt&>(node);
+            disambiguate_expr(ctx, s.expr);
+            disambiguate_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::DeferStmt: {
+            auto& s = static_cast<DeferStmt&>(node);
+            disambiguate_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::CriticalStmt: {
+            auto& s = static_cast<CriticalStmt&>(node);
+            disambiguate_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::AtomicStmt: {
+            auto& s = static_cast<AtomicStmt&>(node);
+            disambiguate_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::VolatileStmt: {
+            auto& s = static_cast<VolatileStmt&>(node);
+            disambiguate_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::GotoStmt:
+        case NodeKind::PreemptStmt:
+        case NodeKind::IrqStmt:
+        case NodeKind::LabelStmt:
+            break;
         case NodeKind::IfStmt: {
             auto& s = static_cast<IfStmt&>(node);
             disambiguate_expr(ctx, s.cond);
@@ -225,6 +263,13 @@ void disambiguate_invokes(AstContext& ctx, ModuleId module_id) {
                 for (auto& p : d.params) {
                     disambiguate_expr(ctx, p.default_value);
                 }
+                if (d.body != kInvalidAstId) {
+                    disambiguate_stmt(ctx, d.body);
+                }
+                break;
+            }
+            case NodeKind::ComptimeDecl: {
+                auto& d = static_cast<ComptimeDecl&>(decl);
                 if (d.body != kInvalidAstId) {
                     disambiguate_stmt(ctx, d.body);
                 }

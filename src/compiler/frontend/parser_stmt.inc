@@ -26,6 +26,12 @@ static void emit_removed_otherwise_syntax(DiagnosticEngine& diag, const SourceSp
     diag.emit(std::move(deprec));
 }
 
+static StmtId wrap_expr_body(AstContext& ast_ctx, ExprId expr, SourceSpan span) {
+    std::vector<StmtId> stmts;
+    stmts.push_back(ast_ctx.make<ExprStmt>(expr, span));
+    return ast_ctx.make<BlockStmt>(std::move(stmts), span);
+}
+
 StmtId Parser::parse_block() {
     SourceSpan span = current_.span;
     expect(TokenKind::LBrace, "expected '{'");
@@ -54,6 +60,18 @@ StmtId Parser::parse_block() {
     return ast_ctx_.make<BlockStmt>(std::move(stmts), span);
 }
 
+StmtId Parser::parse_block_body() {
+    if (match(TokenKind::Colon)) {
+        SourceSpan span = previous_.span;
+        ExprId expr = parse_expr();
+        if (expr != ast::kInvalidAstId) {
+            span.end = ast_ctx_.get<Expr>(expr).span.end;
+        }
+        return wrap_expr_body(ast_ctx_, expr, span);
+    }
+    return parse_block();
+}
+
 StmtId Parser::parse_stmt() {
     trace("parse_stmt");
     if (strict_core_ && tokens::is_forbidden_in_core(current_.kind)) {
@@ -69,19 +87,39 @@ StmtId Parser::parse_stmt() {
         case TokenKind::KwSet: return parse_set_stmt();
         case TokenKind::KwGive: return parse_give_stmt();
         case TokenKind::KwEmit: return parse_emit_stmt();
+        case TokenKind::KwDefer: return parse_defer_stmt();
         case TokenKind::KwIf: return parse_if_stmt();
         case TokenKind::KwElif: return parse_if_stmt();
+        case TokenKind::KwWith: return parse_with_stmt();
+        case TokenKind::KwCritical: return parse_critical_stmt();
+        case TokenKind::KwAtomic: return parse_atomic_stmt();
+        case TokenKind::KwVolatile: return parse_volatile_stmt();
         case TokenKind::KwLoop: return parse_loop_stmt();
         case TokenKind::KwWhile: return parse_while_stmt();
         case TokenKind::KwFor: return parse_for_stmt();
         case TokenKind::KwBreak: return parse_break_stmt();
         case TokenKind::KwContinue: return parse_continue_stmt();
+        case TokenKind::KwGoto: return parse_goto_stmt();
+        case TokenKind::KwPreempt: return parse_preempt_stmt();
+        case TokenKind::KwIrq: return parse_irq_stmt();
+        case TokenKind::KwAssert: return parse_assert_stmt();
+        case TokenKind::KwPanic: return parse_panic_stmt();
+        case TokenKind::KwUnreachable: return parse_unreachable_stmt();
         case TokenKind::KwSelect: return parse_select_stmt();
         case TokenKind::KwMatch: return parse_match_stmt();
         case TokenKind::KwWhen: return parse_when_match_stmt();
         case TokenKind::KwReturn: return parse_return_stmt();
         case TokenKind::KwTry: return parse_try_stmt();
         case TokenKind::KwRaise: return parse_raise_stmt();
+        case TokenKind::Ident: {
+            State label_state = snapshot();
+            Ident label = parse_ident();
+            if (match(TokenKind::Colon)) {
+                return parse_label_stmt(std::move(label));
+            }
+            restore(std::move(label_state));
+            return parse_expr_stmt();
+        }
         default: return parse_expr_stmt();
     }
 }
@@ -474,13 +512,96 @@ StmtId Parser::parse_emit_stmt() {
     return ast_ctx_.make<EmitStmt>(value, span);
 }
 
+StmtId Parser::parse_defer_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwDefer, "expected 'defer'");
+    StmtId body = parse_block_body();
+    span.end = ast_ctx_.get<Stmt>(body).span.end;
+    return ast_ctx_.make<DeferStmt>(body, span);
+}
+
+StmtId Parser::parse_with_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwWith, "expected 'with'");
+    ExprId expr = parse_expr();
+    std::optional<PatternId> pattern;
+    if (match(TokenKind::KwAs)) {
+        pattern = parse_pattern();
+    }
+    StmtId body = parse_block_body();
+    span.end = ast_ctx_.get<Stmt>(body).span.end;
+    return ast_ctx_.make<WithStmt>(expr, std::move(pattern), body, span);
+}
+
+StmtId Parser::parse_critical_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwCritical, "expected 'critical'");
+    StmtId body = parse_block_body();
+    span.end = ast_ctx_.get<Stmt>(body).span.end;
+    return ast_ctx_.make<CriticalStmt>(body, span);
+}
+
+StmtId Parser::parse_atomic_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwAtomic, "expected 'atomic'");
+    StmtId body = parse_block_body();
+    span.end = ast_ctx_.get<Stmt>(body).span.end;
+    return ast_ctx_.make<AtomicStmt>(body, span);
+}
+
+StmtId Parser::parse_volatile_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwVolatile, "expected 'volatile'");
+    StmtId body = parse_block_body();
+    span.end = ast_ctx_.get<Stmt>(body).span.end;
+    return ast_ctx_.make<VolatileStmt>(body, span);
+}
+
+StmtId Parser::parse_goto_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwGoto, "expected 'goto'");
+    Ident target = parse_ident();
+    span.end = target.span.end;
+    return ast_ctx_.make<GotoStmt>(std::move(target), span);
+}
+
+StmtId Parser::parse_preempt_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwPreempt, "expected 'preempt'");
+    bool enabled = true;
+    if (match(TokenKind::KwOn)) {
+        enabled = true;
+    } else if (match(TokenKind::KwOff)) {
+        enabled = false;
+    } else {
+        expect(TokenKind::KwOn, "expected 'on' or 'off'");
+    }
+    span.end = previous_.span.end;
+    return ast_ctx_.make<PreemptStmt>(enabled, span);
+}
+
+StmtId Parser::parse_irq_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwIrq, "expected 'irq'");
+    bool enabled = true;
+    if (match(TokenKind::KwEnable)) {
+        enabled = true;
+    } else if (match(TokenKind::KwDisable)) {
+        enabled = false;
+    } else {
+        expect(TokenKind::KwEnable, "expected 'enable' or 'disable'");
+    }
+    span.end = previous_.span.end;
+    return ast_ctx_.make<IrqStmt>(enabled, span);
+}
+
 StmtId Parser::parse_if_stmt() {
     SourceSpan span = current_.span;
     if (!match(TokenKind::KwIf)) {
         expect(TokenKind::KwElif, "expected 'if'");
     }
     ExprId cond = parse_expr();
-    StmtId then_block = parse_block();
+    StmtId then_block = parse_block_body();
     StmtId else_block = ast::kInvalidAstId;
     auto wrap_if_branch = [&](StmtId nested_if) -> StmtId {
         std::vector<StmtId> stmts;
@@ -492,7 +613,7 @@ StmtId Parser::parse_if_stmt() {
         if (current_.kind == TokenKind::KwIf || current_.kind == TokenKind::KwElif) {
             return wrap_if_branch(parse_if_stmt());
         }
-        return parse_block();
+        return parse_block_body();
     };
     if (current_.kind == TokenKind::KwElif) {
         else_block = wrap_if_branch(parse_if_stmt());
@@ -587,6 +708,62 @@ StmtId Parser::parse_continue_stmt() {
     return ast_ctx_.make<ContinueStmt>(span);
 }
 
+StmtId Parser::parse_assert_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwAssert, "expected 'assert'");
+    ExprId condition = parse_expr();
+    ExprId message = ast::kInvalidAstId;
+    if (match(TokenKind::Comma)) {
+        message = parse_expr();
+    }
+    if (message == ast::kInvalidAstId) {
+        message = ast_ctx_.make<LiteralExpr>(
+            LiteralKind::String,
+            "",
+            condition != ast::kInvalidAstId ? ast_ctx_.get<Expr>(condition).span : span);
+    }
+    SourceSpan call_span = condition != ast::kInvalidAstId
+        ? ast_ctx_.get<Expr>(condition).span
+        : span;
+    if (message != ast::kInvalidAstId) {
+        call_span.end = ast_ctx_.get<Expr>(message).span.end;
+    }
+    Ident callee("assert_true", span);
+    ExprId callee_expr = ast_ctx_.make<IdentExpr>(std::move(callee), span);
+    std::vector<InvokeArg> args;
+    args.emplace_back(condition);
+    args.emplace_back(message);
+    ExprId invoke = ast_ctx_.make<InvokeExpr>(
+        callee_expr,
+        ast::kInvalidAstId,
+        std::vector<TypeId>{},
+        std::move(args),
+        call_span);
+    return ast_ctx_.make<ExprStmt>(invoke, call_span);
+}
+
+StmtId Parser::parse_panic_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwPanic, "expected 'panic'");
+    ExprId expr = parse_expr();
+    span.end = expr != ast::kInvalidAstId ? ast_ctx_.get<Expr>(expr).span.end : previous_.span.end;
+    return ast_ctx_.make<RaiseStmt>(expr, span);
+}
+
+StmtId Parser::parse_unreachable_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwUnreachable, "expected 'unreachable'");
+    Ident callee("unreachable", span);
+    ExprId callee_expr = ast_ctx_.make<IdentExpr>(std::move(callee), span);
+    ExprId invoke = ast_ctx_.make<InvokeExpr>(
+        callee_expr,
+        ast::kInvalidAstId,
+        std::vector<TypeId>{},
+        std::vector<InvokeArg>{},
+        span);
+    return ast_ctx_.make<ExprStmt>(invoke, span);
+}
+
 StmtId Parser::parse_select_stmt() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwSelect, "expected 'select'");
@@ -622,12 +799,7 @@ StmtId Parser::parse_match_stmt() {
             if (match(TokenKind::KwIf)) {
                 guard = parse_expr();
             }
-            if (current_.kind != TokenKind::LBrace) {
-                expect(TokenKind::LBrace, "expected '{' after match case pattern");
-                sync_to_match_arm_boundary();
-                continue;
-            }
-            StmtId block = parse_block();
+            StmtId block = parse_match_arm_body();
             whens.push_back(ast_ctx_.make<WhenStmt>(
                 pat,
                 guard,
@@ -637,11 +809,11 @@ StmtId Parser::parse_match_stmt() {
         }
         if (match(TokenKind::KwOtherwise)) {
             emit_removed_otherwise_syntax(diag_, previous_.span);
-            otherwise_block = parse_block();
+            otherwise_block = parse_match_arm_body();
             continue;
         }
         if (match(TokenKind::KwElse)) {
-            otherwise_block = parse_block();
+            otherwise_block = parse_match_arm_body();
             continue;
         }
         emit_parse_error(diag::DiagId::ExpectedMatchArm, current_.span);
@@ -731,14 +903,14 @@ StmtId Parser::parse_return_stmt() {
 StmtId Parser::parse_try_stmt() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwTry, "expected 'try'");
-    StmtId body = parse_block();
+    StmtId body = parse_block_body();
     StmtId except_body = ast::kInvalidAstId;
     StmtId finally_body = ast::kInvalidAstId;
     if (match(TokenKind::KwExcept)) {
-        except_body = parse_block();
+        except_body = parse_block_body();
     }
     if (match(TokenKind::KwFinally)) {
-        finally_body = parse_block();
+        finally_body = parse_block_body();
     }
     span.end = previous_.span.end;
     return ast_ctx_.make<TryStmt>(body, except_body, finally_body, span);
@@ -771,4 +943,22 @@ StmtId Parser::parse_when_stmt() {
     StmtId block = parse_block();
     span.end = ast_ctx_.get<Stmt>(block).span.end;
     return ast_ctx_.make<WhenStmt>(pat, guard, block, span);
+}
+
+StmtId Parser::parse_match_arm_body() {
+    if (match(TokenKind::Arrow)) {
+        SourceSpan span = previous_.span;
+        ExprId expr = parse_expr();
+        if (expr != ast::kInvalidAstId) {
+            span.end = ast_ctx_.get<Expr>(expr).span.end;
+        }
+        return wrap_expr_body(ast_ctx_, expr, span);
+    }
+    return parse_block_body();
+}
+
+StmtId Parser::parse_label_stmt(Ident label) {
+    SourceSpan span = label.span;
+    span.end = previous_.span.end;
+    return ast_ctx_.make<LabelStmt>(std::move(label), span);
 }

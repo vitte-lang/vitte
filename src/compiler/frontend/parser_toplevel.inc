@@ -58,6 +58,35 @@ static void emit_share_deprecation(DiagnosticEngine& diag, const SourceSpan& spa
     diag.emit(std::move(deprec));
 }
 
+static bool is_callconv_token(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::KwSysv64:
+        case TokenKind::KwWin64:
+        case TokenKind::KwInterrupt:
+        case TokenKind::KwNaked:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool is_proc_prefix_token(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::KwPub:
+        case TokenKind::KwPriv:
+        case TokenKind::KwInternal:
+        case TokenKind::KwAsync:
+        case TokenKind::KwUnsafe:
+        case TokenKind::KwConst:
+        case TokenKind::KwInline:
+        case TokenKind::KwNoinline:
+        case TokenKind::KwExtern:
+            return true;
+        default:
+            return false;
+    }
+}
+
 DeclId Parser::parse_toplevel() {
     trace("parse_toplevel");
     if (strict_core_ && tokens::is_forbidden_in_core(current_.kind)) {
@@ -86,8 +115,45 @@ DeclId Parser::parse_toplevel() {
         break;
     }
 
+    auto looks_like_proc_decl = [&]() -> bool {
+        State state = snapshot();
+        while (true) {
+            if (current_.kind == TokenKind::KwProc || current_.kind == TokenKind::KwDef) {
+                restore(std::move(state));
+                return true;
+            }
+            if (current_.kind == TokenKind::KwExtern) {
+                advance();
+                if (current_.kind == TokenKind::StringLit || current_.kind == TokenKind::Ident ||
+                    is_callconv_token(current_.kind)) {
+                    advance();
+                }
+                continue;
+            }
+            if (is_proc_prefix_token(current_.kind)) {
+                advance();
+                continue;
+            }
+            restore(std::move(state));
+            return false;
+        }
+    };
+
+    if (current_.kind == TokenKind::KwUnsafe) {
+        State state = snapshot();
+        advance();
+        if (current_.kind == TokenKind::KwTrait) {
+            restore(std::move(state));
+            return parse_trait_decl(std::move(attrs));
+        }
+        restore(std::move(state));
+    }
+
     if (current_.kind == TokenKind::KwSpace) {
         return parse_space_decl();
+    }
+    if (current_.kind == TokenKind::KwPackage) {
+        return parse_package_decl();
     }
     if (current_.kind == TokenKind::KwFrom) {
         return parse_from_import_decl();
@@ -98,11 +164,33 @@ DeclId Parser::parse_toplevel() {
     if (current_.kind == TokenKind::KwUse) {
         return parse_use_decl();
     }
+    if (current_.kind == TokenKind::KwForeign) {
+        advance();
+        if (current_.kind == TokenKind::KwType) {
+            return parse_foreign_type_decl();
+        }
+        if (current_.kind == TokenKind::KwProc || current_.kind == TokenKind::KwExtern ||
+            current_.kind == TokenKind::StringLit || current_.kind == TokenKind::Ident ||
+            is_callconv_token(current_.kind)) {
+            return parse_foreign_proc_decl();
+        }
+        expect(TokenKind::KwType, "expected 'type' or 'proc' after 'foreign'");
+        return ast::kInvalidAstId;
+    }
+    if (current_.kind == TokenKind::KwExport) {
+        return parse_export_decl();
+    }
     if (current_.kind == TokenKind::KwShare) {
         return parse_share_decl();
     }
+    if (current_.kind == TokenKind::KwGlobal) {
+        return parse_global_decl();
+    }
     if (current_.kind == TokenKind::KwConst) {
         return parse_const_decl();
+    }
+    if (current_.kind == TokenKind::KwStatic) {
+        return parse_static_decl();
     }
     if (current_.kind == TokenKind::KwType) {
         return parse_type_alias_decl();
@@ -113,13 +201,39 @@ DeclId Parser::parse_toplevel() {
     if (current_.kind == TokenKind::KwClass) {
         return parse_class_decl();
     }
-    if (current_.kind == TokenKind::KwDef) {
+    if (current_.kind == TokenKind::KwUnion) {
+        return parse_union_decl();
+    }
+    if (current_.kind == TokenKind::KwTrait) {
+        return parse_trait_decl(std::move(attrs));
+    }
+    if (current_.kind == TokenKind::KwImpl) {
+        return parse_impl_decl(std::move(attrs));
+    }
+    bool proc_like = looks_like_proc_decl();
+    if (proc_like) {
         return parse_proc_decl(std::move(attrs));
+    }
+    if (current_.kind == TokenKind::KwFlags) {
+        return parse_flags_decl();
     }
     if (current_.kind == TokenKind::KwPick) {
         return parse_pick_decl();
     }
-    if (!attrs.empty() && current_.kind != TokenKind::KwProc) {
+    if (current_.kind == TokenKind::KwComptime) {
+        return parse_comptime_decl();
+    }
+    if (current_.kind == TokenKind::KwStaticAssert) {
+        return parse_static_assert_decl();
+    }
+    if (current_.kind == TokenKind::KwBench) {
+        return parse_bench_decl();
+    }
+    if (current_.kind == TokenKind::KwAsync || current_.kind == TokenKind::KwExtern) {
+        return parse_proc_decl(std::move(attrs));
+    }
+    if (!attrs.empty() && !proc_like && current_.kind != TokenKind::KwProc &&
+        current_.kind != TokenKind::KwUnsafe) {
         emit_parse_error(diag::DiagId::ExpectedProcAfterAttribute, current_.span);
         return ast::kInvalidAstId;
     }
@@ -240,24 +354,55 @@ DeclId Parser::parse_from_import_decl() {
     ModulePath path = parse_module_path();
     expect(TokenKind::KwImport, "expected 'import'");
 
-    auto make_import = [&](const Ident& name) -> DeclId {
+    auto make_import = [&](const Ident& name, std::optional<Ident> alias = std::nullopt, bool glob = false) -> DeclId {
         std::vector<Ident> joined(path.parts.begin(), path.parts.end());
         joined.push_back(name);
-        SourceSpan item_span = name.span;
+        SourceSpan item_span = alias.has_value() ? alias->span : name.span;
         if (path.span.is_valid()) {
             item_span.start = path.span.start;
         }
         ModulePath item_path(std::move(joined), path.relative_depth, item_span);
-        return ast_ctx_.make<UseDecl>(std::move(item_path), std::nullopt, false, item_span);
+        return ast_ctx_.make<UseDecl>(std::move(item_path), std::move(alias), glob, item_span);
     };
 
     std::vector<DeclId> decls;
-    decls.push_back(make_import(parse_ident()));
-    while (match(TokenKind::Comma)) {
-        if (current_.kind == TokenKind::Eof || current_.kind == TokenKind::RBrace) {
-            break;
+    auto parse_import_item = [&]() -> DeclId {
+        if (match(TokenKind::Star)) {
+            return ast_ctx_.make<UseDecl>(
+                ModulePath(std::vector<Ident>(path.parts.begin(), path.parts.end()), path.relative_depth, path.span),
+                std::nullopt,
+                true,
+                span);
         }
-        decls.push_back(make_import(parse_ident()));
+        Ident name = parse_ident();
+        std::optional<Ident> alias;
+        if (match(TokenKind::KwAs)) {
+            alias = parse_ident();
+        }
+        return make_import(std::move(name), std::move(alias), false);
+    };
+
+    if (match(TokenKind::LBrace)) {
+        if (current_.kind != TokenKind::RBrace) {
+            decls.push_back(parse_import_item());
+            while (match(TokenKind::Comma)) {
+                if (current_.kind == TokenKind::RBrace) {
+                    break;
+                }
+                decls.push_back(parse_import_item());
+            }
+        }
+        expect(TokenKind::RBrace, "expected '}' after import list");
+    } else if (current_.kind == TokenKind::Star) {
+        decls.push_back(parse_import_item());
+    } else {
+        decls.push_back(parse_import_item());
+        while (match(TokenKind::Comma)) {
+            if (current_.kind == TokenKind::Eof || current_.kind == TokenKind::RBrace) {
+                break;
+            }
+            decls.push_back(parse_import_item());
+        }
     }
 
     span.end = previous_.span.end;
@@ -358,6 +503,37 @@ DeclId Parser::parse_use_decl() {
     return ast_ctx_.make<UseDecl>(std::move(path), std::move(alias), is_glob, span);
 }
 
+DeclId Parser::parse_export_decl() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwExport, "expected 'export'");
+    bool share_all = false;
+    std::vector<Ident> names;
+    if (match(TokenKind::Star)) {
+        share_all = true;
+    } else if (match(TokenKind::LBrace)) {
+        if (current_.kind != TokenKind::RBrace) {
+            names.push_back(parse_ident());
+            while (match(TokenKind::Comma)) {
+                if (current_.kind == TokenKind::RBrace) {
+                    break;
+                }
+                names.push_back(parse_ident());
+            }
+        }
+        expect(TokenKind::RBrace, "expected '}' after export list");
+    } else {
+        names.push_back(parse_ident());
+        while (match(TokenKind::Comma)) {
+            if (current_.kind == TokenKind::Eof || current_.kind == TokenKind::RBrace) {
+                break;
+            }
+            names.push_back(parse_ident());
+        }
+    }
+    span.end = previous_.span.end;
+    return ast_ctx_.make<ShareDecl>(share_all, std::move(names), span);
+}
+
 DeclId Parser::parse_share_decl() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwShare, "expected 'share'");
@@ -379,6 +555,22 @@ DeclId Parser::parse_share_decl() {
 DeclId Parser::parse_const_decl() {
     SourceSpan span = current_.span;
     expect(TokenKind::KwConst, "expected 'const'");
+    Ident name = parse_ident();
+    TypeId ty = ast::kInvalidAstId;
+    if (match(TokenKind::Colon)) {
+        ty = parse_type_expr();
+    }
+    expect(TokenKind::Equal, "expected '='");
+    ExprId value = parse_expr();
+    span.end = value != ast::kInvalidAstId
+        ? ast_ctx_.get<Expr>(value).span.end
+        : previous_.span.end;
+    return ast_ctx_.make<ConstDecl>(std::move(name), ty, value, span);
+}
+
+DeclId Parser::parse_static_decl() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwStatic, "expected 'static'");
     Ident name = parse_ident();
     TypeId ty = ast::kInvalidAstId;
     if (match(TokenKind::Colon)) {
@@ -414,6 +606,103 @@ DeclId Parser::parse_global_decl() {
         ? ast_ctx_.get<Expr>(value).span.end
         : previous_.span.end;
     return ast_ctx_.make<GlobalDecl>(std::move(name), ty, value, is_mut, span);
+}
+
+DeclId Parser::parse_package_decl() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwPackage, "expected 'package'");
+    ModulePath path = parse_module_path();
+    if (match(TokenKind::LBrace)) {
+        while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
+            Ident item_name = parse_ident();
+            if (match(TokenKind::Colon)) {
+                (void)item_name;
+                (void)parse_expr();
+            } else {
+                emit_parse_error(diag::DiagId::ExpectedIdentifier, current_.span);
+            }
+            if (!match(TokenKind::Comma)) {
+                break;
+            }
+        }
+        expect(TokenKind::RBrace, "expected '}'");
+    }
+    span.end = path.span.end;
+    return ast_ctx_.make<SpaceDecl>(std::move(path), span);
+}
+
+DeclId Parser::parse_flags_decl() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwFlags, "expected 'flags'");
+    Ident name = parse_ident();
+    std::vector<FieldDecl> fields;
+    if (match(TokenKind::Colon)) {
+        (void)parse_type_expr();
+    }
+    expect(TokenKind::LBrace, "expected '{'");
+    while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
+        Ident flag_name = parse_ident();
+        if (match(TokenKind::Equal)) {
+            (void)parse_expr();
+        }
+        fields.emplace_back(std::move(flag_name), ast::kInvalidAstId);
+        if (!match(TokenKind::Comma)) {
+            break;
+        }
+    }
+    expect(TokenKind::RBrace, "expected '}'");
+    span.end = previous_.span.end;
+    return ast_ctx_.make<FormDecl>(std::move(name), std::vector<Ident>{}, std::move(fields), span);
+}
+
+DeclId Parser::parse_bench_decl() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwBench, "expected 'bench'");
+    if (current_.kind == TokenKind::StringLit) {
+        advance();
+    } else {
+        emit_parse_error(diag::DiagId::ExpectedExpression, current_.span);
+    }
+    StmtId body = parse_block_body();
+    span.end = ast_ctx_.get<Stmt>(body).span.end;
+    return ast_ctx_.make<ComptimeDecl>(body, span);
+}
+
+DeclId Parser::parse_static_assert_decl() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwStaticAssert, "expected 'static_assert'");
+    expect(TokenKind::LParen, "expected '('");
+    ExprId cond = parse_expr();
+    if (match(TokenKind::Comma)) {
+        (void)parse_expr();
+    }
+    expect(TokenKind::RParen, "expected ')'");
+    ExprId message = ast::kInvalidAstId;
+    if (cond != ast::kInvalidAstId) {
+        message = ast_ctx_.make<LiteralExpr>(
+            LiteralKind::String,
+            "",
+            ast_ctx_.get<Expr>(cond).span);
+    }
+    SourceSpan call_span = cond != ast::kInvalidAstId ? ast_ctx_.get<Expr>(cond).span : span;
+    if (message != ast::kInvalidAstId) {
+        call_span.end = ast_ctx_.get<Expr>(message).span.end;
+    }
+    Ident callee("assert_true", span);
+    ExprId callee_expr = ast_ctx_.make<IdentExpr>(std::move(callee), span);
+    std::vector<InvokeArg> args;
+    args.emplace_back(cond);
+    args.emplace_back(message);
+    ExprId invoke = ast_ctx_.make<InvokeExpr>(
+        callee_expr,
+        ast::kInvalidAstId,
+        std::vector<TypeId>{},
+        std::move(args),
+        call_span);
+    std::vector<StmtId> stmts;
+    stmts.push_back(ast_ctx_.make<ExprStmt>(invoke, call_span));
+    StmtId body = ast_ctx_.make<BlockStmt>(std::move(stmts), span);
+    return ast_ctx_.make<ComptimeDecl>(body, span);
 }
 
 DeclId Parser::parse_type_alias_decl() {
@@ -453,10 +742,7 @@ DeclId Parser::parse_form_decl() {
     std::vector<FieldDecl> fields;
     expect(TokenKind::LBrace, "expected '{'");
     while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
-        Ident field_name = parse_ident();
-        expect(TokenKind::Colon, "expected ':'");
-        TypeId ty = parse_type_expr();
-        fields.emplace_back(std::move(field_name), ty);
+        fields.push_back(parse_field_decl());
         if (match(TokenKind::Comma)) {
             if (current_.kind == TokenKind::RBrace) {
                 break;
@@ -466,7 +752,7 @@ DeclId Parser::parse_form_decl() {
     }
     expect(TokenKind::RBrace, "expected '}'");
     span.end = previous_.span.end;
-    return ast_ctx_.make<FormDecl>(std::move(name), std::move(type_params), std::move(fields), span);
+    return ast_ctx_.make<FormDecl>(std::move(name), std::move(type_params), std::vector<FieldDecl>{}, span);
 }
 
 DeclId Parser::parse_class_decl() {
@@ -487,7 +773,9 @@ DeclId Parser::parse_class_decl() {
                 std::vector<FnParam> params = std::move(method.params);
                 if (params.empty() || params.front().ident.name != "self") {
                     TypeId self_ty = ast_ctx_.make<NamedType>(Ident(name.name, name.span), name.span);
-                    params.insert(params.begin(), FnParam(Ident("self", name.span), self_ty));
+                    params.insert(
+                        params.begin(),
+                        FnParam(Ident("self", name.span), self_ty, ast::kInvalidAstId, std::nullopt, true));
                 } else if (params.front().type == ast::kInvalidAstId) {
                     params.front().type = ast_ctx_.make<NamedType>(Ident(name.name, name.span), name.span);
                 }
@@ -495,10 +783,7 @@ DeclId Parser::parse_class_decl() {
                 pending_decls_.push_back(method_id);
             }
         } else {
-            Ident field_name = parse_ident();
-            expect(TokenKind::Colon, "expected ':'");
-            TypeId ty = parse_type_expr();
-            fields.emplace_back(std::move(field_name), ty);
+            fields.push_back(parse_field_decl());
             if (match(TokenKind::Comma)) {
                 if (current_.kind == TokenKind::RBrace) {
                     break;
@@ -551,8 +836,390 @@ DeclId Parser::parse_pick_decl() {
     return ast_ctx_.make<PickDecl>(std::move(name), std::move(type_params), std::move(cases), span);
 }
 
-DeclId Parser::parse_proc_decl(std::vector<Attribute> attrs) {
+DeclId Parser::parse_union_decl() {
     SourceSpan span = current_.span;
+    expect(TokenKind::KwUnion, "expected 'union'");
+    Ident name = parse_ident();
+    auto type_params = parse_type_params();
+    std::vector<FieldDecl> fields;
+    expect(TokenKind::LBrace, "expected '{'");
+    while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
+        fields.push_back(parse_field_decl());
+        if (match(TokenKind::Comma)) {
+            if (current_.kind == TokenKind::RBrace) {
+                break;
+            }
+            continue;
+        }
+    }
+    expect(TokenKind::RBrace, "expected '}'");
+    span.end = previous_.span.end;
+    return ast_ctx_.make<FormDecl>(std::move(name), std::move(type_params), std::move(fields), span);
+}
+
+DeclId Parser::parse_trait_decl(std::vector<Attribute> attrs) {
+    SourceSpan span = current_.span;
+    bool is_unsafe = false;
+    if (current_.kind == TokenKind::KwUnsafe) {
+        is_unsafe = true;
+        advance();
+    }
+    expect(TokenKind::KwTrait, "expected 'trait'");
+    Ident name = parse_ident();
+    auto type_params = parse_type_params();
+    std::vector<std::pair<TypeId, TypeId>> where_bounds;
+    if (match(TokenKind::KwWhere)) {
+        while (true) {
+            TypeId lhs = parse_type_expr();
+            expect(TokenKind::Colon, "expected ':' in where clause");
+            TypeId rhs = parse_type_expr();
+            while (match(TokenKind::Plus)) {
+                (void)parse_type_expr();
+            }
+            where_bounds.emplace_back(lhs, rhs);
+            if (!match(TokenKind::Comma)) {
+                break;
+            }
+            if (current_.kind == TokenKind::RBrace || current_.kind == TokenKind::Eof) {
+                break;
+            }
+        }
+    }
+    expect(TokenKind::LBrace, "expected '{'");
+    std::vector<DeclId> items;
+    while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
+        std::vector<Attribute> item_attrs;
+        while (current_.kind == TokenKind::AttrStart || current_.kind == TokenKind::AtSign) {
+            if (current_.kind == TokenKind::AttrStart) {
+                item_attrs.push_back(parse_attribute());
+            } else {
+                Token at = current_;
+                advance();
+                item_attrs.push_back(make_shorthand_attribute(at, parse_ident()));
+            }
+        }
+        DeclId item = ast::kInvalidAstId;
+        if (current_.kind == TokenKind::KwConst) {
+            (void)item_attrs;
+            item = parse_const_decl();
+        } else if (current_.kind == TokenKind::KwType) {
+            (void)item_attrs;
+            item = parse_type_alias_decl();
+        } else if (current_.kind == TokenKind::KwProc || current_.kind == TokenKind::KwAsync ||
+                   current_.kind == TokenKind::KwUnsafe || current_.kind == TokenKind::KwExtern ||
+                   current_.kind == TokenKind::KwPub || current_.kind == TokenKind::KwPriv ||
+                   current_.kind == TokenKind::KwInternal || current_.kind == TokenKind::KwInline ||
+                   current_.kind == TokenKind::KwNoinline || current_.kind == TokenKind::KwDef) {
+            item = parse_proc_decl(std::move(item_attrs), false);
+        } else {
+            emit_parse_error(diag::DiagId::ExpectedTopLevelDeclaration, current_.span);
+            sync_to_toplevel_boundary();
+        }
+        if (item != ast::kInvalidAstId) {
+            items.push_back(item);
+            pending_decls_.push_back(item);
+        }
+        if (match(TokenKind::Comma)) {
+            if (current_.kind == TokenKind::RBrace) {
+                break;
+            }
+            continue;
+        }
+    }
+    expect(TokenKind::RBrace, "expected '}'");
+    span.end = previous_.span.end;
+    return ast_ctx_.make<TraitDecl>(
+        std::move(attrs),
+        std::move(name),
+        std::move(type_params),
+        is_unsafe,
+        std::move(where_bounds),
+        std::move(items),
+        span);
+}
+
+DeclId Parser::parse_impl_decl(std::vector<Attribute> attrs) {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwImpl, "expected 'impl'");
+    TypeId trait_type = ast::kInvalidAstId;
+    TypeId self_type = ast::kInvalidAstId;
+    bool has_trait = false;
+    TypeId first = parse_type_expr();
+    if (match(TokenKind::KwFor)) {
+        has_trait = true;
+        trait_type = first;
+        self_type = parse_type_expr();
+    } else {
+        self_type = first;
+    }
+    std::vector<std::pair<TypeId, TypeId>> where_bounds;
+    if (match(TokenKind::KwWhere)) {
+        while (true) {
+            TypeId lhs = parse_type_expr();
+            expect(TokenKind::Colon, "expected ':' in where clause");
+            TypeId rhs = parse_type_expr();
+            while (match(TokenKind::Plus)) {
+                (void)parse_type_expr();
+            }
+            where_bounds.emplace_back(lhs, rhs);
+            if (!match(TokenKind::Comma)) {
+                break;
+            }
+            if (current_.kind == TokenKind::RBrace || current_.kind == TokenKind::Eof) {
+                break;
+            }
+        }
+    }
+    expect(TokenKind::LBrace, "expected '{'");
+    std::vector<DeclId> items;
+    while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
+        std::vector<Attribute> item_attrs;
+        while (current_.kind == TokenKind::AttrStart || current_.kind == TokenKind::AtSign) {
+            if (current_.kind == TokenKind::AttrStart) {
+                item_attrs.push_back(parse_attribute());
+            } else {
+                Token at = current_;
+                advance();
+                item_attrs.push_back(make_shorthand_attribute(at, parse_ident()));
+            }
+        }
+        DeclId item = ast::kInvalidAstId;
+        if (current_.kind == TokenKind::KwConst) {
+            (void)item_attrs;
+            item = parse_const_decl();
+        } else if (current_.kind == TokenKind::KwType) {
+            (void)item_attrs;
+            item = parse_type_alias_decl();
+        } else if (current_.kind == TokenKind::KwProc || current_.kind == TokenKind::KwAsync ||
+                   current_.kind == TokenKind::KwUnsafe || current_.kind == TokenKind::KwExtern ||
+                   current_.kind == TokenKind::KwPub || current_.kind == TokenKind::KwPriv ||
+                   current_.kind == TokenKind::KwInternal || current_.kind == TokenKind::KwInline ||
+                   current_.kind == TokenKind::KwNoinline || current_.kind == TokenKind::KwDef) {
+            item = parse_proc_decl(std::move(item_attrs));
+        } else {
+            emit_parse_error(diag::DiagId::ExpectedTopLevelDeclaration, current_.span);
+            sync_to_toplevel_boundary();
+        }
+        if (item != ast::kInvalidAstId) {
+            items.push_back(item);
+            pending_decls_.push_back(item);
+        }
+        if (match(TokenKind::Comma)) {
+            if (current_.kind == TokenKind::RBrace) {
+                break;
+            }
+            continue;
+        }
+    }
+    expect(TokenKind::RBrace, "expected '}'");
+    span.end = previous_.span.end;
+    return ast_ctx_.make<ImplDecl>(
+        std::move(attrs),
+        trait_type,
+        self_type,
+        has_trait,
+        std::move(where_bounds),
+        std::move(items),
+        span);
+}
+
+DeclId Parser::parse_foreign_type_decl() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwType, "expected 'type'");
+    Ident name = parse_ident();
+    auto type_params = parse_type_params();
+    span.end = previous_.span.end;
+    return ast_ctx_.make<TypeDecl>(std::move(name), std::vector<FieldDecl>{}, span);
+}
+
+DeclId Parser::parse_foreign_proc_decl() {
+    std::optional<std::string> abi;
+    if (current_.kind == TokenKind::KwExtern) {
+        advance();
+    }
+    if (current_.kind == TokenKind::StringLit || current_.kind == TokenKind::Ident ||
+        is_callconv_token(current_.kind)) {
+        abi = current_.text;
+        advance();
+    }
+    if (current_.kind == TokenKind::KwExtern) {
+        advance();
+    }
+    if (current_.kind == TokenKind::KwProc) {
+        DeclId proc_id = parse_proc_decl({}, false);
+        if (proc_id != ast::kInvalidAstId) {
+            auto& proc = ast_ctx_.get<ProcDecl>(proc_id);
+            proc.is_extern = true;
+            if (abi.has_value()) {
+                proc.extern_abi = std::move(abi);
+            } else if (!proc.extern_abi.has_value()) {
+                proc.extern_abi = "C";
+            }
+        }
+        if (match(TokenKind::Semicolon)) {
+            // canonical foreign declaration terminator
+        }
+        return proc_id;
+    }
+    expect(TokenKind::KwProc, "expected 'proc'");
+    return ast::kInvalidAstId;
+}
+
+DeclId Parser::parse_comptime_decl() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwComptime, "expected 'comptime'");
+    StmtId body = parse_block();
+    span.end = ast_ctx_.get<Stmt>(body).span.end;
+    return ast_ctx_.make<ComptimeDecl>(body, span);
+}
+
+FnParam Parser::parse_fn_param() {
+    auto parse_mode = [&](TokenKind kind) -> std::optional<ParamMode> {
+        switch (kind) {
+            case TokenKind::KwMut: return ParamMode::Mut;
+            case TokenKind::KwOwned: return ParamMode::Owned;
+            case TokenKind::KwBorrow: return ParamMode::Borrow;
+            case TokenKind::KwMove: return ParamMode::Move;
+            default: return std::nullopt;
+        }
+    };
+
+    State start = snapshot();
+
+    bool self_is_ref = false;
+    bool self_is_mut = false;
+    if (match(TokenKind::Amp)) {
+        self_is_ref = true;
+    }
+    if (match(TokenKind::KwMut)) {
+        self_is_mut = true;
+    }
+    if (current_.kind == TokenKind::KwSelf) {
+        Token tok = current_;
+        advance();
+        return FnParam(
+            Ident("self", tok.span),
+            ast::kInvalidAstId,
+            ast::kInvalidAstId,
+            std::nullopt,
+            true,
+            false,
+            self_is_ref,
+            self_is_mut);
+    }
+    restore(std::move(start));
+
+    if (current_.kind == TokenKind::Ellipsis) {
+        Token tok = current_;
+        advance();
+        return FnParam(
+            Ident("...", tok.span),
+            ast::kInvalidAstId,
+            ast::kInvalidAstId,
+            std::nullopt,
+            false,
+            true);
+    }
+
+    std::optional<ParamMode> mode;
+    if (current_.kind == TokenKind::KwMut || current_.kind == TokenKind::KwOwned ||
+        current_.kind == TokenKind::KwBorrow || current_.kind == TokenKind::KwMove) {
+        mode = parse_mode(current_.kind);
+        advance();
+    }
+
+    if (current_.kind == TokenKind::Ident && current_.text == "_") {
+        Token tok = current_;
+        advance();
+        return FnParam(
+            Ident(tok.text, tok.span),
+            ast::kInvalidAstId,
+            ast::kInvalidAstId,
+            std::move(mode));
+    }
+
+    if (current_.kind == TokenKind::Ident || is_identifier_token(current_.kind, KeywordPolicy::Permissive)) {
+        Ident name = parse_ident();
+        if (match(TokenKind::Colon)) {
+            if (match(TokenKind::Ellipsis)) {
+                TypeId ty = parse_type_expr();
+                return FnParam(
+                    std::move(name),
+                    ty,
+                    ast::kInvalidAstId,
+                    std::move(mode),
+                    false,
+                    true);
+            }
+            TypeId ty = parse_type_expr();
+            ExprId default_value = ast::kInvalidAstId;
+            if (match(TokenKind::Equal)) {
+                default_value = parse_expr();
+            }
+            return FnParam(
+                std::move(name),
+                ty,
+                default_value,
+                std::move(mode));
+        }
+        return FnParam(
+            std::move(name),
+            ast::kInvalidAstId,
+            ast::kInvalidAstId,
+            std::move(mode));
+    }
+
+    emit_parse_error(diag::DiagId::ExpectedIdentifier, current_.span);
+    advance();
+    return FnParam(Ident("<error>", current_.span), ast::kInvalidAstId);
+}
+
+DeclId Parser::parse_proc_decl(std::vector<Attribute> attrs, bool allow_body) {
+    SourceSpan span = current_.span;
+    bool is_async = false;
+    bool is_unsafe = false;
+    bool is_extern = false;
+    std::optional<std::string> extern_abi;
+    for (const auto& attr : attrs) {
+        if (attr.name.name == "extern") {
+            is_extern = true;
+        }
+    }
+    if (current_.kind == TokenKind::KwPub || current_.kind == TokenKind::KwPriv ||
+        current_.kind == TokenKind::KwInternal) {
+        advance();
+        if (match(TokenKind::LParen)) {
+            while (current_.kind != TokenKind::RParen && current_.kind != TokenKind::Eof) {
+                advance();
+            }
+            expect(TokenKind::RParen, "expected ')' after visibility scope");
+        }
+    }
+    while (current_.kind == TokenKind::KwAsync || current_.kind == TokenKind::KwUnsafe ||
+           current_.kind == TokenKind::KwConst || current_.kind == TokenKind::KwInline ||
+           current_.kind == TokenKind::KwNoinline || current_.kind == TokenKind::KwExtern) {
+        if (match(TokenKind::KwAsync)) {
+            is_async = true;
+            continue;
+        }
+        if (match(TokenKind::KwUnsafe)) {
+            is_unsafe = true;
+            continue;
+        }
+        if (match(TokenKind::KwConst) || match(TokenKind::KwInline) || match(TokenKind::KwNoinline)) {
+            continue;
+        }
+        if (match(TokenKind::KwExtern)) {
+            is_extern = true;
+            if (current_.kind == TokenKind::StringLit || current_.kind == TokenKind::Ident ||
+                is_callconv_token(current_.kind)) {
+                extern_abi = current_.text;
+                advance();
+            }
+            continue;
+        }
+    }
+    (void)is_unsafe;
     if (current_.kind == TokenKind::KwProc || current_.kind == TokenKind::KwDef) {
         advance();
     } else {
@@ -563,30 +1230,12 @@ DeclId Parser::parse_proc_decl(std::vector<Attribute> attrs) {
     expect(TokenKind::LParen, "expected '('");
     std::vector<FnParam> params;
     if (current_.kind != TokenKind::RParen) {
-        Ident param_name = parse_ident();
-        TypeId param_type = ast::kInvalidAstId;
-        if (match(TokenKind::Colon)) {
-            param_type = parse_type_expr();
-        }
-        ExprId default_value = ast::kInvalidAstId;
-        if (match(TokenKind::Equal)) {
-            default_value = parse_expr();
-        }
-        params.emplace_back(std::move(param_name), param_type, default_value);
+        params.emplace_back(parse_fn_param());
         while (match(TokenKind::Comma)) {
             if (current_.kind == TokenKind::RParen) {
                 break;
             }
-            Ident next_name = parse_ident();
-            TypeId next_type = ast::kInvalidAstId;
-            if (match(TokenKind::Colon)) {
-                next_type = parse_type_expr();
-            }
-            ExprId next_default = ast::kInvalidAstId;
-            if (match(TokenKind::Equal)) {
-                next_default = parse_expr();
-            }
-            params.emplace_back(std::move(next_name), next_type, next_default);
+            params.emplace_back(parse_fn_param());
         }
     }
     expect(TokenKind::RParen, "expected ')'");
@@ -594,8 +1243,63 @@ DeclId Parser::parse_proc_decl(std::vector<Attribute> attrs) {
     if (match(TokenKind::Arrow)) {
         return_type = parse_type_expr();
     }
+    std::vector<std::pair<TypeId, TypeId>> where_bounds;
+    if (match(TokenKind::KwWhere)) {
+        while (true) {
+            TypeId lhs = parse_type_expr();
+            expect(TokenKind::Colon, "expected ':' in where clause");
+            TypeId rhs = parse_type_expr();
+            while (match(TokenKind::Plus)) {
+                (void)parse_type_expr();
+            }
+            where_bounds.emplace_back(lhs, rhs);
+            if (!match(TokenKind::Comma)) {
+                break;
+            }
+            if (current_.kind == TokenKind::RBrace || current_.kind == TokenKind::Eof) {
+                break;
+            }
+        }
+    }
+    if (match(TokenKind::KwRequires)) {
+        if (match(TokenKind::LParen)) {
+            int depth = 1;
+            while (depth > 0 && current_.kind != TokenKind::Eof) {
+                if (current_.kind == TokenKind::LParen) {
+                    ++depth;
+                } else if (current_.kind == TokenKind::RParen) {
+                    --depth;
+                    if (depth == 0) {
+                        break;
+                    }
+                }
+                advance();
+            }
+            expect(TokenKind::RParen, "expected ')' after requires");
+        }
+    }
+    if (match(TokenKind::KwEffects)) {
+        if (match(TokenKind::LParen)) {
+            int depth = 1;
+            while (depth > 0 && current_.kind != TokenKind::Eof) {
+                if (current_.kind == TokenKind::LParen) {
+                    ++depth;
+                } else if (current_.kind == TokenKind::RParen) {
+                    --depth;
+                    if (depth == 0) {
+                        break;
+                    }
+                }
+                advance();
+            }
+            expect(TokenKind::RParen, "expected ')' after effects");
+        }
+    }
+    if (match(TokenKind::KwNoexcept)) {
+        // canonical suffix accepted, semantics handled downstream
+    }
     StmtId body = ast::kInvalidAstId;
-    if (current_.kind == TokenKind::LBrace) {
+    if (allow_body && current_.kind == TokenKind::LBrace) {
         body = parse_block();
         span.end = ast_ctx_.get<Stmt>(body).span.end;
     } else {
@@ -608,6 +1312,11 @@ DeclId Parser::parse_proc_decl(std::vector<Attribute> attrs) {
         std::move(params),
         return_type,
         body,
+        is_async,
+        is_extern,
+        !allow_body,
+        std::move(extern_abi),
+        std::move(where_bounds),
         span);
 }
 
@@ -627,11 +1336,29 @@ DeclId Parser::parse_entry_decl() {
 }
 
 FieldDecl Parser::parse_field_decl() {
-    expect(TokenKind::KwField, "expected 'field'");
+    std::optional<std::string> visibility;
+    if (current_.kind == TokenKind::KwPub || current_.kind == TokenKind::KwPriv || current_.kind == TokenKind::KwInternal) {
+        visibility = current_.text;
+        advance();
+        if (match(TokenKind::LParen)) {
+            std::string scope = "unknown";
+            if (current_.kind == TokenKind::KwPackage || current_.kind == TokenKind::KwSuper ||
+                (current_.kind == TokenKind::Ident && current_.text == "module")) {
+                scope = current_.text;
+                advance();
+            }
+            expect(TokenKind::RParen, "expected ')' after visibility scope");
+            visibility = *visibility + "(" + scope + ")";
+        }
+    }
     Ident name = parse_ident();
-    expect(TokenKind::KwAs, "expected 'as'");
+    if (match(TokenKind::KwAs) || match(TokenKind::Colon)) {
+        // canonical field separator
+    } else {
+        expect(TokenKind::KwAs, "expected 'as' or ':'");
+    }
     TypeId ty = parse_type_expr();
-    return FieldDecl(std::move(name), ty);
+    return FieldDecl(std::move(name), ty, std::move(visibility));
 }
 
 CaseDecl Parser::parse_case_decl() {

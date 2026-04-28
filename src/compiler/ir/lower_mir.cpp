@@ -9,21 +9,6 @@ using namespace vitte::ir;
 using vitte::frontend::diag::DiagnosticEngine;
 
 namespace {
-static void emit_generic_codegen_unsupported(
-    DiagnosticEngine& diagnostics,
-    const std::string& kind,
-    const frontend::ast::SourceSpan& span
-) {
-    diagnostics.error(
-        "generic " + kind + " codegen is not supported yet",
-        span
-    );
-    diagnostics.note(
-        "generic declarations currently erase type parameters in the backend; stop before codegen instead of emitting invalid C++",
-        span
-    );
-}
-
 struct Builder {
     const HirContext& hir;
     DiagnosticEngine& diag;
@@ -131,6 +116,9 @@ struct Builder {
             const auto& c = static_cast<const MirConst&>(*v);
             if (c.const_kind == MirConstKind::String) {
                 return "string";
+            }
+            if (c.const_kind == MirConstKind::Bytes) {
+                return "bytes";
             }
             if (c.const_kind == MirConstKind::Bool) {
                 return "bool";
@@ -258,6 +246,7 @@ struct Builder {
             case HirLiteralKind::Bool: return "bool";
             case HirLiteralKind::Int: return "i32";
             case HirLiteralKind::String: return "string";
+            case HirLiteralKind::Bytes: return "bytes";
         }
         return "unknown";
     }
@@ -284,12 +273,18 @@ struct Builder {
             case HirBinaryOp::Sub: return MirBinOp::Sub;
             case HirBinaryOp::Mul: return MirBinOp::Mul;
             case HirBinaryOp::Div: return MirBinOp::Div;
+            case HirBinaryOp::Mod: return MirBinOp::Mod;
             case HirBinaryOp::Eq: return MirBinOp::Eq;
             case HirBinaryOp::Ne: return MirBinOp::Ne;
             case HirBinaryOp::Lt: return MirBinOp::Lt;
             case HirBinaryOp::Le: return MirBinOp::Le;
             case HirBinaryOp::Gt: return MirBinOp::Gt;
             case HirBinaryOp::Ge: return MirBinOp::Ge;
+            case HirBinaryOp::BitAnd: return MirBinOp::BitAnd;
+            case HirBinaryOp::BitOr: return MirBinOp::BitOr;
+            case HirBinaryOp::BitXor: return MirBinOp::BitXor;
+            case HirBinaryOp::Shl: return MirBinOp::Shl;
+            case HirBinaryOp::Shr: return MirBinOp::Shr;
             case HirBinaryOp::And: return MirBinOp::And;
             case HirBinaryOp::Or: return MirBinOp::Or;
             default:
@@ -531,6 +526,7 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
                 case HirLiteralKind::Bool: k = MirConstKind::Bool; break;
                 case HirLiteralKind::Int: k = MirConstKind::Int; break;
                 case HirLiteralKind::String: k = MirConstKind::String; break;
+                case HirLiteralKind::Bytes: k = MirConstKind::Bytes; break;
             }
             return make_const(k, e.value, e.span);
         }
@@ -697,25 +693,30 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
                 std::string lhs_ty = type_of_value(lhs);
                 std::string rhs_ty = type_of_value(rhs);
                 if (lhs_ty == "string" || rhs_ty == "string") {
-                    if (lhs_ty != "string") {
-                        if (lhs_ty == "i32" || lhs_ty == "int" || lhs_ty == "unknown") {
-                            std::vector<MirValuePtr> conv_args;
-                            conv_args.push_back(std::move(lhs));
-                            lhs = emit_call_value("vitte_i32_to_string", std::move(conv_args), "string", e.span);
-                        } else {
-                            diag.error("unsupported lhs type for string concat", e.span);
-                            lhs = make_const(MirConstKind::String, "", e.span);
+                    auto convert_to_string = [&](MirValuePtr& value, const std::string& ty, const char* side) {
+                        if (ty == "string") {
+                            return;
                         }
+                        if (ty == "char") {
+                            std::vector<MirValuePtr> conv_args;
+                            conv_args.push_back(std::move(value));
+                            value = emit_call_value("vitte_char_to_string", std::move(conv_args), "string", e.span);
+                            return;
+                        }
+                        if (ty == "i32" || ty == "int" || ty == "unknown") {
+                            std::vector<MirValuePtr> conv_args;
+                            conv_args.push_back(std::move(value));
+                            value = emit_call_value("vitte_i32_to_string", std::move(conv_args), "string", e.span);
+                            return;
+                        }
+                        diag.error(std::string("unsupported ") + side + " type for string concat", e.span);
+                        value = make_const(MirConstKind::String, "", e.span);
+                    };
+                    if (lhs_ty != "string") {
+                        convert_to_string(lhs, lhs_ty, "lhs");
                     }
                     if (rhs_ty != "string") {
-                        if (rhs_ty == "i32" || rhs_ty == "int" || rhs_ty == "unknown") {
-                            std::vector<MirValuePtr> conv_args;
-                            conv_args.push_back(std::move(rhs));
-                            rhs = emit_call_value("vitte_i32_to_string", std::move(conv_args), "string", e.span);
-                        } else {
-                            diag.error("unsupported rhs type for string concat", e.span);
-                            rhs = make_const(MirConstKind::String, "", e.span);
-                        }
+                        convert_to_string(rhs, rhs_ty, "rhs");
                     }
                     std::vector<MirValuePtr> args;
                     args.push_back(std::move(lhs));
@@ -1688,10 +1689,6 @@ MirModule lower_to_mir(
         const auto& decl = hir_ctx.get<HirDecl>(decl_id);
         if (decl.kind == HirKind::FormDecl) {
             const auto& f = hir_ctx.get<HirFormDecl>(decl_id);
-            if (f.has_type_params) {
-                emit_generic_codegen_unsupported(diagnostics, "form", f.span);
-                continue;
-            }
             std::vector<MirField> fields;
             for (const auto& field : f.fields) {
                 auto ftype = field_type_from_hir(field.type);
@@ -1702,10 +1699,6 @@ MirModule lower_to_mir(
             fn_returns[f.name] = f.name;
         } else if (decl.kind == HirKind::PickDecl) {
             const auto& p = hir_ctx.get<HirPickDecl>(decl_id);
-            if (p.has_type_params) {
-                emit_generic_codegen_unsupported(diagnostics, "pick", p.span);
-                continue;
-            }
             std::vector<MirPickCase> cases;
             std::size_t tag = 0;
             for (const auto& c : p.cases) {
@@ -1761,6 +1754,7 @@ MirModule lower_to_mir(
                     case HirLiteralKind::Bool: kind = MirConstKind::Bool; break;
                     case HirLiteralKind::Int: kind = MirConstKind::Int; break;
                     case HirLiteralKind::String: kind = MirConstKind::String; break;
+                    case HirLiteralKind::Bytes: kind = MirConstKind::Bytes; break;
                 }
                 value = lit.value;
             } else {
@@ -1792,6 +1786,7 @@ MirModule lower_to_mir(
                     case HirLiteralKind::Bool: kind = MirConstKind::Bool; break;
                     case HirLiteralKind::Int: kind = MirConstKind::Int; break;
                     case HirLiteralKind::String: kind = MirConstKind::String; break;
+                    case HirLiteralKind::Bytes: kind = MirConstKind::Bytes; break;
                 }
                 value = lit.value;
                 has_init = true;
@@ -1818,10 +1813,6 @@ MirModule lower_to_mir(
             continue;
         }
         const auto& fn = hir_ctx.get<HirFnDecl>(decl_id);
-        if (fn.has_type_params) {
-            emit_generic_codegen_unsupported(diagnostics, "proc", fn.span);
-            continue;
-        }
         std::string ret = "Unit";
         if (fn.return_type != kInvalidHirId) {
             const auto& tnode = hir_ctx.node(fn.return_type);
@@ -1853,10 +1844,6 @@ MirModule lower_to_mir(
             continue;
         }
         const auto& fn = hir_ctx.get<HirFnDecl>(decl_id);
-        if (fn.has_type_params) {
-            continue;
-        }
-
         std::vector<MirParam> params;
         std::vector<MirLocalPtr> locals;
         std::vector<MirBasicBlock> blocks;

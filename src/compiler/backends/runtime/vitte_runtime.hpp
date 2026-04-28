@@ -65,6 +65,8 @@ struct VitteString {
 bool operator==(VitteString a, VitteString b);
 bool operator!=(VitteString a, VitteString b);
 VitteString operator+(VitteString a, VitteString b);
+VitteString vitte_char_to_string(std::int32_t v);
+VitteString vitte__vitte_char_to_string(std::int32_t v);
 
 template <typename T>
 struct VitteSlice {

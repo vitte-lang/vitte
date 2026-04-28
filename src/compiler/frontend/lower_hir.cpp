@@ -14,6 +14,23 @@ static ir::HirTypeId lower_type(
     TypeId type,
     ir::HirContext& hir_ctx);
 
+static std::string builtin_type_name(const AstContext& ctx, TypeId type) {
+    if (type == kInvalidAstId) {
+        return "";
+    }
+    const AstNode& node = ctx.node(type);
+    switch (node.kind) {
+        case NodeKind::BuiltinType:
+            return static_cast<const BuiltinType&>(node).name;
+        case NodeKind::NamedType:
+            return static_cast<const NamedType&>(node).ident.name;
+        case NodeKind::GenericType:
+            return static_cast<const GenericType&>(node).base_ident.name;
+        default:
+            return "";
+    }
+}
+
 static ir::HirExprId lower_expr(
     const AstContext& ctx,
     ExprId expr,
@@ -230,6 +247,7 @@ static ir::HirExprId lower_expr(
                 case LiteralKind::Bool: kind = ir::HirLiteralKind::Bool; break;
                 case LiteralKind::Int: kind = ir::HirLiteralKind::Int; break;
                 case LiteralKind::String: kind = ir::HirLiteralKind::String; break;
+                case LiteralKind::Bytes: kind = ir::HirLiteralKind::Bytes; break;
                 case LiteralKind::Float: kind = ir::HirLiteralKind::Int; break;
                 case LiteralKind::Char: kind = ir::HirLiteralKind::Int; break;
             }
@@ -242,10 +260,99 @@ static ir::HirExprId lower_expr(
         case NodeKind::UnaryExpr: {
             auto& e = static_cast<const UnaryExpr&>(node);
             auto rhs = lower_expr(ctx, e.expr, hir_ctx, diagnostics, type_names, enum_like);
+            if (e.op == UnaryOp::BitNot) {
+                auto minus_one = hir_ctx.make<ir::HirLiteralExpr>(
+                    ir::HirLiteralKind::Int,
+                    "-1",
+                    e.span);
+                return hir_ctx.make<ir::HirBinaryExpr>(
+                    ir::HirBinaryOp::BitXor,
+                    rhs,
+                    minus_one,
+                    e.span);
+            }
+            if (e.op == UnaryOp::Await) {
+                auto callee = hir_ctx.make<ir::HirVarExpr>("await", e.span);
+                std::vector<ir::HirExprId> args;
+                args.push_back(rhs);
+                return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), std::vector<ir::HirTypeId>{}, e.span);
+            }
             return hir_ctx.make<ir::HirUnaryExpr>(
                 ir::HirUnaryOp::Not,
                 rhs,
                 e.span);
+        }
+        case NodeKind::BuiltinExpr: {
+            auto& e = static_cast<const BuiltinExpr&>(node);
+            std::string callee_name;
+            std::vector<ir::HirExprId> args;
+            switch (e.kind) {
+                case BuiltinExpr::Kind::Sizeof:
+                    callee_name = "sizeof";
+                    if (e.expr != kInvalidAstId) {
+                        args.push_back(lower_expr(ctx, e.expr, hir_ctx, diagnostics, type_names, enum_like));
+                    } else if (e.type != kInvalidAstId) {
+                        args.push_back(hir_ctx.make<ir::HirLiteralExpr>(
+                            ir::HirLiteralKind::String,
+                            builtin_type_name(ctx, e.type),
+                            e.span));
+                    }
+                    break;
+                case BuiltinExpr::Kind::Alignof:
+                    callee_name = "alignof";
+                    if (e.type != kInvalidAstId) {
+                        args.push_back(hir_ctx.make<ir::HirLiteralExpr>(
+                            ir::HirLiteralKind::String,
+                            builtin_type_name(ctx, e.type),
+                            e.span));
+                    }
+                    break;
+                case BuiltinExpr::Kind::Offsetof:
+                    callee_name = "offsetof";
+                    if (e.type != kInvalidAstId) {
+                        args.push_back(hir_ctx.make<ir::HirLiteralExpr>(
+                            ir::HirLiteralKind::String,
+                            builtin_type_name(ctx, e.type),
+                            e.span));
+                    }
+                    if (!e.member.name.empty()) {
+                        args.push_back(hir_ctx.make<ir::HirLiteralExpr>(
+                            ir::HirLiteralKind::String,
+                            e.member.name,
+                            e.member.span));
+                    }
+                    break;
+                case BuiltinExpr::Kind::Typeof:
+                    callee_name = "typeof";
+                    if (e.expr != kInvalidAstId) {
+                        args.push_back(lower_expr(ctx, e.expr, hir_ctx, diagnostics, type_names, enum_like));
+                    }
+                    break;
+                case BuiltinExpr::Kind::Nameof:
+                    callee_name = "nameof";
+                    if (!e.path.parts.empty()) {
+                        std::string path;
+                        for (std::size_t i = 0; i < e.path.parts.size(); ++i) {
+                            if (i) {
+                                path += "/";
+                            }
+                            path += e.path.parts[i].name;
+                        }
+                        args.push_back(hir_ctx.make<ir::HirLiteralExpr>(
+                            ir::HirLiteralKind::String,
+                            path,
+                            e.span));
+                    }
+                    break;
+                case BuiltinExpr::Kind::Await:
+                    callee_name = "await";
+                    if (e.expr != kInvalidAstId) {
+                        args.push_back(lower_expr(ctx, e.expr, hir_ctx, diagnostics, type_names, enum_like));
+                    }
+                    break;
+            }
+            auto callee = hir_ctx.make<ir::HirVarExpr>(callee_name, e.span);
+            return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), std::vector<ir::HirTypeId>{}, e.span);
         }
         case NodeKind::BinaryExpr: {
             auto& e = static_cast<const BinaryExpr&>(node);
@@ -255,12 +362,18 @@ static ir::HirExprId lower_expr(
                 case BinaryOp::Sub: op = ir::HirBinaryOp::Sub; break;
                 case BinaryOp::Mul: op = ir::HirBinaryOp::Mul; break;
                 case BinaryOp::Div: op = ir::HirBinaryOp::Div; break;
+                case BinaryOp::Mod: op = ir::HirBinaryOp::Mod; break;
                 case BinaryOp::Eq: op = ir::HirBinaryOp::Eq; break;
                 case BinaryOp::Ne: op = ir::HirBinaryOp::Ne; break;
                 case BinaryOp::Lt: op = ir::HirBinaryOp::Lt; break;
                 case BinaryOp::Le: op = ir::HirBinaryOp::Le; break;
                 case BinaryOp::Gt: op = ir::HirBinaryOp::Gt; break;
                 case BinaryOp::Ge: op = ir::HirBinaryOp::Ge; break;
+                case BinaryOp::BitAnd: op = ir::HirBinaryOp::BitAnd; break;
+                case BinaryOp::BitOr: op = ir::HirBinaryOp::BitOr; break;
+                case BinaryOp::BitXor: op = ir::HirBinaryOp::BitXor; break;
+                case BinaryOp::Shl: op = ir::HirBinaryOp::Shl; break;
+                case BinaryOp::Shr: op = ir::HirBinaryOp::Shr; break;
                 case BinaryOp::And: op = ir::HirBinaryOp::And; break;
                 case BinaryOp::Or: op = ir::HirBinaryOp::Or; break;
                 case BinaryOp::Assign: op = ir::HirBinaryOp::Assign; break;
@@ -705,6 +818,47 @@ static ir::HirStmtId lower_stmt(
                 lower_expr(ctx, s.expr, hir_ctx, diagnostics, type_names, enum_like),
                 s.span);
         }
+        case NodeKind::DeferStmt: {
+            auto& s = static_cast<const DeferStmt&>(node);
+            return lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
+        }
+        case NodeKind::CriticalStmt: {
+            auto& s = static_cast<const CriticalStmt&>(node);
+            return lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
+        }
+        case NodeKind::AtomicStmt: {
+            auto& s = static_cast<const AtomicStmt&>(node);
+            return lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
+        }
+        case NodeKind::VolatileStmt: {
+            auto& s = static_cast<const VolatileStmt&>(node);
+            return lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
+        }
+        case NodeKind::WithStmt: {
+            auto& s = static_cast<const WithStmt&>(node);
+            std::vector<ir::HirStmtId> lowered;
+            auto expr = lower_expr(ctx, s.expr, hir_ctx, diagnostics, type_names, enum_like);
+            if (expr != ir::kInvalidHirId) {
+                lowered.push_back(hir_ctx.make<ir::HirExprStmt>(expr, s.span));
+            }
+            if (s.body != kInvalidAstId) {
+                auto body = lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
+                if (body != ir::kInvalidHirId) {
+                    if (hir_ctx.node(body).kind == ir::HirKind::Block) {
+                        auto& block = hir_ctx.get<ir::HirBlock>(body);
+                        lowered.insert(lowered.end(), block.stmts.begin(), block.stmts.end());
+                    } else {
+                        lowered.push_back(body);
+                    }
+                }
+            }
+            return hir_ctx.make<ir::HirBlock>(std::move(lowered), s.span);
+        }
+        case NodeKind::GotoStmt:
+        case NodeKind::LabelStmt:
+        case NodeKind::PreemptStmt:
+        case NodeKind::IrqStmt:
+            return hir_ctx.make<ir::HirBlock>(std::vector<ir::HirStmtId>{}, node.span);
         case NodeKind::IfStmt: {
             auto& s = static_cast<const IfStmt&>(node);
             return hir_ctx.make<ir::HirIf>(
@@ -927,6 +1081,8 @@ ir::HirModuleId lower_to_hir(
                 fields.push_back(field.ident.name);
             }
             ctor_fields[form.name.name] = std::move(fields);
+        } else if (decl.kind == NodeKind::TraitDecl) {
+            type_names.insert(static_cast<const TraitDecl&>(decl).name.name);
         } else if (decl.kind == NodeKind::PickDecl) {
             const auto& p = static_cast<const PickDecl&>(decl);
             type_names.insert(p.name.name);
@@ -981,6 +1137,11 @@ ir::HirModuleId lower_to_hir(
                     d.span));
                 break;
             }
+            case NodeKind::ComptimeDecl: {
+                auto& d = static_cast<const ComptimeDecl&>(decl);
+                (void)lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like, tmp_counter);
+                break;
+            }
             case NodeKind::ConstDecl: {
                 auto& d = static_cast<const ConstDecl&>(decl);
                 decls.push_back(hir_ctx.make<ir::HirConstDecl>(
@@ -1025,6 +1186,9 @@ ir::HirModuleId lower_to_hir(
                     d.span));
                 break;
             }
+            case NodeKind::TraitDecl:
+            case NodeKind::ImplDecl:
+                break;
             case NodeKind::PickDecl: {
                 auto& d = static_cast<const PickDecl&>(decl);
                 std::vector<ir::HirPickCase> cases;

@@ -150,6 +150,7 @@ enum class HirLiteralKind {
     Bool,
     Int,
     String,
+    Bytes,
 };
 
 enum class HirUnaryOp {
@@ -162,12 +163,18 @@ enum class HirBinaryOp {
     Sub,
     Mul,
     Div,
+    Mod,
     Eq,
     Ne,
     Lt,
     Le,
     Gt,
     Ge,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
     And,
     Or,
     Assign,

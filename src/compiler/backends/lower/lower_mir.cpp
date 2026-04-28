@@ -106,7 +106,9 @@ static CppType* map_type(CppContext& ctx, const std::string& mir_name) {
     if (name == "usize") return builtin_type(ctx, "size_t");
     if (name == "isize") return builtin_type(ctx, "ptrdiff_t");
     if (name == "bool") return builtin_type(ctx, "bool");
+    if (name == "char") return builtin_type(ctx, "char");
     if (name == "string") return builtin_type(ctx, "VitteString");
+    if (name == "bytes") return builtin_type(ctx, "VitteSlice<std::uint8_t>");
     if (name == "VitteAny") return builtin_type(ctx, "void*");
     if (name == "unknown") return builtin_type(ctx, "int32_t");
     if (name == "Unit" || name == "unit" || name == "void") {
@@ -207,6 +209,23 @@ static std::unique_ptr<CppExpr> emit_value(CppContext& ctx, const vitte::ir::Mir
                 std::string out = "VitteString{" + lit + ", " + std::to_string(c.value.size()) + "}";
                 return std::make_unique<CppLiteral>(out);
             }
+            case vitte::ir::MirConstKind::Bytes: {
+                std::string lit = "\"";
+                for (unsigned char ch : c.value) {
+                    switch (ch) {
+                        case '\\': lit += "\\\\"; break;
+                        case '"': lit += "\\\""; break;
+                        case '\n': lit += "\\n"; break;
+                        case '\r': lit += "\\r"; break;
+                        case '\t': lit += "\\t"; break;
+                        case '\0': lit += "\\0"; break;
+                        default: lit += static_cast<char>(ch); break;
+                    }
+                }
+                lit += "\"";
+                std::string out = "VitteSlice<std::uint8_t>{reinterpret_cast<std::uint8_t*>(const_cast<char*>(" + lit + ")), " + std::to_string(c.value.size()) + "}";
+                return std::make_unique<CppLiteral>(out);
+            }
         }
     }
     return std::make_unique<CppLiteral>("0");
@@ -241,6 +260,23 @@ static std::unique_ptr<CppExpr> emit_const_expr(const vitte::ir::MirConstKind ki
             std::string out = "VitteString{" + lit + ", " + std::to_string(value.size()) + "}";
             return std::make_unique<CppLiteral>(out);
         }
+        case vitte::ir::MirConstKind::Bytes: {
+            std::string lit = "\"";
+            for (unsigned char ch : value) {
+                switch (ch) {
+                    case '\\': lit += "\\\\"; break;
+                    case '"': lit += "\\\""; break;
+                    case '\n': lit += "\\n"; break;
+                    case '\r': lit += "\\r"; break;
+                    case '\t': lit += "\\t"; break;
+                    case '\0': lit += "\\0"; break;
+                    default: lit += static_cast<char>(ch); break;
+                }
+            }
+            lit += "\"";
+            std::string out = "VitteSlice<std::uint8_t>{reinterpret_cast<std::uint8_t*>(const_cast<char*>(" + lit + ")), " + std::to_string(value.size()) + "}";
+            return std::make_unique<CppLiteral>(out);
+        }
     }
     return std::make_unique<CppLiteral>("0");
 }
@@ -263,12 +299,18 @@ static std::string binop_to_cpp(vitte::ir::MirBinOp op) {
         case vitte::ir::MirBinOp::Sub: return "-";
         case vitte::ir::MirBinOp::Mul: return "*";
         case vitte::ir::MirBinOp::Div: return "/";
+        case vitte::ir::MirBinOp::Mod: return "%";
         case vitte::ir::MirBinOp::Eq: return "==";
         case vitte::ir::MirBinOp::Ne: return "!=";
         case vitte::ir::MirBinOp::Lt: return "<";
         case vitte::ir::MirBinOp::Le: return "<=";
         case vitte::ir::MirBinOp::Gt: return ">";
         case vitte::ir::MirBinOp::Ge: return ">=";
+        case vitte::ir::MirBinOp::BitAnd: return "&";
+        case vitte::ir::MirBinOp::BitOr: return "|";
+        case vitte::ir::MirBinOp::BitXor: return "^";
+        case vitte::ir::MirBinOp::Shl: return "<<";
+        case vitte::ir::MirBinOp::Shr: return ">>";
         case vitte::ir::MirBinOp::And: return "&&";
         case vitte::ir::MirBinOp::Or: return "||";
         default: return "+";
@@ -313,6 +355,7 @@ static std::string infer_value_type_name(const vitte::ir::MirValuePtr& value) {
                 case vitte::ir::MirConstKind::Bool: return "bool";
                 case vitte::ir::MirConstKind::Int: return "i32";
                 case vitte::ir::MirConstKind::String: return "string";
+                case vitte::ir::MirConstKind::Bytes: return "bytes";
             }
             return "unknown";
         }

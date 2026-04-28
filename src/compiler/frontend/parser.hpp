@@ -88,20 +88,33 @@ private:
     DeclId parse_from_import_decl();
     DeclId parse_pull_decl();
     DeclId parse_use_decl();
+    DeclId parse_export_decl();
     DeclId parse_share_decl();
     DeclId parse_const_decl();
+    DeclId parse_static_decl();
     DeclId parse_global_decl();
     DeclId parse_type_alias_decl();
     DeclId parse_macro_decl();
     DeclId parse_form_decl();
     DeclId parse_class_decl();
     DeclId parse_pick_decl();
-    DeclId parse_proc_decl(std::vector<ast::Attribute> attrs);
+    DeclId parse_union_decl();
+    DeclId parse_trait_decl(std::vector<ast::Attribute> attrs);
+    DeclId parse_impl_decl(std::vector<ast::Attribute> attrs);
+    DeclId parse_foreign_type_decl();
+    DeclId parse_foreign_proc_decl();
+    DeclId parse_comptime_decl();
+    DeclId parse_package_decl();
+    DeclId parse_flags_decl();
+    DeclId parse_bench_decl();
+    DeclId parse_static_assert_decl();
+    DeclId parse_proc_decl(std::vector<ast::Attribute> attrs, bool allow_body = true);
     DeclId parse_entry_decl();
 
     ast::FieldDecl parse_field_decl();
     ast::CaseDecl parse_case_decl();
     std::vector<ast::Ident> parse_type_params();
+    ast::FnParam parse_fn_param();
 
     // Blocks / statements
     StmtId parse_block();
@@ -113,19 +126,33 @@ private:
     StmtId parse_set_stmt();
     StmtId parse_give_stmt();
     StmtId parse_emit_stmt();
+    StmtId parse_defer_stmt();
     StmtId parse_if_stmt();
     StmtId parse_try_stmt();
     StmtId parse_raise_stmt();
+    StmtId parse_with_stmt();
+    StmtId parse_critical_stmt();
+    StmtId parse_atomic_stmt();
+    StmtId parse_volatile_stmt();
+    StmtId parse_goto_stmt();
+    StmtId parse_preempt_stmt();
+    StmtId parse_irq_stmt();
     StmtId parse_loop_stmt();
     StmtId parse_while_stmt();
     StmtId parse_for_stmt();
     StmtId parse_break_stmt();
     StmtId parse_continue_stmt();
+    StmtId parse_assert_stmt();
+    StmtId parse_panic_stmt();
+    StmtId parse_unreachable_stmt();
     StmtId parse_select_stmt();
     StmtId parse_match_stmt();
     StmtId parse_when_match_stmt();
     StmtId parse_return_stmt();
     StmtId parse_expr_stmt();
+    StmtId parse_block_body();
+    StmtId parse_match_arm_body();
+    StmtId parse_label_stmt(ast::Ident label);
 
     StmtId parse_when_stmt();
 

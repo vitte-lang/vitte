@@ -95,6 +95,7 @@ enum class NodeKind {
     IdentExpr,
     UnaryExpr,
     BinaryExpr,
+    BuiltinExpr,
     MemberExpr,
     IndexExpr,
     ProcExpr,
@@ -120,6 +121,7 @@ enum class NodeKind {
     ReturnStmt,
     TryStmt,
     RaiseStmt,
+    DeferStmt,
     IfStmt,
     LoopStmt,
     BreakStmt,
@@ -129,6 +131,14 @@ enum class NodeKind {
     SetStmt,
     GiveStmt,
     EmitStmt,
+    WithStmt,
+    CriticalStmt,
+    AtomicStmt,
+    VolatileStmt,
+    GotoStmt,
+    PreemptStmt,
+    IrqStmt,
+    LabelStmt,
     SelectStmt,
     WhenStmt,
 
@@ -144,7 +154,10 @@ enum class NodeKind {
     GlobalDecl,
     MacroDecl,
     FormDecl,
+    TraitDecl,
+    ImplDecl,
     PickDecl,
+    ComptimeDecl,
     ProcDecl,
     EntryDecl,
 };
@@ -240,12 +253,32 @@ struct BuiltinType : TypeNode {
 // Function parameters
 // ------------------------------------------------------------
 
+enum class ParamMode {
+    Mut,
+    Owned,
+    Borrow,
+    Move,
+};
+
 struct FnParam {
     Ident ident;
     TypeId type;
     ExprId default_value;
+    std::optional<ParamMode> mode;
+    bool is_self;
+    bool is_variadic;
+    bool self_is_ref;
+    bool self_is_mut;
 
-    FnParam(Ident ident, TypeId type, ExprId default_value = kInvalidAstId);
+    FnParam(
+        Ident ident,
+        TypeId type,
+        ExprId default_value = kInvalidAstId,
+        std::optional<ParamMode> mode = std::nullopt,
+        bool is_self = false,
+        bool is_variadic = false,
+        bool self_is_ref = false,
+        bool self_is_mut = false);
 };
 
 struct InvokeArg {
@@ -284,6 +317,7 @@ enum class LiteralKind {
     Bool,
     Int,
     String,
+    Bytes,
     Float,
     Char,
 };
@@ -291,8 +325,10 @@ enum class LiteralKind {
 enum class UnaryOp {
     Not,
     Neg,
+    BitNot,
     Addr,
     Deref,
+    Await,
 };
 
 enum class BinaryOp {
@@ -347,6 +383,31 @@ struct BinaryExpr : Expr {
     ExprId rhs;
 
     BinaryExpr(BinaryOp op, ExprId lhs, ExprId rhs, SourceSpan span);
+};
+
+struct BuiltinExpr : Expr {
+    enum class Kind {
+        Sizeof,
+        Alignof,
+        Offsetof,
+        Typeof,
+        Nameof,
+        Await,
+    };
+
+    Kind kind;
+    TypeId type;
+    ExprId expr;
+    ModulePath path;
+    Ident member;
+
+    BuiltinExpr(
+        Kind kind,
+        TypeId type,
+        ExprId expr,
+        ModulePath path,
+        Ident member,
+        SourceSpan span);
 };
 
 struct ProcExpr : Expr {
@@ -556,6 +617,14 @@ struct EmitStmt : Stmt {
     EmitStmt(ExprId value, SourceSpan span);
 };
 
+struct WithStmt : Stmt {
+    ExprId expr;
+    std::optional<PatternId> pattern;
+    StmtId body;
+
+    WithStmt(ExprId expr, std::optional<PatternId> pattern, StmtId body, SourceSpan span);
+};
+
 struct ExprStmt : Stmt {
     ExprId expr;
 
@@ -580,6 +649,54 @@ struct RaiseStmt : Stmt {
     ExprId expr;
 
     RaiseStmt(ExprId expr, SourceSpan span);
+};
+
+struct DeferStmt : Stmt {
+    StmtId body;
+
+    DeferStmt(StmtId body, SourceSpan span);
+};
+
+struct CriticalStmt : Stmt {
+    StmtId body;
+
+    CriticalStmt(StmtId body, SourceSpan span);
+};
+
+struct AtomicStmt : Stmt {
+    StmtId body;
+
+    AtomicStmt(StmtId body, SourceSpan span);
+};
+
+struct VolatileStmt : Stmt {
+    StmtId body;
+
+    VolatileStmt(StmtId body, SourceSpan span);
+};
+
+struct GotoStmt : Stmt {
+    Ident target;
+
+    GotoStmt(Ident target, SourceSpan span);
+};
+
+struct PreemptStmt : Stmt {
+    bool enabled;
+
+    PreemptStmt(bool enabled, SourceSpan span);
+};
+
+struct IrqStmt : Stmt {
+    bool enabled;
+
+    IrqStmt(bool enabled, SourceSpan span);
+};
+
+struct LabelStmt : Stmt {
+    Ident name;
+
+    LabelStmt(Ident name, SourceSpan span);
 };
 
 struct BlockStmt : Stmt {
@@ -651,8 +768,9 @@ struct SelectStmt : Stmt {
 struct FieldDecl {
     Ident ident;
     TypeId type;
+    std::optional<std::string> visibility;
 
-    FieldDecl(Ident ident, TypeId type);
+    FieldDecl(Ident ident, TypeId type, std::optional<std::string> visibility = std::nullopt);
 };
 
 struct CaseField {
@@ -671,6 +789,12 @@ struct CaseDecl {
 
 struct Decl : AstNode {
     explicit Decl(NodeKind kind, SourceSpan span);
+};
+
+struct ComptimeDecl : Decl {
+    StmtId body;
+
+    ComptimeDecl(StmtId body, SourceSpan span);
 };
 
 struct FnDecl : Decl {
@@ -766,6 +890,42 @@ struct FormDecl : Decl {
     FormDecl(Ident name, std::vector<Ident> type_params, std::vector<FieldDecl> fields, SourceSpan span);
 };
 
+struct TraitDecl : Decl {
+    std::vector<Attribute> attrs;
+    Ident name;
+    std::vector<Ident> type_params;
+    bool is_unsafe;
+    std::vector<std::pair<TypeId, TypeId>> where_bounds;
+    std::vector<DeclId> items;
+
+    TraitDecl(
+        std::vector<Attribute> attrs,
+        Ident name,
+        std::vector<Ident> type_params,
+        bool is_unsafe,
+        std::vector<std::pair<TypeId, TypeId>> where_bounds,
+        std::vector<DeclId> items,
+        SourceSpan span);
+};
+
+struct ImplDecl : Decl {
+    std::vector<Attribute> attrs;
+    TypeId trait_type;
+    TypeId self_type;
+    bool has_trait;
+    std::vector<std::pair<TypeId, TypeId>> where_bounds;
+    std::vector<DeclId> items;
+
+    ImplDecl(
+        std::vector<Attribute> attrs,
+        TypeId trait_type,
+        TypeId self_type,
+        bool has_trait,
+        std::vector<std::pair<TypeId, TypeId>> where_bounds,
+        std::vector<DeclId> items,
+        SourceSpan span);
+};
+
 struct PickDecl : Decl {
     Ident name;
     std::vector<Ident> type_params;
@@ -781,6 +941,11 @@ struct ProcDecl : Decl {
     std::vector<FnParam> params;
     TypeId return_type;
     StmtId body;
+    bool is_async;
+    bool is_extern;
+    bool is_signature_only;
+    std::optional<std::string> extern_abi;
+    std::vector<std::pair<TypeId, TypeId>> where_bounds;
 
     ProcDecl(
         std::vector<Attribute> attrs,
@@ -789,6 +954,11 @@ struct ProcDecl : Decl {
         std::vector<FnParam> params,
         TypeId return_type,
         StmtId body,
+        bool is_async,
+        bool is_extern,
+        bool is_signature_only,
+        std::optional<std::string> extern_abi,
+        std::vector<std::pair<TypeId, TypeId>> where_bounds,
         SourceSpan span);
 };
 

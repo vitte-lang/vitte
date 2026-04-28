@@ -85,7 +85,15 @@ static ExprId clone_expr(
             std::vector<FnParam> params;
             params.reserve(e.params.size());
             for (const auto& p : e.params) {
-                params.emplace_back(clone_ident(p.ident), p.type, clone_expr(ctx, p.default_value, subst));
+                params.emplace_back(
+                    clone_ident(p.ident),
+                    p.type,
+                    clone_expr(ctx, p.default_value, subst),
+                    p.mode,
+                    p.is_self,
+                    p.is_variadic,
+                    p.self_is_ref,
+                    p.self_is_mut);
             }
             StmtId body = e.body;
             return ctx.make<ProcExpr>(std::move(params), e.return_type, body, e.span);
@@ -233,6 +241,49 @@ static StmtId clone_stmt(
             auto& s = static_cast<const ReturnStmt&>(node);
             ExprId expr = clone_expr(ctx, s.expr, subst);
             return ctx.make<ReturnStmt>(expr, s.span);
+        }
+        case NodeKind::WithStmt: {
+            auto& s = static_cast<const WithStmt&>(node);
+            ExprId expr = clone_expr(ctx, s.expr, subst);
+            std::optional<PatternId> pattern = s.pattern;
+            StmtId body = clone_stmt(ctx, s.body, subst);
+            return ctx.make<WithStmt>(expr, std::move(pattern), body, s.span);
+        }
+        case NodeKind::DeferStmt: {
+            auto& s = static_cast<const DeferStmt&>(node);
+            StmtId body = clone_stmt(ctx, s.body, subst);
+            return ctx.make<DeferStmt>(body, s.span);
+        }
+        case NodeKind::CriticalStmt: {
+            auto& s = static_cast<const CriticalStmt&>(node);
+            StmtId body = clone_stmt(ctx, s.body, subst);
+            return ctx.make<CriticalStmt>(body, s.span);
+        }
+        case NodeKind::AtomicStmt: {
+            auto& s = static_cast<const AtomicStmt&>(node);
+            StmtId body = clone_stmt(ctx, s.body, subst);
+            return ctx.make<AtomicStmt>(body, s.span);
+        }
+        case NodeKind::VolatileStmt: {
+            auto& s = static_cast<const VolatileStmt&>(node);
+            StmtId body = clone_stmt(ctx, s.body, subst);
+            return ctx.make<VolatileStmt>(body, s.span);
+        }
+        case NodeKind::GotoStmt: {
+            auto& s = static_cast<const GotoStmt&>(node);
+            return ctx.make<GotoStmt>(clone_ident(s.target), s.span);
+        }
+        case NodeKind::PreemptStmt: {
+            auto& s = static_cast<const PreemptStmt&>(node);
+            return ctx.make<PreemptStmt>(s.enabled, s.span);
+        }
+        case NodeKind::IrqStmt: {
+            auto& s = static_cast<const IrqStmt&>(node);
+            return ctx.make<IrqStmt>(s.enabled, s.span);
+        }
+        case NodeKind::LabelStmt: {
+            auto& s = static_cast<const LabelStmt&>(node);
+            return ctx.make<LabelStmt>(clone_ident(s.name), s.span);
         }
         case NodeKind::IfStmt: {
             auto& s = static_cast<const IfStmt&>(node);
@@ -506,6 +557,13 @@ void expand_macros(ast::AstContext& ctx, ast::ModuleId module, diag::DiagnosticE
         switch (decl.kind) {
             case NodeKind::ProcDecl: {
                 auto& d = static_cast<ProcDecl&>(decl);
+                if (d.body != kInvalidAstId) {
+                    d.body = expand_stmt(ctx, d.body, macros, diagnostics);
+                }
+                break;
+            }
+            case NodeKind::ComptimeDecl: {
+                auto& d = static_cast<ComptimeDecl&>(decl);
                 if (d.body != kInvalidAstId) {
                     d.body = expand_stmt(ctx, d.body, macros, diagnostics);
                 }

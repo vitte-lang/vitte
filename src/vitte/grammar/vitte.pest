@@ -1,169 +1,673 @@
 // GENERATED FILE - DO NOT EDIT
 // source: src/vitte/grammar/vitte.ebnf
-// source_sha256: 3407fe5d4e18ee31b7e341d71546a24089209ab7eea47b0f02866c1302031fc5
+// source_sha256: ea0c0fc36d63bd676730ad58fea31c52f027d45d53e45b0c78ebbc86d02dbfd6
 // tool: docs/book/grammar/scripts/sync_pest.py v1
-WHITESPACE = _{ " " | "\t" | NEWLINE | block_comment }
-NEWLINE = _{ "\r\n" | "\n" }
-block_comment = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
-
 program = { SOI ~ toplevel* ~ EOI }
 
-toplevel = {
-    space_decl
+// ================= Whitespace / Comments =================
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+NEWLINE = _{ "\r\n" | "\n" }
+
+COMMENT = _{ line_comment | block_comment | zone_comment }
+
+line_comment = _{ "#" ~ (!NEWLINE ~ ANY)* | "//" ~ (!NEWLINE ~ ANY)* }
+block_comment = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+zone_comment = _{ "<<<" ~ (!">>>" ~ ANY)* ~ ">>>" }
+
+// ================= Top-level =================
+
+toplevel = _{
+    inner_attribute
+  | space_decl
+  | package_decl
   | from_import_decl
   | use_decl
+  | export_decl
   | const_decl
+  | static_decl
+  | global_decl
   | type_alias_decl
+  | opaque_type_decl
+  | foreign_type_decl
   | form_decl
+  | class_decl
+  | union_decl
   | pick_decl
+  | flags_decl
+  | trait_decl
+  | impl_decl
   | proc_decl
+  | foreign_proc_decl
+  | macro_decl
+  | comptime_decl
+  | static_assert_decl
+  | test_decl
+  | bench_decl
   | entry_decl
 }
 
 space_decl = { "space" ~ module_path }
-from_import_decl = { "from" ~ package_path ~ "import" ~ ident_list }
-use_decl = { "use" ~ package_path ~ (use_group | use_glob)? ~ ("as" ~ ident)? }
+
+package_decl = { "package" ~ module_path ~ "{" ~ package_items? ~ "}" }
+package_items = { package_item ~ ("," ~ package_item)* ~ ","? }
+package_item = { ident ~ ":" ~ package_value }
+package_value = { literal | list_lit | map_lit }
+
+from_import_decl = { "from" ~ package_path ~ "import" ~ import_list }
+import_list = { "*" | import_items | "{" ~ ( "*" | import_items ~ ("," ~ "*")? ) ~ "}" }
+import_items = { import_item ~ ("," ~ import_item)* ~ ","? }
+import_item = { ident ~ ( "as" ~ ident )? }
+
+use_decl = { "use" ~ package_path ~ (use_group | use_glob)? ~ ( "as" ~ ident )? }
 use_glob = { "." ~ "*" }
-use_group = { "." ~ "{" ~ ("*" | ident_list ~ ("," ~ "*")?) ~ "}" }
-const_decl = { "const" ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr }
-type_alias_decl = { "type" ~ ident ~ ("[" ~ ident_list ~ "]")? ~ "=" ~ type_expr }
+use_group = { "." ~ "{" ~ ( "*" | import_items ~ ("," ~ "*")? ) ~ "}" }
 
-form_decl = { "form" ~ ident ~ ("[" ~ ident_list ~ "]")? ~ "{" ~ field_list? ~ "}" }
-field_list = { field_item ~ ("," ~ field_item)* }
-field_item = { ident ~ ":" ~ type_expr }
+export_decl = { "export" ~ ( "*" | ident_list | "{" ~ ident_list ~ "}" ) }
 
-pick_decl = { "pick" ~ ident ~ ("[" ~ ident_list ~ "]")? ~ "{" ~ case_list? ~ "}" }
-case_list = { case_item ~ ("," ~ case_item)* }
-case_item = { ("case")? ~ ident ~ ("(" ~ case_payload ~ ")")? }
-case_payload = { case_field ~ ("," ~ case_field)* }
-case_field = { ident ~ ":" ~ type_expr }
+const_decl = { attr_prefix* ~ "const" ~ ident ~ type_annot? ~ "=" ~ expr }
+static_decl = { attr_prefix* ~ "static" ~ ident ~ type_annot? ~ "=" ~ expr }
+global_decl = { attr_prefix* ~ "global" ~ ident ~ type_annot? ~ "=" ~ expr }
 
-attr_prefix = { attribute | shorthand_attribute | docstring }
-attribute = { "#[" ~ ident ~ ("(" ~ attr_arg_list? ~ ")")? ~ "]" }
-shorthand_attribute = { "@" ~ ident }
-docstring = { raw_string_lit }
-attr_arg_list = { attr_arg ~ ("," ~ attr_arg)* }
-attr_arg = { ident | string_lit | int_lit }
+type_alias_decl = { attr_prefix* ~ "type" ~ ident ~ generic_params? ~ "=" ~ type_expr }
+opaque_type_decl = { attr_prefix* ~ "opaque" ~ "type" ~ ident ~ generic_params? ~ ( "=" ~ type_expr )? }
+foreign_type_decl = { attr_prefix* ~ "foreign" ~ "type" ~ ident ~ generic_params? ~ ";"? }
 
-proc_decl = { attr_prefix* ~ "proc" ~ ident ~ ("[" ~ ident_list ~ "]")? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ block_body? }
-param_list = { param ~ ("," ~ param)* }
-param = { ident ~ (":" ~ type_expr)? }
+form_decl = { attr_prefix* ~ "form" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ form_items? ~ "}" }
+class_decl = { attr_prefix* ~ "class" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ class_items? ~ "}" }
+union_decl = { attr_prefix* ~ "union" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ field_list? ~ "}" }
 
-entry_decl = { "entry" ~ ident ~ "at" ~ module_path ~ block }
+form_items = { form_item ~ (","? ~ form_item)* ~ ","? }
+form_item = _{ field_item | const_decl | type_alias_decl | proc_decl }
+
+class_items = { class_item ~ (","? ~ class_item)* ~ ","? }
+class_item = _{ field_item | const_decl | type_alias_decl | proc_decl }
+
+field_list = { field_item ~ ("," ~ field_item)* ~ ","? }
+field_item = { attr_prefix* ~ visibility? ~ ident ~ ":" ~ type_expr ~ ( "=" ~ expr )? }
+
+pick_decl = {
+  attr_prefix* ~ "pick" ~ ident ~ generic_params? ~ ( ":" ~ type_expr )? ~ where_clause? ~
+  "{" ~ case_list? ~ "}"
+}
+
+case_list = { case_item ~ ("," ~ case_item)* ~ ","? }
+case_item = { ("case" ~)? ~ ident ~ ("(" ~ case_payload? ~ ")")? ~ ( "=" ~ expr )? }
+case_payload = { case_field ~ ("," ~ case_field)* ~ ","? }
+case_field = { ident ~ ":" ~ type_expr | type_expr }
+
+flags_decl = { attr_prefix* ~ "flags" ~ ident ~ ( ":" ~ type_expr )? ~ "{" ~ flag_list? ~ "}" }
+flag_list = { flag_item ~ ("," ~ flag_item)* ~ ","? }
+flag_item = { ident ~ ( "=" ~ expr )? }
+
+trait_decl = { attr_prefix* ~ "unsafe"? ~ "trait" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ trait_item* ~ "}" }
+trait_item = _{ proc_signature | const_decl | type_alias_decl }
+
+proc_signature = {
+  attr_prefix* ~ "proc" ~ ident ~ generic_params? ~
+  "(" ~ param_list? ~ ")" ~ return_type? ~ proc_suffix*
+}
+
+impl_decl = { attr_prefix* ~ "impl" ~ impl_head ~ where_clause? ~ "{" ~ impl_item* ~ "}" }
+impl_head = { type_expr ~ ( "for" ~ type_expr )? }
+impl_item = _{ const_decl | type_alias_decl | proc_decl }
+
+proc_decl = {
+  attr_prefix* ~ visibility? ~ proc_modifier* ~ extern_clause? ~
+  "proc" ~ ident ~ generic_params? ~
+  "(" ~ param_list? ~ ")" ~ return_type? ~ proc_suffix* ~ block_body?
+}
+
+proc_modifier = _{ "async" | "unsafe" | "const" | "inline" | "noinline" }
+
+proc_suffix = _{
+    effects_clause
+  | requires_clause
+  | where_clause
+  | "noexcept"
+}
+
+foreign_proc_decl = {
+  attr_prefix* ~ "foreign" ~ callconv? ~ "proc" ~ ident ~ generic_params? ~
+  "(" ~ param_list? ~ ")" ~ return_type? ~ proc_suffix* ~ ";"?
+}
+
+macro_decl = { attr_prefix* ~ "macro" ~ ident ~ "(" ~ macro_param_list? ~ ")" ~ block }
+macro_param_list = { macro_param ~ ("," ~ macro_param)* ~ ","? }
+macro_param = { ident ~ ( ":" ~ macro_kind )? }
+macro_kind = { "expr" | "stmt" | "type" | "ident" | "block" | "item" }
+
+comptime_decl = { "comptime" ~ block }
+static_assert_decl = { "static_assert" ~ "(" ~ expr ~ ("," ~ expr)? ~ ")" }
+test_decl = { attr_prefix* ~ "test" ~ string_lit ~ block }
+bench_decl = { attr_prefix* ~ "bench" ~ string_lit ~ block }
+entry_decl = { attr_prefix* ~ "entry" ~ ident ~ "at" ~ module_path ~ block }
+
+// ================= Common top-level helpers =================
+
+visibility = { "pub" ~ ("(" ~ visibility_scope ~ ")")? | "priv" | "internal" }
+visibility_scope = { "package" | "module" | "super" }
+
+extern_clause = { "extern" ~ (callconv | string_lit) }
+callconv = { "C" | "sysv64" | "win64" | "interrupt" | "naked" }
+
+generic_params = { "[" ~ generic_param_list? ~ "]" }
+generic_param_list = { generic_param ~ ("," ~ generic_param)* ~ ","? }
+
+generic_param = {
+    "const" ~ ident ~ ":" ~ type_expr
+  | "comptime" ~ ident ~ ":" ~ type_expr
+  | ident ~ ( ":" ~ trait_bound )? ~ ( "=" ~ type_expr )?
+}
+
+where_clause = { "where" ~ where_bounds }
+where_bounds = { where_bound ~ ("," ~ where_bound)* ~ ","? }
+where_bound = { type_expr ~ ( ":" ~ trait_bound | "==" ~ type_expr ) }
+trait_bound = { type_expr ~ ("+" ~ type_expr)* }
+
+param_list = { param ~ ("," ~ param)* ~ ","? }
+param = _{ self_param | variadic_param | normal_param }
+
+self_param = { "&"? ~ "mut"? ~ "self" }
+normal_param = { param_mode? ~ pattern ~ type_annot? ~ ( "=" ~ expr )? }
+variadic_param = { "..." | ident ~ ":" ~ "..." ~ type_expr }
+
+param_mode = { "mut" | "owned" | "borrow" | "move" }
+
+effects_clause = { "effects" ~ "(" ~ ident_list? ~ ")" }
+requires_clause = { "requires" ~ "(" ~ capability_list? ~ ")" }
+capability_list = { capability ~ ("," ~ capability)* ~ ","? }
+capability = { ident ~ ("." ~ ident)* }
+
+return_type = { "->" ~ type_expr }
+type_annot = { ":" ~ type_expr }
 
 module_path = { relative? ~ package_parts }
 package_path = { relative? ~ package_parts }
-relative = { "."* }
-package_parts = { ident ~ (("/" | ".") ~ ident)* }
-ident_list = { ident ~ ("," ~ ident)* }
+relative = { "."+ }
+package_parts = { ident ~ (path_sep ~ ident)* }
+path_sep = _{ "/" | "." | "::" }
+
+ident_list = { ident ~ ("," ~ ident)* ~ ","? }
+
+// ================= Attributes =================
+
+attr_prefix = _{ outer_attribute | shorthand_attribute | doc_comment | docstring }
+
+inner_attribute = { "#![" ~ attr_path ~ ("(" ~ attr_arg_list? ~ ")")? ~ "]" }
+outer_attribute = { "#[" ~ attr_path ~ ("(" ~ attr_arg_list? ~ ")")? ~ "]" }
+shorthand_attribute = { "@" ~ attr_path ~ ("(" ~ attr_arg_list? ~ ")")? }
+
+doc_comment = { "///" ~ (!NEWLINE ~ ANY)* }
+docstring = { raw_string_lit }
+
+attr_path = { ident ~ ("." ~ ident)* }
+attr_arg_list = { attr_arg ~ ("," ~ attr_arg)* ~ ","? }
+
+attr_arg = {
+    ident ~ "=" ~ literal
+  | ident
+  | string_lit
+  | int_lit
+  | bool_lit
+}
+
+// ================= Blocks / Statements =================
 
 block = { "{" ~ stmt* ~ "}" }
 inline_block = { ":" ~ expr }
-block_body = { block | inline_block }
+block_body = _{ block | inline_block }
 
-stmt = {
-    let_stmt
-  | asm_stmt
+stmt = _{
+    local_const_stmt ~ stmt_end
+  | let_stmt ~ stmt_end
+  | asm_stmt ~ stmt_end
   | unsafe_stmt
-  | make_stmt
-  | set_stmt
-  | give_stmt
-  | emit_stmt
+  | make_stmt ~ stmt_end
+  | set_stmt ~ stmt_end
+  | give_stmt ~ stmt_end
+  | return_stmt ~ stmt_end
+  | try_stmt
+  | defer_stmt ~ stmt_end
+  | emit_stmt ~ stmt_end
+  | assert_stmt ~ stmt_end
+  | panic_stmt ~ stmt_end
+  | unreachable_stmt ~ stmt_end
   | if_stmt
   | while_stmt
+  | loop_stmt
   | for_stmt
-  | break_stmt
-  | continue_stmt
+  | break_stmt ~ stmt_end
+  | continue_stmt ~ stmt_end
   | select_stmt
   | match_stmt
   | when_match_stmt
-  | expr_stmt
+  | with_stmt
+  | critical_stmt
+  | atomic_stmt
+  | volatile_stmt
+  | preempt_stmt ~ stmt_end
+  | irq_stmt ~ stmt_end
+  | goto_stmt ~ stmt_end
+  | label_stmt
+  | expr_stmt ~ stmt_end
 }
+
+stmt_end = _{ ";"? }
+
+local_const_stmt = { "const" ~ ident ~ type_annot? ~ "=" ~ expr }
+let_stmt = { "let" ~ "mut"? ~ pattern ~ type_annot? ~ "=" ~ expr }
 
 asm_stmt = { "asm" ~ "(" ~ string_lit ~ ")" }
 unsafe_stmt = { "unsafe" ~ block }
-let_stmt = { "let" ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr }
+
 make_stmt = { "make" ~ ident ~ ("as" ~ type_expr)? ~ "=" ~ expr }
-set_stmt = { "set" ~ assign_target ~ "=" ~ expr }
-assign_target = { postfix_expr }
+set_stmt = { "set" ~ assign_target ~ assign_op ~ expr }
+assign_target = { unary_expr }
 
-give_stmt = { "give" ~ expr }
+give_stmt = { "give" ~ expr? }
+return_stmt = { "return" ~ expr? }
+
+try_stmt = { "try" ~ (expr | block_body ~ ("except" ~ block_body)? ~ ("finally" ~ block_body)?) }
+defer_stmt = { "defer" ~ block_body }
+
 emit_stmt = { "emit" ~ expr }
+assert_stmt = { "assert" ~ expr ~ ("," ~ expr)? }
+panic_stmt = { "panic" ~ expr }
+unreachable_stmt = { "unreachable" }
 
-if_stmt = { "if" ~ expr ~ block_body ~ ("else" ~ (block_body | if_stmt))? }
+if_stmt = { "if" ~ expr ~ block_body ~ ("elif" ~ expr ~ block_body)* ~ ("else" ~ block_body)? }
+
 while_stmt = { "while" ~ expr ~ block }
-for_stmt = { "for" ~ ident ~ "in" ~ expr ~ block }
+loop_stmt = { "loop" ~ block }
+for_stmt = { "for" ~ pattern ~ "in" ~ expr ~ block }
 
-break_stmt = { "break" }
+break_stmt = { "break" ~ expr? }
 continue_stmt = { "continue" }
 
-select_stmt = { "select" ~ expr ~ ("when" ~ pattern ~ block)* }
-match_stmt = { "match" ~ expr ~ "{" ~ ("case" ~ pattern ~ ("if" ~ expr)? ~ block_body)* ~ ("else" ~ block_body)? ~ "}" }
-match_expr = { "match" ~ expr ~ "{" ~ ("case" ~ pattern ~ ("if" ~ expr)? ~ block_body)* ~ ("else" ~ block_body)? ~ "}" }
+select_stmt = {
+  "select" ~ expr ~ "{" ~
+  ("when" ~ pattern ~ block)* ~
+  ("else" ~ block)? ~
+  "}"
+}
+
+match_stmt = {
+  "match" ~ expr ~ "{" ~
+  ("case" ~ pattern ~ ("if" ~ expr)? ~ match_arm_body)* ~
+  ("else" ~ match_arm_body)? ~
+  "}"
+}
+
+match_arm_body = _{ block_body | "=>" ~ expr }
+
 when_match_stmt = { "when" ~ expr ~ "is" ~ pattern ~ block }
+
+with_stmt = { "with" ~ expr ~ ("as" ~ pattern)? ~ block }
+
+critical_stmt = { "critical" ~ block }
+atomic_stmt = { "atomic" ~ block }
+volatile_stmt = { "volatile" ~ block }
+
+preempt_stmt = { "preempt" ~ ("on" | "off") }
+irq_stmt = { "irq" ~ ("enable" | "disable") }
+
+goto_stmt = { "goto" ~ ident }
+label_stmt = { ident ~ ":" }
 
 expr_stmt = { expr }
 
+// ================= Expressions =================
+
 expr = { assign_expr }
-assign_expr = { range_expr ~ ("=" ~ assign_expr)? }
-range_expr = { or_expr ~ ((".." | "..=") ~ or_expr)? }
 
-or_expr = { and_expr ~ ("or" ~ and_expr)* }
-and_expr = { eq_expr ~ ("and" ~ eq_expr)* }
+assign_expr = { ternary_expr ~ (assign_op ~ assign_expr)? }
 
-eq_expr = { rel_expr ~ (("==" | "!=") ~ rel_expr)* }
-rel_expr = { add_expr ~ (("<" | "<=" | ">" | ">=") ~ add_expr)* }
-
-add_expr = { mul_expr ~ (("+" | "-") ~ mul_expr)* }
-mul_expr = { cast_expr ~ (("*" | "/" | "%") ~ cast_expr)* }
-
-cast_expr = { unary_expr ~ (("as" ~ type_expr) | ("is" ~ pattern))* }
-unary_expr = { (("not" | "-") ~ unary_expr) | postfix_expr }
-
-postfix_expr = { primary ~ (call_suffix | member_suffix | index_suffix)* }
-call_suffix = { "(" ~ arg_list? ~ ")" }
-member_suffix = { "." ~ ident }
-index_suffix = { "[" ~ expr ~ "]" }
-
-primary = { literal | ident | list_lit | tuple_lit | set_lit | if_expr | proc_expr | match_expr | block | "(" ~ expr ~ ")" }
-
-arg_list = { expr ~ ("," ~ expr)* }
-tuple_lit = { "(" ~ expr ~ "," ~ expr ~ ("," ~ expr)* ~ ")" }
-set_lit = { "set" ~ "{" ~ arg_list? ~ "}" }
-if_expr = { "if" ~ expr ~ block_body ~ ("else" ~ (block_body | if_expr))? }
-proc_expr = { attr_prefix* ~ "proc" ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ block_body }
-
-pattern = { pattern_head ~ ("(" ~ pattern_args? ~ ")")? }
-pattern_head = { ident ~ ("." ~ ident)* }
-pattern_args = { pattern ~ ("," ~ pattern)* }
-
-type_expr = { pointer_type | slice_type | proc_type | type_primary }
-pointer_type = { "*" ~ type_expr }
-slice_type = { "[" ~ type_expr ~ "]" }
-proc_type = { "proc" ~ "(" ~ type_list? ~ ")" ~ ("->" ~ type_expr)? }
-type_list = { type_param ~ ("," ~ type_param)* }
-type_param = { (ident ~ ":" ~ type_expr) | type_expr }
-type_primary = {
-    (ident ~ ("." ~ ident)* ~ ("[" ~ type_list? ~ "]")?)
-  | "bool" | "string" | "int"
-  | "i32" | "i64" | "i128" | "u32" | "u64" | "u128"
+assign_op = {
+    "="
+  | "+="
+  | "-="
+  | "*="
+  | "/="
+  | "%="
+  | "&="
+  | "|="
+  | "^="
+  | "<<="
+  | ">>="
 }
 
-literal = { bool_lit | int_lit | float_lit | char_lit | string_lit | list_lit }
-list_lit = { "[" ~ arg_list? ~ "]" }
+ternary_expr = { coalesce_expr ~ ("?" ~ expr ~ ":" ~ expr)? }
+coalesce_expr = { range_expr ~ ("??" ~ range_expr)* }
+
+range_expr = { or_expr ~ (range_op ~ or_expr)? }
+range_op = { "..=" | ".." }
+
+or_expr = { and_expr ~ ("or" ~ and_expr)* }
+and_expr = { bit_or_expr ~ ("and" ~ bit_or_expr)* }
+
+bit_or_expr = { bit_xor_expr ~ ("|" ~ bit_xor_expr)* }
+bit_xor_expr = { bit_and_expr ~ ("^" ~ bit_and_expr)* }
+bit_and_expr = { eq_expr ~ ("&" ~ eq_expr)* }
+
+eq_expr = { rel_expr ~ (eq_op ~ rel_expr)* }
+eq_op = { "==" | "!=" }
+
+rel_expr = { shift_expr ~ (rel_op ~ shift_expr)* }
+rel_op = { "<=" | ">=" | "<" | ">" | "not" ~ "in" | "in" }
+
+shift_expr = { add_expr ~ (shift_op ~ add_expr)* }
+shift_op = { "<<" | ">>" }
+
+add_expr = { mul_expr ~ (add_op ~ mul_expr)* }
+add_op = { "+" | "-" }
+
+mul_expr = { cast_expr ~ (mul_op ~ cast_expr)* }
+mul_op = { "*" | "/" | "%" }
+
+cast_expr = { unary_expr ~ cast_tail* }
+cast_tail = {
+    "as" ~ type_expr
+  | "is" ~ "not" ~ pattern
+  | "is" ~ pattern
+}
+
+unary_expr = {
+    unary_op ~ unary_expr
+  | postfix_expr
+}
+
+unary_op = { "not" | "-" | "~" | "*" | "&" | "move" | "await" }
+
+postfix_expr = { primary ~ postfix_suffix* }
+
+postfix_suffix = _{
+    call_suffix
+  | member_suffix
+  | index_suffix
+  | try_suffix
+  | await_suffix
+}
+
+call_suffix = { "(" ~ arg_list? ~ ")" }
+member_suffix = { "." ~ ident }
+index_suffix = { "[" ~ index_expr ~ "]" }
+try_suffix = { "?" }
+await_suffix = { "." ~ "await" }
+
+index_expr = { slice_expr | expr }
+slice_expr = { expr? ~ ":" ~ expr? ~ (":" ~ expr)? }
+
+primary = _{
+    literal
+  | builtin_expr
+  | struct_lit
+  | path_expr
+  | list_lit
+  | tuple_lit
+  | set_lit
+  | map_lit
+  | bytes_lit
+  | resource_lit
+  | if_expr
+  | proc_expr
+  | match_expr
+  | lambda_expr
+  | unsafe_expr
+  | block
+  | "(" ~ expr ~ ")"
+}
+
+path_expr = { ident ~ (("." | "::") ~ ident)* }
+
+arg_list = { arg ~ ("," ~ arg)* ~ ","? }
+arg = { ident ~ ":" ~ expr | expr }
+
+tuple_lit = { "(" ~ expr ~ "," ~ expr ~ ("," ~ expr)* ~ ","? ~ ")" }
+set_lit = { "set" ~ "{" ~ arg_list? ~ "}" }
+
+map_lit = { "map" ~ "{" ~ map_items? ~ "}" }
+map_items = { map_item ~ ("," ~ map_item)* ~ ","? }
+map_item = { expr ~ ":" ~ expr }
+
+bytes_lit = { "b" ~ string_lit }
+
+resource_lit = { "resource" ~ "{" ~ resource_items? ~ "}" }
+resource_items = { resource_item ~ ("," ~ resource_item)* ~ ","? }
+resource_item = { ident ~ ":" ~ expr }
+
+struct_lit = { type_path ~ "{" ~ field_init_list? ~ "}" }
+type_path = { ident ~ (("." | "::") ~ ident)* }
+
+field_init_list = { field_init ~ ("," ~ field_init)* ~ ","? }
+field_init = {
+    ident ~ ":" ~ expr
+  | ident
+  | ".." ~ expr
+}
+
+if_expr = { "if" ~ expr ~ block_body ~ ("elif" ~ expr ~ block_body)* ~ ("else" ~ block_body)? }
+
+proc_expr = {
+  attr_prefix* ~ proc_modifier* ~ "proc" ~
+  "(" ~ param_list? ~ ")" ~ return_type? ~ proc_suffix* ~ block_body
+}
+
+match_expr = {
+  "match" ~ expr ~ "{" ~
+  ("case" ~ pattern ~ ("if" ~ expr)? ~ match_arm_body)* ~
+  ("else" ~ match_arm_body)? ~
+  "}"
+}
+
+lambda_expr = { "|" ~ param_list? ~ "|" ~ (expr | block) }
+unsafe_expr = { "unsafe" ~ block }
+
+builtin_expr = _{
+    sizeof_expr
+  | alignof_expr
+  | offsetof_expr
+  | typeof_expr
+  | nameof_expr
+}
+
+sizeof_expr = { "sizeof" ~ "(" ~ (type_expr | expr) ~ ")" }
+alignof_expr = { "alignof" ~ "(" ~ type_expr ~ ")" }
+offsetof_expr = { "offsetof" ~ "(" ~ type_expr ~ "," ~ ident ~ ")" }
+typeof_expr = { "typeof" ~ "(" ~ expr ~ ")" }
+nameof_expr = { "nameof" ~ "(" ~ path_expr ~ ")" }
+
+// ================= Patterns =================
+
+pattern = { pattern_or }
+pattern_or = { pattern_atom ~ ("|" ~ pattern_atom)* }
+
+pattern_atom = _{
+    wildcard_pattern
+  | pattern_range
+  | literal
+  | mut_pattern
+  | ref_pattern
+  | pattern_struct
+  | pattern_ctor
+  | pattern_tuple
+  | pattern_list
+  | pattern_bind
+}
+
+wildcard_pattern = { "_" }
+mut_pattern = { "mut" ~ pattern_bind }
+ref_pattern = { "ref" ~ pattern_bind }
+
+pattern_bind = { ident }
+
+pattern_ctor = { pattern_head ~ ("(" ~ pattern_args? ~ ")")? }
+pattern_head = { ident ~ (("." | "::") ~ ident)* }
+
+pattern_args = { pattern ~ ("," ~ pattern)* ~ ","? }
+
+pattern_struct = { pattern_head ~ "{" ~ pattern_fields? ~ "}" }
+pattern_fields = { pattern_field ~ ("," ~ pattern_field)* ~ ","? }
+pattern_field = { ident ~ (":" ~ pattern)? | ".." }
+
+pattern_tuple = { "(" ~ pattern ~ "," ~ pattern ~ ("," ~ pattern)* ~ ","? ~ ")" }
+pattern_list = { "[" ~ pattern_args? ~ "]" }
+
+pattern_range = { literal ~ range_op ~ literal }
+
+// ================= Types =================
+
+type_expr = {
+    qualified_type
+  | reference_type
+  | pointer_type
+  | optional_type
+  | fixed_array_type
+  | slice_type
+  | tuple_type
+  | proc_type
+  | dyn_type
+  | impl_trait_type
+  | union_type_expr
+}
+
+qualified_type = { (type_qual | addr_space) ~ type_expr }
+
+type_qual = { "const" | "volatile" | "atomic" | "mut" | "owned" | "borrow" }
+addr_space = { "user" | "kernel" | "phys" | "mmio" | "dma" }
+
+reference_type = { "&" ~ lifetime? ~ "mut"? ~ type_expr }
+pointer_type = { "*" ~ ("const" | "mut")? ~ type_expr }
+optional_type = { "?" ~ type_expr }
+
+fixed_array_type = { "[" ~ type_expr ~ ";" ~ expr ~ "]" }
+slice_type = { "[" ~ type_expr ~ "]" }
+
+tuple_type = { "(" ~ type_expr ~ "," ~ type_expr ~ ("," ~ type_expr)* ~ ","? ~ ")" }
+
+proc_type = { "proc" ~ "(" ~ type_list? ~ ")" ~ return_type? }
+type_list = { type_param ~ ("," ~ type_param)* ~ ","? }
+type_param = { ident ~ ":" ~ type_expr | type_expr }
+
+dyn_type = { "dyn" ~ trait_bound }
+impl_trait_type = { "impl" ~ trait_bound }
+
+union_type_expr = { type_primary ~ ("|" ~ type_primary)* }
+
+type_primary = {
+    type_path ~ ("[" ~ type_list? ~ "]")?
+  | primitive_type
+  | "Self"
+}
+
+lifetime = @{ "'" ~ ident }
+
+primitive_type = {
+    "void"
+  | "never"
+  | "unit"
+  | "bool"
+  | "char"
+  | "rune"
+  | "str"
+  | "string"
+  | "bytes"
+  | "cstr"
+  | "int"
+  | "i8" | "i16" | "i32" | "i64" | "i128"
+  | "u8" | "u16" | "u32" | "u64" | "u128"
+  | "usize" | "isize"
+  | "intptr" | "uintptr"
+  | "f16" | "f32" | "f64" | "f128"
+  | "c_char" | "c_int" | "c_uint" | "c_long" | "c_ulong" | "c_void"
+}
+
+// ================= Literals =================
+
+literal = _{
+    bool_lit
+  | null_lit
+  | float_lit
+  | int_lit
+  | char_lit
+  | string_lit
+  | list_lit
+}
+
+list_lit = { "[" ~ (list_comp | arg_list?) ~ "]" }
+list_comp = { expr ~ "for" ~ pattern ~ "in" ~ expr ~ ("if" ~ expr)? }
+
 bool_lit = { "true" | "false" }
-int_lit = { ("-"? ~ DIGIT ~ (DIGIT | "_")* ~ suffix?) | ("-"? ~ "0x" ~ HEXDIGIT ~ (HEXDIGIT | "_")*) }
-float_lit = { "-"? ~ DIGIT ~ (DIGIT | "_")* ~ "." ~ DIGIT ~ (DIGIT | "_")* }
-char_lit = { "'" ~ char_char* ~ "'" }
-char_char = { "\\\\" | (!("'") ~ ANY) }
-string_lit = { ("\"" ~ string_char* ~ "\"") | raw_string_lit }
-string_char = { "\\\"" | "\\\\" | (!("\"") ~ ANY) }
-raw_string_lit = { "\"\"\"" ~ raw_string_char* ~ "\"\"\"" }
-raw_string_char = { !("\"\"\"") ~ ANY }
+null_lit = { "null" }
 
-ident = @{ (LETTER | "_") ~ (LETTER | DIGIT | "_")* }
-suffix = @{ LETTER+ }
+int_lit = @{
+    "-"? ~ (
+        "0x" ~ HEXDIGIT ~ (HEXDIGIT | "_")*
+      | "0b" ~ BINDIGIT ~ (BINDIGIT | "_")*
+      | "0o" ~ OCTDIGIT ~ (OCTDIGIT | "_")*
+      | DIGIT ~ (DIGIT | "_")*
+    ) ~ suffix?
+}
 
-LETTER = _{ 'a'..'z' | 'A'..'Z' }
-DIGIT = _{ '0'..'9' }
-HEXDIGIT = _{ DIGIT | 'a'..'f' | 'A'..'F' }
+float_lit = @{
+  "-"? ~ DIGIT ~ (DIGIT | "_")* ~ "." ~ DIGIT ~ (DIGIT | "_")* ~ exponent? ~ suffix?
+}
+
+exponent = @{ ("e" | "E") ~ ("+" | "-")? ~ DIGIT ~ (DIGIT | "_")* }
+
+char_lit = @{ "'" ~ char_char ~ "'" }
+char_char = { escape_seq | !"'" ~ ANY }
+
+string_lit = @{ normal_string_lit | raw_string_lit }
+normal_string_lit = { "\"" ~ string_char* ~ "\"" }
+string_char = { escape_seq | !"\"" ~ ANY }
+
+escape_seq = {
+    "\\n"
+  | "\\r"
+  | "\\t"
+  | "\\0"
+  | "\\\""
+  | "\\'"
+  | "\\\\"
+  | "\\x" ~ HEXDIGIT ~ HEXDIGIT
+  | "\\u{" ~ HEXDIGIT+ ~ "}"
+}
+
+raw_string_lit = {
+    "\"\"\"" ~ (!"\"\"\"" ~ ANY)* ~ "\"\"\""
+  | "r\"" ~ (!"\"" ~ ANY)* ~ "\""
+}
+
+// ================= Lexical =================
+
+ident = @{ !keyword ~ (LETTER | "_") ~ (LETTER | DIGIT | "_")* }
+
+keyword = {
+    "space" | "package" | "from" | "import" | "use" | "export"
+  | "const" | "static" | "global" | "type" | "opaque" | "foreign"
+  | "form" | "class" | "union" | "pick" | "case" | "flags"
+  | "trait" | "impl" | "proc" | "macro" | "comptime"
+  | "test" | "bench" | "entry"
+  | "pub" | "priv" | "internal"
+  | "async" | "unsafe" | "inline" | "noinline"
+  | "effects" | "requires" | "where" | "extern"
+  | "let" | "mut" | "make" | "set" | "give" | "return"
+  | "try" | "except" | "finally" | "defer" | "emit"
+  | "assert" | "panic" | "unreachable"
+  | "if" | "elif" | "else" | "while" | "loop" | "for" | "in"
+  | "select" | "when" | "match" | "with"
+  | "critical" | "atomic" | "volatile" | "preempt" | "irq"
+  | "goto" | "true" | "false" | "null"
+  | "and" | "or" | "not" | "as" | "is" | "move" | "await"
+  | "sizeof" | "alignof" | "offsetof" | "typeof" | "nameof"
+  | "dyn" | "Self"
+}
+
+suffix = @{ LETTER ~ (LETTER | DIGIT)* }
+
+LETTER = _{ ASCII_ALPHA }
+DIGIT = _{ ASCII_DIGIT }
+BINDIGIT = _{ "0" | "1" }
+OCTDIGIT = _{ '0'..'7' }
+HEXDIGIT = _{ ASCII_HEX_DIGIT }

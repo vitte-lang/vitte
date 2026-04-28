@@ -33,11 +33,12 @@ const char* keyword_text(TokenKind kind);
 bool is_core_keyword(TokenKind kind);
 bool is_forbidden_in_core(TokenKind kind);
 std::vector<std::string> core_keywords();
+std::vector<std::string> all_keywords();
 
 int binary_precedence(TokenKind kind);
 bool is_binary_operator(TokenKind kind);
 ast::BinaryOp to_binary_op(TokenKind kind);
 std::vector<std::string> core_binary_operators();
+std::vector<std::string> all_binary_operators();
 
 } // namespace vitte::frontend::tokens
-

@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vitte Stdlib Roadmap</title>
+<link rel="icon" href="../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../css/site.css">
+<link rel="stylesheet" href="../css/print.css" media="print">
+</head>
+<body class="classic-doc">
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../index.html"><img class="site-brand-mark" src="../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../index.html"><img src="../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../doc.html"><img src="../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../download.html"><img src="../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../source.html"><img src="../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../community.html"><img src="../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../news.html"><img src="../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../diagnostics.html"><img src="../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../suggestions.html"><img src="../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main class="site-main">
+<article class="doc-content">
+<h1>Vitte Stdlib Roadmap</h1>
+<p>This document describes the target organization in <strong>Vitte Stdlib</strong>. Mandatory terminology: we are talking about <em>stdlib</em> (not crates).</p>
+<p>Import convention in language:</p>
+<ul>
+<li>stdlib name: <code>vitte-core</code> (documentation/architecture).</li>
+<li>path in <code>use</code>: <code>vitte/core</code> (Vitte syntax).</li>
+</ul>
+<h2>1) Language foundation</h2>
+<h3><code>vitte-core</code></h3>
+<ul>
+<li>primitive types.</li>
+<li>error management (<code>Result</code>, <code>Option</code>).</li>
+<li>basic traits.</li>
+<li>abstract allocation.</li>
+</ul>
+<h3><code>vitte-alloc</code></h3>
+<ul>
+<li>global allocator.</li>
+<li>bump/arena.</li>
+<li>slab.</li>
+<li>fallback <code>no_std</code>.</li>
+</ul>
+<h3><code>vitte-collections</code></h3>
+<ul>
+<li><code>Vec</code>.</li>
+<li><code>Map</code>.</li>
+<li><code>Set</code>.</li>
+<li><code>RingBuffer</code>.</li>
+<li><code>Rope</code> (useful for PlatonEditor).</li>
+</ul>
+<h3><code>vitte-math</code></h3>
+<ul>
+<li>int / float.</li>
+<li>digital traits.</li>
+<li>random.</li>
+<li>SIMD wrapper.</li>
+</ul>
+<h2>2) Async/Concurrency</h2>
+<h3><code>vitte-async</code></h3>
+<ul>
+<li><code>Future</code>.</li>
+<li><code>Executor</code>.</li>
+<li><code>Task</code>.</li>
+<li><code>Scheduler</code>.</li>
+</ul>
+<h3><code>vitte-net</code></h3>
+<ul>
+<li>TCP/UDP.</li>
+<li>non-blocking sockets.</li>
+<li>Minimal HTTP.</li>
+</ul>
+<h3><code>vitte-runtime</code></h3>
+<ul>
+<li>complete runtime (Tokio type).</li>
+<li>reactor + scheduler.</li>
+<li>timers.</li>
+<li>io driver.</li>
+</ul>
+<h2>3) System & low level</h2>
+<h3><code>vitte-fs</code></h3>
+<ul>
+<li>abstraction files.</li>
+<li>mmap.</li>
+<li>watchers.</li>
+</ul>
+<h3><code>vitte-process</code></h3>
+<ul>
+<li>spawn.</li>
+<li>blowjobs.</li>
+<li>sandbox.</li>
+</ul>
+<h3><code>vitte-abi</code></h3>
+<ul>
+<li>calling conventions.</li>
+<li>register sets.</li>
+<li>lowering ABI.</li>
+</ul>
+<h3><code>vitte-ffi</code></h3>
+<ul>
+<li>binding C.</li>
+<li>generation header.</li>
+<li>safe wrappers.</li>
+</ul>
+<h2>4) Compilation / Toolchain</h2>
+<ul>
+<li><code>vitte-ast</code>.</li>
+<li><code>vitte-hir</code>.</li>
+<li><code>vitte-mir</code>.</li>
+<li><code>vitte-monomorphize</code>.</li>
+<li><code>vitte-borrow</code>.</li>
+<li><code>vitte-typeck</code>.</li>
+<li><code>vitte-const-eval</code>.</li>
+<li><code>vitte-codegen-llvm</code>.</li>
+<li><code>vitte-codegen-cranelift</code>.</li>
+<li><code>vitte-codegen-gcc</code>.</li>
+</ul>
+<p>Structural reference: inspired by <code>rustc</code>, adapted to the Vitte pipeline.</p>
+<h2>5) Standard modules (std)</h2>
+<h3><code>vitte-std</code></h3>
+<ul>
+<li>re-export core + alloc + collections.</li>
+<li>fs.</li>
+<li>net.</li>
+<li>io.</li>
+<li>thread.</li>
+</ul>
+<h3><code>vitte-io</code></h3>
+<ul>
+<li><code>Reader</code>.</li>
+<li><code>Writer</code>.</li>
+<li><code>BufReader</code>.</li>
+<li>ANSI (type <code>std::io</code> + <code>std::fmt</code>).</li>
+</ul>
+<h2>6) Dev tools</h2>
+<h3><code>vitte-test</code></h3>
+<ul>
+<li>runner.</li>
+<li>expect.</li>
+<li>snapshot.</li>
+</ul>
+<h3><code>vitte-bench</code></h3>
+<ul>
+<li>micro bench.</li>
+<li>flamegraph export.</li>
+</ul>
+<h3><code>vitte-lint</code></h3>
+<ul>
+<li>Vitte style rules.</li>
+<li>custom lints (style <code>.end</code>, etc.).</li>
+</ul>
+<h2>7) Ecosystem advances</h2>
+<h3><code>vitte-serialize</code></h3>
+<ul>
+<li>json.</li>
+<li>toml.</li>
+<li>bincode.</li>
+<li>derive macros.</li>
+</ul>
+<h3><code>vitte-graph</code></h3>
+<ul>
+<li>graph algorithms.</li>
+<li>topo comes out.</li>
+<li>dijkstra.</li>
+</ul>
+<h3><code>vitte-audio</code></h3>
+<ul>
+<li>wav.</li>
+<li>synth.</li>
+<li>basic dsp.</li>
+</ul>
+<h3><code>vitte-gui</code></h3>
+<ul>
+<li>backend abstraction.</li>
+<li>OpenGL/Vulkan wrapper.</li>
+</ul>
+<h2>8) Data / Scientific</h2>
+<h3><code>vitte-array</code></h3>
+<ul>
+<li>ndarray N-dim.</li>
+<li>slicing.</li>
+<li>broadcasting.</li>
+<li>optional BLAS backend.</li>
+</ul>
+<h3><code>vitte-stats</code></h3>
+<ul>
+<li>mean / variance.</li>
+<li>linear regression.</li>
+<li>distributions.</li>
+</ul>
+<h3><code>vitte-plot</code></h3>
+<ul>
+<li>simple plotting.</li>
+<li>SVG/PNG export.</li>
+</ul>
+<h3><code>vitte-ml</code></h3>
+<ul>
+<li>perceptron.</li>
+<li>k-means.</li>
+<li>logistic regression.</li>
+<li>mini autodiff.</li>
+</ul>
+<h2>9) Scripting / Dynamic tools</h2>
+<h3><code>vitte-eval</code></h3>
+<ul>
+<li>eval runtime.</li>
+<li>sandboxed interpreter.</li>
+<li>plugin loader.</li>
+</ul>
+<h3><code>vitte-plugin</code></h3>
+<ul>
+<li>dynamic modules.</li>
+<li>versioning.</li>
+<li>hot reload.</li>
+</ul>
+<h3><code>vitte-shell</code></h3>
+<ul>
+<li>mini shell scripting.</li>
+<li>pipelines.</li>
+<li>env tools.</li>
+</ul>
+<h2>10) Web advances</h2>
+<h3><code>vitte-ws</code></h3>
+<ul>
+<li>WebSocket server/client.</li>
+</ul>
+<h3><code>vitte-template</code></h3>
+<ul>
+<li>engine templates.</li>
+<li>compile-time rendering.</li>
+</ul>
+<h3><code>vitte-openapi</code></h3>
+<ul>
+<li>generation spec OpenAPI.</li>
+<li>auto doc.</li>
+</ul>
+<h2>11) Database</h2>
+<h3><code>vitte-sql</code></h3>
+<ul>
+<li>SQLite / Postgres driver.</li>
+<li>async support.</li>
+</ul>
+<h3><code>vitte-migrate</code></h3>
+<ul>
+<li>versioned migrations.</li>
+<li>diff schema.</li>
+</ul>
+<h3><code>vitte-cache</code></h3>
+<ul>
+<li>LRU.</li>
+<li>TTL.</li>
+<li>redis-like memory store.</li>
+</ul>
+<h2>12) Security</h2>
+<h3><code>vitte-jwt</code></h3>
+<ul>
+<li>encode/decode.</li>
+<li>HMAC/RSA.</li>
+</ul>
+<h3><code>vitte-tls</code></h3>
+<ul>
+<li>TLS abstraction.</li>
+<li>openssl/rustls-like backend.</li>
+</ul>
+<h3><code>vitte-auth</code></h3>
+<ul>
+<li>session manager.</li>
+<li>role system.</li>
+</ul>
+<h2>13) Advanced competition</h2>
+<h3><code>vitte-channel</code></h3>
+<ul>
+<li>mpsc.</li>
+<li>broadcast.</li>
+<li>bounded / unbounded.</li>
+</ul>
+<h3><code>vitte-actor</code></h3>
+<ul>
+<li>actor model.</li>
+<li>supervision tree.</li>
+</ul>
+<h2>14) Dev / Packaging</h2>
+<h3><code>vitte-pack</code></h3>
+<ul>
+<li>builder artifacts.</li>
+<li>metadata.</li>
+</ul>
+<h3><code>vitte-registry</code></h3>
+<ul>
+<li>client registry.</li>
+<li>publish/fetch.</li>
+</ul>
+<h3><code>vitte-doc</code></h3>
+<ul>
+<li>HTML doc generator.</li>
+<li>search index.</li>
+</ul>
+<h2>15) Multimedia</h2>
+<h3><code>vitte-image</code></h3>
+<ul>
+<li>PNG/JPEG.</li>
+<li>resize.</li>
+<li>color space.</li>
+</ul>
+<h3><code>vitte-video</code></h3>
+<ul>
+<li>ffmpeg wrapper.</li>
+</ul>
+<h2>16) Meta programming</h2>
+<h3><code>vitte-macro</code></h3>
+<p>Chemin Vitte: <code>use vitte/macros</code>.</p>
+<ul>
+<li>derivative.</li>
+<li>attribute macros.</li>
+</ul>
+<h3><code>vitte-reflect</code></h3>
+<ul>
+<li>runtime reflection.</li>
+<li>metadata type.</li>
+</ul>
+<h2>17) Modern Infrastructure</h2>
+<h3><code>vitte-config-derive</code></h3>
+<ul>
+<li>derive config struct.</li>
+</ul>
+<h3><code>vitte-env</code></h3>
+<ul>
+<li>variable management approx.</li>
+</ul>
+<h3><code>vitte-scheduler</code></h3>
+<ul>
+<li>cron-like tasks.</li>
+</ul>
+<h2>18) Batteries included (Python type)</h2>
+<h3><code>vitte-http-client</code></h3>
+<p>Chemin Vitte: <code>use vitte/http_client</code>.</p>
+<h3><code>vitte-requests</code></h3>
+<p>Chemin Vitte: <code>use vitte/requests</code>.</p>
+<h3><code>vitte-jsonpath</code></h3>
+<p>Chemin Vitte: <code>use vitte/jsonpath</code>.</p>
+<h3><code>vitte-yaml</code></h3>
+<p>Chemin Vitte: <code>use vitte/yaml</code>.</p>
+<h3><code>vitte-pickle</code></h3>
+<p>Chemin Vitte: <code>use vitte/pickle</code>.</p>
+<h3><code>vitte-datetime</code></h3>
+<p>Chemin Vitte: <code>use vitte/datetime</code>.</p>
+<h3><code>vitte-pathlib</code></h3>
+<p>Chemin Vitte: <code>use vitte/pathlib</code>.</p>
+<h3><code>vitte-subprocess</code></h3>
+<p>Chemin Vitte: <code>use vitte/subprocess</code>.</p>
+<h2>19) Strategic orientation</h2>
+<p>If Vitte aims for system language, priority:</p>
+<ul>
+<li>alloc.</li>
+<li>async.</li>
+<li>net.</li>
+<li>fs.</li>
+<li>abi.</li>
+<li>codegen.</li>
+</ul>
+<p>If Vitte aims for a modern backend, priority:</p>
+<ul>
+<li>web.</li>
+<li>db.</li>
+<li>auth.</li>
+<li>json.</li>
+<li>async runtime.</li>
+</ul>
+<p>If Vitte aims for tooling / IDE, priority:</p>
+<ul>
+<li>rope.</li>
+<li>lsp.</li>
+<li>syntax.</li>
+<li>incremental parser.</li>
+</ul>
+<p>If Vitte aims for data/scientific, priority:</p>
+<ul>
+<li>array.array.</li>
+<li>stats.</li>
+<li>plot.</li>
+<li>ml.</li>
+</ul>
+<h2>Architectural rules</h2>
+<ul>
+<li><code>vitte-core</code> does not depend on any high-level module.</li>
+<li><code>vitte-alloc</code> depends on <code>vitte-core</code>.</li>
+<li><code>vitte-collections</code> depends on <code>vitte-core</code> + <code>vitte-alloc</code>.</li>
+<li><code>vitte-std</code> re-export; the heavy logic remains in the specialized stdlib modules.</li>
+<li><code>vitte-runtime</code> depends on <code>vitte-async</code> + <code>vitte-net</code> + <code>vitte-io</code>.</li>
+<li><code>vitte-ffi</code> applies the contracts of <code>vitte-abi</code>.</li>
+</ul>
+<h2>MVP priority (recommended order)</h2>
+<ol>
+<li><code>vitte-core</code>.</li>
+<li><code>vitte-alloc</code>.</li>
+<li><code>vitte-collections</code>.</li>
+<li><code>vitte-io</code>.</li>
+<li><code>vitte-async</code>.</li>
+<li><code>vitte-runtime</code>.</li>
+<li><code>vitte-net</code>.</li>
+<li><code>vitte-fs</code> / <code>vitte-process</code>.</li>
+<li><code>vitte-std</code> (stable re-exports).</li>
+</ol>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/stdlib-roadmap.html</p>
+<p><a href="../index.html">Back to home</a></p>
+</footer>
+</div>
+</body>
+</html>

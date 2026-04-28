@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>State Matching and Decomposition</title>
+<link rel="icon" href="../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../css/site.css">
+<link rel="stylesheet" href="../../css/print.css" media="print">
+</head>
+<body class="classic-doc">
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../../index.html"><img class="site-brand-mark" src="../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../../index.html"><img src="../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../doc.html"><img src="../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../download.html"><img src="../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../source.html"><img src="../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../community.html"><img src="../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../news.html"><img src="../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../diagnostics.html"><img src="../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../suggestions.html"><img src="../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main class="site-main">
+<article class="doc-content">
+<h1>State matching and decomposition</h1>
+<p>This page treats Vitte logic as an executable mechanism: each rule is linked to a concrete consequence in the program flow. Vitte matching replaces implicit state conventions with explicit and verified variants.</p>
+<pre><code class="language-vit">pick Job {
+  case Ready
+  case Running
+  case Failed(code: int)
+}
+
+proc status(job: Job) -&gt; int {
+  match job {
+    case Ready { give 0 }
+    case Running { give 1 }
+    case Failed(code) { give code }
+    otherwise { give -1 }
+  }
+}</code></pre>
+<p>Why this step is solid. <code>pick</code> formalizes the state space, <code>match</code> forces reading by variant and payload. The <code>otherwise</code> branch plays a robustness guard role.</p>
+<p>What happens at runtime. <code>status(Ready)=0</code>, <code>status(Running)=1</code>, <code>status(Failed(503))=503</code>.</p>
+<pre><code class="language-vit">proc is_terminal(job: Job) -&gt; bool {
+  match job {
+    case Failed(_) { give true }
+    otherwise { give false }
+  }
+}</code></pre>
+<p>Why this step is solid. Terminality predicate derived from a variant. The intent is centralized into a short, reusable function.</p>
+<p>What happens at runtime. <code>is_terminal(Failed(1))=true</code>, <code>is_terminal(Ready)=false</code>.</p>
+<pre><code class="language-vit">proc status2(job: Job) -&gt; int {
+  select job
+    when Ready { return 0 }
+    when Running { return 1 }
+  otherwise { return -1 }
+}</code></pre>
+<p>Why this step is solid. Style variation with <code>select/when</code>. The flow is readable in successive branches. Semantics remains a state decomposition.</p>
+<p>What happens at runtime. <code>status2(Ready)=0</code>, <code>status2(Running)=1</code>, <code>status2(Failed(9))=-1</code>.</p>
+<p>This page connects to the keywords <code>pick</code>, <code>case</code>, <code>match</code>, <code>select</code>, <code>when</code>, <code>is</code> in <code>docs/book/chapters/keywords/pick.html</code>, <code>docs/book/chapters/keywords/case.html</code>, <code>docs/book/chapters/keywords/match.html</code>, <code>docs/book/chapters/keywords/select.html</code>, <code>docs/book/chapters/keywords/when.html</code>, <code>docs/book/chapters/keywords/is.html</code>.</p>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/logique/matching.html</p>
+<p><a href="../../index.html">Back to home</a></p>
+</footer>
+</div>
+</body>
+</html>

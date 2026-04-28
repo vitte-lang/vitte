@@ -348,12 +348,18 @@ static const char* to_string(HirBinaryOp op) {
         case HirBinaryOp::Sub: return "-";
         case HirBinaryOp::Mul: return "*";
         case HirBinaryOp::Div: return "/";
+        case HirBinaryOp::Mod: return "%";
         case HirBinaryOp::Eq: return "==";
         case HirBinaryOp::Ne: return "!=";
         case HirBinaryOp::Lt: return "<";
         case HirBinaryOp::Le: return "<=";
         case HirBinaryOp::Gt: return ">";
         case HirBinaryOp::Ge: return ">=";
+        case HirBinaryOp::BitAnd: return "&";
+        case HirBinaryOp::BitOr: return "|";
+        case HirBinaryOp::BitXor: return "^";
+        case HirBinaryOp::Shl: return "<<";
+        case HirBinaryOp::Shr: return ">>";
         case HirBinaryOp::And: return "and";
         case HirBinaryOp::Or: return "or";
         case HirBinaryOp::Assign: return "=";

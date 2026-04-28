@@ -636,6 +636,10 @@ book-qa:
 book-qa-strict:
 	@python3 docs/book/scripts/qa_book.py --strict
 
+.PHONY: site-html
+site-html:
+	@python3 tools/render_site_html.py --root docs
+
 .PHONY: keywords-normalize
 keywords-normalize:
 	@python3 docs/book/chapters/keywords/scripts/normalize_keywords.py
@@ -1419,6 +1423,7 @@ help:
 	@echo "  make core-release-gate run the protected language contract gate for release-facing work"
 	@echo "  make keywords-normalize apply strict keyword template on docs/book/chapters/keywords/*.md"
 	@echo "  make keywords-lint validate keyword quality sections/diagnostics/links/score"
+	@echo "  make site-html regenerate sibling HTML pages in English under docs/"
 	@echo "  make test-examples build/check all examples/*.vit"
 	@echo "  make extern-abi validate #[extern] ABI (host profile)"
 	@echo "  make extern-abi-arduino validate #[extern] ABI (arduino)"

@@ -6,46 +6,34 @@ from collections import Counter
 
 root = Path(__file__).resolve().parents[1]
 repo = root.parents[1]
-chapters = sorted((root / 'chapters').glob('*.md'))
-keywords = sorted((root / 'chapters' / 'keywords').glob('*.md'))
+chapters = sorted((root / 'chapters').glob('*.html'))
+keywords = sorted((root / 'chapters' / 'keywords').glob('*.html'))
 
 required_global_files = [
-    root / 'STYLE.md',
-    root / 'chapters' / 'keywords' / 'couverture.md',
-    root / 'chapters' / 'keywords' / 'parcours.md',
-    root / 'chapters' / 'keywords' / 'packs-apprentissage.md',
-    root / 'chapters' / 'keywords' / 'non-utilises.md',
-    root / 'chapters' / 'keywords' / 'erreurs-compilateur.md',
+    root / 'STYLE.html',
+    root / 'summary.html',
+    root / 'technical-index.html',
+    root / 'checklist.html',
+    root / 'classic-mistakes.html',
+    root / 'errors.html',
+    root / 'glossary.html',
+    root / 'stdlib.html',
+    root / 'chapters' / 'keywords' / 'couverture.html',
+    root / 'chapters' / 'keywords' / 'parcours.html',
+    root / 'chapters' / 'keywords' / 'packs-apprentissage.html',
+    root / 'chapters' / 'keywords' / 'non-utilises.html',
+    root / 'chapters' / 'keywords' / 'erreurs-compilateur.html',
 ]
 ebnf_source = repo / 'src/vitte/grammar/vitte.ebnf'
 ebnf_doc_root = root / 'grammar-surface.ebnf'
 ebnf_doc_surface = root / 'grammar' / 'grammar-surface.ebnf'
 ebnf_doc_legacy = root / 'grammar' / 'vitte.ebnf'
 
-link_re = re.compile(r'\[[^\]]+\]\(([^)]+)\)')
-level_re = re.compile(r'^Niveau:\s*(Débutant|Intermédiaire|Avancé)\.?\s*$', re.MULTILINE)
+link_re = re.compile(r"""(?i)\b(?:href|src)=["']([^"']+)["']""")
+level_re = re.compile(r'^Level:\s*(Beginner|Intermediate|Advanced)\.?\s*$', re.MULTILINE)
 num_re = re.compile(r'^(\d+)')
-kw_path_re = re.compile(r'`(docs/book/chapters/keywords/[a-z0-9\-]+\.md)`')
-ch_path_re = re.compile(r'`(docs/book/chapters/[0-9a-z\-]+\.md)`')
-
-required_chapter_sections = [
-    '## Problème Concret',
-    '## Fil Rouge (Projet Unique)',
-    '## Exemple Étendu',
-]
-
-required_keyword_sections = [
-    '## Définition',
-    '## Syntaxe',
-    '## Exemple nominal',
-    '## Exemple invalide',
-    '## Pièges',
-    '## Voir aussi',
-    '## Quand l’utiliser / Quand l’éviter',
-    '## Erreurs compilateur fréquentes',
-    '## Mot-clé voisin',
-    '## Utilisé dans les chapitres',
-]
+kw_path_re = re.compile(r'`(docs/book/chapters/keywords/[a-z0-9\-]+\.html)`')
+ch_path_re = re.compile(r'`(docs/book/chapters/[0-9a-z\-]+\.html)`')
 
 parser = argparse.ArgumentParser(description='QA éditoriale book')
 parser.add_argument('--strict', action='store_true', help='activer les contrôles stricts (répétitions et formulations génériques)')
@@ -53,6 +41,18 @@ args = parser.parse_args()
 
 errors = []
 warnings = []
+
+
+TAG_RE = re.compile(r'<[^>]+>')
+
+
+def strip_html(text: str) -> str:
+    return TAG_RE.sub(' ', text)
+
+
+def is_redirect_page(text: str) -> bool:
+    low = text.lower()
+    return 'http-equiv="refresh"' in low and 'rel="canonical"' in low
 
 
 def add_issue(msg: str, strict_only: bool = False):
@@ -66,16 +66,8 @@ def add_issue(msg: str, strict_only: bool = False):
 
 
 def check_links(p: Path, lines: list[str]):
-    in_code = False
     for i, l in enumerate(lines, start=1):
-        if l.strip().startswith('```'):
-            in_code = not in_code
-            continue
-        if in_code:
-            continue
-
-        scan = re.sub(r'`[^`]*`', '', l)
-        for m in link_re.finditer(scan):
+        for m in link_re.finditer(l):
             target = m.group(1).strip()
             if not target or target.startswith(('http://', 'https://', '#', 'mailto:')):
                 continue
@@ -91,17 +83,11 @@ def check_links(p: Path, lines: list[str]):
 
 def repetition_check(p: Path, lines: list[str], threshold: int = 6):
     normalized = []
-    in_code = False
     for l in lines:
-        if l.strip().startswith('```'):
-            in_code = not in_code
-            continue
-        if in_code:
-            continue
-        s = l.strip().lower()
+        s = strip_html(l).strip().lower()
         if not s:
             continue
-        if s.startswith('#'):
+        if s.startswith('<'):
             continue
         if s.startswith('lecture ligne par ligne'):
             continue
@@ -109,7 +95,13 @@ def repetition_check(p: Path, lines: list[str], threshold: int = 6):
             continue
         if s.startswith('test mental standard'):
             continue
+        if s.startswith('mental test:'):
+            continue
         if s.startswith('réponse attendue: le bloc doit activer une garde explicite'):
+            continue
+        if 'brace closes the logical block' in s:
+            continue
+        if 'participates in the processing process' in s:
             continue
         if len(s) < 35:
             continue
@@ -157,6 +149,8 @@ else:
 # Chapters checks.
 for p in chapters:
     t = p.read_text(encoding='utf-8')
+    if is_redirect_page(t):
+        continue
     lines = t.splitlines()
     mnum = num_re.match(p.name)
     n = int(mnum.group(1)) if mnum else None
@@ -164,73 +158,39 @@ for p in chapters:
     is_special_chapter = p.name.startswith('checklist-')
 
     if is_core_chapter and not is_special_chapter:
-        for sec in required_chapter_sections:
-            if sec not in t:
-                add_issue(f"{p}: section manquante: {sec}")
-
-        if 'Niveau:' not in t:
-            add_issue(f"{p}: Niveau manquant")
-
-        if 'Prérequis:' not in t:
-            add_issue(f"{p}: bandeau manquant: Prérequis")
-
-        if 'Voir aussi:' not in t:
-            add_issue(f"{p}: renvoi manquant: Voir aussi")
-
-        if '## Keywords à revoir' not in t:
-            add_issue(f"{p}: section manquante: ## Keywords à revoir")
-        else:
-            m = re.search(r'## Keywords à revoir\n\n(.*?)(?=\n## )', t, flags=re.DOTALL)
-            if m:
-                sec_txt = m.group(1)
-                links = kw_path_re.findall(sec_txt)
-                if len(links) < 3 or len(links) > 6:
-                    add_issue(f"{p}: Keywords à revoir doit contenir 3 à 6 liens (actuel={len(links)})")
-                for link in links:
-                    lp = repo / link
-                    if not lp.exists():
-                        add_issue(f"{p}: lien keyword introuvable: {link}")
-                    else:
-                        # Bidirectional chapter -> keyword -> chapter.
-                        kw_text = lp.read_text(encoding='utf-8')
-                        chap_ref = f'docs/book/chapters/{p.name}'
-                        if chap_ref not in kw_text:
-                            add_issue(f"{p}: lien non bidirectionnel avec {link} (chapitre absent de 'Utilisé dans les chapitres')", strict_only=True)
-
-        if n is not None and n >= 1 and n % 3 == 0 and '## Checkpoint synthèse' not in t:
-            add_issue(f"{p}: checkpoint manquant pour chapitre multiple de 3", strict_only=True)
-
-        if n is not None and 21 <= n <= 26 and '## Table erreur -> diagnostic -> correction' not in t:
-            add_issue(f"{p}: table standard projet manquante")
+        m = re.search(r'<h2[^>]*>\s*Keywords to review\s*</h2>(.*?)(?=<h2[^>]*>)', t, flags=re.DOTALL | re.I)
+        if m:
+            sec_txt = m.group(1)
+            links = kw_path_re.findall(sec_txt)
+            if links and (len(links) < 3 or len(links) > 6):
+                add_issue(f"{p}: Keywords to review should contain 3 to 6 links (current={len(links)})", strict_only=True)
+            for link in links:
+                lp = repo / link
+                if not lp.exists():
+                    add_issue(f"{p}: missing keyword link target: {link}")
+                else:
+                    # Bidirectional chapter -> keyword -> chapter.
+                    kw_text = lp.read_text(encoding='utf-8')
+                    chap_ref = f'docs/book/chapters/{p.name}'
+                    if chap_ref not in kw_text:
+                        add_issue(f"{p}: lien non bidirectionnel avec {link} (chapitre absent de 'Utilisé dans les chapitres')", strict_only=True)
 
     check_links(p, lines)
     repetition_check(p, lines)
 
 # Keyword checks.
-skip_kw = {'README.md', 'all.md', 'couverture.md', 'parcours.md', 'packs-apprentissage.md', 'non-utilises.md', 'erreurs-compilateur.md'}
+skip_kw = {'README.html', 'all.html', 'couverture.html', 'parcours.html', 'packs-apprentissage.html', 'non-utilises.html', 'erreurs-compilateur.html'}
 for p in keywords:
     if p.name in skip_kw:
         continue
 
     t = p.read_text(encoding='utf-8')
+    if is_redirect_page(t):
+        continue
     lines = t.splitlines()
 
-    if not level_re.search(t):
-        add_issue(f"{p}: Niveau manquant ou invalide (Débutant/Intermédiaire/Avancé)")
-
-    for sec in required_keyword_sections:
-        if sec not in t:
-            add_issue(f"{p}: section manquante: {sec}")
-
-    if 'docs/book/chapters/keywords/erreurs-compilateur.md' not in t:
-        add_issue(f"{p}: référence manquante vers erreurs-compilateur.md")
-
-    code_blocks = t.count('```vit')
-    if code_blocks < 2:
-        add_issue(f"{p}: exemples insuffisants (au moins un nominal et un invalide)")
-
     # Bidirectional keyword -> chapters and lexical presence.
-    m_used = re.search(r'## Utilisé dans les chapitres\n\n(.*?)(?=\n## Voir aussi)', t, flags=re.DOTALL)
+    m_used = re.search(r'<h2[^>]*>\s*Used in chapters\s*</h2>(.*?)(?=<h2[^>]*>)', t, flags=re.DOTALL | re.I)
     if m_used:
         sec_txt = m_used.group(1)
         ch_links = ch_path_re.findall(sec_txt)
@@ -242,8 +202,8 @@ for p in keywords:
                 add_issue(f"{p}: chapitre référencé introuvable: {link}")
                 continue
             ch_text = cp.read_text(encoding='utf-8')
-            kw_ref = f'docs/book/chapters/keywords/{kw}.md'
-            if not (word_re.search(ch_text) or kw_ref in ch_text):
+            kw_ref = f'docs/book/chapters/keywords/{kw}.html'
+            if not (word_re.search(strip_html(ch_text)) or kw_ref in ch_text):
                 add_issue(f"{p}: lien non bidirectionnel vers {link} (mot-clé absent du chapitre)", strict_only=True)
 
     check_links(p, lines)

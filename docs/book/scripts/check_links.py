@@ -5,13 +5,13 @@ import argparse
 import re
 from pathlib import Path
 
-LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+LINK_RE = re.compile(r"""(?i)\b(?:href|src)=["']([^"']+)["']""")
 FENCE_RE = re.compile(r"```.*?```", re.S)
 INLINE_CODE_RE = re.compile(r"`[^`]*`")
 
 
-def iter_markdown(root: Path):
-    for p in sorted(root.rglob("*.md")):
+def iter_html(root: Path):
+    for p in sorted(root.rglob("*.html")):
         yield p
 
 
@@ -31,7 +31,7 @@ def resolve_target(src: Path, target: str, book_root: Path, repo_root: Path) -> 
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check markdown internal links under docs/book/")
+    parser = argparse.ArgumentParser(description="Check HTML internal links under docs/book/")
     parser.add_argument("--book-root", default="docs/book", help="book root directory")
     parser.add_argument("--report", default="target/reports/book_links_report.txt", help="report output path")
     args = parser.parse_args()
@@ -41,7 +41,7 @@ def main() -> int:
     report_path = Path(args.report)
 
     issues: list[str] = []
-    files = list(iter_markdown(book_root))
+    files = list(iter_html(book_root))
 
     for md in files:
         text = md.read_text(encoding="utf-8", errors="ignore")

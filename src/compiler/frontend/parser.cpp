@@ -190,7 +190,7 @@ bool Parser::emit_parse_error(diag::DiagId id, SourceSpan span) {
 
 static const char* closest_toplevel_keyword(std::string_view ident) {
     static constexpr const char* kDeclKeywords[] = {
-        "space", "pull", "use", "share", "const",
+        "space", "pull", "use", "export", "share", "const",
         "type", "form", "class", "def", "pick", "proc", "entry",
     };
     const char* best = nullptr;
@@ -219,6 +219,14 @@ static void emit_toplevel_hint(DiagnosticEngine& diag, const Token& tok) {
         case TokenKind::KwExcept:
         case TokenKind::KwFinally:
         case TokenKind::KwRaise:
+        case TokenKind::KwDefer:
+        case TokenKind::KwWith:
+        case TokenKind::KwCritical:
+        case TokenKind::KwAtomic:
+        case TokenKind::KwVolatile:
+        case TokenKind::KwGoto:
+        case TokenKind::KwPreempt:
+        case TokenKind::KwIrq:
         case TokenKind::KwDef:
         case TokenKind::KwLoop:
         case TokenKind::KwFor:

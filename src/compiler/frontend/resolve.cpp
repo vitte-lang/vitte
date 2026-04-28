@@ -137,18 +137,20 @@ static const std::unordered_map<std::string, std::string>& common_type_alias_sug
 
 const std::vector<std::string>& canonical_builtin_type_names() {
     static const std::vector<std::string> kNames = {
-        "bool", "string", "int", "i32", "i64", "i128", "u32", "u64", "u128",
+        "bool", "string", "int", "bytes", "char", "void", "never",
+        "i32", "i64", "i128", "u32", "u64", "u128",
     };
     return kNames;
 }
 
 const std::vector<std::string>& builtin_type_names() {
     static const std::vector<std::string> kNames = {
-        "bool", "string", "int",
+        "bool", "string", "int", "bytes", "char", "void", "never",
         "i8", "i16", "i32", "i64", "i128",
         "u8", "u16", "u32", "u64", "u128",
         "isize", "usize",
         "f32", "f64",
+        "tuple", "union", "dyn", "impl",
     };
     return kNames;
 }
@@ -504,16 +506,28 @@ void Resolver::define_builtin_types() {
     types_.add_builtin("builtin.string");
     types_.add_builtin("builtin.slice");
     types_.add_builtin("builtin.mut_slice");
+    types_.add_builtin("tuple");
+    types_.add_builtin("dyn");
+    types_.add_builtin("impl");
     symbols_.define({"bool", SymbolKind::Form, {}});
     symbols_.define({"string", SymbolKind::Form, {}});
     symbols_.define({"int", SymbolKind::Form, {}});
+    symbols_.define({"bytes", SymbolKind::Form, {}});
+    symbols_.define({"char", SymbolKind::Form, {}});
+    symbols_.define({"void", SymbolKind::Form, {}});
+    symbols_.define({"never", SymbolKind::Form, {}});
     symbols_.define({"i32", SymbolKind::Form, {}});
     symbols_.define({"i64", SymbolKind::Form, {}});
     symbols_.define({"i128", SymbolKind::Form, {}});
     symbols_.define({"u32", SymbolKind::Form, {}});
     symbols_.define({"u64", SymbolKind::Form, {}});
     symbols_.define({"u128", SymbolKind::Form, {}});
+    symbols_.define({"tuple", SymbolKind::Form, {}});
+    symbols_.define({"dyn", SymbolKind::Form, {}});
+    symbols_.define({"impl", SymbolKind::Form, {}});
     symbols_.define({"len", SymbolKind::Proc, {}});
+    symbols_.define({"panic", SymbolKind::Proc, {}});
+    symbols_.define({"unreachable", SymbolKind::Proc, {}});
     symbols_.define({"builtin", SymbolKind::Var, {}});
 }
 
@@ -532,16 +546,19 @@ bool Resolver::resolve_module(ast::AstContext& ctx, ast::ModuleId module_id) {
             case NodeKind::TypeDecl: {
                 const auto& d = static_cast<const TypeDecl&>(decl);
                 types_.add_named(d.name.name);
+                symbols_.define({d.name.name, SymbolKind::Form, d.span});
                 break;
             }
             case NodeKind::TypeAliasDecl: {
                 const auto& d = static_cast<const TypeAliasDecl&>(decl);
                 types_.add_named(d.name.name);
+                symbols_.define({d.name.name, SymbolKind::Form, d.span});
                 break;
             }
             case NodeKind::FormDecl: {
                 const auto& d = static_cast<const FormDecl&>(decl);
                 types_.add_named(d.name.name);
+                symbols_.define({d.name.name, SymbolKind::Form, d.span});
                 break;
             }
             case NodeKind::PickDecl: {
@@ -550,6 +567,7 @@ bool Resolver::resolve_module(ast::AstContext& ctx, ast::ModuleId module_id) {
                 for (const auto& c : d.cases) {
                     types_.add_named(d.name.name + "." + c.ident.name);
                 }
+                symbols_.define({d.name.name, SymbolKind::Pick, d.span});
                 break;
             }
             case NodeKind::UseDecl: {
@@ -563,6 +581,33 @@ bool Resolver::resolve_module(ast::AstContext& ctx, ast::ModuleId module_id) {
                 if (!name.empty() && (is_known_import_type(name) || path_mentions_types(d.path))) {
                     types_.add_named(name);
                 }
+                break;
+            }
+            case NodeKind::ConstDecl: {
+                const auto& d = static_cast<const ConstDecl&>(decl);
+                symbols_.define({d.name.name, SymbolKind::Var, d.span});
+                break;
+            }
+            case NodeKind::GlobalDecl: {
+                const auto& d = static_cast<const GlobalDecl&>(decl);
+                symbols_.define({d.name.name, SymbolKind::Var, d.span});
+                break;
+            }
+            case NodeKind::ProcDecl: {
+                const auto& d = static_cast<const ProcDecl&>(decl);
+                symbols_.define({d.name.name, SymbolKind::Proc, d.span});
+                register_signature(d.name.name, d.params);
+                break;
+            }
+            case NodeKind::FnDecl: {
+                const auto& d = static_cast<const FnDecl&>(decl);
+                symbols_.define({d.name.name, SymbolKind::Proc, d.span});
+                register_signature(d.name.name, d.params);
+                break;
+            }
+            case NodeKind::EntryDecl: {
+                const auto& d = static_cast<const EntryDecl&>(decl);
+                symbols_.define({d.name.name, SymbolKind::Entry, d.span});
                 break;
             }
             default:
@@ -743,7 +788,32 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
                     diag_.note("try: " + it->second, t.base_ident.span);
                 }
             }
-            if (t.type_args.empty()) {
+            if (t.base_ident.name == "Option") {
+                if (t.type_args.size() != 1) {
+                    diag::error(diag_, diag::DiagId::OptionTypeRequiresExactlyOneTypeArgument, t.base_ident.span);
+                    diag_.note("use Option[T] or the shorthand ?T", t.base_ident.span);
+                }
+            } else if (t.base_ident.name == "tuple") {
+                if (t.type_args.size() < 2) {
+                    diag::error(diag_, diag::DiagId::TupleTypeRequiresAtLeastTwoTypeArguments, t.base_ident.span);
+                    diag_.note("use (T, U) rather than tuple[T]", t.base_ident.span);
+                }
+            } else if (t.base_ident.name == "union") {
+                if (t.type_args.size() < 2) {
+                    diag::error(diag_, diag::DiagId::UnionTypeRequiresAtLeastTwoTypeArguments, t.base_ident.span);
+                    diag_.note("use T | U rather than union[T]", t.base_ident.span);
+                }
+            } else if (t.base_ident.name == "dyn") {
+                if (t.type_args.empty()) {
+                    diag::error(diag_, diag::DiagId::DynTypeRequiresAtLeastOneTypeArgument, t.base_ident.span);
+                    diag_.note("use dyn Trait or dyn Trait + MoreTrait", t.base_ident.span);
+                }
+            } else if (t.base_ident.name == "impl") {
+                if (t.type_args.empty()) {
+                    diag::error(diag_, diag::DiagId::ImplTypeRequiresAtLeastOneTypeArgument, t.base_ident.span);
+                    diag_.note("use impl Trait or impl Trait + MoreTrait", t.base_ident.span);
+                }
+            } else if (t.type_args.empty()) {
                 diag::error(diag_, diag::DiagId::GenericTypeRequiresAtLeastOneArgument, t.base_ident.span);
             }
             for (auto arg : t.type_args) {
@@ -792,6 +862,33 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
             symbols_.define({d.name.name, SymbolKind::Form, d.span});
             for (const auto& f : d.fields) {
                 resolve_type(ctx, f.type);
+            }
+            break;
+        }
+        case NodeKind::TraitDecl: {
+            auto& d = static_cast<TraitDecl&>(decl);
+            types_.add_named(d.name.name);
+            for (const auto& param : d.type_params) {
+                types_.add_named(param.name);
+            }
+            symbols_.define({d.name.name, SymbolKind::Form, d.span});
+            for (const auto& wb : d.where_bounds) {
+                resolve_type(ctx, wb.first);
+                resolve_type(ctx, wb.second);
+            }
+            break;
+        }
+        case NodeKind::ImplDecl: {
+            auto& d = static_cast<ImplDecl&>(decl);
+            if (d.trait_type != kInvalidAstId) {
+                resolve_type(ctx, d.trait_type);
+            }
+            if (d.self_type != kInvalidAstId) {
+                resolve_type(ctx, d.self_type);
+            }
+            for (const auto& wb : d.where_bounds) {
+                resolve_type(ctx, wb.first);
+                resolve_type(ctx, wb.second);
             }
             break;
         }
@@ -907,11 +1004,22 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
                 resolve_type(ctx, p.type);
                 resolve_expr(ctx, p.default_value);
             }
+            for (const auto& wb : d.where_bounds) {
+                resolve_type(ctx, wb.first);
+                resolve_type(ctx, wb.second);
+            }
             resolve_type(ctx, d.return_type);
             if (d.body != kInvalidAstId) {
                 resolve_stmt(ctx, d.body);
             }
             symbols_.pop_scope();
+            break;
+        }
+        case NodeKind::ComptimeDecl: {
+            auto& d = static_cast<ComptimeDecl&>(decl);
+            if (d.body != kInvalidAstId) {
+                resolve_stmt(ctx, d.body);
+            }
             break;
         }
         case NodeKind::EntryDecl: {
@@ -1075,6 +1183,37 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
             resolve_expr(ctx, s.expr);
             break;
         }
+        case NodeKind::DeferStmt: {
+            auto& s = static_cast<DeferStmt&>(stmt);
+            resolve_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::WithStmt: {
+            auto& s = static_cast<WithStmt&>(stmt);
+            resolve_expr(ctx, s.expr);
+            resolve_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::CriticalStmt: {
+            auto& s = static_cast<CriticalStmt&>(stmt);
+            resolve_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::AtomicStmt: {
+            auto& s = static_cast<AtomicStmt&>(stmt);
+            resolve_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::VolatileStmt: {
+            auto& s = static_cast<VolatileStmt&>(stmt);
+            resolve_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::GotoStmt:
+        case NodeKind::PreemptStmt:
+        case NodeKind::IrqStmt:
+        case NodeKind::LabelStmt:
+            break;
         case NodeKind::IfStmt: {
             auto& s = static_cast<IfStmt&>(stmt);
             resolve_expr(ctx, s.cond);
@@ -1188,6 +1327,16 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
         case NodeKind::UnaryExpr: {
             auto& e = static_cast<UnaryExpr&>(expr);
             resolve_expr(ctx, e.expr);
+            break;
+        }
+        case NodeKind::BuiltinExpr: {
+            auto& e = static_cast<BuiltinExpr&>(expr);
+            if (e.type != kInvalidAstId) {
+                resolve_type(ctx, e.type);
+            }
+            if (e.expr != kInvalidAstId) {
+                resolve_expr(ctx, e.expr);
+            }
             break;
         }
         case NodeKind::BinaryExpr: {

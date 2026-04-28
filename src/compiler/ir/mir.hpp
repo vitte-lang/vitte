@@ -126,6 +126,7 @@ enum class MirConstKind {
     Bool,
     Int,
     String,
+    Bytes,
 };
 
 struct MirValue : MirNode {
@@ -185,12 +186,18 @@ enum class MirBinOp {
     Sub,
     Mul,
     Div,
+    Mod,
     Eq,
     Ne,
     Lt,
     Le,
     Gt,
     Ge,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
     And,
     Or,
 };

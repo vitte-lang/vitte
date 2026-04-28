@@ -128,6 +128,37 @@ Token Lexer::next() {
     std::size_t start = index_;
     char c = advance();
 
+    if (c == 'b' && peek() == '"') {
+        if (peek(1) == '"' && peek(2) == '"') {
+            index_ += 3;
+            std::string value;
+            while (!eof()) {
+                if (peek() == '"' && peek(1) == '"' && peek(2) == '"') {
+                    index_ += 3;
+                    break;
+                }
+                value.push_back(advance());
+            }
+            return make(TokenKind::BytesLit, value, start, index_);
+        }
+
+        advance();
+        std::string value;
+        while (!eof() && peek() != '"') {
+            char ch = advance();
+            if (ch == '\\' && !eof()) {
+                value.push_back(ch);
+                value.push_back(advance());
+            } else {
+                value.push_back(ch);
+            }
+        }
+        if (!eof()) {
+            advance();
+        }
+        return make(TokenKind::BytesLit, value, start, index_);
+    }
+
     if (is_ident_start(c)) {
         std::string ident(1, c);
         while (!eof() && is_ident_continue(peek())) {
@@ -225,6 +256,13 @@ Token Lexer::next() {
         return make(TokenKind::StringLit, value, start, index_);
     }
 
+    if (c == ';') {
+        return make(TokenKind::Semicolon, ";", start, index_);
+    }
+    if (c == '?') {
+        return make(TokenKind::Question, "?", start, index_);
+    }
+
     switch (c) {
         case '/':
             if (peek() == '*') {
@@ -267,6 +305,11 @@ Token Lexer::next() {
         case ':':
             return make(TokenKind::Colon, ":", start, index_);
         case '.':
+            if (peek() == '.' && index_ + 1 < source_.size() && source_[index_ + 1] == '.') {
+                advance();
+                advance();
+                return make(TokenKind::Ellipsis, "...", start, index_);
+            }
             return make(TokenKind::Dot, ".", start, index_);
         case '+':
             if (peek() == '=') {
@@ -310,6 +353,8 @@ Token Lexer::next() {
             return make(TokenKind::Pipe, "|", start, index_);
         case '^':
             return make(TokenKind::Caret, "^", start, index_);
+        case '~':
+            return make(TokenKind::Tilde, "~", start, index_);
         case '=':
             if (peek() == '=') {
                 advance();

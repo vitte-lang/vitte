@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>50. Scenario-oriented integration tests (pocket version)</title>
+<link rel="icon" href="../../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../../css/site.css">
+<link rel="stylesheet" href="../../../css/print.css" media="print">
+</head>
+<body class="classic-doc">
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../../../index.html"><img class="site-brand-mark" src="../../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../../../index.html"><img src="../../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../../doc.html"><img src="../../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../../download.html"><img src="../../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../../source.html"><img src="../../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../../community.html"><img src="../../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../../news.html"><img src="../../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../../diagnostics.html"><img src="../../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../../suggestions.html"><img src="../../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main class="site-main">
+<article class="doc-content">
+<h1>50. Scenario-oriented integration tests (pocket version)</h1>
+<p>Level: Advanced</p>
+<p>Prerequisites: <code>docs/book/chapters/18-tests.html</code>, <code>docs/book/chapters/21-cli-project.html</code>. See also: to be defined.</p>
+<h2>Concrete Problem</h2>
+<p>Real situation: Scenario-oriented integration tests are best understood by replaying the program as an executable algorithm. You read the incoming data, the condition evaluated, and then the returned value. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
+<h2>Red Thread (Single Project)</h2>
+<p>Common thread: we keep the same mini-program to compare the effects of a modification without changing the entire context. Educational objective: understand why a line exists and what it changes in the trajectory of the program.</p>
+<h2>Goal</h2>
+<p>Verify complete user/system journeys rather than isolated functions.</p>
+<h2>Approach</h2>
+<ol>
+<li>Define nominal scenario and failure scenario.</li>
+<li>Set up an environment close to production.</li>
+<li>Check business output and side effects.</li>
+<li>Clean and make the test idempotent.</li>
+</ol>
+<h2>Checklist</h2>
+<ol>
+<li>Versioned test data.</li>
+<li>Expected stable result.</li>
+<li>Execution possible in CI.</li>
+</ol>
+<h2>Progressive examples (N1 -> N3)</h2>
+<h3>N1 (base): nominal scenario</h3>
+<pre><code class="language-vit">entry main at app/cli {
+  return 0
+}</code></pre>
+<h3>N2 (intermediate): error scenario</h3>
+<pre><code class="language-vit">entry main at app/cli {
+  return missing
+}</code></pre>
+<h3>N3 (advance): idempotent scenario</h3>
+<pre><code class="language-vit">proc run_once(ok: bool) -&gt; int {
+
+  if not ok { give 1 }
+
+  give 0
+}</code></pre>
+<h3>Anti-example</h3>
+<pre><code class="language-vit"># scenario depend d&#x27;un etat manuel externe</code></pre>
+<h2>Quick validation</h2>
+<ol>
+<li>Nominal + error covered.</li>
+<li>Verified observable output.</li>
+<li>Reexecution without parasitic effect.</li>
+</ol>
+<h2>Why it matters</h2>
+<p>This section explains the practical value: reducing errors, accelerating diagnosis and stabilizing developments.</p>
+<h2>Quick check</h2>
+<p>Control question: If you change a key assumption, what outcome should change and why?</p>
+<h2>Try this</h2>
+<ol>
+<li>Run the nominal example.</li>
+<li>Introduce an error case.</li>
+<li>Check the output and document the deviation.</li>
+</ol>
+<h2>If you're stuck</h2>
+<p>Fixed: keep the simplest version that respects the rule, then add a non-regression test.</p>
+<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START --></p>
+<h2>Representative examples based on chapter code</h2>
+<p>Theme: <strong>scenario-oriented integration tests</strong>. This section avoids generalizations and starts from a real extract.</p>
+<h3>Example A: Executable reading of the main snippet</h3>
+<pre><code class="language-vit">entry main at app/cli {
+  return 0
+}</code></pre>
+<p>Reading line by line:</p>
+<ol>
+<li><code>entry main at app/cli {</code> -> defines the entry point of the scenario.</li>
+<li><code>return 0</code> -> returns verifiable output.</li>
+<li><code>}</code> -> participates in the processing process.</li>
+</ol>
+<h3>Example B: error case variant (same intention, safe behavior)</h3>
+<p>Goal: keep the business logic while adding an explicit test.</p>
+<p>Steps:</p>
+<ol>
+<li>Identify the line that decides the exit.</li>
+<li>Add a test before this line.</li>
+<li>Check the new output on a limit input.</li>
+</ol>
+<h3>Example C: reproducible bug then local correction</h3>
+<p>Procedure:</p>
+<ol>
+<li>Introduce a type mismatch on a call.</li>
+<li>Compile and read the first diagnosis.</li>
+<li>Fix a single line (no global refactor).</li>
+<li>Recompile and check the nominal return.</li>
+</ol>
+<h3>Expected result</h3>
+<ul>
+<li>The reader understands what the code does without unnecessary abstraction.</li>
+<li>Each example is linked to a concrete action.</li>
+<li>The correction is reproducible and testable.</li>
+</ul>
+<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END --></p>
+<h2>Extended Example</h2>
+<pre><code class="language-vit">// Scenario tests integration scenario: execution complete et verifiable
+space demo/tests-integration-scenario
+
+form TestCase { id: int input: int expected: int }
+pick CaseResult { case Pass(id: int) case Fail(id: int, got: int, expected: int) }
+
+proc subject(x: int) -&gt; int {
+
+  if x &lt; 0 { give 0 }
+
+  if x &gt; 100 { give 100 }
+
+  give x
+}
+
+// Exécute un cas de test et retourne un résultat typé
+proc run(c: TestCase) -&gt; CaseResult {
+  let got: int = subject(c.input)
+
+  if got == c.expected { give CaseResult.Pass(c.id) }
+
+  give CaseResult.Fail(c.id, got, c.expected)
+}
+
+// Agrège les résultats et projette un code CI
+proc ci_exit(a: CaseResult, b: CaseResult, c: CaseResult) -&gt; int {
+  let ok: int = 0
+
+  match a { case Pass(_) { set ok = ok + 1 } otherwise { } }
+
+  match b { case Pass(_) { set ok = ok + 1 } otherwise { } }
+
+  match c { case Pass(_) { set ok = ok + 1 } otherwise { } }
+
+  if ok == 3 { give 0 }
+
+  if ok == 2 { give 11 }
+
+  if ok == 1 { give 12 }
+
+  give 13
+}
+
+// Point d&#x27;entree du scenario
+entry main at core/app {
+  let c1: TestCase = TestCase(1, -3, 0)
+  let c2: TestCase = TestCase(2, 42, 42)
+  let c3: TestCase = TestCase(3, 160, 100)
+  let r1: CaseResult = run(c1)
+  let r2: CaseResult = run(c2)
+  let r3: CaseResult = run(c3)
+
+  return ci_exit(r1, r2, r3)
+}</code></pre>
+<h2>Detailed explanation of the big block</h2>
+<p>Here the goal is to understand the actual path of the program, line by line, to the exit code.</p>
+<h3>1. Role of each party</h3>
+<ul>
+<li>Starting point: <code>entry main at core/app</code>.</li>
+<li><code>subject</code>: reads <code>x: int</code> and returns <code>int</code>.</li>
+<li><code>run</code>: reads <code>c: TestCase</code> and returns <code>CaseResult</code>.</li>
+<li><code>ci_exit</code>: reads <code>a: CaseResult, b: CaseResult, c: CaseResult</code> and returns <code>int</code>.</li>
+</ul>
+<h3>2. Actual execution order</h3>
+<ol>
+<li>The program enters <code>main</code>.</li>
+<li><code>run</code> is called to process the next step.</li>
+<li><code>ci_exit</code> is called to process the next step.</li>
+<li>The final value is converted to process output (<code>return ...</code>).</li>
+</ol>
+<h3>3. Tests that change the path</h3>
+<ul>
+<li>Test evaluated: <code>x &lt; 0</code>.</li>
+<li>Test evaluated: <code>x &gt; 100</code>.</li>
+<li>Test evaluated: <code>got == c.expected</code>.</li>
+<li>Test evaluated: <code>ok == 3</code>.</li>
+<li>Test evaluated: <code>ok == 2</code>.</li>
+<li>Test evaluated: <code>ok == 1</code>.</li>
+<li>Selection by <code>match a</code>: the path depends on the state received.</li>
+<li>Selection by <code>match b</code>: the path depends on the state received.</li>
+<li>Selection by <code>match c</code>: the path depends on the state received.</li>
+</ul>
+<h3>4. Quick trace with values</h3>
+<ul>
+<li>Nominal example: <code>entrée valide -&gt; run -&gt; ci_exit -&gt; sortie 0</code>.</li>
+<li>Example error: <code>entrée invalide -&gt; run renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
+</ul>
+<h3>5. Why this division is useful</h3>
+<ul>
+<li>You test each function on its own, then the entire flow.</li>
+<li>You know where to change a rule without breaking the entire program.</li>
+<li>You can explain the output by simply following the calls.</li>
+</ul>
+<h3>6. Quick Check</h3>
+<ol>
+<li>Retry with a normal entry and note the exit.</li>
+<li>Restart with invalid input and check the error code.</li>
+<li>Confirm that the same input always gives the same output.</li>
+</ol>
+<h2>Design Notes</h2>
+<ul>
+<li>The snippet favors explicit boundaries rather than minimalist code.</li>
+<li>Tests are placed early to reduce the cost of diagnosis.</li>
+<li>The output is projected at the end of the flow to keep the business independent of transport.</li>
+</ul>
+<p>Actual error case:</p>
+<ul>
+<li>Degraded or incomplete input: the test must cut the flow early with an explicit exit.</li>
+</ul>
+<p>To test:</p>
+<ul>
+<li>3 out of 3 successful -> exit 0.</li>
+<li>Partial regression -> output 11.</li>
+<li>Overall failure -> exit 13.</li>
+</ul>
+<h3>7. Line by line (variables + values)</h3>
+<p>Convenient reading: Follow the variables in the actual order of execution, then check the observed output.</p>
+<ul>
+<li>Entry point:</li>
+<li><code>entry main at core/app</code> launches the complete scenario.</li>
+</ul>
+<ul>
+<li>Block functions:</li>
+<li><code>subject</code> reads <code>x: int</code> then returns <code>int</code>.</li>
+<li><code>run</code> reads <code>c: TestCase</code> then returns <code>CaseResult</code>.</li>
+<li><code>ci_exit</code> reads <code>a: CaseResult, b: CaseResult, c: CaseResult</code> then returns <code>int</code>.</li>
+</ul>
+<ul>
+<li>Variables created (initial value):</li>
+<li><code>got: int</code> starts with <code>subject(c.input)</code>.</li>
+<li><code>ok: int</code> starts with <code>0</code>.</li>
+<li><code>c1: TestCase</code> starts with <code>TestCase(1, -3, 0)</code>.</li>
+<li><code>c2: TestCase</code> starts with <code>TestCase(2, 42, 42)</code>.</li>
+<li><code>c3: TestCase</code> starts with <code>TestCase(3, 160, 100)</code>.</li>
+<li><code>r1: CaseResult</code> starts with <code>run(c1)</code>.</li>
+<li><code>r2: CaseResult</code> starts with <code>run(c2)</code>.</li>
+<li><code>r3: CaseResult</code> starts with <code>run(c3)</code>.</li>
+</ul>
+<ul>
+<li>Variables changed during processing:</li>
+<li><code>ok</code> is updated with <code>ok + 1 otherwise {</code>.</li>
+<li><code>ok</code> is updated with <code>ok + 1 otherwise {</code>.</li>
+<li><code>ok</code> is updated with <code>ok + 1 otherwise {</code>.</li>
+</ul>
+<ul>
+<li>Conditions that change the path:</li>
+<li>if <code>x &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>x &gt; 100</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>got == c.expected</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>ok == 3</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>ok == 2</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>ok == 1</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+</ul>
+<ul>
+<li>Nominal trace (example values):</li>
+<li>initialization: got=subject(c.input) -> ok=0 -> c1=TestCase(1, -3, 0) -> c2=TestCase(2, 42, 42)</li>
+<li>sequence: run -> ci_exit</li>
+<li>final output on this path: <code>ci_exit(r1, r2, r3)</code>.</li>
+</ul>
+<ul>
+<li>Error trace (example values):</li>
+<li>if <code>x &lt; 0</code> becomes true, the function returns <code>0</code>.</li>
+</ul>
+<ul>
+<li>Quick check:</li>
+<li>restart with normal input and note the output,</li>
+<li>restart with an invalid entry and note the error code,</li>
+<li>confirm that the same input always produces the same output.</li>
+</ul>
+<h2>Trade-offs</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Constraint</th><th>Option A</th><th>Option B</th><th>Recommended decision</th></tr>
+<tr><td>Priority readability</td><td>Explicit branches</td><td>Compact code</td><td>If the team maintains the code for a long time</td></tr>
+<tr><td>Critical performance</td><td>Targeted specialization</td><td>Generalization</td><td>A if profiling confirms the gain</td></tr>
+<tr><td>Rapid evolution</td><td>Strict contracts</td><td>Implicit conventions</td><td>A to reduce regressions</td></tr>
+</table>
+<h2>Decision According to Constraint</h2>
+<ul>
+<li>If the dominant constraint is safety: validate early, fail explicitly.</li>
+<li>If the dominant constraint is latency: measure first, optimize later.</li>
+<li>If the dominant constraint is scalability: isolate orchestration, decisions and output conversion.</li>
+</ul>
+<h2>Rapid Diagnosis</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Symptom</th><th>Probable cause</th><th>Verification</th><th>Correction</th></tr>
+<tr><td>Unexpected exit</td><td>Test missing or poorly ordered</td><td>Replay with error case</td><td>Reassemble the test before the sensitive area</td></tr>
+<tr><td>Branch not taken</td><td>Condition too broad/too strict</td><td>Trace the effective entry</td><td>Make the condition explicit and tested</td></tr>
+<tr><td>Silent regression</td><td>Implicit rule</td><td>Compare nominal vs. limit</td><td>Formalize the rule in code</td></tr>
+</table>
+<h2>Checkpoint</h2>
+<p>At this point you should know:</p>
+<ul>
+<li>explain the input -> decision -> output flow without ambiguity,</li>
+<li>isolate a real error case and predict its exit,</li>
+<li>identify where to add a test without breaking the nominal.</li>
+</ul>
+<h2>Why This Error Happens In Prod</h2>
+<p>Common cause: partially valid input, implicit assumption in a branch, then projecting output too late. Symptom: correct behavior in nominal but unstable under load or incomplete data. Useful action: trace the actual input, replay the error case, lock the test at the correct level.</p>
+<h2>What I would do in code review</h2>
+<ol>
+<li>Verify that input tests are placed before sensitive operations.</li>
+<li>Verify that the business decision is separated from the output projection.</li>
+<li>Verify a nominal test and a limit test that are actually executable.</li>
+</ol>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/poche/chapters/50-scenario-integration-tests.html</p>
+<p><a href="../../../index.html">Back to home</a></p>
+</footer>
+</div>
+</body>
+</html>

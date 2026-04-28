@@ -79,7 +79,12 @@ namespace vitte::frontend::diag {
     X(E2007, UnexpectedHirExprKind, "unexpected HIR expr kind") \
     X(E2008, UnexpectedHirStmtKind, "unexpected HIR stmt kind") \
     X(E2009, UnexpectedHirPatternKind, "unexpected HIR pattern kind") \
-    X(E2010, UnexpectedHirDeclKind, "unexpected HIR decl kind")
+    X(E2010, UnexpectedHirDeclKind, "unexpected HIR decl kind") \
+    X(E2011, OptionTypeRequiresExactlyOneTypeArgument, "option type requires exactly one type argument") \
+    X(E2012, TupleTypeRequiresAtLeastTwoTypeArguments, "tuple type requires at least two type arguments") \
+    X(E2013, UnionTypeRequiresAtLeastTwoTypeArguments, "union type requires at least two type arguments") \
+    X(E2014, DynTypeRequiresAtLeastOneTypeArgument, "dyn type requires at least one type argument") \
+    X(E2015, ImplTypeRequiresAtLeastOneTypeArgument, "impl type requires at least one type argument")
 
 enum class DiagId {
 #define VITTE_DIAG_ENUM(code, name, msg) name,
@@ -136,7 +141,7 @@ constexpr DiagExplain diag_explain(DiagId id) {
         case DiagId::UnknownIdentifier:
             return {
                 "A referenced name was not found in the current scope.",
-                "Check spelling, or import it from a module with 'use' or 'pull'.",
+                "Check spelling, or import it from a module with 'use' or 'from ... import'.",
                 "use std/bridge/print.print\nproc main() -> int { print(\"hi\"); return 0 }",
             };
         case DiagId::ExternProcCannotHaveBody:
@@ -178,7 +183,7 @@ constexpr DiagExplain diag_explain(DiagId id) {
         case DiagId::CoreForbiddenTopLevelSyntax:
             return {
                 "Strict-core mode rejects non-core top-level declarations.",
-                "Use only: space, pull, use, share, const, type, form, class, pick, proc, entry.",
+                "Use only: space, from, use, export, const, type, form, class, pick, proc, entry.",
                 "space app/main\nproc run() -> int { give 0 }",
             };
         case DiagId::CoreForbiddenStatementSyntax:
@@ -262,7 +267,7 @@ constexpr DiagExplain diag_explain(DiagId id) {
         case DiagId::ExpectedTopLevelDeclaration:
             return {
                 "The parser expected a top-level declaration.",
-                "Top-level items include space, use, form, class, pick, type, const, proc, and entry.",
+                "Top-level items include space, from, use, export, form, class, pick, type, const, proc, and entry.",
                 "space my/app\nproc main() -> int { return 0 }",
             };
         case DiagId::DuplicatePatternBinding:
@@ -280,7 +285,7 @@ constexpr DiagExplain diag_explain(DiagId id) {
         case DiagId::UnknownGenericBaseType:
             return {
                 "The base type of a generic was not found.",
-                "Check spelling or import the base type with 'use' or 'pull'.",
+                "Check spelling or import the base type with 'use' or 'from ... import'.",
                 "use std/core/option.Option\nlet x: Option[int] = Option.None",
             };
         case DiagId::GenericTypeRequiresAtLeastOneArgument:
@@ -325,6 +330,36 @@ constexpr DiagExplain diag_explain(DiagId id) {
                 "Provide one or more type arguments inside [ ].",
                 "let xs: List[int] = List.empty()\nlet y = id[int](1)",
             };
+        case DiagId::OptionTypeRequiresExactlyOneTypeArgument:
+            return {
+                "Option is a one-parameter wrapper.",
+                "Use Option[T] or the shorthand ?T.",
+                "let x: Option[int] = Option.None",
+            };
+        case DiagId::TupleTypeRequiresAtLeastTwoTypeArguments:
+            return {
+                "tuple is a multi-value wrapper.",
+                "Use (T, U) for tuple syntax instead of tuple[T].",
+                "let pair: (int, string) = (1, \"a\")",
+            };
+        case DiagId::UnionTypeRequiresAtLeastTwoTypeArguments:
+            return {
+                "union needs at least two alternatives.",
+                "Use T | U or a larger union such as T | U | V.",
+                "let value: int | string = 0",
+            };
+        case DiagId::DynTypeRequiresAtLeastOneTypeArgument:
+            return {
+                "dyn needs at least one trait or constraint.",
+                "Use dyn Trait or dyn Trait + MoreTrait.",
+                "let x: dyn Read = value",
+            };
+        case DiagId::ImplTypeRequiresAtLeastOneTypeArgument:
+            return {
+                "impl needs at least one trait or constraint.",
+                "Use impl Trait or impl Trait + MoreTrait.",
+                "let x: impl Read = value",
+            };
         case DiagId::InvalidSignedUnsignedCast:
             return {
                 "A cast attempted to move a signed negative value into an unsigned type.",
@@ -339,7 +374,7 @@ constexpr DiagExplain diag_explain(DiagId id) {
             };
         case DiagId::StrictImportAliasRequired:
             return {
-                "Strict imports mode requires explicit aliases on use/pull imports.",
+                "Strict imports mode requires explicit aliases on use/from imports.",
                 "Add 'as <name>' to each import in strict mode.",
                 "use std/bridge/print as print_mod",
             };
@@ -411,27 +446,27 @@ constexpr DiagExplain diag_explain(DiagId id) {
             };
         case DiagId::ShareUnknownSymbol:
             return {
-                "A share declaration names a symbol that is not declared or imported in this module.",
-                "Share only local declarations or explicit import aliases that exist in the module.",
-                "pull app/core as core_mod\nshare core_mod",
+                "An export declaration names a symbol that is not declared or imported in this module.",
+                "Export only local declarations or explicit import aliases that exist in the module.",
+                "use app/core as core_mod\nexport core_mod",
             };
         case DiagId::DuplicateSharedSymbol:
             return {
-                "A share declaration lists the same symbol more than once.",
-                "Keep each shared symbol only once in the list.",
-                "share ping, pong",
+                "An export declaration lists the same symbol more than once.",
+                "Keep each exported symbol only once in the list.",
+                "export ping, pong",
             };
         case DiagId::SymbolNotExportedByModule:
             return {
                 "An import targets a module symbol that exists only in the private/internal surface of that module.",
-                "Import a symbol that is explicitly shared by the module, or widen that module's share list intentionally.",
+                "Import a symbol that is explicitly exported by the module, or widen that module's export list intentionally.",
                 "use app/facade.public_api as api_mod",
             };
         case DiagId::DuplicateShareDeclaration:
             return {
-                "A module declares more than one share surface.",
-                "Keep a single share declaration per module and merge exported names into that declaration.",
-                "share ping, pong",
+                "A module declares more than one export surface.",
+                "Keep a single export declaration per module and merge exported names into that declaration.",
+                "export ping, pong",
             };
         case DiagId::DuplicateImportBinding:
             return {
@@ -454,7 +489,7 @@ constexpr DiagExplain diag_explain(DiagId id) {
         case DiagId::ModuleAliasMemberNotExported:
             return {
                 "A module alias is used to access a member or type that is not in that module's declared public surface.",
-                "Access only members explicitly exported by that module, or widen its public share surface intentionally.",
+                "Access only members explicitly exported by that module, or widen its public export surface intentionally.",
                 "use app/facade as facade_mod",
             };
         case DiagId::QualifiedTypeMemberNotFound:

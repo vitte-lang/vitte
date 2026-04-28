@@ -147,7 +147,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="fail if generated files are out of sync")
     args = parser.parse_args()
 
-    repo = Path(__file__).resolve().parents[3]
+    repo = Path(__file__).resolve().parents[4]
     grammar_path = repo / "src/vitte/grammar/vitte.ebnf"
     out_dir = repo / "docs/book/grammar/railroad"
     index_path = out_dir / "README.md"

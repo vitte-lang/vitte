@@ -86,18 +86,45 @@ static bool compound_assignment_binary_op(TokenKind kind, BinaryOp& out) {
 
 static bool is_toplevel_sync_kind(TokenKind kind) {
     switch (kind) {
+        case TokenKind::AtSign:
         case TokenKind::KwSpace:
+        case TokenKind::KwFrom:
+        case TokenKind::KwPackage:
+        case TokenKind::KwComptime:
+        case TokenKind::KwAsync:
+        case TokenKind::KwForeign:
+        case TokenKind::KwImpl:
+        case TokenKind::KwUnion:
+        case TokenKind::KwExtern:
         case TokenKind::KwPull:
         case TokenKind::KwUse:
+        case TokenKind::KwExport:
         case TokenKind::KwShare:
         case TokenKind::KwConst:
+        case TokenKind::KwStatic:
+        case TokenKind::KwGlobal:
         case TokenKind::KwType:
         case TokenKind::KwForm:
         case TokenKind::KwClass:
+        case TokenKind::KwTrait:
+        case TokenKind::KwFlags:
+        case TokenKind::KwBench:
+        case TokenKind::KwDef:
+        case TokenKind::KwStaticAssert:
+        case TokenKind::KwWhere:
+        case TokenKind::KwRequires:
         case TokenKind::KwTry:
         case TokenKind::KwExcept:
         case TokenKind::KwFinally:
         case TokenKind::KwRaise:
+        case TokenKind::KwDefer:
+        case TokenKind::KwWith:
+        case TokenKind::KwCritical:
+        case TokenKind::KwAtomic:
+        case TokenKind::KwVolatile:
+        case TokenKind::KwGoto:
+        case TokenKind::KwPreempt:
+        case TokenKind::KwIrq:
         case TokenKind::KwPick:
         case TokenKind::KwProc:
         case TokenKind::KwEntry:
@@ -122,6 +149,17 @@ static bool is_stmt_sync_kind(TokenKind kind) {
         case TokenKind::KwEmit:
         case TokenKind::KwAsm:
         case TokenKind::KwUnsafe:
+        case TokenKind::KwAssert:
+        case TokenKind::KwPanic:
+        case TokenKind::KwUnreachable:
+        case TokenKind::KwDefer:
+        case TokenKind::KwWith:
+        case TokenKind::KwCritical:
+        case TokenKind::KwAtomic:
+        case TokenKind::KwVolatile:
+        case TokenKind::KwGoto:
+        case TokenKind::KwPreempt:
+        case TokenKind::KwIrq:
         case TokenKind::KwIf:
         case TokenKind::KwElif:
         case TokenKind::KwTry:
@@ -129,6 +167,7 @@ static bool is_stmt_sync_kind(TokenKind kind) {
         case TokenKind::KwFinally:
         case TokenKind::KwRaise:
         case TokenKind::KwLoop:
+        case TokenKind::KwWhile:
         case TokenKind::KwFor:
         case TokenKind::KwBreak:
         case TokenKind::KwContinue:
@@ -136,6 +175,10 @@ static bool is_stmt_sync_kind(TokenKind kind) {
         case TokenKind::KwMatch:
         case TokenKind::KwWhen:
         case TokenKind::KwReturn:
+        case TokenKind::KwOn:
+        case TokenKind::KwOff:
+        case TokenKind::KwEnable:
+        case TokenKind::KwDisable:
         case TokenKind::Eof:
             return true;
         default:
@@ -148,6 +191,10 @@ static bool is_match_arm_sync_kind(TokenKind kind) {
         case TokenKind::KwCase:
         case TokenKind::KwElse:
         case TokenKind::KwOtherwise:
+        case TokenKind::KwOn:
+        case TokenKind::KwOff:
+        case TokenKind::KwEnable:
+        case TokenKind::KwDisable:
         case TokenKind::RBrace:
         case TokenKind::Eof:
             return true;
@@ -178,6 +225,20 @@ static int edit_distance(std::string_view a, std::string_view b) {
 
 static const char* keyword_text(TokenKind kind) {
     return tokens::keyword_text(kind);
+}
+
+static bool is_ctor_body_start(TokenKind kind);
+static bool is_builtin_expr_start(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::KwSizeof:
+        case TokenKind::KwAlignof:
+        case TokenKind::KwOffsetof:
+        case TokenKind::KwTypeof:
+        case TokenKind::KwNameof:
+            return true;
+        default:
+            return false;
+    }
 }
 
 ExprId Parser::parse_expr() {
@@ -284,6 +345,22 @@ ExprId Parser::parse_unary_expr() {
         }
         return ast_ctx_.make<UnaryExpr>(UnaryOp::Neg, rhs, span);
     }
+    if (match(TokenKind::Tilde)) {
+        auto rhs = parse_unary_expr();
+        SourceSpan span = previous_.span;
+        if (rhs != ast::kInvalidAstId) {
+            span.end = ast_ctx_.get<Expr>(rhs).span.end;
+        }
+        return ast_ctx_.make<UnaryExpr>(UnaryOp::BitNot, rhs, span);
+    }
+    if (match(TokenKind::KwAwait)) {
+        auto rhs = parse_unary_expr();
+        SourceSpan span = previous_.span;
+        if (rhs != ast::kInvalidAstId) {
+            span.end = ast_ctx_.get<Expr>(rhs).span.end;
+        }
+        return ast_ctx_.make<UnaryExpr>(UnaryOp::Await, rhs, span);
+    }
     return parse_primary();
 }
 
@@ -329,6 +406,12 @@ ExprId Parser::parse_primary() {
         return parse_interpolated_string_expr(value, span);
     }
 
+    if (current_.kind == TokenKind::BytesLit) {
+        std::string value = current_.text;
+        advance();
+        return ast_ctx_.make<LiteralExpr>(LiteralKind::Bytes, value, span);
+    }
+
     if (current_.kind == TokenKind::LBracket) {
         return parse_list_literal_or_comp_expr();
     }
@@ -342,6 +425,68 @@ ExprId Parser::parse_primary() {
         ExprId expr = parse_expr();
         expect(TokenKind::RParen, "expected ')'");
         return parse_postfix_expr(expr);
+    }
+
+    if (is_builtin_expr_start(current_.kind)) {
+        TokenKind builtin = current_.kind;
+        advance();
+        expect(TokenKind::LParen, "expected '(' after builtin expression");
+        BuiltinExpr::Kind kind = BuiltinExpr::Kind::Sizeof;
+        TypeId type = ast::kInvalidAstId;
+        ExprId expr = ast::kInvalidAstId;
+        ModulePath path(std::vector<Ident>{}, 0, span);
+        Ident member("", span);
+        switch (builtin) {
+            case TokenKind::KwSizeof: {
+                kind = BuiltinExpr::Kind::Sizeof;
+                if (current_.kind != TokenKind::RParen) {
+                    State try_type = snapshot();
+                    TypeId maybe_type = parse_type_expr();
+                    if (maybe_type != ast::kInvalidAstId && is_unambiguous_type_expr(maybe_type) && match(TokenKind::RParen)) {
+                        type = maybe_type;
+                        span.end = previous_.span.end;
+                        return ast_ctx_.make<BuiltinExpr>(kind, type, expr, std::move(path), std::move(member), span);
+                    }
+                    restore(std::move(try_type));
+                    expr = parse_expr();
+                }
+                expect(TokenKind::RParen, "expected ')' after sizeof");
+                span.end = previous_.span.end;
+                return ast_ctx_.make<BuiltinExpr>(kind, type, expr, std::move(path), std::move(member), span);
+            }
+            case TokenKind::KwAlignof: {
+                kind = BuiltinExpr::Kind::Alignof;
+                type = parse_type_expr();
+                expect(TokenKind::RParen, "expected ')' after alignof");
+                span.end = previous_.span.end;
+                return ast_ctx_.make<BuiltinExpr>(kind, type, expr, std::move(path), std::move(member), span);
+            }
+            case TokenKind::KwOffsetof: {
+                kind = BuiltinExpr::Kind::Offsetof;
+                type = parse_type_expr();
+                expect(TokenKind::Comma, "expected ',' after offsetof type");
+                member = parse_ident();
+                expect(TokenKind::RParen, "expected ')' after offsetof");
+                span.end = previous_.span.end;
+                return ast_ctx_.make<BuiltinExpr>(kind, type, expr, std::move(path), std::move(member), span);
+            }
+            case TokenKind::KwTypeof: {
+                kind = BuiltinExpr::Kind::Typeof;
+                expr = parse_expr();
+                expect(TokenKind::RParen, "expected ')' after typeof");
+                span.end = previous_.span.end;
+                return ast_ctx_.make<BuiltinExpr>(kind, type, expr, std::move(path), std::move(member), span);
+            }
+            case TokenKind::KwNameof: {
+                kind = BuiltinExpr::Kind::Nameof;
+                path = parse_module_path();
+                expect(TokenKind::RParen, "expected ')' after nameof");
+                span.end = previous_.span.end;
+                return ast_ctx_.make<BuiltinExpr>(kind, type, expr, std::move(path), std::move(member), span);
+            }
+            default:
+                break;
+        }
     }
 
     if (current_.kind == TokenKind::Ident) {
@@ -362,6 +507,14 @@ ExprId Parser::parse_postfix_expr(ExprId base) {
     ExprId expr = base;
     while (true) {
         if (match(TokenKind::Dot)) {
+            if (current_.kind == TokenKind::KwAwait) {
+                Token await_tok = current_;
+                advance();
+                SourceSpan sp = ast_ctx_.get<Expr>(expr).span;
+                sp.end = await_tok.span.end;
+                expr = ast_ctx_.make<UnaryExpr>(UnaryOp::Await, expr, sp);
+                continue;
+            }
             Ident member = parse_ident();
             SourceSpan span = ast_ctx_.get<Expr>(expr).span;
             span.end = member.span.end;
@@ -369,6 +522,13 @@ ExprId Parser::parse_postfix_expr(ExprId base) {
             continue;
         }
         if (current_.kind == TokenKind::LBrace && looks_like_type_constructor_head(expr)) {
+            State ctor_state = snapshot();
+            advance();
+            bool allow_ctor = is_ctor_body_start(current_.kind);
+            restore(std::move(ctor_state));
+            if (!allow_ctor) {
+                break;
+            }
             const auto& head = ast_ctx_.get<Expr>(expr);
             TypeId ctor_type = ast::kInvalidAstId;
             if (head.kind == NodeKind::IdentExpr) {
@@ -407,6 +567,28 @@ ExprId Parser::parse_postfix_expr(ExprId base) {
         if (current_.kind == TokenKind::LParen) {
             expr = parse_call_expr(expr);
             continue;
+        }
+        if (current_.kind == TokenKind::LBracket && looks_like_type_constructor_head(expr)) {
+            State generic_state = snapshot();
+            advance();
+            if (looks_like_type_expr_start(current_.kind)) {
+                if (current_.kind != TokenKind::RBracket) {
+                    parse_type_expr();
+                    while (match(TokenKind::Comma)) {
+                        if (current_.kind == TokenKind::RBracket) {
+                            break;
+                        }
+                        parse_type_expr();
+                    }
+                }
+                if (match(TokenKind::RBracket)) {
+                    if (current_.kind == TokenKind::LParen) {
+                        expr = parse_call_expr(expr);
+                    }
+                    continue;
+                }
+            }
+            restore(std::move(generic_state));
         }
         if (match(TokenKind::LBracket)) {
             ExprId first = ast::kInvalidAstId;
@@ -505,15 +687,90 @@ bool Parser::looks_like_type_constructor_head(ExprId expr) const {
     return false;
 }
 
+static bool is_ctor_body_start(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::Eof:
+        case TokenKind::RBrace:
+        case TokenKind::KwAsm:
+        case TokenKind::KwUnsafe:
+        case TokenKind::KwLet:
+        case TokenKind::KwMake:
+        case TokenKind::KwSet:
+        case TokenKind::KwGive:
+        case TokenKind::KwEmit:
+        case TokenKind::KwIf:
+        case TokenKind::KwElif:
+        case TokenKind::KwElse:
+        case TokenKind::KwOtherwise:
+        case TokenKind::KwLoop:
+        case TokenKind::KwWhile:
+        case TokenKind::KwFor:
+        case TokenKind::KwBreak:
+        case TokenKind::KwContinue:
+        case TokenKind::KwReturn:
+        case TokenKind::KwTry:
+        case TokenKind::KwRaise:
+        case TokenKind::KwSelect:
+        case TokenKind::KwMatch:
+        case TokenKind::KwWhen:
+            return false;
+        default:
+            return true;
+    }
+}
+
 bool Parser::looks_like_type_expr_start(TokenKind kind) const {
     switch (kind) {
         case TokenKind::Ident:
         case TokenKind::Star:
+        case TokenKind::Amp:
+        case TokenKind::Question:
         case TokenKind::LBracket:
+        case TokenKind::LParen:
         case TokenKind::KwProc:
+        case TokenKind::KwDyn:
+        case TokenKind::KwImpl:
+        case TokenKind::KwConst:
+        case TokenKind::KwVolatile:
+        case TokenKind::KwAtomic:
+        case TokenKind::KwMut:
+        case TokenKind::KwOwned:
+        case TokenKind::KwBorrow:
+        case TokenKind::KwUser:
+        case TokenKind::KwKernel:
+        case TokenKind::KwPhys:
+        case TokenKind::KwMmio:
+        case TokenKind::KwDma:
         case TokenKind::KwBool:
         case TokenKind::KwString:
         case TokenKind::KwInt:
+        case TokenKind::KwBytes:
+        case TokenKind::KwChar:
+        case TokenKind::KwVoid:
+        case TokenKind::KwNever:
+        case TokenKind::KwCStr:
+        case TokenKind::KwCChar:
+        case TokenKind::KwCInt:
+        case TokenKind::KwCUInt:
+        case TokenKind::KwCLong:
+        case TokenKind::KwCULong:
+        case TokenKind::KwCVoid:
+        case TokenKind::KwI8:
+        case TokenKind::KwI16:
+        case TokenKind::KwU8:
+        case TokenKind::KwU16:
+        case TokenKind::KwIsize:
+        case TokenKind::KwUsize:
+        case TokenKind::KwIntptr:
+        case TokenKind::KwUintptr:
+        case TokenKind::KwF16:
+        case TokenKind::KwF32:
+        case TokenKind::KwF64:
+        case TokenKind::KwF128:
+        case TokenKind::KwStr:
+        case TokenKind::KwUnit:
+        case TokenKind::KwRune:
+        case TokenKind::KwNull:
             return true;
         default:
             return false;
@@ -544,7 +801,9 @@ bool Parser::is_unambiguous_type_expr(TypeId type) const {
             const auto& t = static_cast<const GenericType&>(node);
             const auto& base = t.base_ident.name;
             bool base_ok = false;
-            if (base.find('.') != std::string::npos) {
+            if (base == "tuple" || base == "dyn" || base == "impl" || base == "union") {
+                base_ok = true;
+            } else if (base.find('.') != std::string::npos) {
                 base_ok = true;
             } else if (!base.empty()) {
                 const char c = base.front();
@@ -742,30 +1001,12 @@ ExprId Parser::parse_proc_expr() {
     expect(TokenKind::LParen, "expected '('");
     std::vector<FnParam> params;
     if (current_.kind != TokenKind::RParen) {
-        Ident param_name = parse_ident();
-        TypeId param_type = ast::kInvalidAstId;
-        if (match(TokenKind::Colon)) {
-            param_type = parse_type_expr();
-        }
-        ExprId default_value = ast::kInvalidAstId;
-        if (match(TokenKind::Equal)) {
-            default_value = parse_expr();
-        }
-        params.emplace_back(std::move(param_name), param_type, default_value);
+        params.emplace_back(parse_fn_param());
         while (match(TokenKind::Comma)) {
             if (current_.kind == TokenKind::RParen) {
                 break;
             }
-            Ident next_name = parse_ident();
-            TypeId next_type = ast::kInvalidAstId;
-            if (match(TokenKind::Colon)) {
-                next_type = parse_type_expr();
-            }
-            ExprId next_default = ast::kInvalidAstId;
-            if (match(TokenKind::Equal)) {
-                next_default = parse_expr();
-            }
-            params.emplace_back(std::move(next_name), next_type, next_default);
+            params.emplace_back(parse_fn_param());
         }
     }
     expect(TokenKind::RParen, "expected ')'");

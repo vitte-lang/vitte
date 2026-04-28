@@ -125,6 +125,20 @@ BinaryExpr::BinaryExpr(BinaryOp o, ExprId l, ExprId r, SourceSpan sp)
       lhs(l),
       rhs(r) {}
 
+BuiltinExpr::BuiltinExpr(
+    Kind kind_in,
+    TypeId type_in,
+    ExprId expr_in,
+    ModulePath path_in,
+    Ident member_in,
+    SourceSpan sp)
+    : Expr(NodeKind::BuiltinExpr, sp),
+      kind(kind_in),
+      type(type_in),
+      expr(expr_in),
+      path(std::move(path_in)),
+      member(std::move(member_in)) {}
+
 ProcExpr::ProcExpr(std::vector<FnParam> p, TypeId rt, StmtId b, SourceSpan sp)
     : Expr(NodeKind::ProcExpr, sp),
       params(std::move(p)),
@@ -296,6 +310,36 @@ TryStmt::TryStmt(StmtId b, StmtId e, StmtId f, SourceSpan sp)
 RaiseStmt::RaiseStmt(ExprId e, SourceSpan sp)
     : Stmt(NodeKind::RaiseStmt, sp), expr(e) {}
 
+DeferStmt::DeferStmt(StmtId b, SourceSpan sp)
+    : Stmt(NodeKind::DeferStmt, sp), body(b) {}
+
+WithStmt::WithStmt(ExprId e, std::optional<PatternId> p, StmtId b, SourceSpan sp)
+    : Stmt(NodeKind::WithStmt, sp),
+      expr(e),
+      pattern(std::move(p)),
+      body(b) {}
+
+CriticalStmt::CriticalStmt(StmtId b, SourceSpan sp)
+    : Stmt(NodeKind::CriticalStmt, sp), body(b) {}
+
+AtomicStmt::AtomicStmt(StmtId b, SourceSpan sp)
+    : Stmt(NodeKind::AtomicStmt, sp), body(b) {}
+
+VolatileStmt::VolatileStmt(StmtId b, SourceSpan sp)
+    : Stmt(NodeKind::VolatileStmt, sp), body(b) {}
+
+GotoStmt::GotoStmt(Ident t, SourceSpan sp)
+    : Stmt(NodeKind::GotoStmt, sp), target(std::move(t)) {}
+
+PreemptStmt::PreemptStmt(bool e, SourceSpan sp)
+    : Stmt(NodeKind::PreemptStmt, sp), enabled(e) {}
+
+IrqStmt::IrqStmt(bool e, SourceSpan sp)
+    : Stmt(NodeKind::IrqStmt, sp), enabled(e) {}
+
+LabelStmt::LabelStmt(Ident n, SourceSpan sp)
+    : Stmt(NodeKind::LabelStmt, sp), name(std::move(n)) {}
+
 BlockStmt::BlockStmt(std::vector<StmtId> s, SourceSpan sp)
     : Stmt(NodeKind::BlockStmt, sp), stmts(std::move(s)) {}
 
@@ -331,6 +375,10 @@ WhenStmt::WhenStmt(PatternId p, ExprId g, StmtId b, SourceSpan sp)
       guard(g),
       block(b) {}
 
+ComptimeDecl::ComptimeDecl(StmtId b, SourceSpan sp)
+    : Decl(NodeKind::ComptimeDecl, sp),
+      body(b) {}
+
 SelectStmt::SelectStmt(
     ExprId e,
     std::vector<StmtId> w,
@@ -345,8 +393,8 @@ SelectStmt::SelectStmt(
 // Declarations
 // ------------------------------------------------------------
 
-FieldDecl::FieldDecl(Ident id, TypeId ty)
-    : ident(std::move(id)), type(ty) {}
+FieldDecl::FieldDecl(Ident id, TypeId ty, std::optional<std::string> vis)
+    : ident(std::move(id)), type(ty), visibility(std::move(vis)) {}
 
 CaseField::CaseField(Ident id, TypeId ty)
     : ident(std::move(id)), type(ty) {}
@@ -354,8 +402,23 @@ CaseField::CaseField(Ident id, TypeId ty)
 CaseDecl::CaseDecl(Ident id, std::vector<CaseField> f)
     : ident(std::move(id)), fields(std::move(f)) {}
 
-FnParam::FnParam(Ident id, TypeId ty, ExprId default_value)
-    : ident(std::move(id)), type(ty), default_value(default_value) {}
+FnParam::FnParam(
+    Ident id,
+    TypeId ty,
+    ExprId default_value,
+    std::optional<ParamMode> mode,
+    bool is_self,
+    bool is_variadic,
+    bool self_is_ref,
+    bool self_is_mut)
+    : ident(std::move(id)),
+      type(ty),
+      default_value(default_value),
+      mode(mode),
+      is_self(is_self),
+      is_variadic(is_variadic),
+      self_is_ref(self_is_ref),
+      self_is_mut(self_is_mut) {}
 
 InvokeArg::InvokeArg(ExprId v)
     : name(std::nullopt), value(v) {}
@@ -436,6 +499,38 @@ FormDecl::FormDecl(Ident n, std::vector<Ident> tp, std::vector<FieldDecl> f, Sou
       type_params(std::move(tp)),
       fields(std::move(f)) {}
 
+TraitDecl::TraitDecl(
+    std::vector<Attribute> a,
+    Ident n,
+    std::vector<Ident> tp,
+    bool unsafe_trait,
+    std::vector<std::pair<TypeId, TypeId>> wb,
+    std::vector<DeclId> it,
+    SourceSpan sp)
+    : Decl(NodeKind::TraitDecl, sp),
+      attrs(std::move(a)),
+      name(std::move(n)),
+      type_params(std::move(tp)),
+      is_unsafe(unsafe_trait),
+      where_bounds(std::move(wb)),
+      items(std::move(it)) {}
+
+ImplDecl::ImplDecl(
+    std::vector<Attribute> a,
+    TypeId trait_ty,
+    TypeId self_ty,
+    bool has_trait_in,
+    std::vector<std::pair<TypeId, TypeId>> wb,
+    std::vector<DeclId> it,
+    SourceSpan sp)
+    : Decl(NodeKind::ImplDecl, sp),
+      attrs(std::move(a)),
+      trait_type(trait_ty),
+      self_type(self_ty),
+      has_trait(has_trait_in),
+      where_bounds(std::move(wb)),
+      items(std::move(it)) {}
+
 PickDecl::PickDecl(Ident n, std::vector<Ident> tp, std::vector<CaseDecl> c, SourceSpan sp)
     : Decl(NodeKind::PickDecl, sp),
       name(std::move(n)),
@@ -449,6 +544,11 @@ ProcDecl::ProcDecl(
     std::vector<FnParam> p,
     TypeId rt,
     StmtId b,
+    bool async,
+    bool extern_,
+    bool signature_only,
+    std::optional<std::string> extern_abi_in,
+    std::vector<std::pair<TypeId, TypeId>> where_bounds_in,
     SourceSpan sp)
     : Decl(NodeKind::ProcDecl, sp),
       attrs(std::move(a)),
@@ -456,7 +556,12 @@ ProcDecl::ProcDecl(
       type_params(std::move(tp)),
       params(std::move(p)),
       return_type(rt),
-      body(b) {}
+      body(b),
+      is_async(async),
+      is_extern(extern_),
+      is_signature_only(signature_only),
+      extern_abi(std::move(extern_abi_in)),
+      where_bounds(std::move(where_bounds_in)) {}
 
 EntryDecl::EntryDecl(Ident n, ModulePath m, StmtId b, SourceSpan sp)
     : Decl(NodeKind::EntryDecl, sp),
@@ -501,6 +606,7 @@ const char* to_string(NodeKind kind) {
         case NodeKind::IdentExpr: return "IdentExpr";
         case NodeKind::UnaryExpr: return "UnaryExpr";
         case NodeKind::BinaryExpr: return "BinaryExpr";
+        case NodeKind::BuiltinExpr: return "BuiltinExpr";
         case NodeKind::ProcExpr: return "ProcExpr";
         case NodeKind::MemberExpr: return "MemberExpr";
         case NodeKind::IndexExpr: return "IndexExpr";
@@ -522,6 +628,7 @@ const char* to_string(NodeKind kind) {
         case NodeKind::ReturnStmt: return "ReturnStmt";
         case NodeKind::TryStmt: return "TryStmt";
         case NodeKind::RaiseStmt: return "RaiseStmt";
+        case NodeKind::DeferStmt: return "DeferStmt";
         case NodeKind::IfStmt: return "IfStmt";
         case NodeKind::LoopStmt: return "LoopStmt";
         case NodeKind::BreakStmt: return "BreakStmt";
@@ -531,8 +638,17 @@ const char* to_string(NodeKind kind) {
         case NodeKind::SetStmt: return "SetStmt";
         case NodeKind::GiveStmt: return "GiveStmt";
         case NodeKind::EmitStmt: return "EmitStmt";
+        case NodeKind::WithStmt: return "WithStmt";
+        case NodeKind::CriticalStmt: return "CriticalStmt";
+        case NodeKind::AtomicStmt: return "AtomicStmt";
+        case NodeKind::VolatileStmt: return "VolatileStmt";
+        case NodeKind::GotoStmt: return "GotoStmt";
+        case NodeKind::PreemptStmt: return "PreemptStmt";
+        case NodeKind::IrqStmt: return "IrqStmt";
+        case NodeKind::LabelStmt: return "LabelStmt";
         case NodeKind::SelectStmt: return "SelectStmt";
         case NodeKind::WhenStmt: return "WhenStmt";
+        case NodeKind::ComptimeDecl: return "ComptimeDecl";
         case NodeKind::FnDecl: return "FnDecl";
         case NodeKind::TypeDecl: return "TypeDecl";
         case NodeKind::TypeAliasDecl: return "TypeAliasDecl";
@@ -544,6 +660,8 @@ const char* to_string(NodeKind kind) {
         case NodeKind::GlobalDecl: return "GlobalDecl";
         case NodeKind::MacroDecl: return "MacroDecl";
         case NodeKind::FormDecl: return "FormDecl";
+        case NodeKind::TraitDecl: return "TraitDecl";
+        case NodeKind::ImplDecl: return "ImplDecl";
         case NodeKind::PickDecl: return "PickDecl";
         case NodeKind::ProcDecl: return "ProcDecl";
         case NodeKind::EntryDecl: return "EntryDecl";
@@ -581,8 +699,22 @@ static std::string unary_op_to_string(UnaryOp op) {
     switch (op) {
         case UnaryOp::Not: return "Not";
         case UnaryOp::Neg: return "Neg";
+        case UnaryOp::BitNot: return "BitNot";
         case UnaryOp::Addr: return "Addr";
         case UnaryOp::Deref: return "Deref";
+        case UnaryOp::Await: return "Await";
+    }
+    return "Unknown";
+}
+
+static std::string builtin_expr_kind_to_string(BuiltinExpr::Kind kind) {
+    switch (kind) {
+        case BuiltinExpr::Kind::Sizeof: return "Sizeof";
+        case BuiltinExpr::Kind::Alignof: return "Alignof";
+        case BuiltinExpr::Kind::Offsetof: return "Offsetof";
+        case BuiltinExpr::Kind::Typeof: return "Typeof";
+        case BuiltinExpr::Kind::Nameof: return "Nameof";
+        case BuiltinExpr::Kind::Await: return "Await";
     }
     return "Unknown";
 }
@@ -617,6 +749,7 @@ static std::string literal_kind_to_string(LiteralKind kind) {
         case LiteralKind::Bool: return "Bool";
         case LiteralKind::Int: return "Int";
         case LiteralKind::String: return "String";
+        case LiteralKind::Bytes: return "Bytes";
         case LiteralKind::Float: return "Float";
         case LiteralKind::Char: return "Char";
     }
@@ -644,6 +777,19 @@ static std::string module_path_to_string(const ModulePath& path) {
         out += path.parts[i].name;
     }
     return out;
+}
+
+static const char* param_mode_to_string(std::optional<ParamMode> mode) {
+    if (!mode.has_value()) {
+        return "";
+    }
+    switch (*mode) {
+        case ParamMode::Mut: return "mut";
+        case ParamMode::Owned: return "owned";
+        case ParamMode::Borrow: return "borrow";
+        case ParamMode::Move: return "move";
+    }
+    return "";
 }
 
 static void append_int_list(std::ostringstream& os, const std::vector<AstId>& values) {
@@ -778,6 +924,26 @@ static void append_node_json(const AstContext& ctx,
             children.push_back(n.expr);
             break;
         }
+        case NodeKind::BuiltinExpr: {
+            const auto& n = ctx.get<BuiltinExpr>(id);
+            os << "\"kind\":";
+            append_json_string(os, builtin_expr_kind_to_string(n.kind));
+            if (n.type != kInvalidAstId) {
+                children.push_back(n.type);
+            }
+            if (n.expr != kInvalidAstId) {
+                children.push_back(n.expr);
+            }
+            if (!n.path.parts.empty()) {
+                os << ",\"path\":";
+                append_json_string(os, module_path_to_string(n.path));
+            }
+            if (!n.member.name.empty()) {
+                os << ",\"member\":";
+                append_json_string(os, n.member.name);
+            }
+            break;
+        }
         case NodeKind::BinaryExpr: {
             const auto& n = ctx.get<BinaryExpr>(id);
             os << "\"op\":";
@@ -789,15 +955,27 @@ static void append_node_json(const AstContext& ctx,
         case NodeKind::ProcExpr: {
             const auto& n = ctx.get<ProcExpr>(id);
             os << "\"param_count\":" << n.params.size();
+            std::vector<std::string> modes;
+            std::vector<std::string> self_flags;
+            std::vector<std::string> variadic_flags;
             for (const auto& p : n.params) {
                 if (p.type != kInvalidAstId) {
                     children.push_back(p.type);
                 }
                 names.push_back(p.ident.name);
                 children.push_back(p.default_value);
+                modes.push_back(param_mode_to_string(p.mode));
+                self_flags.push_back(p.is_self ? "true" : "false");
+                variadic_flags.push_back(p.is_variadic ? "true" : "false");
             }
             os << ",\"params\":";
             append_string_list(os, names);
+            os << ",\"param_modes\":";
+            append_string_list(os, modes);
+            os << ",\"param_self_flags\":";
+            append_string_list(os, self_flags);
+            os << ",\"param_variadic_flags\":";
+            append_string_list(os, variadic_flags);
             children.push_back(n.return_type);
             children.push_back(n.body);
             break;
@@ -975,6 +1153,11 @@ static void append_node_json(const AstContext& ctx,
             children.push_back(n.expr);
             break;
         }
+        case NodeKind::DeferStmt: {
+            const auto& n = ctx.get<DeferStmt>(id);
+            children.push_back(n.body);
+            break;
+        }
         case NodeKind::IfStmt: {
             const auto& n = ctx.get<IfStmt>(id);
             children.push_back(n.cond);
@@ -1029,6 +1212,52 @@ static void append_node_json(const AstContext& ctx,
             children.push_back(n.value);
             break;
         }
+        case NodeKind::WithStmt: {
+            const auto& n = ctx.get<WithStmt>(id);
+            children.push_back(n.expr);
+            if (n.pattern.has_value()) {
+                children.push_back(*n.pattern);
+            }
+            children.push_back(n.body);
+            break;
+        }
+        case NodeKind::CriticalStmt: {
+            const auto& n = ctx.get<CriticalStmt>(id);
+            children.push_back(n.body);
+            break;
+        }
+        case NodeKind::AtomicStmt: {
+            const auto& n = ctx.get<AtomicStmt>(id);
+            children.push_back(n.body);
+            break;
+        }
+        case NodeKind::VolatileStmt: {
+            const auto& n = ctx.get<VolatileStmt>(id);
+            children.push_back(n.body);
+            break;
+        }
+        case NodeKind::GotoStmt: {
+            const auto& n = ctx.get<GotoStmt>(id);
+            os << "\"target\":";
+            append_json_string(os, n.target.name);
+            break;
+        }
+        case NodeKind::PreemptStmt: {
+            const auto& n = ctx.get<PreemptStmt>(id);
+            os << "\"enabled\":" << (n.enabled ? "true" : "false");
+            break;
+        }
+        case NodeKind::IrqStmt: {
+            const auto& n = ctx.get<IrqStmt>(id);
+            os << "\"enabled\":" << (n.enabled ? "true" : "false");
+            break;
+        }
+        case NodeKind::LabelStmt: {
+            const auto& n = ctx.get<LabelStmt>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            break;
+        }
         case NodeKind::WhenStmt: {
             const auto& n = ctx.get<WhenStmt>(id);
             children.push_back(n.pattern);
@@ -1046,6 +1275,11 @@ static void append_node_json(const AstContext& ctx,
             if (n.otherwise_block != kInvalidAstId) {
                 children.push_back(n.otherwise_block);
             }
+            break;
+        }
+        case NodeKind::ComptimeDecl: {
+            const auto& n = ctx.get<ComptimeDecl>(id);
+            children.push_back(n.body);
             break;
         }
         case NodeKind::FnDecl: {
@@ -1186,6 +1420,50 @@ static void append_node_json(const AstContext& ctx,
             append_string_list(os, names);
             break;
         }
+        case NodeKind::TraitDecl: {
+            const auto& n = ctx.get<TraitDecl>(id);
+            os << "\"name\":";
+            append_json_string(os, n.name.name);
+            os << ",\"is_unsafe\":" << (n.is_unsafe ? "true" : "false")
+               << ",\"attr_count\":" << n.attrs.size()
+               << ",\"where_bound_count\":" << n.where_bounds.size()
+               << ",\"item_count\":" << n.items.size();
+            for (const auto& p : n.type_params) {
+                names.push_back(p.name);
+            }
+            os << ",\"type_params\":";
+            append_string_list(os, names);
+            names.clear();
+            for (auto item : n.items) {
+                children.push_back(item);
+            }
+            for (const auto& wb : n.where_bounds) {
+                children.push_back(wb.first);
+                children.push_back(wb.second);
+            }
+            break;
+        }
+        case NodeKind::ImplDecl: {
+            const auto& n = ctx.get<ImplDecl>(id);
+            os << "\"attr_count\":" << n.attrs.size()
+               << ",\"has_trait\":" << (n.has_trait ? "true" : "false")
+               << ",\"where_bound_count\":" << n.where_bounds.size()
+               << ",\"item_count\":" << n.items.size();
+            if (n.trait_type != kInvalidAstId) {
+                children.push_back(n.trait_type);
+            }
+            if (n.self_type != kInvalidAstId) {
+                children.push_back(n.self_type);
+            }
+            for (auto item : n.items) {
+                children.push_back(item);
+            }
+            for (const auto& wb : n.where_bounds) {
+                children.push_back(wb.first);
+                children.push_back(wb.second);
+            }
+            break;
+        }
         case NodeKind::PickDecl: {
             const auto& n = ctx.get<PickDecl>(id);
             os << "\"name\":";
@@ -1212,7 +1490,21 @@ static void append_node_json(const AstContext& ctx,
             const auto& n = ctx.get<ProcDecl>(id);
             os << "\"name\":";
             append_json_string(os, n.name.name);
-            os << ",\"attr_count\":" << n.attrs.size() << ",\"param_count\":" << n.params.size();
+            os << ",\"attr_count\":" << n.attrs.size()
+               << ",\"param_count\":" << n.params.size()
+               << ",\"is_async\":" << (n.is_async ? "true" : "false")
+               << ",\"is_extern\":" << (n.is_extern ? "true" : "false")
+               << ",\"is_signature_only\":" << (n.is_signature_only ? "true" : "false");
+            if (n.extern_abi.has_value()) {
+                os << ",\"extern_abi\":";
+                append_json_string(os, *n.extern_abi);
+            }
+            os << ",\"where_bound_count\":" << n.where_bounds.size();
+            std::vector<std::string> modes;
+            std::vector<std::string> self_flags;
+            std::vector<std::string> self_ref_flags;
+            std::vector<std::string> self_mut_flags;
+            std::vector<std::string> variadic_flags;
             for (const auto& p : n.type_params) {
                 names.push_back(p.name);
             }
@@ -1225,12 +1517,31 @@ static void append_node_json(const AstContext& ctx,
                     children.push_back(p.type);
                 }
                 children.push_back(p.default_value);
+                modes.push_back(param_mode_to_string(p.mode));
+                self_flags.push_back(p.is_self ? "true" : "false");
+                self_ref_flags.push_back(p.self_is_ref ? "true" : "false");
+                self_mut_flags.push_back(p.self_is_mut ? "true" : "false");
+                variadic_flags.push_back(p.is_variadic ? "true" : "false");
             }
             os << ",\"params\":";
             append_string_list(os, names);
+            os << ",\"param_modes\":";
+            append_string_list(os, modes);
+            os << ",\"param_self_flags\":";
+            append_string_list(os, self_flags);
+            os << ",\"param_self_ref_flags\":";
+            append_string_list(os, self_ref_flags);
+            os << ",\"param_self_mut_flags\":";
+            append_string_list(os, self_mut_flags);
+            os << ",\"param_variadic_flags\":";
+            append_string_list(os, variadic_flags);
             children.push_back(n.return_type);
             if (n.body != kInvalidAstId) {
                 children.push_back(n.body);
+            }
+            for (const auto& wb : n.where_bounds) {
+                children.push_back(wb.first);
+                children.push_back(wb.second);
             }
             break;
         }

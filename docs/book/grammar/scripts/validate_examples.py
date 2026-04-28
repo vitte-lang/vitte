@@ -142,7 +142,7 @@ def main() -> int:
     parser.add_argument("--strict-core", action="store_true", help="run parser in strict-core mode")
     args = parser.parse_args()
 
-    repo = Path(__file__).resolve().parents[3]
+    repo = Path(__file__).resolve().parents[4]
     expected_dir = repo / "docs/book/grammar/diagnostics/expected"
     snapshots_dir = repo / "tests/grammar/snapshots"
     vitte_bin = (repo / args.vitte_bin) if not Path(args.vitte_bin).is_absolute() else Path(args.vitte_bin)

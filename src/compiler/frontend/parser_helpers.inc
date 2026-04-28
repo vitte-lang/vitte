@@ -10,6 +10,7 @@ bool Parser::is_unary_start(TokenKind kind) const {
     switch (kind) {
         case TokenKind::Bang:
         case TokenKind::Minus:
+        case TokenKind::Tilde:
         case TokenKind::KwNot:
         case TokenKind::KwTrue:
         case TokenKind::KwFalse:
@@ -17,6 +18,7 @@ bool Parser::is_unary_start(TokenKind kind) const {
         case TokenKind::FloatLit:
         case TokenKind::CharLit:
         case TokenKind::StringLit:
+        case TokenKind::BytesLit:
         case TokenKind::Ident:
         case TokenKind::LParen:
         case TokenKind::LBracket:

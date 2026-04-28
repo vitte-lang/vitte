@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3. Structure of a project</title>
+<link rel="icon" href="../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../css/site.css">
+<link rel="stylesheet" href="../../css/print.css" media="print">
+</head>
+<body class="classic-doc">
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../../index.html"><img class="site-brand-mark" src="../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../../index.html"><img src="../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../doc.html"><img src="../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../download.html"><img src="../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../source.html"><img src="../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../community.html"><img src="../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../news.html"><img src="../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../diagnostics.html"><img src="../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../suggestions.html"><img src="../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main class="site-main">
+<article class="doc-content">
+<h1>3. Structure of a project</h1>
+<p>Level: Advanced Foundations</p>
+<p>Prerequisites: <code>docs/book/chapters/02-philosophy.html</code>, <code>docs/book/glossary.html</code>. See also: <code>docs/book/chapters/04-syntax.html</code>.</p>
+<h2>Concrete Problem</h2>
+<p>A project quickly becomes confusing when responsibilities are mixed. The goal of this chapter: organize the code to immediately know where to read, where to modify, and where to test.</p>
+<h2>Red Thread (Single Project)</h2>
+<p>We keep the same scenario to see the impact of a good structure. You will follow a simple path: input -> processing -> result.</p>
+<h2>Goal</h2>
+<p>We divide the project into 3 zones:</p>
+<ol>
+<li><code>domain</code>: business data</li>
+<li><code>service</code>: calculation rules</li>
+<li><code>io</code>: launch and release</li>
+</ol>
+<p>Recommended feed: <code>io -&gt; service -&gt; domain</code>.</p>
+<h2>3.1 Domain: define business data</h2>
+<pre><code class="language-vit">space app/domain
+
+form Ticket {
+  id: int
+  priority: int
+}</code></pre>
+<p>Direct reading:</p>
+<ol>
+<li><code>Ticket</code> describes data useful to the business.</li>
+<li>no execution logic here.</li>
+<li>this module remains stable even if the application changes channel (CLI, HTTP, job).</li>
+</ol>
+<h2>3.2 Service: centralize business rules</h2>
+<pre><code class="language-vit">space app/service
+
+pull app/domain as d
+
+proc is_critical(t: d.Ticket) -&gt; bool {
+  give t.priority &gt;= 9
+}</code></pre>
+<p>Direct reading:</p>
+<ol>
+<li><code>service</code> uses the type of <code>domain</code>.</li>
+<li>the business rule is written only once.</li>
+<li>the output is boolean: true or false.</li>
+</ol>
+<p>Example:</p>
+<ul>
+<li>priority <code>9</code> -> <code>true</code></li>
+<li>priority <code>4</code> -> <code>false</code></li>
+</ul>
+<h2>3.3 IO: start the stream and produce output</h2>
+<pre><code class="language-vit">space app/io
+
+pull app/domain as d
+pull app/service as s
+
+// Point d&#x27;entree du scenario
+entry main at core/app {
+  let t: d.Ticket = d.Ticket(1, 9)
+  let critical: bool = s.is_critical(t)
+  let code: int = critical as int
+
+  return code
+}</code></pre>
+<p>Direct reading:</p>
+<ol>
+<li><code>main</code> constructs an entry.</li>
+<li><code>main</code> calls the service.</li>
+<li><code>main</code> converts the result to an exit code.</li>
+</ol>
+<p>To avoid in <code>io</code>:</p>
+<ul>
+<li>write business rules here</li>
+<li>duplicate the logic already present in <code>service</code></li>
+</ul>
+<h2>3.4 Signals of poor structure</h2>
+<ol>
+<li>a business rule is written in <code>entry</code></li>
+<li><code>service</code> depends on <code>io</code></li>
+<li>a business type contains technical output details</li>
+</ol>
+<p>If any of these signals appear, maintenance will cost more.</p>
+<h2>Quick structure test (30 seconds)</h2>
+<p>For each file, ask 3 questions:</p>
+<ol>
+<li>Is this business data? -> <code>domain</code></li>
+<li>Is this a business rule? -> <code>service</code></li>
+<li>is this launch/release? -> <code>io</code></li>
+</ol>
+<p>If a file answers several questions, it must be split.</p>
+<h2>3.6 Checklist before commit</h2>
+<ol>
+<li>is the direction of dependencies <code>io -&gt; service -&gt; domain</code> ?</li>
+<li>are the rules in <code>service</code> ?</li>
+<li>are business types in <code>domain</code>?</li>
+<li><code>entry</code> is it short and readable?</li>
+</ol>
+<h2>Keywords to review</h2>
+<ul>
+<li><code>docs/book/chapters/keywords/space.html</code></li>
+<li><code>docs/book/chapters/keywords/pull.html</code></li>
+<li><code>docs/book/chapters/keywords/form.html</code></li>
+<li><code>docs/book/chapters/keywords/proc.html</code></li>
+<li><code>docs/book/chapters/keywords/entry.html</code></li>
+</ul>
+<h2>Extended Example</h2>
+<pre><code class="language-vit">// Scenario projet: execution complete et verifiable
+space demo/projet
+
+form Request { id: int amount: int quota: int }
+pick Result { case Accepted(total: int) case Rejected(code: int) }
+
+// Entrée applicative: validation des invariants de requête
+proc parse_request(r: Request) -&gt; Result {
+
+  if r.id &lt;= 0 { give Result.Rejected(91) }
+
+  if r.quota &lt; 0 { give Result.Rejected(92) }
+
+  if r.amount &lt; 0 { give Result.Rejected(93) }
+
+  give Result.Accepted(r.amount)
+}
+
+// Politique métier: applique les règles de décision
+proc apply_policy(total: int, quota: int) -&gt; Result {
+  let capped: int = total
+  if capped &gt; quota { set capped = quota }
+
+  if capped &lt; 5 { give Result.Rejected(94) }
+
+  give Result.Accepted(capped)
+}
+
+// Persistance simulée: matérialise un résultat sans I/O réel
+proc persist_sim(x: Result) -&gt; Result {
+
+  match x {
+    case Accepted(v) {
+      if v % 13 == 0 { give Result.Rejected(95) }
+
+      give Result.Accepted(v)
+    }
+    case Rejected(c) { give Result.Rejected(c) }
+    otherwise { give Result.Rejected(70) }
+  }
+}
+
+// Conversion finale vers un code de sortie
+proc to_exit(x: Result) -&gt; int {
+
+  match x {
+    case Accepted(_) { give 0 }
+    case Rejected(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Point d&#x27;entree du scenario
+entry main at core/app {
+  let req: Request = Request(7, 12, 15)
+  let p: Result = parse_request(req)
+  let d: Result = apply_policy(12, req.quota)
+  let s: Result = persist_sim(d)
+  let _probe: int = to_exit(p)
+
+  return to_exit(s)
+}</code></pre>
+<h2>Detailed explanation of the big block</h2>
+<p>Here the goal is to understand the actual path of the program, line by line, to the exit code.</p>
+<h3>1. Role of each party</h3>
+<ul>
+<li>Starting point: <code>entry main at core/app</code>.</li>
+<li><code>parse_request</code>: reads <code>r: Request</code> and returns <code>Result</code>.</li>
+<li><code>apply_policy</code>: reads <code>total: int, quota: int</code> and returns <code>Result</code>.</li>
+<li><code>persist_sim</code>: reads <code>x: Result</code> and returns <code>Result</code>.</li>
+<li><code>to_exit</code>: reads <code>x: Result</code> and returns <code>int</code>.</li>
+</ul>
+<h3>2. Actual execution order</h3>
+<ol>
+<li>The program enters <code>main</code>.</li>
+<li><code>parse_request</code> is called to process the next step.</li>
+<li><code>apply_policy</code> is called to process the next step.</li>
+<li><code>persist_sim</code> is called to process the next step.</li>
+<li><code>to_exit</code> is called to process the next step.</li>
+<li>The final value is converted to process output (<code>return ...</code>).</li>
+</ol>
+<h3>3. Tests that change the path</h3>
+<ul>
+<li>Test evaluated: <code>r.id &lt;= 0</code>.</li>
+<li>Test evaluated: <code>r.quota &lt; 0</code>.</li>
+<li>Test evaluated: <code>r.amount &lt; 0</code>.</li>
+<li>Test evaluated: <code>capped &gt; quota</code>.</li>
+<li>Test evaluated: <code>capped &lt; 5</code>.</li>
+<li>Test evaluated: <code>v % 13 == 0</code>.</li>
+<li>Selection by <code>match x</code>: the path depends on the state received.</li>
+<li>Selection by <code>match x</code>: the path depends on the state received.</li>
+</ul>
+<h3>4. Quick trace with values</h3>
+<ul>
+<li>Nominal example: <code>entrée valide -&gt; parse_request -&gt; apply_policy -&gt; persist_sim -&gt; to_exit -&gt; sortie 0</code>.</li>
+<li>Example error: <code>entrée invalide -&gt; parse_request renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
+</ul>
+<h3>5. Why this division is useful</h3>
+<ul>
+<li>You test each function on its own, then the entire flow.</li>
+<li>You know where to change a rule without breaking the entire program.</li>
+<li>You can explain the output by simply following the calls.</li>
+</ul>
+<h3>6. Quick Check</h3>
+<ol>
+<li>Retry with a normal entry and note the exit.</li>
+<li>Restart with invalid input and check the error code.</li>
+<li>Confirm that the same input always gives the same output.</li>
+</ol>
+<h2>Play full stream</h2>
+<p>Order of execution:</p>
+<ol>
+<li><code>main</code> builds <code>req</code>.</li>
+<li><code>parse_request</code> controls the data.</li>
+<li><code>apply_policy</code> applies the business rule.</li>
+<li><code>persist_sim</code> simulates final processing.</li>
+<li><code>to_exit</code> produces the exit code.</li>
+</ol>
+<p>Normal execution:</p>
+<ul>
+<li>entry: <code>Request(7, 12, 15)</code></li>
+<li>final output: <code>0</code></li>
+</ul>
+<p>Running Error 1:</p>
+<ul>
+<li>entry with <code>id = 0</code></li>
+<li>final output: <code>91</code></li>
+</ul>
+<p>Running Error 2:</p>
+<ul>
+<li>entry with <code>amount = 3</code></li>
+<li>final output: <code>94</code></li>
+</ul>
+<h3>7. Line by line (variables + values)</h3>
+<p>Convenient reading: Follow the variables in the actual order of execution, then check the observed output.</p>
+<ul>
+<li>Entry point:</li>
+<li><code>entry main at core/app</code> launches the complete scenario.</li>
+</ul>
+<ul>
+<li>Block functions:</li>
+<li><code>parse_request</code> reads <code>r: Request</code> then returns <code>Result</code>.</li>
+<li><code>apply_policy</code> reads <code>total: int, quota: int</code> then returns <code>Result</code>.</li>
+<li><code>persist_sim</code> reads <code>x: Result</code> then returns <code>Result</code>.</li>
+<li><code>to_exit</code> reads <code>x: Result</code> then returns <code>int</code>.</li>
+</ul>
+<ul>
+<li>Variables created (initial value):</li>
+<li><code>capped: int</code> starts with <code>total</code>.</li>
+<li><code>req: Request</code> starts with <code>Request(7, 12, 15)</code>.</li>
+<li><code>p: Result</code> starts with <code>parse_request(req)</code>.</li>
+<li><code>d: Result</code> starts with <code>apply_policy(12, req.quota)</code>.</li>
+<li><code>s: Result</code> starts with <code>persist_sim(d)</code>.</li>
+<li><code>_probe: int</code> starts with <code>to_exit(p)</code>.</li>
+</ul>
+<ul>
+<li>Variables changed during processing:</li>
+<li><code>capped</code> is updated with <code>quota</code>.</li>
+</ul>
+<ul>
+<li>Conditions that change the path:</li>
+<li>if <code>r.id &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>r.quota &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>r.amount &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>capped &gt; quota</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>capped &lt; 5</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>v % 13 == 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+</ul>
+<ul>
+<li>Nominal trace (example values):</li>
+<li>initialization: capped=total -> req=Request(7, 12, 15) -> p=parse_request(req) -> d=apply_policy(12, req.quota)</li>
+<li>sequence: parse_request -> apply_policy -> persist_sim -> to_exit</li>
+<li>final output on this path: <code>to_exit(s)</code>.</li>
+</ul>
+<ul>
+<li>Error trace (example values):</li>
+<li>if <code>r.id &lt;= 0</code> becomes true, the function returns <code>Result.Rejected(91)</code>.</li>
+</ul>
+<ul>
+<li>Quick check:</li>
+<li>restart with normal input and note the output,</li>
+<li>restart with an invalid entry and note the error code,</li>
+<li>confirm that the same input always produces the same output.</li>
+</ul>
+<h2>Trade-offs</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Need</th><th>Option 1</th><th>Option 2</th><th>Recommended choice</th></tr>
+<tr><td>Quick reading</td><td>Separation into 3 zones</td><td>Everything in one file</td><td>Option 1</td></tr>
+<tr><td>Quick debug</td><td>Targeted functions</td><td>Large mixed flow</td><td>Option 1</td></tr>
+<tr><td>Safe evolution</td><td>Directed dependencies</td><td>Cross imports</td><td>Option 1</td></tr>
+</table>
+<h2>Rapid Diagnosis</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Problem observed</th><th>Probable cause</th><th>How to check</th><th>Correction</th></tr>
+<tr><td>Unpredictable outcome</td><td>scattered rules</td><td>trace calls</td><td>group into <code>service</code></td></tr>
+<tr><td>File difficult to read</td><td>mixed responsibilities</td><td>reread role of the module</td><td>separate <code>domain/service/io</code></td></tr>
+<tr><td>Fragile tests</td><td>logic in <code>entry</code></td><td>isolate logic</td><td>move to <code>proc</code></td></tr>
+</table>
+<h2>Checkpoint</h2>
+<p>At this point you should know:</p>
+<ul>
+<li>place a file in the right place,</li>
+<li>follow the flow of a project without confusion,</li>
+<li>explain the output from the called functions.</li>
+</ul>
+<h2>Mini Case Study (Before / After)</h2>
+<p>Before: a single file mixes input, rules and output. After: <code>domain</code> describes the data, <code>service</code> decides, <code>io</code> launches. Result: faster reading, simpler correction, more stable tests.</p>
+<h2>What I would do in code review</h2>
+<ol>
+<li>check the direction of dependencies (<code>io -&gt; service -&gt; domain</code>)</li>
+<li>check that the rules are not in <code>entry</code></li>
+<li>check a normal scenario + an error scenario</li>
+</ol>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/chapters/03-project.html</p>
+<p><a href="../../index.html">Back to home</a></p>
+</footer>
+</div>
+</body>
+</html>

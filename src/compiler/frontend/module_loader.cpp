@@ -406,14 +406,7 @@ static void collect_decl_names(
         switch (decl.kind) {
             case NodeKind::ProcDecl: {
                 const auto& p = static_cast<const ProcDecl&>(decl);
-                bool is_extern = false;
-                for (const auto& attr : p.attrs) {
-                    if (attr.name.name == "extern") {
-                        is_extern = true;
-                        break;
-                    }
-                }
-                if (!is_extern) {
+                if (!p.is_extern) {
                     names.insert(p.name.name);
                 }
                 break;
@@ -801,6 +794,37 @@ static void qualify_stmt(AstContext& ctx,
             qualify_expr(ctx, s.expr, locals, prefix);
             break;
         }
+        case NodeKind::DeferStmt: {
+            auto& s = static_cast<DeferStmt&>(node);
+            qualify_stmt(ctx, s.body, locals, prefix);
+            break;
+        }
+        case NodeKind::WithStmt: {
+            auto& s = static_cast<WithStmt&>(node);
+            qualify_expr(ctx, s.expr, locals, prefix);
+            qualify_stmt(ctx, s.body, locals, prefix);
+            break;
+        }
+        case NodeKind::CriticalStmt: {
+            auto& s = static_cast<CriticalStmt&>(node);
+            qualify_stmt(ctx, s.body, locals, prefix);
+            break;
+        }
+        case NodeKind::AtomicStmt: {
+            auto& s = static_cast<AtomicStmt&>(node);
+            qualify_stmt(ctx, s.body, locals, prefix);
+            break;
+        }
+        case NodeKind::VolatileStmt: {
+            auto& s = static_cast<VolatileStmt&>(node);
+            qualify_stmt(ctx, s.body, locals, prefix);
+            break;
+        }
+        case NodeKind::GotoStmt:
+        case NodeKind::PreemptStmt:
+        case NodeKind::IrqStmt:
+        case NodeKind::LabelStmt:
+            break;
         case NodeKind::AsmStmt:
         case NodeKind::UnsafeStmt:
         case NodeKind::BreakStmt:
@@ -934,19 +958,16 @@ static void qualify_module(AstContext& ctx,
         switch (decl.kind) {
             case NodeKind::ProcDecl: {
                 auto& d = static_cast<ProcDecl&>(decl);
-                bool is_extern = false;
-                for (const auto& attr : d.attrs) {
-                    if (attr.name.name == "extern") {
-                        is_extern = true;
-                        break;
-                    }
-                }
-                if (!is_extern) {
+                if (!d.is_extern) {
                     d.name.name = prefix + d.name.name;
                 }
                 for (auto& p : d.params) {
                     qualify_type(ctx, p.type, locals, prefix);
                     qualify_expr(ctx, p.default_value, locals, prefix);
+                }
+                for (auto& wb : d.where_bounds) {
+                    qualify_type(ctx, wb.first, locals, prefix);
+                    qualify_type(ctx, wb.second, locals, prefix);
                 }
                 qualify_type(ctx, d.return_type, locals, prefix);
                 qualify_stmt(ctx, d.body, locals, prefix);
@@ -1975,6 +1996,37 @@ static void rewrite_stmt_for_alias(
             rewrite_expr_for_alias(ctx, s.expr, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
             break;
         }
+        case NodeKind::DeferStmt: {
+            auto& s = static_cast<DeferStmt&>(node);
+            rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            break;
+        }
+        case NodeKind::WithStmt: {
+            auto& s = static_cast<WithStmt&>(node);
+            rewrite_expr_for_alias(ctx, s.expr, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            break;
+        }
+        case NodeKind::CriticalStmt: {
+            auto& s = static_cast<CriticalStmt&>(node);
+            rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            break;
+        }
+        case NodeKind::AtomicStmt: {
+            auto& s = static_cast<AtomicStmt&>(node);
+            rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            break;
+        }
+        case NodeKind::VolatileStmt: {
+            auto& s = static_cast<VolatileStmt&>(node);
+            rewrite_stmt_for_alias(ctx, s.body, alias_to_prefix, alias_to_module_key, exported_alias_targets, exports, glob_aliases, symbol_imports, diagnostics);
+            break;
+        }
+        case NodeKind::GotoStmt:
+        case NodeKind::PreemptStmt:
+        case NodeKind::IrqStmt:
+        case NodeKind::LabelStmt:
+            break;
         default:
             break;
     }
@@ -2128,8 +2180,12 @@ void rewrite_member_access(ast::AstContext& ctx,
             case NodeKind::ProcDecl: {
                 auto& d = static_cast<ProcDecl&>(decl);
                 for (auto& p : d.params) {
-                rewrite_type_for_alias(ctx, p.type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
-                rewrite_expr_for_alias(ctx, p.default_value, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
+                    rewrite_type_for_alias(ctx, p.type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
+                    rewrite_expr_for_alias(ctx, p.default_value, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
+                }
+                for (auto& wb : d.where_bounds) {
+                    rewrite_type_for_alias(ctx, wb.first, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
+                    rewrite_type_for_alias(ctx, wb.second, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 }
                 rewrite_type_for_alias(ctx, d.return_type, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
@@ -2192,6 +2248,11 @@ void rewrite_member_access(ast::AstContext& ctx,
             }
             case NodeKind::EntryDecl: {
                 auto& d = static_cast<EntryDecl&>(decl);
+                rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
+                break;
+            }
+            case NodeKind::ComptimeDecl: {
+                auto& d = static_cast<ComptimeDecl&>(decl);
                 rewrite_stmt_for_alias(ctx, d.body, alias_to_prefix, alias_to_module_key, index.exported_alias_targets, index.exports, glob_aliases, symbol_imports, diagnostics);
                 break;
             }

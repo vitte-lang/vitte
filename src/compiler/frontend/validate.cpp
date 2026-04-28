@@ -41,7 +41,120 @@ static void validate_type_params(
     }
 }
 
-static bool stmt_always_returns(const AstContext& ast_ctx, StmtId stmt_id) {
+static std::unordered_map<std::string, std::unordered_set<std::string>> collect_pick_cases(
+    const AstContext& ast_ctx,
+    const Module& mod
+) {
+    std::unordered_map<std::string, std::unordered_set<std::string>> out;
+    for (const auto decl_id : mod.decls) {
+        if (decl_id == ast::kInvalidAstId) {
+            continue;
+        }
+        const auto& decl = ast_ctx.get<Decl>(decl_id);
+        if (decl.kind != NodeKind::PickDecl) {
+            continue;
+        }
+        const auto& pick = ast_ctx.get<PickDecl>(decl_id);
+        auto& cases = out[pick.name.name];
+        for (const auto& c : pick.cases) {
+            cases.insert(c.ident.name);
+        }
+    }
+    return out;
+}
+
+static std::optional<std::pair<std::string, std::string>> ctor_pattern_key(
+    const AstContext& ast_ctx,
+    PatternId pattern
+) {
+    if (pattern == ast::kInvalidAstId) {
+        return std::nullopt;
+    }
+    const auto& node = ast_ctx.get<Pattern>(pattern);
+    if (node.kind != NodeKind::CtorPattern) {
+        return std::nullopt;
+    }
+    const auto& ctor = static_cast<const CtorPattern&>(node);
+    if (ctor.type == ast::kInvalidAstId) {
+        return std::nullopt;
+    }
+    const auto& type_node = ast_ctx.get<TypeNode>(ctor.type);
+    if (type_node.kind != NodeKind::NamedType) {
+        return std::nullopt;
+    }
+    const auto& name = static_cast<const NamedType&>(type_node).ident.name;
+    auto dot = name.find_last_of('.');
+    if (dot == std::string::npos) {
+        return std::make_pair(name, std::string{});
+    }
+    return std::make_pair(name.substr(0, dot), name.substr(dot + 1));
+}
+
+static bool select_is_exhaustive(
+    const AstContext& ast_ctx,
+    const Module& mod,
+    const SelectStmt& select
+) {
+    if (select.whens.empty()) {
+        return false;
+    }
+
+    auto pick_cases = collect_pick_cases(ast_ctx, mod);
+    std::optional<std::string> pick_name;
+    std::unordered_set<std::string> seen_cases;
+
+    for (StmtId when_id : select.whens) {
+        if (when_id == ast::kInvalidAstId) {
+            return false;
+        }
+        const auto& when = ast_ctx.get<WhenStmt>(when_id);
+        if (when.guard != ast::kInvalidAstId) {
+            return false;
+        }
+        const auto key = ctor_pattern_key(ast_ctx, when.pattern);
+        if (!key.has_value()) {
+            const auto& pattern = ast_ctx.get<Pattern>(when.pattern);
+            if (pattern.kind == NodeKind::WildcardPattern ||
+                (pattern.kind == NodeKind::IdentPattern &&
+                 static_cast<const IdentPattern&>(pattern).ident.name != "_")) {
+                return true;
+            }
+            return false;
+        }
+        const auto& [base_name, case_name] = *key;
+        if (case_name.empty()) {
+            return false;
+        }
+        if (!pick_name.has_value()) {
+            pick_name = base_name;
+        } else if (*pick_name != base_name) {
+            return false;
+        }
+        seen_cases.insert(case_name);
+    }
+
+    if (!pick_name.has_value()) {
+        return false;
+    }
+
+    auto it = pick_cases.find(*pick_name);
+    if (it == pick_cases.end()) {
+        return false;
+    }
+    const auto& expected = it->second;
+    if (seen_cases.size() != expected.size()) {
+        return false;
+    }
+    for (const auto& case_name : expected) {
+        if (seen_cases.find(case_name) == seen_cases.end()) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool stmt_always_returns(const AstContext& ast_ctx, const Module& mod, StmtId stmt_id) {
     if (stmt_id == ast::kInvalidAstId) {
         return false;
     }
@@ -52,25 +165,47 @@ static bool stmt_always_returns(const AstContext& ast_ctx, StmtId stmt_id) {
         case NodeKind::ReturnStmt:
         case NodeKind::RaiseStmt:
             return true;
+        case NodeKind::CriticalStmt: {
+            const auto& s = ast_ctx.get<CriticalStmt>(stmt_id);
+            return stmt_always_returns(ast_ctx, mod, s.body);
+        }
+        case NodeKind::AtomicStmt: {
+            const auto& s = ast_ctx.get<AtomicStmt>(stmt_id);
+            return stmt_always_returns(ast_ctx, mod, s.body);
+        }
+        case NodeKind::VolatileStmt: {
+            const auto& s = ast_ctx.get<VolatileStmt>(stmt_id);
+            return stmt_always_returns(ast_ctx, mod, s.body);
+        }
+        case NodeKind::WithStmt: {
+            const auto& s = ast_ctx.get<WithStmt>(stmt_id);
+            return stmt_always_returns(ast_ctx, mod, s.body);
+        }
+        case NodeKind::DeferStmt:
+        case NodeKind::GotoStmt:
+        case NodeKind::PreemptStmt:
+        case NodeKind::IrqStmt:
+        case NodeKind::LabelStmt:
+            return false;
         case NodeKind::TryStmt: {
             const auto& s = ast_ctx.get<TryStmt>(stmt_id);
-            bool body_ret = stmt_always_returns(ast_ctx, s.body);
+            bool body_ret = stmt_always_returns(ast_ctx, mod, s.body);
             bool except_ret = s.except_body != ast::kInvalidAstId
-                ? stmt_always_returns(ast_ctx, s.except_body)
+                ? stmt_always_returns(ast_ctx, mod, s.except_body)
                 : false;
             bool finally_ret = s.finally_body != ast::kInvalidAstId
-                ? stmt_always_returns(ast_ctx, s.finally_body)
+                ? stmt_always_returns(ast_ctx, mod, s.finally_body)
                 : true;
             return finally_ret && (body_ret || except_ret);
         }
         case NodeKind::UnsafeStmt: {
             const auto& s = ast_ctx.get<UnsafeStmt>(stmt_id);
-            return stmt_always_returns(ast_ctx, s.body);
+            return stmt_always_returns(ast_ctx, mod, s.body);
         }
         case NodeKind::BlockStmt: {
             const auto& block = ast_ctx.get<BlockStmt>(stmt_id);
             for (StmtId child_id : block.stmts) {
-                if (stmt_always_returns(ast_ctx, child_id)) {
+                if (stmt_always_returns(ast_ctx, mod, child_id)) {
                     return true;
                 }
             }
@@ -81,21 +216,21 @@ static bool stmt_always_returns(const AstContext& ast_ctx, StmtId stmt_id) {
             if (s.else_block == ast::kInvalidAstId) {
                 return false;
             }
-            return stmt_always_returns(ast_ctx, s.then_block) &&
-                   stmt_always_returns(ast_ctx, s.else_block);
+            return stmt_always_returns(ast_ctx, mod, s.then_block) &&
+                   stmt_always_returns(ast_ctx, mod, s.else_block);
         }
         case NodeKind::SelectStmt: {
             const auto& s = ast_ctx.get<SelectStmt>(stmt_id);
-            if (s.otherwise_block == ast::kInvalidAstId || s.whens.empty()) {
-                return false;
-            }
             for (StmtId when_id : s.whens) {
                 const auto& when_stmt = ast_ctx.get<WhenStmt>(when_id);
-                if (!stmt_always_returns(ast_ctx, when_stmt.block)) {
+                if (!stmt_always_returns(ast_ctx, mod, when_stmt.block)) {
                     return false;
                 }
             }
-            return stmt_always_returns(ast_ctx, s.otherwise_block);
+            if (s.otherwise_block != ast::kInvalidAstId) {
+                return stmt_always_returns(ast_ctx, mod, s.otherwise_block);
+            }
+            return select_is_exhaustive(ast_ctx, mod, s);
         }
         default:
             return false;
@@ -104,29 +239,53 @@ static bool stmt_always_returns(const AstContext& ast_ctx, StmtId stmt_id) {
 
 static void validate_proc(const ProcDecl& proc, diag::DiagnosticEngine& diagnostics) {
     SourceSpan extern_span{};
-    bool is_extern = has_attr(proc.attrs, "extern", &extern_span);
+    bool is_extern = proc.is_extern || has_attr(proc.attrs, "extern", &extern_span);
+    bool allows_signature_only = proc.is_signature_only;
     bool has_body = proc.body != ast::kInvalidAstId;
 
     if (is_extern && has_body) {
         diag::error(diagnostics, diag::DiagId::ExternProcCannotHaveBody, extern_span.is_valid() ? extern_span : proc.span);
     }
-    if (!is_extern && !has_body) {
+    if (!is_extern && !allows_signature_only && !has_body) {
         diag::error(diagnostics, diag::DiagId::ProcRequiresBodyUnlessExtern, proc.span);
     }
     validate_type_params(proc.type_params, diagnostics, "proc");
 }
 
-static void validate_proc_returns(const AstContext& ast_ctx, const ProcDecl& proc, diag::DiagnosticEngine& diagnostics) {
+static void validate_proc_returns(
+    const AstContext& ast_ctx,
+    const Module& mod,
+    const ProcDecl& proc,
+    diag::DiagnosticEngine& diagnostics
+) {
     if (proc.return_type == ast::kInvalidAstId || proc.body == ast::kInvalidAstId) {
         return;
     }
 
+    const auto& ret_node = ast_ctx.get<TypeNode>(proc.return_type);
+    if (ret_node.span.file != nullptr) {
+        const auto& content = ret_node.span.file->content;
+        std::string text = content.substr(ret_node.span.start, ret_node.span.length());
+        auto trim = [](std::string s) {
+            auto first = s.find_first_not_of(" \t\r\n");
+            auto last = s.find_last_not_of(" \t\r\n");
+            if (first == std::string::npos) {
+                return std::string{};
+            }
+            return s.substr(first, last - first + 1);
+        };
+        text = trim(std::move(text));
+        if (text == "void" || text == "never") {
+            return;
+        }
+    }
+
     SourceSpan extern_span{};
-    if (has_attr(proc.attrs, "extern", &extern_span)) {
+    if (proc.is_extern || has_attr(proc.attrs, "extern", &extern_span)) {
         return;
     }
 
-    if (!stmt_always_returns(ast_ctx, proc.body)) {
+    if (!stmt_always_returns(ast_ctx, mod, proc.body)) {
         SourceSpan span = proc.name.span.is_valid() ? proc.name.span : proc.span;
         diag::Diagnostic missing_return(
             diag::Severity::Error,
@@ -171,14 +330,7 @@ static std::unordered_set<std::string> collect_shareable_names_for_file(
         switch (decl.kind) {
             case NodeKind::ProcDecl: {
                 const auto& proc = ast_ctx.get<ProcDecl>(decl_id);
-                bool is_extern = false;
-                for (const auto& attr : proc.attrs) {
-                    if (attr.name.name == "extern") {
-                        is_extern = true;
-                        break;
-                    }
-                }
-                if (!is_extern) {
+                if (!proc.is_extern) {
                     names.insert(proc.name.name);
                 }
                 break;
@@ -200,6 +352,9 @@ static std::unordered_set<std::string> collect_shareable_names_for_file(
                 break;
             case NodeKind::FormDecl:
                 names.insert(ast_ctx.get<FormDecl>(decl_id).name.name);
+                break;
+            case NodeKind::TraitDecl:
+                names.insert(ast_ctx.get<TraitDecl>(decl_id).name.name);
                 break;
             case NodeKind::PickDecl:
                 names.insert(ast_ctx.get<PickDecl>(decl_id).name.name);
@@ -273,10 +428,8 @@ static std::optional<std::pair<std::string, SourceSpan>> local_binding_name(
     switch (decl.kind) {
         case NodeKind::ProcDecl: {
             const auto& proc = ast_ctx.get<ProcDecl>(decl_id);
-            for (const auto& attr : proc.attrs) {
-                if (attr.name.name == "extern") {
-                    return std::nullopt;
-                }
+            if (proc.is_extern) {
+                return std::nullopt;
             }
             return std::make_pair(proc.name.name, proc.name.span);
         }
@@ -303,6 +456,10 @@ static std::optional<std::pair<std::string, SourceSpan>> local_binding_name(
         case NodeKind::FormDecl: {
             const auto& f = ast_ctx.get<FormDecl>(decl_id);
             return std::make_pair(f.name.name, f.name.span);
+        }
+        case NodeKind::TraitDecl: {
+            const auto& t = ast_ctx.get<TraitDecl>(decl_id);
+            return std::make_pair(t.name.name, t.name.span);
         }
         case NodeKind::PickDecl: {
             const auto& p = ast_ctx.get<PickDecl>(decl_id);
@@ -477,7 +634,9 @@ void validate_module(ast::AstContext& ast_ctx, ast::ModuleId module, diag::Diagn
         switch (decl.kind) {
             case NodeKind::ProcDecl:
                 validate_proc(ast_ctx.get<ProcDecl>(decl_id), diagnostics);
-                validate_proc_returns(ast_ctx, ast_ctx.get<ProcDecl>(decl_id), diagnostics);
+                validate_proc_returns(ast_ctx, mod, ast_ctx.get<ProcDecl>(decl_id), diagnostics);
+                break;
+            case NodeKind::ComptimeDecl:
                 break;
             case NodeKind::EntryDecl:
                 validate_entry_decl(ast_ctx.get<EntryDecl>(decl_id), seen_entry_names, diagnostics);
@@ -498,6 +657,8 @@ void validate_module(ast::AstContext& ast_ctx, ast::ModuleId module, diag::Diagn
                 break;
             case NodeKind::FormDecl:
                 validate_form(ast_ctx.get<FormDecl>(decl_id), diagnostics);
+                break;
+            case NodeKind::TraitDecl:
                 break;
             case NodeKind::PickDecl:
                 validate_pick(ast_ctx.get<PickDecl>(decl_id), diagnostics);

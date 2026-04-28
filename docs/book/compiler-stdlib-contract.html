@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contrat compilateur &lt;-&gt; stdlib</title>
+<link rel="icon" href="../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../css/site.css">
+<link rel="stylesheet" href="../css/print.css" media="print">
+</head>
+<body class="classic-doc">
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../index.html"><img class="site-brand-mark" src="../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../index.html"><img src="../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../doc.html"><img src="../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../download.html"><img src="../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../source.html"><img src="../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../community.html"><img src="../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../news.html"><img src="../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../diagnostics.html"><img src="../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../suggestions.html"><img src="../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main class="site-main">
+<article class="doc-content">
+<h1>Compiler contract <-> stdlib</h1>
+<p>This document defines the stable contract between the Vitte compiler and the stdlib runtime surface.</p>
+<p>Terminology used in the doc and CLI:</p>
+<ul>
+<li>“Vitte binding surface” replaces “libc surface”.</li>
+<li>“native binding” replaces “interop C”.</li>
+</ul>
+<h2>1. Source of truth</h2>
+<ul>
+<li>Versioned ABI surface file: <code>docs/book/stdlib_abi_surface_v1.txt</code> (historical name).</li>
+<li>Next ABI version: <code>docs/book/stdlib_abi_surface_v2.txt</code> (historical name).</li>
+<li>Source root of the stdlib: dedicated source tree.</li>
+<li>Runtime ABI header: <code>src/compiler/backends/runtime/vitte_runtime.hpp</code>.</li>
+</ul>
+<h2>2. Stable stdlib profiles</h2>
+<p><code>--runtime-profile</code> controls which stdlib modules are allowed. <code>--stdlib-profile</code> is kept as a historical alias.</p>
+<ul>
+<li><code>core</code> (history <code>minimal</code>): only <code>core/**</code>.</li>
+<li><code>desktop</code> (history <code>full</code>): all stdlib modules.</li>
+<li><code>system</code> (history <code>kernel</code>): <code>core/**</code> + <code>kernel/**</code>.</li>
+<li><code>arduino</code>: <code>core/**</code> + <code>arduino/**</code>.</li>
+</ul>
+<p>If an import is not authorized, the compiler emits <code>E1010</code>. If a stdlib module is missing, the compiler emits <code>E1014</code>.</p>
+<p>Module levels:</p>
+<ul>
+<li><code>public</code>: stable import surface.</li>
+<li><code>internal</code>: private namespace (<code>*/internal/*</code>), blocked without owner (<code>E1016</code>).</li>
+<li><code>experimental</code>: activation only with <code>--allow-experimental</code> (<code>E1015</code>).</li>
+</ul>
+<h2>3. Strictness of imports</h2>
+<p><code>--strict-imports</code> (aka <code>--strict-bridge</code>) imposes import hygiene:</p>
+<ul>
+<li>explicit alias required on <code>use</code>/<code>pull</code> (<code>E1011</code>).</li>
+<li>explicit aliases must be used (<code>E1012</code>).</li>
+<li>non-canonical relative paths are rejected (<code>E1013</code>).</li>
+</ul>
+<h2>4. Runtime/native link error boundary</h2>
+<ul>
+<li>Parse layer: <code>E000x</code>.</li>
+<li>Resolve layer: <code>E100x</code> (includes stdlib/import constraints).</li>
+<li>IR layer: <code>E200x</code>.</li>
+<li>Backend layer/toolchain: <code>E300x</code>.</li>
+</ul>
+<h2>5. Tools</h2>
+<ul>
+<li>Export stdlib symbol map:</li>
+<li><code>vitte check --dump-stdlib-map &lt;file.vit&gt;</code></li>
+<li>Export the full module index:</li>
+<li><code>vitte check --dump-module-index &lt;file.vit&gt;</code></li>
+<li>Graph and doctor:</li>
+<li><code>vitte mod graph &lt;file.vit&gt;</code></li>
+<li><code>vitte mod doctor &lt;file.vit&gt;</code></li>
+<li>Check surface ABI against stdlib source:</li>
+<li><code>tools/lint_stdlib_api.py</code></li>
+<li>ABI compatibility issue:</li>
+<li><code>tools/check_stdlib_abi_compat.py</code></li>
+<li>Profile Snapshots:</li>
+<li><code>tools/stdlib_profile_snapshots.sh</code></li>
+</ul>
+<h2>6. Binding surface name</h2>
+<p>For documentation and examples of system/native binding, prefer stdlib-oriented names:</p>
+<ul>
+<li><code>print</code></li>
+<li><code>read</code></li>
+<li><code>path</code></li>
+<li><code>env</code></li>
+<li><code>bytes</code></li>
+<li><code>alloc</code></li>
+<li><code>process</code></li>
+</ul>
+<p>Bridge module plan in the doc:</p>
+<ul>
+<li><code>bridge/io</code></li>
+<li><code>bridge/memory</code></li>
+<li><code>bridge/system</code></li>
+<li><code>bridge/time</code></li>
+<li><code>bridge/net</code></li>
+</ul>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/compiler-stdlib-contract.html</p>
+<p><a href="../index.html">Back to home</a></p>
+</footer>
+</div>
+</body>
+</html>

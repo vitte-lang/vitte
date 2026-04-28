@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>22. HTTP Project</title>
+<link rel="icon" href="../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../css/site.css">
+<link rel="stylesheet" href="../../css/print.css" media="print">
+</head>
+<body class="classic-doc">
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../../index.html"><img class="site-brand-mark" src="../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../../index.html"><img src="../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../doc.html"><img src="../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../download.html"><img src="../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../source.html"><img src="../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../community.html"><img src="../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../news.html"><img src="../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../diagnostics.html"><img src="../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../suggestions.html"><img src="../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main class="site-main">
+<article class="doc-content">
+<h1>22. HTTP Project</h1>
+<p>Level: Advanced</p>
+<p>Prerequisites: previous chapter <code>docs/book/chapters/21-cli-project.html</code> and <code>docs/book/glossary.html</code>. See also: <code>docs/book/chapters/21-cli-project.html</code>, <code>docs/book/chapters/23-system-project.html</code>, <code>docs/book/glossary.html</code>.</p>
+<h2>Concrete Problem</h2>
+<p>Real situation: for HTTP Project, the question is not 'which rule to write' but 'which path the code really takes'. This reading by execution avoids vague interpretations. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
+<h2>Red Thread (Single Project)</h2>
+<p>Common thread: you find the same pipeline to observe what really changes when you modify a branch. Educational objective: understand why a line exists and what it changes in the trajectory of the program.</p>
+<h2>Why it matters</h2>
+<p>This chapter gives you a clear understanding of <strong>HTTP Project</strong>. You will find the framework, the invariants and the reading decisions useful in practice.</p>
+<h2>What you will do</h2>
+<p>You'll read the snippets in actual execution order, then validate the expected outputs on a nominal case and an error case.</p>
+<h2>Minimal example</h2>
+<p>Recommended first reflex: read the entries and conditions first, then only the syntactic form.</p>
+<h2>Step-by-step explanation</h2>
+<ol>
+<li>Identify the intent of the block.</li>
+<li>Check the main condition or test.</li>
+<li>Confirm the observable output.</li>
+<li>Note how this block serves <strong>HTTP Project</strong> throughout the chapter.</li>
+</ol>
+<h2>Common pitfalls</h2>
+<ul>
+<li>Read the syntax without checking the behavior.</li>
+<li>Mix general rule and error cases in the same explanation.</li>
+<li>Introduce an optimization before having stabilized the <strong>HTTP project</strong> flow.</li>
+</ul>
+<h2>Short exercise</h2>
+<p>Take an example from the chapter on <strong>HTTP Project</strong>. Change a condition or input value, then check if the result remains as expected.</p>
+<h2>Summary in 5 points</h2>
+<ol>
+<li>You know the objective of the chapter on <strong>HTTP Project</strong>.</li>
+<li>You know how to read an example of the chapter in a structured way.</li>
+<li>You distinguish nominal case and error case.</li>
+<li>You avoid the most common pitfalls.</li>
+<li>You can reuse these rules in the next chapter.</li>
+</ol>
+<h2>Local level</h2>
+<ul>
+<li>Local core section level: Advanced.</li>
+<li>Local level guided examples: Intermediate.</li>
+<li>Local level diagnostic exercises: Advanced.</li>
+</ul>
+<p>This chapter pursues a clear objective: to build a realistic HTTP service by strictly separating transport, business routing and final status projection. The goal is not to stack conditions, but to lay down a stable, testable and traceable pipeline.</p>
+<p>Reference: see the <code>Vitte Glossary</code> in <code>docs/book/glossary.html</code> and the <code>Editorial Checklist</code> in <code>docs/book/checklist.html</code>. Complement: <code>docs/book/classic-mistakes.html</code>.</p>
+<p>Chapter pipeline diagram:</p>
+<ul>
+<li>Request -> Validate -> Route -> Execute -> Map Response.</li>
+<li>Input: raw request (method, path, payload, token).</li>
+<li>Processing: transport validation then business routing.</li>
+<li>Output: <code>HttpResult</code> then final HTTP code.</li>
+<li>Invariant: a given error always produces the same status.</li>
+</ul>
+<h2>22.0 Minimum HTTP rule</h2>
+<p>Rule retained for this chapter:</p>
+<ul>
+<li>Method: <code>GET</code> only (other methods are rejected).</li>
+<li>Supported paths: <code>/health</code>, <code>/metrics</code>.</li>
+<li>Payload: length <code>body_len &gt;= 0</code>.</li>
+<li>Authentication: <code>auth_token</code> not empty.</li>
+<li>Expected status:</li>
+<li>nominal <code>/health</code> or <code>/metrics</code> validated: <code>200</code>.</li>
+<li>invalid method or invalid payload: <code>400</code>.</li>
+<li>missing token: <code>401</code>.</li>
+<li>unknown path: <code>404</code>.</li>
+<li>unforeseen case: <code>500</code>.</li>
+</ul>
+<p>Standardized status table:</p>
+<ul>
+<li><code>400</code>: cause <code>requête invalide</code> ; responsible layer <code>validation transport</code> ; corrective action <code>corriger méthode/payload côté client</code>.</li>
+<li><code>401</code>: cause <code>auth manquante/invalide</code> ; responsible layer <code>validation transport</code> ; corrective action <code>fournir un token valide</code>.</li>
+<li><code>404</code>: cause <code>route absente</code> ; responsible layer <code>routage</code> ; corrective action <code>utiliser un chemin exposé</code>.</li>
+<li><code>500</code>: cause <code>cas inattendu</code> ; responsible layer <code>projection finale</code> ; corrective action <code>journaliser + corriger la branche manquante</code>.</li>
+</ul>
+<h2>22.1 Pose the transport and error model</h2>
+<p>Boundary: this block does not know HTTP at the socket/server level, it only models data and results.</p>
+<pre><code class="language-vit">form HttpRequest {
+  method: string
+  path: string
+  body_len: int
+  auth_token: string
+}
+
+pick HttpError {
+  case BadRequest
+  case Unauthorized
+  case NotFound
+}
+
+pick HttpResult {
+  case Ok(code: int)
+  case Err(e: HttpError)
+}</code></pre>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>form HttpRequest {</code> opens the transport request structure used by the entire pipeline.</li>
+<li><code>method: string</code> adds HTTP method (<code>GET</code>, <code>POST</code>, etc.) for input validation.</li>
+<li><code>path: string</code> adds the route path to resolve.</li>
+<li><code>body_len: int</code> adds payload length to detect invalid format.</li>
+<li><code>auth_token: string</code> adds minimum authentication information.</li>
+<li><code>pick HttpError {</code> opens the closed set of HTTP layer business errors.</li>
+<li><code>case BadRequest</code> represents an invalid client-side request.</li>
+<li><code>case Unauthorized</code> represents an authentication failure.</li>
+<li><code>case NotFound</code> represents a missing route.</li>
+<li><code>pick HttpResult {</code> encodes a uniform result for all steps.</li>
+<li><code>case Ok(code: int)</code> carries an explicit nominal status.</li>
+<li><code>case Err(e: HttpError)</code> carries a typed error for the final projection.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: if a step detects a fault, it returns <code>Err(..)</code> rather than a magic integer.</li>
+<li>Nominal case: a success transports <code>Ok(code)</code>.</li>
+<li>Testable observation: possible transitions are bounded by <code>HttpResult</code>.</li>
+</ul>
+<p>Quick check: what happens if the input is invalid? Expected response: the value changes to <code>Err(..)</code> from the first test concerned.</p>
+<h2>22.2 Validate the request at the system edge</h2>
+<p>Boundary: This block projects input HTTP constraints, but does not yet decide the business logic.</p>
+<pre><code class="language-vit">pub proc validate_transport(r: HttpRequest) -&gt; HttpResult {
+
+  if r.method != &quot;GET&quot; { give Err(BadRequest) }
+
+  if r.path == &quot;&quot; { give Err(BadRequest) }
+
+  if r.body_len &lt; 0 { give Err(BadRequest) }
+
+  if r.auth_token == &quot;&quot; { give Err(Unauthorized) }
+
+  give Ok(200)
+}</code></pre>
+<p>Reinforced validation, concrete invalid entries:</p>
+<ul>
+<li><code>method=&quot;POST&quot;</code> -> <code>Err(BadRequest)</code>.</li>
+<li><code>path=&quot;&quot;</code> -> <code>Err(BadRequest)</code>.</li>
+<li><code>auth_token=&quot;&quot;</code> -> <code>Err(Unauthorized)</code>.</li>
+</ul>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>if r.method != &quot;GET&quot; { give Err(BadRequest) }</code> immediately rejects out-of-rule methods.</li>
+<li><code>if r.path == &quot;&quot; { give Err(BadRequest) }</code> rejects an empty route.</li>
+<li><code>if r.body_len &lt; 0 { give Err(BadRequest) }</code> rejects inconsistent length.</li>
+<li><code>if r.auth_token == &quot;&quot; { give Err(Unauthorized) }</code> rejects the absence of token.</li>
+<li><code>give Ok(200)</code> authorizes the continuation of the pipeline when the transport is valid.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: <code>path=&quot;&quot;</code> gives <code>Err(BadRequest)</code>.</li>
+<li>Nominal case: <code>GET /health</code> with non-empty token gives <code>Ok(200)</code>.</li>
+<li>Testable observation: the same invalid query always produces the same error.</li>
+</ul>
+<p>Quick check: what happens if the input is invalid? Expected response: the function stops on the first invalid test.</p>
+<h2>22.3 Isolate path routing</h2>
+<p>Border: this block does not know raw transport, it only routes an already validated path.</p>
+<pre><code class="language-vit">pub proc route_path(path: string) -&gt; HttpResult {
+
+  if path == &quot;/health&quot; { give Ok(200) }
+
+  if path == &quot;/metrics&quot; { give Ok(200) }
+
+  give Err(NotFound)
+}</code></pre>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>if path == &quot;/health&quot; { give Ok(200) }</code> nominal health route.</li>
+<li><code>if path == &quot;/metrics&quot; { give Ok(200) }</code> nominal route of metrics.</li>
+<li><code>give Err(NotFound)</code> unknown route explicitly typed.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: <code>/unknown</code> gives <code>Err(NotFound)</code>.</li>
+<li>Nominal case: <code>/health</code> gives <code>Ok(200)</code>.</li>
+<li>Testable observation: routing is stable and independent of auth.</li>
+</ul>
+<p>Quick check: what happens if the input is invalid? Expected response: Unknown route is converted to <code>Err(NotFound)</code>.</p>
+<h2>22.4 Compose steps in a handler</h2>
+<p>Border: this block orchestrates transport + routing, without duplicating the local rules of each layer.</p>
+<pre><code class="language-vit">pub proc handle(r: HttpRequest) -&gt; HttpResult {
+  let t: HttpResult = validate_transport(r)
+
+  match t {
+    case Err(e) { give Err(e) }
+    case Ok(_) { give route_path(r.path) }
+    otherwise { give Err(BadRequest) }
+  }
+}</code></pre>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>let t: HttpResult = validate_transport(r)</code> executes the transport boundary first.</li>
+<li><code>case Err(e) { give Err(e) }</code> immediately shorts on failure.</li>
+<li><code>case Ok(_) { give route_path(r.path) }</code> switches to routing only if transport is valid.</li>
+<li><code>otherwise { give Err(BadRequest) }</code> locks a stable fallback.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: token missing -> <code>Err(Unauthorized)</code> without going to routing.</li>
+<li>Nominal case: valid transport + <code>/metrics</code> -> <code>Ok(200)</code>.</li>
+<li>Testable observation: no validation duplication in the router.</li>
+</ul>
+<p>Quick check: what happens if the input is invalid? Expected response: <code>Err(e)</code> branch returns the already qualified error.</p>
+<h2>22.5 Convert result to final HTTP status</h2>
+<p>Border: this block projects in HTTP.</p>
+<pre><code class="language-vit">pub proc to_http_code(r: HttpResult) -&gt; int {
+
+  match r {
+    case Ok(c) { give c }
+    case Err(BadRequest) { give 400 }
+    case Err(Unauthorized) { give 401 }
+    case Err(NotFound) { give 404 }
+    otherwise { give 500 }
+  }
+}</code></pre>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>case Ok(c) { give c }</code> maintains nominal status.</li>
+<li><code>case Err(BadRequest) { give 400 }</code> maps the client error to <code>400</code>.</li>
+<li><code>case Err(Unauthorized) { give 401 }</code> maps the invalid auth to <code>401</code>.</li>
+<li><code>case Err(NotFound) { give 404 }</code> maps absent route to <code>404</code>.</li>
+<li><code>otherwise { give 500 }</code> protects production with a safety net.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: Unexpected error -> <code>500</code>.</li>
+<li>Nominal case: <code>Ok(200)</code> -> <code>200</code>.</li>
+<li>Testable observation: each known <code>HttpError</code> has a stable status.</li>
+</ul>
+<p>Quick check: what happens if the input is invalid? Expected answer: it is translated into an explicit, unambiguous 4xx/5xx code.</p>
+<h2>22.6 Idempotence (operation rule)</h2>
+<p>Rule of this chapter:</p>
+<ul>
+<li><code>GET /health</code>: idempotent, no side effects, repeatable without change of state.</li>
+<li><code>GET /metrics</code>: idempotent in this model, read-only.</li>
+<li>Transport validation: pure, without global mutation.</li>
+</ul>
+<p>Practical consequence: replaying the same valid request produces the same status and does not modify the state of the service.</p>
+<h2>22.7 Complete traceable scenario</h2>
+<p>Mandatory journey:</p>
+<ul>
+<li>Raw input: <code>method=&quot;GET&quot;</code>, <code>path=&quot;/health&quot;</code>, <code>body_len=0</code>, <code>auth_token=&quot;t&quot;</code>.</li>
+<li>Validate: <code>Ok(200)</code>.</li>
+<li>Route: <code>Ok(200)</code>.</li>
+<li>Execute (handler): <code>Ok(200)</code>.</li>
+<li>Map Response: <code>200</code>.</li>
+</ul>
+<p>Invalid route (auth missing):</p>
+<ul>
+<li>Raw input: <code>auth_token=&quot;&quot;</code>.</li>
+<li>Validate: <code>Err(Unauthorized)</code>.</li>
+<li>Handler: short circuit <code>Err(Unauthorized)</code>.</li>
+<li>Map Response: <code>401</code>.</li>
+</ul>
+<h2>22.8 Minimal integration tests</h2>
+<ol>
+<li>Nominal:</li>
+<li>Request: <code>GET /health</code>, <code>body_len=0</code>, non-empty token.</li>
+<li>Expected: <code>to_http_code(handle(r)) == 200</code>.</li>
+</ol>
+<ol>
+<li>Auth fail:</li>
+<li>Request: <code>GET /health</code>, empty token.</li>
+<li>Expected: <code>to_http_code(handle(r)) == 401</code>.</li>
+</ol>
+<ol>
+<li>Route not found:</li>
+<li>Request: <code>GET /unknown</code>, non-empty token.</li>
+<li>Expected: <code>to_http_code(handle(r)) == 404</code>.</li>
+</ol>
+<h2>22.9 Classic HTTP errors</h2>
+<ul>
+<li>Mapping to status too early: we lose business information (<code>Err(..)</code>) and complicate debugging.</li>
+<li>Duplicate validation in multiple layers: discrepancies and inconsistencies guaranteed.</li>
+<li>Mixing transport and business in a single function: fragile tests, expensive maintenance.</li>
+<li>Forget the fallback <code>500</code>: unstable behavior in unexpected cases.</li>
+</ul>
+<h2>Error table -> diagnosis -> correction</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Error</th><th>Diagnosis</th><th>Correction</th></tr>
+<tr><td>Invalid entry</td><td>Validation missing or too late.</td><td>Centralize pipeline input validation.</td></tr>
+<tr><td>Inconsistent state</td><td>Partial mutation or unverified invariant.</td><td>Apply the principle of atomicity and reject otherwise.</td></tr>
+<tr><td>Unexpected exit</td><td>Projection layer mixed with business logic.</td><td>Separate <code>apply</code> (job) and <code>project</code> (output).</td></tr>
+</table>
+<h2>Keep in mind</h2>
+<p>A robust HTTP service starts with clear boundaries: transport validation, independent routing, minimal orchestration, centralized final projection. If each layer tests its responsibility, the system becomes readable, testable and stable.</p>
+<p>Practical quality criterion for this chapter:</p>
+<ul>
+<li>you know how to immediately locate the layer responsible for an error.</li>
+<li>you can replay a complete query flow without ambiguity.</li>
+<li>you can add a route without breaking the status mapping.</li>
+</ul>
+<h2>Quick check</h2>
+<p>Question: What happens if the entry is invalid? Expected response: A validation test or fallback route converts the input to <code>Err(..)</code> and then to stable HTTP code.</p>
+<h2>Try this</h2>
+<ol>
+<li>Add the <code>GET /ready</code> route while maintaining the validation/routing/projection separation.</li>
+<li>Add a rule <code>body_len &gt; 1_000_000</code> -> <code>Err(BadRequest)</code> and check the impact on tests.</li>
+</ol>
+<h2>If you're stuck</h2>
+<ul>
+<li>The new route must be added in <code>route_path</code> without modifying <code>validate_transport</code>.</li>
+<li>The new size test must live in <code>validate_transport</code> and keep the projection centralized in <code>to_http_code</code>.</li>
+</ul>
+<h2>HTTP micro challenge</h2>
+<p>Add <code>429 Too Many Requests</code> without breaking existing mappings.</p>
+<p>Design constraint:</p>
+<ul>
+<li>extend <code>HttpError</code> with a new case.</li>
+<li>do not duplicate status conversion outside <code>to_http_code</code>.</li>
+<li>ensure that <code>200/401/404</code> tests remain unchanged.</li>
+</ul>
+<h2>EBNF compliant</h2>
+<<< quick check >>>
+- Top-level: only module declarations (`space`, `pull`, `use`, `share`, `const`, `type`, `form`, `pick`, `proc`, `entry`, `macro`) appear outside the block.
+- Statements: instructions (`let`, `make`, `set`, `give`, `emit`, `if`, `loop`, `for`, `match`, `select`, `return`) remain in a `block`.
+- Primary types: `bool`, `string`, `int`, `i32`, `i64`, `i128`, `u32`, `u64`, `u128` are accepted in `type_primary`.
+<h2>Keywords to review</h2>
+<ul>
+<li><code>docs/book/chapters/keywords/case.html</code>.</li>
+<li><code>docs/book/chapters/keywords/entry.html</code>.</li>
+<li><code>docs/book/chapters/keywords/form.html</code>.</li>
+<li><code>docs/book/chapters/keywords/give.html</code>.</li>
+<li><code>docs/book/chapters/keywords/if.html</code>.</li>
+</ul>
+<h2>Goal</h2>
+<p>This chapter sets a clear and verifiable operational objective for the concept studied.</p>
+<h2>Example</h2>
+<p>Concrete example: starting from a simple input, applying a transformation, then observing the expected output.</p>
+<h2>Why it matters</h2>
+<p>This block exists to connect syntax to business intent, reduce ambiguity, and prepare for testing.</p>
+<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START --></p>
+<h2>Representative examples based on chapter code</h2>
+<p>Theme: <strong>HTTP Project</strong>. This section avoids generalizations and starts from a real extract.</p>
+<h3>Example A: Executable reading of the main snippet</h3>
+<pre><code class="language-vit">form HttpRequest {
+  method: string
+  path: string
+  body_len: int
+  auth_token: string
+}
+
+pick HttpError {
+  case BadRequest
+  case Unauthorized
+  case NotFound
+}
+
+pick HttpResult {
+  case Ok(code: int)
+  case Err(e: HttpError)
+}</code></pre>
+<p>Reading line by line:</p>
+<ol>
+<li><code>form HttpRequest {</code> -> participates in the processing process.</li>
+<li><code>method: string</code> -> participates in the processing process.</li>
+<li><code>path: string</code> -> participates in the processing process.</li>
+<li><code>body_len: int</code> -> participates in the processing process.</li>
+<li><code>auth_token: string</code> -> participates in the processing process.</li>
+<li><code>}</code> -> participates in the processing process.</li>
+<li><code>pick HttpError {</code> -> participates in the processing process.</li>
+<li><code>case BadRequest</code> -> participates in the processing process.</li>
+<li><code>case Unauthorized</code> -> participates in the processing process.</li>
+<li><code>case NotFound</code> -> participates in the processing process.</li>
+</ol>
+<h3>Example B: error case variant (same intention, safe behavior)</h3>
+<p>Goal: keep the business logic while adding an explicit test.</p>
+<p>Steps:</p>
+<ol>
+<li>Identify the line that decides the exit.</li>
+<li>Add a test before this line.</li>
+<li>Check the new output on a limit input.</li>
+</ol>
+<h3>Example C: reproducible bug then local correction</h3>
+<p>Procedure:</p>
+<ol>
+<li>Introduce a type mismatch on a call.</li>
+<li>Compile and read the first diagnosis.</li>
+<li>Fix a single line (no global refactor).</li>
+<li>Recompile and check the nominal return.</li>
+</ol>
+<h3>Expected result</h3>
+<ul>
+<li>The reader understands what the code does without unnecessary abstraction.</li>
+<li>Each example is linked to a concrete action.</li>
+<li>The correction is reproducible and testable.</li>
+</ul>
+<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END --></p>
+<h2>Extended Example</h2>
+<pre><code class="language-vit">// Scenario projet http: execution complete et verifiable
+space demo/projet-http
+
+form Request { id: int amount: int quota: int }
+pick Result { case Accepted(total: int) case Rejected(code: int) }
+
+// Entrée applicative: validation des invariants de requête
+pub proc parse_request(r: Request) -&gt; Result {
+
+  if r.id &lt;= 0 { give Result.Rejected(91) }
+
+  if r.quota &lt; 0 { give Result.Rejected(92) }
+
+  if r.amount &lt; 0 { give Result.Rejected(93) }
+
+  give Result.Accepted(r.amount)
+}
+
+// Politique métier: applique les règles de décision
+pub proc apply_policy(total: int, quota: int) -&gt; Result {
+  let capped: int = total
+  if capped &gt; quota { set capped = quota }
+
+  if capped &lt; 5 { give Result.Rejected(94) }
+
+  give Result.Accepted(capped)
+}
+
+// Persistance simulée: matérialise un résultat sans I/O réel
+pub proc persist_sim(x: Result) -&gt; Result {
+
+  match x {
+    case Accepted(v) {
+      if v % 13 == 0 { give Result.Rejected(95) }
+
+      give Result.Accepted(v)
+    }
+    case Rejected(c) { give Result.Rejected(c) }
+    otherwise { give Result.Rejected(70) }
+  }
+}
+
+// Conversion finale vers un code de sortie
+pub proc to_exit(x: Result) -&gt; int {
+
+  match x {
+    case Accepted(_) { give 0 }
+    case Rejected(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Point d&#x27;entree du scenario
+entry main at core/app {
+  let req: Request = Request(7, 12, 15)
+  let p: Result = parse_request(req)
+  let d: Result = apply_policy(12, req.quota)
+  let s: Result = persist_sim(d)
+  let _probe: int = to_exit(p)
+
+  return to_exit(s)
+}</code></pre>
+<h2>Detailed explanation of the big block</h2>
+<p>This large block shows an entire program, not an isolated extract: we follow the flow from start to finish.</p>
+<h3>1. Role of each party</h3>
+<ul>
+<li>Starting point: <code>entry main at core/app</code>.</li>
+<li><code>parse_request</code>: reads <code>r: Request</code> and returns <code>Result</code>.</li>
+<li><code>apply_policy</code>: reads <code>total: int, quota: int</code> and returns <code>Result</code>.</li>
+<li><code>persist_sim</code>: reads <code>x: Result</code> and returns <code>Result</code>.</li>
+<li><code>to_exit</code>: reads <code>x: Result</code> and returns <code>int</code>.</li>
+</ul>
+<h3>2. Actual execution order</h3>
+<ol>
+<li>The program enters <code>main</code>.</li>
+<li><code>parse_request</code> is called to process the next step.</li>
+<li><code>apply_policy</code> is called to process the next step.</li>
+<li><code>persist_sim</code> is called to process the next step.</li>
+<li><code>to_exit</code> is called to process the next step.</li>
+<li>The final value is converted to process output (<code>return ...</code>).</li>
+</ol>
+<h3>3. Tests that change the path</h3>
+<ul>
+<li>Test evaluated: <code>r.id &lt;= 0</code>.</li>
+<li>Test evaluated: <code>r.quota &lt; 0</code>.</li>
+<li>Test evaluated: <code>r.amount &lt; 0</code>.</li>
+<li>Test evaluated: <code>capped &gt; quota</code>.</li>
+<li>Test evaluated: <code>capped &lt; 5</code>.</li>
+<li>Test evaluated: <code>v % 13 == 0</code>.</li>
+<li>Selection by <code>match x</code>: the path depends on the state received.</li>
+<li>Selection by <code>match x</code>: the path depends on the state received.</li>
+</ul>
+<h3>4. Quick trace with values</h3>
+<ul>
+<li>Nominal example: <code>entrée valide -&gt; parse_request -&gt; apply_policy -&gt; persist_sim -&gt; to_exit -&gt; sortie 0</code>.</li>
+<li>Example error: <code>entrée invalide -&gt; parse_request renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
+</ul>
+<h3>5. Why this division is useful</h3>
+<ul>
+<li>You test each function on its own, then the entire flow.</li>
+<li>You know where to change a rule without breaking the entire program.</li>
+<li>You can explain the output by simply following the calls.</li>
+</ul>
+<h3>6. Quick Check</h3>
+<ol>
+<li>Retry with a normal entry and note the exit.</li>
+<li>Restart with invalid input and check the error code.</li>
+<li>Confirm that the same input always gives the same output.</li>
+</ol>
+<h2>Design Notes</h2>
+<ul>
+<li>The snippet favors explicit boundaries rather than minimalist code.</li>
+<li>Tests are placed early to reduce the cost of diagnosis.</li>
+<li>The output is projected at the end of the flow to keep the business independent of transport.</li>
+</ul>
+<p>Actual error case:</p>
+<ul>
+<li>Degraded or incomplete input: the test must cut the flow early with an explicit exit.</li>
+</ul>
+<p>To test:</p>
+<ul>
+<li>Nominal request -> output 0.</li>
+<li>Invalid input id<=0 -> output 91.</li>
+<li>Business refusal value<5 -> exit 94.</li>
+</ul>
+<h3>7. Line by line (variables + values)</h3>
+<p>Convenient reading: Follow the variables in the actual order of execution, then check the observed output.</p>
+<ul>
+<li>Entry point:</li>
+<li><code>entry main at core/app</code> launches the complete scenario.</li>
+</ul>
+<ul>
+<li>Block functions:</li>
+<li><code>parse_request</code> reads <code>r: Request</code> then returns <code>Result</code>.</li>
+<li><code>apply_policy</code> reads <code>total: int, quota: int</code> then returns <code>Result</code>.</li>
+<li><code>persist_sim</code> reads <code>x: Result</code> then returns <code>Result</code>.</li>
+<li><code>to_exit</code> reads <code>x: Result</code> then returns <code>int</code>.</li>
+</ul>
+<ul>
+<li>Variables created (initial value):</li>
+<li><code>capped: int</code> starts with <code>total</code>.</li>
+<li><code>req: Request</code> starts with <code>Request(7, 12, 15)</code>.</li>
+<li><code>p: Result</code> starts with <code>parse_request(req)</code>.</li>
+<li><code>d: Result</code> starts with <code>apply_policy(12, req.quota)</code>.</li>
+<li><code>s: Result</code> starts with <code>persist_sim(d)</code>.</li>
+<li><code>_probe: int</code> starts with <code>to_exit(p)</code>.</li>
+</ul>
+<ul>
+<li>Variables changed during processing:</li>
+<li><code>capped</code> is updated with <code>quota</code>.</li>
+</ul>
+<ul>
+<li>Conditions that change the path:</li>
+<li>if <code>r.id &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>r.quota &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>r.amount &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>capped &gt; quota</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>capped &lt; 5</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>v % 13 == 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+</ul>
+<ul>
+<li>Nominal trace (example values):</li>
+<li>initialization: capped=total -> req=Request(7, 12, 15) -> p=parse_request(req) -> d=apply_policy(12, req.quota)</li>
+<li>sequence: parse_request -> apply_policy -> persist_sim -> to_exit</li>
+<li>final output on this path: <code>to_exit(s)</code>.</li>
+</ul>
+<ul>
+<li>Error trace (example values):</li>
+<li>if <code>r.id &lt;= 0</code> becomes true, the function returns <code>Result.Rejected(91)</code>.</li>
+</ul>
+<ul>
+<li>Quick check:</li>
+<li>restart with normal input and note the output,</li>
+<li>restart with an invalid entry and note the error code,</li>
+<li>confirm that the same input always produces the same output.</li>
+</ul>
+<h2>Trade-offs</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Constraint</th><th>Option A</th><th>Option B</th><th>Recommended decision</th></tr>
+<tr><td>Priority readability</td><td>Explicit branches</td><td>Compact code</td><td>If the team maintains the code for a long time</td></tr>
+<tr><td>Critical performance</td><td>Targeted specialization</td><td>Generalization</td><td>A if profiling confirms the gain</td></tr>
+<tr><td>Rapid evolution</td><td>Strict contracts</td><td>Implicit conventions</td><td>A to reduce regressions</td></tr>
+</table>
+<h2>Decision According to Constraint</h2>
+<ul>
+<li>If the dominant constraint is safety: validate early, fail explicitly.</li>
+<li>If the dominant constraint is latency: measure first, optimize later.</li>
+<li>If the dominant constraint is scalability: isolate orchestration, decisions and output conversion.</li>
+</ul>
+<h2>Rapid Diagnosis</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Symptom</th><th>Probable cause</th><th>Verification</th><th>Correction</th></tr>
+<tr><td>Unexpected exit</td><td>Test missing or poorly ordered</td><td>Replay with error case</td><td>Reassemble the test before the sensitive area</td></tr>
+<tr><td>Branch not taken</td><td>Condition too broad/too strict</td><td>Trace the effective entry</td><td>Make the condition explicit and tested</td></tr>
+<tr><td>Silent regression</td><td>Implicit rule</td><td>Compare nominal vs. limit</td><td>Formalize the rule in code</td></tr>
+</table>
+<h2>Checkpoint</h2>
+<p>At this point you should know:</p>
+<ul>
+<li>explain the input -> decision -> output flow without ambiguity,</li>
+<li>isolate a real error case and predict its exit,</li>
+<li>identify where to add a test without breaking the nominal.</li>
+</ul>
+<h2>What I would do in code review</h2>
+<ol>
+<li>Verify that input tests are placed before sensitive operations.</li>
+<li>Verify that the business decision is separated from the output projection.</li>
+<li>Verify a nominal test and a limit test that are actually executable.</li>
+</ol>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/chapters/22-http-project.html</p>
+<p><a href="../../index.html">Back to home</a></p>
+</footer>
+</div>
+</body>
+</html>

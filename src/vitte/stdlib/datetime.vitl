@@ -1,244 +1,1506 @@
-space vitte/datetime
+space vitte.stdlib.datetime
 
-<<< =========================================================
-   Date and Time Library — Calendar, timers, timezones
-   ========================================================= >>>
+use vitte.core
 
-use vitte/datetime/datetime
-use vitte/datetime/calendar
-use vitte/datetime/timer
-use vitte/datetime/timezone
+export *
 
-share all
-const FEBRUARY: i32 = 2
-const MARCH: i32 = 3
-const APRIL: i32 = 4
-const MAY: i32 = 5
-const JUNE: i32 = 6
-const JULY: i32 = 7
-const AUGUST: i32 = 8
-const SEPTEMBER: i32 = 9
-const OCTOBER: i32 = 10
-const NOVEMBER: i32 = 11
-const DECEMBER: i32 = 12
+const NANOS_PER_MICRO: i64 = 1000
+const NANOS_PER_MILLI: i64 = 1000000
+const NANOS_PER_SECOND: i64 = 1000000000
+const SECONDS_PER_MINUTE: i64 = 60
+const MINUTES_PER_HOUR: i64 = 60
+const HOURS_PER_DAY: i64 = 24
+const SECONDS_PER_HOUR: i64 = 3600
+const SECONDS_PER_DAY: i64 = 86400
+const MILLIS_PER_SECOND: i64 = 1000
+const MICROS_PER_SECOND: i64 = 1000000
+const UNIX_EPOCH_YEAR: i32 = 1970
 
-# Datetime structures
+form Duration {
+  seconds: i64,
+  nanos: i32,
+}
+
+form Date {
+  year: i32,
+  month: u8,
+  day: u8,
+}
+
+form Time {
+  hour: u8,
+  minute: u8,
+  second: u8,
+  nano: u32,
+}
+
 form DateTime {
-    year: i32,
-    month: i32,
-    day: i32,
-    hour: i32,
-    minute: i32,
-    second: i32,
-    millisecond: i32
+  date: Date,
+  time: Time,
 }
 
-form TimeSpan {
-    days: i32,
-    hours: i32,
-    minutes: i32,
-    seconds: i32,
-    milliseconds: i32
+form UnixTimestamp {
+  seconds: i64,
+  nanos: i32,
 }
 
-form Timer {
-    start_time: i64,
-    elapsed: i64,
-    running: int
+pick Weekday {
+  Monday,
+  Tuesday,
+  Wednesday,
+  Thursday,
+  Friday,
+  Saturday,
+  Sunday,
 }
 
-# Current time
-proc now() -> DateTime {
-  give DateTime {
-    year: 2026,
-    month: 4,
-    day: 20,
-    hour: 0,
-    minute: 0,
-    second: 0,
-    millisecond: 0
+pick Month {
+  January,
+  February,
+  March,
+  April,
+  May,
+  June,
+  July,
+  August,
+  September,
+  October,
+  November,
+  December,
+}
+
+pick DateTimeError {
+  InvalidYear,
+  InvalidMonth,
+  InvalidDay,
+  InvalidHour,
+  InvalidMinute,
+  InvalidSecond,
+  InvalidNanosecond,
+  InvalidTimestamp,
+  ParseError,
+}
+
+proc duration_new(seconds: i64, nanos: i32) -> Duration {
+  let extra: i64 = nanos / 1000000000
+  let rem: i32 = nanos % 1000000000
+
+  if rem < 0 {
+    return Duration {
+      seconds: seconds + extra - 1,
+      nanos: rem + 1000000000,
+    }
+  }
+
+  return Duration {
+    seconds: seconds + extra,
+    nanos: rem,
   }
 }
 
-proc now_ms() -> i64 {
-  give 0
+proc duration_zero() -> Duration {
+  return Duration { seconds: 0, nanos: 0 }
 }
 
-proc now_ns() -> i64 {
-  give 0
+proc duration_from_seconds(seconds: i64) -> Duration {
+  return Duration { seconds: seconds, nanos: 0 }
 }
 
-# Date parsing and formatting
-proc date_parse(str: string) -> DateTime {
-  give DateTime {
-    year: 2026,
-    month: 4,
-    day: 20,
-    hour: 0,
-    minute: 0,
-    second: 0,
-    millisecond: 0
+proc duration_from_millis(ms: i64) -> Duration {
+  let seconds: i64 = ms / 1000
+  let rem: i64 = ms % 1000
+
+  return duration_new(seconds, rem * NANOS_PER_MILLI)
+}
+
+proc duration_from_micros(us: i64) -> Duration {
+  let seconds: i64 = us / 1000000
+  let rem: i64 = us % 1000000
+
+  return duration_new(seconds, rem * NANOS_PER_MICRO)
+}
+
+proc duration_from_nanos(ns: i64) -> Duration {
+  let seconds: i64 = ns / NANOS_PER_SECOND
+  let rem: i64 = ns % NANOS_PER_SECOND
+
+  return duration_new(seconds, rem)
+}
+
+proc duration_total_seconds(d: Duration) -> i64 {
+  return d.seconds
+}
+
+proc duration_total_millis(d: Duration) -> i64 {
+  return d.seconds * 1000 + (d.nanos as i64 / NANOS_PER_MILLI)
+}
+
+proc duration_total_micros(d: Duration) -> i64 {
+  return d.seconds * 1000000 + (d.nanos as i64 / NANOS_PER_MICRO)
+}
+
+proc duration_total_nanos(d: Duration) -> i64 {
+  return d.seconds * NANOS_PER_SECOND + d.nanos as i64
+}
+
+proc duration_add(a: Duration, b: Duration) -> Duration {
+  return duration_new(a.seconds + b.seconds, a.nanos + b.nanos)
+}
+
+proc duration_sub(a: Duration, b: Duration) -> Duration {
+  return duration_new(a.seconds - b.seconds, a.nanos - b.nanos)
+}
+
+proc duration_neg(d: Duration) -> Duration {
+  return duration_new(0 - d.seconds, 0 - d.nanos)
+}
+
+proc duration_cmp(a: Duration, b: Duration) -> i32 {
+  if a.seconds < b.seconds {
+    return -1
   }
-}
 
-proc date_parse_format(str: string, format: string) -> DateTime {
-  give DateTime {
-    year: 2026,
-    month: 4,
-    day: 20,
-    hour: 0,
-    minute: 0,
-    second: 0,
-    millisecond: 0
+  if a.seconds > b.seconds {
+    return 1
   }
+
+  if a.nanos < b.nanos {
+    return -1
+  }
+
+  if a.nanos > b.nanos {
+    return 1
+  }
+
+  return 0
 }
 
-proc date_to_string(dt: DateTime) -> string {
-  give ""
+proc duration_eq(a: Duration, b: Duration) -> bool {
+  return a.seconds == b.seconds and a.nanos == b.nanos
 }
 
-proc date_format(dt: DateTime, format: string) -> string {
-  give ""
+proc duration_lt(a: Duration, b: Duration) -> bool {
+  return duration_cmp(a, b) < 0
 }
 
-proc date_to_iso8601(dt: DateTime) -> string {
-  give ""
+proc duration_lte(a: Duration, b: Duration) -> bool {
+  return duration_cmp(a, b) <= 0
 }
 
-# Date arithmetic
-proc date_add_days(dt: DateTime, days: i32) -> DateTime {
-  dt.day = dt.day + days
-  give dt
+proc duration_gt(a: Duration, b: Duration) -> bool {
+  return duration_cmp(a, b) > 0
 }
 
-proc date_add_months(dt: DateTime, months: i32) -> DateTime {
-  dt.month = dt.month + months
-  give dt
+proc duration_gte(a: Duration, b: Duration) -> bool {
+  return duration_cmp(a, b) >= 0
 }
 
-proc date_add_years(dt: DateTime, years: i32) -> DateTime {
-  dt.year = dt.year + years
-  give dt
+proc is_leap_year(year: i32) -> bool {
+  if year % 400 == 0 {
+    return true
+  }
+
+  if year % 100 == 0 {
+    return false
+  }
+
+  if year % 4 == 0 {
+    return true
+  }
+
+  return false
 }
 
-proc date_add_hours(dt: DateTime, hours: i32) -> DateTime {
-  dt.hour = dt.hour + hours
-  give dt
-}
+proc days_in_month(year: i32, month: u8) -> u8 {
+  if month == 1 {
+    return 31
+  }
 
-proc date_add_minutes(dt: DateTime, minutes: i32) -> DateTime {
-  dt.minute = dt.minute + minutes
-  give dt
-}
+  if month == 2 {
+    if is_leap_year(year) {
+      return 29
+    }
 
-proc date_add_seconds(dt: DateTime, seconds: i32) -> DateTime {
-  dt.second = dt.second + seconds
-  give dt
-}
+    return 28
+  }
 
-# Date comparison
-proc date_equals(dt1: DateTime, dt2: DateTime) -> int {
-  give 0
-}
+  if month == 3 {
+    return 31
+  }
 
-proc date_before(dt1: DateTime, dt2: DateTime) -> int {
-  give 0
-}
+  if month == 4 {
+    return 30
+  }
 
-proc date_after(dt1: DateTime, dt2: DateTime) -> int {
-  give 0
-}
+  if month == 5 {
+    return 31
+  }
 
-proc date_difference_days(dt1: DateTime, dt2: DateTime) -> i32 {
-  give 0
-}
+  if month == 6 {
+    return 30
+  }
 
-proc date_difference_hours(dt1: DateTime, dt2: DateTime) -> i32 {
-  give 0
-}
+  if month == 7 {
+    return 31
+  }
 
-proc date_difference_seconds(dt1: DateTime, dt2: DateTime) -> i64 {
-  give 0
-}
+  if month == 8 {
+    return 31
+  }
 
-# Day/Month operations
-proc get_day_of_week(dt: DateTime) -> i32 {
-  give 0
-}
+  if month == 9 {
+    return 30
+  }
 
-proc get_day_of_year(dt: DateTime) -> i32 {
-  give 0
-}
+  if month == 10 {
+    return 31
+  }
 
-proc get_week_number(dt: DateTime) -> i32 {
-  give 0
-}
+  if month == 11 {
+    return 30
+  }
 
-proc is_leap_year(year: i32) -> int {
-  give 0
-}
+  if month == 12 {
+    return 31
+  }
 
-proc days_in_month(year: i32, month: i32) -> i32 {
-  give 0
+  return 0
 }
 
 proc days_in_year(year: i32) -> i32 {
-  give 0
+  if is_leap_year(year) {
+    return 366
+  }
+
+  return 365
 }
 
-# Timer operations
-proc timer_new() -> Timer {
-  give Timer {
-    start_time: 0,
-    elapsed: 0,
-    running: 0
+proc month_to_number(month: Month) -> u8 {
+  match month {
+    case January => 1
+    case February => 2
+    case March => 3
+    case April => 4
+    case May => 5
+    case June => 6
+    case July => 7
+    case August => 8
+    case September => 9
+    case October => 10
+    case November => 11
+    case December => 12
   }
 }
 
-proc timer_start(t: Timer) -> int {
-  t.running = 1
-  t.start_time = now_ms()
-  give 0
+proc number_to_month(n: u8) -> ?Month {
+  if n == 1 {
+    return Month.January
+  }
+
+  if n == 2 {
+    return Month.February
+  }
+
+  if n == 3 {
+    return Month.March
+  }
+
+  if n == 4 {
+    return Month.April
+  }
+
+  if n == 5 {
+    return Month.May
+  }
+
+  if n == 6 {
+    return Month.June
+  }
+
+  if n == 7 {
+    return Month.July
+  }
+
+  if n == 8 {
+    return Month.August
+  }
+
+  if n == 9 {
+    return Month.September
+  }
+
+  if n == 10 {
+    return Month.October
+  }
+
+  if n == 11 {
+    return Month.November
+  }
+
+  if n == 12 {
+    return Month.December
+  }
+
+  return null
 }
 
-proc timer_stop(t: Timer) -> int {
-  t.running = 0
-  give 0
+proc month_name(month: u8) -> string {
+  if month == 1 {
+    return "January"
+  }
+
+  if month == 2 {
+    return "February"
+  }
+
+  if month == 3 {
+    return "March"
+  }
+
+  if month == 4 {
+    return "April"
+  }
+
+  if month == 5 {
+    return "May"
+  }
+
+  if month == 6 {
+    return "June"
+  }
+
+  if month == 7 {
+    return "July"
+  }
+
+  if month == 8 {
+    return "August"
+  }
+
+  if month == 9 {
+    return "September"
+  }
+
+  if month == 10 {
+    return "October"
+  }
+
+  if month == 11 {
+    return "November"
+  }
+
+  if month == 12 {
+    return "December"
+  }
+
+  return "Invalid"
 }
 
-proc timer_reset(t: Timer) -> int {
-  t.elapsed = 0
-  t.running = 0
-  give 0
+proc month_short_name(month: u8) -> string {
+  if month == 1 {
+    return "Jan"
+  }
+
+  if month == 2 {
+    return "Feb"
+  }
+
+  if month == 3 {
+    return "Mar"
+  }
+
+  if month == 4 {
+    return "Apr"
+  }
+
+  if month == 5 {
+    return "May"
+  }
+
+  if month == 6 {
+    return "Jun"
+  }
+
+  if month == 7 {
+    return "Jul"
+  }
+
+  if month == 8 {
+    return "Aug"
+  }
+
+  if month == 9 {
+    return "Sep"
+  }
+
+  if month == 10 {
+    return "Oct"
+  }
+
+  if month == 11 {
+    return "Nov"
+  }
+
+  if month == 12 {
+    return "Dec"
+  }
+
+  return "Invalid"
 }
 
-proc timer_elapsed_ms(t: Timer) -> i64 {
-  give t.elapsed
+proc weekday_name(day: Weekday) -> string {
+  match day {
+    case Monday => "Monday"
+    case Tuesday => "Tuesday"
+    case Wednesday => "Wednesday"
+    case Thursday => "Thursday"
+    case Friday => "Friday"
+    case Saturday => "Saturday"
+    case Sunday => "Sunday"
+  }
 }
 
-proc timer_elapsed_seconds(t: Timer) -> f64 {
-  give 0.0
+proc weekday_short_name(day: Weekday) -> string {
+  match day {
+    case Monday => "Mon"
+    case Tuesday => "Tue"
+    case Wednesday => "Wed"
+    case Thursday => "Thu"
+    case Friday => "Fri"
+    case Saturday => "Sat"
+    case Sunday => "Sun"
+  }
 }
 
-# Timezone operations
-proc set_timezone(tz_name: string) -> int {
-  give 0
+proc validate_date(date: Date) -> bool {
+  if date.month < 1 or date.month > 12 {
+    return false
+  }
+
+  let max_day: u8 = days_in_month(date.year, date.month)
+
+  if date.day < 1 or date.day > max_day {
+    return false
+  }
+
+  return true
 }
 
-proc get_timezone() -> string {
-  give ""
+proc validate_time(time: Time) -> bool {
+  if time.hour > 23 {
+    return false
+  }
+
+  if time.minute > 59 {
+    return false
+  }
+
+  if time.second > 59 {
+    return false
+  }
+
+  if time.nano >= 1000000000 {
+    return false
+  }
+
+  return true
 }
 
-proc get_utc_offset() -> i32 {
-  give 0
+proc validate_datetime(dt: DateTime) -> bool {
+  return validate_date(dt.date) and validate_time(dt.time)
 }
 
-proc to_utc(dt: DateTime, tz: string) -> DateTime {
-  give dt
+proc date_new(year: i32, month: u8, day: u8) -> ?Date {
+  let d: Date = Date {
+    year: year,
+    month: month,
+    day: day,
+  }
+
+  if validate_date(d) {
+    return d
+  }
+
+  return null
 }
 
-proc from_utc(dt: DateTime, tz: string) -> DateTime {
-  give dt
+proc time_new(hour: u8, minute: u8, second: u8, nano: u32) -> ?Time {
+  let t: Time = Time {
+    hour: hour,
+    minute: minute,
+    second: second,
+    nano: nano,
+  }
+
+  if validate_time(t) {
+    return t
+  }
+
+  return null
 }
 
-share all
+proc datetime_new(year: i32, month: u8, day: u8, hour: u8, minute: u8, second: u8, nano: u32) -> ?DateTime {
+  let d: ?Date = date_new(year, month, day)
+  let t: ?Time = time_new(hour, minute, second, nano)
+
+  if d is not null and t is not null {
+    return DateTime {
+      date: d,
+      time: t,
+    }
+  }
+
+  return null
+}
+
+proc date_ordinal(date: Date) -> i32 {
+  let mut ordinal: i32 = 0
+  let mut m: u8 = 1
+
+  while m < date.month {
+    ordinal = ordinal + days_in_month(date.year, m) as i32
+    m = m + 1
+  }
+
+  return ordinal + date.day as i32
+}
+
+proc date_from_ordinal(year: i32, ordinal: i32) -> ?Date {
+  if ordinal < 1 or ordinal > days_in_year(year) {
+    return null
+  }
+
+  let mut remaining: i32 = ordinal
+  let mut month: u8 = 1
+
+  while month <= 12 {
+    let dim: i32 = days_in_month(year, month) as i32
+
+    if remaining <= dim {
+      return Date {
+        year: year,
+        month: month,
+        day: remaining as u8,
+      }
+    }
+
+    remaining = remaining - dim
+    month = month + 1
+  }
+
+  return null
+}
+
+proc days_before_year(year: i32) -> i64 {
+  let y: i64 = year as i64 - 1
+  return y * 365 + y / 4 - y / 100 + y / 400
+}
+
+proc days_before_month(year: i32, month: u8) -> i32 {
+  let mut days: i32 = 0
+  let mut m: u8 = 1
+
+  while m < month {
+    days = days + days_in_month(year, m) as i32
+    m = m + 1
+  }
+
+  return days
+}
+
+proc date_to_days_since_epoch(date: Date) -> i64 {
+  let current: i64 = days_before_year(date.year)
+  let epoch: i64 = days_before_year(UNIX_EPOCH_YEAR)
+  let before_month: i64 = days_before_month(date.year, date.month) as i64
+  let day_index: i64 = date.day as i64 - 1
+
+  return current - epoch + before_month + day_index
+}
+
+proc days_since_epoch_to_date(days: i64) -> Date {
+  let mut year: i32 = UNIX_EPOCH_YEAR
+  let mut remaining: i64 = days
+
+  if remaining >= 0 {
+    while remaining >= days_in_year(year) as i64 {
+      remaining = remaining - days_in_year(year) as i64
+      year = year + 1
+    }
+  } else {
+    while remaining < 0 {
+      year = year - 1
+      remaining = remaining + days_in_year(year) as i64
+    }
+  }
+
+  let ordinal: i32 = remaining as i32 + 1
+  let d: ?Date = date_from_ordinal(year, ordinal)
+
+  if d is not null {
+    return d
+  }
+
+  return Date {
+    year: UNIX_EPOCH_YEAR,
+    month: 1,
+    day: 1,
+  }
+}
+
+proc time_to_seconds(time: Time) -> i64 {
+  return time.hour as i64 * SECONDS_PER_HOUR
+       + time.minute as i64 * SECONDS_PER_MINUTE
+       + time.second as i64
+}
+
+proc seconds_to_time(seconds: i64, nanos: i32) -> Time {
+  let mut s: i64 = seconds
+
+  if s < 0 {
+    s = 0
+  }
+
+  let hour: u8 = (s / SECONDS_PER_HOUR) as u8
+  let rem1: i64 = s % SECONDS_PER_HOUR
+  let minute: u8 = (rem1 / SECONDS_PER_MINUTE) as u8
+  let second: u8 = (rem1 % SECONDS_PER_MINUTE) as u8
+
+  return Time {
+    hour: hour,
+    minute: minute,
+    second: second,
+    nano: nanos as u32,
+  }
+}
+
+proc datetime_to_unix(dt: DateTime) -> UnixTimestamp {
+  let days: i64 = date_to_days_since_epoch(dt.date)
+  let seconds: i64 = days * SECONDS_PER_DAY + time_to_seconds(dt.time)
+
+  return UnixTimestamp {
+    seconds: seconds,
+    nanos: dt.time.nano as i32,
+  }
+}
+
+proc unix_to_datetime(ts: UnixTimestamp) -> DateTime {
+  let normalized: UnixTimestamp = unix_normalize(ts)
+
+  let days: i64 = floor_div(normalized.seconds, SECONDS_PER_DAY)
+  let day_seconds: i64 = floor_mod(normalized.seconds, SECONDS_PER_DAY)
+
+  return DateTime {
+    date: days_since_epoch_to_date(days),
+    time: seconds_to_time(day_seconds, normalized.nanos),
+  }
+}
+
+proc unix_normalize(ts: UnixTimestamp) -> UnixTimestamp {
+  let extra: i64 = ts.nanos / 1000000000
+  let rem: i32 = ts.nanos % 1000000000
+
+  if rem < 0 {
+    return UnixTimestamp {
+      seconds: ts.seconds + extra - 1,
+      nanos: rem + 1000000000,
+    }
+  }
+
+  return UnixTimestamp {
+    seconds: ts.seconds + extra,
+    nanos: rem,
+  }
+}
+
+proc unix_from_seconds(seconds: i64) -> UnixTimestamp {
+  return UnixTimestamp { seconds: seconds, nanos: 0 }
+}
+
+proc unix_from_millis(ms: i64) -> UnixTimestamp {
+  let s: i64 = floor_div(ms, 1000)
+  let r: i64 = floor_mod(ms, 1000)
+
+  return UnixTimestamp {
+    seconds: s,
+    nanos: (r * NANOS_PER_MILLI) as i32,
+  }
+}
+
+proc unix_to_millis(ts: UnixTimestamp) -> i64 {
+  let n: UnixTimestamp = unix_normalize(ts)
+  return n.seconds * 1000 + n.nanos as i64 / NANOS_PER_MILLI
+}
+
+proc floor_div(a: i64, b: i64) -> i64 {
+  let q: i64 = a / b
+  let r: i64 = a % b
+
+  if r != 0 and ((r > 0) != (b > 0)) {
+    return q - 1
+  }
+
+  return q
+}
+
+proc floor_mod(a: i64, b: i64) -> i64 {
+  return a - floor_div(a, b) * b
+}
+
+proc weekday_from_days(days: i64) -> Weekday {
+  let index: i64 = floor_mod(days + 3, 7)
+
+  if index == 0 {
+    return Weekday.Monday
+  }
+
+  if index == 1 {
+    return Weekday.Tuesday
+  }
+
+  if index == 2 {
+    return Weekday.Wednesday
+  }
+
+  if index == 3 {
+    return Weekday.Thursday
+  }
+
+  if index == 4 {
+    return Weekday.Friday
+  }
+
+  if index == 5 {
+    return Weekday.Saturday
+  }
+
+  return Weekday.Sunday
+}
+
+proc date_weekday(date: Date) -> Weekday {
+  return weekday_from_days(date_to_days_since_epoch(date))
+}
+
+proc date_add_days(date: Date, delta: i64) -> Date {
+  let days: i64 = date_to_days_since_epoch(date)
+  return days_since_epoch_to_date(days + delta)
+}
+
+proc datetime_add_duration(dt: DateTime, duration: Duration) -> DateTime {
+  let ts: UnixTimestamp = datetime_to_unix(dt)
+  let added: UnixTimestamp = UnixTimestamp {
+    seconds: ts.seconds + duration.seconds,
+    nanos: ts.nanos + duration.nanos,
+  }
+
+  return unix_to_datetime(added)
+}
+
+proc datetime_sub_duration(dt: DateTime, duration: Duration) -> DateTime {
+  return datetime_add_duration(dt, duration_neg(duration))
+}
+
+proc datetime_duration_between(a: DateTime, b: DateTime) -> Duration {
+  let ta: UnixTimestamp = datetime_to_unix(a)
+  let tb: UnixTimestamp = datetime_to_unix(b)
+
+  return duration_new(tb.seconds - ta.seconds, tb.nanos - ta.nanos)
+}
+
+proc date_cmp(a: Date, b: Date) -> i32 {
+  if a.year < b.year {
+    return -1
+  }
+
+  if a.year > b.year {
+    return 1
+  }
+
+  if a.month < b.month {
+    return -1
+  }
+
+  if a.month > b.month {
+    return 1
+  }
+
+  if a.day < b.day {
+    return -1
+  }
+
+  if a.day > b.day {
+    return 1
+  }
+
+  return 0
+}
+
+proc time_cmp(a: Time, b: Time) -> i32 {
+  if a.hour < b.hour {
+    return -1
+  }
+
+  if a.hour > b.hour {
+    return 1
+  }
+
+  if a.minute < b.minute {
+    return -1
+  }
+
+  if a.minute > b.minute {
+    return 1
+  }
+
+  if a.second < b.second {
+    return -1
+  }
+
+  if a.second > b.second {
+    return 1
+  }
+
+  if a.nano < b.nano {
+    return -1
+  }
+
+  if a.nano > b.nano {
+    return 1
+  }
+
+  return 0
+}
+
+proc datetime_cmp(a: DateTime, b: DateTime) -> i32 {
+  let dc: i32 = date_cmp(a.date, b.date)
+
+  if dc != 0 {
+    return dc
+  }
+
+  return time_cmp(a.time, b.time)
+}
+
+proc date_eq(a: Date, b: Date) -> bool {
+  return date_cmp(a, b) == 0
+}
+
+proc time_eq(a: Time, b: Time) -> bool {
+  return time_cmp(a, b) == 0
+}
+
+proc datetime_eq(a: DateTime, b: DateTime) -> bool {
+  return datetime_cmp(a, b) == 0
+}
+
+proc date_is_before(a: Date, b: Date) -> bool {
+  return date_cmp(a, b) < 0
+}
+
+proc date_is_after(a: Date, b: Date) -> bool {
+  return date_cmp(a, b) > 0
+}
+
+proc datetime_is_before(a: DateTime, b: DateTime) -> bool {
+  return datetime_cmp(a, b) < 0
+}
+
+proc datetime_is_after(a: DateTime, b: DateTime) -> bool {
+  return datetime_cmp(a, b) > 0
+}
+
+proc clamp_u8(value: i32, min: i32, max: i32) -> u8 {
+  if value < min {
+    return min as u8
+  }
+
+  if value > max {
+    return max as u8
+  }
+
+  return value as u8
+}
+
+proc ascii_digit_value(ch: char) -> i32 {
+  if ch == '0' {
+    return 0
+  }
+
+  if ch == '1' {
+    return 1
+  }
+
+  if ch == '2' {
+    return 2
+  }
+
+  if ch == '3' {
+    return 3
+  }
+
+  if ch == '4' {
+    return 4
+  }
+
+  if ch == '5' {
+    return 5
+  }
+
+  if ch == '6' {
+    return 6
+  }
+
+  if ch == '7' {
+    return 7
+  }
+
+  if ch == '8' {
+    return 8
+  }
+
+  if ch == '9' {
+    return 9
+  }
+
+  return -1
+}
+
+proc is_ascii_digit(ch: char) -> bool {
+  return ascii_digit_value(ch) >= 0
+}
+
+proc parse_2_digits(a: char, b: char) -> i32 {
+  let da: i32 = ascii_digit_value(a)
+  let db: i32 = ascii_digit_value(b)
+
+  if da < 0 or db < 0 {
+    return -1
+  }
+
+  return da * 10 + db
+}
+
+proc parse_4_digits(a: char, b: char, c: char, d: char) -> i32 {
+  let p1: i32 = parse_2_digits(a, b)
+  let p2: i32 = parse_2_digits(c, d)
+
+  if p1 < 0 or p2 < 0 {
+    return -1
+  }
+
+  return p1 * 100 + p2
+}
+
+proc parse_date_yyyy_mm_dd(input: string) -> ?Date {
+  if string_len(input) != 10 {
+    return null
+  }
+
+  if string_at(input, 4) != '-' or string_at(input, 7) != '-' {
+    return null
+  }
+
+  let year: i32 = parse_4_digits(
+    string_at(input, 0),
+    string_at(input, 1),
+    string_at(input, 2),
+    string_at(input, 3),
+  )
+
+  let month: i32 = parse_2_digits(string_at(input, 5), string_at(input, 6))
+  let day: i32 = parse_2_digits(string_at(input, 8), string_at(input, 9))
+
+  if year < 0 or month < 0 or day < 0 {
+    return null
+  }
+
+  return date_new(year, month as u8, day as u8)
+}
+
+proc parse_time_hh_mm_ss(input: string) -> ?Time {
+  if string_len(input) != 8 {
+    return null
+  }
+
+  if string_at(input, 2) != ':' or string_at(input, 5) != ':' {
+    return null
+  }
+
+  let hour: i32 = parse_2_digits(string_at(input, 0), string_at(input, 1))
+  let minute: i32 = parse_2_digits(string_at(input, 3), string_at(input, 4))
+  let second: i32 = parse_2_digits(string_at(input, 6), string_at(input, 7))
+
+  if hour < 0 or minute < 0 or second < 0 {
+    return null
+  }
+
+  return time_new(hour as u8, minute as u8, second as u8, 0)
+}
+
+proc parse_datetime_iso_basic(input: string) -> ?DateTime {
+  if string_len(input) != 19 {
+    return null
+  }
+
+  if string_at(input, 10) != 'T' and string_at(input, 10) != ' ' {
+    return null
+  }
+
+  let date_part: string = string_slice(input, 0, 10)
+  let time_part: string = string_slice(input, 11, 19)
+
+  let d: ?Date = parse_date_yyyy_mm_dd(date_part)
+  let t: ?Time = parse_time_hh_mm_ss(time_part)
+
+  if d is null or t is null {
+    return null
+  }
+
+  return DateTime {
+    date: d,
+    time: t,
+  }
+}
+
+proc two_digits(n: i32) -> string {
+  if n < 0 {
+    return "00"
+  }
+
+  if n < 10 {
+    return string_concat("0", int_to_string(n))
+  }
+
+  return int_to_string(n)
+}
+
+proc four_digits(n: i32) -> string {
+  if n < 0 {
+    return "0000"
+  }
+
+  if n < 10 {
+    return string_concat("000", int_to_string(n))
+  }
+
+  if n < 100 {
+    return string_concat("00", int_to_string(n))
+  }
+
+  if n < 1000 {
+    return string_concat("0", int_to_string(n))
+  }
+
+  return int_to_string(n)
+}
+
+proc format_date_iso(date: Date) -> string {
+  return string_concat_many([
+    four_digits(date.year),
+    "-",
+    two_digits(date.month as i32),
+    "-",
+    two_digits(date.day as i32),
+  ])
+}
+
+proc format_time_iso(time: Time) -> string {
+  return string_concat_many([
+    two_digits(time.hour as i32),
+    ":",
+    two_digits(time.minute as i32),
+    ":",
+    two_digits(time.second as i32),
+  ])
+}
+
+proc format_datetime_iso(dt: DateTime) -> string {
+  return string_concat_many([
+    format_date_iso(dt.date),
+    "T",
+    format_time_iso(dt.time),
+  ])
+}
+
+proc format_datetime_space(dt: DateTime) -> string {
+  return string_concat_many([
+    format_date_iso(dt.date),
+    " ",
+    format_time_iso(dt.time),
+  ])
+}
+
+proc format_date_human(date: Date) -> string {
+  return string_concat_many([
+    int_to_string(date.day as i32),
+    " ",
+    month_name(date.month),
+    " ",
+    int_to_string(date.year),
+  ])
+}
+
+proc format_weekday_date(date: Date) -> string {
+  return string_concat_many([
+    weekday_name(date_weekday(date)),
+    ", ",
+    format_date_human(date),
+  ])
+}
+
+proc start_of_day(date: Date) -> DateTime {
+  return DateTime {
+    date: date,
+    time: Time {
+      hour: 0,
+      minute: 0,
+      second: 0,
+      nano: 0,
+    },
+  }
+}
+
+proc end_of_day(date: Date) -> DateTime {
+  return DateTime {
+    date: date,
+    time: Time {
+      hour: 23,
+      minute: 59,
+      second: 59,
+      nano: 999999999,
+    },
+  }
+}
+
+proc date_next_day(date: Date) -> Date {
+  return date_add_days(date, 1)
+}
+
+proc date_prev_day(date: Date) -> Date {
+  return date_add_days(date, -1)
+}
+
+proc date_add_weeks(date: Date, weeks: i64) -> Date {
+  return date_add_days(date, weeks * 7)
+}
+
+proc date_start_of_month(date: Date) -> Date {
+  return Date {
+    year: date.year,
+    month: date.month,
+    day: 1,
+  }
+}
+
+proc date_end_of_month(date: Date) -> Date {
+  return Date {
+    year: date.year,
+    month: date.month,
+    day: days_in_month(date.year, date.month),
+  }
+}
+
+proc date_start_of_year(date: Date) -> Date {
+  return Date {
+    year: date.year,
+    month: 1,
+    day: 1,
+  }
+}
+
+proc date_end_of_year(date: Date) -> Date {
+  return Date {
+    year: date.year,
+    month: 12,
+    day: 31,
+  }
+}
+
+proc date_add_months(date: Date, months: i32) -> Date {
+  let total: i32 = date.year * 12 + date.month as i32 - 1 + months
+  let new_year: i32 = floor_div_i32(total, 12)
+  let new_month: u8 = (floor_mod_i32(total, 12) + 1) as u8
+  let max_day: u8 = days_in_month(new_year, new_month)
+
+  let mut new_day: u8 = date.day
+
+  if new_day > max_day {
+    new_day = max_day
+  }
+
+  return Date {
+    year: new_year,
+    month: new_month,
+    day: new_day,
+  }
+}
+
+proc date_add_years(date: Date, years: i32) -> Date {
+  let new_year: i32 = date.year + years
+  let mut new_day: u8 = date.day
+
+  if date.month == 2 and date.day == 29 and not is_leap_year(new_year) {
+    new_day = 28
+  }
+
+  return Date {
+    year: new_year,
+    month: date.month,
+    day: new_day,
+  }
+}
+
+proc floor_div_i32(a: i32, b: i32) -> i32 {
+  let q: i32 = a / b
+  let r: i32 = a % b
+
+  if r != 0 and ((r > 0) != (b > 0)) {
+    return q - 1
+  }
+
+  return q
+}
+
+proc floor_mod_i32(a: i32, b: i32) -> i32 {
+  return a - floor_div_i32(a, b) * b
+}
+
+proc iso_weekday_number(day: Weekday) -> u8 {
+  match day {
+    case Monday => 1
+    case Tuesday => 2
+    case Wednesday => 3
+    case Thursday => 4
+    case Friday => 5
+    case Saturday => 6
+    case Sunday => 7
+  }
+}
+
+proc date_iso_weekday_number(date: Date) -> u8 {
+  return iso_weekday_number(date_weekday(date))
+}
+
+proc is_weekend(date: Date) -> bool {
+  let w: Weekday = date_weekday(date)
+  return w is Weekday.Saturday or w is Weekday.Sunday
+}
+
+proc is_weekday(date: Date) -> bool {
+  return not is_weekend(date)
+}
+
+proc date_days_between(a: Date, b: Date) -> i64 {
+  return date_to_days_since_epoch(b) - date_to_days_since_epoch(a)
+}
+
+proc datetime_seconds_between(a: DateTime, b: DateTime) -> i64 {
+  let d: Duration = datetime_duration_between(a, b)
+  return d.seconds
+}
+
+proc unix_epoch_datetime() -> DateTime {
+  return DateTime {
+    date: Date {
+      year: 1970,
+      month: 1,
+      day: 1,
+    },
+    time: Time {
+      hour: 0,
+      minute: 0,
+      second: 0,
+      nano: 0,
+    },
+  }
+}
+
+proc unix_epoch_date() -> Date {
+  return Date {
+    year: 1970,
+    month: 1,
+    day: 1,
+  }
+}
+
+proc midnight() -> Time {
+  return Time {
+    hour: 0,
+    minute: 0,
+    second: 0,
+    nano: 0,
+  }
+}
+
+proc noon() -> Time {
+  return Time {
+    hour: 12,
+    minute: 0,
+    second: 0,
+    nano: 0,
+  }
+}
+
+proc time_add_duration(time: Time, duration: Duration) -> Time {
+  let total: i64 = time_to_seconds(time) + duration.seconds
+  let day_seconds: i64 = floor_mod(total, SECONDS_PER_DAY)
+  return seconds_to_time(day_seconds, time.nano)
+}
+
+proc time_is_midnight(time: Time) -> bool {
+  return time.hour == 0 and time.minute == 0 and time.second == 0 and time.nano == 0
+}
+
+proc time_is_noon(time: Time) -> bool {
+  return time.hour == 12 and time.minute == 0 and time.second == 0 and time.nano == 0
+}
+
+proc date_quarter(date: Date) -> u8 {
+  if date.month <= 3 {
+    return 1
+  }
+
+  if date.month <= 6 {
+    return 2
+  }
+
+  if date.month <= 9 {
+    return 3
+  }
+
+  return 4
+}
+
+proc date_day_of_year(date: Date) -> i32 {
+  return date_ordinal(date)
+}
+
+proc date_days_remaining_in_year(date: Date) -> i32 {
+  return days_in_year(date.year) - date_ordinal(date)
+}
+
+proc date_days_remaining_in_month(date: Date) -> i32 {
+  return days_in_month(date.year, date.month) as i32 - date.day as i32
+}
+
+proc date_is_first_day_of_month(date: Date) -> bool {
+  return date.day == 1
+}
+
+proc date_is_last_day_of_month(date: Date) -> bool {
+  return date.day == days_in_month(date.year, date.month)
+}
+
+proc date_is_first_day_of_year(date: Date) -> bool {
+  return date.month == 1 and date.day == 1
+}
+
+proc date_is_last_day_of_year(date: Date) -> bool {
+  return date.month == 12 and date.day == 31
+}
+
+proc timestamp_cmp(a: UnixTimestamp, b: UnixTimestamp) -> i32 {
+  let na: UnixTimestamp = unix_normalize(a)
+  let nb: UnixTimestamp = unix_normalize(b)
+
+  if na.seconds < nb.seconds {
+    return -1
+  }
+
+  if na.seconds > nb.seconds {
+    return 1
+  }
+
+  if na.nanos < nb.nanos {
+    return -1
+  }
+
+  if na.nanos > nb.nanos {
+    return 1
+  }
+
+  return 0
+}
+
+proc timestamp_add_duration(ts: UnixTimestamp, duration: Duration) -> UnixTimestamp {
+  return unix_normalize(UnixTimestamp {
+    seconds: ts.seconds + duration.seconds,
+    nanos: ts.nanos + duration.nanos,
+  })
+}
+
+proc timestamp_sub_duration(ts: UnixTimestamp, duration: Duration) -> UnixTimestamp {
+  return timestamp_add_duration(ts, duration_neg(duration))
+}
+
+proc timestamp_duration_between(a: UnixTimestamp, b: UnixTimestamp) -> Duration {
+  let na: UnixTimestamp = unix_normalize(a)
+  let nb: UnixTimestamp = unix_normalize(b)
+
+  return duration_new(nb.seconds - na.seconds, nb.nanos - na.nanos)
+}
+
+proc datetime_now_unavailable() -> UnixTimestamp {
+  return UnixTimestamp {
+    seconds: 0,
+    nanos: 0,
+  }
+}
+
+proc string_len(s: string) -> usize {
+  foreign
+}
+
+proc string_at(s: string, index: usize) -> char {
+  foreign
+}
+
+proc string_slice(s: string, start: usize, end: usize) -> string {
+  foreign
+}
+
+proc string_concat(a: string, b: string) -> string {
+  foreign
+}
+
+proc string_concat_many(parts: [string]) -> string {
+  foreign
+}
+
+proc int_to_string(value: i32) -> string {
+  foreign
+}
+
+test "datetime leap year" {
+  assert is_leap_year(2000)
+  assert not is_leap_year(1900)
+  assert is_leap_year(2024)
+  assert not is_leap_year(2023)
+}
+
+test "datetime date validation" {
+  assert validate_date(Date { year: 2024, month: 2, day: 29 })
+  assert not validate_date(Date { year: 2023, month: 2, day: 29 })
+  assert not validate_date(Date { year: 2024, month: 13, day: 1 })
+}
+
+test "datetime unix epoch" {
+  let dt: DateTime = unix_epoch_datetime()
+  let ts: UnixTimestamp = datetime_to_unix(dt)
+
+  assert ts.seconds == 0
+  assert ts.nanos == 0
+}
+
+test "datetime date add days" {
+  let a: Date = Date { year: 1970, month: 1, day: 1 }
+  let b: Date = date_add_days(a, 1)
+
+  assert b.year == 1970
+  assert b.month == 1
+  assert b.day == 2
+}
+
+test "datetime ordinal" {
+  let d: Date = Date { year: 2024, month: 12, day: 31 }
+  assert date_ordinal(d) == 366
+}
