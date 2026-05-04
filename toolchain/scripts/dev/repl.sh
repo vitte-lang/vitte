@@ -78,7 +78,7 @@ Commands:
   :save <file>     save buffer to file
   :run             run current buffer
   :show            show current buffer
-  :cpp             compile and show generated C++
+  :emit            emit and show generated Vitte artifact
   :reset           clear buffer + cache artifacts
 Notes:
   If no `entry` is present, the buffer is wrapped into a default entry.
@@ -165,7 +165,7 @@ run_buffer() {
   esac
 }
 
-show_cpp() {
+show_emit() {
   local prepared="$1"
   local out="$TMP_DIR/out"
   local log="$TMP_DIR/build.log"
@@ -178,10 +178,10 @@ show_cpp() {
     return 1
   fi
 
-  if [ -f "$ROOT_DIR/vitte_out.cpp" ]; then
-    sed -n '1,200p' "$ROOT_DIR/vitte_out.cpp"
+  if [ -f "$ROOT_DIR/vitte_out.vit" ]; then
+    sed -n '1,200p' "$ROOT_DIR/vitte_out.vit"
   else
-    log "vitte_out.cpp not found"
+    log "vitte_out.vit not found"
     return 1
   fi
 }
@@ -257,8 +257,8 @@ while true; do
     :show)
       sed -n '1,200p' "$BUFFER_FILE"
       ;;
-    :cpp)
-      show_cpp "$(prepare_buffer "$BUFFER_FILE")"
+    :emit)
+      show_emit "$(prepare_buffer "$BUFFER_FILE")"
       ;;
     :reset)
       reset_repl

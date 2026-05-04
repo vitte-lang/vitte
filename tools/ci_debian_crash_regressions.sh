@@ -54,11 +54,8 @@ find "$ROOT_DIR/.vitte-crash" -type f -name metadata.json | grep -q . || die "mi
 
 tmp_bin_dir="$(mktemp -d)"
 ln -sf "$VITTE_BIN" "$tmp_bin_dir/vittec"
-ln -sf "$VITTE_BIN" "$tmp_bin_dir/vitte-linker"
 expect_ok "compat wrapper banner vittec" "$tmp_bin_dir/vittec" --help
 grep -Fq "[compat] vittec mode via vitte" /tmp/ci-debian-crash.out || die "missing vittec compat banner"
-expect_ok "compat wrapper banner vitte-linker" "$tmp_bin_dir/vitte-linker" --help
-grep -Fq "[compat] vitte-linker mode via vitte" /tmp/ci-debian-crash.out || die "missing vitte-linker compat banner"
 
 set +e
 VITTE_TEST_TRAP=SIGABRT "$VITTE_BIN" --help >/tmp/ci-debian-crash.signal 2>&1

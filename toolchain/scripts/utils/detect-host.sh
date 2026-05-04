@@ -48,7 +48,7 @@ if [ "$HOST_OS" = "linux" ]; then
     else
       HOST_LIBC="glibc"
     fi
-  elif has musl-gcc; then
+  elif has musl-ldd; then
     HOST_LIBC="musl"
   fi
 fi

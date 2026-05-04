@@ -28,8 +28,6 @@ else
   echo "bin/vitte=missing"
 fi
 
-check_cmd "clang" "clang"
-check_cmd "cxx" "${CXX:-clang++}"
 check_cmd "make" "make"
 check_cmd "pkg-config" "pkg-config"
 check_cmd "python3" "python3"

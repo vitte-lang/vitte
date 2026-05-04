@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SPEC_PATH = ROOT / "tools" / "completions" / "spec.json"
+SPEC_PATH = ROOT / "tools" / "hooks" / "spec.json"
 BASH_OUT = ROOT / "completions" / "bash" / "vitte"
 ZSH_OUT = ROOT / "completions" / "zsh" / "_vitte"
 FISH_OUT = ROOT / "completions" / "fish" / "vitte.fish"
@@ -424,7 +424,6 @@ def render_bash(data: dict, header: str) -> str:
 
 complete -F _vitte_complete vitte
 complete -F _vitte_complete vittec
-complete -F _vitte_complete vitte-linker
 """
 
 
@@ -480,7 +479,7 @@ def render_zsh(data: dict, header: str) -> str:
     context_cases = _context_cases_zsh(data)
     value_cases = _value_case_zsh(data)
 
-    return f"""#compdef vitte vittec vitte-linker
+    return f"""#compdef vitte vittec
 {header}_vitte() {{
   local curcontext="$curcontext"
   local context
@@ -556,19 +555,19 @@ def render_fish(data: dict, header: str) -> str:
 
     lines = [header.rstrip("\n")]
 
-    for tool in ("vitte", "vittec", "vitte-linker"):
+    for tool in ("vitte", "vittec"):
         for cmd in data["commands"]:
             desc = cmd_desc.get(cmd, cmd)
             lines.append(f'complete -c {tool} -n "__fish_use_subcommand" -a "{cmd}" -d "{desc}"')
 
-    for tool in ("vitte", "vittec", "vitte-linker"):
+    for tool in ("vitte", "vittec"):
         for sub in data["mod_subcommands"]:
             desc = sub_desc.get(sub, sub)
             lines.append(
                 f'complete -c {tool} -n "__fish_seen_subcommand_from mod; and __fish_use_subcommand" -a "{sub}" -d "{desc}"'
             )
 
-    for tool in ("vitte", "vittec", "vitte-linker"):
+    for tool in ("vitte", "vittec"):
         for ctx, options in sorted(data.get("command_options", {}).items()):
             cond = _fish_context_expr(ctx)
             for opt in options:

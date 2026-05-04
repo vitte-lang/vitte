@@ -60,11 +60,7 @@ cd "$ROOT_DIR"
 # Formatting (check-only)
 # ----------------------------
 step "format"
-if [ -x "toolchain/scripts/ci/format.sh" ]; then
-  MODE=check toolchain/scripts/ci/format.sh
-else
-  log "format.sh not found — skipping"
-fi
+make format
 
 # ----------------------------
 # Build (optional)

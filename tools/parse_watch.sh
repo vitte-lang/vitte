@@ -18,17 +18,18 @@ fi
 
 watch_dirs=(
   "$ROOT_DIR/tests"
-  "$ROOT_DIR/src/compiler/frontend"
+  "$ROOT_DIR/src/vitte/compiler/frontend"
 )
 
 fingerprint() {
   local data=""
   local f
   for dir in "${watch_dirs[@]}"; do
+    [[ -d "$dir" ]] || continue
     while IFS= read -r -d '' f; do
       # macOS stat
       data+="$(stat -f %m "$f"):$f\n"
-    done < <(find "$dir" -type f \( -name '*.vit' -o -name '*.cpp' -o -name '*.hpp' \) -print0)
+    done < <(find "$dir" -type f \( -name '*.vit' -o -name '*.vitl' \) -print0)
   done
   printf "%s" "$data" | shasum | awk '{print $1}'
 }

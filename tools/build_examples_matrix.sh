@@ -23,22 +23,6 @@ case "$MODE" in
   *) die "invalid MODE=$MODE (expected build or check)" ;;
 esac
 
-cxx_ready() {
-  if ! command -v "${CXX:-c++}" >/dev/null 2>&1; then
-    return 1
-  fi
-  if ! printf '#include <cstdint>\n#include <cstddef>\nint main(){return 0;}\n' \
-      | "${CXX:-c++}" -x c++ -std=c++20 -fsyntax-only - >/dev/null 2>&1; then
-    return 1
-  fi
-  return 0
-}
-
-if [ "$MODE" = "build" ] && ! cxx_ready; then
-  log "skip: C++ toolchain not ready (c++ toolchain/stdlib headers missing)"
-  exit 0
-fi
-
 total=0
 ok=0
 fail=0

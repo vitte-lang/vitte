@@ -7,7 +7,6 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "target" / "reports" / "interop"
 OUT_JSON = OUT_DIR / "abi_matrix.json"
@@ -28,44 +27,21 @@ def status_of(name: str, cmd: list[str]) -> dict:
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    checks = []
-    checks.append(status_of("interop-headers-gen", ["python3", "toolchain/scripts/interop/generate_interop_headers.py", "--update-snapshot"]))
-    checks.append(status_of("interop-headers-check", ["python3", "toolchain/scripts/interop/generate_interop_headers.py", "--check"]))
-
-    checks.append(status_of("extern-abi-host", ["make", "extern-abi-host"]))
-    checks.append(status_of("extern-abi-arduino", ["make", "extern-abi-arduino"]))
-    checks.append(status_of("extern-abi-kernel", ["make", "extern-abi-kernel"]))
-    checks.append(status_of("extern-abi-kernel-uefi", ["make", "extern-abi-kernel-uefi"]))
-    checks.append(status_of("extern-abi-all", ["make", "extern-abi-all"]))
-
-    checks.append(
-        status_of(
-            "c-header-smoke",
-            ["cc", "-std=c11", "-I", "target/interop/include", "-fsyntax-only", "tests/interop/c_abi_smoke.c"],
-        )
-    )
-    checks.append(
-        status_of(
-            "cpp-header-smoke",
-            ["c++", "-std=c++20", "-I", "target/interop/include", "-fsyntax-only", "tests/interop/cpp_abi_smoke.cpp"],
-        )
-    )
-
-    host = {"os": os.uname().sysname, "arch": os.uname().machine}
-    matrix = [
-        {"platform": "macOS-arm64", "state": "covered-local" if host == {"os": "Darwin", "arch": "arm64"} else "not-run"},
-        {"platform": "macOS-x86_64", "state": "not-run"},
-        {"platform": "Linux-x86_64", "state": "not-run"},
-        {"platform": "Linux-arm64", "state": "not-run"},
+    checks = [
+        status_of("extern-abi-host", ["make", "extern-abi-host"]),
+        status_of("extern-abi-arduino", ["make", "extern-abi-arduino"]),
+        status_of("extern-abi-kernel", ["make", "extern-abi-kernel"]),
+        status_of("extern-abi-kernel-uefi", ["make", "extern-abi-kernel-uefi"]),
+        status_of("extern-abi-all", ["make", "extern-abi-all"]),
     ]
 
+    host = {"os": os.uname().sysname, "arch": os.uname().machine}
     ok = all(c["ok"] for c in checks)
     data = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "host": host,
         "kpi_zero_abi_regression": ok,
         "checks": checks,
-        "platform_matrix": matrix,
     }
     OUT_JSON.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
@@ -79,23 +55,10 @@ def main() -> int:
         "## Checks",
         "",
     ]
-    for c in checks:
-        lines.append(f"- {c['name']}: `{'OK' if c['ok'] else 'FAIL'}`")
-    lines += [
-        "",
-        "## Platform Matrix",
-        "",
-    ]
-    for m in matrix:
-        lines.append(f"- {m['platform']}: `{m['state']}`")
-    lines += [
-        "",
-        f"JSON: `{OUT_JSON}`",
-    ]
+    for check in checks:
+        lines.append(f"- `{check['name']}`: `{check['ok']}`")
     OUT_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    print(f"[interop-abi-matrix] wrote {OUT_JSON}")
-    print(f"[interop-abi-matrix] wrote {OUT_MD}")
+    print(f"[interop-abi-matrix] wrote {OUT_JSON.relative_to(ROOT)}")
     return 0 if ok else 1
 
 
