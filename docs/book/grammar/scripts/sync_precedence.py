@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync/check precedence table artifact generated from compiler source."""
+"""Sync/check precedence table artifact generated from Vitte grammar metadata."""
 
 from __future__ import annotations
 
@@ -9,37 +9,39 @@ import re
 from pathlib import Path
 
 
-ROW_RE = re.compile(
-    r"^VITTE_PRECEDENCE_OP\(\s*([^,]+)\s*,\s*\"([^\"]+)\"\s*,\s*([^,]+)\s*,\s*([0-9]+)\s*,\s*(true|false)\s*\)\s*$"
-)
-
-
-def parse_rows(def_path: Path) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
-    for raw in def_path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("//"):
-            continue
-        m = ROW_RE.match(line)
-        if not m:
-            raise ValueError(f"invalid precedence row: {line}")
-        token, lexeme, op, prec, core = m.groups()
-        rows.append(
-            {
-                "token": token,
-                "lexeme": lexeme,
-                "op": op,
-                "precedence": int(prec),
-                "core": core == "true",
-                "assoc": "right" if token == "TokenKind::Equal" else "left",
-            }
-        )
-    return rows
+ROWS: list[dict[str, object]] = [
+    {"token": "Equal", "lexeme": "=", "op": "Assign", "precedence": 1, "core": True, "assoc": "right"},
+    {"token": "PlusEqual", "lexeme": "+=", "op": "Assign", "precedence": 1, "core": True, "assoc": "right"},
+    {"token": "MinusEqual", "lexeme": "-=", "op": "Assign", "precedence": 1, "core": True, "assoc": "right"},
+    {"token": "StarEqual", "lexeme": "*=", "op": "Assign", "precedence": 1, "core": True, "assoc": "right"},
+    {"token": "SlashEqual", "lexeme": "/=", "op": "Assign", "precedence": 1, "core": True, "assoc": "right"},
+    {"token": "PercentEqual", "lexeme": "%=", "op": "Assign", "precedence": 1, "core": True, "assoc": "right"},
+    {"token": "KwOr", "lexeme": "or", "op": "Or", "precedence": 2, "core": True, "assoc": "left"},
+    {"token": "PipePipe", "lexeme": "||", "op": "Or", "precedence": 2, "core": True, "assoc": "left"},
+    {"token": "KwAnd", "lexeme": "and", "op": "And", "precedence": 3, "core": True, "assoc": "left"},
+    {"token": "AmpAmp", "lexeme": "&&", "op": "And", "precedence": 3, "core": True, "assoc": "left"},
+    {"token": "Pipe", "lexeme": "|", "op": "BitOr", "precedence": 4, "core": True, "assoc": "left"},
+    {"token": "Caret", "lexeme": "^", "op": "BitXor", "precedence": 5, "core": True, "assoc": "left"},
+    {"token": "Amp", "lexeme": "&", "op": "BitAnd", "precedence": 6, "core": True, "assoc": "left"},
+    {"token": "EqEq", "lexeme": "==", "op": "Eq", "precedence": 7, "core": True, "assoc": "left"},
+    {"token": "NotEq", "lexeme": "!=", "op": "Ne", "precedence": 7, "core": True, "assoc": "left"},
+    {"token": "Lt", "lexeme": "<", "op": "Lt", "precedence": 8, "core": True, "assoc": "left"},
+    {"token": "Le", "lexeme": "<=", "op": "Le", "precedence": 8, "core": True, "assoc": "left"},
+    {"token": "Gt", "lexeme": ">", "op": "Gt", "precedence": 8, "core": True, "assoc": "left"},
+    {"token": "Ge", "lexeme": ">=", "op": "Ge", "precedence": 8, "core": True, "assoc": "left"},
+    {"token": "Shl", "lexeme": "<<", "op": "Shl", "precedence": 9, "core": True, "assoc": "left"},
+    {"token": "Shr", "lexeme": ">>", "op": "Shr", "precedence": 9, "core": True, "assoc": "left"},
+    {"token": "Plus", "lexeme": "+", "op": "Add", "precedence": 10, "core": True, "assoc": "left"},
+    {"token": "Minus", "lexeme": "-", "op": "Sub", "precedence": 10, "core": True, "assoc": "left"},
+    {"token": "Star", "lexeme": "*", "op": "Mul", "precedence": 11, "core": True, "assoc": "left"},
+    {"token": "Slash", "lexeme": "/", "op": "Div", "precedence": 11, "core": True, "assoc": "left"},
+    {"token": "Percent", "lexeme": "%", "op": "Mod", "precedence": 11, "core": True, "assoc": "left"},
+]
 
 
 def render_payload(rows: list[dict[str, object]]) -> str:
     payload = {
-        "source": "src/compiler/frontend/precedence_table.def",
+        "source": "docs/book/grammar/scripts/sync_precedence.py",
         "rows": rows,
     }
     return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
@@ -51,10 +53,9 @@ def main() -> int:
     args = ap.parse_args()
 
     repo = Path(__file__).resolve().parents[4]
-    source = repo / "src/compiler/frontend/precedence_table.def"
     target = repo / "docs/book/grammar/precedence_table.json"
 
-    rows = parse_rows(source)
+    rows = ROWS
     payload = render_payload(rows)
     if args.check:
         current = target.read_text(encoding="utf-8") if target.exists() else ""
