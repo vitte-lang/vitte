@@ -754,6 +754,7 @@ proc getenv_or(key: string, fallback: string) -> string {
     case Option.Some(value) { give value }
     case Option.None { give fallback }
   }
+  give fallback
 }
 
 proc setenv(key: string, value: string) -> int {
@@ -771,6 +772,7 @@ proc hasenv(key: string) -> bool {
     case Option.Some(value) { give true }
     case Option.None { give false }
   }
+  give false
 }
 
 proc env_list() -> [EnvVar] { give [] }
@@ -948,7 +950,7 @@ proc poll(fds: [PollFd], timeout_ms: int) -> int {
   give 0
 }
 
-proc select(read_fds: [int], write_fds: [int], timeout_ms: int) -> int {
+proc os_select(read_fds: [int], write_fds: [int], timeout_ms: int) -> int {
   if timeout_ms < -1 { give ERR }
   give 0
 }
@@ -1195,6 +1197,7 @@ proc tmpdir() -> string {
     case Option.Some(value) { give value }
     case Option.None { give "/tmp" }
   }
+  give "/tmp"
 }
 
 proc tmpnam(prefix: string) -> string {

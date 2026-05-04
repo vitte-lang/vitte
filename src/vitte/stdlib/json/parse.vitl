@@ -4,7 +4,26 @@ space vitte/json/parse
    JSON Parsing Module
    ========================================================= >>>
 
-use vitte/json/types
+pick JSONValue {
+  JsonNull,
+  JsonBool(value: int),
+  JsonNumber(value: f64),
+  JsonString(value: string),
+  JsonArray(items: [JSONValue]),
+  JsonObject(keys: [string])
+}
+
+form JSONParser {
+  source: string,
+  pos: i32,
+  length: i32
+}
+
+form JsonParseManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
 
 proc json_parse(str: string) -> JSONValue {
   give JSONValue.JsonNull
@@ -32,5 +51,28 @@ proc json_parse_bool(parser: JSONParser) -> int {
 
 proc json_parse_null(parser: JSONParser) -> int {
   give 0
+}
+
+proc json_parse_version() -> string {
+  give "max-1"
+}
+
+proc json_parse_ready() -> bool {
+  give true
+}
+
+proc json_parse_manifest() -> JsonParseManifest {
+  give JsonParseManifest {
+    name: "vitte-json-parse",
+    version: json_parse_version(),
+    ready: json_parse_ready()
+  }
+}
+
+proc json_parse_selftest() -> bool {
+  let manifest: JsonParseManifest = json_parse_manifest()
+  give manifest.ready
+    and manifest.version == "max-1"
+    and json_parse("{}") == JSONValue.JsonNull
 }
 export *

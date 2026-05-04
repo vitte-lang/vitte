@@ -6,11 +6,11 @@ space vitte/json/types
 
 pick JSONValue {
     JsonNull,
-    JsonBool(int),
-    JsonNumber(f64),
-    JsonString(string),
-    JsonArray([JSONValue]),
-    JsonObject([string])
+    JsonBool(value: int),
+    JsonNumber(value: f64),
+    JsonString(value: string),
+    JsonArray(items: [JSONValue]),
+    JsonObject(keys: [string])
 }
 
 form JSONParser {
@@ -22,5 +22,33 @@ form JSONParser {
 form JSONBuilder {
     output: string,
     depth: i32
+}
+
+form JsonTypesManifest {
+    name: string,
+    version: string,
+    ready: bool
+}
+
+proc json_types_version() -> string {
+  give "max-1"
+}
+
+proc json_types_ready() -> bool {
+  give true
+}
+
+proc json_types_manifest() -> JsonTypesManifest {
+  give JsonTypesManifest {
+    name: "vitte-json-types",
+    version: json_types_version(),
+    ready: json_types_ready()
+  }
+}
+
+proc json_types_selftest() -> bool {
+  let manifest: JsonTypesManifest = json_types_manifest()
+  give manifest.ready
+    and manifest.version == "max-1"
 }
 export *

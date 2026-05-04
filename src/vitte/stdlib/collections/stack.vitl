@@ -13,6 +13,16 @@ form Stack {
     capacity: i32
 }
 
+proc _repeat_i64(value: i64, count: i32) -> [i64] {
+    let out: [i64] = []
+    let i: i32 = 0
+    while i < count {
+        set out = out + [value]
+        i += 1
+    }
+    give out
+}
+
 <<< ---------------------------------------------------------
    Constructors
    --------------------------------------------------------- >>>
@@ -21,7 +31,7 @@ proc stack_new(capacity: i32) -> Stack {
     let cap = if capacity <= 0 { 8 } else { capacity }
 
     give Stack {
-        data: repeat(0, cap),
+        data: _repeat_i64(0, cap),
         size: 0,
         capacity: cap
     }
@@ -33,7 +43,7 @@ proc stack_new(capacity: i32) -> Stack {
 
 proc _stack_resize(s: Stack) {
     let new_cap = s.capacity + (s.capacity / 2)
-    let new_data: [i64] = repeat(0, new_cap)
+    let new_data: [i64] = _repeat_i64(0, new_cap)
 
     let i: i32 = 0
     while i < s.size {
@@ -48,7 +58,7 @@ proc _stack_resize(s: Stack) {
 proc _stack_shrink(s: Stack) {
     if s.capacity > 8 and s.size * 4 < s.capacity {
         let new_cap = s.capacity / 2
-        let new_data: [i64] = repeat(0, new_cap)
+        let new_data: [i64] = _repeat_i64(0, new_cap)
 
         let i: i32 = 0
         while i < s.size {
@@ -130,7 +140,7 @@ proc stack_clear(s: Stack) {
 proc stack_reserve(s: Stack, new_cap: i32) {
     if new_cap <= s.capacity { give }
 
-    let new_data: [i64] = repeat(0, new_cap)
+    let new_data: [i64] = _repeat_i64(0, new_cap)
 
     let i: i32 = 0
     while i < s.size {
@@ -165,7 +175,7 @@ proc stack_pop_many(s: Stack, n: i32) -> [i64] {
     if n <= 0 { give [] }
 
     let count = if n > s.size { s.size } else { n }
-    let out: [i64] = repeat(0, count)
+    let out: [i64] = _repeat_i64(0, count)
 
     let i: i32 = 0
     while i < count {
@@ -284,7 +294,7 @@ proc stack_extend(s: Stack, other: Stack) {
 }
 
 proc stack_to_array(s: Stack) -> [i64] {
-    let out: [i64] = repeat(0, s.size)
+    let out: [i64] = _repeat_i64(0, s.size)
 
     let i: i32 = 0
     while i < s.size {

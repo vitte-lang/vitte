@@ -1,0 +1,76 @@
+space compiler/driver/internal/compiler_emit
+
+use compiler_ast
+use compiler_ir
+
+proc default_type_name(type_name: string) -> string {
+  if type_name == "" { give "i32" }
+  give type_name
+}
+
+proc emit_expr(expr: compiler_ast.Expr) -> string {
+  if expr.kind == compiler_ast.ExprKind.Empty { give "" }
+  if expr.kind == compiler_ast.ExprKind.Literal { give expr.text }
+  if expr.kind == compiler_ast.ExprKind.Variable { give expr.text }
+  if expr.kind == compiler_ast.ExprKind.Call {
+    let out: string = expr.callee ++ "("
+    let i: int = 0
+    while i < expr.args.len {
+      if i > 0 { set out = out ++ ", " }
+      set out = out ++ emit_expr(expr.args[i])
+      set i = i + 1
+    }
+    set out = out ++ ")"
+    give out
+  }
+  give expr.text
+}
+
+proc emit_stmt(stmt: compiler_ir.IrStmt) -> string {
+  if stmt.kind == "give" {
+    give "return " ++ emit_expr(stmt.expr) ++ ";\n"
+  }
+  if stmt.kind == "let" {
+    let type_name: string = default_type_name(stmt.type_name)
+    let out: string = type_name ++ " " ++ stmt.name
+    if stmt.expr.kind != compiler_ast.ExprKind.Empty {
+      set out = out ++ " = " ++ emit_expr(stmt.expr)
+    }
+    give out ++ ";\n"
+  }
+  if stmt.kind == "set" {
+    give stmt.name ++ " = " ++ emit_expr(stmt.expr) ++ ";\n"
+  }
+  if stmt.expr.kind == compiler_ast.ExprKind.Empty { give "" }
+  give emit_expr(stmt.expr) ++ ";\n"
+}
+
+proc emit_function(fn: compiler_ir.IrFunction) -> string {
+  let out: string = "i32 " ++ fn.name ++ "("
+  let i: int = 0
+  while i < fn.params.len {
+    if i > 0 { set out = out ++ ", " }
+    let param_type: string = default_type_name(fn.params[i].type_name)
+    set out = out ++ param_type ++ " " ++ fn.params[i].name
+    set i = i + 1
+  }
+  set out = out ++ ") {\n"
+  let j: int = 0
+  while j < fn.body_stmts.len {
+    set out = out ++ "  " ++ emit_stmt(fn.body_stmts[j])
+    set j = j + 1
+  }
+  give out ++ "}\n"
+}
+
+proc emit_module(module_value: compiler_ir.IrModule) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < module_value.functions.len {
+    set out = out ++ emit_function(module_value.functions[i]) ++ "\n"
+    set i = i + 1
+  }
+  give out
+}
+
+export *

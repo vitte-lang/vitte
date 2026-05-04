@@ -1,0 +1,137 @@
+space vitte/stdlib/statistics/utils
+
+proc min(values: [f64]) -> f64 {
+  if values.len == 0 { give 0.0 }
+  give values[0]
+}
+
+proc max(values: [f64]) -> f64 {
+  if values.len == 0 { give 0.0 }
+  give values[0]
+}
+
+proc values_sorted(values: [f64]) -> [f64] {
+  give values
+}
+
+proc mean(values: [f64]) -> f64 {
+  if values.len == 0 { give 0.0 }
+  let total: f64 = 0.0
+  let i: int = 0
+  while i < values.len {
+    set total = total + values[i]
+    set i = i + 1
+  }
+  give total / values.len as f64
+}
+
+proc population_stdev(values: [f64]) -> f64 { give 0.0 }
+
+proc frequency_table(values: [f64]) -> [(f64, int)] {
+  let sorted = values_sorted(values)
+  let table: [(f64, int)] = []
+  if sorted.len == 0 {
+    give table
+  }
+
+  let current = sorted[0]
+  let count_val: int = 1
+  let i: int = 1
+  while i < sorted.len {
+    if sorted[i] == current {
+      set count_val = count_val + 1
+    } else {
+      set table = table + [(current, count_val)]
+      set current = sorted[i]
+      set count_val = 1
+    }
+    set i = i + 1
+  }
+  set table = table + [(current, count_val)]
+  give table
+}
+
+proc histogram(values: [f64], bins: int) -> [(f64, f64, int)] {
+  let out: [(f64, f64, int)] = []
+  if values.len == 0 or bins <= 0 {
+    give out
+  }
+
+  let min_val = min(values)
+  let max_val = max(values)
+  let width = (max_val - min_val) / bins as f64
+  if width == 0.0 {
+    give out
+  }
+
+  let i: int = 0
+  while i < bins {
+    let low = min_val + i as f64 * width
+    let high = low + width
+    set out = out + [(low, high, 0)]
+    set i = i + 1
+  }
+
+  let j: int = 0
+  while j < values.len {
+    let value = values[j]
+    let index = ((value - min_val) / width) as int
+    let bucket = if index >= bins { bins - 1 } else { index }
+    if bucket >= 0 and bucket < out.len {
+      let entry = out[bucket]
+      set out[bucket] = (entry.0, entry.1, entry.2 + 1)
+    }
+    set j = j + 1
+  }
+
+  give out
+}
+
+proc normalize(values: [f64]) -> [f64] {
+  if values.len == 0 {
+    give []
+  }
+  let min_val = min(values)
+  let max_val = max(values)
+  let range = max_val - min_val
+  if range == 0.0 {
+    give values_sorted(values)
+  }
+
+  let out: [f64] = []
+  let i: int = 0
+  while i < values.len {
+    set out = out + [(values[i] - min_val) / range]
+    set i = i + 1
+  }
+  give out
+}
+
+proc standardize(values: [f64]) -> [f64] {
+  let avg = mean(values)
+  let std = population_stdev(values)
+  if std == 0.0 {
+    give values
+  }
+  let out: [f64] = []
+  let i: int = 0
+  while i < values.len {
+    set out = out + [(values[i] - avg) / std]
+    set i = i + 1
+  }
+  give out
+}
+
+proc utils_version() -> string {
+  give "max-1"
+}
+
+proc utils_ready() -> bool {
+  give true
+}
+
+proc utils_selftest() -> bool {
+  give utils_ready()
+    and utils_version() == "max-1"
+    and frequency_table([]).len == 0
+}

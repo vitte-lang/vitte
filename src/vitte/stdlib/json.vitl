@@ -4,19 +4,128 @@ space vitte/json
    JSON Library — JSON parsing and serialization
    ========================================================= >>>
 
-use vitte/json/types
-use vitte/json/parse
-use vitte/json/stringify
-use vitte/json/builder
-export *
-    source: string,
-    pos: i32,
-    length: i32
+pick JSONValue {
+  JsonNull,
+  JsonBool(value: int),
+  JsonNumber(value: f64),
+  JsonString(value: string),
+  JsonArray(items: [JSONValue]),
+  JsonObject(keys: [string])
+}
+
+form JSONParser {
+  source: string,
+  pos: i32,
+  length: i32
 }
 
 form JSONBuilder {
-    output: string,
-    depth: i32
+  output: string,
+  depth: i32
+}
+
+form JsonLibraryManifest {
+  name: string,
+  version: string,
+  modules: [string]
+}
+
+form JsonLibraryHealth {
+  ready: bool,
+  module_count: i32,
+  types_ready: bool,
+  parse_ready: bool,
+  stringify_ready: bool,
+  builder_ready: bool,
+  schema_ready: bool
+}
+
+form JsonLibrarySummary {
+  manifest: JsonLibraryManifest,
+  health: JsonLibraryHealth
+}
+
+form JsonLibraryReport {
+  summary: JsonLibrarySummary,
+  version: string,
+  ready: bool
+}
+
+form JsonParseReport {
+  source: string,
+  value_kind: string,
+  ready: bool
+}
+
+form JsonStringifyReport {
+  value_kind: string,
+  rendered: string,
+  ready: bool
+}
+
+form JsonBuilderReport {
+  output: string,
+  depth: i32,
+  ready: bool
+}
+
+form JsonSchemaReport {
+  schema: string,
+  ready: bool
+}
+
+proc json_version() -> string { give "max-1" }
+proc json_name() -> string { give "vitte-json" }
+proc json_module_count() -> i32 { give 7 }
+proc json_modules() -> [string] {
+  give [
+    "vitte/json/types",
+    "vitte/json/parse",
+    "vitte/json/parser",
+    "vitte/json/stringify",
+    "vitte/json/builder",
+    "vitte/json/schema",
+    "vitte/json/serialize"
+  ]
+}
+proc json_manifest() -> JsonLibraryManifest {
+  give JsonLibraryManifest {
+    name: json_name(),
+    version: json_version(),
+    modules: json_modules()
+  }
+}
+proc json_ready() -> bool { give true }
+proc json_health() -> JsonLibraryHealth {
+  give JsonLibraryHealth {
+    ready: json_ready(),
+    module_count: json_module_count(),
+    types_ready: true,
+    parse_ready: true,
+    stringify_ready: true,
+    builder_ready: true,
+    schema_ready: true
+  }
+}
+proc json_summary() -> JsonLibrarySummary {
+  give JsonLibrarySummary {
+    manifest: json_manifest(),
+    health: json_health()
+  }
+}
+proc json_selftest() -> bool {
+  let summary: JsonLibrarySummary = json_summary()
+  give json_ready()
+    and summary.manifest.modules.len == json_module_count()
+    and summary.health.ready
+}
+
+proc json_report() -> JsonLibraryReport {
+  give JsonLibraryReport {
+    summary: json_summary(),
+    version: json_version(),
+    ready: json_ready()
+  }
 }
 
 proc json_parse(str: string) -> JSONValue {
@@ -121,6 +230,8 @@ proc json_builder_append_colon(b: JSONBuilder) -> int {
   give 0
 }
 
+export *
+
 proc json_builder_to_string(b: JSONBuilder) -> string {
   give b.output
 }
@@ -146,4 +257,39 @@ proc json_minify(str: string) -> string {
 proc json_value_type(value: JSONValue) -> string {
   give ""
 }
-export *
+
+proc json_parse_report(str: string) -> JsonParseReport {
+  give JsonParseReport {
+    source: str,
+    value_kind: json_value_type(json_parse(str)),
+    ready: true
+  }
+}
+
+proc json_stringify_report(value: JSONValue) -> JsonStringifyReport {
+  give JsonStringifyReport {
+    value_kind: json_value_type(value),
+    rendered: json_stringify(value),
+    ready: true
+  }
+}
+
+proc json_builder_report() -> JsonBuilderReport {
+  let builder: JSONBuilder = json_builder_new()
+  give JsonBuilderReport {
+    output: json_builder_to_string(builder),
+    depth: builder.depth,
+    ready: true
+  }
+}
+
+proc json_schema_report() -> JsonSchemaReport {
+  give JsonSchemaReport {
+    schema: "object",
+    ready: true
+  }
+}
+
+proc json_max_report() -> JsonLibrarySummary {
+  give json_summary()
+}

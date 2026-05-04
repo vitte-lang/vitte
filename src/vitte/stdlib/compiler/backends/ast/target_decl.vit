@@ -1,0 +1,111 @@
+space vitte/compiler/backends/ast/target_decl
+
+use vitte/compiler/backends/ast/target_expr
+use vitte/compiler/backends/ast/target_stmt
+use vitte/compiler/backends/ast/target_type
+
+<<< ROLE-CONTRACT
+package: vitte.compiler.backends.ast.target_decl
+role: bootstrap-vitte-backend-ast
+source_of_truth: src/vitte/compiler/backends/ast/target_decl.vit
+status: bootstrap-vitte
+>>>
+
+pick Linkage {
+  Internal,
+  External
+}
+
+form TargetParam {
+  type_value: target_type.TargetType,
+  name: string
+}
+
+form TargetFunction {
+  name: string,
+  return_type: target_type.TargetType,
+  params: [TargetParam],
+  body: [target_stmt.TargetStmt],
+  is_inline: bool,
+  is_extern: bool,
+  linkage: Linkage,
+  abi: ?string,
+  link_name: ?string
+}
+
+form TargetGlobal {
+  type_value: target_type.TargetType,
+  name: string,
+  init: ?target_expr.TargetExpr,
+  is_const: bool,
+  linkage: Linkage,
+  is_extern: bool,
+  abi: ?string,
+  link_name: ?string
+}
+
+form TargetField {
+  type_value: target_type.TargetType,
+  name: string
+}
+
+form TargetStruct {
+  name: string,
+  fields: [TargetField],
+  is_pod: bool
+}
+
+form TargetEnumItem {
+  name: string,
+  value: ?int
+}
+
+form TargetEnum {
+  name: string,
+  items: [TargetEnumItem],
+  scoped: bool
+}
+
+form TargetNamespace {
+  name: string,
+  structs: [TargetStruct],
+  enums: [TargetEnum],
+  globals: [TargetGlobal],
+  functions: [TargetFunction]
+}
+
+form TargetUnit {
+  includes: [string],
+  namespaces: [TargetNamespace],
+  structs: [TargetStruct],
+  enums: [TargetEnum],
+  globals: [TargetGlobal],
+  functions: [TargetFunction]
+}
+
+proc default_function(name: string, return_type: target_type.TargetType) -> TargetFunction {
+  give TargetFunction {
+    name: name,
+    return_type: return_type,
+    params: [],
+    body: [],
+    is_inline: false,
+    is_extern: false,
+    linkage: Linkage.External,
+    abi: null,
+    link_name: null
+  }
+}
+
+proc default_translation_unit() -> TargetUnit {
+  give TargetUnit {
+    includes: [],
+    namespaces: [],
+    structs: [],
+    enums: [],
+    globals: [],
+    functions: []
+  }
+}
+
+export *

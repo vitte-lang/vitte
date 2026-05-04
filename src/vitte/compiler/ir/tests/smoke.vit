@@ -1,0 +1,51 @@
+space vitte/compiler/ir/tests/smoke
+
+form IRManifest {
+  stage: string,
+  source_root: string,
+  language: string
+}
+
+form MirModule {
+  source_name: string,
+  namespace_name: string,
+  globals_count: int,
+  functions_count: int,
+  notes_count: int
+}
+
+proc manifest() -> IRManifest {
+  give IRManifest {
+    stage: "bootstrap-vitte",
+    source_root: "src/vitte/compiler/ir",
+    language: "vitte"
+  }
+}
+
+proc lower_mir(source_name: string, namespace_name: string) -> MirModule {
+  give MirModule {
+    source_name: source_name,
+    namespace_name: namespace_name,
+    globals_count: 0,
+    functions_count: 0,
+    notes_count: 1
+  }
+}
+
+test "ir manifest stays stable" {
+  let info: IRManifest = manifest()
+  if info.stage != "bootstrap-vitte" { give false }
+  if info.source_root != "src/vitte/compiler/ir" { give false }
+  if info.language != "vitte" { give false }
+  give true
+}
+
+test "lower_mir facade returns an empty module shell" {
+  let module_value: MirModule = lower_mir("demo.vit", "demo/app")
+  if module_value.source_name != "demo.vit" { give false }
+  if module_value.namespace_name != "demo/app" { give false }
+  if module_value.globals_count != 0 { give false }
+  if module_value.functions_count != 0 { give false }
+  if module_value.notes_count != 1 { give false }
+  give true
+}

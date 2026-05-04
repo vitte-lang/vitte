@@ -1,229 +1,55 @@
-space vitte/encoding/hex
+space vitte/stdlib/encoding/hex
 
-<<< =========================================================
-   Hexadecimal Encoding Module (optimized + consistent)
-   ========================================================= >>>
-
-use vitte/collections/vector { * }
-
-const HEX_TABLE_LOWER: string = "0123456789abcdef"
-const HEX_TABLE_UPPER: string = "0123456789ABCDEF"
-
-# ----------------------------------------------------------
-# Reverse lookup table for O(1) hex char to value
-# ----------------------------------------------------------
-const HEX_REVERSE: [i32] = [
-  # 256 entries (pseudo-init): default -1
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  # 0-15
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  # 16-31
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  # 32-47
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9,                                    # '0'-'9' (48-57)
-  -1, -1, -1, -1, -1, -1,                                          # 58-63
-  -1,10,11,12,13,14,15, -1, -1, -1, -1, -1, -1, -1, -1, -1,         # 'A'-'F' (65-70)
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,                       # 71-81
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   # 82-97
-  -1,10,11,12,13,14,15, -1, -1, -1, -1, -1, -1, -1, -1, -1,         # 'a'-'f' (97-102)
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,                       # 103-113
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   # 114-127
-  # Pad to 256
-  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,                  # 128-143
-  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,                  # 144-159
-  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,                  # 160-175
-  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,                  # 176-191
-  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,                  # 192-207
-  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,                  # 208-223
-  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,                  # 224-239
-  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1                   # 240-255
-]
-
-# ----------------------------------------------------------
-# Reverse lookup
-# ----------------------------------------------------------
-
-proc _hex_val(c: i32) -> i32 {
-  if c < 0 or c >= 256 { give -1 }
-  give HEX_REVERSE[c]
-}
-
-# ----------------------------------------------------------
-# Encode bytes (core)
-# ----------------------------------------------------------
-
-proc hex_encode_with_table(data: [i32], table: string) -> [i32] {
-  let out = vector_new[i32](data.len * 2)
-
-  let i: i32 = 0
-  while i < data.len {
-    let b = data[i]
-    if b < 0 or b > 255 {
-      set i = i + 1
-      continue
-    }
-    let hi = b >> 4
-    let lo = b & 15
-
-    vector_push(out, table[hi])
-    vector_push(out, table[lo])
-
+proc encode_hex(text: string) -> string {
+  let hex_chars = "0123456789abcdef"
+  let result: string = ""
+  let bytes = text.bytes()
+  let i: int = 0
+  while i < bytes.len {
+    let b = bytes[i]
+    set result = result + hex_chars[b >> 4] + hex_chars[b & 0xF]
     set i = i + 1
   }
-
-  give vector_to_array(out)
+  give result
 }
 
-proc hex_encode_bytes(data: [i32]) -> [i32] {
-  give hex_encode_with_table(data, HEX_TABLE_LOWER)
-}
-
-# ----------------------------------------------------------
-# Decode bytes
-# ----------------------------------------------------------
-
-proc hex_decode_loose(data: [i32]) -> [i32] {
-  let out = vector_new[i32](data.len / 2)
-
-  let i: i32 = 0
-
-  # skip optional 0x prefix
-  if data.len >= 2 and data[0] == '0' and (data[1] == 'x' or data[1] == 'X') {
-    set i = 2
-  }
-
-  while i < data.len {
-    # skip whitespace block
-    while i < data.len and (data[i] == ' ' or data[i] == '\n' or data[i] == '\r') {
-      set i = i + 1
+proc decode_hex(text: string) -> string {
+  let hex_chars = "0123456789abcdef"
+  let result: [int] = []
+  let i: int = 0
+  while i + 1 < text.len {
+    let high = hex_chars.index_of(text[i:i+1])
+    let low = hex_chars.index_of(text[i+1:i+2])
+    if high == -1 || low == -1 {
+      give ""
     }
-
-    if i + 1 >= data.len { break }
-
-    let v1 = _hex_val(data[i])
-    if v1 != -1 {
-      let v2 = _hex_val(data[i + 1])
-      if v2 != -1 {
-        vector_push(out, (v1 << 4) | v2)
-        set i = i + 2
-        continue
-      }
-    }
-
-    # fallback skip
-    set i = i + 1
-  }
-
-  give vector_to_array(out)
-}
-
-proc hex_decode_strict(data: [i32]) -> [i32] {
-  if data.len % 2 != 0 { give [] }
-
-  let out = vector_new[i32](data.len / 2)
-
-  let i: i32 = 0
-  while i < data.len {
-    let v1 = _hex_val(data[i])
-    let v2 = _hex_val(data[i + 1])
-
-    if v1 == -1 or v2 == -1 { give [] }
-
-    vector_push(out, (v1 << 4) | v2)
-
+    set result = result + [(high << 4) | low]
     set i = i + 2
   }
-
-  give vector_to_array(out)
+  give result.to_string()
 }
 
-# keep default alias
-proc hex_decode_bytes(data: [i32]) -> [i32] {
-  give hex_decode_loose(data)
-}
-
-#
-# ----------------------------------------------------------
-# Zero-copy API
-# ----------------------------------------------------------
-
-proc hex_encode_to_with_table(data: [i32], out: Vector[i32], table: string) {
-  vector_reserve(out, out.size + data.len * 2)
-
-  let i: i32 = 0
-  while i < data.len {
-    let b = data[i]
-    if b < 0 or b > 255 {
-      set i = i + 1
-      continue
-    }
-    let hi = b >> 4
-    let lo = b & 15
-
-    vector_push(out, table[hi])
-    vector_push(out, table[lo])
-
+proc encode_hex_upper(text: string) -> string {
+  let hex_chars = "0123456789ABCDEF"
+  let result: string = ""
+  let bytes = text.bytes()
+  let i: int = 0
+  while i < bytes.len {
+    let b = bytes[i]
+    set result = result + hex_chars[b >> 4] + hex_chars[b & 0xF]
     set i = i + 1
   }
+  give result
 }
 
-proc hex_encode_to(data: [i32], out: Vector[i32]) {
-  hex_encode_to_with_table(data, out, HEX_TABLE_LOWER)
-}
-
-proc hex_decode_to(data: [i32], out: Vector[i32]) {
-  vector_reserve(out, out.size + data.len / 2)
-
-  let i: i32 = 0
-
-  # skip optional 0x prefix
-  if data.len >= 2 and data[0] == '0' and (data[1] == 'x' or data[1] == 'X') {
-    set i = 2
-  }
-
-  while i < data.len {
-    # skip whitespace block
-    while i < data.len and (data[i] == ' ' or data[i] == '\n' or data[i] == '\r') {
-      set i = i + 1
+proc is_valid_hex(text: string) -> bool {
+  let hex_chars = "0123456789abcdefABCDEF"
+  let i: int = 0
+  while i < text.len {
+    if hex_chars.index_of(text[i:i+1]) == -1 {
+      give false
     }
-
-    if i + 1 >= data.len { break }
-
-    let v1 = _hex_val(data[i])
-    if v1 != -1 {
-      let v2 = _hex_val(data[i + 1])
-      if v2 != -1 {
-        vector_push(out, (v1 << 4) | v2)
-        set i = i + 2
-        continue
-      }
-    }
-
     set i = i + 1
   }
+  give text.len % 2 == 0
 }
-
-# ----------------------------------------------------------
-# Uppercase encode API (bytes)
-# ----------------------------------------------------------
-proc hex_encode_uppercase_bytes(data: [i32]) -> [i32] {
-  give hex_encode_with_table(data, HEX_TABLE_UPPER)
-}
-
-# ----------------------------------------------------------
-# String wrappers
-# ----------------------------------------------------------
-
-proc hex_encode(data: string) -> string {
-  give array_to_string(hex_encode_bytes(string_to_array(data)))
-}
-
-proc hex_decode(data: string) -> string {
-  give array_to_string(hex_decode_bytes(string_to_array(data)))
-}
-
-proc hex_encode_uppercase(data: string) -> string {
-  give array_to_string(hex_encode_with_table(string_to_array(data), HEX_TABLE_UPPER))
-}
-
-proc hex_encode_lowercase(data: string) -> string {
-  give array_to_string(hex_encode_with_table(string_to_array(data), HEX_TABLE_LOWER))
-}
-export *

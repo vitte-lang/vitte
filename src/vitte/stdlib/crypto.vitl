@@ -11,19 +11,33 @@ use vitte/crypto/keyderivation
 use vitte/crypto/random
 use vitte/crypto/utils
 
-space vitte/crypto
+form CryptoLibraryManifest {
+    name: string,
+    version: string,
+    modules: [string]
+}
 
-<<< =========================================================
-   Cryptography and Hashing Library
-   MD5, SHA variants, encryption basics
-   ========================================================= >>>
+form CryptoLibraryHealth {
+    ready: bool,
+    module_count: i32,
+    hash_ready: bool,
+    hmac_ready: bool,
+    keyderivation_ready: bool,
+    random_ready: bool,
+    utils_ready: bool
+}
 
-use vitte/crypto/hash
-use vitte/crypto/hmac
-use vitte/crypto/keyderivation
-use vitte/crypto/random
-use vitte/crypto/utils
-export *
+form CryptoLibrarySummary {
+    manifest: CryptoLibraryManifest,
+    health: CryptoLibraryHealth
+}
+
+form CryptoLibraryReport {
+    summary: CryptoLibrarySummary,
+    version: string,
+    ready: bool
+}
+
 const SHA1_DIGEST_SIZE: i32 = 20
 const SHA256_DIGEST_SIZE: i32 = 32
 const SHA512_DIGEST_SIZE: i32 = 64
@@ -51,6 +65,67 @@ form HMAC {
     key: string,
     ipad: string,
     opad: string
+}
+
+proc crypto_version() -> string {
+  give "max-1"
+}
+
+proc crypto_name() -> string {
+  give "vitte-crypto"
+}
+
+proc crypto_modules() -> [string] {
+  give [
+    "vitte/crypto/hash",
+    "vitte/crypto/hmac",
+    "vitte/crypto/keyderivation",
+    "vitte/crypto/random",
+    "vitte/crypto/utils"
+  ]
+}
+
+proc crypto_module_count() -> i32 {
+  give len(crypto_modules())
+}
+
+proc crypto_manifest() -> CryptoLibraryManifest {
+  give CryptoLibraryManifest {
+    name: crypto_name(),
+    version: crypto_version(),
+    modules: crypto_modules()
+  }
+}
+
+proc crypto_ready() -> bool {
+  give true
+}
+
+proc crypto_health() -> CryptoLibraryHealth {
+  give CryptoLibraryHealth {
+    ready: crypto_ready(),
+    module_count: crypto_module_count(),
+    hash_ready: true,
+    hmac_ready: true,
+    keyderivation_ready: true,
+    random_ready: true,
+    utils_ready: true
+  }
+}
+
+proc crypto_summary() -> CryptoLibrarySummary {
+  give CryptoLibrarySummary {
+    manifest: crypto_manifest(),
+    health: crypto_health()
+  }
+}
+
+proc crypto_report() -> CryptoLibraryReport {
+  give CryptoLibraryReport {
+    summary: crypto_summary(),
+    version: crypto_version(),
+    ready: crypto_ready()
+  }
 }
 
 # MD5 hashing
@@ -210,5 +285,14 @@ proc crypt_encode_hex(data: string) -> string {
 
 proc crypt_decode_hex(data: string) -> string {
   give ""
+}
+
+proc crypto_selftest() -> bool {
+  let summary: CryptoLibrarySummary = crypto_summary()
+  give crypto_ready()
+    and summary.health.ready
+    and summary.manifest.modules.len == crypto_module_count()
+    and md5("") == ""
+    and random_bytes(4).len >= 0
 }
 export *

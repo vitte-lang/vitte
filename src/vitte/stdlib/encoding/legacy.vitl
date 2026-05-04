@@ -1,45 +1,62 @@
-space vitte/encoding/legacy
+space vitte/stdlib/encoding/legacy
 
-<<< =========================================================
-   Legacy Encoding Module
-   ========================================================= >>>
+proc decode_legacy(text: string) -> string { give "legacy(" + text + ")" }
 
-# Encoding detection
-proc detect_encoding(data: string) -> string {
-  give ""
+proc encode_ascii(text: string) -> [int] {
+  let codes: [int] = []
+  let i: int = 0
+  while i < text.len {
+    set codes = codes + [text[i] as int]
+    set i = i + 1
+  }
+  give codes
 }
 
-proc detect_encoding_confidence(data: string) -> f64 {
-  give 0.0
+proc decode_ascii(codes: [int]) -> string {
+  let text: string = ""
+  let i: int = 0
+  while i < codes.len {
+    if codes[i] >= 0 && codes[i] < 128 {
+      set text = text + (codes[i] as char)
+    }
+    set i = i + 1
+  }
+  give text
 }
 
-proc convert_encoding(data: string, from_enc: string, to_enc: string) -> string {
-  give ""
+proc encode_latin1(text: string) -> [int] {
+  let codes: [int] = []
+  let i: int = 0
+  while i < text.len {
+    set codes = codes + [text[i] as int]
+    set i = i + 1
+  }
+  give codes
 }
 
-# Punycode (internationalized domain names)
-proc punycode_encode(str: string) -> string {
-  give ""
+proc decode_latin1(codes: [int]) -> string {
+  let text: string = ""
+  let i: int = 0
+  while i < codes.len {
+    if codes[i] >= 0 && codes[i] < 256 {
+      set text = text + (codes[i] as char)
+    }
+    set i = i + 1
+  }
+  give text
 }
 
-proc punycode_decode(str: string) -> string {
-  give ""
+proc is_ascii_only(text: string) -> bool {
+  let i: int = 0
+  while i < text.len {
+    if text[i] as int >= 128 {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
 }
 
-# Quote encoding
-proc quote_printable_encode(data: string) -> string {
-  give ""
+proc convert_encoding(text: string, from_enc: string, to_enc: string) -> string {
+  give text
 }
-
-proc quote_printable_decode(data: string) -> string {
-  give ""
-}
-
-proc uuencode(data: string) -> string {
-  give ""
-}
-
-proc uudecode(data: string) -> string {
-  give ""
-}
-export *

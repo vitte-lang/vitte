@@ -15,6 +15,16 @@ form Queue {
     capacity: i32
 }
 
+proc _repeat_i64(value: i64, count: i32) -> [i64] {
+    let out: [i64] = []
+    let i: i32 = 0
+    while i < count {
+        set out = out + [value]
+        i += 1
+    }
+    give out
+}
+
 <<< ---------------------------------------------------------
    Constructors
    --------------------------------------------------------- >>>
@@ -23,7 +33,7 @@ proc queue_new(capacity: i32) -> Queue {
     let cap = if capacity <= 0 { 8 } else { capacity }
 
     give Queue {
-        data: repeat(0, cap),
+        data: _repeat_i64(0, cap),
         front: 0,
         rear: 0,
         size: 0,
@@ -34,7 +44,7 @@ proc queue_new(capacity: i32) -> Queue {
 proc queue_reserve(q: Queue, new_cap: i32) {
     if new_cap <= q.capacity { give }
 
-    let new_data: [i64] = repeat(0, new_cap)
+    let new_data: [i64] = _repeat_i64(0, new_cap)
 
     let i: i64 = 0
     while i < q.size {
@@ -54,7 +64,7 @@ proc queue_reserve(q: Queue, new_cap: i32) {
 
 proc _queue_resize(q: Queue) {
     let new_cap = q.capacity * 2
-    let new_data: [i64] = repeat(0, new_cap)
+    let new_data: [i64] = _repeat_i64(0, new_cap)
 
     let i: i64 = 0
     while i < q.size {
@@ -71,7 +81,7 @@ proc _queue_resize(q: Queue) {
 proc _queue_shrink(q: Queue) {
     if q.capacity > 8 and q.size * 4 < q.capacity {
         let new_cap = q.capacity / 2
-        let new_data: [i64] = repeat(0, new_cap)
+        let new_data: [i64] = _repeat_i64(0, new_cap)
 
         let i: i64 = 0
         while i < q.size {
@@ -197,7 +207,7 @@ proc queue_get(q: Queue, idx: i64) -> i64 {
    --------------------------------------------------------- >>>
 
 proc queue_to_array(q: Queue) -> [i64] {
-    let out: [i64] = repeat(0, q.size)
+    let out: [i64] = _repeat_i64(0, q.size)
     let i: i64 = 0
 
     while i < q.size {

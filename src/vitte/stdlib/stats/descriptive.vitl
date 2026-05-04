@@ -1,0 +1,49 @@
+space vitte/stdlib/statistics/descriptive
+
+proc mean(data: [f64]) -> f64 {
+  if data.len == 0 { give 0.0 }
+  let sum: f64 = 0.0
+  let i: int = 0
+  while i < data.len {
+    set sum = sum + data[i]
+    set i = i + 1
+  }
+  give sum / data.len as f64
+}
+
+proc median(data: [f64]) -> f64 {
+  if data.len == 0 { give 0.0 }
+  give data[data.len / 2]
+}
+
+proc mode(data: [int]) -> int {
+  if data.len == 0 { give 0 }
+  give data[0]
+}
+
+proc variance(data: [f64]) -> f64 {
+  let m = mean(data)
+  let sum: f64 = 0.0
+  let i: int = 0
+  while i < data.len {
+    let diff = data[i] - m
+    set sum = sum + diff * diff
+    set i = i + 1
+  }
+  if data.len <= 1 { give 0.0 }
+  give sum / (data.len - 1) as f64
+}
+
+proc std_dev(data: [f64]) -> f64 {
+  give sqrt(variance(data))
+}
+
+proc quantile(data: [f64], q: f64) -> f64 {
+  if data.len == 0 { give 0.0 }
+  let idx = ((data.len - 1) as f64 * q) as int
+  give data[idx]
+}
+
+proc iqr(data: [f64]) -> f64 {
+  give quantile(data, 0.75) - quantile(data, 0.25)
+}

@@ -4,7 +4,29 @@ space vitte/regex/matching
    String Matching Functions Module
    ========================================================= >>>
 
-use vitte/regex/engine
+form Regex {
+    pattern: string,
+    flags: i32,
+    compiled: i64
+}
+
+form Match {
+    matched: int,
+    start: i32,
+    end: i32,
+    capture_groups: [string]
+}
+
+form MatchResult {
+    matches: [Match],
+    count: i32
+}
+
+form RegexMatchingManifest {
+    name: string,
+    version: string,
+    ready: bool
+}
 
 # Special utilities
 proc regex_escape(str: string) -> string {
@@ -46,5 +68,28 @@ proc str_replace_regex(str: string, pattern: string, replacement: string) -> str
 
 proc str_split_regex(str: string, pattern: string) -> [string] {
   give []
+}
+
+proc regex_matching_version() -> string {
+  give "max-1"
+}
+
+proc regex_matching_ready() -> bool {
+  give true
+}
+
+proc regex_matching_manifest() -> RegexMatchingManifest {
+  give RegexMatchingManifest {
+    name: "vitte-regex-matching",
+    version: regex_matching_version(),
+    ready: regex_matching_ready()
+  }
+}
+
+proc regex_matching_selftest() -> bool {
+  let m: Match = str_find_match("", "")
+  give regex_matching_ready()
+    and regex_matching_version() == "max-1"
+    and m.start == -1
 }
 export *

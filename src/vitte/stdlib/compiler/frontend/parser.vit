@@ -1,0 +1,384 @@
+space vitte/compiler/frontend/parser
+
+use vitte/core
+use vitte/io
+use vitte/compiler/frontend/ast
+use vitte/compiler/frontend/diagnostics
+use vitte/compiler/frontend/lexer
+
+form ParsedSource {
+  module_value: ast.AstModule,
+  diagnostics: diagnostics.DiagnosticBag
+}
+
+form ProcParseResult {
+  proc_decl: ast.AstProcDecl,
+  next_line_index: int,
+  diagnostics: diagnostics.DiagnosticBag
+}
+
+proc _trim_after_prefix(line_text: string, prefix: string) -> string {
+  give core.string_trim(core.string_slice(line_text, prefix.len, line_text.len))
+}
+
+proc _index_of_char(text: string, needle: string) -> int {
+  let i: int = 0
+  while i < text.len {
+    if (text[i] as string) == needle {
+      give i
+    }
+    set i = i + 1
+  }
+  give -1
+}
+
+proc _first_word(text: string) -> string {
+  let trimmed: string = core.string_trim(text)
+  let i: int = 0
+  while i < trimmed.len and not core.char_is_space(trimmed[i]) and (trimmed[i] as string) != ":" and (trimmed[i] as string) != "=" and (trimmed[i] as string) != "(" {
+    set i = i + 1
+  }
+  give core.string_slice(trimmed, 0, i)
+}
+
+proc _last_index_of_char(text: string, needle: string) -> int {
+  let i: int = text.len - 1
+  while i >= 0 {
+    if (text[i] as string) == needle {
+      give i
+    }
+    set i = i - 1
+  }
+  give -1
+}
+
+proc _split_args(arg_text: string) -> [string] {
+  let trimmed: string = core.string_trim(arg_text)
+  if trimmed == "" { give [] }
+  let parts: [string] = []
+  let current: string = ""
+  let depth: int = 0
+  let i: int = 0
+  while i < trimmed.len {
+    let ch: string = trimmed[i] as string
+    if ch == "(" {
+      set depth = depth + 1
+      set current = current ++ ch
+      set i = i + 1
+      continue
+    }
+    if ch == ")" {
+      set depth = depth - 1
+      set current = current ++ ch
+      set i = i + 1
+      continue
+    }
+    if ch == "," and depth == 0 {
+      set parts = parts + [core.string_trim(current)]
+      set current = ""
+      set i = i + 1
+      continue
+    }
+    set current = current ++ ch
+    set i = i + 1
+  }
+  if core.string_trim(current) != "" {
+    set parts = parts + [core.string_trim(current)]
+  }
+  give parts
+}
+
+proc _parse_expr(text: string) -> ast.AstExpr {
+  let trimmed: string = core.string_trim(text)
+  if trimmed == "" {
+    give ast.AstExpr { kind: ast.AstExprKind.Empty, text: "", callee: "", args: [] }
+  }
+
+  let open_paren: int = _index_of_char(trimmed, "(")
+  let close_paren: int = _last_index_of_char(trimmed, ")")
+  if open_paren > 0 and close_paren == trimmed.len - 1 and not core.char_is_space(trimmed[open_paren - 1]) {
+    let callee: string = core.string_trim(core.string_slice(trimmed, 0, open_paren))
+    let raw_args: [string] = _split_args(core.string_slice(trimmed, open_paren + 1, close_paren))
+    let args: [ast.AstExpr] = []
+    let i: int = 0
+    while i < raw_args.len {
+      set args = args + [_parse_expr(raw_args[i])]
+      set i = i + 1
+    }
+    give ast.AstExpr { kind: ast.AstExprKind.Call, text: trimmed, callee: callee, args: args }
+  }
+
+  if core.char_is_digit(trimmed[0]) or trimmed == "true" or trimmed == "false" or (trimmed[0] as string) == "\"" or (trimmed[0] as string) == "'" {
+    give ast.AstExpr { kind: ast.AstExprKind.Literal, text: trimmed, callee: "", args: [] }
+  }
+
+  let is_identifier: bool =
+    not core.string_contains(trimmed, " ") and
+    not core.string_contains(trimmed, "(") and
+    not core.string_contains(trimmed, ")") and
+    not core.string_contains(trimmed, "+") and
+    not core.string_contains(trimmed, "-") and
+    not core.string_contains(trimmed, "*") and
+    not core.string_contains(trimmed, "/") and
+    not core.string_contains(trimmed, "=")
+  if is_identifier {
+    give ast.AstExpr { kind: ast.AstExprKind.Variable, text: trimmed, callee: "", args: [] }
+  }
+
+  give ast.AstExpr { kind: ast.AstExprKind.Raw, text: trimmed, callee: "", args: [] }
+}
+
+proc _parse_stmt(line_text: string) -> ast.AstStmt {
+  let trimmed: string = core.string_trim(line_text)
+  if core.string_starts_with(trimmed, "give") {
+    give ast.AstStmt {
+      kind: ast.AstStmtKind.Give,
+      name: "",
+      type_name: "",
+      expr: _parse_expr(_trim_after_prefix(trimmed, "give")),
+      raw_text: trimmed
+    }
+  }
+  if core.string_starts_with(trimmed, "let ") {
+    let rest: string = _trim_after_prefix(trimmed, "let")
+    let eq: int = _index_of_char(rest, "=")
+    let binding_text: string = if eq >= 0 { core.string_trim(core.string_slice(rest, 0, eq)) } else { rest }
+    let init_text: string = if eq >= 0 { core.string_trim(core.string_slice(rest, eq + 1, rest.len)) } else { "" }
+    let colon: int = _index_of_char(binding_text, ":")
+    give ast.AstStmt {
+      kind: ast.AstStmtKind.Let,
+      name: if colon >= 0 { core.string_trim(core.string_slice(binding_text, 0, colon)) } else { core.string_trim(binding_text) },
+      type_name: if colon >= 0 { core.string_trim(core.string_slice(binding_text, colon + 1, binding_text.len)) } else { "" },
+      expr: _parse_expr(init_text),
+      raw_text: trimmed
+    }
+  }
+  if core.string_starts_with(trimmed, "set ") {
+    let rest: string = _trim_after_prefix(trimmed, "set")
+    let eq: int = _index_of_char(rest, "=")
+    give ast.AstStmt {
+      kind: ast.AstStmtKind.Set,
+      name: if eq >= 0 { core.string_trim(core.string_slice(rest, 0, eq)) } else { core.string_trim(rest) },
+      type_name: "",
+      expr: if eq >= 0 { _parse_expr(core.string_slice(rest, eq + 1, rest.len)) } else { _parse_expr("") },
+      raw_text: trimmed
+    }
+  }
+  give ast.AstStmt {
+    kind: ast.AstStmtKind.Expr,
+    name: "",
+    type_name: "",
+    expr: _parse_expr(trimmed),
+    raw_text: trimmed
+  }
+}
+
+proc _parse_params(param_text: string) -> [ast.AstParam] {
+  let trimmed: string = core.string_trim(param_text)
+  if trimmed == "" { give [] }
+  let parts: [string] = []
+  let current: string = ""
+  let i: int = 0
+  while i < trimmed.len {
+    let ch: string = trimmed[i] as string
+    if ch == "," {
+      set parts = parts + [core.string_trim(current)]
+      set current = ""
+      set i = i + 1
+      continue
+    }
+    set current = current ++ ch
+    set i = i + 1
+  }
+  if core.string_trim(current) != "" {
+    set parts = parts + [core.string_trim(current)]
+  }
+
+  let params: [ast.AstParam] = []
+  let j: int = 0
+  while j < parts.len {
+    let part: string = parts[j]
+    let colon: int = _index_of_char(part, ":")
+    if colon >= 0 {
+      set params = params + [ast.AstParam {
+        name: core.string_trim(core.string_slice(part, 0, colon)),
+        type_name: core.string_trim(core.string_slice(part, colon + 1, part.len))
+      }]
+    } else {
+      set params = params + [ast.AstParam {
+        name: core.string_trim(part),
+        type_name: ""
+      }]
+    }
+    set j = j + 1
+  }
+  give params
+}
+
+proc _parse_proc_signature(signature_text: string) -> ast.AstProcDecl {
+  let rest: string = _trim_after_prefix(signature_text, "proc")
+  let open_paren: int = _index_of_char(rest, "(")
+  let close_paren: int = _index_of_char(rest, ")")
+  let name: string =
+    if open_paren >= 0 {
+      core.string_trim(core.string_slice(rest, 0, open_paren))
+    } else {
+      _first_word(rest)
+    }
+  let params: [ast.AstParam] =
+    if open_paren >= 0 and close_paren > open_paren {
+      _parse_params(core.string_slice(rest, open_paren + 1, close_paren))
+    } else {
+      []
+    }
+  let return_type_name: string =
+    if core.string_contains(rest, "->") {
+      let raw_return: string = core.string_trim(core.string_slice(rest, core.string_find(rest, "->") + 2, rest.len))
+      let brace: int = _index_of_char(raw_return, "{")
+      if brace >= 0 {
+        core.string_trim(core.string_slice(raw_return, 0, brace))
+      } else {
+        raw_return
+      }
+    } else {
+      "void"
+    }
+  give ast.AstProcDecl {
+    name: name,
+    return_type_name: return_type_name,
+    params: params,
+    body_stmts: [],
+    body_lines: [],
+    has_body: false,
+    extern_abi: ""
+  }
+}
+
+proc _parse_proc_decl(lines: [string], start_index: int, bag: diagnostics.DiagnosticBag) -> ProcParseResult {
+  let signature_line: string = core.string_trim(lines[start_index])
+  let proc_offset: int =
+    if core.string_starts_with(signature_line, "proc ") {
+      0
+    } else {
+      core.string_find(signature_line, "proc ")
+    }
+  let proc_line: string = core.string_slice(signature_line, proc_offset, signature_line.len)
+  let proc_value: ast.AstProcDecl = _parse_proc_signature(proc_line)
+
+  let body_lines: [string] = []
+  let body_stmts: [ast.AstStmt] = []
+  let has_inline_body: bool = _index_of_char(proc_line, "{") >= 0
+  let has_body: bool = has_inline_body
+  let next_line_index: int = start_index + 1
+
+  if has_inline_body {
+    let close_on_same_line: bool = _index_of_char(proc_line, "}") >= 0
+    if not close_on_same_line {
+      let cursor: int = start_index + 1
+      while cursor < lines.len {
+        let body_line: string = core.string_trim(lines[cursor])
+        let open_here: int = _index_of_char(body_line, "{")
+        let close_here: int = _index_of_char(body_line, "}")
+        if close_here >= 0 and open_here < 0 {
+          set next_line_index = cursor + 1
+          break
+        }
+        if body_line != "" and open_here < 0 {
+          set body_lines = body_lines + [body_line]
+          set body_stmts = body_stmts + [_parse_stmt(body_line)]
+        }
+        set cursor = cursor + 1
+      }
+      if next_line_index == start_index + 1 {
+        set bag = diagnostics.add_error(bag, "E1101", "unterminated procedure body", start_index + 1, 1)
+        set next_line_index = lines.len
+      }
+    }
+  }
+
+  give ProcParseResult {
+    proc_decl: ast.AstProcDecl {
+      name: proc_value.name,
+      return_type_name: proc_value.return_type_name,
+      params: proc_value.params,
+      body_stmts: body_stmts,
+      body_lines: body_lines,
+      has_body: has_body,
+      extern_abi: proc_value.extern_abi
+    },
+    next_line_index: next_line_index,
+    diagnostics: bag
+  }
+}
+
+proc parse_lexed(lexed: lexer.LexedSource) -> ParsedSource {
+  let module_value: ast.AstModule = ast.empty_module(lexed.source_name)
+  let bag: diagnostics.DiagnosticBag = lexed.diagnostics
+  let lines: [string] = io.split_lines(lexed.source_text)
+  let i: int = 0
+  while i < lines.len {
+    let raw_line: string = lines[i]
+    let line_text: string = core.string_trim(raw_line)
+    if line_text == "" {
+      set i = i + 1
+      continue
+    }
+    if core.string_starts_with(line_text, "#") or core.string_starts_with(line_text, "//") or core.string_starts_with(line_text, "<<<") {
+      set i = i + 1
+      continue
+    }
+    if core.string_starts_with(line_text, "space ") {
+      set module_value.space_name = _trim_after_prefix(line_text, "space")
+      set module_value.decls = module_value.decls + [ast.AstDecl { kind: ast.AstDeclKind.Space, name: module_value.space_name, raw_line: raw_line, value_text: module_value.space_name, proc_decl: null }]
+      set i = i + 1
+      continue
+    }
+    if core.string_starts_with(line_text, "use ") {
+      let use_path: string = _trim_after_prefix(line_text, "use")
+      set module_value.uses = module_value.uses + [use_path]
+      set module_value.decls = module_value.decls + [ast.AstDecl { kind: ast.AstDeclKind.Use, name: use_path, raw_line: raw_line, value_text: use_path, proc_decl: null }]
+      set i = i + 1
+      continue
+    }
+    if core.string_starts_with(line_text, "const ") {
+      let const_rest: string = _trim_after_prefix(line_text, "const")
+      let const_name: string = _first_word(const_rest)
+      set module_value.decls = module_value.decls + [ast.AstDecl { kind: ast.AstDeclKind.Const, name: const_name, raw_line: raw_line, value_text: const_rest, proc_decl: null }]
+      set i = i + 1
+      continue
+    }
+    if core.string_starts_with(line_text, "static ") {
+      let static_rest: string = _trim_after_prefix(line_text, "static")
+      let static_name: string = _first_word(static_rest)
+      set module_value.decls = module_value.decls + [ast.AstDecl { kind: ast.AstDeclKind.Static, name: static_name, raw_line: raw_line, value_text: static_rest, proc_decl: null }]
+      set i = i + 1
+      continue
+    }
+    if core.string_starts_with(line_text, "global ") {
+      let global_rest: string = _trim_after_prefix(line_text, "global")
+      let global_name: string = _first_word(global_rest)
+      set module_value.decls = module_value.decls + [ast.AstDecl { kind: ast.AstDeclKind.Global, name: global_name, raw_line: raw_line, value_text: global_rest, proc_decl: null }]
+      set i = i + 1
+      continue
+    }
+    if core.string_contains(line_text, "proc ") or core.string_starts_with(line_text, "proc ") {
+      let parsed_proc: ProcParseResult = _parse_proc_decl(lines, i, bag)
+      set bag = parsed_proc.diagnostics
+      set module_value.decls = module_value.decls + [ast.AstDecl {
+        kind: ast.AstDeclKind.Proc,
+        name: parsed_proc.proc_decl.name,
+        raw_line: raw_line,
+        value_text: line_text,
+        proc_decl: parsed_proc.proc_decl
+      }]
+      set i = parsed_proc.next_line_index
+      continue
+    }
+    set bag = diagnostics.add_warning(bag, "W1001", "unparsed top-level line kept as unknown declaration", i + 1, 1)
+    set module_value.decls = module_value.decls + [ast.AstDecl { kind: ast.AstDeclKind.Unknown, name: "", raw_line: raw_line, value_text: line_text, proc_decl: null }]
+    set i = i + 1
+  }
+  give ParsedSource { module_value: module_value, diagnostics: bag }
+}
+
+export *

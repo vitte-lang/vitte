@@ -1,0 +1,206 @@
+space vitte/compiler/frontend/diagnostics
+
+pick DiagnosticLevel {
+  Error,
+  Warning,
+  Note,
+  Help,
+  Info
+}
+
+form DiagnosticSpan {
+  file: string,
+  line: int,
+  column: int,
+  end_line: int,
+  end_column: int
+}
+
+form DiagnosticLabel {
+  message: string,
+  span: DiagnosticSpan
+}
+
+form Diagnostic {
+  level: DiagnosticLevel,
+  code: string,
+  message: string,
+  primary_span: DiagnosticSpan,
+  labels: [DiagnosticLabel],
+  notes: [string],
+  helps: [string]
+}
+
+form DiagnosticBag {
+  items: [Diagnostic],
+  error_count: int,
+  warning_count: int,
+  note_count: int
+}
+
+proc new_span(file: string, line: int, column: int) -> DiagnosticSpan {
+  give DiagnosticSpan {
+    file: file,
+    line: line,
+    column: column,
+    end_line: line,
+    end_column: column
+  }
+}
+
+proc new_bag() -> DiagnosticBag {
+  give DiagnosticBag {
+    items: [],
+    error_count: 0,
+    warning_count: 0,
+    note_count: 0
+  }
+}
+
+proc push(bag: DiagnosticBag, diag: Diagnostic) -> DiagnosticBag {
+  set bag.items = bag.items + [diag]
+
+  if diag.level == DiagnosticLevel.Error {
+    set bag.error_count = bag.error_count + 1
+  } elif diag.level == DiagnosticLevel.Warning {
+    set bag.warning_count = bag.warning_count + 1
+  } else {
+    set bag.note_count = bag.note_count + 1
+  }
+
+  give bag
+}
+
+proc new_diag(level: DiagnosticLevel, code: string, message: string, span: DiagnosticSpan) -> Diagnostic {
+  give Diagnostic {
+    level: level,
+    code: code,
+    message: message,
+    primary_span: span,
+    labels: [],
+    notes: [],
+    helps: []
+  }
+}
+
+proc add(bag: DiagnosticBag, level: DiagnosticLevel, code: string, message: string, file: string, line: int, column: int) -> DiagnosticBag {
+  let span: DiagnosticSpan = new_span(file, line, column)
+  let diag: Diagnostic = new_diag(level, code, message, span)
+  give push(bag, diag)
+}
+
+proc add_error(bag: DiagnosticBag, code: string, message: string, file: string, line: int, column: int) -> DiagnosticBag {
+  give add(bag, DiagnosticLevel.Error, code, message, file, line, column)
+}
+
+proc add_warning(bag: DiagnosticBag, code: string, message: string, file: string, line: int, column: int) -> DiagnosticBag {
+  give add(bag, DiagnosticLevel.Warning, code, message, file, line, column)
+}
+
+proc add_note(bag: DiagnosticBag, code: string, message: string, file: string, line: int, column: int) -> DiagnosticBag {
+  give add(bag, DiagnosticLevel.Note, code, message, file, line, column)
+}
+
+proc with_label(diag: Diagnostic, message: string, span: DiagnosticSpan) -> Diagnostic {
+  set diag.labels = diag.labels + [DiagnosticLabel { message: message, span: span }]
+  give diag
+}
+
+proc with_note(diag: Diagnostic, note: string) -> Diagnostic {
+  set diag.notes = diag.notes + [note]
+  give diag
+}
+
+proc with_help(diag: Diagnostic, help: string) -> Diagnostic {
+  set diag.helps = diag.helps + [help]
+  give diag
+}
+
+proc merge(a: DiagnosticBag, b: DiagnosticBag) -> DiagnosticBag {
+  let mut out: DiagnosticBag = a
+
+  for d in b.items {
+    set out = push(out, d)
+  }
+
+  give out
+}
+
+proc has_errors(bag: DiagnosticBag) -> bool {
+  give bag.error_count > 0
+}
+
+proc has_warnings(bag: DiagnosticBag) -> bool {
+  give bag.warning_count > 0
+}
+
+proc is_empty(bag: DiagnosticBag) -> bool {
+  give bag.items.len == 0
+}
+
+proc count(bag: DiagnosticBag) -> int {
+  give bag.items.len
+}
+
+proc clear(bag: DiagnosticBag) -> DiagnosticBag {
+  give new_bag()
+}
+
+proc format_level(level: DiagnosticLevel) -> string {
+  if level == DiagnosticLevel.Error {
+    give "error"
+  } elif level == DiagnosticLevel.Warning {
+    give "warning"
+  } elif level == DiagnosticLevel.Note {
+    give "note"
+  } elif level == DiagnosticLevel.Help {
+    give "help"
+  } else {
+    give "info"
+  }
+}
+
+proc format(diag: Diagnostic) -> string {
+  let header: string =
+    format_level(diag.level) + "[" + diag.code + "]: " + diag.message
+
+  let location: string =
+    diag.primary_span.file + ":" +
+    int_to_string(diag.primary_span.line) + ":" +
+    int_to_string(diag.primary_span.column)
+
+  let mut out: string = header + "\n  --> " + location
+
+  for label in diag.labels {
+    set out = out + "\n  | " + label.message
+  }
+
+  for note in diag.notes {
+    set out = out + "\n  note: " + note
+  }
+
+  for help in diag.helps {
+    set out = out + "\n  help: " + help
+  }
+
+  give out
+}
+
+proc int_to_string(value: int) -> string {
+  let _ = value
+  give ""
+}
+
+proc format_all(bag: DiagnosticBag) -> string {
+  let mut out: string = ""
+  let mut i: int = 0
+
+  while i < bag.items.len {
+    set out = out + format(bag.items[i]) + "\n"
+    set i = i + 1
+  }
+
+  give out
+}
+
+export *

@@ -1,0 +1,32 @@
+space vitte/compiler/driver/pipeline
+
+use vitte/compiler/frontend/ast
+use vitte/compiler/frontend/diagnostics
+use vitte/compiler/frontend/lexer
+use vitte/compiler/frontend/parser
+use vitte/compiler/ir/hir
+use vitte/compiler/ir/mir
+
+form PipelineArtifacts {
+  lexed: lexer.LexedSource,
+  parsed_module: ast.AstModule,
+  hir_module: hir.HirModule,
+  mir_module: mir.MirModule,
+  diagnostics: diagnostics.DiagnosticBag
+}
+
+proc run(source_name: string, source_text: string) -> PipelineArtifacts {
+  let lexed: lexer.LexedSource = lexer.lex_source(source_name, source_text)
+  let parsed: parser.ParsedSource = parser.parse_lexed(lexed)
+  let hir_module: hir.HirModule = hir.lower_ast(parsed.module_value)
+  let mir_module: mir.MirModule = mir.lower_hir(hir_module)
+  give PipelineArtifacts {
+    lexed: lexed,
+    parsed_module: parsed.module_value,
+    hir_module: hir_module,
+    mir_module: mir_module,
+    diagnostics: parsed.diagnostics
+  }
+}
+
+export *

@@ -1,0 +1,236 @@
+space vitte/stdlib/text/tokenize
+
+<<< =========================================================
+   Text Tokenization — words, lines, sentences, chunks
+   ========================================================= >>>
+
+export *
+
+proc _is_space(ch: char) -> bool {
+  if ch == ' ' { give true }
+  if ch == '\n' { give true }
+  if ch == '\t' { give true }
+  if ch == '\r' { give true }
+  give false
+}
+
+proc _is_sentence_end(ch: char) -> bool {
+  if ch == '.' { give true }
+  if ch == '!' { give true }
+  if ch == '?' { give true }
+  give false
+}
+
+proc _is_word_char(ch: char) -> bool {
+  if ch >= 'a' and ch <= 'z' { give true }
+  if ch >= 'A' and ch <= 'Z' { give true }
+  if ch >= '0' and ch <= '9' { give true }
+  if ch == '_' { give true }
+  if ch == '-' { give true }
+  give false
+}
+
+proc split_words(text: string) -> [string] {
+  let out: [string] = []
+  let token: string = ""
+  let i: int = 0
+
+  while i < text.len {
+    let c: char = text[i]
+    if _is_space(c) {
+      if token != "" {
+        set out = out + [token]
+        set token = ""
+      }
+    } else {
+      set token = token + (c as string)
+    }
+    set i = i + 1
+  }
+
+  if token != "" {
+    set out = out + [token]
+  }
+
+  give out
+}
+
+proc split_words_lower(text: string) -> [string] {
+  let words: [string] = split_words(text)
+  let out: [string] = []
+  let i: int = 0
+  while i < words.len {
+    let w: string = words[i]
+    let j: int = 0
+    let lowered: string = ""
+    while j < w.len {
+      let ch: char = w[j]
+      if ch >= 'A' and ch <= 'Z' {
+        set lowered = lowered + ((ch as i32 + 32) as char as string)
+      } else {
+        set lowered = lowered + (ch as string)
+      }
+      set j = j + 1
+    }
+    set out = out + [lowered]
+    set i = i + 1
+  }
+  give out
+}
+
+proc split_lines(text: string) -> [string] {
+  let out: [string] = []
+  let line: string = ""
+  let i: int = 0
+
+  while i < text.len {
+    let c: char = text[i]
+    if c == '\r' {
+      if i + 1 < text.len and text[i + 1] == '\n' {
+        set i = i + 1
+      }
+      set out = out + [line]
+      set line = ""
+    } else if c == '\n' {
+      set out = out + [line]
+      set line = ""
+    } else {
+      set line = line + (c as string)
+    }
+    set i = i + 1
+  }
+
+  set out = out + [line]
+  give out
+}
+
+proc split_sentences(text: string) -> [string] {
+  let out: [string] = []
+  let sentence: string = ""
+  let i: int = 0
+
+  while i < text.len {
+    let c: char = text[i]
+    set sentence = sentence + (c as string)
+    if _is_sentence_end(c) {
+      set out = out + [sentence]
+      set sentence = ""
+    }
+    set i = i + 1
+  }
+
+  if sentence != "" {
+    set out = out + [sentence]
+  }
+
+  give out
+}
+
+proc split_paragraphs(text: string) -> [string] {
+  let out: [string] = []
+  let current: string = ""
+  let i: int = 0
+  let seen_newline: int = 0
+
+  while i < text.len {
+    let c: char = text[i]
+    if c == '\n' {
+      set seen_newline = seen_newline + 1
+      if seen_newline >= 2 {
+        if current != "" {
+          set out = out + [current]
+          set current = ""
+        }
+      } else {
+        set current = current + "\n"
+      }
+    } else if c == '\r' {
+      if current != "" {
+        set current = current + "\n"
+      }
+    } else {
+      set seen_newline = 0
+      set current = current + (c as string)
+    }
+    set i = i + 1
+  }
+
+  if current != "" {
+    set out = out + [current]
+  }
+
+  give out
+}
+
+proc split_chars(text: string) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  while i < text.len {
+    set out = out + [text[i] as string]
+    set i = i + 1
+  }
+  give out
+}
+
+proc tokenize_basic(text: string) -> [string] {
+  give split_words(text)
+}
+
+proc tokenize_alpha(text: string) -> [string] {
+  let out: [string] = []
+  let current: string = ""
+  let i: int = 0
+
+  while i < text.len {
+    let c: char = text[i]
+    if _is_word_char(c) {
+      set current = current + (c as string)
+    } else {
+      if current != "" {
+        set out = out + [current]
+        set current = ""
+      }
+    }
+    set i = i + 1
+  }
+
+  if current != "" {
+    set out = out + [current]
+  }
+
+  give out
+}
+
+proc tokenize_csv(text: string) -> [string] {
+  let out: [string] = []
+  let current: string = ""
+  let i: int = 0
+
+  while i < text.len {
+    let c: char = text[i]
+    if c == ',' {
+      set out = out + [current]
+      set current = ""
+    } else {
+      set current = current + (c as string)
+    }
+    set i = i + 1
+  }
+
+  set out = out + [current]
+  give out
+}
+
+proc token_count(text: string) -> i64 {
+  give split_words(text).len as i64
+}
+
+proc tokenize_selftest() -> bool {
+  give split_words("a b c").len == 3
+    and split_lines("a\nb").len == 2
+    and split_sentences("a. b?").len >= 2
+    and split_chars("ab").len == 2
+    and tokenize_alpha("a,b!").len == 2
+    and tokenize_csv("a,b").len == 2
+    and token_count("one two") == 2
+}

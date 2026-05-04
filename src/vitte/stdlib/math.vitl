@@ -8,21 +8,21 @@ space vitte/stdlib/math
    matrix, probability, sequences, calculus and trigonometry.
    ========================================================= >>>
 
-use stdlib/math/arithmetic as arithmetic
-use stdlib/math/comparison as comparison
-use stdlib/math/number_theory as number_theory
-use stdlib/math/powers as powers
-use stdlib/math/roots as roots
-use stdlib/math/modular as modular
-use stdlib/math/geometry as geometry
-use stdlib/math/arrays as arrays
-use stdlib/math/vector as vector
-use stdlib/math/complex as complex
-use stdlib/math/matrix as matrix
-use stdlib/math/probability as probability
-use stdlib/math/sequences as sequences
-use stdlib/math/calculus as calculus
-use stdlib/math/trigonometry as trigonometry
+use vitte/stdlib/math/arithmetic as arithmetic
+use vitte/stdlib/math/comparison as comparison
+use vitte/stdlib/math/number_theory as number_theory
+use vitte/stdlib/math/powers as powers
+use vitte/stdlib/math/roots as roots
+use vitte/stdlib/math/modular as modular
+use vitte/stdlib/math/geometry as geometry
+use vitte/stdlib/math/arrays as arrays
+use vitte/stdlib/math/vector as vector
+use vitte/stdlib/math/complex as complex
+use vitte/stdlib/math/matrix as matrix
+use vitte/stdlib/math/probability as probability
+use vitte/stdlib/math/sequences as sequences
+use vitte/stdlib/math/calculus as calculus
+use vitte/stdlib/math/trigonometry as trigonometry
 
 export *
 
@@ -88,6 +88,37 @@ form Vec3i {
   z: int,
 }
 
+form MathManifest {
+  name: string,
+  version: string,
+  module_count: int,
+  modules: [string]
+}
+
+form MathHealth {
+  ready: bool,
+  arithmetic_ready: bool,
+  comparison_ready: bool,
+  number_theory_ready: bool,
+  powers_ready: bool,
+  roots_ready: bool,
+  modular_ready: bool,
+  geometry_ready: bool,
+  arrays_ready: bool,
+  vector_ready: bool,
+  complex_ready: bool,
+  matrix_ready: bool,
+  probability_ready: bool,
+  sequences_ready: bool,
+  calculus_ready: bool,
+  trigonometry_ready: bool
+}
+
+form MathSummary {
+  manifest: MathManifest,
+  health: MathHealth
+}
+
 pick MathError {
   Ok,
   DivisionByZero,
@@ -98,11 +129,36 @@ pick MathError {
 
 proc math_error_code(err: MathError) -> int {
   match err {
-    case Ok => 0
-    case DivisionByZero => -1
-    case Overflow => -2
-    case InvalidInput => -3
-    case EmptyInput => -4
+    case Ok { give 0 }
+    case DivisionByZero { give -1 }
+    case Overflow { give -2 }
+    case InvalidInput { give -3 }
+    case EmptyInput { give -4 }
+  }
+}
+
+proc math_version() -> string {
+  give "max-1"
+}
+
+proc math_name() -> string {
+  give "vitte-stdlib-math"
+}
+
+proc math_module_count() -> int {
+  give len(math_domains())
+}
+
+proc math_modules() -> [string] {
+  give math_domains()
+}
+
+proc math_manifest() -> MathManifest {
+  give MathManifest {
+    name: math_name(),
+    version: math_version(),
+    module_count: math_module_count(),
+    modules: math_modules()
   }
 }
 
@@ -916,6 +972,34 @@ proc is_finite(x: f64) -> bool { give not is_nan(x) and not is_infinite(x) }
 
 proc math_ready() -> bool { give true }
 
+proc math_health() -> MathHealth {
+  give MathHealth {
+    ready: math_ready(),
+    arithmetic_ready: true,
+    comparison_ready: true,
+    number_theory_ready: true,
+    powers_ready: true,
+    roots_ready: true,
+    modular_ready: true,
+    geometry_ready: true,
+    arrays_ready: true,
+    vector_ready: true,
+    complex_ready: true,
+    matrix_ready: true,
+    probability_ready: true,
+    sequences_ready: true,
+    calculus_ready: true,
+    trigonometry_ready: true
+  }
+}
+
+proc math_summary() -> MathSummary {
+  give MathSummary {
+    manifest: math_manifest(),
+    health: math_health()
+  }
+}
+
 proc math_domains() -> [string] {
   give [
     "arithmetic",
@@ -942,6 +1026,15 @@ proc math_domains() -> [string] {
 }
 
 proc library_meta() -> string { give "stdlib.math" }
+
+proc math_selftest() -> bool {
+  let summary: MathSummary = math_summary()
+  give math_ready()
+    and summary.health.ready
+    and summary.manifest.module_count == math_module_count()
+    and add(2, 3) == 5
+    and is_finite(1.0)
+}
 
 test "math basics" {
   assert add(2, 3) == 5

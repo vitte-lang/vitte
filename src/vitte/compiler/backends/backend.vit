@@ -1,0 +1,154 @@
+space vitte/compiler/backends/backend
+
+form BackendManifest {
+  stage: string,
+  source_root: string,
+  language: string,
+  family: string,
+  bootstrap: bool
+}
+
+form BackendOptions {
+  debug: bool,
+  optimize: bool,
+  opt_level: int,
+  verbose: bool,
+  work_dir: string,
+  runtime_include: string,
+  target: string,
+  freestanding: bool,
+  emit_obj: bool,
+  repro: bool,
+  repro_strict: bool,
+  arduino_upload: bool,
+  arduino_port: string,
+  arduino_fqbn: string
+}
+
+form MirModule {
+  source_name: string,
+  namespace_name: string,
+  globals_count: int,
+  functions_count: int
+}
+
+form BackendCompileResult {
+  output_path: string,
+  emitted_source: string,
+  tool_command: string,
+  success: bool,
+  notes: [string]
+}
+
+form BackendSummary {
+  source_name: string,
+  namespace_name: string,
+  note_count: int,
+  emitted_kind: string
+}
+
+proc manifest() -> BackendManifest {
+  give BackendManifest {
+    stage: "bootstrap-vitte",
+    source_root: "src/vitte/compiler/backends",
+    language: "vitte",
+    family: "target-emission-from-vitte",
+    bootstrap: true
+  }
+}
+
+proc migration_stage() -> string { give manifest().stage }
+proc source_of_truth() -> string { give manifest().source_root }
+proc is_bootstrap() -> bool { give manifest().bootstrap }
+proc backend_family() -> string { give manifest().family }
+proc bootstrap_language() -> string { give manifest().language }
+
+proc backend_summary(module_value: MirModule) -> BackendSummary {
+  give BackendSummary {
+    source_name: module_value.source_name,
+    namespace_name: module_value.namespace_name,
+    note_count: 2,
+    emitted_kind: "bootstrap-vitte"
+  }
+}
+
+proc result_is_success(result: BackendCompileResult) -> bool {
+  give result.success and result.emitted_source != "" and result.tool_command != ""
+}
+
+proc with_output_path(result: BackendCompileResult, output_path: string) -> BackendCompileResult {
+  set result.output_path = output_path
+  give result
+}
+
+proc with_tool_command(result: BackendCompileResult, command: string) -> BackendCompileResult {
+  set result.tool_command = command
+  give result
+}
+
+proc backend_notes(module_value: MirModule) -> [string] {
+  give [
+    "source=" + module_value.source_name,
+    "namespace=" + module_value.namespace_name,
+    "globals=" + (module_value.globals_count as string),
+    "functions=" + (module_value.functions_count as string)
+  ]
+}
+
+proc default_options() -> BackendOptions {
+  give BackendOptions {
+    debug: false,
+    optimize: false,
+    opt_level: 2,
+    verbose: false,
+    work_dir: ".",
+    runtime_include: "",
+    target: "",
+    freestanding: false,
+    emit_obj: false,
+    repro: false,
+    repro_strict: false,
+    arduino_upload: false,
+    arduino_port: "",
+    arduino_fqbn: ""
+  }
+}
+
+proc build_vitte_command(input_source: string, output: string, opts: BackendOptions) -> string {
+  let cmd: string = "vitte "
+  set cmd = cmd ++ "-o " ++ output ++ " "
+  set cmd = cmd ++ input_source
+  if opts.target != "" {
+    set cmd = cmd ++ " --target=" ++ opts.target
+  }
+  if opts.debug { set cmd = cmd ++ " -g" }
+  if opts.optimize { set cmd = cmd ++ " -O" ++ (opts.opt_level as string) }
+  if opts.emit_obj { set cmd = cmd ++ " --emit-module" }
+  give cmd
+}
+
+proc emit_backend(module_value: MirModule, options: BackendOptions) -> BackendCompileResult {
+  let _ = options
+  give BackendCompileResult {
+    output_path: "",
+    emitted_source: "backend(" + module_value.namespace_name + ")",
+    tool_command: "",
+    success: true,
+    notes: backend_notes(module_value)
+  }
+}
+
+proc compile_backend(module_value: MirModule, output_exe: string, options: BackendOptions) -> BackendCompileResult {
+  let result: BackendCompileResult = emit_backend(module_value, options)
+  give with_tool_command(with_output_path(result, output_exe), build_vitte_command(module_value.source_name, output_exe, options))
+}
+
+proc backend_ready(module_value: MirModule) -> bool {
+  give module_value.source_name != "" and module_value.namespace_name != ""
+}
+
+proc backend_summary_text(module_value: MirModule) -> string {
+  give module_value.namespace_name + " globals=" + (module_value.globals_count as string) + " functions=" + (module_value.functions_count as string)
+}
+
+export *

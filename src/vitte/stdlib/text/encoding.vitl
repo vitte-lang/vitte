@@ -1,0 +1,196 @@
+space vitte/stdlib/text/encoding
+
+<<< =========================================================
+   Text Encoding — escaping, sanitizing, and URL helpers
+   ========================================================= >>>
+
+export *
+
+proc encoding_info() -> string {
+  give "text.encoding loaded"
+}
+
+proc _is_safe_url_char(ch: char) -> bool {
+  if ch >= 'a' and ch <= 'z' { give true }
+  if ch >= 'A' and ch <= 'Z' { give true }
+  if ch >= '0' and ch <= '9' { give true }
+  if ch == '-' or ch == '_' or ch == '.' or ch == '~' { give true }
+  give false
+}
+
+proc _hex_digit(n: i32) -> char {
+  if n < 10 { give (48 + n) as char }
+  give (55 + (n - 10)) as char
+}
+
+proc _hex_value(ch: char) -> i32 {
+  if ch >= '0' and ch <= '9' { give (ch as i32) - 48 }
+  if ch >= 'a' and ch <= 'f' { give (ch as i32) - 87 }
+  if ch >= 'A' and ch <= 'F' { give (ch as i32) - 55 }
+  give -1
+}
+
+proc _to_hex_byte(value: i32) -> string {
+  let hi: i32 = (value / 16) % 16
+  let lo: i32 = value % 16
+  give ( _hex_digit(hi) as string ) + ( _hex_digit(lo) as string )
+}
+
+proc escape_html(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < text.len {
+    let c: char = text[i]
+    if c == '&' {
+      set out = out + "&amp;"
+    } else if c == '<' {
+      set out = out + "&lt;"
+    } else if c == '>' {
+      set out = out + "&gt;"
+    } else if c == '"' {
+      set out = out + "&quot;"
+    } else if c == '\'' {
+      set out = out + "&#39;"
+    } else {
+      set out = out + (c as string)
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc unescape_html(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < text.len {
+    if i + 4 <= text.len and text[i:i+4] == "&lt;" {
+      set out = out + "<"
+      set i = i + 4
+    } else if i + 4 <= text.len and text[i:i+4] == "&gt;" {
+      set out = out + ">"
+      set i = i + 4
+    } else if i + 5 <= text.len and text[i:i+5] == "&amp;" {
+      set out = out + "&"
+      set i = i + 5
+    } else if i + 6 <= text.len and text[i:i+6] == "&quot;" {
+      set out = out + "\""
+      set i = i + 6
+    } else if i + 5 <= text.len and text[i:i+5] == "&#39;" {
+      set out = out + "'"
+      set i = i + 5
+    } else {
+      set out = out + (text[i] as string)
+      set i = i + 1
+    }
+  }
+  give out
+}
+
+proc escape_xml(text: string) -> string {
+  give escape_html(text)
+}
+
+proc unescape_xml(text: string) -> string {
+  give unescape_html(text)
+}
+
+proc quote(text: string) -> string {
+  give "\"" + escape_html(text) + "\""
+}
+
+proc unquote(text: string) -> string {
+  if text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"' {
+    give unescape_html(text[1:text.len - 1])
+  }
+  give text
+}
+
+proc ascii_only(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < text.len {
+    let c: char = text[i]
+    if (c as i32) >= 32 and (c as i32) < 127 {
+      set out = out + (c as string)
+    } else {
+      set out = out + "?"
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc sanitize_ascii(text: string) -> string {
+  give ascii_only(text)
+}
+
+proc url_encode(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < text.len {
+    let c: char = text[i]
+    if _is_safe_url_char(c) {
+      set out = out + (c as string)
+    } else if c == ' ' {
+      set out = out + "+"
+    } else {
+      set out = out + "%" + _to_hex_byte(c as i32)
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc url_decode(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < text.len {
+    let c: char = text[i]
+    if c == '+' {
+      set out = out + " "
+      set i = i + 1
+    } else if c == '%' and i + 2 < text.len {
+      let hi: int = _hex_value(text[i + 1])
+      let lo: int = _hex_value(text[i + 2])
+      if hi >= 0 and lo >= 0 {
+        set out = out + (((hi * 16 + lo) as char) as string)
+      } else {
+        set out = out + "?"
+      }
+      set i = i + 3
+    } else {
+      set out = out + (c as string)
+      set i = i + 1
+    }
+  }
+  give out
+}
+
+proc html_entity_count(text: string) -> i64 {
+  let count: i64 = 0
+  let i: int = 0
+  while i < text.len {
+    if text[i] == '&' {
+      set count = count + 1
+    }
+    set i = i + 1
+  }
+  give count
+}
+
+proc encoding_normalize(text: string) -> string {
+  give sanitize_ascii(unescape_html(text))
+}
+
+proc encoding_manifest() -> string {
+  give "encoding:html+xml+url+ascii"
+}
+
+proc encoding_selftest() -> bool {
+  let sample: string = "<tag> & \"x\""
+  give escape_html(sample) == "&lt;tag&gt; &amp; &quot;x&quot;"
+    and unescape_html(escape_html(sample)) == sample
+    and url_encode("a b") == "a+b"
+    and url_decode("a+b") == "a b"
+    and ascii_only("a" + (1 as char) + "b") == "a?b"
+}

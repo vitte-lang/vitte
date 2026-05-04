@@ -1,0 +1,115 @@
+space vitte/compiler/ir/hir
+
+use vitte/compiler/frontend/ast
+
+form HirExpr {
+  kind: string,
+  text: string,
+  callee: string,
+  args: [HirExpr]
+}
+
+form HirStmt {
+  kind: string,
+  name: string,
+  type_name: string,
+  expr: HirExpr,
+  raw_text: string
+}
+
+form HirBinding {
+  name: string,
+  kind: string,
+  value_text: string
+}
+
+form HirFunction {
+  name: string,
+  return_type_name: string,
+  params: [ast.AstParam],
+  extern_abi: string,
+  stmts: [HirStmt]
+}
+
+form HirModule {
+  source_name: string,
+  module_name: string,
+  uses: [string],
+  bindings: [HirBinding],
+  functions: [HirFunction]
+}
+
+proc _lower_expr(expr: ast.AstExpr) -> HirExpr {
+  let args: [HirExpr] = []
+  let i: int = 0
+  while i < expr.args.len {
+    set args = args + [_lower_expr(expr.args[i])]
+    set i = i + 1
+  }
+  give HirExpr {
+    kind:
+      if expr.kind == ast.AstExprKind.Empty { "empty" }
+      else if expr.kind == ast.AstExprKind.Literal { "literal" }
+      else if expr.kind == ast.AstExprKind.Variable { "variable" }
+      else if expr.kind == ast.AstExprKind.Call { "call" }
+      else { "raw" },
+    text: expr.text,
+    callee: expr.callee,
+    args: args
+  }
+}
+
+proc _lower_stmt(stmt: ast.AstStmt) -> HirStmt {
+  give HirStmt {
+    kind:
+      if stmt.kind == ast.AstStmtKind.Give { "give" }
+      else if stmt.kind == ast.AstStmtKind.Let { "let" }
+      else if stmt.kind == ast.AstStmtKind.Set { "set" }
+      else { "expr" },
+    name: stmt.name,
+    type_name: stmt.type_name,
+    expr: _lower_expr(stmt.expr),
+    raw_text: stmt.raw_text
+  }
+}
+
+proc lower_ast(module_value: ast.AstModule) -> HirModule {
+  let bindings: [HirBinding] = []
+  let functions: [HirFunction] = []
+  let i: int = 0
+  while i < module_value.decls.len {
+    let decl: ast.AstDecl = module_value.decls[i]
+    if decl.kind == ast.AstDeclKind.Proc and decl.proc_decl != null {
+      let proc_value: ast.AstProcDecl = decl.proc_decl as ast.AstProcDecl
+      let stmts: [HirStmt] = []
+      let si: int = 0
+      while si < proc_value.body_stmts.len {
+        set stmts = stmts + [_lower_stmt(proc_value.body_stmts[si])]
+        set si = si + 1
+      }
+      set functions = functions + [HirFunction {
+        name: proc_value.name,
+        return_type_name: proc_value.return_type_name,
+        params: proc_value.params,
+        extern_abi: proc_value.extern_abi,
+        stmts: stmts
+      }]
+    } else {
+      set bindings = bindings + [HirBinding {
+        name: decl.name,
+        kind: if decl.kind == ast.AstDeclKind.Const { "const" } else if decl.kind == ast.AstDeclKind.Static { "static" } else if decl.kind == ast.AstDeclKind.Global { "global" } else { "decl" },
+        value_text: decl.value_text
+      }]
+    }
+    set i = i + 1
+  }
+  give HirModule {
+    source_name: module_value.source_name,
+    module_name: module_value.space_name,
+    uses: module_value.uses,
+    bindings: bindings,
+    functions: functions
+  }
+}
+
+export *

@@ -1,0 +1,109 @@
+space vitte/compiler/driver/pipeline
+
+form DiagnosticBag {
+  count: int
+}
+
+form ParsedModule {
+  space_name: string,
+  uses: [string],
+  proc_count: int
+}
+
+form HirModule {
+  functions: [string]
+}
+
+form MirModule {
+  functions: [string]
+}
+
+form PipelineArtifacts {
+  source_name: string,
+  source_text: string,
+  parsed_module: ParsedModule,
+  hir_module: HirModule,
+  mir_module: MirModule,
+  diagnostics: DiagnosticBag
+}
+
+proc _starts_with(text: string, prefix: string) -> bool {
+  if prefix.len > text.len { give false }
+  let i: int = 0
+  while i < prefix.len {
+    if (text[i] as string) != (prefix[i] as string) {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
+}
+
+proc _split_lines(text: string) -> [string] {
+  let lines: [string] = []
+  let current: string = ""
+  let i: int = 0
+  while i < text.len {
+    let ch: string = text[i] as string
+    if ch == "\n" {
+      set lines = lines + [current]
+      set current = ""
+      set i = i + 1
+      continue
+    }
+    if ch == "\r" {
+      set i = i + 1
+      continue
+    }
+    set current = current + ch
+    set i = i + 1
+  }
+  set lines = lines + [current]
+  give lines
+}
+
+proc run(source_name: string, source_text: string) -> PipelineArtifacts {
+  let lines: [string] = _split_lines(source_text)
+  let space_name: string = ""
+  let uses: [string] = []
+  let proc_count: int = 0
+  let i: int = 0
+
+  while i < lines.len {
+    let line: string = lines[i]
+    if _starts_with(line, "space ") {
+      set space_name = line
+    }
+    if _starts_with(line, "use ") {
+      set uses = uses + [line]
+    }
+    if _starts_with(line, "proc ") {
+      set proc_count = proc_count + 1
+    }
+    set i = i + 1
+  }
+
+  let hir_functions: [string] = []
+  if proc_count > 0 {
+    set hir_functions = ["main"]
+  }
+
+  give PipelineArtifacts {
+    source_name: source_name,
+    source_text: source_text,
+    parsed_module: ParsedModule {
+      space_name: space_name,
+      uses: uses,
+      proc_count: proc_count
+    },
+    hir_module: HirModule {
+      functions: hir_functions
+    },
+    mir_module: MirModule {
+      functions: hir_functions
+    },
+    diagnostics: DiagnosticBag { count: 0 }
+  }
+}
+
+export *

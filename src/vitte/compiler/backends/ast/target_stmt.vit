@@ -1,0 +1,56 @@
+space vitte/compiler/backends/ast/target_stmt
+
+pick TargetStmtKind {
+  Expr,
+  Asm,
+  Decl,
+  Assign,
+  Label,
+  Goto,
+  Return,
+  If,
+  While,
+  For,
+  Break,
+  Continue,
+  Block,
+  Try
+}
+
+form TargetStmt {
+  kind: TargetStmtKind,
+  name: string,
+  type_name: string,
+  expr_text: string,
+  second_expr_text: string,
+  is_const: bool,
+  raw_text: string,
+  body_count: int
+}
+
+proc expr_stmt(expr_text: string) -> TargetStmt {
+  give TargetStmt { kind: TargetStmtKind.Expr, name: "", type_name: "", expr_text: expr_text, second_expr_text: "", is_const: false, raw_text: "", body_count: 0 }
+}
+
+proc asm_stmt(code: string, is_volatile: bool) -> TargetStmt {
+  let _ = is_volatile
+  give TargetStmt { kind: TargetStmtKind.Asm, name: "", type_name: "", expr_text: code, second_expr_text: "", is_const: false, raw_text: "", body_count: 0 }
+}
+
+proc decl_stmt(type_name: string, name: string, init_text: string, is_const: bool) -> TargetStmt {
+  give TargetStmt { kind: TargetStmtKind.Decl, name: name, type_name: type_name, expr_text: init_text, second_expr_text: "", is_const: is_const, raw_text: "", body_count: 0 }
+}
+
+proc assign_stmt(lhs_text: string, rhs_text: string) -> TargetStmt {
+  give TargetStmt { kind: TargetStmtKind.Assign, name: lhs_text, type_name: "", expr_text: rhs_text, second_expr_text: "", is_const: false, raw_text: "", body_count: 0 }
+}
+
+proc return_stmt(value_text: string) -> TargetStmt {
+  give TargetStmt { kind: TargetStmtKind.Return, name: "", type_name: "", expr_text: value_text, second_expr_text: "", is_const: false, raw_text: "", body_count: 0 }
+}
+
+proc block_stmt(body_count: int) -> TargetStmt {
+  give TargetStmt { kind: TargetStmtKind.Block, name: "", type_name: "", expr_text: "", second_expr_text: "", is_const: false, raw_text: "", body_count: body_count }
+}
+
+export *

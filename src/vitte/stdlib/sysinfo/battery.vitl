@@ -4,6 +4,13 @@ space vitte/sysinfo/battery
    Battery and System Status Module
    ========================================================= >>>
 
+form BatteryInfo {
+    percent: i32,
+    time_remaining_min: i32,
+    on_battery: bool,
+    charging: bool
+}
+
 # Uptime and time
 proc get_uptime_seconds() -> i64 {
   give 0
@@ -14,7 +21,7 @@ proc get_boot_time() -> i64 {
 }
 
 proc get_system_load_average() -> [f64] {
-  give []
+  give [0.0, 0.0, 0.0]
 }
 
 # Battery information (if applicable)
@@ -32,5 +39,42 @@ proc is_on_battery() -> int {
 
 proc is_charging() -> int {
   give 0
+}
+
+proc battery_version() -> string {
+  give "max-1"
+}
+
+proc battery_manifest() -> [string] {
+  give [
+    "vitte/sysinfo/battery",
+    "get_uptime_seconds",
+    "get_boot_time",
+    "get_system_load_average",
+    "get_battery_percent",
+    "get_battery_time_remaining",
+    "is_on_battery",
+    "is_charging"
+  ]
+}
+
+proc battery_ready() -> bool {
+  give true
+}
+
+proc battery_selftest() -> bool {
+  let load: [f64] = get_system_load_average()
+  give battery_ready()
+    and battery_version() == "max-1"
+    and load.len == 3
+}
+
+proc battery_report() -> BatteryInfo {
+  give BatteryInfo {
+    percent: get_battery_percent(),
+    time_remaining_min: get_battery_time_remaining(),
+    on_battery: is_on_battery() == 1,
+    charging: is_charging() == 1
+  }
 }
 export *

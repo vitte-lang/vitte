@@ -48,4 +48,37 @@ proc get_memory_percent() -> f64 {
 proc get_process_memory_mb() -> i32 {
   give 0
 }
+
+proc memory_version() -> string {
+  give "max-1"
+}
+
+proc memory_manifest() -> [string] {
+  give [
+    "vitte/sysinfo/memory",
+    "get_memory_info",
+    "get_total_memory",
+    "get_available_memory",
+    "get_used_memory",
+    "get_free_memory",
+    "get_memory_percent",
+    "get_process_memory_mb"
+  ]
+}
+
+proc memory_ready() -> bool {
+  give true
+}
+
+proc memory_selftest() -> bool {
+  let info: MemoryStat = get_memory_info()
+  give memory_ready()
+    and memory_version() == "max-1"
+    and info.total == 0
+    and info.available == 0
+}
+
+proc memory_report() -> MemoryStat {
+  give get_memory_info()
+}
 export *

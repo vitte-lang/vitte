@@ -14,6 +14,16 @@ form Vector {
     capacity: i32
 }
 
+proc _repeat_i64(value: i64, count: i32) -> [i64] {
+    let out: [i64] = []
+    let i: i32 = 0
+    while i < count {
+        set out = out + [value]
+        i += 1
+    }
+    give out
+}
+
 <<< ---------------------------------------------------------
    Constructors
    --------------------------------------------------------- >>>
@@ -22,7 +32,7 @@ proc vector_new(capacity: i32) -> Vector {
     let cap = if capacity <= 0 { 8 } else { capacity }
 
     give Vector {
-        data: repeat(0, cap),
+        data: _repeat_i64(0, cap),
         size: 0,
         capacity: cap
     }
@@ -34,7 +44,7 @@ proc vector_new(capacity: i32) -> Vector {
 
 proc _vector_resize(v: Vector) {
     let new_cap = v.capacity + (v.capacity / 2)
-    let new_data: [i64] = repeat(0, new_cap)
+    let new_data: [i64] = _repeat_i64(0, new_cap)
 
     let i: i32 = 0
     while i < v.size {
@@ -49,7 +59,7 @@ proc _vector_resize(v: Vector) {
 proc _vector_shrink(v: Vector) {
     if v.capacity > 8 and v.size * 4 < v.capacity {
         let new_cap = v.capacity / 2
-        let new_data: [i64] = repeat(0, new_cap)
+        let new_data: [i64] = _repeat_i64(0, new_cap)
 
         let i: i32 = 0
         while i < v.size {
@@ -182,7 +192,7 @@ proc vector_reverse(v: Vector) {
 proc vector_reserve(v: Vector, new_cap: i32) {
     if new_cap <= v.capacity { give }
 
-    let new_data: [i64] = repeat(0, new_cap)
+    let new_data: [i64] = _repeat_i64(0, new_cap)
 
     let i: i32 = 0
     while i < v.size {
@@ -238,7 +248,7 @@ proc vector_slice(v: Vector, start: i32, end: i32) -> [i64] {
     if start >= end { give [] }
 
     let len = end - start
-    let out: [i64] = repeat(0, len)
+    let out: [i64] = _repeat_i64(0, len)
 
     let i: i32 = 0
     while i < len {
@@ -314,7 +324,7 @@ proc vector_empty(v: Vector) -> int {
 }
 
 proc vector_to_array(v: Vector) -> [i64] {
-    let out: [i64] = repeat(0, v.size)
+    let out: [i64] = _repeat_i64(0, v.size)
 
     let i: i32 = 0
     while i < v.size {

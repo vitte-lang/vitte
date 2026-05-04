@@ -123,11 +123,83 @@ form PathInfo {
   ext: string
 }
 
+form IOLibraryManifest {
+  name: string,
+  version: string,
+  module_count: int,
+  modules: [string]
+}
+
+form IOLibraryHealth {
+  ready: bool,
+  stdio_ready: bool,
+  file_ready: bool,
+  buffer_ready: bool,
+  stream_ready: bool,
+  fileops_ready: bool
+}
+
+form IOLibrarySummary {
+  manifest: IOLibraryManifest,
+  health: IOLibraryHealth
+}
+
 proc io_ok(message: string) -> IoResult {
   give IoResult {
     status: IoStatus.Ok,
     code: 0,
     message: message
+  }
+}
+
+proc io_name() -> string {
+  give "vitte-stdlib-io"
+}
+
+proc io_version() -> string {
+  give IO_VERSION
+}
+
+proc io_modules() -> [string] {
+  give [
+    "stdio",
+    "file",
+    "buffer",
+    "stream",
+    "fileops",
+    "format",
+    "path"
+  ]
+}
+
+proc io_module_count() -> int {
+  give len(io_modules())
+}
+
+proc io_manifest() -> IOLibraryManifest {
+  give IOLibraryManifest {
+    name: io_name(),
+    version: io_version(),
+    module_count: io_module_count(),
+    modules: io_modules()
+  }
+}
+
+proc io_health() -> IOLibraryHealth {
+  give IOLibraryHealth {
+    ready: true,
+    stdio_ready: true,
+    file_ready: true,
+    buffer_ready: true,
+    stream_ready: true,
+    fileops_ready: true
+  }
+}
+
+proc io_summary() -> IOLibrarySummary {
+  give IOLibrarySummary {
+    manifest: io_manifest(),
+    health: io_health()
   }
 }
 
@@ -997,6 +1069,7 @@ proc library_meta() -> string {
 }
 
 proc io_selftest() -> bool {
+  let summary: IOLibrarySummary = io_summary()
   if EOF != -1 {
     give false
   }
@@ -1010,6 +1083,14 @@ proc io_selftest() -> bool {
   }
 
   if path_join("/tmp", "a.txt") != "/tmp/a.txt" {
+    give false
+  }
+
+  if summary.manifest.module_count != io_module_count() {
+    give false
+  }
+
+  if not summary.health.ready {
     give false
   }
 

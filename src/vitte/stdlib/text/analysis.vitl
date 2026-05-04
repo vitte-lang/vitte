@@ -1,0 +1,309 @@
+space vitte/stdlib/text/analysis
+
+<<< =========================================================
+   Text Analysis — Text metrics and lightweight inspection
+   word counts, line counts, sentence counts, keyword scan,
+   and simple summaries for higher-level text modules.
+   ========================================================= >>>
+
+export *
+
+form TextAnalysis {
+  characters: i64,
+  bytes: i64,
+  lines: i64,
+  words: i64,
+  sentences: i64,
+  paragraphs: i64,
+  non_space: i64
+}
+
+form WordFrequency {
+  word: string,
+  count: i64
+}
+
+proc _is_whitespace(ch: char) -> bool {
+  if ch == ' ' { give true }
+  if ch == '\n' { give true }
+  if ch == '\t' { give true }
+  if ch == '\r' { give true }
+  give false
+}
+
+proc _is_sentence_end(ch: char) -> bool {
+  if ch == '.' { give true }
+  if ch == '!' { give true }
+  if ch == '?' { give true }
+  give false
+}
+
+proc _is_word_char(ch: char) -> bool {
+  if ch >= 'a' and ch <= 'z' { give true }
+  if ch >= 'A' and ch <= 'Z' { give true }
+  if ch >= '0' and ch <= '9' { give true }
+  if ch == '_' { give true }
+  if ch == '-' { give true }
+  give false
+}
+
+proc _lower_char(ch: char) -> char {
+  if ch >= 'A' and ch <= 'Z' {
+    give (ch as i32 + 32) as char
+  }
+  give ch
+}
+
+proc _append_word(words: [string], word: string) -> [string] {
+  if word == "" { give words }
+  give words + [word]
+}
+
+proc _collect_words(text: string) -> [string] {
+  let words: [string] = []
+  let current: string = ""
+  let i: i32 = 0
+
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_word_char(ch) {
+      set current = current + (_lower_char(ch) as string)
+    } else {
+      set words = _append_word(words, current)
+      set current = ""
+    }
+    set i = i + 1
+  }
+
+  set words = _append_word(words, current)
+  give words
+}
+
+proc text_char_count(text: string) -> i64 {
+  give text.len as i64
+}
+
+proc text_byte_count(text: string) -> i64 {
+  give text.len as i64
+}
+
+proc text_line_count(text: string) -> i64 {
+  if text == "" { give 0 }
+
+  let lines: i64 = 1
+  let i: i32 = 0
+  while i < text.len {
+    if text[i] == '\n' {
+      set lines = lines + 1
+    }
+    set i = i + 1
+  }
+  give lines
+}
+
+proc text_word_count(text: string) -> i64 {
+  give _collect_words(text).len as i64
+}
+
+proc text_sentence_count(text: string) -> i64 {
+  let count: i64 = 0
+  let i: i32 = 0
+  while i < text.len {
+    if _is_sentence_end(text[i]) {
+      set count = count + 1
+    }
+    set i = i + 1
+  }
+  if count == 0 and text != "" { give 1 }
+  give count
+}
+
+proc text_paragraph_count(text: string) -> i64 {
+  if text == "" { give 0 }
+
+  let count: i64 = 0
+  let i: i32 = 0
+  let in_paragraph: bool = false
+
+  while i < text.len {
+    if not _is_whitespace(text[i]) {
+      if not in_paragraph {
+        set count = count + 1
+        set in_paragraph = true
+      }
+    } else {
+      if text[i] == '\n' and i + 1 < text.len and text[i + 1] == '\n' {
+        set in_paragraph = false
+      }
+    }
+    set i = i + 1
+  }
+
+  give count
+}
+
+proc text_non_space_count(text: string) -> i64 {
+  let count: i64 = 0
+  let i: i32 = 0
+  while i < text.len {
+    if not _is_whitespace(text[i]) {
+      set count = count + 1
+    }
+    set i = i + 1
+  }
+  give count
+}
+
+proc text_analysis(text: string) -> TextAnalysis {
+  give TextAnalysis {
+    characters: text_char_count(text),
+    bytes: text_byte_count(text),
+    lines: text_line_count(text),
+    words: text_word_count(text),
+    sentences: text_sentence_count(text),
+    paragraphs: text_paragraph_count(text),
+    non_space: text_non_space_count(text)
+  }
+}
+
+proc text_summary(text: string, max_chars: i32) -> string {
+  if max_chars <= 0 { give "" }
+  if text.len <= max_chars { give text }
+  give text[0:max_chars]
+}
+
+proc text_title_case(text: string) -> string {
+  let out: string = ""
+  let at_word_start: bool = true
+  let i: i32 = 0
+
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_whitespace(ch) {
+      set out = out + (ch as string)
+      set at_word_start = true
+    } else if at_word_start {
+      if ch >= 'a' and ch <= 'z' {
+        set out = out + ((ch as i32 - 32) as char as string)
+      } else {
+        set out = out + (ch as string)
+      }
+      set at_word_start = false
+    } else {
+      if ch >= 'A' and ch <= 'Z' {
+        set out = out + ((ch as i32 + 32) as char as string)
+      } else {
+        set out = out + (ch as string)
+      }
+    }
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc text_snake_case(text: string) -> string {
+  let out: string = ""
+  let i: i32 = 0
+  let last_was_sep: bool = false
+
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_word_char(ch) {
+      set out = out + (_lower_char(ch) as string)
+      set last_was_sep = false
+    } else if not last_was_sep and out != "" {
+      set out = out + "_"
+      set last_was_sep = true
+    }
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc text_kebab_case(text: string) -> string {
+  let out: string = ""
+  let i: i32 = 0
+  let last_was_sep: bool = false
+
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_word_char(ch) {
+      set out = out + (_lower_char(ch) as string)
+      set last_was_sep = false
+    } else if not last_was_sep and out != "" {
+      set out = out + "-"
+      set last_was_sep = true
+    }
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc text_contains_word(text: string, word: string) -> bool {
+  let words: [string] = _collect_words(text)
+  let needle: string = text_snake_case(word)
+  let i: i32 = 0
+  while i < words.len {
+    if text_snake_case(words[i]) == needle {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc text_extract_words(text: string) -> [string] {
+  give _collect_words(text)
+}
+
+proc text_frequency(text: string) -> [WordFrequency] {
+  let words: [string] = _collect_words(text)
+  let freqs: [WordFrequency] = []
+  let i: i32 = 0
+
+  while i < words.len {
+    let current: string = words[i]
+    let j: i32 = 0
+    let found: bool = false
+
+    while j < freqs.len {
+      if freqs[j].word == current {
+        set freqs[j].count = freqs[j].count + 1
+        set found = true
+        break
+      }
+      set j = j + 1
+    }
+
+    if not found {
+      set freqs = freqs + [WordFrequency { word: current, count: 1 }]
+    }
+
+    set i = i + 1
+  }
+
+  give freqs
+}
+
+proc text_metrics_report(text: string) -> string {
+  let info: TextAnalysis = text_analysis(text)
+  give "chars=" ++ (info.characters as string) ++
+       ", bytes=" ++ (info.bytes as string) ++
+       ", lines=" ++ (info.lines as string) ++
+       ", words=" ++ (info.words as string) ++
+       ", sentences=" ++ (info.sentences as string) ++
+       ", paragraphs=" ++ (info.paragraphs as string)
+}
+
+proc text_selftest() -> bool {
+  let sample: string = "Hello world.\n\nThis is Vitte."
+  let info: TextAnalysis = text_analysis(sample)
+  let words: [string] = text_extract_words(sample)
+  let contains: bool = text_contains_word(sample, "vitte")
+  let report: string = text_metrics_report(sample)
+
+  give info.lines == 3 and info.words == 5 and info.sentences >= 2 and words.len >= 5 and contains and report != ""
+}

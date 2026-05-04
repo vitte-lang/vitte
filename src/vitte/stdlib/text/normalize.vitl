@@ -1,0 +1,238 @@
+space vitte/stdlib/text/normalize
+
+<<< =========================================================
+   Text Normalization — case, spacing, and cleanup helpers
+   ========================================================= >>>
+
+export *
+
+proc _is_space(ch: char) -> bool {
+  if ch == ' ' { give true }
+  if ch == '\n' { give true }
+  if ch == '\t' { give true }
+  if ch == '\r' { give true }
+  give false
+}
+
+proc _lower_char(ch: char) -> char {
+  if ch >= 'A' and ch <= 'Z' {
+    give (ch as i32 + 32) as char
+  }
+  give ch
+}
+
+proc _upper_char(ch: char) -> char {
+  if ch >= 'a' and ch <= 'z' {
+    give (ch as i32 - 32) as char
+  }
+  give ch
+}
+
+proc _is_word_char(ch: char) -> bool {
+  if ch >= 'a' and ch <= 'z' { give true }
+  if ch >= 'A' and ch <= 'Z' { give true }
+  if ch >= '0' and ch <= '9' { give true }
+  if ch == '_' { give true }
+  if ch == '-' { give true }
+  give false
+}
+
+proc to_lower(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < text.len {
+    set out = out + (_lower_char(text[i]) as string)
+    set i = i + 1
+  }
+  give out
+}
+
+proc to_upper(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < text.len {
+    set out = out + (_upper_char(text[i]) as string)
+    set i = i + 1
+  }
+  give out
+}
+
+proc trim_left(text: string) -> string {
+  let start: int = 0
+  while start < text.len and _is_space(text[start]) {
+    set start = start + 1
+  }
+  give text[start:text.len]
+}
+
+proc trim_right(text: string) -> string {
+  if text == "" { give "" }
+
+  let end: int = text.len
+  while end > 0 and _is_space(text[end - 1]) {
+    set end = end - 1
+  }
+  give text[0:end]
+}
+
+proc trim(text: string) -> string {
+  give trim_right(trim_left(text))
+}
+
+proc collapse_spaces(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  let last_space: bool = false
+
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_space(ch) {
+      if not last_space {
+        set out = out + " "
+        set last_space = true
+      }
+    } else {
+      set out = out + (ch as string)
+      set last_space = false
+    }
+    set i = i + 1
+  }
+
+  give trim(out)
+}
+
+proc normalize_newlines(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+
+  while i < text.len {
+    let ch: char = text[i]
+    if ch == '\r' {
+      if i + 1 < text.len and text[i + 1] == '\n' {
+        set i = i + 1
+      }
+      set out = out + "\n"
+    } else {
+      set out = out + (ch as string)
+    }
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc title_case(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  let start_word: bool = true
+
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_space(ch) {
+      set out = out + (ch as string)
+      set start_word = true
+    } else if start_word {
+      set out = out + (_upper_char(ch) as string)
+      set start_word = false
+    } else {
+      set out = out + (_lower_char(ch) as string)
+    }
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc snake_case(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  let last_sep: bool = false
+
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_word_char(ch) {
+      set out = out + (_lower_char(ch) as string)
+      set last_sep = false
+    } else if out != "" and not last_sep {
+      set out = out + "_"
+      set last_sep = true
+    }
+    set i = i + 1
+  }
+
+  give trim(out)
+}
+
+proc kebab_case(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  let last_sep: bool = false
+
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_word_char(ch) {
+      set out = out + (_lower_char(ch) as string)
+      set last_sep = false
+    } else if out != "" and not last_sep {
+      set out = out + "-"
+      set last_sep = true
+    }
+    set i = i + 1
+  }
+
+  give trim(out)
+}
+
+proc remove_control_chars(text: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < text.len {
+    let ch: char = text[i]
+    if ch == '\n' or ch == '\t' or ch == '\r' or (ch as i32) >= 32 {
+      set out = out + (ch as string)
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc normalize_text(text: string) -> string {
+  give collapse_spaces(normalize_newlines(remove_control_chars(text)))
+}
+
+proc is_blank(text: string) -> bool {
+  give trim(text) == ""
+}
+
+proc slugify(text: string) -> string {
+  give kebab_case(normalize_text(text))
+}
+
+proc normalize_identifier(text: string) -> string {
+  let out: string = snake_case(normalize_text(text))
+  if out == "" { give "_" }
+  if out[0] >= '0' and out[0] <= '9' { give "_" + out }
+  give out
+}
+
+proc normalize_for_search(text: string) -> string {
+  give to_lower(collapse_spaces(text))
+}
+
+proc normalize_for_display(text: string) -> string {
+  give title_case(collapse_spaces(text))
+}
+
+proc normalize_selftest() -> bool {
+  let sample: string = "  Hello,\r\nWorld!  "
+  give trim(sample) == "Hello,\r\nWorld!"
+    and to_lower("AbC") == "abc"
+    and to_upper("aBc") == "ABC"
+    and collapse_spaces(sample) == "Hello, World!"
+    and normalize_newlines("a\r\nb\rc") == "a\nb\nc"
+    and title_case("heLLo wORLD") == "Hello World"
+    and snake_case("Hello World") == "hello_world"
+    and kebab_case("Hello World") == "hello-world"
+    and slugify("Hello World!") == "hello-world"
+    and is_blank("   ")
+}

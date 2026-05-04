@@ -1,0 +1,32 @@
+space compiler/driver/internal/compiler_driver
+
+use compiler_emit
+use compiler_ir
+use compiler_parser
+
+form CompileReport {
+  success: bool,
+  emitted_source: string,
+  source_name: string,
+  module_name: string
+}
+
+proc compile_source(source_name: string, source_text: string) -> CompileReport {
+  let parsed: compiler_parser.ParsedModule = compiler_parser.parse_source(source_name, source_text)
+  let ir_module: compiler_ir.IrModule = compiler_ir.lower(parsed.module_value)
+  let emitted_source: string = compiler_emit.emit_module(ir_module)
+  let success: bool =
+    source_name != "" and
+    parsed.module_value.source_name == source_name and
+    parsed.module_value.space_name != "" and
+    ir_module.module_name == parsed.module_value.space_name and
+    emitted_source != ""
+  give CompileReport {
+    success: success,
+    emitted_source: emitted_source,
+    source_name: source_name,
+    module_name: ir_module.module_name
+  }
+}
+
+export *

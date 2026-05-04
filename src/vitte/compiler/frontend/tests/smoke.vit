@@ -1,0 +1,238 @@
+space vitte/compiler/frontend/tests/smoke
+
+form FrontendManifest {
+  stage: string,
+  source_root: string,
+  language: string
+}
+
+form DiagnosticBag {
+  count: int,
+  warnings: int,
+  errors: int
+}
+
+form ParsedSource {
+  source_name: string,
+  source_text: string,
+  module_name: string,
+  space_name: string,
+  line_count: int,
+  token_count: int,
+  decl_count: int,
+  space_count: int,
+  use_count: int,
+  proc_count: int,
+  unknown_count: int,
+  diagnostics: DiagnosticBag
+}
+
+form LexedSource {
+  source_name: string,
+  source_text: string,
+  token_count: int,
+  diagnostics: DiagnosticBag
+}
+
+proc manifest() -> FrontendManifest {
+  give FrontendManifest {
+    stage: "bootstrap-vitte",
+    source_root: "src/vitte/compiler/frontend",
+    language: "vitte"
+  }
+}
+
+proc new_diagnostics(count: int, warnings: int, errors: int) -> DiagnosticBag {
+  give DiagnosticBag {
+    count: count,
+    warnings: warnings,
+    errors: errors
+  }
+}
+
+proc count_lines(source_text: string) -> int {
+  let lines: int = 0
+  let i: int = 0
+
+  while i < source_text.len {
+    if (source_text[i] as string) == "\n" {
+      set lines = lines + 1
+    }
+    set i = i + 1
+  }
+
+  if source_text != "" {
+    set lines = lines + 1
+  }
+
+  give lines
+}
+
+proc count_tokens(source_text: string) -> int {
+  let count: int = 0
+  let in_token: bool = false
+  let i: int = 0
+
+  while i < source_text.len {
+    let ch: string = source_text[i] as string
+    let is_sep: bool = ch == " " or ch == "\n" or ch == "\t" or ch == "\r"
+
+    if is_sep {
+      set in_token = false
+    } else {
+      if not in_token {
+        set count = count + 1
+        set in_token = true
+      }
+    }
+
+    set i = i + 1
+  }
+
+  give count
+}
+
+proc lex_source(source_name: string, source_text: string) -> LexedSource {
+  let warnings: int = 0
+  if source_text == "" {
+    set warnings = 1
+  }
+
+  give LexedSource {
+    source_name: source_name,
+    source_text: source_text,
+    token_count: count_tokens(source_text),
+    diagnostics: new_diagnostics(warnings, warnings, 0)
+  }
+}
+
+proc parse_source(source_name: string, source_text: string) -> ParsedSource {
+  let has_space: bool = false
+  let space_name: string = ""
+  let use_count: int = 0
+  let proc_count: int = 0
+  let unknown_count: int = 0
+  let decl_count: int = 0
+  let warnings: int = 0
+
+  let current_line: string = ""
+  let line_no: int = 1
+  let i: int = 0
+
+  while i < source_text.len {
+    let ch: string = source_text[i] as string
+    if ch == "\n" {
+      let trimmed: string = current_line
+      if trimmed != "" {
+        set decl_count = decl_count + 1
+        if trimmed == "space demo/app" {
+          set has_space = true
+          set space_name = "demo/app"
+        } elif trimmed == "use vitte/io" {
+          set use_count = use_count + 1
+        } elif trimmed == "proc main {" {
+          set proc_count = proc_count + 1
+        } elif trimmed == "give 1" or trimmed == "}" {
+        } else {
+          set unknown_count = unknown_count + 1
+          set warnings = warnings + 1
+        }
+      }
+      set current_line = ""
+      set line_no = line_no + 1
+    } else {
+      set current_line = current_line ++ ch
+    }
+    set i = i + 1
+  }
+
+  if current_line != "" or source_text != "" {
+    let trimmed: string = current_line
+    if trimmed != "" {
+      set decl_count = decl_count + 1
+      if trimmed == "space demo/app" {
+        set has_space = true
+        set space_name = "demo/app"
+      } elif trimmed == "use vitte/io" {
+        set use_count = use_count + 1
+      } elif trimmed == "proc main {" {
+        set proc_count = proc_count + 1
+      } elif trimmed == "give 1" or trimmed == "}" {
+      } else {
+        set unknown_count = unknown_count + 1
+        set warnings = warnings + 1
+      }
+    }
+  }
+
+  if not has_space and source_text != "" {
+    set warnings = warnings + 1
+  }
+
+  let resolved_module_name: string = source_name
+  let resolved_space_count: int = 0
+  if has_space {
+    set resolved_module_name = space_name
+    set resolved_space_count = 1
+  }
+
+  give ParsedSource {
+    source_name: source_name,
+    source_text: source_text,
+    module_name: resolved_module_name,
+    space_name: space_name,
+    line_count: count_lines(source_text),
+    token_count: count_tokens(source_text),
+    decl_count: decl_count,
+    space_count: resolved_space_count,
+    use_count: use_count,
+    proc_count: proc_count,
+    unknown_count: unknown_count,
+    diagnostics: new_diagnostics(warnings, warnings, 0)
+  }
+}
+
+test "frontend manifest stays stable" {
+  let info: FrontendManifest = manifest()
+  if info.stage != "bootstrap-vitte" { give false }
+  if info.source_root != "src/vitte/compiler/frontend" { give false }
+  if info.language != "vitte" { give false }
+  give true
+}
+
+test "frontend lexer reports empty source diagnostics" {
+  let lexed: LexedSource = lex_source("demo.vit", "")
+  if lexed.source_name != "demo.vit" { give false }
+  if lexed.token_count != 0 { give false }
+  if lexed.diagnostics.count != 1 { give false }
+  if lexed.diagnostics.warnings != 1 { give false }
+  if lexed.diagnostics.errors != 0 { give false }
+  give true
+}
+
+test "frontend parser captures declarations and diagnostics" {
+  let parsed: ParsedSource = parse_source(
+    "demo.vit",
+    "space demo/app\nuse vitte/io\nproc main {\n  give 1\n}\n"
+  )
+  if parsed.source_name != "demo.vit" { give false }
+  if parsed.module_name != "demo/app" { give false }
+  if parsed.space_name != "demo/app" { give false }
+  if parsed.space_count != 1 { give false }
+  if parsed.use_count != 1 { give false }
+  if parsed.proc_count != 1 { give false }
+  if parsed.decl_count != 3 { give false }
+  if parsed.unknown_count != 0 { give false }
+  if parsed.line_count != 5 { give false }
+  if parsed.token_count != 10 { give false }
+  if parsed.diagnostics.count != 0 { give false }
+  give true
+}
+
+test "frontend parser warns on unknown top-level lines" {
+  let parsed: ParsedSource = parse_source("demo.vit", "mystery line\n")
+  if parsed.unknown_count != 1 { give false }
+  if parsed.diagnostics.count != 2 { give false }
+  if parsed.diagnostics.warnings != 2 { give false }
+  give true
+}

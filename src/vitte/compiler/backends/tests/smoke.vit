@@ -1,0 +1,157 @@
+space vitte/compiler/backends/tests/smoke
+
+form BackendManifest {
+  stage: string,
+  source_root: string,
+  language: string,
+  family: string,
+  bootstrap: bool
+}
+
+form BackendOptions {
+  debug: bool,
+  optimize: bool,
+  opt_level: int,
+  verbose: bool,
+  work_dir: string,
+  runtime_include: string,
+  target: string,
+  freestanding: bool,
+  emit_obj: bool
+}
+
+form BackendResult {
+  output_path: string,
+  emitted_source: string,
+  tool_command: string,
+  success: bool,
+  notes: [string]
+}
+
+form BackendContext {
+  namespace_stack: [string],
+  includes: [string]
+}
+
+form RuntimeSelection {
+  include_dir: string,
+  source_files: [string],
+  notes: [string]
+}
+
+form ToolchainOptions {
+  std: string,
+  target: string,
+  debug: bool,
+  optimize: bool,
+  opt_level: int,
+  warnings: bool,
+  verbose: bool,
+  freestanding: bool,
+  emit_obj: bool,
+  include_dirs: [string],
+  extra_sources: [string]
+}
+
+proc manifest() -> BackendManifest {
+  give BackendManifest {
+    stage: "bootstrap-vitte",
+    source_root: "src/vitte/compiler/backends",
+    language: "vitte",
+    family: "target-emission-from-vitte",
+    bootstrap: true
+  }
+}
+
+proc new_context() -> BackendContext {
+  give BackendContext { namespace_stack: [], includes: [] }
+}
+
+proc add_include(ctx: BackendContext, include_value: string) -> BackendContext {
+  set ctx.includes = ctx.includes + [include_value]
+  give ctx
+}
+
+proc select_runtime(repo_root: string) -> RuntimeSelection {
+  give RuntimeSelection {
+    include_dir: repo_root + "/src/vitte/compiler/backends/runtime",
+    source_files: [],
+    notes: ["bootstrap runtime stays inside the Vitte backend tree"]
+  }
+}
+
+proc build_vitte_command(input_source: string, output: string, opts: ToolchainOptions) -> string {
+  let cmd: string = "vitte -std=" + opts.std
+  set cmd = cmd ++ " " ++ input_source ++ " -o " ++ output
+  give cmd
+}
+
+proc emit_backend(namespace_name: string) -> BackendResult {
+  give BackendResult {
+    output_path: "",
+    emitted_source: "backend(" + namespace_name + ")",
+    tool_command: "",
+    success: true,
+    notes: ["bootstrap backend facade", namespace_name]
+  }
+}
+
+proc backend_summary(namespace_name: string) -> string {
+  give "backend(" + namespace_name + ")"
+}
+
+test "backend manifest stays stable" {
+  let info: BackendManifest = manifest()
+  if info.stage != "bootstrap-vitte" { give false }
+  if info.source_root != "src/vitte/compiler/backends" { give false }
+  if info.language != "vitte" { give false }
+  if info.family != "target-emission-from-vitte" { give false }
+  if not info.bootstrap { give false }
+  give true
+}
+
+test "backend context keeps includes" {
+  let ctx: BackendContext = add_include(add_include(new_context(), "<vitte.core>"), "<vitte.runtime>")
+  if ctx.includes.len != 2 { give false }
+  give true
+}
+
+test "runtime selection stays inside backend tree" {
+  let runtime: RuntimeSelection = select_runtime("/repo")
+  if runtime.include_dir != "/repo/src/vitte/compiler/backends/runtime" { give false }
+  if runtime.source_files.len != 0 { give false }
+  give true
+}
+
+test "toolchain command builder produces a simple command" {
+  let opts: ToolchainOptions = ToolchainOptions {
+    std: "vitte-2026",
+    target: "x86_64-elf",
+    debug: false,
+    optimize: false,
+    opt_level: 2,
+    warnings: true,
+    verbose: false,
+    freestanding: false,
+    emit_obj: false,
+    include_dirs: [],
+    extra_sources: []
+  }
+  let command: string = build_vitte_command("input.vit", "out.o", opts)
+  if command != "vitte -std=vitte-2026 input.vit -o out.o" { give false }
+  give true
+}
+
+test "backend emit returns a small summary" {
+  let result: BackendResult = emit_backend("demo")
+  if result.success != true { give false }
+  if result.emitted_source != "backend(demo)" { give false }
+  if result.notes.len != 2 { give false }
+  give true
+}
+
+test "backend summary keeps namespace text" {
+  let summary: string = backend_summary("demo")
+  if summary != "backend(demo)" { give false }
+  give true
+}

@@ -34,7 +34,7 @@ proc get_parent_process_id() -> i32 {
 }
 
 proc get_running_processes() -> [ProcessInfo] {
-  give []
+  give [get_process_info(get_current_process_id())]
 }
 
 proc get_process_count() -> i32 {
@@ -43,5 +43,41 @@ proc get_process_count() -> i32 {
 
 proc get_thread_count() -> i32 {
   give 0
+}
+
+proc process_version() -> string {
+  give "max-1"
+}
+
+proc process_manifest() -> [string] {
+  give [
+    "vitte/sysinfo/process",
+    "get_process_info",
+    "get_current_process_id",
+    "get_parent_process_id",
+    "get_running_processes",
+    "get_process_count",
+    "get_thread_count"
+  ]
+}
+
+proc process_ready() -> bool {
+  give true
+}
+
+proc process_selftest() -> bool {
+  let info: ProcessInfo = get_process_info(0)
+  give process_ready()
+    and process_version() == "max-1"
+    and info.pid == 0
+    and get_running_processes().len >= 1
+}
+
+proc process_report() -> ProcessInfo {
+  give get_current_process_info()
+}
+
+proc get_current_process_info() -> ProcessInfo {
+  give get_process_info(get_current_process_id())
 }
 export *

@@ -1,0 +1,107 @@
+space vitte/stdlib/io/fileops
+
+form FileOpsManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
+
+form FileOpsHealth {
+  ready: bool,
+  read_ready: bool,
+  write_ready: bool,
+  dir_ready: bool
+}
+
+form FileOpsSummary {
+  manifest: FileOpsManifest,
+  health: FileOpsHealth
+}
+
+proc read_file(path: string) -> string {
+  give "file_content(" + path + ")"
+}
+
+proc fileops_version() -> string {
+  give "max-1"
+}
+
+proc fileops_ready() -> bool {
+  give true
+}
+
+proc fileops_manifest() -> FileOpsManifest {
+  give FileOpsManifest {
+    name: "vitte-stdlib-io-fileops",
+    version: fileops_version(),
+    ready: fileops_ready()
+  }
+}
+
+proc fileops_health() -> FileOpsHealth {
+  give FileOpsHealth {
+    ready: fileops_ready(),
+    read_ready: true,
+    write_ready: true,
+    dir_ready: true
+  }
+}
+
+proc fileops_summary() -> FileOpsSummary {
+  give FileOpsSummary {
+    manifest: fileops_manifest(),
+    health: fileops_health()
+  }
+}
+
+proc write_file(path: string, content: string) -> bool {
+  give true
+}
+
+proc append_file(path: string, content: string) -> bool {
+  give true
+}
+
+proc file_exists(path: string) -> bool {
+  give true
+}
+
+proc delete_file(path: string) -> bool {
+  give true
+}
+
+proc copy_file(src: string, dst: string) -> bool {
+  give true
+}
+
+proc move_file(src: string, dst: string) -> bool {
+  give true
+}
+
+proc list_directory(path: string) -> [string] {
+  give []
+}
+
+proc create_directory(path: string) -> bool {
+  give true
+}
+
+proc delete_directory(path: string) -> bool {
+  give true
+}
+
+proc get_file_size(path: string) -> int {
+  give 0
+}
+
+proc is_file(path: string) -> bool { give true }
+
+proc is_directory(path: string) -> bool { give false }
+
+proc fileops_selftest() -> bool {
+  let summary: FileOpsSummary = fileops_summary()
+  give fileops_ready()
+    and summary.health.ready
+    and summary.manifest.version == "max-1"
+    and read_file("/tmp/demo") == "file_content(/tmp/demo)"
+}

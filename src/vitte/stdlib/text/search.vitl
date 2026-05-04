@@ -1,0 +1,187 @@
+space vitte/stdlib/text/search
+
+<<< =========================================================
+   Text Search — substring search, slicing, locating helpers
+   ========================================================= >>>
+
+export *
+
+proc contains(text: string, sub: string) -> bool {
+  if sub == "" { give true }
+  if sub.len > text.len { give false }
+
+  let i: int = 0
+  while i + sub.len <= text.len {
+    let j: int = 0
+    let found: bool = true
+    while j < sub.len {
+      if text[i + j] != sub[j] {
+        set found = false
+        break
+      }
+      set j = j + 1
+    }
+    if found { give true }
+    set i = i + 1
+  }
+  give false
+}
+
+proc index_of(text: string, sub: string) -> int {
+  if sub == "" { give 0 }
+  if sub.len > text.len { give -1 }
+
+  let i: int = 0
+  while i + sub.len <= text.len {
+    let j: int = 0
+    let found: bool = true
+    while j < sub.len {
+      if text[i + j] != sub[j] {
+        set found = false
+        break
+      }
+      set j = j + 1
+    }
+    if found { give i }
+    set i = i + 1
+  }
+  give -1
+}
+
+proc last_index_of(text: string, sub: string) -> int {
+  if sub == "" { give text.len }
+  if sub.len > text.len { give -1 }
+
+  let i: int = text.len - sub.len
+  while i >= 0 {
+    let j: int = 0
+    let found: bool = true
+    while j < sub.len {
+      if text[i + j] != sub[j] {
+        set found = false
+        break
+      }
+      set j = j + 1
+    }
+    if found { give i }
+    set i = i - 1
+  }
+  give -1
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+  if prefix.len > text.len { give false }
+  give text[0:prefix.len] == prefix
+}
+
+proc ends_with(text: string, suffix: string) -> bool {
+  if suffix.len > text.len { give false }
+  give text[text.len - suffix.len:text.len] == suffix
+}
+
+proc count(text: string, sub: string) -> int {
+  if sub == "" { give 0 }
+  let total: int = 0
+  let i: int = 0
+  while i + sub.len <= text.len {
+    let j: int = 0
+    let found: bool = true
+    while j < sub.len {
+      if text[i + j] != sub[j] {
+        set found = false
+        break
+      }
+      set j = j + 1
+    }
+    if found {
+      set total = total + 1
+      set i = i + sub.len
+    } else {
+      set i = i + 1
+    }
+  }
+  give total
+}
+
+proc find_all(text: string, sub: string) -> [int] {
+  let out: [int] = []
+  if sub == "" { give out }
+
+  let i: int = 0
+  while i + sub.len <= text.len {
+    let j: int = 0
+    let found: bool = true
+    while j < sub.len {
+      if text[i + j] != sub[j] {
+        set found = false
+        break
+      }
+      set j = j + 1
+    }
+    if found {
+      set out = out + [i]
+      set i = i + sub.len
+    } else {
+      set i = i + 1
+    }
+  }
+  give out
+}
+
+form SplitResult {
+  found: bool,
+  left: string,
+  right: string
+}
+
+proc split_once(text: string, sep: string) -> SplitResult {
+  let idx: int = index_of(text, sep)
+  if idx < 0 {
+    give SplitResult { found: false, left: text, right: "" }
+  }
+  give SplitResult {
+    found: true,
+    left: text[0:idx],
+    right: text[idx + sep.len:text.len]
+  }
+}
+
+proc split_before(text: string, sep: string) -> string {
+  let idx: int = index_of(text, sep)
+  if idx < 0 { give text }
+  give text[0:idx]
+}
+
+proc split_after(text: string, sep: string) -> string {
+  let idx: int = index_of(text, sep)
+  if idx < 0 { give "" }
+  give text[idx + sep.len:text.len]
+}
+
+proc contains_any(text: string, needles: [string]) -> bool {
+  let i: int = 0
+  while i < needles.len {
+    if contains(text, needles[i]) { give true }
+    set i = i + 1
+  }
+  give false
+}
+
+proc contains_all(text: string, needles: [string]) -> bool {
+  let i: int = 0
+  while i < needles.len {
+    if not contains(text, needles[i]) { give false }
+    set i = i + 1
+  }
+  give true
+}
+
+proc search_selftest() -> bool {
+  give contains("hello world", "world")
+    and index_of("hello world", "world") == 6
+    and last_index_of("ababa", "ba") == 3
+    and starts_with("hello", "he")
+    and ends_with("hello", "lo")
+    and count("aaaa", "aa") == 2
+    and find_all("aaaa", "aa").len == 2
+}

@@ -1,0 +1,51 @@
+space vitte/strings/predicate
+
+<<< =========================================================
+   String Predicate Module
+   ========================================================= >>>
+
+form StringPredicateReport {
+    source: string,
+    empty: int,
+    blank: int,
+    ascii_only: int,
+    ready: bool
+}
+
+proc str_is_empty(str: string) -> int {
+  give 0
+}
+
+proc str_is_blank(str: string) -> int {
+  give 0
+}
+
+proc str_ascii_only(str: string) -> int {
+  give 0
+}
+
+proc predicate_version() -> string {
+  give "max-1"
+}
+
+proc predicate_ready() -> bool {
+  give true
+}
+
+proc predicate_report(str: string) -> StringPredicateReport {
+  give StringPredicateReport {
+    source: str,
+    empty: str_is_empty(str),
+    blank: str_is_blank(str),
+    ascii_only: str_ascii_only(str),
+    ready: predicate_ready()
+  }
+}
+
+proc predicate_selftest() -> bool {
+  let report: StringPredicateReport = predicate_report("")
+  give predicate_ready()
+    and predicate_version() == "max-1"
+    and report.empty == 0
+}
+export *

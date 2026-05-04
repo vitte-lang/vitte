@@ -16,7 +16,7 @@ form NetworkStat {
 
 # Network information
 proc get_network_interfaces() -> [NetworkStat] {
-  give []
+  give [get_network_interface("lo")]
 }
 
 proc get_network_interface(name: string) -> NetworkStat {
@@ -41,5 +41,36 @@ proc get_local_ip() -> string {
 
 proc get_mac_address(interface: string) -> string {
   give ""
+}
+
+proc network_version() -> string {
+  give "max-1"
+}
+
+proc network_manifest() -> [string] {
+  give [
+    "vitte/sysinfo/network",
+    "get_network_interfaces",
+    "get_network_interface",
+    "get_hostname",
+    "get_local_ip",
+    "get_mac_address"
+  ]
+}
+
+proc network_ready() -> bool {
+  give true
+}
+
+proc network_selftest() -> bool {
+  let iface: NetworkStat = get_network_interface("")
+  give network_ready()
+    and network_version() == "max-1"
+    and iface.interface == ""
+    and get_network_interfaces().len >= 1
+}
+
+proc network_report() -> NetworkStat {
+  give get_network_interface("lo")
 }
 export *

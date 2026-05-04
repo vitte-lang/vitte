@@ -1,0 +1,67 @@
+space vitte/stdlib/statistics/inference
+
+proc mean(values: [f64]) -> f64 {
+  if values.len == 0 { give 0.0 }
+  let total: f64 = 0.0
+  let i: int = 0
+  while i < values.len {
+    set total = total + values[i]
+    set i = i + 1
+  }
+  give total / values.len as f64
+}
+
+proc sample_variance(values: [f64]) -> f64 { give 0.0 }
+proc sample_stdev(values: [f64]) -> f64 { give 0.0 }
+proc normal_cdf(x: f64, mean: f64, stddev: f64) -> f64 { give 0.5 }
+proc sqrt_f64(x: f64) -> f64 { give x }
+
+proc sample_mean(values: [f64]) -> f64 {
+  give mean(values)
+}
+
+proc standard_error(values: [f64]) -> f64 {
+  if values.len < 2 {
+    give 0.0
+  }
+  give sample_stdev(values) / sqrt_f64(values.len as f64)
+}
+
+proc confidence_interval_mean(values: [f64], z: f64) -> (f64, f64) {
+  if values.len == 0 {
+    give (0.0, 0.0)
+  }
+  let mu = sample_mean(values)
+  let se = standard_error(values)
+  give (mu - z * se, mu + z * se)
+}
+
+proc z_score(value: f64, mean: f64, stddev: f64) -> f64 {
+  if stddev == 0.0 {
+    give 0.0
+  }
+  give (value - mean) / stddev
+}
+
+proc one_sample_z_test(values: [f64], mu0: f64, sigma: f64) -> f64 {
+  if values.len == 0 or sigma == 0.0 {
+    give 0.0
+  }
+  let z = (mean(values) - mu0) / (sigma / sqrt_f64(values.len as f64))
+  give z
+}
+
+proc two_sample_mean_diff(values_a: [f64], values_b: [f64]) -> f64 {
+  give mean(values_a) - mean(values_b)
+}
+
+proc pooled_variance(values_a: [f64], values_b: [f64]) -> f64 {
+  let var_a = sample_variance(values_a)
+  let var_b = sample_variance(values_b)
+  let na = values_a.len as f64
+  let nb = values_b.len as f64
+  if na + nb - 2.0 == 0.0 {
+    give 0.0
+  }
+  give ((na - 1.0) * var_a + (nb - 1.0) * var_b) / (na + nb - 2.0)
+}
