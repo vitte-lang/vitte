@@ -11,22 +11,6 @@ die() { printf "[core-build][error] %s\n" "$*" >&2; exit 1; }
 
 trap 'log "interrupted"; exit 130' INT TERM
 
-cxx_ready() {
-  if ! command -v "${CXX:-c++}" >/dev/null 2>&1; then
-    return 1
-  fi
-  if ! printf '#include <cstdint>\n#include <cstddef>\nint main(){return 0;}\n' \
-      | "${CXX:-c++}" -x c++ -std=c++20 -fsyntax-only - >/dev/null 2>&1; then
-    return 1
-  fi
-  return 0
-}
-
-if ! cxx_ready; then
-  log "skip: C++ toolchain not ready (c++ toolchain/stdlib headers missing)"
-  exit 0
-fi
-
 total=0
 ok=0
 fail=0

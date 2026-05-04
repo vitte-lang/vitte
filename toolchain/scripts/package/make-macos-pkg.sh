@@ -222,16 +222,12 @@ cleanup_user_editor_config() {
 
 remove_path "/usr/local/bin/vitte"
 remove_path "/usr/local/bin/vittec"
-remove_path "/usr/local/bin/vitte-linker"
-remove_path "/usr/local/bin/vitte-editor"
 remove_path "/usr/local/libexec/vitte"
 remove_path "/usr/local/etc/bash_completion.d/vitte"
 remove_path "/usr/local/share/zsh/site-functions/_vitte"
 remove_path "/usr/local/share/fish/vendor_completions.d/vitte.fish"
 remove_path "/usr/local/share/man/man1/vitte.1"
 remove_path "/usr/local/share/man/man1/vittec.1"
-remove_path "/usr/local/share/man/man1/vitte-linker.1"
-remove_path "/usr/local/share/man/man1/vitte-editor.1"
 remove_path "/usr/local/share/vitte"
 
 rmdir "/usr/local/share/man/man1" 2>/dev/null || true
@@ -260,7 +256,7 @@ chmod 0755 "$STAGE_ROOT/usr/local/share/vitte/uninstall.sh"
 
 # Man pages.
 mkdir -p "$STAGE_ROOT/usr/local/share/man/man1"
-for m in vitte.1 vittec.1 vitte-linker.1 vitte-editor.1; do
+for m in vitte.1 vittec.1; do
   [ -f "$ROOT_DIR/man/$m" ] && install -m 0644 "$ROOT_DIR/man/$m" "$STAGE_ROOT/usr/local/share/man/man1/$m"
 done
 
@@ -438,7 +434,7 @@ cat <<MSG
 [vitte pkg] install complete
 [vitte pkg] binary: /usr/local/bin/vitte
 [vitte pkg] root:   /usr/local/share/vitte
-[vitte pkg] man:    /usr/local/share/man/man1/{vitte,vittec,vitte-linker,vitte-editor}.1
+[vitte pkg] man:    /usr/local/share/man/man1/{vitte,vittec}.1
 [vitte pkg] editors: ~/.vim ~/.emacs.d ~/.config/nano + Geany configured
 [vitte pkg] zsh:    autoload -U compinit && compinit
 [vitte pkg] env:    source /usr/local/share/vitte/env.sh

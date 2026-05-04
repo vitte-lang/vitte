@@ -16,7 +16,7 @@ is_allowed() {
 is_disallowed_top_level_name() {
   local name="$1"
   case "$name" in
-    .DS_Store|vitte_out.cpp|.vitte-hash-*.cpp|OPENSSL_DIR=|-*)
+    .DS_Store|vitte_out.vit|.vitte-hash-*.vit|OPENSSL_DIR=|-*)
       return 0
       ;;
     *)

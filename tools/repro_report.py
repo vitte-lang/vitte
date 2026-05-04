@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import platform
 import subprocess
 from pathlib import Path
@@ -14,10 +13,10 @@ OUT = ROOT / "target/reports/repro.json"
 
 def run(cmd: list[str]) -> str:
     try:
-        p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
-        if p.returncode != 0:
+        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
+        if proc.returncode != 0:
             return ""
-        return p.stdout.strip()
+        return proc.stdout.strip()
     except Exception:
         return ""
 
@@ -34,23 +33,15 @@ def sha256_file(path: Path) -> str:
 
 def main() -> int:
     data = {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "platform": platform.platform(),
         "python": platform.python_version(),
-        "compiler_cxx": run(["c++", "--version"]).splitlines()[:1],
         "git_commit": run(["git", "rev-parse", "HEAD"]),
         "git_status_short": run(["git", "status", "--short"]),
-        "env": {
-            "CC": os.environ.get("CC", ""),
-            "CXX": os.environ.get("CXX", ""),
-            "CFLAGS": os.environ.get("CFLAGS", ""),
-            "CXXFLAGS": os.environ.get("CXXFLAGS", ""),
-            "LDFLAGS": os.environ.get("LDFLAGS", ""),
-        },
         "hashes": {
             "Makefile": sha256_file(ROOT / "Makefile"),
             "bin/vitte": sha256_file(ROOT / "bin/vitte"),
-            "plugins/vitte_analyzer_pack.cpp": sha256_file(ROOT / "plugins/vitte_analyzer_pack.cpp"),
+            "compiler/driver": sha256_file(ROOT / "src/vitte/packages/compiler/driver/mod.vit"),
         },
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)

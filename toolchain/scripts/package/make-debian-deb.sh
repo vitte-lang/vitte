@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # ============================================================
 # vitte — Debian .deb builder (parity with macOS pkg payload)
-# Includes (profile=full): binaries, std/packages, runtime sources, editors,
+# Includes (profile=full): binaries, std/packages, runtime sources,
 # manpages, shell completions, env helper, postinst checks.
 # ============================================================
 
 set -euo pipefail
 
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
-DEPS_FILE="${DEPS_FILE:-$ROOT_DIR/toolchain/scripts/install/debian-deps.sh}"
 PKG_VERSION_FILE="${PKG_VERSION_FILE:-$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION}"
 DEFAULT_VERSION="$(tr -d ' \r\n' < "$PKG_VERSION_FILE" 2>/dev/null || echo 2.1.1)"
 VERSION="${VERSION:-$DEFAULT_VERSION}"
@@ -82,17 +81,12 @@ setup_profile_flags() {
   esac
 }
 
-if [ ! -f "$DEPS_FILE" ]; then
-  die "missing deps file: $DEPS_FILE"
-fi
-# shellcheck disable=SC1090
-source "$DEPS_FILE"
 setup_profile_flags
 if [ -z "$DEPENDS" ]; then
-  DEPENDS="${DEBIAN_STRICT_RUNTIME_DEPENDS:-$DEBIAN_RUNTIME_DEPENDS}"
+  DEPENDS="bash, libc6, python3"
 fi
 if [ -z "$RECOMMENDS" ]; then
-  RECOMMENDS="${DEBIAN_RUNTIME_RECOMMENDS:-}"
+  RECOMMENDS="make, zsh, fish"
 fi
 if [ -z "$PROJECT_LICENSE" ]; then
   PROJECT_LICENSE="$(detect_project_license)"

@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 BIN="${BIN:-$ROOT_DIR/bin/vitte}"
 SRC="${SRC:-$ROOT_DIR/tests/modules/mod_graph/main.vit}"
-OUT1="${OUT1:-$ROOT_DIR/.vitte-hash-1.cpp}"
-OUT2="${OUT2:-$ROOT_DIR/.vitte-hash-2.cpp}"
+OUT1="${OUT1:-$ROOT_DIR/.vitte-hash-1.vit}"
+OUT2="${OUT2:-$ROOT_DIR/.vitte-hash-2.vit}"
 
 log() { printf "[same-output-hash] %s\n" "$*"; }
 die() { printf "[same-output-hash][error] %s\n" "$*" >&2; exit 1; }
@@ -15,9 +15,9 @@ die() { printf "[same-output-hash][error] %s\n" "$*" >&2; exit 1; }
 
 run_emit() {
   local out="$1"
-  local tmp="$ROOT_DIR/vitte_out.cpp"
+  local tmp="$ROOT_DIR/vitte_out.vit"
   "$BIN" emit --lang=en --deterministic --repro --repro-strict "$SRC" >/dev/null 2>&1
-  [ -f "$tmp" ] || die "expected generated vitte_out.cpp"
+  [ -f "$tmp" ] || die "expected generated vitte_out.vit"
   cp "$tmp" "$out"
 }
 

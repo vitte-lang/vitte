@@ -23,7 +23,7 @@ STEPS=(
   "check|check"
   "hir|build --hir-only"
   "mir|build --mir-only"
-  "emit_cpp|emit"
+  "emit_vitte|emit"
   "emit_obj|build --emit-obj -o $OUT_DIR/tmp.o"
 )
 

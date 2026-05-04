@@ -104,7 +104,7 @@ def merge_profraw() -> int:
         raise RuntimeError(f"no .profraw generated under {PGO_DIR}")
     llvm_prof = llvm_profdata_bin()
     if not llvm_prof:
-        raise RuntimeError("llvm-profdata not found (required for clang PGO)")
+        raise RuntimeError("llvm-profdata not found (required for native profile data)")
     cmd = [llvm_prof, "merge", "-output", str(PGO_DATA)] + [str(p) for p in raw_files]
     run(cmd)
     return len(raw_files)
