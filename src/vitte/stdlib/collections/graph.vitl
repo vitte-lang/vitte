@@ -1,0 +1,126 @@
+space vitte/stdlib/collections/graph
+
+proc add_edge(edges: [(int,int)], a: int, b: int) -> [(int,int)] { give edges + [(a,b)] }
+
+proc neighbors(edges: [(int,int)], node: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  while i < edges.len {
+    if edges[i].0 == node {
+      set out = out + [edges[i].1]
+    }
+    if edges[i].1 == node {
+      set out = out + [edges[i].0]
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc add_directed_edge(edges: [(int,int)], from: int, to: int) -> [(int,int)] {
+  give edges + [(from, to)]
+}
+
+proc outgoing_neighbors(edges: [(int,int)], node: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  while i < edges.len {
+    if edges[i].0 == node {
+      set out = out + [edges[i].1]
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc incoming_neighbors(edges: [(int,int)], node: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  while i < edges.len {
+    if edges[i].1 == node {
+      set out = out + [edges[i].0]
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc has_edge(edges: [(int,int)], a: int, b: int) -> bool {
+  let i: int = 0
+  while i < edges.len {
+    if (edges[i].0 == a and edges[i].1 == b) or (edges[i].0 == b and edges[i].1 == a) {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc degree(edges: [(int,int)], node: int) -> int {
+  give neighbors(edges, node).len
+}
+
+proc edge_count(edges: [(int,int)]) -> int {
+  give edges.len
+}
+
+proc node_count(edges: [(int,int)]) -> int {
+  let nodes: [int] = []
+  let i: int = 0
+  while i < edges.len {
+    if _int_index_of(nodes, edges[i].0) == -1 {
+      set nodes = nodes + [edges[i].0]
+    }
+    if _int_index_of(nodes, edges[i].1) == -1 {
+      set nodes = nodes + [edges[i].1]
+    }
+    set i = i + 1
+  }
+  give nodes.len
+}
+
+proc _int_index_of(values: [int], target: int) -> int {
+  let i: int = 0
+  while i < values.len {
+    if values[i] == target {
+      give i
+    }
+    set i = i + 1
+  }
+  give -1
+}
+
+proc is_connected(edges: [(int,int)]) -> bool {
+  if edges.len == 0 {
+    give true
+  }
+  let nodes = node_count(edges)
+  if nodes <= 1 {
+    give true
+  }
+  // Simple BFS to check connectivity
+  let visited: [bool] = []
+  let i: int = 0
+  while i < nodes {
+    set visited = visited + [false]
+    set i = i + 1
+  }
+  let queue: [int] = [0] // Assume nodes are 0 to n-1
+  set visited[0] = true
+  let count = 1
+  while queue.len > 0 {
+    let node = queue[0]
+    set queue = queue[1:]
+    let neigh = neighbors(edges, node)
+    let j: int = 0
+    while j < neigh.len {
+    if not visited[neigh[j]] {
+        set visited[neigh[j]] = true
+        set queue = queue + [neigh[j]]
+        set count = count + 1
+      }
+      set j = j + 1
+    }
+  }
+  give count == nodes
+}

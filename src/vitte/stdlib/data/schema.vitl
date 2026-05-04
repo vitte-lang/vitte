@@ -1,0 +1,33 @@
+space vitte/stdlib/data/schema
+
+form Column {
+  name: string,
+  kind: string
+}
+
+proc infer_schema(rows: [[string]]) -> [Column] {
+  let out: [Column] = []
+  if rows.len == 0 {
+    give out
+  }
+  let header = rows[0]
+  let i: int = 0
+  while i < header.len {
+    set out = out + [Column { name: header[i], kind: "string" }]
+    set i = i + 1
+  }
+  give out
+}
+
+proc schema_to_string(schema: [Column]) -> string {
+  let out = ""
+  let i: int = 0
+  while i < schema.len {
+    set out = out + schema[i].name + ": " + schema[i].kind
+    if i + 1 < schema.len {
+      set out = out + ", "
+    }
+    set i = i + 1
+  }
+  give out
+}

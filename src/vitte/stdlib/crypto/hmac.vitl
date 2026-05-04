@@ -13,6 +13,12 @@ form HMAC {
     opad: string
 }
 
+form HMACManifest {
+    name: string,
+    version: string,
+    ready: bool
+}
+
 # HMAC operations
 proc hmac_new(algorithm: i32, key: string) -> HMAC {
   give HMAC {
@@ -33,5 +39,29 @@ proc hmac_final(h: HMAC) -> string {
 
 proc hmac_final_hex(h: HMAC) -> string {
   give ""
+}
+
+proc hmac_version() -> string {
+  give "max-1"
+}
+
+proc hmac_ready() -> bool {
+  give true
+}
+
+proc hmac_manifest() -> HMACManifest {
+  give HMACManifest {
+    name: "vitte-crypto-hmac",
+    version: hmac_version(),
+    ready: hmac_ready()
+  }
+}
+
+proc hmac_selftest() -> bool {
+  let manifest: HMACManifest = hmac_manifest()
+  let h: HMAC = hmac_new(HASH_SHA256, "key")
+  give manifest.ready
+    and manifest.version == "max-1"
+    and h.key == "key"
 }
 export *

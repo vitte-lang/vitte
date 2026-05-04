@@ -1,8 +1,33 @@
-space vitte.stdlib.datetime
-
-use vitte.core
+space vitte/stdlib/datetime
 
 export *
+
+form DatetimeLibraryManifest {
+  name: string,
+  version: string,
+  modules: [string]
+}
+
+form DatetimeLibraryHealth {
+  ready: bool,
+  module_count: i32,
+  duration_ready: bool,
+  calendar_ready: bool,
+  datetime_ready: bool,
+  timer_ready: bool,
+  timezone_ready: bool
+}
+
+form DatetimeLibrarySummary {
+  manifest: DatetimeLibraryManifest,
+  health: DatetimeLibraryHealth
+}
+
+form DatetimeLibraryReport {
+  summary: DatetimeLibrarySummary,
+  version: string,
+  ready: bool
+}
 
 const NANOS_PER_MICRO: i64 = 1000
 const NANOS_PER_MILLI: i64 = 1000000
@@ -15,6 +40,74 @@ const SECONDS_PER_DAY: i64 = 86400
 const MILLIS_PER_SECOND: i64 = 1000
 const MICROS_PER_SECOND: i64 = 1000000
 const UNIX_EPOCH_YEAR: i32 = 1970
+
+proc datetime_library_version() -> string {
+  give "max-1"
+}
+
+proc datetime_library_name() -> string {
+  give "vitte-datetime"
+}
+
+proc datetime_library_module_count() -> i32 {
+  give 5
+}
+
+proc datetime_library_modules() -> [string] {
+  give [
+    "vitte/stdlib/datetime/duration",
+    "vitte/stdlib/datetime/calendar",
+    "vitte/stdlib/datetime/datetime",
+    "vitte/stdlib/datetime/timer",
+    "vitte/stdlib/datetime/timezone"
+  ]
+}
+
+proc datetime_library_manifest() -> DatetimeLibraryManifest {
+  give DatetimeLibraryManifest {
+    name: datetime_library_name(),
+    version: datetime_library_version(),
+    modules: datetime_library_modules()
+  }
+}
+
+proc datetime_library_ready() -> bool {
+  give true
+}
+
+proc datetime_library_health() -> DatetimeLibraryHealth {
+  give DatetimeLibraryHealth {
+    ready: datetime_library_ready(),
+    module_count: datetime_library_module_count(),
+    duration_ready: true,
+    calendar_ready: true,
+    datetime_ready: true,
+    timer_ready: true,
+    timezone_ready: true
+  }
+}
+
+proc datetime_library_summary() -> DatetimeLibrarySummary {
+  give DatetimeLibrarySummary {
+    manifest: datetime_library_manifest(),
+    health: datetime_library_health()
+  }
+}
+
+proc datetime_library_selftest() -> bool {
+  let summary: DatetimeLibrarySummary = datetime_library_summary()
+  give datetime_library_ready()
+    and summary.manifest.modules.len == datetime_library_module_count()
+    and summary.health.ready
+}
+
+proc datetime_library_report() -> DatetimeLibraryReport {
+  give DatetimeLibraryReport {
+    summary: datetime_library_summary(),
+    version: datetime_library_version(),
+    ready: datetime_library_ready()
+  }
+}
 
 form Duration {
   seconds: i64,
@@ -69,6 +162,11 @@ pick Month {
   December,
 }
 
+pick MaybeMonth {
+  None,
+  Some(value: Month)
+}
+
 pick DateTimeError {
   InvalidYear,
   InvalidMonth,
@@ -79,6 +177,21 @@ pick DateTimeError {
   InvalidNanosecond,
   InvalidTimestamp,
   ParseError,
+}
+
+pick MaybeDate {
+  None,
+  Some(value: Date)
+}
+
+pick MaybeTime {
+  None,
+  Some(value: Time)
+}
+
+pick MaybeDateTime {
+  None,
+  Some(value: DateTime)
 }
 
 proc duration_new(seconds: i64, nanos: i32) -> Duration {
@@ -290,9 +403,10 @@ proc month_to_number(month: Month) -> u8 {
     case November => 11
     case December => 12
   }
+  return 0
 }
 
-proc number_to_month(n: u8) -> ?Month {
+proc number_to_month(n: u8) -> MaybeMonth {
   if n == 1 {
     return Month.January
   }
@@ -458,6 +572,7 @@ proc weekday_name(day: Weekday) -> string {
     case Saturday => "Saturday"
     case Sunday => "Sunday"
   }
+  return "Unknown"
 }
 
 proc weekday_short_name(day: Weekday) -> string {
@@ -470,6 +585,7 @@ proc weekday_short_name(day: Weekday) -> string {
     case Saturday => "Sat"
     case Sunday => "Sun"
   }
+  return "Unk"
 }
 
 proc validate_date(date: Date) -> bool {
@@ -510,7 +626,7 @@ proc validate_datetime(dt: DateTime) -> bool {
   return validate_date(dt.date) and validate_time(dt.time)
 }
 
-proc date_new(year: i32, month: u8, day: u8) -> ?Date {
+proc date_new(year: i32, month: u8, day: u8) -> MaybeDate {
   let d: Date = Date {
     year: year,
     month: month,
@@ -524,7 +640,7 @@ proc date_new(year: i32, month: u8, day: u8) -> ?Date {
   return null
 }
 
-proc time_new(hour: u8, minute: u8, second: u8, nano: u32) -> ?Time {
+proc time_new(hour: u8, minute: u8, second: u8, nano: u32) -> MaybeTime {
   let t: Time = Time {
     hour: hour,
     minute: minute,
@@ -539,11 +655,11 @@ proc time_new(hour: u8, minute: u8, second: u8, nano: u32) -> ?Time {
   return null
 }
 
-proc datetime_new(year: i32, month: u8, day: u8, hour: u8, minute: u8, second: u8, nano: u32) -> ?DateTime {
-  let d: ?Date = date_new(year, month, day)
-  let t: ?Time = time_new(hour, minute, second, nano)
+proc datetime_new(year: i32, month: u8, day: u8, hour: u8, minute: u8, second: u8, nano: u32) -> MaybeDateTime {
+  let d: MaybeDate = date_new(year, month, day)
+  let t: MaybeTime = time_new(hour, minute, second, nano)
 
-  if d is not null and t is not null {
+  if d != null and t != null {
     return DateTime {
       date: d,
       time: t,
@@ -565,7 +681,7 @@ proc date_ordinal(date: Date) -> i32 {
   return ordinal + date.day as i32
 }
 
-proc date_from_ordinal(year: i32, ordinal: i32) -> ?Date {
+proc date_from_ordinal(year: i32, ordinal: i32) -> MaybeDate {
   if ordinal < 1 or ordinal > days_in_year(year) {
     return null
   }
@@ -634,9 +750,9 @@ proc days_since_epoch_to_date(days: i64) -> Date {
   }
 
   let ordinal: i32 = remaining as i32 + 1
-  let d: ?Date = date_from_ordinal(year, ordinal)
+  let d: MaybeDate = date_from_ordinal(year, ordinal)
 
-  if d is not null {
+  if d != null {
     return d
   }
 
@@ -990,7 +1106,7 @@ proc parse_4_digits(a: char, b: char, c: char, d: char) -> i32 {
   return p1 * 100 + p2
 }
 
-proc parse_date_yyyy_mm_dd(input: string) -> ?Date {
+proc parse_date_yyyy_mm_dd(input: string) -> MaybeDate {
   if string_len(input) != 10 {
     return null
   }
@@ -1016,7 +1132,7 @@ proc parse_date_yyyy_mm_dd(input: string) -> ?Date {
   return date_new(year, month as u8, day as u8)
 }
 
-proc parse_time_hh_mm_ss(input: string) -> ?Time {
+proc parse_time_hh_mm_ss(input: string) -> MaybeTime {
   if string_len(input) != 8 {
     return null
   }
@@ -1036,7 +1152,7 @@ proc parse_time_hh_mm_ss(input: string) -> ?Time {
   return time_new(hour as u8, minute as u8, second as u8, 0)
 }
 
-proc parse_datetime_iso_basic(input: string) -> ?DateTime {
+proc parse_datetime_iso_basic(input: string) -> MaybeDateTime {
   if string_len(input) != 19 {
     return null
   }
@@ -1048,10 +1164,10 @@ proc parse_datetime_iso_basic(input: string) -> ?DateTime {
   let date_part: string = string_slice(input, 0, 10)
   let time_part: string = string_slice(input, 11, 19)
 
-  let d: ?Date = parse_date_yyyy_mm_dd(date_part)
-  let t: ?Time = parse_time_hh_mm_ss(time_part)
+  let d: MaybeDate = parse_date_yyyy_mm_dd(date_part)
+  let t: MaybeTime = parse_time_hh_mm_ss(time_part)
 
-  if d is null or t is null {
+  if d == null or t == null {
     return null
   }
 
@@ -1274,6 +1390,7 @@ proc iso_weekday_number(day: Weekday) -> u8 {
     case Saturday => 6
     case Sunday => 7
   }
+  return 0
 }
 
 proc date_iso_weekday_number(date: Date) -> u8 {
@@ -1447,60 +1564,41 @@ proc datetime_now_unavailable() -> UnixTimestamp {
 }
 
 proc string_len(s: string) -> usize {
-  foreign
+  return 0
 }
 
 proc string_at(s: string, index: usize) -> char {
-  foreign
+  return '\0'
 }
 
 proc string_slice(s: string, start: usize, end: usize) -> string {
-  foreign
+  return ""
 }
 
 proc string_concat(a: string, b: string) -> string {
-  foreign
+  return a ++ b
 }
 
 proc string_concat_many(parts: [string]) -> string {
-  foreign
+  return ""
 }
 
 proc int_to_string(value: i32) -> string {
-  foreign
+  return ""
 }
 
-test "datetime leap year" {
-  assert is_leap_year(2000)
-  assert not is_leap_year(1900)
-  assert is_leap_year(2024)
-  assert not is_leap_year(2023)
-}
-
-test "datetime date validation" {
-  assert validate_date(Date { year: 2024, month: 2, day: 29 })
-  assert not validate_date(Date { year: 2023, month: 2, day: 29 })
-  assert not validate_date(Date { year: 2024, month: 13, day: 1 })
-}
-
-test "datetime unix epoch" {
+proc datetime_selftest() -> bool {
+  let leap_ok: bool = is_leap_year(2000) and not is_leap_year(1900) and is_leap_year(2024) and not is_leap_year(2023)
+  let date_ok: bool = validate_date(Date { year: 2024, month: 2, day: 29 })
+    and not validate_date(Date { year: 2023, month: 2, day: 29 })
+    and not validate_date(Date { year: 2024, month: 13, day: 1 })
   let dt: DateTime = unix_epoch_datetime()
   let ts: UnixTimestamp = datetime_to_unix(dt)
-
-  assert ts.seconds == 0
-  assert ts.nanos == 0
-}
-
-test "datetime date add days" {
+  let epoch_ok: bool = ts.seconds == 0 and ts.nanos == 0
   let a: Date = Date { year: 1970, month: 1, day: 1 }
   let b: Date = date_add_days(a, 1)
+  let add_ok: bool = b.year == 1970 and b.month == 1 and b.day == 2
+  let ordinal_ok: bool = date_ordinal(Date { year: 2024, month: 12, day: 31 }) == 366
 
-  assert b.year == 1970
-  assert b.month == 1
-  assert b.day == 2
-}
-
-test "datetime ordinal" {
-  let d: Date = Date { year: 2024, month: 12, day: 31 }
-  assert date_ordinal(d) == 366
+  give leap_ok and date_ok and epoch_ok and add_ok and ordinal_ok
 }

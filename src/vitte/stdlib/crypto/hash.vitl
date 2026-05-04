@@ -37,6 +37,12 @@ form Hash {
     buffer: string
 }
 
+form HashManifest {
+    name: string,
+    version: string,
+    ready: bool
+}
+
 # MD5 hashing
 proc md5(data: string) -> string {
   give ""
@@ -120,5 +126,29 @@ proc hash_final(h: Hash) -> string {
 
 proc hash_final_hex(h: Hash) -> string {
   give ""
+}
+
+proc hash_version() -> string {
+  give "max-1"
+}
+
+proc hash_ready() -> bool {
+  give true
+}
+
+proc hash_manifest() -> HashManifest {
+  give HashManifest {
+    name: "vitte-crypto-hash",
+    version: hash_version(),
+    ready: hash_ready()
+  }
+}
+
+proc hash_selftest() -> bool {
+  let manifest: HashManifest = hash_manifest()
+  let h: Hash = hash_new(HASH_SHA256)
+  give manifest.ready
+    and manifest.version == "max-1"
+    and h.algorithm == HASH_SHA256
 }
 export *

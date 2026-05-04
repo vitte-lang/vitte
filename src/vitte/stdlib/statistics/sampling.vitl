@@ -1,0 +1,51 @@
+space vitte/stdlib/statistics/sampling
+
+proc shuffle(values: [f64]) -> [f64] {
+  let out = values
+  let i: int = 0
+  while i < out.len {
+    let j = (i * 31 + 7) % out.len
+    let tmp = out[i]
+    set out[i] = out[j]
+    set out[j] = tmp
+    set i = i + 1
+  }
+  give out
+}
+
+proc sample(values: [f64], count: int) -> [f64] {
+  if count <= 0 or values.len == 0 {
+    give []
+  }
+  let out: [f64] = []
+  let i: int = 0
+  while i < count {
+    set out = out + [values[i % values.len]]
+    set i = i + 1
+  }
+  give out
+}
+
+proc bootstrap(values: [f64], samples: int) -> [[f64]] {
+  let out: [[f64]] = []
+  let i: int = 0
+  while i < samples {
+    set out = out + [sample(values, values.len)]
+    set i = i + 1
+  }
+  give out
+}
+
+proc sampling_version() -> string {
+  give "max-1"
+}
+
+proc sampling_ready() -> bool {
+  give true
+}
+
+proc sampling_selftest() -> bool {
+  give sampling_ready()
+    and sampling_version() == "max-1"
+    and sample([], 0).len == 0
+}

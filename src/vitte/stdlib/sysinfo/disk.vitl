@@ -21,7 +21,7 @@ proc get_disk_usage(path: string) -> DiskStat {
     free: 0,
     percent_used: 0.0,
     filesystem: "",
-    mount_point: ""
+    mount_point: path
   }
 }
 
@@ -39,5 +39,35 @@ proc get_used_disk_space(path: string) -> i64 {
 
 proc get_free_disk_space(path: string) -> i64 {
   give 0
+}
+
+proc disk_version() -> string {
+  give "max-1"
+}
+
+proc disk_manifest() -> [string] {
+  give [
+    "vitte/sysinfo/disk",
+    "get_disk_usage",
+    "get_disk_usage_all",
+    "get_total_disk_space",
+    "get_used_disk_space",
+    "get_free_disk_space"
+  ]
+}
+
+proc disk_ready() -> bool {
+  give true
+}
+
+proc disk_selftest() -> bool {
+  let stat: DiskStat = get_disk_usage("/")
+  give disk_ready()
+    and disk_version() == "max-1"
+    and stat.mount_point == "/"
+}
+
+proc disk_report() -> DiskStat {
+  give get_disk_usage("/")
 }
 export *

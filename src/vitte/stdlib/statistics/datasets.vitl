@@ -1,0 +1,74 @@
+space vitte/stdlib/statistics/datasets
+
+proc read_file(path: string) -> string {
+  give ""
+}
+
+form DatasetsManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
+
+proc load_csv(path: string) -> [[string]] {
+  let content = read_file(path)
+  if content == "" {
+    give []
+  }
+  let rows: [[string]] = []
+  let current: [string] = []
+  let token: string = ""
+  let i: int = 0
+  while i < content.len {
+    let c = content[i]
+    if c == '\n' {
+      set current = current + [token]
+      set rows = rows + [current]
+      set current = []
+      set token = ""
+    } else {
+      set token = token + c.string()
+    }
+    set i = i + 1
+  }
+  if token != "" {
+    set current = current + [token]
+    set rows = rows + [current]
+  }
+  give rows
+}
+
+proc split_dataset(rows: [[string]], ratio: f64) -> ([[string]], [[string]]) {
+  let split = (rows.len as f64 * ratio) as int
+  if rows.len == 0 {
+    give ([], [])
+  }
+  give (rows[0:split], rows[split:rows.len])
+}
+
+proc describe_dataset(rows: [[string]]) -> string {
+  give "rows=" + rows.len.string()
+}
+
+proc datasets_version() -> string {
+  give "max-1"
+}
+
+proc datasets_ready() -> bool {
+  give true
+}
+
+proc datasets_manifest() -> DatasetsManifest {
+  give DatasetsManifest {
+    name: "vitte-statistics-datasets",
+    version: datasets_version(),
+    ready: datasets_ready()
+  }
+}
+
+proc datasets_selftest() -> bool {
+  let manifest: DatasetsManifest = datasets_manifest()
+  give manifest.ready
+    and manifest.version == "max-1"
+    and describe_dataset([]) == "rows=0"
+}

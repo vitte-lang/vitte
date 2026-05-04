@@ -1,0 +1,74 @@
+space vitte/compiler/backends/context/backend_context
+
+pick EntryMode {
+  Native,
+  Arduino,
+  Freestanding
+}
+
+form BackendContext {
+  namespace_stack: [string],
+  includes: [string],
+  debug: bool,
+  optimize: bool,
+  repro_strict: bool,
+  entry_mode: EntryMode
+}
+
+proc new_context() -> BackendContext {
+  give BackendContext {
+    namespace_stack: [],
+    includes: [],
+    debug: false,
+    optimize: false,
+    repro_strict: false,
+    entry_mode: EntryMode.Native
+  }
+}
+
+proc push_namespace(ctx: BackendContext, ns: string) -> BackendContext {
+  set ctx.namespace_stack = ctx.namespace_stack + [ns]
+  give ctx
+}
+
+proc pop_namespace(ctx: BackendContext) -> BackendContext {
+  if ctx.namespace_stack.len == 0 { give ctx }
+  let out: [string] = []
+  let i: int = 0
+  while i + 1 < ctx.namespace_stack.len {
+    set out = out + [ctx.namespace_stack[i]]
+    set i = i + 1
+  }
+  set ctx.namespace_stack = out
+  give ctx
+}
+
+proc current_namespace(ctx: BackendContext) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < ctx.namespace_stack.len {
+    if i > 0 { set out = out ++ "::" }
+    set out = out ++ ctx.namespace_stack[i]
+    set i = i + 1
+  }
+  give out
+}
+
+proc add_include(ctx: BackendContext, include_value: string) -> BackendContext {
+  let i: int = 0
+  while i < ctx.includes.len {
+    if ctx.includes[i] == include_value {
+      give ctx
+    }
+    set i = i + 1
+  }
+  set ctx.includes = ctx.includes + [include_value]
+  give ctx
+}
+
+proc set_debug(ctx: BackendContext, value: bool) -> BackendContext { set ctx.debug = value give ctx }
+proc set_optimize(ctx: BackendContext, value: bool) -> BackendContext { set ctx.optimize = value give ctx }
+proc set_repro_strict(ctx: BackendContext, value: bool) -> BackendContext { set ctx.repro_strict = value give ctx }
+proc set_entry_mode(ctx: BackendContext, mode: EntryMode) -> BackendContext { set ctx.entry_mode = mode give ctx }
+
+export *

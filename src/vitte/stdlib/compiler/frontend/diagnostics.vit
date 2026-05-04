@@ -1,0 +1,49 @@
+space vitte/compiler/frontend/diagnostics
+
+pick DiagnosticLevel {
+  Error,
+  Warning,
+  Note
+}
+
+form Diagnostic {
+  level: DiagnosticLevel,
+  code: string,
+  message: string,
+  line: int,
+  column: int
+}
+
+form DiagnosticBag {
+  items: [Diagnostic]
+}
+
+proc new_bag() -> DiagnosticBag {
+  give DiagnosticBag { items: [] }
+}
+
+proc add(bag: DiagnosticBag, level: DiagnosticLevel, code: string, message: string, line: int, column: int) -> DiagnosticBag {
+  set bag.items = bag.items + [Diagnostic { level: level, code: code, message: message, line: line, column: column }]
+  give bag
+}
+
+proc add_error(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -> DiagnosticBag {
+  give add(bag, DiagnosticLevel.Error, code, message, line, column)
+}
+
+proc add_warning(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -> DiagnosticBag {
+  give add(bag, DiagnosticLevel.Warning, code, message, line, column)
+}
+
+proc has_errors(bag: DiagnosticBag) -> bool {
+  let i: int = 0
+  while i < bag.items.len {
+    if bag.items[i].level == DiagnosticLevel.Error {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+export *

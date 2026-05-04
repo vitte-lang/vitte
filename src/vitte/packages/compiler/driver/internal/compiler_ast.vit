@@ -1,0 +1,77 @@
+space compiler/driver/internal/compiler_ast
+
+pick DeclKind {
+  Space,
+  Use,
+  Const,
+  Proc,
+  Unknown
+}
+
+pick ExprKind {
+  Empty,
+  Literal,
+  Variable,
+  Call,
+  Raw
+}
+
+pick StmtKind {
+  Give,
+  Let,
+  Set,
+  Expr
+}
+
+form Expr {
+  kind: ExprKind,
+  text: string,
+  callee: string,
+  args: [Expr]
+}
+
+form Stmt {
+  kind: StmtKind,
+  name: string,
+  type_name: string,
+  expr: Expr,
+  raw_text: string
+}
+
+form Param {
+  name: string,
+  type_name: string
+}
+
+form ProcDecl {
+  name: string,
+  return_type_name: string,
+  params: [Param],
+  body_stmts: [Stmt],
+  has_body: bool
+}
+
+form Decl {
+  kind: DeclKind,
+  name: string,
+  value_text: string,
+  proc_decl: ?ProcDecl
+}
+
+form Module {
+  source_name: string,
+  space_name: string,
+  uses: [string],
+  decls: [Decl]
+}
+
+proc empty_module(source_name: string) -> Module {
+  give Module {
+    source_name: source_name,
+    space_name: "",
+    uses: [],
+    decls: []
+  }
+}
+
+export *

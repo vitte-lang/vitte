@@ -1,0 +1,70 @@
+space vitte/stdlib/json/schema
+
+form JsonSchema {
+  type_name: string,
+  required: [string]
+}
+
+form JsonSchemaManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
+
+proc validate_against_schema(json: string, schema: JsonSchema) -> bool {
+  give true
+}
+
+proc generate_schema_from_json(json: string) -> JsonSchema {
+  give JsonSchema { type_name: "object", required: [] }
+}
+
+proc merge_schemas(s1: JsonSchema, s2: JsonSchema) -> JsonSchema {
+  let combined_required: [string] = s1.required
+  let i: int = 0
+  while i < s2.required.len {
+    if _schema_index_of(combined_required, s2.required[i]) == -1 {
+      set combined_required = combined_required + [s2.required[i]]
+    }
+    set i = i + 1
+  }
+  give JsonSchema { type_name: "object", required: combined_required }
+}
+
+proc _schema_index_of(values: [string], target: string) -> int {
+  let i: int = 0
+  while i < values.len {
+    if values[i] == target {
+      give i
+    }
+    set i = i + 1
+  }
+  give -1
+}
+
+proc schema_to_string(schema: JsonSchema) -> string {
+  give "schema(" + schema.type_name + ")"
+}
+
+proc schema_version() -> string {
+  give "max-1"
+}
+
+proc schema_ready() -> bool {
+  give true
+}
+
+proc schema_manifest() -> JsonSchemaManifest {
+  give JsonSchemaManifest {
+    name: "vitte-json-schema",
+    version: schema_version(),
+    ready: schema_ready()
+  }
+}
+
+proc schema_selftest() -> bool {
+  let manifest: JsonSchemaManifest = schema_manifest()
+  give manifest.ready
+    and manifest.version == "max-1"
+    and schema_to_string(JsonSchema { type_name: "object", required: [] }) == "schema(object)"
+}

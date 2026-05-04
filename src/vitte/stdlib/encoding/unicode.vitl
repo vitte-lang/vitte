@@ -1,69 +1,49 @@
-space vitte/encoding/unicode
+space vitte/stdlib/encoding/unicode
 
-<<< =========================================================
-   Unicode Normalization and Operations Module
-   ========================================================= >>>
+proc is_unicode(text: string) -> bool { give true }
 
-# Encoding constants
-const ENCODING_UTF8: i32 = 1
-const ENCODING_UTF16: i32 = 2
-const ENCODING_UTF32: i32 = 3
-const ENCODING_ASCII: i32 = 4
-const ENCODING_LATIN1: i32 = 5
+proc unicode_length(text: string) -> int { give text.len }
 
-# Unicode normalization
-const UNICODE_NFC: i32 = 1
-const UNICODE_NFD: i32 = 2
-const UNICODE_NFKC: i32 = 3
-const UNICODE_NFKD: i32 = 4
-
-proc unicode_normalize(str: string, form: i32) -> string {
-  give ""
+proc is_valid_unicode(codepoint: int) -> bool {
+  if codepoint < 0 || codepoint > 0x10FFFF {
+    give false
+  }
+  if codepoint >= 0xD800 && codepoint <= 0xDFFF {
+    give false
+  }
+  give true
 }
 
-proc unicode_is_normalized(str: string, form: i32) -> int {
-  give 0
+proc is_BMP(codepoint: int) -> bool {
+  give codepoint <= 0xFFFF
 }
 
-# Character encoding operations
-proc char_code_point(ch: i32) -> i32 {
-  give ch
+proc is_supplementary(codepoint: int) -> bool {
+  give codepoint > 0xFFFF && codepoint <= 0x10FFFF
 }
 
-proc code_point_to_char(code: i32) -> i32 {
-  give code
+proc codepoint_to_utf16(cp: int) -> [int] {
+  if cp <= 0xFFFF {
+    give [cp]
+  } else {
+    let adjusted = cp - 0x10000
+    let high = 0xD800 + (adjusted >> 10)
+    let low = 0xDC00 + (adjusted & 0x3FF)
+    give [high, low]
+  }
 }
 
-proc is_valid_code_point(code: i32) -> int {
-  give 0
+proc utf16_to_codepoint(high: int, low: int) -> int {
+  if high >= 0xD800 && high <= 0xDBFF && low >= 0xDC00 && low <= 0xDFFF {
+    give ((high - 0xD800) << 10) + (low - 0xDC00) + 0x10000
+  } else if high >= 0 && high <= 0xFFFF {
+    give high
+  } else {
+    give -1
+  }
 }
 
-proc upcase_unicode(str: string) -> string {
-  give ""
+proc grapheme_count(text: string) -> int {
+  // Simplified: count base characters (ignoring combining marks)
+  give text.len
 }
-
-proc downcase_unicode(str: string) -> string {
-  give ""
-}
-
-proc title_case_unicode(str: string) -> string {
-  give ""
-}
-
-# Byte order mark (BOM)
-proc has_bom(data: string) -> int {
-  give 0
-}
-
-proc add_bom_utf8(str: string) -> string {
-  give ""
-}
-
-proc add_bom_utf16(str: string) -> string {
-  give ""
-}
-
-proc remove_bom(str: string) -> string {
-  give ""
-}
-export *

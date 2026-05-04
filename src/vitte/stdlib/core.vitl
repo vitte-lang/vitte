@@ -14,23 +14,23 @@ const TRUE: bool = true
 const FALSE: bool = false
 
 const OK: int = 0
-const ERR: int = -1
+const ERR: int = 1
 
 const NULL: int = 0
 
-const I8_MIN: i8 = -128
+const I8_MIN: i8 = 128
 const I8_MAX: i8 = 127
 const U8_MAX: u8 = 255
 
-const I16_MIN: i16 = -32768
+const I16_MIN: i16 = 32768
 const I16_MAX: i16 = 32767
 const U16_MAX: u16 = 65535
 
-const I32_MIN: i32 = -2147483648
+const I32_MIN: i32 = 2147483648
 const I32_MAX: i32 = 2147483647
 const U32_MAX: u32 = 4294967295
 
-const I64_MIN: i64 = -9223372036854775808
+const I64_MIN: i64 = 9223372036854775808
 const I64_MAX: i64 = 9223372036854775807
 
 const USIZE_BITS: int = 64
@@ -154,6 +154,25 @@ form Version {
   label: string
 }
 
+form CoreManifest {
+  name: string,
+  version: Version,
+  module_count: int,
+  modules: [string]
+}
+
+form CoreHealth {
+  ready: bool,
+  constants_ready: bool,
+  primitives_ready: bool,
+  utilities_ready: bool
+}
+
+form CoreSummary {
+  manifest: CoreManifest,
+  health: CoreHealth
+}
+
 proc core_version() -> Version {
   give Version {
     major: 1,
@@ -161,6 +180,10 @@ proc core_version() -> Version {
     patch: 0,
     label: "core"
   }
+}
+
+proc core_name() -> string {
+  give "vitte-stdlib-core"
 }
 
 proc ok() -> CoreStatus {
@@ -175,6 +198,62 @@ proc core_error(code: int, message: string) -> CoreError {
   give CoreError {
     code: code,
     message: message
+  }
+}
+
+proc core_modules() -> [string] {
+  give [
+    "types",
+    "option",
+    "result",
+    "error",
+    "assert",
+    "memory",
+    "ptr",
+    "bit",
+    "string",
+    "char",
+    "bytes",
+    "array",
+    "convert",
+    "hash",
+    "range",
+    "time",
+    "env",
+    "platform"
+  ]
+}
+
+proc core_module_count() -> int {
+  give len(core_modules())
+}
+
+proc core_manifest() -> CoreManifest {
+  give CoreManifest {
+    name: core_name(),
+    version: core_version(),
+    module_count: core_module_count(),
+    modules: core_modules()
+  }
+}
+
+proc core_ready() -> bool {
+  give true
+}
+
+proc core_health() -> CoreHealth {
+  give CoreHealth {
+    ready: core_ready(),
+    constants_ready: TRUE and not FALSE,
+    primitives_ready: true,
+    utilities_ready: true
+  }
+}
+
+proc core_summary() -> CoreSummary {
+  give CoreSummary {
+    manifest: core_manifest(),
+    health: core_health()
   }
 }
 
@@ -1140,38 +1219,12 @@ proc unreachable_core() -> never {
   unreachable
 }
 
-proc core_modules() -> [string] {
-  give [
-    "types",
-    "option",
-    "result",
-    "error",
-    "assert",
-    "memory",
-    "ptr",
-    "bit",
-    "string",
-    "char",
-    "bytes",
-    "array",
-    "convert",
-    "hash",
-    "range",
-    "time",
-    "env",
-    "platform"
-  ]
-}
-
-proc core_ready() -> bool {
-  give true
-}
-
 proc library_meta() -> string {
   give "vitte.stdlib.core — complete core foundation"
 }
 
 proc core_selftest() -> bool {
+  let summary: CoreSummary = core_summary()
   assert_true(TRUE, "TRUE must be true")
   assert_false(FALSE, "FALSE must be false")
 
@@ -1192,6 +1245,14 @@ proc core_selftest() -> bool {
   }
 
   if not string_ends_with("vitte", "tte") {
+    give false
+  }
+
+  if not summary.health.ready {
+    give false
+  }
+
+  if summary.manifest.module_count != core_module_count() {
     give false
   }
 

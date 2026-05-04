@@ -1,210 +1,64 @@
-space vitte/encoding/base64
+space vitte/stdlib/encoding/base64
 
-<<< =========================================================
-   Base64 Encoding Module (complete + optimized)
-   ========================================================= >>>
-
-use vitte/collections/vector { * }
-
-const BASE64_TABLE: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-const BASE64_URL_TABLE: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-
-# O(1) reverse lookup table for base64 decode (initialize all to -1, fill valid entries at runtime or generation)
-const BASE64_REVERSE: [i32] = [
-  # initialize all to -1 then fill valid entries (simplified representation)
-]
-
-# ----------------------------------------------------------
-# Reverse lookup
-# ----------------------------------------------------------
-
-proc _base64_reverse(c: i32) -> i32 {
-  if c < 0 or c >= 256 { give -1 }
-  give BASE64_REVERSE[c]
-}
-
-# ----------------------------------------------------------
-# Encode bytes
-# ----------------------------------------------------------
-
-proc base64_encode_bytes(data: [i32]) -> [i32] {
-  let out = vector_new[i32](((data.len + 2) / 3) * 4)
-
-  let i: i32 = 0
-  while i < data.len {
-    let remaining = data.len - i
-    let b1 = data[i]
-    let b2 = if remaining > 1 { data[i + 1] } else { 0 }
-    let b3 = if remaining > 2 { data[i + 2] } else { 0 }
-
-    let c1 = b1 >> 2
-    let c2 = ((b1 & 3) << 4) | (b2 >> 4)
-    let c3 = ((b2 & 15) << 2) | (b3 >> 6)
-    let c4 = b3 & 63
-
-    vector_push(out, BASE64_TABLE[c1])
-    vector_push(out, BASE64_TABLE[c2])
-
-    if remaining > 1 {
-      vector_push(out, BASE64_TABLE[c3])
+proc encode_base64(text: string) -> string {
+  let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  let result: string = ""
+  let bytes = text.bytes()
+  let i: int = 0
+  while i < bytes.len {
+    let b1 = bytes[i]
+    let b2 = if i + 1 < bytes.len { bytes[i + 1] } else { 0 }
+    let b3 = if i + 2 < bytes.len { bytes[i + 2] } else { 0 }
+    let triplet = (b1 << 16) | (b2 << 8) | b3
+    set result = result + alphabet[triplet >> 18 & 0x3F]
+    set result = result + alphabet[triplet >> 12 & 0x3F]
+    if i + 1 < bytes.len {
+      set result = result + alphabet[triplet >> 6 & 0x3F]
     } else {
-      vector_push(out, '=')
+      set result = result + "="
     }
-
-    if remaining > 2 {
-      vector_push(out, BASE64_TABLE[c4])
+    if i + 2 < bytes.len {
+      set result = result + alphabet[triplet & 0x3F]
     } else {
-      vector_push(out, '=')
+      set result = result + "="
     }
-
     set i = i + 3
   }
-
-  give vector_to_array(out)
+  give result
 }
 
-# ----------------------------------------------------------
-# Decode bytes
-# ----------------------------------------------------------
-
-proc base64_decode_bytes(data: [i32]) -> [i32] {
-  let out = vector_new[i32]((data.len / 4) * 3)
-
-  let i: i32 = 0
-  while i < data.len {
-    # skip whitespace
-    if data[i] == '\n' or data[i] == '\r' or data[i] == ' ' {
-      set i = i + 1
-      continue
+proc decode_base64(text: string) -> string {
+  let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  let result: [int] = []
+  let i: int = 0
+  while i < text.len {
+    let val1 = alphabet.index_of(text[i:i+1])
+    let val2 = if i + 1 < text.len && text[i + 1] != '=' { alphabet.index_of(text[i + 1:i + 2]) } else { 0 }
+    let val3 = if i + 2 < text.len && text[i + 2] != '=' { alphabet.index_of(text[i + 2:i + 3]) } else { 0 }
+    let val4 = if i + 3 < text.len && text[i + 3] != '=' { alphabet.index_of(text[i + 3:i + 4]) } else { 0 }
+    let triplet = (val1 << 18) | (val2 << 12) | (val3 << 6) | val4
+    set result = result + [triplet >> 16 & 0xFF]
+    if i + 2 < text.len && text[i + 2] != '=' {
+      set result = result + [triplet >> 8 & 0xFF]
     }
-
-    if i + 1 >= data.len { break }
-    if i + 2 >= data.len { break }
-    if i + 3 >= data.len { break }
-
-    let v1 = _base64_reverse(data[i])
-    let v2 = _base64_reverse(data[i + 1])
-
-    if v1 == -1 or v2 == -1 {
-      set i = i + 1
-      continue
+    if i + 3 < text.len && text[i + 3] != '=' {
+      set result = result + [triplet & 0xFF]
     }
-
-    let v3 = if data[i + 2] != '=' { _base64_reverse(data[i + 2]) } else { -1 }
-    let v4 = if data[i + 3] != '=' { _base64_reverse(data[i + 3]) } else { -1 }
-
-    let b1 = (v1 << 2) | (v2 >> 4)
-    vector_push(out, b1)
-
-    if v3 != -1 {
-      let b2 = ((v2 & 15) << 4) | (v3 >> 2)
-      vector_push(out, b2)
-    }
-
-    if v4 != -1 {
-      let b3 = ((v3 & 3) << 6) | v4
-      vector_push(out, b3)
-    }
-
     set i = i + 4
   }
-
-  give vector_to_array(out)
+  give result.to_string()
 }
-# ----------------------------------------------------------
-# URL safe
-# ----------------------------------------------------------
 
-proc base64_encode_to(data: [i32], out: Vector[i32]) {
-  let i: i32 = 0
-  while i < data.len {
-    let remaining = data.len - i
+proc encode_base64url(text: string) -> string {
+  let encoded = encode_base64(text)
+  let result = encoded.replace("+", "-").replace("/", "_").replace("=", "")
+  give result
+}
 
-    let b1 = data[i]
-    let b2 = if remaining > 1 { data[i + 1] } else { 0 }
-    let b3 = if remaining > 2 { data[i + 2] } else { 0 }
-
-    let c1 = b1 >> 2
-    let c2 = ((b1 & 3) << 4) | (b2 >> 4)
-    let c3 = ((b2 & 15) << 2) | (b3 >> 6)
-    let c4 = b3 & 63
-
-    vector_push(out, BASE64_TABLE[c1])
-    vector_push(out, BASE64_TABLE[c2])
-
-    if remaining > 1 { vector_push(out, BASE64_TABLE[c3]) } else { vector_push(out, '=') }
-    if remaining > 2 { vector_push(out, BASE64_TABLE[c4]) } else { vector_push(out, '=') }
-
-    set i = i + 3
+proc decode_base64url(text: string) -> string {
+  let padded = text.replace("-", "+").replace("_", "/")
+  while padded.len % 4 != 0 {
+    set padded = padded + "="
   }
+  give decode_base64(padded)
 }
-
-proc base64_decode_to(data: [i32], out: Vector[i32]) {
-  let i: i32 = 0
-  while i < data.len {
-    if i + 3 >= data.len { break }
-
-    let v1 = _base64_reverse(data[i])
-    let v2 = _base64_reverse(data[i + 1])
-
-    if v1 == -1 or v2 == -1 {
-      set i = i + 1
-      continue
-    }
-
-    let v3 = if data[i + 2] != '=' { _base64_reverse(data[i + 2]) } else { -1 }
-    let v4 = if data[i + 3] != '=' { _base64_reverse(data[i + 3]) } else { -1 }
-
-    vector_push(out, (v1 << 2) | (v2 >> 4))
-
-    if v3 != -1 { vector_push(out, ((v2 & 15) << 4) | (v3 >> 2)) }
-    if v4 != -1 { vector_push(out, ((v3 & 3) << 6) | v4) }
-
-    set i = i + 4
-  }
-}
-
-# ----------------------------------------------------------
-# URL safe
-# ----------------------------------------------------------
-
-proc base64_encode_url_safe(data: string) -> string {
-  let arr = string_to_array(data)
-  let enc = base64_encode_bytes(arr)
-
-  let i: i32 = 0
-  while i < enc.len {
-    if enc[i] == '+' { enc[i] = '-' }
-    elif enc[i] == '/' { enc[i] = '_' }
-    set i = i + 1
-  }
-
-  give array_to_string(enc)
-}
-
-proc base64_decode_url_safe(data: string) -> string {
-  let arr = string_to_array(data)
-
-  let i: i32 = 0
-  while i < arr.len {
-    if arr[i] == '-' { arr[i] = '+' }
-    elif arr[i] == '_' { arr[i] = '/' }
-    set i = i + 1
-  }
-
-  let dec = base64_decode_bytes(arr)
-  give array_to_string(dec)
-}
-
-# ----------------------------------------------------------
-# String wrappers
-# ----------------------------------------------------------
-
-proc base64_encode(data: string) -> string {
-  give array_to_string(base64_encode_bytes(string_to_array(data)))
-}
-
-proc base64_decode(data: string) -> string {
-  give array_to_string(base64_decode_bytes(string_to_array(data)))
-}
-export *

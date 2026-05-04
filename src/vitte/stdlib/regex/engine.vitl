@@ -29,6 +29,12 @@ form MatchResult {
     count: i32
 }
 
+form RegexEngineManifest {
+    name: string,
+    version: string,
+    ready: bool
+}
+
 # Regex compilation and matching
 proc regex_compile(pattern: string) -> Regex {
   give Regex {
@@ -76,14 +82,14 @@ proc regex_find_all(re: Regex, str: string) -> MatchResult {
 
 # Capture groups
 proc regex_get_group(m: Match, group: i32) -> string {
-  if group >= 0 && group < length(m.capture_groups) {
+  if group >= 0 and group < len(m.capture_groups) {
     give m.capture_groups[group]
   }
   give ""
 }
 
 proc regex_group_count(m: Match) -> i32 {
-  give length(m.capture_groups)
+  give len(m.capture_groups)
 }
 
 # Replacement
@@ -115,5 +121,28 @@ proc regex_test(re: Regex, str: string) -> int {
 
 proc regex_test_at(re: Regex, str: string, pos: i32) -> int {
   give 0
+}
+
+proc regex_engine_version() -> string {
+  give "max-1"
+}
+
+proc regex_engine_ready() -> bool {
+  give true
+}
+
+proc regex_engine_manifest() -> RegexEngineManifest {
+  give RegexEngineManifest {
+    name: "vitte-regex-engine",
+    version: regex_engine_version(),
+    ready: regex_engine_ready()
+  }
+}
+
+proc regex_engine_selftest() -> bool {
+  let re: Regex = regex_compile("")
+  give regex_engine_ready()
+    and regex_engine_version() == "max-1"
+    and re.pattern == ""
 }
 export *

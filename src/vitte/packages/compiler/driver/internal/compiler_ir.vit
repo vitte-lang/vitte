@@ -1,0 +1,72 @@
+space compiler/driver/internal/compiler_ir
+
+use compiler_ast
+
+proc stmt_kind_name(kind: compiler_ast.StmtKind) -> string {
+  if kind == compiler_ast.StmtKind.Give { give "give" }
+  if kind == compiler_ast.StmtKind.Let { give "let" }
+  if kind == compiler_ast.StmtKind.Set { give "set" }
+  give "expr"
+}
+
+form IrStmt {
+  kind: string,
+  name: string,
+  type_name: string,
+  expr: compiler_ast.Expr,
+  raw_text: string
+}
+
+form IrFunction {
+  name: string,
+  return_type_name: string,
+  params: [compiler_ast.Param],
+  body_stmts: [IrStmt]
+}
+
+form IrModule {
+  source_name: string,
+  module_name: string,
+  uses: [string],
+  functions: [IrFunction]
+}
+
+proc lower(module_value: compiler_ast.Module) -> IrModule {
+  let functions: [IrFunction] = []
+  let i: int = 0
+  while i < module_value.decls.len {
+    let decl: compiler_ast.Decl = module_value.decls[i]
+    if decl.kind == compiler_ast.DeclKind.Proc and decl.proc_decl != null {
+      let proc_decl: compiler_ast.ProcDecl = decl.proc_decl as compiler_ast.ProcDecl
+      let stmts: [IrStmt] = []
+      let j: int = 0
+      while j < proc_decl.body_stmts.len {
+        let stmt: compiler_ast.Stmt = proc_decl.body_stmts[j]
+        let kind_text: string = stmt_kind_name(stmt.kind)
+        set stmts = stmts + [IrStmt {
+          kind: kind_text,
+          name: stmt.name,
+          type_name: stmt.type_name,
+          expr: stmt.expr,
+          raw_text: stmt.raw_text
+        }]
+        set j = j + 1
+      }
+      set functions = functions + [IrFunction {
+        name: proc_decl.name,
+        return_type_name: proc_decl.return_type_name,
+        params: proc_decl.params,
+        body_stmts: stmts
+      }]
+    }
+    set i = i + 1
+  }
+  give IrModule {
+    source_name: module_value.source_name,
+    module_name: module_value.space_name,
+    uses: module_value.uses,
+    functions: functions
+  }
+}
+
+export *

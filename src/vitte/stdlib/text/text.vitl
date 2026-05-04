@@ -1,0 +1,259 @@
+space vitte/stdlib/text
+
+<<< =========================================================
+   Text — Maximal self-contained text facade
+   summary, trimming, case conversion, simple metrics,
+   and convenience utilities for the text family.
+   ========================================================= >>>
+
+export *
+
+form TextReport {
+  characters: i64,
+  lines: i64,
+  words: i64,
+  sentences: i64
+}
+
+proc _min_i32(a: i32, b: i32) -> i32 {
+  if a < b { give a }
+  give b
+}
+
+proc _is_space(ch: char) -> bool {
+  if ch == ' ' { give true }
+  if ch == '\n' { give true }
+  if ch == '\t' { give true }
+  if ch == '\r' { give true }
+  give false
+}
+
+proc _is_word_char(ch: char) -> bool {
+  if ch >= 'a' and ch <= 'z' { give true }
+  if ch >= 'A' and ch <= 'Z' { give true }
+  if ch >= '0' and ch <= '9' { give true }
+  if ch == '_' { give true }
+  if ch == '-' { give true }
+  give false
+}
+
+proc _lower_char(ch: char) -> char {
+  if ch >= 'A' and ch <= 'Z' {
+    give (ch as i32 + 32) as char
+  }
+  give ch
+}
+
+proc _upper_char(ch: char) -> char {
+  if ch >= 'a' and ch <= 'z' {
+    give (ch as i32 - 32) as char
+  }
+  give ch
+}
+
+proc summary(text: string) -> string {
+  if text == "" { give "" }
+  give text[0:_min_i32(text.len, 80)]
+}
+
+proc text_trim(text: string) -> string {
+  let start: i32 = 0
+  let end: i32 = text.len
+
+  while start < end and _is_space(text[start]) {
+    set start = start + 1
+  }
+
+  while end > start and _is_space(text[end - 1]) {
+    set end = end - 1
+  }
+
+  give text[start:end]
+}
+
+proc text_lower(text: string) -> string {
+  let out: string = ""
+  let i: i32 = 0
+  while i < text.len {
+    set out = out + (_lower_char(text[i]) as string)
+    set i = i + 1
+  }
+  give out
+}
+
+proc text_upper(text: string) -> string {
+  let out: string = ""
+  let i: i32 = 0
+  while i < text.len {
+    set out = out + (_upper_char(text[i]) as string)
+    set i = i + 1
+  }
+  give out
+}
+
+proc text_title_case(text: string) -> string {
+  let out: string = ""
+  let i: i32 = 0
+  let start_word: bool = true
+
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_space(ch) {
+      set out = out + (ch as string)
+      set start_word = true
+    } else if start_word {
+      set out = out + (_upper_char(ch) as string)
+      set start_word = false
+    } else {
+      set out = out + (_lower_char(ch) as string)
+    }
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc text_collapse_spaces(text: string) -> string {
+  let out: string = ""
+  let i: i32 = 0
+  let last_space: bool = false
+
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_space(ch) {
+      if not last_space {
+        set out = out + " "
+        set last_space = true
+      }
+    } else {
+      set out = out + (ch as string)
+      set last_space = false
+    }
+    set i = i + 1
+  }
+
+  give text_trim(out)
+}
+
+proc text_line_count(text: string) -> i64 {
+  if text == "" { give 0 }
+  let count: i64 = 1
+  let i: i32 = 0
+  while i < text.len {
+    if text[i] == '\n' { set count = count + 1 }
+    set i = i + 1
+  }
+  give count
+}
+
+proc text_word_count(text: string) -> i64 {
+  let count: i64 = 0
+  let in_word: bool = false
+  let i: i32 = 0
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_word_char(ch) {
+      if not in_word {
+        set count = count + 1
+        set in_word = true
+      }
+    } else {
+      set in_word = false
+    }
+    set i = i + 1
+  }
+  give count
+}
+
+proc text_sentence_count(text: string) -> i64 {
+  let count: i64 = 0
+  let i: i32 = 0
+  while i < text.len {
+    if text[i] == '.' or text[i] == '!' or text[i] == '?' {
+      set count = count + 1
+    }
+    set i = i + 1
+  }
+  if count == 0 and text != "" { give 1 }
+  give count
+}
+
+proc text_report(text: string) -> TextReport {
+  give TextReport {
+    characters: text.len as i64,
+    lines: text_line_count(text),
+    words: text_word_count(text),
+    sentences: text_sentence_count(text)
+  }
+}
+
+proc text_contains(text: string, needle: string) -> bool {
+  if needle == "" { give true }
+  if needle.len > text.len { give false }
+
+  let i: i32 = 0
+  while i + needle.len <= text.len {
+    let j: i32 = 0
+    let found: bool = true
+    while j < needle.len {
+      if text[i + j] != needle[j] {
+        set found = false
+        break
+      }
+      set j = j + 1
+    }
+    if found { give true }
+    set i = i + 1
+  }
+
+  give false
+}
+
+proc text_starts_with(text: string, prefix: string) -> bool {
+  if prefix.len > text.len { give false }
+  give text[0:prefix.len] == prefix
+}
+
+proc text_ends_with(text: string, suffix: string) -> bool {
+  if suffix.len > text.len { give false }
+  give text[text.len - suffix.len:text.len] == suffix
+}
+
+proc text_extract_words(text: string) -> [string] {
+  let out: [string] = []
+  let current: string = ""
+  let i: i32 = 0
+
+  while i < text.len {
+    let ch: char = text[i]
+    if _is_word_char(ch) {
+      set current = current + (_lower_char(ch) as string)
+    } else {
+      if current != "" {
+        set out = out + [current]
+        set current = ""
+      }
+    }
+    set i = i + 1
+  }
+
+  if current != "" {
+    set out = out + [current]
+  }
+
+  give out
+}
+
+proc text_selftest() -> bool {
+  let sample: string = "Hello   world.\nThis is Vitte."
+  let report: TextReport = text_report(sample)
+
+  give summary(sample) != ""
+    and text_trim("  hi  ") == "hi"
+    and text_collapse_spaces(sample) == "Hello world. This is Vitte."
+    and report.lines == 2
+    and report.words >= 4
+    and text_contains(sample, "world")
+    and text_starts_with(sample, "Hello")
+    and text_ends_with(sample, "Vitte.")
+}

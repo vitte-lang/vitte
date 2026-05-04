@@ -1,0 +1,45 @@
+space vitte/stdlib/statistics/models
+
+proc mean(values: [f64]) -> f64 {
+  if values.len == 0 { give 0.0 }
+  let total: f64 = 0.0
+  let i: int = 0
+  while i < values.len {
+    set total = total + values[i]
+    set i = i + 1
+  }
+  give total / values.len as f64
+}
+
+proc variance(values: [f64]) -> f64 { give 0.0 }
+proc covariance(x: [f64], y: [f64]) -> f64 { give 0.0 }
+proc linear_regression(x: [f64], y: [f64]) -> (f64, f64) { give (0.0, 0.0) }
+proc exp_f64(x: f64) -> f64 { give x }
+
+proc linear_model(x: [f64], y: [f64]) -> (f64, f64) {
+  give linear_regression(x, y)
+}
+
+proc ridge_regression(x: [f64], y: [f64], alpha: f64) -> (f64, f64) {
+  if alpha == 0.0 {
+    give linear_regression(x, y)
+  }
+  let var_x = variance(x)
+  if var_x + alpha == 0.0 {
+    give (0.0, mean(y))
+  }
+  let slope = covariance(x, y) / (var_x + alpha)
+  let intercept = mean(y) - slope * mean(x)
+  give (slope, intercept)
+}
+
+proc logistic_prediction(x: [f64], weights: [f64], bias: f64) -> [f64] {
+  let out: [f64] = []
+  let i: int = 0
+  while i < x.len and i < weights.len {
+    let z = x[i] * weights[i] + bias
+    set out = out + [1.0 / (1.0 + exp_f64(-z))]
+    set i = i + 1
+  }
+  give out
+}

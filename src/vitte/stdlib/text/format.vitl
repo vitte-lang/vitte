@@ -1,0 +1,180 @@
+space vitte/stdlib/text/format
+
+<<< =========================================================
+   Text Formatting — repetition, padding, wrapping, layout
+   ========================================================= >>>
+
+export *
+
+proc repeat(text: string, times: int) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < times {
+    set out = out + text
+    set i = i + 1
+  }
+  give out
+}
+
+proc pad_left(text: string, width: int) -> string {
+  if text.len >= width { give text }
+  give repeat(" ", width - text.len) + text
+}
+
+proc pad_right(text: string, width: int) -> string {
+  if text.len >= width { give text }
+  give text + repeat(" ", width - text.len)
+}
+
+proc pad(text: string, width: int) -> string {
+  give pad_right(text, width)
+}
+
+proc center(text: string, width: int) -> string {
+  let pad_size: int = width - text.len
+  if pad_size <= 0 { give text }
+
+  let left: int = pad_size / 2
+  let right: int = pad_size - left
+  give repeat(" ", left) + text + repeat(" ", right)
+}
+
+proc indent(text: string, width: int) -> string {
+  give repeat(" ", width) + text
+}
+
+proc prefix_lines(text: string, prefix: string) -> string {
+  let out: string = ""
+  let line: string = ""
+  let i: int = 0
+
+  while i < text.len {
+    let ch: char = text[i]
+    if ch == '\n' {
+      set out = out + prefix + line + "\n"
+      set line = ""
+    } else {
+      set line = line + (ch as string)
+    }
+    set i = i + 1
+  }
+
+  if line != "" or text == "" {
+    set out = out + prefix + line
+  }
+
+  give out
+}
+
+proc suffix_lines(text: string, suffix: string) -> string {
+  let out: string = ""
+  let line: string = ""
+  let i: int = 0
+
+  while i < text.len {
+    let ch: char = text[i]
+    if ch == '\n' {
+      set out = out + line + suffix + "\n"
+      set line = ""
+    } else {
+      set line = line + (ch as string)
+    }
+    set i = i + 1
+  }
+
+  if line != "" or text == "" {
+    set out = out + line + suffix
+  }
+
+  give out
+}
+
+proc truncate(text: string, max_chars: int) -> string {
+  if max_chars <= 0 { give "" }
+  if text.len <= max_chars { give text }
+  give text[0:max_chars]
+}
+
+proc wrap_line(text: string, width: int) -> string {
+  if width <= 0 { give text }
+  if text.len <= width { give text }
+
+  let out: string = ""
+  let line_len: int = 0
+  let i: int = 0
+
+  while i < text.len {
+    let ch: char = text[i]
+    if ch == '\n' {
+      set out = out + "\n"
+      set line_len = 0
+    } else {
+      if line_len >= width {
+        set out = out + "\n"
+        set line_len = 0
+      }
+      set out = out + (ch as string)
+      set line_len = line_len + 1
+    }
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc box(text: string, width: int) -> string {
+  let content: string = pad_right(text, width)
+  give "+" + repeat("-", width + 2) + "+\n" +
+       "| " + content + " |\n" +
+       "+" + repeat("-", width + 2) + "+"
+}
+
+proc banner(title: string, width: int) -> string {
+  give center(title, width)
+}
+
+proc join_lines(lines: [string], separator: string) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < lines.len {
+    if i > 0 { set out = out + separator }
+    set out = out + lines[i]
+    set i = i + 1
+  }
+  give out
+}
+
+proc numbered_list(items: [string]) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < items.len {
+    set out = out + (i + 1 as string) + ". " + items[i]
+    if i + 1 < items.len { set out = out + "\n" }
+    set i = i + 1
+  }
+  give out
+}
+
+proc key_value(key: string, value: string) -> string {
+  give key + ": " + value
+}
+
+proc kv_table(keys: [string], values: [string]) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < keys.len and i < values.len {
+    set out = out + key_value(keys[i], values[i])
+    if i + 1 < keys.len and i + 1 < values.len { set out = out + "\n" }
+    set i = i + 1
+  }
+  give out
+}
+
+proc format_selftest() -> bool {
+  give repeat("ab", 3) == "ababab"
+    and pad_left("a", 3) == "  a"
+    and pad_right("a", 3) == "a  "
+    and center("a", 3) == " a "
+    and truncate("hello", 2) == "he"
+    and join_lines(["a", "b"], ",") == "a,b"
+}

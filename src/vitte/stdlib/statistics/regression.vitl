@@ -1,0 +1,62 @@
+space vitte/stdlib/statistics/regression
+
+proc mean(values: [f64]) -> f64 {
+  if values.len == 0 { give 0.0 }
+  let total: f64 = 0.0
+  let i: int = 0
+  while i < values.len {
+    set total = total + values[i]
+    set i = i + 1
+  }
+  give total / values.len as f64
+}
+
+proc variance(values: [f64]) -> f64 { give 0.0 }
+proc population_stdev(values: [f64]) -> f64 { give 0.0 }
+
+proc covariance(x: [f64], y: [f64]) -> f64 {
+  if x.len == 0 or x.len != y.len {
+    give 0.0
+  }
+  let mx = mean(x)
+  let my = mean(y)
+  let sum_cov: f64 = 0.0
+  let i: int = 0
+  while i < x.len {
+    set sum_cov = sum_cov + (x[i] - mx) * (y[i] - my)
+    set i = i + 1
+  }
+  give sum_cov / x.len as f64
+}
+
+proc correlation(x: [f64], y: [f64]) -> f64 {
+  let denom = population_stdev(x) * population_stdev(y)
+  if denom == 0.0 {
+    give 0.0
+  }
+  give covariance(x, y) / denom
+}
+
+proc linear_regression(x: [f64], y: [f64]) -> (f64, f64) {
+  if x.len == 0 or x.len != y.len {
+    give (0.0, 0.0)
+  }
+  let cov_xy = covariance(x, y)
+  let var_x = variance(x)
+  if var_x == 0.0 {
+    give (0.0, mean(y))
+  }
+  let slope = cov_xy / var_x
+  let intercept = mean(y) - slope * mean(x)
+  give (slope, intercept)
+}
+
+proc predicted(x: [f64], slope: f64, intercept: f64) -> [f64] {
+  let out: [f64] = []
+  let i: int = 0
+  while i < x.len {
+    set out = out + [slope * x[i] + intercept]
+    set i = i + 1
+  }
+  give out
+}

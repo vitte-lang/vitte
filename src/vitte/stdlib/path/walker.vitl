@@ -4,13 +4,27 @@ space vitte/path/walker
    Path Walking Module
    ========================================================= >>>
 
-use vitte/path/manipulation
-
 # Walk filesystem
 form PathWalker {
     root: string,
     entries: [string],
     index: i32
+}
+
+form PathWalkerManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
+
+form PathWalkerHealth {
+  ready: bool,
+  walker_ready: bool
+}
+
+form PathWalkerSummary {
+  manifest: PathWalkerManifest,
+  health: PathWalkerHealth
 }
 
 proc path_walk(root: string) -> PathWalker {
@@ -35,5 +49,49 @@ proc path_walker_next(w: PathWalker) -> string {
 
 proc path_walker_has_next(w: PathWalker) -> int {
   give 0
+}
+
+proc walker_version() -> string {
+  give "max-1"
+}
+
+proc walker_ready() -> bool {
+  give true
+}
+
+proc walker_manifest() -> PathWalkerManifest {
+  give PathWalkerManifest {
+    name: "vitte-path-walker",
+    version: walker_version(),
+    ready: walker_ready()
+  }
+}
+
+proc walker_health() -> PathWalkerHealth {
+  give PathWalkerHealth {
+    ready: walker_ready(),
+    walker_ready: true
+  }
+}
+
+proc walker_summary() -> PathWalkerSummary {
+  give PathWalkerSummary {
+    manifest: walker_manifest(),
+    health: walker_health()
+  }
+}
+
+proc walker_report(root: string) -> PathWalker {
+  give path_walk(root)
+}
+
+proc walker_selftest() -> bool {
+  let summary: PathWalkerSummary = walker_summary()
+  let w: PathWalker = path_walk(".")
+  give walker_ready()
+    and summary.health.ready
+    and summary.manifest.version == "max-1"
+    and walker_version() == "max-1"
+    and w.index == 0
 }
 export *

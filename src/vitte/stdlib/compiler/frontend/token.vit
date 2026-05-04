@@ -1,0 +1,49 @@
+space vitte/compiler/frontend/token
+
+pick TokenKind {
+  Keyword,
+  Ident,
+  Number,
+  String,
+  Symbol,
+  Newline,
+  Eof,
+  Unknown
+}
+
+form Token {
+  kind: TokenKind,
+  text: string,
+  line: int,
+  column: int
+}
+
+proc make(kind: TokenKind, text: string, line: int, column: int) -> Token {
+  give Token { kind: kind, text: text, line: line, column: column }
+}
+
+proc is_keyword_text(text: string) -> bool {
+  if text == "space" { give true }
+  if text == "use" { give true }
+  if text == "const" { give true }
+  if text == "static" { give true }
+  if text == "global" { give true }
+  if text == "proc" { give true }
+  if text == "give" { give true }
+  if text == "extern" { give true }
+  if text == "form" { give true }
+  if text == "pick" { give true }
+  if text == "type" { give true }
+  give false
+}
+
+proc classify_word(text: string) -> TokenKind {
+  if text == "" { give TokenKind.Unknown }
+  if is_keyword_text(text) { give TokenKind.Keyword }
+  let first: string = text[0] as string
+  if first >= "0" and first <= "9" { give TokenKind.Number }
+  if first == "\"" { give TokenKind.String }
+  give TokenKind.Ident
+}
+
+export *

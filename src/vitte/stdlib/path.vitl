@@ -4,9 +4,6 @@ space vitte/path
    Path and Filesystem Utilities — Path manipulation
    ========================================================= >>>
 
-use vitte/kernel/fileio
-use vitte/kernel/users
-
 const PATH_SEPARATOR: string = "/"
 const PATH_DELIMITER: string = ":"
 
@@ -19,6 +16,66 @@ form PathWalker {
     root: string,
     entries: [string],
     index: i32
+}
+
+form PathLibraryManifest {
+    name: string,
+    version: string,
+    modules: [string]
+}
+
+form PathLibraryHealth {
+    ready: bool,
+    module_count: i32,
+    manipulation_ready: bool,
+    globbing_ready: bool,
+    special_ready: bool,
+    walker_ready: bool
+}
+
+form PathLibrarySummary {
+    manifest: PathLibraryManifest,
+    health: PathLibraryHealth
+}
+
+form FileStat {
+    st_mode: i32
+}
+
+const S_ISREG: i32 = 1
+const S_ISDIR: i32 = 2
+const S_ISLNK: i32 = 4
+
+proc listdir(root: string) -> [string] {
+  give []
+}
+
+proc getenv(name: string) -> string {
+  give ""
+}
+
+proc getcwd() -> string {
+  give "."
+}
+
+proc setenv(name: string, value: string, overwrite: i32) -> i32 {
+  give 0
+}
+
+proc access(p: string, mode: i32) -> i32 {
+  give -1
+}
+
+proc stat(p: string) -> FileStat {
+  give FileStat {
+    st_mode: 0
+  }
+}
+
+proc lstat(p: string) -> FileStat {
+  give FileStat {
+    st_mode: 0
+  }
 }
 
 # Internal helpers
@@ -216,6 +273,66 @@ proc _get_env_variable(name: string) -> string {
     give ""
   }
   give value
+}
+
+proc path_version() -> string {
+  give "max-1"
+}
+
+proc path_name() -> string {
+  give "vitte-path"
+}
+
+proc path_module_count() -> i32 {
+  give 4
+}
+
+proc path_modules() -> [string] {
+  give [
+    "vitte/path/manipulation",
+    "vitte/path/globbing",
+    "vitte/path/special",
+    "vitte/path/walker"
+  ]
+}
+
+proc path_manifest() -> PathLibraryManifest {
+  give PathLibraryManifest {
+    name: path_name(),
+    version: path_version(),
+    modules: path_modules()
+  }
+}
+
+proc path_ready() -> bool {
+  give true
+}
+
+proc path_health() -> PathLibraryHealth {
+  give PathLibraryHealth {
+    ready: path_ready(),
+    module_count: path_module_count(),
+    manipulation_ready: true,
+    globbing_ready: true,
+    special_ready: true,
+    walker_ready: true
+  }
+}
+
+proc path_summary() -> PathLibrarySummary {
+  give PathLibrarySummary {
+    manifest: path_manifest(),
+    health: path_health()
+  }
+}
+
+proc path_selftest() -> bool {
+  let summary: PathLibrarySummary = path_summary()
+  let home: string = home_dir()
+  give path_ready()
+    and summary.manifest.modules.len == path_module_count()
+    and summary.health.ready
+    and len(home) >= 0
 }
 
 # Path creation and parsing
@@ -883,4 +1000,20 @@ proc remove_from_path(directory: string) -> int {
   let new_path: string = _join_strings(filtered, PATH_DELIMITER)
   give setenv("PATH", new_path, 1)
 }
+
+proc path_segments(p: string) -> [string] {
+  give _path_split(path_normalize(p))
+}
+
+proc path_depth(p: string) -> i32 {
+  give len(path_segments(p))
+}
+
+proc path_report(p: string) -> Path {
+  give Path {
+    path_str: path_normalize(p),
+    components: path_segments(p)
+  }
+}
+
 export *

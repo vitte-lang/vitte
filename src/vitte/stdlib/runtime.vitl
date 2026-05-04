@@ -1,0 +1,450 @@
+space vitte/stdlib/runtime
+
+export *
+
+<<< =========================================================
+   Vitte Runtime Surface
+   Vitl transcription of the Vitte runtime binding layer
+   ========================================================= >>>
+
+form String {
+  data: string,
+  len: usize
+}
+
+form Slice[T] {
+  data: [T],
+  len: usize
+}
+
+form Pair[A, B] {
+  first: A,
+  second: B
+}
+
+pick OptionString {
+  None,
+  Some(value: String)
+}
+
+pick IoErrorKind {
+  NotFound,
+  PermissionDenied,
+  ConnectionRefused,
+  ConnectionReset,
+  ConnectionAborted,
+  NotConnected,
+  AddrInUse,
+  AddrNotAvailable,
+  BrokenPipe,
+  AlreadyExists,
+  WouldBlock,
+  InvalidInput,
+  InvalidData,
+  TimedOut,
+  Interrupted,
+  UnexpectedEof,
+  Unsupported,
+  Other
+}
+
+form IoError {
+  kind: IoErrorKind,
+  message: OptionString
+}
+
+pick ResultIo[T] {
+  Ok(value: T),
+  Err(error: IoError)
+}
+
+pick Result[T] {
+  Ok(value: T),
+  Err(error: String)
+}
+
+form IpV4 {
+  a: u8,
+  b: u8,
+  c: u8,
+  d: u8
+}
+
+form IpV6 {
+  a: u16,
+  b: u16,
+  c: u16,
+  d: u16,
+  e: u16,
+  f: u16,
+  g: u16,
+  h: u16
+}
+
+pick IpAddr {
+  V4(addr: IpV4),
+  V6(addr: IpV6)
+}
+
+form SocketAddr {
+  ip: IpAddr,
+  port: u16
+}
+
+form TcpStream {
+  fd: usize
+}
+
+form TcpListener {
+  fd: usize
+}
+
+form UdpSocket {
+  fd: usize
+}
+
+form UdpRecv {
+  addr: SocketAddr,
+  data: Slice[u8],
+  size: usize
+}
+
+pick JsonValue {
+  Null,
+  Bool(value: bool),
+  Number(value: f64),
+  String(value: String),
+  Array(value: Slice[JsonValue]),
+  Object(value: Slice[JsonMember])
+}
+
+form JsonMember {
+  key: String,
+  value: JsonValue
+}
+
+pick RegexMatch {
+  None,
+  Some(start: usize, end: usize, text: String)
+}
+
+pick OptionRegexMatch {
+  None,
+  Some(value: RegexMatch)
+}
+
+form Regex {
+  pattern: String
+}
+
+form ProcessResult {
+  status: i32,
+  out: String,
+  err: String
+}
+
+form ExitStatus {
+  code: i32
+}
+
+form ProcessChild {
+  id: i64
+}
+
+form FswatchWatcher {
+  path: String
+}
+
+pick FswatchEventKind {
+  Modified,
+  Deleted,
+  Renamed
+}
+
+form FswatchEvent {
+  path: String,
+  kind: FswatchEventKind
+}
+
+form DbHandle {
+  id: i64
+}
+
+form DbEntry {
+  key: String,
+  value: String
+}
+
+pick HttpMethod {
+  Get,
+  Post,
+  Put,
+  Delete
+}
+
+form HttpHeader {
+  name: String,
+  value: String
+}
+
+form HttpRequest {
+  method: HttpMethod,
+  url: String,
+  body: String,
+  headers: Slice[HttpHeader],
+  timeout_ms: u32,
+  follow_redirects: bool,
+  http2: bool
+}
+
+form HttpResponse {
+  status: i32,
+  body: String
+}
+
+form Unit {
+  _dummy: u8
+}
+
+#[extern]
+proc alloc(size: usize) -> usize
+
+#[extern]
+proc dealloc(ptr: usize) -> Unit
+
+#[extern]
+proc runtime_panic(msg: String) -> Unit
+
+#[extern]
+proc assert_true(cond: bool, msg: String) -> Unit
+
+#[extern]
+proc print_i32(value: i32) -> Unit
+
+#[extern]
+proc runtime_unreachable() -> Unit
+
+#[extern]
+proc terminate() -> Unit
+
+#[extern]
+proc vitte_c_abi_version() -> String
+
+#[extern]
+proc empty_string() -> String
+
+#[extern]
+proc make_string(text: String) -> String
+
+#[extern]
+proc char_to_string(value: i32) -> String
+
+#[extern]
+proc i32_to_string(value: i32) -> String
+
+#[extern]
+proc string_concat(a: String, b: String) -> String
+
+#[extern]
+proc empty_slice_i32() -> Slice[i32]
+
+#[extern]
+proc empty_slice_string() -> Slice[String]
+
+#[extern]
+proc slice_push_i32(base: Slice[i32], value: i32) -> Slice[i32]
+
+#[extern]
+proc slice_push_string(base: Slice[String], value: String) -> Slice[String]
+
+#[extern]
+proc list_i32(value: i32) -> Slice[i32]
+
+#[extern]
+proc list_string(value: String) -> Slice[String]
+
+#[extern]
+proc time_now_ms() -> u64
+
+#[extern]
+proc time_sleep_ms(ms: u32) -> Unit
+
+#[extern]
+proc env_get(name: String) -> OptionString
+
+#[extern]
+proc env_set(name: String, value: String) -> bool
+
+#[extern]
+proc os_platform() -> String
+
+#[extern]
+proc os_arch() -> String
+
+#[extern]
+proc os_home_dir() -> OptionString
+
+#[extern]
+proc os_temp_dir() -> String
+
+#[extern]
+proc os_current_dir() -> Result[String]
+
+#[extern]
+proc os_set_current_dir(path: String) -> bool
+
+#[extern]
+proc os_exe_path() -> Result[String]
+
+#[extern]
+proc os_path_sep() -> String
+
+#[extern]
+proc process_run(cmd: String) -> Result[ProcessResult]
+
+#[extern]
+proc process_run_args(cmd: String, args: Slice[String]) -> Result[ProcessResult]
+
+#[extern]
+proc process_run_shell(cmdline: String) -> Result[ProcessResult]
+
+#[extern]
+proc process_spawn(cmd: String, args: Slice[String]) -> Result[ProcessChild]
+
+#[extern]
+proc process_wait(child: ProcessChild) -> Result[ExitStatus]
+
+#[extern]
+proc process_kill(child: ProcessChild) -> Result[Unit]
+
+#[extern]
+proc process_stdout(child: ProcessChild) -> Result[String]
+
+#[extern]
+proc process_stderr(child: ProcessChild) -> Result[String]
+
+#[extern]
+proc json_parse(text: String) -> Result[JsonValue]
+
+#[extern]
+proc json_stringify(value: JsonValue) -> String
+
+#[extern]
+proc http_request(req: HttpRequest) -> Result[HttpResponse]
+
+#[extern]
+proc crypto_sha256(data: Slice[u8]) -> Result[Slice[u8]]
+
+#[extern]
+proc crypto_sha1(data: Slice[u8]) -> Result[Slice[u8]]
+
+#[extern]
+proc crypto_hmac_sha256(key: Slice[u8], data: Slice[u8]) -> Result[Slice[u8]]
+
+#[extern]
+proc crypto_rand_bytes(len: usize) -> Result[Slice[u8]]
+
+#[extern]
+proc tcp_connect(addr: SocketAddr) -> ResultIo[TcpStream]
+
+#[extern]
+proc tcp_bind(addr: SocketAddr) -> ResultIo[TcpListener]
+
+#[extern]
+proc tcp_accept(listener: TcpListener) -> ResultIo[TcpStream]
+
+#[extern]
+proc tcp_read(stream: TcpStream, buf: Slice[u8]) -> ResultIo[usize]
+
+#[extern]
+proc tcp_write(stream: TcpStream, buf: Slice[u8]) -> ResultIo[usize]
+
+#[extern]
+proc tcp_close(stream: TcpStream) -> ResultIo[Unit]
+
+#[extern]
+proc udp_bind(addr: SocketAddr) -> ResultIo[UdpSocket]
+
+#[extern]
+proc udp_recv_from(sock: UdpSocket, buf: Slice[u8]) -> ResultIo[UdpRecv]
+
+#[extern]
+proc udp_send_to(sock: UdpSocket, buf: Slice[u8], addr: SocketAddr) -> ResultIo[usize]
+
+#[extern]
+proc udp_close(sock: UdpSocket) -> ResultIo[Unit]
+
+#[extern]
+proc udp_set_nonblocking(sock: UdpSocket, enabled: bool) -> ResultIo[Unit]
+
+#[extern]
+proc udp_set_read_timeout(sock: UdpSocket, ms: u32) -> ResultIo[Unit]
+
+#[extern]
+proc udp_set_write_timeout(sock: UdpSocket, ms: u32) -> ResultIo[Unit]
+
+#[extern]
+proc tcp_set_nonblocking(stream: TcpStream, enabled: bool) -> ResultIo[Unit]
+
+#[extern]
+proc tcp_set_read_timeout(stream: TcpStream, ms: u32) -> ResultIo[Unit]
+
+#[extern]
+proc tcp_set_write_timeout(stream: TcpStream, ms: u32) -> ResultIo[Unit]
+
+#[extern]
+proc regex_compile(pat: String) -> Result[Regex]
+
+#[extern]
+proc regex_is_match(re: Regex, text: String) -> bool
+
+#[extern]
+proc regex_find(re: Regex, text: String) -> OptionRegexMatch
+
+#[extern]
+proc regex_replace(re: Regex, text: String, with: String) -> String
+
+#[extern]
+proc regex_split(re: Regex, text: String) -> Slice[String]
+
+#[extern]
+proc fswatch_watch(path: String) -> Result[FswatchWatcher]
+
+#[extern]
+proc fswatch_poll(w: FswatchWatcher) -> Result[FswatchEvent]
+
+#[extern]
+proc fswatch_close(w: FswatchWatcher) -> Result[Unit]
+
+#[extern]
+proc db_open(path: String) -> Result[DbHandle]
+
+#[extern]
+proc db_close(db: DbHandle) -> Result[Unit]
+
+#[extern]
+proc db_set(db: DbHandle, key: String, value: String) -> Result[Unit]
+
+#[extern]
+proc db_get(db: DbHandle, key: String) -> Result[OptionString]
+
+#[extern]
+proc db_delete(db: DbHandle, key: String) -> Result[bool]
+
+#[extern]
+proc db_keys(db: DbHandle) -> Result[Slice[String]]
+
+#[extern]
+proc db_keys_prefix(db: DbHandle, prefix: String) -> Result[Slice[String]]
+
+#[extern]
+proc db_batch_put(db: DbHandle, entries: Slice[DbEntry]) -> Result[Unit]
+
+#[extern]
+proc db_begin(db: DbHandle) -> Result[Unit]
+
+#[extern]
+proc db_commit(db: DbHandle) -> Result[Unit]
+
+#[extern]
+proc db_rollback(db: DbHandle) -> Result[Unit]

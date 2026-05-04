@@ -1,0 +1,71 @@
+space vitte/compiler/frontend/lexer
+
+use diagnostics
+
+form LexedSource {
+  source_name: string,
+  source_text: string,
+  token_count: int,
+  diagnostics: diagnostics.DiagnosticBag
+}
+
+proc count_tokens(source_text: string) -> int {
+  let count: int = 0
+  let in_token: bool = false
+  let i: int = 0
+
+  while i < source_text.len {
+    let ch: string = source_text[i] as string
+    let is_sep: bool = ch == " " or ch == "\n" or ch == "\t" or ch == "\r"
+
+    if is_sep {
+      set in_token = false
+    } else {
+      if not in_token {
+        set count = count + 1
+        set in_token = true
+      }
+    }
+
+    set i = i + 1
+  }
+
+  give count
+}
+
+proc lex_source(source_name: string, source_text: string) -> LexedSource {
+  let bag: diagnostics.DiagnosticBag = diagnostics.new_bag()
+
+  if source_text == "" {
+    set bag = diagnostics.add_warning(
+      bag,
+      "W0001",
+      "empty source text passed to lexer facade",
+      source_name,
+      1,
+      1
+    )
+  }
+
+  give LexedSource {
+    source_name: source_name,
+    source_text: source_text,
+    token_count: count_tokens(source_text),
+    diagnostics: bag
+  }
+}
+
+proc lex_file(path_name: string) -> LexedSource {
+  let lexed: LexedSource = lex_source(path_name, "")
+  set lexed.diagnostics = diagnostics.add_note(
+    lexed.diagnostics,
+    "N0001",
+    "bootstrap lexer file loading is not wired; lex_file uses an empty source",
+    path_name,
+    1,
+    1
+  )
+  give lexed
+}
+
+export *

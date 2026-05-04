@@ -1,0 +1,82 @@
+space compiler/driver/internal/normalize
+
+proc is_help_token(token: string) -> bool {
+  if token == "--help" { give true }
+  if token == "-h" { give true }
+  if token == "help" { give true }
+  give false
+}
+
+proc normalize_command(token: string) -> string {
+  if token == "parse" { give "parse" }
+  if token == "check" { give "check" }
+  if token == "emit" { give "emit" }
+  if token == "build" { give "build" }
+  if token == "reduce" { give "reduce" }
+  if token == "profile" { give "profile" }
+  if token == "init" { give "init" }
+  if token == "grammar" { give "grammar" }
+  if token == "doctor" { give "doctor" }
+  if token == "explain" { give "explain" }
+  if token == "clean-cache" { give "clean-cache" }
+  if token == "mod" { give "mod" }
+  if is_help_token(token) { give "help" }
+  give ""
+}
+
+proc command_stage(command: string) -> string {
+  if command == "parse" { give "parse" }
+  if command == "check" { give "ir" }
+  if command == "emit" { give "backend" }
+  if command == "build" { give "backend" }
+  if command == "reduce" { give "backend" }
+  if command == "profile" { give "backend" }
+  if command == "doctor" { give "host-check" }
+  if command == "grammar" { give "grammar" }
+  if command == "mod" { give "module-graph" }
+  if command == "init" { give "scaffold" }
+  if command == "explain" { give "diagnostics" }
+  if command == "clean-cache" { give "cache" }
+  if command == "help" { give "help" }
+  give "unknown"
+}
+
+proc normalize_flag_alias(token: string) -> string {
+  if token == "-h" { give "--help" }
+  if token == "--help" { give "--help" }
+  if token == "-t" { give "--template" }
+  if token == "--template" { give "--template" }
+  if token == "-o" { give "--output" }
+  if token == "--runtime-profile" { give "--stdlib-profile" }
+  if token == "--syntax-version" { give "--syntax-profile" }
+  if token == "--strict-bridge" { give "--strict-imports" }
+  if token == "--allow-legacy-self-leaf" { give "--allow-legacy-self-leaf" }
+  if token == "--deny-legacy-self-leaf" { give "--deny-legacy-self-leaf" }
+  if token == "--legacy-self-leaf-warn-only" { give "--legacy-self-leaf-warn-only" }
+  give token
+}
+
+proc parse_mode(command: string) -> string {
+  if command == "parse" { give "parse-only" }
+  if command == "check" { give "mir-only" }
+  if command == "emit" { give "emit-vitte" }
+  if command == "build" { give "build-native" }
+  if command == "reduce" { give "reduce-reproducer" }
+  if command == "profile" { give "profile-mode" }
+  give "none"
+}
+
+proc normalize_grammar_subcommand(token: string) -> string {
+  if token == "check" { give "check" }
+  if token == "diff" { give "diff" }
+  give ""
+}
+
+proc normalize_mod_subcommand(token: string) -> string {
+  if token == "graph" { give "graph" }
+  if token == "doctor" { give "doctor" }
+  if token == "migrate-imports" { give "migrate-imports" }
+  if token == "api-diff" { give "contract-diff" }
+  if token == "contract-diff" { give "contract-diff" }
+  give ""
+}

@@ -1,0 +1,343 @@
+space vitte/compiler/frontend/parser
+
+use diagnostics
+use lexer
+
+form ParsedSource {
+  source_name: string,
+  source_text: string,
+  module_name: string,
+  space_name: string,
+  line_count: int,
+  token_count: int,
+  decl_count: int,
+  space_count: int,
+  use_count: int,
+  proc_count: int,
+  unknown_count: int,
+  diagnostics: diagnostics.DiagnosticBag
+}
+
+form ParseState {
+  value: ParsedSource,
+  in_proc_body: bool
+}
+
+proc count_lines(source_text: string) -> int {
+  let lines: int = 0
+  let i: int = 0
+
+  while i < source_text.len {
+    if (source_text[i] as string) == "\n" {
+      set lines = lines + 1
+    }
+    set i = i + 1
+  }
+
+  if source_text != "" {
+    set lines = lines + 1
+  }
+
+  give lines
+}
+
+proc _is_space(ch: string) -> bool {
+  if ch == " " { give true }
+  if ch == "\t" { give true }
+  if ch == "\n" { give true }
+  if ch == "\r" { give true }
+  give false
+}
+
+proc _slice(text: string, start: int, end: int) -> string {
+  let out: string = ""
+  let i: int = start
+
+  while i < end {
+    set out = out ++ (text[i] as string)
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc _starts_with(text: string, prefix: string) -> bool {
+  if prefix.len > text.len { give false }
+
+  let i: int = 0
+  while i < prefix.len {
+    if (text[i] as string) != (prefix[i] as string) {
+      give false
+    }
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc _trim(text: string) -> string {
+  if text == "" { give "" }
+
+  let start: int = 0
+  let end: int = text.len
+
+  while start < end and _is_space(text[start] as string) {
+    set start = start + 1
+  }
+
+  while end > start and _is_space(text[end - 1] as string) {
+    set end = end - 1
+  }
+
+  give _slice(text, start, end)
+}
+
+proc _trim_after_prefix(text: string, prefix: string) -> string {
+  if _starts_with(text, prefix) {
+    give _trim(_slice(text, prefix.len, text.len))
+  }
+
+  give _trim(text)
+}
+
+proc _is_comment_line(line_text: string) -> bool {
+  if _starts_with(line_text, "#") { give true }
+  if _starts_with(line_text, "//") { give true }
+  if _starts_with(line_text, "<<<") { give true }
+  give false
+}
+
+proc _recognized_decl(line_text: string) -> bool {
+  if _starts_with(line_text, "space ") { give true }
+  if _starts_with(line_text, "use ") { give true }
+  if _starts_with(line_text, "proc ") { give true }
+  if _starts_with(line_text, "export ") { give true }
+  if _starts_with(line_text, "const ") { give true }
+  if _starts_with(line_text, "static ") { give true }
+  if _starts_with(line_text, "global ") { give true }
+  if _starts_with(line_text, "type ") { give true }
+  if _starts_with(line_text, "opaque ") { give true }
+  if _starts_with(line_text, "extern ") { give true }
+  if _starts_with(line_text, "form ") { give true }
+  if _starts_with(line_text, "class ") { give true }
+  if _starts_with(line_text, "union ") { give true }
+  if _starts_with(line_text, "bits ") { give true }
+  if _starts_with(line_text, "pick ") { give true }
+  if _starts_with(line_text, "flags ") { give true }
+  if _starts_with(line_text, "trait ") { give true }
+  if _starts_with(line_text, "impl ") { give true }
+  if _starts_with(line_text, "test ") { give true }
+  if _starts_with(line_text, "bench ") { give true }
+  if _starts_with(line_text, "entry ") { give true }
+  if _starts_with(line_text, "macro ") { give true }
+  if _starts_with(line_text, "comptime ") { give true }
+  if _starts_with(line_text, "static_assert ") { give true }
+  give false
+}
+
+proc _contains(text: string, needle: string) -> bool {
+  if needle == "" { give true }
+  if needle.len > text.len { give false }
+
+  let i: int = 0
+  while i <= text.len - needle.len {
+    if _starts_with(_slice(text, i, text.len), needle) {
+      give true
+    }
+    set i = i + 1
+  }
+
+  give false
+}
+
+proc _parse_line(state: ParseState, source_name: string, line_text: string, line_no: int) -> ParseState {
+  let trimmed: string = _trim(line_text)
+
+  if state.in_proc_body {
+    if _contains(trimmed, "}") {
+      set state.in_proc_body = false
+    }
+    give state
+  }
+
+  if trimmed == "" { give state }
+  if _is_comment_line(trimmed) { give state }
+
+  set state.value.decl_count = state.value.decl_count + 1
+
+  if _starts_with(trimmed, "space ") {
+    set state.value.space_count = state.value.space_count + 1
+    set state.value.space_name = _trim_after_prefix(trimmed, "space")
+    if state.value.space_name != "" {
+      set state.value.module_name = state.value.space_name
+    } else {
+      set state.value.diagnostics = diagnostics.add_warning(
+        state.value.diagnostics,
+        "W2001",
+        "space declaration has an empty module name",
+        source_name,
+        line_no,
+        1
+      )
+    }
+    give state
+  }
+
+  if _starts_with(trimmed, "use ") {
+    set state.value.use_count = state.value.use_count + 1
+    give state
+  }
+
+  if _starts_with(trimmed, "proc ") {
+    set state.value.proc_count = state.value.proc_count + 1
+    if _contains(trimmed, "{") and not _contains(trimmed, "}") {
+      set state.in_proc_body = true
+    }
+    give state
+  }
+
+  if _recognized_decl(trimmed) {
+    if _contains(trimmed, "{") and not _contains(trimmed, "}") {
+      set state.in_proc_body = true
+    }
+    give state
+  }
+
+  set state.value.unknown_count = state.value.unknown_count + 1
+  set state.value.diagnostics = diagnostics.add_warning(
+    state.value.diagnostics,
+    "W1001",
+    "unparsed top-level line kept as unknown declaration",
+    source_name,
+    line_no,
+    1
+  )
+  give state
+}
+
+proc count_tokens(source_text: string) -> int {
+  let count: int = 0
+  let in_token: bool = false
+  let i: int = 0
+
+  while i < source_text.len {
+    let ch: string = source_text[i] as string
+    let is_sep: bool = ch == " " or ch == "\n" or ch == "\t" or ch == "\r"
+
+    if is_sep {
+      set in_token = false
+    } else {
+      if not in_token {
+        set count = count + 1
+        set in_token = true
+      }
+    }
+
+    set i = i + 1
+  }
+
+  give count
+}
+
+proc _parse_buffer(
+  source_name: string,
+  source_text: string,
+  token_count: int,
+  input_bag: diagnostics.DiagnosticBag
+) -> ParsedSource {
+  let state: ParseState = ParseState {
+    value: ParsedSource {
+      source_name: source_name,
+      source_text: source_text,
+      module_name: source_name,
+      space_name: "",
+      line_count: count_lines(source_text),
+      token_count: token_count,
+      decl_count: 0,
+      space_count: 0,
+      use_count: 0,
+      proc_count: 0,
+      unknown_count: 0,
+      diagnostics: input_bag
+    },
+    in_proc_body: false
+  }
+  let resolved_module_name: string = source_name
+  let resolved_space_count: int = 0
+
+  if source_text == "" {
+    set state.value.diagnostics = diagnostics.add_warning(
+      state.value.diagnostics,
+      "W0001",
+      "empty source text passed to parser facade",
+      source_name,
+      1,
+      1
+    )
+  }
+
+  let current_line: string = ""
+  let line_no: int = 1
+  let i: int = 0
+
+  while i < source_text.len {
+    let ch: string = source_text[i] as string
+    if ch == "\n" {
+      set state = _parse_line(state, source_name, current_line, line_no)
+      set current_line = ""
+      set line_no = line_no + 1
+    } else {
+      set current_line = current_line ++ ch
+    }
+    set i = i + 1
+  }
+
+  if current_line != "" or source_text != "" {
+    set state = _parse_line(state, source_name, current_line, line_no)
+  }
+
+  if state.value.space_count == 0 and source_text != "" {
+    set state.value.diagnostics = diagnostics.add_warning(
+      state.value.diagnostics,
+      "W2002",
+      "no space declaration found; module name falls back to source name",
+      source_name,
+      1,
+      1
+    )
+  }
+
+  if state.value.space_count > 0 {
+    set resolved_module_name = state.value.space_name
+    set resolved_space_count = 1
+  }
+
+  set state.value.module_name = resolved_module_name
+  set state.value.space_count = resolved_space_count
+
+  give state.value
+}
+
+proc parse_source(source_name: string, source_text: string) -> ParsedSource {
+  let lexed: lexer.LexedSource = lexer.lex_source(source_name, source_text)
+  give _parse_buffer(source_name, source_text, lexed.token_count, lexed.diagnostics)
+}
+
+proc parse_lexed(lexed: lexer.LexedSource) -> ParsedSource {
+  give _parse_buffer(lexed.source_name, lexed.source_text, lexed.token_count, lexed.diagnostics)
+}
+
+proc parse_file(path_name: string) -> ParsedSource {
+  let parsed: ParsedSource = parse_source(path_name, "")
+  set parsed.diagnostics = diagnostics.add_note(
+    parsed.diagnostics,
+    "N0001",
+    "bootstrap parser file loading is not wired; parse_file uses an empty source",
+    path_name,
+    1,
+    1
+  )
+  give parsed
+}
+
+export *

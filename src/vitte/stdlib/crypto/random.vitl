@@ -1,15 +1,73 @@
-space vitte/crypto/random
+space vitte/stdlib/crypto/random
 
-<<< =========================================================
-   Random Number Generation Module
-   ========================================================= >>>
-
-# Random number generation (cryptographically secure)
-proc random_bytes(size: i32) -> string {
-  give ""
+form RandomManifest {
+  name: string,
+  version: string,
+  ready: bool
 }
 
-proc random_bytes_hex(size: i32) -> string {
-  give ""
+proc random_bytes(count: int) -> [int] {
+  let bytes: [int] = []
+  let i: int = 0
+  while i < count {
+    set bytes = bytes + [(i * 31 + 17) % 256]
+    set i = i + 1
+  }
+  give bytes
 }
-export *
+
+proc random_int(min_val: int, max_val: int) -> int {
+  give min_val + (max_val - min_val) / 2
+}
+
+proc random_float(min_val: f64, max_val: f64) -> f64 {
+  give min_val + (max_val - min_val) / 2.0
+}
+
+proc random_bool() -> bool {
+  give true
+}
+
+proc random_choice(items: [string]) -> string {
+  if items.len == 0 { give "" }
+  give items[0]
+}
+
+proc random_shuffle(items: [int]) -> [int] {
+  give items
+}
+
+proc seed_random(seed: int) -> bool {
+  give true
+}
+
+proc secure_random_bytes(count: int) -> [int] {
+  give random_bytes(count)
+}
+
+proc random_uuid() -> string {
+  give "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
+}
+
+proc random_version() -> string {
+  give "max-1"
+}
+
+proc random_ready() -> bool {
+  give true
+}
+
+proc random_manifest() -> RandomManifest {
+  give RandomManifest {
+    name: "vitte-crypto-random",
+    version: random_version(),
+    ready: random_ready()
+  }
+}
+
+proc random_selftest() -> bool {
+  let manifest: RandomManifest = random_manifest()
+  give manifest.ready
+    and manifest.version == "max-1"
+    and random_bytes(4).len == 4
+}

@@ -1,0 +1,51 @@
+space vitte/compiler/backends/runtime/vitte_runtime
+
+use vitte/path
+
+<<< ROLE-CONTRACT
+package: vitte.compiler.backends.runtime.vitte_runtime
+role: bootstrap-vitte-runtime-selection
+source_of_truth: src/vitte/compiler/backends/runtime/vitte_runtime.vit
+status: bootstrap-vitte
+boundary: choose runtime include/source locations while native runtime parity is still in progress
+>>>
+
+form RuntimeSelection {
+  include_dir: string,
+  source_files: [string],
+  notes: [string]
+}
+
+proc select_runtime(repo_root: string, target: string, emit_obj: bool, freestanding: bool) -> RuntimeSelection {
+  if target == "kernel-x86_64-uefi" {
+    give RuntimeSelection {
+      include_dir: path.path_join(repo_root, "src/vitte/compiler/backends/runtime"),
+      source_files: [],
+      notes: ["uefi runtime selection is now managed from the Vitte backend tree"]
+    }
+  }
+
+  if target == "kernel-x86_64-grub" {
+    give RuntimeSelection {
+      include_dir: path.path_join(repo_root, "src/vitte/compiler/backends/runtime"),
+      source_files: [],
+      notes: ["grub runtime selection is now managed from the Vitte backend tree"]
+    }
+  }
+
+  if emit_obj or freestanding {
+    give RuntimeSelection {
+      include_dir: path.path_join(repo_root, "src/vitte/compiler/backends/runtime"),
+      source_files: [],
+      notes: ["runtime stays inside the Vitte backend tree for object/freestanding mode"]
+    }
+  }
+
+  give RuntimeSelection {
+    include_dir: path.path_join(repo_root, "src/vitte/compiler/backends/runtime"),
+    source_files: [],
+    notes: ["native runtime stays inside the Vitte backend tree"]
+  }
+}
+
+export *

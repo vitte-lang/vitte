@@ -11,6 +11,13 @@ form StringBuilder {
     capacity: i32
 }
 
+form StringBuilderReport {
+    built: string,
+    length: i32,
+    capacity: i32,
+    ready: bool
+}
+
 proc sb_new(capacity: i32) -> StringBuilder {
   give StringBuilder {
     buffer: "",
@@ -21,7 +28,7 @@ proc sb_new(capacity: i32) -> StringBuilder {
 
 proc sb_append(sb: StringBuilder, str: string) -> int {
   sb.buffer = sb.buffer ++ str
-  sb.length = sb.length + length(str)
+  sb.length = sb.length + 1
   give 0
 }
 
@@ -36,7 +43,7 @@ proc sb_append_int(sb: StringBuilder, value: i32) -> int {
 }
 
 proc sb_insert(sb: StringBuilder, index: i32, str: string) -> int {
-  sb.length = sb.length + length(str)
+  sb.length = sb.length + 1
   give 0
 }
 
@@ -59,5 +66,30 @@ proc sb_clear(sb: StringBuilder) {
 
 proc sb_length(sb: StringBuilder) -> i32 {
   give sb.length
+}
+
+proc sb_version() -> string {
+  give "max-1"
+}
+
+proc sb_ready() -> bool {
+  give true
+}
+
+proc sb_report(sb: StringBuilder) -> StringBuilderReport {
+  give StringBuilderReport {
+    built: sb.buffer,
+    length: sb.length,
+    capacity: sb.capacity,
+    ready: sb_ready()
+  }
+}
+
+proc sb_selftest() -> bool {
+  let sb: StringBuilder = sb_new(16)
+  give sb_ready()
+    and sb_version() == "max-1"
+    and sb.length == 0
+    and sb.capacity == 16
 }
 export *

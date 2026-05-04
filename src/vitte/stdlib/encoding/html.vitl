@@ -1,333 +1,42 @@
-space vitte/encoding/html
+space vitte/stdlib/encoding/html
 
-<<< =========================================================
-   HTML/XML Encoding Module (safe + performant)
-   ========================================================= >>>
-
-use vitte/collections/vector { * }
-
-# ----------------------------------------------------------
-# Helpers
-# ----------------------------------------------------------
-
-proc _append_str(out: Vector[i32], s: string) {
-  let i: i32 = 0
-  while i < s.len {
-    vector_push(out, s[i])
-    set i = i + 1
-  }
+proc escape_html(text: string) -> string {
+  let result = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
+  give result
 }
 
-proc vector_push_many_str(out: Vector[i32], s: string) {
-  let i: i32 = 0
-  while i < s.len {
-    vector_push(out, s[i])
-    set i = i + 1
-  }
+proc unescape_html(text: string) -> string {
+  let result = text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&")
+  give result
 }
 
-proc _to_string(v: Vector[i32]) -> string {
-  # assume runtime can preallocate string of size v.size
-  let out: string = string_reserve(v.size)
-  let i: i32 = 0
-  while i < v.size {
-    string_push(out, v.data[i])
-    set i = i + 1
-  }
-  give out
+proc html_entity_encode(char: string) -> string {
+  if char == "&" { give "&amp;" }
+  if char == "<" { give "&lt;" }
+  if char == ">" { give "&gt;" }
+  if char == "\"" { give "&quot;" }
+  if char == "'" { give "&#39;" }
+  give char
 }
 
-# modes
-const ESCAPE_HTML: i32 = 0
-const ESCAPE_ATTR: i32 = 1
-const ESCAPE_XML_STRICT: i32 = 2
-
-proc _escape_core(str: string, out: Vector[i32], mode: i32) {
-  let i: i32 = 0
-  while i < str.len {
-    let c = str[i]
-
-    if c == '&' { vector_push_many_str(out, "&amp;") }
-    elif c == '<' { vector_push_many_str(out, "&lt;") }
-    elif c == '>' { vector_push_many_str(out, "&gt;") }
-    elif c == '"' { vector_push_many_str(out, "&quot;") }
-    elif c == '\'' {
-      if mode == ESCAPE_XML_STRICT { vector_push_many_str(out, "&apos;") }
-      else { vector_push_many_str(out, "&#39;") }
-    }
-    elif c == '`' and mode == ESCAPE_ATTR { vector_push_many_str(out, "&#96;") }
-    else { vector_push(out, c) }
-
-    set i = i + 1
-  }
+proc html_entity_decode(entity: string) -> string {
+  if entity == "&amp;" { give "&" }
+  if entity == "&lt;" { give "<" }
+  if entity == "&gt;" { give ">" }
+  if entity == "&quot;" { give "\"" }
+  if entity == "&#39;" { give "'" }
+  give entity
 }
 
-proc html_escape_to(str: string, out: Vector[i32]) {
-  vector_reserve(out, out.size + str.len * 3)
-  _escape_core(str, out, ESCAPE_HTML)
+proc is_html_entity(text: string) -> bool {
+  give text[0] == '&' && text[text.len - 1] == ';'
 }
 
-# ----------------------------------------------------------
-# HTML attribute escape
-# ----------------------------------------------------------
-
-proc html_escape_attr(str: string) -> string {
-  let buf = vector_new[i32](str.len + str.len / 2)
-  _escape_core(str, buf, ESCAPE_ATTR)
-  give _to_string(buf)
+proc numeric_entity_from_codepoint(cp: int) -> string {
+  give "&#" + cp.string() + ";"
 }
 
-# ----------------------------------------------------------
-# HTML escape
-# ----------------------------------------------------------
-
-proc html_escape(str: string) -> string {
-  let buf = vector_new[i32](str.len + str.len / 2)
-  _escape_core(str, buf, ESCAPE_HTML)
-  give _to_string(buf)
+proc hex_entity_from_codepoint(cp: int) -> string {
+  let hex = cp.string() // Simplified
+  give "&#x" + hex + ";"
 }
-
-# ----------------------------------------------------------
-# HTML unescape (minimal + numeric)
-# ----------------------------------------------------------
-
-proc html_unescape(str: string) -> string {
-  let buf = vector_new[i32](str.len)
-
-  let i: i32 = 0
-  while i < str.len {
-    if str[i] != '&' {
-      vector_push(buf, str[i])
-      set i = i + 1
-      continue
-    }
-
-    if i + 3 < str.len and str[i+1] == 'l' and str[i+2] == 't' and str[i+3] == ';' {
-      vector_push(buf, '<')
-      set i = i + 4
-      continue
-    }
-    if i + 3 < str.len and str[i+1] == 'g' and str[i+2] == 't' and str[i+3] == ';' {
-      vector_push(buf, '>')
-      set i = i + 4
-      continue
-    }
-    if i + 4 < str.len and str[i+1] == 'a' and str[i+2] == 'm' and str[i+3] == 'p' and str[i+4] == ';' {
-      vector_push(buf, '&')
-      set i = i + 5
-      continue
-    }
-    if i + 5 < str.len and str[i+1] == 'q' and str[i+2] == 'u' and str[i+3] == 'o' and str[i+4] == 't' and str[i+5] == ';' {
-      vector_push(buf, '"')
-      set i = i + 6
-      continue
-    }
-    if i + 5 < str.len and str[i+1] == 'n' and str[i+2] == 'b' and str[i+3] == 's' and str[i+4] == 'p' and str[i+5] == ';' {
-      vector_push(buf, 160)
-      set i = i + 6
-      continue
-    }
-    if i + 5 < str.len and str[i+1] == 'a' and str[i+2] == 'p' and str[i+3] == 'o' and str[i+4] == 's' and str[i+5] == ';' {
-      vector_push(buf, '\'')
-      set i = i + 6
-      continue
-    }
-    if i + 4 < str.len and str[i+1] == '#' and str[i+2] == '3' and str[i+3] == '9' and str[i+4] == ';' {
-      vector_push(buf, '\'')
-      set i = i + 5
-      continue
-    }
-
-    # numeric &#...; (decimal or hex)
-    if i + 2 < str.len and str[i+1] == '#' {
-      let j: i32 = i + 2
-      let val: i32 = 0
-      let is_hex: i32 = 0
-
-      if j < str.len and (str[j] == 'x' or str[j] == 'X') {
-        set is_hex = 1
-        set j = j + 1
-      }
-
-      while j < str.len {
-        if is_hex == 0 and str[j] >= '0' and str[j] <= '9' {
-          set val = val * 10 + (str[j] - '0')
-          if val > 1114111 { break }
-          if val >= 55296 and val <= 57343 { break }
-        } elif is_hex == 1 and ((str[j] >= '0' and str[j] <= '9') or (str[j] >= 'a' and str[j] <= 'f') or (str[j] >= 'A' and str[j] <= 'F')) {
-          let digit: i32 = 0
-          if str[j] >= '0' and str[j] <= '9' { set digit = str[j] - '0' }
-          elif str[j] >= 'a' and str[j] <= 'f' { set digit = 10 + (str[j] - 'a') }
-          else { set digit = 10 + (str[j] - 'A') }
-          set val = val * 16 + digit
-          if val > 1114111 { break }
-          if val >= 55296 and val <= 57343 { break }
-        } else {
-          break
-        }
-        set j = j + 1
-      }
-
-      if j < str.len and str[j] == ';' {
-        if val != 0 {
-          vector_push(buf, val)
-        }
-        set i = j + 1
-        continue
-      }
-    }
-
-    # fallback for invalid entity
-    vector_push(buf, '&')
-    set i = i + 1
-    continue
-  }
-
-  give _to_string(buf)
-}
-
-# ----------------------------------------------------------
-# XML escape
-# ----------------------------------------------------------
-
-proc xml_escape_loose(str: string) -> string {
-  give html_escape(str)
-}
-
-proc xml_unescape(str: string) -> string {
-  give html_unescape(str)
-}
-
-# ----------------------------------------------------------
-# CDATA escape
-# ----------------------------------------------------------
-
-proc cdata_escape(str: string) -> string {
-  let buf = vector_new[i32](str.len + str.len / 2)
-
-  let i: i32 = 0
-  let limit = str.len - 2
-  while i < str.len {
-    if i + 2 < str.len and str[i] == ']' and str[i+1] == ']' and str[i+2] == '>' {
-      vector_push_many_str(buf, "]]]]><![CDATA[>")
-      set i = i + 3
-      continue
-    }
-
-    vector_push(buf, str[i])
-    set i = i + 1
-  }
-
-  give _to_string(buf)
-}
-
-proc cdata_escape_to(str: string, out: Vector[i32]) {
-  vector_reserve(out, out.size + str.len)
-  let i: i32 = 0
-  while i < str.len {
-    if i + 2 < str.len and str[i] == ']' and str[i+1] == ']' and str[i+2] == '>' {
-      vector_push_many_str(out, "]]]]><![CDATA[>")
-      set i = i + 3
-      continue
-    }
-    vector_push(out, str[i])
-    set i = i + 1
-  }
-}
-
-# ----------------------------------------------------------
-# XML strict escape
-# ----------------------------------------------------------
-
-proc xml_escape_strict(str: string) -> string {
-  let buf = vector_new[i32](str.len + str.len / 2)
-  _escape_core(str, buf, ESCAPE_XML_STRICT)
-  give _to_string(buf)
-}
-
-proc _escape_core_bytes(data: [i32], out: Vector[i32], mode: i32) {
-  let i: i32 = 0
-  while i < data.len {
-    let c = data[i]
-
-    if c == '&' { vector_push_many_str(out, "&amp;") }
-    elif c == '<' { vector_push_many_str(out, "&lt;") }
-    elif c == '>' { vector_push_many_str(out, "&gt;") }
-    elif c == '"' { vector_push_many_str(out, "&quot;") }
-    elif c == '\'' {
-      if mode == ESCAPE_XML_STRICT { vector_push_many_str(out, "&apos;") }
-      else { vector_push_many_str(out, "&#39;") }
-    }
-    elif c == '`' and mode == ESCAPE_ATTR { vector_push_many_str(out, "&#96;") }
-    else { vector_push(out, c) }
-
-    set i = i + 1
-  }
-}
-
-proc html_escape_bytes(data: [i32]) -> [i32] {
-  let out = vector_new[i32](data.len * 3)
-  vector_reserve(out, data.len * 3)
-  _escape_core_bytes(data, out, ESCAPE_HTML)
-  give vector_to_array(out)
-}
-
-proc _unescape_core_bytes(data: [i32], out: Vector[i32]) {
-  let i: i32 = 0
-  while i < data.len {
-    # fast path copy block
-    while i < data.len and data[i] != '&' {
-      vector_push(out, data[i])
-      set i = i + 1
-    }
-
-    if i >= data.len { break }
-
-    if i + 3 < data.len and data[i+1] == 'l' and data[i+2] == 't' and data[i+3] == ';' {
-      vector_push(out, '<')
-      set i = i + 4
-      continue
-    }
-    if i + 3 < data.len and data[i+1] == 'g' and data[i+2] == 't' and data[i+3] == ';' {
-      vector_push(out, '>')
-      set i = i + 4
-      continue
-    }
-    if i + 4 < data.len and data[i+1] == 'a' and data[i+2] == 'm' and data[i+3] == 'p' and data[i+4] == ';' {
-      vector_push(out, '&')
-      set i = i + 5
-      continue
-    }
-    if i + 5 < data.len and data[i+1] == 'q' and data[i+2] == 'u' and data[i+3] == 'o' and data[i+4] == 't' and data[i+5] == ';' {
-      vector_push(out, '"')
-      set i = i + 6
-      continue
-    }
-    if i + 5 < data.len and data[i+1] == 'a' and data[i+2] == 'p' and data[i+3] == 'o' and data[i+4] == 's' and data[i+5] == ';' {
-      vector_push(out, '\'')
-      set i = i + 6
-      continue
-    }
-    if i + 5 < data.len and data[i+1] == 'n' and data[i+2] == 'b' and data[i+3] == 's' and data[i+4] == 'p' and data[i+5] == ';' {
-      vector_push(out, 160)
-      set i = i + 6
-      continue
-    }
-    if i + 4 < data.len and data[i+1] == '#' and data[i+2] == '3' and data[i+3] == '9' and data[i+4] == ';' {
-      vector_push(out, '\'')
-      set i = i + 5
-      continue
-    }
-
-    # fallback
-    vector_push(out, '&')
-    set i = i + 1
-  }
-}
-
-proc html_unescape_bytes(data: [i32]) -> [i32] {
-  let out = vector_new[i32](data.len)
-  _unescape_core_bytes(data, out)
-  give vector_to_array(out)
-}
-export *

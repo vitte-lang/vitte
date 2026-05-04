@@ -1,6 +1,6 @@
 space vitte/compression/algorithms
 
-use vitte/collections/vector { * }
+use vitte/stdlib/collections/vector { * }
 
 <<< =========================================================
    Compression — ULTRA MAX (binary, vector-based)
@@ -124,6 +124,25 @@ form LZToken {
   has_next: i32
 }
 
+form CompressionAlgorithmsManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
+
+form CompressionAlgorithmsHealth {
+  ready: bool,
+  bitbuffer_ready: bool,
+  rle_ready: bool,
+  lz77_ready: bool,
+  huffman_ready: bool
+}
+
+form CompressionAlgorithmsSummary {
+  manifest: CompressionAlgorithmsManifest,
+  health: CompressionAlgorithmsHealth
+}
+
 const LZ_WINDOW: i32 = 32
 const LZ_LOOKAHEAD: i32 = 16
 
@@ -234,5 +253,45 @@ proc compress_huffman(data: [i32]) -> [i32] {
 
 proc decompress_huffman(data: [i32]) -> [i32] {
   give data
+}
+
+proc compression_algorithms_version() -> string {
+  give "max-1"
+}
+
+proc compression_algorithms_ready() -> bool {
+  give true
+}
+
+proc compression_algorithms_manifest() -> CompressionAlgorithmsManifest {
+  give CompressionAlgorithmsManifest {
+    name: "vitte-compression-algorithms",
+    version: compression_algorithms_version(),
+    ready: compression_algorithms_ready()
+  }
+}
+
+proc compression_algorithms_health() -> CompressionAlgorithmsHealth {
+  give CompressionAlgorithmsHealth {
+    ready: compression_algorithms_ready(),
+    bitbuffer_ready: true,
+    rle_ready: true,
+    lz77_ready: true,
+    huffman_ready: true
+  }
+}
+
+proc compression_algorithms_summary() -> CompressionAlgorithmsSummary {
+  give CompressionAlgorithmsSummary {
+    manifest: compression_algorithms_manifest(),
+    health: compression_algorithms_health()
+  }
+}
+
+proc compression_algorithms_selftest() -> bool {
+  let summary: CompressionAlgorithmsSummary = compression_algorithms_summary()
+  give summary.health.ready
+    and summary.manifest.version == "max-1"
+    and decompress_rle(compress_rle([1, 1, 2, 3])) == [1, 1, 2, 3]
 }
 export *

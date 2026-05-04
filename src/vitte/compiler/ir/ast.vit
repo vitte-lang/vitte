@@ -1,0 +1,159 @@
+space vitte/compiler/ir/ast
+
+pick AstDeclKind {
+  Space,
+  Use,
+  Proc,
+  Form,
+  Const,
+  Static,
+  Global,
+  Unknown
+}
+
+pick AstExprKind {
+  Empty,
+  Literal,
+  Variable,
+  Call,
+  Raw
+}
+
+pick AstStmtKind {
+  Give,
+  Let,
+  Set,
+  Expr,
+  Unknown
+}
+
+form AstParam {
+  name: string,
+  type_name: string
+}
+
+form AstExpr {
+  kind: AstExprKind,
+  text: string,
+  callee: string,
+  args: [AstExpr]
+}
+
+form AstStmt {
+  kind: AstStmtKind,
+  name: string,
+  type_name: string,
+  expr: AstExpr,
+  raw_text: string
+}
+
+form AstProcDecl {
+  name: string,
+  return_type_name: string,
+  params: [AstParam],
+  body_stmts: [AstStmt]
+}
+
+form AstDecl {
+  kind: AstDeclKind,
+  name: string,
+  raw_line: string,
+  value_text: string,
+  is_exported: bool,
+  proc_decl: AstProcDecl
+}
+
+form AstModule {
+  source_name: string,
+  space_name: string,
+  uses: [string],
+  decls: [AstDecl]
+}
+
+proc empty_module(source_name: string) -> AstModule {
+  give AstModule {
+    source_name: source_name,
+    space_name: "",
+    uses: [],
+    decls: []
+  }
+}
+
+proc new_decl(kind: AstDeclKind, name: string, raw_line: string, value_text: string) -> AstDecl {
+  give AstDecl {
+    kind: kind,
+    name: name,
+    raw_line: raw_line,
+    value_text: value_text,
+    is_exported: false,
+    proc_decl: AstProcDecl {
+      name: "",
+      return_type_name: "",
+      params: [],
+      body_stmts: []
+    }
+  }
+}
+
+proc add_use(module: AstModule, use_name: string) -> AstModule {
+  set module.uses = module.uses + [use_name]
+  give module
+}
+
+proc add_decl(module: AstModule, decl: AstDecl) -> AstModule {
+  set module.decls = module.decls + [decl]
+  give module
+}
+
+proc raw_expr(source_name: string, text: string) -> AstExpr {
+  let _ = source_name
+  give AstExpr {
+    kind: AstExprKind.Raw,
+    text: text,
+    callee: "",
+    args: []
+  }
+}
+
+proc decl_is_type(decl: AstDecl) -> bool {
+  if decl.kind == AstDeclKind.Form { give true }
+  if decl.kind == AstDeclKind.Const { give true }
+  if decl.kind == AstDeclKind.Static { give true }
+  if decl.kind == AstDeclKind.Global { give true }
+  give false
+}
+
+proc decl_kind_name(kind: AstDeclKind) -> string {
+  if kind == AstDeclKind.Space { give "space" }
+  if kind == AstDeclKind.Use { give "use" }
+  if kind == AstDeclKind.Proc { give "proc" }
+  if kind == AstDeclKind.Form { give "form" }
+  if kind == AstDeclKind.Const { give "const" }
+  if kind == AstDeclKind.Static { give "static" }
+  if kind == AstDeclKind.Global { give "global" }
+  give "unknown"
+}
+
+proc module_decl_count(module: AstModule) -> int {
+  give module.decls.len
+}
+
+proc module_proc_count(module: AstModule) -> int {
+  let count: int = 0
+  let i: int = 0
+
+  while i < module.decls.len {
+    if module.decls[i].kind == AstDeclKind.Proc {
+      set count = count + 1
+    }
+    set i = i + 1
+  }
+
+  give count
+}
+
+proc module_summary(module: AstModule) -> string {
+  give module.space_name + " decls=" + (module.decls.len as string) + " procs=" + (module_proc_count(module) as string)
+}
+
+export *

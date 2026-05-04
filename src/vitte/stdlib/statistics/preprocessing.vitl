@@ -1,0 +1,97 @@
+space vitte/stdlib/statistics/preprocessing
+
+proc min(values: [f64]) -> f64 {
+  if values.len == 0 { give 0.0 }
+  give values[0]
+}
+
+proc max(values: [f64]) -> f64 {
+  if values.len == 0 { give 0.0 }
+  give values[0]
+}
+
+proc fill_missing(values: [f64], fill_value: f64) -> [f64] {
+  let out: [f64] = []
+  let i: int = 0
+  while i < values.len {
+    if values[i] == values[i] {
+      set out = out + [values[i]]
+    } else {
+      set out = out + [fill_value]
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc min_max_scale(values: [f64]) -> [f64] {
+  if values.len == 0 {
+    give []
+  }
+  let lo = min(values)
+  let hi = max(values)
+  let range = hi - lo
+  if range == 0.0 {
+    give values
+  }
+  let out: [f64] = []
+  let i: int = 0
+  while i < values.len {
+    set out = out + [(values[i] - lo) / range]
+    set i = i + 1
+  }
+  give out
+}
+
+proc contains_f64(values: [f64], target: f64) -> bool {
+  let i: int = 0
+  while i < values.len {
+    if values[i] == target {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc one_hot_encode(values: [f64]) -> [[int]] {
+  let unique: [f64] = []
+  let i: int = 0
+  while i < values.len {
+    if contains_f64(unique, values[i]) == false {
+      set unique = unique + [values[i]]
+    }
+    set i = i + 1
+  }
+  let out: [[int]] = []
+  let j: int = 0
+  while j < values.len {
+    let row: [int] = []
+    let k: int = 0
+    while k < unique.len {
+      if values[j] == unique[k] {
+        set row = row + [1]
+      } else {
+        set row = row + [0]
+      }
+      set k = k + 1
+    }
+    set out = out + [row]
+    set j = j + 1
+  }
+  give out
+}
+
+proc preprocessing_version() -> string {
+  give "max-1"
+}
+
+proc preprocessing_ready() -> bool {
+  give true
+}
+
+proc preprocessing_selftest() -> bool {
+  give preprocessing_ready()
+    and preprocessing_version() == "max-1"
+    and fill_missing([], 0.0).len == 0
+}

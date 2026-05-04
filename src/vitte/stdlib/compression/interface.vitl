@@ -4,9 +4,9 @@ space vitte/compression/interface
    Compressor/Decompressor Interface Module (integrated)
    ========================================================= >>>
 
-use vitte/compression/deflate { * }
-use vitte/compression/algorithms { * }
-use vitte/collections/vector { * }
+use vitte/stdlib/compression/deflate { * }
+use vitte/stdlib/compression/algorithms { * }
+use vitte/stdlib/collections/vector { * }
 
 # ----------------------------------------------------------
 # Algorithms
@@ -27,6 +27,24 @@ form CompressionResult {
   error: i32
 }
 
+form CompressionInterfaceManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
+
+form CompressionInterfaceHealth {
+  ready: bool,
+  compressor_ready: bool,
+  decompressor_ready: bool,
+  high_level_api_ready: bool
+}
+
+form CompressionInterfaceSummary {
+  manifest: CompressionInterfaceManifest,
+  health: CompressionInterfaceHealth
+}
+
 # ----------------------------------------------------------
 # Compressor
 # ----------------------------------------------------------
@@ -44,6 +62,38 @@ proc compressor_new(level: i32) -> Compressor {
     strategy: Z_DEFAULT_STRATEGY,
     algorithm: ALGO_ZLIB,
     buffer: vector_new[i32](16)
+  }
+}
+
+proc compression_interface_version() -> string {
+  give "max-1"
+}
+
+proc compression_interface_ready() -> bool {
+  give true
+}
+
+proc compression_interface_manifest() -> CompressionInterfaceManifest {
+  give CompressionInterfaceManifest {
+    name: "vitte-compression-interface",
+    version: compression_interface_version(),
+    ready: compression_interface_ready()
+  }
+}
+
+proc compression_interface_health() -> CompressionInterfaceHealth {
+  give CompressionInterfaceHealth {
+    ready: compression_interface_ready(),
+    compressor_ready: true,
+    decompressor_ready: true,
+    high_level_api_ready: true
+  }
+}
+
+proc compression_interface_summary() -> CompressionInterfaceSummary {
+  give CompressionInterfaceSummary {
+    manifest: compression_interface_manifest(),
+    health: compression_interface_health()
   }
 }
 
@@ -160,5 +210,12 @@ proc compress_ex(data: [i32], algo: i32, level: i32, strategy: i32) -> [i32] {
   compressor_set_algorithm(c, algo)
   compressor_set_strategy(c, strategy)
   give compressor_compress(c, data)
+}
+
+proc compression_interface_selftest() -> bool {
+  let summary: CompressionInterfaceSummary = compression_interface_summary()
+  give summary.health.ready
+    and summary.manifest.version == "max-1"
+    and compressor_set_algorithm(compressor_new(1), ALGO_ZLIB) == 0
 }
 export *

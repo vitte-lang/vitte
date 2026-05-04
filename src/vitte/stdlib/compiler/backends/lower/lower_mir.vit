@@ -1,0 +1,225 @@
+space vitte/compiler/backends/lower/lower_mir
+
+use vitte/compiler/backends/ast/target_decl
+use vitte/compiler/backends/ast/target_expr
+use vitte/compiler/backends/ast/target_stmt
+use vitte/compiler/backends/ast/target_type
+use vitte/compiler/backends/context/backend_context
+
+<<< ROLE-CONTRACT
+package: vitte.compiler.backends.lower.lower_mir
+role: bootstrap-vitte-backend-lowering
+source_of_truth: src/vitte/compiler/backends/lower/lower_mir.vit
+status: bootstrap-vitte
+boundary: this is a reduced MIR facade until the host MIR is fully represented in Vitte
+>>>
+
+form MirParam {
+  name: string,
+  type_name: string
+}
+
+form MirExpr {
+  kind: string,
+  text: string,
+  callee: string,
+  args: [MirExpr]
+}
+
+form MirStmt {
+  kind: string,
+  name: string,
+  type_name: string,
+  expr: MirExpr,
+  raw_text: string
+}
+
+form MirFunction {
+  name: string,
+  return_type_name: string,
+  params: [MirParam],
+  extern_abi: string,
+  link_name: string,
+  body_stmts: [MirStmt]
+}
+
+form MirGlobal {
+  name: string,
+  type_name: string,
+  init_literal: string,
+  is_const: bool
+}
+
+form MirModule {
+  namespace_name: string,
+  includes: [string],
+  globals: [MirGlobal],
+  functions: [MirFunction]
+}
+
+proc normalized_type_name(name: string) -> string {
+  if name == "builtin.i32" or name == "std/core/types.i32" or name == "std::core::types::i32" or name == "std__core__types__i32" { give "i32" }
+  if name == "builtin.i64" or name == "std/core/types.i64" or name == "std::core::types::i64" or name == "std__core__types__i64" { give "i64" }
+  if name == "builtin.bool" { give "bool" }
+  if name == "builtin.string" { give "string" }
+  give name
+}
+
+proc map_type(ctx: backend_context.BackendContext, mir_name: string) -> target_type.TargetType {
+  let name: string = normalized_type_name(mir_name)
+  let _ = ctx
+  if name == "i32" { give target_type.builtin("int32_t") }
+  if name == "i64" { give target_type.builtin("int64_t") }
+  if name == "i16" { give target_type.builtin("int16_t") }
+  if name == "i8" { give target_type.builtin("int8_t") }
+  if name == "u64" { give target_type.builtin("uint64_t") }
+  if name == "u32" { give target_type.builtin("uint32_t") }
+  if name == "u16" { give target_type.builtin("uint16_t") }
+  if name == "u8" { give target_type.builtin("uint8_t") }
+  if name == "usize" { give target_type.builtin("size_t") }
+  if name == "isize" { give target_type.builtin("ptrdiff_t") }
+  if name == "bool" { give target_type.builtin("bool") }
+  if name == "char" { give target_type.builtin("char") }
+  if name == "string" { give target_type.builtin("VitteString") }
+  if name == "bytes" { give target_type.builtin("VitteSlice<std::uint8_t>") }
+  if name == "void" or name == "unit" or name == "Unit" { give target_type.builtin("void") }
+  give target_type.user_type(mir_name, target_type.TargetTypeKind.Struct)
+}
+
+proc lower_global(ctx: backend_context.BackendContext, global: MirGlobal) -> target_decl.TargetGlobal {
+  give target_decl.TargetGlobal {
+    type_value: map_type(ctx, global.type_name),
+    name: global.name,
+    init: if global.init_literal == "" { null } else { target_expr.literal(global.init_literal) },
+    is_const: global.is_const,
+    linkage: target_decl.Linkage.External,
+    is_extern: false,
+    abi: null,
+    link_name: null
+  }
+}
+
+proc lower_expr(expr: MirExpr) -> target_expr.TargetExpr {
+  if expr.kind == "literal" { give target_expr.literal(expr.text) }
+  if expr.kind == "variable" { give target_expr.variable(expr.text) }
+  if expr.kind == "raw" { give target_expr.literal(expr.text) }
+  if expr.kind == "call" {
+    let args: [target_expr.TargetExpr] = []
+    let i: int = 0
+    while i < expr.args.len {
+      set args = args + [lower_expr(expr.args[i])]
+      set i = i + 1
+    }
+    give target_expr.call_named(expr.callee, args)
+  }
+  give target_expr.literal(expr.text)
+}
+
+proc lower_stmt(ctx: backend_context.BackendContext, stmt: MirStmt) -> [target_stmt.TargetStmt] {
+  let default_type_name: string = if stmt.type_name == "" { "i32" } else { stmt.type_name }
+  let _ = ctx
+  if stmt.kind == "give" {
+    if stmt.expr.kind == "empty" {
+      give [target_stmt.return_stmt(null)]
+    }
+    give [target_stmt.return_stmt(lower_expr(stmt.expr))]
+  }
+  if stmt.kind == "let" {
+    let init: ?target_expr.TargetExpr =
+      if stmt.expr.kind == "empty" {
+        null
+      } else {
+        lower_expr(stmt.expr)
+      }
+    give [target_stmt.decl_stmt(map_type(ctx, default_type_name), stmt.name, init, false)]
+  }
+  if stmt.kind == "set" {
+    give [target_stmt.assign_stmt(target_expr.variable(stmt.name), lower_expr(stmt.expr))]
+  }
+  if stmt.expr.kind == "empty" {
+    give []
+  }
+  give [target_stmt.expr_stmt(lower_expr(stmt.expr))]
+}
+
+proc lower_function(ctx: backend_context.BackendContext, function_value: MirFunction) -> target_decl.TargetFunction {
+  let params: [target_decl.TargetParam] = []
+  let i: int = 0
+  while i < function_value.params.len {
+    set params = params + [target_decl.TargetParam {
+      type_value: map_type(ctx, function_value.params[i].type_name),
+      name: function_value.params[i].name
+    }]
+    set i = i + 1
+  }
+
+  let body: [target_stmt.TargetStmt] = []
+  let j: int = 0
+  while j < function_value.body_stmts.len {
+    set body = body + lower_stmt(ctx, function_value.body_stmts[j])
+    set j = j + 1
+  }
+
+  give target_decl.TargetFunction {
+    name: function_value.name,
+    return_type: map_type(ctx, function_value.return_type_name),
+    params: params,
+    body: body,
+    is_inline: false,
+    is_extern: function_value.extern_abi != "" and body.len == 0,
+    linkage: target_decl.Linkage.External,
+    abi: if function_value.extern_abi == "" { null } else { function_value.extern_abi },
+    link_name: if function_value.link_name == "" { null } else { function_value.link_name }
+  }
+}
+
+proc lower_mir(module: MirModule, ctx: backend_context.BackendContext) -> target_decl.TargetUnit {
+  let tu: target_decl.TargetUnit = target_decl.default_translation_unit()
+  let i: int = 0
+  while i < module.includes.len {
+    set ctx = backend_context.add_include(ctx, module.includes[i])
+    set i = i + 1
+  }
+
+  let globals: [target_decl.TargetGlobal] = []
+  let gi: int = 0
+  while gi < module.globals.len {
+    set globals = globals + [lower_global(ctx, module.globals[gi])]
+    set gi = gi + 1
+  }
+
+  let functions: [target_decl.TargetFunction] = []
+  let fi: int = 0
+  while fi < module.functions.len {
+    set functions = functions + [lower_function(ctx, module.functions[fi])]
+    set fi = fi + 1
+  }
+
+  if module.namespace_name == "" {
+    give target_decl.TargetUnit {
+      includes: ctx.includes,
+      namespaces: [],
+      structs: [],
+      enums: [],
+      globals: globals,
+      functions: functions
+    }
+  }
+
+  give target_decl.TargetUnit {
+    includes: ctx.includes,
+    namespaces: [target_decl.TargetNamespace {
+      name: module.namespace_name,
+      structs: [],
+      enums: [],
+      globals: globals,
+      functions: functions
+    }],
+    structs: [],
+    enums: [],
+    globals: [],
+    functions: []
+  }
+}
+
+export *

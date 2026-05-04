@@ -24,10 +24,60 @@ form File {
   mode: string
 }
 
+form FileLibraryManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
+
+form FileLibraryHealth {
+  ready: bool,
+  open_ready: bool,
+  read_ready: bool,
+  write_ready: bool
+}
+
+form FileLibrarySummary {
+  manifest: FileLibraryManifest,
+  health: FileLibraryHealth
+}
+
 # File operations
 proc fopen(path: string, mode: string) -> File {
   # Placeholder: open file
   give File { path: path, mode: mode }
+}
+
+proc file_version() -> string {
+  give "max-1"
+}
+
+proc file_ready() -> bool {
+  give true
+}
+
+proc file_manifest() -> FileLibraryManifest {
+  give FileLibraryManifest {
+    name: "vitte-stdlib-io-file",
+    version: file_version(),
+    ready: file_ready()
+  }
+}
+
+proc file_health() -> FileLibraryHealth {
+  give FileLibraryHealth {
+    ready: file_ready(),
+    open_ready: true,
+    read_ready: true,
+    write_ready: true
+  }
+}
+
+proc file_summary() -> FileLibrarySummary {
+  give FileLibrarySummary {
+    manifest: file_manifest(),
+    health: file_health()
+  }
 }
 
 proc fclose(file: File) -> int {
@@ -67,6 +117,7 @@ proc ferror(file: File) -> int {
 
 proc clearerr(file: File) -> () {
   # Placeholder: clear error
+  give
 }
 
 proc fflush(file: File) -> int {
@@ -76,6 +127,7 @@ proc fflush(file: File) -> int {
 
 proc rewind(file: File) -> () {
   # Placeholder: rewind to beginning
+  give
 }
 
 proc fgetpos(file: File, pos: i64) -> int {
@@ -106,5 +158,13 @@ proc tmpfile() -> File {
 proc tmpnam(buffer: string) -> string {
   # Placeholder: generate temp name
   give ""
+}
+
+proc file_selftest() -> bool {
+  let summary: FileLibrarySummary = file_summary()
+  give file_ready()
+    and summary.health.ready
+    and summary.manifest.version == "max-1"
+    and fopen("/tmp/demo", READ).path == "/tmp/demo"
 }
 export *

@@ -4,7 +4,25 @@ space vitte/json/builder
    JSON Builder Module
    ========================================================= >>>
 
-use vitte/json/types
+pick JSONValue {
+  JsonNull,
+  JsonBool(value: int),
+  JsonNumber(value: f64),
+  JsonString(value: string),
+  JsonArray(items: [JSONValue]),
+  JsonObject(keys: [string])
+}
+
+form JSONBuilder {
+  output: string,
+  depth: i32
+}
+
+form JsonBuilderManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
 
 proc json_builder_new() -> JSONBuilder {
   give JSONBuilder {
@@ -79,5 +97,28 @@ proc json_builder_to_string(b: JSONBuilder) -> string {
 proc json_builder_clear(b: JSONBuilder) {
   b.output = ""
   b.depth = 0
+}
+
+proc json_builder_version() -> string {
+  give "max-1"
+}
+
+proc json_builder_ready() -> bool {
+  give true
+}
+
+proc json_builder_manifest() -> JsonBuilderManifest {
+  give JsonBuilderManifest {
+    name: "vitte-json-builder",
+    version: json_builder_version(),
+    ready: json_builder_ready()
+  }
+}
+
+proc json_builder_selftest() -> bool {
+  let builder: JSONBuilder = json_builder_new()
+  give json_builder_ready()
+    and json_builder_version() == "max-1"
+    and builder.depth == 0
 }
 export *

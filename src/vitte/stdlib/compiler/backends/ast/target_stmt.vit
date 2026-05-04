@@ -1,0 +1,37 @@
+space vitte/compiler/backends/ast/target_stmt
+
+use vitte/compiler/backends/ast/target_expr
+use vitte/compiler/backends/ast/target_type
+
+<<< ROLE-CONTRACT
+package: vitte.compiler.backends.ast.target_stmt
+role: bootstrap-vitte-backend-ast
+source_of_truth: src/vitte/compiler/backends/ast/target_stmt.vit
+status: bootstrap-vitte
+>>>
+
+pick TargetStmt {
+  Expr(expr: target_expr.TargetExpr),
+  Asm(code: string, is_volatile: bool),
+  Decl(type_value: target_type.TargetType, name: string, init: ?target_expr.TargetExpr, is_const: bool),
+  Assign(lhs: target_expr.TargetExpr, rhs: target_expr.TargetExpr),
+  Label(name: string),
+  Goto(target: string),
+  Return(value: ?target_expr.TargetExpr),
+  If(condition: target_expr.TargetExpr, then_body: [TargetStmt], else_body: [TargetStmt]),
+  While(condition: target_expr.TargetExpr, body: [TargetStmt]),
+  For(init: ?TargetStmt, condition: ?target_expr.TargetExpr, step: ?TargetStmt, body: [TargetStmt]),
+  Break,
+  Continue,
+  Block(stmts: [TargetStmt]),
+  Try(body: [TargetStmt], except_body: [TargetStmt], finally_body: [TargetStmt])
+}
+
+proc expr_stmt(expr: target_expr.TargetExpr) -> TargetStmt { give TargetStmt.Expr(expr) }
+proc asm_stmt(code: string, is_volatile: bool) -> TargetStmt { give TargetStmt.Asm(code, is_volatile) }
+proc decl_stmt(type_value: target_type.TargetType, name: string, init: ?target_expr.TargetExpr, is_const: bool) -> TargetStmt { give TargetStmt.Decl(type_value, name, init, is_const) }
+proc assign_stmt(lhs: target_expr.TargetExpr, rhs: target_expr.TargetExpr) -> TargetStmt { give TargetStmt.Assign(lhs, rhs) }
+proc return_stmt(value: ?target_expr.TargetExpr) -> TargetStmt { give TargetStmt.Return(value) }
+proc block_stmt(stmts: [TargetStmt]) -> TargetStmt { give TargetStmt.Block(stmts) }
+
+export *
