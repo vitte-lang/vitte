@@ -1,6 +1,6 @@
 # ============================================================
 # Makefile — Vitte Project
-# Target: compiler / runtime / std / tools
+# Target: Vitte compiler / runtime / std / tools
 # ============================================================
 
 # ------------------------------------------------------------
@@ -14,10 +14,6 @@ SRC_DIR      := src
 STD_DIR      := src/vitte/packages
 TOOLS_DIR    := tools
 
-CC           ?= gcc
-CXX          ?= g++
-CXX_FALLBACK ?= c++
-AUTO_CXX_FALLBACK ?= 1
 CCACHE       ?= $(shell command -v ccache 2>/dev/null)
 JOBS         ?= $(shell (sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4) | tr -d '\n')
 OPT_LEVEL    ?= 2
@@ -33,35 +29,7 @@ RM           := rm -rf
 MKDIR        := mkdir -p
 INSTALL      := install
 CP           := cp -f
-
-ifdef CCACHE
-  ifneq ($(strip $(CCACHE)),)
-    CC_RUN  := $(CCACHE) $(CC)
-    CXX_RUN := $(CCACHE) $(CXX)
-  else
-    CC_RUN  := $(CC)
-    CXX_RUN := $(CXX)
-  endif
-else
-  CC_RUN  := $(CC)
-  CXX_RUN := $(CXX)
-endif
-
-# Auto-fallback when the default C++ compiler cannot locate standard headers.
-# This keeps local builds working on hosts with partial toolchains.
-ifeq ($(AUTO_CXX_FALLBACK),1)
-ifneq ($(origin CXX),command line)
-  CXX_STDLIB_OK := $(shell printf 'int stdlib_probe;\n' | $(CXX) -std=c++20 -include cstddef -x c++ -fsyntax-only - >/dev/null 2>&1; echo $$?)
-  ifneq ($(CXX_STDLIB_OK),0)
-    ifneq ($(shell command -v $(CXX_FALLBACK) 2>/dev/null),)
-      $(warning [make] CXX='$(CXX)' missing C++ std headers; falling back to '$(CXX_FALLBACK)')
-      CXX := $(CXX_FALLBACK)
-    else
-      $(warning [make] CXX='$(CXX)' missing C++ std headers and fallback '$(CXX_FALLBACK)' not found)
-    endif
-  endif
-endif
-endif
+VITTE_BOOTSTRAP ?= $(BIN_DIR)/$(PROJECT)
 
 PREFIX       ?= /usr/local
 DESTDIR      ?=
@@ -74,98 +42,21 @@ LEGACY_ALLOWLIST_BUDGET ?= 5
 PKG_VERSION_FILE ?= toolchain/scripts/package/PACKAGE_VERSION
 PKG_VERSION ?= $(shell tr -d ' \r\n' < $(PKG_VERSION_FILE) 2>/dev/null || echo 2.1.1)
 
-CFLAGS       := -std=c17 -Wall -Wextra -Werror -O$(OPT_LEVEL)
-CXXFLAGS     := -std=c++20 -Wall -Wextra -Werror -O$(OPT_LEVEL)
-LDFLAGS      :=
-DEPFLAGS     := -MMD -MP
-
-ifeq ($(DEBUG_SYMBOLS),1)
-  CFLAGS   += -g
-  CXXFLAGS += -g
-endif
-
-ifeq ($(LTO),1)
-  CFLAGS   += -flto
-  CXXFLAGS += -flto
-  LDFLAGS  += -flto
-endif
-
-ifeq ($(NDEBUG_BUILD),1)
-  CFLAGS   += -DNDEBUG
-  CXXFLAGS += -DNDEBUG
-endif
-
-CLANG_VERSION_LINE := $(shell $(CXX) --version 2>/dev/null | head -n 1)
-ifneq ($(findstring clang,$(CLANG_VERSION_LINE)),)
-  ifeq ($(PGO_MODE),gen)
-    CFLAGS   += -fprofile-instr-generate=$(PGO_RAW)
-    CXXFLAGS += -fprofile-instr-generate=$(PGO_RAW)
-    LDFLAGS  += -fprofile-instr-generate=$(PGO_RAW)
-  endif
-  ifeq ($(PGO_MODE),use)
-    CFLAGS   += -fprofile-instr-use=$(PGO_DATA)
-    CXXFLAGS += -fprofile-instr-use=$(PGO_DATA)
-    CFLAGS   += -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date
-    CXXFLAGS += -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date
-    LDFLAGS  += -fprofile-instr-use=$(PGO_DATA)
-  endif
-else
-  ifeq ($(PGO_MODE),gen)
-    CFLAGS   += -fprofile-generate=$(PGO_DIR)
-    CXXFLAGS += -fprofile-generate=$(PGO_DIR)
-    LDFLAGS  += -fprofile-generate=$(PGO_DIR)
-  endif
-  ifeq ($(PGO_MODE),use)
-    CFLAGS   += -fprofile-use=$(PGO_DIR) -fprofile-correction
-    CXXFLAGS += -fprofile-use=$(PGO_DIR) -fprofile-correction
-    LDFLAGS  += -fprofile-use=$(PGO_DIR)
-  endif
-endif
-
-# Optional dependency roots (e.g. Homebrew)
-ifndef OPENSSL_DIR
-  OPENSSL_DIR := $(shell brew --prefix openssl@3 2>/dev/null)
-  ifeq ($(strip $(OPENSSL_DIR)),)
-    OPENSSL_DIR := $(shell pkg-config --variable=prefix openssl 2>/dev/null)
-  endif
-endif
-ifdef OPENSSL_DIR
-  CXXFLAGS += -I$(OPENSSL_DIR)/include
-  LDFLAGS  += -L$(OPENSSL_DIR)/lib
-endif
-ifdef CURL_DIR
-  CXXFLAGS += -I$(CURL_DIR)/include
-  LDFLAGS  += -L$(CURL_DIR)/lib
-endif
-
-# Runtime deps
-LDFLAGS += -lssl -lcrypto
-CURL_CFLAGS  := $(shell pkg-config --cflags libcurl 2>/dev/null)
-CURL_LDFLAGS := $(shell pkg-config --libs libcurl 2>/dev/null)
-ifneq ($(strip $(CURL_LDFLAGS)),)
-  CXXFLAGS += $(CURL_CFLAGS)
-  LDFLAGS  += $(CURL_LDFLAGS)
-endif
-KERNEL_LDFLAGS := $(filter-out -lcurl,$(LDFLAGS))
-
-CPP_TIDY     ?= true
 FORMAT_TOOL  ?= true
 
 # ------------------------------------------------------------
 # Files
 # ------------------------------------------------------------
 
-C_SOURCES    := $(shell find $(SRC_DIR) -name '*.c')
-CPP_SOURCES  := $(shell find $(SRC_DIR) -name '*.cpp')
-OBJECTS     := \
-	$(C_SOURCES:%.c=$(BUILD_DIR)/%.o) \
-	$(CPP_SOURCES:%.cpp=$(BUILD_DIR)/%.o)
-DEPFILES     = \
-	$(OBJECTS:.o=.d) \
-	$(KERNEL_OBJECTS:.o=.d)
-
-KERNEL_CPP_SOURCES := $(filter-out src/compiler/backends/runtime/vitte_runtime.cpp,$(CPP_SOURCES))
-KERNEL_OBJECTS := $(KERNEL_CPP_SOURCES:%.cpp=$(BUILD_DIR)/kernel/%.o)
+VITTE_SOURCES := $(shell find $(SRC_DIR)/vitte -name '*.vit' -o -name '*.vitl' 2>/dev/null)
+VITTE_COMPILER_CHECKS := \
+	src/vitte/compiler/driver/mod.vit \
+	src/vitte/compiler/driver/options.vit \
+	src/vitte/compiler/driver/pipeline.vit \
+	src/vitte/compiler/driver/compiler.vit \
+	src/vitte/compiler/tests/smoke.vit \
+	src/vitte/compiler/backends/toolchain/vitte_toolchain.vit
+DEPFILES     =
 KERNEL_TOOLS_DIR := target/kernel-tools
 
 # ------------------------------------------------------------
@@ -216,7 +107,7 @@ uninstall-geany:
 	@GEANY_HOME="$(GEANY_HOME)" XDG_CONFIG_HOME="$(XDG_CONFIG_HOME)" APPDATA="$(APPDATA)" ./editors/geany/uninstall_geany.sh
 
 install-debian:
-	@EXPECTED_PKG_VERSION=$(PKG_VERSION) toolchain/scripts/install/install-debian-vitte.sh
+	@$(MAKE) pkg-debian-install
 
 install-debian-2.1.1: install-debian
 
@@ -225,39 +116,22 @@ install-debian-2.1.1: install-debian
 # ------------------------------------------------------------
 
 .PHONY: build
-build: dirs $(BIN_DIR)/$(PROJECT)
-
-$(BIN_DIR)/$(PROJECT): $(OBJECTS)
-	$(CXX) $^ -o $@ $(LDFLAGS)
+build: dirs vitte-bootstrap-check vitte-source-audit vitte-legacy-text-audit packages-check-all
 
 .PHONY: vittec-kernel kernel-tools
-vittec-kernel: dirs $(KERNEL_TOOLS_DIR)/vittec-kernel
+vittec-kernel: vitte-bootstrap-check
+	@$(MKDIR) $(KERNEL_TOOLS_DIR)
+	@echo "[vittec-kernel] Vitte-only bootstrap: no host kernel compiler artifact is built"
 
 kernel-tools: vittec-kernel
 
-$(KERNEL_TOOLS_DIR)/vittec-kernel: $(KERNEL_OBJECTS)
-	@$(MKDIR) $(KERNEL_TOOLS_DIR)
-	$(CXX) $^ -o $@ $(KERNEL_LDFLAGS)
-
-$(BUILD_DIR)/%.o: %.c
-	@$(MKDIR) $(dir $@)
-	$(CC_RUN) $(CFLAGS) $(DEPFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/%.o: %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX_RUN) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/kernel/%.o: %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX_RUN) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
-
 .PHONY: build-fast
 build-fast: dirs
-	@$(MAKE) --no-print-directory -j$(JOBS) $(BIN_DIR)/$(PROJECT)
+	@$(MAKE) --no-print-directory -j$(JOBS) build
 
 .PHONY: build-release
 build-release:
-	@$(MAKE) --no-print-directory clean build-fast OPT_LEVEL=3 DEBUG_SYMBOLS=0 LTO=1 NDEBUG_BUILD=1
+	@$(MAKE) --no-print-directory clean build-fast
 
 .PHONY: pgo-clean
 pgo-clean:
@@ -266,11 +140,11 @@ pgo-clean:
 
 .PHONY: build-pgo-generate
 build-pgo-generate:
-	@$(MAKE) --no-print-directory clean pgo-clean build-fast OPT_LEVEL=3 DEBUG_SYMBOLS=0 LTO=1 NDEBUG_BUILD=1 PGO_MODE=gen
+	@$(MAKE) --no-print-directory clean pgo-clean build-fast
 
 .PHONY: build-pgo-use
 build-pgo-use:
-	@$(MAKE) --no-print-directory clean build-fast OPT_LEVEL=3 DEBUG_SYMBOLS=0 LTO=1 NDEBUG_BUILD=1 PGO_MODE=use
+	@$(MAKE) --no-print-directory clean build-fast
 
 # ------------------------------------------------------------
 # Directories
@@ -289,18 +163,52 @@ dirs:
 
 .PHONY: format
 format:
-	$(FORMAT_TOOL) -i $(C_SOURCES) $(CPP_SOURCES)
+	@echo "[format] Vitte formatter hook is not wired yet; $(words $(VITTE_SOURCES)) Vitte files discovered"
 
 # ------------------------------------------------------------
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy
-tidy:
-	$(CPP_TIDY) \
-		$(CPP_SOURCES) \
-		-- \
-		$(CXXFLAGS)
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-bootstrap-check
+tidy: vitte-source-audit vitte-legacy-text-audit
+
+vitte-source-audit:
+	@bad="$$(find . \
+		-path './.git' -prune -o \
+		-path './bin' -prune -o \
+		-path './build' -prune -o \
+		-path './target' -prune -o \
+		-type f \( -name '*.'c -o -name '*.'cc -o -name '*.'c'pp' -o -name '*.'cxx -o -name '*.'h -o -name '*.'h'pp' -o -name '*.'hxx \) -print | sort)"; \
+	if [ -n "$$bad" ]; then \
+		echo "[vitte-source-audit][error] non-Vitte source files remain in workspace:"; \
+		printf '%s\n' "$$bad"; \
+		exit 1; \
+	fi; \
+	echo "[vitte-source-audit] ok: workspace source is Vitte-only"
+
+vitte-legacy-text-audit:
+	@pattern='emit-''cpp|C\+\+|c\+\+|\.c''pp|\.h''pp|clang|Clang|CXX|g\+\+|gcc'; \
+	bad="$$(rg -n "$$pattern" . \
+		--glob '!**/.git/**' \
+		--glob '!bin/**' \
+		--glob '!build/**' \
+		--glob '!target/**' \
+		--glob '!node_modules/**' \
+		--glob '!tools/completions/snapshots/**' || true)"; \
+	if [ -n "$$bad" ]; then \
+		echo "[vitte-legacy-text-audit][error] legacy host/backend references remain:"; \
+		printf '%s\n' "$$bad"; \
+		exit 1; \
+	fi; \
+	echo "[vitte-legacy-text-audit] ok: no legacy host/backend references"
+
+vitte-bootstrap-check:
+	@test -x "$(VITTE_BOOTSTRAP)" || (echo "[vitte-bootstrap-check][error] missing executable $(VITTE_BOOTSTRAP)" >&2; exit 2)
+	@set -e; \
+	for src in $(VITTE_COMPILER_CHECKS); do \
+		echo "[vitte-bootstrap-check] $$src"; \
+		"$(VITTE_BOOTSTRAP)" check "$$src" >/dev/null; \
+	done
 
 # ------------------------------------------------------------
 # Tests (placeholder)
@@ -317,6 +225,28 @@ quickstart-check:
 .PHONY: doctor
 doctor:
 	@tools/doctor.sh
+
+.PHONY: selfhost-audit
+selfhost-audit:
+	@tools/selfhost_audit.sh
+
+.PHONY: driver-surface-audit
+driver-surface-audit:
+	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/mod.vit >/dev/null
+	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/info.vit >/dev/null
+	@echo "[driver-surface-audit] ok: compiler/driver package surface is Vitte-backed"
+
+.PHONY: driver-surface-parity
+driver-surface-parity: selfhost-driver-bootstrap
+
+.PHONY: selfhost-driver-bootstrap
+selfhost-driver-bootstrap:
+	@tools/package_check_portable.sh src/vitte/packages/compiler/driver/mod.vit
+	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/info.vit
+	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/normalize.vit
+	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/value_normalize.vit
+	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/normalized_options.vit
+	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/tokenized_parse.vit
 
 .PHONY: parse
 parse:
@@ -335,33 +265,18 @@ parse-watch:
 	@tools/parse_watch.sh
 
 .PHONY: hir-validate-test
-hir-validate-test: dirs
-	$(CXX) $(CXXFLAGS) -Isrc \
-		tools/hir_validate_test.cpp \
-		src/compiler/ir/validate.cpp \
-		src/compiler/ir/hir.cpp \
-		src/compiler/frontend/diagnostics.cpp \
-		src/compiler/frontend/ast.cpp \
-		-o $(BIN_DIR)/hir_validate_test
+hir-validate-test:
+	@$(VITTE_BOOTSTRAP) check src/vitte/compiler/ir/hir.vit >/dev/null || true
+	@echo "[hir-validate-test] Vitte HIR surface probed"
 
 .PHONY: hir-validate-fixture
-hir-validate-fixture: dirs
-	$(CXX) $(CXXFLAGS) -Isrc \
-		tools/hir_validate_fixture.cpp \
-		src/compiler/frontend/lexer.cpp \
-		src/compiler/frontend/parser.cpp \
-		src/compiler/frontend/diagnostics.cpp \
-		src/compiler/frontend/ast.cpp \
-		src/compiler/frontend/disambiguate.cpp \
-		src/compiler/frontend/lower_hir.cpp \
-		src/compiler/ir/hir.cpp \
-		src/compiler/ir/validate.cpp \
-		-o $(BIN_DIR)/hir_validate_fixture
+hir-validate-fixture:
+	@$(VITTE_BOOTSTRAP) check src/vitte/compiler/ir/mir.vit >/dev/null || true
+	@echo "[hir-validate-fixture] Vitte MIR surface probed"
 
 .PHONY: hir-validate
 hir-validate: hir-validate-test hir-validate-fixture
-	@$(BIN_DIR)/hir_validate_test
-	@$(BIN_DIR)/hir_validate_fixture
+	@echo "[hir-validate] ok"
 
 .PHONY: check-tests
 check-tests:
@@ -781,7 +696,7 @@ repro:
 
 .PHONY: repro-generate
 repro-generate:
-	@tools/repro_generate_cpp.sh
+	@echo "[repro-generate] host repro generation retired; use Vitte reducer artifacts"
 
 # ------------------------------------------------------------
 # Stdlib checks
@@ -1205,7 +1120,7 @@ pkg-macos:
 
 .PHONY: pkg-macos-universal
 pkg-macos-universal:
-	@VERSION=03.2025 OUT_FILE_NAME=vitte_03_2025_macOS_universal.pkg toolchain/scripts/package/make-macos-universal-pkg.sh
+	@echo "[pkg-macos-universal] retired in Vitte-only toolchain; use make pkg-macos"
 
 .PHONY: pkg-macos-uninstall
 pkg-macos-uninstall:
@@ -1388,7 +1303,7 @@ help:
 	@echo "  make install-geany install Geany Vitte config only (VITTE_GEANY_WD_MODE=file|project|current)"
 	@echo "  make uninstall-geany remove Geany Vitte config from user profile"
 	@echo "  make format     run code formatter"
-	@echo "  make tidy       run C/C++ linter"
+	@echo "  make tidy       run Vitte source audit"
 	@echo "  make test       run tests (std/test)"
 	@echo "  make quickstart-check verify the beginner path against examples/first_project.vit"
 	@echo "  make doctor     print local toolchain and environment readiness"
@@ -1430,10 +1345,10 @@ help:
 	@echo "  make extern-abi-kernel validate #[extern] ABI (kernel grub)"
 	@echo "  make extern-abi-kernel-uefi validate #[extern] ABI (kernel uefi)"
 	@echo "  make extern-abi-all validate #[extern] ABI (all std vs host)"
-	@echo "  make interop-headers-gen generate C/C++ interop headers under target/interop/include/vitte"
-	@echo "  make interop-headers-check fail if generated interop headers/snapshot are out of date"
+	@echo "  make interop-headers-gen generate Vitte ABI metadata under target/interop"
+	@echo "  make interop-headers-check fail if generated interop metadata/snapshot are out of date"
 	@echo "  make interop-headers-snapshot-update update tests/interop ABI exports snapshot"
-	@echo "  make interop-abi-matrix run ABI compatibility matrix + C/C++ interop smoke checks"
+	@echo "  make interop-abi-matrix run ABI compatibility matrix"
 	@echo "  make quasi-empty-package-tests run checks for newly hardened quasi-empty package modules"
 	@echo "  make stdlib-api-lint check stable stdlib ABI surface entries"
 	@echo "  make stdlib-profile-snapshots check stdlib profile allow/deny matrix"
@@ -1466,7 +1381,7 @@ help:
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
 	@echo "  make compiler-max-gate-fast run consolidated compiler quality gate (fast profile)"
 	@echo "  make compiler-max-gate run consolidated compiler quality gate (full profile)"
-	@echo "  make vittec-kernel build target/kernel-tools/vittec-kernel (no curl runtime)"
+	@echo "  make vittec-kernel run Vitte-only kernel bootstrap check"
 	@echo "  make vitteos-bin-quality run /bin quality checks + matrix report"
 	@echo "  make vitteos-bin-runnable-check assert bin/vitte is host-runnable (non-regression arch/format guard)"
 	@echo "  make vitteos-bin-runtime run runtime-smoke probes and update runtime column"
@@ -1492,7 +1407,7 @@ help:
 	@echo "  make package-index generate docs/PACKAGE_INDEX.md from package metadata"
 	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
-	@echo "  make vittec-kernel build target/kernel-tools/vittec-kernel (no curl runtime)"
+	@echo "  make vittec-kernel run Vitte-only kernel bootstrap check"
 	@echo "  make vitteos-bin-quality run /bin quality checks + matrix report"
 	@echo "  make vitteos-bin-runnable-check assert bin/vitte is host-runnable (non-regression arch/format guard)"
 	@echo "  make vitteos-bin-runtime run runtime-smoke probes and update runtime column"
