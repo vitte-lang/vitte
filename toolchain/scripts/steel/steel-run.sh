@@ -56,11 +56,7 @@ log "ci=$CI_NAME commit=$CI_COMMIT ref=$CI_REF"
 # Load target (optional)
 # ----------------------------
 if [ -n "$TARGET" ]; then
-  TARGET_SCRIPT="$ROOT_DIR/toolchain/scripts/targets/$TARGET"
-  [ -f "$TARGET_SCRIPT" ] || die "target script not found: $TARGET_SCRIPT"
-  log "loading target: $TARGET"
-  # shellcheck source=/dev/null
-  source "$TARGET_SCRIPT"
+  log "target profiles are retired in the Vitte-only toolchain: $TARGET"
 fi
 
 # ----------------------------
