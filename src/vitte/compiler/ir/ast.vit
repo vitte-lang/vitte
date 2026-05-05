@@ -2,6 +2,7 @@ space vitte/compiler/ir/ast
 
 use src/vitte/compiler/ir/hir as ir_hir
 use src/vitte/compiler/ir/mir as ir_mir
+use src/vitte/compiler/frontend/diagnostics as frontend_diagnostics
 
 pick AstDeclKind {
   Space,
@@ -77,7 +78,7 @@ form AstModule {
 
 form AstParseResult {
   module: AstModule,
-  diagnostics: [string]
+  diagnostics: frontend_diagnostics.DiagnosticBag
 }
 
 proc empty_module(source_name: string) -> AstModule {
@@ -120,10 +121,39 @@ proc add_decl(module: AstModule, decl: AstDecl) -> AstModule {
   if decl.kind == AstDeclKind.Const {
     set module.global_count = module.global_count + 1
   }
+  if decl.kind == AstDeclKind.Static {
+    set module.global_count = module.global_count + 1
+  }
   if decl.kind == AstDeclKind.Global {
     set module.global_count = module.global_count + 1
   }
   give module
+}
+
+proc _diag_level(level: string) -> frontend_diagnostics.DiagnosticLevel {
+  if level == "error" { give frontend_diagnostics.DiagnosticLevel.Error }
+  if level == "warning" { give frontend_diagnostics.DiagnosticLevel.Warning }
+  if level == "note" { give frontend_diagnostics.DiagnosticLevel.Note }
+  if level == "help" { give frontend_diagnostics.DiagnosticLevel.Help }
+  give frontend_diagnostics.DiagnosticLevel.Info
+}
+
+proc _new_diag(level: string, code: string, message: string, source_name: string, line_no: int) -> frontend_diagnostics.Diagnostic {
+  let line: int = line_no
+  if line <= 0 { set line = 1 }
+  give frontend_diagnostics.Diagnostic {
+    level: _diag_level(level),
+    code: code,
+    message: message,
+    primary_span: frontend_diagnostics.new_span(source_name, line, 1),
+    labels: [],
+    notes: [],
+    helps: []
+  }
+}
+
+proc _diag_is_empty(diag: frontend_diagnostics.Diagnostic) -> bool {
+  give diag.code == ""
 }
 
 proc _starts_with(text: string, prefix: string) -> bool {
@@ -477,20 +507,20 @@ proc parse_stmt(line: string) -> AstStmt {
   }
 }
 
-proc _stmt_diagnostic(stmt: AstStmt, line_no: int) -> string {
+proc _stmt_diagnostic(stmt: AstStmt, line_no: int, source_name: string) -> frontend_diagnostics.Diagnostic {
   if stmt.kind == AstStmtKind.Give and stmt.expr.kind == AstExprKind.Empty {
-    give "error[E1005]: give statement requires an expression at line " + (line_no as string)
+    give _new_diag("error", "E1005", "give statement requires an expression", source_name, line_no)
   }
   if stmt.kind == AstStmtKind.Let and stmt.name == "" {
-    give "error[E1006]: let statement requires a binding name at line " + (line_no as string)
+    give _new_diag("error", "E1006", "let statement requires a binding name", source_name, line_no)
   }
   if stmt.kind == AstStmtKind.Set and stmt.name == "" {
-    give "error[E1007]: set statement requires an assignment target at line " + (line_no as string)
+    give _new_diag("error", "E1007", "set statement requires an assignment target", source_name, line_no)
   }
   if stmt.kind == AstStmtKind.Set and stmt.expr.kind == AstExprKind.Empty {
-    give "error[E1008]: set statement requires an expression at line " + (line_no as string)
+    give _new_diag("error", "E1008", "set statement requires an expression", source_name, line_no)
   }
-  give ""
+  give _new_diag("", "", "", source_name, 0)
 }
 
 proc _parse_param(param_text: string) -> AstParam {
@@ -530,22 +560,22 @@ proc _split_params(param_text: string) -> [AstParam] {
   give params
 }
 
-proc _proc_signature_diagnostic(signature_text: string, line_no: int) -> string {
+proc _proc_signature_diagnostic(signature_text: string, line_no: int, source_name: string) -> frontend_diagnostics.Diagnostic {
   let trimmed: string = _trim(signature_text)
   let rest: string = _trim_after_prefix(trimmed, "proc")
   if rest == "" {
-    give "error[E1002]: missing proc name at line " + (line_no as string)
+    give _new_diag("error", "E1002", "missing proc name", source_name, line_no)
   }
   let open_paren: int = _find(rest, "(")
   if open_paren < 0 {
-    give "error[E1002]: missing proc parameter list at line " + (line_no as string)
+    give _new_diag("error", "E1002", "missing proc parameter list", source_name, line_no)
   }
   let close_paren: int = _find(rest, ")")
   if close_paren <= open_paren {
-    give "error[E1002]: invalid proc parameter list at line " + (line_no as string)
+    give _new_diag("error", "E1002", "invalid proc parameter list", source_name, line_no)
   }
   if _trim(_slice(rest, 0, open_paren)) == "" {
-    give "error[E1002]: missing proc name at line " + (line_no as string)
+    give _new_diag("error", "E1002", "missing proc name", source_name, line_no)
   }
   let arrow: int = _find(rest, "->")
   if arrow >= 0 {
@@ -556,10 +586,10 @@ proc _proc_signature_diagnostic(signature_text: string, line_no: int) -> string 
       set return_text = _trim(_slice(raw_return, 0, brace))
     }
     if return_text == "" {
-      give "error[E1002]: invalid proc return type at line " + (line_no as string)
+      give _new_diag("error", "E1002", "invalid proc return type", source_name, line_no)
     }
   }
-  give ""
+  give _new_diag("", "", "", source_name, 0)
 }
 
 proc parse_proc_signature(line: string) -> AstDecl {
@@ -655,7 +685,7 @@ proc _is_ignorable_source_line(raw_line: string) -> bool {
 
 proc parse_module(source_name: string, source_text: string) -> AstParseResult {
   let module: AstModule = empty_module(source_name)
-  let diagnostics: [string] = []
+  let diagnostics: frontend_diagnostics.DiagnosticBag = frontend_diagnostics.new_bag()
   let lines: [string] = _split_lines(source_text)
   let i: int = 0
 
@@ -671,7 +701,7 @@ proc parse_module(source_name: string, source_text: string) -> AstParseResult {
     if decl.kind == AstDeclKind.Space {
       set module.space_name = decl.name
       if decl.name == "" {
-        set diagnostics = diagnostics + ["error[E1001]: invalid space declaration at line " + ((i + 1) as string)]
+        set diagnostics = frontend_diagnostics.push(diagnostics, _new_diag("error", "E1001", "invalid space declaration", source_name, i + 1))
       }
       set module = add_decl(module, decl)
     }
@@ -680,9 +710,9 @@ proc parse_module(source_name: string, source_text: string) -> AstParseResult {
       set module = add_decl(module, decl)
     }
     if decl.kind == AstDeclKind.Proc {
-      let proc_diag: string = _proc_signature_diagnostic(line, i + 1)
-      if proc_diag != "" {
-        set diagnostics = diagnostics + [proc_diag]
+      let proc_diag: frontend_diagnostics.Diagnostic = _proc_signature_diagnostic(line, i + 1, source_name)
+      if not _diag_is_empty(proc_diag) {
+        set diagnostics = frontend_diagnostics.push(diagnostics, proc_diag)
         set i = i + 1
         continue
       }
@@ -698,16 +728,16 @@ proc parse_module(source_name: string, source_text: string) -> AstParseResult {
         }
         let stmt: AstStmt = parse_stmt(body_line)
         if stmt.raw_text != "" {
-          let stmt_diag: string = _stmt_diagnostic(stmt, cursor + 1)
-          if stmt_diag != "" {
-            set diagnostics = diagnostics + [stmt_diag]
+          let stmt_diag: frontend_diagnostics.Diagnostic = _stmt_diagnostic(stmt, cursor + 1, source_name)
+          if not _diag_is_empty(stmt_diag) {
+            set diagnostics = frontend_diagnostics.push(diagnostics, stmt_diag)
           }
           set body_stmts = body_stmts + [stmt]
         }
         set cursor = cursor + 1
       }
       if not body_closed {
-        set diagnostics = diagnostics + ["error[E1004]: proc body is not closed starting at line " + ((i + 1) as string)]
+        set diagnostics = frontend_diagnostics.push(diagnostics, _new_diag("error", "E1004", "proc body is not closed starting", source_name, i + 1))
         set i = lines.len
       }
       set module = add_decl(module, AstDecl {
@@ -724,6 +754,9 @@ proc parse_module(source_name: string, source_text: string) -> AstParseResult {
         }
       })
     }
+    if decl.kind == AstDeclKind.Form {
+      set module = add_decl(module, decl)
+    }
     if decl.kind == AstDeclKind.Const {
       set module = add_decl(module, decl)
     }
@@ -734,17 +767,17 @@ proc parse_module(source_name: string, source_text: string) -> AstParseResult {
       set module = add_decl(module, decl)
     }
     if decl.kind == AstDeclKind.Unknown {
-      set diagnostics = diagnostics + ["warning: unparsed top-level line kept as unknown declaration at line " + ((i + 1) as string)]
+      set diagnostics = frontend_diagnostics.push(diagnostics, _new_diag("warning", "W1001", "unparsed top-level line kept as unknown declaration", source_name, i + 1))
       set module = add_decl(module, decl)
     }
     set i = i + 1
   }
 
   if module.space_name == "" {
-    set diagnostics = diagnostics + ["error[E1000]: missing space declaration in " + source_name]
+    set diagnostics = frontend_diagnostics.push(diagnostics, _new_diag("error", "E1000", "missing space declaration", source_name, 0))
   }
   if module.proc_count == 0 {
-    set diagnostics = diagnostics + ["error[E1003]: missing proc declaration in " + source_name]
+    set diagnostics = frontend_diagnostics.push(diagnostics, _new_diag("error", "E1003", "missing proc declaration", source_name, 0))
   }
 
   give AstParseResult {
@@ -898,7 +931,7 @@ proc to_mir_module(module: AstModule) -> ir_mir.MirModule {
   let i: int = 0
   while i < module.decls.len {
     let decl: AstDecl = module.decls[i]
-    if decl.kind == AstDeclKind.Const or decl.kind == AstDeclKind.Global {
+    if decl.kind == AstDeclKind.Const or decl.kind == AstDeclKind.Static or decl.kind == AstDeclKind.Global {
       let init_literal: string = "0"
       let eq: int = _find(decl.value_text, "=")
       if eq >= 0 {

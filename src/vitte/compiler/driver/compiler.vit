@@ -2,6 +2,8 @@ space vitte/compiler/driver/compiler
 
 use options
 use pipeline
+use src/vitte/compiler/frontend/diagnostics as frontend_diagnostics
+use src/vitte/compiler/ir/ast as ir_ast
 use src/vitte/compiler/ir/hir as ir_hir
 use src/vitte/compiler/ir/mir as ir_mir
 
@@ -14,30 +16,18 @@ form DriverOptions {
   work_dir: string
 }
 
-form DiagnosticBag {
-  count: int,
-  messages: [string]
-}
-
-form ParsedModule {
-  space_name: string,
-  uses: [string],
-  proc_count: int,
-  global_count: int
-}
-
 form PipelineArtifacts {
   source_name: string,
   source_text: string,
-  parsed_module: ParsedModule,
+  parsed_module: ir_ast.AstModule,
   real_hir: ir_hir.HirModule,
   real_mir: ir_mir.MirModule,
-  diagnostics: DiagnosticBag
+  diagnostics: frontend_diagnostics.DiagnosticBag
 }
 
 form CompileReport {
   success: bool,
-  diagnostics: DiagnosticBag,
+  diagnostics: frontend_diagnostics.DiagnosticBag,
   emitted_source: string,
   output_path: string,
   source_name: string,
@@ -77,18 +67,10 @@ proc pipeline_run(source_name: string, source_text: string) -> PipelineArtifacts
   give PipelineArtifacts {
     source_name: artifacts.source_name,
     source_text: artifacts.source_text,
-    parsed_module: ParsedModule {
-      space_name: artifacts.parsed_module.space_name,
-      uses: artifacts.parsed_module.uses,
-      proc_count: artifacts.parsed_module.proc_count,
-      global_count: artifacts.parsed_module.global_count
-    },
+    parsed_module: artifacts.parsed_module,
     real_hir: artifacts.real_hir,
     real_mir: artifacts.real_mir,
-    diagnostics: DiagnosticBag {
-      count: artifacts.diagnostics.count,
-      messages: artifacts.diagnostics.messages
-    }
+    diagnostics: artifacts.diagnostics
   }
 }
 
@@ -170,15 +152,12 @@ proc compile_source(
 ) -> CompileReport {
   let artifacts: PipelineArtifacts = pipeline_run(source_name, source_text)
   let emitted: string = ""
-  if artifacts.diagnostics.count == 0 {
+  if frontend_diagnostics.count(artifacts.diagnostics) == 0 {
     set emitted = _emit_from_artifacts(artifacts)
   }
   give CompileReport {
-    success: artifacts.diagnostics.count == 0 and emitted != "",
-    diagnostics: DiagnosticBag {
-      count: artifacts.diagnostics.count,
-      messages: artifacts.diagnostics.messages
-    },
+    success: frontend_diagnostics.count(artifacts.diagnostics) == 0 and emitted != "",
+    diagnostics: artifacts.diagnostics,
     emitted_source: emitted,
     output_path: driver_options.output,
     source_name: source_name,

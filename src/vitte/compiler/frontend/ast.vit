@@ -424,28 +424,6 @@ proc empty_expr(source_name: string) -> AstExpr {
   }
 }
 
-proc raw_expr(source_name: string, text: string) -> AstExpr {
-  give AstExpr {
-    kind: AstExprKind.Raw,
-    text: text,
-    callee: "",
-    op: "",
-    path: "",
-    name: "",
-    args: [],
-    fields: [],
-    items: [],
-    keys: [],
-    values: [],
-    left: null,
-    right: null,
-    third: null,
-    type_value: null,
-    block: null,
-    span: empty_span(source_name)
-  }
-}
-
 proc empty_type(source_name: string) -> AstType {
   give AstType {
     kind: AstTypeKind.Unknown,
@@ -516,100 +494,6 @@ proc empty_module(source_name: string) -> AstModule {
     attrs: [],
     span: empty_span(source_name)
   }
-}
-
-proc decl_name(decl: AstDecl) -> string {
-  give decl.name
-}
-
-proc module_add_use(module: &mut AstModule, use_decl: AstUseDecl) {
-  set module.uses = module.uses + [use_decl.path]
-  set module.use_decls = module.use_decls + [use_decl]
-}
-
-proc module_add_decl(module: &mut AstModule, decl: AstDecl) {
-  set module.decls = module.decls + [decl]
-}
-
-proc proc_is_extern(proc_decl: AstProcDecl) -> bool {
-  give proc_decl.extern_abi != ""
-}
-
-proc proc_is_public(proc_decl: AstProcDecl) -> bool {
-  give proc_decl.visibility == AstVisibility.Public
-}
-
-proc decl_is_proc(decl: AstDecl) -> bool {
-  give decl.kind == AstDeclKind.Proc
-}
-
-proc decl_is_type(decl: AstDecl) -> bool {
-  give decl.kind == AstDeclKind.Form or
-       decl.kind == AstDeclKind.Class or
-       decl.kind == AstDeclKind.Union or
-       decl.kind == AstDeclKind.Pick or
-       decl.kind == AstDeclKind.Flags or
-       decl.kind == AstDeclKind.TypeAlias or
-       decl.kind == AstDeclKind.OpaqueType
-}
-
-proc find_decl(module: AstModule, name: string) -> AstDecl {
-  for decl in module.decls {
-    if decl.name == name {
-      give decl
-    }
-  }
-
-  give AstDecl {
-    kind: AstDeclKind.Unknown,
-    name: "",
-    raw_line: "",
-    value_text: "",
-    attrs: [],
-    span: empty_span(module.source_name),
-    proc_decl: null,
-    form_decl: null,
-    pick_decl: null,
-    flags_decl: null,
-    impl_decl: null,
-    use_decl: null
-  }
-}
-
-proc count_procs(module: AstModule) -> usize {
-  let mut count: usize = 0
-
-  for decl in module.decls {
-    if decl.kind == AstDeclKind.Proc {
-      set count = count + 1
-    }
-  }
-
-  give count
-}
-
-proc count_types(module: AstModule) -> usize {
-  let mut count: usize = 0
-
-  for decl in module.decls {
-    if decl_is_type(decl) {
-      set count = count + 1
-    }
-  }
-
-  give count
-}
-
-proc expr_is_empty(expr: AstExpr) -> bool {
-  give expr.kind == AstExprKind.Empty
-}
-
-proc stmt_is_terminal(stmt: AstStmt) -> bool {
-  give stmt.kind == AstStmtKind.Give or
-       stmt.kind == AstStmtKind.Panic or
-       stmt.kind == AstStmtKind.Unreachable or
-       stmt.kind == AstStmtKind.Break or
-       stmt.kind == AstStmtKind.Continue
 }
 
 export *

@@ -3,6 +3,7 @@ space vitte/compiler/tests/smoke
 use src/vitte/compiler/driver/compiler
 use src/vitte/compiler/driver/options
 use src/vitte/compiler/driver/pipeline
+use src/vitte/compiler/frontend/diagnostics as diagnostics
 use src/vitte/compiler/ir/hir
 use src/vitte/compiler/ir/mir
 use src/vitte/compiler/mod
@@ -15,25 +16,32 @@ proc compiler_root_ok() -> bool {
 }
 
 proc _diag_has(report: compiler.CompileReport, index: int, expected: string) -> bool {
-  if report.diagnostics.count <= index { give false }
-  if report.diagnostics.messages[index] != expected { give false }
+  if diagnostics.count(report.diagnostics) <= index { give false }
+  if diagnostics.format(report.diagnostics.items[index]) != expected { give false }
   give true
 }
 
 proc pipeline_lowering_ok() -> bool {
-  let source_text: string = "space demo/app\nuse vitte/io\nform payload\nconst answer = 42\nglobal counter = 0\nproc main(argc: i32, argv: string) -> i32 {\n  give argc\n}\n"
+  let source_text: string = "space demo/app\nuse vitte/io\nform payload\nconst answer = 42\nstatic limit = 7\nglobal counter = 0\nproc main(argc: i32, argv: string) -> i32 {\n  give argc\n}\n"
   let artifacts: pipeline.PipelineArtifacts = pipeline.run("demo.vit", source_text)
   if artifacts.parsed_module.space_name != "demo/app" { give false }
   if artifacts.parsed_module.uses.len != 1 { give false }
+  if artifacts.parsed_module.decls.len != 7 { give false }
+  if artifacts.parsed_module.decls[2].name != "payload" { give false }
   if artifacts.parsed_module.proc_count != 1 { give false }
-  if artifacts.parsed_module.global_count != 2 { give false }
+  if artifacts.parsed_module.global_count != 3 { give false }
   if hir.function_count(artifacts.real_hir) != 1 { give false }
-  if hir.decl_count(artifacts.real_hir) != 5 { give false }
+  if hir.decl_count(artifacts.real_hir) != 7 { give false }
+  if artifacts.real_hir.decls[2].kind != hir.HirDeclKind.Form { give false }
+  if artifacts.real_hir.decls[4].kind != hir.HirDeclKind.Static { give false }
   if artifacts.real_hir.functions[0].stmts.len != 1 { give false }
   if artifacts.real_hir.functions[0].stmts[0].kind != hir.HirStmtKind.Give { give false }
   if artifacts.real_hir.functions[0].stmts[0].expr.kind != hir.HirExprKind.Variable { give false }
   if mir.function_count(artifacts.real_mir) != 1 { give false }
-  if mir.global_count(artifacts.real_mir) != 2 { give false }
+  if mir.global_count(artifacts.real_mir) != 3 { give false }
+  if artifacts.real_mir.globals[1].name != "limit" { give false }
+  if artifacts.real_mir.globals[1].init_literal != "7" { give false }
+  if artifacts.real_mir.globals[1].is_const { give false }
   if artifacts.real_mir.functions[0].params.len != 2 { give false }
   if artifacts.real_hir.functions[0].stmts[0].kind != hir.HirStmtKind.Give { give false }
   if artifacts.real_mir.functions[0].body_stmts[0].kind != mir.MirStmtKind.Give { give false }
@@ -119,39 +127,39 @@ proc diagnostics_ok() -> bool {
     opts
   )
   if missing_space.success { give false }
-  if missing_space.diagnostics.count != 1 { give false }
-  if not _diag_has(missing_space, 0, "error[E1000]: missing space declaration in missing-space.vit") { give false }
+  if diagnostics.count(missing_space.diagnostics) != 1 { give false }
+  if not _diag_has(missing_space, 0, "error[E1000]: missing space declaration\n  --> missing-space.vit:1:1") { give false }
   if missing_space.emitted_source != "" { give false }
   if invalid_proc.success { give false }
-  if invalid_proc.diagnostics.count != 1 { give false }
-  if not _diag_has(invalid_proc, 0, "error[E1002]: missing proc parameter list at line 2") { give false }
+  if diagnostics.count(invalid_proc.diagnostics) != 1 { give false }
+  if not _diag_has(invalid_proc, 0, "error[E1002]: missing proc parameter list\n  --> invalid-proc.vit:2:1") { give false }
   if invalid_proc.emitted_source != "" { give false }
   if missing_proc_name.success { give false }
-  if missing_proc_name.diagnostics.count != 1 { give false }
-  if not _diag_has(missing_proc_name, 0, "error[E1002]: missing proc name at line 2") { give false }
+  if diagnostics.count(missing_proc_name.diagnostics) != 1 { give false }
+  if not _diag_has(missing_proc_name, 0, "error[E1002]: missing proc name\n  --> missing-proc-name.vit:2:1") { give false }
   if missing_proc_name.emitted_source != "" { give false }
   if invalid_proc_params.success { give false }
-  if invalid_proc_params.diagnostics.count != 1 { give false }
-  if not _diag_has(invalid_proc_params, 0, "error[E1002]: invalid proc parameter list at line 2") { give false }
+  if diagnostics.count(invalid_proc_params.diagnostics) != 1 { give false }
+  if not _diag_has(invalid_proc_params, 0, "error[E1002]: invalid proc parameter list\n  --> invalid-proc-params.vit:2:1") { give false }
   if invalid_proc_params.emitted_source != "" { give false }
   if invalid_proc_return.success { give false }
-  if invalid_proc_return.diagnostics.count != 1 { give false }
-  if not _diag_has(invalid_proc_return, 0, "error[E1002]: invalid proc return type at line 2") { give false }
+  if diagnostics.count(invalid_proc_return.diagnostics) != 1 { give false }
+  if not _diag_has(invalid_proc_return, 0, "error[E1002]: invalid proc return type\n  --> invalid-proc-return.vit:2:1") { give false }
   if invalid_proc_return.emitted_source != "" { give false }
   if unterminated_proc.success { give false }
-  if unterminated_proc.diagnostics.count != 1 { give false }
-  if not _diag_has(unterminated_proc, 0, "error[E1004]: proc body is not closed starting at line 2") { give false }
+  if diagnostics.count(unterminated_proc.diagnostics) != 1 { give false }
+  if not _diag_has(unterminated_proc, 0, "error[E1004]: proc body is not closed starting\n  --> unterminated-proc.vit:2:1") { give false }
   if unterminated_proc.emitted_source != "" { give false }
   if invalid_statement.success { give false }
-  if invalid_statement.diagnostics.count != 3 { give false }
-  if not _diag_has(invalid_statement, 0, "error[E1006]: let statement requires a binding name at line 2") { give false }
-  if not _diag_has(invalid_statement, 1, "error[E1007]: set statement requires an assignment target at line 3") { give false }
-  if not _diag_has(invalid_statement, 2, "error[E1005]: give statement requires an expression at line 4") { give false }
+  if diagnostics.count(invalid_statement.diagnostics) != 3 { give false }
+  if not _diag_has(invalid_statement, 0, "error[E1006]: let statement requires a binding name\n  --> invalid-statement.vit:2:1") { give false }
+  if not _diag_has(invalid_statement, 1, "error[E1007]: set statement requires an assignment target\n  --> invalid-statement.vit:3:1") { give false }
+  if not _diag_has(invalid_statement, 2, "error[E1005]: give statement requires an expression\n  --> invalid-statement.vit:4:1") { give false }
   if invalid_statement.emitted_source != "" { give false }
   if unknown_proc_like.success { give false }
-  if unknown_proc_like.diagnostics.count != 2 { give false }
-  if not _diag_has(unknown_proc_like, 0, "warning: unparsed top-level line kept as unknown declaration at line 2") { give false }
-  if not _diag_has(unknown_proc_like, 1, "error[E1003]: missing proc declaration in unknown-proc-like.vit") { give false }
+  if diagnostics.count(unknown_proc_like.diagnostics) != 2 { give false }
+  if not _diag_has(unknown_proc_like, 0, "warning[W1001]: unparsed top-level line kept as unknown declaration\n  --> unknown-proc-like.vit:2:1") { give false }
+  if not _diag_has(unknown_proc_like, 1, "error[E1003]: missing proc declaration\n  --> unknown-proc-like.vit:1:1") { give false }
   give true
 }
 

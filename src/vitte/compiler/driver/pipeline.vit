@@ -1,28 +1,17 @@
 space vitte/compiler/driver/pipeline
 
 use src/vitte/compiler/ir/ast as ir_ast
+use src/vitte/compiler/frontend/diagnostics as frontend_diagnostics
 use src/vitte/compiler/ir/hir as ir_hir
 use src/vitte/compiler/ir/mir as ir_mir
-
-form DiagnosticBag {
-  count: int,
-  messages: [string]
-}
-
-form ParsedModule {
-  space_name: string,
-  uses: [string],
-  proc_count: int,
-  global_count: int
-}
 
 form PipelineArtifacts {
   source_name: string,
   source_text: string,
-  parsed_module: ParsedModule,
+  parsed_module: ir_ast.AstModule,
   real_hir: ir_hir.HirModule,
   real_mir: ir_mir.MirModule,
-  diagnostics: DiagnosticBag
+  diagnostics: frontend_diagnostics.DiagnosticBag
 }
 
 proc run(source_name: string, source_text: string) -> PipelineArtifacts {
@@ -34,18 +23,10 @@ proc run(source_name: string, source_text: string) -> PipelineArtifacts {
   give PipelineArtifacts {
     source_name: source_name,
     source_text: source_text,
-    parsed_module: ParsedModule {
-      space_name: module.space_name,
-      uses: module.uses,
-      proc_count: module.proc_count,
-      global_count: module.global_count
-    },
+    parsed_module: module,
     real_hir: real_hir,
     real_mir: real_mir,
-    diagnostics: DiagnosticBag {
-      count: parsed.diagnostics.len,
-      messages: parsed.diagnostics
-    }
+    diagnostics: parsed.diagnostics
   }
 }
 
