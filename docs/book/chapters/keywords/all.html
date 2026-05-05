@@ -19,10 +19,100 @@
 <main class="site-main">
 <article class="doc-content">
 <h1>Keyword <code>all</code></h1>
-<p>Level: Beginner.</p>
-<p>Prerequisites: <code>docs/book/chapters/keywords/share.html</code>, <code>docs/book/chapters/09-modules.html</code>. See also: <code>docs/book/chapters/27-grammar.html</code>, <code>docs/book/chapters/31-build-errors.html</code>.</p>
+<p>Level: Intermediate.</p>
 <h2>Quick reading</h2>
-<p>Concrete reference: <code>all</code> is used to decide an execution path in a readable and verifiable manner. Use <code>all</code> when it is used to make program behavior readable; avoid it if it makes no observable difference on the branch or output.</p>
+<p><code>all</code> exports the full public surface of the current module. Use it when the module is meant to be a facade; avoid it when a shorter export list keeps the contract tighter.</p>
+<h2>Why (job)</h2>
+<p>In practice, <code>all</code> is a convenience for module authors who want the entire declared surface to stay visible. The tradeoff is scope: a broader export is easier to consume, but harder to audit when the module grows.</p>
+<h2>Definition</h2>
+<p><code>all</code> is the share-selector that tells <code>share</code> to export every eligible symbol from the current module.</p>
+<h2>Syntax</h2>
+<p>Canonical form: <code>share all</code>.</p>
+<h2>Nominal example</h2>
+<p>Input:</p>
+<ul>
+<li>A module that intentionally exposes its whole surface.</li>
+</ul>
+<pre><code class="language-vit">space demo/api
+
+proc open() -&gt; int {
+  give 1
+}
+
+proc close() -&gt; int {
+  give 0
+}
+
+share all</code></pre>
+<p>Observed result:</p>
+<ul>
+<li>Both procedures stay visible to downstream imports.</li>
+</ul>
+<h2>Invalid example</h2>
+<p>Input:</p>
+<ul>
+<li>A module that forgets the selector after <code>share</code>.</li>
+</ul>
+<pre><code class="language-vit">space demo/api
+
+proc open() -&gt; int {
+  give 1
+}
+
+share
+</code></pre>
+<p>Observed result:</p>
+<ul>
+<li>The parser rejects the declaration because the export target is incomplete.</li>
+</ul>
+<p>Expected diagnosis:</p>
+<ul>
+<li>Code: <code>VITTE-XXXX</code> (or the matching compiler error code).</li>
+<li>Position: <code>ligne 7, colonne 1</code>.</li>
+<li>Message: a short correction that points to <code>share all</code> or to an explicit identifier list.</li>
+</ul>
+<h2>Quick refactor</h2>
+<p>Before:</p>
+<pre><code class="language-vit">share foo, bar, baz, qux</code></pre>
+<p>After:</p>
+<pre><code class="language-vit">share all</code></pre>
+<h2>Pitfalls</h2>
+<ul>
+<li>Using <code>all</code> when only a small export list is needed.</li>
+<li>Assuming <code>all</code> is a compile-time alias for every module shape.</li>
+<li>Letting the exported surface grow without a review point.</li>
+</ul>
+<h2>When to use it / When to avoid it</h2>
+<ul>
+<li>When to use it: when the module is intentionally a facade or re-export hub.</li>
+<li>When to avoid it: when the public API should stay explicit and narrow.</li>
+</ul>
+<h2>Common compiler errors</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Typical message</th><th>Cause</th><th>Correction</th></tr>
+<tr><td><code>unexpected token near share</code></td><td><code>share</code> was written without a selector.</td><td>Use <code>share all</code> or provide an explicit identifier list.</td></tr>
+<tr><td><code>invalid export selector</code></td><td>The selector is not recognized.</td><td>Keep the selector to the current canonical forms.</td></tr>
+<tr><td><code>duplicate export</code></td><td>The public surface was already exported elsewhere.</td><td>Remove the redundant declaration or narrow the export list.</td></tr>
+</table>
+<h2>Neighbor keyword</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Operational difference</th></tr>
+<tr><td><code>share</code></td><td><code>all</code> is the selector that expands <code>share</code> to the whole module surface.</td></tr>
+</table>
+<h2>Used in chapters</h2>
+<ul>
+<li><code>docs/book/chapters/37-large-scale-module-conventions.html</code>.</li>
+<li><code>docs/book/chapters/09-modules.html</code>.</li>
+<li><code>docs/book/chapters/03-project.html</code>.</li>
+</ul>
+<h2>See also</h2>
+<ul>
+<li><code>docs/book/chapters/keywords/share.html</code>.</li>
+<li><code>docs/book/chapters/keywords/use.html</code>.</li>
+<li><code>docs/book/chapters/keywords/space.html</code>.</li>
+</ul>
+<h2>Completeness score</h2>
+<p>coverage: syntax/examples/invalids/diagnostics/links = 5/5</p>
 </article>
 </main>
 <footer class="site-footer">

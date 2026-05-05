@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>65. Contrats ABI et interop native</title>
+<title>65. Contrats ABI et interop Vitte</title>
 <link rel="icon" href="../../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../css/site.css">
 <link rel="stylesheet" href="../../css/print.css" media="print">
@@ -18,15 +18,15 @@
 </header>
 <main class="site-main">
 <article class="doc-content">
-<h1>65. ABI and native interop contracts</h1>
+<h1>65. ABI and Vitte interop contracts</h1>
 <p>Level: Advanced</p>
 <p>Prerequisites: <code>docs/book/chapters/16-interop.html</code>, <code>docs/book/chapters/55-memory-safety-invariants.html</code>. See also: to be defined.</p>
 <h2>Concrete Problem</h2>
-<p>Real situation: ABI contracts and native interop are best understood by replaying the program as an executable algorithm. You read the incoming data, the condition evaluated, and then the returned value. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
+<p>Real situation: ABI contracts and Vitte interop are best understood by replaying the program as an executable algorithm. You read the incoming data, the condition evaluated, and then the returned value. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
 <h2>Red Thread (Single Project)</h2>
 <p>Common thread: we keep the same mini-program to compare the effects of a modification without changing the entire context. Educational objective: Reread a block, predict the output, then confirm the prediction with a simple, repeatable execution.</p>
 <h2>Goal</h2>
-<p>Stabilize the Vitte/native border with explicit ABI rules.</p>
+<p>Stabilize the Vitte/Vitte border with explicit ABI rules.</p>
 <h2>Critical points</h2>
 <ol>
 <li>Consistent signatures between worlds.</li>
@@ -82,7 +82,7 @@ make grammar-gate</code></pre>
 <p>Fixed: keep the simplest version that respects the rule, then add a non-regression test.</p>
 <p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START --></p>
 <h2>Representative examples based on chapter code</h2>
-<p>Theme: <strong>native abi and interop rules</strong>. This section avoids generalizations and starts from a real extract.</p>
+<p>Theme: <strong>Vitte ABI and interop rules</strong>. This section avoids generalizations and starts from a real extract.</p>
 <h3>Example A: Executable reading of the main snippet</h3>
 <pre><code class="language-vit">proc host_add(a:int,b:int)-&gt;int { give a+b }</code></pre>
 <p>Reading line by line:</p>
@@ -113,11 +113,11 @@ make grammar-gate</code></pre>
 </ul>
 <p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END --></p>
 <h2>Extended Example</h2>
-<pre><code class="language-vit">// Scenario règles abi interop native: execution complete et verifiable
-space demo/règles-abi-interop-native
+<pre><code class="language-vit">// Scenario règles abi interop Vitte: execution complete et verifiable
+space demo/règles-abi-interop-vitte
 
 form AbiEnvelope { version: int payload_size: int flags: int }
-pick NativeCall { case Ok(code: int) case Err(code: int) }
+pick VitteCall { case Ok(code: int) case Err(code: int) }
 
 proc abi_version() -&gt; int { give 3 }
 
@@ -136,18 +136,18 @@ proc validate_abi(e: AbiEnvelope) -&gt; int {
 }
 
 // Appel natif simulé: exécution seulement si la règle est valide
-proc call_native(e: AbiEnvelope) -&gt; NativeCall {
+proc call_vitte(e: AbiEnvelope) -&gt; VitteCall {
   let v: int = validate_abi(e)
 
-  if v != 0 { give NativeCall.Err(v) }
+  if v != 0 { give VitteCall.Err(v) }
 
-  if e.payload_size % 2 == 0 { give NativeCall.Ok(0) }
+  if e.payload_size % 2 == 0 { give VitteCall.Ok(0) }
 
-  give NativeCall.Err(55)
+  give VitteCall.Err(55)
 }
 
 // Conversion finale vers un code de sortie
-proc to_exit(r: NativeCall) -&gt; int {
+proc to_exit(r: VitteCall) -&gt; int {
 
   match r {
     case Ok(c) { give c }
@@ -159,7 +159,7 @@ proc to_exit(r: NativeCall) -&gt; int {
 // Point d&#x27;entree du scenario
 entry main at core/app {
   let e: AbiEnvelope = AbiEnvelope(3, 128, 1)
-  let r: NativeCall = call_native(e)
+  let r: VitteCall = call_vitte(e)
 
   return to_exit(r)
 }</code></pre>
@@ -170,13 +170,13 @@ entry main at core/app {
 <li>Starting point: <code>entry main at core/app</code>.</li>
 <li><code>abi_version</code>: reads <code>aucun paramètre</code> and returns <code>int</code>.</li>
 <li><code>validate_abi</code>: reads <code>e: AbiEnvelope</code> and returns <code>int</code>.</li>
-<li><code>call_native</code>: reads <code>e: AbiEnvelope</code> and returns <code>NativeCall</code>.</li>
-<li><code>to_exit</code>: reads <code>r: NativeCall</code> and returns <code>int</code>.</li>
+<li><code>call_vitte</code>: reads <code>e: AbiEnvelope</code> and returns <code>VitteCall</code>.</li>
+<li><code>to_exit</code>: reads <code>r: VitteCall</code> and returns <code>int</code>.</li>
 </ul>
 <h3>2. Actual execution order</h3>
 <ol>
 <li>The program enters <code>main</code>.</li>
-<li><code>call_native</code> is called to process the next step.</li>
+<li><code>call_vitte</code> is called to process the next step.</li>
 <li><code>to_exit</code> is called to process the next step.</li>
 <li>The final value is converted to process output (<code>return ...</code>).</li>
 </ol>
@@ -192,8 +192,8 @@ entry main at core/app {
 </ul>
 <h3>4. Quick trace with values</h3>
 <ul>
-<li>Nominal example: <code>entrée valide -&gt; call_native -&gt; to_exit -&gt; sortie 0</code>.</li>
-<li>Example error: <code>entrée invalide -&gt; call_native renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
+<li>Nominal example: <code>entrée valide -&gt; call_vitte -&gt; to_exit -&gt; sortie 0</code>.</li>
+<li>Example error: <code>entrée invalide -&gt; call_vitte renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
 </ul>
 <h3>5. Why this division is useful</h3>
 <ul>
@@ -233,14 +233,14 @@ entry main at core/app {
 <li>Block functions:</li>
 <li><code>abi_version</code> reads <code>aucun paramètre</code> then returns <code>int</code>.</li>
 <li><code>validate_abi</code> reads <code>e: AbiEnvelope</code> then returns <code>int</code>.</li>
-<li><code>call_native</code> reads <code>e: AbiEnvelope</code> then returns <code>NativeCall</code>.</li>
-<li><code>to_exit</code> reads <code>r: NativeCall</code> then returns <code>int</code>.</li>
+<li><code>call_vitte</code> reads <code>e: AbiEnvelope</code> then returns <code>VitteCall</code>.</li>
+<li><code>to_exit</code> reads <code>r: VitteCall</code> then returns <code>int</code>.</li>
 </ul>
 <ul>
 <li>Variables created (initial value):</li>
 <li><code>v: int</code> starts with <code>validate_abi(e)</code>.</li>
 <li><code>e: AbiEnvelope</code> starts with <code>AbiEnvelope(3, 128, 1)</code>.</li>
-<li><code>r: NativeCall</code> starts with <code>call_native(e)</code>.</li>
+<li><code>r: VitteCall</code> starts with <code>call_vitte(e)</code>.</li>
 </ul>
 <ul>
 <li>Conditions that change the path:</li>
@@ -253,8 +253,8 @@ entry main at core/app {
 </ul>
 <ul>
 <li>Nominal trace (example values):</li>
-<li>initialization: v=validate_abi(e) -> e=AbiEnvelope(3, 128, 1) -> r=call_native(e)</li>
-<li>sequence: call_native -> to_exit</li>
+<li>initialization: v=validate_abi(e) -> e=AbiEnvelope(3, 128, 1) -> r=call_vitte(e)</li>
+<li>sequence: call_vitte -> to_exit</li>
 <li>final output on this path: <code>to_exit(r)</code>.</li>
 </ul>
 <ul>
@@ -305,7 +305,7 @@ entry main at core/app {
 </article>
 </main>
 <footer class="site-footer">
-<p class="site-footer-path">book/chapters/65-abi-and-native-interop-contracts.html</p>
+<p class="site-footer-path">book/chapters/65-abi-and-vitte-interop-contracts.html</p>
 <p><a href="../../index.html">Back to home</a></p>
 </footer>
 </div>

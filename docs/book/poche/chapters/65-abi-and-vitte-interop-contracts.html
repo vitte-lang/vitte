@@ -3,92 +3,121 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>16a. Native Binding with `std/bridge`</title>
-<link rel="icon" href="../../svg/logo.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../../css/site.css">
-<link rel="stylesheet" href="../../css/print.css" media="print">
+<title>65. ABI and Vitte interop contracts (pocket version)</title>
+<link rel="icon" href="../../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../../css/site.css">
+<link rel="stylesheet" href="../../../css/print.css" media="print">
 </head>
 <body class="classic-doc">
 <div class="site-shell">
 <header class="site-header">
-<a class="site-brand" href="../../index.html"><img class="site-brand-mark" src="../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<a class="site-brand" href="../../../index.html"><img class="site-brand-mark" src="../../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
 <nav class="site-nav" aria-label="Primary">
-<ul class="nav-band"><li><a class="nav-chip" href="../../index.html"><img src="../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../doc.html"><img src="../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../download.html"><img src="../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../source.html"><img src="../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../community.html"><img src="../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../news.html"><img src="../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../diagnostics.html"><img src="../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../suggestions.html"><img src="../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+<ul class="nav-band"><li><a class="nav-chip" href="../../../index.html"><img src="../../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../../doc.html"><img src="../../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../../download.html"><img src="../../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../../source.html"><img src="../../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../../community.html"><img src="../../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../../news.html"><img src="../../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../../diagnostics.html"><img src="../../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../../suggestions.html"><img src="../../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
 </nav>
 </header>
 <main class="site-main">
 <article class="doc-content">
-<h1>16a. Native Binding with <code>std/bridge</code></h1>
-<p>Level: Intermediate.</p>
-<p>Prerequisites: previous chapter <code>docs/book/chapters/16-interop.html</code> and <code>docs/book/glossary.html</code>. See also: <code>docs/book/chapters/17-stdlib.html</code>, <code>docs/book/chapters/23-system-project.html</code>, <code>docs/book/chapters/30-faq.html</code>.</p>
+<h1>65. ABI and Vitte interop contracts (pocket version)</h1>
+<p>Level: Advanced</p>
+<p>Prerequisites: <code>docs/book/chapters/16-interop.html</code>, <code>docs/book/chapters/55-memory-safety-invariants.html</code>. See also: to be defined.</p>
 <h2>Concrete Problem</h2>
-<p>Actual situation: for 16a. Native Binding with <code>std/bridge</code>, the question is not 'which rule to write' but 'which path the code really takes'. This reading by execution avoids vague interpretations. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
+<p>Real situation: ABI contracts and Vitte interop are best understood by replaying the program as an executable algorithm. You read the incoming data, the condition evaluated, and then the returned value. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
 <h2>Red Thread (Single Project)</h2>
-<p>Common thread: we keep the same mini-program to compare the effects of a modification without changing the entire context. Educational objective: understand why a line exists and what it changes in the trajectory of the program.</p>
+<p>Common thread: we keep the same mini-program to compare the effects of a modification without changing the entire context. Educational objective: Reread a block, predict the output, then confirm the prediction with a simple, repeatable execution.</p>
 <h2>Goal</h2>
-<p>You need to be able to reread a snippet, predict its outcome, and then verify that prediction with simple execution.</p>
+<p>Stabilize the Vitte/Vitte border with explicit ABI rules.</p>
+<h2>Critical points</h2>
+<ol>
+<li>Consistent signatures between worlds.</li>
+<li>Sizes/type alignments checked.</li>
+<li>Documented calling convention.</li>
+<li>Clear management of shared memory.</li>
+</ol>
+<h2>Checklist</h2>
+<ol>
+<li>Automatic interop tests.</li>
+<li>Valid cross-platform compatibility.</li>
+<li>ABI release strategy defined.</li>
+</ol>
+<h2>Progressive examples (N1 -> N3)</h2>
+<h3>N1 (base): simple border</h3>
+<p>Snippet Vitte:</p>
+<pre><code class="language-vit">proc host_add(a:int,b:int)-&gt;int { give a+b }</code></pre>
+<p>Order:</p>
+<pre><code class="language-bash">make grammar-check</code></pre>
+<h3>N2 (intermediate): type consistency</h3>
+<p>Snippet Vitte:</p>
+<pre><code class="language-vit">proc host_add64(a:i64,b:i64)-&gt;i64 { give a+b }</code></pre>
+<p>Commands:</p>
+<pre><code class="language-bash">make grammar-test</code></pre>
+<h3>N3 (advanced): versioned + runbook compatibility</h3>
+<p>Snippet Vitte:</p>
+<pre><code class="language-vit">proc host_add_v1(a:int,b:int)-&gt;int { give a+b }
+proc host_add_v2(a:i64,b:i64)-&gt;i64 { give a+b }</code></pre>
+<p>Runbook:</p>
+<pre><code class="language-bash"># 1. verifier signatures Vitte/natif
+# 2. verifier tailles/alignements
+# 3. valider CI multi-cible
+make grammar-gate</code></pre>
+<h3>Anti-example</h3>
+<pre><code class="language-text">Changer ABI natif sans version ni plan de migration.</code></pre>
+<h2>Quick validation</h2>
+<ol>
+<li>Align signatures.</li>
+<li>Check memory layout.</li>
+<li>Check interop tests.</li>
+</ol>
 <h2>Why it matters</h2>
-<p>This chapter gives you a clear understanding of <strong>Native Binding with <code>std/bridge</code></strong>. You will find the framework, the invariants and the reading decisions useful in practice.</p>
-<h2>What you're actually going to do</h2>
-<p>You'll read the snippets in actual execution order, then validate the expected outputs on a nominal case and an error case.</p>
-<h2>Minimal example</h2>
-<p>Recommended first reflex: read the entries and conditions first, then only the syntactic form.</p>
-<h2>Reading method</h2>
-<ol>
-<li>Identify the intent of the block.</li>
-<li>Check the main condition or test.</li>
-<li>Confirm the observable output.</li>
-<li>Note how this block serves <strong>Native Binding with <code>std/bridge</code></strong> throughout the chapter.</li>
-</ol>
-<h2>Common pitfalls</h2>
-<ul>
-<li>Read the syntax without checking the behavior.</li>
-<li>Mix general rule and error cases in the same explanation.</li>
-<li>Introduce an optimization before having stabilized the <strong>Native Binding flow with <code>std/bridge</code></strong>.</li>
-</ul>
-<h2>Short exercise</h2>
-<p>Take an example from the chapter on <strong>Native Binding with <code>std/bridge</code></strong>. Change a condition or input value, then check if the result remains as expected.</p>
-<h2>Summary in 5 points</h2>
-<ol>
-<li>You know the objective of the chapter on <strong>Native Binding with <code>std/bridge</code></strong>.</li>
-<li>You know how to read an example of the chapter in a structured way.</li>
-<li>You distinguish nominal case and error case.</li>
-<li>You avoid the most common pitfalls.</li>
-<li>You can reuse these rules in the next chapter.</li>
-</ol>
-<h2>EBNF compliant</h2>
-<<< quick check >>>
-- Top-level: `use` remains at the module level, never in a block.
-- Statements: `let`, `give`, `return` remain in the `proc`/`entry` blocks.
-- Primary types: `int`, `i32`, `u32`, `string`, `bool` follow `type_primary`.
-<h2>Keywords to review</h2>
-<ul>
-<li><code>docs/book/chapters/keywords/use.html</code>.</li>
-<li><code>docs/book/chapters/keywords/proc.html</code>.</li>
-<li><code>docs/book/chapters/keywords/entry.html</code>.</li>
-<li><code>docs/book/chapters/keywords/give.html</code>.</li>
-<li><code>docs/book/chapters/keywords/return.html</code>.</li>
-</ul>
+<p>This section explains the practical value: reducing errors, accelerating diagnosis and stabilizing developments.</p>
 <h2>Quick check</h2>
-<p>Question: how to verify that a native function is loaded and called with the correct signature? Reference: validate the signature, the import, then execute a nominal case and an error case.</p>
+<p>Control question: If you change a key assumption, what outcome should change and why?</p>
 <h2>Try this</h2>
 <ol>
-<li>Add minimal native call.</li>
-<li>Check the nominal case.</li>
-<li>Cause a signature error to read the diagnostic.</li>
+<li>Run the nominal example.</li>
+<li>Introduce an error case.</li>
+<li>Check the output and document the deviation.</li>
 </ol>
 <h2>If you're stuck</h2>
+<p>Fixed: keep the simplest version that respects the rule, then add a non-regression test.</p>
+<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START --></p>
+<h2>Representative examples based on chapter code</h2>
+<p>Theme: <strong>Vitte ABI and interop rules</strong>. This section avoids generalizations and starts from a real extract.</p>
+<h3>Example A: Executable reading of the main snippet</h3>
+<pre><code class="language-vit">proc host_add(a:int,b:int)-&gt;int { give a+b }</code></pre>
+<p>Reading line by line:</p>
+<ol>
+<li><code>proc host_add(a:int,b:int)-&gt;int { give a+b }</code> -> sets a clear function rule.</li>
+</ol>
+<h3>Example B: error case variant (same intention, safe behavior)</h3>
+<p>Goal: keep the business logic while adding an explicit test.</p>
+<p>Steps:</p>
+<ol>
+<li>Identify the line that decides the exit.</li>
+<li>Add a test before this line.</li>
+<li>Check the new output on a limit input.</li>
+</ol>
+<h3>Example C: reproducible bug then local correction</h3>
+<p>Procedure:</p>
+<ol>
+<li>Introduce a type mismatch on a call.</li>
+<li>Compile and read the first diagnosis.</li>
+<li>Fix a single line (no global refactor).</li>
+<li>Recompile and check the nominal return.</li>
+</ol>
+<h3>Expected result</h3>
 <ul>
-<li>Vitte signature and native signature aligned.</li>
-<li>Explicit binding path.</li>
-<li>Nominal test + documented error test.</li>
+<li>The reader understands what the code does without unnecessary abstraction.</li>
+<li>Each example is linked to a concrete action.</li>
+<li>The correction is reproducible and testable.</li>
 </ul>
+<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END --></p>
 <h2>Extended Example</h2>
-<pre><code class="language-vit">// Scenario liaison native: execution complete et verifiable
-space demo/liaison-native
+<pre><code class="language-vit">// Scenario règles abi interop Vitte: execution complete et verifiable
+space demo/règles-abi-interop-vitte
 
 form AbiEnvelope { version: int payload_size: int flags: int }
-pick NativeCall { case Ok(code: int) case Err(code: int) }
+pick VitteCall { case Ok(code: int) case Err(code: int) }
 
 proc abi_version() -&gt; int { give 3 }
 
@@ -107,18 +136,18 @@ proc validate_abi(e: AbiEnvelope) -&gt; int {
 }
 
 // Appel natif simulé: exécution seulement si la règle est valide
-proc call_native(e: AbiEnvelope) -&gt; NativeCall {
+proc call_vitte(e: AbiEnvelope) -&gt; VitteCall {
   let v: int = validate_abi(e)
 
-  if v != 0 { give NativeCall.Err(v) }
+  if v != 0 { give VitteCall.Err(v) }
 
-  if e.payload_size % 2 == 0 { give NativeCall.Ok(0) }
+  if e.payload_size % 2 == 0 { give VitteCall.Ok(0) }
 
-  give NativeCall.Err(55)
+  give VitteCall.Err(55)
 }
 
 // Conversion finale vers un code de sortie
-proc to_exit(r: NativeCall) -&gt; int {
+proc to_exit(r: VitteCall) -&gt; int {
 
   match r {
     case Ok(c) { give c }
@@ -130,7 +159,7 @@ proc to_exit(r: NativeCall) -&gt; int {
 // Point d&#x27;entree du scenario
 entry main at core/app {
   let e: AbiEnvelope = AbiEnvelope(3, 128, 1)
-  let r: NativeCall = call_native(e)
+  let r: VitteCall = call_vitte(e)
 
   return to_exit(r)
 }</code></pre>
@@ -141,13 +170,13 @@ entry main at core/app {
 <li>Starting point: <code>entry main at core/app</code>.</li>
 <li><code>abi_version</code>: reads <code>aucun paramètre</code> and returns <code>int</code>.</li>
 <li><code>validate_abi</code>: reads <code>e: AbiEnvelope</code> and returns <code>int</code>.</li>
-<li><code>call_native</code>: reads <code>e: AbiEnvelope</code> and returns <code>NativeCall</code>.</li>
-<li><code>to_exit</code>: reads <code>r: NativeCall</code> and returns <code>int</code>.</li>
+<li><code>call_vitte</code>: reads <code>e: AbiEnvelope</code> and returns <code>VitteCall</code>.</li>
+<li><code>to_exit</code>: reads <code>r: VitteCall</code> and returns <code>int</code>.</li>
 </ul>
 <h3>2. Actual execution order</h3>
 <ol>
 <li>The program enters <code>main</code>.</li>
-<li><code>call_native</code> is called to process the next step.</li>
+<li><code>call_vitte</code> is called to process the next step.</li>
 <li><code>to_exit</code> is called to process the next step.</li>
 <li>The final value is converted to process output (<code>return ...</code>).</li>
 </ol>
@@ -163,8 +192,8 @@ entry main at core/app {
 </ul>
 <h3>4. Quick trace with values</h3>
 <ul>
-<li>Nominal example: <code>entrée valide -&gt; call_native -&gt; to_exit -&gt; sortie 0</code>.</li>
-<li>Example error: <code>entrée invalide -&gt; call_native renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
+<li>Nominal example: <code>entrée valide -&gt; call_vitte -&gt; to_exit -&gt; sortie 0</code>.</li>
+<li>Example error: <code>entrée invalide -&gt; call_vitte renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
 </ul>
 <h3>5. Why this division is useful</h3>
 <ul>
@@ -204,14 +233,14 @@ entry main at core/app {
 <li>Block functions:</li>
 <li><code>abi_version</code> reads <code>aucun paramètre</code> then returns <code>int</code>.</li>
 <li><code>validate_abi</code> reads <code>e: AbiEnvelope</code> then returns <code>int</code>.</li>
-<li><code>call_native</code> reads <code>e: AbiEnvelope</code> then returns <code>NativeCall</code>.</li>
-<li><code>to_exit</code> reads <code>r: NativeCall</code> then returns <code>int</code>.</li>
+<li><code>call_vitte</code> reads <code>e: AbiEnvelope</code> then returns <code>VitteCall</code>.</li>
+<li><code>to_exit</code> reads <code>r: VitteCall</code> then returns <code>int</code>.</li>
 </ul>
 <ul>
 <li>Variables created (initial value):</li>
 <li><code>v: int</code> starts with <code>validate_abi(e)</code>.</li>
 <li><code>e: AbiEnvelope</code> starts with <code>AbiEnvelope(3, 128, 1)</code>.</li>
-<li><code>r: NativeCall</code> starts with <code>call_native(e)</code>.</li>
+<li><code>r: VitteCall</code> starts with <code>call_vitte(e)</code>.</li>
 </ul>
 <ul>
 <li>Conditions that change the path:</li>
@@ -224,8 +253,8 @@ entry main at core/app {
 </ul>
 <ul>
 <li>Nominal trace (example values):</li>
-<li>initialization: v=validate_abi(e) -> e=AbiEnvelope(3, 128, 1) -> r=call_native(e)</li>
-<li>sequence: call_native -> to_exit</li>
+<li>initialization: v=validate_abi(e) -> e=AbiEnvelope(3, 128, 1) -> r=call_vitte(e)</li>
+<li>sequence: call_vitte -> to_exit</li>
 <li>final output on this path: <code>to_exit(r)</code>.</li>
 </ul>
 <ul>
@@ -276,8 +305,8 @@ entry main at core/app {
 </article>
 </main>
 <footer class="site-footer">
-<p class="site-footer-path">book/chapters/16a-native-binding.html</p>
-<p><a href="../../index.html">Back to home</a></p>
+<p class="site-footer-path">book/poche/chapters/65-abi-and-vitte-interop-contracts.html</p>
+<p><a href="../../../index.html">Back to home</a></p>
 </footer>
 </div>
 </body>

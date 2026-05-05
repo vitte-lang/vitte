@@ -11,7 +11,7 @@ TARGETS = [
     Path('docs/book/chapters/14-macros.md'),
     Path('docs/book/chapters/15-pipeline.md'),
     Path('docs/book/chapters/16-interop.md'),
-    Path('docs/book/chapters/16a-liaison-native.md'),
+    Path('docs/book/chapters/16a-liaison-vitte.md'),
     Path('docs/book/chapters/17-stdlib.md'),
     Path('docs/book/chapters/18-tests.md'),
     Path('docs/book/chapters/19-performance.md'),

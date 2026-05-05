@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compiler Driver Alignment</title>
+<link rel="icon" href="svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/site.css">
+<link rel="stylesheet" href="css/print.css" media="print">
+</head>
+<body class="classic-doc">
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="index.html"><img src="svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="doc.html"><img src="svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="download.html"><img src="svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="source.html"><img src="svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="community.html"><img src="svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="news.html"><img src="svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="diagnostics.html"><img src="svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="suggestions.html"><img src="svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main class="site-main">
+<article class="doc-content">
+<h1>Compiler Driver Alignment</h1>
+<p>This document tracks the Vitte-owned compiler driver surface after the host driver migration.</p>
+<p>Why the driver stays explicit:</p>
+<ul>
+<li>it defines the user-visible command surface</li>
+<li>it isolates option parsing and command dispatch from frontend/backend internals</li>
+<li>it gives CI a small, deterministic place to audit command and flag parity</li>
+</ul>
+<h2>Current Surface</h2>
+<p>The Vitte package lives in:</p>
+<ul>
+<li><code>src/vitte/packages/compiler/driver/mod.vit</code></li>
+<li><code>src/vitte/packages/compiler/driver/info.vit</code></li>
+<li><code>src/vitte/packages/compiler/driver/internal/command_catalog.vit</code></li>
+<li><code>src/vitte/packages/compiler/driver/internal/option_catalog.vit</code></li>
+<li><code>src/vitte/packages/compiler/driver/internal/normalize.vit</code></li>
+</ul>
+<p>This package now owns:</p>
+<ul>
+<li>command catalog metadata</li>
+<li>top-level command inventory</li>
+<li>grammar/mod subcommand inventory</li>
+<li>flag inventory parity against the Vitte driver catalogs</li>
+<li>normalization of help aliases</li>
+<li>normalization of selected command and flag aliases</li>
+<li>stage mapping for normalized commands</li>
+</ul>
+<h2>Driver Implementation</h2>
+<p>The compiler driver implementation lives in:</p>
+<ul>
+<li><code>src/vitte/compiler/driver/options.vit</code></li>
+<li><code>src/vitte/compiler/driver/compiler.vit</code></li>
+<li><code>src/vitte/compiler/driver/mod.vit</code></li>
+</ul>
+<h2>Audit And Bootstrap Commands</h2>
+<pre><code class="language-sh">make driver-surface-audit
+make driver-surface-parity
+make selfhost-driver-bootstrap</code></pre>
+<h2>Next Step</h2>
+<p>Keep option value normalization aligned across the driver package and compiler driver:</p>
+<ul>
+<li><code>--template</code></li>
+<li><code>--lang</code></li>
+<li><code>--target</code></li>
+<li><code>--stage</code></li>
+<li><code>--stdlib-profile</code></li>
+<li><code>--syntax-profile</code></li>
+<li><code>--panic-budget</code></li>
+<li><code>--strict-recovery</code></li>
+</ul>
+<p>That keeps the command surface deterministic while the rest of the compiler continues moving through the Vitte source tree.</p>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">COMPILER_DRIVER_MIGRATION.html</p>
+<p><a href="index.html">Back to home</a></p>
+</footer>
+</div>
+</body>
+</html>
