@@ -1,5 +1,8 @@
 space vitte/compiler/ir/ast
 
+use src/vitte/compiler/ir/hir as ir_hir
+use src/vitte/compiler/ir/mir as ir_mir
+
 pick AstDeclKind {
   Space,
   Use,
@@ -67,7 +70,14 @@ form AstModule {
   source_name: string,
   space_name: string,
   uses: [string],
-  decls: [AstDecl]
+  decls: [AstDecl],
+  proc_count: int,
+  global_count: int
+}
+
+form AstParseResult {
+  module: AstModule,
+  diagnostics: [string]
 }
 
 proc empty_module(source_name: string) -> AstModule {
@@ -75,7 +85,9 @@ proc empty_module(source_name: string) -> AstModule {
     source_name: source_name,
     space_name: "",
     uses: [],
-    decls: []
+    decls: [],
+    proc_count: 0,
+    global_count: 0
   }
 }
 
@@ -102,58 +114,831 @@ proc add_use(module: AstModule, use_name: string) -> AstModule {
 
 proc add_decl(module: AstModule, decl: AstDecl) -> AstModule {
   set module.decls = module.decls + [decl]
+  if decl.kind == AstDeclKind.Proc {
+    set module.proc_count = module.proc_count + 1
+  }
+  if decl.kind == AstDeclKind.Const {
+    set module.global_count = module.global_count + 1
+  }
+  if decl.kind == AstDeclKind.Global {
+    set module.global_count = module.global_count + 1
+  }
   give module
 }
 
-proc raw_expr(source_name: string, text: string) -> AstExpr {
-  let _ = source_name
+proc _starts_with(text: string, prefix: string) -> bool {
+  if prefix.len > text.len { give false }
+  let i: int = 0
+  while i < prefix.len {
+    if (text[i] as string) != (prefix[i] as string) {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
+}
+
+proc _is_keyword_decl(text: string, keyword: string) -> bool {
+  if text == keyword { give true }
+  if _starts_with(text, keyword + " ") { give true }
+  if _starts_with(text, keyword + "\t") { give true }
+  give false
+}
+
+proc _find(text: string, needle: string) -> int {
+  if needle == "" { give 0 }
+  if needle.len > text.len { give -1 }
+  let i: int = 0
+  while i + needle.len <= text.len {
+    let j: int = 0
+    let matched: bool = true
+    while j < needle.len {
+      if (text[i + j] as string) != (needle[j] as string) {
+        set matched = false
+      }
+      set j = j + 1
+    }
+    if matched { give i }
+    set i = i + 1
+  }
+  give -1
+}
+
+proc _last_find(text: string, needle: string) -> int {
+  if needle == "" { give text.len }
+  if needle.len > text.len { give -1 }
+  let i: int = text.len - needle.len
+  while i >= 0 {
+    let j: int = 0
+    let matched: bool = true
+    while j < needle.len {
+      if (text[i + j] as string) != (needle[j] as string) {
+        set matched = false
+      }
+      set j = j + 1
+    }
+    if matched { give i }
+    set i = i - 1
+  }
+  give -1
+}
+
+proc _slice(text: string, start: int, end: int) -> string {
+  let out: string = ""
+  let i: int = start
+  while i < end and i < text.len {
+    set out = out + (text[i] as string)
+    set i = i + 1
+  }
+  give out
+}
+
+proc _trim(text: string) -> string {
+  let start: int = 0
+  while start < text.len {
+    let ch: string = text[start] as string
+    if ch != " " and ch != "\t" and ch != "\n" and ch != "\r" {
+      give _trim_right(_slice(text, start, text.len))
+    }
+    set start = start + 1
+  }
+  give ""
+}
+
+proc _trim_right(text: string) -> string {
+  if text.len == 0 { give text }
+  let end: int = text.len - 1
+  while end >= 0 {
+    let ch: string = text[end] as string
+    if ch != " " and ch != "\t" and ch != "\n" and ch != "\r" {
+      give _slice(text, 0, end + 1)
+    }
+    set end = end - 1
+  }
+  give ""
+}
+
+proc _trim_after_prefix(text: string, prefix: string) -> string {
+  if prefix.len >= text.len {
+    give ""
+  }
+  let raw: string = ""
+  let i: int = prefix.len
+  while i < text.len {
+    set raw = raw + (text[i] as string)
+    set i = i + 1
+  }
+  give _trim(raw)
+}
+
+proc _first_word(text: string) -> string {
+  let trimmed: string = _trim(text)
+  let i: int = 0
+  while i < trimmed.len {
+    let ch: string = trimmed[i] as string
+    if ch == " " or ch == "\t" or ch == ":" or ch == "=" or ch == "(" {
+      give _trim(_slice(trimmed, 0, i))
+    }
+    set i = i + 1
+  }
+  give trimmed
+}
+
+proc _is_digit(ch: string) -> bool {
+  if ch == "0" { give true }
+  if ch == "1" { give true }
+  if ch == "2" { give true }
+  if ch == "3" { give true }
+  if ch == "4" { give true }
+  if ch == "5" { give true }
+  if ch == "6" { give true }
+  if ch == "7" { give true }
+  if ch == "8" { give true }
+  if ch == "9" { give true }
+  give false
+}
+
+proc _contains(text: string, needle: string) -> bool {
+  give _find(text, needle) >= 0
+}
+
+proc _split_args(text: string) -> [string] {
+  let trimmed: string = _trim(text)
+  if trimmed == "" { give [] }
+  let args: [string] = []
+  let current: string = ""
+  let depth: int = 0
+  let i: int = 0
+  while i < trimmed.len {
+    let ch: string = trimmed[i] as string
+    if ch == "(" {
+      set depth = depth + 1
+      set current = current + ch
+      set i = i + 1
+      continue
+    }
+    if ch == ")" {
+      set depth = depth - 1
+      set current = current + ch
+      set i = i + 1
+      continue
+    }
+    if ch == "," and depth == 0 {
+      set args = args + [_trim(current)]
+      set current = ""
+      set i = i + 1
+      continue
+    }
+    set current = current + ch
+    set i = i + 1
+  }
+  if _trim(current) != "" {
+    set args = args + [_trim(current)]
+  }
+  give args
+}
+
+proc _split_lines(text: string) -> [string] {
+  let lines: [string] = []
+  let current: string = ""
+  let i: int = 0
+  while i < text.len {
+    let ch: string = text[i] as string
+    if ch == "\n" {
+      set lines = lines + [current]
+      set current = ""
+      set i = i + 1
+      continue
+    }
+    if ch == "\r" {
+      set i = i + 1
+      continue
+    }
+    set current = current + ch
+    set i = i + 1
+  }
+  set lines = lines + [current]
+  give lines
+}
+
+proc parse_expr(text: string) -> AstExpr {
+  let trimmed: string = _trim(text)
+  if trimmed == "" {
+    give AstExpr {
+      kind: AstExprKind.Empty,
+      text: "",
+      callee: "",
+      args: []
+    }
+  }
+  let open_paren: int = _find(trimmed, "(")
+  let close_paren: int = _last_find(trimmed, ")")
+  if open_paren > 0 and close_paren == trimmed.len - 1 {
+    let args: [AstExpr] = []
+    let parts: [string] = _split_args(_slice(trimmed, open_paren + 1, close_paren))
+    let i: int = 0
+    while i < parts.len {
+      set args = args + [parse_expr(parts[i])]
+      set i = i + 1
+    }
+    give AstExpr {
+      kind: AstExprKind.Call,
+      text: trimmed,
+      callee: _trim(_slice(trimmed, 0, open_paren)),
+      args: args
+    }
+  }
+  if trimmed == "true" or trimmed == "false" {
+    give AstExpr {
+      kind: AstExprKind.Literal,
+      text: trimmed,
+      callee: "",
+      args: []
+    }
+  }
+  if trimmed.len > 0 and _is_digit(trimmed[0] as string) {
+    give AstExpr {
+      kind: AstExprKind.Literal,
+      text: trimmed,
+      callee: "",
+      args: []
+    }
+  }
+  if not _contains(trimmed, " ") and not _contains(trimmed, "(") and not _contains(trimmed, ")") and not _contains(trimmed, "+") and not _contains(trimmed, "-") and not _contains(trimmed, "*") and not _contains(trimmed, "/") and not _contains(trimmed, "=") {
+    give AstExpr {
+      kind: AstExprKind.Variable,
+      text: trimmed,
+      callee: "",
+      args: []
+    }
+  }
   give AstExpr {
     kind: AstExprKind.Raw,
-    text: text,
+    text: trimmed,
     callee: "",
     args: []
   }
 }
 
-proc decl_is_type(decl: AstDecl) -> bool {
-  if decl.kind == AstDeclKind.Form { give true }
-  if decl.kind == AstDeclKind.Const { give true }
-  if decl.kind == AstDeclKind.Static { give true }
-  if decl.kind == AstDeclKind.Global { give true }
+proc parse_stmt(line: string) -> AstStmt {
+  let trimmed: string = _trim(line)
+  if trimmed == "give" {
+    give AstStmt {
+      kind: AstStmtKind.Give,
+      name: "",
+      type_name: "",
+      expr: AstExpr { kind: AstExprKind.Empty, text: "", callee: "", args: [] },
+      raw_text: trimmed
+    }
+  }
+  if _starts_with(trimmed, "give ") {
+    give AstStmt {
+      kind: AstStmtKind.Give,
+      name: "",
+      type_name: "",
+      expr: parse_expr(_slice(trimmed, 4, trimmed.len)),
+      raw_text: trimmed
+    }
+  }
+  if trimmed == "let" {
+    give AstStmt {
+      kind: AstStmtKind.Let,
+      name: "",
+      type_name: "",
+      expr: AstExpr { kind: AstExprKind.Empty, text: "", callee: "", args: [] },
+      raw_text: trimmed
+    }
+  }
+  if _starts_with(trimmed, "let ") {
+    let rest: string = _trim_after_prefix(trimmed, "let")
+    let eq: int = _find(rest, "=")
+    let binding_text: string = rest
+    let expr_text: string = ""
+    if eq >= 0 {
+      set binding_text = _trim(_slice(rest, 0, eq))
+      set expr_text = _trim(_slice(rest, eq + 1, rest.len))
+    }
+    let colon: int = _find(binding_text, ":")
+    let name: string = _trim(binding_text)
+    let type_name: string = ""
+    if colon >= 0 {
+      set name = _trim(_slice(binding_text, 0, colon))
+      set type_name = _trim(_slice(binding_text, colon + 1, binding_text.len))
+    }
+    give AstStmt {
+      kind: AstStmtKind.Let,
+      name: name,
+      type_name: type_name,
+      expr: parse_expr(expr_text),
+      raw_text: trimmed
+    }
+  }
+  if trimmed == "set" {
+    give AstStmt {
+      kind: AstStmtKind.Set,
+      name: "",
+      type_name: "",
+      expr: AstExpr { kind: AstExprKind.Empty, text: "", callee: "", args: [] },
+      raw_text: trimmed
+    }
+  }
+  if _starts_with(trimmed, "set ") {
+    let rest: string = _trim_after_prefix(trimmed, "set")
+    let eq: int = _find(rest, "=")
+    let name: string = _trim(rest)
+    let expr_text: string = ""
+    if eq >= 0 {
+      set name = _trim(_slice(rest, 0, eq))
+      set expr_text = _trim(_slice(rest, eq + 1, rest.len))
+    }
+    give AstStmt {
+      kind: AstStmtKind.Set,
+      name: name,
+      type_name: "",
+      expr: parse_expr(expr_text),
+      raw_text: trimmed
+    }
+  }
+  if trimmed == "" or trimmed == "{" or trimmed == "}" {
+    give AstStmt {
+      kind: AstStmtKind.Expr,
+      name: "",
+      type_name: "",
+      expr: AstExpr { kind: AstExprKind.Empty, text: "", callee: "", args: [] },
+      raw_text: ""
+    }
+  }
+  give AstStmt {
+    kind: AstStmtKind.Expr,
+    name: "",
+    type_name: "",
+    expr: parse_expr(trimmed),
+    raw_text: trimmed
+  }
+}
+
+proc _stmt_diagnostic(stmt: AstStmt, line_no: int) -> string {
+  if stmt.kind == AstStmtKind.Give and stmt.expr.kind == AstExprKind.Empty {
+    give "error[E1005]: give statement requires an expression at line " + (line_no as string)
+  }
+  if stmt.kind == AstStmtKind.Let and stmt.name == "" {
+    give "error[E1006]: let statement requires a binding name at line " + (line_no as string)
+  }
+  if stmt.kind == AstStmtKind.Set and stmt.name == "" {
+    give "error[E1007]: set statement requires an assignment target at line " + (line_no as string)
+  }
+  if stmt.kind == AstStmtKind.Set and stmt.expr.kind == AstExprKind.Empty {
+    give "error[E1008]: set statement requires an expression at line " + (line_no as string)
+  }
+  give ""
+}
+
+proc _parse_param(param_text: string) -> AstParam {
+  let colon: int = _find(param_text, ":")
+  if colon >= 0 {
+    give AstParam {
+      name: _trim(_slice(param_text, 0, colon)),
+      type_name: _trim(_slice(param_text, colon + 1, param_text.len))
+    }
+  }
+  give AstParam {
+    name: _trim(param_text),
+    type_name: ""
+  }
+}
+
+proc _split_params(param_text: string) -> [AstParam] {
+  let trimmed: string = _trim(param_text)
+  if trimmed == "" { give [] }
+  let params: [AstParam] = []
+  let current: string = ""
+  let i: int = 0
+  while i < trimmed.len {
+    let ch: string = trimmed[i] as string
+    if ch == "," {
+      set params = params + [_parse_param(current)]
+      set current = ""
+      set i = i + 1
+      continue
+    }
+    set current = current + ch
+    set i = i + 1
+  }
+  if _trim(current) != "" {
+    set params = params + [_parse_param(current)]
+  }
+  give params
+}
+
+proc _proc_signature_diagnostic(signature_text: string, line_no: int) -> string {
+  let trimmed: string = _trim(signature_text)
+  let rest: string = _trim_after_prefix(trimmed, "proc")
+  if rest == "" {
+    give "error[E1002]: missing proc name at line " + (line_no as string)
+  }
+  let open_paren: int = _find(rest, "(")
+  if open_paren < 0 {
+    give "error[E1002]: missing proc parameter list at line " + (line_no as string)
+  }
+  let close_paren: int = _find(rest, ")")
+  if close_paren <= open_paren {
+    give "error[E1002]: invalid proc parameter list at line " + (line_no as string)
+  }
+  if _trim(_slice(rest, 0, open_paren)) == "" {
+    give "error[E1002]: missing proc name at line " + (line_no as string)
+  }
+  let arrow: int = _find(rest, "->")
+  if arrow >= 0 {
+    let raw_return: string = _trim(_slice(rest, arrow + 2, rest.len))
+    let brace: int = _find(raw_return, "{")
+    let return_text: string = raw_return
+    if brace >= 0 {
+      set return_text = _trim(_slice(raw_return, 0, brace))
+    }
+    if return_text == "" {
+      give "error[E1002]: invalid proc return type at line " + (line_no as string)
+    }
+  }
+  give ""
+}
+
+proc parse_proc_signature(line: string) -> AstDecl {
+  let trimmed: string = _trim(line)
+  let rest: string = _trim_after_prefix(trimmed, "proc")
+  let open_paren: int = _find(rest, "(")
+  let close_paren: int = _find(rest, ")")
+  let return_type_name: string = "void"
+  let arrow: int = _find(rest, "->")
+  if arrow >= 0 {
+    let raw_return: string = _trim(_slice(rest, arrow + 2, rest.len))
+    let brace: int = _find(raw_return, "{")
+    if brace >= 0 {
+      set return_type_name = _trim(_slice(raw_return, 0, brace))
+    } else {
+      set return_type_name = raw_return
+    }
+  }
+  let name: string = _first_word(rest)
+  let params: [AstParam] = []
+  if open_paren >= 0 {
+    set name = _trim(_slice(rest, 0, open_paren))
+  }
+  if open_paren >= 0 and close_paren > open_paren {
+    set params = _split_params(_slice(rest, open_paren + 1, close_paren))
+  }
+  give AstDecl {
+    kind: AstDeclKind.Proc,
+    name: name,
+    raw_line: trimmed,
+    value_text: rest,
+    is_exported: false,
+    proc_decl: AstProcDecl {
+      name: name,
+      return_type_name: return_type_name,
+      params: params,
+      body_stmts: []
+    }
+  }
+}
+
+proc parse_top_level_decl(raw_line: string) -> AstDecl {
+  let trimmed: string = _trim(raw_line)
+  if trimmed == "" {
+    give new_decl(AstDeclKind.Unknown, "", raw_line, "")
+  }
+  if _is_keyword_decl(trimmed, "space") {
+    let space_name: string = _trim_after_prefix(trimmed, "space")
+    give new_decl(AstDeclKind.Space, space_name, raw_line, space_name)
+  }
+  if _is_keyword_decl(trimmed, "use") {
+    let use_name: string = _trim_after_prefix(trimmed, "use")
+    give new_decl(AstDeclKind.Use, use_name, raw_line, use_name)
+  }
+  if _is_keyword_decl(trimmed, "const") {
+    let const_rest: string = _trim_after_prefix(trimmed, "const")
+    give new_decl(AstDeclKind.Const, _first_word(const_rest), raw_line, const_rest)
+  }
+  if _is_keyword_decl(trimmed, "static") {
+    let static_rest: string = _trim_after_prefix(trimmed, "static")
+    give new_decl(AstDeclKind.Static, _first_word(static_rest), raw_line, static_rest)
+  }
+  if _is_keyword_decl(trimmed, "global") {
+    let global_rest: string = _trim_after_prefix(trimmed, "global")
+    give new_decl(AstDeclKind.Global, _first_word(global_rest), raw_line, global_rest)
+  }
+  if _is_keyword_decl(trimmed, "form") {
+    let form_rest: string = _trim_after_prefix(trimmed, "form")
+    give new_decl(AstDeclKind.Form, _first_word(form_rest), raw_line, form_rest)
+  }
+  if _is_keyword_decl(trimmed, "proc") {
+    let proc_decl: AstDecl = parse_proc_signature(trimmed)
+    give AstDecl {
+      kind: proc_decl.kind,
+      name: proc_decl.name,
+      raw_line: raw_line,
+      value_text: proc_decl.value_text,
+      is_exported: proc_decl.is_exported,
+      proc_decl: proc_decl.proc_decl
+    }
+  }
+  give new_decl(AstDeclKind.Unknown, "", raw_line, trimmed)
+}
+
+proc _is_ignorable_source_line(raw_line: string) -> bool {
+  let line: string = _trim(raw_line)
+  if line == "" { give true }
+  if _starts_with(line, "#") { give true }
+  if _starts_with(line, "//") { give true }
+  if _starts_with(line, "<<<") { give true }
   give false
 }
 
-proc decl_kind_name(kind: AstDeclKind) -> string {
-  if kind == AstDeclKind.Space { give "space" }
-  if kind == AstDeclKind.Use { give "use" }
-  if kind == AstDeclKind.Proc { give "proc" }
-  if kind == AstDeclKind.Form { give "form" }
-  if kind == AstDeclKind.Const { give "const" }
-  if kind == AstDeclKind.Static { give "static" }
-  if kind == AstDeclKind.Global { give "global" }
-  give "unknown"
-}
-
-proc module_decl_count(module: AstModule) -> int {
-  give module.decls.len
-}
-
-proc module_proc_count(module: AstModule) -> int {
-  let count: int = 0
+proc parse_module(source_name: string, source_text: string) -> AstParseResult {
+  let module: AstModule = empty_module(source_name)
+  let diagnostics: [string] = []
+  let lines: [string] = _split_lines(source_text)
   let i: int = 0
 
-  while i < module.decls.len {
-    if module.decls[i].kind == AstDeclKind.Proc {
-      set count = count + 1
+  while i < lines.len {
+    let raw_line: string = lines[i]
+    let line: string = _trim(raw_line)
+    if _is_ignorable_source_line(raw_line) {
+      set i = i + 1
+      continue
+    }
+
+    let decl: AstDecl = parse_top_level_decl(raw_line)
+    if decl.kind == AstDeclKind.Space {
+      set module.space_name = decl.name
+      if decl.name == "" {
+        set diagnostics = diagnostics + ["error[E1001]: invalid space declaration at line " + ((i + 1) as string)]
+      }
+      set module = add_decl(module, decl)
+    }
+    if decl.kind == AstDeclKind.Use {
+      set module = add_use(module, decl.name)
+      set module = add_decl(module, decl)
+    }
+    if decl.kind == AstDeclKind.Proc {
+      let proc_diag: string = _proc_signature_diagnostic(line, i + 1)
+      if proc_diag != "" {
+        set diagnostics = diagnostics + [proc_diag]
+        set i = i + 1
+        continue
+      }
+      let body_stmts: [AstStmt] = []
+      let cursor: int = i + 1
+      let body_closed: bool = false
+      while cursor < lines.len {
+        let body_line: string = _trim(lines[cursor])
+        if body_line == "}" {
+          set body_closed = true
+          set i = cursor
+          break
+        }
+        let stmt: AstStmt = parse_stmt(body_line)
+        if stmt.raw_text != "" {
+          let stmt_diag: string = _stmt_diagnostic(stmt, cursor + 1)
+          if stmt_diag != "" {
+            set diagnostics = diagnostics + [stmt_diag]
+          }
+          set body_stmts = body_stmts + [stmt]
+        }
+        set cursor = cursor + 1
+      }
+      if not body_closed {
+        set diagnostics = diagnostics + ["error[E1004]: proc body is not closed starting at line " + ((i + 1) as string)]
+        set i = lines.len
+      }
+      set module = add_decl(module, AstDecl {
+        kind: decl.kind,
+        name: decl.name,
+        raw_line: decl.raw_line,
+        value_text: decl.value_text,
+        is_exported: decl.is_exported,
+        proc_decl: AstProcDecl {
+          name: decl.proc_decl.name,
+          return_type_name: decl.proc_decl.return_type_name,
+          params: decl.proc_decl.params,
+          body_stmts: body_stmts
+        }
+      })
+    }
+    if decl.kind == AstDeclKind.Const {
+      set module = add_decl(module, decl)
+    }
+    if decl.kind == AstDeclKind.Static {
+      set module = add_decl(module, decl)
+    }
+    if decl.kind == AstDeclKind.Global {
+      set module = add_decl(module, decl)
+    }
+    if decl.kind == AstDeclKind.Unknown {
+      set diagnostics = diagnostics + ["warning: unparsed top-level line kept as unknown declaration at line " + ((i + 1) as string)]
+      set module = add_decl(module, decl)
     }
     set i = i + 1
   }
 
-  give count
+  if module.space_name == "" {
+    set diagnostics = diagnostics + ["error[E1000]: missing space declaration in " + source_name]
+  }
+  if module.proc_count == 0 {
+    set diagnostics = diagnostics + ["error[E1003]: missing proc declaration in " + source_name]
+  }
+
+  give AstParseResult {
+    module: module,
+    diagnostics: diagnostics
+  }
 }
 
-proc module_summary(module: AstModule) -> string {
-  give module.space_name + " decls=" + (module.decls.len as string) + " procs=" + (module_proc_count(module) as string)
+proc _expr_kind_to_hir(kind: AstExprKind) -> ir_hir.HirExprKind {
+  if kind == AstExprKind.Empty { give ir_hir.HirExprKind.Empty }
+  if kind == AstExprKind.Literal { give ir_hir.HirExprKind.Literal }
+  if kind == AstExprKind.Variable { give ir_hir.HirExprKind.Variable }
+  if kind == AstExprKind.Call { give ir_hir.HirExprKind.Call }
+  if kind == AstExprKind.Raw { give ir_hir.HirExprKind.Raw }
+  give ir_hir.HirExprKind.Raw
+}
+
+proc _stmt_kind_to_hir(kind: AstStmtKind) -> ir_hir.HirStmtKind {
+  if kind == AstStmtKind.Give { give ir_hir.HirStmtKind.Give }
+  if kind == AstStmtKind.Let { give ir_hir.HirStmtKind.Let }
+  if kind == AstStmtKind.Set { give ir_hir.HirStmtKind.Set }
+  if kind == AstStmtKind.Expr { give ir_hir.HirStmtKind.Expr }
+  give ir_hir.HirStmtKind.Unknown
+}
+
+proc _expr_kind_to_mir(kind: AstExprKind) -> ir_mir.MirExprKind {
+  if kind == AstExprKind.Empty { give ir_mir.MirExprKind.Empty }
+  if kind == AstExprKind.Literal { give ir_mir.MirExprKind.Literal }
+  if kind == AstExprKind.Variable { give ir_mir.MirExprKind.Variable }
+  if kind == AstExprKind.Call { give ir_mir.MirExprKind.Call }
+  if kind == AstExprKind.Raw { give ir_mir.MirExprKind.Raw }
+  give ir_mir.MirExprKind.Raw
+}
+
+proc _stmt_kind_to_mir(kind: AstStmtKind) -> ir_mir.MirStmtKind {
+  if kind == AstStmtKind.Give { give ir_mir.MirStmtKind.Give }
+  if kind == AstStmtKind.Let { give ir_mir.MirStmtKind.Let }
+  if kind == AstStmtKind.Set { give ir_mir.MirStmtKind.Set }
+  if kind == AstStmtKind.Expr { give ir_mir.MirStmtKind.Expr }
+  give ir_mir.MirStmtKind.Unknown
+}
+
+proc _to_hir_expr(expr: AstExpr) -> ir_hir.HirExpr {
+  let args: [ir_hir.HirExpr] = []
+  let i: int = 0
+  while i < expr.args.len {
+    set args = args + [_to_hir_expr(expr.args[i])]
+    set i = i + 1
+  }
+  give ir_hir.HirExpr {
+    kind: _expr_kind_to_hir(expr.kind),
+    text: expr.text,
+    callee: expr.callee,
+    args: args
+  }
+}
+
+proc _to_hir_stmt(stmt: AstStmt) -> ir_hir.HirStmt {
+  give ir_hir.HirStmt {
+    kind: _stmt_kind_to_hir(stmt.kind),
+    name: stmt.name,
+    type_name: stmt.type_name,
+    expr: _to_hir_expr(stmt.expr),
+    raw_text: stmt.raw_text
+  }
+}
+
+proc _to_mir_expr(expr: AstExpr) -> ir_mir.MirExpr {
+  let args: [ir_mir.MirExpr] = []
+  let i: int = 0
+  while i < expr.args.len {
+    set args = args + [_to_mir_expr(expr.args[i])]
+    set i = i + 1
+  }
+  give ir_mir.MirExpr {
+    kind: _expr_kind_to_mir(expr.kind),
+    text: expr.text,
+    callee: expr.callee,
+    args: args
+  }
+}
+
+proc _to_mir_stmt(stmt: AstStmt) -> ir_mir.MirStmt {
+  give ir_mir.MirStmt {
+    kind: _stmt_kind_to_mir(stmt.kind),
+    name: stmt.name,
+    type_name: stmt.type_name,
+    expr: _to_mir_expr(stmt.expr),
+    raw_text: stmt.raw_text
+  }
+}
+
+proc _param_text(param: AstParam) -> string {
+  if param.type_name == "" { give param.name }
+  give param.name + ": " + param.type_name
+}
+
+proc _hir_decl_kind(kind: AstDeclKind) -> ir_hir.HirDeclKind {
+  if kind == AstDeclKind.Space { give ir_hir.HirDeclKind.Space }
+  if kind == AstDeclKind.Use { give ir_hir.HirDeclKind.Use }
+  if kind == AstDeclKind.Proc { give ir_hir.HirDeclKind.Proc }
+  if kind == AstDeclKind.Form { give ir_hir.HirDeclKind.Form }
+  if kind == AstDeclKind.Const { give ir_hir.HirDeclKind.Const }
+  if kind == AstDeclKind.Static { give ir_hir.HirDeclKind.Static }
+  if kind == AstDeclKind.Global { give ir_hir.HirDeclKind.Global }
+  give ir_hir.HirDeclKind.Unknown
+}
+
+proc to_hir_module(module: AstModule) -> ir_hir.HirModule {
+  let out_hir: ir_hir.HirModule = ir_hir.empty_module(module.source_name)
+  set out_hir.module_name = module.space_name
+  set out_hir.uses = module.uses
+  let i: int = 0
+  while i < module.decls.len {
+    let decl: AstDecl = module.decls[i]
+    set out_hir.decls = out_hir.decls + [ir_hir.HirDecl {
+      kind: _hir_decl_kind(decl.kind),
+      name: decl.name,
+      value_text: decl.value_text
+    }]
+    if decl.kind == AstDeclKind.Proc {
+      let params: [string] = []
+      let j: int = 0
+      while j < decl.proc_decl.params.len {
+        set params = params + [_param_text(decl.proc_decl.params[j])]
+        set j = j + 1
+      }
+      let stmts: [ir_hir.HirStmt] = []
+      let k: int = 0
+      while k < decl.proc_decl.body_stmts.len {
+        set stmts = stmts + [_to_hir_stmt(decl.proc_decl.body_stmts[k])]
+        set k = k + 1
+      }
+      set out_hir.functions = out_hir.functions + [ir_hir.HirFunction {
+        name: decl.proc_decl.name,
+        return_type_name: decl.proc_decl.return_type_name,
+        params: params,
+        extern_abi: "",
+        stmts: stmts
+      }]
+    }
+    set i = i + 1
+  }
+  give out_hir
+}
+
+proc to_mir_module(module: AstModule) -> ir_mir.MirModule {
+  let out_mir: ir_mir.MirModule = ir_mir.empty_module()
+  set out_mir.source_name = module.source_name
+  set out_mir.namespace_name = module.space_name
+  let i: int = 0
+  while i < module.decls.len {
+    let decl: AstDecl = module.decls[i]
+    if decl.kind == AstDeclKind.Const or decl.kind == AstDeclKind.Global {
+      let init_literal: string = "0"
+      let eq: int = _find(decl.value_text, "=")
+      if eq >= 0 {
+        set init_literal = _trim(_slice(decl.value_text, eq + 1, decl.value_text.len))
+      }
+      set out_mir.globals = out_mir.globals + [ir_mir.MirGlobal {
+        name: decl.name,
+        type_name: "i32",
+        init_literal: init_literal,
+        is_const: decl.kind == AstDeclKind.Const
+      }]
+    }
+    if decl.kind == AstDeclKind.Proc {
+      let params: [ir_mir.MirParam] = []
+      let j: int = 0
+      while j < decl.proc_decl.params.len {
+        set params = params + [ir_mir.MirParam {
+          name: decl.proc_decl.params[j].name,
+          type_name: decl.proc_decl.params[j].type_name
+        }]
+        set j = j + 1
+      }
+      let stmts: [ir_mir.MirStmt] = []
+      let k: int = 0
+      while k < decl.proc_decl.body_stmts.len {
+        set stmts = stmts + [_to_mir_stmt(decl.proc_decl.body_stmts[k])]
+        set k = k + 1
+      }
+      set out_mir.functions = out_mir.functions + [ir_mir.MirFunction {
+        name: decl.proc_decl.name,
+        return_type_name: decl.proc_decl.return_type_name,
+        params: params,
+        extern_abi: "",
+        link_name: "",
+        body_stmts: stmts
+      }]
+    }
+    set i = i + 1
+  }
+  give out_mir
 }
 
 export *
