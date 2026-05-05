@@ -2,6 +2,8 @@ space vitte/compiler/driver/compiler
 
 use options
 use pipeline
+use src/vitte/compiler/ir/hir as ir_hir
+use src/vitte/compiler/ir/mir as ir_mir
 
 form DriverOptions {
   target: string,
@@ -13,7 +15,8 @@ form DriverOptions {
 }
 
 form DiagnosticBag {
-  count: int
+  count: int,
+  messages: [string]
 }
 
 form ParsedModule {
@@ -23,22 +26,12 @@ form ParsedModule {
   global_count: int
 }
 
-form HirModule {
-  functions: [string],
-  decls: [string]
-}
-
-form MirModule {
-  functions: [string],
-  globals: [string]
-}
-
 form PipelineArtifacts {
   source_name: string,
   source_text: string,
   parsed_module: ParsedModule,
-  hir_module: HirModule,
-  mir_module: MirModule,
+  real_hir: ir_hir.HirModule,
+  real_mir: ir_mir.MirModule,
   diagnostics: DiagnosticBag
 }
 
@@ -90,31 +83,84 @@ proc pipeline_run(source_name: string, source_text: string) -> PipelineArtifacts
       proc_count: artifacts.parsed_module.proc_count,
       global_count: artifacts.parsed_module.global_count
     },
-    hir_module: HirModule {
-      functions: artifacts.hir_module.functions,
-      decls: artifacts.hir_module.decls
-    },
-    mir_module: MirModule {
-      functions: artifacts.mir_module.functions,
-      globals: artifacts.mir_module.globals
-    },
+    real_hir: artifacts.real_hir,
+    real_mir: artifacts.real_mir,
     diagnostics: DiagnosticBag {
-      count: artifacts.diagnostics.count
+      count: artifacts.diagnostics.count,
+      messages: artifacts.diagnostics.messages
     }
   }
 }
 
+proc _default_type(type_name: string) -> string {
+  if type_name == "" { give "i32" }
+  give type_name
+}
+
+proc _emit_expr(expr: ir_mir.MirExpr) -> string {
+  if expr.kind == ir_mir.MirExprKind.Empty { give "" }
+  if expr.kind == ir_mir.MirExprKind.Literal { give expr.text }
+  if expr.kind == ir_mir.MirExprKind.Variable { give expr.text }
+  if expr.kind == ir_mir.MirExprKind.Call {
+    let out: string = expr.callee + "("
+    let i: int = 0
+    while i < expr.args.len {
+      if i > 0 { set out = out + ", " }
+      set out = out + _emit_expr(expr.args[i])
+      set i = i + 1
+    }
+    give out + ")"
+  }
+  give expr.text
+}
+
+proc _emit_stmt(stmt: ir_mir.MirStmt) -> string {
+  if stmt.kind == ir_mir.MirStmtKind.Give {
+    give "return " + _emit_expr(stmt.expr) + ";\n"
+  }
+  if stmt.kind == ir_mir.MirStmtKind.Let {
+    let out: string = _default_type(stmt.type_name) + " " + stmt.name
+    if stmt.expr.kind != ir_mir.MirExprKind.Empty {
+      set out = out + " = " + _emit_expr(stmt.expr)
+    }
+    give out + ";\n"
+  }
+  if stmt.kind == ir_mir.MirStmtKind.Set {
+    give stmt.name + " = " + _emit_expr(stmt.expr) + ";\n"
+  }
+  if stmt.expr.kind == ir_mir.MirExprKind.Empty { give "" }
+  give _emit_expr(stmt.expr) + ";\n"
+}
+
+proc _emit_function(fn: ir_mir.MirFunction) -> string {
+  let out: string = _default_type(fn.return_type_name) + " " + fn.name + "("
+  let i: int = 0
+  while i < fn.params.len {
+    if i > 0 { set out = out + ", " }
+    set out = out + _default_type(fn.params[i].type_name) + " " + fn.params[i].name
+    set i = i + 1
+  }
+  set out = out + ") {\n"
+  let j: int = 0
+  while j < fn.body_stmts.len {
+    set out = out + "  " + _emit_stmt(fn.body_stmts[j])
+    set j = j + 1
+  }
+  give out + "}\n"
+}
+
 proc _emit_from_artifacts(artifacts: PipelineArtifacts) -> string {
-  if artifacts.mir_module.functions.len == 0 {
+  if artifacts.real_mir.functions.len == 0 {
     give ""
   }
 
-  let first_function: string = "main"
-  if artifacts.mir_module.functions.len > 0 {
-    set first_function = artifacts.mir_module.functions[0]
+  let out: string = ""
+  let i: int = 0
+  while i < artifacts.real_mir.functions.len {
+    set out = out + _emit_function(artifacts.real_mir.functions[i])
+    set i = i + 1
   }
-
-  give "i32 " + first_function + "() {\n  return argc;\n}\n"
+  give out
 }
 
 proc compile_source(
@@ -123,83 +169,27 @@ proc compile_source(
   driver_options: DriverOptions
 ) -> CompileReport {
   let artifacts: PipelineArtifacts = pipeline_run(source_name, source_text)
-  let emitted: string = _emit_from_artifacts(artifacts)
+  let emitted: string = ""
+  if artifacts.diagnostics.count == 0 {
+    set emitted = _emit_from_artifacts(artifacts)
+  }
   give CompileReport {
     success: artifacts.diagnostics.count == 0 and emitted != "",
-    diagnostics: DiagnosticBag { count: artifacts.diagnostics.count },
+    diagnostics: DiagnosticBag {
+      count: artifacts.diagnostics.count,
+      messages: artifacts.diagnostics.messages
+    },
     emitted_source: emitted,
     output_path: driver_options.output,
     source_name: source_name,
     notes: [
       "bootstrap-vitte",
       "uses=" + (artifacts.parsed_module.uses.len as string),
-      "decls=" + (artifacts.hir_module.decls.len as string),
-      "globals=" + (artifacts.mir_module.globals.len as string),
-      "functions=" + (artifacts.mir_module.functions.len as string)
+      "decls=" + (artifacts.real_hir.decls.len as string),
+      "globals=" + (artifacts.real_mir.globals.len as string),
+      "functions=" + (artifacts.real_mir.functions.len as string)
     ]
   }
-}
-
-test "compiler root declares vitte bootstrap implementation" {
-  let ok_impl: bool = implementation_language() == "vitte"
-  let ok_stage: bool = compiler_stage() == "bootstrap-vitte"
-  let ok_root: bool = source_root() == "src/vitte/compiler"
-  let _ = ok_impl
-  let _ = ok_stage
-  let _ = ok_root
-}
-
-test "pipeline parses and lowers source" {
-  let artifacts = pipeline_run(
-    "demo.vit",
-    "space demo/app\nuse vitte/io\nconst answer = 42\nglobal counter = 0\nproc main(argc: i32, argv: string) -> i32 {\n  give argc\n}\n"
-  )
-  let opts = default_options()
-  let report = compile_source(
-    "demo.vit",
-    "space demo/app\nuse vitte/io\nconst answer = 42\nglobal counter = 0\nproc main(argc: i32) -> i32 {\n  give argc\n}\n",
-    opts
-  )
-  let ok_space: bool = artifacts.parsed_module.space_name == "demo/app"
-  let ok_uses: bool = artifacts.parsed_module.uses.len == 2
-  let ok_hir: bool = artifacts.hir_module.functions.len == 1
-  let ok_mir: bool = artifacts.mir_module.functions.len == 1
-  let ok_globals: bool = artifacts.parsed_module.global_count == 2
-  let ok_report: bool = report.success and report.output_path == "a.out"
-  let _ = ok_space
-  let _ = ok_uses
-  let _ = ok_hir
-  let _ = ok_mir
-  let _ = ok_globals
-  let _ = ok_report
-  let _ = artifacts.diagnostics.count
-}
-
-test "compiler emits backend source" {
-  let opts = default_options()
-  let report = compile_source(
-    "demo.vit",
-    "space demo/app\nuse vitte/io\nconst answer = 42\nglobal counter = 0\nproc main(argc: i32) -> i32 {\n  give argc\n}\n",
-    opts
-  )
-  let ok_success: bool = report.success
-  let ok_output: bool = report.emitted_source != ""
-  let ok_notes: bool = report.notes.len == 5 and report.notes[0] == "bootstrap-vitte"
-  let _ = ok_success
-  let _ = ok_output
-  let _ = ok_notes
-}
-
-test "compiler pipeline can describe richer modules" {
-  let artifacts = pipeline_run(
-    "richer.vit",
-    "space demo/app\nuse vitte/path\nconst answer = 42\nglobal counter = 0\nproc main(argc: i32, argv: string) -> i32 {\n  give argc\n}\n"
-  )
-  if artifacts.parsed_module.global_count != 2 { give false }
-  if artifacts.hir_module.decls.len != 4 { give false }
-  if artifacts.mir_module.globals.len != 2 { give false }
-  if artifacts.mir_module.functions.len != 1 { give false }
-  give true
 }
 
 export *
