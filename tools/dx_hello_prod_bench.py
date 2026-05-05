@@ -25,7 +25,7 @@ def run_checked(cmd: list[str], cwd: Path) -> float:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--template", default="cli", choices=["cli", "service", "lib-native"])
+    ap.add_argument("--template", default="cli", choices=["cli", "service", "lib-vitte"])
     ap.add_argument("--strict", action="store_true", help="fail if target reduction is not met")
     ap.add_argument(
         "--baseline-ms",

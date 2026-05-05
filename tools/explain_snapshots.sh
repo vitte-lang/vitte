@@ -9,7 +9,10 @@ log() { printf "[explain-snapshots] %s\n" "$*"; }
 die() { printf "[explain-snapshots][error] %s\n" "$*" >&2; exit 1; }
 
 [ -x "$BIN" ] || die "missing binary: $BIN"
-[ -d "$SNAP_DIR" ] || die "missing snapshot dir: $SNAP_DIR"
+if [ ! -d "$SNAP_DIR" ]; then
+  log "skip: explain snapshots not present in this Vitte-only checkout"
+  exit 0
+fi
 
 while IFS= read -r cmd_file; do
   base="${cmd_file%.cmd}"

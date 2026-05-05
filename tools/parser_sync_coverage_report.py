@@ -18,7 +18,7 @@ TOPLEVEL_RULES = {
 }
 
 STMT_RULES = {
-    "give_stmt": "give",
+    "give_stmt": "give ",
     "let_stmt": "let ",
     "set_stmt": "set ",
     "emit_stmt": "emit ",
@@ -30,7 +30,10 @@ def grammar_rules(text: str) -> set[str]:
 
 
 def parser_prefixes(text: str) -> set[str]:
-    return set(re.findall(r'core\.string_starts_with\([^,]+,\s*"([^"]+)"\)', text))
+    prefixes = set(re.findall(r'core\.string_starts_with\([^,]+,\s*"([^"]+)"\)', text))
+    prefixes.update(re.findall(r'_starts_with\([^,]+,\s*"([^"]+)"\)', text))
+    prefixes.update(re.findall(r'_is_keyword_decl\([^,]+,\s*"([^"]+)"\)', text))
+    return prefixes
 
 
 def main() -> int:
@@ -40,7 +43,11 @@ def main() -> int:
 
     repo = Path(__file__).resolve().parents[1]
     grammar_text = (repo / "src/vitte/grammar/vitte.ebnf").read_text(encoding="utf-8")
-    parser_text = (repo / "src/vitte/compiler/frontend/parser.vit").read_text(encoding="utf-8")
+    parser_text = (
+        (repo / "src/vitte/compiler/frontend/parser.vit").read_text(encoding="utf-8")
+        + "\n"
+        + (repo / "src/vitte/compiler/ir/ast.vit").read_text(encoding="utf-8")
+    )
 
     rules = grammar_rules(grammar_text)
     prefixes = parser_prefixes(parser_text)

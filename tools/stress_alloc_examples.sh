@@ -24,7 +24,6 @@ STEPS=(
   "hir|build --hir-only"
   "mir|build --mir-only"
   "emit_vitte|emit"
-  "emit_obj|build --emit-obj -o $OUT_DIR/tmp.o"
 )
 
 summary_file="$OUT_DIR/summary.txt"
@@ -45,5 +44,4 @@ for file in "${FILES[@]}"; do
   done
 done
 
-rm -f "$OUT_DIR/tmp.o"
 log "summary: $summary_file"

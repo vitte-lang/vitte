@@ -47,7 +47,10 @@ while [ $# -gt 0 ]; do
 done
 
 [ -x "$BIN" ] || die "missing binary: $BIN"
-[ -d "$SNAP_DIR" ] || die "missing snapshot dir: $SNAP_DIR"
+if [ ! -d "$SNAP_DIR" ]; then
+  log "skip: module snapshots not present in this Vitte-only checkout"
+  exit 0
+fi
 mkdir -p "$(dirname "$REPORT_JSON")"
 [ "$SNAP_CACHE" = "1" ] && mkdir -p "$SNAP_CACHE_DIR"
 

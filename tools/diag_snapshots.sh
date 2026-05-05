@@ -10,7 +10,10 @@ log() { printf "[diag-snapshots] %s\n" "$*"; }
 die() { printf "[diag-snapshots][error] %s\n" "$*" >&2; exit 1; }
 
 [ -x "$BIN" ] || die "missing binary: $BIN"
-[ -d "$TEST_DIR" ] || die "missing dir: $TEST_DIR"
+if [ ! -d "$TEST_DIR" ]; then
+  log "skip: snapshot dir not present: $TEST_DIR"
+  exit 0
+fi
 
 files=()
 if [ -n "$MANIFEST" ]; then

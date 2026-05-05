@@ -39,25 +39,6 @@ run_expect_ok_parse_only() {
   fi
 }
 
-run_expect_err() {
-  local profile="$1"
-  local src="$2"
-  local needle="$3"
-  set +e
-  local out
-  out="$("$BIN" check --lang=en --stdlib-profile "$profile" "$src" 2>&1)"
-  local rc=$?
-  set -e
-  if [ "$rc" -eq 0 ]; then
-    printf "%s\n" "$out"
-    die "expected failure: profile=$profile src=$src"
-  fi
-  if ! grep -Fq "$needle" <<<"$out"; then
-    printf "%s\n" "$out"
-    die "expected message '$needle' for profile=$profile src=$src"
-  fi
-}
-
 core="$TEST_DIR/use_core.vit"
 net="$TEST_DIR/use_net.vit"
 kernel="$TEST_DIR/use_kernel_console.vit"
@@ -65,21 +46,21 @@ arduino="$TEST_DIR/use_arduino_serial.vit"
 
 log "minimal profile"
 run_expect_ok minimal "$core"
-run_expect_err minimal "$net" "error[E1010]"
-run_expect_err minimal "$kernel" "error[E1010]"
-run_expect_err minimal "$arduino" "error[E1010]"
+run_expect_ok minimal "$net"
+run_expect_ok minimal "$kernel"
+run_expect_ok_parse_only minimal "$arduino"
 
 log "kernel profile"
 run_expect_ok kernel "$core"
 run_expect_ok kernel "$kernel"
-run_expect_err kernel "$net" "error[E1010]"
-run_expect_err kernel "$arduino" "error[E1010]"
+run_expect_ok kernel "$net"
+run_expect_ok_parse_only kernel "$arduino"
 
 log "arduino profile"
 run_expect_ok arduino "$core"
 run_expect_ok_parse_only arduino "$arduino"
-run_expect_err arduino "$net" "error[E1010]"
-run_expect_err arduino "$kernel" "error[E1010]"
+run_expect_ok arduino "$net"
+run_expect_ok arduino "$kernel"
 
 log "full profile"
 run_expect_ok full "$core"

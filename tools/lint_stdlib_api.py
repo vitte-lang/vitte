@@ -48,7 +48,7 @@ def load_surface(surface_path: Path) -> list[tuple[str, str, str]]:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Lint stdlib API surface against source files")
-    p.add_argument("--std-root", default="src/vitte/packages")
+    p.add_argument("--std-root", default="src/vitte/stdlib")
     p.add_argument("--surface", default="docs/stdlib_abi_surface_v1.txt")
     args = p.parse_args()
 
@@ -62,7 +62,7 @@ def main() -> int:
         return 1
 
     found: dict[str, set[str]] = {}
-    for src in sorted(std_root.rglob("*.vit")):
+    for src in sorted(list(std_root.rglob("*.vit")) + list(std_root.rglob("*.vitl"))):
         mod = module_name_from_path(src, std_root)
         found.setdefault(mod, set()).update(parse_public_symbols(src))
 
