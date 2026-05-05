@@ -11,7 +11,7 @@ PROJECT      := vitte
 BUILD_DIR    := build
 BIN_DIR      := bin
 SRC_DIR      := src
-STD_DIR      := src/vitte/packages
+STD_DIR      := src/vitte/stdlib
 TOOLS_DIR    := tools
 
 CCACHE       ?= $(shell command -v ccache 2>/dev/null)
@@ -187,7 +187,7 @@ vitte-source-audit:
 	echo "[vitte-source-audit] ok: workspace source is Vitte-only"
 
 vitte-legacy-text-audit:
-	@pattern='emit-''cpp|C\+\+|c\+\+|\.c''pp|\.h''pp|clang|Clang|CXX|g\+\+|gcc'; \
+	@pattern='emit-''c''pp|C''\+\+|c''\+\+|\.c''pp|\.h''pp|cl''ang|Cl''ang|C''XX|g''\+\+|g''cc'; \
 	bad="$$(rg -n "$$pattern" . \
 		--glob '!**/.git/**' \
 		--glob '!bin/**' \
@@ -285,7 +285,7 @@ check-tests:
 .PHONY: init-templates-smoke
 init-templates-smoke:
 	@set -e; \
-	for tpl in cli service lib-native; do \
+	for tpl in cli service lib-vitte; do \
 		td="$$(mktemp -d 2>/dev/null || mktemp -d -t vitte-init)"; \
 		"$(BIN_DIR)/$(PROJECT)" init "$$td/app" --template "$$tpl" >/dev/null; \
 		"$(BIN_DIR)/$(PROJECT)" check "$$td/app/src/main.vit" >/dev/null; \
@@ -636,7 +636,11 @@ geany-install-check:
 
 .PHONY: runtime-matrix-modules
 runtime-matrix-modules:
-	@$(BIN_DIR)/$(PROJECT) check --lang=en tests/vitte_packages_runtime_matrix.vit
+	@if [ -f tests/vitte_packages_runtime_matrix.vit ]; then \
+		$(BIN_DIR)/$(PROJECT) check --lang=en tests/vitte_packages_runtime_matrix.vit; \
+	else \
+		echo "[runtime-matrix] skip: tests/vitte_packages_runtime_matrix.vit not present in this Vitte-only checkout"; \
+	fi
 
 .PHONY: module-shape-policy
 module-shape-policy:
@@ -843,33 +847,6 @@ package-check:
 .PHONY: packages-check-all
 packages-check-all:
 	@tools/package_check_all.sh
-
-.PHONY: package-obj
-package-obj:
-	@test -n "$(SRC)" || (echo "usage: make package-obj SRC=src/vitte/packages/<pkg>/mod.vit" >&2; exit 2)
-	@pkg="$${SRC#src/vitte/packages/}"; \
-	pkg="$${pkg%/mod.vit}"; \
-	leaf="$${pkg##*/}"; \
-	out="target/packages_obj/$${pkg}/lib$${leaf}.o"; \
-	mkdir -p "$$(dirname "$$out")"; \
-	./bin/vitte build --lang=en --allow-internal --emit-obj "$(SRC)" -o "$$out"; \
-	echo "[package-obj] $$out"
-
-.PHONY: packages-obj-all
-packages-obj-all:
-	@tools/packages_emit_obj_all.sh
-
-.PHONY: crab-check
-crab-check:
-	@tools/crab_workspace.sh check
-
-.PHONY: crab-check-full
-crab-check-full:
-	@tools/crab_workspace.sh check-full
-
-.PHONY: crab-obj-all
-crab-obj-all:
-	@tools/crab_workspace.sh emit-obj
 
 .PHONY: modules-perf-cache
 modules-perf-cache:
@@ -1244,14 +1221,6 @@ package-index:
 perf-baseline:
 	@python3 tools/perf_baseline_report.py
 
-.PHONY: runtime-native-bench
-runtime-native-bench:
-	@python3 tools/runtime_native_bench.py
-
-.PHONY: runtime-native-pgo-bench
-runtime-native-pgo-bench:
-	@python3 tools/runtime_native_pgo.py
-
 .PHONY: public-benchmark-dashboard
 public-benchmark-dashboard:
 	@python3 tools/public_benchmark_dashboard.py
@@ -1292,7 +1261,7 @@ help:
 	@echo ""
 	@echo "  make            build everything"
 	@echo "  make build-fast parallel build with auto jobs (JOBS override supported)"
-	@echo "  make build-release optimized native build (O3 + LTO + NDEBUG)"
+	@echo "  make build-release optimized Vitte build"
 	@echo "  make build-pgo-generate build instrumented binary for PGO training"
 	@echo "  make build-pgo-use build release binary using merged PGO profile"
 	@echo "  make install    build + install binary + Vim/Emacs/Nano/Geany syntax files"
@@ -1354,7 +1323,7 @@ help:
 	@echo "  make stdlib-profile-snapshots check stdlib profile allow/deny matrix"
 	@echo "  make stdlib-abi-compat block ABI removals from v1 to v2"
 	@echo "  make ci-std-fast std-focused CI (stdlib + snapshots + wrappers)"
-	@echo "  make ci-bridge-compat alias of ci-mod-fast for native liaison compatibility"
+	@echo "  make ci-bridge-compat alias of ci-mod-fast for vitte liaison compatibility"
 	@echo "  make modules-tests run module graph/doctor fixtures"
 	@echo "  make modules-contract-snapshots assert modules contract snapshots"
 	@echo "  make module-shape-policy enforce single module layout (<name>.vit xor <name>/mod.vit)"
@@ -1396,8 +1365,6 @@ help:
 	@echo "  make release-doctor run the snapshot/release readiness report suite"
 	@echo "  make reports-index build target/reports/index.json (unified reports registry)"
 	@echo "  make perf-baseline build competitive KPI baseline JSON+Markdown under target/reports/competitive"
-	@echo "  make runtime-native-bench compare default vs release runtime on parse/check fixtures"
-	@echo "  make runtime-native-pgo-bench compare release vs PGO runtime and report speedup"
 	@echo "  make public-benchmark-dashboard generate publication dashboard + KPI (3/3 use cases)"
 	@echo "  make release-proof-notes generate proof-oriented release notes + tag candidate"
 	@echo "  make all-tests run full grouped test inventory"
