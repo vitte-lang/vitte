@@ -1,5 +1,7 @@
 space vitte/compiler/backends/backend
 
+use src/vitte/compiler/ir/mir as ir_mir
+
 form BackendManifest {
   stage: string,
   source_root: string,
@@ -17,7 +19,7 @@ form BackendOptions {
   runtime_include: string,
   target: string,
   freestanding: bool,
-  emit_obj: bool,
+  emit_vitte: bool,
   repro: bool,
   repro_strict: bool,
   arduino_upload: bool,
@@ -45,6 +47,13 @@ form BackendSummary {
   namespace_name: string,
   note_count: int,
   emitted_kind: string
+}
+
+form BackendMirAdapter {
+  source_name: string,
+  namespace_name: string,
+  globals_count: int,
+  functions_count: int
 }
 
 proc manifest() -> BackendManifest {
@@ -105,7 +114,7 @@ proc default_options() -> BackendOptions {
     runtime_include: "",
     target: "",
     freestanding: false,
-    emit_obj: false,
+    emit_vitte: false,
     repro: false,
     repro_strict: false,
     arduino_upload: false,
@@ -116,15 +125,47 @@ proc default_options() -> BackendOptions {
 
 proc build_vitte_command(input_source: string, output: string, opts: BackendOptions) -> string {
   let cmd: string = "vitte "
-  set cmd = cmd ++ "-o " ++ output ++ " "
-  set cmd = cmd ++ input_source
+  set cmd = cmd + "-o " + output + " "
+  set cmd = cmd + input_source
   if opts.target != "" {
-    set cmd = cmd ++ " --target=" ++ opts.target
+    set cmd = cmd + " --target=" + opts.target
   }
-  if opts.debug { set cmd = cmd ++ " -g" }
-  if opts.optimize { set cmd = cmd ++ " -O" ++ (opts.opt_level as string) }
-  if opts.emit_obj { set cmd = cmd ++ " --emit-module" }
+  if opts.debug { set cmd = cmd + " -g" }
+  if opts.optimize { set cmd = cmd + " -O" + (opts.opt_level as string) }
+  if opts.emit_vitte { set cmd = cmd + " --emit-vitte" }
   give cmd
+}
+
+proc adapt_mir(module_value: ir_mir.MirModule) -> BackendMirAdapter {
+  give BackendMirAdapter {
+    source_name: module_value.source_name,
+    namespace_name: module_value.namespace_name,
+    globals_count: module_value.globals.len,
+    functions_count: module_value.functions.len
+  }
+}
+
+proc adapt_backend_mir(module_value: ir_mir.MirModule) -> MirModule {
+  let adapted: BackendMirAdapter = adapt_mir(module_value)
+  give MirModule {
+    source_name: adapted.source_name,
+    namespace_name: adapted.namespace_name,
+    globals_count: adapted.globals_count,
+    functions_count: adapted.functions_count
+  }
+}
+
+proc backend_ready_for_mir(module_value: ir_mir.MirModule) -> bool {
+  give module_value.source_name != "" and module_value.namespace_name != "" and module_value.functions.len > 0
+}
+
+proc backend_summary_from_mir(module_value: ir_mir.MirModule) -> string {
+  let adapted: BackendMirAdapter = adapt_mir(module_value)
+  give adapted.namespace_name + " globals=" + (adapted.globals_count as string) + " functions=" + (adapted.functions_count as string)
+}
+
+proc compile_mir_backend(module_value: ir_mir.MirModule, output_exe: string, options: BackendOptions) -> BackendCompileResult {
+  give compile_backend(adapt_backend_mir(module_value), output_exe, options)
 }
 
 proc emit_backend(module_value: MirModule, options: BackendOptions) -> BackendCompileResult {

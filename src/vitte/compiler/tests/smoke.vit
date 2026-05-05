@@ -3,6 +3,7 @@ space vitte/compiler/tests/smoke
 use src/vitte/compiler/driver/compiler
 use src/vitte/compiler/driver/options
 use src/vitte/compiler/driver/pipeline
+use src/vitte/compiler/backends/backend
 use src/vitte/compiler/frontend/diagnostics as diagnostics
 use src/vitte/compiler/ir/hir
 use src/vitte/compiler/ir/mir
@@ -81,6 +82,20 @@ proc statement_lowering_ok() -> bool {
   if artifacts.real_hir.functions[0].stmts[1].expr.kind != hir.HirExprKind.Call { give false }
   if artifacts.real_mir.functions[0].body_stmts[1].expr.kind != mir.MirExprKind.Call { give false }
   if report.emitted_source != "i32 main() {\n  i32 value = 1;\n  value = ping(value);\n  return value;\n}\n" { give false }
+  give true
+}
+
+proc backend_mir_adapter_ok() -> bool {
+  let source_text: string = "space demo/app\nconst answer = 42\nproc main() -> i32 {\n  give answer\n}\n"
+  let artifacts: pipeline.PipelineArtifacts = pipeline.run("demo.vit", source_text)
+  let opts: backend.BackendOptions = backend.default_options()
+  let result: backend.BackendCompileResult = backend.compile_mir_backend(artifacts.real_mir, "demo.out", opts)
+  if not backend.backend_ready_for_mir(artifacts.real_mir) { give false }
+  if backend.backend_summary_from_mir(artifacts.real_mir) != "demo/app globals=1 functions=1" { give false }
+  if result.output_path != "demo.out" { give false }
+  if result.emitted_source != "backend(demo/app)" { give false }
+  if result.tool_command != "vitte -o demo.out demo.vit" { give false }
+  if not backend.result_is_success(result) { give false }
   give true
 }
 
@@ -168,6 +183,7 @@ proc smoke_ok() -> bool {
   if not pipeline_lowering_ok() { give false }
   if not compiler_emit_ok() { give false }
   if not statement_lowering_ok() { give false }
+  if not backend_mir_adapter_ok() { give false }
   if not diagnostics_ok() { give false }
   give true
 }

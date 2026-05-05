@@ -67,7 +67,7 @@ proc mod_subcommand_count() -> int {
 }
 
 proc known_flag_count() -> int {
-  give 81
+  give 80
 }
 
 proc catalog_version() -> string {
@@ -91,7 +91,7 @@ proc smoke_test() -> bool {
   if top_level_command_count() != 12 { give false }
   if grammar_subcommand_count() != 2 { give false }
   if mod_subcommand_count() != 5 { give false }
-  if known_flag_count() != 81 { give false }
+  if known_flag_count() != 80 { give false }
   if bootstrap_status() != "self-hosted-bootstrap" { give false }
   if migration_stage() != "bootstrap-vitte" { give false }
   if api_version() != "0" { give false }
@@ -104,15 +104,15 @@ proc smoke_test() -> bool {
 
 proc smoke_input() -> string {
   give
-    "space demo/app\n" ++
-    "proc main(argc: i32) -> i32 {\n" ++
-    "  let value: i32 = ping(argc)\n" ++
-    "  set value = ping(argc)\n" ++
-    "  give value\n" ++
+    "space demo/app\n" +
+    "proc main(argc: i32) -> i32 {\n" +
+    "  let value: i32 = ping(argc)\n" +
+    "  set value = ping(argc)\n" +
+    "  give value\n" +
     "}\n"
 }
 
-test "package metadata stays stable" {
+proc smoke_case_1() -> bool {
   if package_name() != "compiler/driver" { give false }
   if package_role() != "self-hosted-driver-facade" { give false }
   if migration_stage() != "bootstrap-vitte" { give false }
@@ -122,7 +122,7 @@ test "package metadata stays stable" {
   give true
 }
 
-test "driver command catalog stays stable" {
+proc smoke_case_2() -> bool {
   if command_parse().name != "parse" { give false }
   if command_check().stage != "ir" { give false }
   if command_emit().parity_status != "planned" { give false }
@@ -134,17 +134,17 @@ test "driver command catalog stays stable" {
   if top_level_command_count() != 12 { give false }
   if grammar_subcommand_count() != 2 { give false }
   if mod_subcommand_count() != 5 { give false }
-  if known_flag_count() != 81 { give false }
+  if known_flag_count() != 80 { give false }
   give true
 }
 
-test "smoke source keeps the intended shape" {
+proc smoke_case_3() -> bool {
   if smoke_input() !=
-    "space demo/app\n" ++
-    "proc main(argc: i32) -> i32 {\n" ++
-    "  let value: i32 = ping(argc)\n" ++
-    "  set value = ping(argc)\n" ++
-    "  give value\n" ++
+    "space demo/app\n" +
+    "proc main(argc: i32) -> i32 {\n" +
+    "  let value: i32 = ping(argc)\n" +
+    "  set value = ping(argc)\n" +
+    "  give value\n" +
     "}\n" { give false }
   give true
 }

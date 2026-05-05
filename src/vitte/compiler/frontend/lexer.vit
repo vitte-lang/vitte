@@ -1,6 +1,7 @@
 space vitte/compiler/frontend/lexer
 
 use diagnostics
+use io
 
 form LexedSource {
   source_name: string,
@@ -56,16 +57,7 @@ proc lex_source(source_name: string, source_text: string) -> LexedSource {
 }
 
 proc lex_file(path_name: string) -> LexedSource {
-  let lexed: LexedSource = lex_source(path_name, "")
-  set lexed.diagnostics = diagnostics.add_note(
-    lexed.diagnostics,
-    "N0001",
-    "bootstrap lexer file loading is not wired; lex_file uses an empty source",
-    path_name,
-    1,
-    1
-  )
-  give lexed
+  give lex_source(path_name, io.read_file(path_name))
 }
 
 export *

@@ -158,10 +158,6 @@ form AstType {
   name: string,
   path: string,
   args: [AstType],
-  inner: ?AstType,
-  left: ?AstType,
-  right: ?AstType,
-  size_expr: ?AstExpr,
   mutable: bool,
   lifetime: string,
   addr_space: string,
@@ -176,8 +172,6 @@ form AstPattern {
   literal: string,
   args: [AstPattern],
   fields: [AstPatternField],
-  left: ?AstPattern,
-  right: ?AstPattern,
   raw_text: string,
   span: AstSpan
 }
@@ -202,11 +196,6 @@ form AstExpr {
   items: [AstExpr],
   keys: [AstExpr],
   values: [AstExpr],
-  left: ?AstExpr,
-  right: ?AstExpr,
-  third: ?AstExpr,
-  type_value: ?AstType,
-  block: ?AstBlock,
   span: AstSpan
 }
 
@@ -222,8 +211,6 @@ form AstStmt {
   kind: AstStmtKind,
   name: string,
   type_name: string,
-  type_value: ?AstType,
-  pattern: ?AstPattern,
   expr: AstExpr,
   second_expr: AstExpr,
   body: AstBlock,
@@ -251,8 +238,6 @@ form AstMatchArm {
 form AstParam {
   name: string,
   type_name: string,
-  type_value: ?AstType,
-  pattern: ?AstPattern,
   mode: string,
   default_value: AstExpr,
   variadic: bool,
@@ -265,7 +250,6 @@ form AstGenericParam {
   default_type: string,
   is_const: bool,
   is_comptime: bool,
-  type_value: ?AstType,
   span: AstSpan
 }
 
@@ -279,7 +263,6 @@ form AstWhereBound {
 form AstProcDecl {
   name: string,
   return_type_name: string,
-  return_type: ?AstType,
   params: [AstParam],
   generics: [AstGenericParam],
   where_bounds: [AstWhereBound],
@@ -297,7 +280,6 @@ form AstProcDecl {
 form AstFieldDecl {
   name: string,
   type_name: string,
-  type_value: ?AstType,
   default_value: AstExpr,
   visibility: AstVisibility,
   attrs: [AstAttribute],
@@ -340,7 +322,7 @@ form AstFlagDecl {
 form AstFlagsDecl {
   name: string,
   base_type: string,
-  flags: [AstFlagDecl],
+  flag_items: [AstFlagDecl],
   attrs: [AstAttribute],
   span: AstSpan
 }
@@ -372,14 +354,7 @@ form AstDecl {
   raw_line: string,
   value_text: string,
   attrs: [AstAttribute],
-  span: AstSpan,
-
-  proc_decl: ?AstProcDecl,
-  form_decl: ?AstFormDecl,
-  pick_decl: ?AstPickDecl,
-  flags_decl: ?AstFlagsDecl,
-  impl_decl: ?AstImplDecl,
-  use_decl: ?AstUseDecl
+  span: AstSpan
 }
 
 form AstModule {
@@ -415,11 +390,6 @@ proc empty_expr(source_name: string) -> AstExpr {
     items: [],
     keys: [],
     values: [],
-    left: null,
-    right: null,
-    third: null,
-    type_value: null,
-    block: null,
     span: empty_span(source_name)
   }
 }
@@ -430,10 +400,6 @@ proc empty_type(source_name: string) -> AstType {
     name: "",
     path: "",
     args: [],
-    inner: null,
-    left: null,
-    right: null,
-    size_expr: null,
     mutable: false,
     lifetime: "",
     addr_space: "",
@@ -449,10 +415,6 @@ proc named_type(source_name: string, name: string) -> AstType {
     name: name,
     path: name,
     args: [],
-    inner: null,
-    left: null,
-    right: null,
-    size_expr: null,
     mutable: false,
     lifetime: "",
     addr_space: "",
@@ -469,8 +431,6 @@ proc empty_pattern(source_name: string) -> AstPattern {
     literal: "",
     args: [],
     fields: [],
-    left: null,
-    right: null,
     raw_text: "",
     span: empty_span(source_name)
   }

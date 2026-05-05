@@ -113,7 +113,7 @@ proc _split_params(param_text: string) -> [string] {
       set current = ""
     } else {
       if ch != " " {
-        set current = current ++ ch
+        set current = current + ch
       }
     }
     set i = i + 1
@@ -233,7 +233,7 @@ proc mir_summary(module_value: MirModule) -> string {
   give module_value.namespace_name + " uses=" + (module_value.uses.len as string) + " globals=" + (module_value.globals.len as string) + " functions=" + (module_value.functions.len as string)
 }
 
-test "pipeline lowers empty module" {
+proc pipeline_lowers_empty_module_ok() -> bool {
   let mir: MirModule = pipeline_lower("demo.vit", "demo/app")
   if mir.source_name != "demo.vit" { give false }
   if mir.namespace_name != "demo/app" { give false }
@@ -243,7 +243,7 @@ test "pipeline lowers empty module" {
   give true
 }
 
-test "pipeline lowers simple const use global and proc declarations" {
+proc pipeline_lowers_simple_decls_ok() -> bool {
   let ast: AstModule = add_decl(
     add_decl(
       add_decl(
@@ -269,6 +269,12 @@ test "pipeline lowers simple const use global and proc declarations" {
   if mir.globals.len != 2 { give false }
   if mir.functions.len != 1 { give false }
   if mir.functions[0].params.len != 2 { give false }
+  give true
+}
+
+proc pipeline_smoke_ok() -> bool {
+  if not pipeline_lowers_empty_module_ok() { give false }
+  if not pipeline_lowers_simple_decls_ok() { give false }
   give true
 }
 

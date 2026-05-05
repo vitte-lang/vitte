@@ -1,6 +1,7 @@
 space vitte/compiler/frontend/parser
 
 use diagnostics
+use io
 use lexer
 
 form ParsedSource {
@@ -304,16 +305,7 @@ proc parse_lexed(lexed: lexer.LexedSource) -> ParsedSource {
 }
 
 proc parse_file(path_name: string) -> ParsedSource {
-  let parsed: ParsedSource = parse_source(path_name, "")
-  set parsed.diagnostics = diagnostics.add_note(
-    parsed.diagnostics,
-    "N0001",
-    "bootstrap parser file loading is not wired; parse_file uses an empty source",
-    path_name,
-    1,
-    1
-  )
-  give parsed
+  give parse_source(path_name, io.read_file(path_name))
 }
 
 export *

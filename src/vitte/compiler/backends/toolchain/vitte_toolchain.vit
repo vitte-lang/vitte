@@ -16,7 +16,7 @@ form VitteToolchainOptions {
   warnings: bool,
   verbose: bool,
   freestanding: bool,
-  emit_obj: bool,
+  emit_vitte: bool,
   include_dirs: [string],
   library_dirs: [string],
   libraries: [string],
@@ -47,7 +47,7 @@ proc default_options() -> VitteToolchainOptions {
     warnings: true,
     verbose: false,
     freestanding: false,
-    emit_obj: false,
+    emit_vitte: false,
     include_dirs: [],
     library_dirs: [],
     libraries: [],
@@ -61,7 +61,7 @@ proc _append_joined(cmd: string, prefix: string, values: [string]) -> string {
   let out: string = cmd
   let i: int = 0
   while i < values.len {
-    set out = out ++ prefix ++ values[i] ++ " "
+    set out = out + prefix + values[i] + " "
     set i = i + 1
   }
   give out
@@ -69,35 +69,35 @@ proc _append_joined(cmd: string, prefix: string, values: [string]) -> string {
 
 proc build_vitte_command(input_source: string, output: string, opts: VitteToolchainOptions) -> string {
   let cmd: string = "vitte "
-  set cmd = cmd ++ "-std=" ++ opts.std ++ " "
+  set cmd = cmd + "-std=" + opts.std + " "
   if opts.target != "" {
-    set cmd = cmd ++ "--target=" ++ opts.target ++ " "
+    set cmd = cmd + "--target=" + opts.target + " "
   }
   if opts.debug {
-    set cmd = cmd ++ "-g "
+    set cmd = cmd + "-g "
   }
   if opts.optimize {
-    set cmd = cmd ++ "-O" ++ (opts.opt_level as string) ++ " "
+    set cmd = cmd + "-O" + (opts.opt_level as string) + " "
   }
   if opts.warnings {
-    set cmd = cmd ++ "--warnings "
+    set cmd = cmd + "--warnings "
   }
   if opts.freestanding {
-    set cmd = cmd ++ "--freestanding "
+    set cmd = cmd + "--freestanding "
   }
-  if opts.emit_obj {
-    set cmd = cmd ++ "--emit-module "
+  if opts.emit_vitte {
+    set cmd = cmd + "--emit-vitte "
   }
   set cmd = _append_joined(cmd, "", opts.vitte_flags)
   set cmd = _append_joined(cmd, "-I", opts.include_dirs)
-  set cmd = cmd ++ input_source ++ " "
+  set cmd = cmd + input_source + " "
   let i: int = 0
   while i < opts.extra_sources.len {
-    set cmd = cmd ++ opts.extra_sources[i] ++ " "
+    set cmd = cmd + opts.extra_sources[i] + " "
     set i = i + 1
   }
-  set cmd = cmd ++ "-o " ++ output ++ " "
-  if not opts.emit_obj {
+  set cmd = cmd + "-o " + output + " "
+  if not opts.emit_vitte {
     set cmd = _append_joined(cmd, "-L", opts.library_dirs)
     set cmd = _append_joined(cmd, "-l", opts.libraries)
     set cmd = _append_joined(cmd, "", opts.ld_flags)
