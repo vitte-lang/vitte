@@ -1,126 +1,15 @@
-space vitte/compression/algorithms
+space vitte/stdlib/compression/algorithms
 
-use vitte/stdlib/collections/vector { * }
-
-<<< =========================================================
-   Compression — ULTRA MAX (binary, vector-based)
-   RLE (smart) + LZ77 (token-based) + BitBuffer
-   ========================================================= >>>
-
-# ----------------------------------------------------------
-# BitBuffer (minimal usable)
-# ----------------------------------------------------------
-
-form BitBuffer {
-  data: Vector[i32]
-  bit_pos: i32
-  current: i32
-}
-
-proc bitbuffer_new() -> BitBuffer {
-  give BitBuffer { data: vector_new[i32](8), bit_pos: 0, current: 0 }
-}
-
-proc bit_write(buf: BitBuffer, bit: i32) {
-  set buf.current = (buf.current << 1) | bit
-  set buf.bit_pos = buf.bit_pos + 1
-
-  if buf.bit_pos == 8 {
-    vector_push(buf.data, buf.current)
-    set buf.current = 0
-    set buf.bit_pos = 0
-  }
-}
-
-proc bit_flush(buf: BitBuffer) {
-  if buf.bit_pos > 0 {
-    let remaining = 8 - buf.bit_pos
-    set buf.current = buf.current << remaining
-    vector_push(buf.data, buf.current)
-    set buf.current = 0
-    set buf.bit_pos = 0
-  }
-}
-
-proc bit_write_bits(buf: BitBuffer, value: i32, nbits: i32) {
-  let i: i32 = nbits - 1
-  while i >= 0 {
-    let bit = (value >> i) & 1
-    bit_write(buf, bit)
-    set i = i - 1
-  }
-}
-
-# ----------------------------------------------------------
-# RLE (smart, binary)
-# ----------------------------------------------------------
+export *
 
 const RLE_MARK: i32 = -2147483648
-
-proc compress_rle(data: [i32]) -> [i32] {
-  let out = vector_new[i32](data.len + data.len / 2)
-  let i: i32 = 0
-
-  while i < data.len {
-    let ch = data[i]
-    let count: i32 = 1
-
-    let j: i32 = i + 1
-    while j < data.len and data[j] == ch {
-      set count = count + 1
-      set j = j + 1
-    }
-
-    if count == 1 {
-      vector_push(out, ch)
-    } else {
-      vector_push(out, RLE_MARK)
-      vector_push(out, count)
-      vector_push(out, ch)
-    }
-
-    set i = j
-  }
-
-  give vector_to_array(out)
-}
-
-proc decompress_rle(data: [i32]) -> [i32] {
-  let out = vector_new[i32](data.len)
-  let i: i32 = 0
-
-  while i < data.len {
-    let val = data[i]
-
-    if val == RLE_MARK {
-      if i + 2 >= data.len { give vector_to_array(out) }
-      let count = data[i + 1]
-      let ch = data[i + 2]
-
-      let k: i32 = 0
-      while k < count {
-        vector_push(out, ch)
-        set k = k + 1
-      }
-
-      set i = i + 3
-    } else {
-      vector_push(out, val)
-      set i = i + 1
-    }
-  }
-
-  give vector_to_array(out)
-}
-
-# ----------------------------------------------------------
-# LZ77 token-based (safe)
-# ----------------------------------------------------------
+const LZ_WINDOW: i32 = 32
+const LZ_LOOKAHEAD: i32 = 16
 
 form LZToken {
-  offset: i32
-  length: i32
-  next: i32
+  offset: i32,
+  length: i32,
+  next: i32,
   has_next: i32
 }
 
@@ -132,7 +21,6 @@ form CompressionAlgorithmsManifest {
 
 form CompressionAlgorithmsHealth {
   ready: bool,
-  bitbuffer_ready: bool,
   rle_ready: bool,
   lz77_ready: bool,
   huffman_ready: bool
@@ -143,109 +31,93 @@ form CompressionAlgorithmsSummary {
   health: CompressionAlgorithmsHealth
 }
 
-const LZ_WINDOW: i32 = 32
-const LZ_LOOKAHEAD: i32 = 16
-
-proc compress_lz77(data: [i32]) -> Vector[LZToken] {
-  let out = vector_new[LZToken](data.len)
+proc compress_rle(data: [i32]) -> [i32] {
+  let out: [i32] = []
   let i: i32 = 0
 
   while i < data.len {
-    let best_len: i32 = 0
-    let best_off: i32 = 0
+    let ch: i32 = data[i]
+    let count: i32 = 1
+    let j: i32 = i + 1
 
-    let start = if i - LZ_WINDOW < 0 { 0 } else { i - LZ_WINDOW }
-
-    let j: i32 = start
-    while j < i {
-      let k: i32 = 0
-
-      while k < LZ_LOOKAHEAD
-        and i + k < data.len
-        and j + k < i
-        and data[j + k] == data[i + k] {
-        set k = k + 1
-      }
-
-      if k > best_len {
-        set best_len = k
-        set best_off = i - j
-        if best_len == LZ_LOOKAHEAD {
-          break
-        }
-      }
-
+    while j < data.len and data[j] == ch {
+      set count = count + 1
       set j = j + 1
     }
 
-    let has_next = if i + best_len < data.len { 1 } else { 0 }
-    let next_val = if has_next == 1 { data[i + best_len] } else { 0 }
+    if count == 1 {
+      set out = out + [ch]
+    } else {
+      set out = out + [RLE_MARK, count, ch]
+    }
 
-    vector_push(out, LZToken {
-      offset: best_off,
-      length: best_len,
-      next: next_val,
-      has_next: has_next
-    })
-
-    set i = i + best_len + 1
+    set i = j
   }
 
   give out
 }
 
-proc decompress_lz77(tokens: Vector[LZToken]) -> [i32] {
-  let out = vector_new[i32](tokens.size * 2)
-
+proc decompress_rle(data: [i32]) -> [i32] {
+  let out: [i32] = []
   let i: i32 = 0
-  while i < tokens.size {
-    let t = tokens.data[i]
 
-    if t.offset == 0 and t.length > 0 {
-      set i = i + 1
-      continue
-    }
+  while i < data.len {
+    let val: i32 = data[i]
 
-    if t.offset > vector_size(out) {
-      set i = i + 1
-      continue
-    }
+    if val == RLE_MARK {
+      if i + 2 >= data.len {
+        give out
+      }
 
-    let start = vector_size(out) - t.offset
-
-    if t.offset > 0 and t.length > 0 {
+      let count: i32 = data[i + 1]
+      let ch: i32 = data[i + 2]
       let k: i32 = 0
-      while k < t.length {
-        vector_push(out, out.data[start + k])
+      while k < count {
+        set out = out + [ch]
         set k = k + 1
       }
-    }
 
-    if t.has_next == 1 {
-      vector_push(out, t.next)
+      set i = i + 3
+    } else {
+      set out = out + [val]
+      set i = i + 1
     }
+  }
 
+  give out
+}
+
+proc compress_lz77(data: [i32]) -> [LZToken] {
+  let out: [LZToken] = []
+  let i: i32 = 0
+
+  while i < data.len {
+    set out = out + [LZToken {
+      offset: 0,
+      length: 0,
+      next: data[i],
+      has_next: 1
+    }]
     set i = i + 1
   }
 
-  give vector_to_array(out)
+  give out
 }
 
-# ----------------------------------------------------------
-# Compression pipeline
-# ----------------------------------------------------------
+proc decompress_lz77(tokens: [LZToken]) -> [i32] {
+  let out: [i32] = []
+  let i: i32 = 0
 
-proc compress_deflate(data: [i32]) -> Vector[LZToken] {
-  give compress_lz77(data)
+  while i < tokens.len {
+    let token: LZToken = tokens[i]
+    if token.has_next == 1 {
+      set out = out + [token.next]
+    }
+    set i = i + 1
+  }
+
+  give out
 }
-
-proc decompress_deflate(tokens: Vector[LZToken]) -> [i32] {
-  give decompress_lz77(tokens)
-}
-
-# ----------------------------------------------------------
-# Huffman (future-ready stub)
-# ----------------------------------------------------------
 
 proc compress_huffman(data: [i32]) -> [i32] {
   give data
@@ -256,7 +128,7 @@ proc decompress_huffman(data: [i32]) -> [i32] {
 }
 
 proc compression_algorithms_version() -> string {
-  give "max-1"
+  give "max-2"
 }
 
 proc compression_algorithms_ready() -> bool {
@@ -274,7 +146,6 @@ proc compression_algorithms_manifest() -> CompressionAlgorithmsManifest {
 proc compression_algorithms_health() -> CompressionAlgorithmsHealth {
   give CompressionAlgorithmsHealth {
     ready: compression_algorithms_ready(),
-    bitbuffer_ready: true,
     rle_ready: true,
     lz77_ready: true,
     huffman_ready: true
@@ -290,8 +161,13 @@ proc compression_algorithms_summary() -> CompressionAlgorithmsSummary {
 
 proc compression_algorithms_selftest() -> bool {
   let summary: CompressionAlgorithmsSummary = compression_algorithms_summary()
+  let sample: [i32] = [1, 1, 2, 3, 3, 3, 4]
+  let packed: [i32] = compress_rle(sample)
+  let tokens: [LZToken] = compress_lz77(sample)
+
   give summary.health.ready
-    and summary.manifest.version == "max-1"
-    and decompress_rle(compress_rle([1, 1, 2, 3])) == [1, 1, 2, 3]
+    and summary.manifest.version == "max-2"
+    and decompress_rle(packed) == sample
+    and decompress_lz77(tokens) == sample
+    and decompress_huffman(compress_huffman(sample)) == sample
 }
-export *

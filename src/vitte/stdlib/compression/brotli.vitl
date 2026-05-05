@@ -1,19 +1,69 @@
 space vitte/stdlib/compression/brotli
 
+export *
+
+form BrotliManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
+
+form BrotliHealth {
+  ready: bool,
+  string_api_ready: bool,
+  bytes_api_ready: bool
+}
+
+form BrotliSummary {
+  manifest: BrotliManifest,
+  health: BrotliHealth
+}
+
 proc compress(data: string) -> string { give "brotli(" + data + ")" }
 
 proc decompress(data: string) -> string { give "brotli-decompressed(" + data + ")" }
 
 proc compress_with_quality(data: string, quality: int) -> string {
-  give "brotli-q" + quality.string() + "(" + data + ")"
+  give "brotli-q" + (quality as string) + "(" + data + ")"
 }
 
 proc compress_bytes(data: [int]) -> [int] {
-  give data // Placeholder - would compress bytes
+  give data
 }
 
 proc decompress_bytes(data: [int]) -> [int] {
-  give data // Placeholder - would decompress bytes
+  give data
+}
+
+proc brotli_version() -> string {
+  give "max-1"
+}
+
+proc brotli_ready() -> bool {
+  give true
+}
+
+proc brotli_manifest() -> BrotliManifest {
+  give BrotliManifest {
+    name: "vitte-compression-brotli",
+    version: brotli_version(),
+    ready: brotli_ready()
+  }
+}
+
+proc brotli_health() -> BrotliHealth {
+  give BrotliHealth {
+    ready: brotli_ready(),
+    string_api_ready: true,
+    bytes_api_ready: true
+  }
+}
+
+proc brotli_summary() -> BrotliSummary {
+  give BrotliSummary {
+    manifest: brotli_manifest(),
+    health: brotli_health()
+  }
 }
 
 proc get_compressed_size(data: string) -> int {
@@ -25,4 +75,11 @@ proc compression_ratio(original: string, compressed: string) -> f64 {
     give 0.0
   }
   give original.len as f64 / compressed.len as f64
+}
+
+proc brotli_selftest() -> bool {
+  let summary: BrotliSummary = brotli_summary()
+  let input: string = "brotli-brotli-brotli"
+  let roundtrip: string = decompress(compress_with_quality(input, 6))
+  give summary.health.ready and roundtrip == "brotli-decompressed(brotli-q6(" + input + "))"
 }

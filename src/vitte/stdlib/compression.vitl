@@ -1,5 +1,12 @@
 space vitte/stdlib/compression
 
+use src/vitte/stdlib/compression/deflate as deflate
+use src/vitte/stdlib/compression/brotli as brotli
+use src/vitte/stdlib/compression/algorithms as algorithms
+use src/vitte/stdlib/compression/lz as lz
+use src/vitte/stdlib/compression/huffman as huffman
+use src/vitte/stdlib/compression/stats as stats
+
 <<< =========================================================
    Vitte Compression Library
    Maximal self-contained facade for compression and
@@ -24,6 +31,7 @@ const ALGO_ZLIB: i32 = 3
 const ALGO_RLE: i32 = 4
 const ALGO_HUFFMAN: i32 = 5
 const ALGO_LZ77: i32 = 6
+const ALGO_BROTLI: i32 = 7
 
 const ERR_INVALID_ALGO: i32 = -1
 const ERR_INVALID_DATA: i32 = -2
@@ -47,6 +55,10 @@ form CompressionHealth {
   interface_ready: bool,
   algorithms_ready: bool,
   deflate_ready: bool,
+  stats_ready: bool,
+  brotli_ready: bool,
+  lz_ready: bool,
+  huffman_ready: bool,
   stats_ready: bool
 }
 
@@ -83,7 +95,8 @@ proc compression_algorithms() -> [string] {
     "zlib",
     "rle",
     "huffman",
-    "lz77"
+    "lz77",
+    "brotli"
   ]
 }
 
@@ -103,9 +116,12 @@ proc compression_health() -> CompressionHealth {
   give CompressionHealth {
     ready: compression_ready(),
     interface_ready: true,
-    algorithms_ready: true,
-    deflate_ready: true,
-    stats_ready: true
+    algorithms_ready: algorithms.compression_algorithms_selftest(),
+    deflate_ready: deflate.deflate_ready(),
+    stats_ready: stats.compression_stats_selftest(),
+    brotli_ready: brotli.brotli_ready(),
+    lz_ready: lz.lz_selftest(),
+    huffman_ready: huffman.huffman_selftest()
   }
 }
 
@@ -140,9 +156,9 @@ proc _escape_marker(text: string) -> string {
   while i < len(text) {
     let ch: char = text[i]
     if ch == '~' {
-      set out = out ++ "~~"
+      set out = out + "~~"
     } else {
-      set out = out ++ (ch as string)
+      set out = out + ((ch as i32) as string)
     }
     set i = i + 1
   }
@@ -155,10 +171,10 @@ proc _unescape_marker(text: string) -> string {
   while i < len(text) {
     let ch: char = text[i]
     if ch == '~' and i + 1 < len(text) and text[i + 1] == '~' {
-      set out = out ++ "~"
+      set out = out + "~"
       set i = i + 2
     } else {
-      set out = out ++ (ch as string)
+      set out = out + ((ch as i32) as string)
       set i = i + 1
     }
   }
@@ -213,11 +229,11 @@ proc compress_rle(data: string) -> string {
     }
 
     if count >= 4 or ch == '~' {
-      set out = out ++ "~" ++ (count as string) ++ ":" ++ (ch as string) ++ ";"
+      set out = out + "~" + (count as string) + ":" + ((ch as i32) as string) + ";"
     } else {
       let k: i32 = 0
       while k < count {
-        set out = out ++ (ch as string)
+        set out = out + ((ch as i32) as string)
         set k = k + 1
       }
     }
@@ -241,15 +257,15 @@ proc decompress_rle(data: string) -> string {
       let next_i: i32 = parsed[2]
       let k: i32 = 0
       while k < count {
-        set out = out ++ (run_ch as string)
+        set out = out + ((run_ch as i32) as string)
         set k = k + 1
       }
       set i = next_i
     } else if ch == '~' and i + 1 < len(data) and data[i + 1] == '~' {
-      set out = out ++ "~"
+      set out = out + "~"
       set i = i + 2
     } else {
-      set out = out ++ (ch as string)
+      set out = out + ((ch as i32) as string)
       set i = i + 1
     }
   }
@@ -257,13 +273,13 @@ proc decompress_rle(data: string) -> string {
 }
 
 proc _wrap_algo(tag: string, data: string, level: i32) -> string {
-  give tag ++ ":" ++ (level as string) ++ ":" ++ compress_rle(data)
+  give tag + ":" + (level as string) + ":" + compress_rle(data)
 }
 
 proc _unwrap_algo(tag: string, data: string) -> string {
-  let prefix: string = tag ++ ":"
+  let prefix: string = tag + ":"
   if len(data) <= len(prefix) { give "" }
-  if data[0:len(prefix)] != prefix { give "" }
+  if _slice_text(data, 0, len(prefix)) != prefix { give "" }
 
   let pos: i32 = len(prefix)
   while pos < len(data) and data[pos] != ':' {
@@ -271,7 +287,17 @@ proc _unwrap_algo(tag: string, data: string) -> string {
   }
   if pos >= len(data) { give "" }
   set pos = pos + 1
-  give decompress_rle(data[pos:len(data)])
+  give decompress_rle(_slice_text(data, pos, len(data)))
+}
+
+proc _slice_text(text: string, start: i32, end: i32) -> string {
+  let out: string = ""
+  let i: i32 = start
+  while i < end and i < len(text) {
+    set out = out + ((text[i] as i32) as string)
+    set i = i + 1
+  }
+  give out
 }
 
 proc compress_deflate(data: string, level: i32) -> string {
@@ -299,7 +325,7 @@ proc decompress_zlib(data: string) -> string {
 }
 
 proc compress_huffman(data: string) -> string {
-  give "huffman:" ++ compress_rle(data)
+  give "huffman:" + compress_rle(data)
 }
 
 proc decompress_huffman(data: string) -> string {
@@ -307,11 +333,19 @@ proc decompress_huffman(data: string) -> string {
 }
 
 proc compress_lz77(data: string) -> string {
-  give "lz77:" ++ compress_rle(data)
+  give "lz77:" + compress_rle(data)
 }
 
 proc decompress_lz77(data: string) -> string {
   give _unwrap_algo("lz77", data)
+}
+
+proc compress_brotli(data: string, level: i32) -> string {
+  give _wrap_algo("brotli", data, level)
+}
+
+proc decompress_brotli(data: string) -> string {
+  give _unwrap_algo("brotli", data)
 }
 
 proc compressor_new(level: i32) -> Compressor {
@@ -329,7 +363,7 @@ proc compressor_set_strategy(c: Compressor, strategy: i32) -> int {
 }
 
 proc compressor_set_algorithm(c: Compressor, algorithm: i32) -> int {
-  if algorithm != ALGO_DEFLATE and algorithm != ALGO_GZIP and algorithm != ALGO_ZLIB and algorithm != ALGO_RLE and algorithm != ALGO_HUFFMAN and algorithm != ALGO_LZ77 {
+  if algorithm != ALGO_DEFLATE and algorithm != ALGO_GZIP and algorithm != ALGO_ZLIB and algorithm != ALGO_RLE and algorithm != ALGO_HUFFMAN and algorithm != ALGO_LZ77 and algorithm != ALGO_BROTLI {
     give ERR_INVALID_ALGO
   }
   set c.algorithm = algorithm
@@ -345,6 +379,7 @@ proc compressor_compress(c: Compressor, data: string) -> string {
   if c.algorithm == ALGO_ZLIB { give compress_zlib(data, c.level) }
   if c.algorithm == ALGO_HUFFMAN { give compress_huffman(data) }
   if c.algorithm == ALGO_LZ77 { give compress_lz77(data) }
+  if c.algorithm == ALGO_BROTLI { give compress_brotli(data, c.level) }
   give ""
 }
 
@@ -368,7 +403,7 @@ proc decompressor_new() -> Decompressor {
 }
 
 proc decompressor_set_algorithm(d: Decompressor, algorithm: i32) -> int {
-  if algorithm != ALGO_DEFLATE and algorithm != ALGO_GZIP and algorithm != ALGO_ZLIB and algorithm != ALGO_RLE and algorithm != ALGO_HUFFMAN and algorithm != ALGO_LZ77 {
+  if algorithm != ALGO_DEFLATE and algorithm != ALGO_GZIP and algorithm != ALGO_ZLIB and algorithm != ALGO_RLE and algorithm != ALGO_HUFFMAN and algorithm != ALGO_LZ77 and algorithm != ALGO_BROTLI {
     give ERR_INVALID_ALGO
   }
   set d.algorithm = algorithm
@@ -382,6 +417,7 @@ proc decompressor_decompress(d: Decompressor, data: string) -> string {
   if d.algorithm == ALGO_ZLIB { give decompress_zlib(data) }
   if d.algorithm == ALGO_HUFFMAN { give decompress_huffman(data) }
   if d.algorithm == ALGO_LZ77 { give decompress_lz77(data) }
+  if d.algorithm == ALGO_BROTLI { give decompress_brotli(data) }
   give ""
 }
 
@@ -441,11 +477,20 @@ proc compression_selftest() -> bool {
   let g2: string = decompress_gzip(g1)
   let z1: string = compress_zlib(input, 6)
   let z2: string = decompress_zlib(z1)
+  let b1: string = compress_brotli(input, 6)
+  let b2: string = decompress_brotli(b1)
 
   give summary.health.ready
     and summary.manifest.algorithms.len == len(compression_algorithms())
+    and algorithms.compression_algorithms_selftest()
+    and deflate.deflate_selftest()
+    and brotli.brotli_selftest()
+    and lz.lz_selftest()
+    and huffman.huffman_selftest()
+    and stats.compression_stats_selftest()
     and back == input
     and d2 == input
     and g2 == input
     and z2 == input
+    and b2 == input
 }

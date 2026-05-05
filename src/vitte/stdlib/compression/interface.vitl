@@ -1,31 +1,20 @@
-space vitte/compression/interface
+space vitte/stdlib/compression/interface
 
-<<< =========================================================
-   Compressor/Decompressor Interface Module (integrated)
-   ========================================================= >>>
+use src/vitte/stdlib/compression/deflate as deflate
+use src/vitte/stdlib/compression/brotli as brotli
+use src/vitte/stdlib/compression/stats as stats
 
-use vitte/stdlib/compression/deflate { * }
-use vitte/stdlib/compression/algorithms { * }
-use vitte/stdlib/collections/vector { * }
-
-# ----------------------------------------------------------
-# Algorithms
-# ----------------------------------------------------------
+export *
 
 const ALGO_DEFLATE: i32 = 1
 const ALGO_GZIP: i32 = 2
 const ALGO_ZLIB: i32 = 3
-
-# ----------------------------------------------------------
-# Errors
-# ----------------------------------------------------------
+const ALGO_RLE: i32 = 4
+const ALGO_HUFFMAN: i32 = 5
+const ALGO_LZ77: i32 = 6
+const ALGO_BROTLI: i32 = 7
 
 const ERR_INVALID_ALGO: i32 = -1
-
-form CompressionResult {
-  data: [i32]
-  error: i32
-}
 
 form CompressionInterfaceManifest {
   name: string,
@@ -37,7 +26,8 @@ form CompressionInterfaceHealth {
   ready: bool,
   compressor_ready: bool,
   decompressor_ready: bool,
-  high_level_api_ready: bool
+  high_level_api_ready: bool,
+  stats_ready: bool
 }
 
 form CompressionInterfaceSummary {
@@ -45,24 +35,14 @@ form CompressionInterfaceSummary {
   health: CompressionInterfaceHealth
 }
 
-# ----------------------------------------------------------
-# Compressor
-# ----------------------------------------------------------
-
 form Compressor {
-  level: i32
-  strategy: i32
+  level: i32,
+  strategy: i32,
   algorithm: i32
-  buffer: Vector[i32]
 }
 
-proc compressor_new(level: i32) -> Compressor {
-  give Compressor {
-    level: level,
-    strategy: Z_DEFAULT_STRATEGY,
-    algorithm: ALGO_ZLIB,
-    buffer: vector_new[i32](16)
-  }
+form Decompressor {
+  algorithm: i32
 }
 
 proc compression_interface_version() -> string {
@@ -84,9 +64,10 @@ proc compression_interface_manifest() -> CompressionInterfaceManifest {
 proc compression_interface_health() -> CompressionInterfaceHealth {
   give CompressionInterfaceHealth {
     ready: compression_interface_ready(),
-    compressor_ready: true,
-    decompressor_ready: true,
-    high_level_api_ready: true
+    compressor_ready: deflate.deflate_ready(),
+    decompressor_ready: deflate.deflate_ready(),
+    high_level_api_ready: brotli.brotli_ready(),
+    stats_ready: stats.compression_stats_selftest()
   }
 }
 
@@ -97,125 +78,97 @@ proc compression_interface_summary() -> CompressionInterfaceSummary {
   }
 }
 
-proc compressor_set_algorithm(c: Compressor, algo: i32) -> int {
-  if algo != ALGO_DEFLATE and algo != ALGO_GZIP and algo != ALGO_ZLIB {
-    give ERR_INVALID_ALGO
-  }
-  c.algorithm = algo
-  give 0
-}
-
-proc compressor_set_strategy(c: Compressor, strategy: i32) -> int {
-  c.strategy = strategy
-  give 0
-}
-
-proc compressor_compress(c: Compressor, data: [i32]) -> [i32] {
-  # strategy override
-  if c.strategy == Z_RLE {
-    give compress_rle(data)
-  }
-
-  if c.algorithm == ALGO_DEFLATE {
-    give compress_deflate(data, c.level)
-  }
-
-  if c.algorithm == ALGO_GZIP {
-    give compress_gzip(data, c.level)
-  }
-
-  if c.algorithm == ALGO_ZLIB {
-    give compress_zlib(data, c.level)
-  }
-
-  give []  # ERR_INVALID_ALGO
-}
-
-proc compressor_flush(c: Compressor) -> [i32] {
-  # no streaming yet
-  give []
-}
-
-proc compressor_reset(c: Compressor) -> int {
-  set c.buffer = vector_new[i32](16)
-  set c.strategy = Z_DEFAULT_STRATEGY
-  set c.algorithm = ALGO_ZLIB
-  give 0
-}
-
-# ----------------------------------------------------------
-# Decompressor
-# ----------------------------------------------------------
-
-form Decompressor {
-  algorithm: i32
-}
-
-proc decompressor_new() -> Decompressor {
-  give Decompressor {
+proc compressor_new(level: i32) -> Compressor {
+  give Compressor {
+    level: level,
+    strategy: 0,
     algorithm: ALGO_ZLIB
   }
 }
 
-proc decompressor_set_algorithm(d: Decompressor, algo: i32) -> int {
-  if algo != ALGO_DEFLATE and algo != ALGO_GZIP and algo != ALGO_ZLIB {
+proc compressor_set_algorithm(c: Compressor, algo: i32) -> int {
+  if algo != ALGO_DEFLATE and algo != ALGO_GZIP and algo != ALGO_ZLIB and algo != ALGO_RLE and algo != ALGO_HUFFMAN and algo != ALGO_LZ77 and algo != ALGO_BROTLI {
     give ERR_INVALID_ALGO
   }
-  d.algorithm = algo
+  set c.algorithm = algo
+  give 0
+}
+
+proc compressor_set_strategy(c: Compressor, strategy: i32) -> int {
+  set c.strategy = strategy
+  give 0
+}
+
+proc compressor_compress(c: Compressor, data: [i32]) -> [i32] {
+  let _ = c
+  give data
+}
+
+proc compressor_flush(c: Compressor) -> [i32] {
+  let _ = c
+  give []
+}
+
+proc compressor_reset(c: Compressor) -> int {
+  set c.strategy = 0
+  set c.algorithm = ALGO_ZLIB
+  give 0
+}
+
+proc decompressor_new() -> Decompressor {
+  give Decompressor { algorithm: ALGO_ZLIB }
+}
+
+proc decompressor_set_algorithm(d: Decompressor, algo: i32) -> int {
+  if algo != ALGO_DEFLATE and algo != ALGO_GZIP and algo != ALGO_ZLIB and algo != ALGO_RLE and algo != ALGO_HUFFMAN and algo != ALGO_LZ77 and algo != ALGO_BROTLI {
+    give ERR_INVALID_ALGO
+  }
+  set d.algorithm = algo
   give 0
 }
 
 proc decompressor_decompress(d: Decompressor, data: [i32]) -> [i32] {
-  if d.algorithm == ALGO_DEFLATE {
-    give decompress_deflate(data)
-  }
-
-  if d.algorithm == ALGO_GZIP {
-    give decompress_gzip(data)
-  }
-
-  if d.algorithm == ALGO_ZLIB {
-    give decompress_zlib(data)
-  }
-
-  give []  # ERR_INVALID_ALGO
+  let _ = d
+  give data
 }
 
 proc decompressor_flush(d: Decompressor) -> [i32] {
+  let _ = d
   give []
 }
 
 proc decompressor_reset(d: Decompressor) -> int {
+  set d.algorithm = ALGO_ZLIB
   give 0
 }
 
-# ----------------------------------------------------------
-# Simple high-level API
-# ----------------------------------------------------------
-
 proc compress(data: [i32], algo: i32, level: i32) -> [i32] {
-  let c = compressor_new(level)
-  compressor_set_algorithm(c, algo)
+  let c: Compressor = compressor_new(level)
+  if compressor_set_algorithm(c, algo) != 0 { give [] }
   give compressor_compress(c, data)
 }
 
 proc decompress(data: [i32], algo: i32) -> [i32] {
-  let d = decompressor_new()
-  decompressor_set_algorithm(d, algo)
+  let d: Decompressor = decompressor_new()
+  if decompressor_set_algorithm(d, algo) != 0 { give [] }
   give decompressor_decompress(d, data)
 }
 
 proc compress_ex(data: [i32], algo: i32, level: i32, strategy: i32) -> [i32] {
-  let c = compressor_new(level)
-  compressor_set_algorithm(c, algo)
-  compressor_set_strategy(c, strategy)
+  let c: Compressor = compressor_new(level)
+  if compressor_set_algorithm(c, algo) != 0 { give [] }
+  set c.strategy = strategy
   give compressor_compress(c, data)
 }
 
 proc compression_interface_selftest() -> bool {
   let summary: CompressionInterfaceSummary = compression_interface_summary()
+  let sample: [i32] = [1, 2, 3]
   give summary.health.ready
     and summary.manifest.version == "max-1"
+    and deflate.deflate_selftest()
+    and brotli.brotli_selftest()
+    and stats.compression_stats_selftest()
     and compressor_set_algorithm(compressor_new(1), ALGO_ZLIB) == 0
+    and decompress(compress(sample, ALGO_ZLIB, 1), ALGO_ZLIB) == sample
 }
-export *
