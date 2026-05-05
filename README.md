@@ -9,7 +9,7 @@ This repository is now Vitte-only on the source side. The main compiler surface 
 - Build and test the Vitte compiler.
 - Keep the compiler bootstrap stable.
 - Document the language, the compiler, and the repo layout.
-- Track the move away from old C++ sources.
+- Track the move away from old host-language sources.
 
 ## Simple picture
 
@@ -126,7 +126,7 @@ completions               shell completion files
 ## Notes for contributors
 
 - Keep new compiler work bootstrap-friendly.
-- Prefer Vitte files over C++ files.
+- Prefer Vitte files over legacy host-language files.
 - Keep smoke tests small and easy to read.
 - When adding links in docs, prefer local paths that the docs checks can validate.
 
@@ -138,5 +138,4 @@ The current goal is simple:
 
 - keep bootstrap checks green,
 - keep the compiler surface understandable,
-- and expand the compiler step by step without bringing back C++ sources.
-
+- and expand the compiler step by step without bringing back legacy host-language sources.
