@@ -34,7 +34,17 @@
 <a href="diagnostics.html"><img src="svg/diagnostics.svg" alt="" width="14" height="14">Diagnostics</a>
 <a href="suggestions.html"><img src="svg/suggestions.svg" alt="" width="14" height="14">Suggestions</a>
 </div>
-<h2>Latest changes</h2>
+<h2>May 5, 2026</h2>
+<h3>Frontend smoke simplification</h3>
+<p>The frontend smoke now calls the real <code>lexer.lex_source(...)</code> and <code>parser.parse_source(...)</code> entry points instead of reimplementing their behavior locally. That removes the last test-side duplication for counts and parsed source shape, so the smoke is now a tighter check of the shared frontend path and the shared diagnostics module.</p>
+<h3>Frontend smoke cleanup</h3>
+<p>The frontend smoke now leans on shared helpers instead of carrying its own duplicate line and token counters, and it uses the shared diagnostics module directly for warnings and formatted output. That keeps the test surface smaller, reduces drift between the smoke and the parser, and makes the frontend path match the same structured-diagnostic story that the compiler pipeline now uses end to end.</p>
+<h3>Frontend alignment</h3>
+<p>The compiler and frontend now share the same structured diagnostic path end to end: <code>src/vitte/compiler/ir/ast.vit</code> produces typed diagnostics, <code>src/vitte/compiler/frontend/diagnostics.vit</code> formats them, and the compiler smoke checks the formatted output through that shared module. At the same time, the frontend smoke was moved onto the shared diagnostics bag and cleaned up to fit the current parser, which removes one more layer of duplicate state and keeps the parser, driver, and tests on the same representation.</p>
+<h3>Compiler diagnostics</h3>
+<p>The compiler pipeline now carries structured diagnostics all the way from <code>src/vitte/compiler/ir/ast.vit</code> into the driver and the frontend diagnostics module instead of flattening them too early. That means missing <code>space</code> and malformed <code>proc</code> signatures are tracked as typed diagnostics, statement errors keep their line numbers, and the smoke coverage in <code>src/vitte/compiler/tests/smoke.vit</code> now checks the formatted output through the shared frontend formatter. The result is a cleaner split between parse-time data and presentation, which makes the compiler easier to extend without losing error fidelity.</p>
+<h3>Stdlib compression</h3>
+<p>The compression stdlib has been tightened into a coherent family of modules: <code>src/vitte/stdlib/compression.vitl</code> now pulls in <code>deflate</code>, <code>brotli</code>, <code>algorithms</code>, <code>lz</code>, <code>huffman</code>, and <code>stats</code>, while <code>interface.vitl</code> exposes the same surface with aligned health checks and self-tests. The submodules were rewritten to fit the current parser and to keep their own manifests, health summaries, and smoke paths explicit, so the compression layer is now easier to read, easier to test, and much less dependent on legacy syntax. The dedicated smoke at <code>src/vitte/stdlib/compression/tests/smoke.vitl</code> now exercises the whole family in one place, which gives us a cleaner stdlib baseline for the next round of work.</p>
 <h3>@roussov</h3>
 <p><strong>@roussov</strong> notes that the compiler now has a clean Vitte-owned path; the GitHub URL <code>https://github.com/vitte-lang/src/vitte/compiler</code> does not resolve as written, so the practical entry point is <a href="source.html">Source</a>.</p>
 <p>The current direction is simple: keep the compiler readable, keep the layers separate, and keep the documentation and checks aligned with the Vitte source of truth.</p>
