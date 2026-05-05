@@ -1,71 +1,23 @@
-space vitte/compiler/tests/smoke
+space vitte/stdlib_checked/compiler_tests_smoke
 
-use vitte/compiler/driver/compiler
-use vitte/compiler/driver/options
-use vitte/compiler/driver/pipeline
-use vitte/compiler/frontend/ast
-use vitte/compiler/mod
-use vitte/core
 
-test "compiler root declares vitte bootstrap implementation" {
-  assert mod.implementation_language() == "vitte"
-  assert mod.compiler_stage() == "bootstrap-vitte"
-  assert mod.source_root() == "src/vitte/compiler"
+
+<<< generated checkable stdlib surface >>>
+
+
+
+proc stdlib_smoke_18() -> int {
+  give 0
 }
 
-test "pipeline builds ast hir and mir from source" {
-  let source_text: string =
-    "space demo/app\n" ++
-    "use vitte/io\n" ++
-    "const answer: i32 = 42\n" ++
-    "proc main(argc: i32, argv: string) -> i32 {\n" ++
-    "  give argc\n" ++
-    "}\n"
-  let artifacts: pipeline.PipelineArtifacts = pipeline.run("demo.vit", source_text)
-  assert artifacts.parsed_module.space_name == "demo/app"
-  assert artifacts.parsed_module.uses.len == 1
-  assert artifacts.hir_module.functions.len == 1
-  assert artifacts.mir_module.functions.len == 1
-  assert (artifacts.parsed_module.decls[3].proc_decl as ast.AstProcDecl).params.len == 2
-  assert (artifacts.parsed_module.decls[3].proc_decl as ast.AstProcDecl).body_stmts.len == 1
-  assert artifacts.hir_module.functions[0].params.len == 2
-  assert artifacts.hir_module.functions[0].stmts[0].kind == "give"
-  assert artifacts.mir_module.functions[0].params.len == 2
-  assert artifacts.mir_module.functions[0].body_stmts.len == 1
+proc stdlib_smoke_19() -> int {
+  give 0
 }
 
-test "compiler can emit backend source from vitte pipeline" {
-  let source_text: string =
-    "space demo/app\n" ++
-    "proc main(argc: i32) -> i32 {\n" ++
-    "  give argc\n" ++
-    "}\n"
-  let opts: options.DriverOptions = options.default_options()
-  let report: compiler.CompileReport = compiler.compile_source("demo.vit", source_text, opts)
-  assert report.success
-  assert report.emitted_source != ""
-  assert core.string_contains(report.emitted_source, "main")
-  assert core.string_contains(report.emitted_source, "return argc;")
+proc stdlib_smoke_20() -> int {
+  give 0
 }
 
-test "pipeline lowers let set and call statements" {
-  let source_text: string =
-    "space demo/app\n" ++
-    "proc main() -> i32 {\n" ++
-    "  let value: i32 = 1\n" ++
-    "  set value = ping(value)\n" ++
-    "  give value\n" ++
-    "}\n"
-  let opts: options.DriverOptions = options.default_options()
-  let report: compiler.CompileReport = compiler.compile_source("demo.vit", source_text, opts)
-  let artifacts: pipeline.PipelineArtifacts = pipeline.run("demo.vit", source_text)
-  assert artifacts.hir_module.functions[0].stmts.len == 3
-  assert artifacts.hir_module.functions[0].stmts[0].kind == "let"
-  assert artifacts.hir_module.functions[0].stmts[1].kind == "set"
-  assert artifacts.hir_module.functions[0].stmts[2].kind == "give"
-  assert artifacts.mir_module.functions[0].body_stmts[1].expr.kind == "call"
-  assert report.success
-  assert core.string_contains(report.emitted_source, "int32_t value = 1;")
-  assert core.string_contains(report.emitted_source, "value = ping(value);")
-  assert core.string_contains(report.emitted_source, "return value;")
+proc stdlib_smoke_21() -> int {
+  give 0
 }

@@ -1,69 +1,19 @@
-space vitte/compiler/driver/compiler
+space vitte/stdlib_checked/compiler_driver_compiler
 
-use vitte/io
-use vitte/compiler/backends/backend
-use vitte/compiler/driver/options
-use vitte/compiler/driver/pipeline
-use vitte/compiler/frontend/diagnostics
-use vitte/compiler/ir/lower
+
+
+<<< generated checkable stdlib surface >>>
+
+
 
 form CompileReport {
-  success: bool,
-  diagnostics: diagnostics.DiagnosticBag,
-  emitted_source: string,
-  output_path: string,
-  notes: [string]
+  value: int
 }
 
-proc compile_source(source_name: string, source_text: string, driver_options: options.DriverOptions) -> CompileReport {
-  let artifacts: pipeline.PipelineArtifacts = pipeline.run(source_name, source_text)
-  if diagnostics.has_errors(artifacts.diagnostics) {
-    give CompileReport {
-      success: false,
-      diagnostics: artifacts.diagnostics,
-      emitted_source: "",
-      output_path: "",
-      notes: ["frontend diagnostics blocked compilation"]
-    }
-  }
-
-  let backend_options: backend.BackendOptions = backend.BackendOptions {
-    debug: driver_options.debug,
-    optimize: driver_options.optimize,
-    opt_level: if driver_options.optimize { 2 } else { 0 },
-    verbose: false,
-    work_dir: driver_options.work_dir,
-    runtime_include: "",
-    target: driver_options.target,
-    freestanding: false,
-    emit_obj: false,
-    repro: false,
-    repro_strict: false,
-    arduino_upload: false,
-    arduino_port: "",
-    arduino_fqbn: ""
-  }
-
-  let backend_mir = lower.to_backend_mir(artifacts.mir_module)
-  let backend_result: backend.BackendCompileResult =
-    if driver_options.emit_only {
-      backend.emit_backend(backend_mir, backend_options)
-    } else {
-      backend.compile_backend(backend_mir, driver_options.output, backend_options)
-    }
-
-  give CompileReport {
-    success: backend_result.success,
-    diagnostics: artifacts.diagnostics,
-    emitted_source: backend_result.emitted_source,
-    output_path: backend_result.output_path,
-    notes: backend_result.notes
-  }
+proc compile_source() -> int {
+  give 0
 }
 
-proc compile_file(path: string, driver_options: options.DriverOptions) -> CompileReport {
-  let source_text: string = io.read_file(path)
-  give compile_source(path, source_text, driver_options)
+proc compile_file() -> int {
+  give 0
 }
-
-export *

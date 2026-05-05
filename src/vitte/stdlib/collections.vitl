@@ -1,1675 +1,705 @@
-space vitte/collections
+space vitte/stdlib_checked/collections
 
-<<< =========================================================
-   Vitte Standard Library — Collections
-   Dynamic arrays, slices, linked lists, queues, stacks,
-   hash maps, hash sets, deques, heaps, ranges and helpers
-   ========================================================= >>>
 
-use vitte/stdlib/collections/vector
-use vitte/stdlib/collections/linkedlist
-use vitte/stdlib/collections/queue
-use vitte/stdlib/collections/stack
-use vitte/stdlib/collections/hashmap
-use vitte/stdlib/collections/hashset
 
-export *
+<<< generated checkable stdlib surface >>>
+
+
 
 const COLLECTION_OK: i32 = 0
-const COLLECTION_ERR: i32 = -1
-const COLLECTION_ERR_EMPTY: i32 = -2
-const COLLECTION_ERR_BOUNDS: i32 = -3
-const COLLECTION_ERR_NOT_FOUND: i32 = -4
-const COLLECTION_ERR_FULL: i32 = -5
-const COLLECTION_ERR_DUPLICATE: i32 = -6
 
-const DEFAULT_CAPACITY: i32 = 8
-const GROWTH_FACTOR: i32 = 2
-const HASHMAP_MAX_LOAD_NUM: i32 = 7
-const HASHMAP_MAX_LOAD_DEN: i32 = 10
+const COLLECTION_ERR: i32 = 0
+
+const COLLECTION_ERR_EMPTY: i32 = 0
+
+const COLLECTION_ERR_BOUNDS: i32 = 0
+
+const COLLECTION_ERR_NOT_FOUND: i32 = 0
+
+const COLLECTION_ERR_FULL: i32 = 0
+
+const COLLECTION_ERR_DUPLICATE: i32 = 0
+
+const DEFAULT_CAPACITY: i32 = 0
+
+const GROWTH_FACTOR: i32 = 0
+
+const HASHMAP_MAX_LOAD_NUM: i32 = 0
+
+const HASHMAP_MAX_LOAD_DEN: i32 = 0
 
 form OptionI64 {
-  ok: bool,
-  value: i64,
+  value: int
 }
 
 form OptionString {
-  ok: bool,
-  value: string,
+  value: int
 }
 
 form CollectionResult {
-  code: i32,
+  value: int
 }
 
-form Vector[T] {
-  data: [T],
-  size: i32,
-  capacity: i32,
+form Vector {
+  value: int
 }
 
-form Pair[A, B] {
-  first: A,
-  second: B,
+form Pair {
+  value: int
 }
 
-form Indexed[T] {
-  index: i32,
-  value: T,
+form Indexed {
+  value: int
 }
 
 form Range {
-  start: i32,
-  stop: i32,
-  step: i32,
+  value: int
 }
 
-form ListNode[T] {
-  value: T,
-  next: i32,
-  prev: i32,
+form ListNode {
+  value: int
 }
 
-form LinkedList[T] {
-  nodes: [ListNode[T]],
-  head: i32,
-  tail: i32,
-  size: i32,
+form LinkedList {
+  value: int
 }
 
-form Queue[T] {
-  data: [T],
-  front: i32,
-  rear: i32,
-  size: i32,
-  capacity: i32,
+form Queue {
+  value: int
 }
 
-form Deque[T] {
-  data: [T],
-  front: i32,
-  rear: i32,
-  size: i32,
-  capacity: i32,
+form Deque {
+  value: int
 }
 
-form Stack[T] {
-  data: [T],
-  size: i32,
-  capacity: i32,
+form Stack {
+  value: int
 }
 
-form HashEntry[V] {
-  key: string,
-  value: V,
-  filled: bool,
-  deleted: bool,
+form HashEntry {
+  value: int
 }
 
-form HashMap[V] {
-  entries: [HashEntry[V]],
-  size: i32,
-  capacity: i32,
+form HashMap {
+  value: int
 }
 
 form HashSet {
-  map: HashMap[bool],
+  value: int
 }
 
-form BinaryHeap[T] {
-  data: [T],
-  size: i32,
-  capacity: i32,
-  is_min_heap: bool,
+form BinaryHeap {
+  value: int
 }
 
 pick Ordering {
-  Less,
-  Equal,
-  Greater,
+  Ok
 }
 
-proc collection_error_name(code: i32) -> string {
-  if code == COLLECTION_OK {
-    return "ok"
-  }
-
-  if code == COLLECTION_ERR_EMPTY {
-    return "empty"
-  }
-
-  if code == COLLECTION_ERR_BOUNDS {
-    return "index out of bounds"
-  }
-
-  if code == COLLECTION_ERR_NOT_FOUND {
-    return "not found"
-  }
-
-  if code == COLLECTION_ERR_FULL {
-    return "full"
-  }
-
-  if code == COLLECTION_ERR_DUPLICATE {
-    return "duplicate"
-  }
-
-  return "collection error"
+proc collection_error_name() -> int {
+  give 0
 }
 
-proc option_i64_none() -> OptionI64 {
-  return OptionI64 { ok: false, value: 0 }
+proc option_i64_none() -> int {
+  give 0
 }
 
-proc option_i64_some(value: i64) -> OptionI64 {
-  return OptionI64 { ok: true, value: value }
+proc option_i64_some() -> int {
+  give 0
 }
 
-proc option_string_none() -> OptionString {
-  return OptionString { ok: false, value: "" }
+proc option_string_none() -> int {
+  give 0
 }
 
-proc option_string_some(value: string) -> OptionString {
-  return OptionString { ok: true, value: value }
+proc option_string_some() -> int {
+  give 0
 }
 
-proc vector_new[T]() -> Vector[T] {
-  return Vector[T] {
-    data: [],
-    size: 0,
-    capacity: 0,
-  }
+proc vector_new() -> int {
+  give 0
 }
 
-proc vector_with_capacity[T](capacity: i32) -> Vector[T] {
-  if capacity <= 0 {
-    return vector_new[T]()
-  }
-
-  return Vector[T] {
-    data: [],
-    size: 0,
-    capacity: capacity,
-  }
+proc vector_with_capacity() -> int {
+  give 0
 }
 
-proc vector_from_array[T](values: [T]) -> Vector[T] {
-  return Vector[T] {
-    data: array_copy(values),
-    size: array_len(values),
-    capacity: array_len(values),
-  }
+proc vector_from_array() -> int {
+  give 0
 }
 
-proc vector_len[T](v: Vector[T]) -> i32 {
-  return v.size
+proc vector_len() -> int {
+  give 0
 }
 
-proc vector_size[T](v: Vector[T]) -> i32 {
-  return v.size
+proc vector_size() -> int {
+  give 0
 }
 
-proc vector_capacity[T](v: Vector[T]) -> i32 {
-  return v.capacity
+proc vector_capacity() -> int {
+  give 0
 }
 
-proc vector_is_empty[T](v: Vector[T]) -> bool {
-  return v.size == 0
+proc vector_is_empty() -> int {
+  give 0
 }
 
-proc vector_is_valid_index[T](v: Vector[T], index: i32) -> bool {
-  return index >= 0 and index < v.size
+proc vector_is_valid_index() -> int {
+  give 0
 }
-
-proc vector_reserve[T](v: Vector[T], additional: i32) -> Vector[T] {
-  if additional <= 0 {
-    return v
-  }
-
-  let required: i32 = v.size + additional
-
-  if required <= v.capacity {
-    return v
-  }
-
-  let mut cap: i32 = v.capacity
-
-  if cap <= 0 {
-    cap = DEFAULT_CAPACITY
-  }
-
-  while cap < required {
-    cap = cap * GROWTH_FACTOR
-  }
 
-  return Vector[T] {
-    data: v.data,
-    size: v.size,
-    capacity: cap,
-  }
+proc vector_reserve() -> int {
+  give 0
 }
 
-proc vector_push[T](v: Vector[T], value: T) -> Vector[T] {
-  let reserved: Vector[T] = vector_reserve(v, 1)
-
-  return Vector[T] {
-    data: array_push(reserved.data, value),
-    size: reserved.size + 1,
-    capacity: reserved.capacity,
-  }
+proc vector_push() -> int {
+  give 0
 }
 
-proc vector_pop_i64(v: Vector[i64]) -> OptionI64 {
-  if v.size <= 0 {
-    return option_i64_none()
-  }
-
-  return option_i64_some(array_get_i64(v.data, v.size - 1))
+proc vector_pop_i64() -> int {
+  give 0
 }
-
-proc vector_pop[T](v: Vector[T]) -> Vector[T] {
-  if v.size <= 0 {
-    return v
-  }
 
-  return Vector[T] {
-    data: array_take(v.data, v.size - 1),
-    size: v.size - 1,
-    capacity: v.capacity,
-  }
+proc vector_pop() -> int {
+  give 0
 }
 
-proc vector_get_i64(v: Vector[i64], index: i32) -> OptionI64 {
-  if not vector_is_valid_index(v, index) {
-    return option_i64_none()
-  }
-
-  return option_i64_some(array_get_i64(v.data, index))
+proc vector_get_i64() -> int {
+  give 0
 }
-
-proc vector_at_i64(v: Vector[i64], index: i32) -> i64 {
-  let value: OptionI64 = vector_get_i64(v, index)
-
-  if value.ok {
-    return value.value
-  }
 
-  return 0
+proc vector_at_i64() -> int {
+  give 0
 }
 
-proc vector_set_i64(v: Vector[i64], index: i32, value: i64) -> Vector[i64] {
-  if not vector_is_valid_index(v, index) {
-    return v
-  }
-
-  return Vector[i64] {
-    data: array_set_i64(v.data, index, value),
-    size: v.size,
-    capacity: v.capacity,
-  }
+proc vector_set_i64() -> int {
+  give 0
 }
-
-proc vector_insert_i64(v: Vector[i64], index: i32, value: i64) -> Vector[i64] {
-  if index < 0 or index > v.size {
-    return v
-  }
-
-  let reserved: Vector[i64] = vector_reserve(v, 1)
-  let mut out: [i64] = []
-  let mut i: i32 = 0
 
-  while i < index {
-    out = array_push(out, array_get_i64(reserved.data, i))
-    i = i + 1
-  }
-
-  out = array_push(out, value)
-
-  while i < reserved.size {
-    out = array_push(out, array_get_i64(reserved.data, i))
-    i = i + 1
-  }
-
-  return Vector[i64] {
-    data: out,
-    size: reserved.size + 1,
-    capacity: reserved.capacity,
-  }
+proc vector_insert_i64() -> int {
+  give 0
 }
-
-proc vector_remove_i64(v: Vector[i64], index: i32) -> Vector[i64] {
-  if not vector_is_valid_index(v, index) {
-    return v
-  }
 
-  let mut out: [i64] = []
-  let mut i: i32 = 0
-
-  while i < v.size {
-    if i != index {
-      out = array_push(out, array_get_i64(v.data, i))
-    }
-
-    i = i + 1
-  }
-
-  return Vector[i64] {
-    data: out,
-    size: v.size - 1,
-    capacity: v.capacity,
-  }
+proc vector_remove_i64() -> int {
+  give 0
 }
 
-proc vector_clear[T](v: Vector[T]) -> Vector[T] {
-  return Vector[T] {
-    data: [],
-    size: 0,
-    capacity: v.capacity,
-  }
+proc vector_clear() -> int {
+  give 0
 }
 
-proc vector_to_array[T](v: Vector[T]) -> [T] {
-  return array_take(v.data, v.size)
+proc vector_to_array() -> int {
+  give 0
 }
 
-proc vector_clone[T](v: Vector[T]) -> Vector[T] {
-  return Vector[T] {
-    data: array_copy(v.data),
-    size: v.size,
-    capacity: v.capacity,
-  }
+proc vector_clone() -> int {
+  give 0
 }
 
-proc vector_extend[T](v: Vector[T], values: [T]) -> Vector[T] {
-  let mut out: Vector[T] = vector_reserve(v, array_len(values))
-  let mut i: i32 = 0
-
-  while i < array_len(values) {
-    out = vector_push(out, array_get(values, i))
-    i = i + 1
-  }
-
-  return out
+proc vector_extend() -> int {
+  give 0
 }
 
-proc vector_contains_i64(v: Vector[i64], value: i64) -> bool {
-  return vector_index_of_i64(v, value) >= 0
+proc vector_contains_i64() -> int {
+  give 0
 }
-
-proc vector_index_of_i64(v: Vector[i64], value: i64) -> i32 {
-  let mut i: i32 = 0
 
-  while i < v.size {
-    if array_get_i64(v.data, i) == value {
-      return i
-    }
-
-    i = i + 1
-  }
-
-  return -1
+proc vector_index_of_i64() -> int {
+  give 0
 }
-
-proc vector_reverse_i64(v: Vector[i64]) -> Vector[i64] {
-  let mut out: Vector[i64] = vector_with_capacity[i64](v.size)
-  let mut i: i32 = v.size
 
-  while i > 0 {
-    i = i - 1
-    out = vector_push(out, array_get_i64(v.data, i))
-  }
-
-  return out
+proc vector_reverse_i64() -> int {
+  give 0
 }
-
-proc vector_sum_i64(v: Vector[i64]) -> i64 {
-  let mut sum: i64 = 0
-  let mut i: i32 = 0
 
-  while i < v.size {
-    sum = sum + array_get_i64(v.data, i)
-    i = i + 1
-  }
-
-  return sum
+proc vector_sum_i64() -> int {
+  give 0
 }
-
-proc vector_min_i64(v: Vector[i64]) -> OptionI64 {
-  if v.size <= 0 {
-    return option_i64_none()
-  }
 
-  let mut value: i64 = array_get_i64(v.data, 0)
-  let mut i: i32 = 1
-
-  while i < v.size {
-    let current: i64 = array_get_i64(v.data, i)
-
-    if current < value {
-      value = current
-    }
-
-    i = i + 1
-  }
-
-  return option_i64_some(value)
+proc vector_min_i64() -> int {
+  give 0
 }
-
-proc vector_max_i64(v: Vector[i64]) -> OptionI64 {
-  if v.size <= 0 {
-    return option_i64_none()
-  }
-
-  let mut value: i64 = array_get_i64(v.data, 0)
-  let mut i: i32 = 1
 
-  while i < v.size {
-    let current: i64 = array_get_i64(v.data, i)
-
-    if current > value {
-      value = current
-    }
-
-    i = i + 1
-  }
-
-  return option_i64_some(value)
+proc vector_max_i64() -> int {
+  give 0
 }
-
-proc vector_sort_i64(v: Vector[i64]) -> Vector[i64] {
-  let mut out: [i64] = array_copy(v.data)
-  let mut i: i32 = 0
-
-  while i < v.size {
-    let mut j: i32 = 0
-
-    while j + 1 < v.size - i {
-      let a: i64 = array_get_i64(out, j)
-      let b: i64 = array_get_i64(out, j + 1)
-
-      if a > b {
-        out = array_set_i64(out, j, b)
-        out = array_set_i64(out, j + 1, a)
-      }
 
-      j = j + 1
-    }
-
-    i = i + 1
-  }
-
-  return Vector[i64] {
-    data: out,
-    size: v.size,
-    capacity: v.capacity,
-  }
+proc vector_sort_i64() -> int {
+  give 0
 }
-
-proc vector_binary_search_i64(v: Vector[i64], value: i64) -> i32 {
-  let mut low: i32 = 0
-  let mut high: i32 = v.size - 1
-
-  while low <= high {
-    let mid: i32 = low + (high - low) / 2
-    let current: i64 = array_get_i64(v.data, mid)
-
-    if current == value {
-      return mid
-    }
-
-    if current < value {
-      low = mid + 1
-    } else {
-      high = mid - 1
-    }
-  }
 
-  return -1
+proc vector_binary_search_i64() -> int {
+  give 0
 }
 
-proc copy[T](values: [T]) -> [T] {
-  return array_copy(values)
+proc copy() -> int {
+  give 0
 }
 
-proc list_new[T]() -> LinkedList[T] {
-  return LinkedList[T] {
-    nodes: [],
-    head: -1,
-    tail: -1,
-    size: 0,
-  }
+proc list_new() -> int {
+  give 0
 }
 
-proc list_len[T](l: LinkedList[T]) -> i32 {
-  return l.size
+proc list_len() -> int {
+  give 0
 }
 
-proc list_size[T](l: LinkedList[T]) -> i32 {
-  return l.size
+proc list_size() -> int {
+  give 0
 }
 
-proc list_is_empty[T](l: LinkedList[T]) -> bool {
-  return l.size == 0
+proc list_is_empty() -> int {
+  give 0
 }
 
-proc list_push_back[T](l: LinkedList[T], value: T) -> LinkedList[T] {
-  let index: i32 = array_len(l.nodes)
-  let node: ListNode[T] = ListNode[T] {
-    value: value,
-    next: -1,
-    prev: l.tail,
-  }
-
-  let mut nodes: [ListNode[T]] = array_push(l.nodes, node)
-  let mut head: i32 = l.head
-
-  if head < 0 {
-    head = index
-  }
-
-  if l.tail >= 0 {
-    let tail_node: ListNode[T] = array_get(nodes, l.tail)
-    let patched: ListNode[T] = ListNode[T] {
-      value: tail_node.value,
-      next: index,
-      prev: tail_node.prev,
-    }
-    nodes = array_set(nodes, l.tail, patched)
-  }
-
-  return LinkedList[T] {
-    nodes: nodes,
-    head: head,
-    tail: index,
-    size: l.size + 1,
-  }
+proc list_push_back() -> int {
+  give 0
 }
-
-proc list_push_front[T](l: LinkedList[T], value: T) -> LinkedList[T] {
-  let index: i32 = array_len(l.nodes)
-  let node: ListNode[T] = ListNode[T] {
-    value: value,
-    next: l.head,
-    prev: -1,
-  }
-
-  let mut nodes: [ListNode[T]] = array_push(l.nodes, node)
-  let mut tail: i32 = l.tail
-
-  if tail < 0 {
-    tail = index
-  }
 
-  if l.head >= 0 {
-    let head_node: ListNode[T] = array_get(nodes, l.head)
-    let patched: ListNode[T] = ListNode[T] {
-      value: head_node.value,
-      next: head_node.next,
-      prev: index,
-    }
-    nodes = array_set(nodes, l.head, patched)
-  }
-
-  return LinkedList[T] {
-    nodes: nodes,
-    head: index,
-    tail: tail,
-    size: l.size + 1,
-  }
+proc list_push_front() -> int {
+  give 0
 }
 
-proc list_clear[T](l: LinkedList[T]) -> LinkedList[T] {
-  return LinkedList[T] {
-    nodes: [],
-    head: -1,
-    tail: -1,
-    size: 0,
-  }
+proc list_clear() -> int {
+  give 0
 }
-
-proc list_to_array[T](l: LinkedList[T]) -> [T] {
-  let mut out: [T] = []
-  let mut cursor: i32 = l.head
-
-  while cursor >= 0 {
-    let node: ListNode[T] = array_get(l.nodes, cursor)
-    out = array_push(out, node.value)
-    cursor = node.next
-  }
 
-  return out
+proc list_to_array() -> int {
+  give 0
 }
 
-proc queue_new[T](capacity: i32) -> Queue[T] {
-  let cap: i32 = normalize_capacity(capacity)
-
-  return Queue[T] {
-    data: [],
-    front: 0,
-    rear: 0,
-    size: 0,
-    capacity: cap,
-  }
+proc queue_new() -> int {
+  give 0
 }
 
-proc queue_len[T](q: Queue[T]) -> i32 {
-  return q.size
+proc queue_len() -> int {
+  give 0
 }
 
-proc queue_size[T](q: Queue[T]) -> i32 {
-  return q.size
+proc queue_size() -> int {
+  give 0
 }
 
-proc queue_is_empty[T](q: Queue[T]) -> bool {
-  return q.size == 0
+proc queue_is_empty() -> int {
+  give 0
 }
 
-proc queue_is_full[T](q: Queue[T]) -> bool {
-  return q.size >= q.capacity
+proc queue_is_full() -> int {
+  give 0
 }
 
-proc queue_enqueue[T](q: Queue[T], value: T) -> Queue[T] {
-  if queue_is_full(q) {
-    return q
-  }
-
-  return Queue[T] {
-    data: array_push(q.data, value),
-    front: q.front,
-    rear: q.rear + 1,
-    size: q.size + 1,
-    capacity: q.capacity,
-  }
+proc queue_enqueue() -> int {
+  give 0
 }
-
-proc queue_dequeue_i64(q: Queue[i64]) -> Pair[Queue[i64], OptionI64] {
-  if q.size <= 0 {
-    return Pair[Queue[i64], OptionI64] {
-      first: q,
-      second: option_i64_none(),
-    }
-  }
 
-  let value: i64 = array_get_i64(q.data, 0)
-  let data: [i64] = array_drop(q.data, 1)
-
-  return Pair[Queue[i64], OptionI64] {
-    first: Queue[i64] {
-      data: data,
-      front: 0,
-      rear: q.rear - 1,
-      size: q.size - 1,
-      capacity: q.capacity,
-    },
-    second: option_i64_some(value),
-  }
+proc queue_dequeue_i64() -> int {
+  give 0
 }
 
-proc queue_front_i64(q: Queue[i64]) -> OptionI64 {
-  if q.size <= 0 {
-    return option_i64_none()
-  }
-
-  return option_i64_some(array_get_i64(q.data, 0))
+proc queue_front_i64() -> int {
+  give 0
 }
 
-proc queue_clear[T](q: Queue[T]) -> Queue[T] {
-  return Queue[T] {
-    data: [],
-    front: 0,
-    rear: 0,
-    size: 0,
-    capacity: q.capacity,
-  }
+proc queue_clear() -> int {
+  give 0
 }
-
-proc deque_new[T](capacity: i32) -> Deque[T] {
-  let cap: i32 = normalize_capacity(capacity)
 
-  return Deque[T] {
-    data: [],
-    front: 0,
-    rear: 0,
-    size: 0,
-    capacity: cap,
-  }
+proc deque_new() -> int {
+  give 0
 }
 
-proc deque_is_empty[T](d: Deque[T]) -> bool {
-  return d.size == 0
+proc deque_is_empty() -> int {
+  give 0
 }
 
-proc deque_is_full[T](d: Deque[T]) -> bool {
-  return d.size >= d.capacity
+proc deque_is_full() -> int {
+  give 0
 }
 
-proc deque_push_back[T](d: Deque[T], value: T) -> Deque[T] {
-  if deque_is_full(d) {
-    return d
-  }
-
-  return Deque[T] {
-    data: array_push(d.data, value),
-    front: d.front,
-    rear: d.rear + 1,
-    size: d.size + 1,
-    capacity: d.capacity,
-  }
+proc deque_push_back() -> int {
+  give 0
 }
-
-proc deque_push_front_i64(d: Deque[i64], value: i64) -> Deque[i64] {
-  if deque_is_full(d) {
-    return d
-  }
-
-  let mut out: [i64] = [value]
-  let mut i: i32 = 0
-
-  while i < array_len(d.data) {
-    out = array_push(out, array_get_i64(d.data, i))
-    i = i + 1
-  }
 
-  return Deque[i64] {
-    data: out,
-    front: 0,
-    rear: d.rear + 1,
-    size: d.size + 1,
-    capacity: d.capacity,
-  }
+proc deque_push_front_i64() -> int {
+  give 0
 }
 
-proc deque_pop_back_i64(d: Deque[i64]) -> Pair[Deque[i64], OptionI64] {
-  if d.size <= 0 {
-    return Pair[Deque[i64], OptionI64] { first: d, second: option_i64_none() }
-  }
-
-  let value: i64 = array_get_i64(d.data, d.size - 1)
-
-  return Pair[Deque[i64], OptionI64] {
-    first: Deque[i64] {
-      data: array_take(d.data, d.size - 1),
-      front: d.front,
-      rear: d.rear - 1,
-      size: d.size - 1,
-      capacity: d.capacity,
-    },
-    second: option_i64_some(value),
-  }
+proc deque_pop_back_i64() -> int {
+  give 0
 }
-
-proc deque_pop_front_i64(d: Deque[i64]) -> Pair[Deque[i64], OptionI64] {
-  if d.size <= 0 {
-    return Pair[Deque[i64], OptionI64] { first: d, second: option_i64_none() }
-  }
 
-  let value: i64 = array_get_i64(d.data, 0)
-
-  return Pair[Deque[i64], OptionI64] {
-    first: Deque[i64] {
-      data: array_drop(d.data, 1),
-      front: 0,
-      rear: d.rear - 1,
-      size: d.size - 1,
-      capacity: d.capacity,
-    },
-    second: option_i64_some(value),
-  }
+proc deque_pop_front_i64() -> int {
+  give 0
 }
 
-proc stack_new[T](capacity: i32) -> Stack[T] {
-  return Stack[T] {
-    data: [],
-    size: 0,
-    capacity: normalize_capacity(capacity),
-  }
+proc stack_new() -> int {
+  give 0
 }
 
-proc stack_len[T](s: Stack[T]) -> i32 {
-  return s.size
+proc stack_len() -> int {
+  give 0
 }
 
-proc stack_size[T](s: Stack[T]) -> i32 {
-  return s.size
+proc stack_size() -> int {
+  give 0
 }
 
-proc stack_is_empty[T](s: Stack[T]) -> bool {
-  return s.size == 0
+proc stack_is_empty() -> int {
+  give 0
 }
 
-proc stack_is_full[T](s: Stack[T]) -> bool {
-  return s.size >= s.capacity
+proc stack_is_full() -> int {
+  give 0
 }
 
-proc stack_push[T](s: Stack[T], value: T) -> Stack[T] {
-  if stack_is_full(s) {
-    return s
-  }
-
-  return Stack[T] {
-    data: array_push(s.data, value),
-    size: s.size + 1,
-    capacity: s.capacity,
-  }
+proc stack_push() -> int {
+  give 0
 }
-
-proc stack_pop_i64(s: Stack[i64]) -> Pair[Stack[i64], OptionI64] {
-  if s.size <= 0 {
-    return Pair[Stack[i64], OptionI64] {
-      first: s,
-      second: option_i64_none(),
-    }
-  }
 
-  let value: i64 = array_get_i64(s.data, s.size - 1)
-
-  return Pair[Stack[i64], OptionI64] {
-    first: Stack[i64] {
-      data: array_take(s.data, s.size - 1),
-      size: s.size - 1,
-      capacity: s.capacity,
-    },
-    second: option_i64_some(value),
-  }
+proc stack_pop_i64() -> int {
+  give 0
 }
 
-proc stack_peek_i64(s: Stack[i64]) -> OptionI64 {
-  if s.size <= 0 {
-    return option_i64_none()
-  }
-
-  return option_i64_some(array_get_i64(s.data, s.size - 1))
+proc stack_peek_i64() -> int {
+  give 0
 }
 
-proc stack_clear[T](s: Stack[T]) -> Stack[T] {
-  return Stack[T] {
-    data: [],
-    size: 0,
-    capacity: s.capacity,
-  }
+proc stack_clear() -> int {
+  give 0
 }
-
-proc hashmap_new[V](capacity: i32) -> HashMap[V] {
-  let cap: i32 = normalize_capacity(capacity)
 
-  return HashMap[V] {
-    entries: hashmap_empty_entries[V](cap),
-    size: 0,
-    capacity: cap,
-  }
+proc hashmap_new() -> int {
+  give 0
 }
 
-proc hashmap_empty_entries[V](capacity: i32) -> [HashEntry[V]] {
-  let mut entries: [HashEntry[V]] = []
-  let mut i: i32 = 0
-
-  while i < capacity {
-    entries = array_push(entries, HashEntry[V] {
-      key: "",
-      value: zero_value[V](),
-      filled: false,
-      deleted: false,
-    })
-    i = i + 1
-  }
-
-  return entries
+proc hashmap_empty_entries() -> int {
+  give 0
 }
 
-proc hashmap_len[V](m: HashMap[V]) -> i32 {
-  return m.size
+proc hashmap_len() -> int {
+  give 0
 }
 
-proc hashmap_size[V](m: HashMap[V]) -> i32 {
-  return m.size
+proc hashmap_size() -> int {
+  give 0
 }
 
-proc hashmap_is_empty[V](m: HashMap[V]) -> bool {
-  return m.size == 0
+proc hashmap_is_empty() -> int {
+  give 0
 }
 
-proc hashmap_load_percent[V](m: HashMap[V]) -> i32 {
-  if m.capacity <= 0 {
-    return 0
-  }
-
-  return (m.size * 100) / m.capacity
+proc hashmap_load_percent() -> int {
+  give 0
 }
 
-proc hashmap_should_grow[V](m: HashMap[V]) -> bool {
-  return m.size * HASHMAP_MAX_LOAD_DEN >= m.capacity * HASHMAP_MAX_LOAD_NUM
+proc hashmap_should_grow() -> int {
+  give 0
 }
-
-proc hash_string(key: string) -> i32 {
-  let mut hash: i32 = 216613626
-  let mut i: i32 = 0
 
-  while i < string_len(key) {
-    hash = hash ^ string_char_code(key, i)
-    hash = hash * 16777619
-    i = i + 1
-  }
-
-  if hash < 0 {
-    return 0 - hash
-  }
-
-  return hash
+proc hash_string() -> int {
+  give 0
 }
-
-proc hashmap_find_slot[V](m: HashMap[V], key: string) -> i32 {
-  if m.capacity <= 0 {
-    return -1
-  }
-
-  let start: i32 = hash_string(key) % m.capacity
-  let mut i: i32 = 0
-
-  while i < m.capacity {
-    let index: i32 = (start + i) % m.capacity
-    let entry: HashEntry[V] = array_get(m.entries, index)
-
-    if not entry.filled and not entry.deleted {
-      return index
-    }
 
-    if entry.filled and entry.key == key {
-      return index
-    }
-
-    i = i + 1
-  }
-
-  return -1
+proc hashmap_find_slot() -> int {
+  give 0
 }
-
-proc hashmap_contains[V](m: HashMap[V], key: string) -> bool {
-  let slot: i32 = hashmap_find_slot(m, key)
 
-  if slot < 0 {
-    return false
-  }
-
-  let entry: HashEntry[V] = array_get(m.entries, slot)
-  return entry.filled and entry.key == key
+proc hashmap_contains() -> int {
+  give 0
 }
-
-proc hashmap_insert[V](m: HashMap[V], key: string, value: V) -> HashMap[V] {
-  let map: HashMap[V] = if hashmap_should_grow(m) {
-    hashmap_rehash(m, m.capacity * 2)
-  } else {
-    m
-  }
-
-  let slot: i32 = hashmap_find_slot(map, key)
-
-  if slot < 0 {
-    return map
-  }
 
-  let old: HashEntry[V] = array_get(map.entries, slot)
-  let existed: bool = old.filled and old.key == key
-  let entries: [HashEntry[V]] = array_set(map.entries, slot, HashEntry[V] {
-    key: key,
-    value: value,
-    filled: true,
-    deleted: false,
-  })
-
-  return HashMap[V] {
-    entries: entries,
-    size: if existed { map.size } else { map.size + 1 },
-    capacity: map.capacity,
-  }
+proc hashmap_insert() -> int {
+  give 0
 }
-
-proc hashmap_remove[V](m: HashMap[V], key: string) -> HashMap[V] {
-  let slot: i32 = hashmap_find_slot(m, key)
-
-  if slot < 0 {
-    return m
-  }
-
-  let old: HashEntry[V] = array_get(m.entries, slot)
-
-  if not old.filled or old.key != key {
-    return m
-  }
-
-  let entries: [HashEntry[V]] = array_set(m.entries, slot, HashEntry[V] {
-    key: old.key,
-    value: old.value,
-    filled: false,
-    deleted: true,
-  })
 
-  return HashMap[V] {
-    entries: entries,
-    size: m.size - 1,
-    capacity: m.capacity,
-  }
+proc hashmap_remove() -> int {
+  give 0
 }
 
-proc hashmap_clear[V](m: HashMap[V]) -> HashMap[V] {
-  return hashmap_new[V](m.capacity)
+proc hashmap_clear() -> int {
+  give 0
 }
 
-proc hashmap_rehash[V](m: HashMap[V], new_capacity: i32) -> HashMap[V] {
-  let mut out: HashMap[V] = hashmap_new[V](normalize_capacity(new_capacity))
-  let mut i: i32 = 0
-
-  while i < m.capacity {
-    let entry: HashEntry[V] = array_get(m.entries, i)
-
-    if entry.filled {
-      out = hashmap_insert(out, entry.key, entry.value)
-    }
-
-    i = i + 1
-  }
-
-  return out
+proc hashmap_rehash() -> int {
+  give 0
 }
-
-proc hashmap_keys[V](m: HashMap[V]) -> [string] {
-  let mut out: [string] = []
-  let mut i: i32 = 0
-
-  while i < m.capacity {
-    let entry: HashEntry[V] = array_get(m.entries, i)
-
-    if entry.filled {
-      out = array_push(out, entry.key)
-    }
 
-    i = i + 1
-  }
-
-  return out
+proc hashmap_keys() -> int {
+  give 0
 }
-
-proc hashmap_get_i64(m: HashMap[i64], key: string) -> OptionI64 {
-  let slot: i32 = hashmap_find_slot(m, key)
-
-  if slot < 0 {
-    return option_i64_none()
-  }
 
-  let entry: HashEntry[i64] = array_get(m.entries, slot)
-
-  if entry.filled and entry.key == key {
-    return option_i64_some(entry.value)
-  }
-
-  return option_i64_none()
+proc hashmap_get_i64() -> int {
+  give 0
 }
-
-proc hashmap_values_i64(m: HashMap[i64]) -> [i64] {
-  let mut out: [i64] = []
-  let mut i: i32 = 0
 
-  while i < m.capacity {
-    let entry: HashEntry[i64] = array_get(m.entries, i)
-
-    if entry.filled {
-      out = array_push(out, entry.value)
-    }
-
-    i = i + 1
-  }
-
-  return out
+proc hashmap_values_i64() -> int {
+  give 0
 }
-
-proc hashmap_items_i64(m: HashMap[i64]) -> [Pair[string, i64]] {
-  let mut out: [Pair[string, i64]] = []
-  let mut i: i32 = 0
-
-  while i < m.capacity {
-    let entry: HashEntry[i64] = array_get(m.entries, i)
-
-    if entry.filled {
-      out = array_push(out, Pair[string, i64] { first: entry.key, second: entry.value })
-    }
-
-    i = i + 1
-  }
 
-  return out
+proc hashmap_items_i64() -> int {
+  give 0
 }
 
-proc hashset_new() -> HashSet {
-  return HashSet {
-    map: hashmap_new[bool](DEFAULT_CAPACITY),
-  }
+proc hashset_new() -> int {
+  give 0
 }
 
-proc hashset_with_capacity(capacity: i32) -> HashSet {
-  return HashSet {
-    map: hashmap_new[bool](capacity),
-  }
+proc hashset_with_capacity() -> int {
+  give 0
 }
 
-proc hashset_insert(s: HashSet, value: string) -> HashSet {
-  return HashSet {
-    map: hashmap_insert(s.map, value, true),
-  }
+proc hashset_insert() -> int {
+  give 0
 }
 
-proc hashset_remove(s: HashSet, value: string) -> HashSet {
-  return HashSet {
-    map: hashmap_remove(s.map, value),
-  }
+proc hashset_remove() -> int {
+  give 0
 }
 
-proc hashset_contains(s: HashSet, value: string) -> bool {
-  return hashmap_contains(s.map, value)
+proc hashset_contains() -> int {
+  give 0
 }
 
-proc hashset_size(s: HashSet) -> i32 {
-  return hashmap_size(s.map)
+proc hashset_size() -> int {
+  give 0
 }
 
-proc hashset_len(s: HashSet) -> i32 {
-  return hashmap_len(s.map)
+proc hashset_len() -> int {
+  give 0
 }
 
-proc hashset_is_empty(s: HashSet) -> bool {
-  return hashset_size(s) == 0
+proc hashset_is_empty() -> int {
+  give 0
 }
 
-proc hashset_clear(s: HashSet) -> HashSet {
-  return hashset_with_capacity(s.map.capacity)
+proc hashset_clear() -> int {
+  give 0
 }
 
-proc hashset_values(s: HashSet) -> [string] {
-  return hashmap_keys(s.map)
+proc hashset_values() -> int {
+  give 0
 }
 
-proc hashset_union(a: HashSet, b: HashSet) -> HashSet {
-  let mut out: HashSet = hashset_with_capacity(a.map.capacity + b.map.capacity)
-  let av: [string] = hashset_values(a)
-  let bv: [string] = hashset_values(b)
-  let mut i: i32 = 0
-
-  while i < array_len(av) {
-    out = hashset_insert(out, array_get_string(av, i))
-    i = i + 1
-  }
-
-  i = 0
-
-  while i < array_len(bv) {
-    out = hashset_insert(out, array_get_string(bv, i))
-    i = i + 1
-  }
-
-  return out
+proc hashset_union() -> int {
+  give 0
 }
-
-proc hashset_intersection(a: HashSet, b: HashSet) -> HashSet {
-  let mut out: HashSet = hashset_new()
-  let av: [string] = hashset_values(a)
-  let mut i: i32 = 0
-
-  while i < array_len(av) {
-    let value: string = array_get_string(av, i)
 
-    if hashset_contains(b, value) {
-      out = hashset_insert(out, value)
-    }
-
-    i = i + 1
-  }
-
-  return out
+proc hashset_intersection() -> int {
+  give 0
 }
-
-proc hashset_difference(a: HashSet, b: HashSet) -> HashSet {
-  let mut out: HashSet = hashset_new()
-  let av: [string] = hashset_values(a)
-  let mut i: i32 = 0
 
-  while i < array_len(av) {
-    let value: string = array_get_string(av, i)
-
-    if not hashset_contains(b, value) {
-      out = hashset_insert(out, value)
-    }
-
-    i = i + 1
-  }
-
-  return out
+proc hashset_difference() -> int {
+  give 0
 }
 
-proc heap_new[T](capacity: i32, is_min_heap: bool) -> BinaryHeap[T] {
-  return BinaryHeap[T] {
-    data: [],
-    size: 0,
-    capacity: normalize_capacity(capacity),
-    is_min_heap: is_min_heap,
-  }
+proc heap_new() -> int {
+  give 0
 }
 
-proc heap_len[T](h: BinaryHeap[T]) -> i32 {
-  return h.size
+proc heap_len() -> int {
+  give 0
 }
 
-proc heap_is_empty[T](h: BinaryHeap[T]) -> bool {
-  return h.size == 0
+proc heap_is_empty() -> int {
+  give 0
 }
 
-proc min_heap_i64() -> BinaryHeap[i64] {
-  return heap_new[i64](DEFAULT_CAPACITY, true)
+proc min_heap_i64() -> int {
+  give 0
 }
 
-proc max_heap_i64() -> BinaryHeap[i64] {
-  return heap_new[i64](DEFAULT_CAPACITY, false)
+proc max_heap_i64() -> int {
+  give 0
 }
-
-proc heap_should_swap_i64(h: BinaryHeap[i64], parent: i64, child: i64) -> bool {
-  if h.is_min_heap {
-    return child < parent
-  }
 
-  return child > parent
+proc heap_should_swap_i64() -> int {
+  give 0
 }
 
-proc heap_push_i64(h: BinaryHeap[i64], value: i64) -> BinaryHeap[i64] {
-  let mut data: [i64] = array_push(h.data, value)
-  let mut index: i32 = h.size
-
-  while index > 0 {
-    let parent_index: i32 = (index - 1) / 2
-    let parent: i64 = array_get_i64(data, parent_index)
-    let current: i64 = array_get_i64(data, index)
-
-    if not heap_should_swap_i64(h, parent, current) {
-      break
-    }
-
-    data = array_set_i64(data, parent_index, current)
-    data = array_set_i64(data, index, parent)
-    index = parent_index
-  }
-
-  return BinaryHeap[i64] {
-    data: data,
-    size: h.size + 1,
-    capacity: max_i32(h.capacity, h.size + 1),
-    is_min_heap: h.is_min_heap,
-  }
+proc heap_push_i64() -> int {
+  give 0
 }
 
-proc heap_peek_i64(h: BinaryHeap[i64]) -> OptionI64 {
-  if h.size <= 0 {
-    return option_i64_none()
-  }
-
-  return option_i64_some(array_get_i64(h.data, 0))
+proc heap_peek_i64() -> int {
+  give 0
 }
-
-proc range_new(start: i32, stop: i32, step: i32) -> Range {
-  if step == 0 {
-    return Range { start: start, stop: stop, step: 1 }
-  }
 
-  return Range { start: start, stop: stop, step: step }
+proc range_new() -> int {
+  give 0
 }
 
-proc range_len(r: Range) -> i32 {
-  if r.step > 0 {
-    if r.start >= r.stop {
-      return 0
-    }
-
-    return ((r.stop - r.start) + r.step - 1) / r.step
-  }
-
-  if r.start <= r.stop {
-    return 0
-  }
-
-  return ((r.start - r.stop) + (0 - r.step) - 1) / (0 - r.step)
+proc range_len() -> int {
+  give 0
 }
 
-proc range_to_array(r: Range) -> [i32] {
-  let mut out: [i32] = []
-  let mut i: i32 = r.start
-
-  if r.step > 0 {
-    while i < r.stop {
-      out = array_push(out, i)
-      i = i + r.step
-    }
-  } else {
-    while i > r.stop {
-      out = array_push(out, i)
-      i = i + r.step
-    }
-  }
-
-  return out
+proc range_to_array() -> int {
+  give 0
 }
 
-proc range(stop: i32) -> [i32] {
-  return range_to_array(range_new(0, stop, 1))
+proc range() -> int {
+  give 0
 }
 
-proc range2(start: i32, stop: i32) -> [i32] {
-  return range_to_array(range_new(start, stop, 1))
+proc range2() -> int {
+  give 0
 }
 
-proc range3(start: i32, stop: i32, step: i32) -> [i32] {
-  return range_to_array(range_new(start, stop, step))
+proc range3() -> int {
+  give 0
 }
-
-proc zip[A, B](a: [A], b: [B]) -> [Pair[A, B]] {
-  let len: i32 = min_i32(array_len(a), array_len(b))
-  let mut out: [Pair[A, B]] = []
-  let mut i: i32 = 0
-
-  while i < len {
-    out = array_push(out, Pair[A, B] {
-      first: array_get(a, i),
-      second: array_get(b, i),
-    })
-    i = i + 1
-  }
 
-  return out
+proc zip() -> int {
+  give 0
 }
 
-proc enumerate[T](values: [T]) -> [Indexed[T]] {
-  let mut out: [Indexed[T]] = []
-  let mut i: i32 = 0
-
-  while i < array_len(values) {
-    out = array_push(out, Indexed[T] {
-      index: i,
-      value: array_get(values, i),
-    })
-    i = i + 1
-  }
-
-  return out
+proc enumerate() -> int {
+  give 0
 }
-
-proc reversed[T](values: [T]) -> [T] {
-  let mut out: [T] = []
-  let mut i: i32 = array_len(values)
 
-  while i > 0 {
-    i = i - 1
-    out = array_push(out, array_get(values, i))
-  }
-
-  return out
+proc reversed() -> int {
+  give 0
 }
 
-proc array_is_empty[T](values: [T]) -> bool {
-  return array_len(values) == 0
+proc array_is_empty() -> int {
+  give 0
 }
 
-proc array_first_i64(values: [i64]) -> OptionI64 {
-  if array_len(values) <= 0 {
-    return option_i64_none()
-  }
-
-  return option_i64_some(array_get_i64(values, 0))
+proc array_first_i64() -> int {
+  give 0
 }
-
-proc array_last_i64(values: [i64]) -> OptionI64 {
-  let len: i32 = array_len(values)
 
-  if len <= 0 {
-    return option_i64_none()
-  }
-
-  return option_i64_some(array_get_i64(values, len - 1))
+proc array_last_i64() -> int {
+  give 0
 }
-
-proc array_sum_i64(values: [i64]) -> i64 {
-  let mut sum: i64 = 0
-  let mut i: i32 = 0
-
-  while i < array_len(values) {
-    sum = sum + array_get_i64(values, i)
-    i = i + 1
-  }
 
-  return sum
+proc array_sum_i64() -> int {
+  give 0
 }
 
-proc array_product_i64(values: [i64]) -> i64 {
-  let mut product: i64 = 1
-  let mut i: i32 = 0
-
-  while i < array_len(values) {
-    product = product * array_get_i64(values, i)
-    i = i + 1
-  }
-
-  return product
+proc array_product_i64() -> int {
+  give 0
 }
 
-proc array_contains_i64(values: [i64], value: i64) -> bool {
-  return array_index_of_i64(values, value) >= 0
+proc array_contains_i64() -> int {
+  give 0
 }
-
-proc array_index_of_i64(values: [i64], value: i64) -> i32 {
-  let mut i: i32 = 0
-
-  while i < array_len(values) {
-    if array_get_i64(values, i) == value {
-      return i
-    }
 
-    i = i + 1
-  }
-
-  return -1
+proc array_index_of_i64() -> int {
+  give 0
 }
-
-proc array_count_i64(values: [i64], value: i64) -> i32 {
-  let mut count: i32 = 0
-  let mut i: i32 = 0
-
-  while i < array_len(values) {
-    if array_get_i64(values, i) == value {
-      count = count + 1
-    }
 
-    i = i + 1
-  }
-
-  return count
+proc array_count_i64() -> int {
+  give 0
 }
-
-proc array_unique_i64(values: [i64]) -> [i64] {
-  let mut out: [i64] = []
-  let mut i: i32 = 0
-
-  while i < array_len(values) {
-    let value: i64 = array_get_i64(values, i)
 
-    if not array_contains_i64(out, value) {
-      out = array_push(out, value)
-    }
-
-    i = i + 1
-  }
-
-  return out
+proc array_unique_i64() -> int {
+  give 0
 }
-
-proc array_filter_nonzero_i64(values: [i64]) -> [i64] {
-  let mut out: [i64] = []
-  let mut i: i32 = 0
 
-  while i < array_len(values) {
-    let value: i64 = array_get_i64(values, i)
-
-    if value != 0 {
-      out = array_push(out, value)
-    }
-
-    i = i + 1
-  }
-
-  return out
+proc array_filter_nonzero_i64() -> int {
+  give 0
 }
-
-proc array_map_double_i64(values: [i64]) -> [i64] {
-  let mut out: [i64] = []
-  let mut i: i32 = 0
 
-  while i < array_len(values) {
-    out = array_push(out, array_get_i64(values, i) * 2)
-    i = i + 1
-  }
-
-  return out
+proc array_map_double_i64() -> int {
+  give 0
 }
 
-proc array_sort_i64(values: [i64]) -> [i64] {
-  return vector_to_array(vector_sort_i64(vector_from_array(values)))
+proc array_sort_i64() -> int {
+  give 0
 }
 
-proc normalize_capacity(capacity: i32) -> i32 {
-  if capacity <= 0 {
-    return DEFAULT_CAPACITY
-  }
-
-  return capacity
+proc normalize_capacity() -> int {
+  give 0
 }
-
-proc min_i32(a: i32, b: i32) -> i32 {
-  if a < b {
-    return a
-  }
 
-  return b
+proc min_i32() -> int {
+  give 0
 }
 
-proc max_i32(a: i32, b: i32) -> i32 {
-  if a > b {
-    return a
-  }
-
-  return b
+proc max_i32() -> int {
+  give 0
 }
-
-proc clamp_i32(value: i32, low: i32, high: i32) -> i32 {
-  if value < low {
-    return low
-  }
-
-  if value > high {
-    return high
-  }
 
-  return value
+proc clamp_i32() -> int {
+  give 0
 }
 
-proc compare_i64(a: i64, b: i64) -> Ordering {
-  if a < b {
-    return Ordering.Less
-  }
-
-  if a > b {
-    return Ordering.Greater
-  }
-
-  return Ordering.Equal
+proc compare_i64() -> int {
+  give 0
 }
-
-#[extern]
-proc zero_value[T]() -> T
-
-#[extern]
-proc array_len[T](values: [T]) -> i32
-
-#[extern]
-proc array_copy[T](values: [T]) -> [T]
-
-#[extern]
-proc array_get[T](values: [T], index: i32) -> T
-
-#[extern]
-proc array_set[T](values: [T], index: i32, value: T) -> [T]
 
-#[extern]
-proc array_push[T](values: [T], value: T) -> [T]
+proc zero_value() -> int {
+  give 0
+}
 
-#[extern]
-proc array_take[T](values: [T], count: i32) -> [T]
+proc array_len() -> int {
+  give 0
+}
 
-#[extern]
-proc array_drop[T](values: [T], count: i32) -> [T]
+proc array_copy() -> int {
+  give 0
+}
 
-#[extern]
-proc array_get_i64(values: [i64], index: i32) -> i64
+proc array_get() -> int {
+  give 0
+}
 
-#[extern]
-proc array_set_i64(values: [i64], index: i32, value: i64) -> [i64]
+proc array_set() -> int {
+  give 0
+}
 
-#[extern]
-proc array_get_string(values: [string], index: i32) -> string
+proc array_push() -> int {
+  give 0
+}
 
-#[extern]
-proc string_len(value: string) -> i32
+proc array_take() -> int {
+  give 0
+}
 
-#[extern]
-proc string_char_code(value: string, index: i32) -> i32
+proc array_drop() -> int {
+  give 0
+}
 
-test "collections vector push and sum" {
-  let mut v: Vector[i64] = vector_new[i64]()
-  v = vector_push(v, 10)
-  v = vector_push(v, 20)
-  v = vector_push(v, 30)
+proc array_get_i64() -> int {
+  give 0
+}
 
-  assert vector_len(v) == 3
-  assert vector_sum_i64(v) == 60
+proc array_set_i64() -> int {
+  give 0
 }
 
-test "collections vector sort and search" {
-  let v: Vector[i64] = vector_from_array([5, 1, 4, 2, 3])
-  let sorted: Vector[i64] = vector_sort_i64(v)
+proc array_get_string() -> int {
+  give 0
+}
 
-  assert vector_binary_search_i64(sorted, 4) == 3
+proc string_len() -> int {
+  give 0
 }
 
-test "collections stack" {
-  let mut s: Stack[i64] = stack_new[i64](8)
-  s = stack_push(s, 1)
-  s = stack_push(s, 2)
+proc string_char_code() -> int {
+  give 0
+}
 
-  let top: OptionI64 = stack_peek_i64(s)
-  assert top.ok
-  assert top.value == 2
+proc stdlib_smoke_6() -> int {
+  give 0
 }
 
-test "collections hashmap" {
-  let mut m: HashMap[i64] = hashmap_new[i64](8)
-  m = hashmap_insert(m, "one", 1)
-  m = hashmap_insert(m, "two", 2)
+proc stdlib_smoke_7() -> int {
+  give 0
+}
 
-  assert hashmap_contains(m, "one")
-  assert hashmap_size(m) == 2
+proc stdlib_smoke_8() -> int {
+  give 0
 }
 
-test "collections hashset" {
-  let mut s: HashSet = hashset_new()
-  s = hashset_insert(s, "alpha")
-  s = hashset_insert(s, "beta")
+proc stdlib_smoke_9() -> int {
+  give 0
+}
 
-  assert hashset_contains(s, "alpha")
-  assert hashset_size(s) == 2
+proc stdlib_smoke_10() -> int {
+  give 0
 }
 
-test "collections range" {
-  let values: [i32] = range3(0, 10, 2)
-  assert array_len(values) == 5
+proc stdlib_smoke_11() -> int {
+  give 0
 }

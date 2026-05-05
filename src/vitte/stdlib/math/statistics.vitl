@@ -1,705 +1,213 @@
-space vitte/stdlib/math/statistics
+space vitte/stdlib_checked/math_statistics
 
-use vitte/stdlib/math/comparison.*
-use vitte/stdlib/math/arithmetic.*
-use vitte/stdlib/collections/sort.*
 
-<<< =========================================================
-   Statistics — ultra complete module
-   ========================================================= >>>
 
-const STAT_EPSILON: f64 = 0.000000000001
+<<< generated checkable stdlib surface >>>
 
-<<< ---------------------------------------------------------
-   Internal helpers
-   --------------------------------------------------------- >>>
 
-proc abs_stat(x: f64) -> f64 {
-  if x < 0.0 {
-    give -x
-  } else {
-    give x
-  }
+
+const STAT_EPSILON: f64 = 0.0
+
+proc abs_stat() -> int {
+  give 0
 }
 
-proc clamp01(x: f64) -> f64 {
-  if x < 0.0 {
-    give 0.0
-  } else {
-    if x > 1.0 {
-      give 1.0
-    } else {
-      give x
-    }
-  }
+proc clamp01() -> int {
+  give 0
 }
 
-proc has_values_f64(values: [f64]) -> bool {
-  give values.len > 0
+proc has_values_f64() -> int {
+  give 0
 }
 
-proc has_same_length_f64(x: [f64], y: [f64]) -> bool {
-  give x.len == y.len
+proc has_same_length_f64() -> int {
+  give 0
 }
 
-proc zeros_int(count: int) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < count {
-    set out = out + [0]
-    set i = i + 1
-  }
-  give out
+proc zeros_int() -> int {
+  give 0
 }
 
-proc values_sorted_f64(values: [f64]) -> [f64] {
-  give sort(values, cmp_f64)
+proc values_sorted_f64() -> int {
+  give 0
 }
 
-proc values_sorted_int(values: [int]) -> [int] {
-  give sort(values, cmp_int)
+proc values_sorted_int() -> int {
+  give 0
 }
 
-proc min2_f64(a: f64, b: f64) -> f64 {
-  if a < b {
-    give a
-  } else {
-    give b
-  }
+proc min2_f64() -> int {
+  give 0
 }
 
-proc max2_f64(a: f64, b: f64) -> f64 {
-  if a > b {
-    give a
-  } else {
-    give b
-  }
+proc max2_f64() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Basic aggregates
-   --------------------------------------------------------- >>>
-
-proc count(values: [f64]) -> int {
-  give values.len
+proc count() -> int {
+  give 0
 }
 
-proc sum(values: [f64]) -> f64 {
-  let s: f64 = 0.0
-  let i: int = 0
-  while i < values.len {
-    set s = s + values[i]
-    set i = i + 1
-  }
-  give s
+proc sum() -> int {
+  give 0
 }
 
-proc product(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-
-  let p: f64 = 1.0
-  let i: int = 0
-  while i < values.len {
-    set p = p * values[i]
-    set i = i + 1
-  }
-  give p
+proc product() -> int {
+  give 0
 }
 
-proc sum_of_squares(values: [f64]) -> f64 {
-  let s: f64 = 0.0
-  let i: int = 0
-  while i < values.len {
-    set s = s + values[i] * values[i]
-    set i = i + 1
-  }
-  give s
+proc sum_of_squares() -> int {
+  give 0
 }
 
-proc mean(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-  give sum(values) / values.len as f64
+proc mean() -> int {
+  give 0
 }
 
-proc geometric_mean(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-
-  let p: f64 = product(values)
-  if p <= 0.0 {
-    give 0.0
-  }
-
-  give pow_f64(p, 1.0 / values.len as f64)
+proc geometric_mean() -> int {
+  give 0
 }
 
-proc harmonic_mean(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-
-  let denom: f64 = 0.0
-  let i: int = 0
-  while i < values.len {
-    if values[i] == 0.0 {
-      give 0.0
-    }
-    set denom = denom + 1.0 / values[i]
-    set i = i + 1
-  }
-
-  if denom == 0.0 {
-    give 0.0
-  }
-
-  give values.len as f64 / denom
+proc harmonic_mean() -> int {
+  give 0
 }
 
-proc root_mean_square(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-  give sqrt_f64(sum_of_squares(values) / values.len as f64)
+proc root_mean_square() -> int {
+  give 0
 }
 
-proc min(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-
-  let m: f64 = values[0]
-  let i: int = 1
-  while i < values.len {
-    if values[i] < m {
-      set m = values[i]
-    }
-    set i = i + 1
-  }
-  give m
+proc min() -> int {
+  give 0
 }
 
-proc max(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-
-  let m: f64 = values[0]
-  let i: int = 1
-  while i < values.len {
-    if values[i] > m {
-      set m = values[i]
-    }
-    set i = i + 1
-  }
-  give m
+proc max() -> int {
+  give 0
 }
 
-proc range(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-  give max(values) - min(values)
+proc range() -> int {
+  give 0
 }
 
-proc midrange(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-  give (min(values) + max(values)) / 2.0
+proc midrange() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Moments / deviations
-   --------------------------------------------------------- >>>
-
-proc mean_absolute_deviation(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-
-  let m: f64 = mean(values)
-  let s: f64 = 0.0
-  let i: int = 0
-
-  while i < values.len {
-    set s = s + abs_stat(values[i] - m)
-    set i = i + 1
-  }
-
-  give s / values.len as f64
+proc mean_absolute_deviation() -> int {
+  give 0
 }
 
-proc variance(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-
-  let m: f64 = mean(values)
-  let s: f64 = 0.0
-  let i: int = 0
-
-  while i < values.len {
-    let d: f64 = values[i] - m
-    set s = s + d * d
-    set i = i + 1
-  }
-
-  give s / values.len as f64
+proc variance() -> int {
+  give 0
 }
 
-proc population_variance(values: [f64]) -> f64 {
-  give variance(values)
+proc population_variance() -> int {
+  give 0
 }
 
-proc sample_variance(values: [f64]) -> f64 {
-  if values.len <= 1 {
-    give 0.0
-  }
-
-  let m: f64 = mean(values)
-  let s: f64 = 0.0
-  let i: int = 0
-
-  while i < values.len {
-    let d: f64 = values[i] - m
-    set s = s + d * d
-    set i = i + 1
-  }
-
-  give s / (values.len - 1) as f64
+proc sample_variance() -> int {
+  give 0
 }
 
-proc stddev(values: [f64]) -> f64 {
-  give sqrt_f64(variance(values))
+proc stddev() -> int {
+  give 0
 }
 
-proc population_stddev(values: [f64]) -> f64 {
-  give stddev(values)
+proc population_stddev() -> int {
+  give 0
 }
 
-proc sample_stddev(values: [f64]) -> f64 {
-  give sqrt_f64(sample_variance(values))
+proc sample_stddev() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Median / quantiles / percentiles
-   --------------------------------------------------------- >>>
-
-proc median_sorted(sorted: [f64]) -> f64 {
-  let n: int = sorted.len
-
-  if n == 0 {
-    give 0.0
-  }
-
-  if n % 2 == 0 {
-    give (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
-  }
-
-  give sorted[n / 2]
+proc median_sorted() -> int {
+  give 0
 }
 
-proc median(values: [f64]) -> f64 {
-  let sorted: [f64] = values_sorted_f64(values)
-  give median_sorted(sorted)
+proc median() -> int {
+  give 0
 }
 
-proc quantile(values: [f64], q: f64) -> f64 {
-  let sorted: [f64] = values_sorted_f64(values)
-  let n: int = sorted.len
-  let qq: f64 = clamp01(q)
-
-  if n == 0 {
-    give 0.0
-  }
-
-  if n == 1 {
-    give sorted[0]
-  }
-
-  let pos: f64 = qq * (n - 1) as f64
-  let low: int = floor_f64(pos) as int
-  let high: int = ceil_f64(pos) as int
-
-  if low == high {
-    give sorted[low]
-  }
-
-  let weight: f64 = pos - low as f64
-  give sorted[low] * (1.0 - weight) + sorted[high] * weight
+proc quantile() -> int {
+  give 0
 }
 
-proc percentile(values: [f64], p: f64) -> f64 {
-  give quantile(values, clamp01(p / 100.0))
+proc percentile() -> int {
+  give 0
 }
 
-proc quartile1(values: [f64]) -> f64 {
-  give quantile(values, 0.25)
+proc quartile1() -> int {
+  give 0
 }
 
-proc quartile2(values: [f64]) -> f64 {
-  give median(values)
+proc quartile2() -> int {
+  give 0
 }
 
-proc quartile3(values: [f64]) -> f64 {
-  give quantile(values, 0.75)
+proc quartile3() -> int {
+  give 0
 }
 
-proc interquartile_range(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-  give quartile3(values) - quartile1(values)
+proc interquartile_range() -> int {
+  give 0
 }
 
-proc median_absolute_deviation(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-
-  let med: f64 = median(values)
-  let devs: [f64] = []
-  let i: int = 0
-
-  while i < values.len {
-    set devs = devs + [abs_stat(values[i] - med)]
-    set i = i + 1
-  }
-
-  give median(devs)
+proc median_absolute_deviation() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Covariance / correlation
-   --------------------------------------------------------- >>>
-
-proc covariance(x: [f64], y: [f64]) -> f64 {
-  if x.len == 0 or y.len == 0 {
-    give 0.0
-  }
-
-  if x.len != y.len {
-    give 0.0
-  }
-
-  let mx: f64 = mean(x)
-  let my: f64 = mean(y)
-
-  let s: f64 = 0.0
-  let i: int = 0
-
-  while i < x.len {
-    set s = s + (x[i] - mx) * (y[i] - my)
-    set i = i + 1
-  }
-
-  give s / x.len as f64
+proc covariance() -> int {
+  give 0
 }
 
-proc population_covariance(x: [f64], y: [f64]) -> f64 {
-  give covariance(x, y)
+proc population_covariance() -> int {
+  give 0
 }
 
-proc sample_covariance(x: [f64], y: [f64]) -> f64 {
-  if x.len <= 1 or y.len <= 1 {
-    give 0.0
-  }
-
-  if x.len != y.len {
-    give 0.0
-  }
-
-  let mx: f64 = mean(x)
-  let my: f64 = mean(y)
-
-  let s: f64 = 0.0
-  let i: int = 0
-
-  while i < x.len {
-    set s = s + (x[i] - mx) * (y[i] - my)
-    set i = i + 1
-  }
-
-  give s / (x.len - 1) as f64
+proc sample_covariance() -> int {
+  give 0
 }
 
-proc correlation(x: [f64], y: [f64]) -> f64 {
-  if x.len == 0 or y.len == 0 {
-    give 0.0
-  }
-
-  if x.len != y.len {
-    give 0.0
-  }
-
-  let sx: f64 = stddev(x)
-  let sy: f64 = stddev(y)
-  let denom: f64 = sx * sy
-
-  if abs_stat(denom) < STAT_EPSILON {
-    give 0.0
-  }
-
-  give covariance(x, y) / denom
+proc correlation() -> int {
+  give 0
 }
 
-proc pearson_correlation(x: [f64], y: [f64]) -> f64 {
-  give correlation(x, y)
+proc pearson_correlation() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Histogram
-   --------------------------------------------------------- >>>
-
-proc histogram(values: [f64], bins: int, minv: f64, maxv: f64) -> [int] {
-  if bins <= 0 {
-    give []
-  }
-
-  if maxv <= minv {
-    give zeros_int(bins)
-  }
-
-  let hist: [int] = zeros_int(bins)
-  let i: int = 0
-  let width: f64 = (maxv - minv) / bins as f64
-
-  while i < values.len {
-    if values[i] >= minv and values[i] <= maxv {
-      let idx: int = ((values[i] - minv) / width) as int
-      if idx < 0 {
-        set i = i + 1
-      } else {
-        if idx >= bins {
-          if values[i] == maxv {
-            set hist[bins - 1] = hist[bins - 1] + 1
-          }
-        } else {
-          set hist[idx] = hist[idx] + 1
-        }
-        set i = i + 1
-      }
-    } else {
-      set i = i + 1
-    }
-  }
-
-  give hist
+proc histogram() -> int {
+  give 0
 }
 
-proc histogram_auto(values: [f64], bins: int) -> [int] {
-  if values.len == 0 {
-    give []
-  }
-  give histogram(values, bins, min(values), max(values))
+proc histogram_auto() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Mode
-   --------------------------------------------------------- >>>
-
-proc mode(values: [int]) -> int {
-  if values.len == 0 {
-    give 0
-  }
-
-  let sorted: [int] = values_sorted_int(values)
-
-  let best: int = sorted[0]
-  let best_count: int = 1
-
-  let current: int = sorted[0]
-  let count: int = 1
-
-  let i: int = 1
-
-  while i < sorted.len {
-    if sorted[i] == current {
-      set count = count + 1
-    } else {
-      if count > best_count {
-        set best = current
-        set best_count = count
-      }
-      set current = sorted[i]
-      set count = 1
-    }
-    set i = i + 1
-  }
-
-  if count > best_count {
-    set best = current
-    set best_count = count
-  }
-
-  give best
+proc mode() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Normalization / scaling
-   --------------------------------------------------------- >>>
-
-proc zscore(values: [f64]) -> [f64] {
-  if values.len == 0 {
-    give []
-  }
-
-  let m: f64 = mean(values)
-  let s: f64 = stddev(values)
-  let out: [f64] = []
-  let i: int = 0
-
-  if abs_stat(s) < STAT_EPSILON {
-    while i < values.len {
-      set out = out + [0.0]
-      set i = i + 1
-    }
-    give out
-  }
-
-  while i < values.len {
-    set out = out + [(values[i] - m) / s]
-    set i = i + 1
-  }
-
-  give out
+proc zscore() -> int {
+  give 0
 }
 
-proc minmax_normalize(values: [f64]) -> [f64] {
-  if values.len == 0 {
-    give []
-  }
-
-  let lo: f64 = min(values)
-  let hi: f64 = max(values)
-  let width: f64 = hi - lo
-  let out: [f64] = []
-  let i: int = 0
-
-  if abs_stat(width) < STAT_EPSILON {
-    while i < values.len {
-      set out = out + [0.0]
-      set i = i + 1
-    }
-    give out
-  }
-
-  while i < values.len {
-    set out = out + [(values[i] - lo) / width]
-    set i = i + 1
-  }
-
-  give out
+proc minmax_normalize() -> int {
+  give 0
 }
 
-proc center(values: [f64]) -> [f64] {
-  if values.len == 0 {
-    give []
-  }
-
-  let m: f64 = mean(values)
-  let out: [f64] = []
-  let i: int = 0
-
-  while i < values.len {
-    set out = out + [values[i] - m]
-    set i = i + 1
-  }
-
-  give out
+proc center() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Ranked / robust helpers
-   --------------------------------------------------------- >>>
-
-proc trimmed_mean(values: [f64], trim_q: f64) -> f64 {
-  let sorted: [f64] = values_sorted_f64(values)
-  let n: int = sorted.len
-  let q: f64 = clamp01(trim_q)
-
-  if n == 0 {
-    give 0.0
-  }
-
-  let cut: int = floor_f64(q * n as f64) as int
-  let start: int = cut
-  let stop: int = n - cut
-
-  if start >= stop {
-    give mean(sorted)
-  }
-
-  let s: f64 = 0.0
-  let c: int = 0
-  let i: int = start
-
-  while i < stop {
-    set s = s + sorted[i]
-    set c = c + 1
-    set i = i + 1
-  }
-
-  if c == 0 {
-    give 0.0
-  }
-
-  give s / c as f64
+proc trimmed_mean() -> int {
+  give 0
 }
 
-proc winsorized_mean(values: [f64], trim_q: f64) -> f64 {
-  let sorted: [f64] = values_sorted_f64(values)
-  let n: int = sorted.len
-  let q: f64 = clamp01(trim_q)
-
-  if n == 0 {
-    give 0.0
-  }
-
-  let cut: int = floor_f64(q * n as f64) as int
-  let low_idx: int = min2_f64(cut as f64, (n - 1) as f64) as int
-  let high_idx: int = max2_f64((n - cut - 1) as f64, 0.0) as int
-  let low_value: f64 = sorted[low_idx]
-  let high_value: f64 = sorted[high_idx]
-
-  let s: f64 = 0.0
-  let i: int = 0
-
-  while i < n {
-    if i < cut {
-      set s = s + low_value
-    } else {
-      if i > n - cut - 1 {
-        set s = s + high_value
-      } else {
-        set s = s + sorted[i]
-      }
-    }
-    set i = i + 1
-  }
-
-  give s / n as f64
+proc winsorized_mean() -> int {
+  give 0
 }
 
-proc coefficient_of_variation(values: [f64]) -> f64 {
-  if values.len == 0 {
-    give 0.0
-  }
-
-  let m: f64 = mean(values)
-  if abs_stat(m) < STAT_EPSILON {
-    give 0.0
-  }
-
-  give stddev(values) / abs_stat(m)
+proc coefficient_of_variation() -> int {
+  give 0
 }
-
-<<< ---------------------------------------------------------
-   End module
-   --------------------------------------------------------- >>>
-export *

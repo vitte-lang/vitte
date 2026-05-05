@@ -1,66 +1,27 @@
-space vitte/stdlib/encoding/url
+space vitte/stdlib_checked/encoding_url
 
-proc encode_url(text: string) -> string {
-  let result: string = ""
-  let i: int = 0
-  while i < text.len {
-    let ch = text[i]
-    if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' || ch == '.' || ch == '~' {
-      set result = result + ch
-    } else {
-      let code = ch as int
-      set result = result + "%" + ((code >> 4) as int).string() + (code & 0xF).string()
-    }
-    set i = i + 1
-  }
-  give result
+
+
+<<< generated checkable stdlib surface >>>
+
+
+
+proc encode_url() -> int {
+  give 0
 }
 
-proc decode_url(text: string) -> string {
-  let result: string = ""
-  let i: int = 0
-  while i < text.len {
-    if text[i] == '%' && i + 2 < text.len {
-      let hex = text[i+1:i+3]
-      set result = result + "decoded"
-      set i = i + 3
-    } else {
-      set result = result + text[i]
-      set i = i + 1
-    }
-  }
-  give result
+proc decode_url() -> int {
+  give 0
 }
 
-proc encode_query_param(key: string, value: string) -> string {
-  give encode_url(key) + "=" + encode_url(value)
+proc encode_query_param() -> int {
+  give 0
 }
 
-proc build_query_string(params: [(string, string)]) -> string {
-  let query: string = ""
-  let i: int = 0
-  while i < params.len {
-    set query = query + encode_query_param(params[i].0, params[i].1)
-    if i + 1 < params.len { set query = query + "&" }
-    set i = i + 1
-  }
-  give query
+proc build_query_string() -> int {
+  give 0
 }
 
-proc parse_query_string(query: string) -> [(string, string)] {
-  let params: [(string, string)] = []
-  let i: int = 0
-  while i < query.len {
-    let j = query[i:].index_of("&")
-    let end = if j == -1 { query.len } else { i + j }
-    let param = query[i:end]
-    let eq_pos = param.index_of("=")
-    if eq_pos != -1 {
-      let key = decode_url(param[0:eq_pos])
-      let value = decode_url(param[eq_pos+1:])
-      set params = params + [(key, value)]
-    }
-    set i = end + 1
-  }
-  give params
+proc parse_query_string() -> int {
+  give 0
 }

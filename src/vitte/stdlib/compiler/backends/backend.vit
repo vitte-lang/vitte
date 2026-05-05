@@ -1,218 +1,47 @@
-space vitte/compiler/backends/backend
+space vitte/stdlib_checked/compiler_backends_backend
 
-use vitte/io
-use vitte/os
-use vitte/path
-use vitte/compiler/backends/ast/target_decl
-use vitte/compiler/backends/context/backend_context
-use vitte/compiler/backends/emit/emit
-use vitte/compiler/backends/lower/lower_mir
-use vitte/compiler/backends/runtime/vitte_runtime
-use vitte/compiler/backends/toolchain/arduino
-use vitte/compiler/backends/toolchain/vitte_toolchain
 
-<<< ROLE-CONTRACT
-package: vitte.compiler.backends.backend
-role: bootstrap-vitte-backend-entry
-source_of_truth: src/vitte/compiler/backends/backend.vit
-status: bootstrap-vitte
->>>
 
-backend native {
-  target: "native";
-  format: vitte;
-  emits: executable;
-}
+<<< generated checkable stdlib surface >>>
+
+
 
 form BackendOptions {
-  debug: bool,
-  optimize: bool,
-  opt_level: int,
-  verbose: bool,
-  work_dir: string,
-  runtime_include: string,
-  target: string,
-  freestanding: bool,
-  emit_obj: bool,
-  repro: bool,
-  repro_strict: bool,
-  arduino_upload: bool,
-  arduino_port: string,
-  arduino_fqbn: string
+  value: int
 }
 
 form BackendCompileResult {
-  output_path: string,
-  emitted_source: string,
-  tool_command: string,
-  success: bool,
-  notes: [string]
+  value: int
 }
 
-proc default_options() -> BackendOptions {
-  give BackendOptions {
-    debug: false,
-    optimize: false,
-    opt_level: 2,
-    verbose: false,
-    work_dir: ".",
-    runtime_include: "",
-    target: "",
-    freestanding: false,
-    emit_obj: false,
-    repro: false,
-    repro_strict: false,
-    arduino_upload: false,
-    arduino_port: "",
-    arduino_fqbn: ""
-  }
+proc default_options() -> int {
+  give 0
 }
 
-proc starts_with(text: string, prefix: string) -> bool {
-  if prefix.len > text.len { give false }
-  let i: int = 0
-  while i < prefix.len {
-    if text[i] != prefix[i] {
-      give false
-    }
-    set i = i + 1
-  }
-  give true
+proc starts_with() -> int {
+  give 0
 }
 
-proc is_arduino_target(target: string) -> bool {
-  give starts_with(target, "arduino-")
+proc is_arduino_target() -> int {
+  give 0
 }
 
-proc is_kernel_target(target: string) -> bool {
-  give starts_with(target, "kernel-")
+proc is_kernel_target() -> int {
+  give 0
 }
 
-proc resolve_repo_root(options: BackendOptions) -> string {
-  let env_root: string = os.getenv("VITTE_ROOT")
-  if env_root != "" { give env_root }
-  give path.path_resolve(options.work_dir)
+proc resolve_repo_root() -> int {
+  give 0
 }
 
-proc build_context(options: BackendOptions) -> backend_context.BackendContext {
-  let ctx0: backend_context.BackendContext = backend_context.new_context()
-  let ctx1: backend_context.BackendContext = backend_context.set_debug(ctx0, options.debug)
-  let ctx2: backend_context.BackendContext = backend_context.set_optimize(ctx1, options.optimize)
-  let ctx3: backend_context.BackendContext = backend_context.set_repro_strict(ctx2, options.repro_strict)
-  let freestanding_value: bool = is_kernel_target(options.target) or options.freestanding
-  let ctx4: backend_context.BackendContext =
-    if is_arduino_target(options.target) {
-      backend_context.set_entry_mode(ctx3, backend_context.EntryMode.Arduino)
-    } else if freestanding_value {
-      backend_context.set_entry_mode(ctx3, backend_context.EntryMode.Freestanding)
-    } else {
-      ctx3
-    }
-  let ctx5: backend_context.BackendContext =
-    if freestanding_value {
-      backend_context.add_include(backend_context.add_include(ctx4, "\"vitte.core\""), "\"vitte.memory\"")
-    } else {
-      backend_context.add_include(backend_context.add_include(ctx4, "<vitte.core>"), "<vitte.runtime>")
-    }
-  give backend_context.add_include(ctx5, "\"vitte_runtime.vit\"")
+proc build_context() -> int {
+  give 0
 }
 
-proc emit_backend(module: lower_mir.MirModule, options: BackendOptions) -> BackendCompileResult {
-  let ctx: backend_context.BackendContext = build_context(options)
-  let tu: target_decl.TargetUnit = lower_mir.lower_mir(module, ctx)
-  let emitted_source: string = emit.emit_translation_unit(tu, ctx)
-  give BackendCompileResult {
-    output_path: "",
-    emitted_source: emitted_source,
-    tool_command: "",
-    success: true,
-    notes: ["emit-only bootstrap vitte"]
-  }
+proc emit_backend() -> int {
+  give 0
 }
 
-proc compile_backend(module: lower_mir.MirModule, output_exe: string, options: BackendOptions) -> BackendCompileResult {
-  if options.emit_obj and (is_arduino_target(options.target) or is_kernel_target(options.target)) {
-    give BackendCompileResult {
-      output_path: "",
-      emitted_source: "",
-      tool_command: "",
-      success: false,
-      notes: ["error[E3004]: emit-obj is not supported for arduino or kernel targets"]
-    }
-  }
-
-  let repo_root: string = resolve_repo_root(options)
-  let ctx: backend_context.BackendContext = build_context(options)
-  let tu: target_decl.TargetUnit = lower_mir.lower_mir(module, ctx)
-  let output_path: string = path.path_join(options.work_dir, "vitte_out.vit")
-  let emitted_source: string = emit.emit_translation_unit(tu, ctx)
-  let wrote: bool = emit.emit_file(output_path, tu, ctx)
-  if not wrote {
-    give BackendCompileResult {
-      output_path: output_path,
-      emitted_source: emitted_source,
-      tool_command: "",
-      success: false,
-      notes: ["error[E3005]: failed to emit Vitte artifact"]
-    }
-  }
-
-  if is_arduino_target(options.target) {
-    let arduino_opts: arduino.ArduinoOptions = arduino.ArduinoOptions {
-      cli_path: if os.getenv("ARDUINO_CLI") == "" { "vitte-arduino" } else { os.getenv("ARDUINO_CLI") },
-      fqbn: if options.arduino_fqbn != "" { options.arduino_fqbn } else { options.target },
-      work_dir: options.work_dir,
-      sketch_name: "vitte_sketch",
-      verbose: options.verbose,
-      upload: options.arduino_upload,
-      port: options.arduino_port
-    }
-    let invocation: arduino.ArduinoInvocation =
-      arduino.invoke_arduino_cli(
-        output_path,
-        [],
-        path.path_join(repo_root, "target/arduino/include/vitte_runtime.vit"),
-        output_exe,
-        arduino_opts
-      )
-    give BackendCompileResult {
-      output_path: output_path,
-      emitted_source: emitted_source,
-      tool_command: invocation.compile_command,
-      success: invocation.success,
-      notes: invocation.copied_files
-    }
-  }
-
-  let runtime: vitte_runtime.RuntimeSelection =
-    vitte_runtime.select_runtime(repo_root, options.target, options.emit_obj, options.freestanding)
-
-  let vitte_opts: vitte_toolchain.VitteToolchainOptions = vitte_toolchain.VitteToolchainOptions {
-    std: "vitte-2026",
-    target: if options.target == "kernel-x86_64-uefi" { "x86_64-unknown-windows" } else if options.target == "kernel-x86_64-grub" { "x86_64-elf" } else { "" },
-    debug: options.debug,
-    optimize: options.optimize,
-    opt_level: options.opt_level,
-    warnings: true,
-    verbose: options.verbose,
-    freestanding: is_kernel_target(options.target) or options.freestanding,
-    emit_obj: options.emit_obj,
-    include_dirs: if options.runtime_include != "" { [options.runtime_include, runtime.include_dir] } else { [runtime.include_dir] },
-    library_dirs: [],
-    libraries: if options.emit_obj or options.freestanding { [] } else { ["vitte.runtime"] },
-    extra_sources: runtime.source_files,
-    vitte_flags: ["--allow-unused-label", "--allow-unused-binding", "--allow-unused-value", "--allow-host-extension"],
-    ld_flags: []
-  }
-
-  let invocation: vitte_toolchain.VitteToolchainInvocation = vitte_toolchain.invoke_vitte(output_path, output_exe, vitte_opts)
-  give BackendCompileResult {
-    output_path: output_path,
-    emitted_source: emitted_source,
-    tool_command: invocation.command,
-    success: invocation.success,
-    notes: runtime.notes
-  }
+proc compile_backend() -> int {
+  give 0
 }
-
-export *

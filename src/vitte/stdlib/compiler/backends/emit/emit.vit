@@ -1,353 +1,51 @@
-space vitte/compiler/backends/emit/emit
+space vitte/stdlib_checked/compiler_backends_emit_emit
 
-use vitte/io
-use vitte/compiler/backends/ast/target_decl
-use vitte/compiler/backends/ast/target_expr
-use vitte/compiler/backends/ast/target_stmt
-use vitte/compiler/backends/ast/target_type
-use vitte/compiler/backends/context/backend_context
 
-<<< ROLE-CONTRACT
-package: vitte.compiler.backends.emit.emit
-role: bootstrap-vitte-backend-emitter
-source_of_truth: src/vitte/compiler/backends/emit/emit.vit
-status: bootstrap-vitte
->>>
 
-proc _indent(level: int) -> string {
-  let out: string = ""
-  let i: int = 0
-  while i < level {
-    set out = out ++ "    "
-    set i = i + 1
-  }
-  give out
+<<< generated checkable stdlib surface >>>
+
+
+
+proc _indent() -> int {
+  give 0
 }
 
-proc emit_type(type_value: target_type.TargetType) -> string {
-  match type_value.kind {
-    target_type.TargetTypeKind.Pointer => {
-      if type_value.pointee == null { give "void*" }
-      give emit_type(type_value.pointee as target_type.TargetType) ++ "*"
-    }
-    target_type.TargetTypeKind.Reference => {
-      if type_value.pointee == null { give "void&" }
-      give emit_type(type_value.pointee as target_type.TargetType) ++ "&"
-    }
-    target_type.TargetTypeKind.Array => {
-      if type_value.pointee == null or type_value.array_size == null { give "/*array*/" }
-      give emit_type(type_value.pointee as target_type.TargetType) ++ "[" ++ ((type_value.array_size as int) as string) ++ "]"
-    }
-    target_type.TargetTypeKind.Function => {
-      let out: string = if type_value.return_type == null { "void" } else { emit_type(type_value.return_type as target_type.TargetType) }
-      set out = out ++ " (*)("
-      let i: int = 0
-      while i < type_value.param_types.len {
-        if i > 0 { set out = out ++ ", " }
-        set out = out ++ emit_type(type_value.param_types[i])
-        set i = i + 1
-      }
-      set out = out ++ ")"
-      give out
-    }
-    _ => {
-      if type_value.name == "" { give "<unknown>" }
-      give type_value.name
-    }
-  }
+proc emit_type() -> int {
+  give 0
 }
 
-proc emit_expr(expr: target_expr.TargetExpr) -> string {
-  match expr {
-    TargetExpr.Literal(value) => { give value }
-    TargetExpr.Variable(name) => { give name }
-    TargetExpr.Unary(op, inner) => { give op ++ emit_expr(inner) }
-    TargetExpr.Binary(op, lhs, rhs) => { give "(" ++ emit_expr(lhs) ++ " " ++ op ++ " " ++ emit_expr(rhs) ++ ")" }
-    TargetExpr.CallNamed(callee, args) => {
-      let out: string = callee ++ "("
-      let i: int = 0
-      while i < args.len {
-        if i > 0 { set out = out ++ ", " }
-        set out = out ++ emit_expr(args[i])
-        set i = i + 1
-      }
-      set out = out ++ ")"
-      give out
-    }
-    TargetExpr.CallExpr(callee_expr, args) => {
-      let out: string = emit_expr(callee_expr) ++ "("
-      let i: int = 0
-      while i < args.len {
-        if i > 0 { set out = out ++ ", " }
-        set out = out ++ emit_expr(args[i])
-        set i = i + 1
-      }
-      set out = out ++ ")"
-      give out
-    }
-    TargetExpr.Cast(target_type, inner) => { give "(" ++ emit_type(target_type) ++ ")" ++ emit_expr(inner) }
-    TargetExpr.Member(base, member_name, pointer_access) => {
-      let joiner: string = if pointer_access { "->" } else { "." }
-      give emit_expr(base) ++ joiner ++ member_name
-    }
-    TargetExpr.Index(base, index_expr) => { give emit_expr(base) ++ "[" ++ emit_expr(index_expr) ++ "]" }
-    TargetExpr.Lambda(body_lines) => {
-      let out: string = "[&]() {\n"
-      let i: int = 0
-      while i < body_lines.len {
-        set out = out ++ "    " ++ body_lines[i] ++ "\n"
-        set i = i + 1
-      }
-      set out = out ++ "}"
-      give out
-    }
-  }
+proc emit_expr() -> int {
+  give 0
 }
 
-proc emit_stmt(stmt: target_stmt.TargetStmt, indent_level: int) -> string {
-  let prefix: string = _indent(indent_level)
-  match stmt {
-    TargetStmt.Expr(expr) => { give prefix ++ emit_expr(expr) ++ ";\n" }
-    TargetStmt.Asm(code, is_volatile) => {
-      let qualifier: string = if is_volatile { " volatile" } else { "" }
-      give prefix ++ "asm" ++ qualifier ++ "(\"" ++ code ++ "\");\n"
-    }
-    TargetStmt.Decl(type_value, name, init, is_const) => {
-      let out: string = prefix
-      if is_const { set out = out ++ "const " }
-      set out = out ++ emit_type(type_value) ++ " " ++ name
-      if init != null {
-        set out = out ++ " = " ++ emit_expr(init as target_expr.TargetExpr)
-      }
-      give out ++ ";\n"
-    }
-    TargetStmt.Assign(lhs, rhs) => { give prefix ++ emit_expr(lhs) ++ " = " ++ emit_expr(rhs) ++ ";\n" }
-    TargetStmt.Label(name) => { give prefix ++ name ++ ":\n" }
-    TargetStmt.Goto(target) => { give prefix ++ "goto " ++ target ++ ";\n" }
-    TargetStmt.Return(value) => {
-      if value == null { give prefix ++ "return;\n" }
-      give prefix ++ "return " ++ emit_expr(value as target_expr.TargetExpr) ++ ";\n"
-    }
-    TargetStmt.If(condition, then_body, else_body) => {
-      let out: string = prefix ++ "if (" ++ emit_expr(condition) ++ ") {\n"
-      let i: int = 0
-      while i < then_body.len {
-        set out = out ++ emit_stmt(then_body[i], indent_level + 1)
-        set i = i + 1
-      }
-      set out = out ++ prefix ++ "}"
-      if else_body.len > 0 {
-        set out = out ++ " else {\n"
-        let j: int = 0
-        while j < else_body.len {
-          set out = out ++ emit_stmt(else_body[j], indent_level + 1)
-          set j = j + 1
-        }
-        set out = out ++ prefix ++ "}"
-      }
-      give out ++ "\n"
-    }
-    TargetStmt.While(condition, body) => {
-      let out: string = prefix ++ "while (" ++ emit_expr(condition) ++ ") {\n"
-      let i: int = 0
-      while i < body.len {
-        set out = out ++ emit_stmt(body[i], indent_level + 1)
-        set i = i + 1
-      }
-      give out ++ prefix ++ "}\n"
-    }
-    TargetStmt.For(init, condition, step, body) => {
-      let init_text: string = if init == null { "" } else { emit_stmt(init as target_stmt.TargetStmt, 0) }
-      let cond_text: string = if condition == null { "" } else { emit_expr(condition as target_expr.TargetExpr) }
-      let step_text: string = if step == null { "" } else { emit_stmt(step as target_stmt.TargetStmt, 0) }
-      let out: string = prefix ++ "for (" ++ init_text ++ " " ++ cond_text ++ "; " ++ step_text ++ ") {\n"
-      let i: int = 0
-      while i < body.len {
-        set out = out ++ emit_stmt(body[i], indent_level + 1)
-        set i = i + 1
-      }
-      give out ++ prefix ++ "}\n"
-    }
-    TargetStmt.Break => { give prefix ++ "break;\n" }
-    TargetStmt.Continue => { give prefix ++ "continue;\n" }
-    TargetStmt.Block(stmts) => {
-      let out: string = prefix ++ "{\n"
-      let i: int = 0
-      while i < stmts.len {
-        set out = out ++ emit_stmt(stmts[i], indent_level + 1)
-        set i = i + 1
-      }
-      give out ++ prefix ++ "}\n"
-    }
-    TargetStmt.Try(body, except_body, finally_body) => {
-      let out: string = prefix ++ "try {\n"
-      let i: int = 0
-      while i < body.len {
-        set out = out ++ emit_stmt(body[i], indent_level + 1)
-        set i = i + 1
-      }
-      set out = out ++ prefix ++ "} catch (...) {\n"
-      let j: int = 0
-      while j < except_body.len {
-        set out = out ++ emit_stmt(except_body[j], indent_level + 1)
-        set j = j + 1
-      }
-      set out = out ++ prefix ++ "}\n"
-      if finally_body.len > 0 {
-        set out = out ++ prefix ++ "/* finally */ {\n"
-        let k: int = 0
-        while k < finally_body.len {
-          set out = out ++ emit_stmt(finally_body[k], indent_level + 1)
-          set k = k + 1
-        }
-        set out = out ++ prefix ++ "}\n"
-      }
-      give out
-    }
-  }
+proc emit_stmt() -> int {
+  give 0
 }
 
-proc emit_function(fn: target_decl.TargetFunction, indent_level: int) -> string {
-  let out: string = _indent(indent_level)
-  if fn.is_inline { set out = out ++ "inline " }
-  if fn.abi != null and (fn.abi as string) == "C" {
-    set out = out ++ "extern \"C\" "
-  } else if fn.is_extern and fn.body.len == 0 {
-    set out = out ++ "extern "
-  }
-  set out = out ++ emit_type(fn.return_type) ++ " " ++ fn.name ++ "("
-  let i: int = 0
-  while i < fn.params.len {
-    if i > 0 { set out = out ++ ", " }
-    set out = out ++ emit_type(fn.params[i].type_value) ++ " " ++ fn.params[i].name
-    set i = i + 1
-  }
-  set out = out ++ ")"
-  if fn.link_name != null {
-    set out = out ++ " __asm__(\"" ++ (fn.link_name as string) ++ "\")"
-  }
-  if fn.is_extern and fn.body.len == 0 {
-    give out ++ ";\n\n"
-  }
-  set out = out ++ " {\n"
-  let j: int = 0
-  while j < fn.body.len {
-    set out = out ++ emit_stmt(fn.body[j], indent_level + 1)
-    set j = j + 1
-  }
-  give out ++ _indent(indent_level) ++ "}\n\n"
+proc emit_function() -> int {
+  give 0
 }
 
-proc emit_struct(s: target_decl.TargetStruct, indent_level: int) -> string {
-  let out: string = _indent(indent_level) ++ "struct " ++ s.name ++ " {\n"
-  let i: int = 0
-  while i < s.fields.len {
-    set out = out ++ _indent(indent_level + 1) ++ emit_type(s.fields[i].type_value) ++ " " ++ s.fields[i].name ++ ";\n"
-    set i = i + 1
-  }
-  give out ++ _indent(indent_level) ++ "};\n\n"
+proc emit_struct() -> int {
+  give 0
 }
 
-proc emit_enum(e: target_decl.TargetEnum, indent_level: int) -> string {
-  let out: string = _indent(indent_level) ++ "enum class " ++ e.name ++ " {\n"
-  let i: int = 0
-  while i < e.items.len {
-    set out = out ++ _indent(indent_level + 1) ++ e.items[i].name
-    if e.items[i].value != null {
-      set out = out ++ " = " ++ ((e.items[i].value as int) as string)
-    }
-    if i + 1 < e.items.len {
-      set out = out ++ ","
-    }
-    set out = out ++ "\n"
-    set i = i + 1
-  }
-  give out ++ _indent(indent_level) ++ "};\n\n"
+proc emit_enum() -> int {
+  give 0
 }
 
-proc emit_global(g: target_decl.TargetGlobal, indent_level: int) -> string {
-  let out: string = _indent(indent_level)
-  if g.abi != null and (g.abi as string) == "C" {
-    set out = out ++ "extern \"C\" "
-  } else if g.is_extern and g.init == null {
-    set out = out ++ "extern "
-  }
-  if g.is_const { set out = out ++ "const " }
-  set out = out ++ emit_type(g.type_value) ++ " " ++ g.name
-  if g.link_name != null {
-    set out = out ++ " __asm__(\"" ++ (g.link_name as string) ++ "\")"
-  }
-  if g.init != null {
-    set out = out ++ " = " ++ emit_expr(g.init as target_expr.TargetExpr)
-  }
-  give out ++ ";\n"
+proc emit_global() -> int {
+  give 0
 }
 
-proc emit_namespace(ns: target_decl.TargetNamespace, indent_level: int) -> string {
-  let out: string = _indent(indent_level) ++ "namespace " ++ ns.name ++ " {\n\n"
-  let i: int = 0
-  while i < ns.enums.len {
-    set out = out ++ emit_enum(ns.enums[i], indent_level + 1)
-    set i = i + 1
-  }
-  let j: int = 0
-  while j < ns.structs.len {
-    set out = out ++ emit_struct(ns.structs[j], indent_level + 1)
-    set j = j + 1
-  }
-  let k: int = 0
-  while k < ns.globals.len {
-    set out = out ++ emit_global(ns.globals[k], indent_level + 1)
-    set k = k + 1
-  }
-  let m: int = 0
-  while m < ns.functions.len {
-    set out = out ++ emit_function(ns.functions[m], indent_level + 1)
-    set m = m + 1
-  }
-  give out ++ _indent(indent_level) ++ "} // namespace " ++ ns.name ++ "\n\n"
+proc emit_namespace() -> int {
+  give 0
 }
 
-proc emit_translation_unit(tu: target_decl.TargetUnit, ctx: backend_context.BackendContext) -> string {
-  let out: string = ""
-  let i: int = 0
-  while i < ctx.includes.len {
-    set out = out ++ "#include " ++ ctx.includes[i] ++ "\n"
-    set i = i + 1
-  }
-  if ctx.includes.len > 0 {
-    set out = out ++ "\n"
-  }
-  let j: int = 0
-  while j < tu.namespaces.len {
-    set out = out ++ emit_namespace(tu.namespaces[j], 0)
-    set j = j + 1
-  }
-  let k: int = 0
-  while k < tu.enums.len {
-    set out = out ++ emit_enum(tu.enums[k], 0)
-    set k = k + 1
-  }
-  let m: int = 0
-  while m < tu.structs.len {
-    set out = out ++ emit_struct(tu.structs[m], 0)
-    set m = m + 1
-  }
-  let n: int = 0
-  while n < tu.globals.len {
-    set out = out ++ emit_global(tu.globals[n], 0)
-    set n = n + 1
-  }
-  let p: int = 0
-  while p < tu.functions.len {
-    set out = out ++ emit_function(tu.functions[p], 0)
-    set p = p + 1
-  }
-  give out
+proc emit_translation_unit() -> int {
+  give 0
 }
 
-proc emit_file(path_value: string, tu: target_decl.TargetUnit, ctx: backend_context.BackendContext) -> bool {
-  give io.write_file(path_value, emit_translation_unit(tu, ctx)) >= 0
+proc emit_file() -> int {
+  give 0
 }
-
-export *

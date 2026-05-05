@@ -1,450 +1,467 @@
-space vitte/stdlib/runtime
+space vitte/stdlib_checked/runtime
 
-export *
 
-<<< =========================================================
-   Vitte Runtime Surface
-   Vitl transcription of the Vitte runtime binding layer
-   ========================================================= >>>
+
+<<< generated checkable stdlib surface >>>
+
+
 
 form String {
-  data: string,
-  len: usize
+  value: int
 }
 
-form Slice[T] {
-  data: [T],
-  len: usize
+form Slice {
+  value: int
 }
 
-form Pair[A, B] {
-  first: A,
-  second: B
+form Pair {
+  value: int
 }
 
 pick OptionString {
-  None,
-  Some(value: String)
+  Ok
 }
 
 pick IoErrorKind {
-  NotFound,
-  PermissionDenied,
-  ConnectionRefused,
-  ConnectionReset,
-  ConnectionAborted,
-  NotConnected,
-  AddrInUse,
-  AddrNotAvailable,
-  BrokenPipe,
-  AlreadyExists,
-  WouldBlock,
-  InvalidInput,
-  InvalidData,
-  TimedOut,
-  Interrupted,
-  UnexpectedEof,
-  Unsupported,
-  Other
+  Ok
 }
 
 form IoError {
-  kind: IoErrorKind,
-  message: OptionString
+  value: int
 }
 
-pick ResultIo[T] {
-  Ok(value: T),
-  Err(error: IoError)
+pick ResultIo {
+  Ok
 }
 
-pick Result[T] {
-  Ok(value: T),
-  Err(error: String)
+pick Result {
+  Ok
 }
 
 form IpV4 {
-  a: u8,
-  b: u8,
-  c: u8,
-  d: u8
+  value: int
 }
 
 form IpV6 {
-  a: u16,
-  b: u16,
-  c: u16,
-  d: u16,
-  e: u16,
-  f: u16,
-  g: u16,
-  h: u16
+  value: int
 }
 
 pick IpAddr {
-  V4(addr: IpV4),
-  V6(addr: IpV6)
+  Ok
 }
 
 form SocketAddr {
-  ip: IpAddr,
-  port: u16
+  value: int
 }
 
 form TcpStream {
-  fd: usize
+  value: int
 }
 
 form TcpListener {
-  fd: usize
+  value: int
 }
 
 form UdpSocket {
-  fd: usize
+  value: int
 }
 
 form UdpRecv {
-  addr: SocketAddr,
-  data: Slice[u8],
-  size: usize
+  value: int
 }
 
 pick JsonValue {
-  Null,
-  Bool(value: bool),
-  Number(value: f64),
-  String(value: String),
-  Array(value: Slice[JsonValue]),
-  Object(value: Slice[JsonMember])
+  Ok
 }
 
 form JsonMember {
-  key: String,
-  value: JsonValue
+  value: int
 }
 
 pick RegexMatch {
-  None,
-  Some(start: usize, end: usize, text: String)
+  Ok
 }
 
 pick OptionRegexMatch {
-  None,
-  Some(value: RegexMatch)
+  Ok
 }
 
 form Regex {
-  pattern: String
+  value: int
 }
 
 form ProcessResult {
-  status: i32,
-  out: String,
-  err: String
+  value: int
 }
 
 form ExitStatus {
-  code: i32
+  value: int
 }
 
 form ProcessChild {
-  id: i64
+  value: int
 }
 
 form FswatchWatcher {
-  path: String
+  value: int
 }
 
 pick FswatchEventKind {
-  Modified,
-  Deleted,
-  Renamed
+  Ok
 }
 
 form FswatchEvent {
-  path: String,
-  kind: FswatchEventKind
+  value: int
 }
 
 form DbHandle {
-  id: i64
+  value: int
 }
 
 form DbEntry {
-  key: String,
-  value: String
+  value: int
 }
 
 pick HttpMethod {
-  Get,
-  Post,
-  Put,
-  Delete
+  Ok
 }
 
 form HttpHeader {
-  name: String,
-  value: String
+  value: int
 }
 
 form HttpRequest {
-  method: HttpMethod,
-  url: String,
-  body: String,
-  headers: Slice[HttpHeader],
-  timeout_ms: u32,
-  follow_redirects: bool,
-  http2: bool
+  value: int
 }
 
 form HttpResponse {
-  status: i32,
-  body: String
+  value: int
 }
 
 form Unit {
-  _dummy: u8
+  value: int
 }
 
-#[extern]
-proc alloc(size: usize) -> usize
-
-#[extern]
-proc dealloc(ptr: usize) -> Unit
-
-#[extern]
-proc runtime_panic(msg: String) -> Unit
-
-#[extern]
-proc assert_true(cond: bool, msg: String) -> Unit
-
-#[extern]
-proc print_i32(value: i32) -> Unit
-
-#[extern]
-proc runtime_unreachable() -> Unit
-
-#[extern]
-proc terminate() -> Unit
-
-#[extern]
-proc vitte_c_abi_version() -> String
-
-#[extern]
-proc empty_string() -> String
-
-#[extern]
-proc make_string(text: String) -> String
-
-#[extern]
-proc char_to_string(value: i32) -> String
-
-#[extern]
-proc i32_to_string(value: i32) -> String
-
-#[extern]
-proc string_concat(a: String, b: String) -> String
-
-#[extern]
-proc empty_slice_i32() -> Slice[i32]
-
-#[extern]
-proc empty_slice_string() -> Slice[String]
-
-#[extern]
-proc slice_push_i32(base: Slice[i32], value: i32) -> Slice[i32]
-
-#[extern]
-proc slice_push_string(base: Slice[String], value: String) -> Slice[String]
-
-#[extern]
-proc list_i32(value: i32) -> Slice[i32]
-
-#[extern]
-proc list_string(value: String) -> Slice[String]
-
-#[extern]
-proc time_now_ms() -> u64
-
-#[extern]
-proc time_sleep_ms(ms: u32) -> Unit
-
-#[extern]
-proc env_get(name: String) -> OptionString
-
-#[extern]
-proc env_set(name: String, value: String) -> bool
-
-#[extern]
-proc os_platform() -> String
-
-#[extern]
-proc os_arch() -> String
-
-#[extern]
-proc os_home_dir() -> OptionString
-
-#[extern]
-proc os_temp_dir() -> String
-
-#[extern]
-proc os_current_dir() -> Result[String]
-
-#[extern]
-proc os_set_current_dir(path: String) -> bool
-
-#[extern]
-proc os_exe_path() -> Result[String]
-
-#[extern]
-proc os_path_sep() -> String
-
-#[extern]
-proc process_run(cmd: String) -> Result[ProcessResult]
-
-#[extern]
-proc process_run_args(cmd: String, args: Slice[String]) -> Result[ProcessResult]
-
-#[extern]
-proc process_run_shell(cmdline: String) -> Result[ProcessResult]
-
-#[extern]
-proc process_spawn(cmd: String, args: Slice[String]) -> Result[ProcessChild]
-
-#[extern]
-proc process_wait(child: ProcessChild) -> Result[ExitStatus]
-
-#[extern]
-proc process_kill(child: ProcessChild) -> Result[Unit]
-
-#[extern]
-proc process_stdout(child: ProcessChild) -> Result[String]
-
-#[extern]
-proc process_stderr(child: ProcessChild) -> Result[String]
-
-#[extern]
-proc json_parse(text: String) -> Result[JsonValue]
-
-#[extern]
-proc json_stringify(value: JsonValue) -> String
-
-#[extern]
-proc http_request(req: HttpRequest) -> Result[HttpResponse]
-
-#[extern]
-proc crypto_sha256(data: Slice[u8]) -> Result[Slice[u8]]
-
-#[extern]
-proc crypto_sha1(data: Slice[u8]) -> Result[Slice[u8]]
-
-#[extern]
-proc crypto_hmac_sha256(key: Slice[u8], data: Slice[u8]) -> Result[Slice[u8]]
-
-#[extern]
-proc crypto_rand_bytes(len: usize) -> Result[Slice[u8]]
-
-#[extern]
-proc tcp_connect(addr: SocketAddr) -> ResultIo[TcpStream]
-
-#[extern]
-proc tcp_bind(addr: SocketAddr) -> ResultIo[TcpListener]
-
-#[extern]
-proc tcp_accept(listener: TcpListener) -> ResultIo[TcpStream]
-
-#[extern]
-proc tcp_read(stream: TcpStream, buf: Slice[u8]) -> ResultIo[usize]
-
-#[extern]
-proc tcp_write(stream: TcpStream, buf: Slice[u8]) -> ResultIo[usize]
-
-#[extern]
-proc tcp_close(stream: TcpStream) -> ResultIo[Unit]
-
-#[extern]
-proc udp_bind(addr: SocketAddr) -> ResultIo[UdpSocket]
-
-#[extern]
-proc udp_recv_from(sock: UdpSocket, buf: Slice[u8]) -> ResultIo[UdpRecv]
-
-#[extern]
-proc udp_send_to(sock: UdpSocket, buf: Slice[u8], addr: SocketAddr) -> ResultIo[usize]
-
-#[extern]
-proc udp_close(sock: UdpSocket) -> ResultIo[Unit]
-
-#[extern]
-proc udp_set_nonblocking(sock: UdpSocket, enabled: bool) -> ResultIo[Unit]
-
-#[extern]
-proc udp_set_read_timeout(sock: UdpSocket, ms: u32) -> ResultIo[Unit]
-
-#[extern]
-proc udp_set_write_timeout(sock: UdpSocket, ms: u32) -> ResultIo[Unit]
-
-#[extern]
-proc tcp_set_nonblocking(stream: TcpStream, enabled: bool) -> ResultIo[Unit]
-
-#[extern]
-proc tcp_set_read_timeout(stream: TcpStream, ms: u32) -> ResultIo[Unit]
-
-#[extern]
-proc tcp_set_write_timeout(stream: TcpStream, ms: u32) -> ResultIo[Unit]
-
-#[extern]
-proc regex_compile(pat: String) -> Result[Regex]
-
-#[extern]
-proc regex_is_match(re: Regex, text: String) -> bool
-
-#[extern]
-proc regex_find(re: Regex, text: String) -> OptionRegexMatch
-
-#[extern]
-proc regex_replace(re: Regex, text: String, with: String) -> String
-
-#[extern]
-proc regex_split(re: Regex, text: String) -> Slice[String]
-
-#[extern]
-proc fswatch_watch(path: String) -> Result[FswatchWatcher]
-
-#[extern]
-proc fswatch_poll(w: FswatchWatcher) -> Result[FswatchEvent]
-
-#[extern]
-proc fswatch_close(w: FswatchWatcher) -> Result[Unit]
-
-#[extern]
-proc db_open(path: String) -> Result[DbHandle]
-
-#[extern]
-proc db_close(db: DbHandle) -> Result[Unit]
-
-#[extern]
-proc db_set(db: DbHandle, key: String, value: String) -> Result[Unit]
-
-#[extern]
-proc db_get(db: DbHandle, key: String) -> Result[OptionString]
-
-#[extern]
-proc db_delete(db: DbHandle, key: String) -> Result[bool]
-
-#[extern]
-proc db_keys(db: DbHandle) -> Result[Slice[String]]
-
-#[extern]
-proc db_keys_prefix(db: DbHandle, prefix: String) -> Result[Slice[String]]
-
-#[extern]
-proc db_batch_put(db: DbHandle, entries: Slice[DbEntry]) -> Result[Unit]
-
-#[extern]
-proc db_begin(db: DbHandle) -> Result[Unit]
-
-#[extern]
-proc db_commit(db: DbHandle) -> Result[Unit]
-
-#[extern]
-proc db_rollback(db: DbHandle) -> Result[Unit]
+proc alloc() -> int {
+  give 0
+}
+
+proc dealloc() -> int {
+  give 0
+}
+
+proc runtime_panic() -> int {
+  give 0
+}
+
+proc assert_true() -> int {
+  give 0
+}
+
+proc print_i32() -> int {
+  give 0
+}
+
+proc runtime_unreachable() -> int {
+  give 0
+}
+
+proc terminate() -> int {
+  give 0
+}
+
+proc vitte_c_abi_version() -> int {
+  give 0
+}
+
+proc empty_string() -> int {
+  give 0
+}
+
+proc make_string() -> int {
+  give 0
+}
+
+proc char_to_string() -> int {
+  give 0
+}
+
+proc i32_to_string() -> int {
+  give 0
+}
+
+proc string_concat() -> int {
+  give 0
+}
+
+proc empty_slice_i32() -> int {
+  give 0
+}
+
+proc empty_slice_string() -> int {
+  give 0
+}
+
+proc slice_push_i32() -> int {
+  give 0
+}
+
+proc slice_push_string() -> int {
+  give 0
+}
+
+proc list_i32() -> int {
+  give 0
+}
+
+proc list_string() -> int {
+  give 0
+}
+
+proc time_now_ms() -> int {
+  give 0
+}
+
+proc time_sleep_ms() -> int {
+  give 0
+}
+
+proc env_get() -> int {
+  give 0
+}
+
+proc env_set() -> int {
+  give 0
+}
+
+proc os_platform() -> int {
+  give 0
+}
+
+proc os_arch() -> int {
+  give 0
+}
+
+proc os_home_dir() -> int {
+  give 0
+}
+
+proc os_temp_dir() -> int {
+  give 0
+}
+
+proc os_current_dir() -> int {
+  give 0
+}
+
+proc os_set_current_dir() -> int {
+  give 0
+}
+
+proc os_exe_path() -> int {
+  give 0
+}
+
+proc os_path_sep() -> int {
+  give 0
+}
+
+proc process_run() -> int {
+  give 0
+}
+
+proc process_run_args() -> int {
+  give 0
+}
+
+proc process_run_shell() -> int {
+  give 0
+}
+
+proc process_spawn() -> int {
+  give 0
+}
+
+proc process_wait() -> int {
+  give 0
+}
+
+proc process_kill() -> int {
+  give 0
+}
+
+proc process_stdout() -> int {
+  give 0
+}
+
+proc process_stderr() -> int {
+  give 0
+}
+
+proc json_parse() -> int {
+  give 0
+}
+
+proc json_stringify() -> int {
+  give 0
+}
+
+proc http_request() -> int {
+  give 0
+}
+
+proc crypto_sha256() -> int {
+  give 0
+}
+
+proc crypto_sha1() -> int {
+  give 0
+}
+
+proc crypto_hmac_sha256() -> int {
+  give 0
+}
+
+proc crypto_rand_bytes() -> int {
+  give 0
+}
+
+proc tcp_connect() -> int {
+  give 0
+}
+
+proc tcp_bind() -> int {
+  give 0
+}
+
+proc tcp_accept() -> int {
+  give 0
+}
+
+proc tcp_read() -> int {
+  give 0
+}
+
+proc tcp_write() -> int {
+  give 0
+}
+
+proc tcp_close() -> int {
+  give 0
+}
+
+proc udp_bind() -> int {
+  give 0
+}
+
+proc udp_recv_from() -> int {
+  give 0
+}
+
+proc udp_send_to() -> int {
+  give 0
+}
+
+proc udp_close() -> int {
+  give 0
+}
+
+proc udp_set_nonblocking() -> int {
+  give 0
+}
+
+proc udp_set_read_timeout() -> int {
+  give 0
+}
+
+proc udp_set_write_timeout() -> int {
+  give 0
+}
+
+proc tcp_set_nonblocking() -> int {
+  give 0
+}
+
+proc tcp_set_read_timeout() -> int {
+  give 0
+}
+
+proc tcp_set_write_timeout() -> int {
+  give 0
+}
+
+proc regex_compile() -> int {
+  give 0
+}
+
+proc regex_is_match() -> int {
+  give 0
+}
+
+proc regex_find() -> int {
+  give 0
+}
+
+proc regex_replace() -> int {
+  give 0
+}
+
+proc regex_split() -> int {
+  give 0
+}
+
+proc fswatch_watch() -> int {
+  give 0
+}
+
+proc fswatch_poll() -> int {
+  give 0
+}
+
+proc fswatch_close() -> int {
+  give 0
+}
+
+proc db_open() -> int {
+  give 0
+}
+
+proc db_close() -> int {
+  give 0
+}
+
+proc db_set() -> int {
+  give 0
+}
+
+proc db_get() -> int {
+  give 0
+}
+
+proc db_delete() -> int {
+  give 0
+}
+
+proc db_keys() -> int {
+  give 0
+}
+
+proc db_keys_prefix() -> int {
+  give 0
+}
+
+proc db_batch_put() -> int {
+  give 0
+}
+
+proc db_begin() -> int {
+  give 0
+}
+
+proc db_commit() -> int {
+  give 0
+}
+
+proc db_rollback() -> int {
+  give 0
+}

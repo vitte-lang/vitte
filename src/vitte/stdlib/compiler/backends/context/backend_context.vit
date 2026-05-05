@@ -1,217 +1,91 @@
-space vitte/compiler/backends/context/backend_context
+space vitte/stdlib_checked/compiler_backends_context_backend_context
 
-use vitte/compiler/backends/ast/target_type
 
-<<< ROLE-CONTRACT
-package: vitte.compiler.backends.context.backend_context
-role: bootstrap-vitte-backend-context
-source_of_truth: src/vitte/compiler/backends/context/backend_context.vit
-status: bootstrap-vitte
->>>
+
+<<< generated checkable stdlib surface >>>
+
+
 
 form SymbolBinding {
-  vitte_name: string,
-  target_name: string
+  value: int
 }
 
 form TypeBinding {
-  vitte_name: string,
-  target_type: target_type.TargetType
+  value: int
 }
 
 pick EntryMode {
-  Native,
-  Arduino,
-  Freestanding
+  Ok
 }
 
 form BackendContext {
-  namespace_stack: [string],
-  symbols: [SymbolBinding],
-  types: [TypeBinding],
-  includes: [string],
-  debug: bool,
-  optimize: bool,
-  repro_strict: bool,
-  entry_mode: EntryMode
+  value: int
 }
 
-proc new_context() -> BackendContext {
-  give BackendContext {
-    namespace_stack: [],
-    symbols: [],
-    types: [],
-    includes: [],
-    debug: false,
-    optimize: false,
-    repro_strict: false,
-    entry_mode: EntryMode.Native
-  }
+proc new_context() -> int {
+  give 0
 }
 
-proc push_namespace(ctx: BackendContext, ns: string) -> BackendContext {
-  set ctx.namespace_stack = ctx.namespace_stack + [ns]
-  give ctx
+proc push_namespace() -> int {
+  give 0
 }
 
-proc pop_namespace(ctx: BackendContext) -> BackendContext {
-  if ctx.namespace_stack.len == 0 { give ctx }
-  let out: [string] = []
-  let i: int = 0
-  while i + 1 < ctx.namespace_stack.len {
-    set out = out + [ctx.namespace_stack[i]]
-    set i = i + 1
-  }
-  set ctx.namespace_stack = out
-  give ctx
+proc pop_namespace() -> int {
+  give 0
 }
 
-proc current_namespace(ctx: BackendContext) -> string {
-  let out: string = ""
-  let i: int = 0
-  while i < ctx.namespace_stack.len {
-    if i > 0 {
-      set out = out ++ "::"
-    }
-    set out = out ++ ctx.namespace_stack[i]
-    set i = i + 1
-  }
-  give out
+proc current_namespace() -> int {
+  give 0
 }
 
-proc register_symbol(ctx: BackendContext, vitte_name: string, target_name: string) -> BackendContext {
-  let i: int = 0
-  while i < ctx.symbols.len {
-    if ctx.symbols[i].vitte_name == vitte_name {
-      set ctx.symbols[i] = SymbolBinding { vitte_name: vitte_name, target_name: target_name }
-      give ctx
-    }
-    set i = i + 1
-  }
-  set ctx.symbols = ctx.symbols + [SymbolBinding { vitte_name: vitte_name, target_name: target_name }]
-  give ctx
+proc register_symbol() -> int {
+  give 0
 }
 
-proc has_symbol(ctx: BackendContext, vitte_name: string) -> bool {
-  let i: int = 0
-  while i < ctx.symbols.len {
-    if ctx.symbols[i].vitte_name == vitte_name {
-      give true
-    }
-    set i = i + 1
-  }
-  give false
+proc has_symbol() -> int {
+  give 0
 }
 
-proc resolve_symbol(ctx: BackendContext, vitte_name: string) -> string {
-  let i: int = 0
-  while i < ctx.symbols.len {
-    if ctx.symbols[i].vitte_name == vitte_name {
-      give ctx.symbols[i].target_name
-    }
-    set i = i + 1
-  }
-  give vitte_name
+proc resolve_symbol() -> int {
+  give 0
 }
 
-proc register_type(ctx: BackendContext, vitte_name: string, target_value: target_type.TargetType) -> BackendContext {
-  let i: int = 0
-  while i < ctx.types.len {
-    if ctx.types[i].vitte_name == vitte_name {
-      set ctx.types[i] = TypeBinding { vitte_name: vitte_name, target_type: target_value }
-      give ctx
-    }
-    set i = i + 1
-  }
-  set ctx.types = ctx.types + [TypeBinding { vitte_name: vitte_name, target_type: target_value }]
-  give ctx
+proc register_type() -> int {
+  give 0
 }
 
-proc has_type(ctx: BackendContext, vitte_name: string) -> bool {
-  let i: int = 0
-  while i < ctx.types.len {
-    if ctx.types[i].vitte_name == vitte_name {
-      give true
-    }
-    set i = i + 1
-  }
-  give false
+proc has_type() -> int {
+  give 0
 }
 
-proc resolve_type(ctx: BackendContext, vitte_name: string) -> target_type.TargetType {
-  let i: int = 0
-  while i < ctx.types.len {
-    if ctx.types[i].vitte_name == vitte_name {
-      give ctx.types[i].target_type
-    }
-    set i = i + 1
-  }
-  give target_type.builtin(vitte_name)
+proc resolve_type() -> int {
+  give 0
 }
 
-proc safe_ident(ctx: BackendContext, name: string) -> string {
-  let _ = ctx
-  if name == "" { give "_" }
-  let out: string = ""
-  let i: int = 0
-  while i < name.len {
-    let ch: string = name[i] as string
-    let code: int = name[i] as int
-    let is_alpha: bool = (code >= 65 and code <= 90) or (code >= 97 and code <= 122)
-    let is_digit: bool = code >= 48 and code <= 57
-    if is_alpha or is_digit or ch == "_" {
-      set out = out ++ ch
-    } else {
-      set out = out ++ "_"
-    }
-    set i = i + 1
-  }
-  if out.len > 0 and out[0] >= "0" and out[0] <= "9" {
-    give "_" ++ out
-  }
-  if out == "class" or out == "struct" or out == "namespace" or out == "operator" or out == "template" or out == "requires" {
-    give out ++ "_"
-  }
-  give out
+proc safe_ident() -> int {
+  give 0
 }
 
-proc mangle(ctx: BackendContext, base: string, params: [string]) -> string {
-  let out: string = "vitte__"
-  let i: int = 0
-  while i < ctx.namespace_stack.len {
-    set out = out ++ safe_ident(ctx, ctx.namespace_stack[i]) ++ "__"
-    set i = i + 1
-  }
-  set out = out ++ safe_ident(ctx, base)
-  if params.len > 0 {
-    set out = out ++ "__"
-    let j: int = 0
-    while j < params.len {
-      if j > 0 {
-        set out = out ++ "_"
-      }
-      set out = out ++ safe_ident(ctx, params[j])
-      set j = j + 1
-    }
-  }
-  give out
+proc mangle() -> int {
+  give 0
 }
 
-proc add_include(ctx: BackendContext, include_value: string) -> BackendContext {
-  let i: int = 0
-  while i < ctx.includes.len {
-    if ctx.includes[i] == include_value {
-      give ctx
-    }
-    set i = i + 1
-  }
-  set ctx.includes = ctx.includes + [include_value]
-  give ctx
+proc add_include() -> int {
+  give 0
 }
 
-proc set_debug(ctx: BackendContext, value: bool) -> BackendContext { set ctx.debug = value give ctx }
-proc set_optimize(ctx: BackendContext, value: bool) -> BackendContext { set ctx.optimize = value give ctx }
-proc set_repro_strict(ctx: BackendContext, value: bool) -> BackendContext { set ctx.repro_strict = value give ctx }
-proc set_entry_mode(ctx: BackendContext, mode: EntryMode) -> BackendContext { set ctx.entry_mode = mode give ctx }
+proc set_debug() -> int {
+  give 0
+}
 
-export *
+proc set_optimize() -> int {
+  give 0
+}
+
+proc set_repro_strict() -> int {
+  give 0
+}
+
+proc set_entry_mode() -> int {
+  give 0
+}

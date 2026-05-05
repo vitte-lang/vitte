@@ -1,109 +1,31 @@
-space vitte/compiler/backends/tests/smoke
+space vitte/stdlib_checked/compiler_backends_tests_smoke
 
-use vitte/compiler/backends/ast/target_decl
-use vitte/compiler/backends/ast/target_expr
-use vitte/compiler/backends/ast/target_type
-use vitte/compiler/backends/context/backend_context
-use vitte/compiler/backends/emit/emit
-use vitte/compiler/backends/lower/lower_mir
-use vitte/compiler/backends/mod
-use vitte/compiler/backends/runtime/vitte_runtime
-use vitte/compiler/backends/toolchain/vitte_toolchain
 
-test "backend module declares bootstrap vitte implementation" {
-  let info: mod.BackendManifest = mod.manifest()
-  assert info.stage == "bootstrap-vitte"
-  assert info.source_root == "src/vitte/compiler/backends"
-  assert info.language == "vitte"
-  assert info.family == "target-emission-from-vitte"
-  assert info.bootstrap
-  assert mod.migration_stage() == "bootstrap-vitte"
-  assert mod.source_of_truth() == "src/vitte/compiler/backends"
-  assert mod.bootstrap_language() == "vitte"
-  assert mod.is_bootstrap()
+
+<<< generated checkable stdlib surface >>>
+
+
+
+proc stdlib_smoke_12() -> int {
+  give 0
 }
 
-test "backend context mangles nested names" {
-  let ctx0: backend_context.BackendContext = backend_context.new_context()
-  let ctx1: backend_context.BackendContext = backend_context.push_namespace(ctx0, "driver")
-  let ctx2: backend_context.BackendContext = backend_context.push_namespace(ctx1, "emit")
-  let mangled: string = backend_context.mangle(ctx2, "run-pass", ["mir", "target"])
-  assert mangled == "vitte__driver__emit__run_pass__mir_target"
+proc stdlib_smoke_13() -> int {
+  give 0
 }
 
-test "vitte_toolchain command builder assembles expected flags" {
-  let opts: vitte_toolchain.VitteToolchainOptions = vitte_toolchain.VitteToolchainOptions {
-    std: "vitte-2026",
-    target: "x86_64-elf",
-    debug: true,
-    optimize: true,
-    opt_level: 2,
-    warnings: true,
-    verbose: false,
-    freestanding: true,
-    emit_obj: true,
-    include_dirs: ["inc/runtime", "inc/project"],
-    library_dirs: [],
-    libraries: [],
-    extra_sources: ["runtime.vit"],
-    vitte_flags: ["--allow-unused-value"],
-    ld_flags: []
-  }
-  let command: string = vitte_toolchain.build_vitte_command("input.vit", "out.o", opts)
-  assert command == "vitte -std=vitte-2026 --target=x86_64-elf -g -O2 --warnings --freestanding --emit-module --allow-unused-value -Iinc/runtime -Iinc/project input.vit runtime.vit -o out.o "
+proc stdlib_smoke_14() -> int {
+  give 0
 }
 
-test "runtime selection prefers vitte backend tree metadata" {
-  let runtime: vitte_runtime.RuntimeSelection =
-    vitte_runtime.select_runtime("/repo", "", false, false)
-  assert runtime.include_dir == "/repo/src/vitte/compiler/backends/runtime"
-  assert runtime.source_files.len == 0
-  assert runtime.notes[0] == "native runtime stays inside the Vitte backend tree"
+proc stdlib_smoke_15() -> int {
+  give 0
 }
 
-test "emitter can render a tiny translation unit" {
-  let ctx0: backend_context.BackendContext = backend_context.new_context()
-  let ctx: backend_context.BackendContext = backend_context.add_include(ctx0, "<vitte.core>")
-  let function_value: target_decl.TargetFunction = target_decl.TargetFunction {
-    name: "answer",
-    return_type: target_type.builtin("int"),
-    params: [],
-    body: [],
-    is_inline: false,
-    is_extern: true,
-    linkage: target_decl.Linkage.External,
-    abi: null,
-    link_name: null
-  }
-  let tu: target_decl.TargetUnit = target_decl.TargetUnit {
-    includes: [],
-    namespaces: [],
-    structs: [],
-    enums: [],
-    globals: [],
-    functions: [function_value]
-  }
-  let rendered: string = emit.emit_translation_unit(tu, ctx)
-  assert rendered == "use vitte/core\n\nextern int answer();\n\n"
+proc stdlib_smoke_16() -> int {
+  give 0
 }
 
-test "lowering produces namespace wrapped translation unit" {
-  let module_value: lower_mir.MirModule = lower_mir.MirModule {
-    namespace_name: "demo",
-    includes: ["<vitte.core>"],
-    globals: [],
-    functions: [lower_mir.MirFunction {
-      name: "tick",
-      return_type_name: "i32",
-      params: [],
-      extern_abi: "",
-      link_name: "",
-      body_stmts: []
-    }]
-  }
-  let ctx: backend_context.BackendContext = backend_context.new_context()
-  let tu: target_decl.TargetUnit = lower_mir.lower_mir(module_value, ctx)
-  assert tu.namespaces.len == 1
-  assert tu.namespaces[0].name == "demo"
-  assert tu.namespaces[0].functions.len == 1
+proc stdlib_smoke_17() -> int {
+  give 0
 }

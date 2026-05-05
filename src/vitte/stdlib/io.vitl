@@ -226,43 +226,49 @@ proc null_file() -> File {
   }
 }
 
-const stdin: File = File {
-  fd: 0,
-  path: "<stdin>",
-  mode: "r",
-  readable: true,
-  writable: false,
-  append: false,
-  binary: false,
-  eof: false,
-  error: false,
-  position: 0
+proc stdin_file() -> File {
+  give File {
+    fd: 0,
+    path: "<stdin>",
+    mode: "r",
+    readable: true,
+    writable: false,
+    append: false,
+    binary: false,
+    eof: false,
+    error: false,
+    position: 0
+  }
 }
 
-const stdout: File = File {
-  fd: 1,
-  path: "<stdout>",
-  mode: "w",
-  readable: false,
-  writable: true,
-  append: false,
-  binary: false,
-  eof: false,
-  error: false,
-  position: 0
+proc stdout_file() -> File {
+  give File {
+    fd: 1,
+    path: "<stdout>",
+    mode: "w",
+    readable: false,
+    writable: true,
+    append: false,
+    binary: false,
+    eof: false,
+    error: false,
+    position: 0
+  }
 }
 
-const stderr: File = File {
-  fd: 2,
-  path: "<stderr>",
-  mode: "w",
-  readable: false,
-  writable: true,
-  append: false,
-  binary: false,
-  eof: false,
-  error: false,
-  position: 0
+proc stderr_file() -> File {
+  give File {
+    fd: 2,
+    path: "<stderr>",
+    mode: "w",
+    readable: false,
+    writable: true,
+    append: false,
+    binary: false,
+    eof: false,
+    error: false,
+    position: 0
+  }
 }
 
 proc file_is_open(f: File) -> bool {
@@ -441,7 +447,7 @@ proc getc(f: File) -> int {
 }
 
 proc getchar() -> int {
-  give fgetc(stdin)
+  give fgetc(stdin_file())
 }
 
 proc fputc(c: int, f: File) -> int {
@@ -457,7 +463,7 @@ proc putc(c: int, f: File) -> int {
 }
 
 proc putchar(c: int) -> int {
-  give fputc(c, stdout)
+  give fputc(c, stdout_file())
 }
 
 proc ungetc(c: int, f: File) -> int {
@@ -493,13 +499,13 @@ proc fputs(s: string, f: File) -> int {
 }
 
 proc puts(s: string) -> int {
-  fputs(s, stdout)
-  fputc(10, stdout)
+  fputs(s, stdout_file())
+  fputc(10, stdout_file())
   give s.len + 1
 }
 
 proc print(s: string) -> void {
-  fputs(s, stdout)
+  fputs(s, stdout_file())
 }
 
 proc println(s: string) -> void {
@@ -507,12 +513,12 @@ proc println(s: string) -> void {
 }
 
 proc eprint(s: string) -> void {
-  fputs(s, stderr)
+  fputs(s, stderr_file())
 }
 
 proc eprintln(s: string) -> void {
-  fputs(s, stderr)
-  fputc(10, stderr)
+  fputs(s, stderr_file())
+  fputc(10, stderr_file())
 }
 
 proc emit_string(s: string) -> void {
@@ -520,34 +526,34 @@ proc emit_string(s: string) -> void {
 }
 
 proc print_int(value: i64) -> void {
-  fputs(to_string_i64(value), stdout)
+  fputs(to_string_i64(value), stdout_file())
 }
 
 proc println_int(value: i64) -> void {
   print_int(value)
-  fputc(10, stdout)
+  fputc(10, stdout_file())
 }
 
 proc print_float(value: f64) -> void {
-  fputs(to_string_f64(value), stdout)
+  fputs(to_string_f64(value), stdout_file())
 }
 
 proc println_float(value: f64) -> void {
   print_float(value)
-  fputc(10, stdout)
+  fputc(10, stdout_file())
 }
 
 proc print_bool(value: bool) -> void {
   if value {
-    fputs("true", stdout)
+    fputs("true", stdout_file())
   } else {
-    fputs("false", stdout)
+    fputs("false", stdout_file())
   }
 }
 
 proc println_bool(value: bool) -> void {
   print_bool(value)
-  fputc(10, stdout)
+  fputc(10, stdout_file())
 }
 
 proc printf(format: string, args: [string]) -> int {
@@ -1074,11 +1080,11 @@ proc io_selftest() -> bool {
     give false
   }
 
-  if not file_is_open(stdout) {
+  if not file_is_open(stdout_file()) {
     give false
   }
 
-  if not file_can_write(stdout) {
+  if not file_can_write(stdout_file()) {
     give false
   }
 

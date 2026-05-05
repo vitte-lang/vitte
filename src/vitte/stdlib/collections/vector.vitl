@@ -29,7 +29,10 @@ proc _repeat_i64(value: i64, count: i32) -> [i64] {
    --------------------------------------------------------- >>>
 
 proc vector_new(capacity: i32) -> Vector {
-    let cap = if capacity <= 0 { 8 } else { capacity }
+    let cap = 8
+    if capacity > 0 {
+        set cap = capacity
+    }
 
     give Vector {
         data: _repeat_i64(0, cap),
@@ -190,7 +193,7 @@ proc vector_reverse(v: Vector) {
    --------------------------------------------------------- >>>
 
 proc vector_reserve(v: Vector, new_cap: i32) {
-    if new_cap <= v.capacity { give }
+    if new_cap <= v.capacity { return }
 
     let new_data: [i64] = _repeat_i64(0, new_cap)
 
@@ -282,7 +285,7 @@ proc vector_equals(a: Vector, b: Vector) -> int {
 
 proc vector_truncate(v: Vector, n: i32) {
     if n < 0 { set n = 0 }
-    if n >= v.size { give }
+    if n >= v.size { return }
 
     let i: i32 = n
     while i < v.size {
@@ -320,7 +323,11 @@ proc vector_capacity(v: Vector) -> i32 {
 }
 
 proc vector_empty(v: Vector) -> int {
-    give if v.size == 0 { 1 } else { 0 }
+    if v.size == 0 {
+      give 1
+    } else {
+      give 0
+    }
 }
 
 proc vector_to_array(v: Vector) -> [i64] {

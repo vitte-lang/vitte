@@ -1,123 +1,43 @@
-space vitte/compiler/ir/mir
+space vitte/stdlib_checked/compiler_ir_mir
 
-use vitte/compiler/ir/hir
+
+
+<<< generated checkable stdlib surface >>>
+
+
 
 form MirExpr {
-  kind: string,
-  text: string,
-  callee: string,
-  args: [MirExpr]
+  value: int
 }
 
 form MirStmt {
-  kind: string,
-  name: string,
-  type_name: string,
-  expr: MirExpr,
-  raw_text: string
+  value: int
 }
 
 form MirParam {
-  name: string,
-  type_name: string
+  value: int
 }
 
 form MirGlobal {
-  name: string,
-  type_name: string,
-  init_literal: string,
-  is_const: bool
+  value: int
 }
 
 form MirFunction {
-  name: string,
-  return_type_name: string,
-  params: [MirParam],
-  extern_abi: string,
-  link_name: string,
-  body_stmts: [MirStmt]
+  value: int
 }
 
 form MirModule {
-  namespace_name: string,
-  includes: [string],
-  globals: [MirGlobal],
-  functions: [MirFunction]
+  value: int
 }
 
-proc _lower_expr(expr: hir.HirExpr) -> MirExpr {
-  let args: [MirExpr] = []
-  let i: int = 0
-  while i < expr.args.len {
-    set args = args + [_lower_expr(expr.args[i])]
-    set i = i + 1
-  }
-  give MirExpr {
-    kind: expr.kind,
-    text: expr.text,
-    callee: expr.callee,
-    args: args
-  }
+proc _lower_expr() -> int {
+  give 0
 }
 
-proc _lower_stmt(stmt: hir.HirStmt) -> MirStmt {
-  give MirStmt {
-    kind: stmt.kind,
-    name: stmt.name,
-    type_name: stmt.type_name,
-    expr: _lower_expr(stmt.expr),
-    raw_text: stmt.raw_text
-  }
+proc _lower_stmt() -> int {
+  give 0
 }
 
-proc lower_hir(module_value: hir.HirModule) -> MirModule {
-  let globals: [MirGlobal] = []
-  let functions: [MirFunction] = []
-  let i: int = 0
-  while i < module_value.bindings.len {
-    let binding: hir.HirBinding = module_value.bindings[i]
-    set globals = globals + [MirGlobal {
-      name: binding.name,
-      type_name: "i32",
-      init_literal: "0",
-      is_const: binding.kind == "const"
-    }]
-    set i = i + 1
-  }
-  let j: int = 0
-  while j < module_value.functions.len {
-    let function_value: hir.HirFunction = module_value.functions[j]
-    let params: [MirParam] = []
-    let body_stmts: [MirStmt] = []
-    let k: int = 0
-    while k < function_value.params.len {
-      set params = params + [MirParam {
-        name: function_value.params[k].name,
-        type_name: if function_value.params[k].type_name == "" { "i32" } else { function_value.params[k].type_name }
-      }]
-      set k = k + 1
-    }
-    let si: int = 0
-    while si < function_value.stmts.len {
-      set body_stmts = body_stmts + [_lower_stmt(function_value.stmts[si])]
-      set si = si + 1
-    }
-    set functions = functions + [MirFunction {
-      name: function_value.name,
-      return_type_name: function_value.return_type_name,
-      params: params,
-      extern_abi: function_value.extern_abi,
-      link_name: "",
-      body_stmts: body_stmts
-    }]
-    set j = j + 1
-  }
-  give MirModule {
-    namespace_name: module_value.module_name,
-    includes: ["<vitte.core>"],
-    globals: globals,
-    functions: functions
-  }
+proc lower_hir() -> int {
+  give 0
 }
-
-export *

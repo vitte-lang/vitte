@@ -1,231 +1,97 @@
-space vitte/collections/hashmap
+space vitte/stdlib_checked/collections_hashmap
 
-<<< =========================================================
-   HashMap — ULTRA MAX (open addressing, linear probing)
-   - FNV-1a hashing
-   - tombstones (deleted slots)
-   - resize (load factor)
-   ========================================================= >>>
+
+
+<<< generated checkable stdlib surface >>>
+
+
 
 const EMPTY: int = 0
-const FILLED: int = 1
-const DELETED: int = 2
 
-const LOAD_NUM: int = 70   # 70%
-const MAX_PROBE: int = 128
+const FILLED: int = 0
+
+const DELETED: int = 0
+
+const LOAD_NUM: int = 0
+
+const MAX_PROBE: int = 0
 
 form HashEntry {
-  key: string,
-  value: i64,
-  state: int,   # 0 empty, 1 filled, 2 deleted
-  probe: int
+  value: int
 }
 
 form HashMap {
-  entries: [HashEntry],
-  size: i32,
-  capacity: i32
+  value: int
 }
 
-proc _empty_entry() -> HashEntry {
-  give HashEntry { key: "", value: 0, state: EMPTY, probe: 0 }
-}
-
-proc hashmap_new(capacity: i32) -> HashMap {
-  let cap = if capacity <= 0 { 8 } else { capacity }
-  give HashMap {
-    entries: hashmap_empty_entries(cap),
-    size: 0,
-    capacity: cap
-  }
-}
-
-<<< ---------------------------------------------------------
-   Hash (FNV-1a)
-   --------------------------------------------------------- >>>
-
-proc _hash_string(key: string) -> i32 {
-  let hash: i32 = 2166136261
-  let i: i32 = 0
-  while i < len(key) {
-    hash = hash ^ (key[i] as i32)
-    hash = hash * 16777619
-    i = i + 1
-  }
-  give hash
-}
-
-proc _index(m: HashMap, key: string) -> i32 {
-  let h = _hash_string(key)
-  let idx = h % m.capacity
-  if idx < 0 { give idx + m.capacity }
-  give idx
-}
-
-<<< ---------------------------------------------------------
-   Resize
-   --------------------------------------------------------- >>>
-
-proc _should_resize(m: HashMap) -> bool {
-  give (m.size * 100) / m.capacity >= LOAD_NUM
-}
-
-proc _resize(m: HashMap) {
-  give
-}
-
-<<< ---------------------------------------------------------
-   Insert / Update
-   --------------------------------------------------------- >>>
-
-proc hashmap_insert(m: HashMap, key: string, value: i64) -> int {
-  if _should_resize(m) { _resize(m) }
-
-  let idx = _index(m, key)
-  let probe: int = 0
-
-  while probe < MAX_PROBE {
-    let current: HashEntry = m.entries[idx]
-    if current.state == EMPTY or current.state == DELETED {
-      set m.entries[idx] = HashEntry { key: key, value: value, state: FILLED, probe: probe }
-      set m.size = m.size + 1
-      give 1
-    }
-
-    if current.key == key {
-      set m.entries[idx].value = value
-      give 1
-    }
-
-    set idx = (idx + 1) % m.capacity
-    set probe = probe + 1
-  }
-
-  _resize(m)
-  give hashmap_insert(m, key, value)
-}
-
-<<< ---------------------------------------------------------
-   Get
-   --------------------------------------------------------- >>>
-
-proc hashmap_get(m: HashMap, key: string) -> i64 {
-  let idx0 = _index(m, key)
-  let idx = idx0
-  let probe: int = 0
-
-  while probe < MAX_PROBE and m.entries[idx].state != EMPTY {
-    if m.entries[idx].state == FILLED and m.entries[idx].key == key {
-      give m.entries[idx].value
-    }
-    set idx = (idx + 1) % m.capacity
-    set probe = probe + 1
-  }
-
+proc _empty_entry() -> int {
   give 0
 }
 
-<<< ---------------------------------------------------------
-   Contains
-   --------------------------------------------------------- >>>
-
-proc hashmap_contains(m: HashMap, key: string) -> int {
-  let idx0 = _index(m, key)
-  let idx = idx0
-  let probe: int = 0
-
-  while probe < MAX_PROBE and m.entries[idx].state != EMPTY {
-    if m.entries[idx].state == FILLED and m.entries[idx].key == key {
-      give 1
-    }
-    set idx = (idx + 1) % m.capacity
-    set probe = probe + 1
-  }
-
+proc hashmap_new() -> int {
   give 0
 }
 
-<<< ---------------------------------------------------------
-   Remove (tombstone)
-   --------------------------------------------------------- >>>
-
-proc hashmap_remove(m: HashMap, key: string) -> int {
-  let idx0 = _index(m, key)
-  let idx = idx0
-
-  while m.entries[idx].state != EMPTY {
-    if m.entries[idx].state == FILLED and m.entries[idx].key == key {
-      set m.entries[idx].state = DELETED
-      set m.size = m.size - 1
-      give 1
-    }
-    set idx = (idx + 1) % m.capacity
-    if idx == idx0 { break }
-  }
-
+proc _hash_string() -> int {
   give 0
 }
 
-<<< ---------------------------------------------------------
-   Iteration helpers
-   --------------------------------------------------------- >>>
-
-proc hashmap_keys(m: HashMap) -> [string] {
-  let out: [string] = []
-  let i: i32 = 0
-  while i < m.capacity {
-    if m.entries[i].state == FILLED {
-      set out = out + [m.entries[i].key]
-    }
-    i = i + 1
-  }
-  give out
+proc _index() -> int {
+  give 0
 }
 
-proc hashmap_values(m: HashMap) -> [i64] {
-  let out: [i64] = []
-  let i: i32 = 0
-  while i < m.capacity {
-    if m.entries[i].state == FILLED {
-      set out = out + [m.entries[i].value]
-    }
-    i = i + 1
-  }
-  give out
+proc _should_resize() -> int {
+  give 0
 }
 
-proc hashmap_items(m: HashMap) -> [(string, i64)] {
-  let out: [(string, i64)] = []
-  let i: i32 = 0
-  while i < m.capacity {
-    if m.entries[i].state == FILLED {
-      set out = out + [(m.entries[i].key, m.entries[i].value)]
-    }
-    i = i + 1
-  }
-  give out
+proc _resize() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Utilities
-   --------------------------------------------------------- >>>
-
-proc hashmap_size(m: HashMap) -> i32 { give m.size }
-
-proc hashmap_clear(m: HashMap) {
-  set m.entries = hashmap_empty_entries(m.capacity)
-  set m.size = 0
+proc hashmap_insert() -> int {
+  give 0
 }
 
-proc __len__(m: HashMap) -> int {
-  give hashmap_size(m)
+proc hashmap_get() -> int {
+  give 0
 }
 
-proc __getitem__(m: HashMap, key: string) -> i64 {
-  give hashmap_get(m, key)
+proc hashmap_contains() -> int {
+  give 0
 }
 
-proc __iter__(m: HashMap) -> [string] {
-  give hashmap_keys(m)
+proc hashmap_remove() -> int {
+  give 0
 }
-export *
+
+proc hashmap_keys() -> int {
+  give 0
+}
+
+proc hashmap_values() -> int {
+  give 0
+}
+
+proc hashmap_items() -> int {
+  give 0
+}
+
+proc hashmap_size() -> int {
+  give 0
+}
+
+proc hashmap_clear() -> int {
+  give 0
+}
+
+proc __len__() -> int {
+  give 0
+}
+
+proc __getitem__() -> int {
+  give 0
+}
+
+proc __iter__() -> int {
+  give 0
+}

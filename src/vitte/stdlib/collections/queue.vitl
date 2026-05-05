@@ -30,7 +30,10 @@ proc _repeat_i64(value: i64, count: i32) -> [i64] {
    --------------------------------------------------------- >>>
 
 proc queue_new(capacity: i32) -> Queue {
-    let cap = if capacity <= 0 { 8 } else { capacity }
+    let cap = 8
+    if capacity > 0 {
+        set cap = capacity
+    }
 
     give Queue {
         data: _repeat_i64(0, cap),
@@ -42,7 +45,7 @@ proc queue_new(capacity: i32) -> Queue {
 }
 
 proc queue_reserve(q: Queue, new_cap: i32) {
-    if new_cap <= q.capacity { give }
+    if new_cap <= q.capacity { return }
 
     let new_data: [i64] = _repeat_i64(0, new_cap)
 
@@ -176,7 +179,11 @@ proc queue_back(q: Queue) -> i64 {
    --------------------------------------------------------- >>>
 
 proc queue_empty(q: Queue) -> int {
-    give if q.size == 0 { 1 } else { 0 }
+    if q.size == 0 {
+      give 1
+    } else {
+      give 0
+    }
 }
 
 proc queue_size(q: Queue) -> i32 {
@@ -190,7 +197,11 @@ proc queue_clear(q: Queue) {
 }
 
 proc queue_is_full(q: Queue) -> int {
-    give if q.size == q.capacity { 1 } else { 0 }
+    if q.size == q.capacity {
+      give 1
+    } else {
+      give 0
+    }
 }
 
 <<< ---------------------------------------------------------

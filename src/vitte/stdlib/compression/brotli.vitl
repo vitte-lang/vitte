@@ -19,24 +19,104 @@ form BrotliSummary {
   health: BrotliHealth
 }
 
-proc compress(data: string) -> string { give "brotli(" + data + ")" }
+proc _slice_text(text: string, start: i32, end: i32) -> string {
+  let out: string = ""
+  let i: i32 = start
 
-proc decompress(data: string) -> string { give "brotli-decompressed(" + data + ")" }
+  while i < end and i < len(text) {
+    set out = out + ((text[i] as i32) as string)
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc _strip_prefix(text: string, prefix: string) -> string {
+  if len(text) < len(prefix) {
+    give text
+  }
+
+  if _slice_text(text, 0, len(prefix)) != prefix {
+    give text
+  }
+
+  give _slice_text(text, len(prefix), len(text))
+}
+
+proc _strip_quality_prefix(text: string) -> string {
+  if _strip_prefix(text, "q0:") != text { give _strip_prefix(text, "q0:") }
+  if _strip_prefix(text, "q1:") != text { give _strip_prefix(text, "q1:") }
+  if _strip_prefix(text, "q2:") != text { give _strip_prefix(text, "q2:") }
+  if _strip_prefix(text, "q3:") != text { give _strip_prefix(text, "q3:") }
+  if _strip_prefix(text, "q4:") != text { give _strip_prefix(text, "q4:") }
+  if _strip_prefix(text, "q5:") != text { give _strip_prefix(text, "q5:") }
+  if _strip_prefix(text, "q6:") != text { give _strip_prefix(text, "q6:") }
+  if _strip_prefix(text, "q7:") != text { give _strip_prefix(text, "q7:") }
+  if _strip_prefix(text, "q8:") != text { give _strip_prefix(text, "q8:") }
+  if _strip_prefix(text, "q9:") != text { give _strip_prefix(text, "q9:") }
+  if _strip_prefix(text, "q10:") != text { give _strip_prefix(text, "q10:") }
+  if _strip_prefix(text, "q11:") != text { give _strip_prefix(text, "q11:") }
+
+  give text
+}
+
+proc normalize_quality(quality: int) -> int {
+  if quality < 0 {
+    give 0
+  }
+
+  if quality > 11 {
+    give 11
+  }
+
+  give quality
+}
+
+proc compress(data: string) -> string {
+  give compress_with_quality(data, 6)
+}
+
+proc decompress(data: string) -> string {
+  let payload: string = _strip_prefix(data, "brotli:")
+
+  if payload == data {
+    give data
+  }
+
+  give _strip_quality_prefix(payload)
+}
 
 proc compress_with_quality(data: string, quality: int) -> string {
-  give "brotli-q" + (quality as string) + "(" + data + ")"
+  let q: int = normalize_quality(quality)
+  give "brotli:q" + (q as string) + ":" + data
 }
 
 proc compress_bytes(data: [int]) -> [int] {
-  give data
+  give [66, 82] + data
 }
 
 proc decompress_bytes(data: [int]) -> [int] {
-  give data
+  if data.len < 2 {
+    give data
+  }
+
+  if data[0] != 66 or data[1] != 82 {
+    give data
+  }
+
+  let out: [int] = []
+  let i: int = 2
+
+  while i < data.len {
+    set out = out + [data[i]]
+    set i = i + 1
+  }
+
+  give out
 }
 
 proc brotli_version() -> string {
-  give "max-1"
+  give "max-2"
 }
 
 proc brotli_ready() -> bool {
@@ -80,6 +160,13 @@ proc compression_ratio(original: string, compressed: string) -> f64 {
 proc brotli_selftest() -> bool {
   let summary: BrotliSummary = brotli_summary()
   let input: string = "brotli-brotli-brotli"
-  let roundtrip: string = decompress(compress_with_quality(input, 6))
-  give summary.health.ready and roundtrip == "brotli-decompressed(brotli-q6(" + input + "))"
+  let sample_bytes: [int] = [1, 2, 2, 3, 3, 3]
+
+  give summary.health.ready
+    and summary.manifest.version == "max-2"
+    and normalize_quality(-1) == 0
+    and normalize_quality(99) == 11
+    and decompress(compress(input)) == input
+    and decompress(compress_with_quality(input, 6)) == input
+    and decompress_bytes(compress_bytes(sample_bytes)) == sample_bytes
 }

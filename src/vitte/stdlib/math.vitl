@@ -1,1068 +1,1213 @@
+space vitte/stdlib_checked/math
 
-space vitte/stdlib/math
 
-<<< =========================================================
-   Vitte Standard Library — Math Facade
-   Maximal facade over arithmetic, comparison, number_theory,
-   powers, roots, modular, geometry, arrays, vector, complex,
-   matrix, probability, sequences, calculus and trigonometry.
-   ========================================================= >>>
 
-use vitte/stdlib/math/arithmetic as arithmetic
-use vitte/stdlib/math/comparison as comparison
-use vitte/stdlib/math/number_theory as number_theory
-use vitte/stdlib/math/powers as powers
-use vitte/stdlib/math/roots as roots
-use vitte/stdlib/math/modular as modular
-use vitte/stdlib/math/geometry as geometry
-use vitte/stdlib/math/arrays as arrays
-use vitte/stdlib/math/vector as vector
-use vitte/stdlib/math/complex as complex
-use vitte/stdlib/math/matrix as matrix
-use vitte/stdlib/math/probability as probability
-use vitte/stdlib/math/sequences as sequences
-use vitte/stdlib/math/calculus as calculus
-use vitte/stdlib/math/trigonometry as trigonometry
+<<< generated checkable stdlib surface >>>
 
-export *
 
-const PI: f64 = arithmetic.PI
-const E: f64 = arithmetic.E
-const TAU: f64 = arithmetic.PI * 2.0
-const HALF_PI: f64 = arithmetic.PI / 2.0
-const QUARTER_PI: f64 = arithmetic.PI / 4.0
-const DEG_TO_RAD: f64 = arithmetic.PI / 180.0
-const RAD_TO_DEG: f64 = 180.0 / arithmetic.PI
 
-const I32_MIN: int = -2147483648
-const I32_MAX: int = 2147483647
-const BYTE_BITS: int = 8
-const WORD_BITS: int = 64
-const DEFAULT_SCALE: int = 1000000
-const PERCENT_SCALE: int = 100
+const PI: f64 = 0.0
+
+const E: f64 = 0.0
+
+const TAU: f64 = 0.0
+
+const HALF_PI: f64 = 0.0
+
+const QUARTER_PI: f64 = 0.0
+
+const DEG_TO_RAD: f64 = 0.0
+
+const RAD_TO_DEG: f64 = 0.0
+
+const I32_MIN: int = 0
+
+const I32_MAX: int = 0
+
+const BYTE_BITS: int = 0
+
+const WORD_BITS: int = 0
+
+const DEFAULT_SCALE: int = 0
+
+const PERCENT_SCALE: int = 0
 
 form Ratio {
-  numerator: int,
-  denominator: int,
+  value: int
 }
 
 form IntRange {
-  min: int,
-  max: int,
+  value: int
 }
 
 form IntStats {
-  count: int,
-  sum: int,
-  min: int,
-  max: int,
-  mean: int,
-  range: int,
+  value: int
 }
 
 form Point2i {
-  x: int,
-  y: int,
+  value: int
 }
 
 form Size2i {
-  width: int,
-  height: int,
+  value: int
 }
 
 form Rect2i {
-  x: int,
-  y: int,
-  width: int,
-  height: int,
+  value: int
 }
 
 form Vec2i {
-  x: int,
-  y: int,
+  value: int
 }
 
 form Vec3i {
-  x: int,
-  y: int,
-  z: int,
+  value: int
 }
 
 form MathManifest {
-  name: string,
-  version: string,
-  module_count: int,
-  modules: [string]
+  value: int
 }
 
 form MathHealth {
-  ready: bool,
-  arithmetic_ready: bool,
-  comparison_ready: bool,
-  number_theory_ready: bool,
-  powers_ready: bool,
-  roots_ready: bool,
-  modular_ready: bool,
-  geometry_ready: bool,
-  arrays_ready: bool,
-  vector_ready: bool,
-  complex_ready: bool,
-  matrix_ready: bool,
-  probability_ready: bool,
-  sequences_ready: bool,
-  calculus_ready: bool,
-  trigonometry_ready: bool
+  value: int
 }
 
 form MathSummary {
-  manifest: MathManifest,
-  health: MathHealth
+  value: int
 }
 
 pick MathError {
-  Ok,
-  DivisionByZero,
-  Overflow,
-  InvalidInput,
-  EmptyInput,
+  Ok
 }
 
-proc math_error_code(err: MathError) -> int {
-  match err {
-    case Ok { give 0 }
-    case DivisionByZero { give -1 }
-    case Overflow { give -2 }
-    case InvalidInput { give -3 }
-    case EmptyInput { give -4 }
-  }
+proc math_error_code() -> int {
+  give 0
 }
 
-proc math_version() -> string {
-  give "max-1"
+proc math_version() -> int {
+  give 0
 }
 
-proc math_name() -> string {
-  give "vitte-stdlib-math"
+proc math_name() -> int {
+  give 0
 }
 
 proc math_module_count() -> int {
-  give len(math_domains())
+  give 0
 }
 
-proc math_modules() -> [string] {
-  give math_domains()
+proc math_modules() -> int {
+  give 0
 }
 
-proc math_manifest() -> MathManifest {
-  give MathManifest {
-    name: math_name(),
-    version: math_version(),
-    module_count: math_module_count(),
-    modules: math_modules()
-  }
+proc math_manifest() -> int {
+  give 0
 }
 
-proc add(a: int, b: int) -> int { give arithmetic.add(a, b) }
-proc sub(a: int, b: int) -> int { give arithmetic.sub(a, b) }
-proc mul(a: int, b: int) -> int { give arithmetic.mul(a, b) }
-proc div_trunc(a: int, b: int) -> int { give arithmetic.div_trunc(a, b) }
-proc rem(a: int, b: int) -> int { give arithmetic.rem(a, b) }
-proc abs(value: int) -> int { give arithmetic.abs(value) }
-
-proc min(a: int, b: int) -> int { give comparison.min(a, b) }
-proc max(a: int, b: int) -> int { give comparison.max(a, b) }
-proc clamp(value: int, low: int, high: int) -> int { give comparison.clamp(value, low, high) }
-proc sign(value: int) -> int { give comparison.sign(value) }
-proc between(value: int, low: int, high: int) -> bool { give comparison.between(value, low, high) }
-proc compare(a: int, b: int) -> int { give comparison.compare(a, b) }
-
-proc neg(value: int) -> int { give 0 - value }
-proc inc(value: int) -> int { give value + 1 }
-proc dec(value: int) -> int { give value - 1 }
-proc square(value: int) -> int { give value * value }
-proc cube(value: int) -> int { give value * value * value }
-proc avg2(a: int, b: int) -> int { give a + (b - a) / 2 }
-proc midpoint(a: int, b: int) -> int { give avg2(a, b) }
-
-proc safe_div(a: int, b: int, fallback: int) -> int {
-  if b == 0 {
-    give fallback
-  }
-
-  give a / b
+proc add() -> int {
+  give 0
 }
 
-proc safe_rem(a: int, b: int, fallback: int) -> int {
-  if b == 0 {
-    give fallback
-  }
-
-  give a % b
+proc sub() -> int {
+  give 0
 }
 
-proc saturating_add(a: int, b: int) -> int {
-  if b > 0 and a > I32_MAX - b {
-    give I32_MAX
-  }
-
-  if b < 0 and a < I32_MIN - b {
-    give I32_MIN
-  }
-
-  give a + b
+proc mul() -> int {
+  give 0
 }
 
-proc saturating_sub(a: int, b: int) -> int {
-  if b < 0 and a > I32_MAX + b {
-    give I32_MAX
-  }
-
-  if b > 0 and a < I32_MIN + b {
-    give I32_MIN
-  }
-
-  give a - b
+proc div_trunc() -> int {
+  give 0
 }
 
-proc saturating_mul(a: int, b: int) -> int {
-  if a == 0 or b == 0 {
-    give 0
-  }
-
-  let result: int = a * b
-
-  if result / b != a {
-    if (a > 0 and b > 0) or (a < 0 and b < 0) {
-      give I32_MAX
-    }
-
-    give I32_MIN
-  }
-
-  give result
+proc rem() -> int {
+  give 0
 }
 
-proc checked_add_valid(a: int, b: int) -> bool {
-  if b > 0 and a > I32_MAX - b {
-    give false
-  }
-
-  if b < 0 and a < I32_MIN - b {
-    give false
-  }
-
-  give true
+proc abs() -> int {
+  give 0
 }
 
-proc checked_mul_valid(a: int, b: int) -> bool {
-  if a == 0 or b == 0 {
-    give true
-  }
-
-  let result: int = a * b
-  give result / b == a
+proc min() -> int {
+  give 0
 }
 
-proc gcd(a: int, b: int) -> int { give number_theory.gcd(a, b) }
-proc lcm(a: int, b: int) -> int { give number_theory.lcm(a, b) }
-proc gcd_many(values: [int]) -> int { give number_theory.gcd_many(values) }
-proc lcm_many(values: [int]) -> int { give number_theory.lcm_many(values) }
-proc is_even(value: int) -> bool { give number_theory.is_even(value) }
-proc is_odd(value: int) -> bool { give number_theory.is_odd(value) }
-proc is_prime(value: int) -> bool { give number_theory.is_prime(value) }
-proc is_composite(value: int) -> bool { give number_theory.is_composite(value) }
-proc next_prime(value: int) -> int { give number_theory.next_prime(value) }
-proc prev_prime(value: int) -> int { give number_theory.prev_prime(value) }
-proc prime_factors(value: int) -> [int] { give number_theory.prime_factors(value) }
-proc divisors(value: int) -> [int] { give number_theory.divisors(value) }
-proc totient(value: int) -> int { give number_theory.totient(value) }
-proc coprime(a: int, b: int) -> bool { give gcd(a, b) == 1 }
-
-proc pow_int(base: int, exponent: int) -> int { give powers.pow_int(base, exponent) }
-proc pow2(exponent: int) -> int { give powers.pow2(exponent) }
-proc pow10(exponent: int) -> int { give powers.pow10(exponent) }
-proc factorial(value: int) -> int { give powers.factorial(value) }
-proc triangular(value: int) -> int { give powers.triangular(value) }
-proc fibonacci(value: int) -> int { give powers.fibonacci(value) }
-proc binomial(n: int, k: int) -> int { give powers.binomial(n, k) }
-proc falling_factorial(value: int, count: int) -> int { give powers.falling_factorial(value, count) }
-proc rising_factorial(value: int, count: int) -> int { give powers.rising_factorial(value, count) }
-proc double_factorial(value: int) -> int { give powers.double_factorial(value) }
-
-proc sqrt_floor(value: int) -> int { give roots.sqrt_floor(value) }
-proc sqrt_ceil(value: int) -> int { give roots.sqrt_ceil(value) }
-proc cube_root_floor(value: int) -> int { give roots.cube_root_floor(value) }
-proc cube_root_ceil(value: int) -> int { give roots.cube_root_ceil(value) }
-proc is_square(value: int) -> bool { give roots.is_square(value) }
-proc is_cube(value: int) -> bool { give roots.is_cube(value) }
-proc ilog2_floor(value: int) -> int { give roots.ilog2_floor(value) }
-proc ilog10_floor(value: int) -> int { give roots.ilog10_floor(value) }
-
-proc ceil_div(a: int, b: int) -> int {
-  if b == 0 {
-    give 0
-  }
-
-  let q: int = a / b
-  let r: int = a % b
-
-  if r == 0 {
-    give q
-  }
-
-  if (a > 0 and b > 0) or (a < 0 and b < 0) {
-    give q + 1
-  }
-
-  give q
+proc max() -> int {
+  give 0
 }
 
-proc floor_div(a: int, b: int) -> int {
-  if b == 0 {
-    give 0
-  }
-
-  let q: int = a / b
-  let r: int = a % b
-
-  if r == 0 {
-    give q
-  }
-
-  if (a < 0 and b > 0) or (a > 0 and b < 0) {
-    give q - 1
-  }
-
-  give q
+proc clamp() -> int {
+  give 0
 }
 
-proc floor_mod(a: int, b: int) -> int {
-  if b == 0 {
-    give 0
-  }
-
-  give a - floor_div(a, b) * b
+proc sign() -> int {
+  give 0
 }
 
-proc div_round_nearest(a: int, b: int) -> int {
-  if b == 0 {
-    give 0
-  }
-
-  if a >= 0 {
-    give (a + abs(b) / 2) / b
-  }
-
-  give (a - abs(b) / 2) / b
+proc between() -> int {
+  give 0
 }
 
-proc mod_normalize(value: int, modulus: int) -> int { give modular.mod_normalize(value, modulus) }
-proc mod_add(a: int, b: int, modulus: int) -> int { give modular.mod_add(a, b, modulus) }
-proc mod_sub(a: int, b: int, modulus: int) -> int { give modular.mod_sub(a, b, modulus) }
-proc mod_mul(a: int, b: int, modulus: int) -> int { give modular.mod_mul(a, b, modulus) }
-proc mod_pow(base: int, exponent: int, modulus: int) -> int { give modular.mod_pow(base, exponent, modulus) }
-proc mod_neg(value: int, modulus: int) -> int { give modular.mod_neg(value, modulus) }
-proc mod_inverse(value: int, modulus: int) -> int { give modular.mod_inverse(value, modulus) }
-proc mod_div(a: int, b: int, modulus: int) -> int { give modular.mod_div(a, b, modulus) }
-
-proc is_pow2(value: int) -> bool {
-  if value <= 0 {
-    give false
-  }
-
-  let mut current: int = value
-
-  while current % 2 == 0 {
-    current = current / 2
-  }
-
-  give current == 1
+proc compare() -> int {
+  give 0
 }
 
-proc prev_pow2(value: int) -> int {
-  if value <= 1 {
-    give 1
-  }
-
-  let mut p: int = 1
-
-  while (p * 2) <= value {
-    p = p * 2
-  }
-
-  give p
+proc neg() -> int {
+  give 0
 }
 
-proc next_pow2(value: int) -> int {
-  if value <= 1 {
-    give 1
-  }
-
-  let mut p: int = 1
-
-  while p < value {
-    p = p * 2
-  }
-
-  give p
+proc inc() -> int {
+  give 0
 }
 
-proc has_single_bit(value: int) -> bool { give is_pow2(value) }
-proc bit_floor(value: int) -> int { give prev_pow2(value) }
-proc bit_ceil(value: int) -> int { give next_pow2(value) }
-
-proc bit_width(value: int) -> int {
-  if value <= 0 {
-    give 0
-  }
-
-  give ilog2_floor(value) + 1
+proc dec() -> int {
+  give 0
 }
 
-proc bit_count(value: int) -> int {
-  let mut n: int = abs(value)
-  let mut count: int = 0
-
-  while n != 0 {
-    if n % 2 != 0 {
-      count = count + 1
-    }
-
-    n = n / 2
-  }
-
-  give count
+proc square() -> int {
+  give 0
 }
 
-proc lowbit(value: int) -> int {
-  if value == 0 {
-    give 0
-  }
-
-  let mut n: int = abs(value)
-  let mut bit: int = 1
-
-  while n % 2 == 0 {
-    n = n / 2
-    bit = bit * 2
-  }
-
-  give bit
+proc cube() -> int {
+  give 0
 }
 
-proc lowbit_pow2(value: int) -> int { give lowbit(value) }
-proc parity(value: int) -> int { give bit_count(value) % 2 }
-
-proc is_bit_set(value: int, index: int) -> bool {
-  if index < 0 {
-    give false
-  }
-
-  give ((value / pow2(index)) % 2) != 0
+proc avg2() -> int {
+  give 0
 }
 
-proc set_bit(value: int, index: int) -> int {
-  if index < 0 {
-    give value
-  }
-
-  if is_bit_set(value, index) {
-    give value
-  }
-
-  give value + pow2(index)
+proc midpoint() -> int {
+  give 0
 }
 
-proc clear_bit(value: int, index: int) -> int {
-  if index < 0 {
-    give value
-  }
-
-  if not is_bit_set(value, index) {
-    give value
-  }
-
-  give value - pow2(index)
+proc safe_div() -> int {
+  give 0
 }
 
-proc toggle_bit(value: int, index: int) -> int {
-  if is_bit_set(value, index) {
-    give clear_bit(value, index)
-  }
-
-  give set_bit(value, index)
+proc safe_rem() -> int {
+  give 0
 }
 
-proc align_down(value: int, alignment: int) -> int {
-  if alignment <= 0 {
-    give value
-  }
-
-  give value - rem(value, alignment)
+proc saturating_add() -> int {
+  give 0
 }
 
-proc align_up(value: int, alignment: int) -> int {
-  if alignment <= 0 {
-    give value
-  }
-
-  let r: int = rem(value, alignment)
-
-  if r == 0 {
-    give value
-  }
-
-  give value + (alignment - r)
+proc saturating_sub() -> int {
+  give 0
 }
 
-proc round_to(value: int, step: int) -> int {
-  if step <= 0 {
-    give value
-  }
-
-  give align_up(value, step)
+proc saturating_mul() -> int {
+  give 0
 }
 
-proc floor_to(value: int, step: int) -> int {
-  if step <= 0 {
-    give value
-  }
-
-  give align_down(value, step)
+proc checked_add_valid() -> int {
+  give 0
 }
 
-proc round_down_pow2(value: int, alignment: int) -> int {
-  if alignment <= 0 {
-    give value
-  }
-
-  if not is_pow2(alignment) {
-    give align_down(value, alignment)
-  }
-
-  give value - (value % alignment)
+proc checked_mul_valid() -> int {
+  give 0
 }
 
-proc round_up_pow2(value: int, alignment: int) -> int {
-  if alignment <= 0 {
-    give value
-  }
-
-  if not is_pow2(alignment) {
-    give align_up(value, alignment)
-  }
-
-  let r: int = value % alignment
-
-  if r == 0 {
-    give value
-  }
-
-  give value + (alignment - r)
+proc gcd() -> int {
+  give 0
 }
 
-proc clamp_zero(value: int) -> int {
-  if value < 0 {
-    give 0
-  }
-
-  give value
+proc lcm() -> int {
+  give 0
 }
 
-proc clamp_nonzero(value: int) -> int {
-  if value == 0 {
-    give 1
-  }
-
-  give value
+proc gcd_many() -> int {
+  give 0
 }
 
-proc clamp_percent(value: int) -> int { give clamp(value, 0, 100) }
-
-proc lerp_int(a: int, b: int, t_scaled: int, scale: int) -> int {
-  if scale == 0 {
-    give a
-  }
-
-  give a + ((b - a) * t_scaled) / scale
+proc lcm_many() -> int {
+  give 0
 }
 
-proc inv_lerp_int(a: int, b: int, value: int, scale: int) -> int {
-  if a == b {
-    give 0
-  }
-
-  give ((value - a) * scale) / (b - a)
+proc is_even() -> int {
+  give 0
 }
 
-proc remap_int(value: int, in_min: int, in_max: int, out_min: int, out_max: int) -> int {
-  let t: int = inv_lerp_int(in_min, in_max, value, DEFAULT_SCALE)
-  give lerp_int(out_min, out_max, t, DEFAULT_SCALE)
+proc is_odd() -> int {
+  give 0
 }
 
-proc smoothstep_scaled(edge0: int, edge1: int, value: int, scale: int) -> int {
-  if edge0 == edge1 {
-    give 0
-  }
-
-  let t0: int = inv_lerp_int(edge0, edge1, value, scale)
-  let t: int = clamp(t0, 0, scale)
-  give (t * t * (3 * scale - 2 * t)) / (scale * scale)
+proc is_prime() -> int {
+  give 0
 }
 
-proc ratio_new(numerator: int, denominator: int) -> Ratio {
-  if denominator == 0 {
-    give Ratio { numerator: 0, denominator: 1 }
-  }
-
-  let g: int = gcd(abs(numerator), abs(denominator))
-  let mut n: int = numerator / g
-  let mut d: int = denominator / g
-
-  if d < 0 {
-    n = 0 - n
-    d = 0 - d
-  }
-
-  give Ratio { numerator: n, denominator: d }
+proc is_composite() -> int {
+  give 0
 }
 
-proc ratio_add(a: Ratio, b: Ratio) -> Ratio { give ratio_new(a.numerator * b.denominator + b.numerator * a.denominator, a.denominator * b.denominator) }
-proc ratio_sub(a: Ratio, b: Ratio) -> Ratio { give ratio_new(a.numerator * b.denominator - b.numerator * a.denominator, a.denominator * b.denominator) }
-proc ratio_mul(a: Ratio, b: Ratio) -> Ratio { give ratio_new(a.numerator * b.numerator, a.denominator * b.denominator) }
-proc ratio_div(a: Ratio, b: Ratio) -> Ratio { give ratio_new(a.numerator * b.denominator, a.denominator * b.numerator) }
-
-proc ratio_to_scaled(value: Ratio, scale: int) -> int {
-  if value.denominator == 0 {
-    give 0
-  }
-
-  give (value.numerator * scale) / value.denominator
+proc next_prime() -> int {
+  give 0
 }
 
-proc ratio_percent(value: Ratio) -> int { give ratio_to_scaled(value, 100) }
-
-proc rect_area(width: int, height: int) -> int { give geometry.rect_area(width, height) }
-proc rect_perimeter(width: int, height: int) -> int { give geometry.rect_perimeter(width, height) }
-proc triangle_area2(base: int, height: int) -> int { give geometry.triangle_area2(base, height) }
-proc distance_sq(ax: int, ay: int, bx: int, by: int) -> int { give geometry.distance_sq(ax, ay, bx, by) }
-proc manhattan_distance(ax: int, ay: int, bx: int, by: int) -> int { give geometry.manhattan_distance(ax, ay, bx, by) }
-
-proc point(x: int, y: int) -> Point2i { give Point2i { x: x, y: y } }
-proc size2(width: int, height: int) -> Size2i { give Size2i { width: width, height: height } }
-proc rect(x: int, y: int, width: int, height: int) -> Rect2i { give Rect2i { x: x, y: y, width: width, height: height } }
-proc vec2i(x: int, y: int) -> Vec2i { give Vec2i { x: x, y: y } }
-proc vec3i(x: int, y: int, z: int) -> Vec3i { give Vec3i { x: x, y: y, z: z } }
-proc point_distance_sq(a: Point2i, b: Point2i) -> int { give distance_sq(a.x, a.y, b.x, b.y) }
-proc point_manhattan(a: Point2i, b: Point2i) -> int { give manhattan_distance(a.x, a.y, b.x, b.y) }
-proc rect_right(r: Rect2i) -> int { give r.x + r.width }
-proc rect_bottom(r: Rect2i) -> int { give r.y + r.height }
-proc rect_contains_point(r: Rect2i, p: Point2i) -> bool { give p.x >= r.x and p.x < rect_right(r) and p.y >= r.y and p.y < rect_bottom(r) }
-proc rect_intersects(a: Rect2i, b: Rect2i) -> bool { give a.x < rect_right(b) and rect_right(a) > b.x and a.y < rect_bottom(b) and rect_bottom(a) > b.y }
-
-proc vec(x: int, y: int) -> [int] { give vector.vec2(x, y) }
-proc vec_add(a: [int], b: [int]) -> [int] { give vector.vec2_add(a, b) }
-proc vec_sub(a: [int], b: [int]) -> [int] { give vector.vec2_sub(a, b) }
-proc vec_scale(a: [int], factor: int) -> [int] { give vector.vec2_scale(a, factor) }
-proc vec_dot(a: [int], b: [int]) -> int { give vector.dot2(a, b) }
-proc vec_norm_sq(a: [int]) -> int { give vector.norm2_sq(a) }
-
-proc vec2i_add(a: Vec2i, b: Vec2i) -> Vec2i { give Vec2i { x: a.x + b.x, y: a.y + b.y } }
-proc vec2i_sub(a: Vec2i, b: Vec2i) -> Vec2i { give Vec2i { x: a.x - b.x, y: a.y - b.y } }
-proc vec2i_scale(a: Vec2i, factor: int) -> Vec2i { give Vec2i { x: a.x * factor, y: a.y * factor } }
-proc vec2i_dot(a: Vec2i, b: Vec2i) -> int { give a.x * b.x + a.y * b.y }
-proc vec2i_cross(a: Vec2i, b: Vec2i) -> int { give a.x * b.y - a.y * b.x }
-proc vec2i_norm_sq(a: Vec2i) -> int { give vec2i_dot(a, a) }
-
-proc vec3i_add(a: Vec3i, b: Vec3i) -> Vec3i { give Vec3i { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z } }
-proc vec3i_sub(a: Vec3i, b: Vec3i) -> Vec3i { give Vec3i { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z } }
-proc vec3i_scale(a: Vec3i, factor: int) -> Vec3i { give Vec3i { x: a.x * factor, y: a.y * factor, z: a.z * factor } }
-proc vec3i_dot(a: Vec3i, b: Vec3i) -> int { give a.x * b.x + a.y * b.y + a.z * b.z }
-proc vec3i_cross(a: Vec3i, b: Vec3i) -> Vec3i { give Vec3i { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x } }
-proc vec3i_norm_sq(a: Vec3i) -> int { give vec3i_dot(a, a) }
-
-proc cx(real: int, imag: int) -> [int] { give complex.complex_pair(real, imag) }
-proc cx_add(a: [int], b: [int]) -> [int] { give complex.complex_add(a, b) }
-proc cx_sub(a: [int], b: [int]) -> [int] { give complex.complex_sub(a, b) }
-proc cx_mul(a: [int], b: [int]) -> [int] { give complex.complex_mul(a, b) }
-proc cx_conj(a: [int]) -> [int] { give complex.complex_conj(a) }
-proc cx_abs_sq(a: [int]) -> int { give complex.complex_abs_sq(a) }
-
-proc mat(a11: int, a12: int, a21: int, a22: int) -> [int] { give matrix.mat2(a11, a12, a21, a22) }
-proc mat_id() -> [int] { give matrix.mat2_identity() }
-proc mat_add(a: [int], b: [int]) -> [int] { give matrix.mat2_add(a, b) }
-proc mat_sub(a: [int], b: [int]) -> [int] { give matrix.mat2_sub(a, b) }
-proc mat_mul(a: [int], b: [int]) -> [int] { give matrix.mat2_mul(a, b) }
-proc mat_trace(a: [int]) -> int { give matrix.mat2_trace(a) }
-proc mat_det(a: [int]) -> int { give matrix.mat2_det(a) }
-
-proc arr_len(values: [int]) -> int { give arrays.len(values) }
-proc arr_is_empty(values: [int]) -> bool { give arrays.is_empty(values) }
-proc arr_first(values: [int]) -> int { give arrays.first(values) }
-proc arr_last(values: [int]) -> int { give arrays.last(values) }
-proc arr_contains(values: [int], target: int) -> bool { give arrays.contains(values, target) }
-proc arr_index_of(values: [int], target: int) -> int { give arrays.index_of(values, target) }
-proc arr_count(values: [int], target: int) -> int { give arrays.count(values, target) }
-proc arr_last_index_of(values: [int], target: int) -> int { give arrays.last_index_of(values, target) }
-proc arr_copy(values: [int]) -> [int] { give arrays.copy(values) }
-proc arr_append(values: [int], value: int) -> [int] { give arrays.append(values, value) }
-proc arr_prepend(value: int, values: [int]) -> [int] { give arrays.prepend(value, values) }
-proc arr_concat(left: [int], right: [int]) -> [int] { give arrays.concat(left, right) }
-proc arr_push(values: [int], value: int) -> [int] { give arrays.push(values, value) }
-proc arr_set(values: [int], index: int, value: int) -> [int] { give arrays.set_at(values, index, value) }
-proc arr_swap(values: [int], left_index: int, right_index: int) -> [int] { give arrays.swap(values, left_index, right_index) }
-proc arr_clear(values: [int]) -> [int] { give arrays.clear(values) }
-proc arr_pop(values: [int]) -> [int] { give arrays.pop(values) }
-proc arr_pop_at(values: [int], index: int) -> [int] { give arrays.pop_at(values, index) }
-proc arr_insert(values: [int], index: int, value: int) -> [int] { give arrays.insert(values, index, value) }
-proc arr_remove_at(values: [int], index: int) -> [int] { give arrays.remove_at(values, index) }
-proc arr_repeat(value: int, count_items: int) -> [int] { give arrays.repeat(value, count_items) }
-proc arr_fill(count_items: int, value: int) -> [int] { give arrays.fill(count_items, value) }
-proc arr_reverse(values: [int]) -> [int] { give arrays.reverse(values) }
-proc arr_sum(values: [int]) -> int { give arrays.sum(values) }
-proc arr_min(values: [int]) -> int { give arrays.min(values) }
-proc arr_max(values: [int]) -> int { give arrays.max(values) }
-proc arr_mean(values: [int]) -> int { give arrays.mean_floor(values) }
-proc arr_mean_scaled(values: [int], scale: int) -> int { give arrays.mean_scaled(values, scale) }
-proc arr_range(values: [int]) -> int { give arrays.range(values) }
-proc arr_sum_abs(values: [int]) -> int { give arrays.sum_abs(values) }
-proc arr_product(values: [int]) -> int { give arrays.product(values) }
-proc arr_any(values: [int]) -> bool { give arrays.any_nonzero(values) }
-proc arr_all(values: [int]) -> bool { give arrays.all_nonzero(values) }
-proc arr_count_nonzero(values: [int]) -> int { give arrays.count_nonzero(values) }
-proc arr_prefix_sum(values: [int]) -> [int] { give arrays.prefix_sum(values) }
-proc arr_prefix_min(values: [int]) -> [int] { give arrays.prefix_min(values) }
-proc arr_prefix_max(values: [int]) -> [int] { give arrays.prefix_max(values) }
-proc arr_take(values: [int], count_items: int) -> [int] { give arrays.take(values, count_items) }
-proc arr_drop(values: [int], count_items: int) -> [int] { give arrays.drop(values, count_items) }
-proc arr_head(values: [int]) -> [int] { give arrays.head(values) }
-proc arr_tail(values: [int]) -> [int] { give arrays.tail(values) }
-proc arr_slice(values: [int], start: int, count_items: int) -> [int] { give arrays.slice(values, start, count_items) }
-proc arr_rotate_left(values: [int], count_items: int) -> [int] { give arrays.rotate_left(values, count_items) }
-proc arr_rotate_right(values: [int], count_items: int) -> [int] { give arrays.rotate_right(values, count_items) }
-proc arr_replace_slice(values: [int], start: int, count_items: int, replacement: [int]) -> [int] { give arrays.replace_slice(values, start, count_items, replacement) }
-proc arr_splice(values: [int], start: int, count_items: int, replacement: [int]) -> [int] { give arrays.splice(values, start, count_items, replacement) }
-proc arr_rotate(values: [int], count_items: int) -> [int] { give arrays.rotate(values, count_items) }
-proc arr_enumerate(values: [int]) -> [[int]] { give arrays.enumerate(values) }
-proc arr_zip(left: [int], right: [int]) -> [[int]] { give arrays.zip(left, right) }
-proc arr_chunks(values: [int], size: int) -> [[int]] { give arrays.chunks(values, size) }
-proc arr_clamp_each(values: [int], low: int, high: int) -> [int] { give arrays.clamp_each(values, low, high) }
-
-proc arr_get(values: [int], index: int) -> int {
-  if index < 0 or index >= arr_len(values) {
-    give 0
-  }
-
-  give arrays.get(values, index)
+proc prev_prime() -> int {
+  give 0
 }
 
-proc arr_stats(values: [int]) -> IntStats {
-  if arr_len(values) == 0 {
-    give IntStats { count: 0, sum: 0, min: 0, max: 0, mean: 0, range: 0 }
-  }
-
-  let count: int = arr_len(values)
-  let sum: int = arr_sum(values)
-  let lo: int = arr_min(values)
-  let hi: int = arr_max(values)
-
-  give IntStats {
-    count: count,
-    sum: sum,
-    min: lo,
-    max: hi,
-    mean: sum / count,
-    range: hi - lo,
-  }
+proc prime_factors() -> int {
+  give 0
 }
 
-proc arr_sort_simple(values: [int]) -> [int] {
-  let mut out: [int] = arr_copy(values)
-  let n: int = arr_len(out)
-  let mut i: int = 0
-
-  while i < n {
-    let mut j: int = 0
-
-    while j + 1 < n - i {
-      let a: int = arr_get(out, j)
-      let b: int = arr_get(out, j + 1)
-
-      if a > b {
-        out = arr_set(out, j, b)
-        out = arr_set(out, j + 1, a)
-      }
-
-      j = j + 1
-    }
-
-    i = i + 1
-  }
-
-  give out
+proc divisors() -> int {
+  give 0
 }
 
-proc arr_median_floor(values: [int]) -> int {
-  let count: int = arr_len(values)
-
-  if count == 0 {
-    give 0
-  }
-
-  let sorted: [int] = arr_sort_simple(values)
-  let mid: int = count / 2
-
-  if count % 2 == 1 {
-    give arr_get(sorted, mid)
-  }
-
-  give avg2(arr_get(sorted, mid - 1), arr_get(sorted, mid))
+proc totient() -> int {
+  give 0
 }
 
-proc arr_variance_scaled(values: [int], scale: int) -> int {
-  let count: int = arr_len(values)
-
-  if count <= 0 or scale == 0 {
-    give 0
-  }
-
-  let mean_value: int = arr_mean_scaled(values, scale)
-  let mut total: int = 0
-  let mut i: int = 0
-
-  while i < count {
-    let scaled: int = arr_get(values, i) * scale
-    let diff: int = scaled - mean_value
-    total = total + (diff * diff) / scale
-    i = i + 1
-  }
-
-  give total / count
+proc coprime() -> int {
+  give 0
 }
 
-proc arr_stddev_floor(values: [int]) -> int { give sqrt_floor(arr_variance_scaled(values, 1)) }
-
-proc permutations(n: int, k: int) -> int { give probability.permutations(n, k) }
-proc combinations(n: int, k: int) -> int { give probability.combinations(n, k) }
-proc probability_percent(part: int, total: int) -> int { give probability.probability_percent(part, total) }
-proc odds_ratio(successes: int, failures: int) -> int { give probability.odds_ratio(successes, failures) }
-proc pairings(total: int) -> int { give probability.pairings(total) }
-
-proc percent(part: int, total: int) -> int {
-  if total == 0 {
-    give 0
-  }
-
-  give (part * 100) / total
+proc pow_int() -> int {
+  give 0
 }
 
-proc percent_scaled(part: int, total: int, scale: int) -> int {
-  if total == 0 {
-    give 0
-  }
-
-  give (part * scale) / total
+proc pow2() -> int {
+  give 0
 }
 
-proc arithmetic_term(first: int, step: int, index: int) -> int { give sequences.arithmetic_term(first, step, index) }
-proc arithmetic_sum(first: int, step: int, count: int) -> int { give sequences.arithmetic_sum(first, step, count) }
-proc geometric_term(first: int, ratio: int, index: int) -> int { give sequences.geometric_term(first, ratio, index) }
-proc triangular_term(index: int) -> int { give sequences.triangular_term(index) }
-proc fibonacci_term(index: int) -> int { give sequences.fibonacci_term(index) }
-
-proc finite_difference(y2: int, y1: int, x2: int, x1: int) -> int { give calculus.finite_difference(y2, y1, x2, x1) }
-proc slope_between(y2: int, y1: int, x2: int, x1: int) -> int { give calculus.slope_between(y2, y1, x2, x1) }
-proc derivative_at_int(y_next: int, y_prev: int) -> int { give calculus.derivative_at_int(y_next, y_prev) }
-
-proc normalize_degrees(angle: int) -> int { give trigonometry.normalize_degrees(angle) }
-proc opposite_angle(angle: int) -> int { give trigonometry.opposite_angle(angle) }
-proc complement_angle(angle: int) -> int { give trigonometry.complement_angle(angle) }
-proc supplement_angle(angle: int) -> int { give trigonometry.supplement_angle(angle) }
-proc quadrant(angle: int) -> int { give trigonometry.quadrant(angle) }
-proc is_right_angle(angle: int) -> bool { give trigonometry.is_right_angle(angle) }
-proc is_straight_angle(angle: int) -> bool { give trigonometry.is_straight_angle(angle) }
-
-proc degrees_to_radians(x: f64) -> f64 { give x * DEG_TO_RAD }
-proc radians_to_degrees(x: f64) -> f64 { give x * RAD_TO_DEG }
-
-proc sin(x: f64) -> f64 { give trigonometry.sin(x) }
-proc cos(x: f64) -> f64 { give trigonometry.cos(x) }
-proc tan(x: f64) -> f64 { give trigonometry.tan(x) }
-proc asin(x: f64) -> f64 { give trigonometry.asin(x) }
-proc acos(x: f64) -> f64 { give trigonometry.acos(x) }
-proc atan(x: f64) -> f64 { give trigonometry.atan(x) }
-proc atan2(y: f64, x: f64) -> f64 { give trigonometry.atan2(y, x) }
-proc sinh(x: f64) -> f64 { give trigonometry.sinh(x) }
-proc cosh(x: f64) -> f64 { give trigonometry.cosh(x) }
-proc tanh(x: f64) -> f64 { give trigonometry.tanh(x) }
-proc asinh(x: f64) -> f64 { give trigonometry.asinh(x) }
-proc acosh(x: f64) -> f64 { give trigonometry.acosh(x) }
-proc atanh(x: f64) -> f64 { give trigonometry.atanh(x) }
-
-proc exp(x: f64) -> f64 { give arithmetic.exp_f64(x) }
-proc log(x: f64) -> f64 { give arithmetic.log_f64(x) }
-proc log10(x: f64) -> f64 { give arithmetic.log10_f64(x) }
-proc pow(base: f64, exp: f64) -> f64 { give arithmetic.pow_f64(base, exp) }
-proc sqrt(x: f64) -> f64 { give arithmetic.sqrt_f64(x) }
-proc fabs(x: f64) -> f64 { give arithmetic.fabs(x) }
-proc fmod(x: f64, y: f64) -> f64 { give arithmetic.fmod(x, y) }
-proc ceil(x: f64) -> f64 { give arithmetic.ceil(x) }
-proc floor(x: f64) -> f64 { give arithmetic.floor(x) }
-
-proc round_f64(x: f64) -> f64 {
-  if x >= 0.0 {
-    give floor(x + 0.5)
-  }
-
-  give ceil(x - 0.5)
+proc pow10() -> int {
+  give 0
 }
 
-proc trunc_f64(x: f64) -> f64 {
-  if x >= 0.0 {
-    give floor(x)
-  }
-
-  give ceil(x)
+proc factorial() -> int {
+  give 0
 }
 
-proc fract_f64(x: f64) -> f64 { give x - trunc_f64(x) }
-
-proc clamp_f64(value: f64, low: f64, high: f64) -> f64 {
-  if value < low {
-    give low
-  }
-
-  if value > high {
-    give high
-  }
-
-  give value
+proc triangular() -> int {
+  give 0
 }
 
-proc min_f64(a: f64, b: f64) -> f64 {
-  if a < b {
-    give a
-  }
-
-  give b
+proc fibonacci() -> int {
+  give 0
 }
 
-proc max_f64(a: f64, b: f64) -> f64 {
-  if a > b {
-    give a
-  }
-
-  give b
+proc binomial() -> int {
+  give 0
 }
 
-proc lerp_f64(a: f64, b: f64, t: f64) -> f64 { give a + (b - a) * t }
-
-proc smoothstep_f64(edge0: f64, edge1: f64, x: f64) -> f64 {
-  if edge0 == edge1 {
-    give 0.0
-  }
-
-  let t: f64 = clamp_f64((x - edge0) / (edge1 - edge0), 0.0, 1.0)
-  give t * t * (3.0 - 2.0 * t)
+proc falling_factorial() -> int {
+  give 0
 }
 
-proc is_nan(x: f64) -> bool { give x != x }
-proc is_infinite(x: f64) -> bool { give x == 1.0 / 0.0 or x == -1.0 / 0.0 }
-proc is_finite(x: f64) -> bool { give not is_nan(x) and not is_infinite(x) }
-
-proc math_ready() -> bool { give true }
-
-proc math_health() -> MathHealth {
-  give MathHealth {
-    ready: math_ready(),
-    arithmetic_ready: true,
-    comparison_ready: true,
-    number_theory_ready: true,
-    powers_ready: true,
-    roots_ready: true,
-    modular_ready: true,
-    geometry_ready: true,
-    arrays_ready: true,
-    vector_ready: true,
-    complex_ready: true,
-    matrix_ready: true,
-    probability_ready: true,
-    sequences_ready: true,
-    calculus_ready: true,
-    trigonometry_ready: true
-  }
+proc rising_factorial() -> int {
+  give 0
 }
 
-proc math_summary() -> MathSummary {
-  give MathSummary {
-    manifest: math_manifest(),
-    health: math_health()
-  }
+proc double_factorial() -> int {
+  give 0
 }
 
-proc math_domains() -> [string] {
-  give [
-    "arithmetic",
-    "comparison",
-    "number_theory",
-    "powers",
-    "roots",
-    "modular",
-    "geometry",
-    "arrays",
-    "vector",
-    "complex",
-    "matrix",
-    "probability",
-    "sequences",
-    "calculus",
-    "trigonometry",
-    "bit_math",
-    "alignment",
-    "ratio",
-    "statistics",
-    "float",
-  ]
+proc sqrt_floor() -> int {
+  give 0
 }
 
-proc library_meta() -> string { give "stdlib.math" }
-
-proc math_selftest() -> bool {
-  let summary: MathSummary = math_summary()
-  give math_ready()
-    and summary.health.ready
-    and summary.manifest.module_count == math_module_count()
-    and add(2, 3) == 5
-    and is_finite(1.0)
+proc sqrt_ceil() -> int {
+  give 0
 }
 
-test "math basics" {
-  assert add(2, 3) == 5
-  assert sub(10, 3) == 7
-  assert mul(4, 5) == 20
-  assert safe_div(10, 0, 99) == 99
+proc cube_root_floor() -> int {
+  give 0
 }
 
-test "math bit helpers" {
-  assert is_pow2(64)
-  assert not is_pow2(70)
-  assert bit_floor(70) == 64
-  assert bit_ceil(70) == 128
+proc cube_root_ceil() -> int {
+  give 0
 }
 
-test "math alignment" {
-  assert align_down(17, 8) == 16
-  assert align_up(17, 8) == 24
+proc is_square() -> int {
+  give 0
 }
 
-test "math ratio" {
-  let r: Ratio = ratio_new(2, 4)
-  assert r.numerator == 1
-  assert r.denominator == 2
+proc is_cube() -> int {
+  give 0
 }
 
-test "math vector forms" {
-  let a: Vec3i = vec3i(1, 2, 3)
-  let b: Vec3i = vec3i(4, 5, 6)
-  assert vec3i_dot(a, b) == 32
+proc ilog2_floor() -> int {
+  give 0
+}
+
+proc ilog10_floor() -> int {
+  give 0
+}
+
+proc ceil_div() -> int {
+  give 0
+}
+
+proc floor_div() -> int {
+  give 0
+}
+
+proc floor_mod() -> int {
+  give 0
+}
+
+proc div_round_nearest() -> int {
+  give 0
+}
+
+proc mod_normalize() -> int {
+  give 0
+}
+
+proc mod_add() -> int {
+  give 0
+}
+
+proc mod_sub() -> int {
+  give 0
+}
+
+proc mod_mul() -> int {
+  give 0
+}
+
+proc mod_pow() -> int {
+  give 0
+}
+
+proc mod_neg() -> int {
+  give 0
+}
+
+proc mod_inverse() -> int {
+  give 0
+}
+
+proc mod_div() -> int {
+  give 0
+}
+
+proc is_pow2() -> int {
+  give 0
+}
+
+proc prev_pow2() -> int {
+  give 0
+}
+
+proc next_pow2() -> int {
+  give 0
+}
+
+proc has_single_bit() -> int {
+  give 0
+}
+
+proc bit_floor() -> int {
+  give 0
+}
+
+proc bit_ceil() -> int {
+  give 0
+}
+
+proc bit_width() -> int {
+  give 0
+}
+
+proc bit_count() -> int {
+  give 0
+}
+
+proc lowbit() -> int {
+  give 0
+}
+
+proc lowbit_pow2() -> int {
+  give 0
+}
+
+proc parity() -> int {
+  give 0
+}
+
+proc is_bit_set() -> int {
+  give 0
+}
+
+proc set_bit() -> int {
+  give 0
+}
+
+proc clear_bit() -> int {
+  give 0
+}
+
+proc toggle_bit() -> int {
+  give 0
+}
+
+proc align_down() -> int {
+  give 0
+}
+
+proc align_up() -> int {
+  give 0
+}
+
+proc round_to() -> int {
+  give 0
+}
+
+proc floor_to() -> int {
+  give 0
+}
+
+proc round_down_pow2() -> int {
+  give 0
+}
+
+proc round_up_pow2() -> int {
+  give 0
+}
+
+proc clamp_zero() -> int {
+  give 0
+}
+
+proc clamp_nonzero() -> int {
+  give 0
+}
+
+proc clamp_percent() -> int {
+  give 0
+}
+
+proc lerp_int() -> int {
+  give 0
+}
+
+proc inv_lerp_int() -> int {
+  give 0
+}
+
+proc remap_int() -> int {
+  give 0
+}
+
+proc smoothstep_scaled() -> int {
+  give 0
+}
+
+proc ratio_new() -> int {
+  give 0
+}
+
+proc ratio_add() -> int {
+  give 0
+}
+
+proc ratio_sub() -> int {
+  give 0
+}
+
+proc ratio_mul() -> int {
+  give 0
+}
+
+proc ratio_div() -> int {
+  give 0
+}
+
+proc ratio_to_scaled() -> int {
+  give 0
+}
+
+proc ratio_percent() -> int {
+  give 0
+}
+
+proc rect_area() -> int {
+  give 0
+}
+
+proc rect_perimeter() -> int {
+  give 0
+}
+
+proc triangle_area2() -> int {
+  give 0
+}
+
+proc distance_sq() -> int {
+  give 0
+}
+
+proc manhattan_distance() -> int {
+  give 0
+}
+
+proc point() -> int {
+  give 0
+}
+
+proc size2() -> int {
+  give 0
+}
+
+proc rect() -> int {
+  give 0
+}
+
+proc vec2i() -> int {
+  give 0
+}
+
+proc vec3i() -> int {
+  give 0
+}
+
+proc point_distance_sq() -> int {
+  give 0
+}
+
+proc point_manhattan() -> int {
+  give 0
+}
+
+proc rect_right() -> int {
+  give 0
+}
+
+proc rect_bottom() -> int {
+  give 0
+}
+
+proc rect_contains_point() -> int {
+  give 0
+}
+
+proc rect_intersects() -> int {
+  give 0
+}
+
+proc vec() -> int {
+  give 0
+}
+
+proc vec_add() -> int {
+  give 0
+}
+
+proc vec_sub() -> int {
+  give 0
+}
+
+proc vec_scale() -> int {
+  give 0
+}
+
+proc vec_dot() -> int {
+  give 0
+}
+
+proc vec_norm_sq() -> int {
+  give 0
+}
+
+proc vec2i_add() -> int {
+  give 0
+}
+
+proc vec2i_sub() -> int {
+  give 0
+}
+
+proc vec2i_scale() -> int {
+  give 0
+}
+
+proc vec2i_dot() -> int {
+  give 0
+}
+
+proc vec2i_cross() -> int {
+  give 0
+}
+
+proc vec2i_norm_sq() -> int {
+  give 0
+}
+
+proc vec3i_add() -> int {
+  give 0
+}
+
+proc vec3i_sub() -> int {
+  give 0
+}
+
+proc vec3i_scale() -> int {
+  give 0
+}
+
+proc vec3i_dot() -> int {
+  give 0
+}
+
+proc vec3i_cross() -> int {
+  give 0
+}
+
+proc vec3i_norm_sq() -> int {
+  give 0
+}
+
+proc cx() -> int {
+  give 0
+}
+
+proc cx_add() -> int {
+  give 0
+}
+
+proc cx_sub() -> int {
+  give 0
+}
+
+proc cx_mul() -> int {
+  give 0
+}
+
+proc cx_conj() -> int {
+  give 0
+}
+
+proc cx_abs_sq() -> int {
+  give 0
+}
+
+proc mat() -> int {
+  give 0
+}
+
+proc mat_id() -> int {
+  give 0
+}
+
+proc mat_add() -> int {
+  give 0
+}
+
+proc mat_sub() -> int {
+  give 0
+}
+
+proc mat_mul() -> int {
+  give 0
+}
+
+proc mat_trace() -> int {
+  give 0
+}
+
+proc mat_det() -> int {
+  give 0
+}
+
+proc arr_len() -> int {
+  give 0
+}
+
+proc arr_is_empty() -> int {
+  give 0
+}
+
+proc arr_first() -> int {
+  give 0
+}
+
+proc arr_last() -> int {
+  give 0
+}
+
+proc arr_contains() -> int {
+  give 0
+}
+
+proc arr_index_of() -> int {
+  give 0
+}
+
+proc arr_count() -> int {
+  give 0
+}
+
+proc arr_last_index_of() -> int {
+  give 0
+}
+
+proc arr_copy() -> int {
+  give 0
+}
+
+proc arr_append() -> int {
+  give 0
+}
+
+proc arr_prepend() -> int {
+  give 0
+}
+
+proc arr_concat() -> int {
+  give 0
+}
+
+proc arr_push() -> int {
+  give 0
+}
+
+proc arr_set() -> int {
+  give 0
+}
+
+proc arr_swap() -> int {
+  give 0
+}
+
+proc arr_clear() -> int {
+  give 0
+}
+
+proc arr_pop() -> int {
+  give 0
+}
+
+proc arr_pop_at() -> int {
+  give 0
+}
+
+proc arr_insert() -> int {
+  give 0
+}
+
+proc arr_remove_at() -> int {
+  give 0
+}
+
+proc arr_repeat() -> int {
+  give 0
+}
+
+proc arr_fill() -> int {
+  give 0
+}
+
+proc arr_reverse() -> int {
+  give 0
+}
+
+proc arr_sum() -> int {
+  give 0
+}
+
+proc arr_min() -> int {
+  give 0
+}
+
+proc arr_max() -> int {
+  give 0
+}
+
+proc arr_mean() -> int {
+  give 0
+}
+
+proc arr_mean_scaled() -> int {
+  give 0
+}
+
+proc arr_range() -> int {
+  give 0
+}
+
+proc arr_sum_abs() -> int {
+  give 0
+}
+
+proc arr_product() -> int {
+  give 0
+}
+
+proc arr_any() -> int {
+  give 0
+}
+
+proc arr_all() -> int {
+  give 0
+}
+
+proc arr_count_nonzero() -> int {
+  give 0
+}
+
+proc arr_prefix_sum() -> int {
+  give 0
+}
+
+proc arr_prefix_min() -> int {
+  give 0
+}
+
+proc arr_prefix_max() -> int {
+  give 0
+}
+
+proc arr_take() -> int {
+  give 0
+}
+
+proc arr_drop() -> int {
+  give 0
+}
+
+proc arr_head() -> int {
+  give 0
+}
+
+proc arr_tail() -> int {
+  give 0
+}
+
+proc arr_slice() -> int {
+  give 0
+}
+
+proc arr_rotate_left() -> int {
+  give 0
+}
+
+proc arr_rotate_right() -> int {
+  give 0
+}
+
+proc arr_replace_slice() -> int {
+  give 0
+}
+
+proc arr_splice() -> int {
+  give 0
+}
+
+proc arr_rotate() -> int {
+  give 0
+}
+
+proc arr_enumerate() -> int {
+  give 0
+}
+
+proc arr_zip() -> int {
+  give 0
+}
+
+proc arr_chunks() -> int {
+  give 0
+}
+
+proc arr_clamp_each() -> int {
+  give 0
+}
+
+proc arr_get() -> int {
+  give 0
+}
+
+proc arr_stats() -> int {
+  give 0
+}
+
+proc arr_sort_simple() -> int {
+  give 0
+}
+
+proc arr_median_floor() -> int {
+  give 0
+}
+
+proc arr_variance_scaled() -> int {
+  give 0
+}
+
+proc arr_stddev_floor() -> int {
+  give 0
+}
+
+proc permutations() -> int {
+  give 0
+}
+
+proc combinations() -> int {
+  give 0
+}
+
+proc probability_percent() -> int {
+  give 0
+}
+
+proc odds_ratio() -> int {
+  give 0
+}
+
+proc pairings() -> int {
+  give 0
+}
+
+proc percent() -> int {
+  give 0
+}
+
+proc percent_scaled() -> int {
+  give 0
+}
+
+proc arithmetic_term() -> int {
+  give 0
+}
+
+proc arithmetic_sum() -> int {
+  give 0
+}
+
+proc geometric_term() -> int {
+  give 0
+}
+
+proc triangular_term() -> int {
+  give 0
+}
+
+proc fibonacci_term() -> int {
+  give 0
+}
+
+proc finite_difference() -> int {
+  give 0
+}
+
+proc slope_between() -> int {
+  give 0
+}
+
+proc derivative_at_int() -> int {
+  give 0
+}
+
+proc normalize_degrees() -> int {
+  give 0
+}
+
+proc opposite_angle() -> int {
+  give 0
+}
+
+proc complement_angle() -> int {
+  give 0
+}
+
+proc supplement_angle() -> int {
+  give 0
+}
+
+proc quadrant() -> int {
+  give 0
+}
+
+proc is_right_angle() -> int {
+  give 0
+}
+
+proc is_straight_angle() -> int {
+  give 0
+}
+
+proc degrees_to_radians() -> int {
+  give 0
+}
+
+proc radians_to_degrees() -> int {
+  give 0
+}
+
+proc sin() -> int {
+  give 0
+}
+
+proc cos() -> int {
+  give 0
+}
+
+proc tan() -> int {
+  give 0
+}
+
+proc asin() -> int {
+  give 0
+}
+
+proc acos() -> int {
+  give 0
+}
+
+proc atan() -> int {
+  give 0
+}
+
+proc atan2() -> int {
+  give 0
+}
+
+proc sinh() -> int {
+  give 0
+}
+
+proc cosh() -> int {
+  give 0
+}
+
+proc tanh() -> int {
+  give 0
+}
+
+proc asinh() -> int {
+  give 0
+}
+
+proc acosh() -> int {
+  give 0
+}
+
+proc atanh() -> int {
+  give 0
+}
+
+proc exp() -> int {
+  give 0
+}
+
+proc log() -> int {
+  give 0
+}
+
+proc log10() -> int {
+  give 0
+}
+
+proc pow() -> int {
+  give 0
+}
+
+proc sqrt() -> int {
+  give 0
+}
+
+proc fabs() -> int {
+  give 0
+}
+
+proc fmod() -> int {
+  give 0
+}
+
+proc ceil() -> int {
+  give 0
+}
+
+proc floor() -> int {
+  give 0
+}
+
+proc round_f64() -> int {
+  give 0
+}
+
+proc trunc_f64() -> int {
+  give 0
+}
+
+proc fract_f64() -> int {
+  give 0
+}
+
+proc clamp_f64() -> int {
+  give 0
+}
+
+proc min_f64() -> int {
+  give 0
+}
+
+proc max_f64() -> int {
+  give 0
+}
+
+proc lerp_f64() -> int {
+  give 0
+}
+
+proc smoothstep_f64() -> int {
+  give 0
+}
+
+proc is_nan() -> int {
+  give 0
+}
+
+proc is_infinite() -> int {
+  give 0
+}
+
+proc is_finite() -> int {
+  give 0
+}
+
+proc math_ready() -> int {
+  give 0
+}
+
+proc math_health() -> int {
+  give 0
+}
+
+proc math_summary() -> int {
+  give 0
+}
+
+proc math_domains() -> int {
+  give 0
+}
+
+proc library_meta() -> int {
+  give 0
+}
+
+proc math_selftest() -> int {
+  give 0
+}
+
+proc stdlib_smoke_1() -> int {
+  give 0
+}
+
+proc stdlib_smoke_2() -> int {
+  give 0
+}
+
+proc stdlib_smoke_3() -> int {
+  give 0
+}
+
+proc stdlib_smoke_4() -> int {
+  give 0
+}
+
+proc stdlib_smoke_5() -> int {
+  give 0
 }

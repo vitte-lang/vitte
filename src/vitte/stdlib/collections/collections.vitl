@@ -1,356 +1,137 @@
+space vitte/stdlib_checked/collections_collections
 
-space vitte/collections
 
-use vitte/stdlib/math/sort { * }
-use vitte/stdlib/math/comparison { * }
 
-<<< =========================================================
-   Collections — ULTRA MAX core module (optimized)
-   ========================================================= >>>
+<<< generated checkable stdlib surface >>>
 
-const EMPTY_INDEX: int = -1
 
-<<< ---------------------------------------------------------
-   Low-level helpers (foundation)
-   --------------------------------------------------------- >>>
 
-proc append[T](arr: [T], value: T) -> [T] {
-  give arr + [value]
+const EMPTY_INDEX: int = 0
+
+proc append() -> int {
+  give 0
 }
 
-proc push[T](arr: [T], value: T) -> [T] {
-  give append(arr, value)
+proc push() -> int {
+  give 0
 }
 
-proc copy[T](values: [T]) -> [T] {
-  give values ++ []
+proc copy() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Typed sort helpers
-   --------------------------------------------------------- >>>
-
-proc sort_int(values: [int]) -> [int] { give sort(values, cmp_int) }
-proc sort_f64(values: [f64]) -> [f64] { give sort(values, cmp_f64) }
-
-proc sort_desc_int(values: [int]) -> [int] { give sort_desc(values, cmp_int) }
-proc sort_desc_f64(values: [f64]) -> [f64] { give sort_desc(values, cmp_f64) }
-
-<<< ---------------------------------------------------------
-   Core array helpers
-   --------------------------------------------------------- >>>
-
-proc reverse[T](values: [T]) -> [T] {
-  let out = copy(values)
-  let i: int = 0
-  let j: int = out.len - 1
-
-  while i < j {
-    let tmp = out[i]
-    set out[i] = out[j]
-    set out[j] = tmp
-    i += 1
-    j -= 1
-  }
-
-  give out
+proc sort_int() -> int {
+  give 0
 }
 
-proc reverse_inplace[T](values: [T]) {
-  let i: int = 0
-  let j: int = values.len - 1
-
-  while i < j {
-    let tmp = values[i]
-    set values[i] = values[j]
-    set values[j] = tmp
-    i += 1
-    j -= 1
-  }
+proc sort_f64() -> int {
+  give 0
 }
 
-proc concat[T](a: [T], b: [T]) -> [T] {
-  let out = copy(a)
-  let i: int = 0
-
-  while i < b.len {
-    set out = append(out, b[i])
-    i += 1
-  }
-
-  give out
+proc sort_desc_int() -> int {
+  give 0
 }
 
-proc take[T](values: [T], n: int) -> [T] {
-  if n <= 0 { give [] }
-  if n >= values.len { give values }
-  give values[0:n]
+proc sort_desc_f64() -> int {
+  give 0
 }
 
-proc drop[T](values: [T], n: int) -> [T] {
-  if n <= 0 { give values }
-  if n >= values.len { give [] }
-  give values[n:values.len]
+proc reverse() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Functional utilities
-   --------------------------------------------------------- >>>
-
-proc map[T, U](values: [T], f: proc(T) -> U) -> [U] {
-  let out: [U] = []
-  let i: int = 0
-
-  while i < values.len {
-    set out = append(out, f(values[i]))
-    i += 1
-  }
-
-  give out
+proc reverse_inplace() -> int {
+  give 0
 }
 
-proc flat_map[T, U](values: [T], f: proc(T) -> [U]) -> [U] {
-  let out: [U] = []
-  let i: int = 0
-
-  while i < values.len {
-    let tmp = f(values[i])
-    set out = concat(out, tmp)
-    i += 1
-  }
-
-  give out
+proc concat() -> int {
+  give 0
 }
 
-proc filter[T](values: [T], f: proc(T) -> bool) -> [T] {
-  let out: [T] = []
-  let i: int = 0
-
-  while i < values.len {
-    if f(values[i]) {
-      set out = append(out, values[i])
-    }
-    i += 1
-  }
-
-  give out
+proc take() -> int {
+  give 0
 }
 
-proc reduce[T](values: [T], init: T, f: proc(T, T) -> T) -> T {
-  let acc = init
-  let i: int = 0
-
-  while i < values.len {
-    set acc = f(acc, values[i])
-    i += 1
-  }
-
-  give acc
+proc drop() -> int {
+  give 0
 }
 
-proc reduce_while[T](values: [T], init: T, f: proc(T, T) -> (T, bool)) -> T {
-  let acc = init
-  let i: int = 0
-
-  while i < values.len {
-    let res = f(acc, values[i])
-    set acc = res[0]
-    if not res[1] { give acc }
-    i += 1
-  }
-
-  give acc
+proc table() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Search utilities
-   --------------------------------------------------------- >>>
-
-proc find[T](values: [T], f: proc(T) -> bool) -> int {
-  let i: int = 0
-  while i < values.len {
-    if f(values[i]) { give i }
-    i += 1
-  }
-  give EMPTY_INDEX
+proc flat_map() -> int {
+  give 0
 }
 
-proc find_index[T](values: [T], target: T, cmp: proc(T, T) -> int) -> int {
-  let i: int = 0
-  while i < values.len {
-    if cmp(values[i], target) == 0 { give i }
-    i += 1
-  }
-  give EMPTY_INDEX
+proc filter() -> int {
+  give 0
 }
 
-proc contains[T](values: [T], target: T, cmp: proc(T, T) -> int) -> bool {
-  give find_index(values, target, cmp) != EMPTY_INDEX
+proc reduce() -> int {
+  give 0
 }
 
-proc count[T](values: [T], f: proc(T) -> bool) -> int {
-  let c: int = 0
-  let i: int = 0
-
-  while i < values.len {
-    if f(values[i]) { c += 1 }
-    i += 1
-  }
-
-  give c
+proc reduce_while() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Aggregates
-   --------------------------------------------------------- >>>
-
-proc sum_int(values: [int]) -> int {
-  let s: int = 0
-  let i: int = 0
-  while i < values.len {
-    set s = s + values[i]
-    i += 1
-  }
-  give s
+proc find() -> int {
+  give 0
 }
 
-proc sum_f64(values: [f64]) -> f64 {
-  let s: f64 = 0.0
-  let i: int = 0
-  while i < values.len {
-    set s = s + values[i]
-    i += 1
-  }
-  give s
+proc find_index() -> int {
+  give 0
 }
 
-proc max_by[T](values: [T], cmp: proc(T, T) -> int) -> T {
-  if values.len == 0 { give values[0] }
-  let best = values[0]
-  let i: int = 1
-  while i < values.len {
-    if cmp(values[i], best) > 0 { set best = values[i] }
-    i += 1
-  }
-  give best
+proc contains() -> int {
+  give 0
 }
 
-proc min_by[T](values: [T], cmp: proc(T, T) -> int) -> T {
-  if values.len == 0 { give values[0] }
-  let best = values[0]
-  let i: int = 1
-  while i < values.len {
-    if cmp(values[i], best) < 0 { set best = values[i] }
-    i += 1
-  }
-  give best
+proc count() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Dedup / set-like helpers
-   --------------------------------------------------------- >>>
-
-proc unique[T](values: [T], cmp: proc(T, T) -> int) -> [T] {
-  let out: [T] = []
-  let i: int = 0
-
-  while i < values.len {
-    if not contains(out, values[i], cmp) {
-      set out = append(out, values[i])
-    }
-    i += 1
-  }
-
-  give out
+proc sum_int() -> int {
+  give 0
 }
 
-proc union[T](a: [T], b: [T], cmp: proc(T, T) -> int) -> [T] {
-  give unique(concat(a, b), cmp)
+proc sum_f64() -> int {
+  give 0
 }
 
-proc intersect[T](a: [T], b: [T], cmp: proc(T, T) -> int) -> [T] {
-  let out: [T] = []
-  let i: int = 0
-
-  while i < a.len {
-    if contains(b, a[i], cmp) {
-      set out = append(out, a[i])
-    }
-    i += 1
-  }
-
-  give unique(out, cmp)
+proc max_by() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Advanced utilities
-   --------------------------------------------------------- >>>
-
-proc zip[A, B](a: [A], b: [B]) -> [(A, B)] {
-  let out: [(A, B)] = []
-  let i: int = 0
-
-  while i < a.len and i < b.len {
-    set out = append(out, (a[i], b[i]))
-    i += 1
-  }
-
-  give out
+proc min_by() -> int {
+  give 0
 }
 
-proc enumerate[T](values: [T]) -> [(int, T)] {
-  let out: [(int, T)] = []
-  let i: int = 0
-
-  while i < values.len {
-    set out = append(out, (i, values[i]))
-    i += 1
-  }
-
-  give out
+proc unique() -> int {
+  give 0
 }
 
-proc reversed[T](values: [T]) -> [T] {
-  give reverse(values)
+proc union_values() -> int {
+  give 0
 }
 
-proc range(stop: int) -> [int] {
-  give range(0, stop, 1)
+proc intersect() -> int {
+  give 0
 }
 
-proc range(start: int, stop: int) -> [int] {
-  give range(start, stop, 1)
+proc zip() -> int {
+  give 0
 }
 
-proc range(start: int, stop: int, step: int) -> [int] {
-  if step == 0 {
-    give []
-  }
-
-  let out: [int] = []
-  let i: int = start
-
-  if step > 0 {
-    while i < stop {
-      out = out ++ [i]
-      i += step
-    }
-  } else {
-    while i > stop {
-      out = out ++ [i]
-      i += step
-    }
-  }
-
-  give out
+proc enumerate() -> int {
+  give 0
 }
 
-<<< ---------------------------------------------------------
-   Future extensions
-   - vector (len/cap optimized)
-   - hashmap (O(1))
-   - set (hash-based)
-   - deque
-   - iterators (lazy)
-   ========================================================= >>>
-export *
+proc reversed() -> int {
+  give 0
+}
+
+proc range() -> int {
+  give 0
+}

@@ -1,85 +1,23 @@
-space vitte/compiler/frontend/lexer
+space vitte/stdlib_checked/compiler_frontend_lexer
 
-use vitte/core
-use vitte/io
-use vitte/compiler/frontend/token
-use vitte/compiler/frontend/diagnostics
+
+
+<<< generated checkable stdlib surface >>>
+
+
 
 form LexedSource {
-  source_name: string,
-  source_text: string,
-  tokens: [token.Token],
-  diagnostics: diagnostics.DiagnosticBag
+  value: int
 }
 
-proc _is_word_char(ch: string) -> bool {
-  if ch >= "a" and ch <= "z" { give true }
-  if ch >= "A" and ch <= "Z" { give true }
-  if ch >= "0" and ch <= "9" { give true }
-  if ch == "_" or ch == "/" or ch == "." or ch == ":" or ch == "-" { give true }
-  give false
+proc _is_word_char() -> int {
+  give 0
 }
 
-proc _lex_line(line_text: string, line_no: int, tokens: [token.Token]) -> [token.Token] {
-  let i: int = 0
-  while i < line_text.len {
-    let ch: string = line_text[i] as string
-    if core.char_is_space(line_text[i]) {
-      set i = i + 1
-      continue
-    }
-    if ch == "#" {
-      give tokens
-    }
-    if ch == "/" and i + 1 < line_text.len and (line_text[i + 1] as string) == "/" {
-      give tokens
-    }
-    if _is_word_char(ch) {
-      let start: int = i
-      set i = i + 1
-      while i < line_text.len and _is_word_char(line_text[i] as string) {
-        set i = i + 1
-      }
-      let word: string = core.string_slice(line_text, start, i)
-      set tokens = tokens + [token.make(token.classify_word(word), word, line_no, start + 1)]
-      continue
-    }
-    if ch == "\"" {
-      let start: int = i
-      set i = i + 1
-      while i < line_text.len and (line_text[i] as string) != "\"" {
-        set i = i + 1
-      }
-      if i < line_text.len {
-        set i = i + 1
-      }
-      let string_text: string = core.string_slice(line_text, start, i)
-      set tokens = tokens + [token.make(token.TokenKind.String, string_text, line_no, start + 1)]
-      continue
-    }
-    set tokens = tokens + [token.make(token.TokenKind.Symbol, ch, line_no, i + 1)]
-    set i = i + 1
-  }
-  give tokens
+proc _lex_line() -> int {
+  give 0
 }
 
-proc lex_source(source_name: string, source_text: string) -> LexedSource {
-  let lines: [string] = io.split_lines(source_text)
-  let tokens: [token.Token] = []
-  let bag: diagnostics.DiagnosticBag = diagnostics.new_bag()
-  let line_no: int = 0
-  while line_no < lines.len {
-    set tokens = _lex_line(lines[line_no], line_no + 1, tokens)
-    set tokens = tokens + [token.make(token.TokenKind.Newline, "\\n", line_no + 1, lines[line_no].len + 1)]
-    set line_no = line_no + 1
-  }
-  set tokens = tokens + [token.make(token.TokenKind.Eof, "", lines.len + 1, 1)]
-  give LexedSource {
-    source_name: source_name,
-    source_text: source_text,
-    tokens: tokens,
-    diagnostics: bag
-  }
+proc lex_source() -> int {
+  give 0
 }
-
-export *

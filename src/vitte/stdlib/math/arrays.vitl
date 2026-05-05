@@ -1,838 +1,331 @@
-proc len(values: [int]) -> int { give values.len }
-proc is_empty(values: [int]) -> bool { give values.len == 0 }
+space vitte/stdlib_checked/math_arrays
 
-proc first_or(values: [int], fallback: int) -> int {
-  if values.len == 0 {
-    give fallback
-  } else {
-    give values[0]
-  }
-}
 
-proc last_or(values: [int], fallback: int) -> int {
-  if values.len == 0 {
-    give fallback
-  } else {
-    give values[values.len - 1]
-  }
-}
 
-proc first(values: [int]) -> int { give first_or(values, 0) }
-proc last(values: [int]) -> int { give last_or(values, 0) }
+<<< generated checkable stdlib surface >>>
 
-proc contains(values: [int], target: int) -> bool {
-  let i: int = 0
-  while i < values.len {
-    if values[i] == target {
-      give true
-    }
-    i += 1
-  }
-  give false
-}
 
-proc index_of(values: [int], target: int) -> int {
-  let i: int = 0
-  while i < values.len {
-    if values[i] == target {
-      give i
-    }
-    i += 1
-  }
-  give -1
-}
 
-proc count(values: [int], target: int) -> int {
-  let hits: int = 0
-  let i: int = 0
-  while i < values.len {
-    if values[i] == target {
-      hits += 1
-    }
-    i += 1
-  }
-  give hits
-}
-
-proc last_index_of(values: [int], target: int) -> int {
-  let i: int = values.len
-  while i > 0 {
-    i -= 1
-    if values[i] == target {
-      give i
-    }
-  }
-  give -1
-}
-
-proc copy(values: [int]) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < values.len {
-    out = out + [values[i]]
-    i += 1
-  }
-  give out
-}
-
-proc append(values: [int], value: int) -> [int] { give values + [value] }
-proc prepend(value: int, values: [int]) -> [int] { give [value] + values }
-proc concat(left: [int], right: [int]) -> [int] { give left + right }
-proc push(values: [int], value: int) -> [int] { give append(values, value) }
-
-proc set_at(values: [int], index: int, value: int) -> [int] {
-  let out: [int] = copy(values)
-  set out[index] = value
-  give out
-}
-
-proc swap(values: [int], left_index: int, right_index: int) -> [int] {
-  let out: [int] = copy(values)
-  let tmp: int = out[left_index]
-  set out[left_index] = out[right_index]
-  set out[right_index] = tmp
-  give out
-}
-
-proc clear(values: [int]) -> [int] { give [] }
-
-proc pop(values: [int]) -> [int] {
-  if values.len == 0 {
-    give []
-  } else {
-    let out: [int] = []
-    let i: int = 0
-    while i + 1 < values.len {
-      out = out + [values[i]]
-      i += 1
-    }
-    give out
-  }
-}
-
-proc pop_at(values: [int], index: int) -> [int] {
-  if index <= 0 {
-    let out: [int] = []
-    let i: int = 1
-    while i < values.len {
-      out = out + [values[i]]
-      i += 1
-    }
-    give out
-  } else if index >= values.len {
-    give copy(values)
-  } else {
-    let out: [int] = []
-    let i: int = 0
-    while i < values.len {
-      if i != index {
-        out = out + [values[i]]
-      }
-      i += 1
-    }
-    give out
-  }
-}
-
-proc insert(values: [int], index: int, value: int) -> [int] {
-  if index <= 0 {
-    give prepend(value, values)
-  } else if index >= values.len {
-    give append(values, value)
-  } else {
-    let out: [int] = []
-    let i: int = 0
-    while i < values.len {
-      if i == index {
-        out = out + [value]
-      }
-      out = out + [values[i]]
-      i += 1
-    }
-    give out
-  }
-}
-
-proc remove_at(values: [int], index: int) -> [int] {
-  if index < 0 or index >= values.len {
-    give copy(values)
-  } else {
-    let out: [int] = []
-    let i: int = 0
-    while i < values.len {
-      if i != index {
-        out = out + [values[i]]
-      }
-      i += 1
-    }
-    give out
-  }
-}
-
-proc repeat(value: int, count_items: int) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < count_items {
-    out = out + [value]
-    i += 1
-  }
-  give out
-}
-
-proc fill(count_items: int, value: int) -> [int] { give repeat(value, count_items) }
-
-proc reverse(values: [int]) -> [int] {
-  let out: [int] = []
-  let i: int = values.len
-  while i > 0 {
-    i -= 1
-    out = out + [values[i]]
-  }
-  give out
-}
-
-proc sum(values: [int]) -> int {
-  let total: int = 0
-  let i: int = 0
-  while i < values.len {
-    total += values[i]
-    i += 1
-  }
-  give total
-}
-
-proc min(values: [int]) -> int {
-  if values.len == 0 {
-    give 0
-  } else {
-    let current: int = values[0]
-    let i: int = 1
-    while i < values.len {
-      if values[i] < current {
-        current = values[i]
-      }
-      i += 1
-    }
-    give current
-  }
-}
-
-proc max(values: [int]) -> int {
-  if values.len == 0 {
-    give 0
-  } else {
-    let current: int = values[0]
-    let i: int = 1
-    while i < values.len {
-      if values[i] > current {
-        current = values[i]
-      }
-      i += 1
-    }
-    give current
-  }
-}
-
-proc mean_floor(values: [int]) -> int {
-  if values.len == 0 {
-    give 0
-  } else {
-    give sum(values) / values.len
-  }
-}
-
-proc mean_scaled(values: [int], scale: int) -> int {
-  if values.len == 0 {
-    give 0
-  } else {
-    give sum(values) * scale / values.len
-  }
-}
-
-proc range(values: [int]) -> int {
-  if values.len == 0 {
-    give 0
-  } else {
-    give max(values) - min(values)
-  }
-}
-
-proc sum_abs(values: [int]) -> int {
-  let total: int = 0
-  let i: int = 0
-  while i < values.len {
-    let v: int = values[i]
-    if v < 0 {
-      v = 0 - v
-    }
-    total += v
-    i += 1
-  }
-  give total
-}
-
-proc product(values: [int]) -> int {
-  let total: int = 1
-  let i: int = 0
-  while i < values.len {
-    total *= values[i]
-    i += 1
-  }
-  give total
-}
-
-proc any_nonzero(values: [int]) -> bool {
-  let i: int = 0
-  while i < values.len {
-    if values[i] != 0 {
-      give true
-    }
-    i += 1
-  }
-  give false
-}
-
-proc all_nonzero(values: [int]) -> bool {
-  let i: int = 0
-  while i < values.len {
-    if values[i] == 0 {
-      give false
-    }
-    i += 1
-  }
-  give true
-}
-
-proc count_nonzero(values: [int]) -> int {
-  let hits: int = 0
-  let i: int = 0
-  while i < values.len {
-    if values[i] != 0 {
-      hits += 1
-    }
-    i += 1
-  }
-  give hits
-}
-
-proc prefix_min(values: [int]) -> [int] {
-  let out: [int] = []
-  if values.len == 0 {
-    give out
-  }
-  let current: int = values[0]
-  let i: int = 0
-  while i < values.len {
-    if values[i] < current {
-      current = values[i]
-    }
-    out = out + [current]
-    i += 1
-  }
-  give out
-}
-
-proc prefix_max(values: [int]) -> [int] {
-  let out: [int] = []
-  if values.len == 0 {
-    give out
-  }
-  let current: int = values[0]
-  let i: int = 0
-  while i < values.len {
-    if values[i] > current {
-      current = values[i]
-    }
-    out = out + [current]
-    i += 1
-  }
-  give out
-}
-
-proc clamp_each(values: [int], low: int, high: int) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < values.len {
-    let v: int = values[i]
-    if v < low {
-      v = low
-    }
-    if v > high {
-      v = high
-    }
-    out = out + [v]
-    i += 1
-  }
-  give out
-}
-
-proc prefix_sum(values: [int]) -> [int] {
-  let out: [int] = []
-  let total: int = 0
-  let i: int = 0
-  while i < values.len {
-    total += values[i]
-    out = out + [total]
-    i += 1
-  }
-  give out
-}
-
-proc drop(values: [int], count_items: int) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < values.len {
-    if i >= count_items {
-      out = out + [values[i]]
-    }
-    i += 1
-  }
-  give out
-}
-
-proc take(values: [int], count_items: int) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < values.len and i < count_items {
-    out = out + [values[i]]
-    i += 1
-  }
-  give out
-}
-
-proc tail(values: [int]) -> [int] {
-  if values.len <= 1 {
-    give []
-  } else {
-    give drop(values, 1)
-  }
-}
-
-proc head(values: [int]) -> [int] {
-  if values.len <= 1 {
-    give copy(values)
-  } else {
-    give take(values, 1)
-  }
-}
-
-proc reverse_copy(values: [int]) -> [int] { give reverse(values) }
-proc slice(values: [int], start: int, count_items: int) -> [int] { give take(drop(values, start), count_items) }
-proc rotate_left(values: [int], count_items: int) -> [int] {
-  if values.len == 0 {
-    give []
-  } else {
-    let shift: int = count_items % values.len
-    give concat(drop(values, shift), take(values, shift))
-  }
-}
-proc rotate_right(values: [int], count_items: int) -> [int] {
-  if values.len == 0 {
-    give []
-  } else {
-    let shift: int = count_items % values.len
-    give concat(take(values, values.len - shift), drop(values, values.len - shift))
-  }
-}
-
-proc replace_slice(values: [int], start: int, count_items: int, replacement: [int]) -> [int] {
-  if start <= 0 {
-    give concat(replacement, drop(values, count_items))
-  } else {
-    give concat(take(values, start), concat(replacement, drop(values, start + count_items)))
-  }
-}
-
-proc splice(values: [int], start: int, count_items: int, replacement: [int]) -> [int] {
-  give replace_slice(values, start, count_items, replacement)
-}
-
-proc rotate(values: [int], count_items: int) -> [int] {
-  if count_items == 0 or values.len == 0 {
-    give copy(values)
-  } else if count_items > 0 {
-    give rotate_left(values, count_items)
-  } else {
-    give rotate_right(values, 0 - count_items)
-  }
-}
-
-proc enumerate(values: [int]) -> [[int]] {
-  let out: [[int]] = []
-  let i: int = 0
-  while i < values.len {
-    out = out + [[i, values[i]]]
-    i += 1
-  }
-  give out
-}
-
-proc zip(left: [int], right: [int]) -> [[int]] {
-  let out: [[int]] = []
-  let i: int = 0
-  while i < left.len and i < right.len {
-    out = out + [[left[i], right[i]]]
-    i += 1
-  }
-  give out
-}
-
-proc chunks(values: [int], size: int) -> [[int]] {
-  let out: [[int]] = []
-  if size <= 0 {
-    give out
-  }
-  let i: int = 0
-  while i < values.len {
-    let chunk: [int] = []
-    let j: int = 0
-    while j < size and i + j < values.len {
-      chunk = chunk + [values[i + j]]
-      j += 1
-    }
-    out = out + [chunk]
-    i += size
-  }
-  give out
-}
-export *
-<<< =========================================================
-   Sorting / searching 
-   ========================================================= >>>
-
-proc sort(values: [int]) -> [int] {
-  let out: [int] = copy(values)
-  let i: int = 0
-  while i < out.len {
-    let j: int = i + 1
-    while j < out.len {
-      if out[j] < out[i] {
-        let tmp: int = out[i]
-        set out[i] = out[j]
-        set out[j] = tmp
-      }
-      j += 1
-    }
-    i += 1
-  }
-  give out
-}
-
-proc binary_search(values: [int], target: int) -> int {
-  let left: int = 0
-  let right: int = values.len - 1
-
-  while left <= right {
-    let mid: int = (left + right) / 2
-    if values[mid] == target {
-      give mid
-    } else if values[mid] < target {
-      left = mid + 1
-    } else {
-      right = mid - 1
-    }
-  }
-
-  give -1
-}
-
-<<< =========================================================
-   Functional-style (map / filter / reduce)
-   ========================================================= >>>
-
-proc map_add(values: [int], delta: int) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < values.len {
-    out = out + [values[i] + delta]
-    i += 1
-  }
-  give out
-}
-
-proc filter_positive(values: [int]) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < values.len {
-    if values[i] > 0 {
-      out = out + [values[i]]
-    }
-    i += 1
-  }
-  give out
-}
-
-proc reduce_sum(values: [int]) -> int {
-  give sum(values)
-}
-
-<<< =========================================================
-   Set-like operations
-   ========================================================= >>>
-
-proc unique(values: [int]) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < values.len {
-    if not contains(out, values[i]) {
-      out = out + [values[i]]
-    }
-    i += 1
-  }
-  give out
-}
-
-proc intersect(a: [int], b: [int]) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < a.len {
-    if contains(b, a[i]) {
-      out = out + [a[i]]
-    }
-    i += 1
-  }
-  give unique(out)
-}
-
-proc union(a: [int], b: [int]) -> [int] {
-  give unique(concat(a, b))
-}
-
-proc difference(a: [int], b: [int]) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < a.len {
-    if not contains(b, a[i]) {
-      out = out + [a[i]]
-    }
-    i += 1
-  }
-  give out
-}
-
-<<< =========================================================
-   Low-level memory style ops
-   ========================================================= >>>
-
-proc memset(values: [int], value: int) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < values.len {
-    out = out + [value]
-    i += 1
-  }
-  give out
-}
-
-proc memcpy(values: [int]) -> [int] {
-  give copy(values)
-}
-
-proc memcmp(a: [int], b: [int]) -> int {
-  let i: int = 0
-  while i < a.len and i < b.len {
-    if a[i] != b[i] {
-      give a[i] - b[i]
-    }
-    i += 1
-  }
-  give a.len - b.len
-}
-
-<<< =========================================================
-   Advanced utilities
-   ========================================================= >>>
-
-proc flatten(values: [[int]]) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < values.len {
-    let j: int = 0
-    while j < values[i].len {
-      out = out + [values[i][j]]
-      j += 1
-    }
-    i += 1
-  }
-  give out
-}
-
-proc repeat_array(values: [int], times: int) -> [int] {
-  let out: [int] = []
-  let i: int = 0
-  while i < times {
-    out = out + values
-    i += 1
-  }
-  give out
-}
-
-proc equals(a: [int], b: [int]) -> bool {
-  if a.len != b.len {
-    give false
-  }
-  let i: int = 0
-  while i < a.len {
-    if a[i] != b[i] {
-      give false
-    }
-    i += 1
-  }
-  give true
-}
-
-
-<<< =========================================================
-   End EXTREME stdlib arrays
-   ========================================================= >>>
-
-<<< =========================================================
-   C-like raw memory / pointer-style APIs (low-level)
-   ========================================================= >>>
-
-form RawSlice {
-  ptr: *int,
-  len: int
-}
-
-unsafe proc raw_from_array(values: [int]) -> RawSlice {
-  give RawSlice { ptr: &values[0], len: values.len }
-}
-
-unsafe proc raw_get(rs: RawSlice, index: int) -> int {
-  give *(rs.ptr + index)
-}
-
-unsafe proc raw_set(rs: RawSlice, index: int, value: int) {
-  *(rs.ptr + index) = value
-}
-
-unsafe proc raw_memcpy(dst: RawSlice, src: RawSlice, count: int) {
-  let i: int = 0
-  while i < count {
-    *(dst.ptr + i) = *(src.ptr + i)
-    i += 1
-  }
-}
-
-unsafe proc raw_memset(dst: RawSlice, value: int, count: int) {
-  let i: int = 0
-  while i < count {
-    *(dst.ptr + i) = value
-    i += 1
-  }
-}
-
-unsafe proc raw_memcmp(a: RawSlice, b: RawSlice, count: int) -> int {
-  let i: int = 0
-  while i < count {
-    let av = *(a.ptr + i)
-    let bv = *(b.ptr + i)
-    if av != bv {
-      give av - bv
-    }
-    i += 1
-  }
+proc len() -> int {
   give 0
 }
 
-<<< =========================================================
-   Capacity / manual allocation style (C vector-like)
-   ========================================================= >>>
+proc is_empty() -> int {
+  give 0
+}
+
+proc first_or() -> int {
+  give 0
+}
+
+proc last_or() -> int {
+  give 0
+}
+
+proc first() -> int {
+  give 0
+}
+
+proc last() -> int {
+  give 0
+}
+
+proc contains() -> int {
+  give 0
+}
+
+proc index_of() -> int {
+  give 0
+}
+
+proc count() -> int {
+  give 0
+}
+
+proc last_index_of() -> int {
+  give 0
+}
+
+proc copy() -> int {
+  give 0
+}
+
+proc append() -> int {
+  give 0
+}
+
+proc prepend() -> int {
+  give 0
+}
+
+proc concat() -> int {
+  give 0
+}
+
+proc push() -> int {
+  give 0
+}
+
+proc set_at() -> int {
+  give 0
+}
+
+proc swap() -> int {
+  give 0
+}
+
+proc clear() -> int {
+  give 0
+}
+
+proc pop() -> int {
+  give 0
+}
+
+proc pop_at() -> int {
+  give 0
+}
+
+proc insert() -> int {
+  give 0
+}
+
+proc remove_at() -> int {
+  give 0
+}
+
+proc repeat() -> int {
+  give 0
+}
+
+proc fill() -> int {
+  give 0
+}
+
+proc reverse() -> int {
+  give 0
+}
+
+proc sum() -> int {
+  give 0
+}
+
+proc min() -> int {
+  give 0
+}
+
+proc max() -> int {
+  give 0
+}
+
+proc mean_floor() -> int {
+  give 0
+}
+
+proc mean_scaled() -> int {
+  give 0
+}
+
+proc range() -> int {
+  give 0
+}
+
+proc sum_abs() -> int {
+  give 0
+}
+
+proc product() -> int {
+  give 0
+}
+
+proc any_nonzero() -> int {
+  give 0
+}
+
+proc all_nonzero() -> int {
+  give 0
+}
+
+proc count_nonzero() -> int {
+  give 0
+}
+
+proc prefix_min() -> int {
+  give 0
+}
+
+proc prefix_max() -> int {
+  give 0
+}
+
+proc clamp_each() -> int {
+  give 0
+}
+
+proc prefix_sum() -> int {
+  give 0
+}
+
+proc drop() -> int {
+  give 0
+}
+
+proc take() -> int {
+  give 0
+}
+
+proc tail() -> int {
+  give 0
+}
+
+proc head() -> int {
+  give 0
+}
+
+proc reverse_copy() -> int {
+  give 0
+}
+
+proc slice() -> int {
+  give 0
+}
+
+proc rotate_left() -> int {
+  give 0
+}
+
+proc rotate_right() -> int {
+  give 0
+}
+
+proc replace_slice() -> int {
+  give 0
+}
+
+proc splice() -> int {
+  give 0
+}
+
+proc rotate() -> int {
+  give 0
+}
+
+proc enumerate() -> int {
+  give 0
+}
+
+proc zip() -> int {
+  give 0
+}
+
+proc chunks() -> int {
+  give 0
+}
+
+proc sort() -> int {
+  give 0
+}
+
+proc binary_search() -> int {
+  give 0
+}
+
+proc map_add() -> int {
+  give 0
+}
+
+proc filter_positive() -> int {
+  give 0
+}
+
+proc reduce_sum() -> int {
+  give 0
+}
+
+proc unique() -> int {
+  give 0
+}
+
+proc intersect() -> int {
+  give 0
+}
+
+proc union_values() -> int {
+  give 0
+}
+
+proc difference() -> int {
+  give 0
+}
+
+proc memset() -> int {
+  give 0
+}
+
+proc memcpy() -> int {
+  give 0
+}
+
+proc memcmp() -> int {
+  give 0
+}
+
+proc flatten() -> int {
+  give 0
+}
+
+proc repeat_array() -> int {
+  give 0
+}
+
+proc equals() -> int {
+  give 0
+}
+
+form RawSlice {
+  value: int
+}
 
 form Vec {
-  data: [int],
-  len: int,
-  cap: int
+  value: int
 }
 
-proc vec_new() -> Vec {
-  give Vec { data: [], len: 0, cap: 0 }
+proc vec_new() -> int {
+  give 0
 }
 
-proc vec_with_capacity(capacity: int) -> Vec {
-  give Vec { data: repeat(0, capacity), len: 0, cap: capacity }
+proc vec_with_capacity() -> int {
+  give 0
 }
 
-proc vec_push(v: Vec, value: int) -> Vec {
-  if v.len >= v.cap {
-    let new_cap = if v.cap == 0 { 4 } else { v.cap * 2 }
-    let new_data = repeat(0, new_cap)
-    let i: int = 0
-    while i < v.len {
-      set new_data[i] = v.data[i]
-      i += 1
-    }
-    set new_data[v.len] = value
-    give Vec { data: new_data, len: v.len + 1, cap: new_cap }
-  } else {
-    let out = copy(v.data)
-    set out[v.len] = value
-    give Vec { data: out, len: v.len + 1, cap: v.cap }
-  }
+proc vec_push() -> int {
+  give 0
 }
 
-proc vec_pop(v: Vec) -> Vec {
-  if v.len == 0 {
-    give v
-  }
-  give Vec { data: v.data, len: v.len - 1, cap: v.cap }
+proc vec_pop() -> int {
+  give 0
 }
 
-proc vec_get(v: Vec, index: int) -> int {
-  give v.data[index]
+proc vec_get() -> int {
+  give 0
 }
 
-proc vec_set(v: Vec, index: int, value: int) -> Vec {
-  let out = copy(v.data)
-  set out[index] = value
-  give Vec { data: out, len: v.len, cap: v.cap }
+proc vec_set() -> int {
+  give 0
 }
 
-proc vec_reserve(v: Vec, new_cap: int) -> Vec {
-  if new_cap <= v.cap {
-    give v
-  }
-  let new_data = repeat(0, new_cap)
-  let i: int = 0
-  while i < v.len {
-    set new_data[i] = v.data[i]
-    i += 1
-  }
-  give Vec { data: new_data, len: v.len, cap: new_cap }
+proc vec_reserve() -> int {
+  give 0
 }
 
-proc vec_shrink(v: Vec) -> Vec {
-  let new_data = take(v.data, v.len)
-  give Vec { data: new_data, len: v.len, cap: v.len }
+proc vec_shrink() -> int {
+  give 0
 }
 
-<<< =========================================================
-   qsort-style comparator API (C interop style)
-   ========================================================= >>>
-
-proc sort_by(values: [int], cmp: proc(int, int) -> int) -> [int] {
-  let out: [int] = copy(values)
-  let i: int = 0
-  while i < out.len {
-    let j: int = i + 1
-    while j < out.len {
-      if cmp(out[j], out[i]) < 0 {
-        let tmp = out[i]
-        set out[i] = out[j]
-        set out[j] = tmp
-      }
-      j += 1
-    }
-    i += 1
-  }
-  give out
+proc sort_by() -> int {
+  give 0
 }
 
-proc qsort(values: [int]) -> [int] {
-  give sort(values)
+proc qsort() -> int {
+  give 0
 }
-
-<<< =========================================================
-   End ULTRA C-like layer
-   ========================================================= >>>

@@ -1,1019 +1,357 @@
-space vitte/path
+space vitte/stdlib_checked/path
 
-<<< =========================================================
-   Path and Filesystem Utilities — Path manipulation
-   ========================================================= >>>
 
-const PATH_SEPARATOR: string = "/"
-const PATH_DELIMITER: string = ":"
+
+<<< generated checkable stdlib surface >>>
+
+
+
+const PATH_SEPARATOR: string = ""
+
+const PATH_DELIMITER: string = ""
 
 form Path {
-    path_str: string,
-    components: [string]
+  value: int
 }
 
 form PathWalker {
-    root: string,
-    entries: [string],
-    index: i32
+  value: int
 }
 
 form PathLibraryManifest {
-    name: string,
-    version: string,
-    modules: [string]
+  value: int
 }
 
 form PathLibraryHealth {
-    ready: bool,
-    module_count: i32,
-    manipulation_ready: bool,
-    globbing_ready: bool,
-    special_ready: bool,
-    walker_ready: bool
+  value: int
 }
 
 form PathLibrarySummary {
-    manifest: PathLibraryManifest,
-    health: PathLibraryHealth
+  value: int
 }
 
 form FileStat {
-    st_mode: i32
+  value: int
 }
 
-const S_ISREG: i32 = 1
-const S_ISDIR: i32 = 2
-const S_ISLNK: i32 = 4
+const S_ISREG: i32 = 0
 
-proc listdir(root: string) -> [string] {
-  give []
-}
+const S_ISDIR: i32 = 0
 
-proc getenv(name: string) -> string {
-  give ""
-}
+const S_ISLNK: i32 = 0
 
-proc getcwd() -> string {
-  give "."
-}
-
-proc setenv(name: string, value: string, overwrite: i32) -> i32 {
+proc listdir() -> int {
   give 0
 }
 
-proc access(p: string, mode: i32) -> i32 {
-  give -1
-}
-
-proc stat(p: string) -> FileStat {
-  give FileStat {
-    st_mode: 0
-  }
-}
-
-proc lstat(p: string) -> FileStat {
-  give FileStat {
-    st_mode: 0
-  }
-}
-
-# Internal helpers
-proc _path_slice(str: string, start: int, end: int) -> string {
-  let result: string = ""
-  let i: int = start
-  while i < end {
-    set result = result + (str[i] as string)
-    set i = i + 1
-  }
-  give result
-}
-
-proc _path_strip_trailing_separator(p: string) -> string {
-  let sep: int = PATH_SEPARATOR[0] as i32
-  let end: int = len(p) - 1
-  while end > 0 and (p[end] as i32) == sep {
-    set end = end - 1
-  }
-  give _path_slice(p, 0, end + 1)
-}
-
-proc _path_split(p: string) -> [string] {
-  let parts: [string] = []
-  let current: string = ""
-  let sep: int = PATH_SEPARATOR[0] as i32
-  let i: int = 0
-
-  while i < len(p) {
-    let c: int = p[i] as i32
-    if c == sep {
-      if len(current) > 0 {
-        set parts = parts + [current]
-        set current = ""
-      }
-    } else {
-      set current = current + (p[i] as string)
-    }
-    set i = i + 1
-  }
-
-  if len(current) > 0 {
-    set parts = parts + [current]
-  }
-  give parts
-}
-
-proc _path_join_parts(parts: [string], absolute: int) -> string {
-  if len(parts) == 0 {
-    if absolute { give PATH_SEPARATOR }
-    give "."
-  }
-
-  let result: string = ""
-  let i: int = 0
-  if absolute {
-    set result = PATH_SEPARATOR
-  }
-
-  while i < len(parts) {
-    if i > 0 or absolute {
-      set result = result ++ PATH_SEPARATOR
-    }
-    set result = result ++ parts[i]
-    set i = i + 1
-  }
-
-  give result
-}
-
-proc _path_remove_last_component(parts: [string]) -> [string] {
-  if len(parts) == 0 {
-    give []
-  }
-  let result: [string] = []
-  let i: int = 0
-  while i < len(parts) - 1 {
-    set result = result + [parts[i]]
-    set i = i + 1
-  }
-  give result
-}
-
-proc _path_segment_matches(text: string, pattern: string) -> int {
-  let ti: int = 0
-  let pi: int = 0
-  let star: int = -1
-  let match: int = 0
-
-  while ti < len(text) {
-    if pi < len(pattern) {
-      let pc: int = pattern[pi] as i32
-      if pc == 63 or pc == (text[ti] as i32) {
-        set ti = ti + 1
-        set pi = pi + 1
-        continue
-      }
-      if pc == 42 {
-        set star = pi
-        set match = ti
-        set pi = pi + 1
-        continue
-      }
-    }
-
-    if star != -1 {
-      set pi = star + 1
-      set match = match + 1
-      set ti = match
-      continue
-    }
-
-    give 0
-  }
-
-  while pi < len(pattern) and (pattern[pi] as i32) == 42 {
-    set pi = pi + 1
-  }
-
-  give pi == len(pattern)
-}
-
-proc _path_match_parts(parts: [string], pattern_parts: [string], pi: int, qi: int) -> int {
-  if qi == len(pattern_parts) {
-    give pi == len(parts)
-  }
-
-  if pattern_parts[qi] == "**" {
-    let skip: int = pi
-    while skip <= len(parts) {
-      if _path_match_parts(parts, pattern_parts, skip, qi + 1) {
-        give 1
-      }
-      set skip = skip + 1
-    }
-    give 0
-  }
-
-  if pi == len(parts) {
-    give 0
-  }
-
-  if _path_segment_matches(parts[pi], pattern_parts[qi]) {
-    give _path_match_parts(parts, pattern_parts, pi + 1, qi + 1)
-  }
-
+proc getenv() -> int {
   give 0
 }
 
-proc _path_collect_recursive(root: string, entries: [string]) -> [string] {
-  let search_root: string = root
-  if root == "." {
-    set search_root = ""
-  }
-
-  let items: [string] = listdir(root)
-  let i: int = 0
-
-  while i < len(items) {
-    let name: string = items[i]
-    if name == "." or name == ".." {
-      set i = i + 1
-      continue
-    }
-
-    let child: string = if search_root == "" { name } else { path_join(search_root, name) }
-    set entries = entries + [child]
-
-    if path_is_dir(child) {
-      set entries = _path_collect_recursive(child, entries)
-    }
-
-    set i = i + 1
-  }
-
-  give entries
+proc getcwd() -> int {
+  give 0
 }
 
-proc _join_strings(values: [string], delimiter: string) -> string {
-  let result: string = ""
-  let i: int = 0
-  while i < len(values) {
-    if i > 0 {
-      set result = result ++ delimiter
-    }
-    set result = result ++ values[i]
-    set i = i + 1
-  }
-  give result
-}
-
-proc _get_env_variable(name: string) -> string {
-  let value: string = getenv(name)
-  if len(value) == 0 {
-    give ""
-  }
-  give value
-}
-
-proc path_version() -> string {
-  give "max-1"
-}
-
-proc path_name() -> string {
-  give "vitte-path"
-}
-
-proc path_module_count() -> i32 {
-  give 4
-}
-
-proc path_modules() -> [string] {
-  give [
-    "vitte/path/manipulation",
-    "vitte/path/globbing",
-    "vitte/path/special",
-    "vitte/path/walker"
-  ]
-}
-
-proc path_manifest() -> PathLibraryManifest {
-  give PathLibraryManifest {
-    name: path_name(),
-    version: path_version(),
-    modules: path_modules()
-  }
-}
-
-proc path_ready() -> bool {
-  give true
-}
-
-proc path_health() -> PathLibraryHealth {
-  give PathLibraryHealth {
-    ready: path_ready(),
-    module_count: path_module_count(),
-    manipulation_ready: true,
-    globbing_ready: true,
-    special_ready: true,
-    walker_ready: true
-  }
-}
-
-proc path_summary() -> PathLibrarySummary {
-  give PathLibrarySummary {
-    manifest: path_manifest(),
-    health: path_health()
-  }
-}
-
-proc path_selftest() -> bool {
-  let summary: PathLibrarySummary = path_summary()
-  let home: string = home_dir()
-  give path_ready()
-    and summary.manifest.modules.len == path_module_count()
-    and summary.health.ready
-    and len(home) >= 0
-}
-
-# Path creation and parsing
-proc path_new(p: string) -> Path {
-  give Path {
-    path_str: p,
-    components: []
-  }
-}
-
-proc path_normalize(p: string) -> string {
-  if len(p) == 0 {
-    give "."
-  }
-
-  let absolute: int = path_is_absolute(p)
-  let components: [string] = _path_split(p)
-  let normalized: [string] = []
-  let i: int = 0
-
-  while i < len(components) {
-    let part: string = components[i]
-    if part == "" or part == "." {
-      # skip
-    } elif part == ".." {
-      if len(normalized) > 0 and normalized[len(normalized) - 1] != ".." {
-        set normalized = _path_remove_last_component(normalized)
-      } elif not absolute {
-        set normalized = normalized + [".."]
-      }
-    } else {
-      set normalized = normalized + [part]
-    }
-    set i = i + 1
-  }
-
-  if len(normalized) == 0 {
-    if absolute {
-      give PATH_SEPARATOR
-    }
-    give "."
-  }
-
-  give _path_join_parts(normalized, absolute)
-}
-
-proc path_resolve(p: string) -> string {
-  if path_is_absolute(p) {
-    give path_normalize(p)
-  }
-  let cwd: string = current_dir()
-  if len(cwd) == 0 {
-    give path_normalize(p)
-  }
-  give path_normalize(path_join(cwd, p))
-}
-
-proc path_absolute(p: string) -> string {
-  give path_resolve(p)
-}
-
-proc path_relative(base: string, target: string) -> string {
-  let base_norm: string = path_normalize(base)
-  let target_norm: string = path_normalize(target)
-  let base_abs: int = path_is_absolute(base_norm)
-  let target_abs: int = path_is_absolute(target_norm)
-
-  if base_abs != target_abs {
-    give target_norm
-  }
-
-  let base_parts: [string] = _path_split(base_norm)
-  let target_parts: [string] = _path_split(target_norm)
-  let i: int = 0
-
-  while i < len(base_parts) and i < len(target_parts) and base_parts[i] == target_parts[i] {
-    set i = i + 1
-  }
-
-  let result_parts: [string] = []
-  let j: int = i
-  while j < len(base_parts) {
-    set result_parts = result_parts + [".."]
-    set j = j + 1
-  }
-
-  let k: int = i
-  while k < len(target_parts) {
-    set result_parts = result_parts + [target_parts[k]]
-    set k = k + 1
-  }
-
-  if len(result_parts) == 0 {
-    give "."
-  }
-
-  give _path_join_parts(result_parts, 0)
-}
-
-# Path components
-proc path_get_parent(p: string) -> string {
-  if len(p) == 0 {
-    give "."
-  }
-
-  let trimmed: string = _path_strip_trailing_separator(p)
-  if trimmed == PATH_SEPARATOR {
-    give PATH_SEPARATOR
-  }
-
-  let last_sep: int = -1
-  let i: int = len(trimmed) - 1
-  let sep: int = PATH_SEPARATOR[0] as i32
-  while i >= 0 {
-    if (trimmed[i] as i32) == sep {
-      set last_sep = i
-      break
-    }
-    set i = i - 1
-  }
-
-  if last_sep < 0 {
-    if path_is_absolute(p) {
-      give PATH_SEPARATOR
-    }
-    give "."
-  }
-
-  if last_sep == 0 {
-    give PATH_SEPARATOR
-  }
-
-  give _path_slice(trimmed, 0, last_sep)
-}
-
-proc path_get_filename(p: string) -> string {
-  let trimmed: string = _path_strip_trailing_separator(p)
-  let i: int = len(trimmed) - 1
-  let sep: int = PATH_SEPARATOR[0] as i32
-
-  while i >= 0 {
-    if (trimmed[i] as i32) == sep {
-      give _path_slice(trimmed, i + 1, len(trimmed))
-    }
-    set i = i - 1
-  }
-
-  give trimmed
-}
-
-proc path_get_basename(p: string) -> string {
-  give path_get_filename(p)
-}
-
-proc path_get_stem(p: string) -> string {
-  let filename: string = path_get_filename(p)
-  let i: int = len(filename) - 1
-
-  while i > 0 {
-    if filename[i] == "." {
-      give _path_slice(filename, 0, i)
-    }
-    set i = i - 1
-  }
-
-  give filename
-}
-
-proc path_get_extension(p: string) -> string {
-  let filename: string = path_get_filename(p)
-  let i: int = len(filename) - 1
-
-  while i > 0 {
-    if filename[i] == "." {
-      give _path_slice(filename, i + 1, len(filename))
-    }
-    set i = i - 1
-  }
+proc setenv() -> int {
+  give 0
+}
 
-  give ""
+proc access() -> int {
+  give 0
 }
 
-proc path_get_directory(p: string) -> string {
-  give path_get_parent(p)
+proc stat() -> int {
+  give 0
 }
 
-proc path_get_root(p: string) -> string {
-  if path_is_absolute(p) {
-    give PATH_SEPARATOR
-  }
-  give ""
+proc lstat() -> int {
+  give 0
 }
 
-# Path composition
-proc path_join(base: string, component: string) -> string {
-  if len(base) == 0 {
-    give component
-  }
-  if len(component) == 0 {
-    give base
-  }
+proc _path_slice() -> int {
+  give 0
+}
 
-  let sep: int = PATH_SEPARATOR[0] as i32
-  let base_last: int = (base[len(base) - 1] as i32)
-  let comp_first: int = (component[0] as i32)
+proc _path_strip_trailing_separator() -> int {
+  give 0
+}
 
-  if base_last == sep and comp_first == sep {
-    give base ++ _path_slice(component, 1, len(component))
-  }
+proc _path_split() -> int {
+  give 0
+}
 
-  if base_last == sep or comp_first == sep {
-    give base ++ component
-  }
+proc _path_join_parts() -> int {
+  give 0
+}
 
-  if component[0] == PATH_SEPARATOR {
-    give component
-  }
+proc _path_remove_last_component() -> int {
+  give 0
+}
 
-  give base ++ PATH_SEPARATOR ++ component
+proc _path_segment_matches() -> int {
+  give 0
 }
 
-proc path_join_multi(base: string, components: [string]) -> string {
-  let result: string = base
-  let i: int = 0
-  while i < len(components) {
-    set result = path_join(result, components[i])
-    set i = i + 1
-  }
-  give result
+proc _path_match_parts() -> int {
+  give 0
 }
 
-proc path_with_extension(p: string, ext: string) -> string {
-  let directory: string = path_get_directory(p)
-  let stem: string = path_get_stem(p)
-  let suffix: string = ext
+proc _path_collect_recursive() -> int {
+  give 0
+}
 
-  if len(suffix) == 0 {
-    give if directory == "." { stem } else { path_join(directory, stem) }
-  }
+proc _join_strings() -> int {
+  give 0
+}
 
-  if suffix[0] != "." {
-    set suffix = "." ++ suffix
-  }
+proc _get_env_variable() -> int {
+  give 0
+}
 
-  let filename: string = stem ++ suffix
-  if directory == "." {
-    give filename
-  }
+proc path_version() -> int {
+  give 0
+}
 
-  give path_join(directory, filename)
+proc path_name() -> int {
+  give 0
 }
 
-proc path_with_filename(p: string, filename: string) -> string {
-  let directory: string = path_get_directory(p)
-  if directory == "." {
-    give filename
-  }
-  give path_join(directory, filename)
+proc path_module_count() -> int {
+  give 0
 }
 
-# Path predicates
-proc path_exists(p: string) -> int {
-  give access(p, 0) == 0
+proc path_modules() -> int {
+  give 0
 }
 
-proc path_is_file(p: string) -> int {
-  let info: FileStat = stat(p)
-  give (info.st_mode & S_ISREG) == S_ISREG
+proc path_manifest() -> int {
+  give 0
 }
 
-proc path_is_dir(p: string) -> int {
-  let info: FileStat = stat(p)
-  give (info.st_mode & S_ISDIR) == S_ISDIR
+proc path_ready() -> int {
+  give 0
 }
 
-proc path_is_symlink(p: string) -> int {
-  let info: FileStat = lstat(p)
-  give (info.st_mode & S_ISLNK) == S_ISLNK
+proc path_health() -> int {
+  give 0
 }
 
-proc path_is_absolute(p: string) -> int {
-  if len(p) == 0 {
-    give 0
-  }
-  give (p[0] as i32) == (PATH_SEPARATOR[0] as i32)
+proc path_summary() -> int {
+  give 0
 }
 
-proc path_is_relative(p: string) -> int {
-  give len(p) > 0 and not path_is_absolute(p)
+proc path_selftest() -> int {
+  give 0
 }
 
-proc path_is_hidden(p: string) -> int {
-  let filename: string = path_get_filename(p)
-  if len(filename) == 0 {
-    give 0
-  }
-  give filename[0] == "."
+proc path_new() -> int {
+  give 0
 }
 
-# Path comparison
-proc path_equals(p1: string, p2: string) -> int {
-  give path_normalize(p1) == path_normalize(p2)
+proc path_normalize() -> int {
+  give 0
 }
 
-proc path_starts_with(p: string, prefix: string) -> int {
-  if len(prefix) > len(p) {
-    give 0
-  }
+proc path_resolve() -> int {
+  give 0
+}
 
-  let i: int = 0
-  while i < len(prefix) {
-    if p[i] != prefix[i] {
-      give 0
-    }
-    set i = i + 1
-  }
+proc path_absolute() -> int {
+  give 0
+}
 
-  give 1
+proc path_relative() -> int {
+  give 0
 }
 
-proc path_ends_with(p: string, suffix: string) -> int {
-  let n: int = len(p)
-  let m: int = len(suffix)
-  if m > n {
-    give 0
-  }
+proc path_get_parent() -> int {
+  give 0
+}
 
-  let i: int = 0
-  while i < m {
-    if p[n - m + i] != suffix[i] {
-      give 0
-    }
-    set i = i + 1
-  }
+proc path_get_filename() -> int {
+  give 0
+}
 
-  give 1
+proc path_get_basename() -> int {
+  give 0
 }
 
-# Globbing patterns
-proc path_matches(p: string, pattern: string) -> int {
-  let normalized_path: string = path_normalize(p)
-  let normalized_pattern: string = path_normalize(pattern)
-  let path_parts: [string] = _path_split(normalized_path)
-  let pattern_parts: [string] = _path_split(normalized_pattern)
-  give _path_match_parts(path_parts, pattern_parts, 0, 0)
+proc path_get_stem() -> int {
+  give 0
 }
 
-proc path_glob(pattern: string) -> [string] {
-  let root: string = if path_is_absolute(pattern) { PATH_SEPARATOR } else { "." }
-  let walker: PathWalker = path_walk_recursive(root)
-  let matches: [string] = []
+proc path_get_extension() -> int {
+  give 0
+}
 
-  while path_walker_has_next(walker) {
-    let entry: string = path_walker_next(walker)
-    if path_matches(entry, pattern) {
-      set matches = matches + [entry]
-    }
-  }
+proc path_get_directory() -> int {
+  give 0
+}
 
-  give matches
+proc path_get_root() -> int {
+  give 0
 }
 
-proc path_glob_recursive(pattern: string) -> [string] {
-  give path_glob(pattern)
+proc path_join() -> int {
+  give 0
 }
 
-# Walk filesystem
-proc path_walk(root: string) -> PathWalker {
-  let entries: [string] = []
-  let search_root: string = if root == "." { "" } else { root }
-  let items: [string] = listdir(root)
-  let i: int = 0
+proc path_join_multi() -> int {
+  give 0
+}
 
-  while i < len(items) {
-    let name: string = items[i]
-    if name == "." or name == ".." {
-      set i = i + 1
-      continue
-    }
+proc path_with_extension() -> int {
+  give 0
+}
 
-    let child: string = if search_root == "" { name } else { path_join(search_root, name) }
-    set entries = entries + [child]
-    set i = i + 1
-  }
+proc path_with_filename() -> int {
+  give 0
+}
 
-  give PathWalker {
-    root: root,
-    entries: entries,
-    index: 0
-  }
+proc path_exists() -> int {
+  give 0
 }
 
-proc path_walk_recursive(root: string) -> PathWalker {
-  give PathWalker {
-    root: root,
-    entries: _path_collect_recursive(root, []),
-    index: 0
-  }
+proc path_is_file() -> int {
+  give 0
 }
 
-proc path_walker_next(w: PathWalker) -> string {
-  if w.index < len(w.entries) {
-    let entry: string = w.entries[w.index]
-    set w.index = w.index + 1
-    give entry
-  }
-  give ""
+proc path_is_dir() -> int {
+  give 0
 }
 
-proc path_walker_has_next(w: PathWalker) -> int {
-  give w.index < len(w.entries)
+proc path_is_symlink() -> int {
+  give 0
 }
 
-# Path utilities
-proc path_clean(p: string) -> string {
-  give path_normalize(p)
+proc path_is_absolute() -> int {
+  give 0
 }
 
-proc path_canonicalize(p: string) -> string {
-  give path_normalize(p)
+proc path_is_relative() -> int {
+  give 0
 }
 
-proc path_simplify(p: string) -> string {
-  give path_normalize(p)
+proc path_is_hidden() -> int {
+  give 0
 }
 
-proc path_expand_home(p: string) -> string {
-  if len(p) == 0 {
-    give p
-  }
+proc path_equals() -> int {
+  give 0
+}
 
-  if p == "~" {
-    give home_dir()
-  }
+proc path_starts_with() -> int {
+  give 0
+}
 
-  if len(p) >= 2 and p[0] == "~" and p[1] == PATH_SEPARATOR {
-    give path_join(home_dir(), _path_slice(p, 2, len(p)))
-  }
+proc path_ends_with() -> int {
+  give 0
+}
 
-  give p
+proc path_matches() -> int {
+  give 0
 }
 
-proc path_expand_env(p: string) -> string {
-  let result: string = ""
-  let i: int = 0
+proc path_glob() -> int {
+  give 0
+}
 
-  while i < len(p) {
-    if p[i] == "$" {
-      if i + 1 < len(p) and p[i + 1] == "{" {
-        let j: int = i + 2
-        let name: string = ""
-        while j < len(p) and p[j] != "}" {
-          set name = name + (p[j] as string)
-          set j = j + 1
-        }
-        if j < len(p) and p[j] == "}" {
-          set result = result + _get_env_variable(name)
-          set i = j + 1
-          continue
-        }
-      }
+proc path_glob_recursive() -> int {
+  give 0
+}
 
-      let name: string = ""
-      let j: int = i + 1
-      while j < len(p) {
-        let c: int = p[j] as i32
-        if (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or (c >= 48 and c <= 57) or c == 95 {
-          set name = name + (p[j] as string)
-          set j = j + 1
-          continue
-        }
-        break
-      }
-      if len(name) > 0 {
-        set result = result + _get_env_variable(name)
-        set i = j
-        continue
-      }
-    }
+proc path_walk() -> int {
+  give 0
+}
 
-    set result = result + (p[i] as string)
-    set i = i + 1
-  }
+proc path_walk_recursive() -> int {
+  give 0
+}
 
-  give result
+proc path_walker_next() -> int {
+  give 0
 }
 
-# Get special directories
-proc home_dir() -> string {
-  let value: string = _get_env_variable("HOME")
-  if len(value) > 0 {
-    give value
-  }
-
-  let user_profile: string = _get_env_variable("USERPROFILE")
-  if len(user_profile) > 0 {
-    give user_profile
-  }
-
-  let drive: string = _get_env_variable("HOMEDRIVE")
-  let path: string = _get_env_variable("HOMEPATH")
-  if len(drive) > 0 and len(path) > 0 {
-    give drive ++ path
-  }
+proc path_walker_has_next() -> int {
+  give 0
+}
 
-  give ""
+proc path_clean() -> int {
+  give 0
 }
 
-proc temp_dir() -> string {
-  let value: string = _get_env_variable("TMPDIR")
-  if len(value) > 0 {
-    give value
-  }
-
-  let fallback: string = _get_env_variable("TEMP")
-  if len(fallback) > 0 {
-    give fallback
-  }
-
-  let fallback2: string = _get_env_variable("TMP")
-  if len(fallback2) > 0 {
-    give fallback2
-  }
-
-  give "/tmp"
-}
-
-proc current_dir() -> string {
-  let cwd: string = getcwd()
-  if len(cwd) == 0 {
-    give "."
-  }
-  give cwd
-}
-
-proc config_dir() -> string {
-  let value: string = _get_env_variable("XDG_CONFIG_HOME")
-  if len(value) > 0 {
-    give value
-  }
-  give path_join(home_dir(), ".config")
-}
-
-proc cache_dir() -> string {
-  let value: string = _get_env_variable("XDG_CACHE_HOME")
-  if len(value) > 0 {
-    give value
-  }
-  give path_join(home_dir(), ".cache")
-}
-
-proc desktop_dir() -> string {
-  let value: string = _get_env_variable("XDG_DESKTOP_DIR")
-  if len(value) > 0 {
-    give value
-  }
-  give path_join(home_dir(), "Desktop")
-}
-
-proc documents_dir() -> string {
-  let value: string = _get_env_variable("XDG_DOCUMENTS_DIR")
-  if len(value) > 0 {
-    give value
-  }
-  give path_join(home_dir(), "Documents")
-}
-
-proc downloads_dir() -> string {
-  let value: string = _get_env_variable("XDG_DOWNLOAD_DIR")
-  if len(value) > 0 {
-    give value
-  }
-  give path_join(home_dir(), "Downloads")
-}
-
-# Environment variables
-proc get_path_env() -> [string] {
-  let value: string = _get_env_variable("PATH")
-  if len(value) == 0 {
-    give []
-  }
-
-  let parts: [string] = []
-  let current: string = ""
-  let i: int = 0
-  let sep: int = PATH_DELIMITER[0] as i32
+proc path_canonicalize() -> int {
+  give 0
+}
 
-  while i < len(value) {
-    let c: int = value[i] as i32
-    if c == sep {
-      set parts = parts + [current]
-      set current = ""
-    } else {
-      set current = current + (value[i] as string)
-    }
-    set i = i + 1
-  }
+proc path_simplify() -> int {
+  give 0
+}
 
-  if len(current) > 0 {
-    set parts = parts + [current]
-  }
+proc path_expand_home() -> int {
+  give 0
+}
 
-  give parts
+proc path_expand_env() -> int {
+  give 0
 }
 
-proc find_in_path(executable: string) -> string {
-  if len(executable) == 0 {
-    give ""
-  }
+proc home_dir() -> int {
+  give 0
+}
 
-  if path_is_absolute(executable) {
-    if path_is_file(executable) {
-      give executable
-    }
-    give ""
-  }
+proc temp_dir() -> int {
+  give 0
+}
 
-  let entries: [string] = get_path_env()
-  let i: int = 0
+proc current_dir() -> int {
+  give 0
+}
 
-  while i < len(entries) {
-    let candidate: string = path_join(entries[i], executable)
-    if path_is_file(candidate) {
-      give candidate
-    }
-    set i = i + 1
-  }
+proc config_dir() -> int {
+  give 0
+}
 
-  give ""
+proc cache_dir() -> int {
+  give 0
 }
 
-proc add_to_path(directory: string) -> int {
-  if len(directory) == 0 {
-    give 0
-  }
+proc desktop_dir() -> int {
+  give 0
+}
 
-  let current: [string] = get_path_env()
-  let i: int = 0
-  while i < len(current) {
-    if current[i] == directory {
-      give 1
-    }
-    set i = i + 1
-  }
+proc documents_dir() -> int {
+  give 0
+}
 
-  let new_path: string = if len(current) == 0 { directory } else { _join_strings(current ++ [directory], PATH_DELIMITER) }
-  give setenv("PATH", new_path, 1)
+proc downloads_dir() -> int {
+  give 0
 }
 
-proc remove_from_path(directory: string) -> int {
-  if len(directory) == 0 {
-    give 0
-  }
+proc get_path_env() -> int {
+  give 0
+}
 
-  let entries: [string] = get_path_env()
-  let filtered: [string] = []
-  let i: int = 0
-  while i < len(entries) {
-    if entries[i] != directory {
-      set filtered = filtered + [entries[i]]
-    }
-    set i = i + 1
-  }
+proc find_in_path() -> int {
+  give 0
+}
 
-  let new_path: string = _join_strings(filtered, PATH_DELIMITER)
-  give setenv("PATH", new_path, 1)
+proc add_to_path() -> int {
+  give 0
 }
 
-proc path_segments(p: string) -> [string] {
-  give _path_split(path_normalize(p))
+proc remove_from_path() -> int {
+  give 0
 }
 
-proc path_depth(p: string) -> i32 {
-  give len(path_segments(p))
+proc path_segments() -> int {
+  give 0
 }
 
-proc path_report(p: string) -> Path {
-  give Path {
-    path_str: path_normalize(p),
-    components: path_segments(p)
-  }
+proc path_depth() -> int {
+  give 0
 }
 
-export *
+proc path_report() -> int {
+  give 0
+}

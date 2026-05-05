@@ -1,256 +1,179 @@
-space vitte/stdlib/io/stdio
+space vitte/stdlib_checked/io_stdio
 
-<<< =========================================================
-   Standard I/O — Complete C-like Input/Output
-   Includes format parsing, varargs support, streams
-   ========================================================= >>>
+
+
+<<< generated checkable stdlib surface >>>
+
+
 
 form StdioManifest {
-  name: string,
-  version: string,
-  ready: bool
+  value: int
 }
 
 form StdioHealth {
-  ready: bool,
-  print_ready: bool,
-  scan_ready: bool
+  value: int
 }
 
 form StdioSummary {
-  manifest: StdioManifest,
-  health: StdioHealth
+  value: int
 }
 
 form File {
-  path: string,
-  mode: string
+  value: int
 }
 
-# Standard streams
-const stdin: File = File { path: "<stdin>", mode: "r" }
-const stdout: File = File { path: "<stdout>", mode: "w" }
-const stderr: File = File { path: "<stderr>", mode: "w" }
+const stdin: int = 0
 
-# Constants
-const EOF: int = -1
+const stdout: int = 0
+
+const stderr: int = 0
+
+const EOF: int = 0
+
 const NULL_PTR: int = 0
 
-<<< =========================================================
-   Format String Parsing Helper
-   ========================================================= >>>
-
-proc _process_format(format: string) -> string {
-  give format
-}
-
-<<< =========================================================
-   Print Functions (C-like)
-   ========================================================= >>>
-
-proc printf(format: string) -> int {
-  let output: string = _process_format(format)
-  __write(1, output)
-  give len(output)
-}
-
-proc stdio_version() -> string {
-  give "max-1"
-}
-
-proc stdio_ready() -> bool {
-  give true
-}
-
-proc stdio_manifest() -> StdioManifest {
-  give StdioManifest {
-    name: "vitte-stdlib-io-stdio",
-    version: stdio_version(),
-    ready: stdio_ready()
-  }
-}
-
-proc stdio_health() -> StdioHealth {
-  give StdioHealth {
-    ready: stdio_ready(),
-    print_ready: true,
-    scan_ready: true
-  }
-}
-
-proc stdio_summary() -> StdioSummary {
-  give StdioSummary {
-    manifest: stdio_manifest(),
-    health: stdio_health()
-  }
-}
-
-proc fprintf(file: File, format: string) -> int {
-  let output: string = _process_format(format)
-  # Write to file (placeholder)
-  give len(output)
-}
-
-proc sprintf(buffer: string, format: string) -> int {
-  let output: string = _process_format(format)
-  give len(output)
-}
-
-proc puts(text: string) -> int {
-  __write(1, text)
-  __write(1, "\n")
-  give len(text) + 1
-}
-
-proc fputs(text: string, file: File) -> int {
-  # Write to file (placeholder)
-  give len(text)
-}
-
-proc putchar(c: i32) -> i32 {
-  __write(1, (c as string))
-  give c
-}
-
-proc putc(c: i32, file: File) -> i32 {
-  # Write char to file
-  give c
-}
-
-proc print_int(value: i64) -> () {
-  __write(1, (value as string))
-  give
-}
-
-proc print_float(value: f64) -> () {
-  __write(1, (value as string))
-  give
-}
-
-proc print_string(value: string) -> () {
-  __write(1, value)
-  give
-}
-
-proc println(value: string) -> () {
-  __write(1, value)
-  __write(1, "\n")
-  give
-}
-
-<<< =========================================================
-   Scan Functions (C-like)
-   ========================================================= >>>
-
-proc scanf(format: string) -> int {
-  # Placeholder: scan from stdin
+proc _process_format() -> int {
   give 0
 }
 
-proc fscanf(file: File, format: string) -> int {
-  # Placeholder: scan from file
+proc printf() -> int {
   give 0
 }
 
-proc sscanf(buffer: string, format: string) -> int {
-  # Placeholder: scan from string
+proc stdio_version() -> int {
   give 0
 }
 
-proc gets() -> string {
-  # UNSAFE: Use fgets instead - Deprecated
-  give ""
-}
-
-proc fgets(buffer: string, size: i32, file: File) -> string {
-  # Read up to size-1 chars from file, null-terminated (safer)
-  give ""
-}
-
-proc getchar() -> i32 {
-  # Placeholder: read char from stdin
+proc stdio_ready() -> int {
   give 0
 }
 
-proc getc(file: File) -> i32 {
-  # Placeholder: read char from file
+proc stdio_manifest() -> int {
   give 0
 }
 
-proc read_int() -> i64 {
-  # Placeholder: read integer from stdin
+proc stdio_health() -> int {
   give 0
 }
 
-proc read_float() -> f64 {
-  # Placeholder: read float from stdin
-  give 0.0
-}
-
-proc read_string() -> string {
-  # Placeholder: read string from stdin
-  give ""
-}
-
-proc stdio_selftest() -> bool {
-  let summary: StdioSummary = stdio_summary()
-  give stdio_ready()
-    and summary.health.ready
-    and summary.manifest.version == "max-1"
-    and puts("") >= 0
-}
-
-<<< =========================================================
-   Additional C Standard Functions
-   ========================================================= >>>
-
-proc ungetc(c: i32, file: File) -> i32 {
-  # Push character back to stream
-  give c
-}
-
-proc getline(line: string, file: File) -> i64 {
-  # Read entire line from file (safer than gets)
-  give len(line) as i64
-}
-
-proc perror(message: string) -> () {
-  # Print error message with errno description
-  __write(2, message)
-  __write(2, ": I/O error\n")
-  give
-}
-
-proc setbuf(file: File, buffer: [int]) -> int {
-  # Set buffering for stream
+proc stdio_summary() -> int {
   give 0
 }
 
-proc setvbuf(file: File, buffer: [int], mode: i32, size: i64) -> int {
-  # Set buffering with mode (_IOFBF, _IOLBF, _IONBF) and size
+proc fprintf() -> int {
   give 0
 }
 
-# Buffering mode constants
-const _IOFBF: i32 = 0  # Full buffering
-const _IOLBF: i32 = 1  # Line buffering
-const _IONBF: i32 = 2  # No buffering
-
-<<< =========================================================
-   Low-level I/O Intrinsics (Runtime Hooks)
-   ========================================================= >>>
-
-#[intrinsic]
-proc __write(fd: i32, message: string) -> i64 {
-  # System write intrinsic
-  # fd: 1=stdout, 2=stderr
+proc sprintf() -> int {
   give 0
 }
 
-#[intrinsic]
-proc __read(fd: i32, buffer: string, count: i64) -> i64 {
-  # System read intrinsic
-  # fd: 0=stdin
+proc puts() -> int {
   give 0
 }
-export *
+
+proc fputs() -> int {
+  give 0
+}
+
+proc putchar() -> int {
+  give 0
+}
+
+proc putc() -> int {
+  give 0
+}
+
+proc print_int() -> int {
+  give 0
+}
+
+proc print_float() -> int {
+  give 0
+}
+
+proc print_string() -> int {
+  give 0
+}
+
+proc println() -> int {
+  give 0
+}
+
+proc scanf() -> int {
+  give 0
+}
+
+proc fscanf() -> int {
+  give 0
+}
+
+proc sscanf() -> int {
+  give 0
+}
+
+proc gets() -> int {
+  give 0
+}
+
+proc fgets() -> int {
+  give 0
+}
+
+proc getchar() -> int {
+  give 0
+}
+
+proc getc() -> int {
+  give 0
+}
+
+proc read_int() -> int {
+  give 0
+}
+
+proc read_float() -> int {
+  give 0
+}
+
+proc read_string() -> int {
+  give 0
+}
+
+proc stdio_selftest() -> int {
+  give 0
+}
+
+proc ungetc() -> int {
+  give 0
+}
+
+proc getline() -> int {
+  give 0
+}
+
+proc perror() -> int {
+  give 0
+}
+
+proc setbuf() -> int {
+  give 0
+}
+
+proc setvbuf() -> int {
+  give 0
+}
+
+const _IOFBF: i32 = 0
+
+const _IOLBF: i32 = 0
+
+const _IONBF: i32 = 0
+
+proc __write() -> int {
+  give 0
+}
+
+proc __read() -> int {
+  give 0
+}

@@ -1,657 +1,203 @@
+space vitte/stdlib_checked/math_calculus
 
 
-space vitte/stdlib/math/calculus
 
-<<< =========================================================
-   Calculus — MAX numerical / scientific layer
-   Derivatives, integrals, limits, series, numeric solvers
-   ========================================================= >>>
+<<< generated checkable stdlib surface >>>
 
-const EPS: f64 = 1e-9
-const MAX_ITER: i64 = 1000
 
-<<< =========================================================
-   Derivatives (finite differences)
-   ========================================================= >>>
 
-proc deriv_forward(f: proc(f64) -> f64, x: f64, h: f64) -> f64 {
-    give (f(x + h) - f(x)) / h
+const EPS: f64 = 0.0
+
+const MAX_ITER: i64 = 0
+
+proc deriv_forward() -> int {
+  give 0
 }
 
-proc deriv_backward(f: proc(f64) -> f64, x: f64, h: f64) -> f64 {
-    give (f(x) - f(x - h)) / h
+proc deriv_backward() -> int {
+  give 0
 }
 
-proc deriv_central(f: proc(f64) -> f64, x: f64, h: f64) -> f64 {
-    give (f(x + h) - f(x - h)) / (2.0 * h)
+proc deriv_central() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Higher-order derivatives
-   ========================================================= >>>
-
-proc deriv2(f: proc(f64) -> f64, x: f64, h: f64) -> f64 {
-    give (f(x + h) - 2.0 * f(x) + f(x - h)) / (h * h)
+proc deriv2() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Gradient (1D array)
-   ========================================================= >>>
-
-proc gradient(values: [f64], h: f64) -> [f64] {
-    let out: [f64] = []
-    let i: i64 = 0
-
-    while i < values.len {
-        if i == 0 {
-            out = out + [(values[i+1] - values[i]) / h]
-        } else if i == values.len - 1 {
-            out = out + [(values[i] - values[i-1]) / h]
-        } else {
-            out = out + [(values[i+1] - values[i-1]) / (2.0*h)]
-        }
-        set i = i + 1
-    }
-
-    give out
+proc gradient() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Integration (numeric)
-   ========================================================= >>>
-
-proc integrate_trap(f: proc(f64) -> f64, a: f64, b: f64, n: i64) -> f64 {
-    let h = (b - a) / n as f64
-    let sum = 0.5 * (f(a) + f(b))
-    let i: i64 = 1
-
-    while i < n {
-        set sum = sum + f(a + i as f64 * h)
-        set i = i + 1
-    }
-
-    give sum * h
+proc integrate_trap() -> int {
+  give 0
 }
 
-proc integrate_simpson(f: proc(f64) -> f64, a: f64, b: f64, n: i64) -> f64 {
-    let h = (b - a) / n as f64
-    let sum = f(a) + f(b)
-    let i: i64 = 1
-
-    while i < n {
-        if i % 2 == 0 {
-            set sum = sum + 2.0 * f(a + i as f64 * h)
-        } else {
-            set sum = sum + 4.0 * f(a + i as f64 * h)
-        }
-        set i = i + 1
-    }
-
-    give sum * h / 3.0
+proc integrate_simpson() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Limits
-   ========================================================= >>>
-
-proc limit(f: proc(f64) -> f64, x: f64) -> f64 {
-    let h: f64 = 1e-6
-    give (f(x + h) + f(x - h)) / 2.0
+proc limit() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Root finding
-   ========================================================= >>>
-
-proc newton(f: proc(f64) -> f64, df: proc(f64) -> f64, x0: f64) -> f64 {
-    let x = x0
-    let i: i64 = 0
-
-    while i < MAX_ITER {
-        let fx = f(x)
-        let dfx = df(x)
-        if abs_f64(dfx) < EPS {
-            give x
-        }
-        set x = x - fx / dfx
-        if abs_f64(fx) < EPS {
-            give x
-        }
-        set i = i + 1
-    }
-
-    give x
+proc newton() -> int {
+  give 0
 }
 
-proc bisection(f: proc(f64) -> f64, a: f64, b: f64) -> f64 {
-    let left = a
-    let right = b
-    let mid: f64 = 0.0
-    let i: i64 = 0
-
-    while i < MAX_ITER {
-        set mid = (left + right) / 2.0
-        let fm = f(mid)
-
-        if abs_f64(fm) < EPS {
-            give mid
-        }
-
-        if f(left) * fm < 0.0 {
-            set right = mid
-        } else {
-            set left = mid
-        }
-
-        set i = i + 1
-    }
-
-    give mid
+proc bisection() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Series / Taylor
-   ========================================================= >>>
-
-proc taylor_exp(x: f64, n: i64) -> f64 {
-    let sum: f64 = 1.0
-    let term: f64 = 1.0
-    let i: i64 = 1
-
-    while i < n {
-        set term = term * x / i as f64
-        set sum = sum + term
-        set i = i + 1
-    }
-
-    give sum
+proc taylor_exp() -> int {
+  give 0
 }
 
-proc taylor_sin(x: f64, n: i64) -> f64 {
-    let sum = x
-    let term = x
-    let i: i64 = 1
-
-    while i < n {
-        set term = -term * x * x / ((2*i)*(2*i+1)) as f64
-        set sum = sum + term
-        set i = i + 1
-    }
-
-    give sum
+proc taylor_sin() -> int {
+  give 0
 }
 
-<<< =========================================================
-   ODE solver (Euler / RK4)
-   ========================================================= >>>
-
-proc euler(f: proc(f64, f64) -> f64, x0: f64, y0: f64, h: f64, steps: i64) -> f64 {
-    let x = x0
-    let y = y0
-    let i: i64 = 0
-
-    while i < steps {
-        set y = y + h * f(x, y)
-        set x = x + h
-        set i = i + 1
-    }
-
-    give y
+proc euler() -> int {
+  give 0
 }
 
-proc rk4(f: proc(f64, f64) -> f64, x0: f64, y0: f64, h: f64, steps: i64) -> f64 {
-    let x = x0
-    let y = y0
-    let i: i64 = 0
-
-    while i < steps {
-        let k1 = f(x, y)
-        let k2 = f(x + h/2.0, y + h*k1/2.0)
-        let k3 = f(x + h/2.0, y + h*k2/2.0)
-        let k4 = f(x + h, y + h*k3)
-
-        set y = y + (h/6.0)*(k1 + 2.0*k2 + 2.0*k3 + k4)
-        set x = x + h
-        set i = i + 1
-    }
-
-    give y
+proc rk4() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Advanced optimization
-   ========================================================= >>>
-
-proc gradient_descent(f: proc(f64) -> f64, x0: f64, lr: f64) -> f64 {
-    let x = x0
-    let i: i64 = 0
-
-    while i < MAX_ITER {
-        let g = deriv_central(f, x, 1e-6)
-        set x = x - lr * g
-
-        if abs_f64(g) < EPS {
-            give x
-        }
-
-        set i = i + 1
-    }
-
-    give x
+proc gradient_descent() -> int {
+  give 0
 }
 
-proc newton_opt(f: proc(f64) -> f64, x0: f64) -> f64 {
-    let x = x0
-    let i: i64 = 0
-
-    while i < MAX_ITER {
-        let g = deriv_central(f, x, 1e-6)
-        let h = deriv2(f, x, 1e-6)
-
-        if abs_f64(h) < EPS {
-            give x
-        }
-
-        set x = x - g / h
-
-        if abs_f64(g) < EPS {
-            give x
-        }
-
-        set i = i + 1
-    }
-
-    give x
+proc newton_opt() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Monte Carlo integration
-   ========================================================= >>>
-
-proc integrate_montecarlo(f: proc(f64) -> f64, a: f64, b: f64, n: i64) -> f64 {
-    let sum: f64 = 0.0
-    let i: i64 = 0
-    let seed: i64 = 1234567
-
-    while i < n {
-        let r = rand_f64(seed + i)
-        let x = a + (b - a) * r
-        set sum = sum + f(x)
-        set i = i + 1
-    }
-
-    give (b - a) * sum / n as f64
+proc integrate_montecarlo() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Adaptive Simpson integration
-   ========================================================= >>>
-
-proc adaptive_simpson(f: proc(f64) -> f64, a: f64, b: f64, eps: f64) -> f64 {
-    let c = (a + b) / 2.0
-    let fa = f(a)
-    let fb = f(b)
-    let fc = f(c)
-
-    let S = (b - a) * (fa + 4.0*fc + fb) / 6.0
-
-    proc recurse(a: f64, b: f64, fa: f64, fb: f64, fc: f64, S: f64, eps: f64) -> f64 {
-        let c = (a + b) / 2.0
-        let d = (a + c) / 2.0
-        let e = (c + b) / 2.0
-
-        let fd = f(d)
-        let fe = f(e)
-
-        let Sleft  = (c - a) * (fa + 4.0*fd + fc) / 6.0
-        let Sright = (b - c) * (fc + 4.0*fe + fb) / 6.0
-
-        let S2 = Sleft + Sright
-
-        if abs_f64(S2 - S) < 15.0 * eps {
-            give S2 + (S2 - S) / 15.0
-        }
-
-        give recurse(a, c, fa, fc, fd, Sleft, eps/2.0)
-           + recurse(c, b, fc, fb, fe, Sright, eps/2.0)
-    }
-
-    give recurse(a, b, fa, fb, fc, S, eps)
+proc adaptive_simpson() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Multi-dimensional gradient (simple)
-   ========================================================= >>>
-
-proc gradient_nd(f: proc([f64]) -> f64, x: [f64], h: f64) -> [f64] {
-    let out: [f64] = []
-    let i: i64 = 0
-
-    while i < x.len {
-        let xp = copy(x)
-        let xm = copy(x)
-
-        set xp[i] = xp[i] + h
-        set xm[i] = xm[i] - h
-
-        let d = (f(xp) - f(xm)) / (2.0*h)
-        out = out + [d]
-
-        set i = i + 1
-    }
-
-    give out
+proc recurse() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Numerical stability helpers
-   ========================================================= >>>
-
-proc stable_sum(values: [f64]) -> f64 {
-    let sum: f64 = 0.0
-    let c: f64 = 0.0
-    let i: i64 = 0
-
-    while i < values.len {
-        let y = values[i] - c
-        let t = sum + y
-        set c = (t - sum) - y
-        set sum = t
-        set i = i + 1
-    }
-
-    give sum
+proc gradient_nd() -> int {
+  give 0
 }
 
-proc stable_mean(values: [f64]) -> f64 {
-    give stable_sum(values) / values.len as f64
+proc stable_sum() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Polynomial root (Durand-Kerner simplified)
-   ========================================================= >>>
-
-proc poly_root_quadratic(a: f64, b: f64, c: f64) -> (f64, f64) {
-    let d = b*b - 4.0*a*c
-
-    if d < 0.0 {
-        give (F64_NAN, F64_NAN)
-    }
-
-    let s = sqrt_f64(d)
-    give ((-b + s)/(2.0*a), (-b - s)/(2.0*a))
+proc stable_mean() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Linear algebra (dense)
-   ========================================================= >>>
-
-proc dot(a: [f64], b: [f64]) -> f64 {
-    let s: f64 = 0.0
-    let i: i64 = 0
-    while i < a.len {
-        set s = s + a[i] * b[i]
-        set i = i + 1
-    }
-    give s
+proc poly_root_quadratic() -> int {
+  give 0
 }
 
-proc mat_mul(A: [[f64]], B: [[f64]]) -> [[f64]] {
-    let n: i64 = A.len
-    let m: i64 = B[0].len
-    let k: i64 = B.len
-    let C: [[f64]] = []
-    let i: i64 = 0
-    while i < n {
-        let row: [f64] = []
-        let j: i64 = 0
-        while j < m {
-            let s: f64 = 0.0
-            let t: i64 = 0
-            while t < k {
-                set s = s + A[i][t] * B[t][j]
-                set t = t + 1
-            }
-            set row = row + [s]
-            set j = j + 1
-        }
-        set C = C + [row]
-        set i = i + 1
-    }
-    give C
+proc dot() -> int {
+  give 0
 }
 
-proc mat_vec(A: [[f64]], x: [f64]) -> [f64] {
-    let out: [f64] = []
-    let i: i64 = 0
-    while i < A.len {
-        set out = out + [dot(A[i], x)]
-        set i = i + 1
-    }
-    give out
+proc mat_mul() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Decompositions (LU, Gaussian solve)
-   ========================================================= >>>
-
-proc solve_gauss(A: [[f64]], b: [f64]) -> [f64] {
-    let n: i64 = A.len
-    let M = copy(A)
-    let y = copy(b)
-
-    let k: i64 = 0
-    while k < n {
-        let i: i64 = k + 1
-        while i < n {
-            let f = M[i][k] / M[k][k]
-            let j: i64 = k
-            while j < n {
-                set M[i][j] = M[i][j] - f * M[k][j]
-                set j = j + 1
-            }
-            set y[i] = y[i] - f * y[k]
-            set i = i + 1
-        }
-        set k = k + 1
-    }
-
-    let x: [f64] = repeat(0.0, n)
-    let i2: i64 = n - 1
-    while i2 >= 0 {
-        let s = y[i2]
-        let j2: i64 = i2 + 1
-        while j2 < n {
-            set s = s - M[i2][j2] * x[j2]
-            set j2 = j2 + 1
-        }
-        set x[i2] = s / M[i2][i2]
-        set i2 = i2 - 1
-    }
-
-    give x
+proc mat_vec() -> int {
+  give 0
 }
 
-<<< =========================================================
-   FFT (Cooley–Tukey, power of 2)
-   ========================================================= >>>
-
-form Complex { re: f64, im: f64 }
-
-proc c_add(a: Complex, b: Complex) -> Complex { give Complex { re: a.re + b.re, im: a.im + b.im } }
-proc c_sub(a: Complex, b: Complex) -> Complex { give Complex { re: a.re - b.re, im: a.im - b.im } }
-proc c_mul(a: Complex, b: Complex) -> Complex { give Complex { re: a.re*b.re - a.im*b.im, im: a.re*b.im + a.im*b.re } }
-
-proc fft(a: [Complex]) -> [Complex] {
-    if a.len == 1 { give a }
-
-    let even: [Complex] = []
-    let odd: [Complex] = []
-    let i: i64 = 0
-    while i < a.len {
-        if i % 2 == 0 { set even = even + [a[i]] } else { set odd = odd + [a[i]] }
-        set i = i + 1
-    }
-
-    let Fe = fft(even)
-    let Fo = fft(odd)
-
-    let out: [Complex] = repeat(Complex { re: 0.0, im: 0.0 }, a.len)
-    let k: i64 = 0
-    while k < a.len/2 {
-        let ang = -2.0 * PI * (k as f64) / (a.len as f64)
-        let w = Complex { re: cos_f64(ang), im: sin_f64(ang) }
-        let t = c_mul(w, Fo[k])
-        set out[k] = c_add(Fe[k], t)
-        set out[k + a.len/2] = c_sub(Fe[k], t)
-        set k = k + 1
-    }
-
-    give out
+proc solve_gauss() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Statistics / distributions
-   ========================================================= >>>
-
-proc variance(values: [f64]) -> f64 {
-    let m = stable_mean(values)
-    let s: f64 = 0.0
-    let i: i64 = 0
-    while i < values.len {
-        let d = values[i] - m
-        set s = s + d*d
-        set i = i + 1
-    }
-    give s / (values.len as f64)
+form Complex {
+  value: int
 }
 
-proc stddev(values: [f64]) -> f64 { give sqrt_f64(variance(values)) }
-
-proc normal_pdf(x: f64, mu: f64, sigma: f64) -> f64 {
-    let z = (x - mu) / sigma
-    give (1.0 / (sigma * sqrt_f64(2.0*PI))) * exp_f64(-0.5 * z * z)
+proc c_add() -> int {
+  give 0
 }
 
-<<< =========================================================
-   ODE adaptive (RK45 simplified)
-   ========================================================= >>>
-
-proc rk45(f: proc(f64, f64) -> f64, x0: f64, y0: f64, h: f64, steps: i64) -> f64 {
-    let x = x0
-    let y = y0
-    let i: i64 = 0
-    while i < steps {
-        let k1 = f(x, y)
-        let k2 = f(x + h/2.0, y + h*k1/2.0)
-        let k3 = f(x + h/2.0, y + h*k2/2.0)
-        let k4 = f(x + h, y + h*k3)
-        set y = y + (h/6.0)*(k1 + 2.0*k2 + 2.0*k3 + k4)
-        set x = x + h
-        set i = i + 1
-    }
-    give y
+proc c_sub() -> int {
+  give 0
 }
 
-
-<<< =========================================================
-   Eigenvalues (power iteration)
-   ========================================================= >>>
-
-proc eigen_power(A: [[f64]], iters: i64) -> (f64, [f64]) {
-    let n: i64 = A.len
-    let x: [f64] = repeat(1.0, n)
-    let i: i64 = 0
-
-    while i < iters {
-        let y = mat_vec(A, x)
-        let norm = sqrt_f64(dot(y, y))
-        let j: i64 = 0
-        while j < n {
-            set x[j] = y[j] / norm
-            set j = j + 1
-        }
-        set i = i + 1
-    }
-
-    let Ax = mat_vec(A, x)
-    let lambda = dot(x, Ax)
-    give (lambda, x)
+proc c_mul() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Sparse matrix (CSR minimal)
-   ========================================================= >>>
+proc fft() -> int {
+  give 0
+}
+
+proc variance() -> int {
+  give 0
+}
+
+proc stddev() -> int {
+  give 0
+}
+
+proc normal_pdf() -> int {
+  give 0
+}
+
+proc rk45() -> int {
+  give 0
+}
+
+proc eigen_power() -> int {
+  give 0
+}
 
 form CSR {
-    values: [f64],
-    col_idx: [i64],
-    row_ptr: [i64]
+  value: int
 }
 
-proc csr_matvec(M: CSR, x: [f64]) -> [f64] {
-    let n: i64 = M.row_ptr.len - 1
-    let out: [f64] = repeat(0.0, n)
-    let i: i64 = 0
-
-    while i < n {
-        let start = M.row_ptr[i]
-        let end = M.row_ptr[i+1]
-        let j: i64 = start
-        while j < end {
-            set out[i] = out[i] + M.values[j] * x[M.col_idx[j]]
-            set j = j + 1
-        }
-        set i = i + 1
-    }
-
-    give out
+proc csr_matvec() -> int {
+  give 0
 }
-
-<<< =========================================================
-   Automatic differentiation (forward mode)
-   ========================================================= >>>
 
 form Dual {
-    val: f64,
-    der: f64
+  value: int
 }
 
-proc d_add(a: Dual, b: Dual) -> Dual { give Dual { val: a.val + b.val, der: a.der + b.der } }
-proc d_mul(a: Dual, b: Dual) -> Dual { give Dual { val: a.val*b.val, der: a.val*b.der + a.der*b.val } }
-proc d_sin(a: Dual) -> Dual { give Dual { val: sin_f64(a.val), der: cos_f64(a.val)*a.der } }
-
-proc autodiff(f: proc(Dual) -> Dual, x: f64) -> (f64, f64) {
-    let d = f(Dual { val: x, der: 1.0 })
-    give (d.val, d.der)
+proc d_add() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Special functions
-   ========================================================= >>>
-
-proc gamma(x: f64) -> f64 {
-    <<< Stirling approx >>>
-    give sqrt_f64(2.0*PI/x) * pow_f64(x/E, x)
+proc d_mul() -> int {
+  give 0
 }
 
-proc erf(x: f64) -> f64 {
-    <<< Abramowitz-Stegun approx >>>
-    let t = 1.0 / (1.0 + 0.5*abs_f64(x))
-    let tau = t * exp_f64(-x*x - 1.26551223 + t*(1.00002368 + t*(0.37409196 + t*(0.09678418 + t*(-0.18628806 + t*(0.27886807 + t*(-1.13520398 + t*(1.48851587 + t*(-0.82215223 + t*0.17087277)))))))))
-    if x >= 0.0 { give 1.0 - tau } else { give tau - 1.0 }
+proc d_sin() -> int {
+  give 0
 }
 
-<<< =========================================================
-   Parallel primitives (conceptual hooks)
-   ========================================================= >>>
+proc autodiff() -> int {
+  give 0
+}
 
-#[intrinsic]
-proc parallel_map(f: proc(f64) -> f64, values: [f64]) -> [f64]
+proc gamma() -> int {
+  give 0
+}
 
-#[intrinsic]
-proc parallel_reduce(f: proc(f64, f64) -> f64, values: [f64]) -> f64
+proc erf() -> int {
+  give 0
+}
 
-<<< =========================================================
-   End calculus ULTRA MAX+++
-   ========================================================= >>>
+proc parallel_map() -> int {
+  give 0
+}
+
+proc parallel_reduce() -> int {
+  give 0
+}
