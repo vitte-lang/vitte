@@ -1,0 +1,128 @@
+name: Bootstrap CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  seed-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Check seed manifest hash drift
+        run: make seed-verify
+      - name: Report seed rotation status
+        run: make seed-rotation-report
+      - name: Check seed artifact contract
+        env:
+          SEED_CONTRACT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: make seed-contract-check
+      - name: Check bootstrap source coverage
+        run: make bootstrap-source-coverage-check
+      - name: Run stage0 gate
+        run: make seed-gate
+      - name: Generate seed compatibility report
+        run: make seed-compat-report
+      - name: Upload seed compatibility report
+        uses: actions/upload-artifact@v6
+        with:
+          name: seed-compat-report
+          path: target/reports/seed_compat_report.txt
+          if-no-files-found: error
+
+  bootstrap-all:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run bootstrap all
+        run: make bootstrap-all
+
+  bootstrap-native-contract:
+    runs-on: ubuntu-latest
+    steps:
+      # Equivalent local target: make bootstrap-native-contract.
+      # Keep CI steps split so failures identify the contract layer directly.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Check seed manifest hash drift
+        run: make seed-verify
+      - name: Report seed rotation status
+        run: make seed-rotation-report
+      - name: Check bootstrap source coverage
+        run: make bootstrap-source-coverage-check
+      - name: Check POSIX seed shell
+        run: make posix-seed-shell-check
+      - name: Check bootstrap contract docs index
+        run: make bootstrap-contracts-index-check
+      - name: Check docs paths
+        run: make docs-paths-check
+      - name: Check bootstrap native snapshot drift
+        env:
+          BOOTSTRAP_NATIVE_DRIFT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: make bootstrap-native-drift-check
+      - name: Check bootstrap native snapshots
+        run: make bootstrap-native-snapshots
+      - name: Verify bootstrap parity and smoke
+        run: make bootstrap-verify
+      - name: Verify POSIX bootstrap smoke
+        run: make bootstrap-posix-smoke
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build project
+        run: make build
+
+  audit-policy-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Ensure vitte-source-audit has zero toolchain exceptions
+        run: |
+          set -euo pipefail
+          if grep -Eq -- "-path './toolchain/[^']+'" Makefile; then
+            echo "[audit-policy-guard][error] unexpected toolchain audit exception detected:"
+            grep -E -- "-path './toolchain/[^']+'" Makefile
+            exit 1
+          fi
+          make vitte-source-audit
+          echo "[audit-policy-guard] ok: zero toolchain audit exceptions"
+
+  zero-host-source-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Reject repo-hosted host sources
+        run: |
+          set -euo pipefail
+          if [ -e toolchain/stage0-c ]; then
+            echo "[zero-host-source][error] forbidden path exists: toolchain/stage0-c"
+            exit 1
+          fi
+          bad="$(
+            find . \
+              -path './.git' -prune -o \
+              -path './target' -prune -o \
+              -path './bin' -prune -o \
+              -path './build' -prune -o \
+              -type f \( -name '*.c' -o -name '*.h' -o -name '*_gen.c' \) -print | sort
+          )"
+          if [ -n "$bad" ]; then
+            echo "[zero-host-source][error] forbidden host source files:"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          echo "[zero-host-source] ok: no forbidden host source files"
+      - name: Build project
+        run: make build
+      - name: Verify bootstrap chain
+        run: make bootstrap-verify
+      - name: Verify stage2 self-check
+        run: |
+          make bootstrap-seed
+          toolchain/scripts/bootstrap/stage1.sh
+          VITTE_SELF_CHECK=1 toolchain/scripts/bootstrap/stage2.sh

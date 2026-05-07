@@ -75,16 +75,28 @@ rm -rf "$TMP_DIR"
 mkdir -p "$SRC_DIR" "$OUT0" "$OUT1"
 
 cat >"$SRC_DIR/hello.vit" <<EOF
-proc main() {
-    emit "hello bootstrap"
+space vitte/bootstrap/verify
+
+proc version_text() -> string {
+  give "vitte bootstrap verify 0.1.0"
 }
+
+proc banner_text() -> string {
+  give "vitte bootstrap verify"
+}
+
+proc main(args: list[string]) -> int {
+  give 0
+}
+
+export *
 EOF
 
-log "dump AST with vittec1"
+log "parse bootstrap-native sample with vittec1"
 
 "$STAGE1_BIN" parse --dump-ast "$SRC_DIR/hello.vit" > "$OUT0/ast.log"
 
-log "dump AST with vittec (final)"
+log "parse bootstrap-native sample with vittec (final)"
 
 "$STAGE2_BIN" parse --dump-ast "$SRC_DIR/hello.vit" > "$OUT1/ast.log"
 

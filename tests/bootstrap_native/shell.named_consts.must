@@ -1,0 +1,413 @@
+#!/usr/bin/env sh
+set -eu
+version='vittec native const fixture 0.1.0'
+banner='vittec native named constants'
+main_return='0'
+error_prefix='[vittec][error]'
+
+arg_value() {
+    key="$1"
+    shift
+    while [ "$#" -gt 1 ]; do
+        if [ "$1" = "$key" ]; then
+            printf '%s\n' "$2"
+            return 0
+        fi
+        shift
+    done
+    return 1
+}
+
+first_file_arg() {
+    for arg do
+        case "$arg" in
+            -*)
+                ;;
+            *)
+                if [ -f "$arg" ]; then
+                    printf '%s\n' "$arg"
+                    return 0
+                fi
+                ;;
+        esac
+    done
+    return 1
+}
+
+sq() {
+    sed "s/'/'\\\\''/g; s/^/'/; s/$/'/"
+}
+
+compile_native_ir() {
+    src="$1"
+    # Keep this AWK parser intentionally small: it recognizes only the
+    # bootstrap-native subset documented in docs/bootstrap_seed.md.
+    awk '
+    function diag(code, msg) {
+        printf "%s:%d:%d: %s: %s\n", file, line_no, col, code, msg > "/dev/stderr"
+        errors++
+    }
+    function trim(s) {
+        sub(/^[ \t\r\n]+/, "", s)
+        sub(/[ \t\r\n]+$/, "", s)
+        return s
+    }
+    function const_value(name) {
+        return consts[name]
+    }
+    function col_token(token) {
+        pos = index(raw, token)
+        if (pos > 0) return pos
+        return 1
+    }
+    function col_nonspace(    i, ch) {
+        for (i = 1; i <= length(raw); i++) {
+            ch = substr(raw, i, 1)
+            if (ch != " " && ch != "\t") return i
+        }
+        return 1
+    }
+    function emit_proc(name, value, value_kind) {
+        if (value_kind == "ident") {
+            if (!(value in consts)) {
+                diag("E_BOOTSTRAP_UNKNOWN_CONST", "unknown string constant " value)
+                return
+            }
+            if (const_kinds[value] != "string") {
+                diag("E_BOOTSTRAP_CONST_TYPE", "expected string constant " value)
+                return
+            }
+            value = const_value(value)
+        }
+        if (name == "version_text") version_text = value
+        else if (name == "banner_text") banner_text = value
+        else diag("E_BOOTSTRAP_UNKNOWN_PROC", "unsupported bootstrap proc " name)
+    }
+    function resolve_int(value, value_kind) {
+        if (value_kind == "int_ident") {
+            if (!(value in consts)) {
+                diag("E_BOOTSTRAP_UNKNOWN_CONST", "unknown int constant " value)
+                return ""
+            }
+            if (const_kinds[value] != "int") {
+                diag("E_BOOTSTRAP_CONST_TYPE", "expected int constant " value)
+                return ""
+            }
+            return const_value(value)
+        }
+        return value
+    }
+    function proc_signature_diag(line) {
+        if (line ~ /^proc[ \t]+main[ \t]*\(/) {
+            diag("E_BOOTSTRAP_MAIN_SIGNATURE", "expected proc main(args: list[string]) -> int {")
+        } else if (line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\([^)]*[A-Za-z0-9_][^)]*\)/) {
+            diag("E_BOOTSTRAP_PROC_SIGNATURE", "bootstrap string proc must have no parameters: proc name() -> string {")
+        } else if (line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\(\)[ \t]*->[ \t]*[^ \t{]+/) {
+            diag("E_BOOTSTRAP_PROC_SIGNATURE", "bootstrap string proc must return string: proc name() -> string {")
+        } else {
+            diag("E_BOOTSTRAP_PROC_SIGNATURE", "expected proc name() -> string { or proc main(args: list[string]) -> int {")
+        }
+    }
+    BEGIN {
+        file = ARGV[1]
+        in_proc = 0
+        brace_depth = 0
+        errors = 0
+        saw_export = 0
+    }
+    {
+        line_no = FNR
+        raw = $0
+        line = trim(raw)
+        if (line == "" || line ~ /^\/\//) next
+        if (line ~ /^space[ \t]+[A-Za-z0-9_\/]+$/) next
+        if (line == "export *") { saw_export = 1; next }
+        if (!in_proc && line ~ /^const[ \t]+[A-Z_][A-Z0-9_]*[ \t]*:[ \t]*string[ \t]*=[ \t]*"[^"]*"$/) {
+            const_name = line
+            sub(/^const[ \t]+/, "", const_name)
+            sub(/[ \t]*:[ \t]*string[ \t]*=.*$/, "", const_name)
+            const_val = line
+            sub(/^.*=[ \t]*"/, "", const_val)
+            sub(/"$/, "", const_val)
+            consts[const_name] = const_val
+            const_kinds[const_name] = "string"
+            const_order[++const_count] = const_name
+            next
+        }
+        if (!in_proc && line ~ /^const[ \t]+[A-Z_][A-Z0-9_]*[ \t]*:[ \t]*int[ \t]*=[ \t]*-?[0-9]+$/) {
+            const_name = line
+            sub(/^const[ \t]+/, "", const_name)
+            sub(/[ \t]*:[ \t]*int[ \t]*=.*$/, "", const_name)
+            const_val = line
+            sub(/^.*=[ \t]*/, "", const_val)
+            consts[const_name] = const_val
+            const_kinds[const_name] = "int"
+            const_order[++const_count] = const_name
+            next
+        }
+        if (!in_proc && line ~ /^const[ \t]+/) {
+            col = col_token("const")
+            diag("E_BOOTSTRAP_CONST_SIGNATURE", "expected const NAME: string = \"...\" or const NAME: int = 123")
+            next
+        }
+
+        if (!in_proc && line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\(\)[ \t]*->[ \t]*string[ \t]*[{]$/) {
+            in_proc = 1
+            proc_name = line
+            sub(/^proc[ \t]+/, "", proc_name)
+            sub(/\(\)[ \t]*->[ \t]*string[ \t]*[{]$/, "", proc_name)
+            proc_value = ""
+            proc_value_kind = ""
+            proc_return_type = "string"
+            proc_start_line = line_no
+            proc_start_col = col_token("proc")
+            proc_give_count = 0
+            brace_depth = 1
+            next
+        }
+        if (!in_proc && line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\(\)[ \t]*->[ \t]*int[ \t]*[{]$/) {
+            in_proc = 1
+            proc_name = line
+            sub(/^proc[ \t]+/, "", proc_name)
+            sub(/\(\)[ \t]*->[ \t]*int[ \t]*[{]$/, "", proc_name)
+            if (proc_name == "main") {
+                col = col_token("proc")
+                proc_signature_diag(line)
+                in_proc = 0
+                next
+            }
+            proc_value = ""
+            proc_value_kind = ""
+            proc_return_type = "int"
+            proc_start_line = line_no
+            proc_start_col = col_token("proc")
+            proc_give_count = 0
+            brace_depth = 1
+            next
+        }
+        if (!in_proc && line ~ /^proc[ \t]+main\([A-Za-z_][A-Za-z0-9_]*:[ \t]*list\[string\]\)[ \t]*->[ \t]*int[ \t]*[{]$/) {
+            in_proc = 1
+            proc_name = "main"
+            proc_value = ""
+            proc_value_kind = ""
+            proc_return_type = "int"
+            proc_start_line = line_no
+            proc_start_col = col_token("proc")
+            proc_give_count = 0
+            brace_depth = 1
+            next
+        }
+        if (!in_proc && line ~ /^proc[ \t]+/) {
+            col = col_token("proc")
+            proc_signature_diag(line)
+            next
+        }
+        if (in_proc && line ~ /^give[ \t]+"[^"]*"$/) {
+            proc_give_col = col_token("give")
+            proc_value = line
+            sub(/^give[ \t]+"/, "", proc_value)
+            sub(/"$/, "", proc_value)
+            proc_value_kind = "string"
+            proc_give_count++
+            next
+        }
+        if (in_proc && line ~ /^give[ \t]+[A-Z_][A-Z0-9_]*$/) {
+            proc_give_col = col_token("give")
+            proc_value = line
+            sub(/^give[ \t]+/, "", proc_value)
+            proc_value_kind = "ident"
+            proc_give_count++
+            next
+        }
+        if (in_proc && line ~ /^give[ \t]+-?[0-9]+$/) {
+            proc_give_col = col_token("give")
+            proc_value = line
+            sub(/^give[ \t]+/, "", proc_value)
+            proc_value_kind = "int"
+            proc_give_count++
+            next
+        }
+        if (in_proc && line == "}") {
+            if (proc_give_count != 1) {
+                col = col_nonspace()
+                diag("E_BOOTSTRAP_PROC_BODY", "expected exactly one supported give")
+            } else if (proc_name == "main") {
+                if (proc_value_kind == "ident") proc_value_kind = "int_ident"
+                if (proc_value_kind != "int" && proc_value_kind != "int_ident") {
+                    col = proc_give_col
+                    diag("E_BOOTSTRAP_MAIN_BODY", "expected main to give int")
+                } else {
+                    col = proc_give_col
+                    resolved = resolve_int(proc_value, proc_value_kind)
+                    if (resolved != "") {
+                        main_return = resolved
+                        saw_main = 1
+                    }
+                }
+            } else {
+                if (proc_return_type == "int") {
+                    if (proc_value_kind == "ident") proc_value_kind = "int_ident"
+                    if (proc_value_kind != "int" && proc_value_kind != "int_ident") {
+                        col = proc_give_col
+                        diag("E_BOOTSTRAP_PROC_BODY", "expected int literal or int constant give")
+                    } else {
+                        col = proc_give_col
+                        resolved = resolve_int(proc_value, proc_value_kind)
+                        if (resolved != "") {
+                            int_procs[proc_name] = resolved
+                            int_proc_order[++int_proc_count] = proc_name
+                        }
+                    }
+                } else if (proc_value_kind == "int") {
+                    col = proc_give_col
+                    diag("E_BOOTSTRAP_PROC_BODY", "expected string literal or string constant give")
+                } else {
+                    if (proc_value_kind != "string" && proc_value_kind != "ident") {
+                        col = proc_give_col
+                        diag("E_BOOTSTRAP_PROC_BODY", "expected string literal or string constant give")
+                    } else {
+                        col = proc_give_col
+                        emit_proc(proc_name, proc_value, proc_value_kind)
+                    }
+                }
+            }
+            in_proc = 0
+            brace_depth = 0
+            next
+        }
+        col = col_nonspace()
+        if (in_proc) diag("E_BOOTSTRAP_PROC_BODY", "unsupported statement in bootstrap proc")
+        else diag("E_BOOTSTRAP_TOP_LEVEL", "unsupported top-level item")
+    }
+    END {
+        if (in_proc) {
+            line_no = proc_start_line
+            col = proc_start_col
+            diag("E_BOOTSTRAP_UNCLOSED_PROC", "missing closing brace")
+        }
+        if (!saw_export) {
+            line_no = 1
+            col = 1
+            diag("E_BOOTSTRAP_EXPORT", "expected export *")
+        }
+        if (version_text == "") {
+            line_no = 1
+            col = 1
+            diag("E_BOOTSTRAP_VERSION", "missing version_text()")
+        }
+        if (banner_text == "") {
+            line_no = 1
+            col = 1
+            diag("E_BOOTSTRAP_BANNER", "missing banner_text()")
+        }
+        if (!saw_main) main_return = 0
+        if (errors) exit 1
+        printf "native_ir_v1\n"
+        for (i = 1; i <= const_count; i++) {
+            name = const_order[i]
+            printf "const.%s.%s=%s\n", const_kinds[name], name, consts[name]
+        }
+        for (i = 1; i <= int_proc_count; i++) {
+            name = int_proc_order[i]
+            printf "proc.int.%s=%s\n", name, int_procs[name]
+        }
+        printf "version_text=%s\n", version_text
+        printf "banner_text=%s\n", banner_text
+        printf "main.return=%s\n", main_return
+    }' "$src"
+}
+
+render_native_shell_from_ir() {
+    ir="$1"
+    out_version="$(printf '%s\n' "$ir" | awk -F= '/^version_text=/{sub(/^version_text=/, ""); print}')"
+    out_banner="$(printf '%s\n' "$ir" | awk -F= '/^banner_text=/{sub(/^banner_text=/, ""); print}')"
+    out_main_return="$(printf '%s\n' "$ir" | awk -F= '/^main.return=/{sub(/^main.return=/, ""); print}')"
+    out_tool_name="$(printf '%s\n' "$out_version" | awk '{print $1}')"
+    [ -n "$out_main_return" ] || out_main_return=0
+    [ -n "$out_tool_name" ] || out_tool_name=vittec
+    printf '#!/usr/bin/env sh\n'
+    printf 'set -eu\n'
+    printf 'version=%s\n' "$(printf '%s\n' "$out_version" | sq)"
+    printf 'banner=%s\n' "$(printf '%s\n' "$out_banner" | sq)"
+    printf 'main_return=%s\n' "$(printf '%s\n' "$out_main_return" | sq)"
+    printf 'error_prefix=%s\n' "$(printf '[%s][error]' "$out_tool_name" | sq)"
+    sed -n '8,$p' "$0"
+}
+
+render_native_shell() {
+    src="$1"
+    ir="$(compile_native_ir "$src")"
+    render_native_shell_from_ir "$ir"
+}
+
+write_compiler() {
+    src="$1"
+    out="$2"
+    mkdir -p "$(dirname "$out")"
+    render_native_shell "$src" > "$out"
+    chmod +x "$out"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+    "")
+        printf '%s\n' "$banner"
+        exit "$main_return"
+        ;;
+    --version)
+        printf '%s\n' "$version"
+        ;;
+    --help|-h|help)
+        printf '%s\n' "$banner"
+        printf 'version: %s\n' "$version"
+        printf 'commands: parse check build-native dump-native-ir build --version --help\n'
+        ;;
+    parse)
+        src="$(arg_value --src "$@" || true)"
+        if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        [ -n "$src" ] || { echo "$error_prefix parse requires --src or file" >&2; exit 2; }
+        [ -f "$src" ] || { echo "$error_prefix cannot read $src" >&2; exit 1; }
+        compile_native_ir "$src" >/dev/null
+        echo "parse ok: $src"
+        ;;
+    check)
+        src="$(first_file_arg "$@" || true)"
+        [ -n "$src" ] || { echo "$error_prefix missing input file" >&2; exit 2; }
+        [ -f "$src" ] || { echo "$error_prefix cannot read $src" >&2; exit 1; }
+        if grep -q '^space[ 	]vitte/bootstrap/' "$src"; then
+            compile_native_ir "$src" >/dev/null
+        fi
+        ;;
+    build-native)
+        src="$(arg_value --src "$@" || true)"
+        out="$(arg_value --out "$@" || true)"
+        [ -n "$src" ] && [ -n "$out" ] || { echo "$error_prefix build-native requires --src and --out" >&2; exit 2; }
+        [ -f "$src" ] || { echo "$error_prefix cannot read $src" >&2; exit 1; }
+        write_compiler "$src" "$out"
+        ;;
+    dump-native-shell)
+        src="$(arg_value --src "$@" || true)"
+        [ -n "$src" ] || { echo "$error_prefix dump-native-shell requires --src" >&2; exit 2; }
+        [ -f "$src" ] || { echo "$error_prefix cannot read $src" >&2; exit 1; }
+        render_native_shell "$src"
+        ;;
+    dump-native-ir)
+        src="$(arg_value --src "$@" || true)"
+        [ -n "$src" ] || { echo "$error_prefix dump-native-ir requires --src" >&2; exit 2; }
+        [ -f "$src" ] || { echo "$error_prefix cannot read $src" >&2; exit 1; }
+        compile_native_ir "$src"
+        ;;
+    build)
+        stage="$(arg_value --stage "$@" || true)"
+        src_dir="$(arg_value --src "$@" || true)"
+        out_dir="$(arg_value --out "$@" || true)"
+        [ "$stage" = "stage1" ] || { echo "$error_prefix unsupported stage: $stage" >&2; exit 2; }
+        [ -n "$src_dir" ] && [ -n "$out_dir" ] || { echo "$error_prefix build requires --stage, --src and --out" >&2; exit 2; }
+        [ -f "$src_dir/main.vit" ] || { echo "$error_prefix cannot read $src_dir/main.vit" >&2; exit 1; }
+        write_compiler "$src_dir/main.vit" "$out_dir/vittec1"
+        ;;
+    *)
+        echo "$error_prefix unknown command: $cmd" >&2
+        exit 2
+        ;;
+esac

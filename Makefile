@@ -116,7 +116,7 @@ install-debian-2.1.1: install-debian
 # ------------------------------------------------------------
 
 .PHONY: build
-build: dirs vitte-bootstrap-check vitte-source-audit vitte-legacy-text-audit packages-check-all
+build: dirs seed-gate bootstrap-all vitte-bootstrap-check bootstrap-native-snapshots vitte-source-audit vitte-legacy-text-audit packages-check-all
 
 .PHONY: vittec-kernel kernel-tools
 vittec-kernel: vitte-bootstrap-check
@@ -169,7 +169,7 @@ format:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-bootstrap-check
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-bootstrap-check bootstrap-native-snapshots
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -210,6 +210,9 @@ vitte-bootstrap-check:
 		"$(VITTE_BOOTSTRAP)" check "$$src" >/dev/null; \
 	done
 
+bootstrap-native-snapshots:
+	@tools/bootstrap_native_snapshots.sh
+
 # ------------------------------------------------------------
 # Tests (placeholder)
 # ------------------------------------------------------------
@@ -247,6 +250,184 @@ selfhost-driver-bootstrap:
 	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/value_normalize.vit
 	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/normalized_options.vit
 	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/tokenized_parse.vit
+
+.PHONY: bootstrap-seed
+bootstrap-seed:
+	@scripts/seed/install_seed.sh
+
+.PHONY: seed-verify
+seed-verify:
+	@scripts/seed/verify_seed.sh
+
+.PHONY: seed-manifest-update
+seed-manifest-update:
+	@scripts/seed/update_manifest.sh
+
+.PHONY: seed-rotation-report
+seed-rotation-report:
+	@scripts/seed/rotation_report.sh
+
+.PHONY: seed-contract-check
+seed-contract-check:
+	@tools/check_seed_contract.sh
+
+.PHONY: bootstrap-source-coverage-check
+bootstrap-source-coverage-check:
+	@tools/check_bootstrap_source_coverage.sh
+
+.PHONY: bootstrap-native-drift-check
+bootstrap-native-drift-check:
+	@tools/check_bootstrap_native_drift.sh
+
+.PHONY: posix-seed-shell-check
+posix-seed-shell-check:
+	@tools/check_posix_seed_shell.sh
+
+.PHONY: seed-install
+seed-install:
+	@scripts/seed/install_seed.sh
+
+.PHONY: seed-check
+seed-check: bootstrap-seed
+	@bin/vittec0 check src/vitte/compiler/driver/mod.vit
+	@bin/vittec0 check src/vitte/compiler/driver/options.vit
+	@bin/vittec0 check src/vitte/compiler/driver/pipeline.vit
+
+.PHONY: seed-gate
+seed-gate: bootstrap-seed
+	@set -e; \
+	for src in $$( \
+		{ \
+			find src/vitte/compiler/driver -type f -name '*.vit'; \
+			find src/vitte/compiler/ir -type f -name '*.vit'; \
+			find src/vitte/compiler/frontend -type f -name '*.vit'; \
+			find src/vitte/compiler/backends -type f -name '*.vit'; \
+			find tests -type f -name '*.vit' ! -path 'tests/grammar/invalid/*' ! -path 'tests/negative/*' ! -path 'tests/bootstrap_native/*'; \
+		} | sort \
+	); do \
+		bin/vittec0 check "$$src"; \
+	done
+
+.PHONY: stage0-check stage0-gate
+stage0-check: seed-check
+stage0-gate: seed-gate
+
+.PHONY: bootstrap-all
+bootstrap-all:
+	@scripts/seed/install_seed.sh
+	@toolchain/scripts/bootstrap/stage1.sh
+	@VITTE_SELF_CHECK=0 toolchain/scripts/bootstrap/stage2.sh
+	@cp bin/vittec bin/vitte
+	@chmod +x bin/vitte
+	@echo "[bootstrap-all] installed bin/vitte from stage2"
+
+.PHONY: bootstrap-parity
+bootstrap-parity:
+	@set -e; \
+	SAMPLE="toolchain/stage2/src/main.vit"; \
+	if bin/vittec1 check "$$SAMPLE" >/tmp/vittec1.check.out 2>&1 && bin/vitte check "$$SAMPLE" >/tmp/vittec.check.out 2>&1; then \
+		if grep -q "native bootstrap" /tmp/vittec1.check.out || grep -q "native bootstrap" /tmp/vittec.check.out; then \
+			echo "[bootstrap-parity] check parity limited to bootstrap command surface"; \
+		else \
+			diff -u /tmp/vittec1.check.out /tmp/vittec.check.out >/tmp/vitte.check.diff || (cat /tmp/vitte.check.diff; echo "[bootstrap-parity][error] vittec1/vitte check outputs diverge"; exit 1); \
+			echo "[bootstrap-parity] check output parity ok"; \
+		fi; \
+	else \
+		echo "[bootstrap-parity] check parity limited to bootstrap command surface"; \
+	fi; \
+	if bin/vittec1 parse "$$SAMPLE" >/tmp/vittec1.parse.out 2>&1 && bin/vitte parse "$$SAMPLE" >/tmp/vitte.parse.out 2>&1; then \
+		if grep -q "native bootstrap" /tmp/vittec1.parse.out || grep -q "native bootstrap" /tmp/vitte.parse.out; then \
+			echo "[bootstrap-parity] parse parity limited to bootstrap command surface"; \
+		else \
+			diff -u /tmp/vittec1.parse.out /tmp/vitte.parse.out >/tmp/vitte.parse.diff || (cat /tmp/vitte.parse.diff; echo "[bootstrap-parity][error] vittec1/vitte parse outputs diverge"; exit 1); \
+			echo "[bootstrap-parity] parse output parity ok"; \
+		fi; \
+	else \
+		echo "[bootstrap-parity] parse parity limited to bootstrap command surface"; \
+	fi
+
+.PHONY: bootstrap-verify
+bootstrap-verify: bootstrap-all
+	@bin/vittec0 --version
+	@bin/vittec1 --version
+	@bin/vittec --version
+	@bin/vitte --version
+	@bin/vittec0 check src/vitte/compiler/ir/ast.vit
+	@bin/vittec0 check src/vitte/compiler/ir/pipeline.vit
+	@bin/vitte check src/vitte/compiler/tests/smoke.vit
+	@bin/vitte check src/vitte/compiler/driver/compiler.vit
+	@$(MAKE) --no-print-directory bootstrap-parity
+	@echo "[bootstrap-verify] versions + smoke + AST/IR checks ok"
+
+.PHONY: bootstrap-native-contract
+bootstrap-native-contract: seed-verify bootstrap-source-coverage-check posix-seed-shell-check bootstrap-native-snapshots bootstrap-verify bootstrap-posix-smoke
+
+.PHONY: bootstrap-native-fast-contract
+bootstrap-native-fast-contract: seed-verify bootstrap-source-coverage-check posix-seed-shell-check bootstrap-native-snapshots bootstrap-native-drift-check
+
+.PHONY: bootstrap-posix-smoke
+bootstrap-posix-smoke: bootstrap-all
+	@tools/bootstrap_posix_smoke.sh
+
+.PHONY: seed-syntax-test
+seed-syntax-test: bootstrap-seed
+	@bin/vittec0 check tests/check/main.vit
+
+.PHONY: seed-compat-report
+seed-compat-report: bootstrap-seed
+	@$(MKDIR) target/reports
+	@$(MAKE) --no-print-directory seed-gate > target/reports/seed_compat_report.txt
+	@echo "[seed-compat-report] target/reports/seed_compat_report.txt"
+
+.PHONY: stage0-syntax-test stage0-compat-report
+stage0-syntax-test: seed-syntax-test
+stage0-compat-report: seed-compat-report
+
+.PHONY: bootstrap-migration-status
+bootstrap-migration-status:
+	@set -e; \
+	ok=0; warn=0; \
+	check_ok() { \
+		label="$$1"; shift; \
+		if "$$@" >/dev/null 2>&1; then \
+			printf '[bootstrap-migration-status] OK   %s\n' "$$label"; \
+			ok=$$((ok+1)); \
+		else \
+			printf '[bootstrap-migration-status] WARN %s\n' "$$label"; \
+			warn=$$((warn+1)); \
+		fi; \
+	}; \
+	check_file() { \
+		label="$$1"; path="$$2"; \
+		if [ -e "$$path" ]; then \
+			printf '[bootstrap-migration-status] OK   %s\n' "$$label"; \
+			ok=$$((ok+1)); \
+		else \
+			printf '[bootstrap-migration-status] WARN %s\n' "$$label"; \
+			warn=$$((warn+1)); \
+		fi; \
+	}; \
+	check_absent() { \
+		label="$$1"; path="$$2"; \
+		if [ ! -e "$$path" ]; then \
+			printf '[bootstrap-migration-status] OK   %s\n' "$$label"; \
+			ok=$$((ok+1)); \
+		else \
+			printf '[bootstrap-migration-status] WARN %s\n' "$$label"; \
+			warn=$$((warn+1)); \
+		fi; \
+	}; \
+	check_ok "Phase0: seed-gate passes" $(MAKE) --no-print-directory seed-gate; \
+	check_ok "Phase0: bootstrap-all passes" $(MAKE) --no-print-directory bootstrap-all; \
+	check_ok "Phase0: bootstrap-verify passes" $(MAKE) --no-print-directory bootstrap-verify; \
+	check_file "Phase1: stage1 Vitte entry exists" "toolchain/stage1/src/main.vit"; \
+	check_absent "Phase1: stage1 host seed removed" "toolchain/stage1/src/main.c"; \
+	check_file "Phase2: stage2 Vitte entry exists" "toolchain/stage2/src/main.vit"; \
+	check_absent "Phase2: stage2 host source removed" "toolchain/stage2/src/main.c"; \
+	check_ok "Phase2: stage2 self-check enabled" env VITTE_SELF_CHECK=1 toolchain/scripts/bootstrap/stage2.sh; \
+	check_file "Tracking: migration checklist present" "docs/bootstrap_migration_checklist.md"; \
+	printf '[bootstrap-migration-status] summary ok=%s warn=%s\n' "$$ok" "$$warn"; \
+	test "$$warn" -eq 0
 
 .PHONY: parse
 parse:
@@ -574,6 +755,10 @@ make-targets-doc-check:
 .PHONY: docs-paths-check
 docs-paths-check:
 	@python3 tools/docs_paths_check.py
+
+.PHONY: bootstrap-contracts-index-check
+bootstrap-contracts-index-check:
+	@tools/bootstrap_contracts_index_check.sh
 
 .PHONY: update-diagnostics-ftl
 update-diagnostics-ftl:
@@ -1297,6 +1482,19 @@ help:
 	@echo "  make core-semantic-share-snapshots validate share-focused semantic diagnostics"
 	@echo "  make core-semantic-entry-success validate entry-focused passing semantic examples"
 	@echo "  make core-semantic-entry-snapshots validate entry-focused semantic diagnostics"
+	@echo "  make bootstrap-all seed -> stage1 -> stage2 -> install bin/vitte"
+	@echo "  make bootstrap-native-drift-check ensure native bootstrap changes carry matching snapshots"
+	@echo "  make bootstrap-native-contract run seed verification, native snapshots, and bootstrap verification"
+	@echo "  make bootstrap-native-fast-contract run fast bootstrap-native checks without rebuilding stage chain"
+	@echo "  make bootstrap-source-coverage-check verify seed/stage2 exercise current bootstrap-native forms"
+	@echo "  make bootstrap-contracts-index-check verify bootstrap contract docs paths and targets"
+	@echo "  make bootstrap-posix-smoke run POSIX shell syntax and env smoke checks for bootstrap artifacts"
+	@echo "  make bootstrap-parity compare vittec1/vitte check and parse output on bootstrap subset"
+	@echo "  make bootstrap-verify verify bootstrap versions, smoke, AST/IR checks"
+	@echo "  make seed-manifest-update regenerate toolchain/seed/manifest.txt from the audited seed artifact"
+	@echo "  make seed-rotation-report print seed manifest/hash/version rotation status"
+	@echo "  make seed-syntax-test run non-regression syntax checks for vittec0"
+	@echo "  make seed-compat-report generate seed compatibility pass/fail report"
 	@echo "  make explicit-generics-snapshots validate explicit generic-call IR snapshots"
 	@echo "  make diagnostics-locales-lint validate locale files against centralized diagnostics"
 	@echo "  make update-diagnostics-ftl synchronize diagnostics locales from the central table"

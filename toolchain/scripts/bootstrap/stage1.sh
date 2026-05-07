@@ -27,10 +27,10 @@ ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 BIN_DIR="$ROOT_DIR/bin"
 
 STAGE0_BIN="$BIN_DIR/vittec0"
+STAGE1_BIN="$BIN_DIR/vittec1"
 
 STAGE1_DIR="$ROOT_DIR/toolchain/stage1"
-BUILD_DIR="$STAGE1_DIR/build"
-OUT_DIR="$STAGE1_DIR/out"
+OUT_DIR="$ROOT_DIR/target/bootstrap/stage1"
 
 # ------------------------------------------------------------
 # Environment
@@ -49,45 +49,30 @@ log "stage1    = $STAGE1_DIR"
 [ -d "$STAGE1_DIR/src" ] || die "stage1 sources missing"
 
 # ------------------------------------------------------------
-# Prepare directories
+# Stage0 compatibility gate
 # ------------------------------------------------------------
 
-log "preparing directories"
+log "running stage0 compatibility checks"
 
-mkdir -p "$BUILD_DIR"
+check_files="$(
+    {
+        find "$ROOT_DIR/src/vitte/compiler/driver" -type f -name '*.vit'
+        find "$ROOT_DIR/src/vitte/compiler/ir" -type f -name '*.vit'
+        find "$ROOT_DIR/src/vitte/compiler/frontend" -type f -name '*.vit'
+    } | sort
+)"
+[ -n "$check_files" ] || die "no compiler .vit files found for stage0 compatibility gate"
+
+for src in $check_files; do
+    "$STAGE0_BIN" check "$src" || die "stage0 compatibility failed: $src"
+done
+
+log "building vittec1 from Vitte source via vittec0"
 mkdir -p "$OUT_DIR"
-mkdir -p "$BIN_DIR"
-
-# ------------------------------------------------------------
-# Build stage1 compiler
-# ------------------------------------------------------------
-
-if [ -f "$STAGE1_DIR/CMakeLists.txt" ]; then
-    log "building vittec1 via CMake"
-    cmake -S "$STAGE1_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
-    cmake --build "$BUILD_DIR" --parallel
-
-    VITTEC1_BIN="$BUILD_DIR/vittec1"
-    [ -x "$VITTEC1_BIN" ] || die "vittec1 not produced"
-    log "installing vittec1 → $BIN_DIR"
-    cp "$VITTEC1_BIN" "$BIN_DIR/vittec1"
-    chmod +x "$BIN_DIR/vittec1"
-else
-    log "building vittec1 using vittec0"
-    "$STAGE0_BIN" \
-        build \
-        --stage stage1 \
-        --src "$STAGE1_DIR/src" \
-        --out "$OUT_DIR" \
-        --opt 0 \
-        --debug
-
-    VITTEC1_BIN="$OUT_DIR/vittec1"
-    [ -x "$VITTEC1_BIN" ] || die "vittec1 not produced"
-    log "installing vittec1 → $BIN_DIR"
-    cp "$VITTEC1_BIN" "$BIN_DIR/vittec1"
-    chmod +x "$BIN_DIR/vittec1"
-fi
+"$STAGE0_BIN" build-native --src "$STAGE1_DIR/src/main.vit" --out "$OUT_DIR/vittec1" || die "stage1 build-native failed"
+[ -x "$OUT_DIR/vittec1" ] || die "vittec1 not produced"
+cp "$OUT_DIR/vittec1" "$STAGE1_BIN"
+chmod +x "$STAGE1_BIN"
 
 # ------------------------------------------------------------
 # Smoke test

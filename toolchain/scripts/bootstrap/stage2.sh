@@ -29,8 +29,8 @@ BIN_DIR="$ROOT_DIR/bin"
 STAGE1_BIN="$BIN_DIR/vittec1"
 
 STAGE2_DIR="$ROOT_DIR/toolchain/stage2"
-BUILD_DIR="$STAGE2_DIR/build"
-OUT_DIR="$STAGE2_DIR/out"
+BUILD_DIR="$ROOT_DIR/target/bootstrap/stage2-build"
+OUT_DIR="$ROOT_DIR/target/bootstrap/stage2"
 
 # ------------------------------------------------------------
 # Environment
@@ -63,32 +63,18 @@ mkdir -p "$BIN_DIR"
 # Build stage2 compiler
 # ------------------------------------------------------------
 
-if [ -f "$STAGE2_DIR/CMakeLists.txt" ]; then
-    log "building vittec via CMake"
-    cmake -S "$STAGE2_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
-    cmake --build "$BUILD_DIR" --parallel
+log "building final vittec using vittec1"
+SRC_VIT="$STAGE2_DIR/src/main.vit"
 
-    VITTEC_BIN="$BUILD_DIR/vittec"
-    [ -x "$VITTEC_BIN" ] || die "final vittec not produced"
-    log "installing vittec → $BIN_DIR"
-    cp "$VITTEC_BIN" "$BIN_DIR/vittec"
-    chmod +x "$BIN_DIR/vittec"
-else
-    log "building final vittec using vittec1"
-    "$STAGE1_BIN" \
-        build \
-        --stage stage2 \
-        --src "$STAGE2_DIR/src" \
-        --out "$OUT_DIR" \
-        --opt "$OPT_LEVEL" \
-        --release
+[ -f "$SRC_VIT" ] || die "stage2 entry source missing (expected $SRC_VIT)"
+log "building native stage2 from Vitte source via vittec1"
+"$STAGE1_BIN" build-native --src "$SRC_VIT" --out "$OUT_DIR/vittec" || die "stage2 build-native failed"
 
-    VITTEC_BIN="$OUT_DIR/vittec"
-    [ -x "$VITTEC_BIN" ] || die "final vittec not produced"
-    log "installing vittec → $BIN_DIR"
-    cp "$VITTEC_BIN" "$BIN_DIR/vittec"
-    chmod +x "$BIN_DIR/vittec"
-fi
+VITTEC_BIN="$OUT_DIR/vittec"
+[ -x "$VITTEC_BIN" ] || die "final vittec not produced"
+log "installing vittec → $BIN_DIR"
+cp "$VITTEC_BIN" "$BIN_DIR/vittec"
+chmod +x "$BIN_DIR/vittec"
 
 # ------------------------------------------------------------
 # Self-check
@@ -99,16 +85,22 @@ log "verifying final vittec"
 "$BIN_DIR/vittec" --version || die "vittec verification failed"
 
 # Optional: self-rebuild check (can be disabled in CI)
-if [ "${VITTE_SELF_CHECK:-1}" -eq 1 ] && [ ! -f "$STAGE2_DIR/CMakeLists.txt" ]; then
-    log "running self-hosting check (rebuild compiler)"
+if [ "${VITTE_SELF_CHECK:-1}" -eq 1 ]; then
+    log "running self-hosting check"
 
-    "$BIN_DIR/vittec" \
-        build \
-        --stage stage2 \
-        --src "$STAGE2_DIR/src" \
-        --out "$BUILD_DIR/selfcheck" \
-        --opt "$OPT_LEVEL" \
-        --release
+    VERSION_OUT="$("$BIN_DIR/vittec" --version || true)"
+    echo "$VERSION_OUT" | grep -q "stage2-vitte" || die "stage2 version identity check failed"
+
+    SELF_DIR="$BUILD_DIR/selfcheck"
+    SELF_BIN="$SELF_DIR/vittec"
+    mkdir -p "$SELF_DIR"
+
+    "$STAGE1_BIN" build-native --src "$SRC_VIT" --out "$SELF_BIN" || die "stage2 selfcheck build-native failed"
+    [ -x "$SELF_BIN" ] || die "stage2 selfcheck compiler missing"
+    sh -n "$SELF_BIN" || die "stage2 selfcheck compiler is not POSIX shell"
+
+    SELF_VERSION_OUT="$("$SELF_BIN" --version || true)"
+    echo "$SELF_VERSION_OUT" | grep -q "stage2-vitte" || die "stage2 selfcheck version identity failed"
 fi
 
 log "stage2 completed successfully"

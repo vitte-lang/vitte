@@ -92,6 +92,87 @@ These are the most common project checks:
 - `make docs-paths-check`
 - `tools/selfhost_audit.sh`
 
+## Bootstrap local (stage0 -> stage2)
+
+Current local bootstrap flow:
+
+1. Install the trusted stage0 seed (`vittec0`).
+2. Rebuild stage1 from `toolchain/stage1/src/main.vit` (`vittec1`).
+3. Run stage2 bootstrap from stage1 (`vittec`).
+4. Install stage2 as `bin/vitte`.
+
+Useful commands:
+
+```bash
+make bootstrap-all
+make bootstrap-verify
+```
+
+Bootstrap checks and reports:
+
+```bash
+make seed-gate
+make seed-syntax-test
+make seed-compat-report
+```
+
+Generated compatibility report:
+
+- `target/reports/seed_compat_report.txt`
+
+## Recovery
+
+If local bootstrap artifacts get out of sync:
+
+```bash
+make bootstrap-seed
+toolchain/scripts/bootstrap/stage1.sh
+VITTE_SELF_CHECK=0 toolchain/scripts/bootstrap/stage2.sh
+cp bin/vittec bin/vitte
+chmod +x bin/vitte
+make build
+```
+
+If only stage0 needs refresh:
+
+```bash
+scripts/seed/install_seed.sh
+```
+
+## Troubleshooting
+
+- `vitte-bootstrap-check` fails:
+  - ensure `bin/vitte` exists and is executable,
+  - rerun `make bootstrap-all`.
+- `seed-gate` fails:
+  - inspect first failing file,
+  - run `bin/vittec0 check <file>` directly,
+  - check `target/reports/seed_compat_report.txt`.
+- bootstrap scripts fail on missing stage binaries:
+  - rerun stage chain in order (`seed`, `stage1`, `stage2`).
+- syntax regression suspected:
+  - run `make seed-syntax-test`.
+
+## Audit policy
+
+`vitte-source-audit` enforces Vitte-only sources in the workspace. There is no repo-hosted host-language source exception; stage0 recovery uses the checked seed artifact under `toolchain/seed`.
+
+## Seed Trust Chain
+
+The bootstrap seed source is `toolchain/seed/src/main.vit`. The generated seed artifact is tracked at `toolchain/seed/vittec0.seed` and pinned by `toolchain/seed/manifest.txt`.
+
+- version: `vittec0 stage0-vitte-seed 0.1.0`
+- verification: `scripts/seed/verify_seed.sh`
+- install path: `bin/vittec0`
+- contract: `docs/bootstrap_seed.md`
+- native IR: `docs/bootstrap_native_ir.md`
+- contracts index: `docs/bootstrap_contracts.md`
+- full local contract: `make bootstrap-native-contract`
+- fast local contract: `make bootstrap-native-fast-contract`
+- fixture matrix: `tools/bootstrap_native_fixture_matrix.sh`
+
+The manifest ties the readable source and generated artifact together. Rotating the seed requires updating the source, the seed artifact, its SHA-256, and the expected version together.
+
 ## Documentation
 
 Useful docs pages:
