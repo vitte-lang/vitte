@@ -297,7 +297,7 @@ def harden_mod(mod_path: Path, pkg: str, meta: dict[str, str]) -> tuple[str, boo
         text = insert_before_role(
             text,
             """proc diagnostics_doc_url(code: string) -> string {
-  give "https://docs.vitte.dev/diagnostics/" + code
+  give "https://docs.vitte-lang.org/diagnostics/" + code
 }""",
         )
 

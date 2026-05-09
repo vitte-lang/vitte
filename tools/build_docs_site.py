@@ -6,13 +6,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 DOCS=Path('docs')
-LANGS=['en','fr']
+LANGS=[]
 PAGES=sorted([p for p in DOCS.glob('*.html') if p.name!='status.html'])
 HEADER_RE=re.compile(r'<header class="site-header">[\s\S]*?</header>')
 FOOTER_RE=re.compile(r'<footer class="site-footer">[\s\S]*?</footer>')
-SCRIPT_RE=re.compile(r'<script[^>]*site-interactions\.js[^>]*></script>\n?')
+SCRIPT_RE=re.compile(r'<script[^>]*site-interactions\.js[^>]*></script>\n?', re.I)
 HEAD_RE=re.compile(r'</head>')
 BODY_END_RE=re.compile(r'</body>')
+MAIN_JS_RE=re.compile(r'<script[^>]+src="js/main\.js(?:\?v=[^"]+)?"[^>]*></script>\s*', re.I)
+ANY_MAIN_JS_RE=re.compile(r'<script[^>]+src="(?:/)?js/main\.js(?:\?v=[^"]+)?"[^>]*></script>\s*', re.I)
+BROKEN_SRI_TAIL_RE=re.compile(r'</script>\s*integrity="[^"]+"\s*crossorigin="anonymous">', re.I)
+ORPHAN_MAIN_LINE_RE=re.compile(r'^\s*<script[^>]+src="(?:/)?js/main\.js(?:\?v=[^"]+)?"[^>]*></script>\s*integrity="[^"]+"\s*crossorigin="anonymous">\s*$', re.I | re.M)
 ARTICLE_RE=re.compile(r'<article class="doc-content">([\s\S]*?)</article>')
 TITLE_RE=re.compile(r'<title>(.*?)</title>')
 TAG_RE=re.compile(r'<[^>]+>')
@@ -68,7 +72,14 @@ def header(lang='en'):
   items=''.join([f'<li><a class="nav-chip" href="{h}"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#{i}"></use></svg><span>{tr(l,lang)}</span></a></li>' for l,h,i in NAV])
   return f'<header class="site-header">\n<a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>\n<nav class="site-nav" aria-label="Primary"><ul class="nav-band">{items}</ul></nav>\n</header>'
 
-def footer(name, lang='en'): return f'<footer class="site-footer">\n<p class="site-footer-path">{name}</p>\n<p><a href="index.html">{tr("Back to home",lang)}</a></p>\n</footer>'
+def footer(name, lang='en'):
+  return (
+    f'<footer class="site-footer">\n'
+    f'<p class="site-footer-path">{name}</p>\n'
+    f'<p><a href="index.html">{tr("Back to home",lang)}</a> · '
+    f'<a href="status-public.html">{tr("Public status",lang)}</a></p>\n'
+    f'</footer>'
+  )
 
 hash_css=sha(DOCS/'css/site.css') if (DOCS/'css/site.css').exists() else 'dev'
 hash_js=sha(DOCS/'js/main.js') if (DOCS/'js/main.js').exists() else 'dev'
@@ -79,8 +90,12 @@ for idx,p in enumerate(PAGES):
   s=HEADER_RE.sub(header('en'),s)
   s=FOOTER_RE.sub(footer(p.name,'en'),s)
   s=SCRIPT_RE.sub('',s)
+  s=BROKEN_SRI_TAIL_RE.sub('</script>', s)
+  s=ORPHAN_MAIN_LINE_RE.sub('', s)
+  s=MAIN_JS_RE.sub('',s)
+  s=ANY_MAIN_JS_RE.sub('',s)
   title=(TITLE_RE.search(s).group(1) if TITLE_RE.search(s) else p.stem)
-  canonical=f'https://vitte.dev/{p.name}'
+  canonical=f'https://vitte-lang.org/{p.name}'
   meta=(f'<link rel="canonical" href="{canonical}">\n<meta property="og:title" content="{title}">\n<meta property="og:type" content="website">\n<meta property="og:url" content="{canonical}">\n<meta name="twitter:card" content="summary">\n')
   if 'rel="canonical"' not in s: s=HEAD_RE.sub(meta+'</head>',s,1)
   s=BODY_END_RE.sub(f'<script type="module" src="js/main.js?v={hash_js}"></script>\n</body>',s,1)
@@ -90,10 +105,17 @@ for idx,p in enumerate(PAGES):
   if 'doc-pagination' not in s: s=s.replace('</article>', pag+'</article>')
   p.write_text(s,encoding='utf-8')
   b=ARTICLE_RE.search(s)
-  if b: search.append({'title':title,'path':p.name,'content':text(b.group(1))[:5000]})
+  if b:
+    search.append({
+      'title':title,
+      'path':p.name,
+      'content':text(b.group(1))[:5000],
+      'lang':'en',
+      'section':'docs'
+    })
 
 (DOCS/'search-index.json').write_text(json.dumps({'version':'v4','pages':search},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-status={'version':'v4','build_utc':datetime.now(timezone.utc).isoformat(),'pages':len(PAGES),'css_hash':hash_css,'js_hash':hash_js,'languages':LANGS,'browser_support':['modern evergreen browsers']}
+status={'version':'v4','build_utc':datetime.now(timezone.utc).isoformat(),'pages':len(PAGES),'css_hash':hash_css,'js_hash':hash_js,'languages':[],'browser_support':['modern evergreen browsers']}
 (DOCS/'status.json').write_text(json.dumps(status,indent=2)+'\n',encoding='utf-8')
 checks=[]
 for rel in ['search-index.json','status.json','sw.js','js/main.js','css/site.css','svg/sprite.svg']:
@@ -114,11 +136,18 @@ for lang in LANGS:
     s=FOOTER_RE.sub(footer(p.name,lang),s)
     am=ARTICLE_RE.search(s)
     if am: s=s.replace(am.group(1), translate_fragment(am.group(1),lang))
-    s=re.sub(r'<link rel="canonical" href="[^"]+">', f'<link rel="canonical" href="https://vitte.dev/{lang}/{p.name}">', s)
+    s=re.sub(r'<link rel="canonical" href="[^"]+">', f'<link rel="canonical" href="https://vitte-lang.org/{lang}/{p.name}">', s)
     s=re.sub(r'<html lang="[^"]+">', f'<html lang="{lang}">', s)
     (ld/p.name).write_text(s,encoding='utf-8')
     bm=ARTICLE_RE.search(s); tt=TITLE_RE.search(s)
-    if bm and tt: lsearch.append({'title':tt.group(1).strip(),'path':p.name,'content':text(bm.group(1))[:5000]})
+    if bm and tt:
+      lsearch.append({
+        'title':tt.group(1).strip(),
+        'path':p.name,
+        'content':text(bm.group(1))[:5000],
+        'lang':lang,
+        'section':'docs'
+      })
   (ld/'search-index.json').write_text(json.dumps({'version':'v4','pages':lsearch},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
   shutil.copy2(DOCS/'status.json', ld/'status.json'); shutil.copy2(DOCS/'checksums.txt', ld/'checksums.txt')
 
