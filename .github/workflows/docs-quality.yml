@@ -9,21 +9,6 @@ jobs:
         with: { node-version: '20' }
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
-      - run: python3 tools/build_docs_site.py
-      - run: python3 tools/build_static_extras.py
-      - run: python3 tools/docs_doctor.py
-
-      - run: python3 tools/sync_ebnf_memory_pages.py
-      - run: python3 tests/docs/test_ebnf_memory_sync.py
-      - run: python3 tools/build_grammar_extras.py
-      - run: python3 tests/docs/test_grammar_sync.py
-      - run: test -f docs/search-index.json
-      - run: python3 tools/check_search_indexes.py
-      - run: python3 tools/check_docs_perf.py
-      - run: python3 tools/check_no_duplicate_scripts.py
-      - run: python3 tools/check_broken_internal_links.py
-      - run: python3 tools/check_html_page_sizes.py
-      - run: python3 tools/check_no_duplicate_css.py
-      - run: python3 tools/check_book_pedagogy.py
+      - run: bash tools/docs_pipeline.sh phase1
       - run: node -e "const fs=require('fs');const s=fs.statSync('docs/js/site-interactions.js').size;if(s>120000){process.exit(1)}"
       - run: cd tests/docs-playwright && npm ci && npx playwright install --with-deps && npm test

@@ -5,7 +5,7 @@ import hashlib, html
 src = Path('src/vitte/grammar/vitte.ebnf').read_text(encoding='utf-8')
 hashv = hashlib.sha256(src.encode('utf-8')).hexdigest()
 
-for p in [Path('docs/en/vitte-ebnf-memory.html'), Path('docs/fr/vitte-ebnf-memory.html')]:
+for p in [Path('docs/vitte-ebnf-memory.html')]:
     txt = p.read_text(encoding='utf-8')
     assert hashv in txt, f'missing checksum in {p}'
     assert html.escape(src) in txt, f'grammar body not in {p}'
