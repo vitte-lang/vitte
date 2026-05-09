@@ -15,6 +15,9 @@ python3 tools/sync_ebnf_memory_pages.py
 echo "[docs] build static extras"
 python3 tools/build_static_extras.py
 
+echo "[docs] sanitize generated html scripts"
+python3 tools/fix_broken_script_tags.py
+
 echo "[docs] validate"
 python3 tools/docs_doctor.py
 python3 tests/docs/test_ebnf_memory_sync.py

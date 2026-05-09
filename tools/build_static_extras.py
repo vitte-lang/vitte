@@ -37,6 +37,14 @@ for p in html_files:
         info=asset_map.get(path)
         if not info:
             return tag
+        # Handle script tags with closing markup: <script ...></script>
+        if re.search(r'</script>\s*$', tag, re.I):
+            return re.sub(
+                r'>\s*</script>\s*$',
+                f' integrity="sha256-{info["sha256"]}" crossorigin="anonymous"></script>',
+                tag,
+                flags=re.I
+            )
         end='>' if tag.endswith('>') else ''
         core=tag[:-1] if end else tag
         return core + f' integrity="sha256-{info["sha256"]}" crossorigin="anonymous"' + end

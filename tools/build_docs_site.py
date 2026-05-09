@@ -17,6 +17,18 @@ MAIN_JS_RE=re.compile(r'<script[^>]+src="js/main\.js(?:\?v=[^"]+)?"[^>]*></scrip
 ANY_MAIN_JS_RE=re.compile(r'<script[^>]+src="(?:/)?js/main\.js(?:\?v=[^"]+)?"[^>]*></script>\s*', re.I)
 BROKEN_SRI_TAIL_RE=re.compile(r'</script>\s*integrity="[^"]+"\s*crossorigin="anonymous">', re.I)
 ORPHAN_MAIN_LINE_RE=re.compile(r'^\s*<script[^>]+src="(?:/)?js/main\.js(?:\?v=[^"]+)?"[^>]*></script>\s*integrity="[^"]+"\s*crossorigin="anonymous">\s*$', re.I | re.M)
+MAIN_JS_BROKEN_BLOCK_RE=re.compile(
+  r'<script[^>]+src="(?:/)?js/main\.js(?:\?v=[^"]+)?"[^>]*></script>\s*integrity="[^"]+"\s*crossorigin="anonymous">\s*',
+  re.I
+)
+ANY_MAIN_JS_TAG_RE=re.compile(
+  r'<script[^>]+src="(?:/)?js/main\.js(?:\?v=[^"]+)?"[^>]*>\s*</script>\s*(?:integrity="[^"]+"\s*crossorigin="anonymous">)?\s*',
+  re.I
+)
+ANY_MAIN_JS_LINE_RE=re.compile(
+  r'^\s*<script[^\n]*src="(?:/)?js/main\.js(?:\?v=[^"]+)?"[^\n]*\n?',
+  re.I | re.M
+)
 ARTICLE_RE=re.compile(r'<article class="doc-content">([\s\S]*?)</article>')
 TITLE_RE=re.compile(r'<title>(.*?)</title>')
 TAG_RE=re.compile(r'<[^>]+>')
@@ -90,6 +102,9 @@ for idx,p in enumerate(PAGES):
   s=HEADER_RE.sub(header('en'),s)
   s=FOOTER_RE.sub(footer(p.name,'en'),s)
   s=SCRIPT_RE.sub('',s)
+  s=ANY_MAIN_JS_LINE_RE.sub('', s)
+  s=MAIN_JS_BROKEN_BLOCK_RE.sub('', s)
+  s=ANY_MAIN_JS_TAG_RE.sub('', s)
   s=BROKEN_SRI_TAIL_RE.sub('</script>', s)
   s=ORPHAN_MAIN_LINE_RE.sub('', s)
   s=MAIN_JS_RE.sub('',s)
