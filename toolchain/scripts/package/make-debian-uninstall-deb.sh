@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 VERSION="${VERSION:-2.1.2}"
 PACKAGE_NAME="${PACKAGE_NAME:-vitte-uninstall}"
-MAINTAINER="${MAINTAINER:-Vitte Team <maintainers@vitte.dev>}"
+MAINTAINER="${MAINTAINER:-Vitte Team <maintainers@vitte-lang.org>}"
 DESCRIPTION="${DESCRIPTION:-Uninstaller package for Vitte toolchain}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/pkg/out}"
 ARCH="${ARCH:-$(dpkg --print-architecture 2>/dev/null || echo amd64)}"

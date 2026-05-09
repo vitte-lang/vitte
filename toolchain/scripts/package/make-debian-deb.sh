@@ -12,7 +12,7 @@ PKG_VERSION_FILE="${PKG_VERSION_FILE:-$ROOT_DIR/toolchain/scripts/package/PACKAG
 DEFAULT_VERSION="$(tr -d ' \r\n' < "$PKG_VERSION_FILE" 2>/dev/null || echo 2.1.1)"
 VERSION="${VERSION:-$DEFAULT_VERSION}"
 PACKAGE_NAME="${PACKAGE_NAME:-vitte}"
-MAINTAINER="${MAINTAINER:-Vitte Team <maintainers@vitte.dev>}"
+MAINTAINER="${MAINTAINER:-Vitte Team <maintainers@vitte-lang.org>}"
 DESCRIPTION="${DESCRIPTION:-Vitte systems language toolchain}"
 HOMEPAGE="${HOMEPAGE:-https://vitte-lang.org/}"
 VCS_URL="${VCS_URL:-https://github.com/vitte/vitte}"
@@ -262,7 +262,7 @@ EOF
   cat > "$STAGE_ROOT/usr/share/doc/$PACKAGE_NAME/copyright" <<EOF
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: vitte
-Upstream-Contact: Vitte Team <maintainers@vitte.dev>
+Upstream-Contact: Vitte Team <maintainers@vitte-lang.org>
 Source: https://github.com/vitte/vitte
 
 Files: *
