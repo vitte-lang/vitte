@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compiler Driver Alignment</title>
+<link rel="icon" href="svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/site.css?v=34fa1e8389">
+<link rel="stylesheet" href="css/print.css" media="print">
+<link rel="canonical" href="https://vitte.dev/fr/COMPILER_DRIVER_MIGRATION.html">
+<meta property="og:title" content="Compiler Driver Alignment">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://vitte.dev/COMPILER_DRIVER_MIGRATION.html">
+<meta name="twitter:card" content="summary">
+</head>
+<body class="classic-doc">
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-home"></use></svg><span>Accueillir</span></a></li><li><a class="nav-chip" href="doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Télécharger</span></a></li><li><a class="nav-chip" href="source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Communauté</span></a></li><li><a class="nav-chip" href="news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-news"></use></svg><span>Nouvelles</span></a></li><li><a class="nav-chip" href="diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Diagnostic</span></a></li><li><a class="nav-chip" href="suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul></nav>
+</header>
+<main class="site-main">
+<article class="doc-content">
+<h1>Alignement du pilote du compilateur</h1>
+<p>Ce document suit la surface du pilote du compilateur appartenant à Vitte après la migration du pilote hôte.</p>
+<p>Pourquoi le pilote reste explicite :</p>
+<ul>
+<li>il définit la surface de commande visible par l'utilisateur</li>
+<li>il isole l'analyse des options et l'envoi des commandes des composants internes du frontend/backend</li>
+<li>cela donne à CI une petite place déterministe pour auditer la commande et signaler la parité</li>
+</ul>
+<h2>Surface actuelle</h2>
+<p>Le colis Vitte réside dans :</p>
+<ul>
+<li><code>src/vitte/packages/compiler/driver/mod.vit</code></li>
+<li><code>src/vitte/packages/compiler/driver/info.vit</code></li>
+<li><code>src/vitte/packages/compiler/driver/internal/command_catalog.vit</code></li>
+<li><code>src/vitte/packages/compiler/driver/internal/option_catalog.vit</code></li>
+<li><code>src/vitte/packages/compiler/driver/internal/normalize.vit</code></li>
+</ul>
+<p>Ce package possède désormais :</p>
+<ul>
+<li>métadonnées du catalogue de commandes</li>
+<li>inventaire des commandes de niveau supérieur</li>
+<li>inventaire des sous-commandes grammaire/mod</li>
+<li>signaler la parité des stocks par rapport aux catalogues de pilotes Vitte</li>
+<li>normalisation des alias d'aide</li>
+<li>normalisation des alias de commande et de drapeau sélectionnés</li>
+<li>mappage d'étape pour les commandes normalisées</li>
+</ul>
+<h2>Implémentation du pilote</h2>
+<p>L'implémentation du pilote du compilateur réside dans :</p>
+<ul>
+<li><code>src/vitte/compiler/driver/options.vit</code></li>
+<li><code>src/vitte/compiler/driver/compiler.vit</code></li>
+<li><code>src/vitte/compiler/driver/mod.vit</code></li>
+</ul>
+<h2>Commandes d'audit et d'amorçage</h2>
+<pre><code class="language-sh">make driver-surface-audit
+make driver-surface-parity
+make selfhost-driver-bootstrap</code></pre>
+<h2>Étape suivante</h2>
+<p>Gardez la normalisation des valeurs d'option alignée dans le package de pilotes et le pilote du compilateur :</p>
+<ul>
+<li><code>--template</code></li>
+<li><code>--lang</code></li>
+<li><code>--target</code></li>
+<li><code>--stage</code></li>
+<li><code>--stdlib-profile</code></li>
+<li><code>--syntax-profile</code></li>
+<li><code>--panic-budget</code></li>
+<li><code>--strict-recovery</code></li>
+</ul>
+<p>Cela maintient la surface de commande déterministe pendant que le reste du compilateur continue de se déplacer dans l'arborescence des sources de Vitte.</p>
+<nav class="doc-pagination"><span></span><a href="CONTRIBUTING.html">Suivant →</a></nav></article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">COMPILER_DRIVER_MIGRATION.html</p>
+<p><a href="index.html">Retour à la maison</a></p>
+</footer>
+</div>
+<script type="module" src="js/main.js?v=cba87e484d"></script>
+<script type="module" src="js/main.js?v=cba87e484d"></script>
+<script type="module" src="js/main.js?v=cba87e484d"></script>
+<script type="module" src="js/main.js?v=cba87e484d"></script>
+<script type="module" src="js/main.js?v=cba87e484d"></script>
+<script type="module" src="js/main.js?v=cba87e484d"></script>
+<script type="module" src="js/main.js?v=cba87e484d"></script>
+<script type="module" src="js/main.js?v=cba87e484d"></script>
+</body>
+</html>

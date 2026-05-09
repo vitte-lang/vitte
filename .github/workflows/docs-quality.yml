@@ -1,0 +1,18 @@
+name: docs-quality
+on: [push, pull_request]
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: python3 tools/build_docs_site.py
+
+      - run: python3 tools/sync_ebnf_memory_pages.py
+      - run: python3 tests/docs/test_ebnf_memory_sync.py
+      - run: test -f docs/search-index.json
+      - run: node -e "const fs=require('fs');const s=fs.statSync('docs/js/site-interactions.js').size;if(s>120000){process.exit(1)}"
+      - run: cd tests/docs-playwright && npm ci && npx playwright install --with-deps && npm test
