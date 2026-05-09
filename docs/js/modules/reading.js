@@ -1,8 +1,1 @@
-export function initReadingMode() {
-  const header = document.querySelector('.site-header'); if (!header) return;
-  const key='docs-reading-mode';
-  const b=document.createElement('button'); b.type='button'; b.className='reading-toggle'; b.textContent='Lecture';
-  if (localStorage.getItem(key)==='on') document.body.classList.add('reading-mode');
-  b.addEventListener('click',()=>{document.body.classList.toggle('reading-mode');localStorage.setItem(key,document.body.classList.contains('reading-mode')?'on':'off');});
-  header.appendChild(b);
-}
+export function initReadingMode(){const t=document.querySelector(".site-header");if(!t)return;const o="docs-reading-mode",e=document.createElement("button");e.type="button",e.className="reading-toggle",e.textContent="Lecture",localStorage.getItem(o)==="on"&&document.body.classList.add("reading-mode"),e.addEventListener("click",()=>{document.body.classList.toggle("reading-mode"),localStorage.setItem(o,document.body.classList.contains("reading-mode")?"on":"off")}),t.appendChild(e)}

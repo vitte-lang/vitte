@@ -1,13 +1,1 @@
-export function initAnchors() {
-  document.querySelectorAll('.doc-content h2, .doc-content h3').forEach((h, i) => {
-    if (!h.id) h.id = `section-${i + 1}`;
-    const a = document.createElement('button');
-    a.className = 'anchor-copy'; a.type = 'button'; a.textContent = '#';
-    a.setAttribute('aria-label', 'Copy section link');
-    a.addEventListener('click', async () => {
-      const url = `${location.origin}${location.pathname}#${h.id}`;
-      try { await navigator.clipboard.writeText(url); a.textContent = '✓'; setTimeout(() => a.textContent = '#', 900); } catch {}
-    });
-    h.appendChild(a);
-  });
-}
+export function initAnchors(){document.querySelectorAll(".doc-content h2, .doc-content h3").forEach((e,n)=>{e.id||(e.id=`section-${n+1}`);const t=document.createElement("button");t.className="anchor-copy",t.type="button",t.textContent="#",t.setAttribute("aria-label","Copy section link"),t.addEventListener("click",async()=>{const o=`${location.origin}${location.pathname}#${e.id}`;try{await navigator.clipboard.writeText(o),t.textContent="\u2713",setTimeout(()=>t.textContent="#",900)}catch{}}),e.appendChild(t)})}

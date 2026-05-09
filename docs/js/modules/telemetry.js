@@ -1,18 +1,1 @@
-export function initTelemetry() {
-  const key='docs-telemetry-optin';
-  if (localStorage.getItem(key)!=='yes') return;
-  const day=new Date().toISOString().slice(0,10);
-  const page=location.pathname.replace(/^.*\//,'')||'index.html';
-  const bucketKey=`docs-telemetry-${day}`;
-  const data=JSON.parse(localStorage.getItem(bucketKey)||'{}');
-  data[page]=(data[page]||0)+1;
-  localStorage.setItem(bucketKey, JSON.stringify(data));
-}
-export function initTelemetryToggle(){
-  const header=document.querySelector('.site-header'); if(!header) return;
-  const key='docs-telemetry-optin';
-  const b=document.createElement('button'); b.type='button'; b.className='telemetry-toggle';
-  const sync=()=>{b.textContent=localStorage.getItem(key)==='yes'?'Telemetry: on':'Telemetry: off';};
-  sync(); b.addEventListener('click',()=>{localStorage.setItem(key, localStorage.getItem(key)==='yes'?'no':'yes'); sync();});
-  header.appendChild(b);
-}
+export function initTelemetry(){if(localStorage.getItem("docs-telemetry-optin")!=="yes")return;const t=new Date().toISOString().slice(0,10),e=location.pathname.replace(/^.*\//,"")||"index.html",o=`docs-telemetry-${t}`,c=JSON.parse(localStorage.getItem(o)||"{}");c[e]=(c[e]||0)+1,localStorage.setItem(o,JSON.stringify(c))}export function initTelemetryToggle(){const n=document.querySelector(".site-header");if(!n)return;const t="docs-telemetry-optin",e=document.createElement("button");e.type="button",e.className="telemetry-toggle";const o=()=>{e.textContent=localStorage.getItem(t)==="yes"?"Telemetry: on":"Telemetry: off"};o(),e.addEventListener("click",()=>{localStorage.setItem(t,localStorage.getItem(t)==="yes"?"no":"yes"),o()}),n.appendChild(e)}

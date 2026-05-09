@@ -1,16 +1,1 @@
-export function initMobileMenu() {
-  const nav = document.querySelector('.site-nav');
-  const header = document.querySelector('.site-header');
-  if (!nav || !header) return;
-  if (!nav.id) nav.id = 'primary-nav';
-  const button = document.createElement('button');
-  button.type = 'button'; button.className = 'menu-toggle';
-  button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-controls', nav.id);
-  button.textContent = 'Menu';
-  header.insertBefore(button, nav);
-  button.addEventListener('click', () => {
-    const expanded = button.getAttribute('aria-expanded') === 'true';
-    button.setAttribute('aria-expanded', String(!expanded));
-    nav.classList.toggle('is-open', !expanded);
-  });
-}
+export function initMobileMenu(){const t=document.querySelector(".site-nav"),n=document.querySelector(".site-header");if(!t||!n)return;t.id||(t.id="primary-nav");const e=document.createElement("button");e.type="button",e.className="menu-toggle",e.setAttribute("aria-expanded","false"),e.setAttribute("aria-controls",t.id),e.textContent="Menu",n.insertBefore(e,t),e.addEventListener("click",()=>{const i=e.getAttribute("aria-expanded")==="true";e.setAttribute("aria-expanded",String(!i)),t.classList.toggle("is-open",!i)})}
