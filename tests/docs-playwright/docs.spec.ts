@@ -34,3 +34,12 @@ test('a11y axe scan key pages', async ({ page }) => {
     expect(results.violations).toEqual([]);
   }
 });
+
+test('offline fallback page is reachable and actionable', async ({ page, context }) => {
+  await page.goto('/offline.html');
+  await context.setOffline(true);
+  await expect(page.locator('h1')).toContainText(/offline|hors ligne/i);
+  await expect(page.locator('#retry-btn')).toBeVisible();
+  await expect(page.locator('#network-status')).toBeVisible();
+  await context.setOffline(false);
+});
