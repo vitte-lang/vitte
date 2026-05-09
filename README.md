@@ -1,222 +1,146 @@
 # Vitte
 
-Vitte is a compiler project written in Vitte.
+Vitte is a compiler project.
 
-This repository is now Vitte-only on the source side. The main compiler surface lives in `src/vitte/compiler`, and the bootstrap driver is kept small and easy to follow.
+This repository contains the compiler, its supporting toolchain, and the
+project documentation. The goal is long-term stability with clear structure.
 
-## What this repo is for
+## Overview and scope
 
-- Build and test the Vitte compiler.
-- Keep the compiler bootstrap stable.
-- Document the language, the compiler, and the repo layout.
-- Track the move away from old host-language sources.
+Vitte is developed with a practical focus: keep the compiler understandable,
+evolve in small validated steps, and maintain documentation as a first-class artifact.
 
-## Simple picture
+The repository includes:
 
-The compiler flow is:
+- compiler sources,
+- bootstrap and verification scripts,
+- static documentation site,
+- grammar artifacts and synchronization checks.
 
-1. Read Vitte source.
-2. Parse it into a simple module view.
-3. Lower it through IR.
-4. Send it to the backend.
-5. Emit output and notes.
+Main technical areas:
 
-The current code keeps that flow easy to inspect and safe to bootstrap.
+- `src/vitte/compiler`: compiler pipeline and driver surface.
+- `src/vitte/grammar`: language grammar inputs.
+- `docs/`: static site pages and generated indexes.
+- `tools/`: build, sync, and quality scripts.
+- Grammar source of truth: `src/vitte/grammar/vitte.ebnf`.
 
-## Main source areas
+## Who owns what
 
-- `src/vitte/compiler` - compiler front, IR, backend, and driver facades.
-- `src/vitte/packages/compiler/driver` - package-level compiler driver support.
-- `src/vitte/stdlib` - standard library modules in Vitte.
-- `docs` - site pages, book pages, news, and reference notes.
-- `man` - manual pages.
-- `tools` - repo checks, helpers, audits, and CI scripts.
+- Compiler: language pipeline and core behavior.
+- Docs: public pages, grammar references, and status visibility.
+- Build: generation scripts, checksums, and release checks.
 
-## Compiler entry points
+## If you only read one thing
 
-The most useful files to start with are:
+- [Guide docs](/Users/vincent/Documents/Github/vitte/docs/README.md)
+- [Architecture docs](/Users/vincent/Documents/Github/vitte/docs/docs-architecture.html)
+- [Status docs](/Users/vincent/Documents/Github/vitte/docs/status.html)
 
-- `src/vitte/compiler/mod.vit`
-- `src/vitte/compiler/driver/compiler.vit`
-- `src/vitte/compiler/driver/pipeline.vit`
-- `src/vitte/compiler/frontend/parser.vit`
-- `src/vitte/compiler/frontend/lexer.vit`
-- `src/vitte/compiler/ir/pipeline.vit`
-- `src/vitte/compiler/backends/backend.vit`
+## Architecture at a glance
 
-## What the compiler currently does
+- Lexer: reads text and splits it into tokens.
+- Parser: turns tokens into syntax structures.
+- Intermediate Representation (IR): normalizes structures for later compiler stages.
+- Backend: prepares and emits final outputs.
+- Diagnostics: reports errors and warnings with context.
 
-- It keeps a bootstrap-friendly compiler surface.
-- It parses simple top-level forms like `space`, `use`, `const`, `global`, and `proc`.
-- It lowers a small IR path from AST to HIR to MIR.
-- It has a backend facade that produces simple summaries and output notes.
-- It has smoke tests that check the main flow.
+## Principles
 
-## Quick start
+- One source of truth for grammar.
+- Generated artifacts are not hand-edited.
+- Changes are validated before publication.
+- Documentation must match repository state.
 
-Build and check the project with the repo tools:
+In practice, this means grammar changes are synchronized into docs artifacts,
+then verified by automated checks before release.
 
-```bash
-make build
-make ci-fast
-make ci-strict
-```
+## Build and validation model
 
-Run the self-host audit:
+The docs and grammar flow is deterministic:
 
-```bash
-tools/selfhost_audit.sh
-```
+1. Build docs pages.
+2. Generate grammar extras.
+3. Sync EBNF memory pages and checksums.
+4. Apply static post-processing (SEO/CSP/indexes/manifests).
 
-Run compiler checks directly on a file:
+Validation then checks:
 
-```bash
-bin/vitte check src/vitte/compiler/driver/compiler.vit
-bin/vitte check src/vitte/compiler/ir/pipeline.vit
-bin/vitte check src/vitte/compiler/backends/backend.vit
-```
+- grammar/doc sync,
+- JSON and manifest integrity,
+- critical generated files presence,
+- security policy consistency on key pages.
 
-Run the compiler smoke tests:
+## What is generated vs hand-edited
 
-```bash
-bin/vitte check src/vitte/compiler/tests/smoke.vit
-```
+| Hand-edited | Generated |
+| --- | --- |
+| `src/vitte/grammar/vitte.ebnf` | `docs/ebnf.sha256` |
+| `docs/*.html` (EN source pages) | `docs/fr/*.html` |
+| `docs/css/*`, `docs/js/*` | `docs/search-index*.json` |
+| `tools/build_*.py` | `docs/build-manifest.json`, `docs/checksums.txt` |
 
-## Validation targets
+## Release gate
 
-These are the most common project checks:
+Before publication, all of this must be green:
 
-- `make build`
-- `make ci-fast`
-- `make ci-strict`
-- `make docs-paths-check`
-- `tools/selfhost_audit.sh`
+- docs build pipeline completed,
+- grammar sync checks passed,
+- required generated files present and valid,
+- CSP and integrity checks passed on key pages.
+- quick status check visible on [docs/status.html](/Users/vincent/Documents/Github/vitte/docs/status.html).
 
-## Bootstrap local (stage0 -> stage2)
+If one check fails, there is no publication.
 
-Current local bootstrap flow:
+## Non-goals
 
-1. Install the trusted stage0 seed (`vittec0`).
-2. Rebuild stage1 from `toolchain/stage1/src/main.vit` (`vittec1`).
-3. Run stage2 bootstrap from stage1 (`vittec`).
-4. Install stage2 as `bin/vitte`.
+- No manual editing of generated artifacts.
+- No parallel internal language trees beyond EN/FR.
+- No manual translation workflow outside EN/FR.
+- No release when docs and source are out of sync.
 
-Useful commands:
+## Glossary
 
-```bash
-make bootstrap-all
-make bootstrap-verify
-```
+- Bootstrap: trusted path used to rebuild compiler stages safely.
+- EBNF: grammar format used to describe language rules.
+- Artifact: generated file produced by scripts/build.
+- Checksum: hash used to detect unintended file changes.
+- CSP: browser security policy applied to static pages.
+- Drift: mismatch between source files and generated outputs.
 
-Bootstrap checks and reports:
+## Intended audience
 
-```bash
-make seed-gate
-make seed-syntax-test
-make seed-compat-report
-```
+Vitte is for users, contributors, and maintainers responsible for release quality.
 
-Generated compatibility report:
+## Documentation language policy
 
-- `target/reports/seed_compat_report.txt`
+Documentation is maintained in English at `docs/` (root) and French at `docs/fr/`.
+Other languages are provided through browser auto-translation.
 
-## Recovery
+## Security and accessibility
 
-If local bootstrap artifacts get out of sync:
+The static documentation site follows strict security and quality rules:
 
-```bash
-make bootstrap-seed
-toolchain/scripts/bootstrap/stage1.sh
-VITTE_SELF_CHECK=0 toolchain/scripts/bootstrap/stage2.sh
-cp bin/vittec bin/vitte
-chmod +x bin/vitte
-make build
-```
+- strict content security policy,
+- no inline dynamic scripting policy in published pages,
+- regular automated checks,
+- keyboard navigation and visible focus support.
 
-If only stage0 needs refresh:
-
-```bash
-scripts/seed/install_seed.sh
-```
-
-## Troubleshooting
-
-- `vitte-bootstrap-check` fails:
-  - ensure `bin/vitte` exists and is executable,
-  - rerun `make bootstrap-all`.
-- `seed-gate` fails:
-  - inspect first failing file,
-  - run `bin/vittec0 check <file>` directly,
-  - check `target/reports/seed_compat_report.txt`.
-- bootstrap scripts fail on missing stage binaries:
-  - rerun stage chain in order (`seed`, `stage1`, `stage2`).
-- syntax regression suspected:
-  - run `make seed-syntax-test`.
-
-## Audit policy
-
-`vitte-source-audit` enforces Vitte-only sources in the workspace. There is no repo-hosted host-language source exception; stage0 recovery uses the checked seed artifact under `toolchain/seed`.
-
-## Seed Trust Chain
-
-The bootstrap seed source is `toolchain/seed/src/main.vit`. The generated seed artifact is tracked at `toolchain/seed/vittec0.seed` and pinned by `toolchain/seed/manifest.txt`.
-
-- version: `vittec0 stage0-vitte-seed 0.1.0`
-- verification: `scripts/seed/verify_seed.sh`
-- install path: `bin/vittec0`
-- contract: `docs/bootstrap_seed.md`
-- native IR: `docs/bootstrap_native_ir.md`
-- contracts index: `docs/bootstrap_contracts.md`
-- full local contract: `make bootstrap-native-contract`
-- fast local contract: `make bootstrap-native-fast-contract`
-- fixture matrix: `tools/bootstrap_native_fixture_matrix.sh`
-
-The manifest ties the readable source and generated artifact together. Rotating the seed requires updating the source, the seed artifact, its SHA-256, and the expected version together.
-
-## Documentation
-
-Useful docs pages:
-
-- `docs/index.html`
-- `docs/news.html`
-- `docs/doc.html`
-- `docs/source.html`
-- `docs/download.html`
-- `docs/diagnostics.html`
-- `docs/community.html`
-- `docs/suggestions.html`
-
-The manual pages are also a good starting point:
-
-- `man/vitte.1`
-- `man/vittec.1`
-
-## Repository layout
-
-```text
-src/vitte/compiler        compiler source and bootstrap facades
-src/vitte/packages        package-level compiler support
-src/vitte/stdlib          standard library in Vitte
-docs                      site, book, news, and reference docs
-man                       manual pages
-tools                     checks, generators, audits, and CI helpers
-tests                     smoke tests and diagnostics snapshots
-completions               shell completion files
-```
-
-## Notes for contributors
-
-- Keep new compiler work bootstrap-friendly.
-- Prefer Vitte files over legacy host-language files.
-- Keep smoke tests small and easy to read.
-- When adding links in docs, prefer local paths that the docs checks can validate.
+The project also tracks generated checksums and status metadata to detect drift
+between source files and published artifacts.
 
 ## Status
 
-The workspace is in the middle of a migration toward a fully Vitte-based compiler and support tree.
+The project is active.
 
-The current goal is simple:
+Current direction:
 
-- keep bootstrap checks green,
-- keep the compiler surface understandable,
-- and expand the compiler step by step without bringing back legacy host-language sources.
+- improve compiler stability,
+- keep bootstrap and docs synchronized,
+- raise quality incrementally without losing clarity.
+
+## Getting started
+
+Start with the 3 links in "If you only read one thing", then review status.
+
+Questions? Open an issue.
