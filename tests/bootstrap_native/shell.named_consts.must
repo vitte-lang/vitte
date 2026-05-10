@@ -5,6 +5,26 @@ banner='vittec native named constants'
 main_return='0'
 error_prefix='[vittec][error]'
 
+trace_pipeline=0
+strict_mode=0
+
+cli_error() {
+    code="$1"
+    msg="$2"
+    hint="${3:-}"
+    if [ -n "$hint" ]; then
+        echo "$error_prefix $code: $msg (hint: $hint)" >&2
+    else
+        echo "$error_prefix $code: $msg" >&2
+    fi
+}
+
+trace_step() {
+    if [ "$trace_pipeline" -eq 1 ]; then
+        printf '[trace] %s\n' "$1" >&2
+    fi
+}
+
 arg_value() {
     key="$1"
     shift
@@ -34,15 +54,27 @@ first_file_arg() {
     return 1
 }
 
+has_flag() {
+    key="$1"
+    shift
+    for arg do
+        if [ "$arg" = "$key" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 sq() {
     sed "s/'/'\\\\''/g; s/^/'/; s/$/'/"
 }
 
 compile_native_ir() {
     src="$1"
+    ir_version="${2:-v1}"
     # Keep this AWK parser intentionally small: it recognizes only the
     # bootstrap-native subset documented in docs/bootstrap_seed.md.
-    awk '
+    awk -v ir_version="$ir_version" '
     function diag(code, msg) {
         printf "%s:%d:%d: %s: %s\n", file, line_no, col, code, msg > "/dev/stderr"
         errors++
@@ -114,13 +146,17 @@ compile_native_ir() {
         brace_depth = 0
         errors = 0
         saw_export = 0
+        saw_space = 0
     }
     {
         line_no = FNR
         raw = $0
         line = trim(raw)
         if (line == "" || line ~ /^\/\//) next
-        if (line ~ /^space[ \t]+[A-Za-z0-9_\/]+$/) next
+        if (line ~ /^space[ \t]+[A-Za-z0-9_\/]+$/) {
+            saw_space = 1
+            next
+        }
         if (line == "export *") { saw_export = 1; next }
         if (!in_proc && line ~ /^const[ \t]+[A-Z_][A-Z0-9_]*[ \t]*:[ \t]*string[ \t]*=[ \t]*"[^"]*"$/) {
             const_name = line
@@ -156,6 +192,13 @@ compile_native_ir() {
             proc_name = line
             sub(/^proc[ \t]+/, "", proc_name)
             sub(/\(\)[ \t]*->[ \t]*string[ \t]*[{]$/, "", proc_name)
+            if (proc_seen[proc_name]) {
+                col = col_token("proc")
+                diag("E_BOOTSTRAP_DUP_PROC", "duplicate proc " proc_name)
+                in_proc = 0
+                next
+            }
+            proc_seen[proc_name] = 1
             proc_value = ""
             proc_value_kind = ""
             proc_return_type = "string"
@@ -170,6 +213,13 @@ compile_native_ir() {
             proc_name = line
             sub(/^proc[ \t]+/, "", proc_name)
             sub(/\(\)[ \t]*->[ \t]*int[ \t]*[{]$/, "", proc_name)
+            if (proc_seen[proc_name]) {
+                col = col_token("proc")
+                diag("E_BOOTSTRAP_DUP_PROC", "duplicate proc " proc_name)
+                in_proc = 0
+                next
+            }
+            proc_seen[proc_name] = 1
             if (proc_name == "main") {
                 col = col_token("proc")
                 proc_signature_diag(line)
@@ -188,6 +238,13 @@ compile_native_ir() {
         if (!in_proc && line ~ /^proc[ \t]+main\([A-Za-z_][A-Za-z0-9_]*:[ \t]*list\[string\]\)[ \t]*->[ \t]*int[ \t]*[{]$/) {
             in_proc = 1
             proc_name = "main"
+            if (proc_seen[proc_name]) {
+                col = col_token("proc")
+                diag("E_BOOTSTRAP_DUP_PROC", "duplicate proc " proc_name)
+                in_proc = 0
+                next
+            }
+            proc_seen[proc_name] = 1
             proc_value = ""
             proc_value_kind = ""
             proc_return_type = "int"
@@ -290,6 +347,11 @@ compile_native_ir() {
             col = 1
             diag("E_BOOTSTRAP_EXPORT", "expected export *")
         }
+        if (!saw_space) {
+            line_no = 1
+            col = 1
+            diag("E_BOOTSTRAP_SPACE", "missing space declaration")
+        }
         if (version_text == "") {
             line_no = 1
             col = 1
@@ -302,7 +364,17 @@ compile_native_ir() {
         }
         if (!saw_main) main_return = 0
         if (errors) exit 1
-        printf "native_ir_v1\n"
+        if (ir_version == "v2") printf "native_ir_v2\n"
+        else printf "native_ir_v1\n"
+        printf "pipeline.parse=ok\n"
+        printf "pipeline.check=ok\n"
+        printf "pipeline.lower=shell\n"
+        printf "pipeline.emit=shell\n"
+        if (ir_version == "v2") {
+            printf "target.backend=shell\n"
+            printf "artifact.format=posix-sh\n"
+            printf "artifact.entry=main\n"
+        }
         for (i = 1; i <= const_count; i++) {
             name = const_order[i]
             printf "const.%s.%s=%s\n", const_kinds[name], name, consts[name]
@@ -336,7 +408,7 @@ render_native_shell_from_ir() {
 
 render_native_shell() {
     src="$1"
-    ir="$(compile_native_ir "$src")"
+    ir="$(compile_native_ir "$src" "v1")"
     render_native_shell_from_ir "$ir"
 }
 
@@ -347,6 +419,31 @@ write_compiler() {
     render_native_shell "$src" > "$out"
     chmod +x "$out"
 }
+
+read_common_flags() {
+    if has_flag --trace-pipeline "$@"; then
+        trace_pipeline=1
+    fi
+    if has_flag --strict "$@"; then
+        strict_mode=1
+    fi
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --trace-pipeline)
+            trace_pipeline=1
+            shift
+            ;;
+        --strict)
+            strict_mode=1
+            shift
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
 
 cmd="${1:-}"
 case "$cmd" in
@@ -361,53 +458,100 @@ case "$cmd" in
         printf '%s\n' "$banner"
         printf 'version: %s\n' "$version"
         printf 'commands: parse check build-native dump-native-ir build --version --help\n'
+        printf 'flags: --src PATH --out PATH --stage NAME --trace-pipeline --strict\n'
         ;;
     parse)
+        read_common_flags "$@"
+        trace_step "pipeline.parse:begin"
         src="$(arg_value --src "$@" || true)"
         if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
-        [ -n "$src" ] || { echo "$error_prefix parse requires --src or file" >&2; exit 2; }
-        [ -f "$src" ] || { echo "$error_prefix cannot read $src" >&2; exit 1; }
-        compile_native_ir "$src" >/dev/null
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "parse requires --src or file" "vittec parse --src path.vit"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        trace_step "pipeline.parse:compile-native-ir"
+        compile_native_ir "$src" "v1" >/dev/null
+        trace_step "pipeline.parse:ok"
         echo "parse ok: $src"
         ;;
     check)
+        read_common_flags "$@"
+        trace_step "pipeline.check:begin"
         src="$(first_file_arg "$@" || true)"
-        [ -n "$src" ] || { echo "$error_prefix missing input file" >&2; exit 2; }
-        [ -f "$src" ] || { echo "$error_prefix cannot read $src" >&2; exit 1; }
-        if grep -q '^space[ 	]vitte/bootstrap/' "$src"; then
-            compile_native_ir "$src" >/dev/null
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "missing input file" "vittec check path.vit"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        ir_version="$(arg_value --ir-version "$@" || true)"
+        [ -n "$ir_version" ] || ir_version="v1"
+        [ "$ir_version" = "v1" ] || [ "$ir_version" = "v2" ] || { cli_error E_CLI_ARG "unsupported --ir-version: $ir_version" "supported: v1, v2"; exit 2; }
+        if [ "$strict_mode" -eq 1 ] || grep -q '^space[ 	]vitte/bootstrap/' "$src"; then
+            trace_step "pipeline.parse:from-check"
+            compile_native_ir "$src" "$ir_version" >/dev/null
+            trace_step "pipeline.check:semantic"
+            if [ "$strict_mode" -eq 1 ] && ! grep -q '^export \*$' "$src"; then
+                cli_error E_STRICT_EXPORT "strict mode requires export * in bootstrap source" "add 'export *' to the module footer"
+                exit 1
+            fi
+            if [ "$strict_mode" -eq 1 ]; then
+                space_count="$(grep -c '^space[ 	]' "$src" || true)"
+                [ "$space_count" -eq 1 ] || { cli_error E_STRICT_SPACE "strict mode requires exactly one space declaration" "keep one top-level 'space <name>'"; exit 1; }
+                version_count="$(grep -c '^proc[ 	]\+version_text()[ 	]*->[ 	]*string[ 	]*{$' "$src" || true)"
+                [ "$version_count" -eq 1 ] || { cli_error E_STRICT_VERSION_TEXT "strict mode requires exactly one version_text() proc" "declare one 'proc version_text() -> string {'"; exit 1; }
+                banner_count="$(grep -c '^proc[ 	]\+banner_text()[ 	]*->[ 	]*string[ 	]*{$' "$src" || true)"
+                [ "$banner_count" -eq 1 ] || { cli_error E_STRICT_BANNER_TEXT "strict mode requires exactly one banner_text() proc" "declare one 'proc banner_text() -> string {'"; exit 1; }
+            fi
         fi
+        trace_step "pipeline.check:ok"
         ;;
     build-native)
+        read_common_flags "$@"
+        trace_step "pipeline.lower:begin"
         src="$(arg_value --src "$@" || true)"
         out="$(arg_value --out "$@" || true)"
-        [ -n "$src" ] && [ -n "$out" ] || { echo "$error_prefix build-native requires --src and --out" >&2; exit 2; }
-        [ -f "$src" ] || { echo "$error_prefix cannot read $src" >&2; exit 1; }
+        [ -n "$src" ] && [ -n "$out" ] || { cli_error E_CLI_MISSING_ARG "build-native requires --src and --out" "vittec build-native --src in.vit --out out/vittec"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        trace_step "pipeline.emit:write-shell"
+        ir_version="$(arg_value --ir-version "$@" || true)"
+        [ -n "$ir_version" ] || ir_version="v1"
+        [ "$ir_version" = "v1" ] || [ "$ir_version" = "v2" ] || { cli_error E_CLI_ARG "unsupported --ir-version: $ir_version" "supported: v1, v2"; exit 2; }
+        # build-native output remains the v1-compatible shell artifact for bootstrap stability.
         write_compiler "$src" "$out"
+        if [ "$strict_mode" -eq 1 ]; then
+            trace_step "pipeline.emit:strict-verify-shell"
+            sh -n "$out" || { cli_error E_STRICT_SHELL "strict mode shell verification failed for $out"; exit 1; }
+        fi
+        trace_step "pipeline.emit:ok"
         ;;
     dump-native-shell)
+        read_common_flags "$@"
         src="$(arg_value --src "$@" || true)"
-        [ -n "$src" ] || { echo "$error_prefix dump-native-shell requires --src" >&2; exit 2; }
-        [ -f "$src" ] || { echo "$error_prefix cannot read $src" >&2; exit 1; }
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "dump-native-shell requires --src" "vittec dump-native-shell --src path.vit"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
         render_native_shell "$src"
         ;;
     dump-native-ir)
+        read_common_flags "$@"
+        trace_step "pipeline.parse:begin"
+        ir_version="$(arg_value --ir-version "$@" || true)"
+        [ -n "$ir_version" ] || ir_version="v1"
+        [ "$ir_version" = "v1" ] || [ "$ir_version" = "v2" ] || { cli_error E_CLI_ARG "unsupported --ir-version: $ir_version" "supported: v1, v2"; exit 2; }
         src="$(arg_value --src "$@" || true)"
-        [ -n "$src" ] || { echo "$error_prefix dump-native-ir requires --src" >&2; exit 2; }
-        [ -f "$src" ] || { echo "$error_prefix cannot read $src" >&2; exit 1; }
-        compile_native_ir "$src"
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "dump-native-ir requires --src" "vittec dump-native-ir --src path.vit"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        compile_native_ir "$src" "$ir_version"
         ;;
     build)
+        read_common_flags "$@"
+        trace_step "pipeline.lower:begin"
         stage="$(arg_value --stage "$@" || true)"
         src_dir="$(arg_value --src "$@" || true)"
         out_dir="$(arg_value --out "$@" || true)"
-        [ "$stage" = "stage1" ] || { echo "$error_prefix unsupported stage: $stage" >&2; exit 2; }
-        [ -n "$src_dir" ] && [ -n "$out_dir" ] || { echo "$error_prefix build requires --stage, --src and --out" >&2; exit 2; }
-        [ -f "$src_dir/main.vit" ] || { echo "$error_prefix cannot read $src_dir/main.vit" >&2; exit 1; }
+        [ "$stage" = "stage1" ] || { cli_error E_CLI_STAGE "unsupported stage: $stage" "supported: stage1"; exit 2; }
+        [ -n "$src_dir" ] && [ -n "$out_dir" ] || { cli_error E_CLI_MISSING_ARG "build requires --stage, --src and --out" "vittec build --stage stage1 --src toolchain/stage1/src --out target/bootstrap/stage1"; exit 2; }
+        [ -f "$src_dir/main.vit" ] || { cli_error E_CLI_IO "cannot read $src_dir/main.vit" "check the path and permissions"; exit 1; }
+        trace_step "pipeline.emit:stage1"
         write_compiler "$src_dir/main.vit" "$out_dir/vittec1"
+        trace_step "pipeline.emit:ok"
         ;;
     *)
-        echo "$error_prefix unknown command: $cmd" >&2
+        cli_error E_CLI_COMMAND "unknown command: $cmd" "use --help to list commands"
         exit 2
         ;;
 esac

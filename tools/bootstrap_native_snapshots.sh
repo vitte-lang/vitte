@@ -30,6 +30,21 @@ check_ir() {
     diff -u "$SNAP_DIR/$name.ir.must" "$TMP_DIR/$name.ir" || die "$name native IR snapshot drift"
 }
 
+check_ir_contract_gate() {
+    log "checking IR contract gate"
+    "$BIN_DIR/vittec0" dump-native-ir --src "$STAGE2_SRC" > "$TMP_DIR/ir.gate.v1"
+    first_line="$(sed -n '1p' "$TMP_DIR/ir.gate.v1")"
+    [ "$first_line" = "native_ir_v1" ] || die "IR contract changed: expected native_ir_v1 header; update snapshots/docs via explicit IR migration"
+    grep -q 'native_ir_v1' "$SNAP_DIR/README.md" || die "IR contract docs missing native_ir_v1 reference"
+    grep -q '^native_ir_v2' "$SNAP_DIR/stage2.v2.ir.must" || die "IR v2 snapshot missing or malformed"
+    "$BIN_DIR/vittec0" dump-native-ir --ir-version v2 --src "$STAGE2_SRC" > "$TMP_DIR/ir.gate.v2"
+    sed '1d' "$TMP_DIR/ir.gate.v1" > "$TMP_DIR/ir.gate.v1.body"
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        grep -F -x "$line" "$TMP_DIR/ir.gate.v2" >/dev/null || die "IR v2 compatibility break: missing v1 line '$line'"
+    done < "$TMP_DIR/ir.gate.v1.body"
+}
+
 check_shell() {
     name="$1"
     src="$2"
@@ -170,6 +185,30 @@ check_cli_cases() {
     check_cli_error cli.build_native_missing_src "$BIN_DIR/vittec0" build-native --src tests/bootstrap_native/missing.vit --out "$TMP_DIR/missing-src"
     check_cli_error cli.build_native_bad_bool_const "$BIN_DIR/vittec0" build-native --src tests/bootstrap_native/bad_bool_const.vit --out "$TMP_DIR/bad-bool"
     check_cli_error_norm cli.build_stage1_missing_src "$BIN_DIR/vittec0" build --stage stage1 --src "$TMP_DIR/missing-stage1" --out "$TMP_DIR/stage1-missing"
+
+    "$BIN_DIR/vittec0" --trace-pipeline parse "$STAGE2_SRC" > "$TMP_DIR/trace.parse.out" 2> "$TMP_DIR/trace.parse.err"
+    sed "s|$STAGE2_SRC|__STAGE2_SRC__|g" "$TMP_DIR/trace.parse.out" > "$TMP_DIR/trace.parse.norm.out"
+    diff -u "$SNAP_DIR/trace.parse.stage2.out.must" "$TMP_DIR/trace.parse.norm.out" || die "trace parse stdout snapshot drift"
+    diff -u "$SNAP_DIR/trace.parse.stage2.err.must" "$TMP_DIR/trace.parse.err" || die "trace parse stderr snapshot drift"
+
+    "$BIN_DIR/vittec0" --trace-pipeline dump-native-ir --src "$STAGE2_SRC" > "$TMP_DIR/trace.ir.out" 2> "$TMP_DIR/trace.ir.err"
+    diff -u "$SNAP_DIR/stage2.ir.must" "$TMP_DIR/trace.ir.out" || die "trace dump-native-ir stdout snapshot drift"
+    diff -u "$SNAP_DIR/trace.dump_native_ir.stage2.err.must" "$TMP_DIR/trace.ir.err" || die "trace dump-native-ir stderr snapshot drift"
+    check_cli_error trace.build_native_missing "$BIN_DIR/vittec0" --trace-pipeline build-native
+
+    check_cli_error_norm trace.parse.bad_unknown_const "$BIN_DIR/vittec0" --trace-pipeline parse "$SNAP_DIR/bad_unknown_const.vit"
+    check_cli_error_norm trace.check.bad_unknown_const "$BIN_DIR/vittec0" --trace-pipeline check "$SNAP_DIR/bad_unknown_const.vit"
+    check_cli_error_norm trace.dump_native_ir.bad_unknown_const "$BIN_DIR/vittec0" --trace-pipeline dump-native-ir --src "$SNAP_DIR/bad_unknown_const.vit"
+
+    check_cli_error_norm strict.check.bad_missing_space "$BIN_DIR/vittec0" --strict check "$SNAP_DIR/strict_missing_space.vit"
+    check_cli_error_norm strict.check.bad_duplicate_version_text "$BIN_DIR/vittec0" --strict check "$SNAP_DIR/strict_duplicate_version_text.vit"
+    check_cli_error_norm strict.check.bad_duplicate_banner_text "$BIN_DIR/vittec0" --strict check "$SNAP_DIR/strict_duplicate_banner_text.vit"
+    "$BIN_DIR/vittec0" --strict check "$SNAP_DIR/strict_valid.vit" > "$TMP_DIR/strict.check.valid.out" 2> "$TMP_DIR/strict.check.valid.err"
+    diff -u "$SNAP_DIR/check.stage2.must" "$TMP_DIR/strict.check.valid.out" || die "strict check valid stdout drift"
+    diff -u "$SNAP_DIR/check.stage2.must" "$TMP_DIR/strict.check.valid.err" || die "strict check valid stderr drift"
+
+    "$BIN_DIR/vittec0" dump-native-ir --ir-version v2 --src "$STAGE2_SRC" > "$TMP_DIR/stage2.v2.ir"
+    diff -u "$SNAP_DIR/stage2.v2.ir.must" "$TMP_DIR/stage2.v2.ir" || die "stage2 IR v2 snapshot drift"
 }
 
 check_emission_hashes() {
@@ -194,7 +233,7 @@ check_emission_hashes() {
     "$TMP_DIR/vittec1.a" build-native --src "$STAGE2_SRC" --out "$TMP_DIR/vittec.a"
     "$TMP_DIR/vittec1.a" build-native --src "$STAGE2_SRC" --out "$TMP_DIR/vittec.b"
     cmp "$TMP_DIR/vittec.a" "$TMP_DIR/vittec.b" || die "stage2 build-native output is not deterministic"
-    [ "$("$TMP_DIR/vittec.a" --version)" = "vittec stage2-vitte 0.1.0" ] || die "stage2 version mismatch"
+    [ "$("$TMP_DIR/vittec.a" --version)" = "vittec2 stage2-vitte 0.1.0" ] || die "stage2 version mismatch"
     "$TMP_DIR/vittec.a" --help > "$TMP_DIR/help.vittec"
     diff -u "$SNAP_DIR/help.vittec.must" "$TMP_DIR/help.vittec" || die "stage2 help snapshot drift"
     check_unknown_command "$TMP_DIR/vittec.a" vittec
@@ -233,6 +272,7 @@ check_emission_hashes() {
     diff -u "$SNAP_DIR/emission.sha256.must" "$TMP_DIR/emission.sha256" || die "native emission snapshot drift"
 }
 
+check_ir_contract_gate
 check_ir_cases
 check_shell_cases
 check_bad_diag_cases

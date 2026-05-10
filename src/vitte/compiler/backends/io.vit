@@ -1,6 +1,7 @@
 space vitte/compiler/backends/io
 
 proc read_file(path: string) -> string {
+  let _ = path
   give ""
 }
 
@@ -25,8 +26,33 @@ proc println(text: string) -> int {
   give 0
 }
 
+proc _slice(text: string, start: int, end: int) -> string {
+  let out: string = ""
+  let i: int = start
+  while i < end and i < text.len {
+    set out = out + (text[i] as string)
+    set i = i + 1
+  }
+  give out
+}
+
 proc split_lines(text: string) -> [string] {
-  give []
+  if text == "" { give [] }
+  let out: [string] = []
+  let start: int = 0
+  let i: int = 0
+  while i < text.len {
+    let ch: string = text[i] as string
+    if ch == "\n" {
+      set out = out + [_slice(text, start, i)]
+      set start = i + 1
+    }
+    set i = i + 1
+  }
+  if start <= text.len {
+    set out = out + [_slice(text, start, text.len)]
+  }
+  give out
 }
 
 export *

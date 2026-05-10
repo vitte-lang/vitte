@@ -7,6 +7,10 @@ use src/vitte/compiler/ir/ast as ir_ast
 use src/vitte/compiler/ir/hir as ir_hir
 use src/vitte/compiler/ir/mir as ir_mir
 
+const IMPLEMENTATION_LANGUAGE: string = "vitte"
+const COMPILER_STAGE: string = "bootstrap-vitte"
+const SOURCE_ROOT: string = "src/vitte/compiler"
+
 form DriverOptions {
   target: string,
   output: string,
@@ -31,23 +35,27 @@ form CompileReport {
   emitted_source: string,
   output_path: string,
   source_name: string,
+  diag_count: int,
+  global_count: int,
+  function_count: int,
+  emit_kind: string,
   notes: [string]
 }
 
 proc implementation_language() -> string {
-  give "vitte"
+  give IMPLEMENTATION_LANGUAGE
 }
 
 proc compiler_stage() -> string {
-  give "bootstrap-vitte"
+  give COMPILER_STAGE
 }
 
 proc source_root() -> string {
-  give "src/vitte/compiler"
+  give SOURCE_ROOT
 }
 
 proc pipeline_stage() -> string {
-  give "bootstrap-vitte"
+  give COMPILER_STAGE
 }
 
 proc default_options() -> DriverOptions {
@@ -76,15 +84,40 @@ proc pipeline_run(source_name: string, source_text: string) -> PipelineArtifacts
 
 proc _default_type(type_name: string) -> string {
   if type_name == "" { give "i32" }
+  if type_name == "int" { give "i32" }
+  if type_name == "i32" { give "i32" }
+  if type_name == "bool" { give "bool" }
+  if type_name == "string" { give "string" }
   give type_name
+}
+
+proc _safe_ident(name: string) -> string {
+  if name == "" { give "_" }
+  give name
+}
+
+proc _contains(values: [string], needle: string) -> bool {
+  let i: int = 0
+  while i < values.len {
+    if values[i] == needle { give true }
+    set i = i + 1
+  }
+  give false
+}
+
+proc _emit_include_line(include_name: string) -> string {
+  let trimmed: string = include_name
+  if trimmed == "" { give "" }
+  give "#include <" + trimmed + ">\n"
 }
 
 proc _emit_expr(expr: ir_mir.MirExpr) -> string {
   if expr.kind == ir_mir.MirExprKind.Empty { give "" }
   if expr.kind == ir_mir.MirExprKind.Literal { give expr.text }
   if expr.kind == ir_mir.MirExprKind.Variable { give expr.text }
+  if expr.kind == ir_mir.MirExprKind.Raw { give expr.text }
   if expr.kind == ir_mir.MirExprKind.Call {
-    let out: string = expr.callee + "("
+    let out: string = _safe_ident(expr.callee) + "("
     let i: int = 0
     while i < expr.args.len {
       if i > 0 { set out = out + ", " }
@@ -101,25 +134,45 @@ proc _emit_stmt(stmt: ir_mir.MirStmt) -> string {
     give "return " + _emit_expr(stmt.expr) + ";\n"
   }
   if stmt.kind == ir_mir.MirStmtKind.Let {
-    let out: string = _default_type(stmt.type_name) + " " + stmt.name
+    let out: string = _default_type(stmt.type_name) + " " + _safe_ident(stmt.name)
     if stmt.expr.kind != ir_mir.MirExprKind.Empty {
       set out = out + " = " + _emit_expr(stmt.expr)
     }
     give out + ";\n"
   }
   if stmt.kind == ir_mir.MirStmtKind.Set {
-    give stmt.name + " = " + _emit_expr(stmt.expr) + ";\n"
+    give _safe_ident(stmt.name) + " = " + _emit_expr(stmt.expr) + ";\n"
+  }
+  if stmt.kind == ir_mir.MirStmtKind.Expr {
+    if stmt.expr.kind == ir_mir.MirExprKind.Empty { give "" }
+    give _emit_expr(stmt.expr) + ";\n"
+  }
+  if stmt.kind == ir_mir.MirStmtKind.Unknown {
+    if stmt.raw_text == "" { give "" }
+    give "/* unknown: " + stmt.raw_text + " */\n"
   }
   if stmt.expr.kind == ir_mir.MirExprKind.Empty { give "" }
   give _emit_expr(stmt.expr) + ";\n"
 }
 
+proc _default_return_expr(type_name: string) -> string {
+  let t: string = _default_type(type_name)
+  if t == "void" { give "" }
+  if t == "bool" { give "false" }
+  if t == "string" { give "\"\"" }
+  give "0"
+}
+
 proc _emit_function(fn: ir_mir.MirFunction) -> string {
-  let out: string = _default_type(fn.return_type_name) + " " + fn.name + "("
+  let emitted_name: string = _safe_ident(fn.name)
+  if fn.link_name != "" {
+    set emitted_name = _safe_ident(fn.link_name)
+  }
+  let out: string = _default_type(fn.return_type_name) + " " + emitted_name + "("
   let i: int = 0
   while i < fn.params.len {
     if i > 0 { set out = out + ", " }
-    set out = out + _default_type(fn.params[i].type_name) + " " + fn.params[i].name
+    set out = out + _default_type(fn.params[i].type_name) + " " + _safe_ident(fn.params[i].name)
     set i = i + 1
   }
   set out = out + ") {\n"
@@ -128,15 +181,84 @@ proc _emit_function(fn: ir_mir.MirFunction) -> string {
     set out = out + "  " + _emit_stmt(fn.body_stmts[j])
     set j = j + 1
   }
+  if fn.body_stmts.len == 0 {
+    let ret_expr: string = _default_return_expr(fn.return_type_name)
+    if ret_expr != "" {
+      set out = out + "  return " + ret_expr + ";\n"
+    }
+  }
   give out + "}\n"
 }
 
+proc _emit_global(g: ir_mir.MirGlobal) -> string {
+  let type_name: string = _default_type(g.type_name)
+  let init_value: string = g.init_literal
+  if init_value == "" { set init_value = "0" }
+  if g.is_const {
+    give "const " + type_name + " " + _safe_ident(g.name) + " = " + init_value + ";\n"
+  }
+  give type_name + " " + _safe_ident(g.name) + " = " + init_value + ";\n"
+}
+
+proc _validate_mir_for_emit(module_value: ir_mir.MirModule) -> [string] {
+  let errs: [string] = []
+  let gi: int = 0
+  while gi < module_value.globals.len {
+    if module_value.globals[gi].name == "" {
+      set errs = errs + ["invalid global: empty name at index " + (gi as string)]
+    }
+    set gi = gi + 1
+  }
+  let fi: int = 0
+  while fi < module_value.functions.len {
+    let fn: ir_mir.MirFunction = module_value.functions[fi]
+    if fn.name == "" and fn.link_name == "" {
+      set errs = errs + ["invalid function: empty name at index " + (fi as string)]
+    }
+    let si: int = 0
+    while si < fn.body_stmts.len {
+      let stmt: ir_mir.MirStmt = fn.body_stmts[si]
+      if stmt.expr.kind == ir_mir.MirExprKind.Call and stmt.expr.callee == "" {
+        set errs = errs + ["invalid call: empty callee in function index " + (fi as string) + ", stmt index " + (si as string)]
+      }
+      set si = si + 1
+    }
+    set fi = fi + 1
+  }
+  give errs
+}
+
 proc _emit_from_artifacts(artifacts: PipelineArtifacts) -> string {
-  if artifacts.real_mir.functions.len == 0 {
+  if artifacts.real_mir.functions.len == 0 and artifacts.real_mir.globals.len == 0 {
     give ""
   }
 
   let out: string = ""
+  let emitted_includes: [string] = []
+  let ii: int = 0
+  while ii < artifacts.real_mir.includes.len {
+    let include_name: string = artifacts.real_mir.includes[ii]
+    if include_name != "" and not _contains(emitted_includes, include_name) {
+      let include_line: string = _emit_include_line(include_name)
+      if include_line != "" {
+        set out = out + include_line
+        set emitted_includes = emitted_includes + [include_name]
+      }
+    }
+    set ii = ii + 1
+  }
+  if emitted_includes.len > 0 {
+    set out = out + "\n"
+  }
+
+  let g: int = 0
+  while g < artifacts.real_mir.globals.len {
+    set out = out + _emit_global(artifacts.real_mir.globals[g])
+    set g = g + 1
+  }
+  if artifacts.real_mir.globals.len > 0 {
+    set out = out + "\n"
+  }
   let i: int = 0
   while i < artifacts.real_mir.functions.len {
     set out = out + _emit_function(artifacts.real_mir.functions[i])
@@ -151,18 +273,26 @@ proc compile_source(
   driver_options: DriverOptions
 ) -> CompileReport {
   let artifacts: PipelineArtifacts = pipeline_run(source_name, source_text)
+  let diag_count: int = frontend_diagnostics.count(artifacts.diagnostics)
+  let validation_errors: [string] = _validate_mir_for_emit(artifacts.real_mir)
   let emitted: string = ""
-  if frontend_diagnostics.count(artifacts.diagnostics) == 0 {
+  if diag_count == 0 and validation_errors.len == 0 {
     set emitted = _emit_from_artifacts(artifacts)
   }
   give CompileReport {
-    success: frontend_diagnostics.count(artifacts.diagnostics) == 0 and emitted != "",
+    success: diag_count == 0 and validation_errors.len == 0 and emitted != "",
     diagnostics: artifacts.diagnostics,
     emitted_source: emitted,
     output_path: driver_options.output,
     source_name: source_name,
+    diag_count: diag_count,
+    global_count: artifacts.real_mir.globals.len,
+    function_count: artifacts.real_mir.functions.len,
+    emit_kind: "bootstrap-vitte-c-like",
     notes: [
-      "bootstrap-vitte",
+      COMPILER_STAGE,
+      "diag_count=" + (diag_count as string),
+      "emit_validation=" + (validation_errors.len as string),
       "uses=" + (artifacts.parsed_module.uses.len as string),
       "decls=" + (artifacts.real_hir.decls.len as string),
       "globals=" + (artifacts.real_mir.globals.len as string),

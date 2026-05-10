@@ -4,6 +4,9 @@ This directory pins the `native_ir_v1` contract used by `build-native`.
 `native_ir_v1` is the stable contract; the generated POSIX shell is the current
 bootstrap backend and may be replaced as long as the IR contract remains stable.
 
+`native_ir_v2` is an optional, additive preview contract used to prepare
+backend-agnostic metadata (`target.*`, `artifact.*`) without breaking v1.
+
 `proc.int.*` IR entries are record-only in v1. They are snapshot coverage for
 integer procedure lowering, not callable commands in generated shell compilers.
 
@@ -12,6 +15,9 @@ integer procedure lowering, not callable commands in generated shell compilers.
 `*.ir.must` files pin the deterministic `native_ir_v1` text emitted by
 `dump-native-ir`. They cover the stage2 compiler entry and each accepted
 bootstrap-native fixture.
+
+`stage2.v2.ir.must` pins the current optional `native_ir_v2` additive contract.
+The v1 and v2 contracts are validated independently.
 
 ## Diagnostic snapshots
 
@@ -25,6 +31,19 @@ location, and human-facing reason without depending on incidental shell output.
 `check.*.err.must` pin command-surface behavior for missing arguments,
 unsupported bootstrap commands, parse parity output, and `check` success/failure
 behavior.
+
+`strict.check.*.err.must` pins strict-mode compatibility rules for bootstrap
+entry files.
+
+`trace.*.err.must` and `trace.*.out.must` pin trace ordering and failure
+diagnostic ordering for `--trace-pipeline`.
+
+Trace grammar is contractually fixed and mandatory:
+
+`[trace] pipeline.<phase>:<event>`
+
+Where `<phase>` is one of `parse`, `check`, `lower`, `emit`.
+Any grammar drift must be intentional and snapshot-reviewed.
 
 `unknown_command.<tool>.err.must` files pin the generated error prefix for each
 stage binary. The prefix comes from the first word of `version_text()`.
@@ -71,3 +90,13 @@ and document the reason in the change. Verify with:
 ```sh
 make bootstrap-native-snapshots
 ```
+
+## IR version gate
+
+`tools/bootstrap_native_snapshots.sh` enforces an explicit gate:
+
+- `dump-native-ir` default header must remain `native_ir_v1`
+- `stage2.v2.ir.must` must exist and start with `native_ir_v2`
+
+If either check fails, the snapshot run exits with a migration error requiring
+explicit docs/snapshot updates.

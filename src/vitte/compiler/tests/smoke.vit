@@ -61,8 +61,12 @@ proc compiler_emit_ok() -> bool {
   if artifacts.real_mir.functions[0].body_stmts[0].kind != mir.MirStmtKind.Give { give false }
   if not report.success { give false }
   if report.output_path != "a.out" { give false }
-  if report.emitted_source != "i32 main(i32 argc) {\n  return argc;\n}\n" { give false }
-  if report.notes.len != 5 { give false }
+  if report.emitted_source != "#include <vitte/io>\n\nconst i32 answer = 42;\ni32 counter = 0;\n\ni32 main(i32 argc) {\n  return argc;\n}\n" { give false }
+  if report.diag_count != 0 { give false }
+  if report.global_count != 2 { give false }
+  if report.function_count != 1 { give false }
+  if report.emit_kind != "bootstrap-vitte-c-like" { give false }
+  if report.notes.len != 7 { give false }
   give true
 }
 
@@ -82,6 +86,18 @@ proc statement_lowering_ok() -> bool {
   if artifacts.real_hir.functions[0].stmts[1].expr.kind != hir.HirExprKind.Call { give false }
   if artifacts.real_mir.functions[0].body_stmts[1].expr.kind != mir.MirExprKind.Call { give false }
   if report.emitted_source != "i32 main() {\n  i32 value = 1;\n  value = ping(value);\n  return value;\n}\n" { give false }
+  give true
+}
+
+proc globals_only_emit_ok() -> bool {
+  let source_text: string = "space demo/app\nconst answer = 42\nglobal counter = 0\n"
+  let opts: options.DriverOptions = options.default_options()
+  let report: compiler.CompileReport = compiler.compile_source("globals-only.vit", source_text, opts)
+  if not report.success { give false }
+  if report.emitted_source != "const i32 answer = 42;\ni32 counter = 0;\n" { give false }
+  if report.diag_count != 0 { give false }
+  if report.global_count != 2 { give false }
+  if report.function_count != 0 { give false }
   give true
 }
 
@@ -183,6 +199,7 @@ proc smoke_ok() -> bool {
   if not pipeline_lowering_ok() { give false }
   if not compiler_emit_ok() { give false }
   if not statement_lowering_ok() { give false }
+  if not globals_only_emit_ok() { give false }
   if not backend_mir_adapter_ok() { give false }
   if not diagnostics_ok() { give false }
   give true
