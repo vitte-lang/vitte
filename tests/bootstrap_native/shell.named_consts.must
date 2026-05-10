@@ -485,16 +485,16 @@ case "$cmd" in
             trace_step "pipeline.parse:from-check"
             compile_native_ir "$src" "$ir_version" >/dev/null
             trace_step "pipeline.check:semantic"
-            if [ "$strict_mode" -eq 1 ] && ! grep -q '^export \*$' "$src"; then
+            if [ "$strict_mode" -eq 1 ] && ! grep -q "^export \*$" "$src"; then
                 cli_error E_STRICT_EXPORT "strict mode requires export * in bootstrap source" "add 'export *' to the module footer"
                 exit 1
             fi
             if [ "$strict_mode" -eq 1 ]; then
                 space_count="$(grep -c '^space[ 	]' "$src" || true)"
                 [ "$space_count" -eq 1 ] || { cli_error E_STRICT_SPACE "strict mode requires exactly one space declaration" "keep one top-level 'space <name>'"; exit 1; }
-                version_count="$(grep -c '^proc[ 	]\+version_text()[ 	]*->[ 	]*string[ 	]*{$' "$src" || true)"
+                version_count="$(grep -c "^proc[ 	]\+version_text()[ 	]*->[ 	]*string[ 	]*{$" "$src" || true)"
                 [ "$version_count" -eq 1 ] || { cli_error E_STRICT_VERSION_TEXT "strict mode requires exactly one version_text() proc" "declare one 'proc version_text() -> string {'"; exit 1; }
-                banner_count="$(grep -c '^proc[ 	]\+banner_text()[ 	]*->[ 	]*string[ 	]*{$' "$src" || true)"
+                banner_count="$(grep -c "^proc[ 	]\+banner_text()[ 	]*->[ 	]*string[ 	]*{$" "$src" || true)"
                 [ "$banner_count" -eq 1 ] || { cli_error E_STRICT_BANNER_TEXT "strict mode requires exactly one banner_text() proc" "declare one 'proc banner_text() -> string {'"; exit 1; }
             fi
         fi

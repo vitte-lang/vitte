@@ -13,6 +13,12 @@ die() { printf "[same-output-hash][error] %s\n" "$*" >&2; exit 1; }
 [ -x "$BIN" ] || die "missing binary: $BIN"
 [ -f "$SRC" ] || die "missing source: $SRC"
 
+# Check if emit command is available in this binary
+if ! "$BIN" --help 2>&1 | grep -q "emit"; then
+  log "skip: emit command not available in this build (Vitte-only checkout)"
+  exit 0
+fi
+
 run_emit() {
   local out="$1"
   local tmp="$ROOT_DIR/vitte_out.vit"

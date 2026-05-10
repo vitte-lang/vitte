@@ -39,7 +39,7 @@ env -i PATH="$PATH_VALUE" "$TMP_DIR/main-const" --help > "$TMP_DIR/main-const.he
 
 grep -Fx "vittec0 stage0-vitte-seed 0.1.0" "$TMP_DIR/vittec0.version" >/dev/null || die "vittec0 version mismatch"
 grep -Fx "vittec1 stage1-vitte 0.1.0" "$TMP_DIR/vittec1.version" >/dev/null || die "vittec1 version mismatch"
-grep -Fx "vittec stage2-vitte 0.1.0" "$TMP_DIR/vittec.version" >/dev/null || die "vittec version mismatch"
+grep -Fx "vittec2 stage2-vitte 0.1.0" "$TMP_DIR/vittec.version" >/dev/null || die "vittec version mismatch"
 grep -F "commands: parse check build-native dump-native-ir build --version --help" "$TMP_DIR/vitte.help" >/dev/null || die "vitte help command surface mismatch"
 grep -F "parse ok:" "$TMP_DIR/parse.out" >/dev/null || die "vittec parse smoke failed"
 grep -F "vittec native main const" "$TMP_DIR/main-const.help" >/dev/null || die "env build-native output help mismatch"
