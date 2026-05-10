@@ -2,57 +2,246 @@ space vitte/compiler/frontend/lexer
 
 use diagnostics
 use io
+use token
+
+form LexerState {
+  source_text: string,
+  pos: int,
+  line: int,
+  column: int,
+  tokens: [token.Token],
+  diagnostics: diagnostics.DiagnosticBag
+}
 
 form LexedSource {
   source_name: string,
   source_text: string,
+  tokens: [token.Token],
   token_count: int,
   diagnostics: diagnostics.DiagnosticBag
 }
 
-proc count_tokens(source_text: string) -> int {
-  let count: int = 0
-  let in_token: bool = false
-  let i: int = 0
+proc _is_whitespace(ch: string) -> bool {
+  give ch == " " or ch == "\n" or ch == "\t" or ch == "\r"
+}
 
-  while i < source_text.len {
-    let ch: string = source_text[i] as string
-    let is_sep: bool = ch == " " or ch == "\n" or ch == "\t" or ch == "\r"
+proc _is_digit(ch: string) -> bool {
+  give ch >= "0" and ch <= "9"
+}
 
-    if is_sep {
-      set in_token = false
-    } else {
-      if not in_token {
-        set count = count + 1
-        set in_token = true
-      }
-    }
+proc _is_alpha(ch: string) -> bool {
+  let lower: bool = ch >= "a" and ch <= "z"
+  let upper: bool = ch >= "A" and ch <= "Z"
+  give lower or upper
+}
 
-    set i = i + 1
+proc _is_alphanum(ch: string) -> bool {
+  give _is_alpha(ch) or _is_digit(ch) or ch == "_"
+}
+
+proc _peek_char(state: LexerState) -> string {
+  if state.pos >= state.source_text.len {
+    give ""
+  }
+  give state.source_text[state.pos] as string
+}
+
+proc _peek_next_char(state: LexerState) -> string {
+  let next_pos: int = state.pos + 1
+  if next_pos >= state.source_text.len {
+    give ""
+  }
+  give state.source_text[next_pos] as string
+}
+
+proc _advance(state: LexerState) -> LexerState {
+  let ch: string = _peek_char(state)
+  let new_line: int = state.line
+  let new_col: int = state.column
+
+  if ch == "\n" {
+    set new_line = state.line + 1
+    set new_col = 1
+  } else {
+    set new_col = state.column + 1
   }
 
-  give count
+  give LexerState {
+    source_text: state.source_text,
+    pos: state.pos + 1,
+    line: new_line,
+    column: new_col,
+    tokens: state.tokens,
+    diagnostics: state.diagnostics
+  }
+}
+
+proc _add_token(state: LexerState, tok: token.Token) -> LexerState {
+  give LexerState {
+    source_text: state.source_text,
+    pos: state.pos,
+    line: state.line,
+    column: state.column,
+    tokens: state.tokens + [tok],
+    diagnostics: state.diagnostics
+  }
+}
+
+proc _lex_number(state: LexerState) -> LexerState {
+  let start_pos: int = state.pos
+  let start_col: int = state.column
+  let current_state: LexerState = state
+
+  while _is_digit(_peek_char(current_state)) {
+    set current_state = _advance(current_state)
+  }
+
+  let num_text: string = state.source_text.slice(start_pos, current_state.pos)
+  let tok: token.Token = token.new_token(token.TokenKind.Number, num_text, state.line, start_col)
+
+  give _add_token(current_state, tok)
+}
+
+proc _lex_string(state: LexerState, quote: string) -> LexerState {
+  let start_line: int = state.line
+  let start_col: int = state.column
+  let current_state: LexerState = _advance(state)
+  let found_closing: bool = false
+
+  while current_state.pos < current_state.source_text.len {
+    let ch: string = _peek_char(current_state)
+
+    if ch == quote {
+      set found_closing = true
+      set current_state = _advance(current_state)
+      break
+    }
+
+    if ch == "\\" {
+      set current_state = _advance(current_state)
+      if current_state.pos < current_state.source_text.len {
+        set current_state = _advance(current_state)
+      }
+    } else {
+      set current_state = _advance(current_state)
+    }
+  }
+
+  let str_text: string = state.source_text.slice(state.pos, current_state.pos)
+  let tok: token.Token = token.new_token(token.TokenKind.String, str_text, state.line, start_col)
+  let result: LexerState = _add_token(current_state, tok)
+
+  if not found_closing {
+    let bag: diagnostics.DiagnosticBag = diagnostics.add_error(
+      result.diagnostics,
+      "E0001",
+      "unterminated string literal",
+      "",
+      start_line,
+      start_col
+    )
+    set result = LexerState {
+      source_text: result.source_text,
+      pos: result.pos,
+      line: result.line,
+      column: result.column,
+      tokens: result.tokens,
+      diagnostics: bag
+    }
+  }
+
+  give result
+}
+
+proc _lex_identifier(state: LexerState) -> LexerState {
+  let start_pos: int = state.pos
+  let start_col: int = state.column
+  let current_state: LexerState = state
+
+  while _is_alphanum(_peek_char(current_state)) {
+    set current_state = _advance(current_state)
+  }
+
+  let ident_text: string = state.source_text.slice(start_pos, current_state.pos)
+  let kind: token.TokenKind = token.classify_word(ident_text)
+  let tok: token.Token = token.new_token(kind, ident_text, state.line, start_col)
+
+  give _add_token(current_state, tok)
+}
+
+proc _lex_operator_or_symbol(state: LexerState) -> LexerState {
+  let ch: string = _peek_char(state)
+  let next: string = _peek_next_char(state)
+  let two_char: string = ch + next
+  let start_col: int = state.column
+  let current_state: LexerState = _advance(state)
+  let kind: token.TokenKind = token.TokenKind.Unknown
+  let tok_text: string = ch
+
+  if token.is_operator_text(two_char) {
+    set tok_text = two_char
+    set current_state = _advance(current_state)
+    set kind = token.TokenKind.Operator
+  } else {
+    if token.is_operator_text(ch) {
+      set kind = token.TokenKind.Operator
+    } else {
+      if token.is_symbol_text(ch) {
+        set kind = token.TokenKind.Symbol
+      }
+    }
+  }
+
+  let tok: token.Token = token.new_token(kind, tok_text, state.line, start_col)
+  give _add_token(current_state, tok)
 }
 
 proc lex_source(source_name: string, source_text: string) -> LexedSource {
   let bag: diagnostics.DiagnosticBag = diagnostics.new_bag()
+  let empty_tokens: [token.Token] = []
 
-  if source_text == "" {
-    set bag = diagnostics.add_warning(
-      bag,
-      "W0001",
-      "empty source text passed to lexer facade",
-      source_name,
-      1,
-      1
-    )
+  let state: LexerState = LexerState {
+    source_text: source_text,
+    pos: 0,
+    line: 1,
+    column: 1,
+    tokens: empty_tokens,
+    diagnostics: bag
   }
+
+  let current_state: LexerState = state
+
+  while current_state.pos < current_state.source_text.len {
+    let ch: string = _peek_char(current_state)
+
+    if _is_whitespace(ch) {
+      if ch == "\n" {
+        let tok: token.Token = token.newline(current_state.line, current_state.column)
+        set current_state = _add_token(current_state, tok)
+      }
+      set current_state = _advance(current_state)
+    } else if _is_digit(ch) {
+      set current_state = _lex_number(current_state)
+    } else if ch == "\"" {
+      set current_state = _lex_string(current_state, "\"")
+    } else if ch == "'" {
+      set current_state = _lex_string(current_state, "'")
+    } else if _is_alpha(ch) {
+      set current_state = _lex_identifier(current_state)
+    } else {
+      set current_state = _lex_operator_or_symbol(current_state)
+    }
+  }
+
+  let eof_tok: token.Token = token.eof(current_state.line, current_state.column)
+  let final_tokens: [token.Token] = current_state.tokens + [eof_tok]
 
   give LexedSource {
     source_name: source_name,
     source_text: source_text,
-    token_count: count_tokens(source_text),
-    diagnostics: bag
+    tokens: final_tokens,
+    token_count: final_tokens.len,
+    diagnostics: current_state.diagnostics
   }
 }
 

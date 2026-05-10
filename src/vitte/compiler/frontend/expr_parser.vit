@@ -1,0 +1,110 @@
+space vitte/compiler/frontend/expr_parser
+
+use token
+use diagnostics
+
+pick ExprKind {
+  Literal,
+  Variable,
+  Binary,
+  Unary,
+  Call,
+  Member,
+  Index,
+  Cast,
+  Paren,
+  Unknown
+}
+
+form Expr {
+  kind: ExprKind,
+  text: string,
+  left: form,
+  right: form,
+  operator: string,
+  args: [form],
+  line: int,
+  column: int
+}
+
+pick Precedence {
+  None,
+  Assignment,
+  LogicalOr,
+  LogicalAnd,
+  BitwiseOr,
+  BitwiseXor,
+  BitwiseAnd,
+  Equality,
+  Comparison,
+  Range,
+  BitwiseShift,
+  Term,
+  Factor,
+  Unary,
+  Exponent,
+  Postfix,
+  Primary
+}
+
+proc _precedence_value(prec: Precedence) -> int {
+  if prec == Precedence.None { give 0 }
+  if prec == Precedence.Assignment { give 1 }
+  if prec == Precedence.LogicalOr { give 2 }
+  if prec == Precedence.LogicalAnd { give 3 }
+  if prec == Precedence.BitwiseOr { give 4 }
+  if prec == Precedence.BitwiseXor { give 5 }
+  if prec == Precedence.BitwiseAnd { give 6 }
+  if prec == Precedence.Equality { give 7 }
+  if prec == Precedence.Comparison { give 8 }
+  if prec == Precedence.Range { give 9 }
+  if prec == Precedence.BitwiseShift { give 10 }
+  if prec == Precedence.Term { give 11 }
+  if prec == Precedence.Factor { give 12 }
+  if prec == Precedence.Unary { give 13 }
+  if prec == Precedence.Exponent { give 14 }
+  if prec == Precedence.Postfix { give 15 }
+  if prec == Precedence.Primary { give 16 }
+  give 0
+}
+
+proc _get_operator_precedence(op: string) -> Precedence {
+  if op == "||" or op == "or" { give Precedence.LogicalOr }
+  if op == "&&" or op == "and" { give Precedence.LogicalAnd }
+  if op == "|" { give Precedence.BitwiseOr }
+  if op == "^" { give Precedence.BitwiseXor }
+  if op == "&" { give Precedence.BitwiseAnd }
+  if op == "==" or op == "!=" { give Precedence.Equality }
+  if op == "<" or op == "<=" or op == ">" or op == ">=" { give Precedence.Comparison }
+  if op == ".." or op == "..=" { give Precedence.Range }
+  if op == "<<" or op == ">>" { give Precedence.BitwiseShift }
+  if op == "+" or op == "-" { give Precedence.Term }
+  if op == "*" or op == "/" or op == "%" { give Precedence.Factor }
+  if op == "**" { give Precedence.Exponent }
+  give Precedence.None
+}
+
+proc _is_unary_operator(op: string) -> bool {
+  if op == "+" { give true }
+  if op == "-" { give true }
+  if op == "!" or op == "not" { give true }
+  if op == "~" { give true }
+  if op == "*" { give true }
+  if op == "&" { give true }
+  give false
+}
+
+proc _create_expr(kind: ExprKind, text: string, line: int, column: int) -> Expr {
+  give Expr {
+    kind: kind,
+    text: text,
+    left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [], left: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [], right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] }, line: 0, column: 0, right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, operator: "", args: [], right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, operator: "", args: [], right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, operator: "", args: [], right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, operator: "", args: [], right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, operator: "", args: [], right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, operator: "", args: [], right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, operator: "", args: [], right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, operator: "", args: [], right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } },
+    right: Expr { kind: ExprKind.Unknown, text: "", left: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [], right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } }, line: 0, column: 0, operator: "", args: [], right: Expr { kind: ExprKind.Unknown, text: "", line: 0, column: 0, operator: "", args: [] } },
+    operator: "",
+    args: [],
+    line: line,
+    column: column
+  }
+}
+
+export *

@@ -194,6 +194,99 @@ proc diagnostics_ok() -> bool {
   give true
 }
 
+proc lexer_tokenization_ok() -> bool {
+  use src/vitte/compiler/frontend/lexer
+  use src/vitte/compiler/frontend/token
+
+  let source_text: string = "space demo let x = 42 + 5"
+  let lexed: lexer.LexedSource = lexer.lex_source("demo.vit", source_text)
+
+  if lexed.token_count <= 0 { give false }
+  if lexed.source_name != "demo.vit" { give false }
+  if diagnostics.count(lexed.diagnostics) != 0 { give false }
+
+  if lexed.tokens.len < 7 { give false }
+  if lexed.tokens[0].kind != token.TokenKind.Keyword { give false }
+  if lexed.tokens[0].text != "space" { give false }
+  if lexed.tokens[1].kind != token.TokenKind.Ident { give false }
+  if lexed.tokens[1].text != "demo" { give false }
+  if lexed.tokens[2].kind != token.TokenKind.Keyword { give false }
+  if lexed.tokens[2].text != "let" { give false }
+
+  give true
+}
+
+proc control_flow_emit_ok() -> bool {
+  let source_text: string = "space demo\nproc test(x: i32) -> i32 {\n  if x > 0 {\n    give x\n  }\n  give 0\n}\n"
+  let opts: options.DriverOptions = options.default_options()
+  let report: compiler.CompileReport = compiler.compile_source("control_flow.vit", source_text, opts)
+
+  if not report.success { give false }
+  if report.function_count != 1 { give false }
+
+  give true
+}
+
+proc arduino_backend_ok() -> bool {
+  use src/vitte/compiler/backends/toolchain/arduino
+
+  let opts: arduino.ArduinoOptions = arduino.default_options()
+  if opts.cli_path != "arduino-cli" { give false }
+  if opts.fqbn != "arduino:avr:uno" { give false }
+
+  let result: arduino.ArduinoInvocation = arduino.invoke_arduino_cli(
+    "void setup() {}",
+    [],
+    "#include <Arduino.h>",
+    "output.hex",
+    opts
+  )
+
+  if not result.success { give false }
+  if result.compile_command == "" { give false }
+
+  give true
+}
+
+proc optimization_ok() -> bool {
+  use src/vitte/compiler/ir/optimize
+
+  let module: mir.MirModule = mir.empty_module()
+  set module.globals = module.globals + [mir.MirGlobal {
+    name: "unused_global",
+    type_name: "i32",
+    init_literal: "0",
+    is_const: false
+  }]
+
+  let optimized: mir.MirModule = optimize.eliminate_dead_code(module)
+
+  if optimized.globals.len != 0 { give false }
+
+  give true
+}
+
+proc diagnostics_enhanced_ok() -> bool {
+  let source_text: string = "space demo\nproc main() -> i32 { give 42 }\n"
+  let opts: options.DriverOptions = options.default_options()
+  let report: compiler.CompileReport = compiler.compile_source("enhanced_diag.vit", source_text, opts)
+
+  if not report.success { give false }
+  if report.diag_count != 0 { give false }
+
+  give true
+}
+
+proc all_enhancements_ok() -> bool {
+  if not lexer_tokenization_ok() { give false }
+  if not control_flow_emit_ok() { give false }
+  if not arduino_backend_ok() { give false }
+  if not optimization_ok() { give false }
+  if not diagnostics_enhanced_ok() { give false }
+
+  give true
+}
+
 proc smoke_ok() -> bool {
   if not compiler_root_ok() { give false }
   if not pipeline_lowering_ok() { give false }
@@ -202,6 +295,12 @@ proc smoke_ok() -> bool {
   if not globals_only_emit_ok() { give false }
   if not backend_mir_adapter_ok() { give false }
   if not diagnostics_ok() { give false }
+  if not lexer_tokenization_ok() { give false }
+  if not control_flow_emit_ok() { give false }
+  if not arduino_backend_ok() { give false }
+  if not optimization_ok() { give false }
+  if not diagnostics_enhanced_ok() { give false }
+  if not all_enhancements_ok() { give false }
   give true
 }
 

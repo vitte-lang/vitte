@@ -147,6 +147,35 @@ proc _emit_stmt(stmt: ir_mir.MirStmt) -> string {
     if stmt.expr.kind == ir_mir.MirExprKind.Empty { give "" }
     give _emit_expr(stmt.expr) + ";\n"
   }
+  if stmt.kind == ir_mir.MirStmtKind.If {
+    let out: string = "if (" + _emit_expr(stmt.condition) + ") {\n"
+    let i: int = 0
+    while i < stmt.body_stmts.len {
+      set out = out + "  " + _emit_stmt(stmt.body_stmts[i])
+      set i = i + 1
+    }
+    give out + "}\n"
+  }
+  if stmt.kind == ir_mir.MirStmtKind.While {
+    let out: string = "while (" + _emit_expr(stmt.condition) + ") {\n"
+    let i: int = 0
+    while i < stmt.body_stmts.len {
+      set out = out + "  " + _emit_stmt(stmt.body_stmts[i])
+      set i = i + 1
+    }
+    give out + "}\n"
+  }
+  if stmt.kind == ir_mir.MirStmtKind.For {
+    let iter_var: string = _safe_ident(stmt.iter_var)
+    let iter_expr: string = _emit_expr(stmt.iter_expr)
+    let out: string = "for (" + iter_var + " in " + iter_expr + ") {\n"
+    let i: int = 0
+    while i < stmt.body_stmts.len {
+      set out = out + "  " + _emit_stmt(stmt.body_stmts[i])
+      set i = i + 1
+    }
+    give out + "}\n"
+  }
   if stmt.kind == ir_mir.MirStmtKind.Unknown {
     if stmt.raw_text == "" { give "" }
     give "/* unknown: " + stmt.raw_text + " */\n"
