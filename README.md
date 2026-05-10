@@ -76,7 +76,7 @@ Validation then checks:
 | Hand-edited | Generated |
 | --- | --- |
 | `src/vitte/grammar/vitte.ebnf` | `docs/ebnf.sha256` |
-| `docs/*.html` (EN source pages) | `docs/fr/*.html` |
+| `docs/*.html` (source pages) | `docs/book/*.html` |
 | `docs/css/*`, `docs/js/*` | `docs/search-index*.json` |
 | `tools/build_*.py` | `docs/build-manifest.json`, `docs/checksums.txt` |
 
@@ -114,7 +114,7 @@ Vitte is for users, contributors, and maintainers responsible for release qualit
 
 ## Documentation language policy
 
-Documentation is maintained in English at `docs/` (root) and French at `docs/fr/`.
+Documentation is maintained in `docs/` (root).
 Other languages are provided through browser auto-translation.
 
 ## Security and accessibility
