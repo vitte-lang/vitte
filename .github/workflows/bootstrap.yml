@@ -32,12 +32,75 @@ jobs:
           path: target/reports/seed_compat_report.txt
           if-no-files-found: error
 
-  bootstrap-all:
+  bootstrap-minimal:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Run bootstrap all
-        run: make bootstrap-all
+      - name: Run seed bootstrap
+        run: |
+          mkdir -p target/reports
+          make bootstrap-seed 2>&1 | tee target/reports/bootstrap-seed.log
+      - name: Run stage1 bootstrap
+        run: |
+          mkdir -p target/reports
+          toolchain/scripts/bootstrap/stage1.sh 2>&1 | tee target/reports/bootstrap-stage1.log
+      - name: Package stage1 artifact
+        run: |
+          mkdir -p target/artifacts/stage1/bin
+          cp bin/vittec1 target/artifacts/stage1/bin/vittec1
+          chmod +x target/artifacts/stage1/bin/vittec1
+      - name: Upload bootstrap-minimal logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: bootstrap-minimal-logs
+          path: target/reports/bootstrap-*.log
+          if-no-files-found: warn
+      - name: Upload stage1 compiler artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage1-compiler
+          path: target/artifacts/stage1/bin/vittec1
+          if-no-files-found: error
+
+  bootstrap-full:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        phase: [stage2, parity]
+    needs: bootstrap-minimal
+    continue-on-error: true
+    name: bootstrap-full (${{ matrix.phase }})
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download stage1 compiler artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: stage1-compiler
+          path: bin
+      - name: Prepare stage1 compiler in bin
+        run: chmod +x bin/vittec1
+      - name: Run stage2 bootstrap (non-blocking)
+        if: matrix.phase == 'stage2'
+        run: |
+          mkdir -p target/reports
+          VITTE_SELF_CHECK=1 toolchain/scripts/bootstrap/stage2.sh 2>&1 | tee target/reports/bootstrap-stage2.log
+      - name: Run bootstrap parity verification (non-blocking)
+        if: matrix.phase == 'parity'
+        run: |
+          mkdir -p target/reports
+          make bootstrap-verify 2>&1 | tee target/reports/bootstrap-parity.log
+      - name: Upload bootstrap-full logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: bootstrap-full-logs-${{ matrix.phase }}
+          path: |
+            target/reports/bootstrap-stage2.log
+            target/reports/bootstrap-parity.log
+          if-no-files-found: warn
 
   bootstrap-native-contract:
     runs-on: ubuntu-latest

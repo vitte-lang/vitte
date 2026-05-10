@@ -4,6 +4,12 @@
 
 Stage 1 is the **first full-featured, self-hosting Vitte compiler**. It is compiled from Vitte source using the seed compiler (vittec0) and represents the first time the compiler can compile itself.
 
+## Seed-Compat Entry Contract
+
+`stage1/src/main.vit` is intentionally kept as a **seed-compatible shim** for `vittec0`.
+It must stay within the minimal bootstrap subset accepted by the seed compiler.
+Full compiler behavior and richer syntax live in `toolchain/src/*`.
+
 ## Purpose
 
 - **Self-hosting**: Built using vittec0 (the seed compiler)
@@ -151,4 +157,3 @@ Stage 1 is:
 **Version**: 0.1.0  
 **Status**: First self-hosted compiler  
 **Role**: Bootstrap stage 1 compilation
-

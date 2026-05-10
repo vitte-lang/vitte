@@ -4,6 +4,11 @@
 
 Stage 2 is the **verification compiler** used to confirm the bootstrap process is reproducible. It is compiled from Vitte source using the Stage 1 compiler (vittec1) and should produce an **identical binary** to Stage 1.
 
+## Seed-Compat Entry Contract
+
+`stage2/src/main.vit` is intentionally kept as a **bootstrap-compatible shim** used by the bootstrap chain.
+Keep this entry minimal and stable for bootstrap reproducibility; full toolchain logic remains in `toolchain/src/*`.
+
 ## Purpose
 
 - **Reproducibility verification**: Check Stage 1 output is reproducible
