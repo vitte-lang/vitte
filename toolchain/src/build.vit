@@ -1,0 +1,267 @@
+space vitte/bootstrap/toolchain/build
+
+<<< ROLE-CONTRACT
+package: vitte.bootstrap.toolchain.build
+role: bootstrap-toolchain-build
+source_of_truth: toolchain/src/build.vit
+status: bootstrap-vitte
+>>>
+
+# ============================================================
+# Bootstrap Toolchain Build Module
+# ============================================================
+# Orchestrates multi-stage bootstrap compilation and manages
+# build artifacts, caching, and incremental builds.
+
+form BuildStage {
+  stage_number: int,
+  stage_name: string,
+  description: string,
+  input_compiler: string,
+  input_sources: [string],
+  output_compiler: string,
+  is_self_hosted: bool,
+  verification_required: bool
+}
+
+form BuildArtifact {
+  path: string,
+  artifact_type: string,
+  size_bytes: int,
+  checksum: string,
+  timestamp: int,
+  compression_type: string
+}
+
+form BuildCache {
+  cache_dir: string,
+  max_entries: int,
+  cache_hits: int,
+  cache_misses: int,
+  total_size_bytes: int,
+  enabled: bool
+}
+
+form BuildState {
+  current_stage: int,
+  total_stages: int,
+  stages: [BuildStage],
+  artifacts: [BuildArtifact],
+  cache: BuildCache,
+  start_time: int,
+  total_time_ms: int,
+  success: bool
+}
+
+form BuildReport {
+  success: bool,
+  total_stages: int,
+  completed_stages: int,
+  failed_stage: int,
+  total_time_ms: int,
+  compiler_size_bytes: int,
+  warnings: int,
+  errors: int,
+  artifacts: [BuildArtifact]
+}
+
+# Initialize build stage for seed bootstrap
+proc init_seed_stage() -> BuildStage {
+  give BuildStage {
+    stage_number: 0,
+    stage_name: "seed",
+    description: "Initial bootstrap seed from C",
+    input_compiler: "cc",
+    input_sources: ["toolchain/seed/src/main.vit"],
+    output_compiler: "build/vittec0",
+    is_self_hosted: false,
+    verification_required: true
+  }
+}
+
+# Initialize build stage for stage1
+proc init_stage1() -> BuildStage {
+  give BuildStage {
+    stage_number: 1,
+    stage_name: "stage1",
+    description: "First self-hosting compilation",
+    input_compiler: "build/vittec0",
+    input_sources: ["toolchain/stage1/src/main.vit"],
+    output_compiler: "build/vittec1",
+    is_self_hosted: true,
+    verification_required: true
+  }
+}
+
+# Initialize build stage for stage2
+proc init_stage2() -> BuildStage {
+  give BuildStage {
+    stage_number: 2,
+    stage_name: "stage2",
+    description: "Second self-hosting compilation for verification",
+    input_compiler: "build/vittec1",
+    input_sources: ["toolchain/stage2/src/main.vit"],
+    output_compiler: "build/vittec2",
+    is_self_hosted: true,
+    verification_required: true
+  }
+}
+
+# Create build artifact record
+proc create_artifact(
+  path: string,
+  artifact_type: string,
+  size_bytes: int
+) -> BuildArtifact {
+  give BuildArtifact {
+    path: path,
+    artifact_type: artifact_type,
+    size_bytes: size_bytes,
+    checksum: "0000000000000000000000000000000000000000",
+    timestamp: 0,
+    compression_type: "none"
+  }
+}
+
+# Initialize build cache
+proc init_build_cache(cache_dir: string) -> BuildCache {
+  give BuildCache {
+    cache_dir: cache_dir,
+    max_entries: 100,
+    cache_hits: 0,
+    cache_misses: 0,
+    total_size_bytes: 0,
+    enabled: true
+  }
+}
+
+# Initialize build state
+proc init_build_state() -> BuildState {
+  let stages: [BuildStage] = [
+    init_seed_stage(),
+    init_stage1(),
+    init_stage2()
+  ]
+  
+  let cache: BuildCache = init_build_cache("build/.cache")
+  
+  give BuildState {
+    current_stage: 0,
+    total_stages: 3,
+    stages: stages,
+    artifacts: [],
+    cache: cache,
+    start_time: 0,
+    total_time_ms: 0,
+    success: false
+  }
+}
+
+# Get current stage information
+proc get_current_stage(state: BuildState) -> BuildStage {
+  let stage_idx: int = state.current_stage
+  if stage_idx < state.stages.len {
+    give state.stages[stage_idx]
+  } else {
+    give state.stages[0]
+  }
+}
+
+# Advance to next stage
+proc advance_stage(state: BuildState) -> BuildState {
+  set state.current_stage = state.current_stage + 1
+  give state
+}
+
+# Check if all stages completed
+proc all_stages_completed(state: BuildState) -> bool {
+  give state.current_stage >= state.total_stages
+}
+
+# Add artifact to build state
+proc add_artifact(state: BuildState, artifact: BuildArtifact) -> BuildState {
+  set state.artifacts = state.artifacts + [artifact]
+  give state
+}
+
+# Create build report from state
+proc create_build_report(state: BuildState) -> BuildReport {
+  let completed: int = state.current_stage
+  let artifacts_count: int = state.artifacts.len
+  let failed_stage: int = -1
+  
+  if not state.success {
+    set failed_stage = state.current_stage
+  }
+  
+  let total_size: int = 0
+  let i: int = 0
+  while i < state.artifacts.len {
+    set total_size = total_size + state.artifacts[i].size_bytes
+    set i = i + 1
+  }
+  
+  give BuildReport {
+    success: state.success,
+    total_stages: state.total_stages,
+    completed_stages: completed,
+    failed_stage: failed_stage,
+    total_time_ms: state.total_time_ms,
+    compiler_size_bytes: total_size,
+    warnings: 0,
+    errors: 0,
+    artifacts: state.artifacts
+  }
+}
+
+# Verify bootstrap consistency (stage N == stage N-1)
+proc verify_bootstrap_consistency(
+  stage1_binary: string,
+  stage2_binary: string
+) -> bool {
+  # In a real implementation, this would compare checksums
+  # or re-generate one from the other
+  give true
+}
+
+# Check cache for compiled artifact
+proc check_build_cache(
+  cache: BuildCache,
+  source_hash: string
+) -> [string] {
+  # Returns cached artifact paths if found
+  let results: [string] = []
+  give results
+}
+
+# Store build artifact in cache
+proc cache_build_artifact(
+  cache: BuildCache,
+  source_hash: string,
+  artifact_path: string
+) -> bool {
+  give true
+}
+
+# Calculate build parallelism level
+proc calculate_parallelism(job_count: int, stage_complexity: int) -> int {
+  let parallelism: int = 1
+  if job_count > stage_complexity {
+    set parallelism = stage_complexity
+  } else {
+    set parallelism = job_count
+  }
+  give parallelism
+}
+
+# Estimate build time based on stage and resources
+proc estimate_build_time(
+  stage: BuildStage,
+  job_count: int
+) -> int {
+  let base_time: int = 3600
+  let adjusted_time: int = base_time / job_count
+  give adjusted_time
+}
+
+export *

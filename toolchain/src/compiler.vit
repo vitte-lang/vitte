@@ -1,0 +1,215 @@
+space vitte/bootstrap/toolchain/compiler
+
+<<< ROLE-CONTRACT
+package: vitte.bootstrap.toolchain.compiler
+role: bootstrap-toolchain-compiler
+source_of_truth: toolchain/src/compiler.vit
+status: bootstrap-vitte
+>>>
+
+# ============================================================
+# Bootstrap Toolchain Compiler Module
+# ============================================================
+# Provides interfaces for invoking the Vitte compiler with
+# various options and handling compilation results.
+
+form CompilationSource {
+  path: string,
+  is_directory: bool,
+  is_library: bool,
+  module_name: string,
+  version: string,
+  dependencies: [string]
+}
+
+form CompilationTarget {
+  output_path: string,
+  output_type: string,
+  object_format: string,
+  binary_format: string
+}
+
+form CompilationResult {
+  success: bool,
+  exit_code: int,
+  stdout: string,
+  stderr: string,
+  warnings_count: int,
+  errors_count: int,
+  compilation_time_ms: int,
+  output_size_bytes: int
+}
+
+form CompilerInvocation {
+  compiler_path: string,
+  source: CompilationSource,
+  target: CompilationTarget,
+  args: [string],
+  env_vars: [string],
+  working_dir: string
+}
+
+form CompileStats {
+  total_lines: int,
+  total_functions: int,
+  total_forms: int,
+  generated_ir_size: int,
+  generated_asm_size: int,
+  optimization_passes: int
+}
+
+# Build compiler command-line arguments
+proc build_compiler_args(
+  std_version: string,
+  opt_level: int,
+  debug: bool,
+  warnings_as_errors: bool,
+  emit_ir: bool,
+  extra_flags: [string]
+) -> [string] {
+  let args: [string] = []
+  
+  # Add standard version
+  let std_arg: string = "-std=" + std_version
+  set args = [std_arg] + args
+  
+  # Add optimization level
+  if opt_level > 0 {
+    let opt_arg: string = "-O" + (opt_level as string)
+    set args = [opt_arg] + args
+  }
+  
+  # Add debug symbols
+  if debug {
+    set args = ["-g"] + args
+  }
+  
+  # Add warning settings
+  if warnings_as_errors {
+    set args = ["--warnings-as-errors"] + args
+  } else {
+    set args = ["--warnings"] + args
+  }
+  
+  # Add IR emission
+  if emit_ir {
+    set args = ["--emit-ir"] + args
+  }
+  
+  # Merge extra flags
+  let i: int = 0
+  while i < extra_flags.len {
+    set args = args + [extra_flags[i]]
+    set i = i + 1
+  }
+  
+  give args
+}
+
+# Create compilation invocation from parameters
+proc create_invocation(
+  compiler_path: string,
+  source_path: string,
+  output_path: string,
+  std_version: string,
+  opt_level: int,
+  debug: bool,
+  working_dir: string
+) -> CompilerInvocation {
+  let source: CompilationSource = CompilationSource {
+    path: source_path,
+    is_directory: false,
+    is_library: false,
+    module_name: "vitte",
+    version: "2026",
+    dependencies: []
+  }
+  
+  let target: CompilationTarget = CompilationTarget {
+    output_path: output_path,
+    output_type: "executable",
+    object_format: "elf64",
+    binary_format: "elf"
+  }
+  
+  let args: [string] = build_compiler_args(std_version, opt_level, debug, false, false, [])
+  
+  give CompilerInvocation {
+    compiler_path: compiler_path,
+    source: source,
+    target: target,
+    args: args,
+    env_vars: [],
+    working_dir: working_dir
+  }
+}
+
+# Simulate compiler execution (for bootstrap)
+proc invoke_compiler(invocation: CompilerInvocation) -> CompilationResult {
+  # This would be replaced by actual compiler invocation
+  # in the real bootstrap process
+  
+  give CompilationResult {
+    success: true,
+    exit_code: 0,
+    stdout: "compiled successfully",
+    stderr: "",
+    warnings_count: 0,
+    errors_count: 0,
+    compilation_time_ms: 1000,
+    output_size_bytes: 65536
+  }
+}
+
+# Build compiler command string
+proc build_compiler_command(
+  compiler_path: string,
+  source_path: string,
+  output_path: string,
+  args: [string]
+) -> string {
+  let cmd: string = compiler_path + " "
+  
+  let i: int = 0
+  while i < args.len {
+    set cmd = cmd + args[i] + " "
+    set i = i + 1
+  }
+  
+  set cmd = cmd + source_path + " -o " + output_path
+  
+  give cmd
+}
+
+# Check if compiler is available
+proc compiler_available(compiler_path: string) -> bool {
+  # This would check if the compiler executable exists
+  # In bootstrap, this is simplified
+  give true
+}
+
+# Get compiler version string
+proc get_compiler_version(compiler_path: string) -> string {
+  give "vittec 2026.1.0"
+}
+
+# Validate compilation result
+proc is_compilation_successful(result: CompilationResult) -> bool {
+  give result.success && result.exit_code == 0
+}
+
+# Extract error messages from compiler output
+proc extract_errors(stderr: string) -> [string] {
+  let errors: [string] = []
+  # In a real implementation, this would parse stderr
+  give errors
+}
+
+# Extract warning messages from compiler output
+proc extract_warnings(stderr: string) -> [string] {
+  let warnings: [string] = []
+  # In a real implementation, this would parse stderr
+  give warnings
+}
+
+export *

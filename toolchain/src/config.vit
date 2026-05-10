@@ -1,0 +1,217 @@
+space vitte/bootstrap/toolchain/config
+
+<<< ROLE-CONTRACT
+package: vitte.bootstrap.toolchain.config
+role: bootstrap-toolchain-config
+source_of_truth: toolchain/src/config.vit
+status: bootstrap-vitte
+>>>
+
+# ============================================================
+# Bootstrap Toolchain Configuration Module
+# ============================================================
+# Manages toolchain options, defaults, and configuration
+# for the Vitte bootstrap compilation process.
+
+form BuildTarget {
+  name: string,
+  os: string,
+  arch: string,
+  triple: string,
+  c_compiler: string,
+  c_flags: [string],
+  ld_flags: [string],
+  libs: [string]
+}
+
+form CompileOptions {
+  optimize_level: int,
+  debug_symbols: bool,
+  warnings_as_errors: bool,
+  enable_lto: bool,
+  enable_pgo: bool,
+  emit_ir: bool,
+  check_only: bool,
+  verbose: bool,
+  jobs: int,
+  output_format: string,
+  std_version: string
+}
+
+form ToolchainConfig {
+  source_dir: string,
+  build_dir: string,
+  install_prefix: string,
+  target: BuildTarget,
+  compile_opts: CompileOptions,
+  use_ccache: bool,
+  use_ninja: bool,
+  ar_tool: string,
+  ranlib_tool: string,
+  nm_tool: string
+}
+
+# Default target configuration (native)
+proc default_build_target() -> BuildTarget {
+  give BuildTarget {
+    name: "native",
+    os: "linux",
+    arch: "x86_64",
+    triple: "x86_64-unknown-linux-gnu",
+    c_compiler: "gcc",
+    c_flags: ["-Wall", "-Wextra"],
+    ld_flags: [],
+    libs: ["c", "m"]
+  }
+}
+
+# Platform-specific targets
+proc target_x86_64_linux() -> BuildTarget {
+  give BuildTarget {
+    name: "x86_64-linux",
+    os: "linux",
+    arch: "x86_64",
+    triple: "x86_64-unknown-linux-gnu",
+    c_compiler: "gcc",
+    c_flags: ["-Wall", "-Wextra", "-fPIC"],
+    ld_flags: ["-Wl,-rpath,$ORIGIN/../lib"],
+    libs: ["c", "m", "dl"]
+  }
+}
+
+proc target_aarch64_linux() -> BuildTarget {
+  give BuildTarget {
+    name: "aarch64-linux",
+    os: "linux",
+    arch: "aarch64",
+    triple: "aarch64-unknown-linux-gnu",
+    c_compiler: "aarch64-linux-gnu-gcc",
+    c_flags: ["-Wall", "-Wextra", "-fPIC"],
+    ld_flags: ["-Wl,-rpath,$ORIGIN/../lib"],
+    libs: ["c", "m", "dl"]
+  }
+}
+
+proc target_x86_64_darwin() -> BuildTarget {
+  give BuildTarget {
+    name: "x86_64-darwin",
+    os: "macos",
+    arch: "x86_64",
+    triple: "x86_64-apple-darwin",
+    c_compiler: "clang",
+    c_flags: ["-Wall", "-Wextra", "-fPIC"],
+    ld_flags: ["-Wl,-rpath,@loader_path/../lib"],
+    libs: ["c", "System"]
+  }
+}
+
+proc target_aarch64_darwin() -> BuildTarget {
+  give BuildTarget {
+    name: "aarch64-darwin",
+    os: "macos",
+    arch: "aarch64",
+    triple: "aarch64-apple-darwin",
+    c_compiler: "clang",
+    c_flags: ["-Wall", "-Wextra", "-fPIC"],
+    ld_flags: ["-Wl,-rpath,@loader_path/../lib"],
+    libs: ["c", "System"]
+  }
+}
+
+proc target_x86_64_windows() -> BuildTarget {
+  give BuildTarget {
+    name: "x86_64-windows",
+    os: "windows",
+    arch: "x86_64",
+    triple: "x86_64-pc-windows-gnu",
+    c_compiler: "x86_64-w64-mingw32-gcc",
+    c_flags: ["-Wall", "-Wextra"],
+    ld_flags: [],
+    libs: ["kernel32", "advapi32"]
+  }
+}
+
+# Default compilation options for bootstrap
+proc default_compile_options() -> CompileOptions {
+  give CompileOptions {
+    optimize_level: 2,
+    debug_symbols: true,
+    warnings_as_errors: false,
+    enable_lto: false,
+    enable_pgo: false,
+    emit_ir: false,
+    check_only: false,
+    verbose: false,
+    jobs: 4,
+    output_format: "native",
+    std_version: "vitte-2026"
+  }
+}
+
+# Strict options for verification builds
+proc strict_compile_options() -> CompileOptions {
+  give CompileOptions {
+    optimize_level: 3,
+    debug_symbols: true,
+    warnings_as_errors: true,
+    enable_lto: true,
+    enable_pgo: false,
+    emit_ir: false,
+    check_only: false,
+    verbose: true,
+    jobs: 4,
+    output_format: "native",
+    std_version: "vitte-2026"
+  }
+}
+
+# Fast build for development
+proc fast_compile_options() -> CompileOptions {
+  give CompileOptions {
+    optimize_level: 0,
+    debug_symbols: true,
+    warnings_as_errors: false,
+    enable_lto: false,
+    enable_pgo: false,
+    emit_ir: true,
+    check_only: false,
+    verbose: false,
+    jobs: 8,
+    output_format: "native",
+    std_version: "vitte-2026"
+  }
+}
+
+# Default toolchain configuration
+proc default_toolchain_config(
+  source_dir: string,
+  build_dir: string,
+  install_prefix: string
+) -> ToolchainConfig {
+  give ToolchainConfig {
+    source_dir: source_dir,
+    build_dir: build_dir,
+    install_prefix: install_prefix,
+    target: default_build_target(),
+    compile_opts: default_compile_options(),
+    use_ccache: false,
+    use_ninja: false,
+    ar_tool: "ar",
+    ranlib_tool: "ranlib",
+    nm_tool: "nm"
+  }
+}
+
+# Configuration with optimization flags
+proc optimized_toolchain_config(
+  source_dir: string,
+  build_dir: string,
+  install_prefix: string
+) -> ToolchainConfig {
+  let config: ToolchainConfig = default_toolchain_config(source_dir, build_dir, install_prefix)
+  set config.compile_opts = strict_compile_options()
+  set config.use_ccache = true
+  give config
+}
+
+export *

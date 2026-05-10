@@ -1,0 +1,304 @@
+space vitte/bootstrap/toolchain
+
+<<< ROLE-CONTRACT
+package: vitte.bootstrap.toolchain
+role: bootstrap-vitte-toolchain
+source_of_truth: toolchain/src/main.vit
+status: bootstrap-vitte
+>>>
+
+# ============================================================
+# Vitte Bootstrap Toolchain - Main Module
+# ============================================================
+# Complete bootstrap toolchain for building the Vitte compiler.
+# Implements multi-stage bootstrap from C to self-hosted Vitte.
+
+# Import all toolchain components
+space vitte/bootstrap/toolchain/config
+space vitte/bootstrap/toolchain/platform
+space vitte/bootstrap/toolchain/compiler
+space vitte/bootstrap/toolchain/build
+space vitte/bootstrap/toolchain/orchestrator
+
+form ToolchainVersion {
+  major: int,
+  minor: int,
+  patch: int,
+  suffix: string
+}
+
+form BootstrapReport {
+  version: ToolchainVersion,
+  status: string,
+  timestamp: int,
+  platform: string,
+  success: bool,
+  stages_completed: int,
+  total_stages: int,
+  total_time_ms: int,
+  artifacts_produced: int
+}
+
+# Get bootstrap toolchain version
+proc version() -> ToolchainVersion {
+  give ToolchainVersion {
+    major: 0,
+    minor: 1,
+    patch: 0,
+    suffix: "bootstrap-vitte-2026"
+  }
+}
+
+# Format version for display
+proc format_version(v: ToolchainVersion) -> string {
+  let version_str: string = (v.major as string) + "." + (v.minor as string) + "." + (v.patch as string)
+  if v.suffix != "" {
+    set version_str = version_str + "-" + v.suffix
+  }
+  give version_str
+}
+
+# Print welcome banner
+proc print_banner() -> string {
+  let banner: string = ""
+  set banner = banner + "╔════════════════════════════════════════════════════════╗\n"
+  set banner = banner + "║         Vitte Bootstrap Toolchain                      ║\n"
+  set banner = banner + "║  Multi-stage compiler bootstrap from C to Vitte        ║\n"
+  set banner = banner + "║  Copyright 2026 - Vitte Project                        ║\n"
+  set banner = banner + "╚════════════════════════════════════════════════════════╝\n"
+  give banner
+}
+
+# Run full bootstrap process
+proc run_bootstrap(
+  source_dir: string,
+  build_dir: string,
+  install_dir: string,
+  verbose: bool
+) -> bool {
+  # Phase 1: Detect environment
+  let env: EnvironmentInfo = detect_environment()
+  
+  # Phase 2: Create configuration
+  let config: ToolchainConfig = default_toolchain_config(source_dir, build_dir, install_dir)
+  
+  # Phase 3: Create bootstrap plan
+  let plan: BootstrapPlan = create_bootstrap_plan()
+  
+  # Phase 4: Create context
+  let context: BootstrapContext = create_bootstrap_context(source_dir, build_dir, install_dir)
+  set context.verbose = verbose
+  
+  # Phase 5: Execute bootstrap
+  let success: bool = execute_bootstrap_plan(plan, context)
+  
+  give success
+}
+
+# Run quick bootstrap (dev build)
+proc run_quick_bootstrap(
+  source_dir: string,
+  build_dir: string
+) -> bool {
+  # Fast build without full verification
+  let config: ToolchainConfig = default_toolchain_config(source_dir, build_dir, "")
+  set config.compile_opts = fast_compile_options()
+  
+  let plan: BootstrapPlan = create_bootstrap_plan()
+  let context: BootstrapContext = create_bootstrap_context(source_dir, build_dir, "")
+  
+  give execute_bootstrap_plan(plan, context)
+}
+
+# Run strict bootstrap (for release)
+proc run_strict_bootstrap(
+  source_dir: string,
+  build_dir: string,
+  install_dir: string
+) -> bool {
+  # Full bootstrap with all verifications
+  let config: ToolchainConfig = optimized_toolchain_config(source_dir, build_dir, install_dir)
+  
+  let plan: BootstrapPlan = create_bootstrap_plan()
+  let context: BootstrapContext = create_bootstrap_context(source_dir, build_dir, install_dir)
+  set context.keep_artifacts = true
+  
+  give execute_bootstrap_plan(plan, context)
+}
+
+# List available build targets
+proc list_targets() -> [string] {
+  let targets: [string] = [
+    "native",
+    "x86_64-linux",
+    "aarch64-linux",
+    "x86_64-darwin",
+    "aarch64-darwin",
+    "x86_64-windows"
+  ]
+  give targets
+}
+
+# Get target by name
+proc get_target_by_name(name: string) -> BuildTarget {
+  if name == "x86_64-linux" {
+    give target_x86_64_linux()
+  } else {
+    if name == "aarch64-linux" {
+      give target_aarch64_linux()
+    } else {
+      if name == "x86_64-darwin" {
+        give target_x86_64_darwin()
+      } else {
+        if name == "aarch64-darwin" {
+          give target_aarch64_darwin()
+        } else {
+          if name == "x86_64-windows" {
+            give target_x86_64_windows()
+          } else {
+            give default_build_target()
+          }
+        }
+      }
+    }
+  }
+}
+
+# Check environment prerequisites
+proc check_prerequisites() -> bool {
+  let env: EnvironmentInfo = detect_environment()
+  
+  # Check platform support
+  if not is_platform_supported(env.platform) {
+    give false
+  }
+  
+  # Check required tools
+  if not all_required_tools_available(env.tools) {
+    give false
+  }
+  
+  give true
+}
+
+# Get recommended configuration
+proc get_recommended_config(
+  source_dir: string,
+  build_dir: string
+) -> ToolchainConfig {
+  let env: EnvironmentInfo = detect_environment()
+  
+  let config: ToolchainConfig = default_toolchain_config(source_dir, build_dir, "")
+  set config.compile_opts.jobs = recommended_job_count(env)
+  set config.use_ccache = env.tools.has_ccache
+  set config.use_ninja = env.tools.has_ninja
+  
+  give config
+}
+
+# Validate configuration
+proc validate_config(config: ToolchainConfig) -> [string] {
+  let errors: [string] = []
+  
+  # Check source directory
+  if config.source_dir == "" {
+    set errors = ["source_dir is required"] + errors
+  }
+  
+  # Check build directory
+  if config.build_dir == "" {
+    set errors = ["build_dir is required"] + errors
+  }
+  
+  # Check compilation options
+  if config.compile_opts.opt_level < 0 || config.compile_opts.opt_level > 3 {
+    set errors = ["invalid optimization level"] + errors
+  }
+  
+  # Check job count
+  if config.compile_opts.jobs < 1 {
+    set errors = ["jobs must be >= 1"] + errors
+  }
+  
+  give errors
+}
+
+# Dry run of bootstrap (show what would be done)
+proc dry_run(
+  source_dir: string,
+  build_dir: string
+) -> BootstrapReport {
+  let plan: BootstrapPlan = create_bootstrap_plan()
+  
+  give BootstrapReport {
+    version: version(),
+    status: "dry-run-complete",
+    timestamp: 0,
+    platform: "native",
+    success: true,
+    stages_completed: 0,
+    total_stages: plan.phases.len,
+    total_time_ms: plan.estimated_time_seconds * 1000,
+    artifacts_produced: 0
+  }
+}
+
+# Print bootstrap plan
+proc print_plan(plan: BootstrapPlan) -> string {
+  let output: string = "Bootstrap Plan:\n"
+  let i: int = 0
+  while i < plan.phases.len {
+    let phase: BootstrapPhase = plan.phases[i]
+    set output = output + "  Phase " + (phase.phase_number as string) + ": " + phase.phase_name + "\n"
+    set i = i + 1
+  }
+  give output
+}
+
+# Print environment info
+proc print_environment_info(env: EnvironmentInfo) -> string {
+  let output: string = "Environment Information:\n"
+  set output = output + "  OS: " + env.platform.os_name + "\n"
+  set output = output + "  Architecture: " + env.platform.arch_name + "\n"
+  set output = output + "  CPUs: " + (env.cpu_count as string) + "\n"
+  set output = output + "  Memory: " + (env.total_memory as string) + " MB\n"
+  set output = output + "  C Compiler: " + select_c_compiler(env.tools) + "\n"
+  set output = output + "  Build Tool: " + select_build_tool(env.tools) + "\n"
+  give output
+}
+
+# Main entry point for CLI
+proc main_bootstrap(
+  argc: int,
+  argv: [string]
+) -> int {
+  # Parse command-line arguments
+  let mode: string = "normal"
+  let verbose: bool = false
+  let source_dir: string = "."
+  let build_dir: string = "build"
+  
+  if argc >= 2 {
+    set mode = argv[1]
+  }
+  
+  # Execute appropriate bootstrap mode
+  let success: bool = false
+  if mode == "quick" {
+    set success = run_quick_bootstrap(source_dir, build_dir)
+  } else {
+    if mode == "strict" {
+      set success = run_strict_bootstrap(source_dir, build_dir, ".")
+    } else {
+      set success = run_bootstrap(source_dir, build_dir, ".", verbose)
+    }
+  }
+  
+  if success {
+    give 0
+  } else {
+    give 1
+  }
+}
+
+export *

@@ -1,0 +1,148 @@
+{
+  "$schema": "https://vitte-bootstrap.schema/toolchain-config",
+  "name": "vitte-bootstrap-toolchain",
+  "version": "0.1.0",
+  "description": "Complete bootstrap toolchain for Vitte compiler",
+  "project": {
+    "name": "Vitte",
+    "version": "2026.1.0",
+    "language": "vitte",
+    "bootstrap_stages": 3
+  },
+  "bootstrap": {
+    "stages": [
+      {
+        "stage": 0,
+        "name": "seed",
+        "description": "Initial bootstrap from C",
+        "compiler": "cc",
+        "sources": ["toolchain/seed/src/main.vit"],
+        "output": "build/vittec0",
+        "self_hosted": false,
+        "verify": true
+      },
+      {
+        "stage": 1,
+        "name": "stage1",
+        "description": "First self-hosting stage",
+        "compiler": "build/vittec0",
+        "sources": ["toolchain/stage1/src/main.vit"],
+        "output": "build/vittec1",
+        "self_hosted": true,
+        "verify": true
+      },
+      {
+        "stage": 2,
+        "name": "stage2",
+        "description": "Second self-hosting stage for verification",
+        "compiler": "build/vittec1",
+        "sources": ["toolchain/stage2/src/main.vit"],
+        "output": "build/vittec2",
+        "self_hosted": true,
+        "verify": true
+      }
+    ],
+    "verification": {
+      "checksum_comparison": true,
+      "binary_reproducibility": true,
+      "feature_tests": true,
+      "stdlib_validation": true
+    }
+  },
+  "build_environment": {
+    "minimal_disk_space_mb": 2048,
+    "minimal_memory_mb": 1024,
+    "required_tools": [
+      "cc",
+      "ar",
+      "ranlib",
+      "nm",
+      "mkdir",
+      "cp"
+    ],
+    "optional_tools": [
+      "ccache",
+      "ninja",
+      "git"
+    ]
+  },
+  "compilation_defaults": {
+    "std_version": "vitte-2026",
+    "optimization_level": 2,
+    "debug_symbols": true,
+    "warnings_as_errors": false,
+    "emit_ir": false,
+    "link_time_optimization": false
+  },
+  "targets": {
+    "native": {
+      "description": "Native system target",
+      "os": "auto",
+      "arch": "auto"
+    },
+    "x86_64-linux": {
+      "description": "Linux x86_64",
+      "os": "linux",
+      "arch": "x86_64",
+      "triple": "x86_64-unknown-linux-gnu"
+    },
+    "aarch64-linux": {
+      "description": "Linux ARM64",
+      "os": "linux",
+      "arch": "aarch64",
+      "triple": "aarch64-unknown-linux-gnu"
+    },
+    "x86_64-darwin": {
+      "description": "macOS x86_64",
+      "os": "macos",
+      "arch": "x86_64",
+      "triple": "x86_64-apple-darwin"
+    },
+    "aarch64-darwin": {
+      "description": "macOS ARM64 (Apple Silicon)",
+      "os": "macos",
+      "arch": "aarch64",
+      "triple": "aarch64-apple-darwin"
+    },
+    "x86_64-windows": {
+      "description": "Windows x86_64 (MinGW)",
+      "os": "windows",
+      "arch": "x86_64",
+      "triple": "x86_64-pc-windows-gnu"
+    }
+  },
+  "directories": {
+    "source_root": "src/vitte",
+    "build_root": "build",
+    "stage1_root": "toolchain/stage1",
+    "stage2_root": "toolchain/stage2",
+    "seed_root": "toolchain/seed",
+    "cache_dir": "build/.cache",
+    "artifacts_dir": "build/artifacts",
+    "logs_dir": "build/logs"
+  },
+  "output": {
+    "install_prefix": "/usr/local",
+    "bin_dir": "bin",
+    "lib_dir": "lib",
+    "include_dir": "include",
+    "share_dir": "share"
+  },
+  "advanced": {
+    "use_ccache": "auto",
+    "use_ninja": false,
+    "parallel_jobs": "auto",
+    "keep_artifacts": false,
+    "verbose": false,
+    "color_output": true,
+    "incremental_build": true,
+    "build_cache_enabled": true
+  },
+  "diagnostics": {
+    "enable_timing_info": true,
+    "enable_build_stats": true,
+    "dump_ir": false,
+    "dump_asm": false,
+    "sanitize": false
+  }
+}

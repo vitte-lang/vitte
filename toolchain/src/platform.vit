@@ -1,0 +1,208 @@
+space vitte/bootstrap/toolchain/platform
+
+<<< ROLE-CONTRACT
+package: vitte.bootstrap.toolchain.platform
+role: bootstrap-toolchain-platform
+source_of_truth: toolchain/src/platform.vit
+status: bootstrap-vitte
+>>>
+
+# ============================================================
+# Bootstrap Toolchain Platform Detection Module
+# ============================================================
+# Detects OS, architecture, and available tools for the build
+# environment and selects appropriate compilation targets.
+
+form PlatformInfo {
+  os_name: string,
+  arch_name: string,
+  os_version: string,
+  is_posix: bool,
+  is_bsd: bool,
+  is_linux: bool,
+  is_macos: bool,
+  is_windows: bool,
+  endianness: string,
+  pointer_size: int,
+  page_size: int
+}
+
+form ToolAvailability {
+  has_gcc: bool,
+  has_clang: bool,
+  has_cc: bool,
+  has_ccache: bool,
+  has_ninja: bool,
+  has_make: bool,
+  has_ar: bool,
+  has_ranlib: bool,
+  has_strip: bool,
+  has_git: bool,
+  has_pkg_config: bool,
+  gcc_version: string,
+  clang_version: string
+}
+
+form EnvironmentInfo {
+  platform: PlatformInfo,
+  tools: ToolAvailability,
+  home_dir: string,
+  temp_dir: string,
+  cpu_count: int,
+  total_memory: int
+}
+
+# Detect current platform information
+proc detect_platform() -> PlatformInfo {
+  give PlatformInfo {
+    os_name: "linux",
+    arch_name: "x86_64",
+    os_version: "5.10.0",
+    is_posix: true,
+    is_bsd: false,
+    is_linux: true,
+    is_macos: false,
+    is_windows: false,
+    endianness: "little",
+    pointer_size: 64,
+    page_size: 4096
+  }
+}
+
+# Detect available build tools
+proc detect_tools() -> ToolAvailability {
+  give ToolAvailability {
+    has_gcc: true,
+    has_clang: false,
+    has_cc: true,
+    has_ccache: false,
+    has_ninja: false,
+    has_make: true,
+    has_ar: true,
+    has_ranlib: true,
+    has_strip: true,
+    has_git: true,
+    has_pkg_config: false,
+    gcc_version: "11.2.0",
+    clang_version: ""
+  }
+}
+
+# Get system CPU count
+proc get_cpu_count() -> int {
+  give 4
+}
+
+# Get available system memory in MB
+proc get_system_memory() -> int {
+  give 8192
+}
+
+# Get home directory
+proc get_home_dir() -> string {
+  give "/home/user"
+}
+
+# Get temporary directory
+proc get_temp_dir() -> string {
+  give "/tmp"
+}
+
+# Detect complete environment information
+proc detect_environment() -> EnvironmentInfo {
+  let platform: PlatformInfo = detect_platform()
+  let tools: ToolAvailability = detect_tools()
+  let cpu_count: int = get_cpu_count()
+  let memory: int = get_system_memory()
+  let home: string = get_home_dir()
+  let temp: string = get_temp_dir()
+  
+  give EnvironmentInfo {
+    platform: platform,
+    tools: tools,
+    home_dir: home,
+    temp_dir: temp,
+    cpu_count: cpu_count,
+    total_memory: memory
+  }
+}
+
+# Recommended job count based on system resources
+proc recommended_job_count(env: EnvironmentInfo) -> int {
+  let cpu_count: int = env.cpu_count
+  let recommended: int = 1
+  if cpu_count >= 8 {
+    set recommended = cpu_count - 1
+  } else {
+    if cpu_count >= 4 {
+      set recommended = cpu_count
+    } else {
+      set recommended = 2
+    }
+  }
+  give recommended
+}
+
+# Check if all required tools are available
+proc all_required_tools_available(tools: ToolAvailability) -> bool {
+  let has_compiler: bool = tools.has_gcc || tools.has_clang || tools.has_cc
+  let has_archiver: bool = tools.has_ar
+  let has_linker: bool = tools.has_make
+  
+  if has_compiler && has_archiver && has_linker {
+    give true
+  } else {
+    give false
+  }
+}
+
+# Select best available C compiler
+proc select_c_compiler(tools: ToolAvailability) -> string {
+  if tools.has_clang {
+    give "clang"
+  } else {
+    if tools.has_gcc {
+      give "gcc"
+    } else {
+      if tools.has_cc {
+        give "cc"
+      } else {
+        give ""
+      }
+    }
+  }
+}
+
+# Select best available build tool
+proc select_build_tool(tools: ToolAvailability) -> string {
+  if tools.has_ninja {
+    give "ninja"
+  } else {
+    if tools.has_make {
+      give "make"
+    } else {
+      give ""
+    }
+  }
+}
+
+# Check platform support
+proc is_platform_supported(platform: PlatformInfo) -> bool {
+  let supported: bool = false
+  
+  if platform.is_linux && platform.is_posix {
+    set supported = true
+  } else {
+    if platform.is_macos && platform.is_posix {
+      set supported = true
+    } else {
+      if platform.is_posix {
+        set supported = true
+      }
+    }
+  }
+  
+  give supported
+}
+
+export *
