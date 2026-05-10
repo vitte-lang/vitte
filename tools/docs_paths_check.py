@@ -38,6 +38,10 @@ TOP_DIRS = {
     "editors",
 }
 
+OPTIONAL_PATH_PREFIXES = (
+    "docs/fr/",
+)
+
 LINK_RE = re.compile(r"\[[^\]]+\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 CODE_RE = re.compile(r"`([^`\n]+)`")
 
@@ -73,6 +77,8 @@ def is_local_path(token: str) -> bool:
 
 
 def existing(path_token: str) -> bool:
+    if any(path_token == p.rstrip("/") or path_token.startswith(p) for p in OPTIONAL_PATH_PREFIXES):
+        return True
     return (ROOT / path_token).exists()
 
 
