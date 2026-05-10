@@ -1,0 +1,96 @@
+space vitte/compiler/ir/optimize
+
+use mir as mir_module
+
+proc _is_used_in_expr(expr: mir_module.MirExpr, name: string) -> bool {
+  if expr.kind == mir_module.MirExprKind.Variable {
+    give expr.text == name
+  }
+  if expr.kind == mir_module.MirExprKind.Call {
+    let i: int = 0
+    while i < expr.args.len {
+      if _is_used_in_expr(expr.args[i], name) {
+        give true
+      }
+      set i = i + 1
+    }
+  }
+  give false
+}
+
+proc _is_used_in_stmt(stmt: mir_module.MirStmt, name: string) -> bool {
+  if _is_used_in_expr(stmt.expr, name) {
+    give true
+  }
+  if _is_used_in_expr(stmt.condition, name) {
+    give true
+  }
+  if _is_used_in_expr(stmt.iter_expr, name) {
+    give true
+  }
+  let i: int = 0
+  while i < stmt.body_stmts.len {
+    if _is_used_in_stmt(stmt.body_stmts[i], name) {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc _is_used_in_function(fn: mir_module.MirFunction, name: string) -> bool {
+  let i: int = 0
+  while i < fn.body_stmts.len {
+    if _is_used_in_stmt(fn.body_stmts[i], name) {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc eliminate_dead_code(module: mir_module.MirModule) -> mir_module.MirModule {
+  let mut new_globals: [mir_module.MirGlobal] = []
+  let gi: int = 0
+
+  while gi < module.globals.len {
+    let global: mir_module.MirGlobal = module.globals[gi]
+    let used: bool = false
+    let fi: int = 0
+
+    while fi < module.functions.len {
+      if _is_used_in_function(module.functions[fi], global.name) {
+        set used = true
+        break
+      }
+      set fi = fi + 1
+    }
+
+    if used or global.is_const {
+      set new_globals = new_globals + [global]
+    }
+    set gi = gi + 1
+  }
+
+  let mut new_functions: [mir_module.MirFunction] = []
+  let fi: int = 0
+
+  while fi < module.functions.len {
+    let fn: mir_module.MirFunction = module.functions[fi]
+    if fn.name == "main" or fn.link_name == "main" {
+      set new_functions = new_functions + [fn]
+    }
+    set fi = fi + 1
+  }
+
+  give mir_module.MirModule {
+    namespace_name: module.namespace_name,
+    includes: module.includes,
+    globals: new_globals,
+    functions: new_functions,
+    source_name: module.source_name,
+    notes: module.notes + ["optimized"]
+  }
+}
+
+export *

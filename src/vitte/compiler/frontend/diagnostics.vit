@@ -187,8 +187,8 @@ proc format_level(level: DiagnosticLevel) -> string {
 }
 
 proc format(diag: Diagnostic) -> string {
-  let header: string =
-    format_level(diag.level) + "[" + diag.code + "]: " + diag.message
+  let level_str: string = format_level(diag.level)
+  let header: string = level_str + "[" + diag.code + "]: " + diag.message
 
   let location: string =
     diag.primary_span.file + ":" +
@@ -197,8 +197,13 @@ proc format(diag: Diagnostic) -> string {
 
   let mut out: string = header + "\n  --> " + location
 
+  if diag.primary_span.end_line != diag.primary_span.line or diag.primary_span.end_column != diag.primary_span.column {
+    let end_loc: string = ":" + int_to_string(diag.primary_span.end_line) + ":" + int_to_string(diag.primary_span.end_column)
+    set out = out + end_loc
+  }
+
   for label in diag.labels {
-    set out = out + "\n  | " + label.message
+    set out = out + "\n  | " + label.message + " @ " + label.span.file + ":" + int_to_string(label.span.line) + ":" + int_to_string(label.span.column)
   }
 
   for note in diag.notes {
@@ -210,6 +215,11 @@ proc format(diag: Diagnostic) -> string {
   }
 
   give out
+}
+
+proc add_suggestion(diag: Diagnostic, suggestion: string) -> Diagnostic {
+  set diag.helps = diag.helps + [suggestion]
+  give diag
 }
 
 proc int_to_string(value: int) -> string {
