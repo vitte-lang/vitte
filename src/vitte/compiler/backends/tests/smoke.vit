@@ -1,5 +1,7 @@
 space vitte/compiler/backends/tests/smoke
 
+use src/vitte/compiler/bootstrap as bootstrap
+
 form BackendManifest {
   stage: string,
   source_root: string,
@@ -55,9 +57,9 @@ form ToolchainOptions {
 
 proc manifest() -> BackendManifest {
   give BackendManifest {
-    stage: "bootstrap-vitte",
+    stage: bootstrap.bootstrap_stage(),
     source_root: "src/vitte/compiler/backends",
-    language: "vitte",
+    language: bootstrap.bootstrap_language(),
     family: "target-emission-from-vitte",
     bootstrap: true
   }
@@ -102,9 +104,9 @@ proc backend_summary(namespace_name: string) -> string {
 
 proc smoke_case_1() -> bool {
   let info: BackendManifest = manifest()
-  if info.stage != "bootstrap-vitte" { give false }
+  if info.stage != bootstrap.bootstrap_stage() { give false }
   if info.source_root != "src/vitte/compiler/backends" { give false }
-  if info.language != "vitte" { give false }
+  if info.language != bootstrap.bootstrap_language() { give false }
   if info.family != "target-emission-from-vitte" { give false }
   if not info.bootstrap { give false }
   give true

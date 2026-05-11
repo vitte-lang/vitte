@@ -1,5 +1,7 @@
 space compiler/driver/tests/smoke
 
+use src/vitte/compiler/bootstrap as bootstrap
+
 form DriverCommand {
   name: string,
   stage: string,
@@ -15,7 +17,7 @@ proc package_role() -> string {
 }
 
 proc migration_stage() -> string {
-  give "bootstrap-vitte"
+  give bootstrap.bootstrap_stage()
 }
 
 proc bootstrap_status() -> string {
@@ -93,7 +95,7 @@ proc smoke_test() -> bool {
   if mod_subcommand_count() != 5 { give false }
   if known_flag_count() != 80 { give false }
   if bootstrap_status() != "self-hosted-bootstrap" { give false }
-  if migration_stage() != "bootstrap-vitte" { give false }
+  if migration_stage() != bootstrap.bootstrap_stage() { give false }
   if api_version() != "0" { give false }
   if catalog_version() != "driver-surface-v1" { give false }
   if source_of_truth() != "src/vitte/compiler/driver" { give false }
@@ -115,7 +117,7 @@ proc smoke_input() -> string {
 proc smoke_case_1() -> bool {
   if package_name() != "compiler/driver" { give false }
   if package_role() != "self-hosted-driver-facade" { give false }
-  if migration_stage() != "bootstrap-vitte" { give false }
+  if migration_stage() != bootstrap.bootstrap_stage() { give false }
   if bootstrap_status() != "self-hosted-bootstrap" { give false }
   if api_version() != "0" { give false }
   if not smoke_test() { give false }

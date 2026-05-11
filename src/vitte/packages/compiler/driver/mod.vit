@@ -1,5 +1,7 @@
 space compiler/driver/mod
 
+use src/vitte/compiler/bootstrap as bootstrap
+
 <<< ROLE-CONTRACT
 package: compiler/driver
 role: facade
@@ -65,11 +67,11 @@ proc known_flag_count() -> int {
 }
 
 proc bootstrap_status() -> string {
-  give "bootstrap-vitte"
+  give bootstrap.bootstrap_stage()
 }
 
 proc migration_stage() -> string {
-  give "bootstrap-vitte"
+  give bootstrap.bootstrap_stage()
 }
 
 proc catalog_version() -> string {
@@ -77,7 +79,7 @@ proc catalog_version() -> string {
 }
 
 proc source_of_truth() -> string {
-  give "src/vitte/compiler/driver"
+  give bootstrap.source_of_truth("src/vitte/compiler/driver")
 }
 
 proc normalization_scope() -> string {
@@ -94,8 +96,8 @@ proc smoke_test() -> bool {
   if grammar_subcommand_count() != 2 { give false }
   if mod_subcommand_count() != 5 { give false }
   if known_flag_count() != 80 { give false }
-  if bootstrap_status() != "bootstrap-vitte" { give false }
-  if migration_stage() != "bootstrap-vitte" { give false }
+  if bootstrap_status() != "self-hosted-bootstrap" { give false }
+  if migration_stage() != bootstrap.bootstrap_stage() { give false }
   if catalog_version() != "driver-surface-v1" { give false }
   if source_of_truth() != "src/vitte/compiler/driver" { give false }
   if normalization_scope() == "" { give false }

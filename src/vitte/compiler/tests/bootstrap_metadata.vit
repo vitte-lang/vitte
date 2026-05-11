@@ -1,0 +1,34 @@
+space vitte/compiler/tests/bootstrap_metadata
+
+use src/vitte/compiler/bootstrap as bootstrap
+use src/vitte/compiler/mod as compiler_mod
+use src/vitte/compiler/frontend/mod as frontend
+use src/vitte/compiler/ir/mod as ir
+use src/vitte/compiler/backends/mod as backends
+use src/vitte/compiler/backends/backend as backend
+use src/vitte/compiler/driver/compiler as driver
+use src/vitte/compiler/driver/mod as driver_mod
+use src/vitte/packages/compiler/driver/mod as driver_package
+use src/vitte/packages/compiler/driver/internal/command_catalog as command_catalog
+use src/vitte/packages/compiler/driver/info as driver_info
+
+proc bootstrap_metadata_ok() -> bool {
+  if compiler_mod.compiler_stage() != bootstrap.bootstrap_stage() { give false }
+  if compiler_mod.source_root() != "src/vitte/compiler" { give false }
+  if frontend.manifest().stage != bootstrap.bootstrap_stage() { give false }
+  if ir.manifest().stage != bootstrap.bootstrap_stage() { give false }
+  if backends.manifest().stage != bootstrap.bootstrap_stage() { give false }
+  if backends.source_of_truth() != "src/vitte/compiler/backends" { give false }
+  if backend.manifest().stage != bootstrap.bootstrap_stage() { give false }
+  if backend.source_of_truth() != "src/vitte/compiler/backends" { give false }
+  if driver.compiler_stage() != bootstrap.bootstrap_stage() { give false }
+  if driver.pipeline_stage() != bootstrap.bootstrap_stage() { give false }
+  if driver_mod.pipeline_stage() != bootstrap.bootstrap_stage() { give false }
+  if driver_package.bootstrap_status() != bootstrap.bootstrap_stage() { give false }
+  if driver_package.migration_stage() != bootstrap.bootstrap_stage() { give false }
+  if driver_info.migration_stage() != bootstrap.bootstrap_stage() { give false }
+  if driver_package.source_of_truth() != "src/vitte/compiler/driver" { give false }
+  if command_catalog.source_of_truth() != "src/vitte/compiler/driver" { give false }
+  if driver_info.package_meta() != "compiler/driver:internal-by-default:" + bootstrap.bootstrap_stage() { give false }
+  give true
+}

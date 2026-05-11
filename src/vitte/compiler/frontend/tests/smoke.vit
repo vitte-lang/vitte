@@ -1,8 +1,10 @@
 space vitte/compiler/frontend/tests/smoke
 
+use src/vitte/compiler/bootstrap as bootstrap
 use src/vitte/compiler/frontend/diagnostics as diagnostics
 use src/vitte/compiler/frontend/lexer as lexer
 use src/vitte/compiler/frontend/parser as parser
+use src/vitte/compiler/frontend/token as token
 
 form FrontendManifest {
   stage: string,
@@ -12,13 +14,13 @@ form FrontendManifest {
 
 proc frontend_manifest_stays_stable() -> bool {
   let info: FrontendManifest = FrontendManifest {
-    stage: "bootstrap-vitte",
+    stage: bootstrap.bootstrap_stage(),
     source_root: "src/vitte/compiler/frontend",
-    language: "vitte"
+    language: bootstrap.bootstrap_language()
   }
-  if info.stage != "bootstrap-vitte" { give false }
+  if info.stage != bootstrap.bootstrap_stage() { give false }
   if info.source_root != "src/vitte/compiler/frontend" { give false }
-  if info.language != "vitte" { give false }
+  if info.language != bootstrap.bootstrap_language() { give false }
   give true
 }
 
@@ -32,6 +34,25 @@ proc frontend_lexer_reports_empty_source_diagnostics() -> bool {
   if diagnostics.count_infos(lexed.diagnostics) != 0 { give false }
   if not diagnostics.has_warnings(lexed.diagnostics) { give false }
   if diagnostics.has_errors(lexed.diagnostics) { give false }
+  give true
+}
+
+proc frontend_lexer_recognizes_doc_comments_and_attributes() -> bool {
+  let source: string = "/// documentation\n#[attr(name = \"value\")]\n#![inner_attr]\n"
+  let lexed: lexer.LexedSource = lexer.lex_source("demo.vit", source)
+  if lexed.token_count != 6 { give false }
+  if lexed.tokens[0].kind != token.TokenKind.DocComment { give false }
+  if lexed.tokens[2].kind != token.TokenKind.Attribute { give false }
+  if lexed.tokens[4].kind != token.TokenKind.Attribute { give false }
+  give true
+}
+
+proc frontend_lexer_recognizes_raw_docstring_literals() -> bool {
+  let source: string = "r\"\"\"docstring\"\"\""
+  let lexed: lexer.LexedSource = lexer.lex_source("demo.vit", source)
+  if lexed.token_count != 1 { give false }
+  if lexed.tokens[0].kind != token.TokenKind.String { give false }
+  if lexed.tokens[0].text != source { give false }
   give true
 }
 

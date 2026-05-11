@@ -2,13 +2,13 @@ space vitte/compiler/driver/compiler
 
 use options
 use pipeline
+use src/vitte/compiler/bootstrap as bootstrap
 use src/vitte/compiler/frontend/diagnostics as frontend_diagnostics
 use src/vitte/compiler/ir/ast as ir_ast
 use src/vitte/compiler/ir/hir as ir_hir
 use src/vitte/compiler/ir/mir as ir_mir
 
 const IMPLEMENTATION_LANGUAGE: string = "vitte"
-const COMPILER_STAGE: string = "bootstrap-vitte"
 const SOURCE_ROOT: string = "src/vitte/compiler"
 
 form DriverOptions {
@@ -47,7 +47,7 @@ proc implementation_language() -> string {
 }
 
 proc compiler_stage() -> string {
-  give COMPILER_STAGE
+  give bootstrap.bootstrap_stage()
 }
 
 proc source_root() -> string {
@@ -55,7 +55,7 @@ proc source_root() -> string {
 }
 
 proc pipeline_stage() -> string {
-  give COMPILER_STAGE
+  give bootstrap.bootstrap_stage()
 }
 
 proc default_options() -> DriverOptions {
@@ -319,7 +319,7 @@ proc compile_source(
     function_count: artifacts.real_mir.functions.len,
     emit_kind: "bootstrap-vitte-c-like",
     notes: [
-      COMPILER_STAGE,
+      bootstrap.bootstrap_stage(),
       "diag_count=" + (diag_count as string),
       "emit_validation=" + (validation_errors.len as string),
       "uses=" + (artifacts.parsed_module.uses.len as string),

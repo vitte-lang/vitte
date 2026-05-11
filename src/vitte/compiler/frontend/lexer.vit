@@ -127,8 +127,13 @@ proc _lex_string(state: LexerState, quote: string) -> LexerState {
     }
   }
 
+  let token_kind: token.TokenKind = token.TokenKind.String
+  if quote == "'" {
+    set token_kind = token.TokenKind.Char
+  }
+
   let str_text: string = state.source_text.slice(state.pos, current_state.pos)
-  let tok: token.Token = token.new_token(token.TokenKind.String, str_text, state.line, start_col)
+  let tok: token.Token = token.new_token(token_kind, str_text, state.line, start_col)
   let result: LexerState = _add_token(current_state, tok)
 
   if not found_closing {
@@ -169,6 +174,45 @@ proc _lex_identifier(state: LexerState) -> LexerState {
   give _add_token(current_state, tok)
 }
 
+proc _lex_comment(state: LexerState) -> LexerState {
+  let current_state: LexerState = state
+  let ch: string = _peek_char(current_state)
+
+  if ch == "#" {
+    while current_state.pos < current_state.source_text.len and _peek_char(current_state) != "\n" {
+      set current_state = _advance(current_state)
+    }
+    give current_state
+  }
+
+  if ch == "/" and _peek_next_char(current_state) == "/" {
+    set current_state = _advance(current_state)
+    set current_state = _advance(current_state)
+    while current_state.pos < current_state.source_text.len and _peek_char(current_state) != "\n" {
+      set current_state = _advance(current_state)
+    }
+    give current_state
+  }
+
+  if ch == "/" and _peek_next_char(current_state) == "*" {
+    set current_state = _advance(current_state)
+    set current_state = _advance(current_state)
+
+    while current_state.pos < current_state.source_text.len {
+      if _peek_char(current_state) == "*" and _peek_next_char(current_state) == "/" {
+        set current_state = _advance(current_state)
+        set current_state = _advance(current_state)
+        break
+      }
+      set current_state = _advance(current_state)
+    }
+
+    give current_state
+  }
+
+  give current_state
+}
+
 proc _lex_operator_or_symbol(state: LexerState) -> LexerState {
   let ch: string = _peek_char(state)
   let next: string = _peek_next_char(state)
@@ -200,6 +244,25 @@ proc lex_source(source_name: string, source_text: string) -> LexedSource {
   let bag: diagnostics.DiagnosticBag = diagnostics.new_bag()
   let empty_tokens: [token.Token] = []
 
+  if source_text == "" {
+    let bag_with_warning: diagnostics.DiagnosticBag = diagnostics.add_warning(
+      bag,
+      "W1001",
+      "empty source",
+      source_name,
+      1,
+      1
+    )
+
+    give LexedSource {
+      source_name: source_name,
+      source_text: source_text,
+      tokens: empty_tokens,
+      token_count: 0,
+      diagnostics: bag_with_warning
+    }
+  }
+
   let state: LexerState = LexerState {
     source_text: source_text,
     pos: 0,
@@ -220,6 +283,14 @@ proc lex_source(source_name: string, source_text: string) -> LexedSource {
         set current_state = _add_token(current_state, tok)
       }
       set current_state = _advance(current_state)
+    } else if ch == "#" and (_peek_next_char(current_state) == "[" or _peek_next_char(current_state) == "!") {
+      set current_state = _lex_attribute(current_state)
+    } else if ch == "/" and _peek_next_char(current_state) == "/" and current_state.pos + 2 < current_state.source_text.len and current_state.source_text[current_state.pos + 2] as string == "/" {
+      set current_state = _lex_doc_comment(current_state)
+    } else if ch == "#" or (ch == "/" and _peek_next_char(current_state) == "/") or (ch == "/" and _peek_next_char(current_state) == "*") {
+      set current_state = _lex_comment(current_state)
+    } else if ch == "r" and _peek_next_char(current_state) == "\"" {
+      set current_state = _lex_raw_string(current_state)
     } else if _is_digit(ch) {
       set current_state = _lex_number(current_state)
     } else if ch == "\"" {
@@ -233,16 +304,19 @@ proc lex_source(source_name: string, source_text: string) -> LexedSource {
     }
   }
 
-  let eof_tok: token.Token = token.eof(current_state.line, current_state.column)
-  let final_tokens: [token.Token] = current_state.tokens + [eof_tok]
+  let token_count: int = current_state.tokens.len
 
   give LexedSource {
     source_name: source_name,
     source_text: source_text,
-    tokens: final_tokens,
-    token_count: final_tokens.len,
+    tokens: current_state.tokens,
+    token_count: token_count,
     diagnostics: current_state.diagnostics
   }
+}
+
+proc count_tokens(source_text: string) -> int {
+  give lex_source("<string>", source_text).token_count
 }
 
 proc lex_file(path_name: string) -> LexedSource {

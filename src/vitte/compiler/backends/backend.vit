@@ -1,5 +1,6 @@
 space vitte/compiler/backends/backend
 
+use src/vitte/compiler/bootstrap as bootstrap
 use src/vitte/compiler/ir/mir as ir_mir
 
 form BackendManifest {
@@ -58,9 +59,9 @@ form BackendMirAdapter {
 
 proc manifest() -> BackendManifest {
   give BackendManifest {
-    stage: "bootstrap-vitte",
+    stage: bootstrap.bootstrap_stage(),
     source_root: "src/vitte/compiler/backends",
-    language: "vitte",
+    language: bootstrap.bootstrap_language(),
     family: "target-emission-from-vitte",
     bootstrap: true
   }
@@ -77,7 +78,7 @@ proc backend_summary(module_value: MirModule) -> BackendSummary {
     source_name: module_value.source_name,
     namespace_name: module_value.namespace_name,
     note_count: 2,
-    emitted_kind: "bootstrap-vitte"
+    emitted_kind: bootstrap.bootstrap_stage()
   }
 }
 
