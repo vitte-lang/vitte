@@ -7,7 +7,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
 def fail(msg: str) -> int:
-    print(f"[docs-sri][error] {msg}", file=sys.stderr)
+    print(f"[docs-assets][error] {msg}", file=sys.stderr)
     return 1
 
 
@@ -19,7 +19,7 @@ def main() -> int:
         if bad_attr_pat.search(txt):
             return fail(f"unexpected SRI/CORS attribute in {p.relative_to(ROOT)}")
 
-    print("[docs-sri] OK: no SRI/CORS attributes on local docs assets")
+    print("[docs-assets] OK: no SRI/CORS attributes on local docs assets")
     return 0
 
 

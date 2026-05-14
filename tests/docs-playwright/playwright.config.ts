@@ -7,7 +7,7 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4173',
   },
   webServer: {
-    command: 'python3 -m http.server 4173 --directory docs',
+    command: 'python3 -m http.server 4173 --directory ../../docs',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: true,
     timeout: 20_000,

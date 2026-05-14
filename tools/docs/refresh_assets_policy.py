@@ -14,7 +14,7 @@ def main() -> int:
         if s2 != s:
             p.write_text(s2, encoding="utf-8")
             changed += 1
-    print(f"[docs-sri] stripped SRI/CORS attributes in {changed} docs pages")
+    print(f"[docs-assets] stripped SRI/CORS attributes in {changed} docs pages")
     return 0
 
 
