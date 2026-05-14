@@ -27,30 +27,11 @@ for p in html_files:
         href=m.group(0).split('"')[1]
         s=s.replace('</head>',f'<link rel="preload" as="style" href="{href}">\n</head>')
 
-    def add_sri_tag(tag):
-        sm=re.search(r'(href|src)="([^"]+\.(?:css|js)(?:\?v=[^"]+)?)"',tag)
-        if not sm or 'integrity=' in tag:
-            return tag
-        path=sm.group(2).split('?')[0].lstrip('./')
-        if path.startswith('/'):
-            path=path[1:]
-        info=asset_map.get(path)
-        if not info:
-            return tag
-        # Handle script tags with closing markup: <script ...></script>
-        if re.search(r'</script>\s*$', tag, re.I):
-            return re.sub(
-                r'>\s*</script>\s*$',
-                f' integrity="sha256-{info["sha256"]}" crossorigin="anonymous"></script>',
-                tag,
-                flags=re.I
-            )
-        end='>' if tag.endswith('>') else ''
-        core=tag[:-1] if end else tag
-        return core + f' integrity="sha256-{info["sha256"]}" crossorigin="anonymous"' + end
-
-    s=re.sub(r'<link[^>]+\.css(?:\?v=[^"]+)?"[^>]*>',lambda m:add_sri_tag(m.group(0)),s)
-    s=re.sub(r'<script[^>]+\.js(?:\?v=[^"]+)?"[^>]*></script>',lambda m:add_sri_tag(m.group(0)),s)
+    # Local static assets are served from the same origin.
+    # Strip SRI/crossorigin to avoid runtime style/script blocking when
+    # hosting layers rewrite/minify responses.
+    s=re.sub(r'\s+integrity="[^"]+"', '', s)
+    s=re.sub(r'\s+crossorigin="anonymous"', '', s)
 
     if 'rel="alternate" hreflang=' not in s:
         name=p.name
@@ -140,7 +121,7 @@ status_banner=f'<div class="lead-panel"><h2>Docs Build Status</h2><p><strong>Ver
 status_html='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Site Health</title><link rel="stylesheet" href="css/site.css"></head><body class="classic-doc"><a class="skip-link" href="#main-content">Skip to content</a><div class="site-shell"><header class="site-header"><a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a><nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="index.html"><span>Welcome</span></a></li><li><a class="nav-chip" href="doc.html"><span>Documentation</span></a></li><li><a class="nav-chip" href="sitemap.html"><span>Sitemap</span></a></li><li><a class="nav-chip" href="status.html"><span>Status</span></a></li></ul></nav></header><main id="main-content" class="site-main"><article class="doc-content"><h1>Site Health</h1>'+status_banner+'<pre>'+health_text+'</pre></article></main><footer class="site-footer"><p class="site-footer-path">status.html</p><p><a href="index.html">Back to home</a></p></footer></div><script type="module" src="js/main.js"></script></body></html>'
 (DOCS/'status.html').write_text(status_html,encoding='utf-8')
 
-status_public = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Docs Status</title><link rel="stylesheet" href="css/site.css"></head><body class="classic-doc"><a class="skip-link" href="#main-content">Skip to content</a><div class="site-shell"><header class="site-header"><a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a></header><main id="main-content" class="site-main"><article class="doc-content"><h1>Documentation Status</h1><p><strong>Build version:</strong> {manifest["version"]}</p><p><strong>Last build (UTC):</strong> {now}</p><p><strong>Generated pages:</strong> {manifest["pages"]}</p><p><strong>Assets tracked:</strong> {len(assets)}</p><h2>Checks</h2><ul><li>Search index generated</li><li>Sitemap and robots generated</li><li>Checksums and integrity generated</li><li>Grammar sync and docs checks expected in CI</li></ul><p><a href="status.html">Open technical status (JSON view)</a></p></article></main><footer class="site-footer"><p class="site-footer-path">status-public.html</p></footer></div></body></html>'''
+status_public = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Docs Status</title><link rel="stylesheet" href="css/site.css"></head><body class="classic-doc"><a class="skip-link" href="#main-content">Skip to content</a><div class="site-shell"><header class="site-header"><a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a></header><main id="main-content" class="site-main"><article class="doc-content"><h1>Documentation Status</h1><p><strong>Build version:</strong> {manifest["version"]}</p><p><strong>Last build (UTC):</strong> {now}</p><p><strong>Generated pages:</strong> {manifest["pages"]}</p><p><strong>Assets tracked:</strong> {len(assets)}</p><h2>Checks</h2><ul><li>Search index generated</li><li>Sitemap and robots generated</li><li>Checksums generated</li><li>Grammar sync and docs checks expected in CI</li></ul><p><a href="status.html">Open technical status (JSON view)</a></p></article></main><footer class="site-footer"><p class="site-footer-path">status-public.html</p></footer></div></body></html>'''
 (DOCS/'status-public.html').write_text(status_public, encoding='utf-8')
 
 print('static extras built')
