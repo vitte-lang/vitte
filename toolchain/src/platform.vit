@@ -28,8 +28,8 @@ form PlatformInfo {
 }
 
 form ToolAvailability {
-  has_gcc: bool,
-  has_clang: bool,
+  has_native_compiler: bool,
+  has_alt_native_compiler: bool,
   has_cc: bool,
   has_ccache: bool,
   has_ninja: bool,
@@ -39,8 +39,8 @@ form ToolAvailability {
   has_strip: bool,
   has_git: bool,
   has_pkg_config: bool,
-  gcc_version: string,
-  clang_version: string
+  native_compiler_version: string,
+  alt_native_compiler_version: string
 }
 
 form EnvironmentInfo {
@@ -72,8 +72,8 @@ proc detect_platform() -> PlatformInfo {
 # Detect available build tools
 proc detect_tools() -> ToolAvailability {
   give ToolAvailability {
-    has_gcc: true,
-    has_clang: false,
+    has_native_compiler: true,
+    has_alt_native_compiler: false,
     has_cc: true,
     has_ccache: false,
     has_ninja: false,
@@ -83,8 +83,8 @@ proc detect_tools() -> ToolAvailability {
     has_strip: true,
     has_git: true,
     has_pkg_config: false,
-    gcc_version: "11.2.0",
-    clang_version: ""
+    native_compiler_version: "11.2.0",
+    alt_native_compiler_version: ""
   }
 }
 
@@ -145,7 +145,7 @@ proc recommended_job_count(env: EnvironmentInfo) -> int {
 
 # Check if all required tools are available
 proc all_required_tools_available(tools: ToolAvailability) -> bool {
-  let has_compiler: bool = tools.has_gcc || tools.has_clang || tools.has_cc
+  let has_compiler: bool = tools.has_native_compiler || tools.has_alt_native_compiler || tools.has_cc
   let has_archiver: bool = tools.has_ar
   let has_linker: bool = tools.has_make
   
@@ -156,13 +156,13 @@ proc all_required_tools_available(tools: ToolAvailability) -> bool {
   }
 }
 
-# Select best available C compiler
-proc select_c_compiler(tools: ToolAvailability) -> string {
-  if tools.has_clang {
-    give "clang"
+# Select best available native bootstrap compiler
+proc select_native_compiler(tools: ToolAvailability) -> string {
+  if tools.has_alt_native_compiler {
+    give "native-cc"
   } else {
-    if tools.has_gcc {
-      give "gcc"
+    if tools.has_native_compiler {
+      give "native-cc"
     } else {
       if tools.has_cc {
         give "cc"

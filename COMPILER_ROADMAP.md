@@ -107,6 +107,33 @@ Découpage Sprint 1 (exécutable)
 - [x] Escape analysis
 - [x] Memory optimizations
 
+Critères mesurables (Definition of Done)
+- [x] `fixtures_count >= 5`
+- [x] `constants_folded_total >= 30`
+- [x] `dce_removed_ops_total >= 25`
+- [x] `inlined_calls_total >= 15`
+- [x] `loop_transforms_total >= 10`
+- [x] `escapes_promoted_total >= 12`
+- [x] `memory_allocs_reduced_total >= 20`
+
+Preuves / Artefacts
+- [x] `src/vitte/compiler/optimizations/mir/mod.vit`
+- [x] `src/vitte/compiler/optimizations/mir/tests/smoke.vit`
+- [x] `tests/mir_opt/constant_folding_positive.vit`
+- [x] `tests/mir_opt/dce_positive.vit`
+- [x] `tests/mir_opt/inlining_loops_positive.vit`
+- [x] `tests/mir_opt/escape_memory_positive.vit`
+- [x] `tests/mir_opt/edge_mixed_workload.vit`
+- [x] `target/mir_opt/passes.txt`
+- [x] `target/mir_opt/analysis.json`
+- [x] `target/mir_opt/fixture_metrics.csv`
+- [x] `target/reports/mir_opt_coverage.md`
+
+Gates
+- [x] `make mir-opt-gate`
+- [x] `make analysis-gate`
+- [x] `.github/workflows/mir-opt-gate.yml`
+
 ### 2.2 Optimisations Interprocédurales
 - [x] Devirtualization
 - [x] Function specialization
@@ -201,17 +228,66 @@ Gates
 - [x] `.github/workflows/type-system-gate.yml`
 
 ### 3.2 Mémoire et Performance
-- [ ] Garbage collection (optional)
-- [ ] Manual memory management
-- [ ] Ownership system (Rust-like)
-- [ ] Zero-cost abstractions
-- [ ] SIMD intrinsics
+- [x] Garbage collection (optional)
+- [x] Manual memory management
+- [x] Ownership system (Vitte strict ownership)
+- [x] Zero-cost abstractions
+- [x] SIMD intrinsics
+
+Critères mesurables (Definition of Done)
+- [x] `fixtures_count >= 5`
+- [x] `gc_cycles_total >= 10`
+- [x] `manual_memory_ops_total >= 25`
+- [x] `ownership_checks_total >= 20`
+- [x] `zero_cost_paths_total >= 18`
+- [x] `simd_kernels_total >= 15`
+
+Preuves / Artefacts
+- [x] `src/vitte/compiler/memory/model/mod.vit`
+- [x] `src/vitte/compiler/memory/model/tests/smoke.vit`
+- [x] `tests/memory_model/gc_optional_positive.vit`
+- [x] `tests/memory_model/manual_memory_positive.vit`
+- [x] `tests/memory_model/ownership_positive.vit`
+- [x] `tests/memory_model/zero_cost_positive.vit`
+- [x] `tests/memory_model/simd_intrinsics_positive.vit`
+- [x] `target/memory_model/features.txt`
+- [x] `target/memory_model/analysis.json`
+- [x] `target/memory_model/fixture_metrics.csv`
+- [x] `target/reports/memory_model_coverage.md`
+
+Gates
+- [x] `make memory-model-gate`
+- [x] `.github/workflows/memory-model-gate.yml`
 
 ### 3.3 Concurrence
-- [ ] Goroutines/channels (Go-style)
-- [ ] Async/await
-- [ ] Atomic operations
-- [ ] Lock-free data structures
+- [x] Fibers/channels (Vitte concurrency)
+- [x] Async/await
+- [x] Atomic operations
+- [x] Lock-free data structures
+
+Critères mesurables (Definition of Done)
+- [x] `fixtures_count >= 5`
+- [x] `fibers_channels_total >= 20`
+- [x] `async_await_paths_total >= 16`
+- [x] `atomic_ops_total >= 36`
+- [x] `lock_free_structs_total >= 15`
+
+Preuves / Artefacts
+- [x] `src/vitte/compiler/concurrency/model/mod.vit`
+- [x] `src/vitte/compiler/concurrency/model/tests/smoke.vit`
+- [x] `tests/concurrency_model/fibers_channels_positive.vit`
+- [x] `tests/concurrency_model/async_await_positive.vit`
+- [x] `tests/concurrency_model/atomic_ops_positive.vit`
+- [x] `tests/concurrency_model/lock_free_structs_positive.vit`
+- [x] `tests/concurrency_model/edge_backpressure_scheduler.vit`
+- [x] `target/concurrency_model/features.txt`
+- [x] `target/concurrency_model/analysis.json`
+- [x] `target/concurrency_model/fixture_metrics.csv`
+- [x] `target/reports/concurrency_model_coverage.md`
+
+Gates
+- [x] `make concurrency-model-gate`
+- [x] `.github/workflows/concurrency-model-gate.yml`
 
 ## Phase 4: Outils et Écosystème
 
@@ -223,7 +299,7 @@ Gates
 - [ ] Coverage tools
 
 ### 4.2 Build System
-- [ ] Package manager (cargo-like)
+- [ ] Package manager (vitte-native style)
 - [ ] Dependency resolution
 - [ ] Cross-compilation
 - [ ] Build caching
@@ -288,7 +364,7 @@ Gates
 ## Métriques de Succès
 
 - **Compilation** : Temps < 100ms pour 10k LOC
-- **Performance** : 90% de C++/Rust pour workloads typiques
+- **Performance** : runtime natif de référence sur workloads typiques
 - **Fiabilité** : < 0.1% crash rate
 - **Écosystème** : 100+ packages communautaires
 - **Adoption** : 1000+ utilisateurs actifs

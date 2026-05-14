@@ -278,12 +278,58 @@ proc diagnostics_enhanced_ok() -> bool {
   give true
 }
 
+proc driver_options_parse_ok() -> bool {
+  let args: [string] = [
+    "build-native",
+    "--target", "x86_64-vitte-native",
+    "--output", "demo.bin",
+    "--optimize",
+    "--debug",
+    "--werror",
+    "--strict-diagnostics",
+    "--work-dir", "build/compiler",
+    "--no-emit-only",
+    "src/demo/main.vit"
+  ]
+  let parsed: options.DriverOptions = options.parse(args)
+  if parsed.command != "build-native" { give false }
+  if parsed.target != "x86_64-vitte-native" { give false }
+  if parsed.input != "src/demo/main.vit" { give false }
+  if parsed.output != "demo.bin" { give false }
+  if not parsed.optimize { give false }
+  if not parsed.debug { give false }
+  if not parsed.warnings_as_errors { give false }
+  if not parsed.strict_diagnostics { give false }
+  if parsed.work_dir != "build/compiler" { give false }
+  if parsed.emit_only { give false }
+
+  let args_override: [string] = ["check", "-o", "a.vbin", "-O0", "--emit-only", "--work-dir", "tmp", "--release", "--dev"]
+  let override: options.DriverOptions = options.parse(args_override)
+  if override.command != "check" { give false }
+  if override.output != "a.vbin" { give false }
+  if override.optimize { give false }
+  if not override.debug { give false }
+  if not override.emit_only { give false }
+  if override.work_dir != "tmp" { give false }
+
+  let args_help: [string] = ["--help"]
+  let help_opts: options.DriverOptions = options.parse(args_help)
+  if help_opts.command != "help" { give false }
+  if not help_opts.show_help { give false }
+
+  let args_explain: [string] = ["--explain-errors", "--brief-diagnostics"]
+  let explain_opts: options.DriverOptions = options.parse(args_explain)
+  if explain_opts.strict_diagnostics { give false }
+  give true
+}
+
 proc all_enhancements_ok() -> bool {
   if not lexer_tokenization_ok() { give false }
   if not control_flow_emit_ok() { give false }
   if not arduino_backend_ok() { give false }
   if not optimization_ok() { give false }
   if not diagnostics_enhanced_ok() { give false }
+  if not driver_options_parse_ok() { give false }
 
   give true
 }
@@ -301,6 +347,7 @@ proc smoke_ok() -> bool {
   if not arduino_backend_ok() { give false }
   if not optimization_ok() { give false }
   if not diagnostics_enhanced_ok() { give false }
+  if not driver_options_parse_ok() { give false }
   if not all_enhancements_ok() { give false }
   give true
 }

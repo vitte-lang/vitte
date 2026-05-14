@@ -12,11 +12,16 @@ const IMPLEMENTATION_LANGUAGE: string = "vitte"
 const SOURCE_ROOT: string = "src/vitte/compiler"
 
 form DriverOptions {
+  command: string,
   target: string,
+  input: string,
   output: string,
   emit_only: bool,
   optimize: bool,
   debug: bool,
+  warnings_as_errors: bool,
+  strict_diagnostics: bool,
+  show_help: bool,
   work_dir: string
 }
 
@@ -61,11 +66,16 @@ proc pipeline_stage() -> string {
 proc default_options() -> DriverOptions {
   let opts: options.DriverOptions = options.default_options()
   give DriverOptions {
+    command: opts.command,
     target: opts.target,
+    input: opts.input,
     output: opts.output,
     emit_only: opts.emit_only,
     optimize: opts.optimize,
     debug: opts.debug,
+    warnings_as_errors: opts.warnings_as_errors,
+    strict_diagnostics: opts.strict_diagnostics,
+    show_help: opts.show_help,
     work_dir: opts.work_dir
   }
 }
@@ -328,6 +338,13 @@ proc compile_source(
       "functions=" + (artifacts.real_mir.functions.len as string)
     ]
   }
+}
+
+proc format_report_diagnostics(report: CompileReport, driver_options: DriverOptions) -> string {
+  if driver_options.strict_diagnostics {
+    give frontend_diagnostics.format_all_strict(report.diagnostics)
+  }
+  give frontend_diagnostics.format_all(report.diagnostics)
 }
 
 export *

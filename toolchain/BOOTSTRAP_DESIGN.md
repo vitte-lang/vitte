@@ -27,9 +27,9 @@ This ensures the final compiler can compile itself and all subsequent programs.
 └─────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────┐
-│ Stage 0: SEED (Bootstrap from C)                         │
+│ Stage 0: SEED (Bootstrap from native seed)                         │
 │ ────────────────────────────────────────────────────────│
-│ Input:  C compiler (cc, gcc, clang)                     │
+│ Input:  native bootstrap compiler (cc, native-cc, native-cc)                     │
 │ Source: toolchain/seed/src/main.vit                     │
 │ Output: build/vittec0 (minimal compiler)                │
 │                                                          │
@@ -94,7 +94,7 @@ Manages all configuration aspects:
 
 - **BuildTarget**: Platform-specific settings
   - OS, architecture, compiler triple
-  - C compiler flags and linker flags
+  - native bootstrap compiler flags and linker flags
   - Required libraries
 
 - **CompileOptions**: Compilation parameters
@@ -125,7 +125,7 @@ Detects system capabilities and limitations:
   - Support for POSIX features
 
 - **ToolAvailability**: Tool detection
-  - Compiler availability (gcc, clang, cc)
+  - Compiler availability (native-cc, native-cc, cc)
   - Linker tools (ar, ranlib)
   - Build utilities (make, ninja, ccache)
 
@@ -261,7 +261,7 @@ prepare-sources     ← Copy/validate source files
 compile-seed        ← cc → vittec0
 ```
 
-**Dependencies**: Preparation complete, C compiler available
+**Dependencies**: Preparation complete, native bootstrap compiler available
 **Output**: build/vittec0 (~500KB)
 
 ### Phase 4: Stage 1
@@ -442,7 +442,7 @@ VERBOSE=1 make bootstrap   # Verbose make
 ## References
 
 - [Bootstrapping](https://en.wikipedia.org/wiki/Bootstrapping_(compilers))
-- [GCC Bootstrap Process](https://gcc.gnu.org/install/build.html)
+- [native toolchain Bootstrap Process](https://native-cc.gnu.org/install/build.html)
 - [Reproducible Builds](https://reproducible-builds.org/)
 
 ---

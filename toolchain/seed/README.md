@@ -2,7 +2,7 @@
 
 ## Overview
 
-Stage 0 is the **minimal bootstrap compiler** - the entry point for the entire three-stage bootstrap process. It is compiled from C (using the system C compiler) and serves as the foundation to compile Stage 1, the first self-hosted Vitte compiler.
+Stage 0 is the **minimal bootstrap compiler** - the entry point for the entire three-stage bootstrap process. It is compiled from native seed (using the system native compiler) and serves as the foundation to compile Stage 1, the first self-hosted Vitte compiler.
 
 ## Purpose
 
@@ -15,7 +15,7 @@ Stage 0 is the **minimal bootstrap compiler** - the entry point for the entire t
 
 ```
 ┌─────────────────────┐
-│  C Compiler (cc)    │  System compiler
+│  Native Compiler (cc)    │  System compiler
 └──────────┬──────────┘
            │
            ├─ Compile: seed/src/main.c (not Vitte - C source)
@@ -120,7 +120,7 @@ seed/src/main.vit               Main seed compiler
 
 ### Build Seed Compiler
 
-The seed compiler must first be compiled from C:
+The seed compiler must first be compiled from native seed:
 
 ```bash
 # This is done automatically by bootstrap.sh
@@ -220,7 +220,7 @@ echo $?  # 0 = success
 ## Size and Performance
 
 - **Binary size**: ~1.5 MB (minimal compiler)
-- **Build time**: ~30-60 seconds (from C compiler)
+- **Build time**: ~30-60 seconds (from native bootstrap compiler)
 - **Compilation speed**: ~10-20 files/second (minimal features)
 
 ## Design Decisions
@@ -251,8 +251,8 @@ All compilation is deterministic:
 The seed compiler is the **trust anchor** for the bootstrap:
 
 ```
-System C Compiler
-       ↓ (compile from C)
+System Native Compiler
+       ↓ (compile from native seed)
 Stage 0 (vittec0) ← TRUST POINT
        ↓ (compile with vittec0)
 Stage 1 (vittec1)
@@ -292,10 +292,10 @@ The seed compiler is used by:
 
 ## Troubleshooting
 
-**Seed compiler won't build from C**:
+**Seed compiler won't build from native seed**:
 ```bash
-# Check C compiler available
-which cc || which gcc
+# Check native bootstrap compiler available
+which cc || which native-cc
 
 # Manual build with verbose output
 cc -v -o build/vittec0 seed/src/main.c
