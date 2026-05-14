@@ -1,0 +1,602 @@
+space vitte/compiler/frontend/ast_extended
+
+// ============================================================================
+// EXTENDED AST - Complete Grammar Coverage
+// ============================================================================
+// This module extends the basic IR AST to include all grammar constructs
+// from src/vitte/grammar/vitte.ebnf, ensuring the parser can represent
+// every language feature defined in the grammar.
+//
+// Structure:
+//   - Declarations (31 types)
+//   - Statements (25 types)
+//   - Expressions (27+ types)
+//   - Types (14+ types)
+//   - Patterns (12 types)
+//   - Supporting structures (attributes, generics, where clauses, etc.)
+
+// ============================================================================
+// DECLARATION KINDS - Top-level constructs (31 types from grammar)
+// ============================================================================
+
+pick DeclKind {
+  // Module and imports
+  Space,                // space module/path
+  Use,                  // use package[.group|*]
+  Export,               // export items | *
+
+  // Constants and globals
+  Const,                // const NAME: TYPE = EXPR
+  Static,               // static NAME: TYPE = EXPR
+  Global,               // global NAME: TYPE = EXPR
+
+  // Types
+  TypeAlias,            // type NAME[GENERICS] = TYPE
+  OpaqueType,           // opaque type NAME[GENERICS] [= TYPE]
+  ExternType,           // extern type NAME[GENERICS];
+
+  // Aggregate types
+  Form,                 // form NAME[GENERICS] { FIELDS }
+  Class,                // class NAME[GENERICS] { FIELDS }
+  Union,                // union NAME[GENERICS] { FIELDS }
+  Bits,                 // bits NAME[: TYPE] { BITFIELDS }
+  Pick,                 // pick NAME[GENERICS][: TYPE] { CASES }
+  Flags,                // flags NAME[: TYPE] { FLAGS }
+
+  // Traits and implementations
+  Trait,                // trait [unsafe] NAME[GENERICS] { ITEMS }
+  Impl,                 // impl [unsafe] NAME[GENERICS] [for TYPE] { ITEMS }
+
+  // Procedures
+  Proc,                 // proc [MODIFIERS] NAME(...) [-> TYPE] BODY
+  Intrinsic,            // intrinsic NAME(...) [-> TYPE];
+  ExternBlock,          // extern ABI { ITEMS }
+
+  // Macros and compile-time
+  Macro,                // macro NAME(...) BLOCK
+  Comptime,             // comptime BLOCK
+  StaticAssert,         // static_assert(EXPR [, MSG])
+
+  // Testing and entry
+  Test,                 // test "NAME" BLOCK
+  Bench,                // bench "NAME" BLOCK
+  Entry,                // entry NAME at MODULE BLOCK
+
+  // Compiler surface
+  Compiler,             // compiler NAME { ITEMS }
+  Query,                // query NAME(...) -> TYPE BODY
+  Pass,                 // pass NAME { ITEMS }
+  Backend,              // backend NAME { ITEMS }
+  Diagnostic,           // diagnostic CODE { ITEMS }
+
+  Unknown
+}
+
+// ============================================================================
+// STATEMENT KINDS - Inside blocks (25 types from grammar)
+// ============================================================================
+
+pick StmtKind {
+  // Variable binding
+  LocalConst,           // const NAME: TYPE = EXPR
+  Let,                  // let [mut] PATTERN: TYPE = EXPR
+  Set,                  // set TARGET OP EXPR
+  Give,                 // give [EXPR]
+
+  // Exception/control
+  Try,                  // try EXPR
+  Defer,                // defer BLOCK
+  Unsafe,               // unsafe BLOCK
+  Emit,                 // emit EXPR
+  Assert,               // assert EXPR [, MSG]
+  Panic,                // panic EXPR
+  Unreachable,          // unreachable
+
+  // Inline assembly
+  Asm,                  // asm(ARGS)
+
+  // Control flow
+  If,                   // if COND BLOCK [elif COND BLOCK]* [else BLOCK]
+  While,                // while COND BLOCK
+  Loop,                 // loop BLOCK
+  For,                  // for PATTERN in EXPR BLOCK
+  Break,                // break [EXPR]
+  Continue,             // continue
+
+  // Pattern matching
+  Select,               // select EXPR { when PATTERN BLOCK... }
+  Match,                // match EXPR { case PATTERN [if COND] => EXPR; ... }
+  WhenMatch,            // when EXPR is PATTERN BLOCK
+  With,                 // with EXPR [as PATTERN] BLOCK
+  Critical,             // critical BLOCK
+
+  // Expression statement
+  ExprStmt,             // EXPR;
+
+  Unknown
+}
+
+// ============================================================================
+// EXPRESSION KINDS - Values and computations (27+ types)
+// ============================================================================
+
+pick ExprKind {
+  // Literals
+  Bool,                 // true | false
+  Null,                 // null
+  Int,                  // 123, 0xFF, 0b101, 0o755
+  Float,                // 1.23, 1e10
+  Char,                 // 'c'
+  String,               // "text" | r"raw"
+  Bytes,                // b"data"
+
+  // Collections
+  List,                 // [1, 2, 3] | [x for x in arr]
+  Tuple,                // (a, b, c)
+  Set,                  // set {1, 2, 3}
+  Map,                  // map {a: 1, b: 2}
+  Struct,               // Form {field: value}
+  Resource,             // resource {key: value}
+
+  // Variables and paths
+  Variable,             // ident
+  Path,                 // a.b.c | a::b::c
+  SelfExpr,             // self
+
+  // Operators
+  Binary,               // a + b, a && b, a | b, etc.
+  Unary,                // -a, !b, ~c, *d, &e
+  Assignment,           // a = b, a += b, etc.
+  Ternary,              // a ? b : c
+  Coalesce,             // a ?? b
+  Range,                // a..b | a..=b
+  Cast,                 // a as Type | a is Pattern
+  Is,                   // a is Pattern | a is not Pattern
+
+  // Function/method calls
+  Call,                 // func(args)
+  Member,               // obj.field | obj.method()
+  Index,                // arr[i] | map[key]
+  Slice,                // arr[i:j:k]
+  Try,                  // expr?
+  Await,                // expr.await | await expr
+
+  // Control flow expressions
+  If,                   // if COND EXPR [elif COND EXPR] [else EXPR]
+  Match,                // match EXPR { case P => E; ... }
+  Block,                // { STMTS }
+  Proc,                 // proc(...) -> TYPE BLOCK
+  Lambda,               // |params| EXPR | |params| BLOCK
+
+  // Unsafe and special
+  Unsafe,               // unsafe BLOCK
+
+  // Builtin functions
+  Sizeof,               // sizeof(TYPE | EXPR)
+  Alignof,              // alignof(TYPE)
+  Offsetof,             // offsetof(TYPE, field)
+  Typeof,               // typeof(EXPR)
+  Nameof,               // nameof(path)
+
+  Paren,                // (EXPR)
+  Unknown
+}
+
+// ============================================================================
+// STATEMENT STRUCTURE
+// ============================================================================
+
+form Stmt {
+  kind: StmtKind,
+  line: int,
+  column: int,
+
+  // For local declarations
+  name: string,
+  type_expr: TypeExpr,
+  value: Expr,
+
+  // For pattern-based (let, for, match)
+  pattern: Pattern,
+
+  // For control flow
+  condition: Expr,
+  body: [Stmt],
+  else_body: [Stmt],
+  elif_parts: [(Expr, [Stmt])],  // Condition + body pairs for elif
+
+  // For match/select
+  arms: [ArmDecl],
+
+  // For try/defer/with
+  target: Expr,
+
+  // Generic expression
+  expr: Expr,
+
+  // For assembly
+  asm_args: [string],
+
+  // Raw source text
+  raw_text: string
+}
+
+form ArmDecl {
+  pattern: Pattern,
+  guard: Expr,                 // Optional if condition
+  body: [Stmt],
+  arm_expr: Expr
+}
+
+// ============================================================================
+// EXPRESSION STRUCTURE
+// ============================================================================
+
+form Expr {
+  kind: ExprKind,
+  line: int,
+  column: int,
+
+  // Literals
+  value: string,                // For int, float, string, char, bool
+
+  // Variables and paths
+  name: string,
+  path_parts: [string],         // For qualified paths
+
+  // Binary/unary
+  operator: string,
+  left: Expr,
+  right: Expr,
+
+  // Function calls
+  callee: Expr,
+  args: [Expr],
+  named_args: [(string, Expr)],
+
+  // Collection literals
+  elements: [Expr],
+  pairs: [(Expr, Expr)],        // For maps
+
+  // Type-related
+  type_expr: TypeExpr,
+  pattern: Pattern,
+
+  // Control flow
+  if_body: [Stmt],
+  else_body: [Stmt],
+  elif_parts: [(Expr, [Stmt])],
+  match_arms: [ArmDecl],
+  proc_params: [Param],
+  proc_return: TypeExpr,
+  proc_body: [Stmt],
+  lambda_params: [Param],
+
+  // Member/index
+  object: Expr,
+  member: string,
+  index: Expr,
+  slice_start: Expr,
+  slice_end: Expr,
+  slice_step: Expr,
+
+  // Raw source
+  raw_text: string
+}
+
+// ============================================================================
+// TYPE STRUCTURE
+// ============================================================================
+
+pick TypeKind {
+  Primitive,            // int, bool, string, etc.
+  Named,                // MyType | pkg::MyType
+  Reference,            // &Type | &mut Type
+  Pointer,              // *Type | *const Type
+  Optional,             // ?Type
+  Array,                // [Type; size]
+  Slice,                // [Type]
+  Tuple,                // (Type, Type, ...)
+  Proc,                 // proc(params) -> ReturnType
+  Dyn,                  // dyn Trait
+  Impl,                 // impl Trait
+  Union,                // Type | Type | ...
+  Generic,              // T, T[U, V], etc.
+  Unknown
+}
+
+form TypeExpr {
+  kind: TypeKind,
+  name: string,
+  qualifiers: [string],         // const, volatile, atomic, mut, owned, borrow
+  addr_space: string,           // user, kernel, phys, mmio, dma
+
+  // For complex types
+  base_type: TypeExpr,
+  element_type: TypeExpr,
+  element_count: Expr,
+
+  // For tuples, procs, union
+  types: [TypeExpr],
+  param_types: [TypeExpr],
+  return_type: TypeExpr,
+
+  // For generics
+  generic_args: [TypeExpr],
+
+  // For references/pointers
+  is_mut: bool,
+  lifetime: string,
+
+  // For traits
+  trait_bounds: [string],
+
+  raw_text: string
+}
+
+// ============================================================================
+// PATTERN STRUCTURE
+// ============================================================================
+
+pick PatternKind {
+  Wildcard,             // _
+  Literal,              // 1, "text", true, etc.
+  Binding,              // name
+  Ctor,                 // Name(...) | variant
+  Struct,               // Name { field: pattern }
+  Tuple,                // (p1, p2, ...)
+  List,                 // [p1, p2, ...]
+  Range,                // 1..10 | 1..=10
+  Or,                   // p1 | p2
+  Ref,                  // ref pattern
+  Mut,                  // mut pattern
+  Unknown
+}
+
+form Pattern {
+  kind: PatternKind,
+  name: string,
+  value: string,        // For literal patterns
+
+  // For constructor/struct
+  path_parts: [string],
+  subpatterns: [Pattern],
+  field_patterns: [(string, Pattern)],
+
+  // For or patterns
+  alternatives: [Pattern],
+
+  raw_text: string
+}
+
+// ============================================================================
+// PROCEDURE PARAMETERS
+// ============================================================================
+
+form Param {
+  name: string,
+  type_expr: TypeExpr,
+  default_value: Expr,
+  is_self: bool,
+  is_mut: bool,
+  mode: string,                 // mut, owned, borrow, move
+  is_variadic: bool,
+  raw_text: string
+}
+
+// ============================================================================
+// GENERIC AND WHERE CLAUSE SUPPORT
+// ============================================================================
+
+form GenericParam {
+  name: string,
+  kind: string,                 // type, const, comptime, lifetime
+  bounds: [string],             // Trait bounds
+  default_type: TypeExpr
+}
+
+form WhereClause {
+  bounds: [WhereBound]
+}
+
+form WhereBound {
+  left: TypeExpr,
+  right: TypeExpr,
+  relation: string              // :, ==, <, >, etc.
+}
+
+// ============================================================================
+// ATTRIBUTES AND MODIFIERS
+// ============================================================================
+
+form Attribute {
+  path: string,                 // attr.path
+  args: [string]
+}
+
+// ============================================================================
+// COMPLETE DECLARATION STRUCTURE
+// ============================================================================
+
+form Decl {
+  kind: DeclKind,
+  name: string,
+  line: int,
+  column: int,
+
+  // Visibility and modifiers
+  visibility: string,           // pub, priv, pub(scope)
+  modifiers: [string],          // async, unsafe, const, inline, etc.
+  attributes: [Attribute],
+
+  // Content
+  body_stmts: [Stmt],
+
+  // For typed declarations
+  type_expr: TypeExpr,
+  value_expr: Expr,
+
+  // For generics and bounds
+  generic_params: [GenericParam],
+  where_clause: WhereClause,
+
+  // For procedures
+  params: [Param],
+  return_type: TypeExpr,
+
+  // For forms/classes/unions
+  fields: [Field],
+
+  // For types
+  type_constructor: TypeExpr,
+
+  // For imports
+  import_items: [string],
+  import_as: string,
+
+  // For impl
+  trait_type: TypeExpr,
+  for_type: TypeExpr,
+
+  // For compiler declarations
+  compiler_items: [string],
+
+  // Raw source
+  raw_text: string
+}
+
+form Field {
+  name: string,
+  type_expr: TypeExpr,
+  default_value: Expr,
+  visibility: string,
+  attributes: [Attribute]
+}
+
+// ============================================================================
+// EXTENDED MODULE
+// ============================================================================
+
+form ExtendedModule {
+  source_name: string,
+  space_name: string,
+  imports: [Decl],              // Use declarations
+  exports: [string],            // Export items
+  declarations: [Decl],         // All top-level declarations
+  diagnostics: [string],        // Error/warning messages
+
+  // Statistics
+  decl_count_by_kind: [(DeclKind, int)],
+  stmt_count: int,
+  expr_count: int
+}
+
+// ============================================================================
+// HELPER FUNCTIONS FOR EXTENDED AST
+// ============================================================================
+
+proc empty_stmt(kind: StmtKind) -> Stmt {
+  give Stmt {
+    kind: kind,
+    line: 0,
+    column: 0,
+    name: "",
+    type_expr: TypeExpr { kind: TypeKind.Unknown, name: "", qualifiers: [], addr_space: "", raw_text: "" },
+    value: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    pattern: Pattern { kind: PatternKind.Unknown, name: "", value: "", path_parts: [], subpatterns: [], field_patterns: [], alternatives: [], raw_text: "" },
+    condition: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    body: [],
+    else_body: [],
+    elif_parts: [],
+    arms: [],
+    target: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    expr: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    asm_args: [],
+    raw_text: ""
+  }
+}
+
+proc empty_expr(kind: ExprKind) -> Expr {
+  give Expr {
+    kind: kind,
+    line: 0,
+    column: 0,
+    value: "",
+    name: "",
+    path_parts: [],
+    operator: "",
+    left: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    right: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    callee: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    args: [],
+    named_args: [],
+    elements: [],
+    pairs: [],
+    type_expr: TypeExpr { kind: TypeKind.Unknown, name: "", qualifiers: [], addr_space: "", raw_text: "" },
+    pattern: Pattern { kind: PatternKind.Unknown, name: "", value: "", path_parts: [], subpatterns: [], field_patterns: [], alternatives: [], raw_text: "" },
+    if_body: [],
+    else_body: [],
+    elif_parts: [],
+    match_arms: [],
+    proc_params: [],
+    proc_return: TypeExpr { kind: TypeKind.Unknown, name: "", qualifiers: [], addr_space: "", raw_text: "" },
+    proc_body: [],
+    lambda_params: [],
+    object: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    member: "",
+    index: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    slice_start: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    slice_end: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    slice_step: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    raw_text: ""
+  }
+}
+
+proc empty_type_expr() -> TypeExpr {
+  give TypeExpr {
+    kind: TypeKind.Unknown,
+    name: "",
+    qualifiers: [],
+    addr_space: "",
+    base_type: TypeExpr { kind: TypeKind.Unknown, name: "", qualifiers: [], addr_space: "", raw_text: "" },
+    element_type: TypeExpr { kind: TypeKind.Unknown, name: "", qualifiers: [], addr_space: "", raw_text: "" },
+    element_count: Expr { kind: ExprKind.Unknown, line: 0, column: 0, value: "", name: "", path_parts: [], operator: "", raw_text: "" },
+    types: [],
+    param_types: [],
+    return_type: TypeExpr { kind: TypeKind.Unknown, name: "", qualifiers: [], addr_space: "", raw_text: "" },
+    generic_args: [],
+    is_mut: false,
+    lifetime: "",
+    trait_bounds: [],
+    raw_text: ""
+  }
+}
+
+proc empty_decl(kind: DeclKind, name: string) -> Decl {
+  give Decl {
+    kind: kind,
+    name: name,
+    line: 0,
+    column: 0,
+    visibility: "",
+    modifiers: [],
+    attributes: [],
+    body_stmts: [],
+    type_expr: empty_type_expr(),
+    value_expr: empty_expr(ExprKind.Unknown),
+    generic_params: [],
+    where_clause: WhereClause { bounds: [] },
+    params: [],
+    return_type: empty_type_expr(),
+    fields: [],
+    type_constructor: empty_type_expr(),
+    import_items: [],
+    import_as: "",
+    trait_type: empty_type_expr(),
+    for_type: empty_type_expr(),
+    compiler_items: [],
+    raw_text: ""
+  }
+}
+
+export *
