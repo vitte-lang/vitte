@@ -504,7 +504,7 @@ Build individual stages:
 cd toolchain
 
 # Just seed
-CC=gcc vittec0_compile()
+CC=native-cc vittec0_compile()
 # build/vittec0 created
 
 # Just stage 1

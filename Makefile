@@ -49,13 +49,9 @@ FORMAT_TOOL  ?= true
 # ------------------------------------------------------------
 
 VITTE_SOURCES := $(shell find $(SRC_DIR)/vitte -name '*.vit' -o -name '*.vitl' 2>/dev/null)
-VITTE_COMPILER_CHECKS := \
-	src/vitte/compiler/driver/mod.vit \
-	src/vitte/compiler/driver/options.vit \
-	src/vitte/compiler/driver/pipeline.vit \
-	src/vitte/compiler/driver/compiler.vit \
-	src/vitte/compiler/tests/smoke.vit \
-	src/vitte/compiler/backends/toolchain/vitte_toolchain.vit
+VITTE_COMPILER_ROOT ?= src/vitte/compiler
+VITTE_COMPILER_CHECKS := $(shell find $(VITTE_COMPILER_ROOT) -type f -name '*.vit' | sort)
+VITTE_COMPILER_CHECK_MIN ?= 70
 DEPFILES     =
 KERNEL_TOOLS_DIR := target/kernel-tools
 
@@ -204,6 +200,13 @@ vitte-legacy-text-audit:
 
 vitte-bootstrap-check:
 	@test -x "$(VITTE_BOOTSTRAP)" || (echo "[vitte-bootstrap-check][error] missing executable $(VITTE_BOOTSTRAP)" >&2; exit 2)
+	@count="$$(printf '%s\n' $(VITTE_COMPILER_CHECKS) | sed '/^$$/d' | wc -l | tr -d ' ')"; \
+	if [ "$$count" -lt "$(VITTE_COMPILER_CHECK_MIN)" ]; then \
+		echo "[vitte-bootstrap-check][error] compiler check coverage too low: $$count < $(VITTE_COMPILER_CHECK_MIN)"; \
+		echo "[vitte-bootstrap-check][hint] verify VITTE_COMPILER_ROOT ($(VITTE_COMPILER_ROOT)) and file discovery pattern"; \
+		exit 3; \
+	fi; \
+	echo "[vitte-bootstrap-check] coverage: $$count files"
 	@set -e; \
 	for src in $(VITTE_COMPILER_CHECKS); do \
 		echo "[vitte-bootstrap-check] $$src"; \
@@ -212,6 +215,10 @@ vitte-bootstrap-check:
 
 bootstrap-native-snapshots:
 	@tools/bootstrap_native_snapshots.sh
+
+.PHONY: cli-diagnostics-snapshots
+cli-diagnostics-snapshots:
+	@tools/cli_diagnostics_snapshots.sh
 
 # ------------------------------------------------------------
 # Tests (placeholder)
@@ -1691,7 +1698,10 @@ wasm-backend-gate:
 mir-opt-gate:
 	@python3 tools/mir_opt/run_checks.py
 	@python3 tools/mir_opt/generate_artifacts.py
+	@! rg -n "FAIL" target/mir_opt/passes.txt >/dev/null
 	@test -f target/mir_opt/passes.txt
+	@test -f target/mir_opt/analysis.json
+	@test -f target/mir_opt/fixture_metrics.csv
 	@test -f target/reports/mir_opt_coverage.md
 
 
@@ -1730,3 +1740,45 @@ type-system-gate:
 	@test -f target/type_system/analysis.json
 	@test -f target/type_system/fixture_metrics.csv
 	@test -f target/reports/type_system_coverage.md
+
+
+.PHONY: memory-model-gate
+memory-model-gate:
+	@python3 tools/memory_model/run_checks.py
+	@python3 tools/memory_model/generate_artifacts.py
+	@! rg -n "FAIL" target/memory_model/features.txt >/dev/null
+	@test -f target/memory_model/features.txt
+	@test -f target/memory_model/analysis.json
+	@test -f target/memory_model/fixture_metrics.csv
+	@test -f target/reports/memory_model_coverage.md
+
+
+.PHONY: concurrency-model-gate
+concurrency-model-gate:
+	@python3 tools/concurrency_model/run_checks.py
+	@python3 tools/concurrency_model/generate_artifacts.py
+	@! rg -n "FAIL" target/concurrency_model/features.txt >/dev/null
+	@test -f target/concurrency_model/features.txt
+	@test -f target/concurrency_model/analysis.json
+	@test -f target/concurrency_model/fixture_metrics.csv
+	@test -f target/reports/concurrency_model_coverage.md
+
+
+.PHONY: compiler-gate
+compiler-gate: vitte-bootstrap-check analysis-gate type-system-gate memory-model-gate concurrency-model-gate cli-diagnostics-snapshots tidy
+
+
+.PHONY: optimization-phase2-gate
+optimization-phase2-gate:
+	@python3 tools/optimization_phase2/validate_phase2_csv.py
+	@python3 tools/optimization_phase2/generate_kpi_report.py
+	@python3 tools/optimization_phase2/update_matrix_from_summary.py
+	@! rg -n "FAIL" data/optimization_phase2/SUMMARY.md >/dev/null
+	@test -f data/optimization_phase2/SUMMARY.md
+	@test -f data/optimization_phase2/reports/sprint-1.md
+	@test -f data/optimization_phase2/reports/sprint-2.md
+	@test -f data/optimization_phase2/reports/sprint-3.md
+	@test -f data/optimization_phase2/reports/sprint-4.md
+	@test -f data/optimization_phase2/reports/hot_paths_success.md
+	@test -f data/optimization_phase2/reports/memory_allocations.md
+	@test -f data/optimization_phase2/reports/jit_async_loops.md

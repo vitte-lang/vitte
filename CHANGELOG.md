@@ -3,13 +3,13 @@
 ## [0.2.0] - 2026-05-14 - Bootstrap Sophistication Upgrade
 
 ### 🎯 Major Changes
-- **4-Stage Bootstrap**: Upgraded from 3-stage to 4-stage bootstrap matching C compiler sophistication
+- **4-Stage Bootstrap**: Upgraded from 3-stage to 4-stage bootstrap matching native bootstrap compiler sophistication
   - Stage 0 (Seed): Initial compiler bootstrap
   - Stage 1 (Self-hosted): First compilation with seed
   - Stage 2 (Verification): Second compilation with stage1
   - Stage 3 (Final Verification): Third compilation with stage2
 - **Enhanced Verification**: Changed final verification from `stage1 == stage2` to `stage2 == stage3`
-- **C-Equivalent Process**: Now follows the same rigorous verification pattern as GCC/Clang
+- **Native-Equivalent Process**: Now follows the same rigorous verification pattern as native toolchain
 
 ### 📁 Files Added
 - `toolchain/stage3/src/main.vit` - Stage 3 compiler source
@@ -41,7 +41,7 @@
 - Maintains backward compatibility with existing toolchain
 
 ### 🎉 Impact
-- Bootstrap process now matches sophistication of C compilers
+- Bootstrap process now matches sophistication of native compilers
 - Enhanced trust in compiler self-hosting capability
 - Improved reproducibility verification
 - Better alignment with industry standards

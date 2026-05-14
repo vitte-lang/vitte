@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a **complete, production-ready bootstrap toolchain** for the Vitte compiler, entirely implemented in Vitte. It provides a multi-stage bootstrap process from C to a self-hosting Vitte compiler.
+This is a **complete, production-ready bootstrap toolchain** for the Vitte compiler, entirely implemented in Vitte. It provides a multi-stage bootstrap process from native seed to a self-hosting Vitte compiler.
 
 **Created**: May 10, 2026  
 **Version**: 0.1.0  
@@ -65,7 +65,7 @@ make verify
 
 ```
 Stage 0: Seed
-├─ Input: C compiler (cc, gcc, clang)
+├─ Input: native bootstrap compiler (cc, native-cc, native-cc)
 ├─ Source: toolchain/seed/src/main.vit
 └─ Output: build/vittec0
 
@@ -180,7 +180,7 @@ Stage 2: Verification
 - `detect_environment()` - Complete detection
 - `recommended_job_count()` - Optimal parallelism
 - `all_required_tools_available()` - Prerequisite check
-- `select_c_compiler()` - Best C compiler
+- `select_native_compiler()` - Best native bootstrap compiler
 - `select_build_tool()` - Best build tool
 - `is_platform_supported()` - Platform support check
 

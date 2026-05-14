@@ -1,0 +1,28 @@
+space vitte/compiler/concurrency/model/tests/smoke
+
+use src/vitte/compiler/concurrency/model/mod as cm
+
+proc smoke_concurrency_feature_count() -> bool {
+  let results = cm.run_all_concurrency_features()
+  give results.len == 4
+}
+
+proc smoke_concurrency_feature_success() -> bool {
+  let results = cm.run_all_concurrency_features()
+  let i: int = 0
+  while i < results.len {
+    if !results[i].success { give false }
+    set i = i + 1
+  }
+  give true
+}
+
+proc smoke_concurrency_metric_thresholds() -> bool {
+  let m = cm.baseline_metrics()
+  if m.fixtures_count < 5 { give false }
+  if m.fibers_channels_total < 20 { give false }
+  if m.async_await_paths_total < 16 { give false }
+  if m.atomic_ops_total < 36 { give false }
+  if m.lock_free_structs_total < 15 { give false }
+  give true
+}

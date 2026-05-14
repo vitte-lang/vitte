@@ -1,0 +1,29 @@
+space vitte/compiler/memory/model/tests/smoke
+
+use src/vitte/compiler/memory/model/mod as mm
+
+proc smoke_memory_feature_count() -> bool {
+  let results = mm.run_all_memory_features()
+  give results.len == 5
+}
+
+proc smoke_memory_feature_success() -> bool {
+  let results = mm.run_all_memory_features()
+  let i: int = 0
+  while i < results.len {
+    if !results[i].success { give false }
+    set i = i + 1
+  }
+  give true
+}
+
+proc smoke_memory_metric_thresholds() -> bool {
+  let m = mm.baseline_metrics()
+  if m.fixtures_count < 5 { give false }
+  if m.gc_cycles_total < 10 { give false }
+  if m.manual_memory_ops_total < 25 { give false }
+  if m.ownership_checks_total < 20 { give false }
+  if m.zero_cost_paths_total < 18 { give false }
+  if m.simd_kernels_total < 15 { give false }
+  give true
+}

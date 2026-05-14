@@ -112,4 +112,40 @@ proc frontend_diagnostics_note_bag_is_not_empty() -> bool {
   give true
 }
 
+proc _contains_text(text: string, needle: string) -> bool {
+  if needle == "" { give true }
+  if needle.len > text.len { give false }
+  let i: int = 0
+  while i + needle.len <= text.len {
+    let j: int = 0
+    let matched: bool = true
+    while j < needle.len {
+      if (text[i + j] as string) != (needle[j] as string) {
+        set matched = false
+      }
+      set j = j + 1
+    }
+    if matched { give true }
+    set i = i + 1
+  }
+  give false
+}
+
+proc frontend_diagnostics_strict_format_explains_errors() -> bool {
+  let bag: diagnostics.DiagnosticBag = diagnostics.add_error(
+    diagnostics.new_bag(),
+    "E1000",
+    "missing space declaration",
+    "demo.vit",
+    1,
+    1
+  )
+  let text: string = diagnostics.format_all_strict(bag)
+  if text == "" { give false }
+  if not _contains_text(text, "note:") { give false }
+  if not _contains_text(text, "help:") { give false }
+  if not _contains_text(text, "space my/module") { give false }
+  give true
+}
+
 export *

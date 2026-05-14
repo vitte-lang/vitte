@@ -15,7 +15,7 @@ Output:
 ```
 ╔════════════════════════════════════════════════════════╗
 ║         Vitte Bootstrap Toolchain                      ║
-║  Multi-stage compiler bootstrap from C to Vitte        ║
+║  Multi-stage compiler bootstrap from native seed to Vitte        ║
 ║  Copyright 2026 - Vitte Project                        ║
 ╚════════════════════════════════════════════════════════╝
 
@@ -33,7 +33,7 @@ System Information:
 [OK] Build directory prepared
 
 [INFO] Starting bootstrap: normal mode
-[INFO] Stage 0 (Seed): Compiling seed from C...
+[INFO] Stage 0 (Seed): Compiling seed from native seed...
 [INFO] Stage 1: First self-hosted compilation...
 [INFO] Stage 2: Second self-hosted compilation...
 [INFO] Stage 3: Third self-hosted compilation...
@@ -53,7 +53,7 @@ cd toolchain
 Output:
 ```
 [INFO] Starting bootstrap: quick mode
-[INFO] Stage 0 (Seed): Compiling seed from C...
+[INFO] Stage 0 (Seed): Compiling seed from native seed...
 [OK] Seed compiler ready
 
 [INFO] Stage 1: First self-hosted compilation...
@@ -82,7 +82,7 @@ Output:
 [INFO] Enabling all verification checks...
 [INFO] Enabling optimizations...
 
-[INFO] Stage 0 (Seed): Compiling seed from C...
+[INFO] Stage 0 (Seed): Compiling seed from native seed...
 [OK] Seed verified
 
 [INFO] Stage 1: First self-hosted compilation...
@@ -290,7 +290,7 @@ Verify your system is ready:
 #   Architecture: x86_64
 #   CPUs: 8
 #   Memory: 16384 MB
-#   C Compiler: gcc
+#   Native Compiler: native-cc
 #   Build Tool: make
 #
 # [OK] All prerequisites met
@@ -300,11 +300,11 @@ If prerequisites fail:
 
 ```bash
 # Missing tools
-[ERROR] Missing required tools: gcc, ar
+[ERROR] Missing required tools: native-cc, ar
 
 # Fix:
 sudo apt-get install build-essential    # Debian/Ubuntu
-brew install gcc                         # macOS
+brew install native-cc                         # macOS
 ```
 
 ### Example 14: Debug Build Failure
@@ -322,7 +322,7 @@ tail -100 build/logs/bootstrap.log
 make -C toolchain show-logs
 
 # Investigate issues
-gcc --version
+native-cc --version
 ar --version
 make --version
 ```

@@ -217,6 +217,51 @@ proc format(diag: Diagnostic) -> string {
   give out
 }
 
+proc explain_code(code: string) -> string {
+  if code == "E1000" { give "Le module doit commencer par une déclaration `space <nom/module>` pour définir son identité." }
+  if code == "E1001" { give "La déclaration `space` est présente mais incomplète ou invalide." }
+  if code == "E1002" { give "La signature `proc` n'est pas conforme: nom, paramètres ou type de retour manquant/invalide." }
+  if code == "E1003" { give "Aucune procédure n'a été trouvée dans le module, le point d'entrée est absent." }
+  if code == "E1004" { give "Le corps de la procédure n'est pas correctement fermé par `}`." }
+  if code == "E1005" { give "`give` exige une expression explicite à retourner." }
+  if code == "E1006" { give "`let` exige un identifiant de liaison valide." }
+  if code == "E1007" { give "`set` exige une cible d'assignation valide avant `=`." }
+  if code == "E1008" { give "`set` exige une expression à droite de l'assignation." }
+  if code == "W1001" { give "Une ligne de haut niveau n'a pas été reconnue et est conservée en déclaration inconnue." }
+  give ""
+}
+
+proc suggest_code(code: string) -> string {
+  if code == "E1000" { give "Ajoute `space my/module` en première section du fichier." }
+  if code == "E1001" { give "Corrige la forme `space <nom/module>` et évite les espaces vides." }
+  if code == "E1002" { give "Utilise `proc nom(param: type) -> retour { ... }`." }
+  if code == "E1003" { give "Ajoute au moins une procédure, typiquement `proc main(...) -> ... { ... }`." }
+  if code == "E1004" { give "Ferme chaque bloc `proc` avec `}` et vérifie l'imbrication des blocs." }
+  if code == "E1005" { give "Exemple: `give value` ou `give 0`." }
+  if code == "E1006" { give "Exemple: `let value: i32 = 1`." }
+  if code == "E1007" { give "Exemple: `set value = expr`." }
+  if code == "E1008" { give "Ajoute une expression après `=` dans la ligne `set`." }
+  if code == "W1001" { give "Vérifie l'orthographe des mots-clés (`space`, `use`, `proc`, `const`, ...)." }
+  give ""
+}
+
+proc enrich_with_defaults(diag: Diagnostic) -> Diagnostic {
+  let note: string = explain_code(diag.code)
+  let help: string = suggest_code(diag.code)
+  if note != "" and diag.notes.len == 0 {
+    set diag.notes = diag.notes + [note]
+  }
+  if help != "" and diag.helps.len == 0 {
+    set diag.helps = diag.helps + [help]
+  }
+  give diag
+}
+
+proc format_strict(diag: Diagnostic) -> string {
+  let enriched: Diagnostic = enrich_with_defaults(diag)
+  give format(enriched)
+}
+
 proc add_suggestion(diag: Diagnostic, suggestion: string) -> Diagnostic {
   set diag.helps = diag.helps + [suggestion]
   give diag
@@ -232,6 +277,18 @@ proc format_all(bag: DiagnosticBag) -> string {
 
   while i < bag.items.len {
     set out = out + format(bag.items[i]) + "\n"
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc format_all_strict(bag: DiagnosticBag) -> string {
+  let mut out: string = ""
+  let mut i: int = 0
+
+  while i < bag.items.len {
+    set out = out + format_strict(bag.items[i]) + "\n"
     set i = i + 1
   }
 

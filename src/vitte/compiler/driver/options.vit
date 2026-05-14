@@ -1,27 +1,167 @@
 space vitte/compiler/driver/options
 
 form DriverOptions {
+  command: string,
   target: string,
+  input: string,
   output: string,
   emit_only: bool,
   optimize: bool,
   debug: bool,
+  warnings_as_errors: bool,
+  strict_diagnostics: bool,
+  show_help: bool,
   work_dir: string
 }
 
 proc default_options() -> DriverOptions {
   give DriverOptions {
+    command: "build",
     target: "",
+    input: "",
     output: "a.out",
     emit_only: true,
     optimize: false,
     debug: false,
+    warnings_as_errors: false,
+    strict_diagnostics: false,
+    show_help: false,
     work_dir: "."
   }
 }
 
-proc parse(_args: [string]) -> DriverOptions {
-  give default_options()
+proc _is_known_command(value: string) -> bool {
+  if value == "parse" { give true }
+  if value == "check" { give true }
+  if value == "build-native" { give true }
+  if value == "dump-native-ir" { give true }
+  if value == "build" { give true }
+  if value == "help" { give true }
+  give false
+}
+
+proc parse(args: [string]) -> DriverOptions {
+  let opts: DriverOptions = default_options()
+  let command_assigned: bool = false
+  let i: int = 0
+  while i < args.len {
+    let arg: string = args[i]
+    if !command_assigned && _is_known_command(arg) {
+      set opts.command = arg
+      set command_assigned = true
+      set i = i + 1
+      continue
+    }
+    if arg == "--help" || arg == "-h" {
+      set opts.show_help = true
+      set opts.command = "help"
+      set i = i + 1
+      continue
+    }
+    if arg == "--target" {
+      if i + 1 < args.len {
+        set opts.target = args[i + 1]
+        set i = i + 2
+        continue
+      }
+    }
+    if arg == "-o" || arg == "--output" {
+      if i + 1 < args.len {
+        set opts.output = args[i + 1]
+        set i = i + 2
+        continue
+      }
+    }
+    if arg == "--emit-only" {
+      set opts.emit_only = true
+      set i = i + 1
+      continue
+    }
+    if arg == "--no-emit-only" {
+      set opts.emit_only = false
+      set i = i + 1
+      continue
+    }
+    if arg == "--optimize" {
+      set opts.optimize = true
+      set i = i + 1
+      continue
+    }
+    if arg == "--no-optimize" {
+      set opts.optimize = false
+      set i = i + 1
+      continue
+    }
+    if arg == "-O0" {
+      set opts.optimize = false
+      set i = i + 1
+      continue
+    }
+    if arg == "-O1" || arg == "-O2" || arg == "-O3" {
+      set opts.optimize = true
+      set i = i + 1
+      continue
+    }
+    if arg == "--debug" || arg == "-g" {
+      set opts.debug = true
+      set i = i + 1
+      continue
+    }
+    if arg == "--no-debug" {
+      set opts.debug = false
+      set i = i + 1
+      continue
+    }
+    if arg == "--release" {
+      set opts.optimize = true
+      set opts.debug = false
+      set i = i + 1
+      continue
+    }
+    if arg == "--dev" {
+      set opts.optimize = false
+      set opts.debug = true
+      set i = i + 1
+      continue
+    }
+    if arg == "--werror" {
+      set opts.warnings_as_errors = true
+      set i = i + 1
+      continue
+    }
+    if arg == "--no-werror" {
+      set opts.warnings_as_errors = false
+      set i = i + 1
+      continue
+    }
+    if arg == "--strict-diagnostics" || arg == "--explain-errors" {
+      set opts.strict_diagnostics = true
+      set i = i + 1
+      continue
+    }
+    if arg == "--brief-diagnostics" {
+      set opts.strict_diagnostics = false
+      set i = i + 1
+      continue
+    }
+    if arg == "--work-dir" {
+      if i + 1 < args.len {
+        set opts.work_dir = args[i + 1]
+        set i = i + 2
+        continue
+      }
+    }
+    if opts.input == "" {
+      if arg != "" && (arg[0] as string) != "-" {
+        set opts.input = arg
+        set i = i + 1
+        continue
+      }
+    }
+    # Unknown or incomplete flags are ignored to keep parsing permissive.
+    set i = i + 1
+  }
+  give opts
 }
 
 export *

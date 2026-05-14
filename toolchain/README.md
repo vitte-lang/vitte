@@ -1,22 +1,22 @@
 # Vitte Bootstrap Toolchain
 
-Complete bootstrap toolchain for building the Vitte compiler from source. Implements a multi-stage bootstrap process from C to self-hosted Vitte.
+Complete bootstrap toolchain for building the Vitte compiler from source. Implements a multi-stage bootstrap process from native seed to self-hosted Vitte.
 
 ## Overview
 
 The bootstrap toolchain handles the complete compilation pipeline:
 
-- **Stage 0 (Seed)**: Minimal bootstrap compiler compiled from C
+- **Stage 0 (Seed)**: Minimal bootstrap compiler compiled from native seed
 - **Stage 1**: First self-hosted compiler built using the seed
 - **Stage 2**: Second self-hosted compiler built using stage1
 - **Stage 3**: Third self-hosted compiler built using stage2 (for final verification)
 
-This ensures the final compiler is self-hosting and reproducible, matching the sophistication of C compiler bootstraps.
+This ensures the final compiler is self-hosting and reproducible, matching the sophistication of native bootstrap compiler bootstraps.
 
 ## Architecture
 
 ```
-C Compiler (cc)
+Native Compiler (cc)
        ↓
 [Stage 0: Seed] → vittec0 (binary)
        ↓
@@ -69,17 +69,17 @@ The toolchain is implemented entirely in Vitte with the following modules:
 
 ## Supported Targets
 
-- **x86_64-linux** - Linux x86_64 (GCC)
+- **x86_64-linux** - Linux x86_64 (native toolchain)
 - **aarch64-linux** - Linux ARM64 (AArch64)
-- **x86_64-darwin** - macOS x86_64 (Clang)
-- **aarch64-darwin** - macOS ARM64 Apple Silicon (Clang)
+- **x86_64-darwin** - macOS x86_64 (Native Compiler)
+- **aarch64-darwin** - macOS ARM64 Apple Silicon (Native Compiler)
 - **x86_64-windows** - Windows x86_64 (MinGW)
 
 ## Prerequisites
 
 ### Required Tools
 
-- C compiler (`gcc`, `clang`, or `cc`)
+- native bootstrap compiler (`native-cc` or `cc`)
 - `ar` (archiver)
 - `ranlib` (archive tool)
 - Standard Unix tools (`mkdir`, `cp`, `rm`, etc.)
@@ -261,7 +261,7 @@ build/
 If tools are missing, the bootstrap will fail with:
 
 ```
-[ERROR] Missing required tools: gcc, ar
+[ERROR] Missing required tools: native-cc, ar
 ```
 
 Solution: Install the appropriate development tools for your platform.
@@ -292,7 +292,7 @@ For more details, run with verbose mode:
 
 ### Stage 0: Seed
 
-Minimal bootstrap compiler compiled from C:
+Minimal bootstrap compiler compiled from native seed:
 
 ```bash
 cc -o build/vittec0 src/vitte/bootstrap/seed/main.vit
