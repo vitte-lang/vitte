@@ -222,15 +222,38 @@ proc create_stage2_phase() -> BootstrapPhase {
   }
 }
 
-# Phase 6: Verification
+# Phase 6: Stage 3
+proc create_stage3_phase() -> BootstrapPhase {
+  let actions: [BootstrapAction] = [
+    BootstrapAction {
+      action_type: "compile",
+      action_name: "compile-stage3",
+      description: "Third self-hosted compilation for verification",
+      required: true,
+      depends_on: ["compile-stage2"],
+      timeout_seconds: 300,
+      retry_count: 1
+    }
+  ]
+  
+  give BootstrapPhase {
+    phase_number: 6,
+    phase_name: "Stage 3",
+    description: "Third self-hosting stage for final verification",
+    actions: actions,
+    parallel: false
+  }
+}
+
+# Phase 7: Verification
 proc create_verification_phase() -> BootstrapPhase {
   let actions: [BootstrapAction] = [
     BootstrapAction {
       action_type: "verify",
       action_name: "verify-consistency",
-      description: "Verify stage1 == stage2",
+      description: "Verify stage2 == stage3",
       required: true,
-      depends_on: ["compile-stage2"],
+      depends_on: ["compile-stage3"],
       timeout_seconds: 60,
       retry_count: 0
     },
@@ -246,7 +269,7 @@ proc create_verification_phase() -> BootstrapPhase {
   ]
   
   give BootstrapPhase {
-    phase_number: 6,
+    phase_number: 7,
     phase_name: "Verification",
     description: "Verify bootstrap correctness",
     actions: actions,
@@ -287,7 +310,7 @@ proc create_install_phase() -> BootstrapPhase {
   ]
   
   give BootstrapPhase {
-    phase_number: 7,
+    phase_number: 8,
     phase_name: "Installation",
     description: "Install bootstrap artifacts",
     actions: actions,
@@ -303,12 +326,13 @@ proc create_bootstrap_plan() -> BootstrapPlan {
     create_seed_phase(),
     create_stage1_phase(),
     create_stage2_phase(),
+    create_stage3_phase(),
     create_verification_phase(),
     create_install_phase()
   ]
   
-  let total_actions: int = 15
-  let estimated_time: int = 1800
+  let total_actions: int = 16
+  let estimated_time: int = 2100
   
   give BootstrapPlan {
     phases: phases,

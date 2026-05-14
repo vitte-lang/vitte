@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Vitte bootstrap toolchain implements a three-stage bootstrap process to create a self-hosting compiler. This document describes the architecture, design decisions, and implementation details.
+The Vitte bootstrap toolchain implements a four-stage bootstrap process to create a self-hosting compiler. This document describes the architecture, design decisions, and implementation details.
 
 ## The Bootstrap Problem
 
@@ -19,7 +19,7 @@ The solution is a **multi-stage bootstrap**:
 
 This ensures the final compiler can compile itself and all subsequent programs.
 
-## Three-Stage Bootstrap Architecture
+## Four-Stage Bootstrap Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -57,20 +57,32 @@ This ensures the final compiler can compile itself and all subsequent programs.
 │ Source: toolchain/stage2/src/main.vit                   │
 │ Output: build/vittec2 (verified compiler)               │
 │                                                          │
-│ Purpose: Verify binary reproducibility                  │
-│ Expected: vittec1 == vittec2 (byte-for-byte identical)  │
+│ Purpose: Build compiler for final verification          │
+│ Expected: Will be compared with stage3                  │
 │ Time:    ~5 minutes                                     │
 └──────────────────────────────────────────────────────────┘
          ↓
 ┌──────────────────────────────────────────────────────────┐
-│ VERIFICATION: vittec1 checksums == vittec2 checksums   │
+│ Stage 3: FINAL VERIFICATION (Third Self-Compilation)    │
+│ ────────────────────────────────────────────────────────│
+│ Input:  vittec2 (verified compiler)                     │
+│ Source: toolchain/stage3/src/main.vit                   │
+│ Output: build/vittec3 (final verified compiler)         │
+│                                                          │
+│ Purpose: Final verification compilation                 │
+│ Expected: vittec2 == vittec3 (byte-for-byte identical)  │
+│ Time:    ~5 minutes                                     │
+└──────────────────────────────────────────────────────────┘
+         ↓
+┌──────────────────────────────────────────────────────────┐
+│ VERIFICATION: vittec2 checksums == vittec3 checksums   │
 │ ────────────────────────────────────────────────────────│
 │ If equal: Bootstrap successful, compiler is self-host   │
 │ If unequal: Bootstrap failed, investigate differences   │
 └──────────────────────────────────────────────────────────┘
          ↓
 ┌──────────────────────────────────────────────────────────┐
-│ INSTALLATION: Deploy vittec2 as production compiler     │
+│ INSTALLATION: Deploy vittec3 as production compiler     │
 └──────────────────────────────────────────────────────────┘
 ```
 
