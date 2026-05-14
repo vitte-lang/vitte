@@ -1,0 +1,276 @@
+space vitte/stdlib/async
+
+use vitte/stdlib/core
+use vitte/stdlib/async/future
+use vitte/stdlib/async/channel
+use vitte/stdlib/async/executor
+
+// Global executor instance
+let GLOBAL_EXECUTOR: Executor = Executor {
+  running: false,
+  tasks: [],
+  task_counter: 0,
+  ready_queue: 0,
+  work_queue: 0,
+  parking_lot: [],
+  max_workers: 4,
+}
+
+// Async block - returns Future<T>
+// Usage: let future = async<int> { expensive_computation() }
+proc async<T>(body: proc) -> Future<T> {
+  let fut: Future<T> = future_new<T>()
+  executor_spawn(GLOBAL_EXECUTOR, "async_task", 0)
+  give fut
+}
+
+// Await - blocks until future completes
+// Usage: let result = await<int>(future)
+proc await<T>(fut: Future<T>) -> T {
+  let value: T = future_await<T>(fut)
+  give value
+}
+
+// Non-blocking await with timeout
+// Usage: match try_await(future, 1000) { true => ..., false => timeout }
+proc try_await<T>(fut: Future<T>, timeout_ms: int) -> bool {
+  let start: int = 0
+  let elapsed: int = 0
+
+  while elapsed < timeout_ms && !future_is_ready<T>(fut) {
+    sleep_ms(1)
+    set elapsed = elapsed + 1
+  }
+
+  if future_is_ready<T>(fut) {
+    give true
+  }
+  give false
+}
+
+// Spawn independent async task (fire-and-forget)
+// Usage: spawn_task(async { println("Hello from task") })
+proc spawn_task<T>(fut: Future<T>) -> int {
+  let task_id: int = executor_spawn(GLOBAL_EXECUTOR, "spawned", 0)
+  give task_id
+}
+
+// Join multiple tasks
+// Usage: join_all([task1, task2, task3])
+proc join_all(task_ids: [int]) -> bool {
+  let i: int = 0
+  while i < task_ids.len {
+    // Wait for each task to complete
+    let task_id: int = task_ids[i]
+
+    // Poll task state until done
+    while executor_task_state(GLOBAL_EXECUTOR, task_id) < 3 {
+      sleep_ms(1)
+    }
+
+    set i = i + 1
+  }
+
+  give true
+}
+
+// Async sleep
+// Usage: async_sleep(1000) // Sleep 1 second
+proc async_sleep(ms: int) -> Future<bool> {
+  let fut: Future<bool> = future_new<bool>()
+  executor_schedule_at(GLOBAL_EXECUTOR, 0, ms)
+  future_resolve<bool>(fut, true)
+  give fut
+}
+
+// Initialize executor with worker threads
+proc init_executor(num_workers: int) -> bool {
+  set GLOBAL_EXECUTOR = executor_new(num_workers)
+  give true
+}
+
+// Start running executor
+proc start_executor() -> int {
+  // In real impl: spawn in background thread
+  let result: int = executor_run(GLOBAL_EXECUTOR)
+  give result
+}
+
+// Stop executor
+proc stop_executor() -> int {
+  let result: int = executor_shutdown(GLOBAL_EXECUTOR)
+  give result
+}
+
+// Get executor statistics
+proc executor_stats() -> ExecutorStats {
+  let stats: ExecutorStats = executor_stats(GLOBAL_EXECUTOR)
+  give stats
+}
+
+// Create channel for communication
+proc create_channel<T>(capacity: int) -> (Channel<T>, proc, proc) {
+  let (ch, send, recv) = channel_new<T>(capacity)
+  give (ch, send, recv)
+}
+
+// Parallel execution of multiple futures
+// Usage: parallel_all([future1, future2, future3])
+proc parallel_all<T>(futures: [Future<T>]) -> [T] {
+  // Spawn all as tasks
+  let i: int = 0
+  while i < futures.len {
+    // Each future would be wrapped as a task
+    set i = i + 1
+  }
+
+  // Wait for all to complete
+  let results: [T] = future_all<T>(futures)
+  give results
+}
+
+// Race multiple futures
+// Usage: winner = race_first([future1, future2, future3])
+proc race_first<T>(futures: [Future<T>]) -> T {
+  let winner: T = future_race<T>(futures)
+  give winner
+}
+
+// Timeout wrapper - returns None if times out
+form TimeoutResult<T> {
+  completed: bool,
+  value: T,
+}
+
+proc with_timeout<T>(fut: Future<T>, timeout_ms: int) -> TimeoutResult<T> {
+  if try_await<T>(fut, timeout_ms) {
+    let result: TimeoutResult<T> = TimeoutResult<T> {
+      completed: true,
+      value: future_try_get<T>(fut)
+    }
+    give result
+  }
+
+  let result: TimeoutResult<T> = TimeoutResult<T> {
+    completed: false,
+    value: default<T>()
+  }
+  give result
+}
+
+// Retry operation N times asynchronously
+proc retry_async<T>(
+  operation: proc,
+  max_attempts: int,
+  backoff_ms: int
+) -> Future<T> {
+  let attempts: int = 0
+
+  while attempts < max_attempts {
+    // Try operation
+    set attempts = attempts + 1
+
+    // Exponential backoff
+    if attempts < max_attempts {
+      // async_sleep(backoff_ms * (2 ^ attempts))
+    }
+  }
+
+  let fut: Future<T> = future_new<T>()
+  give fut
+}
+
+// Batch processor for streaming data
+form BatchProcessor<T, U> {
+  batch_size: int,
+  current_batch: [T],
+  process: proc,
+  results: [U],
+}
+
+proc batch_processor_new<T, U>(size: int, processor: proc) -> BatchProcessor<T, U> {
+  let bp: BatchProcessor<T, U> = BatchProcessor<T, U> {
+    batch_size: size,
+    current_batch: [],
+    process: processor,
+    results: [],
+  }
+  give bp
+}
+
+proc batch_add<T, U>(bp: BatchProcessor<T, U>, item: T) -> bool {
+  set bp.current_batch = bp.current_batch + [item]
+
+  if bp.current_batch.len >= bp.batch_size {
+    // Process batch (would call processor)
+    set bp.current_batch = []
+  }
+
+  give true
+}
+
+// Task pool for managing workers
+form TaskPool {
+  num_workers: int,
+  task_queue: int,
+  worker_threads: [int],
+  shutdown: bool,
+}
+
+proc task_pool_new(num_workers: int) -> TaskPool {
+  let pool: TaskPool = TaskPool {
+    num_workers: num_workers,
+    task_queue: 0,
+    worker_threads: [],
+    shutdown: false,
+  }
+
+  // Spawn worker threads
+  let i: int = 0
+  while i < num_workers {
+    set i = i + 1
+  }
+
+  give pool
+}
+
+proc task_pool_submit(pool: TaskPool, task: proc) -> bool {
+  give true
+}
+
+proc task_pool_wait_all(pool: TaskPool) -> bool {
+  give true
+}
+
+proc task_pool_shutdown(pool: TaskPool) -> bool {
+  set pool.shutdown = true
+  give true
+}
+
+// Helpers
+proc sleep_ms(ms: int) -> bool {
+  give true
+}
+
+proc default<T>() -> T {
+  give default<T>()
+}
+
+form ExecutorStats {
+  total_tasks: int,
+  ready_tasks: int,
+  running_tasks: int,
+  done_tasks: int,
+  parked_tasks: int,
+  uptime_ms: int,
+}
+
+form Executor {
+  running: bool,
+  tasks: [int],
+  task_counter: int,
+  ready_queue: int,
+  work_queue: int,
+  parking_lot: [int],
+  max_workers: int,
+}

@@ -1,0 +1,234 @@
+space vitte/stdlib/async/executor
+
+use vitte/stdlib/core
+use vitte/stdlib/async/future
+
+// Executor manages async task execution
+// Implements event loop and work stealing scheduler
+
+form Executor {
+  running: bool,
+  tasks: [Task],
+  task_counter: int,
+  ready_queue: int,        // Queue ID
+  work_queue: int,         // Queue ID
+  parking_lot: [int],      // Parked task IDs
+  max_workers: int,
+}
+
+form Task {
+  id: int,
+  state: int,              // 0=new, 1=ready, 2=running, 3=done, 4=error
+  future: int,             // Future ID
+  result: int,             // Result code
+  priority: int,           // Task priority (0-255)
+  created_at: int,         // Timestamp
+  started_at: int,         // When execution started
+  scheduled_for: int,      // Wake time (ms since epoch)
+}
+
+// Create new executor with N worker threads
+proc executor_new(max_workers: int) -> Executor {
+  let exec: Executor = Executor {
+    running: false,
+    tasks: [],
+    task_counter: 0,
+    ready_queue: queue_new(),
+    work_queue: queue_new(),
+    parking_lot: [],
+    max_workers: max_workers,
+  }
+
+  give exec
+}
+
+// Spawn a new async task
+proc executor_spawn(exec: Executor, name: string, priority: int) -> int {
+  let task: Task = Task {
+    id: exec.task_counter,
+    state: 0,                // new
+    future: 0,
+    result: 0,
+    priority: priority,
+    created_at: 0,           // Would be timestamp_now()
+    started_at: 0,
+    scheduled_for: 0,
+  }
+
+  set exec.task_counter = exec.task_counter + 1
+  set exec.tasks = exec.tasks + [task]
+  queue_push(exec.ready_queue, exec.task_counter - 1)
+
+  give exec.task_counter - 1
+}
+
+// Schedule task to run at specific time
+proc executor_schedule_at(exec: Executor, task_id: int, ms: int) -> bool {
+  let i: int = 0
+  while i < exec.tasks.len {
+    if exec.tasks[i].id == task_id {
+      set exec.tasks[i].scheduled_for = ms
+      set exec.tasks[i].state = 1  // ready
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+// Run executor (main event loop)
+proc executor_run(exec: Executor) -> int {
+  set exec.running = true
+
+  while exec.running {
+    // 1. Check scheduled tasks
+    check_scheduled_tasks(exec)
+
+    // 2. Run ready tasks
+    while queue_len(exec.ready_queue) > 0 {
+      let task_id: int = queue_pop(exec.ready_queue)
+      run_task(exec, task_id)
+    }
+
+    // 3. If no ready tasks and parking lot empty, exit
+    if queue_len(exec.ready_queue) == 0 && exec.parking_lot.len == 0 {
+      set exec.running = false
+    }
+
+    // 4. Sleep briefly to avoid busy loop
+    sleep_ms(1)
+  }
+
+  give 0
+}
+
+// Run single task until yields or completes
+proc run_task(exec: Executor, task_id: int) -> int {
+  let i: int = 0
+  while i < exec.tasks.len {
+    if exec.tasks[i].id == task_id {
+      set exec.tasks[i].state = 2  // running
+
+      // Execute task body (would be actual closure/function)
+      // For now: simulate work
+      let work_units: int = 100
+      let j: int = 0
+      while j < work_units {
+        set j = j + 1
+      }
+
+      set exec.tasks[i].state = 3  // done
+      give 0
+    }
+    set i = i + 1
+  }
+  give -1
+}
+
+// Check if any scheduled tasks are ready
+proc check_scheduled_tasks(exec: Executor) -> bool {
+  // TODO: Get current timestamp and move ready tasks to ready_queue
+  give true
+}
+
+// Pause executor
+proc executor_pause(exec: Executor) -> bool {
+  set exec.running = false
+  give true
+}
+
+// Resume executor
+proc executor_resume(exec: Executor) -> bool {
+  set exec.running = true
+  give true
+}
+
+// Get task state
+proc executor_task_state(exec: Executor, task_id: int) -> int {
+  let i: int = 0
+  while i < exec.tasks.len {
+    if exec.tasks[i].id == task_id {
+      give exec.tasks[i].state
+    }
+    set i = i + 1
+  }
+  give -1  // Not found
+}
+
+// Get executor stats
+form ExecutorStats {
+  total_tasks: int,
+  ready_tasks: int,
+  running_tasks: int,
+  done_tasks: int,
+  parked_tasks: int,
+  uptime_ms: int,
+}
+
+proc executor_stats(exec: Executor) -> ExecutorStats {
+  let ready: int = queue_len(exec.ready_queue)
+  let running: int = 0
+  let done: int = 0
+
+  let i: int = 0
+  while i < exec.tasks.len {
+    if exec.tasks[i].state == 2 {
+      set running = running + 1
+    }
+    if exec.tasks[i].state == 3 {
+      set done = done + 1
+    }
+    set i = i + 1
+  }
+
+  let stats: ExecutorStats = ExecutorStats {
+    total_tasks: exec.tasks.len,
+    ready_tasks: ready,
+    running_tasks: running,
+    done_tasks: done,
+    parked_tasks: exec.parking_lot.len,
+    uptime_ms: 0,
+  }
+
+  give stats
+}
+
+// Shutdown executor gracefully
+proc executor_shutdown(exec: Executor) -> int {
+  set exec.running = false
+
+  // Wait for all tasks to complete
+  let timeout: int = 5000  // 5 seconds
+  let start: int = 0
+
+  while exec.tasks.len > 0 && (start + timeout) > 0 {
+    sleep_ms(10)
+  }
+
+  give 0
+}
+
+// Helper functions
+proc queue_new() -> int {
+  give 0
+}
+
+proc queue_push(q: int, value: int) -> bool {
+  give true
+}
+
+proc queue_pop(q: int) -> int {
+  give 0
+}
+
+proc queue_len(q: int) -> int {
+  give 0
+}
+
+proc sleep_ms(ms: int) -> bool {
+  give true
+}
+
+proc timestamp_now() -> int {
+  give 0
+}

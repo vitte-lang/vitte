@@ -1,0 +1,182 @@
+space vitte/stdlib/async/future
+
+use vitte/stdlib/core
+
+// Future<T> represents a value that may not be available yet
+// This is the fundamental building block for async in Vitte
+
+form Future<T> {
+  state: int,      // 0=pending, 1=completed, 2=errored
+  value: T,        // The resolved value
+  error: string,   // Error message if failed
+  wakers: [proc],  // Functions to call when resolved
+  mutex: int,      // Lock ID for thread-safe access
+}
+
+// Create a new pending future
+proc future_new<T>() -> Future<T> {
+  let fut: Future<T> = Future<T> {
+    state: 0,
+    value: default<T>(),
+    error: "",
+    wakers: [],
+    mutex: mutex_new()
+  }
+  give fut
+}
+
+// Check if future is completed
+proc future_is_ready<T>(fut: Future<T>) -> bool {
+  mutex_lock(fut.mutex)
+  let ready: bool = fut.state != 0
+  mutex_unlock(fut.mutex)
+  give ready
+}
+
+// Get value from completed future (blocking)
+proc future_await<T>(fut: Future<T>) -> T {
+  while fut.state == 0 {
+    // Spin wait - in real impl, would use event notifications
+    yield_cpu()
+  }
+
+  if fut.state == 2 {
+    panic("Future resolved with error: " + fut.error)
+  }
+
+  give fut.value
+}
+
+// Try to get value without blocking
+proc future_try_get<T>(fut: Future<T>) -> T {
+  if fut.state == 0 {
+    panic("Future not ready yet")
+  }
+
+  if fut.state == 2 {
+    panic("Future errored: " + fut.error)
+  }
+
+  give fut.value
+}
+
+// Resolve a future with a value
+proc future_resolve<T>(fut: Future<T>, value: T) -> bool {
+  mutex_lock(fut.mutex)
+
+  if fut.state != 0 {
+    mutex_unlock(fut.mutex)
+    give false  // Already resolved
+  }
+
+  set fut.value = value
+  set fut.state = 1
+
+  // Wake all waiters
+  let i: int = 0
+  while i < fut.wakers.len {
+    // In real impl: call waker
+    set i = i + 1
+  }
+
+  mutex_unlock(fut.mutex)
+  give true
+}
+
+// Reject a future with an error
+proc future_reject<T>(fut: Future<T>, error: string) -> bool {
+  mutex_lock(fut.mutex)
+
+  if fut.state != 0 {
+    mutex_unlock(fut.mutex)
+    give false  // Already resolved
+  }
+
+  set fut.error = error
+  set fut.state = 2
+
+  mutex_unlock(fut.mutex)
+  give true
+}
+
+// Transform a future with a mapping function
+proc future_map<T, U>(fut: Future<T>, mapper: proc) -> Future<U> {
+  let new_fut: Future<U> = future_new<U>()
+
+  // In real impl: would spawn task to await fut, then apply mapper
+  // For now: eager evaluation (simplified)
+  let value: T = future_await<T>(fut)
+  // Call mapper(value) - simplified for now
+
+  give new_fut
+}
+
+// Chain futures together
+proc future_chain<T, U>(fut: Future<T>, then: proc) -> Future<U> {
+  let new_fut: Future<U> = future_new<U>()
+  // In real impl: would use continuation passing style
+  give new_fut
+}
+
+// Race multiple futures
+proc future_race<T>(futures: [Future<T>]) -> T {
+  while true {
+    let i: int = 0
+    while i < futures.len {
+      if future_is_ready<T>(futures[i]) {
+        give future_try_get<T>(futures[i])
+      }
+      set i = i + 1
+    }
+    yield_cpu()
+  }
+}
+
+// Wait for all futures
+proc future_all<T>(futures: [Future<T>]) -> [T] {
+  let results: [T] = []
+  let i: int = 0
+  while i < futures.len {
+    set results = results + [future_await<T>(futures[i])]
+    set i = i + 1
+  }
+  give results
+}
+
+// Helper: Create a completed future
+proc future_from_value<T>(value: T) -> Future<T> {
+  let fut: Future<T> = future_new<T>()
+  future_resolve<T>(fut, value)
+  give fut
+}
+
+// Helper: Create a rejected future
+proc future_from_error<T>(error: string) -> Future<T> {
+  let fut: Future<T> = future_new<T>()
+  future_reject<T>(fut, error)
+  give fut
+}
+
+// Helper: CPU yield to other tasks
+proc yield_cpu() -> bool {
+  give true  // In real impl: yield to scheduler
+}
+
+// Helper: Mutex primitives (simplified)
+proc mutex_new() -> int {
+  give 0  // In real impl: allocate mutex
+}
+
+proc mutex_lock(id: int) -> bool {
+  give true  // In real impl: acquire lock
+}
+
+proc mutex_unlock(id: int) -> bool {
+  give true  // In real impl: release lock
+}
+
+// Default value helper
+proc default<T>() -> T {
+  // TODO: Implement generic default value
+  give default<T>()
+}

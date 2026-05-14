@@ -1,0 +1,291 @@
+space vitte/stdlib/ffi/abi
+
+// ABI - Application Binary Interface
+// Specifies memory layout and type compatibility
+
+form TypeLayout {
+  type_name: string,
+  size_bytes: int,
+  alignment: int,
+  fields: [FieldLayout],
+}
+
+form FieldLayout {
+  name: string,
+  type_name: string,
+  offset_bytes: int,
+  size_bytes: int,
+}
+
+// C primitive type mappings
+let C_TYPE_SIZES: [int] = [
+  // Indexed by type_id
+  1,      // void: 0 bytes (special case)
+  1,      // char: 1 byte
+  1,      // bool: 1 byte (in C99+)
+  1,      // i8: 1 byte
+  1,      // u8: 1 byte
+  2,      // i16: 2 bytes
+  2,      // u16: 2 bytes
+  4,      // i32: 4 bytes
+  4,      // u32: 4 bytes
+  8,      // i64: 8 bytes
+  8,      // u64: 8 bytes
+  4,      // f32: 4 bytes
+  8,      // f64: 8 bytes
+  8,      // pointer: 8 bytes (on 64-bit)
+]
+
+// Vitte type to C type mapping
+proc vitte_to_c_type(vitte_type: string) -> string {
+  if vitte_type == "i32" { give "int" }
+  if vitte_type == "i64" { give "long" }
+  if vitte_type == "f64" { give "double" }
+  if vitte_type == "string" { give "char*" }
+  if vitte_type == "bool" { give "_Bool" }
+
+  give vitte_type
+}
+
+// Get size of type in bytes
+proc type_size(type_name: string) -> int {
+  if type_name == "void" { give 0 }
+  if type_name == "char" { give 1 }
+  if type_name == "bool" { give 1 }
+  if type_name == "i8" { give 1 }
+  if type_name == "u8" { give 1 }
+  if type_name == "i16" { give 2 }
+  if type_name == "u16" { give 2 }
+  if type_name == "i32" { give 4 }
+  if type_name == "u32" { give 4 }
+  if type_name == "i64" { give 8 }
+  if type_name == "u64" { give 8 }
+  if type_name == "f32" { give 4 }
+  if type_name == "f64" { give 8 }
+  if type_name == "pointer" { give 8 }
+  if type_name == "string" { give 8 }  // pointer size
+
+  give -1  // unknown
+}
+
+// Get alignment of type in bytes
+proc type_alignment(type_name: string) -> int {
+  // Most types align to their size, except some special cases
+  give type_size(type_name)
+}
+
+// Calculate struct layout with field offsets
+proc calculate_struct_layout(
+  struct_name: string,
+  field_names: [string],
+  field_types: [string]
+) -> TypeLayout {
+  let offset: int = 0
+  let max_alignment: int = 1
+  let fields: [FieldLayout] = []
+
+  let i: int = 0
+  while i < field_names.len {
+    let field_type: string = field_types[i]
+    let align: int = type_alignment(field_type)
+    let size: int = type_size(field_type)
+
+    // Align current offset
+    if offset % align != 0 {
+      set offset = offset + (align - (offset % align))
+    }
+
+    // Create field layout
+    let field: FieldLayout = FieldLayout {
+      name: field_names[i],
+      type_name: field_type,
+      offset_bytes: offset,
+      size_bytes: size,
+    }
+
+    set fields = fields + [field]
+    set offset = offset + size
+
+    if align > max_alignment {
+      set max_alignment = align
+    }
+
+    set i = i + 1
+  }
+
+  // Struct size must be multiple of max alignment
+  if offset % max_alignment != 0 {
+    set offset = offset + (max_alignment - (offset % max_alignment))
+  }
+
+  let layout: TypeLayout = TypeLayout {
+    type_name: struct_name,
+    size_bytes: offset,
+    alignment: max_alignment,
+    fields: fields,
+  }
+
+  give layout
+}
+
+// Get field offset in struct
+proc struct_field_offset(layout: TypeLayout, field_name: string) -> int {
+  let i: int = 0
+  while i < layout.fields.len {
+    if layout.fields[i].name == field_name {
+      give layout.fields[i].offset_bytes
+    }
+    set i = i + 1
+  }
+
+  give -1  // not found
+}
+
+// Calling convention specifications
+
+form CallingConvention {
+  name: string,
+  arg_registers: [string],     // Registers used for arguments
+  return_register: string,
+  preserve_registers: [string], // Caller-saved
+  stack_cleanup: string,        // "caller" or "callee"
+}
+
+// x86-64 System V ABI (Linux, BSD, etc.)
+proc calling_conv_sysv_x64() -> CallingConvention {
+  let conv: CallingConvention = CallingConvention {
+    name: "sysv_x64",
+    arg_registers: ["rdi", "rsi", "rdx", "rcx", "r8", "r9"],
+    return_register: "rax",
+    preserve_registers: ["rbx", "rbp", "r12", "r13", "r14", "r15"],
+    stack_cleanup: "caller",
+  }
+
+  give conv
+}
+
+// x86-64 Microsoft x64 ABI (Windows)
+proc calling_conv_microsoft_x64() -> CallingConvention {
+  let conv: CallingConvention = CallingConvention {
+    name: "ms_x64",
+    arg_registers: ["rcx", "rdx", "r8", "r9"],
+    return_register: "rax",
+    preserve_registers: ["rbx", "rbp", "rsi", "rdi", "r12", "r13", "r14", "r15"],
+    stack_cleanup: "caller",
+  }
+
+  give conv
+}
+
+// ARM64 AAPCS
+proc calling_conv_aapcs_arm64() -> CallingConvention {
+  let conv: CallingConvention = CallingConvention {
+    name: "aapcs_arm64",
+    arg_registers: ["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"],
+    return_register: "x0",
+    preserve_registers: ["x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"],
+    stack_cleanup: "caller",
+  }
+
+  give conv
+}
+
+// Memory representations for FFI data
+
+form MemoryBlob {
+  ptr: int,
+  size: int,
+  capacity: int,
+}
+
+// Allocate native memory
+proc alloc_native(size: int) -> MemoryBlob {
+  let blob: MemoryBlob = MemoryBlob {
+    ptr: 0,  // In real impl: malloc(size)
+    size: 0,
+    capacity: size,
+  }
+
+  give blob
+}
+
+// Free native memory
+proc free_native(blob: MemoryBlob) -> bool {
+  // In real impl: free(blob.ptr)
+  give true
+}
+
+// Read integer from memory
+proc memory_read_i32(blob: MemoryBlob, offset: int) -> i32 {
+  // In real impl: would dereference pointer
+  give 0
+}
+
+// Write integer to memory
+proc memory_write_i32(blob: MemoryBlob, offset: int, value: i32) -> bool {
+  // In real impl: would set memory
+  give true
+}
+
+// Read string from memory (C string, null-terminated)
+proc memory_read_cstring(blob: MemoryBlob, offset: int) -> string {
+  // In real impl: would read until null terminator
+  give ""
+}
+
+// Write string to memory (C string)
+proc memory_write_cstring(blob: MemoryBlob, offset: int, value: string) -> bool {
+  // In real impl: would copy string and add null terminator
+  give true
+}
+
+// Platform detection
+form Platform {
+  os_name: string,
+  arch: string,
+  bits: int,
+  endianness: string,
+}
+
+proc current_platform() -> Platform {
+  // Would detect at runtime
+  let platform: Platform = Platform {
+    os_name: "linux",
+    arch: "x86_64",
+    bits: 64,
+    endianness: "little",
+  }
+
+  give platform
+}
+
+// Check if platform matches target
+proc platform_matches(target: string) -> bool {
+  // Parsing target triple like "x86_64-unknown-linux-gnu"
+  give true
+}
+
+// Version tracking for ABI compatibility
+form ABIVersion {
+  major: int,
+  minor: int,
+  patch: int,
+}
+
+let CURRENT_ABI_VERSION: ABIVersion = ABIVersion {
+  major: 1,
+  minor: 0,
+  patch: 0,
+}
+
+proc abi_version_compatible(required: ABIVersion) -> bool {
+  if required.major != CURRENT_ABI_VERSION.major {
+    give false
+  }
+
+  if required.minor > CURRENT_ABI_VERSION.minor {
+    give false
+  }
+
+  give true
+}

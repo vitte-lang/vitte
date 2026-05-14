@@ -1,0 +1,345 @@
+space vitte/stdlib/packages/package
+
+// Package Management - Dependency resolution and package registry
+
+form PackageMetadata {
+  name: string,
+  version: string,
+  author: string,
+  description: string,
+  license: string,
+  homepage: string,
+  repository: string,
+  keywords: [string],
+  dependencies: [PackageDependency],
+  dev_dependencies: [PackageDependency],
+  optional_dependencies: [PackageDependency],
+}
+
+form PackageDependency {
+  name: string,
+  version_requirement: string,  // "1.2.3", "^1.2.0", "~1.2", "*", etc.
+  optional: bool,
+}
+
+form Package {
+  metadata: PackageMetadata,
+  path: string,
+  version_resolved: string,
+  installed: bool,
+  dependencies_resolved: [Package],
+}
+
+// Version specification matching
+proc version_matches(actual: string, requirement: string) -> bool {
+  // Parse version requirement format:
+  // "1.2.3"     - exact
+  // "^1.2.3"    - compatible (1.x.x)
+  // "~1.2.3"    - approximately (1.2.x)
+  // ">=1.2.3"   - at least
+  // "1.2.*"     - range
+  // "*"         - any
+
+  if requirement == "*" { give true }
+  if requirement == actual { give true }
+
+  if requirement[0] == '^' {
+    // Caret: compatible with version
+    give version_compatible_caret(actual, requirement[1:])
+  }
+
+  if requirement[0] == '~' {
+    // Tilde: approximately version
+    give version_compatible_tilde(actual, requirement[1:])
+  }
+
+  give false
+}
+
+proc version_compatible_caret(actual: string, spec: string) -> bool {
+  // 1.2.3 compatible with ^1.2.0 (allows 1.x.x)
+  // 0.2.3 compatible with ^0.2.0 (allows 0.2.x)
+
+  give true  // Simplified
+}
+
+proc version_compatible_tilde(actual: string, spec: string) -> bool {
+  // 1.2.3 compatible with ~1.2.0 (allows 1.2.x)
+  // 1.2.3 compatible with ~1.0 (allows 1.x.x)
+
+  give true  // Simplified
+}
+
+// Package registry (local and remote)
+form PackageRegistry {
+  local_packages: [Package],
+  cache_dir: string,
+  registry_urls: [string],
+  auth_tokens: [string],
+}
+
+proc package_registry_new(cache_dir: string) -> PackageRegistry {
+  let registry: PackageRegistry = PackageRegistry {
+    local_packages: [],
+    cache_dir: cache_dir,
+    registry_urls: ["https://packages.vitte.dev"],
+    auth_tokens: [],
+  }
+
+  give registry
+}
+
+// Search for package in registry
+proc registry_search(registry: PackageRegistry, name: string) -> [Package] {
+  let results: [Package] = []
+
+  // Search local cache first
+  let i: int = 0
+  while i < registry.local_packages.len {
+    if registry.local_packages[i].metadata.name == name {
+      set results = results + [registry.local_packages[i]]
+    }
+    set i = i + 1
+  }
+
+  // Would also search remote registry
+
+  give results
+}
+
+// Get package by name and version
+proc registry_get_package(registry: PackageRegistry, name: string, version: string) -> Package {
+  let results: [Package] = registry_search(registry, name)
+
+  let i: int = 0
+  while i < results.len {
+    if version_matches(results[i].version_resolved, version) {
+      give results[i]
+    }
+    set i = i + 1
+  }
+
+  // Return empty package if not found
+  let empty: PackageMetadata = PackageMetadata {
+    name: name,
+    version: "",
+    author: "",
+    description: "",
+    license: "",
+    homepage: "",
+    repository: "",
+    keywords: [],
+    dependencies: [],
+    dev_dependencies: [],
+    optional_dependencies: [],
+  }
+
+  let pkg: Package = Package {
+    metadata: empty,
+    path: "",
+    version_resolved: "",
+    installed: false,
+    dependencies_resolved: [],
+  }
+
+  give pkg
+}
+
+// Install package
+proc package_install(registry: PackageRegistry, name: string, version: string) -> Package {
+  let pkg: Package = registry_get_package(registry, name, version)
+
+  if pkg.metadata.name == "" {
+    panic("Package not found: " + name + "@" + version)
+  }
+
+  // Resolve dependencies recursively
+  set pkg.dependencies_resolved = resolve_dependencies(registry, pkg.metadata.dependencies)
+
+  // Download and extract
+  download_package(pkg)
+
+  set pkg.installed = true
+  set registry.local_packages = registry.local_packages + [pkg]
+
+  give pkg
+}
+
+// Resolve all dependencies recursively
+proc resolve_dependencies(
+  registry: PackageRegistry,
+  deps: [PackageDependency]
+) -> [Package] {
+  let resolved: [Package] = []
+
+  let i: int = 0
+  while i < deps.len {
+    let dep: PackageDependency = deps[i]
+    let pkg: Package = registry_get_package(registry, dep.name, dep.version_requirement)
+
+    if pkg.metadata.name != "" {
+      // Recursively resolve this package's dependencies
+      set pkg.dependencies_resolved = resolve_dependencies(registry, pkg.metadata.dependencies)
+      set resolved = resolved + [pkg]
+    } else if !dep.optional {
+      panic("Cannot resolve dependency: " + dep.name + "@" + dep.version_requirement)
+    }
+
+    set i = i + 1
+  }
+
+  give resolved
+}
+
+// Load package.vit manifest
+proc load_package_manifest(path: string) -> PackageMetadata {
+  // Would parse package.vit or package.json
+
+  let metadata: PackageMetadata = PackageMetadata {
+    name: "",
+    version: "",
+    author: "",
+    description: "",
+    license: "",
+    homepage: "",
+    repository: "",
+    keywords: [],
+    dependencies: [],
+    dev_dependencies: [],
+    optional_dependencies: [],
+  }
+
+  give metadata
+}
+
+// Lock file management (for reproducible builds)
+form LockFile {
+  version: string,
+  locked_packages: [LockedPackage],
+  generated_at: string,
+  vitte_version: string,
+}
+
+form LockedPackage {
+  name: string,
+  version: string,
+  resolved_url: string,
+  integrity: string,  // Hash for verification
+  dependencies: [LockedDependency],
+}
+
+form LockedDependency {
+  name: string,
+  version: string,
+}
+
+// Generate lock file
+proc create_lock_file(packages: [Package]) -> LockFile {
+  let locked: [LockedPackage] = []
+
+  let i: int = 0
+  while i < packages.len {
+    let locked_pkg: LockedPackage = LockedPackage {
+      name: packages[i].metadata.name,
+      version: packages[i].version_resolved,
+      resolved_url: "",
+      integrity: "",
+      dependencies: [],
+    }
+    set locked = locked + [locked_pkg]
+    set i = i + 1
+  }
+
+  let lock_file: LockFile = LockFile {
+    version: "1",
+    locked_packages: locked,
+    generated_at: "",
+    vitte_version: "",
+  }
+
+  give lock_file
+}
+
+// Publish package to registry
+proc package_publish(
+  registry: PackageRegistry,
+  package_path: string,
+  auth_token: string
+) -> bool {
+  let metadata: PackageMetadata = load_package_manifest(package_path)
+
+  if metadata.name == "" {
+    give false
+  }
+
+  // Package and sign
+  let package_tarball: string = create_package_tarball(package_path, metadata)
+
+  // Upload to registry
+  let uploaded: bool = upload_to_registry(package_tarball, registry.registry_urls[0], auth_token)
+
+  give uploaded
+}
+
+// Semantic versioning utilities
+form Version {
+  major: int,
+  minor: int,
+  patch: int,
+  prerelease: string,
+  metadata: string,
+}
+
+proc parse_version(version_string: string) -> Version {
+  // Parse "1.2.3-alpha+build.123"
+
+  let version: Version = Version {
+    major: 1,
+    minor: 0,
+    patch: 0,
+    prerelease: "",
+    metadata: "",
+  }
+
+  give version
+}
+
+proc version_compare(v1: Version, v2: Version) -> int {
+  // Returns: -1 if v1 < v2, 0 if equal, 1 if v1 > v2
+
+  if v1.major < v2.major { give -1 }
+  if v1.major > v2.major { give 1 }
+
+  if v1.minor < v2.minor { give -1 }
+  if v1.minor > v2.minor { give 1 }
+
+  if v1.patch < v2.patch { give -1 }
+  if v1.patch > v2.patch { give 1 }
+
+  give 0
+}
+
+proc version_is_compatible(required: Version, available: Version) -> bool {
+  // Check semantic versioning compatibility
+  give version_compare(available, required) >= 0
+}
+
+// Helper functions
+proc download_package(pkg: Package) -> bool {
+  // Would download from registry
+  give true
+}
+
+proc create_package_tarball(path: string, metadata: PackageMetadata) -> string {
+  // Would create tar.gz archive
+  give path + "/" + metadata.name + "-" + metadata.version + ".tar.gz"
+}
+
+proc upload_to_registry(tarball: string, registry_url: string, auth_token: string) -> bool {
+  // Would HTTP POST to registry
+  give true
+}
+
+proc panic(msg: string) -> bool {
+  give false
+}

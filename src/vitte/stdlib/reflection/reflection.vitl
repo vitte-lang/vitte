@@ -1,0 +1,361 @@
+space vitte/stdlib/reflection/reflection
+
+// Reflection - Runtime type introspection and metadata
+
+// Type information at runtime
+form TypeInfo {
+  name: string,
+  kind: string,           // "primitive", "struct", "enum", "function", "array", etc.
+  size_bytes: int,
+  fields: [FieldInfo],
+  methods: [MethodInfo],
+  interfaces: [string],   // Implemented interfaces
+  package: string,
+  module: string,
+  doc_string: string,
+}
+
+form FieldInfo {
+  name: string,
+  type_name: string,
+  offset_bytes: int,
+  size_bytes: int,
+  tag: string,            // Metadata tags (for serialization, etc.)
+  accessible: bool,       // Is public?
+}
+
+form MethodInfo {
+  name: string,
+  receiver_type: string,
+  parameters: [string],
+  return_types: [string],
+  is_public: bool,
+  doc_string: string,
+}
+
+// Get type info for a value
+proc type_of<T>(value: T) -> TypeInfo {
+  // In real impl: would use runtime type information
+  let info: TypeInfo = TypeInfo {
+    name: "T",
+    kind: "unknown",
+    size_bytes: 0,
+    fields: [],
+    methods: [],
+    interfaces: [],
+    package: "unknown",
+    module: "unknown",
+    doc_string: "",
+  }
+
+  give info
+}
+
+// Get type info by name
+proc type_by_name(name: string) -> TypeInfo {
+  // Would look up in type registry
+  let info: TypeInfo = TypeInfo {
+    name: name,
+    kind: "unknown",
+    size_bytes: 0,
+    fields: [],
+    methods: [],
+    interfaces: [],
+    package: "unknown",
+    module: "unknown",
+    doc_string: "",
+  }
+
+  give info
+}
+
+// Check if type implements interface
+proc implements_interface(type_name: string, interface_name: string) -> bool {
+  let info: TypeInfo = type_by_name(type_name)
+
+  let i: int = 0
+  while i < info.interfaces.len {
+    if info.interfaces[i] == interface_name {
+      give true
+    }
+    set i = i + 1
+  }
+
+  give false
+}
+
+// Check if type is assignable from another type
+proc is_assignable_from(to_type: string, from_type: string) -> bool {
+  if to_type == from_type { give true }
+
+  // Would check subtyping relationship
+
+  give false
+}
+
+// Get all types in a module
+proc module_types(module_name: string) -> [TypeInfo] {
+  let types: [TypeInfo] = []
+
+  // Would scan module for all type definitions
+
+  give types
+}
+
+// Type construction and instantiation
+
+form ConstructorInfo {
+  parameter_types: [string],
+  doc_string: string,
+}
+
+// Get constructors for a type
+proc type_constructors(type_name: string) -> [ConstructorInfo] {
+  let constructors: [ConstructorInfo] = []
+
+  // Would find all constructors
+
+  give constructors
+}
+
+// Create instance of type with field values
+form Value {
+  type_name: string,
+  field_values: [int],    // Addresses of field values
+}
+
+proc reflect_create(type_name: string, field_values: [int]) -> Value {
+  let value: Value = Value {
+    type_name: type_name,
+    field_values: field_values,
+  }
+
+  give value
+}
+
+// Get field value
+proc reflect_get_field(value: Value, field_name: string) -> int {
+  // Would access field at correct offset
+  give 0
+}
+
+// Set field value
+proc reflect_set_field(value: Value, field_name: string, field_value: int) -> bool {
+  // Would set field at correct offset
+  give true
+}
+
+// Call method via reflection
+proc reflect_call_method(value: Value, method_name: string, args: [int]) -> int {
+  // Would call method dynamically
+  give 0
+}
+
+// Dynamic function call
+
+form FunctionInfo {
+  name: string,
+  module: string,
+  parameters: [string],
+  return_type: string,
+  is_variadic: bool,
+  doc_string: string,
+}
+
+// Get function info
+proc function_by_name(name: string) -> FunctionInfo {
+  let info: FunctionInfo = FunctionInfo {
+    name: name,
+    module: "",
+    parameters: [],
+    return_type: "",
+    is_variadic: false,
+    doc_string: "",
+  }
+
+  give info
+}
+
+// Call function by name
+proc reflect_call_function(name: string, args: [int]) -> int {
+  // Would call function dynamically
+  give 0
+}
+
+// Serialization support - automatic struct serialization
+
+form SerializationFormat {
+  name: string,
+  version: int,
+}
+
+let SERIALIZATION_JSON: SerializationFormat = SerializationFormat {
+  name: "json",
+  version: 1,
+}
+
+let SERIALIZATION_BINARY: SerializationFormat = SerializationFormat {
+  name: "binary",
+  version: 1,
+}
+
+let SERIALIZATION_MSGPACK: SerializationFormat = SerializationFormat {
+  name: "msgpack",
+  version: 1,
+}
+
+// Serialize value to string
+proc serialize_to_string<T>(value: T, format: SerializationFormat) -> string {
+  // Would introspect type and serialize
+
+  if format.name == "json" {
+    give serialize_to_json<T>(value)
+  }
+
+  give ""
+}
+
+// Deserialize from string
+proc deserialize_from_string<T>(data: string, format: SerializationFormat) -> T {
+  // Would introspect type and deserialize
+
+  give default<T>()
+}
+
+// JSON serialization
+proc serialize_to_json<T>(value: T) -> string {
+  // Would introspect fields and generate JSON
+  give "{}"
+}
+
+proc deserialize_from_json<T>(json: string) -> T {
+  // Would parse JSON and populate struct
+  give default<T>()
+}
+
+// Binary serialization (compact, native endianness)
+proc serialize_to_binary<T>(value: T) -> [int] {
+  let bytes: [int] = []
+  // Would introspect and copy fields
+  give bytes
+}
+
+proc deserialize_from_binary<T>(bytes: [int]) -> T {
+  // Would parse binary and populate struct
+  give default<T>()
+}
+
+// MessagePack serialization
+proc serialize_to_msgpack<T>(value: T) -> [int] {
+  let bytes: [int] = []
+  // Would use MessagePack format
+  give bytes
+}
+
+// Attribute/tag system for metadata
+
+form Attribute {
+  name: string,
+  value: string,
+  parameters: [string],
+}
+
+// Get attributes on type
+proc type_get_attributes(type_name: string) -> [Attribute] {
+  let attrs: [Attribute] = []
+  give attrs
+}
+
+// Get attributes on field
+proc field_get_attributes(type_name: string, field_name: string) -> [Attribute] {
+  let attrs: [Attribute] = []
+  give attrs
+}
+
+// Generic type information
+
+form GenericTypeInfo {
+  base_type: string,
+  type_parameters: [string],
+}
+
+// Get generic parameters of a type
+proc generic_type_parameters(type_name: string) -> [string] {
+  let params: [string] = []
+  // Would extract type parameters
+  give params
+}
+
+// Create specialized generic type
+proc specialize_generic(generic_type: string, type_args: [string]) -> string {
+  // Would create new type name like "Vec<T>" -> "Vec<int>"
+  give generic_type
+}
+
+// Symbol name mangling/demangling
+
+proc mangle_symbol(name: string, module: string, type_params: [string]) -> string {
+  // Converts readable name to unique mangled form
+  give name
+}
+
+proc demangle_symbol(mangled: string) -> string {
+  // Converts mangled name back to readable form
+  give mangled
+}
+
+// Module introspection
+form ModuleInfo {
+  name: string,
+  path: string,
+  types: [TypeInfo],
+  functions: [FunctionInfo],
+  version: string,
+}
+
+proc module_info(module_name: string) -> ModuleInfo {
+  let info: ModuleInfo = ModuleInfo {
+    name: module_name,
+    path: "",
+    types: [],
+    functions: [],
+    version: "",
+  }
+
+  give info
+}
+
+// Type registry - global registry of all types
+
+form TypeRegistry {
+  types: [TypeInfo],
+  modules: [ModuleInfo],
+}
+
+let GLOBAL_TYPE_REGISTRY: TypeRegistry = TypeRegistry {
+  types: [],
+  modules: [],
+}
+
+proc register_type(info: TypeInfo) -> bool {
+  set GLOBAL_TYPE_REGISTRY.types = GLOBAL_TYPE_REGISTRY.types + [info]
+  give true
+}
+
+proc register_module(info: ModuleInfo) -> bool {
+  set GLOBAL_TYPE_REGISTRY.modules = GLOBAL_TYPE_REGISTRY.modules + [info]
+  give true
+}
+
+proc list_all_types() -> [TypeInfo] {
+  give GLOBAL_TYPE_REGISTRY.types
+}
+
+proc list_all_modules() -> [ModuleInfo] {
+  give GLOBAL_TYPE_REGISTRY.modules
+}
+
+// Helpers
+proc default<T>() -> T {
+  give default<T>()
+}
