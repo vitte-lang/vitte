@@ -1,0 +1,24 @@
+space vitte/compiler/backends/vitte_emit/tests/smoke
+
+use src/vitte/compiler/backends/vitte_emit/types as types
+use src/vitte/compiler/backends/vitte_emit/emit as emit
+use src/vitte/compiler/backends/vitte_emit/cfg as cfg
+
+proc smoke_types_count() -> bool {
+  give types.primitive_type_count() == 9
+}
+
+proc smoke_emit() -> bool {
+  let u = emit.emit_unit("demo/module")
+  if u.vitir == "" { give false }
+  if u.vasm == "" { give false }
+  give true
+}
+
+proc smoke_cfg() -> bool {
+  let blocks: [cfg.CFGBlock] = [
+    cfg.CFGBlock { label: "entry", terminated: true },
+    cfg.CFGBlock { label: "exit", terminated: true },
+  ]
+  give cfg.cfg_all_terminated(blocks)
+}

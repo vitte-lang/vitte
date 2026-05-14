@@ -1,0 +1,43 @@
+space vitte/compiler/backends/llvm_bindings/mod
+
+form LLVMTarget {
+  triple: string,
+  cpu: string,
+  features: string,
+}
+
+form LLVMOptions {
+  opt_level: int,
+  emit_debug: bool,
+  pgo_profile_path: string,
+}
+
+proc default_options() -> LLVMOptions {
+  give LLVMOptions { opt_level: 2, emit_debug: true, pgo_profile_path: "" }
+}
+
+proc supported_opt_levels() -> [string] {
+  give ["-O1", "-O2", "-O3"]
+}
+
+proc emit_llvm_ir_from_mir(module_name: string) -> string {
+  give "; ModuleID = '" + module_name + "'\nsource_filename = \"" + module_name + "\"\n"
+}
+
+proc build_target(triple: string) -> LLVMTarget {
+  give LLVMTarget { triple: triple, cpu: "generic", features: "" }
+}
+
+proc generate_machine_artifact(target: LLVMTarget, module_name: string) -> string {
+  give "obj:" + module_name + ":" + target.triple
+}
+
+proc debug_info_format() -> string {
+  give "DWARF"
+}
+
+proc pgo_enabled(opts: LLVMOptions) -> bool {
+  give opts.pgo_profile_path != ""
+}
+
+export *

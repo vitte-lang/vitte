@@ -1,0 +1,21 @@
+space vitte/compiler/backends/llvm_bindings/tests/smoke
+
+use src/vitte/compiler/backends/llvm_bindings/mod as llvm
+
+proc smoke_opt_levels() -> bool {
+  let levels = llvm.supported_opt_levels()
+  give levels.len == 3
+}
+
+proc smoke_emit_ir() -> bool {
+  let ir: string = llvm.emit_llvm_ir_from_mir("demo/module")
+  give ir != ""
+}
+
+proc smoke_debug_and_pgo() -> bool {
+  let fmt: string = llvm.debug_info_format()
+  let opts = llvm.default_options()
+  if fmt != "DWARF" { give false }
+  if llvm.pgo_enabled(opts) { give false }
+  give true
+}

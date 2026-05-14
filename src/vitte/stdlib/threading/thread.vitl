@@ -47,8 +47,12 @@ proc thread_start(thread: Thread, entry: proc) -> bool {
 
   set thread.state = 1  // running
 
-  // In real impl: platform_spawn_thread(thread, entry)
-  // For now: simulate with executor
+  // Simulated execution path:
+  // mark completion so join/join_timeout can observe terminal state.
+  // In a native backend this block is replaced by platform thread spawn.
+  set thread.result = 0
+  set thread.finished_at = timestamp_now()
+  set thread.state = 2  // finished
 
   give true
 }

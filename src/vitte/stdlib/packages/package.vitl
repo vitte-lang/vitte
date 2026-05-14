@@ -76,6 +76,9 @@ form PackageRegistry {
   cache_dir: string,
   registry_urls: [string],
   auth_tokens: [string],
+  connected: bool,
+  connection_mode: string, // "none" | "mock" | "remote"
+  active_registry_url: string,
 }
 
 proc package_registry_new(cache_dir: string) -> PackageRegistry {
@@ -84,6 +87,9 @@ proc package_registry_new(cache_dir: string) -> PackageRegistry {
     cache_dir: cache_dir,
     registry_urls: ["https://packages.vitte.dev"],
     auth_tokens: [],
+    connected: false,
+    connection_mode: "none",
+    active_registry_url: "",
   }
 
   give registry
@@ -92,6 +98,10 @@ proc package_registry_new(cache_dir: string) -> PackageRegistry {
 // Search for package in registry
 proc registry_search(registry: PackageRegistry, name: string) -> [Package] {
   let results: [Package] = []
+
+  if !registry.connected {
+    give results
+  }
 
   // Search local cache first
   let i: int = 0
@@ -105,6 +115,43 @@ proc registry_search(registry: PackageRegistry, name: string) -> [Package] {
   // Would also search remote registry
 
   give results
+}
+
+// Connect registry in mock or remote mode.
+proc registry_connect(registry: PackageRegistry, mode: string) -> bool {
+  if mode == "mock" {
+    set registry.connected = true
+    set registry.connection_mode = "mock"
+    set registry.active_registry_url = "mock://local-registry"
+    give true
+  }
+
+  if mode == "remote" {
+    if registry.registry_urls.len == 0 {
+      give false
+    }
+    let target: string = registry.registry_urls[0]
+    if ping_registry(target) {
+      set registry.connected = true
+      set registry.connection_mode = "remote"
+      set registry.active_registry_url = target
+      give true
+    }
+    give false
+  }
+
+  give false
+}
+
+proc registry_disconnect(registry: PackageRegistry) -> bool {
+  set registry.connected = false
+  set registry.connection_mode = "none"
+  set registry.active_registry_url = ""
+  give true
+}
+
+proc registry_is_connected(registry: PackageRegistry) -> bool {
+  give registry.connected
 }
 
 // Get package by name and version
@@ -147,6 +194,10 @@ proc registry_get_package(registry: PackageRegistry, name: string, version: stri
 
 // Install package
 proc package_install(registry: PackageRegistry, name: string, version: string) -> Package {
+  if !registry.connected {
+    panic("Registry not connected")
+  }
+
   let pkg: Package = registry_get_package(registry, name, version)
 
   if pkg.metadata.name == "" {
@@ -266,6 +317,10 @@ proc package_publish(
   package_path: string,
   auth_token: string
 ) -> bool {
+  if !registry.connected {
+    give false
+  }
+
   let metadata: PackageMetadata = load_package_manifest(package_path)
 
   if metadata.name == "" {
@@ -337,6 +392,17 @@ proc create_package_tarball(path: string, metadata: PackageMetadata) -> string {
 
 proc upload_to_registry(tarball: string, registry_url: string, auth_token: string) -> bool {
   // Would HTTP POST to registry
+  if registry_url == "" {
+    give false
+  }
+  give true
+}
+
+proc ping_registry(registry_url: string) -> bool {
+  if registry_url == "" {
+    give false
+  }
+  // Network transport is backend-dependent; this validates endpoint presence.
   give true
 }
 

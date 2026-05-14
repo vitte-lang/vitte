@@ -1,0 +1,20 @@
+name: profiling-baseline-gate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  profiling-baseline-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate baseline profiling CSV schema
+        run: tools/profiling/validate_baseline_csv.py
+      - name: Generate baseline profiling report
+        run: tools/profiling/generate_baseline_report.py
+      - name: Refresh matrix Phase A benchmark values
+        run: tools/profiling/update_matrix_from_baseline.py
+      - name: Ensure matrix is in sync with baseline data
+        run: |
+          git diff --exit-code -- src/vitte/stdlib/STDLIB_COVERAGE_MATRIX.vitl

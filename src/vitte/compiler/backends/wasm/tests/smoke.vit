@@ -1,0 +1,20 @@
+space vitte/compiler/backends/wasm/tests/smoke
+
+use src/vitte/compiler/backends/wasm/mod as wasm
+
+proc smoke_emit_wat() -> bool {
+  let wat: string = wasm.emit_wat("demo/module")
+  give wat != ""
+}
+
+proc smoke_wasi_and_web() -> bool {
+  let opts = wasm.default_options()
+  if !wasm.wasi_enabled(opts) { give false }
+  let apis = wasm.web_api_surface()
+  give apis.len >= 3
+}
+
+proc smoke_size_opt() -> bool {
+  let opts = wasm.default_options()
+  give wasm.size_optimization_mode(opts) == "Oz"
+}

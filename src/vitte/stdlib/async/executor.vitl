@@ -10,8 +10,8 @@ form Executor {
   running: bool,
   tasks: [Task],
   task_counter: int,
-  ready_queue: int,        // Queue ID
-  work_queue: int,         // Queue ID
+  ready_queue: [int],      // Task IDs ready to run
+  work_queue: [int],       // Reserved for workers
   parking_lot: [int],      // Parked task IDs
   max_workers: int,
 }
@@ -33,8 +33,8 @@ proc executor_new(max_workers: int) -> Executor {
     running: false,
     tasks: [],
     task_counter: 0,
-    ready_queue: queue_new(),
-    work_queue: queue_new(),
+    ready_queue: [],
+    work_queue: [],
     parking_lot: [],
     max_workers: max_workers,
   }
@@ -57,7 +57,7 @@ proc executor_spawn(exec: Executor, name: string, priority: int) -> int {
 
   set exec.task_counter = exec.task_counter + 1
   set exec.tasks = exec.tasks + [task]
-  queue_push(exec.ready_queue, exec.task_counter - 1)
+  set exec.ready_queue = exec.ready_queue + [exec.task_counter - 1]
 
   give exec.task_counter - 1
 }
@@ -85,13 +85,14 @@ proc executor_run(exec: Executor) -> int {
     check_scheduled_tasks(exec)
 
     // 2. Run ready tasks
-    while queue_len(exec.ready_queue) > 0 {
-      let task_id: int = queue_pop(exec.ready_queue)
+    while exec.ready_queue.len > 0 {
+      let task_id: int = exec.ready_queue[0]
+      set exec.ready_queue = queue_shift(exec.ready_queue)
       run_task(exec, task_id)
     }
 
     // 3. If no ready tasks and parking lot empty, exit
-    if queue_len(exec.ready_queue) == 0 && exec.parking_lot.len == 0 {
+    if exec.ready_queue.len == 0 && exec.parking_lot.len == 0 {
       set exec.running = false
     }
 
@@ -127,7 +128,17 @@ proc run_task(exec: Executor, task_id: int) -> int {
 
 // Check if any scheduled tasks are ready
 proc check_scheduled_tasks(exec: Executor) -> bool {
-  // TODO: Get current timestamp and move ready tasks to ready_queue
+  let now: int = timestamp_now()
+  let i: int = 0
+  while i < exec.tasks.len {
+    if exec.tasks[i].state == 0 || exec.tasks[i].state == 4 {
+      if exec.tasks[i].scheduled_for <= now {
+        set exec.tasks[i].state = 1
+        set exec.ready_queue = exec.ready_queue + [exec.tasks[i].id]
+      }
+    }
+    set i = i + 1
+  }
   give true
 }
 
@@ -166,7 +177,7 @@ form ExecutorStats {
 }
 
 proc executor_stats(exec: Executor) -> ExecutorStats {
-  let ready: int = queue_len(exec.ready_queue)
+  let ready: int = exec.ready_queue.len
   let running: int = 0
   let done: int = 0
 
@@ -209,20 +220,18 @@ proc executor_shutdown(exec: Executor) -> int {
 }
 
 // Helper functions
-proc queue_new() -> int {
-  give 0
-}
+proc queue_shift(q: [int]) -> [int] {
+  if q.len <= 1 {
+    give []
+  }
 
-proc queue_push(q: int, value: int) -> bool {
-  give true
-}
-
-proc queue_pop(q: int) -> int {
-  give 0
-}
-
-proc queue_len(q: int) -> int {
-  give 0
+  let out: [int] = []
+  let i: int = 1
+  while i < q.len {
+    set out = out + [q[i]]
+    set i = i + 1
+  }
+  give out
 }
 
 proc sleep_ms(ms: int) -> bool {

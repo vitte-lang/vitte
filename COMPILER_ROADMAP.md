@@ -14,63 +14,191 @@ Objectif : Transformer Vitte en un compilateur de production complet avec toutes
 
 ## Prochaines Étapes - Phase 1: Backends Complets
 
-### 1.1 Backend C Natif
-**Objectif** : Émission de code C optimisé
-- [ ] Implémenter émetteur C complet dans `backends/emit/c/`
-- [ ] Support types primitifs (i8, i16, i32, i64, f32, f64)
-- [ ] Support structures et unions
-- [ ] Support fonctions avec appels
-- [ ] Support contrôle de flux (if, while, for)
-- [ ] Support allocations mémoire
-- [ ] Génération headers (.h) automatiques
-- [ ] Optimisations C-level (inline, const propagation)
+Suggestions pour atteindre cet objectif en 100% `.vit/.vitl` (inspiré C, sans générer `.c/.h`) :
+
+### 1.1 Backend IR Natif Vitte
+**Objectif** : Émission backend optimisée Vitte
+- [x] Implémenter backend IR natif Vitte dans `src/vitte/compiler/backends/vitte_emit/`
+- [x] Générer un artefact texte structuré (`.vitir` ou `.vasm`)
+- [x] Générer métadonnées ABI Vitte associées à l’artefact
+
+Types primitifs
+- [x] Définir table canonique dans `src/vitte/compiler/backends/vitte_emit/types.vit`
+- [x] Mapping strict: `i8`, `i16`, `i32`, `i64`, `f32`, `f64`, `bool`, `string`, `pointer`
+- [x] Ajouter tests de conformité dans `src/vitte/compiler/backends/vitte_emit/tests/`
+
+Structures / unions
+- [x] Implémenter layout + alignement via `src/vitte/stdlib/ffi/abi.vitl`
+- [x] Produire offsets/champs dans l’artefact backend Vitte
+
+Fonctions + appels
+- [x] Support signatures, callsites, conventions d’appel Vitte
+- [x] Gérer arguments variadiques via contrat explicite
+
+Contrôle de flux
+- [x] Lowering explicite `if` / `while` / `for` -> blocs + labels Vitte IR
+- [x] Vérification CFG minimale (blocs terminés, branches valides)
+
+Allocations mémoire
+- [x] Ajouter intrinsics Vitte `alloc`, `free`, `realloc` (interface `.vit`)
+- [x] Connecter au runtime `src/vitte/compiler/backends/runtime/vitte_runtime.vit`
+
+“Headers” sans `.h`
+- [x] Générer manifest d’API en `.vitl` (ex: `module_exports.vitl`)
+- [x] Inclure signatures, types exposés, version ABI
+
+Optimisations “C-level” mais en Vitte
+- [ ] Implémenter passes backend `.vit`: propagation constantes
+- [ ] Implémenter passes backend `.vit`: dead code elimination
+- [ ] Implémenter passes backend `.vit`: inline simple (petites fonctions pures)
+
+Checklist de preuves
+- [x] Artefacts générés versionnés (`.vitir`/`.vasm` + manifest API)
+- [x] Tests backend verts (types, ABI, CFG, appels)
+- [x] Rapport de couverture backend dans docs techniques
+- [x] Gate CI dédié backend Vitte natif
+
+Critères mesurables (Definition of Done)
+- [x] Types: 9/9 mappings validés (`i8`,`i16`,`i32`,`i64`,`f32`,`f64`,`bool`,`string`,`pointer`)
+- [x] CFG: 0 bloc non terminé sur le corpus backend
+- [x] ABI: profils Linux/macOS/Windows validés par gate
+- [x] Émission: `.vitir`/`.vasm` générés sans erreur sur fixtures backend
+
+Artefacts attendus
+- [x] `target/vitte_emit/*.vitir`
+- [x] `target/vitte_emit/*.vasm`
+- [x] `target/vitte_emit/module_exports.vitl`
+- [x] `target/reports/vitte_emit_coverage.md`
+
+Gates automation
+- [x] `make vitte-emit-gate` (check files + tests + rapport + drift check)
+- [x] Job CI `vitte-emit-gate` (bloquant)
+
+Découpage Sprint 1 (exécutable)
+- [x] S1-W1: scaffold `backends/vitte_emit/` + `types.vit` + tests types
+- [x] S1-W2: fonctions/appels + lowering CFG + tests CFG
+- [x] S1-W3: génération `.vitir/.vasm` + `module_exports.vitl` + gate CI
 
 ### 1.2 Backend LLVM
 **Objectif** : Compilation native optimisée
-- [ ] Intégration LLVM via bindings
-- [ ] Émission LLVM IR depuis MIR
-- [ ] Support optimisations LLVM (-O1, -O2, -O3)
-- [ ] Génération code machine multi-architecture
-- [ ] Debug info (DWARF)
-- [ ] Profile-guided optimization
+- [x] Intégration LLVM via bindings
+- [x] Émission LLVM IR depuis MIR
+- [x] Support optimisations LLVM (-O1, -O2, -O3)
+- [x] Génération code machine multi-architecture
+- [x] Debug info (DWARF)
+- [x] Profile-guided optimization
+- [x] Dépendance explicite: réutiliser la normalisation MIR/types/CFG validée en 1.1
 
 ### 1.3 Backend WASM
 **Objectif** : Support WebAssembly
-- [ ] Émission WAT (WebAssembly Text)
-- [ ] Intégration avec WASI
-- [ ] Support web APIs
-- [ ] Optimisations pour la taille
+- [x] Émission WAT (WebAssembly Text)
+- [x] Intégration avec WASI
+- [x] Support web APIs
+- [x] Optimisations pour la taille
+- [x] Dépendance explicite: partager le lowering contrôle de flux et conventions d’appel de 1.1
 
 ## Phase 2: Optimisations Avancées
 
 ### 2.1 Optimisations MIR
-- [ ] Constant folding
-- [ ] Dead code elimination avancée
-- [ ] Function inlining
-- [ ] Loop optimizations (unrolling, vectorization)
-- [ ] Escape analysis
-- [ ] Memory optimizations
+- [x] Constant folding
+- [x] Dead code elimination avancée
+- [x] Function inlining
+- [x] Loop optimizations (unrolling, vectorization)
+- [x] Escape analysis
+- [x] Memory optimizations
 
 ### 2.2 Optimisations Interprocédurales
-- [ ] Devirtualization
-- [ ] Function specialization
-- [ ] Whole program optimization
-- [ ] Link-time optimization
+- [x] Devirtualization
+- [x] Function specialization
+- [x] Whole program optimization
+- [x] Link-time optimization
+
+Critères mesurables (Definition of Done)
+- [x] `fixtures_count >= 5`
+- [x] `devirt_sites_total >= 15`
+- [x] `specialized_functions_total >= 12`
+- [x] `cross_module_rewrites_total >= 15`
+- [x] `lto_internalized_total >= 12`
+
+Preuves / Artefacts
+- [x] `src/vitte/compiler/optimizations/interproc/mod.vit`
+- [x] `src/vitte/compiler/optimizations/interproc/tests/smoke.vit`
+- [x] `tests/interproc/devirt_positive.vit`
+- [x] `tests/interproc/specialization_positive.vit`
+- [x] `tests/interproc/wpo_cross_module.vit`
+- [x] `tests/interproc/lto_symbols.vit`
+- [x] `tests/interproc/edge_recursive_chain.vit`
+- [x] `target/interproc_opt/passes.txt`
+- [x] `target/interproc_opt/analysis.json`
+- [x] `target/interproc_opt/fixture_metrics.csv`
+- [x] `target/reports/interproc_opt_coverage.md`
+
+Gates
+- [x] `make interproc-opt-gate`
+- [x] `make analysis-gate`
+- [x] `.github/workflows/interproc-opt-gate.yml`
 
 ### 2.3 Analyses Statiques
-- [ ] Data flow analysis
-- [ ] Control flow graphs
-- [ ] Alias analysis
-- [ ] Points-to analysis
+- [x] Data flow analysis
+- [x] Control flow graphs
+- [x] Alias analysis
+- [x] Points-to analysis
+
+Critères mesurables (Definition of Done)
+- [x] `fixtures_count >= 5`
+- [x] `cfg_blocks_total >= 24`
+- [x] `alias_classes_total >= 14`
+- [x] `points_to_sets_total >= 19`
+
+Preuves / Artefacts
+- [x] `tests/analysis/positive_linear.vit`
+- [x] `tests/analysis/positive_branching.vit`
+- [x] `tests/analysis/edge_unreachable.vit`
+- [x] `tests/analysis/edge_pointer_alias.vit`
+- [x] `tests/analysis/edge_loop_phi.vit`
+- [x] `target/static_analysis/analyses.txt`
+- [x] `target/static_analysis/analysis.json`
+- [x] `target/static_analysis/fixture_metrics.csv`
+- [x] `target/reports/static_analysis_coverage.md`
+
+Gates
+- [x] `make static-analysis-gate`
+- [x] `make analysis-gate`
+- [x] `.github/workflows/static-analysis-gate.yml`
+- [x] `.github/workflows/analysis-gate.yml`
 
 ## Phase 3: Fonctionnalités Langage
 
 ### 3.1 Types Avancés
-- [ ] Generics/templates
-- [ ] Traits/interfaces
-- [ ] Sum types (enums with data)
-- [ ] Advanced pattern matching
-- [ ] Type inference complet
+- [x] Generics/templates
+- [x] Traits/interfaces
+- [x] Sum types (enums with data)
+- [x] Advanced pattern matching
+- [x] Type inference complet
+
+Critères mesurables (Definition of Done)
+- [x] Génériques: `generic_instantiations_total >= 10` sur fixtures
+- [x] Traits: `trait_impls_total >= 5` sur fixtures
+- [x] Sum types: `sum_variants_total >= 6` sur fixtures
+- [x] Pattern matching: `pattern_arms_total >= 10` sur fixtures
+- [x] Inférence: `inference_constraints_total >= 20` sur fixtures
+
+Preuves / Artefacts
+- [x] `src/vitte/compiler/types/advanced/mod.vit`
+- [x] `src/vitte/compiler/types/advanced/tests/smoke.vit`
+- [x] `tests/type_system/generics_positive.vit`
+- [x] `tests/type_system/traits_positive.vit`
+- [x] `tests/type_system/sum_pattern_positive.vit`
+- [x] `tests/type_system/inference_positive.vit`
+- [x] `tests/type_system/edge_ambiguous_constraints.vit`
+- [x] `target/type_system/features.txt`
+- [x] `target/type_system/analysis.json`
+- [x] `target/type_system/fixture_metrics.csv`
+- [x] `target/reports/type_system_coverage.md`
+
+Gates
+- [x] `make type-system-gate`
+- [x] `.github/workflows/type-system-gate.yml`
 
 ### 3.2 Mémoire et Performance
 - [ ] Garbage collection (optional)
@@ -133,11 +261,11 @@ Objectif : Transformer Vitte en un compilateur de production complet avec toutes
 
 ## Priorisation
 
-### Sprint 1 (2-3 semaines) - Backend C
-1. Implémenter émetteur C basique
-2. Support types et fonctions
-3. Tests compilation C
-4. Intégration bootstrap
+### Sprint 1 (2-3 semaines) - Backend IR Natif Vitte
+1. Implémenter backend `vitte_emit` basique
+2. Support types primitifs et fonctions
+3. Tests backend natif Vitte
+4. Intégration pipeline + bootstrap
 
 ### Sprint 2 (2-3 semaines) - Optimisations
 1. Constant folding

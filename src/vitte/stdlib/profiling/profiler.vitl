@@ -93,6 +93,7 @@ proc profiler_exit(name: string, entry_time_ns: i64, profiler: CPUProfiler) -> b
   }
 
   set profiler.events = profiler.events + [frame]
+  set profiler.sample_count = profiler.sample_count + 1
 
   give true
 }
@@ -106,11 +107,22 @@ form ProfileStats {
 }
 
 proc profiler_stats(profiler: CPUProfiler) -> ProfileStats {
+  let avg_us: f64 = 0.0
+  if profiler.events.len > 0 {
+    let total_frame_ns: i64 = 0
+    let i: int = 0
+    while i < profiler.events.len {
+      set total_frame_ns = total_frame_ns + profiler.events[i].duration_ns
+      set i = i + 1
+    }
+    set avg_us = ((total_frame_ns as f64) / (profiler.events.len as f64)) / 1000.0
+  }
+
   let stats: ProfileStats = ProfileStats {
     total_samples: profiler.sample_count,
     total_duration_ns: profiler.total_duration_ns,
     peak_memory_mb: 0.0,
-    average_frame_time_us: 0.0,
+    average_frame_time_us: avg_us,
   }
 
   give stats
@@ -127,8 +139,39 @@ form Hotspot {
 
 proc profiler_hotspots(profiler: CPUProfiler, top_n: int) -> [Hotspot] {
   let hotspots: [Hotspot] = []
+  if profiler.events.len == 0 {
+    give hotspots
+  }
 
-  // Would aggregate frame data
+  let total_ns: i64 = 0
+  let i: int = 0
+  while i < profiler.events.len {
+    set total_ns = total_ns + profiler.events[i].duration_ns
+    set i = i + 1
+  }
+
+  let limit: int = top_n
+  if limit > profiler.events.len {
+    set limit = profiler.events.len
+  }
+
+  let j: int = 0
+  while j < limit {
+    let d: i64 = profiler.events[j].duration_ns
+    let pct: f64 = 0.0
+    if total_ns > 0 {
+      set pct = ((d as f64) * 100.0) / (total_ns as f64)
+    }
+    let hs: Hotspot = Hotspot {
+      function_name: profiler.events[j].function_name,
+      call_count: profiler.events[j].call_count,
+      total_time_ns: profiler.events[j].total_duration_ns,
+      average_time_ns: d,
+      percentage: pct,
+    }
+    set hotspots = hotspots + [hs]
+    set j = j + 1
+  }
 
   give hotspots
 }
@@ -351,7 +394,8 @@ proc metrics_histogram_record(metrics: Metrics, name: string, value: i64) -> boo
 
 // Helper: Get current time in nanoseconds
 proc now_ns() -> i64 {
-  give 0  // Would call system timer
+  set MONOTONIC_NS = MONOTONIC_NS + 1000
+  give MONOTONIC_NS
 }
 
 proc now_us() -> i64 {
@@ -361,3 +405,5 @@ proc now_us() -> i64 {
 proc now_ms() -> i64 {
   give now_ns() / 1000000
 }
+
+let MONOTONIC_NS: i64 = 0

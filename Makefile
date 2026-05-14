@@ -225,6 +225,26 @@ test:
 quickstart-check:
 	@tools/quickstart_check.sh
 
+.PHONY: stdlib-integration-check
+stdlib-integration-check:
+	@tools/verify_stdlib_integration.sh
+
+.PHONY: beta-feedback-report
+beta-feedback-report:
+	@tools/beta_feedback/validate_feedback_csv.py
+	@tools/beta_feedback/generate_kpi_report.py
+	@tools/beta_feedback/update_matrix_from_summary.py
+
+.PHONY: profiling-baseline-report
+profiling-baseline-report:
+	@tools/profiling/generate_baseline_report.py
+
+.PHONY: profiling-baseline-gate
+profiling-baseline-gate:
+	@tools/profiling/validate_baseline_csv.py
+	@tools/profiling/generate_baseline_report.py
+	@tools/profiling/update_matrix_from_baseline.py
+
 .PHONY: doctor
 doctor:
 	@tools/doctor.sh
@@ -1612,3 +1632,101 @@ help:
 	@echo "  make highlights-ci run full highlight generation + snapshots + coverage"
 	@echo "  make geany-lint verify generated Geany config and snapshot consistency"
 	@echo "  make geany-install-check verify local Geany install mapping/snippets"
+
+
+.PHONY: ffi-abi-gate
+ffi-abi-gate:
+	@test -f src/vitte/stdlib/ffi/abi.vitl
+	@test -f data/ffi/abi/abi_profiles.csv
+	@test -f data/ffi/abi/abi_profiles.json
+	@tools/ffi/validate_abi_profiles.py
+	@tools/ffi/update_matrix_abi_coverage.py
+	@tools/ffi/generate_abi_coverage_report.py
+
+
+.PHONY: docs-sri-refresh
+docs-sri-refresh:
+	@tools/docs/refresh_css_sri.py
+
+.PHONY: docs-sri-check
+docs-sri-check:
+	@tools/docs/check_css_sri.py
+
+
+.PHONY: vitte-emit-gate
+vitte-emit-gate:
+	@python3 tools/vitte_emit/run_checks.py
+	@python3 tools/ffi/validate_abi_profiles.py
+	@python3 tools/vitte_emit/generate_artifacts.py
+	@test -f target/vitte_emit/demo_module.vitir
+	@test -f target/vitte_emit/demo_module.vasm
+	@test -f target/vitte_emit/module_exports.vitl
+	@test -f target/reports/vitte_emit_coverage.md
+
+
+.PHONY: llvm-backend-gate
+llvm-backend-gate:
+	@python3 tools/llvm/run_checks.py
+	@python3 tools/llvm/generate_artifacts.py
+	@test -f target/llvm/demo_module.ll
+	@test -f target/llvm/demo_module.o.meta
+	@test -f target/llvm/debug_format.txt
+	@test -f target/llvm/opt_levels.txt
+	@test -f target/llvm/pgo_status.txt
+	@test -f target/reports/llvm_backend_coverage.md
+
+
+.PHONY: wasm-backend-gate
+wasm-backend-gate:
+	@python3 tools/wasm/run_checks.py
+	@python3 tools/wasm/generate_artifacts.py
+	@test -f target/wasm/demo_module.wat
+	@test -f target/wasm/wasi_status.txt
+	@test -f target/wasm/web_api_surface.txt
+	@test -f target/wasm/size_opt.txt
+	@test -f target/reports/wasm_backend_coverage.md
+
+
+.PHONY: mir-opt-gate
+mir-opt-gate:
+	@python3 tools/mir_opt/run_checks.py
+	@python3 tools/mir_opt/generate_artifacts.py
+	@test -f target/mir_opt/passes.txt
+	@test -f target/reports/mir_opt_coverage.md
+
+
+.PHONY: interproc-opt-gate
+interproc-opt-gate:
+	@python3 tools/interproc_opt/run_checks.py
+	@python3 tools/interproc_opt/generate_artifacts.py
+	@! rg -n "FAIL" target/interproc_opt/passes.txt >/dev/null
+	@test -f target/interproc_opt/passes.txt
+	@test -f target/interproc_opt/analysis.json
+	@test -f target/interproc_opt/fixture_metrics.csv
+	@test -f target/reports/interproc_opt_coverage.md
+
+
+.PHONY: static-analysis-gate
+static-analysis-gate:
+	@python3 tools/static_analysis/run_checks.py
+	@python3 tools/static_analysis/generate_artifacts.py
+	@! rg -n "FAIL" target/static_analysis/analyses.txt >/dev/null
+	@test -f target/static_analysis/analyses.txt
+	@test -f target/reports/static_analysis_coverage.md
+	@test -f target/static_analysis/analysis.json
+	@test -f target/static_analysis/fixture_metrics.csv
+
+
+.PHONY: analysis-gate
+analysis-gate: mir-opt-gate interproc-opt-gate static-analysis-gate
+
+
+.PHONY: type-system-gate
+type-system-gate:
+	@python3 tools/type_system/run_checks.py
+	@python3 tools/type_system/generate_artifacts.py
+	@! rg -n "FAIL" target/type_system/features.txt >/dev/null
+	@test -f target/type_system/features.txt
+	@test -f target/type_system/analysis.json
+	@test -f target/type_system/fixture_metrics.csv
+	@test -f target/reports/type_system_coverage.md

@@ -35,25 +35,20 @@ form MethodInfo {
 
 // Get type info for a value
 proc type_of<T>(value: T) -> TypeInfo {
-  // In real impl: would use runtime type information
-  let info: TypeInfo = TypeInfo {
-    name: "T",
-    kind: "unknown",
-    size_bytes: 0,
-    fields: [],
-    methods: [],
-    interfaces: [],
-    package: "unknown",
-    module: "unknown",
-    doc_string: "",
-  }
-
-  give info
+  // Runtime fallback without compiler RTTI: use placeholder type name.
+  give type_by_name("T")
 }
 
 // Get type info by name
 proc type_by_name(name: string) -> TypeInfo {
-  // Would look up in type registry
+  let i: int = 0
+  while i < GLOBAL_TYPE_REGISTRY.types.len {
+    if GLOBAL_TYPE_REGISTRY.types[i].name == name {
+      give GLOBAL_TYPE_REGISTRY.types[i]
+    }
+    set i = i + 1
+  }
+
   let info: TypeInfo = TypeInfo {
     name: name,
     kind: "unknown",
@@ -96,8 +91,13 @@ proc is_assignable_from(to_type: string, from_type: string) -> bool {
 // Get all types in a module
 proc module_types(module_name: string) -> [TypeInfo] {
   let types: [TypeInfo] = []
-
-  // Would scan module for all type definitions
+  let i: int = 0
+  while i < GLOBAL_TYPE_REGISTRY.types.len {
+    if GLOBAL_TYPE_REGISTRY.types[i].module == module_name {
+      set types = types + [GLOBAL_TYPE_REGISTRY.types[i]]
+    }
+    set i = i + 1
+  }
 
   give types
 }
@@ -112,8 +112,15 @@ form ConstructorInfo {
 // Get constructors for a type
 proc type_constructors(type_name: string) -> [ConstructorInfo] {
   let constructors: [ConstructorInfo] = []
-
-  // Would find all constructors
+  let info: TypeInfo = type_by_name(type_name)
+  if info.kind == "unknown" {
+    give constructors
+  }
+  let ctor: ConstructorInfo = ConstructorInfo {
+    parameter_types: field_types_from_typeinfo(info),
+    doc_string: "default constructor from reflected fields",
+  }
+  set constructors = constructors + [ctor]
 
   give constructors
 }
@@ -135,14 +142,35 @@ proc reflect_create(type_name: string, field_values: [int]) -> Value {
 
 // Get field value
 proc reflect_get_field(value: Value, field_name: string) -> int {
-  // Would access field at correct offset
+  let info: TypeInfo = type_by_name(value.type_name)
+  let i: int = 0
+  while i < info.fields.len {
+    if info.fields[i].name == field_name {
+      if i < value.field_values.len {
+        give value.field_values[i]
+      }
+      give 0
+    }
+    set i = i + 1
+  }
   give 0
 }
 
 // Set field value
 proc reflect_set_field(value: Value, field_name: string, field_value: int) -> bool {
-  // Would set field at correct offset
-  give true
+  let info: TypeInfo = type_by_name(value.type_name)
+  let i: int = 0
+  while i < info.fields.len {
+    if info.fields[i].name == field_name {
+      if i < value.field_values.len {
+        set value.field_values[i] = field_value
+        give true
+      }
+      give false
+    }
+    set i = i + 1
+  }
+  give false
 }
 
 // Call method via reflection
@@ -282,14 +310,22 @@ form GenericTypeInfo {
 // Get generic parameters of a type
 proc generic_type_parameters(type_name: string) -> [string] {
   let params: [string] = []
-  // Would extract type parameters
+  let lt: int = index_of(type_name, "<")
+  let gt: int = index_of(type_name, ">")
+  if lt < 0 || gt < 0 || gt <= lt + 1 {
+    give params
+  }
+  let inside: string = slice(type_name, lt + 1, gt)
+  set params = split_csv(inside)
   give params
 }
 
 // Create specialized generic type
 proc specialize_generic(generic_type: string, type_args: [string]) -> string {
-  // Would create new type name like "Vec<T>" -> "Vec<int>"
-  give generic_type
+  if type_args.len == 0 {
+    give generic_type
+  }
+  give generic_type + "<" + join_csv(type_args) + ">"
 }
 
 // Symbol name mangling/demangling
@@ -314,10 +350,18 @@ form ModuleInfo {
 }
 
 proc module_info(module_name: string) -> ModuleInfo {
+  let i: int = 0
+  while i < GLOBAL_TYPE_REGISTRY.modules.len {
+    if GLOBAL_TYPE_REGISTRY.modules[i].name == module_name {
+      give GLOBAL_TYPE_REGISTRY.modules[i]
+    }
+    set i = i + 1
+  }
+
   let info: ModuleInfo = ModuleInfo {
     name: module_name,
     path: "",
-    types: [],
+    types: module_types(module_name),
     functions: [],
     version: "",
   }
@@ -358,4 +402,79 @@ proc list_all_modules() -> [ModuleInfo] {
 // Helpers
 proc default<T>() -> T {
   give default<T>()
+}
+
+proc field_types_from_typeinfo(info: TypeInfo) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  while i < info.fields.len {
+    set out = out + [info.fields[i].type_name]
+    set i = i + 1
+  }
+  give out
+}
+
+proc join_csv(values: [string]) -> string {
+  let out: string = ""
+  let i: int = 0
+  while i < values.len {
+    if i > 0 {
+      set out = out + ","
+    }
+    set out = out + values[i]
+    set i = i + 1
+  }
+  give out
+}
+
+proc split_csv(text: string) -> [string] {
+  let out: [string] = []
+  if text.len == 0 {
+    give out
+  }
+  let start: int = 0
+  let i: int = 0
+  while i <= text.len {
+    if i == text.len || char_at(text, i) == "," {
+      set out = out + [trim_spaces(slice(text, start, i))]
+      set start = i + 1
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc index_of(text: string, needle: string) -> int {
+  let i: int = 0
+  while i < text.len {
+    if slice(text, i, i + needle.len) == needle {
+      give i
+    }
+    set i = i + 1
+  }
+  give -1
+}
+
+proc trim_spaces(text: string) -> string {
+  let s: int = 0
+  let e: int = text.len
+  while s < e && char_at(text, s) == " " {
+    set s = s + 1
+  }
+  while e > s && char_at(text, e - 1) == " " {
+    set e = e - 1
+  }
+  give slice(text, s, e)
+}
+
+proc char_at(text: string, idx: int) -> string {
+  give slice(text, idx, idx + 1)
+}
+
+proc slice(text: string, start: int, end_exclusive: int) -> string {
+  // Placeholder: language/runtime should provide substring; keep total function shape.
+  if start == 0 && end_exclusive == text.len {
+    give text
+  }
+  give text
 }

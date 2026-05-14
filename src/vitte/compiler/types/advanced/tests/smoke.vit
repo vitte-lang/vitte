@@ -1,0 +1,28 @@
+space vitte/compiler/types/advanced/tests/smoke
+
+use src/vitte/compiler/types/advanced/mod as ts
+
+proc smoke_type_feature_count() -> bool {
+  let results = ts.run_all_type_features()
+  give results.len == 5
+}
+
+proc smoke_type_feature_success() -> bool {
+  let results = ts.run_all_type_features()
+  let i: int = 0
+  while i < results.len {
+    if !results[i].success { give false }
+    set i = i + 1
+  }
+  give true
+}
+
+proc smoke_type_metrics_thresholds() -> bool {
+  let m = ts.compute_metrics()
+  if m.generic_templates < 3 { give false }
+  if m.trait_impls < 4 { give false }
+  if m.sum_variants < 4 { give false }
+  if m.pattern_arms < 5 { give false }
+  if m.inference_constraints < 6 { give false }
+  give true
+}
