@@ -1694,9 +1694,41 @@ wasm-backend-gate:
 	@test -f target/reports/wasm_backend_coverage.md
 
 
+.PHONY: package-manager-gate
+package-manager-gate:
+	@python3 tools/package_manager/run_checks.py
+	@python3 tools/package_manager/generate_artifacts.py
+	@test -f target/package_manager/registry.json
+	@test -f target/package_manager/build_cache.db
+	@test -f target/package_manager/cross_targets.txt
+	@test -f target/package_manager/incremental_status.txt
+	@test -f target/reports/package_manager_coverage.md
+
+
+.PHONY: lsp-gate
+lsp-gate:
+	@python3 tools/lsp/run_checks.py
+	@python3 tools/lsp/generate_artifacts.py
+	@test -f target/lsp/hover_demo.json
+	@test -f target/lsp/completion_demo.json
+	@test -f target/lsp/diagnostics_demo.json
+	@test -f target/lsp/definition_demo.json
+	@test -f target/lsp/references_demo.json
+	@test -f target/reports/lsp_coverage.md
+
+
+.PHONY: stdlib-gate
+stdlib-gate:
+	@python3 tools/stdlib/run_checks.py
+	@python3 tools/stdlib/generate_artifacts.py
+	@test -f target/stdlib/collections_demo.txt
+	@test -f target/stdlib/io_demo.txt
+	@test -f target/stdlib/async_demo.txt
+	@test -f target/stdlib/ffi_demo.txt
+	@test -f target/reports/stdlib_coverage.md
+
+
 .PHONY: mir-opt-gate
-mir-opt-gate:
-	@python3 tools/mir_opt/run_checks.py
 	@python3 tools/mir_opt/generate_artifacts.py
 	@! rg -n "FAIL" target/mir_opt/passes.txt >/dev/null
 	@test -f target/mir_opt/passes.txt
