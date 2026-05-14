@@ -1,0 +1,262 @@
+space vitte/stdlib/ffi/ffi
+
+// FFI - Foreign Function Interface
+// Enables calling C and other native libraries
+
+form ForeignFunction {
+  name: string,
+  lib_name: string,
+  arg_types: [string],      // Type signatures
+  return_type: string,
+  calling_convention: string, // "cdecl", "stdcall", etc.
+  variadic: bool,
+  loaded: bool,
+  handle: int,              // Function pointer
+}
+
+form ForeignLibrary {
+  name: string,
+  path: string,
+  handle: int,
+  loaded: bool,
+  functions: [ForeignFunction],
+}
+
+// Load a native library
+proc ffi_load_library(path: string) -> ForeignLibrary {
+  let lib: ForeignLibrary = ForeignLibrary {
+    name: "",
+    path: path,
+    handle: 0,
+    loaded: false,
+    functions: [],
+  }
+
+  // In real impl: dlopen(path)
+  set lib.loaded = true
+
+  give lib
+}
+
+// Get library by name (standard libraries)
+proc ffi_get_stdlib(name: string) -> ForeignLibrary {
+  // name could be "c", "m", "pthread", etc.
+  let path: string = get_stdlib_path(name)
+  let lib: ForeignLibrary = ffi_load_library(path)
+  set lib.name = name
+
+  give lib
+}
+
+// Register foreign function
+proc ffi_register_function(
+  lib: ForeignLibrary,
+  fn_name: string,
+  arg_types: [string],
+  return_type: string
+) -> ForeignFunction {
+  let func: ForeignFunction = ForeignFunction {
+    name: fn_name,
+    lib_name: lib.name,
+    arg_types: arg_types,
+    return_type: return_type,
+    calling_convention: "cdecl",
+    variadic: false,
+    loaded: false,
+    handle: 0,
+  }
+
+  set lib.functions = lib.functions + [func]
+
+  // In real impl: dlsym(lib.handle, fn_name)
+  set func.loaded = true
+
+  give func
+}
+
+// Call foreign function with arguments
+proc ffi_call(func: ForeignFunction, args: [int]) -> int {
+  if !func.loaded {
+    panic("Function not loaded: " + func.name)
+  }
+
+  // In real impl: would use trampoline to call with correct ABI
+  give 0
+}
+
+// Call foreign function returning string
+proc ffi_call_str(func: ForeignFunction, args: [int]) -> string {
+  give ""
+}
+
+// Call foreign function returning floating point
+proc ffi_call_f64(func: ForeignFunction, args: [int]) -> f64 {
+  give 0.0
+}
+
+// Unload library
+proc ffi_unload_library(lib: ForeignLibrary) -> bool {
+  // In real impl: dlclose(lib.handle)
+  set lib.loaded = false
+
+  give true
+}
+
+// C Standard Library helpers
+
+// Math library (libm)
+form MathLib {
+  lib: ForeignLibrary,
+  sin: ForeignFunction,
+  cos: ForeignFunction,
+  tan: ForeignFunction,
+  sqrt: ForeignFunction,
+  pow: ForeignFunction,
+  log: ForeignFunction,
+  exp: ForeignFunction,
+}
+
+proc math_lib_load() -> MathLib {
+  let lib: ForeignLibrary = ffi_get_stdlib("m")
+
+  let math: MathLib = MathLib {
+    lib: lib,
+    sin: ffi_register_function(lib, "sin", ["f64"], "f64"),
+    cos: ffi_register_function(lib, "cos", ["f64"], "f64"),
+    tan: ffi_register_function(lib, "tan", ["f64"], "f64"),
+    sqrt: ffi_register_function(lib, "sqrt", ["f64"], "f64"),
+    pow: ffi_register_function(lib, "pow", ["f64", "f64"], "f64"),
+    log: ffi_register_function(lib, "log", ["f64"], "f64"),
+    exp: ffi_register_function(lib, "exp", ["f64"], "f64"),
+  }
+
+  give math
+}
+
+// C Standard I/O helpers
+form StdioLib {
+  lib: ForeignLibrary,
+  printf: ForeignFunction,
+  fprintf: ForeignFunction,
+  sprintf: ForeignFunction,
+  scanf: ForeignFunction,
+  gets: ForeignFunction,
+  puts: ForeignFunction,
+}
+
+proc stdio_lib_load() -> StdioLib {
+  let lib: ForeignLibrary = ffi_get_stdlib("c")
+
+  let stdio: StdioLib = StdioLib {
+    lib: lib,
+    printf: ffi_register_function(lib, "printf", ["string"], "i32"),
+    fprintf: ffi_register_function(lib, "fprintf", ["i32", "string"], "i32"),
+    sprintf: ffi_register_function(lib, "sprintf", ["string", "string"], "i32"),
+    scanf: ffi_register_function(lib, "scanf", ["string"], "i32"),
+    gets: ffi_register_function(lib, "gets", ["string"], "string"),
+    puts: ffi_register_function(lib, "puts", ["string"], "i32"),
+  }
+
+  give stdio
+}
+
+// C String library helpers
+form StrlibLib {
+  lib: ForeignLibrary,
+  strlen: ForeignFunction,
+  strcpy: ForeignFunction,
+  strcat: ForeignFunction,
+  strcmp: ForeignFunction,
+  strstr: ForeignFunction,
+  strtok: ForeignFunction,
+}
+
+proc strlib_load() -> StrlibLib {
+  let lib: ForeignLibrary = ffi_get_stdlib("c")
+
+  let strlib: StrlibLib = StrlibLib {
+    lib: lib,
+    strlen: ffi_register_function(lib, "strlen", ["string"], "i32"),
+    strcpy: ffi_register_function(lib, "strcpy", ["string", "string"], "string"),
+    strcat: ffi_register_function(lib, "strcat", ["string", "string"], "string"),
+    strcmp: ffi_register_function(lib, "strcmp", ["string", "string"], "i32"),
+    strstr: ffi_register_function(lib, "strstr", ["string", "string"], "string"),
+    strtok: ffi_register_function(lib, "strtok", ["string", "string"], "string"),
+  }
+
+  give strlib
+}
+
+// POSIX/threading library
+form PthreadLib {
+  lib: ForeignLibrary,
+  pthread_create: ForeignFunction,
+  pthread_join: ForeignFunction,
+  pthread_exit: ForeignFunction,
+  pthread_mutex_init: ForeignFunction,
+  pthread_mutex_lock: ForeignFunction,
+  pthread_mutex_unlock: ForeignFunction,
+}
+
+proc pthread_lib_load() -> PthreadLib {
+  let lib: ForeignLibrary = ffi_get_stdlib("pthread")
+
+  let pth: PthreadLib = PthreadLib {
+    lib: lib,
+    pthread_create: ffi_register_function(lib, "pthread_create", ["i32", "i32"], "i32"),
+    pthread_join: ffi_register_function(lib, "pthread_join", ["i32", "i32"], "i32"),
+    pthread_exit: ffi_register_function(lib, "pthread_exit", ["i32"], "Unit"),
+    pthread_mutex_init: ffi_register_function(lib, "pthread_mutex_init", ["i32", "i32"], "i32"),
+    pthread_mutex_lock: ffi_register_function(lib, "pthread_mutex_lock", ["i32"], "i32"),
+    pthread_mutex_unlock: ffi_register_function(lib, "pthread_mutex_unlock", ["i32"], "i32"),
+  }
+
+  give pth
+}
+
+// Callback/function pointer support
+form Callback {
+  id: int,
+  signature: string,
+  closure: proc,
+  pointer: int,
+}
+
+proc callback_create(closure: proc, signature: string) -> Callback {
+  let cb: Callback = Callback {
+    id: 0,
+    signature: signature,
+    closure: closure,
+    pointer: 0,
+  }
+
+  // In real impl: create trampoline code
+
+  give cb
+}
+
+proc callback_get_pointer(cb: Callback) -> int {
+  give cb.pointer
+}
+
+// Helper: Get standard library path by platform
+proc get_stdlib_path(name: string) -> string {
+  // Platform-specific logic
+  if name == "c" {
+    give "libc.so.6"  // Would check OS
+  }
+
+  if name == "m" {
+    give "libm.so.6"
+  }
+
+  if name == "pthread" {
+    give "libpthread.so.0"
+  }
+
+  give name
+}
+
+proc panic(msg: string) -> bool {
+  give false
+}

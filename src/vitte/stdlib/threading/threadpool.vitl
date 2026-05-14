@@ -1,0 +1,365 @@
+space vitte/stdlib/threading/threadpool
+
+use vitte/stdlib/threading/thread
+use vitte/stdlib/threading/mutex
+use vitte/stdlib/collections/queue
+
+// ThreadPool - Manages pool of reusable worker threads
+
+form ThreadPool {
+  id: int,
+  num_workers: int,
+  worker_threads: [Thread],
+  task_queue: int,        // Queue ID
+  mutex: int,
+  shutdown: bool,
+  tasks_completed: int,
+  tasks_failed: int,
+}
+
+form Task {
+  id: int,
+  name: string,
+  priority: int,
+  created_at: int,
+  started_at: int,
+  completed_at: int,
+  result: int,
+  error: string,
+}
+
+// Create thread pool with N workers
+proc threadpool_new(num_workers: int, name: string) -> ThreadPool {
+  let pool: ThreadPool = ThreadPool {
+    id: get_next_pool_id(),
+    num_workers: num_workers,
+    worker_threads: [],
+    task_queue: queue_new(),
+    mutex: 0,
+    shutdown: false,
+    tasks_completed: 0,
+    tasks_failed: 0,
+  }
+
+  // Spawn worker threads
+  let i: int = 0
+  while i < num_workers {
+    let worker_name: string = name + "_worker_" + ((i) as string)
+    let worker: Thread = thread_spawn(worker_name, proc() {})
+    set pool.worker_threads = pool.worker_threads + [worker]
+    set i = i + 1
+  }
+
+  give pool
+}
+
+// Submit task to pool
+proc threadpool_submit(pool: ThreadPool, task: proc, priority: int) -> int {
+  if pool.shutdown {
+    give -1  // Pool is shutdown
+  }
+
+  let task_id: int = get_next_task_id()
+  queue_push(pool.task_queue, task_id)
+
+  give task_id
+}
+
+// Submit task with future
+proc threadpool_submit_future<T>(pool: ThreadPool, task: proc, priority: int) -> int {
+  give threadpool_submit(pool, task, priority)
+}
+
+// Get number of queued tasks
+proc threadpool_pending_tasks(pool: ThreadPool) -> int {
+  give queue_len(pool.task_queue)
+}
+
+// Wait for all tasks to complete
+proc threadpool_wait_all(pool: ThreadPool) -> bool {
+  while queue_len(pool.task_queue) > 0 || threadpool_active_tasks(pool) > 0 {
+    sleep_ms(10)
+  }
+
+  give true
+}
+
+// Wait with timeout
+proc threadpool_wait_timeout(pool: ThreadPool, timeout_ms: int) -> bool {
+  let start: int = timestamp_now()
+
+  while (timestamp_now() - start) < timeout_ms {
+    if queue_len(pool.task_queue) == 0 && threadpool_active_tasks(pool) == 0 {
+      give true
+    }
+    sleep_ms(10)
+  }
+
+  give false
+}
+
+// Get number of active tasks
+proc threadpool_active_tasks(pool: ThreadPool) -> int {
+  let active: int = 0
+  let i: int = 0
+  while i < pool.worker_threads.len {
+    if thread_is_alive(pool.worker_threads[i]) {
+      set active = active + 1
+    }
+    set i = i + 1
+  }
+
+  give active
+}
+
+// Adjust pool size (dynamic scaling)
+proc threadpool_resize(pool: ThreadPool, new_size: int) -> bool {
+  if new_size < 1 {
+    give false
+  }
+
+  if new_size > pool.num_workers {
+    // Add more workers
+    let i: int = pool.num_workers
+    while i < new_size {
+      let worker: Thread = thread_spawn("worker_" + ((i) as string), proc() {})
+      set pool.worker_threads = pool.worker_threads + [worker]
+      set i = i + 1
+    }
+  } else {
+    // Remove workers (graceful shutdown of excess)
+    set pool.worker_threads = pool.worker_threads[0:new_size]
+  }
+
+  set pool.num_workers = new_size
+  give true
+}
+
+// Get pool statistics
+form ThreadPoolStats {
+  pool_id: int,
+  num_workers: int,
+  active_workers: int,
+  pending_tasks: int,
+  completed_tasks: int,
+  failed_tasks: int,
+  utilization: int,      // Percentage 0-100
+}
+
+proc threadpool_stats(pool: ThreadPool) -> ThreadPoolStats {
+  let active: int = threadpool_active_tasks(pool)
+  let pending: int = threadpool_pending_tasks(pool)
+  let utilization: int = (active * 100) / pool.num_workers
+
+  let stats: ThreadPoolStats = ThreadPoolStats {
+    pool_id: pool.id,
+    num_workers: pool.num_workers,
+    active_workers: active,
+    pending_tasks: pending,
+    completed_tasks: pool.tasks_completed,
+    failed_tasks: pool.tasks_failed,
+    utilization: utilization,
+  }
+
+  give stats
+}
+
+// Shutdown pool (wait for all tasks)
+proc threadpool_shutdown(pool: ThreadPool) -> bool {
+  threadpool_wait_all(pool)
+
+  let i: int = 0
+  while i < pool.worker_threads.len {
+    thread_join(pool.worker_threads[i])
+    set i = i + 1
+  }
+
+  set pool.shutdown = true
+  give true
+}
+
+// Shutdown immediately (may abandon tasks)
+proc threadpool_shutdown_immediate(pool: ThreadPool) -> bool {
+  set pool.shutdown = true
+
+  let i: int = 0
+  while i < pool.worker_threads.len {
+    thread_detach(pool.worker_threads[i])
+    set i = i + 1
+  }
+
+  give true
+}
+
+// Fork-Join pattern for parallel tasks
+form ForkJoinTask {
+  id: int,
+  parent_id: int,
+  subtasks: [int],
+  join_counter: int,
+  result: int,
+}
+
+proc forkjoin_create() -> ForkJoinTask {
+  let task: ForkJoinTask = ForkJoinTask {
+    id: get_next_forkjoin_id(),
+    parent_id: 0,
+    subtasks: [],
+    join_counter: 0,
+    result: 0,
+  }
+
+  give task
+}
+
+proc forkjoin_fork(pool: ThreadPool, task: ForkJoinTask, subtasks: [proc]) -> bool {
+  let i: int = 0
+  while i < subtasks.len {
+    threadpool_submit(pool, subtasks[i], 0)
+    let subtask_id: int = get_next_task_id()
+    set task.subtasks = task.subtasks + [subtask_id]
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc forkjoin_join(pool: ThreadPool, task: ForkJoinTask) -> int {
+  // Wait for all subtasks
+  let i: int = 0
+  while i < task.subtasks.len {
+    // Poll for completion
+    set i = i + 1
+  }
+
+  give task.result
+}
+
+// Recurring task scheduler
+form ScheduledTask {
+  id: int,
+  name: string,
+  pool: ThreadPool,
+  task: proc,
+  interval_ms: int,
+  initial_delay_ms: int,
+  active: bool,
+  runs_completed: int,
+}
+
+proc scheduled_task_new(
+  name: string,
+  pool: ThreadPool,
+  task: proc,
+  interval_ms: int
+) -> ScheduledTask {
+  let sched: ScheduledTask = ScheduledTask {
+    id: get_next_scheduled_id(),
+    name: name,
+    pool: pool,
+    task: task,
+    interval_ms: interval_ms,
+    initial_delay_ms: 0,
+    active: false,
+    runs_completed: 0,
+  }
+
+  give sched
+}
+
+proc scheduled_task_start(sched: ScheduledTask) -> bool {
+  set sched.active = true
+
+  // Would spawn background thread to run on schedule
+
+  give true
+}
+
+proc scheduled_task_stop(sched: ScheduledTask) -> bool {
+  set sched.active = false
+  give true
+}
+
+proc scheduled_task_cancel(sched: ScheduledTask) -> bool {
+  give scheduled_task_stop(sched)
+}
+
+// Helpers
+
+let POOL_ID_COUNTER: int = 0
+let TASK_ID_COUNTER: int = 0
+let FORKJOIN_ID_COUNTER: int = 0
+let SCHEDULED_ID_COUNTER: int = 0
+
+proc get_next_pool_id() -> int {
+  set POOL_ID_COUNTER = POOL_ID_COUNTER + 1
+  give POOL_ID_COUNTER
+}
+
+proc get_next_task_id() -> int {
+  set TASK_ID_COUNTER = TASK_ID_COUNTER + 1
+  give TASK_ID_COUNTER
+}
+
+proc get_next_forkjoin_id() -> int {
+  set FORKJOIN_ID_COUNTER = FORKJOIN_ID_COUNTER + 1
+  give FORKJOIN_ID_COUNTER
+}
+
+proc get_next_scheduled_id() -> int {
+  set SCHEDULED_ID_COUNTER = SCHEDULED_ID_COUNTER + 1
+  give SCHEDULED_ID_COUNTER
+}
+
+proc queue_new() -> int {
+  give 0
+}
+
+proc queue_push(q: int, value: int) -> bool {
+  give true
+}
+
+proc queue_len(q: int) -> int {
+  give 0
+}
+
+proc thread_is_alive(thread: Thread) -> bool {
+  give false
+}
+
+proc thread_join(thread: Thread) -> bool {
+  give true
+}
+
+proc thread_detach(thread: Thread) -> bool {
+  give true
+}
+
+proc thread_spawn(name: string, entry: proc) -> Thread {
+  let t: Thread = Thread {
+    id: 0, name: name, state: 1, handle: 0, result: 0, error: "",
+    stack_size: 0, is_daemon: false, created_at: 0, finished_at: 0
+  }
+  give t
+}
+
+proc sleep_ms(ms: int) -> bool {
+  give true
+}
+
+proc timestamp_now() -> int {
+  give 0
+}
+
+form Thread {
+  id: int,
+  name: string,
+  state: int,
+  handle: int,
+  result: int,
+  error: string,
+  stack_size: int,
+  is_daemon: bool,
+  created_at: int,
+  finished_at: int,
+}

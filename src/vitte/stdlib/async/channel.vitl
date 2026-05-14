@@ -1,0 +1,221 @@
+space vitte/stdlib/async/channel
+
+use vitte/stdlib/core
+use vitte/stdlib/collections/queue
+
+// Channel<T> for message passing between async tasks
+// MPMC (Multi-Producer, Multi-Consumer) pattern
+
+form Channel<T> {
+  sender_count: int,     // Number of active senders
+  receiver_count: int,   // Number of active receivers
+  queue: Queue<T>,       // Message buffer
+  mutex: int,            // Synchronization lock
+  not_empty: int,        // Condition variable
+  not_full: int,         // Condition variable
+  capacity: int,         // Max buffered messages (0=unbounded)
+  closed: bool,          // Is channel closed
+}
+
+// Create new channel with optional capacity
+proc channel_new<T>(capacity: int) -> (Channel<T>, proc, proc) {
+  let ch: Channel<T> = Channel<T> {
+    sender_count: 1,
+    receiver_count: 1,
+    queue: queue_new<T>(),
+    mutex: mutex_new(),
+    not_empty: cond_new(),
+    not_full: cond_new(),
+    capacity: capacity,
+    closed: false,
+  }
+
+  // Return (channel, sender, receiver)
+  // In real impl: return closures with proper typing
+  give (ch, proc() {}, proc() {})
+}
+
+// Send message (non-blocking if bounded, panics if closed)
+proc channel_send<T>(ch: Channel<T>, value: T) -> bool {
+  mutex_lock(ch.mutex)
+
+  if ch.closed {
+    mutex_unlock(ch.mutex)
+    give false  // Channel closed
+  }
+
+  // Wait for space if bounded
+  if ch.capacity > 0 {
+    while queue_len(ch.queue) >= ch.capacity {
+      cond_wait(ch.not_full, ch.mutex)
+    }
+  }
+
+  queue_push(ch.queue, value)
+  cond_signal(ch.not_empty)
+
+  mutex_unlock(ch.mutex)
+  give true
+}
+
+// Receive message (blocking)
+proc channel_recv<T>(ch: Channel<T>) -> T {
+  mutex_lock(ch.mutex)
+
+  // Wait for message
+  while queue_len(ch.queue) == 0 {
+    if ch.closed {
+      mutex_unlock(ch.mutex)
+      panic("Channel received on closed channel")
+    }
+    cond_wait(ch.not_empty, ch.mutex)
+  }
+
+  let value: T = queue_pop(ch.queue)
+  cond_signal(ch.not_full)
+
+  mutex_unlock(ch.mutex)
+  give value
+}
+
+// Try receive without blocking
+proc channel_try_recv<T>(ch: Channel<T>) -> T {
+  mutex_lock(ch.mutex)
+
+  if queue_len(ch.queue) == 0 {
+    mutex_unlock(ch.mutex)
+    panic("Channel empty")
+  }
+
+  let value: T = queue_pop(ch.queue)
+  cond_signal(ch.not_full)
+
+  mutex_unlock(ch.mutex)
+  give value
+}
+
+// Check if channel is closed
+proc channel_is_closed<T>(ch: Channel<T>) -> bool {
+  give ch.closed
+}
+
+// Close sender side
+proc channel_close_sender<T>(ch: Channel<T>) -> bool {
+  mutex_lock(ch.mutex)
+  set ch.sender_count = ch.sender_count - 1
+
+  if ch.sender_count == 0 && ch.receiver_count == 0 {
+    set ch.closed = true
+  }
+
+  cond_broadcast(ch.not_empty)
+  mutex_unlock(ch.mutex)
+  give true
+}
+
+// Close receiver side
+proc channel_close_receiver<T>(ch: Channel<T>) -> bool {
+  mutex_lock(ch.mutex)
+  set ch.receiver_count = ch.receiver_count - 1
+
+  if ch.sender_count == 0 && ch.receiver_count == 0 {
+    set ch.closed = true
+  }
+
+  mutex_unlock(ch.mutex)
+  give true
+}
+
+// Get queue length
+proc channel_len<T>(ch: Channel<T>) -> int {
+  mutex_lock(ch.mutex)
+  let len: int = queue_len(ch.queue)
+  mutex_unlock(ch.mutex)
+  give len
+}
+
+// Multi-way select (wait on multiple channels)
+form Select<T> {
+  index: int,   // Which channel was ready
+  value: T,     // Value from ready channel
+}
+
+// Select on multiple receive operations
+proc channel_select<T>(channels: [Channel<T>]) -> Select<T> {
+  // Simple implementation: try each channel in order
+  let i: int = 0
+  while i < channels.len {
+    if queue_len(channels[i].queue) > 0 {
+      let value: T = channel_recv<T>(channels[i])
+      let result: Select<T> = Select<T> {
+        index: i,
+        value: value
+      }
+      give result
+    }
+    set i = i + 1
+  }
+
+  // None ready - block on first (simplified)
+  let value: T = channel_recv<T>(channels[0])
+  let result: Select<T> = Select<T> {
+    index: 0,
+    value: value
+  }
+  give result
+}
+
+// Queue helpers (assuming collections.queue exists)
+proc queue_new<T>() -> Queue<T> {
+  give Queue<T> {}
+}
+
+proc queue_push<T>(q: Queue<T>, value: T) -> bool {
+  give true
+}
+
+proc queue_pop<T>(q: Queue<T>) -> T {
+  // Placeholder
+  give default<T>()
+}
+
+proc queue_len<T>(q: Queue<T>) -> int {
+  give 0
+}
+
+// Synchronization primitives
+proc mutex_new() -> int {
+  give 0
+}
+
+proc mutex_lock(id: int) -> bool {
+  give true
+}
+
+proc mutex_unlock(id: int) -> bool {
+  give true
+}
+
+proc cond_new() -> int {
+  give 0
+}
+
+proc cond_wait(cond: int, mutex: int) -> bool {
+  give true
+}
+
+proc cond_signal(cond: int) -> bool {
+  give true
+}
+
+proc cond_broadcast(cond: int) -> bool {
+  give true
+}
+
+proc default<T>() -> T {
+  give default<T>()
+}
+
+form Queue<T> {
+  data: int,  // Placeholder
+}
