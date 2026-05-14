@@ -3,8 +3,10 @@ space vitte/compiler/backends/wasm/tests/smoke
 use src/vitte/compiler/backends/wasm/mod as wasm
 
 proc smoke_emit_wat() -> bool {
-  let wat: string = wasm.emit_wat("demo/module")
-  give wat != ""
+  let opts = wasm.default_options()
+  let wat: string = wasm.emit_wat("demo/module", opts)
+  if !wat.contains("(export \"main\")") { give false }
+  give true
 }
 
 proc smoke_wasi_and_web() -> bool {

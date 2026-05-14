@@ -8,8 +8,11 @@ proc smoke_opt_levels() -> bool {
 }
 
 proc smoke_emit_ir() -> bool {
-  let ir: string = llvm.emit_llvm_ir_from_mir("demo/module")
-  give ir != ""
+  let opts = llvm.default_options()
+  let ir: string = llvm.emit_llvm_ir_from_mir("demo/module", opts)
+  if !ir.contains("define i32 @main()") { give false }
+  if !ir.contains("ret i32 0") { give false }
+  give true
 }
 
 proc smoke_debug_and_pgo() -> bool {

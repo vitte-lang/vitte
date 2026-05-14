@@ -4,6 +4,7 @@ use diagnostics
 use io
 use lexer
 use token
+use ast
 
 form ParsedSource {
   source_name: string,
@@ -17,7 +18,8 @@ form ParsedSource {
   use_count: int,
   proc_count: int,
   unknown_count: int,
-  diagnostics: diagnostics.DiagnosticBag
+  diagnostics: diagnostics.DiagnosticBag,
+  module: ast.AstModule
 }
 
 proc count_lines(source_text: string) -> int {
@@ -100,6 +102,16 @@ proc _parse_tokens(
     )
   }
 
+  let module: ast.AstModule = ast.AstModule {
+    source_name: source_name,
+    space_name: space_name,
+    uses: [],
+    use_decls: [],
+    decls: [],
+    attrs: [],
+    span: ast.empty_span(source_name)
+  }
+
   give ParsedSource {
     source_name: source_name,
     source_text: source_text,
@@ -112,7 +124,8 @@ proc _parse_tokens(
     use_count: use_count,
     proc_count: proc_count,
     unknown_count: unknown_count,
-    diagnostics: bag
+    diagnostics: bag,
+    module: module
   }
 }
 

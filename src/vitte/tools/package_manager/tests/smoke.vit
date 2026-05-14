@@ -1,0 +1,18 @@
+space vitte/tools/package_manager/tests/smoke
+
+use src/vitte/tools/package_manager/mod as pkg
+
+proc smoke_resolve_deps() -> bool {
+  let spec = pkg.PackageSpec { name: "test", version: "1.0", dependencies: ["dep1", "dep2"] }
+  let deps = pkg.resolve_dependencies(spec)
+  give deps.len == 2 && deps[0].name == "dep1"
+}
+
+proc smoke_cross_targets() -> bool {
+  let targets = pkg.cross_compile_targets()
+  give targets.len >= 3 && targets[0].arch == "x86_64"
+}
+
+proc smoke_cache_and_incremental() -> bool {
+  give pkg.build_cache_enabled() && pkg.incremental_compilation()
+}

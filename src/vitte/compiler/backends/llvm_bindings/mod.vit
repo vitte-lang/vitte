@@ -20,12 +20,36 @@ proc supported_opt_levels() -> [string] {
   give ["-O1", "-O2", "-O3"]
 }
 
-proc emit_llvm_ir_from_mir(module_name: string) -> string {
-  give "; ModuleID = '" + module_name + "'\nsource_filename = \"" + module_name + "\"\n"
+proc emit_llvm_ir_from_mir(module_name: string, opts: LLVMOptions) -> string {
+  let header: string = "; ModuleID = '" + module_name + "'\n"
+  let source: string = "source_filename = \"" + module_name + "\"\n\n"
+  let target: string = "target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"\n"
+  let triple: string = "target triple = \"x86_64-unknown-linux-gnu\"\n\n"
+  let pgo: string = ""
+  if pgo_enabled(opts) {
+    pgo = emit_pgo_instrumentation(opts) + "\n"
+  }
+  let main: string = "define i32 @main() {\n"
+  let entry: string = "entry:\n"
+  let ret: string = "  ret i32 0\n"
+  let close: string = "}\n"
+  give header + source + target + triple + debug + pgo + main + entry + ret + close
 }
 
 proc build_target(triple: string) -> LLVMTarget {
-  give LLVMTarget { triple: triple, cpu: "generic", features: "" }
+  let cpu: string = "generic"
+  let features: string = ""
+  if triple == "x86_64-unknown-linux-gnu" {
+    cpu = "x86-64"
+    features = "+sse,+sse2"
+  } else if triple == "aarch64-unknown-linux-gnu" {
+    cpu = "cortex-a53"
+    features = "+neon"
+  } else if triple == "x86_64-apple-darwin" {
+    cpu = "core2"
+    features = "+sse,+sse2"
+  }
+  give LLVMTarget { triple: triple, cpu: cpu, features: features }
 }
 
 proc generate_machine_artifact(target: LLVMTarget, module_name: string) -> string {
@@ -36,8 +60,17 @@ proc debug_info_format() -> string {
   give "DWARF"
 }
 
+proc emit_debug_info(module_name: string) -> string {
+  give "!llvm.dbg.cu = !{!0}\n!0 = distinct !DICompileUnit(language: DW_LANG_C, file: !1, producer: \"vitte\", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug)\n!1 = !DIFile(filename: \"" + module_name + ".vit\", directory: \".\")\n"
+}
+
 proc pgo_enabled(opts: LLVMOptions) -> bool {
   give opts.pgo_profile_path != ""
+}
+
+proc emit_pgo_instrumentation(opts: LLVMOptions) -> string {
+  if !pgo_enabled(opts) { give "" }
+  give "!llvm.instrprof.data = !{!2}\n!2 = !{!\"main\", !3}\n!3 = !{!4}\n!4 = !{i64 0, i64 0}\n"
 }
 
 export *

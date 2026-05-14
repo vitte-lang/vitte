@@ -1,0 +1,41 @@
+space vitte/tools/package_manager/mod
+
+form PackageSpec {
+  name: string,
+  version: string,
+  dependencies: [string],
+}
+
+form BuildCache {
+  enabled: bool,
+  entries: [(string, string)], // (key, artifact_path)
+}
+
+form CrossTarget {
+  arch: string,
+  os: string,
+  triple: string,
+}
+
+proc resolve_dependencies(pkg: PackageSpec) -> [PackageSpec] {
+  // Simple resolution: assume no conflicts
+  give pkg.dependencies.map(|dep| PackageSpec { name: dep, version: "1.0.0", dependencies: [] })
+}
+
+proc cross_compile_targets() -> [CrossTarget] {
+  give [
+    CrossTarget { arch: "x86_64", os: "linux", triple: "x86_64-unknown-linux-gnu" },
+    CrossTarget { arch: "arm64", os: "linux", triple: "aarch64-unknown-linux-gnu" },
+    CrossTarget { arch: "x86_64", os: "macos", triple: "x86_64-apple-darwin" },
+  ]
+}
+
+proc build_cache_enabled() -> bool {
+  give true
+}
+
+proc incremental_compilation() -> bool {
+  give true
+}
+
+export *

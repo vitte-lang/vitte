@@ -10,8 +10,15 @@ proc default_options() -> WASMOptions {
   give WASMOptions { optimize_size: true, use_wasi: true, target: "wasm32-wasi" }
 }
 
-proc emit_wat(module_name: string) -> string {
-  give "(module ;; " + module_name + "\n  (func (export \"main\") (result i32)\n    i32.const 0)\n)\n"
+proc emit_wat(module_name: string, opts: WASMOptions) -> string {
+  let header: string = "(module ;; " + module_name + "\n"
+  let wasi_import: string = ""
+  if wasi_enabled(opts) {
+    wasi_import = "  (import \"wasi_snapshot_preview1\" \"proc_exit\" (func $proc_exit (param i32)))\n"
+  }
+  let func: string = "  (func (export \"main\") (result i32)\n    i32.const 0\n  )\n"
+  let close: string = ")\n"
+  give header + wasi_import + func + close
 }
 
 proc wasi_enabled(opts: WASMOptions) -> bool {

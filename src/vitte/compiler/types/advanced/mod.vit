@@ -164,13 +164,27 @@ proc compute_metrics() -> TypeFeatureMetrics {
   }
 }
 
+proc instantiate_generic(template: GenericTemplate, args: [string]) -> string {
+  if template.params.len != args.len { give "error: param count mismatch" }
+  let result: string = template.name + "<"
+  let i: int = 0
+  while i < args.len {
+    if i > 0 { result = result + ", " }
+    result = result + args[i]
+    set i = i + 1
+  }
+  result = result + ">"
+  give result
+}
+
 proc generics_templates() -> FeatureResult {
   let g = generic_catalog()
-  let ok: bool = g.len >= 3 && g[2].params.len == 2
+  let inst = instantiate_generic(g[0], ["i32"])
+  let ok: bool = g.len >= 3 && g[2].params.len == 2 && inst == "Vec<i32>"
   give FeatureResult {
     name: "generics_templates",
     success: ok,
-    notes: ["catalog initialized", "sample instantiations tracked"],
+    notes: ["catalog initialized", "sample instantiations tracked", "instantiation logic validated"],
   }
 }
 
