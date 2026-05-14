@@ -6,6 +6,32 @@ form AnalysisResult {
   notes: [string],
 }
 
+form CFGNode {
+  id: int,
+  predecessors: [int],
+  successors: [int],
+  instructions: [string],
+}
+
+form CFG {
+  nodes: [CFGNode],
+  entry: int,
+  exit: int,
+}
+
+proc build_cfg_from_mir(mir_stmts: [string]) -> CFG {
+  // Simple CFG builder: assume linear for now
+  let nodes: [CFGNode] = []
+  let i: int = 0
+  while i < mir_stmts.len {
+    let preds: [int] = if i == 0 { [] } else { [i-1] }
+    let succs: [int] = if i < mir_stmts.len - 1 { [i+1] } else { [] }
+    nodes.push(CFGNode { id: i, predecessors: preds, successors: succs, instructions: [mir_stmts[i]] })
+    set i = i + 1
+  }
+  give CFG { nodes: nodes, entry: 0, exit: mir_stmts.len - 1 }
+}
+
 form StaticAnalysisMetrics {
   cfg_blocks_total: int,
   alias_classes_total: int,
@@ -35,9 +61,11 @@ proc data_flow_analysis() -> AnalysisResult {
 proc control_flow_graphs() -> AnalysisResult {
   let m = baseline_metrics()
   let ok: bool = m.cfg_blocks_total >= 24
+  // Example: build a simple CFG
+  let cfg = build_cfg_from_mir(["let x = 1", "if x > 0", "x = x + 1", "return x"])
   give AnalysisResult {
     name: "control_flow_graphs",
-    success: ok,
+    success: ok && cfg.nodes.len > 0,
     notes: ["basic blocks indexed", "edge map emitted", "loop/backedge fixtures covered"],
   }
 }

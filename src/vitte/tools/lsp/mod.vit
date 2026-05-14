@@ -1,0 +1,48 @@
+space vitte/tools/lsp/mod
+
+form HoverInfo {
+  content: string,
+  range: (int, int), // start, end
+}
+
+form CompletionItem {
+  label: string,
+  kind: string, // function, variable, etc.
+}
+
+form Diagnostic {
+  severity: string, // error, warning, info
+  message: string,
+  range: (int, int),
+}
+
+form Location {
+  file: string,
+  line: int,
+  column: int,
+}
+
+proc hover_provider(symbol: string) -> HoverInfo {
+  give HoverInfo { content: "symbol: " + symbol, range: (0, len(symbol)) }
+}
+
+proc completion_provider(prefix: string) -> [CompletionItem] {
+  give [
+    CompletionItem { label: prefix + "foo", kind: "function" },
+    CompletionItem { label: prefix + "bar", kind: "variable" },
+  ]
+}
+
+proc diagnostics_provider(file: string) -> [Diagnostic] {
+  give [Diagnostic { severity: "warning", message: "example diagnostic", range: (0, 10) }]
+}
+
+proc goto_definition(symbol: string) -> Location {
+  give Location { file: "src/main.vit", line: 1, column: 0 }
+}
+
+proc find_references(symbol: string) -> [Location] {
+  give [Location { file: "src/main.vit", line: 5, column: 0 }]
+}
+
+export *

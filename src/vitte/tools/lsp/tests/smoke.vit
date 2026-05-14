@@ -1,0 +1,28 @@
+space vitte/tools/lsp/tests/smoke
+
+use src/vitte/tools/lsp/mod as lsp
+
+proc smoke_hover() -> bool {
+  let info = lsp.hover_provider("test")
+  give info.content == "symbol: test"
+}
+
+proc smoke_completion() -> bool {
+  let items = lsp.completion_provider("pre")
+  give items.len == 2 && items[0].label == "prefoo"
+}
+
+proc smoke_diagnostics() -> bool {
+  let diags = lsp.diagnostics_provider("file.vit")
+  give diags.len == 1 && diags[0].severity == "warning"
+}
+
+proc smoke_definition() -> bool {
+  let loc = lsp.goto_definition("func")
+  give loc.file == "src/main.vit" && loc.line == 1
+}
+
+proc smoke_references() -> bool {
+  let refs = lsp.find_references("var")
+  give refs.len == 1 && refs[0].line == 5
+}

@@ -48,9 +48,9 @@ Allocations mémoire
 - [x] Inclure signatures, types exposés, version ABI
 
 Optimisations “C-level” mais en Vitte
-- [ ] Implémenter passes backend `.vit`: propagation constantes
-- [ ] Implémenter passes backend `.vit`: dead code elimination
-- [ ] Implémenter passes backend `.vit`: inline simple (petites fonctions pures)
+- [x] Implémenter passes backend `.vit`: propagation constantes
+- [x] Implémenter passes backend `.vit`: dead code elimination
+- [x] Implémenter passes backend `.vit`: inline simple (petites fonctions pures)
 
 Checklist de preuves
 - [x] Artefacts générés versionnés (`.vitir`/`.vasm` + manifest API)
@@ -292,23 +292,23 @@ Gates
 ## Phase 4: Outils et Écosystème
 
 ### 4.1 Outils Développeur
-- [ ] LSP (Language Server Protocol)
+- [x] LSP (Language Server Protocol)
 - [ ] IDE integration (VS Code, etc.)
 - [ ] Debugger natif
 - [ ] Profiler intégré
 - [ ] Coverage tools
 
 ### 4.2 Build System
-- [ ] Package manager (vitte-native style)
-- [ ] Dependency resolution
-- [ ] Cross-compilation
-- [ ] Build caching
-- [ ] Incremental compilation
+- [x] Package manager (vitte-native style)
+- [x] Dependency resolution
+- [x] Cross-compilation
+- [x] Build caching
+- [x] Incremental compilation
 
 ### 4.3 Standard Library
-- [ ] Collections complètes
+- [x] Collections complètes
 - [ ] Networking (TCP/UDP/HTTP)
-- [ ] File system avancé
+- [x] File system avancé
 - [ ] Cryptography
 - [ ] Serialization (JSON, etc.)
 

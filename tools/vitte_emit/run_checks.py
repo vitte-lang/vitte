@@ -17,6 +17,8 @@ def main() -> int:
         ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "emit.vit",
         ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "cfg.vit",
         ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "intrinsics.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "ir.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "passes.vit",
         ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "api_manifest.vitl",
         ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "tests" / "smoke.vit",
     ]

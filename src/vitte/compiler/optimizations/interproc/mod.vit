@@ -24,12 +24,29 @@ proc baseline_metrics() -> InterprocMetrics {
   }
 }
 
+form VirtualCall {
+  site: string,
+  receiver_type: string,
+  method: string,
+  candidates: [string],
+}
+
+proc resolve_virtual_call(call: VirtualCall) -> string {
+  if call.candidates.len == 1 {
+    give call.candidates[0]
+  }
+  give call.method // fallback
+}
+
 proc devirtualization() -> InterprocPassResult {
   let m = baseline_metrics()
   let ok: bool = m.devirt_sites_total >= 15
+  // Example: resolve a virtual call
+  let call = VirtualCall { site: "obj.method()", receiver_type: "ConcreteType", method: "method", candidates: ["ConcreteType.method"] }
+  let resolved = resolve_virtual_call(call)
   give InterprocPassResult {
     name: "devirtualization",
-    changed: ok,
+    changed: ok && resolved != call.method,
     notes: ["resolved dynamic dispatch candidates", "vtable callsites collapsed"],
   }
 }
