@@ -1,0 +1,895 @@
+space vitte/compiler/ir/hir_extended
+
+// ============================================================================
+// HIGH-LEVEL INTERMEDIATE REPRESENTATION (HIR)
+// ============================================================================
+// Complete intermediate representation system after parsing, before lowering
+// to MIR. Corresponds to Rust's rustc::hir structure.
+//
+// Design Goals:
+// - Preserve all source-level information
+// - Enable early analysis passes (type checking, borrow checking setup)
+// - Provide normalized structure for lowering to MIR
+// - Support all language constructs end-to-end
+
+use ast_extended
+
+// ============================================================================
+// HIR IDENTIFIERS AND PATHS
+// ============================================================================
+
+form HirId {
+  index: int,               // Unique within crate
+  local_index: int         // Unique within function
+}
+
+form DefId {
+  index: int,
+  krate: int               // Which crate this def belongs to
+}
+
+form CrateId {
+  index: int
+}
+
+form Path {
+  segments: [PathSegment],
+  is_absolute: bool
+}
+
+form PathSegment {
+  ident: string,
+  args: [GenericArg],
+  generics: Generics
+}
+
+form GenericArg {
+  kind: string,            // "Type" | "Const" | "Lifetime"
+  value: string
+}
+
+// ============================================================================
+// HIR ITEMS - Top-level definitions
+// ============================================================================
+
+pick ItemKind {
+  Static,
+  Const,
+  Fn,
+  ForeignMod,
+  TyAlias,
+  Enum,
+  Struct,
+  Union,
+  Trait,
+  TraitAlias,
+  Impl,
+  Use,
+  ExternCrate,
+  Macro,
+  MacroDef
+}
+
+form Item {
+  id: HirId,
+  def_id: DefId,
+  ident: string,
+  kind: ItemKind,
+  vis: Visibility,
+  span: Span,
+  attrs: [Attribute],
+
+  // Content depends on kind
+  static_item: StaticItem,
+  const_item: ConstItem,
+  fn_item: FnItem,
+  ty_alias: TyAliasItem,
+  enum_item: EnumItem,
+  struct_item: StructItem,
+  union_item: UnionItem,
+  trait_item: TraitItem,
+  impl_item: ImplItem,
+  use_item: UseItem,
+  macro_item: MacroItem
+}
+
+form StaticItem {
+  ty: Ty,
+  mutability: Mutability,
+  expr: Expr
+}
+
+form ConstItem {
+  ty: Ty,
+  generics: Generics,
+  expr: Expr
+}
+
+form FnItem {
+  sig: FnSig,
+  generics: Generics,
+  body: FnBody,
+  asyncness: AsyncKind,
+  unsafety: Unsafety,
+  abi: string
+}
+
+form FnSig {
+  header: FnHeader,
+  decl: FnDecl
+}
+
+form FnHeader {
+  unsafety: Unsafety,
+  asyncness: AsyncKind,
+  constness: ConstKind,
+  abi: string
+}
+
+form FnDecl {
+  inputs: [Param],
+  output: FnRetTy,
+  implicit_self: ImplicitSelfKind,
+  has_implicit_self: bool
+}
+
+form Param {
+  hir_id: HirId,
+  pat: Pat,
+  ty: Ty,
+  span: Span
+}
+
+pick FnRetTy {
+  DefaultReturn,
+  Return,
+  ImplicitReturn
+}
+
+form FnBody {
+  stmts: [Stmt],
+  expr: Expr,
+  hir_id: HirId
+}
+
+form TyAliasItem {
+  generics: Generics,
+  ty: Ty,
+  kind: TyAliasKind
+}
+
+pick TyAliasKind {
+  TypeAlias,
+  OpaqueType
+}
+
+form EnumItem {
+  generics: Generics,
+  variants: [Variant],
+  where_clause: WhereClause
+}
+
+form Variant {
+  id: HirId,
+  ident: string,
+  data: VariantData,
+  disr_expr: Expr,
+  span: Span,
+  attrs: [Attribute]
+}
+
+pick VariantData {
+  Unit,
+  Tuple,
+  Struct
+}
+
+form StructItem {
+  generics: Generics,
+  fields: [StructField],
+  kind: VariantData
+}
+
+form StructField {
+  hir_id: HirId,
+  ident: string,
+  ty: Ty,
+  vis: Visibility,
+  span: Span,
+  attrs: [Attribute]
+}
+
+form UnionItem {
+  generics: Generics,
+  fields: [StructField]
+}
+
+form TraitItem {
+  generics: Generics,
+  bounds: [GenericBound],
+  items: [TraitItemRef],
+  auto_trait: bool,
+  unsafe: bool
+}
+
+form ImplItem {
+  unsafety: Unsafety,
+  polarity: ImplPolarity,
+  generics: Generics,
+  of_trait: TraitRef,
+  self_ty: Ty,
+  items: [ImplItemRef],
+  constness: ConstKind
+}
+
+form UseItem {
+  path: Path,
+  kind: UseKind
+}
+
+pick UseKind {
+  Single,
+  Glob,
+  ListStem,
+  Nested
+}
+
+form MacroItem {
+  kind: MacroKind,
+  path: Path
+}
+
+pick MacroKind {
+  Macro,
+  MacroDef
+}
+
+// ============================================================================
+// HIR STATEMENTS
+// ============================================================================
+
+pick StmtKind {
+  Local,
+  Item,
+  Let,
+  Expr,
+  Semi
+}
+
+form Stmt {
+  hir_id: HirId,
+  kind: StmtKind,
+  span: Span,
+
+  local_stmt: LocalStmt,
+  item_stmt: Item,
+  let_stmt: LetStmt,
+  expr_stmt: Expr
+}
+
+form LocalStmt {
+  id: HirId,
+  pat: Pat,
+  ty: Ty,
+  init: Expr,
+  els: Expr,
+  source: LocalSource,
+  span: Span,
+  attrs: [Attribute]
+}
+
+pick LocalSource {
+  Normal,
+  ForLoop,
+  AwaitDesugar
+}
+
+form LetStmt {
+  pat: Pat,
+  ty: Ty,
+  init: Expr
+}
+
+// ============================================================================
+// HIR EXPRESSIONS
+// ============================================================================
+
+pick ExprKind {
+  Box,
+  ConstBlock,
+  Array,
+  Call,
+  MethodCall,
+  Tup,
+  Binary,
+  Unary,
+  Lit,
+  Cast,
+  Type,
+  If,
+  While,
+  Loop,
+  Match,
+  Closure,
+  Block,
+  Assign,
+  AssignOp,
+  Field,
+  Index,
+  Path,
+  AddrOf,
+  Break,
+  Continue,
+  Ret,
+  InlineAsm,
+  Struct,
+  Repeat,
+  Yield,
+  Err
+}
+
+form Expr {
+  hir_id: HirId,
+  kind: ExprKind,
+  span: Span,
+
+  // Specific expressions
+  box_expr: Expr,
+  array: [Expr],
+  call_fn: Expr,
+  call_args: [Expr],
+  method_name: string,
+  method_receiver: Expr,
+  method_args: [Expr],
+  binary_op: BinOp,
+  binary_lhs: Expr,
+  binary_rhs: Expr,
+  unary_op: UnOp,
+  unary_expr: Expr,
+  literal: Lit,
+  cast_expr: Expr,
+  cast_to_ty: Ty,
+  if_cond: Expr,
+  if_then: Expr,
+  if_els: Expr,
+  while_cond: Expr,
+  while_body: Expr,
+  loop_body: Expr,
+  match_expr: Expr,
+  match_arms: [Arm],
+  closure_params: [Param],
+  closure_body: Expr,
+  closure_return_ty: Ty,
+  closure_capture: ClosureCapture,
+  block_stmts: [Stmt],
+  block_expr: Expr,
+  block_targeted_by_break: bool,
+  assign_lhs: Expr,
+  assign_rhs: Expr,
+  field_expr: Expr,
+  field_name: string,
+  index_expr: Expr,
+  index_operand: Expr,
+  path_expr: Path,
+  addr_of_mutability: Mutability,
+  addr_of_expr: Expr,
+  struct_path: Path,
+  struct_fields: [FieldExpr],
+  repeat_expr: Expr,
+  repeat_count: Expr,
+  ret_expr: Expr,
+  attrs: [Attribute]
+}
+
+form FieldExpr {
+  ident: string,
+  expr: Expr,
+  is_shorthand: bool,
+  span: Span
+}
+
+form Arm {
+  hir_id: HirId,
+  pattern: Pat,
+  guard: Expr,
+  body: Expr,
+  span: Span,
+  is_placeholder: bool
+}
+
+pick ClosureCapture {
+  Move,
+  Ref,
+  RefMut
+}
+
+// ============================================================================
+// HIR TYPES
+// ============================================================================
+
+pick TyKind {
+  Slice,
+  Array,
+  Ptr,
+  Ref,
+  BareFn,
+  Never,
+  Tup,
+  AliasTy,
+  OpaqueTy,
+  Path,
+  TraitObject,
+  Typeof,
+  Infer,
+  Err
+}
+
+form Ty {
+  hir_id: HirId,
+  kind: TyKind,
+  span: Span,
+
+  // Type-specific fields
+  slice_ty: Ty,
+  array_ty: Ty,
+  array_len: Expr,
+  ptr_mutability: Mutability,
+  ptr_ty: Ty,
+  ref_lifetime: Lifetime,
+  ref_mutability: Mutability,
+  ref_ty: Ty,
+  bare_fn_sig: BareFnSig,
+  path: Path,
+  bounds: [GenericBound]
+}
+
+form BareFnSig {
+  unsafety: Unsafety,
+  abi: string,
+  decl: FnDecl,
+  generics: Generics
+}
+
+// ============================================================================
+// HIR PATTERNS
+// ============================================================================
+
+pick PatKind {
+  Wild,
+  Binding,
+  Struct,
+  TupleStruct,
+  Or,
+  Path,
+  Tuple,
+  Box,
+  Ref,
+  Lit,
+  Range,
+  Slice,
+  Rest,
+  Paren,
+  MacCall
+}
+
+form Pat {
+  hir_id: HirId,
+  kind: PatKind,
+  span: Span,
+  default_binding_mode: DefaultBindingMode,
+
+  // Pattern-specific
+  binding_name: string,
+  binding_mode: BindingMode,
+  struct_path: Path,
+  struct_fields: [PatField],
+  tuple_struct_path: Path,
+  tuple_struct_fields: [Pat],
+  or_patterns: [Pat],
+  path: Path,
+  tuple_elements: [Pat],
+  box_pattern: Pat,
+  ref_mutability: Mutability,
+  ref_pattern: Pat,
+  literal: Lit,
+  range_start: Pat,
+  range_end: Pat,
+  range_end_included: bool,
+  slice_patterns: [Pat],
+  has_rest: bool
+}
+
+form PatField {
+  hir_id: HirId,
+  ident: string,
+  pat: Pat,
+  is_shorthand: bool,
+  span: Span
+}
+
+pick BindingMode {
+  BindByRef,
+  BindByValue
+}
+
+pick DefaultBindingMode {
+  ByRef,
+  ByValue
+}
+
+// ============================================================================
+// GENERIC PARAMETERS AND BOUNDS
+// ============================================================================
+
+form Generics {
+  params: [GenericParam],
+  where_clause: WhereClause,
+  span: Span
+}
+
+form GenericParam {
+  hir_id: HirId,
+  ident: string,
+  kind: GenericParamKind,
+  span: Span,
+  is_synthetic: bool,
+  pure_wrt_drop: bool,
+  colon_span: Span
+}
+
+pick GenericParamKind {
+  Lifetime,
+  Type,
+  Const
+}
+
+form WhereClause {
+  predicates: [WherePredicate],
+  span: Span
+}
+
+form WherePredicate {
+  span: Span,
+  kind: WherePredicateKind,
+  hir_id: HirId
+}
+
+pick WherePredicateKind {
+  BoundPredicate,
+  RegionPredicate,
+  EqPredicate
+}
+
+form GenericBound {
+  span: Span,
+  kind: GenericBoundKind,
+  modifier: TraitBoundModifier
+}
+
+pick GenericBoundKind {
+  Trait,
+  Outlives,
+  Use
+}
+
+pick TraitBoundModifier {
+  None,
+  Maybe,
+  MaybeConst
+}
+
+form TraitRef {
+  path: Path,
+  hir_ref_id: HirId
+}
+
+// ============================================================================
+// LITERALS
+// ============================================================================
+
+pick LitKind {
+  Str,
+  ByteStr,
+  Byte,
+  Char,
+  Int,
+  Float,
+  Bool,
+  Err
+}
+
+form Lit {
+  kind: LitKind,
+  span: Span,
+  symbol: string,
+  suffix: string,
+  value: string
+}
+
+// ============================================================================
+// OPERATORS
+// ============================================================================
+
+pick BinOp {
+  Add,
+  Sub,
+  Mul,
+  Div,
+  Rem,
+  And,
+  Or,
+  BitXor,
+  BitAnd,
+  BitOr,
+  Shl,
+  Shr,
+  Eq,
+  Lt,
+  Le,
+  Ne,
+  Ge,
+  Gt
+}
+
+pick UnOp {
+  Deref,
+  Not,
+  Neg
+}
+
+pick Unsafety {
+  Unsafe,
+  Normal
+}
+
+pick AsyncKind {
+  Async,
+  Async2015,
+  Async2018,
+  Normal
+}
+
+pick ConstKind {
+  Const,
+  ConstIf,
+  NotConst
+}
+
+pick Mutability {
+  Mut,
+  Not
+}
+
+pick ImplPolarity {
+  Positive,
+  Negative,
+  Reservation
+}
+
+pick ImplicitSelfKind {
+  Imm,
+  Mut,
+  ImmRef,
+  MutRef,
+  None
+}
+
+pick Visibility {
+  Public,
+  Crate,
+  Restricted,
+  Private
+}
+
+// ============================================================================
+// ATTRIBUTES
+// ============================================================================
+
+form Attribute {
+  kind: AttrKind,
+  meta: AttrMeta,
+  span: Span,
+  id: AttrId,
+  style: AttrStyle
+}
+
+pick AttrStyle {
+  Outer,
+  Inner
+}
+
+pick AttrKind {
+  Normal,
+  DocComment,
+  DocCommentLine
+}
+
+form AttrMeta {
+  path: Path,
+  tokens: [string],
+  kind: MetaKind
+}
+
+pick MetaKind {
+  List,
+  NameValue,
+  Word
+}
+
+form AttrId {
+  index: int
+}
+
+// ============================================================================
+// SOURCE LOCATIONS
+// ============================================================================
+
+form Span {
+  lo: BytePos,
+  hi: BytePos,
+  ctxt: SyntaxContext,
+  parent: Option[HirId]
+}
+
+form BytePos {
+  value: int
+}
+
+form SyntaxContext {
+  index: int
+}
+
+pick Option {
+  Some,
+  None
+}
+
+// ============================================================================
+// LIFETIMES
+// ============================================================================
+
+form Lifetime {
+  hir_id: HirId,
+  ident: LifetimeIdent,
+  res: LifetimeRes
+}
+
+form LifetimeIdent {
+  name: string,
+  span: Span
+}
+
+pick LifetimeRes {
+  Param,
+  Fresh,
+  Static,
+  Error,
+  Infer,
+  Undefined
+}
+
+// ============================================================================
+// TOP-LEVEL CRATE STRUCTURE
+// ============================================================================
+
+form Crate {
+  items: [Item],
+  trait_items: [TraitItemRef],
+  impl_items: [ImplItemRef],
+  foreign_items: [ForeignItemRef],
+  body_ids: [HirId],
+  modules: [Module],
+  attrs: [Attribute],
+  span: Span,
+  hash: string
+}
+
+form Module {
+  name: string,
+  items: [Item],
+  span: Span
+}
+
+form TraitItemRef {
+  id: HirId,
+  ident: string,
+  kind: string,
+  span: Span
+}
+
+form ImplItemRef {
+  id: HirId,
+  ident: string,
+  kind: string,
+  span: Span,
+  defaultness: Defaultness
+}
+
+pick Defaultness {
+  Default,
+  Final
+}
+
+form ForeignItemRef {
+  id: HirId,
+  ident: string,
+  span: Span
+}
+
+// ============================================================================
+// CONSTRUCTOR FUNCTIONS
+// ============================================================================
+
+proc new_crate() -> Crate {
+  give Crate {
+    items: [],
+    trait_items: [],
+    impl_items: [],
+    foreign_items: [],
+    body_ids: [],
+    modules: [],
+    attrs: [],
+    span: Span {
+      lo: BytePos { value: 0 },
+      hi: BytePos { value: 0 },
+      ctxt: SyntaxContext { index: 0 },
+      parent: Option.None
+    },
+    hash: ""
+  }
+}
+
+proc new_item(ident: string, kind: ItemKind) -> Item {
+  give Item {
+    id: HirId { index: 0, local_index: 0 },
+    def_id: DefId { index: 0, krate: 0 },
+    ident: ident,
+    kind: kind,
+    vis: Visibility.Private,
+    span: Span {
+      lo: BytePos { value: 0 },
+      hi: BytePos { value: 0 },
+      ctxt: SyntaxContext { index: 0 },
+      parent: Option.None
+    },
+    attrs: [],
+    static_item: StaticItem {
+      ty: Ty {
+        hir_id: HirId { index: 0, local_index: 0 },
+        kind: TyKind.Err,
+        span: Span {
+          lo: BytePos { value: 0 },
+          hi: BytePos { value: 0 },
+          ctxt: SyntaxContext { index: 0 },
+          parent: Option.None
+        },
+        slice_ty: Ty {
+          hir_id: HirId { index: 0, local_index: 0 },
+          kind: TyKind.Err,
+          span: Span {
+            lo: BytePos { value: 0 },
+            hi: BytePos { value: 0 },
+            ctxt: SyntaxContext { index: 0 },
+            parent: Option.None
+          },
+          slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_len: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, box_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array: [], call_fn: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, call_args: [], method_name: "", method_receiver: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, method_args: [], binary_op: BinOp.Add, binary_lhs: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, binary_rhs: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, unary_op: UnOp.Neg, unary_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, literal: Lit { kind: LitKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, symbol: "", suffix: "", value: "" }, cast_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, cast_to_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_len: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, path: Path { segments: [], is_absolute: false }, bounds: [] },
+      mutability: Mutability.Not,
+      expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, box_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array: [], call_fn: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, call_args: [], method_name: "", method_receiver: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, method_args: [], binary_op: BinOp.Add, binary_lhs: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, binary_rhs: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, unary_op: UnOp.Neg, unary_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, literal: Lit { kind: LitKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, symbol: "", suffix: "", value: "" }, cast_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, cast_to_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_len: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, path: Path { segments: [], is_absolute: false }, bounds: [] }
+    },
+    const_item: ConstItem { ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_len: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, path: Path { segments: [], is_absolute: false }, bounds: [] }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, box_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array: [], call_fn: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, call_args: [], method_name: "", method_receiver: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, method_args: [], binary_op: BinOp.Add, binary_lhs: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, binary_rhs: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, unary_op: UnOp.Neg, unary_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, literal: Lit { kind: LitKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, symbol: "", suffix: "", value: "" }, cast_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, cast_to_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_len: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, path: Path { segments: [], is_absolute: false }, bounds: [] }
+    },
+    fn_item: FnItem { sig: FnSig { header: FnHeader { unsafety: Unsafety.Normal, asyncness: AsyncKind.Normal, constness: ConstKind.NotConst, abi: "" }, decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false } }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, body: FnBody { stmts: [], expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, box_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array: [], call_fn: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, call_args: [], method_name: "", method_receiver: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, method_args: [], binary_op: BinOp.Add, binary_lhs: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, binary_rhs: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, unary_op: UnOp.Neg, unary_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, literal: Lit { kind: LitKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, symbol: "", suffix: "", value: "" }, cast_expr: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, cast_to_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_len: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, path: Path { segments: [], is_absolute: false }, bounds: [] },
+      hir_id: HirId { index: 0, local_index: 0 }
+    }, asyncness: AsyncKind.Normal, unsafety: Unsafety.Normal, abi: "" },
+    ty_alias: TyAliasItem { generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_len: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, path: Path { segments: [], is_absolute: false }, bounds: [] }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, kind: TyAliasKind.TypeAlias },
+    enum_item: EnumItem { generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, variants: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } } },
+    struct_item: StructItem { generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, fields: [], kind: VariantData.Unit },
+    union_item: UnionItem { generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, fields: [] },
+    trait_item: TraitItem { generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, bounds: [], items: [], auto_trait: false, unsafe: false },
+    impl_item: ImplItem { unsafety: Unsafety.Normal, polarity: ImplPolarity.Positive, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, of_trait: TraitRef { path: Path { segments: [], is_absolute: false }, hir_ref_id: HirId { index: 0, local_index: 0 } }, self_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, slice_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, array_len: Expr { hir_id: HirId { index: 0, local_index: 0 }, kind: ExprKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, ptr_mutability: Mutability.Not, ptr_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, ref_lifetime: Lifetime { hir_id: HirId { index: 0, local_index: 0 }, ident: LifetimeIdent { name: "", span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, res: LifetimeRes.Error }, ref_mutability: Mutability.Not, ref_ty: Ty { hir_id: HirId { index: 0, local_index: 0 }, kind: TyKind.Err, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None }, bare_fn_sig: BareFnSig { unsafety: Unsafety.Normal, abi: "", decl: FnDecl { inputs: [], output: FnRetTy.DefaultReturn, implicit_self: ImplicitSelfKind.None, has_implicit_self: false }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, path: Path { segments: [], is_absolute: false }, bounds: [] }, path: Path { segments: [], is_absolute: false }, bounds: [] }, generics: Generics { params: [], where_clause: WhereClause { predicates: [], span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, span: Span { lo: BytePos { value: 0 }, hi: BytePos { value: 0 }, ctxt: SyntaxContext { index: 0 }, parent: Option.None } }, items: [], constness: ConstKind.NotConst },
+    use_item: UseItem { path: Path { segments: [], is_absolute: false }, kind: UseKind.Single },
+    macro_item: MacroItem { kind: MacroKind.Macro, path: Path { segments: [], is_absolute: false } }
+  }
+}
+
+export *
