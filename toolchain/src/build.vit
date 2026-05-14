@@ -107,6 +107,20 @@ proc init_stage2() -> BuildStage {
   }
 }
 
+# Initialize build stage for stage3
+proc init_stage3() -> BuildStage {
+  give BuildStage {
+    stage_number: 3,
+    stage_name: "stage3",
+    description: "Third self-hosting compilation for final verification",
+    input_compiler: "build/vittec2",
+    input_sources: ["toolchain/stage3/src/main.vit"],
+    output_compiler: "build/vittec3",
+    is_self_hosted: true,
+    verification_required: true
+  }
+}
+
 # Create build artifact record
 proc create_artifact(
   path: string,
@@ -140,14 +154,15 @@ proc init_build_state() -> BuildState {
   let stages: [BuildStage] = [
     init_seed_stage(),
     init_stage1(),
-    init_stage2()
+    init_stage2(),
+    init_stage3()
   ]
   
   let cache: BuildCache = init_build_cache("build/.cache")
   
   give BuildState {
     current_stage: 0,
-    total_stages: 3,
+    total_stages: 4,
     stages: stages,
     artifacts: [],
     cache: cache,

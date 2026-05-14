@@ -2,6 +2,7 @@ space vitte/compiler/backends/backend
 
 use src/vitte/compiler/bootstrap as bootstrap
 use src/vitte/compiler/ir/mir as ir_mir
+use src/vitte/compiler/backends/emit/c as c_emit
 
 form BackendManifest {
   stage: string,
@@ -174,6 +175,24 @@ proc emit_backend(module_value: MirModule, options: BackendOptions) -> BackendCo
   give BackendCompileResult {
     output_path: "",
     emitted_source: "backend(" + module_value.namespace_name + ")",
+    tool_command: "",
+    success: true,
+    notes: backend_notes(module_value)
+  }
+}
+
+proc emit_c_backend(module_value: MirModule, options: BackendOptions) -> BackendCompileResult {
+  let emit_options: c_emit.CEmitOptions = c_emit.default_c_emit_options()
+  if options.debug {
+    set emit_options.emit_debug_info = true
+  }
+
+  let header_source: string = c_emit.emit_c_header(module_value, emit_options)
+  let source_source: string = c_emit.emit_c_source(module_value, emit_options)
+
+  give BackendCompileResult {
+    output_path: "",
+    emitted_source: header_source + "\n" + source_source,
     tool_command: "",
     success: true,
     notes: backend_notes(module_value)

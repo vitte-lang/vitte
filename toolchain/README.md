@@ -8,9 +8,10 @@ The bootstrap toolchain handles the complete compilation pipeline:
 
 - **Stage 0 (Seed)**: Minimal bootstrap compiler compiled from C
 - **Stage 1**: First self-hosted compiler built using the seed
-- **Stage 2**: Second self-hosted compiler built using stage1 (for verification)
+- **Stage 2**: Second self-hosted compiler built using stage1
+- **Stage 3**: Third self-hosted compiler built using stage2 (for final verification)
 
-This ensures the final compiler is self-hosting and reproducible.
+This ensures the final compiler is self-hosting and reproducible, matching the sophistication of C compiler bootstraps.
 
 ## Architecture
 
@@ -23,7 +24,9 @@ C Compiler (cc)
        ↓
 [Stage 2: Verification] → vittec2 (binary)
        ↓
-   Verification: vittec1 == vittec2
+[Stage 3: Final Verification] → vittec3 (binary)
+       ↓
+   Verification: vittec2 == vittec3
        ↓
 Final Compiler Installation
 ```

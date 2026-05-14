@@ -191,20 +191,62 @@ run_bootstrap_stages() {
   
   log_info "Starting bootstrap: $mode mode"
   
-  # This would invoke the Vitte toolchain modules
-  # For now, we demonstrate the structure
+  # Set compilation flags based on mode
+  local cflags=""
+  local vitte_flags=""
   
-  log_info "Stage 0 (Seed): Compiling seed from C..."
-  # vittec compile toolchain/seed/src/main.vit -o build/vittec0
+  case "$mode" in
+    quick)
+      cflags="-O0 -g"
+      vitte_flags="--quick"
+      ;;
+    strict)
+      cflags="-O3 -Wall -Werror"
+      vitte_flags="--strict"
+      ;;
+    normal|*)
+      cflags="-O2"
+      vitte_flags=""
+      ;;
+  esac
   
+  # Stage 0: Use existing compiler as seed
+  log_info "Stage 0 (Seed): Using existing compiler as seed..."
+  cp "$PROJECT_ROOT/bin/vittec" "$BUILD_DIR/vittec0"
+  
+  # Stage 1: First self-hosted compilation
   log_info "Stage 1: First self-hosted compilation..."
-  # build/vittec0 compile toolchain/stage1/src/main.vit -o build/vittec1
+  if ! "$BUILD_DIR/vittec0" build-native --src "$PROJECT_ROOT/toolchain/stage1/src/main.vit" --out "$BUILD_DIR/vittec1" --stage stage1 $vitte_flags 2>/dev/null; then
+    log_error "Failed to generate shell script for stage1"
+    return 1
+  fi
+  # Fix common script issues
+  sed -i 's/trace_pipeline/${trace_pipeline:-0}/g' "$BUILD_DIR/vittec1" || true
   
+  # Stage 2: Second self-hosted compilation
   log_info "Stage 2: Second self-hosted compilation..."
-  # build/vittec1 compile toolchain/stage2/src/main.vit -o build/vittec2
+  if ! "$BUILD_DIR/vittec1" build-native --src "$PROJECT_ROOT/toolchain/stage2/src/main.vit" --out "$BUILD_DIR/vittec2" --stage stage2 $vitte_flags 2>/dev/null; then
+    log_error "Failed to generate shell script for stage2"
+    return 1
+  fi
+  # Fix common script issues
+  sed -i 's/trace_pipeline/${trace_pipeline:-0}/g' "$BUILD_DIR/vittec2" || true
   
+  # Stage 3: Third self-hosted compilation
+  log_info "Stage 3: Third self-hosted compilation..."
+  if ! "$BUILD_DIR/vittec2" build-native --src "$PROJECT_ROOT/toolchain/stage3/src/main.vit" --out "$BUILD_DIR/vittec3" --stage stage3 $vitte_flags 2>/dev/null; then
+    log_error "Failed to generate shell script for stage3"
+    return 1
+  fi
+  # Fix common script issues
+  sed -i 's/trace_pipeline/${trace_pipeline:-0}/g' "$BUILD_DIR/vittec3" || true
+  
+  # Verification: Compare stage2 and stage3
   log_info "Verification: Comparing binary outputs..."
-  # Compare build/vittec1 and build/vittec2
+  if ! cmp "$BUILD_DIR/vittec2" "$BUILD_DIR/vittec3"; then
+    log_error "Bootstrap verification failed: vittec2 != vittec3"
+    return 1
+  fi
   
   log_success "Bootstrap completed successfully"
 }
@@ -233,15 +275,18 @@ Bootstrap Plan:
   Phase 5: Stage 2
     - compile-stage2
 
-  Phase 6: Verification
+  Phase 6: Stage 3
+    - compile-stage3
+
+  Phase 7: Verification
     - verify-consistency
     - verify-features
 
-  Phase 7: Installation
+  Phase 8: Installation
     - install-compiler
     - install-libraries
 
-Estimated time: ~30 minutes (depends on CPU and I/O)
+Estimated time: ~35 minutes (depends on CPU and I/O)
 
 EOF
 }
