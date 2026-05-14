@@ -1688,6 +1688,7 @@ vitte-emit-gate:
 	@python3 tools/vitte_emit/generate_artifacts.py
 	@test -f target/vitte_emit/demo_module.vitir
 	@test -f target/vitte_emit/demo_module.vasm
+	@test -f target/vitte_emit/demo_module.abi.meta
 	@test -f target/vitte_emit/module_exports.vitl
 	@test -f target/reports/vitte_emit_coverage.md
 
@@ -1713,6 +1714,14 @@ wasm-backend-gate:
 	@test -f target/wasm/web_api_surface.txt
 	@test -f target/wasm/size_opt.txt
 	@test -f target/reports/wasm_backend_coverage.md
+
+
+.PHONY: backend-gate
+backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate
+
+
+.PHONY: backend-native-gate
+backend-native-gate: vitte-emit-gate
 
 
 .PHONY: package-manager-gate
@@ -1817,8 +1826,36 @@ concurrency-model-gate:
 	@test -f target/reports/concurrency_model_coverage.md
 
 
+.PHONY: compiler-architecture-gate
+compiler-architecture-gate:
+	@python3 tools/compiler_arch/run_checks.py
+	@python3 tools/compiler_arch/generate_artifacts.py
+	@test -f target/compiler_arch/layers.txt
+	@test -f target/compiler_arch/modules.txt
+	@test -f target/reports/compiler_architecture.md
+
+
+.PHONY: compiler-components-gate
+compiler-components-gate:
+	@python3 tools/compiler_components/run_checks.py
+	@python3 tools/compiler_components/generate_artifacts.py
+	@test -f target/compiler_components/components_count.txt
+	@test -f target/compiler_components/components_list.txt
+	@test -f target/reports/compiler_components_coverage.md
+
+
+.PHONY: compiler-topology-gate
+compiler-topology-gate:
+	@python3 tools/compiler_topology/run_checks.py
+	@python3 tools/compiler_topology/generate_artifacts.py
+	@test -f target/compiler_topology/top_level_dirs.txt
+	@test -f target/compiler_topology/topology_count.txt
+	@test -f target/compiler_topology/packed_modules_count.txt
+	@test -f target/reports/compiler_topology_coverage.md
+
+
 .PHONY: compiler-gate
-compiler-gate: vitte-bootstrap-check analysis-gate type-system-gate memory-model-gate concurrency-model-gate cli-diagnostics-snapshots tidy
+compiler-gate: vitte-bootstrap-check analysis-gate type-system-gate memory-model-gate concurrency-model-gate compiler-architecture-gate compiler-components-gate compiler-topology-gate backend-gate cli-diagnostics-snapshots tidy
 
 
 .PHONY: optimization-phase2-gate

@@ -19,6 +19,12 @@ def main() -> int:
         ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "intrinsics.vit",
         ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "ir.vit",
         ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "passes.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "config.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "validate.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "pipeline.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "contracts.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "lowering.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "abi_bridge.vit",
         ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "api_manifest.vitl",
         ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit" / "tests" / "smoke.vit",
     ]
@@ -35,6 +41,13 @@ def main() -> int:
     abi = ROOT / "tools" / "ffi" / "validate_abi_profiles.py"
     if not abi.exists():
         return fail("missing ABI validator gate dependency")
+
+    # Backend source must stay Vitte-native and avoid host compiler naming drift.
+    backend_files = sorted((ROOT / "src" / "vitte" / "compiler" / "backends" / "vitte_emit").glob("*.vit"))
+    for f in backend_files:
+        txt = f.read_text(encoding="utf-8")
+        if "rustc" in txt:
+            return fail(f"forbidden token `rustc` found in {f.relative_to(ROOT)}")
 
     print("[vitte-emit] checks passed")
     return 0

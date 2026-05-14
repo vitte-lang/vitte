@@ -1,33 +1,6 @@
-space vitte/compiler/driver/pipeline
+space vitte/compiler/driver
 
-use src/vitte/compiler/ir/ast as ir_ast
-use src/vitte/compiler/frontend/diagnostics as frontend_diagnostics
-use src/vitte/compiler/ir/hir as ir_hir
-use src/vitte/compiler/ir/mir as ir_mir
+<<< ========================================================= >>>
+<<< GENERATED FILE — Vitte Compiler Driver Module          >>
+<<< ========================================================= >>>
 
-form PipelineArtifacts {
-  source_name: string,
-  source_text: string,
-  parsed_module: ir_ast.AstModule,
-  real_hir: ir_hir.HirModule,
-  real_mir: ir_mir.MirModule,
-  diagnostics: frontend_diagnostics.DiagnosticBag
-}
-
-proc run(source_name: string, source_text: string) -> PipelineArtifacts {
-  let parsed: ir_ast.AstParseResult = ir_ast.parse_module(source_name, source_text)
-  let module: ir_ast.AstModule = parsed.module
-  let real_hir: ir_hir.HirModule = ir_ast.to_hir_module(module)
-  let real_mir: ir_mir.MirModule = ir_ast.to_mir_module(module)
-
-  give PipelineArtifacts {
-    source_name: source_name,
-    source_text: source_text,
-    parsed_module: module,
-    real_hir: real_hir,
-    real_mir: real_mir,
-    diagnostics: parsed.diagnostics
-  }
-}
-
-export *

@@ -1,0 +1,18 @@
+space vitte/compiler/fs_util/pipeline
+
+use src/vitte/compiler/fs_util/contracts as contracts
+use src/vitte/compiler/fs_util/metrics as metrics
+
+form PipelineResult {
+  success: bool,
+  notes: [string],
+}
+
+proc run_pipeline() -> PipelineResult {
+  let ok: bool = contracts.contracts_ok()
+  let m = metrics.baseline_metrics()
+  give PipelineResult {
+    success: ok && m.pass_total == m.checks_total,
+    notes: ["module=fs_util", "checks=" + (m.checks_total as string)],
+  }
+}
