@@ -48,6 +48,8 @@
 
 
 
+
+
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -74,6 +76,20 @@
 <li>Check the relevant doc page or test case.</li>
 <li>Run validation before asking for review.</li>
 </ol>
+<h2>Docs quality rules (required)</h2>
+<ul>
+<li>No <code>integrity=</code> / <code>crossorigin=</code> on local docs assets (<code>docs/*.html</code> links to <code>css/site.css</code>, <code>css/print.css</code>, <code>js/main.js</code>).</li>
+<li>Run full docs chain before push: <code>bash tools/docs_pipeline.sh phase1</code>.</li>
+<li>Run local page smoke before push: <code>tools/docs/verify_local_pages.sh</code> (checks <code>index/news/community</code> styles).</li>
+</ul>
+<h2>Browser smoke checklist</h2>
+<ol>
+<li>Open <code>index.html</code>, <code>news.html</code>, <code>community.html</code> on desktop and mobile viewport.</li>
+<li>Hard refresh each page.</li>
+<li>Verify browser console has <strong>0</strong> CSS/JS errors.</li>
+</ol>
+<h2>Post-deploy monitor</h2>
+<p>After deployment, run <code>tools/docs/post_deploy_css_monitor.sh</code> to alert if forbidden <code>integrity=</code> reappears on <code>site.css</code> in production.</p>
 <h2>Useful links</h2>
 <ul>
 <li><a href="source.html">Source overview</a></li>

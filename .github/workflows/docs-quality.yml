@@ -10,5 +10,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - run: bash tools/docs_pipeline.sh phase1
+      - run: python3 tools/docs/check_assets_policy.py
+      - run: tools/docs/verify_local_pages.sh
       - run: node -e "const fs=require('fs');const s=fs.statSync('docs/js/site-interactions.js').size;if(s>120000){process.exit(1)}"
       - run: cd tests/docs-playwright && npm ci && npx playwright install --with-deps && npm test

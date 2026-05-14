@@ -763,6 +763,11 @@ book-qa-strict:
 site-html:
 	@python3 tools/render_site_html.py --root docs
 
+.PHONY: docs-phase1-smoke
+docs-phase1-smoke:
+	@bash tools/docs_pipeline.sh phase1
+	@tools/docs/verify_local_pages.sh
+
 .PHONY: keywords-normalize
 keywords-normalize:
 	@python3 docs/book/chapters/keywords/scripts/normalize_keywords.py
@@ -1533,6 +1538,10 @@ help:
 	@echo "  make keywords-normalize apply strict keyword template on docs/book/chapters/keywords/*.md"
 	@echo "  make keywords-lint validate keyword quality sections/diagnostics/links/score"
 	@echo "  make site-html regenerate sibling HTML pages in English under docs/"
+	@echo "  make docs-phase1-smoke run full docs pipeline phase1 + local index/news/community style smoke"
+	@echo "  make docs-assets-refresh strip forbidden SRI/CORS attributes from docs HTML"
+	@echo "  make docs-assets-check fail if integrity/crossorigin reappears in docs/*.html"
+	@echo "  make docs-post-deploy-monitor check vitte-lang.org/index.html for forbidden site.css integrity/crossorigin"
 	@echo "  make test-examples build/check all examples/*.vit"
 	@echo "  make extern-abi validate #[extern] ABI (host profile)"
 	@echo "  make extern-abi-arduino validate #[extern] ABI (arduino)"
@@ -1651,13 +1660,25 @@ ffi-abi-gate:
 	@tools/ffi/generate_abi_coverage_report.py
 
 
+.PHONY: docs-assets-refresh
+docs-assets-refresh:
+	@tools/docs/refresh_assets_policy.py
+
+.PHONY: docs-assets-check
+docs-assets-check:
+	@tools/docs/check_assets_policy.py
+
+.PHONY: docs-post-deploy-monitor
+docs-post-deploy-monitor:
+	@tools/docs/post_deploy_css_monitor.sh
+
 .PHONY: docs-sri-refresh
-docs-sri-refresh:
-	@tools/docs/refresh_css_sri.py
+docs-sri-refresh: docs-assets-refresh
+	@echo "[deprecated] use: make docs-assets-refresh"
 
 .PHONY: docs-sri-check
-docs-sri-check:
-	@tools/docs/check_css_sri.py
+docs-sri-check: docs-assets-check
+	@echo "[deprecated] use: make docs-assets-check"
 
 
 .PHONY: vitte-emit-gate
