@@ -1,0 +1,490 @@
+space vitte/compiler/frontend/parser_extended
+
+use lexer
+use token
+use diagnostics
+use ast_extended
+
+// ============================================================================
+// PARSER STATE MANAGEMENT
+// ============================================================================
+
+form ParserState {
+  tokens: [token.Token],
+  current_index: int,
+  current_line: int,
+  current_column: int,
+  module_name: string,
+  diagnostics: diagnostics.DiagnosticBag
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+proc _current_token(state: ParserState) -> token.Token {
+  if state.current_index >= state.tokens.len {
+    give token.Token {
+      kind: token.TokenKind.Eof,
+      text: "",
+      line: state.current_line,
+      column: state.current_column
+    }
+  }
+  give state.tokens[state.current_index]
+}
+
+proc _peek_token(state: ParserState, offset: int) -> token.Token {
+  let index: int = state.current_index + offset
+  if index >= state.tokens.len {
+    give token.Token {
+      kind: token.TokenKind.Eof,
+      text: "",
+      line: state.current_line,
+      column: state.current_column
+    }
+  }
+  give state.tokens[index]
+}
+
+proc _advance(state: ParserState) -> ParserState {
+  if state.current_index < state.tokens.len {
+    let tok: token.Token = state.tokens[state.current_index]
+    set state.current_line = tok.line
+    set state.current_column = tok.column
+    set state.current_index = state.current_index + 1
+  }
+  give state
+}
+
+proc _expect(state: ParserState, text: string) -> (ParserState, bool) {
+  let tok: token.Token = _current_token(state)
+  if tok.text == text {
+    give (_advance(state), true)
+  }
+  give (state, false)
+}
+
+proc _match_keyword(tok: token.Token, keyword: string) -> bool {
+  if tok.kind != token.TokenKind.Keyword {
+    give false
+  }
+  give tok.text == keyword
+}
+
+// ============================================================================
+// DECLARATION PARSING - Top Level
+// ============================================================================
+
+proc _parse_toplevel_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let tok: token.Token = _current_token(state)
+
+  if _match_keyword(tok, "space") {
+    give _parse_space_decl(state)
+  }
+
+  if _match_keyword(tok, "use") {
+    give _parse_use_decl(state)
+  }
+
+  if _match_keyword(tok, "export") {
+    give _parse_export_decl(state)
+  }
+
+  if _match_keyword(tok, "const") {
+    give _parse_const_decl(state)
+  }
+
+  if _match_keyword(tok, "static") {
+    give _parse_static_decl(state)
+  }
+
+  if _match_keyword(tok, "global") {
+    give _parse_global_decl(state)
+  }
+
+  if _match_keyword(tok, "type") {
+    give _parse_type_decl(state)
+  }
+
+  if _match_keyword(tok, "opaque") {
+    give _parse_opaque_type_decl(state)
+  }
+
+  if _match_keyword(tok, "extern") {
+    give _parse_extern_decl(state)
+  }
+
+  if _match_keyword(tok, "form") {
+    give _parse_form_decl(state)
+  }
+
+  if _match_keyword(tok, "class") {
+    give _parse_class_decl(state)
+  }
+
+  if _match_keyword(tok, "union") {
+    give _parse_union_decl(state)
+  }
+
+  if _match_keyword(tok, "bits") {
+    give _parse_bits_decl(state)
+  }
+
+  if _match_keyword(tok, "pick") {
+    give _parse_pick_decl(state)
+  }
+
+  if _match_keyword(tok, "flags") {
+    give _parse_flags_decl(state)
+  }
+
+  if _match_keyword(tok, "trait") {
+    give _parse_trait_decl(state)
+  }
+
+  if _match_keyword(tok, "impl") {
+    give _parse_impl_decl(state)
+  }
+
+  if _match_keyword(tok, "proc") {
+    give _parse_proc_decl(state)
+  }
+
+  if _match_keyword(tok, "intrinsic") {
+    give _parse_intrinsic_decl(state)
+  }
+
+  if _match_keyword(tok, "macro") {
+    give _parse_macro_decl(state)
+  }
+
+  if _match_keyword(tok, "comptime") {
+    give _parse_comptime_decl(state)
+  }
+
+  if _match_keyword(tok, "static_assert") {
+    give _parse_static_assert_decl(state)
+  }
+
+  if _match_keyword(tok, "test") {
+    give _parse_test_decl(state)
+  }
+
+  if _match_keyword(tok, "bench") {
+    give _parse_bench_decl(state)
+  }
+
+  if _match_keyword(tok, "entry") {
+    give _parse_entry_decl(state)
+  }
+
+  if _match_keyword(tok, "compiler") {
+    give _parse_compiler_decl(state)
+  }
+
+  if _match_keyword(tok, "query") {
+    give _parse_query_decl(state)
+  }
+
+  if _match_keyword(tok, "pass") {
+    give _parse_pass_decl(state)
+  }
+
+  if _match_keyword(tok, "backend") {
+    give _parse_backend_decl(state)
+  }
+
+  if _match_keyword(tok, "diagnostic") {
+    give _parse_diagnostic_decl(state)
+  }
+
+  // Unknown declaration
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Unknown, tok.text)
+  set decl.raw_text = tok.text
+  give (state, decl, false)
+}
+
+// ============================================================================
+// MINIMAL IMPLEMENTATIONS OF DECLARATION PARSERS
+// ============================================================================
+// For MVP, these extract the name and raw text. Full AST construction
+// can be added iteratively as each declaration type is needed.
+
+proc _parse_space_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)  // skip 'space'
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Space, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_use_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Use, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_export_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Export, "export")
+  give (state_after_kw, decl, true)
+}
+
+proc _parse_const_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Const, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_static_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Static, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_global_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Global, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_type_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.TypeAlias, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_opaque_type_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let state_after_type: ParserState = _advance(state_after_kw)
+  let tok: token.Token = _current_token(state_after_type)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.OpaqueType, tok.text)
+  give (_advance(state_after_type), decl, true)
+}
+
+proc _parse_extern_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+
+  if tok.text == "type" {
+    let state_after_type: ParserState = _advance(state_after_kw)
+    let name_tok: token.Token = _current_token(state_after_type)
+    let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.ExternType, name_tok.text)
+    give (_advance(state_after_type), decl, true)
+  }
+
+  if tok.text == "{" {
+    let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.ExternBlock, "extern")
+    give (state_after_kw, decl, true)
+  }
+
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Unknown, tok.text)
+  give (state_after_kw, decl, false)
+}
+
+proc _parse_form_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Form, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_class_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Class, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_union_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Union, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_bits_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Bits, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_pick_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Pick, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_flags_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Flags, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_trait_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Trait, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_impl_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Impl, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_proc_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Proc, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_intrinsic_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Intrinsic, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_macro_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Macro, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_comptime_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Comptime, "comptime")
+  give (state_after_kw, decl, true)
+}
+
+proc _parse_static_assert_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.StaticAssert, "static_assert")
+  give (state_after_kw, decl, true)
+}
+
+proc _parse_test_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Test, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_bench_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Bench, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_entry_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Entry, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_compiler_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Compiler, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_query_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Query, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_pass_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Pass, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_backend_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Backend, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+proc _parse_diagnostic_decl(state: ParserState) -> (ParserState, ast_extended.Decl, bool) {
+  let state_after_kw: ParserState = _advance(state)
+  let tok: token.Token = _current_token(state_after_kw)
+  let decl: ast_extended.Decl = ast_extended.empty_decl(ast_extended.DeclKind.Diagnostic, tok.text)
+  give (_advance(state_after_kw), decl, true)
+}
+
+// ============================================================================
+// MAIN PARSING INTERFACE
+// ============================================================================
+
+proc parse_with_extended_ast(
+  tokens: [token.Token],
+  source_name: string,
+  module_name: string
+) -> (ast_extended.ExtendedModule, diagnostics.DiagnosticBag) {
+  let module: ast_extended.ExtendedModule = ast_extended.ExtendedModule {
+    source_name: source_name,
+    space_name: "",
+    imports: [],
+    exports: [],
+    declarations: [],
+    diagnostics: [],
+    decl_count_by_kind: [],
+    stmt_count: 0,
+    expr_count: 0
+  }
+
+  let bag: diagnostics.DiagnosticBag = diagnostics.new_bag()
+  let state: ParserState = ParserState {
+    tokens: tokens,
+    current_index: 0,
+    current_line: 1,
+    current_column: 1,
+    module_name: module_name,
+    diagnostics: bag
+  }
+
+  // Parse all top-level declarations
+  while state.current_index < state.tokens.len {
+    let tok: token.Token = _current_token(state)
+
+    if tok.kind == token.TokenKind.Eof {
+      give (module, bag)
+    }
+
+    let result: (ParserState, ast_extended.Decl, bool) = _parse_toplevel_decl(state)
+    let state = result.0
+    let decl: ast_extended.Decl = result.1
+    let success: bool = result.2
+
+    if success {
+      set module.declarations = module.declarations + [decl]
+      if decl.kind == ast_extended.DeclKind.Use {
+        set module.imports = module.imports + [decl]
+      }
+    }
+  }
+
+  give (module, bag)
+}
+
+export *
