@@ -1,0 +1,503 @@
+
+space vitte/bootstrap/toolchain/bootstrap_vitte/core/config/flags
+
+<<< ============================================================
+    Vitte Bootstrap Configuration Flags Runtime
+    bootstrap configuration + feature gates + compiler modes
+   ============================================================ >>>
+
+type BootstrapFlagId = u64
+type BootstrapTimestamp = u64
+
+type BootstrapFlagLevel = u32
+
+const FLAG_INFO     : BootstrapFlagLevel = 0
+const FLAG_WARNING  : BootstrapFlagLevel = 1
+const FLAG_ERROR    : BootstrapFlagLevel = 2
+const FLAG_INTERNAL : BootstrapFlagLevel = 3
+
+form BootstrapFeatureFlag {
+    id                  : BootstrapFlagId
+    name                : string
+    description         : string
+    enabled             : bool
+    experimental        : bool
+    unstable            : bool
+    internal            : bool
+    requires_restart    : bool
+    default_enabled     : bool
+    level               : BootstrapFlagLevel
+}
+
+form BootstrapCompilerFlags {
+    optimization_level          : u32
+    debug_symbols               : bool
+    incremental                 : bool
+    distributed                 : bool
+    deterministic               : bool
+    sandboxed                   : bool
+    telemetry                   : bool
+    lto                         : bool
+    thin_lto                    : bool
+    sanitizer_address           : bool
+    sanitizer_thread            : bool
+    sanitizer_memory            : bool
+    panic_abort                 : bool
+    overflow_checks             : bool
+    stack_protector             : bool
+    runtime_checks              : bool
+    async_runtime               : bool
+    bootstrap_cache             : bool
+    compiler_metrics            : bool
+    dependency_tracking         : bool
+    distributed_scheduler       : bool
+    distributed_codegen         : bool
+    distributed_linking         : bool
+    distributed_cache           : bool
+    reproducible_builds         : bool
+    stable_hashing              : bool
+    deterministic_ordering      : bool
+    debug_assertions            : bool
+    profile_guided_optimization : bool
+    static_linking              : bool
+    dynamic_linking             : bool
+}
+
+form BootstrapRuntimeFlags {
+    parallel_jobs              : usize
+    max_scheduler_threads      : usize
+    max_active_processes       : usize
+    process_timeout_ms         : u64
+    scheduler_tick_ms          : u64
+    cache_capacity             : usize
+    download_parallelism       : usize
+    channel_capacity           : usize
+    diagnostics_capacity       : usize
+    build_graph_capacity       : usize
+    memory_limit_mb            : usize
+    io_buffer_size             : usize
+    worker_stack_size          : usize
+}
+
+form BootstrapTargetFlags {
+    host_triple                : string
+    target_triple              : string
+    target_cpu                 : string
+    target_features            : [string]
+    target_endianness          : string
+    target_pointer_width       : usize
+    target_vendor              : string
+    target_operating_system    : string
+    target_environment         : string
+    target_abi                 : string
+    cross_compiling            : bool
+}
+
+form BootstrapDiagnosticsFlags {
+    colored_output             : bool
+    verbose_output             : bool
+    trace_enabled              : bool
+    debug_logging              : bool
+    timings                    : bool
+    emit_json                  : bool
+    emit_graphviz              : bool
+    emit_metrics               : bool
+    emit_dependency_graph      : bool
+    emit_hir                   : bool
+    emit_mir                   : bool
+    emit_ir                    : bool
+    emit_llvm_ir               : bool
+    emit_assembly              : bool
+    emit_linker_commands       : bool
+}
+
+form BootstrapConfiguration {
+    compiler                   : BootstrapCompilerFlags
+    runtime                    : BootstrapRuntimeFlags
+    target                     : BootstrapTargetFlags
+    diagnostics                : BootstrapDiagnosticsFlags
+    feature_flags              : [BootstrapFeatureFlag]
+    total_feature_flags        : usize
+    configuration_timestamp    : BootstrapTimestamp
+    loaded_from_cache          : bool
+    validated                  : bool
+}
+
+proc flags_now() -> BootstrapTimestamp {
+    <<< --------------------------------------------------------
+        TODO:
+        runtime monotonic clock integration
+       -------------------------------------------------------- >>>
+
+    give 0
+}
+
+proc make_feature_flag(
+    id : BootstrapFlagId,
+    name : string,
+    description : string
+) -> BootstrapFeatureFlag {
+    give BootstrapFeatureFlag {
+        id               : id,
+        name             : name,
+        description      : description,
+        enabled          : false,
+        experimental     : false,
+        unstable         : false,
+        internal         : false,
+        requires_restart : false,
+        default_enabled  : false,
+        level            : FLAG_INFO
+    }
+}
+
+proc make_compiler_flags() -> BootstrapCompilerFlags {
+    give BootstrapCompilerFlags {
+        optimization_level          : 2,
+        debug_symbols               : true,
+        incremental                 : true,
+        distributed                 : true,
+        deterministic               : true,
+        sandboxed                   : false,
+        telemetry                   : true,
+        lto                         : false,
+        thin_lto                    : false,
+        sanitizer_address           : false,
+        sanitizer_thread            : false,
+        sanitizer_memory            : false,
+        panic_abort                 : true,
+        overflow_checks             : true,
+        stack_protector             : true,
+        runtime_checks              : true,
+        async_runtime               : true,
+        bootstrap_cache             : true,
+        compiler_metrics            : true,
+        dependency_tracking         : true,
+        distributed_scheduler       : true,
+        distributed_codegen         : true,
+        distributed_linking         : true,
+        distributed_cache           : true,
+        reproducible_builds         : true,
+        stable_hashing              : true,
+        deterministic_ordering      : true,
+        debug_assertions            : true,
+        profile_guided_optimization : false,
+        static_linking              : false,
+        dynamic_linking             : true
+    }
+}
+
+proc make_runtime_flags() -> BootstrapRuntimeFlags {
+    give BootstrapRuntimeFlags {
+        parallel_jobs         : 16,
+        max_scheduler_threads : 16,
+        max_active_processes  : 64,
+        process_timeout_ms    : 30000,
+        scheduler_tick_ms     : 1,
+        cache_capacity        : 4096,
+        download_parallelism  : 8,
+        channel_capacity      : 8192,
+        diagnostics_capacity  : 16384,
+        build_graph_capacity  : 65536,
+        memory_limit_mb       : 32768,
+        io_buffer_size        : 65536,
+        worker_stack_size     : 4194304
+    }
+}
+
+proc make_target_flags() -> BootstrapTargetFlags {
+    give BootstrapTargetFlags {
+        host_triple             : "x86_64-linux-gnu",
+        target_triple           : "x86_64-linux-gnu",
+        target_cpu              : "native",
+        target_features         : [],
+        target_endianness       : "little",
+        target_pointer_width    : 64,
+        target_vendor           : "unknown",
+        target_operating_system : "linux",
+        target_environment      : "gnu",
+        target_abi              : "sysv",
+        cross_compiling         : false
+    }
+}
+
+proc make_diagnostics_flags() -> BootstrapDiagnosticsFlags {
+    give BootstrapDiagnosticsFlags {
+        colored_output        : true,
+        verbose_output        : true,
+        trace_enabled         : false,
+        debug_logging         : false,
+        timings               : true,
+        emit_json             : false,
+        emit_graphviz         : false,
+        emit_metrics          : true,
+        emit_dependency_graph : true,
+        emit_hir              : false,
+        emit_mir              : false,
+        emit_ir               : false,
+        emit_llvm_ir          : false,
+        emit_assembly         : false,
+        emit_linker_commands  : false
+    }
+}
+
+proc default_configuration() -> BootstrapConfiguration {
+    give BootstrapConfiguration {
+        compiler                : make_compiler_flags(),
+        runtime                 : make_runtime_flags(),
+        target                  : make_target_flags(),
+        diagnostics             : make_diagnostics_flags(),
+        feature_flags           : [],
+        total_feature_flags     : 0,
+        configuration_timestamp : flags_now(),
+        loaded_from_cache       : false,
+        validated               : false
+    }
+}
+
+proc configuration_push_feature(
+    configuration : *BootstrapConfiguration,
+    feature : BootstrapFeatureFlag
+) {
+    configuration.feature_flags.push(feature)
+    configuration.total_feature_flags =
+        configuration.total_feature_flags + 1
+}
+
+proc enable_feature(
+    feature : *BootstrapFeatureFlag
+) {
+    feature.enabled = true
+}
+
+proc disable_feature(
+    feature : *BootstrapFeatureFlag
+) {
+    feature.enabled = false
+}
+
+proc validate_configuration(
+    configuration : *BootstrapConfiguration
+) -> bool {
+    emit "validate-configuration"
+
+    if configuration.runtime.parallel_jobs == 0 {
+        give false
+    }
+
+    if configuration.runtime.max_scheduler_threads == 0 {
+        give false
+    }
+
+    if configuration.runtime.memory_limit_mb == 0 {
+        give false
+    }
+
+    configuration.validated = true
+
+    give true
+}
+
+proc configuration_enable_trace(
+    configuration : *BootstrapConfiguration
+) {
+    configuration.diagnostics.trace_enabled = true
+}
+
+proc configuration_enable_debug_logging(
+    configuration : *BootstrapConfiguration
+) {
+    configuration.diagnostics.debug_logging = true
+}
+
+proc configuration_enable_llvm_ir(
+    configuration : *BootstrapConfiguration
+) {
+    configuration.diagnostics.emit_llvm_ir = true
+}
+
+proc configuration_enable_assembly(
+    configuration : *BootstrapConfiguration
+) {
+    configuration.diagnostics.emit_assembly = true
+}
+
+proc configuration_enable_graphviz(
+    configuration : *BootstrapConfiguration
+) {
+    configuration.diagnostics.emit_graphviz = true
+}
+
+proc configuration_enable_sandbox(
+    configuration : *BootstrapConfiguration
+) {
+    configuration.compiler.sandboxed = true
+}
+
+proc configuration_enable_lto(
+    configuration : *BootstrapConfiguration
+) {
+    configuration.compiler.lto = true
+}
+
+proc configuration_enable_thin_lto(
+    configuration : *BootstrapConfiguration
+) {
+    configuration.compiler.thin_lto = true
+}
+
+proc configuration_enable_distributed(
+    configuration : *BootstrapConfiguration
+) {
+    configuration.compiler.distributed = true
+}
+
+proc configuration_enable_pgo(
+    configuration : *BootstrapConfiguration
+) {
+    configuration.compiler.profile_guided_optimization = true
+}
+
+proc configuration_set_release(
+    configuration : *BootstrapConfiguration
+) {
+    configuration.compiler.optimization_level = 3
+    configuration.compiler.debug_assertions = false
+}
+
+proc print_feature(
+    feature : *BootstrapFeatureFlag
+) {
+    emit "feature"
+    emit feature.id
+    emit feature.name
+    emit feature.description
+    emit feature.enabled
+    emit feature.experimental
+}
+
+proc print_compiler_flags(
+    flags : *BootstrapCompilerFlags
+) {
+    emit "compiler-flags"
+    emit flags.optimization_level
+    emit flags.incremental
+    emit flags.distributed
+    emit flags.deterministic
+    emit flags.lto
+    emit flags.thin_lto
+}
+
+proc print_runtime_flags(
+    flags : *BootstrapRuntimeFlags
+) {
+    emit "runtime-flags"
+    emit flags.parallel_jobs
+    emit flags.max_scheduler_threads
+    emit flags.max_active_processes
+    emit flags.memory_limit_mb
+}
+
+proc print_target_flags(
+    flags : *BootstrapTargetFlags
+) {
+    emit "target-flags"
+    emit flags.host_triple
+    emit flags.target_triple
+    emit flags.target_cpu
+    emit flags.cross_compiling
+}
+
+proc print_diagnostics_flags(
+    flags : *BootstrapDiagnosticsFlags
+) {
+    emit "diagnostics-flags"
+    emit flags.verbose_output
+    emit flags.trace_enabled
+    emit flags.emit_metrics
+    emit flags.emit_dependency_graph
+}
+
+proc print_configuration(
+    configuration : *BootstrapConfiguration
+) {
+    emit "bootstrap-configuration"
+    emit configuration.total_feature_flags
+    emit configuration.loaded_from_cache
+    emit configuration.validated
+
+    print_compiler_flags(
+        &configuration.compiler
+    )
+
+    print_runtime_flags(
+        &configuration.runtime
+    )
+
+    print_target_flags(
+        &configuration.target
+    )
+
+    print_diagnostics_flags(
+        &configuration.diagnostics
+    )
+}
+
+proc bootstrap_vitte_stub() -> bool {
+    let configuration = default_configuration()
+
+    configuration_enable_trace(&configuration)
+    configuration_enable_debug_logging(&configuration)
+    configuration_enable_llvm_ir(&configuration)
+    configuration_enable_assembly(&configuration)
+    configuration_enable_graphviz(&configuration)
+    configuration_enable_sandbox(&configuration)
+    configuration_enable_lto(&configuration)
+    configuration_enable_thin_lto(&configuration)
+    configuration_enable_distributed(&configuration)
+    configuration_enable_pgo(&configuration)
+    configuration_set_release(&configuration)
+
+    let async_feature = make_feature_flag(
+        0,
+        "async-runtime",
+        "enable async bootstrap runtime"
+    )
+
+    async_feature.enabled = true
+    async_feature.experimental = true
+
+    let distributed_feature = make_feature_flag(
+        1,
+        "distributed-bootstrap",
+        "enable distributed compilation"
+    )
+
+    distributed_feature.enabled = true
+
+    configuration_push_feature(
+        &configuration,
+        async_feature
+    )
+
+    configuration_push_feature(
+        &configuration,
+        distributed_feature
+    )
+
+    let valid = validate_configuration(
+        &configuration
+    )
+
+    print_feature(
+        &configuration.feature_flags[0]
+    )
+
+    print_feature(
+        &configuration.feature_flags[1]
+    )
+
+    print_configuration(&configuration)
+
+    give valid
+}

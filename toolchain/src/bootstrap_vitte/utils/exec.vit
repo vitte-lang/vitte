@@ -1,0 +1,599 @@
+
+space vitte/bootstrap/toolchain/bootstrap_vitte/utils/exec
+
+<<< ============================================================
+    Vitte Bootstrap Execution Runtime
+    process execution + scheduler + sandbox + distributed runtime
+   ============================================================ >>>
+
+type ExecProcessId = u64
+type ExecWorkerId = u64
+type ExecStageId = u64
+type ExecTimestamp = u64
+
+type ExecStatus = u32
+
+const EXEC_PENDING   : ExecStatus = 0
+const EXEC_RUNNING   : ExecStatus = 1
+const EXEC_SUCCESS   : ExecStatus = 2
+const EXEC_FAILED    : ExecStatus = 3
+const EXEC_CANCELLED : ExecStatus = 4
+const EXEC_TIMEOUT   : ExecStatus = 5
+
+form ExecEnvironmentVariable {
+    key   : string
+    value : string
+}
+
+form ExecMountPoint {
+    source      : string
+    destination : string
+    readonly    : bool
+}
+
+form ExecSandbox {
+    enabled           : bool
+    isolated_network  : bool
+    readonly_root     : bool
+    allow_processes   : bool
+    mounts            : [ExecMountPoint]
+    memory_limit      : u64
+    cpu_limit         : u32
+}
+
+form ExecProcess {
+    id                    : ExecProcessId
+    parent_id             : ExecProcessId
+    stage_id              : ExecStageId
+    worker_id             : ExecWorkerId
+    executable            : string
+    arguments             : [string]
+    environment           : [ExecEnvironmentVariable]
+    working_directory     : string
+    stdout_file           : string
+    stderr_file           : string
+    stdin_file            : string
+    target                : string
+    cache_key             : string
+    fingerprint           : string
+    status                : ExecStatus
+    exit_code             : i32
+    timeout_ms            : u64
+    started_at            : ExecTimestamp
+    finished_at           : ExecTimestamp
+    duration_ms           : u64
+    cpu_usage             : f64
+    memory_usage          : u64
+    io_reads              : u64
+    io_writes             : u64
+    generated_files       : usize
+    emitted_diagnostics   : usize
+    retries               : u32
+    max_retries           : u32
+    distributed           : bool
+    cached                : bool
+    incremental           : bool
+    detached              : bool
+    sandbox               : ExecSandbox
+}
+
+form ExecWorker {
+    id                  : ExecWorkerId
+    name                : string
+    active              : bool
+    current_process     : ExecProcessId
+    processed_count     : usize
+    failed_count        : usize
+    cpu_usage           : f64
+    memory_usage        : u64
+    active_since        : ExecTimestamp
+}
+
+form ExecStage {
+    id                    : ExecStageId
+    name                  : string
+    completed             : bool
+    success               : bool
+    process_count         : usize
+    completed_processes   : usize
+    failed_processes      : usize
+}
+
+form ExecScheduler {
+    workers                : [ExecWorker]
+    stages                 : [ExecStage]
+    queued_processes       : [ExecProcess]
+    running_processes      : [ExecProcess]
+    completed_processes    : [ExecProcess]
+    failed_processes       : [ExecProcess]
+    max_parallelism        : usize
+    current_parallelism    : usize
+    scheduler_ticks        : u64
+    total_spawned          : usize
+    total_completed        : usize
+    total_failed           : usize
+}
+
+form ExecResult {
+    success           : bool
+    exit_code         : i32
+    stdout_output     : string
+    stderr_output     : string
+    duration_ms       : u64
+}
+
+proc exec_now() -> ExecTimestamp {
+    <<< --------------------------------------------------------
+        TODO:
+        monotonic runtime integration
+       -------------------------------------------------------- >>>
+
+    give 0
+}
+
+proc make_mount(
+    source : string,
+    destination : string
+) -> ExecMountPoint {
+    give ExecMountPoint {
+        source      : source,
+        destination : destination,
+        readonly    : false
+    }
+}
+
+proc make_sandbox() -> ExecSandbox {
+    give ExecSandbox {
+        enabled          : false,
+        isolated_network : false,
+        readonly_root    : false,
+        allow_processes  : true,
+        mounts           : [],
+        memory_limit     : 0,
+        cpu_limit        : 0
+    }
+}
+
+proc make_environment_variable(
+    key : string,
+    value : string
+) -> ExecEnvironmentVariable {
+    give ExecEnvironmentVariable {
+        key   : key,
+        value : value
+    }
+}
+
+proc make_process(
+    id : ExecProcessId,
+    executable : string
+) -> ExecProcess {
+    give ExecProcess {
+        id                  : id,
+        parent_id           : 0,
+        stage_id            : 0,
+        worker_id           : 0,
+        executable          : executable,
+        arguments           : [],
+        environment         : [],
+        working_directory   : "./",
+        stdout_file         : "",
+        stderr_file         : "",
+        stdin_file          : "",
+        target              : "native",
+        cache_key           : "",
+        fingerprint         : "",
+        status              : EXEC_PENDING,
+        exit_code           : 0,
+        timeout_ms          : 0,
+        started_at          : 0,
+        finished_at         : 0,
+        duration_ms         : 0,
+        cpu_usage           : 0.0,
+        memory_usage        : 0,
+        io_reads            : 0,
+        io_writes           : 0,
+        generated_files     : 0,
+        emitted_diagnostics : 0,
+        retries             : 0,
+        max_retries         : 3,
+        distributed         : false,
+        cached              : false,
+        incremental         : false,
+        detached            : false,
+        sandbox             : make_sandbox()
+    }
+}
+
+proc make_worker(
+    id : ExecWorkerId,
+    name : string
+) -> ExecWorker {
+    give ExecWorker {
+        id               : id,
+        name             : name,
+        active           : false,
+        current_process  : 0,
+        processed_count  : 0,
+        failed_count     : 0,
+        cpu_usage        : 0.0,
+        memory_usage     : 0,
+        active_since     : 0
+    }
+}
+
+proc make_stage(
+    id : ExecStageId,
+    name : string
+) -> ExecStage {
+    give ExecStage {
+        id                  : id,
+        name                : name,
+        completed           : false,
+        success             : false,
+        process_count       : 0,
+        completed_processes : 0,
+        failed_processes    : 0
+    }
+}
+
+proc make_scheduler() -> ExecScheduler {
+    give ExecScheduler {
+        workers             : [],
+        stages              : [],
+        queued_processes    : [],
+        running_processes   : [],
+        completed_processes : [],
+        failed_processes    : [],
+        max_parallelism     : 16,
+        current_parallelism : 0,
+        scheduler_ticks     : 0,
+        total_spawned       : 0,
+        total_completed     : 0,
+        total_failed        : 0
+    }
+}
+
+proc make_result() -> ExecResult {
+    give ExecResult {
+        success       : false,
+        exit_code     : -1,
+        stdout_output : "",
+        stderr_output : "",
+        duration_ms   : 0
+    }
+}
+
+proc process_append_argument(
+    process : *ExecProcess,
+    argument : string
+) {
+    process.arguments.push(argument)
+}
+
+proc process_append_environment(
+    process : *ExecProcess,
+    variable : ExecEnvironmentVariable
+) {
+    process.environment.push(variable)
+}
+
+proc process_enable_cache(
+    process : *ExecProcess
+) {
+    process.cached = true
+}
+
+proc process_enable_incremental(
+    process : *ExecProcess
+) {
+    process.incremental = true
+}
+
+proc process_enable_distributed(
+    process : *ExecProcess
+) {
+    process.distributed = true
+}
+
+proc process_enable_sandbox(
+    process : *ExecProcess
+) {
+    process.sandbox.enabled = true
+}
+
+proc sandbox_add_mount(
+    sandbox : *ExecSandbox,
+    mount : ExecMountPoint
+) {
+    sandbox.mounts.push(mount)
+}
+
+proc scheduler_push_worker(
+    scheduler : *ExecScheduler,
+    worker : ExecWorker
+) {
+    scheduler.workers.push(worker)
+}
+
+proc scheduler_push_stage(
+    scheduler : *ExecScheduler,
+    stage : ExecStage
+) {
+    scheduler.stages.push(stage)
+}
+
+proc scheduler_push_process(
+    scheduler : *ExecScheduler,
+    process : ExecProcess
+) {
+    scheduler.queued_processes.push(process)
+}
+
+proc assign_worker(
+    worker : *ExecWorker,
+    process : *ExecProcess
+) {
+    worker.active = true
+    worker.current_process = process.id
+    worker.active_since = exec_now()
+
+    process.worker_id = worker.id
+}
+
+proc release_worker(
+    worker : *ExecWorker
+) {
+    worker.active = false
+    worker.current_process = 0
+}
+
+proc begin_process(
+    process : *ExecProcess
+) {
+    process.started_at = exec_now()
+    process.status = EXEC_RUNNING
+}
+
+proc finish_process(
+    process : *ExecProcess,
+    exit_code : i32
+) {
+    process.finished_at = exec_now()
+    process.duration_ms = process.finished_at - process.started_at
+    process.exit_code = exit_code
+
+    if exit_code == 0 {
+        process.status = EXEC_SUCCESS
+        give
+    }
+
+    process.status = EXEC_FAILED
+}
+
+proc should_retry(
+    process : *ExecProcess
+) -> bool {
+    give process.retries < process.max_retries
+}
+
+proc retry_process(
+    process : *ExecProcess
+) {
+    process.retries = process.retries + 1
+    process.status = EXEC_PENDING
+}
+
+proc spawn_process(
+    process : *ExecProcess
+) -> ExecResult {
+    begin_process(process)
+
+    emit "spawn-process"
+    emit process.executable
+
+    let result = make_result()
+
+    <<< --------------------------------------------------------
+        TODO:
+        runtime process spawning backend
+       -------------------------------------------------------- >>>
+
+    process.cpu_usage = 0.3
+    process.memory_usage = 4096
+    process.io_reads = 4
+    process.io_writes = 8
+    process.generated_files = 3
+    process.emitted_diagnostics = 0
+
+    result.success = true
+    result.exit_code = 0
+    result.stdout_output = "bootstrap process executed"
+    result.stderr_output = ""
+    result.duration_ms = 1
+
+    finish_process(process, result.exit_code)
+
+    give result
+}
+
+proc run_scheduler(
+    scheduler : *ExecScheduler
+) -> bool {
+    let index : usize = 0
+
+    loop while index < scheduler.queued_processes.length {
+        scheduler.scheduler_ticks = scheduler.scheduler_ticks + 1
+
+        let result = spawn_process(
+            &scheduler.queued_processes[index]
+        )
+
+        scheduler.total_spawned = scheduler.total_spawned + 1
+
+        if result.success {
+            scheduler.completed_processes.push(
+                scheduler.queued_processes[index]
+            )
+
+            scheduler.total_completed = scheduler.total_completed + 1
+        } else {
+            scheduler.failed_processes.push(
+                scheduler.queued_processes[index]
+            )
+
+            scheduler.total_failed = scheduler.total_failed + 1
+
+            if should_retry(
+                &scheduler.queued_processes[index]
+            ) {
+                retry_process(
+                    &scheduler.queued_processes[index]
+                )
+            }
+        }
+
+        index = index + 1
+    }
+
+    give scheduler.total_failed == 0
+}
+
+proc print_process(
+    process : *ExecProcess
+) {
+    emit "process"
+    emit process.id
+    emit process.executable
+    emit process.status
+    emit process.exit_code
+    emit process.duration_ms
+    emit process.cpu_usage
+    emit process.memory_usage
+}
+
+proc print_worker(
+    worker : *ExecWorker
+) {
+    emit "worker"
+    emit worker.id
+    emit worker.name
+    emit worker.active
+    emit worker.processed_count
+    emit worker.failed_count
+}
+
+proc print_stage(
+    stage : *ExecStage
+) {
+    emit "stage"
+    emit stage.id
+    emit stage.name
+    emit stage.completed
+    emit stage.success
+    emit stage.process_count
+}
+
+proc print_scheduler(
+    scheduler : *ExecScheduler
+) {
+    emit "scheduler"
+    emit scheduler.max_parallelism
+    emit scheduler.current_parallelism
+    emit scheduler.scheduler_ticks
+    emit scheduler.total_spawned
+    emit scheduler.total_completed
+    emit scheduler.total_failed
+}
+
+proc bootstrap_exec_demo() -> bool {
+    let scheduler = make_scheduler()
+
+    let worker0 = make_worker(0, "worker-0")
+    let worker1 = make_worker(1, "worker-1")
+    let worker2 = make_worker(2, "worker-2")
+
+    scheduler_push_worker(&scheduler, worker0)
+    scheduler_push_worker(&scheduler, worker1)
+    scheduler_push_worker(&scheduler, worker2)
+
+    let parser_stage = make_stage(0, "parser-stage")
+    let hir_stage = make_stage(1, "hir-stage")
+    let mir_stage = make_stage(2, "mir-stage")
+
+    scheduler_push_stage(&scheduler, parser_stage)
+    scheduler_push_stage(&scheduler, hir_stage)
+    scheduler_push_stage(&scheduler, mir_stage)
+
+    let parser_process = make_process(
+        0,
+        "vitte"
+    )
+
+    process_append_argument(&parser_process, "build")
+    process_append_argument(&parser_process, "compiler/parser")
+    process_enable_incremental(&parser_process)
+    process_enable_cache(&parser_process)
+
+    let mount = make_mount(
+        "./src",
+        "/sandbox/src"
+    )
+
+    process_enable_sandbox(&parser_process)
+
+    sandbox_add_mount(
+        &parser_process.sandbox,
+        mount
+    )
+
+    let hir_process = make_process(
+        1,
+        "vitte"
+    )
+
+    process_append_argument(&hir_process, "build")
+    process_append_argument(&hir_process, "compiler/hir")
+    process_enable_distributed(&hir_process)
+
+    let mir_process = make_process(
+        2,
+        "vitte"
+    )
+
+    process_append_argument(&mir_process, "build")
+    process_append_argument(&mir_process, "compiler/mir")
+
+    scheduler_push_process(
+        &scheduler,
+        parser_process
+    )
+
+    scheduler_push_process(
+        &scheduler,
+        hir_process
+    )
+
+    scheduler_push_process(
+        &scheduler,
+        mir_process
+    )
+
+    let success = run_scheduler(&scheduler)
+
+    print_scheduler(&scheduler)
+
+    print_process(
+        &scheduler.completed_processes[0]
+    )
+
+    print_process(
+        &scheduler.completed_processes[1]
+    )
+
+    print_process(
+        &scheduler.completed_processes[2]
+    )
+
+    give success
+}

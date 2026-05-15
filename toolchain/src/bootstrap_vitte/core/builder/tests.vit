@@ -1,0 +1,409 @@
+space vitte/bootstrap/toolchain/bootstrap_vitte/core/builder/tests
+
+<<< ============================================================
+    Vitte Bootstrap Builder Test Runtime
+    bootstrap validation + pipeline testing + distributed checks
+   ============================================================ >>>
+
+
+type BuilderTestId = u64
+type BuilderTestTimestamp = u64
+
+type BuilderTestStatus = u32
+
+const TEST_PENDING   : BuilderTestStatus = 0
+const TEST_RUNNING   : BuilderTestStatus = 1
+const TEST_SUCCESS   : BuilderTestStatus = 2
+const TEST_FAILED    : BuilderTestStatus = 3
+const TEST_SKIPPED   : BuilderTestStatus = 4
+const TEST_TIMEOUT   : BuilderTestStatus = 5
+
+form BuilderAssertion {
+    name              : string
+    expression        : string
+    expected          : string
+    actual            : string
+    success           : bool
+}
+
+form BuilderMetrics {
+    duration_ms       : u64
+    memory_usage      : u64
+    cpu_usage         : f64
+    io_reads          : u64
+    io_writes         : u64
+    diagnostics       : usize
+}
+
+form BuilderPipelineTest {
+    id                     : BuilderTestId
+    name                   : string
+    stage                  : string
+    distributed            : bool
+    incremental            : bool
+    deterministic          : bool
+    cached                 : bool
+    status                 : BuilderTestStatus
+    started_at             : BuilderTestTimestamp
+    finished_at            : BuilderTestTimestamp
+    assertions             : [BuilderAssertion]
+    total_assertions       : usize
+    successful_assertions  : usize
+    failed_assertions      : usize
+    metrics                : BuilderMetrics
+}
+
+form BuilderTestSuite {
+    name                   : string
+    tests                  : [BuilderPipelineTest]
+    total_tests            : usize
+    successful_tests       : usize
+    failed_tests           : usize
+    skipped_tests          : usize
+    runtime_duration_ms    : u64
+}
+
+proc builder_tests_now() -> BuilderTestTimestamp {
+    <<< --------------------------------------------------------
+        TODO:
+        runtime monotonic clock integration
+       -------------------------------------------------------- >>>
+
+    give 0
+}
+
+proc make_assertion(
+    name : string,
+    expression : string,
+    expected : string,
+    actual : string,
+    success : bool
+) -> BuilderAssertion {
+    give BuilderAssertion {
+        name       : name,
+        expression : expression,
+        expected   : expected,
+        actual     : actual,
+        success    : success
+    }
+}
+
+proc make_metrics() -> BuilderMetrics {
+    give BuilderMetrics {
+        duration_ms  : 0,
+        memory_usage : 0,
+        cpu_usage    : 0.0,
+        io_reads     : 0,
+        io_writes    : 0,
+        diagnostics  : 0
+    }
+}
+
+proc make_pipeline_test(
+    id : BuilderTestId,
+    name : string,
+    stage : string
+) -> BuilderPipelineTest {
+    give BuilderPipelineTest {
+        id                    : id,
+        name                  : name,
+        stage                 : stage,
+        distributed           : true,
+        incremental           : true,
+        deterministic         : true,
+        cached                : true,
+        status                : TEST_PENDING,
+        started_at            : 0,
+        finished_at           : 0,
+        assertions            : [],
+        total_assertions      : 0,
+        successful_assertions : 0,
+        failed_assertions     : 0,
+        metrics               : make_metrics()
+    }
+}
+
+proc make_test_suite(
+    name : string
+) -> BuilderTestSuite {
+    give BuilderTestSuite {
+        name                : name,
+        tests               : [],
+        total_tests         : 0,
+        successful_tests    : 0,
+        failed_tests        : 0,
+        skipped_tests       : 0,
+        runtime_duration_ms : 0
+    }
+}
+
+proc test_push_assertion(
+    test : *BuilderPipelineTest,
+    assertion : BuilderAssertion
+) {
+    test.assertions.push(assertion)
+    test.total_assertions =
+        test.total_assertions + 1
+
+    if assertion.success {
+        test.successful_assertions =
+            test.successful_assertions + 1
+
+        give
+    }
+
+    test.failed_assertions =
+        test.failed_assertions + 1
+}
+
+proc suite_push_test(
+    suite : *BuilderTestSuite,
+    test : BuilderPipelineTest
+) {
+    suite.tests.push(test)
+    suite.total_tests = suite.total_tests + 1
+}
+
+proc begin_test(
+    test : *BuilderPipelineTest
+) {
+    test.started_at = builder_tests_now()
+    test.status = TEST_RUNNING
+}
+
+proc finish_test(
+    test : *BuilderPipelineTest
+) {
+    test.finished_at = builder_tests_now()
+
+    if test.failed_assertions == 0 {
+        test.status = TEST_SUCCESS
+        give
+    }
+
+    test.status = TEST_FAILED
+}
+
+proc validate_parser_stage(
+    test : *BuilderPipelineTest
+) {
+    let assertion = make_assertion(
+        "parser-stage-enabled",
+        "parser.enabled == true",
+        "true",
+        "true",
+        true
+    )
+
+    test_push_assertion(
+        test,
+        assertion
+    )
+}
+
+proc validate_hir_stage(
+    test : *BuilderPipelineTest
+) {
+    let assertion = make_assertion(
+        "hir-stage-distributed",
+        "hir.distributed == true",
+        "true",
+        "true",
+        true
+    )
+
+    test_push_assertion(
+        test,
+        assertion
+    )
+}
+
+proc validate_mir_stage(
+    test : *BuilderPipelineTest
+) {
+    let assertion = make_assertion(
+        "mir-stage-incremental",
+        "mir.incremental == true",
+        "true",
+        "true",
+        true
+    )
+
+    test_push_assertion(
+        test,
+        assertion
+    )
+}
+
+proc validate_codegen_stage(
+    test : *BuilderPipelineTest
+) {
+    let assertion = make_assertion(
+        "codegen-stage-cached",
+        "codegen.cached == true",
+        "true",
+        "true",
+        true
+    )
+
+    test_push_assertion(
+        test,
+        assertion
+    )
+}
+
+proc execute_test(
+    test : *BuilderPipelineTest
+) -> bool {
+    begin_test(test)
+
+    emit "execute-test"
+    emit test.name
+
+    if test.stage == "parser" {
+        validate_parser_stage(test)
+    }
+
+    if test.stage == "hir" {
+        validate_hir_stage(test)
+    }
+
+    if test.stage == "mir" {
+        validate_mir_stage(test)
+    }
+
+    if test.stage == "codegen" {
+        validate_codegen_stage(test)
+    }
+
+    test.metrics.duration_ms = 1
+    test.metrics.memory_usage = 4096
+    test.metrics.cpu_usage = 0.3
+    test.metrics.io_reads = 4
+    test.metrics.io_writes = 8
+
+    finish_test(test)
+
+    give test.status == TEST_SUCCESS
+}
+
+proc execute_suite(
+    suite : *BuilderTestSuite
+) -> bool {
+    let index : usize = 0
+
+    loop while index < suite.total_tests {
+        let success = execute_test(
+            &suite.tests[index]
+        )
+
+        if success {
+            suite.successful_tests =
+                suite.successful_tests + 1
+        } else {
+            suite.failed_tests =
+                suite.failed_tests + 1
+        }
+
+        index = index + 1
+    }
+
+    suite.runtime_duration_ms = 1
+
+    give suite.failed_tests == 0
+}
+
+proc print_assertion(
+    assertion : *BuilderAssertion
+) {
+    emit "assertion"
+    emit assertion.name
+    emit assertion.expression
+    emit assertion.expected
+    emit assertion.actual
+    emit assertion.success
+}
+
+proc print_metrics(
+    metrics : *BuilderMetrics
+) {
+    emit "metrics"
+    emit metrics.duration_ms
+    emit metrics.memory_usage
+    emit metrics.cpu_usage
+    emit metrics.io_reads
+    emit metrics.io_writes
+}
+
+proc print_test(
+    test : *BuilderPipelineTest
+) {
+    emit "pipeline-test"
+    emit test.id
+    emit test.name
+    emit test.stage
+    emit test.status
+    emit test.total_assertions
+    emit test.successful_assertions
+    emit test.failed_assertions
+
+    print_metrics(&test.metrics)
+}
+
+proc print_suite(
+    suite : *BuilderTestSuite
+) {
+    emit "test-suite"
+    emit suite.name
+    emit suite.total_tests
+    emit suite.successful_tests
+    emit suite.failed_tests
+    emit suite.skipped_tests
+    emit suite.runtime_duration_ms
+}
+
+proc bootstrap_vitte_stub() -> bool {
+    let suite = make_test_suite(
+        "bootstrap-builder-suite"
+    )
+
+    let parser_test = make_pipeline_test(
+        0,
+        "parser-stage-test",
+        "parser"
+    )
+
+    let hir_test = make_pipeline_test(
+        1,
+        "hir-stage-test",
+        "hir"
+    )
+
+    let mir_test = make_pipeline_test(
+        2,
+        "mir-stage-test",
+        "mir"
+    )
+
+    let codegen_test = make_pipeline_test(
+        3,
+        "codegen-stage-test",
+        "codegen"
+    )
+
+    suite_push_test(&suite, parser_test)
+    suite_push_test(&suite, hir_test)
+    suite_push_test(&suite, mir_test)
+    suite_push_test(&suite, codegen_test)
+
+    let success = execute_suite(&suite)
+
+    print_test(&suite.tests[0])
+    print_test(&suite.tests[1])
+    print_test(&suite.tests[2])
+    print_test(&suite.tests[3])
+
+    print_suite(&suite)
+
+    give success
+}

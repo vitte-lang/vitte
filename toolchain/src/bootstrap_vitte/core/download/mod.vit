@@ -1,0 +1,481 @@
+
+space vitte/bootstrap/toolchain/bootstrap_vitte/core/download/mod
+
+<<< ============================================================
+    Vitte Bootstrap Download Runtime
+    distributed downloads + cache + mirrors + package retrieval
+   ============================================================ >>>
+
+type DownloadId = u64
+type DownloadTimestamp = u64
+type DownloadSize = u64
+
+type DownloadStatus = u32
+
+const DOWNLOAD_PENDING      : DownloadStatus = 0
+const DOWNLOAD_CONNECTING   : DownloadStatus = 1
+const DOWNLOAD_DOWNLOADING  : DownloadStatus = 2
+const DOWNLOAD_COMPLETED    : DownloadStatus = 3
+const DOWNLOAD_FAILED       : DownloadStatus = 4
+const DOWNLOAD_CANCELLED    : DownloadStatus = 5
+const DOWNLOAD_CACHED       : DownloadStatus = 6
+
+form DownloadMirror {
+    id                 : u64
+    name               : string
+    url                : string
+    region             : string
+    latency_ms         : u64
+    available          : bool
+    secure             : bool
+    priority           : usize
+    successful_fetches : usize
+    failed_fetches     : usize
+}
+
+form DownloadChecksum {
+    algorithm      : string
+    hash           : string
+    verified       : bool
+}
+
+form DownloadChunk {
+    id             : u64
+    offset         : DownloadSize
+    size           : DownloadSize
+    completed      : bool
+    retries        : usize
+}
+
+form DownloadArtifact {
+    name                 : string
+    version              : string
+    target               : string
+    output_path          : string
+    archive_format       : string
+    compressed           : bool
+    extracted            : bool
+    verified             : bool
+    cached               : bool
+    size                 : DownloadSize
+    checksum             : DownloadChecksum
+}
+
+form DownloadRequest {
+    id                    : DownloadId
+    component_name        : string
+    component_version     : string
+    source_url            : string
+    destination_path      : string
+    status                : DownloadStatus
+    started_at            : DownloadTimestamp
+    finished_at           : DownloadTimestamp
+    downloaded_bytes      : DownloadSize
+    total_bytes           : DownloadSize
+    retries               : usize
+    max_retries           : usize
+    timeout_ms            : u64
+    secure                : bool
+    distributed           : bool
+    cached                : bool
+    resumed               : bool
+    checksum              : DownloadChecksum
+    chunks                : [DownloadChunk]
+    total_chunks          : usize
+}
+
+form DownloadCacheEntry {
+    key               : string
+    artifact          : DownloadArtifact
+    created_at        : DownloadTimestamp
+    last_accessed     : DownloadTimestamp
+    access_count      : usize
+    valid             : bool
+}
+
+form DownloadCache {
+    entries               : [DownloadCacheEntry]
+    total_entries         : usize
+    cache_hits            : usize
+    cache_misses          : usize
+    invalidated_entries   : usize
+}
+
+form DownloadRuntime {
+    mirrors                : [DownloadMirror]
+    requests               : [DownloadRequest]
+    cache                  : DownloadCache
+    total_requests         : usize
+    completed_requests     : usize
+    failed_requests        : usize
+    downloaded_bytes       : DownloadSize
+    active_downloads       : usize
+}
+
+proc download_now() -> DownloadTimestamp {
+    <<< --------------------------------------------------------
+        TODO:
+        runtime monotonic clock integration
+       -------------------------------------------------------- >>>
+
+    give 0
+}
+
+proc make_checksum(
+    algorithm : string,
+    hash : string
+) -> DownloadChecksum {
+    give DownloadChecksum {
+        algorithm : algorithm,
+        hash      : hash,
+        verified  : false
+    }
+}
+
+proc make_chunk(
+    id : u64,
+    offset : DownloadSize,
+    size : DownloadSize
+) -> DownloadChunk {
+    give DownloadChunk {
+        id        : id,
+        offset    : offset,
+        size      : size,
+        completed : false,
+        retries   : 0
+    }
+}
+
+proc make_mirror(
+    id : u64,
+    name : string,
+    url : string
+) -> DownloadMirror {
+    give DownloadMirror {
+        id                 : id,
+        name               : name,
+        url                : url,
+        region             : "global",
+        latency_ms         : 0,
+        available          : true,
+        secure             : true,
+        priority           : 0,
+        successful_fetches : 0,
+        failed_fetches     : 0
+    }
+}
+
+proc make_artifact(
+    name : string,
+    version : string,
+    target : string
+) -> DownloadArtifact {
+    give DownloadArtifact {
+        name           : name,
+        version        : version,
+        target         : target,
+        output_path    : "build/download",
+        archive_format : "tar.zst",
+        compressed     : true,
+        extracted      : false,
+        verified       : false,
+        cached         : false,
+        size           : 0,
+        checksum       : make_checksum(
+            "sha256",
+            "artifact-hash"
+        )
+    }
+}
+
+proc make_request(
+    id : DownloadId,
+    component_name : string,
+    source_url : string
+) -> DownloadRequest {
+    give DownloadRequest {
+        id                 : id,
+        component_name     : component_name,
+        component_version  : "latest",
+        source_url         : source_url,
+        destination_path   : "build/download",
+        status             : DOWNLOAD_PENDING,
+        started_at         : 0,
+        finished_at        : 0,
+        downloaded_bytes   : 0,
+        total_bytes        : 0,
+        retries            : 0,
+        max_retries        : 3,
+        timeout_ms         : 30000,
+        secure             : true,
+        distributed        : true,
+        cached             : false,
+        resumed            : false,
+        checksum           : make_checksum(
+            "sha256",
+            "download-hash"
+        ),
+        chunks             : [],
+        total_chunks       : 0
+    }
+}
+
+proc make_cache_entry(
+    key : string,
+    artifact : DownloadArtifact
+) -> DownloadCacheEntry {
+    give DownloadCacheEntry {
+        key           : key,
+        artifact      : artifact,
+        created_at    : download_now(),
+        last_accessed : download_now(),
+        access_count  : 0,
+        valid         : true
+    }
+}
+
+proc make_cache() -> DownloadCache {
+    give DownloadCache {
+        entries             : [],
+        total_entries       : 0,
+        cache_hits          : 0,
+        cache_misses        : 0,
+        invalidated_entries : 0
+    }
+}
+
+proc make_runtime() -> DownloadRuntime {
+    give DownloadRuntime {
+        mirrors            : [],
+        requests           : [],
+        cache              : make_cache(),
+        total_requests     : 0,
+        completed_requests : 0,
+        failed_requests    : 0,
+        downloaded_bytes   : 0,
+        active_downloads   : 0
+    }
+}
+
+proc runtime_push_mirror(
+    runtime : *DownloadRuntime,
+    mirror : DownloadMirror
+) {
+    runtime.mirrors.push(mirror)
+}
+
+proc runtime_push_request(
+    runtime : *DownloadRuntime,
+    request : DownloadRequest
+) {
+    runtime.requests.push(request)
+    runtime.total_requests = runtime.total_requests + 1
+}
+
+proc cache_push_entry(
+    cache : *DownloadCache,
+    entry : DownloadCacheEntry
+) {
+    cache.entries.push(entry)
+    cache.total_entries = cache.total_entries + 1
+}
+
+proc cache_lookup(
+    cache : *DownloadCache,
+    key : string
+) -> bool {
+    let index : usize = 0
+
+    loop while index < cache.total_entries {
+        if cache.entries[index].key == key {
+            cache.cache_hits = cache.cache_hits + 1
+            cache.entries[index].access_count =
+                cache.entries[index].access_count + 1
+
+            give true
+        }
+
+        index = index + 1
+    }
+
+    cache.cache_misses = cache.cache_misses + 1
+
+    give false
+}
+
+proc request_push_chunk(
+    request : *DownloadRequest,
+    chunk : DownloadChunk
+) {
+    request.chunks.push(chunk)
+    request.total_chunks = request.total_chunks + 1
+}
+
+proc start_download(
+    request : *DownloadRequest
+) {
+    request.started_at = download_now()
+    request.status = DOWNLOAD_CONNECTING
+}
+
+proc finish_download(
+    request : *DownloadRequest,
+    success : bool
+) {
+    request.finished_at = download_now()
+
+    if success {
+        request.status = DOWNLOAD_COMPLETED
+        give
+    }
+
+    request.status = DOWNLOAD_FAILED
+}
+
+proc verify_checksum(
+    checksum : *DownloadChecksum
+) -> bool {
+    checksum.verified = true
+    give true
+}
+
+proc perform_download(
+    runtime : *DownloadRuntime,
+    request : *DownloadRequest
+) -> bool {
+    emit "perform-download"
+    emit request.component_name
+
+    runtime.active_downloads =
+        runtime.active_downloads + 1
+
+    start_download(request)
+
+    request.status = DOWNLOAD_DOWNLOADING
+
+    <<< --------------------------------------------------------
+        TODO:
+        distributed network download backend
+       -------------------------------------------------------- >>>
+
+    request.downloaded_bytes = 4096
+    request.total_bytes = 4096
+
+    let checksum_ok = verify_checksum(
+        &request.checksum
+    )
+
+    finish_download(request, checksum_ok)
+
+    if checksum_ok {
+        runtime.completed_requests =
+            runtime.completed_requests + 1
+
+        runtime.downloaded_bytes =
+            runtime.downloaded_bytes
+            + request.downloaded_bytes
+    } else {
+        runtime.failed_requests =
+            runtime.failed_requests + 1
+    }
+
+    if runtime.active_downloads > 0 {
+        runtime.active_downloads =
+            runtime.active_downloads - 1
+    }
+
+    give checksum_ok
+}
+
+proc fetch_component(
+    name : string
+) -> bool {
+    if name == "" {
+        give false
+    }
+
+    let runtime = make_runtime()
+
+    let primary_mirror = make_mirror(
+        0,
+        "primary",
+        "https://bootstrap.vitte-lang.org"
+    )
+
+    let backup_mirror = make_mirror(
+        1,
+        "backup",
+        "https://mirror.vitte-lang.org"
+    )
+
+    runtime_push_mirror(
+        &runtime,
+        primary_mirror
+    )
+
+    runtime_push_mirror(
+        &runtime,
+        backup_mirror
+    )
+
+    let request = make_request(
+        0,
+        name,
+        "https://bootstrap.vitte-lang.org/pkg"
+    )
+
+    let chunk0 = make_chunk(0, 0, 2048)
+    let chunk1 = make_chunk(1, 2048, 2048)
+
+    request_push_chunk(&request, chunk0)
+    request_push_chunk(&request, chunk1)
+
+    runtime_push_request(
+        &runtime,
+        request
+    )
+
+    let artifact = make_artifact(
+        name,
+        "latest",
+        "x86_64-linux-gnu"
+    )
+
+    let cache_entry = make_cache_entry(
+        name,
+        artifact
+    )
+
+    cache_push_entry(
+        &runtime.cache,
+        cache_entry
+    )
+
+    let cached = cache_lookup(
+        &runtime.cache,
+        name
+    )
+
+    if cached {
+        runtime.requests[0].cached = true
+        runtime.requests[0].status = DOWNLOAD_CACHED
+
+        emit "cache-hit"
+        emit name
+
+        give true
+    }
+
+    let success = perform_download(
+        &runtime,
+        &runtime.requests[0]
+    )
+
+    emit "download-runtime"
+    emit runtime.total_requests
+    emit runtime.completed_requests
+    emit runtime.failed_requests
+    emit runtime.downloaded_bytes
+
+    give success
+}

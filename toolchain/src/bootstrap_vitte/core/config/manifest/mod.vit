@@ -1,0 +1,439 @@
+
+space vitte/bootstrap/toolchain/bootstrap_vitte/core/config/manifest/mod
+
+<<< ============================================================
+    Vitte Bootstrap Manifest Runtime
+    manifest orchestration + profile registry + bootstrap graph
+   ============================================================ >>>
+
+use vitte/bootstrap/toolchain/bootstrap_vitte/core/config/manifest/compiler_profile
+
+
+type ManifestId = u64
+type ManifestTimestamp = u64
+
+type ManifestMode = u32
+
+const MANIFEST_DEBUG       : ManifestMode = 0
+const MANIFEST_RELEASE     : ManifestMode = 1
+const MANIFEST_DISTRIBUTED : ManifestMode = 2
+const MANIFEST_INCREMENTAL : ManifestMode = 3
+
+form ManifestPackage {
+    name                 : string
+    version              : string
+    description          : string
+    authors              : [string]
+    license              : string
+    repository           : string
+    homepage             : string
+    documentation        : string
+}
+
+form ManifestDependency {
+    name                 : string
+    version              : string
+    optional             : bool
+    distributed          : bool
+    cached               : bool
+    source               : string
+    checksum             : string
+}
+
+form ManifestStage {
+    id                   : u64
+    name                 : string
+    enabled              : bool
+    distributed          : bool
+    incremental          : bool
+    cached               : bool
+    parallel             : bool
+    dependency_count     : usize
+}
+
+form ManifestBuildGraph {
+    stages               : [ManifestStage]
+    total_stages         : usize
+    distributed_stages   : usize
+    incremental_stages   : usize
+    cached_stages        : usize
+}
+
+form ManifestRuntime {
+    async_runtime        : bool
+    distributed_runtime  : bool
+    incremental_runtime  : bool
+    telemetry            : bool
+    diagnostics          : bool
+    scheduler_threads    : usize
+    process_limit        : usize
+    memory_limit_mb      : usize
+}
+
+form BootstrapManifest {
+    id                         : ManifestId
+    package                    : ManifestPackage
+    dependencies               : [ManifestDependency]
+    total_dependencies         : usize
+    runtime                    : ManifestRuntime
+    graph                      : ManifestBuildGraph
+    profile_registry           : CompilerProfileRegistry
+    active_profile             : usize
+    mode                       : ManifestMode
+    reproducible               : bool
+    deterministic              : bool
+    distributed                : bool
+    incremental                : bool
+    generated_at               : ManifestTimestamp
+    validated                  : bool
+}
+
+proc manifest_now() -> ManifestTimestamp {
+    <<< --------------------------------------------------------
+        TODO:
+        runtime monotonic clock integration
+       -------------------------------------------------------- >>>
+
+    give 0
+}
+
+proc make_package() -> ManifestPackage {
+    give ManifestPackage {
+        name          : "bootstrap_vitte",
+        version       : "1.0.0",
+        description   : "distributed bootstrap runtime",
+        authors       : ["vitte"],
+        license       : "Apache-2.0",
+        repository    : "https://github.com/vitte-lang/vitte",
+        homepage      : "https://vitte-lang.org",
+        documentation : "https://docs.vitte-lang.org"
+    }
+}
+
+proc make_dependency(
+    name : string,
+    version : string
+) -> ManifestDependency {
+    give ManifestDependency {
+        name        : name,
+        version     : version,
+        optional    : false,
+        distributed : true,
+        cached      : true,
+        source      : "registry",
+        checksum    : "dependency-hash"
+    }
+}
+
+proc make_stage(
+    id : u64,
+    name : string
+) -> ManifestStage {
+    give ManifestStage {
+        id               : id,
+        name             : name,
+        enabled          : true,
+        distributed      : true,
+        incremental      : true,
+        cached           : true,
+        parallel         : true,
+        dependency_count : 0
+    }
+}
+
+proc make_graph() -> ManifestBuildGraph {
+    give ManifestBuildGraph {
+        stages              : [],
+        total_stages        : 0,
+        distributed_stages  : 0,
+        incremental_stages  : 0,
+        cached_stages       : 0
+    }
+}
+
+proc make_runtime() -> ManifestRuntime {
+    give ManifestRuntime {
+        async_runtime       : true,
+        distributed_runtime : true,
+        incremental_runtime : true,
+        telemetry           : true,
+        diagnostics         : true,
+        scheduler_threads   : 16,
+        process_limit       : 64,
+        memory_limit_mb     : 32768
+    }
+}
+
+proc make_manifest() -> BootstrapManifest {
+    give BootstrapManifest {
+        id                   : 0,
+        package              : make_package(),
+        dependencies         : [],
+        total_dependencies   : 0,
+        runtime              : make_runtime(),
+        graph                : make_graph(),
+        profile_registry     : make_registry(),
+        active_profile       : 0,
+        mode                 : MANIFEST_INCREMENTAL,
+        reproducible         : true,
+        deterministic        : true,
+        distributed          : true,
+        incremental          : true,
+        generated_at         : manifest_now(),
+        validated            : false
+    }
+}
+
+proc manifest_push_dependency(
+    manifest : *BootstrapManifest,
+    dependency : ManifestDependency
+) {
+    manifest.dependencies.push(dependency)
+    manifest.total_dependencies =
+        manifest.total_dependencies + 1
+}
+
+proc graph_push_stage(
+    graph : *ManifestBuildGraph,
+    stage : ManifestStage
+) {
+    graph.stages.push(stage)
+    graph.total_stages = graph.total_stages + 1
+
+    if stage.distributed {
+        graph.distributed_stages =
+            graph.distributed_stages + 1
+    }
+
+    if stage.incremental {
+        graph.incremental_stages =
+            graph.incremental_stages + 1
+    }
+
+    if stage.cached {
+        graph.cached_stages =
+            graph.cached_stages + 1
+    }
+}
+
+proc validate_manifest(
+    manifest : *BootstrapManifest
+) -> bool {
+    emit "validate-manifest"
+
+    if manifest.runtime.scheduler_threads == 0 {
+        give false
+    }
+
+    if manifest.runtime.process_limit == 0 {
+        give false
+    }
+
+    if manifest.runtime.memory_limit_mb == 0 {
+        give false
+    }
+
+    manifest.validated = true
+
+    give true
+}
+
+proc print_dependency(
+    dependency : *ManifestDependency
+) {
+    emit "dependency"
+    emit dependency.name
+    emit dependency.version
+    emit dependency.optional
+    emit dependency.distributed
+}
+
+proc print_stage(
+    stage : *ManifestStage
+) {
+    emit "stage"
+    emit stage.id
+    emit stage.name
+    emit stage.enabled
+    emit stage.distributed
+    emit stage.incremental
+}
+
+proc print_runtime(
+    runtime : *ManifestRuntime
+) {
+    emit "runtime"
+    emit runtime.async_runtime
+    emit runtime.distributed_runtime
+    emit runtime.incremental_runtime
+    emit runtime.scheduler_threads
+    emit runtime.process_limit
+}
+
+proc print_manifest(
+    manifest : *BootstrapManifest
+) {
+    emit "bootstrap-manifest"
+    emit manifest.package.name
+    emit manifest.package.version
+    emit manifest.total_dependencies
+    emit manifest.graph.total_stages
+    emit manifest.reproducible
+    emit manifest.distributed
+    emit manifest.incremental
+    emit manifest.validated
+
+    print_runtime(&manifest.runtime)
+}
+
+proc bootstrap_vitte_stub() -> bool {
+    let manifest = make_manifest()
+
+    let llvm_dependency = make_dependency(
+        "llvm-runtime",
+        "20.0"
+    )
+
+    let linker_dependency = make_dependency(
+        "lld-linker",
+        "20.0"
+    )
+
+    let stdlib_dependency = make_dependency(
+        "vitte-stdlib",
+        "1.0"
+    )
+
+    manifest_push_dependency(
+        &manifest,
+        llvm_dependency
+    )
+
+    manifest_push_dependency(
+        &manifest,
+        linker_dependency
+    )
+
+    manifest_push_dependency(
+        &manifest,
+        stdlib_dependency
+    )
+
+    let parser_stage = make_stage(
+        0,
+        "parser"
+    )
+
+    let hir_stage = make_stage(
+        1,
+        "hir"
+    )
+
+    let mir_stage = make_stage(
+        2,
+        "mir"
+    )
+
+    let codegen_stage = make_stage(
+        3,
+        "codegen"
+    )
+
+    graph_push_stage(
+        &manifest.graph,
+        parser_stage
+    )
+
+    graph_push_stage(
+        &manifest.graph,
+        hir_stage
+    )
+
+    graph_push_stage(
+        &manifest.graph,
+        mir_stage
+    )
+
+    graph_push_stage(
+        &manifest.graph,
+        codegen_stage
+    )
+
+    let debug_profile = make_profile(
+        0,
+        "debug",
+        PROFILE_DEBUG
+    )
+
+    let release_profile = make_profile(
+        1,
+        "release",
+        PROFILE_RELEASE
+    )
+
+    registry_push_profile(
+        &manifest.profile_registry,
+        debug_profile
+    )
+
+    registry_push_profile(
+        &manifest.profile_registry,
+        release_profile
+    )
+
+    validate_profile(
+        &manifest.profile_registry.profiles[0]
+    )
+
+    validate_profile(
+        &manifest.profile_registry.profiles[1]
+    )
+
+    let valid = validate_manifest(
+        &manifest
+    )
+
+    print_dependency(
+        &manifest.dependencies[0]
+    )
+
+    print_dependency(
+        &manifest.dependencies[1]
+    )
+
+    print_dependency(
+        &manifest.dependencies[2]
+    )
+
+    print_stage(
+        &manifest.graph.stages[0]
+    )
+
+    print_stage(
+        &manifest.graph.stages[1]
+    )
+
+    print_stage(
+        &manifest.graph.stages[2]
+    )
+
+    print_stage(
+        &manifest.graph.stages[3]
+    )
+
+    print_profile(
+        &manifest.profile_registry.profiles[0]
+    )
+
+    print_profile(
+        &manifest.profile_registry.profiles[1]
+    )
+
+    print_registry(
+        &manifest.profile_registry
+    )
+
+    print_manifest(&manifest)
+
+    give valid
+}

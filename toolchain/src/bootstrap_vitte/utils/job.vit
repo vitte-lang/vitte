@@ -1,0 +1,510 @@
+
+space vitte/bootstrap/toolchain/bootstrap_vitte/utils/job
+
+<<< ============================================================
+    Bootstrap Job Runtime
+    Minimal parallel/sequential bootstrap executor
+   ============================================================ >>>
+
+type JobId = u64
+
+type JobStatus = u32
+
+const JOB_PENDING   : JobStatus = 0
+const JOB_RUNNING   : JobStatus = 1
+const JOB_SUCCESS   : JobStatus = 2
+const JOB_FAILED    : JobStatus = 3
+const JOB_CANCELLED : JobStatus = 4
+
+form BootstrapJob {
+    id                  : JobId
+    parent_id           : JobId
+    stage_id            : u64
+    pipeline_id         : u64
+    name                : string
+    description         : string
+    command             : string
+    arguments           : [string]
+    environment         : [string]
+    working_dir         : string
+    target              : string
+    output_file         : string
+    error_file          : string
+    cache_key           : string
+    fingerprint         : string
+    dependency_count    : usize
+    timeout_ms          : u64
+    memory_limit        : u64
+    cpu_limit           : u32
+    priority            : u32
+    affinity            : u32
+    status              : JobStatus
+    exit_code           : i32
+    retries             : u32
+    max_retries         : u32
+    started_at          : u64
+    finished_at         : u64
+    duration_ms         : u64
+    spawned_processes   : usize
+    emitted_diagnostics : usize
+    generated_files     : usize
+    cached              : bool
+    distributed         : bool
+    sandboxed           : bool
+    incremental         : bool
+}
+
+form BootstrapJobResult {
+    id        : JobId
+    success   : bool
+    exit_code : i32
+}
+
+form BootstrapJobQueue {
+    jobs                 : [BootstrapJob]
+    active_jobs          : usize
+    queued_jobs          : usize
+    completed_jobs       : usize
+    failed_jobs          : usize
+    cancelled_jobs       : usize
+    cached_jobs          : usize
+    distributed_jobs     : usize
+    max_parallel_jobs    : usize
+    current_parallelism  : usize
+    scheduler_tick       : u64
+    total_jobs           : usize
+}
+
+form BootstrapPipeline {
+    id               : u64
+    name             : string
+    stages           : [string]
+    total_stages     : usize
+    completed_stages : usize
+    failed_stages    : usize
+    success          : bool
+}
+
+form BootstrapWorker {
+    id              : u64
+    name            : string
+    active          : bool
+    current_job     : JobId
+    processed_jobs  : usize
+    failed_jobs     : usize
+    cpu_usage       : f64
+    memory_usage    : u64
+}
+
+form BootstrapScheduler {
+    workers             : [BootstrapWorker]
+    pipelines           : [BootstrapPipeline]
+    total_workers       : usize
+    active_workers      : usize
+    completed_pipelines : usize
+    failed_pipelines    : usize
+}
+
+proc make_job(
+    id          : JobId,
+    name        : string,
+    command     : string,
+    working_dir : string
+) -> BootstrapJob {
+    give BootstrapJob {
+        id                  : id,
+        parent_id           : 0,
+        stage_id            : 0,
+        pipeline_id         : 0,
+        name                : name,
+        description         : "",
+        command             : command,
+        arguments           : [],
+        environment         : [],
+        working_dir         : working_dir,
+        target              : "native",
+        output_file         : "",
+        error_file          : "",
+        cache_key           : "",
+        fingerprint         : "",
+        dependency_count    : 0,
+        timeout_ms          : 0,
+        memory_limit        : 0,
+        cpu_limit           : 0,
+        priority            : 0,
+        affinity            : 0,
+        status              : JOB_PENDING,
+        exit_code           : 0,
+        retries             : 0,
+        max_retries         : 3,
+        started_at          : 0,
+        finished_at         : 0,
+        duration_ms         : 0,
+        spawned_processes   : 0,
+        emitted_diagnostics : 0,
+        generated_files     : 0,
+        cached              : false,
+        distributed         : false,
+        sandboxed           : false,
+        incremental         : false
+    }
+}
+
+proc make_queue() -> BootstrapJobQueue {
+    give BootstrapJobQueue {
+        jobs                : [],
+        active_jobs         : 0,
+        queued_jobs         : 0,
+        completed_jobs      : 0,
+        failed_jobs         : 0,
+        cancelled_jobs      : 0,
+        cached_jobs         : 0,
+        distributed_jobs    : 0,
+        max_parallel_jobs   : 16,
+        current_parallelism : 0,
+        scheduler_tick      : 0,
+        total_jobs          : 0
+    }
+}
+
+proc make_worker(
+    id : u64,
+    name : string
+) -> BootstrapWorker {
+    give BootstrapWorker {
+        id             : id,
+        name           : name,
+        active         : false,
+        current_job    : 0,
+        processed_jobs : 0,
+        failed_jobs    : 0,
+        cpu_usage      : 0.0,
+        memory_usage   : 0
+    }
+}
+
+proc make_pipeline(
+    id : u64,
+    name : string
+) -> BootstrapPipeline {
+    give BootstrapPipeline {
+        id               : id,
+        name             : name,
+        stages           : [],
+        total_stages     : 0,
+        completed_stages : 0,
+        failed_stages    : 0,
+        success          : false
+    }
+}
+
+proc make_scheduler() -> BootstrapScheduler {
+    give BootstrapScheduler {
+        workers             : [],
+        pipelines           : [],
+        total_workers       : 0,
+        active_workers      : 0,
+        completed_pipelines : 0,
+        failed_pipelines    : 0
+    }
+}
+
+proc queue_push(
+    queue : *BootstrapJobQueue,
+    job   : BootstrapJob
+) {
+    queue.jobs.push(job)
+    queue.total_jobs = queue.total_jobs + 1
+    queue.queued_jobs = queue.queued_jobs + 1
+
+    if job.cached {
+        queue.cached_jobs = queue.cached_jobs + 1
+    }
+
+    if job.distributed {
+        queue.distributed_jobs = queue.distributed_jobs + 1
+    }
+}
+
+proc queue_is_empty(
+    queue : *BootstrapJobQueue
+) -> bool {
+    give queue.total_jobs == 0
+}
+
+proc mark_job_running(
+    job : *BootstrapJob
+) {
+    job.status = JOB_RUNNING
+}
+
+proc mark_job_success(
+    job       : *BootstrapJob,
+    exit_code : i32
+) {
+    job.status = JOB_SUCCESS
+    job.exit_code = exit_code
+}
+
+proc mark_job_failed(
+    job       : *BootstrapJob,
+    exit_code : i32
+) {
+    job.status = JOB_FAILED
+    job.exit_code = exit_code
+}
+
+proc should_retry(
+    job : *BootstrapJob
+) -> bool {
+    give job.retries < job.max_retries
+}
+
+proc retry_job(
+    job : *BootstrapJob
+) {
+    job.retries = job.retries + 1
+    job.status = JOB_PENDING
+}
+
+proc cancel_job(
+    job : *BootstrapJob
+) {
+    job.status = JOB_CANCELLED
+}
+
+proc begin_job_execution(
+    job : *BootstrapJob
+) {
+    job.started_at = 0
+    job.status = JOB_RUNNING
+}
+
+proc finish_job_execution(
+    job : *BootstrapJob,
+    exit_code : i32
+) {
+    job.finished_at = 0
+    job.duration_ms = job.finished_at - job.started_at
+    job.exit_code = exit_code
+
+    if exit_code == 0 {
+        job.status = JOB_SUCCESS
+        give
+    }
+
+    job.status = JOB_FAILED
+}
+
+proc assign_worker(
+    worker : *BootstrapWorker,
+    job : *BootstrapJob
+) {
+    worker.active = true
+    worker.current_job = job.id
+}
+
+proc release_worker(
+    worker : *BootstrapWorker
+) {
+    worker.active = false
+    worker.current_job = 0
+}
+
+proc scheduler_push_worker(
+    scheduler : *BootstrapScheduler,
+    worker : BootstrapWorker
+) {
+    scheduler.workers.push(worker)
+    scheduler.total_workers = scheduler.total_workers + 1
+}
+
+proc scheduler_push_pipeline(
+    scheduler : *BootstrapScheduler,
+    pipeline : BootstrapPipeline
+) {
+    scheduler.pipelines.push(pipeline)
+}
+
+proc execute_job(
+    job : *BootstrapJob
+) -> BootstrapJobResult {
+    begin_job_execution(job)
+
+    <<< --------------------------------------------------------
+        Bootstrap execution phases
+       -------------------------------------------------------- >>>
+
+    emit "bootstrap job start"
+    emit job.name
+    emit job.command
+
+    let simulated_exit_code : i32 = 0
+
+    job.spawned_processes = 1
+    job.generated_files = 4
+    job.emitted_diagnostics = 0
+
+    finish_job_execution(job, simulated_exit_code)
+
+    if simulated_exit_code == 0 {
+        give BootstrapJobResult {
+            id        : job.id,
+            success   : true,
+            exit_code : simulated_exit_code
+        }
+    }
+
+    give BootstrapJobResult {
+        id        : job.id,
+        success   : false,
+        exit_code : simulated_exit_code
+    }
+}
+
+proc run_queue(
+    queue : *BootstrapJobQueue
+) -> bool {
+    if queue_is_empty(queue) {
+        emit "bootstrap queue is empty"
+        give false
+    }
+
+    let index : usize = 0
+
+    loop while index < queue.total_jobs {
+        queue.scheduler_tick = queue.scheduler_tick + 1
+
+        let result = execute_job(&queue.jobs[index])
+
+        queue.active_jobs = queue.active_jobs + 1
+
+        if result.success {
+            queue.completed_jobs = queue.completed_jobs + 1
+        } else {
+            queue.failed_jobs = queue.failed_jobs + 1
+
+            if should_retry(&queue.jobs[index]) {
+                retry_job(&queue.jobs[index])
+                emit "retry bootstrap job"
+            }
+        }
+
+        if queue.active_jobs > 0 {
+            queue.active_jobs = queue.active_jobs - 1
+        }
+
+        index = index + 1
+    }
+
+    give queue.failed_jobs == 0
+}
+
+proc print_queue_summary(
+    queue : *BootstrapJobQueue
+) {
+    emit "bootstrap summary"
+    emit queue.total_jobs
+    emit queue.completed_jobs
+    emit queue.failed_jobs
+    emit queue.cancelled_jobs
+    emit queue.cached_jobs
+    emit queue.distributed_jobs
+    emit queue.scheduler_tick
+    emit queue.max_parallel_jobs
+}
+
+proc bootstrap_vitte_stub() -> bool {
+    let queue = make_queue()
+    let scheduler = make_scheduler()
+
+    let worker0 = make_worker(0, "bootstrap-worker-0")
+    let worker1 = make_worker(1, "bootstrap-worker-1")
+    let worker2 = make_worker(2, "bootstrap-worker-2")
+
+    scheduler_push_worker(&scheduler, worker0)
+    scheduler_push_worker(&scheduler, worker1)
+    scheduler_push_worker(&scheduler, worker2)
+
+    let compiler_pipeline = make_pipeline(
+        0,
+        "compiler-bootstrap"
+    )
+
+    scheduler_push_pipeline(&scheduler, compiler_pipeline)
+
+    let parser_job = make_job(
+        1,
+        "parser bootstrap",
+        "vitte build compiler/parser",
+        "./"
+    )
+
+    parser_job.priority = 10
+    parser_job.incremental = true
+
+    let lexer_job = make_job(
+        2,
+        "lexer bootstrap",
+        "vitte build compiler/lexer",
+        "./"
+    )
+
+    lexer_job.priority = 9
+    lexer_job.cached = true
+
+    let hir_job = make_job(
+        3,
+        "hir bootstrap",
+        "vitte build compiler/hir",
+        "./"
+    )
+
+    hir_job.priority = 8
+    hir_job.distributed = true
+
+    let mir_job = make_job(
+        4,
+        "mir bootstrap",
+        "vitte build compiler/mir",
+        "./"
+    )
+
+    let optimizer_job = make_job(
+        5,
+        "optimizer bootstrap",
+        "vitte build compiler/optimizer",
+        "./"
+    )
+
+    let codegen_job = make_job(
+        6,
+        "codegen bootstrap",
+        "vitte build compiler/codegen",
+        "./"
+    )
+
+    let linker_job = make_job(
+        7,
+        "linker bootstrap",
+        "vitte build compiler/linker",
+        "./"
+    )
+
+    queue_push(&queue, parser_job)
+    queue_push(&queue, lexer_job)
+    queue_push(&queue, hir_job)
+    queue_push(&queue, mir_job)
+    queue_push(&queue, optimizer_job)
+    queue_push(&queue, codegen_job)
+    queue_push(&queue, linker_job)
+
+    let success = run_queue(&queue)
+
+    print_queue_summary(&queue)
+
+    emit "scheduler workers"
+    emit scheduler.total_workers
+
+    give success
+}

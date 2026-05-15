@@ -1,0 +1,438 @@
+
+space vitte/bootstrap/toolchain/bootstrap_vitte/core/sanity/mod
+
+<<< ============================================================
+    Vitte Bootstrap Sanity Runtime
+    bootstrap validation + host verification + toolchain checks
+   ============================================================ >>>
+
+type SanityCheckId = u64
+type SanityTimestamp = u64
+
+type SanityLevel = u32
+
+const SANITY_INFO  : SanityLevel = 0
+const SANITY_WARN  : SanityLevel = 1
+const SANITY_ERROR : SanityLevel = 2
+const SANITY_FATAL : SanityLevel = 3
+
+form SanityDiagnostic {
+    id           : SanityCheckId
+    level        : SanityLevel
+    category     : string
+    message      : string
+    success      : bool
+    timestamp    : SanityTimestamp
+}
+
+form SanityHost {
+    hostname           : string
+    operating_system   : string
+    architecture       : string
+    cpu_name           : string
+    cpu_cores          : usize
+    total_memory       : u64
+    available_memory   : u64
+    kernel_version     : string
+    filesystem         : string
+}
+
+form SanityToolchain {
+    compiler_found         : bool
+    linker_found           : bool
+    formatter_found        : bool
+    package_manager_found  : bool
+    llvm_found             : bool
+    debugger_found         : bool
+    compiler_version       : string
+    linker_version         : string
+    llvm_version           : string
+}
+
+form SanityFilesystem {
+    source_directory_exists    : bool
+    build_directory_exists     : bool
+    cache_directory_exists     : bool
+    temporary_directory_exists : bool
+    write_permissions          : bool
+    read_permissions           : bool
+    executable_permissions     : bool
+}
+
+form SanityEnvironment {
+    path_configured          : bool
+    bootstrap_enabled        : bool
+    incremental_enabled      : bool
+    distributed_enabled      : bool
+    sandbox_enabled          : bool
+    telemetry_enabled        : bool
+}
+
+form SanityRuntime {
+    diagnostics           : [SanityDiagnostic]
+    host                  : SanityHost
+    toolchain             : SanityToolchain
+    filesystem            : SanityFilesystem
+    environment           : SanityEnvironment
+    total_checks          : usize
+    successful_checks     : usize
+    failed_checks         : usize
+    warnings              : usize
+    errors                : usize
+    fatal_errors          : usize
+}
+
+proc sanity_now() -> SanityTimestamp {
+    <<< --------------------------------------------------------
+        TODO:
+        runtime monotonic clock integration
+       -------------------------------------------------------- >>>
+
+    give 0
+}
+
+proc make_diagnostic(
+    id : SanityCheckId,
+    level : SanityLevel,
+    category : string,
+    message : string,
+    success : bool
+) -> SanityDiagnostic {
+    give SanityDiagnostic {
+        id        : id,
+        level     : level,
+        category  : category,
+        message   : message,
+        success   : success,
+        timestamp : sanity_now()
+    }
+}
+
+proc make_host() -> SanityHost {
+    give SanityHost {
+        hostname         : "bootstrap-host",
+        operating_system : "linux",
+        architecture     : "x86_64",
+        cpu_name         : "bootstrap-cpu",
+        cpu_cores        : 16,
+        total_memory     : 32768,
+        available_memory : 16384,
+        kernel_version   : "bootstrap-kernel",
+        filesystem       : "ext4"
+    }
+}
+
+proc make_toolchain() -> SanityToolchain {
+    give SanityToolchain {
+        compiler_found        : true,
+        linker_found          : true,
+        formatter_found       : true,
+        package_manager_found : true,
+        llvm_found            : true,
+        debugger_found        : true,
+        compiler_version      : "vitte-bootstrap",
+        linker_version        : "lld",
+        llvm_version          : "llvm-20"
+    }
+}
+
+proc make_filesystem() -> SanityFilesystem {
+    give SanityFilesystem {
+        source_directory_exists    : true,
+        build_directory_exists     : true,
+        cache_directory_exists     : true,
+        temporary_directory_exists : true,
+        write_permissions          : true,
+        read_permissions           : true,
+        executable_permissions     : true
+    }
+}
+
+proc make_environment() -> SanityEnvironment {
+    give SanityEnvironment {
+        path_configured     : true,
+        bootstrap_enabled   : true,
+        incremental_enabled : true,
+        distributed_enabled : true,
+        sandbox_enabled     : false,
+        telemetry_enabled   : true
+    }
+}
+
+proc make_runtime() -> SanityRuntime {
+    give SanityRuntime {
+        diagnostics       : [],
+        host              : make_host(),
+        toolchain         : make_toolchain(),
+        filesystem        : make_filesystem(),
+        environment       : make_environment(),
+        total_checks      : 0,
+        successful_checks : 0,
+        failed_checks     : 0,
+        warnings          : 0,
+        errors            : 0,
+        fatal_errors      : 0
+    }
+}
+
+proc runtime_push_diagnostic(
+    runtime : *SanityRuntime,
+    diagnostic : SanityDiagnostic
+) {
+    runtime.diagnostics.push(diagnostic)
+    runtime.total_checks = runtime.total_checks + 1
+
+    if diagnostic.success {
+        runtime.successful_checks =
+            runtime.successful_checks + 1
+    } else {
+        runtime.failed_checks =
+            runtime.failed_checks + 1
+    }
+
+    if diagnostic.level == SANITY_WARN {
+        runtime.warnings = runtime.warnings + 1
+    }
+
+    if diagnostic.level == SANITY_ERROR {
+        runtime.errors = runtime.errors + 1
+    }
+
+    if diagnostic.level == SANITY_FATAL {
+        runtime.fatal_errors =
+            runtime.fatal_errors + 1
+    }
+}
+
+proc verify_host(
+    runtime : *SanityRuntime
+) -> bool {
+    emit "verify-host"
+
+    if runtime.host.cpu_cores == 0 {
+        let diagnostic = make_diagnostic(
+            0,
+            SANITY_FATAL,
+            "host",
+            "no cpu cores detected",
+            false
+        )
+
+        runtime_push_diagnostic(
+            runtime,
+            diagnostic
+        )
+
+        give false
+    }
+
+    let diagnostic = make_diagnostic(
+        1,
+        SANITY_INFO,
+        "host",
+        "host verification successful",
+        true
+    )
+
+    runtime_push_diagnostic(
+        runtime,
+        diagnostic
+    )
+
+    give true
+}
+
+proc verify_toolchain(
+    runtime : *SanityRuntime
+) -> bool {
+    emit "verify-toolchain"
+
+    if !runtime.toolchain.compiler_found {
+        let diagnostic = make_diagnostic(
+            2,
+            SANITY_FATAL,
+            "toolchain",
+            "compiler not found",
+            false
+        )
+
+        runtime_push_diagnostic(
+            runtime,
+            diagnostic
+        )
+
+        give false
+    }
+
+    let diagnostic = make_diagnostic(
+        3,
+        SANITY_INFO,
+        "toolchain",
+        "toolchain verification successful",
+        true
+    )
+
+    runtime_push_diagnostic(
+        runtime,
+        diagnostic
+    )
+
+    give true
+}
+
+proc verify_filesystem(
+    runtime : *SanityRuntime
+) -> bool {
+    emit "verify-filesystem"
+
+    if !runtime.filesystem.write_permissions {
+        let diagnostic = make_diagnostic(
+            4,
+            SANITY_ERROR,
+            "filesystem",
+            "missing write permissions",
+            false
+        )
+
+        runtime_push_diagnostic(
+            runtime,
+            diagnostic
+        )
+
+        give false
+    }
+
+    let diagnostic = make_diagnostic(
+        5,
+        SANITY_INFO,
+        "filesystem",
+        "filesystem verification successful",
+        true
+    )
+
+    runtime_push_diagnostic(
+        runtime,
+        diagnostic
+    )
+
+    give true
+}
+
+proc verify_environment(
+    runtime : *SanityRuntime
+) -> bool {
+    emit "verify-environment"
+
+    if !runtime.environment.path_configured {
+        let diagnostic = make_diagnostic(
+            6,
+            SANITY_ERROR,
+            "environment",
+            "PATH not configured",
+            false
+        )
+
+        runtime_push_diagnostic(
+            runtime,
+            diagnostic
+        )
+
+        give false
+    }
+
+    let diagnostic = make_diagnostic(
+        7,
+        SANITY_INFO,
+        "environment",
+        "environment verification successful",
+        true
+    )
+
+    runtime_push_diagnostic(
+        runtime,
+        diagnostic
+    )
+
+    give true
+}
+
+proc run_sanity_checks(
+    runtime : *SanityRuntime
+) -> bool {
+    let host_ok = verify_host(runtime)
+    let toolchain_ok = verify_toolchain(runtime)
+    let filesystem_ok = verify_filesystem(runtime)
+    let environment_ok = verify_environment(runtime)
+
+    give host_ok
+        && toolchain_ok
+        && filesystem_ok
+        && environment_ok
+}
+
+proc print_diagnostic(
+    diagnostic : *SanityDiagnostic
+) {
+    emit "diagnostic"
+    emit diagnostic.id
+    emit diagnostic.level
+    emit diagnostic.category
+    emit diagnostic.message
+    emit diagnostic.success
+}
+
+proc print_host(
+    host : *SanityHost
+) {
+    emit "host"
+    emit host.hostname
+    emit host.operating_system
+    emit host.architecture
+    emit host.cpu_name
+    emit host.cpu_cores
+}
+
+proc print_toolchain(
+    toolchain : *SanityToolchain
+) {
+    emit "toolchain"
+    emit toolchain.compiler_found
+    emit toolchain.linker_found
+    emit toolchain.llvm_found
+    emit toolchain.compiler_version
+}
+
+proc print_runtime(
+    runtime : *SanityRuntime
+) {
+    emit "sanity-runtime"
+    emit runtime.total_checks
+    emit runtime.successful_checks
+    emit runtime.failed_checks
+    emit runtime.warnings
+    emit runtime.errors
+    emit runtime.fatal_errors
+}
+
+proc check_environment() -> bool {
+    let runtime = make_runtime()
+
+    let success = run_sanity_checks(&runtime)
+
+    print_host(&runtime.host)
+    print_toolchain(&runtime.toolchain)
+
+    let diagnostic_index : usize = 0
+
+    loop while diagnostic_index < runtime.total_checks {
+        print_diagnostic(
+            &runtime.diagnostics[diagnostic_index]
+        )
+
+        diagnostic_index = diagnostic_index + 1
+    }
+
+    print_runtime(&runtime)
+
+    give success
+}

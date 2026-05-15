@@ -1,0 +1,459 @@
+
+space vitte/bootstrap/toolchain/bootstrap_vitte/utils/build_stamp
+
+<<< ============================================================
+    Vitte Bootstrap Build Stamp Runtime
+    compiler identity + reproducible builds + bootstrap metadata
+   ============================================================ >>>
+
+type BuildStampId = u64
+type BuildTimestamp = u64
+type BuildFingerprint = string
+type BuildHash = string
+
+type BuildMode = u32
+
+const BUILD_DEBUG       : BuildMode = 0
+const BUILD_RELEASE     : BuildMode = 1
+const BUILD_DISTRIBUTED : BuildMode = 2
+const BUILD_INCREMENTAL : BuildMode = 3
+const BUILD_SANDBOXED   : BuildMode = 4
+
+form BuildHost {
+    hostname          : string
+    operating_system  : string
+    architecture      : string
+    cpu_name          : string
+    cpu_cores         : usize
+    total_memory      : u64
+    kernel_version    : string
+    compiler_backend  : string
+}
+
+form BuildToolchain {
+    bootstrap_version     : string
+    compiler_version      : string
+    stdlib_version        : string
+    runtime_version       : string
+    llvm_version          : string
+    linker_version        : string
+    formatter_version     : string
+    package_manager       : string
+}
+
+form BuildGitMetadata {
+    branch_name        : string
+    commit_hash        : string
+    short_commit       : string
+    author             : string
+    dirty_repository   : bool
+    commit_timestamp   : BuildTimestamp
+}
+
+form BuildFlags {
+    debug_symbols          : bool
+    optimization_enabled   : bool
+    lto_enabled            : bool
+    sanitizer_enabled      : bool
+    incremental_enabled    : bool
+    distributed_enabled    : bool
+    deterministic_build    : bool
+    sandbox_enabled        : bool
+    telemetry_enabled      : bool
+}
+
+form BuildArtifact {
+    name               : string
+    artifact_type      : string
+    output_path        : string
+    hash               : BuildHash
+    size               : u64
+    generated          : bool
+    cached             : bool
+    compressed         : bool
+}
+
+form BuildEnvironmentVariable {
+    key     : string
+    value   : string
+}
+
+form BuildStamp {
+    id                         : BuildStampId
+    schema                     : string
+    bootstrap_name             : string
+    bootstrap_description      : string
+    strict_mode                : bool
+    reproducible               : bool
+    distributed                : bool
+    incremental                : bool
+    deterministic              : bool
+    sandboxed                  : bool
+    build_mode                 : BuildMode
+    target_triple              : string
+    host                       : BuildHost
+    toolchain                  : BuildToolchain
+    git_metadata               : BuildGitMetadata
+    flags                      : BuildFlags
+    environment                : [BuildEnvironmentVariable]
+    artifacts                  : [BuildArtifact]
+    total_artifacts            : usize
+    build_timestamp            : BuildTimestamp
+    build_duration_ms          : u64
+    build_hash                 : BuildHash
+    build_fingerprint          : BuildFingerprint
+    dependency_graph_hash      : BuildHash
+    source_hash                : BuildHash
+    generated_files            : usize
+    generated_modules          : usize
+    generated_binaries         : usize
+    generated_libraries        : usize
+    warnings                   : usize
+    errors                     : usize
+}
+
+proc build_now() -> BuildTimestamp {
+    <<< --------------------------------------------------------
+        TODO:
+        runtime monotonic clock integration
+       -------------------------------------------------------- >>>
+
+    give 0
+}
+
+proc make_host() -> BuildHost {
+    give BuildHost {
+        hostname         : "bootstrap-host",
+        operating_system : "linux",
+        architecture     : "x86_64",
+        cpu_name         : "bootstrap-cpu",
+        cpu_cores        : 16,
+        total_memory     : 32768,
+        kernel_version   : "bootstrap-kernel",
+        compiler_backend : "llvm"
+    }
+}
+
+proc make_toolchain() -> BuildToolchain {
+    give BuildToolchain {
+        bootstrap_version : "1.0.0",
+        compiler_version  : "vitte-bootstrap",
+        stdlib_version    : "stdlib-1",
+        runtime_version   : "runtime-1",
+        llvm_version      : "llvm-20",
+        linker_version    : "lld",
+        formatter_version : "vfmt",
+        package_manager   : "steel"
+    }
+}
+
+proc make_git_metadata() -> BuildGitMetadata {
+    give BuildGitMetadata {
+        branch_name       : "main",
+        commit_hash       : "bootstrap-commit",
+        short_commit      : "boot",
+        author            : "vitte",
+        dirty_repository  : false,
+        commit_timestamp  : build_now()
+    }
+}
+
+proc make_flags() -> BuildFlags {
+    give BuildFlags {
+        debug_symbols        : true,
+        optimization_enabled : true,
+        lto_enabled          : false,
+        sanitizer_enabled    : false,
+        incremental_enabled  : true,
+        distributed_enabled  : true,
+        deterministic_build  : true,
+        sandbox_enabled      : false,
+        telemetry_enabled    : true
+    }
+}
+
+proc make_artifact(
+    name : string,
+    artifact_type : string,
+    output_path : string
+) -> BuildArtifact {
+    give BuildArtifact {
+        name          : name,
+        artifact_type : artifact_type,
+        output_path   : output_path,
+        hash          : "artifact-hash",
+        size          : 0,
+        generated     : true,
+        cached        : false,
+        compressed    : false
+    }
+}
+
+proc make_environment_variable(
+    key : string,
+    value : string
+) -> BuildEnvironmentVariable {
+    give BuildEnvironmentVariable {
+        key   : key,
+        value : value
+    }
+}
+
+proc default_build_stamp() -> BuildStamp {
+    give BuildStamp {
+        id                        : 0,
+        schema                    : "bootstrap.vitte.v2",
+        bootstrap_name            : "bootstrap_vitte",
+        bootstrap_description     : "distributed bootstrap runtime",
+        strict_mode               : true,
+        reproducible              : true,
+        distributed               : true,
+        incremental               : true,
+        deterministic             : true,
+        sandboxed                 : false,
+        build_mode                : BUILD_INCREMENTAL,
+        target_triple             : "x86_64-linux-gnu",
+        host                      : make_host(),
+        toolchain                 : make_toolchain(),
+        git_metadata              : make_git_metadata(),
+        flags                     : make_flags(),
+        environment               : [],
+        artifacts                 : [],
+        total_artifacts           : 0,
+        build_timestamp           : build_now(),
+        build_duration_ms         : 0,
+        build_hash                : "build-hash",
+        build_fingerprint         : "build-fingerprint",
+        dependency_graph_hash     : "dependency-graph-hash",
+        source_hash               : "source-hash",
+        generated_files           : 0,
+        generated_modules         : 0,
+        generated_binaries        : 0,
+        generated_libraries       : 0,
+        warnings                  : 0,
+        errors                    : 0
+    }
+}
+
+proc build_stamp_enable_sandbox(
+    stamp : *BuildStamp
+) {
+    stamp.sandboxed = true
+    stamp.flags.sandbox_enabled = true
+}
+
+proc build_stamp_enable_lto(
+    stamp : *BuildStamp
+) {
+    stamp.flags.lto_enabled = true
+}
+
+proc build_stamp_enable_sanitizer(
+    stamp : *BuildStamp
+) {
+    stamp.flags.sanitizer_enabled = true
+}
+
+proc build_stamp_set_release(
+    stamp : *BuildStamp
+) {
+    stamp.build_mode = BUILD_RELEASE
+}
+
+proc build_stamp_push_environment(
+    stamp : *BuildStamp,
+    variable : BuildEnvironmentVariable
+) {
+    stamp.environment.push(variable)
+}
+
+proc build_stamp_push_artifact(
+    stamp : *BuildStamp,
+    artifact : BuildArtifact
+) {
+    stamp.artifacts.push(artifact)
+    stamp.total_artifacts = stamp.total_artifacts + 1
+}
+
+proc build_stamp_update_statistics(
+    stamp : *BuildStamp,
+    files : usize,
+    modules : usize,
+    binaries : usize,
+    libraries : usize
+) {
+    stamp.generated_files = files
+    stamp.generated_modules = modules
+    stamp.generated_binaries = binaries
+    stamp.generated_libraries = libraries
+}
+
+proc build_stamp_set_hashes(
+    stamp : *BuildStamp,
+    build_hash : BuildHash,
+    source_hash : BuildHash
+) {
+    stamp.build_hash = build_hash
+    stamp.source_hash = source_hash
+}
+
+proc build_stamp_complete(
+    stamp : *BuildStamp,
+    duration_ms : u64,
+    warnings : usize,
+    errors : usize
+) {
+    stamp.build_duration_ms = duration_ms
+    stamp.warnings = warnings
+    stamp.errors = errors
+}
+
+proc print_host(
+    host : *BuildHost
+) {
+    emit "build-host"
+    emit host.hostname
+    emit host.operating_system
+    emit host.architecture
+    emit host.cpu_name
+    emit host.cpu_cores
+}
+
+proc print_toolchain(
+    toolchain : *BuildToolchain
+) {
+    emit "toolchain"
+    emit toolchain.bootstrap_version
+    emit toolchain.compiler_version
+    emit toolchain.llvm_version
+    emit toolchain.linker_version
+}
+
+proc print_git_metadata(
+    metadata : *BuildGitMetadata
+) {
+    emit "git-metadata"
+    emit metadata.branch_name
+    emit metadata.commit_hash
+    emit metadata.short_commit
+    emit metadata.dirty_repository
+}
+
+proc print_artifact(
+    artifact : *BuildArtifact
+) {
+    emit "artifact"
+    emit artifact.name
+    emit artifact.artifact_type
+    emit artifact.output_path
+    emit artifact.hash
+    emit artifact.generated
+}
+
+proc print_build_stamp(
+    stamp : *BuildStamp
+) {
+    emit "build-stamp"
+    emit stamp.schema
+    emit stamp.bootstrap_name
+    emit stamp.build_mode
+    emit stamp.target_triple
+    emit stamp.reproducible
+    emit stamp.distributed
+    emit stamp.incremental
+    emit stamp.total_artifacts
+    emit stamp.generated_files
+    emit stamp.generated_modules
+    emit stamp.generated_binaries
+    emit stamp.generated_libraries
+    emit stamp.warnings
+    emit stamp.errors
+
+    print_host(&stamp.host)
+    print_toolchain(&stamp.toolchain)
+    print_git_metadata(&stamp.git_metadata)
+}
+
+proc bootstrap_build_stamp_demo() -> bool {
+    let stamp = default_build_stamp()
+
+    build_stamp_enable_lto(&stamp)
+    build_stamp_enable_sandbox(&stamp)
+    build_stamp_enable_sanitizer(&stamp)
+    build_stamp_set_release(&stamp)
+
+    let env0 = make_environment_variable(
+        "VITTE_BOOTSTRAP",
+        "1"
+    )
+
+    let env1 = make_environment_variable(
+        "VITTE_INCREMENTAL",
+        "1"
+    )
+
+    build_stamp_push_environment(&stamp, env0)
+    build_stamp_push_environment(&stamp, env1)
+
+    let parser_artifact = make_artifact(
+        "parser.o",
+        "object",
+        "build/parser.o"
+    )
+
+    let hir_artifact = make_artifact(
+        "hir.o",
+        "object",
+        "build/hir.o"
+    )
+
+    let compiler_artifact = make_artifact(
+        "vitte",
+        "binary",
+        "build/vitte"
+    )
+
+    build_stamp_push_artifact(
+        &stamp,
+        parser_artifact
+    )
+
+    build_stamp_push_artifact(
+        &stamp,
+        hir_artifact
+    )
+
+    build_stamp_push_artifact(
+        &stamp,
+        compiler_artifact
+    )
+
+    build_stamp_update_statistics(
+        &stamp,
+        2048,
+        512,
+        1,
+        32
+    )
+
+    build_stamp_set_hashes(
+        &stamp,
+        "build-hash-1",
+        "source-hash-1"
+    )
+
+    build_stamp_complete(
+        &stamp,
+        1240,
+        2,
+        0
+    )
+
+    print_artifact(&stamp.artifacts[0])
+    print_artifact(&stamp.artifacts[1])
+    print_artifact(&stamp.artifacts[2])
+
+    print_build_stamp(&stamp)
+
+    give true
+}

@@ -1,0 +1,502 @@
+
+space vitte/bootstrap/toolchain/bootstrap_vitte/core/config/manifest/compiler_profile
+
+<<< ============================================================
+    Vitte Bootstrap Compiler Profile Runtime
+    compiler profiles + bootstrap presets + distributed targets
+   ============================================================ >>>
+
+type CompilerProfileId = u64
+type CompilerProfileTimestamp = u64
+
+type CompilerProfileMode = u32
+
+const PROFILE_DEBUG        : CompilerProfileMode = 0
+const PROFILE_RELEASE      : CompilerProfileMode = 1
+const PROFILE_DISTRIBUTED  : CompilerProfileMode = 2
+const PROFILE_INCREMENTAL  : CompilerProfileMode = 3
+const PROFILE_SANITIZED    : CompilerProfileMode = 4
+const PROFILE_EXPERIMENTAL : CompilerProfileMode = 5
+
+form CompilerOptimizationProfile {
+    optimization_level          : u32
+    lto                         : bool
+    thin_lto                    : bool
+    pgo                         : bool
+    inlining                    : bool
+    vectorization               : bool
+    loop_unrolling              : bool
+    dead_code_elimination       : bool
+    constant_folding            : bool
+    link_time_optimization      : bool
+    deterministic_ordering      : bool
+    stable_hashing              : bool
+}
+
+form CompilerRuntimeProfile {
+    async_runtime               : bool
+    incremental                 : bool
+    distributed                 : bool
+    distributed_scheduler       : bool
+    distributed_codegen         : bool
+    distributed_linking         : bool
+    bootstrap_cache             : bool
+    telemetry                   : bool
+    runtime_checks              : bool
+    diagnostics                 : bool
+    tracing                     : bool
+    sandbox                     : bool
+    memory_tracking             : bool
+    io_tracking                 : bool
+}
+
+form CompilerDiagnosticsProfile {
+    verbose                     : bool
+    trace                       : bool
+    emit_hir                    : bool
+    emit_mir                    : bool
+    emit_ir                     : bool
+    emit_llvm_ir                : bool
+    emit_assembly               : bool
+    emit_graphviz               : bool
+    emit_timings                : bool
+    emit_metrics                : bool
+    emit_dependency_graph       : bool
+    colored_output              : bool
+    json_output                 : bool
+}
+
+form CompilerTargetProfile {
+    host_triple                 : string
+    target_triple               : string
+    target_cpu                  : string
+    target_features             : [string]
+    target_endianness           : string
+    target_pointer_width        : usize
+    target_vendor               : string
+    target_operating_system     : string
+    target_environment          : string
+    target_abi                  : string
+    cross_compile               : bool
+}
+
+form CompilerSchedulerProfile {
+    scheduler_threads           : usize
+    parallel_jobs               : usize
+    max_active_processes        : usize
+    worker_stack_size           : usize
+    scheduler_tick_ms           : u64
+    process_timeout_ms          : u64
+    queue_capacity              : usize
+    channel_capacity            : usize
+    cache_capacity              : usize
+    diagnostics_capacity        : usize
+}
+
+form CompilerSecurityProfile {
+    stack_protector             : bool
+    overflow_checks             : bool
+    panic_abort                 : bool
+    address_sanitizer           : bool
+    thread_sanitizer            : bool
+    memory_sanitizer            : bool
+    control_flow_protection     : bool
+    deterministic_builds        : bool
+    reproducible_builds         : bool
+}
+
+form CompilerProfile {
+    id                          : CompilerProfileId
+    name                        : string
+    description                 : string
+    mode                        : CompilerProfileMode
+    experimental                : bool
+    unstable                    : bool
+    internal                    : bool
+    optimization                : CompilerOptimizationProfile
+    runtime                     : CompilerRuntimeProfile
+    diagnostics                 : CompilerDiagnosticsProfile
+    target                      : CompilerTargetProfile
+    scheduler                   : CompilerSchedulerProfile
+    security                    : CompilerSecurityProfile
+    created_at                  : CompilerProfileTimestamp
+    updated_at                  : CompilerProfileTimestamp
+    loaded_from_cache           : bool
+    validated                   : bool
+}
+
+form CompilerProfileRegistry {
+    profiles                    : [CompilerProfile]
+    total_profiles              : usize
+    active_profile              : usize
+    distributed_profiles        : usize
+    incremental_profiles        : usize
+    experimental_profiles       : usize
+}
+
+proc compiler_profile_now() -> CompilerProfileTimestamp {
+    <<< --------------------------------------------------------
+        TODO:
+        runtime monotonic clock integration
+       -------------------------------------------------------- >>>
+
+    give 0
+}
+
+proc make_optimization_profile() -> CompilerOptimizationProfile {
+    give CompilerOptimizationProfile {
+        optimization_level     : 2,
+        lto                    : false,
+        thin_lto               : false,
+        pgo                    : false,
+        inlining               : true,
+        vectorization          : true,
+        loop_unrolling         : true,
+        dead_code_elimination  : true,
+        constant_folding       : true,
+        link_time_optimization : false,
+        deterministic_ordering : true,
+        stable_hashing         : true
+    }
+}
+
+proc make_runtime_profile() -> CompilerRuntimeProfile {
+    give CompilerRuntimeProfile {
+        async_runtime         : true,
+        incremental           : true,
+        distributed           : true,
+        distributed_scheduler : true,
+        distributed_codegen   : true,
+        distributed_linking   : true,
+        bootstrap_cache       : true,
+        telemetry             : true,
+        runtime_checks        : true,
+        diagnostics           : true,
+        tracing               : false,
+        sandbox               : false,
+        memory_tracking       : true,
+        io_tracking           : true
+    }
+}
+
+proc make_diagnostics_profile() -> CompilerDiagnosticsProfile {
+    give CompilerDiagnosticsProfile {
+        verbose               : true,
+        trace                 : false,
+        emit_hir              : false,
+        emit_mir              : false,
+        emit_ir               : false,
+        emit_llvm_ir          : false,
+        emit_assembly         : false,
+        emit_graphviz         : false,
+        emit_timings          : true,
+        emit_metrics          : true,
+        emit_dependency_graph : true,
+        colored_output        : true,
+        json_output           : false
+    }
+}
+
+proc make_target_profile() -> CompilerTargetProfile {
+    give CompilerTargetProfile {
+        host_triple             : "x86_64-linux-gnu",
+        target_triple           : "x86_64-linux-gnu",
+        target_cpu              : "native",
+        target_features         : [],
+        target_endianness       : "little",
+        target_pointer_width    : 64,
+        target_vendor           : "unknown",
+        target_operating_system : "linux",
+        target_environment      : "gnu",
+        target_abi              : "sysv",
+        cross_compile           : false
+    }
+}
+
+proc make_scheduler_profile() -> CompilerSchedulerProfile {
+    give CompilerSchedulerProfile {
+        scheduler_threads    : 16,
+        parallel_jobs        : 16,
+        max_active_processes : 64,
+        worker_stack_size    : 4194304,
+        scheduler_tick_ms    : 1,
+        process_timeout_ms   : 30000,
+        queue_capacity       : 16384,
+        channel_capacity     : 8192,
+        cache_capacity       : 4096,
+        diagnostics_capacity : 16384
+    }
+}
+
+proc make_security_profile() -> CompilerSecurityProfile {
+    give CompilerSecurityProfile {
+        stack_protector         : true,
+        overflow_checks         : true,
+        panic_abort             : true,
+        address_sanitizer       : false,
+        thread_sanitizer        : false,
+        memory_sanitizer        : false,
+        control_flow_protection : true,
+        deterministic_builds    : true,
+        reproducible_builds     : true
+    }
+}
+
+proc make_profile(
+    id : CompilerProfileId,
+    name : string,
+    mode : CompilerProfileMode
+) -> CompilerProfile {
+    give CompilerProfile {
+        id                 : id,
+        name               : name,
+        description        : "bootstrap compiler profile",
+        mode               : mode,
+        experimental       : false,
+        unstable           : false,
+        internal           : false,
+        optimization       : make_optimization_profile(),
+        runtime            : make_runtime_profile(),
+        diagnostics        : make_diagnostics_profile(),
+        target             : make_target_profile(),
+        scheduler          : make_scheduler_profile(),
+        security           : make_security_profile(),
+        created_at         : compiler_profile_now(),
+        updated_at         : compiler_profile_now(),
+        loaded_from_cache  : false,
+        validated          : false
+    }
+}
+
+proc make_registry() -> CompilerProfileRegistry {
+    give CompilerProfileRegistry {
+        profiles               : [],
+        total_profiles         : 0,
+        active_profile         : 0,
+        distributed_profiles   : 0,
+        incremental_profiles   : 0,
+        experimental_profiles  : 0
+    }
+}
+
+proc registry_push_profile(
+    registry : *CompilerProfileRegistry,
+    profile : CompilerProfile
+) {
+    registry.profiles.push(profile)
+    registry.total_profiles =
+        registry.total_profiles + 1
+
+    if profile.runtime.distributed {
+        registry.distributed_profiles =
+            registry.distributed_profiles + 1
+    }
+
+    if profile.runtime.incremental {
+        registry.incremental_profiles =
+            registry.incremental_profiles + 1
+    }
+
+    if profile.experimental {
+        registry.experimental_profiles =
+            registry.experimental_profiles + 1
+    }
+}
+
+proc validate_profile(
+    profile : *CompilerProfile
+) -> bool {
+    emit "validate-profile"
+    emit profile.name
+
+    if profile.scheduler.parallel_jobs == 0 {
+        give false
+    }
+
+    if profile.scheduler.scheduler_threads == 0 {
+        give false
+    }
+
+    if profile.scheduler.cache_capacity == 0 {
+        give false
+    }
+
+    profile.validated = true
+
+    give true
+}
+
+proc enable_profile_trace(
+    profile : *CompilerProfile
+) {
+    profile.diagnostics.trace = true
+}
+
+proc enable_profile_llvm_ir(
+    profile : *CompilerProfile
+) {
+    profile.diagnostics.emit_llvm_ir = true
+}
+
+proc enable_profile_assembly(
+    profile : *CompilerProfile
+) {
+    profile.diagnostics.emit_assembly = true
+}
+
+proc enable_profile_graphviz(
+    profile : *CompilerProfile
+) {
+    profile.diagnostics.emit_graphviz = true
+}
+
+proc enable_profile_lto(
+    profile : *CompilerProfile
+) {
+    profile.optimization.lto = true
+}
+
+proc enable_profile_thin_lto(
+    profile : *CompilerProfile
+) {
+    profile.optimization.thin_lto = true
+}
+
+proc enable_profile_pgo(
+    profile : *CompilerProfile
+) {
+    profile.optimization.pgo = true
+}
+
+proc enable_profile_sandbox(
+    profile : *CompilerProfile
+) {
+    profile.runtime.sandbox = true
+}
+
+proc enable_profile_sanitizers(
+    profile : *CompilerProfile
+) {
+    profile.security.address_sanitizer = true
+    profile.security.thread_sanitizer = true
+}
+
+proc print_profile(
+    profile : *CompilerProfile
+) {
+    emit "compiler-profile"
+    emit profile.id
+    emit profile.name
+    emit profile.mode
+    emit profile.experimental
+    emit profile.optimization.optimization_level
+    emit profile.runtime.distributed
+    emit profile.runtime.incremental
+    emit profile.scheduler.parallel_jobs
+    emit profile.validated
+}
+
+proc print_registry(
+    registry : *CompilerProfileRegistry
+) {
+    emit "compiler-profile-registry"
+    emit registry.total_profiles
+    emit registry.distributed_profiles
+    emit registry.incremental_profiles
+    emit registry.experimental_profiles
+}
+
+proc bootstrap_vitte_stub() -> bool {
+    let registry = make_registry()
+
+    let debug_profile = make_profile(
+        0,
+        "debug",
+        PROFILE_DEBUG
+    )
+
+    debug_profile.diagnostics.trace = true
+    debug_profile.diagnostics.emit_hir = true
+    debug_profile.diagnostics.emit_mir = true
+
+    let release_profile = make_profile(
+        1,
+        "release",
+        PROFILE_RELEASE
+    )
+
+    enable_profile_lto(&release_profile)
+    enable_profile_thin_lto(&release_profile)
+    enable_profile_pgo(&release_profile)
+
+    let distributed_profile = make_profile(
+        2,
+        "distributed",
+        PROFILE_DISTRIBUTED
+    )
+
+    distributed_profile.experimental = true
+
+    enable_profile_graphviz(
+        &distributed_profile
+    )
+
+    enable_profile_llvm_ir(
+        &distributed_profile
+    )
+
+    enable_profile_assembly(
+        &distributed_profile
+    )
+
+    enable_profile_sandbox(
+        &distributed_profile
+    )
+
+    enable_profile_sanitizers(
+        &distributed_profile
+    )
+
+    registry_push_profile(
+        &registry,
+        debug_profile
+    )
+
+    registry_push_profile(
+        &registry,
+        release_profile
+    )
+
+    registry_push_profile(
+        &registry,
+        distributed_profile
+    )
+
+    validate_profile(
+        &registry.profiles[0]
+    )
+
+    validate_profile(
+        &registry.profiles[1]
+    )
+
+    validate_profile(
+        &registry.profiles[2]
+    )
+
+    print_profile(
+        &registry.profiles[0]
+    )
+
+    print_profile(
+        &registry.profiles[1]
+    )
+
+    print_profile(
+        &registry.profiles[2]
+    )
+
+    print_registry(&registry)
+
+    give true
+}

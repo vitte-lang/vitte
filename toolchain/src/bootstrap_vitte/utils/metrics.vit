@@ -1,0 +1,431 @@
+
+space vitte/bootstrap/toolchain/bootstrap_vitte/utils/metrics
+
+<<< ============================================================
+    Vitte Bootstrap Metrics Runtime
+    compiler bootstrap + stage metrics + timing + diagnostics
+   ============================================================ >>>
+
+type MetricId = u64
+type MetricValue = f64
+type MetricTimestamp = u64
+type MetricCounter = u64
+
+type MetricKind = u32
+
+const METRIC_COUNTER : MetricKind = 0
+const METRIC_TIMER   : MetricKind = 1
+const METRIC_GAUGE   : MetricKind = 2
+const METRIC_RATE    : MetricKind = 3
+
+form BootstrapMetric {
+    id           : MetricId
+    name         : string
+    description  : string
+    kind         : MetricKind
+    value        : MetricValue
+    min_value    : MetricValue
+    max_value    : MetricValue
+    total_value  : MetricValue
+    samples      : MetricCounter
+    created_at   : MetricTimestamp
+    updated_at   : MetricTimestamp
+}
+
+form BootstrapStageMetric {
+    stage_name          : string
+    started_at          : MetricTimestamp
+    finished_at         : MetricTimestamp
+    elapsed_ms          : u64
+    parsed_files        : usize
+    generated_files     : usize
+    emitted_tokens      : usize
+    generated_ast_nodes : usize
+    generated_hir_nodes : usize
+    generated_mir_nodes : usize
+    generated_ir_nodes  : usize
+    warnings_count      : usize
+    errors_count        : usize
+    success             : bool
+}
+
+form BootstrapMemoryMetrics {
+    allocated_bytes      : u64
+    released_bytes       : u64
+    active_allocations   : usize
+    peak_allocations     : usize
+    arena_usage          : u64
+    interned_strings     : usize
+    cache_hits           : u64
+    cache_misses         : u64
+}
+
+form BootstrapCompilationMetrics {
+    lexer_duration_ms      : u64
+    parser_duration_ms     : u64
+    hir_duration_ms        : u64
+    mir_duration_ms        : u64
+    optimizer_duration_ms  : u64
+    codegen_duration_ms    : u64
+    linker_duration_ms     : u64
+    total_duration_ms      : u64
+    generated_objects      : usize
+    generated_binaries     : usize
+    generated_libraries    : usize
+    failed_modules         : usize
+    successful_modules     : usize
+}
+
+form BootstrapMetricsRegistry {
+    metrics               : [BootstrapMetric]
+    stage_metrics         : [BootstrapStageMetric]
+    memory_metrics        : BootstrapMemoryMetrics
+    compilation_metrics   : BootstrapCompilationMetrics
+    total_metrics         : usize
+    total_errors          : usize
+    total_warnings        : usize
+}
+
+proc now_timestamp() -> MetricTimestamp {
+    <<< --------------------------------------------------------
+        TODO:
+        Replace with monotonic runtime clock.
+       -------------------------------------------------------- >>>
+
+    give 0
+}
+
+proc make_metric(
+    id          : MetricId,
+    name        : string,
+    description : string,
+    kind        : MetricKind
+) -> BootstrapMetric {
+    let timestamp = now_timestamp()
+
+    give BootstrapMetric {
+        id           : id,
+        name         : name,
+        description  : description,
+        kind         : kind,
+        value        : 0.0,
+        min_value    : 0.0,
+        max_value    : 0.0,
+        total_value  : 0.0,
+        samples      : 0,
+        created_at   : timestamp,
+        updated_at   : timestamp
+    }
+}
+
+proc make_memory_metrics() -> BootstrapMemoryMetrics {
+    give BootstrapMemoryMetrics {
+        allocated_bytes    : 0,
+        released_bytes     : 0,
+        active_allocations : 0,
+        peak_allocations   : 0,
+        arena_usage        : 0,
+        interned_strings   : 0,
+        cache_hits         : 0,
+        cache_misses       : 0
+    }
+}
+
+proc make_compilation_metrics() -> BootstrapCompilationMetrics {
+    give BootstrapCompilationMetrics {
+        lexer_duration_ms      : 0,
+        parser_duration_ms     : 0,
+        hir_duration_ms        : 0,
+        mir_duration_ms        : 0,
+        optimizer_duration_ms  : 0,
+        codegen_duration_ms    : 0,
+        linker_duration_ms     : 0,
+        total_duration_ms      : 0,
+        generated_objects      : 0,
+        generated_binaries     : 0,
+        generated_libraries    : 0,
+        failed_modules         : 0,
+        successful_modules     : 0
+    }
+}
+
+proc make_registry() -> BootstrapMetricsRegistry {
+    give BootstrapMetricsRegistry {
+        metrics             : [],
+        stage_metrics       : [],
+        memory_metrics      : make_memory_metrics(),
+        compilation_metrics : make_compilation_metrics(),
+        total_metrics       : 0,
+        total_errors        : 0,
+        total_warnings      : 0
+    }
+}
+
+proc registry_push_metric(
+    registry : *BootstrapMetricsRegistry,
+    metric   : BootstrapMetric
+) {
+    registry.metrics.push(metric)
+    registry.total_metrics = registry.total_metrics + 1
+}
+
+proc registry_push_stage_metric(
+    registry : *BootstrapMetricsRegistry,
+    metric   : BootstrapStageMetric
+) {
+    registry.stage_metrics.push(metric)
+}
+
+proc metric_update(
+    metric : *BootstrapMetric,
+    value  : MetricValue
+) {
+    metric.value = value
+    metric.total_value = metric.total_value + value
+    metric.samples = metric.samples + 1
+    metric.updated_at = now_timestamp()
+
+    if metric.samples == 1 {
+        metric.min_value = value
+        metric.max_value = value
+        give
+    }
+
+    if value < metric.min_value {
+        metric.min_value = value
+    }
+
+    if value > metric.max_value {
+        metric.max_value = value
+    }
+}
+
+proc metric_average(
+    metric : *BootstrapMetric
+) -> MetricValue {
+    if metric.samples == 0 {
+        give 0.0
+    }
+
+    give metric.total_value / metric.samples as f64
+}
+
+proc metric_increment(
+    metric : *BootstrapMetric
+) {
+    metric_update(metric, metric.value + 1.0)
+}
+
+proc metric_reset(
+    metric : *BootstrapMetric
+) {
+    metric.value = 0.0
+    metric.min_value = 0.0
+    metric.max_value = 0.0
+    metric.total_value = 0.0
+    metric.samples = 0
+}
+
+proc begin_stage_metric(
+    stage_name : string
+) -> BootstrapStageMetric {
+    let timestamp = now_timestamp()
+
+    give BootstrapStageMetric {
+        stage_name          : stage_name,
+        started_at          : timestamp,
+        finished_at         : 0,
+        elapsed_ms          : 0,
+        parsed_files        : 0,
+        generated_files     : 0,
+        emitted_tokens      : 0,
+        generated_ast_nodes : 0,
+        generated_hir_nodes : 0,
+        generated_mir_nodes : 0,
+        generated_ir_nodes  : 0,
+        warnings_count      : 0,
+        errors_count        : 0,
+        success             : false
+    }
+}
+
+proc finish_stage_metric(
+    metric : *BootstrapStageMetric,
+    success : bool
+) {
+    metric.finished_at = now_timestamp()
+    metric.elapsed_ms = metric.finished_at - metric.started_at
+    metric.success = success
+}
+
+proc memory_allocate(
+    metrics : *BootstrapMemoryMetrics,
+    size    : u64
+) {
+    metrics.allocated_bytes = metrics.allocated_bytes + size
+    metrics.active_allocations = metrics.active_allocations + 1
+
+    if metrics.active_allocations > metrics.peak_allocations {
+        metrics.peak_allocations = metrics.active_allocations
+    }
+}
+
+proc memory_release(
+    metrics : *BootstrapMemoryMetrics,
+    size    : u64
+) {
+    metrics.released_bytes = metrics.released_bytes + size
+
+    if metrics.active_allocations > 0 {
+        metrics.active_allocations = metrics.active_allocations - 1
+    }
+}
+
+proc cache_hit(
+    metrics : *BootstrapMemoryMetrics
+) {
+    metrics.cache_hits = metrics.cache_hits + 1
+}
+
+proc cache_miss(
+    metrics : *BootstrapMemoryMetrics
+) {
+    metrics.cache_misses = metrics.cache_misses + 1
+}
+
+proc print_metric(
+    metric : *BootstrapMetric
+) {
+    emit "metric"
+    emit metric.name
+    emit metric.description
+    emit metric.value
+    emit metric.min_value
+    emit metric.max_value
+    emit metric_average(metric)
+}
+
+proc print_stage_metric(
+    metric : *BootstrapStageMetric
+) {
+    emit "stage"
+    emit metric.stage_name
+    emit metric.elapsed_ms
+    emit metric.parsed_files
+    emit metric.generated_files
+    emit metric.generated_hir_nodes
+    emit metric.generated_mir_nodes
+    emit metric.errors_count
+    emit metric.warnings_count
+}
+
+proc print_memory_metrics(
+    metrics : *BootstrapMemoryMetrics
+) {
+    emit "memory metrics"
+    emit metrics.allocated_bytes
+    emit metrics.released_bytes
+    emit metrics.active_allocations
+    emit metrics.peak_allocations
+    emit metrics.cache_hits
+    emit metrics.cache_misses
+}
+
+proc print_compilation_metrics(
+    metrics : *BootstrapCompilationMetrics
+) {
+    emit "compilation metrics"
+    emit metrics.lexer_duration_ms
+    emit metrics.parser_duration_ms
+    emit metrics.hir_duration_ms
+    emit metrics.mir_duration_ms
+    emit metrics.optimizer_duration_ms
+    emit metrics.codegen_duration_ms
+    emit metrics.linker_duration_ms
+    emit metrics.total_duration_ms
+}
+
+proc print_registry_summary(
+    registry : *BootstrapMetricsRegistry
+) {
+    emit "bootstrap metrics registry"
+    emit registry.total_metrics
+    emit registry.total_errors
+    emit registry.total_warnings
+
+    print_memory_metrics(&registry.memory_metrics)
+    print_compilation_metrics(&registry.compilation_metrics)
+}
+
+proc bootstrap_vitte_metrics_demo() -> bool {
+    let registry = make_registry()
+
+    let parser_metric = make_metric(
+        1,
+        "parser.duration",
+        "parser bootstrap duration",
+        METRIC_TIMER
+    )
+
+    let lexer_metric = make_metric(
+        2,
+        "lexer.tokens",
+        "lexer emitted tokens",
+        METRIC_COUNTER
+    )
+
+    let hir_metric = make_metric(
+        3,
+        "hir.nodes",
+        "generated hir nodes",
+        METRIC_GAUGE
+    )
+
+    registry_push_metric(&registry, parser_metric)
+    registry_push_metric(&registry, lexer_metric)
+    registry_push_metric(&registry, hir_metric)
+
+    metric_update(&registry.metrics[0], 12.0)
+    metric_update(&registry.metrics[1], 4096.0)
+    metric_update(&registry.metrics[2], 1024.0)
+
+    memory_allocate(&registry.memory_metrics, 4096)
+    memory_allocate(&registry.memory_metrics, 8192)
+    memory_release(&registry.memory_metrics, 2048)
+
+    cache_hit(&registry.memory_metrics)
+    cache_hit(&registry.memory_metrics)
+    cache_miss(&registry.memory_metrics)
+
+    let stage_metric = begin_stage_metric("bootstrap-parser")
+
+    stage_metric.parsed_files = 32
+    stage_metric.generated_files = 18
+    stage_metric.generated_ast_nodes = 4096
+    stage_metric.generated_hir_nodes = 2048
+    stage_metric.generated_mir_nodes = 1024
+    stage_metric.generated_ir_nodes = 512
+
+    finish_stage_metric(&stage_metric, true)
+
+    registry_push_stage_metric(&registry, stage_metric)
+
+    registry.compilation_metrics.lexer_duration_ms = 10
+    registry.compilation_metrics.parser_duration_ms = 14
+    registry.compilation_metrics.hir_duration_ms = 22
+    registry.compilation_metrics.mir_duration_ms = 30
+    registry.compilation_metrics.optimizer_duration_ms = 12
+    registry.compilation_metrics.codegen_duration_ms = 41
+    registry.compilation_metrics.linker_duration_ms = 18
+    registry.compilation_metrics.total_duration_ms = 147
+
+    print_metric(&registry.metrics[0])
+    print_metric(&registry.metrics[1])
+    print_metric(&registry.metrics[2])
+
+    print_stage_metric(&registry.stage_metrics[0])
+
+    print_registry_summary(&registry)
+
+    give true
+}

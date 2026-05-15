@@ -1,0 +1,527 @@
+
+space vitte/bootstrap/toolchain/bootstrap_vitte/utils/change_tracker
+
+<<< ============================================================
+    Vitte Bootstrap Change Tracker Runtime
+    incremental compilation + dependency graph + file tracking
+   ============================================================ >>>
+
+type ChangeId = u64
+type ChangeNodeId = u64
+type ChangeTimestamp = u64
+type ChangeHash = string
+
+type ChangeStatus = u32
+
+const CHANGE_NONE        : ChangeStatus = 0
+const CHANGE_CREATED     : ChangeStatus = 1
+const CHANGE_MODIFIED    : ChangeStatus = 2
+const CHANGE_REMOVED     : ChangeStatus = 3
+const CHANGE_RENAMED     : ChangeStatus = 4
+const CHANGE_INVALIDATED : ChangeStatus = 5
+
+form ChangeDependency {
+    id               : ChangeNodeId
+    source           : string
+    target           : string
+    dependency_type  : string
+    optional         : bool
+    runtime_only     : bool
+}
+
+form ChangeNode {
+    id                    : ChangeNodeId
+    path                  : string
+    module_name           : string
+    hash                  : ChangeHash
+    previous_hash         : ChangeHash
+    status                : ChangeStatus
+    exists                : bool
+    dirty                 : bool
+    generated             : bool
+    incremental           : bool
+    file_size             : u64
+    line_count            : usize
+    parse_errors          : usize
+    warnings              : usize
+    last_modified         : ChangeTimestamp
+    last_compiled         : ChangeTimestamp
+    dependency_count      : usize
+    reverse_dependencies  : usize
+}
+
+form ChangeEvent {
+    id               : ChangeId
+    node_id          : ChangeNodeId
+    path             : string
+    previous_path    : string
+    status           : ChangeStatus
+    timestamp        : ChangeTimestamp
+    propagated       : bool
+    invalidated      : bool
+}
+
+form ChangeQueue {
+    events               : [ChangeEvent]
+    queued_events        : usize
+    processed_events     : usize
+    invalidated_events   : usize
+    dropped_events       : usize
+}
+
+form ChangeSnapshot {
+    snapshot_id         : u64
+    created_at          : ChangeTimestamp
+    tracked_files       : usize
+    dirty_files         : usize
+    invalidated_files   : usize
+    total_hashes        : usize
+}
+
+form ChangeCacheEntry {
+    cache_key         : string
+    hash              : ChangeHash
+    valid             : bool
+    generated_at      : ChangeTimestamp
+    reused_count      : usize
+}
+
+form ChangeGraph {
+    nodes                    : [ChangeNode]
+    dependencies             : [ChangeDependency]
+    queue                    : ChangeQueue
+    snapshots                : [ChangeSnapshot]
+    cache_entries            : [ChangeCacheEntry]
+    total_nodes              : usize
+    total_dependencies       : usize
+    dirty_nodes              : usize
+    invalidated_nodes        : usize
+    incremental_rebuilds     : usize
+    full_rebuilds            : usize
+    propagated_changes       : usize
+    created_at               : ChangeTimestamp
+}
+
+proc change_now() -> ChangeTimestamp {
+    <<< --------------------------------------------------------
+        TODO:
+        runtime monotonic clock integration
+       -------------------------------------------------------- >>>
+
+    give 0
+}
+
+proc make_dependency(
+    id : ChangeNodeId,
+    source : string,
+    target : string
+) -> ChangeDependency {
+    give ChangeDependency {
+        id              : id,
+        source          : source,
+        target          : target,
+        dependency_type : "module",
+        optional        : false,
+        runtime_only    : false
+    }
+}
+
+proc make_node(
+    id : ChangeNodeId,
+    path : string
+) -> ChangeNode {
+    give ChangeNode {
+        id                   : id,
+        path                 : path,
+        module_name          : "",
+        hash                 : "",
+        previous_hash        : "",
+        status               : CHANGE_NONE,
+        exists               : true,
+        dirty                : false,
+        generated            : false,
+        incremental          : true,
+        file_size            : 0,
+        line_count           : 0,
+        parse_errors         : 0,
+        warnings             : 0,
+        last_modified        : change_now(),
+        last_compiled        : 0,
+        dependency_count     : 0,
+        reverse_dependencies : 0
+    }
+}
+
+proc make_event(
+    id : ChangeId,
+    node_id : ChangeNodeId,
+    path : string,
+    status : ChangeStatus
+) -> ChangeEvent {
+    give ChangeEvent {
+        id            : id,
+        node_id       : node_id,
+        path          : path,
+        previous_path : "",
+        status        : status,
+        timestamp     : change_now(),
+        propagated    : false,
+        invalidated   : false
+    }
+}
+
+proc make_queue() -> ChangeQueue {
+    give ChangeQueue {
+        events             : [],
+        queued_events      : 0,
+        processed_events   : 0,
+        invalidated_events : 0,
+        dropped_events     : 0
+    }
+}
+
+proc make_snapshot(
+    snapshot_id : u64
+) -> ChangeSnapshot {
+    give ChangeSnapshot {
+        snapshot_id       : snapshot_id,
+        created_at        : change_now(),
+        tracked_files     : 0,
+        dirty_files       : 0,
+        invalidated_files : 0,
+        total_hashes      : 0
+    }
+}
+
+proc make_cache_entry(
+    cache_key : string,
+    hash : ChangeHash
+) -> ChangeCacheEntry {
+    give ChangeCacheEntry {
+        cache_key    : cache_key,
+        hash         : hash,
+        valid        : true,
+        generated_at : change_now(),
+        reused_count : 0
+    }
+}
+
+proc make_graph() -> ChangeGraph {
+    give ChangeGraph {
+        nodes                 : [],
+        dependencies          : [],
+        queue                 : make_queue(),
+        snapshots             : [],
+        cache_entries         : [],
+        total_nodes           : 0,
+        total_dependencies    : 0,
+        dirty_nodes           : 0,
+        invalidated_nodes     : 0,
+        incremental_rebuilds  : 0,
+        full_rebuilds         : 0,
+        propagated_changes    : 0,
+        created_at            : change_now()
+    }
+}
+
+proc graph_push_node(
+    graph : *ChangeGraph,
+    node : ChangeNode
+) {
+    graph.nodes.push(node)
+    graph.total_nodes = graph.total_nodes + 1
+}
+
+proc graph_push_dependency(
+    graph : *ChangeGraph,
+    dependency : ChangeDependency
+) {
+    graph.dependencies.push(dependency)
+    graph.total_dependencies = graph.total_dependencies + 1
+}
+
+proc graph_push_snapshot(
+    graph : *ChangeGraph,
+    snapshot : ChangeSnapshot
+) {
+    graph.snapshots.push(snapshot)
+}
+
+proc graph_push_cache_entry(
+    graph : *ChangeGraph,
+    entry : ChangeCacheEntry
+) {
+    graph.cache_entries.push(entry)
+}
+
+proc queue_push(
+    queue : *ChangeQueue,
+    event : ChangeEvent
+) {
+    queue.events.push(event)
+    queue.queued_events = queue.queued_events + 1
+}
+
+proc queue_pop(
+    queue : *ChangeQueue
+) -> ChangeEvent {
+    let event = queue.events[0]
+
+    queue.processed_events = queue.processed_events + 1
+
+    if queue.queued_events > 0 {
+        queue.queued_events = queue.queued_events - 1
+    }
+
+    give event
+}
+
+proc mark_dirty(
+    graph : *ChangeGraph,
+    node : *ChangeNode
+) {
+    if node.dirty {
+        give
+    }
+
+    node.dirty = true
+    graph.dirty_nodes = graph.dirty_nodes + 1
+}
+
+proc invalidate_node(
+    graph : *ChangeGraph,
+    node : *ChangeNode
+) {
+    node.status = CHANGE_INVALIDATED
+    graph.invalidated_nodes = graph.invalidated_nodes + 1
+}
+
+proc update_hash(
+    node : *ChangeNode,
+    hash : ChangeHash
+) {
+    node.previous_hash = node.hash
+    node.hash = hash
+}
+
+proc detect_change(
+    node : *ChangeNode,
+    current_hash : ChangeHash
+) -> bool {
+    if node.hash != current_hash {
+        node.previous_hash = node.hash
+        node.hash = current_hash
+        node.status = CHANGE_MODIFIED
+        node.dirty = true
+
+        give true
+    }
+
+    give false
+}
+
+proc propagate_changes(
+    graph : *ChangeGraph,
+    node : *ChangeNode
+) {
+    let dependency_index : usize = 0
+
+    loop while dependency_index < graph.total_dependencies {
+        let dependency = &graph.dependencies[dependency_index]
+
+        if dependency.source == node.path {
+            graph.propagated_changes =
+                graph.propagated_changes + 1
+
+            emit "propagate-change"
+            emit dependency.target
+        }
+
+        dependency_index = dependency_index + 1
+    }
+}
+
+proc process_event(
+    graph : *ChangeGraph,
+    event : *ChangeEvent
+) {
+    emit "process-change-event"
+    emit event.path
+
+    let node_index : usize = 0
+
+    loop while node_index < graph.total_nodes {
+        let node = &graph.nodes[node_index]
+
+        if node.id == event.node_id {
+            mark_dirty(graph, node)
+            invalidate_node(graph, node)
+            propagate_changes(graph, node)
+        }
+
+        node_index = node_index + 1
+    }
+
+    event.propagated = true
+}
+
+proc process_queue(
+    graph : *ChangeGraph
+) {
+    loop while graph.queue.queued_events > 0 {
+        let event = queue_pop(&graph.queue)
+
+        process_event(graph, &event)
+    }
+}
+
+proc perform_incremental_rebuild(
+    graph : *ChangeGraph
+) {
+    graph.incremental_rebuilds =
+        graph.incremental_rebuilds + 1
+
+    emit "incremental-rebuild"
+
+    let node_index : usize = 0
+
+    loop while node_index < graph.total_nodes {
+        let node = &graph.nodes[node_index]
+
+        if node.dirty {
+            emit "rebuild-node"
+            emit node.path
+
+            node.dirty = false
+            node.last_compiled = change_now()
+        }
+
+        node_index = node_index + 1
+    }
+}
+
+proc perform_full_rebuild(
+    graph : *ChangeGraph
+) {
+    graph.full_rebuilds =
+        graph.full_rebuilds + 1
+
+    emit "full-rebuild"
+
+    let node_index : usize = 0
+
+    loop while node_index < graph.total_nodes {
+        graph.nodes[node_index].dirty = false
+        graph.nodes[node_index].last_compiled = change_now()
+
+        node_index = node_index + 1
+    }
+}
+
+proc print_node(
+    node : *ChangeNode
+) {
+    emit "change-node"
+    emit node.id
+    emit node.path
+    emit node.hash
+    emit node.status
+    emit node.dirty
+    emit node.dependency_count
+}
+
+proc print_dependency(
+    dependency : *ChangeDependency
+) {
+    emit "dependency"
+    emit dependency.id
+    emit dependency.source
+    emit dependency.target
+    emit dependency.dependency_type
+}
+
+proc print_graph(
+    graph : *ChangeGraph
+) {
+    emit "change-graph"
+    emit graph.total_nodes
+    emit graph.total_dependencies
+    emit graph.dirty_nodes
+    emit graph.invalidated_nodes
+    emit graph.incremental_rebuilds
+    emit graph.full_rebuilds
+    emit graph.propagated_changes
+}
+
+proc bootstrap_change_tracker_demo() -> bool {
+    let graph = make_graph()
+
+    let parser_node = make_node(
+        0,
+        "src/compiler/parser/module.vit"
+    )
+
+    let hir_node = make_node(
+        1,
+        "src/compiler/hir/module.vit"
+    )
+
+    let mir_node = make_node(
+        2,
+        "src/compiler/mir/module.vit"
+    )
+
+    graph_push_node(&graph, parser_node)
+    graph_push_node(&graph, hir_node)
+    graph_push_node(&graph, mir_node)
+
+    let parser_to_hir = make_dependency(
+        0,
+        "src/compiler/parser/module.vit",
+        "src/compiler/hir/module.vit"
+    )
+
+    let hir_to_mir = make_dependency(
+        1,
+        "src/compiler/hir/module.vit",
+        "src/compiler/mir/module.vit"
+    )
+
+    graph_push_dependency(&graph, parser_to_hir)
+    graph_push_dependency(&graph, hir_to_mir)
+
+    let parser_change = make_event(
+        0,
+        0,
+        "src/compiler/parser/module.vit",
+        CHANGE_MODIFIED
+    )
+
+    queue_push(&graph.queue, parser_change)
+
+    process_queue(&graph)
+
+    perform_incremental_rebuild(&graph)
+
+    let snapshot = make_snapshot(0)
+
+    graph_push_snapshot(&graph, snapshot)
+
+    let cache_entry = make_cache_entry(
+        "hir-cache",
+        "hash-hir"
+    )
+
+    graph_push_cache_entry(&graph, cache_entry)
+
+    print_node(&graph.nodes[0])
+    print_node(&graph.nodes[1])
+    print_node(&graph.nodes[2])
+
+    print_dependency(&graph.dependencies[0])
+    print_dependency(&graph.dependencies[1])
+
+    print_graph(&graph)
+
+    give true
+}

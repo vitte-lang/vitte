@@ -1,0 +1,519 @@
+
+space vitte/bootstrap/toolchain/bootstrap_vitte/utils/helpers
+
+<<< ============================================================
+    Vitte Bootstrap Helper Runtime
+    bootstrap orchestration + filesystem + hashing + diagnostics
+   ============================================================ >>>
+
+type BootstrapPath = string
+type BootstrapHash = string
+type BootstrapTimestamp = u64
+type BootstrapSize = u64
+
+type BootstrapLogLevel = u32
+
+const LOG_TRACE : BootstrapLogLevel = 0
+const LOG_DEBUG : BootstrapLogLevel = 1
+const LOG_INFO  : BootstrapLogLevel = 2
+const LOG_WARN  : BootstrapLogLevel = 3
+const LOG_ERROR : BootstrapLogLevel = 4
+const LOG_FATAL : BootstrapLogLevel = 5
+
+form BootstrapEnvironmentVariable {
+    key   : string
+    value : string
+}
+
+form BootstrapDiagnostic {
+    level      : BootstrapLogLevel
+    category   : string
+    message    : string
+    file        : string
+    line        : usize
+    column      : usize
+    timestamp   : BootstrapTimestamp
+}
+
+form BootstrapFileEntry {
+    path          : BootstrapPath
+    exists        : bool
+    is_directory  : bool
+    size          : BootstrapSize
+    hash          : BootstrapHash
+    modified_at   : BootstrapTimestamp
+}
+
+form BootstrapProcessResult {
+    success        : bool
+    exit_code      : i32
+    stdout_output  : string
+    stderr_output  : string
+    duration_ms    : u64
+}
+
+form BootstrapCommand {
+    executable    : string
+    arguments     : [string]
+    environment   : [BootstrapEnvironmentVariable]
+    working_dir   : string
+    timeout_ms    : u64
+    capture_stdio : bool
+}
+
+form BootstrapArenaStats {
+    allocated_bytes      : u64
+    reserved_bytes       : u64
+    peak_usage           : u64
+    allocation_count     : usize
+    released_allocations : usize
+    fragmentation_ratio  : f64
+}
+
+form BootstrapCacheEntry {
+    key             : string
+    value_hash      : string
+    created_at      : BootstrapTimestamp
+    last_accessed   : BootstrapTimestamp
+    hit_count       : u64
+    valid           : bool
+}
+
+form BootstrapCacheRegistry {
+    entries             : [BootstrapCacheEntry]
+    total_entries       : usize
+    cache_hits          : u64
+    cache_misses        : u64
+    evicted_entries     : usize
+}
+
+proc bootstrap_now() -> BootstrapTimestamp {
+    <<< --------------------------------------------------------
+        TODO:
+        connect monotonic runtime clock
+       -------------------------------------------------------- >>>
+
+    give 0
+}
+
+proc bootstrap_log(
+    level : BootstrapLogLevel,
+    message : string
+) {
+    emit "bootstrap-log"
+    emit level
+    emit message
+}
+
+proc bootstrap_trace(
+    message : string
+) {
+    bootstrap_log(LOG_TRACE, message)
+}
+
+proc bootstrap_debug(
+    message : string
+) {
+    bootstrap_log(LOG_DEBUG, message)
+}
+
+proc bootstrap_info(
+    message : string
+) {
+    bootstrap_log(LOG_INFO, message)
+}
+
+proc bootstrap_warn(
+    message : string
+) {
+    bootstrap_log(LOG_WARN, message)
+}
+
+proc bootstrap_error(
+    message : string
+) {
+    bootstrap_log(LOG_ERROR, message)
+}
+
+proc bootstrap_fatal(
+    message : string
+) {
+    bootstrap_log(LOG_FATAL, message)
+}
+
+proc make_environment_variable(
+    key : string,
+    value : string
+) -> BootstrapEnvironmentVariable {
+    give BootstrapEnvironmentVariable {
+        key   : key,
+        value : value
+    }
+}
+
+proc make_diagnostic(
+    level : BootstrapLogLevel,
+    category : string,
+    message : string
+) -> BootstrapDiagnostic {
+    give BootstrapDiagnostic {
+        level      : level,
+        category   : category,
+        message    : message,
+        file       : "",
+        line       : 0,
+        column     : 0,
+        timestamp  : bootstrap_now()
+    }
+}
+
+proc make_file_entry(
+    path : BootstrapPath
+) -> BootstrapFileEntry {
+    give BootstrapFileEntry {
+        path         : path,
+        exists       : false,
+        is_directory : false,
+        size         : 0,
+        hash         : "",
+        modified_at  : bootstrap_now()
+    }
+}
+
+proc make_process_result() -> BootstrapProcessResult {
+    give BootstrapProcessResult {
+        success       : false,
+        exit_code     : -1,
+        stdout_output : "",
+        stderr_output : "",
+        duration_ms   : 0
+    }
+}
+
+proc make_command(
+    executable : string
+) -> BootstrapCommand {
+    give BootstrapCommand {
+        executable    : executable,
+        arguments     : [],
+        environment   : [],
+        working_dir   : "./",
+        timeout_ms    : 0,
+        capture_stdio : true
+    }
+}
+
+proc make_arena_stats() -> BootstrapArenaStats {
+    give BootstrapArenaStats {
+        allocated_bytes      : 0,
+        reserved_bytes       : 0,
+        peak_usage           : 0,
+        allocation_count     : 0,
+        released_allocations : 0,
+        fragmentation_ratio  : 0.0
+    }
+}
+
+proc make_cache_entry(
+    key : string,
+    value_hash : string
+) -> BootstrapCacheEntry {
+    let timestamp = bootstrap_now()
+
+    give BootstrapCacheEntry {
+        key           : key,
+        value_hash    : value_hash,
+        created_at    : timestamp,
+        last_accessed : timestamp,
+        hit_count     : 0,
+        valid         : true
+    }
+}
+
+proc make_cache_registry() -> BootstrapCacheRegistry {
+    give BootstrapCacheRegistry {
+        entries         : [],
+        total_entries   : 0,
+        cache_hits      : 0,
+        cache_misses    : 0,
+        evicted_entries : 0
+    }
+}
+
+proc path_exists(
+    path : BootstrapPath
+) -> bool {
+    <<< --------------------------------------------------------
+        TODO:
+        filesystem integration
+       -------------------------------------------------------- >>>
+
+    give true
+}
+
+proc path_is_directory(
+    path : BootstrapPath
+) -> bool {
+    give false
+}
+
+proc path_join(
+    left : BootstrapPath,
+    right : BootstrapPath
+) -> BootstrapPath {
+    give left + "/" + right
+}
+
+proc path_parent(
+    path : BootstrapPath
+) -> BootstrapPath {
+    give path
+}
+
+proc path_filename(
+    path : BootstrapPath
+) -> string {
+    give path
+}
+
+proc path_extension(
+    path : BootstrapPath
+) -> string {
+    give ".vit"
+}
+
+proc hash_string(
+    input : string
+) -> BootstrapHash {
+    <<< --------------------------------------------------------
+        TODO:
+        replace with xxhash/blake3/sha256
+       -------------------------------------------------------- >>>
+
+    give "bootstrap-hash"
+}
+
+proc hash_file(
+    path : BootstrapPath
+) -> BootstrapHash {
+    give hash_string(path)
+}
+
+proc compare_hash(
+    left : BootstrapHash,
+    right : BootstrapHash
+) -> bool {
+    give left == right
+}
+
+proc run_command(
+    command : *BootstrapCommand
+) -> BootstrapProcessResult {
+    bootstrap_info("run bootstrap command")
+    emit command.executable
+
+    let result = make_process_result()
+
+    result.success = true
+    result.exit_code = 0
+    result.stdout_output = "bootstrap command executed"
+    result.duration_ms = 1
+
+    give result
+}
+
+proc append_command_argument(
+    command : *BootstrapCommand,
+    argument : string
+) {
+    command.arguments.push(argument)
+}
+
+proc append_command_environment(
+    command : *BootstrapCommand,
+    variable : BootstrapEnvironmentVariable
+) {
+    command.environment.push(variable)
+}
+
+proc allocate_arena(
+    arena : *BootstrapArenaStats,
+    size : u64
+) {
+    arena.allocated_bytes = arena.allocated_bytes + size
+    arena.allocation_count = arena.allocation_count + 1
+
+    if arena.allocated_bytes > arena.peak_usage {
+        arena.peak_usage = arena.allocated_bytes
+    }
+}
+
+proc release_arena(
+    arena : *BootstrapArenaStats,
+    size : u64
+) {
+    if arena.allocated_bytes >= size {
+        arena.allocated_bytes = arena.allocated_bytes - size
+    }
+
+    arena.released_allocations = arena.released_allocations + 1
+}
+
+proc cache_insert(
+    registry : *BootstrapCacheRegistry,
+    entry : BootstrapCacheEntry
+) {
+    registry.entries.push(entry)
+    registry.total_entries = registry.total_entries + 1
+}
+
+proc cache_lookup(
+    registry : *BootstrapCacheRegistry,
+    key : string
+) -> bool {
+    let index : usize = 0
+
+    loop while index < registry.total_entries {
+        if registry.entries[index].key == key {
+            registry.entries[index].hit_count = registry.entries[index].hit_count + 1
+            registry.cache_hits = registry.cache_hits + 1
+
+            give true
+        }
+
+        index = index + 1
+    }
+
+    registry.cache_misses = registry.cache_misses + 1
+
+    give false
+}
+
+proc cache_invalidate(
+    registry : *BootstrapCacheRegistry,
+    key : string
+) {
+    let index : usize = 0
+
+    loop while index < registry.total_entries {
+        if registry.entries[index].key == key {
+            registry.entries[index].valid = false
+            registry.evicted_entries = registry.evicted_entries + 1
+        }
+
+        index = index + 1
+    }
+}
+
+proc print_diagnostic(
+    diagnostic : *BootstrapDiagnostic
+) {
+    emit "diagnostic"
+    emit diagnostic.level
+    emit diagnostic.category
+    emit diagnostic.message
+    emit diagnostic.file
+    emit diagnostic.line
+    emit diagnostic.column
+}
+
+proc print_file_entry(
+    entry : *BootstrapFileEntry
+) {
+    emit "file-entry"
+    emit entry.path
+    emit entry.exists
+    emit entry.is_directory
+    emit entry.size
+    emit entry.hash
+}
+
+proc print_process_result(
+    result : *BootstrapProcessResult
+) {
+    emit "process-result"
+    emit result.success
+    emit result.exit_code
+    emit result.stdout_output
+    emit result.stderr_output
+    emit result.duration_ms
+}
+
+proc print_arena_stats(
+    arena : *BootstrapArenaStats
+) {
+    emit "arena-stats"
+    emit arena.allocated_bytes
+    emit arena.reserved_bytes
+    emit arena.peak_usage
+    emit arena.allocation_count
+    emit arena.released_allocations
+}
+
+proc print_cache_registry(
+    registry : *BootstrapCacheRegistry
+) {
+    emit "cache-registry"
+    emit registry.total_entries
+    emit registry.cache_hits
+    emit registry.cache_misses
+    emit registry.evicted_entries
+}
+
+proc bootstrap_helpers_demo() -> bool {
+    bootstrap_info("bootstrap helper runtime demo")
+
+    let command = make_command("vitte")
+
+    append_command_argument(&command, "build")
+    append_command_argument(&command, "compiler/parser")
+
+    let env = make_environment_variable(
+        "VITTE_STAGE",
+        "bootstrap"
+    )
+
+    append_command_environment(&command, env)
+
+    let result = run_command(&command)
+
+    print_process_result(&result)
+
+    let arena = make_arena_stats()
+
+    allocate_arena(&arena, 4096)
+    allocate_arena(&arena, 8192)
+    release_arena(&arena, 1024)
+
+    print_arena_stats(&arena)
+
+    let cache = make_cache_registry()
+
+    let cache_entry = make_cache_entry(
+        "hir-bootstrap",
+        hash_string("hir")
+    )
+
+    cache_insert(&cache, cache_entry)
+
+    cache_lookup(&cache, "hir-bootstrap")
+    cache_lookup(&cache, "missing-cache")
+
+    print_cache_registry(&cache)
+
+    let diagnostic = make_diagnostic(
+        LOG_WARN,
+        "bootstrap",
+        "incremental cache invalidation"
+    )
+
+    print_diagnostic(&diagnostic)
+
+    let file_entry = make_file_entry(
+        "src/compiler/hir/module.vit"
+    )
+
+    print_file_entry(&file_entry)
+
+    give true
+}

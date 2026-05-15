@@ -50,8 +50,13 @@ FORMAT_TOOL  ?= true
 
 VITTE_SOURCES := $(shell find $(SRC_DIR)/vitte -name '*.vit' -o -name '*.vitl' 2>/dev/null)
 VITTE_COMPILER_ROOT ?= src/vitte/compiler
-VITTE_COMPILER_CHECKS := $(shell find $(VITTE_COMPILER_ROOT) -type f -name '*.vit' | sort)
+VITTE_COMPILER_CHECKS := $(shell find $(VITTE_COMPILER_ROOT) -type f \( -name '*.vit' -o -name '*.vitl' \) \
+	! -path '*/tests/*' \
+	! -path '*/benches/*' | sort)
 VITTE_COMPILER_CHECK_MIN ?= 70
+VITTE_ANALYSIS_MODE ?= build
+VITTE_STRICT_FAIL ?= 1
+VITTE_BRAIN_AUTOFIX_SAFE ?= 0
 DEPFILES     =
 KERNEL_TOOLS_DIR := target/kernel-tools
 
@@ -209,8 +214,16 @@ vitte-bootstrap-check:
 	echo "[vitte-bootstrap-check] coverage: $$count files"
 	@set -e; \
 	for src in $(VITTE_COMPILER_CHECKS); do \
-		echo "[vitte-bootstrap-check] $$src"; \
-		"$(VITTE_BOOTSTRAP)" check "$$src" >/dev/null; \
+		echo "[vitte-bootstrap-check][$(VITTE_ANALYSIS_MODE)] $$src"; \
+		if [ "$(VITTE_ANALYSIS_MODE)" = "build" ]; then \
+			if rg -q '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
+				"$(VITTE_BOOTSTRAP)" build-native --src "$$src" --out "/tmp/vitte.native.bootstrap.out"; \
+			else \
+				"$(VITTE_BOOTSTRAP)" build "$$src"; \
+			fi; \
+		else \
+			"$(VITTE_BOOTSTRAP)" check --strict "$$src"; \
+		fi; \
 	done
 
 bootstrap-native-snapshots:
@@ -255,6 +268,11 @@ profiling-baseline-gate:
 .PHONY: doctor
 doctor:
 	@tools/doctor.sh
+
+.PHONY: doctor-error
+doctor-error:
+	@test -n "$(LOG)" || (echo "usage: make doctor-error LOG=/tmp/vitte.seed.err SRC=path/to/file.vit" >&2; exit 2)
+	@python3 tools/vitte_brain_doctor.py "$(LOG)" "$(SRC)" --json-out target/reports/vitte_brain_last_error.json $(if $(filter 1,$(VITTE_BRAIN_AUTOFIX_SAFE)),--autofix-safe,)
 
 .PHONY: selfhost-audit
 selfhost-audit:
@@ -316,37 +334,149 @@ seed-install:
 
 .PHONY: seed-check
 seed-check: bootstrap-seed
-	@bin/vittec0 check src/vitte/compiler/driver/mod.vit
-	@bin/vittec0 check src/vitte/compiler/driver/options.vit
-	@bin/vittec0 check src/vitte/compiler/driver/pipeline.vit
+	@set -e; \
+	run_with_deep_help() { \
+		cmd="$$1"; src="$$2"; log="$$3"; \
+		if eval "$$cmd" >"$$log" 2>&1; then return 0; fi; \
+		echo "============================================================"; \
+		echo "[vitte][error] analyse échouée"; \
+		echo "[file] $$src"; \
+		echo "[command] $$cmd"; \
+		echo "------------------------------------------------------------"; \
+		cat "$$log"; \
+		echo "------------------------------------------------------------"; \
+		echo "[context] aperçu du fichier"; \
+		sed -n '1,140p' "$$src" || true; \
+		echo "------------------------------------------------------------"; \
+		echo "[suggestions]"; \
+		echo "1. Relancer uniquement ce fichier: bin/vittec0 check --strict \"$$src\""; \
+		echo "2. Essayer le parse isolé: bin/vittec0 parse \"$$src\""; \
+		echo "3. Tracer le pipeline: bin/vittec0 --trace-pipeline check --strict \"$$src\""; \
+		echo "4. Vérifier points d'entrée: proc main(...) pour build-native"; \
+		echo "5. Lancer snapshots diagnostics: make cli-diagnostics-snapshots"; \
+		echo "6. Expliquer erreurs connues: make explain-snapshots"; \
+		python3 tools/vitte_brain_doctor.py "$$log" "$$src" --json-out target/reports/vitte_brain_seed_check.json $(if $(filter 1,$(VITTE_BRAIN_AUTOFIX_SAFE)),--autofix-safe,) || true; \
+		echo "============================================================"; \
+		return 1; \
+	}; \
+	sources="$$(find src/vitte/compiler -type f \( -name '*.vit' -o -name '*.vitl' \) \
+		! -path '*/tests/*' \
+		! -path '*/benches/*' | sort)"; \
+	total="$$(printf '%s\n' "$$sources" | sed '/^$$/d' | wc -l | tr -d ' ')"; \
+	i=0; \
+	printf '%s\n' "$$sources" | while IFS= read -r src; do \
+		[ -n "$$src" ] || continue; \
+		i=$$((i + 1)); \
+		echo "[seed-check][$(VITTE_ANALYSIS_MODE)] ($$i/$$total) $$src"; \
+		if [ "$(VITTE_ANALYSIS_MODE)" = "build" ]; then \
+			if rg -q '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
+				run_with_deep_help "bin/vittec0 build-native --src \"$$src\" --out \"/tmp/vitte.native.seed.out\"" "$$src" "/tmp/vitte.seed.err"; \
+			else \
+				run_with_deep_help "bin/vittec0 build \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
+			fi; \
+		else \
+			run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
+		fi; \
+	done
 
 .PHONY: seed-gate
 seed-gate: bootstrap-seed
 	@set -e; \
-	for src in $$( \
+	run_with_deep_help() { \
+		cmd="$$1"; src="$$2"; log="$$3"; \
+		if eval "$$cmd" >"$$log" 2>&1; then return 0; fi; \
+		echo "============================================================"; \
+		echo "[vitte][error] analyse échouée"; \
+		echo "[file] $$src"; \
+		echo "[command] $$cmd"; \
+		echo "------------------------------------------------------------"; \
+		cat "$$log"; \
+		echo "------------------------------------------------------------"; \
+		echo "[context] aperçu du fichier"; \
+		sed -n '1,140p' "$$src" || true; \
+		echo "------------------------------------------------------------"; \
+		echo "[suggestions]"; \
+		echo "1. Relancer ce fichier: bin/vittec0 check --strict \"$$src\""; \
+		echo "2. Compiler en isolé: bin/vittec0 build \"$$src\""; \
+		echo "3. Tracer pipeline: bin/vittec0 --trace-pipeline check --strict \"$$src\""; \
+		echo "4. Générer snapshots: make diag-snapshots"; \
+		echo "5. Exécuter gate compilateur: make compiler-max-gate-fast"; \
+		python3 tools/vitte_brain_doctor.py "$$log" "$$src" --json-out target/reports/vitte_brain_seed_gate.json $(if $(filter 1,$(VITTE_BRAIN_AUTOFIX_SAFE)),--autofix-safe,) || true; \
+		echo "============================================================"; \
+		return 1; \
+	}; \
+	sources="$$( \
 		{ \
-			find src/vitte/compiler/driver -type f -name '*.vit'; \
-			find src/vitte/compiler/ir -type f -name '*.vit'; \
-			find src/vitte/compiler/frontend -type f -name '*.vit'; \
-			find src/vitte/compiler/backends -type f -name '*.vit'; \
+			find src/vitte/compiler -type f \( -name '*.vit' -o -name '*.vitl' \) \
+				! -path '*/tests/*' \
+				! -path '*/benches/*'; \
 			find tests -type f -name '*.vit' ! -path 'tests/grammar/invalid/*' ! -path 'tests/negative/*' ! -path 'tests/bootstrap_native/*'; \
 		} | sort \
-	); do \
-		bin/vittec0 check "$$src"; \
+	)"; \
+	total="$$(printf '%s\n' "$$sources" | sed '/^$$/d' | wc -l | tr -d ' ')"; \
+	i=0; \
+	printf '%s\n' "$$sources" | while IFS= read -r src; do \
+		[ -n "$$src" ] || continue; \
+		i=$$((i + 1)); \
+		echo "[seed-gate][$(VITTE_ANALYSIS_MODE)] ($$i/$$total) $$src"; \
+		if [ "$(VITTE_ANALYSIS_MODE)" = "build" ]; then \
+			if rg -q '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
+				run_with_deep_help "bin/vittec0 build-native --src \"$$src\" --out \"/tmp/vitte.native.seed.out\"" "$$src" "/tmp/vitte.seed.err"; \
+			else \
+				run_with_deep_help "bin/vittec0 build \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
+			fi; \
+		else \
+			run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
+		fi; \
 	done
+
+.PHONY: fast-bootstrap
+fast-bootstrap:
+	@$(MAKE) --no-print-directory seed-verify
+	@$(MAKE) --no-print-directory seed-check VITTE_ANALYSIS_MODE=build
+	@$(MAKE) --no-print-directory stage0-check
+
+.PHONY: bootstrap-help
+bootstrap-help:
+	@echo "Bootstrap workflow (recommended):"
+	@echo "  1) make seed-verify"
+	@echo "  2) make seed-check VITTE_ANALYSIS_MODE=build"
+	@echo "  3) make seed-gate VITTE_BRAIN_AUTOFIX_SAFE=1"
+	@echo "  4) on failure: make doctor-error LOG=/tmp/vitte.seed.err SRC=path/to/file.vit"
+	@echo "  5) local fast path: make fast-bootstrap then make build"
+	@echo "  6) keep bootstrap-all for CI/release"
+	@echo "  7) parser/typing change: use --trace-pipeline on failing file"
+	@echo "  8) regression tracking: target/reports/vitte_brain_seed_check.json"
+
+.PHONY: bootstrap-hard-gate
+bootstrap-hard-gate:
+	@python3 tools/bootstrap_hard_gate.py
+
+.PHONY: bootstrap-vitte-hard-gate
+bootstrap-vitte-hard-gate:
+	@echo "[bootstrap-vitte] strict native bootstrap gate"
+	@tools/bootstrap_vitte_hard_gate.sh
+
+.PHONY: bootstrap-v2-hard-gate
+bootstrap-v2-hard-gate: bootstrap-vitte-hard-gate
 
 .PHONY: stage0-check stage0-gate
 stage0-check: seed-check
 stage0-gate: seed-gate
 
-.PHONY: bootstrap-all
-bootstrap-all:
+.PHONY: bootstrap-all-legacy
+bootstrap-all-legacy:
 	@scripts/seed/install_seed.sh
 	@toolchain/scripts/bootstrap/stage1.sh
 	@VITTE_SELF_CHECK=0 toolchain/scripts/bootstrap/stage2.sh
 	@cp bin/vittec bin/vitte
 	@chmod +x bin/vitte
-	@echo "[bootstrap-all] installed bin/vitte from stage2"
+	@echo "[bootstrap-all-legacy] installed bin/vitte from stage2"
+
+.PHONY: bootstrap-all
+bootstrap-all:
+	@$(MAKE) --no-print-directory bootstrap-vitte-hard-gate
+	@echo "[bootstrap-all] completed via bootstrap_vitte hard gate"
 
 .PHONY: bootstrap-parity
 bootstrap-parity:
