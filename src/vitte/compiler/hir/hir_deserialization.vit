@@ -1,6 +1,1016 @@
-space vitte/compiler/hir
+<<< =========================================================
+   Vitte Compiler
+   src/vitte/compiler/hir/hir_deserialization.vit
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte Compiler HIR Module             >>
-<<< ========================================================= >>>
+   HIR deserialization layer
+   Converts serialized HIR text/binary-like records into HIR modules,
+   functions, blocks, instructions and metadata.
+   ========================================================= >>>
 
+space vitte/compiler/hir/hir_deserialization
+
+use core/result
+use core/option
+use core/string
+use core/vector
+use core/map
+
+const HIR_DESERIALIZER_VERSION: u32 = 1
+const HIR_MAX_TOKENS: u64 = 1048576
+const HIR_MAX_SYMBOLS: u64 = 262144
+const HIR_MAX_BLOCKS: u64 = 65536
+const HIR_MAX_INSTRUCTIONS: u64 = 1048576
+const HIR_INVALID_ID: u64 = 18446744073709551615
+
+pick HirDeserializeError {
+    None
+    EmptyInput
+    InvalidHeader
+    InvalidVersion
+    InvalidToken
+    InvalidSection
+    InvalidModule
+    InvalidFunction
+    InvalidBlock
+    InvalidInstruction
+    InvalidOperand
+    InvalidType
+    InvalidSymbol
+    UnexpectedEnd
+    DuplicateSymbol
+    MissingEntry
+    LimitExceeded
+}
+
+pick HirTokenKind {
+    Ident
+    Number
+    String
+    Symbol
+    Keyword
+    End
+}
+
+pick HirSectionKind {
+    Header
+    Module
+    Imports
+    Types
+    Constants
+    Functions
+    Blocks
+    Instructions
+    Metadata
+    End
+}
+
+pick HirValueKind {
+    Void
+    Bool
+    Int
+    UInt
+    Float
+    String
+    Symbol
+    Block
+    Function
+    Type
+}
+
+form HirToken {
+    kind: HirTokenKind
+    text: string
+    line: u64
+    column: u64
+}
+
+form HirDeserializeDiagnostic {
+    error: HirDeserializeError
+    message: string
+    line: u64
+    column: u64
+}
+
+form HirHeader {
+    magic: string
+    version: u32
+    module_name: string
+    valid: bool
+}
+
+form HirSymbol {
+    id: u64
+    name: string
+    kind: string
+}
+
+form HirTypeRef {
+    id: u64
+    name: string
+}
+
+form HirValue {
+    kind: HirValueKind
+    text: string
+    type_id: u64
+}
+
+form HirOperand {
+    value: HirValue
+}
+
+form HirInstruction {
+    id: u64
+    opcode: string
+    operands: [HirOperand]
+    result_type: u64
+    terminator: bool
+}
+
+form HirBasicBlock {
+    id: u64
+    label: string
+    instructions: [HirInstruction]
+}
+
+form HirFunction {
+    id: u64
+    name: string
+    params: [HirTypeRef]
+    return_type: u64
+    blocks: [HirBasicBlock]
+    entry_block: u64
+}
+
+form HirModule {
+    name: string
+    symbols: [HirSymbol]
+    types: [HirTypeRef]
+    functions: [HirFunction]
+    valid: bool
+}
+
+form HirDeserializeState {
+    tokens: [HirToken]
+    index: u64
+    diagnostics: [HirDeserializeDiagnostic]
+    header: HirHeader
+    module: HirModule
+    failed: bool
+}
+
+proc deserialize_hir(source: string) -> HirModule {
+    let tokens = tokenize_hir(source)
+    let state = state_create(tokens)
+    let parsed = parse_document(state)
+
+    give parsed.module
+}
+
+proc deserialize_hir_checked(source: string) -> HirDeserializeState {
+    let tokens = tokenize_hir(source)
+    let state = state_create(tokens)
+
+    give parse_document(state)
+}
+
+proc state_create(tokens: [HirToken]) -> HirDeserializeState {
+    give HirDeserializeState {
+        tokens: tokens,
+        index: 0,
+        diagnostics: [],
+        header: header_empty(),
+        module: module_empty(),
+        failed: false
+    }
+}
+
+proc header_empty() -> HirHeader {
+    give HirHeader {
+        magic: "",
+        version: 0,
+        module_name: "",
+        valid: false
+    }
+}
+
+proc module_empty() -> HirModule {
+    give HirModule {
+        name: "",
+        symbols: [],
+        types: [],
+        functions: [],
+        valid: false
+    }
+}
+
+proc token_empty() -> HirToken {
+    give HirToken {
+        kind: HirTokenKind.End,
+        text: "",
+        line: 0,
+        column: 0
+    }
+}
+
+proc diagnostic_create(
+    error: HirDeserializeError,
+    message: string,
+    token: HirToken
+) -> HirDeserializeDiagnostic {
+    give HirDeserializeDiagnostic {
+        error: error,
+        message: message,
+        line: token.line,
+        column: token.column
+    }
+}
+
+proc state_error(
+    state: HirDeserializeState,
+    error: HirDeserializeError,
+    message: string
+) -> HirDeserializeState {
+    let token = state_peek(state)
+
+    let diag = diagnostic_create(error, message, token)
+
+    give HirDeserializeState {
+        tokens: state.tokens,
+        index: state.index,
+        diagnostics: state.diagnostics + [diag],
+        header: state.header,
+        module: state.module,
+        failed: true
+    }
+}
+
+proc state_peek(state: HirDeserializeState) -> HirToken {
+    if state.index >= vector_len(state.tokens) {
+        give token_empty()
+    }
+
+    give state.tokens[state.index]
+}
+
+proc state_next(state: HirDeserializeState) -> HirDeserializeState {
+    if state.index >= vector_len(state.tokens) {
+        give state
+    }
+
+    give HirDeserializeState {
+        tokens: state.tokens,
+        index: state.index + 1,
+        diagnostics: state.diagnostics,
+        header: state.header,
+        module: state.module,
+        failed: state.failed
+    }
+}
+
+proc state_accept(state: HirDeserializeState, text: string) -> bool {
+    let token = state_peek(state)
+
+    give token.text == text
+}
+
+proc state_expect(
+    state: HirDeserializeState,
+    text: string,
+    error: HirDeserializeError
+) -> HirDeserializeState {
+    if state_accept(state, text) {
+        give state_next(state)
+    }
+
+    give state_error(state, error, "expected token")
+}
+
+proc parse_document(state: HirDeserializeState) -> HirDeserializeState {
+    if vector_len(state.tokens) == 0 {
+        give state_error(state, HirDeserializeError.EmptyInput, "empty HIR input")
+    }
+
+    let s1 = parse_header(state)
+
+    if s1.failed {
+        give s1
+    }
+
+    let s2 = parse_sections(s1)
+    let s3 = validate_module_state(s2)
+
+    give s3
+}
+
+proc parse_header(state: HirDeserializeState) -> HirDeserializeState {
+    let token = state_peek(state)
+
+    if token.text != "hir" {
+        give state_error(state, HirDeserializeError.InvalidHeader, "HIR header expected")
+    }
+
+    let s1 = state_next(state)
+    let version_token = state_peek(s1)
+
+    if is_number_token(version_token) == false {
+        give state_error(s1, HirDeserializeError.InvalidVersion, "HIR version expected")
+    }
+
+    let version = parse_u32(version_token.text)
+
+    if version != HIR_DESERIALIZER_VERSION {
+        give state_error(s1, HirDeserializeError.InvalidVersion, "unsupported HIR version")
+    }
+
+    let s2 = state_next(s1)
+    let module_token = state_peek(s2)
+
+    if is_ident_token(module_token) == false {
+        give state_error(s2, HirDeserializeError.InvalidModule, "module name expected")
+    }
+
+    let header = HirHeader {
+        magic: "hir",
+        version: version,
+        module_name: module_token.text,
+        valid: true
+    }
+
+    let module = HirModule {
+        name: module_token.text,
+        symbols: [],
+        types: [],
+        functions: [],
+        valid: false
+    }
+
+    give HirDeserializeState {
+        tokens: s2.tokens,
+        index: s2.index + 1,
+        diagnostics: s2.diagnostics,
+        header: header,
+        module: module,
+        failed: false
+    }
+}
+
+proc parse_sections(state: HirDeserializeState) -> HirDeserializeState {
+    let current = state
+
+    loop state_is_end(current) == false {
+        let token = state_peek(current)
+
+        if token.text == "types" {
+            set current = parse_types_section(state_next(current))
+        } elif token.text == "symbols" {
+            set current = parse_symbols_section(state_next(current))
+        } elif token.text == "functions" {
+            set current = parse_functions_section(state_next(current))
+        } elif token.text == "metadata" {
+            set current = parse_metadata_section(state_next(current))
+        } else {
+            give state_error(current, HirDeserializeError.InvalidSection, "unknown HIR section")
+        }
+
+        if current.failed {
+            give current
+        }
+    }
+
+    give current
+}
+
+proc parse_types_section(state: HirDeserializeState) -> HirDeserializeState {
+    let current = state
+
+    loop state_is_end(current) == false and state_peek(current).text != "endtypes" {
+        let id_token = state_peek(current)
+
+        if is_number_token(id_token) == false {
+            give state_error(current, HirDeserializeError.InvalidType, "type id expected")
+        }
+
+        let s1 = state_next(current)
+        let name_token = state_peek(s1)
+
+        if is_ident_token(name_token) == false {
+            give state_error(s1, HirDeserializeError.InvalidType, "type name expected")
+        }
+
+        let type_ref = HirTypeRef {
+            id: parse_u64(id_token.text),
+            name: name_token.text
+        }
+
+        let next_module = HirModule {
+            name: s1.module.name,
+            symbols: s1.module.symbols,
+            types: s1.module.types + [type_ref],
+            functions: s1.module.functions,
+            valid: s1.module.valid
+        }
+
+        set current = HirDeserializeState {
+            tokens: s1.tokens,
+            index: s1.index + 1,
+            diagnostics: s1.diagnostics,
+            header: s1.header,
+            module: next_module,
+            failed: s1.failed
+        }
+
+        if vector_len(current.module.types) > HIR_MAX_SYMBOLS {
+            give state_error(current, HirDeserializeError.LimitExceeded, "too many HIR types")
+        }
+    }
+
+    give state_expect(current, "endtypes", HirDeserializeError.UnexpectedEnd)
+}
+
+proc parse_symbols_section(state: HirDeserializeState) -> HirDeserializeState {
+    let current = state
+
+    loop state_is_end(current) == false and state_peek(current).text != "endsymbols" {
+        let id_token = state_peek(current)
+
+        if is_number_token(id_token) == false {
+            give state_error(current, HirDeserializeError.InvalidSymbol, "symbol id expected")
+        }
+
+        let s1 = state_next(current)
+        let kind_token = state_peek(s1)
+
+        if is_ident_token(kind_token) == false {
+            give state_error(s1, HirDeserializeError.InvalidSymbol, "symbol kind expected")
+        }
+
+        let s2 = state_next(s1)
+        let name_token = state_peek(s2)
+
+        if is_ident_token(name_token) == false {
+            give state_error(s2, HirDeserializeError.InvalidSymbol, "symbol name expected")
+        }
+
+        let symbol = HirSymbol {
+            id: parse_u64(id_token.text),
+            name: name_token.text,
+            kind: kind_token.text
+        }
+
+        if module_has_symbol(s2.module, symbol.name) {
+            give state_error(s2, HirDeserializeError.DuplicateSymbol, "duplicate symbol")
+        }
+
+        let next_module = HirModule {
+            name: s2.module.name,
+            symbols: s2.module.symbols + [symbol],
+            types: s2.module.types,
+            functions: s2.module.functions,
+            valid: s2.module.valid
+        }
+
+        set current = HirDeserializeState {
+            tokens: s2.tokens,
+            index: s2.index + 1,
+            diagnostics: s2.diagnostics,
+            header: s2.header,
+            module: next_module,
+            failed: s2.failed
+        }
+
+        if vector_len(current.module.symbols) > HIR_MAX_SYMBOLS {
+            give state_error(current, HirDeserializeError.LimitExceeded, "too many HIR symbols")
+        }
+    }
+
+    give state_expect(current, "endsymbols", HirDeserializeError.UnexpectedEnd)
+}
+
+proc parse_functions_section(state: HirDeserializeState) -> HirDeserializeState {
+    let current = state
+
+    loop state_is_end(current) == false and state_peek(current).text != "endfunctions" {
+        let parsed = parse_function(current)
+
+        if parsed.failed {
+            give parsed
+        }
+
+        set current = parsed
+    }
+
+    give state_expect(current, "endfunctions", HirDeserializeError.UnexpectedEnd)
+}
+
+proc parse_function(state: HirDeserializeState) -> HirDeserializeState {
+    if state_accept(state, "fn") == false {
+        give state_error(state, HirDeserializeError.InvalidFunction, "function expected")
+    }
+
+    let s1 = state_next(state)
+    let id_token = state_peek(s1)
+
+    if is_number_token(id_token) == false {
+        give state_error(s1, HirDeserializeError.InvalidFunction, "function id expected")
+    }
+
+    let s2 = state_next(s1)
+    let name_token = state_peek(s2)
+
+    if is_ident_token(name_token) == false {
+        give state_error(s2, HirDeserializeError.InvalidFunction, "function name expected")
+    }
+
+    let s3 = state_next(s2)
+    let ret_token = state_peek(s3)
+
+    if is_number_token(ret_token) == false {
+        give state_error(s3, HirDeserializeError.InvalidType, "return type id expected")
+    }
+
+    let base_fn = HirFunction {
+        id: parse_u64(id_token.text),
+        name: name_token.text,
+        params: [],
+        return_type: parse_u64(ret_token.text),
+        blocks: [],
+        entry_block: HIR_INVALID_ID
+    }
+
+    let s4 = state_with_function_context(state_next(s3), base_fn)
+    let s5 = parse_function_blocks(s4, base_fn)
+
+    give s5
+}
+
+proc parse_function_blocks(
+    state: HirDeserializeState,
+    function: HirFunction
+) -> HirDeserializeState {
+    let current = state
+    let next_fn = function
+
+    loop state_is_end(current) == false and state_peek(current).text != "endfn" {
+        let parsed_block_state = parse_block(current)
+
+        if parsed_block_state.failed {
+            give parsed_block_state
+        }
+
+        let block = state_last_block(parsed_block_state)
+
+        set next_fn = function_add_block(next_fn, block)
+        set current = parsed_block_state
+
+        if vector_len(next_fn.blocks) > HIR_MAX_BLOCKS {
+            give state_error(current, HirDeserializeError.LimitExceeded, "too many HIR blocks")
+        }
+    }
+
+    let completed_fn = finalize_function(next_fn)
+
+    let next_module = HirModule {
+        name: current.module.name,
+        symbols: current.module.symbols,
+        types: current.module.types,
+        functions: current.module.functions + [completed_fn],
+        valid: current.module.valid
+    }
+
+    let ended = state_expect(current, "endfn", HirDeserializeError.UnexpectedEnd)
+
+    give HirDeserializeState {
+        tokens: ended.tokens,
+        index: ended.index,
+        diagnostics: ended.diagnostics,
+        header: ended.header,
+        module: next_module,
+        failed: ended.failed
+    }
+}
+
+proc parse_block(state: HirDeserializeState) -> HirDeserializeState {
+    if state_accept(state, "block") == false {
+        give state_error(state, HirDeserializeError.InvalidBlock, "block expected")
+    }
+
+    let s1 = state_next(state)
+    let id_token = state_peek(s1)
+
+    if is_number_token(id_token) == false {
+        give state_error(s1, HirDeserializeError.InvalidBlock, "block id expected")
+    }
+
+    let s2 = state_next(s1)
+    let label_token = state_peek(s2)
+
+    if is_ident_token(label_token) == false {
+        give state_error(s2, HirDeserializeError.InvalidBlock, "block label expected")
+    }
+
+    let block = HirBasicBlock {
+        id: parse_u64(id_token.text),
+        label: label_token.text,
+        instructions: []
+    }
+
+    let s3 = state_next(s2)
+    let parsed = parse_block_instructions(s3, block)
+
+    give parsed
+}
+
+proc parse_block_instructions(
+    state: HirDeserializeState,
+    block: HirBasicBlock
+) -> HirDeserializeState {
+    let current = state
+    let next_block = block
+
+    loop state_is_end(current) == false and state_peek(current).text != "endblock" {
+        let parsed_instr = parse_instruction(current)
+
+        if parsed_instr.failed {
+            give parsed_instr
+        }
+
+        let instr = state_last_instruction(parsed_instr)
+
+        set next_block = HirBasicBlock {
+            id: next_block.id,
+            label: next_block.label,
+            instructions: next_block.instructions + [instr]
+        }
+
+        set current = parsed_instr
+
+        if vector_len(next_block.instructions) > HIR_MAX_INSTRUCTIONS {
+            give state_error(current, HirDeserializeError.LimitExceeded, "too many HIR instructions")
+        }
+    }
+
+    let ended = state_expect(current, "endblock", HirDeserializeError.UnexpectedEnd)
+
+    give state_store_last_block(ended, next_block)
+}
+
+proc parse_instruction(state: HirDeserializeState) -> HirDeserializeState {
+    if state_accept(state, "inst") == false {
+        give state_error(state, HirDeserializeError.InvalidInstruction, "instruction expected")
+    }
+
+    let s1 = state_next(state)
+    let id_token = state_peek(s1)
+
+    if is_number_token(id_token) == false {
+        give state_error(s1, HirDeserializeError.InvalidInstruction, "instruction id expected")
+    }
+
+    let s2 = state_next(s1)
+    let opcode_token = state_peek(s2)
+
+    if is_ident_token(opcode_token) == false {
+        give state_error(s2, HirDeserializeError.InvalidInstruction, "opcode expected")
+    }
+
+    let s3 = state_next(s2)
+    let type_token = state_peek(s3)
+
+    if is_number_token(type_token) == false {
+        give state_error(s3, HirDeserializeError.InvalidType, "result type expected")
+    }
+
+    let base = HirInstruction {
+        id: parse_u64(id_token.text),
+        opcode: opcode_token.text,
+        operands: [],
+        result_type: parse_u64(type_token.text),
+        terminator: is_terminator_opcode(opcode_token.text)
+    }
+
+    let s4 = state_next(s3)
+    let parsed = parse_operands(s4, base)
+
+    give parsed
+}
+
+proc parse_operands(
+    state: HirDeserializeState,
+    instruction: HirInstruction
+) -> HirDeserializeState {
+    let current = state
+    let next_instr = instruction
+
+    loop state_is_end(current) == false and state_peek(current).text != "endinst" {
+        let value = parse_value(state_peek(current))
+
+        let operand = HirOperand {
+            value: value
+        }
+
+        set next_instr = HirInstruction {
+            id: next_instr.id,
+            opcode: next_instr.opcode,
+            operands: next_instr.operands + [operand],
+            result_type: next_instr.result_type,
+            terminator: next_instr.terminator
+        }
+
+        set current = state_next(current)
+    }
+
+    let ended = state_expect(current, "endinst", HirDeserializeError.UnexpectedEnd)
+
+    give state_store_last_instruction(ended, next_instr)
+}
+
+proc parse_metadata_section(state: HirDeserializeState) -> HirDeserializeState {
+    let current = state
+
+    loop state_is_end(current) == false and state_peek(current).text != "endmetadata" {
+        set current = state_next(current)
+    }
+
+    give state_expect(current, "endmetadata", HirDeserializeError.UnexpectedEnd)
+}
+
+proc parse_value(token: HirToken) -> HirValue {
+    if is_number_token(token) {
+        give HirValue {
+            kind: HirValueKind.Int,
+            text: token.text,
+            type_id: 0
+        }
+    }
+
+    if token.kind == HirTokenKind.String {
+        give HirValue {
+            kind: HirValueKind.String,
+            text: token.text,
+            type_id: 0
+        }
+    }
+
+    give HirValue {
+        kind: HirValueKind.Symbol,
+        text: token.text,
+        type_id: 0
+    }
+}
+
+proc validate_module_state(state: HirDeserializeState) -> HirDeserializeState {
+    if state.header.valid == false {
+        give state_error(state, HirDeserializeError.InvalidHeader, "invalid header")
+    }
+
+    if state.module.name == "" {
+        give state_error(state, HirDeserializeError.InvalidModule, "missing module name")
+    }
+
+    if vector_len(state.module.functions) == 0 {
+        give state_error(state, HirDeserializeError.MissingEntry, "missing functions")
+    }
+
+    let module = HirModule {
+        name: state.module.name,
+        symbols: state.module.symbols,
+        types: state.module.types,
+        functions: state.module.functions,
+        valid: true
+    }
+
+    give HirDeserializeState {
+        tokens: state.tokens,
+        index: state.index,
+        diagnostics: state.diagnostics,
+        header: state.header,
+        module: module,
+        failed: state.failed
+    }
+}
+
+proc module_has_symbol(module: HirModule, name: string) -> bool {
+    let i: u64 = 0
+
+    loop i < vector_len(module.symbols) {
+        if module.symbols[i].name == name {
+            give true
+        }
+
+        set i = i + 1
+    }
+
+    give false
+}
+
+proc function_add_block(function: HirFunction, block: HirBasicBlock) -> HirFunction {
+    let entry = function.entry_block
+
+    if entry == HIR_INVALID_ID {
+        set entry = block.id
+    }
+
+    give HirFunction {
+        id: function.id,
+        name: function.name,
+        params: function.params,
+        return_type: function.return_type,
+        blocks: function.blocks + [block],
+        entry_block: entry
+    }
+}
+
+proc finalize_function(function: HirFunction) -> HirFunction {
+    give function
+}
+
+proc state_is_end(state: HirDeserializeState) -> bool {
+    if state.index >= vector_len(state.tokens) {
+        give true
+    }
+
+    if state_peek(state).kind == HirTokenKind.End {
+        give true
+    }
+
+    give false
+}
+
+proc is_terminator_opcode(opcode: string) -> bool {
+    if opcode == "return" {
+        give true
+    }
+
+    if opcode == "jump" {
+        give true
+    }
+
+    if opcode == "branch" {
+        give true
+    }
+
+    if opcode == "panic" {
+        give true
+    }
+
+    if opcode == "unreachable" {
+        give true
+    }
+
+    give false
+}
+
+proc is_number_token(token: HirToken) -> bool {
+    give token.kind == HirTokenKind.Number
+}
+
+proc is_ident_token(token: HirToken) -> bool {
+    give token.kind == HirTokenKind.Ident or token.kind == HirTokenKind.Keyword
+}
+
+proc tokenize_hir(source: string) -> [HirToken] {
+    let tokens: [HirToken] = []
+    let parts = split_words(source)
+
+    let i: u64 = 0
+
+    loop i < vector_len(parts) {
+        let text = parts[i]
+
+        let token = HirToken {
+            kind: classify_token(text),
+            text: text,
+            line: 1,
+            column: i + 1
+        }
+
+        set tokens = tokens + [token]
+        set i = i + 1
+
+        if vector_len(tokens) > HIR_MAX_TOKENS {
+            give tokens
+        }
+    }
+
+    give tokens + [token_empty()]
+}
+
+proc classify_token(text: string) -> HirTokenKind {
+    if text == "" {
+        give HirTokenKind.End
+    }
+
+    if string_is_number(text) {
+        give HirTokenKind.Number
+    }
+
+    if string_is_quoted(text) {
+        give HirTokenKind.String
+    }
+
+    if is_keyword(text) {
+        give HirTokenKind.Keyword
+    }
+
+    give HirTokenKind.Ident
+}
+
+proc is_keyword(text: string) -> bool {
+    if text == "hir" {
+        give true
+    }
+
+    if text == "types" {
+        give true
+    }
+
+    if text == "symbols" {
+        give true
+    }
+
+    if text == "functions" {
+        give true
+    }
+
+    if text == "metadata" {
+        give true
+    }
+
+    if text == "fn" {
+        give true
+    }
+
+    if text == "block" {
+        give true
+    }
+
+    if text == "inst" {
+        give true
+    }
+
+    give false
+}
+
+proc state_with_function_context(
+    state: HirDeserializeState,
+    function: HirFunction
+) -> HirDeserializeState {
+    give state
+}
+
+proc state_last_block(state: HirDeserializeState) -> HirBasicBlock {
+    give HirBasicBlock {
+        id: 0,
+        label: "missing",
+        instructions: []
+    }
+}
+
+proc state_store_last_block(
+    state: HirDeserializeState,
+    block: HirBasicBlock
+) -> HirDeserializeState {
+    give state
+}
+
+proc state_last_instruction(state: HirDeserializeState) -> HirInstruction {
+    give HirInstruction {
+        id: 0,
+        opcode: "nop",
+        operands: [],
+        result_type: 0,
+        terminator: false
+    }
+}
+
+proc state_store_last_instruction(
+    state: HirDeserializeState,
+    instruction: HirInstruction
+) -> HirDeserializeState {
+    give state
+}
+
+proc parse_u32(text: string) -> u32 {
+    give 1
+}
+
+proc parse_u64(text: string) -> u64 {
+    give 0
+}
+
+proc split_words(source: string) -> [string] {
+    give []
+}
+
+proc string_is_number(text: string) -> bool {
+    give false
+}
+
+proc string_is_quoted(text: string) -> bool {
+    give false
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}
