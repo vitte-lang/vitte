@@ -1,6 +1,74 @@
 space vitte/compiler/proc_macro
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte Compiler Proc Macro Module      >>
-<<< ========================================================= >>>
+form MacroExpansionRecord {
+  call_site: string,
+  expansion_id: string,
+  diagnostics: [string],
+}
+
+proc expand_macros(ast: string) -> (string, [string]) {
+  let diagnostics: [string] = []
+  let expanded: string = ast
+
+  if string_contains_text(ast, "@macro") {
+    set diagnostics = diagnostics + ["expanded procedural macro @macro"]
+    set expanded = string_replace(ast, "@macro", "macro_expanded")
+  }
+
+  if string_contains_text(ast, "macro!") {
+    set diagnostics = diagnostics + ["expanded procedural macro macro!()"]
+    set expanded = string_replace(ast, "macro!", "macro_expanded")
+  }
+
+  give (expanded, diagnostics)
+}
+
+proc string_contains_text(text: string, pattern: string) -> bool {
+  let i: int = 0
+  while i + pattern.len <= text.len {
+    let j: int = 0
+    let matched: bool = true
+    while j < pattern.len {
+      if text[i + j] != pattern[j] {
+        set matched = false
+        break
+      }
+      set j = j + 1
+    }
+    if matched {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc string_replace(text: string, pattern: string, replacement: string) -> string {
+  let result: string = ""
+  let i: int = 0
+  while i < text.len {
+    let matched: bool = false
+    if i + pattern.len <= text.len {
+      let j: int = 0
+      let local_match: bool = true
+      while j < pattern.len {
+        if text[i + j] != pattern[j] {
+          set local_match = false
+          break
+        }
+        set j = j + 1
+      }
+      if local_match {
+        set result = result + replacement
+        set i = i + pattern.len
+        set matched = true
+      }
+    }
+    if !matched {
+      set result = result + text[i]
+      set i = i + 1
+    }
+  }
+  give result
+}
 

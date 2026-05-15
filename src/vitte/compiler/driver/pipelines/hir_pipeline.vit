@@ -1,6 +1,26 @@
-space vitte/compiler/driver
+space vitte/compiler/driver/pipelines
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte Compiler Driver Module          >>
-<<< ========================================================= >>>
+use vitte/compiler/borrowck
+use vitte/compiler/borrowck/analysis/dataflow
+
+form HirResult {
+  hir: string,
+  diagnostics: [string],
+}
+
+proc lower_ast_to_hir(ast: string) -> string {
+  give "hir(" + ast + ")"
+}
+
+proc run_hir_pipeline(ast: string) -> HirResult {
+  let hir: string = lower_ast_to_hir(ast)
+  let borrow_diagnostics: [string] = borrowck_analyze(hir)
+  let flow_diagnostics: [string] = analyze_borrow_dataflow(hir)
+  let diagnostics: [string] = borrow_diagnostics + flow_diagnostics
+
+  give HirResult {
+    hir: hir,
+    diagnostics: diagnostics,
+  }
+}
 

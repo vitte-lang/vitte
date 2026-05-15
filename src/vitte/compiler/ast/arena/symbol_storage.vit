@@ -1,6 +1,1416 @@
-space vitte/compiler/ast
+space vitte/compiler/ast/arena/symbol_storage
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte AST Module                      >>>
-<<< ========================================================= >>>
+use vitte/compiler/arena/api
+use vitte/compiler/arena/contracts
+use vitte/compiler/arena/diagnostics
+use vitte/compiler/arena/manifest
+use vitte/compiler/arena/metrics
+use vitte/compiler/ast/arena/ast_arena
+use vitte/compiler/ast/arena/interning
+use vitte/compiler/ast/arena/node_pool
+use vitte/compiler/ast/arena/spans
 
+const AST_SYMBOL_STORAGE_VERSION: string = "0.1.0"
+const AST_SYMBOL_STORAGE_MAGIC: u32 = 0x41535359
+const AST_SYMBOL_INVALID_ID: u32 = 0xffffffff
+const AST_SCOPE_INVALID_ID: u32 = 0xffffffff
+
+type AstSymbolId = u32
+type AstScopeId = u32
+type AstSymbolFlags = u64
+
+pick AstSymbolKind {
+  Empty
+  Module
+  Import
+  Export
+  Const
+  Type
+  Form
+  Field
+  Pick
+  Variant
+  Proc
+  Parameter
+  Local
+  Label
+  Builtin
+  Macro
+}
+
+pick AstSymbolVisibility {
+  Private
+  Internal
+  Public
+  Exported
+}
+
+pick AstSymbolState {
+  Declared
+  Defined
+  Resolved
+  Shadowed
+  Ambiguous
+  Error
+}
+
+form AstSymbolHandle {
+  id: AstSymbolId
+  generation: u32
+  kind: AstSymbolKind
+}
+
+form AstScopeHandle {
+  id: AstScopeId
+  generation: u32
+}
+
+form AstSymbolRecord {
+  id: AstSymbolId
+  generation: u32
+  kind: AstSymbolKind
+  visibility: AstSymbolVisibility
+  state: AstSymbolState
+  name: AstInternHandle
+  qualified_name: AstInternHandle
+  node: AstNodeHandle
+  span: AstSpanId
+  scope: AstScopeId
+  parent_symbol: AstSymbolId
+  flags: AstSymbolFlags
+  payload: ArenaHandle
+}
+
+form AstScopeRecord {
+  id: AstScopeId
+  generation: u32
+  name: AstInternHandle
+  node: AstNodeHandle
+  span: AstSpanId
+  parent: AstScopeId
+  children: [AstScopeId]
+  symbols: [AstSymbolId]
+  depth: usize
+  sealed: bool
+}
+
+form AstSymbolNameIndex {
+  hash: AstInternHash
+  text: string
+  symbols: [AstSymbolId]
+}
+
+form AstScopeNameIndex {
+  hash: AstInternHash
+  text: string
+  scopes: [AstScopeId]
+}
+
+form AstSymbolStorageStats {
+  symbol_count: u32
+  scope_count: u32
+  public_count: u32
+  exported_count: u32
+  local_count: u32
+  builtin_count: u32
+  unresolved_count: u32
+  ambiguous_count: u32
+  error_count: u32
+  max_scope_depth: usize
+  largest_scope_symbols: u32
+}
+
+form AstSymbolStorage {
+  magic: u32
+  name: string
+  arena: Arena
+  interns: AstInternPool
+  symbols: [AstSymbolRecord]
+  scopes: [AstScopeRecord]
+  symbol_name_indexes: [AstSymbolNameIndex]
+  scope_name_indexes: [AstScopeNameIndex]
+  free_symbols: [AstSymbolId]
+  free_scopes: [AstScopeId]
+  root_scope: AstScopeId
+  symbol_generation: u32
+  scope_generation: u32
+  sealed: bool
+}
+
+form AstSymbolInsertResult {
+  storage: AstSymbolStorage
+  symbol: AstSymbolHandle
+}
+
+form AstScopeInsertResult {
+  storage: AstSymbolStorage
+  scope: AstScopeHandle
+}
+
+proc ast_symbol_kind_to_string(kind: AstSymbolKind) -> string {
+  select kind {
+    when AstSymbolKind::Module { give "module" }
+    when AstSymbolKind::Import { give "import" }
+    when AstSymbolKind::Export { give "export" }
+    when AstSymbolKind::Const { give "const" }
+    when AstSymbolKind::Type { give "type" }
+    when AstSymbolKind::Form { give "form" }
+    when AstSymbolKind::Field { give "field" }
+    when AstSymbolKind::Pick { give "pick" }
+    when AstSymbolKind::Variant { give "variant" }
+    when AstSymbolKind::Proc { give "proc" }
+    when AstSymbolKind::Parameter { give "parameter" }
+    when AstSymbolKind::Local { give "local" }
+    when AstSymbolKind::Label { give "label" }
+    when AstSymbolKind::Builtin { give "builtin" }
+    when AstSymbolKind::Macro { give "macro" }
+    otherwise { give "empty" }
+  }
+}
+
+proc ast_symbol_visibility_to_string(visibility: AstSymbolVisibility) -> string {
+  select visibility {
+    when AstSymbolVisibility::Private { give "private" }
+    when AstSymbolVisibility::Internal { give "internal" }
+    when AstSymbolVisibility::Public { give "public" }
+    when AstSymbolVisibility::Exported { give "exported" }
+    otherwise { give "private" }
+  }
+}
+
+proc ast_symbol_state_to_string(state: AstSymbolState) -> string {
+  select state {
+    when AstSymbolState::Declared { give "declared" }
+    when AstSymbolState::Defined { give "defined" }
+    when AstSymbolState::Resolved { give "resolved" }
+    when AstSymbolState::Shadowed { give "shadowed" }
+    when AstSymbolState::Ambiguous { give "ambiguous" }
+    when AstSymbolState::Error { give "error" }
+    otherwise { give "declared" }
+  }
+}
+
+proc ast_symbol_invalid_handle() -> AstSymbolHandle {
+  give AstSymbolHandle {
+    id: AST_SYMBOL_INVALID_ID,
+    generation: 0,
+    kind: AstSymbolKind::Empty
+  }
+}
+
+proc ast_scope_invalid_handle() -> AstScopeHandle {
+  give AstScopeHandle {
+    id: AST_SCOPE_INVALID_ID,
+    generation: 0
+  }
+}
+
+proc ast_symbol_handle_is_valid(handle: AstSymbolHandle) -> bool {
+  give handle.id != AST_SYMBOL_INVALID_ID
+    && handle.kind != AstSymbolKind::Empty
+}
+
+proc ast_scope_handle_is_valid(handle: AstScopeHandle) -> bool {
+  give handle.id != AST_SCOPE_INVALID_ID
+}
+
+proc ast_symbol_make_handle(symbol: AstSymbolRecord) -> AstSymbolHandle {
+  give AstSymbolHandle {
+    id: symbol.id,
+    generation: symbol.generation,
+    kind: symbol.kind
+  }
+}
+
+proc ast_scope_make_handle(scope: AstScopeRecord) -> AstScopeHandle {
+  give AstScopeHandle {
+    id: scope.id,
+    generation: scope.generation
+  }
+}
+
+proc ast_symbol_storage_new(name: string) -> AstSymbolStorage {
+  let config: ArenaConfig =
+    arena_config_new(
+      ArenaKind::Ast,
+      32768,
+      8
+    )
+
+  give AstSymbolStorage {
+    magic: AST_SYMBOL_STORAGE_MAGIC,
+    name: name,
+    arena: arena_with_config(name + "_symbols", config),
+    interns: ast_intern_bootstrap(ast_intern_pool_new(name + "_symbol_interns")),
+    symbols: [],
+    scopes: [],
+    symbol_name_indexes: [],
+    scope_name_indexes: [],
+    free_symbols: [],
+    free_scopes: [],
+    root_scope: AST_SCOPE_INVALID_ID,
+    symbol_generation: 1,
+    scope_generation: 1,
+    sealed: false
+  }
+}
+
+proc ast_symbol_storage_is_valid(storage: AstSymbolStorage) -> bool {
+  give storage.magic == AST_SYMBOL_STORAGE_MAGIC
+    && arena_validate(storage.arena)
+    && ast_intern_validate(storage.interns)
+}
+
+proc ast_symbol_storage_has_symbol(storage: AstSymbolStorage, id: AstSymbolId) -> bool {
+  give id < storage.symbols.len as u32
+}
+
+proc ast_symbol_storage_has_scope(storage: AstSymbolStorage, id: AstScopeId) -> bool {
+  give id < storage.scopes.len as u32
+}
+
+proc ast_symbol_get(storage: AstSymbolStorage, handle: AstSymbolHandle) -> AstSymbolRecord {
+  if !ast_symbol_handle_is_valid(handle) {
+    give AstSymbolRecord {
+      id: AST_SYMBOL_INVALID_ID,
+      generation: 0,
+      kind: AstSymbolKind::Empty,
+      visibility: AstSymbolVisibility::Private,
+      state: AstSymbolState::Error,
+      name: ast_intern_invalid_handle(),
+      qualified_name: ast_intern_invalid_handle(),
+      node: ast_node_invalid_handle(),
+      span: AST_SPAN_INVALID_ID,
+      scope: AST_SCOPE_INVALID_ID,
+      parent_symbol: AST_SYMBOL_INVALID_ID,
+      flags: 0,
+      payload: arena_invalid_handle()
+    }
+  }
+
+  if !ast_symbol_storage_has_symbol(storage, handle.id) {
+    give AstSymbolRecord {
+      id: AST_SYMBOL_INVALID_ID,
+      generation: 0,
+      kind: AstSymbolKind::Empty,
+      visibility: AstSymbolVisibility::Private,
+      state: AstSymbolState::Error,
+      name: ast_intern_invalid_handle(),
+      qualified_name: ast_intern_invalid_handle(),
+      node: ast_node_invalid_handle(),
+      span: AST_SPAN_INVALID_ID,
+      scope: AST_SCOPE_INVALID_ID,
+      parent_symbol: AST_SYMBOL_INVALID_ID,
+      flags: 0,
+      payload: arena_invalid_handle()
+    }
+  }
+
+  let symbol: AstSymbolRecord = storage.symbols[handle.id as usize]
+
+  if symbol.generation != handle.generation || symbol.kind != handle.kind {
+    give AstSymbolRecord {
+      id: AST_SYMBOL_INVALID_ID,
+      generation: 0,
+      kind: AstSymbolKind::Empty,
+      visibility: AstSymbolVisibility::Private,
+      state: AstSymbolState::Error,
+      name: ast_intern_invalid_handle(),
+      qualified_name: ast_intern_invalid_handle(),
+      node: ast_node_invalid_handle(),
+      span: AST_SPAN_INVALID_ID,
+      scope: AST_SCOPE_INVALID_ID,
+      parent_symbol: AST_SYMBOL_INVALID_ID,
+      flags: 0,
+      payload: arena_invalid_handle()
+    }
+  }
+
+  give symbol
+}
+
+proc ast_scope_get(storage: AstSymbolStorage, handle: AstScopeHandle) -> AstScopeRecord {
+  if !ast_scope_handle_is_valid(handle) || !ast_symbol_storage_has_scope(storage, handle.id) {
+    give AstScopeRecord {
+      id: AST_SCOPE_INVALID_ID,
+      generation: 0,
+      name: ast_intern_invalid_handle(),
+      node: ast_node_invalid_handle(),
+      span: AST_SPAN_INVALID_ID,
+      parent: AST_SCOPE_INVALID_ID,
+      children: [],
+      symbols: [],
+      depth: 0,
+      sealed: false
+    }
+  }
+
+  let scope: AstScopeRecord = storage.scopes[handle.id as usize]
+
+  if scope.generation != handle.generation {
+    give AstScopeRecord {
+      id: AST_SCOPE_INVALID_ID,
+      generation: 0,
+      name: ast_intern_invalid_handle(),
+      node: ast_node_invalid_handle(),
+      span: AST_SPAN_INVALID_ID,
+      parent: AST_SCOPE_INVALID_ID,
+      children: [],
+      symbols: [],
+      depth: 0,
+      sealed: false
+    }
+  }
+
+  give scope
+}
+
+proc ast_symbol_next_generation(storage: AstSymbolStorage) -> u32 {
+  if storage.symbol_generation == 0 {
+    give 1
+  }
+
+  give storage.symbol_generation
+}
+
+proc ast_scope_next_generation(storage: AstSymbolStorage) -> u32 {
+  if storage.scope_generation == 0 {
+    give 1
+  }
+
+  give storage.scope_generation
+}
+
+proc ast_symbol_bump_generation(storage: AstSymbolStorage) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+
+  set next.symbol_generation = next.symbol_generation + 1
+
+  if next.symbol_generation == 0 {
+    set next.symbol_generation = 1
+  }
+
+  give next
+}
+
+proc ast_scope_bump_generation(storage: AstSymbolStorage) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+
+  set next.scope_generation = next.scope_generation + 1
+
+  if next.scope_generation == 0 {
+    set next.scope_generation = 1
+  }
+
+  give next
+}
+
+proc ast_symbol_name_index_find(storage: AstSymbolStorage, hash: AstInternHash, text: string) -> usize {
+  let i: usize = 0
+
+  while i < storage.symbol_name_indexes.len {
+    if storage.symbol_name_indexes[i].hash == hash && storage.symbol_name_indexes[i].text == text {
+      give i
+    }
+
+    set i = i + 1
+  }
+
+  give storage.symbol_name_indexes.len
+}
+
+proc ast_scope_name_index_find(storage: AstSymbolStorage, hash: AstInternHash, text: string) -> usize {
+  let i: usize = 0
+
+  while i < storage.scope_name_indexes.len {
+    if storage.scope_name_indexes[i].hash == hash && storage.scope_name_indexes[i].text == text {
+      give i
+    }
+
+    set i = i + 1
+  }
+
+  give storage.scope_name_indexes.len
+}
+
+proc ast_symbol_name_index_add(storage: AstSymbolStorage, name: AstInternHandle, id: AstSymbolId) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+  let text: string = ast_intern_read(next.interns, name)
+
+  if text == "" {
+    give next
+  }
+
+  let index: usize = ast_symbol_name_index_find(next, name.hash, text)
+
+  if index >= next.symbol_name_indexes.len {
+    set next.symbol_name_indexes = next.symbol_name_indexes + [
+      AstSymbolNameIndex {
+        hash: name.hash,
+        text: text,
+        symbols: [id]
+      }
+    ]
+
+    give next
+  }
+
+  set next.symbol_name_indexes[index].symbols =
+    next.symbol_name_indexes[index].symbols + [id]
+
+  give next
+}
+
+proc ast_scope_name_index_add(storage: AstSymbolStorage, name: AstInternHandle, id: AstScopeId) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+  let text: string = ast_intern_read(next.interns, name)
+
+  if text == "" {
+    give next
+  }
+
+  let index: usize = ast_scope_name_index_find(next, name.hash, text)
+
+  if index >= next.scope_name_indexes.len {
+    set next.scope_name_indexes = next.scope_name_indexes + [
+      AstScopeNameIndex {
+        hash: name.hash,
+        text: text,
+        scopes: [id]
+      }
+    ]
+
+    give next
+  }
+
+  set next.scope_name_indexes[index].scopes =
+    next.scope_name_indexes[index].scopes + [id]
+
+  give next
+}
+
+proc ast_symbol_take_free(storage: AstSymbolStorage) -> AstSymbolId {
+  if storage.free_symbols.len == 0 {
+    give storage.symbols.len as AstSymbolId
+  }
+
+  give storage.free_symbols[storage.free_symbols.len - 1]
+}
+
+proc ast_scope_take_free(storage: AstSymbolStorage) -> AstScopeId {
+  if storage.free_scopes.len == 0 {
+    give storage.scopes.len as AstScopeId
+  }
+
+  give storage.free_scopes[storage.free_scopes.len - 1]
+}
+
+proc ast_symbol_pop_free(storage: AstSymbolStorage) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+
+  if next.free_symbols.len == 0 {
+    give next
+  }
+
+  let out: [AstSymbolId] = []
+  let i: usize = 0
+
+  while i + 1 < next.free_symbols.len {
+    set out = out + [next.free_symbols[i]]
+    set i = i + 1
+  }
+
+  set next.free_symbols = out
+
+  give next
+}
+
+proc ast_scope_pop_free(storage: AstSymbolStorage) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+
+  if next.free_scopes.len == 0 {
+    give next
+  }
+
+  let out: [AstScopeId] = []
+  let i: usize = 0
+
+  while i + 1 < next.free_scopes.len {
+    set out = out + [next.free_scopes[i]]
+    set i = i + 1
+  }
+
+  set next.free_scopes = out
+
+  give next
+}
+
+proc ast_symbol_make_qualified_name(storage: AstSymbolStorage, scope: AstScopeId, name: string) -> string {
+  if scope == AST_SCOPE_INVALID_ID || !ast_symbol_storage_has_scope(storage, scope) {
+    give name
+  }
+
+  let prefix: string = ast_intern_read(storage.interns, storage.scopes[scope as usize].name)
+
+  if prefix == "" {
+    give name
+  }
+
+  give prefix + "::" + name
+}
+
+proc ast_scope_create(
+  storage: AstSymbolStorage,
+  name_text: string,
+  parent: AstScopeId,
+  node: AstNodeHandle,
+  span: AstSpanId
+) -> AstScopeInsertResult {
+  if storage.sealed {
+    give AstScopeInsertResult {
+      storage: storage,
+      scope: ast_scope_invalid_handle()
+    }
+  }
+
+  let next: AstSymbolStorage = storage
+  let name_result: AstInternResult = ast_intern_identifier(next.interns, name_text)
+
+  set next.interns = name_result.pool
+
+  let id: AstScopeId = ast_scope_take_free(next)
+  let generation: u32 = ast_scope_next_generation(next)
+  let depth: usize = 0
+
+  if parent != AST_SCOPE_INVALID_ID && ast_symbol_storage_has_scope(next, parent) {
+    set depth = next.scopes[parent as usize].depth + 1
+  }
+
+  set next = ast_scope_pop_free(next)
+  set next = ast_scope_bump_generation(next)
+
+  let scope: AstScopeRecord = AstScopeRecord {
+    id: id,
+    generation: generation,
+    name: name_result.handle,
+    node: node,
+    span: span,
+    parent: parent,
+    children: [],
+    symbols: [],
+    depth: depth,
+    sealed: false
+  }
+
+  if id == next.scopes.len as u32 {
+    set next.scopes = next.scopes + [scope]
+  } else {
+    set next.scopes[id as usize] = scope
+  }
+
+  if parent != AST_SCOPE_INVALID_ID && ast_symbol_storage_has_scope(next, parent) {
+    set next.scopes[parent as usize].children =
+      next.scopes[parent as usize].children + [id]
+  }
+
+  if next.root_scope == AST_SCOPE_INVALID_ID {
+    set next.root_scope = id
+  }
+
+  set next = ast_scope_name_index_add(next, name_result.handle, id)
+
+  give AstScopeInsertResult {
+    storage: next,
+    scope: ast_scope_make_handle(scope)
+  }
+}
+
+proc ast_symbol_create(
+  storage: AstSymbolStorage,
+  kind: AstSymbolKind,
+  visibility: AstSymbolVisibility,
+  name_text: string,
+  scope: AstScopeId,
+  node: AstNodeHandle,
+  span: AstSpanId
+) -> AstSymbolInsertResult {
+  if storage.sealed {
+    give AstSymbolInsertResult {
+      storage: storage,
+      symbol: ast_symbol_invalid_handle()
+    }
+  }
+
+  if kind == AstSymbolKind::Empty {
+    give AstSymbolInsertResult {
+      storage: storage,
+      symbol: ast_symbol_invalid_handle()
+    }
+  }
+
+  let next: AstSymbolStorage = storage
+  let name_result: AstInternResult = ast_intern_identifier(next.interns, name_text)
+
+  set next.interns = name_result.pool
+
+  let qualified_text: string =
+    ast_symbol_make_qualified_name(next, scope, name_text)
+
+  let qualified_result: AstInternResult =
+    ast_intern_symbol(next.interns, qualified_text)
+
+  set next.interns = qualified_result.pool
+
+  let payload_result: ArenaAllocResult =
+    arena_alloc_node(
+      next.arena,
+      "ast/symbol/"
+        + ast_symbol_kind_to_string(kind)
+        + "/"
+        + qualified_text,
+      128
+    )
+
+  set next.arena = payload_result.arena
+
+  let id: AstSymbolId = ast_symbol_take_free(next)
+  let generation: u32 = ast_symbol_next_generation(next)
+
+  set next = ast_symbol_pop_free(next)
+  set next = ast_symbol_bump_generation(next)
+
+  let symbol: AstSymbolRecord = AstSymbolRecord {
+    id: id,
+    generation: generation,
+    kind: kind,
+    visibility: visibility,
+    state: AstSymbolState::Declared,
+    name: name_result.handle,
+    qualified_name: qualified_result.handle,
+    node: node,
+    span: span,
+    scope: scope,
+    parent_symbol: AST_SYMBOL_INVALID_ID,
+    flags: 0,
+    payload: payload_result.handle
+  }
+
+  if id == next.symbols.len as u32 {
+    set next.symbols = next.symbols + [symbol]
+  } else {
+    set next.symbols[id as usize] = symbol
+  }
+
+  if scope != AST_SCOPE_INVALID_ID && ast_symbol_storage_has_scope(next, scope) {
+    set next.scopes[scope as usize].symbols =
+      next.scopes[scope as usize].symbols + [id]
+  }
+
+  set next = ast_symbol_name_index_add(next, name_result.handle, id)
+
+  give AstSymbolInsertResult {
+    storage: next,
+    symbol: ast_symbol_make_handle(symbol)
+  }
+}
+
+proc ast_symbol_define(storage: AstSymbolStorage, handle: AstSymbolHandle) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+
+  if !ast_symbol_handle_is_valid(handle) {
+    give next
+  }
+
+  if !ast_symbol_storage_has_symbol(next, handle.id) {
+    give next
+  }
+
+  if next.symbols[handle.id as usize].generation != handle.generation {
+    give next
+  }
+
+  set next.symbols[handle.id as usize].state = AstSymbolState::Defined
+
+  give next
+}
+
+proc ast_symbol_resolve(storage: AstSymbolStorage, handle: AstSymbolHandle) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+
+  if !ast_symbol_handle_is_valid(handle) {
+    give next
+  }
+
+  if !ast_symbol_storage_has_symbol(next, handle.id) {
+    give next
+  }
+
+  if next.symbols[handle.id as usize].generation != handle.generation {
+    give next
+  }
+
+  set next.symbols[handle.id as usize].state = AstSymbolState::Resolved
+
+  give next
+}
+
+proc ast_symbol_set_state(
+  storage: AstSymbolStorage,
+  handle: AstSymbolHandle,
+  state: AstSymbolState
+) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+
+  if !ast_symbol_handle_is_valid(handle) {
+    give next
+  }
+
+  if !ast_symbol_storage_has_symbol(next, handle.id) {
+    give next
+  }
+
+  set next.symbols[handle.id as usize].state = state
+
+  give next
+}
+
+proc ast_symbol_lookup_local(
+  storage: AstSymbolStorage,
+  scope: AstScopeId,
+  name: string
+) -> AstSymbolHandle {
+  if scope == AST_SCOPE_INVALID_ID || !ast_symbol_storage_has_scope(storage, scope) {
+    give ast_symbol_invalid_handle()
+  }
+
+  let target_hash: AstInternHash = ast_intern_hash_string(name)
+  let symbols: [AstSymbolId] = storage.scopes[scope as usize].symbols
+  let i: usize = 0
+
+  while i < symbols.len {
+    let symbol: AstSymbolRecord = storage.symbols[symbols[i] as usize]
+
+    if symbol.name.hash == target_hash {
+      if ast_intern_read(storage.interns, symbol.name) == name {
+        give ast_symbol_make_handle(symbol)
+      }
+    }
+
+    set i = i + 1
+  }
+
+  give ast_symbol_invalid_handle()
+}
+
+proc ast_symbol_lookup(
+  storage: AstSymbolStorage,
+  scope: AstScopeId,
+  name: string
+) -> AstSymbolHandle {
+  let current: AstScopeId = scope
+
+  while current != AST_SCOPE_INVALID_ID {
+    let local: AstSymbolHandle =
+      ast_symbol_lookup_local(storage, current, name)
+
+    if ast_symbol_handle_is_valid(local) {
+      give local
+    }
+
+    if !ast_symbol_storage_has_scope(storage, current) {
+      give ast_symbol_invalid_handle()
+    }
+
+    set current = storage.scopes[current as usize].parent
+  }
+
+  give ast_symbol_invalid_handle()
+}
+
+proc ast_symbol_lookup_global(storage: AstSymbolStorage, name: string) -> [AstSymbolHandle] {
+  let out: [AstSymbolHandle] = []
+  let hash: AstInternHash = ast_intern_hash_string(name)
+  let index: usize = ast_symbol_name_index_find(storage, hash, name)
+
+  if index >= storage.symbol_name_indexes.len {
+    give out
+  }
+
+  let i: usize = 0
+
+  while i < storage.symbol_name_indexes[index].symbols.len {
+    let id: AstSymbolId = storage.symbol_name_indexes[index].symbols[i]
+
+    if ast_symbol_storage_has_symbol(storage, id) {
+      set out = out + [ast_symbol_make_handle(storage.symbols[id as usize])]
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc ast_symbol_lookup_qualified(storage: AstSymbolStorage, qualified_name: string) -> AstSymbolHandle {
+  let i: usize = 0
+
+  while i < storage.symbols.len {
+    let symbol: AstSymbolRecord = storage.symbols[i]
+
+    if ast_intern_read(storage.interns, symbol.qualified_name) == qualified_name {
+      give ast_symbol_make_handle(symbol)
+    }
+
+    set i = i + 1
+  }
+
+  give ast_symbol_invalid_handle()
+}
+
+proc ast_symbol_scope_contains(storage: AstSymbolStorage, scope: AstScopeId, name: string) -> bool {
+  give ast_symbol_handle_is_valid(ast_symbol_lookup_local(storage, scope, name))
+}
+
+proc ast_symbol_remove_id(list: [AstSymbolId], id: AstSymbolId) -> [AstSymbolId] {
+  let out: [AstSymbolId] = []
+  let i: usize = 0
+
+  while i < list.len {
+    if list[i] != id {
+      set out = out + [list[i]]
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc ast_scope_remove_id(list: [AstScopeId], id: AstScopeId) -> [AstScopeId] {
+  let out: [AstScopeId] = []
+  let i: usize = 0
+
+  while i < list.len {
+    if list[i] != id {
+      set out = out + [list[i]]
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc ast_symbol_remove(storage: AstSymbolStorage, handle: AstSymbolHandle) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+
+  if !ast_symbol_handle_is_valid(handle) {
+    give next
+  }
+
+  if !ast_symbol_storage_has_symbol(next, handle.id) {
+    give next
+  }
+
+  let symbol: AstSymbolRecord = next.symbols[handle.id as usize]
+
+  if symbol.generation != handle.generation {
+    give next
+  }
+
+  if symbol.scope != AST_SCOPE_INVALID_ID && ast_symbol_storage_has_scope(next, symbol.scope) {
+    set next.scopes[symbol.scope as usize].symbols =
+      ast_symbol_remove_id(next.scopes[symbol.scope as usize].symbols, symbol.id)
+  }
+
+  set next.symbols[handle.id as usize].state = AstSymbolState::Error
+  set next.symbols[handle.id as usize].kind = AstSymbolKind::Empty
+  set next.symbols[handle.id as usize].name = ast_intern_invalid_handle()
+  set next.symbols[handle.id as usize].qualified_name = ast_intern_invalid_handle()
+  set next.symbols[handle.id as usize].payload = arena_invalid_handle()
+
+  set next.free_symbols = next.free_symbols + [handle.id]
+
+  give next
+}
+
+proc ast_scope_seal(storage: AstSymbolStorage, handle: AstScopeHandle) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+
+  if !ast_scope_handle_is_valid(handle) {
+    give next
+  }
+
+  if !ast_symbol_storage_has_scope(next, handle.id) {
+    give next
+  }
+
+  if next.scopes[handle.id as usize].generation != handle.generation {
+    give next
+  }
+
+  set next.scopes[handle.id as usize].sealed = true
+
+  give next
+}
+
+proc ast_symbol_storage_seal(storage: AstSymbolStorage) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+
+  set next.arena = arena_seal(next.arena)
+  set next.interns = ast_intern_pool_seal(next.interns)
+  set next.sealed = true
+
+  give next
+}
+
+proc ast_symbol_storage_clear(storage: AstSymbolStorage) -> AstSymbolStorage {
+  let next: AstSymbolStorage = storage
+
+  set next.arena = arena_reset(next.arena)
+  set next.interns = ast_intern_clear(next.interns)
+  set next.symbols = []
+  set next.scopes = []
+  set next.symbol_name_indexes = []
+  set next.scope_name_indexes = []
+  set next.free_symbols = []
+  set next.free_scopes = []
+  set next.root_scope = AST_SCOPE_INVALID_ID
+  set next.symbol_generation = 1
+  set next.scope_generation = 1
+  set next.sealed = false
+
+  give next
+}
+
+proc ast_symbol_storage_stats(storage: AstSymbolStorage) -> AstSymbolStorageStats {
+  let stats: AstSymbolStorageStats = AstSymbolStorageStats {
+    symbol_count: storage.symbols.len as u32,
+    scope_count: storage.scopes.len as u32,
+    public_count: 0,
+    exported_count: 0,
+    local_count: 0,
+    builtin_count: 0,
+    unresolved_count: 0,
+    ambiguous_count: 0,
+    error_count: 0,
+    max_scope_depth: 0,
+    largest_scope_symbols: 0
+  }
+
+  let s: usize = 0
+
+  while s < storage.symbols.len {
+    let symbol: AstSymbolRecord = storage.symbols[s]
+
+    if symbol.kind == AstSymbolKind::Builtin {
+      set stats.builtin_count = stats.builtin_count + 1
+    }
+
+    if symbol.kind == AstSymbolKind::Local {
+      set stats.local_count = stats.local_count + 1
+    }
+
+    if symbol.visibility == AstSymbolVisibility::Public {
+      set stats.public_count = stats.public_count + 1
+    }
+
+    if symbol.visibility == AstSymbolVisibility::Exported {
+      set stats.exported_count = stats.exported_count + 1
+    }
+
+    if symbol.state == AstSymbolState::Declared || symbol.state == AstSymbolState::Defined {
+      set stats.unresolved_count = stats.unresolved_count + 1
+    }
+
+    if symbol.state == AstSymbolState::Ambiguous {
+      set stats.ambiguous_count = stats.ambiguous_count + 1
+    }
+
+    if symbol.state == AstSymbolState::Error {
+      set stats.error_count = stats.error_count + 1
+    }
+
+    set s = s + 1
+  }
+
+  let c: usize = 0
+
+  while c < storage.scopes.len {
+    let scope: AstScopeRecord = storage.scopes[c]
+
+    if scope.depth > stats.max_scope_depth {
+      set stats.max_scope_depth = scope.depth
+    }
+
+    if scope.symbols.len as u32 > stats.largest_scope_symbols {
+      set stats.largest_scope_symbols = scope.symbols.len as u32
+    }
+
+    set c = c + 1
+  }
+
+  give stats
+}
+
+proc ast_symbol_validate_symbol(storage: AstSymbolStorage, symbol: AstSymbolRecord) -> bool {
+  if symbol.id == AST_SYMBOL_INVALID_ID {
+    give false
+  }
+
+  if symbol.kind == AstSymbolKind::Empty {
+    give true
+  }
+
+  if !ast_intern_validate_handle(storage.interns, symbol.name) {
+    give false
+  }
+
+  if !ast_intern_validate_handle(storage.interns, symbol.qualified_name) {
+    give false
+  }
+
+  if symbol.scope != AST_SCOPE_INVALID_ID && !ast_symbol_storage_has_scope(storage, symbol.scope) {
+    give false
+  }
+
+  if symbol.parent_symbol != AST_SYMBOL_INVALID_ID && !ast_symbol_storage_has_symbol(storage, symbol.parent_symbol) {
+    give false
+  }
+
+  if !arena_handle_belongs_to(storage.arena, symbol.payload) {
+    give false
+  }
+
+  give true
+}
+
+proc ast_symbol_validate_scope(storage: AstSymbolStorage, scope: AstScopeRecord) -> bool {
+  if scope.id == AST_SCOPE_INVALID_ID {
+    give false
+  }
+
+  if !ast_intern_validate_handle(storage.interns, scope.name) {
+    give false
+  }
+
+  if scope.parent != AST_SCOPE_INVALID_ID && !ast_symbol_storage_has_scope(storage, scope.parent) {
+    give false
+  }
+
+  let c: usize = 0
+
+  while c < scope.children.len {
+    if !ast_symbol_storage_has_scope(storage, scope.children[c]) {
+      give false
+    }
+
+    if storage.scopes[scope.children[c] as usize].parent != scope.id {
+      give false
+    }
+
+    set c = c + 1
+  }
+
+  let s: usize = 0
+
+  while s < scope.symbols.len {
+    if !ast_symbol_storage_has_symbol(storage, scope.symbols[s]) {
+      give false
+    }
+
+    if storage.symbols[scope.symbols[s] as usize].scope != scope.id {
+      give false
+    }
+
+    set s = s + 1
+  }
+
+  give true
+}
+
+proc ast_symbol_validate_indexes(storage: AstSymbolStorage) -> bool {
+  let i: usize = 0
+
+  while i < storage.symbol_name_indexes.len {
+    let j: usize = 0
+
+    while j < storage.symbol_name_indexes[i].symbols.len {
+      let id: AstSymbolId = storage.symbol_name_indexes[i].symbols[j]
+
+      if !ast_symbol_storage_has_symbol(storage, id) {
+        give false
+      }
+
+      let symbol: AstSymbolRecord = storage.symbols[id as usize]
+      let text: string = ast_intern_read(storage.interns, symbol.name)
+
+      if text != storage.symbol_name_indexes[i].text {
+        give false
+      }
+
+      set j = j + 1
+    }
+
+    set i = i + 1
+  }
+
+  let s: usize = 0
+
+  while s < storage.scope_name_indexes.len {
+    let j: usize = 0
+
+    while j < storage.scope_name_indexes[s].scopes.len {
+      let id: AstScopeId = storage.scope_name_indexes[s].scopes[j]
+
+      if !ast_symbol_storage_has_scope(storage, id) {
+        give false
+      }
+
+      let scope: AstScopeRecord = storage.scopes[id as usize]
+      let text: string = ast_intern_read(storage.interns, scope.name)
+
+      if text != storage.scope_name_indexes[s].text {
+        give false
+      }
+
+      set j = j + 1
+    }
+
+    set s = s + 1
+  }
+
+  give true
+}
+
+proc ast_symbol_storage_validate(storage: AstSymbolStorage) -> bool {
+  if storage.magic != AST_SYMBOL_STORAGE_MAGIC {
+    give false
+  }
+
+  if !arena_validate(storage.arena) {
+    give false
+  }
+
+  if !ast_intern_validate(storage.interns) {
+    give false
+  }
+
+  let s: usize = 0
+
+  while s < storage.symbols.len {
+    if storage.symbols[s].id != s as u32 {
+      give false
+    }
+
+    if !ast_symbol_validate_symbol(storage, storage.symbols[s]) {
+      give false
+    }
+
+    set s = s + 1
+  }
+
+  let c: usize = 0
+
+  while c < storage.scopes.len {
+    if storage.scopes[c].id != c as u32 {
+      give false
+    }
+
+    if !ast_symbol_validate_scope(storage, storage.scopes[c]) {
+      give false
+    }
+
+    set c = c + 1
+  }
+
+  if !ast_symbol_validate_indexes(storage) {
+    give false
+  }
+
+  if storage.root_scope != AST_SCOPE_INVALID_ID && !ast_symbol_storage_has_scope(storage, storage.root_scope) {
+    give false
+  }
+
+  give true
+}
+
+proc ast_symbol_build_manifest(storage: AstSymbolStorage) -> ArenaManifest {
+  give arena_manifest_with_diagnostics(
+    arena_manifest_from_arena(storage.arena)
+  )
+}
+
+proc ast_symbol_build_metrics(storage: AstSymbolStorage) -> ArenaMetrics {
+  give arena_metrics_from_arena(storage.arena)
+}
+
+proc ast_symbol_build_diagnostics(storage: AstSymbolStorage) -> ArenaDiagnosticReport {
+  let report: ArenaDiagnosticReport =
+    arena_diagnostics_check_arena(storage.arena)
+
+  let next: ArenaDiagnosticReport = report
+
+  if !ast_symbol_storage_validate(storage) {
+    set next = arena_diagnostics_add(
+      next,
+      arena_diagnostic_new(
+        ArenaDiagnosticSeverity::Error,
+        ArenaDiagnosticDomain::Arena,
+        "AST_SYMBOL_STORAGE_INVALID",
+        "invalid AST symbol storage",
+        storage.name,
+        "AST symbol storage validation failed"
+      )
+    )
+  }
+
+  give next
+}
+
+proc ast_symbol_debug_handle(handle: AstSymbolHandle) -> string {
+  if !ast_symbol_handle_is_valid(handle) {
+    give "AstSymbolHandle(invalid)"
+  }
+
+  give "AstSymbolHandle(id="
+    + to_string(handle.id)
+    + ", generation="
+    + to_string(handle.generation)
+    + ", kind="
+    + ast_symbol_kind_to_string(handle.kind)
+    + ")"
+}
+
+proc ast_scope_debug_handle(handle: AstScopeHandle) -> string {
+  if !ast_scope_handle_is_valid(handle) {
+    give "AstScopeHandle(invalid)"
+  }
+
+  give "AstScopeHandle(id="
+    + to_string(handle.id)
+    + ", generation="
+    + to_string(handle.generation)
+    + ")"
+}
+
+proc ast_symbol_debug_record(storage: AstSymbolStorage, symbol: AstSymbolRecord) -> string {
+  give "AstSymbolRecord(id="
+    + to_string(symbol.id)
+    + ", gen="
+    + to_string(symbol.generation)
+    + ", kind="
+    + ast_symbol_kind_to_string(symbol.kind)
+    + ", visibility="
+    + ast_symbol_visibility_to_string(symbol.visibility)
+    + ", state="
+    + ast_symbol_state_to_string(symbol.state)
+    + ", name="
+    + ast_intern_read(storage.interns, symbol.name)
+    + ", qualified="
+    + ast_intern_read(storage.interns, symbol.qualified_name)
+    + ", scope="
+    + to_string(symbol.scope)
+    + ", parent_symbol="
+    + to_string(symbol.parent_symbol)
+    + ", span="
+    + to_string(symbol.span)
+    + ", flags="
+    + to_string(symbol.flags)
+    + ", payload="
+    + arena_debug_handle(symbol.payload)
+    + ")"
+}
+
+proc ast_scope_debug_record(storage: AstSymbolStorage, scope: AstScopeRecord) -> string {
+  give "AstScopeRecord(id="
+    + to_string(scope.id)
+    + ", gen="
+    + to_string(scope.generation)
+    + ", name="
+    + ast_intern_read(storage.interns, scope.name)
+    + ", parent="
+    + to_string(scope.parent)
+    + ", depth="
+    + to_string(scope.depth)
+    + ", symbols="
+    + to_string(scope.symbols.len)
+    + ", children="
+    + to_string(scope.children.len)
+    + ", span="
+    + to_string(scope.span)
+    + ", sealed="
+    + to_string(scope.sealed)
+    + ")"
+}
+
+proc ast_symbol_debug_stats(stats: AstSymbolStorageStats) -> string {
+  give "AstSymbolStorageStats(symbols="
+    + to_string(stats.symbol_count)
+    + ", scopes="
+    + to_string(stats.scope_count)
+    + ", public="
+    + to_string(stats.public_count)
+    + ", exported="
+    + to_string(stats.exported_count)
+    + ", local="
+    + to_string(stats.local_count)
+    + ", builtin="
+    + to_string(stats.builtin_count)
+    + ", unresolved="
+    + to_string(stats.unresolved_count)
+    + ", ambiguous="
+    + to_string(stats.ambiguous_count)
+    + ", errors="
+    + to_string(stats.error_count)
+    + ", max_scope_depth="
+    + to_string(stats.max_scope_depth)
+    + ", largest_scope_symbols="
+    + to_string(stats.largest_scope_symbols)
+    + ")"
+}
+
+proc ast_symbol_storage_debug(storage: AstSymbolStorage) -> string {
+  give "AstSymbolStorage(version="
+    + AST_SYMBOL_STORAGE_VERSION
+    + ", name="
+    + storage.name
+    + ", valid="
+    + to_string(ast_symbol_storage_validate(storage))
+    + ", sealed="
+    + to_string(storage.sealed)
+    + ", root_scope="
+    + to_string(storage.root_scope)
+    + ", "
+    + ast_symbol_debug_stats(ast_symbol_storage_stats(storage))
+    + ", arena="
+    + arena_debug(storage.arena)
+    + ")"
+}
+
+proc ast_symbol_storage_dump(storage: AstSymbolStorage) -> string {
+  let text: string = ast_symbol_storage_debug(storage) + "\n"
+
+  let c: usize = 0
+
+  while c < storage.scopes.len {
+    set text = text + "  " + ast_scope_debug_record(storage, storage.scopes[c]) + "\n"
+    set c = c + 1
+  }
+
+  let s: usize = 0
+
+  while s < storage.symbols.len {
+    set text = text + "  " + ast_symbol_debug_record(storage, storage.symbols[s]) + "\n"
+    set s = s + 1
+  }
+
+  set text = text + arena_metrics_dump(ast_symbol_build_metrics(storage)) + "\n"
+  set text = text + arena_manifest_dump(ast_symbol_build_manifest(storage)) + "\n"
+
+  give text
+}
+
+proc ast_symbol_storage_print(storage: AstSymbolStorage) {
+  emit ast_symbol_storage_dump(storage)
+}

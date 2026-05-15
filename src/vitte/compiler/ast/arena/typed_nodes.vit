@@ -1,6 +1,1728 @@
-space vitte/compiler/ast
+space vitte/compiler/ast/arena/typed_nodes
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte AST Module                      >>>
-<<< ========================================================= >>>
+use vitte/compiler/arena/api
+use vitte/compiler/arena/contracts
+use vitte/compiler/arena/diagnostics
+use vitte/compiler/arena/manifest
+use vitte/compiler/arena/metrics
+use vitte/compiler/ast/arena/ast_arena
+use vitte/compiler/ast/arena/interning
+use vitte/compiler/ast/arena/node_pool
+use vitte/compiler/ast/arena/spans
+use vitte/compiler/ast/arena/symbol_storage
 
+const AST_TYPED_NODES_VERSION: string = "0.1.0"
+const AST_TYPED_NODES_MAGIC: u32 = 0x41535459
+const AST_TYPE_INVALID_ID: u32 = 0xffffffff
+const AST_TYPE_BINDING_INVALID_ID: u32 = 0xffffffff
+
+type AstTypeId = u32
+type AstTypeBindingId = u32
+type AstTypeFlags = u64
+
+pick AstTypeKind {
+  Empty
+  Unknown
+  Error
+  Unit
+  Never
+  Bool
+  Char
+  String
+  Int
+  I8
+  I16
+  I32
+  I64
+  I128
+  Isize
+  UInt
+  U8
+  U16
+  U32
+  U64
+  U128
+  Usize
+  Float
+  F32
+  F64
+  Pointer
+  Reference
+  Slice
+  Array
+  Tuple
+  Function
+  Form
+  Pick
+  Variant
+  Generic
+  Trait
+  Infer
+}
+
+pick AstTypeState {
+  Unresolved
+  Parsed
+  Lowered
+  Inferred
+  Checked
+  Error
+}
+
+pick AstTypeBindingKind {
+  Empty
+  Explicit
+  Inferred
+  Expected
+  Coerced
+  Constraint
+  GenericArg
+  Return
+  Receiver
+  Field
+  Pattern
+}
+
+form AstTypeHandle {
+  id: AstTypeId
+  generation: u32
+  kind: AstTypeKind
+}
+
+form AstTypeBindingHandle {
+  id: AstTypeBindingId
+  generation: u32
+}
+
+form AstTypeRecord {
+  id: AstTypeId
+  generation: u32
+  kind: AstTypeKind
+  state: AstTypeState
+  name: AstInternHandle
+  symbol: AstSymbolHandle
+  span: AstSpanId
+  size_hint: usize
+  align_hint: usize
+  flags: AstTypeFlags
+  args: [AstTypeId]
+  payload: ArenaHandle
+}
+
+form AstTypeBinding {
+  id: AstTypeBindingId
+  generation: u32
+  kind: AstTypeBindingKind
+  node: AstNodeHandle
+  ty: AstTypeHandle
+  expected: AstTypeHandle
+  symbol: AstSymbolHandle
+  span: AstSpanId
+  flags: AstTypeFlags
+}
+
+form AstTypeNameIndex {
+  hash: AstInternHash
+  text: string
+  types: [AstTypeId]
+}
+
+form AstNodeTypeIndex {
+  node: AstNodeId
+  bindings: [AstTypeBindingId]
+}
+
+form AstTypedNodeStats {
+  type_count: u32
+  binding_count: u32
+  primitive_count: u32
+  aggregate_count: u32
+  pointer_count: u32
+  function_count: u32
+  generic_count: u32
+  inferred_count: u32
+  unresolved_count: u32
+  error_count: u32
+  max_type_args: u32
+  largest_type_size: usize
+}
+
+form AstTypedNodeStorage {
+  magic: u32
+  name: string
+  arena: Arena
+  interns: AstInternPool
+  types: [AstTypeRecord]
+  bindings: [AstTypeBinding]
+  type_name_indexes: [AstTypeNameIndex]
+  node_type_indexes: [AstNodeTypeIndex]
+  free_types: [AstTypeId]
+  free_bindings: [AstTypeBindingId]
+  type_generation: u32
+  binding_generation: u32
+  sealed: bool
+}
+
+form AstTypeInsertResult {
+  storage: AstTypedNodeStorage
+  ty: AstTypeHandle
+}
+
+form AstTypeBindingResult {
+  storage: AstTypedNodeStorage
+  binding: AstTypeBindingHandle
+}
+
+proc ast_type_kind_to_string(kind: AstTypeKind) -> string {
+  select kind {
+    when AstTypeKind::Unknown { give "unknown" }
+    when AstTypeKind::Error { give "error" }
+    when AstTypeKind::Unit { give "unit" }
+    when AstTypeKind::Never { give "never" }
+    when AstTypeKind::Bool { give "bool" }
+    when AstTypeKind::Char { give "char" }
+    when AstTypeKind::String { give "string" }
+    when AstTypeKind::Int { give "int" }
+    when AstTypeKind::I8 { give "i8" }
+    when AstTypeKind::I16 { give "i16" }
+    when AstTypeKind::I32 { give "i32" }
+    when AstTypeKind::I64 { give "i64" }
+    when AstTypeKind::I128 { give "i128" }
+    when AstTypeKind::Isize { give "isize" }
+    when AstTypeKind::UInt { give "uint" }
+    when AstTypeKind::U8 { give "u8" }
+    when AstTypeKind::U16 { give "u16" }
+    when AstTypeKind::U32 { give "u32" }
+    when AstTypeKind::U64 { give "u64" }
+    when AstTypeKind::U128 { give "u128" }
+    when AstTypeKind::Usize { give "usize" }
+    when AstTypeKind::Float { give "float" }
+    when AstTypeKind::F32 { give "f32" }
+    when AstTypeKind::F64 { give "f64" }
+    when AstTypeKind::Pointer { give "pointer" }
+    when AstTypeKind::Reference { give "reference" }
+    when AstTypeKind::Slice { give "slice" }
+    when AstTypeKind::Array { give "array" }
+    when AstTypeKind::Tuple { give "tuple" }
+    when AstTypeKind::Function { give "function" }
+    when AstTypeKind::Form { give "form" }
+    when AstTypeKind::Pick { give "pick" }
+    when AstTypeKind::Variant { give "variant" }
+    when AstTypeKind::Generic { give "generic" }
+    when AstTypeKind::Trait { give "trait" }
+    when AstTypeKind::Infer { give "infer" }
+    otherwise { give "empty" }
+  }
+}
+
+proc ast_type_state_to_string(state: AstTypeState) -> string {
+  select state {
+    when AstTypeState::Unresolved { give "unresolved" }
+    when AstTypeState::Parsed { give "parsed" }
+    when AstTypeState::Lowered { give "lowered" }
+    when AstTypeState::Inferred { give "inferred" }
+    when AstTypeState::Checked { give "checked" }
+    when AstTypeState::Error { give "error" }
+    otherwise { give "unresolved" }
+  }
+}
+
+proc ast_type_binding_kind_to_string(kind: AstTypeBindingKind) -> string {
+  select kind {
+    when AstTypeBindingKind::Explicit { give "explicit" }
+    when AstTypeBindingKind::Inferred { give "inferred" }
+    when AstTypeBindingKind::Expected { give "expected" }
+    when AstTypeBindingKind::Coerced { give "coerced" }
+    when AstTypeBindingKind::Constraint { give "constraint" }
+    when AstTypeBindingKind::GenericArg { give "generic_arg" }
+    when AstTypeBindingKind::Return { give "return" }
+    when AstTypeBindingKind::Receiver { give "receiver" }
+    when AstTypeBindingKind::Field { give "field" }
+    when AstTypeBindingKind::Pattern { give "pattern" }
+    otherwise { give "empty" }
+  }
+}
+
+proc ast_type_invalid_handle() -> AstTypeHandle {
+  give AstTypeHandle {
+    id: AST_TYPE_INVALID_ID,
+    generation: 0,
+    kind: AstTypeKind::Empty
+  }
+}
+
+proc ast_type_binding_invalid_handle() -> AstTypeBindingHandle {
+  give AstTypeBindingHandle {
+    id: AST_TYPE_BINDING_INVALID_ID,
+    generation: 0
+  }
+}
+
+proc ast_type_handle_is_valid(handle: AstTypeHandle) -> bool {
+  give handle.id != AST_TYPE_INVALID_ID
+    && handle.kind != AstTypeKind::Empty
+}
+
+proc ast_type_binding_handle_is_valid(handle: AstTypeBindingHandle) -> bool {
+  give handle.id != AST_TYPE_BINDING_INVALID_ID
+}
+
+proc ast_type_make_handle(record: AstTypeRecord) -> AstTypeHandle {
+  give AstTypeHandle {
+    id: record.id,
+    generation: record.generation,
+    kind: record.kind
+  }
+}
+
+proc ast_type_binding_make_handle(binding: AstTypeBinding) -> AstTypeBindingHandle {
+  give AstTypeBindingHandle {
+    id: binding.id,
+    generation: binding.generation
+  }
+}
+
+proc ast_typed_nodes_new(name: string) -> AstTypedNodeStorage {
+  let config: ArenaConfig =
+    arena_config_new(
+      ArenaKind::Ast,
+      32768,
+      8
+    )
+
+  give AstTypedNodeStorage {
+    magic: AST_TYPED_NODES_MAGIC,
+    name: name,
+    arena: arena_with_config(name + "_typed_nodes", config),
+    interns: ast_intern_bootstrap(ast_intern_pool_new(name + "_type_interns")),
+    types: [],
+    bindings: [],
+    type_name_indexes: [],
+    node_type_indexes: [],
+    free_types: [],
+    free_bindings: [],
+    type_generation: 1,
+    binding_generation: 1,
+    sealed: false
+  }
+}
+
+proc ast_typed_nodes_is_valid(storage: AstTypedNodeStorage) -> bool {
+  give storage.magic == AST_TYPED_NODES_MAGIC
+    && arena_validate(storage.arena)
+    && ast_intern_validate(storage.interns)
+}
+
+proc ast_typed_nodes_has_type(storage: AstTypedNodeStorage, id: AstTypeId) -> bool {
+  give id < storage.types.len as u32
+}
+
+proc ast_typed_nodes_has_binding(storage: AstTypedNodeStorage, id: AstTypeBindingId) -> bool {
+  give id < storage.bindings.len as u32
+}
+
+proc ast_type_next_generation(storage: AstTypedNodeStorage) -> u32 {
+  if storage.type_generation == 0 {
+    give 1
+  }
+
+  give storage.type_generation
+}
+
+proc ast_type_binding_next_generation(storage: AstTypedNodeStorage) -> u32 {
+  if storage.binding_generation == 0 {
+    give 1
+  }
+
+  give storage.binding_generation
+}
+
+proc ast_type_bump_generation(storage: AstTypedNodeStorage) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+
+  set next.type_generation = next.type_generation + 1
+
+  if next.type_generation == 0 {
+    set next.type_generation = 1
+  }
+
+  give next
+}
+
+proc ast_type_binding_bump_generation(storage: AstTypedNodeStorage) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+
+  set next.binding_generation = next.binding_generation + 1
+
+  if next.binding_generation == 0 {
+    set next.binding_generation = 1
+  }
+
+  give next
+}
+
+proc ast_type_take_free(storage: AstTypedNodeStorage) -> AstTypeId {
+  if storage.free_types.len == 0 {
+    give storage.types.len as AstTypeId
+  }
+
+  give storage.free_types[storage.free_types.len - 1]
+}
+
+proc ast_type_binding_take_free(storage: AstTypedNodeStorage) -> AstTypeBindingId {
+  if storage.free_bindings.len == 0 {
+    give storage.bindings.len as AstTypeBindingId
+  }
+
+  give storage.free_bindings[storage.free_bindings.len - 1]
+}
+
+proc ast_type_pop_free(storage: AstTypedNodeStorage) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+
+  if next.free_types.len == 0 {
+    give next
+  }
+
+  let out: [AstTypeId] = []
+  let i: usize = 0
+
+  while i + 1 < next.free_types.len {
+    set out = out + [next.free_types[i]]
+    set i = i + 1
+  }
+
+  set next.free_types = out
+
+  give next
+}
+
+proc ast_type_binding_pop_free(storage: AstTypedNodeStorage) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+
+  if next.free_bindings.len == 0 {
+    give next
+  }
+
+  let out: [AstTypeBindingId] = []
+  let i: usize = 0
+
+  while i + 1 < next.free_bindings.len {
+    set out = out + [next.free_bindings[i]]
+    set i = i + 1
+  }
+
+  set next.free_bindings = out
+
+  give next
+}
+
+proc ast_type_name_index_find(storage: AstTypedNodeStorage, hash: AstInternHash, text: string) -> usize {
+  let i: usize = 0
+
+  while i < storage.type_name_indexes.len {
+    if storage.type_name_indexes[i].hash == hash && storage.type_name_indexes[i].text == text {
+      give i
+    }
+
+    set i = i + 1
+  }
+
+  give storage.type_name_indexes.len
+}
+
+proc ast_type_name_index_add(storage: AstTypedNodeStorage, name: AstInternHandle, id: AstTypeId) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+  let text: string = ast_intern_read(next.interns, name)
+
+  if text == "" {
+    give next
+  }
+
+  let index: usize = ast_type_name_index_find(next, name.hash, text)
+
+  if index >= next.type_name_indexes.len {
+    set next.type_name_indexes = next.type_name_indexes + [
+      AstTypeNameIndex {
+        hash: name.hash,
+        text: text,
+        types: [id]
+      }
+    ]
+
+    give next
+  }
+
+  set next.type_name_indexes[index].types =
+    next.type_name_indexes[index].types + [id]
+
+  give next
+}
+
+proc ast_node_type_index_find(storage: AstTypedNodeStorage, node: AstNodeId) -> usize {
+  let i: usize = 0
+
+  while i < storage.node_type_indexes.len {
+    if storage.node_type_indexes[i].node == node {
+      give i
+    }
+
+    set i = i + 1
+  }
+
+  give storage.node_type_indexes.len
+}
+
+proc ast_node_type_index_add(
+  storage: AstTypedNodeStorage,
+  node: AstNodeId,
+  binding: AstTypeBindingId
+) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+  let index: usize = ast_node_type_index_find(next, node)
+
+  if index >= next.node_type_indexes.len {
+    set next.node_type_indexes = next.node_type_indexes + [
+      AstNodeTypeIndex {
+        node: node,
+        bindings: [binding]
+      }
+    ]
+
+    give next
+  }
+
+  set next.node_type_indexes[index].bindings =
+    next.node_type_indexes[index].bindings + [binding]
+
+  give next
+}
+
+proc ast_type_default_size_hint(kind: AstTypeKind) -> usize {
+  select kind {
+    when AstTypeKind::Unit { give 0 }
+    when AstTypeKind::Never { give 0 }
+    when AstTypeKind::Bool { give 1 }
+    when AstTypeKind::Char { give 4 }
+    when AstTypeKind::I8 { give 1 }
+    when AstTypeKind::U8 { give 1 }
+    when AstTypeKind::I16 { give 2 }
+    when AstTypeKind::U16 { give 2 }
+    when AstTypeKind::I32 { give 4 }
+    when AstTypeKind::U32 { give 4 }
+    when AstTypeKind::F32 { give 4 }
+    when AstTypeKind::I64 { give 8 }
+    when AstTypeKind::U64 { give 8 }
+    when AstTypeKind::F64 { give 8 }
+    when AstTypeKind::Pointer { give 8 }
+    when AstTypeKind::Reference { give 8 }
+    when AstTypeKind::String { give 16 }
+    otherwise { give 0 }
+  }
+}
+
+proc ast_type_default_align_hint(kind: AstTypeKind) -> usize {
+  select kind {
+    when AstTypeKind::Unit { give 1 }
+    when AstTypeKind::Never { give 1 }
+    when AstTypeKind::Bool { give 1 }
+    when AstTypeKind::Char { give 4 }
+    when AstTypeKind::I8 { give 1 }
+    when AstTypeKind::U8 { give 1 }
+    when AstTypeKind::I16 { give 2 }
+    when AstTypeKind::U16 { give 2 }
+    when AstTypeKind::I32 { give 4 }
+    when AstTypeKind::U32 { give 4 }
+    when AstTypeKind::F32 { give 4 }
+    when AstTypeKind::I64 { give 8 }
+    when AstTypeKind::U64 { give 8 }
+    when AstTypeKind::F64 { give 8 }
+    when AstTypeKind::Pointer { give 8 }
+    when AstTypeKind::Reference { give 8 }
+    when AstTypeKind::String { give 8 }
+    otherwise { give 1 }
+  }
+}
+
+proc ast_type_create(
+  storage: AstTypedNodeStorage,
+  kind: AstTypeKind,
+  name_text: string,
+  args: [AstTypeId],
+  span: AstSpanId
+) -> AstTypeInsertResult {
+  if storage.sealed {
+    give AstTypeInsertResult {
+      storage: storage,
+      ty: ast_type_invalid_handle()
+    }
+  }
+
+  if kind == AstTypeKind::Empty {
+    give AstTypeInsertResult {
+      storage: storage,
+      ty: ast_type_invalid_handle()
+    }
+  }
+
+  let next: AstTypedNodeStorage = storage
+  let name_result: AstInternResult =
+    ast_intern_type_name(next.interns, name_text)
+
+  set next.interns = name_result.pool
+
+  let payload_result: ArenaAllocResult =
+    arena_alloc_node(
+      next.arena,
+      "ast/type/"
+        + ast_type_kind_to_string(kind)
+        + "/"
+        + name_text,
+      128 + args.len * 8
+    )
+
+  set next.arena = payload_result.arena
+
+  let id: AstTypeId = ast_type_take_free(next)
+  let generation: u32 = ast_type_next_generation(next)
+
+  set next = ast_type_pop_free(next)
+  set next = ast_type_bump_generation(next)
+
+  let record: AstTypeRecord = AstTypeRecord {
+    id: id,
+    generation: generation,
+    kind: kind,
+    state: AstTypeState::Parsed,
+    name: name_result.handle,
+    symbol: ast_symbol_invalid_handle(),
+    span: span,
+    size_hint: ast_type_default_size_hint(kind),
+    align_hint: ast_type_default_align_hint(kind),
+    flags: 0,
+    args: args,
+    payload: payload_result.handle
+  }
+
+  if id == next.types.len as u32 {
+    set next.types = next.types + [record]
+  } else {
+    set next.types[id as usize] = record
+  }
+
+  set next = ast_type_name_index_add(next, name_result.handle, id)
+
+  give AstTypeInsertResult {
+    storage: next,
+    ty: ast_type_make_handle(record)
+  }
+}
+
+proc ast_type_create_named(
+  storage: AstTypedNodeStorage,
+  kind: AstTypeKind,
+  name_text: string
+) -> AstTypeInsertResult {
+  give ast_type_create(storage, kind, name_text, [], AST_SPAN_INVALID_ID)
+}
+
+proc ast_type_create_primitive(storage: AstTypedNodeStorage, kind: AstTypeKind) -> AstTypeInsertResult {
+  give ast_type_create_named(storage, kind, ast_type_kind_to_string(kind))
+}
+
+proc ast_type_unit(storage: AstTypedNodeStorage) -> AstTypeInsertResult {
+  give ast_type_create_primitive(storage, AstTypeKind::Unit)
+}
+
+proc ast_type_bool(storage: AstTypedNodeStorage) -> AstTypeInsertResult {
+  give ast_type_create_primitive(storage, AstTypeKind::Bool)
+}
+
+proc ast_type_i32(storage: AstTypedNodeStorage) -> AstTypeInsertResult {
+  give ast_type_create_primitive(storage, AstTypeKind::I32)
+}
+
+proc ast_type_i64(storage: AstTypedNodeStorage) -> AstTypeInsertResult {
+  give ast_type_create_primitive(storage, AstTypeKind::I64)
+}
+
+proc ast_type_u32(storage: AstTypedNodeStorage) -> AstTypeInsertResult {
+  give ast_type_create_primitive(storage, AstTypeKind::U32)
+}
+
+proc ast_type_u64(storage: AstTypedNodeStorage) -> AstTypeInsertResult {
+  give ast_type_create_primitive(storage, AstTypeKind::U64)
+}
+
+proc ast_type_f32(storage: AstTypedNodeStorage) -> AstTypeInsertResult {
+  give ast_type_create_primitive(storage, AstTypeKind::F32)
+}
+
+proc ast_type_f64(storage: AstTypedNodeStorage) -> AstTypeInsertResult {
+  give ast_type_create_primitive(storage, AstTypeKind::F64)
+}
+
+proc ast_type_string(storage: AstTypedNodeStorage) -> AstTypeInsertResult {
+  give ast_type_create_primitive(storage, AstTypeKind::String)
+}
+
+proc ast_type_pointer(storage: AstTypedNodeStorage, inner: AstTypeHandle) -> AstTypeInsertResult {
+  give ast_type_create(
+    storage,
+    AstTypeKind::Pointer,
+    "*" + ast_type_kind_to_string(inner.kind),
+    [inner.id],
+    AST_SPAN_INVALID_ID
+  )
+}
+
+proc ast_type_reference(storage: AstTypedNodeStorage, inner: AstTypeHandle) -> AstTypeInsertResult {
+  give ast_type_create(
+    storage,
+    AstTypeKind::Reference,
+    "&" + ast_type_kind_to_string(inner.kind),
+    [inner.id],
+    AST_SPAN_INVALID_ID
+  )
+}
+
+proc ast_type_array(storage: AstTypedNodeStorage, inner: AstTypeHandle) -> AstTypeInsertResult {
+  give ast_type_create(
+    storage,
+    AstTypeKind::Array,
+    "array",
+    [inner.id],
+    AST_SPAN_INVALID_ID
+  )
+}
+
+proc ast_type_slice(storage: AstTypedNodeStorage, inner: AstTypeHandle) -> AstTypeInsertResult {
+  give ast_type_create(
+    storage,
+    AstTypeKind::Slice,
+    "slice",
+    [inner.id],
+    AST_SPAN_INVALID_ID
+  )
+}
+
+proc ast_type_tuple(storage: AstTypedNodeStorage, args: [AstTypeHandle]) -> AstTypeInsertResult {
+  let ids: [AstTypeId] = []
+  let i: usize = 0
+
+  while i < args.len {
+    set ids = ids + [args[i].id]
+    set i = i + 1
+  }
+
+  give ast_type_create(storage, AstTypeKind::Tuple, "tuple", ids, AST_SPAN_INVALID_ID)
+}
+
+proc ast_type_function(
+  storage: AstTypedNodeStorage,
+  params: [AstTypeHandle],
+  result: AstTypeHandle
+) -> AstTypeInsertResult {
+  let ids: [AstTypeId] = []
+  let i: usize = 0
+
+  while i < params.len {
+    set ids = ids + [params[i].id]
+    set i = i + 1
+  }
+
+  set ids = ids + [result.id]
+
+  give ast_type_create(storage, AstTypeKind::Function, "proc", ids, AST_SPAN_INVALID_ID)
+}
+
+proc ast_type_get(storage: AstTypedNodeStorage, handle: AstTypeHandle) -> AstTypeRecord {
+  if !ast_type_handle_is_valid(handle) {
+    give AstTypeRecord {
+      id: AST_TYPE_INVALID_ID,
+      generation: 0,
+      kind: AstTypeKind::Empty,
+      state: AstTypeState::Error,
+      name: ast_intern_invalid_handle(),
+      symbol: ast_symbol_invalid_handle(),
+      span: AST_SPAN_INVALID_ID,
+      size_hint: 0,
+      align_hint: 1,
+      flags: 0,
+      args: [],
+      payload: arena_invalid_handle()
+    }
+  }
+
+  if !ast_typed_nodes_has_type(storage, handle.id) {
+    give AstTypeRecord {
+      id: AST_TYPE_INVALID_ID,
+      generation: 0,
+      kind: AstTypeKind::Empty,
+      state: AstTypeState::Error,
+      name: ast_intern_invalid_handle(),
+      symbol: ast_symbol_invalid_handle(),
+      span: AST_SPAN_INVALID_ID,
+      size_hint: 0,
+      align_hint: 1,
+      flags: 0,
+      args: [],
+      payload: arena_invalid_handle()
+    }
+  }
+
+  let record: AstTypeRecord = storage.types[handle.id as usize]
+
+  if record.generation != handle.generation || record.kind != handle.kind {
+    give AstTypeRecord {
+      id: AST_TYPE_INVALID_ID,
+      generation: 0,
+      kind: AstTypeKind::Empty,
+      state: AstTypeState::Error,
+      name: ast_intern_invalid_handle(),
+      symbol: ast_symbol_invalid_handle(),
+      span: AST_SPAN_INVALID_ID,
+      size_hint: 0,
+      align_hint: 1,
+      flags: 0,
+      args: [],
+      payload: arena_invalid_handle()
+    }
+  }
+
+  give record
+}
+
+proc ast_type_set_state(
+  storage: AstTypedNodeStorage,
+  handle: AstTypeHandle,
+  state: AstTypeState
+) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+
+  if !ast_type_handle_is_valid(handle) {
+    give next
+  }
+
+  if !ast_typed_nodes_has_type(next, handle.id) {
+    give next
+  }
+
+  if next.types[handle.id as usize].generation != handle.generation {
+    give next
+  }
+
+  set next.types[handle.id as usize].state = state
+
+  give next
+}
+
+proc ast_type_set_symbol(
+  storage: AstTypedNodeStorage,
+  handle: AstTypeHandle,
+  symbol: AstSymbolHandle
+) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+
+  if !ast_type_handle_is_valid(handle) {
+    give next
+  }
+
+  if !ast_typed_nodes_has_type(next, handle.id) {
+    give next
+  }
+
+  set next.types[handle.id as usize].symbol = symbol
+
+  give next
+}
+
+proc ast_type_set_layout_hint(
+  storage: AstTypedNodeStorage,
+  handle: AstTypeHandle,
+  size: usize,
+  align: usize
+) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+
+  if !ast_type_handle_is_valid(handle) {
+    give next
+  }
+
+  if !ast_typed_nodes_has_type(next, handle.id) {
+    give next
+  }
+
+  set next.types[handle.id as usize].size_hint = size
+  set next.types[handle.id as usize].align_hint = align
+
+  give next
+}
+
+proc ast_type_binding_create(
+  storage: AstTypedNodeStorage,
+  kind: AstTypeBindingKind,
+  node: AstNodeHandle,
+  ty: AstTypeHandle,
+  expected: AstTypeHandle,
+  symbol: AstSymbolHandle,
+  span: AstSpanId
+) -> AstTypeBindingResult {
+  if storage.sealed {
+    give AstTypeBindingResult {
+      storage: storage,
+      binding: ast_type_binding_invalid_handle()
+    }
+  }
+
+  if kind == AstTypeBindingKind::Empty {
+    give AstTypeBindingResult {
+      storage: storage,
+      binding: ast_type_binding_invalid_handle()
+    }
+  }
+
+  if !ast_node_handle_is_valid(node) {
+    give AstTypeBindingResult {
+      storage: storage,
+      binding: ast_type_binding_invalid_handle()
+    }
+  }
+
+  if !ast_type_handle_is_valid(ty) {
+    give AstTypeBindingResult {
+      storage: storage,
+      binding: ast_type_binding_invalid_handle()
+    }
+  }
+
+  let next: AstTypedNodeStorage = storage
+  let id: AstTypeBindingId = ast_type_binding_take_free(next)
+  let generation: u32 = ast_type_binding_next_generation(next)
+
+  set next = ast_type_binding_pop_free(next)
+  set next = ast_type_binding_bump_generation(next)
+
+  let binding: AstTypeBinding = AstTypeBinding {
+    id: id,
+    generation: generation,
+    kind: kind,
+    node: node,
+    ty: ty,
+    expected: expected,
+    symbol: symbol,
+    span: span,
+    flags: 0
+  }
+
+  if id == next.bindings.len as u32 {
+    set next.bindings = next.bindings + [binding]
+  } else {
+    set next.bindings[id as usize] = binding
+  }
+
+  set next = ast_node_type_index_add(next, node.id, id)
+
+  give AstTypeBindingResult {
+    storage: next,
+    binding: ast_type_binding_make_handle(binding)
+  }
+}
+
+proc ast_type_bind_explicit(
+  storage: AstTypedNodeStorage,
+  node: AstNodeHandle,
+  ty: AstTypeHandle,
+  span: AstSpanId
+) -> AstTypeBindingResult {
+  give ast_type_binding_create(
+    storage,
+    AstTypeBindingKind::Explicit,
+    node,
+    ty,
+    ast_type_invalid_handle(),
+    ast_symbol_invalid_handle(),
+    span
+  )
+}
+
+proc ast_type_bind_inferred(
+  storage: AstTypedNodeStorage,
+  node: AstNodeHandle,
+  ty: AstTypeHandle
+) -> AstTypeBindingResult {
+  give ast_type_binding_create(
+    storage,
+    AstTypeBindingKind::Inferred,
+    node,
+    ty,
+    ast_type_invalid_handle(),
+    ast_symbol_invalid_handle(),
+    AST_SPAN_INVALID_ID
+  )
+}
+
+proc ast_type_bind_expected(
+  storage: AstTypedNodeStorage,
+  node: AstNodeHandle,
+  ty: AstTypeHandle,
+  expected: AstTypeHandle
+) -> AstTypeBindingResult {
+  give ast_type_binding_create(
+    storage,
+    AstTypeBindingKind::Expected,
+    node,
+    ty,
+    expected,
+    ast_symbol_invalid_handle(),
+    AST_SPAN_INVALID_ID
+  )
+}
+
+proc ast_type_bind_symbol(
+  storage: AstTypedNodeStorage,
+  node: AstNodeHandle,
+  ty: AstTypeHandle,
+  symbol: AstSymbolHandle
+) -> AstTypeBindingResult {
+  give ast_type_binding_create(
+    storage,
+    AstTypeBindingKind::Explicit,
+    node,
+    ty,
+    ast_type_invalid_handle(),
+    symbol,
+    AST_SPAN_INVALID_ID
+  )
+}
+
+proc ast_type_binding_get(
+  storage: AstTypedNodeStorage,
+  handle: AstTypeBindingHandle
+) -> AstTypeBinding {
+  if !ast_type_binding_handle_is_valid(handle) {
+    give AstTypeBinding {
+      id: AST_TYPE_BINDING_INVALID_ID,
+      generation: 0,
+      kind: AstTypeBindingKind::Empty,
+      node: ast_node_invalid_handle(),
+      ty: ast_type_invalid_handle(),
+      expected: ast_type_invalid_handle(),
+      symbol: ast_symbol_invalid_handle(),
+      span: AST_SPAN_INVALID_ID,
+      flags: 0
+    }
+  }
+
+  if !ast_typed_nodes_has_binding(storage, handle.id) {
+    give AstTypeBinding {
+      id: AST_TYPE_BINDING_INVALID_ID,
+      generation: 0,
+      kind: AstTypeBindingKind::Empty,
+      node: ast_node_invalid_handle(),
+      ty: ast_type_invalid_handle(),
+      expected: ast_type_invalid_handle(),
+      symbol: ast_symbol_invalid_handle(),
+      span: AST_SPAN_INVALID_ID,
+      flags: 0
+    }
+  }
+
+  let binding: AstTypeBinding = storage.bindings[handle.id as usize]
+
+  if binding.generation != handle.generation {
+    give AstTypeBinding {
+      id: AST_TYPE_BINDING_INVALID_ID,
+      generation: 0,
+      kind: AstTypeBindingKind::Empty,
+      node: ast_node_invalid_handle(),
+      ty: ast_type_invalid_handle(),
+      expected: ast_type_invalid_handle(),
+      symbol: ast_symbol_invalid_handle(),
+      span: AST_SPAN_INVALID_ID,
+      flags: 0
+    }
+  }
+
+  give binding
+}
+
+proc ast_type_find_by_name(storage: AstTypedNodeStorage, name: string) -> [AstTypeHandle] {
+  let out: [AstTypeHandle] = []
+  let hash: AstInternHash = ast_intern_hash_string(name)
+  let index: usize = ast_type_name_index_find(storage, hash, name)
+
+  if index >= storage.type_name_indexes.len {
+    give out
+  }
+
+  let i: usize = 0
+
+  while i < storage.type_name_indexes[index].types.len {
+    let id: AstTypeId = storage.type_name_indexes[index].types[i]
+
+    if ast_typed_nodes_has_type(storage, id) {
+      set out = out + [ast_type_make_handle(storage.types[id as usize])]
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc ast_type_first_by_name(storage: AstTypedNodeStorage, name: string) -> AstTypeHandle {
+  let found: [AstTypeHandle] = ast_type_find_by_name(storage, name)
+
+  if found.len == 0 {
+    give ast_type_invalid_handle()
+  }
+
+  give found[0]
+}
+
+proc ast_type_bindings_for_node(storage: AstTypedNodeStorage, node: AstNodeHandle) -> [AstTypeBindingHandle] {
+  let out: [AstTypeBindingHandle] = []
+
+  if !ast_node_handle_is_valid(node) {
+    give out
+  }
+
+  let index: usize = ast_node_type_index_find(storage, node.id)
+
+  if index >= storage.node_type_indexes.len {
+    give out
+  }
+
+  let i: usize = 0
+
+  while i < storage.node_type_indexes[index].bindings.len {
+    let id: AstTypeBindingId = storage.node_type_indexes[index].bindings[i]
+
+    if ast_typed_nodes_has_binding(storage, id) {
+      set out = out + [ast_type_binding_make_handle(storage.bindings[id as usize])]
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc ast_type_latest_for_node(storage: AstTypedNodeStorage, node: AstNodeHandle) -> AstTypeHandle {
+  let bindings: [AstTypeBindingHandle] = ast_type_bindings_for_node(storage, node)
+
+  if bindings.len == 0 {
+    give ast_type_invalid_handle()
+  }
+
+  let binding: AstTypeBinding =
+    ast_type_binding_get(storage, bindings[bindings.len - 1])
+
+  give binding.ty
+}
+
+proc ast_type_is_numeric(kind: AstTypeKind) -> bool {
+  give kind == AstTypeKind::Int
+    || kind == AstTypeKind::I8
+    || kind == AstTypeKind::I16
+    || kind == AstTypeKind::I32
+    || kind == AstTypeKind::I64
+    || kind == AstTypeKind::I128
+    || kind == AstTypeKind::Isize
+    || kind == AstTypeKind::UInt
+    || kind == AstTypeKind::U8
+    || kind == AstTypeKind::U16
+    || kind == AstTypeKind::U32
+    || kind == AstTypeKind::U64
+    || kind == AstTypeKind::U128
+    || kind == AstTypeKind::Usize
+    || kind == AstTypeKind::Float
+    || kind == AstTypeKind::F32
+    || kind == AstTypeKind::F64
+}
+
+proc ast_type_is_integer(kind: AstTypeKind) -> bool {
+  give kind == AstTypeKind::Int
+    || kind == AstTypeKind::I8
+    || kind == AstTypeKind::I16
+    || kind == AstTypeKind::I32
+    || kind == AstTypeKind::I64
+    || kind == AstTypeKind::I128
+    || kind == AstTypeKind::Isize
+    || kind == AstTypeKind::UInt
+    || kind == AstTypeKind::U8
+    || kind == AstTypeKind::U16
+    || kind == AstTypeKind::U32
+    || kind == AstTypeKind::U64
+    || kind == AstTypeKind::U128
+    || kind == AstTypeKind::Usize
+}
+
+proc ast_type_is_aggregate(kind: AstTypeKind) -> bool {
+  give kind == AstTypeKind::Tuple
+    || kind == AstTypeKind::Form
+    || kind == AstTypeKind::Pick
+    || kind == AstTypeKind::Variant
+}
+
+proc ast_type_is_reference_like(kind: AstTypeKind) -> bool {
+  give kind == AstTypeKind::Pointer
+    || kind == AstTypeKind::Reference
+    || kind == AstTypeKind::Slice
+    || kind == AstTypeKind::String
+}
+
+proc ast_type_equals(storage: AstTypedNodeStorage, left: AstTypeHandle, right: AstTypeHandle) -> bool {
+  if !ast_type_handle_is_valid(left) || !ast_type_handle_is_valid(right) {
+    give false
+  }
+
+  if left.id == right.id && left.generation == right.generation {
+    give true
+  }
+
+  let l: AstTypeRecord = ast_type_get(storage, left)
+  let r: AstTypeRecord = ast_type_get(storage, right)
+
+  if l.kind != r.kind {
+    give false
+  }
+
+  if l.args.len != r.args.len {
+    give false
+  }
+
+  let i: usize = 0
+
+  while i < l.args.len {
+    if l.args[i] != r.args[i] {
+      give false
+    }
+
+    set i = i + 1
+  }
+
+  give ast_intern_read(storage.interns, l.name) == ast_intern_read(storage.interns, r.name)
+}
+
+proc ast_type_remove(storage: AstTypedNodeStorage, handle: AstTypeHandle) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+
+  if !ast_type_handle_is_valid(handle) {
+    give next
+  }
+
+  if !ast_typed_nodes_has_type(next, handle.id) {
+    give next
+  }
+
+  let record: AstTypeRecord = next.types[handle.id as usize]
+
+  if record.generation != handle.generation {
+    give next
+  }
+
+  set next.types[handle.id as usize].kind = AstTypeKind::Empty
+  set next.types[handle.id as usize].state = AstTypeState::Error
+  set next.types[handle.id as usize].name = ast_intern_invalid_handle()
+  set next.types[handle.id as usize].symbol = ast_symbol_invalid_handle()
+  set next.types[handle.id as usize].args = []
+  set next.types[handle.id as usize].payload = arena_invalid_handle()
+
+  set next.free_types = next.free_types + [handle.id]
+
+  give next
+}
+
+proc ast_type_binding_remove(storage: AstTypedNodeStorage, handle: AstTypeBindingHandle) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+
+  if !ast_type_binding_handle_is_valid(handle) {
+    give next
+  }
+
+  if !ast_typed_nodes_has_binding(next, handle.id) {
+    give next
+  }
+
+  let binding: AstTypeBinding = next.bindings[handle.id as usize]
+
+  if binding.generation != handle.generation {
+    give next
+  }
+
+  set next.bindings[handle.id as usize].kind = AstTypeBindingKind::Empty
+  set next.bindings[handle.id as usize].node = ast_node_invalid_handle()
+  set next.bindings[handle.id as usize].ty = ast_type_invalid_handle()
+  set next.bindings[handle.id as usize].expected = ast_type_invalid_handle()
+  set next.bindings[handle.id as usize].symbol = ast_symbol_invalid_handle()
+  set next.bindings[handle.id as usize].span = AST_SPAN_INVALID_ID
+
+  set next.free_bindings = next.free_bindings + [handle.id]
+
+  give next
+}
+
+proc ast_typed_nodes_seal(storage: AstTypedNodeStorage) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+
+  set next.arena = arena_seal(next.arena)
+  set next.interns = ast_intern_pool_seal(next.interns)
+  set next.sealed = true
+
+  give next
+}
+
+proc ast_typed_nodes_clear(storage: AstTypedNodeStorage) -> AstTypedNodeStorage {
+  let next: AstTypedNodeStorage = storage
+
+  set next.arena = arena_reset(next.arena)
+  set next.interns = ast_intern_clear(next.interns)
+  set next.types = []
+  set next.bindings = []
+  set next.type_name_indexes = []
+  set next.node_type_indexes = []
+  set next.free_types = []
+  set next.free_bindings = []
+  set next.type_generation = 1
+  set next.binding_generation = 1
+  set next.sealed = false
+
+  give next
+}
+
+proc ast_typed_nodes_stats(storage: AstTypedNodeStorage) -> AstTypedNodeStats {
+  let stats: AstTypedNodeStats = AstTypedNodeStats {
+    type_count: storage.types.len as u32,
+    binding_count: storage.bindings.len as u32,
+    primitive_count: 0,
+    aggregate_count: 0,
+    pointer_count: 0,
+    function_count: 0,
+    generic_count: 0,
+    inferred_count: 0,
+    unresolved_count: 0,
+    error_count: 0,
+    max_type_args: 0,
+    largest_type_size: 0
+  }
+
+  let i: usize = 0
+
+  while i < storage.types.len {
+    let ty: AstTypeRecord = storage.types[i]
+
+    if ty.kind != AstTypeKind::Empty {
+      if ast_type_is_numeric(ty.kind)
+        || ty.kind == AstTypeKind::Bool
+        || ty.kind == AstTypeKind::Char
+        || ty.kind == AstTypeKind::String
+        || ty.kind == AstTypeKind::Unit
+        || ty.kind == AstTypeKind::Never {
+        set stats.primitive_count = stats.primitive_count + 1
+      }
+
+      if ast_type_is_aggregate(ty.kind) {
+        set stats.aggregate_count = stats.aggregate_count + 1
+      }
+
+      if ast_type_is_reference_like(ty.kind) {
+        set stats.pointer_count = stats.pointer_count + 1
+      }
+
+      if ty.kind == AstTypeKind::Function {
+        set stats.function_count = stats.function_count + 1
+      }
+
+      if ty.kind == AstTypeKind::Generic {
+        set stats.generic_count = stats.generic_count + 1
+      }
+
+      if ty.state == AstTypeState::Inferred {
+        set stats.inferred_count = stats.inferred_count + 1
+      }
+
+      if ty.state == AstTypeState::Unresolved || ty.kind == AstTypeKind::Unknown || ty.kind == AstTypeKind::Infer {
+        set stats.unresolved_count = stats.unresolved_count + 1
+      }
+
+      if ty.state == AstTypeState::Error || ty.kind == AstTypeKind::Error {
+        set stats.error_count = stats.error_count + 1
+      }
+
+      if ty.args.len as u32 > stats.max_type_args {
+        set stats.max_type_args = ty.args.len as u32
+      }
+
+      if ty.size_hint > stats.largest_type_size {
+        set stats.largest_type_size = ty.size_hint
+      }
+    }
+
+    set i = i + 1
+  }
+
+  let b: usize = 0
+
+  while b < storage.bindings.len {
+    let binding: AstTypeBinding = storage.bindings[b]
+
+    if binding.kind == AstTypeBindingKind::Inferred {
+      set stats.inferred_count = stats.inferred_count + 1
+    }
+
+    if binding.kind == AstTypeBindingKind::Empty {
+      set stats.error_count = stats.error_count + 1
+    }
+
+    set b = b + 1
+  }
+
+  give stats
+}
+
+proc ast_type_validate_record(storage: AstTypedNodeStorage, record: AstTypeRecord) -> bool {
+  if record.id == AST_TYPE_INVALID_ID {
+    give false
+  }
+
+  if record.kind == AstTypeKind::Empty {
+    give true
+  }
+
+  if !ast_intern_validate_handle(storage.interns, record.name) {
+    give false
+  }
+
+  if !arena_handle_belongs_to(storage.arena, record.payload) {
+    give false
+  }
+
+  if record.align_hint == 0 {
+    give false
+  }
+
+  if !arena_align_is_power_of_two(record.align_hint) {
+    give false
+  }
+
+  let i: usize = 0
+
+  while i < record.args.len {
+    if !ast_typed_nodes_has_type(storage, record.args[i]) {
+      give false
+    }
+
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc ast_type_validate_binding(storage: AstTypedNodeStorage, binding: AstTypeBinding) -> bool {
+  if binding.id == AST_TYPE_BINDING_INVALID_ID {
+    give false
+  }
+
+  if binding.kind == AstTypeBindingKind::Empty {
+    give true
+  }
+
+  if !ast_node_handle_is_valid(binding.node) {
+    give false
+  }
+
+  if !ast_type_handle_is_valid(binding.ty) {
+    give false
+  }
+
+  if !ast_typed_nodes_has_type(storage, binding.ty.id) {
+    give false
+  }
+
+  if ast_type_handle_is_valid(binding.expected) {
+    if !ast_typed_nodes_has_type(storage, binding.expected.id) {
+      give false
+    }
+  }
+
+  give true
+}
+
+proc ast_typed_nodes_validate_indexes(storage: AstTypedNodeStorage) -> bool {
+  let i: usize = 0
+
+  while i < storage.type_name_indexes.len {
+    let j: usize = 0
+
+    while j < storage.type_name_indexes[i].types.len {
+      let id: AstTypeId = storage.type_name_indexes[i].types[j]
+
+      if !ast_typed_nodes_has_type(storage, id) {
+        give false
+      }
+
+      let record: AstTypeRecord = storage.types[id as usize]
+      let text: string = ast_intern_read(storage.interns, record.name)
+
+      if text != storage.type_name_indexes[i].text {
+        give false
+      }
+
+      set j = j + 1
+    }
+
+    set i = i + 1
+  }
+
+  let n: usize = 0
+
+  while n < storage.node_type_indexes.len {
+    let j: usize = 0
+
+    while j < storage.node_type_indexes[n].bindings.len {
+      let id: AstTypeBindingId = storage.node_type_indexes[n].bindings[j]
+
+      if !ast_typed_nodes_has_binding(storage, id) {
+        give false
+      }
+
+      if storage.bindings[id as usize].node.id != storage.node_type_indexes[n].node {
+        give false
+      }
+
+      set j = j + 1
+    }
+
+    set n = n + 1
+  }
+
+  give true
+}
+
+proc ast_typed_nodes_validate(storage: AstTypedNodeStorage) -> bool {
+  if storage.magic != AST_TYPED_NODES_MAGIC {
+    give false
+  }
+
+  if !arena_validate(storage.arena) {
+    give false
+  }
+
+  if !ast_intern_validate(storage.interns) {
+    give false
+  }
+
+  let i: usize = 0
+
+  while i < storage.types.len {
+    if storage.types[i].id != i as u32 {
+      give false
+    }
+
+    if !ast_type_validate_record(storage, storage.types[i]) {
+      give false
+    }
+
+    set i = i + 1
+  }
+
+  let b: usize = 0
+
+  while b < storage.bindings.len {
+    if storage.bindings[b].id != b as u32 {
+      give false
+    }
+
+    if !ast_type_validate_binding(storage, storage.bindings[b]) {
+      give false
+    }
+
+    set b = b + 1
+  }
+
+  if !ast_typed_nodes_validate_indexes(storage) {
+    give false
+  }
+
+  give true
+}
+
+proc ast_typed_nodes_build_manifest(storage: AstTypedNodeStorage) -> ArenaManifest {
+  give arena_manifest_with_diagnostics(
+    arena_manifest_from_arena(storage.arena)
+  )
+}
+
+proc ast_typed_nodes_build_metrics(storage: AstTypedNodeStorage) -> ArenaMetrics {
+  give arena_metrics_from_arena(storage.arena)
+}
+
+proc ast_typed_nodes_build_diagnostics(storage: AstTypedNodeStorage) -> ArenaDiagnosticReport {
+  let report: ArenaDiagnosticReport =
+    arena_diagnostics_check_arena(storage.arena)
+
+  let next: ArenaDiagnosticReport = report
+
+  if !ast_typed_nodes_validate(storage) {
+    set next = arena_diagnostics_add(
+      next,
+      arena_diagnostic_new(
+        ArenaDiagnosticSeverity::Error,
+        ArenaDiagnosticDomain::Arena,
+        "AST_TYPED_NODES_INVALID",
+        "invalid AST typed node storage",
+        storage.name,
+        "AST typed node storage validation failed"
+      )
+    )
+  }
+
+  give next
+}
+
+proc ast_type_debug_handle(handle: AstTypeHandle) -> string {
+  if !ast_type_handle_is_valid(handle) {
+    give "AstTypeHandle(invalid)"
+  }
+
+  give "AstTypeHandle(id="
+    + to_string(handle.id)
+    + ", generation="
+    + to_string(handle.generation)
+    + ", kind="
+    + ast_type_kind_to_string(handle.kind)
+    + ")"
+}
+
+proc ast_type_binding_debug_handle(handle: AstTypeBindingHandle) -> string {
+  if !ast_type_binding_handle_is_valid(handle) {
+    give "AstTypeBindingHandle(invalid)"
+  }
+
+  give "AstTypeBindingHandle(id="
+    + to_string(handle.id)
+    + ", generation="
+    + to_string(handle.generation)
+    + ")"
+}
+
+proc ast_type_debug_record(storage: AstTypedNodeStorage, record: AstTypeRecord) -> string {
+  give "AstTypeRecord(id="
+    + to_string(record.id)
+    + ", gen="
+    + to_string(record.generation)
+    + ", kind="
+    + ast_type_kind_to_string(record.kind)
+    + ", state="
+    + ast_type_state_to_string(record.state)
+    + ", name="
+    + ast_intern_read(storage.interns, record.name)
+    + ", span="
+    + to_string(record.span)
+    + ", size="
+    + to_string(record.size_hint)
+    + ", align="
+    + to_string(record.align_hint)
+    + ", args="
+    + to_string(record.args.len)
+    + ", flags="
+    + to_string(record.flags)
+    + ", payload="
+    + arena_debug_handle(record.payload)
+    + ")"
+}
+
+proc ast_type_debug_binding(storage: AstTypedNodeStorage, binding: AstTypeBinding) -> string {
+  give "AstTypeBinding(id="
+    + to_string(binding.id)
+    + ", gen="
+    + to_string(binding.generation)
+    + ", kind="
+    + ast_type_binding_kind_to_string(binding.kind)
+    + ", node="
+    + ast_node_pool_debug_handle(binding.node)
+    + ", ty="
+    + ast_type_debug_handle(binding.ty)
+    + ", expected="
+    + ast_type_debug_handle(binding.expected)
+    + ", symbol="
+    + ast_symbol_debug_handle(binding.symbol)
+    + ", span="
+    + to_string(binding.span)
+    + ", flags="
+    + to_string(binding.flags)
+    + ")"
+}
+
+proc ast_typed_nodes_debug_stats(stats: AstTypedNodeStats) -> string {
+  give "AstTypedNodeStats(types="
+    + to_string(stats.type_count)
+    + ", bindings="
+    + to_string(stats.binding_count)
+    + ", primitives="
+    + to_string(stats.primitive_count)
+    + ", aggregates="
+    + to_string(stats.aggregate_count)
+    + ", pointers="
+    + to_string(stats.pointer_count)
+    + ", functions="
+    + to_string(stats.function_count)
+    + ", generics="
+    + to_string(stats.generic_count)
+    + ", inferred="
+    + to_string(stats.inferred_count)
+    + ", unresolved="
+    + to_string(stats.unresolved_count)
+    + ", errors="
+    + to_string(stats.error_count)
+    + ", max_args="
+    + to_string(stats.max_type_args)
+    + ", largest_size="
+    + to_string(stats.largest_type_size)
+    + ")"
+}
+
+proc ast_typed_nodes_debug(storage: AstTypedNodeStorage) -> string {
+  give "AstTypedNodeStorage(version="
+    + AST_TYPED_NODES_VERSION
+    + ", name="
+    + storage.name
+    + ", valid="
+    + to_string(ast_typed_nodes_validate(storage))
+    + ", sealed="
+    + to_string(storage.sealed)
+    + ", "
+    + ast_typed_nodes_debug_stats(ast_typed_nodes_stats(storage))
+    + ", arena="
+    + arena_debug(storage.arena)
+    + ")"
+}
+
+proc ast_typed_nodes_dump(storage: AstTypedNodeStorage) -> string {
+  let text: string = ast_typed_nodes_debug(storage) + "\n"
+
+  let i: usize = 0
+
+  while i < storage.types.len {
+    set text = text + "  " + ast_type_debug_record(storage, storage.types[i]) + "\n"
+    set i = i + 1
+  }
+
+  let b: usize = 0
+
+  while b < storage.bindings.len {
+    set text = text + "  " + ast_type_debug_binding(storage, storage.bindings[b]) + "\n"
+    set b = b + 1
+  }
+
+  set text = text + arena_metrics_dump(ast_typed_nodes_build_metrics(storage)) + "\n"
+  set text = text + arena_manifest_dump(ast_typed_nodes_build_manifest(storage)) + "\n"
+
+  give text
+}
+
+proc ast_typed_nodes_print(storage: AstTypedNodeStorage) {
+  emit ast_typed_nodes_dump(storage)
+}

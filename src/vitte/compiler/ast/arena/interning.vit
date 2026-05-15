@@ -1,6 +1,955 @@
-space vitte/compiler/ast
+space vitte/compiler/ast/arena/interning
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte AST Module                      >>>
-<<< ========================================================= >>>
+use vitte/compiler/arena/api
+use vitte/compiler/arena/contracts
+use vitte/compiler/arena/diagnostics
+use vitte/compiler/arena/manifest
+use vitte/compiler/arena/metrics
+use vitte/compiler/arena/pipeline
+use vitte/compiler/ast/arena/ast_arena
 
+const AST_INTERNING_VERSION: string = "0.1.0"
+const AST_INTERNING_MAGIC: u32 = 0x4153494E
+const AST_INTERN_INVALID_ID: u32 = 0xffffffff
+
+const AST_INTERN_HASH_OFFSET: u64 = 14695981039346656037
+const AST_INTERN_HASH_PRIME: u64 = 1099511628211
+
+type AstInternId = u32
+type AstInternHash = u64
+
+pick AstInternKind {
+  Empty
+  Identifier
+  Keyword
+  Path
+  ModulePath
+  TypeName
+  FieldName
+  ProcName
+  Symbol
+  LiteralString
+  LiteralNumber
+  LiteralChar
+  Attribute
+  Operator
+  RawToken
+  DiagnosticLabel
+}
+
+form AstInternHandle {
+  id: AstInternId
+  kind: AstInternKind
+  hash: AstInternHash
+  handle: ArenaHandle
+}
+
+form AstInternEntry {
+  id: AstInternId
+  kind: AstInternKind
+  hash: AstInternHash
+  text: string
+  handle: ArenaHandle
+  hits: u32
+}
+
+form AstInternStats {
+  entry_count: u32
+  identifier_count: u32
+  keyword_count: u32
+  path_count: u32
+  symbol_count: u32
+  literal_count: u32
+  token_count: u32
+  byte_count: usize
+  collision_count: u32
+  hit_count: u32
+  max_text_len: usize
+}
+
+form AstInternPool {
+  magic: u32
+  arena: Arena
+  entries: [AstInternEntry]
+  collision_count: u32
+  sealed: bool
+}
+
+form AstInternResult {
+  pool: AstInternPool
+  handle: AstInternHandle
+}
+
+proc ast_intern_kind_to_string(kind: AstInternKind) -> string {
+  select kind {
+    when AstInternKind::Identifier { give "identifier" }
+    when AstInternKind::Keyword { give "keyword" }
+    when AstInternKind::Path { give "path" }
+    when AstInternKind::ModulePath { give "module_path" }
+    when AstInternKind::TypeName { give "type_name" }
+    when AstInternKind::FieldName { give "field_name" }
+    when AstInternKind::ProcName { give "proc_name" }
+    when AstInternKind::Symbol { give "symbol" }
+    when AstInternKind::LiteralString { give "literal_string" }
+    when AstInternKind::LiteralNumber { give "literal_number" }
+    when AstInternKind::LiteralChar { give "literal_char" }
+    when AstInternKind::Attribute { give "attribute" }
+    when AstInternKind::Operator { give "operator" }
+    when AstInternKind::RawToken { give "raw_token" }
+    when AstInternKind::DiagnosticLabel { give "diagnostic_label" }
+    otherwise { give "empty" }
+  }
+}
+
+proc ast_intern_invalid_handle() -> AstInternHandle {
+  give AstInternHandle {
+    id: AST_INTERN_INVALID_ID,
+    kind: AstInternKind::Empty,
+    hash: 0,
+    handle: arena_invalid_handle()
+  }
+}
+
+proc ast_intern_handle_is_valid(handle: AstInternHandle) -> bool {
+  give handle.id != AST_INTERN_INVALID_ID
+    && handle.kind != AstInternKind::Empty
+    && arena_handle_is_valid(handle.handle)
+}
+
+proc ast_intern_pool_new(name: string) -> AstInternPool {
+  let config: ArenaConfig =
+    arena_config_new(
+      ArenaKind::Intern,
+      16384,
+      8
+    )
+
+  give AstInternPool {
+    magic: AST_INTERNING_MAGIC,
+    arena: arena_with_config(name, config),
+    entries: [],
+    collision_count: 0,
+    sealed: false
+  }
+}
+
+proc ast_intern_pool_is_valid(pool: AstInternPool) -> bool {
+  give pool.magic == AST_INTERNING_MAGIC
+    && arena_validate(pool.arena)
+}
+
+proc ast_intern_pool_is_empty(pool: AstInternPool) -> bool {
+  give pool.entries.len == 0
+}
+
+proc ast_intern_pool_count(pool: AstInternPool) -> u32 {
+  give pool.entries.len as u32
+}
+
+proc ast_intern_pool_is_sealed(pool: AstInternPool) -> bool {
+  give pool.sealed
+}
+
+proc ast_intern_pool_seal(pool: AstInternPool) -> AstInternPool {
+  let next: AstInternPool = pool
+
+  set next.arena = arena_seal(next.arena)
+  set next.sealed = true
+
+  give next
+}
+
+proc ast_intern_hash_bytes(bytes: [u8]) -> AstInternHash {
+  let hash: u64 = AST_INTERN_HASH_OFFSET
+  let i: usize = 0
+
+  while i < bytes.len {
+    set hash = hash ^ bytes[i] as u64
+    set hash = hash * AST_INTERN_HASH_PRIME
+    set i = i + 1
+  }
+
+  give hash
+}
+
+proc ast_intern_hash_string(text: string) -> AstInternHash {
+  give ast_intern_hash_bytes(string_to_bytes(text))
+}
+
+proc ast_intern_make_handle(entry: AstInternEntry) -> AstInternHandle {
+  give AstInternHandle {
+    id: entry.id,
+    kind: entry.kind,
+    hash: entry.hash,
+    handle: entry.handle
+  }
+}
+
+proc ast_intern_has_id(pool: AstInternPool, id: AstInternId) -> bool {
+  give id < pool.entries.len as u32
+}
+
+proc ast_intern_get_entry(pool: AstInternPool, id: AstInternId) -> AstInternEntry {
+  if !ast_intern_has_id(pool, id) {
+    give AstInternEntry {
+      id: AST_INTERN_INVALID_ID,
+      kind: AstInternKind::Empty,
+      hash: 0,
+      text: "",
+      handle: arena_invalid_handle(),
+      hits: 0
+    }
+  }
+
+  give pool.entries[id as usize]
+}
+
+proc ast_intern_text_matches(
+  pool: AstInternPool,
+  entry: AstInternEntry,
+  text: string
+) -> bool {
+  if entry.text == text {
+    give true
+  }
+
+  let bytes: [u8] = arena_read(pool.arena, entry.handle)
+
+  give bytes_to_string(bytes) == text
+}
+
+proc ast_intern_find(
+  pool: AstInternPool,
+  kind: AstInternKind,
+  text: string
+) -> AstInternHandle {
+  let hash: AstInternHash = ast_intern_hash_string(text)
+  let i: usize = 0
+
+  while i < pool.entries.len {
+    let entry: AstInternEntry = pool.entries[i]
+
+    if entry.kind == kind && entry.hash == hash {
+      if ast_intern_text_matches(pool, entry, text) {
+        give ast_intern_make_handle(entry)
+      }
+    }
+
+    set i = i + 1
+  }
+
+  give ast_intern_invalid_handle()
+}
+
+proc ast_intern_contains(
+  pool: AstInternPool,
+  kind: AstInternKind,
+  text: string
+) -> bool {
+  give ast_intern_handle_is_valid(ast_intern_find(pool, kind, text))
+}
+
+proc ast_intern_record_hit(
+  pool: AstInternPool,
+  handle: AstInternHandle
+) -> AstInternPool {
+  let next: AstInternPool = pool
+
+  if !ast_intern_handle_is_valid(handle) {
+    give next
+  }
+
+  if !ast_intern_has_id(next, handle.id) {
+    give next
+  }
+
+  set next.entries[handle.id as usize].hits =
+    next.entries[handle.id as usize].hits + 1
+
+  give next
+}
+
+proc ast_intern_insert(
+  pool: AstInternPool,
+  kind: AstInternKind,
+  text: string
+) -> AstInternResult {
+  if pool.sealed {
+    give AstInternResult {
+      pool: pool,
+      handle: ast_intern_invalid_handle()
+    }
+  }
+
+  if kind == AstInternKind::Empty {
+    give AstInternResult {
+      pool: pool,
+      handle: ast_intern_invalid_handle()
+    }
+  }
+
+  let existing: AstInternHandle =
+    ast_intern_find(pool, kind, text)
+
+  if ast_intern_handle_is_valid(existing) {
+    let hit_pool: AstInternPool =
+      ast_intern_record_hit(pool, existing)
+
+    give AstInternResult {
+      pool: hit_pool,
+      handle: existing
+    }
+  }
+
+  let next: AstInternPool = pool
+  let hash: AstInternHash = ast_intern_hash_string(text)
+
+  let i: usize = 0
+  while i < next.entries.len {
+    if next.entries[i].kind == kind && next.entries[i].hash == hash {
+      set next.collision_count = next.collision_count + 1
+    }
+
+    set i = i + 1
+  }
+
+  let result: ArenaAllocResult =
+    arena_alloc_bytes_named(
+      next.arena,
+      "ast/intern/"
+        + ast_intern_kind_to_string(kind)
+        + "/"
+        + text,
+      string_to_bytes(text)
+    )
+
+  set next.arena = result.arena
+
+  let entry: AstInternEntry = AstInternEntry {
+    id: next.entries.len as AstInternId,
+    kind: kind,
+    hash: hash,
+    text: text,
+    handle: result.handle,
+    hits: 1
+  }
+
+  set next.entries = next.entries + [entry]
+
+  give AstInternResult {
+    pool: next,
+    handle: ast_intern_make_handle(entry)
+  }
+}
+
+proc ast_intern_identifier(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::Identifier, text)
+}
+
+proc ast_intern_keyword(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::Keyword, text)
+}
+
+proc ast_intern_path(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::Path, text)
+}
+
+proc ast_intern_module_path(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::ModulePath, text)
+}
+
+proc ast_intern_type_name(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::TypeName, text)
+}
+
+proc ast_intern_field_name(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::FieldName, text)
+}
+
+proc ast_intern_proc_name(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::ProcName, text)
+}
+
+proc ast_intern_symbol(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::Symbol, text)
+}
+
+proc ast_intern_literal_string(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::LiteralString, text)
+}
+
+proc ast_intern_literal_number(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::LiteralNumber, text)
+}
+
+proc ast_intern_literal_char(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::LiteralChar, text)
+}
+
+proc ast_intern_attribute(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::Attribute, text)
+}
+
+proc ast_intern_operator(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::Operator, text)
+}
+
+proc ast_intern_raw_token(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::RawToken, text)
+}
+
+proc ast_intern_diagnostic_label(pool: AstInternPool, text: string) -> AstInternResult {
+  give ast_intern_insert(pool, AstInternKind::DiagnosticLabel, text)
+}
+
+proc ast_intern_read(pool: AstInternPool, handle: AstInternHandle) -> string {
+  if !ast_intern_handle_is_valid(handle) {
+    give ""
+  }
+
+  if !ast_intern_has_id(pool, handle.id) {
+    give ""
+  }
+
+  let entry: AstInternEntry = pool.entries[handle.id as usize]
+
+  if entry.hash != handle.hash {
+    give ""
+  }
+
+  give bytes_to_string(arena_read(pool.arena, entry.handle))
+}
+
+proc ast_intern_read_entry(pool: AstInternPool, entry: AstInternEntry) -> string {
+  if entry.id == AST_INTERN_INVALID_ID {
+    give ""
+  }
+
+  give bytes_to_string(arena_read(pool.arena, entry.handle))
+}
+
+proc ast_intern_join_path(pool: AstInternPool, parts: [AstInternHandle]) -> AstInternResult {
+  let text: string = ""
+  let i: usize = 0
+
+  while i < parts.len {
+    if i > 0 {
+      set text = text + "/"
+    }
+
+    set text = text + ast_intern_read(pool, parts[i])
+    set i = i + 1
+  }
+
+  give ast_intern_path(pool, text)
+}
+
+proc ast_intern_join_module_path(pool: AstInternPool, parts: [AstInternHandle]) -> AstInternResult {
+  let text: string = ""
+  let i: usize = 0
+
+  while i < parts.len {
+    if i > 0 {
+      set text = text + "/"
+    }
+
+    set text = text + ast_intern_read(pool, parts[i])
+    set i = i + 1
+  }
+
+  give ast_intern_module_path(pool, text)
+}
+
+proc ast_intern_join_qualified(pool: AstInternPool, left: AstInternHandle, right: AstInternHandle) -> AstInternResult {
+  let text: string =
+    ast_intern_read(pool, left)
+      + "::"
+      + ast_intern_read(pool, right)
+
+  give ast_intern_path(pool, text)
+}
+
+proc ast_intern_normalize_identifier(text: string) -> string {
+  give text
+}
+
+proc ast_intern_normalize_path(text: string) -> string {
+  give text
+}
+
+proc ast_intern_is_keyword_text(text: string) -> bool {
+  give text == "space"
+    || text == "from"
+    || text == "use"
+    || text == "const"
+    || text == "type"
+    || text == "form"
+    || text == "class"
+    || text == "pick"
+    || text == "proc"
+    || text == "entry"
+    || text == "let"
+    || text == "make"
+    || text == "set"
+    || text == "give"
+    || text == "return"
+    || text == "emit"
+    || text == "if"
+    || text == "else"
+    || text == "while"
+    || text == "for"
+    || text == "select"
+    || text == "match"
+    || text == "when"
+    || text == "break"
+    || text == "continue"
+    || text == "true"
+    || text == "false"
+    || text == "as"
+    || text == "is"
+}
+
+proc ast_intern_auto(pool: AstInternPool, text: string) -> AstInternResult {
+  if ast_intern_is_keyword_text(text) {
+    give ast_intern_keyword(pool, text)
+  }
+
+  give ast_intern_identifier(pool, ast_intern_normalize_identifier(text))
+}
+
+proc ast_intern_import_keywords(pool: AstInternPool) -> AstInternPool {
+  let next: AstInternPool = pool
+
+  set next = ast_intern_keyword(next, "space").pool
+  set next = ast_intern_keyword(next, "from").pool
+  set next = ast_intern_keyword(next, "use").pool
+  set next = ast_intern_keyword(next, "const").pool
+  set next = ast_intern_keyword(next, "type").pool
+  set next = ast_intern_keyword(next, "form").pool
+  set next = ast_intern_keyword(next, "class").pool
+  set next = ast_intern_keyword(next, "pick").pool
+  set next = ast_intern_keyword(next, "proc").pool
+  set next = ast_intern_keyword(next, "entry").pool
+  set next = ast_intern_keyword(next, "let").pool
+  set next = ast_intern_keyword(next, "make").pool
+  set next = ast_intern_keyword(next, "set").pool
+  set next = ast_intern_keyword(next, "give").pool
+  set next = ast_intern_keyword(next, "return").pool
+  set next = ast_intern_keyword(next, "emit").pool
+  set next = ast_intern_keyword(next, "if").pool
+  set next = ast_intern_keyword(next, "else").pool
+  set next = ast_intern_keyword(next, "while").pool
+  set next = ast_intern_keyword(next, "for").pool
+  set next = ast_intern_keyword(next, "select").pool
+  set next = ast_intern_keyword(next, "match").pool
+  set next = ast_intern_keyword(next, "when").pool
+  set next = ast_intern_keyword(next, "break").pool
+  set next = ast_intern_keyword(next, "continue").pool
+  set next = ast_intern_keyword(next, "true").pool
+  set next = ast_intern_keyword(next, "false").pool
+  set next = ast_intern_keyword(next, "as").pool
+  set next = ast_intern_keyword(next, "is").pool
+
+  give next
+}
+
+proc ast_intern_import_operators(pool: AstInternPool) -> AstInternPool {
+  let next: AstInternPool = pool
+
+  set next = ast_intern_operator(next, "+").pool
+  set next = ast_intern_operator(next, "-").pool
+  set next = ast_intern_operator(next, "*").pool
+  set next = ast_intern_operator(next, "/").pool
+  set next = ast_intern_operator(next, "%").pool
+  set next = ast_intern_operator(next, "==").pool
+  set next = ast_intern_operator(next, "!=").pool
+  set next = ast_intern_operator(next, "<").pool
+  set next = ast_intern_operator(next, "<=").pool
+  set next = ast_intern_operator(next, ">").pool
+  set next = ast_intern_operator(next, ">=").pool
+  set next = ast_intern_operator(next, "&&").pool
+  set next = ast_intern_operator(next, "||").pool
+  set next = ast_intern_operator(next, "!").pool
+  set next = ast_intern_operator(next, "&").pool
+  set next = ast_intern_operator(next, "|").pool
+  set next = ast_intern_operator(next, "^").pool
+  set next = ast_intern_operator(next, "<<").pool
+  set next = ast_intern_operator(next, ">>").pool
+  set next = ast_intern_operator(next, "..").pool
+  set next = ast_intern_operator(next, "..=").pool
+  set next = ast_intern_operator(next, "::").pool
+  set next = ast_intern_operator(next, ".").pool
+  set next = ast_intern_operator(next, "->").pool
+  set next = ast_intern_operator(next, "=>").pool
+
+  give next
+}
+
+proc ast_intern_bootstrap(pool: AstInternPool) -> AstInternPool {
+  let next: AstInternPool = pool
+
+  set next = ast_intern_import_keywords(next)
+  set next = ast_intern_import_operators(next)
+
+  give next
+}
+
+proc ast_intern_attach_to_ast_symbol(
+  ast: AstArena,
+  pool: AstInternPool,
+  handle: AstInternHandle,
+  node: u32
+) -> AstArena {
+  let text: string = ast_intern_read(pool, handle)
+
+  if text == "" {
+    give ast
+  }
+
+  give ast_arena_add_symbol(ast, text, node)
+}
+
+proc ast_intern_alloc_ast_node_name(
+  ast: AstArena,
+  pool: AstInternPool,
+  kind: AstArenaNodeKind,
+  intern: AstInternHandle,
+  byte_size: usize
+) -> AstArena {
+  let text: string = ast_intern_read(pool, intern)
+
+  give ast_arena_alloc_node(ast, kind, text, byte_size)
+}
+
+proc ast_intern_stats(pool: AstInternPool) -> AstInternStats {
+  let stats: AstInternStats = AstInternStats {
+    entry_count: pool.entries.len as u32,
+    identifier_count: 0,
+    keyword_count: 0,
+    path_count: 0,
+    symbol_count: 0,
+    literal_count: 0,
+    token_count: 0,
+    byte_count: 0,
+    collision_count: pool.collision_count,
+    hit_count: 0,
+    max_text_len: 0
+  }
+
+  let i: usize = 0
+
+  while i < pool.entries.len {
+    let entry: AstInternEntry = pool.entries[i]
+
+    set stats.byte_count = stats.byte_count + entry.text.len
+    set stats.hit_count = stats.hit_count + entry.hits
+
+    if entry.text.len > stats.max_text_len {
+      set stats.max_text_len = entry.text.len
+    }
+
+    select entry.kind {
+      when AstInternKind::Identifier {
+        set stats.identifier_count = stats.identifier_count + 1
+      }
+
+      when AstInternKind::Keyword {
+        set stats.keyword_count = stats.keyword_count + 1
+      }
+
+      when AstInternKind::Path {
+        set stats.path_count = stats.path_count + 1
+      }
+
+      when AstInternKind::ModulePath {
+        set stats.path_count = stats.path_count + 1
+      }
+
+      when AstInternKind::Symbol {
+        set stats.symbol_count = stats.symbol_count + 1
+      }
+
+      when AstInternKind::LiteralString {
+        set stats.literal_count = stats.literal_count + 1
+      }
+
+      when AstInternKind::LiteralNumber {
+        set stats.literal_count = stats.literal_count + 1
+      }
+
+      when AstInternKind::LiteralChar {
+        set stats.literal_count = stats.literal_count + 1
+      }
+
+      when AstInternKind::RawToken {
+        set stats.token_count = stats.token_count + 1
+      }
+
+      otherwise {}
+    }
+
+    set i = i + 1
+  }
+
+  give stats
+}
+
+proc ast_intern_validate_entry(
+  pool: AstInternPool,
+  entry: AstInternEntry
+) -> bool {
+  if entry.id == AST_INTERN_INVALID_ID {
+    give false
+  }
+
+  if entry.kind == AstInternKind::Empty {
+    give false
+  }
+
+  if !arena_handle_is_valid(entry.handle) {
+    give false
+  }
+
+  if !arena_handle_belongs_to(pool.arena, entry.handle) {
+    give false
+  }
+
+  if ast_intern_hash_string(entry.text) != entry.hash {
+    give false
+  }
+
+  if ast_intern_read_entry(pool, entry) != entry.text {
+    give false
+  }
+
+  give true
+}
+
+proc ast_intern_validate_handle(
+  pool: AstInternPool,
+  handle: AstInternHandle
+) -> bool {
+  if !ast_intern_handle_is_valid(handle) {
+    give false
+  }
+
+  if !ast_intern_has_id(pool, handle.id) {
+    give false
+  }
+
+  let entry: AstInternEntry = pool.entries[handle.id as usize]
+
+  give entry.kind == handle.kind
+    && entry.hash == handle.hash
+    && entry.handle.id == handle.handle.id
+}
+
+proc ast_intern_validate(pool: AstInternPool) -> bool {
+  if pool.magic != AST_INTERNING_MAGIC {
+    give false
+  }
+
+  if !arena_validate(pool.arena) {
+    give false
+  }
+
+  let i: usize = 0
+
+  while i < pool.entries.len {
+    let entry: AstInternEntry = pool.entries[i]
+
+    if entry.id != i as u32 {
+      give false
+    }
+
+    if !ast_intern_validate_entry(pool, entry) {
+      give false
+    }
+
+    let j: usize = i + 1
+
+    while j < pool.entries.len {
+      let other: AstInternEntry = pool.entries[j]
+
+      if other.kind == entry.kind
+        && other.hash == entry.hash
+        && other.text == entry.text {
+        give false
+      }
+
+      set j = j + 1
+    }
+
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc ast_intern_build_manifest(pool: AstInternPool) -> ArenaManifest {
+  give arena_manifest_with_diagnostics(
+    arena_manifest_from_arena(pool.arena)
+  )
+}
+
+proc ast_intern_build_metrics(pool: AstInternPool) -> ArenaMetrics {
+  give arena_metrics_from_arena(pool.arena)
+}
+
+proc ast_intern_build_diagnostics(pool: AstInternPool) -> ArenaDiagnosticReport {
+  let report: ArenaDiagnosticReport =
+    arena_diagnostics_check_arena(pool.arena)
+
+  let next: ArenaDiagnosticReport = report
+
+  if !ast_intern_validate(pool) {
+    set next = arena_diagnostics_add(
+      next,
+      arena_diagnostic_new(
+        ArenaDiagnosticSeverity::Error,
+        ArenaDiagnosticDomain::Arena,
+        "AST_INTERN_POOL_INVALID",
+        "invalid AST intern pool",
+        pool.arena.name,
+        "AST interning pool validation failed"
+      )
+    )
+  }
+
+  give next
+}
+
+proc ast_intern_clear(pool: AstInternPool) -> AstInternPool {
+  let next: AstInternPool = pool
+
+  set next.arena = arena_reset(next.arena)
+  set next.entries = []
+  set next.collision_count = 0
+  set next.sealed = false
+
+  give next
+}
+
+proc ast_intern_pipeline(name: string) -> ArenaPipeline {
+  let input: ArenaPipelineInput =
+    arena_pipeline_input_new(
+      name,
+      arena_config_new(
+        ArenaKind::Intern,
+        16384,
+        8
+      )
+    )
+
+  let pipeline: ArenaPipeline =
+    arena_pipeline_new(
+      input,
+      arena_pipeline_default_config()
+    )
+
+  give arena_pipeline_add_request(
+    pipeline,
+    arena_pipeline_request_snapshot("ast_intern_init")
+  )
+}
+
+proc ast_intern_debug_handle(handle: AstInternHandle) -> string {
+  if !ast_intern_handle_is_valid(handle) {
+    give "AstInternHandle(invalid)"
+  }
+
+  give "AstInternHandle(id="
+    + to_string(handle.id)
+    + ", kind="
+    + ast_intern_kind_to_string(handle.kind)
+    + ", hash="
+    + to_string(handle.hash)
+    + ", arena="
+    + arena_debug_handle(handle.handle)
+    + ")"
+}
+
+proc ast_intern_debug_entry(entry: AstInternEntry) -> string {
+  give "AstInternEntry(id="
+    + to_string(entry.id)
+    + ", kind="
+    + ast_intern_kind_to_string(entry.kind)
+    + ", hash="
+    + to_string(entry.hash)
+    + ", text="
+    + entry.text
+    + ", hits="
+    + to_string(entry.hits)
+    + ", handle="
+    + arena_debug_handle(entry.handle)
+    + ")"
+}
+
+proc ast_intern_debug_stats(stats: AstInternStats) -> string {
+  give "AstInternStats(entries="
+    + to_string(stats.entry_count)
+    + ", identifiers="
+    + to_string(stats.identifier_count)
+    + ", keywords="
+    + to_string(stats.keyword_count)
+    + ", paths="
+    + to_string(stats.path_count)
+    + ", symbols="
+    + to_string(stats.symbol_count)
+    + ", literals="
+    + to_string(stats.literal_count)
+    + ", tokens="
+    + to_string(stats.token_count)
+    + ", bytes="
+    + to_string(stats.byte_count)
+    + ", collisions="
+    + to_string(stats.collision_count)
+    + ", hits="
+    + to_string(stats.hit_count)
+    + ", max_text_len="
+    + to_string(stats.max_text_len)
+    + ")"
+}
+
+proc ast_intern_debug(pool: AstInternPool) -> string {
+  give "AstInternPool(version="
+    + AST_INTERNING_VERSION
+    + ", valid="
+    + to_string(ast_intern_validate(pool))
+    + ", sealed="
+    + to_string(pool.sealed)
+    + ", "
+    + ast_intern_debug_stats(ast_intern_stats(pool))
+    + ", arena="
+    + arena_debug(pool.arena)
+    + ")"
+}
+
+proc ast_intern_dump(pool: AstInternPool) -> string {
+  let text: string =
+    ast_intern_debug(pool)
+    + "\n"
+
+  let i: usize = 0
+
+  while i < pool.entries.len {
+    set text = text + "  " + ast_intern_debug_entry(pool.entries[i]) + "\n"
+    set i = i + 1
+  }
+
+  set text =
+    text
+      + arena_metrics_dump(ast_intern_build_metrics(pool))
+      + "\n"
+
+  set text =
+    text
+      + arena_manifest_dump(ast_intern_build_manifest(pool))
+      + "\n"
+
+  give text
+}
+
+proc ast_intern_print(pool: AstInternPool) {
+  emit ast_intern_dump(pool)
+}

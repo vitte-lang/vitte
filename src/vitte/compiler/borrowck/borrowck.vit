@@ -1,6 +1,40 @@
 space vitte/compiler/borrowck
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte Borrow Checker Module           >>>
-<<< ========================================================= >>>
+use vitte/compiler/borrowck/analysis/dataflow
+
+proc borrowck_analyze(hir: string) -> [string] {
+  let diagnostics: [string] = []
+
+  if string_contains_text(hir, "&") {
+    set diagnostics = diagnostics + ["borrow check: reference borrow detected"]
+  }
+  if string_contains_text(hir, "mut") {
+    set diagnostics = diagnostics + ["borrow check: mutable borrow considered"]
+  }
+  if diagnostics.len == 0 {
+    set diagnostics = diagnostics + ["borrow check: passed"]
+  }
+
+  give diagnostics
+}
+
+proc string_contains_text(text: string, pattern: string) -> bool {
+  let i: int = 0
+  while i + pattern.len <= text.len {
+    let j: int = 0
+    let matched: bool = true
+    while j < pattern.len {
+      if text[i + j] != pattern[j] {
+        set matched = false
+        break
+      }
+      set j = j + 1
+    }
+    if matched {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
 

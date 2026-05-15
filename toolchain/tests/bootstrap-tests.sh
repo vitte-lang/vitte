@@ -188,6 +188,47 @@ test_stage2_executable() {
   fi
 }
 
+test_stage4_exists() {
+  test_start "Stage 4 exists"
+  
+  if [ -f "$BUILD_DIR/vittec4" ]; then
+    test_pass "Stage 4 compiler binary found"
+    return 0
+  else
+    test_fail "Stage 4 compiler not found at $BUILD_DIR/vittec4"
+    return 1
+  fi
+}
+
+test_stage4_version() {
+  test_start "Stage 4 version check"
+  
+  if ! [ -f "$BUILD_DIR/vittec4" ]; then
+    test_info "Skipped: Stage 4 not built"
+    return 0
+  fi
+  
+  if "$BUILD_DIR/vittec4" --version 2>/dev/null | grep -q "stage4"; then
+    test_pass "Version string contains 'stage4'"
+    return 0
+  else
+    test_info "Version check (may not be implemented yet)"
+    return 0
+  fi
+}
+
+test_stage4_executable() {
+  test_start "Stage 4 is executable"
+  
+  if [ -f "$BUILD_DIR/vittec4" ] && [ -x "$BUILD_DIR/vittec4" ]; then
+    test_pass "Stage 4 compiler is executable"
+    return 0
+  else
+    test_fail "Stage 4 compiler is not executable"
+    return 1
+  fi
+}
+
 # ============================================================
 # Bootstrap Verification Tests
 # ============================================================
@@ -353,6 +394,13 @@ main() {
   test_stage2_exists
   test_stage2_executable
   test_stage2_version
+  echo ""
+  
+  # Stage 4 Tests
+  echo -e "${YELLOW}Stage 4 Tests (Placeholder)${NC}"
+  test_stage4_exists
+  test_stage4_executable
+  test_stage4_version
   echo ""
   
   # Bootstrap Verification

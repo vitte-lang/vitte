@@ -1,6 +1,263 @@
-space vitte/compiler/parse
+space vitte/compiler/parse/incremental
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte Compiler Parse Module           >>
-<<< ========================================================= >>>
+use vitte/compiler/parse/incremental/dependency_tracking
+
+form FunctionBody {
+  name: string,
+  body: string,
+}
+
+form IncrementalState {
+  source_fingerprint: string,
+  nodes: [DependencyNode],
+  changed_keys: [string],
+  diagnostics: [string],
+}
+
+proc incremental_state_new() -> IncrementalState {
+  give IncrementalState {
+    source_fingerprint: "",
+    nodes: [],
+    changed_keys: [],
+    diagnostics: [],
+  }
+}
+
+proc incremental_parse(source: string, previous: IncrementalState) -> (string, IncrementalState) {
+  let fingerprint: string = dependency_fingerprint(source)
+  let state: IncrementalState = previous
+
+  if state.source_fingerprint != fingerprint {
+    let functions: [FunctionBody] = parse_functions(source)
+    let (nodes, changed_keys): ([DependencyNode], [string]) = build_dependency_nodes(functions, state.nodes)
+    let diagnostics: [string] = state.diagnostics + ["incremental parse: changed=" + string_join(changed_keys, ",")]
+
+    give ("ast(" + source + ")", IncrementalState {
+      source_fingerprint: fingerprint,
+      nodes: nodes,
+      changed_keys: changed_keys,
+      diagnostics: diagnostics,
+    })
+  }
+
+  give ("ast(" + source + ")", state)
+}
+
+proc dependency_fingerprint(source: string) -> string {
+  give "src:" + source
+}
+
+proc parse_functions(source: string) -> [FunctionBody] {
+  let lines: [string] = string_split(source, "\n")
+  let result: [FunctionBody] = []
+  let current_name: string = ""
+  let current_body: string = ""
+  let i: int = 0
+
+  while i < lines.len {
+    let line: string = string_trim(lines[i])
+    if string_starts_with(line, "proc ") {
+      if current_name != "" {
+        set result = result + [FunctionBody { name: current_name, body: current_body }]
+      }
+      set current_name = function_name_from_line(line)
+      set current_body = line + "\n"
+    } else {
+      if current_name != "" {
+        set current_body = current_body + line + "\n"
+      }
+    }
+    set i = i + 1
+  }
+
+  if current_name != "" {
+    set result = result + [FunctionBody { name: current_name, body: current_body }]
+  }
+  give result
+}
+
+proc function_name_from_line(line: string) -> string {
+  let start: int = 5
+  let name: string = ""
+  while start < line.len {
+    let c: string = line[start]
+    if !string_is_alnum_or_underscore(c) {
+      break
+    }
+    set name = name + c
+    set start = start + 1
+  }
+  give name
+}
+
+proc build_dependency_nodes(functions: [FunctionBody], previous: [DependencyNode]) -> ([DependencyNode], [string]) {
+  let names: [string] = extract_function_names(functions)
+  let nodes: [DependencyNode] = []
+  let changed_keys: [string] = []
+  let i: int = 0
+
+  while i < functions.len {
+    let func: FunctionBody = functions[i]
+    let deps: [string] = extract_function_dependencies(func.body, names, func.name)
+    let fingerprint: string = "fp:" + func.body
+    let prev_index: int = dependency_graph_find_node(previous, func.name)
+    let old_fp: string = ""
+    if prev_index >= 0 {
+      set old_fp = previous[prev_index].fingerprint
+    }
+
+    if old_fp != fingerprint {
+      set changed_keys = changed_keys + [func.name]
+    }
+
+    set nodes = nodes + [DependencyNode {
+      key: func.name,
+      fingerprint: fingerprint,
+      dependencies: deps,
+      stale: false,
+    }]
+    set i = i + 1
+  }
+
+  give (nodes, changed_keys)
+}
+
+proc extract_function_names(functions: [FunctionBody]) -> [string] {
+  let names: [string] = []
+  let i: int = 0
+  while i < functions.len {
+    set names = names + [functions[i].name]
+    set i = i + 1
+  }
+  give names
+}
+
+proc extract_function_dependencies(body: string, names: [string], self_name: string) -> [string] {
+  let result: [string] = []
+  let i: int = 0
+  while i < names.len {
+    let candidate: string = names[i]
+    if candidate != self_name && string_contains_text(body, candidate) {
+      if !string_contains(result, candidate) {
+        set result = result + [candidate]
+      }
+    }
+    set i = i + 1
+  }
+  give result
+}
+
+proc string_trim(value: string) -> string {
+  let result: string = value
+  let start: int = 0
+  while start < result.len && string_is_space(result[start]) {
+    set start = start + 1
+  }
+  let end: int = result.len
+  while end > start && string_is_space(result[end - 1]) {
+    set end = end - 1
+  }
+  give string_substring(result, start, end)
+}
+
+proc string_split(text: string, delimiter: string) -> [string] {
+  let result: [string] = []
+  let current: string = ""
+  let i: int = 0
+  while i < text.len {
+    let c: string = text[i]
+    if c == delimiter {
+      set result = result + [current]
+      set current = ""
+    } else {
+      set current = current + c
+    }
+    set i = i + 1
+  }
+  set result = result + [current]
+  give result
+}
+
+proc string_contains_text(text: string, pattern: string) -> bool {
+  let i: int = 0
+  while i + pattern.len <= text.len {
+    let j: int = 0
+    let matched: bool = true
+    while j < pattern.len {
+      if text[i + j] != pattern[j] {
+        set matched = false
+        break
+      }
+      set j = j + 1
+    }
+    if matched {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc string_starts_with(value: string, prefix: string) -> bool {
+  if prefix.len > value.len {
+    give false
+  }
+  let i: int = 0
+  while i < prefix.len {
+    if value[i] != prefix[i] {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
+}
+
+proc string_is_space(c: string) -> bool {
+  give c == " " || c == "\t" || c == "\r" || c == "\n"
+}
+
+proc string_is_alnum_or_underscore(c: string) -> bool {
+  if c == "_" {
+    give true
+  }
+  if string_is_digit(c) {
+    give true
+  }
+  if string_is_alpha(c) {
+    give true
+  }
+  give false
+}
+
+proc string_is_digit(c: string) -> bool {
+  give string_contains_text("0123456789", c)
+}
+
+proc string_is_alpha(c: string) -> bool {
+  let alphabet: string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  give string_contains_text(alphabet, c)
+}
+
+proc string_substring(text: string, start: int, end: int) -> string {
+  let result: string = ""
+  let i: int = start
+  while i < end {
+    set result = result + text[i]
+    set i = i + 1
+  }
+  give result
+}
+
+proc string_join(values: [string], separator: string) -> string {
+  let result: string = ""
+  let i: int = 0
+  while i < values.len {
+    if i > 0 {
+      set result = result + separator
+    }
+    set result = result + values[i]
+    set i = i + 1
+  }
+  give result
+}
 

@@ -1,6 +1,132 @@
-space vitte/compiler/driver
+space vitte/compiler/driver/build
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte Compiler Driver Module          >>
-<<< ========================================================= >>>
+use vitte/compiler/parse/incremental/dependency_tracking
+
+form BuildNode {
+  id: string,
+  dependencies: [string],
+  fingerprint: string,
+  stale: bool,
+}
+
+form BuildGraph {
+  nodes: [BuildNode],
+}
+
+proc build_graph_new() -> BuildGraph {
+  give BuildGraph { nodes: [] }
+}
+
+proc build_node_new(id: string, dependencies: [string], fingerprint: string) -> BuildNode {
+  give BuildNode {
+    id: id,
+    dependencies: dependencies,
+    fingerprint: fingerprint,
+    stale: false,
+  }
+}
+
+proc string_contains(values: [string], value: string) -> bool {
+  let i: int = 0
+  while i < values.len {
+    if values[i] == value {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc build_graph_find_node(graph: BuildGraph, id: string) -> int {
+  let i: int = 0
+  while i < graph.nodes.len {
+    if graph.nodes[i].id == id {
+      give i
+    }
+    set i = i + 1
+  }
+  give -1
+}
+
+proc build_graph_add_node(graph: BuildGraph, id: string, dependencies: [string], fingerprint: string) -> BuildGraph {
+  let idx: int = build_graph_find_node(graph, id)
+  if idx >= 0 {
+    set graph.nodes[idx] = BuildNode {
+      id: id,
+      dependencies: dependencies,
+      fingerprint: fingerprint,
+      stale: graph.nodes[idx].stale,
+    }
+    give graph
+  }
+
+  let node: BuildNode = build_node_new(id, dependencies, fingerprint)
+  set graph.nodes = graph.nodes + [node]
+  give graph
+}
+
+proc build_graph_update_nodes(graph: BuildGraph, nodes: [DependencyNode]) -> BuildGraph {
+  let result: BuildGraph = graph
+  let i: int = 0
+  while i < nodes.len {
+    set result = build_graph_add_node(result, nodes[i].key, nodes[i].dependencies, nodes[i].fingerprint)
+    set i = i + 1
+  }
+  give result
+}
+
+proc build_graph_mark_changed(graph: BuildGraph, changed_ids: [string]) -> BuildGraph {
+  let i: int = 0
+  while i < graph.nodes.len {
+    if string_contains(changed_ids, graph.nodes[i].id) {
+      set graph.nodes[i].stale = true
+    }
+    set i = i + 1
+  }
+  give graph
+}
+
+proc build_graph_invalidate(graph: BuildGraph, changed_ids: [string]) -> BuildGraph {
+  let marked: [string] = changed_ids
+  let changed: bool = true
+
+  while changed {
+    set changed = false
+    let i: int = 0
+    while i < graph.nodes.len {
+      if !graph.nodes[i].stale {
+        let j: int = 0
+        while j < graph.nodes[i].dependencies.len {
+          if string_contains(marked, graph.nodes[i].dependencies[j]) {
+            set graph.nodes[i].stale = true
+            set marked = marked + [graph.nodes[i].id]
+            set changed = true
+            break
+          }
+          set j = j + 1
+        }
+      }
+      set i = i + 1
+    }
+  }
+
+  give graph
+}
+
+proc build_graph_stale_nodes(graph: BuildGraph) -> [BuildNode] {
+  let result: [BuildNode] = []
+  let i: int = 0
+  while i < graph.nodes.len {
+    if graph.nodes[i].stale {
+      set result = result + [graph.nodes[i]]
+    }
+    set i = i + 1
+  }
+  give result
+}
+
+proc fingerprint_source(source: string) -> string {
+  let hash: string = "fp:" + source
+  give hash
+}
 

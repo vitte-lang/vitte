@@ -1,6 +1,80 @@
-space vitte/compiler/parse
+space vitte/compiler/parse/incremental
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte Compiler Parse Module           >>
-<<< ========================================================= >>>
+form DependencyNode {
+  key: string,
+  fingerprint: string,
+  dependencies: [string],
+  stale: bool,
+}
+
+proc dependency_graph_invalidate(nodes: [DependencyNode], changed: [string]) -> [DependencyNode] {
+  let result: [DependencyNode] = nodes
+  let mark: [string] = changed
+  let changed_any: bool = true
+
+  while changed_any {
+    set changed_any = false
+    let i: int = 0
+    while i < result.len {
+      if !result[i].stale {
+        let j: int = 0
+        while j < result[i].dependencies.len {
+          if string_contains(mark, result[i].dependencies[j]) {
+            set result[i].stale = true
+            set mark = mark + [result[i].key]
+            set changed_any = true
+            break
+          }
+          set j = j + 1
+        }
+      }
+      set i = i + 1
+    }
+  }
+
+  give result
+}
+
+proc dependency_graph_add_node(nodes: [DependencyNode], key: string, fingerprint: string, dependencies: [string]) -> [DependencyNode] {
+  let index: int = dependency_graph_find_node(nodes, key)
+  if index >= 0 {
+    set nodes[index] = DependencyNode {
+      key: key,
+      fingerprint: fingerprint,
+      dependencies: dependencies,
+      stale: nodes[index].stale,
+    }
+    give nodes
+  }
+
+  let node: DependencyNode = DependencyNode {
+    key: key,
+    fingerprint: fingerprint,
+    dependencies: dependencies,
+    stale: false,
+  }
+  give nodes + [node]
+}
+
+proc dependency_graph_find_node(nodes: [DependencyNode], key: string) -> int {
+  let i: int = 0
+  while i < nodes.len {
+    if nodes[i].key == key {
+      give i
+    }
+    set i = i + 1
+  }
+  give -1
+}
+
+proc string_contains(values: [string], value: string) -> bool {
+  let i: int = 0
+  while i < values.len {
+    if values[i] == value {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
 

@@ -245,7 +245,30 @@ proc create_stage3_phase() -> BootstrapPhase {
   }
 }
 
-# Phase 7: Verification
+# Phase 7: Stage 4
+proc create_stage4_phase() -> BootstrapPhase {
+  let actions: [BootstrapAction] = [
+    BootstrapAction {
+      action_type: "compile",
+      action_name: "compile-stage4",
+      description: "Fourth self-hosted compilation placeholder",
+      required: true,
+      depends_on: ["compile-stage3"],
+      timeout_seconds: 300,
+      retry_count: 1
+    }
+  ]
+  
+  give BootstrapPhase {
+    phase_number: 7,
+    phase_name: "Stage 4",
+    description: "Fourth self-hosting placeholder stage",
+    actions: actions,
+    parallel: false
+  }
+}
+
+# Phase 8: Verification
 proc create_verification_phase() -> BootstrapPhase {
   let actions: [BootstrapAction] = [
     BootstrapAction {
@@ -327,11 +350,12 @@ proc create_bootstrap_plan() -> BootstrapPlan {
     create_stage1_phase(),
     create_stage2_phase(),
     create_stage3_phase(),
+    create_stage4_phase(),
     create_verification_phase(),
     create_install_phase()
   ]
   
-  let total_actions: int = 16
+  let total_actions: int = 17
   let estimated_time: int = 2100
   
   give BootstrapPlan {

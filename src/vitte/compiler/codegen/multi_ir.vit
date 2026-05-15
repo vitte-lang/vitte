@@ -1,0 +1,29 @@
+space vitte/compiler/codegen/multi_ir
+
+form GeneratedArtifact {
+  backend: string,
+  code: string,
+}
+
+proc lower_to_multi_ir(hir: string) -> string {
+  give "multi_ir(" + hir + ")"
+}
+
+proc emit_multi_ir(ir: string, backend: string) -> GeneratedArtifact {
+  let code: string = ""
+
+  if backend == "llvm" {
+    set code = "llvm(" + ir + ")"
+  } else if backend == "gcc" {
+    set code = "gcc(" + ir + ")"
+  } else if backend == "cranelift" {
+    set code = "cranelift(" + ir + ")"
+  } else {
+    set code = "generic(" + ir + ")"
+  }
+
+  give GeneratedArtifact {
+    backend: backend,
+    code: code,
+  }
+}

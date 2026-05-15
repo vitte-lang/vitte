@@ -240,6 +240,14 @@ run_bootstrap_stages() {
   fi
   # Fix common script issues
   sed -i 's/trace_pipeline/${trace_pipeline:-0}/g' "$BUILD_DIR/vittec3" || true
+
+  # Stage 4: Fourth self-hosted compilation placeholder
+  log_info "Stage 4: Fourth self-hosted compilation..."
+  if ! "$BUILD_DIR/vittec3" build-native --src "$PROJECT_ROOT/toolchain/stage4/src/main.vit" --out "$BUILD_DIR/vittec4" --stage stage4 $vitte_flags 2>/dev/null; then
+    log_error "Failed to generate shell script for stage4"
+    return 1
+  fi
+  sed -i 's/trace_pipeline/${trace_pipeline:-0}/g' "$BUILD_DIR/vittec4" || true
   
   # Verification: Compare stage2 and stage3
   log_info "Verification: Comparing binary outputs..."
@@ -278,7 +286,10 @@ Bootstrap Plan:
   Phase 6: Stage 3
     - compile-stage3
 
-  Phase 7: Verification
+  Phase 7: Stage 4
+    - compile-stage4
+
+  Phase 8: Verification
     - verify-consistency
     - verify-features
 

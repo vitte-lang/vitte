@@ -1,6 +1,1053 @@
-space vitte/compiler/ast
+space vitte/compiler/ast/arena/spans
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte AST Module                      >>>
-<<< ========================================================= >>>
+use vitte/compiler/arena/api
+use vitte/compiler/arena/contracts
+use vitte/compiler/arena/diagnostics
+use vitte/compiler/arena/manifest
+use vitte/compiler/arena/metrics
+use vitte/compiler/ast/arena/ast_arena
+use vitte/compiler/ast/arena/interning
+use vitte/compiler/ast/arena/node_pool
 
+const AST_SPANS_VERSION: string = "0.1.0"
+const AST_SPANS_MAGIC: u32 = 0x41535350
+const AST_SPAN_INVALID_ID: u32 = 0xffffffff
+const AST_SPAN_INVALID_FILE: u32 = 0xffffffff
+const AST_SPAN_INVALID_OFFSET: usize = 18446744073709551615
+
+type AstSpanId = u32
+type AstFileId = u32
+type AstByteOffset = usize
+type AstLine = u32
+type AstColumn = u32
+
+form AstSourceFile {
+  id: AstFileId
+  path: AstInternHandle
+  name: AstInternHandle
+  byte_len: usize
+  line_starts: [AstByteOffset]
+  handle: ArenaHandle
+}
+
+form AstSourcePosition {
+  file: AstFileId
+  offset: AstByteOffset
+  line: AstLine
+  column: AstColumn
+}
+
+form AstSourceSpan {
+  id: AstSpanId
+  file: AstFileId
+  start: AstByteOffset
+  end: AstByteOffset
+  start_line: AstLine
+  start_column: AstColumn
+  end_line: AstLine
+  end_column: AstColumn
+}
+
+form AstNodeSpan {
+  node: AstNodeId
+  span: AstSpanId
+}
+
+form AstSpanStats {
+  file_count: u32
+  span_count: u32
+  node_span_count: u32
+  total_source_bytes: usize
+  largest_file_bytes: usize
+  largest_span_bytes: usize
+  zero_width_spans: u32
+  invalid_spans: u32
+}
+
+form AstSpanTable {
+  magic: u32
+  name: string
+  arena: Arena
+  interns: AstInternPool
+  files: [AstSourceFile]
+  spans: [AstSourceSpan]
+  node_spans: [AstNodeSpan]
+  sealed: bool
+}
+
+form AstFileResult {
+  table: AstSpanTable
+  file: AstFileId
+}
+
+form AstSpanResult {
+  table: AstSpanTable
+  span: AstSpanId
+}
+
+proc ast_span_table_new(name: string) -> AstSpanTable {
+  let config: ArenaConfig =
+    arena_config_new(
+      ArenaKind::Ast,
+      16384,
+      8
+    )
+
+  give AstSpanTable {
+    magic: AST_SPANS_MAGIC,
+    name: name,
+    arena: arena_with_config(name + "_spans", config),
+    interns: ast_intern_bootstrap(ast_intern_pool_new(name + "_span_interns")),
+    files: [],
+    spans: [],
+    node_spans: [],
+    sealed: false
+  }
+}
+
+proc ast_span_table_is_valid(table: AstSpanTable) -> bool {
+  give table.magic == AST_SPANS_MAGIC
+    && arena_validate(table.arena)
+    && ast_intern_validate(table.interns)
+}
+
+proc ast_span_invalid_position() -> AstSourcePosition {
+  give AstSourcePosition {
+    file: AST_SPAN_INVALID_FILE,
+    offset: AST_SPAN_INVALID_OFFSET,
+    line: 0,
+    column: 0
+  }
+}
+
+proc ast_span_invalid_span() -> AstSourceSpan {
+  give AstSourceSpan {
+    id: AST_SPAN_INVALID_ID,
+    file: AST_SPAN_INVALID_FILE,
+    start: AST_SPAN_INVALID_OFFSET,
+    end: AST_SPAN_INVALID_OFFSET,
+    start_line: 0,
+    start_column: 0,
+    end_line: 0,
+    end_column: 0
+  }
+}
+
+proc ast_span_has_file(table: AstSpanTable, file: AstFileId) -> bool {
+  give file < table.files.len as u32
+}
+
+proc ast_span_has_span(table: AstSpanTable, span: AstSpanId) -> bool {
+  give span < table.spans.len as u32
+}
+
+proc ast_span_is_valid_id(span: AstSpanId) -> bool {
+  give span != AST_SPAN_INVALID_ID
+}
+
+proc ast_file_is_valid_id(file: AstFileId) -> bool {
+  give file != AST_SPAN_INVALID_FILE
+}
+
+proc ast_span_width(span: AstSourceSpan) -> usize {
+  if span.end < span.start {
+    give 0
+  }
+
+  give span.end - span.start
+}
+
+proc ast_span_is_zero_width(span: AstSourceSpan) -> bool {
+  give span.start == span.end
+}
+
+proc ast_span_contains_offset(span: AstSourceSpan, offset: AstByteOffset) -> bool {
+  give offset >= span.start && offset < span.end
+}
+
+proc ast_span_contains_position(span: AstSourceSpan, pos: AstSourcePosition) -> bool {
+  if span.file != pos.file {
+    give false
+  }
+
+  give ast_span_contains_offset(span, pos.offset)
+}
+
+proc ast_span_overlaps(left: AstSourceSpan, right: AstSourceSpan) -> bool {
+  if left.file != right.file {
+    give false
+  }
+
+  give left.start < right.end && right.start < left.end
+}
+
+proc ast_span_contains_span(outer: AstSourceSpan, inner: AstSourceSpan) -> bool {
+  if outer.file != inner.file {
+    give false
+  }
+
+  give inner.start >= outer.start && inner.end <= outer.end
+}
+
+proc ast_span_merge(left: AstSourceSpan, right: AstSourceSpan) -> AstSourceSpan {
+  if left.file != right.file {
+    give left
+  }
+
+  let start: usize = left.start
+  let end: usize = left.end
+  let start_line: u32 = left.start_line
+  let start_column: u32 = left.start_column
+  let end_line: u32 = left.end_line
+  let end_column: u32 = left.end_column
+
+  if right.start < start {
+    set start = right.start
+    set start_line = right.start_line
+    set start_column = right.start_column
+  }
+
+  if right.end > end {
+    set end = right.end
+    set end_line = right.end_line
+    set end_column = right.end_column
+  }
+
+  give AstSourceSpan {
+    id: AST_SPAN_INVALID_ID,
+    file: left.file,
+    start: start,
+    end: end,
+    start_line: start_line,
+    start_column: start_column,
+    end_line: end_line,
+    end_column: end_column
+  }
+}
+
+proc ast_span_build_line_starts(source: string) -> [AstByteOffset] {
+  let starts: [AstByteOffset] = [0]
+  let bytes: [u8] = string_to_bytes(source)
+  let i: usize = 0
+
+  while i < bytes.len {
+    if bytes[i] == 10u8 {
+      set starts = starts + [i + 1]
+    }
+
+    set i = i + 1
+  }
+
+  give starts
+}
+
+proc ast_span_find_line_index(line_starts: [AstByteOffset], offset: AstByteOffset) -> usize {
+  if line_starts.len == 0 {
+    give 0
+  }
+
+  let best: usize = 0
+  let i: usize = 0
+
+  while i < line_starts.len {
+    if line_starts[i] <= offset {
+      set best = i
+    } else {
+      give best
+    }
+
+    set i = i + 1
+  }
+
+  give best
+}
+
+proc ast_span_position_for_offset(
+  table: AstSpanTable,
+  file: AstFileId,
+  offset: AstByteOffset
+) -> AstSourcePosition {
+  if !ast_span_has_file(table, file) {
+    give ast_span_invalid_position()
+  }
+
+  let source_file: AstSourceFile = table.files[file as usize]
+
+  if offset > source_file.byte_len {
+    give ast_span_invalid_position()
+  }
+
+  let line_index: usize =
+    ast_span_find_line_index(source_file.line_starts, offset)
+
+  let line_start: usize = source_file.line_starts[line_index]
+
+  give AstSourcePosition {
+    file: file,
+    offset: offset,
+    line: line_index as u32 + 1,
+    column: (offset - line_start) as u32 + 1
+  }
+}
+
+proc ast_span_add_file(
+  table: AstSpanTable,
+  path: string,
+  source: string
+) -> AstFileResult {
+  if table.sealed {
+    give AstFileResult {
+      table: table,
+      file: AST_SPAN_INVALID_FILE
+    }
+  }
+
+  let next: AstSpanTable = table
+
+  let path_result: AstInternResult =
+    ast_intern_path(next.interns, path)
+
+  set next.interns = path_result.pool
+
+  let name_result: AstInternResult =
+    ast_intern_identifier(next.interns, path)
+
+  set next.interns = name_result.pool
+
+  let alloc: ArenaAllocResult =
+    arena_alloc_bytes_named(
+      next.arena,
+      "ast/source/file/" + path,
+      string_to_bytes(source)
+    )
+
+  set next.arena = alloc.arena
+
+  let file_id: AstFileId = next.files.len as AstFileId
+
+  let file: AstSourceFile = AstSourceFile {
+    id: file_id,
+    path: path_result.handle,
+    name: name_result.handle,
+    byte_len: source.len,
+    line_starts: ast_span_build_line_starts(source),
+    handle: alloc.handle
+  }
+
+  set next.files = next.files + [file]
+
+  give AstFileResult {
+    table: next,
+    file: file_id
+  }
+}
+
+proc ast_span_add_raw_file(
+  table: AstSpanTable,
+  path: string,
+  byte_len: usize,
+  line_starts: [AstByteOffset]
+) -> AstFileResult {
+  if table.sealed {
+    give AstFileResult {
+      table: table,
+      file: AST_SPAN_INVALID_FILE
+    }
+  }
+
+  let next: AstSpanTable = table
+
+  let path_result: AstInternResult =
+    ast_intern_path(next.interns, path)
+
+  set next.interns = path_result.pool
+
+  let alloc: ArenaAllocResult =
+    arena_alloc_named(
+      next.arena,
+      ArenaAllocKind::Bytes,
+      "ast/source/raw/" + path,
+      byte_len,
+      1
+    )
+
+  set next.arena = alloc.arena
+
+  let file_id: AstFileId = next.files.len as AstFileId
+
+  let file: AstSourceFile = AstSourceFile {
+    id: file_id,
+    path: path_result.handle,
+    name: path_result.handle,
+    byte_len: byte_len,
+    line_starts: line_starts,
+    handle: alloc.handle
+  }
+
+  set next.files = next.files + [file]
+
+  give AstFileResult {
+    table: next,
+    file: file_id
+  }
+}
+
+proc ast_span_add(
+  table: AstSpanTable,
+  file: AstFileId,
+  start: AstByteOffset,
+  end: AstByteOffset
+) -> AstSpanResult {
+  if table.sealed {
+    give AstSpanResult {
+      table: table,
+      span: AST_SPAN_INVALID_ID
+    }
+  }
+
+  if !ast_span_has_file(table, file) {
+    give AstSpanResult {
+      table: table,
+      span: AST_SPAN_INVALID_ID
+    }
+  }
+
+  let source_file: AstSourceFile = table.files[file as usize]
+
+  if start > end || end > source_file.byte_len {
+    give AstSpanResult {
+      table: table,
+      span: AST_SPAN_INVALID_ID
+    }
+  }
+
+  let next: AstSpanTable = table
+  let start_pos: AstSourcePosition =
+    ast_span_position_for_offset(next, file, start)
+
+  let end_pos: AstSourcePosition =
+    ast_span_position_for_offset(next, file, end)
+
+  let span_id: AstSpanId = next.spans.len as AstSpanId
+
+  let span: AstSourceSpan = AstSourceSpan {
+    id: span_id,
+    file: file,
+    start: start,
+    end: end,
+    start_line: start_pos.line,
+    start_column: start_pos.column,
+    end_line: end_pos.line,
+    end_column: end_pos.column
+  }
+
+  set next.spans = next.spans + [span]
+
+  give AstSpanResult {
+    table: next,
+    span: span_id
+  }
+}
+
+proc ast_span_add_positioned(
+  table: AstSpanTable,
+  file: AstFileId,
+  start: AstSourcePosition,
+  end: AstSourcePosition
+) -> AstSpanResult {
+  if start.file != file || end.file != file {
+    give AstSpanResult {
+      table: table,
+      span: AST_SPAN_INVALID_ID
+    }
+  }
+
+  give ast_span_add(table, file, start.offset, end.offset)
+}
+
+proc ast_span_add_merged(
+  table: AstSpanTable,
+  left: AstSpanId,
+  right: AstSpanId
+) -> AstSpanResult {
+  if !ast_span_has_span(table, left) || !ast_span_has_span(table, right) {
+    give AstSpanResult {
+      table: table,
+      span: AST_SPAN_INVALID_ID
+    }
+  }
+
+  let merged: AstSourceSpan =
+    ast_span_merge(
+      table.spans[left as usize],
+      table.spans[right as usize]
+    )
+
+  give ast_span_add(table, merged.file, merged.start, merged.end)
+}
+
+proc ast_span_get(table: AstSpanTable, id: AstSpanId) -> AstSourceSpan {
+  if !ast_span_has_span(table, id) {
+    give ast_span_invalid_span()
+  }
+
+  give table.spans[id as usize]
+}
+
+proc ast_span_file(table: AstSpanTable, id: AstFileId) -> AstSourceFile {
+  if !ast_span_has_file(table, id) {
+    give AstSourceFile {
+      id: AST_SPAN_INVALID_FILE,
+      path: ast_intern_invalid_handle(),
+      name: ast_intern_invalid_handle(),
+      byte_len: 0,
+      line_starts: [],
+      handle: arena_invalid_handle()
+    }
+  }
+
+  give table.files[id as usize]
+}
+
+proc ast_span_file_path(table: AstSpanTable, id: AstFileId) -> string {
+  if !ast_span_has_file(table, id) {
+    give ""
+  }
+
+  give ast_intern_read(table.interns, table.files[id as usize].path)
+}
+
+proc ast_span_bind_node(
+  table: AstSpanTable,
+  node: AstNodeHandle,
+  span: AstSpanId
+) -> AstSpanTable {
+  let next: AstSpanTable = table
+
+  if !ast_node_handle_is_valid(node) {
+    give next
+  }
+
+  if !ast_span_has_span(next, span) {
+    give next
+  }
+
+  let i: usize = 0
+
+  while i < next.node_spans.len {
+    if next.node_spans[i].node == node.id {
+      set next.node_spans[i].span = span
+      give next
+    }
+
+    set i = i + 1
+  }
+
+  set next.node_spans = next.node_spans + [
+    AstNodeSpan {
+      node: node.id,
+      span: span
+    }
+  ]
+
+  give next
+}
+
+proc ast_span_find_for_node(
+  table: AstSpanTable,
+  node: AstNodeHandle
+) -> AstSpanId {
+  if !ast_node_handle_is_valid(node) {
+    give AST_SPAN_INVALID_ID
+  }
+
+  let i: usize = 0
+
+  while i < table.node_spans.len {
+    if table.node_spans[i].node == node.id {
+      give table.node_spans[i].span
+    }
+
+    set i = i + 1
+  }
+
+  give AST_SPAN_INVALID_ID
+}
+
+proc ast_span_get_for_node(
+  table: AstSpanTable,
+  node: AstNodeHandle
+) -> AstSourceSpan {
+  give ast_span_get(table, ast_span_find_for_node(table, node))
+}
+
+proc ast_span_source_text(
+  table: AstSpanTable,
+  span_id: AstSpanId
+) -> string {
+  if !ast_span_has_span(table, span_id) {
+    give ""
+  }
+
+  let span: AstSourceSpan = table.spans[span_id as usize]
+
+  if !ast_span_has_file(table, span.file) {
+    give ""
+  }
+
+  let file: AstSourceFile = table.files[span.file as usize]
+  let bytes: [u8] = arena_read(table.arena, file.handle)
+  let out: [u8] = []
+  let i: usize = span.start
+
+  while i < span.end && i < bytes.len {
+    set out = out + [bytes[i]]
+    set i = i + 1
+  }
+
+  give bytes_to_string(out)
+}
+
+proc ast_span_line_text(
+  table: AstSpanTable,
+  file_id: AstFileId,
+  line: AstLine
+) -> string {
+  if !ast_span_has_file(table, file_id) {
+    give ""
+  }
+
+  let file: AstSourceFile = table.files[file_id as usize]
+
+  if line == 0 || line > file.line_starts.len as u32 {
+    give ""
+  }
+
+  let start: usize = file.line_starts[(line - 1) as usize]
+  let end: usize = file.byte_len
+
+  if line < file.line_starts.len as u32 {
+    set end = file.line_starts[line as usize]
+  }
+
+  let bytes: [u8] = arena_read(table.arena, file.handle)
+  let out: [u8] = []
+  let i: usize = start
+
+  while i < end && i < bytes.len {
+    if bytes[i] != 10u8 && bytes[i] != 13u8 {
+      set out = out + [bytes[i]]
+    }
+
+    set i = i + 1
+  }
+
+  give bytes_to_string(out)
+}
+
+proc ast_span_stats(table: AstSpanTable) -> AstSpanStats {
+  let stats: AstSpanStats = AstSpanStats {
+    file_count: table.files.len as u32,
+    span_count: table.spans.len as u32,
+    node_span_count: table.node_spans.len as u32,
+    total_source_bytes: 0,
+    largest_file_bytes: 0,
+    largest_span_bytes: 0,
+    zero_width_spans: 0,
+    invalid_spans: 0
+  }
+
+  let f: usize = 0
+
+  while f < table.files.len {
+    let file: AstSourceFile = table.files[f]
+
+    set stats.total_source_bytes = stats.total_source_bytes + file.byte_len
+
+    if file.byte_len > stats.largest_file_bytes {
+      set stats.largest_file_bytes = file.byte_len
+    }
+
+    set f = f + 1
+  }
+
+  let s: usize = 0
+
+  while s < table.spans.len {
+    let span: AstSourceSpan = table.spans[s]
+    let width: usize = ast_span_width(span)
+
+    if width > stats.largest_span_bytes {
+      set stats.largest_span_bytes = width
+    }
+
+    if ast_span_is_zero_width(span) {
+      set stats.zero_width_spans = stats.zero_width_spans + 1
+    }
+
+    if !ast_span_validate_span(table, span) {
+      set stats.invalid_spans = stats.invalid_spans + 1
+    }
+
+    set s = s + 1
+  }
+
+  give stats
+}
+
+proc ast_span_validate_file(table: AstSpanTable, file: AstSourceFile) -> bool {
+  if file.id == AST_SPAN_INVALID_FILE {
+    give false
+  }
+
+  if file.id >= table.files.len as u32 {
+    give false
+  }
+
+  if !ast_intern_validate_handle(table.interns, file.path) {
+    give false
+  }
+
+  if !arena_handle_belongs_to(table.arena, file.handle) {
+    give false
+  }
+
+  if file.line_starts.len == 0 {
+    give false
+  }
+
+  if file.line_starts[0] != 0 {
+    give false
+  }
+
+  let i: usize = 1
+
+  while i < file.line_starts.len {
+    if file.line_starts[i] <= file.line_starts[i - 1] {
+      give false
+    }
+
+    if file.line_starts[i] > file.byte_len {
+      give false
+    }
+
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc ast_span_validate_span(table: AstSpanTable, span: AstSourceSpan) -> bool {
+  if span.id == AST_SPAN_INVALID_ID {
+    give false
+  }
+
+  if span.id >= table.spans.len as u32 {
+    give false
+  }
+
+  if !ast_span_has_file(table, span.file) {
+    give false
+  }
+
+  let file: AstSourceFile = table.files[span.file as usize]
+
+  if span.start > span.end {
+    give false
+  }
+
+  if span.end > file.byte_len {
+    give false
+  }
+
+  if span.start_line == 0 || span.end_line == 0 {
+    give false
+  }
+
+  if span.start_column == 0 || span.end_column == 0 {
+    give false
+  }
+
+  give true
+}
+
+proc ast_span_validate_node_span(table: AstSpanTable, binding: AstNodeSpan) -> bool {
+  if binding.node == AST_NODE_INVALID_ID {
+    give false
+  }
+
+  if !ast_span_has_span(table, binding.span) {
+    give false
+  }
+
+  give true
+}
+
+proc ast_span_validate(table: AstSpanTable) -> bool {
+  if table.magic != AST_SPANS_MAGIC {
+    give false
+  }
+
+  if !arena_validate(table.arena) {
+    give false
+  }
+
+  if !ast_intern_validate(table.interns) {
+    give false
+  }
+
+  let f: usize = 0
+
+  while f < table.files.len {
+    if table.files[f].id != f as u32 {
+      give false
+    }
+
+    if !ast_span_validate_file(table, table.files[f]) {
+      give false
+    }
+
+    set f = f + 1
+  }
+
+  let s: usize = 0
+
+  while s < table.spans.len {
+    if table.spans[s].id != s as u32 {
+      give false
+    }
+
+    if !ast_span_validate_span(table, table.spans[s]) {
+      give false
+    }
+
+    set s = s + 1
+  }
+
+  let n: usize = 0
+
+  while n < table.node_spans.len {
+    if !ast_span_validate_node_span(table, table.node_spans[n]) {
+      give false
+    }
+
+    set n = n + 1
+  }
+
+  give true
+}
+
+proc ast_span_build_manifest(table: AstSpanTable) -> ArenaManifest {
+  give arena_manifest_with_diagnostics(
+    arena_manifest_from_arena(table.arena)
+  )
+}
+
+proc ast_span_build_metrics(table: AstSpanTable) -> ArenaMetrics {
+  give arena_metrics_from_arena(table.arena)
+}
+
+proc ast_span_build_diagnostics(table: AstSpanTable) -> ArenaDiagnosticReport {
+  let report: ArenaDiagnosticReport =
+    arena_diagnostics_check_arena(table.arena)
+
+  let next: ArenaDiagnosticReport = report
+
+  if !ast_span_validate(table) {
+    set next = arena_diagnostics_add(
+      next,
+      arena_diagnostic_new(
+        ArenaDiagnosticSeverity::Error,
+        ArenaDiagnosticDomain::Arena,
+        "AST_SPAN_TABLE_INVALID",
+        "invalid AST span table",
+        table.name,
+        "AST span table validation failed"
+      )
+    )
+  }
+
+  give next
+}
+
+proc ast_span_seal(table: AstSpanTable) -> AstSpanTable {
+  let next: AstSpanTable = table
+
+  set next.arena = arena_seal(next.arena)
+  set next.interns = ast_intern_pool_seal(next.interns)
+  set next.sealed = true
+
+  give next
+}
+
+proc ast_span_clear(table: AstSpanTable) -> AstSpanTable {
+  let next: AstSpanTable = table
+
+  set next.arena = arena_reset(next.arena)
+  set next.interns = ast_intern_clear(next.interns)
+  set next.files = []
+  set next.spans = []
+  set next.node_spans = []
+  set next.sealed = false
+
+  give next
+}
+
+proc ast_span_debug_position(pos: AstSourcePosition) -> string {
+  if pos.file == AST_SPAN_INVALID_FILE {
+    give "AstSourcePosition(invalid)"
+  }
+
+  give "AstSourcePosition(file="
+    + to_string(pos.file)
+    + ", offset="
+    + to_string(pos.offset)
+    + ", line="
+    + to_string(pos.line)
+    + ", column="
+    + to_string(pos.column)
+    + ")"
+}
+
+proc ast_span_debug_file(table: AstSpanTable, file: AstSourceFile) -> string {
+  give "AstSourceFile(id="
+    + to_string(file.id)
+    + ", path="
+    + ast_intern_read(table.interns, file.path)
+    + ", bytes="
+    + to_string(file.byte_len)
+    + ", lines="
+    + to_string(file.line_starts.len)
+    + ", handle="
+    + arena_debug_handle(file.handle)
+    + ")"
+}
+
+proc ast_span_debug_span(table: AstSpanTable, span: AstSourceSpan) -> string {
+  give "AstSourceSpan(id="
+    + to_string(span.id)
+    + ", file="
+    + ast_span_file_path(table, span.file)
+    + ", start="
+    + to_string(span.start)
+    + ", end="
+    + to_string(span.end)
+    + ", start_line="
+    + to_string(span.start_line)
+    + ", start_col="
+    + to_string(span.start_column)
+    + ", end_line="
+    + to_string(span.end_line)
+    + ", end_col="
+    + to_string(span.end_column)
+    + ", width="
+    + to_string(ast_span_width(span))
+    + ")"
+}
+
+proc ast_span_debug_node_span(binding: AstNodeSpan) -> string {
+  give "AstNodeSpan(node="
+    + to_string(binding.node)
+    + ", span="
+    + to_string(binding.span)
+    + ")"
+}
+
+proc ast_span_debug_stats(stats: AstSpanStats) -> string {
+  give "AstSpanStats(files="
+    + to_string(stats.file_count)
+    + ", spans="
+    + to_string(stats.span_count)
+    + ", node_spans="
+    + to_string(stats.node_span_count)
+    + ", source_bytes="
+    + to_string(stats.total_source_bytes)
+    + ", largest_file="
+    + to_string(stats.largest_file_bytes)
+    + ", largest_span="
+    + to_string(stats.largest_span_bytes)
+    + ", zero_width="
+    + to_string(stats.zero_width_spans)
+    + ", invalid="
+    + to_string(stats.invalid_spans)
+    + ")"
+}
+
+proc ast_span_debug(table: AstSpanTable) -> string {
+  give "AstSpanTable(version="
+    + AST_SPANS_VERSION
+    + ", name="
+    + table.name
+    + ", valid="
+    + to_string(ast_span_validate(table))
+    + ", sealed="
+    + to_string(table.sealed)
+    + ", "
+    + ast_span_debug_stats(ast_span_stats(table))
+    + ", arena="
+    + arena_debug(table.arena)
+    + ")"
+}
+
+proc ast_span_format_location(table: AstSpanTable, span_id: AstSpanId) -> string {
+  if !ast_span_has_span(table, span_id) {
+    give "<unknown>"
+  }
+
+  let span: AstSourceSpan = table.spans[span_id as usize]
+
+  give ast_span_file_path(table, span.file)
+    + ":"
+    + to_string(span.start_line)
+    + ":"
+    + to_string(span.start_column)
+}
+
+proc ast_span_format_range(table: AstSpanTable, span_id: AstSpanId) -> string {
+  if !ast_span_has_span(table, span_id) {
+    give "<unknown>"
+  }
+
+  let span: AstSourceSpan = table.spans[span_id as usize]
+
+  give ast_span_file_path(table, span.file)
+    + ":"
+    + to_string(span.start_line)
+    + ":"
+    + to_string(span.start_column)
+    + "-"
+    + to_string(span.end_line)
+    + ":"
+    + to_string(span.end_column)
+}
+
+proc ast_span_dump(table: AstSpanTable) -> string {
+  let text: string = ast_span_debug(table) + "\n"
+
+  let f: usize = 0
+  while f < table.files.len {
+    set text = text + "  " + ast_span_debug_file(table, table.files[f]) + "\n"
+    set f = f + 1
+  }
+
+  let s: usize = 0
+  while s < table.spans.len {
+    set text = text + "  " + ast_span_debug_span(table, table.spans[s]) + "\n"
+    set s = s + 1
+  }
+
+  let n: usize = 0
+  while n < table.node_spans.len {
+    set text = text + "  " + ast_span_debug_node_span(table.node_spans[n]) + "\n"
+    set n = n + 1
+  }
+
+  set text = text + arena_metrics_dump(ast_span_build_metrics(table)) + "\n"
+  set text = text + arena_manifest_dump(ast_span_build_manifest(table)) + "\n"
+
+  give text
+}
+
+proc ast_span_print(table: AstSpanTable) {
+  emit ast_span_dump(table)
+}

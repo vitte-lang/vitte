@@ -1,6 +1,51 @@
 space vitte/compiler/driver
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Vitte Compiler Driver Module          >>
-<<< ========================================================= >>>
+use vitte/compiler/driver/build/incremental_build
+use vitte/compiler/driver/pipelines/frontend_pipeline
+use vitte/compiler/driver/pipelines/hir_pipeline
+use vitte/compiler/driver/pipelines/codegen_pipeline
+
+form CompileSession {
+  source: string,
+  parse_state: IncrementalState,
+  build_graph: BuildGraph,
+  target_backend: string,
+}
+
+form CompileResult {
+  artifact: GeneratedArtifact,
+  diagnostics: [string],
+  stale_nodes: [BuildNode],
+}
+
+proc compile_module(session: CompileSession) -> CompileResult {
+  let frontend: FrontendResult = run_frontend_pipeline(session.source, session.parse_state)
+  let graph: BuildGraph = build_graph_update_nodes(session.build_graph, frontend.parse_state.nodes)
+  let graph_with_changes: BuildGraph = build_graph_mark_changed(graph, frontend.parse_state.changed_keys)
+  let invalidated: BuildGraph = build_graph_invalidate(graph_with_changes, frontend.parse_state.changed_keys)
+  let stale_nodes: [BuildNode] = build_graph_stale_nodes(invalidated)
+  let diagnostics: [string] = frontend.diagnostics
+
+  if stale_nodes.len == 0 {
+    let cached: GeneratedArtifact = GeneratedArtifact {
+      backend: session.target_backend,
+      code: "cached artifact",
+    }
+    give CompileResult {
+      artifact: cached,
+      diagnostics: diagnostics + ["no source change detected, reuse cache"],
+      stale_nodes: stale_nodes,
+    }
+  }
+
+  let hir_result: HirResult = run_hir_pipeline(frontend.ast)
+  let codegen_result: CodegenResult = run_codegen_pipeline(hir_result.hir, session.target_backend)
+  set diagnostics = diagnostics + hir_result.diagnostics + codegen_result.diagnostics
+
+  give CompileResult {
+    artifact: codegen_result.artifact,
+    diagnostics: diagnostics,
+    stale_nodes: stale_nodes,
+  }
+}
 
