@@ -15,57 +15,57 @@ const INFER_MAX_CONSTRAINTS: u64 = 2097152
 const INFER_MAX_SUBSTITUTIONS: u64 = 1048576
 
 pick InferTypeKind {
-    Unknown
-    Void
-    Never
-    Bool
-    Int
-    UInt
-    Float
-    Char
-    String
-    Pointer
-    Reference
-    Slice
-    Array
-    Tuple
-    Function
-    Form
-    Pick
-    Trait
-    Generic
-    InferVar
+    Unknown,
+    Void,
+    Never,
+    Bool,
+    Int,
+    UInt,
+    Float,
+    Char,
+    String,
+    Pointer,
+    Reference,
+    Slice,
+    Array,
+    Tuple,
+    Function,
+    Form,
+    Pick,
+    Trait,
+    Generic,
+    InferVar,
 }
 
 pick InferVarState {
-    Unbound
-    Bound
-    Generalized
-    Escaped
-    Invalid
+    Unbound,
+    Bound,
+    Generalized,
+    Escaped,
+    Invalid,
 }
 
 pick InferRelation {
-    Equals
-    Assignable
-    Coercible
-    Implements
-    Outlives
+    Equals,
+    Assignable,
+    Coercible,
+    Implements,
+    Outlives,
 }
 
 pick InferErrorKind {
-    None
-    UnknownVariable
-    UnknownType
-    OccursCheckFailed
-    TypeMismatch
-    ConstraintFailed
-    AmbiguousType
-    EscapingTypeVariable
-    VarLimitExceeded
-    ConstraintLimitExceeded
-    SubstitutionLimitExceeded
-    InternalFailure
+    None,
+    UnknownVariable,
+    UnknownType,
+    OccursCheckFailed,
+    TypeMismatch,
+    ConstraintFailed,
+    AmbiguousType,
+    EscapingTypeVariable,
+    VarLimitExceeded,
+    ConstraintLimitExceeded,
+    SubstitutionLimitExceeded,
+    InternalFailure,
 }
 
 form InferSpan {
@@ -132,7 +132,7 @@ proc span_empty() -> InferSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc type_invalid() -> InferType {
@@ -143,7 +143,7 @@ proc type_invalid() -> InferType {
         mutable: false,
         nullable: false,
         valid: false
-    }
+    };
 }
 
 proc type_unknown() -> InferType {
@@ -154,7 +154,7 @@ proc type_unknown() -> InferType {
         mutable: false,
         nullable: false,
         valid: true
-    }
+    };
 }
 
 proc type_bool() -> InferType {
@@ -165,7 +165,7 @@ proc type_bool() -> InferType {
         mutable: false,
         nullable: false,
         valid: true
-    }
+    };
 }
 
 proc type_int() -> InferType {
@@ -176,7 +176,7 @@ proc type_int() -> InferType {
         mutable: false,
         nullable: false,
         valid: true
-    }
+    };
 }
 
 proc type_string() -> InferType {
@@ -187,7 +187,7 @@ proc type_string() -> InferType {
         mutable: false,
         nullable: false,
         valid: true
-    }
+    };
 }
 
 proc type_create(
@@ -204,7 +204,7 @@ proc type_create(
         mutable: mutable,
         nullable: nullable,
         valid: true
-    }
+    };
 }
 
 proc infer_var_create(
@@ -219,7 +219,7 @@ proc infer_var_create(
         bound_type: type_unknown(),
         span: span,
         valid: true
-    }
+    };
 }
 
 proc constraint_create(
@@ -236,7 +236,7 @@ proc constraint_create(
         relation: relation,
         span: span,
         solved: false
-    }
+    };
 }
 
 proc substitution_create(
@@ -251,7 +251,7 @@ proc substitution_create(
         replacement: replacement,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -267,7 +267,7 @@ proc diagnostic_create(
         span: span,
         left: left,
         right: right
-    }
+    };
 }
 
 proc context_empty() -> InferContext {
@@ -277,7 +277,7 @@ proc context_empty() -> InferContext {
         substitutions: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc context_add_diagnostic(
@@ -290,7 +290,7 @@ proc context_add_diagnostic(
         substitutions: context.substitutions,
         diagnostics: context.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc context_add_var(
@@ -307,7 +307,7 @@ proc context_add_var(
                 type_invalid(),
                 type_invalid()
             )
-        )
+        );
     }
 
     give InferContext {
@@ -316,7 +316,7 @@ proc context_add_var(
         substitutions: context.substitutions,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_constraint(
@@ -333,7 +333,7 @@ proc context_add_constraint(
                 constraint.left,
                 constraint.right
             )
-        )
+        );
     }
 
     give InferContext {
@@ -342,7 +342,7 @@ proc context_add_constraint(
         substitutions: context.substitutions,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_substitution(
@@ -359,7 +359,7 @@ proc context_add_substitution(
                 substitution.replacement,
                 type_invalid()
             )
-        )
+        );
     }
 
     give InferContext {
@@ -368,21 +368,21 @@ proc context_add_substitution(
         substitutions: context.substitutions + [substitution],
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc find_var(
     context: InferContext,
     id: u64
 ) -> InferVar {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.variables) {
+    while i < vector_len(context.variables) {
         if context.variables[i].id == id {
-            give context.variables[i]
+            give context.variables[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give InferVar {
@@ -392,7 +392,7 @@ proc find_var(
         bound_type: type_invalid(),
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc type_equals(
@@ -400,22 +400,22 @@ proc type_equals(
     right: InferType
 ) -> bool {
     if left.valid == false or right.valid == false {
-        give false
+        give false;
     }
 
     if left.id == right.id and left.kind == right.kind {
-        give true
+        give true;
     }
 
     if left.name == right.name and left.kind == right.kind {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc type_is_infer_var(ty: InferType) -> bool {
-    give ty.kind == InferTypeKind.InferVar
+    give ty.kind == InferTypeKind.InferVar;
 }
 
 proc occurs_check(
@@ -423,10 +423,10 @@ proc occurs_check(
     ty: InferType
 ) -> bool {
     if ty.kind == InferTypeKind.InferVar and ty.id == variable {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc bind_var(
@@ -435,7 +435,7 @@ proc bind_var(
     replacement: InferType,
     span: InferSpan
 ) -> InferContext {
-    let variable = find_var(context, variable_id)
+    let variable = find_var(context, variable_id);
 
     if variable.valid == false {
         give context_add_diagnostic(
@@ -447,7 +447,7 @@ proc bind_var(
                 replacement,
                 type_invalid()
             )
-        )
+        );
     }
 
     if occurs_check(variable_id, replacement) == false {
@@ -460,7 +460,7 @@ proc bind_var(
                 replacement,
                 type_invalid()
             )
-        )
+        );
     }
 
     let substitution = substitution_create(
@@ -468,11 +468,11 @@ proc bind_var(
         variable_id,
         replacement,
         span
-    )
+    );
 
-    let with_subst = context_add_substitution(context, substitution)
+    let with_subst = context_add_substitution(context, substitution);
 
-    give replace_var_state(with_subst, variable_id, replacement)
+    give replace_var_state(with_subst, variable_id, replacement);
 }
 
 proc replace_var_state(
@@ -480,11 +480,11 @@ proc replace_var_state(
     variable_id: u64,
     replacement: InferType
 ) -> InferContext {
-    let next: [InferVar] = []
-    let i: u64 = 0
+    let next: [InferVar] = [];
+    let i: u64 = 0;
 
-    loop i < vector_len(context.variables) {
-        let variable = context.variables[i]
+    while i < vector_len(context.variables) {
+        let variable = context.variables[i];
 
         if variable.id == variable_id {
             set next = next + [
@@ -496,12 +496,12 @@ proc replace_var_state(
                     span: variable.span,
                     valid: variable.valid
                 }
-            ]
+            ];
         } else {
-            set next = next + [variable]
+            set next = next + [variable];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give InferContext {
@@ -510,7 +510,7 @@ proc replace_var_state(
         substitutions: context.substitutions,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc resolve_substitution(
@@ -518,22 +518,22 @@ proc resolve_substitution(
     ty: InferType
 ) -> InferType {
     if ty.kind != InferTypeKind.InferVar {
-        give ty
+        give ty;
     }
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.substitutions) {
-        let subst = context.substitutions[i]
+    while i < vector_len(context.substitutions) {
+        let subst = context.substitutions[i];
 
         if subst.variable == ty.id {
-            give subst.replacement
+            give subst.replacement;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give ty
+    give ty;
 }
 
 proc infer_assignable(
@@ -541,42 +541,42 @@ proc infer_assignable(
     right: InferType
 ) -> bool {
     if type_equals(left, right) {
-        give true
+        give true;
     }
 
     if left.kind == InferTypeKind.Unknown or right.kind == InferTypeKind.Unknown {
-        give true
+        give true;
     }
 
     if left.kind == InferTypeKind.InferVar or right.kind == InferTypeKind.InferVar {
-        give true
+        give true;
     }
 
     if left.kind == InferTypeKind.Float and right.kind == InferTypeKind.Int {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc solve_constraint(
     context: InferContext,
     constraint: InferConstraint
 ) -> InferContext {
-    let left = resolve_substitution(context, constraint.left)
-    let right = resolve_substitution(context, constraint.right)
+    let left = resolve_substitution(context, constraint.left);
+    let right = resolve_substitution(context, constraint.right);
 
     if type_is_infer_var(left) {
-        give bind_var(context, left.id, right, constraint.span)
+        give bind_var(context, left.id, right, constraint.span);
     }
 
     if type_is_infer_var(right) {
-        give bind_var(context, right.id, left, constraint.span)
+        give bind_var(context, right.id, left, constraint.span);
     }
 
     if constraint.relation == InferRelation.Equals {
         if type_equals(left, right) {
-            give mark_constraint_solved(context, constraint.id)
+            give mark_constraint_solved(context, constraint.id);
         }
 
         give context_add_diagnostic(
@@ -588,12 +588,12 @@ proc solve_constraint(
                 left,
                 right
             )
-        )
+        );
     }
 
     if constraint.relation == InferRelation.Assignable {
         if infer_assignable(left, right) {
-            give mark_constraint_solved(context, constraint.id)
+            give mark_constraint_solved(context, constraint.id);
         }
 
         give context_add_diagnostic(
@@ -605,21 +605,21 @@ proc solve_constraint(
                 left,
                 right
             )
-        )
+        );
     }
 
-    give mark_constraint_solved(context, constraint.id)
+    give mark_constraint_solved(context, constraint.id);
 }
 
 proc mark_constraint_solved(
     context: InferContext,
     constraint_id: u64
 ) -> InferContext {
-    let next: [InferConstraint] = []
-    let i: u64 = 0
+    let next: [InferConstraint] = [];
+    let i: u64 = 0;
 
-    loop i < vector_len(context.constraints) {
-        let constraint = context.constraints[i]
+    while i < vector_len(context.constraints) {
+        let constraint = context.constraints[i];
 
         if constraint.id == constraint_id {
             set next = next + [
@@ -631,12 +631,12 @@ proc mark_constraint_solved(
                     span: constraint.span,
                     solved: true
                 }
-            ]
+            ];
         } else {
-            set next = next + [constraint]
+            set next = next + [constraint];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give InferContext {
@@ -645,34 +645,34 @@ proc mark_constraint_solved(
         substitutions: context.substitutions,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc solve_all(
     context: InferContext
 ) -> InferContext {
-    let current = context
-    let i: u64 = 0
+    let current = context;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.constraints) {
+    while i < vector_len(current.constraints) {
         if current.constraints[i].solved == false {
-            set current = solve_constraint(current, current.constraints[i])
+            set current = solve_constraint(current, current.constraints[i]);
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc generalize_unbound(
     context: InferContext
 ) -> InferContext {
-    let next: [InferVar] = []
-    let i: u64 = 0
+    let next: [InferVar] = [];
+    let i: u64 = 0;
 
-    loop i < vector_len(context.variables) {
-        let variable = context.variables[i]
+    while i < vector_len(context.variables) {
+        let variable = context.variables[i];
 
         if variable.state == InferVarState.Unbound {
             set next = next + [
@@ -684,12 +684,12 @@ proc generalize_unbound(
                     span: variable.span,
                     valid: variable.valid
                 }
-            ]
+            ];
         } else {
-            set next = next + [variable]
+            set next = next + [variable];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give InferContext {
@@ -698,72 +698,72 @@ proc generalize_unbound(
         substitutions: context.substitutions,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc infer_error_count(context: InferContext) -> u64 {
-    give vector_len(context.diagnostics)
+    give vector_len(context.diagnostics);
 }
 
 proc infer_is_valid(context: InferContext) -> bool {
-    give context.valid and vector_len(context.diagnostics) == 0
+    give context.valid and vector_len(context.diagnostics) == 0;
 }
 
 proc kind_name(kind: InferTypeKind) -> string {
     if kind == InferTypeKind.Bool {
-        give "bool"
+        give "bool";
     }
 
     if kind == InferTypeKind.Int {
-        give "int"
+        give "int";
     }
 
     if kind == InferTypeKind.Float {
-        give "float"
+        give "float";
     }
 
     if kind == InferTypeKind.String {
-        give "string"
+        give "string";
     }
 
     if kind == InferTypeKind.InferVar {
-        give "infer_var"
+        give "infer_var";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_type(ty: InferType) {
-    emit "infer type"
-    emit ty.id
-    emit ty.name
-    emit kind_name(ty.kind)
-    emit ty.valid
+    emit "infer type";
+    emit ty.id;
+    emit ty.name;
+    emit kind_name(ty.kind);
+    emit ty.valid;
 }
 
 proc print_var(variable: InferVar) {
-    emit "infer var"
-    emit variable.id
-    emit variable.name
-    emit variable.state
-    print_type(variable.bound_type)
+    emit "infer var";
+    emit variable.id;
+    emit variable.name;
+    emit variable.state;
+    print_type(variable.bound_type);
 }
 
 proc print_context(context: InferContext) {
-    emit "infer context"
-    emit vector_len(context.variables)
-    emit vector_len(context.constraints)
-    emit vector_len(context.substitutions)
-    emit vector_len(context.diagnostics)
+    emit "infer context";
+    emit vector_len(context.variables);
+    emit vector_len(context.constraints);
+    emit vector_len(context.substitutions);
+    emit vector_len(context.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.variables) {
-        print_var(context.variables[i])
-        set i = i + 1
+    while i < vector_len(context.variables) {
+        print_var(context.variables[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

@@ -1,0 +1,39 @@
+space vitte/compiler/middle
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput }
+use vitte/compiler/middle/hir/lower_ast.{ HirUnit, lower_ast_to_hir }
+use vitte/compiler/middle/hir/validate.{ validate_hir }
+use vitte/compiler/middle/lower/hir_to_mir.{ MirUnit, lower_hir_to_mir }
+use vitte/compiler/middle/mir/validate.{ validate_mir }
+use vitte/compiler/middle/passes/pass_manager.{ run_passes }
+use vitte/compiler/middle/passes/pass_result.{ PassRunResult }
+use vitte/compiler/backend/ir/ir.{ IrUnit, verify_unit, unit_is_valid }
+use vitte/compiler/middle/lower/mir_to_ir.{ lower_analysis_to_ir }
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run }
+
+form MiddleOutput {
+  hir: HirUnit
+  mir: MirUnit
+  passes: PassRunResult
+  ir: IrUnit
+  valid: bool
+}
+
+proc middle_run(frontend: FrontendOutput) -> MiddleOutput {
+  let analysis: AnalysisOutput = analysis_run(frontend);
+  let hir0: HirUnit = lower_ast_to_hir(frontend);
+  let hir1: HirUnit = validate_hir(hir0);
+  let mir0: MirUnit = lower_hir_to_mir(hir1);
+  let mir1: MirUnit = validate_mir(mir0);
+  let p: PassRunResult = run_passes(mir1);
+  let ir0: IrUnit = lower_analysis_to_ir(analysis);
+  let ir1: IrUnit = verify_unit(ir0);
+
+  give MiddleOutput {
+    hir: hir1,
+    mir: mir1,
+    passes: p,
+    ir: ir1,
+    valid: hir1.valid and mir1.valid and unit_is_valid(ir1)
+  };
+}

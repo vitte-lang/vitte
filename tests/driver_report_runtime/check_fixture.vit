@@ -1,0 +1,48 @@
+space vitte/compiler/frontend/tests
+
+type MaybeInt = ?int
+type Borrowed = &mut [int]
+type Callback = proc(value: int, flag: bool) -> string
+
+form Pair {
+  left: int,
+  right: int,
+}
+
+proc lower(items: [int], callback: Callback) -> int {
+  let total: int = 0;
+  let current: MaybeInt = null;
+  let pair: Pair = Pair { left: 1, right: 2 };
+  let mapper = |value| value + 1;
+  while total < 10 {
+    set total = total + mapper(1);
+    if total > 6 {
+      break total;
+    }
+  }
+  for item in items {
+    match item {
+      case 0 => callback(0, true).len();
+      case 1 | 2 {
+        emit pair.left + pair.right;
+      }
+      else {
+        with pair {
+          emit pair.left + pair.right;
+        }
+      }
+    }
+  }
+  give total;
+}
+
+proc inspect(pair: Pair) -> int {
+  match pair {
+    case Pair { left, right } {
+      give left + right;
+    }
+    else {
+      give 0;
+    }
+  }
+}

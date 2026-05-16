@@ -1,11 +1,89 @@
 space vitte/compiler/driver
 
-use vitte/compiler/infrastructure/session/options { SessionOptions, default_options }
-use vitte/compiler/driver/pipeline { localized_status }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run }
+use vitte/compiler/backend/pipeline.{ compile_to_valid_ir }
+use vitte/compiler/driver/exit_status.{ DriverExitStatus }
 
-proc compile_once() -> [string] {
-  let options: SessionOptions = default_options()
-  let start: string = localized_status(options, "driver-start")
-  let done: string = localized_status(options, "driver-done")
-  give [start, done]
+form DriverCompileResult {
+    status: DriverExitStatus
+    message: string
+    ir_valid: bool
+    grammar_version: string
+    token_count: u64
+    toplevel_count: u64
+    stmt_count: u64
+    expr_count: u64
+    type_count: u64
+    pattern_count: u64
+}
+
+proc empty_compile_result(status: DriverExitStatus, message: string, ir_valid: bool) -> DriverCompileResult {
+    give DriverCompileResult {
+        status: status,
+        message: message,
+        ir_valid: ir_valid,
+        grammar_version: "",
+        token_count: 0,
+        toplevel_count: 0,
+        stmt_count: 0,
+        expr_count: 0,
+        type_count: 0,
+        pattern_count: 0
+    };
+}
+
+proc frontend_compile_result(status: DriverExitStatus, message: string, ir_valid: bool, fe: FrontendOutput) -> DriverCompileResult {
+    give DriverCompileResult {
+        status: status,
+        message: message,
+        ir_valid: ir_valid,
+        grammar_version: fe.grammar_version,
+        token_count: fe.token_count,
+        toplevel_count: fe.toplevel_count,
+        stmt_count: fe.stmt_count,
+        expr_count: fe.expr_count,
+        type_count: fe.type_count,
+        pattern_count: fe.pattern_count
+    };
+}
+
+proc check_source(source_path: string, source_text: string) -> DriverCompileResult {
+    if source_text == "" {
+        give empty_compile_result(DriverExitStatus.InvalidInput, "empty source input", false);
+    }
+
+    let fe: FrontendOutput = frontend_run(source_path, source_text);
+    if not fe.valid {
+        give frontend_compile_result(DriverExitStatus.FrontendFailure, "frontend failed", false, fe);
+    }
+
+    let an: AnalysisOutput = analysis_run(fe);
+    if not an.valid {
+        give frontend_compile_result(DriverExitStatus.AnalysisFailure, "analysis failed", false, fe);
+    }
+
+    give frontend_compile_result(DriverExitStatus.Ok, "check pipeline completed", false, fe);
+}
+
+proc compile_source(source_path: string, source_text: string) -> DriverCompileResult {
+    if source_text == "" {
+        give empty_compile_result(DriverExitStatus.InvalidInput, "empty source input", false);
+    }
+
+    let result = compile_to_valid_ir(source_path, source_text);
+
+    if not result.frontend.valid {
+        give frontend_compile_result(DriverExitStatus.FrontendFailure, "frontend failed", false, result.frontend);
+    }
+
+    if not result.analysis.valid {
+        give frontend_compile_result(DriverExitStatus.AnalysisFailure, "analysis failed", false, result.frontend);
+    }
+
+    if not result.valid {
+        give frontend_compile_result(DriverExitStatus.IrFailure, "IR verification failed", false, result.frontend);
+    }
+
+    give frontend_compile_result(DriverExitStatus.Ok, "compile pipeline completed", true, result.frontend);
 }

@@ -14,43 +14,43 @@ const NAME_MAX_SEGMENTS: u64 = 256
 const NAME_MAX_SYMBOLS: u64 = 1048576
 
 pick NameKind {
-    Module
-    Function
-    Type
-    Form
-    Pick
-    Variant
-    Field
-    Parameter
-    Local
-    Const
-    Static
-    Global
-    Trait
-    Impl
-    Macro
-    Label
-    Unknown
+    Module,
+    Function,
+    Type,
+    Form,
+    Pick,
+    Variant,
+    Field,
+    Parameter,
+    Local,
+    Const,
+    Static,
+    Global,
+    Trait,
+    Impl,
+    Macro,
+    Label,
+    Unknown,
 }
 
 pick NameVisibility {
-    Private
-    Package
-    Module
-    Public
-    Exported
+    Private,
+    Package,
+    Module,
+    Public,
+    Exported,
 }
 
 pick NameErrorKind {
-    None
-    EmptyName
-    InvalidName
-    InvalidPath
-    DuplicateName
-    UnknownName
-    AmbiguousName
-    SegmentLimitExceeded
-    SymbolLimitExceeded
+    None,
+    EmptyName,
+    InvalidName,
+    InvalidPath,
+    DuplicateName,
+    UnknownName,
+    AmbiguousName,
+    SegmentLimitExceeded,
+    SymbolLimitExceeded,
 }
 
 form NameSpan {
@@ -97,7 +97,7 @@ proc span_empty() -> NameSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc path_empty() -> NamePath {
@@ -106,7 +106,7 @@ proc path_empty() -> NamePath {
         segments: [],
         absolute: false,
         valid: false
-    }
+    };
 }
 
 proc path_create(
@@ -119,7 +119,7 @@ proc path_create(
         segments: segments,
         absolute: absolute,
         valid: vector_len(segments) > 0
-    }
+    };
 }
 
 proc symbol_invalid() -> NameSymbol {
@@ -132,7 +132,7 @@ proc symbol_invalid() -> NameSymbol {
         module: "",
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc symbol_create(
@@ -153,7 +153,7 @@ proc symbol_create(
         module: module,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -167,7 +167,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         symbol: symbol
-    }
+    };
 }
 
 proc table_empty() -> NameTable {
@@ -175,7 +175,7 @@ proc table_empty() -> NameTable {
         symbols: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc table_add_diagnostic(
@@ -186,7 +186,7 @@ proc table_add_diagnostic(
         symbols: table.symbols,
         diagnostics: table.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc table_add_symbol(
@@ -202,7 +202,7 @@ proc table_add_symbol(
                 symbol.span,
                 symbol.id
             )
-        )
+        );
     }
 
     if symbol.name == "" {
@@ -214,7 +214,7 @@ proc table_add_symbol(
                 symbol.span,
                 symbol.id
             )
-        )
+        );
     }
 
     if has_name_in_module(table, symbol.module, symbol.name) {
@@ -226,45 +226,45 @@ proc table_add_symbol(
                 symbol.span,
                 symbol.id
             )
-        )
+        );
     }
 
     give NameTable {
         symbols: table.symbols + [symbol],
         diagnostics: table.diagnostics,
         valid: table.valid
-    }
+    };
 }
 
 proc find_by_id(table: NameTable, id: u64) -> NameSymbol {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(table.symbols) {
+    while i < vector_len(table.symbols) {
         if table.symbols[i].id == id {
-            give table.symbols[i]
+            give table.symbols[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give symbol_invalid()
+    give symbol_invalid();
 }
 
 proc find_by_name(
     table: NameTable,
     name: string
 ) -> NameSymbol {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(table.symbols) {
+    while i < vector_len(table.symbols) {
         if table.symbols[i].name == name {
-            give table.symbols[i]
+            give table.symbols[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give symbol_invalid()
+    give symbol_invalid();
 }
 
 proc find_in_module(
@@ -272,19 +272,19 @@ proc find_in_module(
     module: string,
     name: string
 ) -> NameSymbol {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(table.symbols) {
-        let symbol = table.symbols[i]
+    while i < vector_len(table.symbols) {
+        let symbol = table.symbols[i];
 
         if symbol.module == module and symbol.name == name {
-            give symbol
+            give symbol;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give symbol_invalid()
+    give symbol_invalid();
 }
 
 proc has_name_in_module(
@@ -292,51 +292,51 @@ proc has_name_in_module(
     module: string,
     name: string
 ) -> bool {
-    give find_in_module(table, module, name).valid
+    give find_in_module(table, module, name).valid;
 }
 
 proc path_segment_count(path: NamePath) -> u64 {
-    give vector_len(path.segments)
+    give vector_len(path.segments);
 }
 
 proc path_last_segment(path: NamePath) -> string {
     if vector_len(path.segments) == 0 {
-        give ""
+        give "";
     }
 
-    give path.segments[vector_len(path.segments) - 1]
+    give path.segments[vector_len(path.segments) - 1];
 }
 
 proc path_parent_text(path: NamePath) -> string {
-    let out = ""
-    let i: u64 = 0
+    let out = "";
+    let i: u64 = 0;
 
-    loop i + 1 < vector_len(path.segments) {
+    while i + 1 < vector_len(path.segments) {
         if i > 0 {
-            set out = out + "/"
+            set out = out + "/";
         }
 
-        set out = out + path.segments[i]
-        set i = i + 1
+        set out = out + path.segments[i];
+        set i = i + 1;
     }
 
-    give out
+    give out;
 }
 
 proc path_is_valid(path: NamePath) -> bool {
     if path.valid == false {
-        give false
+        give false;
     }
 
     if vector_len(path.segments) == 0 {
-        give false
+        give false;
     }
 
     if vector_len(path.segments) > NAME_MAX_SEGMENTS {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc visibility_allows_access(
@@ -345,46 +345,46 @@ proc visibility_allows_access(
     owner_module: string
 ) -> bool {
     if visibility == NameVisibility.Public {
-        give true
+        give true;
     }
 
     if visibility == NameVisibility.Exported {
-        give true
+        give true;
     }
 
     if visibility == NameVisibility.Private {
-        give from_module == owner_module
+        give from_module == owner_module;
     }
 
     if visibility == NameVisibility.Module {
-        give from_module == owner_module
+        give from_module == owner_module;
     }
 
     if visibility == NameVisibility.Package {
-        give module_same_package(from_module, owner_module)
+        give module_same_package(from_module, owner_module);
     }
 
-    give false
+    give false;
 }
 
 proc module_same_package(left: string, right: string) -> bool {
-    give module_root(left) == module_root(right)
+    give module_root(left) == module_root(right);
 }
 
 proc module_root(module: string) -> string {
-    give module
+    give module;
 }
 
 proc symbol_is_public(symbol: NameSymbol) -> bool {
     if symbol.visibility == NameVisibility.Public {
-        give true
+        give true;
     }
 
     if symbol.visibility == NameVisibility.Exported {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc symbol_can_access(
@@ -395,15 +395,15 @@ proc symbol_can_access(
         symbol.visibility,
         from_module,
         symbol.module
-    )
+    );
 }
 
 proc canonical_name(symbol: NameSymbol) -> string {
     if symbol.module == "" {
-        give symbol.name
+        give symbol.name;
     }
 
-    give symbol.module + "/" + symbol.name
+    give symbol.module + "/" + symbol.name;
 }
 
 proc qualify_name(
@@ -411,18 +411,18 @@ proc qualify_name(
     name: string
 ) -> string {
     if module == "" {
-        give name
+        give name;
     }
 
-    give module + "/" + name
+    give module + "/" + name;
 }
 
 proc validate_table(table: NameTable) -> NameTable {
-    let current = table
-    let i: u64 = 0
+    let current = table;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.symbols) {
-        let symbol = current.symbols[i]
+    while i < vector_len(current.symbols) {
+        let symbol = current.symbols[i];
 
         if symbol.valid == false {
             give table_add_diagnostic(
@@ -433,7 +433,7 @@ proc validate_table(table: NameTable) -> NameTable {
                     symbol.span,
                     symbol.id
                 )
-            )
+            );
         }
 
         if path_is_valid(symbol.path) == false {
@@ -445,109 +445,109 @@ proc validate_table(table: NameTable) -> NameTable {
                     symbol.span,
                     symbol.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc name_error_count(table: NameTable) -> u64 {
-    give vector_len(table.diagnostics)
+    give vector_len(table.diagnostics);
 }
 
 proc name_table_is_valid(table: NameTable) -> bool {
-    give table.valid and vector_len(table.diagnostics) == 0
+    give table.valid and vector_len(table.diagnostics) == 0;
 }
 
 proc kind_name(kind: NameKind) -> string {
     if kind == NameKind.Module {
-        give "module"
+        give "module";
     }
 
     if kind == NameKind.Function {
-        give "function"
+        give "function";
     }
 
     if kind == NameKind.Type {
-        give "type"
+        give "type";
     }
 
     if kind == NameKind.Form {
-        give "form"
+        give "form";
     }
 
     if kind == NameKind.Pick {
-        give "pick"
+        give "pick";
     }
 
     if kind == NameKind.Variant {
-        give "variant"
+        give "variant";
     }
 
     if kind == NameKind.Field {
-        give "field"
+        give "field";
     }
 
     if kind == NameKind.Local {
-        give "local"
+        give "local";
     }
 
     if kind == NameKind.Const {
-        give "const"
+        give "const";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc visibility_name(visibility: NameVisibility) -> string {
     if visibility == NameVisibility.Private {
-        give "private"
+        give "private";
     }
 
     if visibility == NameVisibility.Package {
-        give "package"
+        give "package";
     }
 
     if visibility == NameVisibility.Module {
-        give "module"
+        give "module";
     }
 
     if visibility == NameVisibility.Public {
-        give "public"
+        give "public";
     }
 
     if visibility == NameVisibility.Exported {
-        give "exported"
+        give "exported";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_symbol(symbol: NameSymbol) {
-    emit "semantic name"
-    emit symbol.id
-    emit symbol.name
-    emit kind_name(symbol.kind)
-    emit visibility_name(symbol.visibility)
-    emit canonical_name(symbol)
+    emit "semantic name";
+    emit symbol.id;
+    emit symbol.name;
+    emit kind_name(symbol.kind);
+    emit visibility_name(symbol.visibility);
+    emit canonical_name(symbol);
 }
 
 proc print_table(table: NameTable) {
-    emit "semantic name table"
-    emit vector_len(table.symbols)
-    emit vector_len(table.diagnostics)
+    emit "semantic name table";
+    emit vector_len(table.symbols);
+    emit vector_len(table.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(table.symbols) {
-        print_symbol(table.symbols[i])
-        set i = i + 1
+    while i < vector_len(table.symbols) {
+        print_symbol(table.symbols[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

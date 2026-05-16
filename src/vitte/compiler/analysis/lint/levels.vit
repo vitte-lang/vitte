@@ -14,50 +14,50 @@ const LINT_LEVELS_MAX_POLICIES: u64 = 65536
 const LINT_LEVELS_MAX_OVERRIDES: u64 = 262144
 
 pick LintLevel {
-    Allow
-    Info
-    Warn
-    Deny
-    Forbid
+    Allow,
+    Info,
+    Warn,
+    Deny,
+    Forbid,
 }
 
 pick LintPriority {
-    Lowest
-    Low
-    Normal
-    High
-    Critical
+    Lowest,
+    Low,
+    Normal,
+    High,
+    Critical,
 }
 
 pick LintScope {
-    Global
-    Workspace
-    Package
-    Module
-    Function
-    Block
-    Expression
+    Global,
+    Workspace,
+    Package,
+    Module,
+    Function,
+    Block,
+    Expression,
 }
 
 pick LintEscalationKind {
-    None
-    Promote
-    Demote
-    Freeze
-    Override
+    None,
+    Promote,
+    Demote,
+    Freeze,
+    Override,
 }
 
 pick LintLevelErrorKind {
-    None
-    UnknownRule
-    UnknownScope
-    InvalidLevel
-    InvalidPriority
-    InvalidEscalation
-    DuplicateOverride
-    PolicyLimitExceeded
-    OverrideLimitExceeded
-    InternalFailure
+    None,
+    UnknownRule,
+    UnknownScope,
+    InvalidLevel,
+    InvalidPriority,
+    InvalidEscalation,
+    DuplicateOverride,
+    PolicyLimitExceeded,
+    OverrideLimitExceeded,
+    InternalFailure,
 }
 
 form LintSpan {
@@ -106,7 +106,7 @@ proc span_empty() -> LintSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc policy_create(
@@ -125,7 +125,7 @@ proc policy_create(
         scope: scope,
         enabled: true,
         description: description
-    }
+    };
 }
 
 proc override_create(
@@ -145,7 +145,7 @@ proc override_create(
         effective_level: effective_level,
         escalation: escalation,
         scope: scope
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -157,7 +157,7 @@ proc diagnostic_create(
         kind: kind,
         message: message,
         span: span
-    }
+    };
 }
 
 proc context_empty() -> LintLevelContext {
@@ -166,11 +166,11 @@ proc context_empty() -> LintLevelContext {
         overrides: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc context_default() -> LintLevelContext {
-    let ctx = context_empty()
+    let ctx = context_empty();
 
     let p1 = context_add_policy(
         ctx,
@@ -182,7 +182,7 @@ proc context_default() -> LintLevelContext {
             LintScope.Global,
             "warn on unused imports"
         )
-    )
+    );
 
     let p2 = context_add_policy(
         p1,
@@ -194,7 +194,7 @@ proc context_default() -> LintLevelContext {
             LintScope.Global,
             "deny unsafe blocks without explanation"
         )
-    )
+    );
 
     let p3 = context_add_policy(
         p2,
@@ -206,7 +206,7 @@ proc context_default() -> LintLevelContext {
             LintScope.Module,
             "warn on dead code"
         )
-    )
+    );
 
     let p4 = context_add_policy(
         p3,
@@ -218,9 +218,9 @@ proc context_default() -> LintLevelContext {
             LintScope.Package,
             "suggest documentation"
         )
-    )
+    );
 
-    give p4
+    give p4;
 }
 
 proc context_add_diagnostic(
@@ -232,7 +232,7 @@ proc context_add_diagnostic(
         overrides: context.overrides,
         diagnostics: context.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc context_add_policy(
@@ -247,7 +247,7 @@ proc context_add_policy(
                 "too many lint policies",
                 span_empty()
             )
-        )
+        );
     }
 
     give LintLevelContext {
@@ -255,7 +255,7 @@ proc context_add_policy(
         overrides: context.overrides,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_override(
@@ -270,7 +270,7 @@ proc context_add_override(
                 "too many lint overrides",
                 span_empty()
             )
-        )
+        );
     }
 
     give LintLevelContext {
@@ -278,21 +278,21 @@ proc context_add_override(
         overrides: context.overrides + [override],
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc find_policy(
     context: LintLevelContext,
     rule_name: string
 ) -> LintPolicy {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.policies) {
+    while i < vector_len(context.policies) {
         if context.policies[i].rule_name == rule_name {
-            give context.policies[i]
+            give context.policies[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give policy_create(
@@ -302,7 +302,7 @@ proc find_policy(
         LintPriority.Lowest,
         LintScope.Global,
         ""
-    )
+    );
 }
 
 proc find_override(
@@ -310,16 +310,16 @@ proc find_override(
     target: string,
     rule_name: string
 ) -> LintOverride {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.overrides) {
-        let current = context.overrides[i]
+    while i < vector_len(context.overrides) {
+        let current = context.overrides[i];
 
         if current.target == target and current.rule_name == rule_name {
-            give current
+            give current;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give override_create(
@@ -330,7 +330,7 @@ proc find_override(
         LintLevel.Allow,
         LintEscalationKind.None,
         LintScope.Global
-    )
+    );
 }
 
 proc effective_level(
@@ -338,159 +338,159 @@ proc effective_level(
     target: string,
     rule_name: string
 ) -> LintLevel {
-    let override = find_override(context, target, rule_name)
+    let override = find_override(context, target, rule_name);
 
     if override.id != LINT_LEVELS_INVALID_ID {
-        give override.effective_level
+        give override.effective_level;
     }
 
-    let policy = find_policy(context, rule_name)
+    let policy = find_policy(context, rule_name);
 
     if policy.id == LINT_LEVELS_INVALID_ID {
-        give LintLevel.Allow
+        give LintLevel.Allow;
     }
 
-    give policy.level
+    give policy.level;
 }
 
 proc level_name(level: LintLevel) -> string {
     if level == LintLevel.Allow {
-        give "allow"
+        give "allow";
     }
 
     if level == LintLevel.Info {
-        give "info"
+        give "info";
     }
 
     if level == LintLevel.Warn {
-        give "warn"
+        give "warn";
     }
 
     if level == LintLevel.Deny {
-        give "deny"
+        give "deny";
     }
 
     if level == LintLevel.Forbid {
-        give "forbid"
+        give "forbid";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc priority_name(priority: LintPriority) -> string {
     if priority == LintPriority.Lowest {
-        give "lowest"
+        give "lowest";
     }
 
     if priority == LintPriority.Low {
-        give "low"
+        give "low";
     }
 
     if priority == LintPriority.Normal {
-        give "normal"
+        give "normal";
     }
 
     if priority == LintPriority.High {
-        give "high"
+        give "high";
     }
 
     if priority == LintPriority.Critical {
-        give "critical"
+        give "critical";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc scope_name(scope: LintScope) -> string {
     if scope == LintScope.Global {
-        give "global"
+        give "global";
     }
 
     if scope == LintScope.Workspace {
-        give "workspace"
+        give "workspace";
     }
 
     if scope == LintScope.Package {
-        give "package"
+        give "package";
     }
 
     if scope == LintScope.Module {
-        give "module"
+        give "module";
     }
 
     if scope == LintScope.Function {
-        give "function"
+        give "function";
     }
 
     if scope == LintScope.Block {
-        give "block"
+        give "block";
     }
 
     if scope == LintScope.Expression {
-        give "expression"
+        give "expression";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc level_is_error(level: LintLevel) -> bool {
     if level == LintLevel.Deny {
-        give true
+        give true;
     }
 
     if level == LintLevel.Forbid {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc level_is_warning(level: LintLevel) -> bool {
-    give level == LintLevel.Warn
+    give level == LintLevel.Warn;
 }
 
 proc level_is_enabled(level: LintLevel) -> bool {
-    give level != LintLevel.Allow
+    give level != LintLevel.Allow;
 }
 
 proc promote_level(level: LintLevel) -> LintLevel {
     if level == LintLevel.Allow {
-        give LintLevel.Info
+        give LintLevel.Info;
     }
 
     if level == LintLevel.Info {
-        give LintLevel.Warn
+        give LintLevel.Warn;
     }
 
     if level == LintLevel.Warn {
-        give LintLevel.Deny
+        give LintLevel.Deny;
     }
 
     if level == LintLevel.Deny {
-        give LintLevel.Forbid
+        give LintLevel.Forbid;
     }
 
-    give level
+    give level;
 }
 
 proc demote_level(level: LintLevel) -> LintLevel {
     if level == LintLevel.Forbid {
-        give LintLevel.Deny
+        give LintLevel.Deny;
     }
 
     if level == LintLevel.Deny {
-        give LintLevel.Warn
+        give LintLevel.Warn;
     }
 
     if level == LintLevel.Warn {
-        give LintLevel.Info
+        give LintLevel.Info;
     }
 
     if level == LintLevel.Info {
-        give LintLevel.Allow
+        give LintLevel.Allow;
     }
 
-    give level
+    give level;
 }
 
 proc apply_escalation(
@@ -498,26 +498,26 @@ proc apply_escalation(
     escalation: LintEscalationKind
 ) -> LintLevel {
     if escalation == LintEscalationKind.None {
-        give level
+        give level;
     }
 
     if escalation == LintEscalationKind.Promote {
-        give promote_level(level)
+        give promote_level(level);
     }
 
     if escalation == LintEscalationKind.Demote {
-        give demote_level(level)
+        give demote_level(level);
     }
 
     if escalation == LintEscalationKind.Freeze {
-        give level
+        give level;
     }
 
     if escalation == LintEscalationKind.Override {
-        give LintLevel.Forbid
+        give LintLevel.Forbid;
     }
 
-    give level
+    give level;
 }
 
 proc override_rule(
@@ -527,7 +527,7 @@ proc override_rule(
     escalation: LintEscalationKind,
     scope: LintScope
 ) -> LintLevelContext {
-    let policy = find_policy(context, rule_name)
+    let policy = find_policy(context, rule_name);
 
     if policy.id == LINT_LEVELS_INVALID_ID {
         give context_add_diagnostic(
@@ -537,10 +537,10 @@ proc override_rule(
                 "unknown lint rule",
                 span_empty()
             )
-        )
+        );
     }
 
-    let effective = apply_escalation(policy.level, escalation)
+    let effective = apply_escalation(policy.level, escalation);
 
     let override = override_create(
         vector_len(context.overrides),
@@ -550,52 +550,52 @@ proc override_rule(
         effective,
         escalation,
         scope
-    )
+    );
 
-    give context_add_override(context, override)
+    give context_add_override(context, override);
 }
 
 proc policy_count(context: LintLevelContext) -> u64 {
-    give vector_len(context.policies)
+    give vector_len(context.policies);
 }
 
 proc override_count(context: LintLevelContext) -> u64 {
-    give vector_len(context.overrides)
+    give vector_len(context.overrides);
 }
 
 proc diagnostic_count(context: LintLevelContext) -> u64 {
-    give vector_len(context.diagnostics)
+    give vector_len(context.diagnostics);
 }
 
 proc print_policy(policy: LintPolicy) {
-    emit "policy"
-    emit policy.rule_name
-    emit level_name(policy.level)
-    emit priority_name(policy.priority)
-    emit scope_name(policy.scope)
+    emit "policy";
+    emit policy.rule_name;
+    emit level_name(policy.level);
+    emit priority_name(policy.priority);
+    emit scope_name(policy.scope);
 }
 
 proc print_override(override: LintOverride) {
-    emit "override"
-    emit override.target
-    emit override.rule_name
-    emit level_name(override.effective_level)
+    emit "override";
+    emit override.target;
+    emit override.rule_name;
+    emit level_name(override.effective_level);
 }
 
 proc print_context(context: LintLevelContext) {
-    emit "lint levels"
-    emit vector_len(context.policies)
-    emit vector_len(context.overrides)
-    emit vector_len(context.diagnostics)
+    emit "lint levels";
+    emit vector_len(context.policies);
+    emit vector_len(context.overrides);
+    emit vector_len(context.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.policies) {
-        print_policy(context.policies[i])
-        set i = i + 1
+    while i < vector_len(context.policies) {
+        print_policy(context.policies[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

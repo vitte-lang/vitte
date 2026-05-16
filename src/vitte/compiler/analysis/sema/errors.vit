@@ -14,77 +14,77 @@ const SEMA_MAX_DIAGNOSTICS: u64 = 1048576
 const SEMA_MAX_SUGGESTIONS: u64 = 256
 
 pick SemaSeverity {
-    Info
-    Warning
-    Error
-    Fatal
+    Info,
+    Warning,
+    Error,
+    Fatal,
 }
 
 pick SemaErrorKind {
-    None
-    UnknownSymbol
-    DuplicateSymbol
-    AmbiguousSymbol
-    InvalidModule
-    UnknownModule
-    InvalidImport
-    DuplicateImport
-    UnusedImport
-    InvalidExport
-    PrivateSymbolAccess
-    InvalidVisibility
-    InvalidScope
-    InvalidName
-    InvalidPath
-    InvalidItem
-    InvalidFunction
-    InvalidParameter
-    DuplicateParameter
-    InvalidReturn
-    InvalidType
-    UnknownType
-    DuplicateType
-    InvalidField
-    UnknownField
-    DuplicateField
-    InvalidVariant
-    UnknownVariant
-    DuplicateVariant
-    InvalidPattern
-    NonExhaustiveMatch
-    UnreachablePattern
-    InvalidAttribute
-    UnknownAttribute
-    DuplicateAttribute
-    InvalidMacroUse
-    InvalidConst
-    InvalidStatic
-    InvalidGlobal
-    InvalidEntry
-    InvalidControlFlow
-    InvalidBreak
-    InvalidContinue
-    InvalidReturnContext
-    InvalidUnsafeContext
-    InternalFailure
+    None,
+    UnknownSymbol,
+    DuplicateSymbol,
+    AmbiguousSymbol,
+    InvalidModule,
+    UnknownModule,
+    InvalidImport,
+    DuplicateImport,
+    UnusedImport,
+    InvalidExport,
+    PrivateSymbolAccess,
+    InvalidVisibility,
+    InvalidScope,
+    InvalidName,
+    InvalidPath,
+    InvalidItem,
+    InvalidFunction,
+    InvalidParameter,
+    DuplicateParameter,
+    InvalidReturn,
+    InvalidType,
+    UnknownType,
+    DuplicateType,
+    InvalidField,
+    UnknownField,
+    DuplicateField,
+    InvalidVariant,
+    UnknownVariant,
+    DuplicateVariant,
+    InvalidPattern,
+    NonExhaustiveMatch,
+    UnreachablePattern,
+    InvalidAttribute,
+    UnknownAttribute,
+    DuplicateAttribute,
+    InvalidMacroUse,
+    InvalidConst,
+    InvalidStatic,
+    InvalidGlobal,
+    InvalidEntry,
+    InvalidControlFlow,
+    InvalidBreak,
+    InvalidContinue,
+    InvalidReturnContext,
+    InvalidUnsafeContext,
+    InternalFailure,
 }
 
 pick SemaSuggestionKind {
-    None
-    RenameSymbol
-    ImportSymbol
-    QualifyPath
-    ChangeVisibility
-    RemoveDuplicate
-    AddTypeAnnotation
-    AddReturn
-    RemoveReturn
-    AddField
-    AddVariant
-    FixPattern
-    RemoveAttribute
-    EnableFeature
-    RewriteExpression
+    None,
+    RenameSymbol,
+    ImportSymbol,
+    QualifyPath,
+    ChangeVisibility,
+    RemoveDuplicate,
+    AddTypeAnnotation,
+    AddReturn,
+    RemoveReturn,
+    AddField,
+    AddVariant,
+    FixPattern,
+    RemoveAttribute,
+    EnableFeature,
+    RewriteExpression,
 }
 
 form SemaSpan {
@@ -133,7 +133,7 @@ proc span_empty() -> SemaSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc symbol_invalid() -> SemaSymbolRef {
@@ -142,7 +142,7 @@ proc symbol_invalid() -> SemaSymbolRef {
         name: "invalid",
         module: "",
         valid: false
-    }
+    };
 }
 
 proc symbol_ref(id: u64, name: string, module: string) -> SemaSymbolRef {
@@ -151,7 +151,7 @@ proc symbol_ref(id: u64, name: string, module: string) -> SemaSymbolRef {
         name: name,
         module: module,
         valid: true
-    }
+    };
 }
 
 proc suggestion_none() -> SemaSuggestion {
@@ -160,7 +160,7 @@ proc suggestion_none() -> SemaSuggestion {
         message: "",
         replacement: "",
         span: span_empty()
-    }
+    };
 }
 
 proc suggestion_create(
@@ -174,7 +174,7 @@ proc suggestion_create(
         message: message,
         replacement: replacement,
         span: span
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -193,7 +193,7 @@ proc diagnostic_create(
         symbol: symbol,
         span: span,
         suggestions: []
-    }
+    };
 }
 
 proc diagnostic_add_suggestion(
@@ -201,7 +201,7 @@ proc diagnostic_add_suggestion(
     suggestion: SemaSuggestion
 ) -> SemaDiagnostic {
     if vector_len(diagnostic.suggestions) >= SEMA_MAX_SUGGESTIONS {
-        give diagnostic
+        give diagnostic;
     }
 
     give SemaDiagnostic {
@@ -212,7 +212,7 @@ proc diagnostic_add_suggestion(
         symbol: diagnostic.symbol,
         span: diagnostic.span,
         suggestions: diagnostic.suggestions + [suggestion]
-    }
+    };
 }
 
 proc report_empty() -> SemaReport {
@@ -223,7 +223,7 @@ proc report_empty() -> SemaReport {
         error_count: 0,
         fatal_count: 0,
         valid: true
-    }
+    };
 }
 
 proc report_add(
@@ -238,28 +238,28 @@ proc report_add(
             error_count: report.error_count,
             fatal_count: report.fatal_count + 1,
             valid: false
-        }
+        };
     }
 
-    let infos = report.info_count
-    let warnings = report.warning_count
-    let errors = report.error_count
-    let fatals = report.fatal_count
+    let infos = report.info_count;
+    let warnings = report.warning_count;
+    let errors = report.error_count;
+    let fatals = report.fatal_count;
 
     if diagnostic.severity == SemaSeverity.Info {
-        set infos = infos + 1
+        set infos = infos + 1;
     }
 
     if diagnostic.severity == SemaSeverity.Warning {
-        set warnings = warnings + 1
+        set warnings = warnings + 1;
     }
 
     if diagnostic.severity == SemaSeverity.Error {
-        set errors = errors + 1
+        set errors = errors + 1;
     }
 
     if diagnostic.severity == SemaSeverity.Fatal {
-        set fatals = fatals + 1
+        set fatals = fatals + 1;
     }
 
     give SemaReport {
@@ -269,7 +269,7 @@ proc report_add(
         error_count: errors,
         fatal_count: fatals,
         valid: fatals == 0
-    }
+    };
 }
 
 proc error_unknown_symbol(
@@ -285,16 +285,16 @@ proc error_unknown_symbol(
         "unknown symbol",
         symbol_ref(SEMA_INVALID_ID, name, module),
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         SemaSuggestionKind.ImportSymbol,
         "import the symbol or qualify its path",
         "",
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_duplicate_symbol(
@@ -309,16 +309,16 @@ proc error_duplicate_symbol(
         "duplicate symbol definition",
         symbol,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         SemaSuggestionKind.RenameSymbol,
         "rename one of the duplicated symbols",
         symbol.name + "_renamed",
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_ambiguous_symbol(
@@ -333,16 +333,16 @@ proc error_ambiguous_symbol(
         "ambiguous symbol resolution",
         symbol,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         SemaSuggestionKind.QualifyPath,
         "qualify the symbol with its module path",
         symbol.module + "/" + symbol.name,
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_private_access(
@@ -357,16 +357,16 @@ proc error_private_access(
         "private symbol access",
         symbol,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         SemaSuggestionKind.ChangeVisibility,
         "make the symbol public or access it through a public API",
         "share " + symbol.name,
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_unknown_type(
@@ -381,16 +381,16 @@ proc error_unknown_type(
         "unknown type",
         symbol_ref(SEMA_INVALID_ID, name, "", false),
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         SemaSuggestionKind.AddTypeAnnotation,
         "declare or import the missing type",
         name,
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_unknown_field(
@@ -406,16 +406,16 @@ proc error_unknown_field(
         "unknown field",
         symbol,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         SemaSuggestionKind.AddField,
         "add the missing field or fix its name",
         field,
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_duplicate_field(
@@ -431,16 +431,16 @@ proc error_duplicate_field(
         "duplicate field",
         symbol,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         SemaSuggestionKind.RemoveDuplicate,
         "remove the duplicated field",
         field,
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_non_exhaustive_match(
@@ -455,16 +455,16 @@ proc error_non_exhaustive_match(
         "non exhaustive match",
         symbol,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         SemaSuggestionKind.FixPattern,
         "add missing cases or wildcard pattern",
         "_",
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_unreachable_pattern(
@@ -479,7 +479,7 @@ proc error_unreachable_pattern(
         "unreachable pattern",
         symbol,
         span
-    )
+    );
 }
 
 proc error_invalid_break(
@@ -493,7 +493,7 @@ proc error_invalid_break(
         "break used outside loop",
         symbol_invalid(),
         span
-    )
+    );
 }
 
 proc error_invalid_continue(
@@ -507,7 +507,7 @@ proc error_invalid_continue(
         "continue used outside loop",
         symbol_invalid(),
         span
-    )
+    );
 }
 
 proc error_invalid_return_context(
@@ -521,7 +521,7 @@ proc error_invalid_return_context(
         "return used outside function",
         symbol_invalid(),
         span
-    )
+    );
 }
 
 proc error_internal_failure(
@@ -535,105 +535,105 @@ proc error_internal_failure(
         "internal semantic analysis failure",
         symbol_invalid(),
         span
-    )
+    );
 }
 
 proc severity_name(severity: SemaSeverity) -> string {
     if severity == SemaSeverity.Info {
-        give "info"
+        give "info";
     }
 
     if severity == SemaSeverity.Warning {
-        give "warning"
+        give "warning";
     }
 
     if severity == SemaSeverity.Error {
-        give "error"
+        give "error";
     }
 
     if severity == SemaSeverity.Fatal {
-        give "fatal"
+        give "fatal";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc error_name(kind: SemaErrorKind) -> string {
     if kind == SemaErrorKind.UnknownSymbol {
-        give "unknown_symbol"
+        give "unknown_symbol";
     }
 
     if kind == SemaErrorKind.DuplicateSymbol {
-        give "duplicate_symbol"
+        give "duplicate_symbol";
     }
 
     if kind == SemaErrorKind.AmbiguousSymbol {
-        give "ambiguous_symbol"
+        give "ambiguous_symbol";
     }
 
     if kind == SemaErrorKind.PrivateSymbolAccess {
-        give "private_symbol_access"
+        give "private_symbol_access";
     }
 
     if kind == SemaErrorKind.UnknownType {
-        give "unknown_type"
+        give "unknown_type";
     }
 
     if kind == SemaErrorKind.UnknownField {
-        give "unknown_field"
+        give "unknown_field";
     }
 
     if kind == SemaErrorKind.NonExhaustiveMatch {
-        give "non_exhaustive_match"
+        give "non_exhaustive_match";
     }
 
     if kind == SemaErrorKind.InvalidBreak {
-        give "invalid_break"
+        give "invalid_break";
     }
 
     if kind == SemaErrorKind.InvalidContinue {
-        give "invalid_continue"
+        give "invalid_continue";
     }
 
-    give "semantic_error"
+    give "semantic_error";
 }
 
 proc report_has_errors(report: SemaReport) -> bool {
-    give report.error_count > 0 or report.fatal_count > 0
+    give report.error_count > 0 or report.fatal_count > 0;
 }
 
 proc report_has_warnings(report: SemaReport) -> bool {
-    give report.warning_count > 0
+    give report.warning_count > 0;
 }
 
 proc report_total(report: SemaReport) -> u64 {
-    give vector_len(report.diagnostics)
+    give vector_len(report.diagnostics);
 }
 
 proc print_diagnostic(diagnostic: SemaDiagnostic) {
-    emit severity_name(diagnostic.severity)
-    emit error_name(diagnostic.kind)
-    emit diagnostic.message
-    emit diagnostic.span.file
-    emit diagnostic.span.line
-    emit diagnostic.span.column
+    emit severity_name(diagnostic.severity);
+    emit error_name(diagnostic.kind);
+    emit diagnostic.message;
+    emit diagnostic.span.file;
+    emit diagnostic.span.line;
+    emit diagnostic.span.column;
 }
 
 proc print_report(report: SemaReport) {
-    emit "semantic analysis report"
-    emit report.info_count
-    emit report.warning_count
-    emit report.error_count
-    emit report.fatal_count
+    emit "semantic analysis report";
+    emit report.info_count;
+    emit report.warning_count;
+    emit report.error_count;
+    emit report.fatal_count;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(report.diagnostics) {
-        print_diagnostic(report.diagnostics[i])
-        set i = i + 1
+    while i < vector_len(report.diagnostics) {
+        print_diagnostic(report.diagnostics[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

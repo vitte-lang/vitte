@@ -14,42 +14,42 @@ const LINT_RULE_MAX_RULES: u64 = 65536
 const LINT_RULE_MAX_TAGS: u64 = 64
 
 pick LintLevel {
-    Allow
-    Info
-    Warn
-    Deny
-    Forbid
+    Allow,
+    Info,
+    Warn,
+    Deny,
+    Forbid,
 }
 
 pick LintRuleKind {
-    Correctness
-    Style
-    Safety
-    Performance
-    Complexity
-    Portability
-    Security
-    Compatibility
-    Deprecated
-    Experimental
-    Internal
+    Correctness,
+    Style,
+    Safety,
+    Performance,
+    Complexity,
+    Portability,
+    Security,
+    Compatibility,
+    Deprecated,
+    Experimental,
+    Internal,
 }
 
 pick LintRuleStatus {
-    Stable
-    Experimental
-    Deprecated
-    Internal
-    Disabled
+    Stable,
+    Experimental,
+    Deprecated,
+    Internal,
+    Disabled,
 }
 
 pick LintRuleErrorKind {
-    None
-    DuplicateRule
-    UnknownRule
-    InvalidRule
-    RuleLimitExceeded
-    TagLimitExceeded
+    None,
+    DuplicateRule,
+    UnknownRule,
+    InvalidRule,
+    RuleLimitExceeded,
+    TagLimitExceeded,
 }
 
 form LintRuleSpan {
@@ -90,7 +90,7 @@ proc span_empty() -> LintRuleSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc rule_invalid() -> LintRule {
@@ -104,7 +104,7 @@ proc rule_invalid() -> LintRule {
         explanation: "",
         tags: [],
         enabled: false
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -118,7 +118,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         rule: rule
-    }
+    };
 }
 
 proc rule_create(
@@ -140,7 +140,7 @@ proc rule_create(
         explanation: explanation,
         tags: [],
         enabled: status != LintRuleStatus.Disabled
-    }
+    };
 }
 
 proc rule_with_tag(
@@ -148,7 +148,7 @@ proc rule_with_tag(
     tag: string
 ) -> LintRule {
     if vector_len(rule.tags) >= LINT_RULE_MAX_TAGS {
-        give rule
+        give rule;
     }
 
     give LintRule {
@@ -161,7 +161,7 @@ proc rule_with_tag(
         explanation: rule.explanation,
         tags: rule.tags + [tag],
         enabled: rule.enabled
-    }
+    };
 }
 
 proc rule_with_level(
@@ -178,7 +178,7 @@ proc rule_with_level(
         explanation: rule.explanation,
         tags: rule.tags,
         enabled: rule.enabled
-    }
+    };
 }
 
 proc rule_disable(rule: LintRule) -> LintRule {
@@ -192,7 +192,7 @@ proc rule_disable(rule: LintRule) -> LintRule {
         explanation: rule.explanation,
         tags: rule.tags,
         enabled: false
-    }
+    };
 }
 
 proc rule_enable(rule: LintRule) -> LintRule {
@@ -206,7 +206,7 @@ proc rule_enable(rule: LintRule) -> LintRule {
         explanation: rule.explanation,
         tags: rule.tags,
         enabled: true
-    }
+    };
 }
 
 proc registry_empty() -> LintRuleRegistry {
@@ -214,7 +214,7 @@ proc registry_empty() -> LintRuleRegistry {
         rules: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc registry_add_diagnostic(
@@ -225,7 +225,7 @@ proc registry_add_diagnostic(
         rules: registry.rules,
         diagnostics: registry.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc registry_add_rule(
@@ -241,7 +241,7 @@ proc registry_add_rule(
                 span_empty(),
                 rule.id
             )
-        )
+        );
     }
 
     if registry_has_rule(registry, rule.name) {
@@ -253,18 +253,18 @@ proc registry_add_rule(
                 span_empty(),
                 rule.id
             )
-        )
+        );
     }
 
     give LintRuleRegistry {
         rules: registry.rules + [rule],
         diagnostics: registry.diagnostics,
         valid: registry.valid
-    }
+    };
 }
 
 proc registry_default() -> LintRuleRegistry {
-    let registry = registry_empty()
+    let registry = registry_empty();
 
     let r1 = registry_add_rule(
         registry,
@@ -280,7 +280,7 @@ proc registry_default() -> LintRuleRegistry {
             ),
             "names"
         )
-    )
+    );
 
     let r2 = registry_add_rule(
         r1,
@@ -296,7 +296,7 @@ proc registry_default() -> LintRuleRegistry {
             ),
             "bindings"
         )
-    )
+    );
 
     let r3 = registry_add_rule(
         r2,
@@ -312,7 +312,7 @@ proc registry_default() -> LintRuleRegistry {
             ),
             "control-flow"
         )
-    )
+    );
 
     let r4 = registry_add_rule(
         r3,
@@ -328,7 +328,7 @@ proc registry_default() -> LintRuleRegistry {
             ),
             "unsafe"
         )
-    )
+    );
 
     let r5 = registry_add_rule(
         r4,
@@ -344,7 +344,7 @@ proc registry_default() -> LintRuleRegistry {
             ),
             "memory"
         )
-    )
+    );
 
     let r6 = registry_add_rule(
         r5,
@@ -360,7 +360,7 @@ proc registry_default() -> LintRuleRegistry {
             ),
             "ownership"
         )
-    )
+    );
 
     let r7 = registry_add_rule(
         r6,
@@ -376,7 +376,7 @@ proc registry_default() -> LintRuleRegistry {
             ),
             "style"
         )
-    )
+    );
 
     let r8 = registry_add_rule(
         r7,
@@ -392,7 +392,7 @@ proc registry_default() -> LintRuleRegistry {
             ),
             "names"
         )
-    )
+    );
 
     let r9 = registry_add_rule(
         r8,
@@ -408,7 +408,7 @@ proc registry_default() -> LintRuleRegistry {
             ),
             "target"
         )
-    )
+    );
 
     let r10 = registry_add_rule(
         r9,
@@ -424,50 +424,50 @@ proc registry_default() -> LintRuleRegistry {
             ),
             "compatibility"
         )
-    )
+    );
 
-    give r10
+    give r10;
 }
 
 proc find_rule_by_name(
     registry: LintRuleRegistry,
     name: string
 ) -> LintRule {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(registry.rules) {
+    while i < vector_len(registry.rules) {
         if registry.rules[i].name == name {
-            give registry.rules[i]
+            give registry.rules[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give rule_invalid()
+    give rule_invalid();
 }
 
 proc find_rule_by_id(
     registry: LintRuleRegistry,
     id: u64
 ) -> LintRule {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(registry.rules) {
+    while i < vector_len(registry.rules) {
         if registry.rules[i].id == id {
-            give registry.rules[i]
+            give registry.rules[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give rule_invalid()
+    give rule_invalid();
 }
 
 proc registry_has_rule(
     registry: LintRuleRegistry,
     name: string
 ) -> bool {
-    give find_rule_by_name(registry, name).enabled or find_rule_by_name(registry, name).id != LINT_RULE_INVALID_ID
+    give find_rule_by_name(registry, name).enabled or find_rule_by_name(registry, name).id != LINT_RULE_INVALID_ID;
 }
 
 proc registry_set_level(
@@ -475,20 +475,20 @@ proc registry_set_level(
     name: string,
     level: LintLevel
 ) -> LintRuleRegistry {
-    let next: [LintRule] = []
-    let found = false
+    let next: [LintRule] = [];
+    let found = false;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(registry.rules) {
+    while i < vector_len(registry.rules) {
         if registry.rules[i].name == name {
-            set next = next + [rule_with_level(registry.rules[i], level)]
-            set found = true
+            set next = next + [rule_with_level(registry.rules[i], level)];
+            set found = true;
         } else {
-            set next = next + [registry.rules[i]]
+            set next = next + [registry.rules[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if found == false {
@@ -500,34 +500,34 @@ proc registry_set_level(
                 span_empty(),
                 LINT_RULE_INVALID_ID
             )
-        )
+        );
     }
 
     give LintRuleRegistry {
         rules: next,
         diagnostics: registry.diagnostics,
         valid: registry.valid
-    }
+    };
 }
 
 proc registry_disable_rule(
     registry: LintRuleRegistry,
     name: string
 ) -> LintRuleRegistry {
-    let next: [LintRule] = []
-    let found = false
+    let next: [LintRule] = [];
+    let found = false;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(registry.rules) {
+    while i < vector_len(registry.rules) {
         if registry.rules[i].name == name {
-            set next = next + [rule_disable(registry.rules[i])]
-            set found = true
+            set next = next + [rule_disable(registry.rules[i])];
+            set found = true;
         } else {
-            set next = next + [registry.rules[i]]
+            set next = next + [registry.rules[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if found == false {
@@ -539,34 +539,34 @@ proc registry_disable_rule(
                 span_empty(),
                 LINT_RULE_INVALID_ID
             )
-        )
+        );
     }
 
     give LintRuleRegistry {
         rules: next,
         diagnostics: registry.diagnostics,
         valid: registry.valid
-    }
+    };
 }
 
 proc registry_enable_rule(
     registry: LintRuleRegistry,
     name: string
 ) -> LintRuleRegistry {
-    let next: [LintRule] = []
-    let found = false
+    let next: [LintRule] = [];
+    let found = false;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(registry.rules) {
+    while i < vector_len(registry.rules) {
         if registry.rules[i].name == name {
-            set next = next + [rule_enable(registry.rules[i])]
-            set found = true
+            set next = next + [rule_enable(registry.rules[i])];
+            set found = true;
         } else {
-            set next = next + [registry.rules[i]]
+            set next = next + [registry.rules[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if found == false {
@@ -578,151 +578,151 @@ proc registry_enable_rule(
                 span_empty(),
                 LINT_RULE_INVALID_ID
             )
-        )
+        );
     }
 
     give LintRuleRegistry {
         rules: next,
         diagnostics: registry.diagnostics,
         valid: registry.valid
-    }
+    };
 }
 
 proc level_name(level: LintLevel) -> string {
     if level == LintLevel.Allow {
-        give "allow"
+        give "allow";
     }
 
     if level == LintLevel.Info {
-        give "info"
+        give "info";
     }
 
     if level == LintLevel.Warn {
-        give "warn"
+        give "warn";
     }
 
     if level == LintLevel.Deny {
-        give "deny"
+        give "deny";
     }
 
     if level == LintLevel.Forbid {
-        give "forbid"
+        give "forbid";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc kind_name(kind: LintRuleKind) -> string {
     if kind == LintRuleKind.Correctness {
-        give "correctness"
+        give "correctness";
     }
 
     if kind == LintRuleKind.Style {
-        give "style"
+        give "style";
     }
 
     if kind == LintRuleKind.Safety {
-        give "safety"
+        give "safety";
     }
 
     if kind == LintRuleKind.Performance {
-        give "performance"
+        give "performance";
     }
 
     if kind == LintRuleKind.Security {
-        give "security"
+        give "security";
     }
 
     if kind == LintRuleKind.Portability {
-        give "portability"
+        give "portability";
     }
 
     if kind == LintRuleKind.Deprecated {
-        give "deprecated"
+        give "deprecated";
     }
 
-    give "internal"
+    give "internal";
 }
 
 proc status_name(status: LintRuleStatus) -> string {
     if status == LintRuleStatus.Stable {
-        give "stable"
+        give "stable";
     }
 
     if status == LintRuleStatus.Experimental {
-        give "experimental"
+        give "experimental";
     }
 
     if status == LintRuleStatus.Deprecated {
-        give "deprecated"
+        give "deprecated";
     }
 
     if status == LintRuleStatus.Internal {
-        give "internal"
+        give "internal";
     }
 
     if status == LintRuleStatus.Disabled {
-        give "disabled"
+        give "disabled";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc rule_is_error(rule: LintRule) -> bool {
     if rule.level == LintLevel.Deny {
-        give true
+        give true;
     }
 
     if rule.level == LintLevel.Forbid {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc rule_is_visible(rule: LintRule) -> bool {
     if rule.enabled == false {
-        give false
+        give false;
     }
 
     if rule.level == LintLevel.Allow {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc rule_count(registry: LintRuleRegistry) -> u64 {
-    give vector_len(registry.rules)
+    give vector_len(registry.rules);
 }
 
 proc diagnostic_count(registry: LintRuleRegistry) -> u64 {
-    give vector_len(registry.diagnostics)
+    give vector_len(registry.diagnostics);
 }
 
 proc print_rule(rule: LintRule) {
-    emit "lint rule"
-    emit rule.id
-    emit rule.name
-    emit kind_name(rule.kind)
-    emit level_name(rule.level)
-    emit status_name(rule.status)
-    emit rule.description
+    emit "lint rule";
+    emit rule.id;
+    emit rule.name;
+    emit kind_name(rule.kind);
+    emit level_name(rule.level);
+    emit status_name(rule.status);
+    emit rule.description;
 }
 
 proc print_registry(registry: LintRuleRegistry) {
-    emit "lint rules registry"
-    emit vector_len(registry.rules)
-    emit vector_len(registry.diagnostics)
+    emit "lint rules registry";
+    emit vector_len(registry.rules);
+    emit vector_len(registry.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(registry.rules) {
-        print_rule(registry.rules[i])
-        set i = i + 1
+    while i < vector_len(registry.rules) {
+        print_rule(registry.rules[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

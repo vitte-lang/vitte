@@ -15,101 +15,101 @@ const ISEL_MAX_NODES: u64 = 1048576
 const ISEL_MAX_INSTRUCTIONS: u64 = 16777216
 
 pick SelectArch {
-    Unknown
-    X86_64
-    AArch64
-    RiscV64
-    ARM
-    I386
-    Wasm32
+    Unknown,
+    X86_64,
+    AArch64,
+    RiscV64,
+    ARM,
+    I386,
+    Wasm32,
 }
 
 pick IrOpcode {
-    Nop
-    Const
-    Add
-    Sub
-    Mul
-    Div
-    Mod
-    Neg
-    And
-    Or
-    Xor
-    Shl
-    Shr
-    Eq
-    Ne
-    Lt
-    Le
-    Gt
-    Ge
-    Load
-    Store
-    Addr
-    Call
-    Ret
-    Jump
-    Branch
-    Phi
-    Cast
+    Nop,
+    Const,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Neg,
+    And,
+    Or,
+    Xor,
+    Shl,
+    Shr,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Load,
+    Store,
+    Addr,
+    Call,
+    Ret,
+    Jump,
+    Branch,
+    Phi,
+    Cast,
 }
 
 pick MachineOpcode {
-    Invalid
-    Nop
-    Mov
-    Lea
-    Add
-    Sub
-    Mul
-    Div
-    Mod
-    Neg
-    And
-    Or
-    Xor
-    Shl
-    Shr
-    Cmp
-    SetEq
-    SetNe
-    SetLt
-    SetLe
-    SetGt
-    SetGe
-    Load
-    Store
-    Push
-    Pop
-    Call
-    Ret
-    Jmp
-    Jcc
-    Label
+    Invalid,
+    Nop,
+    Mov,
+    Lea,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Neg,
+    And,
+    Or,
+    Xor,
+    Shl,
+    Shr,
+    Cmp,
+    SetEq,
+    SetNe,
+    SetLt,
+    SetLe,
+    SetGt,
+    SetGe,
+    Load,
+    Store,
+    Push,
+    Pop,
+    Call,
+    Ret,
+    Jmp,
+    Jcc,
+    Label,
 }
 
 pick OperandKind {
-    None
-    Register
-    VirtualRegister
-    Immediate
-    Memory
-    Symbol
-    Label
+    None,
+    Register,
+    VirtualRegister,
+    Immediate,
+    Memory,
+    Symbol,
+    Label,
 }
 
 pick SelectErrorKind {
-    None
-    InvalidArch
-    InvalidNode
-    UnsupportedOpcode
-    MissingRule
-    RuleLimitExceeded
-    NodeLimitExceeded
-    InstructionLimitExceeded
-    OperandMismatch
-    InternalFailure
+    None,
+    InvalidArch,
+    InvalidNode,
+    UnsupportedOpcode,
+    MissingRule,
+    RuleLimitExceeded,
+    NodeLimitExceeded,
+    InstructionLimitExceeded,
+    OperandMismatch,
+    InternalFailure,
 }
 
 form SelectSpan {
@@ -181,7 +181,7 @@ proc span_empty() -> SelectSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc node_invalid() -> IrNode {
@@ -196,7 +196,7 @@ proc node_invalid() -> IrNode {
         symbol: "",
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc operand_none() -> MachineOperand {
@@ -206,7 +206,7 @@ proc operand_none() -> MachineOperand {
         register_id: ISEL_INVALID_ID,
         immediate: 0,
         valid: false
-    }
+    };
 }
 
 proc operand_vreg(id: u64) -> MachineOperand {
@@ -216,7 +216,7 @@ proc operand_vreg(id: u64) -> MachineOperand {
         register_id: id,
         immediate: 0,
         valid: true
-    }
+    };
 }
 
 proc operand_imm(value: i64) -> MachineOperand {
@@ -226,7 +226,7 @@ proc operand_imm(value: i64) -> MachineOperand {
         register_id: ISEL_INVALID_ID,
         immediate: value,
         valid: true
-    }
+    };
 }
 
 proc operand_symbol(name: string) -> MachineOperand {
@@ -236,7 +236,7 @@ proc operand_symbol(name: string) -> MachineOperand {
         register_id: ISEL_INVALID_ID,
         immediate: 0,
         valid: true
-    }
+    };
 }
 
 proc operand_label(name: string) -> MachineOperand {
@@ -246,7 +246,7 @@ proc operand_label(name: string) -> MachineOperand {
         register_id: ISEL_INVALID_ID,
         immediate: 0,
         valid: true
-    }
+    };
 }
 
 proc node_create(
@@ -271,7 +271,7 @@ proc node_create(
         symbol: symbol,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc instruction_create(
@@ -288,7 +288,7 @@ proc instruction_create(
         source_node: source_node,
         arch: arch,
         valid: true
-    }
+    };
 }
 
 proc rule_create(
@@ -305,7 +305,7 @@ proc rule_create(
         machine_opcode: machine_opcode,
         name: name,
         enabled: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -319,7 +319,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         node: node
-    }
+    };
 }
 
 proc context_empty(arch: SelectArch) -> SelectContext {
@@ -331,7 +331,7 @@ proc context_empty(arch: SelectArch) -> SelectContext {
         diagnostics: [],
         next_vreg: 0,
         valid: true
-    }
+    };
 }
 
 proc default_rules(arch: SelectArch) -> [SelectRule] {
@@ -354,7 +354,7 @@ proc default_rules(arch: SelectArch) -> [SelectRule] {
         rule_create(15, arch, IrOpcode.Ret, MachineOpcode.Ret, "ret"),
         rule_create(16, arch, IrOpcode.Jump, MachineOpcode.Jmp, "jump"),
         rule_create(17, arch, IrOpcode.Branch, MachineOpcode.Jcc, "branch")
-    ]
+    ];
 }
 
 proc context_add_diagnostic(
@@ -369,7 +369,7 @@ proc context_add_diagnostic(
         diagnostics: context.diagnostics + [diagnostic],
         next_vreg: context.next_vreg,
         valid: false
-    }
+    };
 }
 
 proc context_add_node(
@@ -385,7 +385,7 @@ proc context_add_node(
                 node.span,
                 node.id
             )
-        )
+        );
     }
 
     give SelectContext {
@@ -396,7 +396,7 @@ proc context_add_node(
         diagnostics: context.diagnostics,
         next_vreg: context.next_vreg,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_instruction(
@@ -412,7 +412,7 @@ proc context_add_instruction(
                 span_empty(),
                 instruction.source_node
             )
-        )
+        );
     }
 
     give SelectContext {
@@ -423,11 +423,11 @@ proc context_add_instruction(
         diagnostics: context.diagnostics,
         next_vreg: context.next_vreg,
         valid: context.valid
-    }
+    };
 }
 
 proc allocate_vreg(context: SelectContext) -> MachineOperand {
-    give operand_vreg(context.next_vreg)
+    give operand_vreg(context.next_vreg);
 }
 
 proc context_bump_vreg(context: SelectContext) -> SelectContext {
@@ -439,37 +439,37 @@ proc context_bump_vreg(context: SelectContext) -> SelectContext {
         diagnostics: context.diagnostics,
         next_vreg: context.next_vreg + 1,
         valid: context.valid
-    }
+    };
 }
 
 proc find_node(context: SelectContext, id: u64) -> IrNode {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.nodes) {
+    while i < vector_len(context.nodes) {
         if context.nodes[i].id == id {
-            give context.nodes[i]
+            give context.nodes[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give node_invalid()
+    give node_invalid();
 }
 
 proc find_rule(
     context: SelectContext,
     opcode: IrOpcode
 ) -> SelectRule {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.rules) {
-        let rule = context.rules[i]
+    while i < vector_len(context.rules) {
+        let rule = context.rules[i];
 
         if rule.enabled and rule.arch == context.arch and rule.ir_opcode == opcode {
-            give rule
+            give rule;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give rule_create(
@@ -478,15 +478,15 @@ proc find_rule(
         IrOpcode.Nop,
         MachineOpcode.Invalid,
         "invalid"
-    )
+    );
 }
 
 proc select_const(
     context: SelectContext,
     node: IrNode
 ) -> SelectContext {
-    let dst = allocate_vreg(context)
-    let imm = operand_imm(node.imm)
+    let dst = allocate_vreg(context);
+    let imm = operand_imm(node.imm);
 
     let instruction = instruction_create(
         vector_len(context.instructions),
@@ -494,9 +494,9 @@ proc select_const(
         [dst, imm],
         node.id,
         context.arch
-    )
+    );
 
-    give context_bump_vreg(context_add_instruction(context, instruction))
+    give context_bump_vreg(context_add_instruction(context, instruction));
 }
 
 proc select_binary(
@@ -504,9 +504,9 @@ proc select_binary(
     node: IrNode,
     opcode: MachineOpcode
 ) -> SelectContext {
-    let dst = allocate_vreg(context)
-    let lhs = operand_vreg(node.left)
-    let rhs = operand_vreg(node.right)
+    let dst = allocate_vreg(context);
+    let lhs = operand_vreg(node.left);
+    let rhs = operand_vreg(node.right);
 
     let instruction = instruction_create(
         vector_len(context.instructions),
@@ -514,9 +514,9 @@ proc select_binary(
         [dst, lhs, rhs],
         node.id,
         context.arch
-    )
+    );
 
-    give context_bump_vreg(context_add_instruction(context, instruction))
+    give context_bump_vreg(context_add_instruction(context, instruction));
 }
 
 proc select_unary(
@@ -524,8 +524,8 @@ proc select_unary(
     node: IrNode,
     opcode: MachineOpcode
 ) -> SelectContext {
-    let dst = allocate_vreg(context)
-    let src = operand_vreg(node.left)
+    let dst = allocate_vreg(context);
+    let src = operand_vreg(node.left);
 
     let instruction = instruction_create(
         vector_len(context.instructions),
@@ -533,17 +533,17 @@ proc select_unary(
         [dst, src],
         node.id,
         context.arch
-    )
+    );
 
-    give context_bump_vreg(context_add_instruction(context, instruction))
+    give context_bump_vreg(context_add_instruction(context, instruction));
 }
 
 proc select_load(
     context: SelectContext,
     node: IrNode
 ) -> SelectContext {
-    let dst = allocate_vreg(context)
-    let address = operand_vreg(node.left)
+    let dst = allocate_vreg(context);
+    let address = operand_vreg(node.left);
 
     let instruction = instruction_create(
         vector_len(context.instructions),
@@ -551,17 +551,17 @@ proc select_load(
         [dst, address],
         node.id,
         context.arch
-    )
+    );
 
-    give context_bump_vreg(context_add_instruction(context, instruction))
+    give context_bump_vreg(context_add_instruction(context, instruction));
 }
 
 proc select_store(
     context: SelectContext,
     node: IrNode
 ) -> SelectContext {
-    let address = operand_vreg(node.left)
-    let value = operand_vreg(node.right)
+    let address = operand_vreg(node.left);
+    let value = operand_vreg(node.right);
 
     let instruction = instruction_create(
         vector_len(context.instructions),
@@ -569,16 +569,16 @@ proc select_store(
         [address, value],
         node.id,
         context.arch
-    )
+    );
 
-    give context_add_instruction(context, instruction)
+    give context_add_instruction(context, instruction);
 }
 
 proc select_call(
     context: SelectContext,
     node: IrNode
 ) -> SelectContext {
-    let target = operand_symbol(node.symbol)
+    let target = operand_symbol(node.symbol);
 
     let instruction = instruction_create(
         vector_len(context.instructions),
@@ -586,16 +586,16 @@ proc select_call(
         [target],
         node.id,
         context.arch
-    )
+    );
 
-    give context_add_instruction(context, instruction)
+    give context_add_instruction(context, instruction);
 }
 
 proc select_return(
     context: SelectContext,
     node: IrNode
 ) -> SelectContext {
-    let value = operand_vreg(node.left)
+    let value = operand_vreg(node.left);
 
     let instruction = instruction_create(
         vector_len(context.instructions),
@@ -603,16 +603,16 @@ proc select_return(
         [value],
         node.id,
         context.arch
-    )
+    );
 
-    give context_add_instruction(context, instruction)
+    give context_add_instruction(context, instruction);
 }
 
 proc select_jump(
     context: SelectContext,
     node: IrNode
 ) -> SelectContext {
-    let label = operand_label(node.symbol)
+    let label = operand_label(node.symbol);
 
     let instruction = instruction_create(
         vector_len(context.instructions),
@@ -620,17 +620,17 @@ proc select_jump(
         [label],
         node.id,
         context.arch
-    )
+    );
 
-    give context_add_instruction(context, instruction)
+    give context_add_instruction(context, instruction);
 }
 
 proc select_branch(
     context: SelectContext,
     node: IrNode
 ) -> SelectContext {
-    let cond = operand_vreg(node.left)
-    let label = operand_label(node.symbol)
+    let cond = operand_vreg(node.left);
+    let label = operand_label(node.symbol);
 
     let instruction = instruction_create(
         vector_len(context.instructions),
@@ -638,9 +638,9 @@ proc select_branch(
         [cond, label],
         node.id,
         context.arch
-    )
+    );
 
-    give context_add_instruction(context, instruction)
+    give context_add_instruction(context, instruction);
 }
 
 proc select_compare(
@@ -648,8 +648,8 @@ proc select_compare(
     node: IrNode,
     set_opcode: MachineOpcode
 ) -> SelectContext {
-    let lhs = operand_vreg(node.left)
-    let rhs = operand_vreg(node.right)
+    let lhs = operand_vreg(node.left);
+    let rhs = operand_vreg(node.right);
 
     let cmp = instruction_create(
         vector_len(context.instructions),
@@ -657,11 +657,11 @@ proc select_compare(
         [lhs, rhs],
         node.id,
         context.arch
-    )
+    );
 
-    let with_cmp = context_add_instruction(context, cmp)
+    let with_cmp = context_add_instruction(context, cmp);
 
-    let dst = allocate_vreg(with_cmp)
+    let dst = allocate_vreg(with_cmp);
 
     let set = instruction_create(
         vector_len(with_cmp.instructions),
@@ -669,9 +669,9 @@ proc select_compare(
         [dst],
         node.id,
         context.arch
-    )
+    );
 
-    give context_bump_vreg(context_add_instruction(with_cmp, set))
+    give context_bump_vreg(context_add_instruction(with_cmp, set));
 }
 
 proc select_node(
@@ -687,10 +687,10 @@ proc select_node(
                 node.span,
                 node.id
             )
-        )
+        );
     }
 
-    let rule = find_rule(context, node.opcode)
+    let rule = find_rule(context, node.opcode);
 
     if rule.id == ISEL_INVALID_ID {
         give context_add_diagnostic(
@@ -701,7 +701,7 @@ proc select_node(
                 node.span,
                 node.id
             )
-        )
+        );
     }
 
     if node.opcode == IrOpcode.Nop {
@@ -714,103 +714,103 @@ proc select_node(
                 node.id,
                 context.arch
             )
-        )
+        );
     }
 
     if node.opcode == IrOpcode.Const {
-        give select_const(context, node)
+        give select_const(context, node);
     }
 
     if node.opcode == IrOpcode.Add {
-        give select_binary(context, node, MachineOpcode.Add)
+        give select_binary(context, node, MachineOpcode.Add);
     }
 
     if node.opcode == IrOpcode.Sub {
-        give select_binary(context, node, MachineOpcode.Sub)
+        give select_binary(context, node, MachineOpcode.Sub);
     }
 
     if node.opcode == IrOpcode.Mul {
-        give select_binary(context, node, MachineOpcode.Mul)
+        give select_binary(context, node, MachineOpcode.Mul);
     }
 
     if node.opcode == IrOpcode.Div {
-        give select_binary(context, node, MachineOpcode.Div)
+        give select_binary(context, node, MachineOpcode.Div);
     }
 
     if node.opcode == IrOpcode.Mod {
-        give select_binary(context, node, MachineOpcode.Mod)
+        give select_binary(context, node, MachineOpcode.Mod);
     }
 
     if node.opcode == IrOpcode.And {
-        give select_binary(context, node, MachineOpcode.And)
+        give select_binary(context, node, MachineOpcode.And);
     }
 
     if node.opcode == IrOpcode.Or {
-        give select_binary(context, node, MachineOpcode.Or)
+        give select_binary(context, node, MachineOpcode.Or);
     }
 
     if node.opcode == IrOpcode.Xor {
-        give select_binary(context, node, MachineOpcode.Xor)
+        give select_binary(context, node, MachineOpcode.Xor);
     }
 
     if node.opcode == IrOpcode.Shl {
-        give select_binary(context, node, MachineOpcode.Shl)
+        give select_binary(context, node, MachineOpcode.Shl);
     }
 
     if node.opcode == IrOpcode.Shr {
-        give select_binary(context, node, MachineOpcode.Shr)
+        give select_binary(context, node, MachineOpcode.Shr);
     }
 
     if node.opcode == IrOpcode.Neg {
-        give select_unary(context, node, MachineOpcode.Neg)
+        give select_unary(context, node, MachineOpcode.Neg);
     }
 
     if node.opcode == IrOpcode.Eq {
-        give select_compare(context, node, MachineOpcode.SetEq)
+        give select_compare(context, node, MachineOpcode.SetEq);
     }
 
     if node.opcode == IrOpcode.Ne {
-        give select_compare(context, node, MachineOpcode.SetNe)
+        give select_compare(context, node, MachineOpcode.SetNe);
     }
 
     if node.opcode == IrOpcode.Lt {
-        give select_compare(context, node, MachineOpcode.SetLt)
+        give select_compare(context, node, MachineOpcode.SetLt);
     }
 
     if node.opcode == IrOpcode.Le {
-        give select_compare(context, node, MachineOpcode.SetLe)
+        give select_compare(context, node, MachineOpcode.SetLe);
     }
 
     if node.opcode == IrOpcode.Gt {
-        give select_compare(context, node, MachineOpcode.SetGt)
+        give select_compare(context, node, MachineOpcode.SetGt);
     }
 
     if node.opcode == IrOpcode.Ge {
-        give select_compare(context, node, MachineOpcode.SetGe)
+        give select_compare(context, node, MachineOpcode.SetGe);
     }
 
     if node.opcode == IrOpcode.Load {
-        give select_load(context, node)
+        give select_load(context, node);
     }
 
     if node.opcode == IrOpcode.Store {
-        give select_store(context, node)
+        give select_store(context, node);
     }
 
     if node.opcode == IrOpcode.Call {
-        give select_call(context, node)
+        give select_call(context, node);
     }
 
     if node.opcode == IrOpcode.Ret {
-        give select_return(context, node)
+        give select_return(context, node);
     }
 
     if node.opcode == IrOpcode.Jump {
-        give select_jump(context, node)
+        give select_jump(context, node);
     }
 
     if node.opcode == IrOpcode.Branch {
-        give select_branch(context, node)
+        give select_branch(context, node);
     }
 
     give context_add_diagnostic(
@@ -821,27 +821,27 @@ proc select_node(
             node.span,
             node.id
         )
-    )
+    );
 }
 
 proc select_all(context: SelectContext) -> SelectContext {
-    let current = context
-    let i: u64 = 0
+    let current = context;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.nodes) {
-        set current = select_node(current, current.nodes[i])
-        set i = i + 1
+    while i < vector_len(current.nodes) {
+        set current = select_node(current, current.nodes[i]);
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc validate_selection(context: SelectContext) -> SelectContext {
-    let current = context
-    let i: u64 = 0
+    let current = context;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.instructions) {
-        let inst = current.instructions[i]
+    while i < vector_len(current.instructions) {
+        let inst = current.instructions[i];
 
         if inst.valid == false {
             give context_add_diagnostic(
@@ -852,147 +852,147 @@ proc validate_selection(context: SelectContext) -> SelectContext {
                     span_empty(),
                     inst.source_node
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc run_instruction_selection(context: SelectContext) -> SelectContext {
-    let selected = select_all(context)
-    give validate_selection(selected)
+    let selected = select_all(context);
+    give validate_selection(selected);
 }
 
 proc selection_error_count(context: SelectContext) -> u64 {
-    give vector_len(context.diagnostics)
+    give vector_len(context.diagnostics);
 }
 
 proc selected_instruction_count(context: SelectContext) -> u64 {
-    give vector_len(context.instructions)
+    give vector_len(context.instructions);
 }
 
 proc selection_is_valid(context: SelectContext) -> bool {
-    give context.valid and vector_len(context.diagnostics) == 0
+    give context.valid and vector_len(context.diagnostics) == 0;
 }
 
 proc arch_name(arch: SelectArch) -> string {
     if arch == SelectArch.X86_64 {
-        give "x86_64"
+        give "x86_64";
     }
 
     if arch == SelectArch.AArch64 {
-        give "aarch64"
+        give "aarch64";
     }
 
     if arch == SelectArch.RiscV64 {
-        give "riscv64"
+        give "riscv64";
     }
 
     if arch == SelectArch.ARM {
-        give "arm"
+        give "arm";
     }
 
     if arch == SelectArch.I386 {
-        give "i386"
+        give "i386";
     }
 
     if arch == SelectArch.Wasm32 {
-        give "wasm32"
+        give "wasm32";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc machine_opcode_name(opcode: MachineOpcode) -> string {
     if opcode == MachineOpcode.Nop {
-        give "nop"
+        give "nop";
     }
 
     if opcode == MachineOpcode.Mov {
-        give "mov"
+        give "mov";
     }
 
     if opcode == MachineOpcode.Add {
-        give "add"
+        give "add";
     }
 
     if opcode == MachineOpcode.Sub {
-        give "sub"
+        give "sub";
     }
 
     if opcode == MachineOpcode.Mul {
-        give "mul"
+        give "mul";
     }
 
     if opcode == MachineOpcode.Div {
-        give "div"
+        give "div";
     }
 
     if opcode == MachineOpcode.Load {
-        give "load"
+        give "load";
     }
 
     if opcode == MachineOpcode.Store {
-        give "store"
+        give "store";
     }
 
     if opcode == MachineOpcode.Call {
-        give "call"
+        give "call";
     }
 
     if opcode == MachineOpcode.Ret {
-        give "ret"
+        give "ret";
     }
 
-    give "invalid"
+    give "invalid";
 }
 
 proc print_operand(operand: MachineOperand) {
-    emit "operand"
-    emit operand.text
-    emit operand.valid
+    emit "operand";
+    emit operand.text;
+    emit operand.valid;
 }
 
 proc print_instruction(instruction: MachineInstruction) {
-    emit "machine instruction"
-    emit instruction.id
-    emit machine_opcode_name(instruction.opcode)
-    emit instruction.source_node
+    emit "machine instruction";
+    emit instruction.id;
+    emit machine_opcode_name(instruction.opcode);
+    emit instruction.source_node;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(instruction.operands) {
-        print_operand(instruction.operands[i])
-        set i = i + 1
+    while i < vector_len(instruction.operands) {
+        print_operand(instruction.operands[i]);
+        set i = i + 1;
     }
 }
 
 proc print_context(context: SelectContext) {
-    emit "instruction selection"
-    emit arch_name(context.arch)
-    emit vector_len(context.nodes)
-    emit vector_len(context.instructions)
-    emit vector_len(context.diagnostics)
+    emit "instruction selection";
+    emit arch_name(context.arch);
+    emit vector_len(context.nodes);
+    emit vector_len(context.instructions);
+    emit vector_len(context.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.instructions) {
-        print_instruction(context.instructions[i])
-        set i = i + 1
+    while i < vector_len(context.instructions) {
+        print_instruction(context.instructions[i]);
+        set i = i + 1;
     }
 }
 
 proc u64_text(value: u64) -> string {
-    give ""
+    give "";
 }
 
 proc i64_text(value: i64) -> string {
-    give ""
+    give "";
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

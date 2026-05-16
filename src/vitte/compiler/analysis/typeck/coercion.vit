@@ -14,63 +14,63 @@ const COERCION_MAX_RULES: u64 = 262144
 const COERCION_MAX_STEPS: u64 = 1048576
 
 pick CoercionKind {
-    Identity
-    NumericWiden
-    NumericNarrow
-    IntToFloat
-    FloatToInt
-    ArrayToSlice
-    ReferenceToPointer
-    MutableToShared
-    NeverToAny
-    Deref
-    AutoRef
-    TraitObject
-    PointerCast
-    FunctionPointer
-    Unsupported
+    Identity,
+    NumericWiden,
+    NumericNarrow,
+    IntToFloat,
+    FloatToInt,
+    ArrayToSlice,
+    ReferenceToPointer,
+    MutableToShared,
+    NeverToAny,
+    Deref,
+    AutoRef,
+    TraitObject,
+    PointerCast,
+    FunctionPointer,
+    Unsupported,
 }
 
 pick CoercionSafety {
-    Safe
-    Lossy
-    Unsafe
-    Forbidden
+    Safe,
+    Lossy,
+    Unsafe,
+    Forbidden,
 }
 
 pick TypeKind {
-    Unknown
-    Void
-    Never
-    Bool
-    Int
-    UInt
-    Float
-    Char
-    String
-    Pointer
-    Reference
-    Slice
-    Array
-    Tuple
-    Function
-    Form
-    Pick
-    Trait
-    Generic
-    Infer
+    Unknown,
+    Void,
+    Never,
+    Bool,
+    Int,
+    UInt,
+    Float,
+    Char,
+    String,
+    Pointer,
+    Reference,
+    Slice,
+    Array,
+    Tuple,
+    Function,
+    Form,
+    Pick,
+    Trait,
+    Generic,
+    Infer,
 }
 
 pick CoercionErrorKind {
-    None
-    UnknownSource
-    UnknownTarget
-    IncompatibleTypes
-    UnsafeCoercion
-    LossyCoercion
-    RuleLimitExceeded
-    StepLimitExceeded
-    InternalFailure
+    None,
+    UnknownSource,
+    UnknownTarget,
+    IncompatibleTypes,
+    UnsafeCoercion,
+    LossyCoercion,
+    RuleLimitExceeded,
+    StepLimitExceeded,
+    InternalFailure,
 }
 
 form CoercionSpan {
@@ -135,7 +135,7 @@ proc span_empty() -> CoercionSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc type_invalid() -> TypeRef {
@@ -146,7 +146,7 @@ proc type_invalid() -> TypeRef {
         mutable: false,
         nullable: false,
         valid: false
-    }
+    };
 }
 
 proc type_create(
@@ -163,7 +163,7 @@ proc type_create(
         mutable: mutable,
         nullable: nullable,
         valid: true
-    }
+    };
 }
 
 proc rule_create(
@@ -180,7 +180,7 @@ proc rule_create(
         kind: kind,
         safety: safety,
         enabled: true
-    }
+    };
 }
 
 proc step_create(
@@ -199,7 +199,7 @@ proc step_create(
         safety: safety,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -215,7 +215,7 @@ proc diagnostic_create(
         span: span,
         from_type: from_type,
         to_type: to_type
-    }
+    };
 }
 
 proc context_empty() -> CoercionContext {
@@ -223,22 +223,22 @@ proc context_empty() -> CoercionContext {
         rules: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc context_default() -> CoercionContext {
-    let ctx = context_empty()
+    let ctx = context_empty();
 
-    let c1 = context_add_rule(ctx, rule_create(1, TypeKind.Int, TypeKind.Float, CoercionKind.IntToFloat, CoercionSafety.Safe))
-    let c2 = context_add_rule(c1, rule_create(2, TypeKind.UInt, TypeKind.Float, CoercionKind.IntToFloat, CoercionSafety.Safe))
-    let c3 = context_add_rule(c2, rule_create(3, TypeKind.Float, TypeKind.Int, CoercionKind.FloatToInt, CoercionSafety.Lossy))
-    let c4 = context_add_rule(c3, rule_create(4, TypeKind.Array, TypeKind.Slice, CoercionKind.ArrayToSlice, CoercionSafety.Safe))
-    let c5 = context_add_rule(c4, rule_create(5, TypeKind.Reference, TypeKind.Pointer, CoercionKind.ReferenceToPointer, CoercionSafety.Unsafe))
-    let c6 = context_add_rule(c5, rule_create(6, TypeKind.Never, TypeKind.Unknown, CoercionKind.NeverToAny, CoercionSafety.Safe))
-    let c7 = context_add_rule(c6, rule_create(7, TypeKind.Function, TypeKind.Pointer, CoercionKind.FunctionPointer, CoercionSafety.Safe))
-    let c8 = context_add_rule(c7, rule_create(8, TypeKind.Pointer, TypeKind.Pointer, CoercionKind.PointerCast, CoercionSafety.Unsafe))
+    let c1 = context_add_rule(ctx, rule_create(1, TypeKind.Int, TypeKind.Float, CoercionKind.IntToFloat, CoercionSafety.Safe));
+    let c2 = context_add_rule(c1, rule_create(2, TypeKind.UInt, TypeKind.Float, CoercionKind.IntToFloat, CoercionSafety.Safe));
+    let c3 = context_add_rule(c2, rule_create(3, TypeKind.Float, TypeKind.Int, CoercionKind.FloatToInt, CoercionSafety.Lossy));
+    let c4 = context_add_rule(c3, rule_create(4, TypeKind.Array, TypeKind.Slice, CoercionKind.ArrayToSlice, CoercionSafety.Safe));
+    let c5 = context_add_rule(c4, rule_create(5, TypeKind.Reference, TypeKind.Pointer, CoercionKind.ReferenceToPointer, CoercionSafety.Unsafe));
+    let c6 = context_add_rule(c5, rule_create(6, TypeKind.Never, TypeKind.Unknown, CoercionKind.NeverToAny, CoercionSafety.Safe));
+    let c7 = context_add_rule(c6, rule_create(7, TypeKind.Function, TypeKind.Pointer, CoercionKind.FunctionPointer, CoercionSafety.Safe));
+    let c8 = context_add_rule(c7, rule_create(8, TypeKind.Pointer, TypeKind.Pointer, CoercionKind.PointerCast, CoercionSafety.Unsafe));
 
-    give c8
+    give c8;
 }
 
 proc context_add_diagnostic(
@@ -249,7 +249,7 @@ proc context_add_diagnostic(
         rules: context.rules,
         diagnostics: context.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc context_add_rule(
@@ -266,14 +266,14 @@ proc context_add_rule(
                 type_invalid(),
                 type_invalid()
             )
-        )
+        );
     }
 
     give CoercionContext {
         rules: context.rules + [rule],
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc result_success(
@@ -285,7 +285,7 @@ proc result_success(
         steps: steps,
         diagnostics: [],
         final_type: final_type
-    }
+    };
 }
 
 proc result_failure(
@@ -297,7 +297,7 @@ proc result_failure(
         steps: [],
         diagnostics: [diagnostic],
         final_type: from_type
-    }
+    };
 }
 
 proc type_equals(
@@ -305,46 +305,46 @@ proc type_equals(
     right: TypeRef
 ) -> bool {
     if left.valid == false or right.valid == false {
-        give false
+        give false;
     }
 
     if left.id == right.id {
-        give true
+        give true;
     }
 
     if left.kind == right.kind and left.name == right.name {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc type_is_numeric(ty: TypeRef) -> bool {
     if ty.kind == TypeKind.Int {
-        give true
+        give true;
     }
 
     if ty.kind == TypeKind.UInt {
-        give true
+        give true;
     }
 
     if ty.kind == TypeKind.Float {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc type_is_pointer_like(ty: TypeRef) -> bool {
     if ty.kind == TypeKind.Pointer {
-        give true
+        give true;
     }
 
     if ty.kind == TypeKind.Reference {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc find_rule(
@@ -352,16 +352,16 @@ proc find_rule(
     from_kind: TypeKind,
     to_kind: TypeKind
 ) -> CoercionRule {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.rules) {
-        let rule = context.rules[i]
+    while i < vector_len(context.rules) {
+        let rule = context.rules[i];
 
         if rule.enabled and rule.from_kind == from_kind and rule.to_kind == to_kind {
-            give rule
+            give rule;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give rule_create(
@@ -370,7 +370,7 @@ proc find_rule(
         TypeKind.Unknown,
         CoercionKind.Unsupported,
         CoercionSafety.Forbidden
-    )
+    );
 }
 
 proc can_coerce(
@@ -379,20 +379,20 @@ proc can_coerce(
     to_type: TypeRef
 ) -> bool {
     if type_equals(from_type, to_type) {
-        give true
+        give true;
     }
 
     if from_type.kind == TypeKind.Never {
-        give true
+        give true;
     }
 
-    let rule = find_rule(context, from_type.kind, to_type.kind)
+    let rule = find_rule(context, from_type.kind, to_type.kind);
 
     if rule.id != COERCION_INVALID_ID {
-        give rule.safety != CoercionSafety.Forbidden
+        give rule.safety != CoercionSafety.Forbidden;
     }
 
-    give false
+    give false;
 }
 
 proc coercion_kind_for(
@@ -401,16 +401,16 @@ proc coercion_kind_for(
     to_type: TypeRef
 ) -> CoercionKind {
     if type_equals(from_type, to_type) {
-        give CoercionKind.Identity
+        give CoercionKind.Identity;
     }
 
-    let rule = find_rule(context, from_type.kind, to_type.kind)
+    let rule = find_rule(context, from_type.kind, to_type.kind);
 
     if rule.id != COERCION_INVALID_ID {
-        give rule.kind
+        give rule.kind;
     }
 
-    give CoercionKind.Unsupported
+    give CoercionKind.Unsupported;
 }
 
 proc coercion_safety_for(
@@ -419,16 +419,16 @@ proc coercion_safety_for(
     to_type: TypeRef
 ) -> CoercionSafety {
     if type_equals(from_type, to_type) {
-        give CoercionSafety.Safe
+        give CoercionSafety.Safe;
     }
 
-    let rule = find_rule(context, from_type.kind, to_type.kind)
+    let rule = find_rule(context, from_type.kind, to_type.kind);
 
     if rule.id != COERCION_INVALID_ID {
-        give rule.safety
+        give rule.safety;
     }
 
-    give CoercionSafety.Forbidden
+    give CoercionSafety.Forbidden;
 }
 
 proc build_coercion(
@@ -447,7 +447,7 @@ proc build_coercion(
                 to_type
             ),
             from_type
-        )
+        );
     }
 
     if to_type.valid == false {
@@ -460,7 +460,7 @@ proc build_coercion(
                 to_type
             ),
             from_type
-        )
+        );
     }
 
     if type_equals(from_type, to_type) {
@@ -471,9 +471,9 @@ proc build_coercion(
             CoercionKind.Identity,
             CoercionSafety.Safe,
             span
-        )
+        );
 
-        give result_success([step], to_type)
+        give result_success([step], to_type);
     }
 
     if can_coerce(context, from_type, to_type) == false {
@@ -486,11 +486,11 @@ proc build_coercion(
                 to_type
             ),
             from_type
-        )
+        );
     }
 
-    let kind = coercion_kind_for(context, from_type, to_type)
-    let safety = coercion_safety_for(context, from_type, to_type)
+    let kind = coercion_kind_for(context, from_type, to_type);
+    let safety = coercion_safety_for(context, from_type, to_type);
 
     let step = step_create(
         0,
@@ -499,9 +499,9 @@ proc build_coercion(
         kind,
         safety,
         span
-    )
+    );
 
-    give result_success([step], to_type)
+    give result_success([step], to_type);
 }
 
 proc require_safe_coercion(
@@ -510,16 +510,16 @@ proc require_safe_coercion(
     to_type: TypeRef,
     span: CoercionSpan
 ) -> CoercionResult {
-    let result = build_coercion(context, from_type, to_type, span)
+    let result = build_coercion(context, from_type, to_type, span);
 
     if result.success == false {
-        give result
+        give result;
     }
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(result.steps) {
-        let step = result.steps[i]
+    while i < vector_len(result.steps) {
+        let step = result.steps[i];
 
         if step.safety == CoercionSafety.Unsafe {
             give result_failure(
@@ -531,7 +531,7 @@ proc require_safe_coercion(
                     to_type
                 ),
                 from_type
-            )
+            );
         }
 
         if step.safety == CoercionSafety.Lossy {
@@ -544,13 +544,13 @@ proc require_safe_coercion(
                     to_type
                 ),
                 from_type
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give result
+    give result;
 }
 
 proc coerce_numeric(
@@ -569,10 +569,10 @@ proc coerce_numeric(
                 to_type
             ),
             from_type
-        )
+        );
     }
 
-    give build_coercion(context, from_type, to_type, span)
+    give build_coercion(context, from_type, to_type, span);
 }
 
 proc coerce_pointer(
@@ -591,20 +591,20 @@ proc coerce_pointer(
                 to_type
             ),
             from_type
-        )
+        );
     }
 
-    give build_coercion(context, from_type, to_type, span)
+    give build_coercion(context, from_type, to_type, span);
 }
 
 proc apply_coercion_step(
     step: CoercionStep
 ) -> TypeRef {
     if step.valid == false {
-        give step.from_type
+        give step.from_type;
     }
 
-    give step.to_type
+    give step.to_type;
 }
 
 proc apply_coercion_result(
@@ -612,135 +612,135 @@ proc apply_coercion_result(
     fallback: TypeRef
 ) -> TypeRef {
     if result.success == false {
-        give fallback
+        give fallback;
     }
 
-    let current = fallback
-    let i: u64 = 0
+    let current = fallback;
+    let i: u64 = 0;
 
-    loop i < vector_len(result.steps) {
-        set current = apply_coercion_step(result.steps[i])
-        set i = i + 1
+    while i < vector_len(result.steps) {
+        set current = apply_coercion_step(result.steps[i]);
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc result_has_unsafe(result: CoercionResult) -> bool {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(result.steps) {
+    while i < vector_len(result.steps) {
         if result.steps[i].safety == CoercionSafety.Unsafe {
-            give true
+            give true;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give false
+    give false;
 }
 
 proc result_has_lossy(result: CoercionResult) -> bool {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(result.steps) {
+    while i < vector_len(result.steps) {
         if result.steps[i].safety == CoercionSafety.Lossy {
-            give true
+            give true;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give false
+    give false;
 }
 
 proc coercion_error_count(context: CoercionContext) -> u64 {
-    give vector_len(context.diagnostics)
+    give vector_len(context.diagnostics);
 }
 
 proc coercion_context_is_valid(context: CoercionContext) -> bool {
-    give context.valid and vector_len(context.diagnostics) == 0
+    give context.valid and vector_len(context.diagnostics) == 0;
 }
 
 proc kind_name(kind: CoercionKind) -> string {
     if kind == CoercionKind.Identity {
-        give "identity"
+        give "identity";
     }
 
     if kind == CoercionKind.NumericWiden {
-        give "numeric_widen"
+        give "numeric_widen";
     }
 
     if kind == CoercionKind.NumericNarrow {
-        give "numeric_narrow"
+        give "numeric_narrow";
     }
 
     if kind == CoercionKind.IntToFloat {
-        give "int_to_float"
+        give "int_to_float";
     }
 
     if kind == CoercionKind.FloatToInt {
-        give "float_to_int"
+        give "float_to_int";
     }
 
     if kind == CoercionKind.ArrayToSlice {
-        give "array_to_slice"
+        give "array_to_slice";
     }
 
     if kind == CoercionKind.ReferenceToPointer {
-        give "reference_to_pointer"
+        give "reference_to_pointer";
     }
 
     if kind == CoercionKind.PointerCast {
-        give "pointer_cast"
+        give "pointer_cast";
     }
 
-    give "unsupported"
+    give "unsupported";
 }
 
 proc safety_name(safety: CoercionSafety) -> string {
     if safety == CoercionSafety.Safe {
-        give "safe"
+        give "safe";
     }
 
     if safety == CoercionSafety.Lossy {
-        give "lossy"
+        give "lossy";
     }
 
     if safety == CoercionSafety.Unsafe {
-        give "unsafe"
+        give "unsafe";
     }
 
     if safety == CoercionSafety.Forbidden {
-        give "forbidden"
+        give "forbidden";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_step(step: CoercionStep) {
-    emit "coercion step"
-    emit step.from_type.name
-    emit step.to_type.name
-    emit kind_name(step.kind)
-    emit safety_name(step.safety)
+    emit "coercion step";
+    emit step.from_type.name;
+    emit step.to_type.name;
+    emit kind_name(step.kind);
+    emit safety_name(step.safety);
 }
 
 proc print_result(result: CoercionResult) {
-    emit "coercion result"
-    emit result.success
-    emit result.final_type.name
-    emit vector_len(result.steps)
-    emit vector_len(result.diagnostics)
+    emit "coercion result";
+    emit result.success;
+    emit result.final_type.name;
+    emit vector_len(result.steps);
+    emit vector_len(result.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(result.steps) {
-        print_step(result.steps[i])
-        set i = i + 1
+    while i < vector_len(result.steps) {
+        print_step(result.steps[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

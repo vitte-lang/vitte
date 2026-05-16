@@ -293,3 +293,84 @@ Le compiler est “pro” quand:
 - diagnostics sont localises avec fallback,
 - performances et stabilite sont sous SLO,
 - CI empeche les regressions structurelles.
+
+---
+
+## 12) Etat d’avancement reel (implémenté)
+
+### 12.1 Pipeline bootstrap de bout en bout (fait)
+Etapes implémentées:
+1. `frontend/pipeline.vit`: `frontend_run(source_path, source_text)`
+2. `analysis/pipeline.vit`: `analysis_run(frontend_output)`
+3. `middle/lower/mir_to_ir.vit`: `lower_analysis_to_ir(analysis_output)`
+4. `backend/pipeline.vit`: `verify_unit(ir)` puis link bootstrap
+
+Fichiers:
+- `src/vitte/compiler/frontend/pipeline.vit`
+- `src/vitte/compiler/analysis/pipeline.vit`
+- `src/vitte/compiler/middle/lower/mir_to_ir.vit`
+- `src/vitte/compiler/backend/pipeline.vit`
+
+### 12.2 Linker bootstrap minimal (fait)
+Etapes implémentées:
+1. création artefact link exécutable minimal
+2. ajout output (`build/a.out`)
+3. ajout symbole d’entrée `main`
+4. finalisation artefact
+
+Fichiers:
+- `src/vitte/compiler/backend/link/mod.vit`
+- `src/vitte/compiler/backend/link/linker.vit`
+- `src/vitte/compiler/backend/link/symbols.vit`
+- `src/vitte/compiler/backend/mod.vit`
+
+### 12.3 Driver unifié compile/check (fait)
+Etapes implémentées:
+1. point d’entrée unique `main_driver(command_name, source_path, source_text)`
+2. route `compile` -> pipeline complet jusqu’au linker
+3. route `check` -> stop après analysis
+4. mapping status -> exit code
+
+Fichiers:
+- `src/vitte/compiler/driver/commands.vit`
+- `src/vitte/compiler/driver/exit_status.vit`
+- `src/vitte/compiler/driver/compile.vit`
+- `src/vitte/compiler/driver/cli.vit`
+- `src/vitte/compiler/driver/pipeline.vit`
+- `src/vitte/compiler/driver/mod.vit`
+
+### 12.4 Fluent diagnostics bootstrap (fait)
+Etapes implémentées:
+1. module Fluent structuré (types/catalog/bundle/format/fallback)
+2. parseur FTL minimal (`key = value`, ignore commentaires)
+3. loader texte + lookup
+4. fallback locale vers `en-US`
+
+Fichiers:
+- `src/vitte/compiler/infrastructure/diagnostics/fluent/mod.vit`
+- `src/vitte/compiler/infrastructure/diagnostics/fluent/types.vit`
+- `src/vitte/compiler/infrastructure/diagnostics/fluent/catalog.vit`
+- `src/vitte/compiler/infrastructure/diagnostics/fluent/parser.vit`
+- `src/vitte/compiler/infrastructure/diagnostics/fluent/loader.vit`
+- `src/vitte/compiler/infrastructure/diagnostics/fluent/lookup.vit`
+- `src/vitte/compiler/infrastructure/diagnostics/fluent/bundle.vit`
+- `src/vitte/compiler/infrastructure/diagnostics/fluent/format.vit`
+- `src/vitte/compiler/infrastructure/diagnostics/fluent/fallback.vit`
+
+---
+
+## 13) Gaps restants pour niveau pro
+1. Frontend réel: brancher lexer/parser/AST (aujourd’hui pipeline minimal bootstrap)
+2. Analysis réelle: brancher sema/typeck/borrowck effectifs
+3. Middle réel: brancher HIR/MIR/passes/optimisations au runtime
+4. Backend réel: brancher codegen/target/link (au-delà du bootstrap artifact)
+5. Fluent disque: lire réellement `locales/en/diagnostics.ftl` et `locales/fr/diagnostics.ftl`
+6. Tests: matrice obligatoire fichier actif -> test nominal + test erreur
+7. CI gates: refuser fichier actif non câblé/non testé
+
+## 14) Prochain sprint recommandé (ordre)
+1. Frontend runtime réel (lexer -> parser -> ast validate)
+2. Analysis runtime réel (sema/typeck/borrowck)
+3. Backend pipeline: ajouter statut détaillé de link dans le driver
+4. Fluent file I/O réel depuis `locales/*`
+5. Tests d’intégration `check` et `compile` avec snapshots diagnostics

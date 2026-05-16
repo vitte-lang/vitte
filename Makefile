@@ -819,6 +819,20 @@ grammar-test:
 	@python3 docs/book/grammar/scripts/validate_examples.py
 	@python3 tools/parser_precedence_property_test.py
 
+.PHONY: frontend-syntax-test
+frontend-syntax-test:
+	@python3 tools/frontend_syntax_check.py tests/frontend_syntax/valid
+	@if python3 tools/frontend_syntax_check.py tests/frontend_syntax/invalid >/tmp/frontend_syntax_invalid.out 2>&1; then \
+		echo "[frontend-syntax-test][error] invalid fixtures unexpectedly parsed"; \
+		cat /tmp/frontend_syntax_invalid.out; \
+		exit 1; \
+	fi
+	@echo "[frontend-syntax-test] OK"
+
+.PHONY: driver-report-runtime-test
+driver-report-runtime-test:
+	@python3 tools/driver_report_runtime_test.py
+
 .PHONY: core-language-test
 core-language-test:
 	@python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt

@@ -16,59 +16,59 @@ const IR_BLOCK_MAX_EDGES: u64 = 4194304
 const IR_BLOCK_MAX_INSTRUCTIONS: u64 = 16777216
 
 pick IrBlockKind {
-    Entry
-    Normal
-    LoopHeader
-    LoopBody
-    Branch
-    Merge
-    Exit
-    LandingPad
-    Unreachable
+    Entry,
+    Normal,
+    LoopHeader,
+    LoopBody,
+    Branch,
+    Merge,
+    Exit,
+    LandingPad,
+    Unreachable,
 }
 
 pick IrBlockState {
-    Created
-    Sealed
-    Reachable
-    Unreachable
-    Optimized
-    Removed
+    Created,
+    Sealed,
+    Reachable,
+    Unreachable,
+    Optimized,
+    Removed,
 }
 
 pick IrEdgeKind {
-    Fallthrough
-    BranchTrue
-    BranchFalse
-    Jump
-    LoopBack
-    Exception
-    Return
+    Fallthrough,
+    BranchTrue,
+    BranchFalse,
+    Jump,
+    LoopBack,
+    Exception,
+    Return,
 }
 
 pick IrTerminatorKind {
-    None
-    Return
-    Jump
-    Branch
-    Switch
-    Unreachable
-    Panic
+    None,
+    Return,
+    Jump,
+    Branch,
+    Switch,
+    Unreachable,
+    Panic,
 }
 
 pick IrBlockErrorKind {
-    None
-    UnknownBlock
-    InvalidBlock
-    DuplicateBlock
-    InvalidEdge
-    DuplicateEdge
-    MissingTerminator
-    InvalidTerminator
-    InstructionLimitExceeded
-    BlockLimitExceeded
-    EdgeLimitExceeded
-    InternalFailure
+    None,
+    UnknownBlock,
+    InvalidBlock,
+    DuplicateBlock,
+    InvalidEdge,
+    DuplicateEdge,
+    MissingTerminator,
+    InvalidTerminator,
+    InstructionLimitExceeded,
+    BlockLimitExceeded,
+    EdgeLimitExceeded,
+    InternalFailure,
 }
 
 form IrBlockSpan {
@@ -144,7 +144,7 @@ proc span_empty() -> IrBlockSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc block_ref_invalid() -> IrBlockRef {
@@ -152,7 +152,7 @@ proc block_ref_invalid() -> IrBlockRef {
         id: IR_BLOCK_INVALID_ID,
         name: "invalid",
         valid: false
-    }
+    };
 }
 
 proc block_ref(
@@ -163,7 +163,7 @@ proc block_ref(
         id: id,
         name: name,
         valid: true
-    }
+    };
 }
 
 proc instruction_invalid() -> IrInstructionRef {
@@ -173,7 +173,7 @@ proc instruction_invalid() -> IrInstructionRef {
         result: IR_BLOCK_INVALID_ID,
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc instruction_ref(
@@ -188,7 +188,7 @@ proc instruction_ref(
         result: result,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc terminator_none() -> IrTerminator {
@@ -198,7 +198,7 @@ proc terminator_none() -> IrTerminator {
         target_b: IR_BLOCK_INVALID_ID,
         value: IR_BLOCK_INVALID_ID,
         valid: false
-    }
+    };
 }
 
 proc terminator_return(value: u64) -> IrTerminator {
@@ -208,7 +208,7 @@ proc terminator_return(value: u64) -> IrTerminator {
         target_b: IR_BLOCK_INVALID_ID,
         value: value,
         valid: true
-    }
+    };
 }
 
 proc terminator_jump(target: u64) -> IrTerminator {
@@ -218,7 +218,7 @@ proc terminator_jump(target: u64) -> IrTerminator {
         target_b: IR_BLOCK_INVALID_ID,
         value: IR_BLOCK_INVALID_ID,
         valid: true
-    }
+    };
 }
 
 proc terminator_branch(
@@ -232,7 +232,7 @@ proc terminator_branch(
         target_b: false_block,
         value: condition,
         valid: true
-    }
+    };
 }
 
 proc terminator_unreachable() -> IrTerminator {
@@ -242,7 +242,7 @@ proc terminator_unreachable() -> IrTerminator {
         target_b: IR_BLOCK_INVALID_ID,
         value: IR_BLOCK_INVALID_ID,
         valid: true
-    }
+    };
 }
 
 proc block_invalid() -> IrBlock {
@@ -258,7 +258,7 @@ proc block_invalid() -> IrBlock {
         weight: 0,
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc block_create(
@@ -279,7 +279,7 @@ proc block_create(
         weight: 1,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc edge_create(
@@ -296,7 +296,7 @@ proc edge_create(
         kind: kind,
         probability: probability,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -310,7 +310,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         block: block
-    }
+    };
 }
 
 proc graph_empty() -> IrBlockGraph {
@@ -319,7 +319,7 @@ proc graph_empty() -> IrBlockGraph {
         "entry",
         IrBlockKind.Entry,
         span_empty()
-    )
+    );
 
     give IrBlockGraph {
         blocks: [entry],
@@ -327,7 +327,7 @@ proc graph_empty() -> IrBlockGraph {
         diagnostics: [],
         entry: IR_BLOCK_ENTRY_ID,
         valid: true
-    }
+    };
 }
 
 proc graph_add_diagnostic(
@@ -340,7 +340,7 @@ proc graph_add_diagnostic(
         diagnostics: graph.diagnostics + [diagnostic],
         entry: graph.entry,
         valid: false
-    }
+    };
 }
 
 proc graph_add_block(
@@ -356,7 +356,7 @@ proc graph_add_block(
                 block.span,
                 block.id
             )
-        )
+        );
     }
 
     if find_block(graph, block.id).valid {
@@ -368,7 +368,7 @@ proc graph_add_block(
                 block.span,
                 block.id
             )
-        )
+        );
     }
 
     give IrBlockGraph {
@@ -377,7 +377,7 @@ proc graph_add_block(
         diagnostics: graph.diagnostics,
         entry: graph.entry,
         valid: graph.valid
-    }
+    };
 }
 
 proc graph_add_edge(
@@ -393,7 +393,7 @@ proc graph_add_edge(
                 span_empty(),
                 edge.from_block
             )
-        )
+        );
     }
 
     if find_block(graph, edge.from_block).valid == false {
@@ -405,7 +405,7 @@ proc graph_add_edge(
                 span_empty(),
                 edge.from_block
             )
-        )
+        );
     }
 
     if find_block(graph, edge.to_block).valid == false {
@@ -417,7 +417,7 @@ proc graph_add_edge(
                 span_empty(),
                 edge.to_block
             )
-        )
+        );
     }
 
     if has_edge(graph, edge.from_block, edge.to_block, edge.kind) {
@@ -429,7 +429,7 @@ proc graph_add_edge(
                 span_empty(),
                 edge.from_block
             )
-        )
+        );
     }
 
     let with_edge = IrBlockGraph {
@@ -438,26 +438,26 @@ proc graph_add_edge(
         diagnostics: graph.diagnostics,
         entry: graph.entry,
         valid: graph.valid
-    }
+    };
 
-    give graph_connect_blocks(with_edge, edge.from_block, edge.to_block)
+    give graph_connect_blocks(with_edge, edge.from_block, edge.to_block);
 }
 
 proc find_block(
     graph: IrBlockGraph,
     id: u64
 ) -> IrBlock {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(graph.blocks) {
+    while i < vector_len(graph.blocks) {
         if graph.blocks[i].id == id {
-            give graph.blocks[i]
+            give graph.blocks[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give block_invalid()
+    give block_invalid();
 }
 
 proc has_edge(
@@ -466,19 +466,19 @@ proc has_edge(
     to_block: u64,
     kind: IrEdgeKind
 ) -> bool {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(graph.edges) {
-        let edge = graph.edges[i]
+    while i < vector_len(graph.edges) {
+        let edge = graph.edges[i];
 
         if edge.from_block == from_block and edge.to_block == to_block and edge.kind == kind {
-            give true
+            give true;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give false
+    give false;
 }
 
 proc block_with_instruction(
@@ -497,7 +497,7 @@ proc block_with_instruction(
         weight: block.weight,
         span: block.span,
         valid: block.valid
-    }
+    };
 }
 
 proc block_with_terminator(
@@ -516,7 +516,7 @@ proc block_with_terminator(
         weight: block.weight,
         span: block.span,
         valid: block.valid
-    }
+    };
 }
 
 proc block_add_predecessor(
@@ -535,7 +535,7 @@ proc block_add_predecessor(
         weight: block.weight,
         span: block.span,
         valid: block.valid
-    }
+    };
 }
 
 proc block_add_successor(
@@ -554,7 +554,7 @@ proc block_add_successor(
         weight: block.weight,
         span: block.span,
         valid: block.valid
-    }
+    };
 }
 
 proc block_with_state(
@@ -573,7 +573,7 @@ proc block_with_state(
         weight: block.weight,
         span: block.span,
         valid: block.valid
-    }
+    };
 }
 
 proc block_with_weight(
@@ -592,30 +592,30 @@ proc block_with_weight(
         weight: weight,
         span: block.span,
         valid: block.valid
-    }
+    };
 }
 
 proc replace_block(
     graph: IrBlockGraph,
     block: IrBlock
 ) -> IrBlockGraph {
-    let next: [IrBlock] = []
-    let replaced = false
-    let i: u64 = 0
+    let next: [IrBlock] = [];
+    let replaced = false;
+    let i: u64 = 0;
 
-    loop i < vector_len(graph.blocks) {
+    while i < vector_len(graph.blocks) {
         if graph.blocks[i].id == block.id {
-            set next = next + [block]
-            set replaced = true
+            set next = next + [block];
+            set replaced = true;
         } else {
-            set next = next + [graph.blocks[i]]
+            set next = next + [graph.blocks[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if replaced == false {
-        give graph_add_block(graph, block)
+        give graph_add_block(graph, block);
     }
 
     give IrBlockGraph {
@@ -624,7 +624,7 @@ proc replace_block(
         diagnostics: graph.diagnostics,
         entry: graph.entry,
         valid: graph.valid
-    }
+    };
 }
 
 proc graph_connect_blocks(
@@ -632,17 +632,17 @@ proc graph_connect_blocks(
     from_block: u64,
     to_block: u64
 ) -> IrBlockGraph {
-    let from = find_block(graph, from_block)
-    let to = find_block(graph, to_block)
+    let from = find_block(graph, from_block);
+    let to = find_block(graph, to_block);
 
     if from.valid == false or to.valid == false {
-        give graph
+        give graph;
     }
 
-    let with_from = replace_block(graph, block_add_successor(from, to_block))
-    let to2 = find_block(with_from, to_block)
+    let with_from = replace_block(graph, block_add_successor(from, to_block));
+    let to2 = find_block(with_from, to_block);
 
-    give replace_block(with_from, block_add_predecessor(to2, from_block))
+    give replace_block(with_from, block_add_predecessor(to2, from_block));
 }
 
 proc add_instruction_to_block(
@@ -650,7 +650,7 @@ proc add_instruction_to_block(
     block_id: u64,
     instruction: IrInstructionRef
 ) -> IrBlockGraph {
-    let block = find_block(graph, block_id)
+    let block = find_block(graph, block_id);
 
     if block.valid == false {
         give graph_add_diagnostic(
@@ -661,7 +661,7 @@ proc add_instruction_to_block(
                 instruction.span,
                 block_id
             )
-        )
+        );
     }
 
     if vector_len(block.instructions) >= IR_BLOCK_MAX_INSTRUCTIONS {
@@ -673,10 +673,10 @@ proc add_instruction_to_block(
                 instruction.span,
                 block_id
             )
-        )
+        );
     }
 
-    give replace_block(graph, block_with_instruction(block, instruction))
+    give replace_block(graph, block_with_instruction(block, instruction));
 }
 
 proc set_block_terminator(
@@ -684,7 +684,7 @@ proc set_block_terminator(
     block_id: u64,
     terminator: IrTerminator
 ) -> IrBlockGraph {
-    let block = find_block(graph, block_id)
+    let block = find_block(graph, block_id);
 
     if block.valid == false {
         give graph_add_diagnostic(
@@ -695,7 +695,7 @@ proc set_block_terminator(
                 span_empty(),
                 block_id
             )
-        )
+        );
     }
 
     if terminator.valid == false {
@@ -707,10 +707,10 @@ proc set_block_terminator(
                 span_empty(),
                 block_id
             )
-        )
+        );
     }
 
-    let updated = replace_block(graph, block_with_terminator(block, terminator))
+    let updated = replace_block(graph, block_with_terminator(block, terminator));
 
     if terminator.kind == IrTerminatorKind.Jump {
         give graph_add_edge(
@@ -722,7 +722,7 @@ proc set_block_terminator(
                 IrEdgeKind.Jump,
                 100
             )
-        )
+        );
     }
 
     if terminator.kind == IrTerminatorKind.Branch {
@@ -735,7 +735,7 @@ proc set_block_terminator(
                 IrEdgeKind.BranchTrue,
                 50
             )
-        )
+        );
 
         give graph_add_edge(
             e1,
@@ -746,57 +746,57 @@ proc set_block_terminator(
                 IrEdgeKind.BranchFalse,
                 50
             )
-        )
+        );
     }
 
-    give updated
+    give updated;
 }
 
 proc mark_reachable_from_entry(graph: IrBlockGraph) -> IrBlockGraph {
-    let current = graph
-    give mark_reachable(current, graph.entry)
+    let current = graph;
+    give mark_reachable(current, graph.entry);
 }
 
 proc mark_reachable(
     graph: IrBlockGraph,
     block_id: u64
 ) -> IrBlockGraph {
-    let block = find_block(graph, block_id)
+    let block = find_block(graph, block_id);
 
     if block.valid == false {
-        give graph
+        give graph;
     }
 
     if block.state == IrBlockState.Reachable {
-        give graph
+        give graph;
     }
 
-    let current = replace_block(graph, block_with_state(block, IrBlockState.Reachable))
-    let updated = current
+    let current = replace_block(graph, block_with_state(block, IrBlockState.Reachable));
+    let updated = current;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(block.successors) {
-        set updated = mark_reachable(updated, block.successors[i])
-        set i = i + 1
+    while i < vector_len(block.successors) {
+        set updated = mark_reachable(updated, block.successors[i]);
+        set i = i + 1;
     }
 
-    give updated
+    give updated;
 }
 
 proc remove_unreachable(graph: IrBlockGraph) -> IrBlockGraph {
-    let marked = mark_reachable_from_entry(graph)
-    let kept: [IrBlock] = []
-    let i: u64 = 0
+    let marked = mark_reachable_from_entry(graph);
+    let kept: [IrBlock] = [];
+    let i: u64 = 0;
 
-    loop i < vector_len(marked.blocks) {
-        let block = marked.blocks[i]
+    while i < vector_len(marked.blocks) {
+        let block = marked.blocks[i];
 
         if block.state == IrBlockState.Reachable or block.kind == IrBlockKind.Entry {
-            set kept = kept + [block]
+            set kept = kept + [block];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give IrBlockGraph {
@@ -805,43 +805,43 @@ proc remove_unreachable(graph: IrBlockGraph) -> IrBlockGraph {
         diagnostics: marked.diagnostics,
         entry: marked.entry,
         valid: marked.valid
-    }
+    };
 }
 
 proc block_has_terminator(block: IrBlock) -> bool {
-    give block.terminator.valid and block.terminator.kind != IrTerminatorKind.None
+    give block.terminator.valid and block.terminator.kind != IrTerminatorKind.None;
 }
 
 proc block_is_exit(block: IrBlock) -> bool {
     if block.kind == IrBlockKind.Exit {
-        give true
+        give true;
     }
 
     if block.terminator.kind == IrTerminatorKind.Return {
-        give true
+        give true;
     }
 
     if block.terminator.kind == IrTerminatorKind.Unreachable {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc block_instruction_count(block: IrBlock) -> u64 {
-    give vector_len(block.instructions)
+    give vector_len(block.instructions);
 }
 
 proc graph_block_count(graph: IrBlockGraph) -> u64 {
-    give vector_len(graph.blocks)
+    give vector_len(graph.blocks);
 }
 
 proc graph_edge_count(graph: IrBlockGraph) -> u64 {
-    give vector_len(graph.edges)
+    give vector_len(graph.edges);
 }
 
 proc graph_error_count(graph: IrBlockGraph) -> u64 {
-    give vector_len(graph.diagnostics)
+    give vector_len(graph.diagnostics);
 }
 
 proc validate_block(
@@ -857,7 +857,7 @@ proc validate_block(
                 block.span,
                 block.id
             )
-        )
+        );
     }
 
     if block_has_terminator(block) == false and block.kind != IrBlockKind.Exit {
@@ -869,18 +869,18 @@ proc validate_block(
                 block.span,
                 block.id
             )
-        )
+        );
     }
 
-    give graph
+    give graph;
 }
 
 proc validate_edges(graph: IrBlockGraph) -> IrBlockGraph {
-    let current = graph
-    let i: u64 = 0
+    let current = graph;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.edges) {
-        let edge = current.edges[i]
+    while i < vector_len(current.edges) {
+        let edge = current.edges[i];
 
         if edge.valid == false {
             give graph_add_diagnostic(
@@ -891,7 +891,7 @@ proc validate_edges(graph: IrBlockGraph) -> IrBlockGraph {
                     span_empty(),
                     edge.from_block
                 )
-            )
+            );
         }
 
         if find_block(current, edge.from_block).valid == false or find_block(current, edge.to_block).valid == false {
@@ -903,166 +903,166 @@ proc validate_edges(graph: IrBlockGraph) -> IrBlockGraph {
                     span_empty(),
                     edge.from_block
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc validate_graph(graph: IrBlockGraph) -> IrBlockGraph {
-    let current = graph
-    let i: u64 = 0
+    let current = graph;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.blocks) {
-        set current = validate_block(current, current.blocks[i])
-        set i = i + 1
+    while i < vector_len(current.blocks) {
+        set current = validate_block(current, current.blocks[i]);
+        set i = i + 1;
     }
 
-    give validate_edges(current)
+    give validate_edges(current);
 }
 
 proc graph_is_valid(graph: IrBlockGraph) -> bool {
-    give graph.valid and vector_len(graph.diagnostics) == 0
+    give graph.valid and vector_len(graph.diagnostics) == 0;
 }
 
 proc block_kind_name(kind: IrBlockKind) -> string {
     if kind == IrBlockKind.Entry {
-        give "entry"
+        give "entry";
     }
 
     if kind == IrBlockKind.Normal {
-        give "normal"
+        give "normal";
     }
 
     if kind == IrBlockKind.LoopHeader {
-        give "loop_header"
+        give "loop_header";
     }
 
     if kind == IrBlockKind.LoopBody {
-        give "loop_body"
+        give "loop_body";
     }
 
     if kind == IrBlockKind.Branch {
-        give "branch"
+        give "branch";
     }
 
     if kind == IrBlockKind.Merge {
-        give "merge"
+        give "merge";
     }
 
     if kind == IrBlockKind.Exit {
-        give "exit"
+        give "exit";
     }
 
     if kind == IrBlockKind.LandingPad {
-        give "landing_pad"
+        give "landing_pad";
     }
 
     if kind == IrBlockKind.Unreachable {
-        give "unreachable"
+        give "unreachable";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc block_state_name(state: IrBlockState) -> string {
     if state == IrBlockState.Created {
-        give "created"
+        give "created";
     }
 
     if state == IrBlockState.Sealed {
-        give "sealed"
+        give "sealed";
     }
 
     if state == IrBlockState.Reachable {
-        give "reachable"
+        give "reachable";
     }
 
     if state == IrBlockState.Unreachable {
-        give "unreachable"
+        give "unreachable";
     }
 
     if state == IrBlockState.Optimized {
-        give "optimized"
+        give "optimized";
     }
 
     if state == IrBlockState.Removed {
-        give "removed"
+        give "removed";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc terminator_kind_name(kind: IrTerminatorKind) -> string {
     if kind == IrTerminatorKind.Return {
-        give "return"
+        give "return";
     }
 
     if kind == IrTerminatorKind.Jump {
-        give "jump"
+        give "jump";
     }
 
     if kind == IrTerminatorKind.Branch {
-        give "branch"
+        give "branch";
     }
 
     if kind == IrTerminatorKind.Switch {
-        give "switch"
+        give "switch";
     }
 
     if kind == IrTerminatorKind.Unreachable {
-        give "unreachable"
+        give "unreachable";
     }
 
     if kind == IrTerminatorKind.Panic {
-        give "panic"
+        give "panic";
     }
 
-    give "none"
+    give "none";
 }
 
 proc print_instruction(instruction: IrInstructionRef) {
-    emit "ir instruction"
-    emit instruction.id
-    emit instruction.opcode
-    emit instruction.result
+    emit "ir instruction";
+    emit instruction.id;
+    emit instruction.opcode;
+    emit instruction.result;
 }
 
 proc print_block(block: IrBlock) {
-    emit "ir block"
-    emit block.id
-    emit block.name
-    emit block_kind_name(block.kind)
-    emit block_state_name(block.state)
-    emit vector_len(block.instructions)
-    emit terminator_kind_name(block.terminator.kind)
+    emit "ir block";
+    emit block.id;
+    emit block.name;
+    emit block_kind_name(block.kind);
+    emit block_state_name(block.state);
+    emit vector_len(block.instructions);
+    emit terminator_kind_name(block.terminator.kind);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(block.instructions) {
-        print_instruction(block.instructions[i])
-        set i = i + 1
+    while i < vector_len(block.instructions) {
+        print_instruction(block.instructions[i]);
+        set i = i + 1;
     }
 }
 
 proc print_graph(graph: IrBlockGraph) {
-    emit "ir block graph"
-    emit vector_len(graph.blocks)
-    emit vector_len(graph.edges)
-    emit vector_len(graph.diagnostics)
-    emit graph.entry
+    emit "ir block graph";
+    emit vector_len(graph.blocks);
+    emit vector_len(graph.edges);
+    emit vector_len(graph.diagnostics);
+    emit graph.entry;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(graph.blocks) {
-        print_block(graph.blocks[i])
-        set i = i + 1
+    while i < vector_len(graph.blocks) {
+        print_block(graph.blocks[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

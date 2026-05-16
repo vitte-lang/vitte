@@ -16,84 +16,84 @@ const OBJECT_MAX_RELOCATIONS: u64 = 2097152
 const OBJECT_MAX_BYTES: u64 = 536870912
 
 pick ObjectFormat {
-    Unknown
-    Elf
-    MachO
-    Coff
-    Wasm
-    Raw
+    Unknown,
+    Elf,
+    MachO,
+    Coff,
+    Wasm,
+    Raw,
 }
 
 pick ObjectArch {
-    Unknown
-    X86_64
-    AArch64
-    RiscV64
-    ARM
-    I386
-    Wasm32
+    Unknown,
+    X86_64,
+    AArch64,
+    RiscV64,
+    ARM,
+    I386,
+    Wasm32,
 }
 
 pick ObjectSectionKind {
-    Text
-    Data
-    Rodata
-    Bss
-    Tls
-    Debug
-    Reloc
-    SymbolTable
-    StringTable
-    Metadata
-    Custom
+    Text,
+    Data,
+    Rodata,
+    Bss,
+    Tls,
+    Debug,
+    Reloc,
+    SymbolTable,
+    StringTable,
+    Metadata,
+    Custom,
 }
 
 pick ObjectSymbolKind {
-    Unknown
-    Function
-    Object
-    Section
-    File
-    Label
-    External
-    Weak
-    Local
+    Unknown,
+    Function,
+    Object,
+    Section,
+    File,
+    Label,
+    External,
+    Weak,
+    Local,
 }
 
 pick ObjectRelocationKind {
-    None
-    Abs8
-    Abs16
-    Abs32
-    Abs64
-    PcRel8
-    PcRel16
-    PcRel32
-    PcRel64
-    Got
-    Plt
-    Tls
-    Branch
-    Call
-    Page
-    PageOffset
+    None,
+    Abs8,
+    Abs16,
+    Abs32,
+    Abs64,
+    PcRel8,
+    PcRel16,
+    PcRel32,
+    PcRel64,
+    Got,
+    Plt,
+    Tls,
+    Branch,
+    Call,
+    Page,
+    PageOffset,
 }
 
 pick ObjectErrorKind {
-    None
-    InvalidFormat
-    InvalidArch
-    InvalidSection
-    InvalidSymbol
-    InvalidRelocation
-    DuplicateSection
-    DuplicateSymbol
-    SectionLimitExceeded
-    SymbolLimitExceeded
-    RelocationLimitExceeded
-    ByteLimitExceeded
-    SerializationFailure
-    InternalFailure
+    None,
+    InvalidFormat,
+    InvalidArch,
+    InvalidSection,
+    InvalidSymbol,
+    InvalidRelocation,
+    DuplicateSection,
+    DuplicateSymbol,
+    SectionLimitExceeded,
+    SymbolLimitExceeded,
+    RelocationLimitExceeded,
+    ByteLimitExceeded,
+    SerializationFailure,
+    InternalFailure,
 }
 
 form ObjectSpan {
@@ -129,7 +129,7 @@ form ObjectSymbol {
     section: u64
     offset: u64
     size: u64
-    global: bool
+    is_global: bool
     exported: bool
     defined: bool
     valid: bool
@@ -170,7 +170,7 @@ proc span_empty() -> ObjectSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc buffer_empty() -> ObjectBuffer {
@@ -179,7 +179,7 @@ proc buffer_empty() -> ObjectBuffer {
         size: 0,
         capacity: OBJECT_MAX_BYTES,
         valid: true
-    }
+    };
 }
 
 proc buffer_append_u8(buffer: ObjectBuffer, value: u8) -> ObjectBuffer {
@@ -189,7 +189,7 @@ proc buffer_append_u8(buffer: ObjectBuffer, value: u8) -> ObjectBuffer {
             size: buffer.size,
             capacity: buffer.capacity,
             valid: false
-        }
+        };
     }
 
     give ObjectBuffer {
@@ -197,42 +197,42 @@ proc buffer_append_u8(buffer: ObjectBuffer, value: u8) -> ObjectBuffer {
         size: buffer.size + 1,
         capacity: buffer.capacity,
         valid: buffer.valid
-    }
+    };
 }
 
 proc buffer_append_bytes(buffer: ObjectBuffer, bytes: [u8]) -> ObjectBuffer {
-    let current = buffer
-    let i: u64 = 0
+    let current = buffer;
+    let i: u64 = 0;
 
-    loop i < vector_len(bytes) {
-        set current = buffer_append_u8(current, bytes[i])
-        set i = i + 1
+    while i < vector_len(bytes) {
+        set current = buffer_append_u8(current, bytes[i]);
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc buffer_append_u16_le(buffer: ObjectBuffer, value: u16) -> ObjectBuffer {
-    let b0 = (value & 255) as u8
-    let b1 = ((value >> 8) & 255) as u8
+    let b0 = (value & 255) as u8;
+    let b1 = ((value >> 8) & 255) as u8;
 
-    give buffer_append_u8(buffer_append_u8(buffer, b0), b1)
+    give buffer_append_u8(buffer_append_u8(buffer, b0), b1);
 }
 
 proc buffer_append_u32_le(buffer: ObjectBuffer, value: u32) -> ObjectBuffer {
-    let b0 = (value & 255) as u8
-    let b1 = ((value >> 8) & 255) as u8
-    let b2 = ((value >> 16) & 255) as u8
-    let b3 = ((value >> 24) & 255) as u8
+    let b0 = (value & 255) as u8;
+    let b1 = ((value >> 8) & 255) as u8;
+    let b2 = ((value >> 16) & 255) as u8;
+    let b3 = ((value >> 24) & 255) as u8;
 
-    give buffer_append_u8(buffer_append_u8(buffer_append_u8(buffer_append_u8(buffer, b0), b1), b2), b3)
+    give buffer_append_u8(buffer_append_u8(buffer_append_u8(buffer_append_u8(buffer, b0), b1), b2), b3);
 }
 
 proc buffer_append_u64_le(buffer: ObjectBuffer, value: u64) -> ObjectBuffer {
-    let lo = (value & 4294967295) as u32
-    let hi = ((value >> 32) & 4294967295) as u32
+    let lo = (value & 4294967295) as u32;
+    let hi = ((value >> 32) & 4294967295) as u32;
 
-    give buffer_append_u32_le(buffer_append_u32_le(buffer, lo), hi)
+    give buffer_append_u32_le(buffer_append_u32_le(buffer, lo), hi);
 }
 
 proc section_invalid() -> ObjectSection {
@@ -246,7 +246,7 @@ proc section_invalid() -> ObjectSection {
         bytes: [],
         size: 0,
         valid: false
-    }
+    };
 }
 
 proc symbol_invalid() -> ObjectSymbol {
@@ -257,11 +257,11 @@ proc symbol_invalid() -> ObjectSymbol {
         section: OBJECT_INVALID_ID,
         offset: 0,
         size: 0,
-        global: false,
+        is_global: false,
         exported: false,
         defined: false,
         valid: false
-    }
+    };
 }
 
 proc relocation_invalid() -> ObjectRelocation {
@@ -274,7 +274,7 @@ proc relocation_invalid() -> ObjectRelocation {
         addend: 0,
         width: 0,
         valid: false
-    }
+    };
 }
 
 proc section_create(
@@ -294,7 +294,7 @@ proc section_create(
         bytes: [],
         size: 0,
         valid: true
-    }
+    };
 }
 
 proc symbol_create(
@@ -304,7 +304,7 @@ proc symbol_create(
     section: u64,
     offset: u64,
     size: u64,
-    global: bool,
+    is_global: bool,
     exported: bool,
     defined: bool
 ) -> ObjectSymbol {
@@ -315,11 +315,11 @@ proc symbol_create(
         section: section,
         offset: offset,
         size: size,
-        global: global,
+        is_global: is_global,
         exported: exported,
         defined: defined,
         valid: true
-    }
+    };
 }
 
 proc relocation_create(
@@ -340,7 +340,7 @@ proc relocation_create(
         addend: addend,
         width: width,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -354,7 +354,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         entity: entity
-    }
+    };
 }
 
 proc object_empty(
@@ -370,25 +370,25 @@ proc object_empty(
         diagnostics: [],
         output: buffer_empty(),
         valid: true
-    }
+    };
 }
 
 proc object_default(
     format: ObjectFormat,
     arch: ObjectArch
 ) -> ObjectFile {
-    let object = object_empty(format, arch)
+    let object = object_empty(format, arch);
 
-    let text = section_create(0, ".text", ObjectSectionKind.Text, 16, 6)
-    let rodata = section_create(1, ".rodata", ObjectSectionKind.Rodata, 8, 2)
-    let data = section_create(2, ".data", ObjectSectionKind.Data, 8, 3)
-    let bss = section_create(3, ".bss", ObjectSectionKind.Bss, 8, 3)
+    let text = section_create(0, ".text", ObjectSectionKind.Text, 16, 6);
+    let rodata = section_create(1, ".rodata", ObjectSectionKind.Rodata, 8, 2);
+    let data = section_create(2, ".data", ObjectSectionKind.Data, 8, 3);
+    let bss = section_create(3, ".bss", ObjectSectionKind.Bss, 8, 3);
 
-    let o1 = object_add_section(object, text)
-    let o2 = object_add_section(o1, rodata)
-    let o3 = object_add_section(o2, data)
+    let o1 = object_add_section(object, text);
+    let o2 = object_add_section(o1, rodata);
+    let o3 = object_add_section(o2, data);
 
-    give object_add_section(o3, bss)
+    give object_add_section(o3, bss);
 }
 
 proc object_add_diagnostic(
@@ -404,7 +404,7 @@ proc object_add_diagnostic(
         diagnostics: object.diagnostics + [diagnostic],
         output: object.output,
         valid: false
-    }
+    };
 }
 
 proc object_add_section(
@@ -420,7 +420,7 @@ proc object_add_section(
                 span_empty(),
                 section.id
             )
-        )
+        );
     }
 
     if has_section_name(object, section.name) {
@@ -432,7 +432,7 @@ proc object_add_section(
                 span_empty(),
                 section.id
             )
-        )
+        );
     }
 
     give ObjectFile {
@@ -444,7 +444,7 @@ proc object_add_section(
         diagnostics: object.diagnostics,
         output: object.output,
         valid: object.valid
-    }
+    };
 }
 
 proc object_add_symbol(
@@ -460,7 +460,7 @@ proc object_add_symbol(
                 span_empty(),
                 symbol.id
             )
-        )
+        );
     }
 
     if has_symbol_name(object, symbol.name) {
@@ -472,7 +472,7 @@ proc object_add_symbol(
                 span_empty(),
                 symbol.id
             )
-        )
+        );
     }
 
     if symbol.defined and find_section(object, symbol.section).valid == false {
@@ -484,7 +484,7 @@ proc object_add_symbol(
                 span_empty(),
                 symbol.id
             )
-        )
+        );
     }
 
     give ObjectFile {
@@ -496,7 +496,7 @@ proc object_add_symbol(
         diagnostics: object.diagnostics,
         output: object.output,
         valid: object.valid
-    }
+    };
 }
 
 proc object_add_relocation(
@@ -512,7 +512,7 @@ proc object_add_relocation(
                 span_empty(),
                 relocation.id
             )
-        )
+        );
     }
 
     if find_section(object, relocation.section).valid == false {
@@ -524,7 +524,7 @@ proc object_add_relocation(
                 span_empty(),
                 relocation.id
             )
-        )
+        );
     }
 
     if find_symbol(object, relocation.symbol).valid == false {
@@ -536,7 +536,7 @@ proc object_add_relocation(
                 span_empty(),
                 relocation.id
             )
-        )
+        );
     }
 
     give ObjectFile {
@@ -548,89 +548,89 @@ proc object_add_relocation(
         diagnostics: object.diagnostics,
         output: object.output,
         valid: object.valid
-    }
+    };
 }
 
 proc find_section(
     object: ObjectFile,
     id: u64
 ) -> ObjectSection {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(object.sections) {
+    while i < vector_len(object.sections) {
         if object.sections[i].id == id {
-            give object.sections[i]
+            give object.sections[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give section_invalid()
+    give section_invalid();
 }
 
 proc find_section_by_name(
     object: ObjectFile,
     name: string
 ) -> ObjectSection {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(object.sections) {
+    while i < vector_len(object.sections) {
         if object.sections[i].name == name {
-            give object.sections[i]
+            give object.sections[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give section_invalid()
+    give section_invalid();
 }
 
 proc find_symbol(
     object: ObjectFile,
     id: u64
 ) -> ObjectSymbol {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(object.symbols) {
+    while i < vector_len(object.symbols) {
         if object.symbols[i].id == id {
-            give object.symbols[i]
+            give object.symbols[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give symbol_invalid()
+    give symbol_invalid();
 }
 
 proc find_symbol_by_name(
     object: ObjectFile,
     name: string
 ) -> ObjectSymbol {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(object.symbols) {
+    while i < vector_len(object.symbols) {
         if object.symbols[i].name == name {
-            give object.symbols[i]
+            give object.symbols[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give symbol_invalid()
+    give symbol_invalid();
 }
 
 proc has_section_name(
     object: ObjectFile,
     name: string
 ) -> bool {
-    give find_section_by_name(object, name).valid
+    give find_section_by_name(object, name).valid;
 }
 
 proc has_symbol_name(
     object: ObjectFile,
     name: string
 ) -> bool {
-    give find_symbol_by_name(object, name).valid
+    give find_symbol_by_name(object, name).valid;
 }
 
 proc section_with_bytes(
@@ -647,7 +647,7 @@ proc section_with_bytes(
         bytes: bytes,
         size: vector_len(bytes),
         valid: section.valid
-    }
+    };
 }
 
 proc section_with_offset(
@@ -664,30 +664,30 @@ proc section_with_offset(
         bytes: section.bytes,
         size: section.size,
         valid: section.valid
-    }
+    };
 }
 
 proc replace_section(
     object: ObjectFile,
     section: ObjectSection
 ) -> ObjectFile {
-    let next: [ObjectSection] = []
-    let replaced = false
-    let i: u64 = 0
+    let next: [ObjectSection] = [];
+    let replaced = false;
+    let i: u64 = 0;
 
-    loop i < vector_len(object.sections) {
+    while i < vector_len(object.sections) {
         if object.sections[i].id == section.id {
-            set next = next + [section]
-            set replaced = true
+            set next = next + [section];
+            set replaced = true;
         } else {
-            set next = next + [object.sections[i]]
+            set next = next + [object.sections[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if replaced == false {
-        give object_add_section(object, section)
+        give object_add_section(object, section);
     }
 
     give ObjectFile {
@@ -699,7 +699,7 @@ proc replace_section(
         diagnostics: object.diagnostics,
         output: object.output,
         valid: object.valid
-    }
+    };
 }
 
 proc append_section_bytes(
@@ -707,7 +707,7 @@ proc append_section_bytes(
     section_id: u64,
     bytes: [u8]
 ) -> ObjectFile {
-    let section = find_section(object, section_id)
+    let section = find_section(object, section_id);
 
     if section.valid == false {
         give object_add_diagnostic(
@@ -718,7 +718,7 @@ proc append_section_bytes(
                 span_empty(),
                 section_id
             )
-        )
+        );
     }
 
     if section.size + vector_len(bytes) > OBJECT_MAX_BYTES {
@@ -730,12 +730,12 @@ proc append_section_bytes(
                 span_empty(),
                 section_id
             )
-        )
+        );
     }
 
-    let updated = section_with_bytes(section, section.bytes + bytes)
+    let updated = section_with_bytes(section, section.bytes + bytes);
 
-    give replace_section(object, updated)
+    give replace_section(object, updated);
 }
 
 proc align_value(
@@ -743,116 +743,116 @@ proc align_value(
     alignment: u64
 ) -> u64 {
     if alignment <= 1 {
-        give value
+        give value;
     }
 
-    let mask = alignment - 1
+    let mask = alignment - 1;
 
-    give (value + mask) & not mask
+    give (value + mask) & not mask;
 }
 
 proc layout_sections(object: ObjectFile) -> ObjectFile {
-    let current = object
-    let offset: u64 = 0
-    let i: u64 = 0
+    let current = object;
+    let offset: u64 = 0;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.sections) {
-        let section = current.sections[i]
-        let aligned = align_value(offset, section.alignment)
-        let updated = section_with_offset(section, aligned)
+    while i < vector_len(current.sections) {
+        let section = current.sections[i];
+        let aligned = align_value(offset, section.alignment);
+        let updated = section_with_offset(section, aligned);
 
-        set current = replace_section(current, updated)
-        set offset = aligned + section.size
-        set i = i + 1
+        set current = replace_section(current, updated);
+        set offset = aligned + section.size;
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc serialize_section_data(
     buffer: ObjectBuffer,
     section: ObjectSection
 ) -> ObjectBuffer {
-    give buffer_append_bytes(buffer, section.bytes)
+    give buffer_append_bytes(buffer, section.bytes);
 }
 
 proc serialize_raw(
     object: ObjectFile
 ) -> ObjectBuffer {
-    let laid_out = layout_sections(object)
-    let buffer = buffer_empty()
-    let current = buffer
+    let laid_out = layout_sections(object);
+    let buffer = buffer_empty();
+    let current = buffer;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(laid_out.sections) {
-        set current = serialize_section_data(current, laid_out.sections[i])
-        set i = i + 1
+    while i < vector_len(laid_out.sections) {
+        set current = serialize_section_data(current, laid_out.sections[i]);
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc serialize_elf_stub(
     object: ObjectFile
 ) -> ObjectBuffer {
-    let buffer = buffer_empty()
+    let buffer = buffer_empty();
 
-    let b1 = buffer_append_u8(buffer, 0x7f)
-    let b2 = buffer_append_u8(b1, 0x45)
-    let b3 = buffer_append_u8(b2, 0x4c)
-    let b4 = buffer_append_u8(b3, 0x46)
+    let b1 = buffer_append_u8(buffer, 0x7f);
+    let b2 = buffer_append_u8(b1, 0x45);
+    let b3 = buffer_append_u8(b2, 0x4c);
+    let b4 = buffer_append_u8(b3, 0x46);
 
-    let b5 = buffer_append_u8(b4, 2)
-    let b6 = buffer_append_u8(b5, 1)
-    let b7 = buffer_append_u8(b6, 1)
-    let b8 = buffer_append_u8(b7, 0)
+    let b5 = buffer_append_u8(b4, 2);
+    let b6 = buffer_append_u8(b5, 1);
+    let b7 = buffer_append_u8(b6, 1);
+    let b8 = buffer_append_u8(b7, 0);
 
-    let raw = serialize_raw(object)
+    let raw = serialize_raw(object);
 
-    give buffer_append_bytes(b8, raw.bytes)
+    give buffer_append_bytes(b8, raw.bytes);
 }
 
 proc serialize_macho_stub(
     object: ObjectFile
 ) -> ObjectBuffer {
-    let buffer = buffer_empty()
+    let buffer = buffer_empty();
 
-    let b1 = buffer_append_u32_le(buffer, 0xfeedfacf)
-    let raw = serialize_raw(object)
+    let b1 = buffer_append_u32_le(buffer, 0xfeedfacf);
+    let raw = serialize_raw(object);
 
-    give buffer_append_bytes(b1, raw.bytes)
+    give buffer_append_bytes(b1, raw.bytes);
 }
 
 proc serialize_coff_stub(
     object: ObjectFile
 ) -> ObjectBuffer {
-    let buffer = buffer_empty()
+    let buffer = buffer_empty();
 
-    let b1 = buffer_append_u16_le(buffer, 0x8664)
-    let b2 = buffer_append_u16_le(b1, vector_len(object.sections) as u16)
-    let raw = serialize_raw(object)
+    let b1 = buffer_append_u16_le(buffer, 0x8664);
+    let b2 = buffer_append_u16_le(b1, vector_len(object.sections) as u16);
+    let raw = serialize_raw(object);
 
-    give buffer_append_bytes(b2, raw.bytes)
+    give buffer_append_bytes(b2, raw.bytes);
 }
 
 proc serialize_object(
     object: ObjectFile
 ) -> ObjectFile {
     if object.format == ObjectFormat.Raw {
-        give object_with_output(object, serialize_raw(object))
+        give object_with_output(object, serialize_raw(object));
     }
 
     if object.format == ObjectFormat.Elf {
-        give object_with_output(object, serialize_elf_stub(object))
+        give object_with_output(object, serialize_elf_stub(object));
     }
 
     if object.format == ObjectFormat.MachO {
-        give object_with_output(object, serialize_macho_stub(object))
+        give object_with_output(object, serialize_macho_stub(object));
     }
 
     if object.format == ObjectFormat.Coff {
-        give object_with_output(object, serialize_coff_stub(object))
+        give object_with_output(object, serialize_coff_stub(object));
     }
 
     give object_add_diagnostic(
@@ -863,7 +863,7 @@ proc serialize_object(
             span_empty(),
             OBJECT_INVALID_ID
         )
-    )
+    );
 }
 
 proc object_with_output(
@@ -879,7 +879,7 @@ proc object_with_output(
         diagnostics: object.diagnostics,
         output: output,
         valid: object.valid and output.valid
-    }
+    };
 }
 
 proc define_function_symbol(
@@ -904,7 +904,7 @@ proc define_function_symbol(
             exported,
             true
         )
-    )
+    );
 }
 
 proc define_external_symbol(
@@ -925,7 +925,7 @@ proc define_external_symbol(
             false,
             false
         )
-    )
+    );
 }
 
 proc add_abs64_relocation(
@@ -947,7 +947,7 @@ proc add_abs64_relocation(
             addend,
             64
         )
-    )
+    );
 }
 
 proc add_pcrel32_relocation(
@@ -969,15 +969,15 @@ proc add_pcrel32_relocation(
             addend,
             32
         )
-    )
+    );
 }
 
 proc validate_sections(object: ObjectFile) -> ObjectFile {
-    let current = object
-    let i: u64 = 0
+    let current = object;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.sections) {
-        let section = current.sections[i]
+    while i < vector_len(current.sections) {
+        let section = current.sections[i];
 
         if section.valid == false {
             give object_add_diagnostic(
@@ -988,21 +988,21 @@ proc validate_sections(object: ObjectFile) -> ObjectFile {
                     span_empty(),
                     section.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc validate_symbols(object: ObjectFile) -> ObjectFile {
-    let current = object
-    let i: u64 = 0
+    let current = object;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.symbols) {
-        let symbol = current.symbols[i]
+    while i < vector_len(current.symbols) {
+        let symbol = current.symbols[i];
 
         if symbol.valid == false {
             give object_add_diagnostic(
@@ -1013,7 +1013,7 @@ proc validate_symbols(object: ObjectFile) -> ObjectFile {
                     span_empty(),
                     symbol.id
                 )
-            )
+            );
         }
 
         if symbol.defined and find_section(current, symbol.section).valid == false {
@@ -1025,21 +1025,21 @@ proc validate_symbols(object: ObjectFile) -> ObjectFile {
                     span_empty(),
                     symbol.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc validate_relocations(object: ObjectFile) -> ObjectFile {
-    let current = object
-    let i: u64 = 0
+    let current = object;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.relocations) {
-        let relocation = current.relocations[i]
+    while i < vector_len(current.relocations) {
+        let relocation = current.relocations[i];
 
         if relocation.valid == false {
             give object_add_diagnostic(
@@ -1050,7 +1050,7 @@ proc validate_relocations(object: ObjectFile) -> ObjectFile {
                     span_empty(),
                     relocation.id
                 )
-            )
+            );
         }
 
         if find_section(current, relocation.section).valid == false {
@@ -1062,7 +1062,7 @@ proc validate_relocations(object: ObjectFile) -> ObjectFile {
                     span_empty(),
                     relocation.id
                 )
-            )
+            );
         }
 
         if find_symbol(current, relocation.symbol).valid == false {
@@ -1074,263 +1074,263 @@ proc validate_relocations(object: ObjectFile) -> ObjectFile {
                     span_empty(),
                     relocation.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc validate_object(object: ObjectFile) -> ObjectFile {
-    let s1 = validate_sections(object)
-    let s2 = validate_symbols(s1)
-    let s3 = validate_relocations(s2)
+    let s1 = validate_sections(object);
+    let s2 = validate_symbols(s1);
+    let s3 = validate_relocations(s2);
 
-    give s3
+    give s3;
 }
 
 proc finalize_object(object: ObjectFile) -> ObjectFile {
-    let checked = validate_object(object)
+    let checked = validate_object(object);
 
     if checked.valid == false {
-        give checked
+        give checked;
     }
 
-    let laid_out = layout_sections(checked)
+    let laid_out = layout_sections(checked);
 
-    give serialize_object(laid_out)
+    give serialize_object(laid_out);
 }
 
 proc object_size(object: ObjectFile) -> u64 {
-    give object.output.size
+    give object.output.size;
 }
 
 proc section_count(object: ObjectFile) -> u64 {
-    give vector_len(object.sections)
+    give vector_len(object.sections);
 }
 
 proc symbol_count(object: ObjectFile) -> u64 {
-    give vector_len(object.symbols)
+    give vector_len(object.symbols);
 }
 
 proc relocation_count(object: ObjectFile) -> u64 {
-    give vector_len(object.relocations)
+    give vector_len(object.relocations);
 }
 
 proc diagnostic_count(object: ObjectFile) -> u64 {
-    give vector_len(object.diagnostics)
+    give vector_len(object.diagnostics);
 }
 
 proc object_is_valid(object: ObjectFile) -> bool {
-    give object.valid and vector_len(object.diagnostics) == 0
+    give object.valid and vector_len(object.diagnostics) == 0;
 }
 
 proc format_name(format: ObjectFormat) -> string {
     if format == ObjectFormat.Elf {
-        give "elf"
+        give "elf";
     }
 
     if format == ObjectFormat.MachO {
-        give "macho"
+        give "macho";
     }
 
     if format == ObjectFormat.Coff {
-        give "coff"
+        give "coff";
     }
 
     if format == ObjectFormat.Wasm {
-        give "wasm"
+        give "wasm";
     }
 
     if format == ObjectFormat.Raw {
-        give "raw"
+        give "raw";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc arch_name(arch: ObjectArch) -> string {
     if arch == ObjectArch.X86_64 {
-        give "x86_64"
+        give "x86_64";
     }
 
     if arch == ObjectArch.AArch64 {
-        give "aarch64"
+        give "aarch64";
     }
 
     if arch == ObjectArch.RiscV64 {
-        give "riscv64"
+        give "riscv64";
     }
 
     if arch == ObjectArch.ARM {
-        give "arm"
+        give "arm";
     }
 
     if arch == ObjectArch.I386 {
-        give "i386"
+        give "i386";
     }
 
     if arch == ObjectArch.Wasm32 {
-        give "wasm32"
+        give "wasm32";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc section_kind_name(kind: ObjectSectionKind) -> string {
     if kind == ObjectSectionKind.Text {
-        give "text"
+        give "text";
     }
 
     if kind == ObjectSectionKind.Data {
-        give "data"
+        give "data";
     }
 
     if kind == ObjectSectionKind.Rodata {
-        give "rodata"
+        give "rodata";
     }
 
     if kind == ObjectSectionKind.Bss {
-        give "bss"
+        give "bss";
     }
 
     if kind == ObjectSectionKind.Debug {
-        give "debug"
+        give "debug";
     }
 
-    give "custom"
+    give "custom";
 }
 
 proc symbol_kind_name(kind: ObjectSymbolKind) -> string {
     if kind == ObjectSymbolKind.Function {
-        give "function"
+        give "function";
     }
 
     if kind == ObjectSymbolKind.Object {
-        give "object"
+        give "object";
     }
 
     if kind == ObjectSymbolKind.Section {
-        give "section"
+        give "section";
     }
 
     if kind == ObjectSymbolKind.Label {
-        give "label"
+        give "label";
     }
 
     if kind == ObjectSymbolKind.External {
-        give "external"
+        give "external";
     }
 
     if kind == ObjectSymbolKind.Weak {
-        give "weak"
+        give "weak";
     }
 
     if kind == ObjectSymbolKind.Local {
-        give "local"
+        give "local";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc relocation_kind_name(kind: ObjectRelocationKind) -> string {
     if kind == ObjectRelocationKind.Abs64 {
-        give "abs64"
+        give "abs64";
     }
 
     if kind == ObjectRelocationKind.Abs32 {
-        give "abs32"
+        give "abs32";
     }
 
     if kind == ObjectRelocationKind.PcRel32 {
-        give "pcrel32"
+        give "pcrel32";
     }
 
     if kind == ObjectRelocationKind.Got {
-        give "got"
+        give "got";
     }
 
     if kind == ObjectRelocationKind.Plt {
-        give "plt"
+        give "plt";
     }
 
     if kind == ObjectRelocationKind.Branch {
-        give "branch"
+        give "branch";
     }
 
     if kind == ObjectRelocationKind.Call {
-        give "call"
+        give "call";
     }
 
-    give "none"
+    give "none";
 }
 
 proc print_section(section: ObjectSection) {
-    emit "object section"
-    emit section.id
-    emit section.name
-    emit section_kind_name(section.kind)
-    emit section.offset
-    emit section.size
-    emit section.alignment
+    emit "object section";
+    emit section.id;
+    emit section.name;
+    emit section_kind_name(section.kind);
+    emit section.offset;
+    emit section.size;
+    emit section.alignment;
 }
 
 proc print_symbol(symbol: ObjectSymbol) {
-    emit "object symbol"
-    emit symbol.id
-    emit symbol.name
-    emit symbol_kind_name(symbol.kind)
-    emit symbol.section
-    emit symbol.offset
-    emit symbol.size
-    emit symbol.global
-    emit symbol.exported
+    emit "object symbol";
+    emit symbol.id;
+    emit symbol.name;
+    emit symbol_kind_name(symbol.kind);
+    emit symbol.section;
+    emit symbol.offset;
+    emit symbol.size;
+    emit symbol.is_global;
+    emit symbol.exported;
 }
 
 proc print_relocation(relocation: ObjectRelocation) {
-    emit "object relocation"
-    emit relocation.id
-    emit relocation_kind_name(relocation.kind)
-    emit relocation.section
-    emit relocation.offset
-    emit relocation.symbol
-    emit relocation.addend
+    emit "object relocation";
+    emit relocation.id;
+    emit relocation_kind_name(relocation.kind);
+    emit relocation.section;
+    emit relocation.offset;
+    emit relocation.symbol;
+    emit relocation.addend;
 }
 
 proc print_object(object: ObjectFile) {
-    emit "object file"
-    emit format_name(object.format)
-    emit arch_name(object.arch)
-    emit section_count(object)
-    emit symbol_count(object)
-    emit relocation_count(object)
-    emit diagnostic_count(object)
-    emit object_size(object)
+    emit "object file";
+    emit format_name(object.format);
+    emit arch_name(object.arch);
+    emit section_count(object);
+    emit symbol_count(object);
+    emit relocation_count(object);
+    emit diagnostic_count(object);
+    emit object_size(object);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(object.sections) {
-        print_section(object.sections[i])
-        set i = i + 1
+    while i < vector_len(object.sections) {
+        print_section(object.sections[i]);
+        set i = i + 1;
     }
 
-    let j: u64 = 0
+    let j: u64 = 0;
 
-    loop j < vector_len(object.symbols) {
-        print_symbol(object.symbols[j])
-        set j = j + 1
+    while j < vector_len(object.symbols) {
+        print_symbol(object.symbols[j]);
+        set j = j + 1;
     }
 
-    let k: u64 = 0
+    let k: u64 = 0;
 
-    loop k < vector_len(object.relocations) {
-        print_relocation(object.relocations[k])
-        set k = k + 1
+    while k < vector_len(object.relocations) {
+        print_relocation(object.relocations[k]);
+        set k = k + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

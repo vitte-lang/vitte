@@ -17,83 +17,83 @@ const INTERPRETER_MAX_STEPS: u64 = 4194304
 const INTERPRETER_MAX_MEMORY: u64 = 134217728
 
 pick InterpreterState {
-    Ready
-    Running
-    Suspended
-    Halted
-    Failed
-    Crashed
+    Ready,
+    Running,
+    Suspended,
+    Halted,
+    Failed,
+    Crashed,
 }
 
 pick InterpreterValueKind {
-    Invalid
-    Void
-    Bool
-    Int
-    UInt
-    Float
-    Char
-    String
-    Pointer
-    Array
-    Tuple
-    Struct
-    Enum
-    Function
+    Invalid,
+    Void,
+    Bool,
+    Int,
+    UInt,
+    Float,
+    Char,
+    String,
+    Pointer,
+    Array,
+    Tuple,
+    Struct,
+    Enum,
+    Function,
 }
 
 pick InterpreterInstructionKind {
-    Nop
-    LoadConst
-    Move
-    Copy
-    Add
-    Sub
-    Mul
-    Div
-    Mod
-    Neg
-    Not
-    Eq
-    Ne
-    Lt
-    Le
-    Gt
-    Ge
-    Jump
-    JumpIf
-    Call
-    Return
-    Alloc
-    Store
-    Load
-    Index
-    Field
-    Cast
-    Halt
+    Nop,
+    LoadConst,
+    Move,
+    Copy,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Neg,
+    Not,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Jump,
+    JumpIf,
+    Call,
+    Return,
+    Alloc,
+    Store,
+    Load,
+    Index,
+    Field,
+    Cast,
+    Halt,
 }
 
 pick InterpreterErrorKind {
-    None
-    InvalidInstruction
-    InvalidValue
-    InvalidPointer
-    InvalidMemory
-    InvalidFrame
-    InvalidCall
-    InvalidCast
-    InvalidIndex
-    InvalidField
-    DivisionByZero
-    StackOverflow
-    FrameOverflow
-    MemoryOverflow
-    StepLimitExceeded
-    UnknownFunction
-    UnknownInstruction
-    UnsupportedInstruction
-    ExecutionFailure
-    InternalFailure
+    None,
+    InvalidInstruction,
+    InvalidValue,
+    InvalidPointer,
+    InvalidMemory,
+    InvalidFrame,
+    InvalidCall,
+    InvalidCast,
+    InvalidIndex,
+    InvalidField,
+    DivisionByZero,
+    StackOverflow,
+    FrameOverflow,
+    MemoryOverflow,
+    StepLimitExceeded,
+    UnknownFunction,
+    UnknownInstruction,
+    UnsupportedInstruction,
+    ExecutionFailure,
+    InternalFailure,
 }
 
 form InterpreterSpan {
@@ -159,7 +159,7 @@ proc span_empty() -> InterpreterSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc value_invalid() -> InterpreterValue {
@@ -174,7 +174,7 @@ proc value_invalid() -> InterpreterValue {
         string_value: "",
         pointer_value: 0,
         valid: false
-    }
+    };
 }
 
 proc value_void(id: u64) -> InterpreterValue {
@@ -189,7 +189,7 @@ proc value_void(id: u64) -> InterpreterValue {
         string_value: "",
         pointer_value: 0,
         valid: true
-    }
+    };
 }
 
 proc value_bool(id: u64, value: bool) -> InterpreterValue {
@@ -204,7 +204,7 @@ proc value_bool(id: u64, value: bool) -> InterpreterValue {
         string_value: "",
         pointer_value: 0,
         valid: true
-    }
+    };
 }
 
 proc value_int(id: u64, value: i64) -> InterpreterValue {
@@ -219,7 +219,7 @@ proc value_int(id: u64, value: i64) -> InterpreterValue {
         string_value: "",
         pointer_value: 0,
         valid: true
-    }
+    };
 }
 
 proc value_string(id: u64, value: string) -> InterpreterValue {
@@ -234,7 +234,7 @@ proc value_string(id: u64, value: string) -> InterpreterValue {
         string_value: value,
         pointer_value: 0,
         valid: true
-    }
+    };
 }
 
 proc instruction_create(
@@ -252,7 +252,7 @@ proc instruction_create(
         operand_b: operand_b,
         operand_c: operand_c,
         span: span
-    }
+    };
 }
 
 proc frame_create(
@@ -269,7 +269,7 @@ proc frame_create(
         stack_base: stack_base,
         return_slot: return_slot,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -283,7 +283,7 @@ proc diagnostic_create(
         message: message,
         instruction: instruction,
         span: span
-    }
+    };
 }
 
 proc context_empty() -> InterpreterContext {
@@ -297,7 +297,7 @@ proc context_empty() -> InterpreterContext {
         steps: 0,
         allocated_memory: 0,
         valid: true
-    }
+    };
 }
 
 proc context_add_instruction(
@@ -314,7 +314,7 @@ proc context_add_instruction(
         steps: context.steps,
         allocated_memory: context.allocated_memory,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_diagnostic(
@@ -331,7 +331,7 @@ proc context_add_diagnostic(
         steps: context.steps,
         allocated_memory: context.allocated_memory,
         valid: false
-    }
+    };
 }
 
 proc push_stack(
@@ -347,7 +347,7 @@ proc push_stack(
                 context.instruction_pointer,
                 span_empty()
             )
-        )
+        );
     }
 
     give InterpreterContext {
@@ -360,16 +360,16 @@ proc push_stack(
         steps: context.steps,
         allocated_memory: context.allocated_memory,
         valid: context.valid
-    }
+    };
 }
 
 proc pop_stack(context: InterpreterContext) -> InterpreterContext {
-    let next_stack: [InterpreterValue] = []
-    let i: u64 = 0
+    let next_stack: [InterpreterValue] = [];
+    let i: u64 = 0;
 
-    loop i + 1 < vector_len(context.stack) {
-        set next_stack = next_stack + [context.stack[i]]
-        set i = i + 1
+    while i + 1 < vector_len(context.stack) {
+        set next_stack = next_stack + [context.stack[i]];
+        set i = i + 1;
     }
 
     give InterpreterContext {
@@ -382,15 +382,15 @@ proc pop_stack(context: InterpreterContext) -> InterpreterContext {
         steps: context.steps,
         allocated_memory: context.allocated_memory,
         valid: context.valid
-    }
+    };
 }
 
 proc stack_top(context: InterpreterContext) -> InterpreterValue {
     if vector_len(context.stack) == 0 {
-        give value_invalid()
+        give value_invalid();
     }
 
-    give context.stack[vector_len(context.stack) - 1]
+    give context.stack[vector_len(context.stack) - 1];
 }
 
 proc push_frame(
@@ -406,7 +406,7 @@ proc push_frame(
                 context.instruction_pointer,
                 span_empty()
             )
-        )
+        );
     }
 
     give InterpreterContext {
@@ -419,7 +419,7 @@ proc push_frame(
         steps: context.steps,
         allocated_memory: context.allocated_memory,
         valid: context.valid
-    }
+    };
 }
 
 proc current_instruction(context: InterpreterContext) -> InterpreterInstruction {
@@ -431,10 +431,10 @@ proc current_instruction(context: InterpreterContext) -> InterpreterInstruction 
             0,
             0,
             span_empty()
-        )
+        );
     }
 
-    give context.instructions[context.instruction_pointer]
+    give context.instructions[context.instruction_pointer];
 }
 
 proc next_instruction(context: InterpreterContext) -> InterpreterContext {
@@ -447,7 +447,7 @@ proc next_instruction(context: InterpreterContext) -> InterpreterContext {
                 context.instruction_pointer,
                 span_empty()
             )
-        )
+        );
     }
 
     give InterpreterContext {
@@ -460,28 +460,28 @@ proc next_instruction(context: InterpreterContext) -> InterpreterContext {
         steps: context.steps + 1,
         allocated_memory: context.allocated_memory,
         valid: context.valid
-    }
+    };
 }
 
 proc execute_load_const(
     context: InterpreterContext,
     instruction: InterpreterInstruction
 ) -> InterpreterContext {
-    let value = value_int(instruction.operand_a, instruction.operand_b as i64)
-    let pushed = push_stack(context, value)
+    let value = value_int(instruction.operand_a, instruction.operand_b as i64);
+    let pushed = push_stack(context, value);
 
-    give next_instruction(pushed)
+    give next_instruction(pushed);
 }
 
 proc execute_add(
     context: InterpreterContext,
     instruction: InterpreterInstruction
 ) -> InterpreterContext {
-    let right = stack_top(context)
-    let c1 = pop_stack(context)
+    let right = stack_top(context);
+    let c1 = pop_stack(context);
 
-    let left = stack_top(c1)
-    let c2 = pop_stack(c1)
+    let left = stack_top(c1);
+    let c2 = pop_stack(c1);
 
     if left.kind != InterpreterValueKind.Int or right.kind != InterpreterValueKind.Int {
         give context_add_diagnostic(
@@ -492,68 +492,68 @@ proc execute_add(
                 instruction.id,
                 instruction.span
             )
-        )
+        );
     }
 
     let result = value_int(
         instruction.operand_c,
         left.int_value + right.int_value
-    )
+    );
 
-    let pushed = push_stack(c2, result)
+    let pushed = push_stack(c2, result);
 
-    give next_instruction(pushed)
+    give next_instruction(pushed);
 }
 
 proc execute_sub(
     context: InterpreterContext,
     instruction: InterpreterInstruction
 ) -> InterpreterContext {
-    let right = stack_top(context)
-    let c1 = pop_stack(context)
+    let right = stack_top(context);
+    let c1 = pop_stack(context);
 
-    let left = stack_top(c1)
-    let c2 = pop_stack(c1)
+    let left = stack_top(c1);
+    let c2 = pop_stack(c1);
 
     let result = value_int(
         instruction.operand_c,
         left.int_value - right.int_value
-    )
+    );
 
-    let pushed = push_stack(c2, result)
+    let pushed = push_stack(c2, result);
 
-    give next_instruction(pushed)
+    give next_instruction(pushed);
 }
 
 proc execute_mul(
     context: InterpreterContext,
     instruction: InterpreterInstruction
 ) -> InterpreterContext {
-    let right = stack_top(context)
-    let c1 = pop_stack(context)
+    let right = stack_top(context);
+    let c1 = pop_stack(context);
 
-    let left = stack_top(c1)
-    let c2 = pop_stack(c1)
+    let left = stack_top(c1);
+    let c2 = pop_stack(c1);
 
     let result = value_int(
         instruction.operand_c,
         left.int_value * right.int_value
-    )
+    );
 
-    let pushed = push_stack(c2, result)
+    let pushed = push_stack(c2, result);
 
-    give next_instruction(pushed)
+    give next_instruction(pushed);
 }
 
 proc execute_div(
     context: InterpreterContext,
     instruction: InterpreterInstruction
 ) -> InterpreterContext {
-    let right = stack_top(context)
-    let c1 = pop_stack(context)
+    let right = stack_top(context);
+    let c1 = pop_stack(context);
 
-    let left = stack_top(c1)
-    let c2 = pop_stack(c1)
+    let left = stack_top(c1);
+    let c2 = pop_stack(c1);
 
     if right.int_value == 0 {
         give context_add_diagnostic(
@@ -564,54 +564,54 @@ proc execute_div(
                 instruction.id,
                 instruction.span
             )
-        )
+        );
     }
 
     let result = value_int(
         instruction.operand_c,
         left.int_value / right.int_value
-    )
+    );
 
-    let pushed = push_stack(c2, result)
+    let pushed = push_stack(c2, result);
 
-    give next_instruction(pushed)
+    give next_instruction(pushed);
 }
 
 proc execute_neg(
     context: InterpreterContext,
     instruction: InterpreterInstruction
 ) -> InterpreterContext {
-    let operand = stack_top(context)
-    let popped = pop_stack(context)
+    let operand = stack_top(context);
+    let popped = pop_stack(context);
 
     let result = value_int(
         instruction.operand_c,
         0 - operand.int_value
-    )
+    );
 
-    let pushed = push_stack(popped, result)
+    let pushed = push_stack(popped, result);
 
-    give next_instruction(pushed)
+    give next_instruction(pushed);
 }
 
 proc execute_eq(
     context: InterpreterContext,
     instruction: InterpreterInstruction
 ) -> InterpreterContext {
-    let right = stack_top(context)
-    let c1 = pop_stack(context)
+    let right = stack_top(context);
+    let c1 = pop_stack(context);
 
-    let left = stack_top(c1)
-    let c2 = pop_stack(c1)
+    let left = stack_top(c1);
+    let c2 = pop_stack(c1);
 
     let result = value_bool(
         instruction.operand_c,
         left.int_value == right.int_value
-    )
+    );
 
-    let pushed = push_stack(c2, result)
+    let pushed = push_stack(c2, result);
 
-    give next_instruction(pushed)
+    give next_instruction(pushed);
 }
 
 proc execute_jump(
@@ -628,15 +628,15 @@ proc execute_jump(
         steps: context.steps + 1,
         allocated_memory: context.allocated_memory,
         valid: context.valid
-    }
+    };
 }
 
 proc execute_jump_if(
     context: InterpreterContext,
     instruction: InterpreterInstruction
 ) -> InterpreterContext {
-    let condition = stack_top(context)
-    let popped = pop_stack(context)
+    let condition = stack_top(context);
+    let popped = pop_stack(context);
 
     if condition.kind != InterpreterValueKind.Bool {
         give context_add_diagnostic(
@@ -647,7 +647,7 @@ proc execute_jump_if(
                 instruction.id,
                 instruction.span
             )
-        )
+        );
     }
 
     if condition.bool_value {
@@ -661,17 +661,17 @@ proc execute_jump_if(
             steps: popped.steps + 1,
             allocated_memory: popped.allocated_memory,
             valid: popped.valid
-        }
+        };
     }
 
-    give next_instruction(popped)
+    give next_instruction(popped);
 }
 
 proc execute_alloc(
     context: InterpreterContext,
     instruction: InterpreterInstruction
 ) -> InterpreterContext {
-    let allocation_size = instruction.operand_a
+    let allocation_size = instruction.operand_a;
 
     if context.allocated_memory + allocation_size > INTERPRETER_MAX_MEMORY {
         give context_add_diagnostic(
@@ -682,15 +682,15 @@ proc execute_alloc(
                 instruction.id,
                 instruction.span
             )
-        )
+        );
     }
 
     let pointer = value_int(
         instruction.operand_c,
         context.allocated_memory as i64
-    )
+    );
 
-    let pushed = push_stack(context, pointer)
+    let pushed = push_stack(context, pointer);
 
     give InterpreterContext {
         state: pushed.state,
@@ -702,7 +702,7 @@ proc execute_alloc(
         steps: pushed.steps + 1,
         allocated_memory: pushed.allocated_memory + allocation_size,
         valid: pushed.valid
-    }
+    };
 }
 
 proc execute_halt(
@@ -718,60 +718,60 @@ proc execute_halt(
         steps: context.steps,
         allocated_memory: context.allocated_memory,
         valid: context.valid
-    }
+    };
 }
 
 proc execute_instruction(
     context: InterpreterContext
 ) -> InterpreterContext {
-    let instruction = current_instruction(context)
+    let instruction = current_instruction(context);
 
     if instruction.kind == InterpreterInstructionKind.Nop {
-        give next_instruction(context)
+        give next_instruction(context);
     }
 
     if instruction.kind == InterpreterInstructionKind.LoadConst {
-        give execute_load_const(context, instruction)
+        give execute_load_const(context, instruction);
     }
 
     if instruction.kind == InterpreterInstructionKind.Add {
-        give execute_add(context, instruction)
+        give execute_add(context, instruction);
     }
 
     if instruction.kind == InterpreterInstructionKind.Sub {
-        give execute_sub(context, instruction)
+        give execute_sub(context, instruction);
     }
 
     if instruction.kind == InterpreterInstructionKind.Mul {
-        give execute_mul(context, instruction)
+        give execute_mul(context, instruction);
     }
 
     if instruction.kind == InterpreterInstructionKind.Div {
-        give execute_div(context, instruction)
+        give execute_div(context, instruction);
     }
 
     if instruction.kind == InterpreterInstructionKind.Neg {
-        give execute_neg(context, instruction)
+        give execute_neg(context, instruction);
     }
 
     if instruction.kind == InterpreterInstructionKind.Eq {
-        give execute_eq(context, instruction)
+        give execute_eq(context, instruction);
     }
 
     if instruction.kind == InterpreterInstructionKind.Jump {
-        give execute_jump(context, instruction)
+        give execute_jump(context, instruction);
     }
 
     if instruction.kind == InterpreterInstructionKind.JumpIf {
-        give execute_jump_if(context, instruction)
+        give execute_jump_if(context, instruction);
     }
 
     if instruction.kind == InterpreterInstructionKind.Alloc {
-        give execute_alloc(context, instruction)
+        give execute_alloc(context, instruction);
     }
 
     if instruction.kind == InterpreterInstructionKind.Halt {
-        give execute_halt(context)
+        give execute_halt(context);
     }
 
     give context_add_diagnostic(
@@ -782,7 +782,7 @@ proc execute_instruction(
             instruction.id,
             instruction.span
         )
-    )
+    );
 }
 
 proc execute(
@@ -798,70 +798,70 @@ proc execute(
         steps: context.steps,
         allocated_memory: context.allocated_memory,
         valid: context.valid
-    }
+    };
 
-    loop current.state == InterpreterState.Running {
-        set current = execute_instruction(current)
+    while current.state == InterpreterState.Running {
+        set current = execute_instruction(current);
 
         if current.valid == false {
-            give current
+            give current;
         }
 
         if current.state == InterpreterState.Halted {
-            give current
+            give current;
         }
     }
 
-    give current
+    give current;
 }
 
 proc interpreter_has_errors(
     context: InterpreterContext
 ) -> bool {
-    give vector_len(context.diagnostics) > 0
+    give vector_len(context.diagnostics) > 0;
 }
 
 proc interpreter_stack_depth(
     context: InterpreterContext
 ) -> u64 {
-    give vector_len(context.stack)
+    give vector_len(context.stack);
 }
 
 proc interpreter_frame_depth(
     context: InterpreterContext
 ) -> u64 {
-    give vector_len(context.frames)
+    give vector_len(context.frames);
 }
 
 proc print_instruction(
     instruction: InterpreterInstruction
 ) {
-    emit "instruction"
-    emit instruction.id
-    emit instruction.kind
+    emit "instruction";
+    emit instruction.id;
+    emit instruction.kind;
 }
 
 proc print_value(
     value: InterpreterValue
 ) {
-    emit "value"
-    emit value.id
-    emit value.type_name
-    emit value.valid
+    emit "value";
+    emit value.id;
+    emit value.type_name;
+    emit value.valid;
 }
 
 proc print_context(
     context: InterpreterContext
 ) {
-    emit "interpreter context"
-    emit context.state
-    emit context.steps
-    emit vector_len(context.instructions)
-    emit vector_len(context.stack)
-    emit vector_len(context.frames)
-    emit vector_len(context.diagnostics)
+    emit "interpreter context";
+    emit context.state;
+    emit context.steps;
+    emit vector_len(context.instructions);
+    emit vector_len(context.stack);
+    emit vector_len(context.frames);
+    emit vector_len(context.diagnostics);
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

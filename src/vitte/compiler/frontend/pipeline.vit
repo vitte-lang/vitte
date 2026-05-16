@@ -1,0 +1,100 @@
+space vitte/compiler/frontend
+
+use vitte/compiler/frontend/input.{ FrontendInput, input_from_text }
+use vitte/compiler/frontend/macros/expand.{ expand_macros }
+use vitte/compiler/frontend/lexer/scanner.{ scan_tokens }
+use vitte/compiler/frontend/parse/parser.{ parse_source }
+use vitte/compiler/frontend/parse/recovery.{ capped_diag_count, recovery_applied }
+use vitte/compiler/frontend/ast/validate.{ AstValidation, validate_ast_root }
+
+form FrontendDiagnostic {
+  code: string
+  message: string
+  fatal: bool
+}
+
+form FrontendOutput {
+  source_path: string
+  source_text: string
+  token_count: u64
+  grammar_version: string
+  ast_root: string
+  toplevel_count: u64
+  stmt_count: u64
+  expr_count: u64
+  type_count: u64
+  pattern_count: u64
+  diagnostics: [FrontendDiagnostic]
+  diagnostics_total: u64
+  diagnostics_capped: u64
+  recovery_used: bool
+  macro_trace: string
+  valid: bool
+}
+
+proc frontend_diagnostic(code: string, message: string, fatal: bool) -> FrontendDiagnostic {
+  give FrontendDiagnostic { code: code, message: message, fatal: fatal };
+}
+
+proc frontend_run(source_path: string, source_text: string) -> FrontendOutput {
+  let input: FrontendInput = input_from_text(source_path, source_text);
+  if not input.valid {
+    let d = frontend_diagnostic("FLEX0001", "empty source input", true);
+    give FrontendOutput {
+      source_path: source_path,
+      source_text: source_text,
+      token_count: 0,
+      grammar_version: "vitte-core-2026-05",
+      ast_root: "invalid",
+      toplevel_count: 0,
+      stmt_count: 0,
+      expr_count: 0,
+      type_count: 0,
+      pattern_count: 0,
+      diagnostics: [d],
+      diagnostics_total: 1,
+      diagnostics_capped: capped_diag_count(1),
+      recovery_used: recovery_applied(1),
+      macro_trace: "macro:skip(empty)",
+      valid: false
+    };
+  }
+
+  let expanded: string = expand_macros(input.text);
+  let tokens = scan_tokens(expanded);
+  let parsed = parse_source(source_path, tokens);
+
+  let ds: [FrontendDiagnostic] = [];
+  let i: u64 = 0;
+  while i < len(parsed.diagnostics) {
+    set ds = ds + [frontend_diagnostic(parsed.diagnostics[i].code, parsed.diagnostics[i].message, true)];
+    set i = i + 1;
+  }
+
+  let ast_root: string = parsed.ast_root;
+  let v: AstValidation = validate_ast_root(ast_root);
+  if not v.valid {
+    set ds = ds + [frontend_diagnostic("FAST0001", v.message, true)];
+  }
+
+  let total: u64 = len(ds);
+
+  give FrontendOutput {
+    source_path: source_path,
+    source_text: expanded,
+    token_count: len(tokens),
+    grammar_version: parsed.grammar_version,
+    ast_root: ast_root,
+    toplevel_count: parsed.toplevel_count,
+    stmt_count: parsed.stmt_count,
+    expr_count: parsed.expr_count,
+    type_count: parsed.type_count,
+    pattern_count: parsed.pattern_count,
+    diagnostics: ds,
+    diagnostics_total: total,
+    diagnostics_capped: capped_diag_count(total),
+    recovery_used: recovery_applied(total),
+    macro_trace: "macro:expand@1:1 -> macro:hygiene@1:1",
+    valid: parsed.valid and v.valid and total == 0
+  };
+}

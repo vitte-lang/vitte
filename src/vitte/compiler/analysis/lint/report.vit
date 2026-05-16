@@ -14,39 +14,39 @@ const LINT_REPORT_MAX_ENTRIES: u64 = 1048576
 const LINT_REPORT_MAX_FILES: u64 = 262144
 
 pick LintLevel {
-    Allow
-    Info
-    Warn
-    Deny
-    Forbid
+    Allow,
+    Info,
+    Warn,
+    Deny,
+    Forbid,
 }
 
 pick LintReportFormat {
-    Text
-    Json
-    Markdown
-    Sarif
-    Html
-    Binary
+    Text,
+    Json,
+    Markdown,
+    Sarif,
+    Html,
+    Binary,
 }
 
 pick LintReportKind {
-    Summary
-    Detailed
-    Compact
-    Full
-    Diagnostic
+    Summary,
+    Detailed,
+    Compact,
+    Full,
+    Diagnostic,
 }
 
 pick LintReportErrorKind {
-    None
-    InvalidFormat
-    InvalidEntry
-    InvalidDiagnostic
-    EntryLimitExceeded
-    FileLimitExceeded
-    SerializationFailure
-    InternalFailure
+    None,
+    InvalidFormat,
+    InvalidEntry,
+    InvalidDiagnostic,
+    EntryLimitExceeded,
+    FileLimitExceeded,
+    SerializationFailure,
+    InternalFailure,
 }
 
 form LintSpan {
@@ -108,7 +108,7 @@ proc span_empty() -> LintSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc statistics_empty() -> LintStatistics {
@@ -119,7 +119,7 @@ proc statistics_empty() -> LintStatistics {
         total_errors: 0,
         total_forbids: 0,
         total_files: 0
-    }
+    };
 }
 
 proc entry_create(
@@ -141,7 +141,7 @@ proc entry_create(
         module_name: module_name,
         function_name: function_name,
         span: span
-    }
+    };
 }
 
 proc file_summary_create(
@@ -155,7 +155,7 @@ proc file_summary_create(
         warnings: 0,
         errors: 0,
         forbids: 0
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -167,7 +167,7 @@ proc diagnostic_create(
         kind: kind,
         message: message,
         span: span
-    }
+    };
 }
 
 proc report_empty() -> LintReport {
@@ -180,7 +180,7 @@ proc report_empty() -> LintReport {
         statistics: statistics_empty(),
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc report_create(
@@ -197,7 +197,7 @@ proc report_create(
         statistics: statistics_empty(),
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc report_add_diagnostic(
@@ -213,32 +213,32 @@ proc report_add_diagnostic(
         statistics: report.statistics,
         diagnostics: report.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc statistics_add_entry(
     statistics: LintStatistics,
     level: LintLevel
 ) -> LintStatistics {
-    let infos = statistics.total_infos
-    let warnings = statistics.total_warnings
-    let errors = statistics.total_errors
-    let forbids = statistics.total_forbids
+    let infos = statistics.total_infos;
+    let warnings = statistics.total_warnings;
+    let errors = statistics.total_errors;
+    let forbids = statistics.total_forbids;
 
     if level == LintLevel.Info {
-        set infos = infos + 1
+        set infos = infos + 1;
     }
 
     if level == LintLevel.Warn {
-        set warnings = warnings + 1
+        set warnings = warnings + 1;
     }
 
     if level == LintLevel.Deny {
-        set errors = errors + 1
+        set errors = errors + 1;
     }
 
     if level == LintLevel.Forbid {
-        set forbids = forbids + 1
+        set forbids = forbids + 1;
     }
 
     give LintStatistics {
@@ -248,7 +248,7 @@ proc statistics_add_entry(
         total_errors: errors,
         total_forbids: forbids,
         total_files: statistics.total_files
-    }
+    };
 }
 
 proc report_add_entry(
@@ -263,10 +263,10 @@ proc report_add_entry(
                 "too many lint report entries",
                 entry.span
             )
-        )
+        );
     }
 
-    let stats = statistics_add_entry(report.statistics, entry.level)
+    let stats = statistics_add_entry(report.statistics, entry.level);
 
     give LintReport {
         id: report.id,
@@ -277,52 +277,52 @@ proc report_add_entry(
         statistics: stats,
         diagnostics: report.diagnostics,
         valid: report.valid
-    }
+    };
 }
 
 proc find_file_summary(
     report: LintReport,
     file: string
 ) -> LintFileSummary {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(report.files) {
+    while i < vector_len(report.files) {
         if report.files[i].file == file {
-            give report.files[i]
+            give report.files[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give file_summary_create(
         LINT_REPORT_INVALID_ID,
         ""
-    )
+    );
 }
 
 proc update_file_summary(
     summary: LintFileSummary,
     level: LintLevel
 ) -> LintFileSummary {
-    let infos = summary.infos
-    let warnings = summary.warnings
-    let errors = summary.errors
-    let forbids = summary.forbids
+    let infos = summary.infos;
+    let warnings = summary.warnings;
+    let errors = summary.errors;
+    let forbids = summary.forbids;
 
     if level == LintLevel.Info {
-        set infos = infos + 1
+        set infos = infos + 1;
     }
 
     if level == LintLevel.Warn {
-        set warnings = warnings + 1
+        set warnings = warnings + 1;
     }
 
     if level == LintLevel.Deny {
-        set errors = errors + 1
+        set errors = errors + 1;
     }
 
     if level == LintLevel.Forbid {
-        set forbids = forbids + 1
+        set forbids = forbids + 1;
     }
 
     give LintFileSummary {
@@ -332,14 +332,14 @@ proc update_file_summary(
         warnings: warnings,
         errors: errors,
         forbids: forbids
-    }
+    };
 }
 
 proc report_add_file_entry(
     report: LintReport,
     entry: LintEntry
 ) -> LintReport {
-    let existing = find_file_summary(report, entry.file)
+    let existing = find_file_summary(report, entry.file);
 
     if existing.id == LINT_REPORT_INVALID_ID {
         if vector_len(report.files) >= LINT_REPORT_MAX_FILES {
@@ -350,7 +350,7 @@ proc report_add_file_entry(
                     "too many report files",
                     entry.span
                 )
-            )
+            );
         }
 
         let created = update_file_summary(
@@ -359,9 +359,9 @@ proc report_add_file_entry(
                 entry.file
             ),
             entry.level
-        )
+        );
 
-        let stats = report.statistics
+        let stats = report.statistics;
 
         give LintReport {
             id: report.id,
@@ -379,22 +379,22 @@ proc report_add_file_entry(
             },
             diagnostics: report.diagnostics,
             valid: report.valid
-        }
+        };
     }
 
-    let next: [LintFileSummary] = []
-    let i: u64 = 0
+    let next: [LintFileSummary] = [];
+    let i: u64 = 0;
 
-    loop i < vector_len(report.files) {
-        let current = report.files[i]
+    while i < vector_len(report.files) {
+        let current = report.files[i];
 
         if current.file == entry.file {
-            set next = next + [update_file_summary(current, entry.level)]
+            set next = next + [update_file_summary(current, entry.level)];
         } else {
-            set next = next + [current]
+            set next = next + [current];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give LintReport {
@@ -406,166 +406,166 @@ proc report_add_file_entry(
         statistics: report.statistics,
         diagnostics: report.diagnostics,
         valid: report.valid
-    }
+    };
 }
 
 proc report_append(
     report: LintReport,
     entry: LintEntry
 ) -> LintReport {
-    let with_entry = report_add_entry(report, entry)
-    give report_add_file_entry(with_entry, entry)
+    let with_entry = report_add_entry(report, entry);
+    give report_add_file_entry(with_entry, entry);
 }
 
 proc level_name(level: LintLevel) -> string {
     if level == LintLevel.Allow {
-        give "allow"
+        give "allow";
     }
 
     if level == LintLevel.Info {
-        give "info"
+        give "info";
     }
 
     if level == LintLevel.Warn {
-        give "warn"
+        give "warn";
     }
 
     if level == LintLevel.Deny {
-        give "deny"
+        give "deny";
     }
 
     if level == LintLevel.Forbid {
-        give "forbid"
+        give "forbid";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc format_name(format: LintReportFormat) -> string {
     if format == LintReportFormat.Text {
-        give "text"
+        give "text";
     }
 
     if format == LintReportFormat.Json {
-        give "json"
+        give "json";
     }
 
     if format == LintReportFormat.Markdown {
-        give "markdown"
+        give "markdown";
     }
 
     if format == LintReportFormat.Sarif {
-        give "sarif"
+        give "sarif";
     }
 
     if format == LintReportFormat.Html {
-        give "html"
+        give "html";
     }
 
     if format == LintReportFormat.Binary {
-        give "binary"
+        give "binary";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc report_has_errors(report: LintReport) -> bool {
-    give report.statistics.total_errors > 0
+    give report.statistics.total_errors > 0;
 }
 
 proc report_has_forbids(report: LintReport) -> bool {
-    give report.statistics.total_forbids > 0
+    give report.statistics.total_forbids > 0;
 }
 
 proc report_total_entries(report: LintReport) -> u64 {
-    give report.statistics.total_entries
+    give report.statistics.total_entries;
 }
 
 proc report_total_warnings(report: LintReport) -> u64 {
-    give report.statistics.total_warnings
+    give report.statistics.total_warnings;
 }
 
 proc report_total_errors(report: LintReport) -> u64 {
-    give report.statistics.total_errors
+    give report.statistics.total_errors;
 }
 
 proc serialize_text(
     report: LintReport
 ) -> string {
-    emit "serialize lint report text"
-    emit format_name(report.format)
+    emit "serialize lint report text";
+    emit format_name(report.format);
 
-    give "lint-report-text"
+    give "lint-report-text";
 }
 
 proc serialize_json(
     report: LintReport
 ) -> string {
-    emit "serialize lint report json"
+    emit "serialize lint report json";
 
-    give "{ }"
+    give "{ }";
 }
 
 proc serialize_markdown(
     report: LintReport
 ) -> string {
-    emit "serialize lint report markdown"
+    emit "serialize lint report markdown";
 
-    give "# lint report"
+    give "# lint report";
 }
 
 proc serialize_report(
     report: LintReport
 ) -> string {
     if report.format == LintReportFormat.Text {
-        give serialize_text(report)
+        give serialize_text(report);
     }
 
     if report.format == LintReportFormat.Json {
-        give serialize_json(report)
+        give serialize_json(report);
     }
 
     if report.format == LintReportFormat.Markdown {
-        give serialize_markdown(report)
+        give serialize_markdown(report);
     }
 
-    give ""
+    give "";
 }
 
 proc print_entry(entry: LintEntry) {
-    emit level_name(entry.level)
-    emit entry.rule_name
-    emit entry.message
-    emit entry.file
-    emit entry.span.line
-    emit entry.span.column
+    emit level_name(entry.level);
+    emit entry.rule_name;
+    emit entry.message;
+    emit entry.file;
+    emit entry.span.line;
+    emit entry.span.column;
 }
 
 proc print_file_summary(summary: LintFileSummary) {
-    emit "file summary"
-    emit summary.file
-    emit summary.infos
-    emit summary.warnings
-    emit summary.errors
-    emit summary.forbids
+    emit "file summary";
+    emit summary.file;
+    emit summary.infos;
+    emit summary.warnings;
+    emit summary.errors;
+    emit summary.forbids;
 }
 
 proc print_report(report: LintReport) {
-    emit "lint report"
-    emit report.statistics.total_entries
-    emit report.statistics.total_files
-    emit report.statistics.total_warnings
-    emit report.statistics.total_errors
-    emit report.statistics.total_forbids
+    emit "lint report";
+    emit report.statistics.total_entries;
+    emit report.statistics.total_files;
+    emit report.statistics.total_warnings;
+    emit report.statistics.total_errors;
+    emit report.statistics.total_forbids;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(report.entries) {
-        print_entry(report.entries[i])
-        set i = i + 1
+    while i < vector_len(report.entries) {
+        print_entry(report.entries[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

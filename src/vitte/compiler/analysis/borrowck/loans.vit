@@ -16,39 +16,39 @@ const LIFETIME_MAX_RELATIONS: u64 = 1048576
 const LIFETIME_MAX_CONSTRAINTS: u64 = 1048576
 
 pick LifetimeKind {
-    Static
-    Named
-    Inferred
-    Anonymous
-    Temporary
-    Block
-    Function
-    Loop
-    Closure
-    Async
-    Match
-    Unknown
+    Static,
+    Named,
+    Inferred,
+    Anonymous,
+    Temporary,
+    Block,
+    Function,
+    Loop,
+    Closure,
+    Async,
+    Match,
+    Unknown,
 }
 
 pick LifetimeRelationKind {
-    Outlives
-    Contains
-    Equals
-    Conflicts
-    Escapes
+    Outlives,
+    Contains,
+    Equals,
+    Conflicts,
+    Escapes,
 }
 
 pick LifetimeErrorKind {
-    None
-    InvalidLifetime
-    UnknownLifetime
-    LifetimeTooShort
-    LifetimeEscapes
-    LifetimeConflict
-    MissingOutlivesRelation
-    RegionCycle
-    RegionLimitExceeded
-    ConstraintLimitExceeded
+    None,
+    InvalidLifetime,
+    UnknownLifetime,
+    LifetimeTooShort,
+    LifetimeEscapes,
+    LifetimeConflict,
+    MissingOutlivesRelation,
+    RegionCycle,
+    RegionLimitExceeded,
+    ConstraintLimitExceeded,
 }
 
 form LifetimeSpan {
@@ -106,7 +106,7 @@ proc span_empty() -> LifetimeSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc region_static() -> LifetimeRegion {
@@ -120,7 +120,7 @@ proc region_static() -> LifetimeRegion {
         end_point: LIFETIME_INVALID_ID,
         span: span_empty(),
         valid: true
-    }
+    };
 }
 
 proc region_invalid() -> LifetimeRegion {
@@ -134,7 +134,7 @@ proc region_invalid() -> LifetimeRegion {
         end_point: 0,
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc graph_empty() -> LifetimeGraph {
@@ -144,7 +144,7 @@ proc graph_empty() -> LifetimeGraph {
         constraints: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -158,7 +158,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         region: region
-    }
+    };
 }
 
 proc region_create(
@@ -181,7 +181,7 @@ proc region_create(
         end_point: end_point,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc relation_create(
@@ -193,7 +193,7 @@ proc relation_create(
         source: source,
         target: target,
         kind: kind
-    }
+    };
 }
 
 proc constraint_create(
@@ -210,7 +210,7 @@ proc constraint_create(
         relation: relation,
         span: span,
         satisfied: false
-    }
+    };
 }
 
 proc graph_add_diagnostic(
@@ -223,7 +223,7 @@ proc graph_add_diagnostic(
         constraints: graph.constraints,
         diagnostics: graph.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc graph_add_region(
@@ -239,7 +239,7 @@ proc graph_add_region(
                 region.span,
                 region.id
             )
-        )
+        );
     }
 
     give LifetimeGraph {
@@ -248,7 +248,7 @@ proc graph_add_region(
         constraints: graph.constraints,
         diagnostics: graph.diagnostics,
         valid: graph.valid
-    }
+    };
 }
 
 proc graph_add_relation(
@@ -264,7 +264,7 @@ proc graph_add_relation(
                 span_empty(),
                 relation.source
             )
-        )
+        );
     }
 
     give LifetimeGraph {
@@ -273,7 +273,7 @@ proc graph_add_relation(
         constraints: graph.constraints,
         diagnostics: graph.diagnostics,
         valid: graph.valid
-    }
+    };
 }
 
 proc graph_add_constraint(
@@ -289,7 +289,7 @@ proc graph_add_constraint(
                 constraint.span,
                 constraint.left
             )
-        )
+        );
     }
 
     give LifetimeGraph {
@@ -298,25 +298,25 @@ proc graph_add_constraint(
         constraints: graph.constraints + [constraint],
         diagnostics: graph.diagnostics,
         valid: graph.valid
-    }
+    };
 }
 
 proc find_region(graph: LifetimeGraph, id: u64) -> LifetimeRegion {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(graph.regions) {
+    while i < vector_len(graph.regions) {
         if graph.regions[i].id == id {
-            give graph.regions[i]
+            give graph.regions[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give region_invalid()
+    give region_invalid();
 }
 
 proc has_region(graph: LifetimeGraph, id: u64) -> bool {
-    give find_region(graph, id).valid
+    give find_region(graph, id).valid;
 }
 
 proc relation_exists(
@@ -325,31 +325,31 @@ proc relation_exists(
     target: u64,
     kind: LifetimeRelationKind
 ) -> bool {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(graph.relations) {
-        let relation = graph.relations[i]
+    while i < vector_len(graph.relations) {
+        let relation = graph.relations[i];
 
         if relation.source == source and relation.target == target and relation.kind == kind {
-            give true
+            give true;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give false
+    give false;
 }
 
 proc region_contains_point(region: LifetimeRegion, point: u64) -> bool {
     if point < region.start_point {
-        give false
+        give false;
     }
 
     if point > region.end_point {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc region_contains_region(
@@ -357,18 +357,18 @@ proc region_contains_region(
     inner: LifetimeRegion
 ) -> bool {
     if outer.valid == false or inner.valid == false {
-        give false
+        give false;
     }
 
     if outer.start_point > inner.start_point {
-        give false
+        give false;
     }
 
     if outer.end_point < inner.end_point {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc lifetime_outlives(
@@ -377,21 +377,21 @@ proc lifetime_outlives(
     target: u64
 ) -> bool {
     if source == LIFETIME_ROOT_ID {
-        give true
+        give true;
     }
 
     if source == target {
-        give true
+        give true;
     }
 
     if relation_exists(graph, source, target, LifetimeRelationKind.Outlives) {
-        give true
+        give true;
     }
 
-    let source_region = find_region(graph, source)
-    let target_region = find_region(graph, target)
+    let source_region = find_region(graph, source);
+    let target_region = find_region(graph, target);
 
-    give region_contains_region(source_region, target_region)
+    give region_contains_region(source_region, target_region);
 }
 
 proc lifetime_conflicts(
@@ -400,14 +400,14 @@ proc lifetime_conflicts(
     right: u64
 ) -> bool {
     if relation_exists(graph, left, right, LifetimeRelationKind.Conflicts) {
-        give true
+        give true;
     }
 
     if relation_exists(graph, right, left, LifetimeRelationKind.Conflicts) {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc solve_constraint(
@@ -422,7 +422,7 @@ proc solve_constraint(
             relation: constraint.relation,
             span: constraint.span,
             satisfied: lifetime_outlives(graph, constraint.left, constraint.right)
-        }
+        };
     }
 
     if constraint.relation == LifetimeRelationKind.Conflicts {
@@ -433,7 +433,7 @@ proc solve_constraint(
             relation: constraint.relation,
             span: constraint.span,
             satisfied: lifetime_conflicts(graph, constraint.left, constraint.right)
-        }
+        };
     }
 
     if constraint.relation == LifetimeRelationKind.Equals {
@@ -444,22 +444,22 @@ proc solve_constraint(
             relation: constraint.relation,
             span: constraint.span,
             satisfied: constraint.left == constraint.right
-        }
+        };
     }
 
-    give constraint
+    give constraint;
 }
 
 proc solve_constraints(graph: LifetimeGraph) -> LifetimeGraph {
-    let solved: [LifetimeConstraint] = []
-    let diagnostics = graph.diagnostics
-    let valid = graph.valid
+    let solved: [LifetimeConstraint] = [];
+    let diagnostics = graph.diagnostics;
+    let valid = graph.valid;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(graph.constraints) {
-        let solved_constraint = solve_constraint(graph, graph.constraints[i])
-        set solved = solved + [solved_constraint]
+    while i < vector_len(graph.constraints) {
+        let solved_constraint = solve_constraint(graph, graph.constraints[i]);
+        set solved = solved + [solved_constraint];
 
         if solved_constraint.satisfied == false {
             set diagnostics = diagnostics + [
@@ -469,12 +469,12 @@ proc solve_constraints(graph: LifetimeGraph) -> LifetimeGraph {
                     solved_constraint.span,
                     solved_constraint.left
                 )
-            ]
+            ];
 
-            set valid = false
+            set valid = false;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give LifetimeGraph {
@@ -483,15 +483,15 @@ proc solve_constraints(graph: LifetimeGraph) -> LifetimeGraph {
         constraints: solved,
         diagnostics: diagnostics,
         valid: valid
-    }
+    };
 }
 
 proc validate_graph(graph: LifetimeGraph) -> LifetimeGraph {
-    let current = graph
-    let i: u64 = 0
+    let current = graph;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.regions) {
-        let region = current.regions[i]
+    while i < vector_len(current.regions) {
+        let region = current.regions[i];
 
         if region.valid == false {
             give graph_add_diagnostic(
@@ -502,7 +502,7 @@ proc validate_graph(graph: LifetimeGraph) -> LifetimeGraph {
                     region.span,
                     region.id
                 )
-            )
+            );
         }
 
         if region.id != LIFETIME_ROOT_ID and has_region(current, region.parent) == false {
@@ -514,13 +514,13 @@ proc validate_graph(graph: LifetimeGraph) -> LifetimeGraph {
                     region.span,
                     region.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give solve_constraints(current)
+    give solve_constraints(current);
 }
 
 proc create_function_lifetime(
@@ -538,12 +538,12 @@ proc create_function_lifetime(
         0,
         LIFETIME_INVALID_ID,
         span
-    )
+    );
 
-    let with_region = graph_add_region(graph, region)
-    let relation = relation_create(LIFETIME_ROOT_ID, id, LifetimeRelationKind.Outlives)
+    let with_region = graph_add_region(graph, region);
+    let relation = relation_create(LIFETIME_ROOT_ID, id, LifetimeRelationKind.Outlives);
 
-    give graph_add_relation(with_region, relation)
+    give graph_add_relation(with_region, relation);
 }
 
 proc create_block_lifetime(
@@ -565,12 +565,12 @@ proc create_block_lifetime(
         start_point,
         end_point,
         span
-    )
+    );
 
-    let with_region = graph_add_region(graph, region)
-    let relation = relation_create(parent, id, LifetimeRelationKind.Outlives)
+    let with_region = graph_add_region(graph, region);
+    let relation = relation_create(parent, id, LifetimeRelationKind.Outlives);
 
-    give graph_add_relation(with_region, relation)
+    give graph_add_relation(with_region, relation);
 }
 
 proc create_temporary_lifetime(
@@ -590,9 +590,9 @@ proc create_temporary_lifetime(
         start_point,
         end_point,
         span
-    )
+    );
 
-    give graph_add_region(graph, region)
+    give graph_add_region(graph, region);
 }
 
 proc require_outlives(
@@ -605,7 +605,7 @@ proc require_outlives(
     give graph_add_constraint(
         graph,
         constraint_create(id, left, right, LifetimeRelationKind.Outlives, span)
-    )
+    );
 }
 
 proc require_conflict(
@@ -618,41 +618,41 @@ proc require_conflict(
     give graph_add_constraint(
         graph,
         constraint_create(id, left, right, LifetimeRelationKind.Conflicts, span)
-    )
+    );
 }
 
 proc lifetime_error_count(graph: LifetimeGraph) -> u64 {
-    give vector_len(graph.diagnostics)
+    give vector_len(graph.diagnostics);
 }
 
 proc lifetime_is_valid(graph: LifetimeGraph) -> bool {
-    give graph.valid and vector_len(graph.diagnostics) == 0
+    give graph.valid and vector_len(graph.diagnostics) == 0;
 }
 
 proc print_lifetime_region(region: LifetimeRegion) {
-    emit "lifetime region"
-    emit region.id
-    emit region.name
-    emit region.depth
-    emit region.start_point
-    emit region.end_point
+    emit "lifetime region";
+    emit region.id;
+    emit region.name;
+    emit region.depth;
+    emit region.start_point;
+    emit region.end_point;
 }
 
 proc print_lifetime_graph(graph: LifetimeGraph) {
-    emit "lifetime graph"
-    emit vector_len(graph.regions)
-    emit vector_len(graph.relations)
-    emit vector_len(graph.constraints)
-    emit vector_len(graph.diagnostics)
+    emit "lifetime graph";
+    emit vector_len(graph.regions);
+    emit vector_len(graph.relations);
+    emit vector_len(graph.constraints);
+    emit vector_len(graph.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(graph.regions) {
-        print_lifetime_region(graph.regions[i])
-        set i = i + 1
+    while i < vector_len(graph.regions) {
+        print_lifetime_region(graph.regions[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

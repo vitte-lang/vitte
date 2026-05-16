@@ -1,0 +1,28 @@
+space vitte/compiler/middle/hir/lower_ast
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput }
+
+form HirUnit {
+  source_path: string
+  ast_root: string
+  node_count: u64
+  valid: bool
+}
+
+proc lower_ast_to_hir(frontend: FrontendOutput) -> HirUnit {
+  if not frontend.valid {
+    give HirUnit {
+      source_path: frontend.source_path,
+      ast_root: "invalid",
+      node_count: 0,
+      valid: false
+    };
+  }
+
+  give HirUnit {
+    source_path: frontend.source_path,
+    ast_root: frontend.ast_root,
+    node_count: 1,
+    valid: true
+  };
+}

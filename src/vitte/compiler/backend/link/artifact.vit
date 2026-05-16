@@ -17,78 +17,78 @@ const LINK_ARTIFACT_MAX_SYMBOLS: u64 = 2097152
 const LINK_ARTIFACT_MAX_DIAGNOSTICS: u64 = 1048576
 
 pick LinkArtifactKind {
-    Object
-    StaticLibrary
-    SharedLibrary
-    Executable
-    KernelImage
-    BootImage
-    Firmware
-    DebugInfo
-    MapFile
-    SymbolFile
-    Metadata
+    Object,
+    StaticLibrary,
+    SharedLibrary,
+    Executable,
+    KernelImage,
+    BootImage,
+    Firmware,
+    DebugInfo,
+    MapFile,
+    SymbolFile,
+    Metadata,
 }
 
 pick LinkArtifactFormat {
-    Raw
-    Elf
-    MachO
-    Coff
-    Wasm
-    Archive
-    VitteImage
-    Unknown
+    Raw,
+    Elf,
+    MachO,
+    Coff,
+    Wasm,
+    Archive,
+    VitteImage,
+    Unknown,
 }
 
 pick LinkArtifactArch {
-    Unknown
-    X86_64
-    AArch64
-    RiscV64
-    ARM
-    I386
-    Wasm32
+    Unknown,
+    X86_64,
+    AArch64,
+    RiscV64,
+    ARM,
+    I386,
+    Wasm32,
 }
 
 pick LinkArtifactOs {
-    Unknown
-    Linux
-    Darwin
-    Windows
-    VitteOS
-    Uefi
-    BareMetal
-    Freestanding
+    Unknown,
+    Linux,
+    Darwin,
+    Windows,
+    VitteOS,
+    Uefi,
+    BareMetal,
+    Freestanding,
 }
 
 pick LinkArtifactState {
-    Created
-    Loaded
-    Resolved
-    LaidOut
-    Relocated
-    Written
-    Invalid
+    Created,
+    Loaded,
+    Resolved,
+    LaidOut,
+    Relocated,
+    Written,
+    Invalid,
 }
 
 pick LinkArtifactErrorKind {
-    None
-    InvalidArtifact
-    InvalidInput
-    InvalidOutput
-    InvalidFormat
-    InvalidTarget
-    InvalidSection
-    InvalidSymbol
-    MissingEntry
-    DuplicateOutput
-    InputLimitExceeded
-    OutputLimitExceeded
-    SectionLimitExceeded
-    SymbolLimitExceeded
-    DiagnosticLimitExceeded
-    InternalFailure
+    None,
+    InvalidArtifact,
+    InvalidInput,
+    InvalidOutput,
+    InvalidFormat,
+    InvalidTarget,
+    InvalidSection,
+    InvalidSymbol,
+    MissingEntry,
+    DuplicateOutput,
+    InputLimitExceeded,
+    OutputLimitExceeded,
+    SectionLimitExceeded,
+    SymbolLimitExceeded,
+    DiagnosticLimitExceeded,
+    InternalFailure,
 }
 
 form LinkArtifactSpan {
@@ -149,7 +149,7 @@ form LinkSymbol {
     section: u64
     address: u64
     size: u64
-    global: bool
+    is_global: bool
     weak: bool
     defined: bool
     valid: bool
@@ -183,7 +183,7 @@ proc span_empty() -> LinkArtifactSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc target_invalid() -> LinkTarget {
@@ -194,7 +194,7 @@ proc target_invalid() -> LinkTarget {
         pointer_width: 0,
         little_endian: true,
         valid: false
-    }
+    };
 }
 
 proc target_create(
@@ -211,7 +211,7 @@ proc target_create(
         pointer_width: pointer_width,
         little_endian: little_endian,
         valid: arch != LinkArtifactArch.Unknown and os != LinkArtifactOs.Unknown and pointer_width > 0
-    }
+    };
 }
 
 proc target_x86_64_linux() -> LinkTarget {
@@ -221,7 +221,7 @@ proc target_x86_64_linux() -> LinkTarget {
         "x86_64-vitte-linux",
         64,
         true
-    )
+    );
 }
 
 proc target_aarch64_vitteos() -> LinkTarget {
@@ -231,7 +231,7 @@ proc target_aarch64_vitteos() -> LinkTarget {
         "aarch64-vitte-vitteos",
         64,
         true
-    )
+    );
 }
 
 proc buffer_empty() -> LinkBuffer {
@@ -240,7 +240,7 @@ proc buffer_empty() -> LinkBuffer {
         size: 0,
         capacity: 536870912,
         valid: true
-    }
+    };
 }
 
 proc input_invalid() -> LinkInput {
@@ -251,7 +251,7 @@ proc input_invalid() -> LinkInput {
         format: LinkArtifactFormat.Unknown,
         loaded: false,
         valid: false
-    }
+    };
 }
 
 proc input_create(
@@ -267,7 +267,7 @@ proc input_create(
         format: format,
         loaded: false,
         valid: path != "" and format != LinkArtifactFormat.Unknown
-    }
+    };
 }
 
 proc output_invalid() -> LinkOutput {
@@ -278,7 +278,7 @@ proc output_invalid() -> LinkOutput {
         format: LinkArtifactFormat.Unknown,
         executable: false,
         valid: false
-    }
+    };
 }
 
 proc output_create(
@@ -295,7 +295,7 @@ proc output_create(
         format: format,
         executable: executable,
         valid: path != "" and format != LinkArtifactFormat.Unknown
-    }
+    };
 }
 
 proc section_invalid() -> LinkSection {
@@ -308,7 +308,7 @@ proc section_invalid() -> LinkSection {
         align: 1,
         flags: 0,
         valid: false
-    }
+    };
 }
 
 proc section_create(
@@ -329,7 +329,7 @@ proc section_create(
         align: align,
         flags: flags,
         valid: name != "" and align > 0
-    }
+    };
 }
 
 proc symbol_invalid() -> LinkSymbol {
@@ -339,11 +339,11 @@ proc symbol_invalid() -> LinkSymbol {
         section: LINK_ARTIFACT_INVALID_ID,
         address: 0,
         size: 0,
-        global: false,
+        is_global: false,
         weak: false,
         defined: false,
         valid: false
-    }
+    };
 }
 
 proc symbol_create(
@@ -352,7 +352,7 @@ proc symbol_create(
     section: u64,
     address: u64,
     size: u64,
-    global: bool,
+    is_global: bool,
     weak: bool,
     defined: bool
 ) -> LinkSymbol {
@@ -362,11 +362,11 @@ proc symbol_create(
         section: section,
         address: address,
         size: size,
-        global: global,
+        is_global: is_global,
         weak: weak,
         defined: defined,
         valid: name != ""
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -380,7 +380,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         entity: entity
-    }
+    };
 }
 
 proc artifact_create(
@@ -401,7 +401,7 @@ proc artifact_create(
         entry_symbol: "_start",
         state: LinkArtifactState.Created,
         valid: name != "" and target.valid
-    }
+    };
 }
 
 proc artifact_add_diagnostic(
@@ -422,7 +422,7 @@ proc artifact_add_diagnostic(
             entry_symbol: artifact.entry_symbol,
             state: LinkArtifactState.Invalid,
             valid: false
-        }
+        };
     }
 
     give LinkArtifact {
@@ -438,7 +438,7 @@ proc artifact_add_diagnostic(
         entry_symbol: artifact.entry_symbol,
         state: LinkArtifactState.Invalid,
         valid: false
-    }
+    };
 }
 
 proc artifact_with_state(
@@ -458,7 +458,7 @@ proc artifact_with_state(
         entry_symbol: artifact.entry_symbol,
         state: state,
         valid: artifact.valid
-    }
+    };
 }
 
 proc artifact_add_input(
@@ -474,7 +474,7 @@ proc artifact_add_input(
                 span_empty(),
                 input.id
             )
-        )
+        );
     }
 
     if input.valid == false {
@@ -486,7 +486,7 @@ proc artifact_add_input(
                 span_empty(),
                 input.id
             )
-        )
+        );
     }
 
     give LinkArtifact {
@@ -502,7 +502,7 @@ proc artifact_add_input(
         entry_symbol: artifact.entry_symbol,
         state: artifact.state,
         valid: artifact.valid
-    }
+    };
 }
 
 proc artifact_add_output(
@@ -518,7 +518,7 @@ proc artifact_add_output(
                 span_empty(),
                 output.id
             )
-        )
+        );
     }
 
     if output.valid == false {
@@ -530,7 +530,7 @@ proc artifact_add_output(
                 span_empty(),
                 output.id
             )
-        )
+        );
     }
 
     if find_output_by_path(artifact, output.path).valid {
@@ -542,7 +542,7 @@ proc artifact_add_output(
                 span_empty(),
                 output.id
             )
-        )
+        );
     }
 
     give LinkArtifact {
@@ -558,7 +558,7 @@ proc artifact_add_output(
         entry_symbol: artifact.entry_symbol,
         state: artifact.state,
         valid: artifact.valid
-    }
+    };
 }
 
 proc artifact_add_section(
@@ -574,7 +574,7 @@ proc artifact_add_section(
                 span_empty(),
                 section.id
             )
-        )
+        );
     }
 
     if section.valid == false {
@@ -586,7 +586,7 @@ proc artifact_add_section(
                 span_empty(),
                 section.id
             )
-        )
+        );
     }
 
     give LinkArtifact {
@@ -602,7 +602,7 @@ proc artifact_add_section(
         entry_symbol: artifact.entry_symbol,
         state: artifact.state,
         valid: artifact.valid
-    }
+    };
 }
 
 proc artifact_add_symbol(
@@ -618,7 +618,7 @@ proc artifact_add_symbol(
                 span_empty(),
                 symbol.id
             )
-        )
+        );
     }
 
     if symbol.valid == false {
@@ -630,7 +630,7 @@ proc artifact_add_symbol(
                 span_empty(),
                 symbol.id
             )
-        )
+        );
     }
 
     give LinkArtifact {
@@ -646,58 +646,58 @@ proc artifact_add_symbol(
         entry_symbol: artifact.entry_symbol,
         state: artifact.state,
         valid: artifact.valid
-    }
+    };
 }
 
 proc find_output_by_path(
     artifact: LinkArtifact,
     path: string
 ) -> LinkOutput {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(artifact.outputs) {
+    while i < vector_len(artifact.outputs) {
         if artifact.outputs[i].path == path {
-            give artifact.outputs[i]
+            give artifact.outputs[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give output_invalid()
+    give output_invalid();
 }
 
 proc find_section_by_name(
     artifact: LinkArtifact,
     name: string
 ) -> LinkSection {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(artifact.sections) {
+    while i < vector_len(artifact.sections) {
         if artifact.sections[i].name == name {
-            give artifact.sections[i]
+            give artifact.sections[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give section_invalid()
+    give section_invalid();
 }
 
 proc find_symbol_by_name(
     artifact: LinkArtifact,
     name: string
 ) -> LinkSymbol {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(artifact.symbols) {
+    while i < vector_len(artifact.symbols) {
         if artifact.symbols[i].name == name {
-            give artifact.symbols[i]
+            give artifact.symbols[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give symbol_invalid()
+    give symbol_invalid();
 }
 
 proc artifact_set_entry(
@@ -717,7 +717,7 @@ proc artifact_set_entry(
         entry_symbol: entry_symbol,
         state: artifact.state,
         valid: artifact.valid and entry_symbol != ""
-    }
+    };
 }
 
 proc validate_artifact(
@@ -732,7 +732,7 @@ proc validate_artifact(
                 span_empty(),
                 artifact.id
             )
-        )
+        );
     }
 
     if artifact.target.valid == false {
@@ -744,7 +744,7 @@ proc validate_artifact(
                 span_empty(),
                 artifact.id
             )
-        )
+        );
     }
 
     if artifact.entry_symbol != "" {
@@ -757,345 +757,345 @@ proc validate_artifact(
                     span_empty(),
                     artifact.id
                 )
-            )
+            );
         }
     }
 
-    give artifact
+    give artifact;
 }
 
 proc load_artifact_inputs(
     artifact: LinkArtifact
 ) -> LinkArtifact {
-    give artifact_with_state(artifact, LinkArtifactState.Loaded)
+    give artifact_with_state(artifact, LinkArtifactState.Loaded);
 }
 
 proc resolve_artifact_symbols(
     artifact: LinkArtifact
 ) -> LinkArtifact {
-    give artifact_with_state(artifact, LinkArtifactState.Resolved)
+    give artifact_with_state(artifact, LinkArtifactState.Resolved);
 }
 
 proc layout_artifact_sections(
     artifact: LinkArtifact
 ) -> LinkArtifact {
-    give artifact_with_state(artifact, LinkArtifactState.LaidOut)
+    give artifact_with_state(artifact, LinkArtifactState.LaidOut);
 }
 
 proc relocate_artifact(
     artifact: LinkArtifact
 ) -> LinkArtifact {
-    give artifact_with_state(artifact, LinkArtifactState.Relocated)
+    give artifact_with_state(artifact, LinkArtifactState.Relocated);
 }
 
 proc write_artifact_outputs(
     artifact: LinkArtifact
 ) -> LinkArtifact {
-    give artifact_with_state(artifact, LinkArtifactState.Written)
+    give artifact_with_state(artifact, LinkArtifactState.Written);
 }
 
 proc finalize_artifact(
     artifact: LinkArtifact
 ) -> LinkArtifact {
-    let checked = validate_artifact(artifact)
+    let checked = validate_artifact(artifact);
 
     if checked.valid == false {
-        give checked
+        give checked;
     }
 
-    let loaded = load_artifact_inputs(checked)
-    let resolved = resolve_artifact_symbols(loaded)
-    let laid_out = layout_artifact_sections(resolved)
-    let relocated = relocate_artifact(laid_out)
+    let loaded = load_artifact_inputs(checked);
+    let resolved = resolve_artifact_symbols(loaded);
+    let laid_out = layout_artifact_sections(resolved);
+    let relocated = relocate_artifact(laid_out);
 
-    give write_artifact_outputs(relocated)
+    give write_artifact_outputs(relocated);
 }
 
 proc artifact_input_count(artifact: LinkArtifact) -> u64 {
-    give vector_len(artifact.inputs)
+    give vector_len(artifact.inputs);
 }
 
 proc artifact_output_count(artifact: LinkArtifact) -> u64 {
-    give vector_len(artifact.outputs)
+    give vector_len(artifact.outputs);
 }
 
 proc artifact_section_count(artifact: LinkArtifact) -> u64 {
-    give vector_len(artifact.sections)
+    give vector_len(artifact.sections);
 }
 
 proc artifact_symbol_count(artifact: LinkArtifact) -> u64 {
-    give vector_len(artifact.symbols)
+    give vector_len(artifact.symbols);
 }
 
 proc artifact_error_count(artifact: LinkArtifact) -> u64 {
-    give vector_len(artifact.diagnostics)
+    give vector_len(artifact.diagnostics);
 }
 
 proc artifact_is_valid(artifact: LinkArtifact) -> bool {
-    give artifact.valid and vector_len(artifact.diagnostics) == 0
+    give artifact.valid and vector_len(artifact.diagnostics) == 0;
 }
 
 proc arch_name(arch: LinkArtifactArch) -> string {
     if arch == LinkArtifactArch.X86_64 {
-        give "x86_64"
+        give "x86_64";
     }
 
     if arch == LinkArtifactArch.AArch64 {
-        give "aarch64"
+        give "aarch64";
     }
 
     if arch == LinkArtifactArch.RiscV64 {
-        give "riscv64"
+        give "riscv64";
     }
 
     if arch == LinkArtifactArch.ARM {
-        give "arm"
+        give "arm";
     }
 
     if arch == LinkArtifactArch.I386 {
-        give "i386"
+        give "i386";
     }
 
     if arch == LinkArtifactArch.Wasm32 {
-        give "wasm32"
+        give "wasm32";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc os_name(os: LinkArtifactOs) -> string {
     if os == LinkArtifactOs.Linux {
-        give "linux"
+        give "linux";
     }
 
     if os == LinkArtifactOs.Darwin {
-        give "darwin"
+        give "darwin";
     }
 
     if os == LinkArtifactOs.Windows {
-        give "windows"
+        give "windows";
     }
 
     if os == LinkArtifactOs.VitteOS {
-        give "vitteos"
+        give "vitteos";
     }
 
     if os == LinkArtifactOs.Uefi {
-        give "uefi"
+        give "uefi";
     }
 
     if os == LinkArtifactOs.BareMetal {
-        give "baremetal"
+        give "baremetal";
     }
 
     if os == LinkArtifactOs.Freestanding {
-        give "freestanding"
+        give "freestanding";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc artifact_kind_name(kind: LinkArtifactKind) -> string {
     if kind == LinkArtifactKind.Object {
-        give "object"
+        give "object";
     }
 
     if kind == LinkArtifactKind.StaticLibrary {
-        give "static_library"
+        give "static_library";
     }
 
     if kind == LinkArtifactKind.SharedLibrary {
-        give "shared_library"
+        give "shared_library";
     }
 
     if kind == LinkArtifactKind.Executable {
-        give "executable"
+        give "executable";
     }
 
     if kind == LinkArtifactKind.KernelImage {
-        give "kernel_image"
+        give "kernel_image";
     }
 
     if kind == LinkArtifactKind.BootImage {
-        give "boot_image"
+        give "boot_image";
     }
 
     if kind == LinkArtifactKind.Firmware {
-        give "firmware"
+        give "firmware";
     }
 
     if kind == LinkArtifactKind.DebugInfo {
-        give "debug_info"
+        give "debug_info";
     }
 
     if kind == LinkArtifactKind.MapFile {
-        give "map_file"
+        give "map_file";
     }
 
     if kind == LinkArtifactKind.SymbolFile {
-        give "symbol_file"
+        give "symbol_file";
     }
 
-    give "metadata"
+    give "metadata";
 }
 
 proc format_name(format: LinkArtifactFormat) -> string {
     if format == LinkArtifactFormat.Raw {
-        give "raw"
+        give "raw";
     }
 
     if format == LinkArtifactFormat.Elf {
-        give "elf"
+        give "elf";
     }
 
     if format == LinkArtifactFormat.MachO {
-        give "macho"
+        give "macho";
     }
 
     if format == LinkArtifactFormat.Coff {
-        give "coff"
+        give "coff";
     }
 
     if format == LinkArtifactFormat.Wasm {
-        give "wasm"
+        give "wasm";
     }
 
     if format == LinkArtifactFormat.Archive {
-        give "archive"
+        give "archive";
     }
 
     if format == LinkArtifactFormat.VitteImage {
-        give "vitte_image"
+        give "vitte_image";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc state_name(state: LinkArtifactState) -> string {
     if state == LinkArtifactState.Created {
-        give "created"
+        give "created";
     }
 
     if state == LinkArtifactState.Loaded {
-        give "loaded"
+        give "loaded";
     }
 
     if state == LinkArtifactState.Resolved {
-        give "resolved"
+        give "resolved";
     }
 
     if state == LinkArtifactState.LaidOut {
-        give "laid_out"
+        give "laid_out";
     }
 
     if state == LinkArtifactState.Relocated {
-        give "relocated"
+        give "relocated";
     }
 
     if state == LinkArtifactState.Written {
-        give "written"
+        give "written";
     }
 
     if state == LinkArtifactState.Invalid {
-        give "invalid"
+        give "invalid";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_target(target: LinkTarget) {
-    emit "link target"
-    emit arch_name(target.arch)
-    emit os_name(target.os)
-    emit target.triple
-    emit target.pointer_width
-    emit target.little_endian
+    emit "link target";
+    emit arch_name(target.arch);
+    emit os_name(target.os);
+    emit target.triple;
+    emit target.pointer_width;
+    emit target.little_endian;
 }
 
 proc print_input(input: LinkInput) {
-    emit "link input"
-    emit input.id
-    emit input.path
-    emit artifact_kind_name(input.kind)
-    emit format_name(input.format)
-    emit input.loaded
+    emit "link input";
+    emit input.id;
+    emit input.path;
+    emit artifact_kind_name(input.kind);
+    emit format_name(input.format);
+    emit input.loaded;
 }
 
 proc print_output(output: LinkOutput) {
-    emit "link output"
-    emit output.id
-    emit output.path
-    emit artifact_kind_name(output.kind)
-    emit format_name(output.format)
-    emit output.executable
+    emit "link output";
+    emit output.id;
+    emit output.path;
+    emit artifact_kind_name(output.kind);
+    emit format_name(output.format);
+    emit output.executable;
 }
 
 proc print_section(section: LinkSection) {
-    emit "link section"
-    emit section.id
-    emit section.name
-    emit section.address
-    emit section.offset
-    emit section.size
-    emit section.align
+    emit "link section";
+    emit section.id;
+    emit section.name;
+    emit section.address;
+    emit section.offset;
+    emit section.size;
+    emit section.align;
 }
 
 proc print_symbol(symbol: LinkSymbol) {
-    emit "link symbol"
-    emit symbol.id
-    emit symbol.name
-    emit symbol.section
-    emit symbol.address
-    emit symbol.size
-    emit symbol.global
-    emit symbol.weak
-    emit symbol.defined
+    emit "link symbol";
+    emit symbol.id;
+    emit symbol.name;
+    emit symbol.section;
+    emit symbol.address;
+    emit symbol.size;
+    emit symbol.is_global;
+    emit symbol.weak;
+    emit symbol.defined;
 }
 
 proc print_artifact(artifact: LinkArtifact) {
-    emit "link artifact"
-    emit artifact.id
-    emit artifact.name
-    emit state_name(artifact.state)
-    emit artifact.entry_symbol
+    emit "link artifact";
+    emit artifact.id;
+    emit artifact.name;
+    emit state_name(artifact.state);
+    emit artifact.entry_symbol;
 
-    print_target(artifact.target)
+    print_target(artifact.target);
 
-    emit artifact_input_count(artifact)
-    emit artifact_output_count(artifact)
-    emit artifact_section_count(artifact)
-    emit artifact_symbol_count(artifact)
-    emit artifact_error_count(artifact)
+    emit artifact_input_count(artifact);
+    emit artifact_output_count(artifact);
+    emit artifact_section_count(artifact);
+    emit artifact_symbol_count(artifact);
+    emit artifact_error_count(artifact);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(artifact.inputs) {
-        print_input(artifact.inputs[i])
-        set i = i + 1
+    while i < vector_len(artifact.inputs) {
+        print_input(artifact.inputs[i]);
+        set i = i + 1;
     }
 
-    let j: u64 = 0
+    let j: u64 = 0;
 
-    loop j < vector_len(artifact.outputs) {
-        print_output(artifact.outputs[j])
-        set j = j + 1
+    while j < vector_len(artifact.outputs) {
+        print_output(artifact.outputs[j]);
+        set j = j + 1;
     }
 
-    let s: u64 = 0
+    let s: u64 = 0;
 
-    loop s < vector_len(artifact.sections) {
-        print_section(artifact.sections[s])
-        set s = s + 1
+    while s < vector_len(artifact.sections) {
+        print_section(artifact.sections[s]);
+        set s = s + 1;
     }
 
-    let k: u64 = 0
+    let k: u64 = 0;
 
-    loop k < vector_len(artifact.symbols) {
-        print_symbol(artifact.symbols[k])
-        set k = k + 1
+    while k < vector_len(artifact.symbols) {
+        print_symbol(artifact.symbols[k]);
+        set k = k + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

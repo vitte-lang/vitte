@@ -1,0 +1,36 @@
+space vitte/compiler/backend/link/linker
+
+use vitte/compiler/backend/ir/ir.{ IrUnit, unit_module_count }
+use vitte/compiler/backend/link/artifact.{
+    LinkArtifact,
+    LinkArtifactKind,
+    LinkArtifactFormat,
+    artifact_create,
+    output_create,
+    artifact_add_output,
+    artifact_set_entry,
+    finalize_artifact,
+    target_x86_64_linux,
+}
+use vitte/compiler/backend/link/symbols.{ add_entry_symbol }
+
+proc link_ir_unit(unit: IrUnit, output_path: string) -> LinkArtifact {
+    let target = target_x86_64_linux();
+    let art0: LinkArtifact = artifact_create(1, "vitte-bootstrap-artifact", target);
+
+    let out = output_create(
+        1,
+        output_path,
+        LinkArtifactKind.Executable,
+        LinkArtifactFormat.Elf,
+        true
+    );
+
+    let art1: LinkArtifact = artifact_add_output(art0, out);
+    let art2: LinkArtifact = add_entry_symbol(art1, "main");
+    let art3: LinkArtifact = artifact_set_entry(art2, "main");
+
+    # Bootstrap linker path: finalize minimal artifact metadata.
+    let _module_count = unit_module_count(unit);
+    give finalize_artifact(art3);
+}

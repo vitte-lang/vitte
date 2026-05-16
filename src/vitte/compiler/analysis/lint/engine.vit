@@ -15,49 +15,49 @@ const LINT_ENGINE_MAX_DIAGNOSTICS: u64 = 1048576
 const LINT_ENGINE_MAX_FILES: u64 = 262144
 
 pick LintLevel {
-    Allow
-    Info
-    Warn
-    Deny
-    Forbid
+    Allow,
+    Info,
+    Warn,
+    Deny,
+    Forbid,
 }
 
 pick LintRuleKind {
-    Style
-    Correctness
-    Safety
-    Performance
-    Complexity
-    Portability
-    Security
-    Deprecated
-    Experimental
-    Internal
+    Style,
+    Correctness,
+    Safety,
+    Performance,
+    Complexity,
+    Portability,
+    Security,
+    Deprecated,
+    Experimental,
+    Internal,
 }
 
 pick LintTargetKind {
-    Module
-    Item
-    Function
-    Type
-    Statement
-    Expression
-    Pattern
-    Attribute
-    Import
-    File
+    Module,
+    Item,
+    Function,
+    Type,
+    Statement,
+    Expression,
+    Pattern,
+    Attribute,
+    Import,
+    File,
 }
 
 pick LintErrorKind {
-    None
-    UnknownRule
-    DisabledRule
-    RuleLimitExceeded
-    DiagnosticLimitExceeded
-    FileLimitExceeded
-    InvalidTarget
-    InvalidConfiguration
-    InternalFailure
+    None,
+    UnknownRule,
+    DisabledRule,
+    RuleLimitExceeded,
+    DiagnosticLimitExceeded,
+    FileLimitExceeded,
+    InvalidTarget,
+    InvalidConfiguration,
+    InternalFailure,
 }
 
 form LintSpan {
@@ -113,7 +113,7 @@ proc span_empty() -> LintSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc rule_create(
@@ -130,7 +130,7 @@ proc rule_create(
         level: level,
         enabled: true,
         description: description
-    }
+    };
 }
 
 proc target_invalid() -> LintTarget {
@@ -140,7 +140,7 @@ proc target_invalid() -> LintTarget {
         name: "invalid",
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc target_create(
@@ -155,7 +155,7 @@ proc target_create(
         name: name,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -173,7 +173,7 @@ proc diagnostic_create(
         message: message,
         target: target,
         span: span
-    }
+    };
 }
 
 proc error_create(
@@ -185,7 +185,7 @@ proc error_create(
         kind: kind,
         message: message,
         span: span
-    }
+    };
 }
 
 proc engine_empty() -> LintEngine {
@@ -195,11 +195,11 @@ proc engine_empty() -> LintEngine {
         diagnostics: [],
         errors: [],
         valid: true
-    }
+    };
 }
 
 proc engine_default() -> LintEngine {
-    let engine = engine_empty()
+    let engine = engine_empty();
 
     let e1 = engine_add_rule(
         engine,
@@ -210,7 +210,7 @@ proc engine_default() -> LintEngine {
             LintLevel.Warn,
             "detect unused imports"
         )
-    )
+    );
 
     let e2 = engine_add_rule(
         e1,
@@ -221,7 +221,7 @@ proc engine_default() -> LintEngine {
             LintLevel.Warn,
             "detect unused local variables"
         )
-    )
+    );
 
     let e3 = engine_add_rule(
         e2,
@@ -232,7 +232,7 @@ proc engine_default() -> LintEngine {
             LintLevel.Warn,
             "detect unreachable or unused code"
         )
-    )
+    );
 
     let e4 = engine_add_rule(
         e3,
@@ -243,7 +243,7 @@ proc engine_default() -> LintEngine {
             LintLevel.Deny,
             "detect unsafe blocks without explanation"
         )
-    )
+    );
 
     let e5 = engine_add_rule(
         e4,
@@ -254,9 +254,9 @@ proc engine_default() -> LintEngine {
             LintLevel.Warn,
             "detect large stack allocations"
         )
-    )
+    );
 
-    give e5
+    give e5;
 }
 
 proc engine_add_error(
@@ -269,7 +269,7 @@ proc engine_add_error(
         diagnostics: engine.diagnostics,
         errors: engine.errors + [error],
         valid: false
-    }
+    };
 }
 
 proc engine_add_rule(
@@ -284,7 +284,7 @@ proc engine_add_rule(
                 "too many lint rules",
                 span_empty()
             )
-        )
+        );
     }
 
     give LintEngine {
@@ -293,7 +293,7 @@ proc engine_add_rule(
         diagnostics: engine.diagnostics,
         errors: engine.errors,
         valid: engine.valid
-    }
+    };
 }
 
 proc engine_add_target(
@@ -308,7 +308,7 @@ proc engine_add_target(
                 "too many lint targets",
                 target.span
             )
-        )
+        );
     }
 
     give LintEngine {
@@ -317,7 +317,7 @@ proc engine_add_target(
         diagnostics: engine.diagnostics,
         errors: engine.errors,
         valid: engine.valid
-    }
+    };
 }
 
 proc engine_add_diagnostic(
@@ -332,7 +332,7 @@ proc engine_add_diagnostic(
                 "too many lint diagnostics",
                 diagnostic.span
             )
-        )
+        );
     }
 
     give LintEngine {
@@ -341,18 +341,18 @@ proc engine_add_diagnostic(
         diagnostics: engine.diagnostics + [diagnostic],
         errors: engine.errors,
         valid: engine.valid
-    }
+    };
 }
 
 proc find_rule(engine: LintEngine, id: u64) -> LintRule {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(engine.rules) {
+    while i < vector_len(engine.rules) {
         if engine.rules[i].id == id {
-            give engine.rules[i]
+            give engine.rules[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give rule_create(
@@ -361,25 +361,25 @@ proc find_rule(engine: LintEngine, id: u64) -> LintRule {
         LintRuleKind.Internal,
         LintLevel.Allow,
         ""
-    )
+    );
 }
 
 proc rule_enabled(engine: LintEngine, id: u64) -> bool {
-    let rule = find_rule(engine, id)
+    let rule = find_rule(engine, id);
 
     if rule.id == LINT_ENGINE_INVALID_ID {
-        give false
+        give false;
     }
 
     if rule.enabled == false {
-        give false
+        give false;
     }
 
     if rule.level == LintLevel.Allow {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc rule_with_level(rule: LintRule, level: LintLevel) -> LintRule {
@@ -390,7 +390,7 @@ proc rule_with_level(rule: LintRule, level: LintLevel) -> LintRule {
         level: level,
         enabled: rule.enabled,
         description: rule.description
-    }
+    };
 }
 
 proc engine_set_rule_level(
@@ -398,20 +398,20 @@ proc engine_set_rule_level(
     rule_id: u64,
     level: LintLevel
 ) -> LintEngine {
-    let next: [LintRule] = []
-    let found = false
+    let next: [LintRule] = [];
+    let found = false;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(engine.rules) {
+    while i < vector_len(engine.rules) {
         if engine.rules[i].id == rule_id {
-            set next = next + [rule_with_level(engine.rules[i], level)]
-            set found = true
+            set next = next + [rule_with_level(engine.rules[i], level)];
+            set found = true;
         } else {
-            set next = next + [engine.rules[i]]
+            set next = next + [engine.rules[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if found == false {
@@ -422,7 +422,7 @@ proc engine_set_rule_level(
                 "unknown lint rule",
                 span_empty()
             )
-        )
+        );
     }
 
     give LintEngine {
@@ -431,7 +431,7 @@ proc engine_set_rule_level(
         diagnostics: engine.diagnostics,
         errors: engine.errors,
         valid: engine.valid
-    }
+    };
 }
 
 proc emit_lint(
@@ -441,7 +441,7 @@ proc emit_lint(
     message: string,
     target: LintTarget
 ) -> LintEngine {
-    let rule = find_rule(engine, rule_id)
+    let rule = find_rule(engine, rule_id);
 
     if rule.id == LINT_ENGINE_INVALID_ID {
         give engine_add_error(
@@ -451,11 +451,11 @@ proc emit_lint(
                 "unknown lint rule",
                 target.span
             )
-        )
+        );
     }
 
     if rule.enabled == false or rule.level == LintLevel.Allow {
-        give engine
+        give engine;
     }
 
     let diagnostic = diagnostic_create(
@@ -465,9 +465,9 @@ proc emit_lint(
         message,
         target,
         target.span
-    )
+    );
 
-    give engine_add_diagnostic(engine, diagnostic)
+    give engine_add_diagnostic(engine, diagnostic);
 }
 
 proc lint_unused_import(
@@ -476,7 +476,7 @@ proc lint_unused_import(
     used: bool
 ) -> LintEngine {
     if used {
-        give engine
+        give engine;
     }
 
     give emit_lint(
@@ -485,7 +485,7 @@ proc lint_unused_import(
         1,
         "unused import",
         target
-    )
+    );
 }
 
 proc lint_unused_variable(
@@ -494,7 +494,7 @@ proc lint_unused_variable(
     used: bool
 ) -> LintEngine {
     if used {
-        give engine
+        give engine;
     }
 
     give emit_lint(
@@ -503,7 +503,7 @@ proc lint_unused_variable(
         2,
         "unused variable",
         target
-    )
+    );
 }
 
 proc lint_dead_code(
@@ -512,7 +512,7 @@ proc lint_dead_code(
     reachable: bool
 ) -> LintEngine {
     if reachable {
-        give engine
+        give engine;
     }
 
     give emit_lint(
@@ -521,7 +521,7 @@ proc lint_dead_code(
         3,
         "dead code",
         target
-    )
+    );
 }
 
 proc lint_unsafe_reason(
@@ -530,7 +530,7 @@ proc lint_unsafe_reason(
     has_reason: bool
 ) -> LintEngine {
     if has_reason {
-        give engine
+        give engine;
     }
 
     give emit_lint(
@@ -539,7 +539,7 @@ proc lint_unsafe_reason(
         4,
         "unsafe block requires explicit reason",
         target
-    )
+    );
 }
 
 proc lint_large_stack_allocation(
@@ -548,7 +548,7 @@ proc lint_large_stack_allocation(
     size_bytes: u64
 ) -> LintEngine {
     if size_bytes <= 4096 {
-        give engine
+        give engine;
     }
 
     give emit_lint(
@@ -557,7 +557,7 @@ proc lint_large_stack_allocation(
         5,
         "large stack allocation",
         target
-    )
+    );
 }
 
 proc run_target_lints(
@@ -572,122 +572,122 @@ proc run_target_lints(
                 "invalid lint target",
                 target.span
             )
-        )
+        );
     }
 
-    give engine
+    give engine;
 }
 
 proc run_all_lints(engine: LintEngine) -> LintEngine {
-    let current = engine
-    let i: u64 = 0
+    let current = engine;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.targets) {
-        set current = run_target_lints(current, current.targets[i])
-        set i = i + 1
+    while i < vector_len(current.targets) {
+        set current = run_target_lints(current, current.targets[i]);
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc lint_has_errors(engine: LintEngine) -> bool {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(engine.diagnostics) {
-        let diagnostic = engine.diagnostics[i]
+    while i < vector_len(engine.diagnostics) {
+        let diagnostic = engine.diagnostics[i];
 
         if diagnostic.level == LintLevel.Deny {
-            give true
+            give true;
         }
 
         if diagnostic.level == LintLevel.Forbid {
-            give true
+            give true;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give false
+    give false;
 }
 
 proc lint_warning_count(engine: LintEngine) -> u64 {
-    let count: u64 = 0
-    let i: u64 = 0
+    let count: u64 = 0;
+    let i: u64 = 0;
 
-    loop i < vector_len(engine.diagnostics) {
+    while i < vector_len(engine.diagnostics) {
         if engine.diagnostics[i].level == LintLevel.Warn {
-            set count = count + 1
+            set count = count + 1;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give count
+    give count;
 }
 
 proc lint_error_count(engine: LintEngine) -> u64 {
-    let count: u64 = 0
-    let i: u64 = 0
+    let count: u64 = 0;
+    let i: u64 = 0;
 
-    loop i < vector_len(engine.diagnostics) {
+    while i < vector_len(engine.diagnostics) {
         if engine.diagnostics[i].level == LintLevel.Deny or engine.diagnostics[i].level == LintLevel.Forbid {
-            set count = count + 1
+            set count = count + 1;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give count
+    give count;
 }
 
 proc level_name(level: LintLevel) -> string {
     if level == LintLevel.Allow {
-        give "allow"
+        give "allow";
     }
 
     if level == LintLevel.Info {
-        give "info"
+        give "info";
     }
 
     if level == LintLevel.Warn {
-        give "warn"
+        give "warn";
     }
 
     if level == LintLevel.Deny {
-        give "deny"
+        give "deny";
     }
 
     if level == LintLevel.Forbid {
-        give "forbid"
+        give "forbid";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_diagnostic(diagnostic: LintDiagnostic) {
-    emit "lint"
-    emit level_name(diagnostic.level)
-    emit diagnostic.message
-    emit diagnostic.span.file
-    emit diagnostic.span.line
-    emit diagnostic.span.column
+    emit "lint";
+    emit level_name(diagnostic.level);
+    emit diagnostic.message;
+    emit diagnostic.span.file;
+    emit diagnostic.span.line;
+    emit diagnostic.span.column;
 }
 
 proc print_report(engine: LintEngine) {
-    emit "lint report"
-    emit vector_len(engine.rules)
-    emit vector_len(engine.targets)
-    emit vector_len(engine.diagnostics)
-    emit vector_len(engine.errors)
+    emit "lint report";
+    emit vector_len(engine.rules);
+    emit vector_len(engine.targets);
+    emit vector_len(engine.diagnostics);
+    emit vector_len(engine.errors);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(engine.diagnostics) {
-        print_diagnostic(engine.diagnostics[i])
-        set i = i + 1
+    while i < vector_len(engine.diagnostics) {
+        print_diagnostic(engine.diagnostics[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }
