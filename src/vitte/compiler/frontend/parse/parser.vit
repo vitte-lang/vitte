@@ -329,6 +329,19 @@ proc parse_expr(state: ParserState) -> ParserState;
 proc parse_block(state: ParserState) -> ParserState;
 proc parse_stmt(state: ParserState) -> ParserState;
 
+proc parse_attrs(state: ParserState) -> ParserState {
+  let current: ParserState = state;
+  while at_text(current, "#[") or at_text(current, "#!") {
+    set current = advance(current);
+    set current = parse_path(current);
+    if at_text(current, "(") {
+      set current = skip_balanced(current, "(", ")", "PATTR001");
+    }
+    set current = expect_text(current, "]", "PATTR002");
+  }
+  give current;
+}
+
 proc parse_param_list(state: ParserState, closing: string) -> ParserState {
   let current: ParserState = state;
   while not is_eof(current) and not at_text(current, closing) {
@@ -685,6 +698,9 @@ proc parse_primary(state: ParserState) -> ParserState {
   if is_literal_token(tok) {
     give advance(current);
   }
+  if at_text(current, "b") and at_kind(peek_token(current, 1), TokenKind.String) {
+    give advance(advance(current));
+  }
   if at_text(current, "if") {
     give parse_if_expr(current);
   }
@@ -939,11 +955,26 @@ proc parse_stmt(state: ParserState) -> ParserState {
     let exprd: ParserState = parse_expr(in_state);
     give parse_block(exprd);
   }
+  if at_text(current, "select") {
+    let walk: ParserState = parse_expr(advance(current));
+    let opened: ParserState = expect_text(walk, "{", "PSTMT_SELECT001");
+    let scan: ParserState = opened;
+    while at_text(scan, "when") {
+      set scan = advance(scan);
+      set scan = parse_pattern(scan);
+      set scan = parse_block(scan);
+    }
+    if at_text(scan, "else") {
+      set scan = advance(scan);
+      set scan = parse_block(scan);
+    }
+    give expect_text(scan, "}", "PSTMT_SELECT002");
+  }
   if at_text(current, "match") {
     give parse_match_expr(current);
   }
   if at_text(current, "when") {
-    let walk: ParserState = parse_expr(advance(current));
+    let walk: ParserState = parse_unary_expr(advance(current));
     let is_state: ParserState = expect_text(walk, "is", "PSTMT017");
     let pat: ParserState = parse_pattern(is_state);
     give parse_block(pat);
@@ -1030,15 +1061,22 @@ proc parse_meta_decl(state: ParserState) -> ParserState {
 
 proc parse_decl(state: ParserState) -> ParserState {
   let current: ParserState = bump_toplevel(state);
-  let tok: Token = current_token(current);
+  let prefixed: ParserState = parse_attrs(current);
+  if is_visibility(current_token(prefixed).lexeme) {
+    set prefixed = advance(prefixed);
+    if at_text(prefixed, "(") {
+      set prefixed = skip_balanced(prefixed, "(", ")", "PVIS_PREFIX001");
+    }
+  }
+  let tok: Token = current_token(prefixed);
   if tok.kind == TokenKind.Eof {
-    give current;
+    give prefixed;
   }
   if tok.lexeme == "space" {
-    give parse_module_path(advance(current));
+    give parse_module_path(advance(prefixed));
   }
   if tok.lexeme == "use" {
-    let walk: ParserState = parse_module_path(advance(current));
+    let walk: ParserState = parse_module_path(advance(prefixed));
     let imported: ParserState = walk;
     if at_text(imported, ".") {
       let after_dot: ParserState = advance(imported);
@@ -1055,7 +1093,7 @@ proc parse_decl(state: ParserState) -> ParserState {
     give imported;
   }
   if tok.lexeme == "export" {
-    let walk: ParserState = advance(current);
+    let walk: ParserState = advance(prefixed);
     if at_text(walk, "*") {
       give advance(walk);
     }
@@ -1065,13 +1103,13 @@ proc parse_decl(state: ParserState) -> ParserState {
     give skip_until_boundary(walk, ";", "{", "");
   }
   if tok.lexeme == "const" or tok.lexeme == "static" or tok.lexeme == "global" {
-    give parse_const_decl(current);
+    give parse_const_decl(prefixed);
   }
   if tok.lexeme == "type" {
-    give parse_type_decl(current);
+    give parse_type_decl(prefixed);
   }
   if tok.lexeme == "opaque" {
-    let walk: ParserState = expect_text(advance(current), "type", "POPAQUE001");
+    let walk: ParserState = expect_text(advance(prefixed), "type", "POPAQUE001");
     let named: ParserState = expect_ident(walk, "POPAQUE002");
     let generic: ParserState = parse_generic_params(named);
     if at_text(generic, "=") {
@@ -1080,7 +1118,7 @@ proc parse_decl(state: ParserState) -> ParserState {
     give generic;
   }
   if tok.lexeme == "extern" {
-    let walk: ParserState = advance(current);
+    let walk: ParserState = advance(prefixed);
     if at_text(walk, "type") {
       let named: ParserState = expect_ident(advance(walk), "PEXTERN001");
       give parse_generic_params(named);
@@ -1092,13 +1130,13 @@ proc parse_decl(state: ParserState) -> ParserState {
     give with_diag(walk, "PEXTERN999", "expected extern type or extern block");
   }
   if tok.lexeme == "form" or tok.lexeme == "class" or tok.lexeme == "union" or tok.lexeme == "bits" or tok.lexeme == "pick" or tok.lexeme == "flags" or tok.lexeme == "trait" or tok.lexeme == "impl" {
-    give parse_container_decl(current);
+    give parse_container_decl(prefixed);
   }
   if tok.lexeme == "proc" or is_visibility(tok.lexeme) or is_proc_modifier(tok.lexeme) {
-    give parse_proc_decl(current);
+    give parse_proc_decl(prefixed);
   }
   if tok.lexeme == "intrinsic" or tok.lexeme == "query" {
-    let walk: ParserState = advance(current);
+    let walk: ParserState = advance(prefixed);
     let named: ParserState = expect_ident(walk, "PQUERY001");
     let generic: ParserState = parse_generic_params(named);
     let with_open: ParserState = expect_text(generic, "(", "PQUERY002");
@@ -1115,13 +1153,13 @@ proc parse_decl(state: ParserState) -> ParserState {
     give expect_text(suffixed, ";", "PQUERY004");
   }
   if tok.lexeme == "compiler" or tok.lexeme == "pass" or tok.lexeme == "backend" or tok.lexeme == "diagnostic" or tok.lexeme == "macro" or tok.lexeme == "entry" {
-    give parse_meta_decl(current);
+    give parse_meta_decl(prefixed);
   }
   if tok.lexeme == "comptime" {
-    give parse_block(advance(current));
+    give parse_block(advance(prefixed));
   }
   if tok.lexeme == "static_assert" {
-    let walk: ParserState = expect_text(advance(current), "(", "PASSERT001");
+    let walk: ParserState = expect_text(advance(prefixed), "(", "PASSERT001");
     let exprd: ParserState = parse_expr(walk);
     let more: ParserState = exprd;
     if at_text(more, ",") {
@@ -1130,7 +1168,7 @@ proc parse_decl(state: ParserState) -> ParserState {
     give expect_text(more, ")", "PASSERT002");
   }
   if tok.lexeme == "test" or tok.lexeme == "bench" {
-    let walk: ParserState = advance(current);
+    let walk: ParserState = advance(prefixed);
     let named: ParserState = walk;
     if at_kind(named, TokenKind.String) {
       set named = advance(named);
@@ -1138,9 +1176,9 @@ proc parse_decl(state: ParserState) -> ParserState {
     give parse_block(named);
   }
   if is_toplevel_keyword(tok.lexeme) {
-    give skip_until_boundary(current, ";", "{", "");
+    give skip_until_boundary(prefixed, ";", "{", "");
   }
-  give with_diag(current, "P0001", "unexpected top-level token `" + tok.lexeme + "`");
+  give with_diag(prefixed, "P0001", "unexpected top-level token `" + tok.lexeme + "`");
 }
 
 proc parse_source(source_name: string, tokens: [Token]) -> ParseResult {

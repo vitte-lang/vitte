@@ -1,0 +1,44 @@
+space vitte/tools/ide
+
+form IdeCommand {
+  name: string
+  title: string
+  category: string
+}
+
+form IdeSetting {
+  key: string
+  default_value: string
+  description: string
+}
+
+form IdeIntegrationManifest {
+  editor: string
+  language_id: string
+  grammar_scope: string
+  commands: [IdeCommand]
+  settings: [IdeSetting]
+}
+
+proc vscode_integration_manifest() -> IdeIntegrationManifest {
+  give IdeIntegrationManifest {
+    editor: "vscode",
+    language_id: "vitte",
+    grammar_scope: "source.vitte",
+    commands: [
+      IdeCommand { name: "vitte.check", title: "Vitte: Check File", category: "Vitte" },
+      IdeCommand { name: "vitte.build", title: "Vitte: Build", category: "Vitte" },
+      IdeCommand { name: "vitte.format", title: "Vitte: Format", category: "Vitte" }
+    ],
+    settings: [
+      IdeSetting { key: "vitte.compilerPath", default_value: "vitte", description: "Path to the Vitte CLI" },
+      IdeSetting { key: "vitte.diagnosticsOnSave", default_value: "true", description: "Run diagnostics on save" }
+    ]
+  };
+}
+
+proc ide_integration_summary() -> string {
+  give "vscode language=vitte commands=3 settings=2";
+}
+
+export *

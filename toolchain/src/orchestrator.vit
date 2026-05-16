@@ -245,30 +245,7 @@ proc create_stage3_phase() -> BootstrapPhase {
   }
 }
 
-# Phase 7: Stage 4
-proc create_stage4_phase() -> BootstrapPhase {
-  let actions: [BootstrapAction] = [
-    BootstrapAction {
-      action_type: "compile",
-      action_name: "compile-stage4",
-      description: "Fourth self-hosted compilation placeholder",
-      required: true,
-      depends_on: ["compile-stage3"],
-      timeout_seconds: 300,
-      retry_count: 1
-    }
-  ]
-  
-  give BootstrapPhase {
-    phase_number: 7,
-    phase_name: "Stage 4",
-    description: "Fourth self-hosting placeholder stage",
-    actions: actions,
-    parallel: false
-  }
-}
-
-# Phase 8: Verification
+# Phase 7: Verification
 proc create_verification_phase() -> BootstrapPhase {
   let actions: [BootstrapAction] = [
     BootstrapAction {
@@ -300,7 +277,7 @@ proc create_verification_phase() -> BootstrapPhase {
   }
 }
 
-# Phase 7: Installation
+# Phase 8: Installation
 proc create_install_phase() -> BootstrapPhase {
   let actions: [BootstrapAction] = [
     BootstrapAction {
@@ -350,12 +327,11 @@ proc create_bootstrap_plan() -> BootstrapPlan {
     create_stage1_phase(),
     create_stage2_phase(),
     create_stage3_phase(),
-    create_stage4_phase(),
     create_verification_phase(),
     create_install_phase()
   ]
   
-  let total_actions: int = 17
+  let total_actions: int = 14
   let estimated_time: int = 2100
   
   give BootstrapPlan {
@@ -400,6 +376,57 @@ proc create_bootstrap_summary(
   set summary = summary + "Time: " + (total_time_ms as string) + " ms\n"
   set summary = summary + "Phases: " + (plan.phases.len as string) + "\n"
   give summary
+}
+
+proc phase_action_count(phase: BootstrapPhase) -> int {
+  give phase.actions.len
+}
+
+proc plan_action_count(plan: BootstrapPlan) -> int {
+  let count: int = 0
+  let i: int = 0
+  while i < plan.phases.len {
+    set count = count + phase_action_count(plan.phases[i])
+    set i = i + 1
+  }
+  give count
+}
+
+proc plan_phase_names(plan: BootstrapPlan) -> [string] {
+  let names: [string] = []
+  let i: int = 0
+  while i < plan.phases.len {
+    set names = names + [plan.phases[i].phase_name]
+    set i = i + 1
+  }
+  give names
+}
+
+proc find_phase(plan: BootstrapPlan, name: string) -> BootstrapPhase {
+  let i: int = 0
+  while i < plan.phases.len {
+    if plan.phases[i].phase_name == name {
+      give plan.phases[i]
+    }
+    set i = i + 1
+  }
+  give create_validation_phase()
+}
+
+proc action_summary(action: BootstrapAction) -> string {
+  give action.action_type + ":" + action.action_name + " timeout=" + (action.timeout_seconds as string)
+}
+
+proc phase_summary(phase: BootstrapPhase) -> string {
+  give (phase.phase_number as string) + " " + phase.phase_name + " actions=" + (phase.actions.len as string)
+}
+
+proc plan_summary(plan: BootstrapPlan) -> string {
+  give "phases=" + (plan.phases.len as string) + " actions=" + (plan_action_count(plan) as string) + " verify=" + (plan.requires_verification as string)
+}
+
+proc context_summary(context: BootstrapContext) -> string {
+  give "source=" + context.source_root + " build=" + context.build_root + " jobs=" + (context.parallel_jobs as string)
 }
 
 export *

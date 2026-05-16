@@ -252,6 +252,16 @@ profiling-baseline-gate:
 	@tools/profiling/generate_baseline_report.py
 	@tools/profiling/update_matrix_from_baseline.py
 
+.PHONY: roadmap-ecosystem-gate
+roadmap-ecosystem-gate:
+	@python3 tools/roadmap_ecosystem_check.py
+	@test -f target/roadmap_ecosystem/ecosystem_status.json
+	@test -f target/reports/roadmap_ecosystem_coverage.md
+
+.PHONY: architecture-docs-check
+architecture-docs-check:
+	@python3 tools/architecture_docs_check.py
+
 .PHONY: doctor
 doctor:
 	@tools/doctor.sh
@@ -805,6 +815,10 @@ grammar-check:
 grammar-test:
 	@python3 docs/book/grammar/scripts/validate_examples.py
 	@python3 tools/parser_precedence_property_test.py
+
+.PHONY: grammar-alignment-test
+grammar-alignment-test:
+	@python3 tools/grammar_alignment_checker.py
 
 .PHONY: frontend-syntax-test
 frontend-syntax-test:
@@ -1986,7 +2000,7 @@ compiler-topology-gate:
 
 
 .PHONY: compiler-gate
-compiler-gate: analysis-gate type-system-gate memory-model-gate concurrency-model-gate compiler-architecture-gate compiler-components-gate compiler-topology-gate backend-gate cli-diagnostics-snapshots tidy
+compiler-gate: analysis-gate type-system-gate memory-model-gate concurrency-model-gate compiler-architecture-gate compiler-components-gate compiler-topology-gate grammar-alignment-test roadmap-ecosystem-gate architecture-docs-check backend-gate cli-diagnostics-snapshots tidy
 
 
 .PHONY: optimization-phase2-gate

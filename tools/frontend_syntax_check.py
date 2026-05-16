@@ -586,6 +586,20 @@ class Parser:
             elif tok == "pub" and self.at("("):
                 self.skip_balanced("(", ")", "PVIS001")
 
+    def parse_visibility_prefix(self) -> None:
+        if self.at_any(VISIBILITY):
+            tok = self.current().text
+            self.advance()
+            if tok == "pub" and self.at("("):
+                self.skip_balanced("(", ")", "PVIS_PREFIX001")
+
+    def starts_proc_decl(self) -> bool:
+        if self.at("proc") or self.at_any(PROC_MODIFIERS | {"extern"}):
+            return True
+        if self.at_any(VISIBILITY):
+            return self.peek().text in PROC_MODIFIERS | {"extern", "proc"}
+        return False
+
     def parse_proc_name(self) -> None:
         if self.optional("operator"):
             if not self.at_kind("eof"):
@@ -811,7 +825,7 @@ class Parser:
             return
         if self.at("when"):
             self.advance()
-            self.parse_expr()
+            self.parse_unary_expr()
             self.expect("is", "PSTMT_WHEN001")
             self.parse_pattern()
             self.parse_block()
@@ -1329,7 +1343,7 @@ class Parser:
         self.expect("{", "PFORM001")
         while not self.at("}") and not self.at_kind("eof"):
             self.parse_attrs()
-            if self.at("proc") or self.at_any(VISIBILITY | PROC_MODIFIERS | {"extern"}):
+            if self.starts_proc_decl():
                 self.parse_proc()
             elif self.at("const") or self.at("static") or self.at("global"):
                 self.parse_const_like_decl(require_semi=False)
@@ -1344,7 +1358,7 @@ class Parser:
         self.expect("{", "PTRAIT001")
         while not self.at("}") and not self.at_kind("eof"):
             self.parse_attrs()
-            if self.at("proc") or self.at_any(VISIBILITY | PROC_MODIFIERS | {"extern"}):
+            if self.starts_proc_decl():
                 self.parse_proc()
             elif self.at("const") or self.at("static") or self.at("global"):
                 self.parse_const_like_decl(require_semi=False)
@@ -1390,7 +1404,7 @@ class Parser:
         self.expect("{", "PIMPL001")
         while not self.at("}") and not self.at_kind("eof"):
             self.parse_attrs()
-            if self.at("proc") or self.at_any(VISIBILITY | PROC_MODIFIERS | {"extern"}):
+            if self.starts_proc_decl():
                 self.parse_proc()
             elif self.at("const") or self.at("static") or self.at("global"):
                 self.parse_const_like_decl(require_semi=False)
@@ -1430,6 +1444,7 @@ class Parser:
 
     def parse_decl(self) -> None:
         self.parse_attrs()
+        self.parse_visibility_prefix()
         tok = self.current()
         if tok.kind == "eof":
             return

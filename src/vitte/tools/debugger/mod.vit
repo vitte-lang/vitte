@@ -1,0 +1,48 @@
+space vitte/tools/debugger
+
+form Breakpoint {
+  file: string
+  line: u64
+  enabled: bool
+}
+
+form DebugFrame {
+  function_name: string
+  file: string
+  line: u64
+}
+
+form DebugSession {
+  target: string
+  breakpoints: [Breakpoint]
+  frames: [DebugFrame]
+  stopped: bool
+}
+
+proc debugger_session(target: string) -> DebugSession {
+  give DebugSession { target: target, breakpoints: [], frames: [], stopped: false };
+}
+
+proc debugger_add_breakpoint(session: DebugSession, file: string, line: u64) -> DebugSession {
+  give DebugSession {
+    target: session.target,
+    breakpoints: session.breakpoints + [Breakpoint { file: file, line: line, enabled: true }],
+    frames: session.frames,
+    stopped: session.stopped
+  };
+}
+
+proc debugger_stop_at(session: DebugSession, function_name: string, file: string, line: u64) -> DebugSession {
+  give DebugSession {
+    target: session.target,
+    breakpoints: session.breakpoints,
+    frames: session.frames + [DebugFrame { function_name: function_name, file: file, line: line }],
+    stopped: true
+  };
+}
+
+proc debugger_summary() -> string {
+  give "native-debugger breakpoints=enabled frames=tracked";
+}
+
+export *

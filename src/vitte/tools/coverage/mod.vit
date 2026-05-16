@@ -1,0 +1,36 @@
+space vitte/tools/coverage
+
+form CoverageUnit {
+  file: string
+  covered_lines: u64
+  total_lines: u64
+}
+
+form CoverageReport {
+  unit_count: u64
+  covered_lines: u64
+  total_lines: u64
+  percent: u64
+}
+
+proc coverage_report(units: [CoverageUnit]) -> CoverageReport {
+  let covered: u64 = 0;
+  let total: u64 = 0;
+  let i: u64 = 0;
+  while i < len(units) {
+    set covered = covered + units[i].covered_lines;
+    set total = total + units[i].total_lines;
+    set i = i + 1;
+  }
+  let percent: u64 = 0;
+  if total > 0 {
+    set percent = (covered * 100) / total;
+  }
+  give CoverageReport { unit_count: len(units), covered_lines: covered, total_lines: total, percent: percent };
+}
+
+proc coverage_summary() -> string {
+  give "coverage lines=tracked reports=markdown+json";
+}
+
+export *

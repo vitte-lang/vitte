@@ -1,1 +1,106 @@
+space vitte/compiler/frontend/ast/item
 
+use vitte/compiler/frontend/ast/node.{ AstAttribute, AstName, AstSpan, AstVisibility, empty_span }
+
+pick AstItemKind {
+  InnerAttribute,
+  Space,
+  Use,
+  Export,
+  Const,
+  Static,
+  Global,
+  TypeAlias,
+  OpaqueType,
+  ExternType,
+  ExternBlock,
+  Form,
+  Class,
+  Union,
+  Bits,
+  Pick,
+  Flags,
+  Trait,
+  Impl,
+  Proc,
+  Intrinsic,
+  Compiler,
+  Query,
+  Pass,
+  Backend,
+  Diagnostic,
+  Macro,
+  Comptime,
+  StaticAssert,
+  Test,
+  Bench,
+  Entry,
+  Unknown,
+}
+
+pick AstProcModifier {
+  Async,
+  Unsafe,
+  Const,
+  Inline,
+  NoInline,
+  Naked,
+  Interrupt,
+  Extern,
+}
+
+form AstGenericParam {
+  name: string
+  kind: string
+  bound: string
+  default_value: string
+  span: AstSpan
+}
+
+form AstParam {
+  name: string
+  pattern: string
+  type_text: string
+  mode: string
+  variadic: bool
+  span: AstSpan
+}
+
+form AstField {
+  name: string
+  type_text: string
+  value_text: string
+  visibility: AstVisibility
+  attrs: [AstAttribute]
+  span: AstSpan
+}
+
+form AstItem {
+  kind: AstItemKind
+  name: AstName
+  visibility: AstVisibility
+  attrs: [AstAttribute]
+  generic_count: u64
+  field_count: u64
+  param_count: u64
+  child_count: u64
+  span: AstSpan
+}
+
+proc ast_item(kind: AstItemKind, name: string) -> AstItem {
+  give AstItem {
+    kind: kind,
+    name: AstName { text: name, span: empty_span() },
+    visibility: AstVisibility.Private,
+    attrs: [],
+    generic_count: 0,
+    field_count: 0,
+    param_count: 0,
+    child_count: 0,
+    span: empty_span()
+  };
+}
+
+proc item_kind_count() -> u64 {
+  give 33;
+}

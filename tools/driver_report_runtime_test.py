@@ -24,12 +24,16 @@ def extract_grammar_version() -> str:
     return match.group(1)
 
 
-def count_named_rows(proc_name: str) -> int:
+def named_rows(proc_name: str) -> list[str]:
     text = DRIVER_PIPELINE.read_text(encoding="utf-8")
     match = re.search(rf"proc {proc_name}\(\) -> \[string\] \{{(.*?)\n\}}", text, re.S)
     if not match:
         raise RuntimeError(f"cannot extract {proc_name} from driver/pipeline.vit")
-    return len(re.findall(r'"[^"]+"', match.group(1)))
+    return [item.strip('"') for item in re.findall(r'"[^"]+"', match.group(1))]
+
+
+def count_named_rows(proc_name: str) -> int:
+    return len(named_rows(proc_name))
 
 
 def extract_compile_report_fields() -> list[str]:
@@ -60,8 +64,10 @@ def check_json_contract_drift() -> None:
     expected = []
     for field in fields:
         if field == "active_modules":
+            expected.append("active_modules")
             expected.append("active_count")
         elif field == "inactive_modules":
+            expected.append("inactive_modules")
             expected.append("inactive_count")
         else:
             expected.append(field)
@@ -85,6 +91,20 @@ def driver_exit_code(command: str, source_text: str, parsed: dict[str, object]) 
     return 0
 
 
+def driver_message(command: str, exit_code: int) -> str:
+    if exit_code == 0 and command == "compile":
+        return "compile pipeline completed"
+    if exit_code == 0 and command == "check":
+        return "check pipeline completed"
+    if exit_code == 2:
+        return "empty source input"
+    if exit_code == 3:
+        return "frontend failed"
+    if exit_code == 4:
+        return "analysis failed"
+    return "unknown command"
+
+
 def main_driver_report_json(command: str, source_path: str, source_text: str) -> str:
     parsed = parse_file(ROOT / source_path)
     exit_code = driver_exit_code(command, source_text, parsed)
@@ -94,6 +114,7 @@ def main_driver_report_json(command: str, source_path: str, source_text: str) ->
             ("source_path", source_path),
             ("exit_code", exit_code),
             ("status", "ok" if exit_code == 0 else "error"),
+            ("message", driver_message(command, exit_code)),
             ("grammar_version", extract_grammar_version()),
             ("token_count", parsed["token_count"]),
             ("toplevel_count", parsed["toplevel_count"]),
@@ -101,6 +122,8 @@ def main_driver_report_json(command: str, source_path: str, source_text: str) ->
             ("expr_count", parsed["expr_count"]),
             ("type_count", parsed["type_count"]),
             ("pattern_count", parsed["pattern_count"]),
+            ("active_modules", named_rows("active_modules_table")),
+            ("inactive_modules", named_rows("inactive_modules_table")),
             ("active_count", count_named_rows("active_modules_table")),
             ("inactive_count", count_named_rows("inactive_modules_table")),
         ]
