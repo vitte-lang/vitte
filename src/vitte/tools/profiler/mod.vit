@@ -1,0 +1,33 @@
+space vitte/tools/profiler
+
+form ProfileSample {
+  function_name: string
+  inclusive_ns: u64
+  exclusive_ns: u64
+  allocations: u64
+}
+
+form ProfileReport {
+  target: string
+  sample_count: u64
+  total_ns: u64
+  allocation_count: u64
+}
+
+proc profile_report(target: string, samples: [ProfileSample]) -> ProfileReport {
+  let total: u64 = 0;
+  let allocs: u64 = 0;
+  let i: u64 = 0;
+  while i < len(samples) {
+    set total = total + samples[i].inclusive_ns;
+    set allocs = allocs + samples[i].allocations;
+    set i = i + 1;
+  }
+  give ProfileReport { target: target, sample_count: len(samples), total_ns: total, allocation_count: allocs };
+}
+
+proc profiler_summary() -> string {
+  give "integrated-profiler cpu=on memory=on reports=on";
+}
+
+export *

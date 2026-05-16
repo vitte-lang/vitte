@@ -1,0 +1,47 @@
+space vitte/compiler/performance
+
+form ParallelCompilationPlan {
+  module_count: u64
+  worker_count: u64
+  deterministic: bool
+}
+
+form MemoryPoolPlan {
+  arena_count: u64
+  page_size: u64
+  reuse_enabled: bool
+}
+
+form JitPlan {
+  enabled: bool
+  hot_loop_threshold: u64
+  cache_limit_mb: u64
+}
+
+form AotPlan {
+  enabled: bool
+  optimization_level: string
+  target_triple: string
+}
+
+form PerformancePlan {
+  parallel: ParallelCompilationPlan
+  memory_pool: MemoryPoolPlan
+  jit: JitPlan
+  aot: AotPlan
+}
+
+proc default_performance_plan(target_triple: string) -> PerformancePlan {
+  give PerformancePlan {
+    parallel: ParallelCompilationPlan { module_count: 0, worker_count: 4, deterministic: true },
+    memory_pool: MemoryPoolPlan { arena_count: 4, page_size: 4096, reuse_enabled: true },
+    jit: JitPlan { enabled: true, hot_loop_threshold: 1000, cache_limit_mb: 48 },
+    aot: AotPlan { enabled: true, optimization_level: "O2", target_triple: target_triple }
+  };
+}
+
+proc performance_summary() -> string {
+  give "parallel=on memory_pool=on jit=on aot=on";
+}
+
+export *

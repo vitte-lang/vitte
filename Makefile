@@ -252,6 +252,12 @@ profiling-baseline-gate:
 	@tools/profiling/generate_baseline_report.py
 	@tools/profiling/update_matrix_from_baseline.py
 
+.PHONY: roadmap-ecosystem-gate
+roadmap-ecosystem-gate:
+	@python3 tools/roadmap_ecosystem_check.py
+	@test -f target/roadmap_ecosystem/ecosystem_status.json
+	@test -f target/reports/roadmap_ecosystem_coverage.md
+
 .PHONY: doctor
 doctor:
 	@tools/doctor.sh
@@ -1990,7 +1996,7 @@ compiler-topology-gate:
 
 
 .PHONY: compiler-gate
-compiler-gate: analysis-gate type-system-gate memory-model-gate concurrency-model-gate compiler-architecture-gate compiler-components-gate compiler-topology-gate grammar-alignment-test backend-gate cli-diagnostics-snapshots tidy
+compiler-gate: analysis-gate type-system-gate memory-model-gate concurrency-model-gate compiler-architecture-gate compiler-components-gate compiler-topology-gate grammar-alignment-test roadmap-ecosystem-gate backend-gate cli-diagnostics-snapshots tidy
 
 
 .PHONY: optimization-phase2-gate
