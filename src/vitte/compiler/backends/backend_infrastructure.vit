@@ -1,0 +1,403 @@
+space vitte/compiler/backends/backend_infrastructure
+
+// ============================================================================
+// BACKEND INFRASTRUCTURE LAYER
+// ============================================================================
+// Unified abstraction for code generation targets
+// Handles:
+// - Target specification (architecture, OS, ABI)
+// - Backend interface
+// - Codegen strategy dispatch
+// - Emission coordination
+
+// ============================================================================
+// TARGET SPECIFICATION
+// ============================================================================
+
+form TargetTriple {
+  architecture: string,    // x86_64, arm64, riscv64, wasm32
+  vendor: string,          // apple, pc, unknown
+  operating_system: string, // linux, macos, windows, none (bare metal)
+  environment: string      // gnu, musl, msvc, wasi
+}
+
+pick Architecture {
+  X86_64,
+  ARM64,
+  RISC_V64,
+  WASM32,
+  MIPS64,
+  PPC64,
+  Unknown
+}
+
+pick OperatingSystem {
+  Linux,
+  MacOS,
+  Windows,
+  BSD,
+  WebAssembly,
+  BareMetal,
+  Unknown
+}
+
+form TargetInfo {
+  triple: TargetTriple,
+  data_layout: string,           // e.g., "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+  pointer_width: int,            // 32, 64, 128
+  endianness: string,            // little, big
+  word_size: int,
+  alignment_size: int,
+  max_align: int,
+  has_capability: [string],      // simd, atomic, neon, avx, etc.
+  calling_convention: string,    // cdecl, stdcall, fastcall, etc.
+  default_abi: string            // c, rust, system, etc.
+}
+
+proc new_target_triple(arch: string, os: string) -> TargetTriple {
+  give TargetTriple {
+    architecture: arch,
+    vendor: "unknown",
+    operating_system: os,
+    environment: "gnu"
+  }
+}
+
+proc new_target_info_x86_64_linux() -> TargetInfo {
+  let caps: [string] = ["simd", "sse2", "sse4.2", "avx"]
+  give TargetInfo {
+    triple: new_target_triple("x86_64", "linux"),
+    data_layout: "e-m:e-i64:64-f80:128-n8:16:32:64-S128",
+    pointer_width: 64,
+    endianness: "little",
+    word_size: 8,
+    alignment_size: 16,
+    max_align: 64,
+    has_capability: caps,
+    calling_convention: "cdecl",
+    default_abi: "c"
+  }
+}
+
+proc new_target_info_arm64_macos() -> TargetInfo {
+  let caps: [string] = ["simd", "neon", "atomic"]
+  give TargetInfo {
+    triple: new_target_triple("arm64", "macos"),
+    data_layout: "e-m:o-i64:64-i128:128-n32:64-S128",
+    pointer_width: 64,
+    endianness: "little",
+    word_size: 8,
+    alignment_size: 16,
+    max_align: 64,
+    has_capability: caps,
+    calling_convention: "cdecl",
+    default_abi: "c"
+  }
+}
+
+proc new_target_info_wasm32() -> TargetInfo {
+  let caps: [string] = ["simd"]
+  give TargetInfo {
+    triple: new_target_triple("wasm32", "unknown"),
+    data_layout: "e-m:e-p:32:32-i64:64-n32:64-S128-ni:1:10:2",
+    pointer_width: 32,
+    endianness: "little",
+    word_size: 4,
+    alignment_size: 16,
+    max_align: 16,
+    has_capability: caps,
+    calling_convention: "wasm",
+    default_abi: "wasi"
+  }
+}
+
+// ============================================================================
+// CODEGEN STRATEGY
+// ============================================================================
+
+pick CodegenBackend {
+  Native,     // Direct machine code
+  LLVM,       // LLVM IR emission
+  C,          // C source output
+  Assembly,   // Assembly text
+  Bytecode,   // Stack machine bytecode
+  WebAssembly // WASM binary
+}
+
+form CodegenStrategy {
+  backend: CodegenBackend,
+  target: TargetInfo,
+  optimization_level: int,    // 0-3: O0, O1, O2, O3
+  debug_info: bool,
+  sanitizers: [string],       // asan, ubsan, msan, tsan
+  lto: string                 // none, thin, full
+}
+
+proc new_codegen_strategy(backend: CodegenBackend, target: TargetInfo) -> CodegenStrategy {
+  give CodegenStrategy {
+    backend: backend,
+    target: target,
+    optimization_level: 2,
+    debug_info: true,
+    sanitizers: [],
+    lto: "none"
+  }
+}
+
+// ============================================================================
+// CODEGEN CONTEXT
+// ============================================================================
+
+form CodegenContext {
+  strategy: CodegenStrategy,
+  current_module: string,
+  module_counter: int,
+  string_literals: [string],
+  constants: [string],
+  functions: [string],
+  errors: [string],
+  warnings: [string]
+}
+
+proc new_codegen_context(strategy: CodegenStrategy) -> CodegenContext {
+  give CodegenContext {
+    strategy: strategy,
+    current_module: "main",
+    module_counter: 0,
+    string_literals: [],
+    constants: [],
+    functions: [],
+    errors: [],
+    warnings: []
+  }
+}
+
+// ============================================================================
+// EMISSION INTERFACE
+// ============================================================================
+
+form EmissionResult {
+  success: bool,
+  output: string,
+  artifact_path: string,
+  metadata: EmissionMetadata,
+  errors: [string]
+}
+
+form EmissionMetadata {
+  target: string,
+  backend: string,
+  symbols_exported: int,
+  symbols_imported: int,
+  code_size: int,
+  data_size: int,
+  text_sections: int,
+  data_sections: int,
+  debug_sections: int
+}
+
+proc empty_emission_result() -> EmissionResult {
+  give EmissionResult {
+    success: false,
+    output: "",
+    artifact_path: "",
+    metadata: EmissionMetadata {
+      target: "",
+      backend: "",
+      symbols_exported: 0,
+      symbols_imported: 0,
+      code_size: 0,
+      data_size: 0,
+      text_sections: 0,
+      data_sections: 0,
+      debug_sections: 0
+    },
+    errors: []
+  }
+}
+
+// ============================================================================
+// BACKEND INTERFACE
+// ============================================================================
+
+form BackendInterface {
+  name: string,
+  version: string,
+  emit_function: string,      // Function name for emission
+  supported_targets: [TargetTriple],
+  capabilities: [string]
+}
+
+proc new_backend_interface(name: string) -> BackendInterface {
+  give BackendInterface {
+    name: name,
+    version: "1.0",
+    emit_function: name + "_emit",
+    supported_targets: [],
+    capabilities: []
+  }
+}
+
+// ============================================================================
+// RUNTIME INTEGRATION
+// ============================================================================
+
+form RuntimeLibrary {
+  name: string,
+  functions: [RuntimeFunction],
+  types: [RuntimeType],
+  constants: [RuntimeConstant]
+}
+
+form RuntimeFunction {
+  name: string,
+  signature: string,
+  is_intrinsic: bool,
+  link_name: string
+}
+
+form RuntimeType {
+  name: string,
+  layout: string,
+  size: int,
+  align: int
+}
+
+form RuntimeConstant {
+  name: string,
+  value: string,
+  ty: string
+}
+
+proc create_vitte_runtime() -> RuntimeLibrary {
+  let funcs: [RuntimeFunction] = []
+
+  push(funcs, RuntimeFunction {
+    name: "alloc",
+    signature: "fn alloc(size: int) -> *void",
+    is_intrinsic: true,
+    link_name: "vitte_alloc"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "free",
+    signature: "fn free(ptr: *void)",
+    is_intrinsic: true,
+    link_name: "vitte_free"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "print",
+    signature: "fn print(str: string)",
+    is_intrinsic: true,
+    link_name: "vitte_print"
+  })
+
+  give RuntimeLibrary {
+    name: "vitte_runtime",
+    functions: funcs,
+    types: [],
+    constants: []
+  }
+}
+
+// ============================================================================
+// SYMBOL MANAGEMENT
+// ============================================================================
+
+form Symbol {
+  name: string,
+  mangled_name: string,
+  kind: SymbolKind,
+  visibility: string,    // public, private, internal
+  scope: string          // global, local
+}
+
+pick SymbolKind {
+  Function,
+  GlobalVariable,
+  Type,
+  Constant,
+  Label,
+  Section
+}
+
+form SymbolTable {
+  symbols: [Symbol],
+  name_map: [string]
+}
+
+proc new_symbol_table() -> SymbolTable {
+  give SymbolTable {
+    symbols: [],
+    name_map: []
+  }
+}
+
+proc add_symbol(table: *SymbolTable, name: string, kind: SymbolKind, visibility: string) {
+  let sym = Symbol {
+    name: name,
+    mangled_name: "_vit_" + name,
+    kind: kind,
+    visibility: visibility,
+    scope: "global"
+  }
+  push(table.symbols, sym)
+  push(table.name_map, name)
+}
+
+// ============================================================================
+// SECTION MANAGEMENT
+// ============================================================================
+
+form Section {
+  name: string,
+  kind: string,             // text, data, rodata, bss, debug
+  content: string,
+  size: int,
+  alignment: int,
+  permissions: string       // rx, rw, r
+}
+
+form SectionLayout {
+  sections: [Section],
+  layout_order: [string]    // Order of sections in output
+}
+
+proc new_section_layout() -> SectionLayout {
+  let sections: [Section] = []
+
+  push(sections, Section {
+    name: ".text",
+    kind: "text",
+    content: "",
+    size: 0,
+    alignment: 4096,
+    permissions: "rx"
+  })
+
+  push(sections, Section {
+    name: ".data",
+    kind: "data",
+    content: "",
+    size: 0,
+    alignment: 16,
+    permissions: "rw"
+  })
+
+  push(sections, Section {
+    name: ".rodata",
+    kind: "rodata",
+    content: "",
+    size: 0,
+    alignment: 8,
+    permissions: "r"
+  })
+
+  give SectionLayout {
+    sections: sections,
+    layout_order: [".text", ".data", ".rodata"]
+  }
+}
+
+export *
