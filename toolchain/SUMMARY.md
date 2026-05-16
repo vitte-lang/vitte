@@ -30,12 +30,12 @@ toolchain/
 
 ### 1. Core Vitte Modules (`src/`)
 
-#### config.vit - Configuration Management (260+ lines)
+#### config.vit - Configuration Management (370+ lines)
 Manages all aspects of toolchain configuration:
 - **BuildTarget**: Platform-specific compilation settings
 - **CompileOptions**: Compilation parameters (optimization, debug, etc.)
 - **ToolchainConfig**: Aggregated configuration
-- **Functions**: 10+ configuration builders for different targets and modes
+- **Functions**: 20+ configuration builders, validators, selectors, and summaries
 
 **Key features:**
 - Support for 6 target platforms (native, x86_64-linux, aarch64-linux, x86_64-darwin, aarch64-darwin, x86_64-windows)
@@ -47,7 +47,7 @@ Detects system capabilities:
 - **PlatformInfo**: OS, architecture, endianness detection
 - **ToolAvailability**: Tool discovery (native-cc, alternate native compiler, ccache, ninja, etc.)
 - **EnvironmentInfo**: Complete environment snapshot
-- **Functions**: 10+ detection and validation functions
+- **Functions**: 20+ detection, validation, recommendation, and summary functions
 
 **Key features:**
 - OS detection (Linux, macOS, Windows)
@@ -55,13 +55,13 @@ Detects system capabilities:
 - Tool version detection
 - Platform support validation
 
-#### compiler.vit - Compiler Interface (240+ lines)
+#### compiler.vit - Compiler Interface (330+ lines)
 Unified compilation interface:
 - **CompilationSource**: Source file metadata
 - **CompilationTarget**: Output specification
 - **CompilationResult**: Result handling
 - **CompilerInvocation**: Invocation representation
-- **Functions**: 10+ compiler operation functions
+- **Functions**: 20+ compiler operation, invocation, target, and result functions
 
 **Key features:**
 - Command-line argument generation
@@ -69,55 +69,55 @@ Unified compilation interface:
 - Error/warning extraction
 - Result validation
 
-#### build.vit - Build Orchestration (280+ lines)
+#### build.vit - Build Orchestration (390+ lines)
 Multi-stage bootstrap management:
 - **BuildStage**: Individual stage definition
 - **BuildArtifact**: Artifact tracking
 - **BuildCache**: Build caching
 - **BuildState**: Cumulative build state
 - **BuildReport**: Completion reporting
-- **Functions**: 15+ build management functions
+- **Functions**: 30+ build management, stage, artifact, cache, and report functions
 
 **Key features:**
-- Three-stage bootstrap definition
+- Four-stage bootstrap definition (seed, stage1, stage2, stage3)
 - Artifact tracking and caching
 - Cache management
 - Consistency verification
 - Build parallelism calculation
 
-#### orchestrator.vit - High-Level Coordination (350+ lines)
+#### orchestrator.vit - High-Level Coordination (430+ lines)
 Bootstrap process orchestration:
 - **BootstrapContext**: Execution context
 - **BootstrapAction**: Atomic operations
 - **BootstrapPhase**: Logical build phases
 - **BootstrapPlan**: Complete execution plan
-- **Functions**: 12+ orchestration functions
+- **Functions**: 20+ orchestration, planning, summary, and lookup functions
 
 **Key features:**
-- 7-phase bootstrap process definition
+- 8-phase bootstrap process definition
 - Action dependency management
 - Phase-based execution planning
 - Timeout and retry configuration
 
-#### main.vit - Main Entry Point (400+ lines)
+#### main.vit - Main Entry Point (410+ lines)
 Top-level API and CLI interface:
 - **ToolchainVersion**: Version management
 - **BootstrapReport**: Execution reporting
-- **Functions**: 25+ public API functions
+- **Functions**: 35+ public API, mode dispatch, report, and summary functions
 
 **Key features:**
-- Three bootstrap modes (quick, normal, strict)
+- Five bootstrap modes (quick, normal, strict, dry-run, check)
 - Dry-run capability
 - Configuration validation
 - Progress reporting
 - CLI entry point
 
-**Total Vitte code: ~1,800 lines of modular, documented code**
+**Total Vitte code: ~2,240 lines of modular, documented code**
 
 ### 2. Configuration File (`bootstrap-config.json`)
 
 JSON-based configuration with:
-- 3-stage bootstrap definition
+- 4-stage bootstrap definition
 - 6 target platform configurations
 - Build environment requirements
 - Default compilation settings
@@ -176,7 +176,7 @@ Convenience targets for common operations:
 
 #### BOOTSTRAP_DESIGN.md (500+ lines)
 - Bootstrap architecture overview
-- Three-stage bootstrap process with diagrams
+- Four-stage bootstrap process with diagrams
 - Module descriptions
 - Phase definitions
 - Design decisions
@@ -316,13 +316,13 @@ make -C toolchain install
 
 | Component | Lines | Forms/Structs | Functions | Modules |
 |-----------|-------|---------------|-----------|---------|
-| config.vit | 260 | 3 | 10+ | 1 |
-| platform.vit | 280 | 3 | 10+ | 1 |
-| compiler.vit | 240 | 5 | 10+ | 1 |
-| build.vit | 280 | 6 | 15+ | 1 |
-| orchestrator.vit | 350 | 5 | 12+ | 1 |
-| main.vit | 400 | 2 | 25+ | 1 |
-| **Total** | **1,810** | **24** | **82+** | **6** |
+| config.vit | 370 | 3 | 20+ | 1 |
+| platform.vit | 290 | 3 | 20+ | 1 |
+| compiler.vit | 330 | 5 | 20+ | 1 |
+| build.vit | 390 | 6 | 30+ | 1 |
+| orchestrator.vit | 430 | 5 | 20+ | 1 |
+| main.vit | 410 | 2 | 35+ | 1 |
+| **Total** | **2,240** | **24** | **145+** | **6** |
 
 Documentation:
 - README.md: 450 lines
@@ -373,8 +373,8 @@ Documentation:
 ✓ toolchain/src/platform.vit            (NEW - 280 lines)
 ✓ toolchain/src/compiler.vit            (NEW - 240 lines)
 ✓ toolchain/src/build.vit               (NEW - 280 lines)
-✓ toolchain/src/orchestrator.vit        (NEW - 350 lines)
-✓ toolchain/src/main.vit                (NEW - 400 lines)
+✓ toolchain/src/orchestrator.vit        (NEW - 430 lines)
+✓ toolchain/src/main.vit                (NEW - 410 lines)
 ✓ toolchain/bootstrap-config.json       (NEW - 200 lines)
 ✓ toolchain/bootstrap.sh                (NEW - 350 lines)
 ✓ toolchain/Makefile                    (NEW - 200 lines)
@@ -407,5 +407,5 @@ For issues or questions:
 **Version**: 0.1.0  
 **Status**: Complete Bootstrap Toolchain Implementation  
 **Date**: May 10, 2026  
-**Language**: Vitte (1,810 lines) + Shell/JSON  
+**Language**: Vitte (2,240 lines) + Shell/JSON  
 **Documentation**: 2,050+ lines

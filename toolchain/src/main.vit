@@ -267,6 +267,117 @@ proc print_environment_info(env: EnvironmentInfo) -> string {
   give output
 }
 
+proc default_source_dir() -> string {
+  give "."
+}
+
+proc default_build_dir() -> string {
+  give "build"
+}
+
+proc default_install_dir() -> string {
+  give "/usr/local"
+}
+
+proc bootstrap_mode_names() -> [string] {
+  give ["quick", "normal", "strict", "dry-run", "check"]
+}
+
+proc is_bootstrap_mode(name: string) -> bool {
+  let modes: [string] = bootstrap_mode_names()
+  let i: int = 0
+  while i < modes.len {
+    if modes[i] == name {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc create_report(status: string, success: bool, stages_completed: int, total_stages: int) -> BootstrapReport {
+  give BootstrapReport {
+    version: version(),
+    status: status,
+    timestamp: 0,
+    platform: "native",
+    success: success,
+    stages_completed: stages_completed,
+    total_stages: total_stages,
+    total_time_ms: 0,
+    artifacts_produced: 0
+  }
+}
+
+proc success_report(stages_completed: int, total_stages: int) -> BootstrapReport {
+  give create_report("success", true, stages_completed, total_stages)
+}
+
+proc failure_report(status: string, stages_completed: int, total_stages: int) -> BootstrapReport {
+  give create_report(status, false, stages_completed, total_stages)
+}
+
+proc report_summary(report: BootstrapReport) -> string {
+  give report.status + " stages=" + (report.stages_completed as string) + "/" + (report.total_stages as string)
+}
+
+proc public_bootstrap_plan_summary() -> string {
+  let plan: BootstrapPlan = create_bootstrap_plan()
+  give plan_summary(plan)
+}
+
+proc public_environment_summary() -> string {
+  let env: EnvironmentInfo = detect_environment()
+  give environment_summary(env)
+}
+
+proc public_config_summary(source_dir: string, build_dir: string) -> string {
+  let config: ToolchainConfig = get_recommended_config(source_dir, build_dir)
+  give config_summary(config)
+}
+
+proc run_check_mode(source_dir: string, build_dir: string) -> BootstrapReport {
+  let env: EnvironmentInfo = detect_environment()
+  let errors: [string] = validate_environment(env)
+  if errors.len > 0 {
+    give failure_report("environment-invalid", 0, 4)
+  }
+  let config: ToolchainConfig = get_recommended_config(source_dir, build_dir)
+  let config_errors: [string] = validate_toolchain_config(config)
+  if config_errors.len > 0 {
+    give failure_report("config-invalid", 0, 4)
+  }
+  give success_report(0, 4)
+}
+
+proc run_mode(mode: string, source_dir: string, build_dir: string, install_dir: string) -> BootstrapReport {
+  if mode == "dry-run" {
+    give dry_run(source_dir, build_dir)
+  }
+  if mode == "check" {
+    give run_check_mode(source_dir, build_dir)
+  }
+  if mode == "quick" {
+    let success: bool = run_quick_bootstrap(source_dir, build_dir)
+    if success {
+      give success_report(4, 4)
+    }
+    give failure_report("quick-failed", 0, 4)
+  }
+  if mode == "strict" {
+    let success: bool = run_strict_bootstrap(source_dir, build_dir, install_dir)
+    if success {
+      give success_report(4, 4)
+    }
+    give failure_report("strict-failed", 0, 4)
+  }
+  let success: bool = run_bootstrap(source_dir, build_dir, install_dir, false)
+  if success {
+    give success_report(4, 4)
+  }
+  give failure_report("bootstrap-failed", 0, 4)
+}
+
 # Main entry point for CLI
 proc main_bootstrap(
   argc: int,

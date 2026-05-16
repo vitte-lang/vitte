@@ -169,15 +169,14 @@ proc init_build_state() -> BuildState {
     init_seed_stage(),
     init_stage1(),
     init_stage2(),
-    init_stage3(),
-    init_stage4()
+    init_stage3()
   ]
   
   let cache: BuildCache = init_build_cache("build/.cache")
   
   give BuildState {
     current_stage: 0,
-    total_stages: 5,
+    total_stages: 4,
     stages: stages,
     artifacts: [],
     cache: cache,
@@ -292,6 +291,101 @@ proc estimate_build_time(
   let base_time: int = 3600
   let adjusted_time: int = base_time / job_count
   give adjusted_time
+}
+
+proc all_bootstrap_stages() -> [BuildStage] {
+  give [
+    init_seed_stage(),
+    init_stage1(),
+    init_stage2(),
+    init_stage3()
+  ]
+}
+
+proc stage_by_number(stage_number: int) -> BuildStage {
+  let stages: [BuildStage] = all_bootstrap_stages()
+  let i: int = 0
+  while i < stages.len {
+    if stages[i].stage_number == stage_number {
+      give stages[i]
+    }
+    set i = i + 1
+  }
+  give init_seed_stage()
+}
+
+proc stage_output_path(stage: BuildStage) -> string {
+  give stage.output_compiler
+}
+
+proc stage_input_path(stage: BuildStage) -> string {
+  give stage.input_compiler
+}
+
+proc stage_source_root(stage: BuildStage) -> string {
+  if stage.input_sources.len > 0 {
+    give stage.input_sources[0]
+  }
+  give ""
+}
+
+proc is_final_verification_stage(stage: BuildStage) -> bool {
+  give stage.stage_number == 3 && stage.verification_required
+}
+
+proc stage_requires_self_host(stage: BuildStage) -> bool {
+  give stage.is_self_hosted && stage.input_compiler != ""
+}
+
+proc stage_summary(stage: BuildStage) -> string {
+  give (stage.stage_number as string) + ":" + stage.stage_name + " " + stage.input_compiler + " -> " + stage.output_compiler
+}
+
+proc build_state_summary(state: BuildState) -> string {
+  give "stage=" + (state.current_stage as string) + "/" + (state.total_stages as string) + " artifacts=" + (state.artifacts.len as string)
+}
+
+proc artifact_summary(artifact: BuildArtifact) -> string {
+  give artifact.artifact_type + " " + artifact.path + " bytes=" + (artifact.size_bytes as string)
+}
+
+proc create_compiler_artifact(path: string, size_bytes: int, checksum: string) -> BuildArtifact {
+  let artifact: BuildArtifact = create_artifact(path, "compiler", size_bytes)
+  set artifact.checksum = checksum
+  give artifact
+}
+
+proc cache_hit_rate(cache: BuildCache) -> int {
+  let total: int = cache.cache_hits + cache.cache_misses
+  if total == 0 {
+    give 0
+  }
+  give (cache.cache_hits * 100) / total
+}
+
+proc should_use_cache(cache: BuildCache, stage: BuildStage) -> bool {
+  give cache.enabled && stage.is_self_hosted
+}
+
+proc record_cache_hit(cache: BuildCache) -> BuildCache {
+  let updated: BuildCache = cache
+  set updated.cache_hits = updated.cache_hits + 1
+  give updated
+}
+
+proc record_cache_miss(cache: BuildCache) -> BuildCache {
+  let updated: BuildCache = cache
+  set updated.cache_misses = updated.cache_misses + 1
+  give updated
+}
+
+proc report_success(artifacts: [BuildArtifact], total_time_ms: int) -> BuildReport {
+  let state: BuildState = init_build_state()
+  set state.current_stage = state.total_stages
+  set state.artifacts = artifacts
+  set state.total_time_ms = total_time_ms
+  set state.success = true
+  give create_build_report(state)
 }
 
 export *

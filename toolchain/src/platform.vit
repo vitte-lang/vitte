@@ -205,4 +205,86 @@ proc is_platform_supported(platform: PlatformInfo) -> bool {
   give supported
 }
 
+proc platform_family(platform: PlatformInfo) -> string {
+  if platform.is_linux {
+    give "linux"
+  }
+  if platform.is_macos {
+    give "macos"
+  }
+  if platform.is_windows {
+    give "windows"
+  }
+  if platform.is_bsd {
+    give "bsd"
+  }
+  give "unknown"
+}
+
+proc platform_triple_guess(platform: PlatformInfo) -> string {
+  if platform.arch_name == "x86_64" && platform.is_linux {
+    give "x86_64-unknown-linux-gnu"
+  }
+  if platform.arch_name == "aarch64" && platform.is_linux {
+    give "aarch64-unknown-linux-gnu"
+  }
+  if platform.arch_name == "x86_64" && platform.is_macos {
+    give "x86_64-apple-darwin"
+  }
+  if platform.arch_name == "aarch64" && platform.is_macos {
+    give "aarch64-apple-darwin"
+  }
+  if platform.arch_name == "x86_64" && platform.is_windows {
+    give "x86_64-pc-windows-gnu"
+  }
+  give platform.arch_name + "-" + platform.os_name
+}
+
+proc supports_parallel_builds(env: EnvironmentInfo) -> bool {
+  give env.cpu_count > 1 && env.total_memory >= 1024
+}
+
+proc recommended_cache_enabled(env: EnvironmentInfo) -> bool {
+  give env.tools.has_ccache && env.total_memory >= 2048
+}
+
+proc recommended_build_tool(env: EnvironmentInfo) -> string {
+  give select_build_tool(env.tools)
+}
+
+proc recommended_compiler(env: EnvironmentInfo) -> string {
+  give select_native_compiler(env.tools)
+}
+
+proc validate_environment(env: EnvironmentInfo) -> [string] {
+  let errors: [string] = []
+  if not is_platform_supported(env.platform) {
+    set errors = errors + ["platform is not supported"]
+  }
+  if not all_required_tools_available(env.tools) {
+    set errors = errors + ["required build tools are missing"]
+  }
+  if env.cpu_count < 1 {
+    set errors = errors + ["cpu_count must be positive"]
+  }
+  if env.total_memory < 512 {
+    set errors = errors + ["at least 512 MB memory is required"]
+  }
+  give errors
+}
+
+proc tool_summary(tools: ToolAvailability) -> string {
+  let compiler: string = select_native_compiler(tools)
+  let build_tool: string = select_build_tool(tools)
+  give "compiler=" + compiler + " build_tool=" + build_tool
+}
+
+proc platform_summary(platform: PlatformInfo) -> string {
+  give platform.os_name + "/" + platform.arch_name + " " + platform_triple_guess(platform)
+}
+
+proc environment_summary(env: EnvironmentInfo) -> string {
+  give platform_summary(env.platform) + " jobs=" + (recommended_job_count(env) as string) + " " + tool_summary(env.tools)
+}
+
 export *

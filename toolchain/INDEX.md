@@ -10,7 +10,7 @@ This is a **complete, production-ready bootstrap toolchain** for the Vitte compi
 
 ## Files Created
 
-### Core Vitte Modules (1,810 lines total)
+### Core Vitte Modules (2,240 lines total)
 
 | File | Lines | Purpose |
 |------|-------|---------|
@@ -110,7 +110,7 @@ Stage 2: Verification
 ## Key Features
 
 ✓ Multi-stage bootstrap (seed → stage1 → stage2)  
-✓ Modular Vitte implementation (6 modules, 1,810 lines)  
+✓ Modular Vitte implementation (6 modules, 2,240 lines)  
 ✓ Platform support (Linux, macOS, Windows)  
 ✓ Three build modes (quick, normal, strict)  
 ✓ Configuration-driven (JSON-based)  
@@ -372,7 +372,7 @@ make VITTE_BOOTSTRAP=$(pwd)/toolchain/build/vittec2 all
 | Metric | Count |
 |--------|-------|
 | Vitte modules | 6 |
-| Total Vitte lines | 1,810 |
+| Total Vitte lines | 2,240 |
 | Forms/structs | 24 |
 | Functions | 82+ |
 | Documentation files | 6 |

@@ -212,4 +212,123 @@ proc extract_warnings(stderr: string) -> [string] {
   give warnings
 }
 
+proc executable_source(path: string, module_name: string) -> CompilationSource {
+  give CompilationSource {
+    path: path,
+    is_directory: false,
+    is_library: false,
+    module_name: module_name,
+    version: "2026",
+    dependencies: []
+  }
+}
+
+proc library_source(path: string, module_name: string, dependencies: [string]) -> CompilationSource {
+  give CompilationSource {
+    path: path,
+    is_directory: false,
+    is_library: true,
+    module_name: module_name,
+    version: "2026",
+    dependencies: dependencies
+  }
+}
+
+proc native_executable_target(output_path: string, triple: string) -> CompilationTarget {
+  let object_format: string = "elf64"
+  let binary_format: string = "elf"
+  if triple == "x86_64-apple-darwin" || triple == "aarch64-apple-darwin" {
+    set object_format = "macho64"
+    set binary_format = "macho"
+  }
+  if triple == "x86_64-pc-windows-gnu" {
+    set object_format = "coff"
+    set binary_format = "pe"
+  }
+  give CompilationTarget {
+    output_path: output_path,
+    output_type: "executable",
+    object_format: object_format,
+    binary_format: binary_format
+  }
+}
+
+proc append_arg(args: [string], arg: string) -> [string] {
+  give args + [arg]
+}
+
+proc append_args(args: [string], extra: [string]) -> [string] {
+  let result: [string] = args
+  let i: int = 0
+  while i < extra.len {
+    set result = result + [extra[i]]
+    set i = i + 1
+  }
+  give result
+}
+
+proc invocation_with_extra_args(invocation: CompilerInvocation, extra: [string]) -> CompilerInvocation {
+  let updated: CompilerInvocation = invocation
+  set updated.args = append_args(updated.args, extra)
+  give updated
+}
+
+proc invocation_command(invocation: CompilerInvocation) -> string {
+  give build_compiler_command(
+    invocation.compiler_path,
+    invocation.source.path,
+    invocation.target.output_path,
+    invocation.args
+  )
+}
+
+proc invocation_summary(invocation: CompilerInvocation) -> string {
+  give invocation.source.module_name + " -> " + invocation.target.output_path + " using " + invocation.compiler_path
+}
+
+proc result_summary(result: CompilationResult) -> string {
+  if result.success {
+    give "success exit=" + (result.exit_code as string) + " warnings=" + (result.warnings_count as string)
+  }
+  give "failure exit=" + (result.exit_code as string) + " errors=" + (result.errors_count as string)
+}
+
+proc has_diagnostics(result: CompilationResult) -> bool {
+  give result.warnings_count > 0 || result.errors_count > 0
+}
+
+proc failed_result(exit_code: int, stderr: string) -> CompilationResult {
+  give CompilationResult {
+    success: false,
+    exit_code: exit_code,
+    stdout: "",
+    stderr: stderr,
+    warnings_count: 0,
+    errors_count: 1,
+    compilation_time_ms: 0,
+    output_size_bytes: 0
+  }
+}
+
+proc estimate_compilation_time_ms(source: CompilationSource, opt_level: int) -> int {
+  let base: int = 500
+  if source.is_library {
+    set base = base + 250
+  }
+  set base = base + (opt_level * 300)
+  set base = base + (source.dependencies.len * 50)
+  give base
+}
+
+proc should_emit_ir(args: [string]) -> bool {
+  let i: int = 0
+  while i < args.len {
+    if args[i] == "--emit-ir" {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
 export *

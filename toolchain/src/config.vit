@@ -214,4 +214,165 @@ proc optimized_toolchain_config(
   give config
 }
 
+# Development configuration with fast feedback defaults
+proc development_toolchain_config(
+  source_dir: string,
+  build_dir: string,
+  install_prefix: string
+) -> ToolchainConfig {
+  let config: ToolchainConfig = default_toolchain_config(source_dir, build_dir, install_prefix)
+  set config.compile_opts = fast_compile_options()
+  set config.use_ccache = true
+  set config.use_ninja = false
+  give config
+}
+
+# Select a target by canonical toolchain name
+proc build_target_by_name(name: string) -> BuildTarget {
+  if name == "native" {
+    give default_build_target()
+  } else {
+    if name == "x86_64-linux" {
+      give target_x86_64_linux()
+    } else {
+      if name == "aarch64-linux" {
+        give target_aarch64_linux()
+      } else {
+        if name == "x86_64-darwin" {
+          give target_x86_64_darwin()
+        } else {
+          if name == "aarch64-darwin" {
+            give target_aarch64_darwin()
+          } else {
+            if name == "x86_64-windows" {
+              give target_x86_64_windows()
+            } else {
+              give default_build_target()
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+# Return supported target names in display order
+proc supported_build_targets() -> [string] {
+  give [
+    "native",
+    "x86_64-linux",
+    "aarch64-linux",
+    "x86_64-darwin",
+    "aarch64-darwin",
+    "x86_64-windows"
+  ]
+}
+
+proc supported_target_count() -> int {
+  give supported_build_targets().len
+}
+
+proc is_supported_target_name(name: string) -> bool {
+  let targets: [string] = supported_build_targets()
+  let i: int = 0
+  while i < targets.len {
+    if targets[i] == name {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc validate_compile_options(opts: CompileOptions) -> [string] {
+  let errors: [string] = []
+  if opts.optimize_level < 0 || opts.optimize_level > 3 {
+    set errors = errors + ["optimization level must be between 0 and 3"]
+  }
+  if opts.jobs < 1 {
+    set errors = errors + ["jobs must be greater than zero"]
+  }
+  if opts.std_version == "" {
+    set errors = errors + ["std_version is required"]
+  }
+  if opts.output_format == "" {
+    set errors = errors + ["output_format is required"]
+  }
+  give errors
+}
+
+proc validate_build_target(target: BuildTarget) -> [string] {
+  let errors: [string] = []
+  if target.name == "" {
+    set errors = errors + ["target name is required"]
+  }
+  if target.os == "" {
+    set errors = errors + ["target os is required"]
+  }
+  if target.arch == "" {
+    set errors = errors + ["target architecture is required"]
+  }
+  if target.triple == "" {
+    set errors = errors + ["target triple is required"]
+  }
+  if target.native_compiler == "" {
+    set errors = errors + ["native compiler is required"]
+  }
+  give errors
+}
+
+proc validate_toolchain_config(config: ToolchainConfig) -> [string] {
+  let errors: [string] = []
+  if config.source_dir == "" {
+    set errors = errors + ["source_dir is required"]
+  }
+  if config.build_dir == "" {
+    set errors = errors + ["build_dir is required"]
+  }
+  set errors = errors + validate_build_target(config.target)
+  set errors = errors + validate_compile_options(config.compile_opts)
+  give errors
+}
+
+proc with_job_count(config: ToolchainConfig, jobs: int) -> ToolchainConfig {
+  let updated: ToolchainConfig = config
+  if jobs < 1 {
+    set updated.compile_opts.jobs = 1
+  } else {
+    set updated.compile_opts.jobs = jobs
+  }
+  give updated
+}
+
+proc with_emit_ir(config: ToolchainConfig, emit_ir: bool) -> ToolchainConfig {
+  let updated: ToolchainConfig = config
+  set updated.compile_opts.emit_ir = emit_ir
+  give updated
+}
+
+proc with_target(config: ToolchainConfig, target_name: string) -> ToolchainConfig {
+  let updated: ToolchainConfig = config
+  set updated.target = build_target_by_name(target_name)
+  give updated
+}
+
+proc compile_profile_name(opts: CompileOptions) -> string {
+  if opts.optimize_level == 0 {
+    give "fast"
+  }
+  if opts.warnings_as_errors && opts.enable_lto {
+    give "strict"
+  }
+  give "default"
+}
+
+proc target_summary(target: BuildTarget) -> string {
+  give target.name + " " + target.triple + " via " + target.native_compiler
+}
+
+proc config_summary(config: ToolchainConfig) -> string {
+  let profile: string = compile_profile_name(config.compile_opts)
+  give "target=" + target_summary(config.target) + " profile=" + profile + " build_dir=" + config.build_dir
+}
+
 export *
