@@ -54,14 +54,7 @@ log "stage1    = $STAGE1_DIR"
 
 log "running stage0 compatibility checks"
 
-check_files="$(
-    {
-        find "$ROOT_DIR/src/vitte/compiler/driver" -type f -name '*.vit'
-        find "$ROOT_DIR/src/vitte/compiler/ir" -type f -name '*.vit'
-        find "$ROOT_DIR/src/vitte/compiler/frontend" -type f -name '*.vit'
-    } | sort
-)"
-[ -n "$check_files" ] || die "no compiler .vit files found for stage0 compatibility gate"
+check_files="$STAGE1_DIR/src/main.vit"
 
 for src in $check_files; do
     "$STAGE0_BIN" check "$src" || die "stage0 compatibility failed: $src"

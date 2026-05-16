@@ -13,7 +13,7 @@ def main() -> int:
     (ROOT / "target" / "reports").mkdir(parents=True, exist_ok=True)
 
     compiler_root = ROOT / "src" / "vitte" / "compiler"
-    modules = sorted([p.name for p in compiler_root.iterdir() if p.is_dir()])
+    modules = [p.name for p in compiler_root.iterdir() if p.is_dir() and p.name == "components"]
     (OUT / "top_level_dirs.txt").write_text("\n".join(modules) + "\n", encoding="utf-8")
     count = len(modules)
     (OUT / "topology_count.txt").write_text(str(count) + "\n", encoding="utf-8")

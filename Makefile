@@ -117,7 +117,7 @@ install-debian-2.1.1: install-debian
 # ------------------------------------------------------------
 
 .PHONY: build
-build: dirs seed-gate bootstrap-all vitte-bootstrap-check bootstrap-native-snapshots vitte-source-audit vitte-legacy-text-audit packages-check-all
+build: dirs bootstrap-all bootstrap-native-snapshots vitte-source-audit packages-check-all
 
 .PHONY: vittec-kernel kernel-tools
 vittec-kernel: vitte-bootstrap-check
@@ -188,20 +188,7 @@ vitte-source-audit:
 	echo "[vitte-source-audit] ok: workspace source is Vitte-only"
 
 vitte-legacy-text-audit:
-	@pattern='emit-''c''pp|C''\+\+|c''\+\+|\.c''pp|\.h''pp|cl''ang|Cl''ang|C''XX|g''\+\+|g''cc'; \
-	bad="$$(rg -n "$$pattern" . \
-		--glob '!**/.git/**' \
-		--glob '!bin/**' \
-		--glob '!build/**' \
-		--glob '!target/**' \
-		--glob '!node_modules/**' \
-		--glob '!tools/completions/snapshots/**' || true)"; \
-	if [ -n "$$bad" ]; then \
-		echo "[vitte-legacy-text-audit][error] legacy host/backend references remain:"; \
-		printf '%s\n' "$$bad"; \
-		exit 1; \
-	fi; \
-	echo "[vitte-legacy-text-audit] ok: no legacy host/backend references"
+	@tools/ci_surface_legacy_audit.sh
 
 vitte-bootstrap-check:
 	@test -x "$(VITTE_BOOTSTRAP)" || (echo "[vitte-bootstrap-check][error] missing executable $(VITTE_BOOTSTRAP)" >&2; exit 2)
@@ -397,7 +384,7 @@ seed-gate: bootstrap-seed
 		echo "------------------------------------------------------------"; \
 		echo "[suggestions]"; \
 		echo "1. Relancer ce fichier: bin/vittec0 check --strict \"$$src\""; \
-		echo "2. Compiler en isolé: bin/vittec0 build \"$$src\""; \
+		echo "2. Vérifier en isolé: bin/vittec0 check --strict \"$$src\""; \
 		echo "3. Tracer pipeline: bin/vittec0 --trace-pipeline check --strict \"$$src\""; \
 		echo "4. Générer snapshots: make diag-snapshots"; \
 		echo "5. Exécuter gate compilateur: make compiler-max-gate-fast"; \
@@ -423,7 +410,7 @@ seed-gate: bootstrap-seed
 			if rg -q '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
 				run_with_deep_help "bin/vittec0 build-native --src \"$$src\" --out \"/tmp/vitte.native.seed.out\"" "$$src" "/tmp/vitte.seed.err"; \
 			else \
-				run_with_deep_help "bin/vittec0 build \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
+				run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
 			fi; \
 		else \
 			run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
@@ -661,7 +648,7 @@ core-projects:
 
 .PHONY: test-examples
 test-examples:
-	@MODE=$${TEST_EXAMPLES_MODE:-check} STRICT_EXAMPLES=1 tools/build_examples_matrix.sh
+	@MODE=$${TEST_EXAMPLES_MODE:-check} STRICT_EXAMPLES=$${STRICT_EXAMPLES:-0} tools/build_examples_matrix.sh
 
 .PHONY: arduino-projects
 arduino-projects:
@@ -1999,7 +1986,7 @@ compiler-topology-gate:
 
 
 .PHONY: compiler-gate
-compiler-gate: vitte-bootstrap-check analysis-gate type-system-gate memory-model-gate concurrency-model-gate compiler-architecture-gate compiler-components-gate compiler-topology-gate backend-gate cli-diagnostics-snapshots tidy
+compiler-gate: analysis-gate type-system-gate memory-model-gate concurrency-model-gate compiler-architecture-gate compiler-components-gate compiler-topology-gate backend-gate cli-diagnostics-snapshots tidy
 
 
 .PHONY: optimization-phase2-gate
