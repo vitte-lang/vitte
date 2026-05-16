@@ -329,6 +329,19 @@ proc parse_expr(state: ParserState) -> ParserState;
 proc parse_block(state: ParserState) -> ParserState;
 proc parse_stmt(state: ParserState) -> ParserState;
 
+proc parse_attrs(state: ParserState) -> ParserState {
+  let current: ParserState = state;
+  while at_text(current, "#[") or at_text(current, "#!") {
+    set current = advance(current);
+    set current = parse_path(current);
+    if at_text(current, "(") {
+      set current = skip_balanced(current, "(", ")", "PATTR001");
+    }
+    set current = expect_text(current, "]", "PATTR002");
+  }
+  give current;
+}
+
 proc parse_param_list(state: ParserState, closing: string) -> ParserState {
   let current: ParserState = state;
   while not is_eof(current) and not at_text(current, closing) {
@@ -685,6 +698,9 @@ proc parse_primary(state: ParserState) -> ParserState {
   if is_literal_token(tok) {
     give advance(current);
   }
+  if at_text(current, "b") and at_kind(peek_token(current, 1), TokenKind.String) {
+    give advance(advance(current));
+  }
   if at_text(current, "if") {
     give parse_if_expr(current);
   }
@@ -939,6 +955,21 @@ proc parse_stmt(state: ParserState) -> ParserState {
     let exprd: ParserState = parse_expr(in_state);
     give parse_block(exprd);
   }
+  if at_text(current, "select") {
+    let walk: ParserState = parse_expr(advance(current));
+    let opened: ParserState = expect_text(walk, "{", "PSTMT_SELECT001");
+    let scan: ParserState = opened;
+    while at_text(scan, "when") {
+      set scan = advance(scan);
+      set scan = parse_pattern(scan);
+      set scan = parse_block(scan);
+    }
+    if at_text(scan, "else") {
+      set scan = advance(scan);
+      set scan = parse_block(scan);
+    }
+    give expect_text(scan, "}", "PSTMT_SELECT002");
+  }
   if at_text(current, "match") {
     give parse_match_expr(current);
   }
@@ -1030,7 +1061,7 @@ proc parse_meta_decl(state: ParserState) -> ParserState {
 
 proc parse_decl(state: ParserState) -> ParserState {
   let current: ParserState = bump_toplevel(state);
-  let prefixed: ParserState = current;
+  let prefixed: ParserState = parse_attrs(current);
   if is_visibility(current_token(prefixed).lexeme) {
     set prefixed = advance(prefixed);
     if at_text(prefixed, "(") {
