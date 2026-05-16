@@ -258,6 +258,10 @@ roadmap-ecosystem-gate:
 	@test -f target/roadmap_ecosystem/ecosystem_status.json
 	@test -f target/reports/roadmap_ecosystem_coverage.md
 
+.PHONY: architecture-docs-check
+architecture-docs-check:
+	@python3 tools/architecture_docs_check.py
+
 .PHONY: doctor
 doctor:
 	@tools/doctor.sh
@@ -1996,7 +2000,7 @@ compiler-topology-gate:
 
 
 .PHONY: compiler-gate
-compiler-gate: analysis-gate type-system-gate memory-model-gate concurrency-model-gate compiler-architecture-gate compiler-components-gate compiler-topology-gate grammar-alignment-test roadmap-ecosystem-gate backend-gate cli-diagnostics-snapshots tidy
+compiler-gate: analysis-gate type-system-gate memory-model-gate concurrency-model-gate compiler-architecture-gate compiler-components-gate compiler-topology-gate grammar-alignment-test roadmap-ecosystem-gate architecture-docs-check backend-gate cli-diagnostics-snapshots tidy
 
 
 .PHONY: optimization-phase2-gate
