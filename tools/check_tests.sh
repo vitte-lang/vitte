@@ -13,9 +13,11 @@ log "module_smoke"
 "$BIN" check "$ROOT_DIR/tests/check/main.vit"
 
 log "hir_mir_repro_alloc_break_index"
-"$BIN" build --mir-only "$ROOT_DIR/tests/repro/alloc_hir_break_index.vit"
+# The current bootstrap CLI exposes MIR/HIR regression coverage through `check`,
+# while `build` is reserved for the stage1 bootstrap flow.
+"$BIN" check --mir-only "$ROOT_DIR/tests/repro/alloc_hir_break_index.vit"
 
 log "hir_mir_repro_alloc_string_index"
-"$BIN" build --mir-only "$ROOT_DIR/tests/repro/alloc_hir_string_index.vit"
+"$BIN" check --mir-only "$ROOT_DIR/tests/repro/alloc_hir_string_index.vit"
 
 log "OK"

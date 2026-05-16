@@ -20,7 +20,7 @@ bin/vitte build-native --src "$SRC" --out "$OUT"
 [ -x "$OUT" ] || { echo "[bootstrap-vitte][error] failed to produce native gate artifact" >&2; exit 3; }
 
 echo "[bootstrap-vitte] executing native hard gate invariants"
-"$OUT"
+sh "$OUT"
 
 step_start() { printf '[bootstrap-vitte][step] %s\n' "$1"; }
 t0="$(date +%s)"

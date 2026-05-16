@@ -9,15 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BASE = ROOT / "src" / "vitte" / "compiler"
 
 MODULES = [
-    "abi","arena","ast","ast_ir","ast_lowering","ast_passes","ast_pretty","attr_parsing","baked_icu_data",
-    "borrowck","builtin_macros","codegen_cranelift","codegen_gcc","codegen_llvm","codegen_ssa",
-    "const_eval","data_structures","driver","driver_impl","error_codes","error_messages","errors",
-    "expand","feature","fs_util","graphviz","hashes","hir","hir_analysis","hir_id","hir_pretty","hir_typeck",
-    "incremental","index","index_macros","infer","interface","lexer","lint","lint_defs","llvm","log","macros",
-    "metadata","middle","mir_build","mir_dataflow","mir_transform","monomorphize","next_trait_solver",
-    "parse","parse_format","passes","pattern_analysis","privacy","proc_macro","public","public_bridge",
-    "query_impl","resolve","sanitizers","serialize","session","span","symbol_mangling","target","thread_pool",
-    "trait_selection","traits","transmute","ty_utils","type_ir","type_ir_macros","windows_rc",
+    "components",
 ]
 
 REQUIRED_PACK = [
