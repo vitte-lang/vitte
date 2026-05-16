@@ -1,0 +1,669 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Analysis / Borrow Checker          >>>
+<<< File: compiler/analysis/borrowck/regions.vit             >>>
+<<< Module: vitte/compiler/analysis/borrowck/regions         >>>
+<<< Purpose: region graph, scopes, dominance and containment  >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/analysis/borrowck/regions
+
+const REGION_INVALID_ID: u64 = 18446744073709551615
+const REGION_ROOT_ID: u64 = 0
+const REGION_VERSION: u32 = 2026
+const REGION_MAX_NODES: u64 = 262144
+const REGION_MAX_EDGES: u64 = 1048576
+
+pick RegionKind {
+    Root
+    Function
+    Block
+    Loop
+    Match
+    Branch
+    Closure
+    Async
+    Temporary
+    Static
+    Unknown
+}
+
+pick RegionEdgeKind {
+    Parent
+    Contains
+    Dominates
+    PostDominates
+    Outlives
+    Conflicts
+}
+
+pick RegionErrorKind {
+    None
+    UnknownRegion
+    InvalidRegion
+    DuplicateRegion
+    InvalidParent
+    InvalidEdge
+    RegionCycle
+    RegionLimitExceeded
+    EdgeLimitExceeded
+}
+
+form RegionSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form RegionNode {
+    id: u64
+    name: string
+    kind: RegionKind
+    parent: u64
+    depth: u64
+    start_point: u64
+    end_point: u64
+    span: RegionSpan
+    valid: bool
+}
+
+form RegionEdge {
+    source: u64
+    target: u64
+    kind: RegionEdgeKind
+}
+
+form RegionDiagnostic {
+    kind: RegionErrorKind
+    message: string
+    span: RegionSpan
+    region: u64
+}
+
+form RegionGraph {
+    nodes: [RegionNode]
+    edges: [RegionEdge]
+    diagnostics: [RegionDiagnostic]
+    valid: bool
+}
+
+proc span_empty() -> RegionSpan {
+    give RegionSpan {
+        file: "compiler/analysis/borrowck/regions.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc node_invalid() -> RegionNode {
+    give RegionNode {
+        id: REGION_INVALID_ID,
+        name: "invalid",
+        kind: RegionKind.Unknown,
+        parent: REGION_INVALID_ID,
+        depth: 0,
+        start_point: 0,
+        end_point: 0,
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc node_root() -> RegionNode {
+    give RegionNode {
+        id: REGION_ROOT_ID,
+        name: "root",
+        kind: RegionKind.Root,
+        parent: REGION_INVALID_ID,
+        depth: 0,
+        start_point: 0,
+        end_point: REGION_INVALID_ID,
+        span: span_empty(),
+        valid: true
+    }
+}
+
+proc graph_empty() -> RegionGraph {
+    give RegionGraph {
+        nodes: [node_root()],
+        edges: [],
+        diagnostics: [],
+        valid: true
+    }
+}
+
+proc diagnostic_create(
+    kind: RegionErrorKind,
+    message: string,
+    span: RegionSpan,
+    region: u64
+) -> RegionDiagnostic {
+    give RegionDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        region: region
+    }
+}
+
+proc node_create(
+    id: u64,
+    name: string,
+    kind: RegionKind,
+    parent: u64,
+    depth: u64,
+    start_point: u64,
+    end_point: u64,
+    span: RegionSpan
+) -> RegionNode {
+    give RegionNode {
+        id: id,
+        name: name,
+        kind: kind,
+        parent: parent,
+        depth: depth,
+        start_point: start_point,
+        end_point: end_point,
+        span: span,
+        valid: true
+    }
+}
+
+proc edge_create(
+    source: u64,
+    target: u64,
+    kind: RegionEdgeKind
+) -> RegionEdge {
+    give RegionEdge {
+        source: source,
+        target: target,
+        kind: kind
+    }
+}
+
+proc graph_add_diagnostic(
+    graph: RegionGraph,
+    diagnostic: RegionDiagnostic
+) -> RegionGraph {
+    give RegionGraph {
+        nodes: graph.nodes,
+        edges: graph.edges,
+        diagnostics: graph.diagnostics + [diagnostic],
+        valid: false
+    }
+}
+
+proc graph_add_node(
+    graph: RegionGraph,
+    node: RegionNode
+) -> RegionGraph {
+    if vector_len(graph.nodes) >= REGION_MAX_NODES {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                RegionErrorKind.RegionLimitExceeded,
+                "too many regions",
+                node.span,
+                node.id
+            )
+        )
+    }
+
+    if has_region(graph, node.id) {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                RegionErrorKind.DuplicateRegion,
+                "duplicate region",
+                node.span,
+                node.id
+            )
+        )
+    }
+
+    if node.id != REGION_ROOT_ID and has_region(graph, node.parent) == false {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                RegionErrorKind.InvalidParent,
+                "unknown parent region",
+                node.span,
+                node.id
+            )
+        )
+    }
+
+    give RegionGraph {
+        nodes: graph.nodes + [node],
+        edges: graph.edges,
+        diagnostics: graph.diagnostics,
+        valid: graph.valid
+    }
+}
+
+proc graph_add_edge(
+    graph: RegionGraph,
+    edge: RegionEdge
+) -> RegionGraph {
+    if vector_len(graph.edges) >= REGION_MAX_EDGES {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                RegionErrorKind.EdgeLimitExceeded,
+                "too many region edges",
+                span_empty(),
+                edge.source
+            )
+        )
+    }
+
+    if has_region(graph, edge.source) == false {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                RegionErrorKind.UnknownRegion,
+                "unknown edge source region",
+                span_empty(),
+                edge.source
+            )
+        )
+    }
+
+    if has_region(graph, edge.target) == false {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                RegionErrorKind.UnknownRegion,
+                "unknown edge target region",
+                span_empty(),
+                edge.target
+            )
+        )
+    }
+
+    give RegionGraph {
+        nodes: graph.nodes,
+        edges: graph.edges + [edge],
+        diagnostics: graph.diagnostics,
+        valid: graph.valid
+    }
+}
+
+proc find_region(graph: RegionGraph, id: u64) -> RegionNode {
+    let i: u64 = 0
+
+    loop i < vector_len(graph.nodes) {
+        if graph.nodes[i].id == id {
+            give graph.nodes[i]
+        }
+
+        set i = i + 1
+    }
+
+    give node_invalid()
+}
+
+proc has_region(graph: RegionGraph, id: u64) -> bool {
+    give find_region(graph, id).valid
+}
+
+proc edge_exists(
+    graph: RegionGraph,
+    source: u64,
+    target: u64,
+    kind: RegionEdgeKind
+) -> bool {
+    let i: u64 = 0
+
+    loop i < vector_len(graph.edges) {
+        let edge = graph.edges[i]
+
+        if edge.source == source and edge.target == target and edge.kind == kind {
+            give true
+        }
+
+        set i = i + 1
+    }
+
+    give false
+}
+
+proc region_contains_point(region: RegionNode, point: u64) -> bool {
+    if region.valid == false {
+        give false
+    }
+
+    if point < region.start_point {
+        give false
+    }
+
+    if point > region.end_point {
+        give false
+    }
+
+    give true
+}
+
+proc region_contains_region(
+    outer: RegionNode,
+    inner: RegionNode
+) -> bool {
+    if outer.valid == false or inner.valid == false {
+        give false
+    }
+
+    if outer.start_point > inner.start_point {
+        give false
+    }
+
+    if outer.end_point < inner.end_point {
+        give false
+    }
+
+    give true
+}
+
+proc region_is_parent_of(
+    graph: RegionGraph,
+    parent: u64,
+    child: u64
+) -> bool {
+    let child_node = find_region(graph, child)
+
+    if child_node.valid == false {
+        give false
+    }
+
+    give child_node.parent == parent
+}
+
+proc region_ancestor_of(
+    graph: RegionGraph,
+    ancestor: u64,
+    child: u64
+) -> bool {
+    if ancestor == child {
+        give true
+    }
+
+    let current = find_region(graph, child)
+
+    loop current.valid and current.parent != REGION_INVALID_ID {
+        if current.parent == ancestor {
+            give true
+        }
+
+        set current = find_region(graph, current.parent)
+    }
+
+    give false
+}
+
+proc region_common_parent(
+    graph: RegionGraph,
+    left: u64,
+    right: u64
+) -> u64 {
+    if left == right {
+        give left
+    }
+
+    if region_ancestor_of(graph, left, right) {
+        give left
+    }
+
+    if region_ancestor_of(graph, right, left) {
+        give right
+    }
+
+    let current = find_region(graph, left)
+
+    loop current.valid and current.parent != REGION_INVALID_ID {
+        if region_ancestor_of(graph, current.parent, right) {
+            give current.parent
+        }
+
+        set current = find_region(graph, current.parent)
+    }
+
+    give REGION_ROOT_ID
+}
+
+proc region_dominates(
+    graph: RegionGraph,
+    source: u64,
+    target: u64
+) -> bool {
+    if source == REGION_ROOT_ID {
+        give true
+    }
+
+    if source == target {
+        give true
+    }
+
+    if edge_exists(graph, source, target, RegionEdgeKind.Dominates) {
+        give true
+    }
+
+    give region_ancestor_of(graph, source, target)
+}
+
+proc region_conflicts(
+    graph: RegionGraph,
+    left: u64,
+    right: u64
+) -> bool {
+    if edge_exists(graph, left, right, RegionEdgeKind.Conflicts) {
+        give true
+    }
+
+    if edge_exists(graph, right, left, RegionEdgeKind.Conflicts) {
+        give true
+    }
+
+    give false
+}
+
+proc create_function_region(
+    graph: RegionGraph,
+    id: u64,
+    name: string,
+    span: RegionSpan
+) -> RegionGraph {
+    let node = node_create(
+        id,
+        name,
+        RegionKind.Function,
+        REGION_ROOT_ID,
+        1,
+        0,
+        REGION_INVALID_ID,
+        span
+    )
+
+    let with_node = graph_add_node(graph, node)
+    let parent_edge = edge_create(REGION_ROOT_ID, id, RegionEdgeKind.Parent)
+    let outlives_edge = edge_create(REGION_ROOT_ID, id, RegionEdgeKind.Outlives)
+
+    give graph_add_edge(graph_add_edge(with_node, parent_edge), outlives_edge)
+}
+
+proc create_block_region(
+    graph: RegionGraph,
+    id: u64,
+    name: string,
+    parent: u64,
+    depth: u64,
+    start_point: u64,
+    end_point: u64,
+    span: RegionSpan
+) -> RegionGraph {
+    let node = node_create(
+        id,
+        name,
+        RegionKind.Block,
+        parent,
+        depth,
+        start_point,
+        end_point,
+        span
+    )
+
+    let with_node = graph_add_node(graph, node)
+    let parent_edge = edge_create(parent, id, RegionEdgeKind.Parent)
+    let contains_edge = edge_create(parent, id, RegionEdgeKind.Contains)
+    let outlives_edge = edge_create(parent, id, RegionEdgeKind.Outlives)
+
+    give graph_add_edge(
+        graph_add_edge(
+            graph_add_edge(with_node, parent_edge),
+            contains_edge
+        ),
+        outlives_edge
+    )
+}
+
+proc create_loop_region(
+    graph: RegionGraph,
+    id: u64,
+    parent: u64,
+    start_point: u64,
+    end_point: u64,
+    span: RegionSpan
+) -> RegionGraph {
+    let node = node_create(
+        id,
+        "loop",
+        RegionKind.Loop,
+        parent,
+        find_region(graph, parent).depth + 1,
+        start_point,
+        end_point,
+        span
+    )
+
+    let with_node = graph_add_node(graph, node)
+    let parent_edge = edge_create(parent, id, RegionEdgeKind.Parent)
+    let dominates_edge = edge_create(id, id, RegionEdgeKind.Dominates)
+
+    give graph_add_edge(graph_add_edge(with_node, parent_edge), dominates_edge)
+}
+
+proc create_temporary_region(
+    graph: RegionGraph,
+    id: u64,
+    parent: u64,
+    start_point: u64,
+    end_point: u64,
+    span: RegionSpan
+) -> RegionGraph {
+    let node = node_create(
+        id,
+        "temporary",
+        RegionKind.Temporary,
+        parent,
+        find_region(graph, parent).depth + 1,
+        start_point,
+        end_point,
+        span
+    )
+
+    give graph_add_node(graph, node)
+}
+
+proc add_conflict(
+    graph: RegionGraph,
+    left: u64,
+    right: u64
+) -> RegionGraph {
+    let edge = edge_create(left, right, RegionEdgeKind.Conflicts)
+
+    give graph_add_edge(graph, edge)
+}
+
+proc validate_region_graph(graph: RegionGraph) -> RegionGraph {
+    let current = graph
+    let i: u64 = 0
+
+    loop i < vector_len(current.nodes) {
+        let node = current.nodes[i]
+
+        if node.valid == false {
+            give graph_add_diagnostic(
+                current,
+                diagnostic_create(
+                    RegionErrorKind.InvalidRegion,
+                    "invalid region node",
+                    node.span,
+                    node.id
+                )
+            )
+        }
+
+        if node.id != REGION_ROOT_ID and has_region(current, node.parent) == false {
+            give graph_add_diagnostic(
+                current,
+                diagnostic_create(
+                    RegionErrorKind.InvalidParent,
+                    "region has invalid parent",
+                    node.span,
+                    node.id
+                )
+            )
+        }
+
+        if node.start_point > node.end_point and node.end_point != REGION_INVALID_ID {
+            give graph_add_diagnostic(
+                current,
+                diagnostic_create(
+                    RegionErrorKind.InvalidRegion,
+                    "region start is after region end",
+                    node.span,
+                    node.id
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc region_error_count(graph: RegionGraph) -> u64 {
+    give vector_len(graph.diagnostics)
+}
+
+proc region_graph_is_valid(graph: RegionGraph) -> bool {
+    give graph.valid and vector_len(graph.diagnostics) == 0
+}
+
+proc print_region_node(node: RegionNode) {
+    emit "region"
+    emit node.id
+    emit node.name
+    emit node.depth
+    emit node.start_point
+    emit node.end_point
+}
+
+proc print_region_graph(graph: RegionGraph) {
+    emit "region graph"
+    emit vector_len(graph.nodes)
+    emit vector_len(graph.edges)
+    emit vector_len(graph.diagnostics)
+
+    let i: u64 = 0
+
+    loop i < vector_len(graph.nodes) {
+        print_region_node(graph.nodes[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

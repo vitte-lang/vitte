@@ -1,0 +1,553 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Analysis / Semantic Analysis       >>>
+<<< File: compiler/analysis/sema/names.vit                   >>>
+<<< Module: vitte/compiler/analysis/sema/names               >>>
+<<< Purpose: semantic names, paths, symbols and canonical IDs >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/analysis/sema/names
+
+const SEMA_NAMES_VERSION: u32 = 2026
+const NAME_INVALID_ID: u64 = 18446744073709551615
+const NAME_MAX_SEGMENTS: u64 = 256
+const NAME_MAX_SYMBOLS: u64 = 1048576
+
+pick NameKind {
+    Module
+    Function
+    Type
+    Form
+    Pick
+    Variant
+    Field
+    Parameter
+    Local
+    Const
+    Static
+    Global
+    Trait
+    Impl
+    Macro
+    Label
+    Unknown
+}
+
+pick NameVisibility {
+    Private
+    Package
+    Module
+    Public
+    Exported
+}
+
+pick NameErrorKind {
+    None
+    EmptyName
+    InvalidName
+    InvalidPath
+    DuplicateName
+    UnknownName
+    AmbiguousName
+    SegmentLimitExceeded
+    SymbolLimitExceeded
+}
+
+form NameSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form NamePath {
+    text: string
+    segments: [string]
+    absolute: bool
+    valid: bool
+}
+
+form NameSymbol {
+    id: u64
+    name: string
+    path: NamePath
+    kind: NameKind
+    visibility: NameVisibility
+    module: string
+    span: NameSpan
+    valid: bool
+}
+
+form NameDiagnostic {
+    kind: NameErrorKind
+    message: string
+    span: NameSpan
+    symbol: u64
+}
+
+form NameTable {
+    symbols: [NameSymbol]
+    diagnostics: [NameDiagnostic]
+    valid: bool
+}
+
+proc span_empty() -> NameSpan {
+    give NameSpan {
+        file: "compiler/analysis/sema/names.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc path_empty() -> NamePath {
+    give NamePath {
+        text: "",
+        segments: [],
+        absolute: false,
+        valid: false
+    }
+}
+
+proc path_create(
+    text: string,
+    segments: [string],
+    absolute: bool
+) -> NamePath {
+    give NamePath {
+        text: text,
+        segments: segments,
+        absolute: absolute,
+        valid: vector_len(segments) > 0
+    }
+}
+
+proc symbol_invalid() -> NameSymbol {
+    give NameSymbol {
+        id: NAME_INVALID_ID,
+        name: "invalid",
+        path: path_empty(),
+        kind: NameKind.Unknown,
+        visibility: NameVisibility.Private,
+        module: "",
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc symbol_create(
+    id: u64,
+    name: string,
+    path: NamePath,
+    kind: NameKind,
+    visibility: NameVisibility,
+    module: string,
+    span: NameSpan
+) -> NameSymbol {
+    give NameSymbol {
+        id: id,
+        name: name,
+        path: path,
+        kind: kind,
+        visibility: visibility,
+        module: module,
+        span: span,
+        valid: true
+    }
+}
+
+proc diagnostic_create(
+    kind: NameErrorKind,
+    message: string,
+    span: NameSpan,
+    symbol: u64
+) -> NameDiagnostic {
+    give NameDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        symbol: symbol
+    }
+}
+
+proc table_empty() -> NameTable {
+    give NameTable {
+        symbols: [],
+        diagnostics: [],
+        valid: true
+    }
+}
+
+proc table_add_diagnostic(
+    table: NameTable,
+    diagnostic: NameDiagnostic
+) -> NameTable {
+    give NameTable {
+        symbols: table.symbols,
+        diagnostics: table.diagnostics + [diagnostic],
+        valid: false
+    }
+}
+
+proc table_add_symbol(
+    table: NameTable,
+    symbol: NameSymbol
+) -> NameTable {
+    if vector_len(table.symbols) >= NAME_MAX_SYMBOLS {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(
+                NameErrorKind.SymbolLimitExceeded,
+                "too many semantic symbols",
+                symbol.span,
+                symbol.id
+            )
+        )
+    }
+
+    if symbol.name == "" {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(
+                NameErrorKind.EmptyName,
+                "empty symbol name",
+                symbol.span,
+                symbol.id
+            )
+        )
+    }
+
+    if has_name_in_module(table, symbol.module, symbol.name) {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(
+                NameErrorKind.DuplicateName,
+                "duplicate name in module",
+                symbol.span,
+                symbol.id
+            )
+        )
+    }
+
+    give NameTable {
+        symbols: table.symbols + [symbol],
+        diagnostics: table.diagnostics,
+        valid: table.valid
+    }
+}
+
+proc find_by_id(table: NameTable, id: u64) -> NameSymbol {
+    let i: u64 = 0
+
+    loop i < vector_len(table.symbols) {
+        if table.symbols[i].id == id {
+            give table.symbols[i]
+        }
+
+        set i = i + 1
+    }
+
+    give symbol_invalid()
+}
+
+proc find_by_name(
+    table: NameTable,
+    name: string
+) -> NameSymbol {
+    let i: u64 = 0
+
+    loop i < vector_len(table.symbols) {
+        if table.symbols[i].name == name {
+            give table.symbols[i]
+        }
+
+        set i = i + 1
+    }
+
+    give symbol_invalid()
+}
+
+proc find_in_module(
+    table: NameTable,
+    module: string,
+    name: string
+) -> NameSymbol {
+    let i: u64 = 0
+
+    loop i < vector_len(table.symbols) {
+        let symbol = table.symbols[i]
+
+        if symbol.module == module and symbol.name == name {
+            give symbol
+        }
+
+        set i = i + 1
+    }
+
+    give symbol_invalid()
+}
+
+proc has_name_in_module(
+    table: NameTable,
+    module: string,
+    name: string
+) -> bool {
+    give find_in_module(table, module, name).valid
+}
+
+proc path_segment_count(path: NamePath) -> u64 {
+    give vector_len(path.segments)
+}
+
+proc path_last_segment(path: NamePath) -> string {
+    if vector_len(path.segments) == 0 {
+        give ""
+    }
+
+    give path.segments[vector_len(path.segments) - 1]
+}
+
+proc path_parent_text(path: NamePath) -> string {
+    let out = ""
+    let i: u64 = 0
+
+    loop i + 1 < vector_len(path.segments) {
+        if i > 0 {
+            set out = out + "/"
+        }
+
+        set out = out + path.segments[i]
+        set i = i + 1
+    }
+
+    give out
+}
+
+proc path_is_valid(path: NamePath) -> bool {
+    if path.valid == false {
+        give false
+    }
+
+    if vector_len(path.segments) == 0 {
+        give false
+    }
+
+    if vector_len(path.segments) > NAME_MAX_SEGMENTS {
+        give false
+    }
+
+    give true
+}
+
+proc visibility_allows_access(
+    visibility: NameVisibility,
+    from_module: string,
+    owner_module: string
+) -> bool {
+    if visibility == NameVisibility.Public {
+        give true
+    }
+
+    if visibility == NameVisibility.Exported {
+        give true
+    }
+
+    if visibility == NameVisibility.Private {
+        give from_module == owner_module
+    }
+
+    if visibility == NameVisibility.Module {
+        give from_module == owner_module
+    }
+
+    if visibility == NameVisibility.Package {
+        give module_same_package(from_module, owner_module)
+    }
+
+    give false
+}
+
+proc module_same_package(left: string, right: string) -> bool {
+    give module_root(left) == module_root(right)
+}
+
+proc module_root(module: string) -> string {
+    give module
+}
+
+proc symbol_is_public(symbol: NameSymbol) -> bool {
+    if symbol.visibility == NameVisibility.Public {
+        give true
+    }
+
+    if symbol.visibility == NameVisibility.Exported {
+        give true
+    }
+
+    give false
+}
+
+proc symbol_can_access(
+    symbol: NameSymbol,
+    from_module: string
+) -> bool {
+    give visibility_allows_access(
+        symbol.visibility,
+        from_module,
+        symbol.module
+    )
+}
+
+proc canonical_name(symbol: NameSymbol) -> string {
+    if symbol.module == "" {
+        give symbol.name
+    }
+
+    give symbol.module + "/" + symbol.name
+}
+
+proc qualify_name(
+    module: string,
+    name: string
+) -> string {
+    if module == "" {
+        give name
+    }
+
+    give module + "/" + name
+}
+
+proc validate_table(table: NameTable) -> NameTable {
+    let current = table
+    let i: u64 = 0
+
+    loop i < vector_len(current.symbols) {
+        let symbol = current.symbols[i]
+
+        if symbol.valid == false {
+            give table_add_diagnostic(
+                current,
+                diagnostic_create(
+                    NameErrorKind.InvalidName,
+                    "invalid semantic name",
+                    symbol.span,
+                    symbol.id
+                )
+            )
+        }
+
+        if path_is_valid(symbol.path) == false {
+            give table_add_diagnostic(
+                current,
+                diagnostic_create(
+                    NameErrorKind.InvalidPath,
+                    "invalid semantic path",
+                    symbol.span,
+                    symbol.id
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc name_error_count(table: NameTable) -> u64 {
+    give vector_len(table.diagnostics)
+}
+
+proc name_table_is_valid(table: NameTable) -> bool {
+    give table.valid and vector_len(table.diagnostics) == 0
+}
+
+proc kind_name(kind: NameKind) -> string {
+    if kind == NameKind.Module {
+        give "module"
+    }
+
+    if kind == NameKind.Function {
+        give "function"
+    }
+
+    if kind == NameKind.Type {
+        give "type"
+    }
+
+    if kind == NameKind.Form {
+        give "form"
+    }
+
+    if kind == NameKind.Pick {
+        give "pick"
+    }
+
+    if kind == NameKind.Variant {
+        give "variant"
+    }
+
+    if kind == NameKind.Field {
+        give "field"
+    }
+
+    if kind == NameKind.Local {
+        give "local"
+    }
+
+    if kind == NameKind.Const {
+        give "const"
+    }
+
+    give "unknown"
+}
+
+proc visibility_name(visibility: NameVisibility) -> string {
+    if visibility == NameVisibility.Private {
+        give "private"
+    }
+
+    if visibility == NameVisibility.Package {
+        give "package"
+    }
+
+    if visibility == NameVisibility.Module {
+        give "module"
+    }
+
+    if visibility == NameVisibility.Public {
+        give "public"
+    }
+
+    if visibility == NameVisibility.Exported {
+        give "exported"
+    }
+
+    give "unknown"
+}
+
+proc print_symbol(symbol: NameSymbol) {
+    emit "semantic name"
+    emit symbol.id
+    emit symbol.name
+    emit kind_name(symbol.kind)
+    emit visibility_name(symbol.visibility)
+    emit canonical_name(symbol)
+}
+
+proc print_table(table: NameTable) {
+    emit "semantic name table"
+    emit vector_len(table.symbols)
+    emit vector_len(table.diagnostics)
+
+    let i: u64 = 0
+
+    loop i < vector_len(table.symbols) {
+        print_symbol(table.symbols[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

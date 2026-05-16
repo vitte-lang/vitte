@@ -1,0 +1,654 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Analysis / Type Checking           >>>
+<<< File: compiler/analysis/typeck/unify.vit                 >>>
+<<< Module: vitte/compiler/analysis/typeck/unify             >>>
+<<< Purpose: type unification, substitutions and occurs check >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/analysis/typeck/unify
+
+const UNIFY_VERSION: u32 = 2026
+const UNIFY_INVALID_ID: u64 = 18446744073709551615
+const UNIFY_MAX_TYPES: u64 = 1048576
+const UNIFY_MAX_SUBSTITUTIONS: u64 = 1048576
+const UNIFY_MAX_CONSTRAINTS: u64 = 2097152
+
+pick UnifyTypeKind {
+    Unknown
+    Void
+    Never
+    Bool
+    Int
+    UInt
+    Float
+    Char
+    String
+    Pointer
+    Reference
+    Slice
+    Array
+    Tuple
+    Function
+    Form
+    Pick
+    Trait
+    Generic
+    Var
+}
+
+pick UnifyRelation {
+    Equals
+    Assignable
+    Coercible
+    Implements
+}
+
+pick UnifyErrorKind {
+    None
+    UnknownType
+    TypeMismatch
+    OccursCheckFailed
+    RecursiveType
+    InvalidSubstitution
+    ConstraintFailed
+    AmbiguousType
+    TypeLimitExceeded
+    SubstitutionLimitExceeded
+    ConstraintLimitExceeded
+    InternalFailure
+}
+
+form UnifySpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form UnifyType {
+    id: u64
+    name: string
+    kind: UnifyTypeKind
+    args: [u64]
+    mutable: bool
+    nullable: bool
+    valid: bool
+}
+
+form UnifySubstitution {
+    id: u64
+    variable: u64
+    replacement: UnifyType
+    span: UnifySpan
+    valid: bool
+}
+
+form UnifyConstraint {
+    id: u64
+    left: UnifyType
+    right: UnifyType
+    relation: UnifyRelation
+    span: UnifySpan
+    solved: bool
+}
+
+form UnifyDiagnostic {
+    kind: UnifyErrorKind
+    message: string
+    span: UnifySpan
+    left: UnifyType
+    right: UnifyType
+}
+
+form UnifyContext {
+    types: [UnifyType]
+    substitutions: [UnifySubstitution]
+    constraints: [UnifyConstraint]
+    diagnostics: [UnifyDiagnostic]
+    valid: bool
+}
+
+proc span_empty() -> UnifySpan {
+    give UnifySpan {
+        file: "compiler/analysis/typeck/unify.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc type_invalid() -> UnifyType {
+    give UnifyType {
+        id: UNIFY_INVALID_ID,
+        name: "invalid",
+        kind: UnifyTypeKind.Unknown,
+        args: [],
+        mutable: false,
+        nullable: false,
+        valid: false
+    }
+}
+
+proc type_create(
+    id: u64,
+    name: string,
+    kind: UnifyTypeKind,
+    args: [u64],
+    mutable: bool,
+    nullable: bool
+) -> UnifyType {
+    give UnifyType {
+        id: id,
+        name: name,
+        kind: kind,
+        args: args,
+        mutable: mutable,
+        nullable: nullable,
+        valid: true
+    }
+}
+
+proc type_var(id: u64, name: string) -> UnifyType {
+    give type_create(id, name, UnifyTypeKind.Var, [], false, false)
+}
+
+proc type_bool() -> UnifyType {
+    give type_create(1, "bool", UnifyTypeKind.Bool, [], false, false)
+}
+
+proc type_int() -> UnifyType {
+    give type_create(2, "i64", UnifyTypeKind.Int, [], false, false)
+}
+
+proc substitution_create(
+    id: u64,
+    variable: u64,
+    replacement: UnifyType,
+    span: UnifySpan
+) -> UnifySubstitution {
+    give UnifySubstitution {
+        id: id,
+        variable: variable,
+        replacement: replacement,
+        span: span,
+        valid: true
+    }
+}
+
+proc constraint_create(
+    id: u64,
+    left: UnifyType,
+    right: UnifyType,
+    relation: UnifyRelation,
+    span: UnifySpan
+) -> UnifyConstraint {
+    give UnifyConstraint {
+        id: id,
+        left: left,
+        right: right,
+        relation: relation,
+        span: span,
+        solved: false
+    }
+}
+
+proc diagnostic_create(
+    kind: UnifyErrorKind,
+    message: string,
+    span: UnifySpan,
+    left: UnifyType,
+    right: UnifyType
+) -> UnifyDiagnostic {
+    give UnifyDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        left: left,
+        right: right
+    }
+}
+
+proc context_empty() -> UnifyContext {
+    give UnifyContext {
+        types: [type_bool(), type_int()],
+        substitutions: [],
+        constraints: [],
+        diagnostics: [],
+        valid: true
+    }
+}
+
+proc context_add_diagnostic(
+    context: UnifyContext,
+    diagnostic: UnifyDiagnostic
+) -> UnifyContext {
+    give UnifyContext {
+        types: context.types,
+        substitutions: context.substitutions,
+        constraints: context.constraints,
+        diagnostics: context.diagnostics + [diagnostic],
+        valid: false
+    }
+}
+
+proc context_add_type(
+    context: UnifyContext,
+    ty: UnifyType
+) -> UnifyContext {
+    if vector_len(context.types) >= UNIFY_MAX_TYPES {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                UnifyErrorKind.TypeLimitExceeded,
+                "too many unification types",
+                span_empty(),
+                ty,
+                type_invalid()
+            )
+        )
+    }
+
+    give UnifyContext {
+        types: context.types + [ty],
+        substitutions: context.substitutions,
+        constraints: context.constraints,
+        diagnostics: context.diagnostics,
+        valid: context.valid
+    }
+}
+
+proc context_add_substitution(
+    context: UnifyContext,
+    substitution: UnifySubstitution
+) -> UnifyContext {
+    if vector_len(context.substitutions) >= UNIFY_MAX_SUBSTITUTIONS {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                UnifyErrorKind.SubstitutionLimitExceeded,
+                "too many unification substitutions",
+                substitution.span,
+                substitution.replacement,
+                type_invalid()
+            )
+        )
+    }
+
+    give UnifyContext {
+        types: context.types,
+        substitutions: context.substitutions + [substitution],
+        constraints: context.constraints,
+        diagnostics: context.diagnostics,
+        valid: context.valid
+    }
+}
+
+proc context_add_constraint(
+    context: UnifyContext,
+    constraint: UnifyConstraint
+) -> UnifyContext {
+    if vector_len(context.constraints) >= UNIFY_MAX_CONSTRAINTS {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                UnifyErrorKind.ConstraintLimitExceeded,
+                "too many unification constraints",
+                constraint.span,
+                constraint.left,
+                constraint.right
+            )
+        )
+    }
+
+    give UnifyContext {
+        types: context.types,
+        substitutions: context.substitutions,
+        constraints: context.constraints + [constraint],
+        diagnostics: context.diagnostics,
+        valid: context.valid
+    }
+}
+
+proc find_type(context: UnifyContext, id: u64) -> UnifyType {
+    let i: u64 = 0
+
+    loop i < vector_len(context.types) {
+        if context.types[i].id == id {
+            give context.types[i]
+        }
+
+        set i = i + 1
+    }
+
+    give type_invalid()
+}
+
+proc type_equals(left: UnifyType, right: UnifyType) -> bool {
+    if left.valid == false or right.valid == false {
+        give false
+    }
+
+    if left.id == right.id and left.kind == right.kind {
+        give true
+    }
+
+    if left.name == right.name and left.kind == right.kind {
+        give true
+    }
+
+    give false
+}
+
+proc type_is_var(ty: UnifyType) -> bool {
+    give ty.kind == UnifyTypeKind.Var
+}
+
+proc occurs_check(variable: u64, ty: UnifyType) -> bool {
+    if ty.kind == UnifyTypeKind.Var and ty.id == variable {
+        give false
+    }
+
+    let i: u64 = 0
+
+    loop i < vector_len(ty.args) {
+        if ty.args[i] == variable {
+            give false
+        }
+
+        set i = i + 1
+    }
+
+    give true
+}
+
+proc resolve_type(context: UnifyContext, ty: UnifyType) -> UnifyType {
+    if ty.kind != UnifyTypeKind.Var {
+        give ty
+    }
+
+    let i: u64 = 0
+
+    loop i < vector_len(context.substitutions) {
+        let substitution = context.substitutions[i]
+
+        if substitution.variable == ty.id {
+            give substitution.replacement
+        }
+
+        set i = i + 1
+    }
+
+    give ty
+}
+
+proc bind_variable(
+    context: UnifyContext,
+    variable: UnifyType,
+    replacement: UnifyType,
+    span: UnifySpan
+) -> UnifyContext {
+    if variable.kind != UnifyTypeKind.Var {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                UnifyErrorKind.InvalidSubstitution,
+                "left type is not a unification variable",
+                span,
+                variable,
+                replacement
+            )
+        )
+    }
+
+    if occurs_check(variable.id, replacement) == false {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                UnifyErrorKind.OccursCheckFailed,
+                "occurs check failed",
+                span,
+                variable,
+                replacement
+            )
+        )
+    }
+
+    let substitution = substitution_create(
+        vector_len(context.substitutions),
+        variable.id,
+        replacement,
+        span
+    )
+
+    give context_add_substitution(context, substitution)
+}
+
+proc unify_types(
+    context: UnifyContext,
+    left: UnifyType,
+    right: UnifyType,
+    span: UnifySpan
+) -> UnifyContext {
+    let resolved_left = resolve_type(context, left)
+    let resolved_right = resolve_type(context, right)
+
+    if type_equals(resolved_left, resolved_right) {
+        give context
+    }
+
+    if type_is_var(resolved_left) {
+        give bind_variable(context, resolved_left, resolved_right, span)
+    }
+
+    if type_is_var(resolved_right) {
+        give bind_variable(context, resolved_right, resolved_left, span)
+    }
+
+    if resolved_left.kind != resolved_right.kind {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                UnifyErrorKind.TypeMismatch,
+                "cannot unify different type kinds",
+                span,
+                resolved_left,
+                resolved_right
+            )
+        )
+    }
+
+    if vector_len(resolved_left.args) != vector_len(resolved_right.args) {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                UnifyErrorKind.TypeMismatch,
+                "cannot unify types with different arity",
+                span,
+                resolved_left,
+                resolved_right
+            )
+        )
+    }
+
+    let current = context
+    let i: u64 = 0
+
+    loop i < vector_len(resolved_left.args) {
+        let left_arg = find_type(current, resolved_left.args[i])
+        let right_arg = find_type(current, resolved_right.args[i])
+
+        set current = unify_types(current, left_arg, right_arg, span)
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc mark_constraint_solved(
+    context: UnifyContext,
+    constraint_id: u64
+) -> UnifyContext {
+    let next: [UnifyConstraint] = []
+    let i: u64 = 0
+
+    loop i < vector_len(context.constraints) {
+        let constraint = context.constraints[i]
+
+        if constraint.id == constraint_id {
+            set next = next + [
+                UnifyConstraint {
+                    id: constraint.id,
+                    left: constraint.left,
+                    right: constraint.right,
+                    relation: constraint.relation,
+                    span: constraint.span,
+                    solved: true
+                }
+            ]
+        } else {
+            set next = next + [constraint]
+        }
+
+        set i = i + 1
+    }
+
+    give UnifyContext {
+        types: context.types,
+        substitutions: context.substitutions,
+        constraints: next,
+        diagnostics: context.diagnostics,
+        valid: context.valid
+    }
+}
+
+proc solve_constraint(
+    context: UnifyContext,
+    constraint: UnifyConstraint
+) -> UnifyContext {
+    if constraint.relation == UnifyRelation.Equals {
+        let unified = unify_types(context, constraint.left, constraint.right, constraint.span)
+
+        if unified.valid {
+            give mark_constraint_solved(unified, constraint.id)
+        }
+
+        give unified
+    }
+
+    if constraint.relation == UnifyRelation.Assignable {
+        let unified = unify_types(context, constraint.left, constraint.right, constraint.span)
+
+        if unified.valid {
+            give mark_constraint_solved(unified, constraint.id)
+        }
+
+        give unified
+    }
+
+    give context_add_diagnostic(
+        context,
+        diagnostic_create(
+            UnifyErrorKind.ConstraintFailed,
+            "unsupported unification relation",
+            constraint.span,
+            constraint.left,
+            constraint.right
+        )
+    )
+}
+
+proc solve_all(context: UnifyContext) -> UnifyContext {
+    let current = context
+    let i: u64 = 0
+
+    loop i < vector_len(current.constraints) {
+        if current.constraints[i].solved == false {
+            set current = solve_constraint(current, current.constraints[i])
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc apply_substitutions_to_type(
+    context: UnifyContext,
+    ty: UnifyType
+) -> UnifyType {
+    give resolve_type(context, ty)
+}
+
+proc substitution_count(context: UnifyContext) -> u64 {
+    give vector_len(context.substitutions)
+}
+
+proc unify_error_count(context: UnifyContext) -> u64 {
+    give vector_len(context.diagnostics)
+}
+
+proc unify_is_valid(context: UnifyContext) -> bool {
+    give context.valid and vector_len(context.diagnostics) == 0
+}
+
+proc kind_name(kind: UnifyTypeKind) -> string {
+    if kind == UnifyTypeKind.Bool {
+        give "bool"
+    }
+
+    if kind == UnifyTypeKind.Int {
+        give "int"
+    }
+
+    if kind == UnifyTypeKind.Float {
+        give "float"
+    }
+
+    if kind == UnifyTypeKind.String {
+        give "string"
+    }
+
+    if kind == UnifyTypeKind.Function {
+        give "function"
+    }
+
+    if kind == UnifyTypeKind.Var {
+        give "var"
+    }
+
+    give "unknown"
+}
+
+proc print_type(ty: UnifyType) {
+    emit "unify type"
+    emit ty.id
+    emit ty.name
+    emit kind_name(ty.kind)
+    emit ty.valid
+}
+
+proc print_substitution(substitution: UnifySubstitution) {
+    emit "substitution"
+    emit substitution.variable
+    print_type(substitution.replacement)
+}
+
+proc print_context(context: UnifyContext) {
+    emit "unify context"
+    emit vector_len(context.types)
+    emit vector_len(context.substitutions)
+    emit vector_len(context.constraints)
+    emit vector_len(context.diagnostics)
+
+    let i: u64 = 0
+
+    loop i < vector_len(context.substitutions) {
+        print_substitution(context.substitutions[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

@@ -1,0 +1,998 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Backend / Code Generation          >>>
+<<< File: compiler/backend/codegen/instruction_select.vit    >>>
+<<< Module: vitte/compiler/backend/codegen/instruction_select >>>
+<<< Purpose: IR to machine instruction selection             >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/backend/codegen/instruction_select
+
+const ISEL_VERSION: u32 = 2026
+const ISEL_INVALID_ID: u64 = 18446744073709551615
+const ISEL_MAX_RULES: u64 = 262144
+const ISEL_MAX_NODES: u64 = 1048576
+const ISEL_MAX_INSTRUCTIONS: u64 = 16777216
+
+pick SelectArch {
+    Unknown
+    X86_64
+    AArch64
+    RiscV64
+    ARM
+    I386
+    Wasm32
+}
+
+pick IrOpcode {
+    Nop
+    Const
+    Add
+    Sub
+    Mul
+    Div
+    Mod
+    Neg
+    And
+    Or
+    Xor
+    Shl
+    Shr
+    Eq
+    Ne
+    Lt
+    Le
+    Gt
+    Ge
+    Load
+    Store
+    Addr
+    Call
+    Ret
+    Jump
+    Branch
+    Phi
+    Cast
+}
+
+pick MachineOpcode {
+    Invalid
+    Nop
+    Mov
+    Lea
+    Add
+    Sub
+    Mul
+    Div
+    Mod
+    Neg
+    And
+    Or
+    Xor
+    Shl
+    Shr
+    Cmp
+    SetEq
+    SetNe
+    SetLt
+    SetLe
+    SetGt
+    SetGe
+    Load
+    Store
+    Push
+    Pop
+    Call
+    Ret
+    Jmp
+    Jcc
+    Label
+}
+
+pick OperandKind {
+    None
+    Register
+    VirtualRegister
+    Immediate
+    Memory
+    Symbol
+    Label
+}
+
+pick SelectErrorKind {
+    None
+    InvalidArch
+    InvalidNode
+    UnsupportedOpcode
+    MissingRule
+    RuleLimitExceeded
+    NodeLimitExceeded
+    InstructionLimitExceeded
+    OperandMismatch
+    InternalFailure
+}
+
+form SelectSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form IrNode {
+    id: u64
+    opcode: IrOpcode
+    ty: string
+    left: u64
+    right: u64
+    extra: u64
+    imm: i64
+    symbol: string
+    span: SelectSpan
+    valid: bool
+}
+
+form MachineOperand {
+    kind: OperandKind
+    text: string
+    register_id: u64
+    immediate: i64
+    valid: bool
+}
+
+form MachineInstruction {
+    id: u64
+    opcode: MachineOpcode
+    operands: [MachineOperand]
+    source_node: u64
+    arch: SelectArch
+    valid: bool
+}
+
+form SelectRule {
+    id: u64
+    arch: SelectArch
+    ir_opcode: IrOpcode
+    machine_opcode: MachineOpcode
+    name: string
+    enabled: bool
+}
+
+form SelectDiagnostic {
+    kind: SelectErrorKind
+    message: string
+    span: SelectSpan
+    node: u64
+}
+
+form SelectContext {
+    arch: SelectArch
+    rules: [SelectRule]
+    nodes: [IrNode]
+    instructions: [MachineInstruction]
+    diagnostics: [SelectDiagnostic]
+    next_vreg: u64
+    valid: bool
+}
+
+proc span_empty() -> SelectSpan {
+    give SelectSpan {
+        file: "compiler/backend/codegen/instruction_select.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc node_invalid() -> IrNode {
+    give IrNode {
+        id: ISEL_INVALID_ID,
+        opcode: IrOpcode.Nop,
+        ty: "invalid",
+        left: ISEL_INVALID_ID,
+        right: ISEL_INVALID_ID,
+        extra: ISEL_INVALID_ID,
+        imm: 0,
+        symbol: "",
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc operand_none() -> MachineOperand {
+    give MachineOperand {
+        kind: OperandKind.None,
+        text: "",
+        register_id: ISEL_INVALID_ID,
+        immediate: 0,
+        valid: false
+    }
+}
+
+proc operand_vreg(id: u64) -> MachineOperand {
+    give MachineOperand {
+        kind: OperandKind.VirtualRegister,
+        text: "v" + u64_text(id),
+        register_id: id,
+        immediate: 0,
+        valid: true
+    }
+}
+
+proc operand_imm(value: i64) -> MachineOperand {
+    give MachineOperand {
+        kind: OperandKind.Immediate,
+        text: i64_text(value),
+        register_id: ISEL_INVALID_ID,
+        immediate: value,
+        valid: true
+    }
+}
+
+proc operand_symbol(name: string) -> MachineOperand {
+    give MachineOperand {
+        kind: OperandKind.Symbol,
+        text: name,
+        register_id: ISEL_INVALID_ID,
+        immediate: 0,
+        valid: true
+    }
+}
+
+proc operand_label(name: string) -> MachineOperand {
+    give MachineOperand {
+        kind: OperandKind.Label,
+        text: name,
+        register_id: ISEL_INVALID_ID,
+        immediate: 0,
+        valid: true
+    }
+}
+
+proc node_create(
+    id: u64,
+    opcode: IrOpcode,
+    ty: string,
+    left: u64,
+    right: u64,
+    extra: u64,
+    imm: i64,
+    symbol: string,
+    span: SelectSpan
+) -> IrNode {
+    give IrNode {
+        id: id,
+        opcode: opcode,
+        ty: ty,
+        left: left,
+        right: right,
+        extra: extra,
+        imm: imm,
+        symbol: symbol,
+        span: span,
+        valid: true
+    }
+}
+
+proc instruction_create(
+    id: u64,
+    opcode: MachineOpcode,
+    operands: [MachineOperand],
+    source_node: u64,
+    arch: SelectArch
+) -> MachineInstruction {
+    give MachineInstruction {
+        id: id,
+        opcode: opcode,
+        operands: operands,
+        source_node: source_node,
+        arch: arch,
+        valid: true
+    }
+}
+
+proc rule_create(
+    id: u64,
+    arch: SelectArch,
+    ir_opcode: IrOpcode,
+    machine_opcode: MachineOpcode,
+    name: string
+) -> SelectRule {
+    give SelectRule {
+        id: id,
+        arch: arch,
+        ir_opcode: ir_opcode,
+        machine_opcode: machine_opcode,
+        name: name,
+        enabled: true
+    }
+}
+
+proc diagnostic_create(
+    kind: SelectErrorKind,
+    message: string,
+    span: SelectSpan,
+    node: u64
+) -> SelectDiagnostic {
+    give SelectDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        node: node
+    }
+}
+
+proc context_empty(arch: SelectArch) -> SelectContext {
+    give SelectContext {
+        arch: arch,
+        rules: default_rules(arch),
+        nodes: [],
+        instructions: [],
+        diagnostics: [],
+        next_vreg: 0,
+        valid: true
+    }
+}
+
+proc default_rules(arch: SelectArch) -> [SelectRule] {
+    give [
+        rule_create(0, arch, IrOpcode.Nop, MachineOpcode.Nop, "nop"),
+        rule_create(1, arch, IrOpcode.Const, MachineOpcode.Mov, "const_to_mov"),
+        rule_create(2, arch, IrOpcode.Add, MachineOpcode.Add, "add"),
+        rule_create(3, arch, IrOpcode.Sub, MachineOpcode.Sub, "sub"),
+        rule_create(4, arch, IrOpcode.Mul, MachineOpcode.Mul, "mul"),
+        rule_create(5, arch, IrOpcode.Div, MachineOpcode.Div, "div"),
+        rule_create(6, arch, IrOpcode.Neg, MachineOpcode.Neg, "neg"),
+        rule_create(7, arch, IrOpcode.And, MachineOpcode.And, "and"),
+        rule_create(8, arch, IrOpcode.Or, MachineOpcode.Or, "or"),
+        rule_create(9, arch, IrOpcode.Xor, MachineOpcode.Xor, "xor"),
+        rule_create(10, arch, IrOpcode.Shl, MachineOpcode.Shl, "shl"),
+        rule_create(11, arch, IrOpcode.Shr, MachineOpcode.Shr, "shr"),
+        rule_create(12, arch, IrOpcode.Load, MachineOpcode.Load, "load"),
+        rule_create(13, arch, IrOpcode.Store, MachineOpcode.Store, "store"),
+        rule_create(14, arch, IrOpcode.Call, MachineOpcode.Call, "call"),
+        rule_create(15, arch, IrOpcode.Ret, MachineOpcode.Ret, "ret"),
+        rule_create(16, arch, IrOpcode.Jump, MachineOpcode.Jmp, "jump"),
+        rule_create(17, arch, IrOpcode.Branch, MachineOpcode.Jcc, "branch")
+    ]
+}
+
+proc context_add_diagnostic(
+    context: SelectContext,
+    diagnostic: SelectDiagnostic
+) -> SelectContext {
+    give SelectContext {
+        arch: context.arch,
+        rules: context.rules,
+        nodes: context.nodes,
+        instructions: context.instructions,
+        diagnostics: context.diagnostics + [diagnostic],
+        next_vreg: context.next_vreg,
+        valid: false
+    }
+}
+
+proc context_add_node(
+    context: SelectContext,
+    node: IrNode
+) -> SelectContext {
+    if vector_len(context.nodes) >= ISEL_MAX_NODES {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                SelectErrorKind.NodeLimitExceeded,
+                "too many instruction selection nodes",
+                node.span,
+                node.id
+            )
+        )
+    }
+
+    give SelectContext {
+        arch: context.arch,
+        rules: context.rules,
+        nodes: context.nodes + [node],
+        instructions: context.instructions,
+        diagnostics: context.diagnostics,
+        next_vreg: context.next_vreg,
+        valid: context.valid
+    }
+}
+
+proc context_add_instruction(
+    context: SelectContext,
+    instruction: MachineInstruction
+) -> SelectContext {
+    if vector_len(context.instructions) >= ISEL_MAX_INSTRUCTIONS {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                SelectErrorKind.InstructionLimitExceeded,
+                "too many selected machine instructions",
+                span_empty(),
+                instruction.source_node
+            )
+        )
+    }
+
+    give SelectContext {
+        arch: context.arch,
+        rules: context.rules,
+        nodes: context.nodes,
+        instructions: context.instructions + [instruction],
+        diagnostics: context.diagnostics,
+        next_vreg: context.next_vreg,
+        valid: context.valid
+    }
+}
+
+proc allocate_vreg(context: SelectContext) -> MachineOperand {
+    give operand_vreg(context.next_vreg)
+}
+
+proc context_bump_vreg(context: SelectContext) -> SelectContext {
+    give SelectContext {
+        arch: context.arch,
+        rules: context.rules,
+        nodes: context.nodes,
+        instructions: context.instructions,
+        diagnostics: context.diagnostics,
+        next_vreg: context.next_vreg + 1,
+        valid: context.valid
+    }
+}
+
+proc find_node(context: SelectContext, id: u64) -> IrNode {
+    let i: u64 = 0
+
+    loop i < vector_len(context.nodes) {
+        if context.nodes[i].id == id {
+            give context.nodes[i]
+        }
+
+        set i = i + 1
+    }
+
+    give node_invalid()
+}
+
+proc find_rule(
+    context: SelectContext,
+    opcode: IrOpcode
+) -> SelectRule {
+    let i: u64 = 0
+
+    loop i < vector_len(context.rules) {
+        let rule = context.rules[i]
+
+        if rule.enabled and rule.arch == context.arch and rule.ir_opcode == opcode {
+            give rule
+        }
+
+        set i = i + 1
+    }
+
+    give rule_create(
+        ISEL_INVALID_ID,
+        SelectArch.Unknown,
+        IrOpcode.Nop,
+        MachineOpcode.Invalid,
+        "invalid"
+    )
+}
+
+proc select_const(
+    context: SelectContext,
+    node: IrNode
+) -> SelectContext {
+    let dst = allocate_vreg(context)
+    let imm = operand_imm(node.imm)
+
+    let instruction = instruction_create(
+        vector_len(context.instructions),
+        MachineOpcode.Mov,
+        [dst, imm],
+        node.id,
+        context.arch
+    )
+
+    give context_bump_vreg(context_add_instruction(context, instruction))
+}
+
+proc select_binary(
+    context: SelectContext,
+    node: IrNode,
+    opcode: MachineOpcode
+) -> SelectContext {
+    let dst = allocate_vreg(context)
+    let lhs = operand_vreg(node.left)
+    let rhs = operand_vreg(node.right)
+
+    let instruction = instruction_create(
+        vector_len(context.instructions),
+        opcode,
+        [dst, lhs, rhs],
+        node.id,
+        context.arch
+    )
+
+    give context_bump_vreg(context_add_instruction(context, instruction))
+}
+
+proc select_unary(
+    context: SelectContext,
+    node: IrNode,
+    opcode: MachineOpcode
+) -> SelectContext {
+    let dst = allocate_vreg(context)
+    let src = operand_vreg(node.left)
+
+    let instruction = instruction_create(
+        vector_len(context.instructions),
+        opcode,
+        [dst, src],
+        node.id,
+        context.arch
+    )
+
+    give context_bump_vreg(context_add_instruction(context, instruction))
+}
+
+proc select_load(
+    context: SelectContext,
+    node: IrNode
+) -> SelectContext {
+    let dst = allocate_vreg(context)
+    let address = operand_vreg(node.left)
+
+    let instruction = instruction_create(
+        vector_len(context.instructions),
+        MachineOpcode.Load,
+        [dst, address],
+        node.id,
+        context.arch
+    )
+
+    give context_bump_vreg(context_add_instruction(context, instruction))
+}
+
+proc select_store(
+    context: SelectContext,
+    node: IrNode
+) -> SelectContext {
+    let address = operand_vreg(node.left)
+    let value = operand_vreg(node.right)
+
+    let instruction = instruction_create(
+        vector_len(context.instructions),
+        MachineOpcode.Store,
+        [address, value],
+        node.id,
+        context.arch
+    )
+
+    give context_add_instruction(context, instruction)
+}
+
+proc select_call(
+    context: SelectContext,
+    node: IrNode
+) -> SelectContext {
+    let target = operand_symbol(node.symbol)
+
+    let instruction = instruction_create(
+        vector_len(context.instructions),
+        MachineOpcode.Call,
+        [target],
+        node.id,
+        context.arch
+    )
+
+    give context_add_instruction(context, instruction)
+}
+
+proc select_return(
+    context: SelectContext,
+    node: IrNode
+) -> SelectContext {
+    let value = operand_vreg(node.left)
+
+    let instruction = instruction_create(
+        vector_len(context.instructions),
+        MachineOpcode.Ret,
+        [value],
+        node.id,
+        context.arch
+    )
+
+    give context_add_instruction(context, instruction)
+}
+
+proc select_jump(
+    context: SelectContext,
+    node: IrNode
+) -> SelectContext {
+    let label = operand_label(node.symbol)
+
+    let instruction = instruction_create(
+        vector_len(context.instructions),
+        MachineOpcode.Jmp,
+        [label],
+        node.id,
+        context.arch
+    )
+
+    give context_add_instruction(context, instruction)
+}
+
+proc select_branch(
+    context: SelectContext,
+    node: IrNode
+) -> SelectContext {
+    let cond = operand_vreg(node.left)
+    let label = operand_label(node.symbol)
+
+    let instruction = instruction_create(
+        vector_len(context.instructions),
+        MachineOpcode.Jcc,
+        [cond, label],
+        node.id,
+        context.arch
+    )
+
+    give context_add_instruction(context, instruction)
+}
+
+proc select_compare(
+    context: SelectContext,
+    node: IrNode,
+    set_opcode: MachineOpcode
+) -> SelectContext {
+    let lhs = operand_vreg(node.left)
+    let rhs = operand_vreg(node.right)
+
+    let cmp = instruction_create(
+        vector_len(context.instructions),
+        MachineOpcode.Cmp,
+        [lhs, rhs],
+        node.id,
+        context.arch
+    )
+
+    let with_cmp = context_add_instruction(context, cmp)
+
+    let dst = allocate_vreg(with_cmp)
+
+    let set = instruction_create(
+        vector_len(with_cmp.instructions),
+        set_opcode,
+        [dst],
+        node.id,
+        context.arch
+    )
+
+    give context_bump_vreg(context_add_instruction(with_cmp, set))
+}
+
+proc select_node(
+    context: SelectContext,
+    node: IrNode
+) -> SelectContext {
+    if node.valid == false {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                SelectErrorKind.InvalidNode,
+                "invalid IR node for instruction selection",
+                node.span,
+                node.id
+            )
+        )
+    }
+
+    let rule = find_rule(context, node.opcode)
+
+    if rule.id == ISEL_INVALID_ID {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                SelectErrorKind.MissingRule,
+                "missing instruction selection rule",
+                node.span,
+                node.id
+            )
+        )
+    }
+
+    if node.opcode == IrOpcode.Nop {
+        give context_add_instruction(
+            context,
+            instruction_create(
+                vector_len(context.instructions),
+                MachineOpcode.Nop,
+                [],
+                node.id,
+                context.arch
+            )
+        )
+    }
+
+    if node.opcode == IrOpcode.Const {
+        give select_const(context, node)
+    }
+
+    if node.opcode == IrOpcode.Add {
+        give select_binary(context, node, MachineOpcode.Add)
+    }
+
+    if node.opcode == IrOpcode.Sub {
+        give select_binary(context, node, MachineOpcode.Sub)
+    }
+
+    if node.opcode == IrOpcode.Mul {
+        give select_binary(context, node, MachineOpcode.Mul)
+    }
+
+    if node.opcode == IrOpcode.Div {
+        give select_binary(context, node, MachineOpcode.Div)
+    }
+
+    if node.opcode == IrOpcode.Mod {
+        give select_binary(context, node, MachineOpcode.Mod)
+    }
+
+    if node.opcode == IrOpcode.And {
+        give select_binary(context, node, MachineOpcode.And)
+    }
+
+    if node.opcode == IrOpcode.Or {
+        give select_binary(context, node, MachineOpcode.Or)
+    }
+
+    if node.opcode == IrOpcode.Xor {
+        give select_binary(context, node, MachineOpcode.Xor)
+    }
+
+    if node.opcode == IrOpcode.Shl {
+        give select_binary(context, node, MachineOpcode.Shl)
+    }
+
+    if node.opcode == IrOpcode.Shr {
+        give select_binary(context, node, MachineOpcode.Shr)
+    }
+
+    if node.opcode == IrOpcode.Neg {
+        give select_unary(context, node, MachineOpcode.Neg)
+    }
+
+    if node.opcode == IrOpcode.Eq {
+        give select_compare(context, node, MachineOpcode.SetEq)
+    }
+
+    if node.opcode == IrOpcode.Ne {
+        give select_compare(context, node, MachineOpcode.SetNe)
+    }
+
+    if node.opcode == IrOpcode.Lt {
+        give select_compare(context, node, MachineOpcode.SetLt)
+    }
+
+    if node.opcode == IrOpcode.Le {
+        give select_compare(context, node, MachineOpcode.SetLe)
+    }
+
+    if node.opcode == IrOpcode.Gt {
+        give select_compare(context, node, MachineOpcode.SetGt)
+    }
+
+    if node.opcode == IrOpcode.Ge {
+        give select_compare(context, node, MachineOpcode.SetGe)
+    }
+
+    if node.opcode == IrOpcode.Load {
+        give select_load(context, node)
+    }
+
+    if node.opcode == IrOpcode.Store {
+        give select_store(context, node)
+    }
+
+    if node.opcode == IrOpcode.Call {
+        give select_call(context, node)
+    }
+
+    if node.opcode == IrOpcode.Ret {
+        give select_return(context, node)
+    }
+
+    if node.opcode == IrOpcode.Jump {
+        give select_jump(context, node)
+    }
+
+    if node.opcode == IrOpcode.Branch {
+        give select_branch(context, node)
+    }
+
+    give context_add_diagnostic(
+        context,
+        diagnostic_create(
+            SelectErrorKind.UnsupportedOpcode,
+            "unsupported IR opcode for instruction selection",
+            node.span,
+            node.id
+        )
+    )
+}
+
+proc select_all(context: SelectContext) -> SelectContext {
+    let current = context
+    let i: u64 = 0
+
+    loop i < vector_len(current.nodes) {
+        set current = select_node(current, current.nodes[i])
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc validate_selection(context: SelectContext) -> SelectContext {
+    let current = context
+    let i: u64 = 0
+
+    loop i < vector_len(current.instructions) {
+        let inst = current.instructions[i]
+
+        if inst.valid == false {
+            give context_add_diagnostic(
+                current,
+                diagnostic_create(
+                    SelectErrorKind.InvalidNode,
+                    "invalid selected machine instruction",
+                    span_empty(),
+                    inst.source_node
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc run_instruction_selection(context: SelectContext) -> SelectContext {
+    let selected = select_all(context)
+    give validate_selection(selected)
+}
+
+proc selection_error_count(context: SelectContext) -> u64 {
+    give vector_len(context.diagnostics)
+}
+
+proc selected_instruction_count(context: SelectContext) -> u64 {
+    give vector_len(context.instructions)
+}
+
+proc selection_is_valid(context: SelectContext) -> bool {
+    give context.valid and vector_len(context.diagnostics) == 0
+}
+
+proc arch_name(arch: SelectArch) -> string {
+    if arch == SelectArch.X86_64 {
+        give "x86_64"
+    }
+
+    if arch == SelectArch.AArch64 {
+        give "aarch64"
+    }
+
+    if arch == SelectArch.RiscV64 {
+        give "riscv64"
+    }
+
+    if arch == SelectArch.ARM {
+        give "arm"
+    }
+
+    if arch == SelectArch.I386 {
+        give "i386"
+    }
+
+    if arch == SelectArch.Wasm32 {
+        give "wasm32"
+    }
+
+    give "unknown"
+}
+
+proc machine_opcode_name(opcode: MachineOpcode) -> string {
+    if opcode == MachineOpcode.Nop {
+        give "nop"
+    }
+
+    if opcode == MachineOpcode.Mov {
+        give "mov"
+    }
+
+    if opcode == MachineOpcode.Add {
+        give "add"
+    }
+
+    if opcode == MachineOpcode.Sub {
+        give "sub"
+    }
+
+    if opcode == MachineOpcode.Mul {
+        give "mul"
+    }
+
+    if opcode == MachineOpcode.Div {
+        give "div"
+    }
+
+    if opcode == MachineOpcode.Load {
+        give "load"
+    }
+
+    if opcode == MachineOpcode.Store {
+        give "store"
+    }
+
+    if opcode == MachineOpcode.Call {
+        give "call"
+    }
+
+    if opcode == MachineOpcode.Ret {
+        give "ret"
+    }
+
+    give "invalid"
+}
+
+proc print_operand(operand: MachineOperand) {
+    emit "operand"
+    emit operand.text
+    emit operand.valid
+}
+
+proc print_instruction(instruction: MachineInstruction) {
+    emit "machine instruction"
+    emit instruction.id
+    emit machine_opcode_name(instruction.opcode)
+    emit instruction.source_node
+
+    let i: u64 = 0
+
+    loop i < vector_len(instruction.operands) {
+        print_operand(instruction.operands[i])
+        set i = i + 1
+    }
+}
+
+proc print_context(context: SelectContext) {
+    emit "instruction selection"
+    emit arch_name(context.arch)
+    emit vector_len(context.nodes)
+    emit vector_len(context.instructions)
+    emit vector_len(context.diagnostics)
+
+    let i: u64 = 0
+
+    loop i < vector_len(context.instructions) {
+        print_instruction(context.instructions[i])
+        set i = i + 1
+    }
+}
+
+proc u64_text(value: u64) -> string {
+    give ""
+}
+
+proc i64_text(value: i64) -> string {
+    give ""
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

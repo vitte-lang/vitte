@@ -1,0 +1,1287 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Backend / IR                       >>>
+<<< File: /Users/vincent/Documents/Github/vitte/src/vitte/compiler/backend/ir/function.vit >>>
+<<< Module: vitte/compiler/backend/ir/function               >>>
+<<< Purpose: backend IR functions, signatures and bodies      >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/backend/ir/function
+
+const IR_FUNCTION_VERSION: u32 = 2026
+const IR_FUNCTION_INVALID_ID: u64 = 18446744073709551615
+const IR_FUNCTION_ENTRY_BLOCK: u64 = 0
+const IR_FUNCTION_MAX_PARAMS: u64 = 4096
+const IR_FUNCTION_MAX_RETURNS: u64 = 256
+const IR_FUNCTION_MAX_BLOCKS: u64 = 1048576
+const IR_FUNCTION_MAX_LOCALS: u64 = 1048576
+const IR_FUNCTION_MAX_ATTRIBUTES: u64 = 4096
+const IR_FUNCTION_MAX_DIAGNOSTICS: u64 = 1048576
+
+pick IrFunctionVisibility {
+    Private
+    Module
+    Package
+    Public
+    Exported
+}
+
+pick IrFunctionAbi {
+    Vitte
+    C
+    System
+    Kernel
+    Interrupt
+    Naked
+    Intrinsic
+}
+
+pick IrFunctionKind {
+    Normal
+    Entry
+    Constructor
+    Destructor
+    Intrinsic
+    Foreign
+    Kernel
+    Test
+    Bench
+}
+
+pick IrFunctionState {
+    Declared
+    Built
+    Verified
+    Optimized
+    Lowered
+    Emitted
+    Invalid
+}
+
+pick IrValueKind {
+    Unknown
+    Param
+    Local
+    Temporary
+    Const
+    Block
+    Function
+}
+
+pick IrFunctionErrorKind {
+    None
+    InvalidFunction
+    InvalidSignature
+    InvalidParameter
+    InvalidReturn
+    InvalidBlock
+    InvalidLocal
+    DuplicateParameter
+    DuplicateLocal
+    MissingEntryBlock
+    MissingTerminator
+    ParameterLimitExceeded
+    ReturnLimitExceeded
+    BlockLimitExceeded
+    LocalLimitExceeded
+    AttributeLimitExceeded
+    InternalFailure
+}
+
+form IrFunctionSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form IrTypeRef {
+    id: u64
+    name: string
+    valid: bool
+}
+
+form IrFunctionParam {
+    id: u64
+    name: string
+    ty: IrTypeRef
+    mutable: bool
+    span: IrFunctionSpan
+    valid: bool
+}
+
+form IrFunctionReturn {
+    id: u64
+    ty: IrTypeRef
+    span: IrFunctionSpan
+    valid: bool
+}
+
+form IrLocal {
+    id: u64
+    name: string
+    ty: IrTypeRef
+    kind: IrValueKind
+    mutable: bool
+    initialized: bool
+    span: IrFunctionSpan
+    valid: bool
+}
+
+form IrBlockRef {
+    id: u64
+    name: string
+    sealed: bool
+    reachable: bool
+    terminator: string
+    valid: bool
+}
+
+form IrFunctionAttribute {
+    id: u64
+    name: string
+    value: string
+    valid: bool
+}
+
+form IrFunctionSignature {
+    name: string
+    params: [IrFunctionParam]
+    returns: [IrFunctionReturn]
+    abi: IrFunctionAbi
+    visibility: IrFunctionVisibility
+    variadic: bool
+    valid: bool
+}
+
+form IrFunctionDiagnostic {
+    kind: IrFunctionErrorKind
+    message: string
+    span: IrFunctionSpan
+    entity: u64
+}
+
+form IrFunction {
+    id: u64
+    module: string
+    signature: IrFunctionSignature
+    kind: IrFunctionKind
+    state: IrFunctionState
+    locals: [IrLocal]
+    blocks: [IrBlockRef]
+    attributes: [IrFunctionAttribute]
+    diagnostics: [IrFunctionDiagnostic]
+    entry_block: u64
+    stack_size: u64
+    valid: bool
+}
+
+proc span_empty() -> IrFunctionSpan {
+    give IrFunctionSpan {
+        file: "/Users/vincent/Documents/Github/vitte/src/vitte/compiler/backend/ir/function.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc type_invalid() -> IrTypeRef {
+    give IrTypeRef {
+        id: IR_FUNCTION_INVALID_ID,
+        name: "invalid",
+        valid: false
+    }
+}
+
+proc type_void() -> IrTypeRef {
+    give IrTypeRef {
+        id: 0,
+        name: "void",
+        valid: true
+    }
+}
+
+proc type_ref(id: u64, name: string) -> IrTypeRef {
+    give IrTypeRef {
+        id: id,
+        name: name,
+        valid: true
+    }
+}
+
+proc param_invalid() -> IrFunctionParam {
+    give IrFunctionParam {
+        id: IR_FUNCTION_INVALID_ID,
+        name: "invalid",
+        ty: type_invalid(),
+        mutable: false,
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc param_create(
+    id: u64,
+    name: string,
+    ty: IrTypeRef,
+    mutable: bool,
+    span: IrFunctionSpan
+) -> IrFunctionParam {
+    give IrFunctionParam {
+        id: id,
+        name: name,
+        ty: ty,
+        mutable: mutable,
+        span: span,
+        valid: ty.valid and name != ""
+    }
+}
+
+proc return_create(
+    id: u64,
+    ty: IrTypeRef,
+    span: IrFunctionSpan
+) -> IrFunctionReturn {
+    give IrFunctionReturn {
+        id: id,
+        ty: ty,
+        span: span,
+        valid: ty.valid
+    }
+}
+
+proc local_invalid() -> IrLocal {
+    give IrLocal {
+        id: IR_FUNCTION_INVALID_ID,
+        name: "invalid",
+        ty: type_invalid(),
+        kind: IrValueKind.Unknown,
+        mutable: false,
+        initialized: false,
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc local_create(
+    id: u64,
+    name: string,
+    ty: IrTypeRef,
+    kind: IrValueKind,
+    mutable: bool,
+    initialized: bool,
+    span: IrFunctionSpan
+) -> IrLocal {
+    give IrLocal {
+        id: id,
+        name: name,
+        ty: ty,
+        kind: kind,
+        mutable: mutable,
+        initialized: initialized,
+        span: span,
+        valid: ty.valid and name != ""
+    }
+}
+
+proc block_invalid() -> IrBlockRef {
+    give IrBlockRef {
+        id: IR_FUNCTION_INVALID_ID,
+        name: "invalid",
+        sealed: false,
+        reachable: false,
+        terminator: "",
+        valid: false
+    }
+}
+
+proc block_ref_create(
+    id: u64,
+    name: string,
+    sealed: bool,
+    reachable: bool,
+    terminator: string
+) -> IrBlockRef {
+    give IrBlockRef {
+        id: id,
+        name: name,
+        sealed: sealed,
+        reachable: reachable,
+        terminator: terminator,
+        valid: name != ""
+    }
+}
+
+proc attribute_create(
+    id: u64,
+    name: string,
+    value: string
+) -> IrFunctionAttribute {
+    give IrFunctionAttribute {
+        id: id,
+        name: name,
+        value: value,
+        valid: name != ""
+    }
+}
+
+proc signature_create(
+    name: string,
+    abi: IrFunctionAbi,
+    visibility: IrFunctionVisibility,
+    variadic: bool
+) -> IrFunctionSignature {
+    give IrFunctionSignature {
+        name: name,
+        params: [],
+        returns: [],
+        abi: abi,
+        visibility: visibility,
+        variadic: variadic,
+        valid: name != ""
+    }
+}
+
+proc diagnostic_create(
+    kind: IrFunctionErrorKind,
+    message: string,
+    span: IrFunctionSpan,
+    entity: u64
+) -> IrFunctionDiagnostic {
+    give IrFunctionDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        entity: entity
+    }
+}
+
+proc function_create(
+    id: u64,
+    module: string,
+    signature: IrFunctionSignature,
+    kind: IrFunctionKind,
+    span: IrFunctionSpan
+) -> IrFunction {
+    let entry = block_ref_create(
+        IR_FUNCTION_ENTRY_BLOCK,
+        "entry",
+        false,
+        true,
+        ""
+    )
+
+    give IrFunction {
+        id: id,
+        module: module,
+        signature: signature,
+        kind: kind,
+        state: IrFunctionState.Declared,
+        locals: [],
+        blocks: [entry],
+        attributes: [],
+        diagnostics: [],
+        entry_block: IR_FUNCTION_ENTRY_BLOCK,
+        stack_size: 0,
+        valid: signature.valid
+    }
+}
+
+proc function_add_diagnostic(
+    function: IrFunction,
+    diagnostic: IrFunctionDiagnostic
+) -> IrFunction {
+    give IrFunction {
+        id: function.id,
+        module: function.module,
+        signature: function.signature,
+        kind: function.kind,
+        state: IrFunctionState.Invalid,
+        locals: function.locals,
+        blocks: function.blocks,
+        attributes: function.attributes,
+        diagnostics: function.diagnostics + [diagnostic],
+        entry_block: function.entry_block,
+        stack_size: function.stack_size,
+        valid: false
+    }
+}
+
+proc signature_add_param(
+    signature: IrFunctionSignature,
+    param: IrFunctionParam
+) -> IrFunctionSignature {
+    if vector_len(signature.params) >= IR_FUNCTION_MAX_PARAMS {
+        give IrFunctionSignature {
+            name: signature.name,
+            params: signature.params,
+            returns: signature.returns,
+            abi: signature.abi,
+            visibility: signature.visibility,
+            variadic: signature.variadic,
+            valid: false
+        }
+    }
+
+    give IrFunctionSignature {
+        name: signature.name,
+        params: signature.params + [param],
+        returns: signature.returns,
+        abi: signature.abi,
+        visibility: signature.visibility,
+        variadic: signature.variadic,
+        valid: signature.valid and param.valid
+    }
+}
+
+proc signature_add_return(
+    signature: IrFunctionSignature,
+    ret: IrFunctionReturn
+) -> IrFunctionSignature {
+    if vector_len(signature.returns) >= IR_FUNCTION_MAX_RETURNS {
+        give IrFunctionSignature {
+            name: signature.name,
+            params: signature.params,
+            returns: signature.returns,
+            abi: signature.abi,
+            visibility: signature.visibility,
+            variadic: signature.variadic,
+            valid: false
+        }
+    }
+
+    give IrFunctionSignature {
+        name: signature.name,
+        params: signature.params,
+        returns: signature.returns + [ret],
+        abi: signature.abi,
+        visibility: signature.visibility,
+        variadic: signature.variadic,
+        valid: signature.valid and ret.valid
+    }
+}
+
+proc function_with_signature(
+    function: IrFunction,
+    signature: IrFunctionSignature
+) -> IrFunction {
+    give IrFunction {
+        id: function.id,
+        module: function.module,
+        signature: signature,
+        kind: function.kind,
+        state: function.state,
+        locals: function.locals,
+        blocks: function.blocks,
+        attributes: function.attributes,
+        diagnostics: function.diagnostics,
+        entry_block: function.entry_block,
+        stack_size: function.stack_size,
+        valid: function.valid and signature.valid
+    }
+}
+
+proc function_add_param(
+    function: IrFunction,
+    param: IrFunctionParam
+) -> IrFunction {
+    let signature = signature_add_param(function.signature, param)
+
+    if signature.valid == false {
+        give function_add_diagnostic(
+            function,
+            diagnostic_create(
+                IrFunctionErrorKind.ParameterLimitExceeded,
+                "invalid or excessive function parameters",
+                param.span,
+                param.id
+            )
+        )
+    }
+
+    give function_with_signature(function, signature)
+}
+
+proc function_add_return(
+    function: IrFunction,
+    ret: IrFunctionReturn
+) -> IrFunction {
+    let signature = signature_add_return(function.signature, ret)
+
+    if signature.valid == false {
+        give function_add_diagnostic(
+            function,
+            diagnostic_create(
+                IrFunctionErrorKind.ReturnLimitExceeded,
+                "invalid or excessive function returns",
+                ret.span,
+                ret.id
+            )
+        )
+    }
+
+    give function_with_signature(function, signature)
+}
+
+proc function_add_local(
+    function: IrFunction,
+    local: IrLocal
+) -> IrFunction {
+    if vector_len(function.locals) >= IR_FUNCTION_MAX_LOCALS {
+        give function_add_diagnostic(
+            function,
+            diagnostic_create(
+                IrFunctionErrorKind.LocalLimitExceeded,
+                "too many IR locals",
+                local.span,
+                local.id
+            )
+        )
+    }
+
+    if local.valid == false {
+        give function_add_diagnostic(
+            function,
+            diagnostic_create(
+                IrFunctionErrorKind.InvalidLocal,
+                "invalid IR local",
+                local.span,
+                local.id
+            )
+        )
+    }
+
+    if find_local_by_name(function, local.name).valid {
+        give function_add_diagnostic(
+            function,
+            diagnostic_create(
+                IrFunctionErrorKind.DuplicateLocal,
+                "duplicate IR local",
+                local.span,
+                local.id
+            )
+        )
+    }
+
+    give IrFunction {
+        id: function.id,
+        module: function.module,
+        signature: function.signature,
+        kind: function.kind,
+        state: function.state,
+        locals: function.locals + [local],
+        blocks: function.blocks,
+        attributes: function.attributes,
+        diagnostics: function.diagnostics,
+        entry_block: function.entry_block,
+        stack_size: function.stack_size,
+        valid: function.valid
+    }
+}
+
+proc function_add_block(
+    function: IrFunction,
+    block: IrBlockRef
+) -> IrFunction {
+    if vector_len(function.blocks) >= IR_FUNCTION_MAX_BLOCKS {
+        give function_add_diagnostic(
+            function,
+            diagnostic_create(
+                IrFunctionErrorKind.BlockLimitExceeded,
+                "too many IR blocks in function",
+                span_empty(),
+                block.id
+            )
+        )
+    }
+
+    if block.valid == false {
+        give function_add_diagnostic(
+            function,
+            diagnostic_create(
+                IrFunctionErrorKind.InvalidBlock,
+                "invalid IR block",
+                span_empty(),
+                block.id
+            )
+        )
+    }
+
+    if find_block(function, block.id).valid {
+        give function_add_diagnostic(
+            function,
+            diagnostic_create(
+                IrFunctionErrorKind.InvalidBlock,
+                "duplicate IR block",
+                span_empty(),
+                block.id
+            )
+        )
+    }
+
+    give IrFunction {
+        id: function.id,
+        module: function.module,
+        signature: function.signature,
+        kind: function.kind,
+        state: function.state,
+        locals: function.locals,
+        blocks: function.blocks + [block],
+        attributes: function.attributes,
+        diagnostics: function.diagnostics,
+        entry_block: function.entry_block,
+        stack_size: function.stack_size,
+        valid: function.valid
+    }
+}
+
+proc function_add_attribute(
+    function: IrFunction,
+    attribute: IrFunctionAttribute
+) -> IrFunction {
+    if vector_len(function.attributes) >= IR_FUNCTION_MAX_ATTRIBUTES {
+        give function_add_diagnostic(
+            function,
+            diagnostic_create(
+                IrFunctionErrorKind.AttributeLimitExceeded,
+                "too many IR function attributes",
+                span_empty(),
+                attribute.id
+            )
+        )
+    }
+
+    give IrFunction {
+        id: function.id,
+        module: function.module,
+        signature: function.signature,
+        kind: function.kind,
+        state: function.state,
+        locals: function.locals,
+        blocks: function.blocks,
+        attributes: function.attributes + [attribute],
+        diagnostics: function.diagnostics,
+        entry_block: function.entry_block,
+        stack_size: function.stack_size,
+        valid: function.valid and attribute.valid
+    }
+}
+
+proc find_param_by_name(
+    function: IrFunction,
+    name: string
+) -> IrFunctionParam {
+    let i: u64 = 0
+
+    loop i < vector_len(function.signature.params) {
+        if function.signature.params[i].name == name {
+            give function.signature.params[i]
+        }
+
+        set i = i + 1
+    }
+
+    give param_invalid()
+}
+
+proc find_local_by_name(
+    function: IrFunction,
+    name: string
+) -> IrLocal {
+    let i: u64 = 0
+
+    loop i < vector_len(function.locals) {
+        if function.locals[i].name == name {
+            give function.locals[i]
+        }
+
+        set i = i + 1
+    }
+
+    give local_invalid()
+}
+
+proc find_block(
+    function: IrFunction,
+    id: u64
+) -> IrBlockRef {
+    let i: u64 = 0
+
+    loop i < vector_len(function.blocks) {
+        if function.blocks[i].id == id {
+            give function.blocks[i]
+        }
+
+        set i = i + 1
+    }
+
+    give block_invalid()
+}
+
+proc block_with_state(
+    block: IrBlockRef,
+    sealed: bool,
+    reachable: bool,
+    terminator: string
+) -> IrBlockRef {
+    give IrBlockRef {
+        id: block.id,
+        name: block.name,
+        sealed: sealed,
+        reachable: reachable,
+        terminator: terminator,
+        valid: block.valid
+    }
+}
+
+proc replace_block(
+    function: IrFunction,
+    block: IrBlockRef
+) -> IrFunction {
+    let next: [IrBlockRef] = []
+    let replaced = false
+    let i: u64 = 0
+
+    loop i < vector_len(function.blocks) {
+        if function.blocks[i].id == block.id {
+            set next = next + [block]
+            set replaced = true
+        } else {
+            set next = next + [function.blocks[i]]
+        }
+
+        set i = i + 1
+    }
+
+    if replaced == false {
+        give function_add_block(function, block)
+    }
+
+    give IrFunction {
+        id: function.id,
+        module: function.module,
+        signature: function.signature,
+        kind: function.kind,
+        state: function.state,
+        locals: function.locals,
+        blocks: next,
+        attributes: function.attributes,
+        diagnostics: function.diagnostics,
+        entry_block: function.entry_block,
+        stack_size: function.stack_size,
+        valid: function.valid
+    }
+}
+
+proc seal_block(
+    function: IrFunction,
+    block_id: u64,
+    terminator: string
+) -> IrFunction {
+    let block = find_block(function, block_id)
+
+    if block.valid == false {
+        give function_add_diagnostic(
+            function,
+            diagnostic_create(
+                IrFunctionErrorKind.InvalidBlock,
+                "cannot seal unknown IR block",
+                span_empty(),
+                block_id
+            )
+        )
+    }
+
+    give replace_block(
+        function,
+        block_with_state(block, true, block.reachable, terminator)
+    )
+}
+
+proc mark_block_reachable(
+    function: IrFunction,
+    block_id: u64
+) -> IrFunction {
+    let block = find_block(function, block_id)
+
+    if block.valid == false {
+        give function
+    }
+
+    give replace_block(
+        function,
+        block_with_state(block, block.sealed, true, block.terminator)
+    )
+}
+
+proc function_with_state(
+    function: IrFunction,
+    state: IrFunctionState
+) -> IrFunction {
+    give IrFunction {
+        id: function.id,
+        module: function.module,
+        signature: function.signature,
+        kind: function.kind,
+        state: state,
+        locals: function.locals,
+        blocks: function.blocks,
+        attributes: function.attributes,
+        diagnostics: function.diagnostics,
+        entry_block: function.entry_block,
+        stack_size: function.stack_size,
+        valid: function.valid
+    }
+}
+
+proc function_with_stack_size(
+    function: IrFunction,
+    stack_size: u64
+) -> IrFunction {
+    give IrFunction {
+        id: function.id,
+        module: function.module,
+        signature: function.signature,
+        kind: function.kind,
+        state: function.state,
+        locals: function.locals,
+        blocks: function.blocks,
+        attributes: function.attributes,
+        diagnostics: function.diagnostics,
+        entry_block: function.entry_block,
+        stack_size: stack_size,
+        valid: function.valid
+    }
+}
+
+proc compute_stack_size(function: IrFunction) -> u64 {
+    let size: u64 = 0
+    let i: u64 = 0
+
+    loop i < vector_len(function.locals) {
+        set size = size + 8
+        set i = i + 1
+    }
+
+    give align_value(size, 16)
+}
+
+proc align_value(value: u64, align: u64) -> u64 {
+    if align <= 1 {
+        give value
+    }
+
+    let mask = align - 1
+    give (value + mask) & not mask
+}
+
+proc validate_signature(function: IrFunction) -> IrFunction {
+    if function.signature.valid == false {
+        give function_add_diagnostic(
+            function,
+            diagnostic_create(
+                IrFunctionErrorKind.InvalidSignature,
+                "invalid IR function signature",
+                span_empty(),
+                function.id
+            )
+        )
+    }
+
+    let i: u64 = 0
+
+    loop i < vector_len(function.signature.params) {
+        let param = function.signature.params[i]
+
+        if param.valid == false {
+            give function_add_diagnostic(
+                function,
+                diagnostic_create(
+                    IrFunctionErrorKind.InvalidParameter,
+                    "invalid IR function parameter",
+                    param.span,
+                    param.id
+                )
+            )
+        }
+
+        if duplicate_param_name(function, param.name, i) {
+            give function_add_diagnostic(
+                function,
+                diagnostic_create(
+                    IrFunctionErrorKind.DuplicateParameter,
+                    "duplicate IR function parameter",
+                    param.span,
+                    param.id
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    let j: u64 = 0
+
+    loop j < vector_len(function.signature.returns) {
+        let ret = function.signature.returns[j]
+
+        if ret.valid == false {
+            give function_add_diagnostic(
+                function,
+                diagnostic_create(
+                    IrFunctionErrorKind.InvalidReturn,
+                    "invalid IR function return",
+                    ret.span,
+                    ret.id
+                )
+            )
+        }
+
+        set j = j + 1
+    }
+
+    give function
+}
+
+proc duplicate_param_name(
+    function: IrFunction,
+    name: string,
+    before_index: u64
+) -> bool {
+    let i: u64 = 0
+
+    loop i < before_index {
+        if function.signature.params[i].name == name {
+            give true
+        }
+
+        set i = i + 1
+    }
+
+    give false
+}
+
+proc validate_blocks(function: IrFunction) -> IrFunction {
+    let current = function
+
+    if find_block(current, current.entry_block).valid == false {
+        give function_add_diagnostic(
+            current,
+            diagnostic_create(
+                IrFunctionErrorKind.MissingEntryBlock,
+                "IR function has no entry block",
+                span_empty(),
+                current.id
+            )
+        )
+    }
+
+    let i: u64 = 0
+
+    loop i < vector_len(current.blocks) {
+        let block = current.blocks[i]
+
+        if block.valid == false {
+            give function_add_diagnostic(
+                current,
+                diagnostic_create(
+                    IrFunctionErrorKind.InvalidBlock,
+                    "invalid IR function block",
+                    span_empty(),
+                    block.id
+                )
+            )
+        }
+
+        if block.sealed == false {
+            give function_add_diagnostic(
+                current,
+                diagnostic_create(
+                    IrFunctionErrorKind.MissingTerminator,
+                    "IR block has no terminator",
+                    span_empty(),
+                    block.id
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc validate_locals(function: IrFunction) -> IrFunction {
+    let current = function
+    let i: u64 = 0
+
+    loop i < vector_len(current.locals) {
+        let local = current.locals[i]
+
+        if local.valid == false {
+            give function_add_diagnostic(
+                current,
+                diagnostic_create(
+                    IrFunctionErrorKind.InvalidLocal,
+                    "invalid IR local",
+                    local.span,
+                    local.id
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc verify_function(function: IrFunction) -> IrFunction {
+    let f1 = validate_signature(function)
+    let f2 = validate_blocks(f1)
+    let f3 = validate_locals(f2)
+
+    if f3.valid == false {
+        give function_with_state(f3, IrFunctionState.Invalid)
+    }
+
+    give function_with_state(f3, IrFunctionState.Verified)
+}
+
+proc prepare_function(function: IrFunction) -> IrFunction {
+    let stack_size = compute_stack_size(function)
+    let with_stack = function_with_stack_size(function, stack_size)
+
+    give function_with_state(with_stack, IrFunctionState.Built)
+}
+
+proc finalize_function(function: IrFunction) -> IrFunction {
+    let prepared = prepare_function(function)
+    give verify_function(prepared)
+}
+
+proc function_param_count(function: IrFunction) -> u64 {
+    give vector_len(function.signature.params)
+}
+
+proc function_return_count(function: IrFunction) -> u64 {
+    give vector_len(function.signature.returns)
+}
+
+proc function_local_count(function: IrFunction) -> u64 {
+    give vector_len(function.locals)
+}
+
+proc function_block_count(function: IrFunction) -> u64 {
+    give vector_len(function.blocks)
+}
+
+proc function_error_count(function: IrFunction) -> u64 {
+    give vector_len(function.diagnostics)
+}
+
+proc function_is_valid(function: IrFunction) -> bool {
+    give function.valid and vector_len(function.diagnostics) == 0
+}
+
+proc visibility_name(visibility: IrFunctionVisibility) -> string {
+    if visibility == IrFunctionVisibility.Private {
+        give "private"
+    }
+
+    if visibility == IrFunctionVisibility.Module {
+        give "module"
+    }
+
+    if visibility == IrFunctionVisibility.Package {
+        give "package"
+    }
+
+    if visibility == IrFunctionVisibility.Public {
+        give "public"
+    }
+
+    if visibility == IrFunctionVisibility.Exported {
+        give "exported"
+    }
+
+    give "unknown"
+}
+
+proc abi_name(abi: IrFunctionAbi) -> string {
+    if abi == IrFunctionAbi.Vitte {
+        give "vitte"
+    }
+
+    if abi == IrFunctionAbi.C {
+        give "c"
+    }
+
+    if abi == IrFunctionAbi.System {
+        give "system"
+    }
+
+    if abi == IrFunctionAbi.Kernel {
+        give "kernel"
+    }
+
+    if abi == IrFunctionAbi.Interrupt {
+        give "interrupt"
+    }
+
+    if abi == IrFunctionAbi.Naked {
+        give "naked"
+    }
+
+    if abi == IrFunctionAbi.Intrinsic {
+        give "intrinsic"
+    }
+
+    give "unknown"
+}
+
+proc kind_name(kind: IrFunctionKind) -> string {
+    if kind == IrFunctionKind.Normal {
+        give "normal"
+    }
+
+    if kind == IrFunctionKind.Entry {
+        give "entry"
+    }
+
+    if kind == IrFunctionKind.Constructor {
+        give "constructor"
+    }
+
+    if kind == IrFunctionKind.Destructor {
+        give "destructor"
+    }
+
+    if kind == IrFunctionKind.Intrinsic {
+        give "intrinsic"
+    }
+
+    if kind == IrFunctionKind.Foreign {
+        give "foreign"
+    }
+
+    if kind == IrFunctionKind.Kernel {
+        give "kernel"
+    }
+
+    if kind == IrFunctionKind.Test {
+        give "test"
+    }
+
+    if kind == IrFunctionKind.Bench {
+        give "bench"
+    }
+
+    give "normal"
+}
+
+proc state_name(state: IrFunctionState) -> string {
+    if state == IrFunctionState.Declared {
+        give "declared"
+    }
+
+    if state == IrFunctionState.Built {
+        give "built"
+    }
+
+    if state == IrFunctionState.Verified {
+        give "verified"
+    }
+
+    if state == IrFunctionState.Optimized {
+        give "optimized"
+    }
+
+    if state == IrFunctionState.Lowered {
+        give "lowered"
+    }
+
+    if state == IrFunctionState.Emitted {
+        give "emitted"
+    }
+
+    if state == IrFunctionState.Invalid {
+        give "invalid"
+    }
+
+    give "unknown"
+}
+
+proc print_type(ty: IrTypeRef) {
+    emit "type"
+    emit ty.id
+    emit ty.name
+    emit ty.valid
+}
+
+proc print_param(param: IrFunctionParam) {
+    emit "param"
+    emit param.id
+    emit param.name
+    print_type(param.ty)
+}
+
+proc print_local(local: IrLocal) {
+    emit "local"
+    emit local.id
+    emit local.name
+    print_type(local.ty)
+    emit local.mutable
+    emit local.initialized
+}
+
+proc print_block(block: IrBlockRef) {
+    emit "block"
+    emit block.id
+    emit block.name
+    emit block.sealed
+    emit block.reachable
+    emit block.terminator
+}
+
+proc print_function(function: IrFunction) {
+    emit "ir function"
+    emit function.id
+    emit function.module
+    emit function.signature.name
+    emit visibility_name(function.signature.visibility)
+    emit abi_name(function.signature.abi)
+    emit kind_name(function.kind)
+    emit state_name(function.state)
+    emit function.stack_size
+    emit vector_len(function.signature.params)
+    emit vector_len(function.signature.returns)
+    emit vector_len(function.locals)
+    emit vector_len(function.blocks)
+    emit vector_len(function.diagnostics)
+
+    let i: u64 = 0
+
+    loop i < vector_len(function.signature.params) {
+        print_param(function.signature.params[i])
+        set i = i + 1
+    }
+
+    let j: u64 = 0
+
+    loop j < vector_len(function.locals) {
+        print_local(function.locals[j])
+        set j = j + 1
+    }
+
+    let k: u64 = 0
+
+    loop k < vector_len(function.blocks) {
+        print_block(function.blocks[k])
+        set k = k + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

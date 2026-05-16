@@ -1,0 +1,627 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Analysis / Borrow Checker          >>>
+<<< File: compiler/analysis/borrowck/moves.vit               >>>
+<<< Module: vitte/compiler/analysis/borrowck/moves           >>>
+<<< Purpose: move tracking, ownership transfer and use checks >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/analysis/borrowck/moves
+
+const MOVE_INVALID_ID: u64 = 18446744073709551615
+const MOVE_VERSION: u32 = 2026
+const MOVE_MAX_VALUES: u64 = 1048576
+const MOVE_MAX_EVENTS: u64 = 2097152
+
+pick MoveState {
+    Uninitialized
+    Available
+    Moved
+    PartiallyMoved
+    Borrowed
+    Dropped
+    Invalid
+}
+
+pick MoveKind {
+    Init
+    Copy
+    Move
+    PartialMove
+    Borrow
+    Reborrow
+    Drop
+    Use
+    Return
+    Yield
+    Capture
+}
+
+pick MoveErrorKind {
+    None
+    UnknownValue
+    UseAfterMove
+    MoveAfterMove
+    MoveOutOfBorrow
+    MoveOutOfDrop
+    PartialMoveConflict
+    InvalidDrop
+    InvalidCapture
+    InvalidOwnershipTransfer
+    EventLimitExceeded
+    ValueLimitExceeded
+}
+
+form MoveSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form MoveValue {
+    id: u64
+    name: string
+    state: MoveState
+    owner_region: u64
+    field_path: string
+    copyable: bool
+    valid: bool
+}
+
+form MoveEvent {
+    id: u64
+    kind: MoveKind
+    value: u64
+    from_region: u64
+    to_region: u64
+    span: MoveSpan
+    valid: bool
+}
+
+form MoveDiagnostic {
+    kind: MoveErrorKind
+    message: string
+    span: MoveSpan
+    value: u64
+}
+
+form MoveTable {
+    values: [MoveValue]
+    events: [MoveEvent]
+    diagnostics: [MoveDiagnostic]
+    valid: bool
+}
+
+proc span_empty() -> MoveSpan {
+    give MoveSpan {
+        file: "compiler/analysis/borrowck/moves.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc value_invalid() -> MoveValue {
+    give MoveValue {
+        id: MOVE_INVALID_ID,
+        name: "invalid",
+        state: MoveState.Invalid,
+        owner_region: MOVE_INVALID_ID,
+        field_path: "",
+        copyable: false,
+        valid: false
+    }
+}
+
+proc table_empty() -> MoveTable {
+    give MoveTable {
+        values: [],
+        events: [],
+        diagnostics: [],
+        valid: true
+    }
+}
+
+proc diagnostic_create(
+    kind: MoveErrorKind,
+    message: string,
+    span: MoveSpan,
+    value: u64
+) -> MoveDiagnostic {
+    give MoveDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        value: value
+    }
+}
+
+proc value_create(
+    id: u64,
+    name: string,
+    owner_region: u64,
+    copyable: bool
+) -> MoveValue {
+    give MoveValue {
+        id: id,
+        name: name,
+        state: MoveState.Available,
+        owner_region: owner_region,
+        field_path: "",
+        copyable: copyable,
+        valid: true
+    }
+}
+
+proc field_value_create(
+    id: u64,
+    name: string,
+    owner_region: u64,
+    field_path: string,
+    copyable: bool
+) -> MoveValue {
+    give MoveValue {
+        id: id,
+        name: name,
+        state: MoveState.Available,
+        owner_region: owner_region,
+        field_path: field_path,
+        copyable: copyable,
+        valid: true
+    }
+}
+
+proc event_create(
+    id: u64,
+    kind: MoveKind,
+    value: u64,
+    from_region: u64,
+    to_region: u64,
+    span: MoveSpan
+) -> MoveEvent {
+    give MoveEvent {
+        id: id,
+        kind: kind,
+        value: value,
+        from_region: from_region,
+        to_region: to_region,
+        span: span,
+        valid: true
+    }
+}
+
+proc table_add_diagnostic(
+    table: MoveTable,
+    diagnostic: MoveDiagnostic
+) -> MoveTable {
+    give MoveTable {
+        values: table.values,
+        events: table.events,
+        diagnostics: table.diagnostics + [diagnostic],
+        valid: false
+    }
+}
+
+proc table_add_value(
+    table: MoveTable,
+    value: MoveValue
+) -> MoveTable {
+    if vector_len(table.values) >= MOVE_MAX_VALUES {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(
+                MoveErrorKind.ValueLimitExceeded,
+                "too many move values",
+                span_empty(),
+                value.id
+            )
+        )
+    }
+
+    give MoveTable {
+        values: table.values + [value],
+        events: table.events,
+        diagnostics: table.diagnostics,
+        valid: table.valid
+    }
+}
+
+proc table_add_event(
+    table: MoveTable,
+    event: MoveEvent
+) -> MoveTable {
+    if vector_len(table.events) >= MOVE_MAX_EVENTS {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(
+                MoveErrorKind.EventLimitExceeded,
+                "too many move events",
+                event.span,
+                event.value
+            )
+        )
+    }
+
+    give MoveTable {
+        values: table.values,
+        events: table.events + [event],
+        diagnostics: table.diagnostics,
+        valid: table.valid
+    }
+}
+
+proc find_value(table: MoveTable, id: u64) -> MoveValue {
+    let i: u64 = 0
+
+    loop i < vector_len(table.values) {
+        if table.values[i].id == id {
+            give table.values[i]
+        }
+
+        set i = i + 1
+    }
+
+    give value_invalid()
+}
+
+proc has_value(table: MoveTable, id: u64) -> bool {
+    give find_value(table, id).valid
+}
+
+proc replace_value(
+    table: MoveTable,
+    value: MoveValue
+) -> MoveTable {
+    let next: [MoveValue] = []
+    let replaced = false
+
+    let i: u64 = 0
+
+    loop i < vector_len(table.values) {
+        if table.values[i].id == value.id {
+            set next = next + [value]
+            set replaced = true
+        } else {
+            set next = next + [table.values[i]]
+        }
+
+        set i = i + 1
+    }
+
+    if replaced == false {
+        give table_add_value(table, value)
+    }
+
+    give MoveTable {
+        values: next,
+        events: table.events,
+        diagnostics: table.diagnostics,
+        valid: table.valid
+    }
+}
+
+proc value_with_state(
+    value: MoveValue,
+    state: MoveState
+) -> MoveValue {
+    give MoveValue {
+        id: value.id,
+        name: value.name,
+        state: state,
+        owner_region: value.owner_region,
+        field_path: value.field_path,
+        copyable: value.copyable,
+        valid: value.valid
+    }
+}
+
+proc can_use_value(value: MoveValue) -> bool {
+    if value.valid == false {
+        give false
+    }
+
+    if value.state == MoveState.Moved {
+        give false
+    }
+
+    if value.state == MoveState.Dropped {
+        give false
+    }
+
+    if value.state == MoveState.Uninitialized {
+        give false
+    }
+
+    if value.state == MoveState.Invalid {
+        give false
+    }
+
+    give true
+}
+
+proc can_move_value(value: MoveValue) -> bool {
+    if can_use_value(value) == false {
+        give false
+    }
+
+    if value.state == MoveState.Borrowed {
+        give false
+    }
+
+    give true
+}
+
+proc can_copy_value(value: MoveValue) -> bool {
+    give can_use_value(value) and value.copyable
+}
+
+proc record_init(
+    table: MoveTable,
+    event_id: u64,
+    value: MoveValue,
+    span: MoveSpan
+) -> MoveTable {
+    let event = event_create(
+        event_id,
+        MoveKind.Init,
+        value.id,
+        MOVE_INVALID_ID,
+        value.owner_region,
+        span
+    )
+
+    let with_value = table_add_value(table, value)
+
+    give table_add_event(with_value, event)
+}
+
+proc record_use(
+    table: MoveTable,
+    event_id: u64,
+    value_id: u64,
+    region: u64,
+    span: MoveSpan
+) -> MoveTable {
+    let value = find_value(table, value_id)
+
+    if value.valid == false {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
+        )
+    }
+
+    if can_use_value(value) == false {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.UseAfterMove, "use after move or drop", span, value_id)
+        )
+    }
+
+    let event = event_create(event_id, MoveKind.Use, value_id, region, region, span)
+
+    give table_add_event(table, event)
+}
+
+proc record_copy(
+    table: MoveTable,
+    event_id: u64,
+    value_id: u64,
+    from_region: u64,
+    to_region: u64,
+    span: MoveSpan
+) -> MoveTable {
+    let value = find_value(table, value_id)
+
+    if value.valid == false {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
+        )
+    }
+
+    if can_copy_value(value) == false {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.InvalidOwnershipTransfer, "value is not copyable", span, value_id)
+        )
+    }
+
+    let event = event_create(event_id, MoveKind.Copy, value_id, from_region, to_region, span)
+
+    give table_add_event(table, event)
+}
+
+proc record_move(
+    table: MoveTable,
+    event_id: u64,
+    value_id: u64,
+    from_region: u64,
+    to_region: u64,
+    span: MoveSpan
+) -> MoveTable {
+    let value = find_value(table, value_id)
+
+    if value.valid == false {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
+        )
+    }
+
+    if can_move_value(value) == false {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.MoveAfterMove, "value cannot be moved", span, value_id)
+        )
+    }
+
+    if value.copyable {
+        give record_copy(table, event_id, value_id, from_region, to_region, span)
+    }
+
+    let moved = value_with_state(value, MoveState.Moved)
+    let replaced = replace_value(table, moved)
+    let event = event_create(event_id, MoveKind.Move, value_id, from_region, to_region, span)
+
+    give table_add_event(replaced, event)
+}
+
+proc record_partial_move(
+    table: MoveTable,
+    event_id: u64,
+    value_id: u64,
+    field_path: string,
+    from_region: u64,
+    to_region: u64,
+    span: MoveSpan
+) -> MoveTable {
+    let value = find_value(table, value_id)
+
+    if value.valid == false {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
+        )
+    }
+
+    if can_move_value(value) == false {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.PartialMoveConflict, "partial move conflict", span, value_id)
+        )
+    }
+
+    let partial = value_with_state(value, MoveState.PartiallyMoved)
+    let replaced = replace_value(table, partial)
+    let event = event_create(event_id, MoveKind.PartialMove, value_id, from_region, to_region, span)
+
+    give table_add_event(replaced, event)
+}
+
+proc record_borrow(
+    table: MoveTable,
+    event_id: u64,
+    value_id: u64,
+    region: u64,
+    span: MoveSpan
+) -> MoveTable {
+    let value = find_value(table, value_id)
+
+    if value.valid == false {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
+        )
+    }
+
+    if can_use_value(value) == false {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.UseAfterMove, "cannot borrow moved value", span, value_id)
+        )
+    }
+
+    let borrowed = value_with_state(value, MoveState.Borrowed)
+    let replaced = replace_value(table, borrowed)
+    let event = event_create(event_id, MoveKind.Borrow, value_id, region, region, span)
+
+    give table_add_event(replaced, event)
+}
+
+proc record_drop(
+    table: MoveTable,
+    event_id: u64,
+    value_id: u64,
+    region: u64,
+    span: MoveSpan
+) -> MoveTable {
+    let value = find_value(table, value_id)
+
+    if value.valid == false {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
+        )
+    }
+
+    if value.state == MoveState.Dropped {
+        give table_add_diagnostic(
+            table,
+            diagnostic_create(MoveErrorKind.InvalidDrop, "value already dropped", span, value_id)
+        )
+    }
+
+    let dropped = value_with_state(value, MoveState.Dropped)
+    let replaced = replace_value(table, dropped)
+    let event = event_create(event_id, MoveKind.Drop, value_id, region, MOVE_INVALID_ID, span)
+
+    give table_add_event(replaced, event)
+}
+
+proc validate_moves(table: MoveTable) -> MoveTable {
+    let current = table
+    let i: u64 = 0
+
+    loop i < vector_len(current.values) {
+        let value = current.values[i]
+
+        if value.valid == false {
+            give table_add_diagnostic(
+                current,
+                diagnostic_create(
+                    MoveErrorKind.UnknownValue,
+                    "invalid move value",
+                    span_empty(),
+                    value.id
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc move_error_count(table: MoveTable) -> u64 {
+    give vector_len(table.diagnostics)
+}
+
+proc moves_are_valid(table: MoveTable) -> bool {
+    give table.valid and vector_len(table.diagnostics) == 0
+}
+
+proc print_move_value(value: MoveValue) {
+    emit "move value"
+    emit value.id
+    emit value.name
+    emit value.field_path
+    emit value.valid
+}
+
+proc print_move_event(event: MoveEvent) {
+    emit "move event"
+    emit event.id
+    emit event.value
+    emit event.valid
+}
+
+proc print_move_table(table: MoveTable) {
+    emit "move table"
+    emit vector_len(table.values)
+    emit vector_len(table.events)
+    emit vector_len(table.diagnostics)
+
+    let i: u64 = 0
+
+    loop i < vector_len(table.values) {
+        print_move_value(table.values[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}
