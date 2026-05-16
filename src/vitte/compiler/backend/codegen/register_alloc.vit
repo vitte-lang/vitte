@@ -16,39 +16,39 @@ const REGALLOC_MAX_ASSIGNMENTS: u64 = 1048576
 const REGALLOC_MAX_SPILLS: u64 = 1048576
 
 pick RegClass {
-    Unknown
-    General
-    Float
-    Vector
-    Predicate
-    Flags
+    Unknown,
+    General,
+    Float,
+    Vector,
+    Predicate,
+    Flags,
 }
 
 pick RegKind {
-    Physical
-    Virtual
-    StackSlot
+    Physical,
+    Virtual,
+    StackSlot,
 }
 
 pick RegAllocStrategy {
-    LinearScan
-    GraphColoring
-    Greedy
-    Simple
+    LinearScan,
+    GraphColoring,
+    Greedy,
+    Simple,
 }
 
 pick RegAllocErrorKind {
-    None
-    InvalidRegister
-    InvalidInterval
-    InvalidAssignment
-    NoRegisterAvailable
-    SpillRequired
-    RegisterLimitExceeded
-    IntervalLimitExceeded
-    AssignmentLimitExceeded
-    SpillLimitExceeded
-    InternalFailure
+    None,
+    InvalidRegister,
+    InvalidInterval,
+    InvalidAssignment,
+    NoRegisterAvailable,
+    SpillRequired,
+    RegisterLimitExceeded,
+    IntervalLimitExceeded,
+    AssignmentLimitExceeded,
+    SpillLimitExceeded,
+    InternalFailure,
 }
 
 form RegAllocSpan {
@@ -122,7 +122,7 @@ proc span_empty() -> RegAllocSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc register_invalid() -> Register {
@@ -135,7 +135,7 @@ proc register_invalid() -> Register {
         reserved: false,
         allocatable: false,
         valid: false
-    }
+    };
 }
 
 proc interval_invalid() -> LiveInterval {
@@ -148,7 +148,7 @@ proc interval_invalid() -> LiveInterval {
         uses: [],
         fixed: false,
         valid: false
-    }
+    };
 }
 
 proc assignment_invalid() -> RegisterAssignment {
@@ -159,7 +159,7 @@ proc assignment_invalid() -> RegisterAssignment {
         stack_slot: REGALLOC_INVALID_ID,
         spilled: false,
         valid: false
-    }
+    };
 }
 
 proc register_create(
@@ -180,7 +180,7 @@ proc register_create(
         reserved: reserved,
         allocatable: allocatable,
         valid: true
-    }
+    };
 }
 
 proc interval_create(
@@ -201,7 +201,7 @@ proc interval_create(
         uses: uses,
         fixed: fixed,
         valid: start <= end
-    }
+    };
 }
 
 proc assignment_create(
@@ -216,7 +216,7 @@ proc assignment_create(
         stack_slot: REGALLOC_INVALID_ID,
         spilled: false,
         valid: true
-    }
+    };
 }
 
 proc spill_slot_create(
@@ -233,7 +233,7 @@ proc spill_slot_create(
         size: size,
         alignment: alignment,
         valid: true
-    }
+    };
 }
 
 proc spill_assignment_create(
@@ -248,7 +248,7 @@ proc spill_assignment_create(
         stack_slot: stack_slot,
         spilled: true,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -262,7 +262,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         entity: entity
-    }
+    };
 }
 
 proc context_empty(strategy: RegAllocStrategy) -> RegAllocContext {
@@ -275,37 +275,37 @@ proc context_empty(strategy: RegAllocStrategy) -> RegAllocContext {
         diagnostics: [],
         next_stack_offset: 0,
         valid: true
-    }
+    };
 }
 
 proc context_default_x86_64() -> RegAllocContext {
-    let ctx = context_empty(RegAllocStrategy.LinearScan)
+    let ctx = context_empty(RegAllocStrategy.LinearScan);
 
-    let c1 = context_add_register(ctx, register_create(0, "rax", RegClass.General, RegKind.Physical, 64, false, true))
-    let c2 = context_add_register(c1, register_create(1, "rbx", RegClass.General, RegKind.Physical, 64, false, true))
-    let c3 = context_add_register(c2, register_create(2, "rcx", RegClass.General, RegKind.Physical, 64, false, true))
-    let c4 = context_add_register(c3, register_create(3, "rdx", RegClass.General, RegKind.Physical, 64, false, true))
-    let c5 = context_add_register(c4, register_create(4, "rsi", RegClass.General, RegKind.Physical, 64, false, true))
-    let c6 = context_add_register(c5, register_create(5, "rdi", RegClass.General, RegKind.Physical, 64, false, true))
-    let c7 = context_add_register(c6, register_create(6, "rbp", RegClass.General, RegKind.Physical, 64, true, false))
-    let c8 = context_add_register(c7, register_create(7, "rsp", RegClass.General, RegKind.Physical, 64, true, false))
+    let c1 = context_add_register(ctx, register_create(0, "rax", RegClass.General, RegKind.Physical, 64, false, true));
+    let c2 = context_add_register(c1, register_create(1, "rbx", RegClass.General, RegKind.Physical, 64, false, true));
+    let c3 = context_add_register(c2, register_create(2, "rcx", RegClass.General, RegKind.Physical, 64, false, true));
+    let c4 = context_add_register(c3, register_create(3, "rdx", RegClass.General, RegKind.Physical, 64, false, true));
+    let c5 = context_add_register(c4, register_create(4, "rsi", RegClass.General, RegKind.Physical, 64, false, true));
+    let c6 = context_add_register(c5, register_create(5, "rdi", RegClass.General, RegKind.Physical, 64, false, true));
+    let c7 = context_add_register(c6, register_create(6, "rbp", RegClass.General, RegKind.Physical, 64, true, false));
+    let c8 = context_add_register(c7, register_create(7, "rsp", RegClass.General, RegKind.Physical, 64, true, false));
 
-    give c8
+    give c8;
 }
 
 proc context_default_aarch64() -> RegAllocContext {
-    let ctx = context_empty(RegAllocStrategy.LinearScan)
+    let ctx = context_empty(RegAllocStrategy.LinearScan);
 
-    let c1 = context_add_register(ctx, register_create(0, "x0", RegClass.General, RegKind.Physical, 64, false, true))
-    let c2 = context_add_register(c1, register_create(1, "x1", RegClass.General, RegKind.Physical, 64, false, true))
-    let c3 = context_add_register(c2, register_create(2, "x2", RegClass.General, RegKind.Physical, 64, false, true))
-    let c4 = context_add_register(c3, register_create(3, "x3", RegClass.General, RegKind.Physical, 64, false, true))
-    let c5 = context_add_register(c4, register_create(4, "x4", RegClass.General, RegKind.Physical, 64, false, true))
-    let c6 = context_add_register(c5, register_create(5, "x5", RegClass.General, RegKind.Physical, 64, false, true))
-    let c7 = context_add_register(c6, register_create(29, "x29", RegClass.General, RegKind.Physical, 64, true, false))
-    let c8 = context_add_register(c7, register_create(31, "sp", RegClass.General, RegKind.Physical, 64, true, false))
+    let c1 = context_add_register(ctx, register_create(0, "x0", RegClass.General, RegKind.Physical, 64, false, true));
+    let c2 = context_add_register(c1, register_create(1, "x1", RegClass.General, RegKind.Physical, 64, false, true));
+    let c3 = context_add_register(c2, register_create(2, "x2", RegClass.General, RegKind.Physical, 64, false, true));
+    let c4 = context_add_register(c3, register_create(3, "x3", RegClass.General, RegKind.Physical, 64, false, true));
+    let c5 = context_add_register(c4, register_create(4, "x4", RegClass.General, RegKind.Physical, 64, false, true));
+    let c6 = context_add_register(c5, register_create(5, "x5", RegClass.General, RegKind.Physical, 64, false, true));
+    let c7 = context_add_register(c6, register_create(29, "x29", RegClass.General, RegKind.Physical, 64, true, false));
+    let c8 = context_add_register(c7, register_create(31, "sp", RegClass.General, RegKind.Physical, 64, true, false));
 
-    give c8
+    give c8;
 }
 
 proc context_add_diagnostic(
@@ -321,7 +321,7 @@ proc context_add_diagnostic(
         diagnostics: context.diagnostics + [diagnostic],
         next_stack_offset: context.next_stack_offset,
         valid: false
-    }
+    };
 }
 
 proc context_add_register(
@@ -337,7 +337,7 @@ proc context_add_register(
                 span_empty(),
                 register.id
             )
-        )
+        );
     }
 
     give RegAllocContext {
@@ -349,7 +349,7 @@ proc context_add_register(
         diagnostics: context.diagnostics,
         next_stack_offset: context.next_stack_offset,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_interval(
@@ -365,7 +365,7 @@ proc context_add_interval(
                 span_empty(),
                 interval.id
             )
-        )
+        );
     }
 
     if interval.valid == false {
@@ -377,7 +377,7 @@ proc context_add_interval(
                 span_empty(),
                 interval.id
             )
-        )
+        );
     }
 
     give RegAllocContext {
@@ -389,7 +389,7 @@ proc context_add_interval(
         diagnostics: context.diagnostics,
         next_stack_offset: context.next_stack_offset,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_assignment(
@@ -405,7 +405,7 @@ proc context_add_assignment(
                 span_empty(),
                 assignment.id
             )
-        )
+        );
     }
 
     give RegAllocContext {
@@ -417,7 +417,7 @@ proc context_add_assignment(
         diagnostics: context.diagnostics,
         next_stack_offset: context.next_stack_offset,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_spill(
@@ -433,7 +433,7 @@ proc context_add_spill(
                 span_empty(),
                 spill.id
             )
-        )
+        );
     }
 
     give RegAllocContext {
@@ -445,49 +445,49 @@ proc context_add_spill(
         diagnostics: context.diagnostics,
         next_stack_offset: context.next_stack_offset + (spill.size as i64),
         valid: context.valid
-    }
+    };
 }
 
 proc find_register(context: RegAllocContext, id: u64) -> Register {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.registers) {
+    while i < vector_len(context.registers) {
         if context.registers[i].id == id {
-            give context.registers[i]
+            give context.registers[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give register_invalid()
+    give register_invalid();
 }
 
 proc find_interval(context: RegAllocContext, id: u64) -> LiveInterval {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.intervals) {
+    while i < vector_len(context.intervals) {
         if context.intervals[i].id == id {
-            give context.intervals[i]
+            give context.intervals[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give interval_invalid()
+    give interval_invalid();
 }
 
 proc find_assignment(context: RegAllocContext, interval_id: u64) -> RegisterAssignment {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.assignments) {
+    while i < vector_len(context.assignments) {
         if context.assignments[i].interval == interval_id {
-            give context.assignments[i]
+            give context.assignments[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give assignment_invalid()
+    give assignment_invalid();
 }
 
 proc intervals_overlap(
@@ -495,18 +495,18 @@ proc intervals_overlap(
     right: LiveInterval
 ) -> bool {
     if left.valid == false or right.valid == false {
-        give false
+        give false;
     }
 
     if left.end < right.start {
-        give false
+        give false;
     }
 
     if right.end < left.start {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc register_conflicts(
@@ -514,23 +514,23 @@ proc register_conflicts(
     register_id: u64,
     interval: LiveInterval
 ) -> bool {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.assignments) {
-        let assignment = context.assignments[i]
+    while i < vector_len(context.assignments) {
+        let assignment = context.assignments[i];
 
         if assignment.spilled == false and assignment.register == register_id {
-            let other = find_interval(context, assignment.interval)
+            let other = find_interval(context, assignment.interval);
 
             if intervals_overlap(other, interval) {
-                give true
+                give true;
             }
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give false
+    give false;
 }
 
 proc find_free_register(
@@ -538,142 +538,142 @@ proc find_free_register(
     class: RegClass,
     interval: LiveInterval
 ) -> Register {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.registers) {
-        let reg = context.registers[i]
+    while i < vector_len(context.registers) {
+        let reg = context.registers[i];
 
         if reg.valid and reg.allocatable and reg.reserved == false and reg.class == class {
             if register_conflicts(context, reg.id, interval) == false {
-                give reg
+                give reg;
             }
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give register_invalid()
+    give register_invalid();
 }
 
 proc allocate_interval(
     context: RegAllocContext,
     interval: LiveInterval
 ) -> RegAllocContext {
-    let reg = find_free_register(context, interval.class, interval)
+    let reg = find_free_register(context, interval.class, interval);
 
     if reg.valid {
         let assignment = assignment_create(
             vector_len(context.assignments),
             interval.id,
             reg.id
-        )
+        );
 
-        give context_add_assignment(context, assignment)
+        give context_add_assignment(context, assignment);
     }
 
-    give spill_interval(context, interval)
+    give spill_interval(context, interval);
 }
 
 proc spill_interval(
     context: RegAllocContext,
     interval: LiveInterval
 ) -> RegAllocContext {
-    let offset = context.next_stack_offset
+    let offset = context.next_stack_offset;
     let slot = spill_slot_create(
         vector_len(context.spills),
         interval.id,
         offset,
         8,
         8
-    )
+    );
 
-    let with_slot = context_add_spill(context, slot)
+    let with_slot = context_add_spill(context, slot);
 
     let assignment = spill_assignment_create(
         vector_len(with_slot.assignments),
         interval.id,
         slot.id
-    )
+    );
 
-    give context_add_assignment(with_slot, assignment)
+    give context_add_assignment(with_slot, assignment);
 }
 
 proc sort_intervals_by_start(context: RegAllocContext) -> RegAllocContext {
-    give context
+    give context;
 }
 
 proc allocate_linear_scan(context: RegAllocContext) -> RegAllocContext {
-    let sorted = sort_intervals_by_start(context)
-    let current = sorted
-    let i: u64 = 0
+    let sorted = sort_intervals_by_start(context);
+    let current = sorted;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.intervals) {
-        set current = allocate_interval(current, current.intervals[i])
-        set i = i + 1
+    while i < vector_len(current.intervals) {
+        set current = allocate_interval(current, current.intervals[i]);
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc allocate_simple(context: RegAllocContext) -> RegAllocContext {
-    give allocate_linear_scan(context)
+    give allocate_linear_scan(context);
 }
 
 proc allocate_registers(context: RegAllocContext) -> RegAllocContext {
     if context.strategy == RegAllocStrategy.LinearScan {
-        give allocate_linear_scan(context)
+        give allocate_linear_scan(context);
     }
 
     if context.strategy == RegAllocStrategy.Simple {
-        give allocate_simple(context)
+        give allocate_simple(context);
     }
 
-    give allocate_linear_scan(context)
+    give allocate_linear_scan(context);
 }
 
 proc assignment_for_value(
     context: RegAllocContext,
     value: u64
 ) -> RegisterAssignment {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.intervals) {
+    while i < vector_len(context.intervals) {
         if context.intervals[i].value == value {
-            give find_assignment(context, context.intervals[i].id)
+            give find_assignment(context, context.intervals[i].id);
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give assignment_invalid()
+    give assignment_invalid();
 }
 
 proc is_value_spilled(
     context: RegAllocContext,
     value: u64
 ) -> bool {
-    give assignment_for_value(context, value).spilled
+    give assignment_for_value(context, value).spilled;
 }
 
 proc assigned_register_for_value(
     context: RegAllocContext,
     value: u64
 ) -> Register {
-    let assignment = assignment_for_value(context, value)
+    let assignment = assignment_for_value(context, value);
 
     if assignment.valid == false or assignment.spilled {
-        give register_invalid()
+        give register_invalid();
     }
 
-    give find_register(context, assignment.register)
+    give find_register(context, assignment.register);
 }
 
 proc validate_assignments(context: RegAllocContext) -> RegAllocContext {
-    let current = context
-    let i: u64 = 0
+    let current = context;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.assignments) {
-        let assignment = current.assignments[i]
+    while i < vector_len(current.assignments) {
+        let assignment = current.assignments[i];
 
         if assignment.valid == false {
             give context_add_diagnostic(
@@ -684,7 +684,7 @@ proc validate_assignments(context: RegAllocContext) -> RegAllocContext {
                     span_empty(),
                     assignment.id
                 )
-            )
+            );
         }
 
         if assignment.spilled == false and find_register(current, assignment.register).valid == false {
@@ -696,7 +696,7 @@ proc validate_assignments(context: RegAllocContext) -> RegAllocContext {
                     span_empty(),
                     assignment.id
                 )
-            )
+            );
         }
 
         if find_interval(current, assignment.interval).valid == false {
@@ -708,21 +708,21 @@ proc validate_assignments(context: RegAllocContext) -> RegAllocContext {
                     span_empty(),
                     assignment.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc validate_register_allocation(context: RegAllocContext) -> RegAllocContext {
-    let current = validate_assignments(context)
-    let i: u64 = 0
+    let current = validate_assignments(context);
+    let i: u64 = 0;
 
-    loop i < vector_len(current.intervals) {
-        let assignment = find_assignment(current, current.intervals[i].id)
+    while i < vector_len(current.intervals) {
+        let assignment = find_assignment(current, current.intervals[i].id);
 
         if assignment.valid == false {
             give context_add_diagnostic(
@@ -733,119 +733,119 @@ proc validate_register_allocation(context: RegAllocContext) -> RegAllocContext {
                     span_empty(),
                     current.intervals[i].id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc run_register_allocator(context: RegAllocContext) -> RegAllocContext {
-    let allocated = allocate_registers(context)
-    give validate_register_allocation(allocated)
+    let allocated = allocate_registers(context);
+    give validate_register_allocation(allocated);
 }
 
 proc regalloc_error_count(context: RegAllocContext) -> u64 {
-    give vector_len(context.diagnostics)
+    give vector_len(context.diagnostics);
 }
 
 proc assignment_count(context: RegAllocContext) -> u64 {
-    give vector_len(context.assignments)
+    give vector_len(context.assignments);
 }
 
 proc spill_count(context: RegAllocContext) -> u64 {
-    give vector_len(context.spills)
+    give vector_len(context.spills);
 }
 
 proc regalloc_is_valid(context: RegAllocContext) -> bool {
-    give context.valid and vector_len(context.diagnostics) == 0
+    give context.valid and vector_len(context.diagnostics) == 0;
 }
 
 proc class_name(class: RegClass) -> string {
     if class == RegClass.General {
-        give "general"
+        give "general";
     }
 
     if class == RegClass.Float {
-        give "float"
+        give "float";
     }
 
     if class == RegClass.Vector {
-        give "vector"
+        give "vector";
     }
 
     if class == RegClass.Predicate {
-        give "predicate"
+        give "predicate";
     }
 
     if class == RegClass.Flags {
-        give "flags"
+        give "flags";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc kind_name(kind: RegKind) -> string {
     if kind == RegKind.Physical {
-        give "physical"
+        give "physical";
     }
 
     if kind == RegKind.Virtual {
-        give "virtual"
+        give "virtual";
     }
 
     if kind == RegKind.StackSlot {
-        give "stack_slot"
+        give "stack_slot";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_register(register: Register) {
-    emit "register"
-    emit register.id
-    emit register.name
-    emit class_name(register.class)
-    emit kind_name(register.kind)
-    emit register.allocatable
+    emit "register";
+    emit register.id;
+    emit register.name;
+    emit class_name(register.class);
+    emit kind_name(register.kind);
+    emit register.allocatable;
 }
 
 proc print_interval(interval: LiveInterval) {
-    emit "live interval"
-    emit interval.id
-    emit interval.value
-    emit class_name(interval.class)
-    emit interval.start
-    emit interval.end
+    emit "live interval";
+    emit interval.id;
+    emit interval.value;
+    emit class_name(interval.class);
+    emit interval.start;
+    emit interval.end;
 }
 
 proc print_assignment(assignment: RegisterAssignment) {
-    emit "assignment"
-    emit assignment.id
-    emit assignment.interval
-    emit assignment.register
-    emit assignment.stack_slot
-    emit assignment.spilled
+    emit "assignment";
+    emit assignment.id;
+    emit assignment.interval;
+    emit assignment.register;
+    emit assignment.stack_slot;
+    emit assignment.spilled;
 }
 
 proc print_context(context: RegAllocContext) {
-    emit "register allocator"
-    emit vector_len(context.registers)
-    emit vector_len(context.intervals)
-    emit vector_len(context.assignments)
-    emit vector_len(context.spills)
-    emit vector_len(context.diagnostics)
+    emit "register allocator";
+    emit vector_len(context.registers);
+    emit vector_len(context.intervals);
+    emit vector_len(context.assignments);
+    emit vector_len(context.spills);
+    emit vector_len(context.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.assignments) {
-        print_assignment(context.assignments[i])
-        set i = i + 1
+    while i < vector_len(context.assignments) {
+        print_assignment(context.assignments[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

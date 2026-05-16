@@ -17,85 +17,85 @@ const MACHINE_MAX_BLOCKS: u64 = 1048576
 const MACHINE_MAX_FUNCTIONS: u64 = 262144
 
 pick MachineArch {
-    Unknown
-    X86_64
-    AArch64
-    RiscV64
-    ARM
-    I386
-    Wasm32
+    Unknown,
+    X86_64,
+    AArch64,
+    RiscV64,
+    ARM,
+    I386,
+    Wasm32,
 }
 
 pick RegisterClass {
-    Unknown
-    General
-    Float
-    Vector
-    Predicate
-    Stack
-    Frame
-    Link
-    ProgramCounter
-    Flags
+    Unknown,
+    General,
+    Float,
+    Vector,
+    Predicate,
+    Stack,
+    Frame,
+    Link,
+    ProgramCounter,
+    Flags,
 }
 
 pick OperandKind {
-    None
-    Register
-    VirtualRegister
-    Immediate
-    Memory
-    Symbol
-    Label
-    Block
+    None,
+    Register,
+    VirtualRegister,
+    Immediate,
+    Memory,
+    Symbol,
+    Label,
+    Block,
 }
 
 pick MachineOpcode {
-    Invalid
-    Nop
-    Mov
-    Lea
-    Add
-    Sub
-    Mul
-    Div
-    Mod
-    Neg
-    And
-    Or
-    Xor
-    Shl
-    Shr
-    Cmp
-    Test
-    Load
-    Store
-    Push
-    Pop
-    Call
-    Ret
-    Jmp
-    Jcc
-    Phi
-    Spill
-    Reload
-    Label
+    Invalid,
+    Nop,
+    Mov,
+    Lea,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Neg,
+    And,
+    Or,
+    Xor,
+    Shl,
+    Shr,
+    Cmp,
+    Test,
+    Load,
+    Store,
+    Push,
+    Pop,
+    Call,
+    Ret,
+    Jmp,
+    Jcc,
+    Phi,
+    Spill,
+    Reload,
+    Label,
 }
 
 pick MachineErrorKind {
-    None
-    InvalidArch
-    InvalidRegister
-    InvalidOperand
-    InvalidInstruction
-    InvalidBlock
-    InvalidFunction
-    RegisterLimitExceeded
-    OperandLimitExceeded
-    InstructionLimitExceeded
-    BlockLimitExceeded
-    FunctionLimitExceeded
-    InternalFailure
+    None,
+    InvalidArch,
+    InvalidRegister,
+    InvalidOperand,
+    InvalidInstruction,
+    InvalidBlock,
+    InvalidFunction,
+    RegisterLimitExceeded,
+    OperandLimitExceeded,
+    InstructionLimitExceeded,
+    BlockLimitExceeded,
+    FunctionLimitExceeded,
+    InternalFailure,
 }
 
 form MachineSpan {
@@ -177,7 +177,7 @@ proc span_empty() -> MachineSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc register_invalid() -> MachineRegister {
@@ -191,7 +191,7 @@ proc register_invalid() -> MachineRegister {
         caller_saved: false,
         callee_saved: false,
         valid: false
-    }
+    };
 }
 
 proc operand_none() -> MachineOperand {
@@ -204,7 +204,7 @@ proc operand_none() -> MachineOperand {
         offset: 0,
         scale: 1,
         valid: false
-    }
+    };
 }
 
 proc operand_register(id: u64) -> MachineOperand {
@@ -217,7 +217,7 @@ proc operand_register(id: u64) -> MachineOperand {
         offset: 0,
         scale: 1,
         valid: true
-    }
+    };
 }
 
 proc operand_virtual_register(id: u64) -> MachineOperand {
@@ -230,7 +230,7 @@ proc operand_virtual_register(id: u64) -> MachineOperand {
         offset: 0,
         scale: 1,
         valid: true
-    }
+    };
 }
 
 proc operand_immediate(value: i64) -> MachineOperand {
@@ -243,7 +243,7 @@ proc operand_immediate(value: i64) -> MachineOperand {
         offset: 0,
         scale: 1,
         valid: true
-    }
+    };
 }
 
 proc operand_symbol(name: string) -> MachineOperand {
@@ -256,7 +256,7 @@ proc operand_symbol(name: string) -> MachineOperand {
         offset: 0,
         scale: 1,
         valid: true
-    }
+    };
 }
 
 proc operand_label(name: string) -> MachineOperand {
@@ -269,7 +269,7 @@ proc operand_label(name: string) -> MachineOperand {
         offset: 0,
         scale: 1,
         valid: true
-    }
+    };
 }
 
 proc operand_memory(
@@ -286,7 +286,7 @@ proc operand_memory(
         offset: offset,
         scale: scale,
         valid: true
-    }
+    };
 }
 
 proc register_create(
@@ -309,7 +309,7 @@ proc register_create(
         caller_saved: caller_saved,
         callee_saved: callee_saved,
         valid: true
-    }
+    };
 }
 
 proc instruction_create(
@@ -326,7 +326,7 @@ proc instruction_create(
         block: block,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc block_create(
@@ -340,7 +340,7 @@ proc block_create(
         predecessors: [],
         successors: [],
         valid: true
-    }
+    };
 }
 
 proc function_create(
@@ -357,7 +357,7 @@ proc function_create(
         entry_block: MACHINE_INVALID_ID,
         stack_size: 0,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -371,7 +371,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         entity: entity
-    }
+    };
 }
 
 proc module_empty(arch: MachineArch) -> MachineModule {
@@ -380,19 +380,19 @@ proc module_empty(arch: MachineArch) -> MachineModule {
         functions: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc default_registers(arch: MachineArch) -> [MachineRegister] {
     if arch == MachineArch.X86_64 {
-        give default_registers_x86_64()
+        give default_registers_x86_64();
     }
 
     if arch == MachineArch.AArch64 {
-        give default_registers_aarch64()
+        give default_registers_aarch64();
     }
 
-    give []
+    give [];
 }
 
 proc default_registers_x86_64() -> [MachineRegister] {
@@ -413,7 +413,7 @@ proc default_registers_x86_64() -> [MachineRegister] {
         register_create(13, "r13", RegisterClass.General, 64, true, false, false, true),
         register_create(14, "r14", RegisterClass.General, 64, true, false, false, true),
         register_create(15, "r15", RegisterClass.General, 64, true, false, false, true)
-    ]
+    ];
 }
 
 proc default_registers_aarch64() -> [MachineRegister] {
@@ -430,7 +430,7 @@ proc default_registers_aarch64() -> [MachineRegister] {
         register_create(29, "x29", RegisterClass.Frame, 64, true, true, false, true),
         register_create(30, "x30", RegisterClass.Link, 64, true, true, false, false),
         register_create(31, "sp", RegisterClass.Stack, 64, true, true, false, true)
-    ]
+    ];
 }
 
 proc module_add_diagnostic(
@@ -442,7 +442,7 @@ proc module_add_diagnostic(
         functions: module.functions,
         diagnostics: module.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc module_add_function(
@@ -458,7 +458,7 @@ proc module_add_function(
                 span_empty(),
                 function.id
             )
-        )
+        );
     }
 
     give MachineModule {
@@ -466,7 +466,7 @@ proc module_add_function(
         functions: module.functions + [function],
         diagnostics: module.diagnostics,
         valid: module.valid
-    }
+    };
 }
 
 proc function_add_block(
@@ -483,13 +483,13 @@ proc function_add_block(
             entry_block: function.entry_block,
             stack_size: function.stack_size,
             valid: false
-        }
+        };
     }
 
-    let entry = function.entry_block
+    let entry = function.entry_block;
 
     if entry == MACHINE_INVALID_ID {
-        set entry = block.id
+        set entry = block.id;
     }
 
     give MachineFunction {
@@ -501,7 +501,7 @@ proc function_add_block(
         entry_block: entry,
         stack_size: function.stack_size,
         valid: function.valid
-    }
+    };
 }
 
 proc block_add_instruction(
@@ -516,7 +516,7 @@ proc block_add_instruction(
             predecessors: block.predecessors,
             successors: block.successors,
             valid: false
-        }
+        };
     }
 
     give MachineBlock {
@@ -526,7 +526,7 @@ proc block_add_instruction(
         predecessors: block.predecessors,
         successors: block.successors,
         valid: block.valid
-    }
+    };
 }
 
 proc block_add_successor(
@@ -540,7 +540,7 @@ proc block_add_successor(
         predecessors: block.predecessors,
         successors: block.successors + [successor],
         valid: block.valid
-    }
+    };
 }
 
 proc block_add_predecessor(
@@ -554,38 +554,38 @@ proc block_add_predecessor(
         predecessors: block.predecessors + [predecessor],
         successors: block.successors,
         valid: block.valid
-    }
+    };
 }
 
 proc find_register(
     function: MachineFunction,
     id: u64
 ) -> MachineRegister {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(function.registers) {
+    while i < vector_len(function.registers) {
         if function.registers[i].id == id {
-            give function.registers[i]
+            give function.registers[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give register_invalid()
+    give register_invalid();
 }
 
 proc find_block(
     function: MachineFunction,
     id: u64
 ) -> MachineBlock {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(function.blocks) {
+    while i < vector_len(function.blocks) {
         if function.blocks[i].id == id {
-            give function.blocks[i]
+            give function.blocks[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give MachineBlock {
@@ -595,30 +595,30 @@ proc find_block(
         predecessors: [],
         successors: [],
         valid: false
-    }
+    };
 }
 
 proc replace_block(
     function: MachineFunction,
     block: MachineBlock
 ) -> MachineFunction {
-    let next: [MachineBlock] = []
-    let replaced = false
-    let i: u64 = 0
+    let next: [MachineBlock] = [];
+    let replaced = false;
+    let i: u64 = 0;
 
-    loop i < vector_len(function.blocks) {
+    while i < vector_len(function.blocks) {
         if function.blocks[i].id == block.id {
-            set next = next + [block]
-            set replaced = true
+            set next = next + [block];
+            set replaced = true;
         } else {
-            set next = next + [function.blocks[i]]
+            set next = next + [function.blocks[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if replaced == false {
-        give function_add_block(function, block)
+        give function_add_block(function, block);
     }
 
     give MachineFunction {
@@ -630,7 +630,7 @@ proc replace_block(
         entry_block: function.entry_block,
         stack_size: function.stack_size,
         valid: function.valid
-    }
+    };
 }
 
 proc function_add_instruction(
@@ -638,7 +638,7 @@ proc function_add_instruction(
     block_id: u64,
     instruction: MachineInstruction
 ) -> MachineFunction {
-    let block = find_block(function, block_id)
+    let block = find_block(function, block_id);
 
     if block.valid == false {
         give MachineFunction {
@@ -650,50 +650,50 @@ proc function_add_instruction(
             entry_block: function.entry_block,
             stack_size: function.stack_size,
             valid: false
-        }
+        };
     }
 
-    let updated = block_add_instruction(block, instruction)
+    let updated = block_add_instruction(block, instruction);
 
-    give replace_block(function, updated)
+    give replace_block(function, updated);
 }
 
 proc instruction_operand_count(instruction: MachineInstruction) -> u64 {
-    give vector_len(instruction.operands)
+    give vector_len(instruction.operands);
 }
 
 proc instruction_has_register_operand(instruction: MachineInstruction) -> bool {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(instruction.operands) {
+    while i < vector_len(instruction.operands) {
         if instruction.operands[i].kind == OperandKind.Register {
-            give true
+            give true;
         }
 
         if instruction.operands[i].kind == OperandKind.VirtualRegister {
-            give true
+            give true;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give false
+    give false;
 }
 
 proc instruction_is_terminator(instruction: MachineInstruction) -> bool {
     if instruction.opcode == MachineOpcode.Ret {
-        give true
+        give true;
     }
 
     if instruction.opcode == MachineOpcode.Jmp {
-        give true
+        give true;
     }
 
     if instruction.opcode == MachineOpcode.Jcc {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc validate_operand(
@@ -701,22 +701,22 @@ proc validate_operand(
     operand: MachineOperand
 ) -> bool {
     if operand.valid == false {
-        give false
+        give false;
     }
 
     if operand.kind == OperandKind.Register {
-        give find_register(function, operand.register_id).valid
+        give find_register(function, operand.register_id).valid;
     }
 
     if operand.kind == OperandKind.VirtualRegister {
-        give operand.register_id != MACHINE_INVALID_ID
+        give operand.register_id != MACHINE_INVALID_ID;
     }
 
     if operand.kind == OperandKind.Memory {
-        give operand.base != MACHINE_INVALID_ID
+        give operand.base != MACHINE_INVALID_ID;
     }
 
-    give true
+    give true;
 }
 
 proc validate_instruction(
@@ -724,28 +724,28 @@ proc validate_instruction(
     instruction: MachineInstruction
 ) -> bool {
     if instruction.valid == false {
-        give false
+        give false;
     }
 
     if instruction.opcode == MachineOpcode.Invalid {
-        give false
+        give false;
     }
 
     if vector_len(instruction.operands) > MACHINE_MAX_OPERANDS {
-        give false
+        give false;
     }
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(instruction.operands) {
+    while i < vector_len(instruction.operands) {
         if validate_operand(function, instruction.operands[i]) == false {
-            give false
+            give false;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give true
+    give true;
 }
 
 proc validate_block(
@@ -753,49 +753,49 @@ proc validate_block(
     block: MachineBlock
 ) -> bool {
     if block.valid == false {
-        give false
+        give false;
     }
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(block.instructions) {
+    while i < vector_len(block.instructions) {
         if validate_instruction(function, block.instructions[i]) == false {
-            give false
+            give false;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give true
+    give true;
 }
 
 proc validate_function(function: MachineFunction) -> bool {
     if function.valid == false {
-        give false
+        give false;
     }
 
     if function.entry_block == MACHINE_INVALID_ID {
-        give false
+        give false;
     }
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(function.blocks) {
+    while i < vector_len(function.blocks) {
         if validate_block(function, function.blocks[i]) == false {
-            give false
+            give false;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give true
+    give true;
 }
 
 proc validate_module(module: MachineModule) -> MachineModule {
-    let current = module
-    let i: u64 = 0
+    let current = module;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.functions) {
+    while i < vector_len(current.functions) {
         if validate_function(current.functions[i]) == false {
             give module_add_diagnostic(
                 current,
@@ -805,200 +805,200 @@ proc validate_module(module: MachineModule) -> MachineModule {
                     span_empty(),
                     current.functions[i].id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc machine_error_count(module: MachineModule) -> u64 {
-    give vector_len(module.diagnostics)
+    give vector_len(module.diagnostics);
 }
 
 proc machine_module_is_valid(module: MachineModule) -> bool {
-    give module.valid and vector_len(module.diagnostics) == 0
+    give module.valid and vector_len(module.diagnostics) == 0;
 }
 
 proc arch_name(arch: MachineArch) -> string {
     if arch == MachineArch.X86_64 {
-        give "x86_64"
+        give "x86_64";
     }
 
     if arch == MachineArch.AArch64 {
-        give "aarch64"
+        give "aarch64";
     }
 
     if arch == MachineArch.RiscV64 {
-        give "riscv64"
+        give "riscv64";
     }
 
     if arch == MachineArch.ARM {
-        give "arm"
+        give "arm";
     }
 
     if arch == MachineArch.I386 {
-        give "i386"
+        give "i386";
     }
 
     if arch == MachineArch.Wasm32 {
-        give "wasm32"
+        give "wasm32";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc opcode_name(opcode: MachineOpcode) -> string {
     if opcode == MachineOpcode.Nop {
-        give "nop"
+        give "nop";
     }
 
     if opcode == MachineOpcode.Mov {
-        give "mov"
+        give "mov";
     }
 
     if opcode == MachineOpcode.Add {
-        give "add"
+        give "add";
     }
 
     if opcode == MachineOpcode.Sub {
-        give "sub"
+        give "sub";
     }
 
     if opcode == MachineOpcode.Mul {
-        give "mul"
+        give "mul";
     }
 
     if opcode == MachineOpcode.Div {
-        give "div"
+        give "div";
     }
 
     if opcode == MachineOpcode.Load {
-        give "load"
+        give "load";
     }
 
     if opcode == MachineOpcode.Store {
-        give "store"
+        give "store";
     }
 
     if opcode == MachineOpcode.Call {
-        give "call"
+        give "call";
     }
 
     if opcode == MachineOpcode.Ret {
-        give "ret"
+        give "ret";
     }
 
-    give "invalid"
+    give "invalid";
 }
 
 proc register_class_name(class: RegisterClass) -> string {
     if class == RegisterClass.General {
-        give "general"
+        give "general";
     }
 
     if class == RegisterClass.Float {
-        give "float"
+        give "float";
     }
 
     if class == RegisterClass.Vector {
-        give "vector"
+        give "vector";
     }
 
     if class == RegisterClass.Stack {
-        give "stack"
+        give "stack";
     }
 
     if class == RegisterClass.Frame {
-        give "frame"
+        give "frame";
     }
 
     if class == RegisterClass.Link {
-        give "link"
+        give "link";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_register(register: MachineRegister) {
-    emit "register"
-    emit register.id
-    emit register.name
-    emit register_class_name(register.class)
-    emit register.width
+    emit "register";
+    emit register.id;
+    emit register.name;
+    emit register_class_name(register.class);
+    emit register.width;
 }
 
 proc print_operand(operand: MachineOperand) {
-    emit "operand"
-    emit operand.kind
-    emit operand.register_id
-    emit operand.immediate
-    emit operand.symbol
+    emit "operand";
+    emit operand.kind;
+    emit operand.register_id;
+    emit operand.immediate;
+    emit operand.symbol;
 }
 
 proc print_instruction(instruction: MachineInstruction) {
-    emit "machine instruction"
-    emit instruction.id
-    emit opcode_name(instruction.opcode)
-    emit instruction.block
+    emit "machine instruction";
+    emit instruction.id;
+    emit opcode_name(instruction.opcode);
+    emit instruction.block;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(instruction.operands) {
-        print_operand(instruction.operands[i])
-        set i = i + 1
+    while i < vector_len(instruction.operands) {
+        print_operand(instruction.operands[i]);
+        set i = i + 1;
     }
 }
 
 proc print_block(block: MachineBlock) {
-    emit "machine block"
-    emit block.id
-    emit block.name
-    emit vector_len(block.instructions)
-    emit vector_len(block.predecessors)
-    emit vector_len(block.successors)
+    emit "machine block";
+    emit block.id;
+    emit block.name;
+    emit vector_len(block.instructions);
+    emit vector_len(block.predecessors);
+    emit vector_len(block.successors);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(block.instructions) {
-        print_instruction(block.instructions[i])
-        set i = i + 1
+    while i < vector_len(block.instructions) {
+        print_instruction(block.instructions[i]);
+        set i = i + 1;
     }
 }
 
 proc print_function(function: MachineFunction) {
-    emit "machine function"
-    emit function.id
-    emit function.name
-    emit arch_name(function.arch)
-    emit function.entry_block
-    emit function.stack_size
-    emit vector_len(function.blocks)
+    emit "machine function";
+    emit function.id;
+    emit function.name;
+    emit arch_name(function.arch);
+    emit function.entry_block;
+    emit function.stack_size;
+    emit vector_len(function.blocks);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(function.blocks) {
-        print_block(function.blocks[i])
-        set i = i + 1
+    while i < vector_len(function.blocks) {
+        print_block(function.blocks[i]);
+        set i = i + 1;
     }
 }
 
 proc print_module(module: MachineModule) {
-    emit "machine module"
-    emit arch_name(module.arch)
-    emit vector_len(module.functions)
-    emit vector_len(module.diagnostics)
+    emit "machine module";
+    emit arch_name(module.arch);
+    emit vector_len(module.functions);
+    emit vector_len(module.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(module.functions) {
-        print_function(module.functions[i])
-        set i = i + 1
+    while i < vector_len(module.functions) {
+        print_function(module.functions[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

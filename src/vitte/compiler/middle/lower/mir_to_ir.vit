@@ -1,0 +1,34 @@
+space vitte/compiler/middle/lower
+
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput }
+use vitte/compiler/backend/ir/ir.{
+    IrUnit,
+    IrModule,
+    IrModuleKind,
+    IrUnitState,
+    target_native_x86_64_linux,
+    module_create,
+    unit_empty,
+    unit_add_module,
+    unit_with_state,
+}
+
+proc lower_analysis_to_ir(analysis: AnalysisOutput) -> IrUnit {
+    let target = target_native_x86_64_linux();
+    let unit0: IrUnit = unit_empty(target);
+
+    if not analysis.valid {
+        give unit_with_state(unit0, IrUnitState.Invalid);
+    }
+
+    let module0: IrModule = module_create(
+        1,
+        "main",
+        analysis.source_path,
+        IrModuleKind.Binary,
+        target
+    );
+
+    let unit1: IrUnit = unit_add_module(unit0, module0);
+    give unit_with_state(unit1, IrUnitState.Lowered);
+}

@@ -15,48 +15,48 @@ const UNIFY_MAX_SUBSTITUTIONS: u64 = 1048576
 const UNIFY_MAX_CONSTRAINTS: u64 = 2097152
 
 pick UnifyTypeKind {
-    Unknown
-    Void
-    Never
-    Bool
-    Int
-    UInt
-    Float
-    Char
-    String
-    Pointer
-    Reference
-    Slice
-    Array
-    Tuple
-    Function
-    Form
-    Pick
-    Trait
-    Generic
-    Var
+    Unknown,
+    Void,
+    Never,
+    Bool,
+    Int,
+    UInt,
+    Float,
+    Char,
+    String,
+    Pointer,
+    Reference,
+    Slice,
+    Array,
+    Tuple,
+    Function,
+    Form,
+    Pick,
+    Trait,
+    Generic,
+    Var,
 }
 
 pick UnifyRelation {
-    Equals
-    Assignable
-    Coercible
-    Implements
+    Equals,
+    Assignable,
+    Coercible,
+    Implements,
 }
 
 pick UnifyErrorKind {
-    None
-    UnknownType
-    TypeMismatch
-    OccursCheckFailed
-    RecursiveType
-    InvalidSubstitution
-    ConstraintFailed
-    AmbiguousType
-    TypeLimitExceeded
-    SubstitutionLimitExceeded
-    ConstraintLimitExceeded
-    InternalFailure
+    None,
+    UnknownType,
+    TypeMismatch,
+    OccursCheckFailed,
+    RecursiveType,
+    InvalidSubstitution,
+    ConstraintFailed,
+    AmbiguousType,
+    TypeLimitExceeded,
+    SubstitutionLimitExceeded,
+    ConstraintLimitExceeded,
+    InternalFailure,
 }
 
 form UnifySpan {
@@ -115,7 +115,7 @@ proc span_empty() -> UnifySpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc type_invalid() -> UnifyType {
@@ -127,7 +127,7 @@ proc type_invalid() -> UnifyType {
         mutable: false,
         nullable: false,
         valid: false
-    }
+    };
 }
 
 proc type_create(
@@ -146,19 +146,19 @@ proc type_create(
         mutable: mutable,
         nullable: nullable,
         valid: true
-    }
+    };
 }
 
 proc type_var(id: u64, name: string) -> UnifyType {
-    give type_create(id, name, UnifyTypeKind.Var, [], false, false)
+    give type_create(id, name, UnifyTypeKind.Var, [], false, false);
 }
 
 proc type_bool() -> UnifyType {
-    give type_create(1, "bool", UnifyTypeKind.Bool, [], false, false)
+    give type_create(1, "bool", UnifyTypeKind.Bool, [], false, false);
 }
 
 proc type_int() -> UnifyType {
-    give type_create(2, "i64", UnifyTypeKind.Int, [], false, false)
+    give type_create(2, "i64", UnifyTypeKind.Int, [], false, false);
 }
 
 proc substitution_create(
@@ -173,7 +173,7 @@ proc substitution_create(
         replacement: replacement,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc constraint_create(
@@ -190,7 +190,7 @@ proc constraint_create(
         relation: relation,
         span: span,
         solved: false
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -206,7 +206,7 @@ proc diagnostic_create(
         span: span,
         left: left,
         right: right
-    }
+    };
 }
 
 proc context_empty() -> UnifyContext {
@@ -216,7 +216,7 @@ proc context_empty() -> UnifyContext {
         constraints: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc context_add_diagnostic(
@@ -229,7 +229,7 @@ proc context_add_diagnostic(
         constraints: context.constraints,
         diagnostics: context.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc context_add_type(
@@ -246,7 +246,7 @@ proc context_add_type(
                 ty,
                 type_invalid()
             )
-        )
+        );
     }
 
     give UnifyContext {
@@ -255,7 +255,7 @@ proc context_add_type(
         constraints: context.constraints,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_substitution(
@@ -272,7 +272,7 @@ proc context_add_substitution(
                 substitution.replacement,
                 type_invalid()
             )
-        )
+        );
     }
 
     give UnifyContext {
@@ -281,7 +281,7 @@ proc context_add_substitution(
         constraints: context.constraints,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_constraint(
@@ -298,7 +298,7 @@ proc context_add_constraint(
                 constraint.left,
                 constraint.right
             )
-        )
+        );
     }
 
     give UnifyContext {
@@ -307,79 +307,79 @@ proc context_add_constraint(
         constraints: context.constraints + [constraint],
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc find_type(context: UnifyContext, id: u64) -> UnifyType {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.types) {
+    while i < vector_len(context.types) {
         if context.types[i].id == id {
-            give context.types[i]
+            give context.types[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give type_invalid()
+    give type_invalid();
 }
 
 proc type_equals(left: UnifyType, right: UnifyType) -> bool {
     if left.valid == false or right.valid == false {
-        give false
+        give false;
     }
 
     if left.id == right.id and left.kind == right.kind {
-        give true
+        give true;
     }
 
     if left.name == right.name and left.kind == right.kind {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc type_is_var(ty: UnifyType) -> bool {
-    give ty.kind == UnifyTypeKind.Var
+    give ty.kind == UnifyTypeKind.Var;
 }
 
 proc occurs_check(variable: u64, ty: UnifyType) -> bool {
     if ty.kind == UnifyTypeKind.Var and ty.id == variable {
-        give false
+        give false;
     }
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(ty.args) {
+    while i < vector_len(ty.args) {
         if ty.args[i] == variable {
-            give false
+            give false;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give true
+    give true;
 }
 
 proc resolve_type(context: UnifyContext, ty: UnifyType) -> UnifyType {
     if ty.kind != UnifyTypeKind.Var {
-        give ty
+        give ty;
     }
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.substitutions) {
-        let substitution = context.substitutions[i]
+    while i < vector_len(context.substitutions) {
+        let substitution = context.substitutions[i];
 
         if substitution.variable == ty.id {
-            give substitution.replacement
+            give substitution.replacement;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give ty
+    give ty;
 }
 
 proc bind_variable(
@@ -398,7 +398,7 @@ proc bind_variable(
                 variable,
                 replacement
             )
-        )
+        );
     }
 
     if occurs_check(variable.id, replacement) == false {
@@ -411,7 +411,7 @@ proc bind_variable(
                 variable,
                 replacement
             )
-        )
+        );
     }
 
     let substitution = substitution_create(
@@ -419,9 +419,9 @@ proc bind_variable(
         variable.id,
         replacement,
         span
-    )
+    );
 
-    give context_add_substitution(context, substitution)
+    give context_add_substitution(context, substitution);
 }
 
 proc unify_types(
@@ -430,19 +430,19 @@ proc unify_types(
     right: UnifyType,
     span: UnifySpan
 ) -> UnifyContext {
-    let resolved_left = resolve_type(context, left)
-    let resolved_right = resolve_type(context, right)
+    let resolved_left = resolve_type(context, left);
+    let resolved_right = resolve_type(context, right);
 
     if type_equals(resolved_left, resolved_right) {
-        give context
+        give context;
     }
 
     if type_is_var(resolved_left) {
-        give bind_variable(context, resolved_left, resolved_right, span)
+        give bind_variable(context, resolved_left, resolved_right, span);
     }
 
     if type_is_var(resolved_right) {
-        give bind_variable(context, resolved_right, resolved_left, span)
+        give bind_variable(context, resolved_right, resolved_left, span);
     }
 
     if resolved_left.kind != resolved_right.kind {
@@ -455,7 +455,7 @@ proc unify_types(
                 resolved_left,
                 resolved_right
             )
-        )
+        );
     }
 
     if vector_len(resolved_left.args) != vector_len(resolved_right.args) {
@@ -468,32 +468,32 @@ proc unify_types(
                 resolved_left,
                 resolved_right
             )
-        )
+        );
     }
 
-    let current = context
-    let i: u64 = 0
+    let current = context;
+    let i: u64 = 0;
 
-    loop i < vector_len(resolved_left.args) {
-        let left_arg = find_type(current, resolved_left.args[i])
-        let right_arg = find_type(current, resolved_right.args[i])
+    while i < vector_len(resolved_left.args) {
+        let left_arg = find_type(current, resolved_left.args[i]);
+        let right_arg = find_type(current, resolved_right.args[i]);
 
-        set current = unify_types(current, left_arg, right_arg, span)
-        set i = i + 1
+        set current = unify_types(current, left_arg, right_arg, span);
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc mark_constraint_solved(
     context: UnifyContext,
     constraint_id: u64
 ) -> UnifyContext {
-    let next: [UnifyConstraint] = []
-    let i: u64 = 0
+    let next: [UnifyConstraint] = [];
+    let i: u64 = 0;
 
-    loop i < vector_len(context.constraints) {
-        let constraint = context.constraints[i]
+    while i < vector_len(context.constraints) {
+        let constraint = context.constraints[i];
 
         if constraint.id == constraint_id {
             set next = next + [
@@ -505,12 +505,12 @@ proc mark_constraint_solved(
                     span: constraint.span,
                     solved: true
                 }
-            ]
+            ];
         } else {
-            set next = next + [constraint]
+            set next = next + [constraint];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give UnifyContext {
@@ -519,7 +519,7 @@ proc mark_constraint_solved(
         constraints: next,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc solve_constraint(
@@ -527,23 +527,23 @@ proc solve_constraint(
     constraint: UnifyConstraint
 ) -> UnifyContext {
     if constraint.relation == UnifyRelation.Equals {
-        let unified = unify_types(context, constraint.left, constraint.right, constraint.span)
+        let unified = unify_types(context, constraint.left, constraint.right, constraint.span);
 
         if unified.valid {
-            give mark_constraint_solved(unified, constraint.id)
+            give mark_constraint_solved(unified, constraint.id);
         }
 
-        give unified
+        give unified;
     }
 
     if constraint.relation == UnifyRelation.Assignable {
-        let unified = unify_types(context, constraint.left, constraint.right, constraint.span)
+        let unified = unify_types(context, constraint.left, constraint.right, constraint.span);
 
         if unified.valid {
-            give mark_constraint_solved(unified, constraint.id)
+            give mark_constraint_solved(unified, constraint.id);
         }
 
-        give unified
+        give unified;
     }
 
     give context_add_diagnostic(
@@ -555,100 +555,100 @@ proc solve_constraint(
             constraint.left,
             constraint.right
         )
-    )
+    );
 }
 
 proc solve_all(context: UnifyContext) -> UnifyContext {
-    let current = context
-    let i: u64 = 0
+    let current = context;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.constraints) {
+    while i < vector_len(current.constraints) {
         if current.constraints[i].solved == false {
-            set current = solve_constraint(current, current.constraints[i])
+            set current = solve_constraint(current, current.constraints[i]);
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc apply_substitutions_to_type(
     context: UnifyContext,
     ty: UnifyType
 ) -> UnifyType {
-    give resolve_type(context, ty)
+    give resolve_type(context, ty);
 }
 
 proc substitution_count(context: UnifyContext) -> u64 {
-    give vector_len(context.substitutions)
+    give vector_len(context.substitutions);
 }
 
 proc unify_error_count(context: UnifyContext) -> u64 {
-    give vector_len(context.diagnostics)
+    give vector_len(context.diagnostics);
 }
 
 proc unify_is_valid(context: UnifyContext) -> bool {
-    give context.valid and vector_len(context.diagnostics) == 0
+    give context.valid and vector_len(context.diagnostics) == 0;
 }
 
 proc kind_name(kind: UnifyTypeKind) -> string {
     if kind == UnifyTypeKind.Bool {
-        give "bool"
+        give "bool";
     }
 
     if kind == UnifyTypeKind.Int {
-        give "int"
+        give "int";
     }
 
     if kind == UnifyTypeKind.Float {
-        give "float"
+        give "float";
     }
 
     if kind == UnifyTypeKind.String {
-        give "string"
+        give "string";
     }
 
     if kind == UnifyTypeKind.Function {
-        give "function"
+        give "function";
     }
 
     if kind == UnifyTypeKind.Var {
-        give "var"
+        give "var";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_type(ty: UnifyType) {
-    emit "unify type"
-    emit ty.id
-    emit ty.name
-    emit kind_name(ty.kind)
-    emit ty.valid
+    emit "unify type";
+    emit ty.id;
+    emit ty.name;
+    emit kind_name(ty.kind);
+    emit ty.valid;
 }
 
 proc print_substitution(substitution: UnifySubstitution) {
-    emit "substitution"
-    emit substitution.variable
-    print_type(substitution.replacement)
+    emit "substitution";
+    emit substitution.variable;
+    print_type(substitution.replacement);
 }
 
 proc print_context(context: UnifyContext) {
-    emit "unify context"
-    emit vector_len(context.types)
-    emit vector_len(context.substitutions)
-    emit vector_len(context.constraints)
-    emit vector_len(context.diagnostics)
+    emit "unify context";
+    emit vector_len(context.types);
+    emit vector_len(context.substitutions);
+    emit vector_len(context.constraints);
+    emit vector_len(context.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.substitutions) {
-        print_substitution(context.substitutions[i])
-        set i = i + 1
+    while i < vector_len(context.substitutions) {
+        print_substitution(context.substitutions[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

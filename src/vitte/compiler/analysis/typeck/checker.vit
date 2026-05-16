@@ -15,56 +15,56 @@ const TYPECK_MAX_CONSTRAINTS: u64 = 2097152
 const TYPECK_MAX_DIAGNOSTICS: u64 = 1048576
 
 pick TypeKind {
-    Unknown
-    Void
-    Never
-    Bool
-    Int
-    UInt
-    Float
-    Char
-    String
-    Pointer
-    Reference
-    Slice
-    Array
-    Tuple
-    Function
-    Form
-    Pick
-    Trait
-    Generic
-    Infer
+    Unknown,
+    Void,
+    Never,
+    Bool,
+    Int,
+    UInt,
+    Float,
+    Char,
+    String,
+    Pointer,
+    Reference,
+    Slice,
+    Array,
+    Tuple,
+    Function,
+    Form,
+    Pick,
+    Trait,
+    Generic,
+    Infer,
 }
 
 pick TypeRelation {
-    Equals
-    Assignable
-    Coercible
-    Subtype
-    Implements
-    Outlives
+    Equals,
+    Assignable,
+    Coercible,
+    Subtype,
+    Implements,
+    Outlives,
 }
 
 pick TypeErrorKind {
-    None
-    UnknownType
-    UnknownExpression
-    TypeMismatch
-    InvalidAssignment
-    InvalidReturn
-    InvalidCall
-    InvalidArgument
-    InvalidField
-    InvalidIndex
-    InvalidOperator
-    InvalidCast
-    MissingTraitImpl
-    GenericMismatch
-    ConstraintFailed
-    TypeLimitExceeded
-    ConstraintLimitExceeded
-    InternalFailure
+    None,
+    UnknownType,
+    UnknownExpression,
+    TypeMismatch,
+    InvalidAssignment,
+    InvalidReturn,
+    InvalidCall,
+    InvalidArgument,
+    InvalidField,
+    InvalidIndex,
+    InvalidOperator,
+    InvalidCast,
+    MissingTraitImpl,
+    GenericMismatch,
+    ConstraintFailed,
+    TypeLimitExceeded,
+    ConstraintLimitExceeded,
+    InternalFailure,
 }
 
 form TypeSpan {
@@ -123,7 +123,7 @@ proc span_empty() -> TypeSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc type_invalid() -> TypeRef {
@@ -134,7 +134,7 @@ proc type_invalid() -> TypeRef {
         mutable: false,
         nullable: false,
         valid: false
-    }
+    };
 }
 
 proc type_void() -> TypeRef {
@@ -145,7 +145,7 @@ proc type_void() -> TypeRef {
         mutable: false,
         nullable: false,
         valid: true
-    }
+    };
 }
 
 proc type_bool() -> TypeRef {
@@ -156,7 +156,7 @@ proc type_bool() -> TypeRef {
         mutable: false,
         nullable: false,
         valid: true
-    }
+    };
 }
 
 proc type_int() -> TypeRef {
@@ -167,7 +167,7 @@ proc type_int() -> TypeRef {
         mutable: false,
         nullable: false,
         valid: true
-    }
+    };
 }
 
 proc type_string() -> TypeRef {
@@ -178,7 +178,7 @@ proc type_string() -> TypeRef {
         mutable: false,
         nullable: false,
         valid: true
-    }
+    };
 }
 
 proc type_create(
@@ -195,7 +195,7 @@ proc type_create(
         mutable: mutable,
         nullable: nullable,
         valid: true
-    }
+    };
 }
 
 proc expr_create(
@@ -211,7 +211,7 @@ proc expr_create(
         span: span,
         checked: false,
         valid: true
-    }
+    };
 }
 
 proc constraint_create(
@@ -228,7 +228,7 @@ proc constraint_create(
         relation: relation,
         span: span,
         satisfied: false
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -244,7 +244,7 @@ proc diagnostic_create(
         span: span,
         left: left,
         right: right
-    }
+    };
 }
 
 proc context_empty() -> TypeCheckContext {
@@ -254,7 +254,7 @@ proc context_empty() -> TypeCheckContext {
         constraints: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc context_add_diagnostic(
@@ -267,7 +267,7 @@ proc context_add_diagnostic(
         constraints: context.constraints,
         diagnostics: context.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc context_add_type(
@@ -284,7 +284,7 @@ proc context_add_type(
                 ty,
                 type_invalid()
             )
-        )
+        );
     }
 
     give TypeCheckContext {
@@ -293,7 +293,7 @@ proc context_add_type(
         constraints: context.constraints,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_expression(
@@ -306,7 +306,7 @@ proc context_add_expression(
         constraints: context.constraints,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_constraint(
@@ -323,7 +323,7 @@ proc context_add_constraint(
                 constraint.left,
                 constraint.right
             )
-        )
+        );
     }
 
     give TypeCheckContext {
@@ -332,55 +332,55 @@ proc context_add_constraint(
         constraints: context.constraints + [constraint],
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc find_type(
     context: TypeCheckContext,
     id: u64
 ) -> TypeRef {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.types) {
+    while i < vector_len(context.types) {
         if context.types[i].id == id {
-            give context.types[i]
+            give context.types[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give type_invalid()
+    give type_invalid();
 }
 
 proc find_type_by_name(
     context: TypeCheckContext,
     name: string
 ) -> TypeRef {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.types) {
+    while i < vector_len(context.types) {
         if context.types[i].name == name {
-            give context.types[i]
+            give context.types[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give type_invalid()
+    give type_invalid();
 }
 
 proc find_expression(
     context: TypeCheckContext,
     id: u64
 ) -> TypeExpr {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.expressions) {
+    while i < vector_len(context.expressions) {
         if context.expressions[i].id == id {
-            give context.expressions[i]
+            give context.expressions[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give TypeExpr {
@@ -390,7 +390,7 @@ proc find_expression(
         span: span_empty(),
         checked: false,
         valid: false
-    }
+    };
 }
 
 proc type_equals(
@@ -398,18 +398,18 @@ proc type_equals(
     right: TypeRef
 ) -> bool {
     if left.valid == false or right.valid == false {
-        give false
+        give false;
     }
 
     if left.id == right.id {
-        give true
+        give true;
     }
 
     if left.name == right.name and left.kind == right.kind {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc type_assignable(
@@ -417,26 +417,26 @@ proc type_assignable(
     right: TypeRef
 ) -> bool {
     if type_equals(left, right) {
-        give true
+        give true;
     }
 
     if left.kind == TypeKind.Infer {
-        give true
+        give true;
     }
 
     if right.kind == TypeKind.Infer {
-        give true
+        give true;
     }
 
     if left.kind == TypeKind.Int and right.kind == TypeKind.UInt {
-        give false
+        give false;
     }
 
     if left.kind == TypeKind.Float and right.kind == TypeKind.Int {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc type_coercible(
@@ -444,35 +444,35 @@ proc type_coercible(
     right: TypeRef
 ) -> bool {
     if type_assignable(left, right) {
-        give true
+        give true;
     }
 
     if left.kind == TypeKind.Reference and right.kind == TypeKind.Pointer {
-        give true
+        give true;
     }
 
     if left.kind == TypeKind.Array and right.kind == TypeKind.Slice {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc solve_constraint(
     constraint: TypeConstraint
 ) -> TypeConstraint {
-    let ok = false
+    let ok = false;
 
     if constraint.relation == TypeRelation.Equals {
-        set ok = type_equals(constraint.left, constraint.right)
+        set ok = type_equals(constraint.left, constraint.right);
     }
 
     if constraint.relation == TypeRelation.Assignable {
-        set ok = type_assignable(constraint.left, constraint.right)
+        set ok = type_assignable(constraint.left, constraint.right);
     }
 
     if constraint.relation == TypeRelation.Coercible {
-        set ok = type_coercible(constraint.left, constraint.right)
+        set ok = type_coercible(constraint.left, constraint.right);
     }
 
     give TypeConstraint {
@@ -482,21 +482,21 @@ proc solve_constraint(
         relation: constraint.relation,
         span: constraint.span,
         satisfied: ok
-    }
+    };
 }
 
 proc solve_constraints(
     context: TypeCheckContext
 ) -> TypeCheckContext {
-    let solved: [TypeConstraint] = []
-    let diagnostics = context.diagnostics
-    let valid = context.valid
+    let solved: [TypeConstraint] = [];
+    let diagnostics = context.diagnostics;
+    let valid = context.valid;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.constraints) {
-        let solved_constraint = solve_constraint(context.constraints[i])
-        set solved = solved + [solved_constraint]
+    while i < vector_len(context.constraints) {
+        let solved_constraint = solve_constraint(context.constraints[i]);
+        set solved = solved + [solved_constraint];
 
         if solved_constraint.satisfied == false {
             set diagnostics = diagnostics + [
@@ -507,12 +507,12 @@ proc solve_constraints(
                     solved_constraint.left,
                     solved_constraint.right
                 )
-            ]
+            ];
 
-            set valid = false
+            set valid = false;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give TypeCheckContext {
@@ -521,7 +521,7 @@ proc solve_constraints(
         constraints: solved,
         diagnostics: diagnostics,
         valid: valid
-    }
+    };
 }
 
 proc check_assignment(
@@ -541,7 +541,7 @@ proc check_assignment(
                 actual,
                 expected
             )
-        )
+        );
     }
 
     give context_add_constraint(
@@ -553,7 +553,7 @@ proc check_assignment(
             TypeRelation.Assignable,
             span
         )
-    )
+    );
 }
 
 proc check_return(
@@ -572,7 +572,7 @@ proc check_return(
                 actual,
                 expected
             )
-        )
+        );
     }
 
     give context_add_constraint(
@@ -584,7 +584,7 @@ proc check_return(
             TypeRelation.Assignable,
             span
         )
-    )
+    );
 }
 
 proc check_binary_operator(
@@ -596,11 +596,11 @@ proc check_binary_operator(
 ) -> TypeCheckContext {
     if operator == "+" or operator == "-" or operator == "*" or operator == "/" {
         if left.kind == TypeKind.Int and right.kind == TypeKind.Int {
-            give context
+            give context;
         }
 
         if left.kind == TypeKind.Float and right.kind == TypeKind.Float {
-            give context
+            give context;
         }
 
         give context_add_diagnostic(
@@ -612,12 +612,12 @@ proc check_binary_operator(
                 left,
                 right
             )
-        )
+        );
     }
 
     if operator == "==" or operator == "!=" {
         if type_equals(left, right) {
-            give context
+            give context;
         }
 
         give context_add_diagnostic(
@@ -629,10 +629,10 @@ proc check_binary_operator(
                 left,
                 right
             )
-        )
+        );
     }
 
-    give context
+    give context;
 }
 
 proc check_call_argument(
@@ -652,10 +652,10 @@ proc check_call_argument(
                 actual,
                 expected
             )
-        )
+        );
     }
 
-    give context
+    give context;
 }
 
 proc check_cast(
@@ -665,19 +665,19 @@ proc check_cast(
     span: TypeSpan
 ) -> TypeCheckContext {
     if type_coercible(source, target) {
-        give context
+        give context;
     }
 
     if source.kind == TypeKind.Int and target.kind == TypeKind.Float {
-        give context
+        give context;
     }
 
     if source.kind == TypeKind.Float and target.kind == TypeKind.Int {
-        give context
+        give context;
     }
 
     if source.kind == TypeKind.Pointer and target.kind == TypeKind.Pointer {
-        give context
+        give context;
     }
 
     give context_add_diagnostic(
@@ -689,7 +689,7 @@ proc check_cast(
             source,
             target
         )
-    )
+    );
 }
 
 proc check_index(
@@ -708,7 +708,7 @@ proc check_index(
                 index,
                 type_int()
             )
-        )
+        );
     }
 
     if base.kind != TypeKind.Array and base.kind != TypeKind.Slice and base.kind != TypeKind.Pointer {
@@ -721,10 +721,10 @@ proc check_index(
                 base,
                 index
             )
-        )
+        );
     }
 
-    give context
+    give context;
 }
 
 proc check_field(
@@ -743,10 +743,10 @@ proc check_field(
                 base,
                 type_invalid()
             )
-        )
+        );
     }
 
-    give context
+    give context;
 }
 
 proc check_expression(
@@ -763,7 +763,7 @@ proc check_expression(
                 expression.inferred,
                 expression.expected
             )
-        )
+        );
     }
 
     if expression.expected.valid and expression.inferred.valid {
@@ -773,107 +773,107 @@ proc check_expression(
             expression.expected,
             expression.inferred,
             expression.span
-        )
+        );
     }
 
-    give context
+    give context;
 }
 
 proc check_all(
     context: TypeCheckContext
 ) -> TypeCheckContext {
-    let current = context
-    let i: u64 = 0
+    let current = context;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.expressions) {
-        set current = check_expression(current, current.expressions[i])
-        set i = i + 1
+    while i < vector_len(current.expressions) {
+        set current = check_expression(current, current.expressions[i]);
+        set i = i + 1;
     }
 
-    give solve_constraints(current)
+    give solve_constraints(current);
 }
 
 proc typeck_error_count(context: TypeCheckContext) -> u64 {
-    give vector_len(context.diagnostics)
+    give vector_len(context.diagnostics);
 }
 
 proc typeck_is_valid(context: TypeCheckContext) -> bool {
-    give context.valid and vector_len(context.diagnostics) == 0
+    give context.valid and vector_len(context.diagnostics) == 0;
 }
 
 proc kind_name(kind: TypeKind) -> string {
     if kind == TypeKind.Void {
-        give "void"
+        give "void";
     }
 
     if kind == TypeKind.Bool {
-        give "bool"
+        give "bool";
     }
 
     if kind == TypeKind.Int {
-        give "int"
+        give "int";
     }
 
     if kind == TypeKind.UInt {
-        give "uint"
+        give "uint";
     }
 
     if kind == TypeKind.Float {
-        give "float"
+        give "float";
     }
 
     if kind == TypeKind.String {
-        give "string"
+        give "string";
     }
 
     if kind == TypeKind.Pointer {
-        give "pointer"
+        give "pointer";
     }
 
     if kind == TypeKind.Reference {
-        give "reference"
+        give "reference";
     }
 
     if kind == TypeKind.Function {
-        give "function"
+        give "function";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_type(ty: TypeRef) {
-    emit "type"
-    emit ty.id
-    emit ty.name
-    emit kind_name(ty.kind)
-    emit ty.valid
+    emit "type";
+    emit ty.id;
+    emit ty.name;
+    emit kind_name(ty.kind);
+    emit ty.valid;
 }
 
 proc print_diagnostic(diagnostic: TypeDiagnostic) {
-    emit "type error"
-    emit diagnostic.message
-    emit diagnostic.span.file
-    emit diagnostic.span.line
-    emit diagnostic.span.column
-    print_type(diagnostic.left)
-    print_type(diagnostic.right)
+    emit "type error";
+    emit diagnostic.message;
+    emit diagnostic.span.file;
+    emit diagnostic.span.line;
+    emit diagnostic.span.column;
+    print_type(diagnostic.left);
+    print_type(diagnostic.right);
 }
 
 proc print_context(context: TypeCheckContext) {
-    emit "type checker"
-    emit vector_len(context.types)
-    emit vector_len(context.expressions)
-    emit vector_len(context.constraints)
-    emit vector_len(context.diagnostics)
+    emit "type checker";
+    emit vector_len(context.types);
+    emit vector_len(context.expressions);
+    emit vector_len(context.constraints);
+    emit vector_len(context.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.diagnostics) {
-        print_diagnostic(context.diagnostics[i])
-        set i = i + 1
+    while i < vector_len(context.diagnostics) {
+        print_diagnostic(context.diagnostics[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

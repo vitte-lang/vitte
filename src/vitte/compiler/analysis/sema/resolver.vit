@@ -15,54 +15,54 @@ const RESOLVER_MAX_IMPORTS: u64 = 262144
 const RESOLVER_MAX_DIAGNOSTICS: u64 = 1048576
 
 pick ResolveKind {
-    Module
-    Function
-    Type
-    Form
-    Pick
-    Variant
-    Field
-    Parameter
-    Local
-    Const
-    Static
-    Global
-    Trait
-    Impl
-    Macro
-    Label
-    Unknown
+    Module,
+    Function,
+    Type,
+    Form,
+    Pick,
+    Variant,
+    Field,
+    Parameter,
+    Local,
+    Const,
+    Static,
+    Global,
+    Trait,
+    Impl,
+    Macro,
+    Label,
+    Unknown,
 }
 
 pick ResolveVisibility {
-    Private
-    Package
-    Module
-    Public
-    Exported
+    Private,
+    Package,
+    Module,
+    Public,
+    Exported,
 }
 
 pick ImportKind {
-    Single
-    Group
-    Glob
-    Alias
-    Prelude
+    Single,
+    Group,
+    Glob,
+    Alias,
+    Prelude,
 }
 
 pick ResolveErrorKind {
-    None
-    UnknownSymbol
-    DuplicateSymbol
-    AmbiguousSymbol
-    UnknownModule
-    InvalidImport
-    DuplicateImport
-    PrivateSymbolAccess
-    InvalidVisibility
-    SymbolLimitExceeded
-    ImportLimitExceeded
-    InternalFailure
+    None,
+    UnknownSymbol,
+    DuplicateSymbol,
+    AmbiguousSymbol,
+    UnknownModule,
+    InvalidImport,
+    DuplicateImport,
+    PrivateSymbolAccess,
+    InvalidVisibility,
+    SymbolLimitExceeded,
+    ImportLimitExceeded,
+    InternalFailure,
 }
 
 form ResolveSpan {
@@ -127,7 +127,7 @@ proc span_empty() -> ResolveSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc path_empty() -> ResolvePath {
@@ -136,7 +136,7 @@ proc path_empty() -> ResolvePath {
         segments: [],
         absolute: false,
         valid: false
-    }
+    };
 }
 
 proc path_create(
@@ -149,7 +149,7 @@ proc path_create(
         segments: segments,
         absolute: absolute,
         valid: vector_len(segments) > 0
-    }
+    };
 }
 
 proc symbol_invalid() -> ResolvedSymbol {
@@ -162,7 +162,7 @@ proc symbol_invalid() -> ResolvedSymbol {
         module: "",
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc symbol_create(
@@ -183,7 +183,7 @@ proc symbol_create(
         module: module,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc import_create(
@@ -201,7 +201,7 @@ proc import_create(
         module: module,
         used: false,
         valid: path.valid
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -215,7 +215,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         symbol: symbol
-    }
+    };
 }
 
 proc result_not_found() -> ResolveResult {
@@ -223,7 +223,7 @@ proc result_not_found() -> ResolveResult {
         found: false,
         ambiguous: false,
         symbol: symbol_invalid()
-    }
+    };
 }
 
 proc result_found(symbol: ResolvedSymbol) -> ResolveResult {
@@ -231,7 +231,7 @@ proc result_found(symbol: ResolvedSymbol) -> ResolveResult {
         found: true,
         ambiguous: false,
         symbol: symbol
-    }
+    };
 }
 
 proc result_ambiguous(symbol: ResolvedSymbol) -> ResolveResult {
@@ -239,7 +239,7 @@ proc result_ambiguous(symbol: ResolvedSymbol) -> ResolveResult {
         found: true,
         ambiguous: true,
         symbol: symbol
-    }
+    };
 }
 
 proc context_empty(module: string) -> ResolverContext {
@@ -249,7 +249,7 @@ proc context_empty(module: string) -> ResolverContext {
         imports: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc context_add_diagnostic(
@@ -262,7 +262,7 @@ proc context_add_diagnostic(
         imports: context.imports,
         diagnostics: context.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc context_add_symbol(
@@ -278,7 +278,7 @@ proc context_add_symbol(
                 symbol.span,
                 symbol.id
             )
-        )
+        );
     }
 
     if find_local_symbol(context, symbol.module, symbol.name).valid {
@@ -290,7 +290,7 @@ proc context_add_symbol(
                 symbol.span,
                 symbol.id
             )
-        )
+        );
     }
 
     give ResolverContext {
@@ -299,7 +299,7 @@ proc context_add_symbol(
         imports: context.imports,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_import(
@@ -315,7 +315,7 @@ proc context_add_import(
                 span_empty(),
                 entry.id
             )
-        )
+        );
     }
 
     if entry.valid == false {
@@ -327,7 +327,7 @@ proc context_add_import(
                 span_empty(),
                 entry.id
             )
-        )
+        );
     }
 
     if has_import(context, entry.path.text, entry.alias) {
@@ -339,7 +339,7 @@ proc context_add_import(
                 span_empty(),
                 entry.id
             )
-        )
+        );
     }
 
     give ResolverContext {
@@ -348,7 +348,7 @@ proc context_add_import(
         imports: context.imports + [entry],
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc has_import(
@@ -356,36 +356,36 @@ proc has_import(
     path: string,
     alias: string
 ) -> bool {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.imports) {
-        let entry = context.imports[i]
+    while i < vector_len(context.imports) {
+        let entry = context.imports[i];
 
         if entry.path.text == path and entry.alias == alias {
-            give true
+            give true;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give false
+    give false;
 }
 
 proc find_symbol_by_id(
     context: ResolverContext,
     id: u64
 ) -> ResolvedSymbol {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.symbols) {
+    while i < vector_len(context.symbols) {
         if context.symbols[i].id == id {
-            give context.symbols[i]
+            give context.symbols[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give symbol_invalid()
+    give symbol_invalid();
 }
 
 proc find_local_symbol(
@@ -393,58 +393,58 @@ proc find_local_symbol(
     module: string,
     name: string
 ) -> ResolvedSymbol {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.symbols) {
-        let symbol = context.symbols[i]
+    while i < vector_len(context.symbols) {
+        let symbol = context.symbols[i];
 
         if symbol.module == module and symbol.name == name {
-            give symbol
+            give symbol;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give symbol_invalid()
+    give symbol_invalid();
 }
 
 proc find_global_symbol(
     context: ResolverContext,
     name: string
 ) -> ResolveResult {
-    let found = symbol_invalid()
-    let count: u64 = 0
+    let found = symbol_invalid();
+    let count: u64 = 0;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.symbols) {
-        let symbol = context.symbols[i]
+    while i < vector_len(context.symbols) {
+        let symbol = context.symbols[i];
 
         if symbol.name == name {
-            set found = symbol
-            set count = count + 1
+            set found = symbol;
+            set count = count + 1;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if count == 0 {
-        give result_not_found()
+        give result_not_found();
     }
 
     if count > 1 {
-        give result_ambiguous(found)
+        give result_ambiguous(found);
     }
 
-    give result_found(found)
+    give result_found(found);
 }
 
 proc path_last_segment(path: ResolvePath) -> string {
     if vector_len(path.segments) == 0 {
-        give ""
+        give "";
     }
 
-    give path.segments[vector_len(path.segments) - 1]
+    give path.segments[vector_len(path.segments) - 1];
 }
 
 proc resolve_path(
@@ -452,96 +452,96 @@ proc resolve_path(
     path: ResolvePath
 ) -> ResolveResult {
     if path.valid == false {
-        give result_not_found()
+        give result_not_found();
     }
 
-    let name = path_last_segment(path)
+    let name = path_last_segment(path);
 
     if path.absolute {
-        give find_global_symbol(context, name)
+        give find_global_symbol(context, name);
     }
 
-    let local = find_local_symbol(context, context.module, name)
+    let local = find_local_symbol(context, context.module, name);
 
     if local.valid {
-        give result_found(local)
+        give result_found(local);
     }
 
-    give resolve_imported(context, name)
+    give resolve_imported(context, name);
 }
 
 proc resolve_name(
     context: ResolverContext,
     name: string
 ) -> ResolveResult {
-    let local = find_local_symbol(context, context.module, name)
+    let local = find_local_symbol(context, context.module, name);
 
     if local.valid {
-        give result_found(local)
+        give result_found(local);
     }
 
-    let imported = resolve_imported(context, name)
+    let imported = resolve_imported(context, name);
 
     if imported.found {
-        give imported
+        give imported;
     }
 
-    give find_global_symbol(context, name)
+    give find_global_symbol(context, name);
 }
 
 proc resolve_imported(
     context: ResolverContext,
     name: string
 ) -> ResolveResult {
-    let found = symbol_invalid()
-    let count: u64 = 0
+    let found = symbol_invalid();
+    let count: u64 = 0;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.imports) {
-        let entry = context.imports[i]
+    while i < vector_len(context.imports) {
+        let entry = context.imports[i];
 
         if import_matches(entry, name) {
-            let symbol = find_global_symbol(context, import_target_name(entry, name))
+            let symbol = find_global_symbol(context, import_target_name(entry, name));
 
             if symbol.found {
-                set found = symbol.symbol
-                set count = count + 1
+                set found = symbol.symbol;
+                set count = count + 1;
             }
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if count == 0 {
-        give result_not_found()
+        give result_not_found();
     }
 
     if count > 1 {
-        give result_ambiguous(found)
+        give result_ambiguous(found);
     }
 
-    give result_found(found)
+    give result_found(found);
 }
 
 proc import_matches(entry: ImportEntry, name: string) -> bool {
     if entry.kind == ImportKind.Glob {
-        give true
+        give true;
     }
 
     if entry.alias != "" {
-        give entry.alias == name
+        give entry.alias == name;
     }
 
-    give path_last_segment(entry.path) == name
+    give path_last_segment(entry.path) == name;
 }
 
 proc import_target_name(entry: ImportEntry, requested: string) -> string {
     if entry.kind == ImportKind.Glob {
-        give requested
+        give requested;
     }
 
-    give path_last_segment(entry.path)
+    give path_last_segment(entry.path);
 }
 
 proc visibility_allows_access(
@@ -550,34 +550,34 @@ proc visibility_allows_access(
     owner_module: string
 ) -> bool {
     if visibility == ResolveVisibility.Public {
-        give true
+        give true;
     }
 
     if visibility == ResolveVisibility.Exported {
-        give true
+        give true;
     }
 
     if visibility == ResolveVisibility.Private {
-        give from_module == owner_module
+        give from_module == owner_module;
     }
 
     if visibility == ResolveVisibility.Module {
-        give from_module == owner_module
+        give from_module == owner_module;
     }
 
     if visibility == ResolveVisibility.Package {
-        give module_same_package(from_module, owner_module)
+        give module_same_package(from_module, owner_module);
     }
 
-    give false
+    give false;
 }
 
 proc module_same_package(left: string, right: string) -> bool {
-    give module_root(left) == module_root(right)
+    give module_root(left) == module_root(right);
 }
 
 proc module_root(module: string) -> string {
-    give module
+    give module;
 }
 
 proc resolve_accessible(
@@ -586,7 +586,7 @@ proc resolve_accessible(
     from_module: string,
     span: ResolveSpan
 ) -> ResolverContext {
-    let result = resolve_name(context, name)
+    let result = resolve_name(context, name);
 
     if result.found == false {
         give context_add_diagnostic(
@@ -597,7 +597,7 @@ proc resolve_accessible(
                 span,
                 RESOLVER_INVALID_ID
             )
-        )
+        );
     }
 
     if result.ambiguous {
@@ -609,7 +609,7 @@ proc resolve_accessible(
                 span,
                 result.symbol.id
             )
-        )
+        );
     }
 
     if visibility_allows_access(result.symbol.visibility, from_module, result.symbol.module) == false {
@@ -621,21 +621,21 @@ proc resolve_accessible(
                 span,
                 result.symbol.id
             )
-        )
+        );
     }
 
-    give context
+    give context;
 }
 
 proc mark_import_used(
     context: ResolverContext,
     import_id: u64
 ) -> ResolverContext {
-    let next: [ImportEntry] = []
-    let i: u64 = 0
+    let next: [ImportEntry] = [];
+    let i: u64 = 0;
 
-    loop i < vector_len(context.imports) {
-        let entry = context.imports[i]
+    while i < vector_len(context.imports) {
+        let entry = context.imports[i];
 
         if entry.id == import_id {
             set next = next + [
@@ -648,12 +648,12 @@ proc mark_import_used(
                     used: true,
                     valid: entry.valid
                 }
-            ]
+            ];
         } else {
-            set next = next + [entry]
+            set next = next + [entry];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give ResolverContext {
@@ -662,15 +662,15 @@ proc mark_import_used(
         imports: next,
         diagnostics: context.diagnostics,
         valid: context.valid
-    }
+    };
 }
 
 proc validate_imports(context: ResolverContext) -> ResolverContext {
-    let current = context
-    let i: u64 = 0
+    let current = context;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.imports) {
-        let entry = current.imports[i]
+    while i < vector_len(current.imports) {
+        let entry = current.imports[i];
 
         if entry.valid == false {
             give context_add_diagnostic(
@@ -681,12 +681,12 @@ proc validate_imports(context: ResolverContext) -> ResolverContext {
                     span_empty(),
                     entry.id
                 )
-            )
+            );
         }
 
         if entry.kind != ImportKind.Glob {
-            let name = import_target_name(entry, entry.alias)
-            let result = find_global_symbol(current, name)
+            let name = import_target_name(entry, entry.alias);
+            let result = find_global_symbol(current, name);
 
             if result.found == false {
                 give context_add_diagnostic(
@@ -697,22 +697,22 @@ proc validate_imports(context: ResolverContext) -> ResolverContext {
                         span_empty(),
                         entry.id
                     )
-                )
+                );
             }
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc validate_symbols(context: ResolverContext) -> ResolverContext {
-    let current = context
-    let i: u64 = 0
+    let current = context;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.symbols) {
-        let symbol = current.symbols[i]
+    while i < vector_len(current.symbols) {
+        let symbol = current.symbols[i];
 
         if symbol.valid == false {
             give context_add_diagnostic(
@@ -723,122 +723,122 @@ proc validate_symbols(context: ResolverContext) -> ResolverContext {
                     symbol.span,
                     symbol.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc validate_resolver(context: ResolverContext) -> ResolverContext {
-    let s1 = validate_symbols(context)
-    let s2 = validate_imports(s1)
+    let s1 = validate_symbols(context);
+    let s2 = validate_imports(s1);
 
-    give s2
+    give s2;
 }
 
 proc resolver_error_count(context: ResolverContext) -> u64 {
-    give vector_len(context.diagnostics)
+    give vector_len(context.diagnostics);
 }
 
 proc resolver_is_valid(context: ResolverContext) -> bool {
-    give context.valid and vector_len(context.diagnostics) == 0
+    give context.valid and vector_len(context.diagnostics) == 0;
 }
 
 proc kind_name(kind: ResolveKind) -> string {
     if kind == ResolveKind.Module {
-        give "module"
+        give "module";
     }
 
     if kind == ResolveKind.Function {
-        give "function"
+        give "function";
     }
 
     if kind == ResolveKind.Type {
-        give "type"
+        give "type";
     }
 
     if kind == ResolveKind.Form {
-        give "form"
+        give "form";
     }
 
     if kind == ResolveKind.Pick {
-        give "pick"
+        give "pick";
     }
 
     if kind == ResolveKind.Field {
-        give "field"
+        give "field";
     }
 
     if kind == ResolveKind.Local {
-        give "local"
+        give "local";
     }
 
     if kind == ResolveKind.Const {
-        give "const"
+        give "const";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc visibility_name(visibility: ResolveVisibility) -> string {
     if visibility == ResolveVisibility.Private {
-        give "private"
+        give "private";
     }
 
     if visibility == ResolveVisibility.Package {
-        give "package"
+        give "package";
     }
 
     if visibility == ResolveVisibility.Module {
-        give "module"
+        give "module";
     }
 
     if visibility == ResolveVisibility.Public {
-        give "public"
+        give "public";
     }
 
     if visibility == ResolveVisibility.Exported {
-        give "exported"
+        give "exported";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_symbol(symbol: ResolvedSymbol) {
-    emit "resolved symbol"
-    emit symbol.id
-    emit symbol.name
-    emit kind_name(symbol.kind)
-    emit visibility_name(symbol.visibility)
-    emit symbol.module
+    emit "resolved symbol";
+    emit symbol.id;
+    emit symbol.name;
+    emit kind_name(symbol.kind);
+    emit visibility_name(symbol.visibility);
+    emit symbol.module;
 }
 
 proc print_import(entry: ImportEntry) {
-    emit "import"
-    emit entry.id
-    emit entry.path.text
-    emit entry.alias
-    emit entry.used
+    emit "import";
+    emit entry.id;
+    emit entry.path.text;
+    emit entry.alias;
+    emit entry.used;
 }
 
 proc print_resolver(context: ResolverContext) {
-    emit "resolver"
-    emit context.module
-    emit vector_len(context.symbols)
-    emit vector_len(context.imports)
-    emit vector_len(context.diagnostics)
+    emit "resolver";
+    emit context.module;
+    emit vector_len(context.symbols);
+    emit vector_len(context.imports);
+    emit vector_len(context.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.symbols) {
-        print_symbol(context.symbols[i])
-        set i = i + 1
+    while i < vector_len(context.symbols) {
+        print_symbol(context.symbols[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

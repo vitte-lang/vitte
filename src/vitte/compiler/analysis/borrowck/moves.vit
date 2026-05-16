@@ -14,42 +14,42 @@ const MOVE_MAX_VALUES: u64 = 1048576
 const MOVE_MAX_EVENTS: u64 = 2097152
 
 pick MoveState {
-    Uninitialized
-    Available
-    Moved
-    PartiallyMoved
-    Borrowed
-    Dropped
-    Invalid
+    Uninitialized,
+    Available,
+    Moved,
+    PartiallyMoved,
+    Borrowed,
+    Dropped,
+    Invalid,
 }
 
 pick MoveKind {
-    Init
-    Copy
-    Move
-    PartialMove
-    Borrow
-    Reborrow
-    Drop
-    Use
-    Return
-    Yield
-    Capture
+    Init,
+    Copy,
+    Move,
+    PartialMove,
+    Borrow,
+    Reborrow,
+    Drop,
+    Use,
+    Return,
+    Yield,
+    Capture,
 }
 
 pick MoveErrorKind {
-    None
-    UnknownValue
-    UseAfterMove
-    MoveAfterMove
-    MoveOutOfBorrow
-    MoveOutOfDrop
-    PartialMoveConflict
-    InvalidDrop
-    InvalidCapture
-    InvalidOwnershipTransfer
-    EventLimitExceeded
-    ValueLimitExceeded
+    None,
+    UnknownValue,
+    UseAfterMove,
+    MoveAfterMove,
+    MoveOutOfBorrow,
+    MoveOutOfDrop,
+    PartialMoveConflict,
+    InvalidDrop,
+    InvalidCapture,
+    InvalidOwnershipTransfer,
+    EventLimitExceeded,
+    ValueLimitExceeded,
 }
 
 form MoveSpan {
@@ -99,7 +99,7 @@ proc span_empty() -> MoveSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc value_invalid() -> MoveValue {
@@ -111,7 +111,7 @@ proc value_invalid() -> MoveValue {
         field_path: "",
         copyable: false,
         valid: false
-    }
+    };
 }
 
 proc table_empty() -> MoveTable {
@@ -120,7 +120,7 @@ proc table_empty() -> MoveTable {
         events: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -134,7 +134,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         value: value
-    }
+    };
 }
 
 proc value_create(
@@ -151,7 +151,7 @@ proc value_create(
         field_path: "",
         copyable: copyable,
         valid: true
-    }
+    };
 }
 
 proc field_value_create(
@@ -169,7 +169,7 @@ proc field_value_create(
         field_path: field_path,
         copyable: copyable,
         valid: true
-    }
+    };
 }
 
 proc event_create(
@@ -188,7 +188,7 @@ proc event_create(
         to_region: to_region,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc table_add_diagnostic(
@@ -200,7 +200,7 @@ proc table_add_diagnostic(
         events: table.events,
         diagnostics: table.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc table_add_value(
@@ -216,7 +216,7 @@ proc table_add_value(
                 span_empty(),
                 value.id
             )
-        )
+        );
     }
 
     give MoveTable {
@@ -224,7 +224,7 @@ proc table_add_value(
         events: table.events,
         diagnostics: table.diagnostics,
         valid: table.valid
-    }
+    };
 }
 
 proc table_add_event(
@@ -240,7 +240,7 @@ proc table_add_event(
                 event.span,
                 event.value
             )
-        )
+        );
     }
 
     give MoveTable {
@@ -248,49 +248,49 @@ proc table_add_event(
         events: table.events + [event],
         diagnostics: table.diagnostics,
         valid: table.valid
-    }
+    };
 }
 
 proc find_value(table: MoveTable, id: u64) -> MoveValue {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(table.values) {
+    while i < vector_len(table.values) {
         if table.values[i].id == id {
-            give table.values[i]
+            give table.values[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give value_invalid()
+    give value_invalid();
 }
 
 proc has_value(table: MoveTable, id: u64) -> bool {
-    give find_value(table, id).valid
+    give find_value(table, id).valid;
 }
 
 proc replace_value(
     table: MoveTable,
     value: MoveValue
 ) -> MoveTable {
-    let next: [MoveValue] = []
-    let replaced = false
+    let next: [MoveValue] = [];
+    let replaced = false;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(table.values) {
+    while i < vector_len(table.values) {
         if table.values[i].id == value.id {
-            set next = next + [value]
-            set replaced = true
+            set next = next + [value];
+            set replaced = true;
         } else {
-            set next = next + [table.values[i]]
+            set next = next + [table.values[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if replaced == false {
-        give table_add_value(table, value)
+        give table_add_value(table, value);
     }
 
     give MoveTable {
@@ -298,7 +298,7 @@ proc replace_value(
         events: table.events,
         diagnostics: table.diagnostics,
         valid: table.valid
-    }
+    };
 }
 
 proc value_with_state(
@@ -313,47 +313,47 @@ proc value_with_state(
         field_path: value.field_path,
         copyable: value.copyable,
         valid: value.valid
-    }
+    };
 }
 
 proc can_use_value(value: MoveValue) -> bool {
     if value.valid == false {
-        give false
+        give false;
     }
 
     if value.state == MoveState.Moved {
-        give false
+        give false;
     }
 
     if value.state == MoveState.Dropped {
-        give false
+        give false;
     }
 
     if value.state == MoveState.Uninitialized {
-        give false
+        give false;
     }
 
     if value.state == MoveState.Invalid {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc can_move_value(value: MoveValue) -> bool {
     if can_use_value(value) == false {
-        give false
+        give false;
     }
 
     if value.state == MoveState.Borrowed {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc can_copy_value(value: MoveValue) -> bool {
-    give can_use_value(value) and value.copyable
+    give can_use_value(value) and value.copyable;
 }
 
 proc record_init(
@@ -369,11 +369,11 @@ proc record_init(
         MOVE_INVALID_ID,
         value.owner_region,
         span
-    )
+    );
 
-    let with_value = table_add_value(table, value)
+    let with_value = table_add_value(table, value);
 
-    give table_add_event(with_value, event)
+    give table_add_event(with_value, event);
 }
 
 proc record_use(
@@ -383,25 +383,25 @@ proc record_use(
     region: u64,
     span: MoveSpan
 ) -> MoveTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if value.valid == false {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
-        )
+        );
     }
 
     if can_use_value(value) == false {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.UseAfterMove, "use after move or drop", span, value_id)
-        )
+        );
     }
 
-    let event = event_create(event_id, MoveKind.Use, value_id, region, region, span)
+    let event = event_create(event_id, MoveKind.Use, value_id, region, region, span);
 
-    give table_add_event(table, event)
+    give table_add_event(table, event);
 }
 
 proc record_copy(
@@ -412,25 +412,25 @@ proc record_copy(
     to_region: u64,
     span: MoveSpan
 ) -> MoveTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if value.valid == false {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
-        )
+        );
     }
 
     if can_copy_value(value) == false {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.InvalidOwnershipTransfer, "value is not copyable", span, value_id)
-        )
+        );
     }
 
-    let event = event_create(event_id, MoveKind.Copy, value_id, from_region, to_region, span)
+    let event = event_create(event_id, MoveKind.Copy, value_id, from_region, to_region, span);
 
-    give table_add_event(table, event)
+    give table_add_event(table, event);
 }
 
 proc record_move(
@@ -441,31 +441,31 @@ proc record_move(
     to_region: u64,
     span: MoveSpan
 ) -> MoveTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if value.valid == false {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
-        )
+        );
     }
 
     if can_move_value(value) == false {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.MoveAfterMove, "value cannot be moved", span, value_id)
-        )
+        );
     }
 
     if value.copyable {
-        give record_copy(table, event_id, value_id, from_region, to_region, span)
+        give record_copy(table, event_id, value_id, from_region, to_region, span);
     }
 
-    let moved = value_with_state(value, MoveState.Moved)
-    let replaced = replace_value(table, moved)
-    let event = event_create(event_id, MoveKind.Move, value_id, from_region, to_region, span)
+    let moved = value_with_state(value, MoveState.Moved);
+    let replaced = replace_value(table, moved);
+    let event = event_create(event_id, MoveKind.Move, value_id, from_region, to_region, span);
 
-    give table_add_event(replaced, event)
+    give table_add_event(replaced, event);
 }
 
 proc record_partial_move(
@@ -477,27 +477,27 @@ proc record_partial_move(
     to_region: u64,
     span: MoveSpan
 ) -> MoveTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if value.valid == false {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
-        )
+        );
     }
 
     if can_move_value(value) == false {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.PartialMoveConflict, "partial move conflict", span, value_id)
-        )
+        );
     }
 
-    let partial = value_with_state(value, MoveState.PartiallyMoved)
-    let replaced = replace_value(table, partial)
-    let event = event_create(event_id, MoveKind.PartialMove, value_id, from_region, to_region, span)
+    let partial = value_with_state(value, MoveState.PartiallyMoved);
+    let replaced = replace_value(table, partial);
+    let event = event_create(event_id, MoveKind.PartialMove, value_id, from_region, to_region, span);
 
-    give table_add_event(replaced, event)
+    give table_add_event(replaced, event);
 }
 
 proc record_borrow(
@@ -507,27 +507,27 @@ proc record_borrow(
     region: u64,
     span: MoveSpan
 ) -> MoveTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if value.valid == false {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
-        )
+        );
     }
 
     if can_use_value(value) == false {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.UseAfterMove, "cannot borrow moved value", span, value_id)
-        )
+        );
     }
 
-    let borrowed = value_with_state(value, MoveState.Borrowed)
-    let replaced = replace_value(table, borrowed)
-    let event = event_create(event_id, MoveKind.Borrow, value_id, region, region, span)
+    let borrowed = value_with_state(value, MoveState.Borrowed);
+    let replaced = replace_value(table, borrowed);
+    let event = event_create(event_id, MoveKind.Borrow, value_id, region, region, span);
 
-    give table_add_event(replaced, event)
+    give table_add_event(replaced, event);
 }
 
 proc record_drop(
@@ -537,35 +537,35 @@ proc record_drop(
     region: u64,
     span: MoveSpan
 ) -> MoveTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if value.valid == false {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.UnknownValue, "unknown value", span, value_id)
-        )
+        );
     }
 
     if value.state == MoveState.Dropped {
         give table_add_diagnostic(
             table,
             diagnostic_create(MoveErrorKind.InvalidDrop, "value already dropped", span, value_id)
-        )
+        );
     }
 
-    let dropped = value_with_state(value, MoveState.Dropped)
-    let replaced = replace_value(table, dropped)
-    let event = event_create(event_id, MoveKind.Drop, value_id, region, MOVE_INVALID_ID, span)
+    let dropped = value_with_state(value, MoveState.Dropped);
+    let replaced = replace_value(table, dropped);
+    let event = event_create(event_id, MoveKind.Drop, value_id, region, MOVE_INVALID_ID, span);
 
-    give table_add_event(replaced, event)
+    give table_add_event(replaced, event);
 }
 
 proc validate_moves(table: MoveTable) -> MoveTable {
-    let current = table
-    let i: u64 = 0
+    let current = table;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.values) {
-        let value = current.values[i]
+    while i < vector_len(current.values) {
+        let value = current.values[i];
 
         if value.valid == false {
             give table_add_diagnostic(
@@ -576,52 +576,52 @@ proc validate_moves(table: MoveTable) -> MoveTable {
                     span_empty(),
                     value.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc move_error_count(table: MoveTable) -> u64 {
-    give vector_len(table.diagnostics)
+    give vector_len(table.diagnostics);
 }
 
 proc moves_are_valid(table: MoveTable) -> bool {
-    give table.valid and vector_len(table.diagnostics) == 0
+    give table.valid and vector_len(table.diagnostics) == 0;
 }
 
 proc print_move_value(value: MoveValue) {
-    emit "move value"
-    emit value.id
-    emit value.name
-    emit value.field_path
-    emit value.valid
+    emit "move value";
+    emit value.id;
+    emit value.name;
+    emit value.field_path;
+    emit value.valid;
 }
 
 proc print_move_event(event: MoveEvent) {
-    emit "move event"
-    emit event.id
-    emit event.value
-    emit event.valid
+    emit "move event";
+    emit event.id;
+    emit event.value;
+    emit event.valid;
 }
 
 proc print_move_table(table: MoveTable) {
-    emit "move table"
-    emit vector_len(table.values)
-    emit vector_len(table.events)
-    emit vector_len(table.diagnostics)
+    emit "move table";
+    emit vector_len(table.values);
+    emit vector_len(table.events);
+    emit vector_len(table.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(table.values) {
-        print_move_value(table.values[i])
-        set i = i + 1
+    while i < vector_len(table.values) {
+        print_move_value(table.values[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

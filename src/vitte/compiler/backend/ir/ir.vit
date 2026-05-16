@@ -21,80 +21,80 @@ const IR_MAX_TYPES: u64 = 1048576
 const IR_MAX_DIAGNOSTICS: u64 = 1048576
 
 pick IrTargetArch {
-    Unknown
-    Native
-    X86_64
-    AArch64
-    RiscV64
-    ARM
-    I386
-    Wasm32
+    Unknown,
+    Native,
+    X86_64,
+    AArch64,
+    RiscV64,
+    ARM,
+    I386,
+    Wasm32,
 }
 
 pick IrTargetOs {
-    Unknown
-    Freestanding
-    Linux
-    Darwin
-    Windows
-    VitteOS
-    Uefi
-    BareMetal
+    Unknown,
+    Freestanding,
+    Linux,
+    Darwin,
+    Windows,
+    VitteOS,
+    Uefi,
+    BareMetal,
 }
 
 pick IrModuleKind {
-    Library
-    Binary
-    Kernel
-    Driver
-    Runtime
-    Test
-    Bench
+    Library,
+    Binary,
+    Kernel,
+    Driver,
+    Runtime,
+    Test,
+    Bench,
 }
 
 pick IrLinkage {
-    Private
-    Internal
-    External
-    Weak
-    Exported
-    Imported
+    Private,
+    Internal,
+    External,
+    Weak,
+    Exported,
+    Imported,
 }
 
 pick IrVisibility {
-    Private
-    Module
-    Package
-    Public
-    Exported
+    Private,
+    Module,
+    Package,
+    Public,
+    Exported,
 }
 
 pick IrUnitState {
-    Created
-    Built
-    Verified
-    Optimized
-    Lowered
-    Emitted
-    Invalid
+    Created,
+    Built,
+    Verified,
+    Optimized,
+    Lowered,
+    Emitted,
+    Invalid,
 }
 
 pick IrErrorKind {
-    None
-    InvalidModule
-    InvalidFunction
-    InvalidGlobal
-    InvalidType
-    DuplicateModule
-    DuplicateFunction
-    DuplicateGlobal
-    DuplicateType
-    MissingEntry
-    FunctionLimitExceeded
-    GlobalLimitExceeded
-    TypeLimitExceeded
-    DiagnosticLimitExceeded
-    InternalFailure
+    None,
+    InvalidModule,
+    InvalidFunction,
+    InvalidGlobal,
+    InvalidType,
+    DuplicateModule,
+    DuplicateFunction,
+    DuplicateGlobal,
+    DuplicateType,
+    MissingEntry,
+    FunctionLimitExceeded,
+    GlobalLimitExceeded,
+    TypeLimitExceeded,
+    DiagnosticLimitExceeded,
+    InternalFailure,
 }
 
 form IrSpan {
@@ -180,7 +180,7 @@ proc span_empty() -> IrSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc target_unknown() -> IrTarget {
@@ -191,7 +191,7 @@ proc target_unknown() -> IrTarget {
         pointer_width: 0,
         endian: "unknown",
         valid: false
-    }
+    };
 }
 
 proc target_create(
@@ -208,7 +208,7 @@ proc target_create(
         pointer_width: pointer_width,
         endian: endian,
         valid: arch != IrTargetArch.Unknown and os != IrTargetOs.Unknown
-    }
+    };
 }
 
 proc target_native_x86_64_linux() -> IrTarget {
@@ -218,7 +218,7 @@ proc target_native_x86_64_linux() -> IrTarget {
         "x86_64-vitte-linux",
         64,
         "little"
-    )
+    );
 }
 
 proc target_aarch64_vitteos() -> IrTarget {
@@ -228,7 +228,7 @@ proc target_aarch64_vitteos() -> IrTarget {
         "aarch64-vitte-vitteos",
         64,
         "little"
-    )
+    );
 }
 
 proc type_invalid() -> IrType {
@@ -238,7 +238,7 @@ proc type_invalid() -> IrType {
         size: 0,
         align: 0,
         valid: false
-    }
+    };
 }
 
 proc type_void() -> IrType {
@@ -248,7 +248,7 @@ proc type_void() -> IrType {
         size: 0,
         align: 1,
         valid: true
-    }
+    };
 }
 
 proc type_bool() -> IrType {
@@ -258,7 +258,7 @@ proc type_bool() -> IrType {
         size: 1,
         align: 1,
         valid: true
-    }
+    };
 }
 
 proc type_i64() -> IrType {
@@ -268,7 +268,7 @@ proc type_i64() -> IrType {
         size: 8,
         align: 8,
         valid: true
-    }
+    };
 }
 
 proc type_ptr() -> IrType {
@@ -278,7 +278,7 @@ proc type_ptr() -> IrType {
         size: 8,
         align: 8,
         valid: true
-    }
+    };
 }
 
 proc type_create(
@@ -293,7 +293,7 @@ proc type_create(
         size: size,
         align: align,
         valid: name != "" and align > 0
-    }
+    };
 }
 
 proc global_create(
@@ -316,7 +316,7 @@ proc global_create(
         initializer: initializer,
         span: span,
         valid: name != "" and ty.valid
-    }
+    };
 }
 
 proc function_ref_create(
@@ -337,7 +337,7 @@ proc function_ref_create(
         entry: entry,
         span: span,
         valid: name != "" and module != ""
-    }
+    };
 }
 
 proc module_create(
@@ -360,7 +360,7 @@ proc module_create(
         state: IrUnitState.Created,
         span: span,
         valid: name != "" and target.valid
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -374,7 +374,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         entity: entity
-    }
+    };
 }
 
 proc unit_empty(target: IrTarget) -> IrUnit {
@@ -385,7 +385,7 @@ proc unit_empty(target: IrTarget) -> IrUnit {
         entry_function: IR_INVALID_ID,
         state: IrUnitState.Created,
         valid: target.valid
-    }
+    };
 }
 
 proc unit_add_diagnostic(
@@ -400,7 +400,7 @@ proc unit_add_diagnostic(
             entry_function: unit.entry_function,
             state: IrUnitState.Invalid,
             valid: false
-        }
+        };
     }
 
     give IrUnit {
@@ -410,7 +410,7 @@ proc unit_add_diagnostic(
         entry_function: unit.entry_function,
         state: IrUnitState.Invalid,
         valid: false
-    }
+    };
 }
 
 proc module_with_state(
@@ -429,7 +429,7 @@ proc module_with_state(
         state: state,
         span: module.span,
         valid: module.valid
-    }
+    };
 }
 
 proc module_add_type(
@@ -437,11 +437,11 @@ proc module_add_type(
     ty: IrType
 ) -> IrModule {
     if vector_len(module.types) >= IR_MAX_TYPES {
-        give module_with_state(module, IrUnitState.Invalid)
+        give module_with_state(module, IrUnitState.Invalid);
     }
 
     if find_type_by_name(module, ty.name).valid {
-        give module_with_state(module, IrUnitState.Invalid)
+        give module_with_state(module, IrUnitState.Invalid);
     }
 
     give IrModule {
@@ -456,19 +456,19 @@ proc module_add_type(
         state: module.state,
         span: module.span,
         valid: module.valid and ty.valid
-    }
+    };
 }
 
 proc module_add_global(
     module: IrModule,
-    global: IrGlobal
+    is_global: IrGlobal
 ) -> IrModule {
     if vector_len(module.globals) >= IR_MAX_GLOBALS {
-        give module_with_state(module, IrUnitState.Invalid)
+        give module_with_state(module, IrUnitState.Invalid);
     }
 
-    if find_global_by_name(module, global.name).valid {
-        give module_with_state(module, IrUnitState.Invalid)
+    if find_global_by_name(module, is_global.name).valid {
+        give module_with_state(module, IrUnitState.Invalid);
     }
 
     give IrModule {
@@ -478,12 +478,12 @@ proc module_add_global(
         kind: module.kind,
         target: module.target,
         types: module.types,
-        globals: module.globals + [global],
+        globals: module.globals + [is_global],
         functions: module.functions,
         state: module.state,
         span: module.span,
-        valid: module.valid and global.valid
-    }
+        valid: module.valid and is_global.valid
+    };
 }
 
 proc module_add_function(
@@ -491,11 +491,11 @@ proc module_add_function(
     function: IrFunctionRef
 ) -> IrModule {
     if vector_len(module.functions) >= IR_MAX_FUNCTIONS {
-        give module_with_state(module, IrUnitState.Invalid)
+        give module_with_state(module, IrUnitState.Invalid);
     }
 
     if find_function_by_name(module, function.name).valid {
-        give module_with_state(module, IrUnitState.Invalid)
+        give module_with_state(module, IrUnitState.Invalid);
     }
 
     give IrModule {
@@ -510,7 +510,7 @@ proc module_add_function(
         state: module.state,
         span: module.span,
         valid: module.valid and function.valid
-    }
+    };
 }
 
 proc unit_add_module(
@@ -526,7 +526,7 @@ proc unit_add_module(
                 module.span,
                 module.id
             )
-        )
+        );
     }
 
     if find_module_by_name(unit, module.name).valid {
@@ -538,7 +538,7 @@ proc unit_add_module(
                 module.span,
                 module.id
             )
-        )
+        );
     }
 
     give IrUnit {
@@ -548,7 +548,7 @@ proc unit_add_module(
         entry_function: unit.entry_function,
         state: unit.state,
         valid: unit.valid and module.valid
-    }
+    };
 }
 
 proc unit_set_entry(
@@ -564,7 +564,7 @@ proc unit_set_entry(
                 span_empty(),
                 function_id
             )
-        )
+        );
     }
 
     give IrUnit {
@@ -574,21 +574,21 @@ proc unit_set_entry(
         entry_function: function_id,
         state: unit.state,
         valid: unit.valid
-    }
+    };
 }
 
 proc find_module_by_name(
     unit: IrUnit,
     name: string
 ) -> IrModule {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(unit.modules) {
+    while i < vector_len(unit.modules) {
         if unit.modules[i].name == name {
-            give unit.modules[i]
+            give unit.modules[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give IrModule {
@@ -603,38 +603,38 @@ proc find_module_by_name(
         state: IrUnitState.Invalid,
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc find_type_by_name(
     module: IrModule,
     name: string
 ) -> IrType {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(module.types) {
+    while i < vector_len(module.types) {
         if module.types[i].name == name {
-            give module.types[i]
+            give module.types[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give type_invalid()
+    give type_invalid();
 }
 
 proc find_global_by_name(
     module: IrModule,
     name: string
 ) -> IrGlobal {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(module.globals) {
+    while i < vector_len(module.globals) {
         if module.globals[i].name == name {
-            give module.globals[i]
+            give module.globals[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give IrGlobal {
@@ -647,21 +647,21 @@ proc find_global_by_name(
         initializer: "",
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc find_function_by_name(
     module: IrModule,
     name: string
 ) -> IrFunctionRef {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(module.functions) {
+    while i < vector_len(module.functions) {
         if module.functions[i].name == name {
-            give module.functions[i]
+            give module.functions[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give IrFunctionRef {
@@ -673,28 +673,28 @@ proc find_function_by_name(
         entry: false,
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc find_function_global(
     unit: IrUnit,
     id: u64
 ) -> IrFunctionRef {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(unit.modules) {
-        let module = unit.modules[i]
-        let j: u64 = 0
+    while i < vector_len(unit.modules) {
+        let module = unit.modules[i];
+        let j: u64 = 0;
 
-        loop j < vector_len(module.functions) {
+        while j < vector_len(module.functions) {
             if module.functions[j].id == id {
-                give module.functions[j]
+                give module.functions[j];
             }
 
-            set j = j + 1
+            set j = j + 1;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give IrFunctionRef {
@@ -706,30 +706,30 @@ proc find_function_global(
         entry: false,
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc replace_module(
     unit: IrUnit,
     module: IrModule
 ) -> IrUnit {
-    let next: [IrModule] = []
-    let replaced = false
-    let i: u64 = 0
+    let next: [IrModule] = [];
+    let replaced = false;
+    let i: u64 = 0;
 
-    loop i < vector_len(unit.modules) {
+    while i < vector_len(unit.modules) {
         if unit.modules[i].id == module.id {
-            set next = next + [module]
-            set replaced = true
+            set next = next + [module];
+            set replaced = true;
         } else {
-            set next = next + [unit.modules[i]]
+            set next = next + [unit.modules[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if replaced == false {
-        give unit_add_module(unit, module)
+        give unit_add_module(unit, module);
     }
 
     give IrUnit {
@@ -739,7 +739,7 @@ proc replace_module(
         entry_function: unit.entry_function,
         state: unit.state,
         valid: unit.valid and module.valid
-    }
+    };
 }
 
 proc unit_with_state(
@@ -753,38 +753,38 @@ proc unit_with_state(
         entry_function: unit.entry_function,
         state: state,
         valid: unit.valid
-    }
+    };
 }
 
 proc verify_module(module: IrModule) -> IrModule {
     if module.valid == false {
-        give module_with_state(module, IrUnitState.Invalid)
+        give module_with_state(module, IrUnitState.Invalid);
     }
 
     if module.target.valid == false {
-        give module_with_state(module, IrUnitState.Invalid)
+        give module_with_state(module, IrUnitState.Invalid);
     }
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(module.functions) {
+    while i < vector_len(module.functions) {
         if module.functions[i].valid == false {
-            give module_with_state(module, IrUnitState.Invalid)
+            give module_with_state(module, IrUnitState.Invalid);
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give module_with_state(module, IrUnitState.Verified)
+    give module_with_state(module, IrUnitState.Verified);
 }
 
 proc verify_unit(unit: IrUnit) -> IrUnit {
-    let current = unit
-    let i: u64 = 0
+    let current = unit;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.modules) {
-        let verified = verify_module(current.modules[i])
-        set current = replace_module(current, verified)
+    while i < vector_len(current.modules) {
+        let verified = verify_module(current.modules[i]);
+        set current = replace_module(current, verified);
 
         if verified.valid == false {
             give unit_add_diagnostic(
@@ -795,10 +795,10 @@ proc verify_unit(unit: IrUnit) -> IrUnit {
                     verified.span,
                     verified.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if current.entry_function == IR_INVALID_ID {
@@ -810,380 +810,380 @@ proc verify_unit(unit: IrUnit) -> IrUnit {
                 span_empty(),
                 IR_INVALID_ID
             )
-        )
+        );
     }
 
-    give unit_with_state(current, IrUnitState.Verified)
+    give unit_with_state(current, IrUnitState.Verified);
 }
 
 proc optimize_module(module: IrModule) -> IrModule {
     if module.state != IrUnitState.Verified {
-        give module
+        give module;
     }
 
-    give module_with_state(module, IrUnitState.Optimized)
+    give module_with_state(module, IrUnitState.Optimized);
 }
 
 proc optimize_unit(unit: IrUnit) -> IrUnit {
-    let current = unit_with_state(unit, IrUnitState.Optimized)
-    let i: u64 = 0
+    let current = unit_with_state(unit, IrUnitState.Optimized);
+    let i: u64 = 0;
 
-    loop i < vector_len(current.modules) {
-        set current = replace_module(current, optimize_module(current.modules[i]))
-        set i = i + 1
+    while i < vector_len(current.modules) {
+        set current = replace_module(current, optimize_module(current.modules[i]));
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc lower_module(module: IrModule) -> IrModule {
     if module.state != IrUnitState.Optimized and module.state != IrUnitState.Verified {
-        give module
+        give module;
     }
 
-    give module_with_state(module, IrUnitState.Lowered)
+    give module_with_state(module, IrUnitState.Lowered);
 }
 
 proc lower_unit(unit: IrUnit) -> IrUnit {
-    let current = unit_with_state(unit, IrUnitState.Lowered)
-    let i: u64 = 0
+    let current = unit_with_state(unit, IrUnitState.Lowered);
+    let i: u64 = 0;
 
-    loop i < vector_len(current.modules) {
-        set current = replace_module(current, lower_module(current.modules[i]))
-        set i = i + 1
+    while i < vector_len(current.modules) {
+        set current = replace_module(current, lower_module(current.modules[i]));
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc finalize_unit(unit: IrUnit) -> IrUnit {
-    let verified = verify_unit(unit)
+    let verified = verify_unit(unit);
 
     if verified.valid == false {
-        give verified
+        give verified;
     }
 
-    let optimized = optimize_unit(verified)
-    let lowered = lower_unit(optimized)
+    let optimized = optimize_unit(verified);
+    let lowered = lower_unit(optimized);
 
-    give lowered
+    give lowered;
 }
 
 proc unit_module_count(unit: IrUnit) -> u64 {
-    give vector_len(unit.modules)
+    give vector_len(unit.modules);
 }
 
 proc unit_function_count(unit: IrUnit) -> u64 {
-    let count: u64 = 0
-    let i: u64 = 0
+    let count: u64 = 0;
+    let i: u64 = 0;
 
-    loop i < vector_len(unit.modules) {
-        set count = count + vector_len(unit.modules[i].functions)
-        set i = i + 1
+    while i < vector_len(unit.modules) {
+        set count = count + vector_len(unit.modules[i].functions);
+        set i = i + 1;
     }
 
-    give count
+    give count;
 }
 
 proc unit_global_count(unit: IrUnit) -> u64 {
-    let count: u64 = 0
-    let i: u64 = 0
+    let count: u64 = 0;
+    let i: u64 = 0;
 
-    loop i < vector_len(unit.modules) {
-        set count = count + vector_len(unit.modules[i].globals)
-        set i = i + 1
+    while i < vector_len(unit.modules) {
+        set count = count + vector_len(unit.modules[i].globals);
+        set i = i + 1;
     }
 
-    give count
+    give count;
 }
 
 proc unit_type_count(unit: IrUnit) -> u64 {
-    let count: u64 = 0
-    let i: u64 = 0
+    let count: u64 = 0;
+    let i: u64 = 0;
 
-    loop i < vector_len(unit.modules) {
-        set count = count + vector_len(unit.modules[i].types)
-        set i = i + 1
+    while i < vector_len(unit.modules) {
+        set count = count + vector_len(unit.modules[i].types);
+        set i = i + 1;
     }
 
-    give count
+    give count;
 }
 
 proc unit_error_count(unit: IrUnit) -> u64 {
-    give vector_len(unit.diagnostics)
+    give vector_len(unit.diagnostics);
 }
 
 proc unit_is_valid(unit: IrUnit) -> bool {
-    give unit.valid and vector_len(unit.diagnostics) == 0
+    give unit.valid and vector_len(unit.diagnostics) == 0;
 }
 
 proc arch_name(arch: IrTargetArch) -> string {
     if arch == IrTargetArch.Native {
-        give "native"
+        give "native";
     }
 
     if arch == IrTargetArch.X86_64 {
-        give "x86_64"
+        give "x86_64";
     }
 
     if arch == IrTargetArch.AArch64 {
-        give "aarch64"
+        give "aarch64";
     }
 
     if arch == IrTargetArch.RiscV64 {
-        give "riscv64"
+        give "riscv64";
     }
 
     if arch == IrTargetArch.ARM {
-        give "arm"
+        give "arm";
     }
 
     if arch == IrTargetArch.I386 {
-        give "i386"
+        give "i386";
     }
 
     if arch == IrTargetArch.Wasm32 {
-        give "wasm32"
+        give "wasm32";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc os_name(os: IrTargetOs) -> string {
     if os == IrTargetOs.Freestanding {
-        give "freestanding"
+        give "freestanding";
     }
 
     if os == IrTargetOs.Linux {
-        give "linux"
+        give "linux";
     }
 
     if os == IrTargetOs.Darwin {
-        give "darwin"
+        give "darwin";
     }
 
     if os == IrTargetOs.Windows {
-        give "windows"
+        give "windows";
     }
 
     if os == IrTargetOs.VitteOS {
-        give "vitteos"
+        give "vitteos";
     }
 
     if os == IrTargetOs.Uefi {
-        give "uefi"
+        give "uefi";
     }
 
     if os == IrTargetOs.BareMetal {
-        give "baremetal"
+        give "baremetal";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc module_kind_name(kind: IrModuleKind) -> string {
     if kind == IrModuleKind.Library {
-        give "library"
+        give "library";
     }
 
     if kind == IrModuleKind.Binary {
-        give "binary"
+        give "binary";
     }
 
     if kind == IrModuleKind.Kernel {
-        give "kernel"
+        give "kernel";
     }
 
     if kind == IrModuleKind.Driver {
-        give "driver"
+        give "driver";
     }
 
     if kind == IrModuleKind.Runtime {
-        give "runtime"
+        give "runtime";
     }
 
     if kind == IrModuleKind.Test {
-        give "test"
+        give "test";
     }
 
     if kind == IrModuleKind.Bench {
-        give "bench"
+        give "bench";
     }
 
-    give "library"
+    give "library";
 }
 
 proc linkage_name(linkage: IrLinkage) -> string {
     if linkage == IrLinkage.Private {
-        give "private"
+        give "private";
     }
 
     if linkage == IrLinkage.Internal {
-        give "internal"
+        give "internal";
     }
 
     if linkage == IrLinkage.External {
-        give "external"
+        give "external";
     }
 
     if linkage == IrLinkage.Weak {
-        give "weak"
+        give "weak";
     }
 
     if linkage == IrLinkage.Exported {
-        give "exported"
+        give "exported";
     }
 
     if linkage == IrLinkage.Imported {
-        give "imported"
+        give "imported";
     }
 
-    give "private"
+    give "private";
 }
 
 proc visibility_name(visibility: IrVisibility) -> string {
     if visibility == IrVisibility.Private {
-        give "private"
+        give "private";
     }
 
     if visibility == IrVisibility.Module {
-        give "module"
+        give "module";
     }
 
     if visibility == IrVisibility.Package {
-        give "package"
+        give "package";
     }
 
     if visibility == IrVisibility.Public {
-        give "public"
+        give "public";
     }
 
     if visibility == IrVisibility.Exported {
-        give "exported"
+        give "exported";
     }
 
-    give "private"
+    give "private";
 }
 
 proc state_name(state: IrUnitState) -> string {
     if state == IrUnitState.Created {
-        give "created"
+        give "created";
     }
 
     if state == IrUnitState.Built {
-        give "built"
+        give "built";
     }
 
     if state == IrUnitState.Verified {
-        give "verified"
+        give "verified";
     }
 
     if state == IrUnitState.Optimized {
-        give "optimized"
+        give "optimized";
     }
 
     if state == IrUnitState.Lowered {
-        give "lowered"
+        give "lowered";
     }
 
     if state == IrUnitState.Emitted {
-        give "emitted"
+        give "emitted";
     }
 
     if state == IrUnitState.Invalid {
-        give "invalid"
+        give "invalid";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_target(target: IrTarget) {
-    emit "ir target"
-    emit arch_name(target.arch)
-    emit os_name(target.os)
-    emit target.triple
-    emit target.pointer_width
-    emit target.endian
+    emit "ir target";
+    emit arch_name(target.arch);
+    emit os_name(target.os);
+    emit target.triple;
+    emit target.pointer_width;
+    emit target.endian;
 }
 
 proc print_type(ty: IrType) {
-    emit "ir type"
-    emit ty.id
-    emit ty.name
-    emit ty.size
-    emit ty.align
+    emit "ir type";
+    emit ty.id;
+    emit ty.name;
+    emit ty.size;
+    emit ty.align;
 }
 
-proc print_global(global: IrGlobal) {
-    emit "ir global"
-    emit global.id
-    emit global.name
-    print_type(global.ty)
-    emit linkage_name(global.linkage)
-    emit visibility_name(global.visibility)
-    emit global.mutable
+proc print_global(is_global: IrGlobal) {
+    emit "ir is_global";
+    emit is_global.id;
+    emit is_global.name;
+    print_type(is_global.ty);
+    emit linkage_name(is_global.linkage);
+    emit visibility_name(is_global.visibility);
+    emit is_global.mutable;
 }
 
 proc print_function_ref(function: IrFunctionRef) {
-    emit "ir function"
-    emit function.id
-    emit function.module
-    emit function.name
-    emit linkage_name(function.linkage)
-    emit visibility_name(function.visibility)
-    emit function.entry
+    emit "ir function";
+    emit function.id;
+    emit function.module;
+    emit function.name;
+    emit linkage_name(function.linkage);
+    emit visibility_name(function.visibility);
+    emit function.entry;
 }
 
 proc print_module(module: IrModule) {
-    emit "ir module"
-    emit module.id
-    emit module.name
-    emit module.path
-    emit module_kind_name(module.kind)
-    emit state_name(module.state)
-    print_target(module.target)
+    emit "ir module";
+    emit module.id;
+    emit module.name;
+    emit module.path;
+    emit module_kind_name(module.kind);
+    emit state_name(module.state);
+    print_target(module.target);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(module.types) {
-        print_type(module.types[i])
-        set i = i + 1
+    while i < vector_len(module.types) {
+        print_type(module.types[i]);
+        set i = i + 1;
     }
 
-    let j: u64 = 0
+    let j: u64 = 0;
 
-    loop j < vector_len(module.globals) {
-        print_global(module.globals[j])
-        set j = j + 1
+    while j < vector_len(module.globals) {
+        print_global(module.globals[j]);
+        set j = j + 1;
     }
 
-    let k: u64 = 0
+    let k: u64 = 0;
 
-    loop k < vector_len(module.functions) {
-        print_function_ref(module.functions[k])
-        set k = k + 1
+    while k < vector_len(module.functions) {
+        print_function_ref(module.functions[k]);
+        set k = k + 1;
     }
 }
 
 proc print_unit(unit: IrUnit) {
-    emit "ir unit"
-    print_target(unit.target)
-    emit state_name(unit.state)
-    emit unit.entry_function
-    emit unit_module_count(unit)
-    emit unit_function_count(unit)
-    emit unit_global_count(unit)
-    emit unit_type_count(unit)
-    emit unit_error_count(unit)
+    emit "ir unit";
+    print_target(unit.target);
+    emit state_name(unit.state);
+    emit unit.entry_function;
+    emit unit_module_count(unit);
+    emit unit_function_count(unit);
+    emit unit_global_count(unit);
+    emit unit_type_count(unit);
+    emit unit_error_count(unit);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(unit.modules) {
-        print_module(unit.modules[i])
-        set i = i + 1
+    while i < vector_len(unit.modules) {
+        print_module(unit.modules[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

@@ -1,0 +1,39 @@
+space vitte/compiler/backend
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run }
+use vitte/compiler/middle/lower/mir_to_ir.{ lower_analysis_to_ir }
+use vitte/compiler/backend/ir/ir.{ IrUnit, verify_unit, unit_is_valid }
+use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_x86_64 }
+use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
+use vitte/compiler/backend/link/linker.{ link_ir_unit }
+
+form BackendPipelineResult {
+  frontend: FrontendOutput
+  analysis: AnalysisOutput
+  ir_unit: IrUnit
+  codegen: CodegenResult
+  artifact: LinkArtifact
+  valid: bool
+}
+
+proc compile_to_valid_ir(source_path: string, source_text: string) -> BackendPipelineResult {
+  let fe: FrontendOutput = frontend_run(source_path, source_text);
+  let an: AnalysisOutput = analysis_run(fe);
+
+  # IR verification mandatory before codegen.
+  let ir0: IrUnit = lower_analysis_to_ir(an);
+  let ir1: IrUnit = verify_unit(ir0);
+
+  let cg: CodegenResult = run_codegen_x86_64();
+  let artifact: LinkArtifact = link_ir_unit(ir1, "build/a.out");
+
+  give BackendPipelineResult {
+    frontend: fe,
+    analysis: an,
+    ir_unit: ir1,
+    codegen: cg,
+    artifact: artifact,
+    valid: unit_is_valid(ir1) and cg.valid and artifact_is_valid(artifact)
+  };
+}

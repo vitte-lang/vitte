@@ -15,63 +15,63 @@ const OWNERSHIP_MAX_OWNERS: u64 = 1048576
 const OWNERSHIP_MAX_TRANSFERS: u64 = 2097152
 
 pick OwnershipState {
-    Unowned
-    Owned
-    Shared
-    MutablyBorrowed
-    ImmutablyBorrowed
-    Moved
-    Dropped
-    Escaped
-    Invalid
+    Unowned,
+    Owned,
+    Shared,
+    MutablyBorrowed,
+    ImmutablyBorrowed,
+    Moved,
+    Dropped,
+    Escaped,
+    Invalid,
 }
 
 pick OwnerKind {
-    Local
-    Parameter
-    Field
-    Temporary
-    ReturnSlot
-    ClosureCapture
-    Static
-    Global
-    Heap
-    Unknown
+    Local,
+    Parameter,
+    Field,
+    Temporary,
+    ReturnSlot,
+    ClosureCapture,
+    Static,
+    Global,
+    Heap,
+    Unknown,
 }
 
 pick TransferKind {
-    Initialize
-    Assign
-    Move
-    Copy
-    BorrowShared
-    BorrowMutable
-    Return
-    Yield
-    Capture
-    Drop
-    Escape
+    Initialize,
+    Assign,
+    Move,
+    Copy,
+    BorrowShared,
+    BorrowMutable,
+    Return,
+    Yield,
+    Capture,
+    Drop,
+    Escape,
 }
 
 pick OwnershipErrorKind {
-    None
-    UnknownOwner
-    UnknownValue
-    DuplicateOwner
-    DuplicateValue
-    InvalidOwner
-    InvalidState
-    InvalidTransfer
-    MoveFromBorrowed
-    MoveFromDropped
-    UseAfterMove
-    UseAfterDrop
-    MutableBorrowConflict
-    SharedBorrowConflict
-    OwnershipEscapes
-    TransferLimitExceeded
-    ValueLimitExceeded
-    OwnerLimitExceeded
+    None,
+    UnknownOwner,
+    UnknownValue,
+    DuplicateOwner,
+    DuplicateValue,
+    InvalidOwner,
+    InvalidState,
+    InvalidTransfer,
+    MoveFromBorrowed,
+    MoveFromDropped,
+    UseAfterMove,
+    UseAfterDrop,
+    MutableBorrowConflict,
+    SharedBorrowConflict,
+    OwnershipEscapes,
+    TransferLimitExceeded,
+    ValueLimitExceeded,
+    OwnerLimitExceeded,
 }
 
 form OwnershipSpan {
@@ -133,7 +133,7 @@ proc span_empty() -> OwnershipSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc owner_invalid() -> Owner {
@@ -144,7 +144,7 @@ proc owner_invalid() -> Owner {
         region: OWNERSHIP_INVALID_ID,
         mutable: false,
         valid: false
-    }
+    };
 }
 
 proc value_invalid() -> OwnedValue {
@@ -157,7 +157,7 @@ proc value_invalid() -> OwnedValue {
         movable: false,
         field_path: "",
         valid: false
-    }
+    };
 }
 
 proc table_empty() -> OwnershipTable {
@@ -167,7 +167,7 @@ proc table_empty() -> OwnershipTable {
         transfers: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc owner_create(
@@ -184,7 +184,7 @@ proc owner_create(
         region: region,
         mutable: mutable,
         valid: true
-    }
+    };
 }
 
 proc value_create(
@@ -203,7 +203,7 @@ proc value_create(
         movable: movable,
         field_path: "",
         valid: true
-    }
+    };
 }
 
 proc field_value_create(
@@ -223,7 +223,7 @@ proc field_value_create(
         movable: movable,
         field_path: field_path,
         valid: true
-    }
+    };
 }
 
 proc transfer_create(
@@ -242,7 +242,7 @@ proc transfer_create(
         to_owner: to_owner,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -258,7 +258,7 @@ proc diagnostic_create(
         span: span,
         value: value,
         owner: owner
-    }
+    };
 }
 
 proc table_add_diagnostic(
@@ -271,7 +271,7 @@ proc table_add_diagnostic(
         transfers: table.transfers,
         diagnostics: table.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc table_add_owner(
@@ -288,7 +288,7 @@ proc table_add_owner(
                 OWNERSHIP_INVALID_ID,
                 owner.id
             )
-        )
+        );
     }
 
     if has_owner(table, owner.id) {
@@ -301,7 +301,7 @@ proc table_add_owner(
                 OWNERSHIP_INVALID_ID,
                 owner.id
             )
-        )
+        );
     }
 
     give OwnershipTable {
@@ -310,7 +310,7 @@ proc table_add_owner(
         transfers: table.transfers,
         diagnostics: table.diagnostics,
         valid: table.valid
-    }
+    };
 }
 
 proc table_add_value(
@@ -327,7 +327,7 @@ proc table_add_value(
                 value.id,
                 value.owner
             )
-        )
+        );
     }
 
     if has_value(table, value.id) {
@@ -340,7 +340,7 @@ proc table_add_value(
                 value.id,
                 value.owner
             )
-        )
+        );
     }
 
     if has_owner(table, value.owner) == false {
@@ -353,7 +353,7 @@ proc table_add_value(
                 value.id,
                 value.owner
             )
-        )
+        );
     }
 
     give OwnershipTable {
@@ -362,7 +362,7 @@ proc table_add_value(
         transfers: table.transfers,
         diagnostics: table.diagnostics,
         valid: table.valid
-    }
+    };
 }
 
 proc table_add_transfer(
@@ -379,7 +379,7 @@ proc table_add_transfer(
                 transfer.value,
                 transfer.to_owner
             )
-        )
+        );
     }
 
     give OwnershipTable {
@@ -388,43 +388,43 @@ proc table_add_transfer(
         transfers: table.transfers + [transfer],
         diagnostics: table.diagnostics,
         valid: table.valid
-    }
+    };
 }
 
 proc find_owner(table: OwnershipTable, id: u64) -> Owner {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(table.owners) {
+    while i < vector_len(table.owners) {
         if table.owners[i].id == id {
-            give table.owners[i]
+            give table.owners[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give owner_invalid()
+    give owner_invalid();
 }
 
 proc find_value(table: OwnershipTable, id: u64) -> OwnedValue {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(table.values) {
+    while i < vector_len(table.values) {
         if table.values[i].id == id {
-            give table.values[i]
+            give table.values[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give value_invalid()
+    give value_invalid();
 }
 
 proc has_owner(table: OwnershipTable, id: u64) -> bool {
-    give find_owner(table, id).valid
+    give find_owner(table, id).valid;
 }
 
 proc has_value(table: OwnershipTable, id: u64) -> bool {
-    give find_value(table, id).valid
+    give find_value(table, id).valid;
 }
 
 proc value_with_owner(
@@ -440,7 +440,7 @@ proc value_with_owner(
         movable: value.movable,
         field_path: value.field_path,
         valid: value.valid
-    }
+    };
 }
 
 proc value_with_state(
@@ -456,31 +456,31 @@ proc value_with_state(
         movable: value.movable,
         field_path: value.field_path,
         valid: value.valid
-    }
+    };
 }
 
 proc replace_value(
     table: OwnershipTable,
     value: OwnedValue
 ) -> OwnershipTable {
-    let next: [OwnedValue] = []
-    let replaced = false
+    let next: [OwnedValue] = [];
+    let replaced = false;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(table.values) {
+    while i < vector_len(table.values) {
         if table.values[i].id == value.id {
-            set next = next + [value]
-            set replaced = true
+            set next = next + [value];
+            set replaced = true;
         } else {
-            set next = next + [table.values[i]]
+            set next = next + [table.values[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if replaced == false {
-        give table_add_value(table, value)
+        give table_add_value(table, value);
     }
 
     give OwnershipTable {
@@ -489,58 +489,58 @@ proc replace_value(
         transfers: table.transfers,
         diagnostics: table.diagnostics,
         valid: table.valid
-    }
+    };
 }
 
 proc can_use_value(value: OwnedValue) -> bool {
     if value.valid == false {
-        give false
+        give false;
     }
 
     if value.state == OwnershipState.Moved {
-        give false
+        give false;
     }
 
     if value.state == OwnershipState.Dropped {
-        give false
+        give false;
     }
 
     if value.state == OwnershipState.Unowned {
-        give false
+        give false;
     }
 
     if value.state == OwnershipState.Invalid {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc can_transfer_value(value: OwnedValue) -> bool {
     if can_use_value(value) == false {
-        give false
+        give false;
     }
 
     if value.state == OwnershipState.MutablyBorrowed {
-        give false
+        give false;
     }
 
     if value.state == OwnershipState.ImmutablyBorrowed {
-        give false
+        give false;
     }
 
-    give value.movable
+    give value.movable;
 }
 
 proc can_copy_value(value: OwnedValue) -> bool {
-    give can_use_value(value) and value.copyable
+    give can_use_value(value) and value.copyable;
 }
 
 proc initialize_owner(
     table: OwnershipTable,
     owner: Owner
 ) -> OwnershipTable {
-    give table_add_owner(table, owner)
+    give table_add_owner(table, owner);
 }
 
 proc initialize_value(
@@ -549,7 +549,7 @@ proc initialize_value(
     value: OwnedValue,
     span: OwnershipSpan
 ) -> OwnershipTable {
-    let with_value = table_add_value(table, value)
+    let with_value = table_add_value(table, value);
 
     let transfer = transfer_create(
         transfer_id,
@@ -558,9 +558,9 @@ proc initialize_value(
         OWNERSHIP_INVALID_ID,
         value.owner,
         span
-    )
+    );
 
-    give table_add_transfer(with_value, transfer)
+    give table_add_transfer(with_value, transfer);
 }
 
 proc transfer_ownership(
@@ -571,7 +571,7 @@ proc transfer_ownership(
     to_owner: u64,
     span: OwnershipSpan
 ) -> OwnershipTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if value.valid == false {
         give table_add_diagnostic(
@@ -583,7 +583,7 @@ proc transfer_ownership(
                 value_id,
                 from_owner
             )
-        )
+        );
     }
 
     if has_owner(table, to_owner) == false {
@@ -596,7 +596,7 @@ proc transfer_ownership(
                 value_id,
                 to_owner
             )
-        )
+        );
     }
 
     if can_transfer_value(value) == false {
@@ -609,14 +609,14 @@ proc transfer_ownership(
                 value_id,
                 from_owner
             )
-        )
+        );
     }
 
-    let moved_from = value_with_state(value, OwnershipState.Moved)
-    let table_moved = replace_value(table, moved_from)
+    let moved_from = value_with_state(value, OwnershipState.Moved);
+    let table_moved = replace_value(table, moved_from);
 
-    let transferred = value_with_owner(value_with_state(value, OwnershipState.Owned), to_owner)
-    let table_transferred = replace_value(table_moved, transferred)
+    let transferred = value_with_owner(value_with_state(value, OwnershipState.Owned), to_owner);
+    let table_transferred = replace_value(table_moved, transferred);
 
     let transfer = transfer_create(
         transfer_id,
@@ -625,9 +625,9 @@ proc transfer_ownership(
         from_owner,
         to_owner,
         span
-    )
+    );
 
-    give table_add_transfer(table_transferred, transfer)
+    give table_add_transfer(table_transferred, transfer);
 }
 
 proc copy_ownership(
@@ -638,7 +638,7 @@ proc copy_ownership(
     to_owner: u64,
     span: OwnershipSpan
 ) -> OwnershipTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if value.valid == false {
         give table_add_diagnostic(
@@ -650,7 +650,7 @@ proc copy_ownership(
                 value_id,
                 from_owner
             )
-        )
+        );
     }
 
     if can_copy_value(value) == false {
@@ -663,7 +663,7 @@ proc copy_ownership(
                 value_id,
                 from_owner
             )
-        )
+        );
     }
 
     let transfer = transfer_create(
@@ -673,9 +673,9 @@ proc copy_ownership(
         from_owner,
         to_owner,
         span
-    )
+    );
 
-    give table_add_transfer(table, transfer)
+    give table_add_transfer(table, transfer);
 }
 
 proc borrow_shared(
@@ -685,7 +685,7 @@ proc borrow_shared(
     owner: u64,
     span: OwnershipSpan
 ) -> OwnershipTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if can_use_value(value) == false {
         give table_add_diagnostic(
@@ -697,7 +697,7 @@ proc borrow_shared(
                 value_id,
                 owner
             )
-        )
+        );
     }
 
     if value.state == OwnershipState.MutablyBorrowed {
@@ -710,11 +710,11 @@ proc borrow_shared(
                 value_id,
                 owner
             )
-        )
+        );
     }
 
-    let borrowed = value_with_state(value, OwnershipState.ImmutablyBorrowed)
-    let replaced = replace_value(table, borrowed)
+    let borrowed = value_with_state(value, OwnershipState.ImmutablyBorrowed);
+    let replaced = replace_value(table, borrowed);
 
     let transfer = transfer_create(
         transfer_id,
@@ -723,9 +723,9 @@ proc borrow_shared(
         owner,
         owner,
         span
-    )
+    );
 
-    give table_add_transfer(replaced, transfer)
+    give table_add_transfer(replaced, transfer);
 }
 
 proc borrow_mutable(
@@ -735,7 +735,7 @@ proc borrow_mutable(
     owner: u64,
     span: OwnershipSpan
 ) -> OwnershipTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if can_use_value(value) == false {
         give table_add_diagnostic(
@@ -747,7 +747,7 @@ proc borrow_mutable(
                 value_id,
                 owner
             )
-        )
+        );
     }
 
     if value.state == OwnershipState.ImmutablyBorrowed or value.state == OwnershipState.MutablyBorrowed {
@@ -760,11 +760,11 @@ proc borrow_mutable(
                 value_id,
                 owner
             )
-        )
+        );
     }
 
-    let borrowed = value_with_state(value, OwnershipState.MutablyBorrowed)
-    let replaced = replace_value(table, borrowed)
+    let borrowed = value_with_state(value, OwnershipState.MutablyBorrowed);
+    let replaced = replace_value(table, borrowed);
 
     let transfer = transfer_create(
         transfer_id,
@@ -773,9 +773,9 @@ proc borrow_mutable(
         owner,
         owner,
         span
-    )
+    );
 
-    give table_add_transfer(replaced, transfer)
+    give table_add_transfer(replaced, transfer);
 }
 
 proc drop_value(
@@ -785,7 +785,7 @@ proc drop_value(
     owner: u64,
     span: OwnershipSpan
 ) -> OwnershipTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if value.valid == false {
         give table_add_diagnostic(
@@ -797,7 +797,7 @@ proc drop_value(
                 value_id,
                 owner
             )
-        )
+        );
     }
 
     if value.state == OwnershipState.Dropped {
@@ -810,11 +810,11 @@ proc drop_value(
                 value_id,
                 owner
             )
-        )
+        );
     }
 
-    let dropped = value_with_state(value, OwnershipState.Dropped)
-    let replaced = replace_value(table, dropped)
+    let dropped = value_with_state(value, OwnershipState.Dropped);
+    let replaced = replace_value(table, dropped);
 
     let transfer = transfer_create(
         transfer_id,
@@ -823,9 +823,9 @@ proc drop_value(
         owner,
         OWNERSHIP_INVALID_ID,
         span
-    )
+    );
 
-    give table_add_transfer(replaced, transfer)
+    give table_add_transfer(replaced, transfer);
 }
 
 proc escape_value(
@@ -835,7 +835,7 @@ proc escape_value(
     owner: u64,
     span: OwnershipSpan
 ) -> OwnershipTable {
-    let value = find_value(table, value_id)
+    let value = find_value(table, value_id);
 
     if can_use_value(value) == false {
         give table_add_diagnostic(
@@ -847,11 +847,11 @@ proc escape_value(
                 value_id,
                 owner
             )
-        )
+        );
     }
 
-    let escaped = value_with_state(value, OwnershipState.Escaped)
-    let replaced = replace_value(table, escaped)
+    let escaped = value_with_state(value, OwnershipState.Escaped);
+    let replaced = replace_value(table, escaped);
 
     let transfer = transfer_create(
         transfer_id,
@@ -860,17 +860,17 @@ proc escape_value(
         owner,
         OWNERSHIP_INVALID_ID,
         span
-    )
+    );
 
-    give table_add_transfer(replaced, transfer)
+    give table_add_transfer(replaced, transfer);
 }
 
 proc validate_ownership(table: OwnershipTable) -> OwnershipTable {
-    let current = table
-    let i: u64 = 0
+    let current = table;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.values) {
-        let value = current.values[i]
+    while i < vector_len(current.values) {
+        let value = current.values[i];
 
         if value.valid == false {
             give table_add_diagnostic(
@@ -882,7 +882,7 @@ proc validate_ownership(table: OwnershipTable) -> OwnershipTable {
                     value.id,
                     value.owner
                 )
-            )
+            );
         }
 
         if has_owner(current, value.owner) == false and value.state != OwnershipState.Moved and value.state != OwnershipState.Dropped {
@@ -895,70 +895,70 @@ proc validate_ownership(table: OwnershipTable) -> OwnershipTable {
                     value.id,
                     value.owner
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc ownership_error_count(table: OwnershipTable) -> u64 {
-    give vector_len(table.diagnostics)
+    give vector_len(table.diagnostics);
 }
 
 proc ownership_is_valid(table: OwnershipTable) -> bool {
-    give table.valid and vector_len(table.diagnostics) == 0
+    give table.valid and vector_len(table.diagnostics) == 0;
 }
 
 proc print_owner(owner: Owner) {
-    emit "owner"
-    emit owner.id
-    emit owner.name
-    emit owner.region
-    emit owner.mutable
+    emit "owner";
+    emit owner.id;
+    emit owner.name;
+    emit owner.region;
+    emit owner.mutable;
 }
 
 proc print_owned_value(value: OwnedValue) {
-    emit "owned value"
-    emit value.id
-    emit value.name
-    emit value.owner
-    emit value.field_path
-    emit value.valid
+    emit "owned value";
+    emit value.id;
+    emit value.name;
+    emit value.owner;
+    emit value.field_path;
+    emit value.valid;
 }
 
 proc print_ownership_transfer(transfer: OwnershipTransfer) {
-    emit "ownership transfer"
-    emit transfer.id
-    emit transfer.value
-    emit transfer.from_owner
-    emit transfer.to_owner
+    emit "ownership transfer";
+    emit transfer.id;
+    emit transfer.value;
+    emit transfer.from_owner;
+    emit transfer.to_owner;
 }
 
 proc print_ownership_table(table: OwnershipTable) {
-    emit "ownership table"
-    emit vector_len(table.owners)
-    emit vector_len(table.values)
-    emit vector_len(table.transfers)
-    emit vector_len(table.diagnostics)
+    emit "ownership table";
+    emit vector_len(table.owners);
+    emit vector_len(table.values);
+    emit vector_len(table.transfers);
+    emit vector_len(table.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(table.owners) {
-        print_owner(table.owners[i])
-        set i = i + 1
+    while i < vector_len(table.owners) {
+        print_owner(table.owners[i]);
+        set i = i + 1;
     }
 
-    let j: u64 = 0
+    let j: u64 = 0;
 
-    loop j < vector_len(table.values) {
-        print_owned_value(table.values[j])
-        set j = j + 1
+    while j < vector_len(table.values) {
+        print_owned_value(table.values[j]);
+        set j = j + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

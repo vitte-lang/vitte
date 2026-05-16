@@ -15,38 +15,38 @@ const REGION_MAX_NODES: u64 = 262144
 const REGION_MAX_EDGES: u64 = 1048576
 
 pick RegionKind {
-    Root
-    Function
-    Block
-    Loop
-    Match
-    Branch
-    Closure
-    Async
-    Temporary
-    Static
-    Unknown
+    Root,
+    Function,
+    Block,
+    Loop,
+    Match,
+    Branch,
+    Closure,
+    Async,
+    Temporary,
+    Static,
+    Unknown,
 }
 
 pick RegionEdgeKind {
-    Parent
-    Contains
-    Dominates
-    PostDominates
-    Outlives
-    Conflicts
+    Parent,
+    Contains,
+    Dominates,
+    PostDominates,
+    Outlives,
+    Conflicts,
 }
 
 pick RegionErrorKind {
-    None
-    UnknownRegion
-    InvalidRegion
-    DuplicateRegion
-    InvalidParent
-    InvalidEdge
-    RegionCycle
-    RegionLimitExceeded
-    EdgeLimitExceeded
+    None,
+    UnknownRegion,
+    InvalidRegion,
+    DuplicateRegion,
+    InvalidParent,
+    InvalidEdge,
+    RegionCycle,
+    RegionLimitExceeded,
+    EdgeLimitExceeded,
 }
 
 form RegionSpan {
@@ -94,7 +94,7 @@ proc span_empty() -> RegionSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc node_invalid() -> RegionNode {
@@ -108,7 +108,7 @@ proc node_invalid() -> RegionNode {
         end_point: 0,
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc node_root() -> RegionNode {
@@ -122,7 +122,7 @@ proc node_root() -> RegionNode {
         end_point: REGION_INVALID_ID,
         span: span_empty(),
         valid: true
-    }
+    };
 }
 
 proc graph_empty() -> RegionGraph {
@@ -131,7 +131,7 @@ proc graph_empty() -> RegionGraph {
         edges: [],
         diagnostics: [],
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -145,7 +145,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         region: region
-    }
+    };
 }
 
 proc node_create(
@@ -168,7 +168,7 @@ proc node_create(
         end_point: end_point,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc edge_create(
@@ -180,7 +180,7 @@ proc edge_create(
         source: source,
         target: target,
         kind: kind
-    }
+    };
 }
 
 proc graph_add_diagnostic(
@@ -192,7 +192,7 @@ proc graph_add_diagnostic(
         edges: graph.edges,
         diagnostics: graph.diagnostics + [diagnostic],
         valid: false
-    }
+    };
 }
 
 proc graph_add_node(
@@ -208,7 +208,7 @@ proc graph_add_node(
                 node.span,
                 node.id
             )
-        )
+        );
     }
 
     if has_region(graph, node.id) {
@@ -220,7 +220,7 @@ proc graph_add_node(
                 node.span,
                 node.id
             )
-        )
+        );
     }
 
     if node.id != REGION_ROOT_ID and has_region(graph, node.parent) == false {
@@ -232,7 +232,7 @@ proc graph_add_node(
                 node.span,
                 node.id
             )
-        )
+        );
     }
 
     give RegionGraph {
@@ -240,7 +240,7 @@ proc graph_add_node(
         edges: graph.edges,
         diagnostics: graph.diagnostics,
         valid: graph.valid
-    }
+    };
 }
 
 proc graph_add_edge(
@@ -256,7 +256,7 @@ proc graph_add_edge(
                 span_empty(),
                 edge.source
             )
-        )
+        );
     }
 
     if has_region(graph, edge.source) == false {
@@ -268,7 +268,7 @@ proc graph_add_edge(
                 span_empty(),
                 edge.source
             )
-        )
+        );
     }
 
     if has_region(graph, edge.target) == false {
@@ -280,7 +280,7 @@ proc graph_add_edge(
                 span_empty(),
                 edge.target
             )
-        )
+        );
     }
 
     give RegionGraph {
@@ -288,25 +288,25 @@ proc graph_add_edge(
         edges: graph.edges + [edge],
         diagnostics: graph.diagnostics,
         valid: graph.valid
-    }
+    };
 }
 
 proc find_region(graph: RegionGraph, id: u64) -> RegionNode {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(graph.nodes) {
+    while i < vector_len(graph.nodes) {
         if graph.nodes[i].id == id {
-            give graph.nodes[i]
+            give graph.nodes[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give node_invalid()
+    give node_invalid();
 }
 
 proc has_region(graph: RegionGraph, id: u64) -> bool {
-    give find_region(graph, id).valid
+    give find_region(graph, id).valid;
 }
 
 proc edge_exists(
@@ -315,35 +315,35 @@ proc edge_exists(
     target: u64,
     kind: RegionEdgeKind
 ) -> bool {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(graph.edges) {
-        let edge = graph.edges[i]
+    while i < vector_len(graph.edges) {
+        let edge = graph.edges[i];
 
         if edge.source == source and edge.target == target and edge.kind == kind {
-            give true
+            give true;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give false
+    give false;
 }
 
 proc region_contains_point(region: RegionNode, point: u64) -> bool {
     if region.valid == false {
-        give false
+        give false;
     }
 
     if point < region.start_point {
-        give false
+        give false;
     }
 
     if point > region.end_point {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc region_contains_region(
@@ -351,18 +351,18 @@ proc region_contains_region(
     inner: RegionNode
 ) -> bool {
     if outer.valid == false or inner.valid == false {
-        give false
+        give false;
     }
 
     if outer.start_point > inner.start_point {
-        give false
+        give false;
     }
 
     if outer.end_point < inner.end_point {
-        give false
+        give false;
     }
 
-    give true
+    give true;
 }
 
 proc region_is_parent_of(
@@ -370,13 +370,13 @@ proc region_is_parent_of(
     parent: u64,
     child: u64
 ) -> bool {
-    let child_node = find_region(graph, child)
+    let child_node = find_region(graph, child);
 
     if child_node.valid == false {
-        give false
+        give false;
     }
 
-    give child_node.parent == parent
+    give child_node.parent == parent;
 }
 
 proc region_ancestor_of(
@@ -385,20 +385,20 @@ proc region_ancestor_of(
     child: u64
 ) -> bool {
     if ancestor == child {
-        give true
+        give true;
     }
 
-    let current = find_region(graph, child)
+    let current = find_region(graph, child);
 
-    loop current.valid and current.parent != REGION_INVALID_ID {
+    while current.valid and current.parent != REGION_INVALID_ID {
         if current.parent == ancestor {
-            give true
+            give true;
         }
 
-        set current = find_region(graph, current.parent)
+        set current = find_region(graph, current.parent);
     }
 
-    give false
+    give false;
 }
 
 proc region_common_parent(
@@ -407,28 +407,28 @@ proc region_common_parent(
     right: u64
 ) -> u64 {
     if left == right {
-        give left
+        give left;
     }
 
     if region_ancestor_of(graph, left, right) {
-        give left
+        give left;
     }
 
     if region_ancestor_of(graph, right, left) {
-        give right
+        give right;
     }
 
-    let current = find_region(graph, left)
+    let current = find_region(graph, left);
 
-    loop current.valid and current.parent != REGION_INVALID_ID {
+    while current.valid and current.parent != REGION_INVALID_ID {
         if region_ancestor_of(graph, current.parent, right) {
-            give current.parent
+            give current.parent;
         }
 
-        set current = find_region(graph, current.parent)
+        set current = find_region(graph, current.parent);
     }
 
-    give REGION_ROOT_ID
+    give REGION_ROOT_ID;
 }
 
 proc region_dominates(
@@ -437,18 +437,18 @@ proc region_dominates(
     target: u64
 ) -> bool {
     if source == REGION_ROOT_ID {
-        give true
+        give true;
     }
 
     if source == target {
-        give true
+        give true;
     }
 
     if edge_exists(graph, source, target, RegionEdgeKind.Dominates) {
-        give true
+        give true;
     }
 
-    give region_ancestor_of(graph, source, target)
+    give region_ancestor_of(graph, source, target);
 }
 
 proc region_conflicts(
@@ -457,14 +457,14 @@ proc region_conflicts(
     right: u64
 ) -> bool {
     if edge_exists(graph, left, right, RegionEdgeKind.Conflicts) {
-        give true
+        give true;
     }
 
     if edge_exists(graph, right, left, RegionEdgeKind.Conflicts) {
-        give true
+        give true;
     }
 
-    give false
+    give false;
 }
 
 proc create_function_region(
@@ -482,13 +482,13 @@ proc create_function_region(
         0,
         REGION_INVALID_ID,
         span
-    )
+    );
 
-    let with_node = graph_add_node(graph, node)
-    let parent_edge = edge_create(REGION_ROOT_ID, id, RegionEdgeKind.Parent)
-    let outlives_edge = edge_create(REGION_ROOT_ID, id, RegionEdgeKind.Outlives)
+    let with_node = graph_add_node(graph, node);
+    let parent_edge = edge_create(REGION_ROOT_ID, id, RegionEdgeKind.Parent);
+    let outlives_edge = edge_create(REGION_ROOT_ID, id, RegionEdgeKind.Outlives);
 
-    give graph_add_edge(graph_add_edge(with_node, parent_edge), outlives_edge)
+    give graph_add_edge(graph_add_edge(with_node, parent_edge), outlives_edge);
 }
 
 proc create_block_region(
@@ -510,12 +510,12 @@ proc create_block_region(
         start_point,
         end_point,
         span
-    )
+    );
 
-    let with_node = graph_add_node(graph, node)
-    let parent_edge = edge_create(parent, id, RegionEdgeKind.Parent)
-    let contains_edge = edge_create(parent, id, RegionEdgeKind.Contains)
-    let outlives_edge = edge_create(parent, id, RegionEdgeKind.Outlives)
+    let with_node = graph_add_node(graph, node);
+    let parent_edge = edge_create(parent, id, RegionEdgeKind.Parent);
+    let contains_edge = edge_create(parent, id, RegionEdgeKind.Contains);
+    let outlives_edge = edge_create(parent, id, RegionEdgeKind.Outlives);
 
     give graph_add_edge(
         graph_add_edge(
@@ -523,7 +523,7 @@ proc create_block_region(
             contains_edge
         ),
         outlives_edge
-    )
+    );
 }
 
 proc create_loop_region(
@@ -543,13 +543,13 @@ proc create_loop_region(
         start_point,
         end_point,
         span
-    )
+    );
 
-    let with_node = graph_add_node(graph, node)
-    let parent_edge = edge_create(parent, id, RegionEdgeKind.Parent)
-    let dominates_edge = edge_create(id, id, RegionEdgeKind.Dominates)
+    let with_node = graph_add_node(graph, node);
+    let parent_edge = edge_create(parent, id, RegionEdgeKind.Parent);
+    let dominates_edge = edge_create(id, id, RegionEdgeKind.Dominates);
 
-    give graph_add_edge(graph_add_edge(with_node, parent_edge), dominates_edge)
+    give graph_add_edge(graph_add_edge(with_node, parent_edge), dominates_edge);
 }
 
 proc create_temporary_region(
@@ -569,9 +569,9 @@ proc create_temporary_region(
         start_point,
         end_point,
         span
-    )
+    );
 
-    give graph_add_node(graph, node)
+    give graph_add_node(graph, node);
 }
 
 proc add_conflict(
@@ -579,17 +579,17 @@ proc add_conflict(
     left: u64,
     right: u64
 ) -> RegionGraph {
-    let edge = edge_create(left, right, RegionEdgeKind.Conflicts)
+    let edge = edge_create(left, right, RegionEdgeKind.Conflicts);
 
-    give graph_add_edge(graph, edge)
+    give graph_add_edge(graph, edge);
 }
 
 proc validate_region_graph(graph: RegionGraph) -> RegionGraph {
-    let current = graph
-    let i: u64 = 0
+    let current = graph;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.nodes) {
-        let node = current.nodes[i]
+    while i < vector_len(current.nodes) {
+        let node = current.nodes[i];
 
         if node.valid == false {
             give graph_add_diagnostic(
@@ -600,7 +600,7 @@ proc validate_region_graph(graph: RegionGraph) -> RegionGraph {
                     node.span,
                     node.id
                 )
-            )
+            );
         }
 
         if node.id != REGION_ROOT_ID and has_region(current, node.parent) == false {
@@ -612,7 +612,7 @@ proc validate_region_graph(graph: RegionGraph) -> RegionGraph {
                     node.span,
                     node.id
                 )
-            )
+            );
         }
 
         if node.start_point > node.end_point and node.end_point != REGION_INVALID_ID {
@@ -624,46 +624,46 @@ proc validate_region_graph(graph: RegionGraph) -> RegionGraph {
                     node.span,
                     node.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc region_error_count(graph: RegionGraph) -> u64 {
-    give vector_len(graph.diagnostics)
+    give vector_len(graph.diagnostics);
 }
 
 proc region_graph_is_valid(graph: RegionGraph) -> bool {
-    give graph.valid and vector_len(graph.diagnostics) == 0
+    give graph.valid and vector_len(graph.diagnostics) == 0;
 }
 
 proc print_region_node(node: RegionNode) {
-    emit "region"
-    emit node.id
-    emit node.name
-    emit node.depth
-    emit node.start_point
-    emit node.end_point
+    emit "region";
+    emit node.id;
+    emit node.name;
+    emit node.depth;
+    emit node.start_point;
+    emit node.end_point;
 }
 
 proc print_region_graph(graph: RegionGraph) {
-    emit "region graph"
-    emit vector_len(graph.nodes)
-    emit vector_len(graph.edges)
-    emit vector_len(graph.diagnostics)
+    emit "region graph";
+    emit vector_len(graph.nodes);
+    emit vector_len(graph.edges);
+    emit vector_len(graph.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(graph.nodes) {
-        print_region_node(graph.nodes[i])
-        set i = i + 1
+    while i < vector_len(graph.nodes) {
+        print_region_node(graph.nodes[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

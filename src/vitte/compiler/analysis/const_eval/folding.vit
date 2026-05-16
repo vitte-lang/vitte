@@ -14,81 +14,81 @@ const FOLD_MAX_EXPRESSIONS: u64 = 1048576
 const FOLD_MAX_REWRITES: u64 = 2097152
 
 pick FoldExprKind {
-    Invalid
-    Literal
-    Unary
-    Binary
-    Call
-    Cast
-    Block
-    If
-    Match
-    Tuple
-    Array
-    Struct
-    Index
-    Field
-    Path
+    Invalid,
+    Literal,
+    Unary,
+    Binary,
+    Call,
+    Cast,
+    Block,
+    If,
+    Match,
+    Tuple,
+    Array,
+    Struct,
+    Index,
+    Field,
+    Path,
 }
 
 pick FoldOperator {
-    None
-    Add
-    Sub
-    Mul
-    Div
-    Mod
-    Eq
-    Ne
-    Lt
-    Le
-    Gt
-    Ge
-    And
-    Or
-    BitAnd
-    BitOr
-    BitXor
-    Shl
-    Shr
-    Neg
-    Not
+    None,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+    Neg,
+    Not,
 }
 
 pick FoldValueKind {
-    Unknown
-    Bool
-    Int
-    UInt
-    Float
-    String
+    Unknown,
+    Bool,
+    Int,
+    UInt,
+    Float,
+    String,
 }
 
 pick FoldRewriteKind {
-    None
-    FoldLiteral
-    RemoveDeadBranch
-    RemoveDeadBlock
-    SimplifyArithmetic
-    SimplifyBoolean
-    SimplifyComparison
-    InlineConstant
-    EliminateCast
-    MergeLiteral
-    ReduceUnary
+    None,
+    FoldLiteral,
+    RemoveDeadBranch,
+    RemoveDeadBlock,
+    SimplifyArithmetic,
+    SimplifyBoolean,
+    SimplifyComparison,
+    InlineConstant,
+    EliminateCast,
+    MergeLiteral,
+    ReduceUnary,
 }
 
 pick FoldErrorKind {
-    None
-    UnknownExpression
-    InvalidExpression
-    InvalidOperator
-    InvalidLiteral
-    InvalidRewrite
-    DivisionByZero
-    Overflow
-    UnsupportedExpression
-    UnsupportedFold
+    None,
+    UnknownExpression,
+    InvalidExpression,
+    InvalidOperator,
+    InvalidLiteral,
+    InvalidRewrite,
+    DivisionByZero,
+    Overflow,
+    UnsupportedExpression,
+    UnsupportedFold,
 }
 
 form FoldSpan {
@@ -149,7 +149,7 @@ proc span_empty() -> FoldSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc value_invalid() -> FoldValue {
@@ -161,7 +161,7 @@ proc value_invalid() -> FoldValue {
         float_value: 0.0,
         string_value: "",
         valid: false
-    }
+    };
 }
 
 proc value_bool(value: bool) -> FoldValue {
@@ -173,7 +173,7 @@ proc value_bool(value: bool) -> FoldValue {
         float_value: 0.0,
         string_value: "",
         valid: true
-    }
+    };
 }
 
 proc value_int(value: i64) -> FoldValue {
@@ -185,7 +185,7 @@ proc value_int(value: i64) -> FoldValue {
         float_value: 0.0,
         string_value: "",
         valid: true
-    }
+    };
 }
 
 proc value_string(value: string) -> FoldValue {
@@ -197,7 +197,7 @@ proc value_string(value: string) -> FoldValue {
         float_value: 0.0,
         string_value: value,
         valid: true
-    }
+    };
 }
 
 proc expr_invalid() -> FoldExpr {
@@ -211,7 +211,7 @@ proc expr_invalid() -> FoldExpr {
         type_name: "invalid",
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc context_empty() -> FoldContext {
@@ -221,7 +221,7 @@ proc context_empty() -> FoldContext {
         diagnostics: [],
         folded_count: 0,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -235,7 +235,7 @@ proc diagnostic_create(
         message: message,
         expression: expression,
         span: span
-    }
+    };
 }
 
 proc rewrite_create(
@@ -251,7 +251,7 @@ proc rewrite_create(
         source_expr: source_expr,
         target_expr: target_expr,
         description: description
-    }
+    };
 }
 
 proc literal_expr(
@@ -270,7 +270,7 @@ proc literal_expr(
         type_name: type_name,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc binary_expr(
@@ -291,7 +291,7 @@ proc binary_expr(
         type_name: type_name,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc unary_expr(
@@ -311,7 +311,7 @@ proc unary_expr(
         type_name: type_name,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc context_add_expression(
@@ -327,7 +327,7 @@ proc context_add_expression(
                 expression.id,
                 expression.span
             )
-        )
+        );
     }
 
     give FoldContext {
@@ -336,7 +336,7 @@ proc context_add_expression(
         diagnostics: context.diagnostics,
         folded_count: context.folded_count,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_rewrite(
@@ -352,7 +352,7 @@ proc context_add_rewrite(
                 rewrite.source_expr,
                 span_empty()
             )
-        )
+        );
     }
 
     give FoldContext {
@@ -361,7 +361,7 @@ proc context_add_rewrite(
         diagnostics: context.diagnostics,
         folded_count: context.folded_count + 1,
         valid: context.valid
-    }
+    };
 }
 
 proc context_add_diagnostic(
@@ -374,25 +374,25 @@ proc context_add_diagnostic(
         diagnostics: context.diagnostics + [diagnostic],
         folded_count: context.folded_count,
         valid: false
-    }
+    };
 }
 
 proc find_expr(context: FoldContext, id: u64) -> FoldExpr {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.expressions) {
+    while i < vector_len(context.expressions) {
         if context.expressions[i].id == id {
-            give context.expressions[i]
+            give context.expressions[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give expr_invalid()
+    give expr_invalid();
 }
 
 proc expr_is_literal(expr: FoldExpr) -> bool {
-    give expr.kind == FoldExprKind.Literal and expr.value.valid
+    give expr.kind == FoldExprKind.Literal and expr.value.valid;
 }
 
 proc fold_binary_int(
@@ -401,58 +401,58 @@ proc fold_binary_int(
     right: i64
 ) -> FoldValue {
     if operator == FoldOperator.Add {
-        give value_int(left + right)
+        give value_int(left + right);
     }
 
     if operator == FoldOperator.Sub {
-        give value_int(left - right)
+        give value_int(left - right);
     }
 
     if operator == FoldOperator.Mul {
-        give value_int(left * right)
+        give value_int(left * right);
     }
 
     if operator == FoldOperator.Div {
         if right == 0 {
-            give value_invalid()
+            give value_invalid();
         }
 
-        give value_int(left / right)
+        give value_int(left / right);
     }
 
     if operator == FoldOperator.Mod {
         if right == 0 {
-            give value_invalid()
+            give value_invalid();
         }
 
-        give value_int(left % right)
+        give value_int(left % right);
     }
 
     if operator == FoldOperator.Eq {
-        give value_bool(left == right)
+        give value_bool(left == right);
     }
 
     if operator == FoldOperator.Ne {
-        give value_bool(left != right)
+        give value_bool(left != right);
     }
 
     if operator == FoldOperator.Lt {
-        give value_bool(left < right)
+        give value_bool(left < right);
     }
 
     if operator == FoldOperator.Le {
-        give value_bool(left <= right)
+        give value_bool(left <= right);
     }
 
     if operator == FoldOperator.Gt {
-        give value_bool(left > right)
+        give value_bool(left > right);
     }
 
     if operator == FoldOperator.Ge {
-        give value_bool(left >= right)
+        give value_bool(left >= right);
     }
 
-    give value_invalid()
+    give value_invalid();
 }
 
 proc fold_binary_bool(
@@ -461,37 +461,37 @@ proc fold_binary_bool(
     right: bool
 ) -> FoldValue {
     if operator == FoldOperator.And {
-        give value_bool(left and right)
+        give value_bool(left and right);
     }
 
     if operator == FoldOperator.Or {
-        give value_bool(left or right)
+        give value_bool(left or right);
     }
 
     if operator == FoldOperator.Eq {
-        give value_bool(left == right)
+        give value_bool(left == right);
     }
 
     if operator == FoldOperator.Ne {
-        give value_bool(left != right)
+        give value_bool(left != right);
     }
 
-    give value_invalid()
+    give value_invalid();
 }
 
 proc fold_binary_expression(
     context: FoldContext,
     expression: FoldExpr
 ) -> FoldContext {
-    let left = find_expr(context, expression.left)
-    let right = find_expr(context, expression.right)
+    let left = find_expr(context, expression.left);
+    let right = find_expr(context, expression.right);
 
     if expr_is_literal(left) == false {
-        give context
+        give context;
     }
 
     if expr_is_literal(right) == false {
-        give context
+        give context;
     }
 
     if left.value.kind == FoldValueKind.Int and right.value.kind == FoldValueKind.Int {
@@ -499,7 +499,7 @@ proc fold_binary_expression(
             expression.operator,
             left.value.int_value,
             right.value.int_value
-        )
+        );
 
         if result.valid == false {
             give context_add_diagnostic(
@@ -510,7 +510,7 @@ proc fold_binary_expression(
                     expression.id,
                     expression.span
                 )
-            )
+            );
         }
 
         let folded = literal_expr(
@@ -518,9 +518,9 @@ proc fold_binary_expression(
             result,
             expression.type_name,
             expression.span
-        )
+        );
 
-        let next = replace_expr(context, folded)
+        let next = replace_expr(context, folded);
 
         let rewrite = rewrite_create(
             expression.id,
@@ -528,9 +528,9 @@ proc fold_binary_expression(
             expression.id,
             folded.id,
             "folded integer constant expression"
-        )
+        );
 
-        give context_add_rewrite(next, rewrite)
+        give context_add_rewrite(next, rewrite);
     }
 
     if left.value.kind == FoldValueKind.Bool and right.value.kind == FoldValueKind.Bool {
@@ -538,7 +538,7 @@ proc fold_binary_expression(
             expression.operator,
             left.value.bool_value,
             right.value.bool_value
-        )
+        );
 
         if result.valid == false {
             give context_add_diagnostic(
@@ -549,7 +549,7 @@ proc fold_binary_expression(
                     expression.id,
                     expression.span
                 )
-            )
+            );
         }
 
         let folded = literal_expr(
@@ -557,9 +557,9 @@ proc fold_binary_expression(
             result,
             expression.type_name,
             expression.span
-        )
+        );
 
-        let next = replace_expr(context, folded)
+        let next = replace_expr(context, folded);
 
         let rewrite = rewrite_create(
             expression.id,
@@ -567,22 +567,22 @@ proc fold_binary_expression(
             expression.id,
             folded.id,
             "folded boolean constant expression"
-        )
+        );
 
-        give context_add_rewrite(next, rewrite)
+        give context_add_rewrite(next, rewrite);
     }
 
-    give context
+    give context;
 }
 
 proc fold_unary_expression(
     context: FoldContext,
     expression: FoldExpr
 ) -> FoldContext {
-    let operand = find_expr(context, expression.left)
+    let operand = find_expr(context, expression.left);
 
     if expr_is_literal(operand) == false {
-        give context
+        give context;
     }
 
     if expression.operator == FoldOperator.Neg and operand.value.kind == FoldValueKind.Int {
@@ -591,9 +591,9 @@ proc fold_unary_expression(
             value_int(0 - operand.value.int_value),
             expression.type_name,
             expression.span
-        )
+        );
 
-        let next = replace_expr(context, folded)
+        let next = replace_expr(context, folded);
 
         let rewrite = rewrite_create(
             expression.id,
@@ -601,9 +601,9 @@ proc fold_unary_expression(
             expression.id,
             folded.id,
             "folded unary negation"
-        )
+        );
 
-        give context_add_rewrite(next, rewrite)
+        give context_add_rewrite(next, rewrite);
     }
 
     if expression.operator == FoldOperator.Not and operand.value.kind == FoldValueKind.Bool {
@@ -612,9 +612,9 @@ proc fold_unary_expression(
             value_bool(not operand.value.bool_value),
             expression.type_name,
             expression.span
-        )
+        );
 
-        let next = replace_expr(context, folded)
+        let next = replace_expr(context, folded);
 
         let rewrite = rewrite_create(
             expression.id,
@@ -622,36 +622,36 @@ proc fold_unary_expression(
             expression.id,
             folded.id,
             "folded unary boolean not"
-        )
+        );
 
-        give context_add_rewrite(next, rewrite)
+        give context_add_rewrite(next, rewrite);
     }
 
-    give context
+    give context;
 }
 
 proc replace_expr(
     context: FoldContext,
     expression: FoldExpr
 ) -> FoldContext {
-    let next: [FoldExpr] = []
-    let replaced = false
+    let next: [FoldExpr] = [];
+    let replaced = false;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.expressions) {
+    while i < vector_len(context.expressions) {
         if context.expressions[i].id == expression.id {
-            set next = next + [expression]
-            set replaced = true
+            set next = next + [expression];
+            set replaced = true;
         } else {
-            set next = next + [context.expressions[i]]
+            set next = next + [context.expressions[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if replaced == false {
-        give context_add_expression(context, expression)
+        give context_add_expression(context, expression);
     }
 
     give FoldContext {
@@ -660,14 +660,14 @@ proc replace_expr(
         diagnostics: context.diagnostics,
         folded_count: context.folded_count,
         valid: context.valid
-    }
+    };
 }
 
 proc fold_expression(
     context: FoldContext,
     expression_id: u64
 ) -> FoldContext {
-    let expression = find_expr(context, expression_id)
+    let expression = find_expr(context, expression_id);
 
     if expression.valid == false {
         give context_add_diagnostic(
@@ -678,72 +678,72 @@ proc fold_expression(
                 expression_id,
                 span_empty()
             )
-        )
+        );
     }
 
     if expression.kind == FoldExprKind.Binary {
-        give fold_binary_expression(context, expression)
+        give fold_binary_expression(context, expression);
     }
 
     if expression.kind == FoldExprKind.Unary {
-        give fold_unary_expression(context, expression)
+        give fold_unary_expression(context, expression);
     }
 
-    give context
+    give context;
 }
 
 proc fold_all(context: FoldContext) -> FoldContext {
-    let current = context
-    let i: u64 = 0
+    let current = context;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.expressions) {
-        set current = fold_expression(current, current.expressions[i].id)
-        set i = i + 1
+    while i < vector_len(current.expressions) {
+        set current = fold_expression(current, current.expressions[i].id);
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc has_fold_errors(context: FoldContext) -> bool {
-    give vector_len(context.diagnostics) > 0
+    give vector_len(context.diagnostics) > 0;
 }
 
 proc rewrite_count(context: FoldContext) -> u64 {
-    give vector_len(context.rewrites)
+    give vector_len(context.rewrites);
 }
 
 proc expression_count(context: FoldContext) -> u64 {
-    give vector_len(context.expressions)
+    give vector_len(context.expressions);
 }
 
 proc print_expression(expression: FoldExpr) {
-    emit "fold expression"
-    emit expression.id
-    emit expression.type_name
-    emit expression.valid
+    emit "fold expression";
+    emit expression.id;
+    emit expression.type_name;
+    emit expression.valid;
 }
 
 proc print_rewrite(rewrite: FoldRewrite) {
-    emit "fold rewrite"
-    emit rewrite.id
-    emit rewrite.description
+    emit "fold rewrite";
+    emit rewrite.id;
+    emit rewrite.description;
 }
 
 proc print_context(context: FoldContext) {
-    emit "fold context"
-    emit vector_len(context.expressions)
-    emit vector_len(context.rewrites)
-    emit vector_len(context.diagnostics)
-    emit context.folded_count
+    emit "fold context";
+    emit vector_len(context.expressions);
+    emit vector_len(context.rewrites);
+    emit vector_len(context.diagnostics);
+    emit context.folded_count;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(context.rewrites) {
-        print_rewrite(context.rewrites[i])
-        set i = i + 1
+    while i < vector_len(context.rewrites) {
+        print_rewrite(context.rewrites[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

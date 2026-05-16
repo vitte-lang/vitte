@@ -19,73 +19,73 @@ const IR_FUNCTION_MAX_ATTRIBUTES: u64 = 4096
 const IR_FUNCTION_MAX_DIAGNOSTICS: u64 = 1048576
 
 pick IrFunctionVisibility {
-    Private
-    Module
-    Package
-    Public
-    Exported
+    Private,
+    Module,
+    Package,
+    Public,
+    Exported,
 }
 
 pick IrFunctionAbi {
-    Vitte
-    C
-    System
-    Kernel
-    Interrupt
-    Naked
-    Intrinsic
+    Vitte,
+    C,
+    System,
+    Kernel,
+    Interrupt,
+    Naked,
+    Intrinsic,
 }
 
 pick IrFunctionKind {
-    Normal
-    Entry
-    Constructor
-    Destructor
-    Intrinsic
-    Foreign
-    Kernel
-    Test
-    Bench
+    Normal,
+    Entry,
+    Constructor,
+    Destructor,
+    Intrinsic,
+    Foreign,
+    Kernel,
+    Test,
+    Bench,
 }
 
 pick IrFunctionState {
-    Declared
-    Built
-    Verified
-    Optimized
-    Lowered
-    Emitted
-    Invalid
+    Declared,
+    Built,
+    Verified,
+    Optimized,
+    Lowered,
+    Emitted,
+    Invalid,
 }
 
 pick IrValueKind {
-    Unknown
-    Param
-    Local
-    Temporary
-    Const
-    Block
-    Function
+    Unknown,
+    Param,
+    Local,
+    Temporary,
+    Const,
+    Block,
+    Function,
 }
 
 pick IrFunctionErrorKind {
-    None
-    InvalidFunction
-    InvalidSignature
-    InvalidParameter
-    InvalidReturn
-    InvalidBlock
-    InvalidLocal
-    DuplicateParameter
-    DuplicateLocal
-    MissingEntryBlock
-    MissingTerminator
-    ParameterLimitExceeded
-    ReturnLimitExceeded
-    BlockLimitExceeded
-    LocalLimitExceeded
-    AttributeLimitExceeded
-    InternalFailure
+    None,
+    InvalidFunction,
+    InvalidSignature,
+    InvalidParameter,
+    InvalidReturn,
+    InvalidBlock,
+    InvalidLocal,
+    DuplicateParameter,
+    DuplicateLocal,
+    MissingEntryBlock,
+    MissingTerminator,
+    ParameterLimitExceeded,
+    ReturnLimitExceeded,
+    BlockLimitExceeded,
+    LocalLimitExceeded,
+    AttributeLimitExceeded,
+    InternalFailure,
 }
 
 form IrFunctionSpan {
@@ -182,7 +182,7 @@ proc span_empty() -> IrFunctionSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc type_invalid() -> IrTypeRef {
@@ -190,7 +190,7 @@ proc type_invalid() -> IrTypeRef {
         id: IR_FUNCTION_INVALID_ID,
         name: "invalid",
         valid: false
-    }
+    };
 }
 
 proc type_void() -> IrTypeRef {
@@ -198,7 +198,7 @@ proc type_void() -> IrTypeRef {
         id: 0,
         name: "void",
         valid: true
-    }
+    };
 }
 
 proc type_ref(id: u64, name: string) -> IrTypeRef {
@@ -206,7 +206,7 @@ proc type_ref(id: u64, name: string) -> IrTypeRef {
         id: id,
         name: name,
         valid: true
-    }
+    };
 }
 
 proc param_invalid() -> IrFunctionParam {
@@ -217,7 +217,7 @@ proc param_invalid() -> IrFunctionParam {
         mutable: false,
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc param_create(
@@ -234,7 +234,7 @@ proc param_create(
         mutable: mutable,
         span: span,
         valid: ty.valid and name != ""
-    }
+    };
 }
 
 proc return_create(
@@ -247,7 +247,7 @@ proc return_create(
         ty: ty,
         span: span,
         valid: ty.valid
-    }
+    };
 }
 
 proc local_invalid() -> IrLocal {
@@ -260,7 +260,7 @@ proc local_invalid() -> IrLocal {
         initialized: false,
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc local_create(
@@ -281,7 +281,7 @@ proc local_create(
         initialized: initialized,
         span: span,
         valid: ty.valid and name != ""
-    }
+    };
 }
 
 proc block_invalid() -> IrBlockRef {
@@ -292,7 +292,7 @@ proc block_invalid() -> IrBlockRef {
         reachable: false,
         terminator: "",
         valid: false
-    }
+    };
 }
 
 proc block_ref_create(
@@ -309,7 +309,7 @@ proc block_ref_create(
         reachable: reachable,
         terminator: terminator,
         valid: name != ""
-    }
+    };
 }
 
 proc attribute_create(
@@ -322,7 +322,7 @@ proc attribute_create(
         name: name,
         value: value,
         valid: name != ""
-    }
+    };
 }
 
 proc signature_create(
@@ -339,7 +339,7 @@ proc signature_create(
         visibility: visibility,
         variadic: variadic,
         valid: name != ""
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -353,7 +353,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         entity: entity
-    }
+    };
 }
 
 proc function_create(
@@ -369,7 +369,7 @@ proc function_create(
         false,
         true,
         ""
-    )
+    );
 
     give IrFunction {
         id: id,
@@ -384,7 +384,7 @@ proc function_create(
         entry_block: IR_FUNCTION_ENTRY_BLOCK,
         stack_size: 0,
         valid: signature.valid
-    }
+    };
 }
 
 proc function_add_diagnostic(
@@ -404,7 +404,7 @@ proc function_add_diagnostic(
         entry_block: function.entry_block,
         stack_size: function.stack_size,
         valid: false
-    }
+    };
 }
 
 proc signature_add_param(
@@ -420,7 +420,7 @@ proc signature_add_param(
             visibility: signature.visibility,
             variadic: signature.variadic,
             valid: false
-        }
+        };
     }
 
     give IrFunctionSignature {
@@ -431,7 +431,7 @@ proc signature_add_param(
         visibility: signature.visibility,
         variadic: signature.variadic,
         valid: signature.valid and param.valid
-    }
+    };
 }
 
 proc signature_add_return(
@@ -447,7 +447,7 @@ proc signature_add_return(
             visibility: signature.visibility,
             variadic: signature.variadic,
             valid: false
-        }
+        };
     }
 
     give IrFunctionSignature {
@@ -458,7 +458,7 @@ proc signature_add_return(
         visibility: signature.visibility,
         variadic: signature.variadic,
         valid: signature.valid and ret.valid
-    }
+    };
 }
 
 proc function_with_signature(
@@ -478,14 +478,14 @@ proc function_with_signature(
         entry_block: function.entry_block,
         stack_size: function.stack_size,
         valid: function.valid and signature.valid
-    }
+    };
 }
 
 proc function_add_param(
     function: IrFunction,
     param: IrFunctionParam
 ) -> IrFunction {
-    let signature = signature_add_param(function.signature, param)
+    let signature = signature_add_param(function.signature, param);
 
     if signature.valid == false {
         give function_add_diagnostic(
@@ -496,17 +496,17 @@ proc function_add_param(
                 param.span,
                 param.id
             )
-        )
+        );
     }
 
-    give function_with_signature(function, signature)
+    give function_with_signature(function, signature);
 }
 
 proc function_add_return(
     function: IrFunction,
     ret: IrFunctionReturn
 ) -> IrFunction {
-    let signature = signature_add_return(function.signature, ret)
+    let signature = signature_add_return(function.signature, ret);
 
     if signature.valid == false {
         give function_add_diagnostic(
@@ -517,10 +517,10 @@ proc function_add_return(
                 ret.span,
                 ret.id
             )
-        )
+        );
     }
 
-    give function_with_signature(function, signature)
+    give function_with_signature(function, signature);
 }
 
 proc function_add_local(
@@ -536,7 +536,7 @@ proc function_add_local(
                 local.span,
                 local.id
             )
-        )
+        );
     }
 
     if local.valid == false {
@@ -548,7 +548,7 @@ proc function_add_local(
                 local.span,
                 local.id
             )
-        )
+        );
     }
 
     if find_local_by_name(function, local.name).valid {
@@ -560,7 +560,7 @@ proc function_add_local(
                 local.span,
                 local.id
             )
-        )
+        );
     }
 
     give IrFunction {
@@ -576,7 +576,7 @@ proc function_add_local(
         entry_block: function.entry_block,
         stack_size: function.stack_size,
         valid: function.valid
-    }
+    };
 }
 
 proc function_add_block(
@@ -592,7 +592,7 @@ proc function_add_block(
                 span_empty(),
                 block.id
             )
-        )
+        );
     }
 
     if block.valid == false {
@@ -604,7 +604,7 @@ proc function_add_block(
                 span_empty(),
                 block.id
             )
-        )
+        );
     }
 
     if find_block(function, block.id).valid {
@@ -616,7 +616,7 @@ proc function_add_block(
                 span_empty(),
                 block.id
             )
-        )
+        );
     }
 
     give IrFunction {
@@ -632,7 +632,7 @@ proc function_add_block(
         entry_block: function.entry_block,
         stack_size: function.stack_size,
         valid: function.valid
-    }
+    };
 }
 
 proc function_add_attribute(
@@ -648,7 +648,7 @@ proc function_add_attribute(
                 span_empty(),
                 attribute.id
             )
-        )
+        );
     }
 
     give IrFunction {
@@ -664,58 +664,58 @@ proc function_add_attribute(
         entry_block: function.entry_block,
         stack_size: function.stack_size,
         valid: function.valid and attribute.valid
-    }
+    };
 }
 
 proc find_param_by_name(
     function: IrFunction,
     name: string
 ) -> IrFunctionParam {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(function.signature.params) {
+    while i < vector_len(function.signature.params) {
         if function.signature.params[i].name == name {
-            give function.signature.params[i]
+            give function.signature.params[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give param_invalid()
+    give param_invalid();
 }
 
 proc find_local_by_name(
     function: IrFunction,
     name: string
 ) -> IrLocal {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(function.locals) {
+    while i < vector_len(function.locals) {
         if function.locals[i].name == name {
-            give function.locals[i]
+            give function.locals[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give local_invalid()
+    give local_invalid();
 }
 
 proc find_block(
     function: IrFunction,
     id: u64
 ) -> IrBlockRef {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(function.blocks) {
+    while i < vector_len(function.blocks) {
         if function.blocks[i].id == id {
-            give function.blocks[i]
+            give function.blocks[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give block_invalid()
+    give block_invalid();
 }
 
 proc block_with_state(
@@ -731,30 +731,30 @@ proc block_with_state(
         reachable: reachable,
         terminator: terminator,
         valid: block.valid
-    }
+    };
 }
 
 proc replace_block(
     function: IrFunction,
     block: IrBlockRef
 ) -> IrFunction {
-    let next: [IrBlockRef] = []
-    let replaced = false
-    let i: u64 = 0
+    let next: [IrBlockRef] = [];
+    let replaced = false;
+    let i: u64 = 0;
 
-    loop i < vector_len(function.blocks) {
+    while i < vector_len(function.blocks) {
         if function.blocks[i].id == block.id {
-            set next = next + [block]
-            set replaced = true
+            set next = next + [block];
+            set replaced = true;
         } else {
-            set next = next + [function.blocks[i]]
+            set next = next + [function.blocks[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if replaced == false {
-        give function_add_block(function, block)
+        give function_add_block(function, block);
     }
 
     give IrFunction {
@@ -770,7 +770,7 @@ proc replace_block(
         entry_block: function.entry_block,
         stack_size: function.stack_size,
         valid: function.valid
-    }
+    };
 }
 
 proc seal_block(
@@ -778,7 +778,7 @@ proc seal_block(
     block_id: u64,
     terminator: string
 ) -> IrFunction {
-    let block = find_block(function, block_id)
+    let block = find_block(function, block_id);
 
     if block.valid == false {
         give function_add_diagnostic(
@@ -789,29 +789,29 @@ proc seal_block(
                 span_empty(),
                 block_id
             )
-        )
+        );
     }
 
     give replace_block(
         function,
         block_with_state(block, true, block.reachable, terminator)
-    )
+    );
 }
 
 proc mark_block_reachable(
     function: IrFunction,
     block_id: u64
 ) -> IrFunction {
-    let block = find_block(function, block_id)
+    let block = find_block(function, block_id);
 
     if block.valid == false {
-        give function
+        give function;
     }
 
     give replace_block(
         function,
         block_with_state(block, block.sealed, true, block.terminator)
-    )
+    );
 }
 
 proc function_with_state(
@@ -831,7 +831,7 @@ proc function_with_state(
         entry_block: function.entry_block,
         stack_size: function.stack_size,
         valid: function.valid
-    }
+    };
 }
 
 proc function_with_stack_size(
@@ -851,28 +851,28 @@ proc function_with_stack_size(
         entry_block: function.entry_block,
         stack_size: stack_size,
         valid: function.valid
-    }
+    };
 }
 
 proc compute_stack_size(function: IrFunction) -> u64 {
-    let size: u64 = 0
-    let i: u64 = 0
+    let size: u64 = 0;
+    let i: u64 = 0;
 
-    loop i < vector_len(function.locals) {
-        set size = size + 8
-        set i = i + 1
+    while i < vector_len(function.locals) {
+        set size = size + 8;
+        set i = i + 1;
     }
 
-    give align_value(size, 16)
+    give align_value(size, 16);
 }
 
 proc align_value(value: u64, align: u64) -> u64 {
     if align <= 1 {
-        give value
+        give value;
     }
 
-    let mask = align - 1
-    give (value + mask) & not mask
+    let mask = align - 1;
+    give (value + mask) & not mask;
 }
 
 proc validate_signature(function: IrFunction) -> IrFunction {
@@ -885,13 +885,13 @@ proc validate_signature(function: IrFunction) -> IrFunction {
                 span_empty(),
                 function.id
             )
-        )
+        );
     }
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(function.signature.params) {
-        let param = function.signature.params[i]
+    while i < vector_len(function.signature.params) {
+        let param = function.signature.params[i];
 
         if param.valid == false {
             give function_add_diagnostic(
@@ -902,7 +902,7 @@ proc validate_signature(function: IrFunction) -> IrFunction {
                     param.span,
                     param.id
                 )
-            )
+            );
         }
 
         if duplicate_param_name(function, param.name, i) {
@@ -914,16 +914,16 @@ proc validate_signature(function: IrFunction) -> IrFunction {
                     param.span,
                     param.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    let j: u64 = 0
+    let j: u64 = 0;
 
-    loop j < vector_len(function.signature.returns) {
-        let ret = function.signature.returns[j]
+    while j < vector_len(function.signature.returns) {
+        let ret = function.signature.returns[j];
 
         if ret.valid == false {
             give function_add_diagnostic(
@@ -934,13 +934,13 @@ proc validate_signature(function: IrFunction) -> IrFunction {
                     ret.span,
                     ret.id
                 )
-            )
+            );
         }
 
-        set j = j + 1
+        set j = j + 1;
     }
 
-    give function
+    give function;
 }
 
 proc duplicate_param_name(
@@ -948,21 +948,21 @@ proc duplicate_param_name(
     name: string,
     before_index: u64
 ) -> bool {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < before_index {
+    while i < before_index {
         if function.signature.params[i].name == name {
-            give true
+            give true;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give false
+    give false;
 }
 
 proc validate_blocks(function: IrFunction) -> IrFunction {
-    let current = function
+    let current = function;
 
     if find_block(current, current.entry_block).valid == false {
         give function_add_diagnostic(
@@ -973,13 +973,13 @@ proc validate_blocks(function: IrFunction) -> IrFunction {
                 span_empty(),
                 current.id
             )
-        )
+        );
     }
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(current.blocks) {
-        let block = current.blocks[i]
+    while i < vector_len(current.blocks) {
+        let block = current.blocks[i];
 
         if block.valid == false {
             give function_add_diagnostic(
@@ -990,7 +990,7 @@ proc validate_blocks(function: IrFunction) -> IrFunction {
                     span_empty(),
                     block.id
                 )
-            )
+            );
         }
 
         if block.sealed == false {
@@ -1002,21 +1002,21 @@ proc validate_blocks(function: IrFunction) -> IrFunction {
                     span_empty(),
                     block.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc validate_locals(function: IrFunction) -> IrFunction {
-    let current = function
-    let i: u64 = 0
+    let current = function;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.locals) {
-        let local = current.locals[i]
+    while i < vector_len(current.locals) {
+        let local = current.locals[i];
 
         if local.valid == false {
             give function_add_diagnostic(
@@ -1027,261 +1027,261 @@ proc validate_locals(function: IrFunction) -> IrFunction {
                     local.span,
                     local.id
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc verify_function(function: IrFunction) -> IrFunction {
-    let f1 = validate_signature(function)
-    let f2 = validate_blocks(f1)
-    let f3 = validate_locals(f2)
+    let f1 = validate_signature(function);
+    let f2 = validate_blocks(f1);
+    let f3 = validate_locals(f2);
 
     if f3.valid == false {
-        give function_with_state(f3, IrFunctionState.Invalid)
+        give function_with_state(f3, IrFunctionState.Invalid);
     }
 
-    give function_with_state(f3, IrFunctionState.Verified)
+    give function_with_state(f3, IrFunctionState.Verified);
 }
 
 proc prepare_function(function: IrFunction) -> IrFunction {
-    let stack_size = compute_stack_size(function)
-    let with_stack = function_with_stack_size(function, stack_size)
+    let stack_size = compute_stack_size(function);
+    let with_stack = function_with_stack_size(function, stack_size);
 
-    give function_with_state(with_stack, IrFunctionState.Built)
+    give function_with_state(with_stack, IrFunctionState.Built);
 }
 
 proc finalize_function(function: IrFunction) -> IrFunction {
-    let prepared = prepare_function(function)
-    give verify_function(prepared)
+    let prepared = prepare_function(function);
+    give verify_function(prepared);
 }
 
 proc function_param_count(function: IrFunction) -> u64 {
-    give vector_len(function.signature.params)
+    give vector_len(function.signature.params);
 }
 
 proc function_return_count(function: IrFunction) -> u64 {
-    give vector_len(function.signature.returns)
+    give vector_len(function.signature.returns);
 }
 
 proc function_local_count(function: IrFunction) -> u64 {
-    give vector_len(function.locals)
+    give vector_len(function.locals);
 }
 
 proc function_block_count(function: IrFunction) -> u64 {
-    give vector_len(function.blocks)
+    give vector_len(function.blocks);
 }
 
 proc function_error_count(function: IrFunction) -> u64 {
-    give vector_len(function.diagnostics)
+    give vector_len(function.diagnostics);
 }
 
 proc function_is_valid(function: IrFunction) -> bool {
-    give function.valid and vector_len(function.diagnostics) == 0
+    give function.valid and vector_len(function.diagnostics) == 0;
 }
 
 proc visibility_name(visibility: IrFunctionVisibility) -> string {
     if visibility == IrFunctionVisibility.Private {
-        give "private"
+        give "private";
     }
 
     if visibility == IrFunctionVisibility.Module {
-        give "module"
+        give "module";
     }
 
     if visibility == IrFunctionVisibility.Package {
-        give "package"
+        give "package";
     }
 
     if visibility == IrFunctionVisibility.Public {
-        give "public"
+        give "public";
     }
 
     if visibility == IrFunctionVisibility.Exported {
-        give "exported"
+        give "exported";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc abi_name(abi: IrFunctionAbi) -> string {
     if abi == IrFunctionAbi.Vitte {
-        give "vitte"
+        give "vitte";
     }
 
     if abi == IrFunctionAbi.C {
-        give "c"
+        give "c";
     }
 
     if abi == IrFunctionAbi.System {
-        give "system"
+        give "system";
     }
 
     if abi == IrFunctionAbi.Kernel {
-        give "kernel"
+        give "kernel";
     }
 
     if abi == IrFunctionAbi.Interrupt {
-        give "interrupt"
+        give "interrupt";
     }
 
     if abi == IrFunctionAbi.Naked {
-        give "naked"
+        give "naked";
     }
 
     if abi == IrFunctionAbi.Intrinsic {
-        give "intrinsic"
+        give "intrinsic";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc kind_name(kind: IrFunctionKind) -> string {
     if kind == IrFunctionKind.Normal {
-        give "normal"
+        give "normal";
     }
 
     if kind == IrFunctionKind.Entry {
-        give "entry"
+        give "entry";
     }
 
     if kind == IrFunctionKind.Constructor {
-        give "constructor"
+        give "constructor";
     }
 
     if kind == IrFunctionKind.Destructor {
-        give "destructor"
+        give "destructor";
     }
 
     if kind == IrFunctionKind.Intrinsic {
-        give "intrinsic"
+        give "intrinsic";
     }
 
     if kind == IrFunctionKind.Foreign {
-        give "foreign"
+        give "foreign";
     }
 
     if kind == IrFunctionKind.Kernel {
-        give "kernel"
+        give "kernel";
     }
 
     if kind == IrFunctionKind.Test {
-        give "test"
+        give "test";
     }
 
     if kind == IrFunctionKind.Bench {
-        give "bench"
+        give "bench";
     }
 
-    give "normal"
+    give "normal";
 }
 
 proc state_name(state: IrFunctionState) -> string {
     if state == IrFunctionState.Declared {
-        give "declared"
+        give "declared";
     }
 
     if state == IrFunctionState.Built {
-        give "built"
+        give "built";
     }
 
     if state == IrFunctionState.Verified {
-        give "verified"
+        give "verified";
     }
 
     if state == IrFunctionState.Optimized {
-        give "optimized"
+        give "optimized";
     }
 
     if state == IrFunctionState.Lowered {
-        give "lowered"
+        give "lowered";
     }
 
     if state == IrFunctionState.Emitted {
-        give "emitted"
+        give "emitted";
     }
 
     if state == IrFunctionState.Invalid {
-        give "invalid"
+        give "invalid";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_type(ty: IrTypeRef) {
-    emit "type"
-    emit ty.id
-    emit ty.name
-    emit ty.valid
+    emit "type";
+    emit ty.id;
+    emit ty.name;
+    emit ty.valid;
 }
 
 proc print_param(param: IrFunctionParam) {
-    emit "param"
-    emit param.id
-    emit param.name
-    print_type(param.ty)
+    emit "param";
+    emit param.id;
+    emit param.name;
+    print_type(param.ty);
 }
 
 proc print_local(local: IrLocal) {
-    emit "local"
-    emit local.id
-    emit local.name
-    print_type(local.ty)
-    emit local.mutable
-    emit local.initialized
+    emit "local";
+    emit local.id;
+    emit local.name;
+    print_type(local.ty);
+    emit local.mutable;
+    emit local.initialized;
 }
 
 proc print_block(block: IrBlockRef) {
-    emit "block"
-    emit block.id
-    emit block.name
-    emit block.sealed
-    emit block.reachable
-    emit block.terminator
+    emit "block";
+    emit block.id;
+    emit block.name;
+    emit block.sealed;
+    emit block.reachable;
+    emit block.terminator;
 }
 
 proc print_function(function: IrFunction) {
-    emit "ir function"
-    emit function.id
-    emit function.module
-    emit function.signature.name
-    emit visibility_name(function.signature.visibility)
-    emit abi_name(function.signature.abi)
-    emit kind_name(function.kind)
-    emit state_name(function.state)
-    emit function.stack_size
-    emit vector_len(function.signature.params)
-    emit vector_len(function.signature.returns)
-    emit vector_len(function.locals)
-    emit vector_len(function.blocks)
-    emit vector_len(function.diagnostics)
+    emit "ir function";
+    emit function.id;
+    emit function.module;
+    emit function.signature.name;
+    emit visibility_name(function.signature.visibility);
+    emit abi_name(function.signature.abi);
+    emit kind_name(function.kind);
+    emit state_name(function.state);
+    emit function.stack_size;
+    emit vector_len(function.signature.params);
+    emit vector_len(function.signature.returns);
+    emit vector_len(function.locals);
+    emit vector_len(function.blocks);
+    emit vector_len(function.diagnostics);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(function.signature.params) {
-        print_param(function.signature.params[i])
-        set i = i + 1
+    while i < vector_len(function.signature.params) {
+        print_param(function.signature.params[i]);
+        set i = i + 1;
     }
 
-    let j: u64 = 0
+    let j: u64 = 0;
 
-    loop j < vector_len(function.locals) {
-        print_local(function.locals[j])
-        set j = j + 1
+    while j < vector_len(function.locals) {
+        print_local(function.locals[j]);
+        set j = j + 1;
     }
 
-    let k: u64 = 0
+    let k: u64 = 0;
 
-    loop k < vector_len(function.blocks) {
-        print_block(function.blocks[k])
-        set k = k + 1
+    while k < vector_len(function.blocks) {
+        print_block(function.blocks[k]);
+        set k = k + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

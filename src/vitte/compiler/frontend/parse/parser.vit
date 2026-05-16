@@ -1,0 +1,1169 @@
+space vitte/compiler/frontend/parse/parser
+
+use vitte/compiler/frontend/lexer/token.{ Token, TokenKind, token }
+
+form ParseDiagnostic {
+  code: string
+  message: string
+  line: u64
+  column: u64
+}
+
+form ParseResult {
+  grammar_version: string
+  ast_root: string
+  toplevel_count: u64
+  stmt_count: u64
+  expr_count: u64
+  type_count: u64
+  pattern_count: u64
+  diagnostics: [ParseDiagnostic]
+  valid: bool
+}
+
+form ParserState {
+  source_name: string
+  tokens: [Token]
+  index: u64
+  toplevel_count: u64
+  stmt_count: u64
+  expr_count: u64
+  type_count: u64
+  pattern_count: u64
+  diagnostics: [ParseDiagnostic]
+}
+
+proc parse_diag(code: string, message: string, line: u64, column: u64) -> ParseDiagnostic {
+  give ParseDiagnostic { code: code, message: message, line: line, column: column };
+}
+
+proc parser_state(source_name: string, tokens: [Token]) -> ParserState {
+  give ParserState {
+    source_name: source_name,
+    tokens: tokens,
+    index: 0,
+    toplevel_count: 0,
+    stmt_count: 0,
+    expr_count: 0,
+    type_count: 0,
+    pattern_count: 0,
+    diagnostics: []
+  };
+}
+
+proc last_token(tokens: [Token]) -> Token {
+  if len(tokens) == 0 {
+    give token(TokenKind.Eof, "", 1, 1);
+  }
+  give tokens[len(tokens) - 1];
+}
+
+proc current_token(state: ParserState) -> Token {
+  if state.index < len(state.tokens) {
+    give state.tokens[state.index];
+  }
+  give last_token(state.tokens);
+}
+
+proc peek_token(state: ParserState, offset: u64) -> Token {
+  let target: u64 = state.index + offset;
+  if target < len(state.tokens) {
+    give state.tokens[target];
+  }
+  give last_token(state.tokens);
+}
+
+proc is_eof(state: ParserState) -> bool {
+  give current_token(state).kind == TokenKind.Eof;
+}
+
+proc advance(state: ParserState) -> ParserState {
+  if state.index < len(state.tokens) {
+    give ParserState {
+      source_name: state.source_name,
+      tokens: state.tokens,
+      index: state.index + 1,
+      toplevel_count: state.toplevel_count,
+      stmt_count: state.stmt_count,
+      expr_count: state.expr_count,
+      type_count: state.type_count,
+      pattern_count: state.pattern_count,
+      diagnostics: state.diagnostics
+    };
+  }
+  give state;
+}
+
+proc with_diag(state: ParserState, code: string, message: string) -> ParserState {
+  let tok: Token = current_token(state);
+  let ds: [ParseDiagnostic] = state.diagnostics + [parse_diag(code, message, tok.line, tok.column)];
+  give ParserState {
+    source_name: state.source_name,
+    tokens: state.tokens,
+    index: state.index,
+    toplevel_count: state.toplevel_count,
+    stmt_count: state.stmt_count,
+    expr_count: state.expr_count,
+    type_count: state.type_count,
+    pattern_count: state.pattern_count,
+    diagnostics: ds
+  };
+}
+
+proc bump_toplevel(state: ParserState) -> ParserState {
+  give ParserState {
+    source_name: state.source_name,
+    tokens: state.tokens,
+    index: state.index,
+    toplevel_count: state.toplevel_count + 1,
+    stmt_count: state.stmt_count,
+    expr_count: state.expr_count,
+    type_count: state.type_count,
+    pattern_count: state.pattern_count,
+    diagnostics: state.diagnostics
+  };
+}
+
+proc bump_stmt(state: ParserState) -> ParserState {
+  give ParserState {
+    source_name: state.source_name,
+    tokens: state.tokens,
+    index: state.index,
+    toplevel_count: state.toplevel_count,
+    stmt_count: state.stmt_count + 1,
+    expr_count: state.expr_count,
+    type_count: state.type_count,
+    pattern_count: state.pattern_count,
+    diagnostics: state.diagnostics
+  };
+}
+
+proc bump_expr(state: ParserState) -> ParserState {
+  give ParserState {
+    source_name: state.source_name,
+    tokens: state.tokens,
+    index: state.index,
+    toplevel_count: state.toplevel_count,
+    stmt_count: state.stmt_count,
+    expr_count: state.expr_count + 1,
+    type_count: state.type_count,
+    pattern_count: state.pattern_count,
+    diagnostics: state.diagnostics
+  };
+}
+
+proc bump_type(state: ParserState) -> ParserState {
+  give ParserState {
+    source_name: state.source_name,
+    tokens: state.tokens,
+    index: state.index,
+    toplevel_count: state.toplevel_count,
+    stmt_count: state.stmt_count,
+    expr_count: state.expr_count,
+    type_count: state.type_count + 1,
+    pattern_count: state.pattern_count,
+    diagnostics: state.diagnostics
+  };
+}
+
+proc bump_pattern(state: ParserState) -> ParserState {
+  give ParserState {
+    source_name: state.source_name,
+    tokens: state.tokens,
+    index: state.index,
+    toplevel_count: state.toplevel_count,
+    stmt_count: state.stmt_count,
+    expr_count: state.expr_count,
+    type_count: state.type_count,
+    pattern_count: state.pattern_count + 1,
+    diagnostics: state.diagnostics
+  };
+}
+
+proc at_text(state: ParserState, text: string) -> bool {
+  give current_token(state).lexeme == text;
+}
+
+proc next_is_text(state: ParserState, text: string) -> bool {
+  give peek_token(state, 1).lexeme == text;
+}
+
+proc at_kind(state: ParserState, kind: TokenKind) -> bool {
+  give current_token(state).kind == kind;
+}
+
+proc is_ident_like(tok: Token) -> bool {
+  give tok.kind == TokenKind.Ident or tok.kind == TokenKind.Keyword;
+}
+
+proc expect_text(state: ParserState, text: string, code: string) -> ParserState {
+  if at_text(state, text) {
+    give advance(state);
+  }
+  give with_diag(state, code, "expected `" + text + "`");
+}
+
+proc expect_ident(state: ParserState, code: string) -> ParserState {
+  if is_ident_like(current_token(state)) {
+    give advance(state);
+  }
+  give with_diag(state, code, "expected identifier");
+}
+
+proc optional_text(state: ParserState, text: string) -> ParserState {
+  if at_text(state, text) {
+    give advance(state);
+  }
+  give state;
+}
+
+proc is_toplevel_keyword(lex: string) -> bool {
+  if lex == "space" or lex == "use" or lex == "export" or lex == "const" or lex == "static" or lex == "global" { give true; }
+  if lex == "type" or lex == "opaque" or lex == "extern" or lex == "form" or lex == "class" or lex == "union" { give true; }
+  if lex == "bits" or lex == "pick" or lex == "flags" or lex == "trait" or lex == "impl" or lex == "proc" { give true; }
+  if lex == "intrinsic" or lex == "compiler" or lex == "query" or lex == "pass" or lex == "backend" { give true; }
+  if lex == "diagnostic" or lex == "macro" or lex == "comptime" or lex == "static_assert" or lex == "test" or lex == "bench" or lex == "entry" { give true; }
+  give false;
+}
+
+proc is_visibility(lex: string) -> bool {
+  give lex == "pub" or lex == "priv";
+}
+
+proc is_proc_modifier(lex: string) -> bool {
+  if lex == "async" or lex == "unsafe" or lex == "const" or lex == "inline" { give true; }
+  if lex == "noinline" or lex == "naked" or lex == "interrupt" { give true; }
+  give false;
+}
+
+proc is_literal_token(tok: Token) -> bool {
+  if tok.kind == TokenKind.Integer or tok.kind == TokenKind.String { give true; }
+  if tok.lexeme == "true" or tok.lexeme == "false" or tok.lexeme == "null" { give true; }
+  give false;
+}
+
+proc skip_until_boundary(state: ParserState, a: string, b: string, c: string) -> ParserState {
+  let current: ParserState = state;
+  while not is_eof(current) {
+    if a != "" and at_text(current, a) { give current; }
+    if b != "" and at_text(current, b) { give current; }
+    if c != "" and at_text(current, c) { give current; }
+    set current = advance(current);
+  }
+  give current;
+}
+
+proc skip_balanced(state: ParserState, open_text: string, close_text: string, code: string) -> ParserState {
+  let current: ParserState = expect_text(state, open_text, code);
+  let depth: u64 = 1;
+  while depth > 0 and not is_eof(current) {
+    if at_text(current, open_text) {
+      set depth = depth + 1;
+      set current = advance(current);
+      continue;
+    }
+    if at_text(current, close_text) {
+      set depth = depth - 1;
+      set current = advance(current);
+      continue;
+    }
+    set current = advance(current);
+  }
+  if depth != 0 {
+    give with_diag(current, "P000_UNBALANCED", "unclosed `" + open_text + "` block");
+  }
+  give current;
+}
+
+proc parse_path(state: ParserState) -> ParserState {
+  let current: ParserState = expect_ident(state, "PPATH001");
+  while at_text(current, ".") or at_text(current, "/") or at_text(current, "::") {
+    if at_text(current, ".") and (next_is_text(current, "{") or next_is_text(current, "*")) {
+      give current;
+    }
+    set current = advance(current);
+    set current = expect_ident(current, "PPATH002");
+  }
+  give current;
+}
+
+proc parse_module_path(state: ParserState) -> ParserState {
+  let current: ParserState = state;
+  while at_text(current, ".") {
+    set current = advance(current);
+  }
+  give parse_path(current);
+}
+
+proc parse_generic_params(state: ParserState) -> ParserState {
+  if not at_text(state, "[") {
+    give state;
+  }
+  let current: ParserState = advance(state);
+  while not is_eof(current) and not at_text(current, "]") {
+    if at_text(current, ",") {
+      set current = advance(current);
+      continue;
+    }
+    if at_text(current, "const") or at_text(current, "comptime") {
+      set current = advance(current);
+      set current = expect_ident(current, "PGEN001");
+    } else {
+      set current = expect_ident(current, "PGEN002");
+    }
+    if at_text(current, ":") {
+      set current = advance(current);
+      set current = parse_type_expr(current);
+    }
+    if at_text(current, "=") {
+      set current = advance(current);
+      set current = parse_type_expr(current);
+    }
+  }
+  give expect_text(current, "]", "PGEN003");
+}
+
+proc parse_type_expr(state: ParserState) -> ParserState;
+proc parse_pattern(state: ParserState) -> ParserState;
+proc parse_expr(state: ParserState) -> ParserState;
+proc parse_block(state: ParserState) -> ParserState;
+proc parse_stmt(state: ParserState) -> ParserState;
+
+proc parse_param_list(state: ParserState, closing: string) -> ParserState {
+  let current: ParserState = state;
+  while not is_eof(current) and not at_text(current, closing) {
+    if at_text(current, "...") {
+      set current = advance(current);
+    } else {
+      if at_text(current, "&") {
+        set current = advance(current);
+      }
+      if at_text(current, "mut") or at_text(current, "owned") or at_text(current, "borrow") or at_text(current, "move") {
+        set current = advance(current);
+      }
+      if at_text(current, "self") {
+        set current = advance(current);
+      } else {
+        set current = parse_pattern(current);
+      }
+      if at_text(current, ":") {
+        set current = advance(current);
+        if at_text(current, "...") {
+          set current = advance(current);
+        }
+        set current = parse_type_expr(current);
+      }
+      if at_text(current, "=") {
+        set current = advance(current);
+        set current = parse_expr(current);
+      }
+    }
+    if at_text(current, ",") {
+      set current = advance(current);
+    } else {
+      break;
+    }
+  }
+  give current;
+}
+
+proc parse_proc_suffixes(state: ParserState) -> ParserState {
+  let current: ParserState = state;
+  while true {
+    if at_text(current, "effects") or at_text(current, "requires") {
+      set current = advance(current);
+      set current = skip_balanced(current, "(", ")", "PSFX001");
+      continue;
+    }
+    if at_text(current, "where") {
+      set current = advance(current);
+      while not is_eof(current) and not at_text(current, "{") and not at_text(current, ";") {
+        if at_text(current, ",") {
+          set current = advance(current);
+        } else {
+          set current = parse_type_expr(current);
+          if at_text(current, ":") or at_text(current, "==") {
+            set current = advance(current);
+            set current = parse_type_expr(current);
+          }
+        }
+      }
+      continue;
+    }
+    if at_text(current, "noexcept") {
+      set current = advance(current);
+      continue;
+    }
+    break;
+  }
+  give current;
+}
+
+proc parse_proc_decl(state: ParserState) -> ParserState {
+  let current: ParserState = state;
+  while is_visibility(current_token(current).lexeme) or is_proc_modifier(current_token(current).lexeme) or at_text(current, "extern") {
+    let lex: string = current_token(current).lexeme;
+    set current = advance(current);
+    if lex == "pub" and at_text(current, "(") {
+      set current = skip_balanced(current, "(", ")", "PVIS001");
+    }
+    if lex == "extern" and (at_kind(current, TokenKind.String) or at_text(current, "C") or at_text(current, "sysv64") or at_text(current, "win64")) {
+      set current = advance(current);
+    }
+  }
+  set current = expect_text(current, "proc", "PPROC001");
+  if at_text(current, "operator") {
+    set current = advance(current);
+    if not is_eof(current) {
+      set current = advance(current);
+    }
+  } else {
+    set current = expect_ident(current, "PPROC002");
+  }
+  set current = parse_generic_params(current);
+  set current = expect_text(current, "(", "PPROC003");
+  set current = parse_param_list(current, ")");
+  set current = expect_text(current, ")", "PPROC004");
+  if at_text(current, "->") {
+    set current = advance(current);
+    set current = parse_type_expr(current);
+  }
+  set current = parse_proc_suffixes(current);
+  if at_text(current, "{") {
+    give parse_block(current);
+  }
+  give expect_text(current, ";", "PPROC005");
+}
+
+proc parse_type_primary(state: ParserState) -> ParserState {
+  let current: ParserState = state;
+  if at_text(current, "[") {
+    set current = advance(current);
+    set current = parse_type_expr(current);
+    if at_text(current, ";") {
+      set current = advance(current);
+      set current = parse_expr(current);
+    }
+    give expect_text(current, "]", "PTYPE001");
+  }
+  if at_text(current, "(") {
+    set current = advance(current);
+    set current = parse_type_expr(current);
+    if at_text(current, ",") {
+      while at_text(current, ",") {
+        set current = advance(current);
+        if at_text(current, ")") { break; }
+        set current = parse_type_expr(current);
+      }
+    }
+    give expect_text(current, ")", "PTYPE002");
+  }
+  if at_text(current, "proc") {
+    set current = advance(current);
+    set current = expect_text(current, "(", "PTYPE003");
+    set current = parse_param_list(current, ")");
+    set current = expect_text(current, ")", "PTYPE004");
+    if at_text(current, "->") {
+      set current = advance(current);
+      set current = parse_type_expr(current);
+    }
+    give current;
+  }
+  if at_text(current, "dyn") or at_text(current, "impl") {
+    set current = advance(current);
+    set current = parse_type_expr(current);
+    while at_text(current, "+") {
+      set current = advance(current);
+      set current = parse_type_expr(current);
+    }
+    give current;
+  }
+  set current = parse_path(current);
+  if at_text(current, "[") {
+    set current = advance(current);
+    while not is_eof(current) and not at_text(current, "]") {
+      if at_text(current, ",") {
+        set current = advance(current);
+      } else {
+        set current = parse_type_expr(current);
+      }
+    }
+    set current = expect_text(current, "]", "PTYPE005");
+  }
+  give current;
+}
+
+proc parse_type_expr(state: ParserState) -> ParserState {
+  let current: ParserState = bump_type(state);
+  while at_text(current, "const") or at_text(current, "volatile") or at_text(current, "atomic") or at_text(current, "mut") or at_text(current, "owned") or at_text(current, "borrow") or at_text(current, "user") or at_text(current, "kernel") or at_text(current, "phys") or at_text(current, "mmio") or at_text(current, "dma") {
+    set current = advance(current);
+  }
+  if at_text(current, "&") {
+    set current = advance(current);
+    if at_text(current, "'") {
+      set current = advance(current);
+      set current = expect_ident(current, "PTYPE006");
+    }
+    if at_text(current, "mut") {
+      set current = advance(current);
+    }
+    give parse_type_expr(current);
+  }
+  if at_text(current, "*") or at_text(current, "?") {
+    set current = advance(current);
+    give parse_type_expr(current);
+  }
+  set current = parse_type_primary(current);
+  while at_text(current, "|") {
+    set current = advance(current);
+    set current = parse_type_primary(current);
+  }
+  give current;
+}
+
+proc parse_pattern_atom(state: ParserState) -> ParserState {
+  let current: ParserState = state;
+  if at_text(current, "_") or is_literal_token(current_token(current)) {
+    set current = advance(current);
+    if at_text(current, "..") or at_text(current, "..=") {
+      set current = advance(current);
+      if is_literal_token(current_token(current)) {
+        set current = advance(current);
+      } else {
+        set current = with_diag(current, "PPAT001", "expected range end literal");
+      }
+    }
+    give current;
+  }
+  if at_text(current, "mut") or at_text(current, "ref") {
+    set current = advance(current);
+    give expect_ident(current, "PPAT002");
+  }
+  if at_text(current, "(") {
+    set current = advance(current);
+    set current = parse_pattern(current);
+    if at_text(current, ",") {
+      while at_text(current, ",") {
+        set current = advance(current);
+        if at_text(current, ")") { break; }
+        set current = parse_pattern(current);
+      }
+    }
+    give expect_text(current, ")", "PPAT003");
+  }
+  if at_text(current, "[") {
+    set current = advance(current);
+    while not is_eof(current) and not at_text(current, "]") {
+      if at_text(current, ",") {
+        set current = advance(current);
+      } else {
+        set current = parse_pattern(current);
+      }
+    }
+    give expect_text(current, "]", "PPAT004");
+  }
+  set current = parse_path(current);
+  if at_text(current, "(") {
+    set current = advance(current);
+    while not is_eof(current) and not at_text(current, ")") {
+      if at_text(current, ",") {
+        set current = advance(current);
+      } else {
+        set current = parse_pattern(current);
+      }
+    }
+    give expect_text(current, ")", "PPAT005");
+  }
+  if at_text(current, "{") {
+    set current = advance(current);
+    while not is_eof(current) and not at_text(current, "}") {
+      if at_text(current, ",") {
+        set current = advance(current);
+      } elif at_text(current, "..") {
+        set current = advance(current);
+      } else {
+        set current = expect_ident(current, "PPAT006");
+        if at_text(current, ":") {
+          set current = advance(current);
+          set current = parse_pattern(current);
+        }
+      }
+    }
+    give expect_text(current, "}", "PPAT007");
+  }
+  give current;
+}
+
+proc parse_pattern(state: ParserState) -> ParserState {
+  let current: ParserState = bump_pattern(state);
+  set current = parse_pattern_atom(current);
+  while at_text(current, "|") {
+    set current = advance(current);
+    set current = parse_pattern_atom(current);
+  }
+  give current;
+}
+
+proc path_starts_struct_literal(state: ParserState) -> bool {
+  if not at_text(state, "{") {
+    give false;
+  }
+  let first: Token = peek_token(state, 1);
+  let second: Token = peek_token(state, 2);
+  if first.lexeme == "}" or first.lexeme == ".." {
+    give true;
+  }
+  if not is_ident_like(first) {
+    give false;
+  }
+  give second.lexeme == ":" or second.lexeme == "," or second.lexeme == "}";
+}
+
+proc parse_arg_list(state: ParserState, closing: string) -> ParserState {
+  let current: ParserState = state;
+  while not is_eof(current) and not at_text(current, closing) {
+    if at_text(current, ",") {
+      set current = advance(current);
+    } else {
+      set current = parse_expr(current);
+    }
+  }
+  give current;
+}
+
+proc parse_if_expr(state: ParserState) -> ParserState {
+  let current: ParserState = expect_text(state, "if", "PIF001");
+  set current = parse_expr(current);
+  set current = parse_block(current);
+  while at_text(current, "elif") {
+    set current = advance(current);
+    set current = parse_expr(current);
+    set current = parse_block(current);
+  }
+  if at_text(current, "else") {
+    set current = advance(current);
+    set current = parse_block(current);
+  }
+  give current;
+}
+
+proc parse_match_expr(state: ParserState) -> ParserState {
+  let current: ParserState = expect_text(state, "match", "PMATCH001");
+  set current = parse_expr(current);
+  set current = expect_text(current, "{", "PMATCH002");
+  while at_text(current, "case") {
+    set current = advance(current);
+    set current = parse_pattern(current);
+    if at_text(current, "if") {
+      set current = advance(current);
+      set current = parse_expr(current);
+    }
+    if at_text(current, "=>") {
+      set current = advance(current);
+      set current = parse_expr(current);
+      set current = expect_text(current, ";", "PMATCH003");
+    } else {
+      set current = parse_block(current);
+    }
+  }
+  if at_text(current, "else") {
+    set current = advance(current);
+    if at_text(current, "=>") {
+      set current = advance(current);
+      set current = parse_expr(current);
+      set current = expect_text(current, ";", "PMATCH004");
+    } else {
+      set current = parse_block(current);
+    }
+  }
+  give expect_text(current, "}", "PMATCH005");
+}
+
+proc parse_primary(state: ParserState) -> ParserState {
+  let current: ParserState = state;
+  let tok: Token = current_token(current);
+  if is_literal_token(tok) {
+    give advance(current);
+  }
+  if at_text(current, "if") {
+    give parse_if_expr(current);
+  }
+  if at_text(current, "match") {
+    give parse_match_expr(current);
+  }
+  if at_text(current, "{") {
+    give parse_block(current);
+  }
+  if at_text(current, "(") {
+    let nested: ParserState = advance(current);
+    let parsed: ParserState = parse_expr(nested);
+    let after_expr: ParserState = parsed;
+    while at_text(after_expr, ",") {
+      set after_expr = advance(after_expr);
+      if at_text(after_expr, ")") { break; }
+      set after_expr = parse_expr(after_expr);
+    }
+    give expect_text(after_expr, ")", "PPRIMARY001");
+  }
+  if at_text(current, "[") {
+    let nested: ParserState = advance(current);
+    let items: ParserState = parse_arg_list(nested, "]");
+    give expect_text(items, "]", "PPRIMARY002");
+  }
+  if at_text(current, "map") or at_text(current, "resource") or at_text(current, "set") {
+    let nested: ParserState = advance(current);
+    if at_text(nested, "{") {
+      give skip_balanced(nested, "{", "}", "PPRIMARY003");
+    }
+  }
+  if at_text(current, "proc") {
+    let nested: ParserState = advance(current);
+    let with_open: ParserState = expect_text(nested, "(", "PPRIMARY004");
+    let with_params: ParserState = parse_param_list(with_open, ")");
+    let with_close: ParserState = expect_text(with_params, ")", "PPRIMARY005");
+    let with_ret: ParserState = with_close;
+    if at_text(with_ret, "->") {
+      set with_ret = parse_type_expr(advance(with_ret));
+    }
+    let with_suffix: ParserState = parse_proc_suffixes(with_ret);
+    give parse_block(with_suffix);
+  }
+  if at_text(current, "|") {
+    let nested: ParserState = advance(current);
+    let params: ParserState = parse_param_list(nested, "|");
+    let with_bar: ParserState = expect_text(params, "|", "PLAMBDA001");
+    if at_text(with_bar, "{") {
+      give parse_block(with_bar);
+    }
+    give parse_expr(with_bar);
+  }
+  if at_text(current, "unsafe") {
+    give parse_block(advance(current));
+  }
+  if at_text(current, "sizeof") or at_text(current, "alignof") or at_text(current, "offsetof") or at_text(current, "typeof") or at_text(current, "nameof") {
+    let nested: ParserState = advance(current);
+    let with_open: ParserState = expect_text(nested, "(", "PBUILTIN001");
+    let with_arg: ParserState = parse_expr(with_open);
+    give expect_text(with_arg, ")", "PBUILTIN002");
+  }
+  if is_ident_like(tok) {
+    let with_path: ParserState = parse_path(current);
+    if path_starts_struct_literal(with_path) {
+      give skip_balanced(with_path, "{", "}", "PSTRUCT001");
+    }
+    if at_text(with_path, "[") {
+      let nested: ParserState = advance(with_path);
+      let args: ParserState = parse_arg_list(nested, "]");
+      give expect_text(args, "]", "PSTRUCT002");
+    }
+    give with_path;
+  }
+  give with_diag(current, "PPRIMARY999", "unexpected expression token `" + tok.lexeme + "`");
+}
+
+proc parse_postfix_expr(state: ParserState) -> ParserState {
+  let current: ParserState = parse_primary(state);
+  while true {
+    if at_text(current, "(") {
+      let nested: ParserState = advance(current);
+      let args: ParserState = parse_arg_list(nested, ")");
+      set current = expect_text(args, ")", "PCALL001");
+      continue;
+    }
+    if at_text(current, ".") {
+      set current = advance(current);
+      if at_text(current, "await") {
+        set current = advance(current);
+      } else {
+        set current = expect_ident(current, "PMEMBER001");
+      }
+      continue;
+    }
+    if at_text(current, "[") {
+      let nested: ParserState = advance(current);
+      let idx: ParserState = parse_arg_list(nested, "]");
+      set current = expect_text(idx, "]", "PINDEX001");
+      continue;
+    }
+    if at_text(current, "?") {
+      set current = advance(current);
+      continue;
+    }
+    break;
+  }
+  give current;
+}
+
+proc parse_unary_expr(state: ParserState) -> ParserState {
+  if at_text(state, "not") or at_text(state, "-") or at_text(state, "~") or at_text(state, "*") or at_text(state, "&") or at_text(state, "move") or at_text(state, "await") {
+    give parse_unary_expr(advance(state));
+  }
+  give parse_postfix_expr(state);
+}
+
+proc parse_bin_expr(state: ParserState, op1: string, op2: string, op3: string) -> ParserState {
+  let current: ParserState = parse_unary_expr(state);
+  while at_text(current, op1) or (op2 != "" and at_text(current, op2)) or (op3 != "" and at_text(current, op3)) {
+    set current = advance(current);
+    set current = parse_unary_expr(current);
+  }
+  give current;
+}
+
+proc parse_expr(state: ParserState) -> ParserState {
+  let current: ParserState = bump_expr(state);
+  let parsed: ParserState = parse_unary_expr(current);
+  let walk: ParserState = parsed;
+  while at_text(walk, "+") or at_text(walk, "-") or at_text(walk, "*") or at_text(walk, "/") or at_text(walk, "%") or at_text(walk, "==") or at_text(walk, "!=") or at_text(walk, "<") or at_text(walk, "<=") or at_text(walk, ">") or at_text(walk, ">=") or at_text(walk, "&&") or at_text(walk, "||") or at_text(walk, "and") or at_text(walk, "or") or at_text(walk, "|") or at_text(walk, "&") or at_text(walk, "^") or at_text(walk, "<<") or at_text(walk, ">>") or at_text(walk, "..") or at_text(walk, "..=") or at_text(walk, "??") or at_text(walk, "as") or at_text(walk, "is") {
+    let op: string = current_token(walk).lexeme;
+    set walk = advance(walk);
+    if op == "as" {
+      set walk = parse_type_expr(walk);
+    } elif op == "is" {
+      if at_text(walk, "not") {
+        set walk = advance(walk);
+      }
+      set walk = parse_pattern(walk);
+    } else {
+      set walk = parse_unary_expr(walk);
+    }
+  }
+  if at_text(walk, "?") {
+    set walk = advance(walk);
+    set walk = parse_expr(walk);
+    set walk = expect_text(walk, ":", "PTERN001");
+    set walk = parse_expr(walk);
+  }
+  if at_text(walk, "=") or at_text(walk, "+=") or at_text(walk, "-=") or at_text(walk, "*=") or at_text(walk, "/=") or at_text(walk, "%=") or at_text(walk, "&=") or at_text(walk, "|=") or at_text(walk, "^=") or at_text(walk, "<<=") or at_text(walk, ">>=") {
+    set walk = advance(walk);
+    set walk = parse_expr(walk);
+  }
+  give walk;
+}
+
+proc parse_stmt(state: ParserState) -> ParserState {
+  let current: ParserState = bump_stmt(state);
+  if at_text(current, "const") {
+    let walk: ParserState = advance(current);
+    let named: ParserState = expect_ident(walk, "PSTMT001");
+    let typed: ParserState = named;
+    if at_text(typed, ":") {
+      set typed = parse_type_expr(advance(typed));
+    }
+    let assigned: ParserState = expect_text(typed, "=", "PSTMT002");
+    let exprd: ParserState = parse_expr(assigned);
+    give expect_text(exprd, ";", "PSTMT003");
+  }
+  if at_text(current, "let") {
+    let walk: ParserState = advance(current);
+    let with_mut: ParserState = walk;
+    if at_text(with_mut, "mut") {
+      set with_mut = advance(with_mut);
+    }
+    let pat: ParserState = parse_pattern(with_mut);
+    let typed: ParserState = pat;
+    if at_text(typed, ":") {
+      set typed = parse_type_expr(advance(typed));
+    }
+    let assigned: ParserState = expect_text(typed, "=", "PSTMT004");
+    let exprd: ParserState = parse_expr(assigned);
+    give expect_text(exprd, ";", "PSTMT005");
+  }
+  if at_text(current, "set") {
+    let walk: ParserState = advance(current);
+    let target: ParserState = parse_unary_expr(walk);
+    if at_text(target, "=") or at_text(target, "+=") or at_text(target, "-=") or at_text(target, "*=") or at_text(target, "/=") or at_text(target, "%=") or at_text(target, "&=") or at_text(target, "|=") or at_text(target, "^=") or at_text(target, "<<=") or at_text(target, ">>=") {
+      let exprd: ParserState = parse_expr(advance(target));
+      give expect_text(exprd, ";", "PSTMT006");
+    }
+    give with_diag(target, "PSTMT007", "expected assignment operator");
+  }
+  if at_text(current, "give") {
+    let walk: ParserState = advance(current);
+    let exprd: ParserState = walk;
+    if not at_text(exprd, ";") {
+      set exprd = parse_expr(exprd);
+    }
+    give expect_text(exprd, ";", "PSTMT008");
+  }
+  if at_text(current, "try") {
+    let exprd: ParserState = parse_expr(advance(current));
+    give expect_text(exprd, ";", "PSTMT009");
+  }
+  if at_text(current, "defer") {
+    give parse_block(advance(current));
+  }
+  if at_text(current, "asm") {
+    let walk: ParserState = skip_balanced(advance(current), "(", ")", "PSTMT010");
+    give expect_text(walk, ";", "PSTMT011");
+  }
+  if at_text(current, "unsafe") {
+    give parse_block(advance(current));
+  }
+  if at_text(current, "emit") or at_text(current, "panic") {
+    let exprd: ParserState = parse_expr(advance(current));
+    give expect_text(exprd, ";", "PSTMT012");
+  }
+  if at_text(current, "assert") {
+    let walk: ParserState = parse_expr(advance(current));
+    let with_more: ParserState = walk;
+    if at_text(with_more, ",") {
+      set with_more = parse_expr(advance(with_more));
+    }
+    give expect_text(with_more, ";", "PSTMT013");
+  }
+  if at_text(current, "unreachable") or at_text(current, "continue") {
+    give expect_text(advance(current), ";", "PSTMT014");
+  }
+  if at_text(current, "break") {
+    let walk: ParserState = advance(current);
+    let exprd: ParserState = walk;
+    if not at_text(exprd, ";") {
+      set exprd = parse_expr(exprd);
+    }
+    give expect_text(exprd, ";", "PSTMT015");
+  }
+  if at_text(current, "if") {
+    give parse_if_expr(current);
+  }
+  if at_text(current, "while") {
+    let walk: ParserState = parse_expr(advance(current));
+    give parse_block(walk);
+  }
+  if at_text(current, "loop") {
+    give parse_block(advance(current));
+  }
+  if at_text(current, "for") {
+    let walk: ParserState = parse_pattern(advance(current));
+    let in_state: ParserState = expect_text(walk, "in", "PSTMT016");
+    let exprd: ParserState = parse_expr(in_state);
+    give parse_block(exprd);
+  }
+  if at_text(current, "match") {
+    give parse_match_expr(current);
+  }
+  if at_text(current, "when") {
+    let walk: ParserState = parse_expr(advance(current));
+    let is_state: ParserState = expect_text(walk, "is", "PSTMT017");
+    let pat: ParserState = parse_pattern(is_state);
+    give parse_block(pat);
+  }
+  if at_text(current, "with") {
+    let walk: ParserState = parse_expr(advance(current));
+    let with_pat: ParserState = walk;
+    if at_text(with_pat, "as") {
+      set with_pat = parse_pattern(advance(with_pat));
+    }
+    give parse_block(with_pat);
+  }
+  if at_text(current, "critical") {
+    give parse_block(advance(current));
+  }
+  let exprd: ParserState = parse_expr(current);
+  give expect_text(exprd, ";", "PSTMT018");
+}
+
+proc parse_block(state: ParserState) -> ParserState {
+  let current: ParserState = expect_text(state, "{", "PBLOCK001");
+  let walk: ParserState = current;
+  while not is_eof(walk) and not at_text(walk, "}") {
+    set walk = parse_stmt(walk);
+  }
+  give expect_text(walk, "}", "PBLOCK002");
+}
+
+proc parse_const_decl(state: ParserState) -> ParserState {
+  let walk: ParserState = advance(state);
+  let named: ParserState = expect_ident(walk, "PDECL001");
+  let typed: ParserState = named;
+  if at_text(typed, ":") {
+    set typed = parse_type_expr(advance(typed));
+  }
+  let assigned: ParserState = expect_text(typed, "=", "PDECL002");
+  give parse_expr(assigned);
+}
+
+proc parse_type_decl(state: ParserState) -> ParserState {
+  let walk: ParserState = advance(state);
+  let named: ParserState = expect_ident(walk, "PDECL003");
+  let generic: ParserState = parse_generic_params(named);
+  let assigned: ParserState = expect_text(generic, "=", "PDECL004");
+  give parse_type_expr(assigned);
+}
+
+proc parse_container_decl(state: ParserState) -> ParserState {
+  let walk: ParserState = advance(state);
+  let named: ParserState = expect_ident(walk, "PDECL005");
+  let generic: ParserState = parse_generic_params(named);
+  let current: ParserState = generic;
+  if at_text(current, ":") {
+    set current = parse_type_expr(advance(current));
+  }
+  while not is_eof(current) and not at_text(current, "{") and not at_text(current, ";") {
+    if at_text(current, "where") {
+      set current = parse_proc_suffixes(current);
+    } else {
+      set current = advance(current);
+    }
+  }
+  if at_text(current, "{") {
+    give skip_balanced(current, "{", "}", "PDECL006");
+  }
+  give current;
+}
+
+proc parse_meta_decl(state: ParserState) -> ParserState {
+  let walk: ParserState = advance(state);
+  let named: ParserState = expect_ident(walk, "PMETA001");
+  let current: ParserState = named;
+  if at_text(state, "macro") {
+    set current = skip_balanced(current, "(", ")", "PMETA002");
+  }
+  while not is_eof(current) and not at_text(current, "{") and not at_text(current, ";") {
+    set current = advance(current);
+  }
+  if at_text(current, "{") {
+    give skip_balanced(current, "{", "}", "PMETA003");
+  }
+  give expect_text(current, ";", "PMETA004");
+}
+
+proc parse_decl(state: ParserState) -> ParserState {
+  let current: ParserState = bump_toplevel(state);
+  let tok: Token = current_token(current);
+  if tok.kind == TokenKind.Eof {
+    give current;
+  }
+  if tok.lexeme == "space" {
+    give parse_module_path(advance(current));
+  }
+  if tok.lexeme == "use" {
+    let walk: ParserState = parse_module_path(advance(current));
+    let imported: ParserState = walk;
+    if at_text(imported, ".") {
+      let after_dot: ParserState = advance(imported);
+      if at_text(after_dot, "*") {
+        give advance(after_dot);
+      }
+      if at_text(after_dot, "{") {
+        give skip_balanced(after_dot, "{", "}", "PUSE001");
+      }
+    }
+    if at_text(imported, "as") {
+      give expect_ident(advance(imported), "PUSE002");
+    }
+    give imported;
+  }
+  if tok.lexeme == "export" {
+    let walk: ParserState = advance(current);
+    if at_text(walk, "*") {
+      give advance(walk);
+    }
+    if at_text(walk, "{") {
+      give skip_balanced(walk, "{", "}", "PEXP001");
+    }
+    give skip_until_boundary(walk, ";", "{", "");
+  }
+  if tok.lexeme == "const" or tok.lexeme == "static" or tok.lexeme == "global" {
+    give parse_const_decl(current);
+  }
+  if tok.lexeme == "type" {
+    give parse_type_decl(current);
+  }
+  if tok.lexeme == "opaque" {
+    let walk: ParserState = expect_text(advance(current), "type", "POPAQUE001");
+    let named: ParserState = expect_ident(walk, "POPAQUE002");
+    let generic: ParserState = parse_generic_params(named);
+    if at_text(generic, "=") {
+      give parse_type_expr(advance(generic));
+    }
+    give generic;
+  }
+  if tok.lexeme == "extern" {
+    let walk: ParserState = advance(current);
+    if at_text(walk, "type") {
+      let named: ParserState = expect_ident(advance(walk), "PEXTERN001");
+      give parse_generic_params(named);
+    }
+    if at_kind(walk, TokenKind.String) or at_text(walk, "C") or at_text(walk, "sysv64") or at_text(walk, "win64") or at_text(walk, "interrupt") or at_text(walk, "naked") {
+      let abi: ParserState = advance(walk);
+      give skip_balanced(abi, "{", "}", "PEXTERN002");
+    }
+    give with_diag(walk, "PEXTERN999", "expected extern type or extern block");
+  }
+  if tok.lexeme == "form" or tok.lexeme == "class" or tok.lexeme == "union" or tok.lexeme == "bits" or tok.lexeme == "pick" or tok.lexeme == "flags" or tok.lexeme == "trait" or tok.lexeme == "impl" {
+    give parse_container_decl(current);
+  }
+  if tok.lexeme == "proc" or is_visibility(tok.lexeme) or is_proc_modifier(tok.lexeme) {
+    give parse_proc_decl(current);
+  }
+  if tok.lexeme == "intrinsic" or tok.lexeme == "query" {
+    let walk: ParserState = advance(current);
+    let named: ParserState = expect_ident(walk, "PQUERY001");
+    let generic: ParserState = parse_generic_params(named);
+    let with_open: ParserState = expect_text(generic, "(", "PQUERY002");
+    let params: ParserState = parse_param_list(with_open, ")");
+    let with_close: ParserState = expect_text(params, ")", "PQUERY003");
+    let with_ret: ParserState = with_close;
+    if at_text(with_ret, "->") {
+      set with_ret = parse_type_expr(advance(with_ret));
+    }
+    let suffixed: ParserState = parse_proc_suffixes(with_ret);
+    if tok.lexeme == "query" and at_text(suffixed, "{") {
+      give parse_block(suffixed);
+    }
+    give expect_text(suffixed, ";", "PQUERY004");
+  }
+  if tok.lexeme == "compiler" or tok.lexeme == "pass" or tok.lexeme == "backend" or tok.lexeme == "diagnostic" or tok.lexeme == "macro" or tok.lexeme == "entry" {
+    give parse_meta_decl(current);
+  }
+  if tok.lexeme == "comptime" {
+    give parse_block(advance(current));
+  }
+  if tok.lexeme == "static_assert" {
+    let walk: ParserState = expect_text(advance(current), "(", "PASSERT001");
+    let exprd: ParserState = parse_expr(walk);
+    let more: ParserState = exprd;
+    if at_text(more, ",") {
+      set more = parse_expr(advance(more));
+    }
+    give expect_text(more, ")", "PASSERT002");
+  }
+  if tok.lexeme == "test" or tok.lexeme == "bench" {
+    let walk: ParserState = advance(current);
+    let named: ParserState = walk;
+    if at_kind(named, TokenKind.String) {
+      set named = advance(named);
+    }
+    give parse_block(named);
+  }
+  if is_toplevel_keyword(tok.lexeme) {
+    give skip_until_boundary(current, ";", "{", "");
+  }
+  give with_diag(current, "P0001", "unexpected top-level token `" + tok.lexeme + "`");
+}
+
+proc parse_source(source_name: string, tokens: [Token]) -> ParseResult {
+  let current: ParserState = parser_state(source_name, tokens);
+  let walk: ParserState = current;
+  while not is_eof(walk) {
+    let before: u64 = walk.index;
+    set walk = parse_decl(walk);
+    if walk.index == before {
+      set walk = with_diag(walk, "PLOOP", "parser made no progress");
+      set walk = advance(walk);
+    }
+  }
+
+  give ParseResult {
+    grammar_version: "vitte-core-2026-05",
+    ast_root: "program",
+    toplevel_count: walk.toplevel_count,
+    stmt_count: walk.stmt_count,
+    expr_count: walk.expr_count,
+    type_count: walk.type_count,
+    pattern_count: walk.pattern_count,
+    diagnostics: walk.diagnostics,
+    valid: len(walk.diagnostics) == 0
+  };
+}

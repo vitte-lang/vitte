@@ -1,9 +1,44 @@
 space vitte/compiler/driver
 
-use vitte/compiler/infrastructure/session/options { SessionOptions }
-use vitte/compiler/driver/pipeline { localized_status }
+use vitte/compiler/driver/compile.{ DriverCompileResult, compile_source, check_source }
+use vitte/compiler/driver/exit_status.{ exit_code }
+use vitte/compiler/driver/pipeline.{ CompileReport, run_and_report, compile_report_json }
+use vitte/compiler/driver/result.{ CliRunResult, CliReportResult }
 
-proc cli_message(locale: string, key: string) -> string {
-  let options: SessionOptions = SessionOptions { locale: locale }
-  give localized_status(options, key)
+proc run_compile_cli(source_path: string, source_text: string) -> CliRunResult {
+    let result: DriverCompileResult = compile_source(source_path, source_text);
+
+    give CliRunResult {
+        code: exit_code(result.status),
+        message: result.message
+    };
+}
+
+proc run_check_cli(source_path: string, source_text: string) -> CliRunResult {
+    let result: DriverCompileResult = check_source(source_path, source_text);
+
+    give CliRunResult {
+        code: exit_code(result.status),
+        message: result.message
+    };
+}
+
+proc run_compile_report_cli(source_path: string, source_text: string) -> CliReportResult {
+    let report: CompileReport = run_and_report("compile", source_path, source_text);
+
+    give CliReportResult {
+        code: report.exit_code,
+        message: report.status,
+        report_json: compile_report_json(report)
+    };
+}
+
+proc run_check_report_cli(source_path: string, source_text: string) -> CliReportResult {
+    let report: CompileReport = run_and_report("check", source_path, source_text);
+
+    give CliReportResult {
+        code: report.exit_code,
+        message: report.status,
+        report_json: compile_report_json(report)
+    };
 }

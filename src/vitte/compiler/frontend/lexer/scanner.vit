@@ -1,0 +1,218 @@
+space vitte/compiler/frontend/lexer/scanner
+
+use vitte/compiler/frontend/lexer/token.{ Token, TokenKind, token }
+
+proc is_letter(ch: string) -> bool {
+  give (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_";
+}
+
+proc is_digit(ch: string) -> bool {
+  give ch >= "0" and ch <= "9";
+}
+
+proc starts_with_at(text: string, i: u64, needle: string) -> bool {
+  if i + len(needle) > len(text) {
+    give false;
+  }
+  give slice(text, i, i + len(needle)) == needle;
+}
+
+proc is_keyword(text: string) -> bool {
+  if text == "space" or text == "use" or text == "export" or text == "const" or text == "static" or text == "global" { give true; }
+  if text == "type" or text == "opaque" or text == "extern" or text == "form" or text == "class" or text == "union" { give true; }
+  if text == "bits" or text == "pick" or text == "flags" or text == "trait" or text == "impl" or text == "proc" { give true; }
+  if text == "intrinsic" or text == "compiler" or text == "query" or text == "pass" or text == "backend" { give true; }
+  if text == "diagnostic" or text == "macro" or text == "comptime" or text == "static_assert" or text == "test" or text == "bench" or text == "entry" { give true; }
+  if text == "pub" or text == "priv" or text == "unsafe" or text == "async" or text == "inline" or text == "noinline" { give true; }
+  if text == "naked" or text == "interrupt" or text == "where" or text == "effects" or text == "requires" or text == "operator" { give true; }
+  if text == "as" or text == "for" or text == "at" or text == "let" or text == "set" or text == "give" or text == "try" { give true; }
+  if text == "defer" or text == "asm" or text == "emit" or text == "assert" or text == "panic" or text == "unreachable" { give true; }
+  if text == "if" or text == "elif" or text == "else" or text == "while" or text == "loop" or text == "in" { give true; }
+  if text == "break" or text == "continue" or text == "select" or text == "when" or text == "match" or text == "case" { give true; }
+  if text == "with" or text == "critical" or text == "mut" or text == "owned" or text == "borrow" or text == "move" { give true; }
+  if text == "await" or text == "not" or text == "and" or text == "or" or text == "is" or text == "self" or text == "ref" { give true; }
+  if text == "dyn" or text == "true" or text == "false" or text == "null" or text == "sizeof" or text == "alignof" { give true; }
+  if text == "offsetof" or text == "typeof" or text == "nameof" or text == "map" or text == "resource" or text == "volatile" { give true; }
+  if text == "atomic" or text == "user" or text == "kernel" or text == "phys" or text == "mmio" or text == "dma" or text == "noexcept" { give true; }
+  give false;
+}
+
+proc scan_tokens(text: string) -> [Token] {
+  let tokens: [Token] = [];
+  let i: u64 = 0;
+  let line: u64 = 1;
+  let col: u64 = 1;
+
+  while i < len(text) {
+    let ch: string = slice(text, i, i + 1);
+
+    if ch == " " or ch == "\t" or ch == "\r" {
+      set i = i + 1;
+      set col = col + 1;
+      continue;
+    }
+
+    if ch == "\n" {
+      set i = i + 1;
+      set line = line + 1;
+      set col = 1;
+      continue;
+    }
+
+    if ch == "#" {
+      while i < len(text) and slice(text, i, i + 1) != "\n" {
+        set i = i + 1;
+        set col = col + 1;
+      }
+      continue;
+    }
+
+    if starts_with_at(text, i, "//") {
+      while i < len(text) and slice(text, i, i + 1) != "\n" {
+        set i = i + 1;
+        set col = col + 1;
+      }
+      continue;
+    }
+
+    if starts_with_at(text, i, "/*") {
+      set i = i + 2;
+      set col = col + 2;
+      while i + 1 < len(text) and not starts_with_at(text, i, "*/") {
+        if slice(text, i, i + 1) == "\n" {
+          set i = i + 1;
+          set line = line + 1;
+          set col = 1;
+        } else {
+          set i = i + 1;
+          set col = col + 1;
+        }
+      }
+      if i + 1 < len(text) {
+        set i = i + 2;
+        set col = col + 2;
+      }
+      continue;
+    }
+
+    if starts_with_at(text, i, "<<<") {
+      set i = i + 3;
+      set col = col + 3;
+      while i + 2 < len(text) and not starts_with_at(text, i, ">>>") {
+        if slice(text, i, i + 1) == "\n" {
+          set i = i + 1;
+          set line = line + 1;
+          set col = 1;
+        } else {
+          set i = i + 1;
+          set col = col + 1;
+        }
+      }
+      if i + 2 < len(text) {
+        set i = i + 3;
+        set col = col + 3;
+      }
+      continue;
+    }
+
+    if is_letter(ch) {
+      let start: u64 = i;
+      let start_col: u64 = col;
+      while i < len(text) {
+        let c2: string = slice(text, i, i + 1);
+        if is_letter(c2) or is_digit(c2) {
+          set i = i + 1;
+          set col = col + 1;
+        } else {
+          break;
+        }
+      }
+      let lex: string = slice(text, start, i);
+      if is_keyword(lex) {
+        set tokens = tokens + [token(TokenKind.Keyword, lex, line, start_col)];
+      } else {
+        set tokens = tokens + [token(TokenKind.Ident, lex, line, start_col)];
+      }
+      continue;
+    }
+
+    if is_digit(ch) or (ch == "-" and i + 1 < len(text) and is_digit(slice(text, i + 1, i + 2))) {
+      let start: u64 = i;
+      let start_col: u64 = col;
+      if ch == "-" {
+        set i = i + 1;
+        set col = col + 1;
+      }
+      while i < len(text) {
+        let c2: string = slice(text, i, i + 1);
+        if is_digit(c2) or c2 == "_" or c2 == "." or c2 == "x" or c2 == "o" or c2 == "b" {
+          set i = i + 1;
+          set col = col + 1;
+        } else {
+          break;
+        }
+      }
+      set tokens = tokens + [token(TokenKind.Integer, slice(text, start, i), line, start_col)];
+      continue;
+    }
+
+    if ch == "\"" or ch == "'" {
+      let start: u64 = i;
+      let start_col: u64 = col;
+      let quote: string = ch;
+      set i = i + 1;
+      set col = col + 1;
+      while i < len(text) {
+        let c2: string = slice(text, i, i + 1);
+        if c2 == "\\" and i + 1 < len(text) {
+          set i = i + 2;
+          set col = col + 2;
+          continue;
+        }
+        if c2 == quote {
+          set i = i + 1;
+          set col = col + 1;
+          break;
+        }
+        if c2 == "\n" {
+          set i = i + 1;
+          set line = line + 1;
+          set col = 1;
+        } else {
+          set i = i + 1;
+          set col = col + 1;
+        }
+      }
+      set tokens = tokens + [token(TokenKind.String, slice(text, start, i), line, start_col)];
+      continue;
+    }
+
+    let start_col: u64 = col;
+    if starts_with_at(text, i, "...") {
+      set tokens = tokens + [token(TokenKind.Symbol, "...", line, start_col)];
+      set i = i + 3;
+      set col = col + 3;
+      continue;
+    }
+    if starts_with_at(text, i, "..=") {
+      set tokens = tokens + [token(TokenKind.Symbol, "..=", line, start_col)];
+      set i = i + 3;
+      set col = col + 3;
+      continue;
+    }
+    if starts_with_at(text, i, "->") or starts_with_at(text, i, "::") or starts_with_at(text, i, "..") or starts_with_at(text, i, "==") or starts_with_at(text, i, "!=") or starts_with_at(text, i, "<=") or starts_with_at(text, i, ">=") or starts_with_at(text, i, "<<") or starts_with_at(text, i, ">>") or starts_with_at(text, i, "+=") or starts_with_at(text, i, "-=") or starts_with_at(text, i, "*=") or starts_with_at(text, i, "/=") or starts_with_at(text, i, "%=") or starts_with_at(text, i, "&=") or starts_with_at(text, i, "|=") or starts_with_at(text, i, "^=") or starts_with_at(text, i, "??") or starts_with_at(text, i, "=>") or starts_with_at(text, i, "#[") or starts_with_at(text, i, "#!") {
+      let sym: string = slice(text, i, i + 2);
+      set tokens = tokens + [token(TokenKind.Symbol, sym, line, start_col)];
+      set i = i + 2;
+      set col = col + 2;
+      continue;
+    }
+
+    set tokens = tokens + [token(TokenKind.Symbol, ch, line, col)];
+    set i = i + 1;
+    set col = col + 1;
+  }
+
+  set tokens = tokens + [token(TokenKind.Eof, "", line, col)];
+  give tokens;
+}

@@ -16,56 +16,56 @@ const EMITTER_MAX_SYMBOLS: u64 = 2097152
 const EMITTER_MAX_SECTIONS: u64 = 1024
 
 pick EmitTarget {
-    Unknown
-    Native
-    Object
-    Assembly
-    LLVM
-    Bytecode
-    WASM
+    Unknown,
+    Native,
+    Object,
+    Assembly,
+    LLVM,
+    Bytecode,
+    WASM,
 }
 
 pick EmitArch {
-    Unknown
-    X86_64
-    AArch64
-    RiscV64
-    ARM
-    I386
+    Unknown,
+    X86_64,
+    AArch64,
+    RiscV64,
+    ARM,
+    I386,
 }
 
 pick EmitSectionKind {
-    Text
-    Data
-    Rodata
-    Bss
-    Tls
-    Debug
-    Metadata
-    Custom
+    Text,
+    Data,
+    Rodata,
+    Bss,
+    Tls,
+    Debug,
+    Metadata,
+    Custom,
 }
 
 pick EmitRelocationKind {
-    Absolute
-    Relative
-    GOT
-    PLT
-    TLS
-    Branch
+    Absolute,
+    Relative,
+    GOT,
+    PLT,
+    TLS,
+    Branch,
 }
 
 pick EmitErrorKind {
-    None
-    InvalidTarget
-    InvalidArchitecture
-    InvalidSection
-    InvalidInstruction
-    InvalidSymbol
-    BufferOverflow
-    RelocationFailure
-    SerializationFailure
-    UnsupportedOpcode
-    InternalFailure
+    None,
+    InvalidTarget,
+    InvalidArchitecture,
+    InvalidSection,
+    InvalidInstruction,
+    InvalidSymbol,
+    BufferOverflow,
+    RelocationFailure,
+    SerializationFailure,
+    UnsupportedOpcode,
+    InternalFailure,
 }
 
 form EmitSpan {
@@ -113,7 +113,7 @@ form EmitSymbol {
     name: string
     section: u64
     offset: u64
-    global: bool
+    is_global: bool
     exported: bool
     valid: bool
 }
@@ -152,7 +152,7 @@ proc span_empty() -> EmitSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc buffer_empty() -> EmitBuffer {
@@ -163,7 +163,7 @@ proc buffer_empty() -> EmitBuffer {
         size: 0,
         capacity: EMITTER_MAX_BUFFERS,
         valid: true
-    }
+    };
 }
 
 proc instruction_invalid() -> EmitInstruction {
@@ -175,7 +175,7 @@ proc instruction_invalid() -> EmitInstruction {
         offset: 0,
         size: 0,
         valid: false
-    }
+    };
 }
 
 proc instruction_create(
@@ -191,7 +191,7 @@ proc instruction_create(
         offset: 0,
         size: 0,
         valid: true
-    }
+    };
 }
 
 proc section_create(
@@ -212,7 +212,7 @@ proc section_create(
         readable: true,
         instructions: [],
         valid: true
-    }
+    };
 }
 
 proc symbol_create(
@@ -220,7 +220,7 @@ proc symbol_create(
     name: string,
     section: u64,
     offset: u64,
-    global: bool,
+    is_global: bool,
     exported: bool
 ) -> EmitSymbol {
     give EmitSymbol {
@@ -228,10 +228,10 @@ proc symbol_create(
         name: name,
         section: section,
         offset: offset,
-        global: global,
+        is_global: is_global,
         exported: exported,
         valid: true
-    }
+    };
 }
 
 proc relocation_create(
@@ -250,7 +250,7 @@ proc relocation_create(
         offset: offset,
         addend: addend,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -264,7 +264,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         object: object
-    }
+    };
 }
 
 proc object_empty(
@@ -280,7 +280,7 @@ proc object_empty(
         diagnostics: [],
         output: buffer_empty(),
         valid: true
-    }
+    };
 }
 
 proc object_add_diagnostic(
@@ -296,7 +296,7 @@ proc object_add_diagnostic(
         diagnostics: object.diagnostics + [diagnostic],
         output: object.output,
         valid: false
-    }
+    };
 }
 
 proc object_add_section(
@@ -312,7 +312,7 @@ proc object_add_section(
                 span_empty(),
                 section.id
             )
-        )
+        );
     }
 
     give EmitObject {
@@ -324,7 +324,7 @@ proc object_add_section(
         diagnostics: object.diagnostics,
         output: object.output,
         valid: object.valid
-    }
+    };
 }
 
 proc object_add_symbol(
@@ -340,7 +340,7 @@ proc object_add_symbol(
                 span_empty(),
                 symbol.id
             )
-        )
+        );
     }
 
     give EmitObject {
@@ -352,7 +352,7 @@ proc object_add_symbol(
         diagnostics: object.diagnostics,
         output: object.output,
         valid: object.valid
-    }
+    };
 }
 
 proc object_add_relocation(
@@ -368,7 +368,7 @@ proc object_add_relocation(
         diagnostics: object.diagnostics,
         output: object.output,
         valid: object.valid
-    }
+    };
 }
 
 proc section_add_instruction(
@@ -388,7 +388,7 @@ proc section_add_instruction(
             readable: section.readable,
             instructions: section.instructions,
             valid: false
-        }
+        };
     }
 
     give EmitSection {
@@ -403,7 +403,7 @@ proc section_add_instruction(
         readable: section.readable,
         instructions: section.instructions + [instruction],
         valid: section.valid
-    }
+    };
 }
 
 proc encode_instruction_x86_64(
@@ -418,7 +418,7 @@ proc encode_instruction_x86_64(
             offset: instruction.offset,
             size: 1,
             valid: true
-        }
+        };
     }
 
     if instruction.opcode == "nop" {
@@ -430,7 +430,7 @@ proc encode_instruction_x86_64(
             offset: instruction.offset,
             size: 1,
             valid: true
-        }
+        };
     }
 
     if instruction.opcode == "syscall" {
@@ -442,10 +442,10 @@ proc encode_instruction_x86_64(
             offset: instruction.offset,
             size: 2,
             valid: true
-        }
+        };
     }
 
-    give instruction_invalid()
+    give instruction_invalid();
 }
 
 proc encode_instruction_aarch64(
@@ -460,7 +460,7 @@ proc encode_instruction_aarch64(
             offset: instruction.offset,
             size: 4,
             valid: true
-        }
+        };
     }
 
     if instruction.opcode == "nop" {
@@ -472,10 +472,10 @@ proc encode_instruction_aarch64(
             offset: instruction.offset,
             size: 4,
             valid: true
-        }
+        };
     }
 
-    give instruction_invalid()
+    give instruction_invalid();
 }
 
 proc encode_instruction(
@@ -483,14 +483,14 @@ proc encode_instruction(
     instruction: EmitInstruction
 ) -> EmitInstruction {
     if arch == EmitArch.X86_64 {
-        give encode_instruction_x86_64(instruction)
+        give encode_instruction_x86_64(instruction);
     }
 
     if arch == EmitArch.AArch64 {
-        give encode_instruction_aarch64(instruction)
+        give encode_instruction_aarch64(instruction);
     }
 
-    give instruction_invalid()
+    give instruction_invalid();
 }
 
 proc append_bytes(
@@ -504,23 +504,23 @@ proc append_bytes(
         size: buffer.size + vector_len(bytes),
         capacity: buffer.capacity,
         valid: buffer.size + vector_len(bytes) <= buffer.capacity
-    }
+    };
 }
 
 proc emit_section(
     object: EmitObject,
     section: EmitSection
 ) -> EmitObject {
-    let buffer = object.output
-    let current = buffer
+    let buffer = object.output;
+    let current = buffer;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(section.instructions) {
+    while i < vector_len(section.instructions) {
         let encoded = encode_instruction(
             object.arch,
             section.instructions[i]
-        )
+        );
 
         if encoded.valid == false {
             give object_add_diagnostic(
@@ -531,11 +531,11 @@ proc emit_section(
                     span_empty(),
                     section.instructions[i].id
                 )
-            )
+            );
         }
 
-        set current = append_bytes(current, encoded.encoded)
-        set i = i + 1
+        set current = append_bytes(current, encoded.encoded);
+        set i = i + 1;
     }
 
     give EmitObject {
@@ -547,27 +547,27 @@ proc emit_section(
         diagnostics: object.diagnostics,
         output: current,
         valid: current.valid
-    }
+    };
 }
 
 proc emit_all_sections(
     object: EmitObject
 ) -> EmitObject {
-    let current = object
-    let i: u64 = 0
+    let current = object;
+    let i: u64 = 0;
 
-    loop i < vector_len(object.sections) {
-        set current = emit_section(current, object.sections[i])
-        set i = i + 1
+    while i < vector_len(object.sections) {
+        set current = emit_section(current, object.sections[i]);
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc serialize_object(
     object: EmitObject
 ) -> EmitBuffer {
-    give object.output
+    give object.output;
 }
 
 proc emit_text_section(
@@ -578,35 +578,35 @@ proc emit_text_section(
         ".text",
         EmitSectionKind.Text,
         16
-    )
+    );
 
     let i1 = instruction_create(
         0,
         "nop",
         []
-    )
+    );
 
     let i2 = instruction_create(
         1,
         "ret",
         []
-    )
+    );
 
-    let with_i1 = section_add_instruction(text, encode_instruction(object.arch, i1))
-    let with_i2 = section_add_instruction(with_i1, encode_instruction(object.arch, i2))
+    let with_i1 = section_add_instruction(text, encode_instruction(object.arch, i1));
+    let with_i2 = section_add_instruction(with_i1, encode_instruction(object.arch, i2));
 
-    give object_add_section(object, with_i2)
+    give object_add_section(object, with_i2);
 }
 
 proc build_default_object(
     target: EmitTarget,
     arch: EmitArch
 ) -> EmitObject {
-    let object = object_empty(target, arch)
+    let object = object_empty(target, arch);
 
-    let with_text = emit_text_section(object)
+    let with_text = emit_text_section(object);
 
-    give emit_all_sections(with_text)
+    give emit_all_sections(with_text);
 }
 
 proc emit_symbol_table(
@@ -619,158 +619,158 @@ proc emit_symbol_table(
         0,
         true,
         true
-    )
+    );
 
-    give object_add_symbol(object, symbol)
+    give object_add_symbol(object, symbol);
 }
 
 proc emit_relocations(
     object: EmitObject
 ) -> EmitObject {
-    give object
+    give object;
 }
 
 proc finalize_object(
     object: EmitObject
 ) -> EmitObject {
-    let with_symbols = emit_symbol_table(object)
-    let with_relocations = emit_relocations(with_symbols)
+    let with_symbols = emit_symbol_table(object);
+    let with_relocations = emit_relocations(with_symbols);
 
-    give with_relocations
+    give with_relocations;
 }
 
 proc object_size(
     object: EmitObject
 ) -> u64 {
-    give object.output.size
+    give object.output.size;
 }
 
 proc section_count(
     object: EmitObject
 ) -> u64 {
-    give vector_len(object.sections)
+    give vector_len(object.sections);
 }
 
 proc symbol_count(
     object: EmitObject
 ) -> u64 {
-    give vector_len(object.symbols)
+    give vector_len(object.symbols);
 }
 
 proc relocation_count(
     object: EmitObject
 ) -> u64 {
-    give vector_len(object.relocations)
+    give vector_len(object.relocations);
 }
 
 proc diagnostic_count(
     object: EmitObject
 ) -> u64 {
-    give vector_len(object.diagnostics)
+    give vector_len(object.diagnostics);
 }
 
 proc emitter_is_valid(
     object: EmitObject
 ) -> bool {
-    give object.valid and vector_len(object.diagnostics) == 0
+    give object.valid and vector_len(object.diagnostics) == 0;
 }
 
 proc target_name(target: EmitTarget) -> string {
     if target == EmitTarget.Native {
-        give "native"
+        give "native";
     }
 
     if target == EmitTarget.Object {
-        give "object"
+        give "object";
     }
 
     if target == EmitTarget.Assembly {
-        give "assembly"
+        give "assembly";
     }
 
     if target == EmitTarget.LLVM {
-        give "llvm"
+        give "llvm";
     }
 
     if target == EmitTarget.Bytecode {
-        give "bytecode"
+        give "bytecode";
     }
 
     if target == EmitTarget.WASM {
-        give "wasm"
+        give "wasm";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc arch_name(arch: EmitArch) -> string {
     if arch == EmitArch.X86_64 {
-        give "x86_64"
+        give "x86_64";
     }
 
     if arch == EmitArch.AArch64 {
-        give "aarch64"
+        give "aarch64";
     }
 
     if arch == EmitArch.RiscV64 {
-        give "riscv64"
+        give "riscv64";
     }
 
     if arch == EmitArch.ARM {
-        give "arm"
+        give "arm";
     }
 
     if arch == EmitArch.I386 {
-        give "i386"
+        give "i386";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_instruction(
     instruction: EmitInstruction
 ) {
-    emit "instruction"
-    emit instruction.id
-    emit instruction.opcode
-    emit instruction.size
+    emit "instruction";
+    emit instruction.id;
+    emit instruction.opcode;
+    emit instruction.size;
 }
 
 proc print_section(
     section: EmitSection
 ) {
-    emit "section"
-    emit section.name
-    emit section.size
-    emit vector_len(section.instructions)
+    emit "section";
+    emit section.name;
+    emit section.size;
+    emit vector_len(section.instructions);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(section.instructions) {
-        print_instruction(section.instructions[i])
-        set i = i + 1
+    while i < vector_len(section.instructions) {
+        print_instruction(section.instructions[i]);
+        set i = i + 1;
     }
 }
 
 proc print_object(
     object: EmitObject
 ) {
-    emit "emitter object"
-    emit target_name(object.target)
-    emit arch_name(object.arch)
-    emit section_count(object)
-    emit symbol_count(object)
-    emit relocation_count(object)
-    emit object_size(object)
+    emit "emitter object";
+    emit target_name(object.target);
+    emit arch_name(object.arch);
+    emit section_count(object);
+    emit symbol_count(object);
+    emit relocation_count(object);
+    emit object_size(object);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(object.sections) {
-        print_section(object.sections[i])
-        set i = i + 1
+    while i < vector_len(object.sections) {
+        print_section(object.sections[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

@@ -15,58 +15,58 @@ const SCOPE_MAX_SCOPES: u64 = 262144
 const SCOPE_MAX_BINDINGS: u64 = 1048576
 
 pick ScopeKind {
-    Root
-    Module
-    Function
-    Block
-    Loop
-    Match
-    Branch
-    Closure
-    Type
-    Impl
-    Trait
-    Macro
-    Unknown
+    Root,
+    Module,
+    Function,
+    Block,
+    Loop,
+    Match,
+    Branch,
+    Closure,
+    Type,
+    Impl,
+    Trait,
+    Macro,
+    Unknown,
 }
 
 pick BindingKind {
-    Module
-    Function
-    Type
-    Form
-    Pick
-    Variant
-    Field
-    Parameter
-    Local
-    Const
-    Static
-    Global
-    Label
-    Macro
-    Unknown
+    Module,
+    Function,
+    Type,
+    Form,
+    Pick,
+    Variant,
+    Field,
+    Parameter,
+    Local,
+    Const,
+    Static,
+    Global,
+    Label,
+    Macro,
+    Unknown,
 }
 
 pick BindingVisibility {
-    Private
-    Package
-    Module
-    Public
-    Exported
+    Private,
+    Package,
+    Module,
+    Public,
+    Exported,
 }
 
 pick ScopeErrorKind {
-    None
-    UnknownScope
-    InvalidScope
-    DuplicateScope
-    UnknownBinding
-    DuplicateBinding
-    InvalidBinding
-    InvalidParent
-    ScopeLimitExceeded
-    BindingLimitExceeded
+    None,
+    UnknownScope,
+    InvalidScope,
+    DuplicateScope,
+    UnknownBinding,
+    DuplicateBinding,
+    InvalidBinding,
+    InvalidParent,
+    ScopeLimitExceeded,
+    BindingLimitExceeded,
 }
 
 form ScopeSpan {
@@ -122,7 +122,7 @@ proc span_empty() -> ScopeSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc binding_invalid() -> ScopeBinding {
@@ -137,7 +137,7 @@ proc binding_invalid() -> ScopeBinding {
         used: false,
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc scope_invalid() -> ScopeNode {
@@ -151,7 +151,7 @@ proc scope_invalid() -> ScopeNode {
         bindings: [],
         span: span_empty(),
         valid: false
-    }
+    };
 }
 
 proc scope_root() -> ScopeNode {
@@ -165,7 +165,7 @@ proc scope_root() -> ScopeNode {
         bindings: [],
         span: span_empty(),
         valid: true
-    }
+    };
 }
 
 proc binding_create(
@@ -189,7 +189,7 @@ proc binding_create(
         used: false,
         span: span,
         valid: true
-    }
+    };
 }
 
 proc scope_create(
@@ -211,7 +211,7 @@ proc scope_create(
         bindings: [],
         span: span,
         valid: true
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -227,7 +227,7 @@ proc diagnostic_create(
         span: span,
         scope: scope,
         binding: binding
-    }
+    };
 }
 
 proc tree_empty() -> ScopeTree {
@@ -236,7 +236,7 @@ proc tree_empty() -> ScopeTree {
         diagnostics: [],
         current_scope: SCOPE_ROOT_ID,
         valid: true
-    }
+    };
 }
 
 proc tree_add_diagnostic(
@@ -248,25 +248,25 @@ proc tree_add_diagnostic(
         diagnostics: tree.diagnostics + [diagnostic],
         current_scope: tree.current_scope,
         valid: false
-    }
+    };
 }
 
 proc find_scope(tree: ScopeTree, id: u64) -> ScopeNode {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(tree.scopes) {
+    while i < vector_len(tree.scopes) {
         if tree.scopes[i].id == id {
-            give tree.scopes[i]
+            give tree.scopes[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give scope_invalid()
+    give scope_invalid();
 }
 
 proc has_scope(tree: ScopeTree, id: u64) -> bool {
-    give find_scope(tree, id).valid
+    give find_scope(tree, id).valid;
 }
 
 proc tree_add_scope(
@@ -283,7 +283,7 @@ proc tree_add_scope(
                 scope.id,
                 SCOPE_INVALID_ID
             )
-        )
+        );
     }
 
     if has_scope(tree, scope.id) {
@@ -296,7 +296,7 @@ proc tree_add_scope(
                 scope.id,
                 SCOPE_INVALID_ID
             )
-        )
+        );
     }
 
     if scope.id != SCOPE_ROOT_ID and has_scope(tree, scope.parent) == false {
@@ -309,7 +309,7 @@ proc tree_add_scope(
                 scope.id,
                 SCOPE_INVALID_ID
             )
-        )
+        );
     }
 
     give ScopeTree {
@@ -317,41 +317,41 @@ proc tree_add_scope(
         diagnostics: tree.diagnostics,
         current_scope: scope.id,
         valid: tree.valid
-    }
+    };
 }
 
 proc scope_has_binding(
     scope: ScopeNode,
     name: string
 ) -> bool {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(scope.bindings) {
+    while i < vector_len(scope.bindings) {
         if scope.bindings[i].name == name {
-            give true
+            give true;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give false
+    give false;
 }
 
 proc scope_find_binding(
     scope: ScopeNode,
     name: string
 ) -> ScopeBinding {
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(scope.bindings) {
+    while i < vector_len(scope.bindings) {
         if scope.bindings[i].name == name {
-            give scope.bindings[i]
+            give scope.bindings[i];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give binding_invalid()
+    give binding_invalid();
 }
 
 proc scope_add_binding(
@@ -368,31 +368,31 @@ proc scope_add_binding(
         bindings: scope.bindings + [binding],
         span: scope.span,
         valid: scope.valid
-    }
+    };
 }
 
 proc replace_scope(
     tree: ScopeTree,
     scope: ScopeNode
 ) -> ScopeTree {
-    let next: [ScopeNode] = []
-    let replaced = false
+    let next: [ScopeNode] = [];
+    let replaced = false;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(tree.scopes) {
+    while i < vector_len(tree.scopes) {
         if tree.scopes[i].id == scope.id {
-            set next = next + [scope]
-            set replaced = true
+            set next = next + [scope];
+            set replaced = true;
         } else {
-            set next = next + [tree.scopes[i]]
+            set next = next + [tree.scopes[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     if replaced == false {
-        give tree_add_scope(tree, scope)
+        give tree_add_scope(tree, scope);
     }
 
     give ScopeTree {
@@ -400,7 +400,7 @@ proc replace_scope(
         diagnostics: tree.diagnostics,
         current_scope: tree.current_scope,
         valid: tree.valid
-    }
+    };
 }
 
 proc define_binding(
@@ -408,7 +408,7 @@ proc define_binding(
     scope_id: u64,
     binding: ScopeBinding
 ) -> ScopeTree {
-    let scope = find_scope(tree, scope_id)
+    let scope = find_scope(tree, scope_id);
 
     if scope.valid == false {
         give tree_add_diagnostic(
@@ -420,7 +420,7 @@ proc define_binding(
                 scope_id,
                 binding.id
             )
-        )
+        );
     }
 
     if vector_len(scope.bindings) >= SCOPE_MAX_BINDINGS {
@@ -433,7 +433,7 @@ proc define_binding(
                 scope_id,
                 binding.id
             )
-        )
+        );
     }
 
     if scope_has_binding(scope, binding.name) {
@@ -446,12 +446,12 @@ proc define_binding(
                 scope_id,
                 binding.id
             )
-        )
+        );
     }
 
-    let updated = scope_add_binding(scope, binding)
+    let updated = scope_add_binding(scope, binding);
 
-    give replace_scope(tree, updated)
+    give replace_scope(tree, updated);
 }
 
 proc lookup_local(
@@ -459,13 +459,13 @@ proc lookup_local(
     scope_id: u64,
     name: string
 ) -> ScopeBinding {
-    let scope = find_scope(tree, scope_id)
+    let scope = find_scope(tree, scope_id);
 
     if scope.valid == false {
-        give binding_invalid()
+        give binding_invalid();
     }
 
-    give scope_find_binding(scope, name)
+    give scope_find_binding(scope, name);
 }
 
 proc lookup_recursive(
@@ -473,23 +473,23 @@ proc lookup_recursive(
     scope_id: u64,
     name: string
 ) -> ScopeBinding {
-    let scope = find_scope(tree, scope_id)
+    let scope = find_scope(tree, scope_id);
 
     if scope.valid == false {
-        give binding_invalid()
+        give binding_invalid();
     }
 
-    let local = scope_find_binding(scope, name)
+    let local = scope_find_binding(scope, name);
 
     if local.valid {
-        give local
+        give local;
     }
 
     if scope.parent == SCOPE_INVALID_ID {
-        give binding_invalid()
+        give binding_invalid();
     }
 
-    give lookup_recursive(tree, scope.parent, name)
+    give lookup_recursive(tree, scope.parent, name);
 }
 
 proc mark_binding_used(
@@ -506,24 +506,24 @@ proc mark_binding_used(
         used: true,
         span: binding.span,
         valid: binding.valid
-    }
+    };
 }
 
 proc mark_used_in_scope(
     scope: ScopeNode,
     binding_id: u64
 ) -> ScopeNode {
-    let next: [ScopeBinding] = []
-    let i: u64 = 0
+    let next: [ScopeBinding] = [];
+    let i: u64 = 0;
 
-    loop i < vector_len(scope.bindings) {
+    while i < vector_len(scope.bindings) {
         if scope.bindings[i].id == binding_id {
-            set next = next + [mark_binding_used(scope.bindings[i])]
+            set next = next + [mark_binding_used(scope.bindings[i])];
         } else {
-            set next = next + [scope.bindings[i]]
+            set next = next + [scope.bindings[i]];
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
     give ScopeNode {
@@ -536,7 +536,7 @@ proc mark_used_in_scope(
         bindings: next,
         span: scope.span,
         valid: scope.valid
-    }
+    };
 }
 
 proc resolve_and_mark_used(
@@ -544,7 +544,7 @@ proc resolve_and_mark_used(
     scope_id: u64,
     name: string
 ) -> ScopeTree {
-    let binding = lookup_recursive(tree, scope_id, name)
+    let binding = lookup_recursive(tree, scope_id, name);
 
     if binding.valid == false {
         give tree_add_diagnostic(
@@ -556,18 +556,18 @@ proc resolve_and_mark_used(
                 scope_id,
                 SCOPE_INVALID_ID
             )
-        )
+        );
     }
 
-    let owner = find_scope(tree, binding.owner_scope)
+    let owner = find_scope(tree, binding.owner_scope);
 
     if owner.valid == false {
-        give tree
+        give tree;
     }
 
-    let updated = mark_used_in_scope(owner, binding.id)
+    let updated = mark_used_in_scope(owner, binding.id);
 
-    give replace_scope(tree, updated)
+    give replace_scope(tree, updated);
 }
 
 proc enter_scope(
@@ -578,9 +578,9 @@ proc enter_scope(
     module: string,
     span: ScopeSpan
 ) -> ScopeTree {
-    let parent = tree.current_scope
-    let parent_scope = find_scope(tree, parent)
-    let depth = parent_scope.depth + 1
+    let parent = tree.current_scope;
+    let parent_scope = find_scope(tree, parent);
+    let depth = parent_scope.depth + 1;
 
     let scope = scope_create(
         id,
@@ -590,20 +590,20 @@ proc enter_scope(
         depth,
         module,
         span
-    )
+    );
 
-    give tree_add_scope(tree, scope)
+    give tree_add_scope(tree, scope);
 }
 
 proc leave_scope(tree: ScopeTree) -> ScopeTree {
-    let current = find_scope(tree, tree.current_scope)
+    let current = find_scope(tree, tree.current_scope);
 
     if current.valid == false {
-        give tree
+        give tree;
     }
 
     if current.parent == SCOPE_INVALID_ID {
-        give tree
+        give tree;
     }
 
     give ScopeTree {
@@ -611,15 +611,15 @@ proc leave_scope(tree: ScopeTree) -> ScopeTree {
         diagnostics: tree.diagnostics,
         current_scope: current.parent,
         valid: tree.valid
-    }
+    };
 }
 
 proc current_scope(tree: ScopeTree) -> ScopeNode {
-    give find_scope(tree, tree.current_scope)
+    give find_scope(tree, tree.current_scope);
 }
 
 proc scope_depth(tree: ScopeTree, scope_id: u64) -> u64 {
-    give find_scope(tree, scope_id).depth
+    give find_scope(tree, scope_id).depth;
 }
 
 proc is_descendant_scope(
@@ -628,20 +628,20 @@ proc is_descendant_scope(
     child: u64
 ) -> bool {
     if ancestor == child {
-        give true
+        give true;
     }
 
-    let scope = find_scope(tree, child)
+    let scope = find_scope(tree, child);
 
-    loop scope.valid and scope.parent != SCOPE_INVALID_ID {
+    while scope.valid and scope.parent != SCOPE_INVALID_ID {
         if scope.parent == ancestor {
-            give true
+            give true;
         }
 
-        set scope = find_scope(tree, scope.parent)
+        set scope = find_scope(tree, scope.parent);
     }
 
-    give false
+    give false;
 }
 
 proc visibility_allows_access(
@@ -650,26 +650,26 @@ proc visibility_allows_access(
     owner_scope: ScopeNode
 ) -> bool {
     if visibility == BindingVisibility.Public {
-        give true
+        give true;
     }
 
     if visibility == BindingVisibility.Exported {
-        give true
+        give true;
     }
 
     if visibility == BindingVisibility.Private {
-        give from_scope.id == owner_scope.id
+        give from_scope.id == owner_scope.id;
     }
 
     if visibility == BindingVisibility.Module {
-        give from_scope.module == owner_scope.module
+        give from_scope.module == owner_scope.module;
     }
 
     if visibility == BindingVisibility.Package {
-        give module_root(from_scope.module) == module_root(owner_scope.module)
+        give module_root(from_scope.module) == module_root(owner_scope.module);
     }
 
-    give false
+    give false;
 }
 
 proc binding_accessible(
@@ -677,30 +677,30 @@ proc binding_accessible(
     binding: ScopeBinding,
     from_scope_id: u64
 ) -> bool {
-    let from_scope = find_scope(tree, from_scope_id)
-    let owner_scope = find_scope(tree, binding.owner_scope)
+    let from_scope = find_scope(tree, from_scope_id);
+    let owner_scope = find_scope(tree, binding.owner_scope);
 
     if from_scope.valid == false or owner_scope.valid == false {
-        give false
+        give false;
     }
 
     give visibility_allows_access(
         binding.visibility,
         from_scope,
         owner_scope
-    )
+    );
 }
 
 proc module_root(module: string) -> string {
-    give module
+    give module;
 }
 
 proc validate_scopes(tree: ScopeTree) -> ScopeTree {
-    let current = tree
-    let i: u64 = 0
+    let current = tree;
+    let i: u64 = 0;
 
-    loop i < vector_len(current.scopes) {
-        let scope = current.scopes[i]
+    while i < vector_len(current.scopes) {
+        let scope = current.scopes[i];
 
         if scope.valid == false {
             give tree_add_diagnostic(
@@ -712,7 +712,7 @@ proc validate_scopes(tree: ScopeTree) -> ScopeTree {
                     scope.id,
                     SCOPE_INVALID_ID
                 )
-            )
+            );
         }
 
         if scope.id != SCOPE_ROOT_ID and has_scope(current, scope.parent) == false {
@@ -725,121 +725,121 @@ proc validate_scopes(tree: ScopeTree) -> ScopeTree {
                     scope.id,
                     SCOPE_INVALID_ID
                 )
-            )
+            );
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give current
+    give current;
 }
 
 proc scope_error_count(tree: ScopeTree) -> u64 {
-    give vector_len(tree.diagnostics)
+    give vector_len(tree.diagnostics);
 }
 
 proc scope_tree_is_valid(tree: ScopeTree) -> bool {
-    give tree.valid and vector_len(tree.diagnostics) == 0
+    give tree.valid and vector_len(tree.diagnostics) == 0;
 }
 
 proc kind_name(kind: ScopeKind) -> string {
     if kind == ScopeKind.Root {
-        give "root"
+        give "root";
     }
 
     if kind == ScopeKind.Module {
-        give "module"
+        give "module";
     }
 
     if kind == ScopeKind.Function {
-        give "function"
+        give "function";
     }
 
     if kind == ScopeKind.Block {
-        give "block"
+        give "block";
     }
 
     if kind == ScopeKind.Loop {
-        give "loop"
+        give "loop";
     }
 
     if kind == ScopeKind.Match {
-        give "match"
+        give "match";
     }
 
     if kind == ScopeKind.Closure {
-        give "closure"
+        give "closure";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc binding_kind_name(kind: BindingKind) -> string {
     if kind == BindingKind.Module {
-        give "module"
+        give "module";
     }
 
     if kind == BindingKind.Function {
-        give "function"
+        give "function";
     }
 
     if kind == BindingKind.Type {
-        give "type"
+        give "type";
     }
 
     if kind == BindingKind.Local {
-        give "local"
+        give "local";
     }
 
     if kind == BindingKind.Parameter {
-        give "parameter"
+        give "parameter";
     }
 
     if kind == BindingKind.Const {
-        give "const"
+        give "const";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_binding(binding: ScopeBinding) {
-    emit "binding"
-    emit binding.id
-    emit binding.name
-    emit binding_kind_name(binding.kind)
-    emit binding.used
+    emit "binding";
+    emit binding.id;
+    emit binding.name;
+    emit binding_kind_name(binding.kind);
+    emit binding.used;
 }
 
 proc print_scope(scope: ScopeNode) {
-    emit "scope"
-    emit scope.id
-    emit scope.name
-    emit kind_name(scope.kind)
-    emit scope.depth
-    emit vector_len(scope.bindings)
+    emit "scope";
+    emit scope.id;
+    emit scope.name;
+    emit kind_name(scope.kind);
+    emit scope.depth;
+    emit vector_len(scope.bindings);
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(scope.bindings) {
-        print_binding(scope.bindings[i])
-        set i = i + 1
+    while i < vector_len(scope.bindings) {
+        print_binding(scope.bindings[i]);
+        set i = i + 1;
     }
 }
 
 proc print_tree(tree: ScopeTree) {
-    emit "scope tree"
-    emit vector_len(tree.scopes)
-    emit vector_len(tree.diagnostics)
-    emit tree.current_scope
+    emit "scope tree";
+    emit vector_len(tree.scopes);
+    emit vector_len(tree.diagnostics);
+    emit tree.current_scope;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(tree.scopes) {
-        print_scope(tree.scopes[i])
-        set i = i + 1
+    while i < vector_len(tree.scopes) {
+        print_scope(tree.scopes[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

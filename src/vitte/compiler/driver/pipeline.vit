@@ -1,10 +1,115 @@
 space vitte/compiler/driver
 
-use vitte/compiler/infrastructure/session/options { SessionOptions }
-use vitte/compiler/infrastructure/diagnostics/fluent/bundle { new_bundle }
-use vitte/compiler/infrastructure/diagnostics/fluent/format { format_message }
+use vitte/compiler/driver/commands.{ DriverCommand, command_from_text }
+use vitte/compiler/driver/compile.{ DriverCompileResult, compile_source, check_source }
+use vitte/compiler/driver/exit_status.{ exit_code }
+use vitte/compiler/driver/result.{ CliRunResult }
 
-proc localized_status(options: SessionOptions, key: string) -> string {
-  let bundle = new_bundle(options.locale, "en-US")
-  give format_message(bundle, key, [])
+form CompileReport {
+    command: string
+    source_path: string
+    exit_code: u64
+    active_modules: [string]
+    inactive_modules: [string]
+    status: string
+    grammar_version: string
+    token_count: u64
+    toplevel_count: u64
+    stmt_count: u64
+    expr_count: u64
+    type_count: u64
+    pattern_count: u64
+}
+
+proc active_modules_table() -> [string] {
+    give [
+        "frontend:pipeline=active",
+        "analysis:pipeline=active",
+        "middle:lower/mir_to_ir=active",
+        "backend:pipeline=active",
+        "backend:link/linker=active",
+        "driver:pipeline=active"
+    ];
+}
+
+proc inactive_modules_table() -> [string] {
+    give [
+        "frontend:lexer=inactive",
+        "frontend:parse=inactive",
+        "middle:passes=inactive",
+        "backend:codegen=inactive",
+        "backend:target=inactive"
+    ];
+}
+
+proc report_status(code: u64) -> string {
+    if code == 0 {
+        give "ok";
+    }
+    give "error";
+}
+
+proc compile_report_json(report: CompileReport) -> string {
+    let active_count: string = "\"active_count\":" + to_string(len(report.active_modules));
+    let inactive_count: string = "\"inactive_count\":" + to_string(len(report.inactive_modules));
+    give "{" +
+        "\"command\":\"" + report.command + "\"," +
+        "\"source_path\":\"" + report.source_path + "\"," +
+        "\"exit_code\":" + to_string(report.exit_code) + "," +
+        "\"status\":\"" + report.status + "\"," +
+        "\"grammar_version\":\"" + report.grammar_version + "\"," +
+        "\"token_count\":" + to_string(report.token_count) + "," +
+        "\"toplevel_count\":" + to_string(report.toplevel_count) + "," +
+        "\"stmt_count\":" + to_string(report.stmt_count) + "," +
+        "\"expr_count\":" + to_string(report.expr_count) + "," +
+        "\"type_count\":" + to_string(report.type_count) + "," +
+        "\"pattern_count\":" + to_string(report.pattern_count) + "," +
+        active_count + "," + inactive_count +
+        "}";
+}
+
+proc run_and_report(command_name: string, source_path: string, source_text: string) -> CompileReport {
+    let command: DriverCommand = command_from_text(command_name);
+    let driver_result: DriverCompileResult = compile_source(source_path, source_text);
+    let exit: u64 = exit_code(driver_result.status);
+
+    if command == DriverCommand.Check {
+        set driver_result = check_source(source_path, source_text);
+        set exit = exit_code(driver_result.status);
+    }
+
+    give CompileReport {
+        command: command_name,
+        source_path: source_path,
+        exit_code: exit,
+        active_modules: active_modules_table(),
+        inactive_modules: inactive_modules_table(),
+        status: report_status(exit),
+        grammar_version: driver_result.grammar_version,
+        token_count: driver_result.token_count,
+        toplevel_count: driver_result.toplevel_count,
+        stmt_count: driver_result.stmt_count,
+        expr_count: driver_result.expr_count,
+        type_count: driver_result.type_count,
+        pattern_count: driver_result.pattern_count
+    };
+}
+
+proc main_driver(command_name: string, source_path: string, source_text: string) -> CliRunResult {
+    let command: DriverCommand = command_from_text(command_name);
+    let result: DriverCompileResult = compile_source(source_path, source_text);
+
+    if command == DriverCommand.Check {
+        set result = check_source(source_path, source_text);
+    }
+
+    give CliRunResult {
+        code: exit_code(result.status),
+        message: result.message
+    };
+}
+
+proc main_driver_report_json(command_name: string, source_path: string, source_text: string) -> string {
+    let report: CompileReport = run_and_report(command_name, source_path, source_text);
+    give compile_report_json(report);
 }

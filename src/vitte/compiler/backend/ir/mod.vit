@@ -14,11 +14,7 @@ use vitte/compiler/backend/ir/instruction
 use vitte/compiler/backend/ir/ir
 use vitte/compiler/backend/ir/module
 
-share vitte/compiler/backend/ir/block
-share vitte/compiler/backend/ir/function
-share vitte/compiler/backend/ir/instruction
-share vitte/compiler/backend/ir/ir
-share vitte/compiler/backend/ir/module
+export *
 
 const IR_BACKEND_VERSION: u32 = 2026
 const IR_BACKEND_INVALID_ID: u64 = 18446744073709551615
@@ -28,66 +24,66 @@ const IR_PIPELINE_MAX_FUNCTIONS: u64 = 16777216
 const IR_PIPELINE_MAX_ERRORS: u64 = 1048576
 
 pick IrPipelineStage {
-    None
-    Bootstrap
-    Parse
-    LowerAst
-    BuildCfg
-    BuildSsa
-    Verify
-    Optimize
-    Simplify
-    Inline
-    ConstFold
-    Dce
-    LowerMachine
-    RegisterAllocate
-    EmitObject
-    EmitAssembly
-    Link
-    Finalize
+    None,
+    Bootstrap,
+    Parse,
+    LowerAst,
+    BuildCfg,
+    BuildSsa,
+    Verify,
+    Optimize,
+    Simplify,
+    Inline,
+    ConstFold,
+    Dce,
+    LowerMachine,
+    RegisterAllocate,
+    EmitObject,
+    EmitAssembly,
+    Link,
+    Finalize,
 }
 
 pick IrOptimizationLevel {
-    O0
-    O1
-    O2
-    O3
-    Os
-    Oz
+    O0,
+    O1,
+    O2,
+    O3,
+    Os,
+    Oz,
 }
 
 pick IrEmissionKind {
-    None
-    LlvmIr
-    VitteIr
-    Assembly
-    Object
-    Executable
-    SharedObject
-    StaticLibrary
+    None,
+    LlvmIr,
+    VitteIr,
+    Assembly,
+    Object,
+    Executable,
+    SharedObject,
+    StaticLibrary,
 }
 
 pick IrBackendState {
-    Created
-    Initialized
-    Running
-    Finished
-    Failed
+    Created,
+    Initialized,
+    Running,
+    Finished,
+    Failed,
 }
 
 pick IrBackendErrorKind {
-    None
-    InvalidPipeline
-    InvalidModule
-    InvalidFunction
-    InvalidStage
-    InvalidTarget
-    VerificationFailure
-    LoweringFailure
-    EmissionFailure
-    LinkingFailure
-    InternalFailure
+    None,
+    InvalidPipeline,
+    InvalidModule,
+    InvalidFunction,
+    InvalidStage,
+    InvalidTarget,
+    VerificationFailure,
+    LoweringFailure,
+    EmissionFailure,
+    LinkingFailure,
+    InternalFailure,
 }
 
 form IrBackendSpan {
@@ -157,7 +153,7 @@ proc span_empty() -> IrBackendSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc pipeline_config_default() -> IrPipelineConfig {
@@ -169,7 +165,7 @@ proc pipeline_config_default() -> IrPipelineConfig {
         emit_comments: false,
         threads: 1,
         valid: true
-    }
+    };
 }
 
 proc statistics_empty() -> IrPipelineStatistics {
@@ -180,7 +176,7 @@ proc statistics_empty() -> IrPipelineStatistics {
         instructions: 0,
         globals: 0,
         elapsed_ns: 0
-    }
+    };
 }
 
 proc backend_context_native() -> IrBackendContext {
@@ -190,7 +186,7 @@ proc backend_context_native() -> IrBackendContext {
         features: [],
         pointer_width: 64,
         valid: true
-    }
+    };
 }
 
 proc event_create(
@@ -205,7 +201,7 @@ proc event_create(
         message: message,
         success: success,
         valid: message != ""
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -219,7 +215,7 @@ proc diagnostic_create(
         message: message,
         span: span,
         entity: entity
-    }
+    };
 }
 
 proc pipeline_create(
@@ -249,7 +245,7 @@ proc pipeline_create(
         context: context,
         state: IrBackendState.Created,
         valid: context.valid
-    }
+    };
 }
 
 proc pipeline_add_event(
@@ -266,7 +262,7 @@ proc pipeline_add_event(
         context: pipeline.context,
         state: pipeline.state,
         valid: pipeline.valid and event.valid
-    }
+    };
 }
 
 proc pipeline_add_diagnostic(
@@ -283,7 +279,7 @@ proc pipeline_add_diagnostic(
         context: pipeline.context,
         state: IrBackendState.Failed,
         valid: false
-    }
+    };
 }
 
 proc pipeline_with_state(
@@ -300,7 +296,7 @@ proc pipeline_with_state(
         context: pipeline.context,
         state: state,
         valid: pipeline.valid
-    }
+    };
 }
 
 proc statistics_add_module(
@@ -313,7 +309,7 @@ proc statistics_add_module(
         instructions: statistics.instructions,
         globals: statistics.globals,
         elapsed_ns: statistics.elapsed_ns
-    }
+    };
 }
 
 proc statistics_add_function(
@@ -326,7 +322,7 @@ proc statistics_add_function(
         instructions: statistics.instructions,
         globals: statistics.globals,
         elapsed_ns: statistics.elapsed_ns
-    }
+    };
 }
 
 proc statistics_add_block(
@@ -339,7 +335,7 @@ proc statistics_add_block(
         instructions: statistics.instructions,
         globals: statistics.globals,
         elapsed_ns: statistics.elapsed_ns
-    }
+    };
 }
 
 proc statistics_add_instruction(
@@ -352,7 +348,7 @@ proc statistics_add_instruction(
         instructions: statistics.instructions + 1,
         globals: statistics.globals,
         elapsed_ns: statistics.elapsed_ns
-    }
+    };
 }
 
 proc statistics_add_global(
@@ -365,7 +361,7 @@ proc statistics_add_global(
         instructions: statistics.instructions,
         globals: statistics.globals + 1,
         elapsed_ns: statistics.elapsed_ns
-    }
+    };
 }
 
 proc pipeline_begin(
@@ -374,7 +370,7 @@ proc pipeline_begin(
     let started = pipeline_with_state(
         pipeline,
         IrBackendState.Running
-    )
+    );
 
     give pipeline_add_event(
         started,
@@ -384,7 +380,7 @@ proc pipeline_begin(
             "IR backend pipeline initialized",
             true
         )
-    )
+    );
 }
 
 proc pipeline_finish(
@@ -393,7 +389,7 @@ proc pipeline_finish(
     let finished = pipeline_with_state(
         pipeline,
         IrBackendState.Finished
-    )
+    );
 
     give pipeline_add_event(
         finished,
@@ -403,7 +399,7 @@ proc pipeline_finish(
             "IR backend pipeline finished",
             true
         )
-    )
+    );
 }
 
 proc pipeline_fail(
@@ -413,7 +409,7 @@ proc pipeline_fail(
     let failed = pipeline_with_state(
         pipeline,
         IrBackendState.Failed
-    )
+    );
 
     let with_diag = pipeline_add_diagnostic(
         failed,
@@ -423,7 +419,7 @@ proc pipeline_fail(
             span_empty(),
             pipeline.id
         )
-    )
+    );
 
     give pipeline_add_event(
         with_diag,
@@ -433,7 +429,7 @@ proc pipeline_fail(
             message,
             false
         )
-    )
+    );
 }
 
 proc pipeline_execute_stage(
@@ -444,7 +440,7 @@ proc pipeline_execute_stage(
         give pipeline_fail(
             pipeline,
             "cannot execute invalid IR pipeline"
-        )
+        );
     }
 
     if stage == IrPipelineStage.Parse {
@@ -456,7 +452,7 @@ proc pipeline_execute_stage(
                 "parsed IR compilation units",
                 true
             )
-        )
+        );
     }
 
     if stage == IrPipelineStage.LowerAst {
@@ -468,7 +464,7 @@ proc pipeline_execute_stage(
                 "lowered AST to backend IR",
                 true
             )
-        )
+        );
     }
 
     if stage == IrPipelineStage.BuildCfg {
@@ -480,7 +476,7 @@ proc pipeline_execute_stage(
                 "built CFG and dominance graph",
                 true
             )
-        )
+        );
     }
 
     if stage == IrPipelineStage.BuildSsa {
@@ -492,7 +488,7 @@ proc pipeline_execute_stage(
                 "constructed SSA form",
                 true
             )
-        )
+        );
     }
 
     if stage == IrPipelineStage.Verify {
@@ -504,7 +500,7 @@ proc pipeline_execute_stage(
                 "verified backend IR",
                 true
             )
-        )
+        );
     }
 
     if stage == IrPipelineStage.Optimize {
@@ -516,7 +512,7 @@ proc pipeline_execute_stage(
                 "optimized backend IR",
                 true
             )
-        )
+        );
     }
 
     if stage == IrPipelineStage.LowerMachine {
@@ -528,7 +524,7 @@ proc pipeline_execute_stage(
                 "lowered IR to machine instructions",
                 true
             )
-        )
+        );
     }
 
     if stage == IrPipelineStage.RegisterAllocate {
@@ -540,7 +536,7 @@ proc pipeline_execute_stage(
                 "performed register allocation",
                 true
             )
-        )
+        );
     }
 
     if stage == IrPipelineStage.EmitObject {
@@ -552,7 +548,7 @@ proc pipeline_execute_stage(
                 "emitted object files",
                 true
             )
-        )
+        );
     }
 
     if stage == IrPipelineStage.Link {
@@ -564,231 +560,231 @@ proc pipeline_execute_stage(
                 "linked final binary",
                 true
             )
-        )
+        );
     }
 
-    give pipeline
+    give pipeline;
 }
 
 proc pipeline_execute(
     pipeline: IrPipeline
 ) -> IrPipeline {
-    let current = pipeline_begin(pipeline)
-    let i: u64 = 0
+    let current = pipeline_begin(pipeline);
+    let i: u64 = 0;
 
-    loop i < vector_len(current.stages) {
+    while i < vector_len(current.stages) {
         set current = pipeline_execute_stage(
             current,
             current.stages[i]
-        )
+        );
 
         if current.valid == false {
-            give current
+            give current;
         }
 
-        set i = i + 1
+        set i = i + 1;
     }
 
-    give pipeline_finish(current)
+    give pipeline_finish(current);
 }
 
 proc optimization_name(
     level: IrOptimizationLevel
 ) -> string {
     if level == IrOptimizationLevel.O0 {
-        give "O0"
+        give "O0";
     }
 
     if level == IrOptimizationLevel.O1 {
-        give "O1"
+        give "O1";
     }
 
     if level == IrOptimizationLevel.O2 {
-        give "O2"
+        give "O2";
     }
 
     if level == IrOptimizationLevel.O3 {
-        give "O3"
+        give "O3";
     }
 
     if level == IrOptimizationLevel.Os {
-        give "Os"
+        give "Os";
     }
 
     if level == IrOptimizationLevel.Oz {
-        give "Oz"
+        give "Oz";
     }
 
-    give "O0"
+    give "O0";
 }
 
 proc emission_name(
     kind: IrEmissionKind
 ) -> string {
     if kind == IrEmissionKind.LlvmIr {
-        give "llvm_ir"
+        give "llvm_ir";
     }
 
     if kind == IrEmissionKind.VitteIr {
-        give "vitte_ir"
+        give "vitte_ir";
     }
 
     if kind == IrEmissionKind.Assembly {
-        give "assembly"
+        give "assembly";
     }
 
     if kind == IrEmissionKind.Object {
-        give "object"
+        give "object";
     }
 
     if kind == IrEmissionKind.Executable {
-        give "executable"
+        give "executable";
     }
 
     if kind == IrEmissionKind.SharedObject {
-        give "shared_object"
+        give "shared_object";
     }
 
     if kind == IrEmissionKind.StaticLibrary {
-        give "static_library"
+        give "static_library";
     }
 
-    give "none"
+    give "none";
 }
 
 proc stage_name(
     stage: IrPipelineStage
 ) -> string {
     if stage == IrPipelineStage.Bootstrap {
-        give "bootstrap"
+        give "bootstrap";
     }
 
     if stage == IrPipelineStage.Parse {
-        give "parse"
+        give "parse";
     }
 
     if stage == IrPipelineStage.LowerAst {
-        give "lower_ast"
+        give "lower_ast";
     }
 
     if stage == IrPipelineStage.BuildCfg {
-        give "build_cfg"
+        give "build_cfg";
     }
 
     if stage == IrPipelineStage.BuildSsa {
-        give "build_ssa"
+        give "build_ssa";
     }
 
     if stage == IrPipelineStage.Verify {
-        give "verify"
+        give "verify";
     }
 
     if stage == IrPipelineStage.Optimize {
-        give "optimize"
+        give "optimize";
     }
 
     if stage == IrPipelineStage.LowerMachine {
-        give "lower_machine"
+        give "lower_machine";
     }
 
     if stage == IrPipelineStage.RegisterAllocate {
-        give "register_allocate"
+        give "register_allocate";
     }
 
     if stage == IrPipelineStage.EmitObject {
-        give "emit_object"
+        give "emit_object";
     }
 
     if stage == IrPipelineStage.Link {
-        give "link"
+        give "link";
     }
 
     if stage == IrPipelineStage.Finalize {
-        give "finalize"
+        give "finalize";
     }
 
-    give "none"
+    give "none";
 }
 
 proc backend_state_name(
     state: IrBackendState
 ) -> string {
     if state == IrBackendState.Created {
-        give "created"
+        give "created";
     }
 
     if state == IrBackendState.Initialized {
-        give "initialized"
+        give "initialized";
     }
 
     if state == IrBackendState.Running {
-        give "running"
+        give "running";
     }
 
     if state == IrBackendState.Finished {
-        give "finished"
+        give "finished";
     }
 
     if state == IrBackendState.Failed {
-        give "failed"
+        give "failed";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc print_statistics(
     statistics: IrPipelineStatistics
 ) {
-    emit "statistics"
-    emit statistics.modules
-    emit statistics.functions
-    emit statistics.blocks
-    emit statistics.instructions
-    emit statistics.globals
-    emit statistics.elapsed_ns
+    emit "statistics";
+    emit statistics.modules;
+    emit statistics.functions;
+    emit statistics.blocks;
+    emit statistics.instructions;
+    emit statistics.globals;
+    emit statistics.elapsed_ns;
 }
 
 proc print_event(
     event: IrPipelineEvent
 ) {
-    emit "event"
-    emit event.id
-    emit stage_name(event.stage)
-    emit event.message
-    emit event.success
+    emit "event";
+    emit event.id;
+    emit stage_name(event.stage);
+    emit event.message;
+    emit event.success;
 }
 
 proc print_pipeline(
     pipeline: IrPipeline
 ) {
-    emit "ir pipeline"
-    emit pipeline.id
-    emit backend_state_name(pipeline.state)
+    emit "ir pipeline";
+    emit pipeline.id;
+    emit backend_state_name(pipeline.state);
 
     emit optimization_name(
         pipeline.config.optimization
-    )
+    );
 
     emit emission_name(
         pipeline.config.emission
-    )
+    );
 
-    emit pipeline.context.target_triple
-    emit pipeline.context.cpu
-    emit pipeline.context.pointer_width
+    emit pipeline.context.target_triple;
+    emit pipeline.context.cpu;
+    emit pipeline.context.pointer_width;
 
     print_statistics(
         pipeline.statistics
-    )
+    );
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(pipeline.events) {
-        print_event(pipeline.events[i])
-        set i = i + 1
+    while i < vector_len(pipeline.events) {
+        print_event(pipeline.events[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

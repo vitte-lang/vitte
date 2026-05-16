@@ -14,60 +14,60 @@ const TYPECK_ERROR_MAX_DIAGNOSTICS: u64 = 1048576
 const TYPECK_ERROR_MAX_SUGGESTIONS: u64 = 256
 
 pick TypeckSeverity {
-    Info
-    Warning
-    Error
-    Fatal
+    Info,
+    Warning,
+    Error,
+    Fatal,
 }
 
 pick TypeckErrorKind {
-    None
-    UnknownType
-    UnknownExpression
-    TypeMismatch
-    InvalidAssignment
-    InvalidReturn
-    InvalidCall
-    InvalidArgument
-    ArityMismatch
-    InvalidField
-    UnknownField
-    InvalidIndex
-    InvalidOperator
-    InvalidUnaryOperator
-    InvalidBinaryOperator
-    InvalidCast
-    InvalidCoercion
-    MissingTraitImpl
-    InvalidTraitBound
-    GenericMismatch
-    InferenceFailure
-    AmbiguousInference
-    RecursiveType
-    UnsizedType
-    NeverTypeMismatch
-    MutabilityMismatch
-    NullabilityMismatch
-    LifetimeMismatch
-    ConstraintFailed
-    InternalFailure
+    None,
+    UnknownType,
+    UnknownExpression,
+    TypeMismatch,
+    InvalidAssignment,
+    InvalidReturn,
+    InvalidCall,
+    InvalidArgument,
+    ArityMismatch,
+    InvalidField,
+    UnknownField,
+    InvalidIndex,
+    InvalidOperator,
+    InvalidUnaryOperator,
+    InvalidBinaryOperator,
+    InvalidCast,
+    InvalidCoercion,
+    MissingTraitImpl,
+    InvalidTraitBound,
+    GenericMismatch,
+    InferenceFailure,
+    AmbiguousInference,
+    RecursiveType,
+    UnsizedType,
+    NeverTypeMismatch,
+    MutabilityMismatch,
+    NullabilityMismatch,
+    LifetimeMismatch,
+    ConstraintFailed,
+    InternalFailure,
 }
 
 pick TypeckSuggestionKind {
-    None
-    AddTypeAnnotation
-    ChangeType
-    AddCast
-    RemoveCast
-    BorrowValue
-    DerefValue
-    AddTraitImpl
-    AddGenericBound
-    ChangeMutability
-    ChangeNullability
-    RewriteExpression
-    FixArgument
-    FixReturn
+    None,
+    AddTypeAnnotation,
+    ChangeType,
+    AddCast,
+    RemoveCast,
+    BorrowValue,
+    DerefValue,
+    AddTraitImpl,
+    AddGenericBound,
+    ChangeMutability,
+    ChangeNullability,
+    RewriteExpression,
+    FixArgument,
+    FixReturn,
 }
 
 form TypeckSpan {
@@ -116,7 +116,7 @@ proc span_empty() -> TypeckSpan {
         line: 0,
         column: 0,
         length: 0
-    }
+    };
 }
 
 proc type_invalid() -> TypeckTypeRef {
@@ -124,7 +124,7 @@ proc type_invalid() -> TypeckTypeRef {
         id: TYPECK_ERROR_INVALID_ID,
         name: "invalid",
         valid: false
-    }
+    };
 }
 
 proc type_ref(id: u64, name: string) -> TypeckTypeRef {
@@ -132,7 +132,7 @@ proc type_ref(id: u64, name: string) -> TypeckTypeRef {
         id: id,
         name: name,
         valid: true
-    }
+    };
 }
 
 proc suggestion_create(
@@ -146,7 +146,7 @@ proc suggestion_create(
         message: message,
         replacement: replacement,
         span: span
-    }
+    };
 }
 
 proc diagnostic_create(
@@ -167,7 +167,7 @@ proc diagnostic_create(
         actual: actual,
         span: span,
         suggestions: []
-    }
+    };
 }
 
 proc diagnostic_add_suggestion(
@@ -175,7 +175,7 @@ proc diagnostic_add_suggestion(
     suggestion: TypeckSuggestion
 ) -> TypeckDiagnostic {
     if vector_len(diagnostic.suggestions) >= TYPECK_ERROR_MAX_SUGGESTIONS {
-        give diagnostic
+        give diagnostic;
     }
 
     give TypeckDiagnostic {
@@ -187,7 +187,7 @@ proc diagnostic_add_suggestion(
         actual: diagnostic.actual,
         span: diagnostic.span,
         suggestions: diagnostic.suggestions + [suggestion]
-    }
+    };
 }
 
 proc report_empty() -> TypeckReport {
@@ -198,7 +198,7 @@ proc report_empty() -> TypeckReport {
         error_count: 0,
         fatal_count: 0,
         valid: true
-    }
+    };
 }
 
 proc report_add(
@@ -213,28 +213,28 @@ proc report_add(
             error_count: report.error_count,
             fatal_count: report.fatal_count + 1,
             valid: false
-        }
+        };
     }
 
-    let infos = report.info_count
-    let warnings = report.warning_count
-    let errors = report.error_count
-    let fatals = report.fatal_count
+    let infos = report.info_count;
+    let warnings = report.warning_count;
+    let errors = report.error_count;
+    let fatals = report.fatal_count;
 
     if diagnostic.severity == TypeckSeverity.Info {
-        set infos = infos + 1
+        set infos = infos + 1;
     }
 
     if diagnostic.severity == TypeckSeverity.Warning {
-        set warnings = warnings + 1
+        set warnings = warnings + 1;
     }
 
     if diagnostic.severity == TypeckSeverity.Error {
-        set errors = errors + 1
+        set errors = errors + 1;
     }
 
     if diagnostic.severity == TypeckSeverity.Fatal {
-        set fatals = fatals + 1
+        set fatals = fatals + 1;
     }
 
     give TypeckReport {
@@ -244,7 +244,7 @@ proc report_add(
         error_count: errors,
         fatal_count: fatals,
         valid: fatals == 0
-    }
+    };
 }
 
 proc error_type_mismatch(
@@ -261,16 +261,16 @@ proc error_type_mismatch(
         expected,
         actual,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         TypeckSuggestionKind.ChangeType,
         "change expression type to match the expected type",
         expected.name,
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_invalid_assignment(
@@ -287,16 +287,16 @@ proc error_invalid_assignment(
         expected,
         actual,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         TypeckSuggestionKind.AddCast,
         "insert an explicit cast if conversion is intended",
         "as " + expected.name,
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_invalid_return(
@@ -313,16 +313,16 @@ proc error_invalid_return(
         expected,
         actual,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         TypeckSuggestionKind.FixReturn,
         "return a value compatible with the function return type",
         expected.name,
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_invalid_argument(
@@ -339,16 +339,16 @@ proc error_invalid_argument(
         expected,
         actual,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         TypeckSuggestionKind.FixArgument,
         "adjust the argument type",
         expected.name,
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_invalid_operator(
@@ -366,7 +366,7 @@ proc error_invalid_operator(
         left,
         right,
         span
-    )
+    );
 }
 
 proc error_invalid_cast(
@@ -383,16 +383,16 @@ proc error_invalid_cast(
         expected,
         actual,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         TypeckSuggestionKind.RemoveCast,
         "remove the cast or use a supported conversion",
         "",
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_missing_trait_impl(
@@ -409,16 +409,16 @@ proc error_missing_trait_impl(
         trait_type,
         actual,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         TypeckSuggestionKind.AddTraitImpl,
         "implement the required trait for this type",
         "impl " + trait_type.name,
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_inference_failure(
@@ -433,16 +433,16 @@ proc error_inference_failure(
         type_invalid(),
         type_invalid(),
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         TypeckSuggestionKind.AddTypeAnnotation,
         "add an explicit type annotation",
         ": Type",
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_ambiguous_inference(
@@ -457,16 +457,16 @@ proc error_ambiguous_inference(
         type_invalid(),
         type_invalid(),
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         TypeckSuggestionKind.AddTypeAnnotation,
         "disambiguate the expression with an explicit type",
         ": Type",
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_mutability_mismatch(
@@ -483,16 +483,16 @@ proc error_mutability_mismatch(
         expected,
         actual,
         span
-    )
+    );
 
     let suggestion = suggestion_create(
         TypeckSuggestionKind.ChangeMutability,
         "adjust mutability",
         "mut",
         span
-    )
+    );
 
-    give diagnostic_add_suggestion(base, suggestion)
+    give diagnostic_add_suggestion(base, suggestion);
 }
 
 proc error_internal_failure(
@@ -507,107 +507,107 @@ proc error_internal_failure(
         type_invalid(),
         type_invalid(),
         span
-    )
+    );
 }
 
 proc severity_name(severity: TypeckSeverity) -> string {
     if severity == TypeckSeverity.Info {
-        give "info"
+        give "info";
     }
 
     if severity == TypeckSeverity.Warning {
-        give "warning"
+        give "warning";
     }
 
     if severity == TypeckSeverity.Error {
-        give "error"
+        give "error";
     }
 
     if severity == TypeckSeverity.Fatal {
-        give "fatal"
+        give "fatal";
     }
 
-    give "unknown"
+    give "unknown";
 }
 
 proc error_name(kind: TypeckErrorKind) -> string {
     if kind == TypeckErrorKind.TypeMismatch {
-        give "type_mismatch"
+        give "type_mismatch";
     }
 
     if kind == TypeckErrorKind.InvalidAssignment {
-        give "invalid_assignment"
+        give "invalid_assignment";
     }
 
     if kind == TypeckErrorKind.InvalidReturn {
-        give "invalid_return"
+        give "invalid_return";
     }
 
     if kind == TypeckErrorKind.InvalidArgument {
-        give "invalid_argument"
+        give "invalid_argument";
     }
 
     if kind == TypeckErrorKind.InvalidOperator {
-        give "invalid_operator"
+        give "invalid_operator";
     }
 
     if kind == TypeckErrorKind.InvalidCast {
-        give "invalid_cast"
+        give "invalid_cast";
     }
 
     if kind == TypeckErrorKind.MissingTraitImpl {
-        give "missing_trait_impl"
+        give "missing_trait_impl";
     }
 
     if kind == TypeckErrorKind.InferenceFailure {
-        give "inference_failure"
+        give "inference_failure";
     }
 
     if kind == TypeckErrorKind.AmbiguousInference {
-        give "ambiguous_inference"
+        give "ambiguous_inference";
     }
 
-    give "typeck_error"
+    give "typeck_error";
 }
 
 proc report_has_errors(report: TypeckReport) -> bool {
-    give report.error_count > 0 or report.fatal_count > 0
+    give report.error_count > 0 or report.fatal_count > 0;
 }
 
 proc report_has_warnings(report: TypeckReport) -> bool {
-    give report.warning_count > 0
+    give report.warning_count > 0;
 }
 
 proc report_total(report: TypeckReport) -> u64 {
-    give vector_len(report.diagnostics)
+    give vector_len(report.diagnostics);
 }
 
 proc print_diagnostic(diagnostic: TypeckDiagnostic) {
-    emit severity_name(diagnostic.severity)
-    emit error_name(diagnostic.kind)
-    emit diagnostic.message
-    emit diagnostic.expected.name
-    emit diagnostic.actual.name
-    emit diagnostic.span.file
-    emit diagnostic.span.line
-    emit diagnostic.span.column
+    emit severity_name(diagnostic.severity);
+    emit error_name(diagnostic.kind);
+    emit diagnostic.message;
+    emit diagnostic.expected.name;
+    emit diagnostic.actual.name;
+    emit diagnostic.span.file;
+    emit diagnostic.span.line;
+    emit diagnostic.span.column;
 }
 
 proc print_report(report: TypeckReport) {
-    emit "typeck report"
-    emit report.info_count
-    emit report.warning_count
-    emit report.error_count
-    emit report.fatal_count
+    emit "typeck report";
+    emit report.info_count;
+    emit report.warning_count;
+    emit report.error_count;
+    emit report.fatal_count;
 
-    let i: u64 = 0
+    let i: u64 = 0;
 
-    loop i < vector_len(report.diagnostics) {
-        print_diagnostic(report.diagnostics[i])
-        set i = i + 1
+    while i < vector_len(report.diagnostics) {
+        print_diagnostic(report.diagnostics[i]);
+        set i = i + 1;
     }
 }
 
 proc vector_len[T](items: [T]) -> u64 {
-    give 0
+    give 0;
 }

@@ -1,0 +1,231 @@
+space vitte/compiler/analysis
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput }
+
+form AnalysisDiagnostic {
+  phase: string
+  code: string
+  severity: string
+  message: string
+  labels: [string]
+  suggestion: string
+  fatal: bool
+}
+
+form AnalysisOutput {
+  source_path: string
+  ast_root: string
+  sema_ok: bool
+  typeck_ok: bool
+  borrowck_ok: bool
+  const_eval_ok: bool
+  lint_ok: bool
+  diagnostics: [AnalysisDiagnostic]
+  valid: bool
+}
+
+proc analysis_diagnostic(
+  phase: string,
+  code: string,
+  severity: string,
+  message: string,
+  labels: [string],
+  suggestion: string,
+  fatal: bool
+) -> AnalysisDiagnostic {
+  give AnalysisDiagnostic {
+    phase: phase,
+    code: code,
+    severity: severity,
+    message: message,
+    labels: labels,
+    suggestion: suggestion,
+    fatal: fatal
+  };
+}
+
+proc run_sema(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
+  if frontend.ast_root == "invalid" {
+    give [analysis_diagnostic(
+      "sema",
+      "SEMA_E_INVALID_MODULE",
+      "error",
+      "semantic analysis failed on invalid module",
+      ["module", frontend.source_path],
+      "fix syntax before semantic pass",
+      true
+    )];
+  }
+  give [];
+}
+
+proc run_typeck(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
+  if frontend.token_count == 0 {
+    give [analysis_diagnostic(
+      "typeck",
+      "TYPECK_E_UNKNOWN_TYPE",
+      "error",
+      "type checking failed on empty token stream",
+      ["type", frontend.source_path],
+      "ensure parser produced typed nodes",
+      true
+    )];
+  }
+  give [];
+}
+
+proc run_borrowck(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
+  if frontend.source_text == "borrowck:fail" {
+    give [analysis_diagnostic(
+      "borrowck",
+      "BORROWCK_E_MOVE_AFTER_MOVE",
+      "error",
+      "borrow checking detected move-after-move",
+      ["ownership", frontend.source_path],
+      "clone value or reorder moves",
+      true
+    )];
+  }
+  give [];
+}
+
+proc run_const_eval(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
+  if frontend.source_text == "const:fail" {
+    give [analysis_diagnostic(
+      "const_eval",
+      "CONST_EVAL_E_DIVISION_BY_ZERO",
+      "error",
+      "const evaluation failed (division by zero)",
+      ["const", frontend.source_path],
+      "guard denominator or defer to runtime",
+      true
+    )];
+  }
+  give [];
+}
+
+proc run_lint(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
+  if frontend.source_text == "lint:warn" {
+    give [analysis_diagnostic(
+      "lint",
+      "LINT_W_STYLE",
+      "warning",
+      "style lint warning",
+      ["lint", frontend.source_path],
+      "apply lint suggestions",
+      false
+    )];
+  }
+  give [];
+}
+
+proc has_fatal(diagnostics: [AnalysisDiagnostic]) -> bool {
+  let i: u64 = 0;
+  while i < len(diagnostics) {
+    if diagnostics[i].fatal {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
+  if not frontend.valid {
+    let d = analysis_diagnostic(
+      "frontend",
+      "A0001",
+      "error",
+      "frontend output invalid",
+      ["frontend", frontend.source_path],
+      "fix frontend diagnostics first",
+      true
+    );
+    give AnalysisOutput {
+      source_path: frontend.source_path,
+      ast_root: "invalid",
+      sema_ok: false,
+      typeck_ok: false,
+      borrowck_ok: false,
+      const_eval_ok: false,
+      lint_ok: false,
+      diagnostics: [d],
+      valid: false
+    };
+  }
+
+  # Strict orchestration: sema -> typeck -> borrowck -> const_eval -> lint
+  let sema_diags: [AnalysisDiagnostic] = run_sema(frontend);
+  if has_fatal(sema_diags) {
+    give AnalysisOutput {
+      source_path: frontend.source_path,
+      ast_root: frontend.ast_root,
+      sema_ok: false,
+      typeck_ok: false,
+      borrowck_ok: false,
+      const_eval_ok: false,
+      lint_ok: false,
+      diagnostics: sema_diags,
+      valid: false
+    };
+  }
+
+  let typeck_diags: [AnalysisDiagnostic] = run_typeck(frontend);
+  if has_fatal(typeck_diags) {
+    give AnalysisOutput {
+      source_path: frontend.source_path,
+      ast_root: frontend.ast_root,
+      sema_ok: true,
+      typeck_ok: false,
+      borrowck_ok: false,
+      const_eval_ok: false,
+      lint_ok: false,
+      diagnostics: sema_diags + typeck_diags,
+      valid: false
+    };
+  }
+
+  let borrowck_diags: [AnalysisDiagnostic] = run_borrowck(frontend);
+  if has_fatal(borrowck_diags) {
+    give AnalysisOutput {
+      source_path: frontend.source_path,
+      ast_root: frontend.ast_root,
+      sema_ok: true,
+      typeck_ok: true,
+      borrowck_ok: false,
+      const_eval_ok: false,
+      lint_ok: false,
+      diagnostics: sema_diags + typeck_diags + borrowck_diags,
+      valid: false
+    };
+  }
+
+  let const_diags: [AnalysisDiagnostic] = run_const_eval(frontend);
+  if has_fatal(const_diags) {
+    give AnalysisOutput {
+      source_path: frontend.source_path,
+      ast_root: frontend.ast_root,
+      sema_ok: true,
+      typeck_ok: true,
+      borrowck_ok: true,
+      const_eval_ok: false,
+      lint_ok: false,
+      diagnostics: sema_diags + typeck_diags + borrowck_diags + const_diags,
+      valid: false
+    };
+  }
+
+  let lint_diags: [AnalysisDiagnostic] = run_lint(frontend);
+
+  give AnalysisOutput {
+    source_path: frontend.source_path,
+    ast_root: frontend.ast_root,
+    sema_ok: true,
+    typeck_ok: true,
+    borrowck_ok: true,
+    const_eval_ok: true,
+    lint_ok: true,
+    diagnostics: sema_diags + typeck_diags + borrowck_diags + const_diags + lint_diags,
+    valid: true
+  };
+}

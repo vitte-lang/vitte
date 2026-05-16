@@ -1,0 +1,46 @@
+space vitte/compiler/demo
+
+use vitte/std/io
+export *
+
+const BUILD_ID: int = 1
+type Word = u64
+
+form Config {
+  name: string,
+  level: int,
+}
+
+trait Renderable {
+  proc render(self) -> string;
+}
+
+impl Renderable for Config {
+  proc render(self) -> string {
+    give "ok";
+  }
+}
+
+proc compile(input: string) -> int {
+  if input == "" {
+    give 1;
+  }
+  give 0;
+}
+
+compiler core {
+  phase parse {
+    input: string;
+    output: string;
+  }
+  pipeline main {
+    run parse;
+    verify parse;
+  }
+}
+
+backend native {
+  target: "x86_64";
+  format: object;
+  emits: executable;
+}
