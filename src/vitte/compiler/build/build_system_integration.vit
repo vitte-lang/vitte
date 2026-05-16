@@ -1,0 +1,408 @@
+space vitte/compiler/build/build_system_integration
+
+// ============================================================================
+// BUILD SYSTEM INTEGRATION
+// ============================================================================
+// Integrates compiler into build system
+// - Makefile generation
+// - Build target management
+// - Dependency tracking
+// - Incremental build support
+// - Release packaging
+
+// ============================================================================
+// BUILD CONFIGURATION
+// ============================================================================
+
+form BuildConfig {
+  project_name: string,
+  version: string,
+  source_dir: string,
+  build_dir: string,
+  install_dir: string,
+  target: string,
+  optimization_level: int,
+  enable_bootstrap: bool,
+  enable_tests: bool,
+  enable_lto: bool
+}
+
+proc create_default_build_config() -> BuildConfig {
+  give BuildConfig {
+    project_name: "vitte",
+    version: "0.1.0",
+    source_dir: "src",
+    build_dir: "build",
+    install_dir: "/usr/local",
+    target: "x86_64-linux-gnu",
+    optimization_level: 2,
+    enable_bootstrap: true,
+    enable_tests: true,
+    enable_lto: false
+  }
+}
+
+// ============================================================================
+// MAKE TARGET DEFINITIONS
+// ============================================================================
+
+form MakeTarget {
+  name: string,
+  dependencies: [string],
+  commands: [string],
+  phony: bool,
+  description: string
+}
+
+form Makefile {
+  config: BuildConfig,
+  targets: [MakeTarget],
+  variables: [string],
+  content: string
+}
+
+proc create_makefile(config: BuildConfig) -> Makefile {
+  let targets: [MakeTarget] = []
+  let variables: [string] = []
+  
+  // Build variables
+  push(variables, "PROJECT = " + config.project_name)
+  push(variables, "VERSION = " + config.version)
+  push(variables, "SRC_DIR = " + config.source_dir)
+  push(variables, "BUILD_DIR = " + config.build_dir)
+  push(variables, "INSTALL_DIR = " + config.install_dir)
+  push(variables, "TARGET = " + config.target)
+  push(variables, "OPT_LEVEL = -O" + string_of_int(config.optimization_level))
+  push(variables, "CC = gcc")
+  push(variables, "VITTE = $(BUILD_DIR)/vitte")
+  push(variables, "VITTE_FLAGS = $(OPT_LEVEL)")
+  
+  // Core targets
+  push(targets, MakeTarget {
+    name: "all",
+    dependencies: ["$(VITTE)"],
+    commands: [],
+    phony: true,
+    description: "Build Vitte compiler"
+  })
+  
+  push(targets, MakeTarget {
+    name: "vitte-validate",
+    dependencies: [],
+    commands: ["@echo \"Validating compiler modules...\"", "$(VITTE) --validate"],
+    phony: true,
+    description: "Validate all compiler modules"
+  })
+  
+  push(targets, MakeTarget {
+    name: "vitte-compile",
+    dependencies: ["vitte-validate"],
+    commands: ["@echo \"Compiling Vitte compiler...\"", "$(VITTE) --compile src/vitte/compiler/mod.vit -o $(VITTE)"],
+    phony: false,
+    description: "Compile Vitte compiler"
+  })
+  
+  push(targets, MakeTarget {
+    name: "vitte-bootstrap",
+    dependencies: ["vitte-compile"],
+    commands: ["@echo \"Running bootstrap stages...\"", "$(VITTE) --bootstrap"],
+    phony: true,
+    description: "Run 4-stage bootstrap"
+  })
+  
+  push(targets, MakeTarget {
+    name: "test",
+    dependencies: ["$(VITTE)"],
+    commands: ["@echo \"Running test suite...\"", "$(VITTE) --test"],
+    phony: true,
+    description: "Run all tests"
+  })
+  
+  push(targets, MakeTarget {
+    name: "clean",
+    dependencies: [],
+    commands: ["rm -rf $(BUILD_DIR)", "rm -f *.o *.a *.so"],
+    phony: true,
+    description: "Clean build artifacts"
+  })
+  
+  push(targets, MakeTarget {
+    name: "install",
+    dependencies: ["all"],
+    commands: ["install -d $(INSTALL_DIR)/bin", "install $(VITTE) $(INSTALL_DIR)/bin/"],
+    phony: true,
+    description: "Install compiler"
+  })
+  
+  push(targets, MakeTarget {
+    name: "uninstall",
+    dependencies: [],
+    commands: ["rm -f $(INSTALL_DIR)/bin/$(PROJECT)"],
+    phony: true,
+    description: "Uninstall compiler"
+  })
+  
+  give Makefile {
+    config: config,
+    targets: targets,
+    variables: variables,
+    content: ""
+  }
+}
+
+proc generate_makefile_content(makefile: *Makefile) -> string {
+  let content = ""
+  
+  content = content + "# ============================================================================\n"
+  content = content + "# Vitte Compiler Makefile\n"
+  content = content + "# Generated automatically\n"
+  content = content + "# ============================================================================\n\n"
+  
+  // Variables
+  content = content + ".PHONY: "
+  for i = 0; i < length(makefile.variables); i = i + 1 {
+    content = content + get_array(makefile.variables, i) + " "
+  }
+  content = content + "\n\n"
+  
+  // Variable definitions
+  for i = 0; i < length(makefile.variables); i = i + 1 {
+    content = content + get_array(makefile.variables, i) + "\n"
+  }
+  content = content + "\n"
+  
+  // Targets
+  for i = 0; i < length(makefile.targets); i = i + 1 {
+    let target = get_array(makefile.targets, i)
+    
+    content = content + target.name + ":"
+    for j = 0; j < length(target.dependencies); j = j + 1 {
+      content = content + " " + get_array(target.dependencies, j)
+    }
+    content = content + "\n"
+    
+    if length(target.commands) > 0 {
+      for j = 0; j < length(target.commands); j = j + 1 {
+        content = content + "\t" + get_array(target.commands, j) + "\n"
+      }
+    } else {
+      content = content + "\t@echo \"Building " + target.name + "\"\n"
+    }
+    
+    content = content + "\n"
+  }
+  
+  content = content + "help:\n"
+  content = content + "\t@echo \"Vitte Compiler Build System\"\n"
+  content = content + "\t@echo \"\"\n"
+  content = content + "\t@echo \"Available targets:\"\n"
+  for i = 0; i < length(makefile.targets); i = i + 1 {
+    let target = get_array(makefile.targets, i)
+    content = content + "\t@echo \"  make " + target.name + " - " + target.description + "\"\n"
+  }
+  
+  give content
+}
+
+// ============================================================================
+// RELEASE PACKAGING
+// ============================================================================
+
+form ReleasePackage {
+  project_name: string,
+  version: string,
+  build_date: string,
+  files: [string],
+  checksums: [string],
+  archives: [string]
+}
+
+form PackagingConfig {
+  package_format: string,  // tar.gz, zip, deb, rpm
+  include_docs: bool,
+  include_tests: bool,
+  include_examples: bool,
+  sign_package: bool,
+  gpg_key: string
+}
+
+proc create_release_package(config: BuildConfig, pkg_config: PackagingConfig) -> ReleasePackage {
+  let files: [string] = []
+  
+  // Collect files for packaging
+  push(files, config.build_dir + "/vitte")
+  push(files, "README.md")
+  push(files, "LICENSE")
+  
+  if pkg_config.include_docs {
+    push(files, "docs/")
+  }
+  
+  if pkg_config.include_tests {
+    push(files, "tests/")
+  }
+  
+  if pkg_config.include_examples {
+    push(files, "examples/")
+  }
+  
+  let archives: [string] = []
+  push(archives, config.project_name + "-" + config.version + ".tar.gz")
+  
+  if pkg_config.package_format == "zip" {
+    push(archives, config.project_name + "-" + config.version + ".zip")
+  }
+  
+  let checksums: [string] = []
+  push(checksums, "sha256sum.txt")
+  push(checksums, "md5sum.txt")
+  
+  give ReleasePackage {
+    project_name: config.project_name,
+    version: config.version,
+    build_date: "2026-05-16",
+    files: files,
+    checksums: checksums,
+    archives: archives
+  }
+}
+
+// ============================================================================
+// BUILD SCRIPT GENERATION
+// ============================================================================
+
+form BuildScript {
+  script_type: string,     // bash, python, make
+  content: string,
+  executable: bool
+}
+
+proc generate_build_script(config: BuildConfig) -> BuildScript {
+  let script = ""
+  
+  script = script + "#!/bin/bash\n"
+  script = script + "# ============================================================================\n"
+  script = script + "# Vitte Compiler Build Script\n"
+  script = script + "# Generated automatically\n"
+  script = script + "# ============================================================================\n\n"
+  
+  script = script + "set -e\n\n"
+  
+  script = script + "echo \"Building Vitte Compiler v" + config.version + "\"\n"
+  script = script + "echo \"Target: " + config.target + "\"\n"
+  script = script + "echo \"\"\n\n"
+  
+  script = script + "# Create build directory\n"
+  script = script + "mkdir -p " + config.build_dir + "\n\n"
+  
+  script = script + "# Step 1: Validate modules\n"
+  script = script + "echo \"[1/4] Validating compiler modules...\"\n"
+  script = script + "make vitte-validate\n\n"
+  
+  script = script + "# Step 2: Compile compiler\n"
+  script = script + "echo \"[2/4] Compiling Vitte compiler...\"\n"
+  script = script + "make vitte-compile\n\n"
+  
+  script = script + "# Step 3: Run bootstrap\n"
+  if config.enable_bootstrap {
+    script = script + "echo \"[3/4] Running bootstrap stages...\"\n"
+    script = script + "make vitte-bootstrap\n\n"
+  } else {
+    script = script + "echo \"[3/4] Skipping bootstrap (disabled)\"\n\n"
+  }
+  
+  script = script + "# Step 4: Run tests\n"
+  if config.enable_tests {
+    script = script + "echo \"[4/4] Running test suite...\"\n"
+    script = script + "make test\n\n"
+  } else {
+    script = script + "echo \"[4/4] Skipping tests (disabled)\"\n\n"
+  }
+  
+  script = script + "echo \"\"\n"
+  script = script + "echo \"Build successful!\"\n"
+  script = script + "echo \"Binary: " + config.build_dir + "/vitte\"\n"
+  
+  give BuildScript {
+    script_type: "bash",
+    content: script,
+    executable: true
+  }
+}
+
+// ============================================================================
+// CI/CD INTEGRATION
+// ============================================================================
+
+form CIConfiguration {
+  ci_platform: string,      // github-actions, gitlab-ci, circleci
+  triggers: [string],
+  stages: [string],
+  artifacts: [string]
+}
+
+proc create_github_actions_workflow() -> string {
+  let workflow = ""
+  
+  workflow = workflow + "name: Vitte Compiler Build & Test\n\n"
+  workflow = workflow + "on:\n"
+  workflow = workflow + "  push:\n"
+  workflow = workflow + "    branches: [ main, develop ]\n"
+  workflow = workflow + "  pull_request:\n"
+  workflow = workflow + "    branches: [ main ]\n\n"
+  
+  workflow = workflow + "jobs:\n"
+  workflow = workflow + "  build:\n"
+  workflow = workflow + "    runs-on: ubuntu-latest\n"
+  workflow = workflow + "    strategy:\n"
+  workflow = workflow + "      matrix:\n"
+  workflow = workflow + "        os: [ubuntu-latest, macos-latest]\n"
+  workflow = workflow + "        arch: [x86_64, arm64]\n\n"
+  
+  workflow = workflow + "    steps:\n"
+  workflow = workflow + "    - uses: actions/checkout@v2\n\n"
+  
+  workflow = workflow + "    - name: Validate modules\n"
+  workflow = workflow + "      run: make vitte-validate\n\n"
+  
+  workflow = workflow + "    - name: Compile\n"
+  workflow = workflow + "      run: make vitte-compile\n\n"
+  
+  workflow = workflow + "    - name: Bootstrap\n"
+  workflow = workflow + "      run: make vitte-bootstrap\n\n"
+  
+  workflow = workflow + "    - name: Test\n"
+  workflow = workflow + "      run: make test\n\n"
+  
+  workflow = workflow + "    - name: Upload artifacts\n"
+  workflow = workflow + "      uses: actions/upload-artifact@v2\n"
+  workflow = workflow + "      with:\n"
+  workflow = workflow + "        name: vitte-${{ matrix.os }}-${{ matrix.arch }}\n"
+  workflow = workflow + "        path: build/vitte\n"
+  
+  give workflow
+}
+
+// ============================================================================
+// INSTALLATION & DISTRIBUTION
+// ============================================================================
+
+form InstallationPath {
+  binary_path: string,
+  man_page_path: string,
+  include_path: string,
+  lib_path: string,
+  config_path: string
+}
+
+proc get_installation_paths(install_dir: string) -> InstallationPath {
+  give InstallationPath {
+    binary_path: install_dir + "/bin/vitte",
+    man_page_path: install_dir + "/share/man/man1/vitte.1",
+    include_path: install_dir + "/include/vitte",
+    lib_path: install_dir + "/lib/vitte",
+    config_path: install_dir + "/etc/vitte"
+  }
+}
+
+export *
