@@ -216,32 +216,36 @@ Convenience targets for common operations:
 ## Features
 
 ### Multi-Stage Bootstrap
-✓ Stage 0 (Seed): C → Vitte compiler
+✓ Stage 0 (Seed): native seed -> minimal Vitte compiler
 ✓ Stage 1: First self-hosted compilation
-✓ Stage 2: Verification and reproducibility
+✓ Stage 2: Second self-hosted compilation
+✓ Stage 3: Final verification compilation
+✓ Reproducibility gate: stage2 == stage3
 
 ### Platform Support
 ✓ Linux (x86_64, ARM64)
 ✓ macOS (x86_64, ARM64)
 ✓ Windows (x86_64 via MinGW)
-✓ Cross-compilation ready
+✓ Cross-compilation target profiles
 
 ### Build Modes
 ✓ Normal: Standard with verification (~10-15 min)
 ✓ Quick: Fast development build (~4-6 min)
 ✓ Strict: Full optimization and verification (~30-60 min)
 ✓ Dry-run: Show plan without executing
+✓ Check: Validate environment and configuration only
 
 ### Configuration
 ✓ JSON-based configuration
 ✓ Per-platform overrides
 ✓ Compilation option customization
 ✓ Tool selection and configuration
+✓ Target/profile validators and summaries
 
 ### Verification
 ✓ Platform validation
 ✓ Tool availability checking
-✓ Binary consistency verification (stage1 == stage2)
+✓ Binary consistency verification (stage2 == stage3)
 ✓ Feature testing
 ✓ Reproducibility checks
 
@@ -249,7 +253,7 @@ Convenience targets for common operations:
 ✓ Build cache support
 ✓ Parallel compilation (configurable jobs)
 ✓ ccache integration
-✓ Incremental builds
+✓ Incremental build metadata
 ✓ Performance statistics
 
 ### Integration
@@ -264,7 +268,7 @@ Convenience targets for common operations:
 ✓ Verbose logging
 ✓ Build statistics
 ✓ Error reporting
-✓ Completion summaries
+✓ Completion and plan summaries
 
 ## Usage
 
