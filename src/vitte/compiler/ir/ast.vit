@@ -1,5 +1,215 @@
 space vitte/compiler/ir
 
+pick AstDeclKind {
+  Space,
+  Use,
+  Export,
+  Const,
+  Static,
+  Global,
+  TypeAlias,
+  OpaqueType,
+  ExternType,
+  ExternBlock,
+  Form,
+  Class,
+  Union,
+  Bits,
+  Pick,
+  Flags,
+  Trait,
+  Impl,
+  Proc,
+  Intrinsic,
+  Compiler,
+  Query,
+  Pass,
+  Backend,
+  Diagnostic,
+  Macro,
+  Comptime,
+  StaticAssert,
+  Test,
+  Bench,
+  Entry,
+  Unknown,
+}
+
+pick AstStmtKind {
+  LocalConst,
+  Let,
+  Set,
+  Give,
+  Try,
+  Defer,
+  Asm,
+  Unsafe,
+  Emit,
+  Assert,
+  Panic,
+  Unreachable,
+  If,
+  While,
+  Loop,
+  For,
+  Break,
+  Continue,
+  Select,
+  Match,
+  WhenMatch,
+  With,
+  Critical,
+  Expr,
+  Unknown,
+}
+
+pick AstExprKind {
+  Empty,
+  Literal,
+  Variable,
+  Path,
+  Call,
+  Member,
+  Index,
+  Unary,
+  Binary,
+  Assign,
+  Cast,
+  Is,
+  Range,
+  Ternary,
+  StructLiteral,
+  ListLiteral,
+  TupleLiteral,
+  SetLiteral,
+  MapLiteral,
+  BytesLiteral,
+  ResourceLiteral,
+  IfExpr,
+  MatchExpr,
+  Lambda,
+  ProcExpr,
+  UnsafeExpr,
+  BlockExpr,
+  Builtin,
+  Raw,
+  Unknown,
+}
+
+pick AstTypeKind {
+  Named,
+  Primitive,
+  Qualified,
+  Reference,
+  Pointer,
+  Optional,
+  FixedArray,
+  Slice,
+  Tuple,
+  Proc,
+  Dyn,
+  ImplTrait,
+  Generic,
+  Union,
+  Lifetime,
+  Raw,
+  Unknown,
+}
+
+pick AstPatternKind {
+  Bind,
+  Constructor,
+  Struct,
+  Tuple,
+  List,
+  Range,
+  Or,
+  Mut,
+  Ref,
+  Wildcard,
+  Literal,
+  Raw,
+  Unknown,
+}
+
+form AstSpan {
+  file: string
+  line: u64
+  column: u64
+}
+
+form AstDecl {
+  kind: AstDeclKind
+  name: string
+  child_count: u64
+  span: AstSpan
+}
+
+form AstStmt {
+  kind: AstStmtKind
+  expr_count: u64
+  child_count: u64
+  span: AstSpan
+}
+
+form AstExpr {
+  kind: AstExprKind
+  text: string
+  child_count: u64
+  span: AstSpan
+}
+
+form AstType {
+  kind: AstTypeKind
+  text: string
+  child_count: u64
+  span: AstSpan
+}
+
+form AstPattern {
+  kind: AstPatternKind
+  text: string
+  child_count: u64
+  span: AstSpan
+}
+
+form AstModule {
+  name: string
+  decl_count: u64
+  stmt_count: u64
+  expr_count: u64
+  type_count: u64
+  pattern_count: u64
+}
+
 proc ast() -> string {
-  give "ast"
+  give "full-grammar-ast-v1";
+}
+
+proc empty_span() -> AstSpan {
+  give AstSpan { file: "", line: 1, column: 1 };
+}
+
+proc decl_kind_count() -> u64 {
+  give 32;
+}
+
+proc stmt_kind_count() -> u64 {
+  give 25;
+}
+
+proc expr_kind_count() -> u64 {
+  give 30;
+}
+
+proc type_kind_count() -> u64 {
+  give 17;
+}
+
+proc pattern_kind_count() -> u64 {
+  give 13;
+}
+
+proc ast_surface_summary() -> string {
+  give "decls=32 stmts=25 exprs=30 types=17 patterns=13";
 }

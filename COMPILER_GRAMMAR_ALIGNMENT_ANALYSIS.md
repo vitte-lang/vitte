@@ -2,9 +2,11 @@
 
 ## Executive Summary
 
-The Vitte compiler contains a comprehensive grammar specification (`src/vitte/grammar/vitte.ebnf` - 271+ rules) but the parser implementation (`src/vitte/compiler/frontend/parser.vit`) only performs basic token counting without structural parsing. The frontend AST definitions are well-designed but largely unused, while the IR AST is minimal. This creates a critical gap between specification and implementation.
+**2026-05-16 update**: this report originally described an older parser path and an older token-counting implementation. The current frontend parser lives at `src/vitte/compiler/frontend/parse/parser.vit` and now parses the major grammar surface: top-level declarations, procedure signatures/bodies, statements, expressions, type expressions, patterns, visibility prefixes, attributes, and compiler/meta declarations. The remaining architectural gap is no longer "parser only counts tokens"; it is now "parser records structural coverage counters and diagnostics, while the typed AST lowering layer still needs to wire those parsed structures into rich node trees."
 
-**Key Finding**: The parser does not currently build an Abstract Syntax Tree (AST). It only counts and categorizes tokens, returning statistics about the source code rather than its structure.
+This pass also expands the frontend and IR AST kind definitions so the declared AST surface matches the grammar categories being parsed. Regression coverage now includes `tests/frontend_syntax/valid/full_grammar_surface.vit`, which exercises 33 top-level declarations, 50 statements, 80 expressions, 52 type expressions, and 22 patterns.
+
+**Current key finding**: parsing coverage is substantially implemented; rich AST materialization/lowering remains the next big compiler milestone.
 
 ---
 
@@ -29,47 +31,35 @@ Comprehensive EBNF grammar covering:
 
 Tokenizes source into Token stream. Working correctly.
 
-### Layer 3: Parser ✗ INCOMPLETE
-**File**: [src/vitte/compiler/frontend/parser.vit](src/vitte/compiler/frontend/parser.vit)
-**Lines**: 1-120
+### Layer 3: Parser ✓ SUBSTANTIALLY IMPLEMENTED
+**File**: [src/vitte/compiler/frontend/parse/parser.vit](src/vitte/compiler/frontend/parse/parser.vit)
+**Lines**: 1-1170+
 
 **Current Implementation**:
-- `_parse_tokens()` [lines 39-106]: Counts tokens and recognizes keywords
-- `parse_source()` [lines 108-111]
-- `parse_lexed()` [lines 113-115]
-- `parse_file()` [lines 117-119]
+- `parse_decl()` handles the grammar's declaration families, including compiler/meta declarations.
+- `parse_stmt()` handles local declarations, control flow, matching, resource/critical blocks, and expression statements.
+- `parse_expr()` handles assignment, ternary, coalesce, ranges, binary/unary operators, casts, `is` patterns, postfix operations, literals, lambda/proc/block expressions, maps, sets, resources, and builtins.
+- `parse_type_expr()` handles qualifiers, references, pointers, optionals, arrays, tuples, proc types, dyn/impl trait types, generics, and union types.
+- `parse_pattern()` handles binds, constructors, struct/list/tuple/range/or/ref/mut/literal/wildcard patterns.
+- `parse_source()` returns structural counters and diagnostics for CI gates.
 
-**Recognized Keywords**: space, use, export, const, static, global, form, pick, type, opaque, proc
+**Remaining Work**:
+- Materialize the parsed structures into rich AST node trees instead of coverage counters only.
+- Lower frontend AST nodes into typed IR/HIR.
+- Add more focused negative tests for ambiguous constructs.
 
-**Missing**: All actual parsing logic. Returns `ParsedSource` with only:
-- source_name, source_text, module_name, space_name
-- line_count, token_count, decl_count
-- space_count, use_count, proc_count, unknown_count
-- diagnostics
+### Layer 4: Frontend AST Definitions ✓ EXPANDED
+**Files**: `src/vitte/compiler/frontend/ast/*.vit`
 
-Does NOT parse:
-- Declaration structures
-- Procedure bodies
-- Type definitions
-- Statements within blocks
-- Expressions
-- Pattern matching
-- Attributes
+**Definitions now present**:
+- `AstItemKind`: declaration and compiler/meta item surface.
+- `AstExprKind`: expression surface including calls, operators, literals, builtins, blocks, lambdas, and proc expressions.
+- `AstStmtKind`: 25 statement categories.
+- `AstTypeKind`: named/primitive/qualified/reference/pointer/optional/array/tuple/proc/dyn/impl/generic/union/lifetime/raw categories.
+- `AstPatternKind`: bind, constructor, struct, tuple, list, range, or, mut/ref, wildcard, literal, raw.
+- Shared node metadata: spans, names, attributes, visibility.
 
-### Layer 4: Frontend AST Definitions ✓ WELL-DESIGNED BUT UNUSED
-**File**: [src/vitte/compiler/frontend/ast.vit](src/vitte/compiler/frontend/ast.vit)
-**Lines**: 1-415
-
-**Comprehensive definitions present**:
-- `AstDeclKind` pick [lines 9-42]: 31 declaration kinds (all from grammar)
-- `AstExprKind` pick [lines 44-68]: 23 expression kinds
-- `AstStmtKind` pick [lines 70-91]: 25 statement kinds
-- `AstTypeKind` pick [lines 93-107]: 14 type kinds
-- `AstPatternKind` pick [lines 109-121]: 12 pattern kinds
-- `AstVisibility` pick [lines 123-127]: 5 visibility levels
-- Multiple form definitions for declarations: Form, Class, Union, Bits, Pick, Flags, etc.
-
-**Status**: Defined but parser doesn't build these AST nodes.
+**Status**: definitions match parser coverage; typed node population is the next step.
 
 ### Layer 5: Expression Parser
 **File**: [src/vitte/compiler/frontend/expr_parser.vit](src/vitte/compiler/frontend/expr_parser.vit)
@@ -83,16 +73,17 @@ Partially implemented:
 
 **Status**: Framework exists but implementation incomplete and problematic.
 
-### Layer 6: IR AST (Minimal)
+### Layer 6: IR AST ✓ SURFACE EXPANDED
 **File**: [src/vitte/compiler/ir/ast.vit](src/vitte/compiler/ir/ast.vit)
-**Lines**: 1-50 (type definitions)
+**Lines**: 1-160+
 
 **Current Implementation**:
-- `AstDeclKind` pick [lines 9-15]: Only 8 types (Space, Use, Proc, Form, Const, Static, Global, Unknown)
-- `AstExprKind` pick [lines 17-21]: Only 5 types (Empty, Literal, Variable, Call, Raw)
-- `AstStmtKind` pick [lines 23-27]: Only 4 types (Give, Let, Set, Expr, Unknown)
-
-**Missing**: Class, Union, Bits, Pick, Flags, Trait, Impl, ExternBlock, Intrinsic, Compiler, Query, Pass, Backend, Diagnostic, Macro, Comptime, StaticAssert, Test, Bench, Entry (23 declaration types)
+- `AstDeclKind`: 32 variants, including aggregate, trait/impl, extern, compiler/meta, tests/bench/entry.
+- `AstStmtKind`: 25 variants.
+- `AstExprKind`: 30 variants.
+- `AstTypeKind`: 17 variants.
+- `AstPatternKind`: 13 variants.
+- Basic `AstDecl`, `AstStmt`, `AstExpr`, `AstType`, `AstPattern`, and `AstModule` forms.
 
 ---
 
@@ -522,13 +513,13 @@ Estimated: 200-300 test cases minimum for comprehensive coverage
 
 ## Conclusion
 
-The Vitte compiler has a **well-designed architecture** with comprehensive grammar and frontend AST definitions, but a **critically incomplete implementation** in the parser layer. The gap is approximately:
+The original conclusion is superseded. The parser layer is no longer a token-counting placeholder: it has structural parsers for declarations, statements, expressions, types, patterns, attributes, visibility, generics, proc suffixes, and compiler/meta declarations.
 
-- **Declarations**: 0/31 fully parsed (0%)
-- **Statements**: 0/25 parsed (0%)
-- **Expressions**: ~3-5/27 partially parsed (~11%)
-- **Types**: 0/14 parsed (0%)
-- **Patterns**: 0/12 parsed (0%)
-- **Overall Parser Coverage**: ~9-12% of grammar specification
+Current status:
 
-Addressing this gap requires implementing the entire parse_declaration, parse_statement, parse_expression, parse_type, and parse_pattern function families, plus updating the IR AST to accommodate the full language surface.
+- **Parser coverage**: broad grammar-surface parsing is implemented and checked by `make frontend-syntax-test`.
+- **Frontend AST surface**: expanded across `src/vitte/compiler/frontend/ast/*.vit`.
+- **IR AST surface**: expanded in `src/vitte/compiler/ir/ast.vit`.
+- **Regression fixture**: `tests/frontend_syntax/valid/full_grammar_surface.vit` exercises the high-density grammar surface.
+
+Next compiler milestone: convert parser counters/recovery walks into real AST node construction, then lower those nodes into HIR/MIR with semantic validation.

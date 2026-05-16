@@ -1,0 +1,208 @@
+#![feature(full_surface)]
+space vitte/tests/full_surface
+
+use vitte/std/io
+use vitte/std/mem.{ Arena, Slice }
+export { Config, compile }
+
+pub const BUILD_ID: u64 = 20260516;
+static DEFAULT_LIMIT: int = 64;
+global ACTIVE: bool = true;
+
+type Pair[T] = (T, T)
+type MaybeSlice[T] = ?&mut [T]
+opaque type Handle[T] = u64
+extern type CFile;
+
+extern C {
+  proc puts(message: cstr) -> c_int;
+  const errno: c_int = 0
+}
+
+form Config[T] where T: Renderable {
+  pub name: string,
+  level: int = 1,
+  data: MaybeSlice[T],
+}
+
+class Worker {
+  id: u64,
+  proc run(self) -> int {
+    give 0;
+  }
+}
+
+union Payload {
+  text: string,
+  code: int,
+}
+
+bits Access: u32 {
+  Read = 1,
+  Write = 2,
+  Execute = 4
+}
+
+pick Option[T] {
+  case Some(value: T),
+  case None
+}
+
+flags Mode {
+  Fast,
+  Safe,
+  Verbose
+}
+
+trait Renderable {
+  type Output = string;
+  proc render(self) -> string;
+}
+
+impl Renderable for Config[int] {
+  proc render(self) -> string {
+    give "config";
+  }
+}
+
+intrinsic compiler_magic(value: int) -> int;
+
+query lowered(name: string) -> int {
+  give 1;
+}
+
+compiler core {
+  phase parse {
+    input: string;
+    output: string;
+  }
+  stage frontend;
+  artifact ast;
+  pipeline main {
+    run parse;
+    verify parse;
+  }
+  cache incremental {
+    key: "source";
+  }
+  target native {
+    triple: "x86_64-unknown-linux-gnu";
+  }
+}
+
+pass simplify {
+  before: lower;
+  after: parse;
+}
+
+backend native {
+  target: "x86_64";
+  format: object;
+}
+
+diagnostic missing_name {
+  message: "missing name";
+}
+
+macro trace(item) {
+  emit item;
+}
+
+entry main at vitte/tests/full_surface {
+  call: compile;
+}
+
+comptime {
+  const ready: bool = true;
+}
+
+static_assert(1 + 1 == 2, "math");
+
+test "surface statements" {
+  let value: int = compile("demo");
+  assert value >= 0;
+}
+
+bench "surface bench" {
+  emit compile("bench");
+}
+
+pub async unsafe inline proc compile(input: string) -> int effects(io) requires(input.len() >= 0) where string: Renderable noexcept {
+  const local_id: int = 1;
+  let mut total: int = 0;
+  let pair: Pair[int] = (1, 2);
+  let maybe: Option[int] = Option.Some(3);
+  let table = map { "one": 1, "two": 2 };
+  let unique = set { 1, 2, 3 };
+  let resource_data = resource { fd: 1, owned: true };
+  let bytes = b"abc";
+  let lambda = |value| value + 1;
+  let callback = proc(value: int) -> int {
+    give value + 1;
+  };
+
+  set total = total + lambda(callback(1));
+  try compiler_magic(total);
+  defer {
+    emit total;
+  }
+  asm("nop");
+  unsafe {
+    emit *&total;
+  }
+
+  if input == "" {
+    panic "empty";
+  } elif total > 10 {
+    emit total;
+  } else {
+    assert total >= 0, "non-negative";
+  }
+
+  while total < DEFAULT_LIMIT {
+    set total += 1;
+    if total == 4 {
+      continue;
+    }
+    if total > 8 {
+      break total;
+    }
+  }
+
+  loop {
+    break;
+  }
+
+  for item in [1, 2, 3] {
+    match item {
+      case 0 => table["one"];
+      case 1 | 2 {
+        emit item + total;
+      }
+      else {
+        with resource_data as data {
+          emit nameof(data);
+        }
+      }
+    }
+  }
+
+  select maybe {
+    when Option.Some(value) {
+      emit value;
+    }
+    else {
+      unreachable;
+    }
+  }
+
+  when maybe is Option.Some(value) {
+    emit value as int;
+  }
+
+  critical {
+    emit sizeof(int) + alignof(int) + typeof(total);
+  }
+
+  give total ?? local_id;
+}
