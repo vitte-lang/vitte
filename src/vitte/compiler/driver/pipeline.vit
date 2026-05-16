@@ -12,6 +12,7 @@ form CompileReport {
     active_modules: [string]
     inactive_modules: [string]
     status: string
+    message: string
     grammar_version: string
     token_count: u64
     toplevel_count: u64
@@ -49,34 +50,72 @@ proc report_status(code: u64) -> string {
     give "error";
 }
 
+proc json_escape(text: string) -> string {
+    let escaped: string = "";
+    for ch in text {
+        if ch == '\\' {
+            set escaped = escaped + "\\\\";
+        } else if ch == '"' {
+            set escaped = escaped + "\\\"";
+        } else if ch == '\n' {
+            set escaped = escaped + "\\n";
+        } else if ch == '\r' {
+            set escaped = escaped + "\\r";
+        } else if ch == '\t' {
+            set escaped = escaped + "\\t";
+        } else {
+            set escaped = escaped + to_string(ch);
+        }
+    }
+    give escaped;
+}
+
+proc json_array(strings: [string]) -> string {
+    let entries: string = "";
+    let first: bool = true;
+    for item in strings {
+        if not first {
+            set entries = entries + ",";
+        }
+        set entries = entries + "\"" + json_escape(item) + "\"";
+        set first = false;
+    }
+    give "[" + entries + "]";
+}
+
 proc compile_report_json(report: CompileReport) -> string {
     let active_count: string = "\"active_count\":" + to_string(len(report.active_modules));
     let inactive_count: string = "\"inactive_count\":" + to_string(len(report.inactive_modules));
     give "{" +
-        "\"command\":\"" + report.command + "\"," +
-        "\"source_path\":\"" + report.source_path + "\"," +
+        "\"command\":\"" + json_escape(report.command) + "\"," +
+        "\"source_path\":\"" + json_escape(report.source_path) + "\"," +
         "\"exit_code\":" + to_string(report.exit_code) + "," +
-        "\"status\":\"" + report.status + "\"," +
-        "\"grammar_version\":\"" + report.grammar_version + "\"," +
+        "\"status\":\"" + json_escape(report.status) + "\"," +
+        "\"message\":\"" + json_escape(report.message) + "\"," +
+        "\"grammar_version\":\"" + json_escape(report.grammar_version) + "\"," +
         "\"token_count\":" + to_string(report.token_count) + "," +
         "\"toplevel_count\":" + to_string(report.toplevel_count) + "," +
         "\"stmt_count\":" + to_string(report.stmt_count) + "," +
         "\"expr_count\":" + to_string(report.expr_count) + "," +
         "\"type_count\":" + to_string(report.type_count) + "," +
         "\"pattern_count\":" + to_string(report.pattern_count) + "," +
+        "\"active_modules\":" + json_array(report.active_modules) + "," +
+        "\"inactive_modules\":" + json_array(report.inactive_modules) + "," +
         active_count + "," + inactive_count +
         "}";
 }
 
 proc run_and_report(command_name: string, source_path: string, source_text: string) -> CompileReport {
     let command: DriverCommand = command_from_text(command_name);
-    let driver_result: DriverCompileResult = compile_source(source_path, source_text);
-    let exit: u64 = exit_code(driver_result.status);
+    let driver_result: DriverCompileResult;
+    let exit: u64;
 
     if command == DriverCommand.Check {
         set driver_result = check_source(source_path, source_text);
-        set exit = exit_code(driver_result.status);
+    } else {
+        set driver_result = compile_source(source_path, source_text);
     }
+    set exit = exit_code(driver_result.status);
 
     give CompileReport {
         command: command_name,
@@ -85,6 +124,7 @@ proc run_and_report(command_name: string, source_path: string, source_text: stri
         active_modules: active_modules_table(),
         inactive_modules: inactive_modules_table(),
         status: report_status(exit),
+        message: driver_result.message,
         grammar_version: driver_result.grammar_version,
         token_count: driver_result.token_count,
         toplevel_count: driver_result.toplevel_count,
@@ -97,10 +137,12 @@ proc run_and_report(command_name: string, source_path: string, source_text: stri
 
 proc main_driver(command_name: string, source_path: string, source_text: string) -> CliRunResult {
     let command: DriverCommand = command_from_text(command_name);
-    let result: DriverCompileResult = compile_source(source_path, source_text);
+    let result: DriverCompileResult;
 
     if command == DriverCommand.Check {
         set result = check_source(source_path, source_text);
+    } else {
+        set result = compile_source(source_path, source_text);
     }
 
     give CliRunResult {

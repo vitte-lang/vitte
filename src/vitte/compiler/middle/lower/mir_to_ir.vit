@@ -6,18 +6,24 @@ use vitte/compiler/backend/ir/ir.{
     IrModule,
     IrModuleKind,
     IrUnitState,
+    IrLinkage,
+    IrVisibility,
     target_native_x86_64_linux,
     module_create,
     unit_empty,
     unit_add_module,
     unit_with_state,
+    function_ref_create,
+    unit_set_entry,
+    span_empty,
 }
+use vitte/compiler/middle/lower/hir_to_mir.{ MirUnit }
 
-proc lower_analysis_to_ir(analysis: AnalysisOutput) -> IrUnit {
+proc lower_mir_to_ir(mir: MirUnit, analysis: AnalysisOutput) -> IrUnit {
     let target = target_native_x86_64_linux();
     let unit0: IrUnit = unit_empty(target);
 
-    if not analysis.valid {
+    if not mir.valid or not analysis.valid {
         give unit_with_state(unit0, IrUnitState.Invalid);
     }
 
@@ -29,6 +35,19 @@ proc lower_analysis_to_ir(analysis: AnalysisOutput) -> IrUnit {
         target
     );
 
-    let unit1: IrUnit = unit_add_module(unit0, module0);
-    give unit_with_state(unit1, IrUnitState.Lowered);
+    let function0 = function_ref_create(
+        1,
+        "main",
+        module0.name,
+        IrLinkage.Exported,
+        IrVisibility.Public,
+        true,
+        span_empty()
+    );
+
+    let module1 = module_add_function(module0, function0);
+    let unit1: IrUnit = unit_add_module(unit0, module1);
+    let unit2: IrUnit = unit_set_entry(unit1, 1);
+
+    give unit_with_state(unit2, IrUnitState.Lowered);
 }
