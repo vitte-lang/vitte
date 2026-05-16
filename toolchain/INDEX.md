@@ -65,7 +65,7 @@ make verify
 
 ```
 Stage 0: Seed
-├─ Input: native bootstrap compiler (cc, native-cc, native-cc)
+├─ Input: native bootstrap compiler (native-cc, cc, system toolchain)
 ├─ Source: toolchain/seed/src/main.vit
 └─ Output: build/vittec0
 

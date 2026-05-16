@@ -45,7 +45,7 @@ Manages all aspects of toolchain configuration:
 #### platform.vit - Platform Detection (280+ lines)
 Detects system capabilities:
 - **PlatformInfo**: OS, architecture, endianness detection
-- **ToolAvailability**: Tool discovery (native-cc, native-cc, ccache, ninja, etc.)
+- **ToolAvailability**: Tool discovery (native-cc, alternate native compiler, ccache, ninja, etc.)
 - **EnvironmentInfo**: Complete environment snapshot
 - **Functions**: 10+ detection and validation functions
 

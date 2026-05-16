@@ -29,7 +29,7 @@ This ensures the final compiler can compile itself and all subsequent programs.
 ┌──────────────────────────────────────────────────────────┐
 │ Stage 0: SEED (Bootstrap from native seed)                         │
 │ ────────────────────────────────────────────────────────│
-│ Input:  native bootstrap compiler (cc, native-cc, native-cc)                     │
+│ Input:  native bootstrap compiler (native-cc, cc, system toolchain)              │
 │ Source: toolchain/seed/src/main.vit                     │
 │ Output: build/vittec0 (minimal compiler)                │
 │                                                          │
@@ -125,7 +125,7 @@ Detects system capabilities and limitations:
   - Support for POSIX features
 
 - **ToolAvailability**: Tool detection
-  - Compiler availability (native-cc, native-cc, cc)
+  - Compiler availability (native-cc, alternate native compiler, cc)
   - Linker tools (ar, ranlib)
   - Build utilities (make, ninja, ccache)
 
