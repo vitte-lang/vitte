@@ -1,0 +1,845 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Analysis / Semantic Analysis       >>>
+<<< File: compiler/analysis/sema/scopes.vit                  >>>
+<<< Module: vitte/compiler/analysis/sema/scopes              >>>
+<<< Purpose: lexical scopes, symbol ownership and lookup      >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/analysis/sema/scopes
+
+const SCOPE_VERSION: u32 = 2026
+const SCOPE_INVALID_ID: u64 = 18446744073709551615
+const SCOPE_ROOT_ID: u64 = 0
+const SCOPE_MAX_SCOPES: u64 = 262144
+const SCOPE_MAX_BINDINGS: u64 = 1048576
+
+pick ScopeKind {
+    Root
+    Module
+    Function
+    Block
+    Loop
+    Match
+    Branch
+    Closure
+    Type
+    Impl
+    Trait
+    Macro
+    Unknown
+}
+
+pick BindingKind {
+    Module
+    Function
+    Type
+    Form
+    Pick
+    Variant
+    Field
+    Parameter
+    Local
+    Const
+    Static
+    Global
+    Label
+    Macro
+    Unknown
+}
+
+pick BindingVisibility {
+    Private
+    Package
+    Module
+    Public
+    Exported
+}
+
+pick ScopeErrorKind {
+    None
+    UnknownScope
+    InvalidScope
+    DuplicateScope
+    UnknownBinding
+    DuplicateBinding
+    InvalidBinding
+    InvalidParent
+    ScopeLimitExceeded
+    BindingLimitExceeded
+}
+
+form ScopeSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form ScopeBinding {
+    id: u64
+    name: string
+    kind: BindingKind
+    visibility: BindingVisibility
+    owner_scope: u64
+    symbol_id: u64
+    mutable: bool
+    used: bool
+    span: ScopeSpan
+    valid: bool
+}
+
+form ScopeNode {
+    id: u64
+    name: string
+    kind: ScopeKind
+    parent: u64
+    depth: u64
+    module: string
+    bindings: [ScopeBinding]
+    span: ScopeSpan
+    valid: bool
+}
+
+form ScopeDiagnostic {
+    kind: ScopeErrorKind
+    message: string
+    span: ScopeSpan
+    scope: u64
+    binding: u64
+}
+
+form ScopeTree {
+    scopes: [ScopeNode]
+    diagnostics: [ScopeDiagnostic]
+    current_scope: u64
+    valid: bool
+}
+
+proc span_empty() -> ScopeSpan {
+    give ScopeSpan {
+        file: "compiler/analysis/sema/scopes.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc binding_invalid() -> ScopeBinding {
+    give ScopeBinding {
+        id: SCOPE_INVALID_ID,
+        name: "invalid",
+        kind: BindingKind.Unknown,
+        visibility: BindingVisibility.Private,
+        owner_scope: SCOPE_INVALID_ID,
+        symbol_id: SCOPE_INVALID_ID,
+        mutable: false,
+        used: false,
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc scope_invalid() -> ScopeNode {
+    give ScopeNode {
+        id: SCOPE_INVALID_ID,
+        name: "invalid",
+        kind: ScopeKind.Unknown,
+        parent: SCOPE_INVALID_ID,
+        depth: 0,
+        module: "",
+        bindings: [],
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc scope_root() -> ScopeNode {
+    give ScopeNode {
+        id: SCOPE_ROOT_ID,
+        name: "root",
+        kind: ScopeKind.Root,
+        parent: SCOPE_INVALID_ID,
+        depth: 0,
+        module: "",
+        bindings: [],
+        span: span_empty(),
+        valid: true
+    }
+}
+
+proc binding_create(
+    id: u64,
+    name: string,
+    kind: BindingKind,
+    visibility: BindingVisibility,
+    owner_scope: u64,
+    symbol_id: u64,
+    mutable: bool,
+    span: ScopeSpan
+) -> ScopeBinding {
+    give ScopeBinding {
+        id: id,
+        name: name,
+        kind: kind,
+        visibility: visibility,
+        owner_scope: owner_scope,
+        symbol_id: symbol_id,
+        mutable: mutable,
+        used: false,
+        span: span,
+        valid: true
+    }
+}
+
+proc scope_create(
+    id: u64,
+    name: string,
+    kind: ScopeKind,
+    parent: u64,
+    depth: u64,
+    module: string,
+    span: ScopeSpan
+) -> ScopeNode {
+    give ScopeNode {
+        id: id,
+        name: name,
+        kind: kind,
+        parent: parent,
+        depth: depth,
+        module: module,
+        bindings: [],
+        span: span,
+        valid: true
+    }
+}
+
+proc diagnostic_create(
+    kind: ScopeErrorKind,
+    message: string,
+    span: ScopeSpan,
+    scope: u64,
+    binding: u64
+) -> ScopeDiagnostic {
+    give ScopeDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        scope: scope,
+        binding: binding
+    }
+}
+
+proc tree_empty() -> ScopeTree {
+    give ScopeTree {
+        scopes: [scope_root()],
+        diagnostics: [],
+        current_scope: SCOPE_ROOT_ID,
+        valid: true
+    }
+}
+
+proc tree_add_diagnostic(
+    tree: ScopeTree,
+    diagnostic: ScopeDiagnostic
+) -> ScopeTree {
+    give ScopeTree {
+        scopes: tree.scopes,
+        diagnostics: tree.diagnostics + [diagnostic],
+        current_scope: tree.current_scope,
+        valid: false
+    }
+}
+
+proc find_scope(tree: ScopeTree, id: u64) -> ScopeNode {
+    let i: u64 = 0
+
+    loop i < vector_len(tree.scopes) {
+        if tree.scopes[i].id == id {
+            give tree.scopes[i]
+        }
+
+        set i = i + 1
+    }
+
+    give scope_invalid()
+}
+
+proc has_scope(tree: ScopeTree, id: u64) -> bool {
+    give find_scope(tree, id).valid
+}
+
+proc tree_add_scope(
+    tree: ScopeTree,
+    scope: ScopeNode
+) -> ScopeTree {
+    if vector_len(tree.scopes) >= SCOPE_MAX_SCOPES {
+        give tree_add_diagnostic(
+            tree,
+            diagnostic_create(
+                ScopeErrorKind.ScopeLimitExceeded,
+                "too many semantic scopes",
+                scope.span,
+                scope.id,
+                SCOPE_INVALID_ID
+            )
+        )
+    }
+
+    if has_scope(tree, scope.id) {
+        give tree_add_diagnostic(
+            tree,
+            diagnostic_create(
+                ScopeErrorKind.DuplicateScope,
+                "duplicate scope",
+                scope.span,
+                scope.id,
+                SCOPE_INVALID_ID
+            )
+        )
+    }
+
+    if scope.id != SCOPE_ROOT_ID and has_scope(tree, scope.parent) == false {
+        give tree_add_diagnostic(
+            tree,
+            diagnostic_create(
+                ScopeErrorKind.InvalidParent,
+                "unknown parent scope",
+                scope.span,
+                scope.id,
+                SCOPE_INVALID_ID
+            )
+        )
+    }
+
+    give ScopeTree {
+        scopes: tree.scopes + [scope],
+        diagnostics: tree.diagnostics,
+        current_scope: scope.id,
+        valid: tree.valid
+    }
+}
+
+proc scope_has_binding(
+    scope: ScopeNode,
+    name: string
+) -> bool {
+    let i: u64 = 0
+
+    loop i < vector_len(scope.bindings) {
+        if scope.bindings[i].name == name {
+            give true
+        }
+
+        set i = i + 1
+    }
+
+    give false
+}
+
+proc scope_find_binding(
+    scope: ScopeNode,
+    name: string
+) -> ScopeBinding {
+    let i: u64 = 0
+
+    loop i < vector_len(scope.bindings) {
+        if scope.bindings[i].name == name {
+            give scope.bindings[i]
+        }
+
+        set i = i + 1
+    }
+
+    give binding_invalid()
+}
+
+proc scope_add_binding(
+    scope: ScopeNode,
+    binding: ScopeBinding
+) -> ScopeNode {
+    give ScopeNode {
+        id: scope.id,
+        name: scope.name,
+        kind: scope.kind,
+        parent: scope.parent,
+        depth: scope.depth,
+        module: scope.module,
+        bindings: scope.bindings + [binding],
+        span: scope.span,
+        valid: scope.valid
+    }
+}
+
+proc replace_scope(
+    tree: ScopeTree,
+    scope: ScopeNode
+) -> ScopeTree {
+    let next: [ScopeNode] = []
+    let replaced = false
+
+    let i: u64 = 0
+
+    loop i < vector_len(tree.scopes) {
+        if tree.scopes[i].id == scope.id {
+            set next = next + [scope]
+            set replaced = true
+        } else {
+            set next = next + [tree.scopes[i]]
+        }
+
+        set i = i + 1
+    }
+
+    if replaced == false {
+        give tree_add_scope(tree, scope)
+    }
+
+    give ScopeTree {
+        scopes: next,
+        diagnostics: tree.diagnostics,
+        current_scope: tree.current_scope,
+        valid: tree.valid
+    }
+}
+
+proc define_binding(
+    tree: ScopeTree,
+    scope_id: u64,
+    binding: ScopeBinding
+) -> ScopeTree {
+    let scope = find_scope(tree, scope_id)
+
+    if scope.valid == false {
+        give tree_add_diagnostic(
+            tree,
+            diagnostic_create(
+                ScopeErrorKind.UnknownScope,
+                "unknown scope for binding",
+                binding.span,
+                scope_id,
+                binding.id
+            )
+        )
+    }
+
+    if vector_len(scope.bindings) >= SCOPE_MAX_BINDINGS {
+        give tree_add_diagnostic(
+            tree,
+            diagnostic_create(
+                ScopeErrorKind.BindingLimitExceeded,
+                "too many bindings in scope",
+                binding.span,
+                scope_id,
+                binding.id
+            )
+        )
+    }
+
+    if scope_has_binding(scope, binding.name) {
+        give tree_add_diagnostic(
+            tree,
+            diagnostic_create(
+                ScopeErrorKind.DuplicateBinding,
+                "duplicate binding in scope",
+                binding.span,
+                scope_id,
+                binding.id
+            )
+        )
+    }
+
+    let updated = scope_add_binding(scope, binding)
+
+    give replace_scope(tree, updated)
+}
+
+proc lookup_local(
+    tree: ScopeTree,
+    scope_id: u64,
+    name: string
+) -> ScopeBinding {
+    let scope = find_scope(tree, scope_id)
+
+    if scope.valid == false {
+        give binding_invalid()
+    }
+
+    give scope_find_binding(scope, name)
+}
+
+proc lookup_recursive(
+    tree: ScopeTree,
+    scope_id: u64,
+    name: string
+) -> ScopeBinding {
+    let scope = find_scope(tree, scope_id)
+
+    if scope.valid == false {
+        give binding_invalid()
+    }
+
+    let local = scope_find_binding(scope, name)
+
+    if local.valid {
+        give local
+    }
+
+    if scope.parent == SCOPE_INVALID_ID {
+        give binding_invalid()
+    }
+
+    give lookup_recursive(tree, scope.parent, name)
+}
+
+proc mark_binding_used(
+    binding: ScopeBinding
+) -> ScopeBinding {
+    give ScopeBinding {
+        id: binding.id,
+        name: binding.name,
+        kind: binding.kind,
+        visibility: binding.visibility,
+        owner_scope: binding.owner_scope,
+        symbol_id: binding.symbol_id,
+        mutable: binding.mutable,
+        used: true,
+        span: binding.span,
+        valid: binding.valid
+    }
+}
+
+proc mark_used_in_scope(
+    scope: ScopeNode,
+    binding_id: u64
+) -> ScopeNode {
+    let next: [ScopeBinding] = []
+    let i: u64 = 0
+
+    loop i < vector_len(scope.bindings) {
+        if scope.bindings[i].id == binding_id {
+            set next = next + [mark_binding_used(scope.bindings[i])]
+        } else {
+            set next = next + [scope.bindings[i]]
+        }
+
+        set i = i + 1
+    }
+
+    give ScopeNode {
+        id: scope.id,
+        name: scope.name,
+        kind: scope.kind,
+        parent: scope.parent,
+        depth: scope.depth,
+        module: scope.module,
+        bindings: next,
+        span: scope.span,
+        valid: scope.valid
+    }
+}
+
+proc resolve_and_mark_used(
+    tree: ScopeTree,
+    scope_id: u64,
+    name: string
+) -> ScopeTree {
+    let binding = lookup_recursive(tree, scope_id, name)
+
+    if binding.valid == false {
+        give tree_add_diagnostic(
+            tree,
+            diagnostic_create(
+                ScopeErrorKind.UnknownBinding,
+                "unknown binding",
+                span_empty(),
+                scope_id,
+                SCOPE_INVALID_ID
+            )
+        )
+    }
+
+    let owner = find_scope(tree, binding.owner_scope)
+
+    if owner.valid == false {
+        give tree
+    }
+
+    let updated = mark_used_in_scope(owner, binding.id)
+
+    give replace_scope(tree, updated)
+}
+
+proc enter_scope(
+    tree: ScopeTree,
+    id: u64,
+    name: string,
+    kind: ScopeKind,
+    module: string,
+    span: ScopeSpan
+) -> ScopeTree {
+    let parent = tree.current_scope
+    let parent_scope = find_scope(tree, parent)
+    let depth = parent_scope.depth + 1
+
+    let scope = scope_create(
+        id,
+        name,
+        kind,
+        parent,
+        depth,
+        module,
+        span
+    )
+
+    give tree_add_scope(tree, scope)
+}
+
+proc leave_scope(tree: ScopeTree) -> ScopeTree {
+    let current = find_scope(tree, tree.current_scope)
+
+    if current.valid == false {
+        give tree
+    }
+
+    if current.parent == SCOPE_INVALID_ID {
+        give tree
+    }
+
+    give ScopeTree {
+        scopes: tree.scopes,
+        diagnostics: tree.diagnostics,
+        current_scope: current.parent,
+        valid: tree.valid
+    }
+}
+
+proc current_scope(tree: ScopeTree) -> ScopeNode {
+    give find_scope(tree, tree.current_scope)
+}
+
+proc scope_depth(tree: ScopeTree, scope_id: u64) -> u64 {
+    give find_scope(tree, scope_id).depth
+}
+
+proc is_descendant_scope(
+    tree: ScopeTree,
+    ancestor: u64,
+    child: u64
+) -> bool {
+    if ancestor == child {
+        give true
+    }
+
+    let scope = find_scope(tree, child)
+
+    loop scope.valid and scope.parent != SCOPE_INVALID_ID {
+        if scope.parent == ancestor {
+            give true
+        }
+
+        set scope = find_scope(tree, scope.parent)
+    }
+
+    give false
+}
+
+proc visibility_allows_access(
+    visibility: BindingVisibility,
+    from_scope: ScopeNode,
+    owner_scope: ScopeNode
+) -> bool {
+    if visibility == BindingVisibility.Public {
+        give true
+    }
+
+    if visibility == BindingVisibility.Exported {
+        give true
+    }
+
+    if visibility == BindingVisibility.Private {
+        give from_scope.id == owner_scope.id
+    }
+
+    if visibility == BindingVisibility.Module {
+        give from_scope.module == owner_scope.module
+    }
+
+    if visibility == BindingVisibility.Package {
+        give module_root(from_scope.module) == module_root(owner_scope.module)
+    }
+
+    give false
+}
+
+proc binding_accessible(
+    tree: ScopeTree,
+    binding: ScopeBinding,
+    from_scope_id: u64
+) -> bool {
+    let from_scope = find_scope(tree, from_scope_id)
+    let owner_scope = find_scope(tree, binding.owner_scope)
+
+    if from_scope.valid == false or owner_scope.valid == false {
+        give false
+    }
+
+    give visibility_allows_access(
+        binding.visibility,
+        from_scope,
+        owner_scope
+    )
+}
+
+proc module_root(module: string) -> string {
+    give module
+}
+
+proc validate_scopes(tree: ScopeTree) -> ScopeTree {
+    let current = tree
+    let i: u64 = 0
+
+    loop i < vector_len(current.scopes) {
+        let scope = current.scopes[i]
+
+        if scope.valid == false {
+            give tree_add_diagnostic(
+                current,
+                diagnostic_create(
+                    ScopeErrorKind.InvalidScope,
+                    "invalid scope node",
+                    scope.span,
+                    scope.id,
+                    SCOPE_INVALID_ID
+                )
+            )
+        }
+
+        if scope.id != SCOPE_ROOT_ID and has_scope(current, scope.parent) == false {
+            give tree_add_diagnostic(
+                current,
+                diagnostic_create(
+                    ScopeErrorKind.InvalidParent,
+                    "invalid scope parent",
+                    scope.span,
+                    scope.id,
+                    SCOPE_INVALID_ID
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc scope_error_count(tree: ScopeTree) -> u64 {
+    give vector_len(tree.diagnostics)
+}
+
+proc scope_tree_is_valid(tree: ScopeTree) -> bool {
+    give tree.valid and vector_len(tree.diagnostics) == 0
+}
+
+proc kind_name(kind: ScopeKind) -> string {
+    if kind == ScopeKind.Root {
+        give "root"
+    }
+
+    if kind == ScopeKind.Module {
+        give "module"
+    }
+
+    if kind == ScopeKind.Function {
+        give "function"
+    }
+
+    if kind == ScopeKind.Block {
+        give "block"
+    }
+
+    if kind == ScopeKind.Loop {
+        give "loop"
+    }
+
+    if kind == ScopeKind.Match {
+        give "match"
+    }
+
+    if kind == ScopeKind.Closure {
+        give "closure"
+    }
+
+    give "unknown"
+}
+
+proc binding_kind_name(kind: BindingKind) -> string {
+    if kind == BindingKind.Module {
+        give "module"
+    }
+
+    if kind == BindingKind.Function {
+        give "function"
+    }
+
+    if kind == BindingKind.Type {
+        give "type"
+    }
+
+    if kind == BindingKind.Local {
+        give "local"
+    }
+
+    if kind == BindingKind.Parameter {
+        give "parameter"
+    }
+
+    if kind == BindingKind.Const {
+        give "const"
+    }
+
+    give "unknown"
+}
+
+proc print_binding(binding: ScopeBinding) {
+    emit "binding"
+    emit binding.id
+    emit binding.name
+    emit binding_kind_name(binding.kind)
+    emit binding.used
+}
+
+proc print_scope(scope: ScopeNode) {
+    emit "scope"
+    emit scope.id
+    emit scope.name
+    emit kind_name(scope.kind)
+    emit scope.depth
+    emit vector_len(scope.bindings)
+
+    let i: u64 = 0
+
+    loop i < vector_len(scope.bindings) {
+        print_binding(scope.bindings[i])
+        set i = i + 1
+    }
+}
+
+proc print_tree(tree: ScopeTree) {
+    emit "scope tree"
+    emit vector_len(tree.scopes)
+    emit vector_len(tree.diagnostics)
+    emit tree.current_scope
+
+    let i: u64 = 0
+
+    loop i < vector_len(tree.scopes) {
+        print_scope(tree.scopes[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

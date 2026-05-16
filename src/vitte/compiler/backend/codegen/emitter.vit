@@ -1,0 +1,776 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Backend / Code Generation          >>>
+<<< File: compiler/backend/codegen/emitter.vit               >>>
+<<< Module: vitte/compiler/backend/codegen/emitter           >>>
+<<< Purpose: machine emission, object serialization and asm   >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/backend/codegen/emitter
+
+const EMITTER_VERSION: u32 = 2026
+const EMITTER_INVALID_ID: u64 = 18446744073709551615
+const EMITTER_MAX_BUFFERS: u64 = 1048576
+const EMITTER_MAX_INSTRUCTIONS: u64 = 16777216
+const EMITTER_MAX_SYMBOLS: u64 = 2097152
+const EMITTER_MAX_SECTIONS: u64 = 1024
+
+pick EmitTarget {
+    Unknown
+    Native
+    Object
+    Assembly
+    LLVM
+    Bytecode
+    WASM
+}
+
+pick EmitArch {
+    Unknown
+    X86_64
+    AArch64
+    RiscV64
+    ARM
+    I386
+}
+
+pick EmitSectionKind {
+    Text
+    Data
+    Rodata
+    Bss
+    Tls
+    Debug
+    Metadata
+    Custom
+}
+
+pick EmitRelocationKind {
+    Absolute
+    Relative
+    GOT
+    PLT
+    TLS
+    Branch
+}
+
+pick EmitErrorKind {
+    None
+    InvalidTarget
+    InvalidArchitecture
+    InvalidSection
+    InvalidInstruction
+    InvalidSymbol
+    BufferOverflow
+    RelocationFailure
+    SerializationFailure
+    UnsupportedOpcode
+    InternalFailure
+}
+
+form EmitSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form EmitBuffer {
+    id: u64
+    name: string
+    bytes: [u8]
+    size: u64
+    capacity: u64
+    valid: bool
+}
+
+form EmitInstruction {
+    id: u64
+    opcode: string
+    operands: [string]
+    encoded: [u8]
+    offset: u64
+    size: u64
+    valid: bool
+}
+
+form EmitSection {
+    id: u64
+    name: string
+    kind: EmitSectionKind
+    alignment: u64
+    offset: u64
+    size: u64
+    executable: bool
+    writable: bool
+    readable: bool
+    instructions: [EmitInstruction]
+    valid: bool
+}
+
+form EmitSymbol {
+    id: u64
+    name: string
+    section: u64
+    offset: u64
+    global: bool
+    exported: bool
+    valid: bool
+}
+
+form EmitRelocation {
+    id: u64
+    kind: EmitRelocationKind
+    symbol: u64
+    section: u64
+    offset: u64
+    addend: i64
+    valid: bool
+}
+
+form EmitDiagnostic {
+    kind: EmitErrorKind
+    message: string
+    span: EmitSpan
+    object: u64
+}
+
+form EmitObject {
+    target: EmitTarget
+    arch: EmitArch
+    sections: [EmitSection]
+    symbols: [EmitSymbol]
+    relocations: [EmitRelocation]
+    diagnostics: [EmitDiagnostic]
+    output: EmitBuffer
+    valid: bool
+}
+
+proc span_empty() -> EmitSpan {
+    give EmitSpan {
+        file: "compiler/backend/codegen/emitter.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc buffer_empty() -> EmitBuffer {
+    give EmitBuffer {
+        id: 0,
+        name: "output",
+        bytes: [],
+        size: 0,
+        capacity: EMITTER_MAX_BUFFERS,
+        valid: true
+    }
+}
+
+proc instruction_invalid() -> EmitInstruction {
+    give EmitInstruction {
+        id: EMITTER_INVALID_ID,
+        opcode: "invalid",
+        operands: [],
+        encoded: [],
+        offset: 0,
+        size: 0,
+        valid: false
+    }
+}
+
+proc instruction_create(
+    id: u64,
+    opcode: string,
+    operands: [string]
+) -> EmitInstruction {
+    give EmitInstruction {
+        id: id,
+        opcode: opcode,
+        operands: operands,
+        encoded: [],
+        offset: 0,
+        size: 0,
+        valid: true
+    }
+}
+
+proc section_create(
+    id: u64,
+    name: string,
+    kind: EmitSectionKind,
+    alignment: u64
+) -> EmitSection {
+    give EmitSection {
+        id: id,
+        name: name,
+        kind: kind,
+        alignment: alignment,
+        offset: 0,
+        size: 0,
+        executable: kind == EmitSectionKind.Text,
+        writable: kind != EmitSectionKind.Rodata,
+        readable: true,
+        instructions: [],
+        valid: true
+    }
+}
+
+proc symbol_create(
+    id: u64,
+    name: string,
+    section: u64,
+    offset: u64,
+    global: bool,
+    exported: bool
+) -> EmitSymbol {
+    give EmitSymbol {
+        id: id,
+        name: name,
+        section: section,
+        offset: offset,
+        global: global,
+        exported: exported,
+        valid: true
+    }
+}
+
+proc relocation_create(
+    id: u64,
+    kind: EmitRelocationKind,
+    symbol: u64,
+    section: u64,
+    offset: u64,
+    addend: i64
+) -> EmitRelocation {
+    give EmitRelocation {
+        id: id,
+        kind: kind,
+        symbol: symbol,
+        section: section,
+        offset: offset,
+        addend: addend,
+        valid: true
+    }
+}
+
+proc diagnostic_create(
+    kind: EmitErrorKind,
+    message: string,
+    span: EmitSpan,
+    object: u64
+) -> EmitDiagnostic {
+    give EmitDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        object: object
+    }
+}
+
+proc object_empty(
+    target: EmitTarget,
+    arch: EmitArch
+) -> EmitObject {
+    give EmitObject {
+        target: target,
+        arch: arch,
+        sections: [],
+        symbols: [],
+        relocations: [],
+        diagnostics: [],
+        output: buffer_empty(),
+        valid: true
+    }
+}
+
+proc object_add_diagnostic(
+    object: EmitObject,
+    diagnostic: EmitDiagnostic
+) -> EmitObject {
+    give EmitObject {
+        target: object.target,
+        arch: object.arch,
+        sections: object.sections,
+        symbols: object.symbols,
+        relocations: object.relocations,
+        diagnostics: object.diagnostics + [diagnostic],
+        output: object.output,
+        valid: false
+    }
+}
+
+proc object_add_section(
+    object: EmitObject,
+    section: EmitSection
+) -> EmitObject {
+    if vector_len(object.sections) >= EMITTER_MAX_SECTIONS {
+        give object_add_diagnostic(
+            object,
+            diagnostic_create(
+                EmitErrorKind.InvalidSection,
+                "too many sections",
+                span_empty(),
+                section.id
+            )
+        )
+    }
+
+    give EmitObject {
+        target: object.target,
+        arch: object.arch,
+        sections: object.sections + [section],
+        symbols: object.symbols,
+        relocations: object.relocations,
+        diagnostics: object.diagnostics,
+        output: object.output,
+        valid: object.valid
+    }
+}
+
+proc object_add_symbol(
+    object: EmitObject,
+    symbol: EmitSymbol
+) -> EmitObject {
+    if vector_len(object.symbols) >= EMITTER_MAX_SYMBOLS {
+        give object_add_diagnostic(
+            object,
+            diagnostic_create(
+                EmitErrorKind.InvalidSymbol,
+                "too many symbols",
+                span_empty(),
+                symbol.id
+            )
+        )
+    }
+
+    give EmitObject {
+        target: object.target,
+        arch: object.arch,
+        sections: object.sections,
+        symbols: object.symbols + [symbol],
+        relocations: object.relocations,
+        diagnostics: object.diagnostics,
+        output: object.output,
+        valid: object.valid
+    }
+}
+
+proc object_add_relocation(
+    object: EmitObject,
+    relocation: EmitRelocation
+) -> EmitObject {
+    give EmitObject {
+        target: object.target,
+        arch: object.arch,
+        sections: object.sections,
+        symbols: object.symbols,
+        relocations: object.relocations + [relocation],
+        diagnostics: object.diagnostics,
+        output: object.output,
+        valid: object.valid
+    }
+}
+
+proc section_add_instruction(
+    section: EmitSection,
+    instruction: EmitInstruction
+) -> EmitSection {
+    if vector_len(section.instructions) >= EMITTER_MAX_INSTRUCTIONS {
+        give EmitSection {
+            id: section.id,
+            name: section.name,
+            kind: section.kind,
+            alignment: section.alignment,
+            offset: section.offset,
+            size: section.size,
+            executable: section.executable,
+            writable: section.writable,
+            readable: section.readable,
+            instructions: section.instructions,
+            valid: false
+        }
+    }
+
+    give EmitSection {
+        id: section.id,
+        name: section.name,
+        kind: section.kind,
+        alignment: section.alignment,
+        offset: section.offset,
+        size: section.size + instruction.size,
+        executable: section.executable,
+        writable: section.writable,
+        readable: section.readable,
+        instructions: section.instructions + [instruction],
+        valid: section.valid
+    }
+}
+
+proc encode_instruction_x86_64(
+    instruction: EmitInstruction
+) -> EmitInstruction {
+    if instruction.opcode == "ret" {
+        give EmitInstruction {
+            id: instruction.id,
+            opcode: instruction.opcode,
+            operands: instruction.operands,
+            encoded: [0xc3],
+            offset: instruction.offset,
+            size: 1,
+            valid: true
+        }
+    }
+
+    if instruction.opcode == "nop" {
+        give EmitInstruction {
+            id: instruction.id,
+            opcode: instruction.opcode,
+            operands: instruction.operands,
+            encoded: [0x90],
+            offset: instruction.offset,
+            size: 1,
+            valid: true
+        }
+    }
+
+    if instruction.opcode == "syscall" {
+        give EmitInstruction {
+            id: instruction.id,
+            opcode: instruction.opcode,
+            operands: instruction.operands,
+            encoded: [0x0f, 0x05],
+            offset: instruction.offset,
+            size: 2,
+            valid: true
+        }
+    }
+
+    give instruction_invalid()
+}
+
+proc encode_instruction_aarch64(
+    instruction: EmitInstruction
+) -> EmitInstruction {
+    if instruction.opcode == "ret" {
+        give EmitInstruction {
+            id: instruction.id,
+            opcode: instruction.opcode,
+            operands: instruction.operands,
+            encoded: [0xc0, 0x03, 0x5f, 0xd6],
+            offset: instruction.offset,
+            size: 4,
+            valid: true
+        }
+    }
+
+    if instruction.opcode == "nop" {
+        give EmitInstruction {
+            id: instruction.id,
+            opcode: instruction.opcode,
+            operands: instruction.operands,
+            encoded: [0x1f, 0x20, 0x03, 0xd5],
+            offset: instruction.offset,
+            size: 4,
+            valid: true
+        }
+    }
+
+    give instruction_invalid()
+}
+
+proc encode_instruction(
+    arch: EmitArch,
+    instruction: EmitInstruction
+) -> EmitInstruction {
+    if arch == EmitArch.X86_64 {
+        give encode_instruction_x86_64(instruction)
+    }
+
+    if arch == EmitArch.AArch64 {
+        give encode_instruction_aarch64(instruction)
+    }
+
+    give instruction_invalid()
+}
+
+proc append_bytes(
+    buffer: EmitBuffer,
+    bytes: [u8]
+) -> EmitBuffer {
+    give EmitBuffer {
+        id: buffer.id,
+        name: buffer.name,
+        bytes: buffer.bytes + bytes,
+        size: buffer.size + vector_len(bytes),
+        capacity: buffer.capacity,
+        valid: buffer.size + vector_len(bytes) <= buffer.capacity
+    }
+}
+
+proc emit_section(
+    object: EmitObject,
+    section: EmitSection
+) -> EmitObject {
+    let buffer = object.output
+    let current = buffer
+
+    let i: u64 = 0
+
+    loop i < vector_len(section.instructions) {
+        let encoded = encode_instruction(
+            object.arch,
+            section.instructions[i]
+        )
+
+        if encoded.valid == false {
+            give object_add_diagnostic(
+                object,
+                diagnostic_create(
+                    EmitErrorKind.UnsupportedOpcode,
+                    "unsupported instruction opcode",
+                    span_empty(),
+                    section.instructions[i].id
+                )
+            )
+        }
+
+        set current = append_bytes(current, encoded.encoded)
+        set i = i + 1
+    }
+
+    give EmitObject {
+        target: object.target,
+        arch: object.arch,
+        sections: object.sections,
+        symbols: object.symbols,
+        relocations: object.relocations,
+        diagnostics: object.diagnostics,
+        output: current,
+        valid: current.valid
+    }
+}
+
+proc emit_all_sections(
+    object: EmitObject
+) -> EmitObject {
+    let current = object
+    let i: u64 = 0
+
+    loop i < vector_len(object.sections) {
+        set current = emit_section(current, object.sections[i])
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc serialize_object(
+    object: EmitObject
+) -> EmitBuffer {
+    give object.output
+}
+
+proc emit_text_section(
+    object: EmitObject
+) -> EmitObject {
+    let text = section_create(
+        0,
+        ".text",
+        EmitSectionKind.Text,
+        16
+    )
+
+    let i1 = instruction_create(
+        0,
+        "nop",
+        []
+    )
+
+    let i2 = instruction_create(
+        1,
+        "ret",
+        []
+    )
+
+    let with_i1 = section_add_instruction(text, encode_instruction(object.arch, i1))
+    let with_i2 = section_add_instruction(with_i1, encode_instruction(object.arch, i2))
+
+    give object_add_section(object, with_i2)
+}
+
+proc build_default_object(
+    target: EmitTarget,
+    arch: EmitArch
+) -> EmitObject {
+    let object = object_empty(target, arch)
+
+    let with_text = emit_text_section(object)
+
+    give emit_all_sections(with_text)
+}
+
+proc emit_symbol_table(
+    object: EmitObject
+) -> EmitObject {
+    let symbol = symbol_create(
+        0,
+        "_start",
+        0,
+        0,
+        true,
+        true
+    )
+
+    give object_add_symbol(object, symbol)
+}
+
+proc emit_relocations(
+    object: EmitObject
+) -> EmitObject {
+    give object
+}
+
+proc finalize_object(
+    object: EmitObject
+) -> EmitObject {
+    let with_symbols = emit_symbol_table(object)
+    let with_relocations = emit_relocations(with_symbols)
+
+    give with_relocations
+}
+
+proc object_size(
+    object: EmitObject
+) -> u64 {
+    give object.output.size
+}
+
+proc section_count(
+    object: EmitObject
+) -> u64 {
+    give vector_len(object.sections)
+}
+
+proc symbol_count(
+    object: EmitObject
+) -> u64 {
+    give vector_len(object.symbols)
+}
+
+proc relocation_count(
+    object: EmitObject
+) -> u64 {
+    give vector_len(object.relocations)
+}
+
+proc diagnostic_count(
+    object: EmitObject
+) -> u64 {
+    give vector_len(object.diagnostics)
+}
+
+proc emitter_is_valid(
+    object: EmitObject
+) -> bool {
+    give object.valid and vector_len(object.diagnostics) == 0
+}
+
+proc target_name(target: EmitTarget) -> string {
+    if target == EmitTarget.Native {
+        give "native"
+    }
+
+    if target == EmitTarget.Object {
+        give "object"
+    }
+
+    if target == EmitTarget.Assembly {
+        give "assembly"
+    }
+
+    if target == EmitTarget.LLVM {
+        give "llvm"
+    }
+
+    if target == EmitTarget.Bytecode {
+        give "bytecode"
+    }
+
+    if target == EmitTarget.WASM {
+        give "wasm"
+    }
+
+    give "unknown"
+}
+
+proc arch_name(arch: EmitArch) -> string {
+    if arch == EmitArch.X86_64 {
+        give "x86_64"
+    }
+
+    if arch == EmitArch.AArch64 {
+        give "aarch64"
+    }
+
+    if arch == EmitArch.RiscV64 {
+        give "riscv64"
+    }
+
+    if arch == EmitArch.ARM {
+        give "arm"
+    }
+
+    if arch == EmitArch.I386 {
+        give "i386"
+    }
+
+    give "unknown"
+}
+
+proc print_instruction(
+    instruction: EmitInstruction
+) {
+    emit "instruction"
+    emit instruction.id
+    emit instruction.opcode
+    emit instruction.size
+}
+
+proc print_section(
+    section: EmitSection
+) {
+    emit "section"
+    emit section.name
+    emit section.size
+    emit vector_len(section.instructions)
+
+    let i: u64 = 0
+
+    loop i < vector_len(section.instructions) {
+        print_instruction(section.instructions[i])
+        set i = i + 1
+    }
+}
+
+proc print_object(
+    object: EmitObject
+) {
+    emit "emitter object"
+    emit target_name(object.target)
+    emit arch_name(object.arch)
+    emit section_count(object)
+    emit symbol_count(object)
+    emit relocation_count(object)
+    emit object_size(object)
+
+    let i: u64 = 0
+
+    loop i < vector_len(object.sections) {
+        print_section(object.sections[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

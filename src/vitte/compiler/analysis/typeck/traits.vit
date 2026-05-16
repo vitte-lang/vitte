@@ -1,0 +1,827 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Analysis / Type Checking           >>>
+<<< File: compiler/analysis/typeck/traits.vit                >>>
+<<< Module: vitte/compiler/analysis/typeck/traits            >>>
+<<< Purpose: trait bounds, implementations and obligations    >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/analysis/typeck/traits
+
+const TRAIT_VERSION: u32 = 2026
+const TRAIT_INVALID_ID: u64 = 18446744073709551615
+const TRAIT_MAX_TRAITS: u64 = 262144
+const TRAIT_MAX_IMPLS: u64 = 1048576
+const TRAIT_MAX_OBLIGATIONS: u64 = 2097152
+
+pick TraitItemKind {
+    Method
+    AssociatedType
+    AssociatedConst
+    RequiredMethod
+    ProvidedMethod
+    Unknown
+}
+
+pick TraitImplKind {
+    Explicit
+    Blanket
+    Derived
+    Builtin
+    Foreign
+    Auto
+}
+
+pick TraitObligationState {
+    Pending
+    Solved
+    Failed
+    Ambiguous
+}
+
+pick TraitErrorKind {
+    None
+    UnknownTrait
+    UnknownType
+    DuplicateTrait
+    DuplicateImpl
+    MissingImpl
+    MissingTraitItem
+    AmbiguousImpl
+    InvalidImpl
+    InvalidBound
+    ObligationFailed
+    TraitLimitExceeded
+    ImplLimitExceeded
+    ObligationLimitExceeded
+    InternalFailure
+}
+
+form TraitSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form TypeRef {
+    id: u64
+    name: string
+    valid: bool
+}
+
+form TraitItem {
+    id: u64
+    name: string
+    kind: TraitItemKind
+    type_name: string
+    required: bool
+    span: TraitSpan
+    valid: bool
+}
+
+form TraitDef {
+    id: u64
+    name: string
+    module: string
+    items: [TraitItem]
+    span: TraitSpan
+    valid: bool
+}
+
+form TraitImpl {
+    id: u64
+    trait_id: u64
+    for_type: TypeRef
+    kind: TraitImplKind
+    items: [TraitItem]
+    span: TraitSpan
+    valid: bool
+}
+
+form TraitBound {
+    id: u64
+    trait_id: u64
+    target_type: TypeRef
+    span: TraitSpan
+    valid: bool
+}
+
+form TraitObligation {
+    id: u64
+    bound: TraitBound
+    state: TraitObligationState
+    span: TraitSpan
+}
+
+form TraitDiagnostic {
+    kind: TraitErrorKind
+    message: string
+    span: TraitSpan
+    trait_id: u64
+    type_id: u64
+}
+
+form TraitContext {
+    traits: [TraitDef]
+    impls: [TraitImpl]
+    obligations: [TraitObligation]
+    diagnostics: [TraitDiagnostic]
+    valid: bool
+}
+
+proc span_empty() -> TraitSpan {
+    give TraitSpan {
+        file: "compiler/analysis/typeck/traits.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc type_invalid() -> TypeRef {
+    give TypeRef {
+        id: TRAIT_INVALID_ID,
+        name: "invalid",
+        valid: false
+    }
+}
+
+proc type_ref(id: u64, name: string) -> TypeRef {
+    give TypeRef {
+        id: id,
+        name: name,
+        valid: true
+    }
+}
+
+proc item_create(
+    id: u64,
+    name: string,
+    kind: TraitItemKind,
+    type_name: string,
+    required: bool,
+    span: TraitSpan
+) -> TraitItem {
+    give TraitItem {
+        id: id,
+        name: name,
+        kind: kind,
+        type_name: type_name,
+        required: required,
+        span: span,
+        valid: true
+    }
+}
+
+proc trait_create(
+    id: u64,
+    name: string,
+    module: string,
+    span: TraitSpan
+) -> TraitDef {
+    give TraitDef {
+        id: id,
+        name: name,
+        module: module,
+        items: [],
+        span: span,
+        valid: true
+    }
+}
+
+proc impl_create(
+    id: u64,
+    trait_id: u64,
+    for_type: TypeRef,
+    kind: TraitImplKind,
+    span: TraitSpan
+) -> TraitImpl {
+    give TraitImpl {
+        id: id,
+        trait_id: trait_id,
+        for_type: for_type,
+        kind: kind,
+        items: [],
+        span: span,
+        valid: true
+    }
+}
+
+proc bound_create(
+    id: u64,
+    trait_id: u64,
+    target_type: TypeRef,
+    span: TraitSpan
+) -> TraitBound {
+    give TraitBound {
+        id: id,
+        trait_id: trait_id,
+        target_type: target_type,
+        span: span,
+        valid: true
+    }
+}
+
+proc obligation_create(
+    id: u64,
+    bound: TraitBound,
+    span: TraitSpan
+) -> TraitObligation {
+    give TraitObligation {
+        id: id,
+        bound: bound,
+        state: TraitObligationState.Pending,
+        span: span
+    }
+}
+
+proc diagnostic_create(
+    kind: TraitErrorKind,
+    message: string,
+    span: TraitSpan,
+    trait_id: u64,
+    type_id: u64
+) -> TraitDiagnostic {
+    give TraitDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        trait_id: trait_id,
+        type_id: type_id
+    }
+}
+
+proc context_empty() -> TraitContext {
+    give TraitContext {
+        traits: [],
+        impls: [],
+        obligations: [],
+        diagnostics: [],
+        valid: true
+    }
+}
+
+proc context_add_diagnostic(
+    context: TraitContext,
+    diagnostic: TraitDiagnostic
+) -> TraitContext {
+    give TraitContext {
+        traits: context.traits,
+        impls: context.impls,
+        obligations: context.obligations,
+        diagnostics: context.diagnostics + [diagnostic],
+        valid: false
+    }
+}
+
+proc trait_add_item(
+    trait_def: TraitDef,
+    item: TraitItem
+) -> TraitDef {
+    give TraitDef {
+        id: trait_def.id,
+        name: trait_def.name,
+        module: trait_def.module,
+        items: trait_def.items + [item],
+        span: trait_def.span,
+        valid: trait_def.valid
+    }
+}
+
+proc impl_add_item(
+    impl_def: TraitImpl,
+    item: TraitItem
+) -> TraitImpl {
+    give TraitImpl {
+        id: impl_def.id,
+        trait_id: impl_def.trait_id,
+        for_type: impl_def.for_type,
+        kind: impl_def.kind,
+        items: impl_def.items + [item],
+        span: impl_def.span,
+        valid: impl_def.valid
+    }
+}
+
+proc context_add_trait(
+    context: TraitContext,
+    trait_def: TraitDef
+) -> TraitContext {
+    if vector_len(context.traits) >= TRAIT_MAX_TRAITS {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                TraitErrorKind.TraitLimitExceeded,
+                "too many traits",
+                trait_def.span,
+                trait_def.id,
+                TRAIT_INVALID_ID
+            )
+        )
+    }
+
+    if has_trait_named(context, trait_def.name) {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                TraitErrorKind.DuplicateTrait,
+                "duplicate trait definition",
+                trait_def.span,
+                trait_def.id,
+                TRAIT_INVALID_ID
+            )
+        )
+    }
+
+    give TraitContext {
+        traits: context.traits + [trait_def],
+        impls: context.impls,
+        obligations: context.obligations,
+        diagnostics: context.diagnostics,
+        valid: context.valid
+    }
+}
+
+proc context_add_impl(
+    context: TraitContext,
+    impl_def: TraitImpl
+) -> TraitContext {
+    if vector_len(context.impls) >= TRAIT_MAX_IMPLS {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                TraitErrorKind.ImplLimitExceeded,
+                "too many trait implementations",
+                impl_def.span,
+                impl_def.trait_id,
+                impl_def.for_type.id
+            )
+        )
+    }
+
+    if has_impl(context, impl_def.trait_id, impl_def.for_type.id) {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                TraitErrorKind.DuplicateImpl,
+                "duplicate trait implementation",
+                impl_def.span,
+                impl_def.trait_id,
+                impl_def.for_type.id
+            )
+        )
+    }
+
+    give TraitContext {
+        traits: context.traits,
+        impls: context.impls + [impl_def],
+        obligations: context.obligations,
+        diagnostics: context.diagnostics,
+        valid: context.valid
+    }
+}
+
+proc context_add_obligation(
+    context: TraitContext,
+    obligation: TraitObligation
+) -> TraitContext {
+    if vector_len(context.obligations) >= TRAIT_MAX_OBLIGATIONS {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                TraitErrorKind.ObligationLimitExceeded,
+                "too many trait obligations",
+                obligation.span,
+                obligation.bound.trait_id,
+                obligation.bound.target_type.id
+            )
+        )
+    }
+
+    give TraitContext {
+        traits: context.traits,
+        impls: context.impls,
+        obligations: context.obligations + [obligation],
+        diagnostics: context.diagnostics,
+        valid: context.valid
+    }
+}
+
+proc find_trait(
+    context: TraitContext,
+    id: u64
+) -> TraitDef {
+    let i: u64 = 0
+
+    loop i < vector_len(context.traits) {
+        if context.traits[i].id == id {
+            give context.traits[i]
+        }
+
+        set i = i + 1
+    }
+
+    give TraitDef {
+        id: TRAIT_INVALID_ID,
+        name: "invalid",
+        module: "",
+        items: [],
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc find_trait_by_name(
+    context: TraitContext,
+    name: string
+) -> TraitDef {
+    let i: u64 = 0
+
+    loop i < vector_len(context.traits) {
+        if context.traits[i].name == name {
+            give context.traits[i]
+        }
+
+        set i = i + 1
+    }
+
+    give TraitDef {
+        id: TRAIT_INVALID_ID,
+        name: "invalid",
+        module: "",
+        items: [],
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc has_trait_named(
+    context: TraitContext,
+    name: string
+) -> bool {
+    give find_trait_by_name(context, name).valid
+}
+
+proc find_impl(
+    context: TraitContext,
+    trait_id: u64,
+    type_id: u64
+) -> TraitImpl {
+    let i: u64 = 0
+
+    loop i < vector_len(context.impls) {
+        let impl_def = context.impls[i]
+
+        if impl_def.trait_id == trait_id and impl_def.for_type.id == type_id {
+            give impl_def
+        }
+
+        set i = i + 1
+    }
+
+    give TraitImpl {
+        id: TRAIT_INVALID_ID,
+        trait_id: TRAIT_INVALID_ID,
+        for_type: type_invalid(),
+        kind: TraitImplKind.Explicit,
+        items: [],
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc has_impl(
+    context: TraitContext,
+    trait_id: u64,
+    type_id: u64
+) -> bool {
+    give find_impl(context, trait_id, type_id).valid
+}
+
+proc trait_has_item(
+    trait_def: TraitDef,
+    name: string
+) -> bool {
+    let i: u64 = 0
+
+    loop i < vector_len(trait_def.items) {
+        if trait_def.items[i].name == name {
+            give true
+        }
+
+        set i = i + 1
+    }
+
+    give false
+}
+
+proc impl_has_item(
+    impl_def: TraitImpl,
+    name: string
+) -> bool {
+    let i: u64 = 0
+
+    loop i < vector_len(impl_def.items) {
+        if impl_def.items[i].name == name {
+            give true
+        }
+
+        set i = i + 1
+    }
+
+    give false
+}
+
+proc validate_impl_items(
+    context: TraitContext,
+    trait_def: TraitDef,
+    impl_def: TraitImpl
+) -> TraitContext {
+    let current = context
+    let i: u64 = 0
+
+    loop i < vector_len(trait_def.items) {
+        let item = trait_def.items[i]
+
+        if item.required and impl_has_item(impl_def, item.name) == false {
+            give context_add_diagnostic(
+                current,
+                diagnostic_create(
+                    TraitErrorKind.MissingTraitItem,
+                    "trait implementation is missing required item",
+                    impl_def.span,
+                    trait_def.id,
+                    impl_def.for_type.id
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc validate_impl(
+    context: TraitContext,
+    impl_def: TraitImpl
+) -> TraitContext {
+    let trait_def = find_trait(context, impl_def.trait_id)
+
+    if trait_def.valid == false {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                TraitErrorKind.UnknownTrait,
+                "unknown trait in implementation",
+                impl_def.span,
+                impl_def.trait_id,
+                impl_def.for_type.id
+            )
+        )
+    }
+
+    if impl_def.for_type.valid == false {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                TraitErrorKind.UnknownType,
+                "unknown implementation target type",
+                impl_def.span,
+                impl_def.trait_id,
+                impl_def.for_type.id
+            )
+        )
+    }
+
+    give validate_impl_items(context, trait_def, impl_def)
+}
+
+proc obligation_with_state(
+    obligation: TraitObligation,
+    state: TraitObligationState
+) -> TraitObligation {
+    give TraitObligation {
+        id: obligation.id,
+        bound: obligation.bound,
+        state: state,
+        span: obligation.span
+    }
+}
+
+proc solve_obligation(
+    context: TraitContext,
+    obligation: TraitObligation
+) -> TraitContext {
+    let trait_def = find_trait(context, obligation.bound.trait_id)
+
+    if trait_def.valid == false {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                TraitErrorKind.UnknownTrait,
+                "unknown trait obligation",
+                obligation.span,
+                obligation.bound.trait_id,
+                obligation.bound.target_type.id
+            )
+        )
+    }
+
+    if obligation.bound.target_type.valid == false {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                TraitErrorKind.UnknownType,
+                "unknown trait obligation type",
+                obligation.span,
+                obligation.bound.trait_id,
+                obligation.bound.target_type.id
+            )
+        )
+    }
+
+    if has_impl(context, obligation.bound.trait_id, obligation.bound.target_type.id) {
+        give mark_obligation_state(context, obligation.id, TraitObligationState.Solved)
+    }
+
+    give context_add_diagnostic(
+        mark_obligation_state(context, obligation.id, TraitObligationState.Failed),
+        diagnostic_create(
+            TraitErrorKind.MissingImpl,
+            "missing trait implementation",
+            obligation.span,
+            obligation.bound.trait_id,
+            obligation.bound.target_type.id
+        )
+    )
+}
+
+proc mark_obligation_state(
+    context: TraitContext,
+    obligation_id: u64,
+    state: TraitObligationState
+) -> TraitContext {
+    let next: [TraitObligation] = []
+    let i: u64 = 0
+
+    loop i < vector_len(context.obligations) {
+        if context.obligations[i].id == obligation_id {
+            set next = next + [obligation_with_state(context.obligations[i], state)]
+        } else {
+            set next = next + [context.obligations[i]]
+        }
+
+        set i = i + 1
+    }
+
+    give TraitContext {
+        traits: context.traits,
+        impls: context.impls,
+        obligations: next,
+        diagnostics: context.diagnostics,
+        valid: context.valid
+    }
+}
+
+proc solve_obligations(
+    context: TraitContext
+) -> TraitContext {
+    let current = context
+    let i: u64 = 0
+
+    loop i < vector_len(current.obligations) {
+        if current.obligations[i].state == TraitObligationState.Pending {
+            set current = solve_obligation(current, current.obligations[i])
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc validate_traits(
+    context: TraitContext
+) -> TraitContext {
+    let current = context
+    let i: u64 = 0
+
+    loop i < vector_len(current.impls) {
+        set current = validate_impl(current, current.impls[i])
+        set i = i + 1
+    }
+
+    give solve_obligations(current)
+}
+
+proc trait_error_count(context: TraitContext) -> u64 {
+    give vector_len(context.diagnostics)
+}
+
+proc trait_context_is_valid(context: TraitContext) -> bool {
+    give context.valid and vector_len(context.diagnostics) == 0
+}
+
+proc item_kind_name(kind: TraitItemKind) -> string {
+    if kind == TraitItemKind.Method {
+        give "method"
+    }
+
+    if kind == TraitItemKind.AssociatedType {
+        give "associated_type"
+    }
+
+    if kind == TraitItemKind.AssociatedConst {
+        give "associated_const"
+    }
+
+    if kind == TraitItemKind.RequiredMethod {
+        give "required_method"
+    }
+
+    if kind == TraitItemKind.ProvidedMethod {
+        give "provided_method"
+    }
+
+    give "unknown"
+}
+
+proc impl_kind_name(kind: TraitImplKind) -> string {
+    if kind == TraitImplKind.Explicit {
+        give "explicit"
+    }
+
+    if kind == TraitImplKind.Blanket {
+        give "blanket"
+    }
+
+    if kind == TraitImplKind.Derived {
+        give "derived"
+    }
+
+    if kind == TraitImplKind.Builtin {
+        give "builtin"
+    }
+
+    if kind == TraitImplKind.Foreign {
+        give "foreign"
+    }
+
+    if kind == TraitImplKind.Auto {
+        give "auto"
+    }
+
+    give "unknown"
+}
+
+proc print_trait_item(item: TraitItem) {
+    emit "trait item"
+    emit item.id
+    emit item.name
+    emit item_kind_name(item.kind)
+    emit item.required
+}
+
+proc print_trait(trait_def: TraitDef) {
+    emit "trait"
+    emit trait_def.id
+    emit trait_def.name
+    emit trait_def.module
+    emit vector_len(trait_def.items)
+
+    let i: u64 = 0
+
+    loop i < vector_len(trait_def.items) {
+        print_trait_item(trait_def.items[i])
+        set i = i + 1
+    }
+}
+
+proc print_impl(impl_def: TraitImpl) {
+    emit "trait impl"
+    emit impl_def.id
+    emit impl_def.trait_id
+    emit impl_def.for_type.name
+    emit impl_kind_name(impl_def.kind)
+}
+
+proc print_context(context: TraitContext) {
+    emit "trait context"
+    emit vector_len(context.traits)
+    emit vector_len(context.impls)
+    emit vector_len(context.obligations)
+    emit vector_len(context.diagnostics)
+
+    let i: u64 = 0
+
+    loop i < vector_len(context.traits) {
+        print_trait(context.traits[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

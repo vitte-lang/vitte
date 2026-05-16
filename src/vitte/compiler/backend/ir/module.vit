@@ -1,0 +1,1234 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Backend / IR                       >>>
+<<< File: /Users/vincent/Documents/Github/vitte/src/vitte/compiler/backend/ir/module.vit >>>
+<<< Module: vitte/compiler/backend/ir/module                 >>>
+<<< Purpose: backend IR module container and symbol registry  >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/backend/ir/module
+
+const IR_MODULE_VERSION: u32 = 2026
+const IR_MODULE_INVALID_ID: u64 = 18446744073709551615
+const IR_MODULE_MAX_TYPES: u64 = 1048576
+const IR_MODULE_MAX_GLOBALS: u64 = 1048576
+const IR_MODULE_MAX_FUNCTIONS: u64 = 1048576
+const IR_MODULE_MAX_IMPORTS: u64 = 262144
+const IR_MODULE_MAX_EXPORTS: u64 = 262144
+const IR_MODULE_MAX_DIAGNOSTICS: u64 = 1048576
+
+pick IrModuleKind {
+    Library
+    Executable
+    Runtime
+    Kernel
+    Driver
+    StaticObject
+    SharedObject
+    Test
+    Bench
+}
+
+pick IrLinkage {
+    Internal
+    External
+    Exported
+    Imported
+    Weak
+}
+
+pick IrVisibility {
+    Private
+    Module
+    Package
+    Public
+}
+
+pick IrTargetArch {
+    Unknown
+    X86_64
+    AArch64
+    RiscV64
+    ARM
+    I386
+    Wasm32
+}
+
+pick IrTargetOs {
+    Unknown
+    Linux
+    Darwin
+    Windows
+    VitteOS
+    Freestanding
+    BareMetal
+}
+
+pick IrModuleState {
+    Created
+    Parsed
+    Verified
+    Optimized
+    Lowered
+    Emitted
+    Linked
+    Invalid
+}
+
+pick IrModuleErrorKind {
+    None
+    InvalidModule
+    InvalidName
+    InvalidTarget
+    DuplicateType
+    DuplicateGlobal
+    DuplicateFunction
+    DuplicateImport
+    DuplicateExport
+    MissingEntry
+    TypeLimitExceeded
+    GlobalLimitExceeded
+    FunctionLimitExceeded
+    ImportLimitExceeded
+    ExportLimitExceeded
+    DiagnosticLimitExceeded
+    InternalFailure
+}
+
+form IrModuleSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form IrTarget {
+    arch: IrTargetArch
+    os: IrTargetOs
+    triple: string
+    pointer_width: u64
+    little_endian: bool
+    valid: bool
+}
+
+form IrTypeSymbol {
+    id: u64
+    name: string
+    size: u64
+    align: u64
+    visibility: IrVisibility
+    valid: bool
+}
+
+form IrGlobalSymbol {
+    id: u64
+    name: string
+    ty: string
+    linkage: IrLinkage
+    visibility: IrVisibility
+    mutable: bool
+    valid: bool
+}
+
+form IrFunctionSymbol {
+    id: u64
+    name: string
+    linkage: IrLinkage
+    visibility: IrVisibility
+    entry: bool
+    variadic: bool
+    valid: bool
+}
+
+form IrImport {
+    id: u64
+    module: string
+    symbol: string
+    alias: string
+    valid: bool
+}
+
+form IrExport {
+    id: u64
+    symbol: string
+    alias: string
+    valid: bool
+}
+
+form IrModuleDiagnostic {
+    kind: IrModuleErrorKind
+    message: string
+    span: IrModuleSpan
+    entity: u64
+}
+
+form IrModule {
+    id: u64
+    name: string
+    path: string
+    kind: IrModuleKind
+    target: IrTarget
+    types: [IrTypeSymbol]
+    globals: [IrGlobalSymbol]
+    functions: [IrFunctionSymbol]
+    imports: [IrImport]
+    exports: [IrExport]
+    diagnostics: [IrModuleDiagnostic]
+    state: IrModuleState
+    span: IrModuleSpan
+    valid: bool
+}
+
+proc span_empty() -> IrModuleSpan {
+    give IrModuleSpan {
+        file: "/Users/vincent/Documents/Github/vitte/src/vitte/compiler/backend/ir/module.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc target_invalid() -> IrTarget {
+    give IrTarget {
+        arch: IrTargetArch.Unknown,
+        os: IrTargetOs.Unknown,
+        triple: "unknown-unknown",
+        pointer_width: 0,
+        little_endian: true,
+        valid: false
+    }
+}
+
+proc target_create(
+    arch: IrTargetArch,
+    os: IrTargetOs,
+    triple: string,
+    pointer_width: u64,
+    little_endian: bool
+) -> IrTarget {
+    give IrTarget {
+        arch: arch,
+        os: os,
+        triple: triple,
+        pointer_width: pointer_width,
+        little_endian: little_endian,
+        valid: arch != IrTargetArch.Unknown and os != IrTargetOs.Unknown
+    }
+}
+
+proc target_x86_64_linux() -> IrTarget {
+    give target_create(
+        IrTargetArch.X86_64,
+        IrTargetOs.Linux,
+        "x86_64-vitte-linux",
+        64,
+        true
+    )
+}
+
+proc target_aarch64_vitteos() -> IrTarget {
+    give target_create(
+        IrTargetArch.AArch64,
+        IrTargetOs.VitteOS,
+        "aarch64-vitte-vitteos",
+        64,
+        true
+    )
+}
+
+proc type_symbol_invalid() -> IrTypeSymbol {
+    give IrTypeSymbol {
+        id: IR_MODULE_INVALID_ID,
+        name: "invalid",
+        size: 0,
+        align: 0,
+        visibility: IrVisibility.Private,
+        valid: false
+    }
+}
+
+proc type_symbol_create(
+    id: u64,
+    name: string,
+    size: u64,
+    align: u64,
+    visibility: IrVisibility
+) -> IrTypeSymbol {
+    give IrTypeSymbol {
+        id: id,
+        name: name,
+        size: size,
+        align: align,
+        visibility: visibility,
+        valid: name != "" and align > 0
+    }
+}
+
+proc global_symbol_invalid() -> IrGlobalSymbol {
+    give IrGlobalSymbol {
+        id: IR_MODULE_INVALID_ID,
+        name: "invalid",
+        ty: "invalid",
+        linkage: IrLinkage.Internal,
+        visibility: IrVisibility.Private,
+        mutable: false,
+        valid: false
+    }
+}
+
+proc global_symbol_create(
+    id: u64,
+    name: string,
+    ty: string,
+    linkage: IrLinkage,
+    visibility: IrVisibility,
+    mutable: bool
+) -> IrGlobalSymbol {
+    give IrGlobalSymbol {
+        id: id,
+        name: name,
+        ty: ty,
+        linkage: linkage,
+        visibility: visibility,
+        mutable: mutable,
+        valid: name != "" and ty != ""
+    }
+}
+
+proc function_symbol_invalid() -> IrFunctionSymbol {
+    give IrFunctionSymbol {
+        id: IR_MODULE_INVALID_ID,
+        name: "invalid",
+        linkage: IrLinkage.Internal,
+        visibility: IrVisibility.Private,
+        entry: false,
+        variadic: false,
+        valid: false
+    }
+}
+
+proc function_symbol_create(
+    id: u64,
+    name: string,
+    linkage: IrLinkage,
+    visibility: IrVisibility,
+    entry: bool,
+    variadic: bool
+) -> IrFunctionSymbol {
+    give IrFunctionSymbol {
+        id: id,
+        name: name,
+        linkage: linkage,
+        visibility: visibility,
+        entry: entry,
+        variadic: variadic,
+        valid: name != ""
+    }
+}
+
+proc import_create(
+    id: u64,
+    module: string,
+    symbol: string,
+    alias: string
+) -> IrImport {
+    give IrImport {
+        id: id,
+        module: module,
+        symbol: symbol,
+        alias: alias,
+        valid: module != "" and symbol != ""
+    }
+}
+
+proc export_create(
+    id: u64,
+    symbol: string,
+    alias: string
+) -> IrExport {
+    give IrExport {
+        id: id,
+        symbol: symbol,
+        alias: alias,
+        valid: symbol != ""
+    }
+}
+
+proc diagnostic_create(
+    kind: IrModuleErrorKind,
+    message: string,
+    span: IrModuleSpan,
+    entity: u64
+) -> IrModuleDiagnostic {
+    give IrModuleDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        entity: entity
+    }
+}
+
+proc module_invalid() -> IrModule {
+    give IrModule {
+        id: IR_MODULE_INVALID_ID,
+        name: "invalid",
+        path: "",
+        kind: IrModuleKind.Library,
+        target: target_invalid(),
+        types: [],
+        globals: [],
+        functions: [],
+        imports: [],
+        exports: [],
+        diagnostics: [],
+        state: IrModuleState.Invalid,
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc module_create(
+    id: u64,
+    name: string,
+    path: string,
+    kind: IrModuleKind,
+    target: IrTarget,
+    span: IrModuleSpan
+) -> IrModule {
+    give IrModule {
+        id: id,
+        name: name,
+        path: path,
+        kind: kind,
+        target: target,
+        types: [],
+        globals: [],
+        functions: [],
+        imports: [],
+        exports: [],
+        diagnostics: [],
+        state: IrModuleState.Created,
+        span: span,
+        valid: name != "" and target.valid
+    }
+}
+
+proc module_add_diagnostic(
+    module: IrModule,
+    diagnostic: IrModuleDiagnostic
+) -> IrModule {
+    if vector_len(module.diagnostics) >= IR_MODULE_MAX_DIAGNOSTICS {
+        give IrModule {
+            id: module.id,
+            name: module.name,
+            path: module.path,
+            kind: module.kind,
+            target: module.target,
+            types: module.types,
+            globals: module.globals,
+            functions: module.functions,
+            imports: module.imports,
+            exports: module.exports,
+            diagnostics: module.diagnostics,
+            state: IrModuleState.Invalid,
+            span: module.span,
+            valid: false
+        }
+    }
+
+    give IrModule {
+        id: module.id,
+        name: module.name,
+        path: module.path,
+        kind: module.kind,
+        target: module.target,
+        types: module.types,
+        globals: module.globals,
+        functions: module.functions,
+        imports: module.imports,
+        exports: module.exports,
+        diagnostics: module.diagnostics + [diagnostic],
+        state: IrModuleState.Invalid,
+        span: module.span,
+        valid: false
+    }
+}
+
+proc module_add_type(
+    module: IrModule,
+    ty: IrTypeSymbol
+) -> IrModule {
+    if vector_len(module.types) >= IR_MODULE_MAX_TYPES {
+        give module_add_diagnostic(
+            module,
+            diagnostic_create(
+                IrModuleErrorKind.TypeLimitExceeded,
+                "too many IR module types",
+                module.span,
+                ty.id
+            )
+        )
+    }
+
+    if find_type_by_name(module, ty.name).valid {
+        give module_add_diagnostic(
+            module,
+            diagnostic_create(
+                IrModuleErrorKind.DuplicateType,
+                "duplicate IR type symbol",
+                module.span,
+                ty.id
+            )
+        )
+    }
+
+    give IrModule {
+        id: module.id,
+        name: module.name,
+        path: module.path,
+        kind: module.kind,
+        target: module.target,
+        types: module.types + [ty],
+        globals: module.globals,
+        functions: module.functions,
+        imports: module.imports,
+        exports: module.exports,
+        diagnostics: module.diagnostics,
+        state: module.state,
+        span: module.span,
+        valid: module.valid and ty.valid
+    }
+}
+
+proc module_add_global(
+    module: IrModule,
+    global: IrGlobalSymbol
+) -> IrModule {
+    if vector_len(module.globals) >= IR_MODULE_MAX_GLOBALS {
+        give module_add_diagnostic(
+            module,
+            diagnostic_create(
+                IrModuleErrorKind.GlobalLimitExceeded,
+                "too many IR globals",
+                module.span,
+                global.id
+            )
+        )
+    }
+
+    if find_global_by_name(module, global.name).valid {
+        give module_add_diagnostic(
+            module,
+            diagnostic_create(
+                IrModuleErrorKind.DuplicateGlobal,
+                "duplicate IR global symbol",
+                module.span,
+                global.id
+            )
+        )
+    }
+
+    give IrModule {
+        id: module.id,
+        name: module.name,
+        path: module.path,
+        kind: module.kind,
+        target: module.target,
+        types: module.types,
+        globals: module.globals + [global],
+        functions: module.functions,
+        imports: module.imports,
+        exports: module.exports,
+        diagnostics: module.diagnostics,
+        state: module.state,
+        span: module.span,
+        valid: module.valid and global.valid
+    }
+}
+
+proc module_add_function(
+    module: IrModule,
+    function: IrFunctionSymbol
+) -> IrModule {
+    if vector_len(module.functions) >= IR_MODULE_MAX_FUNCTIONS {
+        give module_add_diagnostic(
+            module,
+            diagnostic_create(
+                IrModuleErrorKind.FunctionLimitExceeded,
+                "too many IR functions",
+                module.span,
+                function.id
+            )
+        )
+    }
+
+    if find_function_by_name(module, function.name).valid {
+        give module_add_diagnostic(
+            module,
+            diagnostic_create(
+                IrModuleErrorKind.DuplicateFunction,
+                "duplicate IR function symbol",
+                module.span,
+                function.id
+            )
+        )
+    }
+
+    give IrModule {
+        id: module.id,
+        name: module.name,
+        path: module.path,
+        kind: module.kind,
+        target: module.target,
+        types: module.types,
+        globals: module.globals,
+        functions: module.functions + [function],
+        imports: module.imports,
+        exports: module.exports,
+        diagnostics: module.diagnostics,
+        state: module.state,
+        span: module.span,
+        valid: module.valid and function.valid
+    }
+}
+
+proc module_add_import(
+    module: IrModule,
+    import_symbol: IrImport
+) -> IrModule {
+    if vector_len(module.imports) >= IR_MODULE_MAX_IMPORTS {
+        give module_add_diagnostic(
+            module,
+            diagnostic_create(
+                IrModuleErrorKind.ImportLimitExceeded,
+                "too many IR imports",
+                module.span,
+                import_symbol.id
+            )
+        )
+    }
+
+    if find_import(module, import_symbol.module, import_symbol.symbol).valid {
+        give module_add_diagnostic(
+            module,
+            diagnostic_create(
+                IrModuleErrorKind.DuplicateImport,
+                "duplicate IR import",
+                module.span,
+                import_symbol.id
+            )
+        )
+    }
+
+    give IrModule {
+        id: module.id,
+        name: module.name,
+        path: module.path,
+        kind: module.kind,
+        target: module.target,
+        types: module.types,
+        globals: module.globals,
+        functions: module.functions,
+        imports: module.imports + [import_symbol],
+        exports: module.exports,
+        diagnostics: module.diagnostics,
+        state: module.state,
+        span: module.span,
+        valid: module.valid and import_symbol.valid
+    }
+}
+
+proc module_add_export(
+    module: IrModule,
+    export_symbol: IrExport
+) -> IrModule {
+    if vector_len(module.exports) >= IR_MODULE_MAX_EXPORTS {
+        give module_add_diagnostic(
+            module,
+            diagnostic_create(
+                IrModuleErrorKind.ExportLimitExceeded,
+                "too many IR exports",
+                module.span,
+                export_symbol.id
+            )
+        )
+    }
+
+    if find_export(module, export_symbol.symbol).valid {
+        give module_add_diagnostic(
+            module,
+            diagnostic_create(
+                IrModuleErrorKind.DuplicateExport,
+                "duplicate IR export",
+                module.span,
+                export_symbol.id
+            )
+        )
+    }
+
+    give IrModule {
+        id: module.id,
+        name: module.name,
+        path: module.path,
+        kind: module.kind,
+        target: module.target,
+        types: module.types,
+        globals: module.globals,
+        functions: module.functions,
+        imports: module.imports,
+        exports: module.exports + [export_symbol],
+        diagnostics: module.diagnostics,
+        state: module.state,
+        span: module.span,
+        valid: module.valid and export_symbol.valid
+    }
+}
+
+proc find_type_by_name(
+    module: IrModule,
+    name: string
+) -> IrTypeSymbol {
+    let i: u64 = 0
+
+    loop i < vector_len(module.types) {
+        if module.types[i].name == name {
+            give module.types[i]
+        }
+
+        set i = i + 1
+    }
+
+    give type_symbol_invalid()
+}
+
+proc find_global_by_name(
+    module: IrModule,
+    name: string
+) -> IrGlobalSymbol {
+    let i: u64 = 0
+
+    loop i < vector_len(module.globals) {
+        if module.globals[i].name == name {
+            give module.globals[i]
+        }
+
+        set i = i + 1
+    }
+
+    give global_symbol_invalid()
+}
+
+proc find_function_by_name(
+    module: IrModule,
+    name: string
+) -> IrFunctionSymbol {
+    let i: u64 = 0
+
+    loop i < vector_len(module.functions) {
+        if module.functions[i].name == name {
+            give module.functions[i]
+        }
+
+        set i = i + 1
+    }
+
+    give function_symbol_invalid()
+}
+
+proc find_import(
+    module: IrModule,
+    import_module: string,
+    symbol: string
+) -> IrImport {
+    let i: u64 = 0
+
+    loop i < vector_len(module.imports) {
+        if module.imports[i].module == import_module and module.imports[i].symbol == symbol {
+            give module.imports[i]
+        }
+
+        set i = i + 1
+    }
+
+    give IrImport {
+        id: IR_MODULE_INVALID_ID,
+        module: "",
+        symbol: "",
+        alias: "",
+        valid: false
+    }
+}
+
+proc find_export(
+    module: IrModule,
+    symbol: string
+) -> IrExport {
+    let i: u64 = 0
+
+    loop i < vector_len(module.exports) {
+        if module.exports[i].symbol == symbol {
+            give module.exports[i]
+        }
+
+        set i = i + 1
+    }
+
+    give IrExport {
+        id: IR_MODULE_INVALID_ID,
+        symbol: "",
+        alias: "",
+        valid: false
+    }
+}
+
+proc module_with_state(
+    module: IrModule,
+    state: IrModuleState
+) -> IrModule {
+    give IrModule {
+        id: module.id,
+        name: module.name,
+        path: module.path,
+        kind: module.kind,
+        target: module.target,
+        types: module.types,
+        globals: module.globals,
+        functions: module.functions,
+        imports: module.imports,
+        exports: module.exports,
+        diagnostics: module.diagnostics,
+        state: state,
+        span: module.span,
+        valid: module.valid
+    }
+}
+
+proc validate_module(
+    module: IrModule
+) -> bool {
+    if module.valid == false {
+        give false
+    }
+
+    if module.target.valid == false {
+        give false
+    }
+
+    if module.name == "" {
+        give false
+    }
+
+    let entry_count: u64 = 0
+    let i: u64 = 0
+
+    loop i < vector_len(module.functions) {
+        if module.functions[i].entry {
+            set entry_count = entry_count + 1
+        }
+
+        set i = i + 1
+    }
+
+    if module.kind == IrModuleKind.Executable and entry_count == 0 {
+        give false
+    }
+
+    give true
+}
+
+proc verify_module(
+    module: IrModule
+) -> IrModule {
+    if validate_module(module) == false {
+        give module_with_state(
+            IrModule {
+                id: module.id,
+                name: module.name,
+                path: module.path,
+                kind: module.kind,
+                target: module.target,
+                types: module.types,
+                globals: module.globals,
+                functions: module.functions,
+                imports: module.imports,
+                exports: module.exports,
+                diagnostics: module.diagnostics,
+                state: module.state,
+                span: module.span,
+                valid: false
+            },
+            IrModuleState.Invalid
+        )
+    }
+
+    give module_with_state(
+        module,
+        IrModuleState.Verified
+    )
+}
+
+proc optimize_module(
+    module: IrModule
+) -> IrModule {
+    let verified = verify_module(module)
+
+    if verified.valid == false {
+        give verified
+    }
+
+    give module_with_state(
+        verified,
+        IrModuleState.Optimized
+    )
+}
+
+proc lower_module(
+    module: IrModule
+) -> IrModule {
+    let optimized = optimize_module(module)
+
+    if optimized.valid == false {
+        give optimized
+    }
+
+    give module_with_state(
+        optimized,
+        IrModuleState.Lowered
+    )
+}
+
+proc emit_module(
+    module: IrModule
+) -> IrModule {
+    let lowered = lower_module(module)
+
+    if lowered.valid == false {
+        give lowered
+    }
+
+    give module_with_state(
+        lowered,
+        IrModuleState.Emitted
+    )
+}
+
+proc module_type_count(
+    module: IrModule
+) -> u64 {
+    give vector_len(module.types)
+}
+
+proc module_global_count(
+    module: IrModule
+) -> u64 {
+    give vector_len(module.globals)
+}
+
+proc module_function_count(
+    module: IrModule
+) -> u64 {
+    give vector_len(module.functions)
+}
+
+proc module_import_count(
+    module: IrModule
+) -> u64 {
+    give vector_len(module.imports)
+}
+
+proc module_export_count(
+    module: IrModule
+) -> u64 {
+    give vector_len(module.exports)
+}
+
+proc module_error_count(
+    module: IrModule
+) -> u64 {
+    give vector_len(module.diagnostics)
+}
+
+proc module_is_valid(
+    module: IrModule
+) -> bool {
+    give module.valid and vector_len(module.diagnostics) == 0
+}
+
+proc arch_name(
+    arch: IrTargetArch
+) -> string {
+    if arch == IrTargetArch.X86_64 {
+        give "x86_64"
+    }
+
+    if arch == IrTargetArch.AArch64 {
+        give "aarch64"
+    }
+
+    if arch == IrTargetArch.RiscV64 {
+        give "riscv64"
+    }
+
+    if arch == IrTargetArch.ARM {
+        give "arm"
+    }
+
+    if arch == IrTargetArch.I386 {
+        give "i386"
+    }
+
+    if arch == IrTargetArch.Wasm32 {
+        give "wasm32"
+    }
+
+    give "unknown"
+}
+
+proc os_name(
+    os: IrTargetOs
+) -> string {
+    if os == IrTargetOs.Linux {
+        give "linux"
+    }
+
+    if os == IrTargetOs.Darwin {
+        give "darwin"
+    }
+
+    if os == IrTargetOs.Windows {
+        give "windows"
+    }
+
+    if os == IrTargetOs.VitteOS {
+        give "vitteos"
+    }
+
+    if os == IrTargetOs.Freestanding {
+        give "freestanding"
+    }
+
+    if os == IrTargetOs.BareMetal {
+        give "baremetal"
+    }
+
+    give "unknown"
+}
+
+proc module_kind_name(
+    kind: IrModuleKind
+) -> string {
+    if kind == IrModuleKind.Library {
+        give "library"
+    }
+
+    if kind == IrModuleKind.Executable {
+        give "executable"
+    }
+
+    if kind == IrModuleKind.Runtime {
+        give "runtime"
+    }
+
+    if kind == IrModuleKind.Kernel {
+        give "kernel"
+    }
+
+    if kind == IrModuleKind.Driver {
+        give "driver"
+    }
+
+    if kind == IrModuleKind.StaticObject {
+        give "static_object"
+    }
+
+    if kind == IrModuleKind.SharedObject {
+        give "shared_object"
+    }
+
+    if kind == IrModuleKind.Test {
+        give "test"
+    }
+
+    if kind == IrModuleKind.Bench {
+        give "bench"
+    }
+
+    give "library"
+}
+
+proc linkage_name(
+    linkage: IrLinkage
+) -> string {
+    if linkage == IrLinkage.Internal {
+        give "internal"
+    }
+
+    if linkage == IrLinkage.External {
+        give "external"
+    }
+
+    if linkage == IrLinkage.Exported {
+        give "exported"
+    }
+
+    if linkage == IrLinkage.Imported {
+        give "imported"
+    }
+
+    if linkage == IrLinkage.Weak {
+        give "weak"
+    }
+
+    give "internal"
+}
+
+proc visibility_name(
+    visibility: IrVisibility
+) -> string {
+    if visibility == IrVisibility.Private {
+        give "private"
+    }
+
+    if visibility == IrVisibility.Module {
+        give "module"
+    }
+
+    if visibility == IrVisibility.Package {
+        give "package"
+    }
+
+    if visibility == IrVisibility.Public {
+        give "public"
+    }
+
+    give "private"
+}
+
+proc state_name(
+    state: IrModuleState
+) -> string {
+    if state == IrModuleState.Created {
+        give "created"
+    }
+
+    if state == IrModuleState.Parsed {
+        give "parsed"
+    }
+
+    if state == IrModuleState.Verified {
+        give "verified"
+    }
+
+    if state == IrModuleState.Optimized {
+        give "optimized"
+    }
+
+    if state == IrModuleState.Lowered {
+        give "lowered"
+    }
+
+    if state == IrModuleState.Emitted {
+        give "emitted"
+    }
+
+    if state == IrModuleState.Linked {
+        give "linked"
+    }
+
+    if state == IrModuleState.Invalid {
+        give "invalid"
+    }
+
+    give "unknown"
+}
+
+proc print_target(
+    target: IrTarget
+) {
+    emit "target"
+    emit arch_name(target.arch)
+    emit os_name(target.os)
+    emit target.triple
+    emit target.pointer_width
+    emit target.little_endian
+}
+
+proc print_type_symbol(
+    ty: IrTypeSymbol
+) {
+    emit "type"
+    emit ty.id
+    emit ty.name
+    emit ty.size
+    emit ty.align
+    emit visibility_name(ty.visibility)
+}
+
+proc print_global_symbol(
+    global: IrGlobalSymbol
+) {
+    emit "global"
+    emit global.id
+    emit global.name
+    emit global.ty
+    emit linkage_name(global.linkage)
+    emit visibility_name(global.visibility)
+    emit global.mutable
+}
+
+proc print_function_symbol(
+    function: IrFunctionSymbol
+) {
+    emit "function"
+    emit function.id
+    emit function.name
+    emit linkage_name(function.linkage)
+    emit visibility_name(function.visibility)
+    emit function.entry
+    emit function.variadic
+}
+
+proc print_module(
+    module: IrModule
+) {
+    emit "ir module"
+    emit module.id
+    emit module.name
+    emit module.path
+    emit module_kind_name(module.kind)
+    emit state_name(module.state)
+
+    print_target(module.target)
+
+    emit module_type_count(module)
+    emit module_global_count(module)
+    emit module_function_count(module)
+    emit module_import_count(module)
+    emit module_export_count(module)
+    emit module_error_count(module)
+
+    let i: u64 = 0
+
+    loop i < vector_len(module.types) {
+        print_type_symbol(module.types[i])
+        set i = i + 1
+    }
+
+    let j: u64 = 0
+
+    loop j < vector_len(module.globals) {
+        print_global_symbol(module.globals[j])
+        set j = j + 1
+    }
+
+    let k: u64 = 0
+
+    loop k < vector_len(module.functions) {
+        print_function_symbol(module.functions[k])
+        set k = k + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

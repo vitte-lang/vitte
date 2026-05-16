@@ -1,0 +1,54 @@
+space vitte/compiler/infrastructure/diagnostics/fluent
+
+use vitte/compiler/infrastructure/diagnostics/fluent/types { FluentMessage, FluentParseResult }
+
+proc parse_ftl_line(line: string) -> FluentMessage {
+  let eq: int = find(line, "=")
+  if eq < 0 {
+    give FluentMessage { id: "", value: "" }
+  }
+
+  let raw_key: string = trim(slice(line, 0, eq))
+  let raw_value: string = trim(slice(line, eq + 1, len(line)))
+
+  if raw_key == "" {
+    give FluentMessage { id: "", value: "" }
+  }
+
+  give FluentMessage { id: raw_key, value: raw_value }
+}
+
+proc parse_ftl_text(ftl_text: string) -> FluentParseResult {
+  let lines: [string] = split(ftl_text, "\n")
+  let messages: [FluentMessage] = []
+  let ignored: int = 0
+
+  let i: int = 0
+  while i < len(lines) {
+    let line: string = trim(lines[i])
+    if line == "" {
+      set ignored = ignored + 1
+      set i = i + 1
+      continue
+    }
+    if starts_with(line, "#") {
+      set ignored = ignored + 1
+      set i = i + 1
+      continue
+    }
+
+    let msg: FluentMessage = parse_ftl_line(line)
+    if msg.id == "" {
+      set ignored = ignored + 1
+    } else {
+      set messages = messages + [msg]
+    }
+
+    set i = i + 1
+  }
+
+  give FluentParseResult {
+    messages: messages,
+    ignored_lines: ignored,
+  }
+}

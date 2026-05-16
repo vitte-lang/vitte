@@ -1,0 +1,639 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Analysis / Semantic Analysis       >>>
+<<< File: compiler/analysis/sema/errors.vit                  >>>
+<<< Module: vitte/compiler/analysis/sema/errors              >>>
+<<< Purpose: semantic diagnostics, errors and suggestions     >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/analysis/sema/errors
+
+const SEMA_ERROR_VERSION: u32 = 2026
+const SEMA_INVALID_ID: u64 = 18446744073709551615
+const SEMA_MAX_DIAGNOSTICS: u64 = 1048576
+const SEMA_MAX_SUGGESTIONS: u64 = 256
+
+pick SemaSeverity {
+    Info
+    Warning
+    Error
+    Fatal
+}
+
+pick SemaErrorKind {
+    None
+    UnknownSymbol
+    DuplicateSymbol
+    AmbiguousSymbol
+    InvalidModule
+    UnknownModule
+    InvalidImport
+    DuplicateImport
+    UnusedImport
+    InvalidExport
+    PrivateSymbolAccess
+    InvalidVisibility
+    InvalidScope
+    InvalidName
+    InvalidPath
+    InvalidItem
+    InvalidFunction
+    InvalidParameter
+    DuplicateParameter
+    InvalidReturn
+    InvalidType
+    UnknownType
+    DuplicateType
+    InvalidField
+    UnknownField
+    DuplicateField
+    InvalidVariant
+    UnknownVariant
+    DuplicateVariant
+    InvalidPattern
+    NonExhaustiveMatch
+    UnreachablePattern
+    InvalidAttribute
+    UnknownAttribute
+    DuplicateAttribute
+    InvalidMacroUse
+    InvalidConst
+    InvalidStatic
+    InvalidGlobal
+    InvalidEntry
+    InvalidControlFlow
+    InvalidBreak
+    InvalidContinue
+    InvalidReturnContext
+    InvalidUnsafeContext
+    InternalFailure
+}
+
+pick SemaSuggestionKind {
+    None
+    RenameSymbol
+    ImportSymbol
+    QualifyPath
+    ChangeVisibility
+    RemoveDuplicate
+    AddTypeAnnotation
+    AddReturn
+    RemoveReturn
+    AddField
+    AddVariant
+    FixPattern
+    RemoveAttribute
+    EnableFeature
+    RewriteExpression
+}
+
+form SemaSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form SemaSymbolRef {
+    id: u64
+    name: string
+    module: string
+    valid: bool
+}
+
+form SemaSuggestion {
+    kind: SemaSuggestionKind
+    message: string
+    replacement: string
+    span: SemaSpan
+}
+
+form SemaDiagnostic {
+    id: u64
+    kind: SemaErrorKind
+    severity: SemaSeverity
+    message: string
+    symbol: SemaSymbolRef
+    span: SemaSpan
+    suggestions: [SemaSuggestion]
+}
+
+form SemaReport {
+    diagnostics: [SemaDiagnostic]
+    info_count: u64
+    warning_count: u64
+    error_count: u64
+    fatal_count: u64
+    valid: bool
+}
+
+proc span_empty() -> SemaSpan {
+    give SemaSpan {
+        file: "compiler/analysis/sema/errors.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc symbol_invalid() -> SemaSymbolRef {
+    give SemaSymbolRef {
+        id: SEMA_INVALID_ID,
+        name: "invalid",
+        module: "",
+        valid: false
+    }
+}
+
+proc symbol_ref(id: u64, name: string, module: string) -> SemaSymbolRef {
+    give SemaSymbolRef {
+        id: id,
+        name: name,
+        module: module,
+        valid: true
+    }
+}
+
+proc suggestion_none() -> SemaSuggestion {
+    give SemaSuggestion {
+        kind: SemaSuggestionKind.None,
+        message: "",
+        replacement: "",
+        span: span_empty()
+    }
+}
+
+proc suggestion_create(
+    kind: SemaSuggestionKind,
+    message: string,
+    replacement: string,
+    span: SemaSpan
+) -> SemaSuggestion {
+    give SemaSuggestion {
+        kind: kind,
+        message: message,
+        replacement: replacement,
+        span: span
+    }
+}
+
+proc diagnostic_create(
+    id: u64,
+    kind: SemaErrorKind,
+    severity: SemaSeverity,
+    message: string,
+    symbol: SemaSymbolRef,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    give SemaDiagnostic {
+        id: id,
+        kind: kind,
+        severity: severity,
+        message: message,
+        symbol: symbol,
+        span: span,
+        suggestions: []
+    }
+}
+
+proc diagnostic_add_suggestion(
+    diagnostic: SemaDiagnostic,
+    suggestion: SemaSuggestion
+) -> SemaDiagnostic {
+    if vector_len(diagnostic.suggestions) >= SEMA_MAX_SUGGESTIONS {
+        give diagnostic
+    }
+
+    give SemaDiagnostic {
+        id: diagnostic.id,
+        kind: diagnostic.kind,
+        severity: diagnostic.severity,
+        message: diagnostic.message,
+        symbol: diagnostic.symbol,
+        span: diagnostic.span,
+        suggestions: diagnostic.suggestions + [suggestion]
+    }
+}
+
+proc report_empty() -> SemaReport {
+    give SemaReport {
+        diagnostics: [],
+        info_count: 0,
+        warning_count: 0,
+        error_count: 0,
+        fatal_count: 0,
+        valid: true
+    }
+}
+
+proc report_add(
+    report: SemaReport,
+    diagnostic: SemaDiagnostic
+) -> SemaReport {
+    if vector_len(report.diagnostics) >= SEMA_MAX_DIAGNOSTICS {
+        give SemaReport {
+            diagnostics: report.diagnostics,
+            info_count: report.info_count,
+            warning_count: report.warning_count,
+            error_count: report.error_count,
+            fatal_count: report.fatal_count + 1,
+            valid: false
+        }
+    }
+
+    let infos = report.info_count
+    let warnings = report.warning_count
+    let errors = report.error_count
+    let fatals = report.fatal_count
+
+    if diagnostic.severity == SemaSeverity.Info {
+        set infos = infos + 1
+    }
+
+    if diagnostic.severity == SemaSeverity.Warning {
+        set warnings = warnings + 1
+    }
+
+    if diagnostic.severity == SemaSeverity.Error {
+        set errors = errors + 1
+    }
+
+    if diagnostic.severity == SemaSeverity.Fatal {
+        set fatals = fatals + 1
+    }
+
+    give SemaReport {
+        diagnostics: report.diagnostics + [diagnostic],
+        info_count: infos,
+        warning_count: warnings,
+        error_count: errors,
+        fatal_count: fatals,
+        valid: fatals == 0
+    }
+}
+
+proc error_unknown_symbol(
+    id: u64,
+    name: string,
+    module: string,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    let base = diagnostic_create(
+        id,
+        SemaErrorKind.UnknownSymbol,
+        SemaSeverity.Error,
+        "unknown symbol",
+        symbol_ref(SEMA_INVALID_ID, name, module),
+        span
+    )
+
+    let suggestion = suggestion_create(
+        SemaSuggestionKind.ImportSymbol,
+        "import the symbol or qualify its path",
+        "",
+        span
+    )
+
+    give diagnostic_add_suggestion(base, suggestion)
+}
+
+proc error_duplicate_symbol(
+    id: u64,
+    symbol: SemaSymbolRef,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    let base = diagnostic_create(
+        id,
+        SemaErrorKind.DuplicateSymbol,
+        SemaSeverity.Error,
+        "duplicate symbol definition",
+        symbol,
+        span
+    )
+
+    let suggestion = suggestion_create(
+        SemaSuggestionKind.RenameSymbol,
+        "rename one of the duplicated symbols",
+        symbol.name + "_renamed",
+        span
+    )
+
+    give diagnostic_add_suggestion(base, suggestion)
+}
+
+proc error_ambiguous_symbol(
+    id: u64,
+    symbol: SemaSymbolRef,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    let base = diagnostic_create(
+        id,
+        SemaErrorKind.AmbiguousSymbol,
+        SemaSeverity.Error,
+        "ambiguous symbol resolution",
+        symbol,
+        span
+    )
+
+    let suggestion = suggestion_create(
+        SemaSuggestionKind.QualifyPath,
+        "qualify the symbol with its module path",
+        symbol.module + "/" + symbol.name,
+        span
+    )
+
+    give diagnostic_add_suggestion(base, suggestion)
+}
+
+proc error_private_access(
+    id: u64,
+    symbol: SemaSymbolRef,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    let base = diagnostic_create(
+        id,
+        SemaErrorKind.PrivateSymbolAccess,
+        SemaSeverity.Error,
+        "private symbol access",
+        symbol,
+        span
+    )
+
+    let suggestion = suggestion_create(
+        SemaSuggestionKind.ChangeVisibility,
+        "make the symbol public or access it through a public API",
+        "share " + symbol.name,
+        span
+    )
+
+    give diagnostic_add_suggestion(base, suggestion)
+}
+
+proc error_unknown_type(
+    id: u64,
+    name: string,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    let base = diagnostic_create(
+        id,
+        SemaErrorKind.UnknownType,
+        SemaSeverity.Error,
+        "unknown type",
+        symbol_ref(SEMA_INVALID_ID, name, "", false),
+        span
+    )
+
+    let suggestion = suggestion_create(
+        SemaSuggestionKind.AddTypeAnnotation,
+        "declare or import the missing type",
+        name,
+        span
+    )
+
+    give diagnostic_add_suggestion(base, suggestion)
+}
+
+proc error_unknown_field(
+    id: u64,
+    symbol: SemaSymbolRef,
+    field: string,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    let base = diagnostic_create(
+        id,
+        SemaErrorKind.UnknownField,
+        SemaSeverity.Error,
+        "unknown field",
+        symbol,
+        span
+    )
+
+    let suggestion = suggestion_create(
+        SemaSuggestionKind.AddField,
+        "add the missing field or fix its name",
+        field,
+        span
+    )
+
+    give diagnostic_add_suggestion(base, suggestion)
+}
+
+proc error_duplicate_field(
+    id: u64,
+    symbol: SemaSymbolRef,
+    field: string,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    let base = diagnostic_create(
+        id,
+        SemaErrorKind.DuplicateField,
+        SemaSeverity.Error,
+        "duplicate field",
+        symbol,
+        span
+    )
+
+    let suggestion = suggestion_create(
+        SemaSuggestionKind.RemoveDuplicate,
+        "remove the duplicated field",
+        field,
+        span
+    )
+
+    give diagnostic_add_suggestion(base, suggestion)
+}
+
+proc error_non_exhaustive_match(
+    id: u64,
+    symbol: SemaSymbolRef,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    let base = diagnostic_create(
+        id,
+        SemaErrorKind.NonExhaustiveMatch,
+        SemaSeverity.Error,
+        "non exhaustive match",
+        symbol,
+        span
+    )
+
+    let suggestion = suggestion_create(
+        SemaSuggestionKind.FixPattern,
+        "add missing cases or wildcard pattern",
+        "_",
+        span
+    )
+
+    give diagnostic_add_suggestion(base, suggestion)
+}
+
+proc error_unreachable_pattern(
+    id: u64,
+    symbol: SemaSymbolRef,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    give diagnostic_create(
+        id,
+        SemaErrorKind.UnreachablePattern,
+        SemaSeverity.Warning,
+        "unreachable pattern",
+        symbol,
+        span
+    )
+}
+
+proc error_invalid_break(
+    id: u64,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    give diagnostic_create(
+        id,
+        SemaErrorKind.InvalidBreak,
+        SemaSeverity.Error,
+        "break used outside loop",
+        symbol_invalid(),
+        span
+    )
+}
+
+proc error_invalid_continue(
+    id: u64,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    give diagnostic_create(
+        id,
+        SemaErrorKind.InvalidContinue,
+        SemaSeverity.Error,
+        "continue used outside loop",
+        symbol_invalid(),
+        span
+    )
+}
+
+proc error_invalid_return_context(
+    id: u64,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    give diagnostic_create(
+        id,
+        SemaErrorKind.InvalidReturnContext,
+        SemaSeverity.Error,
+        "return used outside function",
+        symbol_invalid(),
+        span
+    )
+}
+
+proc error_internal_failure(
+    id: u64,
+    span: SemaSpan
+) -> SemaDiagnostic {
+    give diagnostic_create(
+        id,
+        SemaErrorKind.InternalFailure,
+        SemaSeverity.Fatal,
+        "internal semantic analysis failure",
+        symbol_invalid(),
+        span
+    )
+}
+
+proc severity_name(severity: SemaSeverity) -> string {
+    if severity == SemaSeverity.Info {
+        give "info"
+    }
+
+    if severity == SemaSeverity.Warning {
+        give "warning"
+    }
+
+    if severity == SemaSeverity.Error {
+        give "error"
+    }
+
+    if severity == SemaSeverity.Fatal {
+        give "fatal"
+    }
+
+    give "unknown"
+}
+
+proc error_name(kind: SemaErrorKind) -> string {
+    if kind == SemaErrorKind.UnknownSymbol {
+        give "unknown_symbol"
+    }
+
+    if kind == SemaErrorKind.DuplicateSymbol {
+        give "duplicate_symbol"
+    }
+
+    if kind == SemaErrorKind.AmbiguousSymbol {
+        give "ambiguous_symbol"
+    }
+
+    if kind == SemaErrorKind.PrivateSymbolAccess {
+        give "private_symbol_access"
+    }
+
+    if kind == SemaErrorKind.UnknownType {
+        give "unknown_type"
+    }
+
+    if kind == SemaErrorKind.UnknownField {
+        give "unknown_field"
+    }
+
+    if kind == SemaErrorKind.NonExhaustiveMatch {
+        give "non_exhaustive_match"
+    }
+
+    if kind == SemaErrorKind.InvalidBreak {
+        give "invalid_break"
+    }
+
+    if kind == SemaErrorKind.InvalidContinue {
+        give "invalid_continue"
+    }
+
+    give "semantic_error"
+}
+
+proc report_has_errors(report: SemaReport) -> bool {
+    give report.error_count > 0 or report.fatal_count > 0
+}
+
+proc report_has_warnings(report: SemaReport) -> bool {
+    give report.warning_count > 0
+}
+
+proc report_total(report: SemaReport) -> u64 {
+    give vector_len(report.diagnostics)
+}
+
+proc print_diagnostic(diagnostic: SemaDiagnostic) {
+    emit severity_name(diagnostic.severity)
+    emit error_name(diagnostic.kind)
+    emit diagnostic.message
+    emit diagnostic.span.file
+    emit diagnostic.span.line
+    emit diagnostic.span.column
+}
+
+proc print_report(report: SemaReport) {
+    emit "semantic analysis report"
+    emit report.info_count
+    emit report.warning_count
+    emit report.error_count
+    emit report.fatal_count
+
+    let i: u64 = 0
+
+    loop i < vector_len(report.diagnostics) {
+        print_diagnostic(report.diagnostics[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

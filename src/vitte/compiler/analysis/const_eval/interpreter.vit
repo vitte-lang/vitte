@@ -1,0 +1,867 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Analysis / Const Evaluation        >>>
+<<< File: compiler/analysis/const_eval/interpreter.vit       >>>
+<<< Module: vitte/compiler/analysis/const_eval/interpreter   >>>
+<<< Purpose: compile-time interpreter and execution engine    >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/analysis/const_eval/interpreter
+
+const INTERPRETER_INVALID_ID: u64 = 18446744073709551615
+const INTERPRETER_VERSION: u32 = 2026
+const INTERPRETER_MAX_STACK: u64 = 65536
+const INTERPRETER_MAX_FRAMES: u64 = 65536
+const INTERPRETER_MAX_VALUES: u64 = 1048576
+const INTERPRETER_MAX_STEPS: u64 = 4194304
+const INTERPRETER_MAX_MEMORY: u64 = 134217728
+
+pick InterpreterState {
+    Ready
+    Running
+    Suspended
+    Halted
+    Failed
+    Crashed
+}
+
+pick InterpreterValueKind {
+    Invalid
+    Void
+    Bool
+    Int
+    UInt
+    Float
+    Char
+    String
+    Pointer
+    Array
+    Tuple
+    Struct
+    Enum
+    Function
+}
+
+pick InterpreterInstructionKind {
+    Nop
+    LoadConst
+    Move
+    Copy
+    Add
+    Sub
+    Mul
+    Div
+    Mod
+    Neg
+    Not
+    Eq
+    Ne
+    Lt
+    Le
+    Gt
+    Ge
+    Jump
+    JumpIf
+    Call
+    Return
+    Alloc
+    Store
+    Load
+    Index
+    Field
+    Cast
+    Halt
+}
+
+pick InterpreterErrorKind {
+    None
+    InvalidInstruction
+    InvalidValue
+    InvalidPointer
+    InvalidMemory
+    InvalidFrame
+    InvalidCall
+    InvalidCast
+    InvalidIndex
+    InvalidField
+    DivisionByZero
+    StackOverflow
+    FrameOverflow
+    MemoryOverflow
+    StepLimitExceeded
+    UnknownFunction
+    UnknownInstruction
+    UnsupportedInstruction
+    ExecutionFailure
+    InternalFailure
+}
+
+form InterpreterSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form InterpreterValue {
+    id: u64
+    kind: InterpreterValueKind
+    type_name: string
+    bool_value: bool
+    int_value: i64
+    uint_value: u64
+    float_value: f64
+    string_value: string
+    pointer_value: u64
+    valid: bool
+}
+
+form InterpreterInstruction {
+    id: u64
+    kind: InterpreterInstructionKind
+    operand_a: u64
+    operand_b: u64
+    operand_c: u64
+    span: InterpreterSpan
+}
+
+form InterpreterFrame {
+    id: u64
+    function_name: string
+    instruction_pointer: u64
+    stack_base: u64
+    return_slot: u64
+    valid: bool
+}
+
+form InterpreterDiagnostic {
+    kind: InterpreterErrorKind
+    message: string
+    instruction: u64
+    span: InterpreterSpan
+}
+
+form InterpreterContext {
+    state: InterpreterState
+    instructions: [InterpreterInstruction]
+    stack: [InterpreterValue]
+    frames: [InterpreterFrame]
+    diagnostics: [InterpreterDiagnostic]
+    instruction_pointer: u64
+    steps: u64
+    allocated_memory: u64
+    valid: bool
+}
+
+proc span_empty() -> InterpreterSpan {
+    give InterpreterSpan {
+        file: "compiler/analysis/const_eval/interpreter.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc value_invalid() -> InterpreterValue {
+    give InterpreterValue {
+        id: INTERPRETER_INVALID_ID,
+        kind: InterpreterValueKind.Invalid,
+        type_name: "invalid",
+        bool_value: false,
+        int_value: 0,
+        uint_value: 0,
+        float_value: 0.0,
+        string_value: "",
+        pointer_value: 0,
+        valid: false
+    }
+}
+
+proc value_void(id: u64) -> InterpreterValue {
+    give InterpreterValue {
+        id: id,
+        kind: InterpreterValueKind.Void,
+        type_name: "void",
+        bool_value: false,
+        int_value: 0,
+        uint_value: 0,
+        float_value: 0.0,
+        string_value: "",
+        pointer_value: 0,
+        valid: true
+    }
+}
+
+proc value_bool(id: u64, value: bool) -> InterpreterValue {
+    give InterpreterValue {
+        id: id,
+        kind: InterpreterValueKind.Bool,
+        type_name: "bool",
+        bool_value: value,
+        int_value: 0,
+        uint_value: 0,
+        float_value: 0.0,
+        string_value: "",
+        pointer_value: 0,
+        valid: true
+    }
+}
+
+proc value_int(id: u64, value: i64) -> InterpreterValue {
+    give InterpreterValue {
+        id: id,
+        kind: InterpreterValueKind.Int,
+        type_name: "i64",
+        bool_value: false,
+        int_value: value,
+        uint_value: 0,
+        float_value: 0.0,
+        string_value: "",
+        pointer_value: 0,
+        valid: true
+    }
+}
+
+proc value_string(id: u64, value: string) -> InterpreterValue {
+    give InterpreterValue {
+        id: id,
+        kind: InterpreterValueKind.String,
+        type_name: "string",
+        bool_value: false,
+        int_value: 0,
+        uint_value: 0,
+        float_value: 0.0,
+        string_value: value,
+        pointer_value: 0,
+        valid: true
+    }
+}
+
+proc instruction_create(
+    id: u64,
+    kind: InterpreterInstructionKind,
+    operand_a: u64,
+    operand_b: u64,
+    operand_c: u64,
+    span: InterpreterSpan
+) -> InterpreterInstruction {
+    give InterpreterInstruction {
+        id: id,
+        kind: kind,
+        operand_a: operand_a,
+        operand_b: operand_b,
+        operand_c: operand_c,
+        span: span
+    }
+}
+
+proc frame_create(
+    id: u64,
+    function_name: string,
+    instruction_pointer: u64,
+    stack_base: u64,
+    return_slot: u64
+) -> InterpreterFrame {
+    give InterpreterFrame {
+        id: id,
+        function_name: function_name,
+        instruction_pointer: instruction_pointer,
+        stack_base: stack_base,
+        return_slot: return_slot,
+        valid: true
+    }
+}
+
+proc diagnostic_create(
+    kind: InterpreterErrorKind,
+    message: string,
+    instruction: u64,
+    span: InterpreterSpan
+) -> InterpreterDiagnostic {
+    give InterpreterDiagnostic {
+        kind: kind,
+        message: message,
+        instruction: instruction,
+        span: span
+    }
+}
+
+proc context_empty() -> InterpreterContext {
+    give InterpreterContext {
+        state: InterpreterState.Ready,
+        instructions: [],
+        stack: [],
+        frames: [],
+        diagnostics: [],
+        instruction_pointer: 0,
+        steps: 0,
+        allocated_memory: 0,
+        valid: true
+    }
+}
+
+proc context_add_instruction(
+    context: InterpreterContext,
+    instruction: InterpreterInstruction
+) -> InterpreterContext {
+    give InterpreterContext {
+        state: context.state,
+        instructions: context.instructions + [instruction],
+        stack: context.stack,
+        frames: context.frames,
+        diagnostics: context.diagnostics,
+        instruction_pointer: context.instruction_pointer,
+        steps: context.steps,
+        allocated_memory: context.allocated_memory,
+        valid: context.valid
+    }
+}
+
+proc context_add_diagnostic(
+    context: InterpreterContext,
+    diagnostic: InterpreterDiagnostic
+) -> InterpreterContext {
+    give InterpreterContext {
+        state: InterpreterState.Failed,
+        instructions: context.instructions,
+        stack: context.stack,
+        frames: context.frames,
+        diagnostics: context.diagnostics + [diagnostic],
+        instruction_pointer: context.instruction_pointer,
+        steps: context.steps,
+        allocated_memory: context.allocated_memory,
+        valid: false
+    }
+}
+
+proc push_stack(
+    context: InterpreterContext,
+    value: InterpreterValue
+) -> InterpreterContext {
+    if vector_len(context.stack) >= INTERPRETER_MAX_STACK {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                InterpreterErrorKind.StackOverflow,
+                "interpreter stack overflow",
+                context.instruction_pointer,
+                span_empty()
+            )
+        )
+    }
+
+    give InterpreterContext {
+        state: context.state,
+        instructions: context.instructions,
+        stack: context.stack + [value],
+        frames: context.frames,
+        diagnostics: context.diagnostics,
+        instruction_pointer: context.instruction_pointer,
+        steps: context.steps,
+        allocated_memory: context.allocated_memory,
+        valid: context.valid
+    }
+}
+
+proc pop_stack(context: InterpreterContext) -> InterpreterContext {
+    let next_stack: [InterpreterValue] = []
+    let i: u64 = 0
+
+    loop i + 1 < vector_len(context.stack) {
+        set next_stack = next_stack + [context.stack[i]]
+        set i = i + 1
+    }
+
+    give InterpreterContext {
+        state: context.state,
+        instructions: context.instructions,
+        stack: next_stack,
+        frames: context.frames,
+        diagnostics: context.diagnostics,
+        instruction_pointer: context.instruction_pointer,
+        steps: context.steps,
+        allocated_memory: context.allocated_memory,
+        valid: context.valid
+    }
+}
+
+proc stack_top(context: InterpreterContext) -> InterpreterValue {
+    if vector_len(context.stack) == 0 {
+        give value_invalid()
+    }
+
+    give context.stack[vector_len(context.stack) - 1]
+}
+
+proc push_frame(
+    context: InterpreterContext,
+    frame: InterpreterFrame
+) -> InterpreterContext {
+    if vector_len(context.frames) >= INTERPRETER_MAX_FRAMES {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                InterpreterErrorKind.FrameOverflow,
+                "interpreter frame overflow",
+                context.instruction_pointer,
+                span_empty()
+            )
+        )
+    }
+
+    give InterpreterContext {
+        state: context.state,
+        instructions: context.instructions,
+        stack: context.stack,
+        frames: context.frames + [frame],
+        diagnostics: context.diagnostics,
+        instruction_pointer: context.instruction_pointer,
+        steps: context.steps,
+        allocated_memory: context.allocated_memory,
+        valid: context.valid
+    }
+}
+
+proc current_instruction(context: InterpreterContext) -> InterpreterInstruction {
+    if context.instruction_pointer >= vector_len(context.instructions) {
+        give instruction_create(
+            INTERPRETER_INVALID_ID,
+            InterpreterInstructionKind.Halt,
+            0,
+            0,
+            0,
+            span_empty()
+        )
+    }
+
+    give context.instructions[context.instruction_pointer]
+}
+
+proc next_instruction(context: InterpreterContext) -> InterpreterContext {
+    if context.steps >= INTERPRETER_MAX_STEPS {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                InterpreterErrorKind.StepLimitExceeded,
+                "interpreter step limit exceeded",
+                context.instruction_pointer,
+                span_empty()
+            )
+        )
+    }
+
+    give InterpreterContext {
+        state: context.state,
+        instructions: context.instructions,
+        stack: context.stack,
+        frames: context.frames,
+        diagnostics: context.diagnostics,
+        instruction_pointer: context.instruction_pointer + 1,
+        steps: context.steps + 1,
+        allocated_memory: context.allocated_memory,
+        valid: context.valid
+    }
+}
+
+proc execute_load_const(
+    context: InterpreterContext,
+    instruction: InterpreterInstruction
+) -> InterpreterContext {
+    let value = value_int(instruction.operand_a, instruction.operand_b as i64)
+    let pushed = push_stack(context, value)
+
+    give next_instruction(pushed)
+}
+
+proc execute_add(
+    context: InterpreterContext,
+    instruction: InterpreterInstruction
+) -> InterpreterContext {
+    let right = stack_top(context)
+    let c1 = pop_stack(context)
+
+    let left = stack_top(c1)
+    let c2 = pop_stack(c1)
+
+    if left.kind != InterpreterValueKind.Int or right.kind != InterpreterValueKind.Int {
+        give context_add_diagnostic(
+            c2,
+            diagnostic_create(
+                InterpreterErrorKind.InvalidValue,
+                "invalid add operands",
+                instruction.id,
+                instruction.span
+            )
+        )
+    }
+
+    let result = value_int(
+        instruction.operand_c,
+        left.int_value + right.int_value
+    )
+
+    let pushed = push_stack(c2, result)
+
+    give next_instruction(pushed)
+}
+
+proc execute_sub(
+    context: InterpreterContext,
+    instruction: InterpreterInstruction
+) -> InterpreterContext {
+    let right = stack_top(context)
+    let c1 = pop_stack(context)
+
+    let left = stack_top(c1)
+    let c2 = pop_stack(c1)
+
+    let result = value_int(
+        instruction.operand_c,
+        left.int_value - right.int_value
+    )
+
+    let pushed = push_stack(c2, result)
+
+    give next_instruction(pushed)
+}
+
+proc execute_mul(
+    context: InterpreterContext,
+    instruction: InterpreterInstruction
+) -> InterpreterContext {
+    let right = stack_top(context)
+    let c1 = pop_stack(context)
+
+    let left = stack_top(c1)
+    let c2 = pop_stack(c1)
+
+    let result = value_int(
+        instruction.operand_c,
+        left.int_value * right.int_value
+    )
+
+    let pushed = push_stack(c2, result)
+
+    give next_instruction(pushed)
+}
+
+proc execute_div(
+    context: InterpreterContext,
+    instruction: InterpreterInstruction
+) -> InterpreterContext {
+    let right = stack_top(context)
+    let c1 = pop_stack(context)
+
+    let left = stack_top(c1)
+    let c2 = pop_stack(c1)
+
+    if right.int_value == 0 {
+        give context_add_diagnostic(
+            c2,
+            diagnostic_create(
+                InterpreterErrorKind.DivisionByZero,
+                "division by zero in const interpreter",
+                instruction.id,
+                instruction.span
+            )
+        )
+    }
+
+    let result = value_int(
+        instruction.operand_c,
+        left.int_value / right.int_value
+    )
+
+    let pushed = push_stack(c2, result)
+
+    give next_instruction(pushed)
+}
+
+proc execute_neg(
+    context: InterpreterContext,
+    instruction: InterpreterInstruction
+) -> InterpreterContext {
+    let operand = stack_top(context)
+    let popped = pop_stack(context)
+
+    let result = value_int(
+        instruction.operand_c,
+        0 - operand.int_value
+    )
+
+    let pushed = push_stack(popped, result)
+
+    give next_instruction(pushed)
+}
+
+proc execute_eq(
+    context: InterpreterContext,
+    instruction: InterpreterInstruction
+) -> InterpreterContext {
+    let right = stack_top(context)
+    let c1 = pop_stack(context)
+
+    let left = stack_top(c1)
+    let c2 = pop_stack(c1)
+
+    let result = value_bool(
+        instruction.operand_c,
+        left.int_value == right.int_value
+    )
+
+    let pushed = push_stack(c2, result)
+
+    give next_instruction(pushed)
+}
+
+proc execute_jump(
+    context: InterpreterContext,
+    instruction: InterpreterInstruction
+) -> InterpreterContext {
+    give InterpreterContext {
+        state: context.state,
+        instructions: context.instructions,
+        stack: context.stack,
+        frames: context.frames,
+        diagnostics: context.diagnostics,
+        instruction_pointer: instruction.operand_a,
+        steps: context.steps + 1,
+        allocated_memory: context.allocated_memory,
+        valid: context.valid
+    }
+}
+
+proc execute_jump_if(
+    context: InterpreterContext,
+    instruction: InterpreterInstruction
+) -> InterpreterContext {
+    let condition = stack_top(context)
+    let popped = pop_stack(context)
+
+    if condition.kind != InterpreterValueKind.Bool {
+        give context_add_diagnostic(
+            popped,
+            diagnostic_create(
+                InterpreterErrorKind.InvalidValue,
+                "invalid conditional value",
+                instruction.id,
+                instruction.span
+            )
+        )
+    }
+
+    if condition.bool_value {
+        give InterpreterContext {
+            state: popped.state,
+            instructions: popped.instructions,
+            stack: popped.stack,
+            frames: popped.frames,
+            diagnostics: popped.diagnostics,
+            instruction_pointer: instruction.operand_a,
+            steps: popped.steps + 1,
+            allocated_memory: popped.allocated_memory,
+            valid: popped.valid
+        }
+    }
+
+    give next_instruction(popped)
+}
+
+proc execute_alloc(
+    context: InterpreterContext,
+    instruction: InterpreterInstruction
+) -> InterpreterContext {
+    let allocation_size = instruction.operand_a
+
+    if context.allocated_memory + allocation_size > INTERPRETER_MAX_MEMORY {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                InterpreterErrorKind.MemoryOverflow,
+                "interpreter memory limit exceeded",
+                instruction.id,
+                instruction.span
+            )
+        )
+    }
+
+    let pointer = value_int(
+        instruction.operand_c,
+        context.allocated_memory as i64
+    )
+
+    let pushed = push_stack(context, pointer)
+
+    give InterpreterContext {
+        state: pushed.state,
+        instructions: pushed.instructions,
+        stack: pushed.stack,
+        frames: pushed.frames,
+        diagnostics: pushed.diagnostics,
+        instruction_pointer: pushed.instruction_pointer + 1,
+        steps: pushed.steps + 1,
+        allocated_memory: pushed.allocated_memory + allocation_size,
+        valid: pushed.valid
+    }
+}
+
+proc execute_halt(
+    context: InterpreterContext
+) -> InterpreterContext {
+    give InterpreterContext {
+        state: InterpreterState.Halted,
+        instructions: context.instructions,
+        stack: context.stack,
+        frames: context.frames,
+        diagnostics: context.diagnostics,
+        instruction_pointer: context.instruction_pointer,
+        steps: context.steps,
+        allocated_memory: context.allocated_memory,
+        valid: context.valid
+    }
+}
+
+proc execute_instruction(
+    context: InterpreterContext
+) -> InterpreterContext {
+    let instruction = current_instruction(context)
+
+    if instruction.kind == InterpreterInstructionKind.Nop {
+        give next_instruction(context)
+    }
+
+    if instruction.kind == InterpreterInstructionKind.LoadConst {
+        give execute_load_const(context, instruction)
+    }
+
+    if instruction.kind == InterpreterInstructionKind.Add {
+        give execute_add(context, instruction)
+    }
+
+    if instruction.kind == InterpreterInstructionKind.Sub {
+        give execute_sub(context, instruction)
+    }
+
+    if instruction.kind == InterpreterInstructionKind.Mul {
+        give execute_mul(context, instruction)
+    }
+
+    if instruction.kind == InterpreterInstructionKind.Div {
+        give execute_div(context, instruction)
+    }
+
+    if instruction.kind == InterpreterInstructionKind.Neg {
+        give execute_neg(context, instruction)
+    }
+
+    if instruction.kind == InterpreterInstructionKind.Eq {
+        give execute_eq(context, instruction)
+    }
+
+    if instruction.kind == InterpreterInstructionKind.Jump {
+        give execute_jump(context, instruction)
+    }
+
+    if instruction.kind == InterpreterInstructionKind.JumpIf {
+        give execute_jump_if(context, instruction)
+    }
+
+    if instruction.kind == InterpreterInstructionKind.Alloc {
+        give execute_alloc(context, instruction)
+    }
+
+    if instruction.kind == InterpreterInstructionKind.Halt {
+        give execute_halt(context)
+    }
+
+    give context_add_diagnostic(
+        context,
+        diagnostic_create(
+            InterpreterErrorKind.UnsupportedInstruction,
+            "unsupported interpreter instruction",
+            instruction.id,
+            instruction.span
+        )
+    )
+}
+
+proc execute(
+    context: InterpreterContext
+) -> InterpreterContext {
+    let current = InterpreterContext {
+        state: InterpreterState.Running,
+        instructions: context.instructions,
+        stack: context.stack,
+        frames: context.frames,
+        diagnostics: context.diagnostics,
+        instruction_pointer: context.instruction_pointer,
+        steps: context.steps,
+        allocated_memory: context.allocated_memory,
+        valid: context.valid
+    }
+
+    loop current.state == InterpreterState.Running {
+        set current = execute_instruction(current)
+
+        if current.valid == false {
+            give current
+        }
+
+        if current.state == InterpreterState.Halted {
+            give current
+        }
+    }
+
+    give current
+}
+
+proc interpreter_has_errors(
+    context: InterpreterContext
+) -> bool {
+    give vector_len(context.diagnostics) > 0
+}
+
+proc interpreter_stack_depth(
+    context: InterpreterContext
+) -> u64 {
+    give vector_len(context.stack)
+}
+
+proc interpreter_frame_depth(
+    context: InterpreterContext
+) -> u64 {
+    give vector_len(context.frames)
+}
+
+proc print_instruction(
+    instruction: InterpreterInstruction
+) {
+    emit "instruction"
+    emit instruction.id
+    emit instruction.kind
+}
+
+proc print_value(
+    value: InterpreterValue
+) {
+    emit "value"
+    emit value.id
+    emit value.type_name
+    emit value.valid
+}
+
+proc print_context(
+    context: InterpreterContext
+) {
+    emit "interpreter context"
+    emit context.state
+    emit context.steps
+    emit vector_len(context.instructions)
+    emit vector_len(context.stack)
+    emit vector_len(context.frames)
+    emit vector_len(context.diagnostics)
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

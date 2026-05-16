@@ -1,0 +1,728 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Analysis / Lint                    >>>
+<<< File: compiler/analysis/lint/rules.vit                   >>>
+<<< Module: vitte/compiler/analysis/lint/rules               >>>
+<<< Purpose: lint rule registry, metadata and built-in rules  >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/analysis/lint/rules
+
+const LINT_RULES_VERSION: u32 = 2026
+const LINT_RULE_INVALID_ID: u64 = 18446744073709551615
+const LINT_RULE_MAX_RULES: u64 = 65536
+const LINT_RULE_MAX_TAGS: u64 = 64
+
+pick LintLevel {
+    Allow
+    Info
+    Warn
+    Deny
+    Forbid
+}
+
+pick LintRuleKind {
+    Correctness
+    Style
+    Safety
+    Performance
+    Complexity
+    Portability
+    Security
+    Compatibility
+    Deprecated
+    Experimental
+    Internal
+}
+
+pick LintRuleStatus {
+    Stable
+    Experimental
+    Deprecated
+    Internal
+    Disabled
+}
+
+pick LintRuleErrorKind {
+    None
+    DuplicateRule
+    UnknownRule
+    InvalidRule
+    RuleLimitExceeded
+    TagLimitExceeded
+}
+
+form LintRuleSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form LintRule {
+    id: u64
+    name: string
+    kind: LintRuleKind
+    level: LintLevel
+    status: LintRuleStatus
+    description: string
+    explanation: string
+    tags: [string]
+    enabled: bool
+}
+
+form LintRuleDiagnostic {
+    kind: LintRuleErrorKind
+    message: string
+    span: LintRuleSpan
+    rule: u64
+}
+
+form LintRuleRegistry {
+    rules: [LintRule]
+    diagnostics: [LintRuleDiagnostic]
+    valid: bool
+}
+
+proc span_empty() -> LintRuleSpan {
+    give LintRuleSpan {
+        file: "compiler/analysis/lint/rules.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc rule_invalid() -> LintRule {
+    give LintRule {
+        id: LINT_RULE_INVALID_ID,
+        name: "invalid",
+        kind: LintRuleKind.Internal,
+        level: LintLevel.Allow,
+        status: LintRuleStatus.Disabled,
+        description: "",
+        explanation: "",
+        tags: [],
+        enabled: false
+    }
+}
+
+proc diagnostic_create(
+    kind: LintRuleErrorKind,
+    message: string,
+    span: LintRuleSpan,
+    rule: u64
+) -> LintRuleDiagnostic {
+    give LintRuleDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        rule: rule
+    }
+}
+
+proc rule_create(
+    id: u64,
+    name: string,
+    kind: LintRuleKind,
+    level: LintLevel,
+    status: LintRuleStatus,
+    description: string,
+    explanation: string
+) -> LintRule {
+    give LintRule {
+        id: id,
+        name: name,
+        kind: kind,
+        level: level,
+        status: status,
+        description: description,
+        explanation: explanation,
+        tags: [],
+        enabled: status != LintRuleStatus.Disabled
+    }
+}
+
+proc rule_with_tag(
+    rule: LintRule,
+    tag: string
+) -> LintRule {
+    if vector_len(rule.tags) >= LINT_RULE_MAX_TAGS {
+        give rule
+    }
+
+    give LintRule {
+        id: rule.id,
+        name: rule.name,
+        kind: rule.kind,
+        level: rule.level,
+        status: rule.status,
+        description: rule.description,
+        explanation: rule.explanation,
+        tags: rule.tags + [tag],
+        enabled: rule.enabled
+    }
+}
+
+proc rule_with_level(
+    rule: LintRule,
+    level: LintLevel
+) -> LintRule {
+    give LintRule {
+        id: rule.id,
+        name: rule.name,
+        kind: rule.kind,
+        level: level,
+        status: rule.status,
+        description: rule.description,
+        explanation: rule.explanation,
+        tags: rule.tags,
+        enabled: rule.enabled
+    }
+}
+
+proc rule_disable(rule: LintRule) -> LintRule {
+    give LintRule {
+        id: rule.id,
+        name: rule.name,
+        kind: rule.kind,
+        level: rule.level,
+        status: rule.status,
+        description: rule.description,
+        explanation: rule.explanation,
+        tags: rule.tags,
+        enabled: false
+    }
+}
+
+proc rule_enable(rule: LintRule) -> LintRule {
+    give LintRule {
+        id: rule.id,
+        name: rule.name,
+        kind: rule.kind,
+        level: rule.level,
+        status: rule.status,
+        description: rule.description,
+        explanation: rule.explanation,
+        tags: rule.tags,
+        enabled: true
+    }
+}
+
+proc registry_empty() -> LintRuleRegistry {
+    give LintRuleRegistry {
+        rules: [],
+        diagnostics: [],
+        valid: true
+    }
+}
+
+proc registry_add_diagnostic(
+    registry: LintRuleRegistry,
+    diagnostic: LintRuleDiagnostic
+) -> LintRuleRegistry {
+    give LintRuleRegistry {
+        rules: registry.rules,
+        diagnostics: registry.diagnostics + [diagnostic],
+        valid: false
+    }
+}
+
+proc registry_add_rule(
+    registry: LintRuleRegistry,
+    rule: LintRule
+) -> LintRuleRegistry {
+    if vector_len(registry.rules) >= LINT_RULE_MAX_RULES {
+        give registry_add_diagnostic(
+            registry,
+            diagnostic_create(
+                LintRuleErrorKind.RuleLimitExceeded,
+                "too many lint rules",
+                span_empty(),
+                rule.id
+            )
+        )
+    }
+
+    if registry_has_rule(registry, rule.name) {
+        give registry_add_diagnostic(
+            registry,
+            diagnostic_create(
+                LintRuleErrorKind.DuplicateRule,
+                "duplicate lint rule",
+                span_empty(),
+                rule.id
+            )
+        )
+    }
+
+    give LintRuleRegistry {
+        rules: registry.rules + [rule],
+        diagnostics: registry.diagnostics,
+        valid: registry.valid
+    }
+}
+
+proc registry_default() -> LintRuleRegistry {
+    let registry = registry_empty()
+
+    let r1 = registry_add_rule(
+        registry,
+        rule_with_tag(
+            rule_create(
+                1,
+                "unused_import",
+                LintRuleKind.Correctness,
+                LintLevel.Warn,
+                LintRuleStatus.Stable,
+                "unused import",
+                "reports imports that are declared but never referenced"
+            ),
+            "names"
+        )
+    )
+
+    let r2 = registry_add_rule(
+        r1,
+        rule_with_tag(
+            rule_create(
+                2,
+                "unused_variable",
+                LintRuleKind.Correctness,
+                LintLevel.Warn,
+                LintRuleStatus.Stable,
+                "unused variable",
+                "reports local bindings that are never read"
+            ),
+            "bindings"
+        )
+    )
+
+    let r3 = registry_add_rule(
+        r2,
+        rule_with_tag(
+            rule_create(
+                3,
+                "dead_code",
+                LintRuleKind.Correctness,
+                LintLevel.Warn,
+                LintRuleStatus.Stable,
+                "dead code",
+                "reports unreachable or unused code paths"
+            ),
+            "control-flow"
+        )
+    )
+
+    let r4 = registry_add_rule(
+        r3,
+        rule_with_tag(
+            rule_create(
+                4,
+                "unsafe_without_reason",
+                LintRuleKind.Safety,
+                LintLevel.Deny,
+                LintRuleStatus.Stable,
+                "unsafe without reason",
+                "requires unsafe regions to carry an explicit safety rationale"
+            ),
+            "unsafe"
+        )
+    )
+
+    let r5 = registry_add_rule(
+        r4,
+        rule_with_tag(
+            rule_create(
+                5,
+                "large_stack_allocation",
+                LintRuleKind.Performance,
+                LintLevel.Warn,
+                LintRuleStatus.Stable,
+                "large stack allocation",
+                "reports stack allocations above the configured threshold"
+            ),
+            "memory"
+        )
+    )
+
+    let r6 = registry_add_rule(
+        r5,
+        rule_with_tag(
+            rule_create(
+                6,
+                "implicit_copy",
+                LintRuleKind.Performance,
+                LintLevel.Info,
+                LintRuleStatus.Stable,
+                "implicit copy",
+                "reports implicit copies of large values"
+            ),
+            "ownership"
+        )
+    )
+
+    let r7 = registry_add_rule(
+        r6,
+        rule_with_tag(
+            rule_create(
+                7,
+                "needless_mut",
+                LintRuleKind.Style,
+                LintLevel.Warn,
+                LintRuleStatus.Stable,
+                "needless mutable binding",
+                "reports mutable bindings that are never mutated"
+            ),
+            "style"
+        )
+    )
+
+    let r8 = registry_add_rule(
+        r7,
+        rule_with_tag(
+            rule_create(
+                8,
+                "shadowed_binding",
+                LintRuleKind.Style,
+                LintLevel.Info,
+                LintRuleStatus.Stable,
+                "shadowed binding",
+                "reports local names that shadow previous bindings"
+            ),
+            "names"
+        )
+    )
+
+    let r9 = registry_add_rule(
+        r8,
+        rule_with_tag(
+            rule_create(
+                9,
+                "non_portable_target_feature",
+                LintRuleKind.Portability,
+                LintLevel.Warn,
+                LintRuleStatus.Stable,
+                "non portable target feature",
+                "reports target-specific features used without guards"
+            ),
+            "target"
+        )
+    )
+
+    let r10 = registry_add_rule(
+        r9,
+        rule_with_tag(
+            rule_create(
+                10,
+                "deprecated_item",
+                LintRuleKind.Deprecated,
+                LintLevel.Warn,
+                LintRuleStatus.Stable,
+                "deprecated item",
+                "reports use of deprecated language or library items"
+            ),
+            "compatibility"
+        )
+    )
+
+    give r10
+}
+
+proc find_rule_by_name(
+    registry: LintRuleRegistry,
+    name: string
+) -> LintRule {
+    let i: u64 = 0
+
+    loop i < vector_len(registry.rules) {
+        if registry.rules[i].name == name {
+            give registry.rules[i]
+        }
+
+        set i = i + 1
+    }
+
+    give rule_invalid()
+}
+
+proc find_rule_by_id(
+    registry: LintRuleRegistry,
+    id: u64
+) -> LintRule {
+    let i: u64 = 0
+
+    loop i < vector_len(registry.rules) {
+        if registry.rules[i].id == id {
+            give registry.rules[i]
+        }
+
+        set i = i + 1
+    }
+
+    give rule_invalid()
+}
+
+proc registry_has_rule(
+    registry: LintRuleRegistry,
+    name: string
+) -> bool {
+    give find_rule_by_name(registry, name).enabled or find_rule_by_name(registry, name).id != LINT_RULE_INVALID_ID
+}
+
+proc registry_set_level(
+    registry: LintRuleRegistry,
+    name: string,
+    level: LintLevel
+) -> LintRuleRegistry {
+    let next: [LintRule] = []
+    let found = false
+
+    let i: u64 = 0
+
+    loop i < vector_len(registry.rules) {
+        if registry.rules[i].name == name {
+            set next = next + [rule_with_level(registry.rules[i], level)]
+            set found = true
+        } else {
+            set next = next + [registry.rules[i]]
+        }
+
+        set i = i + 1
+    }
+
+    if found == false {
+        give registry_add_diagnostic(
+            registry,
+            diagnostic_create(
+                LintRuleErrorKind.UnknownRule,
+                "unknown lint rule",
+                span_empty(),
+                LINT_RULE_INVALID_ID
+            )
+        )
+    }
+
+    give LintRuleRegistry {
+        rules: next,
+        diagnostics: registry.diagnostics,
+        valid: registry.valid
+    }
+}
+
+proc registry_disable_rule(
+    registry: LintRuleRegistry,
+    name: string
+) -> LintRuleRegistry {
+    let next: [LintRule] = []
+    let found = false
+
+    let i: u64 = 0
+
+    loop i < vector_len(registry.rules) {
+        if registry.rules[i].name == name {
+            set next = next + [rule_disable(registry.rules[i])]
+            set found = true
+        } else {
+            set next = next + [registry.rules[i]]
+        }
+
+        set i = i + 1
+    }
+
+    if found == false {
+        give registry_add_diagnostic(
+            registry,
+            diagnostic_create(
+                LintRuleErrorKind.UnknownRule,
+                "unknown lint rule",
+                span_empty(),
+                LINT_RULE_INVALID_ID
+            )
+        )
+    }
+
+    give LintRuleRegistry {
+        rules: next,
+        diagnostics: registry.diagnostics,
+        valid: registry.valid
+    }
+}
+
+proc registry_enable_rule(
+    registry: LintRuleRegistry,
+    name: string
+) -> LintRuleRegistry {
+    let next: [LintRule] = []
+    let found = false
+
+    let i: u64 = 0
+
+    loop i < vector_len(registry.rules) {
+        if registry.rules[i].name == name {
+            set next = next + [rule_enable(registry.rules[i])]
+            set found = true
+        } else {
+            set next = next + [registry.rules[i]]
+        }
+
+        set i = i + 1
+    }
+
+    if found == false {
+        give registry_add_diagnostic(
+            registry,
+            diagnostic_create(
+                LintRuleErrorKind.UnknownRule,
+                "unknown lint rule",
+                span_empty(),
+                LINT_RULE_INVALID_ID
+            )
+        )
+    }
+
+    give LintRuleRegistry {
+        rules: next,
+        diagnostics: registry.diagnostics,
+        valid: registry.valid
+    }
+}
+
+proc level_name(level: LintLevel) -> string {
+    if level == LintLevel.Allow {
+        give "allow"
+    }
+
+    if level == LintLevel.Info {
+        give "info"
+    }
+
+    if level == LintLevel.Warn {
+        give "warn"
+    }
+
+    if level == LintLevel.Deny {
+        give "deny"
+    }
+
+    if level == LintLevel.Forbid {
+        give "forbid"
+    }
+
+    give "unknown"
+}
+
+proc kind_name(kind: LintRuleKind) -> string {
+    if kind == LintRuleKind.Correctness {
+        give "correctness"
+    }
+
+    if kind == LintRuleKind.Style {
+        give "style"
+    }
+
+    if kind == LintRuleKind.Safety {
+        give "safety"
+    }
+
+    if kind == LintRuleKind.Performance {
+        give "performance"
+    }
+
+    if kind == LintRuleKind.Security {
+        give "security"
+    }
+
+    if kind == LintRuleKind.Portability {
+        give "portability"
+    }
+
+    if kind == LintRuleKind.Deprecated {
+        give "deprecated"
+    }
+
+    give "internal"
+}
+
+proc status_name(status: LintRuleStatus) -> string {
+    if status == LintRuleStatus.Stable {
+        give "stable"
+    }
+
+    if status == LintRuleStatus.Experimental {
+        give "experimental"
+    }
+
+    if status == LintRuleStatus.Deprecated {
+        give "deprecated"
+    }
+
+    if status == LintRuleStatus.Internal {
+        give "internal"
+    }
+
+    if status == LintRuleStatus.Disabled {
+        give "disabled"
+    }
+
+    give "unknown"
+}
+
+proc rule_is_error(rule: LintRule) -> bool {
+    if rule.level == LintLevel.Deny {
+        give true
+    }
+
+    if rule.level == LintLevel.Forbid {
+        give true
+    }
+
+    give false
+}
+
+proc rule_is_visible(rule: LintRule) -> bool {
+    if rule.enabled == false {
+        give false
+    }
+
+    if rule.level == LintLevel.Allow {
+        give false
+    }
+
+    give true
+}
+
+proc rule_count(registry: LintRuleRegistry) -> u64 {
+    give vector_len(registry.rules)
+}
+
+proc diagnostic_count(registry: LintRuleRegistry) -> u64 {
+    give vector_len(registry.diagnostics)
+}
+
+proc print_rule(rule: LintRule) {
+    emit "lint rule"
+    emit rule.id
+    emit rule.name
+    emit kind_name(rule.kind)
+    emit level_name(rule.level)
+    emit status_name(rule.status)
+    emit rule.description
+}
+
+proc print_registry(registry: LintRuleRegistry) {
+    emit "lint rules registry"
+    emit vector_len(registry.rules)
+    emit vector_len(registry.diagnostics)
+
+    let i: u64 = 0
+
+    loop i < vector_len(registry.rules) {
+        print_rule(registry.rules[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

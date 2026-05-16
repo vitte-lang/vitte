@@ -1,0 +1,1189 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Backend / IR                       >>>
+<<< File: /Users/vincent/Documents/Github/vitte/src/vitte/compiler/backend/ir/ir.vit >>>
+<<< Module: vitte/compiler/backend/ir/ir                     >>>
+<<< Purpose: backend IR module model, functions and units     >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/backend/ir/ir
+
+use vitte/compiler/backend/ir/block
+use vitte/compiler/backend/ir/function
+use vitte/compiler/backend/ir/instruction
+
+const IR_VERSION: u32 = 2026
+const IR_INVALID_ID: u64 = 18446744073709551615
+const IR_MAX_MODULES: u64 = 1024
+const IR_MAX_FUNCTIONS: u64 = 262144
+const IR_MAX_GLOBALS: u64 = 1048576
+const IR_MAX_TYPES: u64 = 1048576
+const IR_MAX_DIAGNOSTICS: u64 = 1048576
+
+pick IrTargetArch {
+    Unknown
+    Native
+    X86_64
+    AArch64
+    RiscV64
+    ARM
+    I386
+    Wasm32
+}
+
+pick IrTargetOs {
+    Unknown
+    Freestanding
+    Linux
+    Darwin
+    Windows
+    VitteOS
+    Uefi
+    BareMetal
+}
+
+pick IrModuleKind {
+    Library
+    Binary
+    Kernel
+    Driver
+    Runtime
+    Test
+    Bench
+}
+
+pick IrLinkage {
+    Private
+    Internal
+    External
+    Weak
+    Exported
+    Imported
+}
+
+pick IrVisibility {
+    Private
+    Module
+    Package
+    Public
+    Exported
+}
+
+pick IrUnitState {
+    Created
+    Built
+    Verified
+    Optimized
+    Lowered
+    Emitted
+    Invalid
+}
+
+pick IrErrorKind {
+    None
+    InvalidModule
+    InvalidFunction
+    InvalidGlobal
+    InvalidType
+    DuplicateModule
+    DuplicateFunction
+    DuplicateGlobal
+    DuplicateType
+    MissingEntry
+    FunctionLimitExceeded
+    GlobalLimitExceeded
+    TypeLimitExceeded
+    DiagnosticLimitExceeded
+    InternalFailure
+}
+
+form IrSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form IrTarget {
+    arch: IrTargetArch
+    os: IrTargetOs
+    triple: string
+    pointer_width: u64
+    endian: string
+    valid: bool
+}
+
+form IrType {
+    id: u64
+    name: string
+    size: u64
+    align: u64
+    valid: bool
+}
+
+form IrGlobal {
+    id: u64
+    name: string
+    ty: IrType
+    linkage: IrLinkage
+    visibility: IrVisibility
+    mutable: bool
+    initializer: string
+    span: IrSpan
+    valid: bool
+}
+
+form IrFunctionRef {
+    id: u64
+    name: string
+    module: string
+    linkage: IrLinkage
+    visibility: IrVisibility
+    entry: bool
+    span: IrSpan
+    valid: bool
+}
+
+form IrModule {
+    id: u64
+    name: string
+    path: string
+    kind: IrModuleKind
+    target: IrTarget
+    types: [IrType]
+    globals: [IrGlobal]
+    functions: [IrFunctionRef]
+    state: IrUnitState
+    span: IrSpan
+    valid: bool
+}
+
+form IrDiagnostic {
+    kind: IrErrorKind
+    message: string
+    span: IrSpan
+    entity: u64
+}
+
+form IrUnit {
+    modules: [IrModule]
+    diagnostics: [IrDiagnostic]
+    target: IrTarget
+    entry_function: u64
+    state: IrUnitState
+    valid: bool
+}
+
+proc span_empty() -> IrSpan {
+    give IrSpan {
+        file: "/Users/vincent/Documents/Github/vitte/src/vitte/compiler/backend/ir/ir.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc target_unknown() -> IrTarget {
+    give IrTarget {
+        arch: IrTargetArch.Unknown,
+        os: IrTargetOs.Unknown,
+        triple: "unknown-unknown-unknown",
+        pointer_width: 0,
+        endian: "unknown",
+        valid: false
+    }
+}
+
+proc target_create(
+    arch: IrTargetArch,
+    os: IrTargetOs,
+    triple: string,
+    pointer_width: u64,
+    endian: string
+) -> IrTarget {
+    give IrTarget {
+        arch: arch,
+        os: os,
+        triple: triple,
+        pointer_width: pointer_width,
+        endian: endian,
+        valid: arch != IrTargetArch.Unknown and os != IrTargetOs.Unknown
+    }
+}
+
+proc target_native_x86_64_linux() -> IrTarget {
+    give target_create(
+        IrTargetArch.X86_64,
+        IrTargetOs.Linux,
+        "x86_64-vitte-linux",
+        64,
+        "little"
+    )
+}
+
+proc target_aarch64_vitteos() -> IrTarget {
+    give target_create(
+        IrTargetArch.AArch64,
+        IrTargetOs.VitteOS,
+        "aarch64-vitte-vitteos",
+        64,
+        "little"
+    )
+}
+
+proc type_invalid() -> IrType {
+    give IrType {
+        id: IR_INVALID_ID,
+        name: "invalid",
+        size: 0,
+        align: 0,
+        valid: false
+    }
+}
+
+proc type_void() -> IrType {
+    give IrType {
+        id: 0,
+        name: "void",
+        size: 0,
+        align: 1,
+        valid: true
+    }
+}
+
+proc type_bool() -> IrType {
+    give IrType {
+        id: 1,
+        name: "bool",
+        size: 1,
+        align: 1,
+        valid: true
+    }
+}
+
+proc type_i64() -> IrType {
+    give IrType {
+        id: 2,
+        name: "i64",
+        size: 8,
+        align: 8,
+        valid: true
+    }
+}
+
+proc type_ptr() -> IrType {
+    give IrType {
+        id: 3,
+        name: "ptr",
+        size: 8,
+        align: 8,
+        valid: true
+    }
+}
+
+proc type_create(
+    id: u64,
+    name: string,
+    size: u64,
+    align: u64
+) -> IrType {
+    give IrType {
+        id: id,
+        name: name,
+        size: size,
+        align: align,
+        valid: name != "" and align > 0
+    }
+}
+
+proc global_create(
+    id: u64,
+    name: string,
+    ty: IrType,
+    linkage: IrLinkage,
+    visibility: IrVisibility,
+    mutable: bool,
+    initializer: string,
+    span: IrSpan
+) -> IrGlobal {
+    give IrGlobal {
+        id: id,
+        name: name,
+        ty: ty,
+        linkage: linkage,
+        visibility: visibility,
+        mutable: mutable,
+        initializer: initializer,
+        span: span,
+        valid: name != "" and ty.valid
+    }
+}
+
+proc function_ref_create(
+    id: u64,
+    name: string,
+    module: string,
+    linkage: IrLinkage,
+    visibility: IrVisibility,
+    entry: bool,
+    span: IrSpan
+) -> IrFunctionRef {
+    give IrFunctionRef {
+        id: id,
+        name: name,
+        module: module,
+        linkage: linkage,
+        visibility: visibility,
+        entry: entry,
+        span: span,
+        valid: name != "" and module != ""
+    }
+}
+
+proc module_create(
+    id: u64,
+    name: string,
+    path: string,
+    kind: IrModuleKind,
+    target: IrTarget,
+    span: IrSpan
+) -> IrModule {
+    give IrModule {
+        id: id,
+        name: name,
+        path: path,
+        kind: kind,
+        target: target,
+        types: [type_void(), type_bool(), type_i64(), type_ptr()],
+        globals: [],
+        functions: [],
+        state: IrUnitState.Created,
+        span: span,
+        valid: name != "" and target.valid
+    }
+}
+
+proc diagnostic_create(
+    kind: IrErrorKind,
+    message: string,
+    span: IrSpan,
+    entity: u64
+) -> IrDiagnostic {
+    give IrDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        entity: entity
+    }
+}
+
+proc unit_empty(target: IrTarget) -> IrUnit {
+    give IrUnit {
+        modules: [],
+        diagnostics: [],
+        target: target,
+        entry_function: IR_INVALID_ID,
+        state: IrUnitState.Created,
+        valid: target.valid
+    }
+}
+
+proc unit_add_diagnostic(
+    unit: IrUnit,
+    diagnostic: IrDiagnostic
+) -> IrUnit {
+    if vector_len(unit.diagnostics) >= IR_MAX_DIAGNOSTICS {
+        give IrUnit {
+            modules: unit.modules,
+            diagnostics: unit.diagnostics,
+            target: unit.target,
+            entry_function: unit.entry_function,
+            state: IrUnitState.Invalid,
+            valid: false
+        }
+    }
+
+    give IrUnit {
+        modules: unit.modules,
+        diagnostics: unit.diagnostics + [diagnostic],
+        target: unit.target,
+        entry_function: unit.entry_function,
+        state: IrUnitState.Invalid,
+        valid: false
+    }
+}
+
+proc module_with_state(
+    module: IrModule,
+    state: IrUnitState
+) -> IrModule {
+    give IrModule {
+        id: module.id,
+        name: module.name,
+        path: module.path,
+        kind: module.kind,
+        target: module.target,
+        types: module.types,
+        globals: module.globals,
+        functions: module.functions,
+        state: state,
+        span: module.span,
+        valid: module.valid
+    }
+}
+
+proc module_add_type(
+    module: IrModule,
+    ty: IrType
+) -> IrModule {
+    if vector_len(module.types) >= IR_MAX_TYPES {
+        give module_with_state(module, IrUnitState.Invalid)
+    }
+
+    if find_type_by_name(module, ty.name).valid {
+        give module_with_state(module, IrUnitState.Invalid)
+    }
+
+    give IrModule {
+        id: module.id,
+        name: module.name,
+        path: module.path,
+        kind: module.kind,
+        target: module.target,
+        types: module.types + [ty],
+        globals: module.globals,
+        functions: module.functions,
+        state: module.state,
+        span: module.span,
+        valid: module.valid and ty.valid
+    }
+}
+
+proc module_add_global(
+    module: IrModule,
+    global: IrGlobal
+) -> IrModule {
+    if vector_len(module.globals) >= IR_MAX_GLOBALS {
+        give module_with_state(module, IrUnitState.Invalid)
+    }
+
+    if find_global_by_name(module, global.name).valid {
+        give module_with_state(module, IrUnitState.Invalid)
+    }
+
+    give IrModule {
+        id: module.id,
+        name: module.name,
+        path: module.path,
+        kind: module.kind,
+        target: module.target,
+        types: module.types,
+        globals: module.globals + [global],
+        functions: module.functions,
+        state: module.state,
+        span: module.span,
+        valid: module.valid and global.valid
+    }
+}
+
+proc module_add_function(
+    module: IrModule,
+    function: IrFunctionRef
+) -> IrModule {
+    if vector_len(module.functions) >= IR_MAX_FUNCTIONS {
+        give module_with_state(module, IrUnitState.Invalid)
+    }
+
+    if find_function_by_name(module, function.name).valid {
+        give module_with_state(module, IrUnitState.Invalid)
+    }
+
+    give IrModule {
+        id: module.id,
+        name: module.name,
+        path: module.path,
+        kind: module.kind,
+        target: module.target,
+        types: module.types,
+        globals: module.globals,
+        functions: module.functions + [function],
+        state: module.state,
+        span: module.span,
+        valid: module.valid and function.valid
+    }
+}
+
+proc unit_add_module(
+    unit: IrUnit,
+    module: IrModule
+) -> IrUnit {
+    if vector_len(unit.modules) >= IR_MAX_MODULES {
+        give unit_add_diagnostic(
+            unit,
+            diagnostic_create(
+                IrErrorKind.InvalidModule,
+                "too many IR modules",
+                module.span,
+                module.id
+            )
+        )
+    }
+
+    if find_module_by_name(unit, module.name).valid {
+        give unit_add_diagnostic(
+            unit,
+            diagnostic_create(
+                IrErrorKind.DuplicateModule,
+                "duplicate IR module",
+                module.span,
+                module.id
+            )
+        )
+    }
+
+    give IrUnit {
+        modules: unit.modules + [module],
+        diagnostics: unit.diagnostics,
+        target: unit.target,
+        entry_function: unit.entry_function,
+        state: unit.state,
+        valid: unit.valid and module.valid
+    }
+}
+
+proc unit_set_entry(
+    unit: IrUnit,
+    function_id: u64
+) -> IrUnit {
+    if find_function_global(unit, function_id).valid == false {
+        give unit_add_diagnostic(
+            unit,
+            diagnostic_create(
+                IrErrorKind.MissingEntry,
+                "entry function does not exist",
+                span_empty(),
+                function_id
+            )
+        )
+    }
+
+    give IrUnit {
+        modules: unit.modules,
+        diagnostics: unit.diagnostics,
+        target: unit.target,
+        entry_function: function_id,
+        state: unit.state,
+        valid: unit.valid
+    }
+}
+
+proc find_module_by_name(
+    unit: IrUnit,
+    name: string
+) -> IrModule {
+    let i: u64 = 0
+
+    loop i < vector_len(unit.modules) {
+        if unit.modules[i].name == name {
+            give unit.modules[i]
+        }
+
+        set i = i + 1
+    }
+
+    give IrModule {
+        id: IR_INVALID_ID,
+        name: "invalid",
+        path: "",
+        kind: IrModuleKind.Library,
+        target: target_unknown(),
+        types: [],
+        globals: [],
+        functions: [],
+        state: IrUnitState.Invalid,
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc find_type_by_name(
+    module: IrModule,
+    name: string
+) -> IrType {
+    let i: u64 = 0
+
+    loop i < vector_len(module.types) {
+        if module.types[i].name == name {
+            give module.types[i]
+        }
+
+        set i = i + 1
+    }
+
+    give type_invalid()
+}
+
+proc find_global_by_name(
+    module: IrModule,
+    name: string
+) -> IrGlobal {
+    let i: u64 = 0
+
+    loop i < vector_len(module.globals) {
+        if module.globals[i].name == name {
+            give module.globals[i]
+        }
+
+        set i = i + 1
+    }
+
+    give IrGlobal {
+        id: IR_INVALID_ID,
+        name: "invalid",
+        ty: type_invalid(),
+        linkage: IrLinkage.Private,
+        visibility: IrVisibility.Private,
+        mutable: false,
+        initializer: "",
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc find_function_by_name(
+    module: IrModule,
+    name: string
+) -> IrFunctionRef {
+    let i: u64 = 0
+
+    loop i < vector_len(module.functions) {
+        if module.functions[i].name == name {
+            give module.functions[i]
+        }
+
+        set i = i + 1
+    }
+
+    give IrFunctionRef {
+        id: IR_INVALID_ID,
+        name: "invalid",
+        module: "",
+        linkage: IrLinkage.Private,
+        visibility: IrVisibility.Private,
+        entry: false,
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc find_function_global(
+    unit: IrUnit,
+    id: u64
+) -> IrFunctionRef {
+    let i: u64 = 0
+
+    loop i < vector_len(unit.modules) {
+        let module = unit.modules[i]
+        let j: u64 = 0
+
+        loop j < vector_len(module.functions) {
+            if module.functions[j].id == id {
+                give module.functions[j]
+            }
+
+            set j = j + 1
+        }
+
+        set i = i + 1
+    }
+
+    give IrFunctionRef {
+        id: IR_INVALID_ID,
+        name: "invalid",
+        module: "",
+        linkage: IrLinkage.Private,
+        visibility: IrVisibility.Private,
+        entry: false,
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc replace_module(
+    unit: IrUnit,
+    module: IrModule
+) -> IrUnit {
+    let next: [IrModule] = []
+    let replaced = false
+    let i: u64 = 0
+
+    loop i < vector_len(unit.modules) {
+        if unit.modules[i].id == module.id {
+            set next = next + [module]
+            set replaced = true
+        } else {
+            set next = next + [unit.modules[i]]
+        }
+
+        set i = i + 1
+    }
+
+    if replaced == false {
+        give unit_add_module(unit, module)
+    }
+
+    give IrUnit {
+        modules: next,
+        diagnostics: unit.diagnostics,
+        target: unit.target,
+        entry_function: unit.entry_function,
+        state: unit.state,
+        valid: unit.valid and module.valid
+    }
+}
+
+proc unit_with_state(
+    unit: IrUnit,
+    state: IrUnitState
+) -> IrUnit {
+    give IrUnit {
+        modules: unit.modules,
+        diagnostics: unit.diagnostics,
+        target: unit.target,
+        entry_function: unit.entry_function,
+        state: state,
+        valid: unit.valid
+    }
+}
+
+proc verify_module(module: IrModule) -> IrModule {
+    if module.valid == false {
+        give module_with_state(module, IrUnitState.Invalid)
+    }
+
+    if module.target.valid == false {
+        give module_with_state(module, IrUnitState.Invalid)
+    }
+
+    let i: u64 = 0
+
+    loop i < vector_len(module.functions) {
+        if module.functions[i].valid == false {
+            give module_with_state(module, IrUnitState.Invalid)
+        }
+
+        set i = i + 1
+    }
+
+    give module_with_state(module, IrUnitState.Verified)
+}
+
+proc verify_unit(unit: IrUnit) -> IrUnit {
+    let current = unit
+    let i: u64 = 0
+
+    loop i < vector_len(current.modules) {
+        let verified = verify_module(current.modules[i])
+        set current = replace_module(current, verified)
+
+        if verified.valid == false {
+            give unit_add_diagnostic(
+                current,
+                diagnostic_create(
+                    IrErrorKind.InvalidModule,
+                    "invalid IR module",
+                    verified.span,
+                    verified.id
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    if current.entry_function == IR_INVALID_ID {
+        give unit_add_diagnostic(
+            current,
+            diagnostic_create(
+                IrErrorKind.MissingEntry,
+                "IR unit has no entry function",
+                span_empty(),
+                IR_INVALID_ID
+            )
+        )
+    }
+
+    give unit_with_state(current, IrUnitState.Verified)
+}
+
+proc optimize_module(module: IrModule) -> IrModule {
+    if module.state != IrUnitState.Verified {
+        give module
+    }
+
+    give module_with_state(module, IrUnitState.Optimized)
+}
+
+proc optimize_unit(unit: IrUnit) -> IrUnit {
+    let current = unit_with_state(unit, IrUnitState.Optimized)
+    let i: u64 = 0
+
+    loop i < vector_len(current.modules) {
+        set current = replace_module(current, optimize_module(current.modules[i]))
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc lower_module(module: IrModule) -> IrModule {
+    if module.state != IrUnitState.Optimized and module.state != IrUnitState.Verified {
+        give module
+    }
+
+    give module_with_state(module, IrUnitState.Lowered)
+}
+
+proc lower_unit(unit: IrUnit) -> IrUnit {
+    let current = unit_with_state(unit, IrUnitState.Lowered)
+    let i: u64 = 0
+
+    loop i < vector_len(current.modules) {
+        set current = replace_module(current, lower_module(current.modules[i]))
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc finalize_unit(unit: IrUnit) -> IrUnit {
+    let verified = verify_unit(unit)
+
+    if verified.valid == false {
+        give verified
+    }
+
+    let optimized = optimize_unit(verified)
+    let lowered = lower_unit(optimized)
+
+    give lowered
+}
+
+proc unit_module_count(unit: IrUnit) -> u64 {
+    give vector_len(unit.modules)
+}
+
+proc unit_function_count(unit: IrUnit) -> u64 {
+    let count: u64 = 0
+    let i: u64 = 0
+
+    loop i < vector_len(unit.modules) {
+        set count = count + vector_len(unit.modules[i].functions)
+        set i = i + 1
+    }
+
+    give count
+}
+
+proc unit_global_count(unit: IrUnit) -> u64 {
+    let count: u64 = 0
+    let i: u64 = 0
+
+    loop i < vector_len(unit.modules) {
+        set count = count + vector_len(unit.modules[i].globals)
+        set i = i + 1
+    }
+
+    give count
+}
+
+proc unit_type_count(unit: IrUnit) -> u64 {
+    let count: u64 = 0
+    let i: u64 = 0
+
+    loop i < vector_len(unit.modules) {
+        set count = count + vector_len(unit.modules[i].types)
+        set i = i + 1
+    }
+
+    give count
+}
+
+proc unit_error_count(unit: IrUnit) -> u64 {
+    give vector_len(unit.diagnostics)
+}
+
+proc unit_is_valid(unit: IrUnit) -> bool {
+    give unit.valid and vector_len(unit.diagnostics) == 0
+}
+
+proc arch_name(arch: IrTargetArch) -> string {
+    if arch == IrTargetArch.Native {
+        give "native"
+    }
+
+    if arch == IrTargetArch.X86_64 {
+        give "x86_64"
+    }
+
+    if arch == IrTargetArch.AArch64 {
+        give "aarch64"
+    }
+
+    if arch == IrTargetArch.RiscV64 {
+        give "riscv64"
+    }
+
+    if arch == IrTargetArch.ARM {
+        give "arm"
+    }
+
+    if arch == IrTargetArch.I386 {
+        give "i386"
+    }
+
+    if arch == IrTargetArch.Wasm32 {
+        give "wasm32"
+    }
+
+    give "unknown"
+}
+
+proc os_name(os: IrTargetOs) -> string {
+    if os == IrTargetOs.Freestanding {
+        give "freestanding"
+    }
+
+    if os == IrTargetOs.Linux {
+        give "linux"
+    }
+
+    if os == IrTargetOs.Darwin {
+        give "darwin"
+    }
+
+    if os == IrTargetOs.Windows {
+        give "windows"
+    }
+
+    if os == IrTargetOs.VitteOS {
+        give "vitteos"
+    }
+
+    if os == IrTargetOs.Uefi {
+        give "uefi"
+    }
+
+    if os == IrTargetOs.BareMetal {
+        give "baremetal"
+    }
+
+    give "unknown"
+}
+
+proc module_kind_name(kind: IrModuleKind) -> string {
+    if kind == IrModuleKind.Library {
+        give "library"
+    }
+
+    if kind == IrModuleKind.Binary {
+        give "binary"
+    }
+
+    if kind == IrModuleKind.Kernel {
+        give "kernel"
+    }
+
+    if kind == IrModuleKind.Driver {
+        give "driver"
+    }
+
+    if kind == IrModuleKind.Runtime {
+        give "runtime"
+    }
+
+    if kind == IrModuleKind.Test {
+        give "test"
+    }
+
+    if kind == IrModuleKind.Bench {
+        give "bench"
+    }
+
+    give "library"
+}
+
+proc linkage_name(linkage: IrLinkage) -> string {
+    if linkage == IrLinkage.Private {
+        give "private"
+    }
+
+    if linkage == IrLinkage.Internal {
+        give "internal"
+    }
+
+    if linkage == IrLinkage.External {
+        give "external"
+    }
+
+    if linkage == IrLinkage.Weak {
+        give "weak"
+    }
+
+    if linkage == IrLinkage.Exported {
+        give "exported"
+    }
+
+    if linkage == IrLinkage.Imported {
+        give "imported"
+    }
+
+    give "private"
+}
+
+proc visibility_name(visibility: IrVisibility) -> string {
+    if visibility == IrVisibility.Private {
+        give "private"
+    }
+
+    if visibility == IrVisibility.Module {
+        give "module"
+    }
+
+    if visibility == IrVisibility.Package {
+        give "package"
+    }
+
+    if visibility == IrVisibility.Public {
+        give "public"
+    }
+
+    if visibility == IrVisibility.Exported {
+        give "exported"
+    }
+
+    give "private"
+}
+
+proc state_name(state: IrUnitState) -> string {
+    if state == IrUnitState.Created {
+        give "created"
+    }
+
+    if state == IrUnitState.Built {
+        give "built"
+    }
+
+    if state == IrUnitState.Verified {
+        give "verified"
+    }
+
+    if state == IrUnitState.Optimized {
+        give "optimized"
+    }
+
+    if state == IrUnitState.Lowered {
+        give "lowered"
+    }
+
+    if state == IrUnitState.Emitted {
+        give "emitted"
+    }
+
+    if state == IrUnitState.Invalid {
+        give "invalid"
+    }
+
+    give "unknown"
+}
+
+proc print_target(target: IrTarget) {
+    emit "ir target"
+    emit arch_name(target.arch)
+    emit os_name(target.os)
+    emit target.triple
+    emit target.pointer_width
+    emit target.endian
+}
+
+proc print_type(ty: IrType) {
+    emit "ir type"
+    emit ty.id
+    emit ty.name
+    emit ty.size
+    emit ty.align
+}
+
+proc print_global(global: IrGlobal) {
+    emit "ir global"
+    emit global.id
+    emit global.name
+    print_type(global.ty)
+    emit linkage_name(global.linkage)
+    emit visibility_name(global.visibility)
+    emit global.mutable
+}
+
+proc print_function_ref(function: IrFunctionRef) {
+    emit "ir function"
+    emit function.id
+    emit function.module
+    emit function.name
+    emit linkage_name(function.linkage)
+    emit visibility_name(function.visibility)
+    emit function.entry
+}
+
+proc print_module(module: IrModule) {
+    emit "ir module"
+    emit module.id
+    emit module.name
+    emit module.path
+    emit module_kind_name(module.kind)
+    emit state_name(module.state)
+    print_target(module.target)
+
+    let i: u64 = 0
+
+    loop i < vector_len(module.types) {
+        print_type(module.types[i])
+        set i = i + 1
+    }
+
+    let j: u64 = 0
+
+    loop j < vector_len(module.globals) {
+        print_global(module.globals[j])
+        set j = j + 1
+    }
+
+    let k: u64 = 0
+
+    loop k < vector_len(module.functions) {
+        print_function_ref(module.functions[k])
+        set k = k + 1
+    }
+}
+
+proc print_unit(unit: IrUnit) {
+    emit "ir unit"
+    print_target(unit.target)
+    emit state_name(unit.state)
+    emit unit.entry_function
+    emit unit_module_count(unit)
+    emit unit_function_count(unit)
+    emit unit_global_count(unit)
+    emit unit_type_count(unit)
+    emit unit_error_count(unit)
+
+    let i: u64 = 0
+
+    loop i < vector_len(unit.modules) {
+        print_module(unit.modules[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

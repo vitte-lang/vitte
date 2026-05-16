@@ -1,0 +1,844 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Analysis / Semantic Analysis       >>>
+<<< File: compiler/analysis/sema/resolver.vit                >>>
+<<< Module: vitte/compiler/analysis/sema/resolver            >>>
+<<< Purpose: semantic name resolution, imports and lookup     >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/analysis/sema/resolver
+
+const RESOLVER_VERSION: u32 = 2026
+const RESOLVER_INVALID_ID: u64 = 18446744073709551615
+const RESOLVER_MAX_SYMBOLS: u64 = 1048576
+const RESOLVER_MAX_IMPORTS: u64 = 262144
+const RESOLVER_MAX_DIAGNOSTICS: u64 = 1048576
+
+pick ResolveKind {
+    Module
+    Function
+    Type
+    Form
+    Pick
+    Variant
+    Field
+    Parameter
+    Local
+    Const
+    Static
+    Global
+    Trait
+    Impl
+    Macro
+    Label
+    Unknown
+}
+
+pick ResolveVisibility {
+    Private
+    Package
+    Module
+    Public
+    Exported
+}
+
+pick ImportKind {
+    Single
+    Group
+    Glob
+    Alias
+    Prelude
+}
+
+pick ResolveErrorKind {
+    None
+    UnknownSymbol
+    DuplicateSymbol
+    AmbiguousSymbol
+    UnknownModule
+    InvalidImport
+    DuplicateImport
+    PrivateSymbolAccess
+    InvalidVisibility
+    SymbolLimitExceeded
+    ImportLimitExceeded
+    InternalFailure
+}
+
+form ResolveSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form ResolvePath {
+    text: string
+    segments: [string]
+    absolute: bool
+    valid: bool
+}
+
+form ResolvedSymbol {
+    id: u64
+    name: string
+    path: ResolvePath
+    kind: ResolveKind
+    visibility: ResolveVisibility
+    module: string
+    span: ResolveSpan
+    valid: bool
+}
+
+form ImportEntry {
+    id: u64
+    kind: ImportKind
+    path: ResolvePath
+    alias: string
+    module: string
+    used: bool
+    valid: bool
+}
+
+form ResolveDiagnostic {
+    kind: ResolveErrorKind
+    message: string
+    span: ResolveSpan
+    symbol: u64
+}
+
+form ResolveResult {
+    found: bool
+    ambiguous: bool
+    symbol: ResolvedSymbol
+}
+
+form ResolverContext {
+    module: string
+    symbols: [ResolvedSymbol]
+    imports: [ImportEntry]
+    diagnostics: [ResolveDiagnostic]
+    valid: bool
+}
+
+proc span_empty() -> ResolveSpan {
+    give ResolveSpan {
+        file: "compiler/analysis/sema/resolver.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc path_empty() -> ResolvePath {
+    give ResolvePath {
+        text: "",
+        segments: [],
+        absolute: false,
+        valid: false
+    }
+}
+
+proc path_create(
+    text: string,
+    segments: [string],
+    absolute: bool
+) -> ResolvePath {
+    give ResolvePath {
+        text: text,
+        segments: segments,
+        absolute: absolute,
+        valid: vector_len(segments) > 0
+    }
+}
+
+proc symbol_invalid() -> ResolvedSymbol {
+    give ResolvedSymbol {
+        id: RESOLVER_INVALID_ID,
+        name: "invalid",
+        path: path_empty(),
+        kind: ResolveKind.Unknown,
+        visibility: ResolveVisibility.Private,
+        module: "",
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc symbol_create(
+    id: u64,
+    name: string,
+    path: ResolvePath,
+    kind: ResolveKind,
+    visibility: ResolveVisibility,
+    module: string,
+    span: ResolveSpan
+) -> ResolvedSymbol {
+    give ResolvedSymbol {
+        id: id,
+        name: name,
+        path: path,
+        kind: kind,
+        visibility: visibility,
+        module: module,
+        span: span,
+        valid: true
+    }
+}
+
+proc import_create(
+    id: u64,
+    kind: ImportKind,
+    path: ResolvePath,
+    alias: string,
+    module: string
+) -> ImportEntry {
+    give ImportEntry {
+        id: id,
+        kind: kind,
+        path: path,
+        alias: alias,
+        module: module,
+        used: false,
+        valid: path.valid
+    }
+}
+
+proc diagnostic_create(
+    kind: ResolveErrorKind,
+    message: string,
+    span: ResolveSpan,
+    symbol: u64
+) -> ResolveDiagnostic {
+    give ResolveDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        symbol: symbol
+    }
+}
+
+proc result_not_found() -> ResolveResult {
+    give ResolveResult {
+        found: false,
+        ambiguous: false,
+        symbol: symbol_invalid()
+    }
+}
+
+proc result_found(symbol: ResolvedSymbol) -> ResolveResult {
+    give ResolveResult {
+        found: true,
+        ambiguous: false,
+        symbol: symbol
+    }
+}
+
+proc result_ambiguous(symbol: ResolvedSymbol) -> ResolveResult {
+    give ResolveResult {
+        found: true,
+        ambiguous: true,
+        symbol: symbol
+    }
+}
+
+proc context_empty(module: string) -> ResolverContext {
+    give ResolverContext {
+        module: module,
+        symbols: [],
+        imports: [],
+        diagnostics: [],
+        valid: true
+    }
+}
+
+proc context_add_diagnostic(
+    context: ResolverContext,
+    diagnostic: ResolveDiagnostic
+) -> ResolverContext {
+    give ResolverContext {
+        module: context.module,
+        symbols: context.symbols,
+        imports: context.imports,
+        diagnostics: context.diagnostics + [diagnostic],
+        valid: false
+    }
+}
+
+proc context_add_symbol(
+    context: ResolverContext,
+    symbol: ResolvedSymbol
+) -> ResolverContext {
+    if vector_len(context.symbols) >= RESOLVER_MAX_SYMBOLS {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                ResolveErrorKind.SymbolLimitExceeded,
+                "too many resolver symbols",
+                symbol.span,
+                symbol.id
+            )
+        )
+    }
+
+    if find_local_symbol(context, symbol.module, symbol.name).valid {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                ResolveErrorKind.DuplicateSymbol,
+                "duplicate symbol in module",
+                symbol.span,
+                symbol.id
+            )
+        )
+    }
+
+    give ResolverContext {
+        module: context.module,
+        symbols: context.symbols + [symbol],
+        imports: context.imports,
+        diagnostics: context.diagnostics,
+        valid: context.valid
+    }
+}
+
+proc context_add_import(
+    context: ResolverContext,
+    entry: ImportEntry
+) -> ResolverContext {
+    if vector_len(context.imports) >= RESOLVER_MAX_IMPORTS {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                ResolveErrorKind.ImportLimitExceeded,
+                "too many imports",
+                span_empty(),
+                entry.id
+            )
+        )
+    }
+
+    if entry.valid == false {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                ResolveErrorKind.InvalidImport,
+                "invalid import path",
+                span_empty(),
+                entry.id
+            )
+        )
+    }
+
+    if has_import(context, entry.path.text, entry.alias) {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                ResolveErrorKind.DuplicateImport,
+                "duplicate import",
+                span_empty(),
+                entry.id
+            )
+        )
+    }
+
+    give ResolverContext {
+        module: context.module,
+        symbols: context.symbols,
+        imports: context.imports + [entry],
+        diagnostics: context.diagnostics,
+        valid: context.valid
+    }
+}
+
+proc has_import(
+    context: ResolverContext,
+    path: string,
+    alias: string
+) -> bool {
+    let i: u64 = 0
+
+    loop i < vector_len(context.imports) {
+        let entry = context.imports[i]
+
+        if entry.path.text == path and entry.alias == alias {
+            give true
+        }
+
+        set i = i + 1
+    }
+
+    give false
+}
+
+proc find_symbol_by_id(
+    context: ResolverContext,
+    id: u64
+) -> ResolvedSymbol {
+    let i: u64 = 0
+
+    loop i < vector_len(context.symbols) {
+        if context.symbols[i].id == id {
+            give context.symbols[i]
+        }
+
+        set i = i + 1
+    }
+
+    give symbol_invalid()
+}
+
+proc find_local_symbol(
+    context: ResolverContext,
+    module: string,
+    name: string
+) -> ResolvedSymbol {
+    let i: u64 = 0
+
+    loop i < vector_len(context.symbols) {
+        let symbol = context.symbols[i]
+
+        if symbol.module == module and symbol.name == name {
+            give symbol
+        }
+
+        set i = i + 1
+    }
+
+    give symbol_invalid()
+}
+
+proc find_global_symbol(
+    context: ResolverContext,
+    name: string
+) -> ResolveResult {
+    let found = symbol_invalid()
+    let count: u64 = 0
+
+    let i: u64 = 0
+
+    loop i < vector_len(context.symbols) {
+        let symbol = context.symbols[i]
+
+        if symbol.name == name {
+            set found = symbol
+            set count = count + 1
+        }
+
+        set i = i + 1
+    }
+
+    if count == 0 {
+        give result_not_found()
+    }
+
+    if count > 1 {
+        give result_ambiguous(found)
+    }
+
+    give result_found(found)
+}
+
+proc path_last_segment(path: ResolvePath) -> string {
+    if vector_len(path.segments) == 0 {
+        give ""
+    }
+
+    give path.segments[vector_len(path.segments) - 1]
+}
+
+proc resolve_path(
+    context: ResolverContext,
+    path: ResolvePath
+) -> ResolveResult {
+    if path.valid == false {
+        give result_not_found()
+    }
+
+    let name = path_last_segment(path)
+
+    if path.absolute {
+        give find_global_symbol(context, name)
+    }
+
+    let local = find_local_symbol(context, context.module, name)
+
+    if local.valid {
+        give result_found(local)
+    }
+
+    give resolve_imported(context, name)
+}
+
+proc resolve_name(
+    context: ResolverContext,
+    name: string
+) -> ResolveResult {
+    let local = find_local_symbol(context, context.module, name)
+
+    if local.valid {
+        give result_found(local)
+    }
+
+    let imported = resolve_imported(context, name)
+
+    if imported.found {
+        give imported
+    }
+
+    give find_global_symbol(context, name)
+}
+
+proc resolve_imported(
+    context: ResolverContext,
+    name: string
+) -> ResolveResult {
+    let found = symbol_invalid()
+    let count: u64 = 0
+
+    let i: u64 = 0
+
+    loop i < vector_len(context.imports) {
+        let entry = context.imports[i]
+
+        if import_matches(entry, name) {
+            let symbol = find_global_symbol(context, import_target_name(entry, name))
+
+            if symbol.found {
+                set found = symbol.symbol
+                set count = count + 1
+            }
+        }
+
+        set i = i + 1
+    }
+
+    if count == 0 {
+        give result_not_found()
+    }
+
+    if count > 1 {
+        give result_ambiguous(found)
+    }
+
+    give result_found(found)
+}
+
+proc import_matches(entry: ImportEntry, name: string) -> bool {
+    if entry.kind == ImportKind.Glob {
+        give true
+    }
+
+    if entry.alias != "" {
+        give entry.alias == name
+    }
+
+    give path_last_segment(entry.path) == name
+}
+
+proc import_target_name(entry: ImportEntry, requested: string) -> string {
+    if entry.kind == ImportKind.Glob {
+        give requested
+    }
+
+    give path_last_segment(entry.path)
+}
+
+proc visibility_allows_access(
+    visibility: ResolveVisibility,
+    from_module: string,
+    owner_module: string
+) -> bool {
+    if visibility == ResolveVisibility.Public {
+        give true
+    }
+
+    if visibility == ResolveVisibility.Exported {
+        give true
+    }
+
+    if visibility == ResolveVisibility.Private {
+        give from_module == owner_module
+    }
+
+    if visibility == ResolveVisibility.Module {
+        give from_module == owner_module
+    }
+
+    if visibility == ResolveVisibility.Package {
+        give module_same_package(from_module, owner_module)
+    }
+
+    give false
+}
+
+proc module_same_package(left: string, right: string) -> bool {
+    give module_root(left) == module_root(right)
+}
+
+proc module_root(module: string) -> string {
+    give module
+}
+
+proc resolve_accessible(
+    context: ResolverContext,
+    name: string,
+    from_module: string,
+    span: ResolveSpan
+) -> ResolverContext {
+    let result = resolve_name(context, name)
+
+    if result.found == false {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                ResolveErrorKind.UnknownSymbol,
+                "unknown symbol",
+                span,
+                RESOLVER_INVALID_ID
+            )
+        )
+    }
+
+    if result.ambiguous {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                ResolveErrorKind.AmbiguousSymbol,
+                "ambiguous symbol",
+                span,
+                result.symbol.id
+            )
+        )
+    }
+
+    if visibility_allows_access(result.symbol.visibility, from_module, result.symbol.module) == false {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                ResolveErrorKind.PrivateSymbolAccess,
+                "private symbol access",
+                span,
+                result.symbol.id
+            )
+        )
+    }
+
+    give context
+}
+
+proc mark_import_used(
+    context: ResolverContext,
+    import_id: u64
+) -> ResolverContext {
+    let next: [ImportEntry] = []
+    let i: u64 = 0
+
+    loop i < vector_len(context.imports) {
+        let entry = context.imports[i]
+
+        if entry.id == import_id {
+            set next = next + [
+                ImportEntry {
+                    id: entry.id,
+                    kind: entry.kind,
+                    path: entry.path,
+                    alias: entry.alias,
+                    module: entry.module,
+                    used: true,
+                    valid: entry.valid
+                }
+            ]
+        } else {
+            set next = next + [entry]
+        }
+
+        set i = i + 1
+    }
+
+    give ResolverContext {
+        module: context.module,
+        symbols: context.symbols,
+        imports: next,
+        diagnostics: context.diagnostics,
+        valid: context.valid
+    }
+}
+
+proc validate_imports(context: ResolverContext) -> ResolverContext {
+    let current = context
+    let i: u64 = 0
+
+    loop i < vector_len(current.imports) {
+        let entry = current.imports[i]
+
+        if entry.valid == false {
+            give context_add_diagnostic(
+                current,
+                diagnostic_create(
+                    ResolveErrorKind.InvalidImport,
+                    "invalid import",
+                    span_empty(),
+                    entry.id
+                )
+            )
+        }
+
+        if entry.kind != ImportKind.Glob {
+            let name = import_target_name(entry, entry.alias)
+            let result = find_global_symbol(current, name)
+
+            if result.found == false {
+                give context_add_diagnostic(
+                    current,
+                    diagnostic_create(
+                        ResolveErrorKind.UnknownModule,
+                        "import target not found",
+                        span_empty(),
+                        entry.id
+                    )
+                )
+            }
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc validate_symbols(context: ResolverContext) -> ResolverContext {
+    let current = context
+    let i: u64 = 0
+
+    loop i < vector_len(current.symbols) {
+        let symbol = current.symbols[i]
+
+        if symbol.valid == false {
+            give context_add_diagnostic(
+                current,
+                diagnostic_create(
+                    ResolveErrorKind.UnknownSymbol,
+                    "invalid symbol",
+                    symbol.span,
+                    symbol.id
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc validate_resolver(context: ResolverContext) -> ResolverContext {
+    let s1 = validate_symbols(context)
+    let s2 = validate_imports(s1)
+
+    give s2
+}
+
+proc resolver_error_count(context: ResolverContext) -> u64 {
+    give vector_len(context.diagnostics)
+}
+
+proc resolver_is_valid(context: ResolverContext) -> bool {
+    give context.valid and vector_len(context.diagnostics) == 0
+}
+
+proc kind_name(kind: ResolveKind) -> string {
+    if kind == ResolveKind.Module {
+        give "module"
+    }
+
+    if kind == ResolveKind.Function {
+        give "function"
+    }
+
+    if kind == ResolveKind.Type {
+        give "type"
+    }
+
+    if kind == ResolveKind.Form {
+        give "form"
+    }
+
+    if kind == ResolveKind.Pick {
+        give "pick"
+    }
+
+    if kind == ResolveKind.Field {
+        give "field"
+    }
+
+    if kind == ResolveKind.Local {
+        give "local"
+    }
+
+    if kind == ResolveKind.Const {
+        give "const"
+    }
+
+    give "unknown"
+}
+
+proc visibility_name(visibility: ResolveVisibility) -> string {
+    if visibility == ResolveVisibility.Private {
+        give "private"
+    }
+
+    if visibility == ResolveVisibility.Package {
+        give "package"
+    }
+
+    if visibility == ResolveVisibility.Module {
+        give "module"
+    }
+
+    if visibility == ResolveVisibility.Public {
+        give "public"
+    }
+
+    if visibility == ResolveVisibility.Exported {
+        give "exported"
+    }
+
+    give "unknown"
+}
+
+proc print_symbol(symbol: ResolvedSymbol) {
+    emit "resolved symbol"
+    emit symbol.id
+    emit symbol.name
+    emit kind_name(symbol.kind)
+    emit visibility_name(symbol.visibility)
+    emit symbol.module
+}
+
+proc print_import(entry: ImportEntry) {
+    emit "import"
+    emit entry.id
+    emit entry.path.text
+    emit entry.alias
+    emit entry.used
+}
+
+proc print_resolver(context: ResolverContext) {
+    emit "resolver"
+    emit context.module
+    emit vector_len(context.symbols)
+    emit vector_len(context.imports)
+    emit vector_len(context.diagnostics)
+
+    let i: u64 = 0
+
+    loop i < vector_len(context.symbols) {
+        print_symbol(context.symbols[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

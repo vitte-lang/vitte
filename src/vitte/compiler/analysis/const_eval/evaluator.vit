@@ -1,0 +1,720 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Analysis / Const Evaluation        >>>
+<<< File: compiler/analysis/const_eval/evaluator.vit         >>>
+<<< Module: vitte/compiler/analysis/const_eval/evaluator     >>>
+<<< Purpose: compile-time expression evaluator core          >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/analysis/const_eval/evaluator
+
+const CONST_EVAL_INVALID_ID: u64 = 18446744073709551615
+const CONST_EVAL_VERSION: u32 = 2026
+const CONST_EVAL_MAX_STACK: u64 = 65536
+const CONST_EVAL_MAX_STEPS: u64 = 1048576
+const CONST_EVAL_MAX_VALUES: u64 = 1048576
+
+pick ConstValueKind {
+    Void
+    Bool
+    Int
+    UInt
+    Float
+    String
+    Char
+    Array
+    Tuple
+    Struct
+    Enum
+    Pointer
+    Function
+    Unknown
+}
+
+pick ConstEvalState {
+    Ready
+    Running
+    Done
+    Failed
+    LimitExceeded
+}
+
+pick ConstEvalOp {
+    None
+    Add
+    Sub
+    Mul
+    Div
+    Mod
+    Neg
+    Not
+    Eq
+    Ne
+    Lt
+    Le
+    Gt
+    Ge
+    And
+    Or
+    BitAnd
+    BitOr
+    BitXor
+    Shl
+    Shr
+}
+
+pick ConstEvalError {
+    None
+    UnknownValue
+    InvalidOperation
+    DivisionByZero
+    IntegerOverflow
+    InvalidCast
+    InvalidIndex
+    StepLimitExceeded
+    StackLimitExceeded
+    InternalFailure
+}
+
+form ConstEvalSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form ConstValue {
+    id: u64
+    kind: ConstValueKind
+    type_name: string
+    text: string
+    int_value: i64
+    uint_value: u64
+    float_value: f64
+    bool_value: bool
+    valid: bool
+}
+
+form ConstEvalDiagnostic {
+    error: ConstEvalError
+    message: string
+    span: ConstEvalSpan
+    value: u64
+}
+
+form ConstEvalFrame {
+    id: u64
+    expression: u64
+    function: string
+    depth: u64
+}
+
+form ConstEvalContext {
+    state: ConstEvalState
+    values: [ConstValue]
+    stack: [ConstEvalFrame]
+    diagnostics: [ConstEvalDiagnostic]
+    steps: u64
+    valid: bool
+}
+
+proc span_empty() -> ConstEvalSpan {
+    give ConstEvalSpan {
+        file: "compiler/analysis/const_eval/evaluator.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc value_invalid() -> ConstValue {
+    give ConstValue {
+        id: CONST_EVAL_INVALID_ID,
+        kind: ConstValueKind.Unknown,
+        type_name: "unknown",
+        text: "",
+        int_value: 0,
+        uint_value: 0,
+        float_value: 0.0,
+        bool_value: false,
+        valid: false
+    }
+}
+
+proc value_void(id: u64) -> ConstValue {
+    give ConstValue {
+        id: id,
+        kind: ConstValueKind.Void,
+        type_name: "void",
+        text: "",
+        int_value: 0,
+        uint_value: 0,
+        float_value: 0.0,
+        bool_value: false,
+        valid: true
+    }
+}
+
+proc value_bool(id: u64, value: bool) -> ConstValue {
+    give ConstValue {
+        id: id,
+        kind: ConstValueKind.Bool,
+        type_name: "bool",
+        text: "",
+        int_value: 0,
+        uint_value: 0,
+        float_value: 0.0,
+        bool_value: value,
+        valid: true
+    }
+}
+
+proc value_int(id: u64, value: i64) -> ConstValue {
+    give ConstValue {
+        id: id,
+        kind: ConstValueKind.Int,
+        type_name: "i64",
+        text: "",
+        int_value: value,
+        uint_value: 0,
+        float_value: 0.0,
+        bool_value: false,
+        valid: true
+    }
+}
+
+proc value_uint(id: u64, value: u64) -> ConstValue {
+    give ConstValue {
+        id: id,
+        kind: ConstValueKind.UInt,
+        type_name: "u64",
+        text: "",
+        int_value: 0,
+        uint_value: value,
+        float_value: 0.0,
+        bool_value: false,
+        valid: true
+    }
+}
+
+proc value_float(id: u64, value: f64) -> ConstValue {
+    give ConstValue {
+        id: id,
+        kind: ConstValueKind.Float,
+        type_name: "f64",
+        text: "",
+        int_value: 0,
+        uint_value: 0,
+        float_value: value,
+        bool_value: false,
+        valid: true
+    }
+}
+
+proc value_string(id: u64, value: string) -> ConstValue {
+    give ConstValue {
+        id: id,
+        kind: ConstValueKind.String,
+        type_name: "string",
+        text: value,
+        int_value: 0,
+        uint_value: 0,
+        float_value: 0.0,
+        bool_value: false,
+        valid: true
+    }
+}
+
+proc diagnostic_create(
+    error: ConstEvalError,
+    message: string,
+    span: ConstEvalSpan,
+    value: u64
+) -> ConstEvalDiagnostic {
+    give ConstEvalDiagnostic {
+        error: error,
+        message: message,
+        span: span,
+        value: value
+    }
+}
+
+proc context_empty() -> ConstEvalContext {
+    give ConstEvalContext {
+        state: ConstEvalState.Ready,
+        values: [],
+        stack: [],
+        diagnostics: [],
+        steps: 0,
+        valid: true
+    }
+}
+
+proc context_add_diagnostic(
+    context: ConstEvalContext,
+    diagnostic: ConstEvalDiagnostic
+) -> ConstEvalContext {
+    give ConstEvalContext {
+        state: ConstEvalState.Failed,
+        values: context.values,
+        stack: context.stack,
+        diagnostics: context.diagnostics + [diagnostic],
+        steps: context.steps,
+        valid: false
+    }
+}
+
+proc context_add_value(
+    context: ConstEvalContext,
+    value: ConstValue
+) -> ConstEvalContext {
+    if vector_len(context.values) >= CONST_EVAL_MAX_VALUES {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                ConstEvalError.InternalFailure,
+                "too many const values",
+                span_empty(),
+                value.id
+            )
+        )
+    }
+
+    give ConstEvalContext {
+        state: context.state,
+        values: context.values + [value],
+        stack: context.stack,
+        diagnostics: context.diagnostics,
+        steps: context.steps,
+        valid: context.valid
+    }
+}
+
+proc context_step(context: ConstEvalContext) -> ConstEvalContext {
+    if context.steps >= CONST_EVAL_MAX_STEPS {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                ConstEvalError.StepLimitExceeded,
+                "constant evaluation step limit exceeded",
+                span_empty(),
+                CONST_EVAL_INVALID_ID
+            )
+        )
+    }
+
+    give ConstEvalContext {
+        state: context.state,
+        values: context.values,
+        stack: context.stack,
+        diagnostics: context.diagnostics,
+        steps: context.steps + 1,
+        valid: context.valid
+    }
+}
+
+proc frame_create(
+    id: u64,
+    expression: u64,
+    function: string,
+    depth: u64
+) -> ConstEvalFrame {
+    give ConstEvalFrame {
+        id: id,
+        expression: expression,
+        function: function,
+        depth: depth
+    }
+}
+
+proc context_push_frame(
+    context: ConstEvalContext,
+    frame: ConstEvalFrame
+) -> ConstEvalContext {
+    if vector_len(context.stack) >= CONST_EVAL_MAX_STACK {
+        give context_add_diagnostic(
+            context,
+            diagnostic_create(
+                ConstEvalError.StackLimitExceeded,
+                "constant evaluation stack limit exceeded",
+                span_empty(),
+                frame.expression
+            )
+        )
+    }
+
+    give ConstEvalContext {
+        state: ConstEvalState.Running,
+        values: context.values,
+        stack: context.stack + [frame],
+        diagnostics: context.diagnostics,
+        steps: context.steps,
+        valid: context.valid
+    }
+}
+
+proc context_pop_frame(context: ConstEvalContext) -> ConstEvalContext {
+    let next_stack: [ConstEvalFrame] = []
+    let i: u64 = 0
+    let limit = vector_len(context.stack)
+
+    loop i + 1 < limit {
+        set next_stack = next_stack + [context.stack[i]]
+        set i = i + 1
+    }
+
+    give ConstEvalContext {
+        state: context.state,
+        values: context.values,
+        stack: next_stack,
+        diagnostics: context.diagnostics,
+        steps: context.steps,
+        valid: context.valid
+    }
+}
+
+proc find_value(context: ConstEvalContext, id: u64) -> ConstValue {
+    let i: u64 = 0
+
+    loop i < vector_len(context.values) {
+        if context.values[i].id == id {
+            give context.values[i]
+        }
+
+        set i = i + 1
+    }
+
+    give value_invalid()
+}
+
+proc value_is_numeric(value: ConstValue) -> bool {
+    if value.kind == ConstValueKind.Int {
+        give true
+    }
+
+    if value.kind == ConstValueKind.UInt {
+        give true
+    }
+
+    if value.kind == ConstValueKind.Float {
+        give true
+    }
+
+    give false
+}
+
+proc value_is_bool(value: ConstValue) -> bool {
+    give value.kind == ConstValueKind.Bool
+}
+
+proc eval_binary_int(
+    id: u64,
+    op: ConstEvalOp,
+    left: ConstValue,
+    right: ConstValue,
+    span: ConstEvalSpan
+) -> ConstValue {
+    if op == ConstEvalOp.Add {
+        give value_int(id, left.int_value + right.int_value)
+    }
+
+    if op == ConstEvalOp.Sub {
+        give value_int(id, left.int_value - right.int_value)
+    }
+
+    if op == ConstEvalOp.Mul {
+        give value_int(id, left.int_value * right.int_value)
+    }
+
+    if op == ConstEvalOp.Div {
+        if right.int_value == 0 {
+            give value_invalid()
+        }
+
+        give value_int(id, left.int_value / right.int_value)
+    }
+
+    if op == ConstEvalOp.Mod {
+        if right.int_value == 0 {
+            give value_invalid()
+        }
+
+        give value_int(id, left.int_value % right.int_value)
+    }
+
+    if op == ConstEvalOp.Eq {
+        give value_bool(id, left.int_value == right.int_value)
+    }
+
+    if op == ConstEvalOp.Ne {
+        give value_bool(id, left.int_value != right.int_value)
+    }
+
+    if op == ConstEvalOp.Lt {
+        give value_bool(id, left.int_value < right.int_value)
+    }
+
+    if op == ConstEvalOp.Le {
+        give value_bool(id, left.int_value <= right.int_value)
+    }
+
+    if op == ConstEvalOp.Gt {
+        give value_bool(id, left.int_value > right.int_value)
+    }
+
+    if op == ConstEvalOp.Ge {
+        give value_bool(id, left.int_value >= right.int_value)
+    }
+
+    give value_invalid()
+}
+
+proc eval_binary_bool(
+    id: u64,
+    op: ConstEvalOp,
+    left: ConstValue,
+    right: ConstValue
+) -> ConstValue {
+    if op == ConstEvalOp.And {
+        give value_bool(id, left.bool_value and right.bool_value)
+    }
+
+    if op == ConstEvalOp.Or {
+        give value_bool(id, left.bool_value or right.bool_value)
+    }
+
+    if op == ConstEvalOp.Eq {
+        give value_bool(id, left.bool_value == right.bool_value)
+    }
+
+    if op == ConstEvalOp.Ne {
+        give value_bool(id, left.bool_value != right.bool_value)
+    }
+
+    give value_invalid()
+}
+
+proc eval_binary(
+    context: ConstEvalContext,
+    id: u64,
+    op: ConstEvalOp,
+    left_id: u64,
+    right_id: u64,
+    span: ConstEvalSpan
+) -> ConstEvalContext {
+    let stepped = context_step(context)
+
+    if stepped.valid == false {
+        give stepped
+    }
+
+    let left = find_value(stepped, left_id)
+    let right = find_value(stepped, right_id)
+
+    if left.valid == false or right.valid == false {
+        give context_add_diagnostic(
+            stepped,
+            diagnostic_create(
+                ConstEvalError.UnknownValue,
+                "unknown constant operand",
+                span,
+                id
+            )
+        )
+    }
+
+    if left.kind == ConstValueKind.Int and right.kind == ConstValueKind.Int {
+        let result = eval_binary_int(id, op, left, right, span)
+
+        if result.valid == false {
+            give context_add_diagnostic(
+                stepped,
+                diagnostic_create(
+                    ConstEvalError.InvalidOperation,
+                    "invalid integer constant operation",
+                    span,
+                    id
+                )
+            )
+        }
+
+        give context_add_value(stepped, result)
+    }
+
+    if left.kind == ConstValueKind.Bool and right.kind == ConstValueKind.Bool {
+        let result = eval_binary_bool(id, op, left, right)
+
+        if result.valid == false {
+            give context_add_diagnostic(
+                stepped,
+                diagnostic_create(
+                    ConstEvalError.InvalidOperation,
+                    "invalid boolean constant operation",
+                    span,
+                    id
+                )
+            )
+        }
+
+        give context_add_value(stepped, result)
+    }
+
+    give context_add_diagnostic(
+        stepped,
+        diagnostic_create(
+            ConstEvalError.InvalidOperation,
+            "unsupported constant binary operation",
+            span,
+            id
+        )
+    )
+}
+
+proc eval_unary(
+    context: ConstEvalContext,
+    id: u64,
+    op: ConstEvalOp,
+    value_id: u64,
+    span: ConstEvalSpan
+) -> ConstEvalContext {
+    let stepped = context_step(context)
+
+    if stepped.valid == false {
+        give stepped
+    }
+
+    let value = find_value(stepped, value_id)
+
+    if value.valid == false {
+        give context_add_diagnostic(
+            stepped,
+            diagnostic_create(ConstEvalError.UnknownValue, "unknown constant operand", span, id)
+        )
+    }
+
+    if op == ConstEvalOp.Neg and value.kind == ConstValueKind.Int {
+        give context_add_value(stepped, value_int(id, 0 - value.int_value))
+    }
+
+    if op == ConstEvalOp.Not and value.kind == ConstValueKind.Bool {
+        give context_add_value(stepped, value_bool(id, not value.bool_value))
+    }
+
+    give context_add_diagnostic(
+        stepped,
+        diagnostic_create(ConstEvalError.InvalidOperation, "invalid unary constant operation", span, id)
+    )
+}
+
+proc eval_cast(
+    context: ConstEvalContext,
+    id: u64,
+    value_id: u64,
+    target_type: string,
+    span: ConstEvalSpan
+) -> ConstEvalContext {
+    let stepped = context_step(context)
+    let value = find_value(stepped, value_id)
+
+    if value.valid == false {
+        give context_add_diagnostic(
+            stepped,
+            diagnostic_create(ConstEvalError.UnknownValue, "unknown value for const cast", span, id)
+        )
+    }
+
+    if target_type == "i64" and value.kind == ConstValueKind.UInt {
+        give context_add_value(stepped, value_int(id, value.uint_value as i64))
+    }
+
+    if target_type == "u64" and value.kind == ConstValueKind.Int {
+        give context_add_value(stepped, value_uint(id, value.int_value as u64))
+    }
+
+    if target_type == value.type_name {
+        give context_add_value(stepped, value)
+    }
+
+    give context_add_diagnostic(
+        stepped,
+        diagnostic_create(ConstEvalError.InvalidCast, "invalid const cast", span, id)
+    )
+}
+
+proc eval_index(
+    context: ConstEvalContext,
+    id: u64,
+    base_id: u64,
+    index_id: u64,
+    span: ConstEvalSpan
+) -> ConstEvalContext {
+    let stepped = context_step(context)
+    let base = find_value(stepped, base_id)
+    let index = find_value(stepped, index_id)
+
+    if base.valid == false or index.valid == false {
+        give context_add_diagnostic(
+            stepped,
+            diagnostic_create(ConstEvalError.UnknownValue, "unknown value in const index", span, id)
+        )
+    }
+
+    give context_add_diagnostic(
+        stepped,
+        diagnostic_create(ConstEvalError.InvalidIndex, "const index evaluation not lowered yet", span, id)
+    )
+}
+
+proc eval_finish(context: ConstEvalContext) -> ConstEvalContext {
+    if context.valid == false {
+        give context
+    }
+
+    give ConstEvalContext {
+        state: ConstEvalState.Done,
+        values: context.values,
+        stack: context.stack,
+        diagnostics: context.diagnostics,
+        steps: context.steps,
+        valid: true
+    }
+}
+
+proc eval_has_errors(context: ConstEvalContext) -> bool {
+    give vector_len(context.diagnostics) > 0
+}
+
+proc eval_value_count(context: ConstEvalContext) -> u64 {
+    give vector_len(context.values)
+}
+
+proc eval_stack_depth(context: ConstEvalContext) -> u64 {
+    give vector_len(context.stack)
+}
+
+proc print_value(value: ConstValue) {
+    emit "const value"
+    emit value.id
+    emit value.type_name
+    emit value.text
+    emit value.valid
+}
+
+proc print_context(context: ConstEvalContext) {
+    emit "const eval context"
+    emit context.steps
+    emit vector_len(context.values)
+    emit vector_len(context.stack)
+    emit vector_len(context.diagnostics)
+
+    let i: u64 = 0
+
+    loop i < vector_len(context.values) {
+        print_value(context.values[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

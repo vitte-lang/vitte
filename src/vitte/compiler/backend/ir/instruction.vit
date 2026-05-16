@@ -1,0 +1,992 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Backend / IR                       >>>
+<<< File: /Users/vincent/Documents/Github/vitte/src/vitte/compiler/backend/ir/instruction.vit >>>
+<<< Module: vitte/compiler/backend/ir/instruction            >>>
+<<< Purpose: backend IR instructions, operands and SSA values >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/backend/ir/instruction
+
+const IR_INSTRUCTION_VERSION: u32 = 2026
+const IR_INVALID_ID: u64 = 18446744073709551615
+const IR_MAX_OPERANDS: u64 = 64
+const IR_MAX_RESULTS: u64 = 16
+const IR_MAX_INSTRUCTIONS: u64 = 16777216
+const IR_MAX_METADATA: u64 = 4096
+
+pick IrInstructionKind {
+    Invalid
+    Nop
+    Phi
+    Param
+    Const
+    Load
+    Store
+    Move
+    Copy
+    Add
+    Sub
+    Mul
+    Div
+    Mod
+    Neg
+    And
+    Or
+    Xor
+    Not
+    Shl
+    Shr
+    Eq
+    Ne
+    Lt
+    Le
+    Gt
+    Ge
+    Cast
+    Bitcast
+    Truncate
+    Extend
+    Jump
+    Branch
+    Switch
+    Call
+    Return
+    Alloc
+    Gep
+    Select
+    Unreachable
+}
+
+pick IrOperandKind {
+    None
+    Immediate
+    Value
+    Block
+    Function
+    Global
+    String
+    Type
+}
+
+pick IrValueKind {
+    Unknown
+    Temporary
+    Constant
+    Parameter
+    Local
+    Global
+    Phi
+}
+
+pick IrInstructionFlag {
+    None
+    Commutative
+    Pure
+    Volatile
+    Atomic
+    NoReturn
+    Terminator
+    MemoryRead
+    MemoryWrite
+}
+
+pick IrInstructionState {
+    Created
+    Verified
+    Lowered
+    Optimized
+    Removed
+}
+
+pick IrInstructionErrorKind {
+    None
+    InvalidInstruction
+    InvalidOperand
+    InvalidResult
+    InvalidType
+    OperandLimitExceeded
+    ResultLimitExceeded
+    MissingOperand
+    MissingResult
+    InvalidTerminator
+    InternalFailure
+}
+
+form IrInstructionSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form IrTypeRef {
+    id: u64
+    name: string
+    valid: bool
+}
+
+form IrValueRef {
+    id: u64
+    name: string
+    kind: IrValueKind
+    ty: IrTypeRef
+    valid: bool
+}
+
+form IrOperand {
+    kind: IrOperandKind
+    value: u64
+    text: string
+    immediate: i64
+    ty: IrTypeRef
+    valid: bool
+}
+
+form IrMetadata {
+    id: u64
+    key: string
+    value: string
+    valid: bool
+}
+
+form IrInstruction {
+    id: u64
+    opcode: IrInstructionKind
+    operands: [IrOperand]
+    results: [IrValueRef]
+    flags: [IrInstructionFlag]
+    metadata: [IrMetadata]
+    state: IrInstructionState
+    block: u64
+    span: IrInstructionSpan
+    valid: bool
+}
+
+form IrInstructionDiagnostic {
+    kind: IrInstructionErrorKind
+    message: string
+    span: IrInstructionSpan
+    instruction: u64
+}
+
+proc span_empty() -> IrInstructionSpan {
+    give IrInstructionSpan {
+        file: "/Users/vincent/Documents/Github/vitte/src/vitte/compiler/backend/ir/instruction.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc type_invalid() -> IrTypeRef {
+    give IrTypeRef {
+        id: IR_INVALID_ID,
+        name: "invalid",
+        valid: false
+    }
+}
+
+proc type_ref(id: u64, name: string) -> IrTypeRef {
+    give IrTypeRef {
+        id: id,
+        name: name,
+        valid: true
+    }
+}
+
+proc value_invalid() -> IrValueRef {
+    give IrValueRef {
+        id: IR_INVALID_ID,
+        name: "invalid",
+        kind: IrValueKind.Unknown,
+        ty: type_invalid(),
+        valid: false
+    }
+}
+
+proc value_ref(
+    id: u64,
+    name: string,
+    kind: IrValueKind,
+    ty: IrTypeRef
+) -> IrValueRef {
+    give IrValueRef {
+        id: id,
+        name: name,
+        kind: kind,
+        ty: ty,
+        valid: ty.valid and name != ""
+    }
+}
+
+proc operand_none() -> IrOperand {
+    give IrOperand {
+        kind: IrOperandKind.None,
+        value: IR_INVALID_ID,
+        text: "",
+        immediate: 0,
+        ty: type_invalid(),
+        valid: false
+    }
+}
+
+proc operand_value(
+    value: u64,
+    ty: IrTypeRef
+) -> IrOperand {
+    give IrOperand {
+        kind: IrOperandKind.Value,
+        value: value,
+        text: "",
+        immediate: 0,
+        ty: ty,
+        valid: ty.valid
+    }
+}
+
+proc operand_immediate(
+    immediate: i64,
+    ty: IrTypeRef
+) -> IrOperand {
+    give IrOperand {
+        kind: IrOperandKind.Immediate,
+        value: IR_INVALID_ID,
+        text: "",
+        immediate: immediate,
+        ty: ty,
+        valid: ty.valid
+    }
+}
+
+proc operand_block(id: u64) -> IrOperand {
+    give IrOperand {
+        kind: IrOperandKind.Block,
+        value: id,
+        text: "",
+        immediate: 0,
+        ty: type_invalid(),
+        valid: true
+    }
+}
+
+proc operand_function(
+    id: u64,
+    name: string
+) -> IrOperand {
+    give IrOperand {
+        kind: IrOperandKind.Function,
+        value: id,
+        text: name,
+        immediate: 0,
+        ty: type_invalid(),
+        valid: name != ""
+    }
+}
+
+proc operand_string(
+    text: string
+) -> IrOperand {
+    give IrOperand {
+        kind: IrOperandKind.String,
+        value: IR_INVALID_ID,
+        text: text,
+        immediate: 0,
+        ty: type_invalid(),
+        valid: text != ""
+    }
+}
+
+proc metadata_create(
+    id: u64,
+    key: string,
+    value: string
+) -> IrMetadata {
+    give IrMetadata {
+        id: id,
+        key: key,
+        value: value,
+        valid: key != ""
+    }
+}
+
+proc instruction_invalid() -> IrInstruction {
+    give IrInstruction {
+        id: IR_INVALID_ID,
+        opcode: IrInstructionKind.Invalid,
+        operands: [],
+        results: [],
+        flags: [],
+        metadata: [],
+        state: IrInstructionState.Removed,
+        block: IR_INVALID_ID,
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc instruction_create(
+    id: u64,
+    opcode: IrInstructionKind,
+    block: u64,
+    span: IrInstructionSpan
+) -> IrInstruction {
+    give IrInstruction {
+        id: id,
+        opcode: opcode,
+        operands: [],
+        results: [],
+        flags: [],
+        metadata: [],
+        state: IrInstructionState.Created,
+        block: block,
+        span: span,
+        valid: opcode != IrInstructionKind.Invalid
+    }
+}
+
+proc diagnostic_create(
+    kind: IrInstructionErrorKind,
+    message: string,
+    span: IrInstructionSpan,
+    instruction: u64
+) -> IrInstructionDiagnostic {
+    give IrInstructionDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        instruction: instruction
+    }
+}
+
+proc instruction_add_operand(
+    instruction: IrInstruction,
+    operand: IrOperand
+) -> IrInstruction {
+    if vector_len(instruction.operands) >= IR_MAX_OPERANDS {
+        give IrInstruction {
+            id: instruction.id,
+            opcode: instruction.opcode,
+            operands: instruction.operands,
+            results: instruction.results,
+            flags: instruction.flags,
+            metadata: instruction.metadata,
+            state: instruction.state,
+            block: instruction.block,
+            span: instruction.span,
+            valid: false
+        }
+    }
+
+    give IrInstruction {
+        id: instruction.id,
+        opcode: instruction.opcode,
+        operands: instruction.operands + [operand],
+        results: instruction.results,
+        flags: instruction.flags,
+        metadata: instruction.metadata,
+        state: instruction.state,
+        block: instruction.block,
+        span: instruction.span,
+        valid: instruction.valid and operand.valid
+    }
+}
+
+proc instruction_add_result(
+    instruction: IrInstruction,
+    result: IrValueRef
+) -> IrInstruction {
+    if vector_len(instruction.results) >= IR_MAX_RESULTS {
+        give IrInstruction {
+            id: instruction.id,
+            opcode: instruction.opcode,
+            operands: instruction.operands,
+            results: instruction.results,
+            flags: instruction.flags,
+            metadata: instruction.metadata,
+            state: instruction.state,
+            block: instruction.block,
+            span: instruction.span,
+            valid: false
+        }
+    }
+
+    give IrInstruction {
+        id: instruction.id,
+        opcode: instruction.opcode,
+        operands: instruction.operands,
+        results: instruction.results + [result],
+        flags: instruction.flags,
+        metadata: instruction.metadata,
+        state: instruction.state,
+        block: instruction.block,
+        span: instruction.span,
+        valid: instruction.valid and result.valid
+    }
+}
+
+proc instruction_add_flag(
+    instruction: IrInstruction,
+    flag: IrInstructionFlag
+) -> IrInstruction {
+    give IrInstruction {
+        id: instruction.id,
+        opcode: instruction.opcode,
+        operands: instruction.operands,
+        results: instruction.results,
+        flags: instruction.flags + [flag],
+        metadata: instruction.metadata,
+        state: instruction.state,
+        block: instruction.block,
+        span: instruction.span,
+        valid: instruction.valid
+    }
+}
+
+proc instruction_add_metadata(
+    instruction: IrInstruction,
+    metadata: IrMetadata
+) -> IrInstruction {
+    if vector_len(instruction.metadata) >= IR_MAX_METADATA {
+        give IrInstruction {
+            id: instruction.id,
+            opcode: instruction.opcode,
+            operands: instruction.operands,
+            results: instruction.results,
+            flags: instruction.flags,
+            metadata: instruction.metadata,
+            state: instruction.state,
+            block: instruction.block,
+            span: instruction.span,
+            valid: false
+        }
+    }
+
+    give IrInstruction {
+        id: instruction.id,
+        opcode: instruction.opcode,
+        operands: instruction.operands,
+        results: instruction.results,
+        flags: instruction.flags,
+        metadata: instruction.metadata + [metadata],
+        state: instruction.state,
+        block: instruction.block,
+        span: instruction.span,
+        valid: instruction.valid and metadata.valid
+    }
+}
+
+proc instruction_with_state(
+    instruction: IrInstruction,
+    state: IrInstructionState
+) -> IrInstruction {
+    give IrInstruction {
+        id: instruction.id,
+        opcode: instruction.opcode,
+        operands: instruction.operands,
+        results: instruction.results,
+        flags: instruction.flags,
+        metadata: instruction.metadata,
+        state: state,
+        block: instruction.block,
+        span: instruction.span,
+        valid: instruction.valid
+    }
+}
+
+proc instruction_operand_count(
+    instruction: IrInstruction
+) -> u64 {
+    give vector_len(instruction.operands)
+}
+
+proc instruction_result_count(
+    instruction: IrInstruction
+) -> u64 {
+    give vector_len(instruction.results)
+}
+
+proc instruction_has_flag(
+    instruction: IrInstruction,
+    flag: IrInstructionFlag
+) -> bool {
+    let i: u64 = 0
+
+    loop i < vector_len(instruction.flags) {
+        if instruction.flags[i] == flag {
+            give true
+        }
+
+        set i = i + 1
+    }
+
+    give false
+}
+
+proc instruction_is_terminator(
+    instruction: IrInstruction
+) -> bool {
+    if instruction.opcode == IrInstructionKind.Return {
+        give true
+    }
+
+    if instruction.opcode == IrInstructionKind.Jump {
+        give true
+    }
+
+    if instruction.opcode == IrInstructionKind.Branch {
+        give true
+    }
+
+    if instruction.opcode == IrInstructionKind.Switch {
+        give true
+    }
+
+    if instruction.opcode == IrInstructionKind.Unreachable {
+        give true
+    }
+
+    give false
+}
+
+proc instruction_is_memory(
+    instruction: IrInstruction
+) -> bool {
+    if instruction.opcode == IrInstructionKind.Load {
+        give true
+    }
+
+    if instruction.opcode == IrInstructionKind.Store {
+        give true
+    }
+
+    if instruction.opcode == IrInstructionKind.Alloc {
+        give true
+    }
+
+    give false
+}
+
+proc instruction_is_pure(
+    instruction: IrInstruction
+) -> bool {
+    if instruction_has_flag(instruction, IrInstructionFlag.Pure) {
+        give true
+    }
+
+    if instruction_is_memory(instruction) {
+        give false
+    }
+
+    if instruction_is_terminator(instruction) {
+        give false
+    }
+
+    give true
+}
+
+proc validate_operand(
+    operand: IrOperand
+) -> bool {
+    if operand.valid == false {
+        give false
+    }
+
+    if operand.kind == IrOperandKind.Value {
+        give operand.value != IR_INVALID_ID
+    }
+
+    if operand.kind == IrOperandKind.Block {
+        give operand.value != IR_INVALID_ID
+    }
+
+    if operand.kind == IrOperandKind.Function {
+        give operand.value != IR_INVALID_ID
+    }
+
+    give true
+}
+
+proc validate_result(
+    result: IrValueRef
+) -> bool {
+    give result.valid and result.ty.valid
+}
+
+proc validate_instruction(
+    instruction: IrInstruction
+) -> bool {
+    if instruction.valid == false {
+        give false
+    }
+
+    if instruction.opcode == IrInstructionKind.Invalid {
+        give false
+    }
+
+    let i: u64 = 0
+
+    loop i < vector_len(instruction.operands) {
+        if validate_operand(instruction.operands[i]) == false {
+            give false
+        }
+
+        set i = i + 1
+    }
+
+    let j: u64 = 0
+
+    loop j < vector_len(instruction.results) {
+        if validate_result(instruction.results[j]) == false {
+            give false
+        }
+
+        set j = j + 1
+    }
+
+    if instruction.opcode == IrInstructionKind.Return {
+        give vector_len(instruction.operands) <= 1
+    }
+
+    if instruction.opcode == IrInstructionKind.Branch {
+        give vector_len(instruction.operands) == 3
+    }
+
+    if instruction.opcode == IrInstructionKind.Jump {
+        give vector_len(instruction.operands) == 1
+    }
+
+    give true
+}
+
+proc verify_instruction(
+    instruction: IrInstruction
+) -> IrInstruction {
+    if validate_instruction(instruction) == false {
+        give instruction_with_state(
+            IrInstruction {
+                id: instruction.id,
+                opcode: instruction.opcode,
+                operands: instruction.operands,
+                results: instruction.results,
+                flags: instruction.flags,
+                metadata: instruction.metadata,
+                state: IrInstructionState.Created,
+                block: instruction.block,
+                span: instruction.span,
+                valid: false
+            },
+            IrInstructionState.Removed
+        )
+    }
+
+    give instruction_with_state(
+        instruction,
+        IrInstructionState.Verified
+    )
+}
+
+proc lower_instruction(
+    instruction: IrInstruction
+) -> IrInstruction {
+    let verified = verify_instruction(instruction)
+
+    if verified.valid == false {
+        give verified
+    }
+
+    give instruction_with_state(
+        verified,
+        IrInstructionState.Lowered
+    )
+}
+
+proc optimize_instruction(
+    instruction: IrInstruction
+) -> IrInstruction {
+    let lowered = lower_instruction(instruction)
+
+    if lowered.valid == false {
+        give lowered
+    }
+
+    give instruction_with_state(
+        lowered,
+        IrInstructionState.Optimized
+    )
+}
+
+proc create_binary_instruction(
+    id: u64,
+    opcode: IrInstructionKind,
+    lhs: IrOperand,
+    rhs: IrOperand,
+    result: IrValueRef,
+    block: u64,
+    span: IrInstructionSpan
+) -> IrInstruction {
+    let instruction = instruction_create(
+        id,
+        opcode,
+        block,
+        span
+    )
+
+    let with_lhs = instruction_add_operand(instruction, lhs)
+    let with_rhs = instruction_add_operand(with_lhs, rhs)
+    let with_result = instruction_add_result(with_rhs, result)
+
+    give verify_instruction(with_result)
+}
+
+proc create_unary_instruction(
+    id: u64,
+    opcode: IrInstructionKind,
+    operand: IrOperand,
+    result: IrValueRef,
+    block: u64,
+    span: IrInstructionSpan
+) -> IrInstruction {
+    let instruction = instruction_create(
+        id,
+        opcode,
+        block,
+        span
+    )
+
+    let with_operand = instruction_add_operand(instruction, operand)
+    let with_result = instruction_add_result(with_operand, result)
+
+    give verify_instruction(with_result)
+}
+
+proc create_return_instruction(
+    id: u64,
+    value: IrOperand,
+    block: u64,
+    span: IrInstructionSpan
+) -> IrInstruction {
+    let instruction = instruction_create(
+        id,
+        IrInstructionKind.Return,
+        block,
+        span
+    )
+
+    let with_operand = instruction_add_operand(instruction, value)
+    let with_flag = instruction_add_flag(with_operand, IrInstructionFlag.Terminator)
+
+    give verify_instruction(with_flag)
+}
+
+proc create_jump_instruction(
+    id: u64,
+    target: u64,
+    block: u64,
+    span: IrInstructionSpan
+) -> IrInstruction {
+    let instruction = instruction_create(
+        id,
+        IrInstructionKind.Jump,
+        block,
+        span
+    )
+
+    let with_target = instruction_add_operand(
+        instruction,
+        operand_block(target)
+    )
+
+    let with_flag = instruction_add_flag(
+        with_target,
+        IrInstructionFlag.Terminator
+    )
+
+    give verify_instruction(with_flag)
+}
+
+proc create_branch_instruction(
+    id: u64,
+    condition: IrOperand,
+    true_block: u64,
+    false_block: u64,
+    block: u64,
+    span: IrInstructionSpan
+) -> IrInstruction {
+    let instruction = instruction_create(
+        id,
+        IrInstructionKind.Branch,
+        block,
+        span
+    )
+
+    let s1 = instruction_add_operand(instruction, condition)
+    let s2 = instruction_add_operand(s1, operand_block(true_block))
+    let s3 = instruction_add_operand(s2, operand_block(false_block))
+
+    let s4 = instruction_add_flag(
+        s3,
+        IrInstructionFlag.Terminator
+    )
+
+    give verify_instruction(s4)
+}
+
+proc opcode_name(
+    opcode: IrInstructionKind
+) -> string {
+    if opcode == IrInstructionKind.Nop {
+        give "nop"
+    }
+
+    if opcode == IrInstructionKind.Add {
+        give "add"
+    }
+
+    if opcode == IrInstructionKind.Sub {
+        give "sub"
+    }
+
+    if opcode == IrInstructionKind.Mul {
+        give "mul"
+    }
+
+    if opcode == IrInstructionKind.Div {
+        give "div"
+    }
+
+    if opcode == IrInstructionKind.Load {
+        give "load"
+    }
+
+    if opcode == IrInstructionKind.Store {
+        give "store"
+    }
+
+    if opcode == IrInstructionKind.Call {
+        give "call"
+    }
+
+    if opcode == IrInstructionKind.Return {
+        give "return"
+    }
+
+    if opcode == IrInstructionKind.Jump {
+        give "jump"
+    }
+
+    if opcode == IrInstructionKind.Branch {
+        give "branch"
+    }
+
+    give "invalid"
+}
+
+proc operand_kind_name(
+    kind: IrOperandKind
+) -> string {
+    if kind == IrOperandKind.Immediate {
+        give "immediate"
+    }
+
+    if kind == IrOperandKind.Value {
+        give "value"
+    }
+
+    if kind == IrOperandKind.Block {
+        give "block"
+    }
+
+    if kind == IrOperandKind.Function {
+        give "function"
+    }
+
+    if kind == IrOperandKind.Global {
+        give "global"
+    }
+
+    if kind == IrOperandKind.String {
+        give "string"
+    }
+
+    if kind == IrOperandKind.Type {
+        give "type"
+    }
+
+    give "none"
+}
+
+proc state_name(
+    state: IrInstructionState
+) -> string {
+    if state == IrInstructionState.Created {
+        give "created"
+    }
+
+    if state == IrInstructionState.Verified {
+        give "verified"
+    }
+
+    if state == IrInstructionState.Lowered {
+        give "lowered"
+    }
+
+    if state == IrInstructionState.Optimized {
+        give "optimized"
+    }
+
+    if state == IrInstructionState.Removed {
+        give "removed"
+    }
+
+    give "unknown"
+}
+
+proc print_operand(
+    operand: IrOperand
+) {
+    emit "operand"
+    emit operand_kind_name(operand.kind)
+    emit operand.value
+    emit operand.immediate
+    emit operand.text
+}
+
+proc print_result(
+    result: IrValueRef
+) {
+    emit "result"
+    emit result.id
+    emit result.name
+    emit result.ty.name
+}
+
+proc print_instruction(
+    instruction: IrInstruction
+) {
+    emit "ir instruction"
+    emit instruction.id
+    emit opcode_name(instruction.opcode)
+    emit instruction.block
+    emit state_name(instruction.state)
+    emit vector_len(instruction.operands)
+    emit vector_len(instruction.results)
+
+    let i: u64 = 0
+
+    loop i < vector_len(instruction.operands) {
+        print_operand(instruction.operands[i])
+        set i = i + 1
+    }
+
+    let j: u64 = 0
+
+    loop j < vector_len(instruction.results) {
+        print_result(instruction.results[j])
+        set j = j + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}

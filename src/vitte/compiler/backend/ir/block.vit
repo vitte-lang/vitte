@@ -1,0 +1,1068 @@
+<<< ========================================================= >>>
+<<< Vitte 2026 — Official Compiler Source                    >>>
+<<< Component: Compiler / Backend / IR                       >>>
+<<< File: compiler/backend/ir/block.vit                      >>>
+<<< Module: vitte/compiler/backend/ir/block                  >>>
+<<< Purpose: backend IR basic blocks, CFG edges and ordering  >>>
+<<< ========================================================= >>>
+
+space vitte/compiler/backend/ir/block
+
+const IR_BLOCK_VERSION: u32 = 2026
+const IR_BLOCK_INVALID_ID: u64 = 18446744073709551615
+const IR_BLOCK_ENTRY_ID: u64 = 0
+const IR_BLOCK_MAX_BLOCKS: u64 = 1048576
+const IR_BLOCK_MAX_EDGES: u64 = 4194304
+const IR_BLOCK_MAX_INSTRUCTIONS: u64 = 16777216
+
+pick IrBlockKind {
+    Entry
+    Normal
+    LoopHeader
+    LoopBody
+    Branch
+    Merge
+    Exit
+    LandingPad
+    Unreachable
+}
+
+pick IrBlockState {
+    Created
+    Sealed
+    Reachable
+    Unreachable
+    Optimized
+    Removed
+}
+
+pick IrEdgeKind {
+    Fallthrough
+    BranchTrue
+    BranchFalse
+    Jump
+    LoopBack
+    Exception
+    Return
+}
+
+pick IrTerminatorKind {
+    None
+    Return
+    Jump
+    Branch
+    Switch
+    Unreachable
+    Panic
+}
+
+pick IrBlockErrorKind {
+    None
+    UnknownBlock
+    InvalidBlock
+    DuplicateBlock
+    InvalidEdge
+    DuplicateEdge
+    MissingTerminator
+    InvalidTerminator
+    InstructionLimitExceeded
+    BlockLimitExceeded
+    EdgeLimitExceeded
+    InternalFailure
+}
+
+form IrBlockSpan {
+    file: string
+    line: u64
+    column: u64
+    length: u64
+}
+
+form IrBlockRef {
+    id: u64
+    name: string
+    valid: bool
+}
+
+form IrInstructionRef {
+    id: u64
+    opcode: string
+    result: u64
+    span: IrBlockSpan
+    valid: bool
+}
+
+form IrTerminator {
+    kind: IrTerminatorKind
+    target_a: u64
+    target_b: u64
+    value: u64
+    valid: bool
+}
+
+form IrBlock {
+    id: u64
+    name: string
+    kind: IrBlockKind
+    state: IrBlockState
+    instructions: [IrInstructionRef]
+    terminator: IrTerminator
+    predecessors: [u64]
+    successors: [u64]
+    weight: u64
+    span: IrBlockSpan
+    valid: bool
+}
+
+form IrEdge {
+    id: u64
+    from_block: u64
+    to_block: u64
+    kind: IrEdgeKind
+    probability: u64
+    valid: bool
+}
+
+form IrBlockDiagnostic {
+    kind: IrBlockErrorKind
+    message: string
+    span: IrBlockSpan
+    block: u64
+}
+
+form IrBlockGraph {
+    blocks: [IrBlock]
+    edges: [IrEdge]
+    diagnostics: [IrBlockDiagnostic]
+    entry: u64
+    valid: bool
+}
+
+proc span_empty() -> IrBlockSpan {
+    give IrBlockSpan {
+        file: "compiler/backend/ir/block.vit",
+        line: 0,
+        column: 0,
+        length: 0
+    }
+}
+
+proc block_ref_invalid() -> IrBlockRef {
+    give IrBlockRef {
+        id: IR_BLOCK_INVALID_ID,
+        name: "invalid",
+        valid: false
+    }
+}
+
+proc block_ref(
+    id: u64,
+    name: string
+) -> IrBlockRef {
+    give IrBlockRef {
+        id: id,
+        name: name,
+        valid: true
+    }
+}
+
+proc instruction_invalid() -> IrInstructionRef {
+    give IrInstructionRef {
+        id: IR_BLOCK_INVALID_ID,
+        opcode: "invalid",
+        result: IR_BLOCK_INVALID_ID,
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc instruction_ref(
+    id: u64,
+    opcode: string,
+    result: u64,
+    span: IrBlockSpan
+) -> IrInstructionRef {
+    give IrInstructionRef {
+        id: id,
+        opcode: opcode,
+        result: result,
+        span: span,
+        valid: true
+    }
+}
+
+proc terminator_none() -> IrTerminator {
+    give IrTerminator {
+        kind: IrTerminatorKind.None,
+        target_a: IR_BLOCK_INVALID_ID,
+        target_b: IR_BLOCK_INVALID_ID,
+        value: IR_BLOCK_INVALID_ID,
+        valid: false
+    }
+}
+
+proc terminator_return(value: u64) -> IrTerminator {
+    give IrTerminator {
+        kind: IrTerminatorKind.Return,
+        target_a: IR_BLOCK_INVALID_ID,
+        target_b: IR_BLOCK_INVALID_ID,
+        value: value,
+        valid: true
+    }
+}
+
+proc terminator_jump(target: u64) -> IrTerminator {
+    give IrTerminator {
+        kind: IrTerminatorKind.Jump,
+        target_a: target,
+        target_b: IR_BLOCK_INVALID_ID,
+        value: IR_BLOCK_INVALID_ID,
+        valid: true
+    }
+}
+
+proc terminator_branch(
+    condition: u64,
+    true_block: u64,
+    false_block: u64
+) -> IrTerminator {
+    give IrTerminator {
+        kind: IrTerminatorKind.Branch,
+        target_a: true_block,
+        target_b: false_block,
+        value: condition,
+        valid: true
+    }
+}
+
+proc terminator_unreachable() -> IrTerminator {
+    give IrTerminator {
+        kind: IrTerminatorKind.Unreachable,
+        target_a: IR_BLOCK_INVALID_ID,
+        target_b: IR_BLOCK_INVALID_ID,
+        value: IR_BLOCK_INVALID_ID,
+        valid: true
+    }
+}
+
+proc block_invalid() -> IrBlock {
+    give IrBlock {
+        id: IR_BLOCK_INVALID_ID,
+        name: "invalid",
+        kind: IrBlockKind.Unreachable,
+        state: IrBlockState.Removed,
+        instructions: [],
+        terminator: terminator_none(),
+        predecessors: [],
+        successors: [],
+        weight: 0,
+        span: span_empty(),
+        valid: false
+    }
+}
+
+proc block_create(
+    id: u64,
+    name: string,
+    kind: IrBlockKind,
+    span: IrBlockSpan
+) -> IrBlock {
+    give IrBlock {
+        id: id,
+        name: name,
+        kind: kind,
+        state: IrBlockState.Created,
+        instructions: [],
+        terminator: terminator_none(),
+        predecessors: [],
+        successors: [],
+        weight: 1,
+        span: span,
+        valid: true
+    }
+}
+
+proc edge_create(
+    id: u64,
+    from_block: u64,
+    to_block: u64,
+    kind: IrEdgeKind,
+    probability: u64
+) -> IrEdge {
+    give IrEdge {
+        id: id,
+        from_block: from_block,
+        to_block: to_block,
+        kind: kind,
+        probability: probability,
+        valid: true
+    }
+}
+
+proc diagnostic_create(
+    kind: IrBlockErrorKind,
+    message: string,
+    span: IrBlockSpan,
+    block: u64
+) -> IrBlockDiagnostic {
+    give IrBlockDiagnostic {
+        kind: kind,
+        message: message,
+        span: span,
+        block: block
+    }
+}
+
+proc graph_empty() -> IrBlockGraph {
+    let entry = block_create(
+        IR_BLOCK_ENTRY_ID,
+        "entry",
+        IrBlockKind.Entry,
+        span_empty()
+    )
+
+    give IrBlockGraph {
+        blocks: [entry],
+        edges: [],
+        diagnostics: [],
+        entry: IR_BLOCK_ENTRY_ID,
+        valid: true
+    }
+}
+
+proc graph_add_diagnostic(
+    graph: IrBlockGraph,
+    diagnostic: IrBlockDiagnostic
+) -> IrBlockGraph {
+    give IrBlockGraph {
+        blocks: graph.blocks,
+        edges: graph.edges,
+        diagnostics: graph.diagnostics + [diagnostic],
+        entry: graph.entry,
+        valid: false
+    }
+}
+
+proc graph_add_block(
+    graph: IrBlockGraph,
+    block: IrBlock
+) -> IrBlockGraph {
+    if vector_len(graph.blocks) >= IR_BLOCK_MAX_BLOCKS {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.BlockLimitExceeded,
+                "too many IR blocks",
+                block.span,
+                block.id
+            )
+        )
+    }
+
+    if find_block(graph, block.id).valid {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.DuplicateBlock,
+                "duplicate IR block",
+                block.span,
+                block.id
+            )
+        )
+    }
+
+    give IrBlockGraph {
+        blocks: graph.blocks + [block],
+        edges: graph.edges,
+        diagnostics: graph.diagnostics,
+        entry: graph.entry,
+        valid: graph.valid
+    }
+}
+
+proc graph_add_edge(
+    graph: IrBlockGraph,
+    edge: IrEdge
+) -> IrBlockGraph {
+    if vector_len(graph.edges) >= IR_BLOCK_MAX_EDGES {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.EdgeLimitExceeded,
+                "too many IR block edges",
+                span_empty(),
+                edge.from_block
+            )
+        )
+    }
+
+    if find_block(graph, edge.from_block).valid == false {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.UnknownBlock,
+                "edge source block does not exist",
+                span_empty(),
+                edge.from_block
+            )
+        )
+    }
+
+    if find_block(graph, edge.to_block).valid == false {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.UnknownBlock,
+                "edge target block does not exist",
+                span_empty(),
+                edge.to_block
+            )
+        )
+    }
+
+    if has_edge(graph, edge.from_block, edge.to_block, edge.kind) {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.DuplicateEdge,
+                "duplicate IR block edge",
+                span_empty(),
+                edge.from_block
+            )
+        )
+    }
+
+    let with_edge = IrBlockGraph {
+        blocks: graph.blocks,
+        edges: graph.edges + [edge],
+        diagnostics: graph.diagnostics,
+        entry: graph.entry,
+        valid: graph.valid
+    }
+
+    give graph_connect_blocks(with_edge, edge.from_block, edge.to_block)
+}
+
+proc find_block(
+    graph: IrBlockGraph,
+    id: u64
+) -> IrBlock {
+    let i: u64 = 0
+
+    loop i < vector_len(graph.blocks) {
+        if graph.blocks[i].id == id {
+            give graph.blocks[i]
+        }
+
+        set i = i + 1
+    }
+
+    give block_invalid()
+}
+
+proc has_edge(
+    graph: IrBlockGraph,
+    from_block: u64,
+    to_block: u64,
+    kind: IrEdgeKind
+) -> bool {
+    let i: u64 = 0
+
+    loop i < vector_len(graph.edges) {
+        let edge = graph.edges[i]
+
+        if edge.from_block == from_block and edge.to_block == to_block and edge.kind == kind {
+            give true
+        }
+
+        set i = i + 1
+    }
+
+    give false
+}
+
+proc block_with_instruction(
+    block: IrBlock,
+    instruction: IrInstructionRef
+) -> IrBlock {
+    give IrBlock {
+        id: block.id,
+        name: block.name,
+        kind: block.kind,
+        state: block.state,
+        instructions: block.instructions + [instruction],
+        terminator: block.terminator,
+        predecessors: block.predecessors,
+        successors: block.successors,
+        weight: block.weight,
+        span: block.span,
+        valid: block.valid
+    }
+}
+
+proc block_with_terminator(
+    block: IrBlock,
+    terminator: IrTerminator
+) -> IrBlock {
+    give IrBlock {
+        id: block.id,
+        name: block.name,
+        kind: block.kind,
+        state: IrBlockState.Sealed,
+        instructions: block.instructions,
+        terminator: terminator,
+        predecessors: block.predecessors,
+        successors: block.successors,
+        weight: block.weight,
+        span: block.span,
+        valid: block.valid
+    }
+}
+
+proc block_add_predecessor(
+    block: IrBlock,
+    predecessor: u64
+) -> IrBlock {
+    give IrBlock {
+        id: block.id,
+        name: block.name,
+        kind: block.kind,
+        state: block.state,
+        instructions: block.instructions,
+        terminator: block.terminator,
+        predecessors: block.predecessors + [predecessor],
+        successors: block.successors,
+        weight: block.weight,
+        span: block.span,
+        valid: block.valid
+    }
+}
+
+proc block_add_successor(
+    block: IrBlock,
+    successor: u64
+) -> IrBlock {
+    give IrBlock {
+        id: block.id,
+        name: block.name,
+        kind: block.kind,
+        state: block.state,
+        instructions: block.instructions,
+        terminator: block.terminator,
+        predecessors: block.predecessors,
+        successors: block.successors + [successor],
+        weight: block.weight,
+        span: block.span,
+        valid: block.valid
+    }
+}
+
+proc block_with_state(
+    block: IrBlock,
+    state: IrBlockState
+) -> IrBlock {
+    give IrBlock {
+        id: block.id,
+        name: block.name,
+        kind: block.kind,
+        state: state,
+        instructions: block.instructions,
+        terminator: block.terminator,
+        predecessors: block.predecessors,
+        successors: block.successors,
+        weight: block.weight,
+        span: block.span,
+        valid: block.valid
+    }
+}
+
+proc block_with_weight(
+    block: IrBlock,
+    weight: u64
+) -> IrBlock {
+    give IrBlock {
+        id: block.id,
+        name: block.name,
+        kind: block.kind,
+        state: block.state,
+        instructions: block.instructions,
+        terminator: block.terminator,
+        predecessors: block.predecessors,
+        successors: block.successors,
+        weight: weight,
+        span: block.span,
+        valid: block.valid
+    }
+}
+
+proc replace_block(
+    graph: IrBlockGraph,
+    block: IrBlock
+) -> IrBlockGraph {
+    let next: [IrBlock] = []
+    let replaced = false
+    let i: u64 = 0
+
+    loop i < vector_len(graph.blocks) {
+        if graph.blocks[i].id == block.id {
+            set next = next + [block]
+            set replaced = true
+        } else {
+            set next = next + [graph.blocks[i]]
+        }
+
+        set i = i + 1
+    }
+
+    if replaced == false {
+        give graph_add_block(graph, block)
+    }
+
+    give IrBlockGraph {
+        blocks: next,
+        edges: graph.edges,
+        diagnostics: graph.diagnostics,
+        entry: graph.entry,
+        valid: graph.valid
+    }
+}
+
+proc graph_connect_blocks(
+    graph: IrBlockGraph,
+    from_block: u64,
+    to_block: u64
+) -> IrBlockGraph {
+    let from = find_block(graph, from_block)
+    let to = find_block(graph, to_block)
+
+    if from.valid == false or to.valid == false {
+        give graph
+    }
+
+    let with_from = replace_block(graph, block_add_successor(from, to_block))
+    let to2 = find_block(with_from, to_block)
+
+    give replace_block(with_from, block_add_predecessor(to2, from_block))
+}
+
+proc add_instruction_to_block(
+    graph: IrBlockGraph,
+    block_id: u64,
+    instruction: IrInstructionRef
+) -> IrBlockGraph {
+    let block = find_block(graph, block_id)
+
+    if block.valid == false {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.UnknownBlock,
+                "cannot add instruction to unknown block",
+                instruction.span,
+                block_id
+            )
+        )
+    }
+
+    if vector_len(block.instructions) >= IR_BLOCK_MAX_INSTRUCTIONS {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.InstructionLimitExceeded,
+                "too many instructions in IR block",
+                instruction.span,
+                block_id
+            )
+        )
+    }
+
+    give replace_block(graph, block_with_instruction(block, instruction))
+}
+
+proc set_block_terminator(
+    graph: IrBlockGraph,
+    block_id: u64,
+    terminator: IrTerminator
+) -> IrBlockGraph {
+    let block = find_block(graph, block_id)
+
+    if block.valid == false {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.UnknownBlock,
+                "cannot set terminator on unknown block",
+                span_empty(),
+                block_id
+            )
+        )
+    }
+
+    if terminator.valid == false {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.InvalidTerminator,
+                "invalid IR block terminator",
+                span_empty(),
+                block_id
+            )
+        )
+    }
+
+    let updated = replace_block(graph, block_with_terminator(block, terminator))
+
+    if terminator.kind == IrTerminatorKind.Jump {
+        give graph_add_edge(
+            updated,
+            edge_create(
+                vector_len(updated.edges),
+                block_id,
+                terminator.target_a,
+                IrEdgeKind.Jump,
+                100
+            )
+        )
+    }
+
+    if terminator.kind == IrTerminatorKind.Branch {
+        let e1 = graph_add_edge(
+            updated,
+            edge_create(
+                vector_len(updated.edges),
+                block_id,
+                terminator.target_a,
+                IrEdgeKind.BranchTrue,
+                50
+            )
+        )
+
+        give graph_add_edge(
+            e1,
+            edge_create(
+                vector_len(e1.edges),
+                block_id,
+                terminator.target_b,
+                IrEdgeKind.BranchFalse,
+                50
+            )
+        )
+    }
+
+    give updated
+}
+
+proc mark_reachable_from_entry(graph: IrBlockGraph) -> IrBlockGraph {
+    let current = graph
+    give mark_reachable(current, graph.entry)
+}
+
+proc mark_reachable(
+    graph: IrBlockGraph,
+    block_id: u64
+) -> IrBlockGraph {
+    let block = find_block(graph, block_id)
+
+    if block.valid == false {
+        give graph
+    }
+
+    if block.state == IrBlockState.Reachable {
+        give graph
+    }
+
+    let current = replace_block(graph, block_with_state(block, IrBlockState.Reachable))
+    let updated = current
+
+    let i: u64 = 0
+
+    loop i < vector_len(block.successors) {
+        set updated = mark_reachable(updated, block.successors[i])
+        set i = i + 1
+    }
+
+    give updated
+}
+
+proc remove_unreachable(graph: IrBlockGraph) -> IrBlockGraph {
+    let marked = mark_reachable_from_entry(graph)
+    let kept: [IrBlock] = []
+    let i: u64 = 0
+
+    loop i < vector_len(marked.blocks) {
+        let block = marked.blocks[i]
+
+        if block.state == IrBlockState.Reachable or block.kind == IrBlockKind.Entry {
+            set kept = kept + [block]
+        }
+
+        set i = i + 1
+    }
+
+    give IrBlockGraph {
+        blocks: kept,
+        edges: marked.edges,
+        diagnostics: marked.diagnostics,
+        entry: marked.entry,
+        valid: marked.valid
+    }
+}
+
+proc block_has_terminator(block: IrBlock) -> bool {
+    give block.terminator.valid and block.terminator.kind != IrTerminatorKind.None
+}
+
+proc block_is_exit(block: IrBlock) -> bool {
+    if block.kind == IrBlockKind.Exit {
+        give true
+    }
+
+    if block.terminator.kind == IrTerminatorKind.Return {
+        give true
+    }
+
+    if block.terminator.kind == IrTerminatorKind.Unreachable {
+        give true
+    }
+
+    give false
+}
+
+proc block_instruction_count(block: IrBlock) -> u64 {
+    give vector_len(block.instructions)
+}
+
+proc graph_block_count(graph: IrBlockGraph) -> u64 {
+    give vector_len(graph.blocks)
+}
+
+proc graph_edge_count(graph: IrBlockGraph) -> u64 {
+    give vector_len(graph.edges)
+}
+
+proc graph_error_count(graph: IrBlockGraph) -> u64 {
+    give vector_len(graph.diagnostics)
+}
+
+proc validate_block(
+    graph: IrBlockGraph,
+    block: IrBlock
+) -> IrBlockGraph {
+    if block.valid == false {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.InvalidBlock,
+                "invalid IR block",
+                block.span,
+                block.id
+            )
+        )
+    }
+
+    if block_has_terminator(block) == false and block.kind != IrBlockKind.Exit {
+        give graph_add_diagnostic(
+            graph,
+            diagnostic_create(
+                IrBlockErrorKind.MissingTerminator,
+                "IR block has no terminator",
+                block.span,
+                block.id
+            )
+        )
+    }
+
+    give graph
+}
+
+proc validate_edges(graph: IrBlockGraph) -> IrBlockGraph {
+    let current = graph
+    let i: u64 = 0
+
+    loop i < vector_len(current.edges) {
+        let edge = current.edges[i]
+
+        if edge.valid == false {
+            give graph_add_diagnostic(
+                current,
+                diagnostic_create(
+                    IrBlockErrorKind.InvalidEdge,
+                    "invalid IR edge",
+                    span_empty(),
+                    edge.from_block
+                )
+            )
+        }
+
+        if find_block(current, edge.from_block).valid == false or find_block(current, edge.to_block).valid == false {
+            give graph_add_diagnostic(
+                current,
+                diagnostic_create(
+                    IrBlockErrorKind.InvalidEdge,
+                    "edge references unknown block",
+                    span_empty(),
+                    edge.from_block
+                )
+            )
+        }
+
+        set i = i + 1
+    }
+
+    give current
+}
+
+proc validate_graph(graph: IrBlockGraph) -> IrBlockGraph {
+    let current = graph
+    let i: u64 = 0
+
+    loop i < vector_len(current.blocks) {
+        set current = validate_block(current, current.blocks[i])
+        set i = i + 1
+    }
+
+    give validate_edges(current)
+}
+
+proc graph_is_valid(graph: IrBlockGraph) -> bool {
+    give graph.valid and vector_len(graph.diagnostics) == 0
+}
+
+proc block_kind_name(kind: IrBlockKind) -> string {
+    if kind == IrBlockKind.Entry {
+        give "entry"
+    }
+
+    if kind == IrBlockKind.Normal {
+        give "normal"
+    }
+
+    if kind == IrBlockKind.LoopHeader {
+        give "loop_header"
+    }
+
+    if kind == IrBlockKind.LoopBody {
+        give "loop_body"
+    }
+
+    if kind == IrBlockKind.Branch {
+        give "branch"
+    }
+
+    if kind == IrBlockKind.Merge {
+        give "merge"
+    }
+
+    if kind == IrBlockKind.Exit {
+        give "exit"
+    }
+
+    if kind == IrBlockKind.LandingPad {
+        give "landing_pad"
+    }
+
+    if kind == IrBlockKind.Unreachable {
+        give "unreachable"
+    }
+
+    give "unknown"
+}
+
+proc block_state_name(state: IrBlockState) -> string {
+    if state == IrBlockState.Created {
+        give "created"
+    }
+
+    if state == IrBlockState.Sealed {
+        give "sealed"
+    }
+
+    if state == IrBlockState.Reachable {
+        give "reachable"
+    }
+
+    if state == IrBlockState.Unreachable {
+        give "unreachable"
+    }
+
+    if state == IrBlockState.Optimized {
+        give "optimized"
+    }
+
+    if state == IrBlockState.Removed {
+        give "removed"
+    }
+
+    give "unknown"
+}
+
+proc terminator_kind_name(kind: IrTerminatorKind) -> string {
+    if kind == IrTerminatorKind.Return {
+        give "return"
+    }
+
+    if kind == IrTerminatorKind.Jump {
+        give "jump"
+    }
+
+    if kind == IrTerminatorKind.Branch {
+        give "branch"
+    }
+
+    if kind == IrTerminatorKind.Switch {
+        give "switch"
+    }
+
+    if kind == IrTerminatorKind.Unreachable {
+        give "unreachable"
+    }
+
+    if kind == IrTerminatorKind.Panic {
+        give "panic"
+    }
+
+    give "none"
+}
+
+proc print_instruction(instruction: IrInstructionRef) {
+    emit "ir instruction"
+    emit instruction.id
+    emit instruction.opcode
+    emit instruction.result
+}
+
+proc print_block(block: IrBlock) {
+    emit "ir block"
+    emit block.id
+    emit block.name
+    emit block_kind_name(block.kind)
+    emit block_state_name(block.state)
+    emit vector_len(block.instructions)
+    emit terminator_kind_name(block.terminator.kind)
+
+    let i: u64 = 0
+
+    loop i < vector_len(block.instructions) {
+        print_instruction(block.instructions[i])
+        set i = i + 1
+    }
+}
+
+proc print_graph(graph: IrBlockGraph) {
+    emit "ir block graph"
+    emit vector_len(graph.blocks)
+    emit vector_len(graph.edges)
+    emit vector_len(graph.diagnostics)
+    emit graph.entry
+
+    let i: u64 = 0
+
+    loop i < vector_len(graph.blocks) {
+        print_block(graph.blocks[i])
+        set i = i + 1
+    }
+}
+
+proc vector_len[T](items: [T]) -> u64 {
+    give 0
+}
