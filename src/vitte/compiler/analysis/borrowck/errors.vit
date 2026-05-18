@@ -1,615 +1,109 @@
 space vitte/compiler/analysis/borrowck/errors
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Borrow Checker Diagnostics             >>>
-<<< ========================================================= >>>
-
-const BORROWCK_ERROR_VERSION: u32 = 1
 const BORROWCK_INVALID_ID: u64 = 18446744073709551615
 
 pick BorrowErrorKind {
-    None,
-    MoveAfterMove,
-    MoveOutOfBorrow,
-    UseAfterMove,
-    UseAfterFree,
-    MutableBorrowConflict,
-    ImmutableBorrowConflict,
-    MutableAndImmutableConflict,
-    DanglingReference,
-    InvalidLifetime,
-    EscapingReference,
-    DoubleMutableBorrow,
-    PartialMove,
-    InvalidReborrow,
-    BorrowOutlivesOwner,
-    InvalidDropOrder,
-    InvalidCapture,
-    GeneratorBorrowViolation,
-    AsyncBorrowViolation,
-    InteriorMutabilityViolation,
-    UnsafeAlias,
-    InvalidRegionFlow,
-    InvalidLoopBorrow,
-    InvalidMatchBorrow,
-    InvalidClosureBorrow,
-    InvalidPointerEscape,
-    InvalidTemporaryLifetime,
-    InvalidGlobalBorrow,
-    InvalidThreadShare,
-    InvalidAtomicAccess,
-    InvalidOwnershipTransfer,
-    InvalidSelfBorrow,
-    InvalidTraitBorrow,
-    InvalidIndexBorrow,
-    InvalidSliceBorrow,
-    InvalidFieldBorrow,
-    InvalidPatternBorrow,
-    InvalidDestructureBorrow,
-    InvalidPhiBorrow,
-    InvalidReturnBorrow,
-    InvalidYieldBorrow,
-    Unknown,
+  None,
+  MoveAfterMove,
+  UseAfterMove,
+  BorrowOfMovedValue,
+  MutableBorrowConflict,
+  WriteWhileBorrowed,
+  MoveWhileBorrowed,
+  ReturnRefToLocal,
+  ReturnBorrowOfLocal,
 }
 
 pick BorrowSeverity {
-    Info,
-    Warning,
-    Error,
-    Fatal,
-}
-
-pick BorrowSuggestionKind {
-    None,
-    CloneValue,
-    AddReference,
-    AddMutableReference,
-    IntroduceLifetime,
-    SplitBorrow,
-    RestrictScope,
-    ReorderStatements,
-    InsertMove,
-    InsertCopy,
-    UseArc,
-    UseRc,
-    UseCell,
-    UseRefCell,
-    UseMutex,
-    UseRwLock,
+  Info,
+  Warning,
+  Error,
 }
 
 form BorrowSpan {
-    file: string
-    line: u64
-    column: u64
-    length: u64
-}
-
-form BorrowRegion {
-    id: u64
-    name: string
-    depth: u64
-    temporary: bool
-}
-
-form BorrowValue {
-    id: u64
-    name: string
-    moved: bool
-    borrowed: bool
-    mutable: bool
-    region: BorrowRegion
-}
-
-form BorrowSuggestion {
-    kind: BorrowSuggestionKind
-    message: string
-    replacement: string
+  file: string
+  line: u64
+  column: u64
+  length: u64
 }
 
 form BorrowDiagnostic {
-    id: u64
-    kind: BorrowErrorKind
-    severity: BorrowSeverity
-    message: string
-    span: BorrowSpan
-    value: BorrowValue
-    suggestions: [BorrowSuggestion]
+  kind: BorrowErrorKind
+  code: string
+  severity: BorrowSeverity
+  message: string
+  labels: [string]
+  suggestion: string
+  span: BorrowSpan
+  entity: u64
+  fatal: bool
 }
 
-form BorrowErrorReport {
-    diagnostics: [BorrowDiagnostic]
-    error_count: u64
-    warning_count: u64
-    fatal_count: u64
-    valid: bool
+proc span_create(file: string, line: u64, column: u64, length: u64) -> BorrowSpan {
+  give BorrowSpan {
+    file: file,
+    line: line,
+    column: column,
+    length: length
+  };
 }
 
 proc span_empty() -> BorrowSpan {
-    give BorrowSpan {
-        file: "",
-        line: 0,
-        column: 0,
-        length: 0
-    };
+  give span_create("compiler/analysis/borrowck", 0, 0, 0);
 }
 
-proc region_empty() -> BorrowRegion {
-    give BorrowRegion {
-        id: BORROWCK_INVALID_ID,
-        name: "invalid",
-        depth: 0,
-        temporary: false
-    };
-}
-
-proc value_empty() -> BorrowValue {
-    give BorrowValue {
-        id: BORROWCK_INVALID_ID,
-        name: "invalid",
-        moved: false,
-        borrowed: false,
-        mutable: false,
-        region: region_empty()
-    };
-}
-
-proc suggestion_none() -> BorrowSuggestion {
-    give BorrowSuggestion {
-        kind: BorrowSuggestionKind.None,
-        message: "",
-        replacement: ""
-    };
-}
-
-proc diagnostic_empty() -> BorrowDiagnostic {
-    give BorrowDiagnostic {
-        id: BORROWCK_INVALID_ID,
-        kind: BorrowErrorKind.None,
-        severity: BorrowSeverity.Info,
-        message: "",
-        span: span_empty(),
-        value: value_empty(),
-        suggestions: []
-    };
-}
-
-proc report_empty() -> BorrowErrorReport {
-    give BorrowErrorReport {
-        diagnostics: [],
-        error_count: 0,
-        warning_count: 0,
-        fatal_count: 0,
-        valid: true
-    };
-}
-
-proc suggestion_create(
-    kind: BorrowSuggestionKind,
-    message: string,
-    replacement: string
-) -> BorrowSuggestion {
-
-    give BorrowSuggestion {
-        kind: kind,
-        message: message,
-        replacement: replacement
-    };
-}
-
-proc diagnostic_create(
-    id: u64,
-    kind: BorrowErrorKind,
-    severity: BorrowSeverity,
-    message: string,
-    span: BorrowSpan,
-    value: BorrowValue
-) -> BorrowDiagnostic {
-
-    give BorrowDiagnostic {
-        id: id,
-        kind: kind,
-        severity: severity,
-        message: message,
-        span: span,
-        value: value,
-        suggestions: []
-    };
-}
-
-proc diagnostic_add_suggestion(
-    diagnostic: BorrowDiagnostic,
-    suggestion: BorrowSuggestion
-) -> BorrowDiagnostic {
-
-    give BorrowDiagnostic {
-        id: diagnostic.id,
-        kind: diagnostic.kind,
-        severity: diagnostic.severity,
-        message: diagnostic.message,
-        span: diagnostic.span,
-        value: diagnostic.value,
-        suggestions: diagnostic.suggestions + [suggestion]
-    };
-}
-
-proc report_add(
-    report: BorrowErrorReport,
-    diagnostic: BorrowDiagnostic
-) -> BorrowErrorReport {
-
-    let errors = report.error_count;
-    let warnings = report.warning_count;
-    let fatals = report.fatal_count;
-
-    if diagnostic.severity == BorrowSeverity.Error {
-        set errors = errors + 1;
-    }
-
-    if diagnostic.severity == BorrowSeverity.Warning {
-        set warnings = warnings + 1;
-    }
-
-    if diagnostic.severity == BorrowSeverity.Fatal {
-        set fatals = fatals + 1;
-    }
-
-    give BorrowErrorReport {
-        diagnostics: report.diagnostics + [diagnostic],
-        error_count: errors,
-        warning_count: warnings,
-        fatal_count: fatals,
-        valid: fatals == 0
-    };
-}
-
-proc error_move_after_move(
-    id: u64,
-    value: BorrowValue,
-    span: BorrowSpan
-) -> BorrowDiagnostic {
-
-    let base = diagnostic_create(
-        id,
-        BorrowErrorKind.MoveAfterMove,
-        BorrowSeverity.Error,
-        "value moved more than once",
-        span,
-        value
-    );
-
-    let suggestion = suggestion_create(
-        BorrowSuggestionKind.CloneValue,
-        "clone the value before moving",
-        ".clone()"
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_use_after_move(
-    id: u64,
-    value: BorrowValue,
-    span: BorrowSpan
-) -> BorrowDiagnostic {
-
-    let base = diagnostic_create(
-        id,
-        BorrowErrorKind.UseAfterMove,
-        BorrowSeverity.Error,
-        "use after move detected",
-        span,
-        value
-    );
-
-    let suggestion = suggestion_create(
-        BorrowSuggestionKind.CloneValue,
-        "clone the value before move",
-        ".clone()"
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_mutable_conflict(
-    id: u64,
-    value: BorrowValue,
-    span: BorrowSpan
-) -> BorrowDiagnostic {
-
-    let base = diagnostic_create(
-        id,
-        BorrowErrorKind.MutableBorrowConflict,
-        BorrowSeverity.Error,
-        "mutable borrow conflicts with existing borrow",
-        span,
-        value
-    );
-
-    let suggestion = suggestion_create(
-        BorrowSuggestionKind.RestrictScope,
-        "reduce mutable borrow scope",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_immutable_conflict(
-    id: u64,
-    value: BorrowValue,
-    span: BorrowSpan
-) -> BorrowDiagnostic {
-
-    let base = diagnostic_create(
-        id,
-        BorrowErrorKind.ImmutableBorrowConflict,
-        BorrowSeverity.Error,
-        "immutable borrow conflicts with mutable borrow",
-        span,
-        value
-    );
-
-    let suggestion = suggestion_create(
-        BorrowSuggestionKind.SplitBorrow,
-        "split borrows into separate scopes",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_dangling_reference(
-    id: u64,
-    value: BorrowValue,
-    span: BorrowSpan
-) -> BorrowDiagnostic {
-
-    let base = diagnostic_create(
-        id,
-        BorrowErrorKind.DanglingReference,
-        BorrowSeverity.Fatal,
-        "dangling reference detected",
-        span,
-        value
-    );
-
-    let suggestion = suggestion_create(
-        BorrowSuggestionKind.IntroduceLifetime,
-        "introduce explicit lifetime",
-        "'a"
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_invalid_lifetime(
-    id: u64,
-    value: BorrowValue,
-    span: BorrowSpan
-) -> BorrowDiagnostic {
-
-    let base = diagnostic_create(
-        id,
-        BorrowErrorKind.InvalidLifetime,
-        BorrowSeverity.Error,
-        "invalid lifetime relation",
-        span,
-        value
-    );
-
-    let suggestion = suggestion_create(
-        BorrowSuggestionKind.IntroduceLifetime,
-        "define explicit lifetime constraints",
-        "'a: 'b"
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_escape_reference(
-    id: u64,
-    value: BorrowValue,
-    span: BorrowSpan
-) -> BorrowDiagnostic {
-
-    let base = diagnostic_create(
-        id,
-        BorrowErrorKind.EscapingReference,
-        BorrowSeverity.Fatal,
-        "reference escapes valid region",
-        span,
-        value
-    );
-
-    let suggestion = suggestion_create(
-        BorrowSuggestionKind.RestrictScope,
-        "reduce reference lifetime",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_partial_move(
-    id: u64,
-    value: BorrowValue,
-    span: BorrowSpan
-) -> BorrowDiagnostic {
-
-    let base = diagnostic_create(
-        id,
-        BorrowErrorKind.PartialMove,
-        BorrowSeverity.Error,
-        "partial move prevents later access",
-        span,
-        value
-    );
-
-    let suggestion = suggestion_create(
-        BorrowSuggestionKind.InsertCopy,
-        "copy field before partial move",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_invalid_drop_order(
-    id: u64,
-    value: BorrowValue,
-    span: BorrowSpan
-) -> BorrowDiagnostic {
-
-    let base = diagnostic_create(
-        id,
-        BorrowErrorKind.InvalidDropOrder,
-        BorrowSeverity.Fatal,
-        "drop order invalidates active borrow",
-        span,
-        value
-    );
-
-    let suggestion = suggestion_create(
-        BorrowSuggestionKind.ReorderStatements,
-        "reorder destruction sequence",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_async_borrow(
-    id: u64,
-    value: BorrowValue,
-    span: BorrowSpan
-) -> BorrowDiagnostic {
-
-    let base = diagnostic_create(
-        id,
-        BorrowErrorKind.AsyncBorrowViolation,
-        BorrowSeverity.Error,
-        "borrow crosses async suspension point",
-        span,
-        value
-    );
-
-    let suggestion = suggestion_create(
-        BorrowSuggestionKind.UseArc,
-        "wrap shared state in Arc",
-        "Arc<T>"
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_thread_share(
-    id: u64,
-    value: BorrowValue,
-    span: BorrowSpan
-) -> BorrowDiagnostic {
-
-    let base = diagnostic_create(
-        id,
-        BorrowErrorKind.InvalidThreadShare,
-        BorrowSeverity.Fatal,
-        "non thread-safe value shared across threads",
-        span,
-        value
-    );
-
-    let suggestion = suggestion_create(
-        BorrowSuggestionKind.UseMutex,
-        "protect shared state with mutex",
-        "Mutex<T>"
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc report_has_errors(report: BorrowErrorReport) -> bool {
-    give report.error_count > 0;
-}
-
-proc report_has_fatals(report: BorrowErrorReport) -> bool {
-    give report.fatal_count > 0;
-}
-
-proc report_total(report: BorrowErrorReport) -> u64 {
-    give vector_len(report.diagnostics);
+proc error_code(kind: BorrowErrorKind) -> string {
+  if kind == BorrowErrorKind.MoveAfterMove { give "BORROWCK_E_MOVE_AFTER_MOVE"; }
+  if kind == BorrowErrorKind.UseAfterMove { give "BORROWCK_E_USE_AFTER_MOVE"; }
+  if kind == BorrowErrorKind.BorrowOfMovedValue { give "BORROWCK_E_BORROW_OF_MOVED_VALUE"; }
+  if kind == BorrowErrorKind.MutableBorrowConflict { give "BORROWCK_E_MUTABLE_BORROW_CONFLICT"; }
+  if kind == BorrowErrorKind.WriteWhileBorrowed { give "BORROWCK_E_WRITE_WHILE_BORROWED"; }
+  if kind == BorrowErrorKind.MoveWhileBorrowed { give "BORROWCK_E_MOVE_WHILE_BORROWED"; }
+  if kind == BorrowErrorKind.ReturnRefToLocal { give "BORROWCK_E_RETURN_REF_TO_LOCAL"; }
+  if kind == BorrowErrorKind.ReturnBorrowOfLocal { give "BORROWCK_E_RETURN_BORROW_OF_LOCAL"; }
+  give "BORROWCK_E_UNKNOWN";
 }
 
 proc severity_name(severity: BorrowSeverity) -> string {
-    if severity == BorrowSeverity.Info {
-        give "info";
-    }
-
-    if severity == BorrowSeverity.Warning {
-        give "warning";
-    }
-
-    if severity == BorrowSeverity.Error {
-        give "error";
-    }
-
-    if severity == BorrowSeverity.Fatal {
-        give "fatal";
-    }
-
-    give "unknown";
+  if severity == BorrowSeverity.Info { give "info"; }
+  if severity == BorrowSeverity.Warning { give "warning"; }
+  give "error";
 }
 
-proc error_name(kind: BorrowErrorKind) -> string {
-    if kind == BorrowErrorKind.MoveAfterMove {
-        give "move_after_move";
-    }
+proc diagnostic_create(
+  kind: BorrowErrorKind,
+  file: string,
+  line: u64,
+  message: string,
+  labels: [string],
+  suggestion: string,
+  fatal: bool
+) -> BorrowDiagnostic {
+  let severity: BorrowSeverity = BorrowSeverity.Error;
+  if not fatal {
+    set severity = BorrowSeverity.Warning;
+  }
 
-    if kind == BorrowErrorKind.UseAfterMove {
-        give "use_after_move";
-    }
-
-    if kind == BorrowErrorKind.MutableBorrowConflict {
-        give "mutable_borrow_conflict";
-    }
-
-    if kind == BorrowErrorKind.ImmutableBorrowConflict {
-        give "immutable_borrow_conflict";
-    }
-
-    if kind == BorrowErrorKind.DanglingReference {
-        give "dangling_reference";
-    }
-
-    if kind == BorrowErrorKind.InvalidLifetime {
-        give "invalid_lifetime";
-    }
-
-    give "borrow_error";
+  give BorrowDiagnostic {
+    kind: kind,
+    code: error_code(kind),
+    severity: severity,
+    message: message,
+    labels: labels,
+    suggestion: suggestion,
+    span: span_create(file, line, 1, 1),
+    entity: BORROWCK_INVALID_ID,
+    fatal: fatal
+  };
 }
 
-proc print_diagnostic(diagnostic: BorrowDiagnostic) {
-    emit severity_name(diagnostic.severity);
-    emit error_name(diagnostic.kind);
-    emit diagnostic.message;
-    emit diagnostic.span.file;
-    emit diagnostic.span.line;
-    emit diagnostic.span.column;
-}
-
-proc print_report(report: BorrowErrorReport) {
-    emit "borrowck report";
-    emit report.error_count;
-    emit report.warning_count;
-    emit report.fatal_count;
-
-    let i: u64 = 0;
-
-    while i < vector_len(report.diagnostics) {
-        print_diagnostic(report.diagnostics[i]);
-        set i = i + 1;
+proc diagnostics_has_fatal(diagnostics: [BorrowDiagnostic]) -> bool {
+  let i: u64 = 0;
+  while i < len(diagnostics) {
+    if diagnostics[i].fatal {
+      give true;
     }
-}
-
-proc vector_len[T](items: [T]) -> u64 {
-    give 0;
+    set i = i + 1;
+  }
+  give false;
 }

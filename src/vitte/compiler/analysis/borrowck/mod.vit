@@ -1,8 +1,529 @@
 space vitte/compiler/analysis/borrowck
 
-use vitte/compiler/analysis/borrowck/errors
-use vitte/compiler/analysis/borrowck/lifetimes
-use vitte/compiler/analysis/borrowck/loans
-use vitte/compiler/analysis/borrowck/moves
-use vitte/compiler/analysis/borrowck/ownership
-use vitte/compiler/analysis/borrowck/regions
+use vitte/compiler/analysis/borrowck/errors.{
+  BorrowDiagnostic,
+  BorrowErrorKind,
+  diagnostic_create,
+  diagnostics_has_fatal
+}
+use vitte/compiler/analysis/borrowck/lifetimes.{
+  LifetimeFactKind,
+  LifetimeResult,
+  add_fact,
+  add_return_constraint,
+  add_returned_local_diagnostic,
+  finalize_lifetimes,
+  lifetime_fact,
+  lifetime_result_empty
+}
+use vitte/compiler/analysis/borrowck/loans.{
+  LoanKind,
+  LoanTable,
+  add_loan,
+  alias_is_active,
+  deactivate_alias,
+  kind_for_alias,
+  loan_create,
+  loan_table_empty,
+  owner_for_alias,
+  owner_has_active_mutable,
+  owner_has_conflict
+}
+use vitte/compiler/analysis/borrowck/moves.{
+  MoveTracker,
+  move_source_from_expr,
+  move_tracker_empty,
+  tracker_record_move,
+  tracker_record_reinit,
+  tracker_record_return,
+  tracker_record_use
+}
+use vitte/compiler/analysis/borrowck/ownership.{
+  OwnershipTable,
+  add_shared_borrow,
+  declare_local,
+  has_local,
+  is_moved,
+  is_mutably_borrowed,
+  mark_moved,
+  mark_reinitialized,
+  ownership_table_empty,
+  release_shared_borrow,
+  set_mutable_borrow,
+  shared_borrow_count
+}
+use vitte/compiler/analysis/borrowck/regions.{
+  RegionSolution,
+  close_region,
+  ensure_region,
+  region_solution_empty
+}
+use vitte/compiler/middle/hir/hir.{ HirItemKind, HirStmtKind, HirUnit }
+
+form BorrowCheckResult {
+  diagnostics: [BorrowDiagnostic]
+  ownership: OwnershipTable
+  moves: MoveTracker
+  loans: LoanTable
+  lifetimes: LifetimeResult
+  valid: bool
+}
+
+proc split_lines(text: string) -> [string] {
+  give split(text, "\n");
+}
+
+proc binding_name(binding_text: string) -> string {
+  let binding: string = trim(binding_text);
+  if binding == "" {
+    give "";
+  }
+
+  let without_mut: string = binding;
+  if starts_with(without_mut, "mut ") {
+    set without_mut = trim(slice(without_mut, 4, len(without_mut)));
+  }
+
+  let colon: int = find(without_mut, ":");
+  if colon >= 0 {
+    set without_mut = trim(slice(without_mut, 0, colon));
+  }
+
+  give move_source_from_expr(without_mut);
+}
+
+proc stmt_lhs(line: string, prefix: string) -> string {
+  let rest: string = trim(slice(line, len(prefix), len(line)));
+  let eq: int = find(rest, "=");
+  if eq < 0 {
+    give binding_name(rest);
+  }
+  give binding_name(slice(rest, 0, eq));
+}
+
+proc stmt_rhs(line: string, prefix: string) -> string {
+  let rest: string = trim(slice(line, len(prefix), len(line)));
+  let eq: int = find(rest, "=");
+  if eq < 0 {
+    give "";
+  }
+  give trim(slice(rest, eq + 1, len(rest)));
+}
+
+proc parse_borrow_owner(expr: string) -> string {
+  let trimmed: string = trim(expr);
+  if starts_with(trimmed, "&mut ") {
+    give move_source_from_expr(slice(trimmed, 5, len(trimmed)));
+  }
+  if starts_with(trimmed, "&") {
+    give move_source_from_expr(slice(trimmed, 1, len(trimmed)));
+  }
+  give "";
+}
+
+proc is_mutable_borrow_expr(expr: string) -> bool {
+  give starts_with(trim(expr), "&mut ");
+}
+
+proc is_shared_borrow_expr(expr: string) -> bool {
+  let trimmed: string = trim(expr);
+  give starts_with(trimmed, "&") and not starts_with(trimmed, "&mut ");
+}
+
+proc add_diag(result: BorrowCheckResult, diagnostic: BorrowDiagnostic) -> BorrowCheckResult {
+  give BorrowCheckResult {
+    diagnostics: result.diagnostics + [diagnostic],
+    ownership: result.ownership,
+    moves: result.moves,
+    loans: result.loans,
+    lifetimes: result.lifetimes,
+    valid: false
+  };
+}
+
+proc replace_ownership(result: BorrowCheckResult, ownership: OwnershipTable) -> BorrowCheckResult {
+  give BorrowCheckResult {
+    diagnostics: result.diagnostics,
+    ownership: ownership,
+    moves: result.moves,
+    loans: result.loans,
+    lifetimes: result.lifetimes,
+    valid: result.valid and ownership.valid
+  };
+}
+
+proc replace_moves(result: BorrowCheckResult, moves: MoveTracker) -> BorrowCheckResult {
+  give BorrowCheckResult {
+    diagnostics: result.diagnostics,
+    ownership: result.ownership,
+    moves: moves,
+    loans: result.loans,
+    lifetimes: result.lifetimes,
+    valid: result.valid and moves.valid
+  };
+}
+
+proc replace_loans(result: BorrowCheckResult, loans: LoanTable) -> BorrowCheckResult {
+  give BorrowCheckResult {
+    diagnostics: result.diagnostics,
+    ownership: result.ownership,
+    moves: result.moves,
+    loans: loans,
+    lifetimes: result.lifetimes,
+    valid: result.valid and loans.valid
+  };
+}
+
+proc replace_lifetimes(result: BorrowCheckResult, lifetimes: LifetimeResult) -> BorrowCheckResult {
+  give BorrowCheckResult {
+    diagnostics: result.diagnostics + lifetimes.diagnostics,
+    ownership: result.ownership,
+    moves: result.moves,
+    loans: result.loans,
+    lifetimes: lifetimes,
+    valid: result.valid and lifetimes.valid and not diagnostics_has_fatal(lifetimes.diagnostics)
+  };
+}
+
+proc release_alias(result: BorrowCheckResult, alias: string, line: u64) -> BorrowCheckResult {
+  if not alias_is_active(result.loans, alias) {
+    give result;
+  }
+
+  let owner: string = owner_for_alias(result.loans, alias);
+  let kind: LoanKind = kind_for_alias(result.loans, alias);
+  let loans0: LoanTable = deactivate_alias(result.loans, alias, line);
+  let result0: BorrowCheckResult = replace_loans(result, loans0);
+
+  if kind == LoanKind.Mutable {
+    give replace_ownership(result0, set_mutable_borrow(result0.ownership, owner, false, line));
+  }
+  give replace_ownership(result0, release_shared_borrow(result0.ownership, owner, line));
+}
+
+proc bind_plain_value(result: BorrowCheckResult, binding: string, line: u64) -> BorrowCheckResult {
+  let ownership0: OwnershipTable = declare_local(result.ownership, binding, line, true);
+  give replace_ownership(result, ownership0);
+}
+
+proc record_direct_return_ref(result: BorrowCheckResult, source_path: string, owner: string, line: u64) -> BorrowCheckResult {
+  let lifetimes0: LifetimeResult = add_return_constraint(result.lifetimes, owner, "return", line);
+  let lifetimes1: LifetimeResult = add_returned_local_diagnostic(lifetimes0, source_path, line, owner, "", true);
+  let lifetimes2: LifetimeResult = add_fact(lifetimes1, lifetime_fact("", owner, "return", line, LifetimeFactKind.Return));
+  let result0: BorrowCheckResult = replace_lifetimes(result, lifetimes2);
+  give replace_moves(result0, tracker_record_return(result0.moves, owner, line));
+}
+
+proc record_alias_return(result: BorrowCheckResult, source_path: string, alias: string, owner: string, line: u64) -> BorrowCheckResult {
+  let lifetimes0: LifetimeResult = add_return_constraint(result.lifetimes, owner, "return", line);
+  let lifetimes1: LifetimeResult = add_returned_local_diagnostic(lifetimes0, source_path, line, owner, alias, false);
+  let lifetimes2: LifetimeResult = add_fact(lifetimes1, lifetime_fact(alias, owner, "return", line, LifetimeFactKind.Return));
+  let result0: BorrowCheckResult = replace_lifetimes(result, lifetimes2);
+  give replace_moves(result0, tracker_record_return(result0.moves, alias, line));
+}
+
+proc handle_borrow_binding(
+  result: BorrowCheckResult,
+  source_path: string,
+  binding: string,
+  owner: string,
+  mutable: bool,
+  line: u64
+) -> BorrowCheckResult {
+  let current: BorrowCheckResult = release_alias(result, binding, line);
+
+  if owner == "" {
+    give bind_plain_value(current, binding, line);
+  }
+  if is_moved(current.ownership, owner) {
+    give add_diag(current, diagnostic_create(
+      BorrowErrorKind.BorrowOfMovedValue,
+      source_path,
+      line,
+      "cannot borrow moved local `" + owner + "`",
+      [owner, binding],
+      "reinitialize the value before borrowing it",
+      true
+    ));
+  }
+
+  let requested: LoanKind = LoanKind.Shared;
+  if mutable {
+    set requested = LoanKind.Mutable;
+  }
+
+  if owner_has_conflict(current.loans, owner, requested) {
+    give add_diag(current, diagnostic_create(
+      BorrowErrorKind.MutableBorrowConflict,
+      source_path,
+      line,
+      "borrow conflict on local `" + owner + "`",
+      [owner, binding],
+      "end the previous borrow before taking a conflicting borrow",
+      true
+    ));
+  }
+
+  let loans0: LoanTable = add_loan(current.loans, loan_create(len(current.loans.loans) as u64 + 1, binding, owner, requested, line));
+  let current0: BorrowCheckResult = replace_loans(current, loans0);
+  let ownership0: OwnershipTable = declare_local(current0.ownership, binding, line, true);
+  let current1: BorrowCheckResult = replace_ownership(current0, ownership0);
+
+  let ownership1: OwnershipTable = current1.ownership;
+  if mutable {
+    set ownership1 = set_mutable_borrow(ownership1, owner, true, line);
+  } else {
+    set ownership1 = add_shared_borrow(ownership1, owner, line);
+  }
+
+  let lifetimes0: LifetimeResult = add_fact(current1.lifetimes, lifetime_fact(binding, owner, binding, line, LifetimeFactKind.Borrow));
+  let lifetimes1: LifetimeResult = add_return_constraint(lifetimes0, owner, binding, line);
+  let current2: BorrowCheckResult = replace_ownership(current1, ownership1);
+  give replace_lifetimes(current2, lifetimes1);
+}
+
+proc handle_move_binding(
+  result: BorrowCheckResult,
+  source_path: string,
+  binding: string,
+  source: string,
+  line: u64
+) -> BorrowCheckResult {
+  let current: BorrowCheckResult = release_alias(result, binding, line);
+
+  if source == "" or not has_local(current.ownership, source) {
+    give bind_plain_value(current, binding, line);
+  }
+  if is_moved(current.ownership, source) {
+    give add_diag(current, diagnostic_create(
+      BorrowErrorKind.MoveAfterMove,
+      source_path,
+      line,
+      "value `" + source + "` was already moved",
+      [source, binding],
+      "reinitialize the value or clone it before moving again",
+      true
+    ));
+  }
+  if shared_borrow_count(current.ownership, source) > 0 or is_mutably_borrowed(current.ownership, source) {
+    give add_diag(current, diagnostic_create(
+      BorrowErrorKind.MoveWhileBorrowed,
+      source_path,
+      line,
+      "cannot move `" + source + "` while it is borrowed",
+      [source, binding],
+      "end the active borrows before moving the value",
+      true
+    ));
+  }
+
+  let ownership0: OwnershipTable = mark_moved(current.ownership, source, line);
+  let current0: BorrowCheckResult = replace_ownership(current, ownership0);
+  let moves0: MoveTracker = tracker_record_move(current0.moves, source, line);
+  let current1: BorrowCheckResult = replace_moves(current0, moves0);
+  let ownership1: OwnershipTable = declare_local(current1.ownership, binding, line, true);
+  give replace_ownership(current1, ownership1);
+}
+
+proc handle_set(
+  result: BorrowCheckResult,
+  source_path: string,
+  target: string,
+  rhs: string,
+  line: u64
+) -> BorrowCheckResult {
+  let current: BorrowCheckResult = release_alias(result, target, line);
+  if target == "" {
+    give current;
+  }
+  if shared_borrow_count(current.ownership, target) > 0 or is_mutably_borrowed(current.ownership, target) {
+    give add_diag(current, diagnostic_create(
+      BorrowErrorKind.WriteWhileBorrowed,
+      source_path,
+      line,
+      "cannot write `" + target + "` while it is borrowed",
+      [target],
+      "end the active borrow before assigning to the local",
+      true
+    ));
+  }
+
+  let owner: string = parse_borrow_owner(rhs);
+  if owner != "" {
+    give handle_borrow_binding(current, source_path, target, owner, is_mutable_borrow_expr(rhs), line);
+  }
+
+  let source: string = move_source_from_expr(rhs);
+  if source != "" and source != target {
+    let current0: BorrowCheckResult = handle_move_binding(current, source_path, target, source, line);
+    if current0.valid {
+      let ownership0: OwnershipTable = mark_reinitialized(current0.ownership, target, line);
+      let moves0: MoveTracker = tracker_record_reinit(current0.moves, target, line);
+      let current1: BorrowCheckResult = replace_ownership(current0, ownership0);
+      give replace_moves(current1, moves0);
+    }
+    give current0;
+  }
+
+  let ownership0: OwnershipTable = mark_reinitialized(current.ownership, target, line);
+  let moves0: MoveTracker = tracker_record_reinit(current.moves, target, line);
+  let current0: BorrowCheckResult = replace_ownership(current, ownership0);
+  give replace_moves(current0, moves0);
+}
+
+proc handle_give(
+  result: BorrowCheckResult,
+  source_path: string,
+  expr: string,
+  line: u64
+) -> BorrowCheckResult {
+  let owner: string = parse_borrow_owner(expr);
+  if owner != "" and has_local(result.ownership, owner) {
+    give record_direct_return_ref(result, source_path, owner, line);
+  }
+
+  let value: string = move_source_from_expr(expr);
+  if value == "" {
+    give result;
+  }
+
+  if alias_is_active(result.loans, value) {
+    let owner0: string = owner_for_alias(result.loans, value);
+    give record_alias_return(result, source_path, value, owner0, line);
+  }
+
+  if is_moved(result.ownership, value) {
+    give add_diag(result, diagnostic_create(
+      BorrowErrorKind.UseAfterMove,
+      source_path,
+      line,
+      "cannot use moved local `" + value + "`",
+      [value],
+      "reinitialize the value before using it again",
+      true
+    ));
+  }
+
+  give replace_moves(result, tracker_record_return(result.moves, value, line));
+}
+
+proc borrow_check_source(source_path: string, source_text: string) -> BorrowCheckResult {
+  let lines: [string] = split_lines(source_text);
+  let result: BorrowCheckResult = BorrowCheckResult {
+    diagnostics: [],
+    ownership: ownership_table_empty(),
+    moves: move_tracker_empty(),
+    loans: loan_table_empty(),
+    lifetimes: lifetime_result_empty(region_solution_empty()),
+    valid: true
+  };
+
+  let current: BorrowCheckResult = result;
+  let i: int = 0;
+  while i < len(lines) {
+    let line_no: u64 = i as u64 + 1;
+    let line: string = trim(lines[i]);
+    if line == "" or starts_with(line, "#") or starts_with(line, "//") {
+      set i = i + 1;
+      continue;
+    }
+
+    if starts_with(line, "let ") {
+      let binding: string = stmt_lhs(line, "let ");
+      let rhs: string = stmt_rhs(line, "let ");
+      let current0: BorrowCheckResult = current;
+      if binding != "" and not has_local(current0.ownership, binding) {
+        let ownership0: OwnershipTable = declare_local(current0.ownership, binding, line_no, rhs != "");
+        set current0 = replace_ownership(current0, ownership0);
+        let lifetimes0: LifetimeResult = current0.lifetimes;
+        set lifetimes0 = LifetimeResult {
+          facts: lifetimes0.facts,
+          diagnostics: lifetimes0.diagnostics,
+          regions: ensure_region(lifetimes0.regions, binding, line_no),
+          valid: lifetimes0.valid and ensure_region(lifetimes0.regions, binding, line_no).valid
+        };
+        set current0 = replace_lifetimes(current0, lifetimes0);
+      }
+
+      if rhs == "" {
+        set current = current0;
+      } elif parse_borrow_owner(rhs) != "" {
+        set current = handle_borrow_binding(current0, source_path, binding, parse_borrow_owner(rhs), is_mutable_borrow_expr(rhs), line_no);
+      } else {
+        set current = handle_move_binding(current0, source_path, binding, move_source_from_expr(rhs), line_no);
+      }
+    } elif starts_with(line, "set ") {
+      set current = handle_set(current, source_path, stmt_lhs(line, "set "), stmt_rhs(line, "set "), line_no);
+    } elif starts_with(line, "give ") {
+      set current = handle_give(current, source_path, trim(slice(line, 5, len(line))), line_no);
+    }
+
+    set i = i + 1;
+  }
+
+  let j: u64 = 0;
+  let lifetimes0: LifetimeResult = current.lifetimes;
+  while j < len(current.ownership.locals) {
+    let name: string = current.ownership.locals[j].name;
+    set lifetimes0 = LifetimeResult {
+      facts: lifetimes0.facts,
+      diagnostics: lifetimes0.diagnostics,
+      regions: close_region(lifetimes0.regions, name, len(lines) as u64 + 1),
+      valid: lifetimes0.valid and close_region(lifetimes0.regions, name, len(lines) as u64 + 1).valid
+    };
+    set j = j + 1;
+  }
+
+  let current0: BorrowCheckResult = replace_lifetimes(current, finalize_lifetimes(lifetimes0));
+  give BorrowCheckResult {
+    diagnostics: current0.diagnostics,
+    ownership: current0.ownership,
+    moves: current0.moves,
+    loans: current0.loans,
+    lifetimes: current0.lifetimes,
+    valid: current0.valid and not diagnostics_has_fatal(current0.diagnostics)
+  };
+}
+
+proc stmt_to_source_text(kind: HirStmtKind, name: string, target: string, expr_text: string, mutable: bool, message: string) -> string {
+  if kind == HirStmtKind.Const {
+    give "let " + name + " = " + expr_text;
+  }
+  if kind == HirStmtKind.Let {
+    if mutable {
+      give "let mut " + name + " = " + expr_text;
+    }
+    give "let " + name + " = " + expr_text;
+  }
+  if kind == HirStmtKind.Set {
+    give "set " + target + " = " + expr_text;
+  }
+  if kind == HirStmtKind.Give {
+    give "give " + expr_text;
+  }
+  if kind == HirStmtKind.StaticAssert {
+    give "static_assert(" + expr_text + ", " + message + ")";
+  }
+  give expr_text;
+}
+
+proc borrow_check_hir(source_path: string, hir: HirUnit) -> BorrowCheckResult {
+  let synthetic: string = "";
+  let i: u64 = 0;
+  while i < len(hir.module.items) {
+    let item = hir.module.items[i];
+    if item.kind == HirItemKind.Proc {
+      let j: u64 = 0;
+      while j < len(item.stmts) {
+        let stmt = item.stmts[j];
+        if synthetic != "" {
+          set synthetic = synthetic + "\n";
+        }
+        set synthetic = synthetic + stmt_to_source_text(stmt.kind, stmt.name, stmt.target, stmt.expr.text, stmt.mutable, stmt.message);
+        set j = j + 1;
+      }
+    }
+    set i = i + 1;
+  }
+  give borrow_check_source(source_path, synthetic);
+}

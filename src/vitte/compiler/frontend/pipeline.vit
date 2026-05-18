@@ -5,6 +5,7 @@ use vitte/compiler/frontend/macros/expand.{ expand_macros }
 use vitte/compiler/frontend/lexer/scanner.{ scan_tokens }
 use vitte/compiler/frontend/parse/parser.{ parse_source }
 use vitte/compiler/frontend/parse/recovery.{ capped_diag_count, recovery_applied }
+use vitte/compiler/frontend/ast/node.{ AstModule, ast_module_empty }
 use vitte/compiler/frontend/ast/validate.{ AstValidation, validate_ast_root }
 
 form FrontendDiagnostic {
@@ -18,7 +19,7 @@ form FrontendOutput {
   source_text: string
   token_count: u64
   grammar_version: string
-  ast_root: string
+  ast_root: AstModule
   toplevel_count: u64
   stmt_count: u64
   expr_count: u64
@@ -45,7 +46,7 @@ proc frontend_run(source_path: string, source_text: string) -> FrontendOutput {
       source_text: source_text,
       token_count: 0,
       grammar_version: "vitte-core-2026-05",
-      ast_root: "invalid",
+      ast_root: ast_module_empty(),
       toplevel_count: 0,
       stmt_count: 0,
       expr_count: 0,
@@ -71,7 +72,7 @@ proc frontend_run(source_path: string, source_text: string) -> FrontendOutput {
     set i = i + 1;
   }
 
-  let ast_root: string = parsed.ast_root;
+  let ast_root: AstModule = parsed.ast_root;
   let v: AstValidation = validate_ast_root(ast_root);
   if not v.valid {
     set ds = ds + [frontend_diagnostic("FAST0001", v.message, true)];

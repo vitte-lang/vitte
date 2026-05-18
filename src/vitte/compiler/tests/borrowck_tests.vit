@@ -1,8 +1,85 @@
 space vitte/compiler/tests/borrowck_tests
 
-const VERSION_TEXT: string = "analysis borrowck tests 0.1.0"
+use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_source }
+
+const VERSION_TEXT: string = "analysis borrowck tests 0.2.0"
 const BANNER_TEXT: string = "analysis borrowck tests"
-const EXIT_CODE: int = 0
+
+proc has_code(result: BorrowCheckResult, code: string) -> bool {
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].code == code {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc test_valid_reinit_after_move() -> bool {
+  let source: string =
+    "let x = make_box()\n" +
+    "let y = x\n" +
+    "set x = make_box()\n" +
+    "let z = x\n";
+  let result: BorrowCheckResult = borrow_check_source("borrowck_valid_reinit.vit", source);
+  give result.valid and len(result.diagnostics) == 0;
+}
+
+proc test_move_after_move() -> bool {
+  let source: string =
+    "let x = make_box()\n" +
+    "let y = x\n" +
+    "let z = x\n";
+  let result: BorrowCheckResult = borrow_check_source("borrowck_move_after_move.vit", source);
+  give has_code(result, "BORROWCK_E_MOVE_AFTER_MOVE");
+}
+
+proc test_write_while_borrowed() -> bool {
+  let source: string =
+    "let x = make_box()\n" +
+    "let r = &x\n" +
+    "set x = make_box()\n";
+  let result: BorrowCheckResult = borrow_check_source("borrowck_write_while_borrowed.vit", source);
+  give has_code(result, "BORROWCK_E_WRITE_WHILE_BORROWED");
+}
+
+proc test_mutable_borrow_conflict() -> bool {
+  let source: string =
+    "let x = make_box()\n" +
+    "let a = &x\n" +
+    "let b = &mut x\n";
+  let result: BorrowCheckResult = borrow_check_source("borrowck_mut_conflict.vit", source);
+  give has_code(result, "BORROWCK_E_MUTABLE_BORROW_CONFLICT");
+}
+
+proc test_return_ref_to_local() -> bool {
+  let source: string =
+    "let x = make_box()\n" +
+    "give &x\n";
+  let result: BorrowCheckResult = borrow_check_source("borrowck_return_ref.vit", source);
+  give has_code(result, "BORROWCK_E_RETURN_REF_TO_LOCAL");
+}
+
+proc test_return_borrow_of_local() -> bool {
+  let source: string =
+    "let x = make_box()\n" +
+    "let r = &x\n" +
+    "give r\n";
+  let result: BorrowCheckResult = borrow_check_source("borrowck_return_alias.vit", source);
+  give has_code(result, "BORROWCK_E_RETURN_BORROW_OF_LOCAL");
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+  if not test_valid_reinit_after_move() { set failures = failures + 1; }
+  if not test_move_after_move() { set failures = failures + 1; }
+  if not test_write_while_borrowed() { set failures = failures + 1; }
+  if not test_mutable_borrow_conflict() { set failures = failures + 1; }
+  if not test_return_ref_to_local() { set failures = failures + 1; }
+  if not test_return_borrow_of_local() { set failures = failures + 1; }
+  give failures;
+}
 
 proc version_text() -> string {
   give VERSION_TEXT
@@ -13,7 +90,7 @@ proc banner_text() -> string {
 }
 
 proc main(args: list[string]) -> int {
-  give EXIT_CODE
+  give run_all_tests()
 }
 
 export *

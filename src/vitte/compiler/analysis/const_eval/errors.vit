@@ -1,559 +1,111 @@
-<<< ========================================================= >>>
-<<< Vitte 2026 — Official Compiler Source                    >>>
-<<< Component: Compiler / Analysis / Const Evaluation        >>>
-<<< File: compiler/analysis/const_eval/errors.vit            >>>
-<<< Module: vitte/compiler/analysis/const_eval/errors        >>>
-<<< Purpose: compile-time evaluation diagnostics and reports  >>>
-<<< ========================================================= >>>
-
 space vitte/compiler/analysis/const_eval/errors
 
-const CONST_EVAL_INVALID_ID: u64 = 18446744073709551615
-const CONST_EVAL_VERSION: u32 = 2026
-const CONST_EVAL_MAX_DIAGNOSTICS: u64 = 1048576
-
 pick ConstEvalErrorKind {
-    None,
-    UnknownExpression,
-    UnknownConstant,
-    InvalidLiteral,
-    InvalidOperation,
-    InvalidUnaryOperation,
-    InvalidBinaryOperation,
-    InvalidCast,
-    InvalidIntrinsic,
-    InvalidFunctionCall,
-    InvalidRecursion,
-    DivisionByZero,
-    IntegerOverflow,
-    IntegerUnderflow,
-    FloatOverflow,
-    FloatUnderflow,
-    InvalidShift,
-    InvalidPointerOperation,
-    InvalidMemoryAccess,
-    InvalidArrayIndex,
-    InvalidTupleIndex,
-    InvalidFieldAccess,
-    InvalidPattern,
-    InvalidType,
-    InvalidGenericInstantiation,
-    InvalidConstContext,
-    InvalidStaticReference,
-    InvalidMutableReference,
-    InvalidBorrow,
-    InvalidLifetime,
-    InvalidLoop,
-    InvalidMatch,
-    InvalidControlFlow,
-    InvalidDrop,
-    InvalidAllocation,
-    InvalidDeallocation,
-    InvalidStringOperation,
-    InvalidUtf8,
-    InvalidEnumTag,
-    InvalidUnionAccess,
-    InvalidClosureCapture,
-    InvalidAsyncOperation,
-    InvalidAwait,
-    InvalidYield,
-    InvalidThreadOperation,
-    InvalidPlatformOperation,
-    InvalidTargetOperation,
-    InvalidComptimeOperation,
-    InvalidInterpreterState,
-    EvaluationLimitExceeded,
-    RecursionLimitExceeded,
-    StepLimitExceeded,
-    MemoryLimitExceeded,
-    Timeout,
-    InternalFailure,
+  None,
+  DivisionByZero,
+  UnknownName,
+  NonConstCall,
+  MutationInConst,
+  UnsupportedExpr,
+  Overflow,
+  StaticAssertFailed,
+  Cycle,
+  ParseError,
 }
 
 pick ConstEvalSeverity {
-    Info,
-    Warning,
-    Error,
-    Fatal,
-}
-
-pick ConstEvalSuggestionKind {
-    None,
-    SimplifyExpression,
-    ReplaceLiteral,
-    AddTypeAnnotation,
-    AddBoundsCheck,
-    ReplaceOperation,
-    UseStaticValue,
-    UseRuntimeEvaluation,
-    ReduceRecursion,
-    SplitExpression,
-    RemoveMutation,
-    RemoveBorrow,
-    RemoveUnsafe,
-    InlineConstant,
+  Warning,
+  Error,
 }
 
 form ConstEvalSpan {
-    file: string
-    line: u64
-    column: u64
-    length: u64
-}
-
-form ConstEvalSuggestion {
-    kind: ConstEvalSuggestionKind
-    message: string
-    replacement: string
+  file: string
+  line: u64
+  column: u64
+  length: u64
 }
 
 form ConstEvalDiagnostic {
-    id: u64
-    kind: ConstEvalErrorKind
-    severity: ConstEvalSeverity
-    message: string
-    expression_id: u64
-    span: ConstEvalSpan
-    suggestions: [ConstEvalSuggestion]
+  kind: ConstEvalErrorKind
+  code: string
+  severity: ConstEvalSeverity
+  message: string
+  labels: [string]
+  suggestion: string
+  span: ConstEvalSpan
+  fatal: bool
 }
 
-form ConstEvalReport {
-    diagnostics: [ConstEvalDiagnostic]
-    info_count: u64
-    warning_count: u64
-    error_count: u64
-    fatal_count: u64
-    valid: bool
+proc span_create(file: string, line: u64, column: u64, length: u64) -> ConstEvalSpan {
+  give ConstEvalSpan {
+    file: file,
+    line: line,
+    column: column,
+    length: length
+  };
 }
 
 proc span_empty() -> ConstEvalSpan {
-    give ConstEvalSpan {
-        file: "compiler/analysis/const_eval/errors.vit",
-        line: 0,
-        column: 0,
-        length: 0
-    };
+  give span_create("compiler/analysis/const_eval", 0, 0, 0);
 }
 
-proc suggestion_none() -> ConstEvalSuggestion {
-    give ConstEvalSuggestion {
-        kind: ConstEvalSuggestionKind.None,
-        message: "",
-        replacement: ""
-    };
-}
-
-proc diagnostic_empty() -> ConstEvalDiagnostic {
-    give ConstEvalDiagnostic {
-        id: CONST_EVAL_INVALID_ID,
-        kind: ConstEvalErrorKind.None,
-        severity: ConstEvalSeverity.Info,
-        message: "",
-        expression_id: CONST_EVAL_INVALID_ID,
-        span: span_empty(),
-        suggestions: []
-    };
-}
-
-proc report_empty() -> ConstEvalReport {
-    give ConstEvalReport {
-        diagnostics: [],
-        info_count: 0,
-        warning_count: 0,
-        error_count: 0,
-        fatal_count: 0,
-        valid: true
-    };
-}
-
-proc suggestion_create(
-    kind: ConstEvalSuggestionKind,
-    message: string,
-    replacement: string
-) -> ConstEvalSuggestion {
-    give ConstEvalSuggestion {
-        kind: kind,
-        message: message,
-        replacement: replacement
-    };
-}
-
-proc diagnostic_create(
-    id: u64,
-    kind: ConstEvalErrorKind,
-    severity: ConstEvalSeverity,
-    message: string,
-    expression_id: u64,
-    span: ConstEvalSpan
-) -> ConstEvalDiagnostic {
-    give ConstEvalDiagnostic {
-        id: id,
-        kind: kind,
-        severity: severity,
-        message: message,
-        expression_id: expression_id,
-        span: span,
-        suggestions: []
-    };
-}
-
-proc diagnostic_add_suggestion(
-    diagnostic: ConstEvalDiagnostic,
-    suggestion: ConstEvalSuggestion
-) -> ConstEvalDiagnostic {
-    give ConstEvalDiagnostic {
-        id: diagnostic.id,
-        kind: diagnostic.kind,
-        severity: diagnostic.severity,
-        message: diagnostic.message,
-        expression_id: diagnostic.expression_id,
-        span: diagnostic.span,
-        suggestions: diagnostic.suggestions + [suggestion]
-    };
-}
-
-proc report_add(
-    report: ConstEvalReport,
-    diagnostic: ConstEvalDiagnostic
-) -> ConstEvalReport {
-    let infos = report.info_count;
-    let warnings = report.warning_count;
-    let errors = report.error_count;
-    let fatals = report.fatal_count;
-
-    if diagnostic.severity == ConstEvalSeverity.Info {
-        set infos = infos + 1;
-    }
-
-    if diagnostic.severity == ConstEvalSeverity.Warning {
-        set warnings = warnings + 1;
-    }
-
-    if diagnostic.severity == ConstEvalSeverity.Error {
-        set errors = errors + 1;
-    }
-
-    if diagnostic.severity == ConstEvalSeverity.Fatal {
-        set fatals = fatals + 1;
-    }
-
-    give ConstEvalReport {
-        diagnostics: report.diagnostics + [diagnostic],
-        info_count: infos,
-        warning_count: warnings,
-        error_count: errors,
-        fatal_count: fatals,
-        valid: fatals == 0
-    };
-}
-
-proc error_division_by_zero(
-    id: u64,
-    expression_id: u64,
-    span: ConstEvalSpan
-) -> ConstEvalDiagnostic {
-    let base = diagnostic_create(
-        id,
-        ConstEvalErrorKind.DivisionByZero,
-        ConstEvalSeverity.Error,
-        "division by zero during constant evaluation",
-        expression_id,
-        span
-    );
-
-    let suggestion = suggestion_create(
-        ConstEvalSuggestionKind.ReplaceLiteral,
-        "replace divisor with non-zero constant",
-        "1"
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_integer_overflow(
-    id: u64,
-    expression_id: u64,
-    span: ConstEvalSpan
-) -> ConstEvalDiagnostic {
-    let base = diagnostic_create(
-        id,
-        ConstEvalErrorKind.IntegerOverflow,
-        ConstEvalSeverity.Error,
-        "integer overflow during constant evaluation",
-        expression_id,
-        span
-    );
-
-    let suggestion = suggestion_create(
-        ConstEvalSuggestionKind.AddTypeAnnotation,
-        "use larger integer type",
-        "i128"
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_invalid_function_call(
-    id: u64,
-    expression_id: u64,
-    span: ConstEvalSpan
-) -> ConstEvalDiagnostic {
-    let base = diagnostic_create(
-        id,
-        ConstEvalErrorKind.InvalidFunctionCall,
-        ConstEvalSeverity.Error,
-        "function cannot be evaluated at compile time",
-        expression_id,
-        span
-    );
-
-    let suggestion = suggestion_create(
-        ConstEvalSuggestionKind.UseRuntimeEvaluation,
-        "move evaluation to runtime",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_invalid_loop(
-    id: u64,
-    expression_id: u64,
-    span: ConstEvalSpan
-) -> ConstEvalDiagnostic {
-    let base = diagnostic_create(
-        id,
-        ConstEvalErrorKind.InvalidLoop,
-        ConstEvalSeverity.Error,
-        "loop cannot be resolved during constant evaluation",
-        expression_id,
-        span
-    );
-
-    let suggestion = suggestion_create(
-        ConstEvalSuggestionKind.SimplifyExpression,
-        "replace loop with compile-time computable expression",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_recursion_limit(
-    id: u64,
-    expression_id: u64,
-    span: ConstEvalSpan
-) -> ConstEvalDiagnostic {
-    let base = diagnostic_create(
-        id,
-        ConstEvalErrorKind.RecursionLimitExceeded,
-        ConstEvalSeverity.Fatal,
-        "constant evaluation recursion limit exceeded",
-        expression_id,
-        span
-    );
-
-    let suggestion = suggestion_create(
-        ConstEvalSuggestionKind.ReduceRecursion,
-        "reduce recursive depth",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_step_limit(
-    id: u64,
-    expression_id: u64,
-    span: ConstEvalSpan
-) -> ConstEvalDiagnostic {
-    let base = diagnostic_create(
-        id,
-        ConstEvalErrorKind.StepLimitExceeded,
-        ConstEvalSeverity.Fatal,
-        "constant evaluation step limit exceeded",
-        expression_id,
-        span
-    );
-
-    let suggestion = suggestion_create(
-        ConstEvalSuggestionKind.SplitExpression,
-        "split computation into smaller constant expressions",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_invalid_borrow(
-    id: u64,
-    expression_id: u64,
-    span: ConstEvalSpan
-) -> ConstEvalDiagnostic {
-    let base = diagnostic_create(
-        id,
-        ConstEvalErrorKind.InvalidBorrow,
-        ConstEvalSeverity.Error,
-        "invalid borrow during compile-time evaluation",
-        expression_id,
-        span
-    );
-
-    let suggestion = suggestion_create(
-        ConstEvalSuggestionKind.RemoveBorrow,
-        "remove borrow from constant expression",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_invalid_mutable_reference(
-    id: u64,
-    expression_id: u64,
-    span: ConstEvalSpan
-) -> ConstEvalDiagnostic {
-    let base = diagnostic_create(
-        id,
-        ConstEvalErrorKind.InvalidMutableReference,
-        ConstEvalSeverity.Error,
-        "mutable reference not allowed in const context",
-        expression_id,
-        span
-    );
-
-    let suggestion = suggestion_create(
-        ConstEvalSuggestionKind.RemoveMutation,
-        "remove mutable operation",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_invalid_async(
-    id: u64,
-    expression_id: u64,
-    span: ConstEvalSpan
-) -> ConstEvalDiagnostic {
-    let base = diagnostic_create(
-        id,
-        ConstEvalErrorKind.InvalidAsyncOperation,
-        ConstEvalSeverity.Error,
-        "async operations are not allowed in const evaluation",
-        expression_id,
-        span
-    );
-
-    let suggestion = suggestion_create(
-        ConstEvalSuggestionKind.UseRuntimeEvaluation,
-        "evaluate async operation at runtime",
-        ""
-    );
-
-    give diagnostic_add_suggestion(base, suggestion);
-}
-
-proc error_internal_failure(
-    id: u64,
-    expression_id: u64,
-    span: ConstEvalSpan
-) -> ConstEvalDiagnostic {
-    give diagnostic_create(
-        id,
-        ConstEvalErrorKind.InternalFailure,
-        ConstEvalSeverity.Fatal,
-        "internal constant evaluator failure",
-        expression_id,
-        span
-    );
+proc error_code(kind: ConstEvalErrorKind) -> string {
+  if kind == ConstEvalErrorKind.DivisionByZero { give "CONST_EVAL_E_DIVISION_BY_ZERO"; }
+  if kind == ConstEvalErrorKind.UnknownName { give "CONST_EVAL_E_UNKNOWN_NAME"; }
+  if kind == ConstEvalErrorKind.NonConstCall { give "CONST_EVAL_E_NON_CONST_CALL"; }
+  if kind == ConstEvalErrorKind.MutationInConst { give "CONST_EVAL_E_MUTATION_IN_CONST"; }
+  if kind == ConstEvalErrorKind.UnsupportedExpr { give "CONST_EVAL_E_UNSUPPORTED_EXPR"; }
+  if kind == ConstEvalErrorKind.Overflow { give "CONST_EVAL_E_OVERFLOW"; }
+  if kind == ConstEvalErrorKind.StaticAssertFailed { give "CONST_EVAL_E_STATIC_ASSERT_FAILED"; }
+  if kind == ConstEvalErrorKind.Cycle { give "CONST_EVAL_E_CYCLE"; }
+  if kind == ConstEvalErrorKind.ParseError { give "CONST_EVAL_E_PARSE"; }
+  give "CONST_EVAL_E_UNKNOWN";
 }
 
 proc severity_name(severity: ConstEvalSeverity) -> string {
-    if severity == ConstEvalSeverity.Info {
-        give "info";
-    }
-
-    if severity == ConstEvalSeverity.Warning {
-        give "warning";
-    }
-
-    if severity == ConstEvalSeverity.Error {
-        give "error";
-    }
-
-    if severity == ConstEvalSeverity.Fatal {
-        give "fatal";
-    }
-
-    give "unknown";
+  if severity == ConstEvalSeverity.Warning { give "warning"; }
+  give "error";
 }
 
-proc error_name(kind: ConstEvalErrorKind) -> string {
-    if kind == ConstEvalErrorKind.DivisionByZero {
-        give "division_by_zero";
-    }
-
-    if kind == ConstEvalErrorKind.IntegerOverflow {
-        give "integer_overflow";
-    }
-
-    if kind == ConstEvalErrorKind.InvalidFunctionCall {
-        give "invalid_function_call";
-    }
-
-    if kind == ConstEvalErrorKind.InvalidLoop {
-        give "invalid_loop";
-    }
-
-    if kind == ConstEvalErrorKind.RecursionLimitExceeded {
-        give "recursion_limit_exceeded";
-    }
-
-    if kind == ConstEvalErrorKind.StepLimitExceeded {
-        give "step_limit_exceeded";
-    }
-
-    give "const_eval_error";
+proc diagnostic_create(
+  kind: ConstEvalErrorKind,
+  file: string,
+  line: u64,
+  message: string,
+  labels: [string],
+  suggestion: string,
+  fatal: bool
+) -> ConstEvalDiagnostic {
+  give ConstEvalDiagnostic {
+    kind: kind,
+    code: error_code(kind),
+    severity: ConstEvalSeverity.Error,
+    message: message,
+    labels: labels,
+    suggestion: suggestion,
+    span: span_create(file, line, 1, 1),
+    fatal: fatal
+  };
 }
 
-proc report_has_errors(report: ConstEvalReport) -> bool {
-    give report.error_count > 0;
-}
-
-proc report_has_fatals(report: ConstEvalReport) -> bool {
-    give report.fatal_count > 0;
-}
-
-proc report_total(report: ConstEvalReport) -> u64 {
-    give vector_len(report.diagnostics);
-}
-
-proc print_diagnostic(diagnostic: ConstEvalDiagnostic) {
-    emit severity_name(diagnostic.severity);
-    emit error_name(diagnostic.kind);
-    emit diagnostic.message;
-    emit diagnostic.expression_id;
-    emit diagnostic.span.file;
-    emit diagnostic.span.line;
-    emit diagnostic.span.column;
-}
-
-proc print_report(report: ConstEvalReport) {
-    emit "const eval report";
-    emit report.info_count;
-    emit report.warning_count;
-    emit report.error_count;
-    emit report.fatal_count;
-
-    let i: u64 = 0;
-
-    while i < vector_len(report.diagnostics) {
-        print_diagnostic(report.diagnostics[i]);
-        set i = i + 1;
+proc diagnostics_has_fatal(diagnostics: [ConstEvalDiagnostic]) -> bool {
+  let i: u64 = 0;
+  while i < len(diagnostics) {
+    if diagnostics[i].fatal {
+      give true;
     }
+    set i = i + 1;
+  }
+  give false;
 }
 
-proc vector_len[T](items: [T]) -> u64 {
-    give 0;
+proc diagnostics_has_code(diagnostics: [ConstEvalDiagnostic], code: string) -> bool {
+  let i: u64 = 0;
+  while i < len(diagnostics) {
+    if diagnostics[i].code == code {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
 }

@@ -1,61 +1,14 @@
 space vitte/compiler/analysis
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput }
-use vitte/compiler/analysis/sema/errors.{
-  SemaDiagnostic,
-  SemaSeverity,
-  report_empty as sema_report_empty,
-  error_unknown_type,
-  error_internal_failure,
-  error_name as sema_error_name,
-  span_empty as sema_span_empty
-}
-use vitte/compiler/analysis/typeck/checker.{
-  TypeCheckContext,
-  typeck_is_valid,
-  check_all,
-  context_empty,
-  context_add_expression,
-  expr_create,
-  type_bool,
-  type_int
-}
-use vitte/compiler/analysis/typeck/errors.{
-  TypeckDiagnostic,
-  report_empty as typeck_report_empty,
-  report_add as typeck_report_add,
-  error_type_mismatch,
-  error_invalid_assignment,
-  error_name as typeck_error_name,
-  span_empty as typeck_span_empty,
-  TypeckSeverity
-}
-use vitte/compiler/analysis/borrowck/errors.{
-  BorrowDiagnostic,
-  report_empty as borrow_report_empty,
-  report_add as borrow_report_add,
-  error_use_after_move,
-  span_empty as borrow_span_empty,
-  value_empty,
-  BorrowSeverity
-}
-use vitte/compiler/analysis/const_eval/evaluator.{
-  ConstEvalDiagnostic,
-  ConstEvalError,
-  context_empty as const_eval_context_empty,
-  diagnostic_create as const_eval_diagnostic_create,
-  span_empty as const_eval_span_empty
-}
-use vitte/compiler/analysis/lint/engine.{
-  LintEngine,
-  LintLevel,
-  LintTargetKind,
-  engine_default,
-  engine_add_target,
-  lint_unused_import,
-  target_create,
-  span_empty as lint_span_empty
-}
+use vitte/compiler/frontend/ast/node.{ AstModule, ast_module_empty }
+use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir }
+use vitte/compiler/analysis/borrowck/errors.{ BorrowDiagnostic, severity_name }
+use vitte/compiler/analysis/const_eval.{ ConstEvalRunResult, run_const_eval_ast }
+use vitte/compiler/analysis/const_eval/errors.{ ConstEvalDiagnostic, ConstEvalSeverity }
+use vitte/compiler/analysis/typeck/checker.{ TypeckDiagnostic, TypeckResult, run_typeck_hir }
+use vitte/compiler/middle/hir/hir.{ HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 
 form AnalysisDiagnostic {
   phase: string
@@ -69,7 +22,7 @@ form AnalysisDiagnostic {
 
 form AnalysisOutput {
   source_path: string
-  ast_root: string
+  ast_root: AstModule
   sema_ok: bool
   typeck_ok: bool
   borrowck_ok: bool
@@ -99,226 +52,105 @@ proc analysis_diagnostic(
   };
 }
 
-proc sema_severity_name(severity: SemaSeverity) -> string {
-  if severity == SemaSeverity.Info {
-    give "info";
-  }
-  if severity == SemaSeverity.Warning {
-    give "warning";
-  }
-  if severity == SemaSeverity.Error {
-    give "error";
-  }
-  if severity == SemaSeverity.Fatal {
-    give "fatal";
-  }
-  give "unknown";
-}
-
-proc typeck_severity_name(severity: TypeckSeverity) -> string {
-  if severity == TypeckSeverity.Info {
-    give "info";
-  }
-  if severity == TypeckSeverity.Warning {
-    give "warning";
-  }
-  if severity == TypeckSeverity.Error {
-    give "error";
-  }
-  if severity == TypeckSeverity.Fatal {
-    give "fatal";
-  }
-  give "unknown";
-}
-
-proc borrow_severity_name(severity: BorrowSeverity) -> string {
-  if severity == BorrowSeverity.Info {
-    give "info";
-  }
-  if severity == BorrowSeverity.Warning {
-    give "warning";
-  }
-  if severity == BorrowSeverity.Error {
-    give "error";
-  }
-  if severity == BorrowSeverity.Fatal {
-    give "fatal";
-  }
-  give "unknown";
-}
-
-proc lint_level_name(level: LintLevel) -> string {
-  if level == LintLevel.Allow {
-    give "allow";
-  }
-  if level == LintLevel.Info {
-    give "info";
-  }
-  if level == LintLevel.Warn {
-    give "warning";
-  }
-  if level == LintLevel.Deny {
-    give "error";
-  }
-  if level == LintLevel.Forbid {
-    give "fatal";
-  }
-  give "unknown";
-}
-
-proc analysis_diagnostic_from_sema(diagnostic: SemaDiagnostic, source_path: string) -> AnalysisDiagnostic {
-  give analysis_diagnostic(
-    "sema",
-    sema_error_name(diagnostic.kind),
-    sema_severity_name(diagnostic.severity),
-    diagnostic.message,
-    ["sema", source_path],
-    "resolve the semantic issue and retry",
-    diagnostic.severity == SemaSeverity.Fatal
-  );
-}
-
-proc analysis_diagnostic_from_typeck(diagnostic: TypeckDiagnostic, source_path: string) -> AnalysisDiagnostic {
-  give analysis_diagnostic(
-    "typeck",
-    typeck_error_name(diagnostic.kind),
-    typeck_severity_name(diagnostic.severity),
-    diagnostic.message,
-    ["typeck", source_path],
-    "fix the type error and retry",
-    diagnostic.severity == TypeckSeverity.Fatal
-  );
-}
-
-proc analysis_diagnostic_from_borrowck(diagnostic: BorrowDiagnostic, source_path: string) -> AnalysisDiagnostic {
-  give analysis_diagnostic(
-    "borrowck",
-    "BORROWCK_E_USE_AFTER_MOVE",
-    borrow_severity_name(diagnostic.severity),
-    diagnostic.message,
-    ["borrowck", source_path],
-    "fix ownership or borrow semantics",
-    diagnostic.severity == BorrowSeverity.Fatal
-  );
-}
-
-proc analysis_diagnostic_from_const_eval(diagnostic: ConstEvalDiagnostic, source_path: string) -> AnalysisDiagnostic {
-  give analysis_diagnostic(
-    "const_eval",
-    "CONST_EVAL_E_DIVISION_BY_ZERO",
-    "error",
-    diagnostic.message,
-    ["const_eval", source_path],
-    "fix constant expression or defer to runtime",
-    true
-  );
-}
-
 proc run_sema(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
-  if frontend.ast_root == "invalid" {
-    let diagnostic = error_internal_failure(0, sema_span_empty());
-    give [analysis_diagnostic_from_sema(diagnostic, frontend.source_path)];
+  if not frontend.ast_root.valid {
+    give [analysis_diagnostic(
+      "sema",
+      "SEMA_E_INVALID_MODULE",
+      "error",
+      "semantic analysis failed on invalid module",
+      ["module", frontend.source_path],
+      "fix syntax before semantic pass",
+      true
+    )];
   }
-
-  if frontend.source_text == "sema:fail" {
-    let diagnostic = error_unknown_type(0, "MissingType", sema_span_empty());
-    give [analysis_diagnostic_from_sema(diagnostic, frontend.source_path)];
-  }
-
   give [];
 }
 
 proc run_typeck(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
-  if frontend.source_text == "typeck:fail" {
-    let context: TypeCheckContext = context_empty();
-    let expression = expr_create(
-      0,
-      type_int(),
-      type_bool(),
-      typeck_span_empty()
-    );
-    let checked = check_all(context_add_expression(context, expression));
-
-    let diagnostics: [AnalysisDiagnostic] = [];
-    let i: u64 = 0;
-    while i < len(checked.diagnostics) {
-      set diagnostics = diagnostics + [analysis_diagnostic_from_typeck(checked.diagnostics[i], frontend.source_path)];
-      set i = i + 1;
-    }
-
-    give diagnostics;
-  }
-
-  give [];
-}
-
-proc run_borrowck(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
-  if frontend.source_text == "borrowck:fail" {
-    let report = borrow_report_add(
-      borrow_report_empty(),
-      error_use_after_move(0, value_empty(), borrow_span_empty())
-    );
-
-    let diagnostics: [AnalysisDiagnostic] = [];
-    let i: u64 = 0;
-    while i < len(report.diagnostics) {
-      set diagnostics = diagnostics + [analysis_diagnostic_from_borrowck(report.diagnostics[i], frontend.source_path)];
-      set i = i + 1;
-    }
-
-    give diagnostics;
-  }
-
-  give [];
-}
-
-proc run_const_eval(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
-  if frontend.source_text == "const:fail" {
-    let diagnostic = const_eval_diagnostic_create(
-      ConstEvalError.DivisionByZero,
-      "division by zero in const interpreter",
-      const_eval_span_empty(),
-      0
-    );
-
-    give [analysis_diagnostic_from_const_eval(diagnostic, frontend.source_path)];
-  }
-
-  give [];
-}
-
-proc run_lint(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
-  let engine: LintEngine = engine_add_target(
-    engine_default(),
-    target_create(
-      1,
-      LintTargetKind.File,
-      frontend.source_path,
-      lint_span_empty()
-    )
-  );
-
-  if frontend.source_text == "lint:warn" {
-    set engine = lint_unused_import(engine, target_create(1, LintTargetKind.File, frontend.source_path, lint_span_empty()), false);
-  }
-
-  let diagnostics: [AnalysisDiagnostic] = [];
+  let hir: HirUnit = lower_ast_to_hir(frontend);
+  let checked: TypeckResult = run_typeck_hir(hir);
+  let output: [AnalysisDiagnostic] = [];
   let i: u64 = 0;
-  while i < len(engine.diagnostics) {
-    let diag = engine.diagnostics[i];
-    set diagnostics = diagnostics + [analysis_diagnostic(
-      "lint",
-      "LINT_" + diag.rule,
-      lint_level_name(diag.level),
-      diag.message,
-      ["lint", frontend.source_path],
-      "apply lint suggestions",
-      diag.level == LintLevel.Forbid
+  while i < len(checked.diagnostics) {
+    let diagnostic: TypeckDiagnostic = checked.diagnostics[i];
+    set output = output + [analysis_diagnostic(
+      "typeck",
+      diagnostic.code,
+      "error",
+      diagnostic.message,
+      diagnostic.labels,
+      "simplify the expression or declare the missing value before use",
+      diagnostic.fatal
     )];
     set i = i + 1;
   }
+  give output;
+}
 
-  give diagnostics;
+proc run_borrowck(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
+  let hir: HirUnit = lower_ast_to_hir(frontend);
+  let checked: BorrowCheckResult = borrow_check_hir(frontend.source_path, hir);
+  let output: [AnalysisDiagnostic] = [];
+  let i: u64 = 0;
+
+  while i < len(checked.diagnostics) {
+    let diagnostic: BorrowDiagnostic = checked.diagnostics[i];
+    set output = output + [analysis_diagnostic(
+      "borrowck",
+      diagnostic.code,
+      severity_name(diagnostic.severity),
+      diagnostic.message,
+      diagnostic.labels,
+      diagnostic.suggestion,
+      diagnostic.fatal
+    )];
+    set i = i + 1;
+  }
+  give output;
+}
+
+proc const_eval_severity_name(severity: ConstEvalSeverity) -> string {
+  if severity == ConstEvalSeverity.Warning {
+    give "warning";
+  }
+  give "error";
+}
+
+proc run_const_eval_phase(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
+  let checked: ConstEvalRunResult = run_const_eval_ast(frontend.source_path, frontend.ast_root);
+  let output: [AnalysisDiagnostic] = [];
+  let i: u64 = 0;
+
+  while i < len(checked.diagnostics) {
+    let diagnostic: ConstEvalDiagnostic = checked.diagnostics[i];
+    set output = output + [analysis_diagnostic(
+      "const_eval",
+      diagnostic.code,
+      const_eval_severity_name(diagnostic.severity),
+      diagnostic.message,
+      diagnostic.labels,
+      diagnostic.suggestion,
+      diagnostic.fatal
+    )];
+    set i = i + 1;
+  }
+  give output;
+}
+
+proc run_lint(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
+  if frontend.source_text == "lint:warn" {
+    give [analysis_diagnostic(
+      "lint",
+      "LINT_W_STYLE",
+      "warning",
+      "style lint warning",
+      ["lint", frontend.source_path],
+      "apply lint suggestions",
+      false
+    )];
+  }
+  give [];
 }
 
 proc has_fatal(diagnostics: [AnalysisDiagnostic]) -> bool {
@@ -345,7 +177,7 @@ proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
     );
     give AnalysisOutput {
       source_path: frontend.source_path,
-      ast_root: "invalid",
+      ast_root: ast_module_empty(),
       sema_ok: false,
       typeck_ok: false,
       borrowck_ok: false,
@@ -356,6 +188,7 @@ proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
     };
   }
 
+  # Strict orchestration: sema -> typeck -> borrowck -> const_eval -> lint
   let sema_diags: [AnalysisDiagnostic] = run_sema(frontend);
   if has_fatal(sema_diags) {
     give AnalysisOutput {
@@ -401,7 +234,7 @@ proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
     };
   }
 
-  let const_diags: [AnalysisDiagnostic] = run_const_eval(frontend);
+  let const_diags: [AnalysisDiagnostic] = run_const_eval_phase(frontend);
   if has_fatal(const_diags) {
     give AnalysisOutput {
       source_path: frontend.source_path,
@@ -421,12 +254,12 @@ proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
   give AnalysisOutput {
     source_path: frontend.source_path,
     ast_root: frontend.ast_root,
-    sema_ok: len(sema_diags) == 0,
-    typeck_ok: len(typeck_diags) == 0,
-    borrowck_ok: len(borrowck_diags) == 0,
-    const_eval_ok: len(const_diags) == 0,
+    sema_ok: true,
+    typeck_ok: true,
+    borrowck_ok: true,
+    const_eval_ok: true,
     lint_ok: not has_fatal(lint_diags),
     diagnostics: sema_diags + typeck_diags + borrowck_diags + const_diags + lint_diags,
-    valid: len(sema_diags) == 0 and len(typeck_diags) == 0 and len(borrowck_diags) == 0 and len(const_diags) == 0
+    valid: not has_fatal(lint_diags)
   };
 }

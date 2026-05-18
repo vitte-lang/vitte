@@ -1,8 +1,40 @@
 space vitte/compiler/tests/ast_tests
 
-const VERSION_TEXT: string = "frontend ast tests 0.1.0"
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/frontend/ast/node.{ AstExprKind, AstItemKind, AstStmtKind }
+
+const VERSION_TEXT: string = "frontend ast tests 0.2.0"
 const BANNER_TEXT: string = "frontend ast tests"
-const EXIT_CODE: int = 0
+
+proc test_ast_module_structure() -> bool {
+  let source: string =
+    "const ANSWER = 42;\n" +
+    "static_assert(ANSWER == 42);\n" +
+    "proc main() { let x = ANSWER; set x = ANSWER + 1; give x; }\n";
+  let fe: FrontendOutput = frontend_run("ast_test.vit", source);
+  if not fe.valid or len(fe.ast_root.items) != 3 {
+    give false;
+  }
+  if fe.ast_root.items[0].kind != AstItemKind.Const {
+    give false;
+  }
+  if fe.ast_root.items[1].kind != AstItemKind.StaticAssert {
+    give false;
+  }
+  if fe.ast_root.items[2].kind != AstItemKind.Proc {
+    give false;
+  }
+  if len(fe.ast_root.items[2].stmts) != 3 {
+    give false;
+  }
+  give fe.ast_root.items[2].stmts[1].kind == AstStmtKind.Set and fe.ast_root.items[0].expr.kind == AstExprKind.Int;
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+  if not test_ast_module_structure() { set failures = failures + 1; }
+  give failures;
+}
 
 proc version_text() -> string {
   give VERSION_TEXT
@@ -13,7 +45,7 @@ proc banner_text() -> string {
 }
 
 proc main(args: list[string]) -> int {
-  give EXIT_CODE
+  give run_all_tests()
 }
 
 export *

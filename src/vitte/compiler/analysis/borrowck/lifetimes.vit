@@ -1,680 +1,121 @@
 space vitte/compiler/analysis/borrowck/lifetimes
 
-<<< ========================================================= >>>
-<<< GENERATED FILE — Borrow Checker Lifetimes               >>>
-<<< ========================================================= >>>
-
-const LIFETIME_INVALID_ID: u64 = 18446744073709551615
-const LIFETIME_ROOT_ID: u64 = 0
-const LIFETIME_MAX_REGIONS: u64 = 262144
-const LIFETIME_MAX_EDGES: u64 = 1048576
-
-pick LifetimeKind {
-    Static,
-    Named,
-    Inferred,
-    Anonymous,
-    Temporary,
-    Block,
-    Function,
-    Loop,
-    Closure,
-    Async,
-    Unknown,
+use vitte/compiler/analysis/borrowck/errors.{
+  BorrowDiagnostic,
+  BorrowErrorKind,
+  diagnostic_create
+}
+use vitte/compiler/analysis/borrowck/regions.{
+  RegionConstraintKind,
+  RegionSolution,
+  add_constraint,
+  constraint_create,
+  ensure_region,
+  solve_regions
 }
 
-pick LifetimeRelationKind {
-    Outlives,
-    Contains,
-    Equals,
-    Conflicts,
-    Escapes,
+pick LifetimeFactKind {
+  Borrow,
+  Return,
 }
 
-pick LifetimeErrorKind {
-    None,
-    InvalidLifetime,
-    UnknownLifetime,
-    LifetimeTooShort,
-    LifetimeEscapes,
-    LifetimeConflict,
-    MissingOutlivesRelation,
-    RegionCycle,
-    RegionLimitExceeded,
+form LifetimeFact {
+  alias: string
+  owner: string
+  region_name: string
+  line: u64
+  kind: LifetimeFactKind
+  valid: bool
 }
 
-form LifetimeSpan {
-    file: string
-    line: u64
-    column: u64
-    length: u64
+form LifetimeResult {
+  facts: [LifetimeFact]
+  diagnostics: [BorrowDiagnostic]
+  regions: RegionSolution
+  valid: bool
 }
 
-form LifetimeRegion {
-    id: u64
-    name: string
-    kind: LifetimeKind
-    parent: u64
-    depth: u64
-    start_point: u64
-    end_point: u64
-    span: LifetimeSpan
-    valid: bool
+proc lifetime_fact(alias: string, owner: string, region_name: string, line: u64, kind: LifetimeFactKind) -> LifetimeFact {
+  give LifetimeFact {
+    alias: alias,
+    owner: owner,
+    region_name: region_name,
+    line: line,
+    kind: kind,
+    valid: owner != "" and region_name != ""
+  };
 }
 
-form LifetimeRelation {
-    source: u64
-    target: u64
-    kind: LifetimeRelationKind
+proc lifetime_result_empty(regions: RegionSolution) -> LifetimeResult {
+  give LifetimeResult {
+    facts: [],
+    diagnostics: [],
+    regions: regions,
+    valid: true
+  };
 }
 
-form LifetimeConstraint {
-    id: u64
-    left: u64
-    right: u64
-    relation: LifetimeRelationKind
-    span: LifetimeSpan
-    satisfied: bool
+proc add_fact(result: LifetimeResult, fact: LifetimeFact) -> LifetimeResult {
+  let regions0: RegionSolution = ensure_region(result.regions, fact.region_name, fact.line);
+  give LifetimeResult {
+    facts: result.facts + [fact],
+    diagnostics: result.diagnostics,
+    regions: regions0,
+    valid: result.valid and fact.valid and regions0.valid
+  };
 }
 
-form LifetimeDiagnostic {
-    kind: LifetimeErrorKind
-    message: string
-    span: LifetimeSpan
-    region: u64
+proc add_return_constraint(result: LifetimeResult, local_region: string, return_region: string, line: u64) -> LifetimeResult {
+  let regions0: RegionSolution = ensure_region(result.regions, local_region, line);
+  let regions1: RegionSolution = ensure_region(regions0, return_region, line);
+  let regions2: RegionSolution = add_constraint(regions1, constraint_create(return_region, local_region, RegionConstraintKind.Outlives, line));
+  give LifetimeResult {
+    facts: result.facts,
+    diagnostics: result.diagnostics,
+    regions: regions2,
+    valid: result.valid and regions2.valid
+  };
 }
 
-form LifetimeGraph {
-    regions: [LifetimeRegion]
-    relations: [LifetimeRelation]
-    constraints: [LifetimeConstraint]
-    diagnostics: [LifetimeDiagnostic]
-    valid: bool
+proc add_returned_local_diagnostic(result: LifetimeResult, file: string, line: u64, owner: string, alias: string, direct_ref: bool) -> LifetimeResult {
+  let kind: BorrowErrorKind = BorrowErrorKind.ReturnBorrowOfLocal;
+  let message: string = "returning borrow of local `" + owner + "`";
+  let suggestion: string = "return an owned value or extend the owner lifetime";
+
+  if direct_ref {
+    set kind = BorrowErrorKind.ReturnRefToLocal;
+    set message = "returning reference to local `" + owner + "`";
+  }
+
+  let labels: [string] = [owner];
+  if alias != "" {
+    set labels = labels + [alias];
+  }
+
+  let diagnostic: BorrowDiagnostic = diagnostic_create(
+    kind,
+    file,
+    line,
+    message,
+    labels,
+    suggestion,
+    true
+  );
+
+  give LifetimeResult {
+    facts: result.facts,
+    diagnostics: result.diagnostics + [diagnostic],
+    regions: result.regions,
+    valid: false
+  };
 }
 
-form LifetimeQuery {
-    region: u64
-    found: bool
-    result: LifetimeRegion
-}
-
-proc span_empty() -> LifetimeSpan {
-    give LifetimeSpan {
-        file: "",
-        line: 0,
-        column: 0,
-        length: 0
-    };
-}
-
-proc region_empty() -> LifetimeRegion {
-    give LifetimeRegion {
-        id: LIFETIME_INVALID_ID,
-        name: "invalid",
-        kind: LifetimeKind.Unknown,
-        parent: LIFETIME_INVALID_ID,
-        depth: 0,
-        start_point: 0,
-        end_point: 0,
-        span: span_empty(),
-        valid: false
-    };
-}
-
-proc region_static() -> LifetimeRegion {
-    give LifetimeRegion {
-        id: LIFETIME_ROOT_ID,
-        name: "'static",
-        kind: LifetimeKind.Static,
-        parent: LIFETIME_INVALID_ID,
-        depth: 0,
-        start_point: 0,
-        end_point: LIFETIME_INVALID_ID,
-        span: span_empty(),
-        valid: true
-    };
-}
-
-proc graph_empty() -> LifetimeGraph {
-    give LifetimeGraph {
-        regions: [region_static()],
-        relations: [],
-        constraints: [],
-        diagnostics: [],
-        valid: true
-    };
-}
-
-proc relation_create(
-    source: u64,
-    target: u64,
-    kind: LifetimeRelationKind
-) -> LifetimeRelation {
-    give LifetimeRelation {
-        source: source,
-        target: target,
-        kind: kind
-    };
-}
-
-proc constraint_create(
-    id: u64,
-    left: u64,
-    right: u64,
-    relation: LifetimeRelationKind,
-    span: LifetimeSpan
-) -> LifetimeConstraint {
-    give LifetimeConstraint {
-        id: id,
-        left: left,
-        right: right,
-        relation: relation,
-        span: span,
-        satisfied: false
-    };
-}
-
-proc diagnostic_create(
-    kind: LifetimeErrorKind,
-    message: string,
-    span: LifetimeSpan,
-    region: u64
-) -> LifetimeDiagnostic {
-    give LifetimeDiagnostic {
-        kind: kind,
-        message: message,
-        span: span,
-        region: region
-    };
-}
-
-proc region_create(
-    id: u64,
-    name: string,
-    kind: LifetimeKind,
-    parent: u64,
-    depth: u64,
-    start_point: u64,
-    end_point: u64,
-    span: LifetimeSpan
-) -> LifetimeRegion {
-    give LifetimeRegion {
-        id: id,
-        name: name,
-        kind: kind,
-        parent: parent,
-        depth: depth,
-        start_point: start_point,
-        end_point: end_point,
-        span: span,
-        valid: true
-    };
-}
-
-proc graph_add_region(
-    graph: LifetimeGraph,
-    region: LifetimeRegion
-) -> LifetimeGraph {
-    if vector_len(graph.regions) >= LIFETIME_MAX_REGIONS {
-        let diagnostic = diagnostic_create(
-            LifetimeErrorKind.RegionLimitExceeded,
-            "too many lifetime regions",
-            region.span,
-            region.id
-        );
-
-        give LifetimeGraph {
-            regions: graph.regions,
-            relations: graph.relations,
-            constraints: graph.constraints,
-            diagnostics: graph.diagnostics + [diagnostic],
-            valid: false
-        };
-    }
-
-    give LifetimeGraph {
-        regions: graph.regions + [region],
-        relations: graph.relations,
-        constraints: graph.constraints,
-        diagnostics: graph.diagnostics,
-        valid: graph.valid
-    };
-}
-
-proc graph_add_relation(
-    graph: LifetimeGraph,
-    relation: LifetimeRelation
-) -> LifetimeGraph {
-    if vector_len(graph.relations) >= LIFETIME_MAX_EDGES {
-        let diagnostic = diagnostic_create(
-            LifetimeErrorKind.RegionLimitExceeded,
-            "too many lifetime relations",
-            span_empty(),
-            relation.source
-        );
-
-        give LifetimeGraph {
-            regions: graph.regions,
-            relations: graph.relations,
-            constraints: graph.constraints,
-            diagnostics: graph.diagnostics + [diagnostic],
-            valid: false
-        };
-    }
-
-    give LifetimeGraph {
-        regions: graph.regions,
-        relations: graph.relations + [relation],
-        constraints: graph.constraints,
-        diagnostics: graph.diagnostics,
-        valid: graph.valid
-    };
-}
-
-proc graph_add_constraint(
-    graph: LifetimeGraph,
-    constraint: LifetimeConstraint
-) -> LifetimeGraph {
-    give LifetimeGraph {
-        regions: graph.regions,
-        relations: graph.relations,
-        constraints: graph.constraints + [constraint],
-        diagnostics: graph.diagnostics,
-        valid: graph.valid
-    };
-}
-
-proc graph_error(
-    graph: LifetimeGraph,
-    kind: LifetimeErrorKind,
-    message: string,
-    span: LifetimeSpan,
-    region: u64
-) -> LifetimeGraph {
-    let diagnostic = diagnostic_create(kind, message, span, region);
-
-    give LifetimeGraph {
-        regions: graph.regions,
-        relations: graph.relations,
-        constraints: graph.constraints,
-        diagnostics: graph.diagnostics + [diagnostic],
-        valid: false
-    };
-}
-
-proc find_region(
-    graph: LifetimeGraph,
-    id: u64
-) -> LifetimeQuery {
-    let i: u64 = 0;
-
-    while i < vector_len(graph.regions) {
-        let region = graph.regions[i];
-
-        if region.id == id {
-            give LifetimeQuery {
-                region: id,
-                found: true,
-                result: region
-            };
-        }
-
-        set i = i + 1;
-    }
-
-    give LifetimeQuery {
-        region: id,
-        found: false,
-        result: region_empty()
-    };
-}
-
-proc has_region(graph: LifetimeGraph, id: u64) -> bool {
-    give find_region(graph, id).found;
-}
-
-proc region_contains_point(region: LifetimeRegion, point: u64) -> bool {
-    if point < region.start_point {
-        give false;
-    }
-
-    if point > region.end_point {
-        give false;
-    }
-
-    give true;
-}
-
-proc region_contains_region(
-    outer: LifetimeRegion,
-    inner: LifetimeRegion
-) -> bool {
-    if outer.start_point > inner.start_point {
-        give false;
-    }
-
-    if outer.end_point < inner.end_point {
-        give false;
-    }
-
-    give true;
-}
-
-proc relation_exists(
-    graph: LifetimeGraph,
-    source: u64,
-    target: u64,
-    kind: LifetimeRelationKind
-) -> bool {
-    let i: u64 = 0;
-
-    while i < vector_len(graph.relations) {
-        let relation = graph.relations[i];
-
-        if relation.source == source and relation.target == target and relation.kind == kind {
-            give true;
-        }
-
-        set i = i + 1;
-    }
-
-    give false;
-}
-
-proc lifetime_outlives(
-    graph: LifetimeGraph,
-    source: u64,
-    target: u64
-) -> bool {
-    if source == LIFETIME_ROOT_ID {
-        give true;
-    }
-
-    if source == target {
-        give true;
-    }
-
-    if relation_exists(graph, source, target, LifetimeRelationKind.Outlives) {
-        give true;
-    }
-
-    let source_region = find_region(graph, source);
-    let target_region = find_region(graph, target);
-
-    if source_region.found == false or target_region.found == false {
-        give false;
-    }
-
-    give region_contains_region(source_region.result, target_region.result);
-}
-
-proc lifetime_conflicts(
-    graph: LifetimeGraph,
-    left: u64,
-    right: u64
-) -> bool {
-    if relation_exists(graph, left, right, LifetimeRelationKind.Conflicts) {
-        give true;
-    }
-
-    if relation_exists(graph, right, left, LifetimeRelationKind.Conflicts) {
-        give true;
-    }
-
-    give false;
-}
-
-proc solve_constraint(
-    graph: LifetimeGraph,
-    constraint: LifetimeConstraint
-) -> LifetimeConstraint {
-    if constraint.relation == LifetimeRelationKind.Outlives {
-        give LifetimeConstraint {
-            id: constraint.id,
-            left: constraint.left,
-            right: constraint.right,
-            relation: constraint.relation,
-            span: constraint.span,
-            satisfied: lifetime_outlives(graph, constraint.left, constraint.right)
-        };
-    }
-
-    if constraint.relation == LifetimeRelationKind.Conflicts {
-        give LifetimeConstraint {
-            id: constraint.id,
-            left: constraint.left,
-            right: constraint.right,
-            relation: constraint.relation,
-            span: constraint.span,
-            satisfied: lifetime_conflicts(graph, constraint.left, constraint.right)
-        };
-    }
-
-    if constraint.relation == LifetimeRelationKind.Equals {
-        give LifetimeConstraint {
-            id: constraint.id,
-            left: constraint.left,
-            right: constraint.right,
-            relation: constraint.relation,
-            span: constraint.span,
-            satisfied: constraint.left == constraint.right
-        };
-    }
-
-    give constraint;
-}
-
-proc solve_constraints(graph: LifetimeGraph) -> LifetimeGraph {
-    let solved: [LifetimeConstraint] = [];
-    let diagnostics = graph.diagnostics;
-    let valid = graph.valid;
-
-    let i: u64 = 0;
-
-    while i < vector_len(graph.constraints) {
-        let constraint = solve_constraint(graph, graph.constraints[i]);
-        set solved = solved + [constraint];
-
-        if constraint.satisfied == false {
-            let diagnostic = diagnostic_create(
-                LifetimeErrorKind.MissingOutlivesRelation,
-                "lifetime constraint not satisfied",
-                constraint.span,
-                constraint.left
-            );
-
-            set diagnostics = diagnostics + [diagnostic];
-            set valid = false;
-        }
-
-        set i = i + 1;
-    }
-
-    give LifetimeGraph {
-        regions: graph.regions,
-        relations: graph.relations,
-        constraints: solved,
-        diagnostics: diagnostics,
-        valid: valid
-    };
-}
-
-proc validate_graph(graph: LifetimeGraph) -> LifetimeGraph {
-    let current = graph;
-
-    let i: u64 = 0;
-
-    while i < vector_len(current.regions) {
-        let region = current.regions[i];
-
-        if region.valid == false {
-            give graph_error(
-                current,
-                LifetimeErrorKind.InvalidLifetime,
-                "invalid lifetime region",
-                region.span,
-                region.id
-            );
-        }
-
-        if region.id != LIFETIME_ROOT_ID and has_region(current, region.parent) == false {
-            give graph_error(
-                current,
-                LifetimeErrorKind.UnknownLifetime,
-                "unknown parent lifetime",
-                region.span,
-                region.id
-            );
-        }
-
-        set i = i + 1;
-    }
-
-    let solved = solve_constraints(current);
-
-    give solved;
-}
-
-proc create_block_lifetime(
-    graph: LifetimeGraph,
-    id: u64,
-    name: string,
-    parent: u64,
-    depth: u64,
-    start_point: u64,
-    end_point: u64,
-    span: LifetimeSpan
-) -> LifetimeGraph {
-    let region = region_create(
-        id,
-        name,
-        LifetimeKind.Block,
-        parent,
-        depth,
-        start_point,
-        end_point,
-        span
-    );
-
-    let with_region = graph_add_region(graph, region);
-    let relation = relation_create(parent, id, LifetimeRelationKind.Outlives);
-
-    give graph_add_relation(with_region, relation);
-}
-
-proc create_function_lifetime(
-    graph: LifetimeGraph,
-    id: u64,
-    name: string,
-    span: LifetimeSpan
-) -> LifetimeGraph {
-    let region = region_create(
-        id,
-        name,
-        LifetimeKind.Function,
-        LIFETIME_ROOT_ID,
-        1,
-        0,
-        LIFETIME_INVALID_ID,
-        span
-    );
-
-    let with_region = graph_add_region(graph, region);
-    let relation = relation_create(LIFETIME_ROOT_ID, id, LifetimeRelationKind.Outlives);
-
-    give graph_add_relation(with_region, relation);
-}
-
-proc create_temporary_lifetime(
-    graph: LifetimeGraph,
-    id: u64,
-    parent: u64,
-    start_point: u64,
-    end_point: u64,
-    span: LifetimeSpan
-) -> LifetimeGraph {
-    let region = region_create(
-        id,
-        "$tmp",
-        LifetimeKind.Temporary,
-        parent,
-        0,
-        start_point,
-        end_point,
-        span
-    );
-
-    give graph_add_region(graph, region);
-}
-
-proc require_outlives(
-    graph: LifetimeGraph,
-    id: u64,
-    left: u64,
-    right: u64,
-    span: LifetimeSpan
-) -> LifetimeGraph {
-    let constraint = constraint_create(
-        id,
-        left,
-        right,
-        LifetimeRelationKind.Outlives,
-        span
-    );
-
-    give graph_add_constraint(graph, constraint);
-}
-
-proc require_no_conflict(
-    graph: LifetimeGraph,
-    id: u64,
-    left: u64,
-    right: u64,
-    span: LifetimeSpan
-) -> LifetimeGraph {
-    let constraint = constraint_create(
-        id,
-        left,
-        right,
-        LifetimeRelationKind.Conflicts,
-        span
-    );
-
-    give graph_add_constraint(graph, constraint);
-}
-
-proc lifetime_error_count(graph: LifetimeGraph) -> u64 {
-    give vector_len(graph.diagnostics);
-}
-
-proc lifetime_is_valid(graph: LifetimeGraph) -> bool {
-    give graph.valid and vector_len(graph.diagnostics) == 0;
-}
-
-proc print_lifetime_region(region: LifetimeRegion) {
-    emit "lifetime region";
-    emit region.id;
-    emit region.name;
-    emit region.depth;
-    emit region.start_point;
-    emit region.end_point;
-}
-
-proc print_lifetime_graph(graph: LifetimeGraph) {
-    emit "lifetime graph";
-    emit vector_len(graph.regions);
-    emit vector_len(graph.relations);
-    emit vector_len(graph.constraints);
-    emit vector_len(graph.diagnostics);
-
-    let i: u64 = 0;
-
-    while i < vector_len(graph.regions) {
-        print_lifetime_region(graph.regions[i]);
-        set i = i + 1;
-    }
-}
-
-proc vector_len[T](items: [T]) -> u64 {
-    give 0;
+proc finalize_lifetimes(result: LifetimeResult) -> LifetimeResult {
+  let solved: RegionSolution = solve_regions(result.regions);
+  give LifetimeResult {
+    facts: result.facts,
+    diagnostics: result.diagnostics,
+    regions: solved,
+    valid: result.valid and solved.valid
+  };
 }

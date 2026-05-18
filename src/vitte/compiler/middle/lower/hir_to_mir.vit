@@ -1,28 +1,80 @@
 space vitte/compiler/middle/lower/hir_to_mir
 
-use vitte/compiler/middle/hir/lower_ast.{ HirUnit }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirItem, HirItemKind, HirStmtKind, HirUnit }
+use vitte/compiler/middle/mir/mir.{
+  MirBlock,
+  MirFunction,
+  MirModule,
+  MirOperand,
+  MirStatement,
+  MirStatementKind,
+  MirUnit,
+  mir_module_empty
+}
 
-form MirUnit {
-  source_path: string
-  block_count: u64
-  instruction_count: u64
-  valid: bool
+proc mir_operand_from_expr(expr: HirExpr) -> MirOperand {
+  give MirOperand { text: expr.text, valid: expr.valid };
+}
+
+proc mir_statement_from_hir(item: HirItem, index: u64) -> MirStatement {
+  let stmt = item.stmts[index];
+  if stmt.kind == HirStmtKind.Give {
+    give MirStatement { kind: MirStatementKind.Return, target: "", operand: mir_operand_from_expr(stmt.expr), valid: stmt.valid };
+  }
+  if stmt.kind == HirStmtKind.StaticAssert {
+    give MirStatement { kind: MirStatementKind.Assert, target: "", operand: mir_operand_from_expr(stmt.expr), valid: stmt.valid };
+  }
+  let target: string = stmt.target;
+  if stmt.name != "" {
+    set target = stmt.name;
+  }
+  give MirStatement { kind: MirStatementKind.Assign, target: target, operand: mir_operand_from_expr(stmt.expr), valid: stmt.valid };
 }
 
 proc lower_hir_to_mir(hir: HirUnit) -> MirUnit {
-  if not hir.valid {
+  if not hir.valid or not hir.module.valid {
     give MirUnit {
       source_path: hir.source_path,
+      module: mir_module_empty(),
       block_count: 0,
       instruction_count: 0,
       valid: false
     };
   }
 
+  let functions: [MirFunction] = [];
+  let block_count: u64 = 0;
+  let instruction_count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(hir.module.items) {
+    let item = hir.module.items[i];
+    if item.kind == HirItemKind.Proc {
+      let statements: [MirStatement] = [];
+      let j: u64 = 0;
+      while j < len(item.stmts) {
+        let stmt: MirStatement = mir_statement_from_hir(item, j);
+        set statements = statements + [stmt];
+        set instruction_count = instruction_count + 1;
+        set j = j + 1;
+      }
+      let block: MirBlock = MirBlock { id: block_count + 1, statements: statements, terminator: "return", valid: true };
+      set functions = functions + [MirFunction { name: item.name, blocks: [block], valid: true }];
+      set block_count = block_count + 1;
+    }
+    set i = i + 1;
+  }
+
+  if len(functions) == 0 {
+    let block = MirBlock { id: 1, statements: [], terminator: "return", valid: true };
+    set functions = [MirFunction { name: "__module_init", blocks: [block], valid: true }];
+    set block_count = 1;
+  }
+
   give MirUnit {
     source_path: hir.source_path,
-    block_count: 1,
-    instruction_count: 1,
-    valid: true
+    module: MirModule { functions: functions, valid: len(functions) > 0 },
+    block_count: block_count,
+    instruction_count: instruction_count,
+    valid: len(functions) > 0
   };
 }

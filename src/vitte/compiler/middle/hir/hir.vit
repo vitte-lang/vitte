@@ -1,0 +1,87 @@
+space vitte/compiler/middle/hir/hir
+
+pick HirExprKind {
+  Unknown,
+  Name,
+  Int,
+  Bool,
+  String,
+  Binary,
+  Call,
+  BorrowShared,
+  BorrowMut,
+}
+
+pick HirStmtKind {
+  Unknown,
+  Const,
+  Let,
+  Set,
+  Give,
+  StaticAssert,
+}
+
+pick HirItemKind {
+  Unknown,
+  Const,
+  Proc,
+  StaticAssert,
+}
+
+form HirExpr {
+  kind: HirExprKind
+  text: string
+  name: string
+  operator: string
+  children: [HirExpr]
+  valid: bool
+}
+
+form HirStmt {
+  kind: HirStmtKind
+  name: string
+  target: string
+  expr: HirExpr
+  message: string
+  mutable: bool
+  valid: bool
+}
+
+form HirItem {
+  kind: HirItemKind
+  name: string
+  expr: HirExpr
+  stmts: [HirStmt]
+  message: string
+  valid: bool
+}
+
+form HirModule {
+  items: [HirItem]
+  valid: bool
+}
+
+form HirUnit {
+  source_path: string
+  module: HirModule
+  node_count: u64
+  valid: bool
+}
+
+proc hir_expr(kind: HirExprKind, text: string, name: string, operator: string, children: [HirExpr], valid: bool) -> HirExpr {
+  give HirExpr {
+    kind: kind,
+    text: text,
+    name: name,
+    operator: operator,
+    children: children,
+    valid: valid
+  };
+}
+
+proc hir_module_empty() -> HirModule {
+  give HirModule {
+    items: [],
+    valid: false
+  };
+}
