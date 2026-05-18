@@ -252,6 +252,18 @@ profiling-baseline-gate:
 	@tools/profiling/generate_baseline_report.py
 	@tools/profiling/update_matrix_from_baseline.py
 
+.PHONY: startup-gate
+startup-gate:
+	@python3 tools/startup_benchmark.py --strict
+
+.PHONY: startup-benchmark-baseline
+startup-benchmark-baseline:
+	@python3 tools/startup_benchmark.py --update-baseline
+
+.PHONY: startup-benchmark-check
+startup-benchmark-check:
+	@python3 tools/startup_benchmark.py
+
 .PHONY: roadmap-ecosystem-gate
 roadmap-ecosystem-gate:
 	@python3 tools/roadmap_ecosystem_check.py
