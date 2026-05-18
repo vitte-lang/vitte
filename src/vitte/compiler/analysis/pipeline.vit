@@ -2,13 +2,15 @@ space vitte/compiler/analysis
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput }
 use vitte/compiler/frontend/ast/node.{ AstModule, ast_module_empty }
-use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir }
+use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir, borrow_check_mir }
 use vitte/compiler/analysis/borrowck/errors.{ BorrowDiagnostic, severity_name }
 use vitte/compiler/analysis/const_eval.{ ConstEvalRunResult, run_const_eval_ast }
 use vitte/compiler/analysis/const_eval/errors.{ ConstEvalDiagnostic, ConstEvalSeverity }
 use vitte/compiler/analysis/typeck/checker.{ TypeckDiagnostic, TypeckResult, run_typeck_hir }
 use vitte/compiler/middle/hir/hir.{ HirUnit }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
+use vitte/compiler/middle/mir/mir.{ MirUnit }
 
 form AnalysisDiagnostic {
   phase: string
@@ -67,8 +69,7 @@ proc run_sema(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
   give [];
 }
 
-proc run_typeck(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
-  let hir: HirUnit = lower_ast_to_hir(frontend);
+proc collect_typeck_diagnostics(hir: HirUnit) -> [AnalysisDiagnostic] {
   let checked: TypeckResult = run_typeck_hir(hir);
   let output: [AnalysisDiagnostic] = [];
   let i: u64 = 0;
@@ -88,9 +89,8 @@ proc run_typeck(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
   give output;
 }
 
-proc run_borrowck(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
-  let hir: HirUnit = lower_ast_to_hir(frontend);
-  let checked: BorrowCheckResult = borrow_check_hir(frontend.source_path, hir);
+proc collect_borrowck_diagnostics_mir(source_path: string, mir: MirUnit) -> [AnalysisDiagnostic] {
+  let checked: BorrowCheckResult = borrow_check_mir(source_path, mir);
   let output: [AnalysisDiagnostic] = [];
   let i: u64 = 0;
 
@@ -164,7 +164,7 @@ proc has_fatal(diagnostics: [AnalysisDiagnostic]) -> bool {
   give false;
 }
 
-proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
+proc analysis_run_hir_mir(frontend: FrontendOutput, hir: HirUnit, mir: MirUnit) -> AnalysisOutput {
   if not frontend.valid {
     let d = analysis_diagnostic(
       "frontend",
@@ -204,7 +204,7 @@ proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
     };
   }
 
-  let typeck_diags: [AnalysisDiagnostic] = run_typeck(frontend);
+  let typeck_diags: [AnalysisDiagnostic] = collect_typeck_diagnostics(hir);
   if has_fatal(typeck_diags) {
     give AnalysisOutput {
       source_path: frontend.source_path,
@@ -219,7 +219,7 @@ proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
     };
   }
 
-  let borrowck_diags: [AnalysisDiagnostic] = run_borrowck(frontend);
+  let borrowck_diags: [AnalysisDiagnostic] = collect_borrowck_diagnostics_mir(frontend.source_path, mir);
   if has_fatal(borrowck_diags) {
     give AnalysisOutput {
       source_path: frontend.source_path,
@@ -262,4 +262,14 @@ proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
     diagnostics: sema_diags + typeck_diags + borrowck_diags + const_diags + lint_diags,
     valid: not has_fatal(lint_diags)
   };
+}
+
+proc analysis_run_hir(frontend: FrontendOutput, hir: HirUnit) -> AnalysisOutput {
+  let mir: MirUnit = lower_hir_to_mir(hir);
+  give analysis_run_hir_mir(frontend, hir, mir);
+}
+
+proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
+  let hir: HirUnit = lower_ast_to_hir(frontend);
+  give analysis_run_hir(frontend, hir);
 }
