@@ -6,6 +6,7 @@ use vitte/compiler/analysis/const_eval/errors.{
   diagnostic_create,
   diagnostics_has_fatal
 }
+use vitte/compiler/frontend/ast/node.{ AstExpr, AstExprKind }
 
 pick ConstValueKind {
   Unknown,
@@ -609,4 +610,125 @@ proc expr_references(expr: string) -> [string] {
     set i = i + 1;
   }
   give refs;
+}
+
+proc ast_expr_references(expr: AstExpr) -> [string] {
+  let refs: [string] = [];
+  if expr.kind == AstExprKind.Name and expr.name != "" {
+    give [expr.name];
+  }
+  let i: u64 = 0;
+  while i < len(expr.children) {
+    let child_refs: [string] = ast_expr_references(expr.children[i]);
+    let j: u64 = 0;
+    while j < len(child_refs) {
+      let found: bool = false;
+      let k: u64 = 0;
+      while k < len(refs) {
+        if refs[k] == child_refs[j] {
+          set found = true;
+        }
+        set k = k + 1;
+      }
+      if not found {
+        set refs = refs + [child_refs[j]];
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give refs;
+}
+
+proc eval_const_ast_expr(env: ConstEnv, file: string, expr: AstExpr) -> ConstEvalResult {
+  let line: u64 = expr.span.start_line;
+  if expr.kind == AstExprKind.Int {
+    give ConstEvalResult { value: const_int(parse_int(expr.text)), diagnostics: [], valid: true };
+  }
+  if expr.kind == AstExprKind.Bool {
+    give ConstEvalResult { value: const_bool(expr.text == "true"), diagnostics: [], valid: true };
+  }
+  if expr.kind == AstExprKind.String {
+    let text: string = expr.text;
+    let value: string = text;
+    if len(text) >= 2 {
+      set value = slice(text, 1, len(text) - 1);
+    }
+    give ConstEvalResult { value: const_string(value), diagnostics: [], valid: true };
+  }
+  if expr.kind == AstExprKind.Char {
+    give ConstEvalResult {
+      value: const_string(expr.text),
+      diagnostics: [diagnostic_create(ConstEvalErrorKind.UnsupportedExpr, file, line, "char constants are not yet supported in constant evaluation", [expr.text], "use an integer, boolean or string constant instead", true)],
+      valid: false
+    };
+  }
+  if expr.kind == AstExprKind.Float {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(ConstEvalErrorKind.UnsupportedExpr, file, line, "float constants are not yet supported in constant evaluation", [expr.text], "use an integer, boolean or string constant instead", true)],
+      valid: false
+    };
+  }
+  if expr.kind == AstExprKind.Name {
+    if env_has(env, expr.name) {
+      give ConstEvalResult { value: env_get(env, expr.name), diagnostics: [], valid: true };
+    }
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(ConstEvalErrorKind.UnknownName, file, line, "unknown constant `" + expr.name + "`", [expr.name], "declare the constant before using it", true)],
+      valid: false
+    };
+  }
+  if expr.kind == AstExprKind.Call {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(ConstEvalErrorKind.NonConstCall, file, line, "function calls are not supported in constant evaluation", [expr.name], "inline a pure constant expression or evaluate at runtime", true)],
+      valid: false
+    };
+  }
+  if expr.kind == AstExprKind.BorrowShared or expr.kind == AstExprKind.BorrowMut {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(ConstEvalErrorKind.UnsupportedExpr, file, line, "borrow expressions are not supported in constant evaluation", [expr.text], "remove the borrow or defer the expression to runtime", true)],
+      valid: false
+    };
+  }
+  if expr.kind == AstExprKind.Binary and len(expr.children) == 2 {
+    let left: ConstEvalResult = eval_const_ast_expr(env, file, expr.children[0]);
+    let right: ConstEvalResult = eval_const_ast_expr(env, file, expr.children[1]);
+    let merged: [ConstEvalDiagnostic] = left.diagnostics + right.diagnostics;
+    if not left.valid or not right.valid {
+      give ConstEvalResult { value: const_unknown(), diagnostics: merged, valid: false };
+    }
+    let state: ConstParseState = ConstParseState {
+      tokens: [],
+      index: 0,
+      env: env,
+      file: file,
+      line: line,
+      diagnostics: merged,
+      valid: len(merged) == 0
+    };
+    let stepped: ConstStep = step(state, const_unknown());
+    if left.value.kind == ConstValueKind.Int and right.value.kind == ConstValueKind.Int {
+      set stepped = eval_binary_int(left.value, right.value, expr.operator, state);
+    } elif left.value.kind == ConstValueKind.Bool and right.value.kind == ConstValueKind.Bool {
+      set stepped = eval_binary_bool(left.value, right.value, expr.operator, state);
+    } elif left.value.kind == ConstValueKind.String and right.value.kind == ConstValueKind.String {
+      set stepped = eval_binary_string(left.value, right.value, expr.operator, state);
+    } else {
+      set stepped = step(add_diag(state, ConstEvalErrorKind.UnsupportedExpr, "binary constant operator `" + expr.operator + "` requires matching operand kinds", [expr.operator], "use operands of the same constant kind"), const_unknown());
+    }
+    give ConstEvalResult {
+      value: stepped.value,
+      diagnostics: stepped.state.diagnostics,
+      valid: stepped.value.valid and not diagnostics_has_fatal(stepped.state.diagnostics)
+    };
+  }
+  give ConstEvalResult {
+    value: const_unknown(),
+    diagnostics: [diagnostic_create(ConstEvalErrorKind.UnsupportedExpr, file, line, "unsupported constant expression `" + expr.text + "`", [expr.text], "simplify the expression to literals, names, calls-free binary operations and parentheses", true)],
+    valid: false
+  };
 }

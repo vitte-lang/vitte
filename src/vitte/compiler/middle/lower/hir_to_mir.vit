@@ -1,34 +1,109 @@
 space vitte/compiler/middle/lower/hir_to_mir
 
-use vitte/compiler/middle/hir/hir.{ HirExpr, HirItem, HirItemKind, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirStmt, HirStmtKind, HirUnit }
 use vitte/compiler/middle/mir/mir.{
   MirBlock,
   MirFunction,
   MirModule,
   MirOperand,
+  MirPlace,
+  MirRvalue,
+  MirRvalueKind,
   MirStatement,
   MirStatementKind,
   MirUnit,
-  mir_module_empty
+  mir_module_empty,
+  mir_place_empty,
+  mir_terminator_return
+}
+
+proc mir_place_from_name(name: string) -> MirPlace {
+  if name == "" {
+    give mir_place_empty();
+  }
+  give MirPlace { local: name, projection: "", valid: true };
 }
 
 proc mir_operand_from_expr(expr: HirExpr) -> MirOperand {
-  give MirOperand { text: expr.text, valid: expr.valid };
+  let place: MirPlace = mir_place_empty();
+  if expr.binding != "" {
+    set place = mir_place_from_name(expr.binding);
+  }
+  give MirOperand { text: expr.text, place: place, valid: expr.valid };
 }
 
-proc mir_statement_from_hir(item: HirItem, index: u64) -> MirStatement {
-  let stmt = item.stmts[index];
+proc mir_rvalue_from_expr(expr: HirExpr) -> MirRvalue {
+  let kind: MirRvalueKind = MirRvalueKind.Use;
+  if expr.kind == HirExprKind.Binary {
+    set kind = MirRvalueKind.Binary;
+  } elif expr.kind == HirExprKind.BorrowShared {
+    set kind = MirRvalueKind.BorrowShared;
+  } elif expr.kind == HirExprKind.BorrowMut {
+    set kind = MirRvalueKind.BorrowMut;
+  } elif expr.kind == HirExprKind.Call {
+    set kind = MirRvalueKind.Call;
+  }
+
+  let operands: [MirOperand] = [];
+  let i: u64 = 0;
+  while i < len(expr.children) {
+    set operands = operands + [mir_operand_from_expr(expr.children[i])];
+    set i = i + 1;
+  }
+  if len(operands) == 0 {
+    set operands = [mir_operand_from_expr(expr)];
+  }
+
+  give MirRvalue {
+    kind: kind,
+    text: expr.text,
+    operator: expr.operator,
+    operands: operands,
+    valid: expr.valid
+  };
+}
+
+proc mir_statement_from_stmt(stmt: HirStmt) -> MirStatement {
   if stmt.kind == HirStmtKind.Give {
-    give MirStatement { kind: MirStatementKind.Return, target: "", operand: mir_operand_from_expr(stmt.expr), valid: stmt.valid };
+    give MirStatement { id: stmt.id, span: stmt.span, kind: MirStatementKind.Return, place: mir_place_empty(), rvalue: mir_rvalue_from_expr(stmt.expr), valid: stmt.valid };
   }
   if stmt.kind == HirStmtKind.StaticAssert {
-    give MirStatement { kind: MirStatementKind.Assert, target: "", operand: mir_operand_from_expr(stmt.expr), valid: stmt.valid };
+    give MirStatement { id: stmt.id, span: stmt.span, kind: MirStatementKind.Assert, place: mir_place_empty(), rvalue: mir_rvalue_from_expr(stmt.expr), valid: stmt.valid };
   }
-  let target: string = stmt.target;
+  let place: MirPlace = mir_place_from_name(stmt.target);
   if stmt.name != "" {
-    set target = stmt.name;
+    set place = mir_place_from_name(stmt.name);
   }
-  give MirStatement { kind: MirStatementKind.Assign, target: target, operand: mir_operand_from_expr(stmt.expr), valid: stmt.valid };
+  give MirStatement { id: stmt.id, span: stmt.span, kind: MirStatementKind.Assign, place: place, rvalue: mir_rvalue_from_expr(stmt.expr), valid: stmt.valid };
+}
+
+proc flatten_stmt_tree(stmts: [MirStatement], hir_stmts: [HirStmt]) -> [MirStatement] {
+  let out: [MirStatement] = stmts;
+  let i: u64 = 0;
+  while i < len(hir_stmts) {
+    let stmt: HirStmt = hir_stmts[i];
+    if stmt.kind != HirStmtKind.If and stmt.kind != HirStmtKind.While {
+      set out = out + [mir_statement_from_stmt(stmt)];
+    }
+    set out = flatten_stmt_tree(out, stmt.then_stmts);
+    set out = flatten_stmt_tree(out, stmt.else_stmts);
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc count_stmt_tree(hir_stmts: [HirStmt]) -> u64 {
+  let total: u64 = 0;
+  let i: u64 = 0;
+  while i < len(hir_stmts) {
+    let stmt: HirStmt = hir_stmts[i];
+    if stmt.kind != HirStmtKind.If and stmt.kind != HirStmtKind.While {
+      set total = total + 1;
+    }
+    set total = total + count_stmt_tree(stmt.then_stmts) + count_stmt_tree(stmt.else_stmts);
+    set i = i + 1;
+  }
+  give total;
 }
 
 proc lower_hir_to_mir(hir: HirUnit) -> MirUnit {
@@ -49,24 +124,18 @@ proc lower_hir_to_mir(hir: HirUnit) -> MirUnit {
   while i < len(hir.module.items) {
     let item = hir.module.items[i];
     if item.kind == HirItemKind.Proc {
-      let statements: [MirStatement] = [];
-      let j: u64 = 0;
-      while j < len(item.stmts) {
-        let stmt: MirStatement = mir_statement_from_hir(item, j);
-        set statements = statements + [stmt];
-        set instruction_count = instruction_count + 1;
-        set j = j + 1;
-      }
-      let block: MirBlock = MirBlock { id: block_count + 1, statements: statements, terminator: "return", valid: true };
-      set functions = functions + [MirFunction { name: item.name, blocks: [block], valid: true }];
+      let statements: [MirStatement] = flatten_stmt_tree([], item.stmts);
+      set instruction_count = instruction_count + count_stmt_tree(item.stmts);
+      let entry: MirBlock = MirBlock { id: block_count + 1, statements: statements, terminator: mir_terminator_return(), valid: true };
+      set functions = functions + [MirFunction { id: item.id, name: item.name, entry_block: entry.id, blocks: [entry], valid: true }];
       set block_count = block_count + 1;
     }
     set i = i + 1;
   }
 
   if len(functions) == 0 {
-    let block = MirBlock { id: 1, statements: [], terminator: "return", valid: true };
-    set functions = [MirFunction { name: "__module_init", blocks: [block], valid: true }];
+    let entry = MirBlock { id: 1, statements: [], terminator: mir_terminator_return(), valid: true };
+    set functions = [MirFunction { id: 1, name: "__module_init", entry_block: 1, blocks: [entry], valid: true }];
     set block_count = 1;
   }
 

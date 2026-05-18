@@ -107,7 +107,7 @@
                 <h2>Changelog Timeline</h2>
                 <table>
                     <tr><th>Date</th><th>Version</th><th>Type</th><th>Summary</th></tr>
-                    <tr><td>May 18, 2026</td><td>Compiler Structure Pass</td><td>Architecture</td><td>Frontend AST, HIR, MIR, and analysis pipeline were rebuilt around real structured compiler data.</td></tr>
+                    <tr><td>May 18, 2026</td><td>Compiler Structure Pass</td><td>Architecture</td><td>Frontend AST, HIR, MIR, lexer diagnostics, precedence parsing, and analysis entry points were rebuilt around real structured compiler data.</td></tr>
                     <tr><td>May 14, 2026</td><td>Stdlib 2.0</td><td>Non-breaking</td><td>Large stdlib expansion with async/threading/ffi/reflection/profiling/packages.</td></tr>
                     <tr><td>May 09, 2026</td><td>Docs v4</td><td>Non-breaking</td><td>Unified docs pipeline and stronger quality gates for links/assets.</td></tr>
                     <tr><td>Feb 18, 2026</td><td>2.1.1</td><td>Patch</td><td>Diagnostic fix for <code>E1016</code> path and installer refresh.</td></tr>
@@ -115,7 +115,7 @@
                 <p><strong>Breaking policy:</strong> any breaking change must explicitly mark migration notes and acceptance criteria.</p>
                 <div class="lead-panel">
                     <h2>Proof-First Snapshot</h2>
-                    <p><strong>Dernière mise à jour:</strong> May 14, 2026</p>
+                    <p><strong>Dernière mise à jour:</strong> May 18, 2026</p>
                     <p><strong>Build ID / Commit:</strong> <code>docs-v4 / main (see status.html)</code></p>
                     <h3>Known issues</h3>
                     <ul>
@@ -163,6 +163,12 @@
                 <h3>What changed in the frontend</h3>
                 <p>The frontend now builds a real AST for a stable compiler subset. The parser produces explicit nodes for module items, constant items, procedure items, <code>static_assert</code>, and procedure-local statements such as <code>let</code>, <code>set</code>, and <code>give</code>. Expressions now survive parsing as structured forms: names, integer literals, boolean literals, string literals, binary expressions, calls, shared borrows, and mutable borrows. That means contributors can inspect a syntax tree that reflects what the compiler actually recognized, instead of inferring the result from a few counters and a <code>"program"</code> tag.</p>
                 <p>This also sharpens validation. AST validation is no longer just “the root string is not empty.” The validation step can now reject an invalid module as a real structural failure. That alone improves the trustworthiness of the frontend pipeline because invalid syntax no longer becomes a vague string state that every later layer has to reinterpret on its own.</p>
+                <h3>@goginx: latest compiler-facing update</h3>
+                <p><strong>@goginx</strong> pushed the next structural cleanup deeper into the frontend and analysis path. The lexer no longer behaves like a single loose token stream with silent failures: it now emits explicit lexical diagnostics and distinguishes invalid tokens, floats, chars, integers, strings, identifiers, keywords, and symbols as separate categories.</p>
+                <p>The parser also became more honest. Expressions are no longer recognized only through string slicing and post-hoc reconstruction. A real token-driven precedence parser now handles calls and binary operators in a controlled order, which makes the AST less fragile and gives later passes a more defensible shape to consume.</p>
+                <p>This pass also expands the supported structured subset with <code>if</code> and <code>while</code> nodes in the AST and HIR. That matters because control flow can now survive the frontend as named compiler data instead of being flattened away before lowering even begins. The current MIR path still flattens that subset for simplicity, but the important change is that control flow now exists as a first-class object before MIR decisions are made.</p>
+                <p>On the analysis side, the direction is finally correct. Borrow checking no longer needs to depend only on synthetic source text rebuilt from lowered statements; its HIR entry point now walks HIR statements directly. Constant evaluation also gained an AST-native path, so constant items and <code>static_assert</code> are evaluated from syntax tree nodes instead of being reparsed as raw strings in the primary structured route.</p>
+                <p>In practical terms, this is the difference between a compiler that merely counts recognized shapes and a compiler that can preserve, inspect, and reuse them across layers. The latest modifications do not make the system complete yet, but they make it much harder for the pipeline to lie about what it knows.</p>
                 <h3>What changed in HIR and MIR</h3>
                 <p>HIR is now defined as a real intermediate representation instead of a one-line record with <code>node_count = 1</code>. The AST-to-HIR lowering step now translates items, statements, and expressions into explicit HIR objects. The current HIR is still intentionally small, but it is real: it carries item kinds, statement kinds, lowered expressions, names, targets, and validity bits. That gives the analysis pipeline a stable semantic surface to consume.</p>
                 <p>MIR has been given the same treatment. Instead of returning a synthetic <code>block_count = 1</code> and <code>instruction_count = 1</code>, the compiler now builds MIR functions, blocks, statements, operands, and terminator text for the supported subset. The representation is still early-stage, but it is structured enough to support block-oriented validation, statement classification, and future dataflow work. In practical terms, the repository can now answer “what did lowering produce?” with a concrete object rather than a placeholder tuple.</p>

@@ -1,11 +1,25 @@
 space vitte/compiler/frontend/ast/node
 
+form AstSpan {
+  file: string
+  start_line: u64
+  start_column: u64
+  end_line: u64
+  end_column: u64
+}
+
+form AstId {
+  value: u64
+}
+
 pick AstExprKind {
   Unknown,
   Name,
   Int,
+  Float,
   Bool,
   String,
+  Char,
   Binary,
   Call,
   BorrowShared,
@@ -18,6 +32,8 @@ pick AstStmtKind {
   Let,
   Set,
   Give,
+  If,
+  While,
   StaticAssert,
 }
 
@@ -28,18 +44,36 @@ pick AstItemKind {
   StaticAssert,
 }
 
+pick AstTypeKind {
+  Unknown,
+  Name,
+}
+
+pick AstPatternKind {
+  Unknown,
+  Name,
+}
+
 form AstTypeExpr {
+  id: AstId
+  span: AstSpan
+  kind: AstTypeKind
   text: string
   valid: bool
 }
 
 form AstPattern {
+  id: AstId
+  span: AstSpan
+  kind: AstPatternKind
   name: string
   mutable: bool
   valid: bool
 }
 
 form AstExpr {
+  id: AstId
+  span: AstSpan
   kind: AstExprKind
   text: string
   name: string
@@ -49,16 +83,22 @@ form AstExpr {
 }
 
 form AstStmt {
+  id: AstId
+  span: AstSpan
   kind: AstStmtKind
   pattern: AstPattern
   target: string
   expr: AstExpr
   annotation: AstTypeExpr
   message: string
+  then_stmts: [AstStmt]
+  else_stmts: [AstStmt]
   valid: bool
 }
 
 form AstItem {
+  id: AstId
+  span: AstSpan
   kind: AstItemKind
   name: string
   expr: AstExpr
@@ -69,29 +109,59 @@ form AstItem {
 }
 
 form AstModule {
+  id: AstId
+  span: AstSpan
   kind: string
   items: [AstItem]
   valid: bool
 }
 
-proc ast_type_expr(text: string) -> AstTypeExpr {
-  give AstTypeExpr { text: text, valid: text != "" };
+proc ast_id(value: u64) -> AstId {
+  give AstId { value: value };
+}
+
+proc ast_span(file: string, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> AstSpan {
+  give AstSpan {
+    file: file,
+    start_line: start_line,
+    start_column: start_column,
+    end_line: end_line,
+    end_column: end_column
+  };
+}
+
+proc ast_span_empty() -> AstSpan {
+  give ast_span("", 1, 1, 1, 1);
+}
+
+proc ast_type_expr(id: u64, span: AstSpan, text: string) -> AstTypeExpr {
+  let kind: AstTypeKind = AstTypeKind.Unknown;
+  if text != "" {
+    set kind = AstTypeKind.Name;
+  }
+  give AstTypeExpr { id: ast_id(id), span: span, kind: kind, text: text, valid: text != "" };
 }
 
 proc ast_type_empty() -> AstTypeExpr {
-  give AstTypeExpr { text: "", valid: false };
+  give AstTypeExpr { id: ast_id(0), span: ast_span_empty(), kind: AstTypeKind.Unknown, text: "", valid: false };
 }
 
-proc ast_pattern(name: string, mutable: bool) -> AstPattern {
-  give AstPattern { name: name, mutable: mutable, valid: name != "" };
+proc ast_pattern(id: u64, span: AstSpan, name: string, mutable: bool) -> AstPattern {
+  let kind: AstPatternKind = AstPatternKind.Unknown;
+  if name != "" {
+    set kind = AstPatternKind.Name;
+  }
+  give AstPattern { id: ast_id(id), span: span, kind: kind, name: name, mutable: mutable, valid: name != "" };
 }
 
 proc ast_pattern_empty() -> AstPattern {
-  give AstPattern { name: "", mutable: false, valid: false };
+  give AstPattern { id: ast_id(0), span: ast_span_empty(), kind: AstPatternKind.Unknown, name: "", mutable: false, valid: false };
 }
 
-proc ast_expr_unknown(text: string) -> AstExpr {
+proc ast_expr_unknown(id: u64, span: AstSpan, text: string) -> AstExpr {
   give AstExpr {
+    id: ast_id(id),
+    span: span,
     kind: AstExprKind.Unknown,
     text: text,
     name: "",
@@ -101,8 +171,10 @@ proc ast_expr_unknown(text: string) -> AstExpr {
   };
 }
 
-proc ast_expr_leaf(kind: AstExprKind, text: string, name: string) -> AstExpr {
+proc ast_expr_leaf(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string) -> AstExpr {
   give AstExpr {
+    id: ast_id(id),
+    span: span,
     kind: kind,
     text: text,
     name: name,
@@ -112,8 +184,10 @@ proc ast_expr_leaf(kind: AstExprKind, text: string, name: string) -> AstExpr {
   };
 }
 
-proc ast_expr_node(kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr]) -> AstExpr {
+proc ast_expr_node(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr]) -> AstExpr {
   give AstExpr {
+    id: ast_id(id),
+    span: span,
     kind: kind,
     text: text,
     name: name,
@@ -123,19 +197,24 @@ proc ast_expr_node(kind: AstExprKind, text: string, name: string, operator: stri
   };
 }
 
-proc ast_stmt_create(kind: AstStmtKind, pattern: AstPattern, target: string, expr: AstExpr, annotation: AstTypeExpr, message: string) -> AstStmt {
+proc ast_stmt_create(id: u64, span: AstSpan, kind: AstStmtKind, pattern: AstPattern, target: string, expr: AstExpr, annotation: AstTypeExpr, message: string, then_stmts: [AstStmt], else_stmts: [AstStmt]) -> AstStmt {
+  let valid: bool = kind != AstStmtKind.Unknown and expr.valid;
   give AstStmt {
+    id: ast_id(id),
+    span: span,
     kind: kind,
     pattern: pattern,
     target: target,
     expr: expr,
     annotation: annotation,
     message: message,
-    valid: kind != AstStmtKind.Unknown and expr.valid
+    then_stmts: then_stmts,
+    else_stmts: else_stmts,
+    valid: kind != AstStmtKind.Unknown and valid
   };
 }
 
-proc ast_item_create(kind: AstItemKind, name: string, expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, message: string) -> AstItem {
+proc ast_item_create(id: u64, span: AstSpan, kind: AstItemKind, name: string, expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, message: string) -> AstItem {
   let valid: bool = kind != AstItemKind.Unknown;
   if kind == AstItemKind.Const or kind == AstItemKind.StaticAssert {
     set valid = valid and expr.valid;
@@ -144,6 +223,8 @@ proc ast_item_create(kind: AstItemKind, name: string, expr: AstExpr, stmts: [Ast
     set valid = valid and name != "";
   }
   give AstItem {
+    id: ast_id(id),
+    span: span,
     kind: kind,
     name: name,
     expr: expr,
@@ -156,16 +237,185 @@ proc ast_item_create(kind: AstItemKind, name: string, expr: AstExpr, stmts: [Ast
 
 proc ast_module_empty() -> AstModule {
   give AstModule {
+    id: ast_id(0),
+    span: ast_span_empty(),
     kind: "program",
     items: [],
     valid: false
   };
 }
 
-proc ast_module(items: [AstItem]) -> AstModule {
+proc ast_module(id: u64, span: AstSpan, items: [AstItem]) -> AstModule {
   give AstModule {
+    id: ast_id(id),
+    span: span,
     kind: "program",
     items: items,
     valid: true
   };
+}
+
+proc count_expr(expr: AstExpr) -> u64 {
+  let total: u64 = 1;
+  let i: u64 = 0;
+  while i < len(expr.children) {
+    set total = total + count_expr(expr.children[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_stmt_exprs(stmt: AstStmt) -> u64 {
+  let total: u64 = 0;
+  if stmt.expr.valid {
+    set total = total + count_expr(stmt.expr);
+  }
+  let i: u64 = 0;
+  while i < len(stmt.then_stmts) {
+    set total = total + count_stmt_exprs(stmt.then_stmts[i]);
+    set i = i + 1;
+  }
+  set i = 0;
+  while i < len(stmt.else_stmts) {
+    set total = total + count_stmt_exprs(stmt.else_stmts[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_stmt_types(stmt: AstStmt) -> u64 {
+  let total: u64 = 0;
+  if stmt.annotation.valid {
+    set total = total + 1;
+  }
+  let i: u64 = 0;
+  while i < len(stmt.then_stmts) {
+    set total = total + count_stmt_types(stmt.then_stmts[i]);
+    set i = i + 1;
+  }
+  set i = 0;
+  while i < len(stmt.else_stmts) {
+    set total = total + count_stmt_types(stmt.else_stmts[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_stmt_patterns(stmt: AstStmt) -> u64 {
+  let total: u64 = 0;
+  if stmt.pattern.valid {
+    set total = total + 1;
+  }
+  let i: u64 = 0;
+  while i < len(stmt.then_stmts) {
+    set total = total + count_stmt_patterns(stmt.then_stmts[i]);
+    set i = i + 1;
+  }
+  set i = 0;
+  while i < len(stmt.else_stmts) {
+    set total = total + count_stmt_patterns(stmt.else_stmts[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_item_exprs(item: AstItem) -> u64 {
+  let total: u64 = 0;
+  if item.expr.valid {
+    set total = total + count_expr(item.expr);
+  }
+  let i: u64 = 0;
+  while i < len(item.stmts) {
+    set total = total + count_stmt_exprs(item.stmts[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_stmt_tree(stmt: AstStmt) -> u64 {
+  let total: u64 = 1;
+  let i: u64 = 0;
+  while i < len(stmt.then_stmts) {
+    set total = total + count_stmt_tree(stmt.then_stmts[i]);
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(stmt.else_stmts) {
+    set total = total + count_stmt_tree(stmt.else_stmts[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_item_stmts(item: AstItem) -> u64 {
+  let total: u64 = 0;
+  let i: u64 = 0;
+  while i < len(item.stmts) {
+    set total = total + count_stmt_tree(item.stmts[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_item_types(item: AstItem) -> u64 {
+  let total: u64 = 0;
+  if item.annotation.valid {
+    set total = total + 1;
+  }
+  let i: u64 = 0;
+  while i < len(item.stmts) {
+    set total = total + count_stmt_types(item.stmts[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_item_patterns(item: AstItem) -> u64 {
+  let total: u64 = 0;
+  let i: u64 = 0;
+  while i < len(item.stmts) {
+    set total = total + count_stmt_patterns(item.stmts[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_module_exprs(module: AstModule) -> u64 {
+  let total: u64 = 0;
+  let i: u64 = 0;
+  while i < len(module.items) {
+    set total = total + count_item_exprs(module.items[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_module_stmts(module: AstModule) -> u64 {
+  let total: u64 = 0;
+  let i: u64 = 0;
+  while i < len(module.items) {
+    set total = total + count_item_stmts(module.items[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_module_types(module: AstModule) -> u64 {
+  let total: u64 = 0;
+  let i: u64 = 0;
+  while i < len(module.items) {
+    set total = total + count_item_types(module.items[i]);
+    set i = i + 1;
+  }
+  give total;
+}
+
+proc count_module_patterns(module: AstModule) -> u64 {
+  let total: u64 = 0;
+  let i: u64 = 0;
+  while i < len(module.items) {
+    set total = total + count_item_patterns(module.items[i]);
+    set i = i + 1;
+  }
+  give total;
 }

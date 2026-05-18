@@ -19,12 +19,38 @@ proc test_hir_lowering() -> bool {
   if hir.module.items[0].kind != HirItemKind.Const {
     give false;
   }
+  if hir.symbol_count < 2 or hir.scope_count != 1 {
+    give false;
+  }
+  if hir.module.items[1].stmts[0].scope_depth != 1 {
+    give false;
+  }
   give hir.module.items[1].kind == HirItemKind.Proc and hir.module.items[1].stmts[1].kind == HirStmtKind.Give;
+}
+
+proc test_hir_if_while_lowering() -> bool {
+  let source: string = "proc main() { if (true) { let x = 1; } else { while (false) { give 0; } } }\n";
+  let fe: FrontendOutput = frontend_run("hir_if_while.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  if not hir.valid or len(hir.module.items) != 1 {
+    give false;
+  }
+  if len(hir.module.items[0].stmts) != 1 {
+    give false;
+  }
+  if hir.module.items[0].stmts[0].kind != HirStmtKind.If {
+    give false;
+  }
+  if len(hir.module.items[0].stmts[0].else_stmts) != 1 {
+    give false;
+  }
+  give hir.module.items[0].stmts[0].else_stmts[0].kind == HirStmtKind.While;
 }
 
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_hir_lowering() { set failures = failures + 1; }
+  if not test_hir_if_while_lowering() { set failures = failures + 1; }
   give failures;
 }
 

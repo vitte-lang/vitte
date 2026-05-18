@@ -1,6 +1,6 @@
 space vitte/compiler/analysis/typeck/checker
 
-use vitte/compiler/middle/hir/hir.{ HirExprKind, HirItemKind, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir/hir.{ HirExprKind, HirItemKind, HirStmt, HirStmtKind, HirUnit }
 
 form TypeckDiagnostic {
   code: string
@@ -37,6 +37,9 @@ proc expr_type_known(text: string) -> bool {
   if starts_with(text, "\"") {
     give true;
   }
+  if starts_with(text, "'") {
+    give true;
+  }
   if starts_with(text, "&") {
     give true;
   }
@@ -47,6 +50,23 @@ proc expr_type_known(text: string) -> bool {
     give true;
   }
   give true;
+}
+
+proc check_stmt_tree(diagnostics: [TypeckDiagnostic], stmts: [HirStmt]) -> [TypeckDiagnostic] {
+  let out: [TypeckDiagnostic] = diagnostics;
+  let j: u64 = 0;
+  while j < len(stmts) {
+    let stmt = stmts[j];
+    if stmt.kind == HirStmtKind.Let or stmt.kind == HirStmtKind.Set or stmt.kind == HirStmtKind.Give or stmt.kind == HirStmtKind.StaticAssert or stmt.kind == HirStmtKind.If or stmt.kind == HirStmtKind.While {
+      if not stmt.expr.valid or not expr_type_known(stmt.expr.text) {
+        set out = out + [typeck_diag("TYPECK_E_UNKNOWN_TYPE", "unable to infer type of expression `" + stmt.expr.text + "`", [stmt.name, stmt.target], true)];
+      }
+    }
+    set out = check_stmt_tree(out, stmt.then_stmts);
+    set out = check_stmt_tree(out, stmt.else_stmts);
+    set j = j + 1;
+  }
+  give out;
 }
 
 proc run_typeck_hir(hir: HirUnit) -> TypeckResult {
@@ -67,16 +87,7 @@ proc run_typeck_hir(hir: HirUnit) -> TypeckResult {
     if item.expr.valid and not expr_type_known(item.expr.text) {
       set diagnostics = diagnostics + [typeck_diag("TYPECK_E_UNKNOWN_TYPE", "unable to infer type of constant expression", [item.name], true)];
     }
-    let j: u64 = 0;
-    while j < len(item.stmts) {
-      let stmt = item.stmts[j];
-      if stmt.kind == HirStmtKind.Let or stmt.kind == HirStmtKind.Set or stmt.kind == HirStmtKind.Give or stmt.kind == HirStmtKind.StaticAssert {
-        if not stmt.expr.valid or not expr_type_known(stmt.expr.text) {
-          set diagnostics = diagnostics + [typeck_diag("TYPECK_E_UNKNOWN_TYPE", "unable to infer type of expression `" + stmt.expr.text + "`", [stmt.name, stmt.target], true)];
-        }
-      }
-      set j = j + 1;
-    }
+    set diagnostics = check_stmt_tree(diagnostics, item.stmts);
     set i = i + 1;
   }
 

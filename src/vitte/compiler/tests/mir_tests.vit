@@ -20,7 +20,13 @@ proc test_mir_lowering() -> bool {
   if len(block.statements) != 3 {
     give false;
   }
-  give block.statements[2].kind == MirStatementKind.Return;
+  if mir.module.functions[0].entry_block != block.id {
+    give false;
+  }
+  if block.statements[0].place.local != "x" {
+    give false;
+  }
+  give block.statements[2].kind == MirStatementKind.Return and block.terminator.valid;
 }
 
 proc run_all_tests() -> int {

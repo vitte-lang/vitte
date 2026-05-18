@@ -27,12 +27,43 @@ proc test_ast_module_structure() -> bool {
   if len(fe.ast_root.items[2].stmts) != 3 {
     give false;
   }
+  if fe.ast_root.id.value == 0 or fe.ast_root.items[0].id.value == 0 {
+    give false;
+  }
+  if fe.ast_root.items[0].span.file != "ast_test.vit" {
+    give false;
+  }
   give fe.ast_root.items[2].stmts[1].kind == AstStmtKind.Set and fe.ast_root.items[0].expr.kind == AstExprKind.Int;
+}
+
+proc test_ast_if_while_and_lex_diagnostics() -> bool {
+  let source: string =
+    "proc main() { if (true) { let x = 1; } else { while (false) { let y = 2; } } }\n";
+  let fe: FrontendOutput = frontend_run("ast_if_while.vit", source);
+  if not fe.valid or len(fe.ast_root.items) != 1 {
+    give false;
+  }
+  if len(fe.ast_root.items[0].stmts) != 1 {
+    give false;
+  }
+  if fe.ast_root.items[0].stmts[0].kind != AstStmtKind.If {
+    give false;
+  }
+  if len(fe.ast_root.items[0].stmts[0].else_stmts) != 1 {
+    give false;
+  }
+  if fe.ast_root.items[0].stmts[0].else_stmts[0].kind != AstStmtKind.While {
+    give false;
+  }
+
+  let bad: FrontendOutput = frontend_run("ast_bad_lex.vit", "@");
+  give not bad.valid and bad.diagnostics_total > 0;
 }
 
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_ast_module_structure() { set failures = failures + 1; }
+  if not test_ast_if_while_and_lex_diagnostics() { set failures = failures + 1; }
   give failures;
 }
 

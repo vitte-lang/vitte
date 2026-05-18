@@ -1,6 +1,8 @@
 space vitte/compiler/tests/borrowck_tests
 
-use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_source }
+use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir, borrow_check_source }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 
 const VERSION_TEXT: string = "analysis borrowck tests 0.2.0"
 const BANNER_TEXT: string = "analysis borrowck tests"
@@ -70,6 +72,15 @@ proc test_return_borrow_of_local() -> bool {
   give has_code(result, "BORROWCK_E_RETURN_BORROW_OF_LOCAL");
 }
 
+proc test_hir_borrowck_path() -> bool {
+  let source: string =
+    "proc main() { let x = make_box(); let r = &x; give r; }\n";
+  let fe: FrontendOutput = frontend_run("borrowck_hir_path.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: BorrowCheckResult = borrow_check_hir("borrowck_hir_path.vit", hir);
+  give has_code(result, "BORROWCK_E_RETURN_BORROW_OF_LOCAL");
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_valid_reinit_after_move() { set failures = failures + 1; }
@@ -78,6 +89,7 @@ proc run_all_tests() -> int {
   if not test_mutable_borrow_conflict() { set failures = failures + 1; }
   if not test_return_ref_to_local() { set failures = failures + 1; }
   if not test_return_borrow_of_local() { set failures = failures + 1; }
+  if not test_hir_borrowck_path() { set failures = failures + 1; }
   give failures;
 }
 

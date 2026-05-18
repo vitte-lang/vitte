@@ -58,7 +58,7 @@ use vitte/compiler/analysis/borrowck/regions.{
   ensure_region,
   region_solution_empty
 }
-use vitte/compiler/middle/hir/hir.{ HirItemKind, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind, HirItemKind, HirStmt, HirStmtKind, HirUnit }
 
 form BorrowCheckResult {
   diagnostics: [BorrowDiagnostic]
@@ -485,45 +485,126 @@ proc borrow_check_source(source_path: string, source_text: string) -> BorrowChec
   };
 }
 
-proc stmt_to_source_text(kind: HirStmtKind, name: string, target: string, expr_text: string, mutable: bool, message: string) -> string {
-  if kind == HirStmtKind.Const {
-    give "let " + name + " = " + expr_text;
+proc hir_expr_owner(expr: HirExpr) -> string {
+  if (expr.kind == HirExprKind.BorrowShared or expr.kind == HirExprKind.BorrowMut) and len(expr.children) > 0 {
+    give move_source_from_expr(expr.children[0].text);
   }
-  if kind == HirStmtKind.Let {
-    if mutable {
-      give "let mut " + name + " = " + expr_text;
+  give "";
+}
+
+proc hir_expr_is_mutable_borrow(expr: HirExpr) -> bool {
+  give expr.kind == HirExprKind.BorrowMut;
+}
+
+proc hir_expr_move_source(expr: HirExpr) -> string {
+  if expr.kind == HirExprKind.Name {
+    give move_source_from_expr(expr.name);
+  }
+  give move_source_from_expr(expr.text);
+}
+
+proc check_hir_stmt(result: BorrowCheckResult, source_path: string, stmt: HirStmt) -> BorrowCheckResult {
+  let line_no: u64 = stmt.span.start_line;
+  let current: BorrowCheckResult = result;
+
+  if stmt.kind == HirStmtKind.Let or stmt.kind == HirStmtKind.Const {
+    let binding: string = stmt.name;
+    let rhs: string = stmt.expr.text;
+    let current0: BorrowCheckResult = current;
+    if binding != "" and not has_local(current0.ownership, binding) {
+      let ownership0: OwnershipTable = declare_local(current0.ownership, binding, line_no, rhs != "");
+      let current1: BorrowCheckResult = replace_ownership(current0, ownership0);
+      let lifetimes0: LifetimeResult = current1.lifetimes;
+      let ensured: RegionSolution = ensure_region(lifetimes0.regions, binding, line_no);
+      let lifetimes1: LifetimeResult = LifetimeResult {
+        facts: lifetimes0.facts,
+        diagnostics: lifetimes0.diagnostics,
+        regions: ensured,
+        valid: lifetimes0.valid and ensured.valid
+      };
+      let current2: BorrowCheckResult = replace_lifetimes(current1, lifetimes1);
+      if rhs == "" {
+        give current2;
+      }
+      let owner: string = hir_expr_owner(stmt.expr);
+      if owner != "" {
+        give handle_borrow_binding(current2, source_path, binding, owner, hir_expr_is_mutable_borrow(stmt.expr), line_no);
+      }
+      give handle_move_binding(current2, source_path, binding, hir_expr_move_source(stmt.expr), line_no);
     }
-    give "let " + name + " = " + expr_text;
+    give current;
   }
-  if kind == HirStmtKind.Set {
-    give "set " + target + " = " + expr_text;
+
+  if stmt.kind == HirStmtKind.Set {
+    give handle_set(current, source_path, stmt.target, stmt.expr.text, line_no);
   }
-  if kind == HirStmtKind.Give {
-    give "give " + expr_text;
+  if stmt.kind == HirStmtKind.Give {
+    give handle_give(current, source_path, stmt.expr.text, line_no);
   }
-  if kind == HirStmtKind.StaticAssert {
-    give "static_assert(" + expr_text + ", " + message + ")";
+
+  let nested0: BorrowCheckResult = current;
+  let i: u64 = 0;
+  while i < len(stmt.then_stmts) {
+    set nested0 = check_hir_stmt(nested0, source_path, stmt.then_stmts[i]);
+    set i = i + 1;
   }
-  give expr_text;
+  i = 0;
+  while i < len(stmt.else_stmts) {
+    set nested0 = check_hir_stmt(nested0, source_path, stmt.else_stmts[i]);
+    set i = i + 1;
+  }
+  give nested0;
 }
 
 proc borrow_check_hir(source_path: string, hir: HirUnit) -> BorrowCheckResult {
-  let synthetic: string = "";
+  let result: BorrowCheckResult = BorrowCheckResult {
+    diagnostics: [],
+    ownership: ownership_table_empty(),
+    moves: move_tracker_empty(),
+    loans: loan_table_empty(),
+    lifetimes: lifetime_result_empty(region_solution_empty()),
+    valid: true
+  };
+
+  let current: BorrowCheckResult = result;
+  let max_line: u64 = 0;
   let i: u64 = 0;
   while i < len(hir.module.items) {
     let item = hir.module.items[i];
     if item.kind == HirItemKind.Proc {
       let j: u64 = 0;
       while j < len(item.stmts) {
-        let stmt = item.stmts[j];
-        if synthetic != "" {
-          set synthetic = synthetic + "\n";
+        set current = check_hir_stmt(current, source_path, item.stmts[j]);
+        if item.stmts[j].span.start_line > max_line {
+          set max_line = item.stmts[j].span.start_line;
         }
-        set synthetic = synthetic + stmt_to_source_text(stmt.kind, stmt.name, stmt.target, stmt.expr.text, stmt.mutable, stmt.message);
         set j = j + 1;
       }
     }
     set i = i + 1;
   }
-  give borrow_check_source(source_path, synthetic);
+
+  let j: u64 = 0;
+  let lifetimes0: LifetimeResult = current.lifetimes;
+  while j < len(current.ownership.locals) {
+    let name: string = current.ownership.locals[j].name;
+    let closed: RegionSolution = close_region(lifetimes0.regions, name, max_line + 1);
+    set lifetimes0 = LifetimeResult {
+      facts: lifetimes0.facts,
+      diagnostics: lifetimes0.diagnostics,
+      regions: closed,
+      valid: lifetimes0.valid and closed.valid
+    };
+    set j = j + 1;
+  }
+
+  let current0: BorrowCheckResult = replace_lifetimes(current, finalize_lifetimes(lifetimes0));
+  give BorrowCheckResult {
+    diagnostics: current0.diagnostics,
+    ownership: current0.ownership,
+    moves: current0.moves,
+    loans: current0.loans,
+    lifetimes: current0.lifetimes,
+    valid: current0.valid and not diagnostics_has_fatal(current0.diagnostics)
+  };
 }

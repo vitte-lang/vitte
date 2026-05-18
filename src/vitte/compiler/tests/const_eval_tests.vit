@@ -1,6 +1,7 @@
 space vitte/compiler/tests/const_eval_tests
 
-use vitte/compiler/analysis/const_eval.{ ConstEvalRunResult, run_const_eval }
+use vitte/compiler/analysis/const_eval.{ ConstEvalRunResult, run_const_eval, run_const_eval_ast }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 
 const VERSION_TEXT: string = "analysis const_eval tests 0.2.0"
 const BANNER_TEXT: string = "analysis const_eval tests"
@@ -60,6 +61,16 @@ proc test_cycle_detection() -> bool {
   give has_code(result, "CONST_EVAL_E_CYCLE");
 }
 
+proc test_ast_const_eval_path() -> bool {
+  let source: string =
+    "const A = 2;\n" +
+    "const B = A + 3;\n" +
+    "static_assert(B == 5);\n";
+  let fe: FrontendOutput = frontend_run("const_eval_ast.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_ast.vit", fe.ast_root);
+  give fe.valid and result.valid and len(result.bindings) == 2 and result.assert_count == 1;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_valid_arithmetic_chain() { set failures = failures + 1; }
@@ -68,6 +79,7 @@ proc run_all_tests() -> int {
   if not test_non_const_call() { set failures = failures + 1; }
   if not test_static_assert_failure() { set failures = failures + 1; }
   if not test_cycle_detection() { set failures = failures + 1; }
+  if not test_ast_const_eval_path() { set failures = failures + 1; }
   give failures;
 }
 

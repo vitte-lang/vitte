@@ -8,14 +8,17 @@ use vitte/compiler/analysis/const_eval/errors.{
   diagnostics_has_fatal
 }
 use vitte/compiler/analysis/const_eval/folding.{ ConstFoldResult, fold_const_expr }
-use vitte/compiler/frontend/ast/node.{ AstItemKind, AstModule }
+use vitte/compiler/frontend/ast/node.{ AstExpr, AstItemKind, AstModule }
 use vitte/compiler/analysis/const_eval/interpreter.{
+  ConstEvalResult,
   ConstBinding,
   ConstEnv,
   ConstValueKind,
+  ast_expr_references,
   env_empty,
   env_has,
   env_set,
+  eval_const_ast_expr,
   expr_references,
   value_to_text
 }
@@ -29,6 +32,20 @@ form ConstDecl {
 
 form StaticAssertDecl {
   expr: string
+  message: string
+  line: u64
+  valid: bool
+}
+
+form ConstDeclAst {
+  name: string
+  expr: AstExpr
+  line: u64
+  valid: bool
+}
+
+form StaticAssertDeclAst {
+  expr: AstExpr
   message: string
   line: u64
   valid: bool
@@ -298,6 +315,127 @@ proc run_const_decls(source_path: string, decls: [ConstDecl]) -> ConstEvalRunRes
   };
 }
 
+proc decl_name_exists_ast(decls: [ConstDeclAst], name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(decls) {
+    if decls[i].name == name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc unresolved_dep_names_ast(decls: [ConstDeclAst], env: ConstEnv, expr: AstExpr) -> [string] {
+  let refs: [string] = ast_expr_references(expr);
+  let missing: [string] = [];
+  let i: u64 = 0;
+  while i < len(refs) {
+    if decl_name_exists_ast(decls, refs[i]) and not env_has(env, refs[i]) {
+      set missing = missing + [refs[i]];
+    }
+    set i = i + 1;
+  }
+  give missing;
+}
+
+proc run_const_decls_ast(source_path: string, decls: [ConstDeclAst]) -> ConstEvalRunResult {
+  let env: ConstEnv = env_empty();
+  let resolved: [ConstBinding] = [];
+  let diagnostics: [ConstEvalDiagnostic] = [];
+  let pending: [ConstDeclAst] = decls;
+  let progress: bool = true;
+
+  while progress and len(pending) > 0 {
+    set progress = false;
+    let next_pending: [ConstDeclAst] = [];
+    let i: u64 = 0;
+    while i < len(pending) {
+      let decl: ConstDeclAst = pending[i];
+      let unresolved: [string] = unresolved_dep_names_ast(decls, env, decl.expr);
+      if len(unresolved) > 0 {
+        set next_pending = next_pending + [decl];
+        set i = i + 1;
+        continue;
+      }
+      let evaluated: ConstEvalResult = eval_const_ast_expr(env, source_path, decl.expr);
+      if evaluated.valid {
+        set env = env_set(env, decl.name, evaluated.value);
+        set resolved = resolved + [ConstBinding { name: decl.name, value: evaluated.value, valid: true }];
+        set progress = true;
+      } else {
+        set diagnostics = diagnostics + evaluated.diagnostics;
+      }
+      set i = i + 1;
+    }
+    set pending = next_pending;
+  }
+
+  let k: u64 = 0;
+  while k < len(pending) {
+    set diagnostics = diagnostics + [diagnostic_create(
+      ConstEvalErrorKind.Cycle,
+      source_path,
+      pending[k].line,
+      "cyclic constant dependency involving `" + pending[k].name + "`",
+      [pending[k].name],
+      "break the dependency cycle between constants",
+      true
+    )];
+    set k = k + 1;
+  }
+
+  give ConstEvalRunResult {
+    bindings: resolved,
+    diagnostics: diagnostics,
+    assert_count: 0,
+    valid: not diagnostics_has_fatal(diagnostics)
+  };
+}
+
+proc run_static_asserts_ast(source_path: string, asserts: [StaticAssertDeclAst], env: ConstEnv, diagnostics: [ConstEvalDiagnostic]) -> ConstEvalRunResult {
+  let output: [ConstEvalDiagnostic] = diagnostics;
+  let i: u64 = 0;
+  while i < len(asserts) {
+    let evaluated: ConstEvalResult = eval_const_ast_expr(env, source_path, asserts[i].expr);
+    if not evaluated.valid {
+      set output = output + evaluated.diagnostics;
+    } elif evaluated.value.kind != ConstValueKind.Bool {
+      set output = output + [diagnostic_create(
+        ConstEvalErrorKind.UnsupportedExpr,
+        source_path,
+        asserts[i].line,
+        "static_assert requires a boolean constant expression",
+        ["static_assert"],
+        "compare the expression to produce a boolean result",
+        true
+      )];
+    } elif not evaluated.value.bool_value {
+      let message: string = "static_assert failed";
+      if asserts[i].message != "" {
+        set message = "static_assert failed: " + asserts[i].message;
+      }
+      set output = output + [diagnostic_create(
+        ConstEvalErrorKind.StaticAssertFailed,
+        source_path,
+        asserts[i].line,
+        message,
+        ["static_assert", asserts[i].expr.text],
+        "fix the asserted condition or move it to runtime if it is not constant",
+        true
+      )];
+    }
+    set i = i + 1;
+  }
+
+  give ConstEvalRunResult {
+    bindings: env.bindings,
+    diagnostics: output,
+    assert_count: len(asserts) as u64,
+    valid: not diagnostics_has_fatal(output)
+  };
+}
+
 proc run_static_asserts(
   source_path: string,
   asserts: [StaticAssertDecl],
@@ -361,23 +499,23 @@ proc run_const_eval(source_path: string, source_text: string) -> ConstEvalRunRes
 }
 
 proc run_const_eval_ast(source_path: string, module: AstModule) -> ConstEvalRunResult {
-  let decls: [ConstDecl] = [];
-  let asserts: [StaticAssertDecl] = [];
+  let decls: [ConstDeclAst] = [];
+  let asserts: [StaticAssertDeclAst] = [];
   let i: u64 = 0;
   while i < len(module.items) {
     let item = module.items[i];
     if item.kind == AstItemKind.Const {
-      set decls = decls + [ConstDecl { name: item.name, expr: item.expr.text, line: i + 1, valid: item.valid }];
+      set decls = decls + [ConstDeclAst { name: item.name, expr: item.expr, line: item.span.start_line, valid: item.valid }];
     } elif item.kind == AstItemKind.StaticAssert {
-      set asserts = asserts + [StaticAssertDecl { expr: item.expr.text, message: item.message, line: i + 1, valid: item.valid }];
+      set asserts = asserts + [StaticAssertDeclAst { expr: item.expr, message: item.message, line: item.span.start_line, valid: item.valid }];
     }
     set i = i + 1;
   }
 
-  let decl_result: ConstEvalRunResult = run_const_decls(source_path, decls);
+  let decl_result: ConstEvalRunResult = run_const_decls_ast(source_path, decls);
   let env: ConstEnv = ConstEnv {
     bindings: decl_result.bindings,
     valid: decl_result.valid
   };
-  give run_static_asserts(source_path, asserts, env, decl_result.diagnostics);
+  give run_static_asserts_ast(source_path, asserts, env, decl_result.diagnostics);
 }

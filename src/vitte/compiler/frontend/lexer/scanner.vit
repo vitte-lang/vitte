@@ -2,6 +2,38 @@ space vitte/compiler/frontend/lexer/scanner
 
 use vitte/compiler/frontend/lexer/token.{ Token, TokenKind, token }
 
+form LexDiagnostic {
+  code: string
+  message: string
+  line: u64
+  column: u64
+  fatal: bool
+}
+
+form ScanResult {
+  tokens: [Token]
+  diagnostics: [LexDiagnostic]
+  valid: bool
+}
+
+proc lex_diag(code: string, message: string, line: u64, column: u64, fatal: bool) -> LexDiagnostic {
+  give LexDiagnostic {
+    code: code,
+    message: message,
+    line: line,
+    column: column,
+    fatal: fatal
+  };
+}
+
+proc scan_result(tokens: [Token], diagnostics: [LexDiagnostic]) -> ScanResult {
+  give ScanResult {
+    tokens: tokens,
+    diagnostics: diagnostics,
+    valid: len(diagnostics) == 0
+  };
+}
+
 proc is_letter(ch: string) -> bool {
   give (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_";
 }
@@ -37,8 +69,9 @@ proc is_keyword(text: string) -> bool {
   give false;
 }
 
-proc scan_tokens(text: string) -> [Token] {
+proc scan_tokens(text: string) -> ScanResult {
   let tokens: [Token] = [];
+  let diagnostics: [LexDiagnostic] = [];
   let i: u64 = 0;
   let line: u64 = 1;
   let col: u64 = 1;
@@ -76,6 +109,8 @@ proc scan_tokens(text: string) -> [Token] {
     }
 
     if starts_with_at(text, i, "/*") {
+      let start_line: u64 = line;
+      let start_col: u64 = col;
       set i = i + 2;
       set col = col + 2;
       while i + 1 < len(text) and not starts_with_at(text, i, "*/") {
@@ -91,6 +126,9 @@ proc scan_tokens(text: string) -> [Token] {
       if i + 1 < len(text) {
         set i = i + 2;
         set col = col + 2;
+      } else {
+        set diagnostics = diagnostics + [lex_diag("LEX_E_UNTERMINATED_BLOCK_COMMENT", "unterminated block comment", start_line, start_col, true)];
+        set tokens = tokens + [token(TokenKind.Invalid, "/*", start_line, start_col)];
       }
       continue;
     }
@@ -139,29 +177,40 @@ proc scan_tokens(text: string) -> [Token] {
     if is_digit(ch) or (ch == "-" and i + 1 < len(text) and is_digit(slice(text, i + 1, i + 2))) {
       let start: u64 = i;
       let start_col: u64 = col;
+      let dot_count: u64 = 0;
       if ch == "-" {
         set i = i + 1;
         set col = col + 1;
       }
       while i < len(text) {
         let c2: string = slice(text, i, i + 1);
-        if is_digit(c2) or c2 == "_" or c2 == "." or c2 == "x" or c2 == "o" or c2 == "b" {
+        if is_digit(c2) or c2 == "_" or c2 == "x" or c2 == "o" or c2 == "b" {
+          set i = i + 1;
+          set col = col + 1;
+        } elif c2 == "." and not starts_with_at(text, i, "..") {
+          set dot_count = dot_count + 1;
           set i = i + 1;
           set col = col + 1;
         } else {
           break;
         }
       }
-      set tokens = tokens + [token(TokenKind.Integer, slice(text, start, i), line, start_col)];
+      let lexeme: string = slice(text, start, i);
+      if dot_count > 0 {
+        set tokens = tokens + [token(TokenKind.Float, lexeme, line, start_col)];
+      } else {
+        set tokens = tokens + [token(TokenKind.Integer, lexeme, line, start_col)];
+      }
       continue;
     }
 
-    if ch == "\"" or ch == "'" {
+    if ch == "\"" {
       let start: u64 = i;
       let start_col: u64 = col;
-      let quote: string = ch;
+      let start_line: u64 = line;
       set i = i + 1;
       set col = col + 1;
+      let closed: bool = false;
       while i < len(text) {
         let c2: string = slice(text, i, i + 1);
         if c2 == "\\" and i + 1 < len(text) {
@@ -169,9 +218,10 @@ proc scan_tokens(text: string) -> [Token] {
           set col = col + 2;
           continue;
         }
-        if c2 == quote {
+        if c2 == "\"" {
           set i = i + 1;
           set col = col + 1;
+          set closed = true;
           break;
         }
         if c2 == "\n" {
@@ -183,7 +233,47 @@ proc scan_tokens(text: string) -> [Token] {
           set col = col + 1;
         }
       }
-      set tokens = tokens + [token(TokenKind.String, slice(text, start, i), line, start_col)];
+      if not closed {
+        set diagnostics = diagnostics + [lex_diag("LEX_E_UNTERMINATED_STRING", "unterminated string literal", start_line, start_col, true)];
+        set tokens = tokens + [token(TokenKind.Invalid, slice(text, start, i), start_line, start_col)];
+      } else {
+        set tokens = tokens + [token(TokenKind.String, slice(text, start, i), start_line, start_col)];
+      }
+      continue;
+    }
+
+    if ch == "'" {
+      let start: u64 = i;
+      let start_col: u64 = col;
+      let start_line: u64 = line;
+      set i = i + 1;
+      set col = col + 1;
+      let closed: bool = false;
+      while i < len(text) {
+        let c2: string = slice(text, i, i + 1);
+        if c2 == "\\" and i + 1 < len(text) {
+          set i = i + 2;
+          set col = col + 2;
+          continue;
+        }
+        if c2 == "'" {
+          set i = i + 1;
+          set col = col + 1;
+          set closed = true;
+          break;
+        }
+        if c2 == "\n" {
+          break;
+        }
+        set i = i + 1;
+        set col = col + 1;
+      }
+      if not closed {
+        set diagnostics = diagnostics + [lex_diag("LEX_E_UNTERMINATED_CHAR", "unterminated char literal", start_line, start_col, true)];
+        set tokens = tokens + [token(TokenKind.Invalid, slice(text, start, i), start_line, start_col)];
+      } else {
+        set tokens = tokens + [token(TokenKind.Char, slice(text, start, i), start_line, start_col)];
+      }
       continue;
     }
 
@@ -208,11 +298,22 @@ proc scan_tokens(text: string) -> [Token] {
       continue;
     }
 
-    set tokens = tokens + [token(TokenKind.Symbol, ch, line, col)];
+    let sym: string = ch;
+    let valid_symbol: bool =
+      ch == "(" or ch == ")" or ch == "{" or ch == "}" or ch == "[" or ch == "]" or
+      ch == "," or ch == ";" or ch == ":" or ch == "." or ch == "+" or ch == "-" or
+      ch == "*" or ch == "/" or ch == "%" or ch == "=" or ch == "<" or ch == ">" or
+      ch == "!" or ch == "&" or ch == "|" or ch == "^";
+    if valid_symbol {
+      set tokens = tokens + [token(TokenKind.Symbol, sym, line, col)];
+    } else {
+      set diagnostics = diagnostics + [lex_diag("LEX_E_INVALID_CHAR", "invalid character `" + sym + "`", line, col, true)];
+      set tokens = tokens + [token(TokenKind.Invalid, sym, line, col)];
+    }
     set i = i + 1;
     set col = col + 1;
   }
 
   set tokens = tokens + [token(TokenKind.Eof, "", line, col)];
-  give tokens;
+  give scan_result(tokens, diagnostics);
 }

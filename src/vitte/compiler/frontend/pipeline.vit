@@ -2,7 +2,7 @@ space vitte/compiler/frontend
 
 use vitte/compiler/frontend/input.{ FrontendInput, input_from_text }
 use vitte/compiler/frontend/macros/expand.{ expand_macros }
-use vitte/compiler/frontend/lexer/scanner.{ scan_tokens }
+use vitte/compiler/frontend/lexer/scanner.{ LexDiagnostic, ScanResult, scan_tokens }
 use vitte/compiler/frontend/parse/parser.{ parse_source }
 use vitte/compiler/frontend/parse/recovery.{ capped_diag_count, recovery_applied }
 use vitte/compiler/frontend/ast/node.{ AstModule, ast_module_empty }
@@ -62,11 +62,17 @@ proc frontend_run(source_path: string, source_text: string) -> FrontendOutput {
   }
 
   let expanded: string = expand_macros(input.text);
-  let tokens = scan_tokens(expanded);
-  let parsed = parse_source(source_path, tokens);
+  let scanned: ScanResult = scan_tokens(expanded);
+  let parsed = parse_source(source_path, scanned.tokens);
 
   let ds: [FrontendDiagnostic] = [];
   let i: u64 = 0;
+  while i < len(scanned.diagnostics) {
+    let diag: LexDiagnostic = scanned.diagnostics[i];
+    set ds = ds + [frontend_diagnostic(diag.code, diag.message, diag.fatal)];
+    set i = i + 1;
+  }
+  set i = 0;
   while i < len(parsed.diagnostics) {
     set ds = ds + [frontend_diagnostic(parsed.diagnostics[i].code, parsed.diagnostics[i].message, true)];
     set i = i + 1;
@@ -83,7 +89,7 @@ proc frontend_run(source_path: string, source_text: string) -> FrontendOutput {
   give FrontendOutput {
     source_path: source_path,
     source_text: expanded,
-    token_count: len(tokens),
+    token_count: len(scanned.tokens),
     grammar_version: parsed.grammar_version,
     ast_root: ast_root,
     toplevel_count: parsed.toplevel_count,

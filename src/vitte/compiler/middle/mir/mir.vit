@@ -1,32 +1,73 @@
 space vitte/compiler/middle/mir/mir
 
+use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
+
 pick MirStatementKind {
   Assign,
   Return,
   Assert,
 }
 
+pick MirRvalueKind {
+  Use,
+  Binary,
+  BorrowShared,
+  BorrowMut,
+  Call,
+}
+
+pick MirTerminatorKind {
+  Return,
+  Goto,
+  Unreachable,
+}
+
+form MirPlace {
+  local: string
+  projection: string
+  valid: bool
+}
+
 form MirOperand {
   text: string
+  place: MirPlace
+  valid: bool
+}
+
+form MirRvalue {
+  kind: MirRvalueKind
+  text: string
+  operator: string
+  operands: [MirOperand]
   valid: bool
 }
 
 form MirStatement {
+  id: u64
+  span: AstSpan
   kind: MirStatementKind
-  target: string
-  operand: MirOperand
+  place: MirPlace
+  rvalue: MirRvalue
+  valid: bool
+}
+
+form MirTerminator {
+  kind: MirTerminatorKind
+  target_block: u64
   valid: bool
 }
 
 form MirBlock {
   id: u64
   statements: [MirStatement]
-  terminator: string
+  terminator: MirTerminator
   valid: bool
 }
 
 form MirFunction {
+  id: u64
   name: string
+  entry_block: u64
   blocks: [MirBlock]
   valid: bool
 }
@@ -47,6 +88,25 @@ form MirUnit {
 proc mir_module_empty() -> MirModule {
   give MirModule {
     functions: [],
+    valid: false
+  };
+}
+
+proc mir_place_empty() -> MirPlace {
+  give MirPlace { local: "", projection: "", valid: false };
+}
+
+proc mir_terminator_return() -> MirTerminator {
+  give MirTerminator { kind: MirTerminatorKind.Return, target_block: 0, valid: true };
+}
+
+proc mir_statement_empty() -> MirStatement {
+  give MirStatement {
+    id: 0,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: mir_place_empty(),
+    rvalue: MirRvalue { kind: MirRvalueKind.Use, text: "", operator: "", operands: [], valid: false },
     valid: false
   };
 }
