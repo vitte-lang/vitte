@@ -88,6 +88,13 @@
 <li>Reproduce with minimal file in <code>tests/grammar</code>.</li>
 <li>Check the diagnostics contract (<code>docs/book/grammar/diagnostics/expected</code>).</li>
 </ol>
+<h2>Current semantic boundary</h2>
+<ul>
+<li>The EBNF intentionally accepts the full borrow-related surface: <code>&amp;</code>, <code>&amp; mut</code>, <code>move</code>, projected paths such as <code>x.field</code>, and projected assignment targets via <code>set</code>.</li>
+<li>That does not mean every accepted surface is fully modeled semantically yet. Parsing is broader by design; semantic rejection belongs to <code>sema</code>, <code>typeck</code> and <code>borrowck</code>.</li>
+<li>Current <code>borrowck</code> status: structured <code>Place</code> names are propagated through HIR/MIR, copy-vs-move is partially type-driven, and loans now expire with lexical scope metadata.</li>
+<li>Remaining limits: the ownership table is still indexed by name, not by a fully canonical place key; the dataflow merge is not yet a fully place-sensitive lattice across projections; region closure is still not driven by a final CFG-complete scope model.</li>
+</ul>
 </article>
 </main>
 <footer class="site-footer">

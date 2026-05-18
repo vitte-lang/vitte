@@ -1,7 +1,7 @@
 {
   "version": "v3",
-  "checksum": "6161bcd2e77b0a8f1a2bbe9b8dab382734e39ff8647bcfd206c35dc7c4beb0bf",
-  "built_at": "2026-05-09T16:15:22.045409+00:00",
+  "checksum": "4493876f55f9d93e4b5dd3dccc15a337693deb68955e9952648866ba8a8230f6",
+  "built_at": "2026-05-18T20:17:15.691913+00:00",
   "source": "src/vitte/grammar/vitte.ebnf",
   "rules": [
     {
@@ -636,7 +636,7 @@
     },
     {
       "name": "let_stmt",
-      "body": "\"let\" WS1 [ \"mut\" WS1 ] pattern [ WS? \":\" WS? type_expr ] WS? \"=\" WS? expr ;",
+      "body": "\"let\" WS1 [ \"mut\" WS1 ] pattern [ WS? \":\" WS? type_expr ] WS? \"=\" WS? expr ;\n<<< assign_target stays intentionally syntactic here; projection validity and aliasing\n    are enforced later by sema/typeck/borrowck on structured HIR/MIR places. >>>",
       "tests": []
     },
     {
@@ -856,12 +856,12 @@
     },
     {
       "name": "cast_expr",
-      "body": "unary_expr { WS? ( \"as\" WS? type_expr | \"is\" WS? pattern | \"is\" WS1 \"not\" WS1 pattern ) } ;",
+      "body": "unary_expr { WS? ( \"as\" WS? type_expr | \"is\" WS? pattern | \"is\" WS1 \"not\" WS1 pattern ) } ;\n\n<<< unary borrow and move syntax are accepted at parse time; whether a use is\n    actually a copy or a move is decided later from inferred types. >>>",
       "tests": []
     },
     {
       "name": "unary_expr",
-      "body": "( \"not\" | \"-\" | \"~\" | \"*\" | \"&\" | \"move\" | \"await\" ) WS? unary_expr\n             | postfix_expr\n             ;",
+      "body": "( \"not\" | \"-\" | \"~\" | \"*\" | \"&\" | \"move\" | \"await\" ) WS? unary_expr\n             | postfix_expr\n             ;\n\n<<< postfix chains define the full place surface used later by ownership and\n    borrow analysis: field projection, indexing, call, try and await suffixes. >>>",
       "tests": []
     },
     {
@@ -1141,7 +1141,7 @@
     },
     {
       "name": "type_atom",
-      "body": "reference_type\n            | pointer_type\n            | optional_type\n            | fixed_array_type\n            | slice_type\n            | tuple_type\n            | proc_type\n            | dyn_type\n            | impl_trait_type\n            | type_primary\n            ;",
+      "body": "reference_type\n            | pointer_type\n            | optional_type\n            | fixed_array_type\n            | slice_type\n            | tuple_type\n            | proc_type\n            | dyn_type\n            | impl_trait_type\n            | type_primary\n            ;\n\n<<< shared and mutable references are part of the core surface grammar; lifetime,\n    aliasing and region closure remain semantic checks outside the parser. >>>",
       "tests": []
     },
     {

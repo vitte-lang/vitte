@@ -1,14 +1,8 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vitte EBNF Memory Guide (EN)</title><link rel="stylesheet" href="css/site.css"><link rel="preload" as="style" href="css/site.css">
-<link rel="alternate" hreflang="en" href="https://vitte-lang.org/vitte-ebnf-memory.html">
-<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/vitte-ebnf-memory.html">
-
-
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
-</head><body class="classic-doc">
-<a class="skip-link" href="#main-content">Skip to content</a><div class="site-shell"><main id="main-content" class="site-main"><article class="doc-content"><h1>Vitte EBNF Memory Guide (EN)</h1><p>Source of truth: <code>src/vitte/grammar/vitte.ebnf</code>.</p><p>Checksum (SHA-256): <code>6161bcd2e77b0a8f1a2bbe9b8dab382734e39ff8647bcfd206c35dc7c4beb0bf</code></p><h2>Prompt Contract</h2><ol><li>Use only this grammar as source of truth.</li><li>If unsure, answer: unknown.</li><li>Validate rule by rule with production names.</li><li>Return compliant/non-compliant with evidence.</li><li>Provide minimal valid/invalid examples per rule.</li></ol><pre><code>&lt;&lt;&lt; =========================================================
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vitte EBNF Memory Guide (EN)</title><link rel="stylesheet" href="css/site.css"></head><body class="classic-doc"><div class="site-shell"><main class="site-main"><article class="doc-content"><h1>Vitte EBNF Memory Guide (EN)</h1><p>Source of truth: <code>src/vitte/grammar/vitte.ebnf</code>.</p><p>Checksum (SHA-256): <code>4493876f55f9d93e4b5dd3dccc15a337693deb68955e9952648866ba8a8230f6</code></p><h2>Prompt Contract</h2><ol><li>Use only this grammar as source of truth.</li><li>If unsure, answer: unknown.</li><li>Validate rule by rule with production names.</li><li>Return compliant/non-compliant with evidence.</li><li>Provide minimal valid/invalid examples per rule.</li></ol><pre><code>&lt;&lt;&lt; =========================================================
    Vitte — Complete Core Grammar
    systems + application + kernel + compiler surface
    canonical blocks: { }
+   canonical syntax source for parser/docs/tests
    low-level capable
    compiler-capable
    no aliases, reduced duplicates
@@ -339,6 +333,8 @@ stmt_end ::= WS? &quot;;&quot; ;
 
 local_const_stmt ::= &quot;const&quot; WS1 ident [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;
 let_stmt ::= &quot;let&quot; WS1 [ &quot;mut&quot; WS1 ] pattern [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;
+&lt;&lt;&lt; assign_target stays intentionally syntactic here; projection validity and aliasing
+    are enforced later by sema/typeck/borrowck on structured HIR/MIR places. &gt;&gt;&gt;
 set_stmt ::= &quot;set&quot; WS1 assign_target WS? assign_op WS? expr ;
 assign_target ::= unary_expr ;
 
@@ -414,10 +410,14 @@ mul_expr ::= cast_expr { WS? ( &quot;*&quot; | &quot;/&quot; | &quot;%&quot; ) W
 
 cast_expr ::= unary_expr { WS? ( &quot;as&quot; WS? type_expr | &quot;is&quot; WS? pattern | &quot;is&quot; WS1 &quot;not&quot; WS1 pattern ) } ;
 
+&lt;&lt;&lt; unary borrow and move syntax are accepted at parse time; whether a use is
+    actually a copy or a move is decided later from inferred types. &gt;&gt;&gt;
 unary_expr ::= ( &quot;not&quot; | &quot;-&quot; | &quot;~&quot; | &quot;*&quot; | &quot;&amp;&quot; | &quot;move&quot; | &quot;await&quot; ) WS? unary_expr
              | postfix_expr
              ;
 
+&lt;&lt;&lt; postfix chains define the full place surface used later by ownership and
+    borrow analysis: field projection, indexing, call, try and await suffixes. &gt;&gt;&gt;
 postfix_expr ::= primary { call_suffix | member_suffix | index_suffix | try_suffix | await_suffix } ;
 call_suffix ::= &quot;(&quot; WS? arg_list? WS? &quot;)&quot; ;
 member_suffix ::= &quot;.&quot; ident ;
@@ -552,6 +552,8 @@ type_atom ::= reference_type
             | type_primary
             ;
 
+&lt;&lt;&lt; shared and mutable references are part of the core surface grammar; lifetime,
+    aliasing and region closure remain semantic checks outside the parser. &gt;&gt;&gt;
 reference_type ::= &quot;&amp;&quot; WS? [ lifetime WS? ] [ &quot;mut&quot; WS1 ] type_expr ;
 pointer_type ::= &quot;*&quot; WS? [ &quot;const&quot; WS1 | &quot;mut&quot; WS1 | &quot;volatile&quot; WS1 | addr_space WS1 ] type_expr ;
 optional_type ::= &quot;?&quot; WS? type_expr ;
@@ -678,5 +680,4 @@ OCTDIGIT ::= &quot;0&quot;...&quot;7&quot; ;
 HEXDIGIT ::= DIGIT | &quot;a&quot;...&quot;f&quot; | &quot;A&quot;...&quot;F&quot; ;
 
 EOF ::= !ANY ;
-</code></pre></article></main></div><script type="module" src="js/main.js"></script>
-</body></html>
+</code></pre></article></main></div></body></html>
