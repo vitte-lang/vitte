@@ -1,0 +1,52 @@
+space vitte/compiler/middle/mir/mir
+
+pick MirStatementKind {
+  Assign,
+  Return,
+  Assert,
+}
+
+form MirOperand {
+  text: string
+  valid: bool
+}
+
+form MirStatement {
+  kind: MirStatementKind
+  target: string
+  operand: MirOperand
+  valid: bool
+}
+
+form MirBlock {
+  id: u64
+  statements: [MirStatement]
+  terminator: string
+  valid: bool
+}
+
+form MirFunction {
+  name: string
+  blocks: [MirBlock]
+  valid: bool
+}
+
+form MirModule {
+  functions: [MirFunction]
+  valid: bool
+}
+
+form MirUnit {
+  source_path: string
+  module: MirModule
+  block_count: u64
+  instruction_count: u64
+  valid: bool
+}
+
+proc mir_module_empty() -> MirModule {
+  give MirModule {
+    functions: [],
+    valid: false
+  };
+}

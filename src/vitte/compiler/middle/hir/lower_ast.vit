@@ -1,28 +1,115 @@
 space vitte/compiler/middle/hir/lower_ast
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput }
+use vitte/compiler/frontend/ast/node.{
+  AstExpr,
+  AstExprKind,
+  AstItem,
+  AstItemKind,
+  AstModule,
+  AstStmt,
+  AstStmtKind
+}
+use vitte/compiler/middle/hir/hir.{
+  HirExpr,
+  HirExprKind,
+  HirItem,
+  HirItemKind,
+  HirModule,
+  HirStmt,
+  HirStmtKind,
+  HirUnit,
+  hir_expr,
+  hir_module_empty
+}
 
-form HirUnit {
-  source_path: string
-  ast_root: string
-  node_count: u64
-  valid: bool
+proc lower_expr(expr: AstExpr) -> HirExpr {
+  let children: [HirExpr] = [];
+  let i: u64 = 0;
+  while i < len(expr.children) {
+    set children = children + [lower_expr(expr.children[i])];
+    set i = i + 1;
+  }
+
+  let kind: HirExprKind = HirExprKind.Unknown;
+  if expr.kind == AstExprKind.Name { set kind = HirExprKind.Name; }
+  elif expr.kind == AstExprKind.Int { set kind = HirExprKind.Int; }
+  elif expr.kind == AstExprKind.Bool { set kind = HirExprKind.Bool; }
+  elif expr.kind == AstExprKind.String { set kind = HirExprKind.String; }
+  elif expr.kind == AstExprKind.Binary { set kind = HirExprKind.Binary; }
+  elif expr.kind == AstExprKind.Call { set kind = HirExprKind.Call; }
+  elif expr.kind == AstExprKind.BorrowShared { set kind = HirExprKind.BorrowShared; }
+  elif expr.kind == AstExprKind.BorrowMut { set kind = HirExprKind.BorrowMut; }
+
+  give hir_expr(kind, expr.text, expr.name, expr.operator, children, expr.valid);
+}
+
+proc lower_stmt(stmt: AstStmt) -> HirStmt {
+  let kind: HirStmtKind = HirStmtKind.Unknown;
+  if stmt.kind == AstStmtKind.Const { set kind = HirStmtKind.Const; }
+  elif stmt.kind == AstStmtKind.Let { set kind = HirStmtKind.Let; }
+  elif stmt.kind == AstStmtKind.Set { set kind = HirStmtKind.Set; }
+  elif stmt.kind == AstStmtKind.Give { set kind = HirStmtKind.Give; }
+  elif stmt.kind == AstStmtKind.StaticAssert { set kind = HirStmtKind.StaticAssert; }
+
+  give HirStmt {
+    kind: kind,
+    name: stmt.pattern.name,
+    target: stmt.target,
+    expr: lower_expr(stmt.expr),
+    message: stmt.message,
+    mutable: stmt.pattern.mutable,
+    valid: stmt.valid
+  };
+}
+
+proc lower_item(item: AstItem) -> HirItem {
+  let stmts: [HirStmt] = [];
+  let i: u64 = 0;
+  while i < len(item.stmts) {
+    set stmts = stmts + [lower_stmt(item.stmts[i])];
+    set i = i + 1;
+  }
+
+  let kind: HirItemKind = HirItemKind.Unknown;
+  if item.kind == AstItemKind.Const { set kind = HirItemKind.Const; }
+  elif item.kind == AstItemKind.Proc { set kind = HirItemKind.Proc; }
+  elif item.kind == AstItemKind.StaticAssert { set kind = HirItemKind.StaticAssert; }
+
+  give HirItem {
+    kind: kind,
+    name: item.name,
+    expr: lower_expr(item.expr),
+    stmts: stmts,
+    message: item.message,
+    valid: item.valid
+  };
 }
 
 proc lower_ast_to_hir(frontend: FrontendOutput) -> HirUnit {
-  if not frontend.valid {
+  if not frontend.valid or not frontend.ast_root.valid {
     give HirUnit {
       source_path: frontend.source_path,
-      ast_root: "invalid",
+      module: hir_module_empty(),
       node_count: 0,
       valid: false
     };
   }
 
+  let items: [HirItem] = [];
+  let i: u64 = 0;
+  let node_count: u64 = 0;
+  while i < len(frontend.ast_root.items) {
+    let item: HirItem = lower_item(frontend.ast_root.items[i]);
+    set items = items + [item];
+    set node_count = node_count + 1 + len(item.stmts);
+    set i = i + 1;
+  }
+
   give HirUnit {
     source_path: frontend.source_path,
-    ast_root: frontend.ast_root,
-    node_count: 1,
-    valid: true
+    module: HirModule { items: items, valid: len(items) > 0 },
+    node_count: node_count,
+    valid: len(items) > 0
   };
 }

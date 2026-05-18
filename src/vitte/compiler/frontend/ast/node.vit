@@ -1,1 +1,171 @@
+space vitte/compiler/frontend/ast/node
 
+pick AstExprKind {
+  Unknown,
+  Name,
+  Int,
+  Bool,
+  String,
+  Binary,
+  Call,
+  BorrowShared,
+  BorrowMut,
+}
+
+pick AstStmtKind {
+  Unknown,
+  Const,
+  Let,
+  Set,
+  Give,
+  StaticAssert,
+}
+
+pick AstItemKind {
+  Unknown,
+  Const,
+  Proc,
+  StaticAssert,
+}
+
+form AstTypeExpr {
+  text: string
+  valid: bool
+}
+
+form AstPattern {
+  name: string
+  mutable: bool
+  valid: bool
+}
+
+form AstExpr {
+  kind: AstExprKind
+  text: string
+  name: string
+  operator: string
+  children: [AstExpr]
+  valid: bool
+}
+
+form AstStmt {
+  kind: AstStmtKind
+  pattern: AstPattern
+  target: string
+  expr: AstExpr
+  annotation: AstTypeExpr
+  message: string
+  valid: bool
+}
+
+form AstItem {
+  kind: AstItemKind
+  name: string
+  expr: AstExpr
+  stmts: [AstStmt]
+  annotation: AstTypeExpr
+  message: string
+  valid: bool
+}
+
+form AstModule {
+  kind: string
+  items: [AstItem]
+  valid: bool
+}
+
+proc ast_type_expr(text: string) -> AstTypeExpr {
+  give AstTypeExpr { text: text, valid: text != "" };
+}
+
+proc ast_type_empty() -> AstTypeExpr {
+  give AstTypeExpr { text: "", valid: false };
+}
+
+proc ast_pattern(name: string, mutable: bool) -> AstPattern {
+  give AstPattern { name: name, mutable: mutable, valid: name != "" };
+}
+
+proc ast_pattern_empty() -> AstPattern {
+  give AstPattern { name: "", mutable: false, valid: false };
+}
+
+proc ast_expr_unknown(text: string) -> AstExpr {
+  give AstExpr {
+    kind: AstExprKind.Unknown,
+    text: text,
+    name: "",
+    operator: "",
+    children: [],
+    valid: false
+  };
+}
+
+proc ast_expr_leaf(kind: AstExprKind, text: string, name: string) -> AstExpr {
+  give AstExpr {
+    kind: kind,
+    text: text,
+    name: name,
+    operator: "",
+    children: [],
+    valid: true
+  };
+}
+
+proc ast_expr_node(kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr]) -> AstExpr {
+  give AstExpr {
+    kind: kind,
+    text: text,
+    name: name,
+    operator: operator,
+    children: children,
+    valid: true
+  };
+}
+
+proc ast_stmt_create(kind: AstStmtKind, pattern: AstPattern, target: string, expr: AstExpr, annotation: AstTypeExpr, message: string) -> AstStmt {
+  give AstStmt {
+    kind: kind,
+    pattern: pattern,
+    target: target,
+    expr: expr,
+    annotation: annotation,
+    message: message,
+    valid: kind != AstStmtKind.Unknown and expr.valid
+  };
+}
+
+proc ast_item_create(kind: AstItemKind, name: string, expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, message: string) -> AstItem {
+  let valid: bool = kind != AstItemKind.Unknown;
+  if kind == AstItemKind.Const or kind == AstItemKind.StaticAssert {
+    set valid = valid and expr.valid;
+  }
+  if kind == AstItemKind.Proc {
+    set valid = valid and name != "";
+  }
+  give AstItem {
+    kind: kind,
+    name: name,
+    expr: expr,
+    stmts: stmts,
+    annotation: annotation,
+    message: message,
+    valid: valid
+  };
+}
+
+proc ast_module_empty() -> AstModule {
+  give AstModule {
+    kind: "program",
+    items: [],
+    valid: false
+  };
+}
+
+proc ast_module(items: [AstItem]) -> AstModule {
+  give AstModule {
+    kind: "program",
+    items: items,
+    valid: true
+  };
+}

@@ -1,14 +1,16 @@
 space vitte/compiler/frontend/ast/validate
 
+use vitte/compiler/frontend/ast/node.{ AstModule }
+
 form AstValidation {
   root: string
   valid: bool
   message: string
 }
 
-proc validate_ast_root(root: string) -> AstValidation {
-  if root == "" or root == "invalid" {
-    give AstValidation { root: root, valid: false, message: "invalid ast root" };
+proc validate_ast_root(root: AstModule) -> AstValidation {
+  if not root.valid {
+    give AstValidation { root: "invalid", valid: false, message: "invalid ast module" };
   }
-  give AstValidation { root: root, valid: true, message: "ok" };
+  give AstValidation { root: root.kind, valid: true, message: "ok" };
 }

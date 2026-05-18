@@ -1,11 +1,12 @@
 space vitte/compiler/middle/mir/validate
 
-use vitte/compiler/middle/lower/hir_to_mir.{ MirUnit }
+use vitte/compiler/middle/mir/mir.{ MirUnit, mir_module_empty }
 
 proc validate_mir(mir: MirUnit) -> MirUnit {
-  if mir.block_count == 0 or mir.instruction_count == 0 {
+  if not mir.module.valid or mir.block_count == 0 {
     give MirUnit {
       source_path: mir.source_path,
+      module: mir_module_empty(),
       block_count: mir.block_count,
       instruction_count: mir.instruction_count,
       valid: false

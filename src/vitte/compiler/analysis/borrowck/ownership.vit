@@ -1,964 +1,299 @@
-<<< ========================================================= >>>
-<<< Vitte 2026 — Official Compiler Source                    >>>
-<<< Component: Compiler / Analysis / Borrow Checker          >>>
-<<< File: compiler/analysis/borrowck/ownership.vit           >>>
-<<< Module: vitte/compiler/analysis/borrowck/ownership       >>>
-<<< Purpose: ownership states, transfers and owner tracking   >>>
-<<< ========================================================= >>>
-
 space vitte/compiler/analysis/borrowck/ownership
 
-const OWNERSHIP_INVALID_ID: u64 = 18446744073709551615
-const OWNERSHIP_VERSION: u32 = 2026
-const OWNERSHIP_MAX_VALUES: u64 = 1048576
-const OWNERSHIP_MAX_OWNERS: u64 = 1048576
-const OWNERSHIP_MAX_TRANSFERS: u64 = 2097152
-
-pick OwnershipState {
-    Unowned,
-    Owned,
-    Shared,
-    MutablyBorrowed,
-    ImmutablyBorrowed,
-    Moved,
-    Dropped,
-    Escaped,
-    Invalid,
+pick PlaceKind {
+  Local,
+  Field,
+  Deref,
+  Index,
+  Temporary,
 }
 
-pick OwnerKind {
-    Local,
-    Parameter,
-    Field,
-    Temporary,
-    ReturnSlot,
-    ClosureCapture,
-    Static,
-    Global,
-    Heap,
-    Unknown,
+pick LocalStateKind {
+  Uninitialized,
+  Available,
+  Moved,
+  Invalid,
 }
 
-pick TransferKind {
-    Initialize,
-    Assign,
-    Move,
-    Copy,
-    BorrowShared,
-    BorrowMutable,
-    Return,
-    Yield,
-    Capture,
-    Drop,
-    Escape,
+pick OwnershipStateKind {
+  Declared,
+  Reinitialized,
+  Moved,
+  BorrowedShared,
+  BorrowedMutable,
 }
 
-pick OwnershipErrorKind {
-    None,
-    UnknownOwner,
-    UnknownValue,
-    DuplicateOwner,
-    DuplicateValue,
-    InvalidOwner,
-    InvalidState,
-    InvalidTransfer,
-    MoveFromBorrowed,
-    MoveFromDropped,
-    UseAfterMove,
-    UseAfterDrop,
-    MutableBorrowConflict,
-    SharedBorrowConflict,
-    OwnershipEscapes,
-    TransferLimitExceeded,
-    ValueLimitExceeded,
-    OwnerLimitExceeded,
+form Place {
+  root: string
+  projection: [string]
+  kind: PlaceKind
+  mutable: bool
+  valid: bool
 }
 
-form OwnershipSpan {
-    file: string
-    line: u64
-    column: u64
-    length: u64
+form LocalState {
+  name: string
+  place: Place
+  state: LocalStateKind
+  shared_borrows: u64
+  mutable_borrowed: bool
+  last_line: u64
+  valid: bool
 }
 
-form Owner {
-    id: u64
-    name: string
-    kind: OwnerKind
-    region: u64
-    mutable: bool
-    valid: bool
-}
-
-form OwnedValue {
-    id: u64
-    name: string
-    owner: u64
-    state: OwnershipState
-    copyable: bool
-    movable: bool
-    field_path: string
-    valid: bool
-}
-
-form OwnershipTransfer {
-    id: u64
-    kind: TransferKind
-    value: u64
-    from_owner: u64
-    to_owner: u64
-    span: OwnershipSpan
-    valid: bool
-}
-
-form OwnershipDiagnostic {
-    kind: OwnershipErrorKind
-    message: string
-    span: OwnershipSpan
-    value: u64
-    owner: u64
+form OwnershipFact {
+  owner: string
+  place: Place
+  state: OwnershipStateKind
+  line: u64
+  detail: string
+  valid: bool
 }
 
 form OwnershipTable {
-    owners: [Owner]
-    values: [OwnedValue]
-    transfers: [OwnershipTransfer]
-    diagnostics: [OwnershipDiagnostic]
-    valid: bool
+  locals: [LocalState]
+  facts: [OwnershipFact]
+  valid: bool
 }
 
-proc span_empty() -> OwnershipSpan {
-    give OwnershipSpan {
-        file: "compiler/analysis/borrowck/ownership.vit",
-        line: 0,
-        column: 0,
-        length: 0
-    };
+proc place_local(name: string) -> Place {
+  give Place {
+    root: name,
+    projection: [],
+    kind: PlaceKind.Local,
+    mutable: true,
+    valid: name != ""
+  };
 }
 
-proc owner_invalid() -> Owner {
-    give Owner {
-        id: OWNERSHIP_INVALID_ID,
-        name: "invalid",
-        kind: OwnerKind.Unknown,
-        region: OWNERSHIP_INVALID_ID,
-        mutable: false,
-        valid: false
-    };
+proc local_state_create(name: string, line: u64) -> LocalState {
+  give LocalState {
+    name: name,
+    place: place_local(name),
+    state: LocalStateKind.Available,
+    shared_borrows: 0,
+    mutable_borrowed: false,
+    last_line: line,
+    valid: name != ""
+  };
 }
 
-proc value_invalid() -> OwnedValue {
-    give OwnedValue {
-        id: OWNERSHIP_INVALID_ID,
-        name: "invalid",
-        owner: OWNERSHIP_INVALID_ID,
-        state: OwnershipState.Invalid,
-        copyable: false,
-        movable: false,
-        field_path: "",
-        valid: false
-    };
+proc local_state_uninitialized(name: string, line: u64) -> LocalState {
+  let state: LocalState = local_state_create(name, line);
+  give LocalState {
+    name: state.name,
+    place: state.place,
+    state: LocalStateKind.Uninitialized,
+    shared_borrows: 0,
+    mutable_borrowed: false,
+    last_line: line,
+    valid: state.valid
+  };
 }
 
-proc table_empty() -> OwnershipTable {
-    give OwnershipTable {
-        owners: [],
-        values: [],
-        transfers: [],
-        diagnostics: [],
-        valid: true
-    };
+proc ownership_fact(owner: string, state: OwnershipStateKind, line: u64, detail: string) -> OwnershipFact {
+  give OwnershipFact {
+    owner: owner,
+    place: place_local(owner),
+    state: state,
+    line: line,
+    detail: detail,
+    valid: owner != ""
+  };
 }
 
-proc owner_create(
-    id: u64,
-    name: string,
-    kind: OwnerKind,
-    region: u64,
-    mutable: bool
-) -> Owner {
-    give Owner {
-        id: id,
-        name: name,
-        kind: kind,
-        region: region,
-        mutable: mutable,
-        valid: true
-    };
+proc ownership_table_empty() -> OwnershipTable {
+  give OwnershipTable {
+    locals: [],
+    facts: [],
+    valid: true
+  };
 }
 
-proc value_create(
-    id: u64,
-    name: string,
-    owner: u64,
-    copyable: bool,
-    movable: bool
-) -> OwnedValue {
-    give OwnedValue {
-        id: id,
-        name: name,
-        owner: owner,
-        state: OwnershipState.Owned,
-        copyable: copyable,
-        movable: movable,
-        field_path: "",
-        valid: true
-    };
-}
-
-proc field_value_create(
-    id: u64,
-    name: string,
-    owner: u64,
-    field_path: string,
-    copyable: bool,
-    movable: bool
-) -> OwnedValue {
-    give OwnedValue {
-        id: id,
-        name: name,
-        owner: owner,
-        state: OwnershipState.Owned,
-        copyable: copyable,
-        movable: movable,
-        field_path: field_path,
-        valid: true
-    };
-}
-
-proc transfer_create(
-    id: u64,
-    kind: TransferKind,
-    value: u64,
-    from_owner: u64,
-    to_owner: u64,
-    span: OwnershipSpan
-) -> OwnershipTransfer {
-    give OwnershipTransfer {
-        id: id,
-        kind: kind,
-        value: value,
-        from_owner: from_owner,
-        to_owner: to_owner,
-        span: span,
-        valid: true
-    };
-}
-
-proc diagnostic_create(
-    kind: OwnershipErrorKind,
-    message: string,
-    span: OwnershipSpan,
-    value: u64,
-    owner: u64
-) -> OwnershipDiagnostic {
-    give OwnershipDiagnostic {
-        kind: kind,
-        message: message,
-        span: span,
-        value: value,
-        owner: owner
-    };
-}
-
-proc table_add_diagnostic(
-    table: OwnershipTable,
-    diagnostic: OwnershipDiagnostic
-) -> OwnershipTable {
-    give OwnershipTable {
-        owners: table.owners,
-        values: table.values,
-        transfers: table.transfers,
-        diagnostics: table.diagnostics + [diagnostic],
-        valid: false
-    };
-}
-
-proc table_add_owner(
-    table: OwnershipTable,
-    owner: Owner
-) -> OwnershipTable {
-    if vector_len(table.owners) >= OWNERSHIP_MAX_OWNERS {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.OwnerLimitExceeded,
-                "too many owners",
-                span_empty(),
-                OWNERSHIP_INVALID_ID,
-                owner.id
-            )
-        );
+proc index_of_local(table: OwnershipTable, name: string) -> int {
+  let i: int = 0;
+  while i < len(table.locals) {
+    if table.locals[i].name == name {
+      give i;
     }
-
-    if has_owner(table, owner.id) {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.DuplicateOwner,
-                "duplicate owner",
-                span_empty(),
-                OWNERSHIP_INVALID_ID,
-                owner.id
-            )
-        );
-    }
-
-    give OwnershipTable {
-        owners: table.owners + [owner],
-        values: table.values,
-        transfers: table.transfers,
-        diagnostics: table.diagnostics,
-        valid: table.valid
-    };
+    set i = i + 1;
+  }
+  give -1;
 }
 
-proc table_add_value(
-    table: OwnershipTable,
-    value: OwnedValue
-) -> OwnershipTable {
-    if vector_len(table.values) >= OWNERSHIP_MAX_VALUES {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.ValueLimitExceeded,
-                "too many owned values",
-                span_empty(),
-                value.id,
-                value.owner
-            )
-        );
-    }
-
-    if has_value(table, value.id) {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.DuplicateValue,
-                "duplicate owned value",
-                span_empty(),
-                value.id,
-                value.owner
-            )
-        );
-    }
-
-    if has_owner(table, value.owner) == false {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.UnknownOwner,
-                "unknown owner for value",
-                span_empty(),
-                value.id,
-                value.owner
-            )
-        );
-    }
-
-    give OwnershipTable {
-        owners: table.owners,
-        values: table.values + [value],
-        transfers: table.transfers,
-        diagnostics: table.diagnostics,
-        valid: table.valid
-    };
+proc has_local(table: OwnershipTable, name: string) -> bool {
+  give index_of_local(table, name) >= 0;
 }
 
-proc table_add_transfer(
-    table: OwnershipTable,
-    transfer: OwnershipTransfer
-) -> OwnershipTable {
-    if vector_len(table.transfers) >= OWNERSHIP_MAX_TRANSFERS {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.TransferLimitExceeded,
-                "too many ownership transfers",
-                transfer.span,
-                transfer.value,
-                transfer.to_owner
-            )
-        );
-    }
-
-    give OwnershipTable {
-        owners: table.owners,
-        values: table.values,
-        transfers: table.transfers + [transfer],
-        diagnostics: table.diagnostics,
-        valid: table.valid
-    };
+proc local_invalid() -> LocalState {
+  give LocalState {
+    name: "",
+    place: place_local(""),
+    state: LocalStateKind.Invalid,
+    shared_borrows: 0,
+    mutable_borrowed: false,
+    last_line: 0,
+    valid: false
+  };
 }
 
-proc find_owner(table: OwnershipTable, id: u64) -> Owner {
-    let i: u64 = 0;
-
-    while i < vector_len(table.owners) {
-        if table.owners[i].id == id {
-            give table.owners[i];
-        }
-
-        set i = i + 1;
-    }
-
-    give owner_invalid();
+proc find_local(table: OwnershipTable, name: string) -> LocalState {
+  let index: int = index_of_local(table, name);
+  if index < 0 {
+    give local_invalid();
+  }
+  give table.locals[index];
 }
 
-proc find_value(table: OwnershipTable, id: u64) -> OwnedValue {
-    let i: u64 = 0;
+proc replace_local(table: OwnershipTable, updated: LocalState) -> OwnershipTable {
+  let locals: [LocalState] = [];
+  let i: int = 0;
+  let replaced: bool = false;
 
-    while i < vector_len(table.values) {
-        if table.values[i].id == id {
-            give table.values[i];
-        }
-
-        set i = i + 1;
+  while i < len(table.locals) {
+    if table.locals[i].name == updated.name {
+      set locals = locals + [updated];
+      set replaced = true;
+    } else {
+      set locals = locals + [table.locals[i]];
     }
+    set i = i + 1;
+  }
 
-    give value_invalid();
+  if not replaced {
+    set locals = locals + [updated];
+  }
+
+  give OwnershipTable {
+    locals: locals,
+    facts: table.facts,
+    valid: table.valid
+  };
 }
 
-proc has_owner(table: OwnershipTable, id: u64) -> bool {
-    give find_owner(table, id).valid;
+proc add_fact(table: OwnershipTable, fact: OwnershipFact) -> OwnershipTable {
+  give OwnershipTable {
+    locals: table.locals,
+    facts: table.facts + [fact],
+    valid: table.valid and fact.valid
+  };
 }
 
-proc has_value(table: OwnershipTable, id: u64) -> bool {
-    give find_value(table, id).valid;
+proc declare_local(table: OwnershipTable, name: string, line: u64, initialized: bool) -> OwnershipTable {
+  let state: LocalState = local_state_create(name, line);
+  if not initialized {
+    set state = local_state_uninitialized(name, line);
+  }
+  let current: OwnershipTable = replace_local(table, state);
+  give add_fact(current, ownership_fact(name, OwnershipStateKind.Declared, line, "declare local"));
 }
 
-proc value_with_owner(
-    value: OwnedValue,
-    owner: u64
-) -> OwnedValue {
-    give OwnedValue {
-        id: value.id,
-        name: value.name,
-        owner: owner,
-        state: value.state,
-        copyable: value.copyable,
-        movable: value.movable,
-        field_path: value.field_path,
-        valid: value.valid
-    };
+proc mark_moved(table: OwnershipTable, name: string, line: u64) -> OwnershipTable {
+  let local: LocalState = find_local(table, name);
+  if not local.valid {
+    give table;
+  }
+  let updated = LocalState {
+    name: local.name,
+    place: local.place,
+    state: LocalStateKind.Moved,
+    shared_borrows: local.shared_borrows,
+    mutable_borrowed: local.mutable_borrowed,
+    last_line: line,
+    valid: local.valid
+  };
+  let current: OwnershipTable = replace_local(table, updated);
+  give add_fact(current, ownership_fact(name, OwnershipStateKind.Moved, line, "move local"));
 }
 
-proc value_with_state(
-    value: OwnedValue,
-    state: OwnershipState
-) -> OwnedValue {
-    give OwnedValue {
-        id: value.id,
-        name: value.name,
-        owner: value.owner,
-        state: state,
-        copyable: value.copyable,
-        movable: value.movable,
-        field_path: value.field_path,
-        valid: value.valid
-    };
+proc mark_reinitialized(table: OwnershipTable, name: string, line: u64) -> OwnershipTable {
+  let local: LocalState = find_local(table, name);
+  if not local.valid {
+    give declare_local(table, name, line, true);
+  }
+  let updated = LocalState {
+    name: local.name,
+    place: local.place,
+    state: LocalStateKind.Available,
+    shared_borrows: local.shared_borrows,
+    mutable_borrowed: local.mutable_borrowed,
+    last_line: line,
+    valid: local.valid
+  };
+  let current: OwnershipTable = replace_local(table, updated);
+  give add_fact(current, ownership_fact(name, OwnershipStateKind.Reinitialized, line, "reinitialize local"));
 }
 
-proc replace_value(
-    table: OwnershipTable,
-    value: OwnedValue
-) -> OwnershipTable {
-    let next: [OwnedValue] = [];
-    let replaced = false;
-
-    let i: u64 = 0;
-
-    while i < vector_len(table.values) {
-        if table.values[i].id == value.id {
-            set next = next + [value];
-            set replaced = true;
-        } else {
-            set next = next + [table.values[i]];
-        }
-
-        set i = i + 1;
-    }
-
-    if replaced == false {
-        give table_add_value(table, value);
-    }
-
-    give OwnershipTable {
-        owners: table.owners,
-        values: next,
-        transfers: table.transfers,
-        diagnostics: table.diagnostics,
-        valid: table.valid
-    };
+proc add_shared_borrow(table: OwnershipTable, name: string, line: u64) -> OwnershipTable {
+  let local: LocalState = find_local(table, name);
+  if not local.valid {
+    give table;
+  }
+  let updated = LocalState {
+    name: local.name,
+    place: local.place,
+    state: local.state,
+    shared_borrows: local.shared_borrows + 1,
+    mutable_borrowed: local.mutable_borrowed,
+    last_line: line,
+    valid: local.valid
+  };
+  let current: OwnershipTable = replace_local(table, updated);
+  give add_fact(current, ownership_fact(name, OwnershipStateKind.BorrowedShared, line, "shared borrow"));
 }
 
-proc can_use_value(value: OwnedValue) -> bool {
-    if value.valid == false {
-        give false;
-    }
-
-    if value.state == OwnershipState.Moved {
-        give false;
-    }
-
-    if value.state == OwnershipState.Dropped {
-        give false;
-    }
-
-    if value.state == OwnershipState.Unowned {
-        give false;
-    }
-
-    if value.state == OwnershipState.Invalid {
-        give false;
-    }
-
-    give true;
+proc release_shared_borrow(table: OwnershipTable, name: string, line: u64) -> OwnershipTable {
+  let local: LocalState = find_local(table, name);
+  if not local.valid or local.shared_borrows == 0 {
+    give table;
+  }
+  let updated = LocalState {
+    name: local.name,
+    place: local.place,
+    state: local.state,
+    shared_borrows: local.shared_borrows - 1,
+    mutable_borrowed: local.mutable_borrowed,
+    last_line: line,
+    valid: local.valid
+  };
+  give replace_local(table, updated);
 }
 
-proc can_transfer_value(value: OwnedValue) -> bool {
-    if can_use_value(value) == false {
-        give false;
-    }
-
-    if value.state == OwnershipState.MutablyBorrowed {
-        give false;
-    }
-
-    if value.state == OwnershipState.ImmutablyBorrowed {
-        give false;
-    }
-
-    give value.movable;
+proc set_mutable_borrow(table: OwnershipTable, name: string, active: bool, line: u64) -> OwnershipTable {
+  let local: LocalState = find_local(table, name);
+  if not local.valid {
+    give table;
+  }
+  let updated = LocalState {
+    name: local.name,
+    place: local.place,
+    state: local.state,
+    shared_borrows: local.shared_borrows,
+    mutable_borrowed: active,
+    last_line: line,
+    valid: local.valid
+  };
+  let current: OwnershipTable = replace_local(table, updated);
+  if active {
+    give add_fact(current, ownership_fact(name, OwnershipStateKind.BorrowedMutable, line, "mutable borrow"));
+  }
+  give current;
 }
 
-proc can_copy_value(value: OwnedValue) -> bool {
-    give can_use_value(value) and value.copyable;
+proc is_moved(table: OwnershipTable, name: string) -> bool {
+  let local: LocalState = find_local(table, name);
+  give local.valid and local.state == LocalStateKind.Moved;
 }
 
-proc initialize_owner(
-    table: OwnershipTable,
-    owner: Owner
-) -> OwnershipTable {
-    give table_add_owner(table, owner);
-}
-
-proc initialize_value(
-    table: OwnershipTable,
-    transfer_id: u64,
-    value: OwnedValue,
-    span: OwnershipSpan
-) -> OwnershipTable {
-    let with_value = table_add_value(table, value);
-
-    let transfer = transfer_create(
-        transfer_id,
-        TransferKind.Initialize,
-        value.id,
-        OWNERSHIP_INVALID_ID,
-        value.owner,
-        span
-    );
-
-    give table_add_transfer(with_value, transfer);
-}
-
-proc transfer_ownership(
-    table: OwnershipTable,
-    transfer_id: u64,
-    value_id: u64,
-    from_owner: u64,
-    to_owner: u64,
-    span: OwnershipSpan
-) -> OwnershipTable {
-    let value = find_value(table, value_id);
-
-    if value.valid == false {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.UnknownValue,
-                "unknown value",
-                span,
-                value_id,
-                from_owner
-            )
-        );
-    }
-
-    if has_owner(table, to_owner) == false {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.UnknownOwner,
-                "unknown destination owner",
-                span,
-                value_id,
-                to_owner
-            )
-        );
-    }
-
-    if can_transfer_value(value) == false {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.InvalidOwnershipTransfer,
-                "value cannot be transferred",
-                span,
-                value_id,
-                from_owner
-            )
-        );
-    }
-
-    let moved_from = value_with_state(value, OwnershipState.Moved);
-    let table_moved = replace_value(table, moved_from);
-
-    let transferred = value_with_owner(value_with_state(value, OwnershipState.Owned), to_owner);
-    let table_transferred = replace_value(table_moved, transferred);
-
-    let transfer = transfer_create(
-        transfer_id,
-        TransferKind.Move,
-        value_id,
-        from_owner,
-        to_owner,
-        span
-    );
-
-    give table_add_transfer(table_transferred, transfer);
-}
-
-proc copy_ownership(
-    table: OwnershipTable,
-    transfer_id: u64,
-    value_id: u64,
-    from_owner: u64,
-    to_owner: u64,
-    span: OwnershipSpan
-) -> OwnershipTable {
-    let value = find_value(table, value_id);
-
-    if value.valid == false {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.UnknownValue,
-                "unknown value",
-                span,
-                value_id,
-                from_owner
-            )
-        );
-    }
-
-    if can_copy_value(value) == false {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.InvalidOwnershipTransfer,
-                "value cannot be copied",
-                span,
-                value_id,
-                from_owner
-            )
-        );
-    }
-
-    let transfer = transfer_create(
-        transfer_id,
-        TransferKind.Copy,
-        value_id,
-        from_owner,
-        to_owner,
-        span
-    );
-
-    give table_add_transfer(table, transfer);
-}
-
-proc borrow_shared(
-    table: OwnershipTable,
-    transfer_id: u64,
-    value_id: u64,
-    owner: u64,
-    span: OwnershipSpan
-) -> OwnershipTable {
-    let value = find_value(table, value_id);
-
-    if can_use_value(value) == false {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.UseAfterMove,
-                "cannot borrow unavailable value",
-                span,
-                value_id,
-                owner
-            )
-        );
-    }
-
-    if value.state == OwnershipState.MutablyBorrowed {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.SharedBorrowConflict,
-                "shared borrow conflicts with mutable borrow",
-                span,
-                value_id,
-                owner
-            )
-        );
-    }
-
-    let borrowed = value_with_state(value, OwnershipState.ImmutablyBorrowed);
-    let replaced = replace_value(table, borrowed);
-
-    let transfer = transfer_create(
-        transfer_id,
-        TransferKind.BorrowShared,
-        value_id,
-        owner,
-        owner,
-        span
-    );
-
-    give table_add_transfer(replaced, transfer);
-}
-
-proc borrow_mutable(
-    table: OwnershipTable,
-    transfer_id: u64,
-    value_id: u64,
-    owner: u64,
-    span: OwnershipSpan
-) -> OwnershipTable {
-    let value = find_value(table, value_id);
-
-    if can_use_value(value) == false {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.UseAfterMove,
-                "cannot mutably borrow unavailable value",
-                span,
-                value_id,
-                owner
-            )
-        );
-    }
-
-    if value.state == OwnershipState.ImmutablyBorrowed or value.state == OwnershipState.MutablyBorrowed {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.MutableBorrowConflict,
-                "mutable borrow conflicts with active borrow",
-                span,
-                value_id,
-                owner
-            )
-        );
-    }
-
-    let borrowed = value_with_state(value, OwnershipState.MutablyBorrowed);
-    let replaced = replace_value(table, borrowed);
-
-    let transfer = transfer_create(
-        transfer_id,
-        TransferKind.BorrowMutable,
-        value_id,
-        owner,
-        owner,
-        span
-    );
-
-    give table_add_transfer(replaced, transfer);
-}
-
-proc drop_value(
-    table: OwnershipTable,
-    transfer_id: u64,
-    value_id: u64,
-    owner: u64,
-    span: OwnershipSpan
-) -> OwnershipTable {
-    let value = find_value(table, value_id);
-
-    if value.valid == false {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.UnknownValue,
-                "unknown value",
-                span,
-                value_id,
-                owner
-            )
-        );
-    }
-
-    if value.state == OwnershipState.Dropped {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.UseAfterDrop,
-                "value already dropped",
-                span,
-                value_id,
-                owner
-            )
-        );
-    }
-
-    let dropped = value_with_state(value, OwnershipState.Dropped);
-    let replaced = replace_value(table, dropped);
-
-    let transfer = transfer_create(
-        transfer_id,
-        TransferKind.Drop,
-        value_id,
-        owner,
-        OWNERSHIP_INVALID_ID,
-        span
-    );
-
-    give table_add_transfer(replaced, transfer);
-}
-
-proc escape_value(
-    table: OwnershipTable,
-    transfer_id: u64,
-    value_id: u64,
-    owner: u64,
-    span: OwnershipSpan
-) -> OwnershipTable {
-    let value = find_value(table, value_id);
-
-    if can_use_value(value) == false {
-        give table_add_diagnostic(
-            table,
-            diagnostic_create(
-                OwnershipErrorKind.OwnershipEscapes,
-                "invalid escaping ownership",
-                span,
-                value_id,
-                owner
-            )
-        );
-    }
-
-    let escaped = value_with_state(value, OwnershipState.Escaped);
-    let replaced = replace_value(table, escaped);
-
-    let transfer = transfer_create(
-        transfer_id,
-        TransferKind.Escape,
-        value_id,
-        owner,
-        OWNERSHIP_INVALID_ID,
-        span
-    );
-
-    give table_add_transfer(replaced, transfer);
-}
-
-proc validate_ownership(table: OwnershipTable) -> OwnershipTable {
-    let current = table;
-    let i: u64 = 0;
-
-    while i < vector_len(current.values) {
-        let value = current.values[i];
-
-        if value.valid == false {
-            give table_add_diagnostic(
-                current,
-                diagnostic_create(
-                    OwnershipErrorKind.InvalidState,
-                    "invalid owned value",
-                    span_empty(),
-                    value.id,
-                    value.owner
-                )
-            );
-        }
-
-        if has_owner(current, value.owner) == false and value.state != OwnershipState.Moved and value.state != OwnershipState.Dropped {
-            give table_add_diagnostic(
-                current,
-                diagnostic_create(
-                    OwnershipErrorKind.UnknownOwner,
-                    "value references unknown owner",
-                    span_empty(),
-                    value.id,
-                    value.owner
-                )
-            );
-        }
-
-        set i = i + 1;
-    }
-
-    give current;
-}
-
-proc ownership_error_count(table: OwnershipTable) -> u64 {
-    give vector_len(table.diagnostics);
-}
-
-proc ownership_is_valid(table: OwnershipTable) -> bool {
-    give table.valid and vector_len(table.diagnostics) == 0;
-}
-
-proc print_owner(owner: Owner) {
-    emit "owner";
-    emit owner.id;
-    emit owner.name;
-    emit owner.region;
-    emit owner.mutable;
-}
-
-proc print_owned_value(value: OwnedValue) {
-    emit "owned value";
-    emit value.id;
-    emit value.name;
-    emit value.owner;
-    emit value.field_path;
-    emit value.valid;
-}
-
-proc print_ownership_transfer(transfer: OwnershipTransfer) {
-    emit "ownership transfer";
-    emit transfer.id;
-    emit transfer.value;
-    emit transfer.from_owner;
-    emit transfer.to_owner;
-}
-
-proc print_ownership_table(table: OwnershipTable) {
-    emit "ownership table";
-    emit vector_len(table.owners);
-    emit vector_len(table.values);
-    emit vector_len(table.transfers);
-    emit vector_len(table.diagnostics);
-
-    let i: u64 = 0;
-
-    while i < vector_len(table.owners) {
-        print_owner(table.owners[i]);
-        set i = i + 1;
-    }
-
-    let j: u64 = 0;
-
-    while j < vector_len(table.values) {
-        print_owned_value(table.values[j]);
-        set j = j + 1;
-    }
-}
-
-proc vector_len[T](items: [T]) -> u64 {
+proc shared_borrow_count(table: OwnershipTable, name: string) -> u64 {
+  let local: LocalState = find_local(table, name);
+  if not local.valid {
     give 0;
+  }
+  give local.shared_borrows;
+}
+
+proc is_mutably_borrowed(table: OwnershipTable, name: string) -> bool {
+  let local: LocalState = find_local(table, name);
+  give local.valid and local.mutable_borrowed;
 }

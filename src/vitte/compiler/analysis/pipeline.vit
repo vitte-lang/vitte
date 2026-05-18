@@ -1,6 +1,14 @@
 space vitte/compiler/analysis
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput }
+use vitte/compiler/frontend/ast/node.{ AstModule, ast_module_empty }
+use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir }
+use vitte/compiler/analysis/borrowck/errors.{ BorrowDiagnostic, severity_name }
+use vitte/compiler/analysis/const_eval.{ ConstEvalRunResult, run_const_eval_ast }
+use vitte/compiler/analysis/const_eval/errors.{ ConstEvalDiagnostic, ConstEvalSeverity }
+use vitte/compiler/analysis/typeck/checker.{ TypeckDiagnostic, TypeckResult, run_typeck_hir }
+use vitte/compiler/middle/hir/hir.{ HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 
 form AnalysisDiagnostic {
   phase: string
@@ -14,7 +22,7 @@ form AnalysisDiagnostic {
 
 form AnalysisOutput {
   source_path: string
-  ast_root: string
+  ast_root: AstModule
   sema_ok: bool
   typeck_ok: bool
   borrowck_ok: bool
@@ -45,7 +53,7 @@ proc analysis_diagnostic(
 }
 
 proc run_sema(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
-  if frontend.ast_root == "invalid" {
+  if not frontend.ast_root.valid {
     give [analysis_diagnostic(
       "sema",
       "SEMA_E_INVALID_MODULE",
@@ -60,48 +68,74 @@ proc run_sema(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
 }
 
 proc run_typeck(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
-  if frontend.token_count == 0 {
-    give [analysis_diagnostic(
+  let hir: HirUnit = lower_ast_to_hir(frontend);
+  let checked: TypeckResult = run_typeck_hir(hir);
+  let output: [AnalysisDiagnostic] = [];
+  let i: u64 = 0;
+  while i < len(checked.diagnostics) {
+    let diagnostic: TypeckDiagnostic = checked.diagnostics[i];
+    set output = output + [analysis_diagnostic(
       "typeck",
-      "TYPECK_E_UNKNOWN_TYPE",
+      diagnostic.code,
       "error",
-      "type checking failed on empty token stream",
-      ["type", frontend.source_path],
-      "ensure parser produced typed nodes",
-      true
+      diagnostic.message,
+      diagnostic.labels,
+      "simplify the expression or declare the missing value before use",
+      diagnostic.fatal
     )];
+    set i = i + 1;
   }
-  give [];
+  give output;
 }
 
 proc run_borrowck(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
-  if frontend.source_text == "borrowck:fail" {
-    give [analysis_diagnostic(
+  let hir: HirUnit = lower_ast_to_hir(frontend);
+  let checked: BorrowCheckResult = borrow_check_hir(frontend.source_path, hir);
+  let output: [AnalysisDiagnostic] = [];
+  let i: u64 = 0;
+
+  while i < len(checked.diagnostics) {
+    let diagnostic: BorrowDiagnostic = checked.diagnostics[i];
+    set output = output + [analysis_diagnostic(
       "borrowck",
-      "BORROWCK_E_MOVE_AFTER_MOVE",
-      "error",
-      "borrow checking detected move-after-move",
-      ["ownership", frontend.source_path],
-      "clone value or reorder moves",
-      true
+      diagnostic.code,
+      severity_name(diagnostic.severity),
+      diagnostic.message,
+      diagnostic.labels,
+      diagnostic.suggestion,
+      diagnostic.fatal
     )];
+    set i = i + 1;
   }
-  give [];
+  give output;
 }
 
-proc run_const_eval(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
-  if frontend.source_text == "const:fail" {
-    give [analysis_diagnostic(
-      "const_eval",
-      "CONST_EVAL_E_DIVISION_BY_ZERO",
-      "error",
-      "const evaluation failed (division by zero)",
-      ["const", frontend.source_path],
-      "guard denominator or defer to runtime",
-      true
-    )];
+proc const_eval_severity_name(severity: ConstEvalSeverity) -> string {
+  if severity == ConstEvalSeverity.Warning {
+    give "warning";
   }
-  give [];
+  give "error";
+}
+
+proc run_const_eval_phase(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
+  let checked: ConstEvalRunResult = run_const_eval_ast(frontend.source_path, frontend.ast_root);
+  let output: [AnalysisDiagnostic] = [];
+  let i: u64 = 0;
+
+  while i < len(checked.diagnostics) {
+    let diagnostic: ConstEvalDiagnostic = checked.diagnostics[i];
+    set output = output + [analysis_diagnostic(
+      "const_eval",
+      diagnostic.code,
+      const_eval_severity_name(diagnostic.severity),
+      diagnostic.message,
+      diagnostic.labels,
+      diagnostic.suggestion,
+      diagnostic.fatal
+    )];
+    set i = i + 1;
+  }
+  give output;
 }
 
 proc run_lint(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
@@ -143,7 +177,7 @@ proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
     );
     give AnalysisOutput {
       source_path: frontend.source_path,
-      ast_root: "invalid",
+      ast_root: ast_module_empty(),
       sema_ok: false,
       typeck_ok: false,
       borrowck_ok: false,
@@ -200,7 +234,7 @@ proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
     };
   }
 
-  let const_diags: [AnalysisDiagnostic] = run_const_eval(frontend);
+  let const_diags: [AnalysisDiagnostic] = run_const_eval_phase(frontend);
   if has_fatal(const_diags) {
     give AnalysisOutput {
       source_path: frontend.source_path,
