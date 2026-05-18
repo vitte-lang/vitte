@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vitte Native Bootstrap Migration (Rust-style)</title>
+<link rel="icon" href="svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/site.css?v=34fa1e8389">
+<link rel="stylesheet" href="css/print.css" media="print">
+<link rel="canonical" href="https://vitte-lang.org/BOOTSTRAP_NATIVE_MIGRATION_FROM_RUST.html">
+<meta property="og:title" content="Vitte Native Bootstrap Migration (Rust-style)">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://vitte-lang.org/BOOTSTRAP_NATIVE_MIGRATION_FROM_RUST.html">
+<meta name="twitter:card" content="summary">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-news"></use></svg><span>News</span></a></li></ul></nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<center>
+<h1>Vitte Native Bootstrap Migration (Rust-style)</h1>
+<p>HTML reading page generated from the source Markdown document.</p>
+</center>
+<div class="page-band">
+<a href="doc.html"><img src="svg/docs.svg" alt="" width="14" height="14">Documentation</a>
+<a href="source.html"><img src="svg/source.svg" alt="" width="14" height="14">Source</a>
+<a href="sitemap.html"><img src="svg/summary.svg" alt="" width="14" height="14">Sitemap</a>
+<a href="BOOTSTRAP_NATIVE_MIGRATION_FROM_RUST.md"><img src="svg/diagnostics.svg" alt="" width="14" height="14">Source Markdown</a>
+</div>
+<div class="lead-panel">
+<h2>Reading mode</h2>
+<p>This page is the static HTML reader for <code>BOOTSTRAP_NATIVE_MIGRATION_FROM_RUST.md</code>. Internal Markdown links are rewritten to HTML when a matching reading page exists.</p>
+</div>
+<h1>Vitte Native Bootstrap Migration (Rust-style)</h1>
+<p>Reference model: bootstrap builder graph semantics (step contracts, strict stage semantics).</p>
+<h2>Target Architecture</h2>
+<ol>
+<li><code>toolchain/src/bootstrap_vitte/context.vit</code> - Global context (paths, host/target, budgets, report sinks).</li>
+</ol>
+<ol>
+<li><code>toolchain/src/bootstrap_vitte/step.vit</code> - Step contract (<code>name</code>, <code>deps</code>, <code>run</code>, <code>artifacts</code>, <code>invariants</code>).</li>
+</ol>
+<ol>
+<li><code>toolchain/src/bootstrap_vitte/builder.vit</code> - Deterministic DAG executor with fail-fast semantics.</li>
+</ol>
+<ol>
+<li><code>toolchain/src/bootstrap_vitte/checks.vit</code> - Reproducibility, interface contract, parity, corpus diagnostics, perf budgets.</li>
+</ol>
+<ol>
+<li><code>toolchain/src/bootstrap_vitte/report.vit</code> - JSON report writer to <code>target/reports/bootstrap/*.json</code>.</li>
+</ol>
+<ol>
+<li><code>toolchain/src/bootstrap_vitte/main.vit</code> - CLI entrypoint, routes to full <code>hard</code> gate or scoped runs.</li>
+</ol>
+<h2>Migration Phases</h2>
+<ol>
+<li>Phase A (coexist) - Keep current scripts and Make targets. - Add <code>bootstrap-v2-hard-gate</code> target invoking strict hard gate.</li>
+</ol>
+<ol>
+<li>Phase B (step parity) - Re-encode existing stages as typed <code>Step</code> objects. - Ensure exact behavioral parity with current <code>bootstrap-hard-gate</code>.</li>
+</ol>
+<ol>
+<li>Phase C (ownership switch) - Make <code>bootstrap-v2-hard-gate</code> the release gate. - Keep legacy flow for rollback for 1 release cycle.</li>
+</ol>
+<h2>Non-negotiable Invariants</h2>
+<ul>
+<li>Fail-fast on first error.</li>
+<li>No silent fallback in release/hard mode.</li>
+<li>Stage artifacts hash-identical for reproducibility checks.</li>
+<li>Stage interface contract snapshots are diff-blocking.</li>
+<li>Bootstrap parity and corpus diagnostics are release-blocking.</li>
+</ul>
+<h2>CI Matrix</h2>
+<ul>
+<li>macOS: <code>x86_64</code>, <code>arm64</code></li>
+<li>Linux: <code>x86_64</code>, <code>arm64</code></li>
+</ul>
+<p>Same invariants and JSON report shape on all runners.</p>
+<h2>Entry Commands</h2>
+<ul>
+<li>Local hard gate: <code>make bootstrap-hard-gate</code></li>
+<li>Future native hard gate: <code>make bootstrap-v2-hard-gate</code></li>
+<li>Reports: <code>target/reports/bootstrap/hard_gate.json</code></li>
+</ul>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">BOOTSTRAP_NATIVE_MIGRATION_FROM_RUST.html</p>
+<p><a href="index.html">Back to home</a> · <a href="status-public.html">Public status</a></p>
+</footer>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
