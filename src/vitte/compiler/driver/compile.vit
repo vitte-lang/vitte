@@ -1,7 +1,9 @@
 space vitte/compiler/driver
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
-use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run }
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_hir }
+use vitte/compiler/middle/hir/hir.{ HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/backend/pipeline.{ compile_to_valid_ir }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
 
@@ -58,7 +60,8 @@ proc check_source(source_path: string, source_text: string) -> DriverCompileResu
         give frontend_compile_result(DriverExitStatus.FrontendFailure, "frontend failed", false, fe);
     }
 
-    let an: AnalysisOutput = analysis_run(fe);
+    let hir: HirUnit = lower_ast_to_hir(fe);
+    let an: AnalysisOutput = analysis_run_hir(fe, hir);
     if not an.valid {
         give frontend_compile_result(DriverExitStatus.AnalysisFailure, "analysis failed", false, fe);
     }
