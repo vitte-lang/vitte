@@ -2,6 +2,13 @@ space vitte/compiler/middle/hir/hir
 
 use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
 
+form SemanticDiagnostic {
+  code: string
+  severity: string
+  message: string
+  span: AstSpan
+}
+
 pick HirExprKind {
   Unknown,
   Name,
@@ -11,9 +18,29 @@ pick HirExprKind {
   String,
   Char,
   Binary,
+  Unary,
   Call,
+  Index,
+  Member,
   BorrowShared,
   BorrowMut,
+  Deref,
+  If,
+  Match,
+  Block,
+  Lambda,
+  Struct,
+  Array,
+  Tuple,
+  Range,
+  Cast,
+  Is,
+  Try,
+  Sizeof,
+  Alignof,
+  Offsetof,
+  Typeof,
+  Nameof,
 }
 
 pick HirStmtKind {
@@ -24,13 +51,58 @@ pick HirStmtKind {
   Give,
   If,
   While,
+  For,
+  Loop,
+  Match,
+  When,
+  With,
+  Try,
+  Defer,
+  Unsafe,
+  Asm,
+  Emit,
+  Panic,
+  Assert,
+  Break,
+  Continue,
+  Unreachable,
+  Select,
+  Critical,
   StaticAssert,
+  ExprStmt,
 }
 
 pick HirItemKind {
   Unknown,
+  Space,
+  Use,
+  Export,
   Const,
+  Static,
+  Global,
+  Type,
+  Opaque,
+  Extern,
+  Form,
+  Class,
+  Union,
+  Bits,
+  Pick,
+  Flags,
+  Trait,
+  Impl,
   Proc,
+  Intrinsic,
+  Query,
+  Compiler,
+  Pass,
+  Backend,
+  Diagnostic,
+  Macro,
+  Entry,
+  Test,
+  Bench,
+  Comptime,
   StaticAssert,
 }
 
@@ -43,6 +115,8 @@ form HirExpr {
   operator: string
   binding: string
   value_mode: string
+  inferred_type: string
+  diagnostics: [SemanticDiagnostic]
   children: [HirExpr]
   valid: bool
 }
@@ -59,6 +133,8 @@ form HirStmt {
   scope_depth: u64
   then_stmts: [HirStmt]
   else_stmts: [HirStmt]
+  catch_stmts: [HirStmt]
+  diagnostics: [SemanticDiagnostic]
   valid: bool
 }
 
@@ -67,10 +143,13 @@ form HirItem {
   span: AstSpan
   kind: HirItemKind
   name: string
+  namespace: string
+  visibility: string
   expr: HirExpr
   stmts: [HirStmt]
   message: string
   scope_depth: u64
+  diagnostics: [SemanticDiagnostic]
   valid: bool
 }
 
@@ -88,7 +167,7 @@ form HirUnit {
   valid: bool
 }
 
-proc hir_expr(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: string, operator: string, binding: string, value_mode: string, children: [HirExpr], valid: bool) -> HirExpr {
+proc hir_expr(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: string, operator: string, binding: string, value_mode: string, inferred_type: string, diagnostics: [SemanticDiagnostic], children: [HirExpr], valid: bool) -> HirExpr {
   give HirExpr {
     id: id,
     span: span,
@@ -98,6 +177,8 @@ proc hir_expr(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: str
     operator: operator,
     binding: binding,
     value_mode: value_mode,
+    inferred_type: inferred_type,
+    diagnostics: diagnostics,
     children: children,
     valid: valid
   };
@@ -120,6 +201,8 @@ proc hir_expr_empty() -> HirExpr {
     operator: "",
     binding: "",
     value_mode: "invalid",
+    inferred_type: "unknown",
+    diagnostics: [],
     children: [],
     valid: false
   };
