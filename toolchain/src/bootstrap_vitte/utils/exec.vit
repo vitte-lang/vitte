@@ -123,12 +123,7 @@ form ExecResult {
 }
 
 proc exec_now() -> ExecTimestamp {
-    <<< --------------------------------------------------------
-        TODO:
-        monotonic runtime integration
-       -------------------------------------------------------- >>>
-
-    give 0
+    give helpers.bootstrap_now()
 }
 
 proc make_mount(
@@ -391,23 +386,20 @@ proc spawn_process(
 
     emit "spawn-process"
     emit process.executable
+    emit process.arguments
 
     let result = make_result()
+    let status = process_spawn()
 
-    <<< --------------------------------------------------------
-        TODO:
-        runtime process spawning backend
-       -------------------------------------------------------- >>>
-
-    process.cpu_usage = 0.3
-    process.memory_usage = 4096
-    process.io_reads = 4
-    process.io_writes = 8
-    process.generated_files = 3
+    process.cpu_usage = 0.0
+    process.memory_usage = 0
+    process.io_reads = 0
+    process.io_writes = 0
+    process.generated_files = 0
     process.emitted_diagnostics = 0
 
-    result.success = true
-    result.exit_code = 0
+    result.success = status == 0
+    result.exit_code = status
     result.stdout_output = "bootstrap process executed"
     result.stderr_output = ""
     result.duration_ms = 1

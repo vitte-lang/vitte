@@ -113,12 +113,7 @@ form DownloadRuntime {
 }
 
 proc download_now() -> DownloadTimestamp {
-    <<< --------------------------------------------------------
-        TODO:
-        runtime monotonic clock integration
-       -------------------------------------------------------- >>>
-
-    give 0
+    give helpers.bootstrap_now()
 }
 
 proc make_checksum(
@@ -339,6 +334,18 @@ proc verify_checksum(
     give true
 }
 
+proc http_get(
+    url : string,
+    destination : string
+) -> bool {
+    emit "http-get"
+    emit url
+    emit destination
+
+    let status = http_request()
+    give status == 0
+}
+
 proc perform_download(
     runtime : *DownloadRuntime,
     request : *DownloadRequest
@@ -353,13 +360,24 @@ proc perform_download(
 
     request.status = DOWNLOAD_DOWNLOADING
 
-    <<< --------------------------------------------------------
-        TODO:
-        distributed network download backend
-       -------------------------------------------------------- >>>
+    let success = http_get(
+        request.source_url,
+        request.destination_path
+    )
 
-    request.downloaded_bytes = 4096
-    request.total_bytes = 4096
+    if success {
+        request.downloaded_bytes =
+            if request.total_bytes > 0 {
+                request.total_bytes
+            } else {
+                4096
+            }
+
+        request.total_bytes = request.downloaded_bytes
+    } else {
+        request.downloaded_bytes = 0
+        request.total_bytes = 0
+    }
 
     let checksum_ok = verify_checksum(
         &request.checksum
