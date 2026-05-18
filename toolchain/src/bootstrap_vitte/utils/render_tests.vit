@@ -283,6 +283,18 @@ proc runtime_push_diagnostic(
 
   runtime.metrics.emitted_diagnostics =
     runtime.metrics.emitted_diagnostics + 1
+
+  if diagnostic.severity == RENDER_WARN {
+    runtime.warnings = runtime.warnings + 1
+  }
+
+  if diagnostic.severity == RENDER_ERROR {
+    runtime.errors = runtime.errors + 1
+  }
+
+  if diagnostic.severity == RENDER_FATAL {
+    runtime.fatal_errors = runtime.fatal_errors + 1
+  }
 }
 
 proc runtime_push_snapshot(
@@ -347,6 +359,9 @@ proc generate_snapshot(
   emit snapshot.snapshot_name
 
   snapshot.generated = true
+  snapshot.hash = helpers.hash_string(
+    snapshot.snapshot_name + ":" + snapshot.source_path
+  )
 
   runtime.metrics.generated_snapshots =
     runtime.metrics.generated_snapshots + 1
@@ -491,6 +506,24 @@ proc execute_render_runtime() -> bool {
     give false
   }
 
+  if runtime.snapshots.length == 0 {
+    let diagnostic = make_diagnostic(
+      RENDER_ERROR,
+      "snapshot",
+      "no snapshots to generate"
+    )
+    runtime_push_diagnostic(&runtime, diagnostic)
+  }
+
+  if runtime.tests.length == 0 {
+    let diagnostic = make_diagnostic(
+      RENDER_ERROR,
+      "tests",
+      "no render tests scheduled"
+    )
+    runtime_push_diagnostic(&runtime, diagnostic)
+  }
+
   let snapshot_index: usize = 0
 
   loop while snapshot_index < runtime.snapshots.length {
@@ -528,6 +561,9 @@ proc execute_render_runtime() -> bool {
 
   runtime.validation_success =
     runtime.fatal_errors == 0
+    && runtime.errors == 0
+    && runtime.metrics.executed_tests > 0
+    && runtime.metrics.generated_snapshots > 0
 
   emit "render-runtime"
   emit runtime.metrics.executed_tests
