@@ -21,9 +21,29 @@ pick AstExprKind {
   String,
   Char,
   Binary,
+  Unary,
   Call,
+  Index,
+  Member,
   BorrowShared,
   BorrowMut,
+  Deref,
+  If,
+  Match,
+  Block,
+  Lambda,
+  Struct,
+  Array,
+  Tuple,
+  Range,
+  Cast,
+  Is,
+  Try,
+  Sizeof,
+  Alignof,
+  Offsetof,
+  Typeof,
+  Nameof,
 }
 
 pick AstStmtKind {
@@ -34,24 +54,93 @@ pick AstStmtKind {
   Give,
   If,
   While,
+  For,
+  Loop,
+  Match,
+  When,
+  With,
+  Try,
+  Defer,
+  Unsafe,
+  Asm,
+  Emit,
+  Panic,
+  Assert,
+  Break,
+  Continue,
+  Unreachable,
+  Select,
+  Critical,
   StaticAssert,
+  ExprStmt,
 }
 
 pick AstItemKind {
   Unknown,
+  Space,
+  Use,
+  Export,
   Const,
+  Static,
+  Global,
+  Type,
+  Opaque,
+  Extern,
+  Form,
+  Class,
+  Union,
+  Bits,
+  Pick,
+  Flags,
+  Trait,
+  Impl,
   Proc,
+  Intrinsic,
+  Query,
+  Compiler,
+  Pass,
+  Backend,
+  Diagnostic,
+  Macro,
+  Entry,
+  Test,
+  Bench,
+  Comptime,
   StaticAssert,
 }
 
 pick AstTypeKind {
   Unknown,
   Name,
+  Primitive,
+  Pointer,
+  Reference,
+  MutableRef,
+  Array,
+  Slice,
+  Tuple,
+  Proc,
+  Generic,
+  Qualified,
+  Union,
+  Optional,
+  Dyn,
+  Impl,
 }
 
 pick AstPatternKind {
   Unknown,
   Name,
+  Literal,
+  Wildcard,
+  Ref,
+  MutableRef,
+  Struct,
+  Enum,
+  Tuple,
+  Array,
+  Range,
+  Or,
 }
 
 form AstTypeExpr {
@@ -79,6 +168,7 @@ form AstExpr {
   name: string
   operator: string
   children: [AstExpr]
+  type_annotation: AstTypeExpr
   valid: bool
 }
 
@@ -90,9 +180,11 @@ form AstStmt {
   target: string
   expr: AstExpr
   annotation: AstTypeExpr
-  message: string
+  condition: AstExpr
   then_stmts: [AstStmt]
   else_stmts: [AstStmt]
+  catch_stmts: [AstStmt]
+  message: string
   valid: bool
 }
 
@@ -101,9 +193,13 @@ form AstItem {
   span: AstSpan
   kind: AstItemKind
   name: string
+  namespace: string
+  visibility: string
+  modifiers: [string]
   expr: AstExpr
   stmts: [AstStmt]
   annotation: AstTypeExpr
+  type_params: [AstTypeExpr]
   message: string
   valid: bool
 }
@@ -167,6 +263,7 @@ proc ast_expr_unknown(id: u64, span: AstSpan, text: string) -> AstExpr {
     name: "",
     operator: "",
     children: [],
+    type_annotation: ast_type_empty(),
     valid: false
   };
 }
@@ -180,6 +277,7 @@ proc ast_expr_leaf(id: u64, span: AstSpan, kind: AstExprKind, text: string, name
     name: name,
     operator: "",
     children: [],
+    type_annotation: ast_type_empty(),
     valid: true
   };
 }
@@ -193,6 +291,21 @@ proc ast_expr_node(id: u64, span: AstSpan, kind: AstExprKind, text: string, name
     name: name,
     operator: operator,
     children: children,
+    type_annotation: ast_type_empty(),
+    valid: true
+  };
+}
+
+proc ast_expr_typed(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr], annotation: AstTypeExpr) -> AstExpr {
+  give AstExpr {
+    id: ast_id(id),
+    span: span,
+    kind: kind,
+    text: text,
+    name: name,
+    operator: operator,
+    children: children,
+    type_annotation: annotation,
     valid: true
   };
 }
@@ -207,10 +320,31 @@ proc ast_stmt_create(id: u64, span: AstSpan, kind: AstStmtKind, pattern: AstPatt
     target: target,
     expr: expr,
     annotation: annotation,
-    message: message,
+    condition: expr,
     then_stmts: then_stmts,
     else_stmts: else_stmts,
+    catch_stmts: [],
+    message: message,
     valid: kind != AstStmtKind.Unknown and valid
+  };
+}
+
+proc ast_stmt_conditional(id: u64, span: AstSpan, kind: AstStmtKind, condition: AstExpr, then_stmts: [AstStmt], else_stmts: [AstStmt]) -> AstStmt {
+  let valid: bool = kind != AstStmtKind.Unknown and condition.valid;
+  give AstStmt {
+    id: ast_id(id),
+    span: span,
+    kind: kind,
+    pattern: ast_pattern_empty(),
+    target: "",
+    expr: condition,
+    annotation: ast_type_empty(),
+    condition: condition,
+    then_stmts: then_stmts,
+    else_stmts: else_stmts,
+    catch_stmts: [],
+    message: "",
+    valid: valid
   };
 }
 
@@ -227,9 +361,32 @@ proc ast_item_create(id: u64, span: AstSpan, kind: AstItemKind, name: string, ex
     span: span,
     kind: kind,
     name: name,
+    namespace: "",
+    visibility: "private",
+    modifiers: [],
     expr: expr,
     stmts: stmts,
     annotation: annotation,
+    type_params: [],
+    message: message,
+    valid: valid
+  };
+}
+
+proc ast_item_typed(id: u64, span: AstSpan, kind: AstItemKind, name: string, namespace: string, visibility: string, modifiers: [string], expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, type_params: [AstTypeExpr], message: string) -> AstItem {
+  let valid: bool = kind != AstItemKind.Unknown and name != "";
+  give AstItem {
+    id: ast_id(id),
+    span: span,
+    kind: kind,
+    name: name,
+    namespace: namespace,
+    visibility: visibility,
+    modifiers: modifiers,
+    expr: expr,
+    stmts: stmts,
+    annotation: annotation,
+    type_params: type_params,
     message: message,
     valid: valid
   };
