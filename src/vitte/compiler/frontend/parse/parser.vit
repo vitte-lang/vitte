@@ -15,13 +15,16 @@ use vitte/compiler/frontend/ast/node.{
   ast_span,
   ast_expr_leaf,
   ast_expr_node,
+  ast_expr_typed,
   ast_expr_unknown,
   ast_item_create,
+  ast_item_typed,
   ast_module,
   ast_module_empty,
   ast_pattern,
   ast_pattern_empty,
   ast_stmt_create,
+  ast_stmt_conditional,
   ast_type_empty,
   ast_type_expr,
   count_module_exprs,
@@ -1628,6 +1631,73 @@ proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
   let i: u64 = 0;
 
   while i < len(tokens) and tokens[i].kind != TokenKind.Eof {
+    // Handle space declarations
+    if tokens[i].lexeme == "space" {
+      let start: u64 = i;
+      let end_i: u64 = i + 1;
+      while end_i < len(tokens) and tokens[end_i].lexeme != ";" and tokens[end_i].kind != TokenKind.Eof {
+        set end_i = end_i + 1;
+      }
+      let name: string = "";
+      if i + 1 < len(tokens) {
+        set name = tokens[i + 1].lexeme;
+      }
+      set items = items + [ast_item_create(range_id(5, start, end_i), span_from_tokens(source_name, tokens, start, end_i), AstItemKind.Space, name, ast_expr_unknown(0, span_from_tokens(source_name, tokens, start, end_i), ""), [], ast_type_empty(), "")];
+      set i = end_i + 1;
+      continue;
+    }
+
+    // Handle use declarations
+    if tokens[i].lexeme == "use" {
+      let start: u64 = i;
+      let end_i: u64 = i + 1;
+      while end_i < len(tokens) and tokens[end_i].lexeme != ";" and tokens[end_i].kind != TokenKind.Eof {
+        set end_i = end_i + 1;
+      }
+      let path: string = "";
+      if i + 1 < len(tokens) {
+        set path = token_text(tokens, i + 1, end_i);
+      }
+      set items = items + [ast_item_create(range_id(5, start, end_i), span_from_tokens(source_name, tokens, start, end_i), AstItemKind.Use, path, ast_expr_unknown(0, span_from_tokens(source_name, tokens, start, end_i), ""), [], ast_type_empty(), "")];
+      set i = end_i + 1;
+      continue;
+    }
+
+    // Handle container declarations (form, class, union, bits, pick, flags, trait)
+    if tokens[i].lexeme == "form" or tokens[i].lexeme == "class" or tokens[i].lexeme == "union" or tokens[i].lexeme == "bits" or tokens[i].lexeme == "pick" or tokens[i].lexeme == "flags" or tokens[i].lexeme == "trait" {
+      let keyword: string = tokens[i].lexeme;
+      let kind: AstItemKind = AstItemKind.Form;
+      if keyword == "class" { set kind = AstItemKind.Class; }
+      elif keyword == "union" { set kind = AstItemKind.Union; }
+      elif keyword == "bits" { set kind = AstItemKind.Bits; }
+      elif keyword == "pick" { set kind = AstItemKind.Pick; }
+      elif keyword == "flags" { set kind = AstItemKind.Flags; }
+      elif keyword == "trait" { set kind = AstItemKind.Trait; }
+
+      let start: u64 = i;
+      let name: string = "";
+      if i + 1 < len(tokens) {
+        set name = tokens[i + 1].lexeme;
+      }
+      let open: int = find_token_text(tokens, i, len(tokens), "{");
+      let close: int = -1;
+      if open >= 0 {
+        set close = find_matching(tokens, open as u64, "{", "}");
+      }
+      let end_i: u64 = i + 1;
+      if close >= 0 {
+        set end_i = close as u64 + 1;
+      } else {
+        while end_i < len(tokens) and tokens[end_i].lexeme != ";" {
+          set end_i = end_i + 1;
+        }
+        if end_i < len(tokens) { set end_i = end_i + 1; }
+      }
+      set items = items + [ast_item_create(range_id(5, start, end_i), span_from_tokens(source_name, tokens, start, end_i), kind, name, ast_expr_unknown(0, span_from_tokens(source_name, tokens, start, end_i), ""), [], ast_type_empty(), "")];
+      set i = end_i;
+      continue;
+    }
+
     if tokens[i].lexeme == "const" {
       let start: u64 = i;
       let end_i: u64 = i;
@@ -1636,6 +1706,17 @@ proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
       }
       let stmt: AstStmt = parse_stmt_from_tokens(source_name, tokens, start, end_i);
       set items = items + [ast_item_create(range_id(5, start, end_i), span_from_tokens(source_name, tokens, start, end_i), AstItemKind.Const, stmt.pattern.name, stmt.expr, [], stmt.annotation, "")];
+      set i = end_i + 1;
+      continue;
+    }
+
+    if tokens[i].lexeme == "static" {
+      let start: u64 = i;
+      let end_i: u64 = i;
+      while end_i < len(tokens) and tokens[end_i].lexeme != ";" and tokens[end_i].kind != TokenKind.Eof {
+        set end_i = end_i + 1;
+      }
+      set items = items + [ast_item_create(range_id(5, start, end_i), span_from_tokens(source_name, tokens, start, end_i), AstItemKind.Static, "", ast_expr_unknown(0, span_from_tokens(source_name, tokens, start, end_i), ""), [], ast_type_empty(), "")];
       set i = end_i + 1;
       continue;
     }
@@ -1669,6 +1750,30 @@ proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
       }
       let stmts: [AstStmt] = parse_block_stmts(source_name, tokens, open as u64 + 1, close as u64);
       set items = items + [ast_item_create(range_id(5, i, close as u64 + 1), span_from_tokens(source_name, tokens, i, close as u64 + 1), AstItemKind.Proc, name, ast_expr_unknown(range_id(1, i, i + 1), span_from_tokens(source_name, tokens, i, i + 1), ""), stmts, ast_type_empty(), "")];
+      set i = close as u64 + 1;
+      continue;
+    }
+
+    if tokens[i].lexeme == "test" or tokens[i].lexeme == "bench" {
+      let keyword: string = tokens[i].lexeme;
+      let kind: AstItemKind = AstItemKind.Test;
+      if keyword == "bench" { set kind = AstItemKind.Bench; }
+      let name: string = "";
+      if i + 1 < len(tokens) and tokens[i + 1].kind == TokenKind.String {
+        set name = tokens[i + 1].lexeme;
+      }
+      let open: int = find_token_text(tokens, i, len(tokens), "{");
+      if open < 0 {
+        set i = i + 1;
+        continue;
+      }
+      let close: int = find_matching(tokens, open as u64, "{", "}");
+      if close < 0 {
+        set i = i + 1;
+        continue;
+      }
+      let stmts: [AstStmt] = parse_block_stmts(source_name, tokens, open as u64 + 1, close as u64);
+      set items = items + [ast_item_create(range_id(5, i, close as u64 + 1), span_from_tokens(source_name, tokens, i, close as u64 + 1), kind, name, ast_expr_unknown(0, span_from_tokens(source_name, tokens, i, i + 1), ""), stmts, ast_type_empty(), "")];
       set i = close as u64 + 1;
       continue;
     }
