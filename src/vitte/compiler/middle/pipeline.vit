@@ -12,7 +12,7 @@ use vitte/compiler/middle/passes/pass_result.{ PassRunResult }
 use vitte/compiler/middle/passes/schedule.{ pass_schedule_version }
 use vitte/compiler/backend/ir/ir.{ IrUnit, verify_unit, unit_is_valid }
 use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_to_ir }
-use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run }
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_hir_mir }
 
 form MiddleOutput {
   analysis: AnalysisOutput
@@ -24,11 +24,11 @@ form MiddleOutput {
 }
 
 proc middle_run(frontend: FrontendOutput) -> MiddleOutput {
-  let analysis: AnalysisOutput = analysis_run(frontend);
   let hir0: HirUnit = lower_ast_to_hir(frontend);
   let hir1: HirUnit = validate_hir(hir0);
   let mir0: MirUnit = lower_hir_to_mir(hir1);
   let mir1: MirUnit = validate_mir(mir0);
+  let analysis: AnalysisOutput = analysis_run_hir_mir(frontend, hir1, mir1);
   let p: PassRunResult = if analysis.valid and hir1.valid and mir1.valid {
     run_passes(mir1);
   } else {
