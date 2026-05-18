@@ -19,6 +19,8 @@ pick MirRvalueKind {
 pick MirTerminatorKind {
   Return,
   Goto,
+  Branch,
+  Switch,
   Unreachable,
 }
 
@@ -54,6 +56,10 @@ form MirStatement {
 form MirTerminator {
   kind: MirTerminatorKind
   target_block: u64
+  else_block: u64
+  condition: MirOperand
+  switch_values: [string]
+  switch_targets: [u64]
   valid: bool
 }
 
@@ -96,8 +102,56 @@ proc mir_place_empty() -> MirPlace {
   give MirPlace { local: "", projection: "", valid: false };
 }
 
+proc mir_operand_empty() -> MirOperand {
+  give MirOperand { text: "", place: mir_place_empty(), valid: false };
+}
+
 proc mir_terminator_return() -> MirTerminator {
-  give MirTerminator { kind: MirTerminatorKind.Return, target_block: 0, valid: true };
+  give MirTerminator {
+    kind: MirTerminatorKind.Return,
+    target_block: 0,
+    else_block: 0,
+    condition: mir_operand_empty(),
+    switch_values: [],
+    switch_targets: [],
+    valid: true
+  };
+}
+
+proc mir_terminator_goto(target_block: u64) -> MirTerminator {
+  give MirTerminator {
+    kind: MirTerminatorKind.Goto,
+    target_block: target_block,
+    else_block: 0,
+    condition: mir_operand_empty(),
+    switch_values: [],
+    switch_targets: [],
+    valid: target_block > 0
+  };
+}
+
+proc mir_terminator_branch(condition: MirOperand, target_block: u64, else_block: u64) -> MirTerminator {
+  give MirTerminator {
+    kind: MirTerminatorKind.Branch,
+    target_block: target_block,
+    else_block: else_block,
+    condition: condition,
+    switch_values: [],
+    switch_targets: [],
+    valid: condition.valid and target_block > 0 and else_block > 0
+  };
+}
+
+proc mir_terminator_switch(condition: MirOperand, switch_values: [string], switch_targets: [u64], else_block: u64) -> MirTerminator {
+  give MirTerminator {
+    kind: MirTerminatorKind.Switch,
+    target_block: 0,
+    else_block: else_block,
+    condition: condition,
+    switch_values: switch_values,
+    switch_targets: switch_targets,
+    valid: condition.valid and len(switch_values) == len(switch_targets) and else_block > 0
+  };
 }
 
 proc mir_statement_empty() -> MirStatement {
