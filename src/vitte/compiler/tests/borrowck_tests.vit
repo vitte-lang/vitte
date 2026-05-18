@@ -81,6 +81,24 @@ proc test_hir_borrowck_path() -> bool {
   give has_code(result, "BORROWCK_E_RETURN_BORROW_OF_LOCAL");
 }
 
+proc test_branch_borrow_conflict_after_join() -> bool {
+  let source: string =
+    "proc main() { let x = make_box(); if flag { let a = &x; } else { let b = &x; } set x = make_box(); give x; }\n";
+  let fe: FrontendOutput = frontend_run("borrowck_branch_join_conflict.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: BorrowCheckResult = borrow_check_hir("borrowck_branch_join_conflict.vit", hir);
+  give has_code(result, "BORROWCK_E_WRITE_WHILE_BORROWED");
+}
+
+proc test_branch_move_after_join() -> bool {
+  let source: string =
+    "proc main() { let x = make_box(); if flag { let y = x; } else { let z = make_box(); } give x; }\n";
+  let fe: FrontendOutput = frontend_run("borrowck_branch_move_join.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: BorrowCheckResult = borrow_check_hir("borrowck_branch_move_join.vit", hir);
+  give has_code(result, "BORROWCK_E_USE_AFTER_MOVE");
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_valid_reinit_after_move() { set failures = failures + 1; }
@@ -90,6 +108,8 @@ proc run_all_tests() -> int {
   if not test_return_ref_to_local() { set failures = failures + 1; }
   if not test_return_borrow_of_local() { set failures = failures + 1; }
   if not test_hir_borrowck_path() { set failures = failures + 1; }
+  if not test_branch_borrow_conflict_after_join() { set failures = failures + 1; }
+  if not test_branch_move_after_join() { set failures = failures + 1; }
   give failures;
 }
 
