@@ -1,1 +1,335 @@
+space vitte/compiler/frontend/ast/pretty
 
+use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind }
+use vitte/compiler/frontend/ast/item.{ AstGenericParam, AstItem, AstItemKind, AstModule, AstParam, AstProcSignature }
+use vitte/compiler/frontend/ast/pattern.{ AstPattern, AstPatternKind }
+use vitte/compiler/frontend/ast/stmt.{ AstStmt, AstStmtKind }
+use vitte/compiler/frontend/ast/type_expr.{ AstTypeExpr, AstTypeKind }
+
+proc indent(level: u64) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < level {
+    set out = out + "  ";
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc type_kind_name(kind: AstTypeKind) -> string {
+  if kind == AstTypeKind.Name { give "name"; }
+  if kind == AstTypeKind.Primitive { give "primitive"; }
+  if kind == AstTypeKind.Pointer { give "pointer"; }
+  if kind == AstTypeKind.Reference { give "ref"; }
+  if kind == AstTypeKind.MutableRef { give "mut-ref"; }
+  if kind == AstTypeKind.Array { give "array"; }
+  if kind == AstTypeKind.Slice { give "slice"; }
+  if kind == AstTypeKind.Tuple { give "tuple"; }
+  if kind == AstTypeKind.Proc { give "proc"; }
+  if kind == AstTypeKind.Generic { give "generic"; }
+  if kind == AstTypeKind.Qualified { give "qualified"; }
+  if kind == AstTypeKind.Union { give "union"; }
+  if kind == AstTypeKind.Optional { give "optional"; }
+  if kind == AstTypeKind.Dyn { give "dyn"; }
+  if kind == AstTypeKind.Impl { give "impl"; }
+  give "unknown";
+}
+
+proc pattern_kind_name(kind: AstPatternKind) -> string {
+  if kind == AstPatternKind.Name { give "name"; }
+  if kind == AstPatternKind.Literal { give "literal"; }
+  if kind == AstPatternKind.Wildcard { give "wildcard"; }
+  if kind == AstPatternKind.Ref { give "ref"; }
+  if kind == AstPatternKind.MutableRef { give "mut-ref"; }
+  if kind == AstPatternKind.Struct { give "struct"; }
+  if kind == AstPatternKind.Enum { give "enum"; }
+  if kind == AstPatternKind.Tuple { give "tuple"; }
+  if kind == AstPatternKind.Array { give "array"; }
+  if kind == AstPatternKind.Range { give "range"; }
+  if kind == AstPatternKind.Or { give "or"; }
+  give "unknown";
+}
+
+proc expr_kind_name(kind: AstExprKind) -> string {
+  if kind == AstExprKind.Name { give "name"; }
+  if kind == AstExprKind.Int { give "int"; }
+  if kind == AstExprKind.Float { give "float"; }
+  if kind == AstExprKind.Bool { give "bool"; }
+  if kind == AstExprKind.String { give "string"; }
+  if kind == AstExprKind.Char { give "char"; }
+  if kind == AstExprKind.Binary { give "binary"; }
+  if kind == AstExprKind.Unary { give "unary"; }
+  if kind == AstExprKind.Call { give "call"; }
+  if kind == AstExprKind.Index { give "index"; }
+  if kind == AstExprKind.Member { give "member"; }
+  if kind == AstExprKind.BorrowShared { give "borrow"; }
+  if kind == AstExprKind.BorrowMut { give "borrow-mut"; }
+  if kind == AstExprKind.Deref { give "deref"; }
+  if kind == AstExprKind.If { give "if"; }
+  if kind == AstExprKind.Match { give "match"; }
+  if kind == AstExprKind.Block { give "block"; }
+  if kind == AstExprKind.Lambda { give "lambda"; }
+  if kind == AstExprKind.Struct { give "struct"; }
+  if kind == AstExprKind.Array { give "array"; }
+  if kind == AstExprKind.Tuple { give "tuple"; }
+  if kind == AstExprKind.Range { give "range"; }
+  if kind == AstExprKind.Cast { give "cast"; }
+  if kind == AstExprKind.Is { give "is"; }
+  if kind == AstExprKind.Try { give "try"; }
+  if kind == AstExprKind.Sizeof { give "sizeof"; }
+  if kind == AstExprKind.Alignof { give "alignof"; }
+  if kind == AstExprKind.Offsetof { give "offsetof"; }
+  if kind == AstExprKind.Typeof { give "typeof"; }
+  if kind == AstExprKind.Nameof { give "nameof"; }
+  give "unknown";
+}
+
+proc stmt_kind_name(kind: AstStmtKind) -> string {
+  if kind == AstStmtKind.Const { give "const"; }
+  if kind == AstStmtKind.Let { give "let"; }
+  if kind == AstStmtKind.Set { give "set"; }
+  if kind == AstStmtKind.Give { give "give"; }
+  if kind == AstStmtKind.If { give "if"; }
+  if kind == AstStmtKind.While { give "while"; }
+  if kind == AstStmtKind.For { give "for"; }
+  if kind == AstStmtKind.Loop { give "loop"; }
+  if kind == AstStmtKind.Match { give "match"; }
+  if kind == AstStmtKind.When { give "when"; }
+  if kind == AstStmtKind.With { give "with"; }
+  if kind == AstStmtKind.Try { give "try"; }
+  if kind == AstStmtKind.Defer { give "defer"; }
+  if kind == AstStmtKind.Unsafe { give "unsafe"; }
+  if kind == AstStmtKind.Asm { give "asm"; }
+  if kind == AstStmtKind.Emit { give "emit"; }
+  if kind == AstStmtKind.Panic { give "panic"; }
+  if kind == AstStmtKind.Assert { give "assert"; }
+  if kind == AstStmtKind.Break { give "break"; }
+  if kind == AstStmtKind.Continue { give "continue"; }
+  if kind == AstStmtKind.Unreachable { give "unreachable"; }
+  if kind == AstStmtKind.Select { give "select"; }
+  if kind == AstStmtKind.Critical { give "critical"; }
+  if kind == AstStmtKind.StaticAssert { give "static-assert"; }
+  if kind == AstStmtKind.ExprStmt { give "expr"; }
+  give "unknown";
+}
+
+proc item_kind_name(item: AstItem) -> string {
+  if item.kind == AstItemKind.Space { give "space"; }
+  if item.kind == AstItemKind.Use { give "use"; }
+  if item.kind == AstItemKind.Export { give "export"; }
+  if item.kind == AstItemKind.Const { give "const"; }
+  if item.kind == AstItemKind.Static { give "static"; }
+  if item.kind == AstItemKind.Global { give "global"; }
+  if item.kind == AstItemKind.Type { give "type"; }
+  if item.kind == AstItemKind.Opaque { give "opaque"; }
+  if item.kind == AstItemKind.Extern { give "extern"; }
+  if item.kind == AstItemKind.Form { give "form"; }
+  if item.kind == AstItemKind.Class { give "class"; }
+  if item.kind == AstItemKind.Union { give "union"; }
+  if item.kind == AstItemKind.Bits { give "bits"; }
+  if item.kind == AstItemKind.Pick { give "pick"; }
+  if item.kind == AstItemKind.Flags { give "flags"; }
+  if item.kind == AstItemKind.Trait { give "trait"; }
+  if item.kind == AstItemKind.Impl { give "impl"; }
+  if item.kind == AstItemKind.Proc { give "proc"; }
+  if item.kind == AstItemKind.Intrinsic { give "intrinsic"; }
+  if item.kind == AstItemKind.Query { give "query"; }
+  if item.kind == AstItemKind.Compiler { give "compiler"; }
+  if item.kind == AstItemKind.Pass { give "pass"; }
+  if item.kind == AstItemKind.Backend { give "backend"; }
+  if item.kind == AstItemKind.Diagnostic { give "diagnostic"; }
+  if item.kind == AstItemKind.Macro { give "macro"; }
+  if item.kind == AstItemKind.Entry { give "entry"; }
+  if item.kind == AstItemKind.Test { give "test"; }
+  if item.kind == AstItemKind.Bench { give "bench"; }
+  if item.kind == AstItemKind.Comptime { give "comptime"; }
+  if item.kind == AstItemKind.StaticAssert { give "static-assert"; }
+  give "unknown";
+}
+
+proc pretty_type_expr(node: AstTypeExpr, level: u64) -> string {
+  let out: string = indent(level) + "type(" + type_kind_name(node.kind) + ") " + node.text;
+  let i: u64 = 0;
+  while i < len(node.children) {
+    set out = out + "\n" + pretty_type_expr(node.children[i], level + 1);
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc pretty_pattern(node: AstPattern, level: u64) -> string {
+  let out: string = indent(level) + "pattern(" + pattern_kind_name(node.kind) + ") " + node.text;
+  let i: u64 = 0;
+  while i < len(node.children) {
+    set out = out + "\n" + pretty_pattern(node.children[i], level + 1);
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc pretty_expr(node: AstExpr, level: u64) -> string {
+  let label: string = expr_kind_name(node.kind);
+  let head: string = node.text;
+  if node.binding_name != "" {
+    set head = node.binding_name;
+  } elif node.member_name != "" {
+    set head = node.member_name;
+  } elif node.name != "" {
+    set head = node.name;
+  }
+  let out: string = indent(level) + "expr(" + label + ") " + head;
+  let i: u64 = 0;
+  while i < len(node.children) {
+    set out = out + "\n" + pretty_expr(node.children[i], level + 1);
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc pretty_generic_param(node: AstGenericParam, level: u64) -> string {
+  let out: string = indent(level) + "generic(" + node.kind + ") " + node.name;
+  if node.bound.valid {
+    set out = out + "\n" + pretty_type_expr(node.bound, level + 1);
+  }
+  if node.default_type.valid {
+    set out = out + "\n" + indent(level + 1) + "default";
+    set out = out + "\n" + pretty_type_expr(node.default_type, level + 2);
+  }
+  give out;
+}
+
+proc pretty_param(node: AstParam, level: u64) -> string {
+  let out: string = indent(level) + "param mode=" + node.mode;
+  if node.variadic {
+    set out = out + " variadic";
+  }
+  set out = out + "\n" + pretty_pattern(node.pattern, level + 1);
+  if node.annotation.valid {
+    set out = out + "\n" + pretty_type_expr(node.annotation, level + 1);
+  }
+  if node.default_value.valid {
+    set out = out + "\n" + pretty_expr(node.default_value, level + 1);
+  }
+  give out;
+}
+
+proc pretty_signature(node: AstProcSignature, level: u64) -> string {
+  let out: string = indent(level) + "signature " + node.name;
+  if node.abi != "" {
+    set out = out + " abi=" + node.abi;
+  }
+  if node.noexcept {
+    set out = out + " noexcept";
+  }
+  let i: u64 = 0;
+  while i < len(node.generic_params) {
+    set out = out + "\n" + pretty_generic_param(node.generic_params[i], level + 1);
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(node.params) {
+    set out = out + "\n" + pretty_param(node.params[i], level + 1);
+    set i = i + 1;
+  }
+  if node.return_type.valid {
+    set out = out + "\n" + indent(level + 1) + "return";
+    set out = out + "\n" + pretty_type_expr(node.return_type, level + 2);
+  }
+  i = 0;
+  while i < len(node.where_clauses) {
+    set out = out + "\n" + indent(level + 1) + "where " + node.where_clauses[i];
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(node.effects) {
+    set out = out + "\n" + indent(level + 1) + "effect " + node.effects[i];
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(node.requires) {
+    set out = out + "\n" + indent(level + 1) + "requires " + node.requires[i];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc pretty_stmt(node: AstStmt, level: u64) -> string {
+  let out: string = indent(level) + "stmt(" + stmt_kind_name(node.kind) + ")";
+  if node.pattern.valid {
+    set out = out + "\n" + pretty_pattern(node.pattern, level + 1);
+  }
+  if node.target_expr.valid {
+    set out = out + "\n" + pretty_expr(node.target_expr, level + 1);
+  }
+  if node.expr.valid {
+    set out = out + "\n" + pretty_expr(node.expr, level + 1);
+  }
+  if node.annotation.valid {
+    set out = out + "\n" + pretty_type_expr(node.annotation, level + 1);
+  }
+  let i: u64 = 0;
+  while i < len(node.then_stmts) {
+    set out = out + "\n" + pretty_stmt(node.then_stmts[i], level + 1);
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(node.else_stmts) {
+    set out = out + "\n" + pretty_stmt(node.else_stmts[i], level + 1);
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc pretty_item(node: AstItem, level: u64) -> string {
+  let out: string = indent(level) + "item(" + item_kind_name(node) + ") " + node.name;
+  if node.visibility != "" {
+    set out = out + " visibility=" + node.visibility;
+  }
+  if node.abi != "" {
+    set out = out + " abi=" + node.abi;
+  }
+  let i: u64 = 0;
+  while i < len(node.attributes) {
+    set out = out + "\n" + indent(level + 1) + "attr " + node.attributes[i];
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(node.modifiers) {
+    set out = out + "\n" + indent(level + 1) + "modifier " + node.modifiers[i];
+    set i = i + 1;
+  }
+  if node.signature.valid {
+    set out = out + "\n" + pretty_signature(node.signature, level + 1);
+  }
+  if node.annotation.valid {
+    set out = out + "\n" + pretty_type_expr(node.annotation, level + 1);
+  }
+  if node.target_type.valid {
+    set out = out + "\n" + indent(level + 1) + "target";
+    set out = out + "\n" + pretty_type_expr(node.target_type, level + 2);
+  }
+  if node.expr.valid {
+    set out = out + "\n" + pretty_expr(node.expr, level + 1);
+  }
+  i = 0;
+  while i < len(node.stmts) {
+    set out = out + "\n" + pretty_stmt(node.stmts[i], level + 1);
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(node.meta_args) {
+    set out = out + "\n" + indent(level + 1) + "meta " + node.meta_args[i];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc ast_pretty_module(module0: AstModule) -> string {
+  let out: string = "module(" + module0.kind + ")";
+  let i: u64 = 0;
+  while i < len(module0.items) {
+    set out = out + "\n" + pretty_item(module0.items[i], 1);
+    set i = i + 1;
+  }
+  give out;
+}

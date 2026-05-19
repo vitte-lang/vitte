@@ -114,8 +114,13 @@ form HirExpr {
   name: string
   operator: string
   binding: string
+  resolved_id: u64
+  resolved_kind: string
+  external: bool
   value_mode: string
   inferred_type: string
+  place_category: string
+  copyable: bool
   diagnostics: [SemanticDiagnostic]
   children: [HirExpr]
   valid: bool
@@ -127,6 +132,9 @@ form HirStmt {
   kind: HirStmtKind
   name: string
   target: string
+  target_binding: string
+  target_resolved_id: u64
+  target_resolved_kind: string
   expr: HirExpr
   message: string
   mutable: bool
@@ -143,6 +151,7 @@ form HirItem {
   span: AstSpan
   kind: HirItemKind
   name: string
+  resolved_id: u64
   namespace: string
   visibility: string
   expr: HirExpr
@@ -167,7 +176,7 @@ form HirUnit {
   valid: bool
 }
 
-proc hir_expr(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: string, operator: string, binding: string, value_mode: string, inferred_type: string, diagnostics: [SemanticDiagnostic], children: [HirExpr], valid: bool) -> HirExpr {
+proc hir_expr(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: string, operator: string, binding: string, resolved_id: u64, resolved_kind: string, external: bool, value_mode: string, inferred_type: string, place_category: string, copyable: bool, diagnostics: [SemanticDiagnostic], children: [HirExpr], valid: bool) -> HirExpr {
   give HirExpr {
     id: id,
     span: span,
@@ -176,8 +185,13 @@ proc hir_expr(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: str
     name: name,
     operator: operator,
     binding: binding,
+    resolved_id: resolved_id,
+    resolved_kind: resolved_kind,
+    external: external,
     value_mode: value_mode,
     inferred_type: inferred_type,
+    place_category: place_category,
+    copyable: copyable,
     diagnostics: diagnostics,
     children: children,
     valid: valid
@@ -200,8 +214,13 @@ proc hir_expr_empty() -> HirExpr {
     name: "",
     operator: "",
     binding: "",
+    resolved_id: 0,
+    resolved_kind: "",
+    external: false,
     value_mode: "invalid",
     inferred_type: "unknown",
+    place_category: "value",
+    copyable: false,
     diagnostics: [],
     children: [],
     valid: false

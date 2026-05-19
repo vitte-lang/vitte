@@ -1,0 +1,150 @@
+space vitte/compiler/backend/codegen
+
+use vitte/compiler/backend/codegen/instruction_select.{ select_ir_unit_x86_64 }
+use vitte/compiler/backend/codegen/register_alloc.{ allocate_virtual_locations }
+use vitte/compiler/backend/codegen/emitter.{ emit_x86_64_text }
+use vitte/compiler/backend/codegen/object.{ build_pseudo_object_text, pseudo_object_section_count }
+use vitte/compiler/backend/ir/ir.{ IrUnit, unit_is_valid }
+use vitte/compiler/backends/llvm_bindings.{ LlvmBuildOptions, LlvmDiagnostic, LlvmObjectResult, LlvmToolchainPaths, LlvmToolchainStatus, default_llvm_build_options, default_llvm_toolchain_paths, emit_llvm_ir_from_ir, emit_llvm_object_from_ir_with_toolchain, llvm_build_options, llvm_toolchain_status }
+
+form CodegenResult {
+  target: string
+  assembly: string
+  object_text: string
+  object_format: string
+  profile_name: string
+  section_count: u64
+  diagnostic_count: u64
+  native_toolchain_ready: bool
+  native_toolchain_summary: string
+  instruction_selected: bool
+  registers_allocated: bool
+  object_ready: bool
+  errors: [string]
+  diagnostics: [LlvmDiagnostic]
+  valid: bool
+}
+
+proc codegen_invalid(target: string, profile_name: string, errors: [string]) -> CodegenResult {
+  give CodegenResult {
+    target: target,
+    assembly: "",
+    object_text: "",
+    object_format: "",
+    profile_name: profile_name,
+    section_count: 0,
+    diagnostic_count: 0,
+    native_toolchain_ready: false,
+    native_toolchain_summary: "",
+    instruction_selected: false,
+    registers_allocated: false,
+    object_ready: false,
+    errors: errors,
+    diagnostics: [],
+    valid: false
+  };
+}
+
+proc x86_64_codegen_result(unit: IrUnit, profile_name: string) -> CodegenResult {
+  let selected: [string] = select_ir_unit_x86_64(unit);
+  let allocated: [string] = allocate_virtual_locations(selected);
+  let assembly: string = emit_x86_64_text(allocated);
+  let object_text: string = build_pseudo_object_text(unit, assembly);
+  give CodegenResult {
+    target: "x86_64-linux",
+    assembly: assembly,
+    object_text: object_text,
+    object_format: "elf-pseudo",
+    profile_name: profile_name,
+    section_count: pseudo_object_section_count(),
+    diagnostic_count: 0,
+    native_toolchain_ready: true,
+    native_toolchain_summary: "native x86_64 backend active",
+    instruction_selected: len(selected) > 0,
+    registers_allocated: len(allocated) == len(selected),
+    object_ready: object_text != "",
+    errors: [],
+    diagnostics: [],
+    valid: assembly != "" and object_text != ""
+  };
+}
+
+proc run_codegen_x86_64(unit: IrUnit) -> CodegenResult {
+  if not unit_is_valid(unit) {
+    give codegen_invalid("x86_64-linux", "native-default", ["invalid IR unit"]);
+  }
+  give x86_64_codegen_result(unit, "native-default");
+}
+
+proc llvm_options_from_profile(target: string, profile_name: string, packaging: string, deterministic: bool, debug_enabled: bool, prefer_native_toolchain: bool) -> LlvmBuildOptions {
+  if profile_name == "enterprise-debug" {
+    give llvm_build_options(target, "O0", packaging, deterministic, true, true, false, "off", prefer_native_toolchain);
+  }
+  if profile_name == "enterprise-size" {
+    give llvm_build_options(target, "Oz", packaging, deterministic, debug_enabled, debug_enabled, true, "off", prefer_native_toolchain);
+  }
+  if profile_name == "enterprise-release" {
+    give llvm_build_options(target, "O3", packaging, deterministic, debug_enabled, debug_enabled, true, "off", prefer_native_toolchain);
+  }
+  if profile_name == "enterprise-lto" {
+    give llvm_build_options(target, "O3", packaging, deterministic, debug_enabled, debug_enabled, true, "off", prefer_native_toolchain);
+  }
+  if profile_name == "enterprise-pgo" {
+    give llvm_build_options(target, "O3", packaging, deterministic, debug_enabled, debug_enabled, true, "instrument", prefer_native_toolchain);
+  }
+  let defaults: LlvmBuildOptions = default_llvm_build_options(target);
+  give llvm_build_options(defaults.target, defaults.opt_level, packaging, defaults.deterministic, defaults.debug_enabled, defaults.emit_debug_sections, defaults.lto_enabled, defaults.pgo_mode, prefer_native_toolchain);
+}
+
+proc run_codegen_llvm(unit: IrUnit) -> CodegenResult {
+  give run_codegen_llvm_with_profile(unit, "enterprise-default", "executable", true, true, false, default_llvm_toolchain_paths());
+}
+
+proc run_codegen_llvm_with_profile(unit: IrUnit, profile_name: string, packaging: string, deterministic: bool, debug_enabled: bool, prefer_native_toolchain: bool, toolchain: LlvmToolchainPaths) -> CodegenResult {
+  if not unit_is_valid(unit) {
+    give codegen_invalid("llvm-object", profile_name, ["invalid IR unit"]);
+  }
+  let emitted_ir = emit_llvm_ir_from_ir(unit);
+  if not emitted_ir.valid {
+    give codegen_invalid("llvm-object", profile_name, ["LLVM IR emission failed"]);
+  }
+  let options: LlvmBuildOptions = llvm_options_from_profile(unit.target.triple.arch + "-" + unit.target.triple.os, profile_name, packaging, deterministic, debug_enabled, prefer_native_toolchain);
+  let status: LlvmToolchainStatus = llvm_toolchain_status(toolchain, packaging, prefer_native_toolchain);
+  let object0: LlvmObjectResult = emit_llvm_object_from_ir_with_toolchain(unit, options, toolchain);
+  if not object0.valid {
+    give CodegenResult {
+      target: "llvm-object",
+      assembly: emitted_ir.ir_text,
+      object_text: object0.object_text,
+      object_format: object0.object_format,
+      profile_name: profile_name,
+      section_count: len(object0.sections),
+      diagnostic_count: len(object0.diagnostics),
+      native_toolchain_ready: status.native_link_ready,
+      native_toolchain_summary: status.summary,
+      instruction_selected: object0.function_count > 0,
+      registers_allocated: true,
+      object_ready: false,
+      errors: ["LLVM object emission failed"],
+      diagnostics: object0.diagnostics,
+      valid: false
+    };
+  }
+  give CodegenResult {
+    target: "llvm-object",
+    assembly: object0.ir_text,
+    object_text: object0.object_text,
+    object_format: object0.object_format,
+    profile_name: profile_name,
+    section_count: len(object0.sections),
+    diagnostic_count: len(object0.diagnostics),
+    native_toolchain_ready: status.native_link_ready,
+    native_toolchain_summary: status.summary,
+    instruction_selected: object0.function_count > 0,
+    registers_allocated: true,
+    object_ready: object0.object_text != "",
+    errors: [],
+    diagnostics: object0.diagnostics,
+    valid: object0.object_text != ""
+  };
+}

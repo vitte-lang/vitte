@@ -1,0 +1,251 @@
+space vitte/compiler/analysis/typeck
+
+use vitte/compiler/analysis/typeck/errors.{ ExprTypeResult, TypeckDiagnostic, add_unique_diag, expr_result, typeck_diag }
+use vitte/compiler/analysis/typeck/coercion.{ projection_member_name, project_place_type, type_deref_target, type_index_element, types_compatible }
+use vitte/compiler/analysis/typeck/traits.{ type_is_numeric, type_is_truthy }
+use vitte/compiler/analysis/typeck/unify.{ unify_types }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind }
+
+form TypeBinding {
+  name: string
+  ty: string
+  valid: bool
+}
+
+proc type_binding(name: string, ty: string) -> TypeBinding {
+  give TypeBinding {
+    name: name,
+    ty: ty,
+    valid: name != "" and ty != ""
+  };
+}
+
+proc env_index(env: [TypeBinding], name: string) -> int {
+  let i: int = 0;
+  while i < len(env) {
+    if env[i].name == name {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc env_has(env: [TypeBinding], name: string) -> bool {
+  give env_index(env, name) >= 0;
+}
+
+proc env_get(env: [TypeBinding], name: string) -> string {
+  let index: int = env_index(env, name);
+  if index < 0 {
+    give "opaque";
+  }
+  give env[index].ty;
+}
+
+proc env_set(env: [TypeBinding], name: string, ty: string) -> [TypeBinding] {
+  let out: [TypeBinding] = [];
+  let found: bool = false;
+  let i: u64 = 0;
+  while i < len(env) {
+    if env[i].name == name {
+      set out = out + [type_binding(name, ty)];
+      set found = true;
+    } else {
+      set out = out + [env[i]];
+    }
+    set i = i + 1;
+  }
+  if not found {
+    set out = out + [type_binding(name, ty)];
+  }
+  give out;
+}
+
+proc infer_name_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
+  let lookup: string = expr.binding;
+  if lookup == "" {
+    set lookup = expr.name;
+  }
+  if lookup == "" {
+    give expr_result("unknown", [typeck_diag(
+      "TYPECK_E_UNKNOWN_NAME",
+      "name expression is missing an identifier",
+      ["name"],
+      "provide a valid identifier",
+      expr.span,
+      true
+    )], false);
+  }
+  give expr_result(env_get(env, lookup), [], true);
+}
+
+proc infer_expr_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
+  if not expr.valid {
+    give expr_result("unknown", [typeck_diag(
+      "TYPECK_E_INVALID_EXPR",
+      "invalid expression in type checking",
+      ["expr"],
+      "fix the invalid expression before type checking",
+      expr.span,
+      true
+    )], false);
+  }
+
+  if expr.inferred_type != "" and expr.inferred_type != "unknown" {
+    give expr_result(expr.inferred_type, [], true);
+  }
+  if expr.kind == HirExprKind.Int { give expr_result("int", [], true); }
+  if expr.kind == HirExprKind.Float { give expr_result("float", [], true); }
+  if expr.kind == HirExprKind.Bool { give expr_result("bool", [], true); }
+  if expr.kind == HirExprKind.String { give expr_result("string", [], true); }
+  if expr.kind == HirExprKind.Char { give expr_result("char", [], true); }
+  if expr.kind == HirExprKind.Name { give infer_name_type(env, expr); }
+  if expr.kind == HirExprKind.Call { give expr_result("opaque", [], true); }
+
+  if expr.kind == HirExprKind.Unary {
+    if len(expr.children) == 0 {
+      give expr_result("unknown", [], false);
+    }
+    let inner: ExprTypeResult = infer_expr_type(env, expr.children[0]);
+    if expr.operator == "*" {
+      let target: string = type_deref_target(inner.ty);
+      if target == "unknown" and inner.ty != "opaque" {
+        give expr_result("unknown", add_unique_diag(inner.diagnostics, typeck_diag(
+          "TYPECK_E_INVALID_DEREF",
+          "cannot dereference value of type `" + inner.ty + "`",
+          [inner.ty],
+          "dereference only references or pointer-like values",
+          expr.span,
+          true
+        )), false);
+      }
+      if inner.ty == "opaque" {
+        give expr_result("opaque", inner.diagnostics, inner.valid);
+      }
+      give expr_result(target, inner.diagnostics, inner.valid and target != "unknown");
+    }
+    if expr.operator == "-" {
+      if not type_is_numeric(inner.ty) and inner.ty != "opaque" {
+        give expr_result("unknown", add_unique_diag(inner.diagnostics, typeck_diag(
+          "TYPECK_E_UNARY_MISMATCH",
+          "unary `-` requires a numeric operand",
+          [inner.ty],
+          "apply `-` only to numeric values",
+          expr.span,
+          true
+        )), false);
+      }
+      give expr_result(inner.ty, inner.diagnostics, inner.valid);
+    }
+    if expr.operator == "not" {
+      if not type_is_truthy(inner.ty) {
+        give expr_result("bool", add_unique_diag(inner.diagnostics, typeck_diag(
+          "TYPECK_E_CONDITION_TYPE",
+          "logical negation requires a truthy operand",
+          [inner.ty],
+          "use a bool, int, or externally typed value",
+          expr.span,
+          true
+        )), false);
+      }
+      give expr_result("bool", inner.diagnostics, inner.valid);
+    }
+    give expr_result(inner.ty, inner.diagnostics, inner.valid);
+  }
+
+  if expr.kind == HirExprKind.BorrowShared {
+    if len(expr.children) == 0 { give expr_result("&unknown", [], true); }
+    let inner: ExprTypeResult = infer_expr_type(env, expr.children[0]);
+    give expr_result("&" + inner.ty, inner.diagnostics, inner.valid);
+  }
+  if expr.kind == HirExprKind.BorrowMut {
+    if len(expr.children) == 0 { give expr_result("&mut unknown", [], true); }
+    let inner: ExprTypeResult = infer_expr_type(env, expr.children[0]);
+    give expr_result("&mut " + inner.ty, inner.diagnostics, inner.valid);
+  }
+  if expr.kind == HirExprKind.Member {
+    if len(expr.children) == 0 { give expr_result("opaque", [], true); }
+    let base: ExprTypeResult = infer_expr_type(env, expr.children[0]);
+    let projected: string = project_place_type(base.ty, "." + projection_member_name(expr.text, expr.name));
+    give expr_result(projected, base.diagnostics, base.valid);
+  }
+  if expr.kind == HirExprKind.Index {
+    if len(expr.children) == 0 { give expr_result("opaque", [], true); }
+    let base: ExprTypeResult = infer_expr_type(env, expr.children[0]);
+    let diagnostics: [TypeckDiagnostic] = base.diagnostics;
+    if len(expr.children) > 1 {
+      let index0: ExprTypeResult = infer_expr_type(env, expr.children[1]);
+      set diagnostics = diagnostics + index0.diagnostics;
+      if not type_is_numeric(index0.ty) and index0.ty != "opaque" {
+        set diagnostics = add_unique_diag(diagnostics, typeck_diag(
+          "TYPECK_E_INDEX_TYPE",
+          "index expression requires a numeric index",
+          [index0.ty],
+          "use an integer-like index value",
+          expr.span,
+          true
+        ));
+      }
+    }
+    give expr_result(type_index_element(base.ty), diagnostics, base.valid);
+  }
+  if expr.kind == HirExprKind.Binary {
+    if len(expr.children) < 2 {
+      give expr_result("unknown", [typeck_diag(
+        "TYPECK_E_MALFORMED_BINARY",
+        "binary expression requires two operands",
+        [expr.text],
+        "provide both left and right operands",
+        expr.span,
+        true
+      )], false);
+    }
+    let left: ExprTypeResult = infer_expr_type(env, expr.children[0]);
+    let right: ExprTypeResult = infer_expr_type(env, expr.children[1]);
+    let diagnostics: [TypeckDiagnostic] = left.diagnostics + right.diagnostics;
+    let op: string = expr.operator;
+    if op == "+" or op == "-" or op == "*" or op == "/" or op == "%" {
+      if not types_compatible(left.ty, right.ty) or not (type_is_numeric(left.ty) or left.ty == "opaque") {
+        give expr_result("unknown", add_unique_diag(diagnostics, typeck_diag(
+          "TYPECK_E_BINARY_MISMATCH",
+          "operator `" + op + "` requires compatible numeric operands",
+          [left.ty, right.ty],
+          "make both operands numeric or add an explicit conversion",
+          expr.span,
+          true
+        )), false);
+      }
+      give expr_result(unify_types(left.ty, right.ty), diagnostics, left.valid and right.valid);
+    }
+    if op == "==" or op == "!=" or op == "<" or op == "<=" or op == ">" or op == ">=" {
+      if not types_compatible(left.ty, right.ty) {
+        give expr_result("bool", add_unique_diag(diagnostics, typeck_diag(
+          "TYPECK_E_COMPARE_MISMATCH",
+          "comparison operands are not compatible",
+          [left.ty, right.ty],
+          "compare values of compatible types",
+          expr.span,
+          true
+        )), false);
+      }
+      give expr_result("bool", diagnostics, left.valid and right.valid);
+    }
+    if op == "&&" or op == "||" or op == "and" or op == "or" {
+      if not type_is_truthy(left.ty) or not type_is_truthy(right.ty) {
+        give expr_result("bool", add_unique_diag(diagnostics, typeck_diag(
+          "TYPECK_E_CONDITION_TYPE",
+          "logical operator requires truthy operands",
+          [left.ty, right.ty],
+          "use bool, int, or an externally typed value in the condition",
+          expr.span,
+          true
+        )), false);
+      }
+      give expr_result("bool", diagnostics, left.valid and right.valid);
+    }
+    give expr_result("opaque", diagnostics, left.valid and right.valid);
+  }
+
+  give expr_result("opaque", [], true);
+}

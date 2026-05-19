@@ -1,10 +1,30 @@
 space vitte/compiler/frontend/source_map
 
+use vitte/compiler/frontend/ast/node.{ AstSpan }
+
 form SourceLoc {
   line: u64
   column: u64
 }
 
+form SourceSpan {
+  file: string
+  start: SourceLoc
+  end: SourceLoc
+}
+
 proc loc_start() -> SourceLoc {
   give SourceLoc { line: 1, column: 1 };
+}
+
+proc source_loc(line: u64, column: u64) -> SourceLoc {
+  give SourceLoc { line: line, column: column };
+}
+
+proc source_span(file: string, start: SourceLoc, end0: SourceLoc) -> SourceSpan {
+  give SourceSpan { file: file, start: start, end: end0 };
+}
+
+proc source_span_from_ast(span: AstSpan) -> SourceSpan {
+  give source_span(span.file, source_loc(span.start_line, span.start_column), source_loc(span.end_line, span.end_column));
 }

@@ -1,0 +1,60 @@
+space vitte/compiler/analysis
+
+form AnalysisDiagnostic {
+  phase: string
+  code: string
+  severity: string
+  message: string
+  labels: [string]
+  suggestion: string
+  line: u64
+  column: u64
+  length: u64
+  notes: [string]
+  fatal: bool
+}
+
+proc ast_span_length(start_column: u64, end_column: u64) -> u64 {
+  if end_column > start_column {
+    give end_column - start_column;
+  }
+  give 1;
+}
+
+proc analysis_context_notes(labels: [string], suggestion: string) -> [string] {
+  let notes: [string] = [];
+  if len(labels) > 0 {
+    set notes = notes + ["context: " + labels[0]];
+  }
+  if suggestion != "" {
+    set notes = notes + ["suggestion: " + suggestion];
+  }
+  give notes;
+}
+
+proc analysis_diagnostic(
+  phase: string,
+  code: string,
+  severity: string,
+  message: string,
+  labels: [string],
+  suggestion: string,
+  line: u64,
+  column: u64,
+  length: u64,
+  fatal: bool
+) -> AnalysisDiagnostic {
+  give AnalysisDiagnostic {
+    phase: phase,
+    code: code,
+    severity: severity,
+    message: message,
+    labels: labels,
+    suggestion: suggestion,
+    line: line,
+    column: column,
+    length: length,
+    notes: analysis_context_notes(labels, suggestion),
+    fatal: fatal
+  };
+}

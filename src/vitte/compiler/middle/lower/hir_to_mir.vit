@@ -29,10 +29,42 @@ form MirSequence {
 }
 
 proc mir_place_from_name(name: string) -> MirPlace {
-  if name == "" {
+  let trimmed: string = trim(name);
+  if trimmed == "" {
     give mir_place_empty();
   }
-  give MirPlace { local: name, projection: "", valid: true };
+
+  let prefix: string = "";
+  let i: u64 = 0;
+  while i < len(trimmed) and slice(trimmed, i, i + 1) == "*" {
+    set prefix = prefix + "*";
+    set i = i + 1;
+  }
+
+  let start: u64 = i;
+  while i < len(trimmed) {
+    let ch: string = slice(trimmed, i, i + 1);
+    let valid_ident: bool = (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_" or (ch >= "0" and ch <= "9");
+    if not valid_ident {
+      break;
+    }
+    set i = i + 1;
+  }
+
+  if i == start {
+    give MirPlace { local: trimmed, projection: "", valid: true };
+  }
+
+  let local: string = slice(trimmed, start, i);
+  let projection: string = prefix + slice(trimmed, i, len(trimmed));
+  if projection == "" {
+    give MirPlace { local: local, projection: "", valid: true };
+  }
+  give MirPlace {
+    local: local,
+    projection: projection,
+    valid: true
+  };
 }
 
 proc mir_operand_from_expr(expr: HirExpr) -> MirOperand {

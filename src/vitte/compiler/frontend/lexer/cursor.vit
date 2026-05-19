@@ -10,3 +10,60 @@ form Cursor {
 proc cursor_new(text: string) -> Cursor {
   give Cursor { text: text, index: 0, line: 1, column: 1 };
 }
+
+proc cursor_eof(cursor: Cursor) -> bool {
+  give cursor.index >= len(cursor.text);
+}
+
+proc cursor_current(cursor: Cursor) -> string {
+  if cursor_eof(cursor) {
+    give "";
+  }
+  give slice(cursor.text, cursor.index, cursor.index + 1);
+}
+
+proc cursor_peek(cursor: Cursor, offset: u64) -> string {
+  let target: u64 = cursor.index + offset;
+  if target >= len(cursor.text) {
+    give "";
+  }
+  give slice(cursor.text, target, target + 1);
+}
+
+proc cursor_starts_with(cursor: Cursor, needle: string) -> bool {
+  if cursor.index + len(needle) > len(cursor.text) {
+    give false;
+  }
+  give slice(cursor.text, cursor.index, cursor.index + len(needle)) == needle;
+}
+
+proc cursor_advance(cursor: Cursor) -> Cursor {
+  if cursor_eof(cursor) {
+    give cursor;
+  }
+  let ch: string = cursor_current(cursor);
+  if ch == "\n" {
+    give Cursor {
+      text: cursor.text,
+      index: cursor.index + 1,
+      line: cursor.line + 1,
+      column: 1
+    };
+  }
+  give Cursor {
+    text: cursor.text,
+    index: cursor.index + 1,
+    line: cursor.line,
+    column: cursor.column + 1
+  };
+}
+
+proc cursor_advance_n(cursor: Cursor, count: u64) -> Cursor {
+  let current: Cursor = cursor;
+  let i: u64 = 0;
+  while i < count and not cursor_eof(current) {
+    set current = cursor_advance(current);
+    set i = i + 1;
+  }
+  give current;
+}

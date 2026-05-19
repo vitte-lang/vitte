@@ -1,0 +1,62 @@
+space vitte/compiler/backend/codegen
+
+proc machine_function_label(name: string) -> string {
+  give name + ":";
+}
+
+proc machine_block_label(function_name: string, block_id: u64) -> string {
+  give ".L_" + function_name + "_block_" + (block_id as string) + ":";
+}
+
+proc machine_prologue_x86_64() -> [string] {
+  give ["  push %rbp", "  mov %rsp, %rbp"];
+}
+
+proc machine_return_label(function_name: string) -> string {
+  give ".L_" + function_name + "_return";
+}
+
+proc machine_epilogue_x86_64() -> [string] {
+  give ["  pop %rbp", "  ret"];
+}
+
+proc machine_operand_immediate_text(text: string) -> string {
+  if text == "true" {
+    give "$1";
+  }
+  if text == "false" {
+    give "$0";
+  }
+  if text == "" {
+    give "$0";
+  }
+  if starts_with(text, "\"") {
+    give "$0";
+  }
+  give "$" + text;
+}
+
+proc machine_operand_debug_name(name: string, place: string, fallback: string) -> string {
+  if place != "" {
+    give place;
+  }
+  if name != "" {
+    give name;
+  }
+  give fallback;
+}
+
+proc machine_branch_label(function_name: string, block_id: u64) -> string {
+  give ".L_" + function_name + "_block_" + (block_id as string);
+}
+
+proc machine_call_target_text(text: string) -> string {
+  let marker: int = find(text, "(");
+  if marker > 0 {
+    give trim(slice(text, 0, marker));
+  }
+  if text != "" {
+    give trim(text);
+  }
+  give "__indirect_call";
+}

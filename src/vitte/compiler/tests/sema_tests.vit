@@ -1,0 +1,98 @@
+space vitte/compiler/tests/sema_tests
+
+use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
+use vitte/compiler/driver/compile.{ DriverModuleSetArtifacts, analyze_source_set, driver_module_input }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+
+const VERSION_TEXT: string = "analysis sema tests 0.1.0"
+const BANNER_TEXT: string = "analysis sema tests"
+
+proc has_code(result: SemaResult, code: string) -> bool {
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].code == code {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc test_duplicate_binding() -> bool {
+  let source: string = "proc main() { let x = 1; let x = 2; give x; }\n";
+  let fe: FrontendOutput = frontend_run("sema_duplicate_binding.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: SemaResult = run_sema_hir(hir);
+  give has_code(result, "SEMA_E_DUPLICATE_BINDING");
+}
+
+proc test_undeclared_target() -> bool {
+  let source: string = "proc main() { set x = 1; }\n";
+  let fe: FrontendOutput = frontend_run("sema_undeclared_target.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: SemaResult = run_sema_hir(hir);
+  give has_code(result, "SEMA_E_UNDECLARED_TARGET");
+}
+
+proc test_unresolved_name_warning_is_nonfatal() -> bool {
+  let source: string = "proc main() { give flag; }\n";
+  let fe: FrontendOutput = frontend_run("sema_unresolved_name.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: SemaResult = run_sema_hir(hir);
+  give fe.valid and result.valid and has_code(result, "SEMA_W_UNRESOLVED_NAME");
+}
+
+proc test_resolves_local_name_on_hir() -> bool {
+  let source: string = "proc main() { let x = 1; give x; }\n";
+  let fe: FrontendOutput = frontend_run("sema_resolve_local.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: SemaResult = run_sema_hir(hir);
+  let give_expr = result.hir.module.items[0].stmts[1].expr;
+  give result.valid and give_expr.binding == "x" and give_expr.resolved_kind == "local" and give_expr.resolved_id > 0 and not give_expr.external;
+}
+
+proc test_resolves_set_target_projection() -> bool {
+  let source: string = "proc main() { let x = make_box(); set x.field = 1; }\n";
+  let fe: FrontendOutput = frontend_run("sema_set_projection.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: SemaResult = run_sema_hir(hir);
+  let set_stmt = result.hir.module.items[0].stmts[1];
+  give result.valid and set_stmt.target_binding == "x.field" and set_stmt.target_resolved_kind == "local" and set_stmt.target_resolved_id > 0;
+}
+
+proc test_resolves_imported_proc_from_another_module() -> bool {
+  let dep: string = "space demo/math;\nexport *;\nproc sum() -> int { give 0; }\n";
+  let root: string = "space demo/app;\nuse demo/math { * };\nproc main() -> int { give sum(); }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_math.vit", dep),
+    driver_module_input("demo_app.vit", root)
+  ]);
+  let call_expr = artifacts.modules[1].resolved_hir.module.items[2].stmts[0].expr;
+  give artifacts.valid and call_expr.resolved_kind == "import" and call_expr.resolved_id > 0;
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+  if not test_duplicate_binding() { set failures = failures + 1; }
+  if not test_undeclared_target() { set failures = failures + 1; }
+  if not test_unresolved_name_warning_is_nonfatal() { set failures = failures + 1; }
+  if not test_resolves_local_name_on_hir() { set failures = failures + 1; }
+  if not test_resolves_set_target_projection() { set failures = failures + 1; }
+  if not test_resolves_imported_proc_from_another_module() { set failures = failures + 1; }
+  give failures;
+}
+
+proc version_text() -> string {
+  give VERSION_TEXT
+}
+
+proc banner_text() -> string {
+  give BANNER_TEXT
+}
+
+proc main(args: list[string]) -> int {
+  give run_all_tests()
+}
+
+export *

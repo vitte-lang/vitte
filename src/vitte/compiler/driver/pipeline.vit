@@ -1,7 +1,7 @@
 space vitte/compiler/driver
 
 use vitte/compiler/driver/commands.{ DriverCommand, command_from_text }
-use vitte/compiler/driver/compile.{ DriverCompileResult, compile_source, check_source }
+use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverDiagnostic, DriverDiagnosticLevel, DriverModuleInput, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config }
 use vitte/compiler/driver/exit_status.{ exit_code }
 use vitte/compiler/driver/result.{ CliRunResult }
 
@@ -9,6 +9,22 @@ form CompileReport {
     command: string
     source_path: string
     exit_code: u64
+    backend_name: string
+    target_name: string
+    profile_name: string
+    opt_level: string
+    packaging: string
+    deterministic: bool
+    debug_enabled: bool
+    emit_debug_sections: bool
+    lto_enabled: bool
+    pgo_mode: string
+    prefer_native_toolchain: bool
+    llvm_toolchain_summary: string
+    codegen_object_format: string
+    codegen_section_count: u64
+    diagnostic_count: u64
+    diagnostics: [DriverDiagnostic]
     active_modules: [string]
     inactive_modules: [string]
     status: string
@@ -20,6 +36,41 @@ form CompileReport {
     expr_count: u64
     type_count: u64
     pattern_count: u64
+}
+
+form ModuleSetCompileReport {
+    command: string
+    module_count: u64
+    exit_code: u64
+    backend_name: string
+    target_name: string
+    profile_name: string
+    opt_level: string
+    packaging: string
+    deterministic: bool
+    debug_enabled: bool
+    emit_debug_sections: bool
+    lto_enabled: bool
+    pgo_mode: string
+    prefer_native_toolchain: bool
+    llvm_toolchain_summary: string
+    codegen_object_format: string
+    codegen_section_count: u64
+    diagnostic_count: u64
+    diagnostics: [DriverDiagnostic]
+    status: string
+    message: string
+    entry_symbol: string
+    section_count: u64
+    import_count: u64
+    relocation_count: u64
+    resolution_count: u64
+    resolved_import_count: u64
+    unresolved_import_count: u64
+    resolved_symbol_count: u64
+    unresolved_symbol_count: u64
+    debug_section_count: u64
+    text_section_size: u64
 }
 
 proc active_modules_table() -> [string] {
@@ -83,6 +134,47 @@ proc json_array(strings: [string]) -> string {
     give "[" + entries + "]";
 }
 
+proc json_bool(value: bool) -> string {
+    if value {
+        give "true";
+    }
+    give "false";
+}
+
+proc diagnostic_level_text(level: DriverDiagnosticLevel) -> string {
+    if level == DriverDiagnosticLevel.Note {
+        give "note";
+    }
+    if level == DriverDiagnosticLevel.Warning {
+        give "warning";
+    }
+    give "error";
+}
+
+proc diagnostic_json(diag0: DriverDiagnostic) -> string {
+    give "{" +
+        "\"level\":\"" + diagnostic_level_text(diag0.level) + "\"," +
+        "\"stage\":\"" + json_escape(diag0.stage) + "\"," +
+        "\"code\":\"" + json_escape(diag0.code) + "\"," +
+        "\"message\":\"" + json_escape(diag0.message) + "\"" +
+        "}";
+}
+
+proc diagnostics_json(diagnostics: [DriverDiagnostic]) -> string {
+    let entries: string = "";
+    let first: bool = true;
+    let i: u64 = 0;
+    while i < len(diagnostics) {
+        if not first {
+            set entries = entries + ",";
+        }
+        set entries = entries + diagnostic_json(diagnostics[i]);
+        set first = false;
+        set i = i + 1;
+    }
+    give "[" + entries + "]";
+}
+
 proc compile_report_json(report: CompileReport) -> string {
     let active_count: string = "\"active_count\":" + to_string(len(report.active_modules));
     let inactive_count: string = "\"inactive_count\":" + to_string(len(report.inactive_modules));
@@ -90,6 +182,21 @@ proc compile_report_json(report: CompileReport) -> string {
         "\"command\":\"" + json_escape(report.command) + "\"," +
         "\"source_path\":\"" + json_escape(report.source_path) + "\"," +
         "\"exit_code\":" + to_string(report.exit_code) + "," +
+        "\"backend_name\":\"" + json_escape(report.backend_name) + "\"," +
+        "\"target_name\":\"" + json_escape(report.target_name) + "\"," +
+        "\"profile_name\":\"" + json_escape(report.profile_name) + "\"," +
+        "\"opt_level\":\"" + json_escape(report.opt_level) + "\"," +
+        "\"packaging\":\"" + json_escape(report.packaging) + "\"," +
+        "\"deterministic\":" + json_bool(report.deterministic) + "," +
+        "\"debug_enabled\":" + json_bool(report.debug_enabled) + "," +
+        "\"emit_debug_sections\":" + json_bool(report.emit_debug_sections) + "," +
+        "\"lto_enabled\":" + json_bool(report.lto_enabled) + "," +
+        "\"pgo_mode\":\"" + json_escape(report.pgo_mode) + "\"," +
+        "\"prefer_native_toolchain\":" + json_bool(report.prefer_native_toolchain) + "," +
+        "\"llvm_toolchain_summary\":\"" + json_escape(report.llvm_toolchain_summary) + "\"," +
+        "\"codegen_object_format\":\"" + json_escape(report.codegen_object_format) + "\"," +
+        "\"codegen_section_count\":" + to_string(report.codegen_section_count) + "," +
+        "\"diagnostic_count\":" + to_string(report.diagnostic_count) + "," +
         "\"status\":\"" + json_escape(report.status) + "\"," +
         "\"message\":\"" + json_escape(report.message) + "\"," +
         "\"grammar_version\":\"" + json_escape(report.grammar_version) + "\"," +
@@ -99,21 +206,73 @@ proc compile_report_json(report: CompileReport) -> string {
         "\"expr_count\":" + to_string(report.expr_count) + "," +
         "\"type_count\":" + to_string(report.type_count) + "," +
         "\"pattern_count\":" + to_string(report.pattern_count) + "," +
+        "\"diagnostics\":" + diagnostics_json(report.diagnostics) + "," +
         "\"active_modules\":" + json_array(report.active_modules) + "," +
         "\"inactive_modules\":" + json_array(report.inactive_modules) + "," +
         active_count + "," + inactive_count +
         "}";
 }
 
+proc module_set_compile_report_json(report: ModuleSetCompileReport) -> string {
+    give "{" +
+        "\"command\":\"" + json_escape(report.command) + "\"," +
+        "\"module_count\":" + to_string(report.module_count) + "," +
+        "\"exit_code\":" + to_string(report.exit_code) + "," +
+        "\"backend_name\":\"" + json_escape(report.backend_name) + "\"," +
+        "\"target_name\":\"" + json_escape(report.target_name) + "\"," +
+        "\"profile_name\":\"" + json_escape(report.profile_name) + "\"," +
+        "\"opt_level\":\"" + json_escape(report.opt_level) + "\"," +
+        "\"packaging\":\"" + json_escape(report.packaging) + "\"," +
+        "\"deterministic\":" + json_bool(report.deterministic) + "," +
+        "\"debug_enabled\":" + json_bool(report.debug_enabled) + "," +
+        "\"emit_debug_sections\":" + json_bool(report.emit_debug_sections) + "," +
+        "\"lto_enabled\":" + json_bool(report.lto_enabled) + "," +
+        "\"pgo_mode\":\"" + json_escape(report.pgo_mode) + "\"," +
+        "\"prefer_native_toolchain\":" + json_bool(report.prefer_native_toolchain) + "," +
+        "\"llvm_toolchain_summary\":\"" + json_escape(report.llvm_toolchain_summary) + "\"," +
+        "\"codegen_object_format\":\"" + json_escape(report.codegen_object_format) + "\"," +
+        "\"codegen_section_count\":" + to_string(report.codegen_section_count) + "," +
+        "\"diagnostic_count\":" + to_string(report.diagnostic_count) + "," +
+        "\"status\":\"" + json_escape(report.status) + "\"," +
+        "\"message\":\"" + json_escape(report.message) + "\"," +
+        "\"entry_symbol\":\"" + json_escape(report.entry_symbol) + "\"," +
+        "\"section_count\":" + to_string(report.section_count) + "," +
+        "\"import_count\":" + to_string(report.import_count) + "," +
+        "\"relocation_count\":" + to_string(report.relocation_count) + "," +
+        "\"resolution_count\":" + to_string(report.resolution_count) + "," +
+        "\"resolved_import_count\":" + to_string(report.resolved_import_count) + "," +
+        "\"unresolved_import_count\":" + to_string(report.unresolved_import_count) + "," +
+        "\"resolved_symbol_count\":" + to_string(report.resolved_symbol_count) + "," +
+        "\"unresolved_symbol_count\":" + to_string(report.unresolved_symbol_count) + "," +
+        "\"debug_section_count\":" + to_string(report.debug_section_count) + "," +
+        "\"text_section_size\":" + to_string(report.text_section_size) + "," +
+        "\"diagnostics\":" + diagnostics_json(report.diagnostics) +
+        "}";
+}
+
+proc module_set_import_count(result: DriverBackendModuleSetResult) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+    while i < len(result.analysis.modules) {
+        set count = count + len(result.analysis.modules[i].imports);
+        set i = i + 1;
+    }
+    give count;
+}
+
 proc run_and_report(command_name: string, source_path: string, source_text: string) -> CompileReport {
+    give run_and_report_with_config(command_name, source_path, source_text, default_compile_config());
+}
+
+proc run_and_report_with_config(command_name: string, source_path: string, source_text: string, config: DriverCompileConfig) -> CompileReport {
     let command: DriverCommand = command_from_text(command_name);
     let driver_result: DriverCompileResult;
     let exit: u64;
 
     if command == DriverCommand.Check {
-        set driver_result = check_source(source_path, source_text);
+        set driver_result = check_source_with_config(source_path, source_text, config);
     } else {
-        set driver_result = compile_source(source_path, source_text);
+        set driver_result = compile_source_with_config(source_path, source_text, config);
     }
     set exit = exit_code(driver_result.status);
 
@@ -121,6 +280,22 @@ proc run_and_report(command_name: string, source_path: string, source_text: stri
         command: command_name,
         source_path: source_path,
         exit_code: exit,
+        backend_name: driver_result.backend_name,
+        target_name: driver_result.target_name,
+        profile_name: driver_result.profile_name,
+        opt_level: driver_result.opt_level,
+        packaging: driver_result.packaging,
+        deterministic: driver_result.deterministic,
+        debug_enabled: driver_result.debug_enabled,
+        emit_debug_sections: driver_result.emit_debug_sections,
+        lto_enabled: driver_result.lto_enabled,
+        pgo_mode: driver_result.pgo_mode,
+        prefer_native_toolchain: driver_result.prefer_native_toolchain,
+        llvm_toolchain_summary: driver_result.llvm_toolchain_summary,
+        codegen_object_format: driver_result.codegen_object_format,
+        codegen_section_count: driver_result.codegen_section_count,
+        diagnostic_count: len(driver_result.diagnostics),
+        diagnostics: driver_result.diagnostics,
         active_modules: active_modules_table(),
         inactive_modules: inactive_modules_table(),
         status: report_status(exit),
@@ -135,14 +310,65 @@ proc run_and_report(command_name: string, source_path: string, source_text: stri
     };
 }
 
+proc run_set_and_report(command_name: string, inputs: [DriverModuleInput]) -> ModuleSetCompileReport {
+    give run_set_and_report_with_config(command_name, inputs, default_compile_config());
+}
+
+proc run_set_and_report_with_config(command_name: string, inputs: [DriverModuleInput], config: DriverCompileConfig) -> ModuleSetCompileReport {
+    let result: DriverBackendModuleSetResult = compile_source_set_with_config(inputs, config);
+    let exit: u64 = 1;
+    let message: string = result.message;
+    if result.valid {
+        set exit = 0;
+    }
+    give ModuleSetCompileReport {
+        command: command_name,
+        module_count: len(inputs),
+        exit_code: exit,
+        backend_name: result.config.backend_name,
+        target_name: result.config.target_name,
+        profile_name: result.config.profile_name,
+        opt_level: result.config.opt_level,
+        packaging: result.config.packaging,
+        deterministic: result.config.deterministic,
+        debug_enabled: result.config.debug_enabled,
+        emit_debug_sections: result.config.emit_debug_sections,
+        lto_enabled: result.config.lto_enabled,
+        pgo_mode: result.config.pgo_mode,
+        prefer_native_toolchain: result.config.prefer_native_toolchain,
+        llvm_toolchain_summary: result.codegen.native_toolchain_summary,
+        codegen_object_format: result.codegen.object_format,
+        codegen_section_count: result.codegen.section_count,
+        diagnostic_count: len(result.diagnostics),
+        diagnostics: result.diagnostics,
+        status: report_status(exit),
+        message: message,
+        entry_symbol: result.entry_symbol,
+        section_count: result.artifact.metadata.section_count,
+        import_count: module_set_import_count(result),
+        relocation_count: result.artifact.metadata.relocation_count,
+        resolution_count: result.artifact.metadata.resolution_count,
+        resolved_import_count: result.artifact.metadata.resolved_import_count,
+        unresolved_import_count: result.artifact.metadata.unresolved_import_count,
+        resolved_symbol_count: result.artifact.metadata.resolved_symbol_count,
+        unresolved_symbol_count: result.artifact.metadata.unresolved_symbol_count,
+        debug_section_count: result.artifact.metadata.debug_section_count,
+        text_section_size: result.artifact.metadata.text_section_size
+    };
+}
+
 proc main_driver(command_name: string, source_path: string, source_text: string) -> CliRunResult {
+    give main_driver_with_config(command_name, source_path, source_text, default_compile_config());
+}
+
+proc main_driver_with_config(command_name: string, source_path: string, source_text: string, config: DriverCompileConfig) -> CliRunResult {
     let command: DriverCommand = command_from_text(command_name);
     let result: DriverCompileResult;
 
     if command == DriverCommand.Check {
-        set result = check_source(source_path, source_text);
+        set result = check_source_with_config(source_path, source_text, config);
     } else {
-        set result = compile_source(source_path, source_text);
+        set result = compile_source_with_config(source_path, source_text, config);
     }
 
     give CliRunResult {
@@ -152,6 +378,47 @@ proc main_driver(command_name: string, source_path: string, source_text: string)
 }
 
 proc main_driver_report_json(command_name: string, source_path: string, source_text: string) -> string {
-    let report: CompileReport = run_and_report(command_name, source_path, source_text);
+    give main_driver_report_json_with_config(command_name, source_path, source_text, default_compile_config());
+}
+
+proc main_driver_report_json_with_config(command_name: string, source_path: string, source_text: string, config: DriverCompileConfig) -> string {
+    let report: CompileReport = run_and_report_with_config(command_name, source_path, source_text, config);
     give compile_report_json(report);
+}
+
+proc main_driver_set(command_name: string, inputs: [DriverModuleInput]) -> CliRunResult {
+    give main_driver_set_with_config(command_name, inputs, default_compile_config());
+}
+
+proc main_driver_set_with_config(command_name: string, inputs: [DriverModuleInput], config: DriverCompileConfig) -> CliRunResult {
+    let command: DriverCommand = command_from_text(command_name);
+    if command == DriverCommand.CompileSet {
+        let result: DriverBackendModuleSetResult = compile_source_set_with_config(inputs, config);
+        let code: u64 = 1;
+        let message: string = result.message;
+        if result.valid {
+            set code = 0;
+        }
+        give CliRunResult {
+            code: code,
+            message: message
+        };
+    }
+    give CliRunResult {
+        code: 1,
+        message: "unsupported module-set command"
+    };
+}
+
+proc main_driver_set_report_json(command_name: string, inputs: [DriverModuleInput]) -> string {
+    give main_driver_set_report_json_with_config(command_name, inputs, default_compile_config());
+}
+
+proc main_driver_set_report_json_with_config(command_name: string, inputs: [DriverModuleInput], config: DriverCompileConfig) -> string {
+    let command: DriverCommand = command_from_text(command_name);
+    if command == DriverCommand.CompileSet {
+        let report: ModuleSetCompileReport = run_set_and_report_with_config(command_name, inputs, config);
+        give module_set_compile_report_json(report);
+    }
+    give "{\"command\":\"" + json_escape(command_name) + "\",\"status\":\"error\",\"message\":\"unsupported module-set command\"}";
 }

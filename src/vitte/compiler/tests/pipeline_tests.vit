@@ -1,12 +1,117 @@
 space vitte/compiler/tests/pipeline_tests
 
-use vitte/compiler/driver/compile.{ compile_source }
+use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverModuleSetArtifacts, analyze_source, analyze_source_set, check_source, compile_source, driver_module_input, dump_hir_resolved, dump_hir_typed, incremental_analysis_graph, lower_mir_source }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
+use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, InvalidationResult, analysis_node_key, invalidate_graph_from_key }
 
-const VERSION_TEXT: string = "compiler pipeline tests 0.1.0"
+const VERSION_TEXT: string = "compiler pipeline tests 0.2.0"
 const BANNER_TEXT: string = "compiler pipeline tests"
-const EXIT_CODE_OK: int = 0
-const EXIT_CODE_FAIL: int = 1
+
+proc test_compile_source_success() -> bool {
+  let source_text: string = "proc main() -> int { give 0 }";
+  let result = compile_source("pipeline_compile_ok.vit", source_text);
+  give result.status == DriverExitStatus.Ok;
+}
+
+proc test_check_source_uses_validated_middle_path() -> bool {
+  let source_text: string = "proc main() { set x = 1; }\n";
+  let result = check_source("pipeline_check_sema_fail.vit", source_text);
+  give result.status == DriverExitStatus.AnalysisFailure;
+}
+
+proc test_lint_warning_is_nonfatal() -> bool {
+  let source_text: string = "proc main() { let mut x = 1; give 0; }\n";
+  let result = check_source("pipeline_lint_warning.vit", source_text);
+  give result.status == DriverExitStatus.Ok;
+}
+
+proc test_check_source_uses_copy_aware_borrowck() -> bool {
+  let source_text: string = "proc main() { let x = 1; let y = x; give x; }\n";
+  let result = check_source("pipeline_copy_aware_borrowck.vit", source_text);
+  give result.status == DriverExitStatus.Ok;
+}
+
+proc test_check_source_releases_branch_borrow_at_scope_end() -> bool {
+  let source_text: string = "proc main() { let x = make_box(); if true { let r = &x; let keep = 0; } set x = make_box(); give x; }\n";
+  let result = check_source("pipeline_scope_aware_borrowck.vit", source_text);
+  give result.status == DriverExitStatus.Ok;
+}
+
+proc test_check_source_allows_partial_move_of_disjoint_field() -> bool {
+  let source_text: string = "proc main() { let x = make_box(); let y = x.left; give x.right; }\n";
+  let result = check_source("pipeline_partial_move_field.vit", source_text);
+  give result.status == DriverExitStatus.Ok;
+}
+
+proc test_check_source_resolved_reference_flow() -> bool {
+  let source_text: string = "proc main() { let x = 1; let r = &x; give r; }\n";
+  let result = check_source("pipeline_resolved_reference_flow.vit", source_text);
+  give result.status == DriverExitStatus.AnalysisFailure;
+}
+
+proc test_analyze_source_exposes_resolved_and_typed_hir() -> bool {
+  let source_text: string = "proc main() { let x = 1; let y = x; give y; }\n";
+  let result: DriverAnalysisArtifacts = analyze_source("pipeline_analyze_hir.vit", source_text);
+  let resolved_expr = result.resolved_hir.module.items[0].stmts[1].expr;
+  let typed_expr = result.typed_hir.module.items[0].stmts[1].expr;
+  give result.valid and resolved_expr.resolved_id > 0 and resolved_expr.binding == "x" and typed_expr.inferred_type == "int" and typed_expr.copyable;
+}
+
+proc test_dump_hir_and_lower_mir_helpers() -> bool {
+  let source_text: string = "proc main() { let x = make_box(); set x.field = 1; give x; }\n";
+  let resolved = dump_hir_resolved("pipeline_dump_resolved.vit", source_text);
+  let typed = dump_hir_typed("pipeline_dump_typed.vit", source_text);
+  let mir = lower_mir_source("pipeline_dump_mir.vit", source_text);
+  give resolved.module.items[0].stmts[1].target_binding == "x.field" and typed.module.items[0].stmts[0].expr.inferred_type != "unknown" and mir.valid and mir.module.functions[0].blocks[0].statements[0].place.projection != "";
+}
+
+proc test_incremental_invalidation_targets_dependents() -> bool {
+  let graph: IncrementalGraph = incremental_analysis_graph("pipeline_incremental.vit");
+  let result: InvalidationResult = invalidate_graph_from_key(graph, analysis_node_key("pipeline_incremental.vit", "typed_hir"));
+  let saw_ir: bool = false;
+  let saw_codegen: bool = false;
+  let saw_link: bool = false;
+  let i: u64 = 0;
+  while i < len(result.invalidated_keys) {
+    if result.invalidated_keys[i] == analysis_node_key("pipeline_incremental.vit", "ir") {
+      set saw_ir = true;
+    }
+    if result.invalidated_keys[i] == analysis_node_key("pipeline_incremental.vit", "codegen") {
+      set saw_codegen = true;
+    }
+    if result.invalidated_keys[i] == analysis_node_key("pipeline_incremental.vit", "link") {
+      set saw_link = true;
+    }
+    set i = i + 1;
+  }
+  give result.valid and len(result.invalidated_keys) >= 6 and saw_ir and saw_codegen and saw_link;
+}
+
+proc test_analyze_source_set_resolves_imported_module() -> bool {
+  let dep: string = "space demo/math;\nexport *;\nproc sum() -> int { give 0; }\n";
+  let root: string = "space demo/app;\nuse demo/math { * };\nproc main() -> int { give sum(); }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_math.vit", dep),
+    driver_module_input("demo_app.vit", root)
+  ]);
+  give artifacts.valid and len(artifacts.modules[1].imports) == 1 and artifacts.modules[1].imports[0] == "demo/math";
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+  if not test_compile_source_success() { set failures = failures + 1; }
+  if not test_check_source_uses_validated_middle_path() { set failures = failures + 1; }
+  if not test_lint_warning_is_nonfatal() { set failures = failures + 1; }
+  if not test_check_source_uses_copy_aware_borrowck() { set failures = failures + 1; }
+  if not test_check_source_releases_branch_borrow_at_scope_end() { set failures = failures + 1; }
+  if not test_check_source_allows_partial_move_of_disjoint_field() { set failures = failures + 1; }
+  if not test_check_source_resolved_reference_flow() { set failures = failures + 1; }
+  if not test_analyze_source_exposes_resolved_and_typed_hir() { set failures = failures + 1; }
+  if not test_dump_hir_and_lower_mir_helpers() { set failures = failures + 1; }
+  if not test_incremental_invalidation_targets_dependents() { set failures = failures + 1; }
+  if not test_analyze_source_set_resolves_imported_module() { set failures = failures + 1; }
+  give failures;
+}
 
 proc version_text() -> string {
   give VERSION_TEXT
@@ -17,14 +122,7 @@ proc banner_text() -> string {
 }
 
 proc main(args: list[string]) -> int {
-  let source_text: string = "proc main() -> int { give 0 }"
-  let result = compile_source("pipeline_test.vit", source_text)
-
-  if result.status == DriverExitStatus.Ok {
-    give EXIT_CODE_OK
-  }
-
-  give EXIT_CODE_FAIL
+  give run_all_tests()
 }
 
 export *

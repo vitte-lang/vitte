@@ -1,0 +1,85 @@
+space vitte/compiler/infrastructure/incremental
+
+use vitte/compiler/infrastructure/incremental/dep_graph.{ IncrementalGraph, IncrementalNode, node_index }
+
+form InvalidationResult {
+  graph: IncrementalGraph
+  invalidated_keys: [string]
+  valid: bool
+}
+
+proc invalidated_keys_add(keys: [string], key: string) -> [string] {
+  let i: u64 = 0;
+  while i < len(keys) {
+    if keys[i] == key {
+      give keys;
+    }
+    set i = i + 1;
+  }
+  give keys + [key];
+}
+
+proc invalidate_node(graph: IncrementalGraph, key: string) -> IncrementalGraph {
+  let nodes: [IncrementalNode] = [];
+  let i: u64 = 0;
+  while i < len(graph.nodes) {
+    let node: IncrementalNode = graph.nodes[i];
+    if node.key == key {
+      set nodes = nodes + [IncrementalNode {
+        key: node.key,
+        kind: node.kind,
+        dependencies: node.dependencies,
+        dependents: node.dependents,
+        generation: node.generation + 1,
+        valid: false
+      }];
+    } else {
+      set nodes = nodes + [node];
+    }
+    set i = i + 1;
+  }
+  give IncrementalGraph {
+    source_path: graph.source_path,
+    nodes: nodes,
+    valid: graph.valid
+  };
+}
+
+proc invalidate_dependents(graph: IncrementalGraph, key: string, invalidated_keys: [string]) -> InvalidationResult {
+  let current_graph: IncrementalGraph = invalidate_node(graph, key);
+  let current_keys: [string] = invalidated_keys_add(invalidated_keys, key);
+  let index: int = node_index(current_graph, key);
+  if index < 0 {
+    give InvalidationResult {
+      graph: graph,
+      invalidated_keys: invalidated_keys,
+      valid: false
+    };
+  }
+
+  let node: IncrementalNode = current_graph.nodes[index as u64];
+  let i: u64 = 0;
+  while i < len(node.dependents) {
+    let nested: InvalidationResult = invalidate_dependents(current_graph, node.dependents[i], current_keys);
+    set current_graph = nested.graph;
+    set current_keys = nested.invalidated_keys;
+    set i = i + 1;
+  }
+
+  give InvalidationResult {
+    graph: current_graph,
+    invalidated_keys: current_keys,
+    valid: true
+  };
+}
+
+proc invalidate_graph_from_key(graph: IncrementalGraph, key: string) -> InvalidationResult {
+  if node_index(graph, key) < 0 {
+    give InvalidationResult {
+      graph: graph,
+      invalidated_keys: [],
+      valid: false
+    };
+  }
+  give invalidate_dependents(graph, key, []);
+}

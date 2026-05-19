@@ -151,7 +151,7 @@ proc emit_mir_function_as_llvm(mir_fn: mir_extended.MirFunction, ctx: *LLVMGenCo
     for i = 0; i < length(mir_fn.body.basic_blocks); i = i + 1 {
       let bb = get_array(mir_fn.body.basic_blocks, i)
       
-      llvm_code = llvm_code + first_bb.label + ":\n"
+      llvm_code = llvm_code + bb.label + ":\n"
       
       // Emit statements
       for j = 0; j < length(bb.statements); j = j + 1 {
@@ -165,11 +165,11 @@ proc emit_mir_function_as_llvm(mir_fn: mir_extended.MirFunction, ctx: *LLVMGenCo
           llvm_code = llvm_code + "  ret i64 0\n"
         }
         mir_extended.TerminatorKind.Goto => {
-          llvm_code = llvm_code + "  br label %" + string_of_int(bb.terminator.target) + "\n"
+          llvm_code = llvm_code + "  br label %bb" + string_of_int(bb.terminator.target) + "\n"
         }
         mir_extended.TerminatorKind.If => {
-          llvm_code = llvm_code + "  br i1 %cond, label %" + string_of_int(bb.terminator.if_true) + 
-                       ", label %" + string_of_int(bb.terminator.if_false) + "\n"
+          llvm_code = llvm_code + "  br i1 %cond, label %bb" + string_of_int(bb.terminator.if_true) +
+                       ", label %bb" + string_of_int(bb.terminator.if_false) + "\n"
         }
         _ => {
           llvm_code = llvm_code + "  ; unknown terminator\n"
@@ -264,10 +264,11 @@ proc emit_mir_to_llvm(mir_crate: mir_extended.MirCrate,
   // Emit runtime stubs
   emit_llvm_runtime_stubs(ctx)
   
-  // Process each item in the crate
-  // In a complete implementation, would handle all item types
-  
-  // For now, emit placeholder
+  // Emit crate metadata and items inventory
+  ctx.ir_buffer = ctx.ir_buffer + "; Crate: " + mir_crate.name + "\n"
+  ctx.ir_buffer = ctx.ir_buffer + "; Items: " + string_of_int(length(mir_crate.items)) + "\n"
+  ctx.ir_buffer = ctx.ir_buffer + "; Intrinsics: " + string_of_int(length(mir_crate.intrinsics)) + "\n"
+  ctx.ir_buffer = ctx.ir_buffer + "; Lang items: " + string_of_int(length(mir_crate.lang_items)) + "\n\n"
   ctx.ir_buffer = ctx.ir_buffer + "; Functions\n"
   
   let opt_flags = get_llvm_optimization_flags(opt_level)

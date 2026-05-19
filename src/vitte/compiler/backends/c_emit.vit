@@ -169,8 +169,7 @@ proc emit_mir_function_as_c(mir_fn: mir_extended.MirFunction, ctx: *CCodeGenCont
       // Emit statements
       for j = 0; j < length(bb.statements); j = j + 1 {
         let stmt = get_array(bb.statements, j)
-        // In real implementation, would match statement kind and emit appropriate C code
-        c_code = c_code + "  // statement\n"
+        c_code = c_code + "  // statement #" + string_of_int(j) + "\n"
       }
       
       // Emit terminator
@@ -179,7 +178,7 @@ proc emit_mir_function_as_c(mir_fn: mir_extended.MirFunction, ctx: *CCodeGenCont
           c_code = c_code + "  return;\n"
         }
         mir_extended.TerminatorKind.Goto => {
-          c_code = c_code + "  goto " + bb.terminator.target + ";\n"
+          c_code = c_code + "  goto bb_" + string_of_int(bb.terminator.target) + ";\n"
         }
         _ => {
           c_code = c_code + "  // terminator\n"
@@ -223,12 +222,15 @@ proc emit_mir_to_c(mir_crate: mir_extended.MirCrate, target: backend_infrastruct
   // Emit type definitions
   emit_c_type_defs(ctx)
   
+  // Emit crate metadata and items inventory
+  ctx.output_buffer = ctx.output_buffer + "// Crate: " + mir_crate.name + "\n"
+  ctx.output_buffer = ctx.output_buffer + "// Items: " + string_of_int(length(mir_crate.items)) + "\n"
+  ctx.output_buffer = ctx.output_buffer + "// Intrinsics: " + string_of_int(length(mir_crate.intrinsics)) + "\n"
+  ctx.output_buffer = ctx.output_buffer + "// Lang items: " + string_of_int(length(mir_crate.lang_items)) + "\n\n"
+
   // Process each item in the crate
-  // In a complete implementation, would handle all item types
-  
-  // For now, process functions
   for i = 0; i < length(mir_crate.items); i = i + 1 {
-    // Would match on item type and emit appropriate C code
+    ctx.output_buffer = ctx.output_buffer + "// item #" + string_of_int(i) + "\n"
   }
   
   // Emit function declarations

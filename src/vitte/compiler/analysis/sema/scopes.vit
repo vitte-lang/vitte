@@ -1,0 +1,80 @@
+space vitte/compiler/analysis/sema
+
+pick SemaSymbolKind {
+  Item,
+  Imported,
+  Local,
+  Builtin,
+  External,
+}
+
+form SemaSymbol {
+  id: u64
+  name: string
+  kind: SemaSymbolKind
+  scope_depth: u64
+  mutable: bool
+  visibility: string
+  line: u64
+  valid: bool
+}
+
+proc sema_symbol(id: u64, name: string, kind: SemaSymbolKind, scope_depth: u64, mutable: bool, visibility: string, line: u64) -> SemaSymbol {
+  give SemaSymbol {
+    id: id,
+    name: name,
+    kind: kind,
+    scope_depth: scope_depth,
+    mutable: mutable,
+    visibility: visibility,
+    line: line,
+    valid: id > 0 and name != ""
+  };
+}
+
+proc symbol_index(symbols: [SemaSymbol], name: string) -> int {
+  let i: int = 0;
+  while i < len(symbols) {
+    if symbols[i].name == name {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc symbol_index_in_scope(symbols: [SemaSymbol], name: string, scope_depth: u64) -> int {
+  let i: int = 0;
+  while i < len(symbols) {
+    if symbols[i].name == name and symbols[i].scope_depth == scope_depth {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc symbol_visible(symbols: [SemaSymbol], name: string) -> bool {
+  give symbol_index(symbols, name) >= 0;
+}
+
+proc symbol_find_visible(symbols: [SemaSymbol], name: string, scope_depth: u64) -> SemaSymbol {
+  let i: int = len(symbols) as int - 1;
+  while i >= 0 {
+    let symbol: SemaSymbol = symbols[i as u64];
+    if symbol.name == name and (symbol.kind != SemaSymbolKind.Local or symbol.scope_depth <= scope_depth) {
+      give symbol;
+    }
+    set i = i - 1;
+  }
+  give sema_symbol(0, "", SemaSymbolKind.Local, 0, false, "", 0);
+}
+
+proc symbol_kind_name(kind: SemaSymbolKind) -> string {
+  if kind == SemaSymbolKind.Item { give "item"; }
+  if kind == SemaSymbolKind.Imported { give "import"; }
+  if kind == SemaSymbolKind.Local { give "local"; }
+  if kind == SemaSymbolKind.Builtin { give "builtin"; }
+  if kind == SemaSymbolKind.External { give "external"; }
+  give "unknown";
+}

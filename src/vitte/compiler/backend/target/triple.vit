@@ -7,11 +7,35 @@ form TargetTriple {
   abi: string
 }
 
-proc triple_x86_64_linux() -> TargetTriple {
+proc target_triple(arch: string, vendor: string, os: string, abi: string) -> TargetTriple {
   give TargetTriple {
-    arch: "x86_64",
-    vendor: "vitte",
-    os: "linux",
-    abi: "gnu"
+    arch: arch,
+    vendor: vendor,
+    os: os,
+    abi: abi
   };
+}
+
+proc triple_x86_64_linux() -> TargetTriple {
+  give target_triple("x86_64", "vitte", "linux", "gnu");
+}
+
+proc triple_aarch64_linux() -> TargetTriple {
+  give target_triple("aarch64", "vitte", "linux", "gnu");
+}
+
+proc triple_riscv64_linux() -> TargetTriple {
+  give target_triple("riscv64", "vitte", "linux", "gnu");
+}
+
+proc triple_i386_linux() -> TargetTriple {
+  give target_triple("i386", "vitte", "linux", "gnu");
+}
+
+proc triple_matches(left: TargetTriple, right: TargetTriple) -> bool {
+  give left.arch == right.arch and left.vendor == right.vendor and left.os == right.os and left.abi == right.abi;
+}
+
+proc triple_text(triple: TargetTriple) -> string {
+  give triple.arch + "-" + triple.vendor + "-" + triple.os + "-" + triple.abi;
 }

@@ -9,6 +9,7 @@
    Vitte — Complete Core Grammar
    systems + application + kernel + compiler surface
    canonical blocks: { }
+   canonical syntax source for parser/docs/tests
    low-level capable
    compiler-capable
    no aliases, reduced duplicates
@@ -339,6 +340,8 @@ stmt_end ::= WS? ";" ;
 
 local_const_stmt ::= "const" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
 let_stmt ::= "let" WS1 [ "mut" WS1 ] pattern [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
+<<< assign_target stays intentionally syntactic here; projection validity and aliasing
+    are enforced later by sema/typeck/borrowck on structured HIR/MIR places. >>>
 set_stmt ::= "set" WS1 assign_target WS? assign_op WS? expr ;
 assign_target ::= unary_expr ;
 
@@ -414,10 +417,14 @@ mul_expr ::= cast_expr { WS? ( "*" | "/" | "%" ) WS? cast_expr } ;
 
 cast_expr ::= unary_expr { WS? ( "as" WS? type_expr | "is" WS? pattern | "is" WS1 "not" WS1 pattern ) } ;
 
+<<< unary borrow and move syntax are accepted at parse time; whether a use is
+    actually a copy or a move is decided later from inferred types. >>>
 unary_expr ::= ( "not" | "-" | "~" | "*" | "&" | "move" | "await" ) WS? unary_expr
              | postfix_expr
              ;
 
+<<< postfix chains define the full place surface used later by ownership and
+    borrow analysis: field projection, indexing, call, try and await suffixes. >>>
 postfix_expr ::= primary { call_suffix | member_suffix | index_suffix | try_suffix | await_suffix } ;
 call_suffix ::= "(" WS? arg_list? WS? ")" ;
 member_suffix ::= "." ident ;
@@ -552,6 +559,8 @@ type_atom ::= reference_type
             | type_primary
             ;
 
+<<< shared and mutable references are part of the core surface grammar; lifetime,
+    aliasing and region closure remain semantic checks outside the parser. >>>
 reference_type ::= "&" WS? [ lifetime WS? ] [ "mut" WS1 ] type_expr ;
 pointer_type ::= "*" WS? [ "const" WS1 | "mut" WS1 | "volatile" WS1 | addr_space WS1 ] type_expr ;
 optional_type ::= "?" WS? type_expr ;

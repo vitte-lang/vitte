@@ -1,0 +1,151 @@
+space vitte/compiler/backend/codegen
+
+use vitte/compiler/backend/ir/ir.{ IrLinkage, IrUnit }
+
+proc pseudo_object_section_count() -> u64 {
+  give 5;
+}
+
+proc pseudo_linkage_text(linkage: IrLinkage) -> string {
+  if linkage == IrLinkage.Exported {
+    give "exported";
+  }
+  if linkage == IrLinkage.Imported {
+    give "imported";
+  }
+  if linkage == IrLinkage.External {
+    give "external";
+  }
+  if linkage == IrLinkage.Private {
+    give "private";
+  }
+  give "internal";
+}
+
+proc pseudo_entry_symbol(unit: IrUnit) -> string {
+  let i: u64 = 0;
+  while i < len(unit.modules) {
+    let module0 = unit.modules[i];
+    let j: u64 = 0;
+    while j < len(module0.functions) {
+      if module0.functions[j].is_entry {
+        give module0.functions[j].name;
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give "";
+}
+
+proc pseudo_symbol_table(unit: IrUnit) -> string {
+  let text: string = "";
+  let built: string = text;
+  let i: u64 = 0;
+  while i < len(unit.modules) {
+    let module0 = unit.modules[i];
+    let j: u64 = 0;
+    while j < len(module0.functions) {
+      if built != "" {
+        set built = built + "\n";
+      }
+      let fn0 = module0.functions[j];
+      let entry_text: string = if fn0.is_entry { "true" } else { "false" };
+      set built = built +
+        module0.name + "::" + fn0.name +
+        " linkage=" + pseudo_linkage_text(fn0.linkage) +
+        " blocks=" + (len(fn0.blocks) as string) +
+        " entry=" + entry_text;
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give built;
+}
+
+proc pseudo_string_table(unit: IrUnit) -> string {
+  let text: string = "";
+  let built: string = text;
+  if unit.source_path != "" {
+    set built = unit.source_path;
+  }
+  let i: u64 = 0;
+  while i < len(unit.modules) {
+    let module0 = unit.modules[i];
+    if built != "" {
+      set built = built + "\n";
+    }
+    set built = built + module0.name;
+    let j: u64 = 0;
+    while j < len(module0.functions) {
+      set built = built + "\n" + module0.functions[j].name;
+      set j = j + 1;
+    }
+    j = 0;
+    while j < len(module0.imports) {
+      set built = built + "\nimport:" + module0.imports[j];
+      set j = j + 1;
+    }
+    j = 0;
+    while j < len(module0.external_symbols) {
+      set built = built + "\nextern:" + module0.external_symbols[j];
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give built;
+}
+
+proc pseudo_relocation_table(unit: IrUnit) -> string {
+  let text: string = "";
+  let built: string = text;
+  let i: u64 = 0;
+  while i < len(unit.modules) {
+    let module0 = unit.modules[i];
+    let j: u64 = 0;
+    while j < len(module0.external_symbols) {
+      if built != "" {
+        set built = built + "\n";
+      }
+      set built = built + module0.name + " -> " + module0.external_symbols[j] + " section=.text";
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give built;
+}
+
+proc pseudo_debug_section(unit: IrUnit) -> string {
+  let entry_symbol: string = pseudo_entry_symbol(unit);
+  let text: string =
+    "source=" + unit.source_path + "\n" +
+    "target=" + unit.target.triple.arch + "-" + unit.target.triple.os + "\n" +
+    "pointer_width=" + (unit.target.pointer_width as string) + "\n" +
+    "module_count=" + (len(unit.modules) as string) + "\n" +
+    "entry_symbol=" + entry_symbol + "\n" +
+    "entry_function_id=" + (unit.entry_function_id as string) + "\n" +
+    "data_layout=" + unit.target.data_layout;
+  give text;
+}
+
+proc build_pseudo_object_text(unit: IrUnit, assembly: string) -> string {
+  let target_name: string = unit.target.triple.arch + "-" + unit.target.triple.os;
+  let symtab: string = pseudo_symbol_table(unit);
+  let strtab: string = pseudo_string_table(unit);
+  let relocs: string = pseudo_relocation_table(unit);
+  let debug_info: string = pseudo_debug_section(unit);
+  let entry_symbol: string = pseudo_entry_symbol(unit);
+  let text: string =
+    "pseudo-object\n" +
+    "format=elf-pseudo\n" +
+    "target=" + target_name + "\n" +
+    "module_count=" + (len(unit.modules) as string) + "\n" +
+    "entry_symbol=" + entry_symbol + "\n" +
+    "section_count=" + (pseudo_object_section_count() as string) + "\n" +
+    "[.text]\n" + assembly + "\n" +
+    "[.symtab]\n" + symtab + "\n" +
+    "[.strtab]\n" + strtab + "\n" +
+    "[.rela.text]\n" + relocs + "\n" +
+    "[.debug_info]\n" + debug_info;
+  give text;
+}

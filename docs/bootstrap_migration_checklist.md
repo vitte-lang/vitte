@@ -54,6 +54,10 @@ Exit criteria:
 - `vitte-source-audit` passes with no host-language exceptions.
 - Bootstrap flow is fully Vitte-native and reproducible.
 
+## Bootstrap runtime integration tasks
+
+- [ ] See `MISSING_BOOTSTRAP_RUNTIME_TASKS.md` for the complete list of runtime and timestamp integration work still open in `toolchain/src/bootstrap_vitte`.
+
 ## Operational guardrails during migration
 
 - Keep `seed-compat-report` tracked in CI artifacts.

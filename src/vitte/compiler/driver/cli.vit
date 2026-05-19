@@ -1,9 +1,45 @@
 space vitte/compiler/driver
 
-use vitte/compiler/driver/compile.{ DriverCompileResult, compile_source, check_source }
+use vitte/compiler/driver/compile.{ DriverCompileConfig, DriverCompileResult, DriverModuleInput, check_source, check_source_with_config, compile_source, compile_source_set, compile_source_set_with_config, compile_source_with_config, driver_compile_config_full, profile_emit_debug_sections, profile_lto_enabled, profile_opt_level, profile_packaging, profile_pgo_mode }
+use vitte/compiler/backends/llvm_bindings.{ LlvmToolchainPaths, default_llvm_toolchain_paths, llvm_toolchain_paths }
 use vitte/compiler/driver/exit_status.{ exit_code }
-use vitte/compiler/driver/pipeline.{ CompileReport, run_and_report, compile_report_json }
-use vitte/compiler/driver/result.{ CliRunResult, CliReportResult }
+use vitte/compiler/driver/pipeline.{ CompileReport, ModuleSetCompileReport, compile_report_json, module_set_compile_report_json, run_and_report, run_and_report_with_config, run_set_and_report, run_set_and_report_with_config }
+use vitte/compiler/driver/result.{ CliReportResult, CliRunResult }
+
+form CompileSetManifest {
+    config: DriverCompileConfig
+    inputs: [DriverModuleInput]
+    valid: bool
+}
+
+proc bool_from_text(text: string) -> bool {
+    give text == "true" or text == "1" or text == "yes" or text == "on";
+}
+
+proc decode_manifest_source(text: string) -> string {
+    let decoded: string = "";
+    let i: u64 = 0;
+    while i < len(text) {
+        let rest: string = slice(text, i, len(text));
+        if starts_with(rest, "\\n") {
+            set decoded = decoded + "\n";
+            set i = i + 2;
+        } elif starts_with(rest, "\\t") {
+            set decoded = decoded + "\t";
+            set i = i + 2;
+        } elif starts_with(rest, "\\r") {
+            set decoded = decoded + "\r";
+            set i = i + 2;
+        } elif starts_with(rest, "\\\\") {
+            set decoded = decoded + "\\";
+            set i = i + 2;
+        } else {
+            set decoded = decoded + slice(text, i, i + 1);
+            set i = i + 1;
+        }
+    }
+    give decoded;
+}
 
 proc run_compile_cli(source_path: string, source_text: string) -> CliRunResult {
     let result: DriverCompileResult = compile_source(source_path, source_text);
@@ -14,8 +50,26 @@ proc run_compile_cli(source_path: string, source_text: string) -> CliRunResult {
     };
 }
 
+proc run_compile_with_config_cli(source_path: string, source_text: string, config: DriverCompileConfig) -> CliRunResult {
+    let result: DriverCompileResult = compile_source_with_config(source_path, source_text, config);
+
+    give CliRunResult {
+        code: exit_code(result.status),
+        message: result.message
+    };
+}
+
 proc run_check_cli(source_path: string, source_text: string) -> CliRunResult {
     let result: DriverCompileResult = check_source(source_path, source_text);
+
+    give CliRunResult {
+        code: exit_code(result.status),
+        message: result.message
+    };
+}
+
+proc run_check_with_config_cli(source_path: string, source_text: string, config: DriverCompileConfig) -> CliRunResult {
+    let result: DriverCompileResult = check_source_with_config(source_path, source_text, config);
 
     give CliRunResult {
         code: exit_code(result.status),
@@ -33,6 +87,16 @@ proc run_compile_report_cli(source_path: string, source_text: string) -> CliRepo
     };
 }
 
+proc run_compile_report_with_config_cli(source_path: string, source_text: string, config: DriverCompileConfig) -> CliReportResult {
+    let report: CompileReport = run_and_report_with_config("compile", source_path, source_text, config);
+
+    give CliReportResult {
+        code: report.exit_code,
+        message: report.status,
+        report_json: compile_report_json(report)
+    };
+}
+
 proc run_check_report_cli(source_path: string, source_text: string) -> CliReportResult {
     let report: CompileReport = run_and_report("check", source_path, source_text);
 
@@ -41,4 +105,164 @@ proc run_check_report_cli(source_path: string, source_text: string) -> CliReport
         message: report.status,
         report_json: compile_report_json(report)
     };
+}
+
+proc run_check_report_with_config_cli(source_path: string, source_text: string, config: DriverCompileConfig) -> CliReportResult {
+    let report: CompileReport = run_and_report_with_config("check", source_path, source_text, config);
+
+    give CliReportResult {
+        code: report.exit_code,
+        message: report.status,
+        report_json: compile_report_json(report)
+    };
+}
+
+proc run_compile_set_cli(inputs: [DriverModuleInput]) -> CliRunResult {
+    let result = compile_source_set(inputs);
+    let code: u64 = 1;
+    let message: string = result.message;
+    if result.valid {
+        set code = 0;
+    }
+    give CliRunResult {
+        code: code,
+        message: message
+    };
+}
+
+proc run_compile_set_with_config_cli(inputs: [DriverModuleInput], config: DriverCompileConfig) -> CliRunResult {
+    let result = compile_source_set_with_config(inputs, config);
+    let code: u64 = 1;
+    if result.valid {
+        set code = 0;
+    }
+    give CliRunResult {
+        code: code,
+        message: result.message
+    };
+}
+
+proc run_compile_set_report_cli(inputs: [DriverModuleInput]) -> CliReportResult {
+    let report: ModuleSetCompileReport = run_set_and_report("compile-set", inputs);
+    give CliReportResult {
+        code: report.exit_code,
+        message: report.status,
+        report_json: module_set_compile_report_json(report)
+    };
+}
+
+proc run_compile_set_report_with_config_cli(inputs: [DriverModuleInput], config: DriverCompileConfig) -> CliReportResult {
+    let report: ModuleSetCompileReport = run_set_and_report_with_config("compile-set", inputs, config);
+    give CliReportResult {
+        code: report.exit_code,
+        message: report.status,
+        report_json: module_set_compile_report_json(report)
+    };
+}
+
+proc parse_compile_set_manifest(manifest_text: string) -> CompileSetManifest {
+    let backend_name: string = "x86_64";
+    let target_name: string = "x86_64-linux";
+    let profile_name: string = "enterprise-default";
+    let opt_level: string = "";
+    let packaging: string = "";
+    let deterministic: bool = true;
+    let debug_enabled: bool = true;
+    let emit_debug_sections: bool = true;
+    let lto_enabled: bool = false;
+    let pgo_mode: string = "off";
+    let prefer_native_toolchain: bool = false;
+    let llvm_toolchain: LlvmToolchainPaths = default_llvm_toolchain_paths();
+    let explicit_opt_level: bool = false;
+    let explicit_packaging: bool = false;
+    let explicit_emit_debug_sections: bool = false;
+    let explicit_lto: bool = false;
+    let explicit_pgo: bool = false;
+    let inputs: [DriverModuleInput] = [];
+    let lines = split(manifest_text, "\n");
+    let i: u64 = 0;
+    while i < len(lines) {
+        let line: string = trim(lines[i]);
+        if starts_with(line, "@backend=") {
+            set backend_name = trim(slice(line, 9, len(line)));
+        } elif starts_with(line, "@target=") {
+            set target_name = trim(slice(line, 8, len(line)));
+        } elif starts_with(line, "@profile=") {
+            set profile_name = trim(slice(line, 9, len(line)));
+        } elif starts_with(line, "@opt-level=") {
+            set opt_level = trim(slice(line, 11, len(line)));
+            set explicit_opt_level = true;
+        } elif starts_with(line, "@packaging=") {
+            set packaging = trim(slice(line, 11, len(line)));
+            set explicit_packaging = true;
+        } elif starts_with(line, "@deterministic=") {
+            set deterministic = bool_from_text(trim(slice(line, 15, len(line))));
+        } elif starts_with(line, "@debug=") {
+            set debug_enabled = bool_from_text(trim(slice(line, 7, len(line))));
+        } elif starts_with(line, "@emit-debug-sections=") {
+            set emit_debug_sections = bool_from_text(trim(slice(line, 21, len(line))));
+            set explicit_emit_debug_sections = true;
+        } elif starts_with(line, "@lto=") {
+            set lto_enabled = bool_from_text(trim(slice(line, 5, len(line))));
+            set explicit_lto = true;
+        } elif starts_with(line, "@pgo=") {
+            set pgo_mode = trim(slice(line, 5, len(line)));
+            set explicit_pgo = true;
+        } elif starts_with(line, "@native-llvm=") {
+            set prefer_native_toolchain = bool_from_text(trim(slice(line, 13, len(line))));
+        } elif starts_with(line, "@clang=") {
+            set llvm_toolchain = llvm_toolchain_paths(trim(slice(line, 7, len(line))), llvm_toolchain.lld_path, llvm_toolchain.llvm_as_path, llvm_toolchain.llc_path, llvm_toolchain.llvm_mc_path, llvm_toolchain.ar_path);
+        } elif starts_with(line, "@lld=") {
+            set llvm_toolchain = llvm_toolchain_paths(llvm_toolchain.clang_path, trim(slice(line, 5, len(line))), llvm_toolchain.llvm_as_path, llvm_toolchain.llc_path, llvm_toolchain.llvm_mc_path, llvm_toolchain.ar_path);
+        } elif starts_with(line, "@llvm-as=") {
+            set llvm_toolchain = llvm_toolchain_paths(llvm_toolchain.clang_path, llvm_toolchain.lld_path, trim(slice(line, 9, len(line))), llvm_toolchain.llc_path, llvm_toolchain.llvm_mc_path, llvm_toolchain.ar_path);
+        } elif starts_with(line, "@llc=") {
+            set llvm_toolchain = llvm_toolchain_paths(llvm_toolchain.clang_path, llvm_toolchain.lld_path, llvm_toolchain.llvm_as_path, trim(slice(line, 5, len(line))), llvm_toolchain.llvm_mc_path, llvm_toolchain.ar_path);
+        } elif starts_with(line, "@llvm-mc=") {
+            set llvm_toolchain = llvm_toolchain_paths(llvm_toolchain.clang_path, llvm_toolchain.lld_path, llvm_toolchain.llvm_as_path, llvm_toolchain.llc_path, trim(slice(line, 9, len(line))), llvm_toolchain.ar_path);
+        } elif starts_with(line, "@ar=") {
+            set llvm_toolchain = llvm_toolchain_paths(llvm_toolchain.clang_path, llvm_toolchain.lld_path, llvm_toolchain.llvm_as_path, llvm_toolchain.llc_path, llvm_toolchain.llvm_mc_path, trim(slice(line, 4, len(line))));
+        } elif line != "" and find(line, "=") > 0 {
+            let pivot: int = find(line, "=");
+            let path: string = trim(slice(line, 0, pivot));
+            let source: string = decode_manifest_source(slice(line, pivot + 1, len(line)));
+            set inputs = inputs + [DriverModuleInput {
+                source_path: path,
+                source_text: source,
+                valid: path != ""
+            }];
+        }
+        set i = i + 1;
+    }
+    if not explicit_opt_level {
+        set opt_level = profile_opt_level(profile_name);
+    }
+    if not explicit_packaging {
+        set packaging = profile_packaging(profile_name);
+    }
+    if not explicit_emit_debug_sections {
+        set emit_debug_sections = profile_emit_debug_sections(profile_name, debug_enabled);
+    }
+    if not explicit_lto {
+        set lto_enabled = profile_lto_enabled(profile_name);
+    }
+    if not explicit_pgo {
+        set pgo_mode = profile_pgo_mode(profile_name);
+    }
+    let config: DriverCompileConfig = driver_compile_config_full(backend_name, target_name, profile_name, opt_level, packaging, deterministic, debug_enabled, emit_debug_sections, lto_enabled, pgo_mode, prefer_native_toolchain, llvm_toolchain);
+    give CompileSetManifest {
+        config: config,
+        inputs: inputs,
+        valid: len(inputs) > 0
+    };
+}
+
+proc run_compile_set_manifest_cli(manifest_text: string) -> CliRunResult {
+    let manifest: CompileSetManifest = parse_compile_set_manifest(manifest_text);
+    give run_compile_set_with_config_cli(manifest.inputs, manifest.config);
+}
+
+proc run_compile_set_manifest_report_cli(manifest_text: string) -> CliReportResult {
+    let manifest: CompileSetManifest = parse_compile_set_manifest(manifest_text);
+    give run_compile_set_report_with_config_cli(manifest.inputs, manifest.config);
 }

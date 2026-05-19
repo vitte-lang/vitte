@@ -66,10 +66,27 @@ proc test_mir_cfg_if_while() -> bool {
   give branch_count >= 2 and goto_count >= 2;
 }
 
+proc test_mir_preserves_projected_place() -> bool {
+  let source: string = "proc main() { set x.field = x.field; give x.field; }\n";
+  let fe: FrontendOutput = frontend_run("mir_projection_test.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let mir = lower_hir_to_mir(hir);
+  if not mir.valid or len(mir.module.functions) == 0 {
+    give false;
+  }
+  let fn0 = mir.module.functions[0];
+  if len(fn0.blocks) == 0 or len(fn0.blocks[0].statements) == 0 {
+    give false;
+  }
+  let stmt0 = fn0.blocks[0].statements[0];
+  give stmt0.place.local == "x" and stmt0.place.projection == "field";
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_mir_lowering() { set failures = failures + 1; }
   if not test_mir_cfg_if_while() { set failures = failures + 1; }
+  if not test_mir_preserves_projected_place() { set failures = failures + 1; }
   give failures;
 }
 

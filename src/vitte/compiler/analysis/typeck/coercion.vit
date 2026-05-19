@@ -1,0 +1,107 @@
+space vitte/compiler/analysis/typeck
+
+use vitte/compiler/analysis/typeck/traits.{ type_is_numeric }
+
+proc type_deref_target(ty: string) -> string {
+  if starts_with(ty, "&mut ") {
+    give trim(slice(ty, 5, len(ty)));
+  }
+  if starts_with(ty, "&") {
+    give trim(slice(ty, 1, len(ty)));
+  }
+  give "unknown";
+}
+
+proc type_index_element(ty: string) -> string {
+  if ty == "string" or ty == "str" {
+    give "char";
+  }
+  if ty == "bytes" {
+    give "u8";
+  }
+  if len(ty) >= 2 and slice(ty, 0, 1) == "[" and slice(ty, len(ty) - 1, len(ty)) == "]" {
+    let inner: string = trim(slice(ty, 1, len(ty) - 1));
+    let semi: int = find(inner, ";");
+    if semi >= 0 {
+      give trim(slice(inner, 0, semi));
+    }
+    give inner;
+  }
+  give "opaque";
+}
+
+proc types_compatible(left: string, right: string) -> bool {
+  if left == right {
+    give true;
+  }
+  if left == "opaque" or right == "opaque" {
+    give true;
+  }
+  if type_is_numeric(left) and type_is_numeric(right) {
+    give true;
+  }
+  give false;
+}
+
+proc projection_member_name(text: string, fallback: string) -> string {
+  if fallback != "" {
+    give fallback;
+  }
+  let dot: int = find(text, ".");
+  if dot < 0 {
+    give "";
+  }
+  give trim(slice(text, dot + 1, len(text)));
+}
+
+proc project_place_type(base_ty: string, place_name: string) -> string {
+  let current: string = base_ty;
+  let text: string = trim(place_name);
+  let i: u64 = 0;
+  while i < len(text) and slice(text, i, i + 1) == "*" {
+    set current = type_deref_target(current);
+    set i = i + 1;
+  }
+  while i < len(text) {
+    let ch: string = slice(text, i, i + 1);
+    if ch == "." {
+      let start: u64 = i + 1;
+      let end0: u64 = start;
+      while end0 < len(text) {
+        let token: string = slice(text, end0, end0 + 1);
+        let alpha: bool = (token >= "a" and token <= "z") or (token >= "A" and token <= "Z") or token == "_" or (token >= "0" and token <= "9");
+        if not alpha {
+          break;
+        }
+        set end0 = end0 + 1;
+      }
+      let member: string = trim(slice(text, start, end0));
+      if member == "len" {
+        set current = "int";
+      } else {
+        set current = "opaque";
+      }
+      set i = end0;
+      continue;
+    }
+    if ch == "[" {
+      let end0: u64 = i + 1;
+      while end0 < len(text) and slice(text, end0, end0 + 1) != "]" {
+        set end0 = end0 + 1;
+      }
+      set current = type_index_element(current);
+      if end0 >= len(text) {
+        give current;
+      }
+      set i = end0 + 1;
+      continue;
+    }
+    if ch == "*" {
+      set current = type_deref_target(current);
+      set i = i + 1;
+      continue;
+    }
+    set i = i + 1;
+  }
+  give current;
+}

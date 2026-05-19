@@ -80,8 +80,12 @@ proc diagnostic_create(
   fatal: bool
 ) -> BorrowDiagnostic {
   let severity: BorrowSeverity = BorrowSeverity.Error;
+  let length: u64 = 1;
   if not fatal {
     set severity = BorrowSeverity.Warning;
+  }
+  if len(labels) > 0 and labels[0] != "" {
+    set length = len(labels[0]) as u64;
   }
 
   give BorrowDiagnostic {
@@ -91,7 +95,7 @@ proc diagnostic_create(
     message: message,
     labels: labels,
     suggestion: suggestion,
-    span: span_create(file, line, 1, 1),
+    span: span_create(file, line, 1, length),
     entity: BORROWCK_INVALID_ID,
     fatal: fatal
   };

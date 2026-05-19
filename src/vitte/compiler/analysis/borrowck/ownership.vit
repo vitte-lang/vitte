@@ -56,6 +56,14 @@ form OwnershipTable {
   valid: bool
 }
 
+proc is_ident_start(ch: string) -> bool {
+  give (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_";
+}
+
+proc is_ident_continue(ch: string) -> bool {
+  give is_ident_start(ch) or (ch >= "0" and ch <= "9");
+}
+
 proc place_local(name: string) -> Place {
   give Place {
     root: name,
@@ -66,15 +74,138 @@ proc place_local(name: string) -> Place {
   };
 }
 
+proc place_named(name: string) -> Place {
+  let trimmed: string = trim(name);
+  if trimmed == "" {
+    give place_local("");
+  }
+
+  let projection: [string] = [];
+  let kind: PlaceKind = PlaceKind.Local;
+  let i: u64 = 0;
+  while i < len(trimmed) and slice(trimmed, i, i + 1) == "*" {
+    set projection = projection + ["*"];
+    set kind = PlaceKind.Deref;
+    set i = i + 1;
+  }
+
+  let root: string = "";
+  let start: u64 = i;
+  while i < len(trimmed) and is_ident_continue(slice(trimmed, i, i + 1)) {
+    set i = i + 1;
+  }
+  if i > start {
+    set root = slice(trimmed, start, i);
+  }
+  if root == "" {
+    give place_local("");
+  }
+
+  while i < len(trimmed) {
+    let ch: string = slice(trimmed, i, i + 1);
+    if ch == "." {
+      let member_start: u64 = i + 1;
+      let member_end: u64 = member_start;
+      while member_end < len(trimmed) and is_ident_continue(slice(trimmed, member_end, member_end + 1)) {
+        set member_end = member_end + 1;
+      }
+      if member_end == member_start {
+        break;
+      }
+      set projection = projection + [slice(trimmed, member_start, member_end)];
+      if kind == PlaceKind.Local {
+        set kind = PlaceKind.Field;
+      }
+      set i = member_end;
+      continue;
+    }
+    if ch == "[" {
+      let end_index: u64 = i + 1;
+      while end_index < len(trimmed) and slice(trimmed, end_index, end_index + 1) != "]" {
+        set end_index = end_index + 1;
+      }
+      if end_index >= len(trimmed) {
+        break;
+      }
+      set projection = projection + [slice(trimmed, i, end_index + 1)];
+      if kind == PlaceKind.Local {
+        set kind = PlaceKind.Index;
+      }
+      set i = end_index + 1;
+      continue;
+    }
+    break;
+  }
+
+  give Place {
+    root: root,
+    projection: projection,
+    kind: kind,
+    mutable: true,
+    valid: root != ""
+  };
+}
+
+proc place_key(place: Place) -> string {
+  if not place.valid {
+    give "";
+  }
+
+  let prefix: string = "";
+  let name: string = place.root;
+  let i: u64 = 0;
+  while i < len(place.projection) {
+    let segment: string = place.projection[i];
+    if segment == "*" {
+      set prefix = prefix + "*";
+    } elif starts_with(segment, "[") {
+      set name = name + segment;
+    } else {
+      set name = name + "." + segment;
+    }
+    set i = i + 1;
+  }
+  give prefix + name;
+}
+
+proc place_prefix(prefix: Place, target: Place) -> bool {
+  if not prefix.valid or not target.valid or prefix.root != target.root {
+    give false;
+  }
+  if len(prefix.projection) > len(target.projection) {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(prefix.projection) {
+    if prefix.projection[i] != target.projection[i] {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc place_overlap(left: Place, right: Place) -> bool {
+  if not left.valid or not right.valid {
+    give false;
+  }
+  if left.root != right.root {
+    give false;
+  }
+  give place_prefix(left, right) or place_prefix(right, left);
+}
+
 proc local_state_create(name: string, line: u64) -> LocalState {
+  let place: Place = place_named(name);
+  let key: string = place_key(place);
   give LocalState {
-    name: name,
-    place: place_local(name),
+    name: key,
+    place: place,
     state: LocalStateKind.Available,
     shared_borrows: 0,
     mutable_borrowed: false,
     last_line: line,
-    valid: name != ""
+    valid: key != ""
   };
 }
 
@@ -92,13 +223,14 @@ proc local_state_uninitialized(name: string, line: u64) -> LocalState {
 }
 
 proc ownership_fact(owner: string, state: OwnershipStateKind, line: u64, detail: string) -> OwnershipFact {
+  let place: Place = place_named(owner);
   give OwnershipFact {
-    owner: owner,
-    place: place_local(owner),
+    owner: place_key(place),
+    place: place,
     state: state,
     line: line,
     detail: detail,
-    valid: owner != ""
+    valid: place.valid
   };
 }
 
@@ -111,9 +243,10 @@ proc ownership_table_empty() -> OwnershipTable {
 }
 
 proc index_of_local(table: OwnershipTable, name: string) -> int {
+  let key: string = place_key(place_named(name));
   let i: int = 0;
   while i < len(table.locals) {
-    if table.locals[i].name == name {
+    if table.locals[i].name == key {
       give i;
     }
     set i = i + 1;
@@ -181,11 +314,14 @@ proc add_fact(table: OwnershipTable, fact: OwnershipFact) -> OwnershipTable {
 
 proc declare_local(table: OwnershipTable, name: string, line: u64, initialized: bool) -> OwnershipTable {
   let state: LocalState = local_state_create(name, line);
+  if not state.valid {
+    give table;
+  }
   if not initialized {
     set state = local_state_uninitialized(name, line);
   }
   let current: OwnershipTable = replace_local(table, state);
-  give add_fact(current, ownership_fact(name, OwnershipStateKind.Declared, line, "declare local"));
+  give add_fact(current, ownership_fact(state.name, OwnershipStateKind.Declared, line, "declare local"));
 }
 
 proc mark_moved(table: OwnershipTable, name: string, line: u64) -> OwnershipTable {

@@ -1,3 +1,281 @@
 space vitte/compiler/frontend/ast/expr
 
-use vitte/compiler/frontend/ast/node
+use vitte/compiler/frontend/ast/node.{ AstId, AstSpan, ast_id, ast_span_empty }
+use vitte/compiler/frontend/ast/type_expr.{ AstTypeExpr, ast_type_empty }
+
+pick AstExprKind {
+  Unknown,
+  Name,
+  Int,
+  Float,
+  Bool,
+  String,
+  Char,
+  Binary,
+  Unary,
+  Call,
+  Index,
+  Member,
+  BorrowShared,
+  BorrowMut,
+  Deref,
+  If,
+  Match,
+  Block,
+  Lambda,
+  Struct,
+  Array,
+  Tuple,
+  Range,
+  Cast,
+  Is,
+  Try,
+  Sizeof,
+  Alignof,
+  Offsetof,
+  Typeof,
+  Nameof,
+}
+
+form AstExpr {
+  id: AstId
+  span: AstSpan
+  kind: AstExprKind
+  text: string
+  name: string
+  operator: string
+  binding_name: string
+  member_name: string
+  subject_index: u64
+  callee_index: u64
+  lhs_index: u64
+  rhs_index: u64
+  base_index: u64
+  index_index: u64
+  children: [AstExpr]
+  type_annotation: AstTypeExpr
+  valid: bool
+}
+
+proc ast_expr_unknown(id: u64, span: AstSpan, text: string) -> AstExpr {
+  give AstExpr {
+    id: ast_id(id),
+    span: span,
+    kind: AstExprKind.Unknown,
+    text: text,
+    name: "",
+    operator: "",
+    binding_name: "",
+    member_name: "",
+    subject_index: 0,
+    callee_index: 0,
+    lhs_index: 0,
+    rhs_index: 0,
+    base_index: 0,
+    index_index: 0,
+    children: [],
+    type_annotation: ast_type_empty(),
+    valid: false
+  };
+}
+
+proc ast_expr_leaf(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string) -> AstExpr {
+  let binding_name: string = if kind == AstExprKind.Name { name } else { "" };
+  give AstExpr {
+    id: ast_id(id),
+    span: span,
+    kind: kind,
+    text: text,
+    name: name,
+    operator: "",
+    binding_name: binding_name,
+    member_name: "",
+    subject_index: 0,
+    callee_index: 0,
+    lhs_index: 0,
+    rhs_index: 0,
+    base_index: 0,
+    index_index: 0,
+    children: [],
+    type_annotation: ast_type_empty(),
+    valid: true
+  };
+}
+
+proc ast_expr_node(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr]) -> AstExpr {
+  let binding_name: string = if kind == AstExprKind.Name { name } else { "" };
+  give AstExpr {
+    id: ast_id(id),
+    span: span,
+    kind: kind,
+    text: text,
+    name: name,
+    operator: operator,
+    binding_name: binding_name,
+    member_name: "",
+    subject_index: 0,
+    callee_index: 0,
+    lhs_index: 0,
+    rhs_index: 0,
+    base_index: 0,
+    index_index: 0,
+    children: children,
+    type_annotation: ast_type_empty(),
+    valid: true
+  };
+}
+
+proc ast_expr_typed(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr], annotation: AstTypeExpr) -> AstExpr {
+  let node: AstExpr = ast_expr_node(id, span, kind, text, name, operator, children);
+  give AstExpr {
+    id: node.id,
+    span: node.span,
+    kind: node.kind,
+    text: node.text,
+    name: node.name,
+    operator: node.operator,
+    binding_name: node.binding_name,
+    member_name: node.member_name,
+    subject_index: node.subject_index,
+    callee_index: node.callee_index,
+    lhs_index: node.lhs_index,
+    rhs_index: node.rhs_index,
+    base_index: node.base_index,
+    index_index: node.index_index,
+    children: node.children,
+    type_annotation: annotation,
+    valid: true
+  };
+}
+
+proc ast_expr_unary(id: u64, span: AstSpan, kind: AstExprKind, text: string, operator: string, subject: AstExpr) -> AstExpr {
+  let node: AstExpr = ast_expr_node(id, span, kind, text, "", operator, [subject]);
+  give AstExpr {
+    id: node.id,
+    span: node.span,
+    kind: node.kind,
+    text: node.text,
+    name: node.name,
+    operator: node.operator,
+    binding_name: node.binding_name,
+    member_name: "",
+    subject_index: 0,
+    callee_index: 0,
+    lhs_index: 0,
+    rhs_index: 0,
+    base_index: 0,
+    index_index: 0,
+    children: node.children,
+    type_annotation: node.type_annotation,
+    valid: true
+  };
+}
+
+proc ast_expr_binary(id: u64, span: AstSpan, kind: AstExprKind, text: string, operator: string, lhs: AstExpr, rhs: AstExpr) -> AstExpr {
+  let node: AstExpr = ast_expr_node(id, span, kind, text, "", operator, [lhs, rhs]);
+  give AstExpr {
+    id: node.id,
+    span: node.span,
+    kind: node.kind,
+    text: node.text,
+    name: node.name,
+    operator: node.operator,
+    binding_name: node.binding_name,
+    member_name: "",
+    subject_index: 0,
+    callee_index: 0,
+    lhs_index: 0,
+    rhs_index: 1,
+    base_index: 0,
+    index_index: 0,
+    children: node.children,
+    type_annotation: node.type_annotation,
+    valid: true
+  };
+}
+
+proc ast_expr_call(id: u64, span: AstSpan, text: string, name: string, callee: AstExpr, args: [AstExpr]) -> AstExpr {
+  let children: [AstExpr] = [callee];
+  let i: u64 = 0;
+  while i < len(args) {
+    set children = children + [args[i]];
+    set i = i + 1;
+  }
+  let node: AstExpr = ast_expr_node(id, span, AstExprKind.Call, text, name, "()", children);
+  give AstExpr {
+    id: node.id,
+    span: node.span,
+    kind: node.kind,
+    text: node.text,
+    name: node.name,
+    operator: node.operator,
+    binding_name: node.binding_name,
+    member_name: "",
+    subject_index: 0,
+    callee_index: 0,
+    lhs_index: 0,
+    rhs_index: 0,
+    base_index: 0,
+    index_index: 0,
+    children: node.children,
+    type_annotation: node.type_annotation,
+    valid: true
+  };
+}
+
+proc ast_expr_member(id: u64, span: AstSpan, text: string, receiver: AstExpr, member_name: string) -> AstExpr {
+  let member_leaf: AstExpr = ast_expr_leaf(id + 1, span, AstExprKind.Name, member_name, member_name);
+  let node: AstExpr = ast_expr_node(id, span, AstExprKind.Member, text, member_name, ".", [receiver, member_leaf]);
+  give AstExpr {
+    id: node.id,
+    span: node.span,
+    kind: node.kind,
+    text: node.text,
+    name: node.name,
+    operator: node.operator,
+    binding_name: node.binding_name,
+    member_name: member_name,
+    subject_index: 0,
+    callee_index: 0,
+    lhs_index: 0,
+    rhs_index: 0,
+    base_index: 0,
+    index_index: 0,
+    children: node.children,
+    type_annotation: node.type_annotation,
+    valid: true
+  };
+}
+
+proc ast_expr_index(id: u64, span: AstSpan, text: string, base: AstExpr, index_expr: AstExpr) -> AstExpr {
+  let node: AstExpr = ast_expr_node(id, span, AstExprKind.Index, text, "", "[]", [base, index_expr]);
+  give AstExpr {
+    id: node.id,
+    span: node.span,
+    kind: node.kind,
+    text: node.text,
+    name: node.name,
+    operator: node.operator,
+    binding_name: node.binding_name,
+    member_name: "",
+    subject_index: 0,
+    callee_index: 0,
+    lhs_index: 0,
+    rhs_index: 0,
+    base_index: 0,
+    index_index: 1,
+    children: node.children,
+    type_annotation: node.type_annotation,
+    valid: true
+  };
+}
+
+proc count_expr(expr: AstExpr) -> u64 {
+  let total: u64 = 1;
+  let i: u64 = 0;
+  while i < len(expr.children) {
+    set total = total + count_expr(expr.children[i]);
+    set i = i + 1;
+  }
+  give total;
+}

@@ -1,0 +1,525 @@
+space vitte/compiler/backend/link
+
+use vitte/compiler/backend/target/triple.{ TargetTriple, triple_aarch64_linux, triple_i386_linux, triple_riscv64_linux, triple_text, triple_x86_64_linux }
+
+pick LinkArtifactKind {
+  Executable,
+  StaticLibrary,
+  SharedLibrary,
+  ObjectFile,
+}
+
+pick LinkArtifactFormat {
+  Elf,
+  MachO,
+  Coff,
+  WasmText,
+  Unknown,
+}
+
+pick LinkRelocationKind {
+  Function,
+  Data,
+}
+
+pick LinkSectionKind {
+  Text,
+  Data,
+  Bss,
+  StringTable,
+  SymbolTable,
+  Relocation,
+  Debug,
+  Metadata,
+}
+
+form LinkTarget {
+  triple: TargetTriple
+  pointer_width: u64
+  binary_format: LinkArtifactFormat
+  valid: bool
+}
+
+form LinkOutput {
+  id: u64
+  path: string
+  kind: LinkArtifactKind
+  format: LinkArtifactFormat
+  ready: bool
+  valid: bool
+}
+
+form LinkSection {
+  id: u64
+  name: string
+  kind: LinkSectionKind
+  alignment: u64
+  offset: u64
+  size: u64
+  flags: [string]
+  content: string
+  valid: bool
+}
+
+form LinkSymbol {
+  id: u64
+  name: string
+  module_name: string
+  offset: u64
+  size: u64
+  section_index: u64
+  defined: bool
+  imported: bool
+  entry: bool
+  valid: bool
+}
+
+form LinkRelocation {
+  id: u64
+  kind: LinkRelocationKind
+  source_module: string
+  source_symbol: string
+  source_section_index: u64
+  source_offset: u64
+  target_module: string
+  target_symbol: string
+  addend: int
+  resolved: bool
+  valid: bool
+}
+
+form LinkSymbolResolution {
+  id: u64
+  source_symbol_id: u64
+  source_section_index: u64
+  source_offset: u64
+  target_symbol_id: u64
+  target_section_index: u64
+  target_offset: u64
+  addend: int
+  resolved: bool
+  valid: bool
+}
+
+form LinkMetadata {
+  target: string
+  output_count: u64
+  section_count: u64
+  symbol_count: u64
+  exported_symbol_count: u64
+  imported_symbol_count: u64
+  relocation_count: u64
+  resolution_count: u64
+  resolved_import_count: u64
+  unresolved_import_count: u64
+  resolved_relocation_count: u64
+  unresolved_relocation_count: u64
+  resolved_symbol_count: u64
+  unresolved_symbol_count: u64
+  debug_section_count: u64
+  text_section_size: u64
+  entry_present: bool
+}
+
+form LinkArtifact {
+  id: u64
+  name: string
+  target: LinkTarget
+  outputs: [LinkOutput]
+  sections: [LinkSection]
+  symbols: [LinkSymbol]
+  relocations: [LinkRelocation]
+  resolutions: [LinkSymbolResolution]
+  entry_symbol: string
+  metadata: LinkMetadata
+  valid: bool
+}
+
+proc target_x86_64_linux() -> LinkTarget {
+  give LinkTarget {
+    triple: triple_x86_64_linux(),
+    pointer_width: 64,
+    binary_format: LinkArtifactFormat.Elf,
+    valid: true
+  };
+}
+
+proc target_aarch64_linux() -> LinkTarget {
+  give LinkTarget {
+    triple: triple_aarch64_linux(),
+    pointer_width: 64,
+    binary_format: LinkArtifactFormat.Elf,
+    valid: true
+  };
+}
+
+proc target_riscv64_linux() -> LinkTarget {
+  give LinkTarget {
+    triple: triple_riscv64_linux(),
+    pointer_width: 64,
+    binary_format: LinkArtifactFormat.Elf,
+    valid: true
+  };
+}
+
+proc target_i386_linux() -> LinkTarget {
+  give LinkTarget {
+    triple: triple_i386_linux(),
+    pointer_width: 32,
+    binary_format: LinkArtifactFormat.Elf,
+    valid: true
+  };
+}
+
+proc link_target_from_name(target_name: string) -> LinkTarget {
+  if target_name == "x86_64-linux" {
+    give target_x86_64_linux();
+  }
+  if target_name == "aarch64-linux" {
+    give target_aarch64_linux();
+  }
+  if target_name == "riscv64-linux" {
+    give target_riscv64_linux();
+  }
+  if target_name == "i386-linux" {
+    give target_i386_linux();
+  }
+  give LinkTarget {
+    triple: triple_x86_64_linux(),
+    pointer_width: 0,
+    binary_format: LinkArtifactFormat.Unknown,
+    valid: false
+  };
+}
+
+proc output_create(id: u64, path: string, kind: LinkArtifactKind, format: LinkArtifactFormat, ready: bool) -> LinkOutput {
+  give LinkOutput {
+    id: id,
+    path: path,
+    kind: kind,
+    format: format,
+    ready: ready,
+    valid: id > 0 and path != "" and format != LinkArtifactFormat.Unknown
+  };
+}
+
+proc output_invalid() -> LinkOutput {
+  give LinkOutput {
+    id: 0,
+    path: "",
+    kind: LinkArtifactKind.ObjectFile,
+    format: LinkArtifactFormat.Unknown,
+    ready: false,
+    valid: false
+  };
+}
+
+proc section_create(id: u64, name: string, kind: LinkSectionKind, alignment: u64, offset: u64, size: u64, flags: [string], content: string) -> LinkSection {
+  give LinkSection {
+    id: id,
+    name: name,
+    kind: kind,
+    alignment: alignment,
+    offset: offset,
+    size: size,
+    flags: flags,
+    content: content,
+    valid: id > 0 and name != ""
+  };
+}
+
+proc symbol_create(id: u64, name: string, module_name: string, offset: u64, size: u64, section_index: u64, defined: bool, imported: bool, entry: bool) -> LinkSymbol {
+  give LinkSymbol {
+    id: id,
+    name: name,
+    module_name: module_name,
+    offset: offset,
+    size: size,
+    section_index: section_index,
+    defined: defined,
+    imported: imported,
+    entry: entry,
+    valid: id > 0 and name != "" and not (defined and imported)
+  };
+}
+
+proc relocation_create(id: u64, kind: LinkRelocationKind, source_module: string, source_symbol: string, source_section_index: u64, source_offset: u64, target_module: string, target_symbol: string, addend: int, resolved: bool) -> LinkRelocation {
+  give LinkRelocation {
+    id: id,
+    kind: kind,
+    source_module: source_module,
+    source_symbol: source_symbol,
+    source_section_index: source_section_index,
+    source_offset: source_offset,
+    target_module: target_module,
+    target_symbol: target_symbol,
+    addend: addend,
+    resolved: resolved,
+    valid: id > 0 and source_module != "" and source_symbol != "" and target_symbol != ""
+  };
+}
+
+proc resolution_create(id: u64, source_symbol_id: u64, source_section_index: u64, source_offset: u64, target_symbol_id: u64, target_section_index: u64, target_offset: u64, addend: int, resolved: bool) -> LinkSymbolResolution {
+  give LinkSymbolResolution {
+    id: id,
+    source_symbol_id: source_symbol_id,
+    source_section_index: source_section_index,
+    source_offset: source_offset,
+    target_symbol_id: target_symbol_id,
+    target_section_index: target_section_index,
+    target_offset: target_offset,
+    addend: addend,
+    resolved: resolved,
+    valid: id > 0 and source_symbol_id > 0 and source_section_index > 0
+  };
+}
+
+proc artifact_create(id: u64, name: string, target: LinkTarget) -> LinkArtifact {
+  give LinkArtifact {
+    id: id,
+    name: name,
+    target: target,
+    outputs: [],
+    sections: [],
+    symbols: [],
+    relocations: [],
+    resolutions: [],
+    entry_symbol: "",
+    metadata: LinkMetadata {
+      target: triple_text(target.triple),
+      output_count: 0,
+      section_count: 0,
+      symbol_count: 0,
+      exported_symbol_count: 0,
+      imported_symbol_count: 0,
+      relocation_count: 0,
+      resolution_count: 0,
+      resolved_import_count: 0,
+      unresolved_import_count: 0,
+      resolved_relocation_count: 0,
+      unresolved_relocation_count: 0,
+      resolved_symbol_count: 0,
+      unresolved_symbol_count: 0,
+      debug_section_count: 0,
+      text_section_size: 0,
+      entry_present: false
+    },
+    valid: id > 0 and name != "" and target.valid
+  };
+}
+
+proc artifact_add_output(artifact: LinkArtifact, output: LinkOutput) -> LinkArtifact {
+  give LinkArtifact {
+    id: artifact.id,
+    name: artifact.name,
+    target: artifact.target,
+    outputs: artifact.outputs + [output],
+    sections: artifact.sections,
+    symbols: artifact.symbols,
+    relocations: artifact.relocations,
+    resolutions: artifact.resolutions,
+    entry_symbol: artifact.entry_symbol,
+    metadata: artifact.metadata,
+    valid: artifact.valid and output.valid
+  };
+}
+
+proc artifact_add_section(artifact: LinkArtifact, section0: LinkSection) -> LinkArtifact {
+  give LinkArtifact {
+    id: artifact.id,
+    name: artifact.name,
+    target: artifact.target,
+    outputs: artifact.outputs,
+    sections: artifact.sections + [section0],
+    symbols: artifact.symbols,
+    relocations: artifact.relocations,
+    resolutions: artifact.resolutions,
+    entry_symbol: artifact.entry_symbol,
+    metadata: artifact.metadata,
+    valid: artifact.valid and section0.valid
+  };
+}
+
+proc artifact_add_symbol(artifact: LinkArtifact, symbol: LinkSymbol) -> LinkArtifact {
+  give LinkArtifact {
+    id: artifact.id,
+    name: artifact.name,
+    target: artifact.target,
+    outputs: artifact.outputs,
+    sections: artifact.sections,
+    symbols: artifact.symbols + [symbol],
+    relocations: artifact.relocations,
+    resolutions: artifact.resolutions,
+    entry_symbol: artifact.entry_symbol,
+    metadata: artifact.metadata,
+    valid: artifact.valid and symbol.valid
+  };
+}
+
+proc artifact_add_relocation(artifact: LinkArtifact, relocation: LinkRelocation) -> LinkArtifact {
+  give LinkArtifact {
+    id: artifact.id,
+    name: artifact.name,
+    target: artifact.target,
+    outputs: artifact.outputs,
+    sections: artifact.sections,
+    symbols: artifact.symbols,
+    relocations: artifact.relocations + [relocation],
+    resolutions: artifact.resolutions,
+    entry_symbol: artifact.entry_symbol,
+    metadata: artifact.metadata,
+    valid: artifact.valid and relocation.valid
+  };
+}
+
+proc artifact_add_resolution(artifact: LinkArtifact, resolution: LinkSymbolResolution) -> LinkArtifact {
+  give LinkArtifact {
+    id: artifact.id,
+    name: artifact.name,
+    target: artifact.target,
+    outputs: artifact.outputs,
+    sections: artifact.sections,
+    symbols: artifact.symbols,
+    relocations: artifact.relocations,
+    resolutions: artifact.resolutions + [resolution],
+    entry_symbol: artifact.entry_symbol,
+    metadata: artifact.metadata,
+    valid: artifact.valid and resolution.valid
+  };
+}
+
+proc artifact_set_entry(artifact: LinkArtifact, entry_symbol: string) -> LinkArtifact {
+  give LinkArtifact {
+    id: artifact.id,
+    name: artifact.name,
+    target: artifact.target,
+    outputs: artifact.outputs,
+    sections: artifact.sections,
+    symbols: artifact.symbols,
+    relocations: artifact.relocations,
+    resolutions: artifact.resolutions,
+    entry_symbol: entry_symbol,
+    metadata: artifact.metadata,
+    valid: artifact.valid and entry_symbol != ""
+  };
+}
+
+proc artifact_has_ready_output(artifact: LinkArtifact) -> bool {
+  let i: u64 = 0;
+  while i < len(artifact.outputs) {
+    if artifact.outputs[i].valid and artifact.outputs[i].ready {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc artifact_has_entry_symbol(artifact: LinkArtifact) -> bool {
+  if artifact.entry_symbol == "" {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(artifact.symbols) {
+    let symbol: LinkSymbol = artifact.symbols[i];
+    if symbol.valid and symbol.name == artifact.entry_symbol and symbol.entry and symbol.defined {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc artifact_is_valid(artifact: LinkArtifact) -> bool {
+  give artifact.valid and artifact.target.valid and artifact_has_ready_output(artifact) and artifact_has_entry_symbol(artifact);
+}
+
+proc finalize_artifact(artifact: LinkArtifact) -> LinkArtifact {
+  let exported_symbol_count: u64 = 0;
+  let imported_symbol_count: u64 = 0;
+  let relocation_count: u64 = len(artifact.relocations);
+  let resolution_count: u64 = len(artifact.resolutions);
+  let resolved_import_count: u64 = 0;
+  let unresolved_import_count: u64 = 0;
+  let resolved_relocation_count: u64 = 0;
+  let unresolved_relocation_count: u64 = 0;
+  let resolved_symbol_count: u64 = 0;
+  let unresolved_symbol_count: u64 = 0;
+  let debug_section_count: u64 = 0;
+  let text_section_size: u64 = 0;
+  let i: u64 = 0;
+  while i < len(artifact.symbols) {
+    let symbol: LinkSymbol = artifact.symbols[i];
+    if symbol.imported {
+      set imported_symbol_count = imported_symbol_count + 1;
+    } elif symbol.defined {
+      set exported_symbol_count = exported_symbol_count + 1;
+    }
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(artifact.sections) {
+    let section0: LinkSection = artifact.sections[i];
+    if section0.kind == LinkSectionKind.Debug {
+      set debug_section_count = debug_section_count + 1;
+    }
+    if section0.kind == LinkSectionKind.Text {
+      set text_section_size = text_section_size + section0.size;
+    }
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(artifact.relocations) {
+    let relocation: LinkRelocation = artifact.relocations[i];
+    if relocation.resolved {
+      set resolved_relocation_count = resolved_relocation_count + 1;
+      set resolved_import_count = resolved_import_count + 1;
+    } else {
+      set unresolved_relocation_count = unresolved_relocation_count + 1;
+      set unresolved_import_count = unresolved_import_count + 1;
+    }
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(artifact.resolutions) {
+    let resolution: LinkSymbolResolution = artifact.resolutions[i];
+    if resolution.resolved {
+      set resolved_symbol_count = resolved_symbol_count + 1;
+    } else {
+      set unresolved_symbol_count = unresolved_symbol_count + 1;
+    }
+    set i = i + 1;
+  }
+  let valid: bool = artifact.valid and artifact.target.valid and artifact_has_ready_output(artifact) and artifact_has_entry_symbol(artifact) and len(artifact.sections) > 0;
+  give LinkArtifact {
+    id: artifact.id,
+    name: artifact.name,
+    target: artifact.target,
+    outputs: artifact.outputs,
+    sections: artifact.sections,
+    symbols: artifact.symbols,
+    relocations: artifact.relocations,
+    resolutions: artifact.resolutions,
+    entry_symbol: artifact.entry_symbol,
+    metadata: LinkMetadata {
+      target: triple_text(artifact.target.triple),
+      output_count: len(artifact.outputs),
+      section_count: len(artifact.sections),
+      symbol_count: len(artifact.symbols),
+      exported_symbol_count: exported_symbol_count,
+      imported_symbol_count: imported_symbol_count,
+      relocation_count: relocation_count,
+      resolution_count: resolution_count,
+      resolved_import_count: resolved_import_count,
+      unresolved_import_count: unresolved_import_count,
+      resolved_relocation_count: resolved_relocation_count,
+      unresolved_relocation_count: unresolved_relocation_count,
+      resolved_symbol_count: resolved_symbol_count,
+      unresolved_symbol_count: unresolved_symbol_count,
+      debug_section_count: debug_section_count,
+      text_section_size: text_section_size,
+      entry_present: artifact_has_entry_symbol(artifact)
+    },
+    valid: valid
+  };
+}

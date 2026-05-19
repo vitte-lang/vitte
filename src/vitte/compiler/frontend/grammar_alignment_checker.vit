@@ -35,19 +35,85 @@ form GrammarAlignmentReport {
   tested_count: u64
 }
 
+proc grammar_rule_coverage() -> [GrammarRuleCoverage] {
+  give [
+    GrammarRuleCoverage { name: "space_decl", category: GrammarRuleCategory.Declaration, status: GrammarRuleStatus.Tested, parser_evidence: "parse_decl(space)", ast_evidence: "AstItemKind.Space", fixture_evidence: "compiler_surface" },
+    GrammarRuleCoverage { name: "use_decl", category: GrammarRuleCategory.Declaration, status: GrammarRuleStatus.Tested, parser_evidence: "parse_decl(use)", ast_evidence: "AstItemKind.Use", fixture_evidence: "compiler_surface" },
+    GrammarRuleCoverage { name: "proc_decl", category: GrammarRuleCategory.Declaration, status: GrammarRuleStatus.Tested, parser_evidence: "parse_proc_decl", ast_evidence: "AstItemKind.Proc", fixture_evidence: "compiler_surface" },
+    GrammarRuleCoverage { name: "const_decl", category: GrammarRuleCategory.Declaration, status: GrammarRuleStatus.Tested, parser_evidence: "parse_const_decl", ast_evidence: "AstItemKind.Const", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "type_decl", category: GrammarRuleCategory.Declaration, status: GrammarRuleStatus.Complete, parser_evidence: "parse_type_decl", ast_evidence: "AstItemKind.Type", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "let_stmt", category: GrammarRuleCategory.Statement, status: GrammarRuleStatus.Tested, parser_evidence: "parse_stmt(let)", ast_evidence: "AstStmtKind.Let", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "set_stmt", category: GrammarRuleCategory.Statement, status: GrammarRuleStatus.Tested, parser_evidence: "parse_stmt(set)", ast_evidence: "AstStmtKind.Set", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "give_stmt", category: GrammarRuleCategory.Statement, status: GrammarRuleStatus.Tested, parser_evidence: "parse_stmt(give)", ast_evidence: "AstStmtKind.Give", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "if_stmt", category: GrammarRuleCategory.Statement, status: GrammarRuleStatus.Tested, parser_evidence: "parse_if_expr", ast_evidence: "AstStmtKind.If", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "while_stmt", category: GrammarRuleCategory.Statement, status: GrammarRuleStatus.Complete, parser_evidence: "parse_stmt(while)", ast_evidence: "AstStmtKind.While", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "literal_expr", category: GrammarRuleCategory.Expression, status: GrammarRuleStatus.Tested, parser_evidence: "parse_primary(literal)", ast_evidence: "AstExprKind.Int", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "binary_expr", category: GrammarRuleCategory.Expression, status: GrammarRuleStatus.Tested, parser_evidence: "parse_expr(binary)", ast_evidence: "AstExprKind.Binary", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "call_expr", category: GrammarRuleCategory.Expression, status: GrammarRuleStatus.Complete, parser_evidence: "parse_postfix_expr(call)", ast_evidence: "AstExprKind.Call", fixture_evidence: "compiler_surface" },
+    GrammarRuleCoverage { name: "block_expr", category: GrammarRuleCategory.Expression, status: GrammarRuleStatus.Complete, parser_evidence: "parse_primary(block)", ast_evidence: "AstExprKind.Block", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "named_type", category: GrammarRuleCategory.TypeExpr, status: GrammarRuleStatus.Tested, parser_evidence: "parse_type_primary(path)", ast_evidence: "AstTypeKind.Name", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "reference_type", category: GrammarRuleCategory.TypeExpr, status: GrammarRuleStatus.Complete, parser_evidence: "parse_type_expr(&)", ast_evidence: "AstTypeKind.Reference", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "proc_type", category: GrammarRuleCategory.TypeExpr, status: GrammarRuleStatus.Complete, parser_evidence: "parse_type_primary(proc)", ast_evidence: "AstTypeKind.Proc", fixture_evidence: "compiler_surface" },
+    GrammarRuleCoverage { name: "name_pattern", category: GrammarRuleCategory.Pattern, status: GrammarRuleStatus.Tested, parser_evidence: "parse_pattern_atom(path)", ast_evidence: "AstPatternKind.Name", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "tuple_pattern", category: GrammarRuleCategory.Pattern, status: GrammarRuleStatus.Complete, parser_evidence: "parse_pattern_atom(tuple)", ast_evidence: "AstPatternKind.Tuple", fixture_evidence: "stmt_expr_type_pattern" },
+    GrammarRuleCoverage { name: "range_pattern", category: GrammarRuleCategory.Pattern, status: GrammarRuleStatus.Complete, parser_evidence: "parse_pattern_atom(range)", ast_evidence: "AstPatternKind.Range", fixture_evidence: "stmt_expr_type_pattern" }
+  ];
+}
+
+proc category_count(entries: [GrammarRuleCoverage], category: GrammarRuleCategory) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(entries) {
+    if entries[i].category == category {
+      set count = count + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc complete_count(entries: [GrammarRuleCoverage]) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(entries) {
+    if entries[i].status == GrammarRuleStatus.Complete or entries[i].status == GrammarRuleStatus.Tested {
+      set count = count + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc tested_count(entries: [GrammarRuleCoverage]) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(entries) {
+    if entries[i].status == GrammarRuleStatus.Tested {
+      set count = count + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
 proc grammar_alignment_report() -> GrammarAlignmentReport {
+  let coverage: [GrammarRuleCoverage] = grammar_rule_coverage();
   give GrammarAlignmentReport {
     grammar_version: "vitte-core-2026-05",
-    declaration_count: 32,
-    statement_count: 24,
-    expression_count: 24,
-    type_count: 14,
-    pattern_count: 11,
-    complete_count: 105,
-    tested_count: 105
+    declaration_count: category_count(coverage, GrammarRuleCategory.Declaration),
+    statement_count: category_count(coverage, GrammarRuleCategory.Statement),
+    expression_count: category_count(coverage, GrammarRuleCategory.Expression),
+    type_count: category_count(coverage, GrammarRuleCategory.TypeExpr),
+    pattern_count: category_count(coverage, GrammarRuleCategory.Pattern),
+    complete_count: complete_count(coverage),
+    tested_count: tested_count(coverage)
   };
 }
 
 proc grammar_alignment_summary() -> string {
-  give "grammar=vitte-core-2026-05 complete=105 tested=105";
+  let report: GrammarAlignmentReport = grammar_alignment_report();
+  give
+    "grammar=" + report.grammar_version +
+    " complete=" + (report.complete_count as string) +
+    " tested=" + (report.tested_count as string);
 }

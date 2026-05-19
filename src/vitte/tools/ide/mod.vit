@@ -1,5 +1,7 @@
 space vitte/tools/ide
 
+use vitte/compiler/driver/compile.{ DriverModuleInput, DriverModuleSetArtifacts, analyze_source_set, driver_module_input }
+
 form IdeCommand {
   name: string
   title: string
@@ -39,6 +41,20 @@ proc vscode_integration_manifest() -> IdeIntegrationManifest {
 
 proc ide_integration_summary() -> string {
   give "vscode language=vitte commands=3 settings=2";
+}
+
+proc ide_semantic_summary(source_path: string, source_text: string, dependency_path: string, dependency_text: string) -> string {
+  let inputs: [DriverModuleInput] = [
+    driver_module_input(dependency_path, dependency_text),
+    driver_module_input(source_path, source_text)
+  ];
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set(inputs);
+  if len(artifacts.modules) < 2 {
+    give "ide semantic modules=0 imports=0 valid=false";
+  }
+  let root = artifacts.modules[1];
+  let status: string = if root.valid { "true" } else { "false" };
+  give "ide semantic modules=" + (len(artifacts.modules) as string) + " imports=" + (len(root.imports) as string) + " valid=" + status;
 }
 
 export *
