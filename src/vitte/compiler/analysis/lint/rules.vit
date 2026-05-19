@@ -1,0 +1,89 @@
+space vitte/compiler/analysis/lint
+
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind }
+
+form LintBindingStat {
+  name: string
+  mutable: bool
+  declared_line: u64
+  use_count: u64
+  set_count: u64
+  valid: bool
+}
+
+proc lint_binding_stat(name: string, mutable: bool, declared_line: u64) -> LintBindingStat {
+  give LintBindingStat {
+    name: name,
+    mutable: mutable,
+    declared_line: declared_line,
+    use_count: 0,
+    set_count: 0,
+    valid: name != ""
+  };
+}
+
+proc stats_index(stats: [LintBindingStat], name: string) -> int {
+  let i: int = 0;
+  while i < len(stats) {
+    if stats[i].name == name {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc stats_add(stats: [LintBindingStat], name: string, mutable: bool, declared_line: u64) -> [LintBindingStat] {
+  if name == "" or stats_index(stats, name) >= 0 {
+    give stats;
+  }
+  give stats + [lint_binding_stat(name, mutable, declared_line)];
+}
+
+proc stats_mark_use(stats: [LintBindingStat], name: string) -> [LintBindingStat] {
+  let out: [LintBindingStat] = [];
+  let i: u64 = 0;
+  while i < len(stats) {
+    let stat: LintBindingStat = stats[i];
+    if stat.name == name {
+      set out = out + [LintBindingStat {
+        name: stat.name,
+        mutable: stat.mutable,
+        declared_line: stat.declared_line,
+        use_count: stat.use_count + 1,
+        set_count: stat.set_count,
+        valid: stat.valid
+      }];
+    } else {
+      set out = out + [stat];
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc stats_mark_set(stats: [LintBindingStat], name: string) -> [LintBindingStat] {
+  let out: [LintBindingStat] = [];
+  let i: u64 = 0;
+  while i < len(stats) {
+    let stat: LintBindingStat = stats[i];
+    if stat.name == name {
+      set out = out + [LintBindingStat {
+        name: stat.name,
+        mutable: stat.mutable,
+        declared_line: stat.declared_line,
+        use_count: stat.use_count,
+        set_count: stat.set_count + 1,
+        valid: stat.valid
+      }];
+    } else {
+      set out = out + [stat];
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc expr_is_constant_bool(expr: HirExpr) -> bool {
+  give expr.valid and expr.kind == HirExprKind.Bool;
+}

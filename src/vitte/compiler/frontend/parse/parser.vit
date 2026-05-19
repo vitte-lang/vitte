@@ -1,44 +1,14 @@
 space vitte/compiler/frontend/parse/parser
 
 use vitte/compiler/frontend/lexer/token.{ Token, TokenKind, token }
-use vitte/compiler/frontend/ast/node.{
-  AstExpr,
-  AstExprKind,
-  AstItem,
-  AstItemKind,
-  AstModule,
-  AstPattern,
-  AstStmt,
-  AstStmtKind,
-  AstSpan,
-  AstTypeExpr,
-  ast_span,
-  ast_expr_leaf,
-  ast_expr_node,
-  ast_expr_typed,
-  ast_expr_unknown,
-  ast_item_create,
-  ast_item_typed,
-  ast_module,
-  ast_module_empty,
-  ast_pattern,
-  ast_pattern_empty,
-  ast_stmt_create,
-  ast_stmt_conditional,
-  ast_type_empty,
-  ast_type_expr,
-  count_module_exprs,
-  count_module_patterns,
-  count_module_stmts,
-  count_module_types
-}
-
-form ParseDiagnostic {
-  code: string
-  message: string
-  line: u64
-  column: u64
-}
+use vitte/compiler/frontend/parse/errors.{ ParseDiagnostic, parse_error }
+use vitte/compiler/frontend/parse/recovery.{ recover_decl_index, recover_expr_index, recover_pattern_index, recover_stmt_index, recover_type_index }
+use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span }
+use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind, ast_expr_binary, ast_expr_call, ast_expr_index, ast_expr_leaf, ast_expr_member, ast_expr_node, ast_expr_typed, ast_expr_unary, ast_expr_unknown }
+use vitte/compiler/frontend/ast/item.{ AstGenericParam, AstItem, AstItemKind, AstModule, AstParam, AstProcSignature, ast_generic_param, ast_generic_param_empty, ast_item_create, ast_item_typed, ast_module, ast_module_empty, ast_param, ast_param_empty, ast_proc_signature, ast_proc_signature_empty, count_module_exprs, count_module_patterns, count_module_stmts, count_module_types }
+use vitte/compiler/frontend/ast/pattern.{ AstPattern, AstPatternKind, ast_pattern, ast_pattern_empty, ast_pattern_node }
+use vitte/compiler/frontend/ast/stmt.{ AstStmt, AstStmtKind, ast_stmt_conditional, ast_stmt_create, ast_stmt_targeted }
+use vitte/compiler/frontend/ast/type_expr.{ AstTypeExpr, AstTypeKind, ast_type_empty, ast_type_expr, ast_type_node }
 
 form ParseResult {
   grammar_version: string
@@ -48,6 +18,7 @@ form ParseResult {
   expr_count: u64
   type_count: u64
   pattern_count: u64
+  recovery_count: u64
   diagnostics: [ParseDiagnostic]
   valid: bool
 }
@@ -61,11 +32,12 @@ form ParserState {
   expr_count: u64
   type_count: u64
   pattern_count: u64
+  recovery_count: u64
   diagnostics: [ParseDiagnostic]
 }
 
-proc parse_diag(code: string, message: string, line: u64, column: u64) -> ParseDiagnostic {
-  give ParseDiagnostic { code: code, message: message, line: line, column: column };
+proc parse_diag(code: string, message: string, line: u64, column: u64, width: u64) -> ParseDiagnostic {
+  give parse_error(code, message, line, column, width);
 }
 
 proc parser_state(source_name: string, tokens: [Token]) -> ParserState {
@@ -78,8 +50,16 @@ proc parser_state(source_name: string, tokens: [Token]) -> ParserState {
     expr_count: 0,
     type_count: 0,
     pattern_count: 0,
+    recovery_count: 0,
     diagnostics: []
   };
+}
+
+proc token_diag_width(tok: Token) -> u64 {
+  if len(tok.lexeme) == 0 {
+    give 1;
+  }
+  give len(tok.lexeme);
 }
 
 proc last_token(tokens: [Token]) -> Token {
@@ -119,6 +99,7 @@ proc advance(state: ParserState) -> ParserState {
       expr_count: state.expr_count,
       type_count: state.type_count,
       pattern_count: state.pattern_count,
+      recovery_count: state.recovery_count,
       diagnostics: state.diagnostics
     };
   }
@@ -127,7 +108,7 @@ proc advance(state: ParserState) -> ParserState {
 
 proc with_diag(state: ParserState, code: string, message: string) -> ParserState {
   let tok: Token = current_token(state);
-  let ds: [ParseDiagnostic] = state.diagnostics + [parse_diag(code, message, tok.line, tok.column)];
+  let ds: [ParseDiagnostic] = state.diagnostics + [parse_diag(code, message, tok.line, tok.column, token_diag_width(tok))];
   give ParserState {
     source_name: state.source_name,
     tokens: state.tokens,
@@ -137,7 +118,27 @@ proc with_diag(state: ParserState, code: string, message: string) -> ParserState
     expr_count: state.expr_count,
     type_count: state.type_count,
     pattern_count: state.pattern_count,
+    recovery_count: state.recovery_count,
     diagnostics: ds
+  };
+}
+
+proc with_index_and_recovery(state: ParserState, index: u64, recovered: bool) -> ParserState {
+  let next_recovery_count: u64 = state.recovery_count;
+  if recovered {
+    set next_recovery_count = next_recovery_count + 1;
+  }
+  give ParserState {
+    source_name: state.source_name,
+    tokens: state.tokens,
+    index: index,
+    toplevel_count: state.toplevel_count,
+    stmt_count: state.stmt_count,
+    expr_count: state.expr_count,
+    type_count: state.type_count,
+    pattern_count: state.pattern_count,
+    recovery_count: next_recovery_count,
+    diagnostics: state.diagnostics
   };
 }
 
@@ -151,6 +152,7 @@ proc bump_toplevel(state: ParserState) -> ParserState {
     expr_count: state.expr_count,
     type_count: state.type_count,
     pattern_count: state.pattern_count,
+    recovery_count: state.recovery_count,
     diagnostics: state.diagnostics
   };
 }
@@ -165,6 +167,7 @@ proc bump_stmt(state: ParserState) -> ParserState {
     expr_count: state.expr_count,
     type_count: state.type_count,
     pattern_count: state.pattern_count,
+    recovery_count: state.recovery_count,
     diagnostics: state.diagnostics
   };
 }
@@ -179,6 +182,7 @@ proc bump_expr(state: ParserState) -> ParserState {
     expr_count: state.expr_count + 1,
     type_count: state.type_count,
     pattern_count: state.pattern_count,
+    recovery_count: state.recovery_count,
     diagnostics: state.diagnostics
   };
 }
@@ -193,6 +197,7 @@ proc bump_type(state: ParserState) -> ParserState {
     expr_count: state.expr_count,
     type_count: state.type_count + 1,
     pattern_count: state.pattern_count,
+    recovery_count: state.recovery_count,
     diagnostics: state.diagnostics
   };
 }
@@ -207,8 +212,49 @@ proc bump_pattern(state: ParserState) -> ParserState {
     expr_count: state.expr_count,
     type_count: state.type_count,
     pattern_count: state.pattern_count + 1,
+    recovery_count: state.recovery_count,
     diagnostics: state.diagnostics
   };
+}
+
+proc recover_stmt_state(state: ParserState) -> ParserState {
+  let index: u64 = recover_stmt_index(state.tokens, state.index);
+  if index == state.index {
+    give state;
+  }
+  give with_index_and_recovery(state, index, true);
+}
+
+proc recover_decl_state(state: ParserState) -> ParserState {
+  let index: u64 = recover_decl_index(state.tokens, state.index);
+  if index == state.index {
+    give state;
+  }
+  give with_index_and_recovery(state, index, true);
+}
+
+proc recover_expr_state(state: ParserState) -> ParserState {
+  let index: u64 = recover_expr_index(state.tokens, state.index);
+  if index == state.index {
+    give state;
+  }
+  give with_index_and_recovery(state, index, true);
+}
+
+proc recover_type_state(state: ParserState) -> ParserState {
+  let index: u64 = recover_type_index(state.tokens, state.index);
+  if index == state.index {
+    give state;
+  }
+  give with_index_and_recovery(state, index, true);
+}
+
+proc recover_pattern_state(state: ParserState) -> ParserState {
+  let index: u64 = recover_pattern_index(state.tokens, state.index);
+  if index == state.index {
+    give state;
+  }
+  give with_index_and_recovery(state, index, true);
 }
 
 proc at_text(state: ParserState, text: string) -> bool {
@@ -538,6 +584,8 @@ proc parse_type_primary(state: ParserState) -> ParserState {
 }
 
 proc parse_type_expr(state: ParserState) -> ParserState {
+  let start_index: u64 = state.index;
+  let start_diags: u64 = len(state.diagnostics);
   let current: ParserState = bump_type(state);
   while at_text(current, "const") or at_text(current, "volatile") or at_text(current, "atomic") or at_text(current, "mut") or at_text(current, "owned") or at_text(current, "borrow") or at_text(current, "user") or at_text(current, "kernel") or at_text(current, "phys") or at_text(current, "mmio") or at_text(current, "dma") {
     set current = advance(current);
@@ -561,6 +609,13 @@ proc parse_type_expr(state: ParserState) -> ParserState {
   while at_text(current, "|") {
     set current = advance(current);
     set current = parse_type_primary(current);
+  }
+  if len(current.diagnostics) > start_diags and current.index == start_index {
+    let recovered: ParserState = recover_type_state(current);
+    if recovered.index == current.index and not is_eof(current) {
+      give advance(current);
+    }
+    give recovered;
   }
   give current;
 }
@@ -639,11 +694,20 @@ proc parse_pattern_atom(state: ParserState) -> ParserState {
 }
 
 proc parse_pattern(state: ParserState) -> ParserState {
+  let start_index: u64 = state.index;
+  let start_diags: u64 = len(state.diagnostics);
   let current: ParserState = bump_pattern(state);
   set current = parse_pattern_atom(current);
   while at_text(current, "|") {
     set current = advance(current);
     set current = parse_pattern_atom(current);
+  }
+  if len(current.diagnostics) > start_diags and current.index == start_index {
+    let recovered: ParserState = recover_pattern_state(current);
+    if recovered.index == current.index and not is_eof(current) {
+      give advance(current);
+    }
+    give recovered;
   }
   give current;
 }
@@ -858,6 +922,8 @@ proc parse_bin_expr(state: ParserState, op1: string, op2: string, op3: string) -
 }
 
 proc parse_expr(state: ParserState) -> ParserState {
+  let start_index: u64 = state.index;
+  let start_diags: u64 = len(state.diagnostics);
   let current: ParserState = bump_expr(state);
   let parsed: ParserState = parse_unary_expr(current);
   let walk: ParserState = parsed;
@@ -884,6 +950,13 @@ proc parse_expr(state: ParserState) -> ParserState {
   if at_text(walk, "=") or at_text(walk, "+=") or at_text(walk, "-=") or at_text(walk, "*=") or at_text(walk, "/=") or at_text(walk, "%=") or at_text(walk, "&=") or at_text(walk, "|=") or at_text(walk, "^=") or at_text(walk, "<<=") or at_text(walk, ">>=") {
     set walk = advance(walk);
     set walk = parse_expr(walk);
+  }
+  if len(walk.diagnostics) > start_diags and walk.index == start_index {
+    let recovered: ParserState = recover_expr_state(walk);
+    if recovered.index == walk.index and not is_eof(walk) {
+      give advance(walk);
+    }
+    give recovered;
   }
   give walk;
 }
@@ -1029,7 +1102,20 @@ proc parse_block(state: ParserState) -> ParserState {
   let current: ParserState = expect_text(state, "{", "PBLOCK001");
   let walk: ParserState = current;
   while not is_eof(walk) and not at_text(walk, "}") {
+    let before_index: u64 = walk.index;
+    let before_diags: u64 = len(walk.diagnostics);
     set walk = parse_stmt(walk);
+    if walk.index == before_index {
+      set walk = with_diag(walk, "PLOOP", "statement parser made no progress");
+    }
+    if len(walk.diagnostics) > before_diags {
+      let recovered: ParserState = recover_stmt_state(walk);
+      if recovered.index == walk.index and walk.index == before_index and not at_text(walk, "}") and not is_eof(walk) {
+        set walk = advance(walk);
+      } else {
+        set walk = recovered;
+      }
+    }
   }
   give expect_text(walk, "}", "PBLOCK002");
 }
@@ -1217,10 +1303,18 @@ proc parse_source(source_name: string, tokens: [Token]) -> ParseResult {
   let walk: ParserState = current;
   while not is_eof(walk) {
     let before: u64 = walk.index;
+    let before_diags: u64 = len(walk.diagnostics);
     set walk = parse_decl(walk);
     if walk.index == before {
       set walk = with_diag(walk, "PLOOP", "parser made no progress");
-      set walk = advance(walk);
+    }
+    if len(walk.diagnostics) > before_diags or walk.index == before {
+      let recovered: ParserState = recover_decl_state(walk);
+      if recovered.index == walk.index and walk.index == before and not is_eof(walk) {
+        set walk = advance(walk);
+      } else {
+        set walk = recovered;
+      }
     }
   }
 
@@ -1233,6 +1327,7 @@ proc parse_source(source_name: string, tokens: [Token]) -> ParseResult {
     expr_count: count_module_exprs(module),
     type_count: count_module_types(module),
     pattern_count: count_module_patterns(module),
+    recovery_count: walk.recovery_count,
     diagnostics: walk.diagnostics,
     valid: len(walk.diagnostics) == 0
   };
@@ -1324,6 +1419,85 @@ proc ends_with(text: string, suffix: string) -> bool {
   give slice(text, len(text) - len(suffix), len(text)) == suffix;
 }
 
+proc trim_token_bounds(tokens: [Token], start: u64, end: u64) -> TokenRange {
+  let left: u64 = start;
+  let right: u64 = end;
+  while left < right and left < len(tokens) and (tokens[left].lexeme == "," or tokens[left].lexeme == ";") {
+    set left = left + 1;
+  }
+  while right > left and right - 1 < len(tokens) and (tokens[right - 1].lexeme == "," or tokens[right - 1].lexeme == ";") {
+    set right = right - 1;
+  }
+  give TokenRange { start: left, end: right };
+}
+
+proc split_top_level_ranges(tokens: [Token], start: u64, end: u64, separator: string) -> [TokenRange] {
+  let parts: [TokenRange] = [];
+  let bounds: TokenRange = trim_token_bounds(tokens, start, end);
+  if bounds.start >= bounds.end {
+    give parts;
+  }
+  let part_start: u64 = bounds.start;
+  let i: u64 = bounds.start;
+  let paren_depth: int = 0;
+  let bracket_depth: int = 0;
+  let brace_depth: int = 0;
+  while i < bounds.end {
+    if tokens[i].lexeme == "(" {
+      set paren_depth = paren_depth + 1;
+    } elif tokens[i].lexeme == ")" {
+      set paren_depth = paren_depth - 1;
+    } elif tokens[i].lexeme == "[" {
+      set bracket_depth = bracket_depth + 1;
+    } elif tokens[i].lexeme == "]" {
+      set bracket_depth = bracket_depth - 1;
+    } elif tokens[i].lexeme == "{" {
+      set brace_depth = brace_depth + 1;
+    } elif tokens[i].lexeme == "}" {
+      set brace_depth = brace_depth - 1;
+    } elif tokens[i].lexeme == separator and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0 {
+      let part: TokenRange = trim_token_bounds(tokens, part_start, i);
+      if part.start < part.end {
+        set parts = parts + [part];
+      }
+      set part_start = i + 1;
+    }
+    set i = i + 1;
+  }
+  let tail: TokenRange = trim_token_bounds(tokens, part_start, bounds.end);
+  if tail.start < tail.end {
+    set parts = parts + [tail];
+  }
+  give parts;
+}
+
+proc find_top_level_token(tokens: [Token], start: u64, end: u64, text: string) -> int {
+  let bounds: TokenRange = trim_token_bounds(tokens, start, end);
+  let i: u64 = bounds.start;
+  let paren_depth: int = 0;
+  let bracket_depth: int = 0;
+  let brace_depth: int = 0;
+  while i < bounds.end and i < len(tokens) {
+    if tokens[i].lexeme == "(" {
+      set paren_depth = paren_depth + 1;
+    } elif tokens[i].lexeme == ")" {
+      set paren_depth = paren_depth - 1;
+    } elif tokens[i].lexeme == "[" {
+      set bracket_depth = bracket_depth + 1;
+    } elif tokens[i].lexeme == "]" {
+      set bracket_depth = bracket_depth - 1;
+    } elif tokens[i].lexeme == "{" {
+      set brace_depth = brace_depth + 1;
+    } elif tokens[i].lexeme == "}" {
+      set brace_depth = brace_depth - 1;
+    } elif tokens[i].lexeme == text and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0 {
+      give i as int;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
 form ExprParseResult {
   expr: AstExpr
   next_index: u64
@@ -1332,6 +1506,19 @@ form ExprParseResult {
 form StmtParseResult {
   stmt: AstStmt
   next_index: u64
+}
+
+form TokenRange {
+  start: u64
+  end: u64
+}
+
+form AstItemPrefix {
+  start: u64
+  index: u64
+  attributes: [string]
+  visibility: string
+  modifiers: [string]
 }
 
 proc range_id(tag: u64, start: u64, end: u64) -> u64 {
@@ -1358,32 +1545,503 @@ proc span_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64
 proc binary_precedence(op: string) -> u64 {
   if op == "or" { give 1; }
   if op == "and" { give 2; }
-  if op == "==" or op == "!=" { give 3; }
-  if op == "<" or op == "<=" or op == ">" or op == ">=" { give 4; }
-  if op == "+" or op == "-" { give 5; }
-  if op == "*" or op == "/" or op == "%" { give 6; }
+  if op == ".." or op == "..=" { give 3; }
+  if op == "==" or op == "!=" or op == "is" { give 4; }
+  if op == "<" or op == "<=" or op == ">" or op == ">=" { give 5; }
+  if op == "+" or op == "-" { give 6; }
+  if op == "*" or op == "/" or op == "%" or op == "as" { give 7; }
   give 0;
 }
 
 proc parse_expression_bp(source_name: string, tokens: [Token], index: u64, end: u64, min_prec: u64) -> ExprParseResult;
-proc parse_primary_expr(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult;
+proc parse_prefix_expr(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult;
+proc parse_postfix_expr(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult;
+proc parse_atom_expr(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult;
 
-proc parse_primary_expr(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult {
+proc expr_display_name(expr: AstExpr) -> string {
+  if expr.name != "" {
+    give expr.name;
+  }
+  give expr.text;
+}
+
+proc parse_expr_list(source_name: string, tokens: [Token], start: u64, end: u64) -> [AstExpr] {
+  let exprs: [AstExpr] = [];
+  if start >= end {
+    give exprs;
+  }
+  let part_start: u64 = start;
+  let i: u64 = start;
+  let paren_depth: int = 0;
+  let bracket_depth: int = 0;
+  let brace_depth: int = 0;
+  while i < end {
+    if tokens[i].lexeme == "(" {
+      set paren_depth = paren_depth + 1;
+    } elif tokens[i].lexeme == ")" {
+      set paren_depth = paren_depth - 1;
+    } elif tokens[i].lexeme == "[" {
+      set bracket_depth = bracket_depth + 1;
+    } elif tokens[i].lexeme == "]" {
+      set bracket_depth = bracket_depth - 1;
+    } elif tokens[i].lexeme == "{" {
+      set brace_depth = brace_depth + 1;
+    } elif tokens[i].lexeme == "}" {
+      set brace_depth = brace_depth - 1;
+    } elif tokens[i].lexeme == "," and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0 {
+      if part_start < i {
+        set exprs = exprs + [parse_expression_bp(source_name, tokens, part_start, i, 1).expr];
+      }
+      set part_start = i + 1;
+    }
+    set i = i + 1;
+  }
+  if part_start < end {
+    set exprs = exprs + [parse_expression_bp(source_name, tokens, part_start, end, 1).expr];
+  }
+  give exprs;
+}
+
+proc parse_ast_type_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64) -> AstTypeExpr;
+proc parse_ast_pattern_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64) -> AstPattern;
+proc parse_ast_generic_param_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64) -> AstGenericParam;
+proc parse_ast_param_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64) -> AstParam;
+proc parse_ast_proc_signature_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64, abi: string) -> AstProcSignature;
+
+proc prefix_abi(modifiers: [string]) -> string {
+  let i: u64 = 0;
+  while i < len(modifiers) {
+    if starts_with(modifiers[i], "abi:") {
+      give slice(modifiers[i], 4, len(modifiers[i]));
+    }
+    set i = i + 1;
+  }
+  let has_extern: bool = false;
+  i = 0;
+  while i < len(modifiers) {
+    if modifiers[i] == "extern" {
+      set has_extern = true;
+      break;
+    }
+    set i = i + 1;
+  }
+  if has_extern {
+    give "extern";
+  }
+  give "";
+}
+
+proc parse_text_parts(text: string) -> [string] {
+  let parts: [string] = [];
+  if trim(text) == "" {
+    give parts;
+  }
+  let raw: [string] = split_top_level_args(text);
+  let i: u64 = 0;
+  while i < len(raw) {
+    let part: string = trim(raw[i]);
+    if part != "" {
+      set parts = parts + [part];
+    }
+    set i = i + 1;
+  }
+  give parts;
+}
+
+proc parse_ast_type_list(source_name: string, tokens: [Token], start: u64, end: u64) -> [AstTypeExpr] {
+  let out: [AstTypeExpr] = [];
+  let parts: [TokenRange] = split_top_level_ranges(tokens, start, end, ",");
+  let i: u64 = 0;
+  while i < len(parts) {
+    set out = out + [parse_ast_type_from_tokens(source_name, tokens, parts[i].start, parts[i].end)];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc parse_ast_generic_param_list(source_name: string, tokens: [Token], start: u64, end: u64) -> [AstGenericParam] {
+  let out: [AstGenericParam] = [];
+  let parts: [TokenRange] = split_top_level_ranges(tokens, start, end, ",");
+  let i: u64 = 0;
+  while i < len(parts) {
+    set out = out + [parse_ast_generic_param_from_tokens(source_name, tokens, parts[i].start, parts[i].end)];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc parse_ast_param_list(source_name: string, tokens: [Token], start: u64, end: u64) -> [AstParam] {
+  let out: [AstParam] = [];
+  let parts: [TokenRange] = split_top_level_ranges(tokens, start, end, ",");
+  let i: u64 = 0;
+  while i < len(parts) {
+    set out = out + [parse_ast_param_from_tokens(source_name, tokens, parts[i].start, parts[i].end)];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc parse_ast_pattern_list(source_name: string, tokens: [Token], start: u64, end: u64) -> [AstPattern] {
+  let out: [AstPattern] = [];
+  let parts: [TokenRange] = split_top_level_ranges(tokens, start, end, ",");
+  let i: u64 = 0;
+  while i < len(parts) {
+    set out = out + [parse_ast_pattern_from_tokens(source_name, tokens, parts[i].start, parts[i].end)];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc parse_ast_type_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64) -> AstTypeExpr {
+  let bounds: TokenRange = trim_token_bounds(tokens, start, end);
+  if bounds.start >= bounds.end {
+    give ast_type_empty();
+  }
+  let text: string = token_text(tokens, bounds.start, bounds.end);
+  let span: AstSpan = span_from_tokens(source_name, tokens, bounds.start, bounds.end);
+  if tokens[bounds.start].lexeme == "&" and bounds.start + 1 < bounds.end and tokens[bounds.start + 1].lexeme == "mut" {
+    give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.MutableRef, text, "", [parse_ast_type_from_tokens(source_name, tokens, bounds.start + 2, bounds.end)], true);
+  }
+  if tokens[bounds.start].lexeme == "&" {
+    give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Reference, text, "", [parse_ast_type_from_tokens(source_name, tokens, bounds.start + 1, bounds.end)], false);
+  }
+  if tokens[bounds.start].lexeme == "*" {
+    give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Pointer, text, "", [parse_ast_type_from_tokens(source_name, tokens, bounds.start + 1, bounds.end)], false);
+  }
+  if tokens[bounds.start].lexeme == "?" {
+    give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Optional, text, "", [parse_ast_type_from_tokens(source_name, tokens, bounds.start + 1, bounds.end)], false);
+  }
+  if tokens[bounds.start].lexeme == "dyn" {
+    give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Dyn, text, "dyn", [parse_ast_type_from_tokens(source_name, tokens, bounds.start + 1, bounds.end)], false);
+  }
+  if tokens[bounds.start].lexeme == "impl" {
+    give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Impl, text, "impl", [parse_ast_type_from_tokens(source_name, tokens, bounds.start + 1, bounds.end)], false);
+  }
+  if bounds.end > bounds.start and tokens[bounds.end - 1].lexeme == "?" {
+    give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Optional, text, "", [parse_ast_type_from_tokens(source_name, tokens, bounds.start, bounds.end - 1)], false);
+  }
+  let union_parts: [TokenRange] = split_top_level_ranges(tokens, bounds.start, bounds.end, "|");
+  if len(union_parts) > 1 {
+    give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Union, text, "", parse_ast_type_list(source_name, tokens, bounds.start, bounds.end), false);
+  }
+  if tokens[bounds.start].lexeme == "[" and bounds.end > bounds.start + 1 and tokens[bounds.end - 1].lexeme == "]" {
+    let semi: int = find_top_level_token(tokens, bounds.start + 1, bounds.end - 1, ";");
+    if semi >= 0 {
+      let element: AstTypeExpr = parse_ast_type_from_tokens(source_name, tokens, bounds.start + 1, semi as u64);
+      give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Array, text, "", [element], false);
+    }
+    give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Slice, text, "", [parse_ast_type_from_tokens(source_name, tokens, bounds.start + 1, bounds.end - 1)], false);
+  }
+  if tokens[bounds.start].lexeme == "(" and bounds.end > bounds.start + 1 and tokens[bounds.end - 1].lexeme == ")" {
+    let parts: [TokenRange] = split_top_level_ranges(tokens, bounds.start + 1, bounds.end - 1, ",");
+    if len(parts) > 1 {
+      give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Tuple, text, "", parse_ast_type_list(source_name, tokens, bounds.start + 1, bounds.end - 1), false);
+    }
+  }
+  if tokens[bounds.start].lexeme == "proc" {
+    let children: [AstTypeExpr] = [];
+    let open: int = find_token_text(tokens, bounds.start, bounds.end, "(");
+    let close: int = -1;
+    if open >= 0 {
+      set close = find_matching(tokens, open as u64, "(", ")");
+    }
+    if open >= 0 and close >= 0 and close as u64 <= bounds.end {
+      let params: [AstTypeExpr] = parse_ast_type_list(source_name, tokens, open as u64 + 1, close as u64);
+      let pi: u64 = 0;
+      while pi < len(params) {
+        set children = children + [params[pi]];
+        set pi = pi + 1;
+      }
+      let arrow: int = find_top_level_token(tokens, close as u64 + 1, bounds.end, "->");
+      if arrow >= 0 and arrow as u64 + 1 < bounds.end {
+        set children = children + [parse_ast_type_from_tokens(source_name, tokens, arrow as u64 + 1, bounds.end)];
+      }
+    }
+    give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Proc, text, "proc", children, false);
+  }
+  let generic_open: int = find_top_level_token(tokens, bounds.start, bounds.end, "[");
+  if generic_open > bounds.start and bounds.end > bounds.start + 1 and tokens[bounds.end - 1].lexeme == "]" {
+    let close_generic: int = find_matching(tokens, generic_open as u64, "[", "]");
+    if close_generic as u64 == bounds.end - 1 {
+      let base: AstTypeExpr = parse_ast_type_from_tokens(source_name, tokens, bounds.start, generic_open as u64);
+      let args: [AstTypeExpr] = parse_ast_type_list(source_name, tokens, generic_open as u64 + 1, close_generic as u64);
+      let children: [AstTypeExpr] = [base];
+      let ai: u64 = 0;
+      while ai < len(args) {
+        set children = children + [args[ai]];
+        set ai = ai + 1;
+      }
+      give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Generic, text, base.name, children, false);
+    }
+  }
+  if find_top_level_token(tokens, bounds.start, bounds.end, "::") >= 0 or find_top_level_token(tokens, bounds.start, bounds.end, ".") >= 0 {
+    let parts: [TokenRange] = split_top_level_ranges(tokens, bounds.start, bounds.end, "::");
+    let children: [AstTypeExpr] = [];
+    if len(parts) > 1 {
+      let pi: u64 = 0;
+      while pi < len(parts) {
+        set children = children + [parse_ast_type_from_tokens(source_name, tokens, parts[pi].start, parts[pi].end)];
+        set pi = pi + 1;
+      }
+      give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.Qualified, text, token_text(tokens, bounds.start, bounds.end), children, false);
+    }
+  }
+  give ast_type_expr(range_id(4, bounds.start, bounds.end), span, text);
+}
+
+proc parse_ast_pattern_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64) -> AstPattern {
+  let bounds: TokenRange = trim_token_bounds(tokens, start, end);
+  if bounds.start >= bounds.end {
+    give ast_pattern_empty();
+  }
+  let text: string = token_text(tokens, bounds.start, bounds.end);
+  let span: AstSpan = span_from_tokens(source_name, tokens, bounds.start, bounds.end);
+  if tokens[bounds.start].lexeme == "&" and bounds.start + 1 < bounds.end and tokens[bounds.start + 1].lexeme == "mut" {
+    give ast_pattern_node(range_id(3, bounds.start, bounds.end), span, AstPatternKind.MutableRef, text, "", true, [parse_ast_pattern_from_tokens(source_name, tokens, bounds.start + 2, bounds.end)]);
+  }
+  if tokens[bounds.start].lexeme == "&" or tokens[bounds.start].lexeme == "ref" {
+    give ast_pattern_node(range_id(3, bounds.start, bounds.end), span, AstPatternKind.Ref, text, "", false, [parse_ast_pattern_from_tokens(source_name, tokens, bounds.start + 1, bounds.end)]);
+  }
+  let or_parts: [TokenRange] = split_top_level_ranges(tokens, bounds.start, bounds.end, "|");
+  if len(or_parts) > 1 {
+    give ast_pattern_node(range_id(3, bounds.start, bounds.end), span, AstPatternKind.Or, text, "", false, parse_ast_pattern_list(source_name, tokens, bounds.start, bounds.end));
+  }
+  let range_sep: int = find_top_level_token(tokens, bounds.start, bounds.end, "..");
+  if range_sep < 0 {
+    set range_sep = find_top_level_token(tokens, bounds.start, bounds.end, "..=");
+  }
+  if range_sep >= 0 {
+    let left: AstPattern = parse_ast_pattern_from_tokens(source_name, tokens, bounds.start, range_sep as u64);
+    let right: AstPattern = parse_ast_pattern_from_tokens(source_name, tokens, range_sep as u64 + 1, bounds.end);
+    give ast_pattern_node(range_id(3, bounds.start, bounds.end), span, AstPatternKind.Range, text, "", false, [left, right]);
+  }
+  if tokens[bounds.start].lexeme == "(" and bounds.end > bounds.start + 1 and tokens[bounds.end - 1].lexeme == ")" {
+    let children: [AstPattern] = parse_ast_pattern_list(source_name, tokens, bounds.start + 1, bounds.end - 1);
+    if len(children) > 1 {
+      give ast_pattern_node(range_id(3, bounds.start, bounds.end), span, AstPatternKind.Tuple, text, "", false, children);
+    }
+  }
+  if tokens[bounds.start].lexeme == "[" and bounds.end > bounds.start + 1 and tokens[bounds.end - 1].lexeme == "]" {
+    give ast_pattern_node(range_id(3, bounds.start, bounds.end), span, AstPatternKind.Array, text, "", false, parse_ast_pattern_list(source_name, tokens, bounds.start + 1, bounds.end - 1));
+  }
+  if tokens[bounds.start].lexeme == "_" {
+    give ast_pattern(range_id(3, bounds.start, bounds.end), span, "_", false);
+  }
+  if bounds.start + 1 < bounds.end and tokens[bounds.start + 1].lexeme == "{" and tokens[bounds.end - 1].lexeme == "}" {
+    let children: [AstPattern] = [];
+    let fields: [TokenRange] = split_top_level_ranges(tokens, bounds.start + 2, bounds.end - 1, ",");
+    let fi: u64 = 0;
+    while fi < len(fields) {
+      let colon: int = find_top_level_token(tokens, fields[fi].start, fields[fi].end, ":");
+      if colon >= 0 {
+        set children = children + [parse_ast_pattern_from_tokens(source_name, tokens, colon as u64 + 1, fields[fi].end)];
+      } else {
+        set children = children + [parse_ast_pattern_from_tokens(source_name, tokens, fields[fi].start, fields[fi].end)];
+      }
+      set fi = fi + 1;
+    }
+    let kind: AstPatternKind = if find_top_level_token(tokens, bounds.start, bounds.end, "::") >= 0 { AstPatternKind.Enum } else { AstPatternKind.Struct };
+    give ast_pattern_node(range_id(3, bounds.start, bounds.end), span, kind, text, tokens[bounds.start].lexeme, false, children);
+  }
+  let tok: Token = tokens[bounds.start];
+  if is_literal_token(tok) and bounds.end == bounds.start + 1 {
+    give ast_pattern_node(range_id(3, bounds.start, bounds.end), span, AstPatternKind.Literal, text, "", false, []);
+  }
+  let name: string = token_text(tokens, bounds.start, bounds.end);
+  if find_top_level_token(tokens, bounds.start, bounds.end, "::") >= 0 {
+    give ast_pattern_node(range_id(3, bounds.start, bounds.end), span, AstPatternKind.Enum, text, name, false, []);
+  }
+  give ast_pattern(range_id(3, bounds.start, bounds.end), span, name, false);
+}
+
+proc parse_ast_generic_param_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64) -> AstGenericParam {
+  let bounds: TokenRange = trim_token_bounds(tokens, start, end);
+  if bounds.start >= bounds.end {
+    give ast_generic_param_empty();
+  }
+  let kind: string = "type";
+  let name_index: u64 = bounds.start;
+  if tokens[name_index].lexeme == "const" or tokens[name_index].lexeme == "comptime" {
+    set kind = tokens[name_index].lexeme;
+    set name_index = name_index + 1;
+  }
+  if name_index >= bounds.end {
+    give ast_generic_param_empty();
+  }
+  let name: string = tokens[name_index].lexeme;
+  let colon: int = find_top_level_token(tokens, name_index + 1, bounds.end, ":");
+  let eq: int = find_top_level_token(tokens, name_index + 1, bounds.end, "=");
+  let bound: AstTypeExpr = ast_type_empty();
+  let default_type: AstTypeExpr = ast_type_empty();
+  if colon >= 0 {
+    let bound_end: u64 = if eq >= 0 and eq > colon { eq as u64 } else { bounds.end };
+    set bound = parse_ast_type_from_tokens(source_name, tokens, colon as u64 + 1, bound_end);
+  }
+  if eq >= 0 and eq as u64 + 1 < bounds.end {
+    set default_type = parse_ast_type_from_tokens(source_name, tokens, eq as u64 + 1, bounds.end);
+  }
+  give ast_generic_param(range_id(6, bounds.start, bounds.end), span_from_tokens(source_name, tokens, bounds.start, bounds.end), kind, name, bound, default_type);
+}
+
+proc parse_ast_param_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64) -> AstParam {
+  let bounds: TokenRange = trim_token_bounds(tokens, start, end);
+  if bounds.start >= bounds.end {
+    give ast_param_empty();
+  }
+  let variadic: bool = find_top_level_token(tokens, bounds.start, bounds.end, "...") >= 0;
+  let mode_parts: [string] = [];
+  let cursor: u64 = bounds.start;
+  while cursor < bounds.end {
+    if tokens[cursor].lexeme == "&" or tokens[cursor].lexeme == "mut" or tokens[cursor].lexeme == "owned" or tokens[cursor].lexeme == "borrow" or tokens[cursor].lexeme == "move" {
+      set mode_parts = mode_parts + [tokens[cursor].lexeme];
+      set cursor = cursor + 1;
+      continue;
+    }
+    break;
+  }
+  let mode: string = trim(token_text(tokens, bounds.start, cursor));
+  let colon: int = find_top_level_token(tokens, cursor, bounds.end, ":");
+  let eq: int = find_top_level_token(tokens, cursor, bounds.end, "=");
+  let pattern_end: u64 = if colon >= 0 { colon as u64 } elif eq >= 0 { eq as u64 } else { bounds.end };
+  let annotation: AstTypeExpr = ast_type_empty();
+  if colon >= 0 {
+    let annotation_end: u64 = if eq >= 0 and eq > colon { eq as u64 } else { bounds.end };
+    set annotation = parse_ast_type_from_tokens(source_name, tokens, colon as u64 + 1, annotation_end);
+  }
+  let default_value: AstExpr = if eq >= 0 and eq as u64 + 1 < bounds.end { parse_ast_expr_from_tokens(source_name, tokens, eq as u64 + 1, bounds.end) } else { ast_expr_unknown(0, ast_span_empty(), "") };
+  let pattern: AstPattern = if variadic { ast_pattern(range_id(3, bounds.start, bounds.end), span_from_tokens(source_name, tokens, bounds.start, bounds.end), "...", false) } else { parse_ast_pattern_from_tokens(source_name, tokens, cursor, pattern_end) };
+  give ast_param(range_id(7, bounds.start, bounds.end), span_from_tokens(source_name, tokens, bounds.start, bounds.end), pattern, annotation, default_value, mode, variadic);
+}
+
+proc parse_ast_proc_signature_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64, abi: string) -> AstProcSignature {
+  let proc_index: u64 = start;
+  let name_index: u64 = proc_index + 1;
+  let name: string = if name_index < end { tokens[name_index].lexeme } else { "" };
+  let open_params: int = find_top_level_token(tokens, proc_index, end, "(");
+  let close_params: int = -1;
+  if open_params >= 0 {
+    set close_params = find_matching(tokens, open_params as u64, "(", ")");
+  }
+  let generic_params: [AstGenericParam] = [];
+  if name_index + 1 < end and tokens[name_index + 1].lexeme == "[" {
+    let generic_close: int = find_matching(tokens, name_index + 1, "[", "]");
+    if generic_close >= 0 and generic_close as u64 < end {
+      set generic_params = parse_ast_generic_param_list(source_name, tokens, name_index + 2, generic_close as u64);
+    }
+  }
+  let params: [AstParam] = [];
+  if open_params >= 0 and close_params >= 0 and close_params as u64 <= end {
+    set params = parse_ast_param_list(source_name, tokens, open_params as u64 + 1, close_params as u64);
+  }
+  let return_type: AstTypeExpr = ast_type_empty();
+  let where_clauses: [string] = [];
+  let effects: [string] = [];
+  let requires: [string] = [];
+  let noexcept: bool = false;
+  let search_start: u64 = if close_params >= 0 { close_params as u64 + 1 } else { proc_index + 1 };
+  let arrow: int = find_top_level_token(tokens, search_start, end, "->");
+  if arrow >= 0 and arrow as u64 + 1 < end {
+    let return_end: u64 = end;
+    let where_index: int = find_top_level_token(tokens, arrow as u64 + 1, end, "where");
+    let effects_index: int = find_top_level_token(tokens, arrow as u64 + 1, end, "effects");
+    let requires_index: int = find_top_level_token(tokens, arrow as u64 + 1, end, "requires");
+    let noexcept_index: int = find_top_level_token(tokens, arrow as u64 + 1, end, "noexcept");
+    if where_index >= 0 and where_index as u64 < return_end { set return_end = where_index as u64; }
+    if effects_index >= 0 and effects_index as u64 < return_end { set return_end = effects_index as u64; }
+    if requires_index >= 0 and requires_index as u64 < return_end { set return_end = requires_index as u64; }
+    if noexcept_index >= 0 and noexcept_index as u64 < return_end { set return_end = noexcept_index as u64; }
+    set return_type = parse_ast_type_from_tokens(source_name, tokens, arrow as u64 + 1, return_end);
+  }
+  let where_index: int = find_top_level_token(tokens, search_start, end, "where");
+  if where_index >= 0 {
+    let where_end: u64 = end;
+    let effects_index: int = find_top_level_token(tokens, where_index as u64 + 1, end, "effects");
+    let requires_index: int = find_top_level_token(tokens, where_index as u64 + 1, end, "requires");
+    let noexcept_index: int = find_top_level_token(tokens, where_index as u64 + 1, end, "noexcept");
+    if effects_index >= 0 and effects_index as u64 < where_end { set where_end = effects_index as u64; }
+    if requires_index >= 0 and requires_index as u64 < where_end { set where_end = requires_index as u64; }
+    if noexcept_index >= 0 and noexcept_index as u64 < where_end { set where_end = noexcept_index as u64; }
+    set where_clauses = parse_text_parts(token_text(tokens, where_index as u64 + 1, where_end));
+  }
+  let effects_index: int = find_top_level_token(tokens, search_start, end, "effects");
+  if effects_index >= 0 and effects_index as u64 + 1 < end and tokens[effects_index as u64 + 1].lexeme == "(" {
+    let effects_close: int = find_matching(tokens, effects_index as u64 + 1, "(", ")");
+    if effects_close >= 0 {
+      set effects = parse_text_parts(token_text(tokens, effects_index as u64 + 2, effects_close as u64));
+    }
+  }
+  let requires_index: int = find_top_level_token(tokens, search_start, end, "requires");
+  if requires_index >= 0 and requires_index as u64 + 1 < end and tokens[requires_index as u64 + 1].lexeme == "(" {
+    let requires_close: int = find_matching(tokens, requires_index as u64 + 1, "(", ")");
+    if requires_close >= 0 {
+      set requires = parse_text_parts(token_text(tokens, requires_index as u64 + 2, requires_close as u64));
+    }
+  }
+  if find_top_level_token(tokens, search_start, end, "noexcept") >= 0 {
+    set noexcept = true;
+  }
+  give ast_proc_signature(range_id(8, start, end), span_from_tokens(source_name, tokens, start, end), name, abi, params, return_type, generic_params, where_clauses, effects, requires, noexcept);
+}
+
+proc collect_item_prefix(tokens: [Token], index: u64) -> AstItemPrefix {
+  let current: u64 = index;
+  let attributes: [string] = [];
+  let modifiers: [string] = [];
+  let visibility: string = "private";
+  while current < len(tokens) {
+    if tokens[current].lexeme == "#[" or tokens[current].lexeme == "#!" {
+      let close: int = find_token_text(tokens, current + 1, len(tokens), "]");
+      if close < 0 {
+        break;
+      }
+      set attributes = attributes + [token_text(tokens, current, close as u64 + 1)];
+      set current = close as u64 + 1;
+      continue;
+    }
+    if is_visibility(tokens[current].lexeme) {
+      if tokens[current].lexeme == "pub" {
+        set visibility = "public";
+      } else {
+        set visibility = "private";
+      }
+      if current + 1 < len(tokens) and tokens[current + 1].lexeme == "(" {
+        let close: int = find_matching(tokens, current + 1, "(", ")");
+        if close < 0 {
+          break;
+        }
+        set modifiers = modifiers + [token_text(tokens, current, close as u64 + 1)];
+        set current = close as u64 + 1;
+      } else {
+        set current = current + 1;
+      }
+      continue;
+    }
+    if is_proc_modifier(tokens[current].lexeme) {
+      set modifiers = modifiers + [tokens[current].lexeme];
+      set current = current + 1;
+      continue;
+    }
+    if tokens[current].lexeme == "extern" and current + 1 < len(tokens) and tokens[current + 1].lexeme == "proc" {
+      set modifiers = modifiers + ["extern"];
+      set current = current + 1;
+      continue;
+    }
+    if tokens[current].lexeme == "extern" and current + 2 < len(tokens) and (tokens[current + 1].kind == TokenKind.String or tokens[current + 1].lexeme == "C" or tokens[current + 1].lexeme == "sysv64" or tokens[current + 1].lexeme == "win64") and tokens[current + 2].lexeme == "proc" {
+      set modifiers = modifiers + ["extern", "abi:" + tokens[current + 1].lexeme];
+      set current = current + 2;
+      continue;
+    }
+    break;
+  }
+  give AstItemPrefix { start: index, index: current, attributes: attributes, visibility: visibility, modifiers: modifiers };
+}
+
+proc parse_atom_expr(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult {
   if index >= end {
     let span: AstSpan = span_from_tokens(source_name, tokens, index, index);
     give ExprParseResult { expr: ast_expr_unknown(range_id(1, index, index), span, ""), next_index: index };
   }
 
-  if tokens[index].lexeme == "&" and index + 1 < end and tokens[index + 1].lexeme == "mut" {
-    let inner: ExprParseResult = parse_primary_expr(source_name, tokens, index + 2, end);
-    let expr: AstExpr = ast_expr_node(range_id(1, index, inner.next_index), span_from_tokens(source_name, tokens, index, inner.next_index), AstExprKind.BorrowMut, token_text(tokens, index, inner.next_index), "", "&mut", [inner.expr]);
-    give ExprParseResult { expr: expr, next_index: inner.next_index };
-  }
-  if tokens[index].lexeme == "&" and index + 1 < end {
-    let inner: ExprParseResult = parse_primary_expr(source_name, tokens, index + 1, end);
-    let expr: AstExpr = ast_expr_node(range_id(1, index, inner.next_index), span_from_tokens(source_name, tokens, index, inner.next_index), AstExprKind.BorrowShared, token_text(tokens, index, inner.next_index), "", "&", [inner.expr]);
-    give ExprParseResult { expr: expr, next_index: inner.next_index };
-  }
   if tokens[index].lexeme == "(" {
     let inner: ExprParseResult = parse_expression_bp(source_name, tokens, index + 1, end, 1);
     if inner.next_index < end and tokens[inner.next_index].lexeme == ")" {
@@ -1411,41 +2069,103 @@ proc parse_primary_expr(source_name: string, tokens: [Token], index: u64, end: u
   }
 
   let base: AstExpr = ast_expr_leaf(range_id(1, index, index + 1), span, AstExprKind.Name, tok.lexeme, tok.lexeme);
-  let current: ExprParseResult = ExprParseResult { expr: base, next_index: index + 1 };
-  if current.next_index < end and tokens[current.next_index].lexeme == "(" {
-    let close: int = find_matching(tokens, current.next_index, "(", ")");
-    if close >= 0 and close as u64 < end {
-      let args: [AstExpr] = [];
-      let arg_start: u64 = current.next_index + 1;
-      let i: u64 = current.next_index + 1;
-      let depth: int = 0;
-      while i < close as u64 {
-        if tokens[i].lexeme == "(" {
-          set depth = depth + 1;
-        } elif tokens[i].lexeme == ")" {
-          set depth = depth - 1;
-        } elif tokens[i].lexeme == "," and depth == 0 {
-          if arg_start < i {
-            let parsed = parse_expression_bp(source_name, tokens, arg_start, i, 1);
-            set args = args + [parsed.expr];
-          }
-          set arg_start = i + 1;
-        }
-        set i = i + 1;
+  give ExprParseResult { expr: base, next_index: index + 1 };
+}
+
+proc parse_postfix_expr(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult {
+  let current: ExprParseResult = parse_atom_expr(source_name, tokens, index, end);
+  while current.next_index < end {
+    if tokens[current.next_index].lexeme == "(" {
+      let close: int = find_matching(tokens, current.next_index, "(", ")");
+      if close < 0 or close as u64 >= end {
+        break;
       }
-      if arg_start < close as u64 {
-        let parsed = parse_expression_bp(source_name, tokens, arg_start, close as u64, 1);
-        set args = args + [parsed.expr];
+      let args: [AstExpr] = [current.expr];
+      let parsed_args: [AstExpr] = parse_expr_list(source_name, tokens, current.next_index + 1, close as u64);
+      let arg_index: u64 = 0;
+      while arg_index < len(parsed_args) {
+        set args = args + [parsed_args[arg_index]];
+        set arg_index = arg_index + 1;
       }
-      let call_expr: AstExpr = ast_expr_node(range_id(1, index, close as u64 + 1), span_from_tokens(source_name, tokens, index, close as u64 + 1), AstExprKind.Call, token_text(tokens, index, close as u64 + 1), tok.lexeme, "", args);
-      give ExprParseResult { expr: call_expr, next_index: close as u64 + 1 };
+      let call_expr: AstExpr = ast_expr_call(
+        range_id(1, index, close as u64 + 1),
+        span_from_tokens(source_name, tokens, index, close as u64 + 1),
+        token_text(tokens, index, close as u64 + 1),
+        expr_display_name(current.expr),
+        current.expr,
+        parsed_args
+      );
+      set current = ExprParseResult { expr: call_expr, next_index: close as u64 + 1 };
+      continue;
     }
+    if tokens[current.next_index].lexeme == "." and current.next_index + 1 < end and is_ident_like(tokens[current.next_index + 1]) {
+      let member_name: Token = tokens[current.next_index + 1];
+      let member_expr: AstExpr = ast_expr_member(
+        range_id(1, index, current.next_index + 2),
+        span_from_tokens(source_name, tokens, index, current.next_index + 2),
+        token_text(tokens, index, current.next_index + 2),
+        current.expr,
+        member_name.lexeme
+      );
+      set current = ExprParseResult { expr: member_expr, next_index: current.next_index + 2 };
+      continue;
+    }
+    if tokens[current.next_index].lexeme == "[" {
+      let close: int = find_matching(tokens, current.next_index, "[", "]");
+      if close < 0 or close as u64 >= end {
+        break;
+      }
+      let inside: AstExpr = parse_ast_expr_from_tokens(source_name, tokens, current.next_index + 1, close as u64);
+      let indexed_expr: AstExpr = ast_expr_index(
+        range_id(1, index, close as u64 + 1),
+        span_from_tokens(source_name, tokens, index, close as u64 + 1),
+        token_text(tokens, index, close as u64 + 1),
+        current.expr,
+        inside
+      );
+      set current = ExprParseResult { expr: indexed_expr, next_index: close as u64 + 1 };
+      continue;
+    }
+    break;
   }
   give current;
 }
 
+proc parse_prefix_expr(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult {
+  if index >= end {
+    let span: AstSpan = span_from_tokens(source_name, tokens, index, index);
+    give ExprParseResult { expr: ast_expr_unknown(range_id(1, index, index), span, ""), next_index: index };
+  }
+  if tokens[index].lexeme == "&" and index + 1 < end and tokens[index + 1].lexeme == "mut" {
+    let inner: ExprParseResult = parse_prefix_expr(source_name, tokens, index + 2, end);
+    let expr: AstExpr = ast_expr_unary(range_id(1, index, inner.next_index), span_from_tokens(source_name, tokens, index, inner.next_index), AstExprKind.BorrowMut, token_text(tokens, index, inner.next_index), "&mut", inner.expr);
+    give ExprParseResult { expr: expr, next_index: inner.next_index };
+  }
+  if tokens[index].lexeme == "&" and index + 1 < end {
+    let inner: ExprParseResult = parse_prefix_expr(source_name, tokens, index + 1, end);
+    let expr: AstExpr = ast_expr_unary(range_id(1, index, inner.next_index), span_from_tokens(source_name, tokens, index, inner.next_index), AstExprKind.BorrowShared, token_text(tokens, index, inner.next_index), "&", inner.expr);
+    give ExprParseResult { expr: expr, next_index: inner.next_index };
+  }
+  if tokens[index].lexeme == "-" or tokens[index].lexeme == "!" or tokens[index].lexeme == "not" {
+    let inner: ExprParseResult = parse_prefix_expr(source_name, tokens, index + 1, end);
+    let expr: AstExpr = ast_expr_unary(range_id(1, index, inner.next_index), span_from_tokens(source_name, tokens, index, inner.next_index), AstExprKind.Unary, token_text(tokens, index, inner.next_index), tokens[index].lexeme, inner.expr);
+    give ExprParseResult { expr: expr, next_index: inner.next_index };
+  }
+  if tokens[index].lexeme == "*" {
+    let inner: ExprParseResult = parse_prefix_expr(source_name, tokens, index + 1, end);
+    let expr: AstExpr = ast_expr_unary(range_id(1, index, inner.next_index), span_from_tokens(source_name, tokens, index, inner.next_index), AstExprKind.Deref, token_text(tokens, index, inner.next_index), "*", inner.expr);
+    give ExprParseResult { expr: expr, next_index: inner.next_index };
+  }
+  if tokens[index].lexeme == "try" {
+    let inner: ExprParseResult = parse_prefix_expr(source_name, tokens, index + 1, end);
+    let expr: AstExpr = ast_expr_unary(range_id(1, index, inner.next_index), span_from_tokens(source_name, tokens, index, inner.next_index), AstExprKind.Try, token_text(tokens, index, inner.next_index), "try", inner.expr);
+    give ExprParseResult { expr: expr, next_index: inner.next_index };
+  }
+  give parse_postfix_expr(source_name, tokens, index, end);
+}
+
 proc parse_expression_bp(source_name: string, tokens: [Token], index: u64, end: u64, min_prec: u64) -> ExprParseResult {
-  let left: ExprParseResult = parse_primary_expr(source_name, tokens, index, end);
+  let left: ExprParseResult = parse_prefix_expr(source_name, tokens, index, end);
   let current: ExprParseResult = left;
   while current.next_index < end {
     let op_tok: Token = tokens[current.next_index];
@@ -1454,15 +2174,15 @@ proc parse_expression_bp(source_name: string, tokens: [Token], index: u64, end: 
       break;
     }
     let right: ExprParseResult = parse_expression_bp(source_name, tokens, current.next_index + 1, end, prec + 1);
-    let expr: AstExpr = ast_expr_node(
-      range_id(1, index, right.next_index),
-      span_from_tokens(source_name, tokens, index, right.next_index),
-      AstExprKind.Binary,
-      token_text(tokens, index, right.next_index),
-      "",
-      op_tok.lexeme,
-      [current.expr, right.expr]
-    );
+    let kind: AstExprKind = AstExprKind.Binary;
+    if op_tok.lexeme == ".." or op_tok.lexeme == "..=" {
+      set kind = AstExprKind.Range;
+    } elif op_tok.lexeme == "is" {
+      set kind = AstExprKind.Is;
+    } elif op_tok.lexeme == "as" {
+      set kind = AstExprKind.Cast;
+    }
+    let expr: AstExpr = ast_expr_binary(range_id(1, index, right.next_index), span_from_tokens(source_name, tokens, index, right.next_index), kind, token_text(tokens, index, right.next_index), op_tok.lexeme, current.expr, right.expr);
     set current = ExprParseResult { expr: expr, next_index: right.next_index };
   }
   give current;
@@ -1481,54 +2201,47 @@ proc parse_stmt_from_tokens(source_name: string, tokens: [Token], start: u64, en
   }
   let first: string = tokens[start].lexeme;
   if first == "let" {
-    let eq: int = find_token_text(tokens, start, end, "=");
-    let mutable: bool = false;
-    let name_index: u64 = start + 1;
-    if name_index < end and tokens[name_index].lexeme == "mut" {
-      set mutable = true;
-      set name_index = name_index + 1;
-    }
-    let name: string = "";
-    if name_index < end {
-      set name = tokens[name_index].lexeme;
-    }
+    let eq: int = find_top_level_token(tokens, start, end, "=");
+    let colon: int = find_top_level_token(tokens, start, if eq >= 0 { eq as u64 } else { end }, ":");
+    let pattern_start: u64 = start + 1;
+    let pattern_end: u64 = if colon >= 0 { colon as u64 } elif eq >= 0 { eq as u64 } else { end };
+    let pattern: AstPattern = parse_ast_pattern_from_tokens(source_name, tokens, pattern_start, pattern_end);
     let annotation: AstTypeExpr = ast_type_empty();
-    let colon: int = find_token_text(tokens, start, end, ":");
     if colon >= 0 and eq > colon {
-      set annotation = ast_type_expr(range_id(4, colon as u64 + 1, eq as u64), span_from_tokens(source_name, tokens, colon as u64 + 1, eq as u64), token_text(tokens, colon as u64 + 1, eq as u64));
+      set annotation = parse_ast_type_from_tokens(source_name, tokens, colon as u64 + 1, eq as u64);
     }
     let expr: AstExpr = ast_expr_unknown(range_id(1, start, end), stmt_span, "");
     if eq >= 0 {
       set expr = parse_ast_expr_from_tokens(source_name, tokens, eq as u64 + 1, end);
     }
-    give ast_stmt_create(stmt_id, stmt_span, AstStmtKind.Let, ast_pattern(range_id(3, name_index, name_index + 1), span_from_tokens(source_name, tokens, name_index, name_index + 1), name, mutable), "", expr, annotation, "", [], []);
+    give ast_stmt_create(stmt_id, stmt_span, AstStmtKind.Let, pattern, "", expr, annotation, "", [], []);
   }
   if first == "const" {
-    let eq: int = find_token_text(tokens, start, end, "=");
-    let name: string = "";
-    if start + 1 < end {
-      set name = tokens[start + 1].lexeme;
-    }
+    let eq: int = find_top_level_token(tokens, start, end, "=");
+    let colon: int = find_top_level_token(tokens, start, if eq >= 0 { eq as u64 } else { end }, ":");
+    let pattern_end: u64 = if colon >= 0 { colon as u64 } elif eq >= 0 { eq as u64 } else { end };
+    let pattern: AstPattern = parse_ast_pattern_from_tokens(source_name, tokens, start + 1, pattern_end);
     let annotation: AstTypeExpr = ast_type_empty();
-    let colon: int = find_token_text(tokens, start, end, ":");
     if colon >= 0 and eq > colon {
-      set annotation = ast_type_expr(range_id(4, colon as u64 + 1, eq as u64), span_from_tokens(source_name, tokens, colon as u64 + 1, eq as u64), token_text(tokens, colon as u64 + 1, eq as u64));
+      set annotation = parse_ast_type_from_tokens(source_name, tokens, colon as u64 + 1, eq as u64);
     }
     let expr: AstExpr = ast_expr_unknown(range_id(1, start, end), stmt_span, "");
     if eq >= 0 {
       set expr = parse_ast_expr_from_tokens(source_name, tokens, eq as u64 + 1, end);
     }
-    give ast_stmt_create(stmt_id, stmt_span, AstStmtKind.Const, ast_pattern(range_id(3, start + 1, start + 2), span_from_tokens(source_name, tokens, start + 1, start + 2), name, false), "", expr, annotation, "", [], []);
+    give ast_stmt_create(stmt_id, stmt_span, AstStmtKind.Const, pattern, "", expr, annotation, "", [], []);
   }
   if first == "set" {
     let eq: int = find_token_text(tokens, start, end, "=");
     let target: string = "";
+    let target_expr: AstExpr = ast_expr_unknown(range_id(1, start, end), stmt_span, "");
     let expr: AstExpr = ast_expr_unknown(range_id(1, start, end), stmt_span, "");
     if eq >= 0 {
       set target = trim(token_text(tokens, start + 1, eq as u64));
+      set target_expr = parse_ast_expr_from_tokens(source_name, tokens, start + 1, eq as u64);
       set expr = parse_ast_expr_from_tokens(source_name, tokens, eq as u64 + 1, end);
     }
-    give ast_stmt_create(stmt_id, stmt_span, AstStmtKind.Set, ast_pattern_empty(), target, expr, ast_type_empty(), "", [], []);
+    give ast_stmt_targeted(stmt_id, stmt_span, AstStmtKind.Set, ast_pattern_empty(), target, target_expr, expr, ast_type_empty(), "", [], []);
   }
   if first == "give" {
     give ast_stmt_create(stmt_id, stmt_span, AstStmtKind.Give, ast_pattern_empty(), "", parse_ast_expr_from_tokens(source_name, tokens, start + 1, end), ast_type_empty(), "", [], []);
@@ -1551,7 +2264,7 @@ proc parse_stmt_from_tokens(source_name: string, tokens: [Token], start: u64, en
     }
     give ast_stmt_create(stmt_id, stmt_span, AstStmtKind.StaticAssert, ast_pattern_empty(), "", expr, ast_type_empty(), message, [], []);
   }
-  give ast_stmt_create(stmt_id, stmt_span, AstStmtKind.Unknown, ast_pattern_empty(), "", parse_ast_expr_from_tokens(source_name, tokens, start, end), ast_type_empty(), "", [], []);
+  give ast_stmt_create(stmt_id, stmt_span, AstStmtKind.ExprStmt, ast_pattern_empty(), "", parse_ast_expr_from_tokens(source_name, tokens, start, end), ast_type_empty(), "", [], []);
 }
 
 proc parse_block_stmts(source_name: string, tokens: [Token], body_start: u64, body_end: u64) -> [AstStmt] {
@@ -1581,7 +2294,7 @@ proc parse_block_stmts(source_name: string, tokens: [Token], body_start: u64, bo
             }
           }
           let cond_expr: AstExpr = parse_ast_expr_from_tokens(source_name, tokens, open_cond + 1, close_cond as u64);
-          let stmt: AstStmt = ast_stmt_create(range_id(2, i, next_index), span_from_tokens(source_name, tokens, i, next_index), AstStmtKind.If, ast_pattern_empty(), "", cond_expr, ast_type_empty(), "", then_stmts, else_stmts);
+          let stmt: AstStmt = ast_stmt_conditional(range_id(2, i, next_index), span_from_tokens(source_name, tokens, i, next_index), AstStmtKind.If, cond_expr, then_stmts, else_stmts);
           set stmts = stmts + [stmt];
           set i = next_index;
           continue;
@@ -1598,8 +2311,188 @@ proc parse_block_stmts(source_name: string, tokens: [Token], body_start: u64, bo
           let body_stmts: [AstStmt] = parse_block_stmts(source_name, tokens, open_body + 1, close_body as u64);
           let cond_expr: AstExpr = parse_ast_expr_from_tokens(source_name, tokens, open_cond + 1, close_cond as u64);
           let next_index: u64 = close_body as u64 + 1;
-          let stmt: AstStmt = ast_stmt_create(range_id(2, i, next_index), span_from_tokens(source_name, tokens, i, next_index), AstStmtKind.While, ast_pattern_empty(), "", cond_expr, ast_type_empty(), "", body_stmts, []);
+          let stmt: AstStmt = ast_stmt_conditional(range_id(2, i, next_index), span_from_tokens(source_name, tokens, i, next_index), AstStmtKind.While, cond_expr, body_stmts, []);
           set stmts = stmts + [stmt];
+          set i = next_index;
+          continue;
+        }
+      }
+    }
+    if tokens[i].lexeme == "for" {
+      let in_index: int = find_top_level_token(tokens, i + 1, body_end, "in");
+      let open_body: int = find_top_level_token(tokens, i + 1, body_end, "{");
+      if in_index >= 0 and open_body >= 0 and in_index < open_body {
+        let close_body: int = find_matching(tokens, open_body as u64, "{", "}");
+        if close_body >= 0 and close_body as u64 <= body_end {
+          let pattern: AstPattern = parse_ast_pattern_from_tokens(source_name, tokens, i + 1, in_index as u64);
+          let iter_expr: AstExpr = parse_ast_expr_from_tokens(source_name, tokens, in_index as u64 + 1, open_body as u64);
+          let body_stmts: [AstStmt] = parse_block_stmts(source_name, tokens, open_body as u64 + 1, close_body as u64);
+          let next_index: u64 = close_body as u64 + 1;
+          let stmt: AstStmt = ast_stmt_create(range_id(2, i, next_index), span_from_tokens(source_name, tokens, i, next_index), AstStmtKind.For, pattern, "", iter_expr, ast_type_empty(), "", body_stmts, []);
+          set stmts = stmts + [stmt];
+          set i = next_index;
+          continue;
+        }
+      }
+    }
+    if tokens[i].lexeme == "match" {
+      let expr_start: u64 = i + 1;
+      let open_body: int = find_top_level_token(tokens, expr_start, body_end, "{");
+      if open_body >= 0 {
+        let close_body: int = find_matching(tokens, open_body as u64, "{", "}");
+        if close_body >= 0 and close_body as u64 <= body_end {
+          let matched_expr: AstExpr = parse_ast_expr_from_tokens(source_name, tokens, expr_start, open_body as u64);
+          let arms: [AstStmt] = [];
+          let arm_start: u64 = open_body as u64 + 1;
+          let j: u64 = arm_start;
+          let depth: int = 0;
+          while j < close_body as u64 {
+            if tokens[j].lexeme == "{" {
+              set depth = depth + 1;
+            } elif tokens[j].lexeme == "}" {
+              set depth = depth - 1;
+            } elif (tokens[j].lexeme == "," or tokens[j].lexeme == ";") and depth == 0 {
+              let arrow: int = find_top_level_token(tokens, arm_start, j, "=>");
+              if arrow >= 0 {
+                let pattern_start: u64 = if tokens[arm_start].lexeme == "case" { arm_start + 1 } else { arm_start };
+                let pattern: AstPattern = if tokens[arm_start].lexeme == "else" { ast_pattern(range_id(3, arm_start, arm_start + 1), span_from_tokens(source_name, tokens, arm_start, arm_start + 1), "_", false) } else { parse_ast_pattern_from_tokens(source_name, tokens, pattern_start, arrow as u64) };
+                let arm_body_expr: AstExpr = ast_expr_node(range_id(1, arrow as u64 + 1, j), span_from_tokens(source_name, tokens, arrow as u64 + 1, j), AstExprKind.Block, token_text(tokens, arrow as u64 + 1, j), "", "", []);
+                let arm_then: [AstStmt] = [];
+                if arrow as u64 + 1 < j and tokens[arrow as u64 + 1].lexeme == "{" and j > arrow + 1 {
+                  set arm_then = parse_block_stmts(source_name, tokens, arrow as u64 + 2, j - 1);
+                } elif arrow as u64 + 1 < j {
+                  set arm_body_expr = parse_ast_expr_from_tokens(source_name, tokens, arrow as u64 + 1, j);
+                }
+                let arm_stmt: AstStmt = ast_stmt_create(range_id(2, arm_start, j), span_from_tokens(source_name, tokens, arm_start, j), AstStmtKind.When, pattern, "", arm_body_expr, ast_type_empty(), "", arm_then, []);
+                set arms = arms + [arm_stmt];
+              }
+              set arm_start = j + 1;
+            }
+            set j = j + 1;
+          }
+          if arm_start < close_body as u64 {
+            let arrow: int = find_top_level_token(tokens, arm_start, close_body as u64, "=>");
+            if arrow >= 0 {
+              let pattern_start: u64 = if tokens[arm_start].lexeme == "case" { arm_start + 1 } else { arm_start };
+              let pattern: AstPattern = if tokens[arm_start].lexeme == "else" { ast_pattern(range_id(3, arm_start, arm_start + 1), span_from_tokens(source_name, tokens, arm_start, arm_start + 1), "_", false) } else { parse_ast_pattern_from_tokens(source_name, tokens, pattern_start, arrow as u64) };
+              let arm_body_expr: AstExpr = ast_expr_node(range_id(1, arrow as u64 + 1, close_body as u64), span_from_tokens(source_name, tokens, arrow as u64 + 1, close_body as u64), AstExprKind.Block, token_text(tokens, arrow as u64 + 1, close_body as u64), "", "", []);
+              let arm_then: [AstStmt] = [];
+              if arrow as u64 + 1 < close_body as u64 and tokens[arrow as u64 + 1].lexeme == "{" and close_body as u64 > arrow as u64 + 2 {
+                set arm_then = parse_block_stmts(source_name, tokens, arrow as u64 + 2, close_body as u64 - 1);
+              } elif arrow as u64 + 1 < close_body as u64 {
+                set arm_body_expr = parse_ast_expr_from_tokens(source_name, tokens, arrow as u64 + 1, close_body as u64);
+              }
+              set arms = arms + [ast_stmt_create(range_id(2, arm_start, close_body as u64), span_from_tokens(source_name, tokens, arm_start, close_body as u64), AstStmtKind.When, pattern, "", arm_body_expr, ast_type_empty(), "", arm_then, [])];
+            }
+          }
+          let next_index: u64 = close_body as u64 + 1;
+          set stmts = stmts + [ast_stmt_create(range_id(2, i, next_index), span_from_tokens(source_name, tokens, i, next_index), AstStmtKind.Match, ast_pattern_empty(), "", matched_expr, ast_type_empty(), "", arms, [])];
+          set i = next_index;
+          continue;
+        }
+      }
+    }
+    if tokens[i].lexeme == "unsafe" or tokens[i].lexeme == "critical" {
+      let open_body: u64 = i + 1;
+      if open_body < body_end and tokens[open_body].lexeme == "{" {
+        let close_body: int = find_matching(tokens, open_body, "{", "}");
+        if close_body >= 0 and close_body as u64 <= body_end {
+          let body_stmts: [AstStmt] = parse_block_stmts(source_name, tokens, open_body + 1, close_body as u64);
+          let next_index: u64 = close_body as u64 + 1;
+          let kind: AstStmtKind = if tokens[i].lexeme == "unsafe" { AstStmtKind.Unsafe } else { AstStmtKind.Critical };
+          let body_expr: AstExpr = ast_expr_node(range_id(1, i, next_index), span_from_tokens(source_name, tokens, i, next_index), AstExprKind.Block, token_text(tokens, i, next_index), "", "", []);
+          set stmts = stmts + [ast_stmt_create(range_id(2, i, next_index), span_from_tokens(source_name, tokens, i, next_index), kind, ast_pattern_empty(), "", body_expr, ast_type_empty(), "", body_stmts, [])];
+          set i = next_index;
+          continue;
+        }
+      }
+    }
+    if tokens[i].lexeme == "loop" or tokens[i].lexeme == "defer" {
+      let open_body: u64 = i + 1;
+      if open_body < body_end and tokens[open_body].lexeme == "{" {
+        let close_body: int = find_matching(tokens, open_body, "{", "}");
+        if close_body >= 0 and close_body as u64 <= body_end {
+          let body_stmts: [AstStmt] = parse_block_stmts(source_name, tokens, open_body + 1, close_body as u64);
+          let next_index: u64 = close_body as u64 + 1;
+          let kind: AstStmtKind = if tokens[i].lexeme == "loop" { AstStmtKind.Loop } else { AstStmtKind.Defer };
+          let body_expr: AstExpr = ast_expr_node(range_id(1, i, next_index), span_from_tokens(source_name, tokens, i, next_index), AstExprKind.Block, token_text(tokens, i, next_index), "", "", []);
+          set stmts = stmts + [ast_stmt_create(range_id(2, i, next_index), span_from_tokens(source_name, tokens, i, next_index), kind, ast_pattern_empty(), "", body_expr, ast_type_empty(), "", body_stmts, [])];
+          set i = next_index;
+          continue;
+        }
+      }
+    }
+    if tokens[i].lexeme == "when" {
+      let is_index: int = find_top_level_token(tokens, i + 1, body_end, "is");
+      let open_body: int = find_top_level_token(tokens, i + 1, body_end, "{");
+      if is_index >= 0 and open_body >= 0 and is_index < open_body {
+        let close_body: int = find_matching(tokens, open_body as u64, "{", "}");
+        if close_body >= 0 and close_body as u64 <= body_end {
+          let cond_expr: AstExpr = parse_ast_expr_from_tokens(source_name, tokens, i + 1, is_index as u64);
+          let pattern: AstPattern = parse_ast_pattern_from_tokens(source_name, tokens, is_index as u64 + 1, open_body as u64);
+          let body_stmts: [AstStmt] = parse_block_stmts(source_name, tokens, open_body as u64 + 1, close_body as u64);
+          let next_index: u64 = close_body as u64 + 1;
+          set stmts = stmts + [ast_stmt_create(range_id(2, i, next_index), span_from_tokens(source_name, tokens, i, next_index), AstStmtKind.When, pattern, "", cond_expr, ast_type_empty(), "", body_stmts, [])];
+          set i = next_index;
+          continue;
+        }
+      }
+    }
+    if tokens[i].lexeme == "with" {
+      let open_body: int = find_top_level_token(tokens, i + 1, body_end, "{");
+      if open_body >= 0 {
+        let close_body: int = find_matching(tokens, open_body as u64, "{", "}");
+        if close_body >= 0 and close_body as u64 <= body_end {
+          let as_index: int = find_top_level_token(tokens, i + 1, open_body as u64, "as");
+          let value_end: u64 = if as_index >= 0 { as_index as u64 } else { open_body as u64 };
+          let value_expr: AstExpr = parse_ast_expr_from_tokens(source_name, tokens, i + 1, value_end);
+          let pattern: AstPattern = if as_index >= 0 { parse_ast_pattern_from_tokens(source_name, tokens, as_index as u64 + 1, open_body as u64) } else { ast_pattern_empty() };
+          let body_stmts: [AstStmt] = parse_block_stmts(source_name, tokens, open_body as u64 + 1, close_body as u64);
+          let next_index: u64 = close_body as u64 + 1;
+          set stmts = stmts + [ast_stmt_create(range_id(2, i, next_index), span_from_tokens(source_name, tokens, i, next_index), AstStmtKind.With, pattern, "", value_expr, ast_type_empty(), "", body_stmts, [])];
+          set i = next_index;
+          continue;
+        }
+      }
+    }
+    if tokens[i].lexeme == "select" {
+      let open_body: int = find_top_level_token(tokens, i + 1, body_end, "{");
+      if open_body >= 0 {
+        let close_body: int = find_matching(tokens, open_body as u64, "{", "}");
+        if close_body >= 0 and close_body as u64 <= body_end {
+          let base_expr: AstExpr = if i + 1 < open_body as u64 { parse_ast_expr_from_tokens(source_name, tokens, i + 1, open_body as u64) } else { ast_expr_unknown(0, span_from_tokens(source_name, tokens, i, i + 1), "") };
+          let branches: [AstStmt] = [];
+          let else_stmts: [AstStmt] = [];
+          let cursor: u64 = open_body as u64 + 1;
+          while cursor < close_body as u64 {
+            if tokens[cursor].lexeme == "when" {
+              let branch_open: int = find_top_level_token(tokens, cursor + 1, close_body as u64, "{");
+              if branch_open >= 0 {
+                let branch_close: int = find_matching(tokens, branch_open as u64, "{", "}");
+                if branch_close >= 0 and branch_close as u64 <= close_body as u64 {
+                  let pattern: AstPattern = parse_ast_pattern_from_tokens(source_name, tokens, cursor + 1, branch_open as u64);
+                  let body_stmts: [AstStmt] = parse_block_stmts(source_name, tokens, branch_open as u64 + 1, branch_close as u64);
+                  set branches = branches + [ast_stmt_create(range_id(2, cursor, branch_close as u64 + 1), span_from_tokens(source_name, tokens, cursor, branch_close as u64 + 1), AstStmtKind.When, pattern, "", ast_expr_unknown(0, span_from_tokens(source_name, tokens, cursor, cursor + 1), ""), ast_type_empty(), "", body_stmts, [])];
+                  set cursor = branch_close as u64 + 1;
+                  continue;
+                }
+              }
+            }
+            if tokens[cursor].lexeme == "else" {
+              let else_open: int = find_top_level_token(tokens, cursor + 1, close_body as u64, "{");
+              if else_open >= 0 {
+                let else_close: int = find_matching(tokens, else_open as u64, "{", "}");
+                if else_close >= 0 and else_close as u64 <= close_body as u64 {
+                  set else_stmts = parse_block_stmts(source_name, tokens, else_open as u64 + 1, else_close as u64);
+                  set cursor = else_close as u64 + 1;
+                  continue;
+                }
+              }
+            }
+            set cursor = cursor + 1;
+          }
+          let next_index: u64 = close_body as u64 + 1;
+          set stmts = stmts + [ast_stmt_create(range_id(2, i, next_index), span_from_tokens(source_name, tokens, i, next_index), AstStmtKind.Select, ast_pattern_empty(), "", base_expr, ast_type_empty(), "", branches, else_stmts)];
           set i = next_index;
           continue;
         }
@@ -1626,159 +2519,258 @@ proc parse_block_stmts(source_name: string, tokens: [Token], body_start: u64, bo
   give stmts;
 }
 
+proc item_kind_for_keyword(keyword: string) -> AstItemKind {
+  if keyword == "space" { give AstItemKind.Space; }
+  if keyword == "use" { give AstItemKind.Use; }
+  if keyword == "export" { give AstItemKind.Export; }
+  if keyword == "const" { give AstItemKind.Const; }
+  if keyword == "static" { give AstItemKind.Static; }
+  if keyword == "type" { give AstItemKind.Type; }
+  if keyword == "opaque" { give AstItemKind.Opaque; }
+  if keyword == "extern" { give AstItemKind.Extern; }
+  if keyword == "form" { give AstItemKind.Form; }
+  if keyword == "class" { give AstItemKind.Class; }
+  if keyword == "union" { give AstItemKind.Union; }
+  if keyword == "bits" { give AstItemKind.Bits; }
+  if keyword == "pick" { give AstItemKind.Pick; }
+  if keyword == "flags" { give AstItemKind.Flags; }
+  if keyword == "trait" { give AstItemKind.Trait; }
+  if keyword == "impl" { give AstItemKind.Impl; }
+  if keyword == "proc" { give AstItemKind.Proc; }
+  if keyword == "compiler" { give AstItemKind.Compiler; }
+  if keyword == "pass" { give AstItemKind.Pass; }
+  if keyword == "backend" { give AstItemKind.Backend; }
+  if keyword == "diagnostic" { give AstItemKind.Diagnostic; }
+  if keyword == "macro" { give AstItemKind.Macro; }
+  if keyword == "entry" { give AstItemKind.Entry; }
+  if keyword == "test" { give AstItemKind.Test; }
+  if keyword == "bench" { give AstItemKind.Bench; }
+  if keyword == "static_assert" { give AstItemKind.StaticAssert; }
+  give AstItemKind.Unknown;
+}
+
+proc parse_item_type_params(source_name: string, tokens: [Token], name_index: u64, limit: u64) -> [AstTypeExpr] {
+  let params: [AstTypeExpr] = [];
+  if name_index + 1 >= limit or name_index + 1 >= len(tokens) or tokens[name_index + 1].lexeme != "[" {
+    give params;
+  }
+  let close: int = find_matching(tokens, name_index + 1, "[", "]");
+  if close < 0 or close as u64 >= limit {
+    give params;
+  }
+  give parse_ast_type_list(source_name, tokens, name_index + 2, close as u64);
+}
+
+proc find_item_body_open(tokens: [Token], start: u64, end: u64) -> int {
+  give find_top_level_token(tokens, start, end, "{");
+}
+
+proc parse_item_meta_args(tokens: [Token], name_index: u64, limit: u64) -> [string] {
+  let args: [string] = [];
+  if name_index + 1 >= limit or name_index + 1 >= len(tokens) or tokens[name_index + 1].lexeme != "(" {
+    give args;
+  }
+  let close: int = find_matching(tokens, name_index + 1, "(", ")");
+  if close < 0 or close as u64 >= limit {
+    give args;
+  }
+  give parse_text_parts(token_text(tokens, name_index + 2, close as u64));
+}
+
 proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
   let items: [AstItem] = [];
   let i: u64 = 0;
 
   while i < len(tokens) and tokens[i].kind != TokenKind.Eof {
-    // Handle space declarations
-    if tokens[i].lexeme == "space" {
-      let start: u64 = i;
-      let end_i: u64 = i + 1;
-      while end_i < len(tokens) and tokens[end_i].lexeme != ";" and tokens[end_i].kind != TokenKind.Eof {
-        set end_i = end_i + 1;
-      }
-      let name: string = "";
-      if i + 1 < len(tokens) {
-        set name = tokens[i + 1].lexeme;
-      }
-      set items = items + [ast_item_create(range_id(5, start, end_i), span_from_tokens(source_name, tokens, start, end_i), AstItemKind.Space, name, ast_expr_unknown(0, span_from_tokens(source_name, tokens, start, end_i), ""), [], ast_type_empty(), "")];
+    let prefix: AstItemPrefix = collect_item_prefix(tokens, i);
+    if prefix.index >= len(tokens) or tokens[prefix.index].kind == TokenKind.Eof {
+      break;
+    }
+    let actual: u64 = prefix.index;
+    let keyword: string = tokens[actual].lexeme;
+
+    if keyword == "space" or keyword == "use" or keyword == "export" {
+      let end_i: u64 = if find_top_level_token(tokens, actual, len(tokens), ";") >= 0 { find_top_level_token(tokens, actual, len(tokens), ";") as u64 } else { len(tokens) };
+      let name: string = token_text(tokens, actual + 1, end_i);
+      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), item_kind_for_keyword(keyword), name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), [], "")];
       set i = end_i + 1;
       continue;
     }
 
-    // Handle use declarations
-    if tokens[i].lexeme == "use" {
-      let start: u64 = i;
-      let end_i: u64 = i + 1;
-      while end_i < len(tokens) and tokens[end_i].lexeme != ";" and tokens[end_i].kind != TokenKind.Eof {
-        set end_i = end_i + 1;
-      }
-      let path: string = "";
-      if i + 1 < len(tokens) {
-        set path = token_text(tokens, i + 1, end_i);
-      }
-      set items = items + [ast_item_create(range_id(5, start, end_i), span_from_tokens(source_name, tokens, start, end_i), AstItemKind.Use, path, ast_expr_unknown(0, span_from_tokens(source_name, tokens, start, end_i), ""), [], ast_type_empty(), "")];
+    if keyword == "const" {
+      let end_i: u64 = if find_top_level_token(tokens, actual, len(tokens), ";") >= 0 { find_top_level_token(tokens, actual, len(tokens), ";") as u64 } else { len(tokens) };
+      let stmt: AstStmt = parse_stmt_from_tokens(source_name, tokens, actual, end_i);
+      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), AstItemKind.Const, stmt.pattern.name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), stmt.expr, [], stmt.annotation, ast_type_empty(), [], [], ast_proc_signature_empty(), [], "")];
       set i = end_i + 1;
       continue;
     }
 
-    // Handle container declarations (form, class, union, bits, pick, flags, trait)
-    if tokens[i].lexeme == "form" or tokens[i].lexeme == "class" or tokens[i].lexeme == "union" or tokens[i].lexeme == "bits" or tokens[i].lexeme == "pick" or tokens[i].lexeme == "flags" or tokens[i].lexeme == "trait" {
-      let keyword: string = tokens[i].lexeme;
-      let kind: AstItemKind = AstItemKind.Form;
-      if keyword == "class" { set kind = AstItemKind.Class; }
-      elif keyword == "union" { set kind = AstItemKind.Union; }
-      elif keyword == "bits" { set kind = AstItemKind.Bits; }
-      elif keyword == "pick" { set kind = AstItemKind.Pick; }
-      elif keyword == "flags" { set kind = AstItemKind.Flags; }
-      elif keyword == "trait" { set kind = AstItemKind.Trait; }
+    if keyword == "static" {
+      let end_i: u64 = if find_top_level_token(tokens, actual, len(tokens), ";") >= 0 { find_top_level_token(tokens, actual, len(tokens), ";") as u64 } else { len(tokens) };
+      let name: string = if actual + 1 < end_i { tokens[actual + 1].lexeme } else { "" };
+      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), AstItemKind.Static, name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), [], token_text(tokens, actual, end_i))];
+      set i = end_i + 1;
+      continue;
+    }
 
-      let start: u64 = i;
-      let name: string = "";
-      if i + 1 < len(tokens) {
-        set name = tokens[i + 1].lexeme;
-      }
-      let open: int = find_token_text(tokens, i, len(tokens), "{");
-      let close: int = -1;
-      if open >= 0 {
-        set close = find_matching(tokens, open as u64, "{", "}");
-      }
-      let end_i: u64 = i + 1;
-      if close >= 0 {
-        set end_i = close as u64 + 1;
+    if keyword == "static_assert" {
+      let end_i: u64 = if find_top_level_token(tokens, actual, len(tokens), ";") >= 0 { find_top_level_token(tokens, actual, len(tokens), ";") as u64 } else { len(tokens) };
+      let stmt: AstStmt = parse_stmt_from_tokens(source_name, tokens, actual, end_i);
+      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), AstItemKind.StaticAssert, "", prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), stmt.expr, [], ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), [], stmt.message)];
+      set i = end_i + 1;
+      continue;
+    }
+
+    if keyword == "type" {
+      let end_i: u64 = if find_top_level_token(tokens, actual, len(tokens), ";") >= 0 { find_top_level_token(tokens, actual, len(tokens), ";") as u64 } else { len(tokens) };
+      let name: string = if actual + 1 < end_i { tokens[actual + 1].lexeme } else { "" };
+      let eq: int = find_top_level_token(tokens, actual, end_i, "=");
+      let annotation: AstTypeExpr = if eq >= 0 { parse_ast_type_from_tokens(source_name, tokens, eq as u64 + 1, end_i) } else { ast_type_empty() };
+      let type_params: [AstTypeExpr] = parse_item_type_params(source_name, tokens, actual + 1, end_i);
+      let generic_params: [AstGenericParam] = if actual + 2 < end_i and tokens[actual + 2].lexeme == "[" {
+        parse_ast_generic_param_list(source_name, tokens, actual + 3, find_matching(tokens, actual + 2, "[", "]") as u64)
       } else {
-        while end_i < len(tokens) and tokens[end_i].lexeme != ";" {
-          set end_i = end_i + 1;
-        }
-        if end_i < len(tokens) { set end_i = end_i + 1; }
+        []
+      };
+      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), AstItemKind.Type, name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], annotation, annotation, type_params, generic_params, ast_proc_signature_empty(), [], "")];
+      set i = end_i + 1;
+      continue;
+    }
+
+    if keyword == "opaque" {
+      let end_i: u64 = if find_top_level_token(tokens, actual, len(tokens), ";") >= 0 { find_top_level_token(tokens, actual, len(tokens), ";") as u64 } else { len(tokens) };
+      let name_index: u64 = if actual + 1 < end_i and tokens[actual + 1].lexeme == "type" { actual + 2 } else { actual + 1 };
+      let name: string = if name_index < end_i { tokens[name_index].lexeme } else { "" };
+      let eq: int = find_top_level_token(tokens, actual, end_i, "=");
+      let annotation: AstTypeExpr = if eq >= 0 { parse_ast_type_from_tokens(source_name, tokens, eq as u64 + 1, end_i) } else { ast_type_empty() };
+      let type_params: [AstTypeExpr] = parse_item_type_params(source_name, tokens, name_index, end_i);
+      let generic_params: [AstGenericParam] = if name_index + 1 < end_i and tokens[name_index + 1].lexeme == "[" {
+        parse_ast_generic_param_list(source_name, tokens, name_index + 2, find_matching(tokens, name_index + 1, "[", "]") as u64)
+      } else {
+        []
+      };
+      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), AstItemKind.Opaque, name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], annotation, annotation, type_params, generic_params, ast_proc_signature_empty(), [], "")];
+      set i = end_i + 1;
+      continue;
+    }
+
+    if keyword == "extern" {
+      if actual + 1 < len(tokens) and tokens[actual + 1].lexeme == "type" {
+        let end_i: u64 = if find_top_level_token(tokens, actual, len(tokens), ";") >= 0 { find_top_level_token(tokens, actual, len(tokens), ";") as u64 } else { len(tokens) };
+        let name: string = if actual + 2 < end_i { tokens[actual + 2].lexeme } else { "" };
+        let type_params: [AstTypeExpr] = parse_item_type_params(source_name, tokens, actual + 2, end_i);
+        let generic_params: [AstGenericParam] = if actual + 3 < end_i and tokens[actual + 3].lexeme == "[" {
+          parse_ast_generic_param_list(source_name, tokens, actual + 4, find_matching(tokens, actual + 3, "[", "]") as u64)
+        } else {
+          []
+        };
+        set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), AstItemKind.Extern, name, prefix.attributes, "", prefix.visibility, prefix.modifiers + ["extern-type"], "extern", ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], ast_type_empty(), ast_type_empty(), type_params, generic_params, ast_proc_signature_empty(), [], "")];
+        set i = end_i + 1;
+        continue;
       }
-      set items = items + [ast_item_create(range_id(5, start, end_i), span_from_tokens(source_name, tokens, start, end_i), kind, name, ast_expr_unknown(0, span_from_tokens(source_name, tokens, start, end_i), ""), [], ast_type_empty(), "")];
+      let open: int = find_item_body_open(tokens, actual, len(tokens));
+      if open >= 0 {
+        let close: int = find_matching(tokens, open as u64, "{", "}");
+        if close >= 0 {
+          let abi: string = if actual + 1 < open as u64 { token_text(tokens, actual + 1, open as u64) } else { "extern" };
+          set items = items + [ast_item_typed(range_id(5, prefix.start, close as u64 + 1), span_from_tokens(source_name, tokens, prefix.start, close as u64 + 1), AstItemKind.Extern, abi, prefix.attributes, "", prefix.visibility, prefix.modifiers + [abi], abi, ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, close as u64 + 1), ""), [], ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), [], token_text(tokens, actual, close as u64 + 1))];
+          set i = close as u64 + 1;
+          continue;
+        }
+      }
+    }
+
+    if keyword == "form" or keyword == "class" or keyword == "union" or keyword == "bits" or keyword == "pick" or keyword == "flags" or keyword == "trait" or keyword == "impl" {
+      let open: int = find_item_body_open(tokens, actual, len(tokens));
+      let end_i: u64 = if open >= 0 and find_matching(tokens, open as u64, "{", "}") >= 0 { find_matching(tokens, open as u64, "{", "}") as u64 + 1 } else { if find_top_level_token(tokens, actual, len(tokens), ";") >= 0 { find_top_level_token(tokens, actual, len(tokens), ";") as u64 + 1 } else { len(tokens) } };
+      let name: string = "";
+      let annotation: AstTypeExpr = ast_type_empty();
+      let type_params: [AstTypeExpr] = [];
+      let generic_params: [AstGenericParam] = [];
+      if keyword == "impl" {
+        if open >= 0 and open as u64 > actual + 1 {
+          set annotation = parse_ast_type_from_tokens(source_name, tokens, actual + 1, open as u64);
+          set name = annotation.text;
+        }
+      } else {
+        if actual + 1 < end_i {
+          set name = tokens[actual + 1].lexeme;
+          set type_params = parse_item_type_params(source_name, tokens, actual + 1, end_i);
+          if actual + 2 < end_i and tokens[actual + 2].lexeme == "[" {
+            set generic_params = parse_ast_generic_param_list(source_name, tokens, actual + 3, find_matching(tokens, actual + 2, "[", "]") as u64);
+          }
+        }
+      }
+      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), item_kind_for_keyword(keyword), name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], annotation, annotation, type_params, generic_params, ast_proc_signature_empty(), [], "")];
       set i = end_i;
       continue;
     }
 
-    if tokens[i].lexeme == "const" {
-      let start: u64 = i;
-      let end_i: u64 = i;
-      while end_i < len(tokens) and tokens[end_i].lexeme != ";" and tokens[end_i].kind != TokenKind.Eof {
-        set end_i = end_i + 1;
-      }
-      let stmt: AstStmt = parse_stmt_from_tokens(source_name, tokens, start, end_i);
-      set items = items + [ast_item_create(range_id(5, start, end_i), span_from_tokens(source_name, tokens, start, end_i), AstItemKind.Const, stmt.pattern.name, stmt.expr, [], stmt.annotation, "")];
-      set i = end_i + 1;
-      continue;
-    }
-
-    if tokens[i].lexeme == "static" {
-      let start: u64 = i;
-      let end_i: u64 = i;
-      while end_i < len(tokens) and tokens[end_i].lexeme != ";" and tokens[end_i].kind != TokenKind.Eof {
-        set end_i = end_i + 1;
-      }
-      set items = items + [ast_item_create(range_id(5, start, end_i), span_from_tokens(source_name, tokens, start, end_i), AstItemKind.Static, "", ast_expr_unknown(0, span_from_tokens(source_name, tokens, start, end_i), ""), [], ast_type_empty(), "")];
-      set i = end_i + 1;
-      continue;
-    }
-
-    if tokens[i].lexeme == "static_assert" {
-      let start: u64 = i;
-      let end_i: u64 = i;
-      while end_i < len(tokens) and tokens[end_i].lexeme != ";" and tokens[end_i].kind != TokenKind.Eof {
-        set end_i = end_i + 1;
-      }
-      let stmt: AstStmt = parse_stmt_from_tokens(source_name, tokens, start, end_i);
-      set items = items + [ast_item_create(range_id(5, start, end_i), span_from_tokens(source_name, tokens, start, end_i), AstItemKind.StaticAssert, "", stmt.expr, [], ast_type_empty(), stmt.message)];
-      set i = end_i + 1;
-      continue;
-    }
-
-    if tokens[i].lexeme == "proc" {
-      let name: string = "";
-      if i + 1 < len(tokens) {
-        set name = tokens[i + 1].lexeme;
-      }
-      let open: int = find_token_text(tokens, i, len(tokens), "{");
+    if keyword == "proc" {
+      let open: int = find_item_body_open(tokens, actual, len(tokens));
       if open < 0 {
-        set i = i + 1;
+        set i = actual + 1;
         continue;
       }
       let close: int = find_matching(tokens, open as u64, "{", "}");
       if close < 0 {
-        set i = i + 1;
+        set i = actual + 1;
         continue;
       }
+      let name: string = if actual + 1 < open as u64 { tokens[actual + 1].lexeme } else { "" };
       let stmts: [AstStmt] = parse_block_stmts(source_name, tokens, open as u64 + 1, close as u64);
-      set items = items + [ast_item_create(range_id(5, i, close as u64 + 1), span_from_tokens(source_name, tokens, i, close as u64 + 1), AstItemKind.Proc, name, ast_expr_unknown(range_id(1, i, i + 1), span_from_tokens(source_name, tokens, i, i + 1), ""), stmts, ast_type_empty(), "")];
+      let annotation: AstTypeExpr = ast_type_empty();
+      let arrow: int = find_top_level_token(tokens, actual, open as u64, "->");
+      if arrow >= 0 and arrow as u64 + 1 < open as u64 {
+        set annotation = parse_ast_type_from_tokens(source_name, tokens, arrow as u64 + 1, open as u64);
+      }
+      let type_params: [AstTypeExpr] = parse_item_type_params(source_name, tokens, actual + 1, open as u64);
+      let generic_params: [AstGenericParam] = if actual + 2 < open as u64 and tokens[actual + 2].lexeme == "[" {
+        parse_ast_generic_param_list(source_name, tokens, actual + 3, find_matching(tokens, actual + 2, "[", "]") as u64)
+      } else {
+        []
+      };
+      let abi: string = prefix_abi(prefix.modifiers);
+      let signature: AstProcSignature = parse_ast_proc_signature_from_tokens(source_name, tokens, actual, open as u64, abi);
+      set items = items + [ast_item_typed(range_id(5, prefix.start, close as u64 + 1), span_from_tokens(source_name, tokens, prefix.start, close as u64 + 1), AstItemKind.Proc, name, prefix.attributes, "", prefix.visibility, prefix.modifiers, abi, ast_expr_unknown(range_id(1, actual, actual + 1), span_from_tokens(source_name, tokens, actual, actual + 1), ""), stmts, annotation, ast_type_empty(), type_params, generic_params, signature, [], "")];
       set i = close as u64 + 1;
       continue;
     }
 
-    if tokens[i].lexeme == "test" or tokens[i].lexeme == "bench" {
-      let keyword: string = tokens[i].lexeme;
-      let kind: AstItemKind = AstItemKind.Test;
-      if keyword == "bench" { set kind = AstItemKind.Bench; }
-      let name: string = "";
-      if i + 1 < len(tokens) and tokens[i + 1].kind == TokenKind.String {
-        set name = tokens[i + 1].lexeme;
+    if keyword == "compiler" or keyword == "pass" or keyword == "backend" or keyword == "diagnostic" or keyword == "macro" or keyword == "entry" {
+      let open: int = find_item_body_open(tokens, actual, len(tokens));
+      let has_block: bool = open >= 0 and find_matching(tokens, open as u64, "{", "}") >= 0;
+      let end_i: u64 = if has_block { find_matching(tokens, open as u64, "{", "}") as u64 + 1 } else { if find_top_level_token(tokens, actual, len(tokens), ";") >= 0 { find_top_level_token(tokens, actual, len(tokens), ";") as u64 } else { len(tokens) } };
+      let name: string = if actual + 1 < len(tokens) and (tokens[actual + 1].kind == TokenKind.Ident or tokens[actual + 1].kind == TokenKind.Keyword or tokens[actual + 1].kind == TokenKind.String) { tokens[actual + 1].lexeme } else { keyword };
+      let meta_args: [string] = parse_item_meta_args(tokens, actual + 1, end_i);
+      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), item_kind_for_keyword(keyword), name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), meta_args, token_text(tokens, actual, end_i))];
+      if has_block {
+        set i = end_i;
+      } else {
+        set i = end_i + 1;
       }
-      let open: int = find_token_text(tokens, i, len(tokens), "{");
+      continue;
+    }
+
+    if keyword == "test" or keyword == "bench" {
+      let open: int = find_item_body_open(tokens, actual, len(tokens));
       if open < 0 {
-        set i = i + 1;
+        set i = actual + 1;
         continue;
       }
       let close: int = find_matching(tokens, open as u64, "{", "}");
       if close < 0 {
-        set i = i + 1;
+        set i = actual + 1;
         continue;
       }
+      let name: string = if actual + 1 < open as u64 and tokens[actual + 1].kind == TokenKind.String { tokens[actual + 1].lexeme } else { keyword };
       let stmts: [AstStmt] = parse_block_stmts(source_name, tokens, open as u64 + 1, close as u64);
-      set items = items + [ast_item_create(range_id(5, i, close as u64 + 1), span_from_tokens(source_name, tokens, i, close as u64 + 1), kind, name, ast_expr_unknown(0, span_from_tokens(source_name, tokens, i, i + 1), ""), stmts, ast_type_empty(), "")];
+      set items = items + [ast_item_typed(range_id(5, prefix.start, close as u64 + 1), span_from_tokens(source_name, tokens, prefix.start, close as u64 + 1), item_kind_for_keyword(keyword), name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, close as u64 + 1), ""), stmts, ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), [], "")];
       set i = close as u64 + 1;
       continue;
     }
 
-    set i = i + 1;
+    set i = actual + 1;
   }
 
   if len(items) == 0 {

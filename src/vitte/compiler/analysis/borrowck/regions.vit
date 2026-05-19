@@ -123,6 +123,55 @@ proc find_region(solution: RegionSolution, name: string) -> Region {
   give solution.regions[index];
 }
 
+proc merge_region_solutions(left: RegionSolution, right: RegionSolution) -> RegionSolution {
+  let regions: [Region] = left.regions;
+  let i: u64 = 0;
+  while i < len(right.regions) {
+    let candidate: Region = right.regions[i];
+    let index: int = index_of_region(RegionSolution { regions: regions, constraints: left.constraints, valid: left.valid }, candidate.name);
+    if index < 0 {
+      set regions = regions + [candidate];
+    } else {
+      let current: Region = regions[index];
+      let start_line: u64 = current.start_line;
+      let end_line: u64 = current.end_line;
+      if candidate.start_line < start_line {
+        set start_line = candidate.start_line;
+      }
+      if candidate.end_line > end_line {
+        set end_line = candidate.end_line;
+      }
+      let updated: Region = region_create(candidate.name, start_line, end_line);
+      let tmp: RegionSolution = add_region(RegionSolution { regions: regions, constraints: left.constraints, valid: left.valid }, updated);
+      set regions = tmp.regions;
+    }
+    set i = i + 1;
+  }
+
+  let constraints: [RegionConstraint] = left.constraints;
+  i = 0;
+  while i < len(right.constraints) {
+    let found: bool = false;
+    let j: u64 = 0;
+    while j < len(constraints) {
+      if constraints[j].left == right.constraints[i].left and constraints[j].right == right.constraints[i].right and constraints[j].kind == right.constraints[i].kind and constraints[j].line == right.constraints[i].line {
+        set found = true;
+      }
+      set j = j + 1;
+    }
+    if not found {
+      set constraints = constraints + [right.constraints[i]];
+    }
+    set i = i + 1;
+  }
+
+  give RegionSolution {
+    regions: regions,
+    constraints: constraints,
+    valid: left.valid and right.valid
+  };
+}
+
 proc solve_regions(solution: RegionSolution) -> RegionSolution {
   let valid: bool = solution.valid;
   let i: u64 = 0;

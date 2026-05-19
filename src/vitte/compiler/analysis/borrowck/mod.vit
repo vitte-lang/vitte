@@ -9,6 +9,7 @@ use vitte/compiler/analysis/borrowck/errors.{
 use vitte/compiler/analysis/borrowck/lifetimes.{
   LifetimeFactKind,
   LifetimeResult,
+  add_borrow_constraint,
   add_fact,
   add_return_constraint,
   add_returned_local_diagnostic,
@@ -22,9 +23,12 @@ use vitte/compiler/analysis/borrowck/loans.{
   LoanTable,
   add_loan,
   alias_is_active,
+  deactivate_expired_loans,
   deactivate_alias,
   kind_for_alias,
+  loan_conflicts,
   loan_create,
+  loan_create_scoped,
   loan_table_empty,
   owner_for_alias,
   owner_has_active_mutable,
@@ -55,7 +59,11 @@ use vitte/compiler/analysis/borrowck/ownership.{
   mark_moved,
   mark_reinitialized,
   ownership_table_empty,
+  place_key,
   place_local,
+  place_named,
+  place_overlap,
+  place_prefix,
   replace_local,
   release_shared_borrow,
   set_mutable_borrow,
@@ -65,14 +73,20 @@ use vitte/compiler/analysis/borrowck/regions.{
   RegionSolution,
   close_region,
   ensure_region,
+  merge_region_solutions,
   region_solution_empty
 }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/analysis/typeck/coercion.{ project_place_type }
+use vitte/compiler/analysis/typeck/traits.{ type_is_copy }
 use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind, HirItemKind, HirStmt, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
 use vitte/compiler/middle/mir/mir.{
   MirBlock,
   MirFunction,
   MirOperand,
+  MirPlace,
   MirRvalue,
   MirRvalueKind,
   MirStatement,
@@ -94,6 +108,19 @@ form BorrowCheckResult {
 form BorrowBlockState {
   block_id: u64
   result: BorrowCheckResult
+  valid: bool
+}
+
+form BorrowScopeInfo {
+  name: string
+  scope_end_line: u64
+  ty: string
+  copyable: bool
+  valid: bool
+}
+
+form BorrowMetadata {
+  scopes: [BorrowScopeInfo]
   valid: bool
 }
 
@@ -141,10 +168,10 @@ proc stmt_rhs(line: string, prefix: string) -> string {
 proc parse_borrow_owner(expr: string) -> string {
   let trimmed: string = trim(expr);
   if starts_with(trimmed, "&mut ") {
-    give move_source_from_expr(slice(trimmed, 5, len(trimmed)));
+    give place_name(place_from_text(slice(trimmed, 5, len(trimmed))));
   }
   if starts_with(trimmed, "&") {
-    give move_source_from_expr(slice(trimmed, 1, len(trimmed)));
+    give place_name(place_from_text(slice(trimmed, 1, len(trimmed))));
   }
   give "";
 }
@@ -161,11 +188,13 @@ proc take_place_prefix(text: string) -> string {
     let is_alpha: bool = (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_";
     let is_digit: bool = ch >= "0" and ch <= "9";
     let is_dot: bool = ch == ".";
+    let is_star: bool = ch == "*";
+    let is_index: bool = ch == "[" or ch == "]";
     if i == 0 {
-      if not is_alpha {
+      if not is_alpha and not is_star {
         give "";
       }
-    } elif not is_alpha and not is_digit and not is_dot {
+    } elif not is_alpha and not is_digit and not is_dot and not is_star and not is_index {
       give slice(trimmed, 0, i);
     }
     set i = i + 1;
@@ -176,59 +205,281 @@ proc take_place_prefix(text: string) -> string {
 proc place_from_text(text: string) -> Place {
   let trimmed: string = trim(text);
   if starts_with(trimmed, "&mut ") {
-    set trimmed = trim(slice(trimmed, 5, len(trimmed)));
+    give place_named(trim(slice(trimmed, 5, len(trimmed))));
   } elif starts_with(trimmed, "&") {
-    set trimmed = trim(slice(trimmed, 1, len(trimmed)));
+    give place_named(trim(slice(trimmed, 1, len(trimmed))));
   } elif starts_with(trimmed, "move ") {
-    set trimmed = trim(slice(trimmed, 5, len(trimmed)));
+    give place_named(trim(slice(trimmed, 5, len(trimmed))));
   }
+  give place_named(take_place_prefix(trimmed));
+}
 
-  let prefix: string = take_place_prefix(trimmed);
-  if prefix == "" {
-    give place_local("");
+proc place_name(place: Place) -> string {
+  give place_key(place);
+}
+
+proc root_of_place_name(name: string) -> string {
+  let place: Place = place_named(name);
+  give place.root;
+}
+
+proc place_name_contains(text: string, prefix: string) -> bool {
+  give place_prefix(place_named(prefix), place_named(text));
+}
+
+proc place_names_overlap(left: string, right: string) -> bool {
+  give place_overlap(place_named(left), place_named(right));
+}
+
+proc ensure_place_declared(table: OwnershipTable, name: string, line: u64) -> OwnershipTable {
+  if name == "" or has_local(table, name) {
+    give table;
   }
+  let root: string = root_of_place_name(name);
+  if root != "" and has_local(table, root) {
+    give declare_local(table, name, line, true);
+  }
+  give table;
+}
 
-  let parts: [string] = split(prefix, ".");
-  let root: string = "";
-  let projection: [string] = [];
+proc is_moved_place(table: OwnershipTable, name: string) -> bool {
   let i: u64 = 0;
-  while i < len(parts) {
-    let part: string = trim(parts[i]);
-    if part != "" {
-      if root == "" {
-        set root = part;
-      } else {
-        set projection = projection + [part];
+  while i < len(table.locals) {
+    if place_names_overlap(table.locals[i].name, name) and table.locals[i].state == LocalStateKind.Moved {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc shared_borrow_count_place(table: OwnershipTable, name: string) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(table.locals) {
+    if place_names_overlap(table.locals[i].name, name) {
+      set count = count + table.locals[i].shared_borrows;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc is_mutably_borrowed_place(table: OwnershipTable, name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(table.locals) {
+    if place_names_overlap(table.locals[i].name, name) and table.locals[i].mutable_borrowed {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc owner_has_conflict_place(table: LoanTable, owner: string, requested_kind: LoanKind) -> bool {
+  let i: u64 = 0;
+  while i < len(table.loans) {
+    let loan: Loan = table.loans[i];
+    if loan.active and place_names_overlap(loan.owner, owner) and loan_conflicts(loan.kind, requested_kind) {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc borrow_scope_info(name: string, scope_end_line: u64, ty: string, copyable: bool) -> BorrowScopeInfo {
+  give BorrowScopeInfo {
+    name: name,
+    scope_end_line: scope_end_line,
+    ty: ty,
+    copyable: copyable,
+    valid: name != ""
+  };
+}
+
+proc borrow_metadata_empty() -> BorrowMetadata {
+  give BorrowMetadata {
+    scopes: [],
+    valid: true
+  };
+}
+
+proc metadata_index(metadata: BorrowMetadata, name: string) -> int {
+  let i: int = 0;
+  while i < len(metadata.scopes) {
+    if metadata.scopes[i].name == name {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc metadata_scope_end(metadata: BorrowMetadata, name: string) -> u64 {
+  let index: int = metadata_index(metadata, name);
+  if index < 0 {
+    give 18446744073709551615;
+  }
+  give metadata.scopes[index].scope_end_line;
+}
+
+proc metadata_type(metadata: BorrowMetadata, name: string) -> string {
+  let index: int = metadata_index(metadata, name);
+  if index >= 0 {
+    give metadata.scopes[index].ty;
+  }
+  let root: string = root_of_place_name(name);
+  if root != "" and root != name {
+    let root_index: int = metadata_index(metadata, root);
+    if root_index >= 0 {
+      let projected: string = trim(slice(name, len(root), len(name)));
+      give project_place_type(metadata.scopes[root_index].ty, projected);
+    }
+  }
+  give "opaque";
+}
+
+proc metadata_is_copy(metadata: BorrowMetadata, name: string) -> bool {
+  let index: int = metadata_index(metadata, name);
+  if index >= 0 {
+    give metadata.scopes[index].copyable;
+  }
+  give type_is_copy(metadata_type(metadata, name));
+}
+
+proc metadata_set_scope(metadata: BorrowMetadata, scope: BorrowScopeInfo) -> BorrowMetadata {
+  let scopes: [BorrowScopeInfo] = [];
+  let found: bool = false;
+  let i: u64 = 0;
+  while i < len(metadata.scopes) {
+    let current: BorrowScopeInfo = metadata.scopes[i];
+    if current.name == scope.name {
+      let end_line: u64 = current.scope_end_line;
+      if scope.scope_end_line > end_line {
+        set end_line = scope.scope_end_line;
+      }
+      set scopes = scopes + [BorrowScopeInfo {
+        name: scope.name,
+        scope_end_line: end_line,
+        ty: scope.ty,
+        copyable: scope.copyable,
+        valid: scope.valid
+      }];
+      set found = true;
+    } else {
+      set scopes = scopes + [current];
+    }
+    set i = i + 1;
+  }
+  if not found {
+    set scopes = scopes + [scope];
+  }
+  give BorrowMetadata {
+    scopes: scopes,
+    valid: metadata.valid and scope.valid
+  };
+}
+
+proc max_stmt_line(stmt: HirStmt) -> u64 {
+  let line_no: u64 = stmt.span.start_line;
+  let i: u64 = 0;
+  let max_line: u64 = line_no;
+  while i < len(stmt.then_stmts) {
+    let nested: u64 = max_stmt_line(stmt.then_stmts[i]);
+    if nested > max_line {
+      set max_line = nested;
+    }
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(stmt.else_stmts) {
+    let nested: u64 = max_stmt_line(stmt.else_stmts[i]);
+    if nested > max_line {
+      set max_line = nested;
+    }
+    set i = i + 1;
+  }
+  give max_line;
+}
+
+proc max_stmt_list_line(stmts: [HirStmt]) -> u64 {
+  let max_line: u64 = 0;
+  let i: u64 = 0;
+  while i < len(stmts) {
+    let line_no: u64 = max_stmt_line(stmts[i]);
+    if line_no > max_line {
+      set max_line = line_no;
+    }
+    set i = i + 1;
+  }
+  give max_line;
+}
+
+proc expr_static_type(expr: HirExpr) -> string {
+  if expr.inferred_type != "" and expr.inferred_type != "unknown" {
+    give expr.inferred_type;
+  }
+  give "opaque";
+}
+
+proc expr_copyable(expr: HirExpr) -> bool {
+  if expr.copyable {
+    give true;
+  }
+  give type_is_copy(expr_static_type(expr));
+}
+
+proc collect_stmt_metadata(metadata: BorrowMetadata, scope_end_line: u64, stmt: HirStmt) -> BorrowMetadata {
+  let current: BorrowMetadata = metadata;
+  let expr_ty: string = expr_static_type(stmt.expr);
+  if stmt.kind == HirStmtKind.Let and stmt.name != "" {
+    set current = metadata_set_scope(current, borrow_scope_info(stmt.name, scope_end_line, expr_ty, expr_copyable(stmt.expr)));
+  } elif stmt.kind == HirStmtKind.Const and stmt.name != "" {
+    set current = metadata_set_scope(current, borrow_scope_info(stmt.name, scope_end_line, expr_ty, expr_copyable(stmt.expr)));
+  }
+
+  if len(stmt.then_stmts) > 0 {
+    let then_end: u64 = max_stmt_list_line(stmt.then_stmts) + 1;
+    let i: u64 = 0;
+    while i < len(stmt.then_stmts) {
+      set current = collect_stmt_metadata(current, then_end, stmt.then_stmts[i]);
+      set i = i + 1;
+    }
+  }
+  if len(stmt.else_stmts) > 0 {
+    let else_end: u64 = max_stmt_list_line(stmt.else_stmts) + 1;
+    let i: u64 = 0;
+    while i < len(stmt.else_stmts) {
+      set current = collect_stmt_metadata(current, else_end, stmt.else_stmts[i]);
+      set i = i + 1;
+    }
+  }
+
+  give current;
+}
+
+proc collect_hir_metadata(hir: HirUnit) -> BorrowMetadata {
+  let metadata: BorrowMetadata = borrow_metadata_empty();
+  let current: BorrowMetadata = metadata;
+  let i: u64 = 0;
+  while i < len(hir.module.items) {
+    let item = hir.module.items[i];
+    if item.kind == HirItemKind.Const and item.name != "" {
+      let item_ty: string = expr_static_type(item.expr);
+      set current = metadata_set_scope(current, borrow_scope_info(item.name, item.span.end_line + 1, item_ty, expr_copyable(item.expr)));
+    }
+    if item.kind == HirItemKind.Proc {
+      let body_end: u64 = max_stmt_list_line(item.stmts) + 1;
+      let j: u64 = 0;
+      while j < len(item.stmts) {
+        set current = collect_stmt_metadata(current, body_end, item.stmts[j]);
+        set j = j + 1;
       }
     }
     set i = i + 1;
   }
-
-  let kind: PlaceKind = PlaceKind.Local;
-  if len(projection) > 0 {
-    set kind = PlaceKind.Field;
-  }
-
-  give Place {
-    root: root,
-    projection: projection,
-    kind: kind,
-    mutable: true,
-    valid: root != ""
-  };
-}
-
-proc place_name(place: Place) -> string {
-  if not place.valid {
-    give "";
-  }
-  let name: string = place.root;
-  let i: u64 = 0;
-  while i < len(place.projection) {
-    set name = name + "." + place.projection[i];
-    set i = i + 1;
-  }
-  give name;
+  give current;
 }
 
 proc is_mutable_borrow_expr(expr: string) -> bool {
@@ -245,14 +496,7 @@ proc add_diag(result: BorrowCheckResult, diagnostic: BorrowDiagnostic) -> Borrow
   while i < len(result.diagnostics) {
     let existing: BorrowDiagnostic = result.diagnostics[i];
     if existing.code == diagnostic.code and existing.span.line == diagnostic.span.line and existing.message == diagnostic.message {
-      give BorrowCheckResult {
-        diagnostics: result.diagnostics,
-        ownership: result.ownership,
-        moves: result.moves,
-        loans: result.loans,
-        lifetimes: result.lifetimes,
-        valid: false
-      };
+      give result;
     }
     set i = i + 1;
   }
@@ -310,6 +554,25 @@ proc replace_lifetimes(result: BorrowCheckResult, lifetimes: LifetimeResult) -> 
   };
 }
 
+proc expire_loans(result: BorrowCheckResult, metadata: BorrowMetadata, line: u64) -> BorrowCheckResult {
+  let expired: LoanTable = deactivate_expired_loans(result.loans, line);
+  let current: BorrowCheckResult = replace_loans(result, expired);
+  let ownership0: OwnershipTable = current.ownership;
+  let i: u64 = 0;
+  while i < len(expired.loans) {
+    let loan: Loan = expired.loans[i];
+    if not loan.active and loan.end_line == line {
+      if loan.kind == LoanKind.Mutable {
+        set ownership0 = set_mutable_borrow(ownership0, loan.owner, false, line);
+      } else {
+        set ownership0 = release_shared_borrow(ownership0, loan.owner, line);
+      }
+    }
+    set i = i + 1;
+  }
+  give replace_ownership(current, ownership0);
+}
+
 proc release_alias(result: BorrowCheckResult, alias: string, line: u64) -> BorrowCheckResult {
   if not alias_is_active(result.loans, alias) {
     give result;
@@ -349,6 +612,7 @@ proc record_alias_return(result: BorrowCheckResult, source_path: string, alias: 
 
 proc handle_borrow_binding(
   result: BorrowCheckResult,
+  metadata: BorrowMetadata,
   source_path: string,
   binding: string,
   owner: string,
@@ -356,12 +620,14 @@ proc handle_borrow_binding(
   line: u64
 ) -> BorrowCheckResult {
   let current: BorrowCheckResult = release_alias(result, binding, line);
+  let ownership0: OwnershipTable = ensure_place_declared(current.ownership, owner, line);
+  let current0: BorrowCheckResult = replace_ownership(current, ownership0);
 
   if owner == "" {
-    give bind_plain_value(current, binding, line);
+    give bind_plain_value(current0, binding, line);
   }
-  if is_moved(current.ownership, owner) {
-    give add_diag(current, diagnostic_create(
+  if is_moved_place(current0.ownership, owner) {
+    give add_diag(current0, diagnostic_create(
       BorrowErrorKind.BorrowOfMovedValue,
       source_path,
       line,
@@ -377,8 +643,8 @@ proc handle_borrow_binding(
     set requested = LoanKind.Mutable;
   }
 
-  if owner_has_conflict(current.loans, owner, requested) {
-    give add_diag(current, diagnostic_create(
+  if owner_has_conflict_place(current0.loans, owner, requested) {
+    give add_diag(current0, diagnostic_create(
       BorrowErrorKind.MutableBorrowConflict,
       source_path,
       line,
@@ -389,38 +655,53 @@ proc handle_borrow_binding(
     ));
   }
 
-  let loans0: LoanTable = add_loan(current.loans, loan_create(len(current.loans.loans) as u64 + 1, binding, owner, requested, line));
-  let current0: BorrowCheckResult = replace_loans(current, loans0);
-  let ownership0: OwnershipTable = declare_local(current0.ownership, binding, line, true);
-  let current1: BorrowCheckResult = replace_ownership(current0, ownership0);
+  let loans0: LoanTable = add_loan(current0.loans, loan_create_scoped(
+    len(current0.loans.loans) as u64 + 1,
+    binding,
+    owner,
+    requested,
+    line,
+    metadata_scope_end(metadata, binding)
+  ));
+  let current1: BorrowCheckResult = replace_loans(current0, loans0);
+  let ownership1: OwnershipTable = declare_local(current1.ownership, binding, line, true);
+  let current2: BorrowCheckResult = replace_ownership(current1, ownership1);
 
-  let ownership1: OwnershipTable = current1.ownership;
+  let ownership2: OwnershipTable = current2.ownership;
   if mutable {
-    set ownership1 = set_mutable_borrow(ownership1, owner, true, line);
+    set ownership2 = set_mutable_borrow(ownership2, owner, true, line);
   } else {
-    set ownership1 = add_shared_borrow(ownership1, owner, line);
+    set ownership2 = add_shared_borrow(ownership2, owner, line);
   }
 
-  let lifetimes0: LifetimeResult = add_fact(current1.lifetimes, lifetime_fact(binding, owner, binding, line, LifetimeFactKind.Borrow));
-  let lifetimes1: LifetimeResult = add_return_constraint(lifetimes0, owner, binding, line);
-  let current2: BorrowCheckResult = replace_ownership(current1, ownership1);
-  give replace_lifetimes(current2, lifetimes1);
+  let lifetimes0: LifetimeResult = add_fact(current2.lifetimes, lifetime_fact(binding, owner, binding, line, LifetimeFactKind.Borrow));
+  let lifetimes1: LifetimeResult = add_borrow_constraint(lifetimes0, binding, owner, line);
+  let current3: BorrowCheckResult = replace_ownership(current2, ownership2);
+  give replace_lifetimes(current3, lifetimes1);
 }
 
 proc handle_move_binding(
   result: BorrowCheckResult,
+  metadata: BorrowMetadata,
   source_path: string,
   binding: string,
   source: string,
   line: u64
 ) -> BorrowCheckResult {
   let current: BorrowCheckResult = release_alias(result, binding, line);
+  let ownership0: OwnershipTable = ensure_place_declared(current.ownership, source, line);
+  let current0: BorrowCheckResult = replace_ownership(current, ownership0);
 
-  if source == "" or not has_local(current.ownership, source) {
-    give bind_plain_value(current, binding, line);
+  if metadata_is_copy(metadata, source) {
+    let ownership_copy: OwnershipTable = declare_local(current0.ownership, binding, line, true);
+    give replace_ownership(current0, ownership_copy);
   }
-  if is_moved(current.ownership, source) {
-    give add_diag(current, diagnostic_create(
+
+  if source == "" or not has_local(current0.ownership, source) {
+    give bind_plain_value(current0, binding, line);
+  }
+  if is_moved_place(current0.ownership, source) {
+    give add_diag(current0, diagnostic_create(
       BorrowErrorKind.MoveAfterMove,
       source_path,
       line,
@@ -430,8 +711,8 @@ proc handle_move_binding(
       true
     ));
   }
-  if shared_borrow_count(current.ownership, source) > 0 or is_mutably_borrowed(current.ownership, source) {
-    give add_diag(current, diagnostic_create(
+  if shared_borrow_count_place(current0.ownership, source) > 0 or is_mutably_borrowed_place(current0.ownership, source) {
+    give add_diag(current0, diagnostic_create(
       BorrowErrorKind.MoveWhileBorrowed,
       source_path,
       line,
@@ -442,27 +723,30 @@ proc handle_move_binding(
     ));
   }
 
-  let ownership0: OwnershipTable = mark_moved(current.ownership, source, line);
-  let current0: BorrowCheckResult = replace_ownership(current, ownership0);
-  let moves0: MoveTracker = tracker_record_move(current0.moves, source, line);
-  let current1: BorrowCheckResult = replace_moves(current0, moves0);
-  let ownership1: OwnershipTable = declare_local(current1.ownership, binding, line, true);
-  give replace_ownership(current1, ownership1);
+  let ownership1: OwnershipTable = mark_moved(current0.ownership, source, line);
+  let current1: BorrowCheckResult = replace_ownership(current0, ownership1);
+  let moves0: MoveTracker = tracker_record_move(current1.moves, source, line);
+  let current2: BorrowCheckResult = replace_moves(current1, moves0);
+  let ownership2: OwnershipTable = declare_local(current2.ownership, binding, line, true);
+  give replace_ownership(current2, ownership2);
 }
 
 proc handle_set(
   result: BorrowCheckResult,
+  metadata: BorrowMetadata,
   source_path: string,
   target: string,
   rhs: string,
   line: u64
 ) -> BorrowCheckResult {
   let current: BorrowCheckResult = release_alias(result, target, line);
+  let ownership0: OwnershipTable = ensure_place_declared(current.ownership, target, line);
+  let current0: BorrowCheckResult = replace_ownership(current, ownership0);
   if target == "" {
-    give current;
+    give current0;
   }
-  if shared_borrow_count(current.ownership, target) > 0 or is_mutably_borrowed(current.ownership, target) {
-    give add_diag(current, diagnostic_create(
+  if shared_borrow_count_place(current0.ownership, target) > 0 or is_mutably_borrowed_place(current0.ownership, target) {
+    give add_diag(current0, diagnostic_create(
       BorrowErrorKind.WriteWhileBorrowed,
       source_path,
       line,
@@ -475,25 +759,25 @@ proc handle_set(
 
   let owner: string = parse_borrow_owner(rhs);
   if owner != "" {
-    give handle_borrow_binding(current, source_path, target, owner, is_mutable_borrow_expr(rhs), line);
+    give handle_borrow_binding(current0, metadata, source_path, target, owner, is_mutable_borrow_expr(rhs), line);
   }
 
   let source: string = move_source_from_expr(rhs);
   if source != "" and source != target {
-    let current0: BorrowCheckResult = handle_move_binding(current, source_path, target, source, line);
-    if current0.valid {
-      let ownership0: OwnershipTable = mark_reinitialized(current0.ownership, target, line);
-      let moves0: MoveTracker = tracker_record_reinit(current0.moves, target, line);
-      let current1: BorrowCheckResult = replace_ownership(current0, ownership0);
-      give replace_moves(current1, moves0);
+    let current1: BorrowCheckResult = handle_move_binding(current0, metadata, source_path, target, source, line);
+    if current1.valid {
+      let ownership1: OwnershipTable = mark_reinitialized(current1.ownership, target, line);
+      let moves0: MoveTracker = tracker_record_reinit(current1.moves, target, line);
+      let current2: BorrowCheckResult = replace_ownership(current1, ownership1);
+      give replace_moves(current2, moves0);
     }
-    give current0;
+    give current1;
   }
 
-  let ownership0: OwnershipTable = mark_reinitialized(current.ownership, target, line);
-  let moves0: MoveTracker = tracker_record_reinit(current.moves, target, line);
-  let current0: BorrowCheckResult = replace_ownership(current, ownership0);
-  give replace_moves(current0, moves0);
+  let ownership1: OwnershipTable = mark_reinitialized(current0.ownership, target, line);
+  let moves0: MoveTracker = tracker_record_reinit(current0.moves, target, line);
+  let current1: BorrowCheckResult = replace_ownership(current0, ownership1);
+  give replace_moves(current1, moves0);
 }
 
 proc handle_give(
@@ -503,33 +787,38 @@ proc handle_give(
   line: u64
 ) -> BorrowCheckResult {
   let owner: string = parse_borrow_owner(expr);
-  if owner != "" and has_local(result.ownership, owner) {
+  if owner != "" and (has_local(result.ownership, owner) or has_local(result.ownership, root_of_place_name(owner))) {
     give record_direct_return_ref(result, source_path, owner, line);
   }
 
   let value: string = move_source_from_expr(expr);
-  if value == "" {
+  let place_value: string = place_name(place_from_text(expr));
+  let actual_value: string = value;
+  if place_value != "" {
+    set actual_value = place_value;
+  }
+  if actual_value == "" {
     give result;
   }
 
-  if alias_is_active(result.loans, value) {
-    let owner0: string = owner_for_alias(result.loans, value);
-    give record_alias_return(result, source_path, value, owner0, line);
+  if alias_is_active(result.loans, actual_value) {
+    let owner0: string = owner_for_alias(result.loans, actual_value);
+    give record_alias_return(result, source_path, actual_value, owner0, line);
   }
 
-  if is_moved(result.ownership, value) {
+  if is_moved_place(result.ownership, actual_value) {
     give add_diag(result, diagnostic_create(
       BorrowErrorKind.UseAfterMove,
       source_path,
       line,
-      "cannot use moved local `" + value + "`",
-      [value],
+      "cannot use moved local `" + actual_value + "`",
+      [actual_value],
       "reinitialize the value before using it again",
       true
     ));
   }
 
-  give replace_moves(result, tracker_record_return(result.moves, value, line));
+  give replace_moves(result, tracker_record_return(result.moves, actual_value, line));
 }
 
 proc borrow_result_empty() -> BorrowCheckResult {
@@ -592,7 +881,7 @@ proc append_unique_loans(base: LoanTable, extra: LoanTable) -> LoanTable {
 }
 
 proc ownership_local_fingerprint(local: LocalState) -> string {
-  give local.name + "|" + local.place.root + "|" + (local.state as string) + "|" + (local.shared_borrows as string) + "|" + (local.mutable_borrowed as string);
+  give local.name + "|" + place_name(local.place) + "|" + (local.state as string) + "|" + (local.shared_borrows as string) + "|" + (local.mutable_borrowed as string);
 }
 
 proc merge_local_state(left: LocalState, right: LocalState) -> LocalState {
@@ -645,7 +934,7 @@ proc merge_lifetimes(left: LifetimeResult, right: LifetimeResult) -> LifetimeRes
   give LifetimeResult {
     facts: left.facts + right.facts,
     diagnostics: left.diagnostics + right.diagnostics,
-    regions: left.regions,
+    regions: merge_region_solutions(left.regions, right.regions),
     valid: left.valid and right.valid
   };
 }
@@ -763,10 +1052,15 @@ proc block_has_target(block: MirBlock, target: u64) -> bool {
 }
 
 proc merge_predecessors(entry_block: u64, blocks: [MirBlock], states: [BorrowBlockState], block_id: u64) -> BorrowCheckResult {
+  if block_id == entry_block {
+    give borrow_result_empty();
+  }
   let merged: BorrowCheckResult = borrow_result_empty();
+  let found_predecessor: bool = false;
   let i: u64 = 0;
   while i < len(blocks) {
     if block_has_target(blocks[i], block_id) {
+      set found_predecessor = true;
       let pred = block_state_get(states, blocks[i].id);
       if pred.valid {
         set merged = merge_results(merged, pred.result);
@@ -774,7 +1068,79 @@ proc merge_predecessors(entry_block: u64, blocks: [MirBlock], states: [BorrowBlo
     }
     set i = i + 1;
   }
+  if not found_predecessor {
+    give borrow_result_empty();
+  }
   give merged;
+}
+
+proc queue_contains(queue: [u64], value: u64) -> bool {
+  let i: u64 = 0;
+  while i < len(queue) {
+    if queue[i] == value {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc append_successors(queue: [u64], block: MirBlock) -> [u64] {
+  let out: [u64] = queue;
+  let targets: [u64] = terminator_targets(block.terminator);
+  let i: u64 = 0;
+  while i < len(targets) {
+    if not queue_contains(out, targets[i]) {
+      set out = out + [targets[i]];
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc pop_queue(queue: [u64]) -> [u64] {
+  let out: [u64] = [];
+  let i: u64 = 1;
+  while i < len(queue) {
+    set out = out + [queue[i]];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc find_block(blocks: [MirBlock], block_id: u64) -> MirBlock {
+  let i: u64 = 0;
+  while i < len(blocks) {
+    if blocks[i].id == block_id {
+      give blocks[i];
+    }
+    set i = i + 1;
+  }
+  give MirBlock { id: 0, statements: [], terminator: MirTerminator { kind: MirTerminatorKind.Unreachable, target_block: 0, else_block: 0, condition: MirOperand { text: "", place: MirPlace { local: "", projection: "", valid: false }, valid: false }, switch_values: [], switch_targets: [], valid: false }, valid: false };
+}
+
+proc operand_place_name(operand: MirOperand) -> string {
+  if operand.place.valid {
+    give mir_place_name(operand.place);
+  }
+  let place: Place = place_from_text(operand.text);
+  give place_name(place);
+}
+
+proc mir_place_name(place: MirPlace) -> string {
+  if not place.valid {
+    give "";
+  }
+  if place.projection != "" {
+    if starts_with(place.projection, "*") {
+      give place.projection + place.local;
+    }
+    if starts_with(place.projection, "[") {
+      give place.local + place.projection;
+    }
+    give place.local + "." + place.projection;
+  }
+  give place.local;
 }
 
 proc operand_local(operand: MirOperand) -> string {
@@ -785,11 +1151,16 @@ proc operand_local(operand: MirOperand) -> string {
 }
 
 proc handle_use_local(result: BorrowCheckResult, source_path: string, local: string, line: u64) -> BorrowCheckResult {
-  if local == "" or not has_local(result.ownership, local) {
+  if local == "" {
     give result;
   }
-  if is_moved(result.ownership, local) {
-    give add_diag(result, diagnostic_create(
+  let ownership0: OwnershipTable = ensure_place_declared(result.ownership, local, line);
+  let current: BorrowCheckResult = replace_ownership(result, ownership0);
+  if not has_local(current.ownership, local) {
+    give current;
+  }
+  if is_moved_place(current.ownership, local) {
+    give add_diag(current, diagnostic_create(
       BorrowErrorKind.UseAfterMove,
       source_path,
       line,
@@ -799,73 +1170,88 @@ proc handle_use_local(result: BorrowCheckResult, source_path: string, local: str
       true
     ));
   }
-  give replace_moves(result, tracker_record_use(result.moves, local, line));
+  give replace_moves(current, tracker_record_use(current.moves, local, line));
 }
 
-proc execute_mir_statement(result: BorrowCheckResult, source_path: string, stmt: MirStatement) -> BorrowCheckResult {
+proc execute_mir_statement(result: BorrowCheckResult, metadata: BorrowMetadata, source_path: string, stmt: MirStatement) -> BorrowCheckResult {
   let line_no: u64 = stmt.span.start_line;
+  let current: BorrowCheckResult = expire_loans(result, metadata, line_no);
   if stmt.kind == MirStatementKind.Assign {
-    let target: string = stmt.place.local;
+    let target: string = mir_place_name(stmt.place);
     if stmt.rvalue.kind == MirRvalueKind.BorrowShared or stmt.rvalue.kind == MirRvalueKind.BorrowMut {
       let owner: string = "";
       if len(stmt.rvalue.operands) > 0 {
-        set owner = operand_local(stmt.rvalue.operands[0]);
+        set owner = operand_place_name(stmt.rvalue.operands[0]);
+      } else {
+        set owner = parse_borrow_owner(stmt.rvalue.text);
       }
-      give handle_borrow_binding(result, source_path, target, owner, stmt.rvalue.kind == MirRvalueKind.BorrowMut, line_no);
+      give handle_borrow_binding(current, metadata, source_path, target, owner, stmt.rvalue.kind == MirRvalueKind.BorrowMut, line_no);
     }
 
-    let source: string = "";
-    if len(stmt.rvalue.operands) > 0 {
-      set source = operand_local(stmt.rvalue.operands[0]);
-    }
-    if source != "" and source != target {
-      let current0: BorrowCheckResult = handle_move_binding(result, source_path, target, source, line_no);
-      if current0.valid {
-        let ownership0: OwnershipTable = mark_reinitialized(current0.ownership, target, line_no);
-        let moves0: MoveTracker = tracker_record_reinit(current0.moves, target, line_no);
-        let current1: BorrowCheckResult = replace_ownership(current0, ownership0);
-        give replace_moves(current1, moves0);
+    if stmt.rvalue.kind == MirRvalueKind.Use {
+      let source: string = "";
+      if len(stmt.rvalue.operands) > 0 {
+        set source = operand_place_name(stmt.rvalue.operands[0]);
+      } else {
+        set source = place_name(place_from_text(stmt.rvalue.text));
       }
-      give current0;
+      if source != "" and source != target {
+        let current0: BorrowCheckResult = handle_move_binding(current, metadata, source_path, target, source, line_no);
+        if current0.valid {
+          let ownership0: OwnershipTable = mark_reinitialized(current0.ownership, target, line_no);
+          let moves0: MoveTracker = tracker_record_reinit(current0.moves, target, line_no);
+          let current1: BorrowCheckResult = replace_ownership(current0, ownership0);
+          give replace_moves(current1, moves0);
+        }
+        give current0;
+      }
     }
-    let ownership0: OwnershipTable = mark_reinitialized(result.ownership, target, line_no);
-    let moves0: MoveTracker = tracker_record_reinit(result.moves, target, line_no);
-    let current0: BorrowCheckResult = replace_ownership(result, ownership0);
-    give replace_moves(current0, moves0);
+
+    let current0: BorrowCheckResult = current;
+    let i: u64 = 0;
+    while i < len(stmt.rvalue.operands) {
+      set current0 = handle_use_local(current0, source_path, operand_place_name(stmt.rvalue.operands[i]), line_no);
+      set i = i + 1;
+    }
+    let ownership0: OwnershipTable = mark_reinitialized(current0.ownership, target, line_no);
+    let moves0: MoveTracker = tracker_record_reinit(current0.moves, target, line_no);
+    let current1: BorrowCheckResult = replace_ownership(current0, ownership0);
+    give replace_moves(current1, moves0);
   }
 
   if stmt.kind == MirStatementKind.Return {
     let expr: string = stmt.rvalue.text;
-    give handle_give(result, source_path, expr, line_no);
+    give handle_give(current, source_path, expr, line_no);
   }
 
   if stmt.kind == MirStatementKind.Assert {
-    let current0: BorrowCheckResult = result;
+    let current0: BorrowCheckResult = current;
     let i: u64 = 0;
     while i < len(stmt.rvalue.operands) {
-      set current0 = handle_use_local(current0, source_path, operand_local(stmt.rvalue.operands[i]), line_no);
+      set current0 = handle_use_local(current0, source_path, operand_place_name(stmt.rvalue.operands[i]), line_no);
       set i = i + 1;
     }
     give current0;
   }
 
-  give result;
+  give current;
 }
 
-proc execute_mir_block(result: BorrowCheckResult, source_path: string, block: MirBlock) -> BorrowCheckResult {
+proc execute_mir_block(result: BorrowCheckResult, metadata: BorrowMetadata, source_path: string, block: MirBlock) -> BorrowCheckResult {
   let current: BorrowCheckResult = result;
   let line_no: u64 = 0;
   let i: u64 = 0;
   while i < len(block.statements) {
     set line_no = block.statements[i].span.start_line;
-    set current = execute_mir_statement(current, source_path, block.statements[i]);
+    set current = execute_mir_statement(current, metadata, source_path, block.statements[i]);
     set i = i + 1;
   }
 
   if block.terminator.kind == MirTerminatorKind.Branch or block.terminator.kind == MirTerminatorKind.Switch {
-    give handle_use_local(current, source_path, operand_local(block.terminator.condition), line_no);
+    let current0: BorrowCheckResult = expire_loans(current, metadata, line_no + 1);
+    give handle_use_local(current0, source_path, operand_place_name(block.terminator.condition), line_no);
   }
-  give current;
+  give expire_loans(current, metadata, line_no + 1);
 }
 
 proc block_max_line(block: MirBlock) -> u64 {
@@ -880,57 +1266,97 @@ proc block_max_line(block: MirBlock) -> u64 {
   give line_no;
 }
 
-proc borrow_check_mir_function(source_path: string, fn0: MirFunction) -> BorrowCheckResult {
-  let states: [BorrowBlockState] = [];
-  let pass: u64 = 0;
-  let changed: bool = true;
-
-  while changed and pass < 8 {
-    set changed = false;
-    let i: u64 = 0;
-    while i < len(fn0.blocks) {
-      let block: MirBlock = fn0.blocks[i];
-      let in_state: BorrowCheckResult = merge_predecessors(fn0.entry_block, fn0.blocks, states, block.id);
-      let out_state: BorrowCheckResult = execute_mir_block(in_state, source_path, block);
-      let previous: BorrowBlockState = block_state_get(states, block.id);
-      if not previous.valid or result_fingerprint(previous.result) != result_fingerprint(out_state) {
-        set states = block_state_set(states, BorrowBlockState { block_id: block.id, result: out_state, valid: true });
-        set changed = true;
-      }
-      set i = i + 1;
+proc close_known_regions(result: BorrowCheckResult, metadata: BorrowMetadata, fn0: MirFunction) -> LifetimeResult {
+  let final_line: u64 = 1;
+  let bi: u64 = 0;
+  let max_line: u64 = 0;
+  while bi < len(fn0.blocks) {
+    let block_line: u64 = block_max_line(fn0.blocks[bi]);
+    if block_line > max_line {
+      set max_line = block_line;
     }
-    set pass = pass + 1;
+    set bi = bi + 1;
+  }
+  let current: LifetimeResult = result.lifetimes;
+  let regions0: RegionSolution = close_region(current.regions, "return", max_line + 1);
+  let closed0: LifetimeResult = LifetimeResult {
+    facts: current.facts,
+    diagnostics: current.diagnostics,
+    regions: regions0,
+    valid: current.valid and regions0.valid
+  };
+
+  let i: u64 = 0;
+  let closed: LifetimeResult = closed0;
+  while i < len(metadata.scopes) {
+    let scope = metadata.scopes[i];
+    let next_regions: RegionSolution = close_region(closed.regions, scope.name, scope.scope_end_line);
+    set closed = LifetimeResult {
+      facts: closed.facts,
+      diagnostics: closed.diagnostics,
+      regions: next_regions,
+      valid: closed.valid and next_regions.valid
+    };
+    set i = i + 1;
+  }
+
+  i = 0;
+  while i < len(result.ownership.locals) {
+    let local: LocalState = result.ownership.locals[i];
+    let region_end: u64 = local.last_line + 1;
+    let scope_end: u64 = metadata_scope_end(metadata, local.name);
+    if scope_end != 18446744073709551615 and scope_end > region_end {
+      set region_end = scope_end;
+    }
+    let next_regions: RegionSolution = close_region(closed.regions, local.name, region_end);
+    set closed = LifetimeResult {
+      facts: closed.facts,
+      diagnostics: closed.diagnostics,
+      regions: next_regions,
+      valid: closed.valid and next_regions.valid
+    };
+    set i = i + 1;
+  }
+  give closed;
+}
+
+proc borrow_check_mir_function(source_path: string, metadata: BorrowMetadata, fn0: MirFunction) -> BorrowCheckResult {
+  let states: [BorrowBlockState] = [];
+  let worklist: [u64] = [];
+  let i: u64 = 0;
+  while i < len(fn0.blocks) {
+    set worklist = worklist + [fn0.blocks[i].id];
+    set i = i + 1;
+  }
+
+  while len(worklist) > 0 {
+    let block_id: u64 = worklist[0];
+    set worklist = pop_queue(worklist);
+    let block: MirBlock = find_block(fn0.blocks, block_id);
+    if not block.valid {
+      continue;
+    }
+
+    let in_state: BorrowCheckResult = merge_predecessors(fn0.entry_block, fn0.blocks, states, block.id);
+    let out_state: BorrowCheckResult = execute_mir_block(in_state, metadata, source_path, block);
+    let previous: BorrowBlockState = block_state_get(states, block.id);
+    if not previous.valid or result_fingerprint(previous.result) != result_fingerprint(out_state) {
+      set states = block_state_set(states, BorrowBlockState { block_id: block.id, result: out_state, valid: true });
+      set worklist = append_successors(worklist, block);
+    }
   }
 
   let merged: BorrowCheckResult = borrow_result_empty();
-  let max_line: u64 = 0;
   let i: u64 = 0;
   while i < len(fn0.blocks) {
     let state: BorrowBlockState = block_state_get(states, fn0.blocks[i].id);
     if state.valid {
       set merged = merge_results(merged, state.result);
     }
-    let block_line: u64 = block_max_line(fn0.blocks[i]);
-    if block_line > max_line {
-      set max_line = block_line;
-    }
     set i = i + 1;
   }
 
-  let j: u64 = 0;
-  let lifetimes0: LifetimeResult = merged.lifetimes;
-  while j < len(merged.ownership.locals) {
-    let name: string = merged.ownership.locals[j].name;
-    let closed: RegionSolution = close_region(lifetimes0.regions, name, max_line + 1);
-    set lifetimes0 = LifetimeResult {
-      facts: lifetimes0.facts,
-      diagnostics: lifetimes0.diagnostics,
-      regions: closed,
-      valid: lifetimes0.valid and closed.valid
-    };
-    set j = j + 1;
-  }
-
+  let lifetimes0: LifetimeResult = close_known_regions(merged, metadata, fn0);
   let current0: BorrowCheckResult = replace_lifetimes(merged, finalize_lifetimes(lifetimes0));
   give BorrowCheckResult {
     diagnostics: current0.diagnostics,
@@ -942,7 +1368,7 @@ proc borrow_check_mir_function(source_path: string, fn0: MirFunction) -> BorrowC
   };
 }
 
-proc borrow_check_mir(source_path: string, mir: MirUnit) -> BorrowCheckResult {
+proc borrow_check_mir_with_metadata(source_path: string, mir: MirUnit, metadata: BorrowMetadata) -> BorrowCheckResult {
   if not mir.valid or not mir.module.valid {
     give add_diag(borrow_result_empty(), diagnostic_create(
       BorrowErrorKind.UseAfterMove,
@@ -957,7 +1383,7 @@ proc borrow_check_mir(source_path: string, mir: MirUnit) -> BorrowCheckResult {
   let current: BorrowCheckResult = borrow_result_empty();
   let i: u64 = 0;
   while i < len(mir.module.functions) {
-    let fn_result: BorrowCheckResult = borrow_check_mir_function(source_path, mir.module.functions[i]);
+    let fn_result: BorrowCheckResult = borrow_check_mir_function(source_path, metadata, mir.module.functions[i]);
     set current = merge_results(current, fn_result);
     set i = i + 1;
   }
@@ -971,87 +1397,38 @@ proc borrow_check_mir(source_path: string, mir: MirUnit) -> BorrowCheckResult {
   };
 }
 
+proc borrow_check_mir(source_path: string, mir: MirUnit) -> BorrowCheckResult {
+  give borrow_check_mir_with_metadata(source_path, mir, borrow_metadata_empty());
+}
+
+proc borrow_check_hir_mir(source_path: string, hir: HirUnit, mir: MirUnit) -> BorrowCheckResult {
+  let metadata: BorrowMetadata = collect_hir_metadata(hir);
+  give borrow_check_mir_with_metadata(source_path, mir, metadata);
+}
+
 proc borrow_check_source(source_path: string, source_text: string) -> BorrowCheckResult {
-  let lines: [string] = split_lines(source_text);
-  let result: BorrowCheckResult = BorrowCheckResult {
-    diagnostics: [],
-    ownership: ownership_table_empty(),
-    moves: move_tracker_empty(),
-    loans: loan_table_empty(),
-    lifetimes: lifetime_result_empty(region_solution_empty()),
-    valid: true
-  };
-
-  let current: BorrowCheckResult = result;
-  let i: int = 0;
-  while i < len(lines) {
-    let line_no: u64 = i as u64 + 1;
-    let line: string = trim(lines[i]);
-    if line == "" or starts_with(line, "#") or starts_with(line, "//") {
-      set i = i + 1;
-      continue;
-    }
-
-    if starts_with(line, "let ") {
-      let binding: string = stmt_lhs(line, "let ");
-      let rhs: string = stmt_rhs(line, "let ");
-      let current0: BorrowCheckResult = current;
-      if binding != "" and not has_local(current0.ownership, binding) {
-        let ownership0: OwnershipTable = declare_local(current0.ownership, binding, line_no, rhs != "");
-        set current0 = replace_ownership(current0, ownership0);
-        let lifetimes0: LifetimeResult = current0.lifetimes;
-        set lifetimes0 = LifetimeResult {
-          facts: lifetimes0.facts,
-          diagnostics: lifetimes0.diagnostics,
-          regions: ensure_region(lifetimes0.regions, binding, line_no),
-          valid: lifetimes0.valid and ensure_region(lifetimes0.regions, binding, line_no).valid
-        };
-        set current0 = replace_lifetimes(current0, lifetimes0);
-      }
-
-      if rhs == "" {
-        set current = current0;
-      } elif parse_borrow_owner(rhs) != "" {
-        set current = handle_borrow_binding(current0, source_path, binding, parse_borrow_owner(rhs), is_mutable_borrow_expr(rhs), line_no);
-      } else {
-        set current = handle_move_binding(current0, source_path, binding, move_source_from_expr(rhs), line_no);
-      }
-    } elif starts_with(line, "set ") {
-      set current = handle_set(current, source_path, stmt_lhs(line, "set "), stmt_rhs(line, "set "), line_no);
-    } elif starts_with(line, "give ") {
-      set current = handle_give(current, source_path, trim(slice(line, 5, len(line))), line_no);
-    }
-
-    set i = i + 1;
+  let frontend: FrontendOutput = frontend_run(source_path, source_text);
+  if not frontend.valid {
+    give add_diag(borrow_result_empty(), diagnostic_create(
+      BorrowErrorKind.UseAfterMove,
+      source_path,
+      0,
+      "borrow checking requires valid frontend output",
+      ["frontend"],
+      "fix parsing or AST validation errors before borrow checking",
+      true
+    ));
   }
-
-  let j: u64 = 0;
-  let lifetimes0: LifetimeResult = current.lifetimes;
-  while j < len(current.ownership.locals) {
-    let name: string = current.ownership.locals[j].name;
-    set lifetimes0 = LifetimeResult {
-      facts: lifetimes0.facts,
-      diagnostics: lifetimes0.diagnostics,
-      regions: close_region(lifetimes0.regions, name, len(lines) as u64 + 1),
-      valid: lifetimes0.valid and close_region(lifetimes0.regions, name, len(lines) as u64 + 1).valid
-    };
-    set j = j + 1;
-  }
-
-  let current0: BorrowCheckResult = replace_lifetimes(current, finalize_lifetimes(lifetimes0));
-  give BorrowCheckResult {
-    diagnostics: current0.diagnostics,
-    ownership: current0.ownership,
-    moves: current0.moves,
-    loans: current0.loans,
-    lifetimes: current0.lifetimes,
-    valid: current0.valid and not diagnostics_has_fatal(current0.diagnostics)
-  };
+  let hir: HirUnit = lower_ast_to_hir(frontend);
+  give borrow_check_hir(source_path, hir);
 }
 
 proc hir_expr_owner(expr: HirExpr) -> string {
   if (expr.kind == HirExprKind.BorrowShared or expr.kind == HirExprKind.BorrowMut) and len(expr.children) > 0 {
-    give place_from_text(expr.children[0].text).root;
+    if expr.children[0].binding != "" {
+      give place_name(place_from_text(expr.children[0].binding));
+    }
+    give place_name(place_from_text(expr.children[0].text));
   }
   give "";
 }
@@ -1061,15 +1438,24 @@ proc hir_expr_is_mutable_borrow(expr: HirExpr) -> bool {
 }
 
 proc hir_expr_move_source(expr: HirExpr) -> string {
-  if expr.kind == HirExprKind.Name {
-    give place_from_text(expr.name).root;
+  if expr.binding != "" {
+    give place_name(place_from_text(expr.binding));
   }
-  give place_from_text(expr.text).root;
+  if expr.kind == HirExprKind.Name {
+    give place_name(place_from_text(expr.name));
+  }
+  give place_name(place_from_text(expr.text));
 }
 
 proc hir_expr_place(expr: HirExpr) -> Place {
   if (expr.kind == HirExprKind.BorrowShared or expr.kind == HirExprKind.BorrowMut) and len(expr.children) > 0 {
+    if expr.children[0].binding != "" {
+      give place_from_text(expr.children[0].binding);
+    }
     give place_from_text(expr.children[0].text);
+  }
+  if expr.binding != "" {
+    give place_from_text(expr.binding);
   }
   if expr.kind == HirExprKind.Name {
     give place_from_text(expr.name);
@@ -1082,6 +1468,9 @@ proc hir_stmt_binding_place(stmt: HirStmt) -> Place {
 }
 
 proc hir_stmt_target_place(stmt: HirStmt) -> Place {
+  if stmt.target_binding != "" {
+    give place_from_text(stmt.target_binding);
+  }
   if stmt.target != "" {
     give place_from_text(stmt.target);
   }
@@ -1091,10 +1480,11 @@ proc hir_stmt_target_place(stmt: HirStmt) -> Place {
 proc check_hir_stmt(result: BorrowCheckResult, source_path: string, stmt: HirStmt) -> BorrowCheckResult {
   let line_no: u64 = stmt.span.start_line;
   let current: BorrowCheckResult = result;
+  let metadata: BorrowMetadata = borrow_metadata_empty();
 
   if stmt.kind == HirStmtKind.Let or stmt.kind == HirStmtKind.Const {
     let binding_place: Place = hir_stmt_binding_place(stmt);
-    let binding: string = binding_place.root;
+    let binding: string = place_name(binding_place);
     let rhs_place: Place = hir_expr_place(stmt.expr);
     let rhs: string = place_name(rhs_place);
     let current0: BorrowCheckResult = current;
@@ -1115,9 +1505,9 @@ proc check_hir_stmt(result: BorrowCheckResult, source_path: string, stmt: HirStm
       }
       let owner: string = hir_expr_owner(stmt.expr);
       if owner != "" {
-        give handle_borrow_binding(current2, source_path, binding, owner, hir_expr_is_mutable_borrow(stmt.expr), line_no);
+        give handle_borrow_binding(current2, metadata, source_path, binding, owner, hir_expr_is_mutable_borrow(stmt.expr), line_no);
       }
-      give handle_move_binding(current2, source_path, binding, rhs_place.root, line_no);
+      give handle_move_binding(current2, metadata, source_path, binding, rhs, line_no);
     }
     give current;
   }
@@ -1129,7 +1519,7 @@ proc check_hir_stmt(result: BorrowCheckResult, source_path: string, stmt: HirStm
     if rhs_place.valid and rhs_text == "" {
       set rhs_text = place_name(rhs_place);
     }
-    give handle_set(current, source_path, target_place.root, rhs_text, line_no);
+    give handle_set(current, metadata, source_path, place_name(target_place), rhs_text, line_no);
   }
   if stmt.kind == HirStmtKind.Give {
     let value_place: Place = hir_expr_place(stmt.expr);
@@ -1156,5 +1546,5 @@ proc check_hir_stmt(result: BorrowCheckResult, source_path: string, stmt: HirStm
 
 proc borrow_check_hir(source_path: string, hir: HirUnit) -> BorrowCheckResult {
   let mir: MirUnit = lower_hir_to_mir(hir);
-  give borrow_check_mir(source_path, mir);
+  give borrow_check_hir_mir(source_path, hir, mir);
 }

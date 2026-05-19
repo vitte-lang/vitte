@@ -1,0 +1,49 @@
+space vitte/compiler/analysis/sema
+
+use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
+
+pick SemaSeverity {
+  Warning,
+  Error,
+}
+
+form SemaDiagnostic {
+  code: string
+  severity: SemaSeverity
+  message: string
+  labels: [string]
+  suggestion: string
+  span: AstSpan
+  fatal: bool
+}
+
+proc sema_span_empty() -> AstSpan {
+  give ast_span_empty();
+}
+
+proc sema_severity_name(severity: SemaSeverity) -> string {
+  if severity == SemaSeverity.Warning {
+    give "warning";
+  }
+  give "error";
+}
+
+proc sema_diagnostic(
+  code: string,
+  severity: SemaSeverity,
+  message: string,
+  labels: [string],
+  suggestion: string,
+  span: AstSpan,
+  fatal: bool
+) -> SemaDiagnostic {
+  give SemaDiagnostic {
+    code: code,
+    severity: severity,
+    message: message,
+    labels: labels,
+    suggestion: suggestion,
+    span: span,
+    fatal: fatal
+  };
+}

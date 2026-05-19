@@ -1,0 +1,116 @@
+space vitte/compiler/backend/codegen
+
+use vitte/compiler/backend/ir/ir.{ IrFunction, IrInstruction, IrInstructionKind, IrUnit }
+use vitte/compiler/backend/codegen/machine.{ machine_block_label, machine_branch_label, machine_call_target_text, machine_epilogue_x86_64, machine_function_label, machine_operand_debug_name, machine_operand_immediate_text, machine_prologue_x86_64, machine_return_label }
+
+proc load_operand_lines(instruction: IrInstruction, index: u64, target_register: string) -> [string] {
+  if len(instruction.args) <= index {
+    give ["  mov $0, " + target_register];
+  }
+  let value = instruction.args[index];
+  if value.constant != "" {
+    give ["  mov " + machine_operand_immediate_text(value.constant) + ", " + target_register];
+  }
+  let debug_name: string = machine_operand_debug_name(value.name, value.place, value.text);
+  give ["  # load " + debug_name, "  mov $0, " + target_register];
+}
+
+proc store_result_lines(instruction: IrInstruction, source_register: string) -> [string] {
+  if not instruction.dest.valid {
+    give [];
+  }
+  let debug_name: string = machine_operand_debug_name(instruction.dest.name, instruction.dest.place, instruction.dest.text);
+  give ["  # store " + debug_name + " <- " + source_register];
+}
+
+proc select_instruction_line(function_name: string, instruction: IrInstruction) -> [string] {
+  if instruction.kind == IrInstructionKind.Assign {
+    let lines: [string] = load_operand_lines(instruction, 0, "%rax");
+    give lines + store_result_lines(instruction, "%rax");
+  }
+  if instruction.kind == IrInstructionKind.Binary {
+    let lines: [string] = load_operand_lines(instruction, 0, "%rax") + load_operand_lines(instruction, 1, "%r10");
+    if instruction.operator == "-" {
+      set lines = lines + ["  sub %r10, %rax"];
+    } elif instruction.operator == "*" {
+      set lines = lines + ["  imul %r10, %rax"];
+    } else {
+      set lines = lines + ["  add %r10, %rax"];
+    }
+    give lines + store_result_lines(instruction, "%rax");
+  }
+  if instruction.kind == IrInstructionKind.Call {
+    let callee: string = machine_call_target_text(instruction.text);
+    let lines: [string] = ["  call " + callee];
+    give lines + store_result_lines(instruction, "%rax");
+  }
+  if instruction.kind == IrInstructionKind.BorrowShared {
+    give ["  # borrow_shared " + instruction.text] + store_result_lines(instruction, "%rax");
+  }
+  if instruction.kind == IrInstructionKind.BorrowMut {
+    give ["  # borrow_mut " + instruction.text] + store_result_lines(instruction, "%rax");
+  }
+  if instruction.kind == IrInstructionKind.Assert {
+    give load_operand_lines(instruction, 0, "%rax") + ["  cmp $0, %rax", "  jne .L_assert_ok_" + (instruction.id as string), "  ud2", ".L_assert_ok_" + (instruction.id as string) + ":"];
+  }
+  if instruction.kind == IrInstructionKind.ReturnValue {
+    give load_operand_lines(instruction, 0, "%rax");
+  }
+  if instruction.kind == IrInstructionKind.Return {
+    give ["  jmp " + machine_return_label(function_name)];
+  }
+  if instruction.kind == IrInstructionKind.Jump {
+    give ["  jmp " + machine_branch_label(function_name, instruction.target_block)];
+  }
+  if instruction.kind == IrInstructionKind.Branch {
+    give load_operand_lines(instruction, 0, "%r10") + [
+      "  cmp $0, %r10",
+      "  jne " + machine_branch_label(function_name, instruction.target_block),
+      "  jmp " + machine_branch_label(function_name, instruction.else_block)
+    ];
+  }
+  if instruction.kind == IrInstructionKind.Switch {
+    give ["  # switch " + instruction.text];
+  }
+  if instruction.kind == IrInstructionKind.Unreachable {
+    give ["  ud2"];
+  }
+  give ["  # invalid"];
+}
+
+proc select_function_instructions_x86_64(fn0: IrFunction) -> [string] {
+  let lines: [string] = [machine_function_label(fn0.name)] + machine_prologue_x86_64();
+  let i: u64 = 0;
+  while i < len(fn0.blocks) {
+    let block = fn0.blocks[i];
+    set lines = lines + [machine_block_label(fn0.name, block.id)];
+    let j: u64 = 0;
+    while j < len(block.instructions) {
+      set lines = lines + select_instruction_line(fn0.name, block.instructions[j]);
+      set j = j + 1;
+    }
+    set lines = lines + select_instruction_line(fn0.name, block.terminator);
+    set i = i + 1;
+  }
+  set lines = lines + [machine_return_label(fn0.name) + ":"] + machine_epilogue_x86_64();
+  give lines;
+}
+
+proc select_ir_unit_x86_64(unit: IrUnit) -> [string] {
+  let lines: [string] = [".text"];
+  let i: u64 = 0;
+  while i < len(unit.modules) {
+    let module0 = unit.modules[i];
+    let j: u64 = 0;
+    while j < len(module0.functions) {
+      let fn0 = module0.functions[j];
+      if fn0.is_entry {
+        set lines = lines + [".globl " + fn0.name];
+      }
+      set lines = lines + select_function_instructions_x86_64(fn0);
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give lines;
+}

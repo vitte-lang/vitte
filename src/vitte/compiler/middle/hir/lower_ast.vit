@@ -1,14 +1,9 @@
 space vitte/compiler/middle/hir/lower_ast
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput }
-use vitte/compiler/frontend/ast/node.{
-  AstExpr,
-  AstExprKind,
-  AstItem,
-  AstItemKind,
-  AstStmt,
-  AstStmtKind
-}
+use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind }
+use vitte/compiler/frontend/ast/item.{ AstItem, AstItemKind }
+use vitte/compiler/frontend/ast/stmt.{ AstStmt, AstStmtKind }
 use vitte/compiler/middle/hir/hir.{
   HirExpr,
   HirExprKind,
@@ -45,20 +40,42 @@ proc lower_expr(expr: AstExpr) -> HirExpr {
   elif expr.kind == AstExprKind.Member { set kind = HirExprKind.Member; }
   elif expr.kind == AstExprKind.BorrowShared { set kind = HirExprKind.BorrowShared; }
   elif expr.kind == AstExprKind.BorrowMut { set kind = HirExprKind.BorrowMut; }
+  elif expr.kind == AstExprKind.Deref { set kind = HirExprKind.Deref; }
   elif expr.kind == AstExprKind.If { set kind = HirExprKind.If; }
   elif expr.kind == AstExprKind.Match { set kind = HirExprKind.Match; }
+  elif expr.kind == AstExprKind.Range { set kind = HirExprKind.Range; }
+  elif expr.kind == AstExprKind.Cast { set kind = HirExprKind.Cast; }
+  elif expr.kind == AstExprKind.Is { set kind = HirExprKind.Is; }
+  elif expr.kind == AstExprKind.Try { set kind = HirExprKind.Try; }
+  elif expr.kind == AstExprKind.Sizeof { set kind = HirExprKind.Sizeof; }
+  elif expr.kind == AstExprKind.Alignof { set kind = HirExprKind.Alignof; }
+  elif expr.kind == AstExprKind.Offsetof { set kind = HirExprKind.Offsetof; }
+  elif expr.kind == AstExprKind.Typeof { set kind = HirExprKind.Typeof; }
+  elif expr.kind == AstExprKind.Nameof { set kind = HirExprKind.Nameof; }
 
   let binding: string = "";
   let value_mode: string = "rvalue";
   let inferred_type: string = "unknown";
+  let place_category: string = "value";
   if expr.kind == AstExprKind.Name {
-    set binding = expr.name;
+    if expr.binding_name != "" {
+      set binding = expr.binding_name;
+    } else {
+      set binding = expr.name;
+    }
     set value_mode = "lvalue";
+    set place_category = "local";
   } elif expr.kind == AstExprKind.BorrowShared or expr.kind == AstExprKind.BorrowMut {
     set value_mode = "borrow";
+  } elif expr.kind == AstExprKind.Member {
+    set place_category = "field";
+  } elif expr.kind == AstExprKind.Index {
+    set place_category = "index";
+  } elif expr.kind == AstExprKind.Deref {
+    set place_category = "deref";
   }
 
-  give hir_expr(expr.id.value, expr.span, kind, expr.text, expr.name, expr.operator, binding, value_mode, inferred_type, [], children, expr.valid);
+  give hir_expr(expr.id.value, expr.span, kind, expr.text, expr.name, expr.operator, binding, 0, "", false, value_mode, inferred_type, place_category, false, [], children, expr.valid);
 }
 
 proc lower_stmt(stmt: AstStmt, scope_depth: u64) -> HirStmt {
@@ -85,7 +102,22 @@ proc lower_stmt(stmt: AstStmt, scope_depth: u64) -> HirStmt {
   elif stmt.kind == AstStmtKind.For { set kind = HirStmtKind.For; }
   elif stmt.kind == AstStmtKind.Loop { set kind = HirStmtKind.Loop; }
   elif stmt.kind == AstStmtKind.Match { set kind = HirStmtKind.Match; }
+  elif stmt.kind == AstStmtKind.When { set kind = HirStmtKind.When; }
+  elif stmt.kind == AstStmtKind.With { set kind = HirStmtKind.With; }
+  elif stmt.kind == AstStmtKind.Try { set kind = HirStmtKind.Try; }
+  elif stmt.kind == AstStmtKind.Defer { set kind = HirStmtKind.Defer; }
+  elif stmt.kind == AstStmtKind.Unsafe { set kind = HirStmtKind.Unsafe; }
+  elif stmt.kind == AstStmtKind.Asm { set kind = HirStmtKind.Asm; }
+  elif stmt.kind == AstStmtKind.Emit { set kind = HirStmtKind.Emit; }
+  elif stmt.kind == AstStmtKind.Panic { set kind = HirStmtKind.Panic; }
+  elif stmt.kind == AstStmtKind.Assert { set kind = HirStmtKind.Assert; }
+  elif stmt.kind == AstStmtKind.Break { set kind = HirStmtKind.Break; }
+  elif stmt.kind == AstStmtKind.Continue { set kind = HirStmtKind.Continue; }
+  elif stmt.kind == AstStmtKind.Unreachable { set kind = HirStmtKind.Unreachable; }
+  elif stmt.kind == AstStmtKind.Select { set kind = HirStmtKind.Select; }
+  elif stmt.kind == AstStmtKind.Critical { set kind = HirStmtKind.Critical; }
   elif stmt.kind == AstStmtKind.StaticAssert { set kind = HirStmtKind.StaticAssert; }
+  elif stmt.kind == AstStmtKind.ExprStmt { set kind = HirStmtKind.ExprStmt; }
 
   give HirStmt {
     id: stmt.id.value,
@@ -93,6 +125,9 @@ proc lower_stmt(stmt: AstStmt, scope_depth: u64) -> HirStmt {
     kind: kind,
     name: stmt.pattern.name,
     target: stmt.target,
+    target_binding: stmt.target,
+    target_resolved_id: 0,
+    target_resolved_kind: "",
     expr: lower_expr(stmt.expr),
     message: stmt.message,
     mutable: stmt.pattern.mutable,
@@ -116,16 +151,33 @@ proc lower_item(item: AstItem) -> HirItem {
   let kind: HirItemKind = HirItemKind.Unknown;
   if item.kind == AstItemKind.Space { set kind = HirItemKind.Space; }
   elif item.kind == AstItemKind.Use { set kind = HirItemKind.Use; }
+  elif item.kind == AstItemKind.Export { set kind = HirItemKind.Export; }
   elif item.kind == AstItemKind.Const { set kind = HirItemKind.Const; }
   elif item.kind == AstItemKind.Static { set kind = HirItemKind.Static; }
+  elif item.kind == AstItemKind.Global { set kind = HirItemKind.Global; }
+  elif item.kind == AstItemKind.Type { set kind = HirItemKind.Type; }
+  elif item.kind == AstItemKind.Opaque { set kind = HirItemKind.Opaque; }
+  elif item.kind == AstItemKind.Extern { set kind = HirItemKind.Extern; }
   elif item.kind == AstItemKind.Form { set kind = HirItemKind.Form; }
   elif item.kind == AstItemKind.Class { set kind = HirItemKind.Class; }
   elif item.kind == AstItemKind.Union { set kind = HirItemKind.Union; }
+  elif item.kind == AstItemKind.Bits { set kind = HirItemKind.Bits; }
+  elif item.kind == AstItemKind.Pick { set kind = HirItemKind.Pick; }
+  elif item.kind == AstItemKind.Flags { set kind = HirItemKind.Flags; }
   elif item.kind == AstItemKind.Proc { set kind = HirItemKind.Proc; }
+  elif item.kind == AstItemKind.Intrinsic { set kind = HirItemKind.Intrinsic; }
+  elif item.kind == AstItemKind.Query { set kind = HirItemKind.Query; }
+  elif item.kind == AstItemKind.Compiler { set kind = HirItemKind.Compiler; }
+  elif item.kind == AstItemKind.Pass { set kind = HirItemKind.Pass; }
+  elif item.kind == AstItemKind.Backend { set kind = HirItemKind.Backend; }
+  elif item.kind == AstItemKind.Diagnostic { set kind = HirItemKind.Diagnostic; }
+  elif item.kind == AstItemKind.Macro { set kind = HirItemKind.Macro; }
+  elif item.kind == AstItemKind.Entry { set kind = HirItemKind.Entry; }
   elif item.kind == AstItemKind.Trait { set kind = HirItemKind.Trait; }
   elif item.kind == AstItemKind.Impl { set kind = HirItemKind.Impl; }
   elif item.kind == AstItemKind.Test { set kind = HirItemKind.Test; }
   elif item.kind == AstItemKind.Bench { set kind = HirItemKind.Bench; }
+  elif item.kind == AstItemKind.Comptime { set kind = HirItemKind.Comptime; }
   elif item.kind == AstItemKind.StaticAssert { set kind = HirItemKind.StaticAssert; }
 
   let expr: HirExpr = hir_expr_empty();
@@ -138,6 +190,7 @@ proc lower_item(item: AstItem) -> HirItem {
     span: item.span,
     kind: kind,
     name: item.name,
+    resolved_id: 0,
     namespace: item.namespace,
     visibility: item.visibility,
     expr: expr,

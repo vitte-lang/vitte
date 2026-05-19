@@ -1,3 +1,49 @@
 space vitte/compiler/frontend/ast/pattern
 
-use vitte/compiler/frontend/ast/node
+use vitte/compiler/frontend/ast/node.{ AstId, AstSpan, ast_id, ast_span_empty }
+
+pick AstPatternKind {
+  Unknown,
+  Name,
+  Literal,
+  Wildcard,
+  Ref,
+  MutableRef,
+  Struct,
+  Enum,
+  Tuple,
+  Array,
+  Range,
+  Or,
+}
+
+form AstPattern {
+  id: AstId
+  span: AstSpan
+  kind: AstPatternKind
+  text: string
+  name: string
+  mutable: bool
+  children: [AstPattern]
+  valid: bool
+}
+
+proc ast_pattern(id: u64, span: AstSpan, name: string, mutable: bool) -> AstPattern {
+  let kind: AstPatternKind = AstPatternKind.Unknown;
+  if name != "" {
+    if name == "_" {
+      set kind = AstPatternKind.Wildcard;
+    } else {
+      set kind = AstPatternKind.Name;
+    }
+  }
+  give AstPattern { id: ast_id(id), span: span, kind: kind, text: name, name: name, mutable: mutable, children: [], valid: name != "" };
+}
+
+proc ast_pattern_node(id: u64, span: AstSpan, kind: AstPatternKind, text: string, name: string, mutable: bool, children: [AstPattern]) -> AstPattern {
+  give AstPattern { id: ast_id(id), span: span, kind: kind, text: text, name: name, mutable: mutable, children: children, valid: true };
+}
+
+proc ast_pattern_empty() -> AstPattern {
+  give AstPattern { id: ast_id(0), span: ast_span_empty(), kind: AstPatternKind.Unknown, text: "", name: "", mutable: false, children: [], valid: false };
+}

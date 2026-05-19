@@ -1,0 +1,30 @@
+space vitte/compiler/backend/target
+
+use vitte/compiler/backend/target/triple.{ TargetTriple }
+
+proc default_feature_set(triple: TargetTriple) -> [string] {
+  if triple.arch == "x86_64" {
+    give ["sse2", "sysv", "int64"];
+  }
+  if triple.arch == "aarch64" {
+    give ["neon", "aapcs64", "int64"];
+  }
+  if triple.arch == "riscv64" {
+    give ["m", "a", "f", "d"];
+  }
+  if triple.arch == "i386" {
+    give ["sse2", "cdecl", "int32"];
+  }
+  give [];
+}
+
+proc feature_enabled(features: [string], name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(features) {
+    if features[i] == name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}

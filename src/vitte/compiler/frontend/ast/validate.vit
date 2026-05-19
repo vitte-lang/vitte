@@ -1,6 +1,11 @@
 space vitte/compiler/frontend/ast/validate
 
-use vitte/compiler/frontend/ast/node.{ AstModule }
+use vitte/compiler/frontend/ast/node.{ AstSpan }
+use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind }
+use vitte/compiler/frontend/ast/item.{ AstGenericParam, AstItem, AstItemKind, AstModule, AstParam, AstProcSignature }
+use vitte/compiler/frontend/ast/pattern.{ AstPattern, AstPatternKind }
+use vitte/compiler/frontend/ast/stmt.{ AstStmt, AstStmtKind }
+use vitte/compiler/frontend/ast/type_expr.{ AstTypeExpr, AstTypeKind }
 
 form AstValidation {
   root: string
@@ -8,9 +13,490 @@ form AstValidation {
   message: string
 }
 
+proc ast_validation_ok(root: string) -> AstValidation {
+  give AstValidation { root: root, valid: true, message: "ok" };
+}
+
+proc ast_validation_error(root: string, message: string) -> AstValidation {
+  give AstValidation { root: root, valid: false, message: message };
+}
+
+proc span_pos_leq(left_line: u64, left_column: u64, right_line: u64, right_column: u64) -> bool {
+  if left_line < right_line {
+    give true;
+  }
+  if left_line == right_line and left_column <= right_column {
+    give true;
+  }
+  give false;
+}
+
+proc span_is_valid(span: AstSpan) -> bool {
+  if span.file == "" {
+    give false;
+  }
+  give span_pos_leq(span.start_line, span.start_column, span.end_line, span.end_column);
+}
+
+proc span_contains(parent: AstSpan, child: AstSpan) -> bool {
+  if parent.file != child.file {
+    give false;
+  }
+  if not span_pos_leq(parent.start_line, parent.start_column, child.start_line, child.start_column) {
+    give false;
+  }
+  give span_pos_leq(child.end_line, child.end_column, parent.end_line, parent.end_column);
+}
+
+proc validate_type_expr(node: AstTypeExpr, context: string) -> string {
+  if not node.valid {
+    give context + " missing type";
+  }
+  if node.id.value == 0 {
+    give context + " has zero type id";
+  }
+  if not span_is_valid(node.span) {
+    give context + " has invalid type span";
+  }
+  if node.text == "" {
+    give context + " has empty type text";
+  }
+  if (node.kind == AstTypeKind.Pointer or node.kind == AstTypeKind.Reference or node.kind == AstTypeKind.MutableRef or node.kind == AstTypeKind.Array or node.kind == AstTypeKind.Slice or node.kind == AstTypeKind.Optional or node.kind == AstTypeKind.Dyn or node.kind == AstTypeKind.Impl) and len(node.children) != 1 {
+    give context + " has invalid unary type shape";
+  }
+  if node.kind == AstTypeKind.Tuple and len(node.children) < 2 {
+    give context + " tuple type needs at least two children";
+  }
+  if node.kind == AstTypeKind.Proc and len(node.children) == 0 {
+    give context + " proc type needs parameter or return children";
+  }
+  if node.kind == AstTypeKind.Generic and len(node.children) < 2 {
+    give context + " generic type needs base and args";
+  }
+  if node.kind == AstTypeKind.Qualified and len(node.children) < 2 {
+    give context + " qualified type needs path segments";
+  }
+  let i: u64 = 0;
+  while i < len(node.children) {
+    let child_error: string = validate_type_expr(node.children[i], context + " child");
+    if child_error != "" {
+      give child_error;
+    }
+    if not span_contains(node.span, node.children[i].span) {
+      give context + " type child span escapes parent";
+    }
+    set i = i + 1;
+  }
+  give "";
+}
+
+proc validate_generic_param(node: AstGenericParam, context: string) -> string {
+  if not node.valid {
+    give context + " missing generic param";
+  }
+  if node.id.value == 0 {
+    give context + " has zero generic param id";
+  }
+  if not span_is_valid(node.span) {
+    give context + " has invalid generic param span";
+  }
+  if node.name == "" {
+    give context + " has empty generic param name";
+  }
+  if node.bound.valid {
+    let bound_error: string = validate_type_expr(node.bound, context + " bound");
+    if bound_error != "" {
+      give bound_error;
+    }
+  }
+  if node.default_type.valid {
+    let default_error: string = validate_type_expr(node.default_type, context + " default");
+    if default_error != "" {
+      give default_error;
+    }
+  }
+  give "";
+}
+
+proc validate_pattern(node: AstPattern, context: string) -> string {
+  if not node.valid {
+    give context + " missing pattern";
+  }
+  if node.id.value == 0 {
+    give context + " has zero pattern id";
+  }
+  if not span_is_valid(node.span) {
+    give context + " has invalid pattern span";
+  }
+  if node.kind == AstPatternKind.Wildcard or node.kind == AstPatternKind.Literal {
+    give "";
+  }
+  if (node.kind == AstPatternKind.Name or node.kind == AstPatternKind.Struct or node.kind == AstPatternKind.Enum) and node.name == "" {
+    give context + " has empty pattern name";
+  }
+  if (node.kind == AstPatternKind.Ref or node.kind == AstPatternKind.MutableRef) and len(node.children) != 1 {
+    give context + " reference pattern needs one child";
+  }
+  if node.kind == AstPatternKind.Tuple and len(node.children) < 2 {
+    give context + " tuple pattern needs at least two children";
+  }
+  if node.kind == AstPatternKind.Array and len(node.children) == 0 {
+    give context + " array pattern needs children";
+  }
+  if node.kind == AstPatternKind.Range and len(node.children) != 2 {
+    give context + " range pattern needs two children";
+  }
+  if node.kind == AstPatternKind.Or and len(node.children) < 2 {
+    give context + " or pattern needs at least two children";
+  }
+  let i: u64 = 0;
+  while i < len(node.children) {
+    let child_error: string = validate_pattern(node.children[i], context + " child");
+    if child_error != "" {
+      give child_error;
+    }
+    if not span_contains(node.span, node.children[i].span) {
+      give context + " pattern child span escapes parent";
+    }
+    set i = i + 1;
+  }
+  give "";
+}
+
+proc validate_param(node: AstParam, context: string) -> string {
+  if not node.valid {
+    give context + " missing param";
+  }
+  if node.id.value == 0 {
+    give context + " has zero param id";
+  }
+  if not span_is_valid(node.span) {
+    give context + " has invalid param span";
+  }
+  if not node.variadic {
+    let pattern_error: string = validate_pattern(node.pattern, context + " pattern");
+    if pattern_error != "" {
+      give pattern_error;
+    }
+  }
+  if node.annotation.valid {
+    let annotation_error: string = validate_type_expr(node.annotation, context + " annotation");
+    if annotation_error != "" {
+      give annotation_error;
+    }
+  }
+  if node.default_value.valid {
+    let default_error: string = validate_expr(node.default_value, context + " default");
+    if default_error != "" {
+      give default_error;
+    }
+  }
+  give "";
+}
+
+proc validate_proc_signature(node: AstProcSignature, context: string) -> string {
+  if not node.valid {
+    give context + " missing proc signature";
+  }
+  if node.id.value == 0 {
+    give context + " has zero proc signature id";
+  }
+  if not span_is_valid(node.span) {
+    give context + " has invalid proc signature span";
+  }
+  if node.name == "" {
+    give context + " has empty proc signature name";
+  }
+  let i: u64 = 0;
+  while i < len(node.params) {
+    let param_error: string = validate_param(node.params[i], context + " param");
+    if param_error != "" {
+      give param_error;
+    }
+    if not span_contains(node.span, node.params[i].span) {
+      give context + " param span escapes signature";
+    }
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(node.generic_params) {
+    let generic_error: string = validate_generic_param(node.generic_params[i], context + " generic");
+    if generic_error != "" {
+      give generic_error;
+    }
+    if not span_contains(node.span, node.generic_params[i].span) {
+      give context + " generic span escapes signature";
+    }
+    set i = i + 1;
+  }
+  if node.return_type.valid {
+    let return_error: string = validate_type_expr(node.return_type, context + " return");
+    if return_error != "" {
+      give return_error;
+    }
+  }
+  give "";
+}
+
+proc validate_expr(node: AstExpr, context: string) -> string {
+  if not node.valid {
+    give context + " missing expression";
+  }
+  if node.id.value == 0 {
+    give context + " has zero expression id";
+  }
+  if not span_is_valid(node.span) {
+    give context + " has invalid expression span";
+  }
+  if node.kind == AstExprKind.Name and node.name == "" {
+    give context + " has empty name expression";
+  }
+  if node.kind == AstExprKind.Name and node.binding_name == "" {
+    give context + " has empty binding name";
+  }
+  if (node.kind == AstExprKind.Int or node.kind == AstExprKind.Float or node.kind == AstExprKind.Bool or node.kind == AstExprKind.String or node.kind == AstExprKind.Char) and node.text == "" {
+    give context + " has empty literal text";
+  }
+  if (node.kind == AstExprKind.Unary or node.kind == AstExprKind.BorrowShared or node.kind == AstExprKind.BorrowMut or node.kind == AstExprKind.Deref or node.kind == AstExprKind.Try or node.kind == AstExprKind.Sizeof or node.kind == AstExprKind.Alignof or node.kind == AstExprKind.Offsetof or node.kind == AstExprKind.Typeof or node.kind == AstExprKind.Nameof) and len(node.children) != 1 {
+    give context + " must have exactly one child";
+  }
+  if (node.kind == AstExprKind.Binary or node.kind == AstExprKind.Index or node.kind == AstExprKind.Range or node.kind == AstExprKind.Is or node.kind == AstExprKind.Cast) and len(node.children) != 2 {
+    give context + " must have exactly two children";
+  }
+  if node.kind == AstExprKind.Call and len(node.children) == 0 {
+    give context + " must include callee child";
+  }
+  if node.kind == AstExprKind.Member and (len(node.children) != 2 or node.member_name == "") {
+    give context + " must include base and member name";
+  }
+  if (node.kind == AstExprKind.Unary or node.kind == AstExprKind.BorrowShared or node.kind == AstExprKind.BorrowMut or node.kind == AstExprKind.Deref or node.kind == AstExprKind.Try or node.kind == AstExprKind.Sizeof or node.kind == AstExprKind.Alignof or node.kind == AstExprKind.Offsetof or node.kind == AstExprKind.Typeof or node.kind == AstExprKind.Nameof) and node.subject_index >= len(node.children) {
+    give context + " has invalid subject index";
+  }
+  if node.kind == AstExprKind.Call and node.callee_index >= len(node.children) {
+    give context + " has invalid callee index";
+  }
+  if (node.kind == AstExprKind.Binary or node.kind == AstExprKind.Range or node.kind == AstExprKind.Is or node.kind == AstExprKind.Cast) and (node.lhs_index >= len(node.children) or node.rhs_index >= len(node.children) or node.lhs_index == node.rhs_index) {
+    give context + " has invalid binary child indexes";
+  }
+  if node.kind == AstExprKind.Member and (node.base_index >= len(node.children) or node.member_name == "") {
+    give context + " has invalid member structure";
+  }
+  if node.kind == AstExprKind.Index and (node.base_index >= len(node.children) or node.index_index >= len(node.children) or node.base_index == node.index_index) {
+    give context + " has invalid index structure";
+  }
+  let i: u64 = 0;
+  while i < len(node.children) {
+    let child_error: string = validate_expr(node.children[i], context + " child");
+    if child_error != "" {
+      give child_error;
+    }
+    if not span_contains(node.span, node.children[i].span) {
+      give context + " child span escapes parent";
+    }
+    set i = i + 1;
+  }
+  if node.type_annotation.valid {
+    let type_error: string = validate_type_expr(node.type_annotation, context + " annotation");
+    if type_error != "" {
+      give type_error;
+    }
+  }
+  give "";
+}
+
+proc validate_stmt(node: AstStmt, context: string) -> string {
+  if not node.valid {
+    give context + " missing statement";
+  }
+  if node.id.value == 0 {
+    give context + " has zero statement id";
+  }
+  if not span_is_valid(node.span) {
+    give context + " has invalid statement span";
+  }
+  if node.kind == AstStmtKind.Let or node.kind == AstStmtKind.Const {
+    let pattern_error: string = validate_pattern(node.pattern, context + " binding");
+    if pattern_error != "" {
+      give pattern_error;
+    }
+    let expr_error: string = validate_expr(node.expr, context + " value");
+    if expr_error != "" {
+      give expr_error;
+    }
+  } elif node.kind == AstStmtKind.Set {
+    if node.target == "" {
+      give context + " missing set target text";
+    }
+    let target_error: string = validate_expr(node.target_expr, context + " target");
+    if target_error != "" {
+      give target_error;
+    }
+    let expr_error: string = validate_expr(node.expr, context + " value");
+    if expr_error != "" {
+      give expr_error;
+    }
+  } elif node.kind == AstStmtKind.If or node.kind == AstStmtKind.While {
+    let cond_error: string = validate_expr(node.condition, context + " condition");
+    if cond_error != "" {
+      give cond_error;
+    }
+  } else {
+    let expr_error: string = validate_expr(node.expr, context + " expr");
+    if expr_error != "" {
+      give expr_error;
+    }
+  }
+  if (node.kind == AstStmtKind.Break or node.kind == AstStmtKind.Continue or node.kind == AstStmtKind.Unreachable) and len(node.then_stmts) > 0 {
+    give context + " control statement must not carry then stmts";
+  }
+  if node.annotation.valid {
+    let annotation_error: string = validate_type_expr(node.annotation, context + " annotation");
+    if annotation_error != "" {
+      give annotation_error;
+    }
+  }
+  if node.target_expr.valid and not span_contains(node.span, node.target_expr.span) {
+    give context + " target span escapes statement";
+  }
+  if node.expr.valid and not span_contains(node.span, node.expr.span) {
+    give context + " expression span escapes statement";
+  }
+  let i: u64 = 0;
+  while i < len(node.then_stmts) {
+    let then_error: string = validate_stmt(node.then_stmts[i], context + " then");
+    if then_error != "" {
+      give then_error;
+    }
+    if not span_contains(node.span, node.then_stmts[i].span) {
+      give context + " then span escapes statement";
+    }
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(node.else_stmts) {
+    let else_error: string = validate_stmt(node.else_stmts[i], context + " else");
+    if else_error != "" {
+      give else_error;
+    }
+    if not span_contains(node.span, node.else_stmts[i].span) {
+      give context + " else span escapes statement";
+    }
+    set i = i + 1;
+  }
+  give "";
+}
+
+proc validate_item(node: AstItem, context: string) -> string {
+  if not node.valid {
+    give context + " missing item";
+  }
+  if node.id.value == 0 {
+    give context + " has zero item id";
+  }
+  if not span_is_valid(node.span) {
+    give context + " has invalid item span";
+  }
+  if (node.kind == AstItemKind.Const or node.kind == AstItemKind.Proc or node.kind == AstItemKind.Form or node.kind == AstItemKind.Class or node.kind == AstItemKind.Union or node.kind == AstItemKind.Trait or node.kind == AstItemKind.Test or node.kind == AstItemKind.Bench) and node.name == "" {
+    give context + " missing item name";
+  }
+  if (node.kind == AstItemKind.Type or node.kind == AstItemKind.Opaque or node.kind == AstItemKind.Extern or node.kind == AstItemKind.Impl or node.kind == AstItemKind.Compiler or node.kind == AstItemKind.Pass or node.kind == AstItemKind.Backend or node.kind == AstItemKind.Diagnostic or node.kind == AstItemKind.Macro or node.kind == AstItemKind.Entry) and node.name == "" {
+    give context + " missing item name";
+  }
+  if node.visibility == "" {
+    give context + " missing item visibility";
+  }
+  if node.kind == AstItemKind.Proc {
+    let signature_error: string = validate_proc_signature(node.signature, context + " signature");
+    if signature_error != "" {
+      give signature_error;
+    }
+    if node.name != node.signature.name {
+      give context + " proc item name does not match signature";
+    }
+  }
+  if node.kind == AstItemKind.Impl and not node.target_type.valid {
+    give context + " impl item missing target type";
+  }
+  if (node.kind == AstItemKind.Type or node.kind == AstItemKind.Opaque) and not node.annotation.valid {
+    give context + " type item missing target type";
+  }
+  if node.kind == AstItemKind.Extern and node.abi == "" and find(node.name, "extern") < 0 {
+    give context + " extern item missing abi/name contract";
+  }
+  if node.expr.valid {
+    let expr_error: string = validate_expr(node.expr, context + " expr");
+    if expr_error != "" {
+      give expr_error;
+    }
+    if not span_contains(node.span, node.expr.span) {
+      give context + " expression span escapes item";
+    }
+  }
+  if node.annotation.valid {
+    let annotation_error: string = validate_type_expr(node.annotation, context + " annotation");
+    if annotation_error != "" {
+      give annotation_error;
+    }
+  }
+  if node.target_type.valid {
+    let target_type_error: string = validate_type_expr(node.target_type, context + " target type");
+    if target_type_error != "" {
+      give target_type_error;
+    }
+  }
+  let ti: u64 = 0;
+  while ti < len(node.type_params) {
+    let type_param_error: string = validate_type_expr(node.type_params[ti], context + " type parameter");
+    if type_param_error != "" {
+      give type_param_error;
+    }
+    set ti = ti + 1;
+  }
+  ti = 0;
+  while ti < len(node.generic_params) {
+    let generic_param_error: string = validate_generic_param(node.generic_params[ti], context + " generic parameter");
+    if generic_param_error != "" {
+      give generic_param_error;
+    }
+    set ti = ti + 1;
+  }
+  let i: u64 = 0;
+  while i < len(node.stmts) {
+    let stmt_error: string = validate_stmt(node.stmts[i], context + " stmt");
+    if stmt_error != "" {
+      give stmt_error;
+    }
+    if not span_contains(node.span, node.stmts[i].span) {
+      give context + " statement span escapes item";
+    }
+    set i = i + 1;
+  }
+  give "";
+}
+
 proc validate_ast_root(root: AstModule) -> AstValidation {
   if not root.valid {
-    give AstValidation { root: "invalid", valid: false, message: "invalid ast module" };
+    give ast_validation_error("invalid", "invalid ast module");
   }
-  give AstValidation { root: root.kind, valid: true, message: "ok" };
+  if root.id.value == 0 {
+    give ast_validation_error(root.kind, "ast root has zero id");
+  }
+  if not span_is_valid(root.span) {
+    give ast_validation_error(root.kind, "ast root has invalid span");
+  }
+  if len(root.items) == 0 {
+    give ast_validation_error(root.kind, "ast root has no items");
+  }
+  let i: u64 = 0;
+  while i < len(root.items) {
+    let item_error: string = validate_item(root.items[i], "item");
+    if item_error != "" {
+      give ast_validation_error(root.kind, item_error);
+    }
+    if not span_contains(root.span, root.items[i].span) {
+      give ast_validation_error(root.kind, "item span escapes module");
+    }
+    set i = i + 1;
+  }
+  give ast_validation_ok(root.kind);
 }

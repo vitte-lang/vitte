@@ -1,25 +1,596 @@
 space vitte/compiler/backends/llvm_bindings
 
+use vitte/compiler/backend/ir/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrModule, IrUnit, unit_is_valid }
+use vitte/compiler/backend/target/triple.{ triple_text }
+
+pick LlvmDiagnosticLevel {
+  Note,
+  Warning,
+  Error,
+}
+
+pick LlvmSectionKind {
+  Text,
+  SymbolTable,
+  StringTable,
+  Relocation,
+  Debug,
+  Metadata,
+}
+
+form LlvmDiagnostic {
+  level: LlvmDiagnosticLevel
+  code: string
+  message: string
+  stage: string
+  valid: bool
+}
+
+form LlvmBuildOptions {
+  target: string
+  opt_level: string
+  packaging: string
+  deterministic: bool
+  debug_enabled: bool
+  emit_debug_sections: bool
+  lto_enabled: bool
+  pgo_mode: string
+  prefer_native_toolchain: bool
+  valid: bool
+}
+
+form LlvmToolchainPaths {
+  clang_path: string
+  lld_path: string
+  llvm_as_path: string
+  llc_path: string
+  llvm_mc_path: string
+  ar_path: string
+  valid: bool
+}
+
+form LlvmToolchainStatus {
+  native_object_ready: bool
+  native_link_ready: bool
+  missing_tools: [string]
+  summary: string
+  valid: bool
+}
+
+form LlvmObjectSection {
+  id: u64
+  name: string
+  kind: LlvmSectionKind
+  alignment: u64
+  offset: u64
+  size: u64
+  content: string
+  valid: bool
+}
+
+form LlvmObjectSymbol {
+  id: u64
+  name: string
+  section_id: u64
+  offset: u64
+  size: u64
+  global: bool
+  defined: bool
+  valid: bool
+}
+
+form LlvmObjectRelocation {
+  id: u64
+  section_id: u64
+  offset: u64
+  kind: string
+  target_symbol: string
+  addend: int
+  resolved: bool
+  valid: bool
+}
+
+form LlvmObjectResult {
+  target: string
+  object_format: string
+  ir_text: string
+  object_text: string
+  sections: [LlvmObjectSection]
+  symbols: [LlvmObjectSymbol]
+  relocations: [LlvmObjectRelocation]
+  diagnostics: [LlvmDiagnostic]
+  module_count: u64
+  function_count: u64
+  valid: bool
+}
+
+form LlvmBindingResult {
+  target: string
+  ir_text: string
+  module_count: u64
+  function_count: u64
+  valid: bool
+}
+
 proc supported_opt_levels() -> string {
-  give "supported_opt_levels"
+  give "O0,O1,O2,O3,Os,Oz";
+}
+
+proc canonical_backend_surface() -> string {
+  give "src/vitte/compiler/backend/*";
 }
 
 proc emit_llvm_ir_from_mir() -> string {
-  give "emit_llvm_ir_from_mir"
+  give "llvm adapter consumes canonical IR lowering";
 }
 
 proc debug_info_format() -> string {
-  give "debug_info_format"
+  give "dwarf";
 }
 
 proc pgo_enabled() -> string {
-  give "pgo_enabled"
+  give "false";
 }
 
 proc emit_debug_info() -> string {
-  give "emit_debug_info"
+  give "emit_debug_info via llvm adapter";
 }
 
 proc emit_pgo_instrumentation() -> string {
-  give "emit_pgo_instrumentation"
+  give "emit_pgo_instrumentation unavailable in adapter mode";
+}
+
+proc llvm_diagnostic(level: LlvmDiagnosticLevel, code: string, message: string, stage: string) -> LlvmDiagnostic {
+  give LlvmDiagnostic {
+    level: level,
+    code: code,
+    message: message,
+    stage: stage,
+    valid: code != "" and message != "" and stage != ""
+  };
+}
+
+proc llvm_toolchain_paths(clang_path: string, lld_path: string, llvm_as_path: string, llc_path: string, llvm_mc_path: string, ar_path: string) -> LlvmToolchainPaths {
+  give LlvmToolchainPaths {
+    clang_path: clang_path,
+    lld_path: lld_path,
+    llvm_as_path: llvm_as_path,
+    llc_path: llc_path,
+    llvm_mc_path: llvm_mc_path,
+    ar_path: ar_path,
+    valid: clang_path != "" or lld_path != "" or ar_path != ""
+  };
+}
+
+proc default_llvm_toolchain_paths() -> LlvmToolchainPaths {
+  give llvm_toolchain_paths("", "", "", "", "", "");
+}
+
+proc llvm_build_options(target: string, opt_level: string, packaging: string, deterministic: bool, debug_enabled: bool, emit_debug_sections: bool, lto_enabled: bool, pgo_mode: string, prefer_native_toolchain: bool) -> LlvmBuildOptions {
+  give LlvmBuildOptions {
+    target: target,
+    opt_level: opt_level,
+    packaging: packaging,
+    deterministic: deterministic,
+    debug_enabled: debug_enabled,
+    emit_debug_sections: emit_debug_sections,
+    lto_enabled: lto_enabled,
+    pgo_mode: pgo_mode,
+    prefer_native_toolchain: prefer_native_toolchain,
+    valid: target != "" and opt_level != "" and packaging != ""
+  };
+}
+
+proc default_llvm_build_options(target: string) -> LlvmBuildOptions {
+  give llvm_build_options(target, "O2", "executable", true, true, true, false, "off", false);
+}
+
+proc llvm_toolchain_status(paths: LlvmToolchainPaths, packaging: string, prefer_native_toolchain: bool) -> LlvmToolchainStatus {
+  let missing_tools: [string] = [];
+  let built: [string] = missing_tools;
+  if prefer_native_toolchain and paths.clang_path == "" {
+    set built = built + ["clang"];
+  }
+  if prefer_native_toolchain and packaging == "executable" and paths.lld_path == "" {
+    set built = built + ["ld.lld"];
+  }
+  if prefer_native_toolchain and packaging == "shared-library" and paths.lld_path == "" {
+    set built = built + ["ld.lld"];
+  }
+  if prefer_native_toolchain and packaging == "static-library" and paths.ar_path == "" {
+    set built = built + ["ar"];
+  }
+  let native_object_ready: bool = paths.clang_path != "";
+  let native_link_ready: bool = if packaging == "object" {
+    native_object_ready
+  } elif packaging == "static-library" {
+    native_object_ready and paths.ar_path != ""
+  } else {
+    native_object_ready and paths.lld_path != ""
+  };
+  let summary: string = if not prefer_native_toolchain {
+    "native llvm toolchain not requested"
+  } elif len(built) == 0 {
+    "native llvm toolchain ready"
+  } else {
+    "missing llvm native tools: " + built[0]
+  };
+  give LlvmToolchainStatus {
+    native_object_ready: native_object_ready,
+    native_link_ready: native_link_ready,
+    missing_tools: built,
+    summary: summary,
+    valid: not prefer_native_toolchain or len(built) == 0
+  };
+}
+
+proc llvm_type_for_value_text(text: string) -> string {
+  if text == "true" or text == "false" {
+    give "i1";
+  }
+  give "i64";
+}
+
+proc llvm_operand_text(instruction: IrInstruction) -> string {
+  if len(instruction.args) == 0 {
+    give "0";
+  }
+  let value = instruction.args[0];
+  if value.constant != "" {
+    give value.constant;
+  }
+  if value.name != "" {
+    give "%" + value.name;
+  }
+  if value.text != "" {
+    give value.text;
+  }
+  give "0";
+}
+
+proc llvm_rhs_text(instruction: IrInstruction) -> string {
+  if len(instruction.args) <= 1 {
+    give "0";
+  }
+  let value = instruction.args[1];
+  if value.constant != "" {
+    give value.constant;
+  }
+  if value.name != "" {
+    give "%" + value.name;
+  }
+  if value.text != "" {
+    give value.text;
+  }
+  give "0";
+}
+
+proc emit_llvm_instruction(instruction: IrInstruction) -> [string] {
+  if instruction.kind == IrInstructionKind.Assign {
+    give ["  %" + instruction.dest.name + " = add i64 0, " + llvm_operand_text(instruction)];
+  }
+  if instruction.kind == IrInstructionKind.Binary {
+    give ["  %" + instruction.dest.name + " = add i64 " + llvm_operand_text(instruction) + ", " + llvm_rhs_text(instruction)];
+  }
+  if instruction.kind == IrInstructionKind.Call {
+    give ["  %" + instruction.dest.name + " = call i64 @" + instruction.text + "()"];
+  }
+  if instruction.kind == IrInstructionKind.Assert {
+    give ["  ; assert " + instruction.text];
+  }
+  if instruction.kind == IrInstructionKind.ReturnValue {
+    give ["  ret i64 " + llvm_operand_text(instruction)];
+  }
+  if instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
+    give ["  ; borrow " + instruction.text];
+  }
+  give ["  ; unsupported " + instruction.text];
+}
+
+proc emit_llvm_terminator(block: IrBlock) -> [string] {
+  let terminator = block.terminator;
+  if terminator.kind == IrInstructionKind.Jump {
+    give ["  br label %bb" + (terminator.target_block as string)];
+  }
+  if terminator.kind == IrInstructionKind.Branch {
+    give ["  br i1 1, label %bb" + (terminator.target_block as string) + ", label %bb" + (terminator.else_block as string)];
+  }
+  if terminator.kind == IrInstructionKind.Switch {
+    give ["  br label %bb" + (terminator.else_block as string)];
+  }
+  if terminator.kind == IrInstructionKind.Return {
+    give ["  ret i64 0"];
+  }
+  give ["  unreachable"];
+}
+
+proc emit_llvm_block(block: IrBlock) -> [string] {
+  let lines: [string] = ["bb" + (block.id as string) + ":"];
+  let i: u64 = 0;
+  while i < len(block.instructions) {
+    set lines = lines + emit_llvm_instruction(block.instructions[i]);
+    set i = i + 1;
+  }
+  give lines + emit_llvm_terminator(block);
+}
+
+proc emit_llvm_function(fn0: IrFunction) -> [string] {
+  let lines: [string] = ["define i64 @" + fn0.name + "() {"];
+  let i: u64 = 0;
+  while i < len(fn0.blocks) {
+    set lines = lines + emit_llvm_block(fn0.blocks[i]);
+    set i = i + 1;
+  }
+  give lines + ["}", ""];
+}
+
+proc emit_llvm_module(module0: IrModule) -> [string] {
+  let lines: [string] = [
+    "; module " + module0.name,
+    "target triple = \"" + triple_text(module0.target.triple) + "\"",
+    "target datalayout = \"" + module0.target.data_layout + "\"",
+    ""
+  ];
+  let i: u64 = 0;
+  while i < len(module0.functions) {
+    set lines = lines + emit_llvm_function(module0.functions[i]);
+    set i = i + 1;
+  }
+  give lines;
+}
+
+proc join_lines(lines: [string]) -> string {
+  let text: string = "";
+  let i: u64 = 0;
+  while i < len(lines) {
+    if i > 0 {
+      set text = text + "\n";
+    }
+    set text = text + lines[i];
+    set i = i + 1;
+  }
+  give text;
+}
+
+proc llvm_section(id: u64, name: string, kind: LlvmSectionKind, alignment: u64, offset: u64, content: string) -> LlvmObjectSection {
+  give LlvmObjectSection {
+    id: id,
+    name: name,
+    kind: kind,
+    alignment: alignment,
+    offset: offset,
+    size: len(content),
+    content: content,
+    valid: id > 0 and name != ""
+  };
+}
+
+proc llvm_symbol(id: u64, name: string, section_id: u64, offset: u64, size: u64, global: bool, defined: bool) -> LlvmObjectSymbol {
+  give LlvmObjectSymbol {
+    id: id,
+    name: name,
+    section_id: section_id,
+    offset: offset,
+    size: size,
+    global: global,
+    defined: defined,
+    valid: id > 0 and name != ""
+  };
+}
+
+proc llvm_relocation(id: u64, section_id: u64, offset: u64, kind: string, target_symbol: string, addend: int, resolved: bool) -> LlvmObjectRelocation {
+  give LlvmObjectRelocation {
+    id: id,
+    section_id: section_id,
+    offset: offset,
+    kind: kind,
+    target_symbol: target_symbol,
+    addend: addend,
+    resolved: resolved,
+    valid: id > 0 and section_id > 0 and kind != "" and target_symbol != ""
+  };
+}
+
+proc llvm_object_text(sections: [LlvmObjectSection], symbols: [LlvmObjectSymbol], relocations: [LlvmObjectRelocation], diagnostics: [LlvmDiagnostic], options: LlvmBuildOptions) -> string {
+  let lines: [string] = [
+    "llvm-object-bundle",
+    "target=" + options.target,
+    "opt_level=" + options.opt_level,
+    "deterministic=" + if options.deterministic { "true" } else { "false" },
+    "debug_enabled=" + if options.debug_enabled { "true" } else { "false" },
+    "emit_debug_sections=" + if options.emit_debug_sections { "true" } else { "false" },
+    "lto_enabled=" + if options.lto_enabled { "true" } else { "false" },
+    "pgo_mode=" + options.pgo_mode,
+    "section_count=" + (len(sections) as string),
+    "symbol_count=" + (len(symbols) as string),
+    "relocation_count=" + (len(relocations) as string),
+    "diagnostic_count=" + (len(diagnostics) as string),
+    ""
+  ];
+  let built: [string] = lines;
+  let i: u64 = 0;
+  while i < len(sections) {
+    let section0 = sections[i];
+    set built = built + ["section[" + (i as string) + "]=" + section0.name + " offset=" + (section0.offset as string) + " size=" + (section0.size as string)];
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(symbols) {
+    let symbol0 = symbols[i];
+    set built = built + ["symbol[" + (i as string) + "]=" + symbol0.name + " section=" + (symbol0.section_id as string) + " offset=" + (symbol0.offset as string)];
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(relocations) {
+    let reloc0 = relocations[i];
+    set built = built + ["relocation[" + (i as string) + "]=" + reloc0.kind + " section=" + (reloc0.section_id as string) + " offset=" + (reloc0.offset as string) + " target=" + reloc0.target_symbol];
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(diagnostics) {
+    let diag0 = diagnostics[i];
+    set built = built + ["diagnostic[" + (i as string) + "]=" + diag0.code + ":" + diag0.message];
+    set i = i + 1;
+  }
+  give join_lines(built);
+}
+
+proc function_text_size(fn0: IrFunction) -> u64 {
+  let size: u64 = 0;
+  let i: u64 = 0;
+  while i < len(fn0.blocks) {
+    set size = size + len(fn0.blocks[i].instructions) + 1;
+    set i = i + 1;
+  }
+  if size == 0 {
+    give 1;
+  }
+  give size * 4;
+}
+
+proc emit_llvm_ir_from_ir(unit: IrUnit) -> LlvmBindingResult {
+  if not unit_is_valid(unit) {
+    give LlvmBindingResult {
+      target: "llvm-ir",
+      ir_text: "",
+      module_count: len(unit.modules),
+      function_count: 0,
+      valid: false
+    };
+  }
+  let lines: [string] = ["; LLVM IR generated from canonical Vitte IR", ""];
+  let function_count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(unit.modules) {
+    set lines = lines + emit_llvm_module(unit.modules[i]);
+    set function_count = function_count + len(unit.modules[i].functions);
+    set i = i + 1;
+  }
+  give LlvmBindingResult {
+    target: "llvm-ir",
+    ir_text: join_lines(lines),
+    module_count: len(unit.modules),
+    function_count: function_count,
+    valid: function_count > 0
+  };
+}
+
+proc llvm_profile_diagnostics(options: LlvmBuildOptions) -> [LlvmDiagnostic] {
+  let diagnostics: [LlvmDiagnostic] = [];
+  if options.emit_debug_sections and not options.debug_enabled {
+    set diagnostics = diagnostics + [llvm_diagnostic(LlvmDiagnosticLevel.Warning, "llvm.debug.mismatch", "debug sections requested while debug is disabled", "llvm")];
+  }
+  if options.pgo_mode != "off" {
+    set diagnostics = diagnostics + [llvm_diagnostic(LlvmDiagnosticLevel.Note, "llvm.pgo.adapter", "PGO recorded as adapter metadata only", "llvm")];
+  }
+  if options.lto_enabled {
+    set diagnostics = diagnostics + [llvm_diagnostic(LlvmDiagnosticLevel.Note, "llvm.lto.adapter", "LTO recorded as adapter metadata only", "llvm")];
+  }
+  give diagnostics;
+}
+
+proc emit_llvm_object_from_ir(unit: IrUnit, options: LlvmBuildOptions) -> LlvmObjectResult {
+  give emit_llvm_object_from_ir_with_toolchain(unit, options, default_llvm_toolchain_paths());
+}
+
+proc emit_llvm_object_from_ir_with_toolchain(unit: IrUnit, options: LlvmBuildOptions, toolchain: LlvmToolchainPaths) -> LlvmObjectResult {
+  let ir_result: LlvmBindingResult = emit_llvm_ir_from_ir(unit);
+  if not unit_is_valid(unit) or not options.valid or not ir_result.valid {
+    give LlvmObjectResult {
+      target: options.target,
+      object_format: "llvm-object",
+      ir_text: "",
+      object_text: "",
+      sections: [],
+      symbols: [],
+      relocations: [],
+      diagnostics: [llvm_diagnostic(LlvmDiagnosticLevel.Error, "llvm.object.invalid", "cannot build LLVM object from invalid IR unit", "llvm")],
+      module_count: len(unit.modules),
+      function_count: 0,
+      valid: false
+    };
+  }
+
+  let diagnostics: [LlvmDiagnostic] = llvm_profile_diagnostics(options);
+  let toolchain_status: LlvmToolchainStatus = llvm_toolchain_status(toolchain, options.packaging, options.prefer_native_toolchain);
+  let built_diagnostics: [LlvmDiagnostic] = diagnostics;
+  if options.prefer_native_toolchain and not toolchain_status.native_object_ready {
+    set built_diagnostics = built_diagnostics + [llvm_diagnostic(LlvmDiagnosticLevel.Warning, "llvm.native.object.unavailable", "native object emission requested without clang path", "llvm")];
+  }
+  if options.prefer_native_toolchain and not toolchain_status.native_link_ready and options.packaging != "object" {
+    set built_diagnostics = built_diagnostics + [llvm_diagnostic(LlvmDiagnosticLevel.Warning, "llvm.native.link.unavailable", toolchain_status.summary, "llvm")];
+  }
+  let text_section_offset: u64 = 64;
+  let text_content: string = ir_result.ir_text;
+  let text_section: LlvmObjectSection = llvm_section(1, ".text", LlvmSectionKind.Text, 16, text_section_offset, text_content);
+  let symtab_offset: u64 = text_section.offset + text_section.size;
+  let strtab_offset: u64 = symtab_offset + 128;
+  let reloc_offset: u64 = strtab_offset + 128;
+  let debug_offset: u64 = reloc_offset + 128;
+  let metadata_offset: u64 = if options.emit_debug_sections { debug_offset + 128 } else { reloc_offset + 128 };
+
+  let sections: [LlvmObjectSection] = [
+    text_section,
+    llvm_section(2, ".symtab", LlvmSectionKind.SymbolTable, 8, symtab_offset, "llvm symtab"),
+    llvm_section(3, ".strtab", LlvmSectionKind.StringTable, 1, strtab_offset, "llvm strtab"),
+    llvm_section(4, ".rela.text", LlvmSectionKind.Relocation, 8, reloc_offset, "llvm relocations"),
+    llvm_section(5, ".llvm.meta", LlvmSectionKind.Metadata, 8, metadata_offset, "opt=" + options.opt_level + ",pgo=" + options.pgo_mode)
+  ];
+  let built_sections: [LlvmObjectSection] = if options.emit_debug_sections {
+    sections + [llvm_section(6, ".debug_info", LlvmSectionKind.Debug, 1, debug_offset, "dwarf-like debug info")]
+  } else {
+    sections
+  };
+
+  let symbols: [LlvmObjectSymbol] = [];
+  let relocations: [LlvmObjectRelocation] = [];
+  let built_symbols: [LlvmObjectSymbol] = symbols;
+  let built_relocations: [LlvmObjectRelocation] = relocations;
+  let next_symbol_id: u64 = 1;
+  let next_relocation_id: u64 = 1;
+  let current_offset: u64 = 0;
+  let function_count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(unit.modules) {
+    let module0: IrModule = unit.modules[i];
+    let j: u64 = 0;
+    while j < len(module0.functions) {
+      let fn0: IrFunction = module0.functions[j];
+      let fn_size: u64 = function_text_size(fn0);
+      set built_symbols = built_symbols + [llvm_symbol(next_symbol_id, fn0.name, 1, current_offset, fn_size, true, true)];
+      set next_symbol_id = next_symbol_id + 1;
+      let k: u64 = 0;
+      while k < len(fn0.blocks) {
+        let block0: IrBlock = fn0.blocks[k];
+        let m: u64 = 0;
+        while m < len(block0.instructions) {
+          let instruction: IrInstruction = block0.instructions[m];
+          if instruction.kind == IrInstructionKind.Call {
+            set built_relocations = built_relocations + [llvm_relocation(next_relocation_id, 1, current_offset + (m * 4), "R_CALL64", instruction.text, 0, true)];
+            set next_relocation_id = next_relocation_id + 1;
+          }
+          set m = m + 1;
+        }
+        set k = k + 1;
+      }
+      set current_offset = current_offset + fn_size;
+      set function_count = function_count + 1;
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+
+  give LlvmObjectResult {
+    target: options.target,
+    object_format: "llvm-object",
+    ir_text: ir_result.ir_text,
+    object_text: llvm_object_text(built_sections, built_symbols, built_relocations, built_diagnostics, options),
+    sections: built_sections,
+    symbols: built_symbols,
+    relocations: built_relocations,
+    diagnostics: built_diagnostics,
+    module_count: len(unit.modules),
+    function_count: function_count,
+    valid: len(built_sections) >= 5 and len(built_symbols) == function_count
+  };
 }

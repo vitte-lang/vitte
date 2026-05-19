@@ -1,8 +1,87 @@
 space vitte/compiler/tests/typeck_tests
 
-const VERSION_TEXT: string = "analysis typeck tests 0.1.0"
+use vitte/compiler/analysis/typeck/checker.{ run_typeck_hir }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
+use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+
+const VERSION_TEXT: string = "analysis typeck tests 0.2.0"
 const BANNER_TEXT: string = "analysis typeck tests"
-const EXIT_CODE: int = 0
+
+proc has_code(result: TypeckResult, code: string) -> bool {
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].code == code {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc test_valid_numeric_flow() -> bool {
+  let source: string = "proc main() { let x = 1; set x = x + 1; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_valid_numeric.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  give fe.valid and result.valid and len(result.diagnostics) == 0;
+}
+
+proc test_assign_mismatch() -> bool {
+  let source: string = "proc main() { let x = 1; set x = \"oops\"; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_assign_mismatch.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  give has_code(result, "TYPECK_E_ASSIGN_MISMATCH");
+}
+
+proc test_binary_mismatch() -> bool {
+  let source: string = "proc main() { let x = 1 + \"oops\"; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_binary_mismatch.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  give has_code(result, "TYPECK_E_BINARY_MISMATCH");
+}
+
+proc test_invalid_deref() -> bool {
+  let source: string = "proc main() { let x = 1; let y = *x; give y; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_invalid_deref.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  give has_code(result, "TYPECK_E_INVALID_DEREF");
+}
+
+proc test_reference_assignment_mismatch() -> bool {
+  let source: string = "proc main() { let x = 1; let r = &x; set r = 1; give r; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_ref_assign_mismatch.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let result: TypeckResult = run_typeck_hir(sema.hir);
+  give has_code(result, "TYPECK_E_ASSIGN_MISMATCH");
+}
+
+proc test_typeck_annotates_hir_expr_type_and_copyable() -> bool {
+  let source: string = "proc main() { let x = 1; let r = &x; give r; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_hir_annotation.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let binding_expr = result.hir.module.items[0].stmts[1].expr;
+  let return_expr = result.hir.module.items[0].stmts[2].expr;
+  give has_code(result, "TYPECK_E_ASSIGN_MISMATCH") == false and binding_expr.inferred_type == "&int" and binding_expr.copyable and return_expr.inferred_type == "&int" and return_expr.copyable;
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+  if not test_valid_numeric_flow() { set failures = failures + 1; }
+  if not test_assign_mismatch() { set failures = failures + 1; }
+  if not test_binary_mismatch() { set failures = failures + 1; }
+  if not test_invalid_deref() { set failures = failures + 1; }
+  if not test_reference_assignment_mismatch() { set failures = failures + 1; }
+  if not test_typeck_annotates_hir_expr_type_and_copyable() { set failures = failures + 1; }
+  give failures;
+}
 
 proc version_text() -> string {
   give VERSION_TEXT
@@ -13,7 +92,7 @@ proc banner_text() -> string {
 }
 
 proc main(args: list[string]) -> int {
-  give EXIT_CODE
+  give run_all_tests()
 }
 
 export *

@@ -77,6 +77,19 @@ proc add_return_constraint(result: LifetimeResult, local_region: string, return_
   };
 }
 
+proc add_borrow_constraint(result: LifetimeResult, alias_region: string, owner_region: string, line: u64) -> LifetimeResult {
+  let regions0: RegionSolution = ensure_region(result.regions, alias_region, line);
+  let regions1: RegionSolution = ensure_region(regions0, owner_region, line);
+  let regions2: RegionSolution = add_constraint(regions1, constraint_create(owner_region, alias_region, RegionConstraintKind.Outlives, line));
+  let regions3: RegionSolution = add_constraint(regions2, constraint_create(alias_region, owner_region, RegionConstraintKind.EndsBefore, line));
+  give LifetimeResult {
+    facts: result.facts,
+    diagnostics: result.diagnostics,
+    regions: regions3,
+    valid: result.valid and regions3.valid
+  };
+}
+
 proc add_returned_local_diagnostic(result: LifetimeResult, file: string, line: u64, owner: string, alias: string, direct_ref: bool) -> LifetimeResult {
   let kind: BorrowErrorKind = BorrowErrorKind.ReturnBorrowOfLocal;
   let message: string = "returning borrow of local `" + owner + "`";

@@ -12,6 +12,7 @@ form Loan {
   kind: LoanKind
   start_line: u64
   end_line: u64
+  scope_end_line: u64
   active: bool
   valid: bool
 }
@@ -22,6 +23,10 @@ form LoanTable {
 }
 
 proc loan_create(id: u64, alias: string, owner: string, kind: LoanKind, line: u64) -> Loan {
+  give loan_create_scoped(id, alias, owner, kind, line, line);
+}
+
+proc loan_create_scoped(id: u64, alias: string, owner: string, kind: LoanKind, line: u64, scope_end_line: u64) -> Loan {
   give Loan {
     id: id,
     alias: alias,
@@ -29,6 +34,7 @@ proc loan_create(id: u64, alias: string, owner: string, kind: LoanKind, line: u6
     kind: kind,
     start_line: line,
     end_line: line,
+    scope_end_line: scope_end_line,
     active: true,
     valid: alias != "" and owner != ""
   };
@@ -139,6 +145,36 @@ proc deactivate_alias(table: LoanTable, alias: string, line: u64) -> LoanTable {
         kind: loan.kind,
         start_line: loan.start_line,
         end_line: line,
+        scope_end_line: loan.scope_end_line,
+        active: false,
+        valid: loan.valid
+      }];
+    } else {
+      set loans = loans + [loan];
+    }
+    set i = i + 1;
+  }
+
+  give LoanTable {
+    loans: loans,
+    valid: table.valid
+  };
+}
+
+proc deactivate_expired_loans(table: LoanTable, line: u64) -> LoanTable {
+  let loans: [Loan] = [];
+  let i: u64 = 0;
+  while i < len(table.loans) {
+    let loan: Loan = table.loans[i];
+    if loan.active and loan.scope_end_line < line {
+      set loans = loans + [Loan {
+        id: loan.id,
+        alias: loan.alias,
+        owner: loan.owner,
+        kind: loan.kind,
+        start_line: loan.start_line,
+        end_line: line,
+        scope_end_line: loan.scope_end_line,
         active: false,
         valid: loan.valid
       }];

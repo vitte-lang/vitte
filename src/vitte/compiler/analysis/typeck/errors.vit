@@ -1,0 +1,70 @@
+space vitte/compiler/analysis/typeck
+
+use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
+use vitte/compiler/middle/hir/hir.{ HirUnit }
+
+form TypeckDiagnostic {
+  code: string
+  message: string
+  labels: [string]
+  suggestion: string
+  span: AstSpan
+  fatal: bool
+}
+
+form TypeckResult {
+  diagnostics: [TypeckDiagnostic]
+  hir: HirUnit
+  valid: bool
+}
+
+form ExprTypeResult {
+  ty: string
+  diagnostics: [TypeckDiagnostic]
+  valid: bool
+}
+
+proc typeck_diag(code: string, message: string, labels: [string], suggestion: string, span: AstSpan, fatal: bool) -> TypeckDiagnostic {
+  give TypeckDiagnostic {
+    code: code,
+    message: message,
+    labels: labels,
+    suggestion: suggestion,
+    span: span,
+    fatal: fatal
+  };
+}
+
+proc add_unique_diag(diagnostics: [TypeckDiagnostic], diagnostic: TypeckDiagnostic) -> [TypeckDiagnostic] {
+  let i: u64 = 0;
+  while i < len(diagnostics) {
+    if diagnostics[i].code == diagnostic.code and diagnostics[i].span.start_line == diagnostic.span.start_line and diagnostics[i].message == diagnostic.message {
+      give diagnostics;
+    }
+    set i = i + 1;
+  }
+  give diagnostics + [diagnostic];
+}
+
+proc expr_result(ty: string, diagnostics: [TypeckDiagnostic], valid: bool) -> ExprTypeResult {
+  give ExprTypeResult {
+    ty: ty,
+    diagnostics: diagnostics,
+    valid: valid
+  };
+}
+
+proc typeck_invalid_hir_result(hir: HirUnit) -> TypeckResult {
+  give TypeckResult {
+    diagnostics: [typeck_diag(
+      "TYPECK_E_INVALID_HIR",
+      "type checking requires valid HIR",
+      ["hir"],
+      "fix HIR validation errors before type checking",
+      ast_span_empty(),
+      true
+    )],
+    hir: hir,
+    valid: false
+  };
+}

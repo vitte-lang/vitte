@@ -1,32 +1,18 @@
 space vitte/compiler/frontend/lexer/scanner
 
 use vitte/compiler/frontend/lexer/token.{ Token, TokenKind, token }
-
-form LexDiagnostic {
-  code: string
-  message: string
-  line: u64
-  column: u64
-  fatal: bool
-}
+use vitte/compiler/frontend/lexer/cursor.{ Cursor, cursor_advance, cursor_advance_n, cursor_current, cursor_eof, cursor_new, cursor_peek, cursor_starts_with }
+use vitte/compiler/frontend/lexer/comments.{ CommentSkipResult, is_block_comment_start, is_hash_line_comment_start, is_line_comment_start, is_region_comment_start, skip_block_comment, skip_line_comment, skip_region_comment }
+use vitte/compiler/frontend/lexer/literals.{ LiteralValidation, is_digit, is_identifier_continue, is_keyword, is_letter, validate_char_lexeme, validate_number_lexeme, validate_string_lexeme }
+use vitte/compiler/frontend/lexer/errors.{ LexerDiagnostic, lex_error }
 
 form ScanResult {
   tokens: [Token]
-  diagnostics: [LexDiagnostic]
+  diagnostics: [LexerDiagnostic]
   valid: bool
 }
 
-proc lex_diag(code: string, message: string, line: u64, column: u64, fatal: bool) -> LexDiagnostic {
-  give LexDiagnostic {
-    code: code,
-    message: message,
-    line: line,
-    column: column,
-    fatal: fatal
-  };
-}
-
-proc scan_result(tokens: [Token], diagnostics: [LexDiagnostic]) -> ScanResult {
+proc scan_result(tokens: [Token], diagnostics: [LexerDiagnostic]) -> ScanResult {
   give ScanResult {
     tokens: tokens,
     diagnostics: diagnostics,
@@ -34,286 +20,254 @@ proc scan_result(tokens: [Token], diagnostics: [LexDiagnostic]) -> ScanResult {
   };
 }
 
-proc is_letter(ch: string) -> bool {
-  give (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_";
+proc lex_diag(code: string, message: string, line: u64, column: u64, width: u64) -> LexerDiagnostic {
+  give lex_error(code, message, line, column, width);
 }
 
-proc is_digit(ch: string) -> bool {
-  give ch >= "0" and ch <= "9";
-}
-
-proc starts_with_at(text: string, i: u64, needle: string) -> bool {
-  if i + len(needle) > len(text) {
-    give false;
+proc scan_identifier_token(cursor: Cursor) -> Token {
+  let current: Cursor = cursor;
+  let start: u64 = current.index;
+  let start_line: u64 = current.line;
+  let start_col: u64 = current.column;
+  let walk: Cursor = current;
+  while not cursor_eof(walk) and is_identifier_continue(cursor_current(walk)) {
+    set walk = cursor_advance(walk);
   }
-  give slice(text, i, i + len(needle)) == needle;
+  let lexeme: string = slice(current.text, start, walk.index);
+  let kind: TokenKind = if is_keyword(lexeme) { TokenKind.Keyword } else { TokenKind.Ident };
+  give token(kind, lexeme, start_line, start_col);
 }
 
-proc is_keyword(text: string) -> bool {
-  if text == "space" or text == "use" or text == "export" or text == "const" or text == "static" or text == "global" { give true; }
-  if text == "type" or text == "opaque" or text == "extern" or text == "form" or text == "class" or text == "union" { give true; }
-  if text == "bits" or text == "pick" or text == "flags" or text == "trait" or text == "impl" or text == "proc" { give true; }
-  if text == "intrinsic" or text == "compiler" or text == "query" or text == "pass" or text == "backend" { give true; }
-  if text == "diagnostic" or text == "macro" or text == "comptime" or text == "static_assert" or text == "test" or text == "bench" or text == "entry" { give true; }
-  if text == "pub" or text == "priv" or text == "unsafe" or text == "async" or text == "inline" or text == "noinline" { give true; }
-  if text == "naked" or text == "interrupt" or text == "where" or text == "effects" or text == "requires" or text == "operator" { give true; }
-  if text == "as" or text == "for" or text == "at" or text == "let" or text == "set" or text == "give" or text == "try" { give true; }
-  if text == "defer" or text == "asm" or text == "emit" or text == "assert" or text == "panic" or text == "unreachable" { give true; }
-  if text == "if" or text == "elif" or text == "else" or text == "while" or text == "loop" or text == "in" { give true; }
-  if text == "break" or text == "continue" or text == "select" or text == "when" or text == "match" or text == "case" { give true; }
-  if text == "with" or text == "critical" or text == "mut" or text == "owned" or text == "borrow" or text == "move" { give true; }
-  if text == "await" or text == "not" or text == "and" or text == "or" or text == "is" or text == "self" or text == "ref" { give true; }
-  if text == "dyn" or text == "true" or text == "false" or text == "null" or text == "sizeof" or text == "alignof" { give true; }
-  if text == "offsetof" or text == "typeof" or text == "nameof" or text == "map" or text == "resource" or text == "volatile" { give true; }
-  if text == "atomic" or text == "user" or text == "kernel" or text == "phys" or text == "mmio" or text == "dma" or text == "noexcept" { give true; }
+proc advance_identifier(cursor: Cursor) -> Cursor {
+  let walk: Cursor = cursor;
+  while not cursor_eof(walk) and is_identifier_continue(cursor_current(walk)) {
+    set walk = cursor_advance(walk);
+  }
+  give walk;
+}
+
+proc advance_numeric_body(cursor: Cursor) -> Cursor {
+  let walk: Cursor = cursor;
+  let dot_seen: bool = false;
+  let prefix_mode: string = "";
+  if cursor_current(walk) == "-" {
+    set walk = cursor_advance(walk);
+  }
+  if cursor_current(walk) == "0" {
+    let next: string = cursor_peek(walk, 1);
+    if next == "x" or next == "o" or next == "b" {
+      set prefix_mode = next;
+      set walk = cursor_advance_n(walk, 2);
+    }
+  }
+  while not cursor_eof(walk) {
+    let ch: string = cursor_current(walk);
+    if is_digit(ch) or ch == "_" {
+      set walk = cursor_advance(walk);
+      continue;
+    }
+    if prefix_mode == "x" and ((ch >= "a" and ch <= "f") or (ch >= "A" and ch <= "F")) {
+      set walk = cursor_advance(walk);
+      continue;
+    }
+    if prefix_mode == "" and ch == "." and not dot_seen and not cursor_starts_with(walk, "..") {
+      set dot_seen = true;
+      set walk = cursor_advance(walk);
+      continue;
+    }
+    break;
+  }
+  give walk;
+}
+
+proc advance_number(cursor: Cursor) -> Cursor {
+  let walk: Cursor = advance_numeric_body(cursor);
+  while not cursor_eof(walk) and is_identifier_continue(cursor_current(walk)) {
+    set walk = cursor_advance(walk);
+  }
+  give walk;
+}
+
+proc scan_number_token(cursor: Cursor) -> Token {
+  let current: Cursor = cursor;
+  let start_line: u64 = current.line;
+  let start_col: u64 = current.column;
+  let walk: Cursor = advance_number(current);
+  let lexeme: string = slice(current.text, current.index, walk.index);
+  let check: LiteralValidation = validate_number_lexeme(lexeme);
+  let kind: TokenKind = if check.is_float { TokenKind.Float } else { TokenKind.Integer };
+  if not check.valid {
+    give token(TokenKind.Invalid, lexeme, start_line, start_col);
+  }
+  give token(kind, lexeme, start_line, start_col);
+}
+
+proc scan_quoted_token(cursor: Cursor, quote: string, kind: TokenKind) -> ScanResult {
+  let tokens: [Token] = [];
+  let diagnostics: [LexerDiagnostic] = [];
+  let start_line: u64 = cursor.line;
+  let start_col: u64 = cursor.column;
+  let walk: Cursor = cursor_advance(cursor);
+  let closed: bool = false;
+  while not cursor_eof(walk) {
+    let ch: string = cursor_current(walk);
+    if ch == "\\" and cursor_peek(walk, 1) != "" {
+      set walk = cursor_advance_n(walk, 2);
+      continue;
+    }
+    if ch == quote {
+      set walk = cursor_advance(walk);
+      set closed = true;
+      break;
+    }
+    if quote == "'" and ch == "\n" {
+      break;
+    }
+    set walk = cursor_advance(walk);
+  }
+  let lexeme: string = slice(cursor.text, cursor.index, walk.index);
+  if not closed {
+    let code: string = if quote == "\"" { "LEX_E_UNTERMINATED_STRING" } else { "LEX_E_UNTERMINATED_CHAR" };
+    let message: string = if quote == "\"" { "unterminated string literal" } else { "unterminated char literal" };
+    set diagnostics = diagnostics + [lex_diag(code, message, start_line, start_col, len(lexeme))];
+    set tokens = tokens + [token(TokenKind.Invalid, lexeme, start_line, start_col)];
+  } else {
+    let validation: LiteralValidation = if quote == "\"" { validate_string_lexeme(lexeme) } else { validate_char_lexeme(lexeme) };
+    if not validation.valid {
+      set diagnostics = diagnostics + [lex_diag(validation.error_code, validation.error_message, start_line, start_col, len(lexeme))];
+      set tokens = tokens + [token(TokenKind.Invalid, lexeme, start_line, start_col)];
+    } else {
+      set tokens = tokens + [token(kind, lexeme, start_line, start_col)];
+    }
+  }
+  give scan_result(tokens, diagnostics);
+}
+
+proc is_two_char_symbol(cursor: Cursor) -> bool {
+  if cursor_starts_with(cursor, "->") or cursor_starts_with(cursor, "::") or cursor_starts_with(cursor, "..") or cursor_starts_with(cursor, "==") or cursor_starts_with(cursor, "!=") or cursor_starts_with(cursor, "<=") or cursor_starts_with(cursor, ">=") or cursor_starts_with(cursor, "<<") or cursor_starts_with(cursor, ">>") or cursor_starts_with(cursor, "+=") or cursor_starts_with(cursor, "-=") or cursor_starts_with(cursor, "*=") or cursor_starts_with(cursor, "/=") or cursor_starts_with(cursor, "%=") or cursor_starts_with(cursor, "&=") or cursor_starts_with(cursor, "|=") or cursor_starts_with(cursor, "^=") or cursor_starts_with(cursor, "??") or cursor_starts_with(cursor, "=>") or cursor_starts_with(cursor, "#[") or cursor_starts_with(cursor, "#!") {
+    give true;
+  }
   give false;
+}
+
+proc is_valid_single_symbol(ch: string) -> bool {
+  give
+    ch == "(" or ch == ")" or ch == "{" or ch == "}" or ch == "[" or ch == "]" or
+    ch == "," or ch == ";" or ch == ":" or ch == "." or ch == "+" or ch == "-" or
+    ch == "*" or ch == "/" or ch == "%" or ch == "=" or ch == "<" or ch == ">" or
+    ch == "!" or ch == "&" or ch == "|" or ch == "^";
 }
 
 proc scan_tokens(text: string) -> ScanResult {
   let tokens: [Token] = [];
-  let diagnostics: [LexDiagnostic] = [];
-  let i: u64 = 0;
-  let line: u64 = 1;
-  let col: u64 = 1;
+  let diagnostics: [LexerDiagnostic] = [];
+  let cursor: Cursor = cursor_new(text);
+  let current: Cursor = cursor;
 
-  while i < len(text) {
-    let ch: string = slice(text, i, i + 1);
+  while not cursor_eof(current) {
+    let ch: string = cursor_current(current);
 
-    if ch == " " or ch == "\t" or ch == "\r" {
-      set i = i + 1;
-      set col = col + 1;
+    if ch == " " or ch == "\t" or ch == "\r" or ch == "\n" {
+      set current = cursor_advance(current);
       continue;
     }
 
-    if ch == "\n" {
-      set i = i + 1;
-      set line = line + 1;
-      set col = 1;
+    if is_hash_line_comment_start(current) {
+      set current = skip_line_comment(current);
       continue;
     }
 
-    if ch == "#" {
-      while i < len(text) and slice(text, i, i + 1) != "\n" {
-        set i = i + 1;
-        set col = col + 1;
-      }
+    let two: string = ch + cursor_peek(current, 1);
+    if is_line_comment_start(two) {
+      set current = skip_line_comment(current);
       continue;
     }
 
-    if starts_with_at(text, i, "//") {
-      while i < len(text) and slice(text, i, i + 1) != "\n" {
-        set i = i + 1;
-        set col = col + 1;
-      }
-      continue;
-    }
-
-    if starts_with_at(text, i, "/*") {
-      let start_line: u64 = line;
-      let start_col: u64 = col;
-      set i = i + 2;
-      set col = col + 2;
-      while i + 1 < len(text) and not starts_with_at(text, i, "*/") {
-        if slice(text, i, i + 1) == "\n" {
-          set i = i + 1;
-          set line = line + 1;
-          set col = 1;
-        } else {
-          set i = i + 1;
-          set col = col + 1;
-        }
-      }
-      if i + 1 < len(text) {
-        set i = i + 2;
-        set col = col + 2;
-      } else {
-        set diagnostics = diagnostics + [lex_diag("LEX_E_UNTERMINATED_BLOCK_COMMENT", "unterminated block comment", start_line, start_col, true)];
+    if is_block_comment_start(current) {
+      let start_line: u64 = current.line;
+      let start_col: u64 = current.column;
+      let skipped: CommentSkipResult = skip_block_comment(current);
+      if not skipped.terminated {
+        set diagnostics = diagnostics + [lex_diag("LEX_E_UNTERMINATED_BLOCK_COMMENT", "unterminated block comment", start_line, start_col, 2)];
         set tokens = tokens + [token(TokenKind.Invalid, "/*", start_line, start_col)];
       }
+      set current = skipped.cursor;
       continue;
     }
 
-    if starts_with_at(text, i, "<<<") {
-      set i = i + 3;
-      set col = col + 3;
-      while i + 2 < len(text) and not starts_with_at(text, i, ">>>") {
-        if slice(text, i, i + 1) == "\n" {
-          set i = i + 1;
-          set line = line + 1;
-          set col = 1;
-        } else {
-          set i = i + 1;
-          set col = col + 1;
-        }
-      }
-      if i + 2 < len(text) {
-        set i = i + 3;
-        set col = col + 3;
-      }
+    if is_region_comment_start(current) {
+      let skipped: CommentSkipResult = skip_region_comment(current);
+      set current = skipped.cursor;
       continue;
     }
 
     if is_letter(ch) {
-      let start: u64 = i;
-      let start_col: u64 = col;
-      while i < len(text) {
-        let c2: string = slice(text, i, i + 1);
-        if is_letter(c2) or is_digit(c2) {
-          set i = i + 1;
-          set col = col + 1;
-        } else {
-          break;
-        }
-      }
-      let lex: string = slice(text, start, i);
-      if is_keyword(lex) {
-        set tokens = tokens + [token(TokenKind.Keyword, lex, line, start_col)];
-      } else {
-        set tokens = tokens + [token(TokenKind.Ident, lex, line, start_col)];
-      }
+      set tokens = tokens + [scan_identifier_token(current)];
+      set current = advance_identifier(current);
       continue;
     }
 
-    if is_digit(ch) or (ch == "-" and i + 1 < len(text) and is_digit(slice(text, i + 1, i + 2))) {
-      let start: u64 = i;
-      let start_col: u64 = col;
-      let dot_count: u64 = 0;
-      if ch == "-" {
-        set i = i + 1;
-        set col = col + 1;
+    if is_digit(ch) or (ch == "-" and is_digit(cursor_peek(current, 1))) {
+      let number_token: Token = scan_number_token(current);
+      set tokens = tokens + [number_token];
+      if number_token.kind == TokenKind.Invalid {
+        let validation: LiteralValidation = validate_number_lexeme(number_token.lexeme);
+        set diagnostics = diagnostics + [lex_diag(validation.error_code, validation.error_message, current.line, current.column, len(number_token.lexeme))];
       }
-      while i < len(text) {
-        let c2: string = slice(text, i, i + 1);
-        if is_digit(c2) or c2 == "_" or c2 == "x" or c2 == "o" or c2 == "b" {
-          set i = i + 1;
-          set col = col + 1;
-        } elif c2 == "." and not starts_with_at(text, i, "..") {
-          set dot_count = dot_count + 1;
-          set i = i + 1;
-          set col = col + 1;
-        } else {
-          break;
-        }
-      }
-      let lexeme: string = slice(text, start, i);
-      if dot_count > 0 {
-        set tokens = tokens + [token(TokenKind.Float, lexeme, line, start_col)];
-      } else {
-        set tokens = tokens + [token(TokenKind.Integer, lexeme, line, start_col)];
-      }
+      set current = advance_number(current);
       continue;
     }
 
     if ch == "\"" {
-      let start: u64 = i;
-      let start_col: u64 = col;
-      let start_line: u64 = line;
-      set i = i + 1;
-      set col = col + 1;
-      let closed: bool = false;
-      while i < len(text) {
-        let c2: string = slice(text, i, i + 1);
-        if c2 == "\\" and i + 1 < len(text) {
-          set i = i + 2;
-          set col = col + 2;
-          continue;
-        }
-        if c2 == "\"" {
-          set i = i + 1;
-          set col = col + 1;
-          set closed = true;
-          break;
-        }
-        if c2 == "\n" {
-          set i = i + 1;
-          set line = line + 1;
-          set col = 1;
-        } else {
-          set i = i + 1;
-          set col = col + 1;
-        }
-      }
-      if not closed {
-        set diagnostics = diagnostics + [lex_diag("LEX_E_UNTERMINATED_STRING", "unterminated string literal", start_line, start_col, true)];
-        set tokens = tokens + [token(TokenKind.Invalid, slice(text, start, i), start_line, start_col)];
+      let scanned: ScanResult = scan_quoted_token(current, "\"", TokenKind.String);
+      set tokens = tokens + scanned.tokens;
+      set diagnostics = diagnostics + scanned.diagnostics;
+      if len(scanned.tokens) > 0 {
+        set current = cursor_advance_n(current, len(scanned.tokens[0].lexeme));
       } else {
-        set tokens = tokens + [token(TokenKind.String, slice(text, start, i), start_line, start_col)];
+        set current = cursor_advance(current);
       }
       continue;
     }
 
     if ch == "'" {
-      let start: u64 = i;
-      let start_col: u64 = col;
-      let start_line: u64 = line;
-      set i = i + 1;
-      set col = col + 1;
-      let closed: bool = false;
-      while i < len(text) {
-        let c2: string = slice(text, i, i + 1);
-        if c2 == "\\" and i + 1 < len(text) {
-          set i = i + 2;
-          set col = col + 2;
-          continue;
-        }
-        if c2 == "'" {
-          set i = i + 1;
-          set col = col + 1;
-          set closed = true;
-          break;
-        }
-        if c2 == "\n" {
-          break;
-        }
-        set i = i + 1;
-        set col = col + 1;
-      }
-      if not closed {
-        set diagnostics = diagnostics + [lex_diag("LEX_E_UNTERMINATED_CHAR", "unterminated char literal", start_line, start_col, true)];
-        set tokens = tokens + [token(TokenKind.Invalid, slice(text, start, i), start_line, start_col)];
+      let scanned: ScanResult = scan_quoted_token(current, "'", TokenKind.Char);
+      set tokens = tokens + scanned.tokens;
+      set diagnostics = diagnostics + scanned.diagnostics;
+      if len(scanned.tokens) > 0 {
+        set current = cursor_advance_n(current, len(scanned.tokens[0].lexeme));
       } else {
-        set tokens = tokens + [token(TokenKind.Char, slice(text, start, i), start_line, start_col)];
+        set current = cursor_advance(current);
       }
       continue;
     }
 
-    let start_col: u64 = col;
-    if starts_with_at(text, i, "...") {
-      set tokens = tokens + [token(TokenKind.Symbol, "...", line, start_col)];
-      set i = i + 3;
-      set col = col + 3;
+    if cursor_starts_with(current, "...") {
+      set tokens = tokens + [token(TokenKind.Symbol, "...", current.line, current.column)];
+      set current = cursor_advance_n(current, 3);
       continue;
     }
-    if starts_with_at(text, i, "..=") {
-      set tokens = tokens + [token(TokenKind.Symbol, "..=", line, start_col)];
-      set i = i + 3;
-      set col = col + 3;
+    if cursor_starts_with(current, "..=") {
+      set tokens = tokens + [token(TokenKind.Symbol, "..=", current.line, current.column)];
+      set current = cursor_advance_n(current, 3);
       continue;
     }
-    if starts_with_at(text, i, "->") or starts_with_at(text, i, "::") or starts_with_at(text, i, "..") or starts_with_at(text, i, "==") or starts_with_at(text, i, "!=") or starts_with_at(text, i, "<=") or starts_with_at(text, i, ">=") or starts_with_at(text, i, "<<") or starts_with_at(text, i, ">>") or starts_with_at(text, i, "+=") or starts_with_at(text, i, "-=") or starts_with_at(text, i, "*=") or starts_with_at(text, i, "/=") or starts_with_at(text, i, "%=") or starts_with_at(text, i, "&=") or starts_with_at(text, i, "|=") or starts_with_at(text, i, "^=") or starts_with_at(text, i, "??") or starts_with_at(text, i, "=>") or starts_with_at(text, i, "#[") or starts_with_at(text, i, "#!") {
-      let sym: string = slice(text, i, i + 2);
-      set tokens = tokens + [token(TokenKind.Symbol, sym, line, start_col)];
-      set i = i + 2;
-      set col = col + 2;
+    if is_two_char_symbol(current) {
+      let sym: string = slice(current.text, current.index, current.index + 2);
+      set tokens = tokens + [token(TokenKind.Symbol, sym, current.line, current.column)];
+      set current = cursor_advance_n(current, 2);
       continue;
     }
 
-    let sym: string = ch;
-    let valid_symbol: bool =
-      ch == "(" or ch == ")" or ch == "{" or ch == "}" or ch == "[" or ch == "]" or
-      ch == "," or ch == ";" or ch == ":" or ch == "." or ch == "+" or ch == "-" or
-      ch == "*" or ch == "/" or ch == "%" or ch == "=" or ch == "<" or ch == ">" or
-      ch == "!" or ch == "&" or ch == "|" or ch == "^";
-    if valid_symbol {
-      set tokens = tokens + [token(TokenKind.Symbol, sym, line, col)];
+    if is_valid_single_symbol(ch) {
+      set tokens = tokens + [token(TokenKind.Symbol, ch, current.line, current.column)];
     } else {
-      set diagnostics = diagnostics + [lex_diag("LEX_E_INVALID_CHAR", "invalid character `" + sym + "`", line, col, true)];
-      set tokens = tokens + [token(TokenKind.Invalid, sym, line, col)];
+      set diagnostics = diagnostics + [lex_diag("LEX_E_INVALID_CHAR", "invalid character `" + ch + "`", current.line, current.column, 1)];
+      set tokens = tokens + [token(TokenKind.Invalid, ch, current.line, current.column)];
     }
-    set i = i + 1;
-    set col = col + 1;
+    set current = cursor_advance(current);
   }
 
-  set tokens = tokens + [token(TokenKind.Eof, "", line, col)];
+  set tokens = tokens + [token(TokenKind.Eof, "", current.line, current.column)];
   give scan_result(tokens, diagnostics);
 }

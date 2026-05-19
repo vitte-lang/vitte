@@ -1,0 +1,26 @@
+space vitte/compiler/backend/target
+
+use vitte/compiler/backend/target/triple.{ TargetTriple }
+
+proc pointer_width_for_arch(arch: string) -> u64 {
+  if arch == "i386" or arch == "wasm32" {
+    give 32;
+  }
+  give 64;
+}
+
+proc data_layout_for_triple(triple: TargetTriple) -> string {
+  if triple.arch == "x86_64" {
+    give "e-m:e-p:64:64-i64:64-n8:16:32:64-S128";
+  }
+  if triple.arch == "aarch64" {
+    give "e-m:e-p:64:64-i64:64-i128:128-n32:64-S128";
+  }
+  if triple.arch == "riscv64" {
+    give "e-m:e-p:64:64-i64:64-n32:64-S128";
+  }
+  if triple.arch == "i386" {
+    give "e-m:e-p:32:32-i64:64-n8:16:32-S128";
+  }
+  give "e-p:64:64";
+}

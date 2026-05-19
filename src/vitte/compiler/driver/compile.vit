@@ -1,16 +1,61 @@
 space vitte/compiler/driver
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
-use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_hir }
-use vitte/compiler/middle/hir/hir.{ HirUnit }
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_prechecked }
+use vitte/compiler/analysis/sema.{ SemaModuleImport, SemaModuleSummary, SemaResult, imported_symbols_from_summary, run_sema_hir, run_sema_hir_with_imports, summarize_module_hir }
+use vitte/compiler/analysis/sema/scopes.{ SemaSymbol }
+use vitte/compiler/analysis/typeck/checker.{ run_typeck_hir }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
+use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, build_analysis_graph }
+use vitte/compiler/middle/hir/hir.{ HirUnit, hir_module_empty }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
-use vitte/compiler/backend/pipeline.{ compile_to_valid_ir }
+use vitte/compiler/middle/hir/validate.{ validate_hir }
+use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_for_target }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
+use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
+use vitte/compiler/middle/mir/mir.{ MirUnit, mir_module_empty }
+use vitte/compiler/middle/mir/validate.{ validate_mir }
+use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profile, run_codegen_x86_64 }
+use vitte/compiler/backend/ir/ir.{ IrFunction, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
+use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artifact_create, artifact_is_valid, link_target_from_name }
+use vitte/compiler/backend/link/linker.{ link_ir_unit_with_kind }
+use vitte/compiler/backend/pipeline.{ compile_to_valid_ir_with_profile_and_packaging }
+use vitte/compiler/backends/llvm_bindings.{ LlvmDiagnosticLevel, LlvmToolchainPaths, default_llvm_toolchain_paths }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
+
+pick DriverDiagnosticLevel {
+    Note,
+    Warning,
+    Error,
+}
+
+form DriverDiagnostic {
+    level: DriverDiagnosticLevel
+    stage: string
+    code: string
+    message: string
+    valid: bool
+}
 
 form DriverCompileResult {
     status: DriverExitStatus
     message: string
     ir_valid: bool
+    backend_name: string
+    target_name: string
+    profile_name: string
+    opt_level: string
+    packaging: string
+    deterministic: bool
+    debug_enabled: bool
+    emit_debug_sections: bool
+    lto_enabled: bool
+    pgo_mode: string
+    prefer_native_toolchain: bool
+    llvm_toolchain_summary: string
+    codegen_object_format: string
+    codegen_section_count: u64
+    diagnostics: [DriverDiagnostic]
     grammar_version: string
     token_count: u64
     toplevel_count: u64
@@ -20,11 +65,216 @@ form DriverCompileResult {
     pattern_count: u64
 }
 
-proc empty_compile_result(status: DriverExitStatus, message: string, ir_valid: bool) -> DriverCompileResult {
+form DriverCompileConfig {
+    backend_name: string
+    target_name: string
+    profile_name: string
+    opt_level: string
+    packaging: string
+    deterministic: bool
+    debug_enabled: bool
+    emit_debug_sections: bool
+    lto_enabled: bool
+    pgo_mode: string
+    prefer_native_toolchain: bool
+    llvm_toolchain: LlvmToolchainPaths
+    valid: bool
+}
+
+proc profile_opt_level(profile_name: string) -> string {
+    if profile_name == "enterprise-debug" {
+        give "O0";
+    }
+    if profile_name == "enterprise-size" {
+        give "Oz";
+    }
+    if profile_name == "enterprise-release" or profile_name == "enterprise-lto" or profile_name == "enterprise-pgo" {
+        give "O3";
+    }
+    give "O2";
+}
+
+proc profile_packaging(profile_name: string) -> string {
+    if profile_name == "enterprise-static" {
+        give "static-library";
+    }
+    if profile_name == "enterprise-shared" {
+        give "shared-library";
+    }
+    give "executable";
+}
+
+proc profile_lto_enabled(profile_name: string) -> bool {
+    give profile_name == "enterprise-lto" or profile_name == "enterprise-release";
+}
+
+proc profile_pgo_mode(profile_name: string) -> string {
+    if profile_name == "enterprise-pgo" {
+        give "instrument";
+    }
+    give "off";
+}
+
+proc profile_emit_debug_sections(profile_name: string, debug_enabled: bool) -> bool {
+    if profile_name == "enterprise-debug" {
+        give true;
+    }
+    give debug_enabled;
+}
+
+proc driver_compile_config_full(backend_name: string, target_name: string, profile_name: string, opt_level: string, packaging: string, deterministic: bool, debug_enabled: bool, emit_debug_sections: bool, lto_enabled: bool, pgo_mode: string, prefer_native_toolchain: bool, llvm_toolchain: LlvmToolchainPaths) -> DriverCompileConfig {
+    give DriverCompileConfig {
+        backend_name: backend_name,
+        target_name: target_name,
+        profile_name: profile_name,
+        opt_level: opt_level,
+        packaging: packaging,
+        deterministic: deterministic,
+        debug_enabled: debug_enabled,
+        emit_debug_sections: emit_debug_sections,
+        lto_enabled: lto_enabled,
+        pgo_mode: pgo_mode,
+        prefer_native_toolchain: prefer_native_toolchain,
+        llvm_toolchain: llvm_toolchain,
+        valid: backend_name != "" and target_name != "" and profile_name != "" and opt_level != "" and packaging != ""
+    };
+}
+
+proc driver_compile_config(backend_name: string, target_name: string, profile_name: string, deterministic: bool, debug_enabled: bool) -> DriverCompileConfig {
+    give driver_compile_config_full(
+        backend_name,
+        target_name,
+        profile_name,
+        profile_opt_level(profile_name),
+        profile_packaging(profile_name),
+        deterministic,
+        debug_enabled,
+        profile_emit_debug_sections(profile_name, debug_enabled),
+        profile_lto_enabled(profile_name),
+        profile_pgo_mode(profile_name),
+        false,
+        default_llvm_toolchain_paths()
+    );
+}
+
+proc default_compile_config() -> DriverCompileConfig {
+    give driver_compile_config("x86_64", "x86_64-linux", "enterprise-default", true, true);
+}
+
+proc driver_diagnostic(level: DriverDiagnosticLevel, stage: string, code: string, message: string) -> DriverDiagnostic {
+    give DriverDiagnostic {
+        level: level,
+        stage: stage,
+        code: code,
+        message: message,
+        valid: stage != "" and code != "" and message != ""
+    };
+}
+
+proc config_diagnostics(config: DriverCompileConfig) -> [DriverDiagnostic] {
+    let diagnostics: [DriverDiagnostic] = [];
+    if config.emit_debug_sections and not config.debug_enabled {
+        set diagnostics = diagnostics + [driver_diagnostic(DriverDiagnosticLevel.Warning, "driver", "config.debug.mismatch", "debug sections requested while debug is disabled")];
+    }
+    if config.prefer_native_toolchain and config.backend_name != "llvm" and config.backend_name != "llvm-ir" {
+        set diagnostics = diagnostics + [driver_diagnostic(DriverDiagnosticLevel.Note, "driver", "config.native.inert", "native LLVM toolchain request is ignored for the current backend")];
+    }
+    if config.lto_enabled and config.backend_name != "llvm" and config.backend_name != "llvm-ir" {
+        set diagnostics = diagnostics + [driver_diagnostic(DriverDiagnosticLevel.Note, "driver", "config.lto.inert", "LTO is recorded but inactive for the current backend")];
+    }
+    if config.pgo_mode != "off" and config.backend_name != "llvm" and config.backend_name != "llvm-ir" {
+        set diagnostics = diagnostics + [driver_diagnostic(DriverDiagnosticLevel.Note, "driver", "config.pgo.inert", "PGO is recorded but inactive for the current backend")];
+    }
+    give diagnostics;
+}
+
+proc codegen_diagnostics(codegen: CodegenResult) -> [DriverDiagnostic] {
+    let diagnostics: [DriverDiagnostic] = [];
+    let built: [DriverDiagnostic] = diagnostics;
+    let i: u64 = 0;
+    while i < len(codegen.diagnostics) {
+        let diag0 = codegen.diagnostics[i];
+        let level = if diag0.level == LlvmDiagnosticLevel.Error {
+            DriverDiagnosticLevel.Error
+        } elif diag0.level == LlvmDiagnosticLevel.Warning {
+            DriverDiagnosticLevel.Warning
+        } else {
+            DriverDiagnosticLevel.Note
+        };
+        set built = built + [driver_diagnostic(level, diag0.stage, diag0.code, diag0.message)];
+        set i = i + 1;
+    }
+    i = 0;
+    while i < len(codegen.errors) {
+        set built = built + [driver_diagnostic(DriverDiagnosticLevel.Error, "codegen", "codegen.error", codegen.errors[i])];
+        set i = i + 1;
+    }
+    give built;
+}
+
+proc backend_supports_target(backend_name: string, target_name0: string) -> bool {
+    if backend_name == "x86_64" {
+        give target_name0 == "x86_64-linux";
+    }
+    if backend_name == "llvm" or backend_name == "llvm-ir" {
+        give target_name0 == "x86_64-linux" or target_name0 == "aarch64-linux" or target_name0 == "riscv64-linux" or target_name0 == "i386-linux";
+    }
+    give false;
+}
+
+proc config_support_message(config: DriverCompileConfig) -> string {
+    if not config.valid {
+        give "invalid compile configuration";
+    }
+    if config.opt_level != "O0" and config.opt_level != "O1" and config.opt_level != "O2" and config.opt_level != "O3" and config.opt_level != "Os" and config.opt_level != "Oz" {
+        give "unsupported optimization level: " + config.opt_level;
+    }
+    if config.packaging != "executable" and config.packaging != "static-library" and config.packaging != "shared-library" and config.packaging != "object" {
+        give "unsupported packaging mode: " + config.packaging;
+    }
+    if config.pgo_mode != "off" and config.pgo_mode != "instrument" and config.pgo_mode != "use" {
+        give "unsupported pgo mode: " + config.pgo_mode;
+    }
+    if not backend_supports_target(config.backend_name, config.target_name) {
+        give "unsupported backend/target combination: " + config.backend_name + " -> " + config.target_name;
+    }
+    give "";
+}
+
+proc artifact_kind_from_packaging(packaging: string) -> LinkArtifactKind {
+    if packaging == "static-library" {
+        give LinkArtifactKind.StaticLibrary;
+    }
+    if packaging == "shared-library" {
+        give LinkArtifactKind.SharedLibrary;
+    }
+    if packaging == "object" {
+        give LinkArtifactKind.ObjectFile;
+    }
+    give LinkArtifactKind.Executable;
+}
+
+proc empty_compile_result(status: DriverExitStatus, message: string, ir_valid: bool, config: DriverCompileConfig) -> DriverCompileResult {
+    let diagnostics: [DriverDiagnostic] = config_diagnostics(config);
     give DriverCompileResult {
         status: status,
         message: message,
         ir_valid: ir_valid,
+        backend_name: config.backend_name,
+        target_name: config.target_name,
+        profile_name: config.profile_name,
+        opt_level: config.opt_level,
+        packaging: config.packaging,
+        deterministic: config.deterministic,
+        debug_enabled: config.debug_enabled,
+        emit_debug_sections: config.emit_debug_sections,
+        lto_enabled: config.lto_enabled,
+        pgo_mode: config.pgo_mode,
+        prefer_native_toolchain: config.prefer_native_toolchain,
+        llvm_toolchain_summary: "",
+        codegen_object_format: "",
+        codegen_section_count: 0,
+        diagnostics: diagnostics,
         grammar_version: "",
         token_count: 0,
         toplevel_count: 0,
@@ -35,11 +285,27 @@ proc empty_compile_result(status: DriverExitStatus, message: string, ir_valid: b
     };
 }
 
-proc frontend_compile_result(status: DriverExitStatus, message: string, ir_valid: bool, fe: FrontendOutput) -> DriverCompileResult {
+proc frontend_compile_result(status: DriverExitStatus, message: string, ir_valid: bool, fe: FrontendOutput, config: DriverCompileConfig) -> DriverCompileResult {
+    let diagnostics: [DriverDiagnostic] = config_diagnostics(config);
     give DriverCompileResult {
         status: status,
         message: message,
         ir_valid: ir_valid,
+        backend_name: config.backend_name,
+        target_name: config.target_name,
+        profile_name: config.profile_name,
+        opt_level: config.opt_level,
+        packaging: config.packaging,
+        deterministic: config.deterministic,
+        debug_enabled: config.debug_enabled,
+        emit_debug_sections: config.emit_debug_sections,
+        lto_enabled: config.lto_enabled,
+        pgo_mode: config.pgo_mode,
+        prefer_native_toolchain: config.prefer_native_toolchain,
+        llvm_toolchain_summary: "",
+        codegen_object_format: "",
+        codegen_section_count: 0,
+        diagnostics: diagnostics,
         grammar_version: fe.grammar_version,
         token_count: fe.token_count,
         toplevel_count: fe.toplevel_count,
@@ -50,43 +316,561 @@ proc frontend_compile_result(status: DriverExitStatus, message: string, ir_valid
     };
 }
 
+form DriverAnalysisArtifacts {
+    frontend: FrontendOutput
+    hir: HirUnit
+    resolved_hir: HirUnit
+    typed_hir: HirUnit
+    mir: MirUnit
+    analysis: AnalysisOutput
+    incremental: IncrementalGraph
+    valid: bool
+}
+
+form DriverModuleInput {
+    source_path: string
+    source_text: string
+    valid: bool
+}
+
+form DriverModuleArtifact {
+    source_path: string
+    module_path: string
+    frontend: FrontendOutput
+    hir: HirUnit
+    resolved_hir: HirUnit
+    typed_hir: HirUnit
+    mir: MirUnit
+    analysis: AnalysisOutput
+    imports: [string]
+    valid: bool
+}
+
+form DriverModuleSetArtifacts {
+    modules: [DriverModuleArtifact]
+    valid: bool
+}
+
+form DriverBackendModuleSetResult {
+    analysis: DriverModuleSetArtifacts
+    config: DriverCompileConfig
+    ir_unit: IrUnit
+    codegen: CodegenResult
+    artifact: LinkArtifact
+    entry_symbol: string
+    message: string
+    diagnostics: [DriverDiagnostic]
+    valid: bool
+}
+
+proc invalid_hir_unit(source_path: string) -> HirUnit {
+    give HirUnit {
+        source_path: source_path,
+        module: hir_module_empty(),
+        node_count: 0,
+        symbol_count: 0,
+        scope_count: 0,
+        valid: false
+    };
+}
+
+proc invalid_mir_unit(source_path: string) -> MirUnit {
+    give MirUnit {
+        source_path: source_path,
+        module: mir_module_empty(),
+        block_count: 0,
+        instruction_count: 0,
+        valid: false
+    };
+}
+
+proc parse_source(source_path: string, source_text: string) -> FrontendOutput {
+    give frontend_run(source_path, source_text);
+}
+
+proc driver_module_input(source_path: string, source_text: string) -> DriverModuleInput {
+    give DriverModuleInput {
+        source_path: source_path,
+        source_text: source_text,
+        valid: source_path != ""
+    };
+}
+
+proc module_summary_index(summaries: [SemaModuleSummary], module_path: string) -> int {
+    let i: int = 0;
+    while i < len(summaries) {
+        if summaries[i].module_path == module_path {
+            give i;
+        }
+        set i = i + 1;
+    }
+    give -1;
+}
+
+proc module_import_names(summary: SemaModuleSummary) -> [string] {
+    let names: [string] = [];
+    let i: u64 = 0;
+    while i < len(summary.imports) {
+        set names = names + [summary.imports[i].module_path];
+        set i = i + 1;
+    }
+    give names;
+}
+
+proc imported_symbols_for_summary(summary: SemaModuleSummary, summaries: [SemaModuleSummary]) -> [SemaSymbol] {
+    let imported: [SemaSymbol] = [];
+    let i: u64 = 0;
+    while i < len(summary.imports) {
+        let dependency: SemaModuleImport = summary.imports[i];
+        let index: int = module_summary_index(summaries, dependency.module_path);
+        if index >= 0 {
+            set imported = imported + imported_symbols_from_summary(summaries[index as u64]);
+        }
+        set i = i + 1;
+    }
+    give imported;
+}
+
+proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts {
+    let frontends: [FrontendOutput] = [];
+    let hirs: [HirUnit] = [];
+    let summaries: [SemaModuleSummary] = [];
+    let valid: bool = true;
+    let i: u64 = 0;
+    while i < len(inputs) {
+        let input: DriverModuleInput = inputs[i];
+        let frontend: FrontendOutput = parse_source(input.source_path, input.source_text);
+        let hir0: HirUnit = lower_ast_to_hir(frontend);
+        let hir1: HirUnit = validate_hir(hir0);
+        set frontends = frontends + [frontend];
+        set hirs = hirs + [hir1];
+        set summaries = summaries + [summarize_module_hir(hir1, (i + 1) * 1000000)];
+        set valid = valid and frontend.valid and hir1.valid;
+        set i = i + 1;
+    }
+
+    let modules: [DriverModuleArtifact] = [];
+    i = 0;
+    while i < len(inputs) {
+        let summary: SemaModuleSummary = summaries[i];
+        let imported: [SemaSymbol] = imported_symbols_for_summary(summary, summaries);
+        let sema_result: SemaResult = run_sema_hir_with_imports(hirs[i], imported);
+        let typeck_result: TypeckResult = run_typeck_hir(sema_result.hir);
+        let mir0: MirUnit = lower_hir_to_mir(typeck_result.hir);
+        let mir1: MirUnit = validate_mir(mir0);
+        let analysis: AnalysisOutput = analysis_run_prechecked(frontends[i], sema_result, typeck_result, mir1);
+        let artifact: DriverModuleArtifact = DriverModuleArtifact {
+            source_path: inputs[i].source_path,
+            module_path: summary.module_path,
+            frontend: frontends[i],
+            hir: hirs[i],
+            resolved_hir: sema_result.hir,
+            typed_hir: typeck_result.hir,
+            mir: mir1,
+            analysis: analysis,
+            imports: module_import_names(summary),
+            valid: frontends[i].valid and hirs[i].valid and sema_result.valid and typeck_result.valid and mir1.valid and analysis.valid
+        };
+        set modules = modules + [artifact];
+        set valid = valid and artifact.valid;
+        set i = i + 1;
+    }
+
+    give DriverModuleSetArtifacts {
+        modules: modules,
+        valid: valid
+    };
+}
+
+proc exported_names(summary: SemaModuleSummary) -> [string] {
+    let names: [string] = [];
+    let i: u64 = 0;
+    while i < len(summary.exports) {
+        set names = names + [summary.exports[i].name];
+        set i = i + 1;
+    }
+    give names;
+}
+
+proc imported_external_symbol_names(summary: SemaModuleSummary, summaries: [SemaModuleSummary]) -> [string] {
+    let names: [string] = [];
+    let i: u64 = 0;
+    while i < len(summary.imports) {
+        let import0: SemaModuleImport = summary.imports[i];
+        let index: int = module_summary_index(summaries, import0.module_path);
+        if index >= 0 {
+            let dependency: SemaModuleSummary = summaries[index as u64];
+            let j: u64 = 0;
+            while j < len(dependency.exports) {
+                let symbol_name: string = dependency.module_path + "::" + dependency.exports[j].name;
+                set names = names + [symbol_name];
+                set j = j + 1;
+            }
+        }
+        set i = i + 1;
+    }
+    give names;
+}
+
+proc module_kind_for_backend(artifact: DriverModuleArtifact) -> IrModuleKind {
+    let i: u64 = 0;
+    while i < len(artifact.typed_hir.module.items) {
+        let item = artifact.typed_hir.module.items[i];
+        if item.name == "main" {
+            give IrModuleKind.Binary;
+        }
+        set i = i + 1;
+    }
+    give IrModuleKind.Library;
+}
+
+proc lower_module_set_to_ir(artifacts: DriverModuleSetArtifacts, config: DriverCompileConfig) -> IrUnit {
+    let target: IrTarget = target_from_name(config.target_name);
+    let unit0: IrUnit = unit_with_source_path(unit_empty(target), "module-set");
+    if not artifacts.valid or len(artifacts.modules) == 0 or not target.valid {
+        give unit_with_state(unit0, IrUnitState.Invalid);
+    }
+
+    let summaries: [SemaModuleSummary] = [];
+    let i: u64 = 0;
+    while i < len(artifacts.modules) {
+        set summaries = summaries + [summarize_module_hir(artifacts.modules[i].typed_hir, (i + 1) * 1000000)];
+        set i = i + 1;
+    }
+
+    let built: IrUnit = unit0;
+    let entry_id: u64 = 0;
+    i = 0;
+    while i < len(artifacts.modules) {
+        let summary: SemaModuleSummary = summaries[i];
+        let module0: IrModule = lower_mir_as_ir_module(
+            i + 1,
+            summary.module_path,
+            artifacts.modules[i].source_path,
+            module_kind_for_backend(artifacts.modules[i]),
+            target,
+            artifacts.modules[i].mir,
+            exported_names(summary),
+            module_import_names(summary),
+            imported_external_symbol_names(summary, summaries)
+        );
+        set built = unit_add_module(built, module0);
+        let j: u64 = 0;
+        while j < len(module0.functions) {
+            let fn0: IrFunction = module0.functions[j];
+            if fn0.name == "main" and entry_id == 0 {
+                set entry_id = fn0.id;
+            }
+            set j = j + 1;
+        }
+        set i = i + 1;
+    }
+
+    if entry_id == 0 {
+        set entry_id = built.modules[0].functions[0].id;
+    }
+    let unit1: IrUnit = unit_set_entry(built, entry_id);
+    give verify_unit(unit_with_state(unit1, IrUnitState.Lowered));
+}
+
+proc compile_source_set_with_config(inputs: [DriverModuleInput], config: DriverCompileConfig) -> DriverBackendModuleSetResult {
+    let support_error: string = config_support_message(config);
+    let analyzed: DriverModuleSetArtifacts = analyze_source_set(inputs);
+    let ir0: IrUnit = lower_module_set_to_ir(analyzed, config);
+    let codegen: CodegenResult = if support_error == "" and unit_is_valid(ir0) {
+        if config.backend_name == "llvm" or config.backend_name == "llvm-ir" {
+            run_codegen_llvm_with_profile(ir0, config.profile_name, config.packaging, config.deterministic, config.debug_enabled, config.prefer_native_toolchain, config.llvm_toolchain)
+        } else {
+            run_codegen_x86_64(ir0)
+        }
+    } else {
+        CodegenResult {
+            target: config.backend_name,
+            assembly: "",
+            object_text: "",
+            object_format: "",
+            profile_name: config.profile_name,
+            section_count: 0,
+            diagnostic_count: 0,
+            native_toolchain_ready: false,
+            native_toolchain_summary: "",
+            instruction_selected: false,
+            registers_allocated: false,
+            object_ready: false,
+            errors: ["invalid multi-module IR unit"],
+            diagnostics: [],
+            valid: false
+        }
+    };
+    let artifact: LinkArtifact = if codegen.valid {
+        link_ir_unit_with_kind(ir0, "build/module_set.out", artifact_kind_from_packaging(config.packaging))
+    } else {
+        artifact_create(1, "module-set-invalid-artifact", link_target_from_name(config.target_name))
+    };
+    let entry_symbol: string = function_name_by_id(ir0, ir0.entry_function_id);
+    let message: string = if support_error != "" {
+        support_error
+    } elif not analyzed.valid {
+        "multi-module frontend or analysis failed"
+    } elif not unit_is_valid(ir0) {
+        "multi-module IR verification failed"
+    } elif not codegen.valid {
+        "multi-module code generation failed for " + config.backend_name
+    } elif not artifact_is_valid(artifact) {
+        "multi-module link failed"
+    } else {
+        "multi-module compile pipeline completed"
+    };
+    let diagnostics: [DriverDiagnostic] = config_diagnostics(config) + codegen_diagnostics(codegen);
+    give DriverBackendModuleSetResult {
+        analysis: analyzed,
+        config: config,
+        ir_unit: ir0,
+        codegen: codegen,
+        artifact: artifact,
+        entry_symbol: entry_symbol,
+        message: message,
+        diagnostics: diagnostics,
+        valid: support_error == "" and analyzed.valid and unit_is_valid(ir0) and codegen.valid and artifact_is_valid(artifact)
+    };
+}
+
+proc compile_source_set(inputs: [DriverModuleInput]) -> DriverBackendModuleSetResult {
+    give compile_source_set_with_config(inputs, default_compile_config());
+}
+
+proc analyze_source(source_path: string, source_text: string) -> DriverAnalysisArtifacts {
+    let frontend: FrontendOutput = parse_source(source_path, source_text);
+    let graph: IncrementalGraph = build_analysis_graph(source_path);
+    if not frontend.valid {
+        let invalid_hir: HirUnit = invalid_hir_unit(source_path);
+        let invalid_mir: MirUnit = invalid_mir_unit(source_path);
+        give DriverAnalysisArtifacts {
+            frontend: frontend,
+            hir: invalid_hir,
+            resolved_hir: invalid_hir,
+            typed_hir: invalid_hir,
+            mir: invalid_mir,
+            analysis: AnalysisOutput {
+                source_path: source_path,
+                ast_root: frontend.ast_root,
+                sema_ok: false,
+                typeck_ok: false,
+                borrowck_ok: false,
+                const_eval_ok: false,
+                lint_ok: false,
+                diagnostics: [],
+                valid: false
+            },
+            incremental: graph,
+            valid: false
+        };
+    }
+
+    let hir0: HirUnit = lower_ast_to_hir(frontend);
+    let hir1: HirUnit = validate_hir(hir0);
+    let sema_result: SemaResult = run_sema_hir(hir1);
+    let resolved_hir: HirUnit = sema_result.hir;
+    let typeck_result: TypeckResult = run_typeck_hir(resolved_hir);
+    let typed_hir: HirUnit = typeck_result.hir;
+    let mir0: MirUnit = lower_hir_to_mir(typed_hir);
+    let mir1: MirUnit = validate_mir(mir0);
+    let analysis: AnalysisOutput = analysis_run_prechecked(frontend, sema_result, typeck_result, mir1);
+
+    give DriverAnalysisArtifacts {
+        frontend: frontend,
+        hir: hir1,
+        resolved_hir: resolved_hir,
+        typed_hir: typed_hir,
+        mir: mir1,
+        analysis: analysis,
+        incremental: graph,
+        valid: frontend.valid and hir1.valid and resolved_hir.valid and typed_hir.valid and mir1.valid and analysis.valid
+    };
+}
+
+proc lower_mir_source(source_path: string, source_text: string) -> MirUnit {
+    give analyze_source(source_path, source_text).mir;
+}
+
+proc dump_hir_resolved(source_path: string, source_text: string) -> HirUnit {
+    give analyze_source(source_path, source_text).resolved_hir;
+}
+
+proc dump_hir_typed(source_path: string, source_text: string) -> HirUnit {
+    give analyze_source(source_path, source_text).typed_hir;
+}
+
+proc incremental_analysis_graph(source_path: string) -> IncrementalGraph {
+    give build_analysis_graph(source_path);
+}
+
 proc check_source(source_path: string, source_text: string) -> DriverCompileResult {
+    give check_source_with_config(source_path, source_text, default_compile_config());
+}
+
+proc check_source_with_config(source_path: string, source_text: string, config: DriverCompileConfig) -> DriverCompileResult {
     if source_text == "" {
-        give empty_compile_result(DriverExitStatus.InvalidInput, "empty source input", false);
+        give empty_compile_result(DriverExitStatus.InvalidInput, "empty source input", false, config);
+    }
+    let support_error: string = config_support_message(config);
+    if support_error != "" {
+        give empty_compile_result(DriverExitStatus.InvalidInput, support_error, false, config);
     }
 
     let fe: FrontendOutput = frontend_run(source_path, source_text);
     if not fe.valid {
-        give frontend_compile_result(DriverExitStatus.FrontendFailure, "frontend failed", false, fe);
+        give frontend_compile_result(DriverExitStatus.FrontendFailure, "frontend failed", false, fe, config);
     }
 
-    let hir: HirUnit = lower_ast_to_hir(fe);
-    let an: AnalysisOutput = analysis_run_hir(fe, hir);
-    if not an.valid {
-        give frontend_compile_result(DriverExitStatus.AnalysisFailure, "analysis failed", false, fe);
+    let middle: MiddleOutput = middle_run_for_target(fe, target_from_name(config.target_name));
+    if not middle.analysis.valid or not middle.hir.valid or not middle.mir.valid {
+        give frontend_compile_result(DriverExitStatus.AnalysisFailure, "analysis failed", false, fe, config);
     }
 
-    give frontend_compile_result(DriverExitStatus.Ok, "check pipeline completed", false, fe);
+    give frontend_compile_result(DriverExitStatus.Ok, "check pipeline completed", false, fe, config);
 }
 
 proc compile_source(source_path: string, source_text: string) -> DriverCompileResult {
+    give compile_source_with_config(source_path, source_text, default_compile_config());
+}
+
+proc compile_source_with_config(source_path: string, source_text: string, config: DriverCompileConfig) -> DriverCompileResult {
     if source_text == "" {
-        give empty_compile_result(DriverExitStatus.InvalidInput, "empty source input", false);
+        give empty_compile_result(DriverExitStatus.InvalidInput, "empty source input", false, config);
+    }
+    let support_error: string = config_support_message(config);
+    if support_error != "" {
+        give empty_compile_result(DriverExitStatus.InvalidInput, support_error, false, config);
     }
 
-    let result = compile_to_valid_ir(source_path, source_text);
+    let result = compile_to_valid_ir_with_profile_and_packaging(source_path, source_text, config.backend_name, config.target_name, config.profile_name, config.deterministic, config.debug_enabled, config.packaging, config.prefer_native_toolchain, config.llvm_toolchain);
 
     if not result.frontend.valid {
-        give frontend_compile_result(DriverExitStatus.FrontendFailure, "frontend failed", false, result.frontend);
+        give frontend_compile_result(DriverExitStatus.FrontendFailure, "frontend failed", false, result.frontend, config);
     }
 
     if not result.analysis.valid {
-        give frontend_compile_result(DriverExitStatus.AnalysisFailure, "analysis failed", false, result.frontend);
+        give frontend_compile_result(DriverExitStatus.AnalysisFailure, "analysis failed", false, result.frontend, config);
     }
 
     if not result.valid {
-        give frontend_compile_result(DriverExitStatus.IrFailure, "IR verification failed", false, result.frontend);
+        if result.failure_stage == "codegen" {
+            let base = frontend_compile_result(DriverExitStatus.CodegenFailure, result.message, false, result.frontend, config);
+            give DriverCompileResult {
+                status: base.status,
+                message: base.message,
+                ir_valid: base.ir_valid,
+                backend_name: base.backend_name,
+                target_name: base.target_name,
+                profile_name: base.profile_name,
+                opt_level: base.opt_level,
+                packaging: base.packaging,
+                deterministic: base.deterministic,
+                debug_enabled: base.debug_enabled,
+                emit_debug_sections: base.emit_debug_sections,
+                lto_enabled: base.lto_enabled,
+                pgo_mode: base.pgo_mode,
+                prefer_native_toolchain: base.prefer_native_toolchain,
+                llvm_toolchain_summary: result.codegen.native_toolchain_summary,
+                codegen_object_format: result.codegen.object_format,
+                codegen_section_count: result.codegen.section_count,
+                diagnostics: base.diagnostics + codegen_diagnostics(result.codegen),
+                grammar_version: base.grammar_version,
+                token_count: base.token_count,
+                toplevel_count: base.toplevel_count,
+                stmt_count: base.stmt_count,
+                expr_count: base.expr_count,
+                type_count: base.type_count,
+                pattern_count: base.pattern_count
+            };
+        }
+        if result.failure_stage == "link" {
+            let base = frontend_compile_result(DriverExitStatus.LinkFailure, result.message, false, result.frontend, config);
+            give DriverCompileResult {
+                status: base.status,
+                message: base.message,
+                ir_valid: base.ir_valid,
+                backend_name: base.backend_name,
+                target_name: base.target_name,
+                profile_name: base.profile_name,
+                opt_level: base.opt_level,
+                packaging: base.packaging,
+                deterministic: base.deterministic,
+                debug_enabled: base.debug_enabled,
+                emit_debug_sections: base.emit_debug_sections,
+                lto_enabled: base.lto_enabled,
+                pgo_mode: base.pgo_mode,
+                prefer_native_toolchain: base.prefer_native_toolchain,
+                llvm_toolchain_summary: result.codegen.native_toolchain_summary,
+                codegen_object_format: result.codegen.object_format,
+                codegen_section_count: result.codegen.section_count,
+                diagnostics: base.diagnostics + [driver_diagnostic(DriverDiagnosticLevel.Error, "link", "link.error", result.message)],
+                grammar_version: base.grammar_version,
+                token_count: base.token_count,
+                toplevel_count: base.toplevel_count,
+                stmt_count: base.stmt_count,
+                expr_count: base.expr_count,
+                type_count: base.type_count,
+                pattern_count: base.pattern_count
+            };
+        }
+        let base = frontend_compile_result(DriverExitStatus.IrFailure, result.message, false, result.frontend, config);
+        give DriverCompileResult {
+            status: base.status,
+            message: base.message,
+            ir_valid: base.ir_valid,
+            backend_name: base.backend_name,
+            target_name: base.target_name,
+            profile_name: base.profile_name,
+            opt_level: base.opt_level,
+            packaging: base.packaging,
+            deterministic: base.deterministic,
+            debug_enabled: base.debug_enabled,
+            emit_debug_sections: base.emit_debug_sections,
+            lto_enabled: base.lto_enabled,
+            pgo_mode: base.pgo_mode,
+            prefer_native_toolchain: base.prefer_native_toolchain,
+            llvm_toolchain_summary: result.codegen.native_toolchain_summary,
+            codegen_object_format: result.codegen.object_format,
+            codegen_section_count: result.codegen.section_count,
+            diagnostics: base.diagnostics + [driver_diagnostic(DriverDiagnosticLevel.Error, "ir", "ir.error", result.message)],
+            grammar_version: base.grammar_version,
+            token_count: base.token_count,
+            toplevel_count: base.toplevel_count,
+            stmt_count: base.stmt_count,
+            expr_count: base.expr_count,
+            type_count: base.type_count,
+            pattern_count: base.pattern_count
+        };
     }
 
-    give frontend_compile_result(DriverExitStatus.Ok, "compile pipeline completed", true, result.frontend);
+    let base: DriverCompileResult = frontend_compile_result(DriverExitStatus.Ok, "compile pipeline completed", true, result.frontend, config);
+    give DriverCompileResult {
+        status: base.status,
+        message: base.message,
+        ir_valid: base.ir_valid,
+        backend_name: base.backend_name,
+        target_name: base.target_name,
+        profile_name: base.profile_name,
+        opt_level: base.opt_level,
+        packaging: base.packaging,
+        deterministic: base.deterministic,
+        debug_enabled: base.debug_enabled,
+        emit_debug_sections: base.emit_debug_sections,
+        lto_enabled: base.lto_enabled,
+        pgo_mode: base.pgo_mode,
+        prefer_native_toolchain: base.prefer_native_toolchain,
+        llvm_toolchain_summary: result.codegen.native_toolchain_summary,
+        codegen_object_format: result.codegen.object_format,
+        codegen_section_count: result.codegen.section_count,
+        diagnostics: base.diagnostics + codegen_diagnostics(result.codegen),
+        grammar_version: base.grammar_version,
+        token_count: base.token_count,
+        toplevel_count: base.toplevel_count,
+        stmt_count: base.stmt_count,
+        expr_count: base.expr_count,
+        type_count: base.type_count,
+        pattern_count: base.pattern_count
+    };
 }
