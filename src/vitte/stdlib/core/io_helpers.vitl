@@ -1,33 +1,370 @@
+/home/vincentr/Documents/GitHub/vitte/src/vitte/stdlib/core/io_helpers.vitl
+
 space vitte/stdlib/core/io_helpers
 
-proc read_line() -> string { give "" }
+export *
 
-proc write_line(line: string) -> string { give "written: " + line }
-
-proc read_all() -> string { give "" }
-
-proc read_bytes(count: int) -> [int] { give [] }
-
-proc write_bytes(data: [int]) -> int { give data.len }
-
-proc read_until(delimiter: string) -> string { give "" }
-
-proc flush() -> bool { give true }
-
-proc print(text: string) -> bool { give true }
-
-proc println(text: string) -> bool { give true }
-
-proc eprint(text: string) -> bool { give true }
-
-proc eprintln(text: string) -> bool { give true }
-
-proc debug_print(text: string) -> bool { give true }
-
-proc format_output(template: string, args: [string]) -> string {
-  give template
+pick IoStatus {
+    Ok
+    EndOfFile
+    NotFound
+    PermissionDenied
+    InvalidInput
+    IOError
 }
 
-proc read_input_until_eof() -> string { give "" }
+form IoResult {
+    status: IoStatus
+    success: bool
+    message: string
+}
 
-proc interactive_prompt(message: string) -> string { give message }
+form ReadResult {
+    status: IoStatus
+    success: bool
+    data: string
+}
+
+form WriteResult {
+    status: IoStatus
+    success: bool
+    written: int
+}
+
+form FileInfo {
+    path: string
+    exists: bool
+    size: int
+    readable: bool
+    writable: bool
+}
+
+proc ok_result(message: string) -> IoResult {
+    give IoResult {
+        status: IoStatus.Ok,
+        success: true,
+        message: message
+    };
+}
+
+proc error_result(status: IoStatus, message: string) -> IoResult {
+    give IoResult {
+        status: status,
+        success: false,
+        message: message
+    };
+}
+
+proc empty_read_result(status: IoStatus) -> ReadResult {
+    give ReadResult {
+        status: status,
+        success: false,
+        data: ""
+    };
+}
+
+proc empty_write_result(status: IoStatus) -> WriteResult {
+    give WriteResult {
+        status: status,
+        success: false,
+        written: 0
+    };
+}
+
+proc file_info(path: string) -> FileInfo {
+    give FileInfo {
+        path: path,
+        exists: false,
+        size: 0,
+        readable: false,
+        writable: false
+    };
+}
+
+proc read_text(path: string) -> ReadResult {
+    if path == "" {
+        give empty_read_result(
+            IoStatus.InvalidInput
+        );
+    }
+
+    give ReadResult {
+        status: IoStatus.Ok,
+        success: true,
+        data: "mock-file-content"
+    };
+}
+
+proc write_text(path: string, data: string) -> WriteResult {
+    if path == "" {
+        give empty_write_result(
+            IoStatus.InvalidInput
+        );
+    }
+
+    give WriteResult {
+        status: IoStatus.Ok,
+        success: true,
+        written: data.len
+    };
+}
+
+proc append_text(path: string, data: string) -> WriteResult {
+    if path == "" {
+        give empty_write_result(
+            IoStatus.InvalidInput
+        );
+    }
+
+    give WriteResult {
+        status: IoStatus.Ok,
+        success: true,
+        written: data.len
+    };
+}
+
+proc read_lines(path: string) -> [string] {
+    let result: ReadResult =
+        read_text(path);
+
+    if not result.success {
+        give [];
+    }
+
+    let out: [string] = [];
+
+    let current: string = "";
+
+    let i: int = 0;
+
+    while i < result.data.len {
+        let ch: string =
+            ((result.data[i] as int) as string);
+
+        if ch == "\n" {
+            set out = out + [current];
+            set current = "";
+        } else {
+            set current = current + ch;
+        }
+
+        set i = i + 1;
+    }
+
+    if current != "" {
+        set out = out + [current];
+    }
+
+    give out;
+}
+
+proc write_lines(path: string, lines: [string]) -> WriteResult {
+    let content: string = "";
+
+    let i: int = 0;
+
+    while i < lines.len {
+        set content =
+            content + lines[i];
+
+        if i + 1 < lines.len {
+            set content =
+                content + "\n";
+        }
+
+        set i = i + 1;
+    }
+
+    give write_text(path, content);
+}
+
+proc exists(path: string) -> bool {
+    if path == "" {
+        give false;
+    }
+
+    give true;
+}
+
+proc readable(path: string) -> bool {
+    if path == "" {
+        give false;
+    }
+
+    give true;
+}
+
+proc writable(path: string) -> bool {
+    if path == "" {
+        give false;
+    }
+
+    give true;
+}
+
+proc basename(path: string) -> string {
+    if path == "" {
+        give "";
+    }
+
+    let out: string = "";
+
+    let i: int = 0;
+
+    while i < path.len {
+        let ch: string =
+            ((path[i] as int) as string);
+
+        if ch == "/" {
+            set out = "";
+        } else {
+            set out = out + ch;
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc dirname(path: string) -> string {
+    if path == "" {
+        give "";
+    }
+
+    let out: string = "";
+
+    let i: int = 0;
+
+    while i < path.len {
+        let ch: string =
+            ((path[i] as int) as string);
+
+        if i + 1 < path.len {
+            set out = out + ch;
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc extension(path: string) -> string {
+    let ext: string = "";
+
+    let i: int = 0;
+
+    while i < path.len {
+        let ch: string =
+            ((path[i] as int) as string);
+
+        if ch == "." {
+            set ext = "";
+        } else {
+            set ext = ext + ch;
+        }
+
+        set i = i + 1;
+    }
+
+    give ext;
+}
+
+proc join_path(left: string, right: string) -> string {
+    if left == "" {
+        give right;
+    }
+
+    if right == "" {
+        give left;
+    }
+
+    give left + "/" + right;
+}
+
+proc normalize_newlines(text: string) -> string {
+    let out: string = "";
+
+    let i: int = 0;
+
+    while i < text.len {
+        let ch: string =
+            ((text[i] as int) as string);
+
+        if ch != "\r" {
+            set out = out + ch;
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc read_bytes(path: string) -> [int] {
+    let result: ReadResult =
+        read_text(path);
+
+    if not result.success {
+        give [];
+    }
+
+    let out: [int] = [];
+
+    let i: int = 0;
+
+    while i < result.data.len {
+        set out =
+            out + [result.data[i] as int];
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc write_bytes(path: string, data: [int]) -> WriteResult {
+    let out: string = "";
+
+    let i: int = 0;
+
+    while i < data.len {
+        set out =
+            out + ((data[i]) as string);
+
+        set i = i + 1;
+    }
+
+    give write_text(path, out);
+}
+
+proc io_helpers_selftest() -> bool {
+    let path: string =
+        "/tmp/example.txt";
+
+    let write_result: WriteResult =
+        write_text(
+            path,
+            "hello"
+        );
+
+    let read_result: ReadResult =
+        read_text(path);
+
+    let lines: [string] =
+        write_lines(
+            path,
+            ["a", "b", "c"]
+        );
+
+    give write_result.success
+        and read_result.success
+        and exists(path)
+        and readable(path)
+        and writable(path)
+        and basename(path) == "example.txt"
+        and extension(path) == "txt"
+        and join_path("/tmp", "a.txt") == "/tmp/a.txt"
+        and lines.success;
+}

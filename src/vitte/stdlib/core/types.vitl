@@ -1,85 +1,412 @@
-space vitte/stdlib_checked/core_types
+/home/vincentr/Documents/GitHub/vitte/src/vitte/stdlib/core/types.vitl
 
+space vitte/stdlib/core/types
 
+export *
 
-<<< generated checkable stdlib surface >>>
-
-
-
-const INT8_MIN: int = 0
-
-const INT8_MAX: int = 0
-
-const UINT8_MAX: int = 0
-
-const INT16_MIN: int = 0
-
-const INT16_MAX: int = 0
-
-const UINT16_MAX: int = 0
-
-const INT32_MIN: i32 = 0
-
-const INT32_MAX: i32 = 0
-
-const UINT32_MAX: u32 = 0
-
-const INT64_MIN: i64 = 0
-
-const INT64_MAX: i64 = 0
-
-const FLT_MIN: f32 = 0.0
-
-const FLT_MAX: f32 = 0.0
-
-const FLT_EPSILON: f32 = 0.0
-
-const DBL_MIN: f64 = 0.0
-
-const DBL_MAX: f64 = 0.0
-
-const DBL_EPSILON: f64 = 0.0
-
-const DBL_NAN: f64 = 0.0
-
-const DBL_INF: f64 = 0.0
-
-const DBL_NEG_INF: f64 = 0.0
-
-const FLT_NAN: f32 = 0.0
-
-const FLT_INF: f32 = 0.0
-
-const UINT_MIN: u32 = 0
-
-const UINT_MAX: u32 = 0
-
-const NULL: int = 0
-
-const TRUE: int = 0
-
-const FALSE: int = 0
-
-proc is_nan() -> int {
-  give 0
+pick TypeKind {
+    Unknown
+    Void
+    Bool
+    Char
+    String
+    Int
+    Float
+    Array
+    Pointer
+    Function
+    Struct
+    Enum
+    Generic
 }
 
-proc is_inf() -> int {
-  give 0
+form TypeField {
+    name: string
+    field_type: string
+    offset: u64
+    size: u64
 }
 
-proc is_finite() -> int {
-  give 0
+form TypeParameter {
+    name: string
+    constraint: string
 }
 
-proc is_positive() -> int {
-  give 0
+form TypeInfo {
+    kind: TypeKind
+    name: string
+    size: u64
+    align: u64
+    signed: bool
+    fields: [TypeField]
+    parameters: [TypeParameter]
 }
 
-proc is_negative() -> int {
-  give 0
+form TypeCheckResult {
+    valid: bool
+    expected: string
+    actual: string
 }
 
-proc is_zero() -> int {
-  give 0
+proc type_field(name: string, field_type: string, offset: u64, size: u64) -> TypeField {
+    give TypeField {
+        name: name,
+        field_type: field_type,
+        offset: offset,
+        size: size
+    };
+}
+
+proc type_parameter(name: string, constraint: string) -> TypeParameter {
+    give TypeParameter {
+        name: name,
+        constraint: constraint
+    };
+}
+
+proc type_info(kind: TypeKind, name: string, size: u64, align: u64) -> TypeInfo {
+    give TypeInfo {
+        kind: kind,
+        name: name,
+        size: size,
+        align: align,
+        signed: false,
+        fields: [],
+        parameters: []
+    };
+}
+
+proc type_check_result(valid: bool, expected: string, actual: string) -> TypeCheckResult {
+    give TypeCheckResult {
+        valid: valid,
+        expected: expected,
+        actual: actual
+    };
+}
+
+proc void_type() -> TypeInfo {
+    give type_info(
+        TypeKind.Void,
+        "void",
+        0,
+        0
+    );
+}
+
+proc bool_type() -> TypeInfo {
+    give type_info(
+        TypeKind.Bool,
+        "bool",
+        1,
+        1
+    );
+}
+
+proc char_type() -> TypeInfo {
+    give type_info(
+        TypeKind.Char,
+        "char",
+        1,
+        1
+    );
+}
+
+proc string_type() -> TypeInfo {
+    give type_info(
+        TypeKind.String,
+        "string",
+        24,
+        8
+    );
+}
+
+proc i32_type() -> TypeInfo {
+    let out: TypeInfo =
+        type_info(
+            TypeKind.Int,
+            "i32",
+            4,
+            4
+        );
+
+    set out.signed =
+        true;
+
+    give out;
+}
+
+proc i64_type() -> TypeInfo {
+    let out: TypeInfo =
+        type_info(
+            TypeKind.Int,
+            "i64",
+            8,
+            8
+        );
+
+    set out.signed =
+        true;
+
+    give out;
+}
+
+proc u32_type() -> TypeInfo {
+    give type_info(
+        TypeKind.Int,
+        "u32",
+        4,
+        4
+    );
+}
+
+proc u64_type() -> TypeInfo {
+    give type_info(
+        TypeKind.Int,
+        "u64",
+        8,
+        8
+    );
+}
+
+proc f32_type() -> TypeInfo {
+    give type_info(
+        TypeKind.Float,
+        "f32",
+        4,
+        4
+    );
+}
+
+proc f64_type() -> TypeInfo {
+    give type_info(
+        TypeKind.Float,
+        "f64",
+        8,
+        8
+    );
+}
+
+proc pointer_type(name: string) -> TypeInfo {
+    give type_info(
+        TypeKind.Pointer,
+        name,
+        8,
+        8
+    );
+}
+
+proc array_type(name: string, size: u64) -> TypeInfo {
+    give type_info(
+        TypeKind.Array,
+        name,
+        size,
+        8
+    );
+}
+
+proc function_type(name: string) -> TypeInfo {
+    give type_info(
+        TypeKind.Function,
+        name,
+        8,
+        8
+    );
+}
+
+proc struct_type(name: string, fields: [TypeField]) -> TypeInfo {
+    let out: TypeInfo =
+        type_info(
+            TypeKind.Struct,
+            name,
+            0,
+            8
+        );
+
+    set out.fields =
+        fields;
+
+    give out;
+}
+
+proc enum_type(name: string) -> TypeInfo {
+    give type_info(
+        TypeKind.Enum,
+        name,
+        4,
+        4
+    );
+}
+
+proc generic_type(name: string, parameters: [TypeParameter]) -> TypeInfo {
+    let out: TypeInfo =
+        type_info(
+            TypeKind.Generic,
+            name,
+            0,
+            8
+        );
+
+    set out.parameters =
+        parameters;
+
+    give out;
+}
+
+proc add_field(info: TypeInfo, field: TypeField) -> TypeInfo {
+    let out: TypeInfo =
+        info;
+
+    set out.fields =
+        out.fields + [field];
+
+    give out;
+}
+
+proc add_parameter(info: TypeInfo, parameter: TypeParameter) -> TypeInfo {
+    let out: TypeInfo =
+        info;
+
+    set out.parameters =
+        out.parameters + [parameter];
+
+    give out;
+}
+
+proc type_name(info: TypeInfo) -> string {
+    give info.name;
+}
+
+proc type_size(info: TypeInfo) -> u64 {
+    give info.size;
+}
+
+proc type_align(info: TypeInfo) -> u64 {
+    give info.align;
+}
+
+proc field_count(info: TypeInfo) -> int {
+    give info.fields.len;
+}
+
+proc parameter_count(info: TypeInfo) -> int {
+    give info.parameters.len;
+}
+
+proc signed_type(info: TypeInfo) -> bool {
+    give info.signed;
+}
+
+proc same_type(left: TypeInfo, right: TypeInfo) -> bool {
+    give left.kind == right.kind
+        and left.name == right.name
+        and left.size == right.size;
+}
+
+proc check_type(expected: TypeInfo, actual: TypeInfo) -> TypeCheckResult {
+    if same_type(expected, actual) {
+        give type_check_result(
+            true,
+            expected.name,
+            actual.name
+        );
+    }
+
+    give type_check_result(
+        false,
+        expected.name,
+        actual.name
+    );
+}
+
+proc type_kind_name(kind: TypeKind) -> string {
+    if kind == TypeKind.Unknown {
+        give "unknown";
+    }
+
+    if kind == TypeKind.Void {
+        give "void";
+    }
+
+    if kind == TypeKind.Bool {
+        give "bool";
+    }
+
+    if kind == TypeKind.Char {
+        give "char";
+    }
+
+    if kind == TypeKind.String {
+        give "string";
+    }
+
+    if kind == TypeKind.Int {
+        give "int";
+    }
+
+    if kind == TypeKind.Float {
+        give "float";
+    }
+
+    if kind == TypeKind.Array {
+        give "array";
+    }
+
+    if kind == TypeKind.Pointer {
+        give "pointer";
+    }
+
+    if kind == TypeKind.Function {
+        give "function";
+    }
+
+    if kind == TypeKind.Struct {
+        give "struct";
+    }
+
+    if kind == TypeKind.Enum {
+        give "enum";
+    }
+
+    give "generic";
+}
+
+proc format_type(info: TypeInfo) -> string {
+    give type_kind_name(info.kind)
+        + ":"
+        + info.name;
+}
+
+proc types_selftest() -> bool {
+    let left: TypeInfo =
+        i64_type();
+
+    let right: TypeInfo =
+        i64_type();
+
+    let field: TypeField =
+        type_field(
+            "value",
+            "i64",
+            0,
+            8
+        );
+
+    let info: TypeInfo =
+        struct_type(
+            "Number",
+            [field]
+        );
+
+    let check: TypeCheckResult =
+        check_type(
+            left,
+            right
+        );
+
+    give check.valid
+        and type_size(left) == 8
+        and signed_type(left)
+        and field_count(info) == 1
+        and format_type(left)
+            == "int:i64";
 }

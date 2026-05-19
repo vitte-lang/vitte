@@ -1,47 +1,387 @@
+/home/vincentr/Documents/GitHub/vitte/src/vitte/stdlib/core/concurrency.vitl
+
 space vitte/stdlib/core/concurrency
 
-proc spawn(task: string) -> string { give "spawned " + task }
+export *
 
-proc join(task: string) -> string { give "joined " + task }
-
-proc spawn_many(tasks: [string]) -> [string] {
-  let ids: [string] = []
-  let i: int = 0
-  while i < tasks.len {
-    set ids = ids + ["task_" + ((i) as string)]
-    set i = i + 1
-  }
-  give ids
+pick TaskState {
+    Pending
+    Running
+    Waiting
+    Completed
+    Failed
+    Cancelled
 }
 
-proc join_all(ids: [string]) -> bool {
-  give true
+pick ChannelState {
+    Open
+    Closed
 }
 
-proc sleep(ms: int) -> bool {
-  give true
+form Task {
+    id: u64
+    name: string
+    state: TaskState
+    completed: bool
 }
 
-proc wait_for(ms: int, callback: string) -> string {
-  give "waiting " + ((ms) as string) + "ms for " + callback
+form Mutex {
+    locked: bool
+    owner: u64
 }
 
-proc parallel_foreach(items: [int], callback: string) -> int {
-  give items.len
+form SpinLock {
+    locked: bool
 }
 
-proc atomic_read(value: int) -> int {
-  give value
+form Semaphore {
+    permits: int
+    max_permits: int
 }
 
-proc atomic_write(value: int, new_value: int) -> int {
-  give new_value
+form Channel {
+    id: u64
+    state: ChannelState
+    messages: [string]
 }
 
-proc mutex_lock(lock_id: string) -> bool { give true }
+form RuntimeStats {
+    task_count: int
+    running_count: int
+    waiting_count: int
+    completed_count: int
+}
 
-proc mutex_unlock(lock_id: string) -> bool { give true }
+proc task(task_id: u64, name: string) -> Task {
+    give Task {
+        id: task_id,
+        name: name,
+        state: TaskState.Pending,
+        completed: false
+    };
+}
 
-proc rwlock_read(lock_id: string) -> bool { give true }
+proc mutex() -> Mutex {
+    give Mutex {
+        locked: false,
+        owner: 0
+    };
+}
 
-proc rwlock_write(lock_id: string) -> bool { give true }
+proc spinlock() -> SpinLock {
+    give SpinLock {
+        locked: false
+    };
+}
+
+proc semaphore(permits: int) -> Semaphore {
+    give Semaphore {
+        permits: permits,
+        max_permits: permits
+    };
+}
+
+proc channel(channel_id: u64) -> Channel {
+    give Channel {
+        id: channel_id,
+        state: ChannelState.Open,
+        messages: []
+    };
+}
+
+proc runtime_stats() -> RuntimeStats {
+    give RuntimeStats {
+        task_count: 0,
+        running_count: 0,
+        waiting_count: 0,
+        completed_count: 0
+    };
+}
+
+proc start_task(task: Task) -> Task {
+    give Task {
+        id: task.id,
+        name: task.name,
+        state: TaskState.Running,
+        completed: false
+    };
+}
+
+proc wait_task(task: Task) -> Task {
+    give Task {
+        id: task.id,
+        name: task.name,
+        state: TaskState.Waiting,
+        completed: false
+    };
+}
+
+proc complete_task(task: Task) -> Task {
+    give Task {
+        id: task.id,
+        name: task.name,
+        state: TaskState.Completed,
+        completed: true
+    };
+}
+
+proc fail_task(task: Task) -> Task {
+    give Task {
+        id: task.id,
+        name: task.name,
+        state: TaskState.Failed,
+        completed: true
+    };
+}
+
+proc cancel_task(task: Task) -> Task {
+    give Task {
+        id: task.id,
+        name: task.name,
+        state: TaskState.Cancelled,
+        completed: true
+    };
+}
+
+proc task_running(task: Task) -> bool {
+    give task.state == TaskState.Running;
+}
+
+proc task_finished(task: Task) -> bool {
+    give task.state == TaskState.Completed
+        or task.state == TaskState.Failed
+        or task.state == TaskState.Cancelled;
+}
+
+proc lock_mutex(lock: Mutex, owner: u64) -> Mutex {
+    if lock.locked {
+        give lock;
+    }
+
+    give Mutex {
+        locked: true,
+        owner: owner
+    };
+}
+
+proc unlock_mutex(lock: Mutex, owner: u64) -> Mutex {
+    if not lock.locked {
+        give lock;
+    }
+
+    if lock.owner != owner {
+        give lock;
+    }
+
+    give Mutex {
+        locked: false,
+        owner: 0
+    };
+}
+
+proc mutex_locked(lock: Mutex) -> bool {
+    give lock.locked;
+}
+
+proc acquire_spinlock(lock: SpinLock) -> SpinLock {
+    if lock.locked {
+        give lock;
+    }
+
+    give SpinLock {
+        locked: true
+    };
+}
+
+proc release_spinlock(lock: SpinLock) -> SpinLock {
+    if not lock.locked {
+        give lock;
+    }
+
+    give SpinLock {
+        locked: false
+    };
+}
+
+proc spinlock_locked(lock: SpinLock) -> bool {
+    give lock.locked;
+}
+
+proc acquire_semaphore(sem: Semaphore) -> Semaphore {
+    if sem.permits <= 0 {
+        give sem;
+    }
+
+    give Semaphore {
+        permits: sem.permits - 1,
+        max_permits: sem.max_permits
+    };
+}
+
+proc release_semaphore(sem: Semaphore) -> Semaphore {
+    if sem.permits >= sem.max_permits {
+        give sem;
+    }
+
+    give Semaphore {
+        permits: sem.permits + 1,
+        max_permits: sem.max_permits
+    };
+}
+
+proc semaphore_available(sem: Semaphore) -> bool {
+    give sem.permits > 0;
+}
+
+proc send_message(ch: Channel, message: string) -> Channel {
+    if ch.state == ChannelState.Closed {
+        give ch;
+    }
+
+    give Channel {
+        id: ch.id,
+        state: ch.state,
+        messages: ch.messages + [message]
+    };
+}
+
+proc receive_message(ch: Channel) -> string {
+    if ch.messages.len == 0 {
+        give "";
+    }
+
+    give ch.messages[0];
+}
+
+proc pop_message(ch: Channel) -> Channel {
+    if ch.messages.len == 0 {
+        give ch;
+    }
+
+    let out: [string] = [];
+
+    let i: int = 1;
+
+    while i < ch.messages.len {
+        set out = out + [ch.messages[i]];
+        set i = i + 1;
+    }
+
+    give Channel {
+        id: ch.id,
+        state: ch.state,
+        messages: out
+    };
+}
+
+proc close_channel(ch: Channel) -> Channel {
+    give Channel {
+        id: ch.id,
+        state: ChannelState.Closed,
+        messages: ch.messages
+    };
+}
+
+proc channel_open(ch: Channel) -> bool {
+    give ch.state == ChannelState.Open;
+}
+
+proc count_running_tasks(tasks: [Task]) -> int {
+    let count: int = 0;
+
+    let i: int = 0;
+
+    while i < tasks.len {
+        if tasks[i].state == TaskState.Running {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc count_waiting_tasks(tasks: [Task]) -> int {
+    let count: int = 0;
+
+    let i: int = 0;
+
+    while i < tasks.len {
+        if tasks[i].state == TaskState.Waiting {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc count_completed_tasks(tasks: [Task]) -> int {
+    let count: int = 0;
+
+    let i: int = 0;
+
+    while i < tasks.len {
+        if tasks[i].state == TaskState.Completed {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc build_runtime_stats(tasks: [Task]) -> RuntimeStats {
+    give RuntimeStats {
+        task_count: tasks.len,
+        running_count: count_running_tasks(tasks),
+        waiting_count: count_waiting_tasks(tasks),
+        completed_count: count_completed_tasks(tasks)
+    };
+}
+
+proc concurrency_selftest() -> bool {
+    let t0: Task =
+        start_task(
+            task(1, "scheduler")
+        );
+
+    let t1: Task =
+        complete_task(
+            task(2, "worker")
+        );
+
+    let tasks: [Task] =
+        [t0, t1];
+
+    let stats: RuntimeStats =
+        build_runtime_stats(tasks);
+
+    let lock: Mutex =
+        lock_mutex(
+            mutex(),
+            7
+        );
+
+    let sem: Semaphore =
+        acquire_semaphore(
+            semaphore(4)
+        );
+
+    let ch: Channel =
+        send_message(
+            channel(1),
+            "ping"
+        );
+
+    give stats.task_count == 2
+        and stats.running_count == 1
+        and stats.completed_count == 1
+        and mutex_locked(lock)
+        and semaphore_available(sem)
+        and receive_message(ch) == "ping"
+        and channel_open(ch);
+}

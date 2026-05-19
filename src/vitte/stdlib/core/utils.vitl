@@ -1,139 +1,357 @@
-space vitte/stdlib_checked/core_utils
+/home/vincentr/Documents/GitHub/vitte/src/vitte/stdlib/core/utils.vitl
 
+space vitte/stdlib/core/utils
 
+export *
 
-<<< generated checkable stdlib surface >>>
-
-
-
-const _rand_seed: i64 = 0
-
-proc srand() -> int {
-  give 0
+form Range {
+    start: int
+    end: int
 }
 
-proc rand() -> int {
-  give 0
+form Pair[T, U] {
+    first: T
+    second: U
 }
 
-proc rand_range() -> int {
-  give 0
+form ClampResult {
+    value: int
+    changed: bool
 }
 
-proc rand_float() -> int {
-  give 0
+proc range(start: int, end: int) -> Range {
+    give Range {
+        start: start,
+        end: end
+    };
 }
 
-proc rand_float_range() -> int {
-  give 0
+proc pair[T, U](first: T, second: U) -> Pair[T, U] {
+    give Pair[T, U] {
+        first: first,
+        second: second
+    };
 }
 
-form Clock {
-  value: int
+proc clamp_result(value: int, changed: bool) -> ClampResult {
+    give ClampResult {
+        value: value,
+        changed: changed
+    };
 }
 
-const _internal_clock: int = 0
+proc min_i64(left: i64, right: i64) -> i64 {
+    if left < right {
+        give left;
+    }
 
-proc clock() -> int {
-  give 0
+    give right;
 }
 
-proc get_time() -> int {
-  give 0
+proc max_i64(left: i64, right: i64) -> i64 {
+    if left > right {
+        give left;
+    }
+
+    give right;
 }
 
-proc set_time() -> int {
-  give 0
+proc abs_i64(value: i64) -> i64 {
+    if value < 0 {
+        give -value;
+    }
+
+    give value;
 }
 
-proc time() -> int {
-  give 0
+proc clamp(value: int, min: int, max: int) -> ClampResult {
+    if value < min {
+        give clamp_result(min, true);
+    }
+
+    if value > max {
+        give clamp_result(max, true);
+    }
+
+    give clamp_result(value, false);
 }
 
-proc difftime() -> int {
-  give 0
+proc in_range(value: int, min: int, max: int) -> bool {
+    give value >= min
+        and value <= max;
 }
 
-const NOERR: int = 0
-
-const EPERM: int = 0
-
-const ENOENT: int = 0
-
-const ESRCH: int = 0
-
-const EINTR: int = 0
-
-const EIO: int = 0
-
-const ENXIO: int = 0
-
-const E2BIG: int = 0
-
-const ENOEXEC: int = 0
-
-const EBADF: int = 0
-
-const ECHILD: int = 0
-
-const EAGAIN: int = 0
-
-const ENOMEM: int = 0
-
-const EACCES: int = 0
-
-const EFAULT: int = 0
-
-const ENOTBLK: int = 0
-
-const EBUSY: int = 0
-
-const EEXIST: int = 0
-
-const EXDEV: int = 0
-
-const ENODEV: int = 0
-
-const ENOTDIR: int = 0
-
-const _errno: int = 0
-
-proc set_errno() -> int {
-  give 0
+proc swap_i64(left: i64, right: i64) -> Pair[i64, i64] {
+    give pair(
+        right,
+        left
+    );
 }
 
-proc get_errno() -> int {
-  give 0
+proc repeat_string(text: string, count: int) -> string {
+    let out: string = "";
+
+    let i: int = 0;
+
+    while i < count {
+        set out =
+            out + text;
+
+        set i =
+            i + 1;
+    }
+
+    give out;
 }
 
-proc clear_errno() -> int {
-  give 0
+proc join_strings(values: [string], separator: string) -> string {
+    let out: string = "";
+
+    let i: int = 0;
+
+    while i < values.len {
+        set out =
+            out + values[i];
+
+        if i + 1 < values.len {
+            set out =
+                out + separator;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give out;
 }
 
-proc strerror() -> int {
-  give 0
+proc starts_with(text: string, prefix: string) -> bool {
+    if prefix.len > text.len {
+        give false;
+    }
+
+    let i: int = 0;
+
+    while i < prefix.len {
+        if text[i] != prefix[i] {
+            give false;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give true;
 }
 
-proc assert_value() -> int {
-  give 0
+proc ends_with(text: string, suffix: string) -> bool {
+    if suffix.len > text.len {
+        give false;
+    }
+
+    let offset: int =
+        text.len - suffix.len;
+
+    let i: int = 0;
+
+    while i < suffix.len {
+        if text[offset + i] != suffix[i] {
+            give false;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give true;
 }
 
-proc assert_equal() -> int {
-  give 0
+proc contains(text: string, pattern: string) -> bool {
+    if pattern == "" {
+        give true;
+    }
+
+    if pattern.len > text.len {
+        give false;
+    }
+
+    let i: int = 0;
+
+    while i + pattern.len <= text.len {
+        let matched: bool = true;
+
+        let j: int = 0;
+
+        while j < pattern.len {
+            if text[i + j] != pattern[j] {
+                set matched = false;
+                break;
+            }
+
+            set j =
+                j + 1;
+        }
+
+        if matched {
+            give true;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give false;
 }
 
-proc assert_not_null() -> int {
-  give 0
+proc reverse_string(text: string) -> string {
+    let out: string = "";
+
+    let i: int =
+        text.len - 1;
+
+    while i >= 0 {
+        set out =
+            out + ((text[i] as int) as string);
+
+        set i =
+            i - 1;
+    }
+
+    give out;
 }
 
-proc atoi() -> int {
-  give 0
+proc split_lines(text: string) -> [string] {
+    let out: [string] = [];
+
+    let current: string = "";
+
+    let i: int = 0;
+
+    while i < text.len {
+        let ch: string =
+            ((text[i] as int) as string);
+
+        if ch == "\n" {
+            set out =
+                out + [current];
+
+            set current =
+                "";
+        } else {
+            set current =
+                current + ch;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    if current != "" {
+        set out =
+            out + [current];
+    }
+
+    give out;
 }
 
-proc atof() -> int {
-  give 0
+proc trim_spaces(text: string) -> string {
+    let out: string = "";
+
+    let i: int = 0;
+
+    while i < text.len {
+        let ch: string =
+            ((text[i] as int) as string);
+
+        if ch != " " {
+            set out =
+                out + ch;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give out;
 }
 
-proc itoa() -> int {
-  give 0
+proc bool_to_string(value: bool) -> string {
+    if value {
+        give "true";
+    }
+
+    give "false";
+}
+
+proc parse_bool(text: string) -> bool {
+    give text == "true"
+        or text == "1"
+        or text == "yes";
+}
+
+proc count_char(text: string, target: string) -> int {
+    let total: int = 0;
+
+    let i: int = 0;
+
+    while i < text.len {
+        let ch: string =
+            ((text[i] as int) as string);
+
+        if ch == target {
+            set total =
+                total + 1;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give total;
+}
+
+proc unique_strings(values: [string]) -> [string] {
+    let out: [string] = [];
+
+    let i: int = 0;
+
+    while i < values.len {
+        if not contains(
+            join_strings(out, ","),
+            values[i]
+        ) {
+            set out =
+                out + [values[i]];
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give out;
+}
+
+proc utils_selftest() -> bool {
+    let r: Range =
+        range(0, 10);
+
+    let p: Pair[string, int] =
+        pair("age", 42);
+
+    let c: ClampResult =
+        clamp(99, 0, 10);
+
+    give r.start == 0
+        and r.end == 10
+        and p.first == "age"
+        and p.second == 42
+        and c.value == 10
+        and c.changed
+        and starts_with("vitte", "vit")
+        and ends_with("vitte", "tte")
+        and contains("compiler", "pile")
+        and reverse_string("abc") == "cba"
+        and bool_to_string(true) == "true"
+        and parse_bool("yes")
+        and count_char("banana", "a") == 3;
 }
