@@ -1,0 +1,175 @@
+space vitte/compiler/driver/pipeline_modular
+
+pick PhaseResultKind {
+  Success,
+  Warning,
+  FatalError,
+  Skipped,
+  Unimplemented,
+}
+
+form PhaseResult {
+  kind: PhaseResultKind
+  message: string
+  fatal: bool
+}
+
+form CompilerPhase {
+  phase_name: string
+  deps: [string]
+  critical: bool
+}
+
+form PhaseTiming {
+  phase: string
+  duration_ms: u64
+}
+
+form PipelineTraceLine {
+  phase: string
+  status: string
+  message: string
+}
+
+form PipelineExecution {
+  valid: bool
+  status: PhaseResultKind
+  timings: [PhaseTiming]
+  trace: [PipelineTraceLine]
+}
+
+proc phase_result(kind: PhaseResultKind, message: string) -> PhaseResult {
+  give PhaseResult {
+    kind: kind,
+    message: message,
+    fatal: kind == PhaseResultKind.FatalError
+  };
+}
+
+proc compiler_phase(name: string, dependencies: [string], critical: bool) -> CompilerPhase {
+  give CompilerPhase {
+    phase_name: name,
+    deps: dependencies,
+    critical: critical
+  };
+}
+
+proc phase_name(phase: CompilerPhase) -> string {
+  give phase.phase_name;
+}
+
+proc dependencies(phase: CompilerPhase) -> [string] {
+  give phase.deps;
+}
+
+proc validate(phase: CompilerPhase) -> bool {
+  give phase.phase_name != "";
+}
+
+proc run(phase: CompilerPhase, status: PhaseResultKind, message: string, duration_ms: u64) -> PipelineExecution {
+  let line = PipelineTraceLine {
+    phase: phase.phase_name,
+    status: phase_result_kind_text(status),
+    message: message
+  };
+  let timing = PhaseTiming {
+    phase: phase.phase_name,
+    duration_ms: duration_ms
+  };
+  let fatal_now: bool = status == PhaseResultKind.FatalError or ((status == PhaseResultKind.Skipped or status == PhaseResultKind.Unimplemented) and phase.critical);
+  give PipelineExecution {
+    valid: not fatal_now,
+    status: if fatal_now { PhaseResultKind.FatalError } else { status },
+    timings: [timing],
+    trace: [line]
+  };
+}
+
+proc phase_result_kind_text(kind: PhaseResultKind) -> string {
+  if kind == PhaseResultKind.Success { give "Success"; }
+  if kind == PhaseResultKind.Warning { give "Warning"; }
+  if kind == PhaseResultKind.FatalError { give "FatalError"; }
+  if kind == PhaseResultKind.Skipped { give "Skipped"; }
+  if kind == PhaseResultKind.Unimplemented { give "Unimplemented"; }
+  give "Unknown";
+}
+
+proc has_dependency(phase: CompilerPhase, dependency: string) -> bool {
+  let i: u64 = 0;
+  while i < len(phase.deps) {
+    if phase.deps[i] == dependency {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc validate_dependencies(phases: [CompilerPhase]) -> bool {
+  let i: u64 = 0;
+  while i < len(phases) {
+    if not validate(phases[i]) {
+      give false;
+    }
+    let j: u64 = 0;
+    while j < len(phases[i].deps) {
+      let dep: string = phases[i].deps[j];
+      let found: bool = false;
+      let k: u64 = 0;
+      while k < len(phases) {
+        if phases[k].phase_name == dep {
+          set found = true;
+          set k = len(phases);
+        } else {
+          set k = k + 1;
+        }
+      }
+      if not found {
+        give false;
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc default_pipeline_phases() -> [CompilerPhase] {
+  give [
+    compiler_phase("source manager", [], true),
+    compiler_phase("lexer", ["source manager"], true),
+    compiler_phase("parser", ["lexer"], true),
+    compiler_phase("AST validation", ["parser"], true),
+    compiler_phase("module resolver", ["AST validation"], true),
+    compiler_phase("HIR lowering", ["module resolver"], true),
+    compiler_phase("sema", ["HIR lowering"], true),
+    compiler_phase("typeck", ["sema"], true),
+    compiler_phase("borrowck", ["typeck"], true),
+    compiler_phase("MIR lowering", ["borrowck"], true),
+    compiler_phase("MIR verify", ["MIR lowering"], true),
+    compiler_phase("backend", ["MIR verify"], true),
+    compiler_phase("linker", ["backend"], true)
+  ];
+}
+
+proc render_trace_line(line: PipelineTraceLine) -> string {
+  if line.status == "Success" or line.status == "Warning" {
+    give "[OK] " + line.phase;
+  }
+  give "[FAIL] " + line.phase + " " + line.message;
+}
+
+proc render_timings(timings: [PhaseTiming]) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(timings) {
+    let line = timings[i].phase + " " + (timings[i].duration_ms as string) + "ms";
+    if out == "" {
+      set out = line;
+    } else {
+      set out = out + "\n" + line;
+    }
+    set i = i + 1;
+  }
+  give out;
+}

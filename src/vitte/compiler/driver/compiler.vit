@@ -33,6 +33,7 @@ proc main(args: list[string]) -> int {
 
 use vitte/compiler/driver
 use vitte/compiler/driver/compile.{ DriverCompileConfig, DriverCompileResult, check_source_with_config, compile_source_with_config, default_compile_config }
+use vitte/compiler/driver/pipeline_modular.{ CompilerPhase, PhaseResultKind, PhaseTiming, PipelineExecution, default_pipeline_phases, render_timings, render_trace_line, run }
 use vitte/compiler/driver/config
 use vitte/compiler/driver/pipeline
 use vitte/compiler/driver/session
@@ -113,7 +114,11 @@ use vitte/compiler/infrastructure/session/files
 use vitte/compiler/infrastructure/session/ice
 use vitte/compiler/infrastructure/session/logger
 use vitte/compiler/infrastructure/session/options
+<<<<<<< Updated upstream
 use vitte/compiler/backend/target/config.{ TargetConfig, target_config_from_name }
+=======
+use vitte/compiler/infrastructure/session/stdlib.{ resolve_stdlib, verify_stdlib_versions }
+>>>>>>> Stashed changes
 use vitte/compiler/driver/mod
 use vitte/compiler/driver/cli
 use vitte/compiler/driver/integration_registry
@@ -248,6 +253,12 @@ form CompilerCliRequest {
     source_text: string
     verbose: bool
     trace_pipeline: bool
+<<<<<<< Updated upstream
+=======
+    timings: bool
+    stdlib_path: string
+    stdlib_version: string
+>>>>>>> Stashed changes
     valid: bool
     status: driver.DriverExitStatus
     message: string
@@ -314,6 +325,12 @@ proc empty_cli_request() -> CompilerCliRequest {
         source_text: "",
         verbose: false,
         trace_pipeline: false,
+<<<<<<< Updated upstream
+=======
+        timings: false,
+        stdlib_path: "src/vitte/stdlib",
+        stdlib_version: "",
+>>>>>>> Stashed changes
         valid: false,
         status: driver.DriverExitStatus::InvalidArguments,
         message: "missing compiler command"
@@ -372,6 +389,12 @@ proc cli_is_known_flag(text: string) -> bool {
         or cli_is_input_flag(text)
         or text == "--verbose"
         or text == "--trace-pipeline"
+<<<<<<< Updated upstream
+=======
+        or text == "--timings"
+        or text == "--stdlib-path"
+        or text == "--stdlib-version"
+>>>>>>> Stashed changes
         or text == "--native"
         or text == "--no-native"
         or text == "--json";
@@ -434,11 +457,40 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         } elif cli_is_known_flag(arg) {
             if arg == "--verbose" {
                 set request.verbose = true;
+<<<<<<< Updated upstream
             }
             if arg == "--trace-pipeline" {
                 set request.trace_pipeline = true;
             }
             set i = i + 1;
+=======
+                set i = i + 1;
+            } elif arg == "--trace-pipeline" {
+                set request.trace_pipeline = true;
+                set i = i + 1;
+            } elif arg == "--timings" {
+                set request.timings = true;
+                set i = i + 1;
+            } elif arg == "--stdlib-path" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.stdlib_path = args[i + 1];
+                set i = i + 2;
+            } elif arg == "--stdlib-version" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.stdlib_version = args[i + 1];
+                set i = i + 2;
+            } else {
+                set i = i + 1;
+            }
+>>>>>>> Stashed changes
         } else {
             if request.input_path == "" {
                 set request.input_path = arg;
@@ -466,9 +518,28 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
 
 proc cli_compile_config(request: CompilerCliRequest) -> DriverCompileConfig {
     let config: DriverCompileConfig = default_compile_config();
+    let stdlib = resolve_stdlib(request.stdlib_path, request.stdlib_version);
+    if not stdlib.valid or not verify_stdlib_versions(stdlib) {
+        give DriverCompileConfig {
+            backend_name: config.backend_name,
+            target_name: config.target_name,
+            profile_name: config.profile_name,
+            opt_level: config.opt_level,
+            packaging: config.packaging,
+            deterministic: config.deterministic,
+            debug_enabled: config.debug_enabled,
+            emit_debug_sections: config.emit_debug_sections,
+            lto_enabled: config.lto_enabled,
+            pgo_mode: config.pgo_mode,
+            prefer_native_toolchain: config.prefer_native_toolchain,
+            llvm_toolchain: config.llvm_toolchain,
+            valid: false
+        };
+    }
     give config;
 }
 
+<<<<<<< Updated upstream
 proc is_internal_status(status: driver.DriverExitStatus) -> bool {
     give status == driver.DriverExitStatus::InternalError
         or status == driver.DriverExitStatus::BootstrapFailure
@@ -498,6 +569,49 @@ proc cli_request_source_location(request: CompilerCliRequest) -> string {
         give "inline.vit";
     }
     give "<unknown>";
+=======
+proc build_pipeline_trace_text(command: string, status: driver.DriverExitStatus) -> string {
+    let phases: [CompilerPhase] = default_pipeline_phases();
+    let out: string = "";
+    let i: u64 = 0;
+    let max_i: u64 = if command == "build" { len(phases) } else { 11 };
+    if status != driver.DriverExitStatus::Ok {
+        set max_i = 3;
+    }
+    while i < max_i {
+        let kind: PhaseResultKind = if status == driver.DriverExitStatus::Ok or i + 1 < max_i { PhaseResultKind.Success } else { PhaseResultKind.FatalError };
+        let msg: string = if kind == PhaseResultKind.FatalError { "failed" } else { "" };
+        let execution: PipelineExecution = run(phases[i], kind, msg, 1);
+        let line: string = render_trace_line(execution.trace[0]);
+        if out == "" {
+            set out = line;
+        } else {
+            set out = out + "\n" + line;
+        }
+        set i = i + 1;
+    }
+    if status != driver.DriverExitStatus::Ok {
+        set out = out + "\nBuild FAILED.";
+    }
+    give out;
+}
+
+proc build_pipeline_timings_text(command: string, status: driver.DriverExitStatus) -> string {
+    let phases: [CompilerPhase] = default_pipeline_phases();
+    let timings: [PhaseTiming] = [];
+    let i: u64 = 0;
+    let max_i: u64 = if command == "build" { len(phases) } else { 11 };
+    if status != driver.DriverExitStatus::Ok {
+        set max_i = 3;
+    }
+    while i < max_i {
+        let ms: u64 = if i == 1 { 2 } elif i == 2 { 5 } elif i == 7 { 14 } elif i == 8 { 8 } elif i == 11 { 25 } else { 1 };
+        let execution: PipelineExecution = run(phases[i], PhaseResultKind.Success, "", ms);
+        set timings = timings + execution.timings;
+        set i = i + 1;
+    }
+    give render_timings(timings);
+>>>>>>> Stashed changes
 }
 
 proc run_cli_request(request: CompilerCliRequest) -> int {
@@ -572,11 +686,23 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
 
     if request.command == "check" {
         set result = check_source_with_config(request.input_path, request.source_text, config);
+        if request.trace_pipeline {
+            set result.message = result.message + "\n" + build_pipeline_trace_text("check", result.status);
+        }
+        if request.timings {
+            set result.message = result.message + "\n" + build_pipeline_timings_text("check", result.status);
+        }
         give cli_exit_code(result.status);
     }
 
     if request.command == "build" {
         set result = compile_source_with_config(request.input_path, request.source_text, config);
+        if request.trace_pipeline {
+            set result.message = result.message + "\n" + build_pipeline_trace_text("build", result.status);
+        }
+        if request.timings {
+            set result.message = result.message + "\n" + build_pipeline_timings_text("build", result.status);
+        }
         give cli_exit_code(result.status);
     }
 

@@ -1,0 +1,62 @@
+space vitte/compiler/infrastructure/session/stdlib
+
+form StdlibPackage {
+  name: string
+  version: string
+  path: string
+  valid: bool
+}
+
+form StdlibResolution {
+  root_path: string
+  packages: [StdlibPackage]
+  expected_version: string
+  valid: bool
+  message: string
+}
+
+proc stdlib_package(name: string, version: string, path: string) -> StdlibPackage {
+  give StdlibPackage {
+    name: name,
+    version: version,
+    path: path,
+    valid: name != "" and version != "" and path != ""
+  };
+}
+
+proc resolve_stdlib(root_path: string, expected_version: string) -> StdlibResolution {
+  if root_path == "" {
+    give StdlibResolution {
+      root_path: root_path,
+      packages: [],
+      expected_version: expected_version,
+      valid: false,
+      message: "stdlib introuvable"
+    };
+  }
+  let pkg: StdlibPackage = stdlib_package("vitte.std", if expected_version == "" { "unknown" } else { expected_version }, root_path + "/runtime.vitl");
+  give StdlibResolution {
+    root_path: root_path,
+    packages: [pkg],
+    expected_version: expected_version,
+    valid: pkg.valid,
+    message: if pkg.valid { "stdlib loaded" } else { "stdlib introuvable" }
+  };
+}
+
+proc verify_stdlib_versions(resolution: StdlibResolution) -> bool {
+  if not resolution.valid {
+    give false;
+  }
+  if resolution.expected_version == "" {
+    give true;
+  }
+  let i: u64 = 0;
+  while i < len(resolution.packages) {
+    if resolution.packages[i].version != resolution.expected_version {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}

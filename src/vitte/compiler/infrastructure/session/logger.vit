@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 space vitte/compiler/infrastructure/session
+=======
+space vitte/compiler/infrastructure/session/logger
+>>>>>>> Stashed changes
 
 pick CompilerLogLevel {
   Trace,
@@ -8,6 +12,7 @@ pick CompilerLogLevel {
   Error,
 }
 
+<<<<<<< Updated upstream
 form CompilerLogEntry {
   level: CompilerLogLevel,
   message: string,
@@ -39,10 +44,32 @@ proc compiler_logger(verbose: bool, trace_pipeline: bool) -> CompilerLogger {
 }
 
 proc level_text(level: CompilerLogLevel) -> string {
+=======
+form CompilerLogger {
+  level: CompilerLogLevel
+  verbose: bool
+  trace_pipeline: bool
+}
+
+proc logger(level: CompilerLogLevel, verbose: bool, trace_pipeline: bool) -> CompilerLogger {
+  give CompilerLogger {
+    level: level,
+    verbose: verbose,
+    trace_pipeline: trace_pipeline
+  };
+}
+
+proc default_logger() -> CompilerLogger {
+  give logger(CompilerLogLevel.Info, false, false);
+}
+
+proc log_level_text(level: CompilerLogLevel) -> string {
+>>>>>>> Stashed changes
   if level == CompilerLogLevel.Trace { give "trace"; }
   if level == CompilerLogLevel.Debug { give "debug"; }
   if level == CompilerLogLevel.Info { give "info"; }
   if level == CompilerLogLevel.Warn { give "warn"; }
+<<<<<<< Updated upstream
   give "error";
 }
 
@@ -98,3 +125,18 @@ share debug
 share info
 share warn
 share error
+=======
+  if level == CompilerLogLevel.Error { give "error"; }
+  give "info";
+}
+
+proc should_log(active: CompilerLogLevel, requested: CompilerLogLevel) -> bool {
+  let a: u64 = if active == CompilerLogLevel.Trace { 0 } elif active == CompilerLogLevel.Debug { 1 } elif active == CompilerLogLevel.Info { 2 } elif active == CompilerLogLevel.Warn { 3 } else { 4 };
+  let r: u64 = if requested == CompilerLogLevel.Trace { 0 } elif requested == CompilerLogLevel.Debug { 1 } elif requested == CompilerLogLevel.Info { 2 } elif requested == CompilerLogLevel.Warn { 3 } else { 4 };
+  give r >= a;
+}
+
+proc render_log(level: CompilerLogLevel, message: string) -> string {
+  give "[" + log_level_text(level) + "] " + message;
+}
+>>>>>>> Stashed changes
