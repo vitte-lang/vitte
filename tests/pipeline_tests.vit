@@ -1,0 +1,123 @@
+space vitte/tests/pipeline_tests
+
+use vitte/compiler/driver/strict_pipeline
+
+proc test_pipeline_hello_world() -> bool {
+    let source = "proc main() { }";
+    let result = run_strict_pipeline(
+        "hello_world.vit",
+        source,
+        "x86_64-linux-gnu",
+        true
+    );
+    
+    if !result.success {
+        give false;
+    }
+    
+    if result.exit_code != ExitCode::InternalCompilerError {
+        give false;
+    }
+    
+    give true;
+}
+
+proc test_pipeline_syntax_error() -> bool {
+    let source = "proc main() { invalid syntax here";
+    let result = run_strict_pipeline(
+        "syntax_error.vit",
+        source,
+        "x86_64-linux-gnu",
+        true
+    );
+    
+    if result.exit_code == ExitCode::Success {
+        give false;
+    }
+    
+    give true;
+}
+
+proc test_pipeline_type_error() -> bool {
+    let source = "proc main() { let x: int = \"string\"; }";
+    let result = run_strict_pipeline(
+        "type_error.vit",
+        source,
+        "x86_64-linux-gnu",
+        true
+    );
+    
+    if result.exit_code == ExitCode::Success {
+        give false;
+    }
+    
+    give true;
+}
+
+proc test_pipeline_borrow_error() -> bool {
+    let source = "proc main() { let x = [1, 2, 3]; let y = x; let z = x; }";
+    let result = run_strict_pipeline(
+        "borrow_error.vit",
+        source,
+        "x86_64-linux-gnu",
+        true
+    );
+    
+    if result.exit_code == ExitCode::Success {
+        give false;
+    }
+    
+    give true;
+}
+
+proc test_pipeline_trace_output() -> bool {
+    let source = "proc main() { }";
+    let result = run_strict_pipeline(
+        "trace_output.vit",
+        source,
+        "x86_64-linux-gnu",
+        true
+    );
+    
+    let trace = print_phase_trace(result.session);
+    
+    if len(trace) < 100 {
+        give false;
+    }
+    
+    give true;
+}
+
+proc run_all_pipeline_tests() -> int {
+    let passed = 0;
+    let total = 5;
+    
+    if test_pipeline_hello_world() {
+        set passed = passed + 1;
+    }
+    
+    if test_pipeline_syntax_error() {
+        set passed = passed + 1;
+    }
+    
+    if test_pipeline_type_error() {
+        set passed = passed + 1;
+    }
+    
+    if test_pipeline_borrow_error() {
+        set passed = passed + 1;
+    }
+    
+    if test_pipeline_trace_output() {
+        set passed = passed + 1;
+    }
+    
+    give passed;
+}
+
+share test_pipeline_hello_world
+share test_pipeline_syntax_error
+share test_pipeline_type_error
+share test_pipeline_borrow_error
+share test_pipeline_trace_output
+share run_all_pipeline_tests

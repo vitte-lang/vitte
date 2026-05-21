@@ -1,0 +1,210 @@
+space vitte/compiler/infrastructure/session
+
+use vitte/compiler/infrastructure/diagnostics/mod
+use vitte/compiler/infrastructure/incremental/mod
+use vitte/compiler/infrastructure/session/config
+use vitte/compiler/infrastructure/session/files
+use vitte/compiler/infrastructure/errors/mod
+
+pick PhaseResult {
+    Success,
+    Warning,
+    FatalError,
+    Skipped,
+    Unimplemented,
+}
+
+pick PipelinePhase {
+    SourceManager,
+    Lexer,
+    Parser,
+    AstValidation,
+    ModuleResolver,
+    HirLowering,
+    Sema,
+    Typeck,
+    Borrowck,
+    MirLowering,
+    MirVerify,
+    Optimization,
+    Backend,
+    ObjectGeneration,
+    Linker,
+}
+
+form PhaseExecution {
+    phase: PipelinePhase,
+    result: PhaseResult,
+    duration_ms: u64,
+    error_code: i32,
+    message: string,
+}
+
+form CompilationSession {
+    config: SessionConfig,
+    target_triple: string,
+    source_manager: FileManager,
+    phase_executions: [PhaseExecution],
+    has_fatal_error: bool,
+    fatal_error_message: string,
+    fatal_error_phase: PipelinePhase,
+    optimization_level: string,
+    debug_mode: bool,
+    trace_enabled: bool,
+}
+
+proc new_compilation_session(config: SessionConfig) -> CompilationSession {
+    give CompilationSession {
+        config: config,
+        target_triple: "x86_64-linux-gnu",
+        source_manager: new_file_manager(),
+        phase_executions: [],
+        has_fatal_error: false,
+        fatal_error_message: "",
+        fatal_error_phase: PipelinePhase::SourceManager,
+        optimization_level: "O0",
+        debug_mode: true,
+        trace_enabled: false,
+    };
+}
+
+proc session_with_target(session: CompilationSession, target: string) -> CompilationSession {
+    set session.target_triple = target;
+    give session;
+}
+
+proc session_with_optimization(session: CompilationSession, level: string) -> CompilationSession {
+    set session.optimization_level = level;
+    give session;
+}
+
+proc session_enable_trace(session: CompilationSession) -> CompilationSession {
+    set session.trace_enabled = true;
+    give session;
+}
+
+proc record_phase_execution(
+    session: CompilationSession,
+    phase: PipelinePhase,
+    result: PhaseResult,
+    duration_ms: u64,
+    message: string
+) -> CompilationSession {
+    let execution = PhaseExecution {
+        phase: phase,
+        result: result,
+        duration_ms: duration_ms,
+        error_code: 0,
+        message: message,
+    };
+    set session.phase_executions = session.phase_executions + [execution];
+    give session;
+}
+
+proc mark_fatal_error(
+    session: CompilationSession,
+    phase: PipelinePhase,
+    message: string
+) -> CompilationSession {
+    set session.has_fatal_error = true;
+    set session.fatal_error_message = message;
+    set session.fatal_error_phase = phase;
+    give session;
+}
+
+proc session_has_errors(session: CompilationSession) -> bool {
+    if session.has_fatal_error {
+        give true;
+    }
+    let i: u64 = 0;
+    while i < len(session.phase_executions) {
+        let exec = session.phase_executions[i];
+        if exec.result == PhaseResult::FatalError
+            or exec.result == PhaseResult::Unimplemented {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc get_phase_execution(
+    session: CompilationSession,
+    phase: PipelinePhase
+) -> PhaseExecution {
+    let i: u64 = 0;
+    while i < len(session.phase_executions) {
+        let exec = session.phase_executions[i];
+        if exec.phase == phase {
+            give exec;
+        }
+        set i = i + 1;
+    }
+    give PhaseExecution {
+        phase: phase,
+        result: PhaseResult::Skipped,
+        duration_ms: 0,
+        error_code: 0,
+        message: "Phase not executed",
+    };
+}
+
+proc print_phase_trace(session: CompilationSession) -> string {
+    let trace = "=== COMPILATION PIPELINE TRACE ===\n";
+    let i: u64 = 0;
+    while i < len(session.phase_executions) {
+        let exec = session.phase_executions[i];
+        let phase_name = phase_to_string(exec.phase);
+        let result_str = result_to_string(exec.result);
+        set trace = trace + "[" + result_str + "] " + phase_name + " (" + to_string(exec.duration_ms) + "ms)\n";
+        if exec.message != "" {
+            set trace = trace + "    " + exec.message + "\n";
+        }
+        set i = i + 1;
+    }
+    give trace;
+}
+
+proc phase_to_string(phase: PipelinePhase) -> string {
+    if phase == PipelinePhase::SourceManager { give "source_manager"; }
+    if phase == PipelinePhase::Lexer { give "lexer"; }
+    if phase == PipelinePhase::Parser { give "parser"; }
+    if phase == PipelinePhase::AstValidation { give "ast_validation"; }
+    if phase == PipelinePhase::ModuleResolver { give "module_resolver"; }
+    if phase == PipelinePhase::HirLowering { give "hir_lowering"; }
+    if phase == PipelinePhase::Sema { give "sema"; }
+    if phase == PipelinePhase::Typeck { give "typeck"; }
+    if phase == PipelinePhase::Borrowck { give "borrowck"; }
+    if phase == PipelinePhase::MirLowering { give "mir_lowering"; }
+    if phase == PipelinePhase::MirVerify { give "mir_verify"; }
+    if phase == PipelinePhase::Optimization { give "optimization"; }
+    if phase == PipelinePhase::Backend { give "backend"; }
+    if phase == PipelinePhase::ObjectGeneration { give "object_generation"; }
+    if phase == PipelinePhase::Linker { give "linker"; }
+    give "unknown";
+}
+
+proc result_to_string(result: PhaseResult) -> string {
+    if result == PhaseResult::Success { give "OK"; }
+    if result == PhaseResult::Warning { give "WARN"; }
+    if result == PhaseResult::FatalError { give "FAIL"; }
+    if result == PhaseResult::Skipped { give "SKIP"; }
+    if result == PhaseResult::Unimplemented { give "TODO"; }
+    give "???";
+}
+
+share new_compilation_session
+share session_with_target
+share session_with_optimization
+share session_enable_trace
+share record_phase_execution
+share mark_fatal_error
+share session_has_errors
+share get_phase_execution
+share print_phase_trace
+share phase_to_string
+share result_to_string
+share PhaseResult
+share PipelinePhase
+share PhaseExecution
+share CompilationSession

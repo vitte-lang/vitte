@@ -1,0 +1,151 @@
+space vitte/compiler/infrastructure/session/compiler_logger
+
+pick LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+form LogEntry {
+    level: LogLevel,
+    timestamp: u64,
+    module: string,
+    message: string,
+}
+
+form CompilerLogger {
+    entries: [LogEntry],
+    min_level: LogLevel,
+    enable_timestamps: bool,
+    enable_modules: bool,
+}
+
+proc new_compiler_logger() -> CompilerLogger {
+    give CompilerLogger {
+        entries: [],
+        min_level: LogLevel::Info,
+        enable_timestamps: true,
+        enable_modules: true,
+    };
+}
+
+proc logger_set_level(logger: CompilerLogger, level: LogLevel) -> CompilerLogger {
+    set logger.min_level = level;
+    give logger;
+}
+
+proc should_log(logger: CompilerLogger, level: LogLevel) -> bool {
+    let min_val = log_level_to_int(logger.min_level);
+    let level_val = log_level_to_int(level);
+    give level_val >= min_val;
+}
+
+proc log_level_to_int(level: LogLevel) -> i32 {
+    if level == LogLevel::Trace { give 0; }
+    if level == LogLevel::Debug { give 1; }
+    if level == LogLevel::Info { give 2; }
+    if level == LogLevel::Warn { give 3; }
+    if level == LogLevel::Error { give 4; }
+    give 5;
+}
+
+proc log_entry(
+    logger: CompilerLogger,
+    level: LogLevel,
+    module: string,
+    message: string
+) -> CompilerLogger {
+    if !should_log(logger, level) {
+        give logger;
+    }
+    
+    let entry = LogEntry {
+        level: level,
+        timestamp: 0,
+        module: module,
+        message: message,
+    };
+    
+    set logger.entries = logger.entries + [entry];
+    give logger;
+}
+
+proc log_trace(logger: CompilerLogger, module: string, message: string) -> CompilerLogger {
+    give log_entry(logger, LogLevel::Trace, module, message);
+}
+
+proc log_debug(logger: CompilerLogger, module: string, message: string) -> CompilerLogger {
+    give log_entry(logger, LogLevel::Debug, module, message);
+}
+
+proc log_info(logger: CompilerLogger, module: string, message: string) -> CompilerLogger {
+    give log_entry(logger, LogLevel::Info, module, message);
+}
+
+proc log_warn(logger: CompilerLogger, module: string, message: string) -> CompilerLogger {
+    give log_entry(logger, LogLevel::Warn, module, message);
+}
+
+proc log_error(logger: CompilerLogger, module: string, message: string) -> CompilerLogger {
+    give log_entry(logger, LogLevel::Error, module, message);
+}
+
+proc log_phase_start(logger: CompilerLogger, phase: string) -> CompilerLogger {
+    give log_info(logger, "pipeline", ">>> START " + phase);
+}
+
+proc log_phase_end(logger: CompilerLogger, phase: string, duration_ms: u64) -> CompilerLogger {
+    give log_info(logger, "pipeline", "<<< END " + phase + " (" + to_string(duration_ms) + "ms)");
+}
+
+proc log_phase_error(logger: CompilerLogger, phase: string, error: string) -> CompilerLogger {
+    give log_error(logger, "pipeline", "!!! ERROR in " + phase + ": " + error);
+}
+
+proc log_phase_unimplemented(logger: CompilerLogger, phase: string) -> CompilerLogger {
+    give log_warn(logger, "pipeline", "!!! UNIMPLEMENTED: " + phase);
+}
+
+proc render_logs(logger: CompilerLogger) -> string {
+    let output = "";
+    let i: u64 = 0;
+    while i < len(logger.entries) {
+        let entry = logger.entries[i];
+        let line = "[" + log_level_to_string(entry.level) + "]";
+        if logger.enable_modules {
+            set line = line + " [" + entry.module + "]";
+        }
+        set line = line + " " + entry.message;
+        set output = output + line + "\n";
+        set i = i + 1;
+    }
+    give output;
+}
+
+proc log_level_to_string(level: LogLevel) -> string {
+    if level == LogLevel::Trace { give "TRACE"; }
+    if level == LogLevel::Debug { give "DEBUG"; }
+    if level == LogLevel::Info { give "INFO"; }
+    if level == LogLevel::Warn { give "WARN"; }
+    if level == LogLevel::Error { give "ERROR"; }
+    give "?";
+}
+
+share CompilerLogger
+share LogEntry
+share LogLevel
+share new_compiler_logger
+share logger_set_level
+share log_trace
+share log_debug
+share log_info
+share log_warn
+share log_error
+share log_phase_start
+share log_phase_end
+share log_phase_error
+share log_phase_unimplemented
+share render_logs
+share log_level_to_string

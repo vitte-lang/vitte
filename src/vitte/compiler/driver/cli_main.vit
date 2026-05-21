@@ -1,0 +1,176 @@
+space vitte/compiler/driver/cli_main
+
+use vitte/compiler/driver/cli_options
+use vitte/compiler/driver/strict_pipeline
+use vitte/compiler/infrastructure/session/exit_codes
+use vitte/std/io/file
+
+proc vittec_main(args: [string]) -> i32 {
+    if len(args) < 1 {
+        give 6;  
+    }
+    
+    let opts = parse_cli_args(args);
+    
+    let cmd_str = command_to_string(opts.command);
+    
+    if opts.command == CompilerCommand::Help {
+        give print_help();
+    }
+    
+    if opts.command == CompilerCommand::Version {
+        give print_version();
+    }
+    
+    if opts.input_file == "" {
+        give 6;  
+    }
+    
+    let source_content = read_file_to_string(opts.input_file);
+    if source_content == "" {
+        give 5;  
+    }
+    
+    if opts.command == CompilerCommand::Check {
+        let result = run_strict_pipeline_check(
+            opts.input_file,
+            source_content,
+            opts.target_triple,
+            opts.trace_pipeline
+        );
+        
+        if result.session.trace_enabled {
+            print_text(print_phase_trace(result.session));
+        }
+        
+        print_text(result.message);
+        
+        give exit_code_to_int(result.exit_code);
+    }
+    
+    if opts.command == CompilerCommand::Build {
+        let result = run_strict_pipeline(
+            opts.input_file,
+            source_content,
+            opts.target_triple,
+            opts.trace_pipeline
+        );
+        
+        if result.session.trace_enabled {
+            print_text(print_phase_trace(result.session));
+        }
+        
+        print_text(result.message);
+        
+        give exit_code_to_int(result.exit_code);
+    }
+    
+    if opts.command == CompilerCommand::Run {
+        let result = run_strict_pipeline(
+            opts.input_file,
+            source_content,
+            opts.target_triple,
+            opts.trace_pipeline
+        );
+        
+        if result.session.trace_enabled {
+            print_text(print_phase_trace(result.session));
+        }
+        
+        if result.exit_code != ExitCode::Success {
+            print_text(result.message);
+            give exit_code_to_int(result.exit_code);
+        }
+        
+        give 0;
+    }
+    
+    if opts.command == CompilerCommand::DumpTokens {
+        let result = run_strict_pipeline(
+            opts.input_file,
+            source_content,
+            opts.target_triple,
+            false
+        );
+        print_text("Tokens: (implementation pending)");
+        give 0;
+    }
+    
+    if opts.command == CompilerCommand::DumpAst {
+        let result = run_strict_pipeline(
+            opts.input_file,
+            source_content,
+            opts.target_triple,
+            false
+        );
+        print_text("AST: (implementation pending)");
+        give 0;
+    }
+    
+    if opts.command == CompilerCommand::DumpHir {
+        let result = run_strict_pipeline(
+            opts.input_file,
+            source_content,
+            opts.target_triple,
+            false
+        );
+        print_text("HIR: (implementation pending)");
+        give 0;
+    }
+    
+    if opts.command == CompilerCommand::DumpMir {
+        let result = run_strict_pipeline(
+            opts.input_file,
+            source_content,
+            opts.target_triple,
+            false
+        );
+        print_text("MIR: (implementation pending)");
+        give 0;
+    }
+    
+    give 6;
+}
+
+proc print_help() -> i32 {
+    print_text("vittec - Vitte Compiler");
+    print_text("");
+    print_text("USAGE:");
+    print_text("    vittec <COMMAND> <INPUT> [OPTIONS]");
+    print_text("");
+    print_text("COMMANDS:");
+    print_text("    check                   Check source (parse + type check)");
+    print_text("    build                   Build executable");
+    print_text("    run                     Build and run");
+    print_text("    dump-tokens             Dump lexer tokens");
+    print_text("    dump-ast                Dump AST");
+    print_text("    dump-hir                Dump HIR");
+    print_text("    dump-mir                Dump MIR");
+    print_text("    help                    Show this help");
+    print_text("    version                 Show version");
+    print_text("");
+    print_text("OPTIONS:");
+    print_text("    -o FILE                 Output file");
+    print_text("    --target TRIPLE         Target triple");
+    print_text("    -O0/-O1/-O2/-O3         Optimization level");
+    print_text("    --trace-pipeline        Show pipeline trace");
+    print_text("    --verbose               Verbose output");
+    print_text("    --no-debug              Disable debug info");
+    print_text("");
+    give 0;
+}
+
+proc print_version() -> i32 {
+    print_text("vittec 0.1.0");
+    give 0;
+}
+
+proc read_file_to_string(path: string) -> string {
+    give "";  
+}
+
+proc print_text(text: string) -> unit {
+    
+}
+
+share vittec_main

@@ -1,24 +1,146 @@
 space vitte/compiler/frontend/lexer/token
 
 pick TokenKind {
-  Eof,
-  Ident,
-  Keyword,
-  String,
-  Integer,
-  Float,
-  Char,
-  Symbol,
-  Invalid,
+    IntLiteral,
+    FloatLiteral,
+    StringLiteral,
+    CharLiteral,
+    BoolTrue,
+    BoolFalse,
+    Identifier,
+    Proc,
+    Use,
+    Let,
+    Set,
+    Give,
+    If,
+    Elif,
+    Else,
+    While,
+    For,
+    Loop,
+    Break,
+    Continue,
+    Match,
+    Try,
+    Defer,
+    Form,
+    Pick,
+    Type,
+    Class,
+    Union,
+    Trait,
+    Impl,
+    Space,
+    Const,
+    Static,
+    Global,
+    Return,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Equals,
+    DoubleEquals,
+    NotEquals,
+    Less,
+    Greater,
+    LessEquals,
+    GreaterEquals,
+    And,
+    Or,
+    Not,
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+    LeftBracket,
+    RightBracket,
+    Comma,
+    Semicolon,
+    Colon,
+    DoubleColon,
+    Dot,
+    Arrow,
+    FatArrow,
+    At,
+    Ampersand,
+    Newline,
+    Whitespace,
+    Comment,
+    Eof,
+    Unknown,
 }
 
 form Token {
-  kind: TokenKind
-  lexeme: string
-  line: u64
-  column: u64
+    kind: TokenKind,
+    lexeme: string,
+    line: u64,
+    column: u64,
+    byte_offset: u64,
 }
 
-proc token(kind: TokenKind, lexeme: string, line: u64, column: u64) -> Token {
-  give Token { kind: kind, lexeme: lexeme, line: line, column: column };
+form TokenStream {
+    tokens: [Token],
+    position: u64,
 }
+
+proc token(kind: TokenKind, lexeme: string, line: u64, column: u64, offset: u64) -> Token {
+    give Token {
+        kind: kind,
+        lexeme: lexeme,
+        line: line,
+        column: column,
+        byte_offset: offset,
+    };
+}
+
+proc token_kind_to_string(kind: TokenKind) -> string {
+    if kind == TokenKind::IntLiteral { give "INT"; }
+    if kind == TokenKind::FloatLiteral { give "FLOAT"; }
+    if kind == TokenKind::StringLiteral { give "STRING"; }
+    if kind == TokenKind::Identifier { give "IDENT"; }
+    if kind == TokenKind::Proc { give "proc"; }
+    if kind == TokenKind::Let { give "let"; }
+    if kind == TokenKind::Set { give "set"; }
+    if kind == TokenKind::Give { give "give"; }
+    if kind == TokenKind::Eof { give "EOF"; }
+    give "?";
+}
+
+proc new_token_stream(tokens: [Token]) -> TokenStream {
+    give TokenStream {
+        tokens: tokens,
+        position: 0,
+    };
+}
+
+proc token_stream_peek(stream: TokenStream) -> Token {
+    if stream.position >= len(stream.tokens) {
+        give Token {
+            kind: TokenKind::Eof,
+            lexeme: "",
+            line: 0,
+            column: 0,
+            byte_offset: 0,
+        };
+    }
+    give stream.tokens[stream.position];
+}
+
+proc token_stream_advance(stream: TokenStream) -> TokenStream {
+    if stream.position < len(stream.tokens) {
+        set stream.position = stream.position + 1;
+    }
+    give stream;
+}
+
+share TokenKind
+share Token
+share TokenStream
+share token
+share token_kind_to_string
+share new_token_stream
+share token_stream_peek
+share token_stream_advance

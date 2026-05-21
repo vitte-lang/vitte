@@ -1,0 +1,342 @@
+space vitte/compiler/frontend/lexer/real_lexer
+
+use vitte/compiler/frontend/lexer/token
+use vitte/compiler/infrastructure/session/compilation_session
+use vitte/compiler/infrastructure/session/diagnostics_session
+use vitte/compiler/infrastructure/session/compiler_logger
+use vitte/compiler/driver/phase_stubs
+
+form LexerState {
+    input: string,
+    position: u64,
+    line: u64,
+    column: u64,
+    tokens: [Token],
+}
+
+proc new_lexer_state(input: string) -> LexerState {
+    give LexerState {
+        input: input,
+        position: 0,
+        line: 1,
+        column: 1,
+        tokens: [],
+    };
+}
+
+proc lex_char(state: LexerState) -> string {
+    if state.position >= len(state.input) {
+        give "";
+    }
+    give slice(state.input, state.position, state.position + 1);
+}
+
+proc lex_peek(state: LexerState, offset: u64) -> string {
+    let pos = state.position + offset;
+    if pos >= len(state.input) {
+        give "";
+    }
+    give slice(state.input, pos, pos + 1);
+}
+
+proc lex_advance(state: LexerState) -> LexerState {
+    let ch = lex_char(state);
+    if ch == "\n" {
+        set state.line = state.line + 1;
+        set state.column = 1;
+    } else {
+        set state.column = state.column + 1;
+    }
+    set state.position = state.position + 1;
+    give state;
+}
+
+proc lex_skip_whitespace(state: LexerState) -> LexerState {
+    while lex_char(state) == " " or lex_char(state) == "\t" or lex_char(state) == "\r" {
+        set state = lex_advance(state);
+    }
+    give state;
+}
+
+proc lex_skip_comment(state: LexerState) -> LexerState {
+    if lex_char(state) != "/" or lex_peek(state, 1) != "/" {
+        give state;
+    }
+    
+    set state = lex_advance(state);
+    set state = lex_advance(state);
+    
+    while lex_char(state) != "\n" and lex_char(state) != "" {
+        set state = lex_advance(state);
+    }
+    
+    give state;
+}
+
+proc lex_number(state: LexerState) -> (LexerState, Token) {
+    let start_pos = state.position;
+    let start_col = state.column;
+    let is_float = false;
+    
+    while lex_char(state) >= "0" and lex_char(state) <= "9" {
+        set state = lex_advance(state);
+    }
+    
+    if lex_char(state) == "." {
+        set is_float = true;
+        set state = lex_advance(state);
+        while lex_char(state) >= "0" and lex_char(state) <= "9" {
+            set state = lex_advance(state);
+        }
+    }
+    
+    let text = slice(state.input, start_pos, state.position);
+    let kind = TokenKind::IntLiteral;
+    if is_float {
+        set kind = TokenKind::FloatLiteral;
+    }
+    
+    let tok = token(kind, text, state.line, start_col, start_pos);
+    give (state, tok);
+}
+
+proc lex_string(state: LexerState) -> (LexerState, Token) {
+    let start_pos = state.position;
+    let start_col = state.column;
+    let quote_char = lex_char(state);
+    
+    set state = lex_advance(state);
+    
+    while lex_char(state) != quote_char and lex_char(state) != "" {
+        if lex_char(state) == "\\" {
+            set state = lex_advance(state);
+        }
+        set state = lex_advance(state);
+    }
+    
+    if lex_char(state) == quote_char {
+        set state = lex_advance(state);
+    }
+    
+    let text = slice(state.input, start_pos, state.position);
+    let tok = token(TokenKind::StringLiteral, text, state.line, start_col, start_pos);
+    give (state, tok);
+}
+
+proc lex_identifier(state: LexerState) -> (LexerState, Token) {
+    let start_pos = state.position;
+    let start_col = state.column;
+    
+    while (lex_char(state) >= "a" and lex_char(state) <= "z") 
+        or (lex_char(state) >= "A" and lex_char(state) <= "Z")
+        or (lex_char(state) >= "0" and lex_char(state) <= "9")
+        or lex_char(state) == "_" {
+        set state = lex_advance(state);
+    }
+    
+    let text = slice(state.input, start_pos, state.position);
+    let kind = keyword_or_ident(text);
+    let tok = token(kind, text, state.line, start_col, start_pos);
+    give (state, tok);
+}
+
+proc keyword_or_ident(text: string) -> TokenKind {
+    if text == "proc" { give TokenKind::Proc; }
+    if text == "use" { give TokenKind::Use; }
+    if text == "let" { give TokenKind::Let; }
+    if text == "set" { give TokenKind::Set; }
+    if text == "give" { give TokenKind::Give; }
+    if text == "if" { give TokenKind::If; }
+    if text == "elif" { give TokenKind::Elif; }
+    if text == "else" { give TokenKind::Else; }
+    if text == "while" { give TokenKind::While; }
+    if text == "for" { give TokenKind::For; }
+    if text == "loop" { give TokenKind::Loop; }
+    if text == "break" { give TokenKind::Break; }
+    if text == "continue" { give TokenKind::Continue; }
+    if text == "match" { give TokenKind::Match; }
+    if text == "try" { give TokenKind::Try; }
+    if text == "defer" { give TokenKind::Defer; }
+    if text == "form" { give TokenKind::Form; }
+    if text == "pick" { give TokenKind::Pick; }
+    if text == "type" { give TokenKind::Type; }
+    if text == "class" { give TokenKind::Class; }
+    if text == "union" { give TokenKind::Union; }
+    if text == "trait" { give TokenKind::Trait; }
+    if text == "impl" { give TokenKind::Impl; }
+    if text == "space" { give TokenKind::Space; }
+    if text == "const" { give TokenKind::Const; }
+    if text == "static" { give TokenKind::Static; }
+    if text == "global" { give TokenKind::Global; }
+    if text == "true" { give TokenKind::BoolTrue; }
+    if text == "false" { give TokenKind::BoolFalse; }
+    give TokenKind::Identifier;
+}
+
+proc lex_operator(state: LexerState) -> (LexerState, Token) {
+    let start_pos = state.position;
+    let start_col = state.column;
+    let ch = lex_char(state);
+    let next = lex_peek(state, 1);
+    let kind = TokenKind::Unknown;
+    let len: u64 = 1;
+    
+    if ch == "+" { set kind = TokenKind::Plus; }
+    elif ch == "-" {
+        if next == ">" { 
+            set kind = TokenKind::Arrow;
+            set len = 2;
+        } else {
+            set kind = TokenKind::Minus;
+        }
+    }
+    elif ch == "*" { set kind = TokenKind::Star; }
+    elif ch == "/" { set kind = TokenKind::Slash; }
+    elif ch == "%" { set kind = TokenKind::Percent; }
+    elif ch == "=" {
+        if next == "=" {
+            set kind = TokenKind::DoubleEquals;
+            set len = 2;
+        } elif next == ">" {
+            set kind = TokenKind::FatArrow;
+            set len = 2;
+        } else {
+            set kind = TokenKind::Equals;
+        }
+    }
+    elif ch == "!" {
+        if next == "=" {
+            set kind = TokenKind::NotEquals;
+            set len = 2;
+        } else {
+            set kind = TokenKind::Not;
+        }
+    }
+    elif ch == "<" {
+        if next == "=" {
+            set kind = TokenKind::LessEquals;
+            set len = 2;
+        } else {
+            set kind = TokenKind::Less;
+        }
+    }
+    elif ch == ">" {
+        if next == "=" {
+            set kind = TokenKind::GreaterEquals;
+            set len = 2;
+        } else {
+            set kind = TokenKind::Greater;
+        }
+    }
+    elif ch == "&" {
+        if next == "&" {
+            set kind = TokenKind::And;
+            set len = 2;
+        } else {
+            set kind = TokenKind::Ampersand;
+        }
+    }
+    elif ch == "|" {
+        if next == "|" {
+            set kind = TokenKind::Or;
+            set len = 2;
+        }
+    }
+    elif ch == ":" {
+        if next == ":" {
+            set kind = TokenKind::DoubleColon;
+            set len = 2;
+        } else {
+            set kind = TokenKind::Colon;
+        }
+    }
+    elif ch == "." { set kind = TokenKind::Dot; }
+    elif ch == "(" { set kind = TokenKind::LeftParen; }
+    elif ch == ")" { set kind = TokenKind::RightParen; }
+    elif ch == "{" { set kind = TokenKind::LeftBrace; }
+    elif ch == "}" { set kind = TokenKind::RightBrace; }
+    elif ch == "[" { set kind = TokenKind::LeftBracket; }
+    elif ch == "]" { set kind = TokenKind::RightBracket; }
+    elif ch == "," { set kind = TokenKind::Comma; }
+    elif ch == ";" { set kind = TokenKind::Semicolon; }
+    elif ch == "@" { set kind = TokenKind::At; }
+    
+    let i: u64 = 0;
+    while i < len {
+        set state = lex_advance(state);
+        set i = i + 1;
+    }
+    
+    let text = slice(state.input, start_pos, state.position);
+    let tok = token(kind, text, state.line, start_col, start_pos);
+    give (state, tok);
+}
+
+proc lex_all(input: string) -> [Token] {
+    let state = new_lexer_state(input);
+    let tokens: [Token] = [];
+    
+    while state.position < len(state.input) {
+        let ch = lex_char(state);
+        
+        if ch == " " or ch == "\t" or ch == "\r" {
+            set state = lex_skip_whitespace(state);
+        } elif ch == "\n" {
+            let tok = token(TokenKind::Newline, "\n", state.line, state.column, state.position);
+            set tokens = tokens + [tok];
+            set state = lex_advance(state);
+        } elif ch == "/" and lex_peek(state, 1) == "/" {
+            set state = lex_skip_comment(state);
+        } elif ch >= "0" and ch <= "9" {
+            let (new_state, tok) = lex_number(state);
+            set state = new_state;
+            set tokens = tokens + [tok];
+        } elif ch == "\"" or ch == "'" {
+            let (new_state, tok) = lex_string(state);
+            set state = new_state;
+            set tokens = tokens + [tok];
+        } elif (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_" {
+            let (new_state, tok) = lex_identifier(state);
+            set state = new_state;
+            set tokens = tokens + [tok];
+        } else {
+            let (new_state, tok) = lex_operator(state);
+            set state = new_state;
+            if tok.kind != TokenKind::Unknown {
+                set tokens = tokens + [tok];
+            } else {
+                set state = lex_advance(state);
+            }
+        }
+    }
+    
+    let eof = token(TokenKind::Eof, "", state.line, state.column, state.position);
+    set tokens = tokens + [eof];
+    
+    give tokens;
+}
+
+proc real_lexer_run(
+    session: CompilationSession,
+    logger: CompilerLogger,
+    source: string
+) -> (CompilationSession, CompilerLogger, PhaseResult, LexerOutput) {
+    let logger = log_phase_start(logger, "lexer");
+    
+    let tokens = lex_all(source);
+    let token_count: u64 = len(tokens);
+    
+    let logger = log_phase_end(logger, "lexer", 3);
+    
+    let output = LexerOutput {
+        token_count: token_count,
+        tokens: tokens,
+        valid: true,
+    };
+    
+    give (session, logger, PhaseResult::Success, output);
+}
+
+share lex_all
+share real_lexer_run
+share LexerState

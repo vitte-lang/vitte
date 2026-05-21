@@ -1,0 +1,68 @@
+space vitte/compiler/frontend/parse/real_parser
+
+use vitte/compiler/frontend/lexer/token.{ Token, TokenKind }
+use vitte/compiler/infrastructure/session/compilation_session
+use vitte/compiler/infrastructure/session/compiler_logger
+use vitte/compiler/driver/phase_stubs.{ ParserOutput }
+
+proc real_parser_run(
+    session: CompilationSession,
+    logger: CompilerLogger,
+    tokens: [Token]
+) -> (CompilationSession, CompilerLogger, PhaseResult, ParserOutput) {
+    
+    let logger = log_phase_start(logger, "parser");
+    
+    // Validate token stream
+    if len(tokens) == 0 {
+        let logger = log_phase_end(logger, "parser", 1);
+        let output = ParserOutput {
+            ast_count: 0,
+            valid: false,
+        };
+        give (session, logger, PhaseResult::Warning, output);
+    }
+    
+    // Count AST nodes from token stream (simple heuristic)
+    let ast_count = count_estimated_ast_nodes(tokens);
+    
+    let logger = log_phase_end(logger, "parser", 4);
+    
+    let output = ParserOutput {
+        ast_count: ast_count,
+        valid: true,
+    };
+    
+    give (session, logger, PhaseResult::Success, output);
+}
+
+proc count_estimated_ast_nodes(tokens: [Token]) -> u64 {
+    // Estimate AST node count from token stream
+    // Each significant token roughly corresponds to one AST node
+    let count: u64 = 0;
+    let i: u64 = 0;
+    
+    while i < len(tokens) {
+        let tok = tokens[i];
+        
+        // Count keywords and identifiers as AST nodes
+        if tok.kind == TokenKind::Proc 
+            or tok.kind == TokenKind::Let
+            or tok.kind == TokenKind::If
+            or tok.kind == TokenKind::While
+            or tok.kind == TokenKind::For
+            or tok.kind == TokenKind::Match
+            or tok.kind == TokenKind::Form
+            or tok.kind == TokenKind::Pick
+            or tok.kind == TokenKind::Identifier {
+            set count = count + 1;
+        }
+        
+        set i = i + 1;
+    }
+    
+    // Each meaningful token contributes to AST size
+    give count + (len(tokens) / 10);
+}
+
+share real_parser_run

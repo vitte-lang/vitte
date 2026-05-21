@@ -1,0 +1,71 @@
+space vitte/compiler/infrastructure/session/exit_codes
+
+pick ExitCode {
+    Success,                  
+    UserDiagnostics,          
+    InternalCompilerError,    
+    BackendFailure,           
+    LinkerFailure,            
+    IoError,                  
+    InvalidArguments,         
+    TargetNotSupported,       
+    RuntimeFailure,           
+}
+
+form PanicInfo {
+    phase: string,
+    stack_trace: string,
+    source_location: string,
+    compiler_version: string,
+}
+
+proc exit_code_to_int(code: ExitCode) -> i32 {
+    if code == ExitCode::Success { give 0; }
+    if code == ExitCode::UserDiagnostics { give 1; }
+    if code == ExitCode::InternalCompilerError { give 2; }
+    if code == ExitCode::BackendFailure { give 3; }
+    if code == ExitCode::LinkerFailure { give 4; }
+    if code == ExitCode::IoError { give 5; }
+    if code == ExitCode::InvalidArguments { give 6; }
+    if code == ExitCode::TargetNotSupported { give 7; }
+    if code == ExitCode::RuntimeFailure { give 8; }
+    give 99;
+}
+
+proc exit_code_to_string(code: ExitCode) -> string {
+    if code == ExitCode::Success { give "success"; }
+    if code == ExitCode::UserDiagnostics { give "user diagnostics"; }
+    if code == ExitCode::InternalCompilerError { give "internal compiler error"; }
+    if code == ExitCode::BackendFailure { give "backend failure"; }
+    if code == ExitCode::LinkerFailure { give "linker failure"; }
+    if code == ExitCode::IoError { give "I/O error"; }
+    if code == ExitCode::InvalidArguments { give "invalid arguments"; }
+    if code == ExitCode::TargetNotSupported { give "target not supported"; }
+    if code == ExitCode::RuntimeFailure { give "runtime failure"; }
+    give "unknown error";
+}
+
+proc format_ice_message(info: PanicInfo) -> string {
+    let msg = "\n";
+    set msg = msg + "error: internal compiler error\n";
+    set msg = msg + "\n";
+    set msg = msg + "The Vitte compiler encountered an unexpected internal error.\n";
+    set msg = msg + "This is a bug in the compiler, not in your code.\n";
+    set msg = msg + "\n";
+    set msg = msg + "Details:\n";
+    set msg = msg + "  phase: " + info.phase + "\n";
+    set msg = msg + "  location: " + info.source_location + "\n";
+    set msg = msg + "  version: " + info.compiler_version + "\n";
+    set msg = msg + "\n";
+    set msg = msg + "Stack trace:\n";
+    set msg = msg + info.stack_trace + "\n";
+    set msg = msg + "\n";
+    set msg = msg + "Please report this issue at: https://github.com/vitte-lang/vitte/issues\n";
+    give msg;
+}
+
+share ExitCode
+share PanicInfo
+share exit_code_to_int
+share exit_code_to_string
+share format_ice_message

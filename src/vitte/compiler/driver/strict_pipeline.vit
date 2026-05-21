@@ -1,0 +1,506 @@
+space vitte/compiler/driver/strict_pipeline
+
+use vitte/compiler/infrastructure/session/compilation_session
+use vitte/compiler/infrastructure/session/diagnostics_session
+use vitte/compiler/infrastructure/session/compiler_logger
+use vitte/compiler/infrastructure/session/files
+use vitte/compiler/infrastructure/session/target_config
+use vitte/compiler/infrastructure/session/exit_codes
+use vitte/compiler/driver/phase_stubs
+use vitte/compiler/frontend/lexer/real_lexer
+use vitte/compiler/frontend/parse/real_parser
+
+form PipelineResult {
+    success: bool,
+    exit_code: ExitCode,
+    message: string,
+    session: CompilationSession,
+    logger: CompilerLogger,
+    diags: DiagnosticSession,
+}
+
+proc empty_pipeline_result() -> PipelineResult {
+    give PipelineResult {
+        success: false,
+        exit_code: ExitCode::InternalCompilerError,
+        message: "uninitialized",
+        session: new_compilation_session(SessionConfig { valid: false }),
+        logger: new_compiler_logger(),
+        diags: new_diagnostic_session(new_file_manager()),
+    };
+}
+
+proc run_strict_pipeline(
+    source_path: string,
+    source_content: string,
+    target_triple: string,
+    trace_enabled: bool
+) -> PipelineResult {
+    
+    let mut_session = new_compilation_session(SessionConfig { valid: true });
+    set mut_session.target_triple = target_triple;
+    if trace_enabled {
+        set mut_session = session_enable_trace(mut_session);
+    }
+    
+    let mut_logger = new_compiler_logger();
+    if trace_enabled {
+        set mut_logger = logger_set_level(mut_logger, LogLevel::Debug);
+    } else {
+        set mut_logger = logger_set_level(mut_logger, LogLevel::Info);
+    }
+    
+    let mut_diags = new_diagnostic_session(mut_session.source_manager);
+    
+    log_info(mut_logger, "pipeline", "Starting compilation of " + source_path);
+    
+    if diag_check_stop(mut_diags) {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "initialization failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    set mut_logger = log_phase_start(mut_logger, "source_manager");
+    
+    set mut_session.source_manager = load_file(mut_session.source_manager, source_path, source_content);
+    set mut_session = record_phase_execution(
+        mut_session,
+        PipelinePhase::SourceManager,
+        PhaseResult::Success,
+        1,
+        "Loaded source file"
+    );
+    set mut_logger = log_phase_end(mut_logger, "source_manager", 1);
+    
+    if diag_check_stop(mut_diags) {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "source manager failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, lex_result, lex_output) = real_lexer_run(mut_session, mut_logger, source_content);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Lexer, lex_result, 2, "Lexer completed");
+    if lex_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Lexer phase failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, parser_result, _parser_output) = real_parser_run(mut_session, mut_logger, lex_output.tokens);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Parser, parser_result, 3, "Parser completed");
+    if parser_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Parser phase failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, ast_result) = stub_ast_validation_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::AstValidation, ast_result, 1, "AST validation completed");
+    if ast_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "AST validation failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, resolve_result) = stub_module_resolver_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::ModuleResolver, resolve_result, 2, "Module resolver completed");
+    if resolve_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Module resolver failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, hir_result) = stub_hir_lowering_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::HirLowering, hir_result, 3, "HIR lowering completed");
+    if hir_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "HIR lowering failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, sema_result, _sema_output) = stub_sema_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Sema, sema_result, 4, "Semantic analysis completed");
+    if sema_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Semantic analysis failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, typeck_result, _typeck_output) = stub_typeck_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Typeck, typeck_result, 5, "Type checking completed");
+    if typeck_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Type checking failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, borrowck_result, _borrowck_output) = stub_borrowck_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Borrowck, borrowck_result, 3, "Borrow checking completed");
+    if borrowck_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Borrow checking failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, mir_result, _mir_output) = stub_mir_lowering_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::MirLowering, mir_result, 4, "MIR lowering completed");
+    if mir_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "MIR lowering failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, mir_verify_result) = stub_mir_verify_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::MirVerify, mir_verify_result, 2, "MIR verification completed");
+    if mir_verify_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "MIR verification failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, opt_result) = stub_optimization_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Optimization, opt_result, 5, "Optimization completed");
+    if opt_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Optimization failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, backend_result, _backend_output) = stub_backend_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Backend, backend_result, 10, "Backend completed");
+    if backend_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::BackendFailure,
+            message: "Backend phase failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, object_result) = stub_object_generation_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::ObjectGeneration, object_result, 3, "Object generation completed");
+    if object_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::BackendFailure,
+            message: "Object generation failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, linker_result, _linker_output) = stub_linker_run(mut_session, mut_logger, "");
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Linker, linker_result, 8, "Linker completed");
+    if linker_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::LinkerFailure,
+            message: "Linker phase failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    if session_has_errors(mut_session) {
+        set mut_logger = log_info(mut_logger, "pipeline", "Pipeline failed: phase errors detected");
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::InternalCompilerError,
+            message: "Pipeline errors",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    set mut_logger = log_info(mut_logger, "pipeline", "All phases completed successfully");
+    give PipelineResult {
+        success: true,
+        exit_code: ExitCode::Success,
+        message: "Compilation successful",
+        session: mut_session,
+        logger: mut_logger,
+        diags: mut_diags,
+    };
+}
+
+proc diag_check_stop(diags: DiagnosticSession) -> bool {
+    give should_stop_compilation(diags);
+}
+
+proc validate_pipeline_result(result: PipelineResult) -> bool {
+    if session_has_errors(result.session) {
+        give false;
+    }
+    if result.exit_code != ExitCode::Success {
+        give false;
+    }
+    give true;
+}
+
+proc render_pipeline_result(result: PipelineResult) -> string {
+    let output = "";
+    
+    if result.session.trace_enabled {
+        set output = output + print_phase_trace(result.session);
+        set output = output + "\n";
+    }
+    
+    if result.diags.error_count > 0 or result.diags.warning_count > 0 {
+        set output = output + render_diagnostics_text(result.diags);
+        set output = output + "\n";
+    }
+    
+    set output = output + result.message + "\n";
+    
+    give output;
+}
+
+share run_strict_pipeline
+share validate_pipeline_result
+share render_pipeline_result
+share PipelineResult
+share empty_pipeline_result
+
+proc run_strict_pipeline_check(
+    source_path: string,
+    source_content: string,
+    target_triple: string,
+    trace_enabled: bool
+) -> PipelineResult {
+    
+    let mut_session = new_compilation_session(SessionConfig { valid: true });
+    set mut_session.target_triple = target_triple;
+    if trace_enabled {
+        set mut_session = session_enable_trace(mut_session);
+    }
+    
+    let mut_logger = new_compiler_logger();
+    if trace_enabled {
+        set mut_logger = logger_set_level(mut_logger, LogLevel::Debug);
+    } else {
+        set mut_logger = logger_set_level(mut_logger, LogLevel::Info);
+    }
+    
+    let mut_diags = new_diagnostic_session(mut_session.source_manager);
+    
+    log_info(mut_logger, "pipeline", "Starting CHECK (no backend) of " + source_path);
+    
+    if diag_check_stop(mut_diags) {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "initialization failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    set mut_logger = log_phase_start(mut_logger, "source_manager");
+    set mut_session.source_manager = load_file(mut_session.source_manager, source_path, source_content);
+    set mut_session = record_phase_execution(
+        mut_session,
+        PipelinePhase::SourceManager,
+        PhaseResult::Success,
+        1,
+        "Loaded source file"
+    );
+    set mut_logger = log_phase_end(mut_logger, "source_manager", 1);
+    
+    if diag_check_stop(mut_diags) {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "source manager failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, lex_result, lex_output) = real_lexer_run(mut_session, mut_logger, source_content);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Lexer, lex_result, 2, "Lexer completed");
+    if lex_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Lexer phase failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, parser_result, _parser_output) = real_parser_run(mut_session, mut_logger, lex_output.tokens);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Parser, parser_result, 3, "Parser completed");
+    if parser_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Parser phase failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, ast_result) = stub_ast_validation_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::AstValidation, ast_result, 1, "AST validation completed");
+    if ast_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "AST validation failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, resolve_result) = stub_module_resolver_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::ModuleResolver, resolve_result, 2, "Module resolver completed");
+    if resolve_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Module resolver failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, hir_result) = stub_hir_lowering_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::HirLowering, hir_result, 3, "HIR lowering completed");
+    if hir_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "HIR lowering failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, sema_result, _sema_output) = stub_sema_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Sema, sema_result, 4, "Semantic analysis completed");
+    if sema_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Semantic analysis failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, typeck_result, _typeck_output) = stub_typeck_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Typeck, typeck_result, 5, "Type checking completed");
+    if typeck_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Type checking failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    let (mut_session, mut_logger, borrowck_result, _borrowck_output) = stub_borrowck_run(mut_session, mut_logger);
+    set mut_session = record_phase_execution(mut_session, PipelinePhase::Borrowck, borrowck_result, 3, "Borrow checking completed");
+    if borrowck_result != PhaseResult::Success {
+        give PipelineResult {
+            success: false,
+            exit_code: ExitCode::UserDiagnostics,
+            message: "Borrow checking failed",
+            session: mut_session,
+            logger: mut_logger,
+            diags: mut_diags,
+        };
+    }
+    
+    set mut_logger = log_info(mut_logger, "pipeline", "Check phase completed successfully");
+    give PipelineResult {
+        success: true,
+        exit_code: ExitCode::Success,
+        message: "Check successful",
+        session: mut_session,
+        logger: mut_logger,
+        diags: mut_diags,
+    };
+}
+
+share run_strict_pipeline_check

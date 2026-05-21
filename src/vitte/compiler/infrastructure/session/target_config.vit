@@ -1,0 +1,168 @@
+space vitte/compiler/infrastructure/session/target_config
+
+pick TargetArch {
+    X86_64,
+    Aarch64,
+    Wasm32,
+    Riscv64,
+    Arm,
+}
+
+pick TargetOS {
+    Linux,
+    Windows,
+    Macos,
+    FreeBsd,
+    Wasi,
+    None,
+}
+
+pick TargetAbi {
+    Gnu,
+    Msvc,
+    Musl,
+}
+
+pick ObjectFormat {
+    ElfX64,
+    MachO,
+    Coff,
+    Wasm,
+}
+
+form TargetTriple {
+    arch: TargetArch,
+    os: TargetOS,
+    abi: TargetAbi,
+    pointer_size: u32,
+    endian: string,
+}
+
+form ToolchainConfig {
+    linker_path: string,
+    linker_args: [string],
+    assembler_path: string,
+    ar_path: string,
+    object_format: ObjectFormat,
+    stdlib_path: string,
+}
+
+proc parse_target_triple(triple_str: string) -> TargetTriple {
+    if triple_str == "x86_64-linux-gnu" {
+        give TargetTriple {
+            arch: TargetArch::X86_64,
+            os: TargetOS::Linux,
+            abi: TargetAbi::Gnu,
+            pointer_size: 64,
+            endian: "little",
+        };
+    }
+    if triple_str == "aarch64-linux-gnu" {
+        give TargetTriple {
+            arch: TargetArch::Aarch64,
+            os: TargetOS::Linux,
+            abi: TargetAbi::Gnu,
+            pointer_size: 64,
+            endian: "little",
+        };
+    }
+    if triple_str == "x86_64-unknown-linux-musl" {
+        give TargetTriple {
+            arch: TargetArch::X86_64,
+            os: TargetOS::Linux,
+            abi: TargetAbi::Musl,
+            pointer_size: 64,
+            endian: "little",
+        };
+    }
+    give TargetTriple {
+        arch: TargetArch::X86_64,
+        os: TargetOS::Linux,
+        abi: TargetAbi::Gnu,
+        pointer_size: 64,
+        endian: "little",
+    };
+}
+
+proc target_triple_to_string(triple: TargetTriple) -> string {
+    let arch_str = arch_to_string(triple.arch);
+    let os_str = os_to_string(triple.os);
+    let abi_str = abi_to_string(triple.abi);
+    give arch_str + "-" + os_str + "-" + abi_str;
+}
+
+proc arch_to_string(arch: TargetArch) -> string {
+    if arch == TargetArch::X86_64 { give "x86_64"; }
+    if arch == TargetArch::Aarch64 { give "aarch64"; }
+    if arch == TargetArch::Wasm32 { give "wasm32"; }
+    if arch == TargetArch::Riscv64 { give "riscv64"; }
+    if arch == TargetArch::Arm { give "arm"; }
+    give "unknown";
+}
+
+proc os_to_string(os: TargetOS) -> string {
+    if os == TargetOS::Linux { give "linux"; }
+    if os == TargetOS::Windows { give "windows"; }
+    if os == TargetOS::Macos { give "macos"; }
+    if os == TargetOS::FreeBsd { give "freebsd"; }
+    if os == TargetOS::Wasi { give "wasi"; }
+    if os == TargetOS::None { give "none"; }
+    give "unknown";
+}
+
+proc abi_to_string(abi: TargetAbi) -> string {
+    if abi == TargetAbi::Gnu { give "gnu"; }
+    if abi == TargetAbi::Msvc { give "msvc"; }
+    if abi == TargetAbi::Musl { give "musl"; }
+    give "unknown";
+}
+
+proc default_toolchain_for_target(triple: TargetTriple) -> ToolchainConfig {
+    let linker = "ld";
+    let asm = "as";
+    let ar = "ar";
+    let obj_format = ObjectFormat::ElfX64;
+    
+    if triple.os == TargetOS::Windows {
+        set linker = "link";
+        set asm = "ml64";
+        set obj_format = ObjectFormat::Coff;
+    }
+    
+    if triple.os == TargetOS::Macos {
+        set linker = "ld64";
+        set asm = "as";
+        set obj_format = ObjectFormat::MachO;
+    }
+    
+    give ToolchainConfig {
+        linker_path: linker,
+        linker_args: [],
+        assembler_path: asm,
+        ar_path: ar,
+        object_format: obj_format,
+        stdlib_path: "./lib/stdlib",
+    };
+}
+
+proc object_format_to_string(fmt: ObjectFormat) -> string {
+    if fmt == ObjectFormat::ElfX64 { give "elf64"; }
+    if fmt == ObjectFormat::MachO { give "macho"; }
+    if fmt == ObjectFormat::Coff { give "coff"; }
+    if fmt == ObjectFormat::Wasm { give "wasm"; }
+    give "unknown";
+}
+
+share TargetTriple
+share ToolchainConfig
+share TargetArch
+share TargetOS
+share TargetAbi
+share ObjectFormat
+share parse_target_triple
+share target_triple_to_string
+share arch_to_string
+share os_to_string
+share abi_to_string
+share default_toolchain_for_target
+share object_format_to_string

@@ -1,0 +1,135 @@
+space vitte/compiler/driver/cli_options
+
+pick CompilerCommand {
+    Check,
+    Build,
+    Run,
+    DumpTokens,
+    DumpAst,
+    DumpHir,
+    DumpMir,
+    Help,
+    Version,
+}
+
+form CliOptions {
+    command: CompilerCommand,
+    input_file: string,
+    output_file: string,
+    trace_pipeline: bool,
+    verbose: bool,
+    target_triple: string,
+    optimization_level: string,
+    debug_info: bool,
+    stop_after: string,
+}
+
+proc default_cli_options() -> CliOptions {
+    give CliOptions {
+        command: CompilerCommand::Build,
+        input_file: "",
+        output_file: "",
+        trace_pipeline: false,
+        verbose: false,
+        target_triple: "x86_64-linux-gnu",
+        optimization_level: "O0",
+        debug_info: true,
+        stop_after: "",
+    };
+}
+
+proc parse_cli_args(args: [string]) -> CliOptions {
+    let opts = default_cli_options();
+    
+    if len(args) < 1 {
+        give opts;
+    }
+    
+    let i: u64 = 0;
+    while i < len(args) {
+        let arg = args[i];
+        
+        if arg == "check" {
+            set opts.command = CompilerCommand::Check;
+        }
+        elif arg == "build" {
+            set opts.command = CompilerCommand::Build;
+        }
+        elif arg == "run" {
+            set opts.command = CompilerCommand::Run;
+        }
+        elif arg == "dump-tokens" {
+            set opts.command = CompilerCommand::DumpTokens;
+        }
+        elif arg == "dump-ast" {
+            set opts.command = CompilerCommand::DumpAst;
+        }
+        elif arg == "dump-hir" {
+            set opts.command = CompilerCommand::DumpHir;
+        }
+        elif arg == "dump-mir" {
+            set opts.command = CompilerCommand::DumpMir;
+        }
+        elif arg == "help" {
+            set opts.command = CompilerCommand::Help;
+        }
+        elif arg == "version" {
+            set opts.command = CompilerCommand::Version;
+        }
+        elif arg == "--trace-pipeline" {
+            set opts.trace_pipeline = true;
+        }
+        elif arg == "--verbose" or arg == "-v" {
+            set opts.verbose = true;
+        }
+        elif arg == "-o" and i + 1 < len(args) {
+            set opts.output_file = args[i + 1];
+            set i = i + 1;
+        }
+        elif arg == "--target" and i + 1 < len(args) {
+            set opts.target_triple = args[i + 1];
+            set i = i + 1;
+        }
+        elif arg == "-O0" or arg == "--opt=0" {
+            set opts.optimization_level = "O0";
+        }
+        elif arg == "-O1" or arg == "--opt=1" {
+            set opts.optimization_level = "O1";
+        }
+        elif arg == "-O2" or arg == "--opt=2" {
+            set opts.optimization_level = "O2";
+        }
+        elif arg == "-O3" or arg == "--opt=3" {
+            set opts.optimization_level = "O3";
+        }
+        elif arg == "--no-debug" {
+            set opts.debug_info = false;
+        }
+        elif slice(arg, 0, 1) != "-" and opts.input_file == "" {
+            set opts.input_file = arg;
+        }
+        
+        set i = i + 1;
+    }
+    
+    give opts;
+}
+
+proc command_to_string(cmd: CompilerCommand) -> string {
+    if cmd == CompilerCommand::Check { give "check"; }
+    if cmd == CompilerCommand::Build { give "build"; }
+    if cmd == CompilerCommand::Run { give "run"; }
+    if cmd == CompilerCommand::DumpTokens { give "dump-tokens"; }
+    if cmd == CompilerCommand::DumpAst { give "dump-ast"; }
+    if cmd == CompilerCommand::DumpHir { give "dump-hir"; }
+    if cmd == CompilerCommand::DumpMir { give "dump-mir"; }
+    if cmd == CompilerCommand::Help { give "help"; }
+    if cmd == CompilerCommand::Version { give "version"; }
+    give "unknown";
+}
+
+share CliOptions
+share CompilerCommand
+share default_cli_options
+share parse_cli_args
+share command_to_string

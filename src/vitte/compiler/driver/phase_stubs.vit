@@ -1,0 +1,257 @@
+space vitte/compiler/driver/phase_stubs
+
+use vitte/compiler/infrastructure/session/compilation_session
+use vitte/compiler/infrastructure/session/diagnostics_session
+use vitte/compiler/infrastructure/session/compiler_logger
+use vitte/compiler/frontend/lexer/token.{ Token }
+
+form LexerOutput {
+    token_count: u64,
+    tokens: [Token],
+    valid: bool,
+}
+
+form ParserOutput {
+    ast_count: u64,
+    valid: bool,
+}
+
+form SemaOutput {
+    symbol_count: u64,
+    valid: bool,
+}
+
+form TypeckOutput {
+    type_count: u64,
+    valid: bool,
+}
+
+form BorrowckOutput {
+    region_count: u64,
+    valid: bool,
+}
+
+form MirOutput {
+    mir_block_count: u64,
+    valid: bool,
+}
+
+form BackendOutput {
+    object_file_size: u64,
+    valid: bool,
+}
+
+form LinkerOutput {
+    executable_size: u64,
+    valid: bool,
+}
+
+proc stub_lexer_run(
+    session: CompilationSession,
+    logger: CompilerLogger,
+    source: string
+) -> (CompilationSession, CompilerLogger, PhaseResult, LexerOutput) {
+    set logger = log_phase_start(logger, "lexer");
+    
+    let token_count: u64 = 0;
+    let i: u64 = 0;
+    while i < len(source) {
+        let ch = slice(source, i, i + 1);
+        if ch == " " or ch == "\t" or ch == "\n" {
+            set token_count = token_count + 1;
+        }
+        set i = i + 1;
+    }
+    
+    set logger = log_phase_end(logger, "lexer", 2);
+    
+    let output = LexerOutput {
+        token_count: token_count,
+        valid: true,
+    };
+    
+    give (session, logger, PhaseResult::Success, output);
+}
+
+proc stub_parser_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult, ParserOutput) {
+    set logger = log_phase_start(logger, "parser");
+    set logger = log_phase_end(logger, "parser", 3);
+    
+    let output = ParserOutput {
+        ast_count: 1,
+        valid: true,
+    };
+    
+    give (session, logger, PhaseResult::Success, output);
+}
+
+proc stub_ast_validation_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult) {
+    set logger = log_phase_start(logger, "ast_validation");
+    set logger = log_phase_end(logger, "ast_validation", 1);
+    give (session, logger, PhaseResult::Success);
+}
+
+proc stub_module_resolver_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult) {
+    set logger = log_phase_start(logger, "module_resolver");
+    set logger = log_phase_end(logger, "module_resolver", 2);
+    give (session, logger, PhaseResult::Success);
+}
+
+proc stub_hir_lowering_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult) {
+    set logger = log_phase_start(logger, "hir_lowering");
+    set logger = log_phase_end(logger, "hir_lowering", 3);
+    give (session, logger, PhaseResult::Success);
+}
+
+proc stub_sema_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult, SemaOutput) {
+    set logger = log_phase_start(logger, "sema");
+    set logger = log_phase_end(logger, "sema", 4);
+    
+    let output = SemaOutput {
+        symbol_count: 5,
+        valid: true,
+    };
+    
+    give (session, logger, PhaseResult::Success, output);
+}
+
+proc stub_typeck_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult, TypeckOutput) {
+    set logger = log_phase_start(logger, "typeck");
+    set logger = log_phase_end(logger, "typeck", 5);
+    
+    let output = TypeckOutput {
+        type_count: 3,
+        valid: true,
+    };
+    
+    give (session, logger, PhaseResult::Success, output);
+}
+
+proc stub_borrowck_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult, BorrowckOutput) {
+    set logger = log_phase_start(logger, "borrowck");
+    set logger = log_phase_end(logger, "borrowck", 3);
+    
+    let output = BorrowckOutput {
+        region_count: 2,
+        valid: true,
+    };
+    
+    give (session, logger, PhaseResult::Success, output);
+}
+
+proc stub_mir_lowering_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult, MirOutput) {
+    set logger = log_phase_start(logger, "mir_lowering");
+    set logger = log_phase_end(logger, "mir_lowering", 4);
+    
+    let output = MirOutput {
+        mir_block_count: 2,
+        valid: true,
+    };
+    
+    give (session, logger, PhaseResult::Success, output);
+}
+
+proc stub_mir_verify_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult) {
+    set logger = log_phase_start(logger, "mir_verify");
+    set logger = log_phase_end(logger, "mir_verify", 2);
+    give (session, logger, PhaseResult::Success);
+}
+
+proc stub_optimization_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult) {
+    set logger = log_phase_start(logger, "optimization");
+    set logger = log_phase_end(logger, "optimization", 5);
+    give (session, logger, PhaseResult::Success);
+}
+
+proc stub_backend_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult, BackendOutput) {
+    set logger = log_phase_start(logger, "backend");
+    set logger = log_phase_end(logger, "backend", 10);
+    
+    let output = BackendOutput {
+        object_file_size: 4096,
+        valid: true,
+    };
+    
+    give (session, logger, PhaseResult::Success, output);
+}
+
+proc stub_object_generation_run(
+    session: CompilationSession,
+    logger: CompilerLogger
+) -> (CompilationSession, CompilerLogger, PhaseResult) {
+    set logger = log_phase_start(logger, "object_generation");
+    set logger = log_phase_end(logger, "object_generation", 3);
+    give (session, logger, PhaseResult::Success);
+}
+
+proc stub_linker_run(
+    session: CompilationSession,
+    logger: CompilerLogger,
+    output_file: string
+) -> (CompilationSession, CompilerLogger, PhaseResult, LinkerOutput) {
+    set logger = log_phase_start(logger, "linker");
+    set logger = log_phase_end(logger, "linker", 8);
+    
+    let output = LinkerOutput {
+        executable_size: 8192,
+        valid: true,
+    };
+    
+    give (session, logger, PhaseResult::Success, output);
+}
+
+share stub_lexer_run
+share stub_parser_run
+share stub_ast_validation_run
+share stub_module_resolver_run
+share stub_hir_lowering_run
+share stub_sema_run
+share stub_typeck_run
+share stub_borrowck_run
+share stub_mir_lowering_run
+share stub_mir_verify_run
+share stub_optimization_run
+share stub_backend_run
+share stub_object_generation_run
+share stub_linker_run
+share LexerOutput
+share ParserOutput
+share SemaOutput
+share TypeckOutput
+share BorrowckOutput
+share MirOutput
+share BackendOutput
+share LinkerOutput

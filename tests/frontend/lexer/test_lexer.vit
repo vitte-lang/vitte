@@ -1,0 +1,179 @@
+space vitte/tests/frontend/lexer/test_lexer
+
+use vitte/compiler/frontend/lexer/real_lexer
+use vitte/compiler/frontend/lexer/token
+use vitte/compiler/infrastructure/session/compilation_session
+use vitte/compiler/infrastructure/session/compiler_logger
+
+proc test_lexer_hello_world() -> bool {
+    let source = "proc main() {\n    give 0;\n}";
+    let tokens = lex_all(source);
+    
+    if len(tokens) != 10 {
+        give false;
+    }
+    
+    if tokens[0].kind != TokenKind::Proc {
+        give false;
+    }
+    
+    if tokens[1].kind != TokenKind::Identifier {
+        give false;
+    }
+    
+    if tokens[len(tokens) - 1].kind != TokenKind::Eof {
+        give false;
+    }
+    
+    give true;
+}
+
+proc test_lexer_keywords() -> bool {
+    let source = "let x = 5; if x > 3 { give true; }";
+    let tokens = lex_all(source);
+    
+    let has_let = false;
+    let has_if = false;
+    let has_give = false;
+    
+    let i: u64 = 0;
+    while i < len(tokens) {
+        if tokens[i].kind == TokenKind::Let { set has_let = true; }
+        if tokens[i].kind == TokenKind::If { set has_if = true; }
+        if tokens[i].kind == TokenKind::Give { set has_give = true; }
+        set i = i + 1;
+    }
+    
+    give has_let and has_if and has_give;
+}
+
+proc test_lexer_numbers() -> bool {
+    let source = "let x = 42; let y = 3.14;";
+    let tokens = lex_all(source);
+    
+    let has_int = false;
+    let has_float = false;
+    
+    let i: u64 = 0;
+    while i < len(tokens) {
+        if tokens[i].kind == TokenKind::IntLiteral { set has_int = true; }
+        if tokens[i].kind == TokenKind::FloatLiteral { set has_float = true; }
+        set i = i + 1;
+    }
+    
+    give has_int and has_float;
+}
+
+proc test_lexer_strings() -> bool {
+    let source = "let msg = \"hello\";";
+    let tokens = lex_all(source);
+    
+    let has_string = false;
+    let i: u64 = 0;
+    while i < len(tokens) {
+        if tokens[i].kind == TokenKind::StringLiteral { set has_string = true; }
+        set i = i + 1;
+    }
+    
+    give has_string;
+}
+
+proc test_lexer_operators() -> bool {
+    let source = "let x = 5 + 3 * 2 == 11;";
+    let tokens = lex_all(source);
+    
+    let has_plus = false;
+    let has_star = false;
+    let has_eq = false;
+    
+    let i: u64 = 0;
+    while i < len(tokens) {
+        if tokens[i].kind == TokenKind::Plus { set has_plus = true; }
+        if tokens[i].kind == TokenKind::Star { set has_star = true; }
+        if tokens[i].kind == TokenKind::DoubleEquals { set has_eq = true; }
+        set i = i + 1;
+    }
+    
+    give has_plus and has_star and has_eq;
+}
+
+proc test_lexer_comments() -> bool {
+    let source = "// This is a comment\nlet x = 5;";
+    let tokens = lex_all(source);
+    
+    let comment_not_in_tokens = true;
+    let i: u64 = 0;
+    while i < len(tokens) {
+        if tokens[i].kind == TokenKind::Comment {
+            set comment_not_in_tokens = false;
+        }
+        set i = i + 1;
+    }
+    
+    give comment_not_in_tokens;
+}
+
+proc test_lexer_delimiters() -> bool {
+    let source = "( ) { } [ ] , ; :";
+    let tokens = lex_all(source);
+    
+    if len(tokens) < 9 {
+        give false;
+    }
+    
+    if tokens[0].kind != TokenKind::LeftParen { give false; }
+    if tokens[1].kind != TokenKind::RightParen { give false; }
+    if tokens[2].kind != TokenKind::LeftBrace { give false; }
+    if tokens[3].kind != TokenKind::RightBrace { give false; }
+    if tokens[4].kind != TokenKind::LeftBracket { give false; }
+    if tokens[5].kind != TokenKind::RightBracket { give false; }
+    if tokens[6].kind != TokenKind::Comma { give false; }
+    if tokens[7].kind != TokenKind::Semicolon { give false; }
+    if tokens[8].kind != TokenKind::Colon { give false; }
+    
+    give true;
+}
+
+proc test_lexer_multi_char_operators() -> bool {
+    let source = "if x -> foo && bar || baz { }";
+    let tokens = lex_all(source);
+    
+    let has_arrow = false;
+    let has_and = false;
+    let has_or = false;
+    
+    let i: u64 = 0;
+    while i < len(tokens) {
+        if tokens[i].kind == TokenKind::Arrow { set has_arrow = true; }
+        if tokens[i].kind == TokenKind::And { set has_and = true; }
+        if tokens[i].kind == TokenKind::Or { set has_or = true; }
+        set i = i + 1;
+    }
+    
+    give has_arrow and has_and and has_or;
+}
+
+proc run_all_lexer_tests() -> u64 {
+    let passed: u64 = 0;
+    
+    if test_lexer_hello_world() { set passed = passed + 1; }
+    if test_lexer_keywords() { set passed = passed + 1; }
+    if test_lexer_numbers() { set passed = passed + 1; }
+    if test_lexer_strings() { set passed = passed + 1; }
+    if test_lexer_operators() { set passed = passed + 1; }
+    if test_lexer_comments() { set passed = passed + 1; }
+    if test_lexer_delimiters() { set passed = passed + 1; }
+    if test_lexer_multi_char_operators() { set passed = passed + 1; }
+    
+    give passed;
+}
+
+share test_lexer_hello_world
+share test_lexer_keywords
+share test_lexer_numbers
+share test_lexer_strings
+share test_lexer_operators
+share test_lexer_comments
+share test_lexer_delimiters
+share test_lexer_multi_char_operators
+share run_all_lexer_tests

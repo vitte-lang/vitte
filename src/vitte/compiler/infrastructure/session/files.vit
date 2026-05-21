@@ -1,0 +1,231 @@
+space vitte/compiler/infrastructure/session/files
+
+pick FileKind {
+    Real,
+    Virtual,
+    Stdlib,
+    Generated,
+}
+
+form SourceFile {
+    id: u64,
+    path: string,
+    kind: FileKind,
+    content: string,
+    line_offsets: [u64],
+    cached: bool,
+}
+
+form FileSpan {
+    file_id: u64,
+    start: u64,
+    end: u64,
+}
+
+form FileLoc {
+    file_id: u64,
+    line: u64,
+    column: u64,
+}
+
+form FileManager {
+    files: [SourceFile],
+    path_to_id: [string],
+    next_id: u64,
+    stdlib_loaded: bool,
+}
+
+proc new_file_manager() -> FileManager {
+    give FileManager {
+        files: [],
+        path_to_id: [],
+        next_id: 1,
+        stdlib_loaded: false,
+    };
+}
+
+proc load_file(fm: FileManager, path: string, content: string) -> FileManager {
+    let id = fm.next_id;
+    let file = SourceFile {
+        id: id,
+        path: path,
+        kind: FileKind::Real,
+        content: content,
+        line_offsets: compute_line_offsets(content),
+        cached: true,
+    };
+    set fm.files = fm.files + [file];
+    set fm.path_to_id = fm.path_to_id + [path];
+    set fm.next_id = id + 1;
+    give fm;
+}
+
+proc load_virtual_file(fm: FileManager, path: string, content: string) -> FileManager {
+    let id = fm.next_id;
+    let file = SourceFile {
+        id: id,
+        path: path,
+        kind: FileKind::Virtual,
+        content: content,
+        line_offsets: compute_line_offsets(content),
+        cached: true,
+    };
+    set fm.files = fm.files + [file];
+    set fm.path_to_id = fm.path_to_id + [path];
+    set fm.next_id = id + 1;
+    give fm;
+}
+
+proc load_stdlib_file(fm: FileManager, path: string, content: string) -> FileManager {
+    let id = fm.next_id;
+    let file = SourceFile {
+        id: id,
+        path: path,
+        kind: FileKind::Stdlib,
+        content: content,
+        line_offsets: compute_line_offsets(content),
+        cached: true,
+    };
+    set fm.files = fm.files + [file];
+    set fm.path_to_id = fm.path_to_id + [path];
+    set fm.next_id = id + 1;
+    give fm;
+}
+
+proc get_file_by_id(fm: FileManager, id: u64) -> SourceFile {
+    let i: u64 = 0;
+    while i < len(fm.files) {
+        let f = fm.files[i];
+        if f.id == id {
+            give f;
+        }
+        set i = i + 1;
+    }
+    give SourceFile {
+        id: 0,
+        path: "?",
+        kind: FileKind::Real,
+        content: "",
+        line_offsets: [],
+        cached: false,
+    };
+}
+
+proc get_file_by_path(fm: FileManager, path: string) -> SourceFile {
+    let i: u64 = 0;
+    while i < len(fm.files) {
+        let f = fm.files[i];
+        if f.path == path {
+            give f;
+        }
+        set i = i + 1;
+    }
+    give SourceFile {
+        id: 0,
+        path: "?",
+        kind: FileKind::Real,
+        content: "",
+        line_offsets: [],
+        cached: false,
+    };
+}
+
+proc get_file_id(fm: FileManager, path: string) -> u64 {
+    let i: u64 = 0;
+    while i < len(fm.files) {
+        let f = fm.files[i];
+        if f.path == path {
+            give f.id;
+        }
+        set i = i + 1;
+    }
+    give 0;
+}
+
+proc compute_line_offsets(content: string) -> [u64] {
+    let offsets: [u64] = [0];
+    let i: u64 = 0;
+    while i < len(content) {
+        let ch = slice(content, i, i + 1);
+        if ch == "\n" {
+            set offsets = offsets + [i + 1];
+        }
+        set i = i + 1;
+    }
+    give offsets;
+}
+
+proc file_span_to_loc(file: SourceFile, span: FileSpan) -> FileLoc {
+    let line: u64 = 0;
+    let i: u64 = 0;
+    while i < len(file.line_offsets) {
+        if file.line_offsets[i] > span.start {
+            set line = i;
+            break;
+        }
+        set i = i + 1;
+    }
+    
+    let line_start: u64 = 0;
+    if line > 0 {
+        set line_start = file.line_offsets[line - 1];
+    } else {
+        set line_start = file.line_offsets[0];
+    }
+    
+    let column = span.start - line_start;
+    
+    give FileLoc {
+        file_id: file.id,
+        line: line + 1,
+        column: column + 1,
+    };
+}
+
+proc file_loc_to_string(loc: FileLoc) -> string {
+    give to_string(loc.line) + ":" + to_string(loc.column);
+}
+
+proc file_span_to_string(file: SourceFile, span: FileSpan) -> string {
+    let loc = file_span_to_loc(file, span);
+    let end_loc = file_span_to_loc(file, FileSpan {
+        file_id: span.file_id,
+        start: span.end,
+        end: span.end,
+    });
+    give file_loc_to_string(loc) + "-" + file_loc_to_string(end_loc);
+}
+
+proc file_manager_file_count(fm: FileManager) -> u64 {
+    give len(fm.files);
+}
+
+proc file_manager_total_lines(fm: FileManager) -> u64 {
+    let total: u64 = 0;
+    let i: u64 = 0;
+    while i < len(fm.files) {
+        let f = fm.files[i];
+        set total = total + len(f.line_offsets);
+        set i = i + 1;
+    }
+    give total;
+}
+
+share FileManager
+share SourceFile
+share FileSpan
+share FileLoc
+share FileKind
+share new_file_manager
+share load_file
+share load_virtual_file
+share load_stdlib_file
+share get_file_by_id
+share get_file_by_path
+share get_file_id
+share compute_line_offsets
+share file_span_to_loc
+share file_loc_to_string
+share file_span_to_string
+share file_manager_file_count
+share file_manager_total_lines

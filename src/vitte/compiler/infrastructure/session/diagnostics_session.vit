@@ -1,0 +1,199 @@
+space vitte/compiler/infrastructure/session/diagnostics_session
+
+use vitte/compiler/infrastructure/session/files
+
+pick DiagnosticLevel {
+    Note,
+    Warning,
+    Error,
+    FatalError,
+    InternalError,
+}
+
+form Diagnostic {
+    level: DiagnosticLevel,
+    phase: string,
+    code: string,
+    message: string,
+    file_id: u64,
+    span_start: u64,
+    span_end: u64,
+    suggestions: [string],
+}
+
+form DiagnosticSession {
+    diagnostics: [Diagnostic],
+    has_fatal: bool,
+    has_internal_error: bool,
+    file_manager: FileManager,
+    max_errors: u64,
+    error_count: u64,
+    warning_count: u64,
+}
+
+proc new_diagnostic_session(fm: FileManager) -> DiagnosticSession {
+    give DiagnosticSession {
+        diagnostics: [],
+        has_fatal: false,
+        has_internal_error: false,
+        file_manager: fm,
+        max_errors: 100,
+        error_count: 0,
+        warning_count: 0,
+    };
+}
+
+proc emit_diagnostic(
+    sess: DiagnosticSession,
+    level: DiagnosticLevel,
+    phase: string,
+    code: string,
+    message: string,
+    file_id: u64,
+    span_start: u64,
+    span_end: u64
+) -> DiagnosticSession {
+    if level == DiagnosticLevel::Error or level == DiagnosticLevel::FatalError {
+        set sess.error_count = sess.error_count + 1;
+    }
+    if level == DiagnosticLevel::Warning {
+        set sess.warning_count = sess.warning_count + 1;
+    }
+    
+    if level == DiagnosticLevel::FatalError {
+        set sess.has_fatal = true;
+    }
+    
+    if level == DiagnosticLevel::InternalError {
+        set sess.has_internal_error = true;
+    }
+    
+    let diag = Diagnostic {
+        level: level,
+        phase: phase,
+        code: code,
+        message: message,
+        file_id: file_id,
+        span_start: span_start,
+        span_end: span_end,
+        suggestions: [],
+    };
+    
+    set sess.diagnostics = sess.diagnostics + [diag];
+    give sess;
+}
+
+proc emit_error(
+    sess: DiagnosticSession,
+    phase: string,
+    code: string,
+    message: string
+) -> DiagnosticSession {
+    give emit_diagnostic(sess, DiagnosticLevel::Error, phase, code, message, 0, 0, 0);
+}
+
+proc emit_fatal_error(
+    sess: DiagnosticSession,
+    phase: string,
+    code: string,
+    message: string
+) -> DiagnosticSession {
+    give emit_diagnostic(sess, DiagnosticLevel::FatalError, phase, code, message, 0, 0, 0);
+}
+
+proc emit_warning(
+    sess: DiagnosticSession,
+    phase: string,
+    code: string,
+    message: string
+) -> DiagnosticSession {
+    give emit_diagnostic(sess, DiagnosticLevel::Warning, phase, code, message, 0, 0, 0);
+}
+
+proc emit_internal_error(
+    sess: DiagnosticSession,
+    phase: string,
+    message: string
+) -> DiagnosticSession {
+    give emit_diagnostic(sess, DiagnosticLevel::InternalError, phase, "E0000", message, 0, 0, 0);
+}
+
+proc emit_note(
+    sess: DiagnosticSession,
+    phase: string,
+    message: string
+) -> DiagnosticSession {
+    give emit_diagnostic(sess, DiagnosticLevel::Note, phase, "N0000", message, 0, 0, 0);
+}
+
+proc sess_has_errors(sess: DiagnosticSession) -> bool {
+    give sess.error_count > 0;
+}
+
+proc sess_has_fatal_errors(sess: DiagnosticSession) -> bool {
+    give sess.has_fatal;
+}
+
+proc sess_has_internal_errors(sess: DiagnosticSession) -> bool {
+    give sess.has_internal_error;
+}
+
+proc should_stop_compilation(sess: DiagnosticSession) -> bool {
+    if sess.has_fatal {
+        give true;
+    }
+    if sess.has_internal_error {
+        give true;
+    }
+    if sess.error_count >= sess.max_errors {
+        give true;
+    }
+    give false;
+}
+
+proc render_diagnostic_text(diag: Diagnostic) -> string {
+    let level_str = diagnostic_level_to_string(diag.level);
+    let loc_str = diag.code + ": ";
+    give level_str + ": " + loc_str + diag.message;
+}
+
+proc diagnostic_level_to_string(level: DiagnosticLevel) -> string {
+    if level == DiagnosticLevel::Note { give "note"; }
+    if level == DiagnosticLevel::Warning { give "warning"; }
+    if level == DiagnosticLevel::Error { give "error"; }
+    if level == DiagnosticLevel::FatalError { give "error"; }
+    if level == DiagnosticLevel::InternalError { give "internal error"; }
+    give "unknown";
+}
+
+proc render_diagnostics_text(sess: DiagnosticSession) -> string {
+    let output = "";
+    let i: u64 = 0;
+    while i < len(sess.diagnostics) {
+        let diag = sess.diagnostics[i];
+        set output = output + render_diagnostic_text(diag) + "\n";
+        set i = i + 1;
+    }
+    set output = output + "\n";
+    set output = output + to_string(sess.error_count) + " error(s), ";
+    set output = output + to_string(sess.warning_count) + " warning(s)";
+    give output;
+}
+
+share DiagnosticSession
+share Diagnostic
+share DiagnosticLevel
+share new_diagnostic_session
+share emit_diagnostic
+share emit_error
+share emit_fatal_error
+share emit_warning
+share emit_internal_error
+share emit_note
+share sess_has_errors
+share sess_has_fatal_errors
+share sess_has_internal_errors
+share should_stop_compilation
+share render_diagnostic_text
+share render_diagnostics_text
+share diagnostic_level_to_string
