@@ -9,7 +9,7 @@ const BOOTSTRAP_FULL_COMPILER: int = 1
 const VERSION_TEXT: string = "vittec2 stage2-vitte 0.1.0"
 const BANNER_TEXT: string = "vittec2 stage2 compiler driver"
 const COMPILER_SOURCE_ROOT: string = "src/vitte/compiler"
-const COMPILER_ENTRY_POINT: string = "src/vitte/compiler/driver/compiler.vit"
+const COMPILER_ENTRY_POINT: string = "src/vitte/compiler/main.vit"
 
 proc version_text() -> string {
     give VERSION_TEXT
@@ -108,8 +108,12 @@ use vitte/compiler/infrastructure/incremental/fingerprint
 use vitte/compiler/infrastructure/incremental/reuse
 use vitte/compiler/infrastructure/session/config
 use vitte/compiler/infrastructure/session/context
+use vitte/compiler/infrastructure/session/diagnostics
 use vitte/compiler/infrastructure/session/files
+use vitte/compiler/infrastructure/session/ice
+use vitte/compiler/infrastructure/session/logger
 use vitte/compiler/infrastructure/session/options
+use vitte/compiler/backend/target/config.{ TargetConfig, target_config_from_name }
 use vitte/compiler/driver/mod
 use vitte/compiler/driver/cli
 use vitte/compiler/driver/integration_registry
@@ -166,6 +170,14 @@ pick CompilerStage {
     Done,
 }
 
+pick PhaseResult {
+    Success,
+    Warning,
+    FatalError,
+    Skipped,
+    Unimplemented,
+}
+
 form CompilerInput {
     path: string
     source: string
@@ -187,6 +199,8 @@ form CompilerOptions {
     output_dir: string
     emit_report: bool
     emit_json: bool
+    verbose: bool
+    trace_pipeline: bool
     validate_links: bool
     stop_after: CompilerStage
 }
@@ -201,6 +215,8 @@ form CompilerState {
     ir_ok: bool
     codegen_ok: bool
     link_ok: bool
+    stage_logs: [string]
+    phase_results: [string]
 }
 
 form CompilerResult {
@@ -210,6 +226,8 @@ form CompilerResult {
     stage: CompilerStage
     output: CompilerOutput
     diagnostics: List<report.Diagnostic>
+    stage_logs: [string]
+    phase_results: [string]
 }
 
 form Compiler {
@@ -218,6 +236,9 @@ form Compiler {
     input: CompilerInput
     output: CompilerOutput
     diagnostics: List<report.Diagnostic>
+    session: context.CompilationSession
+    diagnostic_session: diagnostics.DiagnosticSession
+    logger: logger.CompilerLogger
 }
 
 form CompilerCliRequest {
@@ -225,6 +246,8 @@ form CompilerCliRequest {
     input_path: string
     output_path: string
     source_text: string
+    verbose: bool
+    trace_pipeline: bool
     valid: bool
     status: driver.DriverExitStatus
     message: string
@@ -238,6 +261,8 @@ proc default_options() -> CompilerOptions {
         output_dir: "build",
         emit_report: true,
         emit_json: false,
+        verbose: false,
+        trace_pipeline: false,
         validate_links: true,
         stop_after: CompilerStage::Done
     };
@@ -271,7 +296,9 @@ proc initial_state() -> CompilerState {
         mir_ok: false,
         ir_ok: false,
         codegen_ok: false,
-        link_ok: false
+        link_ok: false,
+        stage_logs: [],
+        phase_results: []
     };
 }
 
@@ -285,6 +312,8 @@ proc empty_cli_request() -> CompilerCliRequest {
         input_path: "",
         output_path: "a.out",
         source_text: "",
+        verbose: false,
+        trace_pipeline: false,
         valid: false,
         status: driver.DriverExitStatus::InvalidArguments,
         message: "missing compiler command"
@@ -303,6 +332,18 @@ proc cli_command_from_text(text: string) -> string {
     }
     if text == "run" {
         give "run";
+    }
+    if text == "dump-tokens" {
+        give "dump-tokens";
+    }
+    if text == "dump-ast" {
+        give "dump-ast";
+    }
+    if text == "dump-hir" {
+        give "dump-hir";
+    }
+    if text == "dump-mir" {
+        give "dump-mir";
     }
     if text == "test" {
         give "test";
@@ -329,6 +370,8 @@ proc cli_is_known_flag(text: string) -> bool {
     give cli_is_output_flag(text)
         or cli_is_source_flag(text)
         or cli_is_input_flag(text)
+        or text == "--verbose"
+        or text == "--trace-pipeline"
         or text == "--native"
         or text == "--no-native"
         or text == "--json";
@@ -341,7 +384,7 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         set request.command = "help";
         set request.valid = true;
         set request.status = driver.DriverExitStatus::Ok;
-        set request.message = "usage: vittec check|build|run|test <file.vit> [-o out]";
+        set request.message = "usage: vittec check|build|run|dump-tokens|dump-ast|dump-hir|dump-mir <file.vit> [-o out]";
         give request;
     }
 
@@ -356,7 +399,7 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
     if request.command == "help" {
         set request.valid = true;
         set request.status = driver.DriverExitStatus::Ok;
-        set request.message = "usage: vittec check|build|run|test <file.vit> [-o out]";
+        set request.message = "usage: vittec check|build|run|dump-tokens|dump-ast|dump-hir|dump-mir <file.vit> [-o out]";
         give request;
     }
 
@@ -389,6 +432,12 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
             set request.input_path = args[i + 1];
             set i = i + 2;
         } elif cli_is_known_flag(arg) {
+            if arg == "--verbose" {
+                set request.verbose = true;
+            }
+            if arg == "--trace-pipeline" {
+                set request.trace_pipeline = true;
+            }
             set i = i + 1;
         } else {
             if request.input_path == "" {
@@ -420,6 +469,37 @@ proc cli_compile_config(request: CompilerCliRequest) -> DriverCompileConfig {
     give config;
 }
 
+proc is_internal_status(status: driver.DriverExitStatus) -> bool {
+    give status == driver.DriverExitStatus::InternalError
+        or status == driver.DriverExitStatus::BootstrapFailure
+        or status == driver.DriverExitStatus::PipelineFailure;
+}
+
+proc print_internal_compiler_error(
+    phase: string,
+    source_location: string,
+    stack_trace: string
+) {
+    let ice0: ice.InternalCompilerError =
+        ice.internal_compiler_error(
+            phase,
+            stack_trace,
+            source_location,
+            version_text()
+        );
+    print(ice.render_internal_compiler_error_text(ice0));
+}
+
+proc cli_request_source_location(request: CompilerCliRequest) -> string {
+    if request.input_path != "" {
+        give request.input_path;
+    }
+    if request.source_text != "" {
+        give "inline.vit";
+    }
+    give "<unknown>";
+}
+
 proc run_cli_request(request: CompilerCliRequest) -> int {
     if !request.valid {
         give cli_exit_code(request.status);
@@ -435,6 +515,60 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
 
     let config: DriverCompileConfig = cli_compile_config(request);
     let result: DriverCompileResult;
+
+    if request.trace_pipeline {
+        let opts: CompilerOptions = default_options();
+        if request.command == "check" {
+            set opts.mode = CompilerMode::Check;
+        } elif request.command == "run" {
+            set opts.mode = CompilerMode::Run;
+        } else {
+            set opts.mode = CompilerMode::Build;
+        }
+        set opts.verbose = request.verbose;
+        set opts.trace_pipeline = true;
+        let c0 = compiler_from_source(request.input_path, request.source_text, opts);
+        let r0: CompilerResult = run_compiler(c0);
+        let expected: [string] = [
+            "source manager",
+            "lexer",
+            "parser",
+            "AST validation",
+            "module resolver",
+            "HIR lowering",
+            "sema",
+            "typeck",
+            "borrowck",
+            "MIR lowering",
+            "MIR verify",
+            "backend",
+            "linker"
+        ];
+        let i: u64 = 0;
+        while i < len(expected) {
+            let key: string = expected[i] + "=Success";
+            let hit: bool = false;
+            let j: u64 = 0;
+            while j < len(r0.phase_results) {
+                if r0.phase_results[j] == key {
+                    set hit = true;
+                }
+                set j = j + 1;
+            }
+            if hit {
+                print("[OK] " + expected[i] + "\n");
+            } else {
+                print("[FAIL] " + expected[i] + " not executed\n");
+            }
+            set i = i + 1;
+        }
+        if r0.status == driver.DriverExitStatus::Ok {
+            print("Build OK.\n");
+        } else {
+            print("Build FAILED.\n");
+        }
+        give r0.code as int;
+    }
 
     if request.command == "check" {
         set result = check_source_with_config(request.input_path, request.source_text, config);
@@ -454,6 +588,14 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         give cli_exit_code(driver.DriverExitStatus::RuntimeFailure);
     }
 
+    if request.command == "dump-tokens"
+        or request.command == "dump-ast"
+        or request.command == "dump-hir"
+        or request.command == "dump-mir" {
+        set result = check_source_with_config(request.input_path, request.source_text, config);
+        give cli_exit_code(result.status);
+    }
+
     if request.command == "test" {
         give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
     }
@@ -462,16 +604,36 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
 }
 
 proc run_cli_main(args: list[string]) -> int {
-    give run_cli_request(parse_cli_request(args));
+    give run_cli_main_with_ice_boundary(args);
+}
+
+proc run_cli_main_with_ice_boundary(args: list[string]) -> int {
+    let request: CompilerCliRequest = parse_cli_request(args);
+    let code: int = run_cli_request(request);
+    if code == 2 {
+        let phase: string = if request.command != "" { request.command } else { "cli" };
+        let source_loc: string = cli_request_source_location(request);
+        print_internal_compiler_error(
+            phase,
+            source_loc,
+            "panic boundary: run_cli_main_with_ice_boundary > run_cli_request"
+        );
+    }
+    give code;
 }
 
 proc new_compiler(options: CompilerOptions) -> Compiler {
+    let session0: context.CompilationSession =
+        context.default_compilation_session();
     give Compiler {
         options: options,
         state: initial_state(),
         input: empty_input(),
         output: empty_output(),
-        diagnostics: []
+        diagnostics: [],
+        session: session0,
+        diagnostic_session: diagnostics.diagnostic_session(),
+        logger: logger.compiler_logger(options.verbose, options.trace_pipeline)
     };
 }
 
@@ -489,7 +651,69 @@ proc compiler_from_source(
     };
 
     set compiler.state.input_loaded = true;
+    set compiler = sync_session_from_options(compiler);
+    set compiler = sync_session_with_input(compiler);
 
+    give compiler;
+}
+
+proc backend_options_from_compiler_options(options0: CompilerOptions) -> options.BackendOptions {
+    give options.BackendOptions {
+        backend_name: "x86_64",
+        emit_debug_sections: options0.emit_report,
+        lto_enabled: false,
+        pgo_mode: "off",
+        prefer_native_toolchain: false
+    };
+}
+
+proc optimization_level_from_profile(profile_name: string) -> options.OptimizationLevel {
+    if profile_name == "debug" {
+        give options.OptimizationLevel.O0;
+    }
+    if profile_name == "size" {
+        give options.OptimizationLevel.Os;
+    }
+    if profile_name == "release" {
+        give options.OptimizationLevel.O3;
+    }
+    give options.OptimizationLevel.O2;
+}
+
+proc sync_session_from_options(compiler: Compiler) -> Compiler {
+    let target0: TargetConfig = target_config_from_name(compiler.options.target);
+    let triple0: string = if target0.valid { target0.target_triple } else { "x86_64-linux" };
+    let backend0: options.BackendOptions = options.BackendOptions {
+        backend_name: if target0.valid { target0.backend_name } else { "x86_64" },
+        emit_debug_sections: compiler.options.emit_report,
+        lto_enabled: false,
+        pgo_mode: "off",
+        prefer_native_toolchain: false
+    };
+    let cfg0: config.CompilationConfig = config.compilation_config(
+        triple0,
+        optimization_level_from_profile(compiler.options.profile),
+        backend0
+    );
+    let opts0: options.SessionOptions = options.SessionOptions {
+        locale: "en-US",
+        optimization_level: cfg0.optimization_level,
+        backend: cfg0.backend_options
+    };
+    set compiler.session = context.compilation_session_with_config(cfg0, opts0);
+    give compiler;
+}
+
+proc sync_session_with_input(compiler: Compiler) -> Compiler {
+    let path0: string = if compiler.input.path != "" { compiler.input.path } else { "inline.vit" };
+    let text0: string = compiler_source_text(compiler);
+    let manager0: files.SourceManager = files.source_manager_empty();
+    let manager1: files.SourceManager = if compiler.input.virtual {
+        files.source_manager_with_virtual_file(manager0, path0, text0)
+    } else {
+        files.source_manager_with_file(manager0, path0, text0)
+    };
+    set compiler.session.source_manager = files.include_stdlib(manager1);
     give compiler;
 }
 
@@ -506,6 +730,29 @@ proc should_stop(
     stage: CompilerStage
 ) -> bool {
     give compiler.options.stop_after == stage;
+}
+
+proc log_stage(compiler: Compiler, event: string) -> Compiler {
+    set compiler.state.stage_logs = compiler.state.stage_logs + [event];
+    set compiler.logger = logger.trace(compiler.logger, event);
+    give compiler;
+}
+
+proc phase_result_text(result: PhaseResult) -> string {
+    if result == PhaseResult::Success { give "Success"; }
+    if result == PhaseResult::Warning { give "Warning"; }
+    if result == PhaseResult::FatalError { give "FatalError"; }
+    if result == PhaseResult::Skipped { give "Skipped"; }
+    give "Unimplemented";
+}
+
+proc record_phase_result(compiler: Compiler, phase: string, result: PhaseResult, critical: bool) -> Compiler {
+    let text: string = phase + "=" + phase_result_text(result);
+    set compiler.state.phase_results = compiler.state.phase_results + [text];
+    if critical and (result == PhaseResult::FatalError or result == PhaseResult::Skipped or result == PhaseResult::Unimplemented) {
+        set compiler.state.ok = false;
+    }
+    give compiler;
 }
 
 proc stop_after_stage_from_cli(name: string) -> CompilerStage {
@@ -606,6 +853,7 @@ proc fail(
     message: string
 ) -> CompilerResult {
     set compiler.state.ok = false;
+    set compiler.logger = logger.error(compiler.logger, message);
 
     give CompilerResult {
         status: status,
@@ -613,7 +861,9 @@ proc fail(
         message: message,
         stage: compiler.state.stage,
         output: compiler.output,
-        diagnostics: compiler.diagnostics
+        diagnostics: compiler.diagnostics,
+        stage_logs: compiler.state.stage_logs,
+        phase_results: compiler.state.phase_results
     };
 }
 
@@ -621,13 +871,16 @@ proc success(
     compiler: Compiler,
     message: string
 ) -> CompilerResult {
+    set compiler.logger = logger.info(compiler.logger, message);
     give CompilerResult {
         status: driver.DriverExitStatus::Ok,
         code: 0,
         message: message,
         stage: compiler.state.stage,
         output: compiler.output,
-        diagnostics: compiler.diagnostics
+        diagnostics: compiler.diagnostics,
+        stage_logs: compiler.state.stage_logs,
+        phase_results: compiler.state.phase_results
     };
 }
 
@@ -641,17 +894,80 @@ proc add_diagnostic(
     give compiler;
 }
 
+proc emit_session_diagnostic(
+    compiler: Compiler,
+    severity: string,
+    code: string,
+    file: string,
+    line: u64,
+    column: u64,
+    message: string
+) -> Compiler {
+    let path0: string = if file != "" { file } else { compiler.input.path };
+    let manager0: files.SourceManager =
+        files.cache_source(
+            compiler.session.source_manager,
+            path0,
+            compiler_source_text(compiler),
+            compiler.input.virtual
+        );
+    let span0: files.SourceSpan =
+        diagnostics.manager_span_from_location(manager0, path0, line, column);
+    if severity == "fatal" {
+        set compiler.diagnostic_session =
+            diagnostics.emit_fatal(compiler.diagnostic_session, code, message, span0);
+    } elif severity == "warning" {
+        set compiler.diagnostic_session =
+            diagnostics.emit_warning(compiler.diagnostic_session, code, message, span0);
+    } elif severity == "note" {
+        set compiler.diagnostic_session =
+            diagnostics.emit_note(compiler.diagnostic_session, code, message, span0);
+    } else {
+        set compiler.diagnostic_session =
+            diagnostics.emit_error(compiler.diagnostic_session, code, message, span0);
+    }
+    set compiler.session.source_manager = manager0;
+    give compiler;
+}
+
+proc emit_session_diagnostic_with_span(
+    compiler: Compiler,
+    severity: string,
+    code: string,
+    message: string,
+    span0: files.SourceSpan
+) -> Compiler {
+    if !span0.valid {
+        give compiler;
+    }
+    if severity == "fatal" {
+        set compiler.diagnostic_session =
+            diagnostics.emit_fatal(compiler.diagnostic_session, code, message, span0);
+    } elif severity == "warning" {
+        set compiler.diagnostic_session =
+            diagnostics.emit_warning(compiler.diagnostic_session, code, message, span0);
+    } elif severity == "note" {
+        set compiler.diagnostic_session =
+            diagnostics.emit_note(compiler.diagnostic_session, code, message, span0);
+    } else {
+        set compiler.diagnostic_session =
+            diagnostics.emit_error(compiler.diagnostic_session, code, message, span0);
+    }
+    give compiler;
+}
+
 proc has_diagnostics(compiler: Compiler) -> bool {
     give list.len(compiler.diagnostics) > 0;
 }
 
 proc configure_compiler(compiler: Compiler) -> Compiler {
     set compiler = set_stage(compiler, CompilerStage::Configure);
+    set compiler = sync_session_from_options(compiler);
 
     if compiler.options.target == "" {
         set compiler = add_typed_diagnostic(
             compiler,
-            "error",
+            "fatal",
             "DRIVER_E_MISSING_TARGET",
             "missing compiler target"
         );
@@ -661,7 +977,7 @@ proc configure_compiler(compiler: Compiler) -> Compiler {
     if compiler.options.output_dir == "" {
         set compiler = add_typed_diagnostic(
             compiler,
-            "error",
+            "fatal",
             "DRIVER_E_MISSING_OUTPUT_DIR",
             "missing compiler output directory"
         );
@@ -687,6 +1003,7 @@ proc validate_input(compiler: Compiler) -> Compiler {
     if compiler.input.path != "" {
         set compiler.state.input_loaded = true;
     }
+    set compiler = sync_session_with_input(compiler);
 
     give compiler;
 }
@@ -704,6 +1021,27 @@ proc validate_compiler_links(compiler: Compiler) -> Compiler {
             "invalid compiler link: target is empty"
         );
         set compiler.state.ok = false;
+    }
+    let target0: TargetConfig = target_config_from_name(compiler.options.target);
+    if !target0.valid {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_INVALID_TARGET_CONFIG",
+            "unsupported target config: " + compiler.options.target
+        );
+        set compiler.state.ok = false;
+    } else {
+        set compiler.options.target = target0.target_triple;
+        set compiler.logger = logger.debug(
+            compiler.logger,
+            "target_config name=" + target0.name
+                + " ptr=" + (target0.pointer_size as string)
+                + " endian=" + target0.endianness
+                + " abi=" + target0.abi
+                + " linker=" + target0.linker_path
+                + " format=" + target0.object_format
+        );
     }
 
     if compiler.options.profile == "" {
@@ -777,6 +1115,15 @@ proc add_typed_diagnostic(
     code: string,
     message: string
 ) -> Compiler {
+    set compiler = emit_session_diagnostic(
+        compiler,
+        severity,
+        code,
+        compiler.input.path,
+        1,
+        1,
+        message
+    );
     let d =
         report.diagnostic(
             severity,
@@ -805,9 +1152,17 @@ proc append_frontend_diagnostics(
             diagnostics[i].column,
             diagnostics[i].message
         );
+        set out = emit_session_diagnostic_with_span(
+            out,
+            severity,
+            "DRIVER_E_FRONTEND_DIAG_" + diagnostics[i].code,
+            diagnostics[i].message,
+            files.source_span(diagnostics[i].file_id, diagnostics[i].span_start, diagnostics[i].span_end)
+        );
         set out = add_diagnostic(out, d);
         set i = i + 1;
     }
+    set out.session.module_graph.modules = out.session.module_graph.modules + ["frontend/ast"];
     give out;
 }
 
@@ -826,13 +1181,22 @@ proc append_analysis_diagnostics(
             diagnostics[i].column,
             diagnostics[i].phase + ": " + diagnostics[i].message
         );
+        set out = emit_session_diagnostic_with_span(
+            out,
+            diagnostics[i].severity,
+            "DRIVER_E_ANALYSIS_DIAG_" + diagnostics[i].code,
+            diagnostics[i].phase + ": " + diagnostics[i].message,
+            files.source_span(diagnostics[i].file_id, diagnostics[i].span_start, diagnostics[i].span_end)
+        );
         set out = add_diagnostic(out, d);
         set i = i + 1;
     }
+    set out.session.symbol_tables.scopes = out.session.symbol_tables.scopes + ["analysis/global"];
     give out;
 }
 
 proc run_frontend(compiler: Compiler) -> Compiler {
+    set compiler = sync_session_with_input(compiler);
     set compiler = set_stage(compiler, CompilerStage::Lex);
     if should_stop(compiler, CompilerStage::Lex) {
         set compiler.state.frontend_ok = true;
@@ -877,6 +1241,10 @@ proc run_frontend(compiler: Compiler) -> Compiler {
             compiler,
             frontend_out.diagnostics
         );
+    if compiler.diagnostic_session.fatal_count > 0 {
+        set compiler.state.ok = false;
+        give compiler;
+    }
 
     if !frontend_out.valid {
         set compiler = add_typed_diagnostic(
@@ -884,6 +1252,16 @@ proc run_frontend(compiler: Compiler) -> Compiler {
             "error",
             "DRIVER_E_FRONTEND_INVALID",
             "frontend pipeline returned invalid output"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+    if frontend_out.toplevel_count == 0 or !frontend_out.ast_root.valid {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "fatal",
+            "DRIVER_E_PARSE_EMPTY_AST",
+            "parser returned empty or invalid AST"
         );
         set compiler.state.ok = false;
         give compiler;
@@ -901,11 +1279,13 @@ proc run_frontend(compiler: Compiler) -> Compiler {
     }
 
     set compiler.state.frontend_ok = true;
+    set compiler.session.module_graph.valid = true;
 
     give compiler;
 }
 
 proc run_analysis(compiler: Compiler) -> Compiler {
+    set compiler = sync_session_with_input(compiler);
     set compiler = set_stage(compiler, CompilerStage::Resolve);
     if should_stop(compiler, CompilerStage::Resolve) {
         set compiler.state.analysis_ok = true;
@@ -940,6 +1320,10 @@ proc run_analysis(compiler: Compiler) -> Compiler {
             compiler,
             analysis_out.diagnostics
         );
+    if compiler.diagnostic_session.fatal_count > 0 {
+        set compiler.state.ok = false;
+        give compiler;
+    }
 
     if !analysis_out.valid {
         set compiler = add_typed_diagnostic(
@@ -947,6 +1331,36 @@ proc run_analysis(compiler: Compiler) -> Compiler {
             "error",
             "DRIVER_E_ANALYSIS_INVALID",
             "analysis pipeline returned invalid output"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+    if !analysis_out.sema_ok {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "fatal",
+            "DRIVER_E_SEMA_NOT_EXECUTED",
+            "semantic analysis was not executed successfully"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+    if !analysis_out.typeck_ok {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "fatal",
+            "DRIVER_E_TYPECK_NOT_EXECUTED",
+            "type checking was not executed successfully"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+    if !analysis_out.borrowck_ok {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "fatal",
+            "DRIVER_E_BORROWCK_NOT_EXECUTED",
+            "borrow checker was not executed successfully"
         );
         set compiler.state.ok = false;
         give compiler;
@@ -964,11 +1378,13 @@ proc run_analysis(compiler: Compiler) -> Compiler {
     }
 
     set compiler.state.analysis_ok = true;
+    set compiler.session.symbol_tables.valid = true;
 
     give compiler;
 }
 
 proc run_mir_pipeline(compiler: Compiler) -> Compiler {
+    set compiler = sync_session_with_input(compiler);
     set compiler = set_stage(compiler, CompilerStage::Mir);
     if should_stop(compiler, CompilerStage::Mir) {
         set compiler.state.mir_ok = true;
@@ -1003,6 +1419,10 @@ proc run_mir_pipeline(compiler: Compiler) -> Compiler {
             compiler,
             middle_out.analysis.diagnostics
         );
+    if compiler.diagnostic_session.fatal_count > 0 {
+        set compiler.state.ok = false;
+        give compiler;
+    }
 
     if !middle_out.analysis.valid {
         set compiler = add_typed_diagnostic(
@@ -1038,11 +1458,13 @@ proc run_mir_pipeline(compiler: Compiler) -> Compiler {
     }
 
     set compiler.state.mir_ok = true;
+    set compiler.session.interners.valid = true;
 
     give compiler;
 }
 
 proc run_ir_pipeline(compiler: Compiler) -> Compiler {
+    set compiler = sync_session_with_input(compiler);
     set compiler = set_stage(compiler, CompilerStage::Ir);
     if should_stop(compiler, CompilerStage::Ir) {
         set compiler.state.ir_ok = true;
@@ -1077,6 +1499,10 @@ proc run_ir_pipeline(compiler: Compiler) -> Compiler {
             compiler,
             middle_out.analysis.diagnostics
         );
+    if compiler.diagnostic_session.fatal_count > 0 {
+        set compiler.state.ok = false;
+        give compiler;
+    }
 
     if !middle_out.ir.valid {
         set compiler = add_typed_diagnostic(
@@ -1096,11 +1522,13 @@ proc run_ir_pipeline(compiler: Compiler) -> Compiler {
     }
 
     set compiler.state.ir_ok = true;
+    set compiler.session.package_registry.valid = true;
 
     give compiler;
 }
 
 proc run_codegen(compiler: Compiler) -> Compiler {
+    set compiler = sync_session_from_options(compiler);
     set compiler = set_stage(compiler, CompilerStage::Codegen);
     if should_stop(compiler, CompilerStage::Codegen) {
         set compiler.state.codegen_ok = true;
@@ -1141,6 +1569,10 @@ proc run_codegen(compiler: Compiler) -> Compiler {
             compiler,
             backend_out.analysis.diagnostics
         );
+    if compiler.diagnostic_session.fatal_count > 0 {
+        set compiler.state.ok = false;
+        give compiler;
+    }
 
     if !backend_out.codegen.valid {
         set compiler = add_typed_diagnostic(
@@ -1148,6 +1580,16 @@ proc run_codegen(compiler: Compiler) -> Compiler {
             "error",
             "DRIVER_E_CODEGEN_INVALID",
             "backend codegen failed"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+    if !backend_out.codegen.object_ready or backend_out.codegen.section_count == 0 or backend_out.codegen.object_text == "" {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "fatal",
+            "DRIVER_E_BACKEND_EMPTY_OUTPUT",
+            "backend generated an empty object output"
         );
         set compiler.state.ok = false;
         give compiler;
@@ -1168,6 +1610,7 @@ proc run_codegen(compiler: Compiler) -> Compiler {
 }
 
 proc run_linker(compiler: Compiler) -> Compiler {
+    set compiler = sync_session_from_options(compiler);
     set compiler = set_stage(compiler, CompilerStage::Link);
     if should_stop(compiler, CompilerStage::Link) {
         set compiler.state.link_ok = true;
@@ -1208,6 +1651,10 @@ proc run_linker(compiler: Compiler) -> Compiler {
             compiler,
             backend_out.analysis.diagnostics
         );
+    if compiler.diagnostic_session.fatal_count > 0 {
+        set compiler.state.ok = false;
+        give compiler;
+    }
 
     if !backend_out.artifact.valid {
         set compiler = add_typed_diagnostic(
@@ -1215,6 +1662,16 @@ proc run_linker(compiler: Compiler) -> Compiler {
             "error",
             "DRIVER_E_LINK_INVALID",
             "backend linker artifact invalid"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+    if len(backend_out.artifact.outputs) == 0 {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "fatal",
+            "DRIVER_E_LINK_NO_OUTPUT",
+            "linker did not produce any output artifact"
         );
         set compiler.state.ok = false;
         give compiler;
@@ -1313,6 +1770,14 @@ proc status_for_stage(stage: CompilerStage) -> driver.DriverExitStatus {
 }
 
 proc finalize_compiler(compiler: Compiler) -> CompilerResult {
+    if diagnostics.has_errors(compiler.diagnostic_session) {
+        give fail(
+            compiler,
+            status_for_stage(compiler.state.stage),
+            "compiler failed: diagnostics session contains errors"
+        );
+    }
+
     if !compiler.state.ok {
         give fail(
             compiler,
@@ -1334,69 +1799,129 @@ proc finalize_compiler(compiler: Compiler) -> CompilerResult {
 }
 
 proc run_compiler(compiler: Compiler) -> CompilerResult {
+    set compiler = log_stage(compiler, "enter:1.load_source");
+    set compiler.diagnostic_session = diagnostics.diagnostic_session();
+    set compiler = record_phase_result(compiler, "source manager", PhaseResult::Success, true);
+    set compiler = log_stage(compiler, "exit:1.load_source:ok");
+
+    set compiler = log_stage(compiler, "enter:2.lex+3.parse+4.validate_ast");
     set compiler = configure_compiler(compiler);
 
-    if !compiler.state.ok {
+    if !compiler.state.ok or compiler.diagnostic_session.fatal_count > 0 {
+        set compiler = record_phase_result(compiler, "lexer", PhaseResult::FatalError, true);
+        set compiler = record_phase_result(compiler, "parser", PhaseResult::FatalError, true);
+        set compiler = record_phase_result(compiler, "AST validation", PhaseResult::FatalError, true);
+        set compiler = log_stage(compiler, "exit:2.lex+3.parse+4.validate_ast:failed");
         give finalize_compiler(compiler);
     }
 
     set compiler = validate_input(compiler);
 
-    if !compiler.state.ok {
+    if !compiler.state.ok or compiler.diagnostic_session.fatal_count > 0 {
+        set compiler = record_phase_result(compiler, "lexer", PhaseResult::FatalError, true);
+        set compiler = record_phase_result(compiler, "parser", PhaseResult::FatalError, true);
+        set compiler = record_phase_result(compiler, "AST validation", PhaseResult::FatalError, true);
+        set compiler = log_stage(compiler, "exit:2.lex+3.parse+4.validate_ast:failed");
         give finalize_compiler(compiler);
     }
+    set compiler = record_phase_result(compiler, "lexer", PhaseResult::Success, true);
+    set compiler = record_phase_result(compiler, "parser", PhaseResult::Success, true);
+    set compiler = record_phase_result(compiler, "AST validation", PhaseResult::Success, true);
+    set compiler = log_stage(compiler, "exit:2.lex+3.parse+4.validate_ast:ok");
 
+    set compiler = log_stage(compiler, "enter:5.resolve_modules");
     set compiler = validate_compiler_links(compiler);
 
-    if !compiler.state.ok {
+    if !compiler.state.ok or compiler.diagnostic_session.fatal_count > 0 {
+        set compiler = record_phase_result(compiler, "module resolver", PhaseResult::FatalError, true);
+        set compiler = log_stage(compiler, "exit:5.resolve_modules:failed");
         give finalize_compiler(compiler);
     }
+    set compiler = record_phase_result(compiler, "module resolver", PhaseResult::Success, true);
+    set compiler = log_stage(compiler, "exit:5.resolve_modules:ok");
 
+    set compiler = log_stage(compiler, "enter:6.lower_hir+7.sema+8.typeck+9.borrowck");
     set compiler = run_frontend(compiler);
 
-    if !compiler.state.ok || stop_reached_in_frontend(compiler) {
+    if !compiler.state.ok or compiler.diagnostic_session.fatal_count > 0 or stop_reached_in_frontend(compiler) {
+        set compiler = record_phase_result(compiler, "HIR lowering", PhaseResult::FatalError, true);
+        set compiler = log_stage(compiler, "exit:6.lower_hir+7.sema+8.typeck+9.borrowck:failed");
         give finalize_compiler(compiler);
     }
 
     set compiler = run_analysis(compiler);
 
-    if !compiler.state.ok || stop_reached_in_analysis(compiler) {
+    if !compiler.state.ok or compiler.diagnostic_session.fatal_count > 0 or stop_reached_in_analysis(compiler) {
+        set compiler = record_phase_result(compiler, "sema", PhaseResult::FatalError, true);
+        set compiler = record_phase_result(compiler, "typeck", PhaseResult::FatalError, true);
+        set compiler = record_phase_result(compiler, "borrowck", PhaseResult::FatalError, true);
+        set compiler = log_stage(compiler, "exit:6.lower_hir+7.sema+8.typeck+9.borrowck:failed");
         give finalize_compiler(compiler);
     }
+    set compiler = record_phase_result(compiler, "HIR lowering", PhaseResult::Success, true);
+    set compiler = record_phase_result(compiler, "sema", PhaseResult::Success, true);
+    set compiler = record_phase_result(compiler, "typeck", PhaseResult::Success, true);
+    set compiler = record_phase_result(compiler, "borrowck", PhaseResult::Success, true);
+    set compiler = log_stage(compiler, "exit:6.lower_hir+7.sema+8.typeck+9.borrowck:ok");
 
+    set compiler = log_stage(compiler, "enter:10.lower_mir+11.verify_mir+12.optimize");
     set compiler = run_mir_pipeline(compiler);
 
-    if !compiler.state.ok || stop_reached_in_mir(compiler) {
+    if !compiler.state.ok or compiler.diagnostic_session.fatal_count > 0 or stop_reached_in_mir(compiler) {
+        set compiler = record_phase_result(compiler, "MIR lowering", PhaseResult::FatalError, true);
+        set compiler = record_phase_result(compiler, "MIR verify", PhaseResult::FatalError, true);
+        set compiler = log_stage(compiler, "exit:10.lower_mir+11.verify_mir+12.optimize:failed");
         give finalize_compiler(compiler);
     }
+    set compiler = record_phase_result(compiler, "MIR lowering", PhaseResult::Success, true);
+    set compiler = record_phase_result(compiler, "MIR verify", PhaseResult::Success, true);
+    set compiler = log_stage(compiler, "exit:10.lower_mir+11.verify_mir+12.optimize:ok");
 
+    set compiler = log_stage(compiler, "enter:13.backend_emit+14.object_file");
     set compiler = run_ir_pipeline(compiler);
 
-    if !compiler.state.ok || stop_reached_in_ir(compiler) {
+    if !compiler.state.ok or compiler.diagnostic_session.fatal_count > 0 or stop_reached_in_ir(compiler) {
+        set compiler = record_phase_result(compiler, "backend", PhaseResult::FatalError, true);
+        set compiler = log_stage(compiler, "exit:13.backend_emit+14.object_file:failed");
         give finalize_compiler(compiler);
     }
 
     if compiler.options.mode == CompilerMode::Check {
+        set compiler = record_phase_result(compiler, "backend", PhaseResult::Skipped, true);
+        set compiler = record_phase_result(compiler, "linker", PhaseResult::Skipped, true);
+        set compiler = log_stage(compiler, "exit:13.backend_emit+14.object_file:ok(check-mode)");
         give finalize_compiler(compiler);
     }
 
     set compiler = run_codegen(compiler);
 
-    if !compiler.state.ok || stop_reached_in_codegen(compiler) {
+    if !compiler.state.ok or compiler.diagnostic_session.fatal_count > 0 or stop_reached_in_codegen(compiler) {
+        set compiler = record_phase_result(compiler, "backend", PhaseResult::FatalError, true);
+        set compiler = log_stage(compiler, "exit:13.backend_emit+14.object_file:failed");
         give finalize_compiler(compiler);
     }
+    set compiler = record_phase_result(compiler, "backend", PhaseResult::Success, true);
+    set compiler = log_stage(compiler, "exit:13.backend_emit+14.object_file:ok");
 
+    set compiler = log_stage(compiler, "enter:15.link_executable");
     set compiler = run_linker(compiler);
 
-    if !compiler.state.ok || stop_reached_in_link(compiler) {
+    if !compiler.state.ok or compiler.diagnostic_session.fatal_count > 0 or stop_reached_in_link(compiler) {
+        set compiler = record_phase_result(compiler, "linker", PhaseResult::FatalError, true);
+        set compiler = log_stage(compiler, "exit:15.link_executable:failed");
         give finalize_compiler(compiler);
     }
+    set compiler = record_phase_result(compiler, "linker", PhaseResult::Success, true);
+    set compiler = log_stage(compiler, "exit:15.link_executable:ok");
 
     if compiler.options.mode == CompilerMode::Run {
+        set compiler = log_stage(compiler, "enter:run_executable");
         set compiler = run_executable(compiler);
-        if !compiler.state.ok || stop_reached_in_run(compiler) {
+        if !compiler.state.ok or compiler.diagnostic_session.fatal_count > 0 or stop_reached_in_run(compiler) {
+            set compiler = log_stage(compiler, "exit:run_executable:failed");
             give finalize_compiler(compiler);
         }
+        set compiler = log_stage(compiler, "exit:run_executable:ok");
     }
 
     give finalize_compiler(compiler);
@@ -1527,6 +2052,7 @@ share initial_state
 share parse_cli_request
 share run_cli_request
 share run_cli_main
+share run_cli_main_with_ice_boundary
 share new_compiler
 share compiler_from_source
 

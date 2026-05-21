@@ -1,0 +1,239 @@
+space vitte/compiler/infrastructure/session
+
+form SourceLocation {
+  line: u64,
+  column: u64,
+  valid: bool,
+}
+
+form SourceSpan {
+  file_id: u64,
+  start: u64,
+  end: u64,
+  valid: bool,
+}
+
+form SourceFileEntry {
+  file_id: u64,
+  path: string,
+  text: string,
+  virtual: bool,
+  valid: bool,
+}
+
+form SourceManager {
+  files: [SourceFileEntry],
+  next_file_id: u64,
+  valid: bool,
+}
+
+proc source_location(line: u64, column: u64, valid: bool) -> SourceLocation {
+  give SourceLocation {
+    line: line,
+    column: column,
+    valid: valid,
+  }
+}
+
+proc source_span(file_id: u64, start: u64, end: u64) -> SourceSpan {
+  give SourceSpan {
+    file_id: file_id,
+    start: start,
+    end: end,
+    valid: file_id > 0 and end >= start,
+  }
+}
+
+proc source_file_entry(file_id: u64, path: string, text: string, virtual: bool) -> SourceFileEntry {
+  give SourceFileEntry {
+    file_id: file_id,
+    path: path,
+    text: text,
+    virtual: virtual,
+    valid: file_id > 0 and path != "",
+  }
+}
+
+proc source_manager_empty() -> SourceManager {
+  give SourceManager {
+    files: [],
+    next_file_id: 1,
+    valid: true,
+  }
+}
+
+proc normalize_path(path: string) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(path) {
+    let ch: string = slice(path, i, i + 1);
+    if ch == "\\" {
+      set out = out + "/";
+    } else {
+      set out = out + ch;
+    }
+    set i = i + 1;
+  }
+  while starts_with(out, "./") {
+    set out = slice(out, 2, len(out));
+  }
+  if out == "" {
+    give ".";
+  }
+  give out;
+}
+
+proc source_manager_file_id(manager: SourceManager, path: string) -> u64 {
+  let normalized: string = normalize_path(path);
+  let i: u64 = 0;
+  while i < len(manager.files) {
+    if manager.files[i].path == normalized {
+      give manager.files[i].file_id;
+    }
+    set i = i + 1;
+  }
+  give 0;
+}
+
+proc assign_file_id(manager: SourceManager, path: string) -> u64 {
+  let existing: u64 = source_manager_file_id(manager, path);
+  if existing > 0 {
+    give existing;
+  }
+  give manager.next_file_id;
+}
+
+proc cache_source(manager: SourceManager, path: string, text: string, virtual: bool) -> SourceManager {
+  let normalized: string = normalize_path(path);
+  let existing: u64 = source_manager_file_id(manager, normalized);
+  let out: SourceManager = manager;
+
+  if existing > 0 {
+    let i: u64 = 0;
+    while i < len(out.files) {
+      if out.files[i].file_id == existing {
+        set out.files[i] = source_file_entry(existing, normalized, text, virtual);
+        set out.valid = out.valid and out.files[i].valid;
+        give out;
+      }
+      set i = i + 1;
+    }
+  }
+
+  let file_id: u64 = assign_file_id(out, normalized);
+  let file0: SourceFileEntry = source_file_entry(file_id, normalized, text, virtual);
+  set out.files = out.files + [file0];
+  if file_id >= out.next_file_id {
+    set out.next_file_id = file_id + 1;
+  }
+  set out.valid = out.valid and file0.valid;
+  give out;
+}
+
+proc load_file(manager: SourceManager, path: string) -> SourceManager {
+  // Runtime file IO is not available in this layer; keep a tracked entry.
+  give cache_source(manager, path, "", false);
+}
+
+proc source_manager_with_file(manager: SourceManager, path: string, text: string) -> SourceManager {
+  give cache_source(manager, path, text, false);
+}
+
+proc source_manager_with_virtual_file(manager: SourceManager, path: string, text: string) -> SourceManager {
+  give cache_source(manager, path, text, true);
+}
+
+proc source_manager_file_count(manager: SourceManager) -> u64 {
+  give len(manager.files);
+}
+
+proc line_col_lookup(manager: SourceManager, file_id: u64, offset: u64) -> SourceLocation {
+  let i: u64 = 0;
+  while i < len(manager.files) {
+    if manager.files[i].file_id == file_id {
+      let text: string = manager.files[i].text;
+      if len(text) == 0 {
+        give source_location(1, 1, true);
+      }
+      let line: u64 = 1;
+      let column: u64 = 1;
+      let j: u64 = 0;
+      while j < len(text) and j < offset {
+        let ch: string = slice(text, j, j + 1);
+        if ch == "\n" {
+          set line = line + 1;
+          set column = 1;
+        } else {
+          set column = column + 1;
+        }
+        set j = j + 1;
+      }
+      give source_location(line, column, true);
+    }
+    set i = i + 1;
+  }
+  give source_location(0, 0, false);
+}
+
+proc offset_lookup(manager: SourceManager, file_id: u64, line: u64, column: u64) -> u64 {
+  let i: u64 = 0;
+  while i < len(manager.files) {
+    if manager.files[i].file_id == file_id {
+      if line == 0 or column == 0 {
+        give 0;
+      }
+      let text: string = manager.files[i].text;
+      let current_line: u64 = 1;
+      let current_column: u64 = 1;
+      let j: u64 = 0;
+      while j < len(text) {
+        if current_line == line and current_column == column {
+          give j;
+        }
+        let ch: string = slice(text, j, j + 1);
+        if ch == "\n" {
+          set current_line = current_line + 1;
+          set current_column = 1;
+        } else {
+          set current_column = current_column + 1;
+        }
+        set j = j + 1;
+      }
+      if current_line == line and current_column == column {
+        give len(text);
+      }
+      give 0;
+    }
+    set i = i + 1;
+  }
+  give 0;
+}
+
+proc include_stdlib(manager: SourceManager) -> SourceManager {
+  let std_path: string = "stdlib/prelude.vit";
+  if source_manager_file_id(manager, std_path) > 0 {
+    give manager;
+  }
+  let std_text: string = "space vitte/prelude\n\nproc __stdlib_marker() -> int { give 0; }\n";
+  give source_manager_with_virtual_file(manager, std_path, std_text);
+}
+
+share SourceLocation
+share SourceSpan
+share SourceFileEntry
+share SourceManager
+share source_location
+share source_span
+share source_file_entry
+share source_manager_empty
+share normalize_path
+share source_manager_file_id
+share assign_file_id
+share cache_source
+share load_file
+share source_manager_with_file
+share source_manager_with_virtual_file
+share source_manager_file_count
+share line_col_lookup
+share offset_lookup
+share include_stdlib

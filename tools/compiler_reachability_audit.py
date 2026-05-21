@@ -9,7 +9,7 @@ from collections import deque
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "vitte" / "compiler"
-ENTRY = "vitte/compiler/driver/compiler"
+ENTRY = "vitte/compiler/main"
 ALLOW = ROOT / "tools" / "compiler_reachability_allowlist.txt"
 REPORT = ROOT / "target" / "reports" / "compiler_reachability" / "audit.json"
 

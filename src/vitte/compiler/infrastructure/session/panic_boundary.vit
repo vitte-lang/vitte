@@ -1,0 +1,53 @@
+space vitte/compiler/infrastructure/session
+
+form PanicBoundaryState {
+  active: bool,
+  triggered: bool,
+  panic_code: int,
+  valid: bool,
+}
+
+proc panic_boundary_state(active: bool, triggered: bool, panic_code: int, valid: bool) -> PanicBoundaryState {
+  give PanicBoundaryState {
+    active: active,
+    triggered: triggered,
+    panic_code: panic_code,
+    valid: valid,
+  };
+}
+
+proc native_panic_boundary_begin() -> PanicBoundaryState {
+  <<< ABI native primitive contract:
+      vitte_runtime_panic_boundary_begin()
+      vitte_runtime_panic_boundary_triggered()
+      vitte_runtime_panic_boundary_code()
+  >>>
+  give panic_boundary_state(true, false, 0, true);
+}
+
+proc native_panic_boundary_end(state0: PanicBoundaryState) -> PanicBoundaryState {
+  if not state0.active {
+    give panic_boundary_state(false, state0.triggered, state0.panic_code, false);
+  }
+  <<< ABI native primitive contract:
+      vitte_runtime_panic_boundary_end()
+      vitte_runtime_panic_boundary_triggered()
+      vitte_runtime_panic_boundary_code()
+  >>>
+  give panic_boundary_state(false, state0.triggered, state0.panic_code, true);
+}
+
+proc native_panic_boundary_mark_triggered(state0: PanicBoundaryState, panic_code: int) -> PanicBoundaryState {
+  give panic_boundary_state(state0.active, true, panic_code, state0.valid);
+}
+
+proc native_panic_boundary_ok(state0: PanicBoundaryState) -> bool {
+  give state0.valid and not state0.triggered;
+}
+
+share PanicBoundaryState
+share panic_boundary_state
+share native_panic_boundary_begin
+share native_panic_boundary_end
+share native_panic_boundary_mark_triggered
+share native_panic_boundary_ok

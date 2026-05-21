@@ -1,6 +1,7 @@
 space vitte/compiler/backend/link/linker
 
 use vitte/compiler/backend/ir/ir.{ IrLinkage, IrUnit, function_name_by_id, unit_module_count }
+use vitte/compiler/backends/backend_infrastructure.{ RuntimeLibrary, create_vitte_runtime }
 use vitte/compiler/backend/link/artifact.{
     LinkArtifact,
     LinkArtifactFormat,
@@ -289,12 +290,53 @@ proc add_ir_symbols(artifact: LinkArtifact, unit: IrUnit) -> LinkArtifact {
     give built;
 }
 
+proc runtime_object_output_path(output_path: string) -> string {
+    give output_path + ".runtime.o";
+}
+
+proc runtime_metadata_content(runtime0: RuntimeLibrary) -> string {
+    let built: string = "runtime_name=" + runtime0.name + "\n"
+        + "runtime_c_header=" + runtime0.c_header_path + "\n"
+        + "runtime_c_source=" + runtime0.c_source_path + "\n";
+    let i: u64 = 0;
+    let out: string = built;
+    while i < len(runtime0.functions) {
+        set out = out + "runtime_symbol=" + runtime0.functions[i].link_name + "\n";
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc add_runtime_payload(artifact: LinkArtifact, output_path: string, runtime0: RuntimeLibrary) -> LinkArtifact {
+    let object_out: LinkOutput = output_create(
+        2,
+        runtime_object_output_path(output_path),
+        LinkArtifactKind.ObjectFile,
+        LinkArtifactFormat.Elf,
+        true
+    );
+    let metadata_text: string = runtime_metadata_content(runtime0);
+    let runtime_section: LinkSection = section_create(
+        6,
+        ".vitte.runtime",
+        LinkSectionKind.Metadata,
+        1,
+        0,
+        len(metadata_text),
+        ["metadata"],
+        metadata_text
+    );
+    let art1: LinkArtifact = artifact_add_output(artifact, object_out);
+    give artifact_add_section(art1, runtime_section);
+}
+
 proc link_ir_unit(unit: IrUnit, output_path: string) -> LinkArtifact {
     give link_ir_unit_with_kind(unit, output_path, LinkArtifactKind.Executable);
 }
 
 proc link_ir_unit_with_kind(unit: IrUnit, output_path: string, artifact_kind: LinkArtifactKind) -> LinkArtifact {
     let target = link_target_from_name(unit.target.triple.arch + "-" + unit.target.triple.os);
+    let runtime0: RuntimeLibrary = create_vitte_runtime();
     let art0: LinkArtifact = artifact_create(1, "vitte-linked-artifact", target);
     let entry_name: string = function_name_by_id(unit, unit.entry_function_id);
     let layout: SectionLayout = build_section_layout(unit);
@@ -309,7 +351,8 @@ proc link_ir_unit_with_kind(unit: IrUnit, output_path: string, artifact_kind: Li
 
     let art1: LinkArtifact = artifact_add_output(art0, out);
     let art2: LinkArtifact = add_layout_sections(art1, layout);
-    let art3: LinkArtifact = add_entry_symbol(art2, entry_name);
+    let art2b: LinkArtifact = add_runtime_payload(art2, output_path, runtime0);
+    let art3: LinkArtifact = add_entry_symbol(art2b, entry_name);
     let art4: LinkArtifact = add_ir_symbols(art3, unit);
     let art5: LinkArtifact = artifact_set_entry(art4, entry_name);
 

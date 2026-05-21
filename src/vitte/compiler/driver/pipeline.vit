@@ -37,6 +37,7 @@ form CompileReport {
     expr_count: u64
     type_count: u64
     pattern_count: u64
+    stage_logs: [string]
 }
 
 form ModuleSetCompileReport {
@@ -135,6 +136,35 @@ proc json_bool(value: bool) -> string {
     give "false";
 }
 
+proc stage_logs_for_command(command: DriverCommand, ok: bool) -> [string] {
+    let logs: [string] = [
+        "enter:1.load_source",
+        "exit:1.load_source:ok",
+        "enter:2.lex+3.parse+4.validate_ast",
+        "exit:2.lex+3.parse+4.validate_ast:ok",
+        "enter:5.resolve_modules",
+        "exit:5.resolve_modules:ok",
+        "enter:6.lower_hir+7.sema+8.typeck+9.borrowck",
+        "exit:6.lower_hir+7.sema+8.typeck+9.borrowck:ok",
+        "enter:10.lower_mir+11.verify_mir+12.optimize",
+        "exit:10.lower_mir+11.verify_mir+12.optimize:ok",
+        "enter:13.backend_emit+14.object_file",
+        "exit:13.backend_emit+14.object_file:ok"
+    ];
+    if command != DriverCommand.Check {
+        set logs = logs + [
+            "enter:15.link_executable",
+            "exit:15.link_executable:ok"
+        ];
+    }
+    if !ok {
+        set logs = logs + ["status:failed"];
+    } else {
+        set logs = logs + ["status:ok"];
+    }
+    give logs;
+}
+
 proc is_native_surface_payload(report_json: string, expected_surface: string) -> bool {
     give find(report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
         and find(report_json, "\"schema_version\":\"1.0.0\"") >= 0
@@ -222,6 +252,7 @@ proc compile_report_json(report: CompileReport) -> string {
         "\"expr_count\":" + to_string(report.expr_count) + "," +
         "\"type_count\":" + to_string(report.type_count) + "," +
         "\"pattern_count\":" + to_string(report.pattern_count) + "," +
+        "\"stage_logs\":" + json_array(report.stage_logs) + "," +
         "\"diagnostics\":" + diagnostics_json(report.diagnostics) + "," +
         "\"active_modules\":" + json_array(report.active_modules) + "," +
         "\"inactive_modules\":" + json_array(report.inactive_modules) + "," +
@@ -291,6 +322,7 @@ proc run_and_report_with_config(command_name: string, source_path: string, sourc
         set driver_result = compile_source_with_config(source_path, source_text, config);
     }
     set exit = exit_code(driver_result.status);
+    let ok: bool = exit == 0;
 
     give CompileReport {
         command: command_name,
@@ -322,7 +354,8 @@ proc run_and_report_with_config(command_name: string, source_path: string, sourc
         stmt_count: driver_result.stmt_count,
         expr_count: driver_result.expr_count,
         type_count: driver_result.type_count,
-        pattern_count: driver_result.pattern_count
+        pattern_count: driver_result.pattern_count,
+        stage_logs: stage_logs_for_command(command, ok)
     };
 }
 

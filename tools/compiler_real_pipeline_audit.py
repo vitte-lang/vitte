@@ -58,9 +58,9 @@ def check_required_steps() -> list[dict[str, str]]:
 
 def detect_cli_entry() -> dict[str, str]:
     stage2 = read("toolchain/scripts/bootstrap/stage2.sh")
-    compiler = read("src/vitte/compiler/driver/compiler.vit")
+    compiler = read("src/vitte/compiler/main.vit")
     source_root_ok = 'COMPILER_SOURCE_ROOT="$ROOT_DIR/src/vitte/compiler"' in stage2
-    entry_ok = 'COMPILER_ENTRY_POINT="$COMPILER_SOURCE_ROOT/driver/compiler.vit"' in stage2
+    entry_ok = 'COMPILER_ENTRY_POINT="$COMPILER_SOURCE_ROOT/main.vit"' in stage2
     main_placeholder = re.search(
         r"proc\s+main\s*\(\s*args:\s*list\[string\]\s*\)\s*->\s*int\s*\{\s*give\s+0\s*;?\s*\}",
         compiler,
@@ -68,8 +68,8 @@ def detect_cli_entry() -> dict[str, str]:
     ) is not None
     return {
         "stage2_source_root": "src/vitte/compiler" if source_root_ok else "unknown",
-        "stage2_entry_point": "src/vitte/compiler/driver/compiler.vit" if entry_ok else "unknown",
-        "source_entry_declared": "vitte/compiler/driver/compiler",
+        "stage2_entry_point": "src/vitte/compiler/main.vit" if entry_ok else "unknown",
+        "source_entry_declared": "vitte/compiler/main",
         "runtime_cli_dispatch": "placeholder" if main_placeholder else "wired",
         "status": "real-entry-with-placeholder-main" if source_root_ok and entry_ok and main_placeholder else "ok",
     }

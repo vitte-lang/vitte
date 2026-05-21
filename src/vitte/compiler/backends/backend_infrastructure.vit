@@ -247,6 +247,8 @@ form RuntimeLibrary {
   functions: [RuntimeFunction],
   types: [RuntimeType],
   constants: [RuntimeConstant]
+  c_header_path: string,
+  c_source_path: string
 }
 
 form RuntimeFunction {
@@ -293,11 +295,48 @@ proc create_vitte_runtime() -> RuntimeLibrary {
     link_name: "vitte_print"
   })
 
+  push(funcs, RuntimeFunction {
+    name: "panic_boundary_begin",
+    signature: "fn panic_boundary_begin() -> int",
+    is_intrinsic: true,
+    link_name: "vitte_runtime_panic_boundary_begin"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "panic_boundary_end",
+    signature: "fn panic_boundary_end() -> int",
+    is_intrinsic: true,
+    link_name: "vitte_runtime_panic_boundary_end"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "panic_boundary_triggered",
+    signature: "fn panic_boundary_triggered() -> int",
+    is_intrinsic: true,
+    link_name: "vitte_runtime_panic_boundary_triggered"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "panic_boundary_code",
+    signature: "fn panic_boundary_code() -> int",
+    is_intrinsic: true,
+    link_name: "vitte_runtime_panic_boundary_code"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "panic_boundary_reset",
+    signature: "fn panic_boundary_reset() -> int",
+    is_intrinsic: true,
+    link_name: "vitte_runtime_panic_boundary_reset"
+  })
+
   give RuntimeLibrary {
     name: "vitte_runtime",
     functions: funcs,
     types: [],
-    constants: []
+    constants: [],
+    c_header_path: "src/vitte/compiler/backends/runtime_c/vitte_runtime.h",
+    c_source_path: "src/vitte/compiler/backends/runtime_c/vitte_runtime.c"
   }
 }
 

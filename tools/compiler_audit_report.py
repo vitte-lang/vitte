@@ -147,7 +147,7 @@ def main() -> int:
     modules = compiler_modules()
     all_file_count = sum(1 for path in ROOT.rglob("*") if path.is_file())
     by_id, deps = dependency_graph(modules)
-    all_reachable = reachable_from(["vitte/compiler/driver/compiler"], deps)
+    all_reachable = reachable_from(["vitte/compiler/main"], deps)
     real_roots = ["vitte/compiler/driver/compile", "vitte/compiler/driver/pipeline", "vitte/compiler/backend/pipeline"]
     real_reachable = reachable_from(real_roots, deps)
     non_test_ids = {module_id(path) for path in modules if not is_test_or_fixture(path)}
@@ -208,7 +208,7 @@ flowchart TD
         "",
         "Le depot contient beaucoup de pipeline compiler reel (frontend, HIR, sema, typeck, MIR, IR, codegen, link artifact), mais le binaire actuel n'est pas encore un compilateur natif complet au sens `source -> objet machine -> linker -> executable`.",
         "",
-        "Le point d'entree source est bien `src/vitte/compiler/driver/compiler.vit`. `main(args)` est maintenant cable cote source, mais le runtime CLI actuel vient encore du bootstrap genere tant que stage2 ne compile pas ce point d'entree en executable natif.",
+        "Le point d'entree source est bien `src/vitte/compiler/main.vit`. `main(args)` est maintenant cable cote source, mais le runtime CLI actuel vient encore du bootstrap genere tant que stage2 ne compile pas ce point d'entree en executable natif.",
         "",
         "## Executables trouves",
         "",
@@ -218,8 +218,8 @@ flowchart TD
         "",
         "## Vrai main CLI",
         "",
-        "- Entree stage2 declaree: `src/vitte/compiler/driver/compiler.vit`.",
-        f"- `src/vitte/compiler/driver/compiler.vit::main(args)`: {'dispatcher source cable' if source_main_wired else 'placeholder encore detecte'}.",
+        "- Entree stage2 declaree: `src/vitte/compiler/main.vit`.",
+        f"- `src/vitte/compiler/main.vit::main(args)`: {'dispatcher source cable' if source_main_wired else 'placeholder encore detecte'}.",
         "- Commandes runtime observees par `./bin/vittec --help`:",
         "",
         codeblock([help_out]),
@@ -242,7 +242,7 @@ flowchart TD
         "## Modules compiler/*",
         "",
         f"- Modules `.vit` sous `src/vitte/compiler`: {len(modules)}.",
-        f"- Modules non-test atteignables depuis `driver/compiler`: {len(all_reachable)} / {len(non_test_ids)}.",
+        f"- Modules non-test atteignables depuis `main`: {len(all_reachable)} / {len(non_test_ids)}.",
         f"- Modules non-test atteignables depuis les racines de pipeline reel (`driver/compile`, `driver/pipeline`, `backend/pipeline`): {len(real_reachable & non_test_ids)} / {len(non_test_ids)}.",
         "",
         "## Modules morts ou non utilises par le pipeline reel",

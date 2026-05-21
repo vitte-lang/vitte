@@ -55,6 +55,7 @@ use vitte/compiler/infrastructure/diagnostics/fluent.{
     fluent_diagnostic_message,
     fluent_locale
 }
+use vitte/compiler/infrastructure/session/files.{ SourceManager, source_manager_empty, cache_source, source_manager_file_id, offset_lookup }
 
 export *
 
@@ -63,8 +64,11 @@ form FrontendDiagnostic {
     message: string
     localized_message: string
     file: string
+    file_id: u64
     line: u64
     column: u64
+    span_start: u64
+    span_end: u64
     span: AstSpan
     locale: string
     fatal: bool
@@ -125,8 +129,11 @@ proc frontend_diagnostic(code: string, message: string, fatal: bool, file: strin
             message
         ),
         file: file,
+        file_id: 0,
         line: line,
         column: column,
+        span_start: 0,
+        span_end: safe_width,
         span: ast_span(
             file,
             line,
@@ -136,6 +143,46 @@ proc frontend_diagnostic(code: string, message: string, fatal: bool, file: strin
         ),
         locale: normalized,
         fatal: fatal
+    };
+}
+
+proc frontend_diagnostic_with_source_map(
+    manager: SourceManager,
+    code: string,
+    message: string,
+    fatal: bool,
+    file: string,
+    line: u64,
+    column: u64,
+    width: u64,
+    locale: string
+) -> FrontendDiagnostic {
+    let base: FrontendDiagnostic = frontend_diagnostic(
+        code,
+        message,
+        fatal,
+        file,
+        line,
+        column,
+        width,
+        locale
+    );
+    let file_id0: u64 = source_manager_file_id(manager, file);
+    let start0: u64 = offset_lookup(manager, file_id0, line, column);
+    let safe_width: u64 = if width == 0 { 1 } else { width };
+    give FrontendDiagnostic {
+        code: base.code,
+        message: base.message,
+        localized_message: base.localized_message,
+        file: base.file,
+        file_id: file_id0,
+        line: base.line,
+        column: base.column,
+        span_start: start0,
+        span_end: start0 + safe_width,
+        span: base.span,
+        locale: base.locale,
+        fatal: base.fatal
     };
 }
 
@@ -210,10 +257,13 @@ proc frontend_run_with_lang(source_path: string, source_text: string, lang: stri
 
     let input: FrontendInput =
         normalize_input(raw_input);
+    let source_manager0: SourceManager =
+        cache_source(source_manager_empty(), source_path, source_text, true);
 
     if not input.valid {
         let d: FrontendDiagnostic =
-            frontend_diagnostic(
+            frontend_diagnostic_with_source_map(
+                source_manager0,
                 "FLEX0001",
                 "empty source input",
                 true,
@@ -257,19 +307,36 @@ proc frontend_run_with_lang(source_path: string, source_text: string, lang: stri
     while i < len(scanned.diagnostics) {
         let diag: LexerDiagnostic =
             scanned.diagnostics[i];
+        let safe_width: u64 = if diag.width == 0 { 1 } else { diag.width };
+        let base_diag: FrontendDiagnostic =
+            frontend_diagnostic_with_source_map(
+                source_manager0,
+                diag.code,
+                diag.message,
+                diag.fatal,
+                source_path,
+                diag.line,
+                diag.column,
+                diag.width,
+                locale
+            );
 
         set diagnostics =
             diagnostics + [
-                frontend_diagnostic(
-                    diag.code,
-                    diag.message,
-                    diag.fatal,
-                    source_path,
-                    diag.line,
-                    diag.column,
-                    diag.width,
-                    locale
-                )
+                FrontendDiagnostic {
+                    code: base_diag.code,
+                    message: base_diag.message,
+                    localized_message: base_diag.localized_message,
+                    file: base_diag.file,
+                    file_id: base_diag.file_id,
+                    line: base_diag.line,
+                    column: base_diag.column,
+                    span_start: diag.offset,
+                    span_end: diag.offset + safe_width,
+                    span: base_diag.span,
+                    locale: base_diag.locale,
+                    fatal: base_diag.fatal
+                }
             ];
 
         set i =
@@ -281,19 +348,35 @@ proc frontend_run_with_lang(source_path: string, source_text: string, lang: stri
     while i < len(parsed.diagnostics) {
         let diag =
             parsed.diagnostics[i];
+        let base_diag: FrontendDiagnostic =
+            frontend_diagnostic_with_source_map(
+                source_manager0,
+                diag.code,
+                diag.message,
+                true,
+                source_path,
+                diag.line,
+                diag.column,
+                diag.width,
+                locale
+            );
 
         set diagnostics =
             diagnostics + [
-                frontend_diagnostic(
-                    diag.code,
-                    diag.message,
-                    true,
-                    source_path,
-                    diag.line,
-                    diag.column,
-                    diag.width,
-                    locale
-                )
+                FrontendDiagnostic {
+                    code: base_diag.code,
+                    message: base_diag.message,
+                    localized_message: base_diag.localized_message,
+                    file: base_diag.file,
+                    file_id: base_diag.file_id,
+                    line: base_diag.line,
+                    column: base_diag.column,
+                    span_start: diag.span_start,
+                    span_end: diag.span_end,
+                    span: base_diag.span,
+                    locale: base_diag.locale,
+                    fatal: base_diag.fatal
+                }
             ];
 
         set i =
@@ -311,7 +394,8 @@ proc frontend_run_with_lang(source_path: string, source_text: string, lang: stri
     if not validation.valid {
         set diagnostics =
             diagnostics + [
-                frontend_diagnostic(
+                frontend_diagnostic_with_source_map(
+                    source_manager0,
                     "FAST0001",
                     validation.message,
                     true,

@@ -919,8 +919,8 @@ case "$cmd" in
     --help|-h|help)
         printf '%s\n' "$banner"
         printf 'version: %s\n' "$version"
-        printf 'commands: parse check build-native dump-native-ir build selfhost-source --version --help\n'
-        printf 'flags: --src PATH --out PATH --stage NAME --trace-pipeline --strict --dump-ast-json --dump-hir-json --dump-mir-json --diagnostics-json\n'
+        printf 'commands: parse check build run dump-tokens dump-ast dump-hir dump-mir build-native dump-native-ir selfhost-source --version --help\n'
+        printf 'flags: --src PATH --out PATH -o PATH --stage NAME --trace-pipeline --strict --dump-ast-json --dump-hir-json --dump-mir-json --diagnostics-json\n'
         ;;
     selfhost-source|--selfhost-source)
         printf 'compiler_source_root=%s\n' "$compiler_source_root"
@@ -1019,6 +1019,141 @@ case "$cmd" in
             mir_block_count=$((proc_count + 1))
             printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"mir","producer":"vittec-bootstrap-seed","command":"check","status":"ok",%s,%s,"mir":{"kind":"bootstrap-structural","block_count":%s,"blocks":[]}}\n' "$source_meta" "$shape" "$mir_block_count"
         fi
+        if [ "$diagnostics_json" -eq 0 ] && [ "$dump_hir_json" -eq 0 ] && [ "$dump_mir_json" -eq 0 ]; then
+            printf 'check succeeded\n'
+        fi
+        ;;
+    run)
+        read_common_flags "$@"
+        src="$(arg_value --src "$@" || true)"
+        if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "run requires --src or file" "vittec run path.vit"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        tmp_bin="$(mktemp "${TMPDIR:-/tmp}/vittec-run-XXXXXX")"
+        write_compiler "$src" "$tmp_bin"
+        set +e
+        "$tmp_bin"
+        run_rc=$?
+        set -e
+        rm -f "$tmp_bin"
+        exit "$run_rc"
+        ;;
+    dump-tokens)
+        read_common_flags "$@"
+        dump_json=0
+        if has_flag --json "$@"; then
+            dump_json=1
+        fi
+        src="$(arg_value --src "$@" || true)"
+        if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "dump-tokens requires --src or file" "vittec dump-tokens path.vit"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        if [ "$dump_json" -eq 1 ]; then
+            token_json="$(tr ' \t\r\n' '\n' < "$src" | sed '/^$/d' | awk '
+                BEGIN {
+                    first = 1;
+                    printf "[";
+                }
+                {
+                    gsub(/\\/,"\\\\",$0);
+                    gsub(/"/,"\\\"",$0);
+                    if (!first) {
+                        printf ",";
+                    }
+                    printf "\"%s\"", $0;
+                    first = 0;
+                }
+                END {
+                    printf "]";
+                }
+            ')"
+            printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"tokens","producer":"vittec-bootstrap-seed","command":"dump-tokens","status":"ok","source":{"path":"%s"},"tokens":%s}\n' "$src" "$token_json"
+        else
+            tr ' \t\r\n' '\n' < "$src" | sed '/^$/d'
+        fi
+        ;;
+    dump-ast)
+        read_common_flags "$@"
+        dump_json=0
+        if has_flag --json "$@"; then
+            dump_json=1
+        fi
+        src="$(arg_value --src "$@" || true)"
+        if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "dump-ast requires --src or file" "vittec dump-ast path.vit"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        source_meta="$(source_meta_json "$src")"
+        shape="$(compiler_shape_json "$src")"
+        proc_count="$(grep -c '^proc[ \t]' "$src" || true)"
+        const_count="$(grep -c '^const[ \t]' "$src" || true)"
+        ast_node_count=$((proc_count + const_count + 2))
+        if [ "$dump_json" -eq 1 ]; then
+            printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"ast","producer":"vittec-bootstrap-seed","command":"dump-ast","status":"ok",%s,%s,"ast":{"kind":"bootstrap-structural","node_count":%s,"root":{"kind":"module","child_count":%s}}}\n' "$source_meta" "$shape" "$ast_node_count" "$ast_node_count"
+        else
+            printf 'AST\n'
+            printf 'source: %s\n' "$src"
+            printf 'kind: bootstrap-structural\n'
+            printf 'node_count: %s\n' "$ast_node_count"
+            printf 'root.kind: module\n'
+            printf 'root.child_count: %s\n' "$ast_node_count"
+        fi
+        ;;
+    dump-hir)
+        read_common_flags "$@"
+        dump_json=0
+        if has_flag --json "$@"; then
+            dump_json=1
+        fi
+        src="$(arg_value --src "$@" || true)"
+        if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "dump-hir requires --src or file" "vittec dump-hir path.vit"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        if diag_info="$(detect_professional_diagnostic "$src")"; then
+            render_professional_diagnostic_text "$src" "$diag_info" >&2
+            exit 1
+        fi
+        source_meta="$(source_meta_json "$src")"
+        shape="$(compiler_shape_json "$src")"
+        proc_count="$(grep -c '^proc[ \t]' "$src" || true)"
+        form_count="$(grep -c '^form[ \t]' "$src" || true)"
+        hir_node_count=$((proc_count + form_count))
+        if [ "$dump_json" -eq 1 ]; then
+            printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"hir","producer":"vittec-bootstrap-seed","command":"dump-hir","status":"ok",%s,%s,"hir":{"kind":"bootstrap-structural","node_count":%s,"nodes":[]}}\n' "$source_meta" "$shape" "$hir_node_count"
+        else
+            printf 'HIR\n'
+            printf 'source: %s\n' "$src"
+            printf 'kind: bootstrap-structural\n'
+            printf 'node_count: %s\n' "$hir_node_count"
+            printf 'nodes: []\n'
+        fi
+        ;;
+    dump-mir)
+        read_common_flags "$@"
+        dump_json=0
+        if has_flag --json "$@"; then
+            dump_json=1
+        fi
+        src="$(arg_value --src "$@" || true)"
+        if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "dump-mir requires --src or file" "vittec dump-mir path.vit"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        if diag_info="$(detect_professional_diagnostic "$src")"; then
+            render_professional_diagnostic_text "$src" "$diag_info" >&2
+            exit 1
+        fi
+        source_meta="$(source_meta_json "$src")"
+        shape="$(compiler_shape_json "$src")"
+        proc_count="$(grep -c '^proc[ \t]' "$src" || true)"
+        mir_block_count=$((proc_count + 1))
+        if [ "$dump_json" -eq 1 ]; then
+            printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"mir","producer":"vittec-bootstrap-seed","command":"dump-mir","status":"ok",%s,%s,"mir":{"kind":"bootstrap-structural","block_count":%s,"blocks":[]}}\n' "$source_meta" "$shape" "$mir_block_count"
+        else
+            printf 'MIR\n'
+            printf 'source: %s\n' "$src"
+            printf 'kind: bootstrap-structural\n'
+            printf 'block_count: %s\n' "$mir_block_count"
+            printf 'blocks: []\n'
+        fi
         ;;
     build-native)
         read_common_flags "$@"
@@ -1059,16 +1194,32 @@ case "$cmd" in
         ;;
     build)
         read_common_flags "$@"
-        trace_step "pipeline.lower:begin"
         stage="$(arg_value --stage "$@" || true)"
-        src_dir="$(arg_value --src "$@" || true)"
-        out_dir="$(arg_value --out "$@" || true)"
-        [ "$stage" = "stage1" ] || { cli_error E_CLI_STAGE "unsupported stage: $stage" "supported: stage1"; exit 2; }
-        [ -n "$src_dir" ] && [ -n "$out_dir" ] || { cli_error E_CLI_MISSING_ARG "build requires --stage, --src and --out" "vittec build --stage stage1 --src toolchain/stage1/src --out target/bootstrap/stage1"; exit 2; }
-        [ -f "$src_dir/main.vit" ] || { cli_error E_CLI_IO "cannot read $src_dir/main.vit" "check the path and permissions"; exit 1; }
-        trace_step "pipeline.emit:stage1"
-        write_compiler "$src_dir/main.vit" "$out_dir/vittec1"
-        trace_step "pipeline.emit:ok"
+        if [ -n "$stage" ]; then
+            trace_step "pipeline.lower:begin"
+            src_dir="$(arg_value --src "$@" || true)"
+            out_dir="$(arg_value --out "$@" || true)"
+            [ "$stage" = "stage1" ] || { cli_error E_CLI_STAGE "unsupported stage: $stage" "supported: stage1"; exit 2; }
+            [ -n "$src_dir" ] && [ -n "$out_dir" ] || { cli_error E_CLI_MISSING_ARG "build requires --stage, --src and --out" "vittec build --stage stage1 --src toolchain/stage1/src --out target/bootstrap/stage1"; exit 2; }
+            [ -f "$src_dir/main.vit" ] || { cli_error E_CLI_IO "cannot read $src_dir/main.vit" "check the path and permissions"; exit 1; }
+            trace_step "pipeline.emit:stage1"
+            write_compiler "$src_dir/main.vit" "$out_dir/vittec1"
+            trace_step "pipeline.emit:ok"
+        else
+            src="$(arg_value --src "$@" || true)"
+            if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+            out="$(arg_value --out "$@" || true)"
+            if [ -z "$out" ]; then out="$(arg_value -o "$@" || true)"; fi
+            [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "build requires input file" "vittec build main.vit -o build/main"; exit 2; }
+            [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+            [ -n "$out" ] || { cli_error E_CLI_MISSING_ARG "build requires -o/--out output path" "vittec build main.vit -o build/main"; exit 2; }
+            trace_step "pipeline.lower:begin"
+            trace_step "pipeline.emit:write-shell"
+            write_compiler "$src" "$out"
+            [ -f "$out" ] || { cli_error E_BUILD_OUTPUT "build failed to produce output: $out"; exit 1; }
+            trace_step "pipeline.emit:ok"
+            printf 'build succeeded: %s\n' "$out"
+        fi
         ;;
     *)
         cli_error E_CLI_COMMAND "unknown command: $cmd" "use --help to list commands"

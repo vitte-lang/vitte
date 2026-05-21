@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
 expect_root='src/vitte/compiler'
-expect_entry='src/vitte/compiler/driver/compiler.vit'
+expect_entry='src/vitte/compiler/main.vit'
 
 check_stage_file() {
   f="$1"
@@ -24,7 +24,7 @@ check_stage_file() {
 check_stage_file toolchain/stage1/src/main.vit
 check_stage_file toolchain/stage2/src/main.vit
 
-extra_entries=$(rg -n "COMPILER_ENTRY_POINT[[:space:]]*:[[:space:]]*string[[:space:]]*=" src toolchain tools -S | rg -v "toolchain/stage1/src/main.vit|toolchain/stage2/src/main.vit|src/vitte/compiler/driver/compiler.vit" || true)
+extra_entries=$(rg -n "COMPILER_ENTRY_POINT[[:space:]]*:[[:space:]]*string[[:space:]]*=" src toolchain tools -S | rg -v "toolchain/stage1/src/main.vit|toolchain/stage2/src/main.vit|src/vitte/compiler/driver/compiler.vit|src/vitte/compiler/main.vit" || true)
 if [ -n "$extra_entries" ]; then
   echo "[compiler-entry-lock][error] additional COMPILER_ENTRY_POINT constants found:" >&2
   echo "$extra_entries" >&2

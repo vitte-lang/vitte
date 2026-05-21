@@ -1,7 +1,7 @@
 space vitte/compiler/frontend/parse/parser
 
 use vitte/compiler/frontend/lexer/token.{ Token, TokenKind, token }
-use vitte/compiler/frontend/parse/errors.{ ParseDiagnostic, parse_error }
+use vitte/compiler/frontend/parse/errors.{ ParseDiagnostic, parse_error_with_span }
 use vitte/compiler/frontend/parse/recovery.{ recover_decl_index, recover_expr_index, recover_pattern_index, recover_stmt_index, recover_type_index }
 use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span }
 use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind, ast_expr_binary, ast_expr_call, ast_expr_index, ast_expr_leaf, ast_expr_member, ast_expr_node, ast_expr_typed, ast_expr_unary, ast_expr_unknown }
@@ -37,7 +37,7 @@ form ParserState {
 }
 
 proc parse_diag(code: string, message: string, line: u64, column: u64, width: u64) -> ParseDiagnostic {
-  give parse_error(code, message, line, column, width);
+  give parse_error_with_span(code, message, line, column, width, 0, if width == 0 { 1 } else { width });
 }
 
 proc parser_state(source_name: string, tokens: [Token]) -> ParserState {
@@ -108,7 +108,8 @@ proc advance(state: ParserState) -> ParserState {
 
 proc with_diag(state: ParserState, code: string, message: string) -> ParserState {
   let tok: Token = current_token(state);
-  let ds: [ParseDiagnostic] = state.diagnostics + [parse_diag(code, message, tok.line, tok.column, token_diag_width(tok))];
+  let width0: u64 = token_diag_width(tok);
+  let ds: [ParseDiagnostic] = state.diagnostics + [parse_error_with_span(code, message, tok.line, tok.column, width0, tok.offset, tok.offset + width0)];
   give ParserState {
     source_name: state.source_name,
     tokens: state.tokens,

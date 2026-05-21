@@ -3,7 +3,8 @@ space vitte/compiler/frontend/lexer/scanner
 use vitte/compiler/frontend/lexer/token.{
   Token,
   TokenKind,
-  token
+  token,
+  token_with_offset
 }
 
 use vitte/compiler/frontend/lexer/cursor.{
@@ -162,11 +163,12 @@ proc scan_identifier_token(cursor: Cursor) -> Token {
       TokenKind.Ident
     };
 
-  give token(
+  give token_with_offset(
     kind,
     lexeme,
     start_line,
-    start_col
+    start_col,
+    start
   );
 }
 
@@ -302,19 +304,21 @@ proc scan_number_token(cursor: Cursor) -> Token {
     };
 
   if not check.valid {
-    give token(
+    give token_with_offset(
       TokenKind.Invalid,
       lexeme,
       start_line,
-      start_col
+      start_col,
+      current.index
     );
   }
 
-  give token(
+  give token_with_offset(
     kind,
     lexeme,
     start_line,
-    start_col
+    start_col,
+    current.index
   );
 }
 
@@ -400,11 +404,12 @@ proc scan_quoted_token(cursor: Cursor, quote: string, kind: TokenKind) -> ScanRe
 
     set tokens =
       tokens + [
-        token(
+        token_with_offset(
           TokenKind.Invalid,
           lexeme,
           start_line,
-          start_col
+          start_col,
+          cursor.index
         )
       ];
   }
@@ -430,22 +435,24 @@ proc scan_quoted_token(cursor: Cursor, quote: string, kind: TokenKind) -> ScanRe
 
       set tokens =
         tokens + [
-          token(
+          token_with_offset(
             TokenKind.Invalid,
             lexeme,
             start_line,
-            start_col
+            start_col,
+            cursor.index
           )
         ];
     }
     else {
       set tokens =
         tokens + [
-          token(
+          token_with_offset(
             kind,
             lexeme,
             start_line,
-            start_col
+            start_col,
+            cursor.index
           )
         ];
     }
@@ -670,11 +677,12 @@ proc scan_tokens(text: string) -> ScanResult {
 
       set tokens =
         tokens + [
-          token(
+          token_with_offset(
             TokenKind.Symbol,
             sym,
             walk.line,
-            walk.column
+            walk.column,
+            walk.index
           )
         ];
 
@@ -694,11 +702,12 @@ proc scan_tokens(text: string) -> ScanResult {
 
       set tokens =
         tokens + [
-          token(
+          token_with_offset(
             TokenKind.Symbol,
             sym,
             walk.line,
-            walk.column
+            walk.column,
+            walk.index
           )
         ];
 
@@ -711,11 +720,12 @@ proc scan_tokens(text: string) -> ScanResult {
     if is_valid_single_symbol(ch) {
       set tokens =
         tokens + [
-          token(
+          token_with_offset(
             TokenKind.Symbol,
             ch,
             walk.line,
-            walk.column
+            walk.column,
+            walk.index
           )
         ];
     }
@@ -731,11 +741,12 @@ proc scan_tokens(text: string) -> ScanResult {
 
       set tokens =
         tokens + [
-          token(
+          token_with_offset(
             TokenKind.Invalid,
             ch,
             walk.line,
-            walk.column
+            walk.column,
+            walk.index
           )
         ];
 
@@ -749,11 +760,12 @@ proc scan_tokens(text: string) -> ScanResult {
 
   set tokens =
     tokens + [
-      token(
+      token_with_offset(
         TokenKind.Eof,
         "",
         walk.line,
-        walk.column
+        walk.column,
+        walk.index
       )
     ];
 
