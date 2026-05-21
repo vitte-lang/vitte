@@ -66,6 +66,9 @@ form AnalysisDiagnostic {
     related_labels: [AnalysisLabel]
     help: string
     file: string
+    file_id: u64
+    span_start: u64
+    span_end: u64
     source_excerpt: string
 }
 
@@ -88,6 +91,9 @@ form AnalysisDiagnosticBuilder {
     related_labels: [AnalysisLabel]
     help: string
     file: string
+    file_id: u64
+    span_start: u64
+    span_end: u64
     source_excerpt: string
 }
 
@@ -344,7 +350,65 @@ proc analysis_diagnostic(
         related_labels: [],
         help: suggestion,
         file: "",
+        file_id: 0,
+        span_start: 0,
+        span_end: normalize_span_length(length),
         source_excerpt: ""
+    };
+}
+
+proc analysis_diagnostic_with_span(
+    phase: string,
+    code: string,
+    severity: string,
+    message: string,
+    labels: [string],
+    suggestion: string,
+    line: u64,
+    column: u64,
+    length: u64,
+    fatal: bool,
+    file: string,
+    file_id: u64,
+    span_start: u64,
+    span_end: u64
+) -> AnalysisDiagnostic {
+    let base: AnalysisDiagnostic = analysis_diagnostic(
+        phase,
+        code,
+        severity,
+        message,
+        labels,
+        suggestion,
+        line,
+        column,
+        length,
+        fatal
+    );
+    give AnalysisDiagnostic {
+        phase: base.phase,
+        code: base.code,
+        severity: base.severity,
+        message: base.message,
+        labels: base.labels,
+        suggestion: base.suggestion,
+        line: base.line,
+        column: base.column,
+        length: base.length,
+        notes: base.notes,
+        fatal: base.fatal,
+
+        kind: base.kind,
+        phase_kind: base.phase_kind,
+        severity_kind: base.severity_kind,
+        primary_label: base.primary_label,
+        related_labels: base.related_labels,
+        help: base.help,
+        file: file,
+        file_id: file_id,
+        span_start: span_start,
+        span_end: span_end,
+        source_excerpt: base.source_excerpt
     };
 }
 
@@ -382,6 +446,9 @@ proc typed_analysis_diagnostic(
         related_labels: [],
         help: suggestion,
         file: file,
+        file_id: 0,
+        span_start: 0,
+        span_end: normalize_span_length(length),
         source_excerpt: ""
     };
 }
@@ -406,6 +473,9 @@ proc new_diagnostic_builder() -> AnalysisDiagnosticBuilder {
         related_labels: [],
         help: "",
         file: "",
+        file_id: 0,
+        span_start: 0,
+        span_end: 1,
         source_excerpt: ""
     };
 }
@@ -464,6 +534,7 @@ proc builder_location(
     set builder.line = line;
     set builder.column = column;
     set builder.length = normalize_span_length(length);
+    set builder.span_end = normalize_span_length(length);
     give builder;
 }
 
@@ -547,6 +618,9 @@ proc finish_diagnostic(
         related_labels: builder.related_labels,
         help: builder.help,
         file: builder.file,
+        file_id: builder.file_id,
+        span_start: builder.span_start,
+        span_end: builder.span_end,
         source_excerpt: builder.source_excerpt
     };
 }
@@ -688,6 +762,7 @@ share append_note
 share append_label_text
 
 share analysis_diagnostic
+share analysis_diagnostic_with_span
 share typed_analysis_diagnostic
 share new_diagnostic_builder
 share builder_phase

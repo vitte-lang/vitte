@@ -1,5 +1,34 @@
 # Changelog - Vitte Bootstrap Toolchain
 
+## [0.3.2] - 2026-05-22 - Compiler Hardening, Native Panic Boundary, Expanded Targets
+
+### ✅ Compiler pipeline hardening
+- Enforced strict stage status handling with explicit fatal behavior for missing critical phases.
+- Extended runtime pipeline assertions against silent success paths.
+- Strengthened linker/runtime integration by auto-wiring the C runtime payload in linker outputs.
+
+### ✅ Native panic boundary (runtime ABI)
+- Added native panic boundary ABI primitives and integrated them in compiler entry flow:
+  - begin / end / triggered / code / reset.
+- Added concrete runtime C implementation for panic boundary state tracking.
+- Unified ICE rendering path for driver/CLI boundary behavior.
+
+### ✅ Target and configuration expansion
+- Introduced `TargetConfig` with canonical metadata:
+  - pointer size, endianness, ABI, linker path, object format.
+- Added broad alias coverage for modern and legacy target names, normalized to supported backend triples.
+
+### ✅ Compiler logger
+- Added `CompilerLogger` with levels:
+  - `trace`, `debug`, `info`, `warn`, `error`.
+- Wired CLI controls:
+  - `--verbose`
+  - `--trace-pipeline`
+
+### ✅ Community/Docs
+- Updated public release communication in News and Community pages.
+- Added explicit maintainer signal from `@goginx` for compiler direction and stability policy.
+
 ## [0.3.1] - 2026-05-21 - Native JSON Parity Contract And Compiler Corpus Gate
 
 ### ✅ Native JSON pipeline bridge (bootstrap -> compiler corpus)

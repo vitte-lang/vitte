@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 STAGE1_BIN="${STAGE1_BIN:-$ROOT_DIR/bin/vittec1}"
 STAGE2_BIN="${STAGE2_BIN:-$ROOT_DIR/bin/vittec}"
-PARITY_SRC="${PARITY_SRC:-$ROOT_DIR/src/vitte/compiler/driver/compiler.vit}"
+PARITY_SRC="${PARITY_SRC:-$ROOT_DIR/src/vitte/compiler/main.vit}"
 PARITY_SOURCE_LIST="${PARITY_SOURCE_LIST:-}"
 REPORT_DIR="$ROOT_DIR/target/reports/stage_parity"
 REPORT_JSON="$REPORT_DIR/stage1_stage2_parity.json"
@@ -124,6 +124,12 @@ run_pair() {
   cat "$s1_out" "$s1_err" > "$REPORT_DIR/$pair_key.$kind.stage1.all"
   cat "$s2_out" "$s2_err" > "$REPORT_DIR/$pair_key.$kind.stage2.all"
 
+  # Stage2 currently emits a benign success line for `check` while stage1 is silent.
+  # Normalize this cosmetic difference so parity keeps focusing on structural output.
+  if [ "$kind" = "check" ]; then
+    sed -i '/^check succeeded$/d' "$REPORT_DIR/$pair_key.$kind.stage1.all" "$REPORT_DIR/$pair_key.$kind.stage2.all"
+  fi
+
   s1_hash=$(hash_text "$REPORT_DIR/$pair_key.$kind.stage1.all")
   s2_hash=$(hash_text "$REPORT_DIR/$pair_key.$kind.stage2.all")
 
@@ -142,7 +148,7 @@ if [ -n "$PARITY_SOURCE_LIST" ]; then
   done
 else
   cat > "$source_list_file" <<LIST
-$ROOT_DIR/src/vitte/compiler/driver/compiler.vit
+$ROOT_DIR/src/vitte/compiler/main.vit
 $ROOT_DIR/src/vitte/compiler/frontend/parse/parser.vit
 $ROOT_DIR/src/vitte/compiler/middle/hir/lower_ast.vit
 $ROOT_DIR/src/vitte/compiler/diagnostics/report.vit

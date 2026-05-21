@@ -71,165 +71,25 @@ proc exit_code(status: DriverExitStatus) -> u64 {
     if status == DriverExitStatus.Ok {
         give 0;
     }
-
-    <<< generic >>>
-    if status == DriverExitStatus.InternalError {
-        give 1;
-    }
-
-    <<< cli / config >>>
-    if status == DriverExitStatus.InvalidInput {
+    if status == DriverExitStatus.InternalError
+        or status == DriverExitStatus.BootstrapFailure
+        or status == DriverExitStatus.PipelineFailure {
         give 2;
     }
 
-    if status == DriverExitStatus.InvalidArguments {
+    if status == DriverExitStatus.BackendSelectionFailure
+        or status == DriverExitStatus.CodegenFailure
+        or status == DriverExitStatus.ObjectEmissionFailure
+        or status == DriverExitStatus.AssemblyEmissionFailure {
         give 3;
     }
 
-    if status == DriverExitStatus.InvalidConfiguration {
+    if status == DriverExitStatus.LinkFailure
+        or status == DriverExitStatus.ArchiveFailure {
         give 4;
     }
 
-    if status == DriverExitStatus.MissingInput {
-        give 5;
-    }
-
-    if status == DriverExitStatus.UnsupportedTarget {
-        give 6;
-    }
-
-    if status == DriverExitStatus.UnsupportedFeature {
-        give 7;
-    }
-
-    <<< frontend >>>
-    if status == DriverExitStatus.LexFailure {
-        give 10;
-    }
-
-    if status == DriverExitStatus.ParseFailure {
-        give 11;
-    }
-
-    if status == DriverExitStatus.AstFailure {
-        give 12;
-    }
-
-    if status == DriverExitStatus.HirFailure {
-        give 13;
-    }
-
-    if status == DriverExitStatus.FrontendFailure {
-        give 14;
-    }
-
-    <<< semantic / analysis >>>
-    if status == DriverExitStatus.ResolveFailure {
-        give 20;
-    }
-
-    if status == DriverExitStatus.TypeFailure {
-        give 21;
-    }
-
-    if status == DriverExitStatus.BorrowckFailure {
-        give 22;
-    }
-
-    if status == DriverExitStatus.LifetimeFailure {
-        give 23;
-    }
-
-    if status == DriverExitStatus.ConstEvalFailure {
-        give 24;
-    }
-
-    if status == DriverExitStatus.AnalysisFailure {
-        give 25;
-    }
-
-    <<< MIR / IR >>>
-    if status == DriverExitStatus.MirBuildFailure {
-        give 30;
-    }
-
-    if status == DriverExitStatus.MirValidationFailure {
-        give 31;
-    }
-
-    if status == DriverExitStatus.MirOptimizationFailure {
-        give 32;
-    }
-
-    if status == DriverExitStatus.IrLoweringFailure {
-        give 33;
-    }
-
-    if status == DriverExitStatus.IrValidationFailure {
-        give 34;
-    }
-
-    if status == DriverExitStatus.IrFailure {
-        give 35;
-    }
-
-    <<< backend >>>
-    if status == DriverExitStatus.BackendSelectionFailure {
-        give 40;
-    }
-
-    if status == DriverExitStatus.CodegenFailure {
-        give 41;
-    }
-
-    if status == DriverExitStatus.ObjectEmissionFailure {
-        give 42;
-    }
-
-    if status == DriverExitStatus.AssemblyEmissionFailure {
-        give 43;
-    }
-
-    <<< linker >>>
-    if status == DriverExitStatus.LinkFailure {
-        give 50;
-    }
-
-    if status == DriverExitStatus.ArchiveFailure {
-        give 51;
-    }
-
-    if status == DriverExitStatus.RuntimeFailure {
-        give 52;
-    }
-
-    <<< filesystem / io >>>
-    if status == DriverExitStatus.IoFailure {
-        give 60;
-    }
-
-    if status == DriverExitStatus.FilesystemFailure {
-        give 61;
-    }
-
-    if status == DriverExitStatus.PermissionFailure {
-        give 62;
-    }
-
-    if status == DriverExitStatus.DependencyFailure {
-        give 63;
-    }
-
-    <<< infrastructure >>>
-    if status == DriverExitStatus.BootstrapFailure {
-        give 70;
-    }
-
-    if status == DriverExitStatus.PipelineFailure {
-        give 71;
-    }
-
-    give 255;
+    give 1;
 }
 
 proc status_name(status: DriverExitStatus) -> string {

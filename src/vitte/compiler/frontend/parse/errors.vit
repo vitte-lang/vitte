@@ -6,8 +6,33 @@ form ParseDiagnostic {
   line: u64
   column: u64
   width: u64
+  span_start: u64
+  span_end: u64
 }
 
 proc parse_error(code: string, message: string, line: u64, column: u64, width: u64) -> ParseDiagnostic {
-  give ParseDiagnostic { code: code, message: message, line: line, column: column, width: width };
+  let safe_width: u64 = if width == 0 { 1 } else { width };
+  give ParseDiagnostic {
+    code: code,
+    message: message,
+    line: line,
+    column: column,
+    width: safe_width,
+    span_start: 0,
+    span_end: safe_width
+  };
+}
+
+proc parse_error_with_span(code: string, message: string, line: u64, column: u64, width: u64, span_start: u64, span_end: u64) -> ParseDiagnostic {
+  let safe_width: u64 = if width == 0 { 1 } else { width };
+  let safe_end: u64 = if span_end >= span_start { span_end } else { span_start + safe_width };
+  give ParseDiagnostic {
+    code: code,
+    message: message,
+    line: line,
+    column: column,
+    width: safe_width,
+    span_start: span_start,
+    span_end: safe_end
+  };
 }

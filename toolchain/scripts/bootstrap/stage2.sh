@@ -45,7 +45,7 @@ has_host_native_toolchain() {
     command -v "${CC:-cc}" >/dev/null 2>&1 && command -v od >/dev/null 2>&1
 }
 
-build_native_wrapper() {
+build_native_launcher() {
     shell_payload="$1"
     out_bin="$2"
     work_dir="$3"
@@ -136,7 +136,7 @@ int main(int argc, char **argv) {
     return 1;
 }
 EOF
-    "$cc_bin" -O2 -s "$work_dir/wrapper.c" -o "$out_bin" || die "native wrapper compilation failed"
+    "$cc_bin" -O2 -s "$work_dir/wrapper.c" -o "$out_bin" || die "native launcher compilation failed"
     chmod +x "$out_bin"
 }
 
@@ -151,7 +151,7 @@ STAGE1_BIN="$BIN_DIR/vittec1"
 
 STAGE2_DIR="$ROOT_DIR/toolchain/stage2"
 COMPILER_SOURCE_ROOT="$ROOT_DIR/src/vitte/compiler"
-COMPILER_ENTRY_POINT="$COMPILER_SOURCE_ROOT/driver/compiler.vit"
+COMPILER_ENTRY_POINT="$COMPILER_SOURCE_ROOT/main.vit"
 BUILD_DIR="$ROOT_DIR/target/bootstrap/stage2-build"
 OUT_DIR="$ROOT_DIR/target/bootstrap/stage2"
 
@@ -234,8 +234,8 @@ case "$VITTE_BACKEND_MODE" in
             if is_machine_executable "$OUT_DIR/vittec1"; then
                 cp "$OUT_DIR/vittec1" "$OUT_DIR/vittec"
             elif [ "$VITTE_NATIVE_BRIDGE_COMPAT" = "1" ] && has_host_native_toolchain; then
-                log "native bridge: wrapping stage artifact into machine executable"
-                build_native_wrapper "$OUT_DIR/vittec1" "$OUT_DIR/vittec" "$BUILD_DIR/native-wrap"
+                log "native compat: converting stage artifact into host executable launcher"
+                build_native_launcher "$OUT_DIR/vittec1" "$OUT_DIR/vittec" "$BUILD_DIR/native-wrap"
             elif [ "$VITTE_NATIVE_BRIDGE_COMPAT" = "1" ]; then
                 die "native bridge compat requested but host toolchain (cc+od) is unavailable"
             elif [ "$VITTE_BACKEND_FALLBACK" = "1" ]; then
@@ -279,7 +279,7 @@ log "verifying final vittec"
 "$BIN_DIR/vittec" --version || die "vittec verification failed"
 ROOT_OUT="$("$BIN_DIR/vittec" selfhost-source || true)"
 echo "$ROOT_OUT" | grep -q "^compiler_source_root=src/vitte/compiler$" || die "vittec selfhost source root mismatch"
-echo "$ROOT_OUT" | grep -q "^compiler_entry_point=src/vitte/compiler/driver/compiler.vit$" || die "vittec selfhost entry point mismatch"
+echo "$ROOT_OUT" | grep -q "^compiler_entry_point=src/vitte/compiler/main.vit$" || die "vittec selfhost entry point mismatch"
 
 # Optional: self-rebuild check (can be disabled in CI)
 if [ "${VITTE_SELF_CHECK:-1}" -eq 1 ]; then
@@ -302,7 +302,7 @@ if [ "${VITTE_SELF_CHECK:-1}" -eq 1 ]; then
     echo "$SELF_VERSION_OUT" | grep -q "stage2-vitte" || die "stage2 selfcheck version identity failed"
     SELF_ROOT_OUT="$("$SELF_BIN" selfhost-source || true)"
     echo "$SELF_ROOT_OUT" | grep -q "^compiler_source_root=src/vitte/compiler$" || die "stage2 selfcheck source root mismatch"
-    echo "$SELF_ROOT_OUT" | grep -q "^compiler_entry_point=src/vitte/compiler/driver/compiler.vit$" || die "stage2 selfcheck entry point mismatch"
+    echo "$SELF_ROOT_OUT" | grep -q "^compiler_entry_point=src/vitte/compiler/main.vit$" || die "stage2 selfcheck entry point mismatch"
 fi
 
 log "stage2 completed successfully"

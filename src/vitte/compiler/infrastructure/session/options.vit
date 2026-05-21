@@ -1,9 +1,58 @@
 space vitte/compiler/infrastructure/session
 
+pick OptimizationLevel {
+  O0,
+  O1,
+  O2,
+  O3,
+  Os,
+  Oz,
+}
+
+form BackendOptions {
+  backend_name: string,
+  emit_debug_sections: bool,
+  lto_enabled: bool,
+  pgo_mode: string,
+  prefer_native_toolchain: bool,
+}
+
 form SessionOptions {
   locale: string,
+  optimization_level: OptimizationLevel,
+  backend: BackendOptions,
+}
+
+proc backend_options_default() -> BackendOptions {
+  give BackendOptions {
+    backend_name: "x86_64",
+    emit_debug_sections: true,
+    lto_enabled: false,
+    pgo_mode: "off",
+    prefer_native_toolchain: false,
+  }
 }
 
 proc default_options() -> SessionOptions {
-  give SessionOptions { locale: "en-US" }
+  give SessionOptions {
+    locale: "en-US",
+    optimization_level: OptimizationLevel.O2,
+    backend: backend_options_default(),
+  }
 }
+
+proc optimization_level_text(level: OptimizationLevel) -> string {
+  if level == OptimizationLevel.O0 { give "O0" }
+  if level == OptimizationLevel.O1 { give "O1" }
+  if level == OptimizationLevel.O2 { give "O2" }
+  if level == OptimizationLevel.O3 { give "O3" }
+  if level == OptimizationLevel.Os { give "Os" }
+  give "Oz"
+}
+
+share OptimizationLevel
+share BackendOptions
+share SessionOptions
+share backend_options_default
+share default_options
+share optimization_level_text

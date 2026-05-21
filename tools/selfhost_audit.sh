@@ -31,7 +31,7 @@ count_lines() {
 
 compiler_dirs="src/vitte/compiler src/vitte/stdlib/compiler src/vitte/packages/compiler/driver"
 expected_compiler_root="src/vitte/compiler"
-expected_compiler_entry="src/vitte/compiler/driver/compiler.vit"
+expected_compiler_entry="src/vitte/compiler/main.vit"
 stage_sources="toolchain/stage1/src/main.vit toolchain/stage2/src/main.vit"
 audit_errors=0
 
