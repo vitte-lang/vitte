@@ -4,6 +4,8 @@ version='vittec native const fixture 0.1.0'
 banner='vittec native named constants'
 main_return='0'
 error_prefix='[vittec][error]'
+compiler_source_root=''
+compiler_entry_point=''
 
 trace_pipeline=0
 strict_mode=0
@@ -84,6 +86,16 @@ compile_native_ir() {
         sub(/[ \t\r\n]+$/, "", s)
         return s
     }
+    function count_char(s, ch,    i, n) {
+        n = 0
+        for (i = 1; i <= length(s); i++) {
+            if (substr(s, i, 1) == ch) n++
+        }
+        return n
+    }
+    function block_delta(s) {
+        return count_char(s, "{") - count_char(s, "}")
+    }
     function const_value(name) {
         return consts[name]
     }
@@ -113,6 +125,8 @@ compile_native_ir() {
         }
         if (name == "version_text") version_text = value
         else if (name == "banner_text") banner_text = value
+        else if (name == "compiler_source_root") compiler_source_root = value
+        else if (name == "compiler_entry_point") compiler_entry_point = value
         else diag("E_BOOTSTRAP_UNKNOWN_PROC", "unsupported bootstrap proc " name)
     }
     function resolve_int(value, value_kind) {
@@ -147,12 +161,29 @@ compile_native_ir() {
         errors = 0
         saw_export = 0
         saw_space = 0
+        full_compiler = 0
+        skip_doc = 0
+        skip_modern_block = 0
+        skip_modern_depth = 0
     }
     {
         line_no = FNR
         raw = $0
         line = trim(raw)
         if (line == "" || line ~ /^\/\//) next
+        if (skip_doc) {
+            if (line ~ />>>/) skip_doc = 0
+            next
+        }
+        if (line ~ /^<</) {
+            if (line !~ />>>/) skip_doc = 1
+            next
+        }
+        if (skip_modern_block) {
+            skip_modern_depth += block_delta(line)
+            if (skip_modern_depth <= 0) skip_modern_block = 0
+            next
+        }
         if (line ~ /^space[ \t]+[A-Za-z0-9_\/]+$/) {
             saw_space = 1
             next
@@ -179,6 +210,7 @@ compile_native_ir() {
             consts[const_name] = const_val
             const_kinds[const_name] = "int"
             const_order[++const_count] = const_name
+            if (const_name == "BOOTSTRAP_FULL_COMPILER" && const_val == "1") full_compiler = 1
             next
         }
         if (!in_proc && line ~ /^const[ \t]+/) {
@@ -252,6 +284,14 @@ compile_native_ir() {
             proc_start_col = col_token("proc")
             proc_give_count = 0
             brace_depth = 1
+            next
+        }
+        if (full_compiler && !in_proc && line ~ /^(use|share)[ \t]+/) {
+            next
+        }
+        if (full_compiler && !in_proc && line ~ /^(pick|form|proc)[ \t]+/) {
+            skip_modern_depth = block_delta(line)
+            if (skip_modern_depth > 0) skip_modern_block = 1
             next
         }
         if (!in_proc && line ~ /^proc[ \t]+/) {
@@ -333,6 +373,7 @@ compile_native_ir() {
             next
         }
         col = col_nonspace()
+        if (full_compiler && !in_proc) next
         if (in_proc) diag("E_BOOTSTRAP_PROC_BODY", "unsupported statement in bootstrap proc")
         else diag("E_BOOTSTRAP_TOP_LEVEL", "unsupported top-level item")
     }
@@ -385,6 +426,8 @@ compile_native_ir() {
         }
         printf "version_text=%s\n", version_text
         printf "banner_text=%s\n", banner_text
+        printf "compiler_source_root=%s\n", compiler_source_root
+        printf "compiler_entry_point=%s\n", compiler_entry_point
         printf "main.return=%s\n", main_return
     }' "$src"
 }
@@ -394,6 +437,8 @@ render_native_shell_from_ir() {
     out_version="$(printf '%s\n' "$ir" | awk -F= '/^version_text=/{sub(/^version_text=/, ""); print}')"
     out_banner="$(printf '%s\n' "$ir" | awk -F= '/^banner_text=/{sub(/^banner_text=/, ""); print}')"
     out_main_return="$(printf '%s\n' "$ir" | awk -F= '/^main.return=/{sub(/^main.return=/, ""); print}')"
+    out_compiler_source_root="$(printf '%s\n' "$ir" | awk -F= '/^const.string.COMPILER_SOURCE_ROOT=/{sub(/^const.string.COMPILER_SOURCE_ROOT=/, ""); print}')"
+    out_compiler_entry_point="$(printf '%s\n' "$ir" | awk -F= '/^const.string.COMPILER_ENTRY_POINT=/{sub(/^const.string.COMPILER_ENTRY_POINT=/, ""); print}')"
     out_tool_name="$(printf '%s\n' "$out_version" | awk '{print $1}')"
     [ -n "$out_main_return" ] || out_main_return=0
     [ -n "$out_tool_name" ] || out_tool_name=vittec
@@ -403,7 +448,9 @@ render_native_shell_from_ir() {
     printf 'banner=%s\n' "$(printf '%s\n' "$out_banner" | sq)"
     printf 'main_return=%s\n' "$(printf '%s\n' "$out_main_return" | sq)"
     printf 'error_prefix=%s\n' "$(printf '[%s][error]' "$out_tool_name" | sq)"
-    sed -n '8,$p' "$0"
+    printf 'compiler_source_root=%s\n' "$(printf '%s\n' "$out_compiler_source_root" | sq)"
+    printf 'compiler_entry_point=%s\n' "$(printf '%s\n' "$out_compiler_entry_point" | sq)"
+    sed -n '10,$p' "$0"
 }
 
 render_native_shell() {
@@ -427,6 +474,41 @@ read_common_flags() {
     if has_flag --strict "$@"; then
         strict_mode=1
     fi
+}
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r/\\r/g; s/\n/\\n/g'
+}
+
+source_bytes() {
+    wc -c < "$1" | tr -d '[:space:]'
+}
+
+source_lines() {
+    wc -l < "$1" | tr -d '[:space:]'
+}
+
+source_meta_json() {
+    src="$1"
+    src_json="$(json_escape "$src")"
+    bytes="$(source_bytes "$src")"
+    lines="$(source_lines "$src")"
+    space_count="$(grep -c '^space[ 	]' "$src" || true)"
+    export_count="$(grep -c '^export \*$' "$src" || true)"
+    proc_count="$(grep -c '^proc[ 	]' "$src" || true)"
+    const_count="$(grep -c '^const[ 	]' "$src" || true)"
+    printf '"source":{"path":"%s","bytes":%s,"lines":%s,"space_decl_count":%s,"export_star_count":%s,"proc_count":%s,"const_count":%s}' \
+        "$src_json" "$bytes" "$lines" "$space_count" "$export_count" "$proc_count" "$const_count"
+}
+
+compiler_shape_json() {
+    src="$1"
+    use_count="$(grep -c '^use[ \t]' "$src" || true)"
+    share_count="$(grep -c '^share[ \t]' "$src" || true)"
+    pick_count="$(grep -c '^pick[ \t]' "$src" || true)"
+    form_count="$(grep -c '^form[ \t]' "$src" || true)"
+    printf '"shape":{"use_count":%s,"share_count":%s,"pick_count":%s,"form_count":%s}' \
+        "$use_count" "$share_count" "$pick_count" "$form_count"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -457,12 +539,20 @@ case "$cmd" in
     --help|-h|help)
         printf '%s\n' "$banner"
         printf 'version: %s\n' "$version"
-        printf 'commands: parse check build-native dump-native-ir build --version --help\n'
-        printf 'flags: --src PATH --out PATH --stage NAME --trace-pipeline --strict\n'
+        printf 'commands: parse check build-native dump-native-ir build selfhost-source --version --help\n'
+        printf 'flags: --src PATH --out PATH --stage NAME --trace-pipeline --strict --dump-ast-json --dump-hir-json --dump-mir-json --diagnostics-json\n'
+        ;;
+    selfhost-source|--selfhost-source)
+        printf 'compiler_source_root=%s\n' "$compiler_source_root"
+        printf 'compiler_entry_point=%s\n' "$compiler_entry_point"
         ;;
     parse)
         read_common_flags "$@"
         trace_step "pipeline.parse:begin"
+        dump_ast_json=0
+        if has_flag --dump-ast-json "$@"; then
+            dump_ast_json=1
+        fi
         src="$(arg_value --src "$@" || true)"
         if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
         [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "parse requires --src or file" "vittec parse --src path.vit"; exit 2; }
@@ -470,11 +560,32 @@ case "$cmd" in
         trace_step "pipeline.parse:compile-native-ir"
         compile_native_ir "$src" "v1" >/dev/null
         trace_step "pipeline.parse:ok"
-        echo "parse ok: $src"
+        if [ "$dump_ast_json" -eq 1 ]; then
+            source_meta="$(source_meta_json "$src")"
+            shape="$(compiler_shape_json "$src")"
+            proc_count="$(grep -c '^proc[ \t]' "$src" || true)"
+            const_count="$(grep -c '^const[ \t]' "$src" || true)"
+            ast_node_count=$((proc_count + const_count + 2))
+            printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"ast","producer":"vittec-bootstrap-seed","command":"parse","status":"ok",%s,%s,"ast":{"kind":"bootstrap-structural","node_count":%s,"root":{"kind":"module","child_count":%s}}}\n' "$source_meta" "$shape" "$ast_node_count" "$ast_node_count"
+        else
+            echo "parse ok: $src"
+        fi
         ;;
     check)
         read_common_flags "$@"
         trace_step "pipeline.check:begin"
+        diagnostics_json=0
+        dump_hir_json=0
+        dump_mir_json=0
+        if has_flag --diagnostics-json "$@"; then
+            diagnostics_json=1
+        fi
+        if has_flag --dump-hir-json "$@"; then
+            dump_hir_json=1
+        fi
+        if has_flag --dump-mir-json "$@"; then
+            dump_mir_json=1
+        fi
         src="$(first_file_arg "$@" || true)"
         [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "missing input file" "vittec check path.vit"; exit 2; }
         [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
@@ -499,6 +610,26 @@ case "$cmd" in
             fi
         fi
         trace_step "pipeline.check:ok"
+        if [ "$diagnostics_json" -eq 1 ]; then
+            source_meta="$(source_meta_json "$src")"
+            shape="$(compiler_shape_json "$src")"
+            printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"diagnostics","producer":"vittec-bootstrap-seed","command":"check","status":"ok",%s,%s,"diagnostics":{"error_count":0,"warning_count":0,"items":[]}}\n' "$source_meta" "$shape"
+        fi
+        if [ "$dump_hir_json" -eq 1 ]; then
+            source_meta="$(source_meta_json "$src")"
+            shape="$(compiler_shape_json "$src")"
+            proc_count="$(grep -c '^proc[ \t]' "$src" || true)"
+            form_count="$(grep -c '^form[ \t]' "$src" || true)"
+            hir_node_count=$((proc_count + form_count))
+            printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"hir","producer":"vittec-bootstrap-seed","command":"check","status":"ok",%s,%s,"hir":{"kind":"bootstrap-structural","node_count":%s,"nodes":[]}}\n' "$source_meta" "$shape" "$hir_node_count"
+        fi
+        if [ "$dump_mir_json" -eq 1 ]; then
+            source_meta="$(source_meta_json "$src")"
+            shape="$(compiler_shape_json "$src")"
+            proc_count="$(grep -c '^proc[ \t]' "$src" || true)"
+            mir_block_count=$((proc_count + 1))
+            printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"mir","producer":"vittec-bootstrap-seed","command":"check","status":"ok",%s,%s,"mir":{"kind":"bootstrap-structural","block_count":%s,"blocks":[]}}\n' "$source_meta" "$shape" "$mir_block_count"
+        fi
         ;;
     build-native)
         read_common_flags "$@"

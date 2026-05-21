@@ -1,7 +1,272 @@
 space vitte/compiler/backend/ir
 
-use vitte/compiler/backend/ir/ir.{ IrFunction }
+use vitte/compiler/backend/ir/ir.{
+    IrFunction,
+    IrBlock,
+    IrInstructionKind
+}
+
+pick IrFunctionKind {
+    Empty
+    Leaf
+    Calls
+    Branching
+    Looping
+    Returning
+    External
+    Invalid
+}
+
+form IrFunctionStats {
+    block_count: u64
+    instruction_count: u64
+    terminator_count: u64
+    call_count: u64
+    return_count: u64
+    branch_count: u64
+    memory_op_count: u64
+    valid: bool
+}
 
 proc function_block_count(fn0: IrFunction) -> u64 {
-  give len(fn0.blocks);
+    give len(fn0.blocks);
 }
+
+proc function_is_empty(fn0: IrFunction) -> bool {
+    give function_block_count(fn0) == 0;
+}
+
+proc function_instruction_count(fn0: IrFunction) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(fn0.blocks) {
+        set count = count + len(fn0.blocks[i].instructions);
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc function_call_count(fn0: IrFunction) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(fn0.blocks) {
+        let block: IrBlock = fn0.blocks[i];
+        let j: u64 = 0;
+
+        while j < len(block.instructions) {
+            if block.instructions[j].kind == IrInstructionKind.Call {
+                set count = count + 1;
+            }
+
+            set j = j + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc function_return_count(fn0: IrFunction) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(fn0.blocks) {
+        let block: IrBlock = fn0.blocks[i];
+        let j: u64 = 0;
+
+        while j < len(block.instructions) {
+            if block.instructions[j].kind == IrInstructionKind.Return {
+                set count = count + 1;
+            }
+
+            set j = j + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc function_branch_count(fn0: IrFunction) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(fn0.blocks) {
+        let block: IrBlock = fn0.blocks[i];
+        let j: u64 = 0;
+
+        while j < len(block.instructions) {
+            if block.instructions[j].kind == IrInstructionKind.Branch
+                or block.instructions[j].kind == IrInstructionKind.CondBranch {
+
+                set count = count + 1;
+            }
+
+            set j = j + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc function_terminator_count(fn0: IrFunction) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(fn0.blocks) {
+        let block: IrBlock = fn0.blocks[i];
+        let j: u64 = 0;
+
+        while j < len(block.instructions) {
+            if block.instructions[j].kind == IrInstructionKind.Return
+                or block.instructions[j].kind == IrInstructionKind.Branch
+                or block.instructions[j].kind == IrInstructionKind.CondBranch
+                or block.instructions[j].kind == IrInstructionKind.Unreachable {
+
+                set count = count + 1;
+            }
+
+            set j = j + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc function_memory_op_count(fn0: IrFunction) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(fn0.blocks) {
+        let block: IrBlock = fn0.blocks[i];
+        let j: u64 = 0;
+
+        while j < len(block.instructions) {
+            if block.instructions[j].kind == IrInstructionKind.Load
+                or block.instructions[j].kind == IrInstructionKind.Store
+                or block.instructions[j].kind == IrInstructionKind.Alloca
+                or block.instructions[j].kind == IrInstructionKind.AddressOf {
+
+                set count = count + 1;
+            }
+
+            set j = j + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc function_has_entry_block(fn0: IrFunction) -> bool {
+    give len(fn0.blocks) > 0;
+}
+
+proc function_has_return(fn0: IrFunction) -> bool {
+    give function_return_count(fn0) > 0;
+}
+
+proc function_is_leaf(fn0: IrFunction) -> bool {
+    give function_call_count(fn0) == 0;
+}
+
+proc function_kind(fn0: IrFunction) -> IrFunctionKind {
+    if function_is_empty(fn0) {
+        give IrFunctionKind.Empty;
+    }
+
+    if !function_has_entry_block(fn0) {
+        give IrFunctionKind.Invalid;
+    }
+
+    if function_branch_count(fn0) > 0 {
+        give IrFunctionKind.Branching;
+    }
+
+    if function_call_count(fn0) > 0 {
+        give IrFunctionKind.Calls;
+    }
+
+    if function_has_return(fn0) {
+        give IrFunctionKind.Returning;
+    }
+
+    give IrFunctionKind.Leaf;
+}
+
+proc function_stats(fn0: IrFunction) -> IrFunctionStats {
+    let block_count: u64 =
+        function_block_count(fn0);
+
+    let instruction_count: u64 =
+        function_instruction_count(fn0);
+
+    let terminator_count: u64 =
+        function_terminator_count(fn0);
+
+    let call_count: u64 =
+        function_call_count(fn0);
+
+    let return_count: u64 =
+        function_return_count(fn0);
+
+    let branch_count: u64 =
+        function_branch_count(fn0);
+
+    let memory_op_count: u64 =
+        function_memory_op_count(fn0);
+
+    give IrFunctionStats {
+        block_count: block_count,
+        instruction_count: instruction_count,
+        terminator_count: terminator_count,
+        call_count: call_count,
+        return_count: return_count,
+        branch_count: branch_count,
+        memory_op_count: memory_op_count,
+        valid: block_count > 0
+    };
+}
+
+proc function_summary(fn0: IrFunction) -> string {
+    let stats: IrFunctionStats =
+        function_stats(fn0);
+
+    give "blocks=" +
+        (stats.block_count as string) +
+        " instructions=" +
+        (stats.instruction_count as string) +
+        " calls=" +
+        (stats.call_count as string) +
+        " returns=" +
+        (stats.return_count as string);
+}
+
+share IrFunctionKind
+share IrFunctionStats
+
+share function_block_count
+share function_is_empty
+share function_instruction_count
+share function_call_count
+share function_return_count
+share function_branch_count
+share function_terminator_count
+share function_memory_op_count
+
+share function_has_entry_block
+share function_has_return
+share function_is_leaf
+share function_kind
+share function_stats
+share function_summary

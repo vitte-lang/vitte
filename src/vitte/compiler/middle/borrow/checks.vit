@@ -1,5 +1,610 @@
-space vitte/compiler/middle/borrow
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/middle/borrow/checks.vit
 
-proc checks() -> string {
-  give "checks"
+space vitte/compiler/middle/borrow/checks
+
+export *
+
+pick BorrowCheckKind {
+    MoveAfterMove,
+    UseAfterMove,
+    MutableAlias,
+    ImmutableAliasViolation,
+    InvalidBorrow,
+    InvalidDrop,
+    DanglingReference,
+    LifetimeEscape,
+    ReborrowConflict,
+    PartialMove,
+    Unknown,
+}
+
+pick BorrowState {
+    Free,
+    Shared,
+    Mutable,
+    Moved,
+    Dropped,
+    Invalid,
+}
+
+pick BorrowSeverity {
+    Info,
+    Warning,
+    Error,
+    Fatal,
+}
+
+form BorrowSpan {
+    file: string
+    line: u64
+    column: u64
+    end_line: u64
+    end_column: u64
+}
+
+form BorrowRegion {
+    id: u64
+    name: string
+    depth: u64
+    active: bool
+}
+
+form BorrowLoan {
+    id: u64
+    owner: string
+    borrower: string
+    mutable: bool
+    active: bool
+    region: BorrowRegion
+}
+
+form BorrowPlace {
+    name: string
+    projection_count: u64
+    mutable: bool
+}
+
+form BorrowDiagnostic {
+    kind: BorrowCheckKind
+    severity: BorrowSeverity
+    message: string
+    place: BorrowPlace
+    span: BorrowSpan
+}
+
+form BorrowStateEntry {
+    place: BorrowPlace
+    state: BorrowState
+    move_count: u64
+    borrow_count: u64
+}
+
+form BorrowCheckResult {
+    diagnostics: [BorrowDiagnostic]
+    checked_places: u64
+    error_count: u64
+    warning_count: u64
+    valid: bool
+}
+
+form BorrowContext {
+    regions: [BorrowRegion]
+    loans: [BorrowLoan]
+    states: [BorrowStateEntry]
+    diagnostics: [BorrowDiagnostic]
+    valid: bool
+}
+
+proc borrow_span(file: string, line: u64, column: u64, end_line: u64, end_column: u64) -> BorrowSpan {
+    give BorrowSpan {
+        file: file,
+        line: line,
+        column: column,
+        end_line: end_line,
+        end_column: end_column
+    };
+}
+
+proc borrow_region(id: u64, name: string, depth: u64, active: bool) -> BorrowRegion {
+    give BorrowRegion {
+        id: id,
+        name: name,
+        depth: depth,
+        active: active
+    };
+}
+
+proc borrow_loan(id: u64, owner: string, borrower: string, mutable: bool, active: bool, region: BorrowRegion) -> BorrowLoan {
+    give BorrowLoan {
+        id: id,
+        owner: owner,
+        borrower: borrower,
+        mutable: mutable,
+        active: active,
+        region: region
+    };
+}
+
+proc borrow_place(name: string, projection_count: u64, mutable: bool) -> BorrowPlace {
+    give BorrowPlace {
+        name: name,
+        projection_count: projection_count,
+        mutable: mutable
+    };
+}
+
+proc borrow_diagnostic(kind: BorrowCheckKind, severity: BorrowSeverity, message: string, place: BorrowPlace, span: BorrowSpan) -> BorrowDiagnostic {
+    give BorrowDiagnostic {
+        kind: kind,
+        severity: severity,
+        message: message,
+        place: place,
+        span: span
+    };
+}
+
+proc borrow_state_entry(place: BorrowPlace, state: BorrowState, move_count: u64, borrow_count: u64) -> BorrowStateEntry {
+    give BorrowStateEntry {
+        place: place,
+        state: state,
+        move_count: move_count,
+        borrow_count: borrow_count
+    };
+}
+
+proc borrow_check_result(diagnostics: [BorrowDiagnostic], checked_places: u64, error_count: u64, warning_count: u64, valid: bool) -> BorrowCheckResult {
+    give BorrowCheckResult {
+        diagnostics: diagnostics,
+        checked_places: checked_places,
+        error_count: error_count,
+        warning_count: warning_count,
+        valid: valid
+    };
+}
+
+proc borrow_context() -> BorrowContext {
+    give BorrowContext {
+        regions: [],
+        loans: [],
+        states: [],
+        diagnostics: [],
+        valid: true
+    };
+}
+
+proc empty_span() -> BorrowSpan {
+    give borrow_span(
+        "",
+        1,
+        1,
+        1,
+        1
+    );
+}
+
+proc root_region() -> BorrowRegion {
+    give borrow_region(
+        0,
+        "'root",
+        0,
+        true
+    );
+}
+
+proc state_free() -> BorrowState {
+    give BorrowState.Free;
+}
+
+proc state_shared() -> BorrowState {
+    give BorrowState.Shared;
+}
+
+proc state_mutable() -> BorrowState {
+    give BorrowState.Mutable;
+}
+
+proc state_moved() -> BorrowState {
+    give BorrowState.Moved;
+}
+
+proc severity_error() -> BorrowSeverity {
+    give BorrowSeverity.Error;
+}
+
+proc severity_warning() -> BorrowSeverity {
+    give BorrowSeverity.Warning;
+}
+
+proc add_region(ctx: BorrowContext, region: BorrowRegion) -> BorrowContext {
+    let out: BorrowContext =
+        ctx;
+
+    set out.regions =
+        out.regions + [region];
+
+    give out;
+}
+
+proc add_loan(ctx: BorrowContext, loan: BorrowLoan) -> BorrowContext {
+    let out: BorrowContext =
+        ctx;
+
+    set out.loans =
+        out.loans + [loan];
+
+    give out;
+}
+
+proc add_state(ctx: BorrowContext, state: BorrowStateEntry) -> BorrowContext {
+    let out: BorrowContext =
+        ctx;
+
+    set out.states =
+        out.states + [state];
+
+    give out;
+}
+
+proc add_diagnostic(ctx: BorrowContext, diagnostic: BorrowDiagnostic) -> BorrowContext {
+    let out: BorrowContext =
+        ctx;
+
+    set out.diagnostics =
+        out.diagnostics + [diagnostic];
+
+    give out;
+}
+
+proc borrow_kind_name(kind: BorrowCheckKind) -> string {
+    if kind == BorrowCheckKind.MoveAfterMove {
+        give "move-after-move";
+    }
+
+    if kind == BorrowCheckKind.UseAfterMove {
+        give "use-after-move";
+    }
+
+    if kind == BorrowCheckKind.MutableAlias {
+        give "mutable-alias";
+    }
+
+    if kind == BorrowCheckKind.ImmutableAliasViolation {
+        give "immutable-alias-violation";
+    }
+
+    if kind == BorrowCheckKind.InvalidBorrow {
+        give "invalid-borrow";
+    }
+
+    if kind == BorrowCheckKind.InvalidDrop {
+        give "invalid-drop";
+    }
+
+    if kind == BorrowCheckKind.DanglingReference {
+        give "dangling-reference";
+    }
+
+    if kind == BorrowCheckKind.LifetimeEscape {
+        give "lifetime-escape";
+    }
+
+    if kind == BorrowCheckKind.ReborrowConflict {
+        give "reborrow-conflict";
+    }
+
+    if kind == BorrowCheckKind.PartialMove {
+        give "partial-move";
+    }
+
+    give "unknown";
+}
+
+proc borrow_state_name(state: BorrowState) -> string {
+    if state == BorrowState.Free { give "free"; }
+    if state == BorrowState.Shared { give "shared"; }
+    if state == BorrowState.Mutable { give "mutable"; }
+    if state == BorrowState.Moved { give "moved"; }
+    if state == BorrowState.Dropped { give "dropped"; }
+
+    give "invalid";
+}
+
+proc severity_name(severity: BorrowSeverity) -> string {
+    if severity == BorrowSeverity.Info { give "info"; }
+    if severity == BorrowSeverity.Warning { give "warning"; }
+    if severity == BorrowSeverity.Error { give "error"; }
+
+    give "fatal";
+}
+
+proc mutable_conflict(left: BorrowState, right: BorrowState) -> bool {
+    if left == BorrowState.Mutable
+        and right == BorrowState.Mutable {
+
+        give true;
+    }
+
+    if left == BorrowState.Mutable
+        and right == BorrowState.Shared {
+
+        give true;
+    }
+
+    if left == BorrowState.Shared
+        and right == BorrowState.Mutable {
+
+        give true;
+    }
+
+    give false;
+}
+
+proc moved_state(state: BorrowState) -> bool {
+    give state == BorrowState.Moved;
+}
+
+proc dropped_state(state: BorrowState) -> bool {
+    give state == BorrowState.Dropped;
+}
+
+proc active_loan(loan: BorrowLoan) -> bool {
+    give loan.active
+        and loan.region.active;
+}
+
+proc find_state(ctx: BorrowContext, name: string) -> BorrowStateEntry {
+    let i: u64 = 0;
+
+    while i < len(ctx.states) {
+        if ctx.states[i].place.name == name {
+            give ctx.states[i];
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give borrow_state_entry(
+        borrow_place(
+            name,
+            0,
+            false
+        ),
+        BorrowState.Invalid,
+        0,
+        0
+    );
+}
+
+proc validate_move(ctx: BorrowContext, place: BorrowPlace, span: BorrowSpan) -> BorrowContext {
+    let state: BorrowStateEntry =
+        find_state(
+            ctx,
+            place.name
+        );
+
+    if moved_state(state.state) {
+        give add_diagnostic(
+            ctx,
+            borrow_diagnostic(
+                BorrowCheckKind.MoveAfterMove,
+                BorrowSeverity.Error,
+                "value moved multiple times",
+                place,
+                span
+            )
+        );
+    }
+
+    give ctx;
+}
+
+proc validate_use(ctx: BorrowContext, place: BorrowPlace, span: BorrowSpan) -> BorrowContext {
+    let state: BorrowStateEntry =
+        find_state(
+            ctx,
+            place.name
+        );
+
+    if moved_state(state.state) {
+        give add_diagnostic(
+            ctx,
+            borrow_diagnostic(
+                BorrowCheckKind.UseAfterMove,
+                BorrowSeverity.Error,
+                "use after move detected",
+                place,
+                span
+            )
+        );
+    }
+
+    if dropped_state(state.state) {
+        give add_diagnostic(
+            ctx,
+            borrow_diagnostic(
+                BorrowCheckKind.InvalidDrop,
+                BorrowSeverity.Fatal,
+                "use after drop detected",
+                place,
+                span
+            )
+        );
+    }
+
+    give ctx;
+}
+
+proc validate_mutable_alias(ctx: BorrowContext, place: BorrowPlace, state: BorrowState, span: BorrowSpan) -> BorrowContext {
+    let current: BorrowStateEntry =
+        find_state(
+            ctx,
+            place.name
+        );
+
+    if mutable_conflict(
+        current.state,
+        state
+    ) {
+
+        give add_diagnostic(
+            ctx,
+            borrow_diagnostic(
+                BorrowCheckKind.MutableAlias,
+                BorrowSeverity.Error,
+                "mutable alias violation",
+                place,
+                span
+            )
+        );
+    }
+
+    give ctx;
+}
+
+proc validate_lifetime(ctx: BorrowContext, loan: BorrowLoan, span: BorrowSpan) -> BorrowContext {
+    if not loan.region.active {
+        give add_diagnostic(
+            ctx,
+            borrow_diagnostic(
+                BorrowCheckKind.LifetimeEscape,
+                BorrowSeverity.Error,
+                "borrow escaped its lifetime",
+                borrow_place(
+                    loan.borrower,
+                    0,
+                    loan.mutable
+                ),
+                span
+            )
+        );
+    }
+
+    give ctx;
+}
+
+proc count_errors(diagnostics: [BorrowDiagnostic]) -> u64 {
+    let count: u64 = 0;
+
+    let i: u64 = 0;
+
+    while i < len(diagnostics) {
+        if diagnostics[i].severity
+            == BorrowSeverity.Error
+            or diagnostics[i].severity
+                == BorrowSeverity.Fatal {
+
+            set count =
+                count + 1;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give count;
+}
+
+proc count_warnings(diagnostics: [BorrowDiagnostic]) -> u64 {
+    let count: u64 = 0;
+
+    let i: u64 = 0;
+
+    while i < len(diagnostics) {
+        if diagnostics[i].severity
+            == BorrowSeverity.Warning {
+
+            set count =
+                count + 1;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give count;
+}
+
+proc finalize_borrow_check(ctx: BorrowContext) -> BorrowCheckResult {
+    let errors: u64 =
+        count_errors(
+            ctx.diagnostics
+        );
+
+    let warnings: u64 =
+        count_warnings(
+            ctx.diagnostics
+        );
+
+    give borrow_check_result(
+        ctx.diagnostics,
+        len(ctx.states),
+        errors,
+        warnings,
+        errors == 0
+    );
+}
+
+proc borrow_summary(result: BorrowCheckResult) -> string {
+    give "checked="
+        + (result.checked_places as string)
+        + " errors="
+        + (result.error_count as string)
+        + " warnings="
+        + (result.warning_count as string)
+        + " valid="
+        + (result.valid as string);
+}
+
+proc borrow_selftest() -> bool {
+    let ctx: BorrowContext =
+        borrow_context();
+
+    let place: BorrowPlace =
+        borrow_place(
+            "value",
+            0,
+            true
+        );
+
+    let state: BorrowStateEntry =
+        borrow_state_entry(
+            place,
+            BorrowState.Moved,
+            1,
+            0
+        );
+
+    let ctx1: BorrowContext =
+        add_state(
+            ctx,
+            state
+        );
+
+    let ctx2: BorrowContext =
+        validate_use(
+            ctx1,
+            place,
+            empty_span()
+        );
+
+    let result: BorrowCheckResult =
+        finalize_borrow_check(
+            ctx2
+        );
+
+    give result.error_count == 1
+        and result.checked_places == 1
+        and not result.valid
+        and borrow_kind_name(
+            BorrowCheckKind.UseAfterMove
+        ) == "use-after-move"
+        and borrow_state_name(
+            BorrowState.Moved
+        ) == "moved"
+        and severity_name(
+            BorrowSeverity.Error
+        ) == "error"
+        and borrow_summary(result)
+            != "";
 }

@@ -1,5 +1,318 @@
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/parse/lookahead.vit
+
 space vitte/compiler/frontend/parse/lookahead
 
-proc lookahead_k() -> u64 {
-  give 2;
+use vitte/compiler/frontend/lex/token.{ Token, TokenKind }
+use vitte/compiler/frontend/parse/grammar.{ grammar_has_rule }
+
+export *
+
+pick LookaheadResultKind {
+    Unknown
+    Match
+    Mismatch
+    EndOfStream
+}
+
+form LookaheadResult {
+    kind: LookaheadResultKind
+    matched: bool
+    offset: u64
+}
+
+form LookaheadState {
+    cursor: u64
+    remaining: u64
+}
+
+proc lookahead_result(kind: LookaheadResultKind, matched: bool, offset: u64) -> LookaheadResult {
+    give LookaheadResult {
+        kind: kind,
+        matched: matched,
+        offset: offset
+    };
+}
+
+proc lookahead_state(cursor: u64, remaining: u64) -> LookaheadState {
+    give LookaheadState {
+        cursor: cursor,
+        remaining: remaining
+    };
+}
+
+proc token_at(tokens: [Token], index: u64) -> Token {
+    if index >= tokens.len {
+        give Token {
+            kind: TokenKind.Eof,
+            lexeme: "",
+            line: 0,
+            column: 0
+        };
+    }
+
+    give tokens[index];
+}
+
+proc has_token(tokens: [Token], index: u64) -> bool {
+    give index < tokens.len;
+}
+
+proc eof(tokens: [Token], cursor: u64) -> bool {
+    give cursor >= tokens.len;
+}
+
+proc remaining(tokens: [Token], cursor: u64) -> u64 {
+    if cursor >= tokens.len {
+        give 0;
+    }
+
+    give tokens.len - cursor;
+}
+
+proc current_state(tokens: [Token], cursor: u64) -> LookaheadState {
+    give lookahead_state(
+        cursor,
+        remaining(tokens, cursor)
+    );
+}
+
+proc peek_kind(tokens: [Token], cursor: u64) -> TokenKind {
+    give token_at(
+        tokens,
+        cursor
+    ).kind;
+}
+
+proc peek_lexeme(tokens: [Token], cursor: u64) -> string {
+    give token_at(
+        tokens,
+        cursor
+    ).lexeme;
+}
+
+proc match_kind(tokens: [Token], cursor: u64, kind: TokenKind) -> LookaheadResult {
+    if eof(tokens, cursor) {
+        give lookahead_result(
+            LookaheadResultKind.EndOfStream,
+            false,
+            cursor
+        );
+    }
+
+    if peek_kind(tokens, cursor) == kind {
+        give lookahead_result(
+            LookaheadResultKind.Match,
+            true,
+            cursor
+        );
+    }
+
+    give lookahead_result(
+        LookaheadResultKind.Mismatch,
+        false,
+        cursor
+    );
+}
+
+proc match_lexeme(tokens: [Token], cursor: u64, lexeme: string) -> LookaheadResult {
+    if eof(tokens, cursor) {
+        give lookahead_result(
+            LookaheadResultKind.EndOfStream,
+            false,
+            cursor
+        );
+    }
+
+    if peek_lexeme(tokens, cursor) == lexeme {
+        give lookahead_result(
+            LookaheadResultKind.Match,
+            true,
+            cursor
+        );
+    }
+
+    give lookahead_result(
+        LookaheadResultKind.Mismatch,
+        false,
+        cursor
+    );
+}
+
+proc next_is(tokens: [Token], cursor: u64, kind: TokenKind) -> bool {
+    let result: LookaheadResult =
+        match_kind(
+            tokens,
+            cursor + 1,
+            kind
+        );
+
+    give result.matched;
+}
+
+proc current_is(tokens: [Token], cursor: u64, kind: TokenKind) -> bool {
+    let result: LookaheadResult =
+        match_kind(
+            tokens,
+            cursor,
+            kind
+        );
+
+    give result.matched;
+}
+
+proc consume_if(tokens: [Token], cursor: u64, kind: TokenKind) -> u64 {
+    if current_is(tokens, cursor, kind) {
+        give cursor + 1;
+    }
+
+    give cursor;
+}
+
+proc skip_newlines(tokens: [Token], cursor: u64) -> u64 {
+    let current: u64 = cursor;
+
+    while current_is(tokens, current, TokenKind.Newline) {
+        set current =
+            current + 1;
+    }
+
+    give current;
+}
+
+proc skip_comments(tokens: [Token], cursor: u64) -> u64 {
+    let current: u64 = cursor;
+
+    while current_is(tokens, current, TokenKind.Comment) {
+        set current =
+            current + 1;
+    }
+
+    give current;
+}
+
+proc skip_trivia(tokens: [Token], cursor: u64) -> u64 {
+    let current: u64 = cursor;
+
+    while true {
+        let before: u64 =
+            current;
+
+        set current =
+            skip_newlines(
+                tokens,
+                current
+            );
+
+        set current =
+            skip_comments(
+                tokens,
+                current
+            );
+
+        if before == current {
+            break;
+        }
+    }
+
+    give current;
+}
+
+proc expect_rule(name: string) -> bool {
+    give grammar_has_rule(name);
+}
+
+proc expect_identifier(tokens: [Token], cursor: u64) -> bool {
+    give current_is(
+        tokens,
+        cursor,
+        TokenKind.Identifier
+    );
+}
+
+proc expect_left_brace(tokens: [Token], cursor: u64) -> bool {
+    give current_is(
+        tokens,
+        cursor,
+        TokenKind.LeftBrace
+    );
+}
+
+proc expect_right_brace(tokens: [Token], cursor: u64) -> bool {
+    give current_is(
+        tokens,
+        cursor,
+        TokenKind.RightBrace
+    );
+}
+
+proc expect_left_paren(tokens: [Token], cursor: u64) -> bool {
+    give current_is(
+        tokens,
+        cursor,
+        TokenKind.LeftParen
+    );
+}
+
+proc expect_right_paren(tokens: [Token], cursor: u64) -> bool {
+    give current_is(
+        tokens,
+        cursor,
+        TokenKind.RightParen
+    );
+}
+
+proc expect_semicolon(tokens: [Token], cursor: u64) -> bool {
+    give current_is(
+        tokens,
+        cursor,
+        TokenKind.Semicolon
+    );
+}
+
+proc lookahead_selftest() -> bool {
+    let tokens: [Token] =
+        [
+            Token {
+                kind: TokenKind.Identifier,
+                lexeme: "main",
+                line: 1,
+                column: 1
+            },
+
+            Token {
+                kind: TokenKind.LeftBrace,
+                lexeme: "{",
+                line: 1,
+                column: 5
+            },
+
+            Token {
+                kind: TokenKind.RightBrace,
+                lexeme: "}",
+                line: 1,
+                column: 6
+            }
+        ];
+
+    let result: LookaheadResult =
+        match_kind(
+            tokens,
+            0,
+            TokenKind.Identifier
+        );
+
+    give result.matched
+        and current_is(
+            tokens,
+            1,
+            TokenKind.LeftBrace
+        )
+        and next_is(
+            tokens,
+            0,
+            TokenKind.LeftBrace
+        )
+        and expect_rule("expr")
+        and expect_left_brace(tokens, 1)
+        and expect_right_brace(tokens, 2);
 }

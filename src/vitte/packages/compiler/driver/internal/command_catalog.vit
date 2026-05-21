@@ -2,14 +2,687 @@ space compiler/driver/private/command_catalog
 
 use src/vitte/compiler/bootstrap as bootstrap
 
+export *
+
+<<< ========================================================= >>>
+<<< Driver command catalog                                    >>>
+<<< Canonical compiler command surface                        >>>
+<<< ========================================================= >>>
+
+pick DriverCommandKind {
+  Unknown,
+
+  Build,
+  Run,
+  Check,
+  Test,
+  Bench,
+
+  Clean,
+  Format,
+  Lint,
+
+  Ast,
+  Hir,
+  Mir,
+  Ir,
+
+  EmitAst,
+  EmitHir,
+  EmitMir,
+  EmitIr,
+
+  Parse,
+  Lex,
+  Expand,
+
+  Typecheck,
+  Borrowcheck,
+
+  Doc,
+  Lsp,
+
+  Repl,
+
+  Package,
+  Install,
+  Uninstall,
+  Update,
+
+  Bootstrap,
+
+  Version,
+  Help,
+}
+
+form DriverCommand {
+  kind: DriverCommandKind
+
+  name: string
+  aliases: [string]
+
+  category: string
+
+  description: string
+
+  stable: bool
+  experimental: bool
+
+  hidden: bool
+
+  requires_input: bool
+  supports_target: bool
+
+  valid: bool
+}
+
+proc driver_command(
+  kind: DriverCommandKind,
+  name: string,
+  aliases: [string],
+  category: string,
+  description: string,
+  stable: bool,
+  experimental: bool,
+  hidden: bool,
+  requires_input: bool,
+  supports_target: bool
+) -> DriverCommand {
+
+  give DriverCommand {
+    kind: kind,
+
+    name: name,
+    aliases: aliases,
+
+    category: category,
+
+    description: description,
+
+    stable: stable,
+    experimental: experimental,
+
+    hidden: hidden,
+
+    requires_input: requires_input,
+    supports_target: supports_target,
+
+    valid:
+      kind != DriverCommandKind.Unknown
+      and name != ""
+  };
+}
+
 proc catalog_version() -> string {
-  give "driver-surface-v1"
+  give "driver-surface-v2";
 }
 
 proc canonical_entrypoint() -> string {
-  give "vitte"
+  give "vitte";
 }
 
 proc source_of_truth() -> string {
-  give bootstrap.source_of_truth("src/vitte/compiler/driver")
+  give bootstrap.source_of_truth(
+    "src/vitte/compiler/driver"
+  );
+}
+
+<<< ========================================================= >>>
+<<< Core commands                                             >>>
+<<< ========================================================= >>>
+
+proc command_build() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Build,
+    "build",
+    ["b"],
+    "build",
+    "Compile source files into executable or library artifacts",
+    true,
+    false,
+    false,
+    true,
+    true
+  );
+}
+
+proc command_run() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Run,
+    "run",
+    ["r"],
+    "build",
+    "Compile and execute a Vitte package",
+    true,
+    false,
+    false,
+    true,
+    true
+  );
+}
+
+proc command_check() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Check,
+    "check",
+    ["c"],
+    "analysis",
+    "Parse, resolve and typecheck without code generation",
+    true,
+    false,
+    false,
+    true,
+    true
+  );
+}
+
+proc command_test() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Test,
+    "test",
+    ["t"],
+    "testing",
+    "Build and execute unit and integration tests",
+    true,
+    false,
+    false,
+    true,
+    true
+  );
+}
+
+proc command_bench() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Bench,
+    "bench",
+    [],
+    "testing",
+    "Execute compiler and runtime benchmarks",
+    true,
+    false,
+    false,
+    true,
+    true
+  );
+}
+
+<<< ========================================================= >>>
+<<< Frontend inspection                                       >>>
+<<< ========================================================= >>>
+
+proc command_lex() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Lex,
+    "lex",
+    [],
+    "frontend",
+    "Run lexical analysis and dump tokens",
+    true,
+    false,
+    false,
+    true,
+    false
+  );
+}
+
+proc command_parse() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Parse,
+    "parse",
+    [],
+    "frontend",
+    "Run parser and validate syntax tree construction",
+    true,
+    false,
+    false,
+    true,
+    false
+  );
+}
+
+proc command_expand() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Expand,
+    "expand",
+    [],
+    "frontend",
+    "Expand macros and print transformed source",
+    true,
+    false,
+    false,
+    true,
+    false
+  );
+}
+
+proc command_ast() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Ast,
+    "ast",
+    [],
+    "frontend",
+    "Dump frontend AST representation",
+    true,
+    false,
+    false,
+    true,
+    false
+  );
+}
+
+proc command_hir() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Hir,
+    "hir",
+    [],
+    "middle",
+    "Dump lowered and resolved HIR representation",
+    true,
+    false,
+    false,
+    true,
+    false
+  );
+}
+
+proc command_mir() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Mir,
+    "mir",
+    [],
+    "middle",
+    "Dump control-flow oriented MIR representation",
+    true,
+    false,
+    false,
+    true,
+    false
+  );
+}
+
+proc command_ir() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Ir,
+    "ir",
+    [],
+    "backend",
+    "Dump backend IR representation",
+    true,
+    false,
+    false,
+    true,
+    true
+  );
+}
+
+<<< ========================================================= >>>
+<<< Analysis commands                                         >>>
+<<< ========================================================= >>>
+
+proc command_typecheck() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Typecheck,
+    "typecheck",
+    ["typeck"],
+    "analysis",
+    "Run semantic analysis and type inference",
+    true,
+    false,
+    false,
+    true,
+    false
+  );
+}
+
+proc command_borrowcheck() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Borrowcheck,
+    "borrowcheck",
+    ["borrowck"],
+    "analysis",
+    "Run ownership, move and borrow validation",
+    true,
+    false,
+    false,
+    true,
+    false
+  );
+}
+
+<<< ========================================================= >>>
+<<< Tooling commands                                          >>>
+<<< ========================================================= >>>
+
+proc command_format() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Format,
+    "fmt",
+    ["format"],
+    "tooling",
+    "Format Vitte source files",
+    true,
+    false,
+    false,
+    true,
+    false
+  );
+}
+
+proc command_lint() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Lint,
+    "lint",
+    [],
+    "tooling",
+    "Run compiler lint passes and style diagnostics",
+    true,
+    false,
+    false,
+    true,
+    false
+  );
+}
+
+proc command_lsp() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Lsp,
+    "lsp",
+    [],
+    "tooling",
+    "Launch language server protocol service",
+    true,
+    false,
+    false,
+    false,
+    false
+  );
+}
+
+proc command_repl() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Repl,
+    "repl",
+    [],
+    "tooling",
+    "Launch interactive Vitte REPL",
+    true,
+    false,
+   false,
+    false,
+    false
+  );
+}
+
+<<< ========================================================= >>>
+<<< Utility commands                                          >>>
+<<< ========================================================= >>>
+
+proc command_clean() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Clean,
+    "clean",
+    [],
+    "utility",
+    "Remove build artifacts and compiler caches",
+    true,
+    false,
+    false,
+    false,
+    false
+  );
+}
+
+proc command_doc() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Doc,
+    "doc",
+    [],
+    "utility",
+    "Generate package and API documentation",
+    true,
+    false,
+    false,
+    true,
+    false
+  );
+}
+
+proc command_bootstrap() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Bootstrap,
+    "bootstrap",
+    [],
+    "compiler",
+    "Build bootstrap compiler stages",
+    true,
+    false,
+    false,
+    false,
+    true
+  );
+}
+
+proc command_version() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Version,
+    "version",
+    ["-v", "--version"],
+    "utility",
+    "Print compiler version information",
+    true,
+    false,
+    false,
+    false,
+    false
+  );
+}
+
+proc command_help() -> DriverCommand {
+
+  give driver_command(
+    DriverCommandKind.Help,
+    "help",
+    ["-h", "--help"],
+    "utility",
+    "Print command usage information",
+    true,
+    false,
+    false,
+    false,
+    false
+  );
+}
+
+<<< ========================================================= >>>
+<<< Catalog helpers                                           >>>
+<<< ========================================================= >>>
+
+proc command_catalog() -> [DriverCommand] {
+
+  give [
+    command_build(),
+    command_run(),
+    command_check(),
+    command_test(),
+    command_bench(),
+
+    command_lex(),
+    command_parse(),
+    command_expand(),
+
+    command_ast(),
+    command_hir(),
+    command_mir(),
+    command_ir(),
+
+    command_typecheck(),
+    command_borrowcheck(),
+
+    command_format(),
+    command_lint(),
+    command_lsp(),
+    command_repl(),
+
+    command_clean(),
+    command_doc(),
+
+    command_bootstrap(),
+
+    command_version(),
+    command_help()
+  ];
+}
+
+proc command_count() -> u64 {
+  give len(command_catalog());
+}
+
+proc command_exists(
+  name: string
+) -> bool {
+
+  let commands: [DriverCommand] =
+    command_catalog();
+
+  let i: u64 = 0;
+
+  while i < len(commands) {
+
+    let command: DriverCommand =
+      commands[i];
+
+    if command.name == name {
+      give true;
+    }
+
+    let j: u64 = 0;
+
+    while j < len(command.aliases) {
+
+      if command.aliases[j] == name {
+        give true;
+      }
+
+      set j =
+        j + 1;
+    }
+
+    set i =
+      i + 1;
+  }
+
+  give false;
+}
+
+proc command_lookup(
+  name: string
+) -> DriverCommand {
+
+  let commands: [DriverCommand] =
+    command_catalog();
+
+  let i: u64 = 0;
+
+  while i < len(commands) {
+
+    let command: DriverCommand =
+      commands[i];
+
+    if command.name == name {
+      give command;
+    }
+
+    let j: u64 = 0;
+
+    while j < len(command.aliases) {
+
+      if command.aliases[j] == name {
+        give command;
+      }
+
+      set j =
+        j + 1;
+    }
+
+    set i =
+      i + 1;
+  }
+
+  give driver_command(
+    DriverCommandKind.Unknown,
+    "",
+    [],
+    "",
+    "",
+    false,
+    false,
+    true,
+    false,
+    false
+  );
+}
+
+proc command_summary(
+  command: DriverCommand
+) -> string {
+
+  give command.name
+    + " category="
+    + command.category
+    + " stable="
+    + (command.stable as string)
+    + " target="
+    + (command.supports_target as string)
+    + " input="
+    + (command.requires_input as string);
+}
+
+proc catalog_summary() -> string {
+
+  give "entry="
+    + canonical_entrypoint()
+    + " version="
+    + catalog_version()
+    + " commands="
+    + (command_count() as string)
+    + " source="
+    + source_of_truth();
+}
+
+proc catalog_selftest() -> bool {
+
+  let build: DriverCommand =
+    command_lookup("build");
+
+  let version: DriverCommand =
+    command_lookup("--version");
+
+  give build.valid
+    and version.valid
+    and command_exists("check")
+    and command_exists("borrowck")
+    and command_count() > 10
+    and catalog_summary() != "";
 }

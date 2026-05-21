@@ -1,7 +1,10 @@
 space vitte/compiler/tests/pipeline_tests
 
-use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverModuleSetArtifacts, analyze_source, analyze_source_set, check_source, compile_source, driver_module_input, dump_hir_resolved, dump_hir_typed, incremental_analysis_graph, lower_mir_source }
+use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverModuleSetArtifacts, analyze_source, analyze_source_set, check_source, compile_source_with_config, default_compile_config, driver_module_input, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_hir_resolved, dump_hir_typed, dump_mir_json, incremental_analysis_graph, lower_mir_source }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
+use vitte/compiler/driver/mod.{ main_driver_surface_report_json, main_driver_surface_report_json_from_args, run_check_diagnostics_json_cli, run_check_hir_json_cli, run_check_mir_json_cli, run_parse_ast_json_cli }
+use vitte/compiler/driver/result.{ CliReportResult }
+use vitte/compiler/driver/compiler.{ CompilerMode, CompilerOptions, CompilerResult, CompilerStage, compiler_from_source, default_options, run_compiler }
 use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, InvalidationResult, analysis_node_key, invalidate_graph_from_key }
 
 const VERSION_TEXT: string = "compiler pipeline tests 0.2.0"
@@ -9,8 +12,57 @@ const BANNER_TEXT: string = "compiler pipeline tests"
 
 proc test_compile_source_success() -> bool {
   let source_text: string = "proc main() -> int { give 0 }";
-  let result = compile_source("pipeline_compile_ok.vit", source_text);
+  let result = compile_source_with_config("pipeline_compile_ok.vit", source_text, default_compile_config());
   give result.status == DriverExitStatus.Ok;
+}
+
+proc run_stop_after(stage: CompilerStage, mode: CompilerMode) -> CompilerResult {
+  let options: CompilerOptions = default_options();
+  set options.mode = mode;
+  set options.stop_after = stage;
+  let compiler = compiler_from_source(
+    "pipeline_stop_after.vit",
+    "proc main() -> int { give 0; }",
+    options
+  );
+  give run_compiler(compiler);
+}
+
+proc assert_stop_after(stage: CompilerStage, mode: CompilerMode) -> bool {
+  let result: CompilerResult = run_stop_after(stage, mode);
+  give result.status == DriverExitStatus.Ok and result.stage == stage;
+}
+
+proc test_stop_after_parse_exact() -> bool {
+  give assert_stop_after(CompilerStage::Parse, CompilerMode::Build);
+}
+
+proc test_stop_after_hir_exact() -> bool {
+  give assert_stop_after(CompilerStage::Hir, CompilerMode::Build);
+}
+
+proc test_stop_after_typeck_exact() -> bool {
+  give assert_stop_after(CompilerStage::Typeck, CompilerMode::Build);
+}
+
+proc test_stop_after_mir_exact() -> bool {
+  give assert_stop_after(CompilerStage::Mir, CompilerMode::Build);
+}
+
+proc test_stop_after_ir_exact() -> bool {
+  give assert_stop_after(CompilerStage::Ir, CompilerMode::Build);
+}
+
+proc test_stop_after_codegen_exact() -> bool {
+  give assert_stop_after(CompilerStage::Codegen, CompilerMode::Build);
+}
+
+proc test_stop_after_link_exact() -> bool {
+  give assert_stop_after(CompilerStage::Link, CompilerMode::Build);
+}
+
+proc test_stop_after_run_exact() -> bool {
+  give assert_stop_after(CompilerStage::Run, CompilerMode::Run);
 }
 
 proc test_check_source_uses_validated_middle_path() -> bool {
@@ -97,6 +149,75 @@ proc test_analyze_source_set_resolves_imported_module() -> bool {
   give artifacts.valid and len(artifacts.modules[1].imports) == 1 and artifacts.modules[1].imports[0] == "demo/math";
 }
 
+proc test_real_pipeline_json_dumps() -> bool {
+  let source_text: string = "proc main() -> int { let x = 1; give x; }\n";
+  let ast_json: string = dump_ast_json("pipeline_ast_json.vit", source_text);
+  let hir_json: string = dump_hir_json("pipeline_hir_json.vit", source_text);
+  let mir_json: string = dump_mir_json("pipeline_mir_json.vit", source_text);
+  let diag_json: string = dump_diagnostics_json("pipeline_diag_json.vit", source_text);
+  give find(ast_json, "\"surface\":\"ast\"") >= 0
+    and find(ast_json, "\"token_count\":") >= 0
+    and find(hir_json, "\"surface\":\"hir\"") >= 0
+    and find(hir_json, "\"node_count\":") >= 0
+    and find(mir_json, "\"surface\":\"mir\"") >= 0
+    and find(mir_json, "\"instruction_count\":") >= 0
+    and find(diag_json, "\"surface\":\"diagnostics\"") >= 0
+    and find(diag_json, "\"analysis_diagnostic_count\":") >= 0
+    and find(ast_json, "bootstrap-json-v1") < 0
+    and find(ast_json, "ast-json-missing") < 0;
+}
+
+proc test_cli_json_dump_routes() -> bool {
+  let source_text: string = "proc main() -> int { give 0; }\n";
+  let ast_report: CliReportResult = run_parse_ast_json_cli("pipeline_cli_ast.vit", source_text);
+  let hir_report: CliReportResult = run_check_hir_json_cli("pipeline_cli_hir.vit", source_text);
+  let mir_report: CliReportResult = run_check_mir_json_cli("pipeline_cli_mir.vit", source_text);
+  let diag_report: CliReportResult = run_check_diagnostics_json_cli("pipeline_cli_diag.vit", source_text);
+  give ast_report.code == 0
+    and hir_report.code == 0
+    and mir_report.code == 0
+    and diag_report.code == 0
+    and find(ast_report.report_json, "\"surface\":\"ast\"") >= 0
+    and find(hir_report.report_json, "\"surface\":\"hir\"") >= 0
+    and find(mir_report.report_json, "\"surface\":\"mir\"") >= 0
+    and find(diag_report.report_json, "\"surface\":\"diagnostics\"") >= 0;
+}
+
+proc test_runtime_surface_dispatch_prefers_pipeline_json() -> bool {
+  let source_text: string = "proc main() -> int { give 0; }\n";
+  let ast_report: CliReportResult = main_driver_surface_report_json("parse", "--dump-ast-json", "pipeline_dispatch_ast.vit", source_text);
+  let hir_report: CliReportResult = main_driver_surface_report_json("check", "--dump-hir-json", "pipeline_dispatch_hir.vit", source_text);
+  let mir_report: CliReportResult = main_driver_surface_report_json("check", "--dump-mir-json", "pipeline_dispatch_mir.vit", source_text);
+  let diag_report: CliReportResult = main_driver_surface_report_json("check", "--diagnostics-json", "pipeline_dispatch_diag.vit", source_text);
+  let fallback_report: CliReportResult = main_driver_surface_report_json("check", "--unknown-flag", "pipeline_dispatch_fallback.vit", source_text);
+  give find(ast_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
+    and find(hir_report.report_json, "\"surface\":\"hir\"") >= 0
+    and find(mir_report.report_json, "\"surface\":\"mir\"") >= 0
+    and find(diag_report.report_json, "\"surface\":\"diagnostics\"") >= 0
+    and find(fallback_report.report_json, "\"command\":\"check\"") >= 0;
+}
+
+proc test_runtime_surface_dispatch_from_args() -> bool {
+  let source_text: string = "proc main() -> int { give 0; }\n";
+  let ast_args_report: CliReportResult = main_driver_surface_report_json_from_args("parse", ["parse", "--dump-ast-json", "--deterministic"], "pipeline_args_ast.vit", source_text);
+  let hir_args_report: CliReportResult = main_driver_surface_report_json_from_args("check", ["check", "--dump-hir-json"], "pipeline_args_hir.vit", source_text);
+  let fallback_args_report: CliReportResult = main_driver_surface_report_json_from_args("check", ["check", "--strict"], "pipeline_args_fallback.vit", source_text);
+  give find(ast_args_report.report_json, "\"surface\":\"ast\"") >= 0
+    and find(hir_args_report.report_json, "\"surface\":\"hir\"") >= 0
+    and find(fallback_args_report.report_json, "\"command\":\"check\"") >= 0
+    and fallback_args_report.code == 0;
+}
+
+proc test_runtime_surface_dispatch_rejects_unsupported_combo() -> bool {
+  let source_text: string = "proc main() -> int { give 0; }\n";
+  let bad_parse: CliReportResult = main_driver_surface_report_json_from_args("parse", ["parse", "--dump-hir-json"], "pipeline_bad_parse_hir.vit", source_text);
+  let bad_check: CliReportResult = main_driver_surface_report_json_from_args("check", ["check", "--dump-ast-json"], "pipeline_bad_check_ast.vit", source_text);
+  give bad_parse.code == 2
+    and bad_check.code == 2
+    and find(bad_parse.report_json, "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"") >= 0
+    and find(bad_check.report_json, "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"") >= 0;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_compile_source_success() { set failures = failures + 1; }
@@ -108,8 +229,21 @@ proc run_all_tests() -> int {
   if not test_check_source_resolved_reference_flow() { set failures = failures + 1; }
   if not test_analyze_source_exposes_resolved_and_typed_hir() { set failures = failures + 1; }
   if not test_dump_hir_and_lower_mir_helpers() { set failures = failures + 1; }
+  if not test_stop_after_parse_exact() { set failures = failures + 1; }
+  if not test_stop_after_hir_exact() { set failures = failures + 1; }
+  if not test_stop_after_typeck_exact() { set failures = failures + 1; }
+  if not test_stop_after_mir_exact() { set failures = failures + 1; }
+  if not test_stop_after_ir_exact() { set failures = failures + 1; }
+  if not test_stop_after_codegen_exact() { set failures = failures + 1; }
+  if not test_stop_after_link_exact() { set failures = failures + 1; }
+  if not test_stop_after_run_exact() { set failures = failures + 1; }
   if not test_incremental_invalidation_targets_dependents() { set failures = failures + 1; }
   if not test_analyze_source_set_resolves_imported_module() { set failures = failures + 1; }
+  if not test_real_pipeline_json_dumps() { set failures = failures + 1; }
+  if not test_cli_json_dump_routes() { set failures = failures + 1; }
+  if not test_runtime_surface_dispatch_prefers_pipeline_json() { set failures = failures + 1; }
+  if not test_runtime_surface_dispatch_from_args() { set failures = failures + 1; }
+  if not test_runtime_surface_dispatch_rejects_unsupported_combo() { set failures = failures + 1; }
   give failures;
 }
 

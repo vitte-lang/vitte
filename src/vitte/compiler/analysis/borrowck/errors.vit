@@ -1,113 +1,648 @@
 space vitte/compiler/analysis/borrowck/errors
 
+use vitte/compiler/diagnostics/diagnostic.{
+    Diagnostic,
+    DiagnosticReport,
+    DiagnosticSeverity,
+    DiagnosticPhase,
+    SourceSpan,
+    diagnostic_error,
+    diagnostic_warning,
+    diagnostic_fatal,
+    diagnostic_with_note,
+    diagnostic_with_help,
+    diagnostic_with_label,
+    secondary_label,
+    add_unique_diagnostic,
+    merge_diagnostics,
+    diagnostic_report
+}
+
+use vitte/compiler/diagnostics/catalog.{
+    diagnostic_message,
+    diagnostic_default_help,
+    diagnostic_default_note
+}
+
 const BORROWCK_INVALID_ID: u64 = 18446744073709551615
 
 pick BorrowErrorKind {
-  None,
-  MoveAfterMove,
-  UseAfterMove,
-  BorrowOfMovedValue,
-  MutableBorrowConflict,
-  WriteWhileBorrowed,
-  MoveWhileBorrowed,
-  ReturnRefToLocal,
-  ReturnBorrowOfLocal,
+    None
+    MoveAfterMove
+    UseAfterMove
+    BorrowOfMovedValue
+    MutableBorrowConflict
+    SharedBorrowConflict
+    WriteWhileBorrowed
+    MoveWhileBorrowed
+    DropWhileBorrowed
+    AssignWhileBorrowed
+    ReturnRefToLocal
+    ReturnBorrowOfLocal
+    DanglingReference
+    LifetimeTooShort
+    ImmutableAssign
+    UseAfterDrop
+    DoubleDrop
+    UninitializedUse
+    Internal
 }
 
-pick BorrowSeverity {
-  Info,
-  Warning,
-  Error,
+pick BorrowPhase {
+    CollectMoves
+    CollectLoans
+    AliasAnalysis
+    CaptureAnalysis
+    DropAnalysis
+    Dataflow
+    RegionCheck
+    Validate
+    Report
+    Unknown
 }
 
-form BorrowSpan {
-  file: string
-  line: u64
-  column: u64
-  length: u64
+form BorrowDiagnosticResult {
+    diagnostic: Diagnostic
+    kind: BorrowErrorKind
+    phase: BorrowPhase
+    entity: u64
+    valid: bool
 }
 
-form BorrowDiagnostic {
-  kind: BorrowErrorKind
-  code: string
-  severity: BorrowSeverity
-  message: string
-  labels: [string]
-  suggestion: string
-  span: BorrowSpan
-  entity: u64
-  fatal: bool
+proc span_create(file: string, line: u64, column: u64, length: u64) -> SourceSpan {
+    let normalized_length: u64 = length;
+
+    if normalized_length == 0 {
+        set normalized_length = 1;
+    }
+
+    give SourceSpan {
+        file: file,
+        start_line: line,
+        start_column: column,
+        end_line: line,
+        end_column: column + normalized_length,
+        length: normalized_length,
+        valid: file != "" and line > 0 and column > 0
+    };
 }
 
-proc span_create(file: string, line: u64, column: u64, length: u64) -> BorrowSpan {
-  give BorrowSpan {
-    file: file,
-    line: line,
-    column: column,
-    length: length
-  };
+proc span_empty() -> SourceSpan {
+    give span_create("compiler/analysis/borrowck", 0, 0, 1);
 }
 
-proc span_empty() -> BorrowSpan {
-  give span_create("compiler/analysis/borrowck", 0, 0, 0);
+proc span_with_length(span: SourceSpan, length: u64) -> SourceSpan {
+    give span_create(span.file, span.start_line, span.start_column, length);
 }
 
 proc error_code(kind: BorrowErrorKind) -> string {
-  if kind == BorrowErrorKind.MoveAfterMove { give "BORROWCK_E_MOVE_AFTER_MOVE"; }
-  if kind == BorrowErrorKind.UseAfterMove { give "BORROWCK_E_USE_AFTER_MOVE"; }
-  if kind == BorrowErrorKind.BorrowOfMovedValue { give "BORROWCK_E_BORROW_OF_MOVED_VALUE"; }
-  if kind == BorrowErrorKind.MutableBorrowConflict { give "BORROWCK_E_MUTABLE_BORROW_CONFLICT"; }
-  if kind == BorrowErrorKind.WriteWhileBorrowed { give "BORROWCK_E_WRITE_WHILE_BORROWED"; }
-  if kind == BorrowErrorKind.MoveWhileBorrowed { give "BORROWCK_E_MOVE_WHILE_BORROWED"; }
-  if kind == BorrowErrorKind.ReturnRefToLocal { give "BORROWCK_E_RETURN_REF_TO_LOCAL"; }
-  if kind == BorrowErrorKind.ReturnBorrowOfLocal { give "BORROWCK_E_RETURN_BORROW_OF_LOCAL"; }
-  give "BORROWCK_E_UNKNOWN";
+    if kind == BorrowErrorKind.MoveAfterMove { give "BORROWCK_E_MOVE_AFTER_MOVE"; }
+    if kind == BorrowErrorKind.UseAfterMove { give "BORROWCK_E_USE_AFTER_MOVE"; }
+    if kind == BorrowErrorKind.BorrowOfMovedValue { give "BORROWCK_E_BORROW_OF_MOVED_VALUE"; }
+    if kind == BorrowErrorKind.MutableBorrowConflict { give "BORROWCK_E_MUTABLE_BORROW_CONFLICT"; }
+    if kind == BorrowErrorKind.SharedBorrowConflict { give "BORROWCK_E_SHARED_BORROW_CONFLICT"; }
+    if kind == BorrowErrorKind.WriteWhileBorrowed { give "BORROWCK_E_WRITE_WHILE_BORROWED"; }
+    if kind == BorrowErrorKind.MoveWhileBorrowed { give "BORROWCK_E_MOVE_WHILE_BORROWED"; }
+    if kind == BorrowErrorKind.DropWhileBorrowed { give "BORROWCK_E_DROP_WHILE_BORROWED"; }
+    if kind == BorrowErrorKind.AssignWhileBorrowed { give "BORROWCK_E_ASSIGN_WHILE_BORROWED"; }
+    if kind == BorrowErrorKind.ReturnRefToLocal { give "BORROWCK_E_RETURN_REF_TO_LOCAL"; }
+    if kind == BorrowErrorKind.ReturnBorrowOfLocal { give "BORROWCK_E_RETURN_BORROW_OF_LOCAL"; }
+    if kind == BorrowErrorKind.DanglingReference { give "BORROWCK_E_DANGLING_REFERENCE"; }
+    if kind == BorrowErrorKind.LifetimeTooShort { give "BORROWCK_E_LIFETIME_TOO_SHORT"; }
+    if kind == BorrowErrorKind.ImmutableAssign { give "BORROWCK_E_IMMUTABLE_ASSIGN"; }
+    if kind == BorrowErrorKind.UseAfterDrop { give "BORROWCK_E_USE_AFTER_DROP"; }
+    if kind == BorrowErrorKind.DoubleDrop { give "BORROWCK_E_DOUBLE_DROP"; }
+    if kind == BorrowErrorKind.UninitializedUse { give "BORROWCK_E_UNINITIALIZED_USE"; }
+    if kind == BorrowErrorKind.Internal { give "BORROWCK_E_INTERNAL"; }
+    give "BORROWCK_E_UNKNOWN";
 }
 
-proc severity_name(severity: BorrowSeverity) -> string {
-  if severity == BorrowSeverity.Info { give "info"; }
-  if severity == BorrowSeverity.Warning { give "warning"; }
-  give "error";
+proc borrow_phase_name(phase: BorrowPhase) -> string {
+    if phase == BorrowPhase.CollectMoves { give "collect_moves"; }
+    if phase == BorrowPhase.CollectLoans { give "collect_loans"; }
+    if phase == BorrowPhase.AliasAnalysis { give "alias_analysis"; }
+    if phase == BorrowPhase.CaptureAnalysis { give "capture_analysis"; }
+    if phase == BorrowPhase.DropAnalysis { give "drop_analysis"; }
+    if phase == BorrowPhase.Dataflow { give "dataflow"; }
+    if phase == BorrowPhase.RegionCheck { give "region_check"; }
+    if phase == BorrowPhase.Validate { give "validate"; }
+    if phase == BorrowPhase.Report { give "report"; }
+    give "unknown";
+}
+
+proc borrow_message(code: string, fallback: string) -> string {
+    let msg: string = diagnostic_message(code);
+
+    if msg != "" {
+        give msg;
+    }
+
+    give fallback;
+}
+
+proc borrow_help(code: string, fallback: string) -> string {
+    let help: string = diagnostic_default_help(code);
+
+    if help != "" {
+        give help;
+    }
+
+    give fallback;
+}
+
+proc borrow_note(code: string, fallback: string) -> string {
+    let note: string = diagnostic_default_note(code);
+
+    if note != "" {
+        give note;
+    }
+
+    give fallback;
+}
+
+proc severity_for_fatal(fatal: bool) -> DiagnosticSeverity {
+    if fatal {
+        give DiagnosticSeverity.Fatal;
+    }
+
+    give DiagnosticSeverity.Error;
+}
+
+proc diagnostic_from_severity(
+    code: string,
+    severity: DiagnosticSeverity,
+    message: string,
+    span: SourceSpan
+) -> Diagnostic {
+    if severity == DiagnosticSeverity.Fatal {
+        give diagnostic_fatal(code, DiagnosticPhase.Borrowck, message, span);
+    }
+
+    if severity == DiagnosticSeverity.Warning {
+        give diagnostic_warning(code, DiagnosticPhase.Borrowck, message, span);
+    }
+
+    give diagnostic_error(code, DiagnosticPhase.Borrowck, message, span);
+}
+
+proc attach_labels_and_help(
+    diagnostic: Diagnostic,
+    labels: [string],
+    suggestion: string,
+    span: SourceSpan
+) -> Diagnostic {
+    let diag: Diagnostic = diagnostic;
+    let i: u64 = 0;
+
+    while i < len(labels) {
+        if labels[i] != "" {
+            set diag = diagnostic_with_label(diag, secondary_label(labels[i], span));
+        }
+
+        set i = i + 1;
+    }
+
+    if suggestion != "" {
+        set diag = diagnostic_with_help(diag, suggestion);
+    }
+
+    give diag;
+}
+
+proc attach_borrow_context(
+    diagnostic: Diagnostic,
+    code: string,
+    phase: BorrowPhase,
+    entity: u64
+) -> Diagnostic {
+    let diag: Diagnostic = diagnostic;
+
+    set diag = diagnostic_with_note(diag, "borrowck phase: " + borrow_phase_name(phase));
+
+    let note: string = diagnostic_default_note(code);
+
+    if note != "" {
+        set diag = diagnostic_with_note(diag, note);
+    }
+
+    if entity != BORROWCK_INVALID_ID {
+        set diag = diagnostic_with_note(diag, "entity: " + (entity as string));
+    }
+
+    give diag;
 }
 
 proc diagnostic_create(
-  kind: BorrowErrorKind,
-  file: string,
-  line: u64,
-  message: string,
-  labels: [string],
-  suggestion: string,
-  fatal: bool
-) -> BorrowDiagnostic {
-  let severity: BorrowSeverity = BorrowSeverity.Error;
-  let length: u64 = 1;
-  if not fatal {
-    set severity = BorrowSeverity.Warning;
-  }
-  if len(labels) > 0 and labels[0] != "" {
-    set length = len(labels[0]) as u64;
-  }
+    kind: BorrowErrorKind,
+    file: string,
+    line: u64,
+    message: string,
+    labels: [string],
+    suggestion: string,
+    fatal: bool
+) -> Diagnostic {
+    let code: string = error_code(kind);
+    let resolved_message: string = borrow_message(code, message);
+    let resolved_help: string = borrow_help(code, suggestion);
+    let length: u64 = 1;
 
-  give BorrowDiagnostic {
-    kind: kind,
-    code: error_code(kind),
-    severity: severity,
-    message: message,
-    labels: labels,
-    suggestion: suggestion,
-    span: span_create(file, line, 1, length),
-    entity: BORROWCK_INVALID_ID,
-    fatal: fatal
-  };
-}
-
-proc diagnostics_has_fatal(diagnostics: [BorrowDiagnostic]) -> bool {
-  let i: u64 = 0;
-  while i < len(diagnostics) {
-    if diagnostics[i].fatal {
-      give true;
+    if len(labels) > 0 and labels[0] != "" {
+        set length = len(labels[0]) as u64;
     }
-    set i = i + 1;
-  }
-  give false;
+
+    let span: SourceSpan = span_create(file, line, 1, length);
+
+    let diag: Diagnostic =
+        diagnostic_from_severity(
+            code,
+            severity_for_fatal(fatal),
+            resolved_message,
+            span
+        );
+
+    give attach_labels_and_help(diag, labels, resolved_help, span);
 }
+
+proc diagnostic_full(
+    kind: BorrowErrorKind,
+    severity: DiagnosticSeverity,
+    phase: BorrowPhase,
+    message: string,
+    labels: [string],
+    suggestion: string,
+    span: SourceSpan,
+    entity: u64
+) -> Diagnostic {
+    let code: string = error_code(kind);
+    let resolved_message: string = borrow_message(code, message);
+    let resolved_help: string = borrow_help(code, suggestion);
+
+    let diag: Diagnostic =
+        diagnostic_from_severity(
+            code,
+            severity,
+            resolved_message,
+            span
+        );
+
+    set diag = attach_borrow_context(diag, code, phase, entity);
+
+    give attach_labels_and_help(diag, labels, resolved_help, span);
+}
+
+proc borrow_diagnostic_result(
+    diagnostic: Diagnostic,
+    kind: BorrowErrorKind,
+    phase: BorrowPhase,
+    entity: u64
+) -> BorrowDiagnosticResult {
+    give BorrowDiagnosticResult {
+        diagnostic: diagnostic,
+        kind: kind,
+        phase: phase,
+        entity: entity,
+        valid: diagnostic.valid
+    };
+}
+
+proc add_unique_borrow_diagnostic(
+    diagnostics: [Diagnostic],
+    diagnostic: Diagnostic
+) -> [Diagnostic] {
+    give add_unique_diagnostic(diagnostics, diagnostic);
+}
+
+proc merge_borrow_diagnostics(
+    left: [Diagnostic],
+    right: [Diagnostic]
+) -> [Diagnostic] {
+    give merge_diagnostics(left, right);
+}
+
+proc diagnostics_has_fatal(diagnostics: [Diagnostic]) -> bool {
+    give diagnostic_report(diagnostics).fatal_count > 0;
+}
+
+proc diagnostics_have_errors(diagnostics: [Diagnostic]) -> bool {
+    let report: DiagnosticReport = diagnostic_report(diagnostics);
+
+    give report.error_count > 0 or report.fatal_count > 0;
+}
+
+proc diagnostics_valid(diagnostics: [Diagnostic]) -> bool {
+    give diagnostic_report(diagnostics).valid;
+}
+
+proc borrow_report(diagnostics: [Diagnostic]) -> DiagnosticReport {
+    give diagnostic_report(diagnostics);
+}
+
+proc borrow_report_empty() -> DiagnosticReport {
+    give diagnostic_report([]);
+}
+
+proc borrow_report_add(
+    report: DiagnosticReport,
+    diagnostic: Diagnostic
+) -> DiagnosticReport {
+    give diagnostic_report(add_unique_diagnostic(report.diagnostics, diagnostic));
+}
+
+proc borrow_error_generic(
+    kind: BorrowErrorKind,
+    file: string,
+    line: u64,
+    entity: u64,
+    fallback_message: string,
+    fallback_note: string,
+    fallback_help: string
+) -> Diagnostic {
+    let code: string = error_code(kind);
+    let span: SourceSpan = span_create(file, line, 1, 1);
+    let message: string = borrow_message(code, fallback_message);
+
+    let diag: Diagnostic =
+        diagnostic_error(
+            code,
+            DiagnosticPhase.Borrowck,
+            message,
+            span
+        );
+
+    set diag = attach_borrow_context(diag, code, BorrowPhase.Dataflow, entity);
+    set diag = diagnostic_with_note(diag, borrow_note(code, fallback_note));
+    set diag = diagnostic_with_help(diag, borrow_help(code, fallback_help));
+
+    give diag;
+}
+
+proc borrow_error_move_after_move(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.MoveAfterMove,
+        file,
+        line,
+        entity,
+        "value was moved more than once",
+        "ownership was already transferred by a previous move",
+        "borrow the value or clone it before moving again"
+    );
+}
+
+proc borrow_error_use_after_move(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.UseAfterMove,
+        file,
+        line,
+        entity,
+        "value used after move",
+        "moved values cannot be used again until reinitialized",
+        "borrow the value or clone it before the move"
+    );
+}
+
+proc borrow_error_borrow_of_moved_value(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.BorrowOfMovedValue,
+        file,
+        line,
+        entity,
+        "cannot borrow moved value",
+        "the value no longer has an owner at this program point",
+        "borrow before moving, or reinitialize the value before borrowing"
+    );
+}
+
+proc borrow_error_mutable_borrow_conflict(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.MutableBorrowConflict,
+        file,
+        line,
+        entity,
+        "mutable borrow conflicts with an existing borrow",
+        "mutable access requires exclusive access to the value",
+        "end the previous borrow before taking a mutable borrow"
+    );
+}
+
+proc borrow_error_shared_borrow_conflict(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.SharedBorrowConflict,
+        file,
+        line,
+        entity,
+        "shared borrow conflicts with an active mutable borrow",
+        "shared access cannot overlap exclusive mutable access",
+        "restrict the mutable borrow lifetime before sharing the value"
+    );
+}
+
+proc borrow_error_write_while_borrowed(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.WriteWhileBorrowed,
+        file,
+        line,
+        entity,
+        "cannot write while value is borrowed",
+        "an active borrow prevents mutation of this value",
+        "end the borrow before writing or use a separate value"
+    );
+}
+
+proc borrow_error_move_while_borrowed(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.MoveWhileBorrowed,
+        file,
+        line,
+        entity,
+        "cannot move while value is borrowed",
+        "active borrows keep the value available for their lifetime",
+        "end the borrow before moving the value"
+    );
+}
+
+proc borrow_error_drop_while_borrowed(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.DropWhileBorrowed,
+        file,
+        line,
+        entity,
+        "cannot drop value while borrowed",
+        "dropping the owner would invalidate active borrows",
+        "let all borrows end before dropping the value"
+    );
+}
+
+proc borrow_error_assign_while_borrowed(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.AssignWhileBorrowed,
+        file,
+        line,
+        entity,
+        "cannot assign while value is borrowed",
+        "assignment would overwrite storage referenced by an active borrow",
+        "end the borrow before assigning a new value"
+    );
+}
+
+proc borrow_error_return_ref_to_local(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.ReturnRefToLocal,
+        file,
+        line,
+        entity,
+        "cannot return reference to local value",
+        "local storage is destroyed when the current scope ends",
+        "return an owned value or store the value in longer-lived storage"
+    );
+}
+
+proc borrow_error_return_borrow_of_local(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.ReturnBorrowOfLocal,
+        file,
+        line,
+        entity,
+        "cannot return borrow of local value",
+        "the borrow cannot outlive the local owner",
+        "return an owned value instead of a borrow"
+    );
+}
+
+proc borrow_error_lifetime_too_short(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.LifetimeTooShort,
+        file,
+        line,
+        entity,
+        "lifetime does not live long enough",
+        "region constraints require the borrowed value to remain valid longer",
+        "extend the owner lifetime or avoid storing the borrow beyond the owner"
+    );
+}
+
+proc borrow_error_use_after_drop(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.UseAfterDrop,
+        file,
+        line,
+        entity,
+        "value used after drop",
+        "the value has already been destroyed",
+        "avoid using the value after drop or reinitialize it first"
+    );
+}
+
+proc borrow_error_double_drop(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.DoubleDrop,
+        file,
+        line,
+        entity,
+        "value dropped more than once",
+        "dropping an already destroyed value is invalid",
+        "ensure each owned value is dropped exactly once"
+    );
+}
+
+proc borrow_error_uninitialized_use(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.UninitializedUse,
+        file,
+        line,
+        entity,
+        "use of uninitialized value",
+        "the value has not been initialized on every control-flow path",
+        "initialize the value before reading it"
+    );
+}
+
+proc borrow_error_internal(file: string, line: u64, message: string) -> Diagnostic {
+    let code: string = error_code(BorrowErrorKind.Internal);
+    let span: SourceSpan = span_create(file, line, 1, 1);
+    let resolved_message: string = borrow_message(code, message);
+
+    let diag: Diagnostic =
+        diagnostic_fatal(
+            code,
+            DiagnosticPhase.Borrowck,
+            resolved_message,
+            span
+        );
+
+    set diag = diagnostic_with_note(diag, borrow_note(code, "internal compiler error in borrow checking"));
+    set diag = diagnostic_with_help(diag, borrow_help(code, "report this compiler error with a minimal reproduction"));
+
+    give diag;
+}
+
+proc diagnostic_summary(diagnostic: Diagnostic) -> string {
+    give diagnostic.code + ": " + diagnostic.message;
+}
+
+proc report_summary(report: DiagnosticReport) -> string {
+    if report.valid {
+        give "borrowck ok";
+    }
+
+    give "borrowck failed: " +
+        (report.error_count as string) +
+        " error(s), " +
+        (report.fatal_count as string) +
+        " fatal(s)";
+}
+
+share BORROWCK_INVALID_ID
+
+share BorrowErrorKind
+share BorrowPhase
+share BorrowDiagnosticResult
+
+share span_create
+share span_empty
+share span_with_length
+
+share error_code
+share borrow_phase_name
+share borrow_message
+share borrow_help
+share borrow_note
+share severity_for_fatal
+share diagnostic_from_severity
+share attach_labels_and_help
+share attach_borrow_context
+
+share diagnostic_create
+share diagnostic_full
+share borrow_diagnostic_result
+
+share add_unique_borrow_diagnostic
+share merge_borrow_diagnostics
+
+share diagnostics_has_fatal
+share diagnostics_have_errors
+share diagnostics_valid
+
+share borrow_report
+share borrow_report_empty
+share borrow_report_add
+share borrow_error_generic
+
+share borrow_error_move_after_move
+share borrow_error_use_after_move
+share borrow_error_borrow_of_moved_value
+share borrow_error_mutable_borrow_conflict
+share borrow_error_shared_borrow_conflict
+share borrow_error_write_while_borrowed
+share borrow_error_move_while_borrowed
+share borrow_error_drop_while_borrowed
+share borrow_error_assign_while_borrowed
+share borrow_error_return_ref_to_local
+share borrow_error_return_borrow_of_local
+share borrow_error_lifetime_too_short
+share borrow_error_use_after_drop
+share borrow_error_double_drop
+share borrow_error_uninitialized_use
+share borrow_error_internal
+
+share diagnostic_summary
+share report_summary

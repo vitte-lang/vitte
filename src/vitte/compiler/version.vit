@@ -1,0 +1,354 @@
+space vitte/compiler/version
+
+export *
+
+const VITTE_NAME: string = "Vitte"
+
+const VITTE_FAMILY: string = "vitte-core"
+
+const VITTE_VERSION_MAJOR: u64 = 1
+const VITTE_VERSION_MINOR: u64 = 0
+const VITTE_VERSION_PATCH: u64 = 0
+
+const VITTE_VERSION_CHANNEL: string = "dev"
+
+const VITTE_VERSION_YEAR: u64 = 2026
+const VITTE_VERSION_MONTH: u64 = 5
+const VITTE_VERSION_DAY: u64 = 20
+
+const VITTE_GRAMMAR_VERSION: string =
+  "complete-core-grammar-2026.05"
+
+const VITTE_AST_VERSION: string =
+  "full-grammar-ast-v2"
+
+const VITTE_HIR_VERSION: string =
+  "hir-sema-v2"
+
+const VITTE_MIR_VERSION: string =
+  "mir-dataflow-v2"
+
+const VITTE_IR_VERSION: string =
+  "ir-lowered-v2"
+
+const VITTE_PIPELINE_VERSION: string =
+  "pipeline-2026.05"
+
+const VITTE_TARGET_VERSION: string =
+  "targets-unified-v2"
+
+const VITTE_DEFAULT_VENDOR: string =
+  "vitte"
+
+const VITTE_LICENSE: string =
+  "Apache-2.0"
+
+const VITTE_REPOSITORY: string =
+  "https://github.com/vitte-lang/vitte"
+
+const VITTE_WEBSITE: string =
+  "https://vitte.dev"
+
+form CompilerVersion {
+  name: string
+  family: string
+
+  major: u64
+  minor: u64
+  patch: u64
+
+  channel: string
+
+  version_text: string
+  semantic_version: string
+
+  build_date: string
+
+  grammar_version: string
+  ast_version: string
+  hir_version: string
+  mir_version: string
+  ir_version: string
+  pipeline_version: string
+  target_version: string
+
+  vendor: string
+
+  license: string
+
+  repository: string
+  website: string
+
+  bootstrap: bool
+  experimental: bool
+  stable: bool
+
+  valid: bool
+}
+
+proc compiler_version() -> CompilerVersion {
+
+  let semantic: string =
+    semantic_version();
+
+  give CompilerVersion {
+    name: VITTE_NAME,
+    family: VITTE_FAMILY,
+
+    major: VITTE_VERSION_MAJOR,
+    minor: VITTE_VERSION_MINOR,
+    patch: VITTE_VERSION_PATCH,
+
+    channel: VITTE_VERSION_CHANNEL,
+
+    version_text:
+      compiler_version_text(),
+
+    semantic_version:
+      semantic,
+
+    build_date:
+      build_date(),
+
+    grammar_version:
+      VITTE_GRAMMAR_VERSION,
+
+    ast_version:
+      VITTE_AST_VERSION,
+
+    hir_version:
+      VITTE_HIR_VERSION,
+
+    mir_version:
+      VITTE_MIR_VERSION,
+
+    ir_version:
+      VITTE_IR_VERSION,
+
+    pipeline_version:
+      VITTE_PIPELINE_VERSION,
+
+    target_version:
+      VITTE_TARGET_VERSION,
+
+    vendor:
+      VITTE_DEFAULT_VENDOR,
+
+    license:
+      VITTE_LICENSE,
+
+    repository:
+      VITTE_REPOSITORY,
+
+    website:
+      VITTE_WEBSITE,
+
+    bootstrap: false,
+
+    experimental:
+      VITTE_VERSION_CHANNEL != "stable",
+
+    stable:
+      VITTE_VERSION_CHANNEL == "stable",
+
+    valid: true
+  };
+}
+
+proc semantic_version() -> string {
+
+  give (VITTE_VERSION_MAJOR as string)
+    + "."
+    + (VITTE_VERSION_MINOR as string)
+    + "."
+    + (VITTE_VERSION_PATCH as string);
+}
+
+proc compiler_version_text() -> string {
+
+  give VITTE_NAME
+    + " "
+    + semantic_version()
+    + "-"
+    + VITTE_VERSION_CHANNEL;
+}
+
+proc build_date() -> string {
+
+  give (VITTE_VERSION_YEAR as string)
+    + "-"
+    + two_digit(VITTE_VERSION_MONTH)
+    + "-"
+    + two_digit(VITTE_VERSION_DAY);
+}
+
+proc two_digit(value: u64) -> string {
+
+  if value < 10 {
+    give "0"
+      + (value as string);
+  }
+
+  give value as string;
+}
+
+proc compiler_banner() -> string {
+
+  let version: CompilerVersion =
+    compiler_version();
+
+  give version.name
+    + " "
+    + version.semantic_version
+    + " ("
+    + version.channel
+    + ") "
+    + "["
+    + version.grammar_version
+    + "]";
+}
+
+proc compiler_long_banner() -> string {
+
+  let version: CompilerVersion =
+    compiler_version();
+
+  give compiler_banner()
+    + " "
+    + version.repository
+    + " "
+    + version.build_date;
+}
+
+proc compiler_pipeline_signature() -> string {
+
+  let version: CompilerVersion =
+    compiler_version();
+
+  give "frontend="
+    + version.grammar_version
+    + " ast="
+    + version.ast_version
+    + " hir="
+    + version.hir_version
+    + " mir="
+    + version.mir_version
+    + " ir="
+    + version.ir_version
+    + " pipeline="
+    + version.pipeline_version;
+}
+
+proc compiler_target_signature() -> string {
+
+  let version: CompilerVersion =
+    compiler_version();
+
+  give "targets="
+    + version.target_version
+    + " vendor="
+    + version.vendor;
+}
+
+proc compiler_full_signature() -> string {
+
+  give compiler_long_banner()
+    + " "
+    + compiler_pipeline_signature()
+    + " "
+    + compiler_target_signature();
+}
+
+proc compiler_is_dev() -> bool {
+  give VITTE_VERSION_CHANNEL == "dev";
+}
+
+proc compiler_is_beta() -> bool {
+  give VITTE_VERSION_CHANNEL == "beta";
+}
+
+proc compiler_is_stable() -> bool {
+  give VITTE_VERSION_CHANNEL == "stable";
+}
+
+proc compiler_supports_bootstrap() -> bool {
+  give true;
+}
+
+proc compiler_supports_cross_compile() -> bool {
+  give true;
+}
+
+proc compiler_supports_incremental() -> bool {
+  give true;
+}
+
+proc compiler_supports_lsp() -> bool {
+  give true;
+}
+
+proc compiler_supports_jit() -> bool {
+  give true;
+}
+
+proc compiler_supports_wasm() -> bool {
+  give true;
+}
+
+proc compiler_feature_list() -> [string] {
+
+  give [
+    "frontend",
+    "lexer",
+    "parser",
+    "ast",
+    "hir",
+    "mir",
+    "ir",
+    "typeck",
+    "borrowck",
+    "dataflow",
+    "cfg",
+    "passes",
+    "optimizer",
+    "cross-compile",
+    "incremental",
+    "lsp",
+    "jit",
+    "wasm",
+    "aarch64",
+    "x86_64",
+    "riscv64",
+    "retro-targets",
+    "apple-silicon"
+  ];
+}
+
+proc compiler_feature_count() -> u64 {
+  give len(compiler_feature_list());
+}
+
+proc compiler_summary() -> string {
+
+  give compiler_version_text()
+    + " features="
+    + (compiler_feature_count() as string)
+    + " build="
+    + build_date()
+    + " channel="
+    + VITTE_VERSION_CHANNEL;
+}
+
+proc compiler_selftest() -> bool {
+
+  let version: CompilerVersion =
+    compiler_version();
+
+  give version.valid
+    and compiler_banner() != ""
+    and compiler_pipeline_signature() != ""
+    and compiler_target_signature() != ""
+    and compiler_feature_count() > 0
+    and compiler_supports_cross_compile()
+    and compiler_supports_incremental();
+}

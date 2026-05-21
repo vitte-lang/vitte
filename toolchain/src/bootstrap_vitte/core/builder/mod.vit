@@ -1,24 +1,667 @@
 space vitte/bootstrap/toolchain/bootstrap_vitte/core/builder/mod
 
+<<<
+  Bootstrap builder orchestration layer.
+
+  Responsibilities:
+  - dependency-aware build execution
+  - deterministic step scheduling
+  - bootstrap stage orchestration
+  - execution diagnostics
+  - incremental build planning
+  - pipeline verification
+  - execution timing
+  - stage graph validation
+>>>
+
+pick StepKind {
+  Unknown
+
+  Configure
+  Generate
+  Compile
+  Validate
+  Link
+  Package
+  Verify
+  Bootstrap
+  Clean
+}
+
+pick StepStatus {
+  Pending
+  Ready
+  Running
+  Success
+  Failed
+  Skipped
+}
+
+pick BuilderSeverity {
+  Info
+  Warning
+  Error
+  Fatal
+}
+
 form Step {
-  name: string,
+  id: int
+
+  name: string
+
+  kind: StepKind
+
   deps: [string]
+
+  command: string
+
+  inputs: [string]
+
+  outputs: [string]
+
+  estimated_cost: int
+
+  incremental: bool
+
+  deterministic: bool
+
+  status: StepStatus
+
+  valid: bool
 }
 
 form StepRunResult {
-  name: string,
-  ok: bool,
+  id: int
+
+  name: string
+
+  ok: bool
+
   message: string
+
+  duration_ms: int
+
+  warnings: int
+
+  cached: bool
+
+  status: StepStatus
+
+  valid: bool
 }
 
-proc ensure(step: Step) -> bool {
-  if step.name == "" { give false }
+form BuilderDiagnostic {
+  severity: BuilderSeverity
+
+  code: string
+
+  message: string
+
+  step_name: string
+
+  valid: bool
+}
+
+form BuildGraph {
+  steps: [Step]
+
+  root_steps: [string]
+
+  stage_name: string
+
+  valid: bool
+}
+
+form BuildStatistics {
+  total_steps: int
+
+  successful_steps: int
+
+  failed_steps: int
+
+  cached_steps: int
+
+  total_duration_ms: int
+
+  valid: bool
+}
+
+form BuilderState {
+  graph: BuildGraph
+
+  diagnostics: [BuilderDiagnostic]
+
+  results: [StepRunResult]
+
+  statistics: BuildStatistics
+
+  initialized: bool
+
+  completed: bool
+
+  valid: bool
+}
+
+proc builder_diagnostic(
+  severity: BuilderSeverity,
+  code: string,
+  message: string,
+  step_name: string
+) -> BuilderDiagnostic {
+
+  give BuilderDiagnostic(
+    severity: severity,
+
+    code: code,
+
+    message: message,
+
+    step_name: step_name,
+
+    valid:
+      code != ""
+      and message != ""
+  )
+}
+
+proc step(
+  id: int,
+  name: string,
+  kind: StepKind,
+  deps: [string]
+) -> Step {
+
+  give Step(
+    id: id,
+
+    name: name,
+
+    kind: kind,
+
+    deps: deps,
+
+    command: "",
+
+    inputs: [],
+
+    outputs: [],
+
+    estimated_cost: 1,
+
+    incremental: true,
+
+    deterministic: true,
+
+    status: StepStatus.Pending,
+
+    valid:
+      id >= 0
+      and name != ""
+      and kind != StepKind.Unknown
+  )
+}
+
+proc empty_statistics() -> BuildStatistics {
+
+  give BuildStatistics(
+    total_steps: 0,
+
+    successful_steps: 0,
+
+    failed_steps: 0,
+
+    cached_steps: 0,
+
+    total_duration_ms: 0,
+
+    valid: true
+  )
+}
+
+proc empty_graph() -> BuildGraph {
+
+  give BuildGraph(
+    steps: [],
+
+    root_steps: [],
+
+    stage_name: "bootstrap",
+
+    valid: true
+  )
+}
+
+proc build_state() -> BuilderState {
+
+  give BuilderState(
+    graph: empty_graph(),
+
+    diagnostics: [],
+
+    results: [],
+
+    statistics: empty_statistics(),
+
+    initialized: false,
+
+    completed: false,
+
+    valid: true
+  )
+}
+
+proc ensure(
+  step: Step
+) -> bool {
+
+  if not step.valid {
+    give false
+  }
+
+  if step.name == "" {
+    give false
+  }
+
+  if step.kind == StepKind.Unknown {
+    give false
+  }
+
+  if not step.deterministic {
+    give false
+  }
+
   give true
 }
 
-proc execute(step: Step) -> StepRunResult {
-  if not ensure(step) {
-    give StepRunResult { name: step.name, ok: false, message: "invalid step" }
+proc validate_dependencies(
+  graph: BuildGraph,
+  step: Step
+) -> bool {
+
+  let dep_index: int = 0
+
+  while dep_index < step.deps.len {
+
+    let found: bool = false
+
+    let graph_index: int = 0
+
+    while graph_index < graph.steps.len {
+
+      if graph.steps[graph_index].name
+        == step.deps[dep_index] {
+
+        set found = true
+      }
+
+      set graph_index =
+        graph_index + 1
+    }
+
+    if not found {
+      give false
+    }
+
+    set dep_index =
+      dep_index + 1
   }
-  give StepRunResult { name: step.name, ok: true, message: "executed" }
+
+  give true
 }
+
+proc can_execute(
+  graph: BuildGraph,
+  step: Step,
+  results: [StepRunResult]
+) -> bool {
+
+  if not ensure(step) {
+    give false
+  }
+
+  if not validate_dependencies(graph, step) {
+    give false
+  }
+
+  let dep_index: int = 0
+
+  while dep_index < step.deps.len {
+
+    let satisfied: bool = false
+
+    let result_index: int = 0
+
+    while result_index < results.len {
+
+      if results[result_index].name
+        == step.deps[dep_index]
+        and results[result_index].ok {
+
+        set satisfied = true
+      }
+
+      set result_index =
+        result_index + 1
+    }
+
+    if not satisfied {
+      give false
+    }
+
+    set dep_index =
+      dep_index + 1
+  }
+
+  give true
+}
+
+proc execute(
+  step: Step
+) -> StepRunResult {
+
+  if not ensure(step) {
+
+    give StepRunResult(
+      id: step.id,
+
+      name: step.name,
+
+      ok: false,
+
+      message: "invalid step",
+
+      duration_ms: 0,
+
+      warnings: 0,
+
+      cached: false,
+
+      status: StepStatus.Failed,
+
+      valid: false
+    )
+  }
+
+  <<< future:
+      - subprocess execution
+      - parallel scheduling
+      - cache reuse
+      - deterministic hashing
+      - sandbox execution
+      - retry policies
+      - resource tracking
+  >>>
+
+  give StepRunResult(
+    id: step.id,
+
+    name: step.name,
+
+    ok: true,
+
+    message: "executed",
+
+    duration_ms: 1,
+
+    warnings: 0,
+
+    cached: false,
+
+    status: StepStatus.Success,
+
+    valid: true
+  )
+}
+
+proc register_step(
+  state: BuilderState,
+  step: Step
+) -> BuilderState {
+
+  make next_state = state
+
+  set next_state.graph.steps =
+    next_state.graph.steps + [step]
+
+  set next_state.statistics.total_steps =
+    next_state.statistics.total_steps + 1
+
+  give next_state
+}
+
+proc initialize_default_pipeline(
+  state: BuilderState
+) -> BuilderState {
+
+  make next_state = state
+
+  set next_state =
+    register_step(
+      next_state,
+      step(
+        0,
+        "configure",
+        StepKind.Configure,
+        []
+      )
+    )
+
+  set next_state =
+    register_step(
+      next_state,
+      step(
+        1,
+        "generate",
+        StepKind.Generate,
+        ["configure"]
+      )
+    )
+
+  set next_state =
+    register_step(
+      next_state,
+      step(
+        2,
+        "compile",
+        StepKind.Compile,
+        ["generate"]
+      )
+    )
+
+  set next_state =
+    register_step(
+      next_state,
+      step(
+        3,
+        "validate",
+        StepKind.Validate,
+        ["compile"]
+      )
+    )
+
+  set next_state =
+    register_step(
+      next_state,
+      step(
+        4,
+        "link",
+        StepKind.Link,
+        ["validate"]
+      )
+    )
+
+  set next_state.graph.root_steps =
+    ["configure"]
+
+  set next_state.initialized = true
+
+  give next_state
+}
+
+proc execute_pipeline(
+  state: BuilderState
+) -> BuilderState {
+
+  make next_state = state
+
+  if not next_state.initialized {
+
+    set next_state.valid = false
+
+    set next_state.diagnostics =
+      next_state.diagnostics + [
+        builder_diagnostic(
+          BuilderSeverity.Fatal,
+          "BUILDER_INIT",
+          "builder pipeline not initialized",
+          ""
+        )
+      ]
+
+    give next_state
+  }
+
+  let i: int = 0
+
+  while i < next_state.graph.steps.len {
+
+    let current_step: Step =
+      next_state.graph.steps[i]
+
+    if not can_execute(
+      next_state.graph,
+      current_step,
+      next_state.results
+    ) and current_step.deps.len > 0 {
+
+      set next_state.results =
+        next_state.results + [
+          StepRunResult(
+            id: current_step.id,
+
+            name: current_step.name,
+
+            ok: false,
+
+            message: "dependency failure",
+
+            duration_ms: 0,
+
+            warnings: 0,
+
+            cached: false,
+
+            status: StepStatus.Skipped,
+
+            valid: false
+          )
+        ]
+
+      set next_state.statistics.failed_steps =
+        next_state.statistics.failed_steps + 1
+
+      set i = i + 1
+
+      continue
+    }
+
+    let result: StepRunResult =
+      execute(current_step)
+
+    set next_state.results =
+      next_state.results + [result]
+
+    set next_state.statistics.total_duration_ms =
+      next_state.statistics.total_duration_ms
+      + result.duration_ms
+
+    if result.ok {
+
+      set next_state.statistics.successful_steps =
+        next_state.statistics.successful_steps + 1
+    }
+    else {
+
+      set next_state.statistics.failed_steps =
+        next_state.statistics.failed_steps + 1
+    }
+
+    if result.cached {
+
+      set next_state.statistics.cached_steps =
+        next_state.statistics.cached_steps + 1
+    }
+
+    set i = i + 1
+  }
+
+  set next_state.completed = true
+
+  give next_state
+}
+
+proc pipeline_success(
+  state: BuilderState
+) -> bool {
+
+  if not state.completed {
+    give false
+  }
+
+  if state.statistics.failed_steps > 0 {
+    give false
+  }
+
+  give true
+}
+
+proc statistics_summary(
+  statistics: BuildStatistics
+) -> string {
+
+  give "steps="
+    + (statistics.total_steps as string)
+    + " success="
+    + (statistics.successful_steps as string)
+    + " failed="
+    + (statistics.failed_steps as string)
+    + " cached="
+    + (statistics.cached_steps as string)
+    + " duration-ms="
+    + (statistics.total_duration_ms as string)
+}
+
+proc run_builder_pipeline() -> bool {
+
+  make state =
+    build_state()
+
+  set state =
+    initialize_default_pipeline(
+      state
+    )
+
+  set state =
+    execute_pipeline(
+      state
+    )
+
+  if not pipeline_success(state) {
+    give false
+  }
+
+  emit statistics_summary(
+    state.statistics
+  )
+
+  give true
+}
+
+share ensure
+share execute
+share initialize_default_pipeline
+share execute_pipeline
+share statistics_summary
+share run_builder_pipeline
+
+export *

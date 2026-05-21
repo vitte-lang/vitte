@@ -1,6 +1,437 @@
 space vitte/bootstrap/toolchain/bootstrap_vitte/bin/cache_bridge
 
-# stub
-proc bootstrap_vitte_stub() -> bool {
+<<<
+  Bootstrap cache bridge layer.
+
+  Responsibilities:
+  - deterministic bootstrap cache coordination
+  - artifact reuse validation
+  - stage cache synchronization
+  - bridge bootstrap/runtime cache formats
+  - manifest-aware cache verification
+  - incremental bootstrap acceleration
+>>>
+
+const CACHE_BRIDGE_VERSION: string =
+  "bootstrap_vitte cache_bridge 0.1.0"
+
+const CACHE_BRIDGE_NAME: string =
+  "cache_bridge"
+
+const CACHE_LAYOUT_VERSION: string =
+  "vitte-cache-v1"
+
+const DEFAULT_CACHE_ROOT: string =
+  ".vitte/cache"
+
+pick CacheEntryKind {
+  Unknown
+
+  Source
+  TokenStream
+  Ast
+  Hir
+  Mir
+  Ir
+  Object
+  Binary
+  Manifest
+}
+
+pick CacheStatus {
+  Unknown
+
+  Hit
+  Miss
+  Invalid
+  Dirty
+  Rebuilt
+}
+
+pick CacheSeverity {
+  Info
+  Warning
+  Error
+  Fatal
+}
+
+form CacheDiagnostic {
+  severity: CacheSeverity
+
+  code: string
+
+  message: string
+
+  valid: bool
+}
+
+form CacheKey {
+  source_path: string
+
+  stage: string
+
+  target: string
+
+  hash: string
+
+  valid: bool
+}
+
+form CacheEntry {
+  key: CacheKey
+
+  kind: CacheEntryKind
+
+  artifact_path: string
+
+  artifact_hash: string
+
+  byte_size: int
+
+  reused: bool
+
+  valid: bool
+}
+
+form CacheManifest {
+  layout_version: string
+
+  compiler_version: string
+
+  target: string
+
+  entries: [CacheEntry]
+
+  deterministic: bool
+
+  valid: bool
+}
+
+form CacheBridgeState {
+  cache_root: string
+
+  manifest: CacheManifest
+
+  diagnostics: [CacheDiagnostic]
+
+  initialized: bool
+
+  synchronized: bool
+
+  valid: bool
+}
+
+proc cache_diagnostic(
+  severity: CacheSeverity,
+  code: string,
+  message: string
+) -> CacheDiagnostic {
+
+  give CacheDiagnostic(
+    severity: severity,
+
+    code: code,
+
+    message: message,
+
+    valid:
+      code != ""
+      and message != ""
+  )
+}
+
+proc cache_key(
+  source_path: string,
+  stage: string,
+  target: string,
+  hash: string
+) -> CacheKey {
+
+  give CacheKey(
+    source_path: source_path,
+
+    stage: stage,
+
+    target: target,
+
+    hash: hash,
+
+    valid:
+      source_path != ""
+      and stage != ""
+      and target != ""
+  )
+}
+
+proc cache_entry(
+  key: CacheKey,
+  kind: CacheEntryKind,
+  artifact_path: string
+) -> CacheEntry {
+
+  give CacheEntry(
+    key: key,
+
+    kind: kind,
+
+    artifact_path: artifact_path,
+
+    artifact_hash: "",
+
+    byte_size: 0,
+
+    reused: false,
+
+    valid:
+      key.valid
+      and artifact_path != ""
+  )
+}
+
+proc empty_manifest() -> CacheManifest {
+
+  give CacheManifest(
+    layout_version:
+      CACHE_LAYOUT_VERSION,
+
+    compiler_version:
+      CACHE_BRIDGE_VERSION,
+
+    target:
+      "native",
+
+    entries: [],
+
+    deterministic: true,
+
+    valid: true
+  )
+}
+
+proc build_state() -> CacheBridgeState {
+
+  give CacheBridgeState(
+    cache_root:
+      DEFAULT_CACHE_ROOT,
+
+    manifest:
+      empty_manifest(),
+
+    diagnostics: [],
+
+    initialized: false,
+
+    synchronized: false,
+
+    valid: true
+  )
+}
+
+proc initialize_cache_bridge(
+  state: CacheBridgeState
+) -> CacheBridgeState {
+
+  make next_state = state
+
+  if next_state.cache_root == "" {
+
+    set next_state.diagnostics =
+      next_state.diagnostics + [
+        cache_diagnostic(
+          CacheSeverity.Fatal,
+          "CACHE_ROOT",
+          "missing cache root"
+        )
+      ]
+
+    set next_state.valid = false
+
+    give next_state
+  }
+
+  set next_state.initialized = true
+
+  give next_state
+}
+
+proc compute_cache_key(
+  source_path: string,
+  stage: string,
+  target: string
+) -> CacheKey {
+
+  <<< deterministic placeholder hash >>>
+
+  let hash: string =
+    "sha256-bootstrap-placeholder"
+
+  give cache_key(
+    source_path,
+    stage,
+    target,
+    hash
+  )
+}
+
+proc lookup_cache_entry(
+  manifest: CacheManifest,
+  key: CacheKey
+) -> CacheEntry {
+
+  let i: int = 0
+
+  while i < manifest.entries.len {
+
+    if manifest.entries[i].key.hash
+      == key.hash {
+
+      give manifest.entries[i]
+    }
+
+    set i = i + 1
+  }
+
+  give cache_entry(
+    key,
+    CacheEntryKind.Unknown,
+    ""
+  )
+}
+
+proc cache_hit(
+  entry: CacheEntry
+) -> bool {
+
+  give entry.valid
+    and entry.artifact_path != ""
+}
+
+proc register_cache_entry(
+  state: CacheBridgeState,
+  entry: CacheEntry
+) -> CacheBridgeState {
+
+  make next_state = state
+
+  set next_state.manifest.entries =
+    next_state.manifest.entries
+    + [entry]
+
+  give next_state
+}
+
+proc synchronize_cache(
+  state: CacheBridgeState
+) -> CacheBridgeState {
+
+  make next_state = state
+
+  if not next_state.initialized {
+
+    set next_state.valid = false
+
+    set next_state.diagnostics =
+      next_state.diagnostics + [
+        cache_diagnostic(
+          CacheSeverity.Error,
+          "CACHE_INIT",
+          "cache bridge not initialized"
+        )
+      ]
+
+    give next_state
+  }
+
+  <<< future:
+      - synchronize bootstrap stages
+      - merge manifests
+      - verify object reuse
+      - validate deterministic hashes
+      - import runtime cache state
+  >>>
+
+  set next_state.synchronized = true
+
+  give next_state
+}
+
+proc verify_cache_manifest(
+  manifest: CacheManifest
+) -> bool {
+
+  if not manifest.valid {
+    give false
+  }
+
+  if not manifest.deterministic {
+    give false
+  }
+
+  if manifest.layout_version
+    != CACHE_LAYOUT_VERSION {
+
+    give false
+  }
+
   give true
 }
+
+proc bootstrap_cache_status(
+  state: CacheBridgeState
+) -> string {
+
+  if not state.valid {
+    give "invalid"
+  }
+
+  if not state.initialized {
+    give "uninitialized"
+  }
+
+  if not state.synchronized {
+    give "initialized"
+  }
+
+  give "synchronized"
+}
+
+proc bootstrap_vitte_stub() -> bool {
+
+  make state =
+    build_state()
+
+  set state =
+    initialize_cache_bridge(
+      state
+    )
+
+  if not state.valid {
+    give false
+  }
+
+  set state =
+    synchronize_cache(
+      state
+    )
+
+  if not state.valid {
+    give false
+  }
+
+  if not verify_cache_manifest(
+    state.manifest
+  ) {
+
+    give false
+  }
+
+  give state.synchronized
+}
+
+share initialize_cache_bridge
+share synchronize_cache
+share verify_cache_manifest
+share bootstrap_cache_status
+share bootstrap_vitte_stub
+
+export *

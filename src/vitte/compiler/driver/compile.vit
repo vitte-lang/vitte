@@ -81,6 +81,29 @@ form DriverCompileConfig {
     valid: bool
 }
 
+proc json_escape(text: string) -> string {
+    let escaped: string = "";
+    let i: u64 = 0;
+    while i < len(text) {
+        let ch: string = slice(text, i, i + 1);
+        if ch == "\\" {
+            set escaped = escaped + "\\\\";
+        } elif ch == "\"" {
+            set escaped = escaped + "\\\"";
+        } elif ch == "\n" {
+            set escaped = escaped + "\\n";
+        } elif ch == "\r" {
+            set escaped = escaped + "\\r";
+        } elif ch == "\t" {
+            set escaped = escaped + "\\t";
+        } else {
+            set escaped = escaped + ch;
+        }
+        set i = i + 1;
+    }
+    give escaped;
+}
+
 proc profile_opt_level(profile_name: string) -> string {
     if profile_name == "enterprise-debug" {
         give "O0";
@@ -699,6 +722,78 @@ proc dump_hir_resolved(source_path: string, source_text: string) -> HirUnit {
 
 proc dump_hir_typed(source_path: string, source_text: string) -> HirUnit {
     give analyze_source(source_path, source_text).typed_hir;
+}
+
+proc dump_ast_json(source_path: string, source_text: string) -> string {
+    let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
+    let fe: FrontendOutput = artifacts.frontend;
+    give "{" +
+        "\"schema\":\"vitte.compiler.surface\"," +
+        "\"schema_version\":\"1.0.0\"," +
+        "\"surface\":\"ast\"," +
+        "\"source_path\":\"" + json_escape(fe.source_path) + "\"," +
+        "\"valid\":" + if fe.valid { "true" } else { "false" } + "," +
+        "\"grammar_version\":\"" + json_escape(fe.grammar_version) + "\"," +
+        "\"token_count\":" + (fe.token_count as string) + "," +
+        "\"toplevel_count\":" + (fe.toplevel_count as string) + "," +
+        "\"stmt_count\":" + (fe.stmt_count as string) + "," +
+        "\"expr_count\":" + (fe.expr_count as string) + "," +
+        "\"type_count\":" + (fe.type_count as string) + "," +
+        "\"pattern_count\":" + (fe.pattern_count as string) +
+        "}";
+}
+
+proc dump_hir_json(source_path: string, source_text: string) -> string {
+    let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
+    let hir0: HirUnit = artifacts.typed_hir;
+    give "{" +
+        "\"schema\":\"vitte.compiler.surface\"," +
+        "\"schema_version\":\"1.0.0\"," +
+        "\"surface\":\"hir\"," +
+        "\"source_path\":\"" + json_escape(hir0.source_path) + "\"," +
+        "\"valid\":" + if hir0.valid { "true" } else { "false" } + "," +
+        "\"node_count\":" + (hir0.node_count as string) + "," +
+        "\"item_count\":" + (hir0.item_count as string) + "," +
+        "\"stmt_count\":" + (hir0.stmt_count as string) + "," +
+        "\"expr_count\":" + (hir0.expr_count as string) + "," +
+        "\"symbol_count\":" + (hir0.symbol_count as string) + "," +
+        "\"scope_count\":" + (hir0.scope_count as string) +
+        "}";
+}
+
+proc dump_mir_json(source_path: string, source_text: string) -> string {
+    let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
+    let mir0: MirUnit = artifacts.mir;
+    give "{" +
+        "\"schema\":\"vitte.compiler.surface\"," +
+        "\"schema_version\":\"1.0.0\"," +
+        "\"surface\":\"mir\"," +
+        "\"source_path\":\"" + json_escape(mir0.source_path) + "\"," +
+        "\"valid\":" + if mir0.valid { "true" } else { "false" } + "," +
+        "\"function_count\":" + (mir0.function_count as string) + "," +
+        "\"block_count\":" + (mir0.block_count as string) + "," +
+        "\"instruction_count\":" + (mir0.instruction_count as string) + "," +
+        "\"lowered\":" + if mir0.lowered { "true" } else { "false" } +
+        "}";
+}
+
+proc dump_diagnostics_json(source_path: string, source_text: string) -> string {
+    let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
+    let fe: FrontendOutput = artifacts.frontend;
+    let analysis: AnalysisOutput = artifacts.analysis;
+    give "{" +
+        "\"schema\":\"vitte.compiler.surface\"," +
+        "\"schema_version\":\"1.0.0\"," +
+        "\"surface\":\"diagnostics\"," +
+        "\"source_path\":\"" + json_escape(source_path) + "\"," +
+        "\"valid\":" + if artifacts.valid { "true" } else { "false" } + "," +
+        "\"frontend_diagnostic_count\":" + (len(fe.diagnostics) as string) + "," +
+        "\"analysis_diagnostic_count\":" + (len(analysis.diagnostics) as string) + "," +
+        "\"sema_ok\":" + if analysis.sema_ok { "true" } else { "false" } + "," +
+        "\"typeck_ok\":" + if analysis.typeck_ok { "true" } else { "false" } + "," +
+        "\"borrowck_ok\":" + if analysis.borrowck_ok { "true" } else { "false" } + "," +
+        "\"lint_ok\":" + if analysis.lint_ok { "true" } else { "false" } +
+        "}";
 }
 
 proc incremental_analysis_graph(source_path: string) -> IncrementalGraph {

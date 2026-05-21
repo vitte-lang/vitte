@@ -1,101 +1,464 @@
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/parse/recovery.vit
+
 space vitte/compiler/frontend/parse/recovery
 
 use vitte/compiler/frontend/lexer/token.{ Token, TokenKind }
 
+export *
+
 const PARSE_DIAG_CAP: u64 = 3
 
+pick RecoveryKind {
+    None
+    Statement
+    Block
+    Declaration
+    Expression
+    Type
+    Pattern
+    Toplevel
+}
+
+form RecoveryPoint {
+    index: u64
+    kind: RecoveryKind
+    recovered: bool
+}
+
+form RecoveryStats {
+    diagnostic_count: u64
+    recovery_count: u64
+    capped: bool
+}
+
+proc recovery_point(index: u64, kind: RecoveryKind, recovered: bool) -> RecoveryPoint {
+    give RecoveryPoint {
+        index: index,
+        kind: kind,
+        recovered: recovered
+    };
+}
+
+proc recovery_stats(diagnostic_count: u64, recovery_count: u64) -> RecoveryStats {
+    give RecoveryStats {
+        diagnostic_count: diagnostic_count,
+        recovery_count: recovery_count,
+        capped: diagnostic_count > PARSE_DIAG_CAP
+    };
+}
+
+proc parse_diag_cap() -> u64 {
+    give PARSE_DIAG_CAP;
+}
+
 proc capped_diag_count(count: u64) -> u64 {
-  if count > PARSE_DIAG_CAP { give PARSE_DIAG_CAP; }
-  give count;
+    if count > PARSE_DIAG_CAP {
+        give PARSE_DIAG_CAP;
+    }
+
+    give count;
 }
 
 proc recovery_applied(diagnostic_count: u64, recovery_count: u64) -> bool {
-  give recovery_count > 0 or diagnostic_count > PARSE_DIAG_CAP;
+    give recovery_count > 0
+        or diagnostic_count > PARSE_DIAG_CAP;
+}
+
+proc eof_token(tok: Token) -> bool {
+    give tok.kind == TokenKind.Eof;
+}
+
+proc closing_token(tok: Token) -> bool {
+    give tok.lexeme == "}"
+        or tok.lexeme == ")"
+        or tok.lexeme == "]";
+}
+
+proc separator_token(tok: Token) -> bool {
+    give tok.lexeme == ";"
+        or tok.lexeme == ","
+        or tok.lexeme == ":";
+}
+
+proc assignment_token(tok: Token) -> bool {
+    give tok.lexeme == "="
+        or tok.lexeme == "+="
+        or tok.lexeme == "-="
+        or tok.lexeme == "*="
+        or tok.lexeme == "/=";
+}
+
+proc expression_boundary(tok: Token) -> bool {
+    give eof_token(tok)
+        or tok.lexeme == ";"
+        or tok.lexeme == ","
+        or tok.lexeme == ")"
+        or tok.lexeme == "]"
+        or tok.lexeme == "}"
+        or tok.lexeme == ":";
+}
+
+proc type_boundary(tok: Token) -> bool {
+    give eof_token(tok)
+        or tok.lexeme == ","
+        or tok.lexeme == ")"
+        or tok.lexeme == "]"
+        or tok.lexeme == "}"
+        or tok.lexeme == ";"
+        or tok.lexeme == "="
+        or tok.lexeme == "{";
+}
+
+proc pattern_boundary(tok: Token) -> bool {
+    give eof_token(tok)
+        or tok.lexeme == ","
+        or tok.lexeme == ")"
+        or tok.lexeme == "]"
+        or tok.lexeme == "}"
+        or tok.lexeme == ":"
+        or tok.lexeme == "="
+        or tok.lexeme == "in";
 }
 
 proc is_toplevel_sync_keyword(lex: string) -> bool {
-  if lex == "space" or lex == "use" or lex == "export" or lex == "const" or lex == "static" or lex == "global" { give true; }
-  if lex == "type" or lex == "opaque" or lex == "extern" or lex == "form" or lex == "class" or lex == "union" { give true; }
-  if lex == "bits" or lex == "pick" or lex == "flags" or lex == "trait" or lex == "impl" or lex == "proc" { give true; }
-  if lex == "intrinsic" or lex == "compiler" or lex == "query" or lex == "pass" or lex == "backend" { give true; }
-  if lex == "diagnostic" or lex == "macro" or lex == "comptime" or lex == "static_assert" or lex == "test" or lex == "bench" or lex == "entry" { give true; }
-  give false;
+    if lex == "space" or lex == "use" or lex == "export" or lex == "const" {
+        give true;
+    }
+
+    if lex == "static" or lex == "global" or lex == "type" {
+        give true;
+    }
+
+    if lex == "opaque" or lex == "extern" or lex == "form" {
+        give true;
+    }
+
+    if lex == "class" or lex == "union" or lex == "bits" {
+        give true;
+    }
+
+    if lex == "pick" or lex == "flags" or lex == "trait" {
+        give true;
+    }
+
+    if lex == "impl" or lex == "proc" or lex == "intrinsic" {
+        give true;
+    }
+
+    if lex == "compiler" or lex == "query" or lex == "pass" {
+        give true;
+    }
+
+    if lex == "backend" or lex == "diagnostic" or lex == "macro" {
+        give true;
+    }
+
+    if lex == "comptime" or lex == "static_assert" {
+        give true;
+    }
+
+    if lex == "test" or lex == "bench" or lex == "entry" {
+        give true;
+    }
+
+    give false;
 }
 
 proc recover_stmt_index(tokens: [Token], start: u64) -> u64 {
-  let i: u64 = start;
-  while i < len(tokens) {
-    let tok: Token = tokens[i];
-    if tok.kind == TokenKind.Eof or tok.lexeme == "}" or is_toplevel_sync_keyword(tok.lexeme) {
-      give i;
+    let i: u64 = start;
+
+    while i < len(tokens) {
+        let tok: Token =
+            tokens[i];
+
+        if eof_token(tok)
+            or tok.lexeme == "}"
+            or is_toplevel_sync_keyword(tok.lexeme) {
+
+            give i;
+        }
+
+        if tok.lexeme == ";" {
+            give i + 1;
+        }
+
+        set i =
+            i + 1;
     }
-    if tok.lexeme == ";" {
-      give i + 1;
-    }
-    set i = i + 1;
-  }
-  give len(tokens);
+
+    give len(tokens);
 }
 
 proc recover_block_index(tokens: [Token], start: u64) -> u64 {
-  let i: u64 = start;
-  while i < len(tokens) {
-    let tok: Token = tokens[i];
-    if tok.kind == TokenKind.Eof or tok.lexeme == "}" {
-      give i;
+    let i: u64 = start;
+
+    while i < len(tokens) {
+        let tok: Token =
+            tokens[i];
+
+        if eof_token(tok)
+            or tok.lexeme == "}" {
+
+            give i;
+        }
+
+        set i =
+            i + 1;
     }
-    set i = i + 1;
-  }
-  give len(tokens);
+
+    give len(tokens);
 }
 
 proc recover_decl_index(tokens: [Token], start: u64) -> u64 {
-  let i: u64 = start;
-  while i < len(tokens) {
-    let tok: Token = tokens[i];
-    if tok.kind == TokenKind.Eof or tok.lexeme == "}" or is_toplevel_sync_keyword(tok.lexeme) {
-      give i;
+    let i: u64 = start;
+
+    while i < len(tokens) {
+        let tok: Token =
+            tokens[i];
+
+        if eof_token(tok)
+            or tok.lexeme == "}"
+            or is_toplevel_sync_keyword(tok.lexeme) {
+
+            give i;
+        }
+
+        if tok.lexeme == ";" {
+            give i + 1;
+        }
+
+        set i =
+            i + 1;
     }
-    if tok.lexeme == ";" {
-      give i + 1;
-    }
-    set i = i + 1;
-  }
-  give len(tokens);
+
+    give len(tokens);
 }
 
 proc recover_expr_index(tokens: [Token], start: u64) -> u64 {
-  let i: u64 = start;
-  while i < len(tokens) {
-    let tok: Token = tokens[i];
-    if tok.kind == TokenKind.Eof or tok.lexeme == ";" or tok.lexeme == "," or tok.lexeme == ")" or tok.lexeme == "]" or tok.lexeme == "}" or tok.lexeme == ":" {
-      give i;
+    let i: u64 = start;
+
+    while i < len(tokens) {
+        let tok: Token =
+            tokens[i];
+
+        if expression_boundary(tok) {
+            give i;
+        }
+
+        set i =
+            i + 1;
     }
-    set i = i + 1;
-  }
-  give len(tokens);
+
+    give len(tokens);
 }
 
 proc recover_type_index(tokens: [Token], start: u64) -> u64 {
-  let i: u64 = start;
-  while i < len(tokens) {
-    let tok: Token = tokens[i];
-    if tok.kind == TokenKind.Eof or tok.lexeme == "," or tok.lexeme == ")" or tok.lexeme == "]" or tok.lexeme == "}" or tok.lexeme == ";" or tok.lexeme == "=" or tok.lexeme == "{" {
-      give i;
+    let i: u64 = start;
+
+    while i < len(tokens) {
+        let tok: Token =
+            tokens[i];
+
+        if type_boundary(tok) {
+            give i;
+        }
+
+        set i =
+            i + 1;
     }
-    set i = i + 1;
-  }
-  give len(tokens);
+
+    give len(tokens);
 }
 
 proc recover_pattern_index(tokens: [Token], start: u64) -> u64 {
-  let i: u64 = start;
-  while i < len(tokens) {
-    let tok: Token = tokens[i];
-    if tok.kind == TokenKind.Eof or tok.lexeme == "," or tok.lexeme == ")" or tok.lexeme == "]" or tok.lexeme == "}" or tok.lexeme == ":" or tok.lexeme == "=" or tok.lexeme == "in" {
-      give i;
+    let i: u64 = start;
+
+    while i < len(tokens) {
+        let tok: Token =
+            tokens[i];
+
+        if pattern_boundary(tok) {
+            give i;
+        }
+
+        set i =
+            i + 1;
     }
-    set i = i + 1;
-  }
-  give len(tokens);
+
+    give len(tokens);
+}
+
+proc recover_toplevel_index(tokens: [Token], start: u64) -> u64 {
+    let i: u64 = start;
+
+    while i < len(tokens) {
+        let tok: Token =
+            tokens[i];
+
+        if eof_token(tok)
+            or is_toplevel_sync_keyword(tok.lexeme) {
+
+            give i;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give len(tokens);
+}
+
+proc recover_statement(tokens: [Token], start: u64) -> RecoveryPoint {
+    let index: u64 =
+        recover_stmt_index(
+            tokens,
+            start
+        );
+
+    give recovery_point(
+        index,
+        RecoveryKind.Statement,
+        true
+    );
+}
+
+proc recover_block(tokens: [Token], start: u64) -> RecoveryPoint {
+    let index: u64 =
+        recover_block_index(
+            tokens,
+            start
+        );
+
+    give recovery_point(
+        index,
+        RecoveryKind.Block,
+        true
+    );
+}
+
+proc recover_declaration(tokens: [Token], start: u64) -> RecoveryPoint {
+    let index: u64 =
+        recover_decl_index(
+            tokens,
+            start
+        );
+
+    give recovery_point(
+        index,
+        RecoveryKind.Declaration,
+        true
+    );
+}
+
+proc recover_expression(tokens: [Token], start: u64) -> RecoveryPoint {
+    let index: u64 =
+        recover_expr_index(
+            tokens,
+            start
+        );
+
+    give recovery_point(
+        index,
+        RecoveryKind.Expression,
+        true
+    );
+}
+
+proc recover_type(tokens: [Token], start: u64) -> RecoveryPoint {
+    let index: u64 =
+        recover_type_index(
+            tokens,
+            start
+        );
+
+    give recovery_point(
+        index,
+        RecoveryKind.Type,
+        true
+    );
+}
+
+proc recover_pattern(tokens: [Token], start: u64) -> RecoveryPoint {
+    let index: u64 =
+        recover_pattern_index(
+            tokens,
+            start
+        );
+
+    give recovery_point(
+        index,
+        RecoveryKind.Pattern,
+        true
+    );
+}
+
+proc recover_toplevel(tokens: [Token], start: u64) -> RecoveryPoint {
+    let index: u64 =
+        recover_toplevel_index(
+            tokens,
+            start
+        );
+
+    give recovery_point(
+        index,
+        RecoveryKind.Toplevel,
+        true
+    );
+}
+
+proc recovery_selftest() -> bool {
+    let tokens: [Token] = [
+        Token {
+            kind: TokenKind.Identifier,
+            lexeme: "let",
+            line: 1,
+            column: 1
+        },
+
+        Token {
+            kind: TokenKind.Identifier,
+            lexeme: "x",
+            line: 1,
+            column: 5
+        },
+
+        Token {
+            kind: TokenKind.Symbol,
+            lexeme: ";",
+            line: 1,
+            column: 6
+        },
+
+        Token {
+            kind: TokenKind.Identifier,
+            lexeme: "proc",
+            line: 2,
+            column: 1
+        }
+    ];
+
+    let stmt: RecoveryPoint =
+        recover_statement(
+            tokens,
+            0
+        );
+
+    let top: RecoveryPoint =
+        recover_toplevel(
+            tokens,
+            1
+        );
+
+    let stats: RecoveryStats =
+        recovery_stats(
+            10,
+            1
+        );
+
+    give stmt.index == 3
+        and top.index == 3
+        and stats.capped
+        and recovery_applied(10, 1)
+        and is_toplevel_sync_keyword("proc")
+        and parse_diag_cap() == 3;
 }

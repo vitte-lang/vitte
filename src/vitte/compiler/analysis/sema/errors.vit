@@ -1,49 +1,630 @@
 space vitte/compiler/analysis/sema
 
-use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
-
-pick SemaSeverity {
-  Warning,
-  Error,
+use vitte/compiler/diagnostics/diagnostic.{
+    Diagnostic,
+    DiagnosticReport,
+    DiagnosticSeverity,
+    DiagnosticPhase,
+    SourceSpan,
+    diagnostic_error,
+    diagnostic_warning,
+    diagnostic_fatal,
+    diagnostic_with_note,
+    diagnostic_with_help,
+    diagnostic_with_label,
+    secondary_label,
+    add_unique_diagnostic,
+    merge_diagnostics,
+    diagnostic_report
 }
 
-form SemaDiagnostic {
-  code: string
-  severity: SemaSeverity
-  message: string
-  labels: [string]
-  suggestion: string
-  span: AstSpan
-  fatal: bool
+use vitte/compiler/diagnostics/catalog.{
+    diagnostic_message,
+    diagnostic_default_help,
+    diagnostic_default_note
 }
 
-proc sema_span_empty() -> AstSpan {
-  give ast_span_empty();
+use vitte/compiler/frontend/ast/node.{
+    AstSpan,
+    ast_span_empty
 }
 
-proc sema_severity_name(severity: SemaSeverity) -> string {
-  if severity == SemaSeverity.Warning {
-    give "warning";
-  }
-  give "error";
+pick SemaPhase {
+    AstValidation
+    NameResolution
+    ImportResolution
+    SymbolCollection
+    TypeResolution
+    TraitResolution
+    ControlFlow
+    ConstEval
+    AttributeCheck
+    VisibilityCheck
+    ModuleCheck
+    Unknown
+}
+
+pick SemaDiagnosticKind {
+    DuplicateSymbol
+    UnknownSymbol
+    InvalidImport
+    InvalidExport
+    InvalidAttribute
+    InvalidVisibility
+    InvalidType
+    InvalidControlFlow
+    InvalidConst
+    InvalidModule
+    Internal
+    Unknown
+}
+
+form SemaContext {
+    diagnostics: [Diagnostic]
+    phase: SemaPhase
+    valid: bool
+}
+
+proc sema_span_empty() -> SourceSpan {
+    give ast_span_to_source_span(ast_span_empty());
+}
+
+proc ast_span_to_source_span(span: AstSpan) -> SourceSpan {
+    let length: u64 = 1;
+
+    if span.end_line == span.start_line and span.end_column > span.start_column {
+        set length = span.end_column - span.start_column;
+    }
+
+    give SourceSpan {
+        file: span.file,
+        start_line: span.start_line,
+        start_column: span.start_column,
+        end_line: span.end_line,
+        end_column: span.end_column,
+        length: length,
+        valid: span.start_line > 0 and span.start_column > 0
+    };
+}
+
+proc sema_phase_name(phase: SemaPhase) -> string {
+    if phase == SemaPhase.AstValidation { give "ast_validation"; }
+    if phase == SemaPhase.NameResolution { give "name_resolution"; }
+    if phase == SemaPhase.ImportResolution { give "import_resolution"; }
+    if phase == SemaPhase.SymbolCollection { give "symbol_collection"; }
+    if phase == SemaPhase.TypeResolution { give "type_resolution"; }
+    if phase == SemaPhase.TraitResolution { give "trait_resolution"; }
+    if phase == SemaPhase.ControlFlow { give "control_flow"; }
+    if phase == SemaPhase.ConstEval { give "const_eval"; }
+    if phase == SemaPhase.AttributeCheck { give "attribute_check"; }
+    if phase == SemaPhase.VisibilityCheck { give "visibility_check"; }
+    if phase == SemaPhase.ModuleCheck { give "module_check"; }
+    give "unknown";
+}
+
+proc sema_kind_name(kind: SemaDiagnosticKind) -> string {
+    if kind == SemaDiagnosticKind.DuplicateSymbol { give "duplicate_symbol"; }
+    if kind == SemaDiagnosticKind.UnknownSymbol { give "unknown_symbol"; }
+    if kind == SemaDiagnosticKind.InvalidImport { give "invalid_import"; }
+    if kind == SemaDiagnosticKind.InvalidExport { give "invalid_export"; }
+    if kind == SemaDiagnosticKind.InvalidAttribute { give "invalid_attribute"; }
+    if kind == SemaDiagnosticKind.InvalidVisibility { give "invalid_visibility"; }
+    if kind == SemaDiagnosticKind.InvalidType { give "invalid_type"; }
+    if kind == SemaDiagnosticKind.InvalidControlFlow { give "invalid_control_flow"; }
+    if kind == SemaDiagnosticKind.InvalidConst { give "invalid_const"; }
+    if kind == SemaDiagnosticKind.InvalidModule { give "invalid_module"; }
+    if kind == SemaDiagnosticKind.Internal { give "internal"; }
+    give "unknown";
+}
+
+proc sema_message(code: string, fallback: string) -> string {
+    let msg: string = diagnostic_message(code);
+
+    if msg != "" {
+        give msg;
+    }
+
+    give fallback;
+}
+
+proc sema_help(code: string, fallback: string) -> string {
+    let help: string = diagnostic_default_help(code);
+
+    if help != "" {
+        give help;
+    }
+
+    give fallback;
+}
+
+proc sema_note(code: string, fallback: string) -> string {
+    let note: string = diagnostic_default_note(code);
+
+    if note != "" {
+        give note;
+    }
+
+    give fallback;
+}
+
+proc diagnostic_severity(
+    severity: DiagnosticSeverity,
+    code: string,
+    message: string,
+    span: SourceSpan
+) -> Diagnostic {
+    if severity == DiagnosticSeverity.Fatal {
+        give diagnostic_fatal(code, DiagnosticPhase.Sema, message, span);
+    }
+
+    if severity == DiagnosticSeverity.Warning {
+        give diagnostic_warning(code, DiagnosticPhase.Sema, message, span);
+    }
+
+    give diagnostic_error(code, DiagnosticPhase.Sema, message, span);
+}
+
+proc attach_sema_context(
+    diagnostic: Diagnostic,
+    phase: SemaPhase,
+    kind: SemaDiagnosticKind
+) -> Diagnostic {
+    let diag: Diagnostic = diagnostic;
+
+    set diag = diagnostic_with_note(diag, "sema phase: " + sema_phase_name(phase));
+    set diag = diagnostic_with_note(diag, "sema kind: " + sema_kind_name(kind));
+
+    give diag;
 }
 
 proc sema_diagnostic(
-  code: string,
-  severity: SemaSeverity,
-  message: string,
-  labels: [string],
-  suggestion: string,
-  span: AstSpan,
-  fatal: bool
-) -> SemaDiagnostic {
-  give SemaDiagnostic {
-    code: code,
-    severity: severity,
-    message: message,
-    labels: labels,
-    suggestion: suggestion,
-    span: span,
-    fatal: fatal
-  };
+    code: string,
+    severity: DiagnosticSeverity,
+    message: string,
+    labels: [string],
+    suggestion: string,
+    span: AstSpan,
+    fatal: bool
+) -> Diagnostic {
+    let source_span: SourceSpan = ast_span_to_source_span(span);
+    let real_severity: DiagnosticSeverity = severity;
+    let resolved_message: string = sema_message(code, message);
+    let resolved_help: string = sema_help(code, suggestion);
+
+    if fatal {
+        set real_severity = DiagnosticSeverity.Fatal;
+    }
+
+    let diag: Diagnostic =
+        diagnostic_severity(real_severity, code, resolved_message, source_span);
+
+    let i: u64 = 0;
+
+    while i < len(labels) {
+        if labels[i] != "" {
+            set diag = diagnostic_with_label(diag, secondary_label(labels[i], source_span));
+        }
+
+        set i = i + 1;
+    }
+
+    if resolved_help != "" {
+        set diag = diagnostic_with_help(diag, resolved_help);
+    }
+
+    let note: string = diagnostic_default_note(code);
+
+    if note != "" {
+        set diag = diagnostic_with_note(diag, note);
+    }
+
+    give diag;
 }
+
+proc sema_typed_diagnostic(
+    code: string,
+    severity: DiagnosticSeverity,
+    phase: SemaPhase,
+    kind: SemaDiagnosticKind,
+    message: string,
+    labels: [string],
+    suggestion: string,
+    span: AstSpan
+) -> Diagnostic {
+    let source_span: SourceSpan = ast_span_to_source_span(span);
+    let resolved_message: string = sema_message(code, message);
+    let resolved_help: string = sema_help(code, suggestion);
+
+    let diag: Diagnostic =
+        diagnostic_severity(severity, code, resolved_message, source_span);
+
+    set diag = attach_sema_context(diag, phase, kind);
+
+    let i: u64 = 0;
+
+    while i < len(labels) {
+        if labels[i] != "" {
+            set diag = diagnostic_with_label(diag, secondary_label(labels[i], source_span));
+        }
+
+        set i = i + 1;
+    }
+
+    if resolved_help != "" {
+        set diag = diagnostic_with_help(diag, resolved_help);
+    }
+
+    let note: string = diagnostic_default_note(code);
+
+    if note != "" {
+        set diag = diagnostic_with_note(diag, note);
+    }
+
+    give diag;
+}
+
+proc sema_with_note(diagnostic: Diagnostic, note: string) -> Diagnostic {
+    give diagnostic_with_note(diagnostic, note);
+}
+
+proc sema_with_label(
+    diagnostic: Diagnostic,
+    message: string,
+    span: AstSpan
+) -> Diagnostic {
+    give diagnostic_with_label(
+        diagnostic,
+        secondary_label(message, ast_span_to_source_span(span))
+    );
+}
+
+proc sema_add_unique_diag(
+    diagnostics: [Diagnostic],
+    diagnostic: Diagnostic
+) -> [Diagnostic] {
+    give add_unique_diagnostic(diagnostics, diagnostic);
+}
+
+proc sema_merge_diagnostics(
+    left: [Diagnostic],
+    right: [Diagnostic]
+) -> [Diagnostic] {
+    give merge_diagnostics(left, right);
+}
+
+proc sema_empty_context() -> SemaContext {
+    give SemaContext {
+        diagnostics: [],
+        phase: SemaPhase.Unknown,
+        valid: true
+    };
+}
+
+proc sema_context_with_phase(phase: SemaPhase) -> SemaContext {
+    give SemaContext {
+        diagnostics: [],
+        phase: phase,
+        valid: true
+    };
+}
+
+proc sema_context_add(ctx: SemaContext, diagnostic: Diagnostic) -> SemaContext {
+    set ctx.diagnostics = sema_add_unique_diag(ctx.diagnostics, diagnostic);
+
+    let report: DiagnosticReport = diagnostic_report(ctx.diagnostics);
+
+    set ctx.valid = report.valid;
+
+    give ctx;
+}
+
+proc sema_context_error(
+    ctx: SemaContext,
+    code: string,
+    kind: SemaDiagnosticKind,
+    message: string,
+    labels: [string],
+    suggestion: string,
+    span: AstSpan
+) -> SemaContext {
+    let diagnostic: Diagnostic =
+        sema_typed_diagnostic(
+            code,
+            DiagnosticSeverity.Error,
+            ctx.phase,
+            kind,
+            message,
+            labels,
+            suggestion,
+            span
+        );
+
+    give sema_context_add(ctx, diagnostic);
+}
+
+proc sema_context_warning(
+    ctx: SemaContext,
+    code: string,
+    kind: SemaDiagnosticKind,
+    message: string,
+    labels: [string],
+    suggestion: string,
+    span: AstSpan
+) -> SemaContext {
+    let diagnostic: Diagnostic =
+        sema_typed_diagnostic(
+            code,
+            DiagnosticSeverity.Warning,
+            ctx.phase,
+            kind,
+            message,
+            labels,
+            suggestion,
+            span
+        );
+
+    give sema_context_add(ctx, diagnostic);
+}
+
+proc sema_result(diagnostics: [Diagnostic]) -> DiagnosticReport {
+    give diagnostic_report(diagnostics);
+}
+
+proc sema_context_result(ctx: SemaContext) -> DiagnosticReport {
+    give diagnostic_report(ctx.diagnostics);
+}
+
+proc sema_error(code: string, message: string, span: AstSpan) -> Diagnostic {
+    give sema_typed_diagnostic(
+        code,
+        DiagnosticSeverity.Error,
+        SemaPhase.Unknown,
+        SemaDiagnosticKind.Unknown,
+        message,
+        [message],
+        "",
+        span
+    );
+}
+
+proc sema_warning(code: string, message: string, span: AstSpan) -> Diagnostic {
+    give sema_typed_diagnostic(
+        code,
+        DiagnosticSeverity.Warning,
+        SemaPhase.Unknown,
+        SemaDiagnosticKind.Unknown,
+        message,
+        [message],
+        "",
+        span
+    );
+}
+
+proc sema_internal_error(message: string) -> Diagnostic {
+    let diag: Diagnostic =
+        sema_typed_diagnostic(
+            "SEMA_E_INTERNAL",
+            DiagnosticSeverity.Fatal,
+            SemaPhase.Unknown,
+            SemaDiagnosticKind.Internal,
+            message,
+            ["internal"],
+            "report this compiler error with a minimal reproduction",
+            ast_span_empty()
+        );
+
+    set diag = diagnostic_with_note(diag, "internal compiler error in semantic analysis");
+
+    give diag;
+}
+
+proc sema_duplicate_symbol(name: string, span: AstSpan) -> Diagnostic {
+    let code: string = "SEMA_E_DUPLICATE_SYMBOL";
+
+    let diag: Diagnostic =
+        sema_typed_diagnostic(
+            code,
+            DiagnosticSeverity.Error,
+            SemaPhase.SymbolCollection,
+            SemaDiagnosticKind.DuplicateSymbol,
+            "duplicate symbol `" + name + "`",
+            [name],
+            "rename one declaration or remove the duplicate",
+            span
+        );
+
+    set diag = diagnostic_with_note(diag, sema_note(code, "symbols must be unique inside the same scope"));
+
+    give diag;
+}
+
+proc sema_unknown_symbol(name: string, span: AstSpan) -> Diagnostic {
+    let code: string = "SEMA_E_UNKNOWN_SYMBOL";
+
+    let diag: Diagnostic =
+        sema_typed_diagnostic(
+            code,
+            DiagnosticSeverity.Error,
+            SemaPhase.NameResolution,
+            SemaDiagnosticKind.UnknownSymbol,
+            "unknown symbol `" + name + "`",
+            [name],
+            "declare the symbol before use or import it from another module",
+            span
+        );
+
+    set diag =
+        diagnostic_with_note(
+            diag,
+            sema_note(code, "no matching local, imported item, builtin, or module item was found")
+        );
+
+    give diag;
+}
+
+proc sema_invalid_import(path: string, span: AstSpan) -> Diagnostic {
+    let code: string = "SEMA_E_INVALID_IMPORT";
+
+    let diag: Diagnostic =
+        sema_typed_diagnostic(
+            code,
+            DiagnosticSeverity.Error,
+            SemaPhase.ImportResolution,
+            SemaDiagnosticKind.InvalidImport,
+            "invalid import `" + path + "`",
+            [path],
+            "use a canonical module path or add a valid import alias",
+            span
+        );
+
+    set diag =
+        diagnostic_with_note(
+            diag,
+            sema_note(code, "imports must resolve to an existing module or exported item")
+        );
+
+    give diag;
+}
+
+proc sema_invalid_export(name: string, span: AstSpan) -> Diagnostic {
+    give sema_typed_diagnostic(
+        "SEMA_E_INVALID_EXPORT",
+        DiagnosticSeverity.Error,
+        SemaPhase.ModuleCheck,
+        SemaDiagnosticKind.InvalidExport,
+        "invalid export `" + name + "`",
+        [name],
+        "export only symbols declared or imported by this module",
+        span
+    );
+}
+
+proc sema_invalid_attribute(attr: string, span: AstSpan) -> Diagnostic {
+    give sema_typed_diagnostic(
+        "SEMA_E_INVALID_ATTRIBUTE",
+        DiagnosticSeverity.Error,
+        SemaPhase.AttributeCheck,
+        SemaDiagnosticKind.InvalidAttribute,
+        "invalid attribute `" + attr + "`",
+        [attr],
+        "remove the attribute or place it on a supported item",
+        span
+    );
+}
+
+proc sema_invalid_visibility(visibility: string, span: AstSpan) -> Diagnostic {
+    give sema_typed_diagnostic(
+        "SEMA_E_INVALID_VISIBILITY",
+        DiagnosticSeverity.Error,
+        SemaPhase.VisibilityCheck,
+        SemaDiagnosticKind.InvalidVisibility,
+        "invalid visibility `" + visibility + "`",
+        [visibility],
+        "use private, public, internal, export, package, protected, or external",
+        span
+    );
+}
+
+proc sema_invalid_control_flow(message: string, span: AstSpan) -> Diagnostic {
+    give sema_typed_diagnostic(
+        "SEMA_E_INVALID_CONTROL_FLOW",
+        DiagnosticSeverity.Error,
+        SemaPhase.ControlFlow,
+        SemaDiagnosticKind.InvalidControlFlow,
+        message,
+        ["control flow"],
+        "move this statement into a valid control-flow context",
+        span
+    );
+}
+
+proc sema_invalid_module(message: string, span: AstSpan) -> Diagnostic {
+    give sema_typed_diagnostic(
+        "SEMA_E_INVALID_MODULE",
+        DiagnosticSeverity.Error,
+        SemaPhase.ModuleCheck,
+        SemaDiagnosticKind.InvalidModule,
+        message,
+        ["module"],
+        "fix the module declaration or module path",
+        span
+    );
+}
+
+proc sema_typeck_assignment_bridge(span: AstSpan) -> Diagnostic {
+    give sema_typed_diagnostic(
+        "TYPECK_E_ASSIGN_MISMATCH",
+        DiagnosticSeverity.Error,
+        SemaPhase.TypeResolution,
+        SemaDiagnosticKind.InvalidType,
+        diagnostic_message("TYPECK_E_ASSIGN_MISMATCH"),
+        ["assignment"],
+        diagnostic_default_help("TYPECK_E_ASSIGN_MISMATCH"),
+        span
+    );
+}
+
+proc sema_summary(diagnostic: Diagnostic) -> string {
+    give diagnostic.code + ": " + diagnostic.message;
+}
+
+proc sema_result_summary(result: DiagnosticReport) -> string {
+    if result.valid {
+        give "sema ok";
+    }
+
+    give "sema failed: " +
+        (result.error_count as string) +
+        " error(s), " +
+        (result.fatal_count as string) +
+        " fatal(s)";
+}
+
+share SemaPhase
+share SemaDiagnosticKind
+share SemaContext
+
+share sema_span_empty
+share ast_span_to_source_span
+
+share sema_phase_name
+share sema_kind_name
+share sema_message
+share sema_help
+share sema_note
+share diagnostic_severity
+share attach_sema_context
+
+share sema_diagnostic
+share sema_typed_diagnostic
+share sema_with_note
+share sema_with_label
+
+share sema_add_unique_diag
+share sema_merge_diagnostics
+
+share sema_empty_context
+share sema_context_with_phase
+share sema_context_add
+share sema_context_error
+share sema_context_warning
+
+share sema_result
+share sema_context_result
+
+share sema_error
+share sema_warning
+share sema_internal_error
+
+share sema_duplicate_symbol
+share sema_unknown_symbol
+share sema_invalid_import
+share sema_invalid_export
+share sema_invalid_attribute
+share sema_invalid_visibility
+share sema_invalid_control_flow
+share sema_invalid_module
+share sema_typeck_assignment_bridge
+
+share sema_summary
+share sema_result_summary

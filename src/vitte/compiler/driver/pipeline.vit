@@ -1,9 +1,9 @@
 space vitte/compiler/driver
 
 use vitte/compiler/driver/commands.{ DriverCommand, command_from_text }
-use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverDiagnostic, DriverDiagnosticLevel, DriverModuleInput, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config }
+use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverDiagnostic, DriverDiagnosticLevel, DriverModuleInput, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_mir_json }
 use vitte/compiler/driver/exit_status.{ exit_code }
-use vitte/compiler/driver/result.{ CliRunResult }
+use vitte/compiler/driver/result.{ CliReportResult, CliRunResult }
 
 form CompileReport {
     command: string
@@ -384,6 +384,96 @@ proc main_driver_report_json(command_name: string, source_path: string, source_t
 proc main_driver_report_json_with_config(command_name: string, source_path: string, source_text: string, config: DriverCompileConfig) -> string {
     let report: CompileReport = run_and_report_with_config(command_name, source_path, source_text, config);
     give compile_report_json(report);
+}
+
+proc main_driver_surface_report_json(command_name: string, dump_flag: string, source_path: string, source_text: string) -> CliReportResult {
+    give main_driver_surface_report_json_with_config(command_name, dump_flag, source_path, source_text, default_compile_config());
+}
+
+proc main_driver_surface_report_json_with_config(command_name: string, dump_flag: string, source_path: string, source_text: string, config: DriverCompileConfig) -> CliReportResult {
+    let status: DriverCompileResult = check_source_with_config(source_path, source_text, config);
+    if command_name == "parse" and dump_flag == "--dump-ast-json" {
+        give CliReportResult {
+            code: exit_code(status.status),
+            message: status.message,
+            report_json: dump_ast_json(source_path, source_text)
+        };
+    }
+    if command_name == "check" and dump_flag == "--dump-hir-json" {
+        give CliReportResult {
+            code: exit_code(status.status),
+            message: status.message,
+            report_json: dump_hir_json(source_path, source_text)
+        };
+    }
+    if command_name == "check" and dump_flag == "--dump-mir-json" {
+        give CliReportResult {
+            code: exit_code(status.status),
+            message: status.message,
+            report_json: dump_mir_json(source_path, source_text)
+        };
+    }
+    if command_name == "check" and (dump_flag == "--diagnostics-json" or dump_flag == "--diag-json") {
+        give CliReportResult {
+            code: exit_code(status.status),
+            message: status.message,
+            report_json: dump_diagnostics_json(source_path, source_text)
+        };
+    }
+
+    give CliReportResult {
+        code: 2,
+        message: "E_DRIVER_SURFACE_UNAVAILABLE: unsupported command/flag combination",
+        report_json:
+            "{" +
+            "\"status\":\"error\"," +
+            "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"," +
+            "\"command\":\"" + json_escape(command_name) + "\"," +
+            "\"flag\":\"" + json_escape(dump_flag) + "\"," +
+            "\"message\":\"unsupported command/flag combination\"" +
+            "}"
+    };
+}
+
+proc detect_dump_surface_flag(args: [string]) -> string {
+    let i: u64 = 0;
+    while i < len(args) {
+        let arg0: string = args[i];
+        if arg0 == "--dump-ast-json" {
+            give "--dump-ast-json";
+        }
+        if arg0 == "--dump-ast-json-pretty" {
+            give "--dump-ast-json";
+        }
+        if arg0 == "--dump-hir-json" {
+            give "--dump-hir-json";
+        }
+        if arg0 == "--dump-mir-json" {
+            give "--dump-mir-json";
+        }
+        if arg0 == "--diagnostics-json" or arg0 == "--diag-json" or arg0 == "--diag-json-pretty" {
+            give "--diagnostics-json";
+        }
+        set i = i + 1;
+    }
+    give "";
+}
+
+proc main_driver_surface_report_json_from_args(command_name: string, args: [string], source_path: string, source_text: string) -> CliReportResult {
+    give main_driver_surface_report_json_from_args_with_config(command_name, args, source_path, source_text, default_compile_config());
+}
+
+proc main_driver_surface_report_json_from_args_with_config(command_name: string, args: [string], source_path: string, source_text: string, config: DriverCompileConfig) -> CliReportResult {
+    let dump_flag: string = detect_dump_surface_flag(args);
+    if dump_flag != "" {
+        give main_driver_surface_report_json_with_config(command_name, dump_flag, source_path, source_text, config);
+    }
+    let report: CompileReport = run_and_report_with_config(command_name, source_path, source_text, config);
+    give CliReportResult {
+        code: report.exit_code,
+        message: report.message,
+        report_json: compile_report_json(report)
+    };
 }
 
 proc main_driver_set(command_name: string, inputs: [DriverModuleInput]) -> CliRunResult {

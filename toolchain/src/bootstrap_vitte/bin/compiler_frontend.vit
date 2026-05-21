@@ -1,7 +1,161 @@
 space vitte/bootstrap/bootstrap_vitte/bin/compiler_frontend
 
-const VERSION_TEXT: string = "bootstrap_vitte compiler_frontend 0.1.0"
-const BANNER_TEXT: string = "bootstrap_vitte compiler_frontend shim"
+<<<
+  Bootstrap compiler frontend driver.
+
+  Responsibilities:
+  - source loading
+  - lexical analysis
+  - parsing
+  - AST validation
+  - frontend diagnostics
+  - bootstrap-safe frontend pipeline
+  - deterministic tokenization
+  - syntax recovery preparation
+>>>
+
+const VERSION_MAJOR: int = 0
+const VERSION_MINOR: int = 1
+const VERSION_PATCH: int = 0
+
+const VERSION_TEXT: string =
+  "bootstrap_vitte compiler_frontend 0.1.0"
+
+const BANNER_TEXT: string =
+  "bootstrap_vitte enterprise compiler frontend"
+
+const TOOL_NAME: string =
+  "compiler_frontend"
+
+const EXIT_SUCCESS: int = 0
+const EXIT_FAILURE: int = 1
+
+pick FrontendStage {
+  Unknown
+  Load
+  Lex
+  Parse
+  Ast
+  Validate
+  Complete
+  Failed
+}
+
+pick DiagnosticSeverity {
+  Info
+  Warning
+  Error
+  Fatal
+}
+
+pick TokenKind {
+  Unknown
+
+  Identifier
+  Keyword
+
+  Integer
+  Float
+  String
+
+  Symbol
+
+  Newline
+  Eof
+}
+
+pick AstNodeKind {
+  Unknown
+
+  Space
+  Use
+  Proc
+  Form
+  Pick
+  Const
+
+  Expr
+  Stmt
+}
+
+form FrontendDiagnostic {
+  severity: DiagnosticSeverity
+
+  code: string
+
+  message: string
+
+  line: int
+  column: int
+
+  stage: FrontendStage
+
+  valid: bool
+}
+
+form SourceFile {
+  path: string
+
+  text: string
+
+  loaded: bool
+
+  valid: bool
+}
+
+form Token {
+  kind: TokenKind
+
+  text: string
+
+  line: int
+  column: int
+
+  valid: bool
+}
+
+form AstNode {
+  kind: AstNodeKind
+
+  text: string
+
+  children: [AstNode]
+
+  valid: bool
+}
+
+form FrontendConfig {
+  input_path: string
+
+  emit_tokens: bool
+  emit_ast: bool
+
+  recovery: bool
+
+  verbose: bool
+
+  emit_banner: bool
+
+  valid: bool
+}
+
+form FrontendState {
+  config: FrontendConfig
+
+  source: SourceFile
+
+  tokens: [Token]
+
+  ast: [AstNode]
+
+  diagnostics: [FrontendDiagnostic]
+
+  stage: FrontendStage
+
+  initialized: bool
+
+  valid: bool
+}
 
 proc version_text() -> string {
   give VERSION_TEXT
@@ -11,8 +165,605 @@ proc banner_text() -> string {
   give BANNER_TEXT
 }
 
-proc main(args: list[string]) -> int {
-  give 0
+proc frontend_diagnostic(
+  severity: DiagnosticSeverity,
+  code: string,
+  message: string,
+  line: int,
+  column: int,
+  stage: FrontendStage
+) -> FrontendDiagnostic {
+
+  give FrontendDiagnostic(
+    severity: severity,
+
+    code: code,
+
+    message: message,
+
+    line: line,
+    column: column,
+
+    stage: stage,
+
+    valid:
+      code != ""
+      and message != ""
+  )
 }
+
+proc token(
+  kind: TokenKind,
+  text: string,
+  line: int,
+  column: int
+) -> Token {
+
+  give Token(
+    kind: kind,
+
+    text: text,
+
+    line: line,
+    column: column,
+
+    valid:
+      text != ""
+  )
+}
+
+proc ast_node(
+  kind: AstNodeKind,
+  text: string
+) -> AstNode {
+
+  give AstNode(
+    kind: kind,
+
+    text: text,
+
+    children: [],
+
+    valid:
+      kind != AstNodeKind.Unknown
+  )
+}
+
+proc default_config() -> FrontendConfig {
+
+  give FrontendConfig(
+    input_path: "",
+
+    emit_tokens: false,
+    emit_ast: false,
+
+    recovery: true,
+
+    verbose: false,
+
+    emit_banner: true,
+
+    valid: true
+  )
+}
+
+proc build_state() -> FrontendState {
+
+  give FrontendState(
+    config: default_config(),
+
+    source: SourceFile(
+      path: "",
+      text: "",
+      loaded: false,
+      valid: false
+    ),
+
+    tokens: [],
+
+    ast: [],
+
+    diagnostics: [],
+
+    stage: FrontendStage.Unknown,
+
+    initialized: false,
+
+    valid: true
+  )
+}
+
+proc parse_argument(
+  state: FrontendState,
+  arg: string
+) -> FrontendState {
+
+  make next_state = state
+
+  if arg == "--tokens" {
+    set next_state.config.emit_tokens = true
+  }
+  elif arg == "--ast" {
+    set next_state.config.emit_ast = true
+  }
+  elif arg == "--verbose" {
+    set next_state.config.verbose = true
+  }
+  elif arg == "--no-banner" {
+    set next_state.config.emit_banner = false
+  }
+  elif arg == "--strict" {
+    set next_state.config.recovery = false
+  }
+  elif arg == "--version" {
+    emit version_text()
+  }
+  elif arg == "--help" {
+    emit "usage: compiler_frontend [options]"
+    emit "  --tokens"
+    emit "  --ast"
+    emit "  --verbose"
+    emit "  --strict"
+  }
+  elif next_state.config.input_path == "" {
+    set next_state.config.input_path = arg
+  }
+
+  give next_state
+}
+
+proc parse_arguments(
+  state: FrontendState,
+  args: list[string]
+) -> FrontendState {
+
+  make next_state = state
+
+  each arg in args {
+    set next_state =
+      parse_argument(
+        next_state,
+        arg
+      )
+  }
+
+  give next_state
+}
+
+proc initialize(
+  state: FrontendState
+) -> FrontendState {
+
+  make next_state = state
+
+  set next_state.initialized = true
+
+  give next_state
+}
+
+proc load_source(
+  state: FrontendState
+) -> FrontendState {
+
+  make next_state = state
+
+  set next_state.stage =
+    FrontendStage.Load
+
+  if next_state.config.input_path == "" {
+
+    set next_state.diagnostics =
+      next_state.diagnostics + [
+        frontend_diagnostic(
+          DiagnosticSeverity.Fatal,
+          "FRONTEND_INPUT",
+          "missing input source",
+          0,
+          0,
+          FrontendStage.Load
+        )
+      ]
+
+    set next_state.valid = false
+
+    give next_state
+  }
+
+  <<< bootstrap placeholder loader >>>
+
+  set next_state.source =
+    SourceFile(
+      path:
+        next_state.config.input_path,
+
+      text:
+        "space demo/main",
+
+      loaded: true,
+
+      valid: true
+    )
+
+  give next_state
+}
+
+proc is_whitespace(
+  c: string
+) -> bool {
+
+  give c == " "
+    or c == "\n"
+    or c == "\t"
+    or c == "\r"
+}
+
+proc is_identifier_char(
+  c: string
+) -> bool {
+
+  give (c >= "a" and c <= "z")
+    or (c >= "A" and c <= "Z")
+    or (c >= "0" and c <= "9")
+    or c == "_"
+    or c == "/"
+}
+
+proc classify_keyword(
+  text: string
+) -> TokenKind {
+
+  if text == "space" {
+    give TokenKind.Keyword
+  }
+
+  if text == "proc" {
+    give TokenKind.Keyword
+  }
+
+  if text == "form" {
+    give TokenKind.Keyword
+  }
+
+  if text == "pick" {
+    give TokenKind.Keyword
+  }
+
+  if text == "const" {
+    give TokenKind.Keyword
+  }
+
+  give TokenKind.Identifier
+}
+
+proc lex_source(
+  state: FrontendState
+) -> FrontendState {
+
+  make next_state = state
+
+  set next_state.stage =
+    FrontendStage.Lex
+
+  let source: string =
+    next_state.source.text
+
+  let tokens: [Token] = []
+
+  let pos: int = 0
+
+  let line: int = 1
+  let column: int = 1
+
+  while pos < source.len {
+
+    let c: string =
+      source[pos]
+
+    if is_whitespace(c) {
+
+      if c == "\n" {
+        set line = line + 1
+        set column = 1
+      }
+      else {
+        set column = column + 1
+      }
+
+      set pos = pos + 1
+
+      continue
+    }
+
+    if is_identifier_char(c) {
+
+      let text: string = ""
+
+      let start_column: int =
+        column
+
+      while pos < source.len {
+
+        let current: string =
+          source[pos]
+
+        if not is_identifier_char(current) {
+          break
+        }
+
+        set text =
+          text + current
+
+        set pos =
+          pos + 1
+
+        set column =
+          column + 1
+      }
+
+      set tokens =
+        tokens + [
+          token(
+            classify_keyword(text),
+            text,
+            line,
+            start_column
+          )
+        ]
+
+      continue
+    }
+
+    set tokens =
+      tokens + [
+        token(
+          TokenKind.Symbol,
+          c,
+          line,
+          column
+        )
+      ]
+
+    set pos = pos + 1
+
+    set column = column + 1
+  }
+
+  set tokens =
+    tokens + [
+      token(
+        TokenKind.Eof,
+        "<eof>",
+        line,
+        column
+      )
+    ]
+
+  set next_state.tokens =
+    tokens
+
+  give next_state
+}
+
+proc parse_ast(
+  state: FrontendState
+) -> FrontendState {
+
+  make next_state = state
+
+  set next_state.stage =
+    FrontendStage.Parse
+
+  let nodes: [AstNode] = []
+
+  let i: int = 0
+
+  while i < next_state.tokens.len {
+
+    let tok: Token =
+      next_state.tokens[i]
+
+    if tok.kind == TokenKind.Keyword {
+
+      if tok.text == "space" {
+
+        set nodes =
+          nodes + [
+            ast_node(
+              AstNodeKind.Space,
+              tok.text
+            )
+          ]
+      }
+      elif tok.text == "proc" {
+
+        set nodes =
+          nodes + [
+            ast_node(
+              AstNodeKind.Proc,
+              tok.text
+            )
+          ]
+      }
+      elif tok.text == "form" {
+
+        set nodes =
+          nodes + [
+            ast_node(
+              AstNodeKind.Form,
+              tok.text
+            )
+          ]
+      }
+      elif tok.text == "pick" {
+
+        set nodes =
+          nodes + [
+            ast_node(
+              AstNodeKind.Pick,
+              tok.text
+            )
+          ]
+      }
+    }
+
+    set i = i + 1
+  }
+
+  set next_state.ast =
+    nodes
+
+  give next_state
+}
+
+proc validate_ast(
+  state: FrontendState
+) -> FrontendState {
+
+  make next_state = state
+
+  set next_state.stage =
+    FrontendStage.Validate
+
+  if next_state.ast.len == 0 {
+
+    set next_state.diagnostics =
+      next_state.diagnostics + [
+        frontend_diagnostic(
+          DiagnosticSeverity.Error,
+          "AST_EMPTY",
+          "empty syntax tree",
+          0,
+          0,
+          FrontendStage.Validate
+        )
+      ]
+
+    set next_state.valid = false
+
+    give next_state
+  }
+
+  give next_state
+}
+
+proc render_tokens(
+  tokens: [Token]
+) -> string {
+
+  let out: string = ""
+
+  let i: int = 0
+
+  while i < tokens.len {
+
+    set out =
+      out
+      + "["
+      + tokens[i].text
+      + "]\n"
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc render_ast(
+  nodes: [AstNode]
+) -> string {
+
+  let out: string = ""
+
+  let i: int = 0
+
+  while i < nodes.len {
+
+    set out =
+      out
+      + "node "
+      + nodes[i].text
+      + "\n"
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc run_frontend_pipeline(
+  args: list[string]
+) -> bool {
+
+  make state =
+    build_state()
+
+  set state =
+    parse_arguments(
+      state,
+      args
+    )
+
+  set state =
+    initialize(state)
+
+  set state =
+    load_source(state)
+
+  if not state.valid {
+    give false
+  }
+
+  set state =
+    lex_source(state)
+
+  set state =
+    parse_ast(state)
+
+  set state =
+    validate_ast(state)
+
+  if not state.valid {
+    give false
+  }
+
+  if state.config.emit_banner {
+    emit banner_text()
+  }
+
+  if state.config.emit_tokens {
+    emit render_tokens(
+      state.tokens
+    )
+  }
+
+  if state.config.emit_ast {
+    emit render_ast(
+      state.ast
+    )
+  }
+
+  emit "frontend pipeline completed"
+
+  give true
+}
+
+proc main(
+  args: list[string]
+) -> int {
+
+  let success: bool =
+    run_frontend_pipeline(args)
+
+  if success {
+    give EXIT_SUCCESS
+  }
+
+  give EXIT_FAILURE
+}
+
+share version_text
+share banner_text
+share run_frontend_pipeline
+share main
 
 export *

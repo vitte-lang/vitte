@@ -1,29 +1,182 @@
 space vitte/compiler/analysis/sema
 
-proc place_root_name(text: string) -> string {
-  let trimmed: string = trim(text);
-  if trimmed == "" {
-    give "";
-  }
+pick PlaceRootKind {
+    Empty
+    Local
+    SelfValue
+    Builtin
+    Qualified
+    Invalid
+}
 
-  let i: int = 0;
-  while i < len(trimmed) {
-    let ch: string = slice(trimmed, i, i + 1);
-    let is_alpha: bool = (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_";
-    let is_digit: bool = ch >= "0" and ch <= "9";
-    if i == 0 {
-      if not is_alpha {
-        give "";
-      }
-    } elif not is_alpha and not is_digit {
-      give slice(trimmed, 0, i);
-    }
-    set i = i + 1;
-  }
+form PlaceRoot {
+    name: string
+    kind: PlaceRootKind
+    valid: bool
+    end_index: u64
+}
 
-  give trimmed;
+proc sema_is_alpha(ch: string) -> bool {
+    give (ch >= "a" and ch <= "z")
+        or (ch >= "A" and ch <= "Z")
+        or ch == "_";
+}
+
+proc sema_is_digit(ch: string) -> bool {
+    give ch >= "0" and ch <= "9";
+}
+
+proc sema_is_ident_char(ch: string) -> bool {
+    give sema_is_alpha(ch) or sema_is_digit(ch);
 }
 
 proc sema_builtin_name(name: string) -> bool {
-  give name == "flag" or name == "argc" or name == "argv";
+    give name == "flag"
+        or name == "argc"
+        or name == "argv"
+        or name == "env"
+        or name == "target"
+        or name == "profile"
+        or name == "build";
 }
+
+proc sema_place_root_kind(name: string) -> PlaceRootKind {
+    if name == "" {
+        give PlaceRootKind.Empty;
+    }
+
+    if name == "self" {
+        give PlaceRootKind.SelfValue;
+    }
+
+    if sema_builtin_name(name) {
+        give PlaceRootKind.Builtin;
+    }
+
+    if find(name, "::") >= 0 {
+        give PlaceRootKind.Qualified;
+    }
+
+    give PlaceRootKind.Local;
+}
+
+proc place_root(
+    name: string,
+    kind: PlaceRootKind,
+    valid: bool,
+    end_index: u64
+) -> PlaceRoot {
+    give PlaceRoot {
+        name: name,
+        kind: kind,
+        valid: valid,
+        end_index: end_index
+    };
+}
+
+proc empty_place_root() -> PlaceRoot {
+    give place_root("", PlaceRootKind.Empty, false, 0);
+}
+
+proc parse_place_root(text: string) -> PlaceRoot {
+    let trimmed: string = trim(text);
+
+    if trimmed == "" {
+        give empty_place_root();
+    }
+
+    let i: u64 = 0;
+
+    while i < len(trimmed) {
+        let ch: string = slice(trimmed, i, i + 1);
+
+        if i == 0 {
+            if !sema_is_alpha(ch) {
+                give place_root(
+                    "",
+                    PlaceRootKind.Invalid,
+                    false,
+                    i
+                );
+            }
+        } elif !sema_is_ident_char(ch) {
+            let name: string = slice(trimmed, 0, i);
+
+            give place_root(
+                name,
+                sema_place_root_kind(name),
+                name != "",
+                i
+            );
+        }
+
+        set i = i + 1;
+    }
+
+    give place_root(
+        trimmed,
+        sema_place_root_kind(trimmed),
+        true,
+        len(trimmed)
+    );
+}
+
+proc place_root_name(text: string) -> string {
+    give parse_place_root(text).name;
+}
+
+proc place_root_valid(text: string) -> bool {
+    give parse_place_root(text).valid;
+}
+
+proc place_root_is_builtin(text: string) -> bool {
+    let root: PlaceRoot = parse_place_root(text);
+    give root.kind == PlaceRootKind.Builtin;
+}
+
+proc place_root_is_self(text: string) -> bool {
+    let root: PlaceRoot = parse_place_root(text);
+    give root.kind == PlaceRootKind.SelfValue;
+}
+
+proc place_root_kind_name(kind: PlaceRootKind) -> string {
+    if kind == PlaceRootKind.Empty {
+        give "empty";
+    }
+
+    if kind == PlaceRootKind.Local {
+        give "local";
+    }
+
+    if kind == PlaceRootKind.SelfValue {
+        give "self";
+    }
+
+    if kind == PlaceRootKind.Builtin {
+        give "builtin";
+    }
+
+    if kind == PlaceRootKind.Qualified {
+        give "qualified";
+    }
+
+    give "invalid";
+}
+
+share PlaceRootKind
+share PlaceRoot
+
+share sema_is_alpha
+share sema_is_digit
+share sema_is_ident_char
+share sema_builtin_name
+share sema_place_root_kind
+
+share place_root
+share empty_place_root
+share parse_place_root
+share place_root_name
+share place_root_valid
+share place_root_is_builtin
+share place_root_is_self
+share place_root_kind_name

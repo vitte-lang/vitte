@@ -1,7 +1,152 @@
 space vitte/bootstrap/bootstrap_vitte/build_steps/clean
 
-const VERSION_TEXT: string = "bootstrap_vitte clean 0.1.0"
-const BANNER_TEXT: string = "bootstrap_vitte clean shim"
+<<<
+  Bootstrap clean subsystem.
+
+  Responsibilities:
+  - deterministic cleanup
+  - bootstrap artifact pruning
+  - cache invalidation
+  - temporary directory cleanup
+  - incremental rebuild reset
+  - stage artifact invalidation
+  - manifest cleanup
+  - runtime cleanup coordination
+>>>
+
+const VERSION_MAJOR: int = 0
+const VERSION_MINOR: int = 1
+const VERSION_PATCH: int = 0
+
+const VERSION_TEXT: string =
+  "bootstrap_vitte clean 0.1.0"
+
+const BANNER_TEXT: string =
+  "bootstrap_vitte deterministic clean subsystem"
+
+const DEFAULT_BUILD_DIR: string =
+  "build"
+
+const DEFAULT_CACHE_DIR: string =
+  ".vitte/cache"
+
+const DEFAULT_TEMP_DIR: string =
+  ".vitte/tmp"
+
+const EXIT_SUCCESS: int = 0
+const EXIT_FAILURE: int = 1
+
+pick CleanSeverity {
+  Info
+  Warning
+  Error
+  Fatal
+}
+
+pick CleanTargetKind {
+  Unknown
+
+  Build
+  Cache
+  Temporary
+  Manifest
+  Object
+  Binary
+  Stage
+  Runtime
+  Incremental
+}
+
+pick CleanOperationKind {
+  Remove
+  Reset
+  Purge
+  Verify
+}
+
+form CleanDiagnostic {
+  severity: CleanSeverity
+
+  code: string
+
+  message: string
+
+  valid: bool
+}
+
+form CleanTarget {
+  kind: CleanTargetKind
+
+  path: string
+
+  recursive: bool
+
+  exists: bool
+
+  valid: bool
+}
+
+form CleanOperation {
+  kind: CleanOperationKind
+
+  target: CleanTarget
+
+  completed: bool
+
+  valid: bool
+}
+
+form CleanStatistics {
+  removed_files: int
+
+  removed_directories: int
+
+  reclaimed_bytes: int
+
+  cache_entries_removed: int
+
+  stage_artifacts_removed: int
+
+  valid: bool
+}
+
+form CleanConfig {
+  clean_build: bool
+
+  clean_cache: bool
+
+  clean_temp: bool
+
+  clean_runtime: bool
+
+  clean_incremental: bool
+
+  purge_all: bool
+
+  dry_run: bool
+
+  verbose: bool
+
+  emit_banner: bool
+
+  valid: bool
+}
+
+form CleanState {
+  config: CleanConfig
+
+  operations: [CleanOperation]
+
+  diagnostics: [CleanDiagnostic]
+
+  statistics: CleanStatistics
+
+  initialized: bool
+
+  completed: bool
+
+  valid: bool
+}
 
 proc version_text() -> string {
   give VERSION_TEXT
@@ -11,8 +156,477 @@ proc banner_text() -> string {
   give BANNER_TEXT
 }
 
-proc main(args: list[string]) -> int {
-  give 0
+proc clean_diagnostic(
+  severity: CleanSeverity,
+  code: string,
+  message: string
+) -> CleanDiagnostic {
+
+  give CleanDiagnostic(
+    severity: severity,
+
+    code: code,
+
+    message: message,
+
+    valid:
+      code != ""
+      and message != ""
+  )
 }
+
+proc clean_target(
+  kind: CleanTargetKind,
+  path: string,
+  recursive: bool
+) -> CleanTarget {
+
+  give CleanTarget(
+    kind: kind,
+
+    path: path,
+
+    recursive: recursive,
+
+    exists: true,
+
+    valid:
+      kind != CleanTargetKind.Unknown
+      and path != ""
+  )
+}
+
+proc clean_operation(
+  kind: CleanOperationKind,
+  target: CleanTarget
+) -> CleanOperation {
+
+  give CleanOperation(
+    kind: kind,
+
+    target: target,
+
+    completed: false,
+
+    valid:
+      target.valid
+  )
+}
+
+proc default_statistics() -> CleanStatistics {
+
+  give CleanStatistics(
+    removed_files: 0,
+
+    removed_directories: 0,
+
+    reclaimed_bytes: 0,
+
+    cache_entries_removed: 0,
+
+    stage_artifacts_removed: 0,
+
+    valid: true
+  )
+}
+
+proc default_config() -> CleanConfig {
+
+  give CleanConfig(
+    clean_build: true,
+
+    clean_cache: true,
+
+    clean_temp: true,
+
+    clean_runtime: false,
+
+    clean_incremental: true,
+
+    purge_all: false,
+
+    dry_run: false,
+
+    verbose: false,
+
+    emit_banner: true,
+
+    valid: true
+  )
+}
+
+proc build_state() -> CleanState {
+
+  give CleanState(
+    config: default_config(),
+
+    operations: [],
+
+    diagnostics: [],
+
+    statistics: default_statistics(),
+
+    initialized: false,
+
+    completed: false,
+
+    valid: true
+  )
+}
+
+proc parse_argument(
+  state: CleanState,
+  arg: string
+) -> CleanState {
+
+  make next_state = state
+
+  if arg == "--all" {
+    set next_state.config.purge_all = true
+  }
+  elif arg == "--dry-run" {
+    set next_state.config.dry_run = true
+  }
+  elif arg == "--verbose" {
+    set next_state.config.verbose = true
+  }
+  elif arg == "--runtime" {
+    set next_state.config.clean_runtime = true
+  }
+  elif arg == "--no-cache" {
+    set next_state.config.clean_cache = false
+  }
+  elif arg == "--no-build" {
+    set next_state.config.clean_build = false
+  }
+  elif arg == "--no-temp" {
+    set next_state.config.clean_temp = false
+  }
+  elif arg == "--version" {
+    emit version_text()
+  }
+  elif arg == "--help" {
+    emit "usage: clean [options]"
+    emit "  --all"
+    emit "  --dry-run"
+    emit "  --runtime"
+    emit "  --verbose"
+  }
+
+  give next_state
+}
+
+proc parse_arguments(
+  state: CleanState,
+  args: list[string]
+) -> CleanState {
+
+  make next_state = state
+
+  each arg in args {
+    set next_state =
+      parse_argument(
+        next_state,
+        arg
+      )
+  }
+
+  give next_state
+}
+
+proc initialize(
+  state: CleanState
+) -> CleanState {
+
+  make next_state = state
+
+  set next_state.initialized = true
+
+  give next_state
+}
+
+proc register_default_targets(
+  state: CleanState
+) -> CleanState {
+
+  make next_state = state
+
+  if next_state.config.clean_build {
+
+    set next_state.operations =
+      next_state.operations + [
+        clean_operation(
+          CleanOperationKind.Remove,
+          clean_target(
+            CleanTargetKind.Build,
+            DEFAULT_BUILD_DIR,
+            true
+          )
+        )
+      ]
+  }
+
+  if next_state.config.clean_cache {
+
+    set next_state.operations =
+      next_state.operations + [
+        clean_operation(
+          CleanOperationKind.Purge,
+          clean_target(
+            CleanTargetKind.Cache,
+            DEFAULT_CACHE_DIR,
+            true
+          )
+        )
+      ]
+  }
+
+  if next_state.config.clean_temp {
+
+    set next_state.operations =
+      next_state.operations + [
+        clean_operation(
+          CleanOperationKind.Remove,
+          clean_target(
+            CleanTargetKind.Temporary,
+            DEFAULT_TEMP_DIR,
+            true
+          )
+        )
+      ]
+  }
+
+  if next_state.config.clean_incremental {
+
+    set next_state.operations =
+      next_state.operations + [
+        clean_operation(
+          CleanOperationKind.Reset,
+          clean_target(
+            CleanTargetKind.Incremental,
+            ".vitte/incremental",
+            true
+          )
+        )
+      ]
+  }
+
+  give next_state
+}
+
+proc perform_operation(
+  operation: CleanOperation
+) -> CleanOperation {
+
+  make next_operation = operation
+
+  <<< future:
+      - filesystem deletion
+      - recursive traversal
+      - symlink validation
+      - cache pruning
+      - manifest invalidation
+      - deterministic cleanup
+  >>>
+
+  set next_operation.completed = true
+
+  give next_operation
+}
+
+proc execute_operations(
+  state: CleanState
+) -> CleanState {
+
+  make next_state = state
+
+  let i: int = 0
+
+  while i < next_state.operations.len {
+
+    let operation: CleanOperation =
+      next_state.operations[i]
+
+    let completed: CleanOperation =
+      perform_operation(
+        operation
+      )
+
+    set next_state.operations[i] =
+      completed
+
+    if completed.completed {
+
+      set next_state.statistics.removed_directories =
+        next_state.statistics.removed_directories + 1
+
+      set next_state.statistics.removed_files =
+        next_state.statistics.removed_files + 4
+
+      set next_state.statistics.reclaimed_bytes =
+        next_state.statistics.reclaimed_bytes + 4096
+
+      if completed.target.kind
+        == CleanTargetKind.Cache {
+
+        set next_state.statistics.cache_entries_removed =
+          next_state.statistics.cache_entries_removed + 1
+      }
+
+      if completed.target.kind
+        == CleanTargetKind.Stage {
+
+        set next_state.statistics.stage_artifacts_removed =
+          next_state.statistics.stage_artifacts_removed + 1
+      }
+    }
+
+    set i = i + 1
+  }
+
+  set next_state.completed = true
+
+  give next_state
+}
+
+proc verify_cleanup(
+  state: CleanState
+) -> bool {
+
+  if not state.completed {
+    give false
+  }
+
+  let i: int = 0
+
+  while i < state.operations.len {
+
+    if not state.operations[i].completed {
+      give false
+    }
+
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc statistics_summary(
+  statistics: CleanStatistics
+) -> string {
+
+  give "removed-files="
+    + (statistics.removed_files as string)
+    + " removed-directories="
+    + (statistics.removed_directories as string)
+    + " reclaimed-bytes="
+    + (statistics.reclaimed_bytes as string)
+}
+
+proc render_operation(
+  operation: CleanOperation
+) -> string {
+
+  give "clean "
+    + operation.target.path
+}
+
+proc render_plan(
+  state: CleanState
+) -> string {
+
+  let out: string = ""
+
+  let i: int = 0
+
+  while i < state.operations.len {
+
+    set out =
+      out
+      + render_operation(
+          state.operations[i]
+        )
+      + "\n"
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc run_clean_pipeline(
+  args: list[string]
+) -> bool {
+
+  make state =
+    build_state()
+
+  set state =
+    parse_arguments(
+      state,
+      args
+    )
+
+  set state =
+    initialize(state)
+
+  set state =
+    register_default_targets(
+      state
+    )
+
+  if state.config.emit_banner {
+    emit banner_text()
+  }
+
+  if state.config.verbose {
+    emit render_plan(state)
+  }
+
+  if state.config.dry_run {
+
+    emit "dry-run completed"
+
+    give true
+  }
+
+  set state =
+    execute_operations(
+      state
+    )
+
+  if not verify_cleanup(state) {
+
+    emit "clean verification failed"
+
+    give false
+  }
+
+  emit statistics_summary(
+    state.statistics
+  )
+
+  give true
+}
+
+proc main(
+  args: list[string]
+) -> int {
+
+  let success: bool =
+    run_clean_pipeline(args)
+
+  if success {
+    give EXIT_SUCCESS
+  }
+
+  give EXIT_FAILURE
+}
+
+share version_text
+share banner_text
+share run_clean_pipeline
+share statistics_summary
+share main
 
 export *

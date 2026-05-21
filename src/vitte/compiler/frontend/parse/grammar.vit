@@ -1,25 +1,188 @@
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/parse/grammar.vit
+
 space vitte/compiler/frontend/parse/grammar
 
-const VITTE_GRAMMAR_VERSION: string = "core-2026.05"
+export *
+
+const VITTE_GRAMMAR_VERSION: string =
+    "core-2026.05";
+
+form GrammarRuleInfo {
+    name: string
+    category: string
+    enabled: bool
+}
+
+form GrammarSummary {
+    version: string
+    entry_rule: string
+    compiler_surface: bool
+    kernel_surface: bool
+    systems_surface: bool
+    application_surface: bool
+    canonical_blocks: string
+}
 
 proc grammar_version() -> string {
-  give VITTE_GRAMMAR_VERSION;
+    give VITTE_GRAMMAR_VERSION;
 }
 
 proc grammar_entry_rule() -> string {
-  give "program";
+    give "program";
+}
+
+proc grammar_rule_info(name: string, category: string) -> GrammarRuleInfo {
+    give GrammarRuleInfo {
+        name: name,
+        category: category,
+        enabled: true
+    };
+}
+
+proc grammar_summary() -> GrammarSummary {
+    give GrammarSummary {
+        version: grammar_version(),
+        entry_rule: grammar_entry_rule(),
+        compiler_surface: true,
+        kernel_surface: true,
+        systems_surface: true,
+        application_surface: true,
+        canonical_blocks: "{}"
+    };
 }
 
 proc grammar_has_rule(name: string) -> bool {
-  if name == "program" { give true; }
-  if name == "toplevel" { give true; }
-  if name == "stmt" { give true; }
-  if name == "expr" { give true; }
-  if name == "type_expr" { give true; }
-  if name == "pattern" { give true; }
-  give false;
+    if name == "program" { give true; }
+    if name == "toplevel" { give true; }
+    if name == "space_decl" { give true; }
+    if name == "use_decl" { give true; }
+    if name == "const_decl" { give true; }
+    if name == "form_decl" { give true; }
+    if name == "pick_decl" { give true; }
+    if name == "proc_decl" { give true; }
+    if name == "stmt" { give true; }
+    if name == "expr" { give true; }
+    if name == "type_expr" { give true; }
+    if name == "pattern" { give true; }
+    if name == "match_expr" { give true; }
+    if name == "call_expr" { give true; }
+    if name == "binary_expr" { give true; }
+    if name == "assign_expr" { give true; }
+    if name == "block_expr" { give true; }
+    if name == "array_expr" { give true; }
+    if name == "struct_expr" { give true; }
+    if name == "path_expr" { give true; }
+    if name == "if_stmt" { give true; }
+    if name == "while_stmt" { give true; }
+    if name == "for_stmt" { give true; }
+    if name == "return_stmt" { give true; }
+    if name == "let_stmt" { give true; }
+
+    give false;
 }
 
 proc grammar_surface_summary() -> string {
-  give "Vitte complete core grammar: systems+application+kernel+compiler surface; canonical blocks {}; references, explicit move, and projected assignment targets are first-class syntax";
+    give "Vitte complete core grammar: systems+application+kernel+compiler surface; canonical blocks {}; references, explicit move, and projected assignment targets are first-class syntax";
+}
+
+proc grammar_supports_compiler_surface() -> bool {
+    give true;
+}
+
+proc grammar_supports_kernel_surface() -> bool {
+    give true;
+}
+
+proc grammar_supports_application_surface() -> bool {
+    give true;
+}
+
+proc grammar_supports_systems_surface() -> bool {
+    give true;
+}
+
+proc grammar_supports_explicit_move() -> bool {
+    give true;
+}
+
+proc grammar_supports_projected_assignment_targets() -> bool {
+    give true;
+}
+
+proc grammar_supports_references() -> bool {
+    give true;
+}
+
+proc grammar_canonical_block_style() -> string {
+    give "{}";
+}
+
+proc grammar_rule_count() -> u64 {
+    give 24;
+}
+
+proc grammar_core_rules() -> [GrammarRuleInfo] {
+    give [
+        grammar_rule_info("program", "entry"),
+        grammar_rule_info("toplevel", "entry"),
+        grammar_rule_info("stmt", "statement"),
+        grammar_rule_info("expr", "expression"),
+        grammar_rule_info("type_expr", "type"),
+        grammar_rule_info("pattern", "pattern"),
+        grammar_rule_info("proc_decl", "item"),
+        grammar_rule_info("form_decl", "item"),
+        grammar_rule_info("pick_decl", "item"),
+        grammar_rule_info("binary_expr", "expression"),
+        grammar_rule_info("call_expr", "expression"),
+        grammar_rule_info("match_expr", "expression")
+    ];
+}
+
+proc grammar_is_expression_rule(name: string) -> bool {
+    if name == "expr" { give true; }
+    if name == "binary_expr" { give true; }
+    if name == "call_expr" { give true; }
+    if name == "assign_expr" { give true; }
+    if name == "match_expr" { give true; }
+    if name == "block_expr" { give true; }
+
+    give false;
+}
+
+proc grammar_is_statement_rule(name: string) -> bool {
+    if name == "stmt" { give true; }
+    if name == "if_stmt" { give true; }
+    if name == "while_stmt" { give true; }
+    if name == "for_stmt" { give true; }
+    if name == "return_stmt" { give true; }
+    if name == "let_stmt" { give true; }
+
+    give false;
+}
+
+proc grammar_is_type_rule(name: string) -> bool {
+    give name == "type_expr";
+}
+
+proc grammar_is_pattern_rule(name: string) -> bool {
+    give name == "pattern";
+}
+
+proc grammar_selftest() -> bool {
+    let summary: GrammarSummary =
+        grammar_summary();
+
+    give grammar_version()
+            == "core-2026.05"
+        and grammar_entry_rule()
+            == "program"
+        and grammar_has_rule("expr")
+        and grammar_has_rule("proc_decl")
+        and grammar_supports_compiler_surface()
+        and grammar_supports_explicit_move()
+        and grammar_supports_projected_assignment_targets()
+        and grammar_canonical_block_style()
+            == "{}"
+        and summary.compiler_surface
+        and summary.kernel_surface;
 }
