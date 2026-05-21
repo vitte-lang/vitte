@@ -1,0 +1,59 @@
+space vitte/compiler/driver/integration_registry
+
+proc frontend_modules() -> [string] {
+    give [
+        "frontend:pipeline=active",
+        "frontend:parse=active",
+        "frontend:lexer=active",
+        "frontend:ast=active"
+    ];
+}
+
+proc analysis_modules() -> [string] {
+    give [
+        "analysis:pipeline=active",
+        "analysis:sema=active",
+        "analysis:typeck=active",
+        "analysis:borrowck=active",
+        "analysis:const_eval=active",
+        "analysis:lint=active"
+    ];
+}
+
+proc middle_modules() -> [string] {
+    give [
+        "middle:pipeline=active",
+        "middle:hir=active",
+        "middle:mir=active",
+        "middle:lower/mir_to_ir=active"
+    ];
+}
+
+proc backend_modules() -> [string] {
+    give [
+        "backend:pipeline=active",
+        "backend:codegen=active",
+        "backend:link/linker=active",
+        "backend:target=active"
+    ];
+}
+
+proc infra_modules() -> [string] {
+    give [
+        "infra:incremental=active",
+        "infra:errors=active",
+        "infra:session=active",
+        "infra:diagnostics=active"
+    ];
+}
+
+proc compiler_critical_modules() -> [string] {
+    give [
+        "driver:entry=src/vitte/compiler/driver/compiler.vit",
+        "driver:pipeline=active"
+    ] + frontend_modules() + analysis_modules() + middle_modules() + backend_modules() + infra_modules();
+}
+
+proc driver_integration_stamp() -> string {
+    give "driver:integration_registry=active";
+}

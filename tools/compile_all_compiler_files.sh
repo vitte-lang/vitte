@@ -14,6 +14,8 @@ die() { printf '[compile-all][error] %s\n' "$1" >&2; exit 1; }
 [ -d "$SRC_ROOT" ] || die "missing source root: $SRC_ROOT"
 
 mkdir -p "$REPORT_DIR" "$BUILD_OUT_DIR"
+rm -f "$REPORT_DIR"/check.*.out "$REPORT_DIR"/check.*.err "$REPORT_DIR"/build.*.out "$REPORT_DIR"/build.*.err
+rm -f "$BUILD_OUT_DIR"/*
 
 CHECK_OK="$REPORT_DIR/check_ok.txt"
 CHECK_FAIL="$REPORT_DIR/check_fail.txt"
@@ -28,6 +30,25 @@ SUMMARY="$REPORT_DIR/summary.txt"
 : > "$BUILD_FAIL"
 : > "$SKIP_BUILD"
 
+has_bootstrap_literal_main() {
+  f="$1"
+  awk '
+    /^proc[[:space:]]+main\(args:[[:space:]]*list\[string\]\)[[:space:]]*->[[:space:]]*int[[:space:]]*\{/ {
+      in_main = 1
+      next
+    }
+    in_main && /^[[:space:]]*\}/ {
+      exit
+    }
+    in_main && /^[[:space:]]*give[[:space:]]+[0-9]+;?[[:space:]]*$/ {
+      ok = 1
+    }
+    END {
+      exit ok ? 0 : 1
+    }
+  ' "$f"
+}
+
 is_bootstrap_entrypoint() {
   f="$1"
   case "$f" in
@@ -37,7 +58,8 @@ is_bootstrap_entrypoint() {
     && grep -q '^proc[[:space:]]\+banner_text()[[:space:]]*->[[:space:]]*string[[:space:]]*{' "$f" \
     && grep -q '^proc[[:space:]]\+main(args:[[:space:]]*list\[string\])[[:space:]]*->[[:space:]]*int[[:space:]]*{' "$f" \
     && grep -q '^export \*$' "$f" \
-    && ! grep -q '^test[[:space:]]\+"[^"]\+"' "$f"
+    && ! grep -q '^test[[:space:]]\+"[^"]\+"' "$f" \
+    && has_bootstrap_literal_main "$f"
 }
 
 count=0

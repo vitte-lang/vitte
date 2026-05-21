@@ -3,7 +3,7 @@ set -eu
 
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 RUNS="${REPRO_RUNS:-2}"
-ENTRY_SRC="${REPRO_SRC:-$ROOT_DIR/src/vitte/compiler/driver/compiler.vit}"
+ENTRY_SRC="${REPRO_SRC:-$ROOT_DIR/toolchain/stage2/src/main.vit}"
 STAGE2_SCRIPT="$ROOT_DIR/toolchain/scripts/bootstrap/stage2.sh"
 STAGE2_BIN="$ROOT_DIR/bin/vittec"
 REPORT_DIR="$ROOT_DIR/target/reports/repro_bootstrap"

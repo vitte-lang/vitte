@@ -4,6 +4,7 @@ use vitte/compiler/driver/commands.{ DriverCommand, command_from_text }
 use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverDiagnostic, DriverDiagnosticLevel, DriverModuleInput, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_mir_json }
 use vitte/compiler/driver/exit_status.{ exit_code }
 use vitte/compiler/driver/result.{ CliReportResult, CliRunResult }
+use vitte/compiler/driver/integration_registry.{ compiler_critical_modules, driver_integration_stamp }
 
 form CompileReport {
     command: string
@@ -74,14 +75,7 @@ form ModuleSetCompileReport {
 }
 
 proc active_modules_table() -> [string] {
-    give [
-        "frontend:pipeline=active",
-        "analysis:pipeline=active",
-        "middle:lower/mir_to_ir=active",
-        "backend:pipeline=active",
-        "backend:link/linker=active",
-        "driver:pipeline=active"
-    ];
+    give [driver_integration_stamp()] + compiler_critical_modules();
 }
 
 proc inactive_modules_table() -> [string] {
@@ -139,6 +133,28 @@ proc json_bool(value: bool) -> string {
         give "true";
     }
     give "false";
+}
+
+proc is_native_surface_payload(report_json: string, expected_surface: string) -> bool {
+    give find(report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
+        and find(report_json, "\"schema_version\":\"1.0.0\"") >= 0
+        and find(report_json, "\"surface\":\"" + expected_surface + "\"") >= 0
+        and find(report_json, "\"format\":\"bootstrap-json-v1\"") < 0;
+}
+
+proc unsupported_surface_result(command_name: string, dump_flag: string, message: string) -> CliReportResult {
+    give CliReportResult {
+        code: 2,
+        message: "E_DRIVER_SURFACE_UNAVAILABLE: " + message,
+        report_json:
+            "{" +
+            "\"status\":\"error\"," +
+            "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"," +
+            "\"command\":\"" + json_escape(command_name) + "\"," +
+            "\"flag\":\"" + json_escape(dump_flag) + "\"," +
+            "\"message\":\"" + json_escape(message) + "\"" +
+            "}"
+    };
 }
 
 proc diagnostic_level_text(level: DriverDiagnosticLevel) -> string {
@@ -393,46 +409,50 @@ proc main_driver_surface_report_json(command_name: string, dump_flag: string, so
 proc main_driver_surface_report_json_with_config(command_name: string, dump_flag: string, source_path: string, source_text: string, config: DriverCompileConfig) -> CliReportResult {
     let status: DriverCompileResult = check_source_with_config(source_path, source_text, config);
     if command_name == "parse" and dump_flag == "--dump-ast-json" {
+        let report_json: string = dump_ast_json(source_path, source_text);
+        if not is_native_surface_payload(report_json, "ast") {
+            give unsupported_surface_result(command_name, dump_flag, "native ast payload is unavailable or invalid");
+        }
         give CliReportResult {
             code: exit_code(status.status),
             message: status.message,
-            report_json: dump_ast_json(source_path, source_text)
+            report_json: report_json
         };
     }
     if command_name == "check" and dump_flag == "--dump-hir-json" {
+        let report_json: string = dump_hir_json(source_path, source_text);
+        if not is_native_surface_payload(report_json, "hir") {
+            give unsupported_surface_result(command_name, dump_flag, "native hir payload is unavailable or invalid");
+        }
         give CliReportResult {
             code: exit_code(status.status),
             message: status.message,
-            report_json: dump_hir_json(source_path, source_text)
+            report_json: report_json
         };
     }
     if command_name == "check" and dump_flag == "--dump-mir-json" {
+        let report_json: string = dump_mir_json(source_path, source_text);
+        if not is_native_surface_payload(report_json, "mir") {
+            give unsupported_surface_result(command_name, dump_flag, "native mir payload is unavailable or invalid");
+        }
         give CliReportResult {
             code: exit_code(status.status),
             message: status.message,
-            report_json: dump_mir_json(source_path, source_text)
+            report_json: report_json
         };
     }
     if command_name == "check" and (dump_flag == "--diagnostics-json" or dump_flag == "--diag-json") {
+        let report_json: string = dump_diagnostics_json(source_path, source_text);
+        if not is_native_surface_payload(report_json, "diagnostics") {
+            give unsupported_surface_result(command_name, dump_flag, "native diagnostics payload is unavailable or invalid");
+        }
         give CliReportResult {
             code: exit_code(status.status),
             message: status.message,
-            report_json: dump_diagnostics_json(source_path, source_text)
+            report_json: report_json
         };
     }
-
-    give CliReportResult {
-        code: 2,
-        message: "E_DRIVER_SURFACE_UNAVAILABLE: unsupported command/flag combination",
-        report_json:
-            "{" +
-            "\"status\":\"error\"," +
-            "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"," +
-            "\"command\":\"" + json_escape(command_name) + "\"," +
-            "\"flag\":\"" + json_escape(dump_flag) + "\"," +
-            "\"message\":\"unsupported command/flag combination\"" +
-            "}"
-    };
+    give unsupported_surface_result(command_name, dump_flag, "unsupported command/flag combination");
 }
 
 proc detect_dump_surface_flag(args: [string]) -> string {
@@ -459,6 +479,18 @@ proc detect_dump_surface_flag(args: [string]) -> string {
     give "";
 }
 
+proc has_surface_json_intent(args: [string]) -> bool {
+    let i: u64 = 0;
+    while i < len(args) {
+        let arg0: string = args[i];
+        if starts_with(arg0, "--dump-") or starts_with(arg0, "--diag") {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
 proc main_driver_surface_report_json_from_args(command_name: string, args: [string], source_path: string, source_text: string) -> CliReportResult {
     give main_driver_surface_report_json_from_args_with_config(command_name, args, source_path, source_text, default_compile_config());
 }
@@ -467,6 +499,9 @@ proc main_driver_surface_report_json_from_args_with_config(command_name: string,
     let dump_flag: string = detect_dump_surface_flag(args);
     if dump_flag != "" {
         give main_driver_surface_report_json_with_config(command_name, dump_flag, source_path, source_text, config);
+    }
+    if command_name == "parse" or command_name == "check" or has_surface_json_intent(args) {
+        give unsupported_surface_result(command_name, "", "missing or unsupported JSON surface flag");
     }
     let report: CompileReport = run_and_report_with_config(command_name, source_path, source_text, config);
     give CliReportResult {

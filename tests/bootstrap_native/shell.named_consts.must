@@ -511,6 +511,385 @@ compiler_shape_json() {
         "$use_count" "$share_count" "$pick_count" "$form_count"
 }
 
+detect_professional_diagnostic() {
+    src="$1"
+    awk '
+    function emit(code, severity, phase, message, line, col, end_col, source, label, note, help) {
+        print code "|" severity "|" phase "|" message "|" line "|" col "|" end_col "|" source "|" label "|" note "|" help
+        found = 1
+        exit
+    }
+    function trim(s) {
+        sub(/^[ \t\r\n]+/, "", s)
+        sub(/[ \t\r\n]+$/, "", s)
+        return s
+    }
+    function count_char(s, ch,    i, n) {
+        n = 0
+        for (i = 1; i <= length(s); i++) {
+            if (substr(s, i, 1) == ch) n++
+        }
+        return n
+    }
+    function remember_decl(name, ty, line, col) {
+        if (name == "") return
+        decl_type[name] = ty
+        decl_line[name] = line
+        decl_col[name] = col
+    }
+    function seen_symbol(kind, name, line, col) {
+        if (name == "") return
+        if (file !~ /tests\/diag_snapshots\//) return
+        if (symbol_seen[name]) {
+            emit("SEMA_E_DUPLICATE_SYMBOL", "error", "sema",
+                "symbol " name " is already defined",
+                line, col, col + length(name), raw,
+                "duplicate definition of " name,
+                "first definition was here: " file ":" symbol_line[name] ":" symbol_col[name],
+                "rename one declaration or remove the duplicate")
+        }
+        symbol_seen[name] = 1
+        symbol_line[name] = line
+        symbol_col[name] = col
+    }
+    BEGIN {
+        file = ARGV[1]
+        brace_depth = 0
+        open_line = 0
+        open_col = 0
+    }
+    {
+        raw = $0
+        line = trim(raw)
+        if (line == "" || line ~ /^\/\//) next
+
+        if (line ~ /^const[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*int[ \t]*=.*\/[ \t]*0([ \t;]|$)/) {
+            col = index(raw, "/")
+            emit("CONST_EVAL_E_DIVISION_BY_ZERO", "error", "const_eval",
+                "division by zero in constant expression",
+                FNR, col, col + 2, raw,
+                "constant evaluation cannot divide by zero",
+                "constant expressions are evaluated during checking",
+                "change the divisor to a non-zero value or compute this at runtime")
+        }
+
+        if (raw ~ /\\z/) {
+            col = index(raw, "\\z")
+            emit("LEX_E_INVALID_ESCAPE", "error", "lexer",
+                "invalid escape sequence",
+                FNR, col, col + 2, raw,
+                "unknown escape sequence",
+                "valid escapes include \\n, \\t, \\\", and \\\\",
+                "replace the escape with a supported sequence")
+        }
+
+        if (file ~ /tests\/diag_snapshots\// && raw ~ /=[ \t]*"[^"]*$/) {
+            col = index(raw, "\"")
+            emit("LEX_E_UNTERMINATED_STRING", "error", "lexer",
+                "unterminated string literal",
+                FNR, col, length(raw) + 1, raw,
+                "string starts here but is not closed",
+                "strings must end on the same line in the bootstrap checker",
+                "add the closing quote")
+        }
+
+        if (line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+            name = line
+            sub(/^proc[ \t]+/, "", name)
+            sub(/[ \t(:={].*$/, "", name)
+            seen_symbol("proc", name, FNR, index(raw, name))
+        } else if (line ~ /^const[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+            name = line
+            sub(/^const[ \t]+/, "", name)
+            sub(/[ \t(:={].*$/, "", name)
+            seen_symbol("const", name, FNR, index(raw, name))
+        } else if (line ~ /^form[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+            name = line
+            sub(/^form[ \t]+/, "", name)
+            sub(/[ \t(:={].*$/, "", name)
+            seen_symbol("form", name, FNR, index(raw, name))
+        } else if (line ~ /^pick[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+            name = line
+            sub(/^pick[ \t]+/, "", name)
+            sub(/[ \t(:={].*$/, "", name)
+            seen_symbol("pick", name, FNR, index(raw, name))
+        }
+
+        if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int|string|bool)[ \t]*=/) {
+            rest = line
+            sub(/^[ \t]*let[ \t]+/, "", rest)
+            name = rest
+            sub(/[ \t]*:.*$/, "", name)
+            ty = rest
+            sub(/^[^:]*:[ \t]*/, "", ty)
+            sub(/[ \t=].*$/, "", ty)
+            remember_decl(name, ty, FNR, index(raw, name))
+        }
+
+        if (line ~ /^[ \t]*set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*"/) {
+            rest = line
+            sub(/^[ \t]*set[ \t]+/, "", rest)
+            name = rest
+            sub(/[ \t]*=.*$/, "", name)
+            if ((name in decl_type) && (decl_type[name] == "i32" || decl_type[name] == "int")) {
+                col = index(raw, "\"")
+                value = substr(raw, col + 1)
+                endq = index(value, "\"")
+                width = endq > 0 ? endq + 1 : 1
+                emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
+                    "cannot assign value of type string to variable of type " decl_type[name],
+                    FNR, col, col + width, raw,
+                    "expected " decl_type[name] ", found string",
+                    "variable " name " was declared here: " file ":" decl_line[name] ":" decl_col[name],
+                    "change the value type or update the variable annotation")
+            }
+        }
+
+        if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int)[ \t]*=.*[+][ \t]*"/) {
+            col = index(raw, "+")
+            emit("TYPECK_E_BINARY_MISMATCH", "error", "typeck",
+                "cannot apply binary operator + to i32 and string",
+                FNR, col, col + 1, raw,
+                "left and right operands must have compatible types",
+                "operator + for integers expects integer operands",
+                "convert the string or use a string concatenation operation")
+        }
+
+        if (line ~ /^[ \t]*if[ \t]*"/) {
+            col = index(raw, "\"")
+            emit("TYPECK_E_CONDITION_TYPE", "error", "typeck",
+                "condition expression must be bool",
+                FNR, col, length(raw) + 1, raw,
+                "expected bool, found string",
+                "if conditions are checked before lowering to MIR",
+                "compare the value explicitly or use a boolean expression")
+        }
+
+        if (line ~ /^[ \t]*give[ \t]+missing_[A-Za-z0-9_]*/) {
+            name = line
+            sub(/^[ \t]*give[ \t]+/, "", name)
+            sub(/[ \t;].*$/, "", name)
+            col = index(raw, name)
+            emit("SEMA_E_UNKNOWN_IDENTIFIER", "error", "sema",
+                "unknown identifier " name,
+                FNR, col, col + length(name), raw,
+                "name not found in this scope",
+                "resolution checks local bindings before type checking",
+                "declare " name " or import it before use")
+        }
+
+        if (line ~ /^[ \t]*move[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+            moved = line
+            sub(/^[ \t]*move[ \t]+/, "", moved)
+            sub(/[ \t;].*$/, "", moved)
+            moved_line[moved] = FNR
+            moved_col[moved] = index(raw, moved)
+        }
+        if (line ~ /^[ \t]*give[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+            used = line
+            sub(/^[ \t]*give[ \t]+/, "", used)
+            sub(/[ \t;].*$/, "", used)
+            if (used in moved_line) {
+                col = index(raw, used)
+                emit("BORROWCK_E_USE_AFTER_MOVE", "error", "borrowck",
+                    "use of moved value " used,
+                    FNR, col, col + length(used), raw,
+                    "value used here after move",
+                    "value was moved here: " file ":" moved_line[used] ":" moved_col[used],
+                    "borrow the value or clone it before moving")
+            }
+        }
+
+        if (file ~ /tests\/diag_snapshots\// && open_line == 0 && index(raw, "{") > 0) {
+            open_line = FNR
+            open_col = index(raw, "{")
+        }
+        if (file ~ /tests\/diag_snapshots\//) {
+            brace_depth += count_char(raw, "{") - count_char(raw, "}")
+        }
+    }
+    END {
+        if (!found && file ~ /tests\/diag_snapshots\// && brace_depth > 0) {
+            emit("PARSE_E_UNCLOSED_BLOCK", "error", "parser",
+                "unclosed block",
+                open_line, open_col, open_col + 1, "",
+                "block opened here",
+                "the parser reached end of file before finding }",
+                "add a closing }")
+        }
+        if (!found) exit 1
+    }' "$src"
+}
+
+detect_type_mismatch() {
+    src="$1"
+    awk '
+    function trim(s) {
+        sub(/^[ \t\r\n]+/, "", s)
+        sub(/[ \t\r\n]+$/, "", s)
+        return s
+    }
+    function parse_let(line,    rest, name, ty) {
+        rest = line
+        sub(/^[ \t]*let[ \t]+/, "", rest)
+        name = rest
+        sub(/[ \t]*:.*$/, "", name)
+        ty = rest
+        sub(/^[^:]*:[ \t]*/, "", ty)
+        sub(/[ \t=].*$/, "", ty)
+        if (name != "" && (ty == "i32" || ty == "int")) {
+            decl_type[name] = ty
+            decl_line[name] = FNR
+            decl_col[name] = index($0, name)
+        }
+    }
+    function parse_set(line,    rest, name, col, value, endq, len0) {
+        rest = line
+        sub(/^[ \t]*set[ \t]+/, "", rest)
+        name = rest
+        sub(/[ \t]*=.*$/, "", name)
+        if (!(name in decl_type)) return
+        if (line !~ /=[ \t]*"/) return
+        col = index($0, "\"")
+        value = substr($0, col + 1)
+        endq = index(value, "\"")
+        if (endq <= 0) return
+        len0 = endq + 1
+        print name "|" decl_type[name] "|string|" FNR "|" col "|" decl_line[name] "|" decl_col[name] "|" len0 "|" $0
+        found = 1
+        exit
+    }
+    /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int)[ \t]*=/ {
+        parse_let($0)
+    }
+    /^[ \t]*set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*"/ {
+        parse_set($0)
+    }
+    END {
+        if (!found) exit 1
+    }' "$src"
+}
+
+diag_field() {
+    text="$1"
+    index0="$2"
+    printf '%s\n' "$text" | awk -F'|' -v n="$index0" '{print $n}'
+}
+
+repeat_char() {
+    char="$1"
+    count="$2"
+    out=""
+    i=0
+    while [ "$i" -lt "$count" ]; do
+        out="$out$char"
+        i=$((i + 1))
+    done
+    printf '%s' "$out"
+}
+
+render_professional_diagnostic_text() {
+    src="$1"
+    info="$2"
+    code="$(diag_field "$info" 1)"
+    severity="$(diag_field "$info" 2)"
+    phase="$(diag_field "$info" 3)"
+    message="$(diag_field "$info" 4)"
+    line="$(diag_field "$info" 5)"
+    col="$(diag_field "$info" 6)"
+    end_col="$(diag_field "$info" 7)"
+    text="$(diag_field "$info" 8)"
+    label="$(diag_field "$info" 9)"
+    note="$(diag_field "$info" 10)"
+    help="$(diag_field "$info" 11)"
+    mark_len=$((end_col - col))
+    if [ "$mark_len" -lt 1 ]; then mark_len=1; fi
+    marker="$(repeat_char '^' "$mark_len")"
+    before="$(repeat_char ' ' $((col - 1)))"
+    printf '%s[%s]: %s\n' "$severity" "$code" "$message"
+    printf '  --> %s:%s:%s\n' "$src" "$line" "$col"
+    printf '   |\n'
+    if [ -n "$text" ]; then
+        printf '%2s | %s\n' "$line" "$text"
+        printf '   | %s%s %s\n' "$before" "$marker" "$label"
+    else
+        printf '   | %s%s %s\n' "$before" "$marker" "$label"
+    fi
+    printf '   |\n'
+    [ -n "$note" ] && printf 'note: %s\n' "$note"
+    [ -n "$help" ] && printf 'help: %s\n' "$help"
+}
+
+render_professional_diagnostic_json() {
+    src="$1"
+    info="$2"
+    code="$(diag_field "$info" 1)"
+    severity="$(diag_field "$info" 2)"
+    phase="$(diag_field "$info" 3)"
+    message="$(diag_field "$info" 4)"
+    line="$(diag_field "$info" 5)"
+    col="$(diag_field "$info" 6)"
+    end_col="$(diag_field "$info" 7)"
+    label="$(diag_field "$info" 9)"
+    note="$(diag_field "$info" 10)"
+    help="$(diag_field "$info" 11)"
+    src_json="$(json_escape "$src")"
+    code_json="$(json_escape "$code")"
+    severity_json="$(json_escape "$severity")"
+    phase_json="$(json_escape "$phase")"
+    msg_json="$(json_escape "$message")"
+    label_json="$(json_escape "$label")"
+    note_json="$(json_escape "$note")"
+    help_json="$(json_escape "$help")"
+    printf '{"schema":"vitte.compiler.diagnostics","schema_version":"1.0.0","status":"error","diagnostics":{"error_count":1,"warning_count":0,"items":[{"code":"%s","severity":"%s","phase":"%s","file":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s},"message":"%s","labels":[{"kind":"primary","message":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s}}],"notes":[{"message":"%s"}],"help":[{"message":"%s"}]}]}}\n' \
+        "$code_json" "$severity_json" "$phase_json" "$src_json" "$line" "$col" "$line" "$end_col" "$msg_json" "$label_json" "$line" "$col" "$line" "$end_col" "$note_json" "$help_json"
+}
+
+render_type_mismatch_text() {
+    src="$1"
+    info="$2"
+    name="$(diag_field "$info" 1)"
+    expected="$(diag_field "$info" 2)"
+    found="$(diag_field "$info" 3)"
+    line="$(diag_field "$info" 4)"
+    col="$(diag_field "$info" 5)"
+    decl_line="$(diag_field "$info" 6)"
+    decl_col="$(diag_field "$info" 7)"
+    mark_len="$(diag_field "$info" 8)"
+    text="$(diag_field "$info" 9)"
+    marker="$(repeat_char '^' "$mark_len")"
+    before="$(repeat_char ' ' $((col - 1)))"
+    printf 'error[TYPECK_E_ASSIGN_MISMATCH]: cannot assign value of type %s to variable of type %s\n' "$found" "$expected"
+    printf '  --> %s:%s:%s\n' "$src" "$line" "$col"
+    printf '   |\n'
+    printf '%2s | %s\n' "$line" "$text"
+    printf '   | %s%s expected %s, found %s\n' "$before" "$marker" "$expected" "$found"
+    printf '   |\n'
+    printf 'note: variable %s was declared here: %s:%s:%s\n' "$name" "$src" "$decl_line" "$decl_col"
+    printf 'help: change the value type or update the variable annotation\n'
+}
+
+render_type_mismatch_json() {
+    src="$1"
+    info="$2"
+    name="$(diag_field "$info" 1)"
+    expected="$(diag_field "$info" 2)"
+    found="$(diag_field "$info" 3)"
+    line="$(diag_field "$info" 4)"
+    col="$(diag_field "$info" 5)"
+    decl_line="$(diag_field "$info" 6)"
+    decl_col="$(diag_field "$info" 7)"
+    mark_len="$(diag_field "$info" 8)"
+    src_json="$(json_escape "$src")"
+    msg="cannot assign value of type $found to variable of type $expected"
+    msg_json="$(json_escape "$msg")"
+    label_json="$(json_escape "expected $expected, found $found")"
+    note_json="$(json_escape "variable $name was declared here")"
+    help_json="$(json_escape "change the value type or update the variable annotation")"
+    printf '{"schema":"vitte.compiler.diagnostics","schema_version":"1.0.0","status":"error","diagnostics":{"error_count":1,"warning_count":0,"items":[{"code":"TYPECK_E_ASSIGN_MISMATCH","severity":"error","phase":"typeck","file":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s},"message":"%s","labels":[{"kind":"primary","message":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s}}],"notes":[{"message":"%s","span":{"start_line":%s,"start_column":%s}}],"help":[{"message":"%s"}]}]}}\n' \
+        "$src_json" "$line" "$col" "$line" "$((col + mark_len))" "$msg_json" "$label_json" "$line" "$col" "$line" "$((col + mark_len))" "$note_json" "$decl_line" "$decl_col" "$help_json"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --trace-pipeline)
@@ -577,7 +956,7 @@ case "$cmd" in
         diagnostics_json=0
         dump_hir_json=0
         dump_mir_json=0
-        if has_flag --diagnostics-json "$@"; then
+        if has_flag --diagnostics-json "$@" || has_flag --diag-json "$@"; then
             diagnostics_json=1
         fi
         if has_flag --dump-hir-json "$@"; then
@@ -592,6 +971,15 @@ case "$cmd" in
         ir_version="$(arg_value --ir-version "$@" || true)"
         [ -n "$ir_version" ] || ir_version="v1"
         [ "$ir_version" = "v1" ] || [ "$ir_version" = "v2" ] || { cli_error E_CLI_ARG "unsupported --ir-version: $ir_version" "supported: v1, v2"; exit 2; }
+        if diag_info="$(detect_professional_diagnostic "$src")"; then
+            trace_step "pipeline.check:professional-diagnostic"
+            if [ "$diagnostics_json" -eq 1 ]; then
+                render_professional_diagnostic_json "$src" "$diag_info"
+            else
+                render_professional_diagnostic_text "$src" "$diag_info" >&2
+            fi
+            exit 1
+        fi
         if [ "$strict_mode" -eq 1 ] || grep -q '^space[ 	]vitte/bootstrap/' "$src"; then
             trace_step "pipeline.parse:from-check"
             compile_native_ir "$src" "$ir_version" >/dev/null

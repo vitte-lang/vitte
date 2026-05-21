@@ -25,6 +25,9 @@ go make compiler-src-critical
 if [ "$STRICT" -eq 1 ]; then
   go make diagnostics-migration-gate
   go make compiler-reachability-audit
+  if [ "${REAL_PIPELINE_GATE:-0}" = "1" ]; then
+    go make compiler-real-pipeline-audit
+  fi
 fi
 
 # 0b) Structured stage1/stage2 parity on parse/check/IR traces
