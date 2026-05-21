@@ -287,6 +287,26 @@ doctor-error:
 selfhost-audit:
 	@tools/selfhost_audit.sh
 
+.PHONY: stage2-source-of-truth
+stage2-source-of-truth:
+	@tools/check_stage2_source_of_truth.sh
+
+.PHONY: compiler-entry-lock
+compiler-entry-lock:
+	@tools/check_compiler_entry_lock.sh
+
+.PHONY: compiler-path-typos
+compiler-path-typos:
+	@tools/check_compiler_path_typos.sh
+
+.PHONY: diagnostics-migration-gate
+diagnostics-migration-gate:
+	@tools/check_diagnostics_migration.sh
+
+.PHONY: compiler-reachability-audit
+compiler-reachability-audit:
+	@python3 tools/compiler_reachability_audit.py
+
 .PHONY: driver-surface-audit
 driver-surface-audit:
 	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/mod.vit >/dev/null
@@ -958,7 +978,7 @@ diagnostics-ftl-check:
 	@tools/update_diagnostics_ftl.py --check
 
 .PHONY: ci-strict
-ci-strict: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots geany-lint highlight-snapshots repo-hygiene-check make-targets-doc-check docs-paths-check
+ci-strict: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots geany-lint highlight-snapshots repo-hygiene-check make-targets-doc-check docs-paths-check selfhost-hard-strict
 
 .PHONY: ci-fast
 ci-fast: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots completions-snapshots wrapper-stage-test geany-lint repo-hygiene-check make-targets-doc-check docs-paths-check
@@ -1060,6 +1080,22 @@ legacy-import-allowlist-empty:
 ci-fast-compiler:
 	@tools/ci_fast_compiler.sh
 
+.PHONY: stage-parity-structured
+stage-parity-structured:
+	@ALLOW_BOOTSTRAP_SCHEMA_COMPAT=$${ALLOW_BOOTSTRAP_SCHEMA_COMPAT:-1} tools/stage_parity_structured.sh
+
+.PHONY: compiler-src-critical
+compiler-src-critical:
+	@tools/compile_all_compiler_files.sh
+
+.PHONY: native-json-schema-contract
+native-json-schema-contract:
+	@ALLOW_BOOTSTRAP_SCHEMA_COMPAT=$${ALLOW_BOOTSTRAP_SCHEMA_COMPAT:-1} tools/native_json_schema_contract_test.sh
+
+.PHONY: bootstrap-selfhost-repro
+bootstrap-selfhost-repro:
+	@tools/bootstrap_selfhost_repro.sh
+
 .PHONY: compiler-max-gate-fast
 compiler-max-gate-fast:
 	@tools/compiler_max_gate.sh fast
@@ -1067,6 +1103,31 @@ compiler-max-gate-fast:
 .PHONY: compiler-max-gate
 compiler-max-gate:
 	@tools/compiler_max_gate.sh full
+
+.PHONY: selfhost-hard
+selfhost-hard:
+	@$(MAKE) --no-print-directory build
+	@$(MAKE) --no-print-directory stage2-source-of-truth
+	@$(MAKE) --no-print-directory compiler-entry-lock
+	@$(MAKE) --no-print-directory compiler-path-typos
+	@$(MAKE) --no-print-directory selfhost-audit
+	@$(MAKE) --no-print-directory compiler-max-gate-fast
+	@echo "[selfhost-hard] PASS"
+
+.PHONY: compiler-max-gate-strict
+compiler-max-gate-strict:
+	@tools/compiler_max_gate.sh strict
+
+.PHONY: selfhost-hard-strict
+selfhost-hard-strict:
+	@$(MAKE) --no-print-directory build
+	@$(MAKE) --no-print-directory stage2-source-of-truth
+	@$(MAKE) --no-print-directory compiler-entry-lock
+	@$(MAKE) --no-print-directory diagnostics-migration-gate
+	@$(MAKE) --no-print-directory compiler-reachability-audit
+	@$(MAKE) --no-print-directory selfhost-audit
+	@$(MAKE) --no-print-directory compiler-max-gate-strict
+	@echo "[selfhost-hard-strict] PASS"
 
 .PHONY: repro
 repro:
